@@ -278,3 +278,18 @@ Contract (gestures.test.ts): an annotated
 died on, kept as a compile-time tripwire — and the vector it
 receives is identity-equal to the flight's own anchor, the fact the
 soundness argument rests on.
+
+**Refinement, same day: `plate` is NOT `V`.** The first generic
+welded `plate.v` to `V`, and the port agent's re-run found the weld:
+a real flight is *bimodal*. The plate is the kernel's own allocation
+(`makePlate` fills it with kernel `Vec3`s) while `spin`/`anchor`/
+`hold` are the consumer's — so with `V = THREE.Vector3` the field
+demanded the one thing no consumer can supply. `plate.v` is typed at
+the bound (`Vec3Chain`), which is all its two uses need (the release
+adds hand velocity onto it, reads `x`/`y` for topspin; it never
+crosses `toLiftPlane`) — the same reasoning that keeps `handVel` a
+plain readonly. The contract mock was complicit: it hand-built the
+plate from THREE objects, so the flight it fed the deps was
+uniformly THREE and the weld typechecked. It now takes its plate
+from the real `makePlate()` — the mock must be bimodal or it cannot
+catch the next weld either.

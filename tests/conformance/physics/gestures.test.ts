@@ -22,6 +22,7 @@ import {
   cameraDistance,
   carryToPlane,
   planeToScreen,
+  makePlate,
   type GestureFlight,
   attachLab014Gestures,
 } from '@anamorph/core'
@@ -34,6 +35,14 @@ const LIFT_Z = 96
 function makeFlight(
   over: Partial<GestureFlight<THREE.Vector3>> = {},
 ): GestureFlight<THREE.Vector3> {
+  // The plate is the kernel's own allocation, deliberately: a real flight
+  // is BIMODAL — kernel vectors under the physics (`makePlate`), the
+  // consumer's THREE.Vector3s under the hand — and a mock that hand-builds
+  // the plate from THREE objects cannot catch a deps type that welds the
+  // two vocabularies together. (The first generic did exactly that, and
+  // this mock let it through.)
+  const plate = makePlate(240, 150)
+  plate.p.set(300, -80, 96)
   return {
     id: 'card-1',
     mode: 'held',
@@ -50,11 +59,7 @@ function makeFlight(
     anchorScroll: 0,
     hold: new THREE.Vector3(-40, 20, 0),
     handVel: new THREE.Vector3(120, -60, 0),
-    plate: {
-      p: new THREE.Vector3(300, -80, 96),
-      v: new THREE.Vector3(),
-      q: new THREE.Quaternion(),
-    },
+    plate,
     ...over,
   }
 }

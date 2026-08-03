@@ -70,7 +70,16 @@ export interface GestureFlight<V extends Vec3Chain = Vec3Chain> {
   anchorScroll: number
   hold: V
   handVel: Vec3Readonly
-  plate: { p: Vec3Readonly; v: V; q: QuatReadonly }
+  /**
+   * NOT `V`: the plate is the kernel's own allocation (`makePlate` fills
+   * it with kernel `Vec3`s), so a real flight is bimodal — kernel vectors
+   * under the physics, the consumer's under the hand — and welding
+   * `plate.v` to `V` would demand the one thing no consumer can supply.
+   * The bound is enough: the release adds the hand velocity onto it and
+   * reads `x`/`y` for topspin; it never crosses `toLiftPlane`. Same
+   * reasoning that keeps `handVel` a plain readonly rather than a `V`.
+   */
+  plate: { p: Vec3Readonly; v: Vec3Chain; q: QuatReadonly }
 }
 
 export interface GestureDeps<Col, V extends Vec3Chain = Vec3Chain> {
