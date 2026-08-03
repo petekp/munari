@@ -318,3 +318,28 @@ carve-out is exactly one specifier in exactly test files; everything
 else in a suite answers to the same allowlist as the module it
 tests, so a suite can no more reach around the kernel than its
 module can.
+
+## #10 — The flight-card pack is a charter until a consumer arrives (2026-08-03)
+
+The seed manifest routed archive#58–#61 to a vendorable pack. Tonight's
+inventory says the honest shape is different: every LAW already has a
+contract-covered home in the kernel (plate integrator, aeroAmplitude
+with its perceptual floors, aeroFollowStep's gated fork, crumplePhase's
+invariants, tossSpin, wadOffscreen, the window gesture), the chrome
+laws live beside them, and the scene-side machinery — aero bow,
+crumple shader, depth-tested shadow, density-pin driver — is one
+organism inside the byte-verbatim Lab 014. Extracting a reusable
+component from it is design work the archive spent ~ten increments
+on, and no second consumer exists to size it. Cutting it up tonight
+would trade a working, browser-verified reference for an untested
+abstraction — the second-system guard's exact target, and the same
+doctrine that gates kernel surface (#7: a consumer arrives holding
+the need, or nothing crosses).
+
+So registry/flight-card ships a CHARTER: the inventory of what lives
+where, the rules any future extraction must preserve (each cited),
+and the tuned-constant table — welded by test, glass-pack style: the
+kernel claims by import (TOSS_SPIN_V0, the AMP/2 spot-check at
+half-saturation), the scene claims by text (the 6×3 fold grid, the
+0.35 remainder, CRUMPLE_Z). A charter whose claims are executable
+cannot quietly rot into wishful documentation.
