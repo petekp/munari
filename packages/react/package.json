@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Live DOM as physical matter in WebGL \u2014 the three/r3f binding over @anamorph/core. The one package that will ever be published; private until the publish decision (decisions.md #1).",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./style.css": "./src/style.css"
   },
   "dependencies": {
     "@anamorph/core": "*"

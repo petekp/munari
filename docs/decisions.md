@@ -186,3 +186,37 @@ future lab that needs it reopens this entry with measurements.
 measured baseline for floating-layer rendering; anamorph's own
 floating layers arrive with the binding and inherit this contract on
 day one, so the halo class is extinct here rather than migrated.
+
+## #6 — The binding re-exports the kernel whole, and the shader string lives beside the material (2026-08-03, react binding)
+
+**Decision.** `anamorph`'s barrel is `export * from '@anamorph/core'`
+plus the binding's own primitives — no curation between the kernel and
+the consumer. The oracle curated (its `lib/` stayed private) because
+its internals were unconvenanted; every name in `@anamorph/core` is
+contract-covered, so a second doorway would only accumulate drift. A
+name earns barrel placement in the binding's OWN half by a preserved
+lab consuming it (Surface, SurfaceApp, the texture/chrome hooks, the
+focus kit, Dial, arcLayout); the archive's floating family, conductor,
+style-channel hook and remaining controls stay archived until a
+consumer crosses.
+
+**SURFACE_RADIUS_GLSL** — the debt item from the chrome flip — lands
+in the binding (`lib/surfaceRadiusGlsl.ts`), not the kernel: a shader
+chunk belongs beside the material that splices it, and core is
+renderer-free. The GLSL and core's `surfaceRadiusSd` are twins BY
+CONTRACT — the conformance suite pins the JS SDF, and the chunk must
+compute the same distance so a ray and a fragment agree about where a
+corner ends. Its identifiers are renamed with the library
+(`uAnamorphRadii`/`uAnamorphSize`/`anamorphRadiusMask(vUv)`): a custom
+material's opt-in call sites are consumer-visible contract, and a
+fresh library wearing a dead library's uniform names would be
+archaeology, not compatibility — nothing published ever saw the old
+names.
+
+**Port discipline.** Binding files are verbatim oracle ports except:
+imports rewired onto `@anamorph/core`, the `[anamorph]` console voice,
+and `noUncheckedIndexedAccess` non-null assertions (each `!` sits
+under a visible loop/length guard and is erasure-only — runtime
+behavior is byte-equivalent by construction). 7 of the 10 focus-kit
+files are byte-identical to the archive; every deviation in the other
+3 is an assertion plus the comment justifying it.

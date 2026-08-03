@@ -1,0 +1,858 @@
+import { use, useEffect, useMemo, useRef, useState } from 'react'
+import * as THREE from 'three'
+import { useFrame, useThree, type ThreeElements, type ThreeEvent } from '@react-three/fiber'
+import {
+  DEFAULT_TIERS,
+  EMPTY_CHROME,
+  chromeEquals,
+  clampScale,
+  clampTiers,
+  clearPointerState,
+  createDomTextureSource,
+  deepestElementAt,
+  forwardPointer,
+  maxTier,
+  measureSurfaceChrome,
+  nudgeSelect,
+  resolveRadii,
+  seedTier,
+  selectLodTier,
+  silenceHoverMove,
+  surfaceRadiusSd,
+  tiersInRange,
+  trackDrag,
+  trackFocusModality,
+  trackWheel,
+  type DomTextureSource,
+  type SurfaceChrome,
+} from '@anamorph/core'
+import { SURFACE_RADIUS_GLSL } from '../lib/surfaceRadiusGlsl'
+import { FocusGroupContext } from './focusContext'
+import { SurfaceContext, type SurfaceContextValue } from './SurfaceContext'
+import { useLatest } from './useLatest'
+
+// <Surface> — the atom of anamorph: a live DOM subtree as the skin of any
+// geometry. Pass geometry as children; the DOM is rasterized into the
+// material's map every frame, and pointer events on the mesh are forwarded
+// back into the DOM via the intersection's UV coordinates.
+//
+// Because the DOM is real: :focus styles show up in the texture, form state
+// is real state, the accessibility tree is intact, and once a field is
+// focused the browser types into it natively — no key forwarding. :hover and
+// :active are the exception — real hit-testing never reaches the parked
+// subtree — so forwardEvents mirrors them as data-hover/data-active
+// attributes; author CSS with both selectors.
+
+// `material` is omitted from the mesh props because Surface owns the material
+// slot — the prop below redefines it as a mode, not an instance.
+export interface SurfaceProps extends Omit<ThreeElements['mesh'], 'children' | 'material'> {
+  html: string
+  /** Name for this surface in paint diagnostics (the source's `label`). */
+  label?: string
+  /** DOM pixel size of the source subtree (drives texture resolution). */
+  width?: number
+  height?: number
+  children: React.ReactNode
+  /** Fires when focus enters/leaves the live subtree. Always the latest one. */
+  onFocusWithin?: (focused: boolean) => void
+  /**
+   * Fires once, on the frame the texture first uploads real pixels — the
+   * moment this mesh actually carries its content. A handoff that swaps live
+   * DOM for a Surface must not hide the DOM — or draw companion chrome like
+   * a shadow — one frame early, and "how many frames until the upload" is a
+   * race that loses under load (measured: a shadow drawn on the first r3f
+   * frame stamped a card-shaped veil over the still-visible page copy,
+   * because the source hadn't painted yet). Only the upload path knows the
+   * true moment, so it says so here. Resets if the source is recreated.
+   */
+  onFirstUpload?: () => void
+  /**
+   * Access the live DOM root — attach listeners, mount a React root into it,
+   * mutate it. May return a cleanup function.
+   *
+   * This is a LIFECYCLE hook: called once when the source is created, cleaned
+   * up when it is destroyed, and at no other time. Its identity is
+   * deliberately untracked, because re-running it would mean tearing the
+   * subtree down and taking every bit of live DOM state with it. So an inline
+   * arrow costs nothing here, and a caller who needs current state inside it
+   * should reach for a ref rather than expect a re-run.
+   */
+  onSource?: (el: HTMLElement) => void | (() => void)
+  /**
+   * Texture upload policy. 'auto' (default) uploads only when the canvas
+   * reports a real paint: the compositor fires onpaint by itself whenever
+   * the subtree's paint record changes (mutations, transitions of any
+   * duration, paint-property CSS animations, caret blink), so idle
+   * Surfaces cost nothing and no observer or heuristic is involved.
+   * 'always' requests + uploads every frame — escape hatch for content
+   * that changes without paint-record updates (e.g. embedded media).
+   * Platform limit either way: compositor-animated properties (opacity/
+   * transform keyframes) never reach drawElementImage — animate paint
+   * properties (color, background, box-shadow) instead.
+   */
+  paint?: 'auto' | 'always'
+  /** Flip the texture horizontally (for concave/back-face geometries). */
+  mirrorU?: boolean
+  /**
+   * Texture density policy, shaped like r3f's `dpr`:
+   *
+   * - `'auto'` (default) — dynamic LOD over the full tier ladder
+   *   (0.25–6×): the texture is re-rasterized (a true vector replay, not
+   *   an upscale) whenever the surface's projected screen size crosses a
+   *   tier boundary — approach a panel and its glyphs sharpen; back away
+   *   and memory is returned. Tier selection has hysteresis and a
+   *   two-evaluation debounce, so an orbiting camera can't thrash
+   *   resizes. Idle cost is ~zero; a committed swap costs one paint +
+   *   one GL realloc + one upload.
+   * - `[min, max]` — dynamic LOD constrained to the inclusive range:
+   *   `[1, 6]` never lets text drop below 1:1 (kiosk/hero panels),
+   *   `[0.25, 2]` caps memory in panel-heavy scenes, `[1, Infinity]`
+   *   sets a floor with no ceiling. Same machinery, sliced ladder.
+   * - `'max'` — pinned at the highest tier the guard admits for this
+   *   Surface's size: "as sharp as the library allows", resolved here
+   *   rather than by the caller (the ladder is private, and a measured
+   *   Surface doesn't know its size in time to ask) and re-resolved on
+   *   resize. No LOD evaluations run.
+   * - `number` — pins texels-per-CSS-px (1 = legacy behavior, 2 = fixed
+   *   retina). No LOD evaluations run.
+   *
+   * Every form respects the 4096px long-edge texture guard — a fixed
+   * number that would exceed it is clamped, with a console warning.
+   */
+  resolution?: 'auto' | 'max' | number | [min: number, max: number]
+  side?: THREE.Side
+  roughness?: number
+  metalness?: number
+  /**
+   * Honor the texture's alpha. Off by default (a panel is a solid slab).
+   * On for overlay Surfaces — a floating layer's source paints only its
+   * popover/menu/dialog and leaves the rest of the subtree unpainted, so
+   * the slab shows the scene through everywhere the DOM drew nothing.
+   */
+  transparent?: boolean
+  /**
+   * What the raycaster is allowed to hit.
+   *
+   * - `'plane'` (default) — the whole quad. A panel is a solid slab.
+   * - `'content'` — only where the source DOM accepts the pointer. The slab
+   *   becomes glass: rays pass through the clear parts and reach whatever
+   *   stands behind it, and the surface never reports a hover it did not get.
+   *
+   * `'content'` is what makes a floating layer possible. Its slab is full
+   * panel size and stands in front of the panel it belongs to, so with
+   * `'plane'` the moment a popover opened the layer caught every ray, the
+   * panel behind went dead, and — hearing `pointerOut` — dismissed the very
+   * thing that had just opened.
+   *
+   * The declaration lives in CSS, where it already does on a 2D page: the
+   * portal container sets `pointer-events: none` and its content sets `auto`.
+   * `'content'` also makes the surface's own root transparent, since a bare
+   * full-size container is scaffolding, not a thing to touch.
+   */
+  hitTest?: 'plane' | 'content'
+  /**
+   * The surface's corner radius, in CSS px of the source.
+   *
+   * - `'auto'` (default) — inherited from the element itself: the computed
+   *   `border-radius` of the drawn subtree (walking a single-child chain,
+   *   since a SurfaceApp roots its component two containers deep), re-read on
+   *   the compositor's own paint signal, so a style change lands the same
+   *   frame its pixels do. The element is the truth; the mesh wears it.
+   * - `number` / `[tl, tr, br, bl]` — authored radii, same clamp rules CSS
+   *   paints with. `0` opts out.
+   *
+   * The radius is enforced ANALYTICALLY — an SDF mask in the material, and
+   * the same SDF in the raycaster, so a ray and a fragment agree about where
+   * a corner ends. It cannot come from texture alpha: the `.ui-root` contract
+   * puts the app background on the content root, so the region outside a
+   *   rounded corner is opaquely PAINTED (measured: 255,255,255,255 under a
+   * 14px-radius card — the "square corners" bug). Analytic also means crisp
+   * at every LOD tier, because the arc is evaluated per-fragment, not stored
+   * in texels. Custom materials (`material="none"`) opt in via
+   * `SURFACE_RADIUS_GLSL` + `useSurfaceChrome` — only they know their
+   * varyings and blend state.
+   */
+  radius?: 'auto' | number | [number, number, number, number]
+  /**
+   * The element's measured chrome — corner radii and outer box-shadow layers
+   * — whenever a paint changes it. An outer shadow paints OUTSIDE the layout
+   * box, so the rasterizer never captures it; this is how a scene renders
+   * the shadow the DOM meant, at rest-truth, and evolves it physically from
+   * there (a companion shadow must also gate on `onFirstUpload` — chrome
+   * may not precede its card, decisions #54).
+   */
+  onChrome?: (chrome: SurfaceChrome) => void
+  /**
+   * Who owns the mesh's material.
+   *
+   * - `'standard'` (default) — Surface renders its own `MeshStandardMaterial`
+   *   with the DOM texture as its map, and handles the late-texture
+   *   needsUpdate bump itself.
+   * - `'none'` — Surface renders no material; the children supply one, and
+   *   read the texture through `useSurfaceTexture()`. This is the shader
+   *   seam: a custom `ShaderMaterial` sampling the live DOM can do to the
+   *   pixels what no CSS can — dissolve, refract, aberrate — while every
+   *   other Surface contract (paint-driven uploads, LOD re-rasters, input
+   *   forwarding) keeps working underneath it, because they act on the
+   *   texture and the mesh, not on the material.
+   */
+  material?: 'standard' | 'none'
+}
+
+// LOD evaluations run every Nth frame, phase-offset per Surface so a scene
+// of many panels spreads the (tiny) projection math and never re-rasters a
+// cohort on the same frame.
+const LOD_EVERY = 10
+const LOD_AGREE = 2
+let lodSeq = 0
+const _camPos = new THREE.Vector3()
+const _surfPos = new THREE.Vector3()
+const _surfScale = new THREE.Vector3()
+
+// GPU mipmaps sabotage text at reading range: trilinear blends in the
+// box-filtered half-res mip whenever the footprint tips past 1:1, softening
+// glyphs that the vector re-raster just paid to sharpen (measured: the
+// no-mips A/B at true 1:1 density). The tier ladder already IS the mip
+// chain — CPU-side, distance-driven — so mipmaps are redundant at reading
+// tiers. Far tiers (≤0.5) keep them: there a panel is small/oblique, and
+// trilinear + anisotropy tame minification shimmer the ladder can't
+// (anisotropy is directional; the ladder isn't).
+// …but that reasoning only holds while the tier TRACKS density. A PINNED
+// tier ('max'/number) deliberately oversupplies at range — the card's 6×
+// texture is minified ~4× from across the room — and bilinear minification
+// without mips is aliasing by construction (measured in lab 012: shredded
+// fine text, moiré on grid lines, and the `anisotropy = 8` set below does
+// nothing at all without a mip chain to select from). So pinned textures
+// always get mips + trilinear: at near-1:1 the GPU samples the top level
+// anyway (no sharpness lost up close), and everything farther finally has
+// the chain anisotropy needs.
+function applyFilterPolicy(tex: THREE.Texture, tier: number, pinned: boolean) {
+  const mips = pinned || tier <= 0.5
+  if (tex.generateMipmaps !== mips) {
+    tex.generateMipmaps = mips
+    tex.minFilter = mips ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter
+    tex.needsUpdate = true
+  }
+}
+
+// Horizontal flip, for geometries whose UVs run backwards under the camera
+// (the inside of a cylinder, a back face). Wrapping has to become Repeat for
+// a negative repeat to have anything to wrap into.
+function applyMirror(tex: THREE.Texture, mirrorU: boolean) {
+  tex.wrapS = mirrorU ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping
+  tex.repeat.x = mirrorU ? -1 : 1
+}
+
+export function Surface({
+  html,
+  label,
+  width = 640,
+  height = 480,
+  children,
+  onFocusWithin,
+  onFirstUpload,
+  onSource,
+  paint = 'auto',
+  mirrorU = false,
+  resolution = 'auto',
+  side = THREE.FrontSide,
+  roughness = 0.35,
+  metalness = 0.05,
+  transparent = false,
+  hitTest = 'plane',
+  radius = 'auto',
+  onChrome,
+  material = 'standard',
+  ...meshProps
+}: SurfaceProps) {
+  const controls = useThree(
+    (s) => s.controls as { enabled?: boolean } | null,
+  )
+  const camera = useThree((s) => s.camera)
+  const gl = useThree((s) => s.gl)
+  const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null)
+  const [sourceEl, setSourceEl] = useState<HTMLElement | null>(null)
+  const sourceRef = useRef<DomTextureSource | null>(null)
+  const meshRef = useRef<THREE.Mesh>(null)
+  const materialRef = useRef<THREE.MeshStandardMaterial>(null)
+  const pressedRef = useRef(false)
+  const lastUploadRef = useRef(-1)
+  const extraUploadsRef = useRef(0)
+  // One-shot latch for onFirstUpload; re-arms when the source is recreated.
+  const firstUploadFiredRef = useRef(false)
+  // paintCount at the moment setScale resized the canvas; -1 = none pending.
+  // The GL realloc below waits for the counter to move strictly PAST this
+  // (onpaint can't interleave mid-rAF, so count > mark ⟺ the post-resize
+  // paint itself has landed — not some same-frame unrelated self-paint).
+  const reallocAfterRef = useRef(-1)
+  // Everything the source-creation effect needs to READ but must not RE-RUN
+  // for. See that effect's dependency note — it is the most consequential
+  // line in this file.
+  const hitTestRef = useLatest(hitTest)
+  const mirrorURef = useLatest(mirrorU)
+  const widthRef = useLatest(width)
+  const heightRef = useLatest(height)
+  const onSourceRef = useLatest(onSource)
+  const onFocusWithinRef = useLatest(onFocusWithin)
+  const onFirstUploadRef = useLatest(onFirstUpload)
+  const onChromeRef = useLatest(onChrome)
+  const radiusRef = useLatest(radius)
+  // The last measurement, and the radii the mask/raycast actually enforce
+  // (measured under radius='auto', authored otherwise). Uniform objects are
+  // per-instance and permanent — the standard material's onBeforeCompile
+  // wires them in once, and every later change is a value write, never a
+  // recompile.
+  const chromeRef = useRef<SurfaceChrome>(EMPTY_CHROME)
+  const activeRadiiRef = useRef<[number, number, number, number]>([0, 0, 0, 0])
+  const [chrome, setChrome] = useState<SurfaceChrome | null>(null)
+  const radiusUniformsRef = useRef({
+    uAnamorphRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uAnamorphSize: { value: new THREE.Vector2(width, height) },
+  })
+
+  // Push radii into the mask + raycast. alphaToCoverage rides along for the
+  // opaque path: MSAA dithers the analytic edge smooth where plain discard
+  // would alias it (transparent surfaces get the same mask through ordinary
+  // alpha blending instead). Toggling it swaps the program once per state,
+  // not per frame.
+  const applyRadii = (next: [number, number, number, number]) => {
+    const cur = activeRadiiRef.current
+    if (cur[0] === next[0] && cur[1] === next[1] && cur[2] === next[2] && cur[3] === next[3]) return
+    activeRadiiRef.current = next
+    radiusUniformsRef.current.uAnamorphRadii.value.set(next[0], next[1], next[2], next[3])
+    const mat = materialRef.current
+    if (mat) {
+      const wantA2C = !mat.transparent && (next[0] > 0 || next[1] > 0 || next[2] > 0 || next[3] > 0)
+      if (mat.alphaToCoverage !== wantA2C) {
+        mat.alphaToCoverage = wantA2C
+        mat.needsUpdate = true
+      }
+    }
+  }
+
+  /**
+   * The hit region. With `hitTest="content"` the quad is only intersected
+   * where the source DOM accepts the pointer — a ray through the clear part of
+   * a floating layer carries on to the panel behind, exactly as it would pass
+   * through a `pointer-events: none` container on a 2D page.
+   *
+   * Declining here rather than inside the handlers is the whole point: an
+   * intersection r3f never sees is one it never counts as a hover, so the
+   * surface behind keeps the pointer instead of being told it lost it.
+   *
+   * Installed unconditionally and branching on a ref, never swapped out for
+   * `undefined`: r3f assigns props onto the instance, and handing back
+   * undefined does not restore the class default, it leaves the last function
+   * attached — the mesh would stay permanently un-hittable.
+   */
+  const raycast = useMemo<THREE.Object3D['raycast']>(
+    () =>
+      function (this: THREE.Mesh, raycaster, intersects) {
+        if (hitTestRef.current !== 'content') {
+          // A rounded surface's corners are not surface. Same SDF as the
+          // material mask, on the RAW uv (the mask's space), so a ray and a
+          // fragment agree about where the corner ends. `'content'` needs no
+          // such test — the browser's own hit-testing already honors
+          // border-radius, so `deepestElementAt` declines corner points.
+          const radii = activeRadiiRef.current
+          if (radii[0] > 0 || radii[1] > 0 || radii[2] > 0 || radii[3] > 0) {
+            const hits: THREE.Intersection[] = []
+            THREE.Mesh.prototype.raycast.call(this, raycaster, hits)
+            for (const hit of hits) {
+              if (
+                !hit.uv ||
+                surfaceRadiusSd(
+                  hit.uv.x,
+                  hit.uv.y,
+                  widthRef.current,
+                  heightRef.current,
+                  radii,
+                ) <= 0
+              ) {
+                intersects.push(hit)
+              }
+            }
+            return
+          }
+          THREE.Mesh.prototype.raycast.call(this, raycaster, intersects)
+          return
+        }
+        const el = sourceRef.current?.element
+        if (!el) return
+        const hits: THREE.Intersection[] = []
+        THREE.Mesh.prototype.raycast.call(this, raycaster, hits)
+        const rect = el.getBoundingClientRect()
+        for (const hit of hits) {
+          if (!hit.uv) continue
+          const u = mirrorURef.current ? 1 - hit.uv.x : hit.uv.x
+          const x = rect.left + u * rect.width
+          const y = rect.top + (1 - hit.uv.y) * rect.height
+          if (deepestElementAt(el, x, y)) intersects.push(hit)
+        }
+      },
+    // Stable ref identities — this memo never actually re-runs.
+    [hitTestRef, mirrorURef, widthRef, heightRef],
+  )
+  // Destructure the tuple into primitives so an inline `resolution={[1, 2]}`
+  // (fresh array identity every render) can't defeat the memo.
+  const [rangeMin, rangeMax] = Array.isArray(resolution)
+    ? resolution
+    : ([null, null] as const)
+  const tiers = useMemo(() => {
+    const ladder =
+      rangeMin !== null && rangeMax !== null
+        ? tiersInRange(DEFAULT_TIERS, rangeMin, rangeMax)
+        : DEFAULT_TIERS
+    return clampTiers(ladder, width, height)
+  }, [width, height, rangeMin, rangeMax])
+  const tiersRef = useLatest(tiers)
+  // `'max'` and fixed numbers resolve to a single pinned scale; null means
+  // dynamic (auto/range). 'max' re-resolves when the Surface resizes; a
+  // number is clamped to the same long-edge guard the ladder obeys — with a
+  // warning, because silently deviating from what the caller wrote is its
+  // own bug, but letting a 5000px canvas through is a worse one.
+  const pinnedScale = useMemo(() => {
+    if (resolution === 'max') return maxTier(DEFAULT_TIERS, width, height)
+    if (typeof resolution === 'number') {
+      const safe = clampScale(resolution, width, height)
+      if (safe !== resolution) {
+        console.warn(
+          `[anamorph] Surface${label ? ` "${label}"` : ''}: resolution ${resolution} ` +
+            `exceeds the 4096px long-edge texture guard at ${width}×${height} CSS px; ` +
+            `clamped to ${safe}.`,
+        )
+      }
+      return safe
+    }
+    return null
+  }, [resolution, width, height, label])
+  const pinnedScaleRef = useLatest(pinnedScale)
+  const lodRef = useRef({ tier: 1, proposed: 1, agree: 0, frame: 0 })
+  const lodPhase = useMemo(() => lodSeq++ % LOD_EVERY, [])
+
+  // Authored radii apply immediately; 'auto' waits for a measurement (the
+  // effect also keeps the mask's size uniform current across resizes, which
+  // preserves the corner ARC — radii are px, so a resize must not stretch
+  // them the way a uv-relative mask would).
+  useEffect(() => {
+    radiusUniformsRef.current.uAnamorphSize.value.set(width, height)
+    if (radius === 'auto') {
+      applyRadii(chromeRef.current.radii)
+    } else {
+      const values = (
+        typeof radius === 'number' ? [radius, radius, radius, radius] : radius
+      ).map((r) => `${r}px`) as [string, string, string, string]
+      applyRadii(resolveRadii(values, width, height))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [radius, width, height])
+
+  const context = useMemo<SurfaceContextValue>(
+    () => ({ mesh: meshRef, source: sourceEl, width, height, mirrorU, texture, chrome }),
+    [sourceEl, width, height, mirrorU, texture, chrome],
+  )
+
+  // Inside a FocusGroup, this Surface is a composite focus member: its
+  // source root becomes the group's unit element and its interior is
+  // browser-traversed DOM (docs/focus.md). Outside one, nothing changes.
+  const focusGroup = use(FocusGroupContext)
+  useEffect(() => {
+    if (!focusGroup || !sourceEl) return
+    return focusGroup.registerComposite({
+      root: sourceEl,
+      object: meshRef.current,
+      label,
+    })
+  }, [focusGroup, sourceEl, label])
+
+  // A Surface mounted after the scene's first frame compiles its material
+  // BEFORE the texture exists; three.js won't recompile the program when
+  // .map is later assigned (program choice is keyed on material.version).
+  // Without this bump the surface stays blank white forever.
+  useEffect(() => {
+    if (texture && materialRef.current) materialRef.current.needsUpdate = true
+  }, [texture])
+
+  // The document-level half of the focus-modality mirror (see forwardEvents).
+  // Reference-counted — any number of Surfaces share one set of listeners.
+  useEffect(() => trackFocusModality(), [])
+  // Wheel arbitration lives at document capture — the only seat ahead of
+  // OrbitControls' canvas listener. See forwardEvents' wheel section.
+  useEffect(() => trackWheel(), [])
+  // Drag arbitration — while a forwarded press is live, trusted canvas moves
+  // are defaultPrevented so drag consumers hear only the forwarded narrator
+  // (decisions #32).
+  useEffect(() => trackDrag(), [])
+
+  // Creating the source is a TEARDOWN. It destroys the live DOM subtree and
+  // with it everything that was alive in there: focus, form values, text
+  // selection, scroll offsets, and any second React root a scene mounted
+  // inside. So the dependency list below is the most consequential line in
+  // this file, and a prop belongs in it only if changing that prop genuinely
+  // means "this is different content now". Everything else is handled in
+  // place, and each of these was learned the same way — by watching a
+  // Surface go dead mid-interaction:
+  //
+  //   width/height  → re-layout in place (the setSize effect below)
+  //   resolution    → re-raster in place (the setScale effect below)
+  //   mirrorU       → a texture wrap setting (the mirror effect below)
+  //   paint         → read only inside useFrame; there is nothing to rebuild
+  //   hitTest       → read through a ref by the raycaster
+  //   onFocusWithin → called through a ref, so the listeners stay current
+  //   onSource      → a lifecycle hook by contract (see its prop doc)
+  //   label         → baked into the stats entry at creation; birth-only
+  //
+  // `html` is the one real dependency: new markup IS different content, and
+  // rebuilding is the only way to be sure nothing from the old tree — a
+  // listener a scene attached in `onSource`, say — survives into it.
+  useEffect(() => {
+    const source = createDomTextureSource(html, widthRef.current, heightRef.current, {
+      label,
+      // Pinned resolution ('max'/number) starts at its final scale;
+      // auto/range starts at the ladder tier nearest the renderer's pixel
+      // ratio — density ≈ dpr is the right prior for a mesh that has never
+      // been projected (see seedTier) — and the first LOD evaluations
+      // settle any remaining gap.
+      scale: pinnedScaleRef.current ?? seedTier(tiersRef.current, gl.getPixelRatio()),
+      onError: (err) => console.warn('[anamorph] Surface paint failed:', err),
+    })
+    sourceRef.current = source
+    setSourceEl(source.element)
+    lodRef.current = { tier: source.scale(), proposed: source.scale(), agree: 0, frame: 0 }
+
+    const tex = new THREE.CanvasTexture(source.canvas)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.anisotropy = 8
+    applyFilterPolicy(tex, source.scale(), pinnedScaleRef.current !== null)
+    // Set at birth as well as in the effect below: that effect is passive and
+    // r3f draws from its own rAF loop, so a mirrored Surface would otherwise
+    // get one frame of backwards text before the flip lands.
+    applyMirror(tex, mirrorURef.current)
+    setTexture(tex)
+
+    lastUploadRef.current = -1
+    extraUploadsRef.current = 0
+    reallocAfterRef.current = -1
+    firstUploadFiredRef.current = false
+    // New markup is different content: its chrome is unknown until it paints.
+    chromeRef.current = EMPTY_CHROME
+    if (radiusRef.current === 'auto') applyRadii([0, 0, 0, 0])
+    setChrome(null)
+
+    // A content-hit-tested surface is clear glass by default: the root is a
+    // bare container the scene put content into, not a thing to touch. What is
+    // inside declares its own. (createDomTextureSource sets 'auto' here to
+    // re-root the cascade out of the parking canvas — this is the override,
+    // and it lands before onSource so a scene can still have the last word.)
+    if (hitTestRef.current === 'content') source.element.style.pointerEvents = 'none'
+
+    const focusIn = () => onFocusWithinRef.current?.(true)
+    const focusOut = () => onFocusWithinRef.current?.(false)
+    source.element.addEventListener('focusin', focusIn)
+    source.element.addEventListener('focusout', focusOut)
+    const cleanupSource = onSourceRef.current?.(source.element)
+
+    return () => {
+      source.element.removeEventListener('focusin', focusIn)
+      source.element.removeEventListener('focusout', focusOut)
+      cleanupSource?.()
+      tex.dispose()
+      source.dispose()
+      sourceRef.current = null
+      setSourceEl(null)
+      setTexture(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html])
+
+  // Mirroring is a texture setting, not a reason to rebuild anything.
+  useEffect(() => {
+    if (!texture) return
+    applyMirror(texture, mirrorU)
+    texture.needsUpdate = true
+  }, [texture, mirrorU])
+
+  // Pinned-resolution changes re-raster in place — never recreate the source
+  // (that would destroy live DOM state: focus, form values, selection).
+  // Keyed on the RESOLVED scale, not the prop: 'max' re-resolves when
+  // width/height change, and this effect is how the new answer lands.
+  useEffect(() => {
+    const source = sourceRef.current
+    if (pinnedScale !== null && source) {
+      const prev = source.scale()
+      source.setScale(pinnedScale)
+      if (source.scale() !== prev) reallocAfterRef.current = source.paintCount()
+      // Scale unchanged means no realloc will fire, but the pin itself
+      // changes the filter policy (pinned textures carry mips) — apply now.
+      // (Caveat: on a texture first allocated WITHOUT mips this is inert —
+      // texStorage2D fixes the level count at first upload — so a same-tier
+      // pin only gains real mips after the next realloc. Pins that change
+      // the tier, the common case, realloc and get the full pyramid.)
+      else if (texture) applyFilterPolicy(texture, pinnedScale, true)
+    } else if (source && texture) {
+      // Unpin: hand filtering back to the dynamic policy. Without this, a
+      // switch to auto that lands on the SAME tier never reallocs, and the
+      // texture keeps trilinear mips — blurring every partial-minification
+      // view that a fresh density-matched raster would render sharp.
+      applyFilterPolicy(texture, source.scale(), false)
+    }
+  }, [pinnedScale, texture])
+
+  // Size changes re-LAYOUT in place, for the same reason resolution re-rasters
+  // in place: `width`/`height` used to sit in the creation effect's deps, so
+  // resizing a Surface tore its source down and built a new one — and with it
+  // went focus, form values, selection, and any second React root mounted
+  // inside. A Surface whose size is *measured* rather than authored resizes
+  // constantly, so that had to stop being a teardown.
+  //
+  // The realloc mark is the same one setScale uses: three allocates
+  // CanvasTexture storage immutably at first-upload dimensions, so any change
+  // to the backing store needs a dispose on the first upload after the
+  // post-resize paint lands (decisions #10).
+  useEffect(() => {
+    const source = sourceRef.current
+    if (!source || !texture) return
+    const [prevW, prevH] = source.size()
+    source.setSize(width, height)
+    const [nextW, nextH] = source.size()
+    if (nextW !== prevW || nextH !== prevH) reallocAfterRef.current = source.paintCount()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [width, height, texture])
+
+  // Re-measure chrome on the compositor's own change signal — the paint that
+  // just uploaded is the paint whose style we read, so a border-radius or
+  // box-shadow change reaches the mask on the frame its pixels change. An
+  // idle Surface never measures; a style-equal measurement never re-renders.
+  const measureChrome = (source: DomTextureSource) => {
+    if (!source.painted()) return
+    const next = measureSurfaceChrome(source.element)
+    if (chromeEquals(chromeRef.current, next)) return
+    chromeRef.current = next
+    if (radiusRef.current === 'auto') applyRadii(next.radii)
+    onChromeRef.current?.(next)
+    setChrome(next)
+  }
+
+  useFrame(() => {
+    const source = sourceRef.current
+    if (!source || !texture) return
+    // Dynamic LOD: every LOD_EVERY-th frame (phase-offset per instance),
+    // compare projected screen density — device px per CSS px — against the
+    // current tier; setScale re-rasters through the normal onpaint path, so
+    // the upload below picks it up like any other content change.
+    if ((resolution === 'auto' || Array.isArray(resolution)) && meshRef.current) {
+      const lod = lodRef.current
+      if (lod.frame++ % LOD_EVERY === lodPhase) {
+        const cam = camera as THREE.PerspectiveCamera
+        const geom = meshRef.current.geometry
+        if (cam.isPerspectiveCamera && geom) {
+          if (!geom.boundingSphere) geom.computeBoundingSphere()
+          const sphere = geom.boundingSphere
+          if (sphere) {
+            meshRef.current.getWorldPosition(_surfPos)
+            meshRef.current.getWorldScale(_surfScale)
+            cam.getWorldPosition(_camPos)
+            const dist = Math.max(_camPos.distanceTo(_surfPos), 1e-3)
+            const worldDiag =
+              2 * sphere.radius * Math.max(_surfScale.x, _surfScale.y, _surfScale.z)
+            const pxPerWorld =
+              gl.domElement.height / (2 * dist * Math.tan((cam.fov * Math.PI) / 360))
+            const density = (pxPerWorld * worldDiag) / Math.hypot(width, height)
+            const proposal = selectLodTier(density, lod.tier, tiers)
+            if (proposal === lod.tier) {
+              lod.agree = 0
+            } else if (proposal === lod.proposed) {
+              if (++lod.agree >= LOD_AGREE) {
+                lod.tier = proposal
+                lod.agree = 0
+                source.setScale(proposal)
+                reallocAfterRef.current = source.paintCount()
+              }
+            } else {
+              lod.proposed = proposal
+              lod.agree = 1
+            }
+          }
+        }
+      }
+    }
+    // A committed setScale resized the canvas backing store. three allocates
+    // GL texture storage immutably (texStorage2D) at FIRST-upload dimensions
+    // and texSubImage2Ds every upload after — against a resized canvas, a
+    // shrink lands the whole re-raster in one corner of the stale texture
+    // (the LOD ghost) and a grow fails GL_INVALID_VALUE, silently keeping
+    // the old texels. dispose() exactly once, on the first upload after the
+    // post-resize paint has landed, so three reallocates at the new size —
+    // never from the swap frame itself, where the canvas is still a cleared,
+    // unpainted backing store. The filter policy rides the same moment: the
+    // realloc picks its mip-level count from generateMipmaps at alloc time.
+    const count = source.paintCount()
+    if (reallocAfterRef.current >= 0 && count > reallocAfterRef.current && source.painted()) {
+      texture.dispose()
+      applyFilterPolicy(texture, source.scale(), pinnedScaleRef.current !== null)
+      reallocAfterRef.current = -1
+    }
+    // Every upload funnels through here so the first-upload latch cannot
+    // care which path wins — and "first upload" is the only honest readiness
+    // signal a handoff can gate on (see the onFirstUpload prop).
+    const upload = () => {
+      if (!source.painted()) return
+      texture.needsUpdate = true
+      if (firstUploadFiredRef.current) return
+      firstUploadFiredRef.current = true
+      onFirstUploadRef.current?.()
+    }
+    if (paint === 'always') {
+      source.repaint()
+      upload()
+      if (count !== lastUploadRef.current) measureChrome(source)
+      lastUploadRef.current = count
+      return
+    }
+    // Upload-on-paint: the compositor already tells us exactly when the
+    // subtree's pixels changed (paintCount advances on its own — no
+    // requestPaint loop, no MutationObserver). Idle Surfaces cost nothing;
+    // the probe showed unconditional repainting caps an app at ~64 sources.
+    // One extra upload after the counter stops covers the draw's deferred
+    // resolve trailing the paint by up to a frame.
+    if (count !== lastUploadRef.current) {
+      lastUploadRef.current = count
+      extraUploadsRef.current = 1
+      upload()
+      measureChrome(source)
+    } else if (extraUploadsRef.current > 0) {
+      extraUploadsRef.current -= 1
+      upload()
+    }
+  })
+
+  // The mask, injected into the standard material. Always injected, uniform-
+  // driven: radii of zero make it a no-op, so there is one program family and
+  // a radius change is a value write, never a recompile. The chunk is spliced
+  // after `map_fragment` (diffuseColor is established there) and reads the
+  // RAW `vUv` — the map's own uv transform carries mirroring, the mask stays
+  // in geometry space. `USE_UV` is defined on the material so `vUv` exists
+  // even before the texture does; the pre-content fallback slab wears the
+  // same corners as the content that replaces it.
+  //
+  // Identical source text across instances on purpose: three keys its
+  // program cache on this function's toString, so every Surface shares one
+  // compiled program despite each wiring its own uniform objects.
+  const onBeforeCompile = useMemo(
+    () =>
+      (shader: { uniforms: Record<string, { value: unknown }>; fragmentShader: string }) => {
+        shader.uniforms.uAnamorphRadii = radiusUniformsRef.current.uAnamorphRadii
+        shader.uniforms.uAnamorphSize = radiusUniformsRef.current.uAnamorphSize
+        shader.fragmentShader = shader.fragmentShader
+          .replace(
+            '#include <clipping_planes_pars_fragment>',
+            '#include <clipping_planes_pars_fragment>\n' + SURFACE_RADIUS_GLSL,
+          )
+          .replace(
+            '#include <map_fragment>',
+            '#include <map_fragment>\n' +
+              '  diffuseColor.a *= anamorphRadiusMask(vUv);\n' +
+              '  if (diffuseColor.a < 0.004) discard;\n',
+          )
+      },
+    [],
+  )
+
+  const uvOf = (e: ThreeEvent<PointerEvent>) => {
+    if (!e.uv) return null
+    const u = mirrorU ? 1 - e.uv.x : e.uv.x
+    return { u, v: e.uv.y }
+  }
+
+  const handleDown = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation()
+    // ...and stop the REAL event at the canvas, so document-level listeners
+    // see only the forwarded one.
+    //
+    // Every pointer that reaches a texture arrives as a native event whose
+    // target is the <canvas> — which is outside every portaled layer in the
+    // document. Libraries that detect outside-interaction that way (Radix's
+    // DismissableLayer, and every menu/popover/dialog built on it) therefore
+    // dismiss on *any* click into a Surface, including clicks that landed on
+    // their own content. Measured: two pointerdowns arrive at document, the
+    // trusted one targeting CANVAS and the synthetic one targeting the real
+    // button; the canvas event fires first and closes the popover.
+    //
+    // Suppressing the canvas event is not a workaround for Radix — it is the
+    // truth. The canvas is how the pointer travelled, not what it hit. Only
+    // pointerdown is suppressed: OrbitControls registers document-level move
+    // and up listeners for the duration of a drag, and silencing those would
+    // strand a drag that began on empty space and ended over a panel.
+    e.nativeEvent.stopPropagation()
+    const uv = uvOf(e)
+    const source = sourceRef.current
+    if (!uv || !source) return
+    pressedRef.current = true
+    if (controls) controls.enabled = false
+    forwardPointer(source.element, uv.u, uv.v, 'down')
+  }
+
+  const handleUp = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation()
+    const uv = uvOf(e)
+    const source = sourceRef.current
+    if (controls) controls.enabled = true
+    if (!uv || !source || !pressedRef.current) return
+    pressedRef.current = false
+    const hit = forwardPointer(source.element, uv.u, uv.v, 'up')
+    if (hit?.target instanceof HTMLSelectElement) nudgeSelect(hit.target)
+  }
+
+  const handleMove = (e: ThreeEvent<PointerEvent>) => {
+    // Topmost Surface under the pointer owns it (DOM semantics). Also keeps
+    // bubbled child-layer events — which carry the CHILD's UV — from being
+    // misread as coordinates on this surface.
+    e.stopPropagation()
+    const uv = uvOf(e)
+    const source = sourceRef.current
+    if (!uv || !source) return
+    // Real buttons state rides along: a drag consumer deactivates on the
+    // first move that claims no button is held (decisions #32).
+    forwardPointer(source.element, uv.u, uv.v, 'move', e.nativeEvent.buttons)
+    // The forwarded move above is this pointer's true story; the native one —
+    // target CANVAS, screen coordinates — must not also reach document-level
+    // coordinate reasoners (Radix's tooltip grace tracker dismisses on it).
+    // Hover only: drag moves keep bubbling for OrbitControls (decisions #26)
+    // — trackDrag neutralizes them for parked drag consumers by
+    // preventDefault instead, which leaves the bubble intact.
+    silenceHoverMove(e.nativeEvent)
+  }
+
+  return (
+    <mesh
+      ref={meshRef}
+      raycast={raycast}
+      {...meshProps}
+      onPointerDown={handleDown}
+      onPointerUp={handleUp}
+      onPointerMove={handleMove}
+      onPointerOut={() => {
+        pressedRef.current = false
+        if (controls) controls.enabled = true
+        // The ray left the mesh — un-hover/un-press the mirrored DOM state.
+        const el = sourceRef.current?.element
+        if (el) clearPointerState(el)
+      }}
+    >
+      <SurfaceContext value={context}>{children}</SurfaceContext>
+      {material === 'standard' && (
+        <meshStandardMaterial
+          ref={materialRef}
+          map={texture ?? undefined}
+          color={texture ? '#ffffff' : '#1e293b'}
+          roughness={roughness}
+          metalness={metalness}
+          side={side}
+          transparent={transparent}
+          defines={{ USE_UV: '' }}
+          onBeforeCompile={onBeforeCompile}
+        />
+      )}
+    </mesh>
+  )
+}

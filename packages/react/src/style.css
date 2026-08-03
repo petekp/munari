@@ -1,0 +1,65 @@
+/* anamorph — the stylesheet the primitives require.
+ *
+ * Import once (`anamorph/style.css`), anywhere in the consuming app.
+ * Everything here is MECHANISM: plain CSS, no framework, no theme, no
+ * opinion about how anything looks. Each rule exists because a primitive
+ * would misbehave without it.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * What the library asks of YOUR stylesheet, in return
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ *  `.ui-root`  — the container of a `SurfaceApp`'s React tree. It stands in
+ *                for `<body>`, which the host page owns. Put your global
+ *                background, colour and typography base rules here.
+ *
+ *  `.ui-layer` — its transparent twin: the portal container of any floating
+ *                Surface. Same typography, no background — whatever the
+ *                content does not cover has to stay clear glass, because
+ *                that is what the panel behind it is seen through.
+ *
+ *  `[data-hover]` / `[data-active]` — real hit-testing never reaches a parked
+ *                subtree, so `Surface` mirrors pointer state onto elements as
+ *                these attributes. Any `:hover` or `:active` rule that should
+ *                work through a texture must match them too. In Tailwind that
+ *                is two lines:
+ *
+ *                  @custom-variant hover (&:is(:hover, [data-hover]));
+ *                  @custom-variant active (&:is(:active, [data-active]));
+ *
+ *                and every `hover:` utility in your existing markup starts
+ *                working inside a Surface, unedited.
+ *
+ *  `[data-pointer-focus]` — the same mirror, opposite direction. The
+ *                browser's `:focus-visible` verdict is fed only by trusted
+ *                events, so focus that follows a *forwarded* click reads as
+ *                keyboard and shows a ring a real page wouldn't. `Surface`
+ *                stamps this attribute on pointer-focused elements (never on
+ *                keyboard-focused ones, never on text inputs); your
+ *                `:focus-visible` rules should exclude it:
+ *
+ *                  @custom-variant focus-visible (&:focus-visible:not([data-pointer-focus]));
+ *
+ *  `[data-focus='unit' | 'interior']` — `FocusScene` stamps these on a focus
+ *                unit's root element. Style them with PAINT properties only
+ *                (outline, colour, shadow); layout changes cost a relayout of
+ *                the whole subtree on every focus move.
+ */
+
+/* A portal container is clear to the pointer; what it holds is not. This is
+ * the ordinary 2D idiom, and on a Surface it does double duty: `Surface`
+ * sets the source root to `pointer-events: none` under `hitTest="content"`,
+ * and the RAYCASTER reads the same computed value — so a ray through the
+ * clear part of a floating slab carries on to the panel behind instead of
+ * stopping at glass.
+ *
+ * Without it, opening a tooltip put a full-panel slab in front of its own
+ * trigger; the panel heard the ray leave, and dismissed the tooltip it had
+ * just opened (archive decisions #20). */
+.ui-layer > * {
+  pointer-events: auto;
+}
+
+/* (The archive's `.ui-detached` rule travels with the floating family —
+ * `FloatingSurface` is what needs placement revoked — and arrives when it
+ * does.) */

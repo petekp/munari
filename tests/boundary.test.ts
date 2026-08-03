@@ -86,7 +86,14 @@ describe('the hourglass', () => {
     expect(
       violations('packages/react/src', (spec, file) => {
         if (spec.startsWith('.')) return !escapesDir(file, spec, dir)
-        return allowed.has(spec) || spec.startsWith('react/') || spec.startsWith('three/')
+        return (
+          allowed.has(spec) ||
+          spec.startsWith('react/') ||
+          // react-dom/client is the second-React-root seam (useSourceHost's
+          // createRoot) — a documented subpath of a declared peer.
+          spec.startsWith('react-dom/') ||
+          spec.startsWith('three/')
+        )
       }),
     ).toEqual([])
   })
