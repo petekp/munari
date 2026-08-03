@@ -46,3 +46,38 @@ dependency for the standard reason: a consumer app has exactly one
 `three` instance, and a second smuggled copy is the same split-brain
 disease `forge()`'s `Symbol.for` brand was hardened against
 (archive#50).
+
+## #2 — Contracts are typechecked before they can run (2026-08-02)
+
+**Decision.** Conformance suites land as
+`tests/conformance/<layer>/*.contract.ts`: complete vitest suites
+whose kernel surface is expressed as typed `declare` holes under a
+`// ---- CONTRACT HOLES` marker. Contract files are typechecked (root
+tsconfig includes `tests/`) but invisible to the runner (vitest
+collects only `*.test.ts`). A live ledger test reports each contract
+as a todo on every run and enforces headers, citations, hole markers,
+and the import bans. Flipping a layer = `git mv` to `.test.ts` + holes
+→ `@anamorph/core` imports → red → implement → green → oracle agrees
+(`tests/conformance/README.md` is the protocol). `three` +
+`@types/three` join root devDependencies at the oracle's version — the
+mapping suite cites a real `THREE.Raycaster` in-suite so the fast path
+can't become a second source of truth (archive#44), and the contract
+types need it at typecheck. `happy-dom` waits for the door flip.
+
+**Why not `describe.skip`.** Vitest executes describe factories at
+collection even when skipped, and the ported suites build fixtures at
+module and describe scope — every missing import would throw before
+the skip took effect. Landing them runnable would mean restructuring
+near-verbatim ports, and the port is the evidence. Renaming out of the
+include glob skips all execution while tsconfig keeps every line
+honest; the ledger keeps the debt visible so skipped cannot decay into
+forgotten.
+
+**Why holes instead of stubs in core.** The barrel growing a layer's
+exports IS the layer landing (`packages/core/src/index.ts` charter);
+throwing stubs would let `packages/react` and the lab compile against
+surface that doesn't exist, and would pre-commit API shape ahead of
+implementation judgment. A `declare` block is local to its contract,
+erased at compile time, and names exactly what the suite demands — the
+API half of the contract reviewable in the same file as the behavior
+half.

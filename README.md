@@ -17,7 +17,10 @@ Built on Chrome's HTML-in-canvas origin trial, `three`, and
 custody layer at a time — each against a conformance suite distilled
 from [three-ui](https://github.com/petekp/three-ui), the frozen
 research archive (62 recorded decisions, 357 tests, a summer of
-browser measurement) that this library is the product of.
+browser measurement) that this library is the product of. The
+contracts landed first — `tests/conformance/`, typechecked ahead of
+the code they will judge (decisions.md #2) — and the layers now land
+against them.
 
 Repo shape: `packages/core` (kernel), `packages/react` (the
 `anamorph` package), `registry/` (copyable behaviors), `apps/lab`

@@ -30,6 +30,11 @@ order: **mapping → paint (custody) → door (forge) → transfer
 (handoff) → chrome (measurement) → physics**. A layer is done when its
 slice passes here and the oracle agrees on behavior.
 
+Contracts live as `tests/conformance/<layer>/*.contract.ts` — complete
+suites, typechecked but not yet run, their kernel surface as typed
+`declare` holes; the ledger test keeps them visible on every run, and
+the flip protocol is `tests/conformance/README.md` (decisions.md #2).
+
 ## Shape (the hourglass)
 
 - `packages/core` (`@anamorph/core`) — the kernel: custody,
