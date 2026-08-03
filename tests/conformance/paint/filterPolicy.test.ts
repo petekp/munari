@@ -1,4 +1,4 @@
-// CONFORMANCE CONTRACT — paint (typechecked, not yet run)
+// CONFORMANCE — paint (flipped 2026-08-02)
 // New contract (owed by seed manifest): the filter-policy state machine — pinned means mips + trilinear, ladder-tracked means plain linear, and UNPINNING must restore the dynamic policy even when the tier does not change (archive#9, archive#36, archive#37)
 //
 // archive#9 made reading tiers mip-free; archive#36/#37 amended it:
@@ -12,28 +12,7 @@
 // softer than the ladder says it should be.
 import { describe, expect, it } from 'vitest'
 
-// ---- CONTRACT HOLES ------------------------------------------------
-type FilterPolicy = {
-  /** Allocate mip storage for this tier's texture. */
-  mips: boolean
-  /** Sample with trilinear (mip-interpolating) minification. */
-  trilinear: boolean
-}
-type PolicyState = {
-  pinned: boolean
-  tier: number
-}
-declare function filterPolicy(pinned: boolean): FilterPolicy
-/**
- * What a state change requires of GL storage: 'reallocate' tears down
- * and re-creates (texStorage2D is immutable — archive#10), 'retain'
- * keeps the allocation.
- */
-declare function filterPolicyTransition(
-  prev: PolicyState,
-  next: PolicyState,
-): 'reallocate' | 'retain'
-// --------------------------------------------------------------------
+import { filterPolicy, filterPolicyTransition } from '@anamorph/core'
 
 describe('the filter policy', () => {
   it('pinned carries mips and trilinear', () => {

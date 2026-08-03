@@ -1,4 +1,4 @@
-// CONFORMANCE CONTRACT — paint (typechecked, not yet run)
+// CONFORMANCE — paint (flipped 2026-08-02)
 // Ported from three-ui@362c5a1 src/lib/htmlInCanvas.test.ts (archive#10, archive#22) + new: identity-CTM pin (archive#11)
 
 // @vitest-environment happy-dom
@@ -20,67 +20,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-// ---- CONTRACT HOLES ------------------------------------------------
-interface DomTextureSource {
-  /** The 2D canvas receiving the rasterized DOM — feed this to CanvasTexture. */
-  canvas: HTMLCanvasElement
-  /** The live DOM element being rasterized. Mutate it; changes show up. */
-  element: HTMLElement
-  /** Force a repaint request (rarely needed — see paintCount). */
-  repaint: () => void
-  /** Current texture scale (backing-store px per CSS px). */
-  scale: () => number
-  /** Current CSS size of the subtree's layout box. */
-  size: () => readonly [number, number]
-  /**
-   * Re-rasterize the subtree at `width×k`/`height×k` backing-store pixels.
-   * drawElementImage replays paint records — vector draw commands — so this
-   * is a true re-render (sharper glyphs), not an upscale. The canvas's CSS
-   * size stays pinned, so the subtree never relayouts and DOM state (focus,
-   * caret, selection) is untouched. The repaint rides the normal onpaint
-   * path: paintCount advances, so upload-on-paint consumers need no extra
-   * plumbing.
-   */
-  setScale: (k: number) => void
-  /**
-   * Re-layout the subtree at a new CSS size, moving the canvas's CSS box and
-   * its backing store together so the effective raster scale is unchanged.
-   * Unlike `setScale` this DOES relayout the subtree — that is the point: a
-   * content-fitted Surface hugs whatever the DOM measured. Rides the same
-   * onpaint path, so callers holding a texture must mark the realloc exactly
-   * as they do for `setScale` (decisions #10).
-   */
-  setSize: (w: number, h: number) => void
-  /** True once at least one paint has succeeded. */
-  painted: () => boolean
-  /**
-   * Number of paints that have hit the canvas. The compositor fires onpaint
-   * BY ITSELF whenever the subtree's paint record changes — DOM mutations,
-   * transitions, paint-property CSS animations, caret blink — so this
-   * counter advancing IS the "content changed" signal, and while it's
-   * still, the subtree is visually quiescent. (Compositor-side properties
-   * — animated opacity/transform — never enter the paint record and are
-   * invisible here AND to drawElementImage itself.)
-   */
-  paintCount: () => number
-  dispose: () => void
-}
-
-interface DomTextureSourceOptions {
-  /** Name shown in the paint-stats diagnostics registry. */
-  label?: string
-  /** Initial texture scale (backing-store px per CSS px). Default 1. */
-  scale?: number
-  onError?: (err: unknown) => void
-}
-
-declare function createDomTextureSource(
-  markup: string,
-  width: number,
-  height: number,
-  options?: DomTextureSourceOptions,
-): DomTextureSource
-// --------------------------------------------------------------------
+import { createDomTextureSource, type DomTextureSource } from '@anamorph/core'
 
 interface StubCanvas extends HTMLCanvasElement {
   layoutSubtree: boolean

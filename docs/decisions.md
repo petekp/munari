@@ -141,3 +141,48 @@ anchor reads `count/getX/getY/getZ` and nothing else. Every later
 layer (chrome's quad frames, physics' plate state) follows this
 pattern; a kernel API that wants a richer vector vocabulary grows
 `Vec3` deliberately rather than importing one.
+
+## #5 — Premultiplied alpha, library-wide (2026-08-02, paint layer)
+
+**Decision.** Anamorph's texture contract is premultiplied from birth:
+every texture made from a DOM source uploads with
+`premultiplyAlpha = true`, and every material consuming one blends
+premultiplied — built-ins via their `premultipliedAlpha` flag, custom
+material-slot shaders via `One / OneMinusSrcAlpha` blending. This is
+the kernel's contract even though the flag itself is set by the
+binding (core produces canvases; three textures are the binding's
+side of the seam) — binding conformance pins it when `Surface` lands.
+archive#36 decided this for the glass ink app-side and deferred the
+library-wide question three times; per the standing rule there is no
+fourth deferral, and this entry closes it.
+
+**Why premultiplied is the native truth, not a preference.** A 2D
+canvas's backing store is ALREADY premultiplied — the browser
+composites that way. Asking for a straight-alpha upload forces an
+un-premultiply conversion at texImage time that is lossy at low alpha
+(the rgb of a mostly-transparent texel quantizes to garbage), and the
+GPU sampler then filters that straight data incorrectly anyway:
+bilinear averages raw rgb across texels, so a `white/10` texel bleeds
+full-strength white into every boundary with opaque content —
+archive#36's measured selection-rect halo, present in miniature on
+every transparent floating layer. Premultiplied upload is the path
+with no conversion, no loss, and linear-correct filtering.
+
+**Why the blast radius is small.** The common Surface is OPAQUE by
+design — archive#55's corner-texel argument rests on `.ui-root`
+painting app background — and at α = 1 premultiplied and straight are
+byte-identical. The change is observable exactly where straight alpha
+was wrong. Costs land on the material-slot contract (custom shaders
+must blend premultiplied and treat sampled rgb as already-weighted;
+the oracle's glass ink already does) and nowhere else.
+
+**Out of contract.** Lit standard materials on partially-transparent
+Surfaces — premultiplied rgb entering lighting math is not a
+passthrough, no lab has bled on it, and the second-system guard says
+we don't design for it until one does. Documented as unsupported; a
+future lab that needs it reopens this entry with measurements.
+
+**Regression net.** The oracle's labs 009/010 next door remain the
+measured baseline for floating-layer rendering; anamorph's own
+floating layers arrive with the binding and inherit this contract on
+day one, so the halo class is extinct here rather than migrated.

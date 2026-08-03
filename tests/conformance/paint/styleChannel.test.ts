@@ -1,4 +1,4 @@
-// CONFORMANCE CONTRACT — paint (typechecked, not yet run)
+// CONFORMANCE — paint (flipped 2026-08-02)
 // Ported from three-ui@362c5a1 src/lib/styleChannel.test.ts (archive#28)
 
 // @vitest-environment happy-dom
@@ -12,37 +12,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-// ---- CONTRACT HOLES ------------------------------------------------
-interface StyleChannelOptions {
-  /** Registered syntax. Default '<number>' — the mesh-channel shape. */
-  syntax?: string
-  /** Registered initial value. Default '0'. */
-  initialValue?: string
-  /** Registered inheritance. Default false — a channel is local to its
-   *  element (see the one-element contract above). */
-  inherits?: boolean
-}
-
-interface StyleChannel {
-  /** Current value, read live from computed style — mid-transition this is
-   *  the eased intermediate. Cheap while style is clean; intended to be
-   *  polled per frame (useFrame). */
-  get(): number
-  /** Change notification: fires per animation frame while the property
-   *  transitions, once (coalesced) after a discrete change. Returns
-   *  unsubscribe. */
-  observe(cb: (value: number) => void): () => void
-  dispose(): void
-}
-
-declare function ensureChannelRegistered(property: string, options?: StyleChannelOptions): void
-
-declare function createStyleChannel(
-  el: HTMLElement,
-  property: string,
-  opts?: StyleChannelOptions,
-): StyleChannel
-// --------------------------------------------------------------------
+import { createStyleChannel, ensureChannelRegistered, type StyleChannel } from '@anamorph/core'
 
 let value = '0'
 function channelEl(): HTMLElement {

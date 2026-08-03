@@ -1,56 +1,18 @@
-// CONFORMANCE CONTRACT — paint (typechecked, not yet run)
+// CONFORMANCE — paint (flipped 2026-08-02)
 // Ported from three-ui@362c5a1 src/lib/lodTier.test.ts (archive#8, archive#9, archive#12, archive#35, archive#52) + new: warn-and-clamp verdict (archive#35)
 
 import { describe, expect, it } from 'vitest'
 
-// ---- CONTRACT HOLES ------------------------------------------------
-declare const DEFAULT_TIERS: number[]
-
-declare function selectLodTier(
-  density: number,
-  current: number,
-  tiers?: readonly number[],
-  band?: number,
-): number
-
-declare function seedTier(ladder: readonly number[], target?: number): number
-
-declare function tiersInRange(tiers: readonly number[], min: number, max: number): number[]
-
-declare function maxTier(
-  tiers: readonly number[],
-  cssWidth: number,
-  cssHeight: number,
-  maxDim?: number,
-): number
-
-declare function clampScale(
-  scale: number,
-  cssWidth: number,
-  cssHeight: number,
-  maxDim?: number,
-): number
-
-declare function clampTiers(
-  tiers: readonly number[],
-  cssWidth: number,
-  cssHeight: number,
-  maxDim?: number,
-): number[]
-
-/**
- * NEW (seed manifest owed, archive#35): clampScale with a verdict. The
- * kernel owns the guard, the binding owns the console — so the kernel
- * must SAY when a caller-fixed density was reduced, or the warn half of
- * warn-and-clamp has nothing to key on.
- */
-declare function resolveFixedScale(
-  scale: number,
-  cssWidth: number,
-  cssHeight: number,
-  maxDim?: number,
-): { scale: number; clamped: boolean }
-// --------------------------------------------------------------------
+import {
+  DEFAULT_TIERS,
+  clampScale,
+  clampTiers,
+  maxTier,
+  resolveFixedScale,
+  seedTier,
+  selectLodTier,
+  tiersInRange,
+} from '@anamorph/core'
 
 // density = desired texels per CSS px (projected device px per css px).
 // selectLodTier is a Schmitt trigger over a quantized tier ladder: the

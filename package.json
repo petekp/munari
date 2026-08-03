@@ -8,13 +8,17 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "gate:idle-zero": "node instruments/idle-zero/run.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
     "@types/three": "^0.185.3",
+    "happy-dom": "^20.11.1",
+    "puppeteer-core": "^25.4.0",
     "three": "^0.185.1",
     "typescript": "^7.0.2",
+    "vite": "^8.2.0",
     "vitest": "^4.1.10"
   }
 }

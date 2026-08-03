@@ -1,4 +1,4 @@
-// CONFORMANCE CONTRACT — mapping (typechecked, not yet run)
+// CONFORMANCE — mapping (flipped 2026-08-02)
 // New contract (owed by seed manifest): the parking coincidence — every parked source sits fixed at page (0,0), so a client point is already a page point for every surface (archive#16, archive#20, archive#22)
 // @vitest-environment happy-dom
 //
@@ -19,24 +19,29 @@
 // paint, brings happy-dom to devDependencies if the door layer hasn't
 // already, and reuses the paint suite's trial-surface stubs (onpaint /
 // requestPaint / layoutSubtree do not exist in happy-dom).
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
-// ---- CONTRACT HOLES ------------------------------------------------
-// Minimal slice of the source contract this file pins; the full
-// interface is carried by paint/htmlInCanvas.contract.ts (archive#22).
-type ParkedSource = {
-  /** The parking canvas — the subtree's containing block. */
-  canvas: HTMLCanvasElement
-  /** The live DOM element laid out inside it. */
-  element: HTMLElement
-  dispose: () => void
+import { createDomTextureSource } from '@anamorph/core'
+
+interface StubCanvas extends HTMLCanvasElement {
+  layoutSubtree: boolean
+  onpaint: (() => void) | null
+  requestPaint: () => void
 }
-declare function createDomTextureSource(
-  markup: string,
-  width: number,
-  height: number,
-): ParkedSource
-// --------------------------------------------------------------------
+
+// The origin-trial surface (layoutSubtree / onpaint / requestPaint) does not
+// exist in happy-dom — stubbed onto the canvas prototype exactly as the
+// paint suite does (paint/htmlInCanvas.test.ts). Vitest isolates each test
+// file's module state, so that file's beforeEach can't reach this one: the
+// "reuses the paint suite's trial-surface stubs" note above is the PATTERN,
+// not a cross-file hook, and this file owns its own copy. None of these
+// tests fire onpaint or count paints, so the stub is a no-op.
+beforeEach(() => {
+  const proto = HTMLCanvasElement.prototype as unknown as StubCanvas
+  proto.layoutSubtree = false
+  proto.onpaint = null
+  proto.requestPaint = function (this: StubCanvas) {}
+})
 
 describe('the parking coincidence — a client point IS a page point', () => {
   it('parks the canvas fixed at page (0,0)', () => {

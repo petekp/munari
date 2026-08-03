@@ -17,6 +17,21 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-# The idle-zero browser gate (archive#3: mounted quiescent Surfaces =
-# 0 paints/s) joins this workflow when the paint layer lands — it must
-# land WITH that layer, not after (CLAUDE.md).
+
+  # The idle-zero browser gate (archive#3: mounted quiescent Surfaces =
+  # 0 paints/s). drawElementImage is an origin-trial API; where the
+  # runner's Chrome lacks it the gate warns and exits 0 — a loud
+  # annotation, not a red build, for an environmental gap. Everywhere
+  # capability exists, a nonzero idle delta is a real failure.
+  idle-zero:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run gate:idle-zero
+        env:
+          CHROME_PATH: /usr/bin/google-chrome

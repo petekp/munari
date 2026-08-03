@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>idle-zero — quiescent sources paint nothing</title>
+    <style>
+      /* The page chrome is dark so the parked (z-index:-1) canvases are
+         invisible unless something is actually wrong with parking. */
+      body { margin: 0; background: #0b0d10; color: #cbd2d9;
+             font: 13px/1.5 system-ui, sans-serif; }
+      #hud { position: fixed; top: 12px; left: 12px; }
+      #hud b { color: #7ee787; }
+      #hud .bad { color: #ff7b72; }
+    </style>
+  </head>
+  <body>
+    <div id="hud">idle-zero: booting…</div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
