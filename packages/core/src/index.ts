@@ -100,3 +100,23 @@ export {
   densitySupply,
   type DensityScheduleInput,
 } from './transfer/densitySchedule'
+
+export { Vec2, type Vec2Like, type Vec2Readonly } from './math/vec2'
+
+// chrome — measurement (archive#55, #56)
+export {
+  parseBoxShadow,
+  resolveRadii,
+  surfaceRadiusSd,
+  measureSurfaceChrome,
+  chromeEquals,
+  EMPTY_CHROME,
+  type SurfaceShadowLayer,
+  type SurfaceChrome,
+} from './chrome/surfaceChrome'
+export {
+  makeShadowFrame,
+  shadowQuadFrame,
+  type ShadowFrame,
+  type ShadowFrameLike,
+} from './chrome/shadowQuadFrame'

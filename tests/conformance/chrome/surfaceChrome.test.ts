@@ -1,4 +1,4 @@
-// CONFORMANCE CONTRACT — chrome (typechecked, not yet run)
+// CONFORMANCE — chrome (flipped 2026-08-02)
 // Ported from three-ui@362c5a1 src/lib/surfaceChrome.test.ts (archive#55)
 // @vitest-environment happy-dom
 //
@@ -12,62 +12,13 @@
 // is tested for chain-following and branch-stopping, with the shadow read
 // from inline styles.
 import { describe, expect, it } from 'vitest'
-
-// ---- CONTRACT HOLES ------------------------------------------------
-interface SurfaceShadowLayer {
-  /** Horizontal offset, CSS px (positive = right, in DOM screen space). */
-  x: number
-  /** Vertical offset, CSS px (positive = DOWN — DOM screen space, not world). */
-  y: number
-  /** CSS blur radius, px. The Gaussian's σ is blur/2 (spec). */
-  blur: number
-  /** Spread, px — expands (or, negative, shrinks) the shadow rect. */
-  spread: number
-  /** sRGB 0–1 plus alpha, exactly as the page composites it. */
-  color: [number, number, number, number]
-}
-interface SurfaceChrome {
-  /** Corner radii tl, tr, br, bl — CSS px in the surface's own coordinate. */
-  radii: [number, number, number, number]
-  /** Outer box-shadow layers, first = topmost, `inset` layers excluded. */
-  shadow: SurfaceShadowLayer[]
-}
-/**
- * Parse a `box-shadow` value (computed or authored form) into layers.
- * `inset` layers are dropped (already rasterized into the texture); a
- * layer with no readable color token is `currentColor`, resolved to
- * opaque black.
- */
-declare function parseBoxShadow(text: string): SurfaceShadowLayer[]
-/**
- * Resolve per-corner computed values against a box, clamped by the CSS
- * overlap rule (adjacent radii that would exceed a side scale down
- * together).
- */
-declare function resolveRadii(
-  values: [string, string, string, string],
-  w: number,
-  h: number,
-): [number, number, number, number]
-/**
- * Signed distance from a UV point to the surface's rounded-rect edge, in
- * CSS px — negative inside. `v = 1` is the TOP of the content (flipY).
- */
-declare function surfaceRadiusSd(
-  u: number,
-  v: number,
-  width: number,
-  height: number,
-  radii: [number, number, number, number],
-): number
-/**
- * Measure the chrome of a drawn subtree: walk a single-child chain,
- * radii from the first element that has any, shadow from the first that
- * casts one. Stops where the chain branches.
- */
-declare function measureSurfaceChrome(root: HTMLElement): SurfaceChrome
-declare function chromeEquals(a: SurfaceChrome, b: SurfaceChrome): boolean
-// --------------------------------------------------------------------
+import {
+  chromeEquals,
+  measureSurfaceChrome,
+  parseBoxShadow,
+  resolveRadii,
+  surfaceRadiusSd,
+} from '@anamorph/core'
 
 describe('parseBoxShadow', () => {
   it('parses the lab card computed form: color-first, two layers, negative spread', () => {

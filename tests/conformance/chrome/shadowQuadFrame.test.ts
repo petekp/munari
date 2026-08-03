@@ -1,31 +1,8 @@
-// CONFORMANCE CONTRACT — chrome (typechecked, not yet run)
+// CONFORMANCE — chrome (flipped 2026-08-02)
 // Ported from three-ui@362c5a1 app/scenes/lab014Plate.test.ts (shadow-quad slice) (archive#56)
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-
-// ---- CONTRACT HOLES ------------------------------------------------
-interface ShadowFrame {
-  verts: [THREE.Vector2, THREE.Vector2, THREE.Vector2, THREE.Vector2]
-  quadHalf: THREE.Vector2
-  cardHalf: THREE.Vector2
-}
-declare function makeShadowFrame(): ShadowFrame
-/**
- * The shadow quad's frame: vertices for the inflated footprint plus the
- * two half-extents the fragment shader is told about. The contract is
- * that the numbers NEVER LIE — `quadHalf` must be the quad's true
- * half-extent in its own edge directions, because the shader
- * reconstructs "px from the card" as `(vUv·2−1)·quadHalf` and evaluates
- * the measured shadow layers at that coordinate. `proj` is the projected
- * footprint in `corners` order (TL, TR, BR, BL); `verts` comes back in
- * PlaneGeometry vertex order (TL, TR, BL, BR).
- */
-declare function shadowQuadFrame(
-  proj: readonly [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3],
-  margin: number,
-  out: ShadowFrame,
-): ShadowFrame
-// --------------------------------------------------------------------
+import { makeShadowFrame, shadowQuadFrame } from '@anamorph/core'
 
 describe('shadow quad frame — the mapping never lies', () => {
   const rect = (w: number, h: number, cx = 0, cy = 0) =>
