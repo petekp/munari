@@ -1,4 +1,4 @@
-// CONFORMANCE CONTRACT — door (typechecked, not yet run)
+// CONFORMANCE — door (flipped 2026-08-02)
 // Ported from three-ui@362c5a1 src/primitives/forwardEvents.test.ts (archive#19, archive#20, archive#24, archive#26, archive#27, archive#29, archive#32, archive#50, archive#51)
 // @vitest-environment happy-dom — happy-dom joins root devDependencies at the door flip (decisions.md #2, README.md)
 //
@@ -12,45 +12,19 @@
 // deepestElementAt's own hit-testing is exercised through those stubs.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-
-// ---- CONTRACT HOLES ------------------------------------------------------
-// door/forwardEvents surface, as three-ui's src/primitives/forwardEvents.ts
-// and src/lib/forged.ts declare it (archive#19/#20/#24/#26/#27/#29/#32/#50/#51).
-// Bodyless — typed only, erased at compile time (README.md). Flip: replace
-// this block with real imports from the kernel package (names/shapes may
-// adapt away from the oracle, with a decisions.md entry when deliberate).
-
-interface ForwardResult {
-  target: Element
-  focused: boolean
-}
-
-declare function deepestElementAt(root: Element, x: number, y: number): Element | null
-declare function trackFocusModality(): () => void
-declare function silenceHoverMove(native: PointerEvent): void
-declare function forwardPointer(
-  root: HTMLElement,
-  u: number,
-  v: number,
-  kind: 'down' | 'up' | 'move',
-  buttons?: number,
-): ForwardResult | null
-declare function nudgeSelect(el: HTMLSelectElement): void
-declare function forwardWheel(
-  root: HTMLElement,
-  x: number,
-  y: number,
-  wheel: { deltaX: number; deltaY: number; deltaMode?: number },
-): boolean
-declare function trackDrag(): () => void
-declare function guardPointerCapture(host: HTMLElement): () => void
-declare function trackWheel(): () => void
-declare function clearPointerState(root: HTMLElement): void
-
-/** archive#50: forged.ts's isTrusted complement — the provenance describe
- *  block below leans on it directly. */
-declare function isForgedEvent(ev: Event): boolean
-// ---------------------------------------------------------------------------
+import {
+  clearPointerState,
+  deepestElementAt,
+  forwardPointer,
+  forwardWheel,
+  guardPointerCapture,
+  isForgedEvent,
+  nudgeSelect,
+  silenceHoverMove,
+  trackDrag,
+  trackFocusModality,
+  trackWheel,
+} from '@anamorph/core'
 
 const ROOT = { left: 0, top: 0, right: 360, bottom: 460 }
 

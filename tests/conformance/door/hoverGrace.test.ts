@@ -1,4 +1,4 @@
-// CONFORMANCE CONTRACT — door (typechecked, not yet run)
+// CONFORMANCE — door (flipped 2026-08-02)
 // Ported from three-ui@362c5a1 src/lib/hoverGrace.test.ts (archive#31)
 // @vitest-environment happy-dom — happy-dom joins root devDependencies at the door flip (decisions.md #2, README.md)
 //
@@ -9,57 +9,14 @@
 // (FloatingSurface projects its own mesh).
 
 import { beforeEach, describe, expect, it } from 'vitest'
-
-// ---- CONTRACT HOLES ------------------------------------------------------
-// door/hoverGrace surface, as three-ui's src/lib/hoverGrace.ts declares it
-// (archive#31). Bodyless — typed only, erased at compile time (README.md).
-// Flip: replace this block with real imports from the kernel package
-// (names/shapes may adapt away from the oracle, with a decisions.md entry
-// when deliberate).
-
-interface Pt {
-  x: number
-  y: number
-}
-
-interface GraceTrackerOptions {
-  /** The element whose hover opened the layer (queried lazily; may be null). */
-  trigger: () => Element | null
-  /** The detached layer's content root — the dispatch target. */
-  content: () => Element | null
-  /**
-   * The layer's quad in screen coordinates, re-read every judged move so an
-   * orbiting camera can't stale the hull. Null means "not projectable right
-   * now" (layer empty or behind the camera) and releases without dispatch.
-   */
-  layerQuad: () => Pt[] | null
-  /**
-   * Half-size of the square padded around the exit point, in px. Radix pads
-   * its exit points too; without it a hull built from a single point and a
-   * distant quad is a sliver a real pointer falls out of immediately.
-   */
-  exitPad?: number
-}
-
-interface GraceTracker {
-  /** A trusted pointer position, in client coordinates. */
-  move(x: number, y: number): void
-  /** A `pointerleave` heard anywhere; arms when its target is a watched root. */
-  leave(target: Element): void
-  /** Drop all state without dispatching (call when the layer unmounts). */
-  reset(): void
-  readonly armed: boolean
-}
-
-declare function convexHull(points: Pt[]): Pt[]
-declare function pointInConvex(p: Pt, hull: Pt[]): boolean
-/** Origin default `exitPad = 12` lives on GraceTrackerOptions; ambient
- *  signatures can't carry parameter initializers. */
-declare function createGraceTracker(options: GraceTrackerOptions): GraceTracker
-/** Origin default `doc: Document = document`, expressed here as optional —
- *  ambient signatures can't carry parameter initializers either. */
-declare function observeGrace(tracker: GraceTracker, doc?: Document): () => void
-// ---------------------------------------------------------------------------
+import {
+  convexHull,
+  createGraceTracker,
+  observeGrace,
+  pointInConvex,
+  type GraceTracker,
+  type Pt,
+} from '@anamorph/core'
 
 describe('convexHull', () => {
   it('reduces a square with interior points to its corners', () => {

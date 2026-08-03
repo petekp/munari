@@ -51,3 +51,28 @@ export {
   type FilterPolicy,
   type PolicyState,
 } from './paint/filterPolicy'
+
+// door — provenance + the pointer-exit protocol (archive#19, #20, #24, #26, #27, #29, #31, #32, #50, #51)
+export { forge, isForgedEvent } from './door/forge'
+export {
+  clearPointerState,
+  deepestElementAt,
+  forwardPointer,
+  forwardWheel,
+  guardPointerCapture,
+  nudgeSelect,
+  silenceHoverMove,
+  trackDrag,
+  trackFocusModality,
+  trackWheel,
+  type ForwardResult,
+} from './door/forwardEvents'
+export {
+  convexHull,
+  createGraceTracker,
+  observeGrace,
+  pointInConvex,
+  type GraceTracker,
+  type GraceTrackerOptions,
+  type Pt,
+} from './door/hoverGrace'
