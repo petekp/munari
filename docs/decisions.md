@@ -293,3 +293,28 @@ plate from THREE objects, so the flight it fed the deps was
 uniformly THREE and the weld typechecked. It now takes its plate
 from the real `makePlate()` — the mock must be bimodal or it cannot
 catch the next weld either.
+
+## #9 — registry(focus) resolved into the binding (2026-08-03)
+
+The seed manifest routed archive#13–#15 to a registry pack. Phase 3
+overtook that: the labs consume focus as *imported API* — `FocusScene`,
+`FocusOrbitRig`, and the lib beside them shipped in `packages/react`
+— and a registry entry duplicating an exported mechanism as
+copy-code would be two sources of truth for one behavior. What the
+manifest actually itemized as the pack was the EVIDENCE: six vitest
+suites (cameraPose's pinned browser numbers incl. the 1.13 rad whip,
+spatialNav's curated mechanisms, the 33 browser-captured field rects
+— fidelity proofs no synthetic grid can substitute for, focusTree's
+49, tabbables, arcLayout) and `docs/focus.md` as the behavior's own
+contract doc. Those crossed verbatim (provenance headers, one `!`
+under noUncheckedIndexedAccess): the suites sit BESIDE their modules
+as the archive laid them out, so their oracle diffs stay import-free,
+and vitest already collects `packages/*/src/**/*.test.ts`.
+
+Consequence for the hourglass: in-package suites import `vitest`,
+which the react boundary rule (stricter than the archive's — that one
+only policed the `three-ui` specifier) had no answer for. The
+carve-out is exactly one specifier in exactly test files; everything
+else in a suite answers to the same allowlist as the module it
+tests, so a suite can no more reach around the kernel than its
+module can.

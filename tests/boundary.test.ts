@@ -86,6 +86,11 @@ describe('the hourglass', () => {
     expect(
       violations('packages/react/src', (spec, file) => {
         if (spec.startsWith('.')) return !escapesDir(file, spec, dir)
+        // Suites ride beside their modules (the archive's own layout), but
+        // they are not shipped surface — vitest is the one specifier the
+        // runner owns, and it is allowed ONLY there. Everything else in a
+        // test file answers to the same allowlist as the module it tests.
+        if (spec === 'vitest' && /\.test\.tsx?$/.test(file)) return true
         return (
           allowed.has(spec) ||
           spec.startsWith('react/') ||
