@@ -115,3 +115,29 @@ and the custody excursion itself (014) — and each one exercises a
 registry pack the kernel must stay sufficient for. A lab that crosses
 is a standing consumer: if the barrel can't express it, the barrel is
 wrong (CLAUDE.md: export, don't reach around).
+
+## #4 — Core speaks in shapes; three satisfies them (2026-08-02)
+
+**Decision.** `@anamorph/core` cannot import `three` (zero-dep,
+boundary-enforced), but the oracle's kernel math is written against
+`THREE.Vector3` and `THREE.BufferGeometry`. Core therefore expresses
+every vector/geometry parameter as a minimal structural interface —
+`Vec3Like`, `GeometryLike`, `SampleVec` (`src/math/vec3.ts`) — that
+three's objects satisfy by shape, with generic out-params so callers
+get their own type back: a `THREE.Vector3` in is a `THREE.Vector3`
+out, `.clone()` intact. Where an API must allocate (a sample with no
+caller target), core allocates its own minimal `Vec3`. Internals use
+scalar math where the oracle used vector methods (the face-normal
+cross product is written out longhand) so core never needs scratch
+allocations from a library it doesn't have.
+
+**Why not `three` as a type-only peer.** `import type` would erase at
+runtime and technically keep the zero-dep claim — but it would put
+`@types/three`'s enormous surface in core's signatures, hide *which
+slice* of a geometry the kernel actually reads, and leave the boundary
+test policing a value/type distinction instead of a bright line. The
+structural interfaces ARE documentation: `AttributeLike` says the
+anchor reads `count/getX/getY/getZ` and nothing else. Every later
+layer (chrome's quad frames, physics' plate state) follows this
+pattern; a kernel API that wants a richer vector vocabulary grows
+`Vec3` deliberately rather than importing one.

@@ -1,4 +1,4 @@
-// CONFORMANCE CONTRACT — mapping (typechecked, not yet run)
+// CONFORMANCE — mapping (flipped 2026-08-02)
 // Ported from three-ui@362c5a1 src/lib/uvAnchor.test.ts (archive#6)
 //
 // The contract under test: given a BufferGeometry and a (u, v) texture
@@ -7,27 +7,7 @@
 // deforming geometry keeps anchors glued to its skin.
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-
-// ---- CONTRACT HOLES ------------------------------------------------
-// Signatures and the SurfaceSample type copied verbatim from
-// three-ui/src/lib/uvAnchor.ts.
-interface SurfaceSample {
-  position: THREE.Vector3
-  normal: THREE.Vector3
-}
-declare class UVAnchor {
-  readonly valid: boolean
-  constructor(geometry: THREE.BufferGeometry, u: number, v: number)
-  /** Local-space position + unit normal at the anchor, or null if invalid. */
-  sample(target?: SurfaceSample): SurfaceSample | null
-}
-declare function sampleSurfaceAtUV(
-  geometry: THREE.BufferGeometry,
-  u: number,
-  v: number,
-  target?: SurfaceSample,
-): SurfaceSample | null
-// --------------------------------------------------------------------
+import { UVAnchor, sampleSurfaceAtUV } from '@anamorph/core'
 
 const close = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) < eps
 

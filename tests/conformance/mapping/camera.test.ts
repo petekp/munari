@@ -1,4 +1,4 @@
-// CONFORMANCE CONTRACT — mapping (typechecked, not yet run)
+// CONFORMANCE — mapping (flipped 2026-08-02)
 // Ported from three-ui@362c5a1 app/scenes/lab014Camera.test.ts (archive#44)
 //
 // The lab's premise (archive#44): one world unit is one CSS pixel, true
@@ -7,28 +7,13 @@
 // place allowed to know the conversion.
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-
-// ---- CONTRACT HOLES ------------------------------------------------
-// Signatures copied verbatim from three-ui/app/scenes/lab014Camera.ts.
-declare function cameraDistance(viewportHeight: number, fovDeg: number): number
-declare function planeScale(camZ: number, z: number): number
-declare function screenToPlane(
-  clientX: number,
-  clientY: number,
-  viewportWidth: number,
-  viewportHeight: number,
-  camZ: number,
-  z: number,
-  out: THREE.Vector3,
-): THREE.Vector3
-declare function carryToPlane(p: THREE.Vector3, camZ: number, z: number): THREE.Vector3
-declare function planeToScreen(
-  p: THREE.Vector3,
-  viewportWidth: number,
-  viewportHeight: number,
-  camZ: number,
-): { x: number; y: number }
-// --------------------------------------------------------------------
+import {
+  cameraDistance,
+  carryToPlane,
+  planeScale,
+  planeToScreen,
+  screenToPlane,
+} from '@anamorph/core'
 
 const VW = 1600
 const VH = 1000

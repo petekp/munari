@@ -1,4 +1,4 @@
-// CONFORMANCE CONTRACT — mapping (typechecked, not yet run)
+// CONFORMANCE — mapping (flipped 2026-08-02)
 // New contract (owed by seed manifest): the density identity — dpr × planeScale(camZ, z) is the exact texel demand for a plane at z under a calibrated camera (archive#52, archive#53, archive#44)
 //
 // The identity three-ui's flight card used and only the lab pinned:
@@ -12,12 +12,7 @@
 // at cruise). The kernel owns the identity; consumers own geometries.
 import { describe, expect, it } from 'vitest'
 
-// ---- CONTRACT HOLES ------------------------------------------------
-declare function cameraDistance(viewportHeight: number, fovDeg: number): number
-declare function planeScale(camZ: number, z: number): number
-/** Backing texels per CSS px that make a plane at z texel-for-pixel. */
-declare function texelDemand(dpr: number, camZ: number, z: number): number
-// --------------------------------------------------------------------
+import { cameraDistance, planeScale, texelDemand } from '@anamorph/core'
 
 const VH = 1000
 const FOV = 42
