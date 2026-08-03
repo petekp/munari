@@ -167,5 +167,6 @@ export {
 export {
   type GestureFlight,
   type GestureDeps,
+  type Vec3Chain,
   attachLab014Gestures,
 } from './physics/gestures'

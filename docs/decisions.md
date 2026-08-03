@@ -251,3 +251,30 @@ the kernel's public surface grows ONLY when a consumer arrives
 holding the need, and each crossing brings its contract in the same
 commit. "Might be useful" never crosses; "is used, and here is the
 test" does.
+
+## #8 — Gesture deps are generic in the consumer's vector type (2026-08-03, physics layer)
+
+The Lab 014 port stopped one line short of compiling: the scene
+annotates its lift carry `(a: THREE.Vector3) => ...`, the kernel's
+`GestureDeps` demanded `(a: Vec3Chain) => void`, and under
+`strictFunctionTypes` a callback parameter is contravariant — the
+scene's honest annotation was a TS2322. The oracle never met this
+because its gestures file lived app-side and spoke `THREE.Vector3`
+natively; the kernel's shape-typed rewrite (decisions.md #4)
+introduced the variance problem, so the kernel owns the fix.
+
+`GestureFlight<V extends Vec3Chain>` / `GestureDeps<Col, V>`:
+`V` infers from the flight the consumer constructed, and the
+kernel's promise narrows to exactly the vectors it round-trips.
+That inference is *sound*, not merely convenient, because
+`toLiftPlane(f.anchor)` is the callback's only call site and
+`f.anchor` is a vector the caller put on the flight itself — the
+kernel never manufactures a `Vec3Chain` to hand across. `Vec3Chain`
+survives as the BOUND (exported, so consumers can name it), and
+`tossSpin<V extends Vec3Like>` was already the in-layer precedent.
+
+Contract (gestures.test.ts): an annotated
+`(a: THREE.Vector3) => void` dep compiles — the exact line the port
+died on, kept as a compile-time tripwire — and the vector it
+receives is identity-equal to the flight's own anchor, the fact the
+soundness argument rests on.

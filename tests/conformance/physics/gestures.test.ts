@@ -31,7 +31,9 @@ import {
 const CAM_Z = cameraDistance(720, 42)
 const LIFT_Z = 96
 
-function makeFlight(over: Partial<GestureFlight> = {}): GestureFlight {
+function makeFlight(
+  over: Partial<GestureFlight<THREE.Vector3>> = {},
+): GestureFlight<THREE.Vector3> {
   return {
     id: 'card-1',
     mode: 'held',
@@ -277,5 +279,39 @@ describe('the ✕ is a toss, not a timer', () => {
     window.dispatchEvent(pointer('pointerup', -16, -16, false))
     expect(flight.current.crumpleHeld).toBe(true)
     expect(flight.current.spin.length()).toBe(0)
+  })
+})
+
+describe('the deps are typed in the consumer’s own vectors', () => {
+  // `toLiftPlane` is a callback — a contravariant position — so a kernel
+  // that pinned its parameter to `Vec3Chain` made every consumer's honest
+  // annotation a strictFunctionTypes error: the Lab 014 port's
+  // `(a: THREE.Vector3) => carryToPlane(…)` refused to compile against it.
+  // The flight and deps are generic in the flight's vector type instead,
+  // which is sound because the only vector the kernel ever hands the
+  // callback is one the caller put on the flight itself.
+  it('an annotated (a: THREE.Vector3) => void compiles, and receives the very anchor the caller built', () => {
+    const flight = { current: makeFlight() }
+    let received: THREE.Vector3 | null = null
+    detach = attachLab014Gestures({
+      flight,
+      dropTarget: () => null,
+      moveTo: () => {},
+      snapshot: () => {},
+      scrollTop: () => 0,
+      // The annotation IS the assertion: this line typechecks only while
+      // `V` infers as the consumer's vector type.
+      toLiftPlane: (a: THREE.Vector3) => {
+        received = a
+        carryToPlane(a, CAM_Z, LIFT_Z)
+      },
+    })
+    window.dispatchEvent(pointer('pointerup', 369, 284, true))
+
+    expect(flight.current.mode).toBe('float')
+    // Round-trip, not manufacture: the vector in the callback is the very
+    // anchor on the caller's flight — the fact the generic's soundness
+    // rests on.
+    expect(received).toBe(flight.current.anchor)
   })
 })
