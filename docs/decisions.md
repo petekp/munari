@@ -220,3 +220,34 @@ under a visible loop/length guard and is erasure-only — runtime
 behavior is byte-equivalent by construction). 7 of the 10 focus-kit
 files are byte-identical to the archive; every deviation in the other
 3 is an assertion plus the comment justifying it.
+
+## #7 — The kernel answers for what it observes; the app owns the window (2026-08-03, lab app)
+
+Two kernel-surface additions arrived with the lab app, both pulled
+across by a consumer rather than pushed by symmetry:
+
+**`paintStats()`.** The initial paint flip shed the oracle's
+`window.__threeUI` registry as "a devtools concern." The seed triage
+already disagreed (instruments.md classifies `stats()` as a kernel
+seam — `[]` after a lifecycle is the canonical nothing-left-painting
+proof, `paints` deltas the idle-zero gate's raw feed), and Lab 006's
+HUD is the consumer that proved it: the "40 live documents, zero
+cost" claim rendered as numbers needs per-source counters that only
+the source factory can keep. The registry crossed with one deliberate
+divergence: **no global**. The kernel exports a function; the lab
+hangs it at `window.__anamorph.stats()` in App.tsx. A zero-dep kernel
+that stamps `window` at module load would be doing a consumer's job
+with a library's authority.
+
+**`Quat.premultiply`.** Lab 014's toss applies topspin in the world
+frame (`plate.q.premultiply(spin)`, archive#61). The kernel Quat had
+only `multiply`; the twin crossed with a contract pinning it as
+exactly-multiply-with-operands-swapped (bitwise, not epsilon) plus
+the frame semantics that make the order matter. Sized to the
+consumer: no slerp, no euler bridge, nothing speculative.
+
+The pattern both follow — and the reason this entry exists — is that
+the kernel's public surface grows ONLY when a consumer arrives
+holding the need, and each crossing brings its contract in the same
+commit. "Might be useful" never crosses; "is used, and here is the
+test" does.

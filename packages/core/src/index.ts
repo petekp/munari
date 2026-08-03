@@ -37,9 +37,11 @@ export {
 export {
   createDomTextureSource,
   detectHtmlInCanvas,
+  paintStats,
   type DomTextureSource,
   type DomTextureSourceOptions,
   type HtmlInCanvasSupport,
+  type PaintStats,
 } from './paint/htmlInCanvas'
 export {
   ensureChannelRegistered,

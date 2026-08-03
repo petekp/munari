@@ -19,13 +19,21 @@
 // reaudit.md); ported here as the mechanism's rationale, not re-verified by
 // this flip.
 //
-// This module stops at the source factory plus the capability probe below.
-// The oracle's `window.__threeUI` paint-stats registry stays shed — a
-// devtools concern; instruments rebuild on `label` + `onError` +
-// `paintCount`. The probe crossed back when the lab app landed: a library
-// built entirely on an origin-trial API owes its consumer the question
-// "is the API here at all?", and answering it honestly (false, never a
-// throw) in any environment is a contracted behavior.
+// This module is the source factory plus its two observation seams: the
+// capability probe and the paint-stats registry. Both crossed back after
+// the initial flip shed them, each when a consumer proved the need. The
+// probe: a library built entirely on an origin-trial API owes its consumer
+// the question "is the API here at all?", answered honestly (false, never
+// a throw) in any environment. The registry: per-source paint counters are
+// the only way to see multi-Surface paint behavior at all — parked source
+// canvases all stack at the same fixed position, occluding each other, and
+// a source whose `paints` stalls while siblings advance is starved. The
+// seed triage (three-ui/docs/seed/instruments.md) classifies `stats()` as
+// a kernel seam: `[]` after a lifecycle is the canonical nothing-left-
+// painting proof, and `paints` deltas are the idle-zero gate's raw feed.
+// One deliberate difference from the oracle: no `window.__threeUI`-style
+// global. The kernel stamps nothing on `window`; consumers import
+// `paintStats` and hang it wherever their console story wants it.
 
 export interface HtmlInCanvasSupport {
   drawElementImage: boolean
@@ -106,12 +114,40 @@ export interface DomTextureSource {
 }
 
 export interface DomTextureSourceOptions {
-  /** Human-readable label for this source. The kernel itself does not act
-   *  on it — it exists for a diagnostics/instruments consumer to key on. */
+  /** Name for this source in the paint-stats registry — the key a
+   *  diagnostics/instruments consumer reads it back by. */
   label?: string
   /** Initial texture scale (backing-store px per CSS px). Default 1. */
   scale?: number
   onError?: (err: unknown) => void
+}
+
+/** One live source's paint ledger, as `paintStats()` reports it. */
+export interface PaintStats {
+  label: string
+  paints: number
+  errors: number
+  /** Current LOD texture scale (backing-store px per CSS px). */
+  scale: number
+  lastError?: string
+}
+
+// Every live source registers here; dispose removes it. The registry holds
+// the source's OWN ledger objects (paintCount() reads the same `paints`
+// field), so there is exactly one counter per source and the two views can
+// never disagree.
+const registry = new Set<PaintStats>()
+let sourceSeq = 0
+
+/**
+ * Snapshot of every live source's paint ledger, as copies — mutating a
+ * returned entry changes nothing. `[]` means nothing is left painting:
+ * after a full lifecycle it is the proof of cleanup, and during idle it is
+ * the proof of quiescence (paints deltas at zero are the idle-zero gate's
+ * raw feed).
+ */
+export function paintStats(): PaintStats[] {
+  return Array.from(registry, (s) => ({ ...s }))
 }
 
 /**
@@ -124,7 +160,7 @@ export function createDomTextureSource(
   height: number,
   options: DomTextureSourceOptions = {},
 ): DomTextureSource {
-  const { onError } = options
+  const { label = `source-${sourceSeq++}`, onError } = options
   let scale = clampRawScale(options.scale ?? 1)
   const canvas = document.createElement('canvas') as TrialCanvas
   canvas.width = Math.max(1, Math.round(width * scale))
@@ -154,7 +190,9 @@ export function createDomTextureSource(
 
   const ctx = canvas.getContext('2d') as TrialContext2D
   let ok = false
-  let paints = 0
+
+  const stats: PaintStats = { label, paints: 0, errors: 0, scale }
+  registry.add(stats)
 
   canvas.onpaint = () => {
     try {
@@ -168,9 +206,11 @@ export function createDomTextureSource(
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       ctx.drawElementImage(element, 0, 0)
       ok = true
-      paints++
+      stats.paints++
     } catch (err) {
       ok = false
+      stats.errors++
+      stats.lastError = String(err)
       onError?.(err)
     }
   }
@@ -186,6 +226,7 @@ export function createDomTextureSource(
       const next = clampRawScale(k)
       if (next === scale) return
       scale = next
+      stats.scale = next
       // Resizing clears the backing store, but nothing uploads the blank:
       // consumers only upload after paintCount advances, which happens when
       // the requested paint below completes with the fresh raster.
@@ -211,10 +252,11 @@ export function createDomTextureSource(
       canvas.requestPaint()
     },
     painted: () => ok,
-    paintCount: () => paints,
+    paintCount: () => stats.paints,
     dispose: () => {
       canvas.onpaint = null
       canvas.remove()
+      registry.delete(stats)
     },
   }
 }

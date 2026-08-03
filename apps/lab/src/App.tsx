@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, OrbitControls } from '@react-three/drei'
-import { detectHtmlInCanvas, FocusScene } from 'anamorph'
+import { detectHtmlInCanvas, FocusScene, paintStats } from 'anamorph'
 import { Lab006, Lab006Hud } from './scenes/Lab006'
 import { Lab012 } from './scenes/Lab012'
 import { Lab014App } from './scenes/Lab014'
@@ -33,6 +33,15 @@ function KeepDomFocus() {
 export default function App() {
   const support = useMemo(detectHtmlInCanvas, [])
   const [lab, setLab] = useState<LabId>('006')
+
+  // Console story: the kernel stamps nothing on `window`, so the app hangs
+  // the paint ledger where devtools probes expect it (the runbook's
+  // `__anamorph.stats()`). This is a consumer choice, not library behavior.
+  useEffect(() => {
+    ;(window as unknown as { __anamorph?: unknown }).__anamorph = {
+      stats: paintStats,
+    }
+  }, [])
 
   // Lab 014 is not a scene in the shared canvas — it IS a page, with its own
   // overlay canvas on top of it. The other labs are content inside one 3D

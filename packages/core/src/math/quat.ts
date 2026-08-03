@@ -105,6 +105,29 @@ export class Quat implements QuatReadonly {
     return this
   }
 
+  /**
+   * q ⊗ this, in place — `multiply` with the operands swapped, matching
+   * `THREE.Quaternion.prototype.premultiply`: applies the ORIGINAL `this`'s
+   * rotation first, then `q`'s on top. This is the world-frame composition:
+   * spinning a body about a world axis pre-multiplies the increment onto its
+   * pose (the toss's topspin, archive#61).
+   */
+  premultiply(q: QuatReadonly): this {
+    const ax = q.x
+    const ay = q.y
+    const az = q.z
+    const aw = q.w
+    const bx = this.x
+    const by = this.y
+    const bz = this.z
+    const bw = this.w
+    this.x = ax * bw + aw * bx + ay * bz - az * by
+    this.y = ay * bw + aw * by + az * bx - ax * bz
+    this.z = az * bw + aw * bz + ax * by - ay * bx
+    this.w = aw * bw - ax * bx - ay * by - az * bz
+    return this
+  }
+
   /** Conjugate as inverse — exact for the unit quaternions this file only ever holds. */
   invert(): this {
     this.x *= -1
