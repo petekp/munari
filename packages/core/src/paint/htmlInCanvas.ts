@@ -19,10 +19,36 @@
 // reaudit.md); ported here as the mechanism's rationale, not re-verified by
 // this flip.
 //
-// This module intentionally stops at the source factory. The oracle's
-// `detectHtmlInCanvas` feature probe and its `window.__threeUI` paint-stats
-// registry are devtools/instruments concerns, not contracted here, and are
-// left for whoever lands `instruments/`.
+// This module stops at the source factory plus the capability probe below.
+// The oracle's `window.__threeUI` paint-stats registry stays shed — a
+// devtools concern; instruments rebuild on `label` + `onError` +
+// `paintCount`. The probe crossed back when the lab app landed: a library
+// built entirely on an origin-trial API owes its consumer the question
+// "is the API here at all?", and answering it honestly (false, never a
+// throw) in any environment is a contracted behavior.
+
+export interface HtmlInCanvasSupport {
+  drawElementImage: boolean
+  texElementImage2D: boolean
+}
+
+/**
+ * Is the HTML-in-canvas trial surface present? Safe to call anywhere —
+ * environments without the APIs (or without a DOM at all) report `false`,
+ * they never throw. UIs gate their capability chips on this; `Surface`
+ * itself does not (an absent API surfaces as a paint error, which
+ * `onError` reports with more context than a boolean can).
+ */
+export function detectHtmlInCanvas(): HtmlInCanvasSupport {
+  return {
+    drawElementImage:
+      typeof CanvasRenderingContext2D !== 'undefined' &&
+      'drawElementImage' in CanvasRenderingContext2D.prototype,
+    texElementImage2D:
+      typeof WebGL2RenderingContext !== 'undefined' &&
+      'texElementImage2D' in WebGL2RenderingContext.prototype,
+  }
+}
 
 interface TrialCanvas extends HTMLCanvasElement {
   layoutSubtree: boolean

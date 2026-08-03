@@ -1,0 +1,162 @@
+/* anamorph × shadcn/ui — the Tailwind side of the port.
+ *
+ * APP code, not library. `anamorph/style.css` holds the rules the
+ * primitives actually require (framework-agnostic, all mechanism); this
+ * file is one consumer's answer to what that stylesheet asks for in return
+ * — the theme, the typography, and the deviations from shadcn's generated
+ * globals.css that a port to matter turns out to need.
+ *
+ * Components in src/components/ui/ are byte-verbatim from the shadcn
+ * registry (new-york-v4). The deviations:
+ *
+ *  1. shadcn's `body { bg-background text-foreground }` base rule is
+ *     scoped to `.ui-root` instead: the host page owns <body>; every
+ *     Surface-mounted React tree gets a .ui-root container. `.ui-layer`
+ *     is its transparent twin — the portal container for a floating
+ *     Surface, which inherits the typography but paints no background,
+ *     so everything the popover does not cover stays clear glass.
+ *  2. `hover`/`active` variants also match `[data-hover]`/`[data-active]`:
+ *     real hit-testing never reaches a parked subtree, so Surface's
+ *     forwardEvents mirrors pointer state as data attributes. This one
+ *     override makes every `hover:` utility in verbatim shadcn code work
+ *     through the texture.
+ *  3. `focus-visible` excludes `[data-pointer-focus]`: the browser's
+ *     ring-or-no-ring verdict is fed only by trusted events, so a script
+ *     focus after a forwarded click reads as keyboard and paints a ring a
+ *     real page wouldn't. forwardEvents mirrors the correct verdict as an
+ *     attribute; this variant consults it. Same mechanism as #2, opposite
+ *     direction — there the mirror grants a state, here it withholds one.
+ *
+ * (The archive's tw-animate-css and shadcn/tailwind.css imports travel
+ * with the animation-conductor and chat/AI component sets — none of the
+ * three preserved labs wears them; they return when a consumer does.)
+ *
+ * Theme tokens are transcribed from shadcn's documented new-york-v4 zinc
+ * theme (chart/sidebar vars trimmed — nothing here consumes them).
+ */
+
+@import 'tailwindcss';
+
+@custom-variant hover (&:is(:hover, [data-hover]));
+@custom-variant active (&:is(:active, [data-active]));
+@custom-variant focus-visible (&:focus-visible:not([data-pointer-focus]));
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.141 0.005 285.823);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.141 0.005 285.823);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.141 0.005 285.823);
+  --primary: oklch(0.21 0.006 285.885);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.552 0.016 285.938);
+  --accent: oklch(0.967 0.001 286.375);
+  --accent-foreground: oklch(0.21 0.006 285.885);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.92 0.004 286.32);
+  --ring: oklch(0.705 0.015 286.067);
+}
+
+.dark {
+  --background: oklch(0.141 0.005 285.823);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.21 0.006 285.885);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.21 0.006 285.885);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.92 0.004 286.32);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.274 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.274 0.006 286.033);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.552 0.016 285.938);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  .ui-root {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+  /* `.ui-layer`'s transparency is the whole point of it — background-less,
+   * so everything the popover does not cover stays clear glass and the panel
+   * behind is seen through it. The `pointer-events` half of the contract is
+   * mechanism and lives in anamorph/style.css. */
+  .ui-layer {
+    @apply font-sans text-foreground antialiased;
+  }
+  /* Glass panels (lab 012): the DOM rides a transparent overlay above a
+   * refracting mesh, so the drawn root must rasterize with real alpha —
+   * bg-background would paint the whole slab opaque. The content root
+   * declares itself glass; this is an app choice, not a library rule. */
+  .ui-root:has(> [data-glass-root]) {
+    background: transparent;
+  }
+}
+
+/* scroll-fade is a score, not a performance. Measured 2026-08-01
+ * (Chrome 150): a `mask-image` on ANY descendant of a drawn element blacks
+ * out the whole drawElementImage capture — the panel rasterizes as solid
+ * black except independently-composited descendants, with clean paint
+ * events and no error. Even a mask computed to a fully opaque no-op
+ * gradient. No component in this app wears the classes today; the
+ * neutralization stays because the hazard is a platform property, not a
+ * component one, and a future vendored component must not resurrect it
+ * silently (archive decisions #30). Unlayered, so it outranks any
+ * @utility layer without !important. */
+.ui-root [class*='scroll-fade'],
+.ui-layer [class*='scroll-fade'] {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/* FocusScene stamps data-focus on the unit root (the Surface's source
+ * element). Outline, not box-shadow, so the card's own shadow-sm survives;
+ * paint properties only. */
+[data-focus='unit'] .ui-root [data-slot='card'] {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+[data-focus='interior'] .ui-root [data-slot='card'] {
+  outline: 3px solid var(--ring);
+  outline-offset: -3px;
+}

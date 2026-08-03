@@ -9,7 +9,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "gate:idle-zero": "node instruments/idle-zero/run.mjs"
+    "gate:idle-zero": "node instruments/idle-zero/run.mjs",
+    "dev": "npm run dev -w @anamorph/lab"
   },
   "devDependencies": {
     "@react-three/fiber": "^9.6.1",

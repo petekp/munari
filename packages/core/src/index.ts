@@ -36,8 +36,10 @@ export {
 } from './paint/lodTier'
 export {
   createDomTextureSource,
+  detectHtmlInCanvas,
   type DomTextureSource,
   type DomTextureSourceOptions,
+  type HtmlInCanvasSupport,
 } from './paint/htmlInCanvas'
 export {
   ensureChannelRegistered,
