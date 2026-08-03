@@ -1,0 +1,23 @@
+{
+  // The lab's compiler dialect. It extends the workspace config but drops
+  // noUncheckedIndexedAccess: the scenes are byte-verbatim ports from
+  // three-ui@362c5a1, written under the oracle's app config (which never
+  // had the flag), and their standing value is that `diff` against the
+  // oracle shows import rewiring and nothing else. Seventy reviewed `!`
+  // assertions would buy flag purity by poisoning that diff forever. The
+  // kernel, binding, and conformance tests all keep the strict flag — this
+  // is the same app/library split the oracle itself drew with its separate
+  // tsconfig.app.json.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "src"
+  ]
+}

@@ -18,16 +18,10 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "jsx": "react-jsx",
-    "paths": {
-      "@/*": [
-        "./apps/lab/src/*"
-      ]
-    }
+    "jsx": "react-jsx"
   },
   "include": [
     "packages/*/src",
-    "apps/*/src",
     "tests",
     "instruments"
   ]
