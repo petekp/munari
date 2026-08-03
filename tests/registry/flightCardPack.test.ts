@@ -15,6 +15,11 @@ import { TOSS_SPIN_V0, TOSS_SPIN_MAX, aeroAmplitude } from '@anamorph/core'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const scene = () =>
   readFileSync(join(ROOT, 'apps/lab/src/scenes/Flight.tsx'), 'utf8')
+// The scene's GLSL lives beside it (flightShaders.ts), the way the glass
+// pack splits glassSdfShader.ts from glassSdf.tsx. A constant the charter
+// quotes from a shader has to be read from the file that holds it.
+const shaders = () =>
+  readFileSync(join(ROOT, 'apps/lab/src/scenes/flightShaders.ts'), 'utf8')
 
 describe('the charter names real kernel surface', () => {
   it('the toss constants are the archived tuning', () => {
@@ -34,8 +39,8 @@ describe('the charter names real kernel surface', () => {
 
 describe('the charter names the real scene constants (text weld to the reference)', () => {
   it('folds are 6×3 uv cells with the 0.35 remainder', () => {
-    expect(scene()).toContain('floor(uv * vec2(6.0, 3.0))')
-    expect(scene()).toContain('mix(cellDir, vertDir, 0.35)')
+    expect(shaders()).toContain('floor(uv * vec2(6.0, 3.0))')
+    expect(shaders()).toContain('mix(cellDir, vertDir, 0.35)')
   })
 
   it('the crumple happens at altitude 55', () => {

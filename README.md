@@ -91,7 +91,8 @@ The dependency shape is an hourglass — core ← binding ← consumers — and
 `tests/boundary.test.ts` walks real import specifiers to enforce it.
 
 See `CLAUDE.md` for the working rules, `docs/decisions.md` for the
-ledger, `docs/platform.md` for what the platform is measured to do, and
+ledger, `docs/platform.md` for what the platform is measured to do,
+`docs/authoring.md` for how to write markup a Surface can draw, and
 `docs/focus.md` for the focus and spatial-navigation contract.
 
 ## Development

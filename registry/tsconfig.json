@@ -1,0 +1,16 @@
+{
+  // Registry packs are vendorable SCENE code, not library code: a consumer
+  // copies them into an app and compiles them with the app's dialect. So
+  // they typecheck under the lab's config, not the kernel's — dropping
+  // noUncheckedIndexedAccess exactly as apps/lab does.
+  //
+  // Without this program the packs escape tsc entirely: the root config
+  // covers packages/*/src, tests and instruments, and apps/lab covers its
+  // own src. Byte-identity to a typechecked twin is the weld's job, not a
+  // substitute for compiling the file a consumer actually copies.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["."]
+}

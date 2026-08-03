@@ -34,8 +34,9 @@ export default function App() {
   const [scene, setScene] = useState<SceneId>('workspace')
 
   // Console story: the kernel stamps nothing on `window`, so the app hangs
-  // the paint ledger where devtools probes expect it (the runbook's
-  // `__anamorph.stats()`). This is a consumer choice, not library behavior.
+  // the paint ledger where devtools probes can reach it, as
+  // `__anamorph.stats()`. This is a consumer choice, not library behavior
+  // — the seam it reads is `paintStats()` (decisions.md #7).
   useEffect(() => {
     ;(window as unknown as { __anamorph?: unknown }).__anamorph = {
       stats: paintStats,

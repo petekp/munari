@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p apps/lab",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p apps/lab && tsc --noEmit -p registry",
     "lint": "oxlint . --deny-warnings",
     "build": "npm run build -w anamorph",
     "gate:idle-zero": "node instruments/idle-zero/run.mjs",

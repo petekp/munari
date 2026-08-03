@@ -51,7 +51,10 @@ changing a law means changing its contract in the same commit.
   can see and feel it.
 - **Browser evidence beats reasoning.** Numbers from a probe outrank
   any argument, including the ones in these documents. What the
-  platform actually does, and how it was measured, is `docs/platform.md`.
+  platform actually does, and how it was measured, is `docs/platform.md`;
+  what that obliges anyone authoring content for a Surface is
+  `docs/authoring.md` (content root sizes itself, no opacity/transform on
+  that root, no `mask-image` in the subtree, hover/active twins).
 
 ## Verifying changes
 
