@@ -1,4 +1,4 @@
-// CONFORMANCE CONTRACT — transfer (typechecked, not yet run)
+// CONFORMANCE — transfer (flipped 2026-08-02)
 // Ported from three-ui@362c5a1 src/lib/motionSamples.test.ts (archive#17)
 //
 // The numbers below are not invented: they are the values Chrome 151 returned
@@ -6,40 +6,7 @@
 // parked Surface subtree (spike, 2026-07-31). Pinning them here means a future
 // refactor of the conductor has to keep agreeing with the browser.
 import { describe, expect, it } from 'vitest'
-
-// ---- CONTRACT HOLES ------------------------------------------------
-// decomposeMatrix/sampleAt/isStatic signatures and the MotionSample type
-// copied verbatim from three-ui/src/lib/motionSamples.ts. MotionValue is
-// copied too — the origin test never names it directly (only infers it
-// through sampleAt's return), but a typed hole has to name its return type.
-
-/** Copied verbatim from three-ui/src/lib/motionSamples.ts. */
-interface MotionSample {
-  /** Normalized progress along the animation, 0..1. */
-  t: number
-  opacity: number
-  /** Uniform scale factor (CSS `scale()` — x and y are averaged). */
-  scale: number
-  /** Translation in CSS pixels, DOM orientation (y grows downward). */
-  x: number
-  y: number
-}
-
-/** Copied verbatim from three-ui/src/lib/motionSamples.ts. */
-interface MotionValue {
-  opacity: number
-  scale: number
-  x: number
-  y: number
-}
-
-declare function decomposeMatrix(transform: string): Omit<MotionSample, 't' | 'opacity'>
-declare function sampleAt(samples: readonly MotionSample[], p: number): MotionValue
-// epsilon defaults to 1e-3 in the oracle; declare signatures can't carry
-// default expressions, so it becomes optional here (unexercised either way
-// — every ported call site below passes a single argument).
-declare function isStatic(samples: readonly MotionSample[], epsilon?: number): boolean
-// ----------------------------------------------------------------------
+import { decomposeMatrix, isStatic, sampleAt, type MotionSample } from '@anamorph/core'
 
 describe('decomposeMatrix', () => {
   it('reads scale and translate out of a 2D matrix', () => {

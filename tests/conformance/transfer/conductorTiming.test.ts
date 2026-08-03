@@ -1,4 +1,4 @@
-// CONFORMANCE CONTRACT — transfer (typechecked, not yet run)
+// CONFORMANCE — transfer (flipped 2026-08-02)
 // New contract (owed by seed manifest): the two load-bearing conductor timing subtleties (archive#17)
 //
 // useAnimationConductor seizes a CSS animation on `animationstart`, scrubs
@@ -36,61 +36,15 @@
 // popover flash back to fully opaque on its last visible frame, because
 // REST *is* opaque.
 import { describe, expect, it } from 'vitest'
-
-// ---- CONTRACT HOLES ------------------------------------------------
-
-/** useAnimationConductor.ts line 59. */
-declare const END_EPSILON_MS: number
-
-/**
- * Pure extraction of line 127's `Math.max(0, durationMs - END_EPSILON_MS)`.
- * Not exported by the oracle — inlined in the closure that builds
- * `samples` — named here because the flip needs something to import.
- */
-declare function conductorScrubEnd(durationMs: number): number
-
-/** Copied from three-ui/src/lib/motionSamples.ts; duplicated locally
- * rather than imported from the sibling motionSamples contract so this
- * file stays independently flip-able (decisions.md #2). */
-interface MotionValue {
-  opacity: number
-  scale: number
-  x: number
-  y: number
-}
-
-/** useAnimationConductor.ts line 41 — the identity pose a mesh wears when
- * nothing has ever flown. */
-declare const CONDUCTOR_REST: MotionValue
-
-/**
- * Mirrors the two refs the hook closes over (lines 99-100). `flightActive`
- * stands in for `flightRef.current`'s truthiness — only whether a flight
- * is being driven matters here, never its contents — and `lastValue`
- * stands in for `lastValueRef.current`.
- */
-interface ConductorPoseState {
-  flightActive: boolean
-  lastValue: MotionValue
-}
-
-/**
- * One frame of an in-progress flight: the sample-and-remember half of the
- * `useFrame` callback (lines 181-182). Ticking only ever happens while a
- * flight is active — the callback returns early at line 177 otherwise —
- * so the result always carries `flightActive: true`.
- */
-declare function conductorTick(state: ConductorPoseState, sampledValue: MotionValue): ConductorPoseState
-
-/**
- * The `animationcancel` handler in full, guard included (lines 159-163).
- * `null` models the early return at line 160 — no flight, no call to
- * `apply`, no pose reported. A non-null result is exactly
- * `state.lastValue`, unconditionally: never `CONDUCTOR_REST`, never
- * either endpoint of whatever curve was in flight.
- */
-declare function conductorCancel(state: ConductorPoseState): MotionValue | null
-// ----------------------------------------------------------------------
+import {
+  CONDUCTOR_REST,
+  END_EPSILON_MS,
+  conductorCancel,
+  conductorScrubEnd,
+  conductorTick,
+  type ConductorPoseState,
+  type MotionValue,
+} from '@anamorph/core'
 
 describe('END_EPSILON_MS / conductorScrubEnd', () => {
   it('pins END_EPSILON_MS to the value the oracle measured', () => {

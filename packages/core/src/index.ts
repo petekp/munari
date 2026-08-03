@@ -76,3 +76,27 @@ export {
   type GraceTrackerOptions,
   type Pt,
 } from './door/hoverGrace'
+
+// transfer — the handoff (archive#17, #52–#54)
+export {
+  decomposeMatrix,
+  sampleAt,
+  isStatic,
+  type MotionSample,
+  type MotionValue,
+} from './transfer/motionSamples'
+export {
+  END_EPSILON_MS,
+  conductorScrubEnd,
+  CONDUCTOR_REST,
+  conductorTick,
+  conductorCancel,
+  type ConductorPoseState,
+} from './transfer/conductorTiming'
+export {
+  DENSITY_RISE_FACTOR,
+  DENSITY_FALL_FACTOR,
+  densityScheduleStep,
+  densitySupply,
+  type DensityScheduleInput,
+} from './transfer/densitySchedule'
