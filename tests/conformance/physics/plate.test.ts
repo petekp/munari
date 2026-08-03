@@ -1,111 +1,33 @@
-// CONFORMANCE CONTRACT — physics (typechecked, not yet run)
+// CONFORMANCE — physics (flipped 2026-08-02)
 // Ported from three-ui@362c5a1 app/scenes/lab014Plate.test.ts (minus the shadow-quad slice) (archive#45, archive#49, archive#59, archive#60, archive#61, archive#62)
-import { describe, expect, it } from 'vitest'
-import * as THREE from 'three'
-
-// ---- CONTRACT HOLES — surface from three-ui@362c5a1 app/scenes/lab014Plate.ts
 //
 // makeShadowFrame, shadowQuadFrame, and their ShadowFrame return type are
-// deliberately NOT holed here: the describe block that exercises them
+// deliberately not imported here: the describe block that exercises them
 // ('shadow quad frame — the mapping never lies') is excluded from this port
-// by design — it belongs to tests/conformance/chrome/shadowQuadFrame.contract.ts
-// (README.md inventory; archive#56). Every other export the test file
-// imports is holed below.
-
-/** A thin rectangular plate in the body's xy plane, facing +z. */
-interface Plate {
-  p: THREE.Vector3
-  v: THREE.Vector3
-  q: THREE.Quaternion
-  w: THREE.Vector3
-  m: number
-  invI: THREE.Vector3
-}
-
-/**
- * How a hand holds a card. The lever (ks/kd) is real physics and pays the
- * inertia tensor; the finger servo (wUp/cUp) is an angular-acceleration
- * gain applied directly, in different units, and never touches inertia.
- */
-interface Grip {
-  ks: number
-  kd: number
-  grip: number
-  wUp: number
-  cUp: number
-}
-
-/** Smoothed bend-follower state, one per flight: amplitude + unit bow axis. */
-interface AeroFollow {
-  amt: number
-  dirX: number
-  dirY: number
-}
-
-interface CrumplePhase {
-  /** 0 → 1 vertex-morph progress. EXACTLY 0 through the whole rise. */
-  crush: number
-  /** Gravity on? Only once the sheet IS a wad — and never while it is held. */
-  falling: boolean
-}
-
-declare const HAND: Grip
-/** Seconds: crush begins only after the handoff window has fully passed. */
-declare const CRUMPLE_RISE_T: number
-/** Seconds: the sheet is a wad. Gravity MAY switch on from here — see held. */
-declare const CRUMPLE_CRUSH_T: number
-/** px/s of throw per rad/s of tumble — how much spin a toss picks up. */
-declare const TOSS_SPIN_V0: number
-/** rad/s cap — a wad is paper, not a fastball. */
-declare const TOSS_SPIN_MAX: number
-
-declare function makePlate(w: number, h: number, m?: number): Plate
-declare function stepHeld(
-  plate: Plate,
-  dt: number,
-  target: THREE.Vector3,
-  hold: THREE.Vector3,
-  faceTo: THREE.Quaternion,
-  handVel?: THREE.Vector3,
-  g?: Grip,
-): void
-declare function stepFree(
-  plate: Plate,
-  dt: number,
-  target: THREE.Vector3,
-  faceTo: THREE.Quaternion,
-  ks?: number,
-  kd?: number,
-  wUp?: number,
-  cUp?: number,
-): void
-declare function atRest(
-  plate: Plate,
-  target: THREE.Vector3,
-  posEps?: number,
-  velEps?: number,
-): boolean
-declare function aeroAmplitude(speed: number): number
-declare function aeroGate(speed: number): number
-declare function aeroReach(
-  dirX: number,
-  dirY: number,
-  w: number,
-  h: number,
-  grabX: number,
-  grabY: number,
-): number
-declare function aeroFollowStep(
-  sm: AeroFollow,
-  vx: number,
-  vy: number,
-  dt: number,
-  held: boolean,
-): number
-declare function crumplePhase(t: number, held?: boolean): CrumplePhase
-declare function wadOffscreen(x: number, y: number, r: number, vw: number, vh: number): boolean
-declare function tossSpin(vx: number, vy: number, out: THREE.Vector3): THREE.Vector3
-declare function wadShrink(crush: number): number
+// by design — it belongs to tests/conformance/chrome/shadowQuadFrame.test.ts
+// (README.md inventory; archive#56).
+import { describe, expect, it } from 'vitest'
+import * as THREE from 'three'
+import {
+  type AeroFollow,
+  HAND,
+  CRUMPLE_RISE_T,
+  CRUMPLE_CRUSH_T,
+  TOSS_SPIN_V0,
+  TOSS_SPIN_MAX,
+  makePlate,
+  stepHeld,
+  stepFree,
+  atRest,
+  aeroAmplitude,
+  aeroGate,
+  aeroReach,
+  aeroFollowStep,
+  crumplePhase,
+  wadOffscreen,
+  tossSpin,
+  wadShrink,
+} from '@anamorph/core'
 
 const DT = 1 / 120
 const FLAT = new THREE.Quaternion()

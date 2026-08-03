@@ -1,27 +1,19 @@
-// CONFORMANCE CONTRACT — physics (typechecked, not yet run)
+// CONFORMANCE — physics (flipped 2026-08-02)
 // Ported from three-ui@362c5a1 src/lib/physics1D.test.ts (archive#2)
 import { describe, expect, it } from 'vitest'
-
-// ---- CONTRACT HOLES — surface from three-ui@362c5a1 src/lib/physics1D.ts
-
-/** The generalized coordinate: an angle for rotary controls, travel for linear ones. */
-interface Body1D {
-  q: number
-  v: number
-}
-
-/** Acceleration as a function of state. Compose by summation. */
-type Field = (q: number, v: number) => number
-
-declare function composeFields(...fields: Field[]): Field
-declare function damping(c: number): Field
-declare function detentField(n: number, k: number): Field
-declare function stopsField(stops: number[], k: number): Field
-declare function overCenterField(k: number, span: number): Field
-declare function endStops(min: number, max: number, k: number): Field
-declare function step(body: Body1D, field: Field, dt: number, substeps?: number): void
-declare function flipImpulse(field: Field, span: number, margin?: number): number
-declare function hopImpulse(field: Field, wellSpacing: number, margin?: number): number
+import {
+  type Body1D,
+  type Field,
+  composeFields,
+  damping,
+  detentField,
+  stopsField,
+  overCenterField,
+  endStops,
+  step,
+  flipImpulse,
+  hopImpulse,
+} from '@anamorph/core'
 
 // The claim under test: every control feel in the kit — dial detents, switch
 // snap, slider stops and travel bounds — is the SAME tiny integrator run over

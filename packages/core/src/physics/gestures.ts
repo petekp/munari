@@ -1,0 +1,209 @@
+// The window-level half of the gesture: the three listeners that read the
+// REAL pointer while a card is in flight (archive#48, #50, #61).
+//
+// Extracted so this seam can be tested as DOM: these handlers live on
+// `window`, and `window` is a busy place in this codebase — the surface
+// pointer protocol (decisions #19/#20) retells events into parked
+// subtrees, and those subtrees bubble to the same window. What arrives here
+// is therefore a MIXTURE of the user's hand and the library's forgeries,
+// and which one a listener wants depends on which side of the glass it
+// lives on. This one lives on the page side: it is the hand, and only the
+// hand.
+
+import type { QuatReadonly } from '../math/quat'
+import type { Vec3Like, Vec3Readonly } from '../math/vec3'
+import { tossSpin } from './plate'
+
+/**
+ * The mutable-vector vocabulary this file's caller-owned fields need. A
+ * `THREE.Vector3` satisfies it for free — three.js's own `Vector3Like`/
+ * `QuaternionLike` parameter types are already this kernel's
+ * `Vec3Readonly`/`QuatReadonly` shape (decisions.md #4) — but these fields
+ * are never ALLOCATED by `attachLab014Gestures`; they arrive on the flight
+ * the caller constructed, so they can't be typed as this kernel's own
+ * concrete `Vec3`. `clone`/`length` are for the CALLER's own reads (a
+ * dropped card's grab point, `spin.length()` after a dead-drop toss);
+ * `copy`/`add`/`applyQuaternion` are the float-anchor chain this file
+ * performs itself.
+ */
+interface Vec3Chain extends Vec3Like {
+  clone(): Vec3Chain
+  length(): number
+  copy(v: Vec3Readonly): Vec3Chain
+  add(v: Vec3Readonly): Vec3Chain
+  applyQuaternion(q: QuatReadonly): Vec3Chain
+}
+
+/** The slice of `Flight` the window gesture actually touches. */
+export interface GestureFlight {
+  id: string
+  mode: 'held' | 'float' | 'home' | 'crumple'
+  px: number
+  py: number
+  downAt: number
+  downX: number
+  downY: number
+  floated: boolean
+  /** The ✕ is still pressed: the forming ball is in the hand. */
+  crumpleHeld: boolean
+  /**
+   * The hand has thrown it. Set at release, never cleared: the driver's
+   * rise steer is for the never-held keyboard delete only — a released
+   * ball is ballistic from the instant the hand opens, even mid-rise
+   * (the rise spring's damping was measured eating a 9148 px/s flick
+   * down to a ~450 px drift).
+   */
+  tossed: boolean
+  /** The wad's tumble — written here at release, read by the driver. */
+  spin: Vec3Chain
+  anchor: Vec3Chain
+  anchorScroll: number
+  hold: Vec3Chain
+  handVel: Vec3Readonly
+  plate: { p: Vec3Readonly; v: Vec3Chain; q: QuatReadonly }
+}
+
+export interface GestureDeps<Col> {
+  flight: { current: GestureFlight | null }
+  dropTarget: (x: number, y: number, id: string) => { col: Col; index: number } | null
+  moveTo: (col: Col, index: number, id: string) => void
+  snapshot: () => void
+  scrollTop: () => number
+  /**
+   * Carry a freshly captured float anchor up to the lift plane, screen
+   * position preserved (`mapping/camera.ts`'s `carryToPlane` with the lab's
+   * camera). A tap releases mid-rise, and an anchor left below the lift
+   * plane hangs the card where its pinned texture is minified forever.
+   */
+  toLiftPlane: (a: Vec3Chain) => void
+}
+
+/**
+ * Attach the flight gesture to `window`; returns the detach.
+ *
+ * Every pointer handler begins with an `isTrusted` check, and it is the whole
+ * reason this file exists. The surface protocol dispatches synthetic pointer
+ * events into a card's parked subtree — hover retold at PARKED-LOCAL
+ * coordinates (the host is fixed at page (0,0), so "local" IS "near the
+ * screen's top-left corner"), and on exit a multi-frame departure burst at
+ * (−16, −16) (`AWAY_MARGIN_PX`, decisions #19). Those events bubble to window
+ * BY DESIGN — Radix listens for them on document — and a drag that mistakes
+ * them for the hand flies the card hard toward the top-left of the screen.
+ * When the burst is the last thing to fire (cross the card's edge, then hold
+ * the mouse still), the forged coordinates are never corrected and the card
+ * STAYS there. Measured: one short drag put 32 forged moves on window.
+ *
+ * The user's hand is the only pointer with `isTrusted: true`; everything the
+ * library retells is constructed, and constructed events cannot lie about it.
+ */
+export function attachLab014Gestures<Col>({
+  flight,
+  dropTarget,
+  moveTo,
+  snapshot,
+  scrollTop,
+  toLiftPlane,
+}: GestureDeps<Col>): () => void {
+  const onMove = (e: PointerEvent) => {
+    if (!e.isTrusted) return
+    const f = flight.current
+    if (!f) return
+    f.px = e.clientX
+    f.py = e.clientY
+    if (f.mode !== 'held') return
+
+    const t = dropTarget(e.clientX, e.clientY, f.id)
+    if (t) {
+      snapshot()
+      moveTo(t.col, t.index, f.id)
+    }
+  }
+
+  const onUp = (e: PointerEvent) => {
+    if (!e.isTrusted) return
+    const f = flight.current
+    if (!f) return
+
+    if (f.mode === 'crumple') {
+      // The hand opens; the ball leaves it. NOT a mode change — the crumple
+      // owns the flight until the wad exits the viewport — just the same
+      // velocity handoff a throw home gets, plus the spin a thrown ball
+      // picks up from its own speed (topspin, axis ⊥ throw). A plain click
+      // arrives here too, with ~zero velocity: the "auto-fall" is nothing
+      // but the degenerate toss, so it is not a code path. Zero speed also
+      // means zero lawful topspin, and a wad falling without any rotation
+      // reads as a sprite — that one case rolls a lazy random tumble.
+      if (!f.crumpleHeld) return
+      f.crumpleHeld = false
+      f.tossed = true
+      f.plate.v.add(f.handVel)
+      tossSpin(f.plate.v.x, f.plate.v.y, f.spin)
+      f.spin.z += (Math.random() - 0.5) * 3
+      if (f.spin.length() < 0.6) {
+        f.spin.set(
+          (Math.random() - 0.5) * 2.0,
+          (Math.random() - 0.5) * 2.0,
+          (Math.random() - 0.5) * 5.0,
+        )
+      }
+      return
+    }
+
+    if (f.mode !== 'held') return
+
+    // A tap is a gesture, a drag is a different gesture, and the only thing
+    // that separates them is that a tap did not go anywhere. 6 px is the
+    // usual slop for "the hand did not mean to move"; 320 ms is long enough
+    // that a slow, deliberate pick-up still counts.
+    const moved = Math.hypot(f.px - f.downX, f.py - f.downY)
+    const tap = moved < 6 && performance.now() - f.downAt < 320
+    if (tap && !f.floated) {
+      f.floated = true
+      f.mode = 'float'
+      // Hang it exactly where the fingers were, not where the centre is —
+      // otherwise a card tapped by its corner jumps half its width sideways
+      // at the moment of release. "Where the fingers were" is a SCREEN
+      // place, though, not a world one: the tap interrupted the rise partway,
+      // and an anchor left at that height hangs the card below the plane its
+      // texture is pinned for — texels squeezed into fewer pixels, a card
+      // that never comes into focus. The carry finishes the climb without
+      // moving the anchor's screen position.
+      f.anchor.copy(f.hold).applyQuaternion(f.plate.q).add(f.plate.p)
+      toLiftPlane(f.anchor)
+      f.anchorScroll = scrollTop()
+      return
+    }
+
+    f.mode = 'home'
+    // Hand the swing over as real velocity. It is already world px/s on
+    // the plane the card was flying at, because that is what the damper
+    // needed it to be — so there is no conversion to get wrong and no
+    // screen-y-is-down sign to flip.
+    f.plate.v.add(f.handVel)
+  }
+
+  // Escape always puts it back. A floating card is a modeless state and
+  // modeless states need an exit that does not require aim. (Keyboard is not
+  // guarded: the library forges no keyboard — typing through a surface is
+  // real focus and real keys, decisions #24.) The one exception is a card
+  // mid-crumple: "put it back" needs a back, and the board is about to
+  // forget the slot — a delete is irreversible from the moment the crush
+  // begins, by every input.
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return
+    const f = flight.current
+    if (!f || f.mode === 'home' || f.mode === 'crumple') return
+    f.mode = 'home'
+  }
+
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
+  window.addEventListener('pointercancel', onUp)
+  window.addEventListener('keydown', onKey)
+  return () => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    window.removeEventListener('pointercancel', onUp)
+    window.removeEventListener('keydown', onKey)
+  }
+}

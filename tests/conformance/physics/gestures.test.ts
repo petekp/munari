@@ -1,4 +1,4 @@
-// CONFORMANCE CONTRACT — physics (typechecked, not yet run)
+// CONFORMANCE — physics (flipped 2026-08-02)
 // Ported from three-ui@362c5a1 app/scenes/lab014Gestures.test.ts (archive#48, archive#50, archive#61)
 // @vitest-environment happy-dom
 //
@@ -18,58 +18,13 @@
 
 import { afterEach, describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-
-// ---- CONTRACT HOLES
-
-// from three-ui@362c5a1 app/scenes/lab014Camera.ts:
-declare function cameraDistance(viewportHeight: number, fovDeg: number): number
-declare function carryToPlane(p: THREE.Vector3, camZ: number, z: number): THREE.Vector3
-declare function planeToScreen(
-  p: THREE.Vector3,
-  viewportWidth: number,
-  viewportHeight: number,
-  camZ: number,
-): { x: number; y: number }
-
-// from three-ui@362c5a1 app/scenes/lab014Gestures.ts:
-
-/** The slice of `Flight` the window gesture actually touches. */
-interface GestureFlight {
-  id: string
-  mode: 'held' | 'float' | 'home' | 'crumple'
-  px: number
-  py: number
-  downAt: number
-  downX: number
-  downY: number
-  floated: boolean
-  /** The ✕ is still pressed: the forming ball is in the hand. */
-  crumpleHeld: boolean
-  /**
-   * The hand has thrown it. Set at release, never cleared: the driver's
-   * rise steer is for the never-held keyboard delete only — a released
-   * ball is ballistic from the instant the hand opens, even mid-rise.
-   */
-  tossed: boolean
-  /** The wad's tumble — written here at release, read by the driver. */
-  spin: THREE.Vector3
-  anchor: THREE.Vector3
-  anchorScroll: number
-  hold: THREE.Vector3
-  handVel: THREE.Vector3
-  plate: { p: THREE.Vector3; v: THREE.Vector3; q: THREE.Quaternion }
-}
-
-interface GestureDeps<Col> {
-  flight: { current: GestureFlight | null }
-  dropTarget: (x: number, y: number, id: string) => { col: Col; index: number } | null
-  moveTo: (col: Col, index: number, id: string) => void
-  snapshot: () => void
-  scrollTop: () => number
-  toLiftPlane: (a: THREE.Vector3) => void
-}
-
-declare function attachLab014Gestures<Col>(deps: GestureDeps<Col>): () => void
+import {
+  cameraDistance,
+  carryToPlane,
+  planeToScreen,
+  type GestureFlight,
+  attachLab014Gestures,
+} from '@anamorph/core'
 
 // The lab's calibration at the reference viewport — the tests hand the
 // gesture the same lift-plane carry the Board does.

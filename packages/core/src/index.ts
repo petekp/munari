@@ -120,3 +120,48 @@ export {
   type ShadowFrame,
   type ShadowFrameLike,
 } from './chrome/shadowQuadFrame'
+
+export { Quat, type QuatReadonly } from './math/quat'
+
+// physics — the kit (archive#2, #45, #49, #59–#62)
+export {
+  type Body1D,
+  type Field,
+  composeFields,
+  damping,
+  detentField,
+  stopsField,
+  overCenterField,
+  endStops,
+  step,
+  flipImpulse,
+  hopImpulse,
+} from './physics/physics1D'
+export {
+  type Plate,
+  type Grip,
+  type AeroFollow,
+  type CrumplePhase,
+  HAND,
+  CRUMPLE_RISE_T,
+  CRUMPLE_CRUSH_T,
+  TOSS_SPIN_V0,
+  TOSS_SPIN_MAX,
+  makePlate,
+  stepHeld,
+  stepFree,
+  atRest,
+  aeroAmplitude,
+  aeroGate,
+  aeroReach,
+  aeroFollowStep,
+  crumplePhase,
+  wadOffscreen,
+  tossSpin,
+  wadShrink,
+} from './physics/plate'
+export {
+  type GestureFlight,
+  type GestureDeps,
+  attachLab014Gestures,
+} from './physics/gestures'

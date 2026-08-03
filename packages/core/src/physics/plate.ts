@@ -1,0 +1,573 @@
+// A card held in a hand, as a rigid thin plate (archive#45, #49, #59, #60,
+// #61, #62).
+//
+// Everything in this file is in CSS PIXELS and SECONDS — the calibration
+// that makes a card's rect readable straight off `getBoundingClientRect`
+// and usable as a world pose with no conversion anywhere. `ks = 400` really
+// is 400 px/s² per px of stretch, and the inertia of a 320×180 card really
+// is the inertia of a 320×180 plate.
+//
+// Why a rigid body rather than the 1-DOF integrator in `physics1D`: a card
+// picked up by one corner has to SWING, and swing is the lever arm between
+// where the hand is and where the mass is. That is a torque, and a torque
+// needs an orientation to act on. The whole feel of the lab is in the two
+// lines that turn `r × F` into angular acceleration.
+//
+// Core has no `three`, so orientation and position travel as this kernel's
+// own `Vec3`/`Quat` (decisions.md #4) — which, per three.js's own
+// `Vector3Like`/`QuaternionLike` parameter types, a real `THREE.Vector3` /
+// `THREE.Quaternion` satisfies for free in either direction.
+
+import { Quat, type QuatReadonly } from '../math/quat'
+import { Vec3, type Vec3Like, type Vec3Readonly } from '../math/vec3'
+
+/** A thin rectangular plate in the body's xy plane, facing +z. */
+export interface Plate {
+  /** Centre of mass, world px. */
+  p: Vec3
+  /** Linear velocity, px/s. */
+  v: Vec3
+  /** Orientation. Identity = facing the camera, unrotated. */
+  q: Quat
+  /** Angular velocity, WORLD frame, rad/s. */
+  w: Vec3
+  /** Mass. 1 for every card — the interesting ratios are all rotational. */
+  m: number
+  /**
+   * Inverse principal moments of inertia, BODY frame, as a diagonal.
+   * A thin plate of width a and height b: Ixx = m·b²/12 (roll about the
+   * long axis is cheap), Iyy = m·a²/12, Izz = m·(a²+b²)/12. Wide cards
+   * therefore resist yaw more than pitch, which is why a wide card grabbed
+   * at a top corner tips toward you before it swings sideways — it is not
+   * a tuned behaviour, it is the aspect ratio.
+   */
+  invI: Vec3
+}
+
+export function makePlate(w: number, h: number, m = 1): Plate {
+  const ixx = (m * h * h) / 12
+  const iyy = (m * w * w) / 12
+  const izz = (m * (w * w + h * h)) / 12
+  return {
+    p: new Vec3(),
+    v: new Vec3(),
+    q: new Quat(),
+    w: new Vec3(),
+    m,
+    invI: new Vec3().set(1 / ixx, 1 / iyy, 1 / izz),
+  }
+}
+
+/**
+ * How a hand holds a card.
+ *
+ * The two rotational channels are specified in DIFFERENT units, on purpose,
+ * and getting that wrong was the first bug this file had. The lever is
+ * physics: a torque, divided by a real inertia, so a card twice as wide
+ * really does swing four times as lazily. The fingers are a SERVO: they
+ * are specified as an angular frequency and applied as angular acceleration
+ * directly, never touching the inertia tensor — because a hand does not
+ * grip a big card more limply than a small one, and any gain expressed as a
+ * torque would say that it does. (Expressed as one, it did: at px units a
+ * 320-wide plate has I ≈ 8533, so a "62" that felt right in the abstract was
+ * four orders of magnitude too small and a tilted card took eight seconds to
+ * lie down.)
+ */
+export interface Grip {
+  /** Positional spring at the grab point, px/s² per px. */
+  ks: number
+  /** Its damper. Critical for m = 1 is 2√ks. */
+  kd: number
+  /**
+   * How much of the lever torque the hand actually lets through. 1 = the
+   * card pivots freely on a pin at the grab point; 0 = welded to the hand.
+   * Fingers are somewhere in between and that is the whole knob.
+   */
+  grip: number
+  /** Finger servo stiffness, ω₀² in rad/s². */
+  wUp: number
+  /** Finger servo damping, 2ζω₀ in 1/s. ζ = 1 is 2√wUp. */
+  cUp: number
+}
+
+// `ks` is the COMPLIANCE OF THE GRIP and nothing else. Once the damper is
+// connected to the hand the only steady-state displacement left is the
+// honest one — `m·a / ks`, the give in your fingers when you accelerate
+// something with mass — so this number alone decides how firmly the card is
+// anchored. It does NOT decide how much the card swings: the lever torque is
+// `grip · (r × F)` and at any sustained acceleration `F ≈ m·a` regardless of
+// how stiff the spring is. Stiffening it therefore buys anchoring and costs
+// nothing in character, which is exactly the trade this lab wanted and could
+// not have while a phantom drag force was setting `F`.
+//
+// ω₀ = √1400 = 37 rad/s, and semi-implicit Euler is stable while ω₀·dt < 2 —
+// the driver clamps dt at 1/30, so the worst case is 1.25. `kd` is 2√ks: the
+// grip is critically damped, because a hand does not ring.
+export const HAND: Grip = { ks: 1400, kd: 75, grip: 0.3, wUp: 121, cUp: 22 }
+
+const ZERO = new Vec3()
+
+/**
+ * The physics timestep is NOT the frame timestep.
+ *
+ * An explicit integrator's stability limit is a statement about `ω·dt`, so
+ * leaving `dt` up to the display couples every gain in this file to whatever
+ * hardware happens to be running it: the same numbers that are serene at
+ * 120 Hz can walk themselves apart at 60, and the driver clamps a hitch at
+ * 1/30, which is worse still. Stiffening the grip to `ks = 1400` is what made
+ * that concrete — it diverged at 60 Hz on the first try, because the lever
+ * turns the grab point's damper into an angular damping rate of
+ * `grip · kd · |r|² / I`, and THAT is the term that runs out of headroom
+ * first, several times before the spring does.
+ *
+ * So the loop below fixes the timestep and lets the frame rate decide only
+ * how many of them to take. Gains are now chosen for feel and nothing else,
+ * which is the only reason they can be. Two substeps at 120 Hz, eight at the
+ * clamp; the body of one is about thirty flops.
+ */
+const MAX_H = 1 / 240
+
+function substep(dt: number, once: (h: number) => void) {
+  const n = Math.max(1, Math.ceil(dt / MAX_H))
+  const h = dt / n
+  for (let i = 0; i < n; i++) once(h)
+}
+
+const _r = new Vec3()
+const _f = new Vec3()
+const _t = new Vec3()
+const _pointVel = new Vec3()
+const _axis = new Vec3()
+const _a = new Vec3()
+const _ang = new Vec3()
+const _qe = new Quat()
+const _dq = new Quat()
+const _qi = new Quat()
+
+/**
+ * One frame of "a hand at `target` is holding the plate at body-local point
+ * `hold`". Returns nothing; mutates the plate.
+ *
+ * `faceTo` is the orientation the fingers want — normally identity (flat to
+ * the screen) but a caller may hand it the pointer's own tilt.
+ *
+ * `handVel` is how fast the hand itself is moving, and leaving it out is how
+ * this file spent its first day being wrong — see the damper below.
+ */
+export function stepHeld(
+  plate: Plate,
+  dt: number,
+  target: Vec3Readonly,
+  hold: Vec3Readonly,
+  faceTo: QuatReadonly,
+  handVel: Vec3Readonly = ZERO,
+  g: Grip = HAND,
+): void {
+  substep(dt, (h) => heldOnce(plate, h, target, hold, faceTo, handVel, g))
+}
+
+function heldOnce(
+  plate: Plate,
+  dt: number,
+  target: Vec3Readonly,
+  hold: Vec3Readonly,
+  faceTo: QuatReadonly,
+  handVel: Vec3Readonly,
+  g: Grip,
+) {
+  // Where the grab point actually IS right now: centre + the held corner
+  // rotated into the world.
+  _r.copy(hold).applyQuaternion(plate.q)
+  // Velocity of that material point = v + ω × r. Damping the POINT rather
+  // than the centre is what makes a swinging card lose its swing; damping
+  // only the centre leaves a card that oscillates about a hand that is
+  // standing still.
+  //
+  // …RELATIVE TO THE HAND. A damper is a connection between two things and
+  // it resists their relative motion; subtracting `handVel` is what says the
+  // other end of this one is attached to the hand rather than bolted to the
+  // floor. Without it the model is a card being dragged through treacle,
+  // and the consequence is not subtle: the treacle needs a standing force to
+  // overcome, the spring can only make force out of displacement, so the
+  // card flies a fixed distance BEHIND the cursor — `kd / ks` seconds' worth
+  // of travel, which at 41/420 is 98 ms, which at a normal drag speed is a
+  // hundred pixels. It also flies at a permanent tilt, because with a lever
+  // that phantom force is a phantom torque. Both scale with speed and both
+  // reverse when you turn around, which is why it read as the card wandering
+  // rather than as anything as legible as lag.
+  _pointVel.copy(plate.w).cross(_r).add(plate.v).sub(handVel)
+
+  _f.copy(target).sub(plate.p).sub(_r).multiplyScalar(g.ks)
+  _f.addScaledVector(_pointVel, -g.kd)
+
+  // Lever torque, throttled by the grip. This one is real physics and pays
+  // the inertia tensor.
+  _t.copy(_r).cross(_f).multiplyScalar(g.grip)
+
+  // Fingers also hold an ORIENTATION — a second-order servo on the full
+  // rotation error, applied as acceleration and never touching the inertia.
+  faceError(plate, faceTo)
+  _ang.copy(_axis).multiplyScalar(g.wUp).addScaledVector(plate.w, -g.cUp)
+
+  integrate(plate, dt, _f, _t, _ang)
+}
+
+/**
+ * Writes the rotation vector taking the plate to `faceTo` into `_axis`:
+ * direction = the axis, magnitude = the angle in radians.
+ *
+ * The first version of this crossed the two NORMALS, which is cheaper and
+ * wrong in a way that only shows up at rest: the cross product of two
+ * normals is blind to roll ABOUT the normal, so a card set down with a 6°
+ * in-plane twist stayed twisted forever — zero facing error, zero restoring
+ * term, a perfectly stable wrong answer. Fingers hold an orientation, not a
+ * direction, so the error has to be one too.
+ */
+function faceError(plate: Plate, faceTo: QuatReadonly) {
+  _qe.copy(faceTo).multiply(_qi.copy(plate.q).invert())
+  // q and −q are the same rotation; the one with w ≥ 0 is the short way
+  // round, and taking the other is how a servo talks itself into a 350°
+  // correction.
+  const sign = _qe.w < 0 ? -1 : 1
+  const s = Math.hypot(_qe.x, _qe.y, _qe.z)
+  if (s < 1e-9) {
+    _axis.set(0, 0, 0)
+    return
+  }
+  const angle = 2 * Math.atan2(s, Math.abs(_qe.w))
+  _axis.set(_qe.x, _qe.y, _qe.z).multiplyScalar((sign * angle) / s)
+}
+
+/**
+ * One frame of "the card is flying itself back to `target` and lying flat".
+ * Same machinery, no lever: a card in flight is not being held anywhere, so
+ * the spring acts at the centre of mass and cannot induce spin. Whatever
+ * spin it left the hand with just decays.
+ */
+export function stepFree(
+  plate: Plate,
+  dt: number,
+  target: Vec3Readonly,
+  faceTo: QuatReadonly,
+  ks = 300,
+  kd = 33,
+  wUp = 196,
+  cUp = 28,
+): void {
+  substep(dt, (h) => freeOnce(plate, h, target, faceTo, ks, kd, wUp, cUp))
+}
+
+function freeOnce(
+  plate: Plate,
+  dt: number,
+  target: Vec3Readonly,
+  faceTo: QuatReadonly,
+  ks: number,
+  kd: number,
+  wUp: number,
+  cUp: number,
+) {
+  _f.copy(target).sub(plate.p).multiplyScalar(ks).addScaledVector(plate.v, -kd)
+
+  faceError(plate, faceTo)
+  _ang.copy(_axis).multiplyScalar(wUp).addScaledVector(plate.w, -cUp)
+
+  _t.set(0, 0, 0)
+  integrate(plate, dt, _f, _t, _ang)
+}
+
+/**
+ * Semi-implicit Euler. Velocity first, then position from the NEW velocity —
+ * the same choice `physics1D` makes and for the same reason: it conserves
+ * energy where explicit Euler pumps it, so a stiff spring at 60 Hz stays
+ * stable instead of walking itself apart.
+ *
+ * The gyroscopic term ω × Iω is deliberately dropped. It is what makes a
+ * tossed book tumble about its intermediate axis, and it is genuinely lovely,
+ * but it is also an instability generator at UI timesteps and a card is not
+ * a book. Named, not forgotten.
+ */
+function integrate(
+  plate: Plate,
+  dt: number,
+  force: Vec3Readonly,
+  torque: Vec3Readonly,
+  angAcc: Vec3Readonly,
+) {
+  plate.v.addScaledVector(force, dt / plate.m)
+  plate.p.addScaledVector(plate.v, dt)
+
+  // Torque is world-frame; the inertia tensor is diagonal only in the BODY
+  // frame, so the angular acceleration has to make the round trip. `angAcc`
+  // skips it entirely — see the note on `Grip`.
+  _qi.copy(plate.q).invert()
+  _a.copy(torque).applyQuaternion(_qi)
+  _a.multiply(plate.invI)
+  _a.applyQuaternion(plate.q)
+  _a.add(angAcc)
+  plate.w.addScaledVector(_a, dt)
+
+  // q̇ = ½ ω ⊗ q for a world-frame ω.
+  _dq.set(plate.w.x * dt * 0.5, plate.w.y * dt * 0.5, plate.w.z * dt * 0.5, 0)
+  _dq.multiply(plate.q)
+  plate.q.set(plate.q.x + _dq.x, plate.q.y + _dq.y, plate.q.z + _dq.z, plate.q.w + _dq.w)
+  plate.q.normalize()
+}
+
+/** Has it stopped? Both channels, because a flat card can still be spinning. */
+export function atRest(
+  plate: Plate,
+  target: Vec3Readonly,
+  posEps = 0.6,
+  velEps = 8,
+): boolean {
+  return (
+    plate.p.distanceTo(target) < posEps &&
+    plate.v.length() < velEps &&
+    plate.w.length() < 0.25
+  )
+}
+
+// ── aero bend — the sheet against the air ────────────────────────────────
+//
+// Presentation only, like the gloss band: the plate stays rigid in the
+// physics and the BEND is a vertex-shader field driven by the plate's own
+// velocity. The two functions below are the JS side of that field's
+// contract, kept pure so the tests can hold them still.
+
+/**
+ * Bend amplitude (px of out-of-plane sag at the far edge) for a plate
+ * moving at `speed` px/s.
+ *
+ * Shape: a saturating square law with a HARD zero below 30 px/s. The
+ * saturation is paper — a hand can always move faster, the sheet cannot
+ * bend more. The hard gate is the handoff contract: the swap instants
+ * happen at rest, and "flat at rest" must be a property of the curve, not
+ * of how quickly some smoothing happened to decay. Between 30 and 90 px/s
+ * the gate ramps in so the first pixel of bend cannot pop.
+ *
+ * The numbers are set by MEASUREMENT, not eye (the first pair — 22 px cap,
+ * V0 900 — was "tuned by eye" and nobody could see it: every wire was
+ * live, the driver delivered 8–15 px at real drag speeds, and a head-on
+ * z-bow that size is a sub-2% perspective swell. Forcing the uniform to
+ * 60 px in the browser was instantly legible paper). The bow is TOWARD
+ * the camera, so head-on visibility comes from perspective swell plus the
+ * curvature shade, and both scale with amplitude: the cap must live where
+ * a brisk drag actually reaches it.
+ */
+export function aeroAmplitude(speed: number): number {
+  const AMP = 55 // px, the cap — a browser-forced 60 reads as paper; 22 read as nothing
+  const V0 = 650 // px/s, half-saturation — a comfortable drag reaches ~25 px
+  const gate = aeroGate(speed)
+  if (gate === 0) return 0
+  const s2 = speed * speed
+  return AMP * (s2 / (s2 + V0 * V0)) * gate
+}
+
+/**
+ * The hard-zero gate. It lives inside `aeroAmplitude` — the TARGET — and
+ * nowhere else. It was once also multiplied onto the rendered amplitude
+ * (to keep a decaying tail out of the swap frame; measured 0.45 px aboard
+ * at touchdown without it), but an instantaneous multiply on the OUTPUT
+ * turns every wiggle of speed through the 30–90 band into a visible strobe
+ * and every settle into a snap. `aeroFollowStep` now owns exactness
+ * instead: a fast gated release plus a sub-visible snap-to-zero.
+ */
+export function aeroGate(speed: number): number {
+  return Math.min(1, Math.max(0, (speed - 30) / 60))
+}
+
+/**
+ * Farthest |signed distance| of the card rect's corners from the grab
+ * point, measured along the (unit) motion direction. This is the `L` that
+ * normalizes the shader's bend parameter to t ∈ [−1, 1]: the support
+ * function of the rect (|dx|·w/2 + |dy|·h/2) plus the grab point's own
+ * offset along the direction — exact, not an estimate, so the far edge of
+ * the sheet always lands at |t| = 1 no matter where it is held.
+ */
+export function aeroReach(
+  dirX: number,
+  dirY: number,
+  w: number,
+  h: number,
+  grabX: number,
+  grabY: number,
+): number {
+  return (
+    (Math.abs(dirX) * w) / 2 +
+    (Math.abs(dirY) * h) / 2 +
+    Math.abs(dirX * grabX + dirY * grabY)
+  )
+}
+
+/**
+ * Smoothed state of the bend field between frames — one per flight. `amt`
+ * is the amplitude the shader is actually shown; `dirX/dirY` the unit bow
+ * axis. Plain fields, no vector class: the whole point of extracting this
+ * from the driver is that the tests can drive it dry.
+ */
+export interface AeroFollow {
+  amt: number
+  dirX: number
+  dirY: number
+}
+
+/**
+ * One driver frame of the bend follower: advance the smoothed bow axis and
+ * amplitude toward what `aeroAmplitude` wants for this speed, and return
+ * the amplitude to render — which is the smoothed value itself, nothing
+ * else. The first law multiplied it by the instantaneous gate on the way
+ * out, and that multiply was both reported symptoms: speed's frame-scale
+ * noise went straight to the screen (measured −25.75 px in ONE frame as a
+ * mid-drag pause crossed the gate band — the shade strobing Pete saw), and
+ * a settle's descent through the band compressed the whole relax into
+ * ~75 ms ending in a snap (the hitch). The gate now lives only inside the
+ * target; continuity is the smoother's alone.
+ *
+ * Time constants, one per phase of the paper: 60 ms attack (the sheet
+ * snaps against the air), 120 ms release while still moving (it relaxes
+ * out of it), and once the target is hard-zero, a fork on `held`: 90 ms
+ * under a hand (a pause mid-drag has no deadline — the swap cannot fire
+ * while the hand is down, so the relax gets to be butter) and 25 ms in
+ * free flight, because the settle DOES have a deadline: gate-close to the
+ * DOM swap was measured at ~116 ms, and the first gated law (one 70 ms
+ * constant) was measured swapping with 2.75 px of bend still aboard — a
+ * pop the old output-gate cliff had been hiding. 25 ms drains a measured
+ * ~12 px gate-close residue to the snap in ~92 ms, inside the deadline
+ * with margin, in exponentially shrinking steps.
+ * Exactness is a snap-to-zero below half a pixel — sub-visible, so the
+ * swap-frame theorem ("flat at rest is EXACTLY 0") survives without the
+ * cliff that used to enforce it.
+ */
+export function aeroFollowStep(
+  sm: AeroFollow,
+  vx: number,
+  vy: number,
+  dt: number,
+  held: boolean,
+): number {
+  const speed = Math.hypot(vx, vy)
+  if (speed > 40) {
+    const k = 1 - Math.exp(-dt / 0.05)
+    const dx = sm.dirX + (vx / speed - sm.dirX) * k
+    const dy = sm.dirY + (vy / speed - sm.dirY) * k
+    const n = Math.hypot(dx, dy) || 1
+    sm.dirX = dx / n
+    sm.dirY = dy / n
+  }
+  const target = aeroAmplitude(speed)
+  const tau = target > sm.amt ? 0.06 : target > 0 ? 0.12 : held ? 0.09 : 0.025
+  sm.amt += (target - sm.amt) * (1 - Math.exp(-dt / tau))
+  if (target === 0 && sm.amt < 0.5) sm.amt = 0
+  return sm.amt
+}
+
+// ── the crumple ──────────────────────────────────────────────────────────
+//
+// Deleting a card is the one gesture that gets to break the "indistinguishable
+// from DOM" contract on purpose — the card stops being a document element and
+// dies as matter. The CRUSH is pure time, so the tests can hold it still: the
+// driver advances one clock (crumpleT, seconds) and the morph is a function of
+// that clock. The EXIT is deliberately not on the clock at all — it is a
+// place. The wad is gone when it has fully left the viewport, and it may not
+// fade before that, because the user can see it; a wad that dimmed on a timer
+// was measured fading in plain view whenever the fall was slow. Between the
+// two sits the HAND: the ✕ is a press, not a click, and while the button is
+// down the forming ball is held — tracked by the same spring as a grabbed
+// card — so releasing it with speed is a THROW. A plain click is nothing
+// special: it is the same release with ~zero velocity, and the wad simply
+// drops. The rise remains the HANDOFF window (page copy hides on first
+// upload while the plate springs off the page); nothing may overlap it,
+// because the swap's pixel-copy guarantee holds only while the sheet is
+// still a flat, untouched card.
+
+/** Seconds: crush begins only after the handoff window has fully passed. */
+export const CRUMPLE_RISE_T = 0.18
+/** Seconds: the sheet is a wad. Gravity MAY switch on from here — see held. */
+export const CRUMPLE_CRUSH_T = 0.62
+
+const sstep = (x: number) => {
+  const t = Math.min(1, Math.max(0, x))
+  return t * t * (3 - 2 * t)
+}
+
+export interface CrumplePhase {
+  /** 0 → 1 vertex-morph progress. EXACTLY 0 through the whole rise. */
+  crush: number
+  /** Gravity on? Only once the sheet IS a wad — and never while it is held. */
+  falling: boolean
+}
+
+/**
+ * The crush, as a function of one clock — plus the one thing that can veto
+ * gravity: a hand. A held wad never falls (you are holding it), and a
+ * released sheet still waits for the crush to finish (a flat card dropping
+ * like a stone reads as a glitch). Both suppressions compose: release a
+ * half-crushed sheet with a flick and it flies on its own momentum, finishes
+ * balling up mid-air, and only then starts to drop.
+ */
+export function crumplePhase(t: number, held = false): CrumplePhase {
+  return {
+    crush: sstep((t - CRUMPLE_RISE_T) / (CRUMPLE_CRUSH_T - CRUMPLE_RISE_T)),
+    falling: !held && t >= CRUMPLE_CRUSH_T,
+  }
+}
+
+/**
+ * Has the wad fully left the viewport? Coordinates are viewport-centred
+ * (the lab's world x/y), `r` is the object's bounding radius — the caller
+ * inflates it with the shadow's reach and projects everything to screen
+ * scale, so this stays a pure rectangle test. Per-axis, because a viewport
+ * is a rectangle: outside means outside the left/right band OR the
+ * top/bottom band by more than the whole extent.
+ */
+export function wadOffscreen(
+  x: number,
+  y: number,
+  r: number,
+  vw: number,
+  vh: number,
+): boolean {
+  return Math.abs(x) - r > vw / 2 || Math.abs(y) - r > vh / 2
+}
+
+/** px/s of throw per rad/s of tumble — how much spin a toss picks up. */
+export const TOSS_SPIN_V0 = 220
+/** rad/s cap — a wad is paper, not a fastball. */
+export const TOSS_SPIN_MAX = 7
+
+/**
+ * The tumble a thrown wad leaves the hand with: TOPSPIN — the camera-facing
+ * side rolls in the throw direction, the way a ball tossed underhand rolls
+ * off the fingers. For throw direction d̂ in the screen plane that axis is
+ * ẑ × d̂ (check: ω × r_top = (ẑ×d̂)·rate × Rẑ = rate·R·d̂ — the top surface
+ * moves WITH the throw). Rate scales with speed and saturates. A dead drop
+ * (speed ≈ 0) gets exactly zero — the caller supplies the lazy random
+ * tumble for that case, because randomness has no business in a pure
+ * function the tests need to hold still.
+ *
+ * Generic out-param (mapping/camera.ts's convention): a caller's own vector
+ * type comes back out, never widened to this kernel's `Vec3`.
+ */
+export function tossSpin<V extends Vec3Like>(vx: number, vy: number, out: V): V {
+  const speed = Math.hypot(vx, vy)
+  if (speed < 1e-6) {
+    out.set(0, 0, 0)
+    return out
+  }
+  const rate = Math.min(speed / TOSS_SPIN_V0, TOSS_SPIN_MAX)
+  out.set((-vy / speed) * rate, (vx / speed) * rate, 0)
+  return out
+}
+
+/**
+ * The shadow's footprint scale while the sheet crushes. The shadow quad is
+ * driven from the plate's corners, but a wad no longer spans the plate —
+ * shrink the dimensions the corners are computed from, and the shadow
+ * contracts with the thing that casts it. 1 at crush 0 (identity — the
+ * rise still casts the card's own shadow), 0.16 at full crush (a wad is
+ * about a sixth of the sheet).
+ */
+export function wadShrink(crush: number): number {
+  return 1 - 0.84 * crush
+}
