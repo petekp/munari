@@ -6,11 +6,10 @@ import { Lab006, Lab006Hud } from './scenes/Lab006'
 import { Lab012 } from './scenes/Lab012'
 import { Lab014App } from './scenes/Lab014'
 
-// Three labs cross (decisions.md #3): 006 focus wall, 012 SDF glass,
-// 014 drag trilogy. Everything they render reaches the library through the
+// Three labs (decisions.md #3): 006 focus wall, 012 SDF glass, 014 drag
+// trilogy. Everything they render reaches the library through the
 // `anamorph` barrel — this app is the proof that the public surface is
-// sufficient, and the browser evidence that the port preserved behavior
-// (the oracle at three-ui@362c5a1 runs next door for A/B).
+// sufficient.
 
 type LabId = '006' | '012' | '014'
 const LABS = ['006', '012', '014'] as const

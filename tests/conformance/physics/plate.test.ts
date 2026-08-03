@@ -1,11 +1,7 @@
-// CONFORMANCE — physics (flipped 2026-08-02)
-// Ported from three-ui@362c5a1 app/scenes/lab014Plate.test.ts (minus the shadow-quad slice) (archive#45, archive#49, archive#59, archive#60, archive#61, archive#62)
-//
 // makeShadowFrame, shadowQuadFrame, and their ShadowFrame return type are
 // deliberately not imported here: the describe block that exercises them
-// ('shadow quad frame — the mapping never lies') is excluded from this port
-// by design — it belongs to tests/conformance/chrome/shadowQuadFrame.test.ts
-// (README.md inventory; archive#56).
+// ('shadow quad frame — the mapping never lies') belongs to
+// tests/conformance/chrome/shadowQuadFrame.test.ts.
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import {
@@ -281,11 +277,6 @@ describe('inertia', () => {
   })
 })
 
-// 'shadow quad frame — the mapping never lies' intentionally NOT ported here.
-// tests/conformance/chrome/shadowQuadFrame.contract.ts owns that slice
-// (README.md inventory; archive#56) — makeShadowFrame, shadowQuadFrame, and
-// the ShadowFrame type live in its CONTRACT HOLES, not this file's.
-
 describe('aero bend — flat at rest is a theorem, not a tuning', () => {
   it('a still card is EXACTLY flat, and stays flat through the gate band', () => {
     // The swap instants happen at rest. If the amplitude curve leaked even a
@@ -399,8 +390,8 @@ describe('aero follower — the bend is continuous; flat-at-rest stays exact', (
     const out = drive(sm, [...RAMP, ...HOLD, ...CRASH, ...REST], true)
     let worst = 0
     // Non-null asserted throughout: `out` is a plain number[] from .map, and
-    // this repo's noUncheckedIndexedAccess (the oracle has none) would
-    // otherwise widen every element read to `number | undefined`.
+    // this repo's noUncheckedIndexedAccess would otherwise widen every
+    // element read to `number | undefined`.
     for (let i = 1; i < out.length; i++) {
       worst = Math.max(worst, out[i - 1]! - out[i]!)
       // a visible bend may never be exactly 0 one frame later

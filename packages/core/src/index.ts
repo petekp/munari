@@ -1,9 +1,8 @@
 // The kernel's public surface. It grows one custody layer at a time —
 // mapping → paint → door → transfer → chrome → physics — and only after
-// the layer's conformance contract has landed (CLAUDE.md: contracts
-// first).
+// the layer's conformance contract has landed.
 
-// mapping — coordinate custody (archive#44, #6, #52/#53)
+// mapping — coordinate custody
 export {
   cameraDistance,
   planeScale,
@@ -22,8 +21,7 @@ export {
 } from './mapping/uvAnchor'
 export { Vec3, type Vec3Like, type Vec3Readonly, type SampleVec } from './math/vec3'
 
-// paint — custody + paint (archive#3, #8–#12, #22, #28, #35–#37;
-// texture contract = decisions.md #5)
+// paint — custody + paint (texture contract = decisions.md #5)
 export {
   DEFAULT_TIERS,
   selectLodTier,
@@ -56,7 +54,7 @@ export {
   type PolicyState,
 } from './paint/filterPolicy'
 
-// door — provenance + the pointer-exit protocol (archive#19, #20, #24, #26, #27, #29, #31, #32, #50, #51)
+// door — provenance + the pointer-exit protocol
 export { forge, isForgedEvent } from './door/forge'
 export {
   clearPointerState,
@@ -81,7 +79,7 @@ export {
   type Pt,
 } from './door/hoverGrace'
 
-// transfer — the handoff (archive#17, #52–#54)
+// transfer — the handoff
 export {
   decomposeMatrix,
   sampleAt,
@@ -107,7 +105,7 @@ export {
 
 export { Vec2, type Vec2Like, type Vec2Readonly } from './math/vec2'
 
-// chrome — measurement (archive#55, #56)
+// chrome — measurement
 export {
   parseBoxShadow,
   resolveRadii,
@@ -127,7 +125,7 @@ export {
 
 export { Quat, type QuatReadonly } from './math/quat'
 
-// physics — the kit (archive#2, #45, #49, #59–#62)
+// physics — the kit
 export {
   type Body1D,
   type Field,

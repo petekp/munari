@@ -1,8 +1,5 @@
-// CONFORMANCE — paint (landed 2026-08-03, with the lab app)
-// Ported from three-ui@362c5a1 src/lib/htmlInCanvas.ts registry (the seed
-// triage classifies `stats()` as a kernel seam — instruments.md) with one
-// deliberate divergence: no window global. The kernel exports `paintStats`;
-// where it hangs is the consumer's choice.
+// The kernel exports `paintStats` with no window global; where it
+// hangs is the consumer's choice.
 
 // @vitest-environment happy-dom
 //
@@ -10,10 +7,10 @@
 // position, occluding each other — per-source counters are the only way to
 // see whether the occluded ones keep painting (a source whose `paints`
 // stalls while siblings advance is starved). Two clauses carry the weight:
-// `[]` after a lifecycle is the canonical nothing-left-painting proof
-// (archive#60's "stats()=[] after" verification), and `paints` deltas are
-// the idle-zero gate's raw feed (archive#3). happy-dom has no compositor,
-// so the trial surface is stubbed and paints are driven by hand.
+// `[]` after a lifecycle is the canonical nothing-left-painting proof,
+// and `paints` deltas are the idle-zero gate's raw feed. happy-dom has
+// no compositor, so the trial surface is stubbed and paints are driven
+// by hand.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 

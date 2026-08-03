@@ -1,5 +1,3 @@
-// CONFORMANCE — physics (flipped 2026-08-02)
-// Ported from three-ui@362c5a1 app/scenes/lab014Gestures.test.ts (archive#48, archive#50, archive#61)
 // @vitest-environment happy-dom
 //
 // The window-level flight gesture vs the surface protocol's forgeries.

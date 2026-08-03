@@ -1,6 +1,3 @@
-// CONFORMANCE — mapping (flipped 2026-08-02)
-// Ported from three-ui@362c5a1 src/lib/uvAnchor.test.ts (archive#6)
-//
 // The contract under test: given a BufferGeometry and a (u, v) texture
 // coordinate, find the point ON the geometry's surface that the texture maps
 // to — position and normal, in local space, read from the LIVE attributes so
@@ -101,7 +98,7 @@ describe('UVAnchor on deforming geometry', () => {
   // so a CPU-displaced mesh carries its anchors with it.
   const displace = (geo: THREE.BufferGeometry, f: (x: number, y: number) => number) => {
     // Non-null: `attributes` is indexed by name (noUncheckedIndexedAccess
-    // adds `| undefined`); the oracle's looser tsconfig let this pass bare.
+    // adds `| undefined`).
     const pos = geo.attributes.position!
     for (let i = 0; i < pos.count; i++) {
       pos.setZ(i, f(pos.getX(i), pos.getY(i)))

@@ -2,7 +2,7 @@
 // point on a geometry's surface that the texture maps to. This is the
 // inverse of what a raycaster gives (hit → UV); anchors need the other
 // direction (UV → position + normal) so floating layers can attach to
-// a spot on a Surface's skin, whatever shape that skin is (archive#6).
+// a spot on a Surface's skin, whatever shape that skin is.
 //
 // The trick that makes this cheap for deforming geometry: the search —
 // which triangle contains (u, v), and where inside it (barycentric

@@ -1,6 +1,3 @@
-// CONFORMANCE — transfer (flipped 2026-08-02)
-// Ported from three-ui@362c5a1 src/lib/motionSamples.test.ts (archive#17)
-//
 // The numbers below are not invented: they are the values Chrome 151 returned
 // from getComputedStyle while a paused `enter` animation was scrubbed inside a
 // parked Surface subtree (spike, 2026-07-31). Pinning them here means a future

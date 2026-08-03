@@ -13,16 +13,13 @@ is paper you can bend, throw, and crumple.
 Built on Chrome's HTML-in-canvas origin trial, `three`, and
 `@react-three/fiber`.
 
-**Status: pre-release, under construction.** The kernel is landing one
-custody layer at a time — each against a conformance suite distilled
-from [three-ui](https://github.com/petekp/three-ui), the frozen
-research archive (62 recorded decisions, 357 tests, a summer of
-browser measurement) that this library is the product of. The
-contracts landed first — `tests/conformance/`, typechecked ahead of
-the code they will judge (decisions.md #2) — and the layers now land
-against them.
+**Status: pre-release, under construction.** The kernel is complete
+through six custody layers — mapping, paint, door, transfer, chrome,
+physics — each defined by a conformance suite in `tests/conformance/`
+and exercised by a scene in the lab. The public API is not yet frozen.
 
 Repo shape: `packages/core` (kernel), `packages/react` (the
 `anamorph` package), `registry/` (copyable behaviors), `apps/lab`
 (the lab), `instruments/` (probes and harnesses). See `CLAUDE.md` for
-the working rules and `docs/decisions.md` for the ledger.
+the working rules, `docs/decisions.md` for the ledger, and
+`docs/platform.md` for what the platform is measured to do.

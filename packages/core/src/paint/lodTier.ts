@@ -1,6 +1,4 @@
-// LOD tier selection for Surface textures. Ported from three-ui@362c5a1
-// src/lib/lodTier.ts (archive#8, archive#9, archive#12, archive#35,
-// archive#52).
+// LOD tier selection for Surface textures.
 //
 // GPUs already solve half of this problem: when a texture is *minified*
 // (far away), mipmaps + anisotropy pick a pre-shrunk level. There is no
@@ -48,7 +46,7 @@ export function selectLodTier(
   // Indices below are all loop-bounded to [0, tiers.length) — tiers.length
   // === 0 already returned above, so every `!` here is a known-safe index,
   // not a trust-me: this repo's noUncheckedIndexedAccess makes arr[i] read
-  // as `T | undefined` regardless (unlike the oracle's looser tsconfig).
+  // as `T | undefined` regardless.
   let idx = 0
   for (let i = 1; i < tiers.length; i++) {
     if (Math.abs(tiers[i]! - current) < Math.abs(tiers[idx]! - current)) idx = i
@@ -179,10 +177,10 @@ export function clampTiers(
 }
 
 /**
- * NEW (seed manifest owed, archive#35): `clampScale` with a verdict. The
- * kernel owns the long-edge guard; the binding owns the console — so when
- * a caller-fixed `resolution` gets reduced, the kernel has to SAY so, or
- * the "warn" half of warn-and-clamp has nothing to key on. The number
+ * `clampScale` with a verdict. The kernel owns the long-edge guard;
+ * the binding owns the console — so when a caller-fixed `resolution`
+ * gets reduced, the kernel has to SAY so, or the "warn" half of
+ * warn-and-clamp has nothing to key on. The number
  * itself is delegated to `clampScale` so the two can never disagree; the
  * verdict is just "did that change anything". NaN is deliberately excluded
  * from ever reading as clamped — it is the caller's bug to see un-mangled,

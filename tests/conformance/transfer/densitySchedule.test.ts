@@ -1,7 +1,8 @@
-// CONFORMANCE — transfer (flipped 2026-08-02)
-// New contract (owed by seed manifest): the density schedule — page density at handoff, altitude density at cruise, hysteresis on plate z; descent flips low immediately, a dying sheet freezes its pin (archive#52, archive#53)
+// The density schedule — page density at handoff, altitude density at
+// cruise, hysteresis on plate z; descent flips low immediately, a
+// dying sheet freezes its pin.
 //
-// The toggle law from three-ui's flight card, extracted pure. The
+// The toggle law from the flight card, extracted pure. The
 // mapping suite pins the identity (texelDemand = dpr × planeScale);
 // this file pins WHEN a flight is allowed to re-evaluate it: rising
 // past 0.65 × liftZ, falling below 0.5 × liftZ, the band between them

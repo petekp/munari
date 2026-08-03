@@ -1,6 +1,3 @@
-// CONFORMANCE — paint (flipped 2026-08-02)
-// Ported from three-ui@362c5a1 src/lib/styleChannel.test.ts (archive#28)
-
 // @vitest-environment happy-dom
 //
 // The style bridge's plumbing. happy-dom has no style engine — computed

@@ -1,5 +1,3 @@
-// CONFORMANCE — focus (crossed 2026-08-03, registry(focus) resolved into the binding)
-// Ported from three-ui@362c5a1 src/lib/spatialNav.field.test.ts (archive#13, #14, #15)
 // Full-field browser captures, pinned. Both fields were sampled live from
 // lab 006 (2026-07-31, camera home [0,2,3.4], viewport 1280×720) by
 // mirroring FocusScene's screenRect math against the registered group

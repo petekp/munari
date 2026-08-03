@@ -146,7 +146,7 @@ function ciPanel(): PanelSpec {
     <div class="status" data-ci-status data-state="busy">run #4128 · main · e4f21c9</div>`
   return {
     id: 'ci',
-    html: shell('ci — three-ui', 'live', body),
+    html: shell('ci — anamorph', 'live', body),
     feed: (root) => {
       let step = 0
       let run = 4128
@@ -260,7 +260,7 @@ function chatPanel(): PanelSpec {
   const body = `<div class="fill" data-chat>
       <div class="msg"><b>devon</b> · morning! lab 006 spike day</div>
     </div>
-    <div class="status">#three-ui · 3 online</div>`
+    <div class="status">#anamorph · 3 online</div>`
   return {
     id: 'chat',
     html: shell('team chat', 'live', body),
@@ -489,7 +489,7 @@ const DOCS: Array<[string, string[]]> = [
   ['api sketch', ['<Surface html width height paint> wraps any geometry.', 'onSource hands you the live root — attach listeners, mutate, cleanup on return.']],
   ['perf notes', ['Ceiling is per-source fixed cost, not pixels: 4× texels, same fps.', 'Budget ~64–96 concurrently painting at 120Hz. Idle is free.']],
   ['reading list', ['Data Mountain (Robertson 98) — spatial memory beats lists.', 'Calm technology (Weiser) — the periphery is a feature, not noise.']],
-  ['oncall', ['This week: devon. Escalation: #three-ui-alerts.', 'Known flake: daemon relaunches Chrome without --args when the window closes.']],
+  ['oncall', ['This week: devon. Escalation: #anamorph-alerts.', 'Known flake: daemon relaunches Chrome without --args when the window closes.']],
   ['release notes · 0.4', ['SurfaceLayer orients along surface normals; anchors survive deformation.', 'Surface: late-mount needsUpdate fix — no more blank white meshes.']],
   ['hiring', ['Open: design engineer, physical interfaces.', 'Signal we want: has shipped something where the medium was the message.']],
   ['research questions', ['Does peripheral pulse rate change task performance vs. badges?', 'At what panel count does spatial memory beat cmd-tab?']],

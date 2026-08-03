@@ -1,5 +1,3 @@
-// CONFORMANCE — focus (crossed 2026-08-03, registry(focus) resolved into the binding)
-// Ported from three-ui@362c5a1 src/lib/arcLayout.test.ts (archive#13, #14, #15)
 import { describe, expect, it } from 'vitest'
 import { arcLayout } from './arcLayout'
 

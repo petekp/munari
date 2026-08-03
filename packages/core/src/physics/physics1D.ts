@@ -1,4 +1,4 @@
-// The physics core of the control kit (archive#2): one 1-DOF body, one
+// The physics core of the control kit: one 1-DOF body, one
 // integrator, and control "feel" expressed as composable force fields. A
 // dial IS detentField + damping; a toggle IS overCenterField + damping; a
 // slider IS stopsField + endStops + damping. No easing curves, no

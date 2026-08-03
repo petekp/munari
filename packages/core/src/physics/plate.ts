@@ -1,5 +1,4 @@
-// A card held in a hand, as a rigid thin plate (archive#45, #49, #59, #60,
-// #61, #62).
+// A card held in a hand, as a rigid thin plate.
 //
 // Everything in this file is in CSS PIXELS and SECONDS — the calibration
 // that makes a card's rect readable straight off `getBoundingClientRect`

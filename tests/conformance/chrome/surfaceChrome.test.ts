@@ -1,5 +1,3 @@
-// CONFORMANCE — chrome (flipped 2026-08-02)
-// Ported from three-ui@362c5a1 src/lib/surfaceChrome.test.ts (archive#55)
 // @vitest-environment happy-dom
 //
 // Surface chrome: the parser, the resolver, and the walk.

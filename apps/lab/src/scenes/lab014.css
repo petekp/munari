@@ -190,8 +190,8 @@
 /* The ✕. Every :hover has a [data-hover] twin because the airborne copy
  * never hears real hover — the surface protocol retells the pointer into
  * the parked subtree and mirrors the browser's hover verdict as a data
- * attribute (decisions #24). The reveal transitions OPACITY, which is fine
- * here and would not be on the card itself: the card is a drawn content
+ * attribute. The reveal transitions OPACITY, which is fine here and
+ * would not be on the card itself: the card is a drawn content
  * root (its own opacity never invalidates its paint record — the hard
  * rule); a descendant rasterizes correctly and merely costs its few frames
  * of paint. */

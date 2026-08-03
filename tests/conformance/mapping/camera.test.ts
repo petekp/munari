@@ -1,10 +1,7 @@
-// CONFORMANCE — mapping (flipped 2026-08-02)
-// Ported from three-ui@362c5a1 app/scenes/lab014Camera.test.ts (archive#44)
-//
-// The lab's premise (archive#44): one world unit is one CSS pixel, true
-// on EXACTLY ONE PLANE, z = 0. Every other plane is magnified by
-// perspective; screenToPlane/carryToPlane/planeToScreen are the one
-// place allowed to know the conversion.
+// The lab's premise: one world unit is one CSS pixel, true on EXACTLY
+// ONE PLANE, z = 0. Every other plane is magnified by perspective;
+// screenToPlane/carryToPlane/planeToScreen are the one place allowed
+// to know the conversion.
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import {

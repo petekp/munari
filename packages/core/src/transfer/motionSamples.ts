@@ -1,4 +1,4 @@
-// The CSS→mesh translation table (archive#17).
+// The CSS→mesh translation table.
 //
 // A Surface never lets a compositor-owned animation play in its texture:
 // those keyframes DO rasterize, but at one paint + one upload per frame —
@@ -13,10 +13,10 @@
 // slide-in-from-top-2` into a small table of samples, which a frame loop
 // replays on the mesh.
 //
-// The helpers below are the pure half — matrix decomposition and table
-// interpolation — ported verbatim from three-ui/src/lib/motionSamples.ts.
-// Reading the samples out of the browser (pause/scrub/getComputedStyle,
-// one per CSS animation) and replaying them from a frame clock is the
+// The helpers below are the pure half — matrix decomposition and
+// table interpolation. Reading the samples out of the browser
+// (pause/scrub/getComputedStyle, one per CSS animation) and replaying
+// them from a frame clock is the
 // react binding's job: it needs `useEffect`/`useFrame` and a live
 // `Animation`, none of which belong in a zero-dep kernel.
 

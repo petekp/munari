@@ -2,8 +2,8 @@
 // still cannot import three, so an orientation is either read structurally
 // (`QuatReadonly`, below — it happens to be exactly three.js's own
 // `QuaternionLike`) or allocated from the minimal class below, exactly as
-// `Vec3` does for positions. The physics layer (archive#45, #49) is what
-// asked for this file: a held plate composes rotations, inverts one to find
+// `Vec3` does for positions. The physics layer is what asked for this
+// file: a held plate composes rotations, inverts one to find
 // an error, and measures the angle between two — that is the entire
 // quaternion vocabulary this kernel needs, so that is all this file has.
 //
@@ -110,7 +110,7 @@ export class Quat implements QuatReadonly {
    * `THREE.Quaternion.prototype.premultiply`: applies the ORIGINAL `this`'s
    * rotation first, then `q`'s on top. This is the world-frame composition:
    * spinning a body about a world axis pre-multiplies the increment onto its
-   * pose (the toss's topspin, archive#61).
+   * pose (the toss's topspin).
    */
   premultiply(q: QuatReadonly): this {
     const ax = q.x

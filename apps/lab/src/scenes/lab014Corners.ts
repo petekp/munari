@@ -1,7 +1,7 @@
 // Scene-local twin of the kernel's plate geometry: `corners` writes into
 // THREE.Vector3 tuples, and the kernel is zero-dep and shape-typed
 // (decisions.md #4), so the helper lives with the consumer that owns the
-// THREE objects. Verbatim from three-ui@362c5a1 app/scenes/lab014Plate.ts.
+// THREE objects.
 import * as THREE from 'three'
 import type { Plate } from 'anamorph'
 

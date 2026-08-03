@@ -1,6 +1,3 @@
-// CONFORMANCE — paint (flipped 2026-08-02)
-// Ported from three-ui@362c5a1 src/lib/htmlInCanvas.test.ts (archive#10, archive#22) + new: identity-CTM pin (archive#11)
-
 // @vitest-environment happy-dom
 //
 // The source canvas's size arithmetic. Everything here is about ONE invariant
@@ -144,15 +141,13 @@ describe('createDomTextureSource sizing', () => {
   })
 })
 
-// NEW (seed manifest owed): the identity-CTM pin (archive#11). The
-// replay is auto-scaled by the canvas's backing/CSS ratio, and any CTM
-// multiplies ON TOP of that — effective = ratio × CTM at every k
-// (platform claim, re-audit pending). setScale sets the ratio, so the
-// CTM must stay identity or the scale applies twice: the k²
-// crop-to-top-left bug. Identity is asserted PER PAINT because a
-// resize resets context state. This is the unit-level pin the archive
-// owed — onpaint asserts identity, the backing supplies the scale; the
-// position-aware browser probe stays in the Phase 2 re-audit.
+// The identity-CTM pin. The replay is auto-scaled by the canvas's
+// backing/CSS ratio, and any CTM multiplies ON TOP of that — effective
+// = ratio × CTM at every k. setScale sets the ratio, so the CTM must
+// stay identity or the scale applies twice: the k² crop-to-top-left
+// bug. Identity is asserted PER PAINT because a resize resets context
+// state. This is the unit-level pin — onpaint asserts identity, the
+// backing supplies the scale.
 describe('identity CTM — the backing ratio is the only scale', () => {
   type Call = { op: 'setTransform' | 'clearRect' | 'drawElementImage'; args: unknown[] }
   let calls: Call[] = []
@@ -215,7 +210,7 @@ describe('identity CTM — the backing ratio is the only scale', () => {
     const first = calls.find((c) => c.op === 'setTransform')
     expect(first?.args).toEqual([1, 0, 0, 1, 0, 0])
     // …and both paints advanced the counter: the resize's raster rides
-    // the normal onpaint path (archive#10's realloc-mark contract).
+    // the normal onpaint path (realloc-mark contract).
     expect(s.paintCount()).toBe(2)
     s.dispose()
   })

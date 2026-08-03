@@ -1,7 +1,3 @@
-// CONFORMANCE — paint (landed 2026-08-03, with the lab app)
-// New with the binding's consumer: the oracle shipped `detectHtmlInCanvas`
-// in src/lib/htmlInCanvas.ts uncontracted; it crosses here WITH a contract.
-
 // @vitest-environment happy-dom
 //
 // The capability probe. A library built entirely on an origin-trial API owes

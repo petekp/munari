@@ -134,9 +134,9 @@ const isModifier = (key: string) =>
   key === 'Shift' || key === 'Control' || key === 'Alt' || key === 'Meta'
 
 const onModalityKeydown = (e: KeyboardEvent) => {
-  // Voice stance (decisions #50): trusted by vocabulary — the library forges
-  // no keyboard (typing through a surface is real focus and real keys), so
-  // every keydown heard here is the user's.
+  // Voice stance: trusted by vocabulary — the library forges no
+  // keyboard (typing through a surface is real focus and real keys),
+  // so every keydown heard here is the user's.
   // Modifier chords are how pointer users invoke shortcuts mid-gesture; the
   // browser's heuristic ignores them and so do we.
   if (!isModifier(e.key)) modality = 'keyboard'
@@ -360,9 +360,9 @@ const AWAY_FRAMES = 3
  * pointer may cross from one to the other, and a tooltip you reach for
  * dismisses itself if we report that crossing as an exit to nowhere.
  *
- * The coordinates need no conversion. Every parked source is fixed at page
- * (0,0) (decisions.md #16), so a point forwarded to any surface is already a
- * page point in the same document Radix measured its hull in.
+ * The coordinates need no conversion. Every parked source is fixed at
+ * page (0,0), so a point forwarded to any surface is already a page
+ * point in the same document Radix measured its hull in.
  *
  * One record is enough, and staleness cannot arise: a surface only announces a
  * departure when the pointer was on it, so if the newest forward anywhere went
@@ -459,9 +459,9 @@ export function clearPointerState(root: HTMLElement) {
 }
 
 /**
- * Stop a native canvas pointermove from bubbling on to document — the same
- * truth-telling as Surface's pointerdown suppression (decisions #18), extended
- * to hover. Every pointer over a Surface arrives as a native event whose
+ * Stop a native canvas pointermove from bubbling on to document — the
+ * same truth-telling as Surface's pointerdown suppression, extended to
+ * hover. Every pointer over a Surface arrives as a native event whose
  * target is the canvas and whose coordinates are screen coordinates; the
  * forwarder retells that move as a synthetic event with the coordinates of
  * what the pointer actually hit. Document-level listeners that reason about
@@ -504,15 +504,15 @@ export function forwardPointer(
   // capture — OrbitControls orbiting from empty space, a text selection
   // sweeping across the canvas, a drag that started in another window — and
   // capture semantics are silence: no boundary events, no hover, no position
-  // reports, until the button comes up. This is #32's rule pointed the other
-  // way. The measured cost of speaking anyway (2026-08-02): OrbitControls
-  // holds a document-level pointermove listener for exactly the duration of
-  // its drag and does raw clientX/Y delta math on whatever arrives, so one
-  // panel-edge crossing mid-orbit fed it a departure burst at (−16,−16),
-  // poisoned its rotate anchor, and the next real 10px hand move threw the
-  // camera across the scene (decisions #51). The r3f 'up' side needs no gate
-  // here — Surface's pressedRef already refuses a release it never saw the
-  // press for.
+  // reports, until the button comes up. This is the same rule pointed
+  // the other way. The measured cost of speaking anyway (2026-08-02):
+  // OrbitControls holds a document-level pointermove listener for
+  // exactly the duration of its drag and does raw clientX/Y delta
+  // math on whatever arrives, so one panel-edge crossing mid-orbit
+  // fed it a departure burst at (−16,−16), poisoned its rotate
+  // anchor, and the next real 10px hand move threw the camera across
+  // the scene. The r3f 'up' side needs no gate here — Surface's
+  // pressedRef already refuses a release it never saw the press for.
   if (kind === 'move' && (buttons ?? 0) !== 0 && !surfaceDrag) return null
   const rect = root.getBoundingClientRect()
   const x = rect.left + u * rect.width
@@ -719,7 +719,7 @@ let untrackWheel: (() => void) | null = null
 // True from a forwarded pointerdown until its release — a drag that BEGAN on
 // a Surface. The discriminator matters: a drag that began on empty space and
 // merely travels over a panel is OrbitControls' gesture, and its document
-// stream must not be touched (decisions #26's carve-out).
+// stream must not be touched.
 let surfaceDrag = false
 let dragRefs = 0
 let untrackDrag: (() => void) | null = null

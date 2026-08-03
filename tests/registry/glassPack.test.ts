@@ -5,13 +5,12 @@
 //      evidence cover the registry copy verbatim.
 //   2. rippleLaw.ts is pinned to the capillary law's own mathematics, and
 //      the shader TEXT is pinned to contain the same formulas — the twin
-//      halves cannot drift apart silently (archive#40; weld style per
-//      archive#56: when two frames can't share one computation, pin them
-//      to each other).
-//   3. Compositing order is view-space z, never distance-to-eye
-//      (archive#43) — pinned on the off-center scene where the two
-//      orders DISAGREE, because they agree everywhere on the view axis
-//      and a centered validation is the bug's whole camouflage.
+//      halves cannot drift apart silently: when two frames can't share
+//      one computation, pin them to each other.
+//   3. Compositing order is view-space z, never distance-to-eye —
+//      pinned on the off-center scene where the two orders DISAGREE,
+//      because they agree everywhere on the view axis and a centered
+//      validation is the bug's whole camouflage.
 
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -40,7 +39,7 @@ describe('the vendorable files are the lab files', () => {
   }
 })
 
-describe('the capillary law (archive#40)', () => {
+describe('the capillary law', () => {
   const K = 3.0
   const OPTS = { nu: 0.0018, source: 0.04, decay: 1.2 }
 
@@ -112,7 +111,7 @@ describe('the capillary law (archive#40)', () => {
   })
 })
 
-describe('the twin halves cannot drift apart (archive#56 weld, in text)', () => {
+describe('the twin halves cannot drift apart (weld, in text)', () => {
   const shader = () => read('registry/glass/glassSdfShader.ts')
 
   it('the shader carries the exact phase and wavenumber formulas the twin models', () => {
@@ -126,15 +125,15 @@ describe('the twin halves cannot drift apart (archive#56 weld, in text)', () => 
   })
 })
 
-describe('compositing order is view-space z, never distance-to-eye (archive#43)', () => {
+describe('compositing order is view-space z, never distance-to-eye', () => {
   it('the off-center rail: farther by Pythagoras, no deeper at all — view z wins', () => {
     // Camera at origin looking down -z. A center panel 10 deep; a rail
     // panel out to the side, 9 deep but 10.8 from the eye. Distance says
     // the rail is farther (composite it first) — and then the panel
     // actually behind it refracts the rail's ink, every glyph smeared
-    // through the dispersion taps with no error anywhere. This is the
-    // exact geometry the archive measured; on the view axis the two
-    // orders agree, which is why a centered scene can never catch it.
+    // through the dispersion taps with no error anywhere. On the view
+    // axis the two orders agree, which is why a centered scene can
+    // never catch it.
     const camera = new THREE.PerspectiveCamera()
     camera.position.set(0, 0, 0)
     camera.lookAt(0, 0, -1)

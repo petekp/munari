@@ -1,10 +1,10 @@
 // The capillary ripple, as arithmetic — the TS twin of the wave train in
-// glassSdfShader.ts (archive#40). The shader is a string, so the two
-// halves cannot share one computation the way shadowQuadFrame's geometry
-// and uniforms do (archive#56); instead the pack's test welds them: these
-// functions are pinned against the law's own mathematical properties, and
-// the shader text is pinned to contain these exact formula expressions.
-// Change either half alone and tests/registry/glassPack.test.ts fails.
+// glassSdfShader.ts. The shader is a string, so the two halves cannot
+// share one computation the way shadowQuadFrame's geometry and uniforms
+// do; instead the pack's test welds them: these functions are pinned
+// against the law's own mathematical properties, and the shader text is
+// pinned to contain these exact formula expressions. Change either half
+// alone and tests/registry/glassPack.test.ts fails.
 //
 // The physics, compressed from the shader's derivation: at bead scale the
 // dispersion regime is capillary (surface tension, not gravity), so

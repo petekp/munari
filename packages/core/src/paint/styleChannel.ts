@@ -1,5 +1,4 @@
-// The style bridge: CSS custom properties as mesh channels. Ported from
-// three-ui@362c5a1 src/lib/styleChannel.ts (archive#28).
+// The style bridge: CSS custom properties as mesh channels.
 //
 // A registered custom property (`@property` / CSS.registerProperty with a
 // real syntax) is interpolable, so `transition: --depth 300ms ease` runs a
@@ -7,15 +6,15 @@
 // paint property, but painting NOTHING: a custom property no paint rule
 // consumes never invalidates a paint record (measured: zero paints across a
 // full 600ms transition). getComputedStyle mid-transition returns the eased
-// intermediate value synchronously — the style engine is the interpolation
-// oracle, and no easing math exists in our code.
+// intermediate value synchronously — the style engine is the source of
+// truth for interpolation, and no easing math exists in our code.
 //
 // That makes the cascade a channel authority for the MESH: Tailwind
 // utilities (`[--depth:0.5]`, `hover:[--depth:1]`, `transition-[--depth]`)
 // or plain CSS declare what a surface's depth/tilt/glow should be and how it
 // should get there; the scene reads the channel per frame and moves matter.
-// The hover twin (`data-hover`, archive#19) makes variant-driven channels
-// work through a texture unmodified.
+// The hover twin (`data-hover`) makes variant-driven channels work
+// through a texture unmodified.
 //
 // Contract: a channel lives on ONE element — author the property's value,
 // its transition, and its variants on that element. (Transition events do
@@ -100,10 +99,9 @@ export function createStyleChannel(
   }
 
   // Transitioning values move every frame with no discrete signal — the
-  // transition events bound an rAF sampling window, the same motion-window
-  // shape as the layout oracle's (archive#25). Ref-count by property
-  // occurrence so overlapping transitions (interrupted + restarted) keep
-  // one loop.
+  // transition events bound an rAF sampling window. Ref-count by
+  // property occurrence so overlapping transitions (interrupted +
+  // restarted) keep one loop.
   let live = 0
   let disposed = false
   const tick = () => {

@@ -5,7 +5,7 @@
 // (decisions.md #4). Callers who hand in their own vector get their
 // own type back: out-params are generic, never widened.
 //
-// The physics layer (archive#45, #49) grew this file's method list:
+// The physics layer grew this file's method list:
 // a plate's grab point has to be rotated into the world and damped
 // against a hand, which is exactly the vocabulary a spring-damper over
 // a lever arm needs. `applyQuaternion` is the one method that reaches

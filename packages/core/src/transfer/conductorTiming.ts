@@ -1,7 +1,7 @@
-// The two conductor-timing subtleties a refactor must not simplify away
-// (archive#17). three-ui's `useAnimationConductor` seizes a CSS animation
-// on `animationstart`, scrubs it by hand, and replays the sampled curve on
-// a mesh — the scrubbing math itself is the sibling motionSamples module,
+// The two conductor-timing subtleties a refactor must not simplify away.
+// `useAnimationConductor` seizes a CSS animation on `animationstart`,
+// scrubs it by hand, and replays the sampled curve on a mesh — the
+// scrubbing math itself is the sibling motionSamples module,
 // this same layer. The hook ITSELF stays out of core: it closes over refs
 // and a react-three-fiber `useFrame` callback, and CLAUDE.md bans React
 // from the kernel. What belongs here is the pure law underneath its own
@@ -24,7 +24,7 @@ export const END_EPSILON_MS = 0.5
 
 /**
  * Pure extraction of line 127's `Math.max(0, durationMs -
- * END_EPSILON_MS)`. Not exported by the oracle — inlined in the closure
+ * END_EPSILON_MS)`. Not exported by the hook — inlined in the closure
  * that builds `samples` — pulled out here because the kernel is where a
  * number this load-bearing gets to be tested on its own, independent of
  * the DOM plumbing that surrounds it in the hook.

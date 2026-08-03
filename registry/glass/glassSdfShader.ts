@@ -25,8 +25,8 @@
 // Because the passes ping-pong far→near, a panel samples the composite of
 // everything already laid down behind it — glass, ink and world. Multi-level
 // refraction is not a feature here, it's the shape of the loop; inc 1's
-// cumulative-hide ordering rule (README, decisions #34) is deleted rather
-// than reimplemented.
+// cumulative-hide ordering rule (README) is deleted rather than
+// reimplemented.
 //
 // Everything below runs in linear light: the scene FBO is HalfFloat, three
 // forces NoToneMapping and a linear working space for any render into a

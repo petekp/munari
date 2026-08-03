@@ -179,7 +179,7 @@ export interface SurfaceProps extends Omit<ThreeElements['mesh'], 'children' | '
    * box, so the rasterizer never captures it; this is how a scene renders
    * the shadow the DOM meant, at rest-truth, and evolves it physically from
    * there (a companion shadow must also gate on `onFirstUpload` — chrome
-   * may not precede its card, decisions #54).
+   * may not precede its card).
    */
   onChrome?: (chrome: SurfaceChrome) => void
   /**
@@ -480,8 +480,7 @@ export function Surface({
   // OrbitControls' canvas listener. See forwardEvents' wheel section.
   useEffect(() => trackWheel(), [])
   // Drag arbitration — while a forwarded press is live, trusted canvas moves
-  // are defaultPrevented so drag consumers hear only the forwarded narrator
-  // (decisions #32).
+  // are defaultPrevented so drag consumers hear only the forwarded narrator.
   useEffect(() => trackDrag(), [])
 
   // Creating the source is a TEARDOWN. It destroys the live DOM subtree and
@@ -812,14 +811,14 @@ export function Surface({
     const source = sourceRef.current
     if (!uv || !source) return
     // Real buttons state rides along: a drag consumer deactivates on the
-    // first move that claims no button is held (decisions #32).
+    // first move that claims no button is held.
     forwardPointer(source.element, uv.u, uv.v, 'move', e.nativeEvent.buttons)
     // The forwarded move above is this pointer's true story; the native one —
     // target CANVAS, screen coordinates — must not also reach document-level
     // coordinate reasoners (Radix's tooltip grace tracker dismisses on it).
-    // Hover only: drag moves keep bubbling for OrbitControls (decisions #26)
-    // — trackDrag neutralizes them for parked drag consumers by
-    // preventDefault instead, which leaves the bubble intact.
+    // Hover only: drag moves keep bubbling for OrbitControls — trackDrag
+    // neutralizes them for parked drag consumers by preventDefault
+    // instead, which leaves the bubble intact.
     silenceHoverMove(e.nativeEvent)
   }
 

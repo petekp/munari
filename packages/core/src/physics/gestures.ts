@@ -1,13 +1,13 @@
 // The window-level half of the gesture: the three listeners that read the
-// REAL pointer while a card is in flight (archive#48, #50, #61).
+// REAL pointer while a card is in flight.
 //
 // Extracted so this seam can be tested as DOM: these handlers live on
 // `window`, and `window` is a busy place in this codebase — the surface
-// pointer protocol (decisions #19/#20) retells events into parked
-// subtrees, and those subtrees bubble to the same window. What arrives here
-// is therefore a MIXTURE of the user's hand and the library's forgeries,
-// and which one a listener wants depends on which side of the glass it
-// lives on. This one lives on the page side: it is the hand, and only the
+// pointer protocol retells events into parked subtrees, and those
+// subtrees bubble to the same window. What arrives here is therefore
+// a MIXTURE of the user's hand and the library's forgeries, and which
+// one a listener wants depends on which side of the glass it lives
+// on. This one lives on the page side: it is the hand, and only the
 // hand.
 
 import type { QuatReadonly } from '../math/quat'
@@ -105,7 +105,7 @@ export interface GestureDeps<Col, V extends Vec3Chain = Vec3Chain> {
  * events into a card's parked subtree — hover retold at PARKED-LOCAL
  * coordinates (the host is fixed at page (0,0), so "local" IS "near the
  * screen's top-left corner"), and on exit a multi-frame departure burst at
- * (−16, −16) (`AWAY_MARGIN_PX`, decisions #19). Those events bubble to window
+ * (−16, −16) (`AWAY_MARGIN_PX`). Those events bubble to window
  * BY DESIGN — Radix listens for them on document — and a drag that mistakes
  * them for the hand flies the card hard toward the top-left of the screen.
  * When the burst is the last thing to fire (cross the card's edge, then hold
@@ -204,7 +204,7 @@ export function attachLab014Gestures<Col, V extends Vec3Chain>({
   // Escape always puts it back. A floating card is a modeless state and
   // modeless states need an exit that does not require aim. (Keyboard is not
   // guarded: the library forges no keyboard — typing through a surface is
-  // real focus and real keys, decisions #24.) The one exception is a card
+  // real focus and real keys.) The one exception is a card
   // mid-crumple: "put it back" needs a back, and the board is about to
   // forget the slot — a delete is irreversible from the moment the crush
   // begins, by every input.

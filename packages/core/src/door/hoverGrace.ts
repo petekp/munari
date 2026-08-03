@@ -1,4 +1,4 @@
-// Grace for hover-driven DETACHED layers — the ray answer #36 owed.
+// Grace for hover-driven DETACHED layers.
 //
 // Radix dismisses a hover layer with timers: `pointerleave` on the trigger
 // arms a close (300ms by default), `pointerenter` on the content cancels it.
@@ -29,13 +29,13 @@
 //
 //  - The ARM signal (a `pointerleave` on the trigger or content root) is
 //    always SYNTHETIC — parked DOM never hears trusted events; the
-//    forwarder is the only narrator (#19). So the leave listener must not
+//    forwarder is the only narrator. So the leave listener must not
 //    filter on `isTrusted`.
 //  - The POSITION feed must be ONLY trusted moves — the forwarder's copies
 //    carry parked-source coordinates, which are meaningless on screen. A
 //    document-capture listener hears trusted moves even over Surfaces,
-//    because #26's silencing stops propagation at the canvas (target
-//    phase), which is downstream of document capture.
+//    because the forwarder's silencing stops propagation at the canvas
+//    (target phase), which is downstream of document capture.
 
 import { forge } from './forge'
 
@@ -243,7 +243,7 @@ export function createGraceTracker({
 export function observeGrace(tracker: GraceTracker, doc: Document = document): () => void {
   const onMove = (e: PointerEvent) => {
     // Trusted, hover only. Synthetic moves carry parked coordinates (skip),
-    // and a drag crossing the scene is OrbitControls' business (#26).
+    // and a drag crossing the scene is OrbitControls' business.
     if (!e.isTrusted || e.buttons !== 0) return
     tracker.move(e.clientX, e.clientY)
   }

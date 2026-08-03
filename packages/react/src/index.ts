@@ -6,14 +6,14 @@
 // PEER dependencies — we are three-first, and renderer abstraction is
 // banned by the second-system guard.
 //
-// The kernel is re-exported WHOLE, not curated: unlike the archive's
-// private lib/, every name in @anamorph/core is contract-covered
-// (tests/conformance), so there is nothing to hide and no drift for a
-// second doorway to accumulate. The binding's own exports below are
-// sized to the preserved labs (006, 012, 014) — a primitive earns its
-// place here by a lab consuming it, and the labs import from this file
-// and nowhere else, so a gap shows up as a broken lab rather than a
-// relative path quietly reaching around it.
+// The kernel is re-exported WHOLE, not curated: every name in
+// @anamorph/core is contract-covered (tests/conformance), so there is
+// nothing to hide and no drift for a second doorway to accumulate. The
+// binding's own exports below are sized to the preserved labs (006,
+// 012, 014) — a primitive earns its place here by a lab consuming it,
+// and the labs import from this file and nowhere else, so a gap shows
+// up as a broken lab rather than a relative path quietly reaching
+// around it.
 
 export * from '@anamorph/core'
 

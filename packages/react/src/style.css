@@ -55,11 +55,7 @@
  *
  * Without it, opening a tooltip put a full-panel slab in front of its own
  * trigger; the panel heard the ray leave, and dismissed the tooltip it had
- * just opened (archive decisions #20). */
+ * just opened. */
 .ui-layer > * {
   pointer-events: auto;
 }
-
-/* (The archive's `.ui-detached` rule travels with the floating family —
- * `FloatingSurface` is what needs placement revoked — and arrives when it
- * does.) */

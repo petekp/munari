@@ -1,10 +1,10 @@
-// archive#50: every synthetic event leaves through forge() — the brand
+// Every synthetic event leaves through forge() — the brand
 // (Symbol.for, HMR-proof) is what makes isForgedEvent()'s predicate
-// complete, and it is complete only if forge is the ONE door out. The
-// grep-level tripwire from the seed manifest, landed as a test: the
-// kernel may say `dispatchEvent` only inside the forge module. Live
-// from first commit — vacuously green while core is empty,
-// load-bearing the moment the door layer lands.
+// complete, and it is complete only if forge is the ONE door out. A
+// grep-level tripwire, as a test: the kernel may say `dispatchEvent`
+// only inside the forge module. Vacuously green while the kernel has
+// no other callers of dispatchEvent; load-bearing the moment one is
+// added.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'

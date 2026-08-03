@@ -1,16 +1,14 @@
 // The shadow quad's frame — geometry and shader uniforms built from ONE
 // computation so they can't disagree.
-// Ported from three-ui@362c5a1 app/scenes/lab014Plate.ts (the shadow-quad
-// slice) (archive#56).
 //
 // Vector parameters are the structural `Vec2` pair (decisions.md #4):
 // THREE.Vector2/Vector3 pass through unchanged, satisfying `Vec2Readonly`
-// by shape (z, if present, is simply never read). Where the oracle used
-// vector METHODS on scratch objects (`.length()`, `.divideScalar()`), core
-// writes the arithmetic out longhand instead — a scratch vector would have
-// to be one of three's own, which core can't import, and the oracle's own
-// module-scope `_eu`/`_ev`/`_fc` reuse-buffers are exactly the kind of
-// allocation this file has no library left to make.
+// by shape (z, if present, is simply never read). Vector METHODS on
+// scratch objects (`.length()`, `.divideScalar()`) are avoided — core
+// writes the arithmetic out longhand instead: a scratch vector would
+// have to be one of three's own, which core can't import, and
+// module-scope reuse-buffers are exactly the kind of allocation this
+// file has no library left to make.
 
 import { Vec2, type Vec2Like, type Vec2Readonly } from '../math/vec2'
 

@@ -1,6 +1,4 @@
-// CONFORMANCE — door (flipped 2026-08-02)
-// Ported from three-ui@362c5a1 src/primitives/forwardEvents.test.ts (archive#19, archive#20, archive#24, archive#26, archive#27, archive#29, archive#32, archive#50, archive#51)
-// @vitest-environment happy-dom — happy-dom joins root devDependencies at the door flip (decisions.md #2, README.md)
+// @vitest-environment happy-dom — happy-dom is a root devDependency (decisions.md #2, README.md)
 //
 // The pointer-exit protocol. Everything else in this repo's test suite is
 // pure geometry; this file needs a DOM because the thing under test IS the
@@ -307,9 +305,9 @@ describe('leaving one surface for another', () => {
   // are separate meshes, so that crossing IS an exit — and reporting it as a
   // departure to nowhere closes the tooltip you were reaching for.
   //
-  // Every parked source is fixed at page (0,0) (decisions.md #16), so the
-  // other surface's forwarded point is already a page point in the same
-  // document Radix measured its hull in. No conversion, and no guessing.
+  // Every parked source is fixed at page (0,0), so the other surface's
+  // forwarded point is already a page point in the same document Radix
+  // measured its hull in. No conversion, and no guessing.
 
   let other: HTMLElement
   let otherChild: HTMLElement
@@ -584,7 +582,7 @@ describe('silencing the trusted canvas move', () => {
   // listeners that reason about coordinates (Radix's tooltip grace tracker
   // closes any tooltip the moment it sees one). Hover moves are silenced;
   // drag moves must keep bubbling — OrbitControls listens at document for
-  // the duration of a drag (decisions #18).
+  // the duration of a drag.
 
   function nativeMoveThrough(buttons: number) {
     // A stand-in canvas inside the page, with the same listener topology as
@@ -924,7 +922,7 @@ describe('the document-capture drag arbiter', () => {
 })
 
 describe('a foreign drag silences the forwarder', () => {
-  // The measured bug (2026-08-02, decisions #51): OrbitControls attaches a
+  // The measured bug (measured 2026-08-02): OrbitControls attaches a
   // document-level pointermove listener for exactly the duration of its drag
   // and does raw clientX/Y delta math on whatever arrives. An orbit drag that
   // began on empty space kept hovering panels as they swept under the cursor,
@@ -950,7 +948,7 @@ describe('a foreign drag silences the forwarder', () => {
     expect(log).toHaveLength(0)
   })
 
-  it('our own drag still forwards its held-button moves (#32 unchanged)', () => {
+  it('our own drag still forwards its held-button moves', () => {
     forwardPointer(root, at.u, at.v, 'down')
     log.length = 0
     expect(forwardPointer(root, at.u, at.v, 'move', 1)).not.toBeNull()
@@ -968,7 +966,7 @@ describe('a foreign drag silences the forwarder', () => {
 
 describe('provenance: every retelling is branded, and keeps bubbling', () => {
   // Two contracts, tested together because they are two halves of one
-  // design (decisions #50):
+  // design:
   //
   // BUBBLE: the forgeries MUST reach document-level listeners — Radix's
   // grace areas and dismissal heuristics live there. Any future

@@ -1,6 +1,4 @@
-// CONFORMANCE — door (flipped 2026-08-02)
-// Ported from three-ui@362c5a1 src/lib/hoverGrace.test.ts (archive#31)
-// @vitest-environment happy-dom — happy-dom joins root devDependencies at the door flip (decisions.md #2, README.md)
+// @vitest-environment happy-dom — happy-dom is a root devDependency (decisions.md #2, README.md)
 //
 // The screen-space grace hull for detached hover layers. The hull math is
 // pure geometry; the tracker tests are about protocol — which synthetic

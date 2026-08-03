@@ -1,10 +1,10 @@
 // The calibration, and the one place that is allowed to know it.
 //
-// The premise (archive#44): one world unit is one CSS pixel, which is
-// true on EXACTLY ONE PLANE: z = 0. Every other plane is magnified by
+// The premise: one world unit is one CSS pixel, which is true on
+// EXACTLY ONE PLANE: z = 0. Every other plane is magnified by
 // perspective, and forgetting that is how a drag stops tracking the
-// hand. Ported from the oracle's lab014Camera; vector parameters are
-// structural so THREE.Vector3 passes through unchanged (decisions.md #4).
+// hand. Vector parameters are structural so THREE.Vector3 passes
+// through unchanged (decisions.md #4).
 
 import type { Vec3Like, Vec3Readonly } from '../math/vec3'
 
@@ -29,9 +29,9 @@ export function planeScale(camZ: number, z: number): number {
 /**
  * Backing texels per CSS px that make a plane at z texel-for-pixel
  * with the display: exactly dpr × planeScale — no more (wasted
- * upload), no less (soup). archive#52's "born at the display's
- * density" is this identity at the seed; archive#53's density
- * schedule is this identity evaluated at the plate's altitudes.
+ * upload), no less (soup). "Born at the display's density" is this
+ * identity at z = 0; the density schedule is this identity evaluated
+ * at the plate's altitudes.
  */
 export function texelDemand(dpr: number, camZ: number, z: number): number {
   return dpr * planeScale(camZ, z)
@@ -41,15 +41,15 @@ export function texelDemand(dpr: number, camZ: number, z: number): number {
  * The world point on the plane `z` that the cursor is pointing AT —
  * i.e. the point whose projection lands exactly under the cursor.
  *
- * This is archive#4 ("intersect the ray with the drag plane, never
- * take the hit point") in its cheapest possible form. Because the
+ * This is "intersect the ray with the drag plane, never take the hit
+ * point" in its cheapest possible form. Because the
  * camera is calibrated and looking down −z, the ray intersection is a
  * single division: a client offset from the screen centre is a z = 0
  * world offset by construction, and on any other plane it shrinks by
  * the same similar-triangle ratio that makes things on that plane
  * look bigger.
  *
- * The oracle's lab shipped without it, computing the drag target as
+ * An earlier version shipped without it, computing the drag target as
  * if the card were on z = 0 while actually holding it at z = 96. That
  * is a 1.0796× GAIN error, not an offset: the card tracked the cursor
  * at 108% of its speed, drifting out from under the pointer toward

@@ -1,6 +1,3 @@
-// CONFORMANCE — paint (flipped 2026-08-02)
-// Ported from three-ui@362c5a1 src/lib/lodTier.test.ts (archive#8, archive#9, archive#12, archive#35, archive#52) + new: warn-and-clamp verdict (archive#35)
-
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -220,9 +217,9 @@ describe('clampTiers', () => {
   })
 })
 
-// NEW (seed manifest owed): warn-and-clamp on guard-exceeding fixed
-// resolutions (archive#35). The clampScale suite above pins WHERE the
-// clamp lands; this pins that the kernel also SAYS it clamped. 'max'
+// Warn-and-clamp on guard-exceeding fixed resolutions. The clampScale
+// suite above pins WHERE the clamp lands; this pins that the kernel
+// also SAYS it clamped. 'max'
 // resolves inside the library because measured Surfaces can't ask in
 // time — and a caller-fixed density that silently shrinks reads as a
 // texture-quality bug, not a guard. The binding warns; the kernel

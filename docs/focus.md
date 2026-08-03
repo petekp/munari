@@ -1,37 +1,27 @@
-> **Provenance (anamorph, 2026-08-03):** crossed verbatim from
-> three-ui@362c5a1 `docs/focus.md` as the focus behavior's own contract
-> doc (archive#13–#15). File paths inside refer to the archive's layout;
-> in this repo the mechanism lives at `packages/react/src/lib/`
-> (focusTree, spatialNav, cameraPose, tabbables, arcLayout) and
-> `packages/react/src/primitives/` (FocusScene, FocusOrbitRig), with the
-> six vitest suites beside their modules. The `?focusprobe=1` empirical
-> gate and the seven platform probes ran in the archive's lab 007; the
-> preserved Lab 006 is this repo's browser evidence for the shipped
-> behaviors.
+# Focus — the design contract
 
-# Focus — the design contract (lab 007)
+The behavior contract for focus and spatial navigation in a 3D scene:
+what Tab, Enter, Escape and the arrow keys mean when the focusable
+things are surfaces in space rather than boxes in a document.
+**Platform-validated 2026-07-30** (Chrome 150, all seven probes pass —
+table at bottom), and informed by a four-source prior-art deep-read
+(citations at bottom).
 
-**Status:** design, **platform-validated 2026-07-30** (Chrome 150, all
-seven probes pass — table at bottom). Informed by a four-source
-prior-art deep-read (citations at bottom). Pieces graduate to
-decisions.md as they ship and get paid for.
+The mechanism lives at `packages/react/src/lib/` (focusTree,
+spatialNav, cameraPose, tabbables, arcLayout) and
+`packages/react/src/primitives/` (FocusScene, FocusOrbitRig), with its
+six suites beside those modules. Lab 006 is the browser evidence: ring
+walk, descend and typing, boundary exit at last-element identity,
+memory restore and clear-on-Escape, ascend-from-first, and the Escape
+ladder to camera home, all driven with real keys.
 
-**Implementation status (increment 1, shipped 2026-07-30):** the tree
-core (`src/lib/focusTree.ts` — registry, memory stacks, Flutter band
-reading-order; vitest-pinned including the one-removal-per-pick band
-re-anchoring semantics), `src/lib/tabbables.ts` (tabbable-subset rules,
-pure halves tested), and `<FocusScene>`/`<FocusGroup>`
-(`src/primitives/FocusScene.tsx`) with Surface auto-registration via
-`FocusGroupContext`. Browser-verified in lab 006 with real CDP keys:
-ring walk, descend/typing, boundary exit at last-element identity,
-memory restore + clear-on-Escape, ascend-from-first, Escape ladder to
-camera home. Implementation decisions layered on this contract:
+Implementation decisions layered on this contract:
 
 - **Scene ring is a closed loop for now.** Native edge handoff exists
   (probe 1) but parked subtrees still sit in the page's tab order, so a
   "hand back to browser" exit would immediately re-enter panel DOM.
   Real page-embed handoff needs the proxy layer to own page-side stops
-  — next increment.
+  — not yet built.
 - **Unit element = the Surface source root** with `tabindex="-1"` —
   focusing it makes unit selection real document focus, and the
   `[data-focus="unit"|"interior"]` attribute the manager stamps lets
@@ -44,12 +34,12 @@ camera home. Implementation decisions layered on this contract:
   tabbables keeps unit focus but still emits `cause: 'descend'` —
   read-only panels are zoomed into to *read*; camera reactions key on
   the commitment, not on whether the DOM had an input.
-- **Spatial arrows, the announcer, and page-edge handoff are NOT in
-  yet** — later increments, per the sections below.
+- **Page-edge handoff is not built.** Spatial arrows and the announcer
+  are; both have their own sections below.
 
-**Implementation status (increment 2, shipped 2026-07-30):** the leaf
-half of the model, proven in lab 006 as a synth-style mixed group — the
-`filter — voice a` Surface plus a `<Dial>` satellite sharing ONE
+**The leaf half of the model.** Proven in lab 006 as a synth-style
+mixed group — the `filter — voice a` Surface plus a `<Dial>` satellite
+sharing ONE
 FocusGroup traversal, browser-verified with real CDP keys: Tab continues
 from the last wave button onto the knob's slider proxy; arrows ratchet
 the physics one detent per press; Home/End settle-to-extreme; Shift+Tab
@@ -90,11 +80,10 @@ Escape still clears it. Idle contract held on-screen (33 surfaces ·
 - **Disposing a focused proxy hands focus up first** (own unit, else
   the canvas) before removal — never a silent drop to `<body>`.
 
-**Implementation status (increment 3, shipped 2026-07-30):** the
-scoped-down-then-ratified rework driven by the first real user test
-(Pete, four-point critique — every point traced to a designed-but-
-unshipped or genuinely-missing rule). Browser-verified in lab 006 with
-real CDP keys: entry lands on the panel under the viewport center; the
+**The altitude model, the authored ring, and entry policy.** The rules
+below came out of user testing, where every complaint traced to a rule
+that was designed but unshipped, or genuinely missing. Browser-verified
+in lab 006 with real CDP keys: entry lands on the panel under the viewport center; the
 ring follows the authored roster; a descended group traps and wraps Tab
 through mixed DOM+WebGL members; one Escape releases and zooms home;
 survey focus can never land off-frame (camera position pinned through a
@@ -131,7 +120,7 @@ on this contract:
   entry chose that row's center panel.
 - **Survey vs engaged chrome must differ.** Lab 006: dim 2px inset at
   unit, bright 3px cyan ring + brighter border while engaged. Found in
-  the process: the inc-2 chrome selectors were DEAD CSS — the stamped
+  the process: the earlier chrome selectors were DEAD CSS — the stamped
   unit element IS the `.p6` root, so the descendant form
   (`[data-focus] .p6`) never matched and all visible "focus" came from
   the handle mesh; the self form (`.p6[data-focus]`) is the shipped
@@ -147,7 +136,7 @@ on this contract:
   fulfiller keeps pixel math but clamps to one viewport per event.
 - Arrows, the announcer, and page-edge handoff remain deferred.
 
-**Polish pass (second user test, shipped 2026-07-30):** five noticings,
+**Polish pass.** Five noticings from user testing,
 each verified fixed in browser with real CDP input, plus one discovered
 mid-verification. (1) Release aims the home ride at the released panel
 — position comes home, the view holds the panel Tab framed (a corner
@@ -170,7 +159,7 @@ rad/frame of up-vector spin); yaw/pitch gaze interpolation landed at
 the mathematical bound (0.052 rad/frame). All three schemes are pinned
 as `cameraPose.ts` tests.
 
-**Increment 4 (arrows, shipped 2026-07-31):** directional navigation at
+**Arrows.** Directional navigation at
 scene/unit level — the §8.4 regime split, Flutter's directional
 history, and the no-candidate ladder (contract above under "Directional
 navigation"), all browser-verified with real CDP keys. Evidence:
@@ -292,7 +281,7 @@ Per group, a stack of previously-focused members (Flutter's
 
 ## Directional navigation (arrows, at scene/unit level)
 
-**Shipped increment 4** (`src/lib/spatialNav.ts`, pure + vitest-pinned)
+**Shipped** (`packages/react/src/lib/spatialNav.ts`, pure + vitest-pinned)
 at scene and unit level; member-level arrows, per-group `grid` mode,
 and directional entry stay deferred — arrows stop at unit edges
 (Flutter's Tab-wraps/arrows-stop asymmetry, kept).
@@ -393,7 +382,7 @@ focus) — `focus` shipped as the default; `auto` stays deferred.
   `OrderedTraversalPolicy`: ordered members first, stable-sorted, then
   unordered in secondary order).
 - **Between groups: authored order first** (`FocusGroup order` →
-  `sceneRing`, shipped increment 3) — a designed roster IS the intent;
+  `sceneRing`) — a designed roster IS the intent;
   the first user test read the band algorithm's arc-projection output
   as scrambled. Unordered groups fall back to **screen-space reading
   order**, via Flutter's band algorithm: take the topmost rect; form
@@ -445,7 +434,7 @@ focus) — `focus` shipped as the default; `auto` stays deferred.
   `aria-valuetext` for human units, `aria-orientation` when vertical.
   Switch: `role="switch"`, `aria-checked`, Space (Enter optional).
   Update `aria-valuenow` at settle (or throttled), not per physics
-  frame — measured in increment 2: settle-only announces ~2.7s late
+  frame — measured: settle-only announces ~2.7s late
   after a kick, so the shipped rule is *per detent crossing* plus an
   authoritative settle write.
 - **Keyboard input as force:** arrows inject impulses into the 1-DOF
@@ -506,7 +495,7 @@ already keeps, so a consumer supplies poses and nothing else. Lab 006
 is the first consumer — the hand-rolled rig it replaced is the same
 code, relocated.
 
-**Reframe bridge (shipped increment 3).** DOM `focus()` carries an
+**Reframe bridge.** DOM `focus()` carries an
 implicit obligation — the scroll container brings the element into view
 (WCAG 2.4.11's floor). Our `preventScroll:true` suppresses the page's
 fulfillment (correct: panels aren't in page flow), so the obligation
@@ -525,7 +514,7 @@ rigless scenes and stands down while any app fulfiller is registered.
 `'descend'` requests are emitted (the rigless floor) but rigs ignore
 them — their approach ride already centers the target.
 
-**Pointer selection (shipped with the increment-3 polish).** Clicking a
+**Pointer selection.** Clicking a
 Surface selects its unit — the pointer analog of Tab, minus the camera:
 the click proves the panel visible, so the `'pointer'` cause never
 reframes, and the ring cursor updates so the next Tab continues from

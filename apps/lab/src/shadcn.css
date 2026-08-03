@@ -27,10 +27,6 @@
  *     attribute; this variant consults it. Same mechanism as #2, opposite
  *     direction — there the mirror grants a state, here it withholds one.
  *
- * (The archive's tw-animate-css and shadcn/tailwind.css imports travel
- * with the animation-conductor and chat/AI component sets — none of the
- * three preserved labs wears them; they return when a consumer does.)
- *
  * Theme tokens are transcribed from shadcn's documented new-york-v4 zinc
  * theme (chart/sidebar vars trimmed — nothing here consumes them).
  */
@@ -141,8 +137,8 @@
  * gradient. No component in this app wears the classes today; the
  * neutralization stays because the hazard is a platform property, not a
  * component one, and a future vendored component must not resurrect it
- * silently (archive decisions #30). Unlayered, so it outranks any
- * @utility layer without !important. */
+ * silently. Unlayered, so it outranks any @utility layer without
+ * !important. */
 .ui-root [class*='scroll-fade'],
 .ui-layer [class*='scroll-fade'] {
   -webkit-mask-image: none;

@@ -2,12 +2,12 @@
 //
 // The protocol retells the pointer's story into parked subtrees, and those
 // retellings BUBBLE to document by design — Radix and everything built like
-// it listen there (#19/#20). So `window` carries two voices: the user's hand
+// it listen there. So `window` carries two voices: the user's hand
 // (`isTrusted: true`, coordinates in screen space) and the library's
 // forgeries (`isTrusted: false`, coordinates in parked-source page space —
 // which, every source being fixed at page (0,0), means "near the top-left
 // corner"). A page-level listener that reads coordinates without asking who
-// is speaking flies whatever it controls into that corner (decisions #50).
+// is speaking flies whatever it controls into that corner.
 //
 // `isTrusted` is the platform's own answer and the right default guard: no
 // dispatch path can set it, so nothing we or anyone else constructs can
@@ -47,8 +47,8 @@ export function forge(target: EventTarget, ev: Event): boolean {
  * Is this event one of the surface protocol's retellings?
  *
  * The complement of the `isTrusted` guard, for listeners that must accept
- * untrusted input from elsewhere. The strict rule (decisions #50) is still
- * the default — filter on `isTrusted` and this predicate never comes up. Use
+ * untrusted input from elsewhere. The strict rule is still the
+ * default — filter on `isTrusted` and this predicate never comes up. Use
  * it only when your input pipeline is legitimately synthetic and you need to
  * reject the library's voice specifically:
  *

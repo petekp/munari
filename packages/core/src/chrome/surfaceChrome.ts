@@ -1,5 +1,4 @@
 // Surface chrome — the visual truth a Surface inherits from its own DOM.
-// Ported from three-ui@362c5a1 src/lib/surfaceChrome.ts (archive#55).
 //
 // A Surface's texture is a rectangle, but the element painted into it almost
 // never is: real components have border-radius, and they cast box-shadows the
@@ -202,9 +201,8 @@ export function resolveRadii(
 
 /**
  * Read an element's per-corner radii, resolved to px against its own box.
- * Not exported: the oracle does (nothing outside `surfaceChrome.ts` ever
- * imports it there either), but here it is purely an internal step of
- * `measureSurfaceChrome` — a visibility trim, not a behavior change.
+ * Not exported — purely an internal step of `measureSurfaceChrome`, a
+ * visibility trim, not a behavior change.
  */
 function readRadii(el: HTMLElement): [number, number, number, number] {
   const cs = getComputedStyle(el)

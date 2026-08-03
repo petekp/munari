@@ -1,5 +1,3 @@
-// CONFORMANCE — chrome (flipped 2026-08-02)
-// Ported from three-ui@362c5a1 app/scenes/lab014Plate.test.ts (shadow-quad slice) (archive#56)
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import { makeShadowFrame, shadowQuadFrame } from '@anamorph/core'

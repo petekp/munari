@@ -1,7 +1,6 @@
-// CONFORMANCE — physics (landed 2026-08-03, with the lab app)
-// New with the binding's consumer: Lab 014's toss applies topspin as
-// `plate.q.premultiply(spin)` (archive#61) — the kernel Quat grows the
-// world-frame twin of `multiply`, sized to that consumer.
+// The lab's toss applies topspin as `plate.q.premultiply(spin)` — the
+// kernel Quat grows the world-frame twin of `multiply`, sized to that
+// consumer.
 
 // The quaternion substrate under the plate. `multiply` and `premultiply`
 // are the same Hamilton product with the operands swapped; the contract

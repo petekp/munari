@@ -1,5 +1,3 @@
-// CONFORMANCE — physics (flipped 2026-08-02)
-// Ported from three-ui@362c5a1 src/lib/physics1D.test.ts (archive#2)
 import { describe, expect, it } from 'vitest'
 import {
   type Body1D,
@@ -104,8 +102,7 @@ describe('overCenterField (the toggle)', () => {
   })
 
   it('flipImpulse finds a tap strength that reliably flips, for any tuning', () => {
-    // Tuple-typed (README: noUncheckedIndexedAccess sanction) — the oracle's
-    // looser tsconfig let a plain number[][] destructure cleanly.
+    // Tuple-typed (README: noUncheckedIndexedAccess sanction).
     const tunings: Array<[number, number, number]> = [
       [120, 0.35, 8],
       [60, 0.25, 5],

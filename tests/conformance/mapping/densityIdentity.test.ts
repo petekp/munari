@@ -1,15 +1,14 @@
-// CONFORMANCE — mapping (flipped 2026-08-02)
-// New contract (owed by seed manifest): the density identity — dpr × planeScale(camZ, z) is the exact texel demand for a plane at z under a calibrated camera (archive#52, archive#53, archive#44)
+// The density identity: dpr × planeScale(camZ, z) is the exact texel
+// demand for a plane at z under a calibrated camera.
 //
-// The identity three-ui's flight card used and only the lab pinned:
-// under the #44 calibration (world unit = CSS pixel on z = 0), a plane
-// at altitude z is magnified by planeScale(camZ, z), so the backing
+// Under the calibration (world unit = CSS pixel on z = 0), a plane at
+// altitude z is magnified by planeScale(camZ, z), so the backing
 // density that makes its texture texel-for-pixel with the display is
 // exactly dpr × planeScale — no more (wasted upload), no less (soup).
-// archive#52's "born at the display's density" is this identity at the
-// seed; archive#53's density schedule is this identity evaluated at
-// the two plate altitudes (page density at handoff, altitude density
-// at cruise). The kernel owns the identity; consumers own geometries.
+// "Born at the display's density" is this identity at the seed; the
+// density schedule is this identity evaluated at the two plate
+// altitudes (page density at handoff, altitude density at cruise).
+// The kernel owns the identity; consumers own geometries.
 import { describe, expect, it } from 'vitest'
 
 import { cameraDistance, planeScale, texelDemand } from '@anamorph/core'
@@ -21,8 +20,9 @@ const LIFT = 96
 
 describe('the density identity', () => {
   it('is exactly dpr on the calibrated plane — born at the display density', () => {
-    // z = 0 is where world unit == CSS px (archive#44), so the demand is
-    // the device pixel ratio itself, exactly — this is archive#52's seed.
+    // z = 0 is where world unit == CSS px, so the demand is the device
+    // pixel ratio itself, exactly — the "born at the display's density"
+    // seed.
     for (const dpr of [1, 1.5, 2, 2.25, 3]) {
       expect(texelDemand(dpr, CAM, 0)).toBe(dpr)
     }

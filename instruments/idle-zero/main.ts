@@ -1,5 +1,5 @@
-// idle-zero — the archive#3 economy, measured (instruments/ charter:
-// measurement is maintained infrastructure).
+// idle-zero — the upload-on-paint economy, measured (instruments/
+// charter: measurement is maintained infrastructure).
 //
 // The claim under gate: a mounted, visually quiescent source paints
 // ZERO times per second. paint="auto" is passive — the compositor's
@@ -40,7 +40,7 @@ function cardMarkup(i: number): string {
     font:14px/1.45 system-ui,sans-serif">
     <div style="font-weight:600">card ${i}</div>
     <div data-stamp>at rest</div>
-    <div style="color:#57606a">idle sources are free — archive#3</div>
+    <div style="color:#57606a">idle sources are free</div>
   </div>`
 }
 
@@ -88,8 +88,8 @@ window.__idleZero = {
   capable,
   ready: true,
   sources,
-  // House rule carried from the archive: a scene that can't be
-  // interrogated from the console isn't done.
+  // House rule: a scene that can't be interrogated from the console
+  // isn't done.
   stats: () =>
     sources.map((s, i) => ({ label: `idle-${i}`, painted: s.painted(), paintCount: s.paintCount() })),
 

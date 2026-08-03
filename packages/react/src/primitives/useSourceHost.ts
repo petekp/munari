@@ -9,9 +9,8 @@ import { useLatest } from './useLatest'
 // `Surface` takes markup and rasterizes it. Everything past a static string —
 // a React tree, a portal target, or both — needs the same small pile of
 // container plumbing, and each piece of it is load-bearing for a reason that
-// took a bug to find. Every host-owning primitive (`SurfaceApp` today, the
-// archive's floating family as it arrives) is built on this, so those
-// reasons are paid for once.
+// took a bug to find. Every host-owning primitive (`SurfaceApp` today)
+// is built on this, so those reasons are paid for once.
 
 export interface SourceHost {
   /** Hand to `Surface`'s `onSource`. */
@@ -68,8 +67,8 @@ export function useSourceHost({
     // children are `position: fixed`, hence out of flow, contributing nothing
     // to their parent's height. An undeclared container measures zero and
     // draws an empty rectangle, with clean paints and no error anywhere
-    // (docs/platform.md, decisions #22). For an ordinary content root the
-    // same declaration is merely house style; here it is the whole picture.
+    // (docs/platform.md). For an ordinary content root the same
+    // declaration is merely house style; here it is the whole picture.
     node.style.width = `${widthRef.current}px`
     node.style.height = `${heightRef.current}px`
     el.appendChild(node)
@@ -77,8 +76,8 @@ export function useSourceHost({
     // Parked matter must never hold the real pointer. A drag consumer inside
     // (react-resizable-panels calls `setPointerCapture` per move) would
     // otherwise capture pointerId 1 — the actual mouse — and every trusted
-    // pointer event retargets to the parked element: the canvas goes silent
-    // mid-gesture (decisions #32).
+    // pointer event retargets to the parked element: the canvas goes
+    // silent mid-gesture.
     const unguard = guardPointerCapture(node)
 
     // The container is built HERE, not hoisted into a `useMemo`, because it
@@ -86,8 +85,8 @@ export function useSourceHost({
     // teardown, so the next mount would call `createRoot` on a container
     // whose previous root is still waiting on its unmount microtask. React
     // throws, the throw lands inside r3f's `CanvasImpl`, the canvas is torn
-    // down, and the GL context goes with it. Cost one context loss to learn
-    // (decisions #21).
+    // down, and the GL context goes with it. Cost one context loss to
+    // learn.
     if (contentRef.current !== undefined) {
       const root = createRoot(node)
       root.render(contentRef.current)

@@ -31,7 +31,7 @@
 //    `pointer-events: none` at rest — a canvas with nothing in it must not be
 //    able to eat a click, a text selection or a scroll — and is switched to
 //    `auto` for exactly as long as the pointer is over an airborne card.
-//    Same rule as decisions #20, one level up: hit-test first, then decide
+//    Same rule one level up: hit-test first, then decide
 //    whether you are there at all.
 //
 // And the loop closes: the physics writes `--l14-near` onto the slot it is
@@ -123,7 +123,7 @@ const SEED: Card[] = [
     tag: 'docs',
     title: 'Write down the depth-order bug',
     body: 'Distance to the eye is not depth. Any centred scene hides it.',
-    note: 'decisions #43',
+    note: 'blocked on repro',
     done: false,
   },
   {
@@ -313,7 +313,7 @@ function CardBody({ card, onChange, onGrab, onDelete, hidden }: CardBodyProps) {
 
 // ── the airborne copy's material ─────────────────────────────────────────
 //
-// `material="none"` hands the material slot to us (decisions #33) so the card
+// `material="none"` hands the material slot to us so the card
 // can be UNLIT — a lit standard material would shade the texture and the
 // handoff would stop being invisible the moment a light moved. What it does
 // add is a gloss band keyed to the plate's own normal: the only cue that the
@@ -1154,8 +1154,8 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
   // which is better anyway, because then the `[data-nodrag]` test that
   // protects the note field is the same one the page copy uses, and the hit
   // has already been resolved against the real subtree rather than against a
-  // rectangle. The host is `position: fixed` at page (0, 0) (decisions #16),
-  // so an offset within its rect IS the body-local point.
+  // rectangle. The host is `position: fixed` at page (0, 0), so an
+  // offset within its rect IS the body-local point.
   const onHost = useCallback(
     (el: HTMLElement | null) => {
       grabbed.current?.()
@@ -1548,9 +1548,9 @@ export function Lab014App({ chips }: { chips?: React.ReactNode }) {
         e.preventDefault()
         // The pressed point, body-local. The event's coordinates are
         // PARKED-LOCAL for an airborne copy (the host is fixed at page
-        // (0,0), decisions #16), so "relative to the card element's own
-        // rect" is the body-local point in both worlds — the same formula
-        // as beginDrag and onHost.
+        // (0,0)), so "relative to the card element's own rect" is the
+        // body-local point in both worlds — the same formula as
+        // beginDrag and onHost.
         const r = cardEl.getBoundingClientRect()
         f.hold.set(e.clientX - (r.left + r.width / 2), r.top + r.height / 2 - e.clientY, 0)
         f.crumpleHeld = true

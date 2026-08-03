@@ -1,7 +1,6 @@
-// The DOM→canvas paint source. Ported from three-ui@362c5a1
-// src/lib/htmlInCanvas.ts (archive#10, archive#11, archive#16, archive#20,
-// archive#22) — THE platform file: Chrome's "HTML in Canvas" origin trial
-// (Chrome 148–150) turned into a texture-shaped API.
+// The DOM→canvas paint source — THE platform file: Chrome's "HTML in
+// Canvas" origin trial (Chrome 148–150) turned into a texture-shaped
+// API.
 // https://developer.chrome.com/blog/html-in-canvas-origin-trial
 //
 // Empirically discovered contract (Chrome 150, --enable-features=CanvasDrawElement):
@@ -14,25 +13,23 @@
 //      returns blank until the next paint completes, then works normally.
 //      So a texture upload always trails the DOM by one frame.
 //
-// Platform claims above are dated empiricism on a moving origin trial —
-// untrusted until the Phase 2 re-audit (three-ui/docs/seed/platform-
-// reaudit.md); ported here as the mechanism's rationale, not re-verified by
-// this flip.
+// Platform claims above are dated empiricism on a moving origin
+// trial — re-verify against the current Chrome build before trusting
+// them.
 //
-// This module is the source factory plus its two observation seams: the
-// capability probe and the paint-stats registry. Both crossed back after
-// the initial flip shed them, each when a consumer proved the need. The
-// probe: a library built entirely on an origin-trial API owes its consumer
-// the question "is the API here at all?", answered honestly (false, never
-// a throw) in any environment. The registry: per-source paint counters are
-// the only way to see multi-Surface paint behavior at all — parked source
-// canvases all stack at the same fixed position, occluding each other, and
-// a source whose `paints` stalls while siblings advance is starved. The
-// seed triage (three-ui/docs/seed/instruments.md) classifies `stats()` as
-// a kernel seam: `[]` after a lifecycle is the canonical nothing-left-
-// painting proof, and `paints` deltas are the idle-zero gate's raw feed.
-// One deliberate difference from the oracle: no `window.__threeUI`-style
-// global. The kernel stamps nothing on `window`; consumers import
+// This module is the source factory plus its two observation seams:
+// the capability probe and the paint-stats registry, each present
+// because a consumer proved the need. The probe: a library built
+// entirely on an origin-trial API owes its consumer the question "is
+// the API here at all?", answered honestly (false, never a throw) in
+// any environment. The registry: per-source paint counters are the
+// only way to see multi-Surface paint behavior at all — parked source
+// canvases all stack at the same fixed position, occluding each
+// other, and a source whose `paints` stalls while siblings advance is
+// starved. `stats()` is a kernel seam: `[]` after a lifecycle is the
+// canonical nothing-left-painting proof, and `paints` deltas are the
+// idle-zero gate's raw feed. No `window.__threeUI`-style global
+// exists — the kernel stamps nothing on `window`; consumers import
 // `paintStats` and hang it wherever their console story wants it.
 
 export interface HtmlInCanvasSupport {
@@ -95,7 +92,7 @@ export interface DomTextureSource {
    * Unlike `setScale` this DOES relayout the subtree — that is the point: a
    * content-fitted Surface hugs whatever the DOM measured. Rides the same
    * onpaint path, so callers holding a texture must mark the realloc exactly
-   * as they do for `setScale` (archive#10).
+   * as they do for `setScale`.
    */
   setSize: (w: number, h: number) => void
   /** True once at least one paint has succeeded. */
@@ -265,10 +262,9 @@ export function createDomTextureSource(
 // absurdly large) shouldn't produce a degenerate or runaway canvas. Kept
 // deliberately distinct from this package's paint/lodTier.ts `clampScale`:
 // that one guards a *density* against a css-size-dependent texture-memory
-// ceiling (archive#35); this one just keeps the raw multiplier sane before
-// anything has been measured. Same name in the oracle (two different files
-// in a flat src/lib/); renamed here since both now live side by side under
-// paint/ and both reach the same barrel.
+// ceiling; this one just keeps the raw multiplier sane before anything
+// has been measured. Named distinctly from that function since both
+// live side by side under paint/ and both reach the same barrel.
 function clampRawScale(k: number): number {
   return Number.isFinite(k) ? Math.min(8, Math.max(0.1, k)) : 1
 }

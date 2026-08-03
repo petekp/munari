@@ -9,9 +9,9 @@ import { BLIT_FRAGMENT, GLASS_FRAGMENT, QUAD_VERTEX } from './glassSdfShader'
 //
 // `SdfGlassPanel` is a Surface that renders NOTHING of its own: the mesh
 // carries `material="none"` and an invisible material, so it exists only to
-// be raycast (the pointer forwarding still needs a real quad with real UVs —
-// see decisions #20). Its pixels are produced later, by `GlassSdfCompositor`,
-// from the panel's world matrix and its DOM texture.
+// be raycast (the pointer forwarding still needs a real quad with real
+// UVs). Its pixels are produced later, by `GlassSdfCompositor`, from
+// the panel's world matrix and its DOM texture.
 //
 // Rendering `material.visible = false` costs one skipped draw call
 // (WebGLRenderer checks it in renderObjects) and keeps the object visible to
@@ -214,9 +214,9 @@ export function sdfPanelLabels() {
 // The DOM texture reaches the compositor the same way inc 1's ink quad got
 // it — through the material-slot seam — but it never touches a material here.
 // Premultiplied for the same reason as inc 1: bilinear filtering of straight
-// alpha bleeds the white of `bg-white/10` into every opaque boundary
-// (decisions #36), and the compositor's `glass*(1-a) + rgb` is the shader
-// spelling of One/OneMinusSrcAlpha.
+// alpha bleeds the white of `bg-white/10` into every opaque boundary,
+// and the compositor's `glass*(1-a) + rgb` is the shader spelling of
+// One/OneMinusSrcAlpha.
 function InkRegistrar({ label }: { label: string }) {
   const texture = useSurfaceTexture()
   useEffect(() => {

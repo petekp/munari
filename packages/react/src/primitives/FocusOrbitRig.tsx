@@ -1,6 +1,6 @@
 // FocusOrbitRig — the library's orbit-controls camera rig for FocusScene,
 // extracted from lab 006 after four increments of browser verification
-// (docs/focus.md "Camera integration"; decisions #13). It fulfills the whole
+// (docs/focus.md "Camera integration"). It fulfills the whole
 // camera side of the focus grammar by default:
 //
 //   descend        → approach ride to the engaged unit (park in front of it)

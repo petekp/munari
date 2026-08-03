@@ -1,13 +1,11 @@
-// CONFORMANCE — transfer (flipped 2026-08-02)
-// New contract (owed by seed manifest): the two load-bearing conductor timing subtleties (archive#17)
+// The two load-bearing conductor timing subtleties.
 //
 // useAnimationConductor seizes a CSS animation on `animationstart`, scrubs
 // it by hand, and replays the sampled curve on a mesh — the scrubbing math
-// itself is the ported motionSamples contract, this same layer (archive#17).
-// This file is the seed manifest's other half: two behaviors that live in
-// how the hook drives its OWN timing and its OWN refs, not in the curve
-// math, that the oracle's decisions.md #17 names explicitly as things a
-// refactor must not simplify away.
+// itself is the motionSamples contract, this same layer. This file covers
+// two behaviors that live in how the hook drives its OWN timing and its
+// OWN refs, not in the curve math — things a refactor must not simplify
+// away.
 //
 // (a) Never scrub to the exact end (useAnimationConductor.ts line 59 defines
 // `END_EPSILON_MS = 0.5`; line 127 spends it: `Math.max(0, durationMs -
@@ -47,7 +45,7 @@ import {
 } from '@anamorph/core'
 
 describe('END_EPSILON_MS / conductorScrubEnd', () => {
-  it('pins END_EPSILON_MS to the value the oracle measured', () => {
+  it('pins END_EPSILON_MS to the measured value', () => {
     expect(END_EPSILON_MS).toBe(0.5)
   })
 
