@@ -42,7 +42,7 @@ describe('insiders (overlapping rects — the projected-3D regime)', () => {
   })
 
   it('a sliver overlap must not hijack the regime (browser-caught: doc-4 → deploy)', () => {
-    // Real lab-006 projection: the grab handle extends every panel's rect
+    // Real workspace-scene projection: the grab handle extends every panel's rect
     // upward, so the row above overlaps the origin by ~18px. deploy sits a
     // full row UP with ~3px of rightward edge progress — without the
     // centroid cone it wins 'right' as the minimal-progress insider while
@@ -55,7 +55,7 @@ describe('insiders (overlapping rects — the projected-3D regime)', () => {
   })
 
   it('bloated-projection insiders rank by centroid orthogonality, not raw edge progress (browser-caught: synth → calendar)', () => {
-    // Real lab-006 projection, camera home: at the arc's edge the projected
+    // Real workspace-scene projection, camera home: at the arc's edge the projected
     // AABBs grow until every neighbor overlaps the origin — the insider
     // regime, designed for stacks, swallows the whole neighborhood. Three
     // cone-passing right-insiders: calendar (row below, progress 278.5),
@@ -116,7 +116,7 @@ describe('outsiders (distance function — spatnav structure, symmetric tuning)'
   })
 
   it('a sliver band-overlap must not out-rank the level neighbor (browser-caught: deploy → doc-5)', () => {
-    // Real lab-006 projection, camera home gazing at deploy: the arc's rows
+    // Real workspace-scene projection, camera home gazing at deploy: the arc's rows
     // shear apart at the edges, so doc-5 (one row DOWN) rises until its top
     // is 4px shy of deploy's bottom — cross-bands overlap, orthogonal
     // displacement reads 0, and its 9px-nearer left edge beat synth, the

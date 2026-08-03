@@ -1,12 +1,40 @@
 {
   "name": "anamorph",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Live DOM as physical matter in WebGL \u2014 the three/r3f binding over @anamorph/core. The one package that will ever be published; private until the publish decision (decisions.md #1).",
+  "description": "Live DOM as physical matter in WebGL — a three.js / react-three-fiber binding that lets a WebGL scene carry the real DOM's pixels as matter.",
+  "license": "MIT",
+  "author": "Pete Petrash",
+  "homepage": "https://github.com/petekp/anamorph#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/petekp/anamorph.git",
+    "directory": "packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/petekp/anamorph/issues"
+  },
+  "keywords": [
+    "webgl",
+    "three",
+    "react-three-fiber",
+    "dom",
+    "html-in-canvas",
+    "ui"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": [
+    "*.css"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./style.css": "./src/style.css"
+  },
+  "scripts": {
+    "build": "tsdown && node scripts/stage-manifest.mjs"
   },
   "dependencies": {
     "@anamorph/core": "*"

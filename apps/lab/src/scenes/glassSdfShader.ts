@@ -1,7 +1,7 @@
-// The glass is a distance field, not a mesh. (Lab 012 inc 2 proved it; every
-// glass lab since builds on this file.)
+// The glass is a distance field, not a mesh. Every glass panel builds on
+// this file.
 //
-// The spike (inc 1) gave every panel an extruded rounded-rect wearing drei's
+// The mesh spike gave every panel an extruded rounded-rect wearing drei's
 // MeshTransmissionMaterial, and paid for it with one full scene render PER
 // PANEL: MTM refracts by sampling a screen-space buffer, so each panel needs
 // its own buffer with itself (and everything in front of it) hidden. Three
@@ -24,8 +24,8 @@
 //
 // Because the passes ping-pong far→near, a panel samples the composite of
 // everything already laid down behind it — glass, ink and world. Multi-level
-// refraction is not a feature here, it's the shape of the loop; inc 1's
-// cumulative-hide ordering rule (README) is deleted rather than
+// refraction is not a feature here, it's the shape of the loop; the mesh
+// path's cumulative-hide ordering rule is deleted rather than
 // reimplemented.
 //
 // Everything below runs in linear light: the scene FBO is HalfFloat, three
@@ -401,7 +401,7 @@ void main() {
       // The ink rides the wave only if asked to. It is laid on unrefracted
       // BY DESIGN — the world bends through the glass, the DOM sits on it
       // and stays crisp — so warping its UV trades the thesis for the
-      // effect. Default 0; __lab012.set('rippleInk', 0.4) to see the other
+      // effect. Default 0; __glass.set('rippleInk', 0.4) to see the other
       // reading. (No backticks in here — they end the template literal.)
       vec2 iuv = (iq + rippleTilt * uRippleInk) / (2.0 * uInkRect.zw) + 0.5;
       vec4 ink = texture2D(tInk, iuv) * (uInkOpacity * m);   // premultiplied

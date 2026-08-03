@@ -1,6 +1,6 @@
 // FocusOrbitRig — the library's orbit-controls camera rig for FocusScene,
-// extracted from lab 006 after four increments of browser verification
-// (docs/focus.md "Camera integration"). It fulfills the whole
+// extracted from the workspace scene (docs/focus.md "Camera integration").
+// It fulfills the whole
 // camera side of the focus grammar by default:
 //
 //   descend        → approach ride to the engaged unit (park in front of it)
@@ -116,7 +116,6 @@ export function FocusOrbitRig({
     camera.position.copy(homePos.current)
     controls.target.copy(homeTarget.current)
     controls.update()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera, controls])
 
   const instantNow = () =>
@@ -128,7 +127,7 @@ export function FocusOrbitRig({
   // controls' polar/distance limits BEFORE arming: settle hands the pose to
   // OrbitControls, whose update() re-satisfies clamps by MOVING THE POSITION
   // — a last-frame pop otherwise (cameraPose.ts; vitest-pinned: every top-
-  // and middle-row approach pose in lab 006 violated the polar limit).
+  // and middle-row approach pose in the workspace scene violated the polar limit).
   // Instant mode applies the same end pose as one jump-cut.
   const armTween = (toPosRaw: THREE.Vector3, toTarget: THREE.Vector3, dur: number) => {
     if (!controls) return

@@ -9,7 +9,7 @@ import {
   type OrbitLimits,
 } from './cameraPose'
 
-// Lab 006's live values: App.tsx OrbitControls + the arc workspace geometry.
+// The workspace scene's live values: App.tsx OrbitControls + the arc workspace geometry.
 const LIMITS: OrbitLimits = {
   minPolarAngle: 0,
   maxPolarAngle: Math.PI / 2.05,
@@ -31,7 +31,7 @@ function orbitReconcile(pos: THREE.Vector3, target: THREE.Vector3, limits: Orbit
   return target.clone().add(off.setFromSpherical(s))
 }
 
-/** A lab-006 approach pose for a panel at `p`: panels face LOOK_TARGET, the
+/** A workspace-scene approach pose for a panel at `p`: panels face LOOK_TARGET, the
  *  camera parks APPROACH_DIST out along that facing, aimed at the panel. */
 function approachPose(p: THREE.Vector3) {
   const facing = LOOK_TARGET.clone().sub(p).normalize()
@@ -43,7 +43,7 @@ const phiOf = (pos: THREE.Vector3, target: THREE.Vector3) =>
 
 describe('clampOrbitPose (target sacred — approach rides)', () => {
   it('reproduces the settle pop: raw top- and middle-row approach poses move >0.5 under reconciliation', () => {
-    // Row ys from Lab006 ROW_YS at radius 7; facing tilts toward LOOK_TARGET
+    // Row ys from the workspace scene's ROW_YS at radius 7; facing tilts toward LOOK_TARGET
     // put the camera BELOW the panel (phi > maxPolar) for the upper rows.
     const top = approachPose(new THREE.Vector3(0, 3.94, -7))
     const mid = approachPose(new THREE.Vector3(0, 2.36, -7))

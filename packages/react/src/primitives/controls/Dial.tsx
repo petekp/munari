@@ -5,7 +5,7 @@ import { composeFields, damping, detentField, hopImpulse } from '@anamorph/core'
 import { use1DOF, wrapAngle } from './use1DOF'
 import { FocusGroupContext, type LeafHandle } from '../focusContext'
 
-// <Dial> — the lab-003 knob as a primitive: a rotary control whose feel is
+// <Dial> — a rotary control as a primitive: its feel is
 // detentField + damping. Flicks ratchet through wells; onDetent fires LIVE
 // as the index changes (mid-ratchet included), so a readout can tick along.
 //

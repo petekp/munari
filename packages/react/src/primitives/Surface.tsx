@@ -220,7 +220,7 @@ const _surfScale = new THREE.Vector3()
 // …but that reasoning only holds while the tier TRACKS density. A PINNED
 // tier ('max'/number) deliberately oversupplies at range — the card's 6×
 // texture is minified ~4× from across the room — and bilinear minification
-// without mips is aliasing by construction (measured in lab 012: shredded
+// without mips is aliasing by construction (measured in the glass scene: shredded
 // fine text, moiré on grid lines, and the `anisotropy = 8` set below does
 // nothing at all without a mip chain to select from). So pinned textures
 // always get mips + trilinear: at near-1:1 the GPU samples the top level
@@ -444,7 +444,6 @@ export function Surface({
       ).map((r) => `${r}px`) as [string, string, string, string]
       applyRadii(resolveRadii(values, width, height))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [radius, width, height])
 
   const context = useMemo<SurfaceContextValue>(
@@ -615,7 +614,6 @@ export function Surface({
     source.setSize(width, height)
     const [nextW, nextH] = source.size()
     if (nextW !== prevW || nextH !== prevH) reallocAfterRef.current = source.paintCount()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [width, height, texture])
 
   // Re-measure chrome on the compositor's own change signal — the paint that

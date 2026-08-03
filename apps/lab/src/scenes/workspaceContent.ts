@@ -1,4 +1,4 @@
-// Lab 006 content: the workspace panels. Markup is authored in the Surface
+// Workspace scene content: the workspace panels. Markup is authored in the Surface
 // dialect (docs/authoring.md):
 //   - pulses are PAINT properties only — background-color transitions on the
 //     panel root ([data-fresh]), never opacity/transform
@@ -34,7 +34,7 @@ export const PANEL_H = 300
 // Shared stylesheet. The parked subtrees are real in-document DOM, so one
 // injected sheet covers every panel; classes keep the markup strings sane.
 
-const STYLE_ID = 'lab006-css'
+const STYLE_ID = 'workspace-css'
 
 const CSS = `
 .p6{box-sizing:border-box;width:${PANEL_W}px;height:${PANEL_H}px;padding:16px 18px;
@@ -102,14 +102,14 @@ const CSS = `
    border/box-shadow changes are compositor-safe and self-repaint
    (docs/authoring.md). */
 /* SELF selectors, not descendant: the stamped unit element IS the .p6 root
-   (browser-verified — the descendant form was dead CSS since inc 2). */
+   (browser-verified — the descendant form never matched, and was dead CSS). */
 .p6[data-focus]{border-color:#38bdf8}
 .p6[data-focus="unit"]{box-shadow:inset 0 0 0 2px rgba(56,189,248,.38)}
 .p6[data-focus="interior"]{box-shadow:inset 0 0 0 2px rgba(125,211,252,.6)}
 .p6[data-engaged]{border-color:#7dd3fc;box-shadow:inset 0 0 0 3px rgba(125,211,252,.78)}
 `
 
-export function injectLab006Styles(): () => void {
+export function injectWorkspaceStyles(): () => void {
   if (document.getElementById(STYLE_ID)) return () => {}
   const el = document.createElement('style')
   el.id = STYLE_ID
@@ -183,7 +183,7 @@ function ciPanel(): PanelSpec {
 function errorsPanel(): PanelSpec {
   const pool: Array<[string, string, string]> = [
     ['err', 'TypeError', 'cannot read uv of undefined · forwardEvents.ts:88'],
-    ['warn', 'SlowFrame', 'main thread 21ms · scene lab004'],
+    ['warn', 'SlowFrame', 'main thread 21ms · scene panel-4'],
     ['err', 'ChunkLoadError', 'dynamic import failed · retrying'],
     ['warn', 'Texture', 'NPOT texture resized · source-12'],
     ['err', 'AbortError', 'fetch /api/telemetry aborted'],
@@ -258,7 +258,7 @@ function chatPanel(): PanelSpec {
     ['sam', 'typing into a panel mid-orbit is genuinely uncanny. ship it'],
   ]
   const body = `<div class="fill" data-chat>
-      <div class="msg"><b>devon</b> · morning! lab 006 spike day</div>
+      <div class="msg"><b>devon</b> · morning! spike day</div>
     </div>
     <div class="status">#anamorph · 3 online</div>`
   return {
@@ -366,7 +366,7 @@ function deployPanel(): PanelSpec {
   }
 }
 
-// The mixed-group proof (lab 007 increment 2): DOM tabbables and a WebGL
+// The mixed-group proof: DOM tabbables and a WebGL
 // dial in ONE focus traversal. Tab walks the wave buttons, continues onto
 // the knob (a leaf proxy carries real focus), arrows ratchet it through the
 // physics, and the readout below is live DOM painted by the dial's detents.
@@ -458,7 +458,7 @@ function diffPanel(): PanelSpec {
 
 function calendarPanel(): PanelSpec {
   const body = `<div class="fill">
-    <div class="cal"><span class="at">9:30</span><span>standup — lab 006 spike scope</span></div>
+    <div class="cal"><span class="at">9:30</span><span>standup — spike scope</span></div>
     <div class="cal"><span class="at">11:00</span><span>chrome origin-trial office hours (file the transition-staleness case)</span></div>
     <div class="cal"><span class="at">2:00</span><span>demo cut review — 90s timeline</span></div>
     <div class="cal"><span class="at">4:30</span><span>focus/keyboard pillar planning</span></div>
@@ -470,7 +470,7 @@ function calendarPanel(): PanelSpec {
 function kanbanPanel(): PanelSpec {
   const body = `<div class="cols fill">
     <div class="kcol">todo<div class="kcard">press-time UV lock</div><div class="kcard">focus handoff spec</div></div>
-    <div class="kcol">doing<div class="kcard">lab 006 spike</div></div>
+    <div class="kcol">doing<div class="kcard">workspace spike</div></div>
     <div class="kcol">done<div class="kcard">upload-on-paint</div><div class="kcard">control kit</div></div>
   </div>
   <div class="status">board · library v0</div>`
@@ -482,7 +482,7 @@ const DOCS: Array<[string, string[]]> = [
   ['platform contract', ['drawElementImage replays the paint record; whatever the compositor owns never enters it.', 'The record changing IS the change signal. Idle subtrees fire nothing.']],
   ['authoring dialect', ['If it changes what the surface says, mutate the DOM. If it changes where it is, move the matter.', 'Hover ships as data-hover. Pulses are background, never opacity.']],
   ['okrs · q3', ['O: the reference implementation for HTML-in-canvas UI.', 'KR1: focus/keyboard complete. KR2: killer demo shipped. KR3: origin-trial feedback filed.']],
-  ['retro · lab 005', ['One integrator, three force fields — new controls are new fields, zero new state machines.', 'Physics deciding a toggle beats animating one.']],
+  ['retro · sprint 12', ['One integrator, three force fields — new controls are new fields, zero new state machines.', 'Physics deciding a toggle beats animating one.']],
   ['glossary', ['Surface: DOM subtree as the skin of geometry. SurfaceLayer: floating UI anchored to a UV point.', 'Paint record: the display list drawElementImage replays.']],
   ['incident · 007', ['A transition: opacity in a teammate panel shipped a stale texture that healed on unrelated repaints.', 'Root cause: compositor-owned property. Now a hard authoring rule.']],
   ['roadmap', ['v0: floating layers ✓, control kit ✓, focus/keyboard ◐, scale contract ✓.', 'Next: graceful degradation to overlay DOM when the API is absent.']],

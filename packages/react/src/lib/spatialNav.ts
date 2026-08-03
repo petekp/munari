@@ -88,7 +88,7 @@ const rectsOverlap = (a: Rect, b: Rect) =>
  * projected arc neighbors overlap by a few pixels (grab handles,
  * perspective), and a panel one full row away would win 'right' with ~zero
  * edge progress while the true right neighbor sat dismissed in the
- * outsider pool (browser-caught in lab 006: doc-4 → deploy).
+ * outsider pool (browser-caught in the workspace scene: doc-4 → deploy).
  */
 function insiderCone(origin: Rect, c: Rect, dir: Dir): boolean {
   const dxc = c.x + c.w / 2 - (origin.x + origin.w / 2)
@@ -137,7 +137,7 @@ export function isOutsider(origin: Rect, c: Rect, dir: Dir): boolean {
  * cross-overlap, and projected 3D hands out slivers freely: the arc's rows
  * shear apart toward the edges until the row-below neighbor's top grazes
  * the origin's bottom, zeroing its penalty while its centroid sits a full
- * row away (browser-caught in lab 006: deploy → right picked doc-5 over
+ * row away (browser-caught in the workspace scene: deploy → right picked doc-5 over
  * synth on a 4px sliver). A same-row neighbor's centroid falls inside the
  * band — od stays 0 where it should. The spec's −√overlapArea term is
  * omitted: the regime split guarantees outsiders share zero area with the

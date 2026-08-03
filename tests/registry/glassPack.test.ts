@@ -1,7 +1,7 @@
 // REGISTRY — glass pack (2026-08-03)
 // The pack's three welds (registry/glass/README.md):
 //   1. The vendorable files are byte-identical to the reference consumer
-//      (the preserved Lab 012), so the lab's typecheck and browser
+//      (the preserved glass scene), so the lab's typecheck and browser
 //      evidence cover the registry copy verbatim.
 //   2. rippleLaw.ts is pinned to the capillary law's own mathematics, and
 //      the shader TEXT is pinned to contain the same formulas — the twin

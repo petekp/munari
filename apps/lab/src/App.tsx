@@ -2,17 +2,17 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, OrbitControls } from '@react-three/drei'
 import { detectHtmlInCanvas, FocusScene, paintStats } from 'anamorph'
-import { Lab006, Lab006Hud } from './scenes/Lab006'
-import { Lab012 } from './scenes/Lab012'
-import { Lab014App } from './scenes/Lab014'
+import { Workspace, WorkspaceHud } from './scenes/Workspace'
+import { Glass } from './scenes/Glass'
+import { FlightApp } from './scenes/Flight'
 
-// Three labs (decisions.md #3): 006 focus wall, 012 SDF glass, 014 drag
-// trilogy. Everything they render reaches the library through the
+// Three scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
+// flight drag trilogy. Everything they render reaches the library through the
 // `anamorph` barrel — this app is the proof that the public surface is
 // sufficient.
 
-type LabId = '006' | '012' | '014'
-const LABS = ['006', '012', '014'] as const
+type SceneId = 'workspace' | 'glass' | 'flight'
+const SCENES = ['workspace', 'glass', 'flight'] as const
 
 // Clicking a canvas normally moves focus to <body>, which would blur
 // whatever hidden form field a Surface has focused — killing native typing.
@@ -31,7 +31,7 @@ function KeepDomFocus() {
 
 export default function App() {
   const support = useMemo(detectHtmlInCanvas, [])
-  const [lab, setLab] = useState<LabId>('006')
+  const [scene, setScene] = useState<SceneId>('workspace')
 
   // Console story: the kernel stamps nothing on `window`, so the app hangs
   // the paint ledger where devtools probes expect it (the runbook's
@@ -42,21 +42,21 @@ export default function App() {
     }
   }, [])
 
-  // Lab 014 is not a scene in the shared canvas — it IS a page, with its own
-  // overlay canvas on top of it. The other labs are content inside one 3D
-  // room; this one inverts the relationship, so it takes the whole route and
-  // carries the lab chips itself.
+  // The flight scene is not a scene in the shared canvas — it IS a page,
+  // with its own overlay canvas on top of it. The other scenes are content
+  // inside one 3D room; this one inverts the relationship, so it takes the
+  // whole route and carries the scene chips itself.
   const chips = (
     <div className="tabs">
-      {LABS.map((id) => (
-        <button key={id} data-active={lab === id} onClick={() => setLab(id)}>
-          lab {id}
+      {SCENES.map((id) => (
+        <button key={id} data-active={scene === id} onClick={() => setScene(id)}>
+          {id}
         </button>
       ))}
     </div>
   )
 
-  if (lab === '014') return <Lab014App chips={chips} />
+  if (scene === 'flight') return <FlightApp chips={chips} />
 
   return (
     <div className="app">
@@ -73,7 +73,7 @@ export default function App() {
         <FocusScene>
           <Suspense fallback={null}>
             <Environment preset="city" />
-            {lab === '012' ? <Lab012 /> : <Lab006 />}
+            {scene === 'glass' ? <Glass /> : <Workspace />}
             <ContactShadows position={[0, -0.15, 0]} opacity={0.5} blur={2.2} scale={20} />
             <OrbitControls
               makeDefault
@@ -88,7 +88,7 @@ export default function App() {
       </Canvas>
 
       <div className="hud">
-        <h1>anamorph / lab {lab}</h1>
+        <h1>anamorph / {scene}</h1>
         <p className="sub">a component library made of real materials</p>
         {chips}
         <ul className="features">
@@ -108,11 +108,11 @@ export default function App() {
       </div>
 
       <div className="footer">
-        {lab === '012'
+        {scene === 'glass'
           ? 'drag a lens across the panel — the UI refracts and stays live · click through the glass and type'
           : 'double-click a panel to approach · double-click the floor to step back · drag a title bar · click into text and type'}
       </div>
-      {lab === '006' && <Lab006Hud />}
+      {scene === 'workspace' && <WorkspaceHud />}
     </div>
   )
 }

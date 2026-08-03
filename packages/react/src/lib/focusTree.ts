@@ -1,4 +1,4 @@
-// Focus tree core — pure logic for docs/focus.md (lab 007).
+// Focus tree core — pure logic for docs/focus.md.
 //
 // Scene → groups → members, one level deep by design. This module owns the
 // parts that are testable without a DOM or a camera: member ordering,
@@ -116,7 +116,7 @@ export function createFocusTree<T>(): FocusTree<T> {
     },
     registerMember(groupId, member) {
       // React child effects run bottom-up: a group's members register BEFORE
-      // the group itself. Silently dropping them was a real bug (the lab-006
+      // the group itself. Silently dropping them was a real bug (a
       // dial vanished from its group's traversal); create the group record
       // implicitly and let registerGroup fill in the label when it arrives.
       let g = groups.get(groupId)
@@ -260,7 +260,7 @@ export function readingOrder(rects: readonly OrderRect[]): string[] {
 
 // ---------------------------------------------------------------------------
 // Scene-ring policy — the group-level half of Flutter's Ordered vs
-// ReadingOrder traversal split, adopted after lab 006's first user test:
+// ReadingOrder traversal split, adopted after the workspace scene's first user test:
 // the band algorithm on arc projections scrambles a designed grid (the back
 // row projects higher than the front, bands curve, order shuffles with
 // camera pose). When the author has stated an order, geometry gets no vote.

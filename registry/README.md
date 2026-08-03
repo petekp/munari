@@ -6,18 +6,21 @@ from — its **tuned constants** and its **perceptual-floor tests**
 (budgets pinned to real hand speeds, the named peers of the theorems).
 
 **glass/** is the first shipped pack: the SDF compositor as vendorable
-source, byte-welded to Lab 012, with the capillary law's TS twin and
+source, byte-welded to the glass scene, with the capillary law's TS twin and
 the view-space-z ordering regression
 (`tests/registry/glassPack.test.ts`).
 
 **flight-card/** is a charter, deliberately: the laws are kernel
-contracts, the scene machinery is one organism inside Lab 014, and
+contracts, the scene machinery is one organism inside the flight scene, and
 extraction waits for a second consumer (decisions.md #10). Its README
 is the inventory; the pack test welds the charter's claims to the
 kernel and the reference scene.
 
-Still planned: the control kit — `Dial` already ships from the binding;
-Toggle and Slider wait for a consuming lab.
+Nothing else is planned *here* — the doctrine above is the whole
+admission rule, and a pack that no consumer has asked for would be a
+second system. Ideas waiting on a consumer (a Toggle/Slider control kit
+to join `Dial`, extracting flight-card) are tracked as issues, not as
+entries in this file.
 
 Focus and spatial navigation deliberately do NOT live here
 (decisions.md #9): the mechanism ships as exported API from the

@@ -1,4 +1,4 @@
-// Pure layout math for Lab 006's amphitheater: rows × cols panel slots on a
+// Pure layout math for the workspace scene's amphitheater: rows × cols panel slots on a
 // cylindrical arc centered on the origin, facing inward. θ=0 is straight
 // ahead of the default camera (-z); positive angles sweep to the viewer's
 // right. Pure so it's testable without three.js scene machinery.

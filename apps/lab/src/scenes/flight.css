@@ -1,4 +1,4 @@
-/* Lab 014 — a page that has a third dimension.
+/* The flight scene — a page that has a third dimension.
  *
  * Everything here styles ORDINARY DOM. There is no Surface-specific rule in
  * this file and there deliberately can't be: the whole premise is that the
@@ -303,9 +303,9 @@
  * one: a canvas with nothing in it must not be able to intercept a click,
  * a text selection, or a scroll. It is switched to `auto` for exactly as
  * long as the pointer is over a piece of matter — see `SolidWhereMatterIs`
- * in Lab014.tsx, which toggles the canvas one level inside this wrapper.
+ * in Flight.tsx, which toggles the canvas one level inside this wrapper.
  *
- * `position` and `pointer-events` are ALSO set inline in Lab014.tsx and have
+ * `position` and `pointer-events` are ALSO set inline in Flight.tsx and have
  * to be: r3f writes both onto this same wrapper as inline styles, which
  * outrank anything here. They are left in the file because they say what the
  * element is for. */

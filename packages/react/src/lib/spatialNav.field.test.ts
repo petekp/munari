@@ -1,5 +1,5 @@
 // Full-field browser captures, pinned. Both fields were sampled live from
-// lab 006 (2026-07-31, camera home [0,2,3.4], viewport 1280×720) by
+// the workspace scene (2026-07-31, camera home [0,2,3.4], viewport 1280×720) by
 // mirroring FocusScene's screenRect math against the registered group
 // objects — these are the exact 33 rects directionalPick saw at the
 // keypress. Pre-fix, each field reproduced its browser defect verbatim

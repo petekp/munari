@@ -15,13 +15,13 @@ inventory of what exists and where:
   `crumplePhase` (crush exactly 0 through rise; rise IS the handoff
   window), `tossSpin` (V0 220, MAX 7, topspin ẑ×d̂), `wadOffscreen`
   (the exit is a PLACE), `wadShrink`, and the window gesture
-  (`attachLab014Gestures` — `isTrusted` as the provenance gate,
+  (`attachFlightGestures` — `isTrusted` as the provenance gate,
   tap/throw/crumple release semantics, the `tossed` flag that makes a
   released ball ballistic immediately).
 - **The chrome laws** (`tests/conformance/chrome/`): `parseBoxShadow`,
   `shadowQuadFrame` (geometry and uniforms from ONE computation).
-- **The reference implementation is Lab 014**
-  (`apps/lab/src/scenes/Lab014.tsx`), browser-verified:
+- **The reference implementation is the flight scene**
+  (`apps/lab/src/scenes/Flight.tsx`), browser-verified:
   tap→float→type→Escape home, cross-column throw with real velocity,
   crumple ball under the ✕ with the board forgetting LAST, paint ledger
   empty after the wad exits.
@@ -31,7 +31,7 @@ inventory of what exists and where:
 The scene-side machinery — aero vertex bow, crumple shader,
 depth-tested shadow quad, density-pin driver — lives inside the
 reference scene as one organism. Extracting a reusable component is
-design work with its own increments, and no second consumer exists to
+design work in its own right, and no second consumer exists to
 size it. The kernel's own doctrine applies (decisions.md #7): surface
 grows when a consumer arrives holding the need. Until then, a consumer
 wanting a flight card reads the reference scene next to the kernel
@@ -61,7 +61,7 @@ contracts.
 
 | constant | value | where |
 | --- | --- | --- |
-| fold grid | 6×3 uv cells | Lab014.tsx crumple shader |
+| fold grid | 6×3 uv cells | Flight.tsx crumple shader |
 | fold remainder | 0.35 per-vertex mix | same |
-| crumple altitude | `CRUMPLE_Z = 55` | Lab014.tsx |
+| crumple altitude | `CRUMPLE_Z = 55` | Flight.tsx |
 | kernel twins | AMP 55 / V0 650 / spin V0 220 / MAX 7 | `@anamorph/core` plate.ts, contract-covered |

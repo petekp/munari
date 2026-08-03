@@ -72,31 +72,36 @@ imperceptible is not shipped.
 
 ## #3 — The lab preserves three scenes (2026-08-02)
 
-**Decision.** `apps/lab` carries labs **006**, **012**, and **014**,
-and no others. Scenes are evidence, not product — the standing rule is
-that a scene exists to prove a claim, and a scene that proves nothing
-the others don't is deleted rather than maintained.
+**Decision.** `apps/lab` carries three scenes — **workspace**,
+**glass**, and **flight** — and no others. Scenes are evidence, not
+product: a scene exists to prove a claim, and a scene that proves
+nothing the others don't is deleted rather than maintained.
 
-**What each preserved lab pins:**
+**What each scene pins:**
 
-- **006 — the arc.** The focus grammar's home scene (33-panel arc,
-  Tab/Enter/Escape spine, arrows, camera rides). Exercises the
+- **workspace — the arc.** The focus grammar's home scene (33-panel
+  arc, Tab/Enter/Escape spine, arrows, camera rides). Exercises the
   focus/spatial-nav surface, the control kit, and `FocusOrbitRig`.
-- **012 — the glass.** The SDF compositor: one scene render, N
-  screen-space passes. Exercises the material-slot seam and carries
-  the premultiplied-alpha contract (#5).
-- **014 — the paper.** The drag/aero/crumple/toss card scene, and the
-  fullest exercise of the kernel: mapping (calibrated camera),
-  transfer (density schedule and readiness), chrome (measured
-  shadow), physics (plate, aero, crumple, toss). The conformance
-  suite's physics/chrome/transfer slices ARE this lab's laws; the
-  scene is their consumer proof.
+- **glass — the compositor.** One scene render, N screen-space passes.
+  Exercises the material-slot seam and carries the premultiplied-alpha
+  contract (#5).
+- **flight — the paper.** The drag/aero/crumple/toss card scene, and
+  the fullest exercise of the kernel: mapping (calibrated camera),
+  transfer (density schedule and readiness), chrome (measured shadow),
+  physics (plate, aero, crumple, toss). The conformance suite's
+  physics/chrome/transfer slices ARE this scene's laws; the scene is
+  their consumer proof.
 
 **Why these three.** Together they cover the three pillars without
-overlap — input/focus custody (006), rendering and composition (012),
-and the custody excursion itself (014). Each is a standing consumer:
-if the public barrel can't express it, the barrel is wrong (export it;
-don't reach around).
+overlap — input/focus custody, rendering and composition, and the
+custody excursion itself. Each is a standing consumer: if the public
+barrel can't express it, the barrel is wrong (export it; don't reach
+around).
+
+**Amended 2026-08-03.** These scenes were originally numbered by their
+position in a longer sequence of experiments. The numbers outlived the
+sequence, so they were replaced with names that say what each scene
+proves.
 
 ## #4 — Core speaks in shapes; three satisfies them (2026-08-02)
 
@@ -191,7 +196,7 @@ across by a consumer rather than pushed by symmetry:
 **`paintStats()`.** Per-source paint counters are a kernel seam, not a
 devtools nicety: `[]` after a lifecycle is the canonical
 nothing-left-painting proof, and `paints` deltas are the idle-zero
-gate's raw feed. Lab 006's HUD is the consumer that proved it — the
+gate's raw feed. The workspace scene's HUD is the consumer that proved it — the
 "40 live documents, zero cost" claim rendered as numbers needs
 counters only the source factory can keep. It ships with one
 deliberate constraint: **no global**. The kernel exports a function;
@@ -199,7 +204,7 @@ the lab hangs it at `window.__anamorph.stats()` in App.tsx. A zero-dep
 kernel that stamps `window` at module load would be doing a consumer's
 job with a library's authority.
 
-**`Quat.premultiply`.** Lab 014's toss applies topspin in the world
+**`Quat.premultiply`.** The flight scene's toss applies topspin in the world
 frame (`plate.q.premultiply(spin)`). The kernel Quat had only
 `multiply`; the twin arrived with a contract pinning it as
 exactly-multiply-with-operands-swapped (bitwise, not epsilon) plus the
@@ -213,7 +218,7 @@ the need, and each addition brings its contract in the same commit.
 
 ## #8 — Gesture deps are generic in the consumer's vector type (2026-08-03, physics layer)
 
-Lab 014 annotates its lift carry `(a: THREE.Vector3) => ...`, the
+The flight scene annotates its lift carry `(a: THREE.Vector3) => ...`, the
 kernel's `GestureDeps` demanded `(a: Vec3Chain) => void`, and under
 `strictFunctionTypes` a callback parameter is contravariant — the
 scene's honest annotation was a TS2322. The kernel's shape-typed
@@ -279,11 +284,11 @@ the kernel (plate integrator, `aeroAmplitude` with its perceptual
 floors, `aeroFollowStep`'s gated fork, `crumplePhase`'s invariants,
 `tossSpin`, `wadOffscreen`, the window gesture), the chrome laws live
 beside them, and the scene-side machinery — aero bow, crumple shader,
-depth-tested shadow, density-pin driver — is one organism inside Lab
-014.
+depth-tested shadow, density-pin driver — is one organism inside the
+flight scene.
 
 **Why not extract it now.** Extracting a reusable component from that
-organism is design work measured in increments, and no second consumer
+organism is design work in its own right, and no second consumer
 exists to size it. Cutting it up now would trade a working,
 browser-verified reference for an untested abstraction — the
 second-system guard's exact target, and the same doctrine that gates
@@ -297,3 +302,37 @@ welded by test the way the glass pack is: the kernel claims by import
 claims by text (the 6×3 fold grid, the 0.35 remainder, `CRUMPLE_Z`). A
 charter whose claims are executable cannot quietly rot into wishful
 documentation.
+
+## #11 — The published package is staged, and the kernel travels inside it (2026-08-03)
+
+**Decision.** `npm run build` bundles `packages/react` into
+`packages/react/dist` with `@anamorph/core` **inlined** and
+`three`/`@react-three/fiber`/`react` left external, writes a purpose-built
+manifest into that directory, and publishing runs from there
+(`npm publish packages/react/dist`). The workspace manifest keeps
+`exports` pointing at `src/`, and keeps `private: true`.
+
+**Why the kernel is bundled rather than published beside the binding.**
+One public package is #1's promise. A published `@anamorph/core` would
+be a second doorway with its own version line, and a consumer who
+installed both could hold two kernels — the same failure mode as two
+copies of three, minus the `instanceof` error that would announce it.
+Bundling makes the kernel an implementation detail that cannot be
+depended on by accident. The staging script checks the emitted bundle
+for a surviving `@anamorph/core` import rather than trusting the config,
+because that import resolves fine inside the workspace and fails only
+for consumers.
+
+**Why staging instead of repointing `exports` at `dist`.** The lab
+resolves `anamorph` through the workspace with no alias standing in for
+the library — that is what makes a missing barrel export fail the lab's
+build instead of slipping past on a relative path. Pointing `exports` at
+`dist` would either break that enforcement or force a rebuild between
+every edit. Staging keeps the source tree honest and the artifact
+correct, and it makes the workspace's `private: true` a feature: a stray
+`npm publish` at the root cannot ship raw TypeScript.
+
+**Peers, restated as a build rule.** `three` does internal `instanceof`
+checks, so a bundled copy would fail silently in a consumer who already
+has one. The externals list is not an optimization; it is the singleton
+contract.

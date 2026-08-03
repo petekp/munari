@@ -44,7 +44,7 @@ import {
   type ReframeRequest,
 } from './focusContext'
 
-// FocusScene — lab 007's manager, implementing docs/focus.md.
+// FocusScene — the focus manager, implementing docs/focus.md.
 //
 // The invariant everything else hangs off: SCENE FOCUS IS DOCUMENT FOCUS.
 // This component never stores "what is focused" — it derives its level from

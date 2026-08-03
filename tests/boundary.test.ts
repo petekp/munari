@@ -6,7 +6,7 @@
 //      specifier (plus its declared peers), never a relative path.
 //   3. Consumers (apps/, registry/) reach the library only through the
 //      `anamorph` barrel — @anamorph/core and relative reach-arounds
-//      are both violations. (Mirror of archive tests/boundary.test.ts.)
+//      are both violations.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -86,8 +86,8 @@ describe('the hourglass', () => {
     expect(
       violations('packages/react/src', (spec, file) => {
         if (spec.startsWith('.')) return !escapesDir(file, spec, dir)
-        // Suites ride beside their modules (the archive's own layout), but
-        // they are not shipped surface — vitest is the one specifier the
+        // Suites ride beside their modules, but they are not shipped
+        // surface — vitest is the one specifier the
         // runner owns, and it is allowed ONLY there. Everything else in a
         // test file answers to the same allowlist as the module it tests.
         if (spec === 'vitest' && /\.test\.tsx?$/.test(file)) return true

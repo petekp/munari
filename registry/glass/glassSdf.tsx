@@ -4,8 +4,8 @@ import * as THREE from 'three'
 import { SurfaceApp, useSurfaceTexture } from 'anamorph'
 import { BLIT_FRAGMENT, GLASS_FRAGMENT, QUAD_VERTEX } from './glassSdfShader'
 
-// The SDF glass path — born in lab 012 inc 2, now the shared kit every glass
-// lab builds on (012's beads, 013's morphing chat shell).
+// The SDF glass path — the shared kit every glass panel builds on (beads,
+// a morphing chat shell).
 //
 // `SdfGlassPanel` is a Surface that renders NOTHING of its own: the mesh
 // carries `material="none"` and an invisible material, so it exists only to
@@ -105,7 +105,7 @@ export const MAX_BLOBS = 6
 export const MAX_RECTS = 12
 /**
  * Concurrent ripples per panel — must match the shader define. Six because a
- * staggered emergence (lab 013: five thread rows welling out of the rail one
+ * staggered emergence (five thread rows welling out of the rail one
  * after another) overlaps that many wave trains before the first has died.
  */
 export const MAX_RIPPLES = 6
@@ -196,7 +196,7 @@ const sdfPanels = new Map<string, SdfPanel>()
 // record its own parent has not created yet. Keyed by label, joined at
 // composite time.
 const sdfInk = new Map<string, THREE.Texture>()
-// Dev handle: `__glassInk.get('lab013-rail').image` is the parking canvas the
+// Dev handle: `__glassInk.get('glass-wall').image` is the parking canvas the
 // compositor is sampling, which is the only way to tell a UV bug apart from a
 // rasterization bug from the outside.
 ;(window as unknown as { __glassInk: typeof sdfInk }).__glassInk = sdfInk
@@ -211,9 +211,9 @@ export function sdfPanelLabels() {
 
 // ---- the panel ----------------------------------------------------------
 
-// The DOM texture reaches the compositor the same way inc 1's ink quad got
+// The DOM texture reaches the compositor the same way the mesh path's ink quad got
 // it — through the material-slot seam — but it never touches a material here.
-// Premultiplied for the same reason as inc 1: bilinear filtering of straight
+// Premultiplied for the same reason as the mesh path: bilinear filtering of straight
 // alpha bleeds the white of `bg-white/10` into every opaque boundary,
 // and the compositor's `glass*(1-a) + rgb` is the shader spelling of
 // One/OneMinusSrcAlpha.
@@ -251,7 +251,7 @@ export interface SdfGlassPanelProps {
   hasBase?: boolean
   /**
    * Coplanar circles merged into this panel's glass. Pass a STABLE array and
-   * mutate its members per frame — see `BlobDrift` in Lab012.
+   * mutate its members per frame — see `BlobDrift` in the glass scene.
    */
   blobs?: GlassBlob[]
   /** Coplanar rounded rects, same stable-array-mutated-in-place contract. */
@@ -335,7 +335,7 @@ export function SdfGlassPanel({
 //   for each panel, far → near:  src → glass pass → dst,  swap
 //   src → blit → screen (tone mapping + sRGB, the only such step)
 //
-// Cost is one scene render plus N full-screen passes, against inc 1's N
+// Cost is one scene render plus N full-screen passes, against the mesh path's N
 // scene renders. The passes are pure fill: at 1× viewport, ~8 taps each.
 
 // drei's useFBO can't express "give me a depth texture" in its types (its
@@ -500,11 +500,11 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
 
     // 2 — far → near. Each pass reads what the previous one wrote, so a
     // panel's refraction contains the glass, the ink and the world behind it
-    // by construction — the whole cumulative-hide dance of inc 1 is gone.
+    // by construction.
     //
     // The key is VIEW-SPACE Z, not distance to the camera. Distance was wrong
-    // and lab 012 never noticed, because its two panels sat on the view axis
-    // where the two orders agree. Put a panel out to the side — lab 013's
+    // and went unnoticed while two panels sat on the view axis
+    // where the two orders agree. Put a panel out to the side — a
     // rail, one sixth of the way across a wide app — and it is FARTHER by
     // Pythagoras while being no deeper at all, so it composited first and the
     // panel actually behind it then refracted its ink: every glyph in the

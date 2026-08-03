@@ -14,7 +14,7 @@ import { TOSS_SPIN_V0, TOSS_SPIN_MAX, aeroAmplitude } from '@anamorph/core'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const scene = () =>
-  readFileSync(join(ROOT, 'apps/lab/src/scenes/Lab014.tsx'), 'utf8')
+  readFileSync(join(ROOT, 'apps/lab/src/scenes/Flight.tsx'), 'utf8')
 
 describe('the charter names real kernel surface', () => {
   it('the toss constants are the archived tuning', () => {

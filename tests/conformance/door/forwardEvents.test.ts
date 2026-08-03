@@ -537,7 +537,7 @@ describe('moving between elements inside the surface', () => {
   })
 
   it('mirrors the mouse compatibility twins on every boundary crossing', () => {
-    // The browser-caught defect (lab 010 inc 8): recharts is mouse-native —
+    // The browser-caught defect: recharts is mouse-native —
     // React synthesizes its onMouseLeave from native `mouseout` — so a chart
     // tooltip appeared on forwarded moves and then never hid: the departure
     // was speaking pointer events only. A real browser fires the mouse twins
@@ -611,7 +611,7 @@ describe('silencing the trusted canvas move', () => {
 describe('stacking order (z-index) in the hit test', () => {
   // The geometric walk can only see DOM order — later siblings win. Real
   // paint order is decided by z-index and stacking contexts, which only the
-  // browser can resolve: measured in lab 009, a sonner toast (z 999999999,
+  // browser can resolve: measured — a sonner toast (z 999999999,
   // FIRST child) painted above the dialog overlay (z 50, later sibling), and
   // the walk handed the pointer to the overlay under the visible toast.
   // deepestElementAt must consult document.elementsFromPoint — the browser's

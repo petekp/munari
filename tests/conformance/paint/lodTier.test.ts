@@ -73,7 +73,7 @@ describe('seedTier', () => {
   // prior is the renderer's pixel ratio (world ≈ CSS px for almost every
   // consumer). Seeding at 1× regardless made retina Surfaces be born at
   // half density: a visible blur-then-pop on every popover open and every
-  // page→mesh handoff (measured on lab 014, 2026-08-02: born tier 1,
+  // page→mesh handoff (measured on the flight scene, 2026-08-02: born tier 1,
   // ~130ms of 2.2×-undersampled text, then the tier-3 swap).
 
   it('seeds at the tier nearest the pixel ratio', () => {
@@ -159,7 +159,7 @@ describe('tiersInRange', () => {
 })
 
 describe('maxTier', () => {
-  it('resolves to the highest tier the guard admits (the lab-012 cases)', () => {
+  it('resolves to the highest tier the guard admits (the glass-scene cases)', () => {
     // Card 360×440: 6× = 2640 fits → 6. Wall 880×560: 6× = 5280 is out,
     // 4× = 3520 fits → 4.
     expect(maxTier(DEFAULT_TIERS, 360, 440)).toBe(6)

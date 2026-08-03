@@ -55,6 +55,15 @@ changing a law means changing its contract in the same commit.
 
 ## Verifying changes
 
-`npm test` (vitest) and `npm run typecheck`. CI runs both on every
-push, plus the idle-zero browser gate (`npm run gate:idle-zero`):
-mounted quiescent Surfaces must cost 0 paints/s.
+`npm test` (vitest), `npm run typecheck`, and `npm run lint`. CI runs
+all three on every push, plus the idle-zero browser gate
+(`npm run gate:idle-zero`): mounted quiescent Surfaces must cost
+0 paints/s.
+
+`npm run build` produces the publishable package under
+`packages/react/dist` — the kernel bundled in, `three`/`@react-three/fiber`/
+`react` left external as peers — and `npm publish packages/react/dist`
+ships it. The workspace package itself stays `private`, so the source
+tree can keep pointing `exports` at `src/` (which is what lets the lab
+consume the barrel with no alias, and what makes a missing export fail
+the build) while a stray publish at the root can't ship raw source.

@@ -19,7 +19,7 @@ import { tossSpin } from './plate'
  * `THREE.Vector3` satisfies it for free — three.js's own `Vector3Like`/
  * `QuaternionLike` parameter types are already this kernel's
  * `Vec3Readonly`/`QuatReadonly` shape (decisions.md #4) — but these fields
- * are never ALLOCATED by `attachLab014Gestures`; they arrive on the flight
+ * are never ALLOCATED by `attachFlightGestures`; they arrive on the flight
  * the caller constructed, so they can't be typed as this kernel's own
  * concrete `Vec3`. `clone`/`length` are for the CALLER's own reads (a
  * dropped card's grab point, `spin.length()` after a dead-drop toss);
@@ -115,7 +115,7 @@ export interface GestureDeps<Col, V extends Vec3Chain = Vec3Chain> {
  * The user's hand is the only pointer with `isTrusted: true`; everything the
  * library retells is constructed, and constructed events cannot lie about it.
  */
-export function attachLab014Gestures<Col, V extends Vec3Chain>({
+export function attachFlightGestures<Col, V extends Vec3Chain>({
   flight,
   dropTarget,
   moveTo,

@@ -3,7 +3,7 @@
 // Surface chrome: the parser, the resolver, and the walk.
 //
 // The parser fixtures are REAL computed-style strings, captured from Chrome
-// against the lab 014 card (2026-08-02) — computed box-shadow serializes
+// against the flight-scene card (2026-08-02) — computed box-shadow serializes
 // color-FIRST with commas inside the function, which is exactly the form a
 // naive comma-split shreds. Layout-dependent radii resolution is tested
 // through the pure `resolveRadii` (happy-dom has no layout engine); the walk

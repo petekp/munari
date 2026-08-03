@@ -59,7 +59,7 @@ describe('END_EPSILON_MS / conductorScrubEnd', () => {
 
   it('is always strictly less than a positive duration, so scrubbing can never reach the finished state', () => {
     // A spread of real and boundary durations: sub-frame, one frame at
-    // 60Hz, the archive's measured 149ms popover, the hook's own-comment
+    // 60Hz, the measured 149ms popover, the hook's own-comment
     // 150ms exit, the 300ms above, and both sides of END_EPSILON_MS itself.
     for (const durationMs of [0.5001, 0.6, 1, 16.67, 50, 149, 150, 299.5, 300, 1000, 5000]) {
       expect(conductorScrubEnd(durationMs)).toBeLessThan(durationMs)

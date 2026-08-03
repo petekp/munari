@@ -41,7 +41,7 @@ export function deepestElementAt(root: Element, x: number, y: number): Element |
   // pointer-events, visibility and zero-size handled natively — and it DOES
   // see parked canvas-fallback subtrees (measured, Chrome 150). The geometric
   // walk below can only see DOM order, which paint order is allowed to
-  // contradict: measured in lab 009, a sonner toast (z 999999999, FIRST
+  // contradict: measured — a sonner toast (z 999999999, FIRST
   // child of the chrome layer) painted above the dialog overlay (z 50, later
   // sibling), and the walk handed the pointer to the overlay underneath the
   // visible toast. Every parked source shares the viewport origin, so the
@@ -264,7 +264,7 @@ function swapChainAttr(root: Element, prev: Element | null, next: Element | null
  * The `mouseout`/`mouseleave`/`mouseover`/`mouseenter` twins ARE mirrored,
  * one per pointer event — a real browser fires mouse compatibility events
  * for every pointer boundary crossing, and the first mouse-native consumer
- * (recharts, lab 010 inc 8) arrived to collect: React synthesizes
+ * (recharts) arrived to collect: React synthesizes
  * `onMouseLeave` from native `mouseout`, so without the twin a chart's
  * tooltip appears on forwarded moves and then never hides — the departure
  * burst was speaking a dialect recharts doesn't listen to.

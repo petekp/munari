@@ -21,7 +21,7 @@ Copy both files; they travel together:
 
 Imports are `anamorph` + peers only (enforced by `tests/boundary.test.ts`
 rule 3). Both files are byte-welded to the reference consumer at
-`apps/lab/src/scenes/` — Lab 012 — by `tests/registry/glassPack.test.ts`;
+`apps/lab/src/scenes/` — the glass scene — by `tests/registry/glassPack.test.ts`;
 the lab's typecheck and browser evidence therefore cover this copy
 verbatim.
 

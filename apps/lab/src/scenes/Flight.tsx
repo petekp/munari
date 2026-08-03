@@ -1,4 +1,4 @@
-// Lab 014 — the page has a third dimension.
+// The flight scene — the page has a third dimension.
 //
 // A real, ordinary, scrollable, selectable HTML page: a two-column board of
 // task cards over a few hundred words of prose. Press a card and it PEELS
@@ -56,9 +56,9 @@ import {
   useSurfaceTexture,
   type SurfaceChrome,
 } from 'anamorph'
-import './lab014.css'
+import './flight.css'
 import { cameraDistance, carryToPlane, planeScale, screenToPlane } from 'anamorph'
-import { attachLab014Gestures } from 'anamorph'
+import { attachFlightGestures } from 'anamorph'
 import {
   aeroFollowStep,
   aeroReach,
@@ -74,7 +74,7 @@ import {
   wadShrink,
   type Plate,
 } from 'anamorph'
-import { corners } from './lab014Corners'
+import { corners } from './flightCorners'
 
 // ── the data ─────────────────────────────────────────────────────────────
 
@@ -940,7 +940,7 @@ function Driver({
 
     // ── the aero bend: the sheet reads the plate's own velocity ──
     //
-    // The law lives in aeroFollowStep (lab014Plate.ts), under test:
+    // The law lives in aeroFollowStep (physics/plate.ts), under test:
     // direction only follows real motion, amplitude chases the gated curve
     // with a time constant per phase of the paper, and the returned value
     // IS the rendered amplitude — nothing instantaneous touches it on the
@@ -1138,13 +1138,14 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
   const airborneDensity = dpr * planeScale(cameraDistance(viewH, FOV), LIFT_Z)
   const density = atAltitude ? airborneDensity : dpr
 
-  // Scene hook (the __lab005 convention): the flight ref and the card's
-  // transform group, alive exactly while a card is airborne.
+  // Scene hook (scenes hang their live state on a `window.__<scene>` hook
+  // for console interrogation): the flight ref and the card's transform
+  // group, alive exactly while a card is airborne.
   useEffect(() => {
-    const w = window as unknown as { __lab014?: unknown }
-    w.__lab014 = { flight, cardRef }
+    const w = window as unknown as { __flight?: unknown }
+    w.__flight = { flight, cardRef }
     return () => {
-      delete w.__lab014
+      delete w.__flight
     }
   }, [flight])
 
@@ -1260,7 +1261,7 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
 
       <group ref={cardRef}>
         <SurfaceApp
-          label={`lab014-${card.id}`}
+          label={`flight-${card.id}`}
           width={f.w}
           height={f.h}
           resolution={density}
@@ -1335,7 +1336,7 @@ function SolidWhereMatterIs({ active }: { active: boolean }) {
     const ray = new THREE.Raycaster()
     const ndc = new THREE.Vector2()
     const test = (e: PointerEvent) => {
-      // Same rule as the gesture handlers (lab014Gestures.ts): this asks
+      // Same rule as the gesture handlers (physics/gestures.ts): this asks
       // "is the HAND over matter", and the surface protocol's retold events
       // — parked-local coordinates, the (−16,−16) departure burst — bubble to
       // window too. Ray-testing one of those would toggle the canvas off
@@ -1386,7 +1387,7 @@ function playFlip(root: HTMLElement, before: Map<Element, DOMRect>) {
 
 // ── the lab ──────────────────────────────────────────────────────────────
 
-export function Lab014App({ chips }: { chips?: React.ReactNode }) {
+export function FlightApp({ chips }: { chips?: React.ReactNode }) {
   const [cards, setCards] = useState<Record<string, Card>>(
     () => Object.fromEntries(SEED.map((c) => [c.id, c])) as Record<string, Card>,
   )
@@ -1526,7 +1527,7 @@ export function Lab014App({ chips }: { chips?: React.ReactNode }) {
   // One entry for both worlds, and one entry for both GESTURES. With a
   // pointer event the ✕ was PRESSED: the crumple starts held — the sheet
   // lifts into the grip pinned at the pressed point, balls up in the hand,
-  // and the release (lab014Gestures) is a throw. Without one (keyboard
+  // and the release (attachFlightGestures) is a throw. Without one (keyboard
   // activation of the button, or the click that trails a press and finds
   // the crumple already running) it is the hands-free delete: rise, crush,
   // drop. A card already in flight crumples from its current pose —
@@ -1660,7 +1661,7 @@ export function Lab014App({ chips }: { chips?: React.ReactNode }) {
   // yet and the card stayed glued to a pointer whose button was already up.
   // Every handler reads `flight.current`, which is set synchronously, so
   // there is nothing to gate: with no flight they all return on the first
-  // line. The handlers themselves live in lab014Gestures.ts — they filter
+  // line. The handlers themselves live in physics/gestures.ts — they filter
   // `isTrusted`, and the test file is the story of why.
   // The gesture's lift-plane carry, with the lab's own camera. The canvas
   // fills the window here, so `innerHeight` is the calibration height.
@@ -1670,7 +1671,7 @@ export function Lab014App({ chips }: { chips?: React.ReactNode }) {
   )
 
   useEffect(
-    () => attachLab014Gestures({ flight, dropTarget, moveTo, snapshot, scrollTop, toLiftPlane }),
+    () => attachFlightGestures({ flight, dropTarget, moveTo, snapshot, scrollTop, toLiftPlane }),
     [dropTarget, moveTo, snapshot, scrollTop, toLiftPlane],
   )
 

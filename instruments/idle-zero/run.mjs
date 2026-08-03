@@ -1,4 +1,4 @@
-// idle-zero gate runner — CI's browser evidence for the archive#3
+// idle-zero gate runner — CI's browser evidence for the upload-on-paint
 // economy (idle sources = 0 paints/s). See main.ts for what is
 // actually asserted; this file is transport: find Chrome, prove the
 // origin-trial surface exists, drive the page, judge the numbers.
@@ -46,7 +46,7 @@ if (!chromePath) skip('no Chrome executable found (set CHROME_PATH)')
 
 const LAUNCH_ARGS = [
   '--enable-features=CanvasDrawElement',
-  // The archive's known-good pair: a backgrounded renderer stops
+  // The known-good pair: a backgrounded renderer stops
   // compositing, and a gate that measures "no paints" must never let
   // throttling manufacture that result for the wrong reason.
   '--disable-backgrounding-occluded-windows',
@@ -142,7 +142,7 @@ try {
   if (violators.length) {
     console.error('IDLE-ZERO VIOLATION — quiescent sources painted:')
     for (const v of perSecond) console.error(`  ${v.source}: +${v.delta} (${v.rate}/s)`)
-    console.error('archive#3: the compositor is the only change signal; something added a repaint loop.')
+    console.error('The compositor is the only change signal; something added a repaint loop.')
     process.exit(1)
   }
   if (result.provokedDelta <= 0) {

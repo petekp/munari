@@ -15,13 +15,13 @@ import {
 } from 'anamorph'
 import {
   buildPanels,
-  injectLab006Styles,
+  injectWorkspaceStyles,
   PANEL_W,
   PANEL_H,
   type PanelSpec,
-} from './lab006Content'
+} from './workspaceContent'
 
-// Lab 006 — the spatial workspace: attention is a place.
+// The workspace scene — the spatial workspace: attention is a place.
 //
 // ~33 real DOM panels on a cylindrical arc around the viewer. The periphery
 // stays ambient (perspective compresses it; paint pulses surface changes
@@ -155,8 +155,8 @@ function WorkPanel({
     >
       <FocusGroup id={spec.id} order={order} objectRef={group} onStateChange={setFocus}>
         <Surface
-          label={`lab006-${spec.id}`}
-          name={`lab006-${spec.id}`}
+          label={`workspace-${spec.id}`}
+          name={`workspace-${spec.id}`}
           html={spec.html}
           width={PANEL_W}
           height={PANEL_H}
@@ -174,7 +174,7 @@ function WorkPanel({
           <planeGeometry args={[W3, H3]} />
         </Surface>
         {/* Satellite knob: a WebGL leaf in the SAME focus group — Tab flows
-            from the panel's last button onto it (lab 007's mixed-group
+            from the panel's last button onto it (the mixed-group
             proof). Its detents paint the panel's readout: physics in the
             scene, consequence in the document. */}
         {spec.dial && (
@@ -224,7 +224,7 @@ function WorkPanel({
 
 // ---------------------------------------------------------------------------
 
-export function Lab006() {
+export function Workspace() {
   const rig = useRef<FocusRigApi | null>(null)
   const groups = useRef(new Map<string, THREE.Group>())
   const panels = useMemo(buildPanels, [])
@@ -233,7 +233,7 @@ export function Lab006() {
     [],
   )
 
-  useEffect(() => injectLab006Styles(), [])
+  useEffect(() => injectWorkspaceStyles(), [])
 
   // Keyboard grammar (docs/focus.md × this lab): Tab SELECTS a panel (glow
   // only), Enter is the commitment gesture (zoom in), Escape's last rung
@@ -244,8 +244,8 @@ export function Lab006() {
 
   // Automation hooks: deterministic camera moves for agent-browser runs.
   useEffect(() => {
-    const w = window as unknown as { __lab006?: unknown }
-    w.__lab006 = {
+    const w = window as unknown as { __workspace?: unknown }
+    w.__workspace = {
       panelIds: panels.map((p) => p.id),
       approach: (id: string) => {
         const g = groups.current.get(id)
@@ -264,7 +264,7 @@ export function Lab006() {
       },
     }
     return () => {
-      delete w.__lab006
+      delete w.__workspace
     }
   }, [panels])
 
@@ -322,7 +322,7 @@ export function Lab006() {
 // surfaces / paints-per-second / fps — the "40 live documents, zero cost"
 // claim as numbers rather than an assertion.
 
-export function Lab006Hud() {
+export function WorkspaceHud() {
   const [line, setLine] = useState('…')
 
   useEffect(() => {
@@ -343,7 +343,7 @@ export function Lab006Hud() {
       const fps = frames * 2
       frames = 0
       setLine(`${stats.length} surfaces · ${pps} paints/s · ${fps} fps`)
-      ;(window as unknown as { __lab006Hud?: unknown }).__lab006Hud = {
+      ;(window as unknown as { __workspaceHud?: unknown }).__workspaceHud = {
         surfaces: stats.length,
         paintsPerSec: pps,
         fps,

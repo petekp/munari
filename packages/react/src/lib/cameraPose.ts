@@ -4,7 +4,7 @@
 // POSITION around the target. Any tween that settles by handing a pose back
 // to the controls must therefore arm poses that ALREADY satisfy the app's
 // limits, or the settle frame visibly yanks the camera (browser-verified in
-// lab 006: y 2→3.05 on a steep head-turn; every top- and middle-row approach
+// the workspace scene: y 2→3.05 on a steep head-turn; every top- and middle-row approach
 // pose sat past the polar clamp).
 //
 // Two clamps for the pose's two points — which one is sacred decides which
@@ -52,7 +52,7 @@ export function clampViewElevation(d: THREE.Vector3, limits: OrbitLimits): THREE
 // A camera ride that LERPS THE TARGET POINT has a hidden failure mode: for
 // some pose pairs the target's straight path sweeps close past the camera's
 // straight path, and lookAt(target − position) whips as the difference
-// vector shrinks through near-zero (browser-measured in lab 006: 1.13 rad in
+// vector shrinks through near-zero (browser-measured in the workspace scene: 1.13 rad in
 // ONE frame riding from a corner release-aim to the opposite corner's
 // approach). Gaze is angular state, so interpolate the DIRECTION — but not
 // on the great circle: for near-antiparallel, near-horizontal aims (exactly

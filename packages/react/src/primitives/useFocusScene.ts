@@ -13,7 +13,7 @@ import {
 // Each one is a no-op outside a FocusScene rather than a throw. A control
 // that wants to nudge a camera it may or may not have is a normal thing to
 // write, and a scene assembled without a focus manager is a legitimate scene
-// (labs 001–005 are all of them). Refusing to render in that case would make
+// — most scenes are. Refusing to render in that case would make
 // every one of these hooks a coupling the library doesn't need.
 //
 // All four hold the caller's function in a `useLatest` ref and register a

@@ -20,22 +20,22 @@ import {
   type GlassRipple,
 } from './glassSdf'
 
-// Lab 012 — the glass spike, and then the compositor that replaced it.
+// The glass scene — the glass spike, and then the compositor that replaced it.
 //
 // Question under test: can a Surface wear a physically-based glass material
 // (the "liquid glass" direction) while its DOM stays legible and live, and
 // does refraction survive MULTIPLE levels of depth — glass in front of glass
 // in front of a bright wall?
 //
-// TWO ANSWERS, both live. `?glass=mtm` (or `__lab012.setMode('mtm')`) runs
-// inc 1: real extruded geometry wearing drei's MeshTransmissionMaterial, one
-// scene render per panel. `?glass=sdf` (the default) runs inc 2: no glass
+// TWO ANSWERS, both live. `?glass=mtm` (or `__glass.setMode('mtm')`) runs
+// the mesh path: real extruded geometry wearing drei's MeshTransmissionMaterial,
+// one scene render per panel. `?glass=sdf` (the default) runs the SDF path: no glass
 // geometry at all — one scene render, then one screen-space pass per panel
 // that intersects the eye ray with the panel's plane and evaluates a rounded
 // rect as a distance field there. See glassSdf.tsx / glassSdfShader.ts. The
 // switch exists so the comparison is a console call, not a git checkout.
 //
-// Architecture per MTM glass panel, all through the lab-011 material-slot seam:
+// Architecture per MTM glass panel, all through the material-slot seam:
 //   - `material="none"` Surface wearing drei's MeshTransmissionMaterial on
 //     an extruded rounded-rect (flat faces, rounded corner EDGES — a card,
 //     not a soap bar). The glass body never samples the DOM.
@@ -50,9 +50,9 @@ import {
 // The pill's refraction must show the card's glass AND its ink AND the wall
 // behind both — that's the multi-level verdict.
 //
-// Tuning: every transmission parameter is live on `window.__lab012`
-// (`set('ior', 1.4)` hits every panel; `setFor('lab012-pill', ...)` one;
-// `setResolution('lab012-card', 512)` forces a square refraction buffer,
+// Tuning: every transmission parameter is live on `window.__glass`
+// (`set('ior', 1.4)` hits every panel; `setFor('glass-pill', ...)` one;
+// `setResolution('glass-card', 512)` forces a square refraction buffer,
 // no arg returns it to viewport-matched).
 
 const PX = 200
@@ -183,7 +183,7 @@ function GlassInk({ w, h, depth }: { w: number; h: number; depth: number }) {
   // averages RAW rgb across texels — straight-alpha data mixes the white of
   // near-transparent pixels (bg-white/10 is white rgb at α≈0.1) into every
   // boundary with opaque content: a light halo around the text-selection
-  // rectangle, measured in lab 012. Premultiplying at upload makes the
+  // rectangle, measured in the glass scene. Premultiplying at upload makes the
   // filtering average premultiplied values; the blend factors below stop
   // the already-multiplied rgb from being multiplied by alpha again. Exact
   // for an unlit passthrough material — and under material="none" the ink
@@ -251,7 +251,7 @@ function MtmGlassPanel({
   // horizontal detail — that was most of the "fuzzy edges". 4× MSAA on top,
   // because geometry edges inside the buffer otherwise alias and the frost
   // blur smears the jaggies into mush. `resolution` overrides with a square
-  // target for cost experiments (`__lab012.setResolution`); useFBO re-sizes
+  // target for cost experiments (`__glass.setResolution`); useFBO re-sizes
   // the same render target in place, so the registered pass and the MTM
   // `buffer` binding both survive the change.
   const size = useThree((s) => s.size)
@@ -479,7 +479,7 @@ function WallArt() {
           matter
         </span>
         <div className="flex flex-col gap-1 text-white/70">
-          <span className="text-xs">refraction target · live DOM · lab 012</span>
+          <span className="text-xs">refraction target · live DOM · the glass scene</span>
           <span className="text-xs">
             the quick brown fox jumps over the lazy dog 0123456789
           </span>
@@ -496,7 +496,7 @@ function WallArt() {
 
 type GlassMode = 'mtm' | 'sdf'
 
-export function Lab012() {
+export function Glass() {
   // Per-panel square-buffer overrides (0/absent = viewport-matched). State,
   // not a ref: a change must re-render the panel so useFBO can resize.
   const [resOverride, setResOverride] = useState<Record<string, number>>({})
@@ -510,7 +510,7 @@ export function Lab012() {
   const ripples = useMemo<GlassRipple[]>(() => [], [])
 
   useEffect(() => {
-    ;(window as unknown as { __lab012?: object }).__lab012 = {
+    ;(window as unknown as { __glass?: object }).__glass = {
       mode: () => mode,
       setMode: (next: GlassMode) => {
         setMode(next === 'mtm' ? 'mtm' : 'sdf')
@@ -573,7 +573,7 @@ export function Lab012() {
       },
       labels: () => (mode === 'sdf' ? sdfPanelLabels() : [...glassMaterials.keys()]),
       params: (label?: string) => {
-        const l = label ?? 'lab012-card'
+        const l = label ?? 'glass-card'
         if (mode === 'sdf') return sdfPanelParams(l)
         const m = glassMaterials.get(l)
         if (!m) return null
@@ -589,7 +589,7 @@ export function Lab012() {
         }
       },
     }
-  }, [mode, blobs])
+  }, [mode, blobs, ripples])
 
   return (
     <>
@@ -609,7 +609,7 @@ export function Lab012() {
 
       {/* Layer 0 — the wall, itself live DOM */}
       <SurfaceApp
-        label="lab012-wall"
+        label="glass-wall"
         width={WALL_W}
         height={WALL_H}
         position={[0, 1.7, -0.8]}
@@ -635,7 +635,7 @@ export function Lab012() {
       {mode === 'sdf' ? (
         <>
           <SdfGlassPanel
-            label="lab012-card"
+            label="glass-card"
             width={CARD_W}
             height={CARD_H}
             px={PX}
@@ -646,7 +646,7 @@ export function Lab012() {
           />
           <BlobDrift blobs={blobs} ripples={ripples} />
           <SdfGlassPanel
-            label="lab012-pill"
+            label="glass-pill"
             width={PILL_W}
             height={PILL_H}
             px={PX}
@@ -662,20 +662,20 @@ export function Lab012() {
       ) : (
         <>
           <MtmGlassPanel
-            label="lab012-card"
+            label="glass-card"
             width={CARD_W}
             height={CARD_H}
-            resolution={resOverride['lab012-card'] || undefined}
+            resolution={resOverride['glass-card'] || undefined}
             position={[0, 1.7, 0.9]}
             content={<SignInForm />}
           />
           <MtmGlassPanel
-            label="lab012-pill"
+            label="glass-pill"
             width={PILL_W}
             height={PILL_H}
             radius={0.18}
             depth={0.1}
-            resolution={resOverride['lab012-pill'] || undefined}
+            resolution={resOverride['glass-pill'] || undefined}
             position={[0.42, 1.62, 1.5]}
             content={<PillChip />}
           />

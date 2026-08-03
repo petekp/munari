@@ -22,7 +22,7 @@ import {
   planeToScreen,
   makePlate,
   type GestureFlight,
-  attachLab014Gestures,
+  attachFlightGestures,
 } from '@anamorph/core'
 
 // The lab's calibration at the reference viewport — the tests hand the
@@ -86,7 +86,7 @@ afterEach(() => {
 
 function attach(flight: { current: GestureFlight | null }) {
   const calls: string[] = []
-  detach = attachLab014Gestures({
+  detach = attachFlightGestures({
     flight,
     dropTarget: () => null,
     moveTo: () => calls.push('moveTo'),
@@ -288,7 +288,7 @@ describe('the ✕ is a toss, not a timer', () => {
 describe('the deps are typed in the consumer’s own vectors', () => {
   // `toLiftPlane` is a callback — a contravariant position — so a kernel
   // that pinned its parameter to `Vec3Chain` made every consumer's honest
-  // annotation a strictFunctionTypes error: the Lab 014 port's
+  // annotation a strictFunctionTypes error: the flight scene's
   // `(a: THREE.Vector3) => carryToPlane(…)` refused to compile against it.
   // The flight and deps are generic in the flight's vector type instead,
   // which is sound because the only vector the kernel ever hands the
@@ -296,7 +296,7 @@ describe('the deps are typed in the consumer’s own vectors', () => {
   it('an annotated (a: THREE.Vector3) => void compiles, and receives the very anchor the caller built', () => {
     const flight = { current: makeFlight() }
     let received: THREE.Vector3 | null = null
-    detach = attachLab014Gestures({
+    detach = attachFlightGestures({
       flight,
       dropTarget: () => null,
       moveTo: () => {},
