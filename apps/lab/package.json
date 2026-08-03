@@ -1,0 +1,10 @@
+{
+  "name": "@anamorph/lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The lab application — a consumer. Reaches the library only through the `anamorph` barrel, exactly as an outside project would (enforced by tests/boundary.test.ts).",
+  "dependencies": {
+    "anamorph": "*"
+  }
+}
