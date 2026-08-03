@@ -12,10 +12,15 @@
     "gate:idle-zero": "node instruments/idle-zero/run.mjs"
   },
   "devDependencies": {
+    "@react-three/fiber": "^9.6.1",
     "@types/node": "^26.1.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "@types/three": "^0.185.3",
     "happy-dom": "^20.11.1",
     "puppeteer-core": "^25.4.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "three": "^0.185.1",
     "typescript": "^7.0.2",
     "vite": "^8.2.0",
