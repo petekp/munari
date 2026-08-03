@@ -81,3 +81,37 @@ implementation judgment. A `declare` block is local to its contract,
 erased at compile time, and names exactly what the suite demands — the
 API half of the contract reviewable in the same file as the behavior
 half.
+
+## #3 — Three labs cross; the rest are archive evidence (2026-08-02)
+
+**Decision.** Pete's call: labs **006, 012, and 014** are the demos
+this repo preserves — they will be rebuilt in `apps/lab` on the
+public barrel. Every other lab (001–005, 007–011, 013) stays in the
+archive as frozen evidence: their knowledge already crossed as
+conformance contracts and rules, and their scenes are disposable per
+the charter (archive#1: scenes are evidence, not product).
+
+**What each preserved lab pins, and what it demands:**
+
+- **006 — the arc.** The focus grammar's home scene (33-panel arc,
+  Tab/Enter/Escape spine, arrows, camera rides). Demands the
+  focus/spatial-nav registry pack (archive#13/#14/#15 with the
+  browser-captured full-field regressions), the control kit, and the
+  `FocusOrbitRig`-class binding surface.
+- **012 — the glass.** The SDF compositor direction (one scene
+  render, N screen-space passes; archive#38–#43). Demands the glass
+  registry pack and the material-slot seam (archive#33). Carries the
+  premultiply question into the paint layer's decision (archive#36).
+- **014 — the paper.** The drag/aero/crumple/toss card scene — the
+  fullest exercise of the kernel: mapping (calibrated camera,
+  archive#44), transfer (density schedule + readiness, #53/#54),
+  chrome (measured shadow, #55/#56/#58), physics (plate, aero, #45/
+  #49/#59–#62). The conformance suite's physics/chrome/transfer
+  slices ARE this lab's laws; the scene is their consumer proof.
+
+**Why these three.** Together they cover the three pillars without
+overlap — input/focus custody (006), rendering/composition (012),
+and the custody excursion itself (014) — and each one exercises a
+registry pack the kernel must stay sufficient for. A lab that crosses
+is a standing consumer: if the barrel can't express it, the barrel is
+wrong (CLAUDE.md: export, don't reach around).
