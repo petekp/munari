@@ -11,7 +11,14 @@ import { describe, expect, it } from 'vitest'
 
 import * as THREE from 'three'
 
-import { captureScale, plateTexture, publishedCut, shutterSpan, type Cut } from './passageField'
+import {
+  captureScale,
+  EXPOSURE,
+  plateTexture,
+  publishedCut,
+  shutterSpan,
+  type Cut,
+} from './passageField'
 
 const DPR = 2
 
@@ -99,33 +106,54 @@ describe('plateTexture', () => {
  * The shutter.
  *
  * Motion blur here is not a post pass and there is no velocity buffer. The
- * flight is a pure function of `uT`, so a part's own velocity is the
- * derivative of a closed form — the vertex shader evaluates the same trajectory
- * twice, once at `uT` and once at `uT` minus this span, and smears between the
- * two answers. Which means the ONLY thing the CPU has to supply is how much of
- * the frame the shutter was open for.
+ * flight is a pure function of `uT`, so a part's own velocity is the derivative
+ * of a closed form — the vertex shader evaluates the same trajectory twice,
+ * once at `uT` and once at `uT` minus this span, and smears between the two
+ * answers. Which means the ONLY thing the CPU has to supply is how far the
+ * flight travelled while the shutter was open.
  *
- * That framing is load-bearing rather than decorative: a real camera's blur is
- * exposure × velocity, and a shutter angle is the one knob that expresses it.
- * 180° — half a frame — is the film convention, and measurement agreed: a fully
- * open shutter is the honest integral and renders the card unreadable.
+ * A real camera's blur is exposure × velocity, and BOTH factors have to be
+ * quantities the world supplies. The first cut of this got the second one right
+ * and the first one wrong: it measured the exposure as a fraction of a FRAME, a
+ * 180° shutter angle. That is a fraction of a quantity the scene does not
+ * control, and it makes the effect weaker the better the machine performs — a
+ * 180° shutter is 1/48 s at cinema's 24 Hz and 1/240 s at the 120 Hz this
+ * actually runs at. Measured on a live flight at 120 Hz: peak smear 4.4 px,
+ * median 0.76 px, not one frame above 6 px. Present in the buffer, absent to
+ * the eye, and it would have looked like a different effect on a 60 Hz display.
+ *
+ * So the exposure is a TIME, in seconds, and the span is progress-velocity
+ * times that time. Same blur on every display, and the number that reads
+ * correctly turns out to be the one cinema settled on.
  */
 describe('shutterSpan', () => {
-  const SH = 0.5
+  /** A 60 Hz frame and a 120 Hz frame covering the same stretch of flight. */
+  const SLOW = { dt: 1 / 60, from: 0.4, to: 0.45 }
+  const FAST = { dt: 1 / 120, from: 0.4, to: 0.425 }
+
+  /**
+   * The regression, stated directly. Two machines are moving the same flight at
+   * the same speed; the only difference is how often they are asked to draw it.
+   * A camera pointed at that flight would record the same streak in both cases,
+   * because the shutter does not know the frame rate.
+   */
+  it('does not depend on the frame rate', () => {
+    const slow = shutterSpan(SLOW.from, SLOW.to, SLOW.dt, EXPOSURE)
+    const fast = shutterSpan(FAST.from, FAST.to, FAST.dt, EXPOSURE)
+    expect(fast).toBeCloseTo(slow, 6)
+  })
+
+  it('is exposure × the velocity the flight is actually travelling at', () => {
+    // 3 units of progress per second, open for a fiftieth of one.
+    expect(shutterSpan(0.4, 0.45, 1 / 60, 1 / 50)).toBeCloseTo(0.06, 6)
+    expect(shutterSpan(0.4, 0.45, 1 / 60, 0)).toBe(0)
+  })
 
   it('is zero on a held frame, so a paused flight is exactly the still', () => {
     // The whole scene is compared against real DOM at held instants. If a hold
     // blurred, every measurement taken through it would be measuring the blur.
-    expect(shutterSpan(0.5, 0.5, SH)).toBe(0)
-    expect(shutterSpan(1, 1, SH)).toBe(0)
-  })
-
-  it('is the shutter fraction of the frame that was actually travelled', () => {
-    // A real frame: 60 Hz through the middle of a spring that takes about a
-    // second, which is where the words are moving fastest.
-    expect(shutterSpan(0.4, 0.425, SH)).toBeCloseTo(0.0125, 6)
-    expect(shutterSpan(0.4, 0.425, 1)).toBeCloseTo(0.025, 6)
-    expect(shutterSpan(0.4, 0.425, 0)).toBe(0)
+    expect(shutterSpan(0.5, 0.5, 1 / 60, EXPOSURE)).toBe(0)
+    expect(shutterSpan(1, 1, 1 / 120, EXPOSURE)).toBe(0)
   })
 
   /**
@@ -135,31 +163,44 @@ describe('shutterSpan', () => {
    * as the word arriving before it moves.
    */
   it('is signed, so a reversal trails the right way', () => {
-    expect(shutterSpan(0.5, 0.4, SH)).toBeCloseTo(-0.05, 6)
+    expect(shutterSpan(0.5, 0.4, 1 / 60, EXPOSURE)).toBeLessThan(0)
+    expect(shutterSpan(0.5, 0.4, 1 / 60, EXPOSURE)).toBeCloseTo(
+      -shutterSpan(0.4, 0.5, 1 / 60, EXPOSURE),
+      9,
+    )
   })
 
   /**
-   * The spring is fastest in the middle, so this is naturally largest exactly
-   * where the words are moving most — no envelope is authored. But a seek, a
-   * tab that was backgrounded, or a first frame after a stall can hand over a
-   * whole flight's worth of progress at once, and smearing a word across the
-   * entire card is not motion, it is a wipe.
+   * Velocity is already frame-rate invariant, so a long frame is no longer a
+   * fast one by construction and the cap has stopped being load-bearing. It
+   * stays for the degenerate `dt` — a first frame, a restored tab, a clock that
+   * hands over zero — where the division itself is the hazard.
    */
-  it('caps a jump, because a dropped frame is not a fast one', () => {
-    expect(shutterSpan(0, 1, 1)).toBeLessThanOrEqual(0.08)
-    expect(shutterSpan(1, 0, 1)).toBeGreaterThanOrEqual(-0.08)
+  it('survives a degenerate frame time instead of dividing by it', () => {
+    expect(Number.isFinite(shutterSpan(0.4, 0.5, 0, EXPOSURE))).toBe(true)
+    expect(Math.abs(shutterSpan(0.4, 0.5, 1e-9, EXPOSURE))).toBeLessThanOrEqual(0.08)
+    expect(Math.abs(shutterSpan(0, 1, 1e-9, EXPOSURE))).toBeLessThanOrEqual(0.08)
   })
 
-  it('never smears past the endpoints it is interpolating between', () => {
-    // `uT - span` is sampled directly, so a span wider than the trip would ask
-    // the trajectory for a time it was never defined at.
-    for (const [p, n] of [
-      [0, 0.02],
-      [0.98, 1],
-      [0.5, 0.52],
+  /**
+   * And it is allowed to be WIDER than the frame that reported it — at 120 Hz a
+   * 1/48 s exposure covers two and a half frames of travel, which no single
+   * camera could do. That is the deliberate part: this is photographing the
+   * flight, not sampling it, and the look being reproduced is a 24 Hz one. The
+   * shader clamps the time it reaches back to, so a wide span asks for an
+   * earlier pose and never for an undefined one.
+   */
+  it('may reach back further than the frame it was measured over', () => {
+    expect(Math.abs(shutterSpan(0.4, 0.42, 1 / 120, EXPOSURE))).toBeGreaterThan(0.02)
+  })
+
+  it('is bounded, whatever it is handed', () => {
+    for (const [p, n, dt] of [
+      [0, 1, 1 / 120],
+      [1, 0, 1 / 600],
+      [0.5, 0.52, 0],
     ]) {
-      const span = shutterSpan(p, n, 1)
-      expect(Math.abs(span)).toBeLessThanOrEqual(Math.abs(n - p) + 1e-9)
+      expect(Math.abs(shutterSpan(p, n, dt, EXPOSURE))).toBeLessThanOrEqual(0.08)
     }
   })
 })

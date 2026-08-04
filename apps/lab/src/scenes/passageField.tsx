@@ -57,52 +57,60 @@ export function captureScale(own: number, other: number, dpr: number): number {
 }
 
 /**
- * How much of a frame the shutter is open for, as a fraction of it.
+ * How long the shutter is open for, IN SECONDS.
  *
- * A film camera's shutter angle: 180° — half a frame — is the convention, and
- * anything past 360° is not a thing a camera can do. Both were shot at the same
- * held instant with the exposure pinned to a measured peak-speed frame. At 360°
- * the integral is honest and the card is unreadable: a box exposure of
- * high-contrast type turns every stroke into a bar with hard ends, adjacent
- * strokes overlap into a picket, and the meta line reads as three copies of
- * itself. Which is exactly the complaint this whole pass exists to answer — a
- * correct effect that looks like a glitch is a glitch.
+ * A twenty-fourth of a second at a 180° shutter angle — the cinema standard,
+ * and the exposure behind essentially every moving image anyone has an
+ * intuition about.
  *
- * At 180° the same frame stays legible and the DIFFERENTIAL is what shows,
- * which is the part no DOM filter can do: the title's left end soft and its
- * right end sharp, because the card grows from its centre and the two ends are
- * travelling at different speeds inside one line of one paragraph.
+ * It is a time and not a shutter *angle*, which is the whole correction. An
+ * angle is a fraction of a frame, and a frame is not a quantity this scene
+ * controls: 180° is 1/48 s at cinema's 24 Hz and 1/240 s at the 120 Hz this
+ * machine actually runs at, so the same build would render five times less blur
+ * on the better display, and the effect would get weaker the faster the flight
+ * was drawn. Measured live at 120 Hz before this changed: peak smear 4.4 px,
+ * median 0.76 px, not one frame above 6 px — present in the drawing buffer,
+ * absent to the eye, and I judged it acceptable off a 2× crop, which is exactly
+ * how a 4 px streak passes for motion blur.
+ *
+ * Stated as a time, the span it produces is identical on every display, and it
+ * is allowed to reach back further than the frame that reported it: at 120 Hz
+ * this covers about two and a half frames of travel, which no single camera
+ * could do. That is deliberate. The look being reproduced is a 24 Hz one, and
+ * what is being simulated is a photograph of the flight, not a sample of it.
  */
-const SHUTTER = 0.5
+export const EXPOSURE = 1 / 48
 
 /**
  * The most of the flight a single exposure may cover.
  *
- * The spring is fastest in the middle, so the smear is naturally largest
- * exactly where the words are moving most and nothing has to draw an envelope
- * for it. But a seek, a backgrounded tab, or the first frame after a stall can
- * hand over a large stretch of progress at once, and a word smeared across the
- * whole card is not motion — it is a wipe. Eight percent is about five frames
- * of the spring at its quickest.
+ * Velocity is frame-rate invariant, so a long frame is no longer a fast one and
+ * this has stopped being load-bearing for dropped frames. It stays for the
+ * degenerate frame time — a first frame, a restored tab, a clock that hands over
+ * zero — where the division itself is the hazard rather than the result.
  */
 const SPAN_CAP = 0.08
 
+/** The narrowest frame time to believe, so a degenerate clock cannot divide. */
+const MIN_DT = 1 / 480
+
 /**
- * The signed stretch of flight-time one frame's exposure covers.
+ * The signed stretch of flight-time one exposure covers: velocity × time.
  *
- * This is the ENTIRE per-frame cost of the motion blur on the CPU: one
- * subtraction. Everything else — which word blurs, how far, in what direction,
- * and how the blur varies across a single word that is also being stretched —
- * falls out of the fact that the flight is a pure function of `uT`, so the
- * vertex shader can simply ask the trajectory where it was a moment ago.
+ * This is the ENTIRE per-frame cost of the motion blur on the CPU. Everything
+ * else — which word blurs, how far, in what direction, and how the blur varies
+ * across a single word that is also being stretched — falls out of the fact
+ * that the flight is a pure function of `uT`, so the vertex shader can simply
+ * ask the trajectory where it was a moment ago.
  *
  * It is signed because a close is an open played backwards (`departureTarget`),
  * and so is its blur; an unsigned span would trail a returning word forwards,
  * which reads as the word arriving before it has moved.
  */
-export function shutterSpan(prev: number, now: number, shutter: number): number {
-  const d = clamp01(now) - clamp01(prev)
-  const open = d * Math.min(1, Math.max(0, shutter))
+export function shutterSpan(prev: number, now: number, dt: number, exposure: number): number {
+  const travelled = clamp01(now) - clamp01(prev)
+  const velocity = travelled / Math.max(dt, MIN_DT)
+  const open = velocity * Math.max(0, exposure)
   return Math.max(-SPAN_CAP, Math.min(SPAN_CAP, open))
 }
 
@@ -397,7 +405,12 @@ void main() {
 `
 
 export const FIELD_FRAG = /* glsl */ `
-#define TAPS 12
+// Enough that the widest smear this can produce still steps by well under a
+// texel per tap. Twelve was sized for a 4 px streak; a 22 px one at a magnified
+// capture is forty-odd texels, and a sparse walk across that reads as a row of
+// ghosts rather than a trail — the same picket the 360° test produced, arriving
+// from the sampling side instead of the exposure side.
+#define TAPS 24
 
 uniform sampler2D uTexA;
 uniform sampler2D uTexB;
@@ -709,10 +722,10 @@ function PartMesh({
   const geo = useFieldGeometry(parts)
   const mat = useFieldMaterial(texA, texB, [a.width, a.height], [b.width, b.height])
   const was = useRef(progress.current)
-  useFrame(() => {
+  useFrame((_, dt) => {
     const t = Math.min(1, Math.max(0, progress.current))
     mat.uniforms.uT.value = t
-    mat.uniforms.uSpan.value = shutterSpan(was.current, t, SHUTTER)
+    mat.uniforms.uSpan.value = shutterSpan(was.current, t, dt, EXPOSURE)
     was.current = t
   })
   useEffect(() => () => geo?.dispose(), [geo])

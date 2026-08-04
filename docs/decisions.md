@@ -929,7 +929,7 @@ is the argument this scene exists to make.
 **What.** The flight has motion blur, and it is not a post pass. There
 is no velocity buffer, no previous-frame matrix, no accumulation
 target, and the CPU's entire per-frame contribution is one subtraction
-— `shutterSpan`, how much flight-time this frame's exposure covered.
+— `shutterSpan`, velocity times the exposure time.
 Everything else falls out of a property the field already had: **the
 flight is a pure function of `uT`**, so "where was this exact corner of
 this exact word when the shutter opened" is not a history to keep, it
@@ -964,32 +964,62 @@ deliberate; a fragment the word only covered for part of the exposure
 really did receive less light, and that partial coverage is what makes
 the leading and trailing edges fall off instead of ending on a cut.
 
-**180°, and the measurement that chose it.** Shot at one held instant
-with the exposure pinned to a measured peak-speed frame (the real
-spans, traced over a live flight: median 0.005, p90 0.023, max 0.027,
-cap never reached). At **360°** the integral is honest and the card is
-unreadable — a box exposure of high-contrast type turns every stroke
-into a bar with hard ends, adjacent strokes overlap into a picket, and
-the meta line reads as three copies of itself. Which is exactly the
-complaint this whole pass exists to answer: *a correct effect that
-looks like a glitch is a glitch.* At **180°**, the film convention,
-the same frame stays legible and what shows is the differential.
+**THE EXPOSURE IS A TIME, AND THIS IS THE WHOLE ENTRY.** The first cut
+shipped a shutter *angle* — 180°, half a frame, chosen against a fully
+open one that rendered the card unreadable. It was verified in the
+drawing buffer, at a held instant, on a 2× crop, and it looked right.
+Pete's verdict on the shipped build was **"I don't see any motion
+blur"**, and he was correct. Measured on a live flight immediately
+after: **peak smear 4.4 px, median 0.76 px, not one frame above 6 px.**
+
+An angle is a fraction of a frame, and a frame is not a quantity this
+scene controls. 180° is 1/48 s at cinema's 24 Hz and 1/240 s at the
+120 Hz this machine actually runs at — so the effect got *weaker the
+better the machine performed*, and the same build would have rendered a
+different photograph on a 60 Hz display. That is a bug about units,
+not about taste, and no amount of tuning the angle would have found it.
+
+Stated as a time — `EXPOSURE = 1/48 s`, cinema's own number — the span
+is velocity × exposure, identical on every display. Peak smear went
+4.4 px → **24.4 px**, median 0.76 → 3.7, frames above 6 px 0 → 48 of
+116. And it is allowed to reach back further than the frame that
+reported it: at 120 Hz this covers about two and a half frames of
+travel, which no single camera could do. That is deliberate. What is
+being simulated is a photograph of the flight, not a sample of it.
+
+Tap count is a function of the widest smear, so it moved too: twelve
+taps were sized for a 4 px streak, and a forty-texel one walked that
+sparsely is a row of ghosts. Twenty-four.
+
+**The lesson is about the instrument, not the effect.** Every earlier
+defect in this scene was caught by differencing mesh against DOM at the
+same pixels, and that habit is what failed here — a 2× crop is the
+right magnification for asking *is this correct* and the wrong one for
+asking *is this visible*. Correctness was never in question; the effect
+was in the buffer the whole time. **Judge a perceptual quantity at 1:1,
+and prefer a number in pixels to a picture.** "Peak 4.4 px" would have
+ended this in one line at any magnification.
 
 **A held frame is exactly the still.** `shutterSpan` is zero when
 progress did not move, and the shader takes a single-tap branch on a
 zero smear — so a paused flight is bit-identical to the unblurred
-image, not an average of twelve copies that agrees to within rounding.
-The endpoints of this flight are compared against real DOM at the same
-pixels; a hold that blurred would be measuring the blur.
+image, not an average of twenty-four copies that agrees to within
+rounding. The endpoints of this flight are compared against real DOM at
+the same pixels; a hold that blurred would be measuring the blur.
 
-**Cost.** None that a frame timer can see: median 8.3 ms through a live
-flight, p95 9.3, one 24 ms frame at the very start which is the capture
-and predates this. Twelve taps times two samplers, on a few hundred
-small quads, against a field that was already one draw call.
+**Cost.** None a frame timer can see, at either tap count: median
+8.3 ms through a live flight, p95 9.3, worst 10.9, zero frames over
+20 ms. Twenty-four taps times two samplers, on a few hundred small
+quads, against a field that was already one draw call.
 
-**Evidence.** Five cases in `passageField.test.ts` (zero on a hold,
-signed for a reversal, capped against a dropped frame, never wider than
-the trip). In the browser: the shader compiled clean, the endpoint held
-at `t = 1` is pixel-for-pixel the pre-blur still, and a real moving
-frame pulled out of the drawing buffer at `uT` 0.31 shows the title
-sharp at one end and soft at the other. 584 passing.
+**Evidence.** Seven cases in `passageField.test.ts`, the first of which
+is the regression stated directly — *does not depend on the frame
+rate*: the same stretch of flight at 60 Hz and at 120 Hz must produce
+the same span, because a camera pointed at that flight would record the
+same streak. In the browser: shader compiles clean, the endpoint held at
+`t = 1` is pixel-for-pixel the pre-blur still, five frames pulled from
+the drawing buffer across one live flight show heavy directional smear
+through the fast middle resolving to a crisp landing, and the title —
+which sits near the card's centre and barely travels — stays legible
+throughout while the small type at the edges smears hardest. 586
+passing.
