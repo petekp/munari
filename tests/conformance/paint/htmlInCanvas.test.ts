@@ -15,7 +15,20 @@
 // happy-dom has no compositor, so the origin-trial surface is stubbed. These
 // tests are about the arithmetic, not about rasterization.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+/**
+ * happy-dom does not define `CanvasRenderingContext2D` as a global at all —
+ * which is why the probe reaches it through `typeof`. Stub the constructor so
+ * the trial can be switched on and off from a test.
+ */
+function stubTrialContext(present: boolean) {
+  class Ctx2D {}
+  if (present) {
+    ;(Ctx2D.prototype as unknown as Record<string, unknown>).drawElementImage = function () {}
+  }
+  vi.stubGlobal('CanvasRenderingContext2D', Ctx2D)
+}
 
 import { createDomTextureSource, type DomTextureSource } from '@anamorph/core'
 
@@ -41,8 +54,12 @@ beforeEach(() => {
   proto.requestPaint = function (this: StubCanvas) {
     paintRequests++
   }
-  // No 2D context stub is needed: the only code that touches `ctx` lives
-  // inside `onpaint`, and nothing fires it here.
+  // The CONTEXT half of the trial, which the factory's capability gate reads
+  // before it builds anything. Nothing here calls it — the only code that
+  // touches `ctx` lives inside `onpaint` — but a harness that stubs the
+  // canvas half and not this one is describing a browser that cannot exist,
+  // and the gate is right to refuse it.
+  stubTrialContext(true)
 })
 
 function make(w = 360, h = 460, scale = 1) {
@@ -213,5 +230,66 @@ describe('identity CTM — the backing ratio is the only scale', () => {
     // the normal onpaint path (realloc-mark contract).
     expect(s.paintCount()).toBe(2)
     s.dispose()
+  })
+})
+
+// The factory's answer when the platform is not there at all.
+//
+// Reproduced in Chrome 150 WITHOUT --enable-features=CanvasDrawElement
+// (2026-08-03): `createDomTextureSource` reached `canvas.requestPaint()`,
+// which does not exist, and the bare TypeError propagated out of the r3f
+// Canvas — every Surface threw, `<CanvasImpl>` unmounted its whole tree, and
+// the page went SOLID BLACK with nothing in the DOM and no message anywhere.
+// A library whose entire premise is an origin-trial API owes the consumer a
+// sentence, not a blank screen.
+//
+// `detectHtmlInCanvas` already asks the question honestly; the factory simply
+// never listened. These pin that it does. Measured in the same session: the
+// trial members are all-or-nothing — drawElementImage, texElementImage2D,
+// requestPaint, layoutSubtree and onpaint were true together under the flag
+// and false together without it — so the probe's two booleans are a complete
+// gate, and this needs no third capability key.
+describe('createDomTextureSource without the origin trial', () => {
+  beforeEach(() => {
+    const proto = HTMLCanvasElement.prototype as unknown as Record<string, unknown>
+    delete proto.requestPaint
+    delete proto.layoutSubtree
+    delete proto.onpaint
+    stubTrialContext(false)
+  })
+
+  it('refuses with a named error instead of a bare TypeError', () => {
+    let thrown: unknown
+    try {
+      make()
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(Error)
+    expect((thrown as Error).name).toBe('UnsupportedPlatformError')
+    expect((thrown as Error).message).not.toMatch(/is not a function/)
+  })
+
+  it("the message names the API and the flag that turns it on", () => {
+    const message = (() => {
+      try {
+        make()
+        return ''
+      } catch (err) {
+        return (err as Error).message
+      }
+    })()
+    expect(message).toMatch(/drawElementImage/)
+    expect(message).toMatch(/CanvasDrawElement/)
+  })
+
+  it('leaves no parked canvas behind — a refused source owns no DOM', () => {
+    const before = document.body.querySelectorAll('canvas').length
+    try {
+      make()
+    } catch {
+      /* expected */
+    }
+    expect(document.body.querySelectorAll('canvas').length).toBe(before)
   })
 })

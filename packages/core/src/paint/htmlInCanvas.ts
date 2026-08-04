@@ -148,8 +148,23 @@ export function paintStats(): PaintStats[] {
 }
 
 /**
+ * Thrown when the host browser has no HTML-in-canvas API at all.
+ *
+ * The whole library rests on an origin trial, so "the trial is not here" is a
+ * first-class answer and deserves a first-class error. Consumers that want to
+ * degrade rather than crash should ask `detectHtmlInCanvas()` BEFORE mounting
+ * a Surface — by the time this throws, the honest answer was already
+ * available and simply never requested.
+ */
+export class UnsupportedPlatformError extends Error {
+  override readonly name = 'UnsupportedPlatformError'
+}
+
+/**
  * Mounts `markup` as a live DOM subtree inside a hidden layout-canvas and
  * rasterizes it on every repaint() via drawElementImage.
+ *
+ * @throws {UnsupportedPlatformError} when the origin trial is absent.
  */
 export function createDomTextureSource(
   markup: string,
@@ -157,6 +172,25 @@ export function createDomTextureSource(
   height: number,
   options: DomTextureSourceOptions = {},
 ): DomTextureSource {
+  // Refuse BEFORE building anything. Reaching `canvas.requestPaint()` on a
+  // browser without the trial threw a bare "requestPaint is not a function"
+  // out of every Surface at once, which unmounted the r3f tree and left a
+  // solid black page with no DOM and no message (Chrome 150 without
+  // --enable-features=CanvasDrawElement, 2026-08-03). It also appended the
+  // parked canvas first, so each failure orphaned one in document.body.
+  // Ordering the check ahead of construction fixes both: no half-built
+  // source, nothing to clean up, and a sentence the consumer can act on.
+  const support = detectHtmlInCanvas()
+  if (!support.drawElementImage) {
+    throw new UnsupportedPlatformError(
+      'anamorph: this browser has no drawElementImage — the HTML-in-canvas ' +
+        'API this library is built on. In Chrome, relaunch with ' +
+        '--enable-features=CanvasDrawElement (a running Chrome ignores the ' +
+        'flag, so quit it fully first). Call detectHtmlInCanvas() before ' +
+        'mounting a Surface to branch on this instead of throwing.',
+    )
+  }
+
   const { label = `source-${sourceSeq++}`, onError } = options
   let scale = clampRawScale(options.scale ?? 1)
   const canvas = document.createElement('canvas') as TrialCanvas

@@ -43,6 +43,16 @@ export default function App() {
     }
   }, [])
 
+  // Every scene below mounts Surfaces, and a Surface on a browser without the
+  // trial throws out of the r3f Canvas — which unmounts the whole tree,
+  // including the `hint` further down that exists to explain exactly this.
+  // The page went solid black with an empty <body> and no message (Chrome
+  // without the flag, 2026-08-03). So the capability is checked BEFORE the
+  // Canvas is mounted rather than discovered inside it: the one screen whose
+  // job is to say "your browser can't run this" must not itself need a
+  // browser that can.
+  const unsupported = !support.drawElementImage
+
   // The flight scene is not a scene in the shared canvas — it IS a page,
   // with its own overlay canvas on top of it. The other scenes are content
   // inside one 3D room; this one inverts the relationship, so it takes the
@@ -56,6 +66,29 @@ export default function App() {
       ))}
     </div>
   )
+
+  if (unsupported) {
+    return (
+      <div className="app">
+        <div className="hud">
+          <h1>anamorph</h1>
+          <p className="sub">a component library made of real materials</p>
+          <ul className="features">
+            <li data-ok={false}>drawElementImage ✗</li>
+            <li data-ok={support.texElementImage2D}>
+              texElementImage2D {support.texElementImage2D ? '✓' : '✗'}
+            </li>
+          </ul>
+          <p className="hint">
+            HTML-in-canvas unavailable — every Surface needs it. Enable{' '}
+            <code>chrome://flags/#canvas-draw-element</code> and relaunch, or start Chrome with{' '}
+            <code>--enable-features=CanvasDrawElement</code>. A Chrome that is already running
+            ignores the flag, so quit it fully first.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   if (scene === 'flight') return <FlightApp chips={chips} />
 

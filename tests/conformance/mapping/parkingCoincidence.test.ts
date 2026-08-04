@@ -16,7 +16,7 @@
 // API is the paint layer's source factory, so it reuses the paint
 // suite's trial-surface stubs (onpaint / requestPaint / layoutSubtree
 // do not exist in happy-dom).
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createDomTextureSource } from '@anamorph/core'
 
@@ -38,6 +38,12 @@ beforeEach(() => {
   proto.layoutSubtree = false
   proto.onpaint = null
   proto.requestPaint = function (this: StubCanvas) {}
+  // The CONTEXT half too: the factory's capability gate reads
+  // CanvasRenderingContext2D.prototype before it builds anything, and
+  // happy-dom has no such global (the probe reaches it via `typeof`).
+  class Ctx2D {}
+  ;(Ctx2D.prototype as unknown as Record<string, unknown>).drawElementImage = function () {}
+  vi.stubGlobal('CanvasRenderingContext2D', Ctx2D)
 })
 
 describe('the parking coincidence — a client point IS a page point', () => {

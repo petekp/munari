@@ -34,6 +34,14 @@ beforeEach(() => {
   proto.layoutSubtree = false
   proto.onpaint = null
   proto.requestPaint = function () {}
+  // The factory's capability gate reads the PROTOTYPE, not the instance the
+  // getContext spy below hands back — a browser with one and not the other
+  // does not exist, and the gate refuses to pretend otherwise. happy-dom has
+  // no CanvasRenderingContext2D global (the probe reaches it via `typeof`),
+  // so the constructor itself has to be stubbed in.
+  class Ctx2D {}
+  ;(Ctx2D.prototype as unknown as Record<string, unknown>).drawElementImage = function () {}
+  vi.stubGlobal('CanvasRenderingContext2D', Ctx2D)
   ctx.drawElementImage = vi.fn()
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
     ctx as unknown as CanvasRenderingContext2D,

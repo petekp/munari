@@ -336,3 +336,40 @@ correct, and it makes the workspace's `private: true` a feature: a stray
 checks, so a bundled copy would fail silently in a consumer who already
 has one. The externals list is not an optimization; it is the singleton
 contract.
+
+## #12 — The capability gate runs before construction, not inside it (2026-08-03, paint layer)
+
+`createDomTextureSource` now calls `detectHtmlInCanvas()` first and
+throws `UnsupportedPlatformError` when the trial is absent. The probe
+had existed since the beginning and the lab already rendered a hint
+explaining a missing trial — the factory simply never asked.
+
+**What it cost to learn.** On a Chrome without
+`--enable-features=CanvasDrawElement`, the factory built its canvas,
+appended it to `document.body`, and reached `canvas.requestPaint()` —
+which does not exist. The bare TypeError escaped every Surface at once,
+`<CanvasImpl>` unmounted its whole tree, and the page went SOLID BLACK
+with an empty `<body>`, no console message, and React's generic
+"consider adding an error boundary" as the only clue. The hint that
+would have named the problem was inside the tree that had just
+unmounted. The one screen whose job is to say *your browser cannot run
+this* must not itself require a browser that can — so the lab checks
+the capability before it mounts the Canvas, not from within it.
+
+**Why the check is ordered ahead of construction.** Refusing after the
+canvas was appended orphaned a parked canvas in `document.body` on every
+failed Surface. Ordering the gate first means a refused source owns no
+DOM, which is pinned by its own test.
+
+**Why two booleans are still a complete gate.** Measured 2026-08-03 in
+Chrome 150: `drawElementImage`, `texElementImage2D`, `requestPaint`,
+`layoutSubtree` and `onpaint` were all present under the flag and all
+absent without it. They move together, so the probe needs no third key
+for the members the factory happens to call, and `detectHtmlInCanvas`
+keeps the exact two keys its contract pins.
+
+**What it changed in the suites.** Three harnesses stubbed the canvas
+half of the trial and not the context half, describing a browser that
+cannot exist; the gate correctly refused them. They now stub
+`CanvasRenderingContext2D` too — which happy-dom does not define as a
+global at all, the reason the probe reaches it through `typeof`.

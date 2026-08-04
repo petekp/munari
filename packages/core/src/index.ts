@@ -35,6 +35,7 @@ export {
 export {
   createDomTextureSource,
   detectHtmlInCanvas,
+  UnsupportedPlatformError,
   paintStats,
   type DomTextureSource,
   type DomTextureSourceOptions,
