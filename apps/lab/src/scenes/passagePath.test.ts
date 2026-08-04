@@ -181,25 +181,27 @@ describe('gridSnap', () => {
   const LIVE = { w: 308, h: 324, viewW: 1280, viewH: 720, x: -326, y: 50.15625 }
   const topOf = (y: number, h: number) => LIVE.viewH / 2 - y - h / 2
   const leftOf = (x: number, w: number) => LIVE.viewW / 2 + x - w / 2
+  /** The scene's call, at rest on the page plane, at a given device ratio. */
+  const snap = (x: number, y: number, dpr: number, t: number) =>
+    gridSnap(x, y, LIVE.w, LIVE.h, 1, LIVE.viewW, LIVE.viewH, dpr, dpr, t)
 
   it('puts the card corner on the pixel grid — the regression, in its own numbers', () => {
     expect(topOf(LIVE.y, LIVE.h)).toBe(147.84375)
-    const [dx, dy] = gridSnap(LIVE.x, LIVE.y, LIVE.w, LIVE.h, LIVE.viewW, LIVE.viewH, 1, 0)
-    expect(leftOf(LIVE.x + dx, LIVE.w)).toBe(160)
-    expect(topOf(LIVE.y + dy, LIVE.h)).toBe(148)
+    const s = snap(LIVE.x, LIVE.y, 1, 0)
+    expect(leftOf(LIVE.x + s.dx, LIVE.w)).toBe(160)
+    expect(topOf(LIVE.y + s.dy, LIVE.h)).toBe(148)
   })
 
   it('moves the card by less than half a pixel to do it', () => {
-    const [dx, dy] = gridSnap(LIVE.x, LIVE.y, LIVE.w, LIVE.h, LIVE.viewW, LIVE.viewH, 1, 0)
-    expect(Math.abs(dx)).toBeLessThanOrEqual(0.5)
-    expect(Math.abs(dy)).toBeLessThanOrEqual(0.5)
+    const s = snap(LIVE.x, LIVE.y, 1, 0)
+    expect(Math.abs(s.dx)).toBeLessThanOrEqual(0.5)
+    expect(Math.abs(s.dy)).toBeLessThanOrEqual(0.5)
   })
 
   it('leaves a card that is already on the grid exactly where it is', () => {
     // The x axis in the live measurement was already integral, by luck of where
     // the tile sits. Nothing may move it.
-    const [dx] = gridSnap(LIVE.x, LIVE.y, LIVE.w, LIVE.h, LIVE.viewW, LIVE.viewH, 1, 0)
-    expect(dx).toBe(0)
+    expect(snap(LIVE.x, LIVE.y, 1, 0).dx).toBe(0)
   })
 
   /**
@@ -208,10 +210,24 @@ describe('gridSnap', () => {
    */
   it('snaps to device pixels, so a half CSS pixel is on the grid at dpr 2', () => {
     const y = LIVE.y + 0.5 - 0.15625 // corner at a whole number of half-pixels
-    const [, dy] = gridSnap(LIVE.x, y, LIVE.w, LIVE.h, LIVE.viewW, LIVE.viewH, 2, 0)
-    expect(dy).toBe(0)
-    const [, coarse] = gridSnap(LIVE.x, y, LIVE.w, LIVE.h, LIVE.viewW, LIVE.viewH, 1, 0)
-    expect(coarse).not.toBe(0)
+    expect(snap(LIVE.x, y, 2, 0).dy).toBe(0)
+    expect(snap(LIVE.x, y, 1, 0).dy).not.toBe(0)
+  })
+
+  /**
+   * The half this scene did not have until the law was extracted (#21). Both
+   * endpoints happened to be integral, so a corner-only snap was correct here
+   * by luck; `getBoundingClientRect` does not promise that, and a fractional
+   * width drifts its own phase across the card with the corner nailed down.
+   */
+  it('also pins the footprint, so the phase cannot drift across the card', () => {
+    const odd = gridSnap(LIVE.x, LIVE.y, 307.6, 324, 1, LIVE.viewW, LIVE.viewH, 2, 2, 0)
+    // 307.6 × 2 = 615.2 texels, cut to 615: the card must cover 615 device px.
+    expect(307.6 * 2 * odd.sx).toBeCloseTo(615, 9)
+    expect(odd.sx).not.toBe(1)
+    // And an integral card is left alone, which is why this was invisible.
+    expect(snap(LIVE.x, LIVE.y, 2, 0).sx).toBe(1)
+    expect(snap(LIVE.x, LIVE.y, 2, 0).sy).toBe(1)
   })
 
   /**
@@ -220,7 +236,7 @@ describe('gridSnap', () => {
    * position is just a way to make it move in steps.
    */
   it('does nothing in the middle of a flight, where there is no grid to be on', () => {
-    expect(gridSnap(LIVE.x, LIVE.y, LIVE.w, LIVE.h, LIVE.viewW, LIVE.viewH, 1, 0.5)).toEqual([0, 0])
+    expect(snap(LIVE.x, LIVE.y, 1, 0.5)).toEqual({ dx: 0, dy: 0, sx: 1, sy: 1 })
   })
 
   it('is at full strength at BOTH endpoints, because both are places to stop', () => {
@@ -238,6 +254,11 @@ describe('gridSnap', () => {
         snapWeight(((i - 1) / 8) * SNAP_FADE) + 1e-12,
       )
     }
+    // The scale rides the same weight, so it arrives as a drift too — a
+    // footprint that snapped in one frame would be a visible 0.07% pop.
+    const half = gridSnap(LIVE.x, LIVE.y, 307.6, 324, 1, LIVE.viewW, LIVE.viewH, 2, 2, SNAP_FADE / 2)
+    const full = gridSnap(LIVE.x, LIVE.y, 307.6, 324, 1, LIVE.viewW, LIVE.viewH, 2, 2, 0)
+    expect(Math.abs(half.sx - 1)).toBeLessThan(Math.abs(full.sx - 1))
   })
 
   it('is off well before the flight is halfway', () => {

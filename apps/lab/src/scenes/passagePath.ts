@@ -9,7 +9,7 @@
 // describes where a card ends up, because nothing here is allowed to have an
 // opinion about that — the page's own layout already answered.
 
-import { clampScale, texelDemand } from 'anamorph'
+import { clampScale, pixelGridSnap, texelDemand } from 'anamorph'
 
 /** A box in page coordinates, as `getBoundingClientRect` hands it over. */
 export interface Box {
@@ -273,53 +273,58 @@ export function snapWeight(t: number): number {
   return w > 1e-6 ? w : 0
 }
 
+/** How this scene presents a card once the grid has been consulted. */
+export interface Settle {
+  /** World offsets to add to the card's centre. */
+  dx: number
+  dy: number
+  /** Multipliers on the card's rendered footprint. */
+  sx: number
+  sy: number
+}
+
+const NO_SETTLE: Settle = { dx: 0, dy: 0, sx: 1, sy: 1 }
+
 /**
- * The offset that puts a resting card's corner on the DISPLAY's pixel grid.
+ * The phase correction that puts a resting card's texels on the display's
+ * pixels — `pixelGridSnap`, faded in over the ends of the flight.
  *
- * The third budget in `sharpness = supply × phase × transfer` (#53), and the one
- * that cannot be bought off with the other two. A card's texture is a capture of
- * its own box, so the texture's texel grid IS the card's pixel grid — offset the
- * card by a fraction of a pixel and every texel in it is read across two, which
- * is one bilinear tap of blur applied uniformly to type. Measured on the small
- * endpoint: a 0.156 px origin cost 16% of the typography's edge energy against
- * the same pixels of real DOM, and snapping it returned 1.001× (test).
+ * The law is the kernel's and the reasoning lives there. What is this scene's
+ * is the WHEN, which is the only part that was ever scene-specific: `Flight`
+ * decides a card is at rest from its plate speed, and a route transition
+ * decides it from how far into the flight it is. `snapWeight` is that
+ * judgement — full strength at BOTH endpoints, because the smaller one is a
+ * resting place as much as the larger (the start of an open, the end of a
+ * close), and off through the middle, where the card is magnified and tilted
+ * and there is no phase to be right about. Quantizing a moving card's position
+ * is just a way to make it move in steps.
  *
- * Note what this is NOT about. The parts inside the card are at fractional
- * positions too — 27 of 27 of them, median 0.31 px — and that is correct and
- * must stay: a word's fraction is baked into the capture, and its uv rect is
- * exactly `box / card`, so it asks for precisely the texels it was drawn into.
- * There is one grid per card, not one per word, and this moves the card.
- *
- * It costs a displacement of up to half a pixel from the DOM the card is
- * standing in for. That is the trade and it is not a close one: half a pixel of
- * displacement is invisible, half a pixel of blur is what gets reported.
- *
- * Weighted by `snapWeight`, so it is at full strength at BOTH endpoints — the
- * smaller one is a resting place as much as the larger, at the start of an open
- * and the end of a close — and absent through the middle, where the card is
- * magnified and tilted and there is no phase to be right about.
+ * Both halves of the correction are taken, which is new: the corner snap alone
+ * was correct here only by the luck of two integral card widths, and a 307.6 px
+ * endpoint would have drifted its phase across its own width with the corner
+ * still nailed down (#21).
  */
 export function gridSnap(
   x: number,
   y: number,
   width: number,
   height: number,
+  mag: number,
   viewW: number,
   viewH: number,
   dpr: number,
+  density: number,
   t: number,
-): [dx: number, dy: number] {
+): Settle {
   const weight = snapWeight(t)
-  if (weight <= 0) return [0, 0]
-  const d = Math.max(1e-6, dpr)
-  const grid = (v: number) => Math.round(v * d) / d
-  const left = viewW / 2 + x - width / 2
-  const top = viewH / 2 - y - height / 2
-  // World x runs with the screen and world y runs against it, so the vertical
-  // correction is the one the top edge needs, subtracted rather than added.
-  // Written out both ways rather than negating — `-0` is a delta callers would
-  // otherwise have to know not to compare against zero.
-  return [(grid(left) - left) * weight, (top - grid(top)) * weight]
+  if (weight <= 0) return NO_SETTLE
+  const s = pixelGridSnap({ x, y, width, height, mag, viewW, viewH, dpr, density })
+  return {
+    dx: s.dx * weight,
+    dy: s.dy * weight,
+    sx: 1 + weight * (s.sx - 1),
+    sy: 1 + weight * (s.sy - 1),
+  }
 }
 
 /**

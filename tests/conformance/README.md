@@ -11,7 +11,7 @@ Layers, in the order they build on each other:
 
 | layer | what it owns | suites |
 |---|---|---|
-| mapping | coordinate custody — the pixel-calibrated camera, UV anchoring | `camera`, `uvAnchor`, `parkingCoincidence`, `densityIdentity` |
+| mapping | coordinate custody — the pixel-calibrated camera, UV anchoring | `camera`, `uvAnchor`, `parkingCoincidence`, `densityIdentity`, `pixelGrid` |
 | paint | DOM → texture, and what a paint costs | `lodTier`, `htmlInCanvas`, `paintStats`, `styleChannel`, `filterPolicy`, `capabilityProbe` |
 | pointer | provenance and the pointer protocol | `forwardEvents`, `hoverGrace`, `relayDuplication`, `relayTripwire` |
 | transfer | the handoff between page and mesh | `motionSamples`, `conductorTiming`, `densitySchedule` |

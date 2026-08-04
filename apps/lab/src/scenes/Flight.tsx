@@ -68,6 +68,7 @@ import {
   carryToPlane,
   densityScheduleStep,
   densitySupply,
+  pixelGridSnap,
   planeScale,
   screenToPlane,
 } from 'anamorph'
@@ -637,13 +638,17 @@ function Driver({
     // is the only time anyone can stare: even at exactly 1 : 1 density, a
     // texture whose corner sits at a fractional screen position is resampled
     // by bilinear at that fraction — every glyph edge smeared across two
-    // device pixels, the fattened-fuzzy look the bisect shots measured. So
-    // when the plate is still (and only then), the PRESENTATION quantizes:
-    // projected footprint to exactly the texture's texel count, projected
-    // top-left corner to an integer device pixel, residual tilt to flat.
-    // The physics never hears about it — same truth/presentation split as
-    // the grounded damper (#49) — and the blend runs on plate speed, so a
-    // moving card is pure truth and nothing pops in between.
+    // device pixels, the fattened-fuzzy look the bisect shots measured.
+    //
+    // `pixelGridSnap` is the law and it is the kernel's (#21); what stays
+    // here is the judgement of WHEN a card counts as at rest, which is the
+    // only part of this that was ever about flights. The physics never hears
+    // about the answer — same truth/presentation split as the grounded
+    // damper (#49) — and the blend runs on plate speed, so a moving card is
+    // pure truth and nothing pops in between.
+    //
+    // Tilt is the one correction the kernel does not own: flat-at-rest is
+    // this scene's idea of rest, and it needs a quaternion.
     group.position.copy(f.plate.p)
     group.quaternion.copy(f.plate.q)
     group.scale.set(1, 1, 1)
@@ -661,23 +666,21 @@ function Driver({
       const speed = f.plate.v.length() + f.plate.w.length() * edge
       const settle = 1 - Math.min(1, Math.max(0, (speed - 2) / 28))
       if (settle > 0) {
-        const tw = Math.round(f.w * density)
-        const th = Math.round(f.h * density)
-        // Footprint: exactly tw × th device px (a 0.07% size lie at most —
-        // without it the phase drifts across the card even when the corner
-        // is pinned, because 514 · 1.114 is not an integer).
-        const sx = tw / (f.w * mag * dpr)
-        const sy = th / (f.h * mag * dpr)
-        // Corner: the top-left of that footprint, in device px, onto the
-        // integer grid. World y is up and screen y is down — mind the sign.
-        const tlx = (vw / 2 + f.plate.p.x * mag) * dpr - tw / 2
-        const tly = (vh / 2 - f.plate.p.y * mag) * dpr - th / 2
-        const dx = (Math.round(tlx) - tlx) / (dpr * mag)
-        const dy = (Math.round(tly) - tly) / (dpr * mag)
-        group.position.x += settle * dx
-        group.position.y -= settle * dy
+        const snap = pixelGridSnap({
+          x: f.plate.p.x,
+          y: f.plate.p.y,
+          width: f.w,
+          height: f.h,
+          mag,
+          viewW: vw,
+          viewH: vh,
+          dpr,
+          density,
+        })
+        group.position.x += settle * snap.dx
+        group.position.y += settle * snap.dy
         group.quaternion.slerp(FLAT, settle)
-        group.scale.set(1 + settle * (sx - 1), 1 + settle * (sy - 1), 1)
+        group.scale.set(1 + settle * (snap.sx - 1), 1 + settle * (snap.sy - 1), 1)
       }
     }
 

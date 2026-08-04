@@ -45,7 +45,7 @@ import {
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { flushSync } from 'react-dom'
 import * as THREE from 'three'
-import { SurfaceApp, useSurfaceTexture, cameraDistance } from 'anamorph'
+import { SurfaceApp, useSurfaceTexture, cameraDistance, planeScale } from 'anamorph'
 import {
   HEIGHT_OMEGA,
   atTarget,
@@ -62,7 +62,7 @@ import {
 import { SHADOW_FRAG, SHADOW_VERT, shadowFrame } from './passageShadow'
 import { markupOf, measureEndpoint, type Endpoint } from './passageMeasure'
 import { planFlight } from './passageParts'
-import { PassageField, cardSizeAt } from './passageField'
+import { PassageField, cardSizeAt, captureScale } from './passageField'
 import './passage.css'
 
 // ── the library ──────────────────────────────────────────────────────────
@@ -966,6 +966,8 @@ function FieldFlight({ pass, painted, onPainted, onLanded }: FlyingProps) {
     rotY: 0,
     w: pass.from.width,
     h: pass.from.height,
+    sx: 1,
+    sy: 1,
   }))
 
   // The markup is taken ONCE, from the card the reader is looking at, before
@@ -1049,13 +1051,30 @@ function FieldFlight({ pass, painted, onPainted, onLanded }: FlyingProps) {
     // origin phase cost 16% of the typography's edge energy against the same
     // pixels of real DOM (#20). At rest only — mid-flight the card is magnified
     // and tilted and there is no phase to be right about.
-    const [dx, dy] = gridSnap(p.x, p.y, w, h, size.width, size.height, dpr, progress.current)
-    const x = p.x + dx
-    const y = p.y + dy
+    //
+    // The density handed over is the one the plates were actually CUT at, not
+    // the one this depth would like: the footprint has to match the texels that
+    // exist. It only matters where the weight is non-zero, and there the card
+    // is at an endpoint and its plate is that endpoint's.
+    const mag = planeScale(cameraDistance(size.height, FOV), p.z)
+    const settle = gridSnap(
+      p.x, p.y, w, h, mag,
+      size.width, size.height,
+      dpr, captureScale(w, h, dpr),
+      progress.current,
+    )
+    const x = p.x + settle.dx
+    const y = p.y + settle.dy
     setPose((prev) =>
-      prev.x === x && prev.y === y && prev.z === p.z && prev.w === w && prev.h === h
+      prev.x === x &&
+      prev.y === y &&
+      prev.z === p.z &&
+      prev.w === w &&
+      prev.h === h &&
+      prev.sx === settle.sx &&
+      prev.sy === settle.sy
         ? prev
-        : { x, y, z: p.z, rotX: p.rotX, rotY: p.rotY, w, h },
+        : { x, y, z: p.z, rotX: p.rotX, rotY: p.rotY, w, h, sx: settle.sx, sy: settle.sy },
     )
   })
 
@@ -1071,11 +1090,18 @@ function FieldFlight({ pass, painted, onPainted, onLanded }: FlyingProps) {
         z={pose.z}
         visible={painted && debug.shadow}
       />
-      {/* Position and rotation only — NO scale. The field places its parts in
-          the card's own CSS pixels, so a group scale would multiply them a
-          second time. That is the whole difference from `PassageCard`, which
-          scales a unit plane because its content is a texture cut to the box. */}
-      <group position={[pose.x, pose.y, pose.z]} rotation={[pose.rotX, pose.rotY, 0]}>
+      {/* Position, rotation, and the SETTLE scale — never the card's size. The
+          field places its parts in the card's own CSS pixels, so scaling this
+          group by w/h would multiply them a second time; that is the whole
+          difference from `PassageCard`, which scales a unit plane because its
+          content is a texture cut to the box. The settle is a different animal:
+          a ~1.0007 correction about the card's centre that makes the whole
+          footprint — parts and all — cover a whole number of device pixels. */}
+      <group
+        position={[pose.x, pose.y, pose.z]}
+        rotation={[pose.rotX, pose.rotY, 0]}
+        scale={[pose.sx, pose.sy, 1]}
+      >
         <PassageField
           a={a}
           b={b}

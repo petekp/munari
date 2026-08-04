@@ -1194,3 +1194,74 @@ z = 68.0 against a 62.4 threshold, fall `true → false` on the frame the
 mode became `home` at z = 94.7 — forced low from full altitude, because
 the descent is the motion mask. Identical to the law it replaced, which
 is the whole claim.
+
+## #22 — The phase law crosses, and the probe that found it becomes a gate (2026-08-04, kernel + instruments)
+
+#21 left one thing on the board: the phase correction had two
+independent scene copies and nothing in the kernel. That is the
+second-system guard (#10) SATISFIED rather than violated — a second
+consumer arrived holding the need — so this is the extraction, plus the
+instrument that made the need visible in the first place.
+
+**What crossed is the superset, not either copy.** The two were not the
+same law. `Flight`'s pins the projected footprint to the texture's exact
+texel count *and* the top-left corner to an integer device pixel;
+`passage`'s pinned only the corner, and was correct there by the luck of
+two integral card widths. `getBoundingClientRect` promises no such
+thing: a 307.6 px endpoint drifts its own phase across its own width
+with the corner nailed down, because 307.6 × 2 texels is not a whole
+number of device pixels. `pixelGridSnap` does both, so passage gained a
+correction it never had.
+
+What did NOT cross is the judgement of when a card is at rest. That is
+genuinely scene-specific — a flight reads it off plate speed, a route
+transition off how far into the flight it is — and it is the seam the
+kernel/consumer split is for. Tilt stayed behind too: flat-at-rest is
+this scene's idea of rest and it needs a quaternion.
+
+**The instrument.** `instruments/sharpness`, `npm run gate:sharpness`.
+The recipe it replaces was prose and was re-derived wrong three times in
+one session, because "is this blurry" has no answer — a texture is sharp
+or soft only RELATIVE to the DOM it stands in for, at the same size, in
+the same place. So it drives the passage scene to the one frame where
+the mesh is standing exactly where the page copy was, photographs both,
+clips them to one measured rect, and reports gradient energy as a ratio.
+
+Three things in it are the durable part, and each was a mistake actually
+made on the way to #20:
+
+- **The band is part of the measurement.** A live frame counter that the
+  DOM is running and the held mesh has not drawn moved a whole-card
+  ratio by more than the defect being hunted.
+- **A perfect score can be vacuous.** With the page copy still visible
+  under the mesh, the ratio is the DOM against itself and it passes
+  beautifully. The gate checks the copy is hidden — idle-zero's
+  provocation in this instrument's terms.
+- **The floor sits between two real readings.** 0.93, because the
+  reported defect measured 0.841 and its fix 1.001. A floor invented
+  rather than bracketed cannot fail for the right reason.
+
+**Evidence.** 618 passing, `tsc -b` and `oxlint` clean. The gate reads
+**0.9989** on the shipped code (DOM 491.73, mesh 491.18, typography band
+at dpr 2), and the negative control — `snapWeight` forced to 0 —
+reproduces the original defect at **0.833** against the 0.841 that was
+reported. Flight, live: a card held still at cruise settles to a
+footprint of exactly 573 × 175 device px with its corner at exactly
+(83, 105), fractional part 0 on both axes; a landing converges toward
+514 × 157 with the corner fraction shrinking monotonically frame over
+frame.
+
+**A finding the rewire surfaced, not a regression.** The footprint half
+matches the *demand* — `round(width × density)` — and the store it is
+matching may not be that size. `storeForBox` keeps an existing backing
+store that is merely within `DENSITY_BAND` of the demand, and at dpr 1
+the whole altitude pin fits inside that band: a card held at cruise
+reported demand 573 × 175 against a real store of 514 × 157. So the
+altitude density pin can be a no-op that nothing reports, and up there
+the footprint correction is matching a texel count that does not exist.
+Neither is new — the hand-rolled copy computed the same thing — and
+neither matters where the law is for: at rest on the page the store was
+born at exactly this density, so `storeForBox`'s `exact` and this
+function's `tw` are the same expression. Written down because the next
+person to hold a card at altitude and wonder why it is soft should find
+this paragraph instead of the phase budget.

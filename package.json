@@ -17,7 +17,8 @@
     "lint": "oxlint . --deny-warnings",
     "build": "npm run build -w anamorph",
     "gate:idle-zero": "node instruments/idle-zero/run.mjs",
-    "dev": "npm run dev -w @anamorph/lab"
+    "dev": "npm run dev -w @anamorph/lab",
+    "gate:sharpness": "node instruments/sharpness/run.mjs"
   },
   "devDependencies": {
     "@react-three/fiber": "^9.6.1",

@@ -36,6 +36,48 @@ browser-driving instrument should copy them:
   silently drops these flags hands back numbers from a browser that
   cannot do the thing being measured.
 
+## sharpness
+
+Is the mesh's rendering of an element as sharp as the element?
+`npm run gate:sharpness`.
+
+The question has no absolute answer, which is why the recipe kept being
+re-derived wrong: a texture is only sharp or soft RELATIVE to the DOM it
+stands in for, at the same size, in the same place, on the same display.
+So the instrument drives the passage scene to the one frame where the
+mesh is standing exactly where the page copy was — the small endpoint,
+held at `t = 0` — photographs both, and reports a ratio.
+
+- `gradientEnergy.ts` — the arithmetic, with its own contract. Mean
+  squared first difference of luma over a band. Blur is a low-pass and
+  first differences are what it takes away first; variance would not
+  answer, and an FFT would answer more precisely at the cost of being
+  something nobody reimplements correctly under pressure.
+- `run.mjs` — transport, following idle-zero's two policies. Also does
+  the decoding in-page rather than in Node: the browser already has a
+  PNG decoder and shipping an image library to compare two rectangles is
+  the wrong trade.
+
+Three things it will not let you get away with, each one a mistake that
+was actually made:
+
+- **The band is part of the measurement.** The card's header carries a
+  live frame counter the DOM is running and the held mesh has not drawn,
+  and including it moved the ratio by more than the defect being hunted.
+  The gate measures the typography band and prints which one.
+- **A perfect score can be vacuous.** If the page copy is still visible
+  under the mesh, the ratio is the DOM compared against itself and it
+  passes beautifully. The gate checks the copy is hidden and fails
+  loudly if it is not — idle-zero's provocation, in this instrument's
+  terms.
+- **The floor has to sit between two real readings.** 0.93, because the
+  reported defect measured 0.841 and its fix measured 1.001. A floor
+  invented rather than bracketed cannot fail for the right reason.
+
+Negative control, and the way to check the gate still bites: force
+`snapWeight` to 0 in `passagePath.ts` and re-run. It reproduces the
+original defect at 0.833.
+
 ## House rules
 
 - A scene that can't be interrogated from the console isn't done.
@@ -52,6 +94,8 @@ browser-driving instrument should copy them:
   driver never sent anything", force the uniform inside the render
   wrapper.
 
-The instruments those last four rules describe are not built yet;
-they are tracked as issues rather than listed here, so this file
-stays a description of what exists.
+The crispness rule now has an instrument — `sharpness` above, which is
+position-aware by construction because it clips both photographs to one
+measured page rect. The other three are still prose, tracked as issues
+rather than listed here, so this file stays a description of what
+exists.

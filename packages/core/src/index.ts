@@ -12,6 +12,11 @@ export {
   planeToScreen,
 } from './mapping/camera'
 export {
+  pixelGridSnap,
+  type PixelGridInput,
+  type PixelGridSnap,
+} from './mapping/pixelGrid'
+export {
   UVAnchor,
   sampleSurfaceAtUV,
   type AttributeLike,
