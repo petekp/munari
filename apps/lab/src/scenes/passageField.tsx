@@ -20,40 +20,39 @@ import type { Endpoint, Panel } from './passageMeasure'
 // turns around mid-air plays it backwards exactly, with no state to unwind.
 
 /**
- * How much bigger than its own layout an endpoint's capture is cut.
+ * How densely an endpoint's capture is cut: one texel per device pixel of the
+ * layout it was measured at. Nothing else goes into it.
  *
- * A shared-element flight has a supply problem the relayout version never
- * had: the source card is captured at 308 px and then shown at up to 940,
- * and a texture cannot invent the texels it was not given. The card at rest
- * is crisp, the card in flight is soft, and no amount of filtering fixes it.
+ * A shared-element flight has a supply problem the relayout version never had:
+ * the source card is captured at 308 px and then shown at up to 940, and a
+ * texture cannot invent the texels it was not given. So this used to take the
+ * OTHER endpoint's width and cut the smaller of the two denser, buying texels
+ * for the magnification ahead.
  *
- * But it does not need the whole range. The hand-over retires each capture at
- * the point where it stops being the sharper of the two, so a capture is only
- * ever magnified by the size ratio raised to a little past a half — not by
- * the full ratio. On this card that is 2.0 rather than 3.05, and it is cut
- * once at that density rather than re-rasterized 120 times.
+ * The bug in that is not the arithmetic, it is the noun. **EVERY ENDPOINT IS A
+ * DESTINATION.** The small card is where an open BEGINS and where a close comes
+ * to REST, and a plate cut 2.5× denser than the box it is shown in is a 2.5×
+ * minification there — over a mip level of blur, through a trilinear sampler,
+ * on a frame the reader is looking straight at. Measured live: supply 1.000 at
+ * the large endpoint against 2.526 at the small one, and the tell was that the
+ * type snapped clear at the instant the mesh handed back to the DOM. A landing
+ * is the only moment the same words are shown at the same size by both, one
+ * after the other, so a defect at one endpoint shows up there and nowhere else.
  *
- * `LIFT_ZOOM` is the perspective the flight adds at the top of its arc; the
- * card really is bigger on the display there than its own box says. It rides
- * with the MAGNIFIED cut and only with it — a resting endpoint is supplied at
- * exactly `dpr`, one texel per device pixel, and not a texel more. Oversupply
- * is not free headroom: 1.25× is a minification, trilinear sampling turns a
- * minification into a third of a mip level of blur, and the two frames it
- * blurs are the two a reader can stop and look at. Measured against the landed
- * DOM 2026-08-04 (decisions #52's lesson, arriving from the other direction:
- * supply is a target, not a maximum).
+ * Mid-flight softness is real and is now somebody else's budget. The hand-over
+ * retires each capture where it stops being the sharper of the two, so the
+ * worst magnification either plate ever suffers is at the geometric mean of the
+ * two widths — 1.75× here — and that is also, exactly, where the flight is
+ * moving fastest and the shutter is smearing it 24 px (decisions #19). Spend
+ * the sharpness where a reader can stop; spend the exposure where they cannot.
+ *
+ * (decisions #52's lesson arriving a third time: supply is a target, not a
+ * maximum. Twice now the fix has been to stop asking for more than one.)
  */
-const LIFT_ZOOM = 1.25
-
-export function captureScale(own: number, other: number, dpr: number): number {
-  const growth = other / Math.max(own, 1)
-  // Only the SMALLER endpoint is ever magnified; the larger one is only ever
-  // minified, and mipmaps are the right answer for that.
-  const zoom = growth > 1 ? Math.pow(growth, 0.5 + HANDOVER / 2) * LIFT_ZOOM : 1
-  const wanted = dpr * zoom
+export function captureScale(own: number, dpr: number): number {
   // The same texture guard `densityAt` uses — a warning per frame is its own
   // kind of bug.
-  return Math.max(0.5, Math.min(wanted, 4000 / Math.max(1, own)))
+  return Math.max(0.5, Math.min(dpr, 4000 / Math.max(1, own)))
 }
 
 /**
@@ -131,8 +130,15 @@ export interface Cut {
  * been told to hide — so a slot that goes dark while its replacement warms up
  * leaves a hole in a card the reader is looking at. Measured before this
  * existed: the whole field, 200 triangles, gone for two frames, on every open
- * and never on a close (see `captureScale` — only the smaller endpoint is ever
- * re-cut).
+ * and never on a close — because back then `captureScale` re-cut the smaller
+ * endpoint the moment the larger one was measured.
+ *
+ * IT NO LONGER DOES. Each endpoint's density is now its own business (#20), so
+ * nothing about the destination's arrival can change the source's cut, and the
+ * flash this was written for cannot happen on that path. Kept, and kept tested,
+ * because the rule is not about that one caller: a slot is handed a new cut
+ * whenever the endpoints are re-measured — a resize is the live one — and the
+ * correct thing to do with a blank replacement is never to show it.
  *
  * The same shape as decisions #14: reconcile by comparing what is actually
  * there, not by scheduling a swap and trusting it to arrive.
@@ -194,20 +200,24 @@ function retire(s: Slot) {
  * unparented, nothing animates in it, and its `paintCount` stops advancing
  * after the first paint or two — so this is an upload, not a feed.
  *
- * It is cut TWICE per open, because `captureScale` needs the other endpoint's
- * width to choose a density and the destination does not exist yet when the
- * source is first cut. So the two cuts overlap: the second is built beside the
- * first, and the first keeps being sampled until the second has pixels.
+ * It used to be cut TWICE per open — `captureScale` needed the other endpoint's
+ * width to choose a density, and the destination does not exist yet when the
+ * source is first cut. It does not any more (#20): each endpoint is cut once, at
+ * its own resting density, and the destination's arrival changes nothing about
+ * the source. The overlap machinery below is what made that second cut
+ * invisible, and it is still what makes any future one invisible.
  *
  * Superseded plates are held, not freed, until the flight unmounts. Disposing
  * one at the instant of promotion would pull a texture out from under a
  * material that is still pointing at it for the rest of that frame, and the
  * alternative — waiting N frames — is the frame-count race this project keeps
- * paying for. A flight is a second long and cuts each endpoint at most twice.
+ * paying for. A flight is a second long and holds two plates.
  *
- * Mipmaps because a part is routinely drawn smaller than it was captured (the
- * whole source card at t = 0 is 308 px of a texture cut for 940), and a
- * minified glyph without them crawls.
+ * Mipmaps because a plate is routinely sampled far below its own size: at t = 0
+ * the DESTINATION's plate is already being drawn, 940 px of texture across a
+ * 308 px card, and a glyph minified threefold without them crawls. Neither plate
+ * is minified at its own endpoint — that is what #20 bought — so this is the
+ * flight's cost and not the landing's.
  */
 export function useCapture(
   node: HTMLElement | null,
@@ -779,8 +789,10 @@ export function PassageField({
   onFlightReady?: () => void
 }) {
   const dpr = useThree((s) => s.viewport.dpr)
-  const scaleA = captureScale(a.width, b?.width ?? a.width, dpr)
-  const scaleB = captureScale(b?.width ?? 0, a.width, dpr)
+  // Each endpoint's density is its own business, so neither of these moves when
+  // the other endpoint shows up several frames later.
+  const scaleA = captureScale(a.width, dpr)
+  const scaleB = captureScale(b?.width ?? 0, dpr)
   const inkA = useCapture(a.ink, a.width, a.height, scaleA)
   const chromeA = useCapture(a.chrome, a.width, a.height, scaleA)
   // Nulls until `b` arrives, so nothing ever adopts a node twice — and note

@@ -52,6 +52,7 @@ import {
   boxOf,
   densityAt,
   followHeight,
+  gridSnap,
   landed,
   poseAt,
   sizeProgress,
@@ -937,6 +938,7 @@ function LiveBand({
 
 function FieldFlight({ pass, painted, onPainted, onLanded }: FlyingProps) {
   const size = useThree((s) => s.size)
+  const dpr = useThree((s) => s.viewport.dpr)
 
   const spring = useRef({ x: 0, v: 0 })
   /**
@@ -1039,10 +1041,21 @@ function FieldFlight({ pass, painted, onPainted, onLanded }: FlyingProps) {
       TILT,
       h,
     )
+    // PRESENTATION ONLY, and applied here rather than inside `poseAt` on
+    // purpose: the path is the physics and this is a display correction. The
+    // card's texture is a capture of its own box, so the texel grid IS the
+    // card's pixel grid, and an origin off the display's grid reads every glyph
+    // across two texels at once. Measured on the small endpoint: 0.156 px of
+    // origin phase cost 16% of the typography's edge energy against the same
+    // pixels of real DOM (#20). At rest only — mid-flight the card is magnified
+    // and tilted and there is no phase to be right about.
+    const [dx, dy] = gridSnap(p.x, p.y, w, h, size.width, size.height, dpr, progress.current)
+    const x = p.x + dx
+    const y = p.y + dy
     setPose((prev) =>
-      prev.x === p.x && prev.y === p.y && prev.z === p.z && prev.w === w && prev.h === h
+      prev.x === x && prev.y === y && prev.z === p.z && prev.w === w && prev.h === h
         ? prev
-        : { x: p.x, y: p.y, z: p.z, rotX: p.rotX, rotY: p.rotY, w, h },
+        : { x, y, z: p.z, rotX: p.rotX, rotY: p.rotY, w, h },
     )
   })
 

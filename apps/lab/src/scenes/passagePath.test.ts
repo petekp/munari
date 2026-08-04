@@ -20,12 +20,15 @@ import { describe, expect, it } from 'vitest'
 
 import {
   HEIGHT_OMEGA,
+  SNAP_FADE,
   atTarget,
   centreOf,
   densityAt,
   followHeight,
+  gridSnap,
   landed,
   poseAt,
+  snapWeight,
   springStep,
   type Box,
 } from './passagePath'
@@ -137,6 +140,108 @@ describe('poseAt', () => {
     const p = poseAt(from, box(80, 600, 300, 220), 0.5, VIEW_W, VIEW_H, 260, 0.3)
     expect(p.rotY).toBeCloseTo(0, 10)
     expect(Math.abs(p.rotX)).toBeCloseTo(0.3, 6)
+  })
+})
+
+/**
+ * THE PLATE'S TEXEL GRID IS THE CARD'S PIXEL GRID, AND IT ONLY LINES UP WITH THE
+ * DISPLAY'S IF THE CARD'S CORNER DOES.
+ *
+ * The field draws every word as its own quad at its own measured box, and those
+ * boxes are fractional — 27 of 27 measured live, median 0.31 px off the grid.
+ * That is fine and it is not this: a word's fractional position is baked into
+ * the capture, and its uv rect is exactly `box / card`, so the texel it wants
+ * and the texel it asks for are the same one. What is NOT fine is the card's own
+ * origin. Move the whole plate half a pixel and every glyph in it resamples
+ * across two texel columns at once — one bilinear tap, applied uniformly, to
+ * type that was rasterized to be read.
+ *
+ * Measured on the small endpoint 2026-08-04, held at t = 0, gradient energy over
+ * the typography band against the same pixels of the real DOM:
+ *
+ *     DOM                      900.90
+ *     mesh, origin at y 147.84 758.02   0.841 — Pete's "noticeably more blurry"
+ *     mesh, origin snapped     902.19   1.001
+ *
+ * Supply was already exact at both endpoints and the mip chain was provably not
+ * engaged (poking the sampler to LINEAR produced a byte-identical frame). This
+ * is the third budget in `sharpness = supply × phase × transfer`, and it is the
+ * one nothing else can compensate for: no amount of density fixes a bad phase,
+ * because the extra texels land off-grid too.
+ *
+ * The snap moves the card off the DOM it is standing in for by up to half a
+ * pixel. That is the trade, and it is not close — a half-pixel displacement is
+ * invisible, a half-pixel blur is what the user reported.
+ */
+describe('gridSnap', () => {
+  // The measurement above, in its own units: a 1280 × 720 viewport, a 308 × 324
+  // card whose page rect put its top at 147.84375, dpr 1.
+  const LIVE = { w: 308, h: 324, viewW: 1280, viewH: 720, x: -326, y: 50.15625 }
+  const topOf = (y: number, h: number) => LIVE.viewH / 2 - y - h / 2
+  const leftOf = (x: number, w: number) => LIVE.viewW / 2 + x - w / 2
+
+  it('puts the card corner on the pixel grid — the regression, in its own numbers', () => {
+    expect(topOf(LIVE.y, LIVE.h)).toBe(147.84375)
+    const [dx, dy] = gridSnap(LIVE.x, LIVE.y, LIVE.w, LIVE.h, LIVE.viewW, LIVE.viewH, 1, 0)
+    expect(leftOf(LIVE.x + dx, LIVE.w)).toBe(160)
+    expect(topOf(LIVE.y + dy, LIVE.h)).toBe(148)
+  })
+
+  it('moves the card by less than half a pixel to do it', () => {
+    const [dx, dy] = gridSnap(LIVE.x, LIVE.y, LIVE.w, LIVE.h, LIVE.viewW, LIVE.viewH, 1, 0)
+    expect(Math.abs(dx)).toBeLessThanOrEqual(0.5)
+    expect(Math.abs(dy)).toBeLessThanOrEqual(0.5)
+  })
+
+  it('leaves a card that is already on the grid exactly where it is', () => {
+    // The x axis in the live measurement was already integral, by luck of where
+    // the tile sits. Nothing may move it.
+    const [dx] = gridSnap(LIVE.x, LIVE.y, LIVE.w, LIVE.h, LIVE.viewW, LIVE.viewH, 1, 0)
+    expect(dx).toBe(0)
+  })
+
+  /**
+   * The grid is the DISPLAY's, not CSS's. On a Retina panel a half-CSS-pixel
+   * offset is already on the grid and snapping it would be the error.
+   */
+  it('snaps to device pixels, so a half CSS pixel is on the grid at dpr 2', () => {
+    const y = LIVE.y + 0.5 - 0.15625 // corner at a whole number of half-pixels
+    const [, dy] = gridSnap(LIVE.x, y, LIVE.w, LIVE.h, LIVE.viewW, LIVE.viewH, 2, 0)
+    expect(dy).toBe(0)
+    const [, coarse] = gridSnap(LIVE.x, y, LIVE.w, LIVE.h, LIVE.viewW, LIVE.viewH, 1, 0)
+    expect(coarse).not.toBe(0)
+  })
+
+  /**
+   * And it is a REST snap. Mid-flight the card is magnified, tilted and lifted
+   * — there is no phase to be right about, and quantizing a moving card's
+   * position is just a way to make it move in steps.
+   */
+  it('does nothing in the middle of a flight, where there is no grid to be on', () => {
+    expect(gridSnap(LIVE.x, LIVE.y, LIVE.w, LIVE.h, LIVE.viewW, LIVE.viewH, 1, 0.5)).toEqual([0, 0])
+  })
+
+  it('is at full strength at BOTH endpoints, because both are places to stop', () => {
+    expect(snapWeight(0)).toBe(1)
+    expect(snapWeight(1)).toBe(1)
+  })
+
+  it('arrives continuously, so the last half pixel is a drift and not a jump', () => {
+    const w = snapWeight(SNAP_FADE / 2)
+    expect(w).toBeGreaterThan(0)
+    expect(w).toBeLessThan(1)
+    // Monotone toward each end — no frame where the snap goes backwards.
+    for (let i = 1; i <= 8; i++) {
+      expect(snapWeight((i / 8) * SNAP_FADE)).toBeLessThanOrEqual(
+        snapWeight(((i - 1) / 8) * SNAP_FADE) + 1e-12,
+      )
+    }
+  })
+
+  it('is off well before the flight is halfway', () => {
+    expect(snapWeight(SNAP_FADE)).toBe(0)
+    expect(snapWeight(1 - SNAP_FADE)).toBe(0)
+    expect(snapWeight(0.5)).toBe(0)
   })
 })
 

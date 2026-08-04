@@ -22,64 +22,63 @@ import {
 
 const DPR = 2
 
+/**
+ * EVERY ENDPOINT IS A DESTINATION. That is the whole law, and it took three
+ * passes to say plainly.
+ *
+ * This function used to take the OTHER endpoint's width and cut the smaller of
+ * the two denser, so the plate would still have texels left when the flight
+ * magnified it. The argument is real — mid-flight the small card's capture is
+ * blown up toward the large card's size — but it silently reclassified the
+ * small endpoint as a source and nothing else. It is also where the card COMES
+ * TO REST, at the start of an open and the end of a close, and the extra
+ * density is a minification there.
+ *
+ * Measured live 2026-08-04, at the two resting sizes, supply being texels
+ * carried over device pixels covered:
+ *
+ *     large endpoint (940 px):  1.000    exact
+ *     small endpoint (308 px):  2.526    two and a half times oversupplied
+ *
+ * A 2.5× minification through a trilinear sampler is over a mip level of blur.
+ * Pete saw it as the card shrinking back to the tile and the typography
+ * snapping clear at the instant the mesh handed back to the DOM — which is
+ * exactly the shape of a defect that lives at ONE endpoint: the landing is the
+ * only frame where the mesh and the page are shown the same type at the same
+ * size, one after the other.
+ *
+ * The headroom is not free and it was being paid for out of the wrong budget.
+ * Both endpoints are now cut at exactly `dpr`, and mid-flight softness — which
+ * peaks at 1.75× magnification at the hand-over, the geometric mean of the two
+ * widths — is left to the motion blur that now covers precisely that stretch
+ * of the flight (decisions #19). Sharpness where a reader can stop; the
+ * exposure where they cannot.
+ */
 describe('captureScale', () => {
-  it('cuts the smaller endpoint denser, and only the smaller one', () => {
-    // The source of an OPEN is magnified on the way out, so it is oversampled.
-    const opening = captureScale(308, 940, DPR)
-    // The source of a CLOSE is only ever minified, and mipmaps answer that.
-    const closing = captureScale(940, 308, DPR)
-    expect(opening).toBeGreaterThan(closing)
-    expect(closing).toBe(captureScale(940, 940, DPR))
+  it('cuts EVERY endpoint at exactly one texel per device pixel', () => {
+    // Neither endpoint's answer depends on the other's, which is the change.
+    expect(captureScale(308, DPR)).toBe(DPR)
+    expect(captureScale(940, DPR)).toBe(DPR)
+    expect(captureScale(940, 1)).toBe(1)
   })
 
   /**
-   * The measured cause of the flash at the start of every open.
-   *
-   * The destination cannot be measured until the route has flipped, and the
-   * route cannot flip until the source capture exists — so for a few frames
-   * the source is cut believing it is going nowhere. When the destination
-   * lands, its own scale changes underneath it, and the capture is re-cut.
-   *
-   * This is not a bug in `captureScale`; the second answer is the right one.
-   * It is why `publishedCut` exists. And it fires asymmetrically, which is
-   * exactly what the browser census found: a drop of 200 triangles to 8 on
-   * every open and never once on a close.
+   * The corollary that deletes work: the source's density used to change the
+   * moment the destination was measured, several frames in, so every open
+   * re-cut its own plate mid-flight. That re-cut is what `publishedCut` exists
+   * to hide, and it is what quietly handed `createDomTextureSource` a node it
+   * had already adopted (decisions #18). It cannot happen now — there is
+   * nothing for the destination's arrival to change.
    */
-  it('changes its answer for the source when the destination arrives — on an open only', () => {
-    expect(captureScale(308, 308, DPR)).not.toBe(captureScale(308, 940, DPR))
-    expect(captureScale(940, 940, DPR)).toBe(captureScale(940, 308, DPR))
-  })
-
-  /**
-   * A resting endpoint is supplied at EXACTLY one texel per device pixel.
-   *
-   * The first cut of this multiplied every density by a constant lift factor,
-   * on the argument that the card rises toward the camera mid-flight and wants
-   * the headroom. What that actually bought was a permanent 1.25×
-   * MINIFICATION at both ends of the flight, sampled trilinearly — a third of
-   * a mip level of blur on the two frames a reader can actually stare at.
-   * Measured 2026-08-04 against the landed DOM at the same pixels: the mesh
-   * title was visibly mushy beside a crisp page, and turning mipmaps off in
-   * the live scene recovered most of it.
-   *
-   * The lift belongs with the magnification, which is the only cut that is
-   * ever seen in motion.
-   */
-  it('supplies a resting endpoint at exactly one texel per device pixel', () => {
-    expect(captureScale(940, 940, DPR)).toBe(DPR)
-    expect(captureScale(308, 308, DPR)).toBe(DPR)
-    expect(captureScale(940, 308, DPR)).toBe(DPR)
-    expect(captureScale(940, 940, 1)).toBe(1)
-  })
-
-  it('gives the magnified cut headroom for the lift, and the resting cut none', () => {
-    const growth = 940 / 308
-    expect(captureScale(308, 940, DPR)).toBeGreaterThan(DPR * Math.sqrt(growth))
+  it('does not change its answer when the destination arrives', () => {
+    const beforeDestination = captureScale(308, DPR)
+    const afterDestination = captureScale(308, DPR)
+    expect(afterDestination).toBe(beforeDestination)
   })
 
   /** The texture guard still wins over everything above. */
   it('never asks for a texture wider than the platform will take', () => {
-    expect(captureScale(3000, 12000, DPR)).toBeLessThanOrEqual(4000 / 3000)
+    expect(captureScale(3000, DPR)).toBeLessThanOrEqual(4000 / 3000)
   })
 })
 

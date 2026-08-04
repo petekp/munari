@@ -253,6 +253,74 @@ export function poseAt(
 }
 
 /**
+ * How much of the flight, at either end, the pixel-grid snap is arriving over.
+ *
+ * Small on purpose. Its only job is to keep the last half pixel a drift rather
+ * than a jump; over 8% of a 700 ms flight that is under 10 px/s, which is below
+ * anything the eye reports as motion.
+ */
+export const SNAP_FADE = 0.08
+
+export function snapWeight(t: number): number {
+  const c = Math.min(1, Math.max(0, t))
+  const d = Math.min(c, 1 - c)
+  const w = 1 - d / SNAP_FADE
+  // `1 - SNAP_FADE` is not exactly `1 - SNAP_FADE` in binary, so the edge of the
+  // window comes out a few times 1e-16 rather than zero. A millionth of a snap
+  // is not a snap, and callers should be able to test the weight for nothing.
+  return w > 1e-6 ? w : 0
+}
+
+/**
+ * The offset that puts a resting card's corner on the DISPLAY's pixel grid.
+ *
+ * The third budget in `sharpness = supply × phase × transfer` (#53), and the one
+ * that cannot be bought off with the other two. A card's texture is a capture of
+ * its own box, so the texture's texel grid IS the card's pixel grid — offset the
+ * card by a fraction of a pixel and every texel in it is read across two, which
+ * is one bilinear tap of blur applied uniformly to type. Measured on the small
+ * endpoint: a 0.156 px origin cost 16% of the typography's edge energy against
+ * the same pixels of real DOM, and snapping it returned 1.001× (test).
+ *
+ * Note what this is NOT about. The parts inside the card are at fractional
+ * positions too — 27 of 27 of them, median 0.31 px — and that is correct and
+ * must stay: a word's fraction is baked into the capture, and its uv rect is
+ * exactly `box / card`, so it asks for precisely the texels it was drawn into.
+ * There is one grid per card, not one per word, and this moves the card.
+ *
+ * It costs a displacement of up to half a pixel from the DOM the card is
+ * standing in for. That is the trade and it is not a close one: half a pixel of
+ * displacement is invisible, half a pixel of blur is what gets reported.
+ *
+ * Weighted by `snapWeight`, so it is at full strength at BOTH endpoints — the
+ * smaller one is a resting place as much as the larger, at the start of an open
+ * and the end of a close — and absent through the middle, where the card is
+ * magnified and tilted and there is no phase to be right about.
+ */
+export function gridSnap(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  viewW: number,
+  viewH: number,
+  dpr: number,
+  t: number,
+): [dx: number, dy: number] {
+  const weight = snapWeight(t)
+  if (weight <= 0) return [0, 0]
+  const d = Math.max(1e-6, dpr)
+  const grid = (v: number) => Math.round(v * d) / d
+  const left = viewW / 2 + x - width / 2
+  const top = viewH / 2 - y - height / 2
+  // World x runs with the screen and world y runs against it, so the vertical
+  // correction is the one the top edge needs, subtracted rather than added.
+  // Written out both ways rather than negating — `-0` is a delta callers would
+  // otherwise have to know not to compare against zero.
+  return [(grid(left) - left) * weight, (top - grid(top)) * weight]
+}
+
+/**
  * Texel density for a card at depth `z`, given the page's own device ratio.
  *
  * A card on the plane is 1 CSS px to 1 device px × dpr, full stop. Lifted

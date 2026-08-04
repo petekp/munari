@@ -1023,3 +1023,108 @@ through the fast middle resolving to a crisp landing, and the title —
 which sits near the card's centre and barely travels — stays legible
 throughout while the small type at the edges smears hardest. 586
 passing.
+
+## #20 — Every endpoint is a destination, and a card has one grid (2026-08-04, lab)
+
+Pete, after the shutter landed: *"the webGL texture of the DOM becoming
+noticeably more blurry than the native DOM, particularly at the smaller
+card size. it's very noticeable when the card shrinks back to its small
+size when the switch between GL and native happens because the
+typography gets a lot clearer."*
+
+Two separate defects, found in that order, and the second is the one
+worth keeping.
+
+**One: the smaller endpoint was being oversupplied.** `captureScale`
+took the OTHER endpoint's width and cut the smaller of the two denser,
+so the plate would still have texels left when the flight magnified it.
+The argument is real — mid-flight the small card's capture is blown up
+toward the large card's size — but it silently reclassified the small
+endpoint as a *source* and nothing else. It is also where the card comes
+to rest, at the start of an open and the end of a close. Measured live at
+the two resting sizes, supply being texels carried over device pixels
+covered:
+
+    large endpoint (940 px):  1.000    exact
+    small endpoint (308 px):  2.526    two and a half times oversupplied
+
+Oversupply is not free headroom. It is a minification, and a 2.5×
+minification through a trilinear sampler is over a mip level of blur. The
+headroom was being paid for out of the wrong budget: both endpoints are
+now cut at exactly `dpr`, and the mid-flight softness that lift was
+buying off — which peaks at 1.75× at the geometric mean of the two
+widths — is left to the motion blur that now covers exactly that stretch
+of the flight (#19). Sharpness where a reader can stop; the exposure
+where they cannot.
+
+The corollary deletes work. The source's density used to change the
+moment the destination was measured, several frames in, so every open
+re-cut its own plate mid-flight — the re-cut `publishedCut` exists to
+hide, and the one that quietly handed `createDomTextureSource` a node it
+had already adopted (#18). It cannot happen now. There is nothing left
+for the destination's arrival to change.
+
+**Two: the card's origin was off the display's pixel grid, and that was
+most of it.** Supply was exact at both endpoints and the type was still
+soft. The mip chain was the obvious next suspect and it is innocent:
+poking the sampler down to `LINEAR` through the raw GL parameter produced
+a byte-identical frame, which is what 1:1 supply predicts — the
+derivative picks mip 0 and the chain is never read.
+
+What was left is phase. The field draws every word as its own quad at its
+own measured box, and those boxes are fractional — 27 of 27 measured
+live, median 0.31 px off the grid. **That is correct and it must stay.**
+A word's fraction is baked into the capture, and its uv rect is exactly
+`box / card`, so the texel it wants and the texel it asks for are the
+same one. There is one grid per card, not one per word.
+
+The card's own origin is the one that matters. Its texture is a capture
+of its own box, so the texture's texel grid *is* the card's pixel grid —
+offset the card by a fraction of a pixel and every texel in it is read
+across two, which is one bilinear tap of blur applied uniformly to type
+that was rasterized to be read. The tile's page rect put its top at
+147.84375. Measured on the small endpoint, held at `t = 0`, gradient
+energy over the typography band against the same pixels of real DOM:
+
+    DOM                       900.90
+    mesh, origin at 147.84    758.02   0.841 — the report
+    mesh, origin snapped      902.19   1.001
+
+Sixteen percent of the type's edge energy, for a sixth of a pixel.
+
+**The snap is presentation, so it lives outside the path.** `poseAt` is
+the physics and stays exact; `gridSnap` is a display correction applied
+where the pose is consumed. It costs a displacement of up to half a pixel
+from the DOM the card is standing in for, and that trade is not close: a
+half-pixel displacement is invisible, a half-pixel blur is what gets
+reported. It is weighted by `snapWeight`, full strength at BOTH endpoints
+and off by 8% into the flight — mid-flight the card is magnified, tilted
+and lifted, there is no phase to be right about, and quantizing a moving
+card's position is just a way to make it move in steps.
+
+**The through-line of both halves is the same sentence.** *Every endpoint
+is a destination.* The first defect conditioned density on which endpoint
+was smaller; the second inherited a fractional origin from the page. Both
+treated the small end as somewhere the flight passes through. It is where
+the reader stops, twice — and the landing is the only frame in the whole
+transition where the mesh and the page are shown the same type at the
+same size, one after the other, which is exactly why Pete could see it
+there and nowhere else.
+
+**Evidence.** `sharpness = supply × phase × transfer` (#53 in the
+archive) has three independent budgets, and phase is the one nothing else
+can compensate for — no amount of density fixes a bad phase, because the
+extra texels land off-grid too. Eight cases in `passagePath.test.ts` led
+by the live numbers; three in `passageField.test.ts` for the density.
+Browser: supply now 1.000 at both endpoints, the shipped code path
+reproduces the poke exactly (902.19, 1.001×), the large endpoint reads
+0.976 against its own DOM, both corners land on integers at steady state,
+and a full flight is unchanged at median 8.3 ms / worst 10.2 / zero
+frames over 20 ms. 592 passing.
+
+**Instrument note.** The large endpoint first measured *off* the grid at
+`top = -37.5`, which was the probe and not the scene: uniforms are
+written imperatively in `useFrame` while the group's position arrives
+from React state one commit later, so the first frame that qualifies has
+a destination-sized card at a not-yet-destination pose. Reading a value
+that is written on two different clocks means waiting for both.
