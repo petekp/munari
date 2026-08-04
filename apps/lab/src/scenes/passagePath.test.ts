@@ -18,6 +18,8 @@
 
 import { describe, expect, it } from 'vitest'
 
+import { MAX_TEXTURE_EDGE } from 'anamorph'
+
 import {
   HEIGHT_OMEGA,
   SNAP_FADE,
@@ -309,8 +311,26 @@ describe('densityAt', () => {
     expect(densityAt(2, 1000, 200, 400, 300)).toBeCloseTo(2.5, 6)
   })
 
-  it('clamps at the texture guard rather than warning once a frame', () => {
-    expect(densityAt(3, 1000, 500, 3000, 400)).toBeCloseTo(4000 / 3000, 6)
+  /**
+   * The guard is BORROWED, not approximated. This used to assert 4000/3000 — a
+   * ceiling the scene invented to keep a margin clear of a 4096 boundary it
+   * could not name. `clampScale` is the same call `Surface` makes before it
+   * decides whether to warn, so a density that came through here lands exactly
+   * on the boundary and reads to `resolveFixedScale` as unchanged (#21).
+   */
+  it('clamps at the kernel texture guard rather than warning once a frame', () => {
+    expect(densityAt(3, 1000, 500, 3000, 400)).toBe(MAX_TEXTURE_EDGE / 3000)
+    // The long edge, whichever one it is.
+    expect(densityAt(3, 1000, 500, 400, 3000)).toBe(MAX_TEXTURE_EDGE / 3000)
+  })
+
+  /**
+   * A card lifted all the way to the eye is a division by zero in the density
+   * identity. The guard is what makes that a finite (if useless) number rather
+   * than an Infinity handed to a canvas allocator.
+   */
+  it('survives a card lifted onto the camera', () => {
+    expect(Number.isFinite(densityAt(2, 1000, 1000, 400, 300))).toBe(true)
   })
 })
 

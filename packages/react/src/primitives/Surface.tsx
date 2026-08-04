@@ -4,6 +4,7 @@ import { useFrame, useThree, type ThreeElements, type ThreeEvent } from '@react-
 import {
   DEFAULT_TIERS,
   EMPTY_CHROME,
+  MAX_TEXTURE_EDGE,
   chromeEquals,
   clampScale,
   clampTiers,
@@ -451,8 +452,8 @@ export function Surface({
       if (safe !== resolution) {
         console.warn(
           `[anamorph] Surface${label ? ` "${label}"` : ''}: resolution ${resolution} ` +
-            `exceeds the 4096px long-edge texture guard at ${width}×${height} CSS px; ` +
-            `clamped to ${safe}.`,
+            `exceeds the ${MAX_TEXTURE_EDGE}px long-edge texture guard at ` +
+            `${width}×${height} CSS px; clamped to ${safe}.`,
         )
       }
       return safe

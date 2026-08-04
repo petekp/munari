@@ -1,15 +1,17 @@
 // @vitest-environment happy-dom
 /**
- * The field's two non-obvious contracts, both bought in the browser.
+ * The field's non-obvious contracts, all of them bought in the browser.
  *
- * `captureScale` decides how densely each endpoint is cut, and it needs to
- * know the OTHER endpoint to do it — which is a problem, because the
- * destination arrives several frames after the source. `publishedCut` is what
- * keeps that from being visible.
+ * `captureScale` decides how densely each endpoint is cut; `shutterSpan` how
+ * far back the shutter reaches; `publishedCut` which cut a slot is allowed to
+ * show. Every one of the three was wrong in a way that produced no error, and
+ * every one was caught by a measurement rather than by reading it.
  */
 import { describe, expect, it } from 'vitest'
 
 import * as THREE from 'three'
+
+import { MAX_TEXTURE_EDGE } from 'anamorph'
 
 import {
   captureScale,
@@ -57,9 +59,9 @@ const DPR = 2
 describe('captureScale', () => {
   it('cuts EVERY endpoint at exactly one texel per device pixel', () => {
     // Neither endpoint's answer depends on the other's, which is the change.
-    expect(captureScale(308, DPR)).toBe(DPR)
-    expect(captureScale(940, DPR)).toBe(DPR)
-    expect(captureScale(940, 1)).toBe(1)
+    expect(captureScale(308, 324, DPR)).toBe(DPR)
+    expect(captureScale(940, 695, DPR)).toBe(DPR)
+    expect(captureScale(940, 695, 1)).toBe(1)
   })
 
   /**
@@ -71,14 +73,23 @@ describe('captureScale', () => {
    * nothing for the destination's arrival to change.
    */
   it('does not change its answer when the destination arrives', () => {
-    const beforeDestination = captureScale(308, DPR)
-    const afterDestination = captureScale(308, DPR)
+    const beforeDestination = captureScale(308, 324, DPR)
+    const afterDestination = captureScale(308, 324, DPR)
     expect(afterDestination).toBe(beforeDestination)
   })
 
-  /** The texture guard still wins over everything above. */
-  it('never asks for a texture wider than the platform will take', () => {
-    expect(captureScale(3000, DPR)).toBeLessThanOrEqual(4000 / 3000)
+  /**
+   * The texture guard still wins over everything above — and it is the KERNEL's
+   * guard now, borrowed rather than approximated. This used to cap at 4000, a
+   * margin invented to stay clear of a boundary the scene could not cite; a
+   * density that has been through `clampScale` cannot trip the warning `Surface`
+   * raises from the same call (#21).
+   */
+  it('never asks for a texture longer than the platform will take', () => {
+    expect(captureScale(3000, 400, DPR)).toBe(MAX_TEXTURE_EDGE / 3000)
+    // And on the LONG edge, not the width: a tall narrow endpoint used to walk
+    // straight past a ceiling that only ever looked at how wide it was.
+    expect(captureScale(400, 3000, DPR)).toBe(MAX_TEXTURE_EDGE / 3000)
   })
 })
 

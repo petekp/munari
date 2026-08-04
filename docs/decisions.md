@@ -1128,3 +1128,69 @@ written imperatively in `useFrame` while the group's position arrives
 from React state one commit later, so the first frame that qualifies has
 a destination-sized card at a not-yet-destination pose. Reading a value
 that is written on two different clocks means waiting for both.
+
+## #21 — A law with no callers is a rumour (2026-08-04, kernel + lab)
+
+Pete, after the sharpness arc closed: *"let's take stock of what we've
+built so far this session and evaluate what we've learned, and decide if
+there are any learnings we want to pull into the core API."*
+
+The stock-take found the kernel and the scenes drifted apart on the one
+subject the whole session had been about, and drifted in **opposite
+directions**.
+
+**The kernel owned the supply law and nobody called it.** `texelDemand`,
+`densityScheduleStep` and `densitySupply` are contract-covered, correct,
+and had zero production consumers. Meanwhile `Flight.tsx` re-derived both
+of them by hand — `dpr * planeScale(cameraDistance(viewH, FOV), LIFT_Z)`
+for the supply, and the schedule open-coded down to its two hysteresis
+constants:
+
+    f.mode === 'crumple'
+      ? f.hiDensity
+      : f.mode !== 'home' && f.plate.p.z > LIFT_Z * (f.hiDensity ? 0.5 : 0.65)
+
+and `passagePath`/`passageField` each had a third and fourth copy. The
+copies were not wrong. That is the point — a law nobody calls is not a
+law, it is a rumour that happens to be true, and the next scene that
+needs it writes a fifth version from memory. `densitySupply` is the same
+multiplication in the same order, so this rewire is *bit*-identical
+arithmetic; what changed is that the constants now have one home.
+
+The translation stays scene-side and that is the seam. The kernel speaks
+two mechanism flags — `returning`, `frozen` — and the lab has four
+gesture modes. Mapping `home → returning` and `crumple → frozen` is a
+statement about *this* scene's vocabulary, and it is the only part of
+those seventeen lines that was ever scene-specific.
+
+**The 4096 guard was the mirror image: a kernel number the scenes could
+not cite.** Both lab scenes capped their own density at **4000** — a
+fear-margin invented around a boundary they had no name for. `Surface`
+warns off exactly `4096`, from `clampScale`, which was a private default
+parameter in four signatures. So the scenes were guarding against the
+kernel's guard, approximately, and a guard nobody can cite gets
+approximated. `MAX_TEXTURE_EDGE` is now exported, `Surface`'s warning
+interpolates it instead of restating it, and both scenes call
+`clampScale` — the *same call* `Surface` makes before deciding whether to
+warn, so a density that has been through it can no longer trip it.
+
+That rewire fixed a live bug on the way past. `captureScale` took only a
+width, so its ceiling only ever looked at how wide an endpoint was: a
+tall narrow card walked straight through it. `clampScale` guards the long
+edge because that is what the platform limits. Now tested on both axes.
+
+**What did not cross.** The phase law from #20 has the opposite problem —
+two independent scene copies and nothing in the kernel — which is the
+second-system guard (#10) satisfied rather than violated: a second
+consumer arrived holding the need. That extraction is the next entry, and
+it waits for the superset, because the two copies are not the same law.
+`Flight`'s pins the projected *footprint* to the texture's exact texel
+count as well as the corner; `passage`'s pins only the corner and is
+correct today by the luck of two integral card sizes.
+
+**Evidence.** 593 passing, `tsc -b` clean. Browser, real CDP drag against
+a live flight, tracing every edge of the pin: rise `false → true` at
+z = 68.0 against a 62.4 threshold, fall `true → false` on the frame the
+mode became `home` at z = 94.7 — forced low from full altitude, because
+the descent is the motion mask. Identical to the law it replaced, which
+is the whole claim.

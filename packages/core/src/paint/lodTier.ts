@@ -19,9 +19,22 @@
 // below would still oversupply by `band`) are separated by a dead zone, so
 // a camera parked on a boundary cannot thrash resize→re-raster→re-upload.
 
+/**
+ * The long-edge ceiling every backing store obeys, in texels.
+ *
+ * Exported because it is not private arithmetic — it is the number a
+ * consumer's own density law has to end in, and one that used to be
+ * guessed. Two lab scenes independently capped themselves at 4000, a
+ * fear-margin around a boundary they could not name and did not want to
+ * trip the warning at; the honest form is to clamp with `clampScale`,
+ * which lands exactly here and therefore reads to `resolveFixedScale` as
+ * "nothing was changed". A guard nobody can cite gets approximated.
+ */
+export const MAX_TEXTURE_EDGE = 4096
+
 // 0.25 quarters far-panel memory; 4/6 cover retina close-ups (an approached
 // panel on a dpr-2 display demands ~4; a grab-pulled one ~6). clampTiers'
-// 4096 long-edge guard still bounds the top for large Surfaces.
+// long-edge guard still bounds the top for large Surfaces.
 export const DEFAULT_TIERS = [0.25, 0.5, 1, 1.5, 2, 3, 4, 6]
 
 /** Hysteresis fraction: tolerated under/over-supply before switching. */
@@ -137,7 +150,7 @@ export function maxTier(
   tiers: readonly number[],
   cssWidth: number,
   cssHeight: number,
-  maxDim = 4096,
+  maxDim = MAX_TEXTURE_EDGE,
 ): number {
   const kept = clampTiers(tiers, cssWidth, cssHeight, maxDim)
   return kept[kept.length - 1]!
@@ -153,7 +166,7 @@ export function clampScale(
   scale: number,
   cssWidth: number,
   cssHeight: number,
-  maxDim = 4096,
+  maxDim = MAX_TEXTURE_EDGE,
 ): number {
   const longEdge = Math.max(cssWidth, cssHeight)
   if (!(longEdge > 0) || Number.isNaN(scale)) return scale
@@ -169,7 +182,7 @@ export function clampTiers(
   tiers: readonly number[],
   cssWidth: number,
   cssHeight: number,
-  maxDim = 4096,
+  maxDim = MAX_TEXTURE_EDGE,
 ): number[] {
   const longEdge = Math.max(cssWidth, cssHeight)
   const kept = tiers.filter((t) => t * longEdge <= maxDim)
@@ -190,7 +203,7 @@ export function resolveFixedScale(
   scale: number,
   cssWidth: number,
   cssHeight: number,
-  maxDim = 4096,
+  maxDim = MAX_TEXTURE_EDGE,
 ): { scale: number; clamped: boolean } {
   if (Number.isNaN(scale)) return { scale, clamped: false }
   const clamped = clampScale(scale, cssWidth, cssHeight, maxDim)

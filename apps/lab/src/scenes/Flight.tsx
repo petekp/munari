@@ -63,7 +63,14 @@ import {
   SHADOW_VERT,
 } from './flightShaders'
 import './flight.css'
-import { cameraDistance, carryToPlane, planeScale, screenToPlane } from 'anamorph'
+import {
+  cameraDistance,
+  carryToPlane,
+  densityScheduleStep,
+  densitySupply,
+  planeScale,
+  screenToPlane,
+} from 'anamorph'
 import { attachFlightGestures } from 'anamorph'
 import {
   aeroFollowStep,
@@ -601,21 +608,24 @@ function Driver({
 
     // ── the density schedule ──
     //
-    // Page density on the page, altitude density at altitude, toggled where
-    // the plate actually is — not where a mode flag says it should be (a
-    // regrabbed float is `held` with `lift` long finished; the plate's z is
-    // the only honest witness). Hysteresis so a card bobbing on its spring
-    // near the boundary cannot flap the pin. Descent flips low immediately
-    // (`home` at any height): the fall is the motion mask for the re-raster,
-    // and what matters is arriving at the page 1 : 1.
-    // A crumpling card FREEZES the pin wherever it was: flipping it would
-    // spend a full re-raster (and a texture swap) on a sheet that is about
-    // to stop being a card — and a delete that starts at altitude would
-    // otherwise flip low immediately, mid-crush.
-    const hi =
-      f.mode === 'crumple'
-        ? f.hiDensity
-        : f.mode !== 'home' && f.plate.p.z > LIFT_Z * (f.hiDensity ? 0.5 : 0.65)
+    // The law itself is the kernel's (`densityScheduleStep`): page density on
+    // the page, altitude density at altitude, toggled on where the plate
+    // actually IS rather than on what a mode flag thinks. This scene's only
+    // job is translating its four gesture modes into the two mechanism flags
+    // the schedule speaks — which is the whole reason the law belongs over
+    // there and the translation belongs here (#21).
+    //
+    // `home` is `returning`: the descent is the motion mask for the re-raster
+    // and what matters is arriving at the page 1 : 1. `crumple` is `frozen`:
+    // flipping would spend a full re-raster and a texture swap on a sheet
+    // that is about to stop being a card, and a delete begun at altitude
+    // would otherwise flip low mid-crush.
+    const hi = densityScheduleStep(f.hiDensity, {
+      z: f.plate.p.z,
+      liftZ: LIFT_Z,
+      returning: f.mode === 'home',
+      frozen: f.mode === 'crumple',
+    })
     if (hi !== f.hiDensity) {
       f.hiDensity = hi
       onAltitude(hi)
@@ -853,6 +863,11 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
   // The card must be indistinguishable from the resting DOM it replaces —
   // and it lives on TWO planes, so it needs two densities, not one.
   //
+  // Both are one kernel identity evaluated at two heights — `densitySupply`,
+  // which is `texelDemand` at the plate's altitude and degenerates to exactly
+  // dpr on the page. Spelling it out here was how this scene ended up owning
+  // a private copy of a law the kernel already had under contract (#21).
+  //
   // On the page (z ≈ 0) a CSS pixel is a device pixel × dpr, full stop. At
   // altitude the card sits on the lift plane, magnified by exactly
   // planeScale(camZ, LIFT_Z), so the same content needs that many more
@@ -868,8 +883,7 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
   // place, hidden by the rise), and back to page density on the way home so
   // the landing swap is a pixel copy too. The driver owns the toggle — it is
   // the only thing that watches z every frame.
-  const airborneDensity = dpr * planeScale(cameraDistance(viewH, FOV), LIFT_Z)
-  const density = atAltitude ? airborneDensity : dpr
+  const density = densitySupply(atAltitude, dpr, cameraDistance(viewH, FOV), LIFT_Z)
 
   // Scene hook (scenes hang their live state on a `window.__<scene>` hook
   // for console interrogation): the flight ref and the card's transform

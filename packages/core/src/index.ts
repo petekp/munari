@@ -24,6 +24,7 @@ export { Vec3, type Vec3Like, type Vec3Readonly, type SampleVec } from './math/v
 // paint — custody + paint (texture contract = decisions.md #5)
 export {
   DEFAULT_TIERS,
+  MAX_TEXTURE_EDGE,
   selectLodTier,
   seedTier,
   tiersInRange,

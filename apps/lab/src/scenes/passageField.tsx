@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { createDomTextureSource, type DomTextureSource } from 'anamorph'
+import { clampScale, createDomTextureSource, type DomTextureSource } from 'anamorph'
 import { CROSS_DIP, CROSS_LIFT, FADE, HANDOVER, type FlightPart } from './passageParts'
 import type { Endpoint, Panel } from './passageMeasure'
 
@@ -48,11 +48,16 @@ import type { Endpoint, Panel } from './passageMeasure'
  *
  * (decisions #52's lesson arriving a third time: supply is a target, not a
  * maximum. Twice now the fix has been to stop asking for more than one.)
+ *
+ * `dpr` is not a shortcut for the density law — it IS the law here. Both
+ * endpoints rest ON the plane, and `texelDemand` at z = 0 degenerates to
+ * exactly the display's ratio, with no arithmetic left to blur it. What is
+ * borrowed is the guard: `clampScale` is the same call `Surface` makes before
+ * deciding whether to warn, on the LONG edge rather than the width alone (a
+ * tall narrow endpoint used to walk straight past a width-only ceiling).
  */
-export function captureScale(own: number, dpr: number): number {
-  // The same texture guard `densityAt` uses — a warning per frame is its own
-  // kind of bug.
-  return Math.max(0.5, Math.min(dpr, 4000 / Math.max(1, own)))
+export function captureScale(width: number, height: number, dpr: number): number {
+  return Math.max(0.5, clampScale(dpr, width, height))
 }
 
 /**
@@ -791,8 +796,8 @@ export function PassageField({
   const dpr = useThree((s) => s.viewport.dpr)
   // Each endpoint's density is its own business, so neither of these moves when
   // the other endpoint shows up several frames later.
-  const scaleA = captureScale(a.width, dpr)
-  const scaleB = captureScale(b?.width ?? 0, dpr)
+  const scaleA = captureScale(a.width, a.height, dpr)
+  const scaleB = captureScale(b?.width ?? 0, b?.height ?? 0, dpr)
   const inkA = useCapture(a.ink, a.width, a.height, scaleA)
   const chromeA = useCapture(a.chrome, a.width, a.height, scaleA)
   // Nulls until `b` arrives, so nothing ever adopts a node twice — and note

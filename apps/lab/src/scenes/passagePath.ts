@@ -9,6 +9,8 @@
 // describes where a card ends up, because nothing here is allowed to have an
 // opinion about that — the page's own layout already answered.
 
+import { clampScale, texelDemand } from 'anamorph'
+
 /** A box in page coordinates, as `getBoundingClientRect` hands it over. */
 export interface Box {
   left: number
@@ -323,20 +325,24 @@ export function gridSnap(
 /**
  * Texel density for a card at depth `z`, given the page's own device ratio.
  *
- * A card on the plane is 1 CSS px to 1 device px × dpr, full stop. Lifted
- * toward the eye it covers more of the display and needs proportionally more
- * texels to stay 1 : 1 — `camZ / (camZ - z)` is that magnification exactly.
+ * The law itself is `texelDemand`, and this scene has no business owning a
+ * copy of it: a card on the plane is 1 CSS px to 1 device px × dpr, full
+ * stop, and lifted toward the eye it covers more of the display and needs
+ * proportionally more texels to stay 1 : 1. That is the kernel's identity,
+ * evaluated at the plate's altitude — the same sentence the density schedule
+ * is written in. This function is now only the two clamps around it.
  *
  * Following z continuously is normally an expensive thing to want (every
  * change re-rasterizes). Here it is FREE, and for a reason specific to this
  * lab: the card is being resized every frame anyway, so it is already
  * re-rasterizing every frame. The density may as well be right.
  *
- * The clamp is the texture guard, not taste: `Surface` warns past a 4096 px
- * long edge, and a warning per frame is its own kind of bug.
+ * `clampScale` is the guard, and it is the SAME CALL `Surface` makes before
+ * deciding whether to warn — so a density that has been through it here can
+ * never trip the warning there. That is the reason to borrow the function
+ * rather than the number: this used to cap at 4000, a margin invented to stay
+ * clear of a 4096 boundary it could not cite (#21).
  */
 export function densityAt(dpr: number, camZ: number, z: number, w: number, h: number): number {
-  const magnified = dpr * (camZ / Math.max(1, camZ - z))
-  const ceiling = 4000 / Math.max(1, w, h)
-  return Math.max(0.5, Math.min(magnified, ceiling))
+  return Math.max(0.5, clampScale(texelDemand(dpr, camZ, z), w, h))
 }
