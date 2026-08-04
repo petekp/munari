@@ -923,3 +923,73 @@ tripwire), `passageShadow.test.ts` (the sign), and a seeding case in
 `tests/conformance/paint/textureStorage.test.ts`. 579 passing. In the
 browser: the counter runs, in the mesh, for the whole flight — which
 is the argument this scene exists to make.
+
+## #19 — The shutter, not the streak (2026-08-04, lab)
+
+**What.** The flight has motion blur, and it is not a post pass. There
+is no velocity buffer, no previous-frame matrix, no accumulation
+target, and the CPU's entire per-frame contribution is one subtraction
+— `shutterSpan`, how much flight-time this frame's exposure covered.
+Everything else falls out of a property the field already had: **the
+flight is a pure function of `uT`**, so "where was this exact corner of
+this exact word when the shutter opened" is not a history to keep, it
+is the same three lines evaluated at `uT - span`.
+
+**Why that is the interesting part.** Real-time motion blur is
+normally expensive because velocity is not knowable — the renderer has
+to *remember* the last frame, per object or per pixel, and reconcile it
+with this one. Here the trajectory is closed-form and every part
+carries both of its endpoints as attributes, so each vertex's own
+velocity is available for the cost of evaluating a `mix` twice. Not
+per object. **Per vertex** — which is why the title's left end is soft
+while its right end is sharp in the same frame: the card grows from its
+centre, so the two ends of one line of one paragraph are travelling at
+different speeds, and each corner of each word gets its own smear.
+That is the claim the whole scene exists to make, arriving in a second
+form. A DOM filter is per element; there is no element for "the left
+half of this line".
+
+**How it is integrated.** The quad is swept — corners on the leading
+side of the travel stay put, trailing corners pull back to where they
+started, which for a convex quad is exactly the union of the two poses,
+so the trail has somewhere to land instead of being clipped at the box
+it came from. The fragment shader then walks twelve taps back along the
+smear **in the box's own local units**, and a tap that falls outside
+the box contributes *nothing* rather than being clamped. That last
+clause is not fussiness: the uv rects are windows onto a whole card's
+plate, so the texels just past a word's box are the next word along —
+clamping would smear a neighbour into this one's trail. Averaging over
+all twelve taps rather than over the ones that landed is likewise
+deliberate; a fragment the word only covered for part of the exposure
+really did receive less light, and that partial coverage is what makes
+the leading and trailing edges fall off instead of ending on a cut.
+
+**180°, and the measurement that chose it.** Shot at one held instant
+with the exposure pinned to a measured peak-speed frame (the real
+spans, traced over a live flight: median 0.005, p90 0.023, max 0.027,
+cap never reached). At **360°** the integral is honest and the card is
+unreadable — a box exposure of high-contrast type turns every stroke
+into a bar with hard ends, adjacent strokes overlap into a picket, and
+the meta line reads as three copies of itself. Which is exactly the
+complaint this whole pass exists to answer: *a correct effect that
+looks like a glitch is a glitch.* At **180°**, the film convention,
+the same frame stays legible and what shows is the differential.
+
+**A held frame is exactly the still.** `shutterSpan` is zero when
+progress did not move, and the shader takes a single-tap branch on a
+zero smear — so a paused flight is bit-identical to the unblurred
+image, not an average of twelve copies that agrees to within rounding.
+The endpoints of this flight are compared against real DOM at the same
+pixels; a hold that blurred would be measuring the blur.
+
+**Cost.** None that a frame timer can see: median 8.3 ms through a live
+flight, p95 9.3, one 24 ms frame at the very start which is the capture
+and predates this. Twelve taps times two samplers, on a few hundred
+small quads, against a field that was already one draw call.
+
+**Evidence.** Five cases in `passageField.test.ts` (zero on a hold,
+signed for a reversal, capped against a dropped frame, never wider than
+the trip). In the browser: the shader compiled clean, the endpoint held
+at `t = 1` is pixel-for-pixel the pre-blur still, and a real moving
+frame pulled out of the drawing buffer at `uT` 0.31 shows the title
+sharp at one end and soft at the other. 584 passing.

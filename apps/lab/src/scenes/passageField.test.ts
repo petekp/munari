@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
 
 import * as THREE from 'three'
 
-import { captureScale, plateTexture, publishedCut, type Cut } from './passageField'
+import { captureScale, plateTexture, publishedCut, shutterSpan, type Cut } from './passageField'
 
 const DPR = 2
 
@@ -92,6 +92,75 @@ describe('plateTexture', () => {
     const t = plateTexture(document.createElement('canvas'))
     expect(t.flipY).toBe(false)
     expect(t.colorSpace).toBe(THREE.SRGBColorSpace)
+  })
+})
+
+/**
+ * The shutter.
+ *
+ * Motion blur here is not a post pass and there is no velocity buffer. The
+ * flight is a pure function of `uT`, so a part's own velocity is the
+ * derivative of a closed form — the vertex shader evaluates the same trajectory
+ * twice, once at `uT` and once at `uT` minus this span, and smears between the
+ * two answers. Which means the ONLY thing the CPU has to supply is how much of
+ * the frame the shutter was open for.
+ *
+ * That framing is load-bearing rather than decorative: a real camera's blur is
+ * exposure × velocity, and a shutter angle is the one knob that expresses it.
+ * 180° — half a frame — is the film convention, and measurement agreed: a fully
+ * open shutter is the honest integral and renders the card unreadable.
+ */
+describe('shutterSpan', () => {
+  const SH = 0.5
+
+  it('is zero on a held frame, so a paused flight is exactly the still', () => {
+    // The whole scene is compared against real DOM at held instants. If a hold
+    // blurred, every measurement taken through it would be measuring the blur.
+    expect(shutterSpan(0.5, 0.5, SH)).toBe(0)
+    expect(shutterSpan(1, 1, SH)).toBe(0)
+  })
+
+  it('is the shutter fraction of the frame that was actually travelled', () => {
+    // A real frame: 60 Hz through the middle of a spring that takes about a
+    // second, which is where the words are moving fastest.
+    expect(shutterSpan(0.4, 0.425, SH)).toBeCloseTo(0.0125, 6)
+    expect(shutterSpan(0.4, 0.425, 1)).toBeCloseTo(0.025, 6)
+    expect(shutterSpan(0.4, 0.425, 0)).toBe(0)
+  })
+
+  /**
+   * A close is an open played backwards (see `departureTarget`), and so is its
+   * blur: the trail has to fall behind the direction of travel, whichever way
+   * that is. An unsigned span would smear a returning word FORWARD, which reads
+   * as the word arriving before it moves.
+   */
+  it('is signed, so a reversal trails the right way', () => {
+    expect(shutterSpan(0.5, 0.4, SH)).toBeCloseTo(-0.05, 6)
+  })
+
+  /**
+   * The spring is fastest in the middle, so this is naturally largest exactly
+   * where the words are moving most — no envelope is authored. But a seek, a
+   * tab that was backgrounded, or a first frame after a stall can hand over a
+   * whole flight's worth of progress at once, and smearing a word across the
+   * entire card is not motion, it is a wipe.
+   */
+  it('caps a jump, because a dropped frame is not a fast one', () => {
+    expect(shutterSpan(0, 1, 1)).toBeLessThanOrEqual(0.08)
+    expect(shutterSpan(1, 0, 1)).toBeGreaterThanOrEqual(-0.08)
+  })
+
+  it('never smears past the endpoints it is interpolating between', () => {
+    // `uT - span` is sampled directly, so a span wider than the trip would ask
+    // the trajectory for a time it was never defined at.
+    for (const [p, n] of [
+      [0, 0.02],
+      [0.98, 1],
+      [0.5, 0.52],
+    ]) {
+      const span = shutterSpan(p, n, 1)
+      expect(Math.abs(span)).toBeLessThanOrEqual(Math.abs(n - p) + 1e-9)
+    }
   })
 })
 

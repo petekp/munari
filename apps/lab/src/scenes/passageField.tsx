@@ -56,6 +56,58 @@ export function captureScale(own: number, other: number, dpr: number): number {
   return Math.max(0.5, Math.min(wanted, 4000 / Math.max(1, own)))
 }
 
+/**
+ * How much of a frame the shutter is open for, as a fraction of it.
+ *
+ * A film camera's shutter angle: 180° — half a frame — is the convention, and
+ * anything past 360° is not a thing a camera can do. Both were shot at the same
+ * held instant with the exposure pinned to a measured peak-speed frame. At 360°
+ * the integral is honest and the card is unreadable: a box exposure of
+ * high-contrast type turns every stroke into a bar with hard ends, adjacent
+ * strokes overlap into a picket, and the meta line reads as three copies of
+ * itself. Which is exactly the complaint this whole pass exists to answer — a
+ * correct effect that looks like a glitch is a glitch.
+ *
+ * At 180° the same frame stays legible and the DIFFERENTIAL is what shows,
+ * which is the part no DOM filter can do: the title's left end soft and its
+ * right end sharp, because the card grows from its centre and the two ends are
+ * travelling at different speeds inside one line of one paragraph.
+ */
+const SHUTTER = 0.5
+
+/**
+ * The most of the flight a single exposure may cover.
+ *
+ * The spring is fastest in the middle, so the smear is naturally largest
+ * exactly where the words are moving most and nothing has to draw an envelope
+ * for it. But a seek, a backgrounded tab, or the first frame after a stall can
+ * hand over a large stretch of progress at once, and a word smeared across the
+ * whole card is not motion — it is a wipe. Eight percent is about five frames
+ * of the spring at its quickest.
+ */
+const SPAN_CAP = 0.08
+
+/**
+ * The signed stretch of flight-time one frame's exposure covers.
+ *
+ * This is the ENTIRE per-frame cost of the motion blur on the CPU: one
+ * subtraction. Everything else — which word blurs, how far, in what direction,
+ * and how the blur varies across a single word that is also being stretched —
+ * falls out of the fact that the flight is a pure function of `uT`, so the
+ * vertex shader can simply ask the trajectory where it was a moment ago.
+ *
+ * It is signed because a close is an open played backwards (`departureTarget`),
+ * and so is its blur; an unsigned span would trail a returning word forwards,
+ * which reads as the word arriving before it has moved.
+ */
+export function shutterSpan(prev: number, now: number, shutter: number): number {
+  const d = clamp01(now) - clamp01(prev)
+  const open = d * Math.min(1, Math.max(0, shutter))
+  return Math.max(-SPAN_CAP, Math.min(SPAN_CAP, open))
+}
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
+
 /** One cut of one endpoint, and how many times it has painted. */
 export interface Cut {
   gen: number
@@ -242,6 +294,7 @@ attribute vec4 aUvB;
 attribute vec4 aMeta;
 
 uniform float uT;
+uniform float uSpan;
 uniform float uFade;
 uniform float uHandover;
 uniform float uCrossLift;
@@ -249,19 +302,56 @@ uniform float uCrossDip;
 uniform vec2 uCardA;
 uniform vec2 uCardB;
 
-varying vec2 vUvA;
-varying vec2 vUvB;
+varying vec2 vLocal;
+varying vec2 vSmear;
+varying vec4 vRectA;
+varying vec4 vRectB;
 varying float vPresence;
 varying float vHandover;
 
 void main() {
+  // The unit quad's uv, read as a coordinate inside this part's own box, in
+  // the layout's orientation — x right, y DOWN from the box's top-left.
+  vec2 lc = vec2(uv.x, 1.0 - uv.y);
+
   vec4 b = mix(aBoxA, aBoxB, uT);
   vec2 card = mix(uCardA, uCardB, uT);
+  vec2 px = b.xy + b.zw * lc;
+  // Into the card's centred, y-up world.
+  vec2 p1 = vec2(px.x - card.x * 0.5, card.y * 0.5 - px.y);
 
-  // The unit quad's uv, read as a position inside this part's box, in the
-  // layout's own coordinates — x right, y DOWN from the card's top-left. Then
-  // once into the card's centred, y-up world.
-  vec2 px = vec2(b.x + b.z * uv.x, b.y + b.w * (1.0 - uv.y));
+  // THE SHUTTER. The flight is a pure function of uT, so "where was this exact
+  // corner of this exact word when the shutter opened" is not a history to keep
+  // — it is the same three lines evaluated at an earlier time. No velocity
+  // buffer, no previous-frame matrix, no post pass, and the answer is per
+  // VERTEX, so a word that is also stretching gets a smear that varies across
+  // its own width.
+  float t0 = clamp(uT - uSpan, 0.0, 1.0);
+  vec4 b0 = mix(aBoxA, aBoxB, t0);
+  vec2 card0 = mix(uCardA, uCardB, t0);
+  vec2 px0 = b0.xy + b0.zw * lc;
+  vec2 p0 = vec2(px0.x - card0.x * 0.5, card0.y * 0.5 - px0.y);
+  vec2 d = p1 - p0;
+
+  // Sweep the quad over the exposure: corners on the LEADING side of the travel
+  // stay where they are, trailing corners pull back to where they started. For
+  // a convex quad that is exactly the union of the two poses — the Minkowski
+  // sum with the segment — so the smear has room to land instead of being
+  // clipped at the box it came from.
+  vec2 outward = vec2((lc.x - 0.5) * max(b.z, 1e-4), (0.5 - lc.y) * max(b.w, 1e-4));
+  float lead = step(0.0, dot(outward, d));
+  vec2 swept = p1 - d * (1.0 - lead);
+
+  // Everything the fragment shader needs, in the box's OWN units: where this
+  // fragment sits in the box as it is now, and how far the box moved under it
+  // during the exposure. Sampling in local units is what lets a tap that falls
+  // outside the box be dropped — the neighbouring glyph on the plate is not
+  // this word's history, it is somebody else's present.
+  vec2 dLocal = vec2(d.x, -d.y) / max(b.zw, vec2(1e-4));
+  vLocal = lc - dLocal * (1.0 - lead);
+  vSmear = dLocal;
+  vRectA = aUvA;
+  vRectB = aUvB;
 
   // A part that is CROSSING the card — a word changing line — leaves the
   // surface. Real z in the card's own frame, so the bank parallaxes it against
@@ -272,10 +362,7 @@ void main() {
   float bx = 4.0 * bc * (1.0 - bc);
   float bump = bx * bx * (3.0 - 2.0 * bx);
   float cross = aMeta.w * bump;
-  vec3 pos = vec3(px.x - card.x * 0.5, card.y * 0.5 - px.y, uCrossLift * cross);
-
-  vUvA = vec2(aUvA.x + aUvA.z * uv.x, aUvA.y + aUvA.w * (1.0 - uv.y));
-  vUvB = vec2(aUvB.x + aUvB.z * uv.x, aUvB.y + aUvB.w * (1.0 - uv.y));
+  vec3 pos = vec3(swept, uCrossLift * cross);
 
   float hasFrom = aMeta.x;
   float hasTo = aMeta.y;
@@ -310,21 +397,59 @@ void main() {
 `
 
 export const FIELD_FRAG = /* glsl */ `
+#define TAPS 12
+
 uniform sampler2D uTexA;
 uniform sampler2D uTexB;
 
-varying vec2 vUvA;
-varying vec2 vUvB;
+varying vec2 vLocal;
+varying vec2 vSmear;
+varying vec4 vRectA;
+varying vec4 vRectB;
 varying float vPresence;
 varying float vHandover;
 
+/** One instant of the exposure, at local coordinate l inside the part's box. */
+vec4 sampleAt(vec2 l) {
+  // A tap outside the box contributes NOTHING, rather than being clamped to the
+  // edge. The two rects are windows onto a whole card's plate, so the texels
+  // just past a word's box are the next word along — clamping would smear a
+  // neighbour into this one's trail, and the edge column into everything.
+  vec2 m = step(vec2(0.0), l) * step(l, vec2(1.0));
+  vec2 lq = clamp(l, 0.0, 1.0);
+  vec4 a = texture2D(uTexA, vRectA.xy + vRectA.zw * lq);
+  vec4 b = texture2D(uTexB, vRectB.xy + vRectB.zw * lq);
+  // Premultiplied throughout (decisions #5), so a straight mix of two captures
+  // is a correct composite and scaling is a correct fade — no
+  // unpremultiply/repremultiply anywhere in the path, and multiplying by a
+  // coverage mask is just less light.
+  return mix(a, b, vHandover) * (m.x * m.y);
+}
+
 void main() {
-  vec4 a = texture2D(uTexA, vUvA);
-  vec4 b = texture2D(uTexB, vUvB);
-  // Premultiplied throughout (decisions #5), so a straight mix of two
-  // captures is a correct composite and scaling by presence is a correct
-  // fade — no unpremultiply/repremultiply anywhere in the path.
-  gl_FragColor = mix(a, b, vHandover) * vPresence;
+  vec4 acc;
+  if (dot(vSmear, vSmear) < 1e-10) {
+    // Standing still. Not merely an optimisation — the endpoints of this flight
+    // are compared against real DOM at the same pixels, so a resting part has
+    // to be the single-tap image exactly, not an average of twelve copies of
+    // it that agrees to within rounding.
+    acc = sampleAt(vLocal);
+  } else {
+    // The exposure, integrated. Taps run FORWARD in local units from where the
+    // fragment sits now, because the box moved forward under it: one box-width
+    // of smear means the fragment was at vLocal + vSmear when the shutter
+    // opened. Averaging over all TAPS rather than over the ones that landed
+    // inside is deliberate — a fragment the word only covered for part of the
+    // exposure really did receive less light, and that partial coverage is what
+    // makes the leading and trailing edges fall off instead of ending on a cut.
+    acc = vec4(0.0);
+    for (int i = 0; i < TAPS; i++) {
+      float f = (float(i) + 0.5) / float(TAPS);
+      acc += sampleAt(vLocal + vSmear * f);
+    }
+    acc /= float(TAPS);
+  }
+  gl_FragColor = acc * vPresence;
   #include <colorspace_fragment>
 }
 `
@@ -462,6 +587,7 @@ function useFieldMaterial(
         fragmentShader: FIELD_FRAG,
         uniforms: {
           uT: { value: 0 },
+          uSpan: { value: 0 },
           uFade: { value: FADE },
           uHandover: { value: HANDOVER },
           uCrossLift: { value: CROSS_LIFT },
@@ -582,8 +708,12 @@ function PartMesh({
 }) {
   const geo = useFieldGeometry(parts)
   const mat = useFieldMaterial(texA, texB, [a.width, a.height], [b.width, b.height])
+  const was = useRef(progress.current)
   useFrame(() => {
-    mat.uniforms.uT.value = Math.min(1, Math.max(0, progress.current))
+    const t = Math.min(1, Math.max(0, progress.current))
+    mat.uniforms.uT.value = t
+    mat.uniforms.uSpan.value = shutterSpan(was.current, t, SHUTTER)
+    was.current = t
   })
   useEffect(() => () => geo?.dispose(), [geo])
   if (!geo || !texA || !texB) return null
