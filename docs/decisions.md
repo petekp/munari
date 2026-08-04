@@ -70,7 +70,7 @@ standard — several suites assert that a mechanism is visible or felt
 at real hand speeds, because a mechanism that is live but
 imperceptible is not shipped.
 
-## #3 — The lab preserves three scenes (2026-08-02)
+## #3 — The lab preserves six scenes (2026-08-02)
 
 **Decision.** `apps/lab` carries three scenes — **workspace**,
 **glass**, and **flight** — and no others. Scenes are evidence, not
@@ -127,6 +127,43 @@ The count is not the decision; "a scene exists to prove a claim, and a
 scene that proves nothing the others don't is deleted" is. A sixth needs
 the same argument, and any of these five stops earning its place the
 moment its claim is pinned somewhere cheaper.
+
+**Amended 2026-08-04 — six, and here is the sixth's argument.**
+
+- **wake — the page as a sampled thing.** Two routes, both live DOM,
+  composited by a per-pixel rule read from a texture that did not exist
+  a frame earlier: a 2D wave equation stepped in a ping-pong render
+  target. Navigation is the front of the wave, and the front's radius is
+  displaced by the height of the water it is crossing, so the boundary
+  belongs to the same event as the ripples rather than playing over
+  them.
+
+  Every other scene composites a Surface. This one **samples** one —
+  `material="none"` plus `useSurfaceTexture`, with the page read at a
+  displaced uv and R/G/B read at three different displacements. That is
+  the claim, and it is the one thing CSS has no expression for at any
+  effort: an element cannot sample another element's rendering, and no
+  filter, mask, or view transition can make it. The passage scene proves
+  the *layout* engine keeps running in flight; this one proves the
+  *raster* is addressable while it does.
+
+  It is also the tree's only scene whose visual correctness is a numeric
+  stability question, which is why the wave law lives in `wakeField.ts`
+  under test rather than only in GLSL: an explicit leapfrog past the
+  Courant bound does not raise, it fills the field with NaN and the page
+  goes black with a clean frame buffer. The test found the sharp part —
+  AT c² = ½ the recurrence's two roots collide at −1 and a repeated root
+  makes the field grow *linearly* (8000× after 4000 steps), so the bound
+  is unattainable rather than merely uncomfortable.
+
+  And it is where "rest is exact" got a second proof. A textbook
+  specular against the surface normal evaluates to a CONSTANT on flat
+  water, so a settled page would wear a veil forever and stop matching
+  the DOM it stands for; tilting the light until that constant is
+  invisible kills the moving term with it (exponent 48 measured 4e-13 on
+  a fully-lit wave face). The sheen is therefore slope-driven — zero at
+  rest *by construction*, not by tuning. Measured: 806 → 806 paints
+  across two seconds of settled page.
 
 ## #4 — Core speaks in shapes; three satisfies them (2026-08-02)
 

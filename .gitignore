@@ -5,3 +5,6 @@ coverage/
 .DS_Store
 .claude/
 .circuit/
+
+# TypeScript incremental build state
+*.tsbuildinfo

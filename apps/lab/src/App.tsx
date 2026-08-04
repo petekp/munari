@@ -7,14 +7,16 @@ import { Glass } from './scenes/Glass'
 import { FlightApp } from './scenes/Flight'
 import { Explode, ExplodeHud } from './scenes/Explode'
 import { PassageApp } from './scenes/Passage'
+import { WakeApp } from './scenes/Wake'
 
-// Five scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
-// flight drag trilogy, exploded-paint inspector, passage route transition.
+// Six scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
+// flight drag trilogy, exploded-paint inspector, passage route transition,
+// wake navigation-through-a-medium.
 // Everything they render reaches the library through the `anamorph` barrel —
 // this app is the proof that the public surface is sufficient.
 
-type SceneId = 'workspace' | 'glass' | 'flight' | 'explode' | 'passage'
-const SCENES = ['workspace', 'glass', 'flight', 'explode', 'passage'] as const
+type SceneId = 'workspace' | 'glass' | 'flight' | 'explode' | 'passage' | 'wake'
+const SCENES = ['workspace', 'glass', 'flight', 'explode', 'passage', 'wake'] as const
 
 const FOOTERS: Record<SceneId, string> = {
   workspace:
@@ -26,6 +28,8 @@ const FOOTERS: Record<SceneId, string> = {
     'one div, no children, six plates · orbit to see the depths · drag spread to zero and it stacks back into the card',
   passage:
     'open a note · the card leaves the page and lays itself out again at every width on the way',
+  wake:
+    'pick a page — the new one arrives through the water · click anywhere to strike the surface · type while it moves',
 }
 
 // Clicking a canvas normally moves focus to <body>, which would blur
@@ -110,6 +114,7 @@ export default function App() {
   // carry the scene chips themselves.
   if (scene === 'flight') return <FlightApp chips={chips} />
   if (scene === 'passage') return <PassageApp chips={chips} />
+  if (scene === 'wake') return <WakeApp chips={chips} />
 
   return (
     <div className="app">
