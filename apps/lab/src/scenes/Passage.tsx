@@ -47,9 +47,11 @@ import { flushSync } from 'react-dom'
 import * as THREE from 'three'
 import { SurfaceApp, useSurfaceTexture, cameraDistance } from 'anamorph'
 import {
-  atTarget,
+  HEIGHT_OMEGA,
   boxOf,
   densityAt,
+  followHeight,
+  landed,
   poseAt,
   springStep,
   type Box,
@@ -230,6 +232,53 @@ interface CardViewProps {
   item: Item
   onOpen?: () => void
   vt?: boolean
+  /**
+   * The height of the box the card is currently occupying, in px. Only set in
+   * flight; on the page the card is whatever tall it wants to be.
+   *
+   * The box FOLLOWS the layout's answer rather than snapping to it
+   * (`followHeight`), so the two disagree for most of a flight — measured, 106
+   * of 138 frames, by up to 117 px. That is not a breakpoint artifact, it is
+   * ordinary tracking lag: a critically damped follower trails a ramp in
+   * proportion to how fast the ramp is moving, and this one is climbing 370 px
+   * in 700 ms.
+   *
+   * So the card is TOLD the box, in both directions, and the disagreement
+   * stops being visible either way. Taller than the content, the card's own
+   * background and border fill the difference — no strip of bare parked canvas
+   * under it, which is the pale band that made interpolating the height wrong
+   * in the first place. Shorter, its own `overflow: hidden` crops the content
+   * and the card keeps its bottom edge and its radius. Both read as a panel
+   * opening into its new shape, which is what it is.
+   *
+   * The first attempt at this was `padding-bottom`, which can only fill a box
+   * that is too tall — a card in a box that is too short overflowed and lost
+   * its bottom edge for two thirds of every flight.
+   */
+  boxHeight?: number
+}
+
+/**
+ * How tall this card WANTS to be, asked while it is being told otherwise.
+ *
+ * The scene has to keep asking this every frame, of an element it is
+ * simultaneously imposing a height on, so the imposition must be exactly
+ * invertible. `min-height` is not (`offsetHeight` answers `max(natural,
+ * imposed)`, which is un-subtractable); reading the children back is not
+ * either (`offsetTop + offsetHeight` misses bottom margins — measured 12–13 px
+ * short on 172 of 317 widths). Lifting the imposition for the length of one
+ * read is invertible by construction: put back the string that was there.
+ *
+ * The cost is a second forced layout on a subtree that is already re-laying
+ * out every frame, which is the cheapest honest answer available.
+ */
+function naturalCardHeight(card: HTMLElement): number {
+  const imposed = card.style.height
+  if (!imposed) return card.offsetHeight
+  card.style.height = ''
+  const natural = card.offsetHeight
+  card.style.height = imposed
+  return natural
 }
 
 /**
@@ -238,7 +287,7 @@ interface CardViewProps {
  * only on how wide the thing is. On the page that is ordinary responsive
  * authoring. In a Surface it is the transition.
  */
-function CardView({ item, onOpen, vt }: CardViewProps) {
+function CardView({ item, onOpen, vt, boxHeight }: CardViewProps) {
   const frame = useTick()
   // Tied to the frame count, not to a clock — see useTick.
   const phase = (frame % 96) / 96
@@ -252,6 +301,7 @@ function CardView({ item, onOpen, vt }: CardViewProps) {
             '--c2': item.c2,
             '--c3': item.c3,
             cursor: onOpen ? 'pointer' : 'default',
+            height: boxHeight ? `${boxHeight}px` : undefined,
           } as React.CSSProperties
         }
         role={onOpen ? 'button' : undefined}
@@ -509,7 +559,17 @@ function Flying({ pass, item, painted, onPainted, onLanded }: FlyingProps) {
     d: dpr,
   }))
   const spring = useRef({ x: 0, v: 0 })
-  const landed = useRef(false)
+  /**
+   * The card's box, chasing the height its layout keeps asking for.
+   *
+   * Seeded at the source box, so the departure is exact: the first frame of
+   * the flight is the height of the element it is standing in for, whatever
+   * the layout does one pixel of width later.
+   */
+  const hspring = useRef({ h: pass.from.height, v: 0 })
+  const done = useRef(false)
+  /** Which target the exact-destination frame was rendered for, if any. */
+  const snapped = useRef<0 | 1 | null>(null)
   // The parked subtree, so the card's own height can be READ rather than
   // guessed. This is the same kind of observer `FloatingSurface` is allowed:
   // it answers "how big is this", which the compositor never reports, and it
@@ -529,21 +589,75 @@ function Flying({ pass, item, painted, onPainted, onLanded }: FlyingProps) {
     // signal), so a card that started travelling here would tear away from a
     // still-visible copy of itself.
     const step = Math.min(dt, 1 / 20)
+    const moving = debug.hold == null && painted && pass.to
     if (debug.hold != null) {
       spring.current = { x: debug.hold, v: 0 }
-    } else if (painted && pass.to) {
+    } else if (moving) {
       const [x, v] = springStep(spring.current.x, spring.current.v, pass.target, debug.omega, step)
       spring.current = { x, v }
-      if (!landed.current && atTarget(x, v, pass.target)) {
-        landed.current = true
-        onLanded()
-      }
     }
     const to = pass.to ?? pass.from
-    // Ask the card how tall it is at the width it currently has. No layout is
-    // forced by this — the parked subtree was laid out to produce the paint
-    // that is already on screen, so the answer is sitting there.
+    // Ask the card how tall it WANTS to be at the width it currently has. No
+    // layout is forced by this — the parked subtree was laid out to produce
+    // the paint that is already on screen, so the answer is sitting there.
     const card = hostRef.current?.querySelector<HTMLElement>('.psg-card')
+    const natural = card ? naturalCardHeight(card) : 0
+    // …and then move the box toward that answer rather than onto it. The
+    // layout's honest height is a step function of width — seven
+    // discontinuities across this flight, the largest 88 px in a single frame
+    // — and rendering it faithfully is a card that snaps vertically while it
+    // sails. `followHeight` changes nothing about what the layout decides,
+    // only how fast the box is allowed to adopt it.
+    if (natural > 0) {
+      const [h, hv] = followHeight(
+        hspring.current.h,
+        hspring.current.v,
+        natural,
+        HEIGHT_OMEGA,
+        step,
+      )
+      hspring.current = { h, v: hv }
+    }
+    // ── the landing, which is two frames ──
+    //
+    // It waits for BOTH springs. Keyed on the position alone the mesh unmounts
+    // with the box still 1.9 px short of the DOM taking over — measured, and
+    // invisible to every end-exactness test, because those only ever looked at
+    // one spring.
+    //
+    // Then it SNAPS, and renders one frame at the exact destination box before
+    // handing over. `atTarget` settles a fraction short of the target by
+    // construction, and that fraction is not free: 0.0015 of progress is
+    // 0.41 px of width at the end of a `t^1.5` size curve, and 0.41 px of
+    // width is 1.09 px of HEIGHT once the height comes from a measurement
+    // rather than from an interpolation. Measured, and visible — the card
+    // grows a pixel at the instant the DOM takes over.
+    //
+    // The snap has to be its own frame. `onLanded` clears the pass, which
+    // unmounts this component, so a `setPose` in the same commit is discarded
+    // and the last thing rendered would be the frame BEFORE the snap.
+    if (moving && !done.current) {
+      if (snapped.current === pass.target) {
+        // Unconditional, and that is the whole subtlety. Re-testing `landed`
+        // here does not work: the snap changed the card's width, the DOM has
+        // not been laid out at it yet, and so `natural` on this frame is still
+        // the PREVIOUS width's answer. Re-testing sees the follower disagree
+        // with a stale measurement, un-snaps, and walks the height back down —
+        // which is how the seam survived the snap at 0.33 px instead of 1.09.
+        done.current = true
+        onLanded()
+      } else if (
+        landed(spring.current.x, spring.current.v, pass.target, hspring.current.h, natural)
+      ) {
+        // Recorded as WHICH target was snapped to, not merely that a snap
+        // happened, so a reversal in the one frame between the snap and the
+        // handoff turns the card around instead of landing it at a destination
+        // it is no longer heading for.
+        snapped.current = pass.target
+        spring.current = { x: pass.target, v: 0 }
+        hspring.current = { h: pass.target === 1 ? to.height : pass.from.height, v: 0 }
+      }
+    }
     const p = poseAt(
       pass.from,
       to,
@@ -552,7 +666,7 @@ function Flying({ pass, item, painted, onPainted, onLanded }: FlyingProps) {
       size.height,
       LIFT,
       TILT,
-      card?.offsetHeight ?? null,
+      natural > 0 ? hspring.current.h : null,
     )
     const d = densityAt(dpr, camZ, p.z, p.width, p.height)
     setPose((prev) =>
@@ -563,7 +677,16 @@ function Flying({ pass, item, painted, onPainted, onLanded }: FlyingProps) {
       prev.h === p.height &&
       prev.d === d
         ? prev
-        : { x: p.x, y: p.y, z: p.z, rotX: p.rotX, rotY: p.rotY, w: p.width, h: p.height, d }
+        : {
+            x: p.x,
+            y: p.y,
+            z: p.z,
+            rotX: p.rotX,
+            rotY: p.rotY,
+            w: p.width,
+            h: p.height,
+            d,
+          }
     )
   })
 
@@ -596,7 +719,16 @@ function PassageCard({
   onPainted,
   hostRef,
 }: {
-  pose: { x: number; y: number; z: number; rotX: number; rotY: number; w: number; h: number; d: number }
+  pose: {
+    x: number
+    y: number
+    z: number
+    rotX: number
+    rotY: number
+    w: number
+    h: number
+    d: number
+  }
   item: Item
   onPainted: () => void
   hostRef: React.RefObject<HTMLElement | null>
@@ -639,7 +771,10 @@ function PassageCard({
         onHost={(el) => {
           hostRef.current = el
         }}
-        content={<CardView item={item} />}
+        // The same height, told to the card — so that on the frames where the
+        // follower and the layout disagree, the card still fills its own box
+        // rather than floating in one or overflowing it.
+        content={<CardView item={item} boxHeight={pose.h} />}
       >
         <planeGeometry args={[1, 1]} />
         <CardMaterial />

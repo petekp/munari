@@ -83,6 +83,75 @@ export function atTarget(x: number, v: number, target: number): boolean {
 }
 
 /**
+ * A passage is over when the card has arrived AND the box it arrived in is the
+ * box the page is taking back.
+ *
+ * Two springs run in a flight — one for where the card is, one for how tall it
+ * is (`followHeight`) — and they do not finish together. Measured: the
+ * position settles with the height still 1.9 px short, so the mesh unmounts
+ * and the DOM reappears 1.9 px taller in the same frame. That is a twitch at
+ * the landing, and it is the exact failure `poseAt`'s end-exactness tests
+ * exist to prevent — they just could not see it, because they only ever looked
+ * at one spring.
+ *
+ * Cheap to state because `followHeight` snaps rather than converging: settled
+ * really is equality.
+ */
+export function landed(
+  x: number,
+  v: number,
+  target: number,
+  height: number,
+  natural: number,
+): boolean {
+  return atTarget(x, v, target) && height === natural
+}
+
+/**
+ * How fast the card's box chases the height its layout just asked for.
+ *
+ * Fast enough that the box is never visibly behind the content, slow enough
+ * that a breakpoint's step is crossed over frames instead of within one. At
+ * 30 the 88 px step this component actually has (measured below) is closed in
+ * about 100 ms, peaking near 8 px per frame at 120 Hz.
+ */
+export const HEIGHT_OMEGA = 30
+
+/**
+ * The height the card's box uses, chasing the height its layout wants.
+ *
+ * Interpolating the height was wrong (a responsive component's height is not
+ * a line between two known heights) and so is using the measurement raw,
+ * which is what shipped. The layout's honest answer is a STEP FUNCTION of
+ * width: swept 1 px at a time in Chrome, this component's height jumps +29 px
+ * crossing its 430 px breakpoint, +88 px crossing its 720 px one, and drops
+ * about 19 px five separate times as paragraphs lose a line. Rendered
+ * faithfully, a card in flight snaps vertically seven times in 700 ms — every
+ * frame correct, the whole thing unwatchable.
+ *
+ * So the box FOLLOWS the measurement rather than equalling it: same critically
+ * damped spring as the flight itself, just stiffer. The layout is not being
+ * smoothed — the DOM still reflows at every intermediate width, and the height
+ * this returns still comes from nothing but what the layout answered. What is
+ * smoothed is how fast the BOX is allowed to adopt it.
+ *
+ * The snap matters as much as the follow. A follower only ever approaches its
+ * target, and a card that lands half a pixel off the DOM it is handing back to
+ * is a seam at the one moment the whole handoff is judged.
+ */
+export function followHeight(
+  h: number,
+  v: number,
+  natural: number,
+  omega: number,
+  dt: number,
+): [h: number, v: number] {
+  const [x, nv] = springStep(h, v, natural, omega, dt)
+  if (Math.abs(natural - x) < 0.5 && Math.abs(nv) < 2) return [natural, 0]
+  return [x, nv]
+}
+
+/**
  * The pose at progress `t` along a passage from one page box to another.
  *
  * `width`/`height` are the interesting return values. They are not a scale

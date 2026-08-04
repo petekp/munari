@@ -18,7 +18,17 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { atTarget, centreOf, densityAt, poseAt, springStep, type Box } from './passagePath'
+import {
+  HEIGHT_OMEGA,
+  atTarget,
+  centreOf,
+  densityAt,
+  followHeight,
+  landed,
+  poseAt,
+  springStep,
+  type Box,
+} from './passagePath'
 
 const box = (left: number, top: number, width: number, height: number): Box => ({
   left,
@@ -196,5 +206,209 @@ describe('densityAt', () => {
 
   it('clamps at the texture guard rather than warning once a frame', () => {
     expect(densityAt(3, 1000, 500, 3000, 400)).toBeCloseTo(4000 / 3000, 6)
+  })
+})
+
+// ── the height the layout actually wants ─────────────────────────────────
+//
+// Measured in Chrome on 2026-08-04 by sweeping `.psg-frame`'s width across
+// the whole range a passage crosses and reading `.psg-card`'s `offsetHeight`
+// at each step: 308 px to 940 px, one sample every 4 px. These are not
+// plausible numbers, they are this component's numbers, and every claim below
+// is a claim about what the browser did rather than about what a model of it
+// would do.
+const CARD_H0 = 308
+const CARD_HSTEP = 4
+const CARD_HEIGHTS = [
+  324, 327, 311, 315, 318, 321, 324, 327, 330, 333, 336, 339, 342, 345, 348, 351, 354, 357,
+  360, 363, 367, 370, 373, 376, 379, 383, 386, 389, 392, 396, 399, 430, 431, 433, 434, 435,
+  437, 438, 439, 441, 442, 423, 425, 426, 427, 428, 430, 431, 433, 414, 415, 416, 418, 419,
+  420, 422, 423, 424, 426, 427, 428, 430, 431, 432, 414, 415, 416, 417, 419, 400, 402, 403,
+  404, 405, 407, 408, 409, 411, 412, 413, 415, 416, 417, 419, 420, 422, 423, 424, 426, 427,
+  429, 430, 431, 433, 434, 436, 437, 439, 440, 442, 443, 445, 446, 535, 538, 540, 543, 545,
+  548, 550, 553, 556, 559, 562, 565, 568, 571, 574, 577, 580, 583, 586, 589, 592, 595, 598,
+  600, 603, 606, 609, 612, 615, 618, 621, 624, 627, 630, 633, 636, 639, 642, 645, 648, 650,
+  654, 656, 659, 662, 665, 668, 671, 674, 677, 680, 683, 686, 689, 692, 695,
+]
+
+/** The layout's answer at width `w` — a lookup, so it steps exactly as it did. */
+function naturalHeight(w: number): number {
+  const i = Math.round((w - CARD_H0) / CARD_HSTEP)
+  return CARD_HEIGHTS[Math.min(CARD_HEIGHTS.length - 1, Math.max(0, i))]
+}
+
+/**
+ * Run the real flight and record, frame by frame, what the layout wanted and
+ * what the box did. The spring, the size curve and the frame budget are the
+ * scene's own, so this is the flight rather than a model of it.
+ */
+function flight(follow: boolean, omega = 9.5, dt = 1 / 120) {
+  const from = box(40, 500, 308, 324)
+  const to = box(300, 120, 940, 695)
+  let x = 0
+  let v = 0
+  let h = from.height
+  let hv = 0
+  const wanted: number[] = []
+  const used: number[] = []
+  for (let i = 0; i < 400; i++) {
+    ;[x, v] = springStep(x, v, 1, omega, dt)
+    const w = from.width + (to.width - from.width) * Math.pow(Math.min(1, x), 1.5)
+    const natural = naturalHeight(w)
+    if (follow) [h, hv] = followHeight(h, hv, natural, HEIGHT_OMEGA, dt)
+    else h = natural
+    wanted.push(natural)
+    used.push(h)
+    if (follow ? landed(x, v, 1, h, natural) : atTarget(x, v, 1)) break
+  }
+  return { wanted, used }
+}
+
+const biggestStep = (s: number[]) =>
+  s.slice(1).reduce((m, y, i) => Math.max(m, Math.abs(y - s[i])), 0)
+
+describe('followHeight', () => {
+  it('the layout really does step — this is the bug, not a theory', () => {
+    // The premise every claim below rests on. If this component's height ever
+    // becomes continuous the follower stops being justified, and this test is
+    // what will say so.
+    const { wanted } = flight(false)
+    expect(biggestStep(wanted)).toBeGreaterThan(80)
+    // Not one bad breakpoint — seven discontinuities, in both directions.
+    const steps = wanted.slice(1).filter((y, i) => Math.abs(y - wanted[i]) > 6)
+    expect(steps.length).toBeGreaterThanOrEqual(2)
+    expect(wanted.slice(1).some((y, i) => y < wanted[i])).toBe(true)
+  })
+
+  it('crosses the same steps without ever jumping', () => {
+    // 88 px in one frame is a snap; 8 px is motion. The bound is the whole
+    // claim of the fix and is deliberately far below the raw series.
+    const { used } = flight(true)
+    expect(biggestStep(used)).toBeLessThan(15)
+  })
+
+  it('smooths the box without erasing the layout', () => {
+    // The failure this rules out is the tempting one: a follower slow enough
+    // to flatten the curve would pass the test above and quietly turn the lab
+    // back into an interpolation. The box must still visit the shape the
+    // layout described — including the dip in the middle, which is the part
+    // no interpolator between 324 and 695 could produce at all.
+    const a = flight(false)
+    const b = flight(true)
+    const dip = (s: number[]) => Math.min(...s.slice(20, s.length - 20))
+    expect(dip(b.used)).toBeLessThan(dip(a.wanted) + 12)
+    expect(Math.max(...b.used)).toBeGreaterThan(Math.max(...a.wanted) - 6)
+  })
+
+  it('lands EXACTLY on the height the DOM is handing back', () => {
+    // A follower only ever approaches. Half a pixel of disagreement at the
+    // landing is a seam at the one moment the whole handoff is judged, so the
+    // law snaps rather than converging forever.
+    const { wanted, used } = flight(true)
+    expect(used[used.length - 1]).toBe(wanted[wanted.length - 1])
+  })
+
+  it('settles a visible distance short of the target, which is why the scene snaps', () => {
+    // `atTarget`'s threshold is on PROGRESS, and progress is not distance.
+    // 0.0015 of the way from a 308 px tile to a 940 px article is most of a
+    // pixel of width at the end of a `t^1.5` curve — and once the height comes
+    // from measuring the layout rather than from interpolating, that width
+    // error is amplified by however steeply the component is growing there.
+    // Measured in the browser: the mesh handed over 0.41 px narrow and 1.09 px
+    // short, and the card visibly grew at the instant the DOM took over.
+    const from = box(40, 500, 308, 324)
+    const to = box(300, 120, 940, 695)
+    expect(atTarget(1 - 0.0014, 0, 1)).toBe(true)
+    const nearly = poseAt(from, to, 1 - 0.0014, VIEW_W, VIEW_H, 150, 0.26)
+    expect(to.width - nearly.width).toBeGreaterThan(0.5)
+    // The layout is steeper than the box there, so the height error is worse
+    // than the width error that caused it.
+    const slope =
+      (naturalHeight(to.width) - naturalHeight(to.width - 8)) / 8
+    expect((to.width - nearly.width) * slope).toBeGreaterThan(0.5)
+  })
+
+  it('does not let the position finish while the box is still growing', () => {
+    // Measured: with the landing keyed on the position spring alone, the mesh
+    // unmounts 1.9 px short and the DOM reappears taller in the same frame.
+    // Two springs run in a flight and they do not finish together.
+    const from = box(40, 500, 308, 324)
+    const to = box(300, 120, 940, 695)
+    let [x, v, h, hv] = [0, 0, from.height, 0]
+    let positionDone = -1
+    let boxDone = -1
+    for (let i = 0; i < 400; i++) {
+      ;[x, v] = springStep(x, v, 1, 9.5, 1 / 120)
+      const w = from.width + (to.width - from.width) * Math.pow(Math.min(1, x), 1.5)
+      const natural = naturalHeight(w)
+      ;[h, hv] = followHeight(h, hv, natural, HEIGHT_OMEGA, 1 / 120)
+      if (positionDone < 0 && atTarget(x, v, 1)) positionDone = i
+      if (boxDone < 0 && positionDone >= 0 && h === natural) boxDone = i
+      if (boxDone >= 0) break
+    }
+    expect(positionDone).toBeGreaterThan(0)
+    expect(boxDone).toBeGreaterThan(positionDone)
+    // `landed` is the predicate that closes the gap, and it is false at the
+    // moment `atTarget` alone would have ended the flight.
+    expect(landed(1, 0, 1, 693, 695)).toBe(false)
+    expect(landed(1, 0, 1, 695, 695)).toBe(true)
+  })
+
+  it('is already settled when the layout is', () => {
+    let [h, v] = [400, 0]
+    for (let i = 0; i < 5; i++) [h, v] = followHeight(h, v, 400, HEIGHT_OMEGA, 1 / 120)
+    expect(h).toBe(400)
+    expect(v).toBe(0)
+  })
+
+  it('closes a breakpoint step in about a tenth of a second', () => {
+    // The real 720 px step, 447 → 535. Slow enough to read as motion, fast
+    // enough that the box is never visibly behind its own content — this card
+    // is `overflow: hidden`, so a lazy follower is a card whose bottom rows
+    // stay cut off for as long as it takes. Measured to WITHIN 4 px rather
+    // than to equality: the last half-pixel is invisible and takes as long
+    // again as the whole visible part of the move.
+    let [h, v] = [447, 0]
+    let visible = 0
+    let settled = 0
+    for (let i = 1; i <= 200; i++) {
+      ;[h, v] = followHeight(h, v, 535, HEIGHT_OMEGA, 1 / 120)
+      if (!visible && Math.abs(535 - h) < 4) visible = i
+      if (!settled && h === 535) settled = i
+    }
+    expect(visible / 120).toBeGreaterThan(0.05)
+    expect(visible / 120).toBeLessThan(0.2)
+    expect(settled).toBeGreaterThan(0)
+  })
+
+  it('trails the layout by more than a hairline, so the box must be TOLD', () => {
+    // The consequence that has to be paid for elsewhere, and it is not a
+    // rounding error. A critically damped follower trails a ramp in
+    // proportion to how fast the ramp is moving, and this one climbs 370 px
+    // in 700 ms with an 88 px step in the middle of it — so for most of a
+    // flight the box is a visible distance from the height its content
+    // wants. Measured in the browser: 106 of 138 frames disagreed, worst
+    // 120 px.
+    //
+    // Which is why `Passage.tsx` hands the card its box height rather than
+    // padding the difference. Padding can only fill a box that is too tall;
+    // this lag makes the box too SHORT for two thirds of every flight, and a
+    // card overflowing its frame loses its bottom edge and its radius. The
+    // number below is the one that makes "the card is whatever tall it wants
+    // to be" untenable — if it ever falls to a hairline, the imposition and
+    // its every-frame measurement can go.
+    const { wanted, used } = flight(true)
+    const lag = wanted.map((w, i) => w - used[i])
+    expect(Math.max(...lag)).toBeGreaterThan(50)
+    // And it goes BOTH ways, which is the part that decides the mechanism.
+    // The layout is non-monotonic — five of its discontinuities are drops, as
+    // a paragraph loses a line — so on those the follower is briefly TALLER
+    // than the card it holds. Browser agrees: worst overshoot 13.15 px.
+    // A card that is only ever too big for its box could be handled by
+    // cropping; one that is also sometimes too small could be handled by
+    // padding; a card that is both, inside one flight, can only be handled by
+    // telling it the box and letting its own background and `overflow` answer
+    // in whichever direction the disagreement went.
+    expect(Math.min(...lag)).toBeLessThan(-5)
   })
 })

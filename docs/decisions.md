@@ -624,3 +624,89 @@ holds, and `resettle` in both states. In the browser: coverage 576/576 on
 every frame of a flight, four `ALLOC`s in the GL trace, zero
 `getError()` across a 479-frame round trip, idle paints still zero, and
 frame timing unchanged (median 8.3ms, max 17.1, none over 20).
+
+## #16 — The box follows the layout, and the card is told the box (2026-08-04, lab)
+
+**What.** The passage's flying card no longer takes the height its
+layout hands back. `followHeight` moves the box toward that answer with
+its own critically damped spring (`HEIGHT_OMEGA` 30), and the card is
+then TOLD the box it is in — an explicit `height`, with
+`align-content: start` and its own `overflow: hidden` answering in
+whichever direction the two disagree. The flight ends on `landed`, which
+waits for both springs and then renders one frame at the exact
+destination box before handing back.
+
+**The complaint.** "Quite glitchy and janky." It was not a frame-rate
+problem and the trace said so immediately: warm runs hold median 8.3 ms,
+max 11.9, zero long tasks. The three >100 ms stalls in the first trace
+were first-open shader and texture compile, which is a different entry's
+problem.
+
+**The measurement that found it.** Per-frame deltas of the box.
+**91 px of height arrived in a single frame**, and five frames moved the
+height *against* the width. Swept one pixel at a time, this component's
+honest height is a step function: +29 px crossing its 430 px breakpoint,
++88 px crossing its 720 px one, and five separate ~19 px drops as a
+paragraph loses a line. Seven discontinuities, non-monotonic, inside
+700 ms. Every frame was correct. The scene was rendering the layout's
+truth faithfully and the truth is a staircase.
+
+This is the price of the thing the scene exists to demonstrate. An
+interpolator cannot produce this curve — that is the claim — and the
+same fact means the curve is not smooth. So the layout is not smoothed:
+the DOM still reflows at every intermediate width, and the height still
+comes from nothing but what the layout answered. What is smoothed is how
+fast the BOX is allowed to adopt it.
+
+**Why the card has to be told.** A follower trails a ramp in proportion
+to the ramp's speed, and this one climbs 370 px in 700 ms. Measured
+after the follower shipped: the box disagreed with the card's natural
+height on **106 of 138 frames, worst 120 px** — and in both directions,
+because of those five drops (worst overshoot 13.15 px). The first
+attempt padded the difference with `padding-bottom`, which can only fill
+a box that is too tall; for two thirds of every flight the box was too
+SHORT, the card overflowed its frame, and it lost its bottom edge and
+its radius for the whole crossing. One imposition handles both: the card
+is the box, its background fills what the content does not reach, its
+`overflow` crops what does not fit. A panel opening into its new shape,
+which is what it is.
+
+**Why the imposition must be exactly invertible.** The scene asks the
+card how tall it WANTS to be every frame, of an element it is
+simultaneously telling how tall it is. `min-height` cannot be asked —
+`offsetHeight` answers `max(natural, imposed)` and there is nothing to
+subtract. Reading the children back cannot either: `offsetTop +
+offsetHeight` misses bottom margins, measured 12–13 px short on 172 of
+317 widths. Lifting the imposition for the length of one read is
+invertible by construction. It costs a second forced layout per frame on
+a subtree that is already re-laying-out every frame.
+
+**Two bugs the landing was hiding.** The flight ended on the position
+spring alone, and the two springs do not finish together — measured, the
+position settled with the box still 1.9 px short, so the mesh unmounted
+and the DOM reappeared taller in the same frame. And `atTarget`'s
+threshold is on PROGRESS, not distance: 0.0015 of progress is 0.41 px of
+width at the end of a `t^1.5` size curve, and 0.41 px of width is 1.09 px
+of HEIGHT once the height is measured rather than interpolated. Hence
+the snap, and hence the snap being its OWN frame — `onLanded` clears the
+pass and unmounts the component, so a `setPose` in the same commit is
+discarded and the last thing rendered would be the frame before. The
+snap is also recorded as *which* target it was for, not merely that it
+happened, so a reversal in that one frame turns the card around instead
+of landing it somewhere it is no longer going.
+
+**Evidence.** Eight cases under `followHeight` in
+`passagePath.test.ts`, carrying the real 159-sample measured height curve
+as data: that the layout really does step (the premise — if it ever goes
+continuous, that test says so), that the follower crosses the same steps
+without ever jumping, that it smooths without erasing the dip, that it
+lands exactly, that it settles a visible distance short (why the snap
+exists), that the position cannot finish while the box is still growing,
+and that the lag is large and two-sided (why the card is told the box).
+In the browser, all three paths: biggest single-frame height change
+**91 px → 12.7 px** open, 16.7 close, 11.6 on a mid-flight reversal;
+departure pops −16/−18 px → −0.5/−0.8; zero gap and zero clip frames
+across 139; and every path landing on its destination
+`getBoundingClientRect()` to the pixel — 694.664 against 694.6640625,
+seam 0. The worst-lag frame captured out of the drawing buffer shows an
+intact card, full border and radius, stats row mid-reveal.

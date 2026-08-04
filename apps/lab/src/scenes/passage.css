@@ -194,6 +194,13 @@
 .psg-card {
   display: grid;
   gap: 0;
+  /* Only ever visible in flight, where the scene imposes a height that the
+   * follower has not yet caught up to (Passage.tsx, `boxHeight`). Rows keep
+   * their own sizes and sit at the top: a box that is too tall shows the
+   * card's background below the content, a box that is too short crops it.
+   * The default `stretch` would instead redistribute every disagreement into
+   * the rows, so a lagging follower would squash the media and the type. */
+  align-content: start;
   grid-template-columns: 1fr;
   grid-template-areas:
     'media'
