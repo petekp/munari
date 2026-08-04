@@ -1292,7 +1292,7 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
         // The held solver's target jumps to the pointer ray; differentiating
         // across that jump would read as a flick nobody performed.
         f.handSeeded = false
-        // px/py must be the REAL pointer's page position, and the forged
+        // px/py must be the REAL pointer's page position, and the relayed
         // event's coordinates are parked-local — but the pressed point's
         // world position is exactly under the real pointer at this instant:
         // project it back to the screen.

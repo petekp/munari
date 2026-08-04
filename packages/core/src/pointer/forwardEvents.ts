@@ -11,7 +11,7 @@
 // texture, and once an input is focused, native keystrokes type into it with
 // no forwarding needed at all (we just stop the canvas from stealing focus).
 
-import { forge } from './forge'
+import { relay } from './relay'
 
 const FOCUSABLE = 'input, textarea, select, button, [tabindex], [contenteditable]'
 
@@ -134,7 +134,7 @@ const isModifier = (key: string) =>
   key === 'Shift' || key === 'Control' || key === 'Alt' || key === 'Meta'
 
 const onModalityKeydown = (e: KeyboardEvent) => {
-  // Voice stance: trusted by vocabulary — the library forges no
+  // Voice stance: trusted by vocabulary — the library relays no
   // keyboard (typing through a surface is real focus and real keys),
   // so every keydown heard here is the user's.
   // Modifier chords are how pointer users invoke shortcuts mid-gesture; the
@@ -283,18 +283,18 @@ function crossBoundary(
   const left = new Set(prevChain)
 
   if (prev) {
-    forge(prev, new PointerEvent('pointerout', { ...init, bubbles: true, relatedTarget: next }))
-    forge(prev, new MouseEvent('mouseout', { ...init, bubbles: true, relatedTarget: next }))
+    relay(prev, new PointerEvent('pointerout', { ...init, bubbles: true, relatedTarget: next }))
+    relay(prev, new MouseEvent('mouseout', { ...init, bubbles: true, relatedTarget: next }))
   }
   for (const el of prevChain) {
     if (entered.has(el)) break // the deepest common ancestor — not left
-    forge(el, new PointerEvent('pointerleave', { ...init, bubbles: false, relatedTarget: next }))
-    forge(el, new MouseEvent('mouseleave', { ...init, bubbles: false, relatedTarget: next }))
+    relay(el, new PointerEvent('pointerleave', { ...init, bubbles: false, relatedTarget: next }))
+    relay(el, new MouseEvent('mouseleave', { ...init, bubbles: false, relatedTarget: next }))
   }
 
   if (next) {
-    forge(next, new PointerEvent('pointerover', { ...init, bubbles: true, relatedTarget: prev }))
-    forge(next, new MouseEvent('mouseover', { ...init, bubbles: true, relatedTarget: prev }))
+    relay(next, new PointerEvent('pointerover', { ...init, bubbles: true, relatedTarget: prev }))
+    relay(next, new MouseEvent('mouseover', { ...init, bubbles: true, relatedTarget: prev }))
   }
   const entering: Element[] = []
   for (const el of nextChain) {
@@ -302,8 +302,8 @@ function crossBoundary(
     entering.push(el)
   }
   for (const el of entering.reverse()) {
-    forge(el, new PointerEvent('pointerenter', { ...init, bubbles: false, relatedTarget: prev }))
-    forge(el, new MouseEvent('mouseenter', { ...init, bubbles: false, relatedTarget: prev }))
+    relay(el, new PointerEvent('pointerenter', { ...init, bubbles: false, relatedTarget: prev }))
+    relay(el, new MouseEvent('mouseenter', { ...init, bubbles: false, relatedTarget: prev }))
   }
 }
 
@@ -446,8 +446,8 @@ export function clearPointerState(root: HTMLElement) {
         clientX: to ? to.x : rect.left - AWAY_MARGIN_PX,
         clientY: to ? to.y : rect.top - AWAY_MARGIN_PX,
       }
-      forge(root, new PointerEvent('pointermove', away))
-      forge(root, new MouseEvent('mousemove', away))
+      relay(root, new PointerEvent('pointermove', away))
+      relay(root, new MouseEvent('mousemove', away))
       if (--frames > 0) m.away = requestAnimationFrame(step)
     }
     m.away = requestAnimationFrame(step)
@@ -554,8 +554,8 @@ export function forwardPointer(
   let focused = false
   if (kind === 'move') {
     updateHover(root, target, init)
-    forge(target, new PointerEvent('pointermove', init))
-    forge(target, new MouseEvent('mousemove', init))
+    relay(target, new PointerEvent('pointermove', init))
+    relay(target, new MouseEvent('mousemove', init))
   } else if (kind === 'down') {
     // The press is the interaction the modality mirror cares about — declared
     // BEFORE dispatch, because a consumer may focus synchronously from its
@@ -567,14 +567,14 @@ export function forwardPointer(
     updateHover(root, target, init)
     swapChainAttr(root, null, target, ACTIVE_ATTR)
     mirrorOf(root).active = target
-    forge(target, new PointerEvent('pointerdown', init))
-    forge(target, new MouseEvent('mousedown', init))
+    relay(target, new PointerEvent('pointerdown', init))
+    relay(target, new MouseEvent('mousedown', init))
   } else {
     modality = 'pointer' // a release is a pointer interaction even without its down
     surfaceDrag = false
-    forge(target, new PointerEvent('pointerup', init))
-    forge(target, new MouseEvent('mouseup', init))
-    forge(target, new MouseEvent('click', init))
+    relay(target, new PointerEvent('pointerup', init))
+    relay(target, new MouseEvent('mouseup', init))
+    relay(target, new MouseEvent('click', init))
     const m = mirrorOf(root)
     swapChainAttr(root, m.active, null, ACTIVE_ATTR)
     m.active = null
@@ -603,7 +603,7 @@ export function forwardPointer(
  */
 export function nudgeSelect(el: HTMLSelectElement) {
   el.selectedIndex = (el.selectedIndex + 1) % el.options.length
-  forge(el, new Event('change', { bubbles: true }))
+  relay(el, new Event('change', { bubbles: true }))
 }
 
 // ---- wheel / scroll forwarding ------------------------------------------
@@ -677,7 +677,7 @@ export function forwardWheel(
     cancelable: true,
     view: window,
   })
-  if (!forge(target, ev)) return true
+  if (!relay(target, ev)) return true
 
   // Line/page deltas normalized to pixels before moving anything (real
   // devices send pixels; some mice send lines).

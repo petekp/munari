@@ -13,7 +13,7 @@ Layers, in the order they build on each other:
 |---|---|---|
 | mapping | coordinate custody — the pixel-calibrated camera, UV anchoring | `camera`, `uvAnchor`, `parkingCoincidence`, `densityIdentity` |
 | paint | DOM → texture, and what a paint costs | `lodTier`, `htmlInCanvas`, `paintStats`, `styleChannel`, `filterPolicy`, `capabilityProbe` |
-| door | provenance and the pointer protocol | `forwardEvents`, `hoverGrace`, `forgeDuplication`, `forgeTripwire` |
+| pointer | provenance and the pointer protocol | `forwardEvents`, `hoverGrace`, `relayDuplication`, `relayTripwire` |
 | transfer | the handoff between page and mesh | `motionSamples`, `conductorTiming`, `densitySchedule` |
 | chrome | measuring what the DOM won't hand over in pixels | `surfaceChrome`, `shadowQuadFrame` |
 | physics | the laws of held and thrown matter | `physics1D`, `plate`, `gestures`, `quat` |

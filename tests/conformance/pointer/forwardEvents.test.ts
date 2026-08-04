@@ -16,7 +16,7 @@ import {
   forwardPointer,
   forwardWheel,
   guardPointerCapture,
-  isForgedEvent,
+  isRelayed,
   nudgeSelect,
   silenceHoverMove,
   trackDrag,
@@ -830,7 +830,7 @@ describe('the document-capture wheel arbiter', () => {
 })
 
 // Everything dispatched in tests is synthetic; the arbiter under test keys on
-// `isTrusted`, so trusted events are forged by shadowing the getter.
+// `isTrusted`, so trusted events are relayed by shadowing the getter.
 function trusted<E extends Event>(e: E): E {
   Object.defineProperty(e, 'isTrusted', { value: true })
   return e
@@ -852,9 +852,9 @@ describe('the document-capture drag arbiter', () => {
     release()
   })
 
-  function canvasMove(init: PointerEventInit, forge = true) {
+  function canvasMove(init: PointerEventInit, relay = true) {
     const e = new PointerEvent('pointermove', { bubbles: true, cancelable: true, ...init })
-    canvas.dispatchEvent(forge ? trusted(e) : e)
+    canvas.dispatchEvent(relay ? trusted(e) : e)
     return e
   }
 
@@ -968,30 +968,30 @@ describe('provenance: every retelling is branded, and keeps bubbling', () => {
   // Two contracts, tested together because they are two halves of one
   // design:
   //
-  // BUBBLE: the forgeries MUST reach document-level listeners — Radix's
+  // BUBBLE: the relays MUST reach document-level listeners — Radix's
   // grace areas and dismissal heuristics live there. Any future
   // "simplification" that stops their propagation reverts inc 2a's tooltip
   // bug in every consumer at once. If this test starts failing on the
   // document assertions, that is what happened.
   //
-  // BRAND: every synthetic event leaves the library through forge(), which
+  // BRAND: every synthetic event leaves the library through relay(), which
   // stamps it. `isTrusted` is the consumer's default guard (the platform's
-  // own, unforgeable); `isForgedEvent` is the complement for consumers whose
+  // own, unforgeable); `isRelayed` is the complement for consumers whose
   // legitimate input is untrusted and who must reject specifically our
-  // voice. A dispatch site that bypasses forge() breaks the completeness of
+  // voice. A dispatch site that bypasses relay() breaks the completeness of
   // that answer — this test is the tripwire.
   const at = uvOf(...TRIGGER_BOX)
   const next = uvOf(...SIBLING_BOX)
 
   function heardAtDocument() {
-    const heard: { type: string; forged: boolean; trusted: boolean }[] = []
+    const heard: { type: string; relayed: boolean; trusted: boolean }[] = []
     const types = ['pointermove', 'pointerdown', 'pointerup', 'click', 'pointerout', 'pointerover', 'wheel', 'change']
     // `e.isTrusted === true`, not `e.isTrusted`: happy-dom leaves the
     // property undefined on constructed events where a browser says false.
     // The consumer guard is falsy-based (`if (!e.isTrusted) return`), so the
     // strict comparison records exactly what that guard would decide.
     const on = (e: Event) =>
-      heard.push({ type: e.type, forged: isForgedEvent(e), trusted: e.isTrusted === true })
+      heard.push({ type: e.type, relayed: isRelayed(e), trusted: e.isTrusted === true })
     for (const t of types) document.addEventListener(t, on)
     return {
       heard,
@@ -1001,7 +1001,7 @@ describe('provenance: every retelling is branded, and keeps bubbling', () => {
     }
   }
 
-  it('the whole forged vocabulary reaches document, branded and untrusted', async () => {
+  it('the whole relayed vocabulary reaches document, branded and untrusted', async () => {
     const doc = heardAtDocument()
 
     forwardPointer(root, at.u, at.v, 'move') // hover retelling + boundary
@@ -1017,7 +1017,7 @@ describe('provenance: every retelling is branded, and keeps bubbling', () => {
     for (const expected of ['pointermove', 'pointerdown', 'pointerup', 'click', 'pointerout', 'pointerover', 'wheel'])
       expect(types, `${expected} must keep bubbling to document`).toContain(expected)
     for (const h of doc.heard) {
-      expect(h.forged, `${h.type} left the library unbranded`).toBe(true)
+      expect(h.relayed, `${h.type} left the library unbranded`).toBe(true)
       expect(h.trusted).toBe(false)
     }
   })
@@ -1033,7 +1033,7 @@ describe('provenance: every retelling is branded, and keeps bubbling', () => {
     const doc = heardAtDocument()
     nudgeSelect(select)
     doc.done()
-    expect(doc.heard).toEqual([{ type: 'change', forged: true, trusted: false }])
+    expect(doc.heard).toEqual([{ type: 'change', relayed: true, trusted: false }])
   })
 
   it('the non-bubbling half stays non-bubbling', () => {
@@ -1046,11 +1046,11 @@ describe('provenance: every retelling is branded, and keeps bubbling', () => {
     expect(typesAt('document')).not.toContain('pointerenter')
   })
 
-  it('events from elsewhere are not forged', () => {
+  it('events from elsewhere are not relayed', () => {
     const plain = new PointerEvent('pointermove', { bubbles: true })
-    expect(isForgedEvent(plain)).toBe(false)
+    expect(isRelayed(plain)).toBe(false)
     document.body.dispatchEvent(plain)
-    expect(isForgedEvent(plain)).toBe(false)
+    expect(isRelayed(plain)).toBe(false)
   })
 })
 

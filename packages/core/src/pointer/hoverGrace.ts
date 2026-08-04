@@ -37,7 +37,7 @@
 //    because the forwarder's silencing stops propagation at the canvas
 //    (target phase), which is downstream of document capture.
 
-import { forge } from './forge'
+import { relay } from './relay'
 
 export interface Pt {
   x: number
@@ -124,11 +124,11 @@ function dispatchPair(el: Element, type: 'enter' | 'leave') {
   // take the non-bubbling one. pointerType matters — Radix's excludeTouch
   // drops events that don't identify as mouse/pen.
   const init: PointerEventInit = { pointerId: 1, pointerType: 'mouse', relatedTarget: null }
-  forge(
+  relay(
     el,
     new PointerEvent(type === 'enter' ? 'pointerover' : 'pointerout', { ...init, bubbles: true }),
   )
-  forge(
+  relay(
     el,
     new PointerEvent(type === 'enter' ? 'pointerenter' : 'pointerleave', {
       ...init,

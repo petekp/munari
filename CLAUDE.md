@@ -32,7 +32,7 @@ hard to place, ask whose custody the pixels are in at that moment.
 ## Conformance
 
 The kernel's behavior is defined by `tests/conformance/`, one
-directory per layer: **mapping → paint (custody) → door (forge) →
+directory per layer: **mapping → paint (custody) → pointer (relay) →
 transfer (handoff) → chrome (measurement) → physics**. The suites are
 the specification — describe/it names, comments, and pinned numbers
 are all load-bearing. A law ships with the contract that pins it, and

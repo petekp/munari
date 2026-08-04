@@ -752,12 +752,12 @@ export function FocusScene({
     }
 
     const onClick = (e: MouseEvent) => {
-      // Voice stance: this listener wants the FORGED voice only, and
+      // Voice stance: this listener wants the RELAYED voice only, and
       // gets it structurally — a trusted click's target is the
       // canvas, which is inside no composite root, so groupAt refuses it;
       // only the forwarder's retelling into a parked subtree names a group.
       // It reads the target, never coordinates, which is what makes hearing
-      // a forgery safe here.
+      // a retelling safe here.
       if (!(e.target instanceof Element)) return
       const groupId = groupAt(e.target)
       if (!groupId) return

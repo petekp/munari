@@ -5,7 +5,7 @@
 // `window`, and `window` is a busy place in this codebase — the surface
 // pointer protocol retells events into parked subtrees, and those
 // subtrees bubble to the same window. What arrives here is therefore
-// a MIXTURE of the user's hand and the library's forgeries, and which
+// a MIXTURE of the user's hand and the library's relays, and which
 // one a listener wants depends on which side of the glass it lives
 // on. This one lives on the page side: it is the hand, and only the
 // hand.
@@ -109,8 +109,8 @@ export interface GestureDeps<Col, V extends Vec3Chain = Vec3Chain> {
  * BY DESIGN — Radix listens for them on document — and a drag that mistakes
  * them for the hand flies the card hard toward the top-left of the screen.
  * When the burst is the last thing to fire (cross the card's edge, then hold
- * the mouse still), the forged coordinates are never corrected and the card
- * STAYS there. Measured: one short drag put 32 forged moves on window.
+ * the mouse still), the relayed coordinates are never corrected and the card
+ * STAYS there. Measured: one short drag put 32 relayed moves on window.
  *
  * The user's hand is the only pointer with `isTrusted: true`; everything the
  * library retells is constructed, and constructed events cannot lie about it.
@@ -203,7 +203,7 @@ export function attachFlightGestures<Col, V extends Vec3Chain>({
 
   // Escape always puts it back. A floating card is a modeless state and
   // modeless states need an exit that does not require aim. (Keyboard is not
-  // guarded: the library forges no keyboard — typing through a surface is
+  // guarded: the library relays no keyboard — typing through a surface is
   // real focus and real keys.) The one exception is a card
   // mid-crumple: "put it back" needs a back, and the board is about to
   // forget the slot — a delete is irreversible from the moment the crush

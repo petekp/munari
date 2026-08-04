@@ -1,5 +1,5 @@
 // The kernel's public surface. It grows one custody layer at a time —
-// mapping → paint → door → transfer → chrome → physics — and only after
+// mapping → paint → pointer → transfer → chrome → physics — and only after
 // the layer's conformance contract has landed.
 
 // mapping — coordinate custody
@@ -54,8 +54,8 @@ export {
   type PolicyState,
 } from './paint/filterPolicy'
 
-// door — provenance + the pointer-exit protocol
-export { forge, isForgedEvent } from './door/forge'
+// pointer — provenance + the pointer-exit protocol
+export { relay, isRelayed } from './pointer/relay'
 export {
   clearPointerState,
   deepestElementAt,
@@ -68,7 +68,7 @@ export {
   trackFocusModality,
   trackWheel,
   type ForwardResult,
-} from './door/forwardEvents'
+} from './pointer/forwardEvents'
 export {
   convexHull,
   createGraceTracker,
@@ -77,7 +77,7 @@ export {
   type GraceTracker,
   type GraceTrackerOptions,
   type Pt,
-} from './door/hoverGrace'
+} from './pointer/hoverGrace'
 
 // transfer — the handoff
 export {

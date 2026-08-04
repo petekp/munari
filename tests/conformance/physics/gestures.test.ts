@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// The window-level flight gesture vs the surface protocol's forgeries.
+// The window-level flight gesture vs the surface protocol's relays.
 //
 // Pete's report, verbatim: "when i drag a card, it seems to jump towards the
 // top left of the screen, sometimes even getting stuck there as long as i
@@ -11,7 +11,7 @@
 // at (−16, −16). Those bubble to window by design, the lab's window listener
 // read `e.clientX` off them as if they were the hand, and the drag target
 // teleported to the top-left corner — permanently, if the burst was the last
-// event before the mouse went still. Measured in Chrome: 32 forged moves on
+// event before the mouse went still. Measured in Chrome: 32 relayed moves on
 // window in one short drag.
 
 import { afterEach, describe, expect, it } from 'vitest'
@@ -64,7 +64,7 @@ function makeFlight(
 
 /**
  * happy-dom constructs every event with `isTrusted: false` — which is exactly
- * what the library's forgeries look like. For the hand we shadow the property
+ * what the library's relays look like. For the hand we shadow the property
  * on the instance, which is also honest: only the platform can mint a trusted
  * event, and the platform is what we are standing in for.
  */
@@ -124,7 +124,7 @@ describe('the hand is the only pointer that moves a held card', () => {
     expect(flight.current.py).toBe(400)
   })
 
-  it('a forged pointerup does not release the hold', () => {
+  it('a relayed pointerup does not release the hold', () => {
     const flight = { current: makeFlight() }
     attach(flight)
     window.dispatchEvent(pointer('pointermove', 700, 400, true))
@@ -274,7 +274,7 @@ describe('the ✕ is a toss, not a timer', () => {
     expect(flight.current.spin.length()).toBeGreaterThan(0)
   })
 
-  it('a forged pointerup does not release the ball', () => {
+  it('a relayed pointerup does not release the ball', () => {
     // The departure burst fires pointer events while the real button is
     // still down; only the hand may open the hand.
     const flight = { current: makeFlight({ mode: 'crumple', crumpleHeld: true }) }

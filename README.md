@@ -11,7 +11,7 @@ pixel on the rest plane) the page resolves exactly; everywhere else it
 is paper you can bend, throw, and crumple.
 
 **Status: pre-release.** The kernel is complete through six custody
-layers — mapping, paint, door, transfer, chrome, physics — each defined
+layers — mapping, paint, pointer, transfer, chrome, physics — each defined
 by a conformance suite in `tests/conformance/` and exercised by a scene
 in the lab. The public API is not frozen: the binding re-exports the
 kernel whole, so every kernel law is currently reachable, and that

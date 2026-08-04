@@ -41,7 +41,7 @@ contract, the r3f raycast-prop trap. A renderer-abstraction layer
 would re-derive all of it per backend for consumers who don't exist.
 Peer rather than direct dependency for the standard reason: a consumer
 app has exactly one `three` instance, and a second smuggled copy is
-the same split-brain disease `forge()`'s `Symbol.for` brand was
+the same split-brain disease `relay()`'s `Symbol.for` brand was
 hardened against.
 
 ## #2 — The conformance suite is the specification (2026-08-02)
@@ -55,7 +55,7 @@ pinned number are all part of the contract — adjusting a number to
 make a test pass is a decision that needs an entry in this file.
 
 **Why the suite is organized by custody layer.** mapping → paint →
-door → transfer → chrome → physics is a dependency order, not a
+pointer → transfer → chrome → physics is a dependency order, not a
 taxonomy: transfer cannot be specified before paint has said what a
 paint costs, and chrome cannot be measured before mapping has fixed
 what a pixel is. Reading the suite in that order is the shortest path
