@@ -94,12 +94,63 @@ describe('createDomTextureSource sizing', () => {
     s.dispose()
   })
 
-  it('setSize moves the CSS box and the backing store together, holding scale', () => {
+  it('setSize moves the CSS box exactly, and the store when the density leaves the band', () => {
     const s = make(360, 460, 1.5)
     s.setSize(288, 122)
+    // The BOX is exact, always — it is what the subtree lays out against and
+    // what container queries answer. This one is a big enough change on the
+    // height axis (690 store against a 122 box is 5.6 px/px, far above the
+    // 1.5 asked for) that the store is re-cut with it.
     expect(cssSize(s.canvas)).toEqual([288, 122])
     expect([s.canvas.width, s.canvas.height]).toEqual([432, 183])
     expect(s.size()).toEqual([288, 122])
+    s.dispose()
+  })
+
+  // THE LAW THE PASSAGE FLIGHT BOUGHT. Writing `canvas.width` clears the
+  // backing store, and the paint that refills it is the compositor's to
+  // schedule — it lands after the frame that asked. A store cut to the box
+  // exactly, on a Surface resized every frame, is therefore BLANK at every
+  // upload (measured: coverage 0/576 on 38 of 40 frames of a flight). So the
+  // store holds while the density it supplies is close enough, and the
+  // element simply rasters at a slightly different density in the meantime.
+  it('HOLDS the store through a resize the band can absorb — pixels survive', () => {
+    const s = make(400, 400, 2)
+    const store = [s.canvas.width, s.canvas.height]
+    expect(store).toEqual([800, 800])
+    s.setSize(480, 470)
+    // 800/480 = 1.67 px/px against a target of 2 — inside ±40%.
+    expect(cssSize(s.canvas)).toEqual([480, 470])
+    expect(s.size()).toEqual([480, 470])
+    expect([s.canvas.width, s.canvas.height]).toEqual(store)
+    s.dispose()
+  })
+
+  it('still asks for a paint when the store holds — the box moved, so the layout did', () => {
+    const s = make(400, 400, 2)
+    const before = paintRequests
+    s.setSize(480, 470)
+    expect([s.canvas.width, s.canvas.height]).toEqual([800, 800])
+    expect(paintRequests).toBe(before + 1)
+    s.dispose()
+  })
+
+  it('resettle cuts the store exact — motion is approximate, rest is exact', () => {
+    const s = make(400, 400, 2)
+    s.setSize(480, 470)
+    expect([s.canvas.width, s.canvas.height]).toEqual([800, 800])
+    s.resettle()
+    expect([s.canvas.width, s.canvas.height]).toEqual([960, 940])
+    expect(cssSize(s.canvas)).toEqual([480, 470])
+    s.dispose()
+  })
+
+  it('resettle at rest changes nothing and still costs one paint at most', () => {
+    const s = make(400, 400, 2)
+    const before = paintRequests
+    s.resettle()
+    expect([s.canvas.width, s.canvas.height]).toEqual([800, 800])
+    expect(paintRequests).toBe(before + 1)
     s.dispose()
   })
 

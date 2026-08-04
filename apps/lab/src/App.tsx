@@ -6,14 +6,15 @@ import { Workspace, WorkspaceHud } from './scenes/Workspace'
 import { Glass } from './scenes/Glass'
 import { FlightApp } from './scenes/Flight'
 import { Explode, ExplodeHud } from './scenes/Explode'
+import { PassageApp } from './scenes/Passage'
 
-// Four scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
-// flight drag trilogy, exploded-paint inspector. Everything they render
-// reaches the library through the `anamorph` barrel — this app is the proof
-// that the public surface is sufficient.
+// Five scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
+// flight drag trilogy, exploded-paint inspector, passage route transition.
+// Everything they render reaches the library through the `anamorph` barrel —
+// this app is the proof that the public surface is sufficient.
 
-type SceneId = 'workspace' | 'glass' | 'flight' | 'explode'
-const SCENES = ['workspace', 'glass', 'flight', 'explode'] as const
+type SceneId = 'workspace' | 'glass' | 'flight' | 'explode' | 'passage'
+const SCENES = ['workspace', 'glass', 'flight', 'explode', 'passage'] as const
 
 const FOOTERS: Record<SceneId, string> = {
   workspace:
@@ -23,6 +24,8 @@ const FOOTERS: Record<SceneId, string> = {
   flight: 'drag a card off the board · throw it · ✕ to crumple it',
   explode:
     'one div, no children, six plates · orbit to see the depths · drag spread to zero and it stacks back into the card',
+  passage:
+    'open a note · the card leaves the page and lays itself out again at every width on the way',
 }
 
 // Clicking a canvas normally moves focus to <body>, which would blur
@@ -101,7 +104,12 @@ export default function App() {
     )
   }
 
+  // Two scenes are not scenes in the shared canvas — they ARE pages, with
+  // their own overlay canvas on top. The others are content inside one 3D
+  // room; these invert the relationship, so they take the whole route and
+  // carry the scene chips themselves.
   if (scene === 'flight') return <FlightApp chips={chips} />
+  if (scene === 'passage') return <PassageApp chips={chips} />
 
   return (
     <div className="app">

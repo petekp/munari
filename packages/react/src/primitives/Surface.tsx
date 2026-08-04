@@ -10,6 +10,7 @@ import {
   clearPointerState,
   createDomTextureSource,
   deepestElementAt,
+  filterPolicy,
   forwardPointer,
   maxTier,
   measureSurfaceChrome,
@@ -23,6 +24,7 @@ import {
   trackDrag,
   trackFocusModality,
   trackWheel,
+  uploadNeedsRealloc,
   type DomTextureSource,
   type SurfaceChrome,
 } from '@anamorph/core'
@@ -224,6 +226,10 @@ export interface SurfaceProps extends Omit<ThreeElements['mesh'], 'children' | '
 // cohort on the same frame.
 const LOD_EVERY = 10
 const LOD_AGREE = 2
+// Frames of an unmoving box before the backing store is cut exact. ~67ms at
+// 120Hz — over before a landed card is read, long enough that a spring's
+// last sub-pixel twitches don't each buy a re-cut.
+const QUIET_FRAMES = 8
 let lodSeq = 0
 const _camPos = new THREE.Vector3()
 const _surfPos = new THREE.Vector3()
@@ -300,11 +306,18 @@ export function Surface({
   const extraUploadsRef = useRef(0)
   // One-shot latch for onFirstUpload; re-arms when the source is recreated.
   const firstUploadFiredRef = useRef(false)
-  // paintCount at the moment setScale resized the canvas; -1 = none pending.
-  // The GL realloc below waits for the counter to move strictly PAST this
-  // (onpaint can't interleave mid-rAF, so count > mark ⟺ the post-resize
-  // paint itself has landed — not some same-frame unrelated self-paint).
-  const reallocAfterRef = useRef(-1)
+  // What the texture's GL storage was allocated FOR — the backing-store
+  // dimensions and the filter-policy pair that were true at the last
+  // allocation. null = nothing allocated yet. Every upload compares against
+  // this and reallocates on any disagreement (see the upload path).
+  const allocRef = useRef<{ width: number; height: number; mips: boolean } | null>(null)
+  // The settle watch. A resizing Surface's backing store is allowed to drift
+  // inside a density band (see `storeForBox`) so its pixels survive the
+  // resize; this counts the frames since the box last moved and cuts the
+  // store exact once it has stopped. QUIET_FRAMES is short enough to be over
+  // before anyone reads the landed card and long enough that a spring's last
+  // sub-pixel twitches don't each buy a re-cut.
+  const settleRef = useRef({ w: -1, h: -1, quiet: 0, settled: false })
   // Everything the source-creation effect needs to READ but must not RE-RUN
   // for. See that effect's dependency note — it is the most consequential
   // line in this file.
@@ -554,7 +567,7 @@ export function Surface({
 
     lastUploadRef.current = -1
     extraUploadsRef.current = 0
-    reallocAfterRef.current = -1
+    allocRef.current = null
     firstUploadFiredRef.current = false
     // New markup is different content: its chrome is unknown until it paints.
     chromeRef.current = EMPTY_CHROME
@@ -598,26 +611,20 @@ export function Surface({
   // (that would destroy live DOM state: focus, form values, selection).
   // Keyed on the RESOLVED scale, not the prop: 'max' re-resolves when
   // width/height change, and this effect is how the new answer lands.
+  //
+  // Neither branch touches the texture: the upload path reallocates on any
+  // disagreement with what the storage was allocated for, and `pinned` is
+  // half of that pair, so a pin/unpin that lands on the SAME tier gets fresh
+  // storage too — the one case the old paint-count mark could not express
+  // (it fired only on a scale CHANGE, so a same-tier pin used to keep
+  // whatever mip count texStorage2D baked at birth: trilinear sampling with
+  // no pyramid to sample, or none with a pin asking for one). The repaint is
+  // what carries it there — an idle Surface has no other reason to upload.
   useEffect(() => {
     const source = sourceRef.current
-    if (pinnedScale !== null && source) {
-      const prev = source.scale()
-      source.setScale(pinnedScale)
-      if (source.scale() !== prev) reallocAfterRef.current = source.paintCount()
-      // Scale unchanged means no realloc will fire, but the pin itself
-      // changes the filter policy (pinned textures carry mips) — apply now.
-      // (Caveat: on a texture first allocated WITHOUT mips this is inert —
-      // texStorage2D fixes the level count at first upload — so a same-tier
-      // pin only gains real mips after the next realloc. Pins that change
-      // the tier, the common case, realloc and get the full pyramid.)
-      else if (texture) applyFilterPolicy(texture, pinnedScale, true)
-    } else if (source && texture) {
-      // Unpin: hand filtering back to the dynamic policy. Without this, a
-      // switch to auto that lands on the SAME tier never reallocs, and the
-      // texture keeps trilinear mips — blurring every partial-minification
-      // view that a fresh density-matched raster would render sharp.
-      applyFilterPolicy(texture, source.scale(), false)
-    }
+    if (!source) return
+    if (pinnedScale !== null) source.setScale(pinnedScale)
+    source.repaint()
   }, [pinnedScale, texture])
 
   // Size changes re-LAYOUT in place, for the same reason resolution re-rasters
@@ -627,17 +634,15 @@ export function Surface({
   // inside. A Surface whose size is *measured* rather than authored resizes
   // constantly, so that had to stop being a teardown.
   //
-  // The realloc mark is the same one setScale uses: three allocates
-  // CanvasTexture storage immutably at first-upload dimensions, so any change
-  // to the backing store needs a dispose on the first upload after the
-  // post-resize paint lands (decisions #10).
+  // Nothing is marked for the GL side here either. A resize moves the canvas's
+  // backing store, and the upload path notices that by comparing it to the
+  // allocation — which matters most exactly where a mark is weakest, because a
+  // Surface whose size is measured can resize EVERY frame (see the realloc
+  // note in the upload path).
   useEffect(() => {
     const source = sourceRef.current
     if (!source || !texture) return
-    const [prevW, prevH] = source.size()
     source.setSize(width, height)
-    const [nextW, nextH] = source.size()
-    if (nextW !== prevW || nextH !== prevH) reallocAfterRef.current = source.paintCount()
   }, [width, height, texture])
 
   // Re-measure chrome on the compositor's own change signal — the paint that
@@ -657,6 +662,21 @@ export function Surface({
   useFrame(() => {
     const source = sourceRef.current
     if (!source || !texture) return
+    // The settle. While the box moves, the store is allowed to drift inside
+    // the density band so the canvas keeps its pixels across every resize;
+    // the moment it stops, that tolerance has served its purpose and the
+    // store is cut exact. Motion is approximate, rest is exact — and rest is
+    // the vantage the whole library calibrates for.
+    const settle = settleRef.current
+    if (settle.w !== width || settle.h !== height) {
+      settle.w = width
+      settle.h = height
+      settle.quiet = 0
+      settle.settled = false
+    } else if (!settle.settled && ++settle.quiet >= QUIET_FRAMES) {
+      settle.settled = true
+      source.resettle()
+    }
     // Dynamic LOD: every LOD_EVERY-th frame (phase-offset per instance),
     // compare projected screen density — device px per CSS px — against the
     // current tier; setScale re-rasters through the normal onpaint path, so
@@ -687,7 +707,6 @@ export function Surface({
                 lod.tier = proposal
                 lod.agree = 0
                 source.setScale(proposal)
-                reallocAfterRef.current = source.paintCount()
               }
             } else {
               lod.proposed = proposal
@@ -697,27 +716,49 @@ export function Surface({
         }
       }
     }
-    // A committed setScale resized the canvas backing store. three allocates
-    // GL texture storage immutably (texStorage2D) at FIRST-upload dimensions
-    // and texSubImage2Ds every upload after — against a resized canvas, a
-    // shrink lands the whole re-raster in one corner of the stale texture
-    // (the LOD ghost) and a grow fails GL_INVALID_VALUE, silently keeping
-    // the old texels. dispose() exactly once, on the first upload after the
-    // post-resize paint has landed, so three reallocates at the new size —
-    // never from the swap frame itself, where the canvas is still a cleared,
-    // unpainted backing store. The filter policy rides the same moment: the
-    // realloc picks its mip-level count from generateMipmaps at alloc time.
     const count = source.paintCount()
-    if (reallocAfterRef.current >= 0 && count > reallocAfterRef.current && source.painted()) {
-      texture.dispose()
-      applyFilterPolicy(texture, source.scale(), pinnedScaleRef.current !== null)
-      reallocAfterRef.current = -1
-    }
     // Every upload funnels through here so the first-upload latch cannot
     // care which path wins — and "first upload" is the only honest readiness
     // signal a handoff can gate on (see the onFirstUpload prop).
     const upload = () => {
       if (!source.painted()) return
+      // three allocates GL texture storage IMMUTABLY (texStorage2D) at
+      // first-upload dimensions and texSubImage2Ds every upload after,
+      // without ever re-reading the canvas. So an upload into storage that
+      // was allocated for a different size is wrong in one of two silent
+      // ways: a shrink succeeds and lands the whole re-raster in one corner
+      // of the stale texture (the LOD ghost), a grow is rejected outright
+      // (GL_INVALID_VALUE) and the old texels stay on screen. Neither raises.
+      // The mip count bakes at allocation too, so the mip decision is the
+      // other half of this comparison — and only the mip decision, not the
+      // tier: which tier a texture carries changes nothing about its
+      // allocation now that the backing store floats inside a density band
+      // (`storeForBox`), and keying on it would dispose the texture on every
+      // frame of a Surface that follows its own depth.
+      //
+      // Compared HERE, against the canvas this upload is about, rather than
+      // marked at the resize and deferred: the mark version could not
+      // survive a Surface that resizes every frame (a card whose layout
+      // width is swept from a tile's box to an article's box). Every commit
+      // re-armed the mark to the current paint count, so "wait for the
+      // counter to pass the mark" chased its own tail — traced at the GL
+      // boundary as one ALLOC 308x324 followed by a hundred and twenty
+      // rejected uploads growing to 811x498, ending in a lost context. A
+      // comparison has nothing to re-arm.
+      const store = { width: source.canvas.width, height: source.canvas.height }
+      const pinned = pinnedScaleRef.current !== null
+      const mips = filterPolicy(pinned).mips
+      const alloc = allocRef.current
+      if (!alloc) {
+        // Nothing allocated yet — this upload IS the allocation. Only record
+        // what it will be made of; disposing here would throw away the
+        // filter policy applied at birth.
+        allocRef.current = { ...store, mips }
+      } else if (uploadNeedsRealloc(alloc, store) || alloc.mips !== mips) {
+        texture.dispose()
+        applyFilterPolicy(texture, source.scale(), pinned)
+        allocRef.current = { ...store, mips }
+      }
       texture.needsUpdate = true
       if (firstUploadFiredRef.current) return
       firstUploadFiredRef.current = true

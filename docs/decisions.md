@@ -103,6 +103,31 @@ position in a longer sequence of experiments. The numbers outlived the
 sequence, so they were replaced with names that say what each scene
 proves.
 
+**Amended 2026-08-04 — five, and the rule is unchanged.** Two scenes
+joined, each admitted on the same terms: it proves something no other
+scene does, and it is a standing consumer of the public barrel.
+
+- **explode — the paint order.** One childless `div` decomposed into
+  its own paint layers (shadow, background, border, text) as separate
+  plates in true CSS paint order. It is the only consumer of the node
+  door (#13) and of the padded-wrapper capture (platform.md #9), and
+  the only thing in the tree that treats a paint record as something
+  with *parts*.
+- **passage — the layout engine in flight.** A route transition where
+  the transitioning element re-lays-itself-out at every intermediate
+  width, because a Surface's size is a layout input and container
+  queries answer it (platform.md #11). The claim is comparative and the
+  scene ships the comparison: the same click runs through
+  `document.startViewTransition` behind a toggle, which captures the
+  old state as a static image. This scene is what bought #14 and #15 —
+  it is the tree's only Surface that resizes on every frame, and both
+  bugs were invisible until something did.
+
+The count is not the decision; "a scene exists to prove a claim, and a
+scene that proves nothing the others don't is deleted" is. A sixth needs
+the same argument, and any of these five stops earning its place the
+moment its claim is pinned somewhere cheaper.
+
 ## #4 — Core speaks in shapes; three satisfies them (2026-08-02)
 
 **Decision.** `@anamorph/core` cannot import `three` (zero-dep,
@@ -420,3 +445,145 @@ Proven on a planted violation: deleting the parent check fails three of
 them, and one fails specifically because the live node had been moved
 out of its parent — the bug, reproduced. The remount case was written
 red before release existed, and failed with the refusal itself.
+
+## #14 — Immutable storage is reconciled by comparison, not by schedule (2026-08-04, paint layer)
+
+**What.** A Surface reallocates its GL texture storage from inside the
+upload path, by comparing the canvas it is about to upload against what
+the storage was allocated for — dimensions and filter-policy pair. No
+resize, scale change or pin marks anything for later.
+
+**The law it enforces.** `texStorage2D` is immutable. three allocates a
+`CanvasTexture` once at first-upload dimensions and `texSubImage2D`s
+every upload after, without ever re-reading the canvas. So an upload
+into storage allocated for a different size is wrong in one of two
+silent ways: a shrink *succeeds*, landing the whole re-raster in one
+corner of the stale texture and leaving the previous frame around it
+(the LOD ghost); a grow is rejected outright — `GL_INVALID_VALUE:
+glTexSubImage2DRobustANGLE: Offset overflows texture dimensions` — and
+the old texels stay on screen. Neither raises in JS. The mip count bakes
+at allocation as well, so the mip DECISION is the other half of the
+comparison — and only the mip decision, not the tier that implies it
+(see the amendment under Cost).
+
+**Why not a mark.** It was a mark, and the mark was right for the
+resizes it was written for: `paintCount` at the moment of the resize,
+dispose on the first upload to arrive after the counter moved past it —
+deliberately never from the swap frame itself, where the canvas is a
+cleared, unpainted backing store. That reasoning holds for an
+*occasional* resize. It cannot survive a continuous one. The passage lab
+flies a card whose layout width is swept from a tile's box to an
+article's box, resizing its Surface on every frame of the flight; every
+commit re-armed the mark to the current paint count, so "wait for the
+counter to pass the mark" chased its own tail. Traced at the GL
+boundary: one `ALLOC 308x324`, then a hundred and twenty uploads growing
+to `811x498`, every one rejected, ending in a lost context — while the
+scene's own instruments reported a healthy flight, because from the DOM
+side it *was* one.
+
+**Why comparison is the stronger form.** A mark is a claim about the
+future ("something will need to happen later"); the thing that owns that
+claim is the resize, which does not know how many more resizes are
+coming. A comparison is a claim about the present, made by the only code
+that knows both operands — the upload, holding the canvas and the
+allocation. It has nothing to re-arm and cannot be outrun, and it
+subsumes all three arming sites (`setSize`, LOD `setScale`, pinned
+`setScale`) plus one case none of them could express: a pin or unpin
+that lands on the *same* tier now gets fresh storage, where before it
+kept whatever mip count was baked at birth — trilinear sampling with no
+pyramid to sample from, or a pin asking for one and never getting it.
+That was a documented caveat in the code. It is now just gone.
+
+**Cost.** A comparison per upload, and an allocation whenever the
+answer changes. Measured on the passage flight at 120Hz: idle median
+8.3ms, flight median 8.3ms, p95 10.1, max 17.1, zero frames over 20ms.
+An idle Surface asks the same question and is told no.
+
+**Amended the same night, by #15.** As first written, this compared the
+whole `(pinned, tier)` pair through `filterPolicyTransition`, on the
+reasoning that the tier is what sizes the store. #15 severed that: the
+store now floats inside a density band, so the tier no longer decides
+the allocation and keying on it would dispose the texture on every frame
+of a Surface that follows its own depth — the passage card asks for a
+new density every frame. What actually bakes into an allocation is the
+dimensions and the mip count, so those are what is compared, and
+`filterPolicy(pinned).mips` is read directly. #15 also made the
+allocation rare: four for a whole flight, where this entry as written
+produced one per frame.
+
+**Evidence.** `tests/conformance/paint/textureStorage.test.ts` — seven
+cases in the `uploadNeedsRealloc` block, including the regression as a
+loop (a hundred and twenty frames of a growing box, asserting the
+allocation equals the store after every single upload, never one frame
+behind) and its complement (six hundred
+frames of a Surface that only repaints: one allocation). In the browser,
+the same GL trace that convicted the mark now shows every `ALLOC` paired
+with an upload at its own dimensions, and a full round trip — out and
+back — drains 478 frames of `getError()` with nothing in them.
+
+## #15 — The backing store floats inside a density band; rest is exact (2026-08-04, paint layer)
+
+**What.** A paint source's canvas is no longer cut to `box × scale` on
+every resize. `storeForBox` keeps the store it has as long as the
+density it supplies — `store / box`, per axis — is within ±40% of the
+density that was asked for, and re-cuts exactly only when it drifts
+out. The CSS box is still moved exactly, every time. When the box stops
+moving, `resettle()` cuts the store exact again; `Surface` calls it
+after eight quiet frames.
+
+**The measurement that forced it.** Writing `canvas.width` CLEARS the
+backing store, and the paint that refills it is the compositor's to
+schedule — it lands after the frame that asked. A Surface resized every
+frame therefore uploads a *blank* canvas every frame. Traced on the
+passage flight, sampling the parked canvas at every rAF: coverage
+**0/576 on 38 of 40 frames**. The two exceptions are the tell — both
+were frames whose width happened to repeat, and on those the canvas was
+full.
+
+This had been invisible for as long as it existed, because #14's bug was
+covering it: the uploads GL was rejecting were the blank ones, so the
+stale texels it refused to overwrite were the only thing on screen.
+Fixing the storage bug made the card render its actual texture, and its
+actual texture was nothing. **The first correct frame is what showed the
+second bug** — worth remembering the next time a fix appears to make
+something worse.
+
+**Why a band is the right shape.** A canvas is not a framebuffer that
+has to match its box. `drawElementImage` replays paint records scaled by
+the backing/CSS ratio (platform.md #8), so a store that merely fits
+loosely rasters the same layout at a slightly different density — and
+density is a budget this library already spends deliberately, all the
+way down to an LOD ladder. Letting it float converts a per-frame clear
+into a handful: measured over the flight, **four allocations for 120
+frames**, and every upload full. What does NOT float is the box. The
+subtree still lays out at exactly the size it was given on every frame,
+which is the entire point of a resizable Surface — only the number of
+texels spent on the answer drifts.
+
+**Why rest is exact.** ±40% is a real softness, and #1 commits this
+library to crispness as a *rest state*. A band with no settle would
+leave a landed card under-supplied forever, with nothing to knock it
+back out of tolerance. So the tolerance is scoped to motion: eight quiet
+frames (~67ms at 120Hz — over before anyone reads the card, long enough
+that a spring's last sub-pixel twitches don't each buy a re-cut) and the
+store is cut exact. Measured on a held flight: density 1.006 against an
+asked-for 1.175, then 1.175 after the quiet.
+
+**Why the re-cut carries the raster forward.** A re-cut still clears. It
+is rare now, but rare is not never, and a blank frame in the middle of a
+flight is exactly the artifact this entry exists to remove. So `recut`
+blits the old store into the new one before asking for the paint,
+stretched from old dimensions to new. Both hold the same element box, so
+the stretch IS the density change and nothing else — one frame of
+slightly-wrong sharpness in place of one frame of nothing.
+
+**Evidence.** `storeForBox`'s eight conformance cases, including the
+flight as a loop (120 frames of a growing box: 120 exact-fit re-cuts
+become at most 5) and the axis case (either axis leaving the band re-cuts
+both, because writing either attribute clears the whole canvas). The
+`createDomTextureSource sizing` suite gained four: the store holding
+through an absorbable resize, the paint still being requested when it
+holds, and `resettle` in both states. In the browser: coverage 576/576 on
+every frame of a flight, four `ALLOC`s in the GL trace, zero
+`getError()` across a 479-frame round trip, idle paints still zero, and
+frame timing unchanged (median 8.3ms, max 17.1, none over 20).

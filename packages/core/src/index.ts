@@ -54,6 +54,12 @@ export {
   type FilterPolicy,
   type PolicyState,
 } from './paint/filterPolicy'
+export {
+  DENSITY_BAND,
+  storeForBox,
+  uploadNeedsRealloc,
+  type TextureStore,
+} from './paint/textureStorage'
 
 // pointer — provenance + the pointer-exit protocol
 export { relay, isRelayed } from './pointer/relay'

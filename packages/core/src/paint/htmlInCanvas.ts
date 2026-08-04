@@ -32,6 +32,8 @@
 // exists — the kernel stamps nothing on `window`; consumers import
 // `paintStats` and hang it wherever their console story wants it.
 
+import { storeForBox } from './textureStorage'
+
 export interface HtmlInCanvasSupport {
   drawElementImage: boolean
   texElementImage2D: boolean
@@ -76,7 +78,13 @@ export interface DomTextureSource {
   element: HTMLElement
   /** Force a repaint request (rarely needed — see paintCount). */
   repaint: () => void
-  /** Current texture scale (backing-store px per CSS px). */
+  /**
+   * The texture scale that was ASKED for, in backing-store px per CSS px.
+   * The density actually delivered is `canvas.width / size()[0]`, which is
+   * allowed to drift inside a band while the box is moving (`storeForBox`)
+   * and is cut back to this on `resettle`. The ladder reasons about the
+   * request; the canvas carries the drift.
+   */
   scale: () => number
   /** Current CSS size of the subtree's layout box. */
   size: () => readonly [number, number]
@@ -95,10 +103,23 @@ export interface DomTextureSource {
    * its backing store together so the effective raster scale is unchanged.
    * Unlike `setScale` this DOES relayout the subtree — that is the point: a
    * content-fitted Surface hugs whatever the DOM measured. Rides the same
-   * onpaint path, so callers holding a texture must mark the realloc exactly
-   * as they do for `setScale`.
+   * onpaint path. Callers holding a GL texture must reallocate its storage
+   * when the backing store moves — including here, and including a Surface
+   * that resizes every frame, which is why the answer is a comparison at
+   * upload time (`uploadNeedsRealloc`) rather than a mark taken here.
    */
   setSize: (w: number, h: number) => void
+  /**
+   * Re-cut the backing store to EXACTLY the current box and density,
+   * ignoring the band `setSize`/`setScale` are allowed to drift inside.
+   *
+   * The band exists to keep a moving Surface's pixels alive across a resize;
+   * it has no business surviving into rest, where a card can be left up to
+   * 40% under-supplied with nothing to knock it back out of tolerance.
+   * Callers settle a Surface once its box stops moving — motion is
+   * approximate, rest is exact.
+   */
+  resettle: () => void
   /** True once at least one paint has succeeded. */
   painted: () => boolean
   /**
@@ -208,8 +229,9 @@ export function createDomTextureSource(
   const { label = `source-${sourceSeq++}`, onError } = options
   let scale = clampRawScale(options.scale ?? 1)
   const canvas = document.createElement('canvas') as TrialCanvas
-  canvas.width = Math.max(1, Math.round(width * scale))
-  canvas.height = Math.max(1, Math.round(height * scale))
+  const born = storeForBox(width, height, scale, null)
+  canvas.width = born.width
+  canvas.height = born.height
   canvas.layoutSubtree = true
   // Must stay in-document AND on-screen to get paint records — off-screen
   // (left:-10000px) canvases are skipped by the compositor and never paint.
@@ -240,10 +262,15 @@ export function createDomTextureSource(
     try {
       // The replay is auto-scaled by the canvas's backing/CSS ratio, and any
       // CTM multiplies ON TOP of that (measured with position-marker dots:
-      // effective = ratio × CTM at every k — platform.md #8). setScale sets
-      // the ratio, so the CTM must stay identity here or the scale applies
-      // twice (k² — the crop-to-top-left bug). Identity is still asserted
-      // per paint because a resize resets context state.
+      // effective = ratio × CTM at every k — platform.md #8). The ratio IS
+      // the raster density, so the CTM must stay identity here or the scale
+      // applies twice (k² — the crop-to-top-left bug). Identity is still
+      // asserted per paint because a resize resets context state.
+      //
+      // This is also why the store may sit at a size the box did not ask for
+      // (`storeForBox`): the element is replayed to FILL whatever store it
+      // finds, so a store held across a resize simply rasters the new layout
+      // at a slightly different density. The box is exact; the texels float.
       ctx.setTransform(1, 0, 0, 1, 0, 0)
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       ctx.drawElementImage(element, 0, 0)
@@ -256,6 +283,52 @@ export function createDomTextureSource(
       onError?.(err)
     }
   }
+  // The only place the backing store is allowed to move. Everything else —
+  // a resize, a scale change — moves the CSS box and asks for a paint; the
+  // store follows only when the density it supplies has drifted out of the
+  // band (see `storeForBox`).
+  //
+  // Writing `canvas.width` CLEARS the store, and the paint that refills it is
+  // the compositor's to schedule: it lands after the frame that asked. So a
+  // re-cut always hands the old raster forward, stretched from the old store
+  // to the new one. Both hold the same element box, so the stretch is exactly
+  // the density change and nothing else — one frame of slightly-wrong
+  // sharpness instead of one frame of nothing. (Copying through a scratch
+  // canvas because a canvas cannot be drawn into itself across a resize: the
+  // resize is what destroys the pixels being copied.)
+  const recut = (exact = false) => {
+    const next = storeForBox(
+      width,
+      height,
+      scale,
+      exact ? null : { width: canvas.width, height: canvas.height },
+    )
+    if (next.width !== canvas.width || next.height !== canvas.height) {
+      let keep: HTMLCanvasElement | null = null
+      // Carrying the raster forward is a picture, not a contract: under a DOM
+      // stub with no rasterizer (happy-dom, where the conformance suite runs)
+      // there are no pixels to save and no blitter to save them with. Skip it
+      // there rather than make every caller carry a mock.
+      if (ok && typeof ctx.drawImage === 'function') {
+        const scratch = document.createElement('canvas')
+        scratch.width = canvas.width
+        scratch.height = canvas.height
+        const kctx = scratch.getContext('2d')
+        if (kctx && typeof kctx.drawImage === 'function') {
+          kctx.drawImage(canvas, 0, 0)
+          keep = scratch
+        }
+      }
+      canvas.width = next.width
+      canvas.height = next.height
+      if (keep) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        ctx.drawImage(keep, 0, 0, keep.width, keep.height, 0, 0, next.width, next.height)
+      }
+    }
+    canvas.requestPaint()
+  }
+
   canvas.requestPaint()
 
   return {
@@ -269,12 +342,7 @@ export function createDomTextureSource(
       if (next === scale) return
       scale = next
       stats.scale = next
-      // Resizing clears the backing store, but nothing uploads the blank:
-      // consumers only upload after paintCount advances, which happens when
-      // the requested paint below completes with the fresh raster.
-      canvas.width = Math.max(1, Math.round(width * next))
-      canvas.height = Math.max(1, Math.round(height * next))
-      canvas.requestPaint()
+      recut()
     },
     // Note `width = w` / `height = h`: the parameters are the closed-over
     // source of truth that setScale multiplies, so a resize that fails to
@@ -289,10 +357,9 @@ export function createDomTextureSource(
       height = nh
       canvas.style.width = `${nw}px`
       canvas.style.height = `${nh}px`
-      canvas.width = Math.max(1, Math.round(nw * scale))
-      canvas.height = Math.max(1, Math.round(nh * scale))
-      canvas.requestPaint()
+      recut()
     },
+    resettle: () => recut(true),
     painted: () => ok,
     paintCount: () => stats.paints,
     dispose: () => {
