@@ -68,7 +68,11 @@ interface TrialContext2D extends CanvasRenderingContext2D {
 export interface DomTextureSource {
   /** The 2D canvas receiving the rasterized DOM — feed this to CanvasTexture. */
   canvas: HTMLCanvasElement
-  /** The live DOM element being rasterized. Mutate it; changes show up. */
+  /**
+   * The live DOM element being rasterized. Mutate it; changes show up.
+   * The source owns it — parsed from markup or adopted from the caller —
+   * and `dispose()` takes it down with the canvas.
+   */
   element: HTMLElement
   /** Force a repaint request (rarely needed — see paintCount). */
   repaint: () => void
@@ -161,13 +165,17 @@ export class UnsupportedPlatformError extends Error {
 }
 
 /**
- * Mounts `markup` as a live DOM subtree inside a hidden layout-canvas and
+ * Mounts `content` as a live DOM subtree inside a hidden layout-canvas and
  * rasterizes it on every repaint() via drawElementImage.
  *
+ * `content` is either markup to parse or an **unparented element to adopt**
+ * — see `adoptContent` for why adoption refuses anything with a parent.
+ *
  * @throws {UnsupportedPlatformError} when the origin trial is absent.
+ * @throws {Error} when an element with a parent is handed over.
  */
 export function createDomTextureSource(
-  markup: string,
+  content: string | HTMLElement,
   width: number,
   height: number,
   options: DomTextureSourceOptions = {},
@@ -191,6 +199,12 @@ export function createDomTextureSource(
     )
   }
 
+  // Resolve the subtree BEFORE building anything, for the same reason the
+  // capability gate is ordered first: a refused source must own no DOM.
+  // Parsing markup only touches a detached host div, and adoption only reads
+  // `parentNode`, so nothing here is visible to the page if this throws.
+  const element = adoptContent(content)
+
   const { label = `source-${sourceSeq++}`, onError } = options
   let scale = clampRawScale(options.scale ?? 1)
   const canvas = document.createElement('canvas') as TrialCanvas
@@ -206,9 +220,6 @@ export function createDomTextureSource(
     `position:fixed;left:0;top:0;z-index:-1;pointer-events:none;` +
     `width:${width}px;height:${height}px;`
 
-  const host = document.createElement('div')
-  host.innerHTML = markup
-  const element = (host.firstElementChild ?? host) as HTMLElement
   // Re-root the pointer-events cascade. The canvas above is `none` so real
   // hit-testing can never wander into a parked subtree — but that value
   // inherits, and the forwarder's own hit test reads the computed one. Left
@@ -290,6 +301,50 @@ export function createDomTextureSource(
       registry.delete(stats)
     },
   }
+}
+
+/**
+ * The subtree a source will rasterize: markup gets parsed, an element gets
+ * **adopted**.
+ *
+ * Markup is the convenient door and stays the common one. Adoption exists
+ * because some subtrees cannot survive a round trip through `innerHTML` —
+ * a plate in an exploded-paint teardown is a `cloneNode` of a live page
+ * element, wrapped in padding to defeat the border-box clip (platform.md
+ * #9) and carrying an injected neutralizing stylesheet. Serializing that
+ * back to a string would throw away everything the consumer just built,
+ * and re-parsing it would produce a *different* subtree than the one they
+ * measured.
+ *
+ * **Adoption is one-way, and only an unparented node may cross.**
+ * `canvas.appendChild` MOVES a node — it does not copy it. An element that
+ * is still in the consumer's page would be silently torn out of it,
+ * mid-frame, with their layout reflowing around the hole and no error
+ * anywhere to say why. That is precisely the shape of bug this kernel
+ * refuses to leave findable-by-debugging: requiring the node to be
+ * parentless makes it unwritable instead. A consumer who wants to capture
+ * something they are still displaying passes `node.cloneNode(true)`, which
+ * is what a plate wanted in the first place.
+ *
+ * Once adopted the node belongs to the source: it is restyled
+ * (`pointer-events`), it is relaid out inside the canvas's box, and
+ * `dispose()` removes the canvas with the subtree still inside it.
+ */
+function adoptContent(content: string | HTMLElement): HTMLElement {
+  if (typeof content !== 'string') {
+    if (content.parentNode) {
+      throw new Error(
+        'anamorph: createDomTextureSource adopts only an unparented element — ' +
+          'the one handed over is still in a tree. Appending it here would MOVE ' +
+          'it out of that tree, not copy it. Pass node.cloneNode(true) instead, ' +
+          'or remove the node from its parent first if you meant to give it up.',
+      )
+    }
+    return content
+  }
+  const host = document.createElement('div')
+  host.innerHTML = content
+  return (host.firstElementChild ?? host) as HTMLElement
 }
 
 // Sane bounds on the raw scale option — a caller error (negative, zero,

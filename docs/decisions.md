@@ -373,3 +373,41 @@ half of the trial and not the context half, describing a browser that
 cannot exist; the gate correctly refused them. They now stub
 `CanvasRenderingContext2D` too — which happy-dom does not define as a
 global at all, the reason the probe reaches it through `typeof`.
+
+## #13 — The paint source has a node door, and it is adopt-only (2026-08-03, paint layer)
+
+**Decision.** `createDomTextureSource` takes `string | HTMLElement`.
+Markup is parsed as before; an element is **adopted** — and only if it
+has no parent. A parented element is refused with a message naming
+`cloneNode(true)`. Adoption is one-way: the source restyles the node,
+relayouts it inside the canvas box, and `dispose()` removes the canvas
+with the subtree still inside it. Nothing is handed back.
+
+**Why a node door at all.** Some subtrees cannot survive a round trip
+through `innerHTML`. An exploded-paint plate is a `cloneNode` of a live
+page element, wrapped in padding to defeat the border-box clip
+(platform.md #9), carrying an injected descendant-wide neutralizing
+stylesheet. The consumer assembles and *measures* that subtree; asking
+them to serialize it back to a string would discard the assembly and
+re-parse into a different object graph than the one they measured.
+
+**Why adoption refuses a parented node.** `appendChild` MOVES a node,
+it does not copy it. A consumer handing over an element still in their
+page would have it torn out mid-frame, their layout reflowing around
+the hole, with no error anywhere — the exact shape of bug this kernel
+spends its comments on: invisible in review, expensive to notice,
+found only by debugging. A parent check makes it unwritable instead.
+The refusal is ordered ahead of construction for the same reason the
+capability gate is (#12): a refused source owns no DOM, and the
+consumer's tree is left exactly as it was.
+
+**Why nothing is returned on dispose.** The alternative — put the node
+back where it came from — has nowhere to put it. The page never had
+this subtree; it had the original the consumer cloned. Ownership that
+transfers once and ends at `dispose()` is the only version with a
+single answer.
+
+**Evidence.** Nine cases in `tests/conformance/paint/htmlInCanvas.test.ts`.
+Proven on a planted violation: deleting the parent check fails three of
+them, and one fails specifically because the live node had been moved
+out of its parent — the bug, reproduced.

@@ -7,8 +7,9 @@ platform does, with the measurement that established it. Re-run these
 when Chrome moves; a surprise here invalidates a kernel layer, not
 just a test.
 
-Last measured **2026-08-02** against **Chrome 150.0.7871.187**, macOS,
-120Hz, dpr 1, launched with `--enable-features=CanvasDrawElement`.
+Last measured **2026-08-03** against **Chrome 150** (items 9–10; items
+1–8 on **150.0.7871.187**), macOS, 120Hz, dpr 1, launched with
+`--enable-features=CanvasDrawElement`.
 None of these items are dpr-sensitive — every probe pins its own
 scale — but capability chips (`drawElementImage ✓` /
 `texElementImage2D ✓`) must be verified on load before trusting any
@@ -25,6 +26,8 @@ of answers.
 | 6 | Rescaling commits one paint per LOD tier boundary crossed, and a focused field keeps caret and value across its own source's swap | workspace scene `approach('email')`: source 0.5→1.5, 8/11 moved sources paint exactly 1 (2-paint entries crossed two boundaries); glyphs visibly sharpen; focused textarea holds caret `[7,7]` + value |
 | 7 | **A `mask-image` on ANY descendant of a drawn element blacks out the whole capture** — solid black except independently composited descendants, with clean paints and no error. Even a mask computed to a fully opaque no-op gradient. (measured 2026-08-01) | panel wearing a `scroll-fade-*` utility: capture all black, `paintDelta` normal, no console error; removing the mask restores it |
 | 8 | Replay is position-aware: a capture at scale k lands at k× position and k× size under an identity CTM | standalone source, 6px dot at CSS (20,30): k=0.5 → centroid (11.5,16.5) size 3; k=3 → centroid (69,99) size 18 |
+| 9 | **The capture is clipped to the DRAWN element's border box** — ink outside it (shadow, outline, escaping absolute child, `filter: drop-shadow` spread) is in the paint record and cut. Drawing a padded *wrapper* recovers it, because the clip follows whichever element was passed. (measured 2026-08-03, headless and headed identical) | 200×120 div, `box-shadow: 0 60px 0 0 red`: drawn bare → **0** red px; the same div inside `padding: 100px`, drawing the wrapper → **12000** red px (= 200×60 exactly) at x 100–299, y 220–279. Body px 24000 both ways — the control: the wrapper changes nothing inside the box, only what survives outside it |
+| 10 | Only IMMEDIATE children of the trial canvas can be drawn — a page element and a *descendant* of a legitimate child are both refused, explicitly | `InvalidStateError: … Only immediate children of the <canvas> element can be passed to DrawElementImage`, 0 non-empty px in both cases |
 
 **Item 5 is half re-runnable.** The idle half is a committed instrument
 and a CI gate. The throughput half is not: the harness that produced
@@ -40,6 +43,20 @@ by whoever needs it next.
 source about twice a second. This is correct behavior, not a leak —
 but it means the idle-zero gate's probe pages must not hold focus
 inside a source.
+
+**Items 9 and 10 are the two halves of one shape.** Because only an
+immediate canvas child can be drawn, everything captured is necessarily
+a clone in its own parked canvas — which is why "we never touch the
+live page" is free rather than defended. And because the clip follows
+the *drawn* element, the way to capture ink that lives outside a box is
+to hand over a bigger box: wrap the clone in padding and draw the
+wrapper. Item 9 also retro-explains `chrome/surfaceChrome.ts`, which
+reconstructs a Surface's shadow analytically from `parseBoxShadow`
+rather than capturing it. That was not a stylistic preference — a
+Surface draws its content root, so its own shadow is cut at the border
+box and there is nothing to capture. The two answers are for different
+jobs and should not be merged: analytic chrome for a live Surface,
+a padded-wrapper capture when the shadow is itself the subject.
 
 Item 4 is the one that has cost the most: it is invisible in review
 (clean paints, no error) and self-heals on the next unrelated repaint,

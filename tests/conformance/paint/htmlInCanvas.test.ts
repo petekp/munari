@@ -233,6 +233,172 @@ describe('identity CTM — the backing ratio is the only scale', () => {
   })
 })
 
+// THE NODE DOOR. A source mounts markup OR adopts an element the consumer
+// already built.
+//
+// Adoption is not sugar. `drawElementImage` accepts only immediate children
+// of the trial canvas — measured 2026-08-03, with an explicit InvalidStateError
+// for a page element AND for a descendant of a legitimate child — so anything
+// captured is necessarily a clone living in its own parked canvas. An
+// exploded-paint plate is exactly that: a `cloneNode` of a live element,
+// wrapped in padding to defeat the border-box clip (platform.md #9), carrying
+// an injected descendant-wide neutralizing stylesheet. That subtree is
+// assembled by the consumer and cannot round-trip through `innerHTML`.
+//
+// The door is one-way BY CONSTRUCTION, and these cases are what makes it so:
+// `appendChild` MOVES a node, so a parented element handed over would be torn
+// out of the consumer's page with no error anywhere. Refusing it is the whole
+// point of the seam.
+describe('createDomTextureSource adopting a node', () => {
+  /** A plate as the consumer builds one: detached, already assembled. */
+  function plate(): HTMLElement {
+    const wrapper = document.createElement('div')
+    wrapper.style.padding = '100px'
+    const style = document.createElement('style')
+    style.textContent = '*{color:transparent !important}'
+    const card = document.createElement('div')
+    card.className = 'card'
+    card.textContent = 'live'
+    wrapper.append(style, card)
+    return wrapper
+  }
+
+  it('adopts the node ITSELF — identity survives, so the consumer can keep a handle', () => {
+    const node = plate()
+    const s = createDomTextureSource(node, 360, 460, { label: 'plate' })
+    // Not a copy, not a re-parse: the same object. A plate builder holds its
+    // wrapper to re-style or re-measure it after the source exists.
+    expect(s.element).toBe(node)
+    s.dispose()
+  })
+
+  it('carries the assembled subtree across intact', () => {
+    const node = plate()
+    const s = createDomTextureSource(node, 360, 460)
+    // The injected stylesheet and the card are both still there. This is what
+    // markup round-tripping would have cost: `innerHTML` on a detached wrapper
+    // serializes, and the re-parsed subtree is a different object graph than
+    // the one whose geometry the consumer measured.
+    expect(s.element.querySelector('style')?.textContent).toContain('color:transparent')
+    expect(s.element.querySelector('.card')?.textContent).toBe('live')
+    s.dispose()
+  })
+
+  it('parks the adopted node inside the canvas — the drawn element is a canvas CHILD', () => {
+    const node = plate()
+    const s = createDomTextureSource(node, 360, 460)
+    // The platform's hardest structural rule: only immediate children of the
+    // trial canvas can be drawn. An adopted node that landed anywhere else
+    // would fail at paint time with InvalidStateError, not here.
+    expect(node.parentNode).toBe(s.canvas)
+    s.dispose()
+  })
+
+  it('re-roots the pointer-events cascade on the adopted node too', () => {
+    const node = plate()
+    const s = createDomTextureSource(node, 360, 460)
+    // The parked canvas is `pointer-events: none` and that value INHERITS.
+    // The forwarder's hit test reads the computed style, so without this the
+    // whole plate would read as clear glass. The markup path has always done
+    // it; the node path is the same subtree and needs the same re-rooting.
+    expect(s.element.style.pointerEvents).toBe('auto')
+    s.dispose()
+  })
+
+  it('dispose takes the adopted subtree out of the document with the canvas', () => {
+    const node = plate()
+    const s = createDomTextureSource(node, 360, 460)
+    s.dispose()
+    // Adoption is ownership, and it does not reverse: the node leaves the
+    // document still inside its canvas, so the pair is collected together.
+    // A source that left its subtree in the document would leak one live
+    // parked tree per exploded plate — and handing the node BACK would be
+    // worse, since the consumer's page never had it in the first place.
+    expect(document.body.contains(s.canvas)).toBe(false)
+    expect(document.body.contains(node)).toBe(false)
+    expect(node.parentNode).toBe(s.canvas)
+  })
+
+  // THE REFUSAL. This is the case the seam exists for.
+  it('REFUSES an element that still has a parent, rather than moving it', () => {
+    const live = document.createElement('div')
+    document.body.appendChild(live)
+    let thrown: unknown
+    try {
+      createDomTextureSource(live, 360, 460)
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(Error)
+    // The message has to name the mechanism, because the symptom the consumer
+    // would otherwise see is their own page silently losing an element.
+    expect((thrown as Error).message).toMatch(/cloneNode/)
+    live.remove()
+  })
+
+  it('a refused node is left exactly where it was, and no canvas is parked', () => {
+    const host = document.createElement('section')
+    const live = document.createElement('div')
+    host.appendChild(live)
+    document.body.appendChild(host)
+    const canvasesBefore = document.body.querySelectorAll('canvas').length
+    try {
+      createDomTextureSource(live, 360, 460)
+    } catch {
+      /* expected */
+    }
+    // Refusal happens before construction: the consumer's tree is untouched
+    // and nothing was appended to the document to clean up.
+    expect(live.parentNode).toBe(host)
+    expect(document.body.querySelectorAll('canvas').length).toBe(canvasesBefore)
+    host.remove()
+  })
+
+  it('refuses a node parented to ANOTHER source, not just a page node', () => {
+    const first = createDomTextureSource('<div class="root"></div>', 360, 460)
+    // Re-adopting a live source's element would strip that source of the very
+    // subtree it rasterizes — a source that silently goes blank, which reads
+    // as a paint bug rather than as the double-adoption it is.
+    expect(() => createDomTextureSource(first.element, 360, 460)).toThrow(/unparented/)
+    expect(first.element.parentNode).toBe(first.canvas)
+    first.dispose()
+  })
+
+  it('the markup path is unchanged — a string still parses to its first element', () => {
+    const s = createDomTextureSource('<div class="root"><span>x</span></div>', 360, 460)
+    expect(s.element.className).toBe('root')
+    expect(s.element.parentNode).toBe(s.canvas)
+    expect(s.element.style.pointerEvents).toBe('auto')
+    s.dispose()
+  })
+
+  it('the ADOPTED NODE is the element drawn, through the ordinary paint path', () => {
+    const proto = HTMLCanvasElement.prototype
+    const original = proto.getContext
+    const drawn: unknown[] = []
+    proto.getContext = (() => ({
+      setTransform: () => {},
+      clearRect: () => {},
+      drawElementImage: (el: unknown) => void drawn.push(el),
+    })) as unknown as typeof proto.getContext
+    try {
+      const node = plate()
+      const s = createDomTextureSource(node, 360, 460)
+      // Nothing about the door is a second paint path: same onpaint, same
+      // counter, and the element handed to the platform is the consumer's own
+      // object — not a copy of it, which would rasterize a subtree they can
+      // no longer reach to update.
+      expect(s.paintCount()).toBe(0)
+      ;(s.canvas as unknown as StubCanvas).onpaint?.()
+      expect(s.paintCount()).toBe(1)
+      expect(drawn).toEqual([node])
+      s.dispose()
+    } finally {
+      proto.getContext = original
+    }
+  })
+})
+
 // The factory's answer when the platform is not there at all.
 //
 // Reproduced in Chrome 150 WITHOUT --enable-features=CanvasDrawElement
