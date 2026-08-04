@@ -46,7 +46,27 @@ import { useLatest } from './useLatest'
 // `material` is omitted from the mesh props because Surface owns the material
 // slot — the prop below redefines it as a mode, not an instance.
 export interface SurfaceProps extends Omit<ThreeElements['mesh'], 'children' | 'material'> {
-  html: string
+  /**
+   * The HTML this surface draws: markup to parse, or an element to **adopt**.
+   *
+   * Markup is the ordinary door, and `SurfaceApp` is the ordinary way to put
+   * a component tree behind it. An element is for a subtree the scene
+   * assembled itself and cannot serialize — an exploded-paint plate is a
+   * `cloneNode` of a live page element, padded to defeat the border-box clip
+   * (platform.md #9) and wearing an injected neutralizing stylesheet. Round
+   * -tripping that through `innerHTML` would discard the assembly and
+   * re-parse into a different object graph than the one that was measured.
+   *
+   * An adopted element must have no parent — the source MOVES it, so handing
+   * over something still on the page would tear it out (decisions.md #13).
+   * Pass `node.cloneNode(true)`. Custody ends when the Surface unmounts and
+   * the node is released unparented, so the same node may be handed over
+   * again — which is what a StrictMode remount does.
+   *
+   * Either form is birth-only content: a new string, or a new element
+   * identity, rebuilds the source from scratch.
+   */
+  html: string | HTMLElement
   /** Name for this surface in paint diagnostics (the source's `label`). */
   label?: string
   /** DOM pixel size of the source subtree (drives texture resolution). */
@@ -502,7 +522,11 @@ export function Surface({
   //
   // `html` is the one real dependency: new markup IS different content, and
   // rebuilding is the only way to be sure nothing from the old tree — a
-  // listener a scene attached in `onSource`, say — survives into it.
+  // listener a scene attached in `onSource`, say — survives into it. An
+  // adopted element compares by identity, which says the same thing: a
+  // different node is a different subtree. (Handing over the SAME node again
+  // is not a rebuild, so a plate that wants to re-capture mutates its node
+  // and lets the compositor's own paint signal carry it, like any Surface.)
   useEffect(() => {
     const source = createDomTextureSource(html, widthRef.current, heightRef.current, {
       label,

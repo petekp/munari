@@ -305,18 +305,35 @@ describe('createDomTextureSource adopting a node', () => {
     s.dispose()
   })
 
-  it('dispose takes the adopted subtree out of the document with the canvas', () => {
+  it('dispose RELEASES the node — it leaves unparented, exactly as it arrived', () => {
     const node = plate()
     const s = createDomTextureSource(node, 360, 460)
     s.dispose()
-    // Adoption is ownership, and it does not reverse: the node leaves the
-    // document still inside its canvas, so the pair is collected together.
-    // A source that left its subtree in the document would leak one live
-    // parked tree per exploded plate — and handing the node BACK would be
-    // worse, since the consumer's page never had it in the first place.
+    // Custody, not confiscation. The node is required to arrive unparented,
+    // so dispose returns it to that state and adoption is exactly invertible.
+    // Leaving it inside the dead canvas would be a resting state nobody owns:
+    // a consumer holding the node holds the canvas through it, so every
+    // disposed plate would leak its parked canvas.
     expect(document.body.contains(s.canvas)).toBe(false)
     expect(document.body.contains(node)).toBe(false)
-    expect(node.parentNode).toBe(s.canvas)
+    expect(node.parentNode).toBe(null)
+  })
+
+  // THE REMOUNT. React StrictMode mounts, cleans up, and mounts again — so a
+  // <Surface html={node}> adopts the SAME node twice, with a dispose between.
+  // Without release the second adoption sees a node parented to the first
+  // (detached) canvas and refuses it: the plate would throw on the second
+  // pass of every dev-mode mount, and the refusal would be *correct* by the
+  // rule while being nonsense in the situation. Release is what makes the
+  // rule and the lifecycle agree.
+  it('the same node can be re-adopted after dispose — a StrictMode remount', () => {
+    const node = plate()
+    const first = createDomTextureSource(node, 360, 460)
+    first.dispose()
+    const second = createDomTextureSource(node, 360, 460)
+    expect(second.element).toBe(node)
+    expect(node.parentNode).toBe(second.canvas)
+    second.dispose()
   })
 
   // THE REFUSAL. This is the case the seam exists for.

@@ -298,6 +298,15 @@ export function createDomTextureSource(
     dispose: () => {
       canvas.onpaint = null
       canvas.remove()
+      // Release the subtree. Custody was for the source's lifetime, and
+      // adoption required the node to arrive unparented — so it leaves that
+      // way, making adopt/dispose exactly invertible. Two things depend on
+      // it: a React remount (StrictMode mounts, cleans up, mounts again)
+      // re-adopts the same node and would otherwise be refused for being
+      // parented to the canvas that just died; and a consumer holding a node
+      // would hold its dead canvas through the parent pointer, leaking one
+      // parked canvas per disposed plate.
+      element.remove()
       registry.delete(stats)
     },
   }

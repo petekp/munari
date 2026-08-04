@@ -401,13 +401,22 @@ The refusal is ordered ahead of construction for the same reason the
 capability gate is (#12): a refused source owns no DOM, and the
 consumer's tree is left exactly as it was.
 
-**Why nothing is returned on dispose.** The alternative — put the node
-back where it came from — has nowhere to put it. The page never had
-this subtree; it had the original the consumer cloned. Ownership that
-transfers once and ends at `dispose()` is the only version with a
-single answer.
+**Why dispose releases the node.** Custody, not confiscation: the node
+is required to *arrive* unparented, so it leaves that way and adoption
+is exactly invertible. The first version of this entry said ownership
+never reverses and left the subtree inside the dead canvas. Two things
+say otherwise. React StrictMode mounts, cleans up, and mounts again, so
+a `<Surface html={node}>` adopts the same node twice with a dispose
+between — and the second adoption would be refused for a parent the
+source itself installed: correct by the rule, nonsense in the
+situation. And a consumer holding a released-in-name-only node holds
+its dead canvas through the parent pointer, leaking one parked canvas
+per disposed plate. Note what release does *not* mean: the node is not
+put back where it came from. The page never had this subtree — it had
+the original the consumer cloned.
 
-**Evidence.** Nine cases in `tests/conformance/paint/htmlInCanvas.test.ts`.
+**Evidence.** Ten cases in `tests/conformance/paint/htmlInCanvas.test.ts`.
 Proven on a planted violation: deleting the parent check fails three of
 them, and one fails specifically because the live node had been moved
-out of its parent — the bug, reproduced.
+out of its parent — the bug, reproduced. The remount case was written
+red before release existed, and failed with the refusal itself.
