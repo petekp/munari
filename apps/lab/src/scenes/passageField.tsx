@@ -1,0 +1,577 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
+import * as THREE from 'three'
+import { createDomTextureSource, type DomTextureSource } from 'anamorph'
+import { CROSS_DIP, CROSS_LIFT, FADE, HANDOVER, type FlightPart } from './passageParts'
+import type { Endpoint, Panel } from './passageMeasure'
+
+// The field: a whole card's worth of type, in one draw call.
+//
+// Every part of the card is an instance of the same unit quad. Its two boxes
+// (source layout, destination layout) and its two texture windows are
+// per-instance attributes, and the only thing that changes per frame is a
+// single float — `uT`. So a hundred words rearranging themselves costs the
+// same as one, and costs nothing on the CPU at all.
+//
+// That is not incidental to how it looks. Because every part reads the same
+// progress, they move in formation: the card reads as one object being
+// rearranged rather than as a hundred things that happen to be animating.
+// And because the whole flight is a pure function of `uT`, a spring that
+// turns around mid-air plays it backwards exactly, with no state to unwind.
+
+/**
+ * How much bigger than its own layout an endpoint's capture is cut.
+ *
+ * A shared-element flight has a supply problem the relayout version never
+ * had: the source card is captured at 308 px and then shown at up to 940,
+ * and a texture cannot invent the texels it was not given. The card at rest
+ * is crisp, the card in flight is soft, and no amount of filtering fixes it.
+ *
+ * But it does not need the whole range. The hand-over retires each capture at
+ * the point where it stops being the sharper of the two, so a capture is only
+ * ever magnified by the size ratio raised to a little past a half — not by
+ * the full ratio. On this card that is 2.0 rather than 3.05, and it is cut
+ * once at that density rather than re-rasterized 120 times.
+ *
+ * `LIFT_ZOOM` is the perspective the flight adds at the top of its arc; the
+ * card really is bigger on the display there than its own box says.
+ */
+const LIFT_ZOOM = 1.25
+
+export function captureScale(own: number, other: number, dpr: number): number {
+  const growth = other / Math.max(own, 1)
+  // Only the SMALLER endpoint is ever magnified; the larger one is only ever
+  // minified, and mipmaps are the right answer for that.
+  const zoom = growth > 1 ? Math.pow(growth, 0.5 + HANDOVER / 2) : 1
+  const wanted = dpr * zoom * LIFT_ZOOM
+  // The same texture guard `densityAt` uses — a warning per frame is its own
+  // kind of bug.
+  return Math.max(0.5, Math.min(wanted, 4000 / Math.max(1, own)))
+}
+
+/**
+ * A capture, uploaded once.
+ *
+ * `createDomTextureSource` is the same primitive a Surface is built on, used
+ * here for the one thing a Surface cannot do: hand over its texture without
+ * also being a mesh. These two captures are static by construction — the
+ * plate is unparented, nothing animates in it, and its `paintCount` stops
+ * advancing after the first paint or two — so this is an upload, not a feed.
+ *
+ * Mipmaps because a part is routinely drawn smaller than it was captured (the
+ * whole source card at t = 0 is 308 px of a texture cut for 940), and a
+ * minified glyph without them crawls.
+ */
+export function useCapture(
+  node: HTMLElement | null,
+  width: number,
+  height: number,
+  scale: number,
+): THREE.Texture | null {
+  const [tex, setTex] = useState<THREE.Texture | null>(null)
+  const src = useRef<DomTextureSource | null>(null)
+  const held = useRef<THREE.CanvasTexture | null>(null)
+  const seen = useRef(-1)
+
+  useEffect(() => {
+    if (!node || width <= 0 || height <= 0) return
+    let made: DomTextureSource
+    try {
+      made = createDomTextureSource(node, width, height, { label: 'passage-capture', scale })
+    } catch {
+      return
+    }
+    src.current = made
+    seen.current = -1
+    const t = new THREE.CanvasTexture(made.canvas)
+    held.current = t
+    // The measured boxes are top-down, the way layout reports them, so the
+    // texture is read top-down too. Flipping here rather than subtracting in
+    // three places in the shader.
+    t.flipY = false
+    t.colorSpace = THREE.SRGBColorSpace
+    t.anisotropy = 4
+    return () => {
+      setTex(null)
+      t.dispose()
+      made.dispose()
+      src.current = null
+      held.current = null
+    }
+  }, [node, width, height, scale])
+
+  // Published only once the capture HAS pixels. A texture handed over before
+  // its first paint is a blank card at the moment of the handoff, and the
+  // page copy has already been told to hide — the same class of flash
+  // `onFirstUpload` exists to prevent, arriving by a different door.
+  useFrame(() => {
+    const s = src.current
+    const t = held.current
+    if (!s || !t) return
+    const n = s.paintCount()
+    if (n === seen.current) return
+    seen.current = n
+    t.needsUpdate = true
+    if (n > 0 && t !== tex) setTex(t)
+  })
+
+  return tex
+}
+
+export const FIELD_VERT = /* glsl */ `
+attribute vec4 aBoxA;
+attribute vec4 aBoxB;
+attribute vec4 aUvA;
+attribute vec4 aUvB;
+attribute vec4 aMeta;
+
+uniform float uT;
+uniform float uFade;
+uniform float uHandover;
+uniform float uCrossLift;
+uniform float uCrossDip;
+uniform vec2 uCardA;
+uniform vec2 uCardB;
+
+varying vec2 vUvA;
+varying vec2 vUvB;
+varying float vPresence;
+varying float vHandover;
+
+void main() {
+  vec4 b = mix(aBoxA, aBoxB, uT);
+  vec2 card = mix(uCardA, uCardB, uT);
+
+  // The unit quad's uv, read as a position inside this part's box, in the
+  // layout's own coordinates — x right, y DOWN from the card's top-left. Then
+  // once into the card's centred, y-up world.
+  vec2 px = vec2(b.x + b.z * uv.x, b.y + b.w * (1.0 - uv.y));
+
+  // A part that is CROSSING the card — a word changing line — leaves the
+  // surface. Real z in the card's own frame, so the bank parallaxes it against
+  // the paragraph it is passing over: it reads as above the text rather than
+  // mixed into it. Zero at both endpoints, so the card is flat whenever it is
+  // being compared with the DOM.
+  float bc = clamp(uT, 0.0, 1.0);
+  float bx = 4.0 * bc * (1.0 - bc);
+  float bump = bx * bx * (3.0 - 2.0 * bx);
+  float cross = aMeta.w * bump;
+  vec3 pos = vec3(px.x - card.x * 0.5, card.y * 0.5 - px.y, uCrossLift * cross);
+
+  vUvA = vec2(aUvA.x + aUvA.z * uv.x, aUvA.y + aUvA.w * (1.0 - uv.y));
+  vUvB = vec2(aUvB.x + aUvB.z * uv.x, aUvB.y + aUvB.w * (1.0 - uv.y));
+
+  float hasFrom = aMeta.x;
+  float hasTo = aMeta.y;
+  float matched = hasFrom * hasTo;
+
+  // Swap between the two captures — briefly, and at the moment the quad is
+  // equally badly served by both, measured in LOG size. Each capture is on
+  // screen while it is the sharper one, and the two are never both visible
+  // for long: the same word rasterized at two sizes does not register glyph
+  // for glyph (measured: advances grow 2.315-2.37x under type that grows
+  // 2.47x), and a long blend renders that disagreement as an embossed double.
+  float g = aBoxB.w / max(aBoxA.w, 0.001);
+  float lg = log(max(g, 0.001));
+  float phase = abs(g - 1.0) < 0.002 ? uT : clamp(log(1.0 + (g - 1.0) * uT) / lg, 0.0, 1.0);
+  float hx = clamp((phase - (0.5 - uHandover * 0.5)) / uHandover, 0.0, 1.0);
+  float sharp = hx * hx * (3.0 - 2.0 * hx);
+  vHandover = mix(hasTo, sharp, matched);
+
+  // Unmatched parts fade over their own window; matched parts never fade at
+  // all. That last clause is the one that decides whether this reads as
+  // objects moving or as a dissolve.
+  float a0 = aMeta.z;
+  float a1 = min(1.0, a0 + uFade);
+  float x = clamp((uT - a0) / max(a1 - a0, 1e-4), 0.0, 1.0);
+  float s = x * x * (3.0 - 2.0 * x);
+  // And it gives up some of its opacity for being up there, which is what
+  // makes both it and the line it is flying over readable during the pass.
+  vPresence = mix(mix(1.0 - s, s, hasTo), 1.0 - uCrossDip * cross, matched);
+
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+}
+`
+
+export const FIELD_FRAG = /* glsl */ `
+uniform sampler2D uTexA;
+uniform sampler2D uTexB;
+
+varying vec2 vUvA;
+varying vec2 vUvB;
+varying float vPresence;
+varying float vHandover;
+
+void main() {
+  vec4 a = texture2D(uTexA, vUvA);
+  vec4 b = texture2D(uTexB, vUvB);
+  // Premultiplied throughout (decisions #5), so a straight mix of two
+  // captures is a correct composite and scaling by presence is a correct
+  // fade — no unpremultiply/repremultiply anywhere in the path.
+  gl_FragColor = mix(a, b, vHandover) * vPresence;
+  #include <colorspace_fragment>
+}
+`
+
+export const PANEL_VERT = /* glsl */ `
+uniform vec2 uSize;
+varying vec2 vP;
+void main() {
+  vP = position.xy * uSize;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position.xy * uSize, 0.0, 1.0);
+}
+`
+
+export const PANEL_FRAG = /* glsl */ `
+uniform vec2 uSize;
+uniform float uRadius;
+uniform float uBorder;
+uniform vec3 uFill;
+uniform vec3 uEdge;
+varying vec2 vP;
+
+float roundedBox(vec2 p, vec2 hs, float r) {
+  vec2 q = abs(p) - hs + r;
+  return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+
+void main() {
+  // Named hs, not half: half is a RESERVED WORD in GLSL ES, and a shader
+  // using it fails to compile with a parse error while the mesh silently
+  // never draws.
+  vec2 hs = uSize * 0.5;
+  float r = min(uRadius, min(hs.x, hs.y));
+  float d = roundedBox(vP, hs, r);
+  // One pixel of coverage either side, in whatever the current projection
+  // makes a pixel — so the edge is exactly as sharp at 308 px wide as at 940,
+  // which a stretched capture of the same border could never be.
+  float aa = max(fwidth(d), 0.0001);
+  float outer = 1.0 - smoothstep(-aa, aa, d);
+  float inner = 1.0 - smoothstep(-aa, aa, d + uBorder);
+  // Discard rather than write a transparent fragment: the depth this pass
+  // leaves behind is what carves the shadow out of the card's silhouette, and
+  // the rounded corners are exactly where CSS lets the shadow show through.
+  if (outer < 0.004) discard;
+  vec3 col = mix(uEdge, uFill, inner);
+  gl_FragColor = vec4(col * outer, outer);
+  #include <colorspace_fragment>
+}
+`
+
+const UNIT = new THREE.PlaneGeometry(1, 1)
+
+/**
+ * A private unit quad, built fresh every time.
+ *
+ * The obvious version shares one `PlaneGeometry`'s position/uv/index across
+ * every field geometry, and it is a trap: `BufferGeometry.dispose()` fires an
+ * event that deletes the GL buffer for each of its attributes, and an
+ * attribute shared with another geometry is deleted for that one too. So the
+ * first plan rebuild — which happens on EVERY flight, the moment the
+ * destination is measured — tore the buffers out from under the panel and the
+ * next field alike. The symptom was a wall of `drawElementsInstanced: no
+ * buffer is bound to enabled attribute` and a card that drew nothing, with no
+ * exception anywhere.
+ *
+ * Four vertices per geometry is not a cost worth sharing to avoid.
+ */
+function unitQuad(): {
+  index: THREE.BufferAttribute
+  position: THREE.BufferAttribute
+  uv: THREE.BufferAttribute
+} {
+  return {
+    index: new THREE.BufferAttribute(new Uint16Array([0, 2, 1, 2, 3, 1]), 1),
+    position: new THREE.BufferAttribute(
+      new Float32Array([-0.5, 0.5, 0, 0.5, 0.5, 0, -0.5, -0.5, 0, 0.5, -0.5, 0]),
+      3,
+    ),
+    uv: new THREE.BufferAttribute(new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]), 2),
+  }
+}
+
+/**
+ * The instance buffers for one population of parts.
+ *
+ * Built once per flight and never touched again — the flight is a uniform,
+ * not a buffer update. Rebuilt only when the plan itself changes, which is
+ * when a different card is flown, not when this one turns around.
+ */
+function useFieldGeometry(parts: FlightPart[]): THREE.InstancedBufferGeometry | null {
+  return useMemo(() => {
+    if (!parts.length) return null
+    const n = parts.length
+    const geo = new THREE.InstancedBufferGeometry()
+    const quad = unitQuad()
+    geo.setIndex(quad.index)
+    geo.setAttribute('position', quad.position)
+    geo.setAttribute('uv', quad.uv)
+    geo.instanceCount = n
+
+    const boxA = new Float32Array(n * 4)
+    const boxB = new Float32Array(n * 4)
+    const uvA = new Float32Array(n * 4)
+    const uvB = new Float32Array(n * 4)
+    const meta = new Float32Array(n * 4)
+    parts.forEach((p, i) => {
+      boxA.set([p.from.x, p.from.y, p.from.w, p.from.h], i * 4)
+      boxB.set([p.to.x, p.to.y, p.to.w, p.to.h], i * 4)
+      uvA.set([p.uvFrom.x, p.uvFrom.y, p.uvFrom.w, p.uvFrom.h], i * 4)
+      uvB.set([p.uvTo.x, p.uvTo.y, p.uvTo.w, p.uvTo.h], i * 4)
+      meta.set([p.hasFrom, p.hasTo, p.delay, p.crossing], i * 4)
+    })
+    geo.setAttribute('aBoxA', new THREE.InstancedBufferAttribute(boxA, 4))
+    geo.setAttribute('aBoxB', new THREE.InstancedBufferAttribute(boxB, 4))
+    geo.setAttribute('aUvA', new THREE.InstancedBufferAttribute(uvA, 4))
+    geo.setAttribute('aUvB', new THREE.InstancedBufferAttribute(uvB, 4))
+    geo.setAttribute('aMeta', new THREE.InstancedBufferAttribute(meta, 4))
+    // The parts are placed by the vertex shader in card-local px, so the
+    // geometry's own bounds say nothing about where it ends up. Culling it on
+    // them would blink the whole card out at the worst possible moment.
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6)
+    return geo
+  }, [parts])
+}
+
+function useFieldMaterial(
+  texA: THREE.Texture | null,
+  texB: THREE.Texture | null,
+  cardA: [number, number],
+  cardB: [number, number],
+) {
+  const mat = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        vertexShader: FIELD_VERT,
+        fragmentShader: FIELD_FRAG,
+        uniforms: {
+          uT: { value: 0 },
+          uFade: { value: FADE },
+          uHandover: { value: HANDOVER },
+          uCrossLift: { value: CROSS_LIFT },
+          uCrossDip: { value: CROSS_DIP },
+          uCardA: { value: new THREE.Vector2() },
+          uCardB: { value: new THREE.Vector2() },
+          uTexA: { value: null },
+          uTexB: { value: null },
+        },
+        transparent: true,
+        // THE FIELD IS A PAINTER'S-ORDER COMPOSITE, NOT A 3D SCENE.
+        //
+        // Every part sits on the card's plane at z = 0, and so does the panel
+        // underneath them — which writes depth, because the shadow behind the
+        // card is clipped by that depth (#58: blend order cannot express a
+        // clip). Coplanar quads depth-TESTED against it are a coin flip per
+        // fragment: `LessEqualDepth` passes on equality, but the panel's big
+        // quad and a word's small one interpolate the same plane to values
+        // that differ in the last bits, so some fragments lose. Measured, it
+        // reads as a staircase of rectangular patches across the card — and
+        // it survived every single-layer isolation, because a layer can only
+        // fight a layer.
+        //
+        // The parts are inside the card by construction, so they have nothing
+        // to be occluded BY. Turning the test off is the statement of that,
+        // and renderOrder alone decides who is in front.
+        depthTest: false,
+        depthWrite: false,
+        premultipliedAlpha: true,
+      }),
+    [],
+  )
+  useEffect(() => () => mat.dispose(), [mat])
+  mat.uniforms.uTexA.value = texA
+  mat.uniforms.uTexB.value = texB
+  mat.uniforms.uCardA.value.set(cardA[0], cardA[1])
+  mat.uniforms.uCardB.value.set(cardB[0], cardB[1])
+  return mat
+}
+
+/**
+ * The card's size at SIZE progress `t` — a straight lerp between two real
+ * layouts, and nothing else.
+ *
+ * The staircase is gone at this line. The first design asked the layout engine
+ * how tall the card wanted to be at every intermediate width and got a step
+ * function back; this asks two real layouts and draws a line between their
+ * answers. Both endpoints are exactly what the page will hand back, and
+ * nothing in between is a shape the component has an opinion about — because
+ * in between, the component is not being laid out at all.
+ *
+ * `t` is `sizeProgress`, the same number the parts interpolate their own boxes
+ * on, so the type can never slide against the panel it is printed on.
+ */
+export function cardSizeAt(a: Endpoint, b: Endpoint, t: number): [number, number] {
+  const c = Math.min(1, Math.max(0, t))
+  return [a.width + (b.width - a.width) * c, a.height + (b.height - a.height) * c]
+}
+
+function PanelMesh({
+  a,
+  b,
+  panel,
+  progress,
+}: {
+  a: Endpoint
+  b: Endpoint
+  panel: Panel
+  progress: React.MutableRefObject<number>
+}) {
+  const mat = useMemo(() => {
+    const fill = new THREE.Color().setStyle(panel.fill, THREE.SRGBColorSpace)
+    const edge = new THREE.Color().setStyle(panel.edge, THREE.SRGBColorSpace)
+    return new THREE.ShaderMaterial({
+      vertexShader: PANEL_VERT,
+      fragmentShader: PANEL_FRAG,
+      uniforms: {
+        uSize: { value: new THREE.Vector2(a.width, a.height) },
+        uRadius: { value: panel.radius },
+        uBorder: { value: panel.border },
+        uFill: { value: fill },
+        uEdge: { value: edge },
+      },
+      transparent: true,
+      premultipliedAlpha: true,
+      // The one surface in the flight that DOES write depth — it is the
+      // card's silhouette, and the shadow behind it is clipped by exactly
+      // this.
+      depthWrite: true,
+    })
+  }, [panel, a.width, a.height])
+  useEffect(() => () => mat.dispose(), [mat])
+
+  useFrame(() => {
+    const [w, h] = cardSizeAt(a, b, progress.current)
+    mat.uniforms.uSize.value.set(w, h)
+  })
+
+  return <mesh geometry={UNIT} material={mat} renderOrder={0} frustumCulled={false} />
+}
+
+function PartMesh({
+  parts,
+  texA,
+  texB,
+  a,
+  b,
+  progress,
+  renderOrder,
+}: {
+  parts: FlightPart[]
+  texA: THREE.Texture | null
+  texB: THREE.Texture | null
+  a: Endpoint
+  b: Endpoint
+  progress: React.MutableRefObject<number>
+  renderOrder: number
+}) {
+  const geo = useFieldGeometry(parts)
+  const mat = useFieldMaterial(texA, texB, [a.width, a.height], [b.width, b.height])
+  useFrame(() => {
+    mat.uniforms.uT.value = Math.min(1, Math.max(0, progress.current))
+  })
+  useEffect(() => () => geo?.dispose(), [geo])
+  if (!geo || !texA || !texB) return null
+  return <mesh geometry={geo} material={mat} renderOrder={renderOrder} frustumCulled={false} />
+}
+
+/**
+ * A card in flight, assembled from two measured layouts.
+ *
+ * Four things are drawn, back to front, and the split is the design:
+ *
+ *   - the PANEL, analytically — a rounded rectangle with a one-pixel border,
+ *     exact at every size, never stretched from a capture
+ *   - the painted BLOCKS, from the chrome captures — a stats strip stretches
+ *     correctly because its cells divide it evenly at both ends
+ *   - anything the caller keeps LIVE, as real DOM (the ticking counter)
+ *   - the WORDS, from the ink captures, on top of all of it
+ *
+ * Three draw calls plus whatever `live` costs, for any card of any length.
+ */
+export function PassageField({
+  a,
+  b,
+  plan,
+  progress,
+  live,
+  onSourceReady,
+  onFlightReady,
+}: {
+  a: Endpoint
+  /**
+   * Null until the destination exists to be measured, which is a real window
+   * and not a loading state.
+   *
+   * The order is forced by the page: the arriving route is absolutely
+   * positioned and invisible until it takes over, so its box cannot be
+   * measured before the swap — and the swap cannot happen before something is
+   * standing in for the card that is about to disappear. So there is a beat
+   * where only the source is known, and in that beat this draws the source
+   * card at rest, exactly. It is the identity flight: every part matched to
+   * itself, `uT` at 0, one texture in both samplers.
+   */
+  b: Endpoint | null
+  plan: FlightPart[]
+  progress: React.MutableRefObject<number>
+  live?: React.ReactNode
+  /** The source card can be seen here — the page copy may hide now. */
+  onSourceReady?: () => void
+  /** Both ends have pixels — the card may start moving. */
+  onFlightReady?: () => void
+}) {
+  const dpr = useThree((s) => s.viewport.dpr)
+  const scaleA = captureScale(a.width, b?.width ?? a.width, dpr)
+  const scaleB = captureScale(b?.width ?? 0, a.width, dpr)
+  const inkA = useCapture(a.ink, a.width, a.height, scaleA)
+  const chromeA = useCapture(a.chrome, a.width, a.height, scaleA)
+  // Nulls until `b` arrives, so nothing ever adopts a node twice — and note
+  // that `createDomTextureSource` MOVES the node it is given, so handing the
+  // same endpoint in as both ends would tear the first source's plate out
+  // from under it.
+  const inkB = useCapture(b?.ink ?? null, b?.width ?? 0, b?.height ?? 0, scaleB)
+  const chromeB = useCapture(b?.chrome ?? null, b?.width ?? 0, b?.height ?? 0, scaleB)
+
+  const words = useMemo(() => plan.filter((p) => p.kind === 'word'), [plan])
+  const blocks = useMemo(() => plan.filter((p) => p.kind === 'block'), [plan])
+
+  // Two readiness signals, because the handoff and the flight are different
+  // moments. The page copy may hide as soon as the SOURCE can be seen — the
+  // same contract `Surface.onFirstUpload` offers, and for the same reason —
+  // but nothing may move until the destination has pixels too, or the first
+  // frames of the flight are a card cross-fading against a blank.
+  const sourceReady = !!(inkA && chromeA)
+  const flightReady = sourceReady && !!(inkB && chromeB)
+  useEffect(() => {
+    if (sourceReady) onSourceReady?.()
+  }, [sourceReady, onSourceReady])
+  useEffect(() => {
+    if (flightReady) onFlightReady?.()
+  }, [flightReady, onFlightReady])
+
+  const end = b ?? a
+  return (
+    <>
+      <PanelMesh a={a} b={end} panel={end.panel} progress={progress} />
+      <PartMesh
+        parts={blocks}
+        texA={chromeA}
+        texB={chromeB ?? chromeA}
+        a={a}
+        b={end}
+        progress={progress}
+        renderOrder={1}
+      />
+      {live}
+      <PartMesh
+        parts={words}
+        texA={inkA}
+        texB={inkB ?? inkA}
+        a={a}
+        b={end}
+        progress={progress}
+        renderOrder={3}
+      />
+    </>
+  )
+}
+

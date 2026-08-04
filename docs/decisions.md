@@ -710,3 +710,104 @@ across 139; and every path landing on its destination
 `getBoundingClientRect()` to the pixel — 694.664 against 694.6640625,
 seam 0. The worst-lag frame captured out of the drawing buffer shows an
 intact card, full border and radius, stats row mid-reveal.
+
+## #17 — The layout runs twice, and every word flies between the two answers (2026-08-04, lab)
+
+**Decision.** The passage is no longer a live relayout in flight. The
+layout engine runs **exactly twice** — once at each endpoint width,
+off-screen, in a parked canvas — and the two answers are compared: every
+word box and every painted block is measured in both, matched by
+identity, and flown between its two positions. Nothing re-lays-out
+in between. Each part is one instance carrying `aBoxA`/`aBoxB`,
+`aUvA`/`aUvB` and `aMeta`; one `uT` uniform per frame moves all of them.
+The whole flying card is **6 draw calls and 200 triangles**, and the
+pose is a pure function of `t`, so a mid-flight reversal replays the
+outbound frames exactly backwards rather than re-deriving anything.
+
+`relayout` — the previous design, #16 and all — is kept as a mode
+beside it, because the comparison is the point.
+
+**The complaint.** "It still looks very rough. There is tons of text
+re-layout happening, some kind of glitchy shading effect near the
+corners, and the way the elements inside change dimensions doesn't look
+smooth." And then, decisively: "another issue is that there's an
+intermediate two column layout that appears during the transition."
+
+**Why #16 could not have fixed it.** #16 smoothed how fast the BOX
+adopts the layout's answer. It could never smooth the answer. At
+308 px this card is a stacked column; at 940 px it is a wide sheet;
+somewhere in between a container query flips it to two columns, and the
+passage crosses that width on its way. Every frame was correct. The
+two-column composition exists at neither end of the journey and is
+therefore not part of the journey — the honest intermediate layout is
+the wrong thing to draw. That is the whole argument for measuring the
+endpoints and interpolating between them instead.
+
+**Why this cannot be done in the DOM at all.** A line box is not an
+element. There is no node for "line 3 of this paragraph", so nothing
+that animates *elements* — View Transitions, every FLIP library — can
+move a word from one line to another. The browser's own answer is
+visible in the A/B: `::view-transition-old` and `-new` are two
+photographs cross-fading, and mid-transition the old card's ghost is
+sitting scaled-up underneath the new one, its counter frozen at the
+frame the snapshot was taken. Measured at this card's two widths:
+27 parts at the source, 96 at the destination, **27 matched, 69
+arriving, 0 departing**. Sixty-nine of the destination's words are
+under a fold at the source; every one of the 27 that is shared changes
+line, column, or size. Word-level correspondence is a thing only a
+renderer that owns the pixels can offer.
+
+**A part with no history borrows the card's.** An arriving word has no
+source box, and the obvious answer — start it where it will end — is
+wrong, because at `t=0` the card is 308×324 and the destination
+coordinate is at y 430. Measured: arrivals hung *below the panel*, on
+the page background, for most of the flight. `carriedInto` scales a box
+from one endpoint's frame into the other's proportionally, and
+`arrivalSource` is that carry plus a small rise; `departureTarget` is
+the same identity run the other way, which is what makes a close the
+open played backwards. Two tests fix it in place: *starts an arrival in
+the card it is arriving into*, and *keeps every part inside the card
+that is carrying it*.
+
+**Only the word that actually changes line gets to move.** Words that
+cross a line break need to be legible as moving rather than as
+smearing, so a crossing word lifts off the card (`CROSS_LIFT` 30) and
+dims (`CROSS_DIP` 0.55) at mid-flight, returning to exactly flush and
+exactly opaque at both ends. The first metric for "is this word
+crossing" was geometric — residual displacement over the word's own
+size — and it **convicted the innocent**: this card grows 3.05× in
+width but only 2.15× in height, so every word carries a large vertical
+residual by construction, and a short word like "in" divides that
+residual by 23 px and clears any threshold. The whole meta line dimmed
+and floated. The predicate that is correct is not geometric at all:
+a word crosses when its **adjacency to the word before it changes** —
+`sharesLine(prev, self)` differs between the two layouts. At this
+card's two widths that fires for exactly one part, `w3:7`, the word
+"box", which is on line 2 of the title at 308 px and on line 1 at
+940 px. It is the only thing in the frame that lifts.
+
+`crossBump` is a parabolic smoothstep, `x = 4c(1-c)`, `x²(3-2x)`, and
+not `sin(πt)`, because `Math.sin(Math.PI)` is `1.2e-16` and a test that
+asks for a part to be exactly opaque at rest is right to fail on that.
+The same three lines are in the vertex shader.
+
+**One thing on the card stays a live document.** The counter. It is
+excluded from the measurement by selector, its band is measured and its
+element hidden in the same pass, and it rides the flight as a real
+`SurfaceApp` whose box is lerped between the two measured bands. A
+frozen counter is the exact charge this scene levels at
+`startViewTransition`; a demo that froze its own would be making the
+foil's argument for it. Its content root has to declare
+`background: transparent` — `.ui-root` carries the app's opaque page
+background because it stands in for `<body>`, and without the
+counter-declaration the band paints a white slab across the artwork
+behind it. Same declaration, same reason, as the glass scene's.
+
+**Evidence.** 28 cases in `passageParts.test.ts`, all pure. In the
+browser, the same instant held in all three modes: `anamorph` at
+`debug.hold = 0.5`, `relayout` at the same hold through the same
+spring, and `view-transition` paused through the Web Animations API —
+`document.getAnimations()`, seek each `::view-transition-*` to half its
+1100 ms duration. The relayout capture is the two-column intermediate,
+in full. Reversal verified live: turns around mid-air, lands home,
+`pass` null, `route` null. At rest the scene owns zero surfaces.

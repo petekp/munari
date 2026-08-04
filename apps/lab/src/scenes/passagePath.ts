@@ -152,6 +152,23 @@ export function followHeight(
 }
 
 /**
+ * How far along its SIZE change the card is at flight progress `t`.
+ *
+ * Exported, and used by `poseAt` itself, because two consumers now need this
+ * number and they must not each own a copy. The field's parts interpolate
+ * their boxes on it and the card's own box interpolates on it; if those two
+ * curves ever disagreed by so much as an exponent, every word would slide
+ * against the panel it is printed on for the whole flight (#56: one
+ * computation, or they will drift).
+ */
+export const SIZE_EXP = 1.5
+
+export function sizeProgress(t: number): number {
+  const c = Math.min(1, Math.max(0, t))
+  return Math.pow(c, SIZE_EXP)
+}
+
+/**
  * The pose at progress `t` along a passage from one page box to another.
  *
  * `width`/`height` are the interesting return values. They are not a scale
@@ -190,7 +207,7 @@ export function poseAt(
   // whole path on screen. Both exponents are identity at 0 and 1, so the ends
   // are still exact.
   const tPos = Math.pow(clamped, 0.72)
-  const tSize = Math.pow(clamped, 1.5)
+  const tSize = sizeProgress(clamped)
 
   const width = from.width + (to.width - from.width) * tSize
   // The HEIGHT IS NOT INTERPOLATED when the caller can measure it, and this

@@ -48,15 +48,20 @@ import * as THREE from 'three'
 import { SurfaceApp, useSurfaceTexture, cameraDistance } from 'anamorph'
 import {
   HEIGHT_OMEGA,
+  atTarget,
   boxOf,
   densityAt,
   followHeight,
   landed,
   poseAt,
+  sizeProgress,
   springStep,
   type Box,
 } from './passagePath'
 import { SHADOW_FRAG, SHADOW_VERT, shadowFrame } from './passageShadow'
+import { markupOf, measureEndpoint, type Endpoint } from './passageMeasure'
+import { planFlight } from './passageParts'
+import { PassageField, cardSizeAt } from './passageField'
 import './passage.css'
 
 // ── the library ──────────────────────────────────────────────────────────
@@ -713,6 +718,307 @@ function Flying({ pass, item, painted, onPainted, onLanded }: FlyingProps) {
   )
 }
 
+/**
+ * The same passage, flown as a SHARED ELEMENT rather than as a live relayout.
+ *
+ * `Flying` above is the honest version and it is the one that reads badly. It
+ * asks the layout engine what the card looks like at 120 intermediate widths
+ * and draws every answer, so the text re-wraps 120 times, the type sweeps
+ * through sizes nobody chose, and the card spends about 170 ms in a two-column
+ * container-query regime that neither endpoint has. Every frame is correct and
+ * the sequence is unwatchable.
+ *
+ * This asks the layout engine TWICE — once at each endpoint, off-screen, at
+ * the exact width the page will use — and then flies the answers apart. Every
+ * word is measured in both layouts, matched by identity, and travels. Nothing
+ * re-wraps because nothing is laid out in between: a word that ends up on a
+ * different line simply goes there.
+ *
+ * That last sentence is what no DOM-based transition can say, and the reason
+ * is structural rather than incidental: A LINE BOX IS NOT AN ELEMENT. There is
+ * no node for "line 3 of this paragraph", so there is nothing for View
+ * Transitions or a layout-animation library to hold, and the best any of them
+ * can do is cross-fade the paragraph whole. We are not animating the DOM — we
+ * are flying its pixels, with its own layout, at both ends, as ground truth.
+ *
+ * What the mode still buys from this library is the same thing `Flying` did:
+ * the endpoints are MEASURED, not authored, and they are measured from the
+ * real component at a real width — including the destination, which the page
+ * has never displayed at the moment the flight starts.
+ */
+/**
+ * The one part of the card that is not allowed to be a photograph.
+ *
+ * Everything else in the flight is two rasterizations of a real layout, and
+ * that is fine for everything else, because everything else is not changing.
+ * The counter is. Freezing it for the 700 ms of the transition is precisely
+ * the charge this scene levels at `startViewTransition` — which snapshots the
+ * old and new views and cross-fades the images — so a build that also froze it
+ * would be making the foil's argument for it.
+ */
+const LIVE = { live: '.psg-live' }
+
+/** The pill, on its own, with nothing else from the card in the way. */
+function LivePill() {
+  const frame = useTick()
+  const phase = (frame % 96) / 96
+  return (
+    <div className="psg-live">
+      <i className="psg-sweep" style={{ '--psg-phase': phase } as React.CSSProperties} />
+      <span>
+        live <b>{frame}</b>
+      </span>
+    </div>
+  )
+}
+
+function LiveMaterial() {
+  const texture = useSurfaceTexture()
+  return (
+    <meshBasicMaterial
+      map={texture ?? undefined}
+      transparent
+      premultipliedAlpha
+      toneMapped={false}
+      // NOT depthWrite, unlike the card's own material. This sits above the
+      // panel that clips the shadow, and a second surface writing depth in
+      // front of it would carve a rectangle out of that clip.
+      depthWrite={false}
+      side={THREE.DoubleSide}
+    />
+  )
+}
+
+/**
+ * The live band of the card, as real DOM, for the whole flight.
+ *
+ * Laid out at the card's CURRENT width every frame — which is the one place in
+ * this design where an intermediate layout is not only allowed but wanted. The
+ * objection to intermediate layouts is that they RE-WRAP: a paragraph laid out
+ * at a width no designer chose puts words on lines no designer chose. A pill
+ * with one line of text and no wrap opportunity has nothing to re-wrap, and
+ * everything about it is authored in `cqi` — so an intermediate width gives it
+ * an intermediate size from the same one rule, continuously, with no
+ * breakpoint in between. It is the one part of the card whose responsive
+ * design is a function rather than a set of shapes.
+ *
+ * Which is also why it costs what it costs: a repaint and an upload every
+ * frame, for a band about a fifteenth of the card's area. That is the honest
+ * price of something that is genuinely moving, and the counter is the whole
+ * instrument — a frozen one is the foil's argument, not ours.
+ */
+function LiveBand({
+  a,
+  b,
+  progress,
+}: {
+  a: Endpoint
+  b: Endpoint
+  progress: React.MutableRefObject<number>
+}) {
+  const dpr = useThree((s) => s.viewport.dpr)
+  const [box, setBox] = useState<null | {
+    x: number
+    y: number
+    w: number
+    h: number
+    cw: number
+    ch: number
+  }>(null)
+
+  useFrame(() => {
+    const from = a.live?.box
+    const to = b.live?.box
+    if (!from || !to) return
+    const t = Math.min(1, Math.max(0, progress.current))
+    const [cw, ch] = cardSizeAt(a, b, t)
+    const next = {
+      x: from.x + (to.x - from.x) * t,
+      y: from.y + (to.y - from.y) * t,
+      w: from.w + (to.w - from.w) * t,
+      h: from.h + (to.h - from.h) * t,
+      cw,
+      ch,
+    }
+    setBox((prev) =>
+      prev && prev.x === next.x && prev.y === next.y && prev.w === next.w && prev.h === next.h
+        ? prev
+        : next,
+    )
+  })
+
+  if (!box) return null
+  const { x, y, w, h, cw, ch } = box
+  return (
+    <group position={[x + w / 2 - cw / 2, ch / 2 - (y + h / 2), 0.5]} scale={[w, h, 1]}>
+      <SurfaceApp
+        label="passage-live"
+        width={w}
+        height={h}
+        resolution={dpr}
+        material="none"
+        renderOrder={2}
+        frustumCulled={false}
+        content={
+          // The band IS the container query's container — see `LiveBand` in
+          // passageMeasure.ts. Full card width, so every `cqi` inside resolves
+          // against the card the pill is actually on.
+          <div className="psg-frame" data-bare="" style={{ width: `${w}px` }}>
+            <div className="psg-liveband" style={{ height: `${h}px` }}>
+              <LivePill />
+            </div>
+          </div>
+        }
+      >
+        <planeGeometry args={[1, 1]} />
+        <LiveMaterial />
+      </SurfaceApp>
+    </group>
+  )
+}
+
+function FieldFlight({ pass, painted, onPainted, onLanded }: FlyingProps) {
+  const size = useThree((s) => s.size)
+
+  const spring = useRef({ x: 0, v: 0 })
+  /**
+   * The number every part of the field reads, and the only one.
+   *
+   * `sizeProgress`, not the spring's raw position — because the card's own box
+   * travels on that curve too (`poseAt`'s `tSize`). One computation, two
+   * consumers: if the panel and the type ever interpolated on different
+   * exponents the words would slide against the surface they are printed on
+   * for the entire flight, which is #56's lesson wearing different clothes.
+   */
+  const progress = useRef(0)
+  const done = useRef(false)
+  const snapped = useRef<0 | 1 | null>(null)
+  const [flightReady, setFlightReady] = useState(false)
+  // Stable identity, so the readiness effect downstream fires once rather than
+  // on every commit of a flight that re-renders sixty times a second.
+  const ready = useCallback(() => setFlightReady(true), [])
+
+  const [pose, setPose] = useState(() => ({
+    x: 0,
+    y: 0,
+    z: 0,
+    rotX: 0,
+    rotY: 0,
+    w: pass.from.width,
+    h: pass.from.height,
+  }))
+
+  // The markup is taken ONCE, from the card the reader is looking at, before
+  // anything has been asked to move or hide. Both endpoints are measured from
+  // this same string, which is what makes a word's key mean the same thing on
+  // both sides: the nth word of the mth text node is the same word whatever
+  // width it was laid out at.
+  const markup = useMemo(() => {
+    const sel =
+      pass.dir === 'open' ? `[data-slot="${pass.id}"] .psg-card` : '.psg-stage .psg-card'
+    const el = document.querySelector<HTMLElement>(sel)
+    return el ? markupOf(el) : null
+  }, [pass.id, pass.dir])
+
+  const a = useMemo(
+    () => (markup ? measureEndpoint(markup, pass.from.width, LIVE) : null),
+    [markup, pass.from.width],
+  )
+  // The destination is measured the moment the page can say how wide it is —
+  // and NOT before. The arriving route is out of flow and invisible until it
+  // takes over, so a width read early is the width of the wrong page.
+  const toWidth = pass.to?.width ?? 0
+  const b = useMemo(
+    () => (markup && toWidth > 0 ? measureEndpoint(markup, toWidth, LIVE) : null),
+    [markup, toWidth],
+  )
+  const plan = useMemo(() => (a ? planFlight(a.layout, (b ?? a).layout) : []), [a, b])
+
+  useFrame((_, dt) => {
+    if (!a) return
+    const step = Math.min(dt, 1 / 20)
+    // Two gates rather than one. `painted` releases the page copy; `flightReady`
+    // releases the motion. Between them the field draws the source card at
+    // rest, which is what the reader was already looking at.
+    const moving = debug.hold == null && flightReady && !!pass.to
+    if (debug.hold != null) {
+      spring.current = { x: debug.hold, v: 0 }
+    } else if (moving) {
+      const [x, v] = springStep(spring.current.x, spring.current.v, pass.target, debug.omega, step)
+      spring.current = { x, v }
+    }
+
+    // The landing is still two frames, and still for the reason it always was:
+    // `atTarget` settles a fraction SHORT of the target by construction, and
+    // 0.0015 of progress is 1.4 px of width at the end of a `t^1.5` curve —
+    // a pixel and a half of growth at the instant the DOM takes back over.
+    // What is gone is the second spring: there is no measured height to chase
+    // here, because in between there is no layout to measure.
+    if (moving && !done.current) {
+      if (snapped.current === pass.target) {
+        done.current = true
+        onLanded()
+      } else if (atTarget(spring.current.x, spring.current.v, pass.target)) {
+        snapped.current = pass.target
+        spring.current = { x: pass.target, v: 0 }
+      }
+    }
+
+    progress.current = sizeProgress(spring.current.x)
+    const end = b ?? a
+    const [w, h] = cardSizeAt(a, end, progress.current)
+    // The field is authoritative about the card's SIZE — it is drawing the
+    // panel — so the pose is told that height rather than deriving its own.
+    // The widths already agree by construction: each endpoint was measured at
+    // exactly the width the page reported for it.
+    const p = poseAt(
+      pass.from,
+      pass.to ?? pass.from,
+      spring.current.x,
+      size.width,
+      size.height,
+      LIFT,
+      TILT,
+      h,
+    )
+    setPose((prev) =>
+      prev.x === p.x && prev.y === p.y && prev.z === p.z && prev.w === w && prev.h === h
+        ? prev
+        : { x: p.x, y: p.y, z: p.z, rotX: p.rotX, rotY: p.rotY, w, h },
+    )
+  })
+
+  if (!a) return null
+
+  return (
+    <>
+      <CardShadow
+        x={pose.x}
+        y={pose.y}
+        w={pose.w}
+        h={pose.h}
+        z={pose.z}
+        visible={painted && debug.shadow}
+      />
+      {/* Position and rotation only — NO scale. The field places its parts in
+          the card's own CSS pixels, so a group scale would multiply them a
+          second time. That is the whole difference from `PassageCard`, which
+          scales a unit plane because its content is a texture cut to the box. */}
+      <group position={[pose.x, pose.y, pose.z]} rotation={[pose.rotX, pose.rotY, 0]}>
+        <PassageField
+          a={a}
+          b={b}
+          plan={plan}
+          progress={progress}
+          live={<LiveBand a={a} b={b ?? a} progress={progress} />}
+          onSourceReady={onPainted}
+          onFlightReady={ready}
+        />
+      </group>
+    </>
+  )
+}
+
 function PassageCard({
   pose,
   item,
@@ -785,7 +1091,17 @@ function PassageCard({
 
 // ── the page ─────────────────────────────────────────────────────────────
 
-type Mode = 'anamorph' | 'view-transition'
+/**
+ * Three ways to run the same click, so the comparison is a measurement.
+ *
+ * `anamorph` is the shared-element flight: two layouts, per-word
+ * correspondence, one draw call. `relayout` is the same passage with the card
+ * laid out again at every intermediate width — the honest version, kept
+ * because it is the thing this library uniquely CAN do and because seeing it
+ * next to the other two is the argument for why doing it is a bad idea.
+ * `view-transition` is the browser's own, which is a photograph.
+ */
+type Mode = 'anamorph' | 'relayout' | 'view-transition'
 
 export function PassageApp({ chips }: { chips?: React.ReactNode }) {
   const [mode, setMode] = useState<Mode>('anamorph')
@@ -971,6 +1287,16 @@ export function PassageApp({ chips }: { chips?: React.ReactNode }) {
       tick: () => frames,
       pass: () => (live.current.pass ? { ...live.current.pass, painted: live.current.painted } : null),
       items: () => LIBRARY.map((i) => i.id),
+      // Measure a card at an arbitrary width without flying it — the
+      // instrument for everything in passageMeasure.ts.
+      // Defaults to exactly what a flight does — no `live` subtree — so the
+      // instrument and the thing it is measuring cannot disagree. Options are
+      // passed through for probing the alternative.
+      measure: (width: number, options?: { live?: string }) => {
+        const card = document.querySelector<HTMLElement>('.psg-slot .psg-card')
+        if (!card) return null
+        return measureEndpoint(markupOf(card), width, options ?? LIVE)
+      },
       debug,
     }
   }, [])
@@ -1009,15 +1335,17 @@ export function PassageApp({ chips }: { chips?: React.ReactNode }) {
         </div>
 
         <div className="psg-modes">
-          {(['anamorph', 'view-transition'] as Mode[]).map((m) => (
+          {(['anamorph', 'relayout', 'view-transition'] as Mode[]).map((m) => (
             <button key={m} data-active={mode === m} onClick={() => setMode(m)} disabled={!!pass}>
               {m}
             </button>
           ))}
           <span className="psg-note">
             {mode === 'anamorph'
-              ? 'the element flies — and re-lays-out at every width on the way'
-              : "the browser's own shared-element transition, slowed to 1.1s"}
+              ? 'two real layouts, measured off-screen — and every word flies between them'
+              : mode === 'relayout'
+                ? 'the element re-lays-itself-out at every width on the way — every frame correct'
+                : "the browser's own shared-element transition, slowed to 1.1s"}
           </span>
         </div>
 
@@ -1064,16 +1392,27 @@ export function PassageApp({ chips }: { chips?: React.ReactNode }) {
         }}
       >
         <PixelPerfect />
-        {pass && flyingItem && (
-          <Flying
-            key={`${pass.id}-${pass.dir}`}
-            pass={pass}
-            item={flyingItem}
-            painted={painted}
-            onPainted={() => setPainted(true)}
-            onLanded={onLanded}
-          />
-        )}
+        {pass &&
+          flyingItem &&
+          (mode === 'relayout' ? (
+            <Flying
+              key={`${pass.id}-${pass.dir}`}
+              pass={pass}
+              item={flyingItem}
+              painted={painted}
+              onPainted={() => setPainted(true)}
+              onLanded={onLanded}
+            />
+          ) : (
+            <FieldFlight
+              key={`${pass.id}-${pass.dir}`}
+              pass={pass}
+              item={flyingItem}
+              painted={painted}
+              onPainted={() => setPainted(true)}
+              onLanded={onLanded}
+            />
+          ))}
       </Canvas>
 
       <div className="psg-hud">

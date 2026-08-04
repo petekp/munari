@@ -366,6 +366,28 @@
   white-space: nowrap;
 }
 
+/* The band the live pill is re-hosted in while the card is in flight. It is
+ * the card's full width — that is what makes every `cqi` inside the pill
+ * resolve against the card rather than against the pill — and exactly as tall
+ * as the pill plus the offset it sits at, so the pill's own `bottom` places it
+ * unchanged. Nothing here paints; the gradient behind it is a captured plate
+ * on its own quad. */
+.psg-liveband {
+  position: relative;
+  width: 100%;
+}
+
+/* The band's own Surface must rasterize with real alpha: the only thing on it
+ * that paints is the pill, and everything the pill does not cover is the
+ * card's cover art, which is a captured plate on the quad behind. `.ui-root`
+ * carries the app's opaque page background by default (it stands in for
+ * <body>), so a content root that is meant to be see-through has to say so —
+ * the same declaration the glass scene makes, for the same reason. Without it
+ * the band paints a white slab across the bottom of the artwork. */
+.ui-root:has(> .psg-frame[data-bare]) {
+  background: transparent;
+}
+
 .psg-live b {
   color: var(--live);
   font-weight: 700;
