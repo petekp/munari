@@ -5,14 +5,25 @@ import { detectHtmlInCanvas, FocusScene, paintStats } from 'anamorph'
 import { Workspace, WorkspaceHud } from './scenes/Workspace'
 import { Glass } from './scenes/Glass'
 import { FlightApp } from './scenes/Flight'
+import { Explode, ExplodeHud } from './scenes/Explode'
 
-// Three scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
-// flight drag trilogy. Everything they render reaches the library through the
-// `anamorph` barrel — this app is the proof that the public surface is
-// sufficient.
+// Four scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
+// flight drag trilogy, exploded-paint inspector. Everything they render
+// reaches the library through the `anamorph` barrel — this app is the proof
+// that the public surface is sufficient.
 
-type SceneId = 'workspace' | 'glass' | 'flight'
-const SCENES = ['workspace', 'glass', 'flight'] as const
+type SceneId = 'workspace' | 'glass' | 'flight' | 'explode'
+const SCENES = ['workspace', 'glass', 'flight', 'explode'] as const
+
+const FOOTERS: Record<SceneId, string> = {
+  workspace:
+    'double-click a panel to approach · double-click the floor to step back · drag a title bar · click into text and type',
+  glass:
+    'drag a lens across the panel — the UI refracts and stays live · click through the glass and type',
+  flight: 'drag a card off the board · throw it · ✕ to crumple it',
+  explode:
+    'one div, no children, six plates · orbit to see the depths · drag spread to zero and it stacks back into the card',
+}
 
 // Clicking a canvas normally moves focus to <body>, which would blur
 // whatever hidden form field a Surface has focused — killing native typing.
@@ -107,8 +118,16 @@ export default function App() {
         <FocusScene>
           <Suspense fallback={null}>
             <Environment preset="city" />
-            {scene === 'glass' ? <Glass /> : <Workspace />}
-            <ContactShadows position={[0, -0.15, 0]} opacity={0.5} blur={2.2} scale={20} />
+            {scene === 'glass' && <Glass />}
+            {scene === 'explode' && <Explode />}
+            {scene === 'workspace' && <Workspace />}
+            {/* The inspector's plates are unlit sheets on a light table, and
+             * a contact shadow under them would be scene furniture pretending
+             * to be paint — in the one scene whose subject IS which paint is
+             * whose. */}
+            {scene !== 'explode' && (
+              <ContactShadows position={[0, -0.15, 0]} opacity={0.5} blur={2.2} scale={20} />
+            )}
             <OrbitControls
               makeDefault
               enableDamping
@@ -141,12 +160,9 @@ export default function App() {
         )}
       </div>
 
-      <div className="footer">
-        {scene === 'glass'
-          ? 'drag a lens across the panel — the UI refracts and stays live · click through the glass and type'
-          : 'double-click a panel to approach · double-click the floor to step back · drag a title bar · click into text and type'}
-      </div>
+      <div className="footer">{FOOTERS[scene]}</div>
       {scene === 'workspace' && <WorkspaceHud />}
+      {scene === 'explode' && <ExplodeHud />}
     </div>
   )
 }

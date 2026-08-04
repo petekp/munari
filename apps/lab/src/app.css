@@ -117,3 +117,141 @@ body,
   user-select: none;
   white-space: nowrap;
 }
+
+/* ── the exploded-paint inspector ───────────────────────────────────────
+ *
+ * The specimen below is the subject of the whole scene: ONE div, no
+ * children, wearing six separable paint features. It is ordinary page DOM
+ * and stays that way — the plates in the canvas are clones of it.
+ *
+ * Every declaration on `.paint-specimen` is load-bearing, because each one
+ * is a plate: the gradient is the background plate, the ring is the border
+ * plate, the dashed offset ring is the outline plate (the one that proves
+ * the padded wrapper, since it paints entirely outside the border box), the
+ * two shadow layers are the shadow plate, and the glow and the letters come
+ * apart into two more. Change one and you change what the scene shows.
+ */
+
+.explode-hud {
+  position: absolute;
+  left: 24px;
+  bottom: 24px;
+  width: 320px;
+  user-select: none;
+}
+
+.specimen-stage {
+  display: flex;
+  justify-content: center;
+  /* Room for the outline and the shadow to fall outside the card without
+   * being clipped by the panel — the page has the same problem the capture
+   * does, and solves it the same way. */
+  padding: 34px 24px 46px;
+}
+
+.paint-specimen {
+  box-sizing: border-box;
+  width: 264px;
+  height: 152px;
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  border-radius: 20px;
+  background: linear-gradient(155deg, #fdfdff 0%, #dbe3f4 100%);
+  border: 3px solid #7c9cf5;
+  outline: 2px dashed #f0a35e;
+  outline-offset: 7px;
+  box-shadow:
+    0 20px 44px rgba(124, 156, 245, 0.55),
+    0 3px 8px rgba(15, 23, 42, 0.7);
+  color: #16233c;
+  text-shadow:
+    0 1px 0 #ffffff,
+    0 0 16px rgba(240, 163, 94, 0.95);
+}
+
+.specimen-caption {
+  margin: 0 0 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #64748b;
+  text-align: center;
+}
+
+.specimen-facts {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.specimen-facts div {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.specimen-facts dt {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.specimen-facts dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: #cbd5e1;
+}
+
+.spread-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.spread-control input {
+  flex: 1;
+  accent-color: #7c9cf5;
+}
+
+/* A plate's caption, rasterized into its own small Surface beside it. Like
+ * every Surface source it declares its own pixel size — nothing in a parked
+ * canvas has a viewport to be a percentage of. */
+.plate-label {
+  box-sizing: border-box;
+  width: 300px;
+  height: 96px;
+  padding: 13px 16px;
+  font-family: system-ui, sans-serif;
+  color: #e6ebf4;
+  /* Opaque enough to read over the light table AND over the room. A
+   * placard that only works against one background is a placard that
+   * stops working the moment you orbit. */
+  background: rgba(12, 16, 24, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+}
+
+.plate-label code {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 17px;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+.plate-label p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #9fb0c9;
+}
