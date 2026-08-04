@@ -811,3 +811,115 @@ spring, and `view-transition` paused through the Web Animations API —
 1100 ms duration. The relayout capture is the two-column intermediate,
 in full. Reversal verified live: turns around mid-air, lands home,
 `pass` null, `route` null. At rest the scene owns zero surfaces.
+
+## #18 — Seven flickers, one report (2026-08-04, lab + paint layer)
+
+**What.** "Still a lot of flickering and glitchy artifacts" on the
+passage flight, taken apart into seven independent defects. None of
+them shared a cause; six of the seven produced no error, no warning
+and no stripe; three were in the library and four in the lab. They are
+recorded together because the *sequence* is the lesson — every one of
+them was hidden behind the one before it, and each was found only by
+measuring the same pixels twice.
+
+**1. Punctuation was silently dropped from every flying word.**
+`Intl.Segmenter` at `granularity: 'word'` emits punctuation as its own
+non-word-like segment, so filtering on `isWordLike` — which is what the
+API's own examples do — deletes every hyphen, comma and period from the
+card. The mesh read *"A box shadow lives outside the border box  and
+the"* against a DOM that read *"A box-shadow lives outside the border
+box, and the"*, and at speed that is not a missing comma, it is a
+flicker: the words either side sit at their real DOM positions, so the
+gap opens and closes as the line reflows. `textRuns` coalesces adjacent
+segments into runs and ends a run **after** its punctuation rather than
+before it, because a line break may fall there — `box-` on one line and
+`shadow` on the next is a real wrap, and a run that spanned it would
+take the union of two lines' rects and fly as a box the height of the
+paragraph.
+
+**2. The source plate was never re-cut at the magnified density.**
+`createDomTextureSource` ADOPTS its node (#13), and the re-cut handed
+over the node the first cut already owned — so it threw, into a `catch`
+that returned. The scene went on flying a plate cut at resting density
+stretched across three times its area, for the whole of every open.
+`node.cloneNode(true)` is the fix the adopt contract prescribes and the
+error message names; the `catch` now `console.error`s, because what it
+swallowed cost a rewrite to find.
+
+**3. Oversupply is not headroom.** Both endpoints were cut at 1.25× on
+the argument that the card rises toward the camera mid-flight. What
+that bought was a permanent 1.25× *minification* at both ends, sampled
+trilinearly — about a third of a mip level of blur on the two frames a
+reader can actually stare at. The lift belongs with the magnification,
+which is the only cut ever seen in motion; a resting endpoint is now
+supplied at exactly one texel per device pixel, pinned by test.
+
+**4. The shadow was in front of the card at both ends of the flight.**
+A shadow is clipped out of its caster's silhouette by the depth test
+(archive #58), and a depth test only clips while the caster is *nearer*
+than the shadow. A landed card is at z = 0; the shadow quad was at
+z = +1. So it sat in front of the very card it was supposed to hide
+under and painted a card-sized 50% veil over it — correct in mid-air,
+wrong at both endpoints, which is precisely the shape that reads as a
+flash rather than as a bug. Proved by forcing the card's fragment
+shader to opaque red and reading the drawing buffer: 128 at +1, 255 the
+moment the constant changed sign.
+
+**5. Straight alpha uploaded into a premultiplied blend.**
+`premultiplyAlpha` (an upload flag) and `premultipliedAlpha` (a blend
+equation) are different claims about the same pixels and nothing checks
+that they agree. A 2D canvas holds premultiplied texels; with the
+upload flag false, `texImage2D` *un*-premultiplies them, and the
+premultiplied blend then draws every partially covered texel at up to
+twice its weight. There is no stripe and no error — only text that
+reads heavier than the page it is standing in for. Measured on the
+title row: GPU 138, DOM 115, and a CPU composite of the very same plate
+109. The flag went true and the row read 111.
+
+**6. The alloc ledger was seeded one event too late** — #14's blind
+spot. That decision reconciles storage *at upload time* by comparing
+the allocation to the store, and the comparison is only as truthful as
+the baseline it starts from. The baseline was taken by the first
+`upload()`. But the allocation is not made by the upload path: it is
+made by the RENDERER, the first time it draws a material whose map has
+`needsUpdate` set, at whatever the canvas measures then — and a Surface
+sets `needsUpdate` twice before any upload runs. So `texStorage2D`
+routinely lands first, and if the canvas is re-cut in between, the
+first upload records a baseline that was never allocated. After that
+the ledger and the driver agree with each other, forever, about a size
+neither is using. Traced at the GL boundary on the live counter:
+`texStorage2D 308×43` once, then `texSubImage2D 940×106` returning 1281
+on every frame of the flight, with `uploadNeedsRealloc` answering
+*false* to all of them — correctly, from a lie. The ledger is now
+seeded where the allocation is armed. Same trace after: allocations at
+308×43 **and** 940×106, 2200 uploads, zero errors.
+
+**7. A brand new Surface's first paint is an empty div wearing the page
+background.** `.ui-root` carries the app's opaque background because it
+stands in for `<body>`, and the transparency opt-out was written as
+`:has(> [data-marker])` — read literally, "clear the background once a
+child exists", which is one frame too late. The container is built and
+handed to the compositor synchronously; the React root inside it
+renders concurrently. Frames 1 and 3 of every open were a white bar
+across the card, and on frame 1 it was the only thing drawn at all.
+The marker moved onto the root, stamped in the same call that builds
+the container.
+
+**The method, which is the durable part.** Every one of these was
+found the same way: hold the flight at a fixed `t`, capture the mesh
+and the real DOM at the *same pixels*, and difference them. Reasoning
+found none of them and convicted three innocents — sub-pixel phase
+(swept ±0.75 px; sharpness peaked at offset 0 and troughed at ±0.5,
+so phase was already right), double-drawn text (hiding either mesh
+changed nothing on the title row), and the capture itself (plate texels
+matched the DOM exactly, throughout). The landing went from **104,598
+differing pixels of 480,340 to 11,347**, and the row statistics now
+mesh: 119.8/20180 and 38.1/10143 against the DOM's 115.0/20610 and
+39.7/9751.
+
+**Evidence.** `passageRuns.test.ts` (7 cases, written failing),
+`passageField.test.ts` (`captureScale` density law + a `plateTexture`
+tripwire), `passageShadow.test.ts` (the sign), and a seeding case in
+`tests/conformance/paint/textureStorage.test.ts`. 579 passing. In the
+browser: the counter runs, in the mesh, for the whole flight — which
+is the argument this scene exists to make.

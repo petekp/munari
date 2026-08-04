@@ -567,7 +567,30 @@ export function Surface({
 
     lastUploadRef.current = -1
     extraUploadsRef.current = 0
-    allocRef.current = null
+    // SEEDED HERE, not at the first upload, because the allocation is armed
+    // here. `applyFilterPolicy` and `applyMirror` above both set
+    // `needsUpdate`, and r3f draws from its own rAF loop — so the renderer
+    // can reach this texture, run `texStorage2D` at whatever the canvas
+    // currently measures, and bake immutable storage BEFORE any `upload()`
+    // has been called. A ledger that starts null and is filled in by the
+    // first upload therefore records the canvas as it is THEN, which for a
+    // Surface whose box changed in between is not the size that was
+    // allocated. Every later comparison is against that wrong baseline, so
+    // the mismatch is never seen and every upload is rejected — forever, on
+    // a texture that keeps reporting a rising version.
+    //
+    // Traced at the GL boundary 2026-08-04 on the passage scene's live band:
+    // `texStorage2D 308×43` once, then `texSubImage2D 940×106` returning
+    // 1281 (INVALID_VALUE) on every frame for the rest of the flight. On
+    // screen: a mesh that is present, visible, colour-writing, correctly
+    // placed, holding a texture whose canvas demonstrably has ink in it, and
+    // drawing nothing. `texture.dispose()` from the console fixed it
+    // instantly, which is what named the ledger as the liar.
+    allocRef.current = {
+      width: source.canvas.width,
+      height: source.canvas.height,
+      mips: filterPolicy(pinnedScaleRef.current !== null).mips,
+    }
     firstUploadFiredRef.current = false
     // New markup is different content: its chrome is unknown until it paints.
     chromeRef.current = EMPTY_CHROME
@@ -750,9 +773,9 @@ export function Surface({
       const mips = filterPolicy(pinned).mips
       const alloc = allocRef.current
       if (!alloc) {
-        // Nothing allocated yet — this upload IS the allocation. Only record
-        // what it will be made of; disposing here would throw away the
-        // filter policy applied at birth.
+        // Unreachable while a texture exists — the ledger is seeded at birth,
+        // deliberately, because the allocation is armed there and not here
+        // (see the seed for the trace). Kept as a floor rather than a `!`.
         allocRef.current = { ...store, mips }
       } else if (uploadNeedsRealloc(alloc, store) || alloc.mips !== mips) {
         texture.dispose()

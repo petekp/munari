@@ -774,12 +774,51 @@ function LivePill() {
 
 function LiveMaterial() {
   const texture = useSurfaceTexture()
+  const mat = useRef<THREE.MeshBasicMaterial>(null)
+
+  /**
+   * Recompile when the map arrives.
+   *
+   * The house rule (CLAUDE.md, and `Surface` does this for the materials it
+   * owns) — but `material="none"` means this one is ours, so the obligation is
+   * ours too. `USE_MAP` is a preprocessor define baked into the program at
+   * compile time, and this material is first compiled a frame or two before
+   * the Surface has painted anything, when `map` is still null. Assigning a
+   * texture afterwards changes the uniform in a program that has no line of
+   * code reading it.
+   *
+   * Written while chasing a band that drew nothing at all — and it was not the
+   * cause. That was immutable GL storage baked at the wrong size, one layer
+   * down in `Surface` (see the alloc ledger's seed there). Both faults have
+   * the same signature, which is why this took the blame first: a mesh that is
+   * present, visible, colour-writing, correctly placed, holding a texture whose
+   * canvas demonstrably has ink in it, and drawing nothing, forever, with no
+   * error anywhere. Kept because the obligation is real and unpaid otherwise —
+   * `material="none"` means this material is ours.
+   */
+  useEffect(() => {
+    if (mat.current) mat.current.needsUpdate = true
+  }, [texture])
+
   return (
     <meshBasicMaterial
+      ref={mat}
       map={texture ?? undefined}
       transparent
       premultipliedAlpha
       toneMapped={false}
+      // A MeshBasicMaterial WITHOUT A MAP IS WHITE. There is a window of a
+      // frame or two between this material existing and its Surface's first
+      // upload, and in that window the band drew as an opaque bar across the
+      // artwork — captured out of the drawing buffer at frames 1, 3 and 5 of
+      // successive attempts at this bug, each time looking like a different
+      // problem.
+      //
+      // `opacity` cannot express it: premultiplied blending is
+      // `ONE, ONE_MINUS_SRC_ALPHA`, so a fragment of white at alpha 0 is
+      // ADDED to the destination rather than skipped. `colorWrite` is the
+      // statement that this material has nothing to say yet.
+      colorWrite={!!texture}
       // NOT depthWrite, unlike the card's own material. This sits above the
       // panel that clips the shadow, and a second surface writing depth in
       // front of it would carve a rectangle out of that clip.
@@ -826,6 +865,24 @@ function LiveBand({
     ch: number
   }>(null)
 
+  /**
+   * Declare the root see-through on the root itself, in the same call that
+   * builds it.
+   *
+   * The band's only job is to put a pill over artwork that is a captured plate
+   * on the quad behind, so its content root must rasterize with real alpha —
+   * and `.ui-root` carries the app's page background. The obvious way to say
+   * that is a `:has()` on a child, and it is a frame late: `useSourceHost`
+   * creates the container and hands it to the compositor synchronously, while
+   * the React root inside renders concurrently. The first paint is an empty
+   * div wearing an opaque background, and it lands before anything else in the
+   * flight exists — a white bar alone on screen. `onHost` runs inside that
+   * same synchronous mount, so there is no such frame.
+   */
+  const markBare = useCallback((el: HTMLElement | null) => {
+    el?.setAttribute('data-bare', '')
+  }, [])
+
   useFrame(() => {
     const from = a.live?.box
     const to = b.live?.box
@@ -859,11 +916,12 @@ function LiveBand({
         material="none"
         renderOrder={2}
         frustumCulled={false}
+        onHost={markBare}
         content={
           // The band IS the container query's container — see `LiveBand` in
           // passageMeasure.ts. Full card width, so every `cqi` inside resolves
           // against the card the pill is actually on.
-          <div className="psg-frame" data-bare="" style={{ width: `${w}px` }}>
+          <div className="psg-frame" style={{ width: `${w}px` }}>
             <div className="psg-liveband" style={{ height: `${h}px` }}>
               <LivePill />
             </div>

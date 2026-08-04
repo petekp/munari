@@ -89,13 +89,25 @@ export interface ShadowFrame {
 }
 
 /**
- * How far in front of the document plane the shadow sits.
+ * How far BEHIND the document plane the shadow sits.
  *
  * Not zero, because a coplanar quad and the page's own z-fighting neighbours
  * are a coin toss; not far, because the separation from the card must come
- * from the card's height and nothing else.
+ * from the card's height and nothing else. And negative, which is the part
+ * that was wrong for a week.
+ *
+ * The clip that keeps a shadow outside its caster is the depth test (see the
+ * top of this file). A depth test only clips while the caster is NEARER than
+ * the shadow, and a card that has landed is at z = 0 — so at +1 this quad sat
+ * in front of the very card it was supposed to hide under, and painted a
+ * card-sized 50% veil over it at both ends of every flight while looking
+ * correct in the middle, where the card really was up in the air.
+ *
+ * Measured 2026-08-04: with the card's fragment shader forced to opaque red,
+ * the drawing buffer read 128 at the card's centre and 255 the moment this
+ * constant changed sign.
  */
-const SHADOW_Z = 1
+const SHADOW_Z = -1
 
 /**
  * Where a card at `(x, y, z)` casts, and how soft and heavy the cast is.

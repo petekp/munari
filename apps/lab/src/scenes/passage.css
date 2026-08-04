@@ -381,10 +381,21 @@
  * that paints is the pill, and everything the pill does not cover is the
  * card's cover art, which is a captured plate on the quad behind. `.ui-root`
  * carries the app's opaque page background by default (it stands in for
- * <body>), so a content root that is meant to be see-through has to say so —
- * the same declaration the glass scene makes, for the same reason. Without it
- * the band paints a white slab across the bottom of the artwork. */
-.ui-root:has(> .psg-frame[data-bare]) {
+ * <body>), so a content root that is meant to be see-through has to say so.
+ *
+ * THE MARKER IS ON THE ROOT ITSELF, NOT ON A CHILD. The glass scene writes
+ * this as `.ui-root:has(> [data-glass-root])`, and read literally that says
+ * "clear the background once a child exists" — which is one frame too late.
+ * A SurfaceApp's container is created and handed to the compositor
+ * synchronously; the React root inside it renders CONCURRENTLY, so the first
+ * paint of a brand new band is an empty div wearing the page background.
+ * Captured out of the drawing buffer: frames 1 and 3 of every open were a
+ * white bar across the card — on frame 1 the only thing drawn at all, because
+ * the field's plates did not exist yet.
+ *
+ * `onHost` stamps the attribute inside the same call that builds the
+ * container, so there is no frame in which this does not match. */
+.ui-root[data-bare] {
   background: transparent;
 }
 

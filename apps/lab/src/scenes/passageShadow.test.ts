@@ -32,6 +32,32 @@ describe('shadowFrame', () => {
     expect(Math.abs(high.position[2])).toBeLessThan(2)
   })
 
+  /**
+   * BEHIND the document plane, and the sign is the whole finding.
+   *
+   * The clip that keeps a shadow outside its caster is a DEPTH TEST, not a
+   * blend (three-ui decisions #58, and the note at the top of this file). That
+   * test only works while the caster is nearer the camera than the shadow —
+   * which is true for every frame of the flight except the two that matter,
+   * because a LANDED card is at z = 0 and the shadow was authored at z = +1.
+   *
+   * The reading was not "a shadow in the wrong place". It was the entire card
+   * at HALF BRIGHTNESS at both ends of every flight and correct in the middle:
+   * measured 2026-08-04 by forcing the card's fragment shader to opaque red
+   * and reading the drawing buffer back — 128, exactly half, and 255 the
+   * instant this quad moved behind the plane. Compared against the landed DOM
+   * at the same pixels the artwork read (28, 37, 77) against (54, 72, 152),
+   * every channel a factor of two down.
+   */
+  it('sits behind the document plane, so a landed card occludes it', () => {
+    // Negative: a card at rest is ON the plane, and it has to win the depth
+    // test against its own shadow. Small: the separation a floating card reads
+    // as must come from the card's height and nothing else.
+    const z = shadowFrame(0, 0, 0, 400, 300, LIFT).position[2]
+    expect(z).toBeLessThan(0)
+    expect(z).toBeGreaterThan(-2)
+  })
+
   it('softens and pales as the card rises', () => {
     // Holding either constant is the single most reliable way to make a
     // floating thing read as a sticker.

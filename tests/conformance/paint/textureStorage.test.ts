@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { DENSITY_BAND, storeForBox, uploadNeedsRealloc } from '@anamorph/core'
+import { DENSITY_BAND, storeForBox, uploadNeedsRealloc, type TextureStore } from '@anamorph/core'
 
 // GL texture storage is IMMUTABLE. three allocates it at first-upload
 // dimensions (texStorage2D) and texSubImage2Ds every upload after, so the
@@ -70,6 +70,60 @@ describe('uploadNeedsRealloc', () => {
     // need storage. The point is not that it is cheap — it is that it is
     // never WRONG. (A Surface that is not being resized asks and is told no.)
     expect(reallocs).toBe(120)
+  })
+
+  // The hole this predicate CANNOT see on its own, and the law that closes it.
+  //
+  // `uploadNeedsRealloc` compares the allocation to the store, so it is only
+  // ever as truthful as the allocation it is handed — and the allocation is
+  // not made by the upload path. It is made by the RENDERER, the first time it
+  // draws a material whose map has `needsUpdate` set, at whatever the canvas
+  // measures in that instant. A Surface sets `needsUpdate` twice before any
+  // upload runs (the filter policy at texture birth, and the mirror effect),
+  // and r3f draws from its own loop, so the immutable `texStorage2D` routinely
+  // lands BEFORE the first `upload()` — and if the canvas has been re-cut in
+  // between, the first upload records a baseline that was never allocated.
+  //
+  // After that the ledger and the driver agree with each other forever about a
+  // size neither of them is using. Traced at the GL boundary 2026-08-04 on the
+  // passage scene's live counter: `texStorage2D 308x43` once, then
+  // `texSubImage2D 940x106` returning 1281 on every frame of the flight, with
+  // the predicate below answering `false` to all of them — correctly, from a
+  // baseline that was a lie. On screen: a mesh that is present, visible,
+  // correctly placed, holding a texture whose canvas demonstrably has ink in
+  // it, and drawing nothing at all.
+  //
+  // So the baseline has to be seeded where the allocation is ARMED, not where
+  // the first upload happens to observe it.
+  it('is only as truthful as the baseline it is seeded from', () => {
+    const birth = { width: 308, height: 43 } // what texStorage2D really took
+    const grown = { width: 940, height: 106 } // the canvas by the first upload
+
+    // Seeded at first upload: the ledger adopts the grown store as though it
+    // were the allocation, and never disagrees with itself again.
+    let late: TextureStore | null = null
+    let lateReallocs = 0
+    for (let f = 0; f < 60; f++) {
+      if (uploadNeedsRealloc(late, grown)) {
+        lateReallocs++
+        late = { ...grown }
+      }
+    }
+    expect(lateReallocs).toBe(1) // one bookkeeping entry, zero real storage
+    expect(uploadNeedsRealloc(late, grown)).toBe(false) // ...and silence, forever
+
+    // Seeded at birth: the very first upload sees the mismatch that the driver
+    // is about to reject, and disposes ahead of it.
+    let early: TextureStore | null = { ...birth }
+    let earlyReallocs = 0
+    for (let f = 0; f < 60; f++) {
+      if (uploadNeedsRealloc(early, grown)) {
+        earlyReallocs++
+        early = { ...grown }
+      }
+    }
+    expect(earlyReallocs).toBe(1)
+    expect(early).toEqual(grown)
   })
 
   it('costs nothing on a Surface that is merely repainting', () => {

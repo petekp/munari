@@ -149,6 +149,55 @@ function paints(cs: CSSStyleDeclaration): boolean {
 }
 
 /**
+ * The pieces of a text node that fly as one quad each.
+ *
+ * A run is a maximal stretch of inked characters that CANNOT be split by a
+ * line break, which is exactly what a flying quad needs to be: a run that
+ * spans a break opportunity would wrap at one endpoint and not the other, and
+ * the union of its two client rects is a box the size of two lines with the
+ * ink in opposite corners.
+ *
+ * TWO WAYS TO GET THIS WRONG, both measured on this card:
+ *
+ * Take `Intl.Segmenter`'s word-like segments and you drop every character that
+ * is not a letter or a digit. The card landed reading "A box shadow lives
+ * outside the border box  and the" against a DOM reading "A box-shadow lives
+ * outside the border box, and the" — punctuation simply absent from the
+ * flight, and absent from the landing frame until the DOM took over.
+ *
+ * Split on whitespace instead and "box-shadow" becomes one run, which is a
+ * break opportunity the browser is entitled to take (and does, in the narrow
+ * column). So: segment at word boundaries, glue each segment to the one before
+ * when they touch, and close the run after any non-word-like segment — a
+ * hyphen ends "box-", a comma ends "box,". Both are unbreakable, and together
+ * they cover the text.
+ */
+export function textRuns(text: string): { index: number; length: number }[] {
+  const runs: { index: number; length: number }[] = []
+  let start = -1
+  let end = -1
+  const flush = () => {
+    if (start >= 0) runs.push({ index: start, length: end - start })
+    start = -1
+  }
+  for (const s of SEGMENTER.segment(text)) {
+    if (!/\S/.test(s.segment)) {
+      flush()
+      continue
+    }
+    if (start < 0 || s.index !== end) flush()
+    if (start < 0) start = s.index
+    end = s.index + s.segment.length
+    // A break may fall after punctuation, so the run ends with it.
+    if (!s.isWordLike) flush()
+  }
+  flush()
+  return runs
+}
+
+const SEGMENTER = new Intl.Segmenter(undefined, { granularity: 'word' })
+
+/**
  * Every part of one laid-out card: its painted surfaces, and its words.
  *
  * Blocks are taken TOPMOST-FIRST and not descended into. A stats strip with
@@ -192,7 +241,6 @@ function partsOf(frame: HTMLElement, origin: DOMRect, live?: string): Part[] {
   // the tree at the same positions, so the words that appear at the large end
   // get the keys they would have had — and the matcher sees them as arrivals
   // rather than as strangers.
-  const seg = new Intl.Segmenter(undefined, { granularity: 'word' })
   const walker = document.createTreeWalker(frame, NodeFilter.SHOW_TEXT)
   let index = -1
   let node: Node | null
@@ -206,12 +254,11 @@ function partsOf(frame: HTMLElement, origin: DOMRect, live?: string): Part[] {
     const fs = cs ? parseFloat(cs.fontSize) || 0 : 0
     const band = cs && fs > 0 ? fontBand(cs, fs) : null
     let word = -1
-    for (const s of seg.segment(text)) {
-      if (!s.isWordLike) continue
+    for (const run of textRuns(text)) {
       word++
       const range = document.createRange()
-      range.setStart(node, s.index)
-      range.setEnd(node, s.index + s.segment.length)
+      range.setStart(node, run.index)
+      range.setEnd(node, run.index + run.length)
       const rects = Array.from(range.getClientRects())
       range.detach?.()
       if (!rects.length) continue

@@ -34,7 +34,14 @@ import type { Endpoint, Panel } from './passageMeasure'
  * once at that density rather than re-rasterized 120 times.
  *
  * `LIFT_ZOOM` is the perspective the flight adds at the top of its arc; the
- * card really is bigger on the display there than its own box says.
+ * card really is bigger on the display there than its own box says. It rides
+ * with the MAGNIFIED cut and only with it — a resting endpoint is supplied at
+ * exactly `dpr`, one texel per device pixel, and not a texel more. Oversupply
+ * is not free headroom: 1.25× is a minification, trilinear sampling turns a
+ * minification into a third of a mip level of blur, and the two frames it
+ * blurs are the two a reader can stop and look at. Measured against the landed
+ * DOM 2026-08-04 (decisions #52's lesson, arriving from the other direction:
+ * supply is a target, not a maximum).
  */
 const LIFT_ZOOM = 1.25
 
@@ -42,21 +49,101 @@ export function captureScale(own: number, other: number, dpr: number): number {
   const growth = other / Math.max(own, 1)
   // Only the SMALLER endpoint is ever magnified; the larger one is only ever
   // minified, and mipmaps are the right answer for that.
-  const zoom = growth > 1 ? Math.pow(growth, 0.5 + HANDOVER / 2) : 1
-  const wanted = dpr * zoom * LIFT_ZOOM
+  const zoom = growth > 1 ? Math.pow(growth, 0.5 + HANDOVER / 2) * LIFT_ZOOM : 1
+  const wanted = dpr * zoom
   // The same texture guard `densityAt` uses — a warning per frame is its own
   // kind of bug.
   return Math.max(0.5, Math.min(wanted, 4000 / Math.max(1, own)))
 }
 
+/** One cut of one endpoint, and how many times it has painted. */
+export interface Cut {
+  gen: number
+  paints: number
+}
+
 /**
- * A capture, uploaded once.
+ * Which cut a slot shows, given what is on screen and what is being prepared.
+ *
+ * One rule, and it is the whole fix for the flash at the start of every open:
+ * **a slot never vacates for a replacement that has no pixels yet.** A re-cut
+ * is a brand new canvas, and by the time one happens the page copy has already
+ * been told to hide — so a slot that goes dark while its replacement warms up
+ * leaves a hole in a card the reader is looking at. Measured before this
+ * existed: the whole field, 200 triangles, gone for two frames, on every open
+ * and never on a close (see `captureScale` — only the smaller endpoint is ever
+ * re-cut).
+ *
+ * The same shape as decisions #14: reconcile by comparing what is actually
+ * there, not by scheduling a swap and trusting it to arrive.
+ */
+export function publishedCut<T extends Cut>(live: T | null, next: T | null): T | null {
+  if (!next) return null
+  return next.paints > 0 ? next : live
+}
+
+interface Slot extends Cut {
+  source: DomTextureSource
+  texture: THREE.CanvasTexture
+}
+
+/**
+ * A capture, as a texture the flight shader can sample.
+ *
+ * Four settings, and the fourth is the one that was missing. `premultiplyAlpha`
+ * is the upload flag, and it is a SEPARATE claim from the material's
+ * `premultipliedAlpha`, which is only the blend equation. A 2D canvas holds
+ * premultiplied pixels; with this false, `texImage2D` politely un-premultiplies
+ * on the way in, and the shader then hands straight-alpha colour to a
+ * premultiplied blend — `ONE, ONE_MINUS_SRC_ALPHA` against a fragment whose rgb
+ * was never scaled by its own alpha. Every partially covered texel is drawn at
+ * up to twice its weight.
+ *
+ * Which is not a stripe or a flicker; it is the whole card looking subtly
+ * wrong. Antialiased glyph edges are exactly the pixels this doubles, so the
+ * mesh's text renders visibly HEAVIER than the same text on the page, and the
+ * eye reads that as blur. Measured 2026-08-04, one row through the title:
+ * mean level 138 from the GPU against 115 in the DOM and 109 from compositing
+ * the same plate row on the CPU — 111 the moment this flag went true. Sibling
+ * scenes (`Glass`, `glassSdf`) had it all along; this one was written without
+ * it and nothing anywhere reports the mismatch.
+ */
+export function plateTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
+  const t = new THREE.CanvasTexture(canvas)
+  // The measured boxes are top-down, the way layout reports them, so the
+  // texture is read top-down too. Flipping here rather than subtracting in
+  // three places in the shader.
+  t.flipY = false
+  t.premultiplyAlpha = true
+  t.colorSpace = THREE.SRGBColorSpace
+  t.anisotropy = 4
+  return t
+}
+
+function retire(s: Slot) {
+  s.texture.dispose()
+  s.source.dispose()
+}
+
+/**
+ * A capture, uploaded once — and re-cut without ever going dark.
  *
  * `createDomTextureSource` is the same primitive a Surface is built on, used
  * here for the one thing a Surface cannot do: hand over its texture without
- * also being a mesh. These two captures are static by construction — the
- * plate is unparented, nothing animates in it, and its `paintCount` stops
- * advancing after the first paint or two — so this is an upload, not a feed.
+ * also being a mesh. These captures are static by construction — the plate is
+ * unparented, nothing animates in it, and its `paintCount` stops advancing
+ * after the first paint or two — so this is an upload, not a feed.
+ *
+ * It is cut TWICE per open, because `captureScale` needs the other endpoint's
+ * width to choose a density and the destination does not exist yet when the
+ * source is first cut. So the two cuts overlap: the second is built beside the
+ * first, and the first keeps being sampled until the second has pixels.
+ *
+ * Superseded plates are held, not freed, until the flight unmounts. Disposing
+ * one at the instant of promotion would pull a texture out from under a
+ * material that is still pointing at it for the rest of that frame, and the
+ * alternative — waiting N frames — is the frame-count race this project keeps
+ * paying for. A flight is a second long and cuts each endpoint at most twice.
  *
  * Mipmaps because a part is routinely drawn smaller than it was captured (the
  * whole source card at t = 0 is 308 px of a texture cut for 940), and a
@@ -69,50 +156,79 @@ export function useCapture(
   scale: number,
 ): THREE.Texture | null {
   const [tex, setTex] = useState<THREE.Texture | null>(null)
-  const src = useRef<DomTextureSource | null>(null)
-  const held = useRef<THREE.CanvasTexture | null>(null)
-  const seen = useRef(-1)
+  const live = useRef<Slot | null>(null)
+  const next = useRef<Slot | null>(null)
+  const spent = useRef<Slot[]>([])
+  const gen = useRef(0)
 
   useEffect(() => {
     if (!node || width <= 0 || height <= 0) return
     let made: DomTextureSource
     try {
-      made = createDomTextureSource(node, width, height, { label: 'passage-capture', scale })
-    } catch {
+      // A CLONE, per cut. `createDomTextureSource` adopts, and adoption MOVES
+      // the node and refuses anything with a parent — so the second cut of an
+      // endpoint was handing over a node the first cut already owned, and
+      // being refused. The refusal was correct and the `catch` below ate it:
+      // `captureScale`'s whole magnification branch had never once run in the
+      // browser, and every source plate flew at its resting density stretched
+      // to three times its size. Found by reading the live texture back
+      // (385 px wide for a card cut at 308 — 1.25×, the pre-destination
+      // answer) rather than from any symptom, 2026-08-04.
+      const own = node.cloneNode(true) as HTMLElement
+      made = createDomTextureSource(own, width, height, { label: 'passage-capture', scale })
+    } catch (err) {
+      // Loud, because the last thing this swallowed cost a rewrite to find.
+      console.error('passage: capture refused', err)
       return
     }
-    src.current = made
-    seen.current = -1
-    const t = new THREE.CanvasTexture(made.canvas)
-    held.current = t
-    // The measured boxes are top-down, the way layout reports them, so the
-    // texture is read top-down too. Flipping here rather than subtracting in
-    // three places in the shader.
-    t.flipY = false
-    t.colorSpace = THREE.SRGBColorSpace
-    t.anisotropy = 4
-    return () => {
-      setTex(null)
-      t.dispose()
-      made.dispose()
-      src.current = null
-      held.current = null
-    }
+    const t = plateTexture(made.canvas)
+    // A cut that was still warming up when a third one arrived was never on
+    // screen, so it can go straight into the pile.
+    if (next.current) spent.current.push(next.current)
+    next.current = { gen: gen.current++, paints: 0, source: made, texture: t }
+    // NO cleanup here on purpose: this effect re-runs when the density changes
+    // mid-flight, and tearing down the live plate is precisely the hole.
   }, [node, width, height, scale])
 
-  // Published only once the capture HAS pixels. A texture handed over before
-  // its first paint is a blank card at the moment of the handoff, and the
-  // page copy has already been told to hide — the same class of flash
-  // `onFirstUpload` exists to prevent, arriving by a different door.
+  useEffect(
+    () => () => {
+      for (const s of spent.current) retire(s)
+      if (next.current) retire(next.current)
+      if (live.current) retire(live.current)
+      spent.current = []
+      next.current = null
+      live.current = null
+    },
+    [],
+  )
+
   useFrame(() => {
-    const s = src.current
-    const t = held.current
-    if (!s || !t) return
-    const n = s.paintCount()
-    if (n === seen.current) return
-    seen.current = n
-    t.needsUpdate = true
-    if (n > 0 && t !== tex) setTex(t)
+    const pending = next.current
+    const on = live.current
+    if (pending) {
+      const n = pending.source.paintCount()
+      if (n !== pending.paints) {
+        pending.paints = n
+        pending.texture.needsUpdate = true
+      }
+      if (publishedCut(on, pending) !== pending) return
+      if (on) spent.current.push(on)
+      live.current = pending
+      next.current = null
+      setTex(pending.texture)
+      return
+    }
+    // While a re-cut is in flight the live plate must NOT be refreshed:
+    // `createDomTextureSource` MOVES the node it is given, so the old parking
+    // canvas has nothing left to paint and re-uploading it would replace a
+    // good plate with an empty one. Hence this runs only once nothing is
+    // pending — the texels already on the GPU are what carry the card across.
+    if (!on) return
+    const n = on.source.paintCount()
+    if (n !== on.paints) {
+      on.paints = n
+      on.texture.needsUpdate = true
+    }
   })
 
   return tex
@@ -551,7 +667,13 @@ export function PassageField({
   const end = b ?? a
   return (
     <>
-      <PanelMesh a={a} b={end} panel={end.panel} progress={progress} />
+      {/* Gated for the same reason, and it is the sharper case: the panel is
+          opaque and it is drawn exactly over the page card it is standing in
+          for, which is still visible at this point (the copy hides on
+          `onSourceReady`, which is this). One frame of an empty dark slab over
+          live DOM reads as the card blinking out at the instant it is
+          grabbed. */}
+      {sourceReady && <PanelMesh a={a} b={end} panel={end.panel} progress={progress} />}
       <PartMesh
         parts={blocks}
         texA={chromeA}
@@ -561,7 +683,12 @@ export function PassageField({
         progress={progress}
         renderOrder={1}
       />
-      {live}
+      {/* Nothing that belongs to the flying card may be on screen before the
+          card is. The band's Surface warms up on its own schedule, and left
+          ungated it draws first — measured, frame 1 of every open was the
+          band alone on the page with no card behind it. #54, again: content
+          first, then everything that rides on it. */}
+      {sourceReady && live}
       <PartMesh
         parts={words}
         texA={inkA}
