@@ -45,7 +45,7 @@ import {
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { flushSync } from 'react-dom'
 import * as THREE from 'three'
-import { SurfaceApp, useSurfaceTexture, cameraDistance, planeScale } from 'munari'
+import { SurfaceApp, useSurfaceTexture, cameraDistance, planeScale } from '@petekp/munari'
 import {
   HEIGHT_OMEGA,
   atTarget,

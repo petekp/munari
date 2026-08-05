@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { MAX_TEXTURE_EDGE } from 'munari'
+import { MAX_TEXTURE_EDGE } from '@petekp/munari'
 
 import {
   HEIGHT_OMEGA,

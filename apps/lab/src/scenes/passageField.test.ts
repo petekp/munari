@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
 
 import * as THREE from 'three'
 
-import { MAX_TEXTURE_EDGE } from 'munari'
+import { MAX_TEXTURE_EDGE } from '@petekp/munari'
 
 import {
   captureScale,

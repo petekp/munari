@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The lab application — a consumer. Reaches the library only through the `munari` barrel, exactly as an outside project would (enforced by tests/boundary.test.ts).",
+  "description": "The lab application — a consumer. Reaches the library only through the `@petekp/munari` barrel, exactly as an outside project would (enforced by tests/boundary.test.ts).",
   "scripts": {
     "dev": "vite",
     "build": "vite build"
@@ -11,7 +11,7 @@
   "dependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
-    "munari": "*",
+    "@petekp/munari": "*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "radix-ui": "^1.6.7",

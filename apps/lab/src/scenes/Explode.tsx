@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceTexture } from 'munari'
+import { Surface, useSurfaceTexture } from '@petekp/munari'
 import { explodePaint, measureBleed, type Plate } from './paintPlates'
 
 // The exploded-paint inspector — a live element taken apart into its OWN

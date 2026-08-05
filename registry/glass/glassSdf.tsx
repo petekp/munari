@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { SurfaceApp, useSurfaceTexture } from 'munari'
+import { SurfaceApp, useSurfaceTexture } from '@petekp/munari'
 import { BLIT_FRAGMENT, GLASS_FRAGMENT, QUAD_VERTEX } from './glassSdfShader'
 
 // The SDF glass path — the shared kit every glass panel builds on (beads,

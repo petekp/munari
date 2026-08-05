@@ -7,10 +7,10 @@ a decision that is superseded is amended in place, with the reason.
 
 ## #1 — The name is munari, and the hourglass is the shape (2026-08-02, renamed 2026-08-04)
 
-**Decision.** Project, repo, and eventual sole public package:
-`munari`. The monorepo is an hourglass — `@munari/core` (kernel:
+**Decision.** Project and repo: `munari`. Sole public package:
+`@petekp/munari`. The monorepo is an hourglass — `@munari/core` (kernel:
 custody, provenance, arbitration; zero runtime dependencies; never
-published independently), `munari` at `packages/react` (the
+published independently), `@petekp/munari` at `packages/react` (the
 three/r3f binding; `three` + `@react-three/fiber` as peer
 dependencies; the only installable), `registry/` (copyable, never
 published), `apps/lab` (consumer, barrel-only), `instruments/`
@@ -29,10 +29,10 @@ three-mesh-ui and uikit — the rebuild-UI-as-GL-geometry architecture
 this library is the inversion of); custody and stagecraft words
 (bailment, greenroom, foley — precise but the wrong register).
 
-**Amended 2026-08-04 — renamed from `munari`.** Not forced by
-availability: `munari@0.0.1` was published and held, and stays held
-as a pointer. The change is a deliberate move in what the name
-argues. `munari` argued from the *vantage* — an anamorphosis
+**Amended 2026-08-04 — renamed from `anamorph`.** Not forced by
+availability: `anamorph@0.0.1` was published and held, and now carries
+a deprecation pointing here. The change is a deliberate move in what
+the name argues. `anamorph` argued from the *vantage* — an anamorphosis
 resolves true from one designed viewpoint, which matched the
 pixel-calibrated camera making screen and world equal on exactly one
 plane. `munari` argues from the *matter*. Both are true of the library
@@ -41,7 +41,33 @@ and the vantage contract is unchanged, still pinned by
 reader meets first and the one flight, wake, and passage actually
 demonstrate. Cost of the name: `Munari` at the head of a sentence
 reads as the man, so prose says "the library" and reserves `munari`
-for the package.
+for the project.
+
+**Amended 2026-08-04 — the published package is scoped.** The
+unscoped `munari` is unpublishable: npm's typo-squatting guard rejects
+it as *"too similar to existing package minami"* (a JSDoc theme,
+~88k downloads/month), with a 403 on `PUT`. That guard is a registry-side
+check on the real publish — `npm publish --dry-run` passes clean, so
+there is no way to learn this before attempting it. Note for anyone
+choosing a name later: a 404 on `npm view` proves the name is
+*unclaimed*, not that it is *publishable*.
+
+**Why an owner scope and not `@munari/react`.** A project scope was the
+first instinct — it matches the workspace vocabulary and reads like
+`@tanstack/*`. It was rejected because those scopes are families, and
+the member name is the family member: `@munari/react` promises
+`@munari/vue` and `@munari/svelte` next. This library is three-first
+and renderer abstraction is banned outright by the second-system
+guard, so that name would advertise an architecture the repo forbids —
+unacceptable in a project whose whole claim is faithfulness. Under an
+owner scope the package is named `munari` exactly, and the scope is
+custody rather than identity. Also rejected: `munari-gl` / `munarijs`
+(bare, but might trip the same guard — discoverable only by
+publishing) and appealing to npm support (days to weeks, uncertain).
+Known cost: an owner scope has to be abandoned and re-published if the
+project ever outgrows a single author, which costs exactly what
+today's rename cost. `@munari/core` keeps the project scope — it is
+workspace-internal and never published, so it answers to no registry.
 
 **Why one public package.** The shadcn model: a thin published
 substrate with a copyable registry on top. Publishing the kernel
@@ -402,7 +428,7 @@ because that import resolves fine inside the workspace and fails only
 for consumers.
 
 **Why staging instead of repointing `exports` at `dist`.** The lab
-resolves `munari` through the workspace with no alias standing in for
+resolves `@petekp/munari` through the workspace with no alias standing in for
 the library — that is what makes a missing barrel export fail the lab's
 build instead of slipping past on a relative path. Pointing `exports` at
 `dist` would either break that enforcement or force a rebuild between

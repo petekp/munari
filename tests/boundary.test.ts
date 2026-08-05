@@ -5,7 +5,7 @@
 //   2. packages/react reaches core only through the @munari/core
 //      specifier (plus its declared peers), never a relative path.
 //   3. Consumers (apps/, registry/) reach the library only through the
-//      `munari` barrel — @munari/core and relative reach-arounds
+//      `@petekp/munari` barrel — @munari/core and relative reach-arounds
 //      are both violations.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -103,7 +103,7 @@ describe('the hourglass', () => {
     ).toEqual([])
   })
 
-  it('consumers reach the library only through the munari barrel', () => {
+  it('consumers reach the library only through the @petekp/munari barrel', () => {
     for (const consumer of ['apps', 'registry']) {
       const base = join(ROOT, consumer)
       expect(

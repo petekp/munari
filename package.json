@@ -15,7 +15,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p apps/lab && tsc --noEmit -p registry",
     "lint": "oxlint . --deny-warnings",
-    "build": "npm run build -w munari",
+    "build": "npm run build -w @petekp/munari",
     "gate:idle-zero": "node instruments/idle-zero/run.mjs",
     "dev": "npm run dev -w @munari/lab",
     "gate:sharpness": "node instruments/sharpness/run.mjs"

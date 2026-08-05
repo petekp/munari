@@ -51,7 +51,7 @@ import {
 } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { SurfaceApp, cameraDistance, useSurfaceTexture } from 'munari'
+import { SurfaceApp, cameraDistance, useSurfaceTexture } from '@petekp/munari'
 import {
   FIELD_SIM_FRAG,
   FIELD_VERT,
@@ -91,7 +91,7 @@ const DOCS: Doc[] = [
       { kind: 'h2', text: 'usage' },
       {
         kind: 'code',
-        code: `import { SurfaceApp } from 'munari'
+        code: `import { SurfaceApp } from '@petekp/munari'
 
 // The subtree is parked off-document and drawn from there.
 // Everything inside it is ordinary React.

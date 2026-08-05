@@ -1,7 +1,7 @@
 // Write the PUBLISHED manifest into dist/, and publish from there.
 //
 // Why staging instead of just pointing `exports` at dist: the lab resolves
-// `munari` through the workspace with no alias standing in for the
+// `@petekp/munari` through the workspace with no alias standing in for the
 // library, which is what makes a missing barrel export fail the build
 // instead of slipping past on a relative path (apps/lab/vite.config.ts
 // says so, tests/boundary.test.ts enforces it). Repointing exports at
@@ -9,7 +9,7 @@
 // So the workspace manifest keeps pointing at source and stays private,
 // and the thing we publish is assembled here:
 //
-//   npm run build -w munari && npm publish packages/react/dist
+//   npm run build -w @petekp/munari && npm publish packages/react/dist
 //
 // The workspace package staying `private: true` is therefore a feature —
 // a stray `npm publish` at the root cannot ship raw source by accident.
@@ -49,6 +49,12 @@ const staged = {
   types: './index.d.ts',
   peerDependencies: src.peerDependencies,
   engines: src.engines,
+  // A SCOPED package publishes `restricted` unless told otherwise, so
+  // without this the first publish either fails (free org) or ships
+  // private (paid) — both silent from the build's point of view. Stated
+  // in the manifest rather than as `--access=public` on the command line,
+  // so it cannot be forgotten by whoever publishes next.
+  publishConfig: { access: 'public' },
 }
 
 // The kernel must be INSIDE the bundle, not imported from it. `@munari/core`
@@ -64,7 +70,7 @@ if (/from\s*['"]@munari\/core['"]/.test(emitted)) {
 
 writeFileSync(join(dist, 'package.json'), `${JSON.stringify(staged, null, 2)}\n`)
 
-// `munari/style.css` is declared surface and is not in the entry graph,
+// `@petekp/munari/style.css` is declared surface and is not in the entry graph,
 // so nothing else would put it in the package.
 copyFileSync(join(pkgDir, 'src', 'style.css'), join(dist, 'style.css'))
 
