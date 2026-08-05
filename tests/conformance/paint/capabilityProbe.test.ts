@@ -13,7 +13,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { detectHtmlInCanvas } from '@anamorph/core'
+import { detectHtmlInCanvas } from '@munari/core'
 
 afterEach(() => {
   vi.unstubAllGlobals()

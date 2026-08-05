@@ -45,7 +45,7 @@ import {
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { flushSync } from 'react-dom'
 import * as THREE from 'three'
-import { SurfaceApp, useSurfaceTexture, cameraDistance, planeScale } from 'anamorph'
+import { SurfaceApp, useSurfaceTexture, cameraDistance, planeScale } from 'munari'
 import {
   HEIGHT_OMEGA,
   atTarget,
@@ -85,9 +85,9 @@ const LIBRARY: Item[] = [
     eyebrow: 'platform · 04',
     title: 'The capture is clipped at the border box',
     byline: 'measured in Chrome 150 · 6 min',
-    c1: '#3b6fe0',
-    c2: '#8b5cf6',
-    c3: '#131a2b',
+    c1: '#1b63e8',
+    c2: '#4d8dff',
+    c3: '#0d1014',
     stats: [
       ['bare', '0 px'],
       ['wrapped', '12 000 px'],
@@ -103,9 +103,9 @@ const LIBRARY: Item[] = [
     eyebrow: 'platform · 11',
     title: 'A parked canvas is a container, not a viewport',
     byline: 'measured 2026-08-04 · 4 min',
-    c1: '#2dd4bf',
-    c2: '#3b82f6',
-    c3: '#0d1f22',
+    c1: '#4d8dff',
+    c2: '#c3c2bc',
+    c3: '#0c0e14',
     stats: [
       ['@container', 'resolves'],
       ['@media', 'page-global'],
@@ -121,9 +121,9 @@ const LIBRARY: Item[] = [
     eyebrow: 'decisions · 58',
     title: 'Blend order cannot express a clip. Depth can.',
     byline: 'field note · 9 min',
-    c1: '#f59e0b',
-    c2: '#ef4444',
-    c3: '#241408',
+    c1: '#ff4f17',
+    c2: '#ff8a4d',
+    c3: '#170c07',
     stats: [
       ['symptom', '1 px seam'],
       ['cause', 'AA column'],
@@ -139,9 +139,9 @@ const LIBRARY: Item[] = [
     eyebrow: 'decisions · 50',
     title: 'Window is a party line',
     byline: 'field note · 7 min',
-    c1: '#a78bfa',
-    c2: '#ec4899',
-    c3: '#1c1430',
+    c1: '#1b63e8',
+    c2: '#ff4f17',
+    c3: '#0e0f13',
     stats: [
       ['door', 'one'],
       ['brand', 'Symbol.for'],
@@ -157,9 +157,9 @@ const LIBRARY: Item[] = [
     eyebrow: 'decisions · 62',
     title: 'A live pipeline is not a visible effect',
     byline: 'field note · 5 min',
-    c1: '#4ade80',
-    c2: '#22d3ee',
-    c3: '#0b2018',
+    c1: '#d9d8d1',
+    c2: '#8b8a84',
+    c3: '#121317',
     stats: [
       ['wired', 'all of it'],
       ['visible', 'under 2%'],
@@ -175,9 +175,9 @@ const LIBRARY: Item[] = [
     eyebrow: 'decisions · 60',
     title: 'Paper folds in chunks, not in noise',
     byline: 'field note · 8 min',
-    c1: '#fb7185',
-    c2: '#f97316',
-    c3: '#2a0f16',
+    c1: '#ff6a38',
+    c2: '#c3c2bc',
+    c3: '#14100e',
     stats: [
       ['per-vertex', 'confetti'],
       ['6×3 cells', 'paper'],
@@ -1191,17 +1191,17 @@ function PassageCard({
 /**
  * Three ways to run the same click, so the comparison is a measurement.
  *
- * `anamorph` is the shared-element flight: two layouts, per-word
+ * `munari` is the shared-element flight: two layouts, per-word
  * correspondence, one draw call. `relayout` is the same passage with the card
  * laid out again at every intermediate width — the honest version, kept
  * because it is the thing this library uniquely CAN do and because seeing it
  * next to the other two is the argument for why doing it is a bad idea.
  * `view-transition` is the browser's own, which is a photograph.
  */
-type Mode = 'anamorph' | 'relayout' | 'view-transition'
+type Mode = 'munari' | 'relayout' | 'view-transition'
 
 export function PassageApp({ chips }: { chips?: React.ReactNode }) {
-  const [mode, setMode] = useState<Mode>('anamorph')
+  const [mode, setMode] = useState<Mode>('munari')
   const [route, setRoute] = useState<string | null>(null)
   const [pass, setPass] = useState<Pass | null>(null)
   const [painted, setPainted] = useState(false)
@@ -1432,13 +1432,13 @@ export function PassageApp({ chips }: { chips?: React.ReactNode }) {
         </div>
 
         <div className="psg-modes">
-          {(['anamorph', 'relayout', 'view-transition'] as Mode[]).map((m) => (
+          {(['munari', 'relayout', 'view-transition'] as Mode[]).map((m) => (
             <button key={m} data-active={mode === m} onClick={() => setMode(m)} disabled={!!pass}>
               {m}
             </button>
           ))}
           <span className="psg-note">
-            {mode === 'anamorph'
+            {mode === 'munari'
               ? 'two real layouts, measured off-screen — and every word flies between them'
               : mode === 'relayout'
                 ? 'the element re-lays-itself-out at every width on the way — every frame correct'

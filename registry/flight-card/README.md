@@ -64,4 +64,4 @@ contracts.
 | fold grid | 6×3 uv cells | flightShaders.ts, crumple shader |
 | fold remainder | 0.35 per-vertex mix | same |
 | crumple altitude | `CRUMPLE_Z = 55` | Flight.tsx |
-| kernel twins | AMP 55 / V0 650 / spin V0 220 / MAX 7 | `@anamorph/core` plate.ts, contract-covered |
+| kernel twins | AMP 55 / V0 650 / spin V0 220 / MAX 7 | `@munari/core` plate.ts, contract-covered |

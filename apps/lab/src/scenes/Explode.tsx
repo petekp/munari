@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceTexture } from 'anamorph'
+import { Surface, useSurfaceTexture } from 'munari'
 import { explodePaint, measureBleed, type Plate } from './paintPlates'
 
 // The exploded-paint inspector — a live element taken apart into its OWN
@@ -117,7 +117,7 @@ export function ExplodeHud() {
   return (
     <div className="explode-hud" ref={hostRef}>
       <div className="specimen-stage">
-        <div className="paint-specimen">anamorph</div>
+        <div className="paint-specimen">munari</div>
       </div>
       <p className="specimen-caption">
         live element — never cloned out of the page, never restyled

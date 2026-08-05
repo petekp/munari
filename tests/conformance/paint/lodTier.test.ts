@@ -9,7 +9,7 @@ import {
   seedTier,
   selectLodTier,
   tiersInRange,
-} from '@anamorph/core'
+} from '@munari/core'
 
 // density = desired texels per CSS px (projected device px per css px).
 // selectLodTier is a Schmitt trigger over a quantized tier ladder: the

@@ -1,7 +1,7 @@
 import { use, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import type { ThreeElements } from '@react-three/fiber'
-import { composeFields, damping, detentField, hopImpulse } from '@anamorph/core'
+import { composeFields, damping, detentField, hopImpulse } from '@munari/core'
 import { use1DOF, wrapAngle } from './use1DOF'
 import { FocusGroupContext, type LeafHandle } from '../focusContext'
 

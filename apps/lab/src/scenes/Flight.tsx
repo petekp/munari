@@ -54,7 +54,7 @@ import {
   useSurfaceChrome,
   useSurfaceTexture,
   type SurfaceChrome,
-} from 'anamorph'
+} from 'munari'
 import {
   CARD_FRAG,
   CARD_VERT,
@@ -71,8 +71,8 @@ import {
   pixelGridSnap,
   planeScale,
   screenToPlane,
-} from 'anamorph'
-import { attachFlightGestures } from 'anamorph'
+} from 'munari'
+import { attachFlightGestures } from 'munari'
 import {
   aeroFollowStep,
   aeroReach,
@@ -87,13 +87,16 @@ import {
   wadOffscreen,
   wadShrink,
   type Plate,
-} from 'anamorph'
+} from 'munari'
 import { corners } from './flightCorners'
 
 // ── the data ─────────────────────────────────────────────────────────────
 
 interface Card {
   id: string
+  /** Stable reference, stamped on the card. Not a position — deleting a
+   *  card never renumbers the ones around it. */
+  code: string
   tag: string
   title: string
   body: string
@@ -110,6 +113,7 @@ const COLS: { id: ColId; name: string }[] = [
 const SEED: Card[] = [
   {
     id: 'c1',
+    code: '01',
     tag: 'shader',
     title: 'Scissor each glass pass',
     body: 'Every SDF pass is full-screen. Clip it to the panel’s screen AABB.',
@@ -118,6 +122,7 @@ const SEED: Card[] = [
   },
   {
     id: 'c2',
+    code: '02',
     tag: 'a11y',
     title: 'Announcer kit',
     body: 'Live-region plumbing for scene-level focus moves.',
@@ -126,14 +131,16 @@ const SEED: Card[] = [
   },
   {
     id: 'c3',
+    code: '03',
     tag: 'perf',
-    title: 'Measure the upload ceiling again',
+    title: 'Measure the upload ceiling',
     body: '64–96 concurrent painting sources at 120 Hz — is that still true?',
     note: '',
     done: true,
   },
   {
     id: 'c4',
+    code: '04',
     tag: 'docs',
     title: 'Write down the depth-order bug',
     body: 'Distance to the eye is not depth. Any centred scene hides it.',
@@ -142,17 +149,54 @@ const SEED: Card[] = [
   },
   {
     id: 'c5',
+    code: '05',
     tag: 'spike',
     title: 'Pick this card up',
     body: 'It is still a DOM element. Type in the field while it is in the air.',
     note: '',
     done: false,
   },
+  {
+    id: 'c6',
+    code: '06',
+    tag: 'chrome',
+    title: 'Shadow swap at touchdown',
+    body: 'Grab and land trade shadow layers. Identity at h=0 or it pops.',
+    note: '',
+    done: false,
+  },
+  {
+    id: 'c7',
+    code: '07',
+    tag: 'transfer',
+    title: 'Pin density to the plate, not the frame',
+    body: 'Sharpness is supply × phase × transfer — three budgets, three bugs.',
+    note: '',
+    done: true,
+  },
+  {
+    id: 'c8',
+    code: '08',
+    tag: 'pointer',
+    title: 'Foreign captures stay silent',
+    body: 'A held-button move that began off-surface is not ours to retell.',
+    note: '',
+    done: false,
+  },
+  {
+    id: 'c9',
+    code: '09',
+    tag: 'physics',
+    title: 'Throw one of these',
+    body: 'Flick it into the other column, or hold ✕ and toss the wad away.',
+    note: '',
+    done: false,
+  },
 ]
 
 const START: Record<ColId, string[]> = {
-  queue: ['c1', 'c2', 'c4'],
-  today: ['c3', 'c5'],
+  queue: ['c1', 'c2', 'c4', 'c8', 'c9'],
+  today: ['c3', 'c5', 'c6', 'c7'],
 }
 
 // ── flight ───────────────────────────────────────────────────────────────
@@ -285,14 +329,17 @@ function CardBody({ card, onChange, onGrab, onDelete, hidden }: CardBodyProps) {
       onPointerDown={onGrab}
       style={hidden ? { visibility: 'hidden' } : undefined}
     >
-      <div className="l14-row">
-        <h3>{card.title}</h3>
+      {/* The identity strip. Everything here is small and silkscreened so
+       * the title below it is the only loud thing on the card. */}
+      <div className="l14-rail">
+        <span className="l14-code">{card.code}</span>
         <span className="l14-tag">{card.tag}</span>
+        <hr />
         {onDelete && (
           <button
             className="l14-del"
             data-nodrag
-            aria-label="delete card"
+            aria-label="Delete card"
             // A PRESS, so the crumple starts with the button still down and
             // the forming ball is holdable — drag and let go to toss it.
             // The click stays as the KEYBOARD path (Enter/Space on a button
@@ -301,26 +348,29 @@ function CardBody({ card, onChange, onGrab, onDelete, hidden }: CardBodyProps) {
             onPointerDown={(e) => onDelete(e)}
             onClick={() => onDelete()}
           >
-            ×
+            ✕
           </button>
         )}
       </div>
+      <h3>{card.title}</h3>
       <p>{card.body}</p>
-      <input
-        className="l14-note"
-        data-nodrag
-        placeholder="note…"
-        value={card.note}
-        onChange={(e) => onChange({ note: e.target.value })}
-      />
-      <label className="l14-check" data-nodrag>
+      <div className="l14-foot">
+        <label className="l14-check" data-nodrag>
+          <input
+            type="checkbox"
+            checked={card.done}
+            onChange={(e) => onChange({ done: e.target.checked })}
+          />
+          Done
+        </label>
         <input
-          type="checkbox"
-          checked={card.done}
-          onChange={(e) => onChange({ done: e.target.checked })}
+          className="l14-note"
+          data-nodrag
+          placeholder="Add note"
+          value={card.note}
+          onChange={(e) => onChange({ note: e.target.value })}
         />
-        done
-      </label>
+      </div>
     </div>
   )
 }
@@ -358,8 +408,8 @@ function CardMaterial({ gloss = 0.5, aero }: { gloss?: number; aero: AeroState }
       // readable ~20 counts; the term is identically zero when flat, so
       // this number never touches a resting card.
       uFlex: { value: 2.5 },
-      uAnamorphRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uAnamorphSize: { value: new THREE.Vector2(1, 1) },
+      uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
+      uMunariSize: { value: new THREE.Vector2(1, 1) },
       uAero: { value: aero.pack },
       uAeroGrab: { value: aero.grab },
       uWad: { value: aero.wad },
@@ -368,8 +418,8 @@ function CardMaterial({ gloss = 0.5, aero }: { gloss?: number; aero: AeroState }
   )
   uniforms.tMap.value = texture ?? null
   const radii = chrome?.radii ?? [0, 0, 0, 0]
-  uniforms.uAnamorphRadii.value.set(radii[0], radii[1], radii[2], radii[3])
-  uniforms.uAnamorphSize.value.set(width, height)
+  uniforms.uMunariRadii.value.set(radii[0], radii[1], radii[2], radii[3])
+  uniforms.uMunariSize.value.set(width, height)
   return (
     <shaderMaterial
       key={texture?.uuid ?? 'none'}
@@ -1497,17 +1547,29 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
 
   return (
     <div className="l14" ref={scroller}>
-      <div className="l14-inner">
-        <h1>Board</h1>
-        <p className="l14-lede">
-          An ordinary page. Select this text, scroll it, tab through it — then
-          press a card and pull.
-        </p>
+      {/* The black cluster: wordmark and scene selector, nothing else. The
+       * board is the whole page — a paragraph explaining what you are
+       * about to do to it would only be read once, and by then the card is
+       * already in the air. */}
+      <div className="l14-bar">
+        <div className="l14-bar-inner">
+          <h1>
+            ana<em>morph</em>
+          </h1>
+          {chips}
+        </div>
+      </div>
 
+      <div className="l14-inner">
         <div className="l14-board" ref={boardEl}>
           {COLS.map((col) => (
             <section className="l14-col" data-col={col.id} key={col.id}>
-              <h2>{col.name}</h2>
+              <h2>
+                {col.name}
+                <span className="l14-count">
+                  {String(board[col.id].length).padStart(2, '0')}
+                </span>
+              </h2>
               <ul>
                 {board[col.id].map((id) => (
                   <li
@@ -1533,53 +1595,6 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
             </section>
           ))}
         </div>
-
-        <article className="l14-prose">
-          <h2>What is actually happening</h2>
-          <p>
-            The cards above are DOM. So is this paragraph. The difference is
-            that a card, while you are holding it, is also a rigid body: a thin
-            plate with the inertia of its own dimensions, hanging off your
-            pointer by whatever point you closed your fingers on. Grab one by a
-            corner and it swings, because <code>r × F</code> is a torque and a
-            torque needs an orientation to act on.
-          </p>
-          <p>
-            Nothing is moved at the handoff. The card you pressed turns{' '}
-            <code>visibility: hidden</code> — which keeps its box, so the page
-            does not twitch — and a second React root renders the same
-            component into a parked canvas that becomes the material of a quad.
-            Both copies exist for two frames and they are the same pixels in
-            the same place, so there is no moment to catch.
-          </p>
-          <h2>Why the seam is invisible</h2>
-          <p>
-            The camera sits exactly <code>(height/2)/tan(fov/2)</code> back, so
-            the plane <code>z = 0</code> is the viewport and one world unit is
-            one CSS pixel. A card&rsquo;s <code>getBoundingClientRect()</code>{' '}
-            is already a pose. Lifting it toward you is honest perspective —
-            it grows because it is nearer, and the texture is re-rasterized at
-            a finer tier on the way up because it genuinely covers more pixels
-            than it did on the page.
-          </p>
-          <p>
-            The shadow is the plate&rsquo;s four corners projected onto{' '}
-            <code>z = 0</code> along the light, so a tilted card throws a
-            sheared quadrilateral rather than a blob. It falls on this text
-            because the canvas composites over the document with alpha: there
-            is no compositing trick and no blend mode, just a translucent black
-            quadrilateral drawn where the light does not reach.
-          </p>
-          <h2>And the loop closes</h2>
-          <p>
-            While a card is in the air, the simulation writes{' '}
-            <code>--l14-near</code> onto the slot it is aimed at. Real CSS
-            reads it and tints the well. So the DOM is being rasterized into
-            the material of the object that is, at the same time, restyling the
-            DOM — which is either a feedback loop or a single interaction
-            layer, depending on how generous you are feeling.
-          </p>
-        </article>
       </div>
 
       <Canvas
@@ -1636,15 +1651,6 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
           />
         )}
       </Canvas>
-
-      <div className="l14-hud">
-        {chips}
-        <span>
-          press a card and pull · throw it into the other column · tap one to
-          leave it hanging, then type in its note · esc puts it back · hold ✕
-          to crumple, then toss the ball
-        </span>
-      </div>
     </div>
   )
 }

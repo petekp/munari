@@ -1,6 +1,6 @@
 # The platform, as measured
 
-Anamorph rests on Chrome's HTML-in-canvas APIs (`drawElementImage`,
+The library rests on Chrome's HTML-in-canvas APIs (`drawElementImage`,
 `texElementImage2D`), which are an origin trial — moving ground. Every
 claim below is something the library depends on, stated as what the
 platform does, with the measurement that established it. Re-run these

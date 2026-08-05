@@ -51,7 +51,7 @@ import {
 } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { SurfaceApp, cameraDistance, useSurfaceTexture } from 'anamorph'
+import { SurfaceApp, cameraDistance, useSurfaceTexture } from 'munari'
 import {
   FIELD_SIM_FRAG,
   FIELD_VERT,
@@ -91,7 +91,7 @@ const DOCS: Doc[] = [
       { kind: 'h2', text: 'usage' },
       {
         kind: 'code',
-        code: `import { SurfaceApp } from 'anamorph'
+        code: `import { SurfaceApp } from 'munari'
 
 // The subtree is parked off-document and drawn from there.
 // Everything inside it is ordinary React.
@@ -304,7 +304,7 @@ function DocView({
     <div className="wk" style={{ width, height }}>
       <aside className="wk-side">
         <div className="wk-brand">
-          <b>anamorph</b>
+          <b>munari</b>
           <span>handbook</span>
         </div>
 

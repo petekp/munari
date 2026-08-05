@@ -4,7 +4,7 @@
 // deforming geometry keeps anchors glued to its skin.
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { UVAnchor, sampleSurfaceAtUV } from '@anamorph/core'
+import { UVAnchor, sampleSurfaceAtUV } from '@munari/core'
 
 const close = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) < eps
 

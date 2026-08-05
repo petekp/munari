@@ -21,7 +21,7 @@ import { describe, expect, it, vi } from 'vitest'
  */
 async function loadRelayModule() {
   vi.resetModules()
-  return await import('@anamorph/core')
+  return await import('@munari/core')
 }
 
 describe('the relay duplication test', () => {
@@ -54,8 +54,8 @@ describe('the relay duplication test', () => {
     // symbol is not, and its cross-instance predicate fails — which is
     // why the kernel's brand MUST be Symbol.for, not Symbol.
     const instance = () => ({
-      registryBrand: Symbol.for('anamorph.contract-demo.relayed'),
-      localBrand: Symbol('anamorph.contract-demo.relayed'),
+      registryBrand: Symbol.for('munari.contract-demo.relayed'),
+      localBrand: Symbol('munari.contract-demo.relayed'),
     })
     const a = instance()
     const b = instance()

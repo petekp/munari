@@ -2,8 +2,8 @@ import { defineConfig } from 'tsdown'
 
 // The publish build. Two things about it are load-bearing:
 //
-// 1. `@anamorph/core` is BUNDLED, not externalized. One public package is
-//    the doctrine (decisions.md #1): a consumer installs `anamorph` and
+// 1. `@munari/core` is BUNDLED, not externalized. One public package is
+//    the doctrine (decisions.md #1): a consumer installs `munari` and
 //    gets the kernel inside it. The workspace dependency exists so the
 //    lab and the type-checker resolve the source; it must never survive
 //    into the published manifest as something npm would try to fetch.
@@ -21,10 +21,10 @@ export default defineConfig({
   platform: 'browser',
   target: 'es2022',
   deps: {
-    alwaysBundle: ['@anamorph/core'],
+    alwaysBundle: ['@munari/core'],
     neverBundle: ['react', 'react-dom', 'three', '@react-three/fiber'],
   },
-  // The stylesheet is public surface (`anamorph/style.css`) but is not
+  // The stylesheet is public surface (`munari/style.css`) but is not
   // reachable from the entry graph, so it is not bundled — the staging
   // script copies it, alongside the manifest that declares it.
   // The emitted package is judged separately (`npx publint packages/react/dist`

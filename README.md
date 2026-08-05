@@ -1,14 +1,16 @@
-# anamorph
+# munari
 
 Live DOM as physical matter in WebGL.
 
-An anamorphosis is an image projected in distortion that resolves true
-from one designed vantage. Anamorph does that to the browser: the real
-DOM — layout, focus, accessibility, text you can select — stays the
-retained truth, and a custody protocol lets a WebGL scene carry its
-pixels as matter. At the calibrated vantage (1 world unit = 1 CSS
-pixel on the rest plane) the page resolves exactly; everywhere else it
-is paper you can bend, throw, and crumple.
+Bruno Munari mounted gauze, torn film, and scraps of plastic in slide
+frames and threw them across a wall — *proiezioni dirette*, direct
+projections, where what you see is not a picture of the material but
+the material itself, enlarged by light. This library does that to the
+browser: the real DOM — layout, focus, accessibility, text you can
+select — stays the retained truth, and a custody protocol lets a WebGL
+scene carry its pixels as matter. At the calibrated vantage (1 world
+unit = 1 CSS pixel on the rest plane) the page resolves exactly;
+everywhere else it is paper you can bend, throw, and crumple.
 
 **Status: pre-release.** The kernel is complete through six custody
 layers — mapping, paint, pointer, transfer, chrome, physics — each defined
@@ -19,7 +21,7 @@ surface will be narrowed before 1.0.
 
 ## Requirements
 
-Anamorph is built on Chrome's **HTML-in-canvas origin trial**
+The library is built on Chrome's **HTML-in-canvas origin trial**
 (`drawElementImage`). Without that capability a Surface has nothing to
 rasterize — there is no fallback path, by design. Chrome needs
 `--enable-features=CanvasDrawElement`, or a registered origin-trial
@@ -32,7 +34,7 @@ the consumer owns the single instance.
 ## Install
 
 ```sh
-npm install anamorph three @react-three/fiber
+npm install munari three @react-three/fiber
 ```
 
 A `Surface` is one mesh whose material is a live DOM subtree. Hand it
@@ -40,8 +42,8 @@ markup for something static:
 
 ```tsx
 import { Canvas } from '@react-three/fiber'
-import { Surface } from 'anamorph'
-import 'anamorph/style.css'
+import { Surface } from 'munari'
+import 'munari/style.css'
 
 export function App() {
   return (
@@ -81,7 +83,7 @@ it asks of a consumer's CSS in return.
 | path | what it is |
 | --- | --- |
 | `packages/core` | the kernel — pure laws, **zero runtime dependencies** |
-| `packages/react` | the `anamorph` package — the three/r3f binding |
+| `packages/react` | the `munari` package — the three/r3f binding |
 | `registry/` | copyable behaviors, shadcn-style (nothing published) |
 | `apps/lab` | the lab application, a *consumer* of the barrel |
 | `instruments/` | probes and gates; measurement as maintained code |

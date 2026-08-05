@@ -38,62 +38,62 @@ const STYLE_ID = 'workspace-css'
 
 const CSS = `
 .p6{box-sizing:border-box;width:${PANEL_W}px;height:${PANEL_H}px;padding:16px 18px;
-  font-family:-apple-system,ui-sans-serif,'Helvetica Neue',sans-serif;
-  background:#0d1526;border:1px solid #1e2b45;border-radius:14px;color:#e2e8f0;
+  font-family:var(--display);
+  background:var(--screen);border:1px solid rgba(242,240,234,.16);border-radius:14px;color:var(--screen-ink);
   display:flex;flex-direction:column;gap:10px;overflow:hidden;
   transition:background-color .45s,border-color .45s}
-.p6[data-fresh="1"]{background:#1c2c50;border-color:#3b5385}
-.p6 h2{margin:0;font-size:12px;letter-spacing:.14em;color:#7dd3fc;font-weight:600;
+.p6[data-fresh="1"]{background:#2b1b12;border-color:rgba(255,79,23,.55)}
+.p6 h2{margin:0;font-size:12px;letter-spacing:.14em;color:var(--signal-lit);font-weight:600;
   text-transform:uppercase;display:flex;justify-content:space-between;align-items:baseline}
-.p6 .tag{font-size:10px;letter-spacing:.05em;color:#475569;text-transform:none}
-.p6 p{margin:0;font-size:13.5px;line-height:1.6;color:#94a3b8}
+.p6 .tag{font-size:10px;letter-spacing:.05em;color:rgba(242,240,234,.38);text-transform:none}
+.p6 p{margin:0;font-size:13.5px;line-height:1.6;color:rgba(242,240,234,.6)}
 .p6 .fill{flex:1;min-height:0}
 .p6-btn{font:inherit;font-size:13px;padding:7px 14px;border-radius:8px;cursor:pointer;
-  border:1px solid #2b3d63;background:#152036;color:#dbeafe;transition:background-color .15s}
-.p6-btn:hover,.p6-btn[data-hover]{background:#1d2c4d;border-color:#3b5385}
-.p6-btn:active,.p6-btn[data-active]{background:#0f1830}
-.p6-btn[data-selected="1"]{background:#0ea5e9;border-color:#38bdf8;color:#04121f;font-weight:600}
-.p6-btn.primary{background:#0ea5e9;border-color:#38bdf8;color:#04121f;font-weight:600}
-.p6-btn.primary:hover,.p6-btn.primary[data-hover]{background:#38bdf8}
-.p6-field{font:inherit;font-size:13px;background:#0a1120;border:1px solid #223354;
-  border-radius:8px;color:#f1f5f9;padding:7px 10px;outline:none;min-width:0}
-.p6-field:focus{border-color:#38bdf8;box-shadow:0 0 0 2px rgba(56,189,248,.28)}
-.p6 [contenteditable]{outline:none;font-size:13.5px;line-height:1.7;color:#cbd5e1}
-.p6 [contenteditable]:focus{color:#f8fafc}
-.p6 .line{font-family:ui-monospace,monospace;font-size:11.5px;line-height:1.5;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#7d8db1}
+  border:1px solid rgba(242,240,234,.2);background:rgba(242,240,234,.07);color:var(--screen-ink);transition:background-color .15s}
+.p6-btn:hover,.p6-btn[data-hover]{background:rgba(242,240,234,.13);border-color:rgba(255,79,23,.55)}
+.p6-btn:active,.p6-btn[data-active]{background:rgba(242,240,234,.04)}
+.p6-btn[data-selected="1"]{background:var(--signal);border-color:var(--signal-lit);color:var(--ink);font-weight:600}
+.p6-btn.primary{background:var(--signal);border-color:var(--signal-lit);color:var(--ink);font-weight:600}
+.p6-btn.primary:hover,.p6-btn.primary[data-hover]{background:var(--signal-lit)}
+.p6-field{font:inherit;font-size:13px;background:#0a0b0e;border:1px solid rgba(242,240,234,.14);
+  border-radius:8px;color:var(--screen-ink);padding:7px 10px;outline:none;min-width:0}
+.p6-field:focus{border-color:var(--signal-lit);box-shadow:0 0 0 2px rgba(255,79,23,.3)}
+.p6 [contenteditable]{outline:none;font-size:13.5px;line-height:1.7;color:rgba(242,240,234,.8)}
+.p6 [contenteditable]:focus{color:#fff}
+.p6 .line{font-family:var(--data);font-size:11.5px;line-height:1.5;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(242,240,234,.5)}
 .p6 .line b{font-weight:600}
-.p6 .err b{color:#f87171}.p6 .warn b{color:#fbbf24}.p6 .ok b{color:#34d399}
+.p6 .err b{color:#ff5a68}.p6 .warn b{color:var(--signal-lit)}.p6 .ok b{color:#5fd08a}
 .p6 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:9px;
-  background:#233252;transition:background-color .3s,box-shadow .3s}
-.p6 .dot[data-state="done"]{background:#34d399}
-.p6 .dot[data-state="run"]{background:#fbbf24;box-shadow:0 0 8px #fbbf24}
-.p6 .dot[data-state="fail"]{background:#f87171}
-.p6 .step{display:flex;align-items:center;font-size:13px;color:#94a3b8;padding:3px 0}
-.p6 .step .t{margin-left:auto;font-size:11px;color:#475569;font-family:ui-monospace,monospace}
+  background:rgba(242,240,234,.2);transition:background-color .3s,box-shadow .3s}
+.p6 .dot[data-state="done"]{background:#5fd08a}
+.p6 .dot[data-state="run"]{background:var(--signal-lit);box-shadow:0 0 8px var(--signal-lit)}
+.p6 .dot[data-state="fail"]{background:#ff5a68}
+.p6 .step{display:flex;align-items:center;font-size:13px;color:rgba(242,240,234,.6);padding:3px 0}
+.p6 .step .t{margin-left:auto;font-size:11px;color:rgba(242,240,234,.38);font-family:var(--data)}
 .p6 .bars{display:flex;align-items:flex-end;gap:4px;height:64px}
-.p6 .bars span{flex:1;background:linear-gradient(180deg,#38bdf8,#0ea5e9);border-radius:3px 3px 0 0}
-.p6 .big{font-size:34px;font-weight:700;color:#f8fafc;line-height:1}
-.p6 .delta{font-size:12px;font-family:ui-monospace,monospace}
-.p6 .delta.up{color:#34d399}.p6 .delta.down{color:#f87171}
-.p6 .msg{font-size:13px;line-height:1.5;color:#cbd5e1;padding:4px 0;border-bottom:1px solid #16203a}
-.p6 .msg b{color:#7dd3fc;font-weight:600}
-.p6 .diff{font-family:ui-monospace,monospace;font-size:11px;line-height:1.55;white-space:pre;
-  overflow:hidden;color:#64748b}
-.p6 .diff .add{color:#34d399}.p6 .diff .del{color:#f87171}
+.p6 .bars span{flex:1;background:linear-gradient(180deg,var(--signal-lit),var(--signal));border-radius:3px 3px 0 0}
+.p6 .big{font-size:34px;font-weight:700;color:#fff;line-height:1}
+.p6 .delta{font-size:12px;font-family:var(--data)}
+.p6 .delta.up{color:#5fd08a}.p6 .delta.down{color:#ff5a68}
+.p6 .msg{font-size:13px;line-height:1.5;color:rgba(242,240,234,.8);padding:4px 0;border-bottom:1px solid rgba(242,240,234,.12)}
+.p6 .msg b{color:var(--signal-lit);font-weight:600}
+.p6 .diff{font-family:var(--data);font-size:11px;line-height:1.55;white-space:pre;
+  overflow:hidden;color:rgba(242,240,234,.42)}
+.p6 .diff .add{color:#5fd08a}.p6 .diff .del{color:#ff5a68}
 .p6 .row{display:flex;gap:8px;align-items:center}
-.p6 .status{font-size:12px;font-family:ui-monospace,monospace;color:#64748b;transition:color .3s}
-.p6 .status[data-state="busy"]{color:#fbbf24}
-.p6 .status[data-state="ok"]{color:#34d399}
-.p6 .check{display:flex;gap:9px;align-items:center;font-size:13px;color:#cbd5e1;padding:3px 0}
-.p6 .check input{accent-color:#0ea5e9;width:15px;height:15px}
-.p6 .cal{display:flex;gap:10px;font-size:13px;color:#cbd5e1;padding:4px 0;border-bottom:1px solid #16203a}
-.p6 .cal .at{font-family:ui-monospace,monospace;font-size:11px;color:#475569;width:44px;flex:none;padding-top:2px}
+.p6 .status{font-size:12px;font-family:var(--data);color:rgba(242,240,234,.42);transition:color .3s}
+.p6 .status[data-state="busy"]{color:var(--signal-lit)}
+.p6 .status[data-state="ok"]{color:#5fd08a}
+.p6 .check{display:flex;gap:9px;align-items:center;font-size:13px;color:rgba(242,240,234,.8);padding:3px 0}
+.p6 .check input{accent-color:var(--signal);width:15px;height:15px}
+.p6 .cal{display:flex;gap:10px;font-size:13px;color:rgba(242,240,234,.8);padding:4px 0;border-bottom:1px solid rgba(242,240,234,.12)}
+.p6 .cal .at{font-family:var(--data);font-size:11px;color:rgba(242,240,234,.38);width:44px;flex:none;padding-top:2px}
 .p6 .cols{display:flex;gap:10px;flex:1;min-height:0}
-.p6 .kcol{flex:1;background:#0a1120;border:1px solid #16203a;border-radius:9px;padding:8px;
-  display:flex;flex-direction:column;gap:6px;font-size:10.5px;color:#475569}
-.p6 .kcard{background:#152036;border:1px solid #223354;border-radius:6px;padding:6px 8px;
-  font-size:11px;color:#cbd5e1;line-height:1.35}
+.p6 .kcol{flex:1;background:#0a0b0e;border:1px solid rgba(242,240,234,.12);border-radius:9px;padding:8px;
+  display:flex;flex-direction:column;gap:6px;font-size:10.5px;color:rgba(242,240,234,.38)}
+.p6 .kcard{background:rgba(242,240,234,.07);border:1px solid rgba(242,240,234,.14);border-radius:6px;padding:6px 8px;
+  font-size:11px;color:rgba(242,240,234,.8);line-height:1.35}
 /* Scene focus, painted into the texture. FocusScene stamps [data-focus] on
    the source root (unit = selected in the ring, interior = descended into)
    and [data-engaged] while Enter's commitment holds (Tab traps in the group,
@@ -103,10 +103,10 @@ const CSS = `
    (docs/authoring.md). */
 /* SELF selectors, not descendant: the stamped unit element IS the .p6 root
    (browser-verified — the descendant form never matched, and was dead CSS). */
-.p6[data-focus]{border-color:#38bdf8}
+.p6[data-focus]{border-color:var(--signal-lit)}
 .p6[data-focus="unit"]{box-shadow:inset 0 0 0 2px rgba(56,189,248,.38)}
 .p6[data-focus="interior"]{box-shadow:inset 0 0 0 2px rgba(125,211,252,.6)}
-.p6[data-engaged]{border-color:#7dd3fc;box-shadow:inset 0 0 0 3px rgba(125,211,252,.78)}
+.p6[data-engaged]{border-color:var(--signal-lit);box-shadow:inset 0 0 0 3px rgba(125,211,252,.78)}
 `
 
 export function injectWorkspaceStyles(): () => void {
@@ -146,7 +146,7 @@ function ciPanel(): PanelSpec {
     <div class="status" data-ci-status data-state="busy">run #4128 · main · e4f21c9</div>`
   return {
     id: 'ci',
-    html: shell('ci — anamorph', 'live', body),
+    html: shell('ci — munari', 'live', body),
     feed: (root) => {
       let step = 0
       let run = 4128
@@ -260,7 +260,7 @@ function chatPanel(): PanelSpec {
   const body = `<div class="fill" data-chat>
       <div class="msg"><b>devon</b> · morning! spike day</div>
     </div>
-    <div class="status">#anamorph · 3 online</div>`
+    <div class="status">#munari · 3 online</div>`
   return {
     id: 'chat',
     html: shell('team chat', 'live', body),
@@ -294,7 +294,7 @@ function notesPanel(): PanelSpec {
 
 function emailPanel(): PanelSpec {
   const body = `
-    <p style="font-size:12px"><b style="color:#cbd5e1">robin@figma.example</b> · re: spatial workspace demo</p>
+    <p style="font-size:12px"><b style="color:rgba(242,240,234,.8)">robin@figma.example</b> · re: spatial workspace demo</p>
     <p class="fill" style="font-size:12.5px;overflow:hidden">"…saw the clip — is the text actually live? Can you type into it while the camera moves? Send me a build when you have one."</p>
     <textarea class="p6-field" rows="2" placeholder="reply — it's a real textarea" style="resize:none"></textarea>
     <div class="row"><button class="p6-btn primary" data-send>Send</button>
@@ -324,7 +324,7 @@ function deployPanel(): PanelSpec {
       <button class="p6-btn" data-env="staging" data-selected="1">staging</button>
       <button class="p6-btn" data-env="prod">prod</button>
     </div>
-    <div class="row"><span style="font-size:12px;color:#64748b">version</span>
+    <div class="row"><span style="font-size:12px;color:rgba(242,240,234,.42)">version</span>
       <input class="p6-field" data-ver value="1.4.2" style="width:90px"></div>
     <div class="fill"></div>
     <div class="row"><button class="p6-btn primary" data-deploy>Deploy</button>
@@ -379,7 +379,7 @@ function synthPanel(): PanelSpec {
       <button class="p6-btn" data-wave="square">square</button>
       <button class="p6-btn" data-wave="sine">sine</button>
     </div>
-    <div class="row" style="align-items:baseline"><span style="font-size:12px;color:#64748b">cutoff</span>
+    <div class="row" style="align-items:baseline"><span style="font-size:12px;color:rgba(242,240,234,.42)">cutoff</span>
       <span class="big" data-cutoff>${CUTOFFS[3]}</span></div>
     <div class="fill"></div>
     <div class="status">voice a · the knob beside me is in my tab order</div>`
@@ -403,7 +403,7 @@ function synthPanel(): PanelSpec {
 
 function prPanel(): PanelSpec {
   const body = `
-    <p style="font-size:12.5px;color:#cbd5e1">#61 · Surface: upload-on-paint contract</p>
+    <p style="font-size:12.5px;color:rgba(242,240,234,.8)">#61 · Surface: upload-on-paint contract</p>
     <div class="fill">
       <label class="check"><input type="checkbox" checked> passive by default, no observers</label>
       <label class="check"><input type="checkbox" checked> +1 trailing upload for deferred resolve</label>
@@ -478,7 +478,7 @@ function kanbanPanel(): PanelSpec {
 }
 
 const DOCS: Array<[string, string[]]> = [
-  ['runbook · paint stalls', ['Check the HUD chips first — a relaunched Chrome without flags looks exactly like a broken build.', 'Then __anamorph.stats(): a stalled source shows paints frozen while siblings advance.']],
+  ['runbook · paint stalls', ['Check the HUD chips first — a relaunched Chrome without flags looks exactly like a broken build.', 'Then __munari.stats(): a stalled source shows paints frozen while siblings advance.']],
   ['platform contract', ['drawElementImage replays the paint record; whatever the compositor owns never enters it.', 'The record changing IS the change signal. Idle subtrees fire nothing.']],
   ['authoring dialect', ['If it changes what the surface says, mutate the DOM. If it changes where it is, move the matter.', 'Hover ships as data-hover. Pulses are background, never opacity.']],
   ['okrs · q3', ['O: the reference implementation for HTML-in-canvas UI.', 'KR1: focus/keyboard complete. KR2: killer demo shipped. KR3: origin-trial feedback filed.']],
@@ -489,7 +489,7 @@ const DOCS: Array<[string, string[]]> = [
   ['api sketch', ['<Surface html width height paint> wraps any geometry.', 'onSource hands you the live root — attach listeners, mutate, cleanup on return.']],
   ['perf notes', ['Ceiling is per-source fixed cost, not pixels: 4× texels, same fps.', 'Budget ~64–96 concurrently painting at 120Hz. Idle is free.']],
   ['reading list', ['Data Mountain (Robertson 98) — spatial memory beats lists.', 'Calm technology (Weiser) — the periphery is a feature, not noise.']],
-  ['oncall', ['This week: devon. Escalation: #anamorph-alerts.', 'Known flake: daemon relaunches Chrome without --args when the window closes.']],
+  ['oncall', ['This week: devon. Escalation: #munari-alerts.', 'Known flake: daemon relaunches Chrome without --args when the window closes.']],
   ['release notes · 0.4', ['SurfaceLayer orients along surface normals; anchors survive deformation.', 'Surface: late-mount needsUpdate fix — no more blank white meshes.']],
   ['hiring', ['Open: design engineer, physical interfaces.', 'Signal we want: has shipped something where the medium was the message.']],
   ['research questions', ['Does peripheral pulse rate change task performance vs. badges?', 'At what panel count does spatial memory beat cmd-tab?']],

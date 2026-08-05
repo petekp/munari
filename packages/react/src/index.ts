@@ -1,20 +1,20 @@
-// anamorph — the public surface.
+// munari — the public surface.
 //
 // Live DOM as physical matter in WebGL (Chrome's HTML-in-canvas trial):
-// the react/three binding over @anamorph/core, and the one package that
+// the react/three binding over @munari/core, and the one package that
 // is ever published (decisions.md #1). three + @react-three/fiber are
 // PEER dependencies — we are three-first, and renderer abstraction is
 // banned by the second-system guard.
 //
 // The kernel is re-exported WHOLE, not curated: every name in
-// @anamorph/core is contract-covered (tests/conformance), so there is
+// @munari/core is contract-covered (tests/conformance), so there is
 // nothing to hide and no drift for a second doorway to accumulate. The
 // binding's own exports below are sized to their consumers — a
 // primitive earns its place here by a scene consuming it, and the lab
 // imports from this file and nowhere else, so a gap shows up as a
 // broken scene rather than a relative path quietly reaching around it.
 
-export * from '@anamorph/core'
+export * from '@munari/core'
 
 // ── The atom, and the two ways to fill it ────────────────────────────────
 // A `Surface` is one mesh whose material is a live DOM subtree. Give it
@@ -27,7 +27,7 @@ export { SurfaceApp, type SurfaceAppProps } from './primitives/SurfaceApp'
 export { useSurfaceTexture, useSurfaceChrome } from './primitives/SurfaceContext'
 // The GLSL half of the corner mask (the JS half lives in the kernel).
 // A custom material sampling `useSurfaceTexture` splices this and
-// multiplies its alpha by `anamorphRadiusMask(vUv)`.
+// multiplies its alpha by `munariRadiusMask(vUv)`.
 export { SURFACE_RADIUS_GLSL } from './lib/surfaceRadiusGlsl'
 
 // ── Focus, and the camera that follows it ────────────────────────────────

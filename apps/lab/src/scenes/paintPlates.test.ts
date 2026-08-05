@@ -51,7 +51,7 @@ function specimen(css = ''): HTMLElement {
   const el = document.createElement('div')
   el.id = 'specimen'
   el.className = 'card'
-  el.textContent = 'anamorph'
+  el.textContent = 'munari'
   el.style.cssText = `width:200px;height:120px;${css}`
   document.body.appendChild(el)
   // happy-dom reports 0 for offsetWidth (no layout engine). The builder reads
@@ -192,7 +192,7 @@ describe('explodePaint leaves the subject alone', () => {
     const plates = explodePaint(el)
     for (const p of plates) {
       expect(p.node.contains(el)).toBe(false)
-      expect(p.node.querySelector('.card')?.textContent).toBe('anamorph')
+      expect(p.node.querySelector('.card')?.textContent).toBe('munari')
     }
   })
 

@@ -11,7 +11,7 @@
 // The kernel owns the identity; consumers own geometries.
 import { describe, expect, it } from 'vitest'
 
-import { cameraDistance, planeScale, texelDemand } from '@anamorph/core'
+import { cameraDistance, planeScale, texelDemand } from '@munari/core'
 
 const VH = 1000
 const FOV = 42

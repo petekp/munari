@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { TOSS_SPIN_V0, TOSS_SPIN_MAX, aeroAmplitude } from '@anamorph/core'
+import { TOSS_SPIN_V0, TOSS_SPIN_MAX, aeroAmplitude } from '@munari/core'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const scene = () =>

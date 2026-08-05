@@ -1,9 +1,9 @@
 {
-  "name": "@anamorph/core",
+  "name": "@munari/core",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "anamorph kernel: custody, provenance, arbitration — pure laws over the retained DOM. Zero runtime dependencies (enforced by tests/boundary.test.ts). Workspace-internal; never published independently (decisions.md #1).",
+  "description": "munari kernel: custody, provenance, arbitration — pure laws over the retained DOM. Zero runtime dependencies (enforced by tests/boundary.test.ts). Workspace-internal; never published independently (decisions.md #1).",
   "exports": {
     ".": "./src/index.ts"
   }

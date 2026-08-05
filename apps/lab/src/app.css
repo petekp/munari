@@ -1,6 +1,78 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * the bench — the lab's shared visual layer
+ *
+ * The lab is a bench instrument, so it is dressed like one: a machined grey
+ * chassis, BLACK control clusters sunk into it, and colour that is CODED —
+ * one hue, one meaning, applied as area rather than as trim. That
+ * black-cluster-on-grey-body relationship is the whole language; it is where
+ * the contrast comes from, and it is the thing a pale-panels-on-a-pale-bench
+ * pass loses. (Sticker sheet: docs/spikes/design-language.html.)
+ *
+ * ── why the tokens live on `:root` and not on a scene ──
+ *
+ * Three scenes fly their own DOM: a card lifts off the page and its subtree
+ * is re-rendered into a parked canvas hanging off <body>. Same document, so
+ * every class rule still matches — but nowhere near `.l14` / `.psg` / `.wk`,
+ * so anything scoped to a scene ancestor is simply not there. Both flight and
+ * passage hit this and both fixed it by duplicating their token block onto
+ * the card; then the two blocks drifted, because nothing made them agree.
+ *
+ * `:root` is the one ancestor a parked subtree still has. Declared here, the
+ * tokens reach an airborne card for free and there is no second copy to
+ * diverge. What a flying component still has to carry itself is anything
+ * that would otherwise be INHERITED rather than matched — its `font`, most
+ * of all, since the parking host's font is not the page's.
+ * ───────────────────────────────────────────────────────────────────────── */
+
 :root {
-  color-scheme: dark;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  /* ── chassis ── aluminium-and-ABS instrument body, not paper stock */
+  --bench: #c3c2bc;
+  --bench-hi: #d9d8d1;
+  --bench-lo: #a9a8a1;
+  --stage: #8b8a84;
+
+  /* ── the keybed ── black cluster sunk into the grey body */
+  --screen: #131418;
+  --screen-hi: #24262c;
+  --screen-ink: #f2f0ea;
+
+  /* ── ink ── */
+  --ink: #121317;
+  --ink-mute: #3e3e3a;
+  --ink-faint: #6e6d68;
+  --rule: rgba(18, 19, 23, 0.3);
+  --rule-hard: rgba(18, 19, 23, 0.62);
+
+  /* ── coded colour ── one hue, one meaning. Never decoration.
+   *    signal  the one lit position: selected scene, aimed-at slot, checked
+   *    live    measuring / capability present / focus
+   *    fault   unsupported / missing / destructive */
+  --signal: #ff4f17;
+  --live: #1b63e8;
+  --fault: #d6172a;
+
+  /* …and their LIT variants. A hue printed on grey chassis and the same hue
+   * glowing inside a black readout are not the same colour: the printed one
+   * is a swatch, the lit one is an emitter, and dropping the swatch value
+   * onto a dark ground gives you a hue that reads as switched off. Scenes
+   * that live inside the screen (passage, wake) use these. */
+  --signal-lit: #ff6a38;
+  --live-lit: #4d8dff;
+
+  /* ── type ──
+   *    display  Archivo, variable width axis, so the expanded display cut
+   *             and the ordinary body cut are one file
+   *    label    Archivo Narrow — the tiny silkscreened all-caps labels
+   *    data     Martian Mono — anything that is a NUMBER, tabular */
+  --display: 'Archivo', system-ui, sans-serif;
+  --label: 'Archivo Narrow', 'Archivo', system-ui, sans-serif;
+  --data: 'Martian Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius: 3px;
+  --radius-lg: 6px;
+
+  color-scheme: light;
+  font-family: var(--display);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -10,8 +82,13 @@ body,
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: #0a0b0e;
-  color: #e2e8f0;
+  /* A machined surface, not paper: a 3px pitch of hairlines you read as
+   * texture rather than as stripes. The 3D scenes' canvas is transparent, so
+   * this is also the room they sit in. */
+  background:
+    repeating-linear-gradient(90deg, rgba(18, 19, 23, 0.035) 0 1px, transparent 1px 3px),
+    var(--bench);
+  color: var(--ink);
 }
 
 .app {
@@ -23,96 +100,176 @@ body,
   display: block;
 }
 
+/* ── the silkscreened label ── workhorse of the language ───────────────── */
+
+.lbl {
+  display: block;
+  font: 600 11px/1 var(--label);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+/* ── the hud ── a black cluster, not a floating caption ────────────────── */
+
 .hud {
   position: absolute;
-  top: 24px;
-  left: 24px;
-  max-width: 340px;
+  top: 20px;
+  left: 20px;
+  max-width: 430px;
+  padding: 16px 18px 15px;
+  border-radius: var(--radius-lg);
+  background: var(--screen);
+  color: var(--screen-ink);
   pointer-events: none;
   user-select: none;
 }
 
 .hud h1 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: #f8fafc;
+  font-size: 30px;
+  font-weight: 900;
+  font-variation-settings: 'wdth' 112;
+  letter-spacing: -0.055em;
+  line-height: 1;
+  text-transform: lowercase;
+}
+
+.hud h1 em {
+  font-style: normal;
+  color: var(--signal);
 }
 
 .hud .sub {
-  margin: 4px 0 12px;
-  font-size: 13px;
-  color: #94a3b8;
+  margin: 7px 0 14px;
+  font: 600 10px/1.4 var(--label);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(242, 240, 234, 0.45);
 }
+
+/* ── the scene selector ── a keybed: one strip, exactly one lit position ── */
 
 .tabs {
   display: flex;
-  gap: 6px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(242, 240, 234, 0.22);
+  border-radius: var(--radius);
+  overflow: hidden;
   pointer-events: auto;
 }
 
+/* Content-sized, never stretched. Six positions of very different label
+ * lengths in a 430px strip: `flex: 1` gave them all equal cells and the
+ * longer labels simply ran over their neighbours' — a key is as wide as the
+ * word on it. */
 .tabs button {
-  font: 11px ui-monospace, Menlo, monospace;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid #334155;
+  flex: 0 0 auto;
+  font: 600 10px/1 var(--label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 8px 7px;
+  border: 0;
+  border-left: 1px solid rgba(242, 240, 234, 0.14);
+  border-radius: 0;
   background: transparent;
-  color: #64748b;
+  color: rgba(242, 240, 234, 0.55);
   cursor: pointer;
 }
 
-.tabs button[data-active='true'] {
-  border-color: #38bdf8;
-  color: #7dd3fc;
-  background: rgba(56, 189, 248, 0.08);
+.tabs button:first-child {
+  border-left: 0;
 }
+
+.tabs button:hover {
+  color: var(--screen-ink);
+  background: rgba(242, 240, 234, 0.08);
+}
+
+.tabs button[data-active='true'] {
+  background: var(--signal);
+  color: var(--ink);
+}
+
+.tabs button:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: -2px;
+}
+
+/* ── capability lamps ── the one place `--live` and `--fault` both appear ─ */
 
 .features {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
-  gap: 8px;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 11px;
+  gap: 6px;
 }
 
 .features li {
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid #334155;
-  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px 4px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(242, 240, 234, 0.2);
+  font: 600 9px/1 var(--label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(242, 240, 234, 0.5);
+}
+
+/* The lamp itself — lit means the capability is present, and an unlit lamp
+ * is a fault rather than an absence. A dot carries that better than a ✓/✗
+ * pair, which reads as two glyphs rather than as one instrument state. */
+.features li::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--fault);
 }
 
 .features li[data-ok='true'] {
-  border-color: #38bdf8;
-  color: #7dd3fc;
+  border-color: rgba(27, 99, 232, 0.55);
+  color: var(--screen-ink);
+}
+
+.features li[data-ok='true']::before {
+  background: var(--live);
+  box-shadow: 0 0 8px rgba(27, 99, 232, 0.9);
 }
 
 .hint {
-  margin-top: 12px;
+  margin: 12px 0 0;
   font-size: 12px;
   line-height: 1.5;
-  color: #64748b;
+  color: rgba(242, 240, 234, 0.55);
 }
 
 .hint code {
-  font-size: 11px;
-  color: #94a3b8;
-  background: #1e293b;
-  padding: 1px 5px;
-  border-radius: 4px;
+  font: 500 11px/1 var(--data);
+  color: var(--screen-ink);
+  background: var(--screen-hi);
+  padding: 2px 5px;
+  border-radius: 2px;
 }
+
+/* ── the instruction strip ── stamped into the bench, bottom centre ────── */
 
 .footer {
   position: absolute;
-  bottom: 20px;
+  bottom: 18px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 12px;
-  color: #475569;
+  padding: 7px 14px 6px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.18);
+  font: 600 10px/1 var(--label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
   pointer-events: none;
   user-select: none;
   white-space: nowrap;
@@ -130,13 +287,21 @@ body,
  * the padded wrapper, since it paints entirely outside the border box), the
  * two shadow layers are the shadow plate, and the glow and the letters come
  * apart into two more. Change one and you change what the scene shows.
+ *
+ * It is dressed in coded colour on purpose: the specimen is the one object
+ * in the lab whose job is to be TAKEN APART, so each plate wants to be
+ * nameable by hue at a glance once it is floating on its own.
  */
 
 .explode-hud {
   position: absolute;
-  left: 24px;
-  bottom: 24px;
-  width: 320px;
+  left: 20px;
+  bottom: 20px;
+  width: 340px;
+  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  background: var(--screen);
+  color: var(--screen-ink);
   user-select: none;
 }
 
@@ -155,103 +320,108 @@ body,
   height: 152px;
   display: grid;
   place-items: center;
-  font-size: 30px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  border-radius: 20px;
-  background: linear-gradient(155deg, #fdfdff 0%, #dbe3f4 100%);
-  border: 3px solid #7c9cf5;
-  outline: 2px dashed #f0a35e;
+  font-family: var(--display);
+  font-size: 34px;
+  font-weight: 900;
+  font-variation-settings: 'wdth' 108;
+  letter-spacing: -0.05em;
+  text-transform: lowercase;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(155deg, #e8e6df 0%, #b7b6af 100%);
+  border: 3px solid var(--ink);
+  outline: 2px dashed var(--signal);
   outline-offset: 7px;
   box-shadow:
-    0 20px 44px rgba(124, 156, 245, 0.55),
-    0 3px 8px rgba(15, 23, 42, 0.7);
-  color: #16233c;
+    0 20px 44px rgba(27, 99, 232, 0.5),
+    0 3px 8px rgba(18, 19, 23, 0.7);
+  color: var(--ink);
   text-shadow:
-    0 1px 0 #ffffff,
-    0 0 16px rgba(240, 163, 94, 0.95);
+    0 1px 0 rgba(255, 255, 255, 0.8),
+    0 0 16px rgba(255, 79, 23, 0.95);
 }
 
 .specimen-caption {
-  margin: 0 0 10px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: #64748b;
+  margin: 0 0 12px;
+  font: 600 10px/1.5 var(--label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(242, 240, 234, 0.5);
   text-align: center;
 }
 
 .specimen-facts {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   margin: 0 0 12px;
 }
 
 .specimen-facts div {
   flex: 1;
-  padding: 6px 8px;
-  border: 1px solid #1e293b;
-  border-radius: 6px;
-  background: rgba(15, 23, 42, 0.55);
+  padding: 7px 9px 6px;
+  border: 1px solid rgba(242, 240, 234, 0.18);
+  border-radius: var(--radius);
+  background: var(--screen-hi);
 }
 
 .specimen-facts dt {
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font: 600 9px/1 var(--label);
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #475569;
+  color: rgba(242, 240, 234, 0.45);
 }
 
 .specimen-facts dd {
-  margin: 2px 0 0;
-  font-size: 14px;
+  margin: 5px 0 0;
+  font: 700 17px/1 var(--data);
   font-variant-numeric: tabular-nums;
-  color: #cbd5e1;
+  letter-spacing: -0.03em;
+  color: var(--screen-ink);
 }
 
 .spread-control {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  font: 600 10px/1 var(--label);
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #64748b;
+  color: rgba(242, 240, 234, 0.5);
 }
 
 .spread-control input {
   flex: 1;
-  accent-color: #7c9cf5;
+  accent-color: var(--signal);
 }
 
 /* A plate's caption, rasterized into its own small Surface beside it. Like
  * every Surface source it declares its own pixel size — nothing in a parked
- * canvas has a viewport to be a percentage of. */
+ * canvas has a viewport to be a percentage of — and its own `font`, which
+ * would otherwise come from the parking host. */
 .plate-label {
   box-sizing: border-box;
   width: 300px;
   height: 96px;
   padding: 13px 16px;
-  font-family: system-ui, sans-serif;
-  color: #e6ebf4;
+  font-family: var(--display);
+  color: var(--screen-ink);
   /* Opaque enough to read over the light table AND over the room. A
    * placard that only works against one background is a placard that
    * stops working the moment you orbit. */
-  background: rgba(12, 16, 24, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 10px;
+  background: rgba(19, 20, 24, 0.92);
+  border: 1px solid rgba(242, 240, 234, 0.18);
+  border-radius: var(--radius-lg);
 }
 
 .plate-label code {
   display: block;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 17px;
-  color: #ffffff;
-  letter-spacing: -0.01em;
+  font: 700 18px/1.1 var(--data);
+  color: #fff;
+  letter-spacing: -0.04em;
 }
 
 .plate-label p {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   font-size: 12px;
   line-height: 1.45;
-  color: #9fb0c9;
+  color: rgba(242, 240, 234, 0.6);
 }

@@ -1,4 +1,4 @@
-// The kernel's vector vocabulary. @anamorph/core is zero-dep, so it
+// The kernel's vector vocabulary. @munari/core is zero-dep, so it
 // cannot import three — instead every API that touches vectors speaks
 // in structural shapes that THREE.Vector3 satisfies for free, and the
 // few places core must ALLOCATE a vector use the minimal class below

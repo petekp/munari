@@ -1,11 +1,11 @@
 // The hourglass, enforced. Three seams, walked on the filesystem so a
 // violation fails in CI rather than surviving as a habit:
-//   1. @anamorph/core imports nothing but itself — zero dependencies
+//   1. @munari/core imports nothing but itself — zero dependencies
 //      is a tested property, not a description.
-//   2. packages/react reaches core only through the @anamorph/core
+//   2. packages/react reaches core only through the @munari/core
 //      specifier (plus its declared peers), never a relative path.
 //   3. Consumers (apps/, registry/) reach the library only through the
-//      `anamorph` barrel — @anamorph/core and relative reach-arounds
+//      `munari` barrel — @munari/core and relative reach-arounds
 //      are both violations.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -74,10 +74,10 @@ describe('the hourglass', () => {
     ).toEqual([])
   })
 
-  it('react reaches core only through @anamorph/core, plus declared peers', () => {
+  it('react reaches core only through @munari/core, plus declared peers', () => {
     const dir = join(ROOT, 'packages/react/src')
     const allowed = new Set([
-      '@anamorph/core',
+      '@munari/core',
       'react',
       'react-dom',
       'three',
@@ -103,12 +103,12 @@ describe('the hourglass', () => {
     ).toEqual([])
   })
 
-  it('consumers reach the library only through the anamorph barrel', () => {
+  it('consumers reach the library only through the munari barrel', () => {
     for (const consumer of ['apps', 'registry']) {
       const base = join(ROOT, consumer)
       expect(
         violations(consumer, (spec, file) => {
-          if (spec === '@anamorph/core' || spec.startsWith('@anamorph/core/')) return false
+          if (spec === '@munari/core' || spec.startsWith('@munari/core/')) return false
           if (spec.startsWith('.')) return !escapesDir(file, spec, base)
           return true
         }),

@@ -21,25 +21,29 @@
  * The rest is a docs site.
  */
 
+/* Like passage, this scene lives INSIDE the screen, so its locals derive
+ * from the bench's black family in app.css instead of carrying their own
+ * hexes — see the note there about why one source of truth matters when a
+ * subtree can be re-rendered somewhere else in the document. */
 .wk {
-  --bg: #070a10;
-  --panel: #0e131c;
-  --edge: #1e2634;
-  --edge-2: #2c364a;
-  --ink: #e7ecf6;
-  --muted: #94a1b8;
-  --dim: #66738c;
-  --accent: #5fd3ff;
-  --accent-2: #7c8cff;
-  --hot: #ffc46b;
-  --code: #0a0f17;
+  --bg: #0a0b0e;
+  --panel: var(--screen);
+  --edge: rgba(242, 240, 234, 0.14);
+  --edge-2: rgba(242, 240, 234, 0.26);
+  --ink: var(--screen-ink);
+  --muted: rgba(242, 240, 234, 0.55);
+  --dim: rgba(242, 240, 234, 0.38);
+  --accent: var(--signal-lit);
+  --accent-2: var(--live-lit);
+  --hot: var(--signal);
+  --code: #0a0b0e;
 
   display: grid;
   grid-template-columns: 250px 1fr;
   overflow: hidden;
   background: var(--bg);
   color: var(--ink);
-  font: 15px/1.6 ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font: 15px/1.6 var(--display);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -52,7 +56,7 @@
   height: 100%;
   padding: 26px 20px;
   border-right: 1px solid var(--edge);
-  background: linear-gradient(180deg, #0b1018, #080c13);
+  background: linear-gradient(180deg, #101115, #0a0b0e);
   box-sizing: border-box;
 }
 
@@ -63,8 +67,11 @@
 }
 
 .wk-brand b {
-  font-size: 17px;
-  letter-spacing: -0.01em;
+  font-size: 21px;
+  font-weight: 900;
+  font-variation-settings: 'wdth' 112;
+  letter-spacing: -0.05em;
+  text-transform: lowercase;
 }
 
 .wk-brand span {
@@ -85,7 +92,7 @@
   padding: 8px 11px;
   border: 1px solid var(--edge-2);
   border-radius: 8px;
-  background: #0a0f17;
+  background: #0a0b0e;
   color: var(--ink);
   font: inherit;
   font-size: 13px;
@@ -100,7 +107,7 @@
 .wk-search:focus,
 .wk-search[data-focus-visible] {
   border-color: var(--accent-2);
-  box-shadow: 0 0 0 3px rgba(124, 140, 255, 0.16);
+  box-shadow: 0 0 0 3px rgba(77, 141, 255, 0.2);
 }
 
 .wk-nav {
@@ -139,12 +146,12 @@
  */
 .wk-link:hover,
 .wk-link[data-hover] {
-  background: #131a26;
+  background: rgba(242, 240, 234, 0.07);
   color: var(--ink);
 }
 
 .wk-link[data-current='true'] {
-  background: #16202f;
+  background: rgba(242, 240, 234, 0.12);
   color: var(--ink);
 }
 
@@ -210,10 +217,11 @@
 
 .wk-doc h1 {
   margin: 12px 0 0;
-  font-size: 33px;
-  line-height: 1.1;
-  letter-spacing: -0.025em;
-  font-weight: 620;
+  font-size: 42px;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  font-weight: 900;
+  font-variation-settings: 'wdth' 108;
 }
 
 .wk-lede {
@@ -239,9 +247,9 @@
 .wk-doc code {
   padding: 1px 5px;
   border-radius: 5px;
-  background: #121a26;
+  background: rgba(242, 240, 234, 0.08);
   color: var(--accent);
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: var(--data);
   font-size: 12.5px;
 }
 
@@ -255,10 +263,10 @@
   border: 1px solid var(--edge);
   border-radius: 10px;
   background: var(--code);
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: var(--data);
   font-size: 12.5px;
   line-height: 1.7;
-  color: #b8c6dd;
+  color: rgba(242, 240, 234, 0.78);
   white-space: pre;
   overflow: hidden;
 }
@@ -268,7 +276,7 @@
 }
 
 .wk-code .s {
-  color: #9ae6a0;
+  color: #7fd694;
 }
 
 .wk-code .c {
@@ -305,7 +313,7 @@
 
 .wk-table td:first-child {
   color: var(--ink);
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: var(--data);
   font-size: 12px;
 }
 
@@ -345,7 +353,7 @@
   padding: 11px 16px;
   border: 1px solid var(--edge-2);
   border-radius: 10px;
-  background: #101725;
+  background: rgba(242, 240, 234, 0.05);
   color: var(--ink);
   font: inherit;
   font-size: 13.5px;
@@ -355,7 +363,7 @@
 .wk-next:hover,
 .wk-next[data-hover] {
   border-color: var(--accent);
-  background: #14203180;
+  background: rgba(242, 240, 234, 0.06);
 }
 
 .wk-next em {
@@ -368,10 +376,15 @@
 
 /* ── the page around the canvas ───────────────────────────────────────── */
 
+/* `--bg` is declared on `.wk`, which is this element's CHILD — so it was
+ * never in scope here and `background: var(--bg)` resolved to nothing. It
+ * only ever looked right because the old <body> happened to be the same
+ * near-black; the moment the body became bench grey, the water was standing
+ * on a light table. Declared where it is used. */
 .wk-page {
   position: fixed;
   inset: 0;
-  background: #070a10;
+  background: #0a0b0e;
   overflow: hidden;
 }
 
@@ -385,10 +398,14 @@
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
-  padding: 12px 18px;
-  background: linear-gradient(to top, rgba(7, 10, 16, 0.96), rgba(7, 10, 16, 0));
-  color: #94a1b8;
-  font: 12px/1.4 ui-sans-serif, -apple-system, system-ui, sans-serif;
+  /* Tall enough that the fade, not the strip, is what the article runs
+   * into at the bottom of the scroll. */
+  padding: 34px 18px 12px;
+  background: linear-gradient(to top, rgba(10, 11, 14, 0.96), rgba(10, 11, 14, 0));
+  color: rgba(242, 240, 234, 0.5);
+  font: 600 10px/1.4 var(--label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   pointer-events: none;
 }
 

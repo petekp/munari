@@ -137,7 +137,7 @@ export function parseBoxShadow(text: string): SurfaceShadowLayer[] {
     if (lengths.length < 2) continue
     if (!color) {
       if (badColor) {
-        console.warn(`[anamorph] parseBoxShadow: unreadable color in "${seg}" — layer skipped.`)
+        console.warn(`[munari] parseBoxShadow: unreadable color in "${seg}" — layer skipped.`)
         continue
       }
       // No color token at all means currentColor; without an element to

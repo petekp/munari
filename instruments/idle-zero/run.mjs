@@ -97,7 +97,7 @@ try {
     root: here,
     logLevel: 'warn',
     resolve: {
-      alias: { '@anamorph/core': path.join(repoRoot, 'packages', 'core', 'src', 'index.ts') },
+      alias: { '@munari/core': path.join(repoRoot, 'packages', 'core', 'src', 'index.ts') },
     },
     server: { port: 0 },
   })

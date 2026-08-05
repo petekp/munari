@@ -16,7 +16,7 @@
 //   provoke — one deliberate DOM mutation afterwards: the counter must
 //             advance. (Proof the instrument is live — without this, a
 //             broken onpaint wiring would pass the idle leg vacuously.)
-import { createDomTextureSource, type DomTextureSource } from '@anamorph/core'
+import { createDomTextureSource, type DomTextureSource } from '@munari/core'
 
 const params = new URLSearchParams(location.search)
 const N = Number(params.get('n') ?? 12)

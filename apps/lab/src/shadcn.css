@@ -1,6 +1,6 @@
-/* anamorph × shadcn/ui — the Tailwind side of the port.
+/* munari × shadcn/ui — the Tailwind side of the port.
  *
- * APP code, not library. `anamorph/style.css` holds the rules the
+ * APP code, not library. `munari/style.css` holds the rules the
  * primitives actually require (framework-agnostic, all mechanism); this
  * file is one consumer's answer to what that stylesheet asks for in return
  * — the theme, the typography, and the deviations from shadcn's generated
@@ -116,7 +116,7 @@
   /* `.ui-layer`'s transparency is the whole point of it — background-less,
    * so everything the popover does not cover stays clear glass and the panel
    * behind is seen through it. The `pointer-events` half of the contract is
-   * mechanism and lives in anamorph/style.css. */
+   * mechanism and lives in munari/style.css. */
   .ui-layer {
     @apply font-sans text-foreground antialiased;
   }

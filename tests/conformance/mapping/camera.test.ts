@@ -10,7 +10,7 @@ import {
   planeScale,
   planeToScreen,
   screenToPlane,
-} from '@anamorph/core'
+} from '@munari/core'
 
 const VW = 1600
 const VH = 1000

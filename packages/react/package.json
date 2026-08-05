@@ -1,19 +1,19 @@
 {
-  "name": "anamorph",
+  "name": "munari",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Live DOM as physical matter in WebGL — a three.js / react-three-fiber binding that lets a WebGL scene carry the real DOM's pixels as matter.",
   "license": "MIT",
   "author": "Pete Petrash",
-  "homepage": "https://github.com/petekp/anamorph#readme",
+  "homepage": "https://github.com/petekp/munari#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/petekp/anamorph.git",
+    "url": "git+https://github.com/petekp/munari.git",
     "directory": "packages/react"
   },
   "bugs": {
-    "url": "https://github.com/petekp/anamorph/issues"
+    "url": "https://github.com/petekp/munari/issues"
   },
   "keywords": [
     "webgl",
@@ -37,7 +37,7 @@
     "build": "tsdown && node scripts/stage-manifest.mjs"
   },
   "dependencies": {
-    "@anamorph/core": "*"
+    "@munari/core": "*"
   },
   "peerDependencies": {
     "react": ">=19",

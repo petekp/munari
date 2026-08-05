@@ -9,7 +9,7 @@
 // describes where a card ends up, because nothing here is allowed to have an
 // opinion about that — the page's own layout already answered.
 
-import { clampScale, pixelGridSnap, texelDemand } from 'anamorph'
+import { clampScale, pixelGridSnap, texelDemand } from 'munari'
 
 /** A box in page coordinates, as `getBoundingClientRect` hands it over. */
 export interface Box {

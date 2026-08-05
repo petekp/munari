@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, OrbitControls } from '@react-three/drei'
-import { detectHtmlInCanvas, FocusScene, paintStats } from 'anamorph'
+import { detectHtmlInCanvas, FocusScene, paintStats } from 'munari'
 import { Workspace, WorkspaceHud } from './scenes/Workspace'
 import { Glass } from './scenes/Glass'
 import { FlightApp } from './scenes/Flight'
@@ -12,7 +12,7 @@ import { WakeApp } from './scenes/Wake'
 // Six scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
 // flight drag trilogy, exploded-paint inspector, passage route transition,
 // wake navigation-through-a-medium.
-// Everything they render reaches the library through the `anamorph` barrel —
+// Everything they render reaches the library through the `munari` barrel —
 // this app is the proof that the public surface is sufficient.
 
 type SceneId = 'workspace' | 'glass' | 'flight' | 'explode' | 'passage' | 'wake'
@@ -49,14 +49,34 @@ function KeepDomFocus() {
 
 export default function App() {
   const support = useMemo(detectHtmlInCanvas, [])
-  const [scene, setScene] = useState<SceneId>('workspace')
+  // `#flight` opens the flight lab directly. Not a router — just enough of
+  // one that a scene can be linked, reloaded into, and screenshotted without
+  // a human clicking a chip first.
+  const [scene, setScene] = useState<SceneId>(() => {
+    const h = window.location.hash.slice(1) as SceneId
+    return (SCENES as readonly string[]).includes(h) ? h : 'workspace'
+  })
+
+  // …and the hash stays authoritative afterwards. Without this, navigating
+  // by URL only works on a cold load: a hash change alone does not reload,
+  // so the initializer above never runs again and the scene silently stays
+  // put — the same screenshot twice, which is a very quiet way to draw the
+  // wrong conclusion about a change you just made.
+  useEffect(() => {
+    const onHash = () => {
+      const h = window.location.hash.slice(1) as SceneId
+      if ((SCENES as readonly string[]).includes(h)) setScene(h)
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   // Console story: the kernel stamps nothing on `window`, so the app hangs
   // the paint ledger where devtools probes can reach it, as
-  // `__anamorph.stats()`. This is a consumer choice, not library behavior
+  // `__munari.stats()`. This is a consumer choice, not library behavior
   // — the seam it reads is `paintStats()` (decisions.md #7).
   useEffect(() => {
-    ;(window as unknown as { __anamorph?: unknown }).__anamorph = {
+    ;(window as unknown as { __munari?: unknown }).__munari = {
       stats: paintStats,
     }
   }, [])
@@ -78,7 +98,14 @@ export default function App() {
   const chips = (
     <div className="tabs">
       {SCENES.map((id) => (
-        <button key={id} data-active={scene === id} onClick={() => setScene(id)}>
+        <button
+          key={id}
+          data-active={scene === id}
+          onClick={() => {
+            window.location.hash = id
+            setScene(id)
+          }}
+        >
           {id}
         </button>
       ))}
@@ -89,13 +116,15 @@ export default function App() {
     return (
       <div className="app">
         <div className="hud">
-          <h1>anamorph</h1>
+          <h1>
+            ana<em>morph</em>
+          </h1>
           <p className="sub">a component library made of real materials</p>
+          {/* The lamp carries the verdict — a ✓/✗ pair reads as two glyphs
+           * where an instrument reads as one state. */}
           <ul className="features">
-            <li data-ok={false}>drawElementImage ✗</li>
-            <li data-ok={support.texElementImage2D}>
-              texElementImage2D {support.texElementImage2D ? '✓' : '✗'}
-            </li>
+            <li data-ok={false}>drawElementImage</li>
+            <li data-ok={support.texElementImage2D}>texElementImage2D</li>
           </ul>
           <p className="hint">
             HTML-in-canvas unavailable — every Surface needs it. Enable{' '}
@@ -154,16 +183,14 @@ export default function App() {
       </Canvas>
 
       <div className="hud">
-        <h1>anamorph / {scene}</h1>
-        <p className="sub">a component library made of real materials</p>
+        <h1>
+          ana<em>morph</em>
+        </h1>
+        <p className="sub">{scene}</p>
         {chips}
         <ul className="features">
-          <li data-ok={support.drawElementImage}>
-            drawElementImage {support.drawElementImage ? '✓' : '✗'}
-          </li>
-          <li data-ok={support.texElementImage2D}>
-            texElementImage2D {support.texElementImage2D ? '✓' : '✗'}
-          </li>
+          <li data-ok={support.drawElementImage}>drawElementImage</li>
+          <li data-ok={support.texElementImage2D}>texElementImage2D</li>
         </ul>
         {!support.drawElementImage && (
           <p className="hint">

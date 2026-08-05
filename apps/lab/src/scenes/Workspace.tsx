@@ -12,7 +12,7 @@ import {
   type ArcSlot,
   type FocusRigApi,
   type GroupFocusState,
-} from 'anamorph'
+} from 'munari'
 import {
   buildPanels,
   injectWorkspaceStyles,
@@ -211,8 +211,8 @@ function WorkPanel({
         >
           <boxGeometry args={[W3 * 0.42, 0.09, 0.045]} />
           <meshStandardMaterial
-            color={hover || focus !== 'none' ? '#38bdf8' : '#22314f'}
-            emissive={focus === 'interior' ? '#22d3ee' : hover || focus === 'unit' ? '#0ea5e9' : '#000000'}
+            color={hover || focus !== 'none' ? '#ff6a38' : '#3a3b40'}
+            emissive={focus === 'interior' ? '#ff8a4d' : hover || focus === 'unit' ? '#ff4f17' : '#000000'}
             emissiveIntensity={focus === 'interior' ? 1.15 : hover || focus === 'unit' ? 0.6 : 0}
             roughness={0.4}
           />
@@ -275,11 +275,11 @@ export function Workspace() {
 
   return (
     <>
-      <fog attach="fog" args={['#0a0d14', 9, 22]} />
+      <fog attach="fog" args={['#0a0b0e', 9, 22]} />
       <ambientLight intensity={0.38} />
       <directionalLight position={[4, 9, 4]} intensity={1.15} castShadow />
-      <pointLight position={[0, 4.5, 0]} intensity={26} color="#7dd3fc" distance={14} />
-      <pointLight position={[-6, 1.5, 3]} intensity={12} color="#38bdf8" distance={10} />
+      <pointLight position={[0, 4.5, 0]} intensity={26} color="#f2f0ea" distance={14} />
+      <pointLight position={[-6, 1.5, 3]} intensity={12} color="#ff8a4d" distance={10} />
 
       <FocusOrbitRig
         home={{ position: HOME_POS, target: HOME_TARGET }}
@@ -298,7 +298,7 @@ export function Workspace() {
         }}
       >
         <circleGeometry args={[14, 64]} />
-        <meshStandardMaterial color="#0e1119" roughness={0.95} />
+        <meshStandardMaterial color="#131418" roughness={0.95} />
       </mesh>
 
       {panels.map((spec, i) => (
@@ -365,9 +365,9 @@ export function WorkspaceHud() {
         fontFamily: 'ui-monospace, monospace',
         fontSize: 12,
         letterSpacing: '0.04em',
-        color: '#7dd3fc',
+        color: '#ff6a38',
         background: 'rgba(10, 15, 28, 0.72)',
-        border: '1px solid #1e2b45',
+        border: '1px solid rgba(242,240,234,0.16)',
         borderRadius: 8,
         padding: '6px 10px',
         pointerEvents: 'none',

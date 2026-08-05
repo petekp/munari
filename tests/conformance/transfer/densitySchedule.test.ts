@@ -17,7 +17,7 @@ import {
   densityScheduleStep,
   densitySupply,
   texelDemand,
-} from '@anamorph/core'
+} from '@munari/core'
 
 const LIFT_Z = 96
 

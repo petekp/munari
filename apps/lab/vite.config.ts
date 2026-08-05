@@ -3,7 +3,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-// The lab is a CONSUMER. `anamorph` and `anamorph/style.css` resolve through
+// The lab is a CONSUMER. `munari` and `munari/style.css` resolve through
 // the workspace exactly as they would from npm — no aliases standing in for
 // the library, so anything missing from the barrel fails the build instead
 // of quietly slipping past it on a relative path (tests/boundary.test.ts

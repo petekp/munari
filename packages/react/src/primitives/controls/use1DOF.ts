@@ -1,11 +1,11 @@
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { step, type Body1D, type Field } from '@anamorph/core'
+import { step, type Body1D, type Field } from '@munari/core'
 import { useLatest } from '../useLatest'
 
 // The shared mechanism under every physical control: a 1-DOF body driven by
-// a force field (@anamorph/core's physics1D), coupled kinematically to the
+// a force field (@munari/core's physics1D), coupled kinematically to the
 // hand during a drag, free-running otherwise.
 //
 // Interaction contracts baked in (each one paid for in an earlier lab):

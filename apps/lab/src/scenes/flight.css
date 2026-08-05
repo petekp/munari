@@ -4,33 +4,33 @@
  * this file and there deliberately can't be: the whole premise is that the
  * cards are page elements first, and become matter only for as long as
  * someone is holding one. The one thing that IS unusual is the pair of
- * custom properties at the bottom — `--l14-lift` and `--l14-near` are
+ * custom properties near the bottom — `--l14-lift` and `--l14-near` are
  * written by the WebGL layer every frame, so a rigid-body simulation is
  * driving real CSS on real elements. That is the loop closing.
+ *
+ * The dress is the "bench" language (docs/spikes/design-language.html): a
+ * grey instrument chassis, BLACK control clusters sunk into it, and colour
+ * that is CODED rather than decorative — one hue, one meaning. Type is
+ * Archivo (variable width axis, so the display cut can be expanded without
+ * a second file), Archivo Narrow for the silkscreened labels, Martian Mono
+ * for anything that is a number.
  */
 
-/* The tokens are declared on the page AND on a card, because a card is not
- * always on the page. While one is airborne its DOM lives in a parked canvas
+/* The bench tokens come from `:root` in app.css, which is deliberate and
+ * load-bearing: while a card is airborne its DOM lives in a parked canvas
  * subtree hanging off <body> — same document, so every `.l14-*` class rule
- * still matches, but nowhere near `.l14`, so anything scoped to that ancestor
- * simply is not there. The first version declared them only on `.l14`, and the
- * tell was tiny and specific: the card kept every one of its own colours and
- * lost exactly the two properties that read a variable — the tag went from
- * blue to grey the instant it left the page. Inherited context is a dependency;
- * a component that can be rendered elsewhere has to carry its own. */
-.l14,
+ * still matches, but nowhere near `.l14`, so anything scoped to THAT ancestor
+ * is simply not there. This file used to declare the tokens on `.l14` alone
+ * and the tell was tiny and specific: the card kept every one of its own
+ * colours and lost exactly the two properties that read a variable — the tag
+ * went from blue to grey the instant it left the page.
+ *
+ * `:root` is the one ancestor a parked subtree still has, so custom
+ * properties reach a flying card for free. What does NOT come for free is
+ * anything inherited rather than matched — the `font` below, most of all,
+ * because off the page it would inherit the parking host's. */
 .l14-card {
-  --paper: #f6f4ef;
-  --ink: #16150f;
-  --muted: #6c675c;
-  --rule: #e2ddd2;
-  --accent: #275efe;
-}
-
-.l14-card {
-  /* Same reasoning: `.l14-note` says `font: inherit`, and off the page it
-   * would inherit the parking host's font rather than the page's. */
-  font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  font: 15px/1.5 var(--display);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
 }
@@ -40,52 +40,110 @@
   inset: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--paper);
+  /* A machined chassis, not paper: a 3px pitch of hairlines you read as
+   * texture rather than as stripes. It also gives the shadow of a held card
+   * something with a frequency to fall across. */
+  background:
+    repeating-linear-gradient(90deg, rgba(18, 19, 23, 0.035) 0 1px, transparent 1px 3px),
+    var(--bench);
   color: var(--ink);
-  font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  font: 15px/1.5 var(--display);
   -webkit-font-smoothing: antialiased;
 }
+
+/* ── the bar ──────────────────────────────────────────────────────────────
+ *
+ * The black cluster: the one place on the page that is not chassis. It
+ * carries the wordmark and the scene selector and says nothing else — this
+ * lab is the board, and the board explains itself by being handled. */
+
+.l14-bar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--screen);
+  color: var(--screen-ink);
+}
+
+.l14-bar-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 13px 32px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.l14-bar h1 {
+  margin: 0;
+  font-size: 27px;
+  font-weight: 900;
+  font-variation-settings: 'wdth' 112;
+  letter-spacing: -0.055em;
+  line-height: 1;
+  text-transform: lowercase;
+}
+
+.l14-bar h1 em {
+  font-style: normal;
+  color: var(--signal);
+}
+
+/* The selector is the shared keybed from app.css. It only needs its margin
+ * dropped here — in the 3D scenes it stacks inside the HUD, and on this bar
+ * it sits on a row. */
+.l14-bar .tabs {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.l14-bar .tabs button {
+  flex: 0 0 auto;
+  padding-left: 13px;
+  padding-right: 13px;
+}
+
+/* ── the board ───────────────────────────────────────────────────────── */
 
 .l14-inner {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 40px 32px 160px;
-}
-
-.l14 h1 {
-  margin: 0;
-  font-size: 30px;
-  font-weight: 620;
-  letter-spacing: -0.022em;
-}
-
-.l14 .l14-lede {
-  margin: 8px 0 0;
-  max-width: 62ch;
-  color: var(--muted);
+  padding: 34px 32px 200px;
 }
 
 .l14-board {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 28px;
-  margin-top: 34px;
+  gap: 26px;
 }
 
 .l14-col > h2 {
-  margin: 0 0 12px;
-  font-size: 12px;
-  font-weight: 640;
-  letter-spacing: 0.09em;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding-bottom: 8px;
+  border-bottom: 2.5px solid var(--ink);
+  font: 700 12px/1 var(--label);
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--ink);
+}
+
+.l14-col > h2 .l14-count {
+  margin-left: auto;
+  font: 700 16px/1 var(--data);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  color: var(--ink-faint);
 }
 
 .l14-col > ul {
   list-style: none;
   margin: 0;
   padding: 0;
-  min-height: 140px;
+  min-height: 150px;
 }
 
 /* The slot keeps the card's space in normal flow. When a card lifts off,
@@ -99,11 +157,13 @@
  * the first flight frame). With the transparent dash always present there
  * is no property flip to transition from. */
 .l14-slot {
-  margin: 0 0 14px;
-  border-radius: 14px;
-  outline: 1.5px dashed transparent;
-  outline-offset: -1.5px;
-  transition: background 140ms linear, outline-color 140ms linear;
+  margin: 0 0 12px;
+  border-radius: var(--radius-lg);
+  outline: 2px dashed transparent;
+  outline-offset: -2px;
+  transition:
+    background 140ms linear,
+    outline-color 140ms linear;
 }
 
 /* …and what the slot lights up as while its card is away. The
@@ -123,24 +183,34 @@
  * card covers it — and the two moments a card exactly covers its slot are
  * the two swap instants, where nothing on the page is allowed to change.
  * Keyed on the swap, the outline vanished discretely at touchdown, at its
- * bluest (`--l14-near` ≈ 1), and the resting card's border visibly
+ * brightest (`--l14-near` ≈ 1), and the resting card's border visibly
  * lightened one frame later. Keyed on altitude, the fade-out spends the
  * descent (the signal flips the instant the card starts home, ~400 ms
  * before rest) and the fade-in spends the climb — both play out under a
  * card in motion, and the swaps have nothing left to remove. */
-.l14-slot[data-away="true"] {
-  outline-color: color-mix(in oklab, var(--rule), var(--accent) calc(var(--l14-near, 0) * 70%));
-  background: color-mix(in oklab, transparent, var(--accent) calc(var(--l14-near, 0) * 9%));
+.l14-slot[data-away='true'] {
+  outline-color: color-mix(in oklab, var(--rule), var(--signal) calc(var(--l14-near, 0) * 92%));
+  background: color-mix(in oklab, transparent, var(--signal) calc(var(--l14-near, 0) * 15%));
 }
+
+/* ── the card ─────────────────────────────────────────────────────────────
+ *
+ * Read top to bottom it is: what this is (rail) → what it says (title) →
+ * why (body) → what you can do to it (foot). The old card put the title,
+ * the tag and the delete on one baseline and then stacked three controls of
+ * equal weight underneath, so nothing led. Here exactly one thing is loud.
+ */
 
 .l14-card {
   box-sizing: border-box;
   width: 100%;
-  padding: 15px 16px 14px;
-  border: 1px solid var(--rule);
-  border-radius: 14px;
-  background: #fff;
-  box-shadow: 0 1px 0 rgb(22 21 15 / 4%), 0 6px 18px -12px rgb(22 21 15 / 30%);
+  padding: 13px 15px 13px;
+  border: 1px solid var(--rule-hard);
+  border-radius: var(--radius-lg);
+  background: var(--bench-hi);
+  box-shadow:
+    0 1px 2px rgb(18 19 23 / 14%),
+    0 10px 24px -14px rgb(18 19 23 / 55%);
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -150,35 +220,66 @@
   cursor: grabbing;
 }
 
-.l14-card .l14-row {
+/* rail — the card's identity strip, silkscreened above everything else */
+.l14-rail {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 9px;
+}
+
+.l14-code {
+  font: 700 10px/1 var(--data);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--screen-ink);
+  background: var(--ink);
+  padding: 4px 5px 3px;
+  border-radius: 2px;
+}
+
+.l14-tag {
+  font: 600 10px/1 var(--label);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+.l14-rail hr {
+  flex: 1;
+  height: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
 }
 
 .l14-card h3 {
   margin: 0;
-  font-size: 15.5px;
-  font-weight: 600;
-  letter-spacing: -0.012em;
-  flex: 1;
-}
-
-.l14-tag {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--accent) 12%, transparent);
-  color: var(--accent);
+  font-size: 25px;
+  font-weight: 800;
+  font-variation-settings: 'wdth' 104;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+  text-wrap: balance;
 }
 
 .l14-card p {
-  margin: 6px 0 11px;
-  color: var(--muted);
-  font-size: 13.5px;
+  margin: 8px 0 0;
+  color: var(--ink-mute);
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 62ch;
+}
+
+/* foot — the two controls, kept quiet and on one line so the title stays
+ * the only thing shouting */
+.l14-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 13px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
 }
 
 /* Anything the pointer should reach INSTEAD of starting a drag says so. */
@@ -198,18 +299,15 @@
 .l14-del {
   appearance: none;
   border: 0;
-  margin: -2px -4px -2px 0;
+  margin: -4px -5px -4px 0;
   padding: 0;
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 2px;
   background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 17px;
-  line-height: 1;
+  color: var(--ink-faint);
+  font: 400 14px/1 var(--display);
   cursor: pointer;
-  align-self: center;
   opacity: 0;
   transition: opacity 120ms ease;
 }
@@ -217,93 +315,160 @@
 .l14-card:hover .l14-del,
 .l14-card[data-hover] .l14-del,
 .l14-del:focus-visible {
-  opacity: 0.55;
+  opacity: 1;
 }
 
 .l14-del:hover,
 .l14-del[data-hover] {
-  opacity: 1;
-  background: color-mix(in oklab, var(--ink) 8%, transparent);
+  background: var(--fault);
+  color: #fff;
 }
 
 .l14-del:active,
 .l14-del[data-active] {
-  background: color-mix(in oklab, var(--ink) 14%, transparent);
+  background: #a30f1f;
+  color: #fff;
 }
 
+/* The note is a field, not a box: a stamped rule you write on. A boxed
+ * input here read as a third piece of chrome competing with the title. */
 .l14-note {
+  flex: 1;
+  min-width: 0;
   box-sizing: border-box;
-  width: 100%;
-  font: inherit;
-  font-size: 13px;
-  padding: 7px 9px;
-  border: 1px solid var(--rule);
-  border-radius: 9px;
-  background: #fbfaf7;
+  font: 500 12px/1 var(--label);
+  letter-spacing: 0.06em;
+  padding: 5px 2px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
   color: var(--ink);
 }
 
-.l14-note:focus {
-  outline: 2px solid color-mix(in oklab, var(--accent) 55%, transparent);
-  outline-offset: 1px;
-  border-color: transparent;
-  background: #fff;
+.l14-note::placeholder {
+  color: var(--ink-faint);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 10px;
 }
 
+.l14-note:focus {
+  outline: 0;
+  border-bottom-color: var(--signal);
+  background: rgba(255, 79, 23, 0.09);
+}
+
+/* The done switch — a real lit position, coded with the same hue as the
+ * slot a card is aimed at. */
 .l14-check {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 7px;
-  margin-top: 9px;
-  font-size: 12.5px;
-  color: var(--muted);
+  font: 700 10px/1 var(--label);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .l14-check input {
-  accent-color: var(--accent);
-  width: 14px;
-  height: 14px;
+  appearance: none;
+  margin: 0;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--ink-mute);
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
 }
 
-.l14-card[data-done="true"] h3 {
+.l14-check input:checked {
+  background: var(--signal);
+  border-color: var(--signal);
+}
+
+/* The tick is drawn, not masked — two borders of an empty box, rotated.
+ * `mask-image` anywhere in a drawn subtree turns the ENTIRE capture black
+ * with clean paints and no error, so this card may never contain one. */
+.l14-check input:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0.5px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--ink);
+  border-width: 0 2px 2px 0;
+  transform: rotate(43deg);
+}
+
+.l14-check input:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ── done ─────────────────────────────────────────────────────────────────
+ *
+ * A finished card stops being a control and becomes a readout, so it joins
+ * the screen family: the black cluster, inverted. It is the loudest state
+ * change on the board and it is legible from across the room, which is what
+ * a status wants to be. */
+.l14-card[data-done='true'] {
+  background: var(--screen);
+  border-color: var(--screen);
+  color: var(--screen-ink);
+}
+
+.l14-card[data-done='true'] h3 {
   text-decoration: line-through;
-  color: var(--muted);
+  text-decoration-color: var(--signal);
+  text-decoration-thickness: 2px;
 }
 
-/* Long-form text below the board, so the page genuinely scrolls and the
- * text is genuinely selectable — an overlay canvas that made either of
- * those stop working would have given the trick away for free. */
-.l14-prose {
-  margin-top: 46px;
-  padding-top: 26px;
-  border-top: 1px solid var(--rule);
-  max-width: 66ch;
+.l14-card[data-done='true'] p,
+.l14-card[data-done='true'] .l14-tag,
+.l14-card[data-done='true'] .l14-check {
+  color: rgba(242, 240, 234, 0.58);
 }
 
-.l14-prose h2 {
-  font-size: 18px;
-  margin: 26px 0 8px;
-  letter-spacing: -0.015em;
+.l14-card[data-done='true'] .l14-code {
+  background: var(--signal);
+  color: var(--ink);
 }
 
-.l14-prose p {
-  margin: 0 0 12px;
-  color: #35322a;
+.l14-card[data-done='true'] .l14-rail hr,
+.l14-card[data-done='true'] .l14-foot,
+.l14-card[data-done='true'] .l14-note {
+  border-color: rgba(242, 240, 234, 0.2);
 }
 
-.l14-prose code {
-  font: 12.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  background: #edeade;
-  padding: 1.5px 5px;
-  border-radius: 5px;
+.l14-card[data-done='true'] .l14-note {
+  color: var(--screen-ink);
 }
 
-/* The overlay. `pointer-events: none` is the default state and the honest
- * one: a canvas with nothing in it must not be able to intercept a click,
- * a text selection, or a scroll. It is switched to `auto` for exactly as
- * long as the pointer is over a piece of matter — see `SolidWhereMatterIs`
- * in Flight.tsx, which toggles the canvas one level inside this wrapper.
+.l14-card[data-done='true'] .l14-check input {
+  border-color: rgba(242, 240, 234, 0.45);
+}
+
+.l14-card[data-done='true'] .l14-check input:checked {
+  background: var(--signal);
+  border-color: var(--signal);
+}
+
+.l14-card[data-done='true'] .l14-del {
+  color: rgba(242, 240, 234, 0.6);
+}
+
+/* ── the overlay ──────────────────────────────────────────────────────────
+ *
+ * `pointer-events: none` is the default state and the honest one: a canvas
+ * with nothing in it must not be able to intercept a click, a text
+ * selection, or a scroll. It is switched to `auto` for exactly as long as
+ * the pointer is over a piece of matter — see `SolidWhereMatterIs` in
+ * Flight.tsx, which toggles the canvas one level inside this wrapper.
  *
  * `position` and `pointer-events` are ALSO set inline in Flight.tsx and have
  * to be: r3f writes both onto this same wrapper as inline styles, which
@@ -319,33 +484,4 @@
 /* Belt and braces: the canvas is only solid when JS says so. */
 .l14-overlay > canvas {
   pointer-events: none;
-}
-
-.l14-hud {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 10;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 14px;
-  background: color-mix(in oklab, var(--paper) 86%, transparent);
-  backdrop-filter: blur(8px);
-  border-top: 1px solid var(--rule);
-  font-size: 12.5px;
-  color: var(--muted);
-}
-
-.l14-hud button {
-  font: inherit;
-  font-size: 11.5px;
-  padding: 3px 9px;
-  border-radius: 7px;
-  border: 1px solid var(--rule);
-  background: #fff;
-  color: var(--ink);
-  cursor: pointer;
 }

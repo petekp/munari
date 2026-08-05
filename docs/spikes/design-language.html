@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>munari — design language spike</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Archivo+Narrow:wght@500;600;700&family=Martian+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────────────────────────────
+ * munari — design language spike  ·  "bench"
+ *
+ * A sticker sheet, not a page. Every specimen is a component one of the six
+ * lab scenes already needs; nothing is invented to fill a grid.
+ *
+ * The lab is a bench instrument, so it is built like one: grey chassis,
+ * BLACK control clusters, and colour that is CODED — one hue, one meaning,
+ * applied as area rather than as trim. The black-cluster-on-grey-body
+ * relationship is the whole language; it is how the reference object gets
+ * its contrast, and it is what a pale-panels-on-a-pale-bench pass loses.
+ * ───────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── chassis ── aluminium-and-ABS instrument body, not paper stock */
+  --bench:     #C3C2BC;
+  --bench-hi:  #D2D1CA;
+  --bench-lo:  #A9A8A1;
+  --stage:     #8B8A84;
+
+  /* ── the keybed ── black cluster sunk into the grey body */
+  --screen:    #131418;
+  --screen-hi: #24262C;
+  --screen-ink:#F2F0EA;
+
+  /* ── ink ── */
+  --ink:       #121317;
+  --ink-mute:  #3E3E3A;
+  --ink-faint: #6E6D68;
+  --rule:      rgba(18,19,23,0.30);
+  --rule-hard: rgba(18,19,23,0.62);
+
+  /* ── coded colour ── one hue, one meaning. Never decoration. */
+  --signal:    #FF4F17;   /* ACTIVE · selected · the one lit position */
+  --live:      #1B63E8;   /* MEASURING · capability present · focus */
+  --fault:     #D6172A;   /* UNSUPPORTED · missing · destructive */
+
+  /* ── type ── */
+  --display: 'Archivo', system-ui, sans-serif;
+  --label:   'Archivo Narrow', 'Archivo', system-ui, sans-serif;
+  --data:    'Martian Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --t-mega:   140px;
+  --t-display: 96px;
+  --t-title:   52px;
+  --t-head:    34px;
+  --t-body:    17px;
+  --t-small:   14px;
+  --t-label:   11px;
+  --t-micro:    9px;
+
+  --radius:    3px;
+  --radius-lg: 6px;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--bench); }
+
+body {
+  margin: 0; padding: 0 0 96px;
+  background:
+    repeating-linear-gradient(90deg, rgba(18,19,23,0.03) 0 1px, transparent 1px 3px),
+    var(--bench);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: var(--t-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.sheet { max-width: 1220px; margin: 0 auto; padding: 0 34px; }
+
+/* printer's crosses — this sheet is a printed artifact */
+.reg { position: fixed; width: 13px; height: 13px; pointer-events: none; z-index: 5; opacity: 0.45; }
+.reg::before, .reg::after { content: ''; position: absolute; background: var(--ink); }
+.reg::before { left: 6px; top: 0; width: 1px; height: 13px; }
+.reg::after  { top: 6px; left: 0; height: 1px; width: 13px; }
+.reg.tl { top: 14px; left: 14px; } .reg.tr { top: 14px; right: 14px; }
+.reg.bl { bottom: 14px; left: 14px; } .reg.br { bottom: 14px; right: 14px; }
+
+/* ══ masthead ── a full-bleed black band, the loudest object on the sheet ═ */
+
+.masthead {
+  background: var(--screen); color: var(--screen-ink);
+  padding: 54px 0 46px; margin-bottom: 0;
+}
+.masthead .inner {
+  max-width: 1220px; margin: 0 auto; padding: 0 34px;
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 40px; flex-wrap: wrap;
+}
+.masthead h1 {
+  margin: 0;
+  font-size: var(--t-mega); font-weight: 900;
+  font-variation-settings: 'wdth' 112;
+  letter-spacing: -0.055em; line-height: 0.82;
+  text-transform: lowercase;
+}
+.masthead h1 em { font-style: normal; color: var(--signal); display: block; }
+.masthead .lbl { color: rgba(242,240,234,0.5); }
+.masthead .meta { text-align: right; padding-bottom: 10px; }
+.masthead .meta .big {
+  font-family: var(--data); font-size: 30px; font-weight: 800;
+  letter-spacing: -0.03em; line-height: 1.1;
+}
+
+/* the tiny silkscreened label — workhorse of the language */
+.lbl {
+  font-family: var(--label); font-size: var(--t-label); font-weight: 600;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-mute);
+  display: block;
+}
+.lbl.micro { font-size: var(--t-micro); letter-spacing: 0.2em; }
+.lbl.ink { color: var(--ink); }
+.num { font-family: var(--data); font-variant-numeric: tabular-nums; }
+
+/* ══ sections ══════════════════════════════════════════════════════════ */
+
+section { padding: 66px 0 0; }
+
+.sec-head {
+  display: flex; align-items: flex-end; gap: 18px;
+  padding-bottom: 18px; margin-bottom: 30px;
+  border-bottom: 2.5px solid var(--ink);
+}
+.sec-head .idx {
+  font-family: var(--data); font-size: 15px; font-weight: 800;
+  color: var(--screen-ink); background: var(--ink);
+  padding: 7px 9px 6px; border-radius: 2px; line-height: 1;
+}
+.sec-head h2 {
+  margin: 0; font-size: var(--t-head); font-weight: 800;
+  font-variation-settings: 'wdth' 105;
+  letter-spacing: -0.035em; line-height: 1;
+}
+.sec-head p {
+  margin: 0 0 2px auto; font-size: var(--t-small); color: var(--ink-mute);
+  max-width: 44ch; text-align: right; line-height: 1.45;
+}
+
+.bins { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+.bin {
+  grid-column: span 4;
+  border: 1px solid var(--rule); border-radius: var(--radius);
+  background: transparent; padding: 16px;
+  display: flex; flex-direction: column; gap: 14px; min-width: 0;
+}
+.bin > .lbl:first-child {
+  display: flex; justify-content: space-between; gap: 10px; align-items: baseline;
+}
+/* an inverted bin — used where the content is itself dark hardware */
+.bin--dark {
+  background: var(--screen); border-color: var(--ink); color: var(--screen-ink);
+}
+.bin--dark > .lbl { color: rgba(242,240,234,0.5); }
+.bin-body { display: flex; flex-direction: column; gap: 12px; }
+.span-6 { grid-column: span 6; } .span-8 { grid-column: span 8; }
+.span-12 { grid-column: span 12; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* ══ 01 · colour, applied as AREA ══════════════════════════════════════ */
+
+.chassis-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; }
+.chassis-strip .sw { border: 0; }
+.chassis-strip .sw .chip { height: 74px; }
+
+.sw { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--rule); }
+.sw .chip { height: 64px; }
+.sw .info { padding: 8px 10px 10px; background: var(--bench-hi); }
+.sw .info b {
+  display: block; font-family: var(--label); font-size: var(--t-label);
+  font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+}
+/* class, not element: `.sw .info span` (0,2,1) would outrank `.sw .role` */
+.sw .info .hex {
+  font-family: var(--data); font-size: var(--t-micro); color: var(--ink-mute);
+}
+.sw .role {
+  display: block; margin-top: 3px; font-family: var(--label);
+  font-size: var(--t-micro); letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* coded colour gets real estate — the name is reversed out INSIDE the hue,
+ * because a colour that means something should be big enough to be read as
+ * a statement rather than sampled as a chip. */
+.coded { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.coded .block {
+  border-radius: var(--radius); padding: 20px 20px 18px; min-height: 178px;
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.coded .block h3 {
+  margin: 0; font-size: 46px; font-weight: 900;
+  font-variation-settings: 'wdth' 108;
+  letter-spacing: -0.04em; line-height: 0.92;
+}
+.coded .block .hex {
+  font-family: var(--data); font-size: 12px; font-weight: 700;
+  display: block; margin-top: 4px;
+}
+.coded .block .role {
+  font-family: var(--label); font-size: var(--t-label); font-weight: 600;
+  letter-spacing: 0.13em; text-transform: uppercase; line-height: 1.5;
+}
+/* black on orange, not white: at small sizes the reverse fails contrast */
+.coded .signal { background: var(--signal); color: var(--ink); }
+.coded .live   { background: var(--live);   color: #fff; }
+.coded .fault  { background: var(--fault);  color: #fff; }
+.coded .signal .role { color: rgba(18,19,23,0.72); }
+.coded .live .role, .coded .fault .role { color: rgba(255,255,255,0.75); }
+
+/* ══ 02 · type ═════════════════════════════════════════════════════════ */
+
+.type-row {
+  display: grid; grid-template-columns: 104px 1fr; gap: 22px;
+  align-items: baseline; padding: 16px 0; border-bottom: 1px solid var(--rule);
+}
+.type-row:last-child { border-bottom: 0; }
+.type-row .spec {
+  font-family: var(--data); font-size: var(--t-micro); color: var(--ink-mute);
+  line-height: 1.7;
+}
+.t-display {
+  font-size: var(--t-display); font-weight: 900; letter-spacing: -0.055em;
+  line-height: 0.86; font-variation-settings: 'wdth' 110;
+}
+.t-title {
+  font-size: var(--t-title); font-weight: 800; letter-spacing: -0.04em;
+  line-height: 0.95; font-variation-settings: 'wdth' 104;
+}
+.t-head { font-size: var(--t-head); font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+.t-body { font-size: var(--t-body); font-weight: 400; line-height: 1.5; }
+.t-small { font-size: var(--t-small); font-weight: 400; line-height: 1.5; color: var(--ink-mute); }
+.t-data { font-family: var(--data); font-size: var(--t-small); font-weight: 500; }
+
+/* ══ 03 · controls ═════════════════════════════════════════════════════ */
+
+/* the keybed: black cluster, one position lit — and the lit key is a SOLID
+ * field of signal, not a dot on a pale key. */
+.selector {
+  display: inline-flex; align-items: stretch; gap: 3px;
+  background: var(--screen); border: 1px solid var(--ink);
+  border-radius: 4px; padding: 3px;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.5);
+}
+.pos {
+  appearance: none; border: 0; cursor: pointer;
+  background: var(--screen-hi); color: rgba(242,240,234,0.6);
+  font-family: var(--label); font-size: 13px; font-weight: 700;
+  letter-spacing: 0.11em; text-transform: uppercase;
+  padding: 13px 18px 11px; border-radius: 2px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  transition: background 90ms linear, color 90ms linear;
+}
+.pos .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(242,240,234,0.3);
+  transition: background 90ms linear;
+}
+.pos:hover { background: #33363E; color: var(--screen-ink); }
+.pos[aria-pressed='true'] { background: var(--signal); color: var(--ink); }
+.pos[aria-pressed='true'] .dot { background: var(--ink); }
+.pos:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
+
+/* Mounted in a faceplate the keybed spans the panel and the keys share the
+ * width evenly — at specimen scale six keys overflowed a 470px plate. A
+ * control that only fits at one width isn't a control, it's a picture. */
+.selector--fill { display: flex; width: 100%; }
+.selector--fill .pos {
+  flex: 1; min-width: 0; padding-left: 4px; padding-right: 4px;
+  font-size: 11px; letter-spacing: 0.06em;
+}
+
+.btn {
+  appearance: none; cursor: pointer;
+  font-family: var(--label); font-size: 13px; font-weight: 700;
+  letter-spacing: 0.13em; text-transform: uppercase;
+  padding: 12px 20px; border-radius: var(--radius);
+  border: 1px solid var(--rule-hard);
+  background: var(--bench-hi); color: var(--ink);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.55), 0 1px 2px rgba(18,19,23,0.16);
+  transition: transform 60ms linear, box-shadow 60ms linear, background 90ms linear;
+}
+.btn:hover { background: #E0DED7; }
+.btn:active { transform: translateY(1px); box-shadow: inset 0 1px 3px rgba(18,19,23,0.3); }
+.btn:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
+.btn--signal {
+  background: var(--signal); border-color: #C93A0C; color: var(--ink);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.25), 0 1px 3px rgba(18,19,23,0.3);
+}
+.btn--signal:hover { background: #FF6234; }
+.btn--dark { background: var(--screen); border-color: var(--ink); color: var(--screen-ink); }
+.btn--dark:hover { background: #24262C; }
+.btn--ghost { background: transparent; box-shadow: none; color: var(--ink-mute); border-color: var(--rule); }
+.btn--ghost:hover { background: rgba(255,255,255,0.35); color: var(--ink); }
+.btn[disabled] { cursor: not-allowed; opacity: 0.38; box-shadow: none; background: var(--bench-lo); }
+
+.lamp {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 9px 13px 9px 10px;
+  border: 1px solid var(--rule); border-radius: var(--radius);
+  background: var(--bench-hi);
+  font-family: var(--label); font-size: 12px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-mute);
+}
+.lamp .bulb {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ink-faint); box-shadow: inset 0 0 0 1px rgba(18,19,23,0.25);
+}
+.lamp[data-state='ok'] { color: var(--ink); }
+.lamp[data-state='ok'] .bulb { background: var(--live); box-shadow: 0 0 7px rgba(27,99,232,0.7); }
+.lamp[data-state='fault'] { color: #fff; background: var(--fault); border-color: #A81020; }
+.lamp[data-state='fault'] .bulb { background: #fff; box-shadow: none; }
+
+.field {
+  width: 100%; font-family: var(--display); font-size: 15px;
+  padding: 11px 13px; border-radius: var(--radius);
+  border: 1px solid var(--rule-hard); background: #E4E2DB; color: var(--ink);
+  box-shadow: inset 0 1px 2px rgba(18,19,23,0.12);
+}
+.field::placeholder { color: var(--ink-faint); }
+.field:focus { outline: 2px solid var(--live); outline-offset: 1px; border-color: var(--live); }
+
+.range { display: flex; align-items: center; gap: 13px; }
+.range input {
+  flex: 1; appearance: none; height: 4px; border-radius: 2px;
+  background: var(--screen); box-shadow: inset 0 1px 1px rgba(0,0,0,0.4);
+}
+.range input::-webkit-slider-thumb {
+  appearance: none; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--signal); border: 2px solid var(--ink);
+  box-shadow: 0 1px 3px rgba(18,19,23,0.4); cursor: grab;
+}
+.range input:focus-visible { outline: 2px solid var(--live); outline-offset: 4px; }
+
+/* ══ 04 · screens & readouts ═══════════════════════════════════════════ */
+
+.screen {
+  background: var(--screen); color: var(--screen-ink);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 4px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.45);
+  padding: 16px 18px 18px;
+}
+.screen .lbl { color: rgba(242,240,234,0.45); }
+
+.readout { display: flex; align-items: baseline; gap: 12px; margin-top: 8px; }
+.readout .val {
+  font-family: var(--data); font-weight: 800; font-size: 78px;
+  letter-spacing: -0.055em; line-height: 0.9; color: var(--screen-ink);
+  font-variant-numeric: tabular-nums;
+}
+.readout .val[data-hot='true'] { color: var(--signal); }
+.readout .unit {
+  font-family: var(--label); font-size: 12px; font-weight: 700;
+  letter-spacing: 0.18em; text-transform: uppercase; color: rgba(242,240,234,0.5);
+}
+
+/* the readout is sized to its housing: full scale as a specimen, stepped
+ * down where it sits inside the faceplate */
+.screen--compact .val { font-size: 46px; }
+.screen--compact .meter { margin-top: 12px; }
+.screen--compact .meter i { height: 14px; }
+
+.meter { display: flex; gap: 3px; margin-top: 16px; }
+.meter i { flex: 1; height: 20px; border-radius: 1px; background: rgba(242,240,234,0.1); }
+.meter i[data-on='true'] { background: var(--screen-ink); }
+.meter i[data-on='peak'] { background: var(--signal); }
+
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.tile { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--bench-hi); padding: 12px 13px 13px; }
+.tile dt {
+  font-family: var(--label); font-size: var(--t-micro); font-weight: 700;
+  letter-spacing: 0.17em; text-transform: uppercase; color: var(--ink-faint);
+}
+.tile dd {
+  margin: 6px 0 0; font-family: var(--data); font-size: 26px; font-weight: 700;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.045em; line-height: 1;
+}
+
+code.chip {
+  font-family: var(--data); font-size: 11px; font-weight: 500;
+  background: var(--screen); color: #F2F0EA;
+  padding: 3px 6px; border-radius: 3px; white-space: nowrap;
+}
+.hint {
+  font-size: var(--t-small); line-height: 1.55; color: var(--ink-mute);
+  border-left: 3px solid var(--signal); padding-left: 14px;
+}
+.instruction {
+  font-family: var(--label); font-size: 12px; font-weight: 600;
+  letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-mute);
+  text-align: center; padding: 15px 0;
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+}
+.instruction b { color: var(--ink); font-weight: 700; }
+
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav a {
+  display: flex; align-items: center; gap: 12px; text-decoration: none;
+  padding: 10px 12px; border-radius: var(--radius); color: var(--ink-mute);
+  font-size: 15px; font-weight: 500;
+}
+.nav a .k { font-family: var(--data); font-size: var(--t-micro); color: var(--ink-faint); }
+.nav a:hover { background: rgba(255,255,255,0.4); color: var(--ink); }
+.nav a[aria-current='page'] {
+  background: var(--signal); color: var(--ink); font-weight: 700;
+}
+.nav a[aria-current='page'] .k { color: rgba(18,19,23,0.6); }
+
+/* ══ 05 · subjects ═════════════════════════════════════════════════════ */
+
+.note {
+  background: #F0EEE8; border: 1px solid var(--rule);
+  border-radius: var(--radius-lg); padding: 18px 19px 20px;
+  box-shadow: 0 1px 2px rgba(18,19,23,0.12), 0 10px 26px rgba(18,19,23,0.11);
+}
+.note h3 {
+  margin: 0 0 6px; font-size: 30px; font-weight: 800;
+  font-variation-settings: 'wdth' 104;
+  letter-spacing: -0.042em; line-height: 0.98;
+}
+.note .kicker { margin-bottom: 10px; }
+.note p { margin: 0; font-size: var(--t-small); line-height: 1.55; color: var(--ink-mute); }
+
+.fcard {
+  background: var(--bench-hi); border: 1px solid var(--rule-hard);
+  border-radius: var(--radius-lg); padding: 15px 16px;
+  box-shadow: 0 1px 2px rgba(18,19,23,0.14), 0 10px 24px rgba(18,19,23,0.13);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.fcard .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.fcard h4 {
+  margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -0.035em; line-height: 1.05;
+}
+.fcard .x {
+  appearance: none; border: 0; background: transparent; cursor: pointer;
+  color: var(--ink-faint); font-size: 17px; line-height: 1; padding: 3px 4px; border-radius: 2px;
+}
+.fcard .x:hover { color: #fff; background: var(--fault); }
+.fcard .meta { display: flex; gap: 6px; align-items: center; }
+
+.slot {
+  outline: 2px dashed var(--ink-mute); outline-offset: -3px;
+  border-radius: var(--radius-lg); min-height: 104px;
+  display: grid; place-items: center; background: rgba(18,19,23,0.05);
+}
+.slot .lbl { color: var(--ink-faint); }
+
+.plate {
+  width: 100%; background: var(--screen); color: #F2F0EA;
+  border: 1px solid rgba(242,240,234,0.16); border-radius: var(--radius-lg);
+  padding: 14px 16px;
+}
+.plate code {
+  display: block; font-family: var(--data); font-size: 19px; font-weight: 700;
+  color: #fff; letter-spacing: -0.03em;
+}
+.plate p { margin: 7px 0 0; font-size: 13px; line-height: 1.45; color: rgba(242,240,234,0.6); }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--label); font-size: var(--t-micro); font-weight: 700;
+  letter-spacing: 0.15em; text-transform: uppercase;
+  padding: 4px 8px; border-radius: 2px;
+  background: var(--bench-lo); color: var(--ink-mute);
+}
+.badge--signal { background: var(--signal); color: var(--ink); }
+.badge--live { background: var(--live); color: #fff; }
+
+/* ══ 06 · assembly ═════════════════════════════════════════════════════ */
+
+.faceplate {
+  background: var(--bench-hi);
+  border: 1px solid var(--rule-hard); border-radius: var(--radius-lg);
+  padding: 22px 24px 20px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.6), 0 2px 12px rgba(18,19,23,0.13);
+  display: flex; flex-direction: column; gap: 18px; max-width: 470px;
+}
+.faceplate .fp-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.faceplate h3 {
+  margin: 0; font-size: 42px; font-weight: 900;
+  font-variation-settings: 'wdth' 112;
+  letter-spacing: -0.05em; line-height: 0.86;
+}
+.faceplate .fp-sub { margin: 6px 0 0; }
+
+.stage-demo {
+  background: var(--stage); border-radius: var(--radius-lg);
+  border: 1px solid var(--rule-hard);
+  padding: 34px; display: grid; place-items: center; min-height: 250px;
+}
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+@media (max-width: 900px) {
+  :root { --t-mega: 82px; --t-display: 62px; --t-title: 40px; --t-head: 27px; }
+  .bin { grid-column: span 6; }
+  .span-8 { grid-column: span 12; }
+  .coded { grid-template-columns: 1fr; }
+}
+@media (max-width: 580px) {
+  :root { --t-mega: 58px; --t-display: 46px; }
+  .bin, .span-6 { grid-column: span 12; }
+  .chassis-strip, .tiles { grid-template-columns: repeat(2, 1fr); }
+  .sec-head { flex-wrap: wrap; }
+  .sec-head p { margin-left: 0; text-align: left; }
+  .readout .val { font-size: 56px; }
+}
+</style>
+</head>
+<body>
+
+<i class="reg tl"></i><i class="reg tr"></i><i class="reg bl"></i><i class="reg br"></i>
+
+<header class="masthead">
+  <div class="inner">
+    <div>
+      <span class="lbl">Design language · spike</span>
+      <h1>munari<em>bench</em></h1>
+    </div>
+    <div class="meta">
+      <span class="lbl micro">Sheet</span>
+      <div class="big">01/01</div>
+      <span class="lbl micro" style="margin-top:10px">Components</span>
+      <div class="big">18</div>
+    </div>
+  </div>
+</header>
+
+<div class="sheet">
+
+  <section>
+    <div class="sec-head">
+      <span class="idx">01</span>
+      <h2>Chassis &amp; coded colour</h2>
+      <p>The lab is a bench instrument, so it is lit like one. Three hues, each meaning exactly one thing — applied as area, never as trim.</p>
+    </div>
+
+    <div class="bins" style="margin-bottom:16px">
+      <div class="bin span-8">
+        <span class="lbl">Chassis <span class="num">4</span></span>
+        <div class="chassis-strip">
+          <div class="sw" data-token="--bench"    data-name="Bench"  data-role="Body"></div>
+          <div class="sw" data-token="--bench-hi" data-name="Raised" data-role="Faceplate"></div>
+          <div class="sw" data-token="--bench-lo" data-name="Recess" data-role="Groove"></div>
+          <div class="sw" data-token="--stage"    data-name="Stage"  data-role="3D room"></div>
+        </div>
+      </div>
+      <div class="bin">
+        <span class="lbl">Ink <span class="num">2</span></span>
+        <div class="chassis-strip" style="grid-template-columns:repeat(2,1fr)">
+          <div class="sw" data-token="--ink"    data-name="Ink"    data-role="Type · rules"></div>
+          <div class="sw" data-token="--screen" data-name="Screen" data-role="Keybed · LCD"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="coded">
+      <div class="block signal">
+        <div><h3>Signal</h3><span class="hex" data-hex="--signal"></span></div>
+        <span class="role">Active · selected<br>the one lit position</span>
+      </div>
+      <div class="block live">
+        <div><h3>Live</h3><span class="hex" data-hex="--live"></span></div>
+        <span class="role">Measuring · capability<br>present · focus</span>
+      </div>
+      <div class="block fault">
+        <div><h3>Fault</h3><span class="hex" data-hex="--fault"></span></div>
+        <span class="role">Unsupported · missing<br>destructive</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="idx">02</span>
+      <h2>Type</h2>
+      <p>Archivo for voice, Archivo Narrow for the silkscreen, Martian Mono for anything measured. Contrast is the gap between 96px and 9px.</p>
+    </div>
+
+    <div class="bins">
+      <div class="bin span-8">
+        <span class="lbl">Scale <span class="num">7</span></span>
+        <div>
+          <div class="type-row"><div class="spec">DISPLAY<br>96 / 900 / −.055<br>wdth 110</div><div class="t-display">Matter</div></div>
+          <div class="type-row"><div class="spec">TITLE<br>52 / 800 / −.04</div><div class="t-title">A card is paper</div></div>
+          <div class="type-row"><div class="spec">HEAD<br>34 / 700 / −.03</div><div class="t-head">Six scenes, one bench</div></div>
+          <div class="type-row"><div class="spec">BODY<br>17 / 400 / 1.5</div><div class="t-body">The real DOM stays the retained truth, and a custody protocol lets a WebGL scene carry its pixels as matter.</div></div>
+          <div class="type-row"><div class="spec">SMALL<br>14 / 400 / 1.5</div><div class="t-small">Captions, hints, and the body of a note card.</div></div>
+          <div class="type-row"><div class="spec">LABEL<br>11 / 600 / +.18</div><div><span class="lbl ink">Drawelementimage</span></div></div>
+          <div class="type-row"><div class="spec">DATA<br>14 / 500 / tnum</div><div class="t-data">0.9989 · 618/618 · 573×175</div></div>
+        </div>
+      </div>
+
+      <div class="bin">
+        <span class="lbl">Faces <span class="num">3</span></span>
+        <div class="bin-body">
+          <div>
+            <span class="lbl micro">Display · Archivo</span>
+            <div style="font-size:40px;font-weight:900;letter-spacing:-0.045em;font-variation-settings:'wdth' 110;line-height:1.05">AaGg</div>
+          </div>
+          <div>
+            <span class="lbl micro">Label · Archivo Narrow</span>
+            <div style="font-family:var(--label);font-size:28px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;line-height:1.15">Aagg</div>
+          </div>
+          <div>
+            <span class="lbl micro">Data · Martian Mono</span>
+            <div class="num" style="font-size:26px;font-weight:700;letter-spacing:-0.04em">0123</div>
+          </div>
+          <p class="t-small" style="margin:0">Vendored as woff2 and gated on <code class="chip">document.fonts.ready</code> — a face that arrives late is baked into the texture as a fallback.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="idx">03</span>
+      <h2>Controls</h2>
+      <p>Every specimen replaces something the lab already has: the scene chips, the mode toggles, the spread slider, the search field.</p>
+    </div>
+
+    <div class="bins">
+      <div class="bin span-12">
+        <span class="lbl">Six-position selector <span class="num">01</span> — replaces <code class="chip">.tabs</code></span>
+        <div class="row">
+          <div class="selector">
+            <button class="pos" aria-pressed="true"><i class="dot"></i>Workspace</button>
+            <button class="pos" aria-pressed="false"><i class="dot"></i>Glass</button>
+            <button class="pos" aria-pressed="false"><i class="dot"></i>Flight</button>
+            <button class="pos" aria-pressed="false"><i class="dot"></i>Explode</button>
+            <button class="pos" aria-pressed="false"><i class="dot"></i>Passage</button>
+            <button class="pos" aria-pressed="false"><i class="dot"></i>Wake</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="bin">
+        <span class="lbl">Buttons <span class="num">02</span></span>
+        <div class="bin-body">
+          <div class="row"><button class="btn btn--signal">Open note</button><button class="btn btn--dark">Reset</button></div>
+          <div class="row"><button class="btn">Relayout</button><button class="btn btn--ghost">Foil</button><button class="btn" disabled>Publish</button></div>
+          <span class="lbl micro">Signal · dark · default · ghost · disabled</span>
+        </div>
+      </div>
+
+      <div class="bin">
+        <span class="lbl">Capability lamps <span class="num">03</span></span>
+        <div class="bin-body">
+          <div class="row"><span class="lamp" data-state="ok"><i class="bulb"></i>drawElementImage</span></div>
+          <div class="row"><span class="lamp" data-state="fault"><i class="bulb"></i>texElementImage2D</span></div>
+          <div class="row"><span class="lamp"><i class="bulb"></i>Unknown</span></div>
+        </div>
+      </div>
+
+      <div class="bin">
+        <span class="lbl">Field <span class="num">04</span> · range <span class="num">05</span></span>
+        <div class="bin-body">
+          <input class="field" placeholder="Search pages">
+          <div class="range">
+            <span class="lbl micro">Spread</span>
+            <input type="range" min="0" max="100" value="62" aria-label="Spread">
+            <span class="num" style="font-size:13px;font-weight:700">0.62</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="idx">04</span>
+      <h2>Screens &amp; readouts</h2>
+      <p>Dark glass inset into light chassis is where the contrast lives — and where every measured number belongs.</p>
+    </div>
+
+    <div class="bins">
+      <div class="bin span-6">
+        <span class="lbl">Paint meter <span class="num">06</span> — the signature</span>
+        <div class="screen">
+          <span class="lbl">Paint rate · idle</span>
+          <div class="readout"><span class="val">0</span><span class="unit">paints<br>per sec</span></div>
+          <div class="meter" id="m-idle"></div>
+        </div>
+        <p class="t-small" style="margin:0">Fed by <code class="chip">paintStats()</code>, already exported. Idle Surfaces cost zero — this is the claim, watchable.</p>
+      </div>
+
+      <div class="bin span-6">
+        <span class="lbl">Under load</span>
+        <div class="screen">
+          <span class="lbl">Paint rate · 40 surfaces</span>
+          <div class="readout"><span class="val" data-hot="true">88</span><span class="unit">paints<br>per sec</span></div>
+          <div class="meter" id="m-load"></div>
+        </div>
+        <p class="t-small" style="margin:0">Signal only past the measured ceiling — colour that means something, again.</p>
+      </div>
+
+      <div class="bin span-8">
+        <span class="lbl">Data tiles <span class="num">07</span> — replaces <code class="chip">.specimen-facts</code></span>
+        <dl class="tiles" style="margin:0">
+          <div class="tile"><dt>Plates</dt><dd>6</dd></div>
+          <div class="tile"><dt>Draw calls</dt><dd>6</dd></div>
+          <div class="tile"><dt>Triangles</dt><dd>200</dd></div>
+          <div class="tile"><dt>Sharpness</dt><dd>0.9989</dd></div>
+          <div class="tile"><dt>Store</dt><dd>573×175</dd></div>
+          <div class="tile"><dt>Widths</dt><dd>92</dd></div>
+        </dl>
+      </div>
+
+      <div class="bin bin--dark">
+        <span class="lbl">Plate label <span class="num">08</span></span>
+        <div class="plate" style="border:0;padding:0">
+          <code>box-shadow</code>
+          <p>Two layers, one plate. Painted outside the border box, so the capture needs a padded wrapper.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="idx">05</span>
+      <h2>Subjects</h2>
+      <p>The things the scenes actually fly. These sit inside the WebGL texture, so their CSS is load-bearing — no masks, no transitions on a content root.</p>
+    </div>
+
+    <div class="bins">
+      <div class="bin">
+        <span class="lbl">Note card <span class="num">09</span> — passage</span>
+        <div class="note">
+          <span class="lbl micro kicker">Field notes</span>
+          <h3>The bend nobody could see</h3>
+          <p>Amplitude set by measurement, floored by test. A live pipeline is not a visible effect — tuned by eye needs the eye on real drags.</p>
+        </div>
+      </div>
+
+      <div class="bin">
+        <span class="lbl">Flight card <span class="num">10</span> + slot <span class="num">11</span></span>
+        <div class="bin-body">
+          <div class="fcard">
+            <div class="top">
+              <h4>Re-baseline the gate</h4>
+              <button class="x" aria-label="Delete card">✕</button>
+            </div>
+            <p class="t-small" style="margin:0">Band moves with the card.</p>
+            <div class="meta"><span class="badge badge--signal">Now</span><span class="badge">2h</span></div>
+          </div>
+          <div class="slot"><span class="lbl micro">Empty</span></div>
+        </div>
+      </div>
+
+      <div class="bin">
+        <span class="lbl">Nav <span class="num">12</span> — wake</span>
+        <div class="nav">
+          <a href="#" aria-current="page"><span class="k">01</span>Overview</a>
+          <a href="#"><span class="k">02</span>Materials</a>
+          <a href="#"><span class="k">03</span>Custody</a>
+          <a href="#"><span class="k">04</span>Instruments</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="idx">06</span>
+      <h2>Assembly</h2>
+      <p>The faceplate, built only from parts above, against the stage it will frame. This is the lab's top-left corner.</p>
+    </div>
+
+    <div class="bins">
+      <div class="bin span-6" style="background:transparent;border:0;padding:0">
+        <div class="faceplate">
+          <div class="fp-top">
+            <div>
+              <h3>munari</h3>
+              <p class="lbl fp-sub">Real materials</p>
+            </div>
+            <div style="text-align:right">
+              <span class="lbl micro">Model</span>
+              <div class="num" style="font-size:15px;font-weight:800;letter-spacing:-0.03em">LAB·6CH</div>
+            </div>
+          </div>
+
+          <div class="selector selector--fill">
+            <button class="pos" aria-pressed="true"><i class="dot"></i>Wksp</button>
+            <button class="pos" aria-pressed="false"><i class="dot"></i>Glass</button>
+            <button class="pos" aria-pressed="false"><i class="dot"></i>Flight</button>
+            <button class="pos" aria-pressed="false"><i class="dot"></i>Expl</button>
+            <button class="pos" aria-pressed="false"><i class="dot"></i>Psg</button>
+            <button class="pos" aria-pressed="false"><i class="dot"></i>Wake</button>
+          </div>
+
+          <div class="row">
+            <span class="lamp" data-state="ok"><i class="bulb"></i>drawElementImage</span>
+            <span class="lamp" data-state="ok"><i class="bulb"></i>texElementImage2D</span>
+          </div>
+
+          <div class="screen screen--compact">
+            <span class="lbl">Paint rate · idle</span>
+            <div class="readout"><span class="val">0</span><span class="unit">paints<br>per sec</span></div>
+            <div class="meter" id="m-face"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bin span-6" style="background:transparent;border:0;padding:0">
+        <div class="stage-demo">
+          <div class="note" style="max-width:310px">
+            <span class="lbl micro kicker">On the stage</span>
+            <h3>Paper, not pixels</h3>
+            <p>A white card on a mid-grey room reads as an object on a bench. On near-black it floated in a void.</p>
+          </div>
+        </div>
+        <div class="instruction" style="margin-top:20px">
+          Drag a card off the board · <b>throw it</b> · ✕ to crumple
+        </div>
+        <p class="hint" style="margin-top:20px">
+          HTML-in-canvas unavailable — every Surface needs it. Enable
+          <code class="chip">chrome://flags/#canvas-draw-element</code> and relaunch.
+        </p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  // A swatch's colour and its printed hex are built from ONE read of the
+  // token, so the sheet can never document a palette it isn't wearing.
+  // (It already did once: the tokens moved and the labels stayed.)
+  var root = getComputedStyle(document.documentElement);
+  var tok = function (name) { return root.getPropertyValue(name).trim().toUpperCase(); };
+
+  document.querySelectorAll('.sw[data-token]').forEach(function (sw) {
+    var hex = tok(sw.dataset.token);
+    var chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.style.background = hex;
+    var info = document.createElement('div');
+    info.className = 'info';
+    info.innerHTML = '<b></b><span class="hex"></span><span class="role"></span>';
+    info.querySelector('b').textContent = sw.dataset.name;
+    info.querySelector('.hex').textContent = hex;
+    info.querySelector('.role').textContent = sw.dataset.role;
+    sw.append(chip, info);
+  });
+  document.querySelectorAll('[data-hex]').forEach(function (el) {
+    el.textContent = tok(el.dataset.hex);
+  });
+
+  // Meters are drawn, not hand-authored: 24 segments, lit to a value.
+  function meter(id, value, ceiling) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var N = 24, lit = Math.round((value / ceiling) * N);
+    for (var i = 0; i < N; i++) {
+      var seg = document.createElement('i');
+      if (i < lit) seg.dataset.on = i >= N - 4 ? 'peak' : 'true';
+      el.appendChild(seg);
+    }
+  }
+  meter('m-idle', 0, 96);
+  meter('m-load', 88, 96);
+  meter('m-face', 0, 96);
+</script>
+
+</body>
+</html>

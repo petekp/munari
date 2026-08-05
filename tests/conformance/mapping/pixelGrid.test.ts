@@ -14,7 +14,7 @@
 // strength; blending is the caller's.
 import { describe, expect, it } from 'vitest'
 
-import { cameraDistance, pixelGridSnap, planeScale } from '@anamorph/core'
+import { cameraDistance, pixelGridSnap, planeScale } from '@munari/core'
 
 const VH = 720
 const VW = 1280

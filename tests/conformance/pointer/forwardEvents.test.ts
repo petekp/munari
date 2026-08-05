@@ -22,7 +22,7 @@ import {
   trackDrag,
   trackFocusModality,
   trackWheel,
-} from '@anamorph/core'
+} from '@munari/core'
 
 const ROOT = { left: 0, top: 0, right: 360, bottom: 460 }
 

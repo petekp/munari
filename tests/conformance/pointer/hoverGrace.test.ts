@@ -14,7 +14,7 @@ import {
   pointInConvex,
   type GraceTracker,
   type Pt,
-} from '@anamorph/core'
+} from '@munari/core'
 
 describe('convexHull', () => {
   it('reduces a square with interior points to its corners', () => {

@@ -1,6 +1,6 @@
 import { createContext, use } from 'react'
 import type * as THREE from 'three'
-import type { SurfaceChrome } from '@anamorph/core'
+import type { SurfaceChrome } from '@munari/core'
 
 // What a Surface exposes to its children (e.g. a custom material): the mesh
 // whose geometry UV anchors sample, the live DOM root for selector queries,

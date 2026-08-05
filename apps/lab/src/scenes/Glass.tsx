@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { MeshTransmissionMaterial, useFBO } from '@react-three/drei'
-import { SurfaceApp, useSurfaceTexture } from 'anamorph'
+import { SurfaceApp, useSurfaceTexture } from 'munari'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -453,15 +453,15 @@ function WallArt() {
   return (
     <div
       className="relative overflow-hidden font-sans"
-      style={{ width: WALL_W, height: WALL_H, background: '#0b0c11' }}
+      style={{ width: WALL_W, height: WALL_H, background: '#0a0b0e' }}
     >
       <div
         className="absolute inset-0"
         style={{
           background:
-            'radial-gradient(340px 340px at 18% 30%, #ff8c3b 0%, transparent 62%),' +
-            'radial-gradient(300px 300px at 82% 22%, #38bdf8 0%, transparent 60%),' +
-            'radial-gradient(360px 360px at 60% 85%, #a78bfa 0%, transparent 62%)',
+            'radial-gradient(340px 340px at 18% 30%, #ff4f17 0%, transparent 62%),' +
+            'radial-gradient(300px 300px at 82% 22%, #1b63e8 0%, transparent 60%),' +
+            'radial-gradient(360px 360px at 60% 85%, #c3c2bc 0%, transparent 62%)',
           opacity: 0.85,
         }}
       />
@@ -597,14 +597,14 @@ export function Glass() {
           longer show the page through it. Painting the same colour the CSS
           behind it uses (#0a0b0e) keeps both modes pixel-comparable. */}
       <color attach="background" args={['#0a0b0e']} />
-      <fog attach="fog" args={['#101014', 12, 30]} />
+      <fog attach="fog" args={['#0f1013', 12, 30]} />
       <ambientLight intensity={0.45} />
       <directionalLight position={[4, 7, 5]} intensity={1.4} castShadow />
-      <pointLight position={[-3, 3.5, 3]} intensity={10} color="#ffd9b8" distance={14} />
+      <pointLight position={[-3, 3.5, 3]} intensity={10} color="#f2f0ea" distance={14} />
 
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
         <circleGeometry args={[14, 64]} />
-        <meshStandardMaterial color="#14151b" roughness={0.95} />
+        <meshStandardMaterial color="#131418" roughness={0.95} />
       </mesh>
 
       {/* Layer 0 — the wall, itself live DOM */}
@@ -621,11 +621,11 @@ export function Glass() {
       {/* Layer 1 — opaque props between wall and glass */}
       <mesh position={[-1.35, 1.15, 0.25]} castShadow>
         <torusKnotGeometry args={[0.16, 0.055, 128, 24]} />
-        <meshStandardMaterial color="#ff8c3b" roughness={0.25} metalness={0.15} />
+        <meshStandardMaterial color="#ff4f17" roughness={0.25} metalness={0.15} />
       </mesh>
       <mesh position={[1.15, 2.15, 0.35]} castShadow>
         <sphereGeometry args={[0.16, 48, 48]} />
-        <meshStandardMaterial color="#38bdf8" roughness={0.2} metalness={0.1} />
+        <meshStandardMaterial color="#1b63e8" roughness={0.2} metalness={0.1} />
       </mesh>
 
       {/* Layers 2 and 3 — the glass card, and a pill overlapping it in

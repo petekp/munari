@@ -3,7 +3,7 @@
 // parked Surface subtree (spike, 2026-07-31). Pinning them here means a future
 // refactor of the conductor has to keep agreeing with the browser.
 import { describe, expect, it } from 'vitest'
-import { decomposeMatrix, isStatic, sampleAt, type MotionSample } from '@anamorph/core'
+import { decomposeMatrix, isStatic, sampleAt, type MotionSample } from '@munari/core'
 
 describe('decomposeMatrix', () => {
   it('reads scale and translate out of a 2D matrix', () => {

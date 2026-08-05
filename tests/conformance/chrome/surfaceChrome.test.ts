@@ -16,7 +16,7 @@ import {
   parseBoxShadow,
   resolveRadii,
   surfaceRadiusSd,
-} from '@anamorph/core'
+} from '@munari/core'
 
 describe('parseBoxShadow', () => {
   it('parses the lab card computed form: color-first, two layers, negative spread', () => {

@@ -11,7 +11,7 @@ import {
   step,
   flipImpulse,
   hopImpulse,
-} from '@anamorph/core'
+} from '@munari/core'
 
 // The claim under test: every control feel in the kit — dial detents, switch
 // snap, slider stops and travel bounds — is the SAME tiny integrator run over

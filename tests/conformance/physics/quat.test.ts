@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { Quat, Vec3 } from '@anamorph/core'
+import { Quat, Vec3 } from '@munari/core'
 
 /** 90° about +X and 90° about +Z — a non-commuting pair, so operand
  *  order is visible in every assertion below. */

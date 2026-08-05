@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { makeShadowFrame, shadowQuadFrame } from '@anamorph/core'
+import { makeShadowFrame, shadowQuadFrame } from '@munari/core'
 
 describe('shadow quad frame — the mapping never lies', () => {
   const rect = (w: number, h: number, cx = 0, cy = 0) =>

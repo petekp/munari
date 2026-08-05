@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { guardPointerCapture } from '@anamorph/core'
+import { guardPointerCapture } from '@munari/core'
 import { useLatest } from './useLatest'
 
 // The DOM half of a Surface that hosts live UI.

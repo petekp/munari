@@ -23,7 +23,7 @@ import {
   makePlate,
   type GestureFlight,
   attachFlightGestures,
-} from '@anamorph/core'
+} from '@munari/core'
 
 // The lab's calibration at the reference viewport — the tests hand the
 // gesture the same lift-plane carry the Board does.

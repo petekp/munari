@@ -8,7 +8,7 @@
 // shadow's layers are the card's own measured `box-shadow`, parsed by
 // `onChrome`. What is authored here is only how they RASTERIZE.
 
-import { SURFACE_RADIUS_GLSL } from 'anamorph'
+import { SURFACE_RADIUS_GLSL } from 'munari'
 
 // ── the airborne copy's material ─────────────────────────────────────────
 //
@@ -186,7 +186,7 @@ export const CARD_FRAG = /* glsl */ `
     // card ends — the .ui-root background paints its corners opaque white —
     // so the measured border-radius is enforced analytically (crisp at any
     // LOD tier), and the gloss band dies with the alpha it rides on.
-    c.a *= anamorphRadiusMask(vUv);
+    c.a *= munariRadiusMask(vUv);
     if (c.a < 0.004) discard;
     gl_FragColor = c;
     // The texture is SRGBColorSpace, so the sampler above hands this shader

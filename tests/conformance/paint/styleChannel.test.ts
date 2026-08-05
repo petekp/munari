@@ -9,7 +9,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createStyleChannel, ensureChannelRegistered, type StyleChannel } from '@anamorph/core'
+import { createStyleChannel, ensureChannelRegistered, type StyleChannel } from '@munari/core'
 
 let value = '0'
 function channelEl(): HTMLElement {

@@ -1,6 +1,6 @@
-/* anamorph — the stylesheet the primitives require.
+/* munari — the stylesheet the primitives require.
  *
- * Import once (`anamorph/style.css`), anywhere in the consuming app.
+ * Import once (`munari/style.css`), anywhere in the consuming app.
  * Everything here is MECHANISM: plain CSS, no framework, no theme, no
  * opinion about how anything looks. Each rule exists because a primitive
  * would misbehave without it.

@@ -23,7 +23,7 @@ import {
   wadOffscreen,
   tossSpin,
   wadShrink,
-} from '@anamorph/core'
+} from '@munari/core'
 
 const DT = 1 / 120
 const FLAT = new THREE.Quaternion()

@@ -12,7 +12,7 @@
 // softer than the ladder says it should be.
 import { describe, expect, it } from 'vitest'
 
-import { filterPolicy, filterPolicyTransition } from '@anamorph/core'
+import { filterPolicy, filterPolicyTransition } from '@munari/core'
 
 describe('the filter policy', () => {
   it('pinned carries mips and trilinear', () => {

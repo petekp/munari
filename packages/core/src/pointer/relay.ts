@@ -27,7 +27,7 @@
  * instance's relays invisible to the other's predicate; `Symbol.for` is
  * shared by construction.
  */
-const RELAYED = Symbol.for('anamorph.relayed')
+const RELAYED = Symbol.for('munari.relayed')
 
 interface Brandable {
   [RELAYED]?: true

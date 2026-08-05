@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createDomTextureSource, paintStats } from '@anamorph/core'
+import { createDomTextureSource, paintStats } from '@munari/core'
 
 interface StubCanvas extends HTMLCanvasElement {
   layoutSubtree: boolean

@@ -212,7 +212,7 @@ export function createDomTextureSource(
   const support = detectHtmlInCanvas()
   if (!support.drawElementImage) {
     throw new UnsupportedPlatformError(
-      'anamorph: this browser has no drawElementImage — the HTML-in-canvas ' +
+      'munari: this browser has no drawElementImage — the HTML-in-canvas ' +
         'API this library is built on. In Chrome, relaunch with ' +
         '--enable-features=CanvasDrawElement (a running Chrome ignores the ' +
         'flag, so quit it fully first). Call detectHtmlInCanvas() before ' +
@@ -410,7 +410,7 @@ function adoptContent(content: string | HTMLElement): HTMLElement {
   if (typeof content !== 'string') {
     if (content.parentNode) {
       throw new Error(
-        'anamorph: createDomTextureSource adopts only an unparented element — ' +
+        'munari: createDomTextureSource adopts only an unparented element — ' +
           'the one handed over is still in a tree. Appending it here would MOVE ' +
           'it out of that tree, not copy it. Pass node.cloneNode(true) instead, ' +
           'or remove the node from its parent first if you meant to give it up.',

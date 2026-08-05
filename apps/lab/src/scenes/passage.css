@@ -29,17 +29,22 @@
  * own context.
  */
 
+/* This scene lives INSIDE the screen — it is a readout, not a chassis — so
+ * its locals derive from the bench's black family in app.css rather than
+ * carrying independent hexes. Same names as before, one source of truth
+ * behind them: the two scenes that duplicated their own palettes had already
+ * drifted apart on values they both believed were shared. */
 .psg,
 .psg-frame {
-  --bg: #0b0d12;
-  --panel: #141821;
-  --panel-2: #1b2029;
-  --edge: #262d3a;
-  --ink: #e9edf5;
-  --muted: #98a2b6;
-  --accent: #6ea8ff;
-  --hot: #ffb26e;
-  --live: #4ade80;
+  --bg: #0d0e12;
+  --panel: var(--screen);
+  --panel-2: var(--screen-hi);
+  --edge: rgba(242, 240, 234, 0.16);
+  --ink: var(--screen-ink);
+  --muted: rgba(242, 240, 234, 0.52);
+  --accent: var(--signal-lit);
+  --hot: var(--signal);
+  --live: var(--live-lit);
 }
 
 .psg {
@@ -49,7 +54,7 @@
   overflow-x: hidden;
   background: var(--bg);
   color: var(--ink);
-  font: 15px/1.55 ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font: 15px/1.55 var(--display);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -79,9 +84,11 @@
 
 .psg-top h1 {
   margin: 0;
-  font-size: 27px;
-  font-weight: 620;
-  letter-spacing: -0.024em;
+  font-size: 34px;
+  font-weight: 900;
+  font-variation-settings: 'wdth' 110;
+  letter-spacing: -0.05em;
+  line-height: 1;
 }
 
 .psg-top .psg-sub {
@@ -97,22 +104,26 @@
   align-items: center;
 }
 
+/* The same keybed as the scene selector: one strip of positions, exactly
+ * one of them lit. Three ways of moving the same card between the same two
+ * layouts is a mode switch, and a mode switch is a physical control. */
 .psg-modes button {
   appearance: none;
   border: 1px solid var(--edge);
   background: var(--panel);
   color: var(--muted);
-  font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.01em;
-  padding: 7px 11px;
-  border-radius: 7px;
+  font: 600 10px/1 var(--label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 9px 13px 8px;
+  border-radius: var(--radius);
   cursor: pointer;
 }
 
 .psg-modes button[data-active='true'] {
-  border-color: var(--accent);
+  border-color: var(--signal);
+  background: var(--signal);
   color: var(--ink);
-  background: color-mix(in oklab, var(--accent) 16%, var(--panel));
 }
 
 .psg-modes .psg-note {
@@ -212,7 +223,7 @@
   border-radius: 14px;
   overflow: hidden;
   color: var(--ink);
-  font: 15px/1.55 ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font: 15px/1.55 var(--display);
   text-align: left;
   width: 100%;
   padding: 0;
@@ -234,7 +245,7 @@
   background:
     radial-gradient(120% 140% at 18% 12%, var(--c1) 0%, transparent 58%),
     radial-gradient(120% 120% at 82% 78%, var(--c2) 0%, transparent 62%),
-    linear-gradient(150deg, var(--c3), #0a0c11);
+    linear-gradient(150deg, var(--c3), #0b0c0f);
   border-bottom: 1px solid var(--edge);
 }
 
@@ -259,7 +270,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font: 600 max(9.5px, 1.35cqi) / 1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 600 max(9.5px, 1.35cqi) / 1 var(--data);
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--accent);
@@ -325,7 +336,7 @@
 }
 
 .psg-stat dt {
-  font: 600 max(8.5px, 1.15cqi) / 1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 600 max(8.5px, 1.15cqi) / 1 var(--data);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
@@ -334,7 +345,7 @@
 
 .psg-stat dd {
   margin: 0;
-  font: 600 clamp(13px, 2.1cqi, 24px) / 1.1 ui-sans-serif, system-ui, sans-serif;
+  font: 600 clamp(13px, 2.1cqi, 24px) / 1.1 var(--display);
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
@@ -360,7 +371,7 @@
   background: rgba(8, 10, 14, 0.66);
   border: 1px solid rgba(255, 255, 255, 0.14);
   backdrop-filter: blur(6px);
-  font: 600 clamp(10px, 1.5cqi, 16px) / 1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 600 clamp(10px, 1.5cqi, 16px) / 1 var(--data);
   font-variant-numeric: tabular-nums;
   color: var(--ink);
   white-space: nowrap;
@@ -529,7 +540,7 @@
   border: 1px solid var(--edge);
   background: var(--panel);
   color: var(--ink);
-  font: 13px/1 ui-sans-serif, system-ui, sans-serif;
+  font: 13px/1 var(--display);
   padding: 9px 13px;
   border-radius: 8px;
   cursor: pointer;
@@ -568,7 +579,7 @@
   border-top: 1px solid var(--edge);
   padding-top: 16px;
   color: var(--muted);
-  font: 12.5px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 12.5px/1.7 var(--data);
   white-space: pre-wrap;
 }
 
@@ -623,10 +634,14 @@
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
-  padding: 12px 18px;
-  background: linear-gradient(to top, rgba(11, 13, 18, 0.96), rgba(11, 13, 18, 0));
-  color: var(--muted);
-  font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Tall enough that the fade, not the strip, is what the article runs
+   * into at the bottom of the scroll. */
+  padding: 34px 18px 12px;
+  background: linear-gradient(to top, rgba(13, 14, 18, 0.96), rgba(13, 14, 18, 0));
+  color: rgba(242, 240, 234, 0.5);
+  font: 600 10px/1.4 var(--label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   pointer-events: none;
 }
 

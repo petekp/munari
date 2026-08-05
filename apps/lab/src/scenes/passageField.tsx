@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { clampScale, createDomTextureSource, type DomTextureSource } from 'anamorph'
+import { clampScale, createDomTextureSource, type DomTextureSource } from 'munari'
 import { CROSS_DIP, CROSS_LIFT, FADE, HANDOVER, type FlightPart } from './passageParts'
 import type { Endpoint, Panel } from './passageMeasure'
 

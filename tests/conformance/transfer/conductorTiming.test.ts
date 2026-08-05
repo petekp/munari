@@ -42,7 +42,7 @@ import {
   conductorTick,
   type ConductorPoseState,
   type MotionValue,
-} from '@anamorph/core'
+} from '@munari/core'
 
 describe('END_EPSILON_MS / conductorScrubEnd', () => {
   it('pins END_EPSILON_MS to the measured value', () => {

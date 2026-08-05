@@ -1,31 +1,47 @@
-# anamorph decisions
+# munari decisions
 
 Standing decisions, numbered from #1 and cited from code as
 `decisions.md #N`. Each entry records the decision, the evidence
 behind it, and what it cost to learn. Entries are not renumbered;
 a decision that is superseded is amended in place, with the reason.
 
-## #1 — The name is anamorph, and the hourglass is the shape (2026-08-02)
+## #1 — The name is munari, and the hourglass is the shape (2026-08-02, renamed 2026-08-04)
 
 **Decision.** Project, repo, and eventual sole public package:
-`anamorph`. The monorepo is an hourglass — `@anamorph/core` (kernel:
+`munari`. The monorepo is an hourglass — `@munari/core` (kernel:
 custody, provenance, arbitration; zero runtime dependencies; never
-published independently), `anamorph` at `packages/react` (the
+published independently), `munari` at `packages/react` (the
 three/r3f binding; `three` + `@react-three/fiber` as peer
 dependencies; the only installable), `registry/` (copyable, never
 published), `apps/lab` (consumer, barrel-only), `instruments/`
 (maintained measurement).
 
-**Why this name.** An anamorphosis resolves true from one designed
-vantage — which is the library's central contract, not a mood: the
-pixel-calibrated camera makes screen and world equal on exactly one
-plane, and crispness is a rest state at that vantage. Rejected fields,
+**Why this name.** Bruno Munari's *proiezioni dirette* mounted real
+matter — gauze, torn film, scraps of plastic — in a slide frame and
+threw it across a wall, so what arrived was the material itself under
+light and not a picture of it. That is this library's central
+contract, not a mood: the DOM stays the retained truth and the scene
+carries its actual pixels, never a rebuilt likeness. Rejected fields,
 deliberately: paper and bookbinding names (slipsheet, endpaper — they
 name the flight-card demo's material, and the demo is one registry
 item, not the library); `three-*` names (the namespace files us with
 three-mesh-ui and uikit — the rebuild-UI-as-GL-geometry architecture
 this library is the inversion of); custody and stagecraft words
 (bailment, greenroom, foley — precise but the wrong register).
+
+**Amended 2026-08-04 — renamed from `munari`.** Not forced by
+availability: `munari@0.0.1` was published and held, and stays held
+as a pointer. The change is a deliberate move in what the name
+argues. `munari` argued from the *vantage* — an anamorphosis
+resolves true from one designed viewpoint, which matched the
+pixel-calibrated camera making screen and world equal on exactly one
+plane. `munari` argues from the *matter*. Both are true of the library
+and the vantage contract is unchanged, still pinned by
+`tests/conformance/mapping`; but the material claim is the one a
+reader meets first and the one flight, wake, and passage actually
+demonstrate. Cost of the name: `Munari` at the head of a sentence
+reads as the man, so prose says "the library" and reserves `munari`
+for the package.
 
 **Why one public package.** The shadcn model: a thin published
 substrate with a copyable registry on top. Publishing the kernel
@@ -167,7 +183,7 @@ moment its claim is pinned somewhere cheaper.
 
 ## #4 — Core speaks in shapes; three satisfies them (2026-08-02)
 
-**Decision.** `@anamorph/core` cannot import `three` (zero-dep,
+**Decision.** `@munari/core` cannot import `three` (zero-dep,
 boundary-enforced), yet its math has to accept the vectors and
 geometries a three-based consumer already holds. Core therefore
 expresses every vector/geometry parameter as a minimal structural
@@ -194,7 +210,7 @@ pattern; a kernel API that wants a richer vector vocabulary grows
 
 ## #5 — Premultiplied alpha, library-wide (2026-08-02, paint layer)
 
-**Decision.** Anamorph's texture contract is premultiplied from birth:
+**Decision.** The library's texture contract is premultiplied from birth:
 every texture made from a DOM source uploads with
 `premultiplyAlpha = true`, and every material consuming one blends
 premultiplied — built-ins via their `premultipliedAlpha` flag, custom
@@ -231,9 +247,9 @@ future lab that needs it reopens this entry with measurements.
 
 ## #6 — The binding re-exports the kernel whole, and the shader string lives beside the material (2026-08-03, react binding)
 
-**Decision.** `anamorph`'s barrel is `export * from '@anamorph/core'`
+**Decision.** `munari`'s barrel is `export * from '@munari/core'`
 plus the binding's own primitives — no curation between the kernel and
-the consumer. Every name in `@anamorph/core` is contract-covered, so a
+the consumer. Every name in `@munari/core` is contract-covered, so a
 second doorway would only accumulate drift between what the kernel
 guarantees and what consumers are allowed to see. A name earns barrel
 placement in the binding's OWN half by a preserved lab consuming it:
@@ -246,8 +262,8 @@ beside the material that splices it, and core is renderer-free. The
 GLSL and core's `surfaceRadiusSd` are twins BY CONTRACT — the
 conformance suite pins the JS SDF, and the chunk must compute the same
 distance so a ray and a fragment agree about where a corner ends. The
-uniform names are the library's own (`uAnamorphRadii`,
-`uAnamorphSize`, `anamorphRadiusMask(vUv)`) because a custom
+uniform names are the library's own (`uMunariRadii`,
+`uMunariSize`, `munariRadiusMask(vUv)`) because a custom
 material's opt-in call sites are consumer-visible contract.
 
 ## #7 — The kernel answers for what it observes; the app owns the window (2026-08-03, lab app)
@@ -262,7 +278,7 @@ gate's raw feed. The workspace scene's HUD is the consumer that proved it — th
 "40 live documents, zero cost" claim rendered as numbers needs
 counters only the source factory can keep. It ships with one
 deliberate constraint: **no global**. The kernel exports a function;
-the lab hangs it at `window.__anamorph.stats()` in App.tsx. A zero-dep
+the lab hangs it at `window.__munari.stats()` in App.tsx. A zero-dep
 kernel that stamps `window` at module load would be doing a consumer's
 job with a library's authority.
 
@@ -368,25 +384,25 @@ documentation.
 ## #11 — The published package is staged, and the kernel travels inside it (2026-08-03)
 
 **Decision.** `npm run build` bundles `packages/react` into
-`packages/react/dist` with `@anamorph/core` **inlined** and
+`packages/react/dist` with `@munari/core` **inlined** and
 `three`/`@react-three/fiber`/`react` left external, writes a purpose-built
 manifest into that directory, and publishing runs from there
 (`npm publish packages/react/dist`). The workspace manifest keeps
 `exports` pointing at `src/`, and keeps `private: true`.
 
 **Why the kernel is bundled rather than published beside the binding.**
-One public package is #1's promise. A published `@anamorph/core` would
+One public package is #1's promise. A published `@munari/core` would
 be a second doorway with its own version line, and a consumer who
 installed both could hold two kernels — the same failure mode as two
 copies of three, minus the `instanceof` error that would announce it.
 Bundling makes the kernel an implementation detail that cannot be
 depended on by accident. The staging script checks the emitted bundle
-for a surviving `@anamorph/core` import rather than trusting the config,
+for a surviving `@munari/core` import rather than trusting the config,
 because that import resolves fine inside the workspace and fails only
 for consumers.
 
 **Why staging instead of repointing `exports` at `dist`.** The lab
-resolves `anamorph` through the workspace with no alias standing in for
+resolves `munari` through the workspace with no alias standing in for
 the library — that is what makes a missing barrel export fail the lab's
 build instead of slipping past on a relative path. Pointing `exports` at
 `dist` would either break that enforcement or force a rebuild between
@@ -804,7 +820,7 @@ counter-declaration the band paints a white slab across the artwork
 behind it. Same declaration, same reason, as the glass scene's.
 
 **Evidence.** 28 cases in `passageParts.test.ts`, all pure. In the
-browser, the same instant held in all three modes: `anamorph` at
+browser, the same instant held in all three modes: `munari` at
 `debug.hold = 0.5`, `relayout` at the same hold through the same
 spring, and `view-transition` paused through the Web Animations API —
 `document.getAnimations()`, seek each `::view-transition-*` to half its
@@ -1265,3 +1281,52 @@ born at exactly this density, so `storeForBox`'s `exact` and this
 function's `tw` are the same expression. Written down because the next
 person to hold a card at altitude and wonder why it is soft should find
 this paragraph instead of the phase budget.
+
+## #23 — The bench: one visual language, and its tokens live on `:root` (2026-08-04, lab)
+
+**Decision.** The six lab scenes share one design language — a
+machined grey chassis with black control clusters, coded colour, tiny
+silkscreened labels, tabular mono numerals — and its tokens are
+declared **once, on `:root`**, in `apps/lab/src/app.css`. Per-scene
+sheets derive from those tokens (`--panel: var(--screen)`) rather than
+carrying hexes of their own. Sticker sheet: `docs/spikes/design-language.html`.
+
+**Why `:root` specifically, and not a scene class.** Flight and
+passage had each duplicated their token block onto the flying
+component, and the two copies had drifted. The duplication was not
+carelessness — it was structural. While a card is airborne its DOM is
+re-rendered into a parked canvas subtree hanging off `<body>`, the same
+document, so class *rules* still match; but the scene's own ancestors
+(`.l14`, `.psg`, `.wk`) are not in that element's chain, so anything
+scoped to them is out of reach. `:root` is the one ancestor a parked
+subtree still has. Moving the tokens there deleted both copies and the
+whole class of drift with them.
+
+What does **not** come along is anything *inherited* rather than
+*matched* — `font` above all, which would otherwise be the parking
+host's. A flying component still declares its own `font` (and its own
+pixel size, per #16's neighbours). Custom properties inherit too, which
+is exactly why `:root` works and a scene class does not.
+
+**The bug this framing found.** `.wk-page` painted `background:
+var(--bg)`, and `--bg` is declared on `.wk` — its own **child**. The
+variable had never been in scope there and the declaration had always
+resolved to nothing. It looked correct for as long as `<body>` happened
+to be the same near-black; the frame the body became bench grey, the
+wake scene's water was standing on a light table. A token that is
+declared below the element that reads it is invisible until something
+underneath it changes colour.
+
+**The webfont is a capture gate.** The bench type (Archivo variable,
+Archivo Narrow, Martian Mono) loads from a blocking `<link>` in
+`<head>`, not `@font-face` discovered during render. A face must be
+resident before a card's first rasterization or the texture bakes the
+fallback and keeps it; blocking first paint is the gate, and the lab's
+first grab is thousands of frames later, so it costs nothing that is
+measured.
+
+**One measured detail worth keeping.** The scene chips are
+`flex: 0 0 auto`, not `flex: 1`. Six labels of very different lengths
+in a 430 px strip got equal cells under `flex: 1` and the longer ones
+printed over their neighbours'. A key is as wide as the word on it.
+Found by cropping the render — the markup looked right.

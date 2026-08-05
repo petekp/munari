@@ -18,7 +18,7 @@
 // do not exist in happy-dom).
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createDomTextureSource } from '@anamorph/core'
+import { createDomTextureSource } from '@munari/core'
 
 interface StubCanvas extends HTMLCanvasElement {
   layoutSubtree: boolean

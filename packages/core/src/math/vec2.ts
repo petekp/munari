@@ -1,7 +1,7 @@
 // The kernel's 2D vector vocabulary. `shadowQuadFrame`'s frame lives in a
 // screen-space plane and never needs a z, so it gets its own
 // minimal pair of structural interfaces — same shape as vec3.ts's, and for
-// the same reason: @anamorph/core is zero-dep, so it cannot import three,
+// the same reason: @munari/core is zero-dep, so it cannot import three,
 // but THREE.Vector2 satisfies these by shape for free (decisions.md #4).
 
 /** The read half: anything with x/y. THREE.Vector2 qualifies. */

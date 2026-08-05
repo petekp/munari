@@ -30,7 +30,7 @@ function stubTrialContext(present: boolean) {
   vi.stubGlobal('CanvasRenderingContext2D', Ctx2D)
 }
 
-import { createDomTextureSource, type DomTextureSource } from '@anamorph/core'
+import { createDomTextureSource, type DomTextureSource } from '@munari/core'
 
 interface StubCanvas extends HTMLCanvasElement {
   layoutSubtree: boolean

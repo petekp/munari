@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { DENSITY_BAND, storeForBox, uploadNeedsRealloc, type TextureStore } from '@anamorph/core'
+import { DENSITY_BAND, storeForBox, uploadNeedsRealloc, type TextureStore } from '@munari/core'
 
 // GL texture storage is IMMUTABLE. three allocates it at first-upload
 // dimensions (texStorage2D) and texSubImage2Ds every upload after, so the

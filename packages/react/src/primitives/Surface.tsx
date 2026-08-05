@@ -28,13 +28,13 @@ import {
   uploadNeedsRealloc,
   type DomTextureSource,
   type SurfaceChrome,
-} from '@anamorph/core'
+} from '@munari/core'
 import { SURFACE_RADIUS_GLSL } from '../lib/surfaceRadiusGlsl'
 import { FocusGroupContext } from './focusContext'
 import { SurfaceContext, type SurfaceContextValue } from './SurfaceContext'
 import { useLatest } from './useLatest'
 
-// <Surface> — the atom of anamorph: a live DOM subtree as the skin of any
+// <Surface> — the atom of munari: a live DOM subtree as the skin of any
 // geometry. Pass geometry as children; the DOM is rasterized into the
 // material's map every frame, and pointer events on the mesh are forwarded
 // back into the DOM via the intersection's UV coordinates.
@@ -340,8 +340,8 @@ export function Surface({
   const activeRadiiRef = useRef<[number, number, number, number]>([0, 0, 0, 0])
   const [chrome, setChrome] = useState<SurfaceChrome | null>(null)
   const radiusUniformsRef = useRef({
-    uAnamorphRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-    uAnamorphSize: { value: new THREE.Vector2(width, height) },
+    uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uMunariSize: { value: new THREE.Vector2(width, height) },
   })
 
   // Push radii into the mask + raycast. alphaToCoverage rides along for the
@@ -353,7 +353,7 @@ export function Surface({
     const cur = activeRadiiRef.current
     if (cur[0] === next[0] && cur[1] === next[1] && cur[2] === next[2] && cur[3] === next[3]) return
     activeRadiiRef.current = next
-    radiusUniformsRef.current.uAnamorphRadii.value.set(next[0], next[1], next[2], next[3])
+    radiusUniformsRef.current.uMunariRadii.value.set(next[0], next[1], next[2], next[3])
     const mat = materialRef.current
     if (mat) {
       const wantA2C = !mat.transparent && (next[0] > 0 || next[1] > 0 || next[2] > 0 || next[3] > 0)
@@ -451,7 +451,7 @@ export function Surface({
       const safe = clampScale(resolution, width, height)
       if (safe !== resolution) {
         console.warn(
-          `[anamorph] Surface${label ? ` "${label}"` : ''}: resolution ${resolution} ` +
+          `[munari] Surface${label ? ` "${label}"` : ''}: resolution ${resolution} ` +
             `exceeds the ${MAX_TEXTURE_EDGE}px long-edge texture guard at ` +
             `${width}×${height} CSS px; clamped to ${safe}.`,
         )
@@ -469,7 +469,7 @@ export function Surface({
   // preserves the corner ARC — radii are px, so a resize must not stretch
   // them the way a uv-relative mask would).
   useEffect(() => {
-    radiusUniformsRef.current.uAnamorphSize.value.set(width, height)
+    radiusUniformsRef.current.uMunariSize.value.set(width, height)
     if (radius === 'auto') {
       applyRadii(chromeRef.current.radii)
     } else {
@@ -550,7 +550,7 @@ export function Surface({
       // been projected (see seedTier) — and the first LOD evaluations
       // settle any remaining gap.
       scale: pinnedScaleRef.current ?? seedTier(tiersRef.current, gl.getPixelRatio()),
-      onError: (err) => console.warn('[anamorph] Surface paint failed:', err),
+      onError: (err) => console.warn('[munari] Surface paint failed:', err),
     })
     sourceRef.current = source
     setSourceEl(source.element)
@@ -827,8 +827,8 @@ export function Surface({
   const onBeforeCompile = useMemo(
     () =>
       (shader: { uniforms: Record<string, { value: unknown }>; fragmentShader: string }) => {
-        shader.uniforms.uAnamorphRadii = radiusUniformsRef.current.uAnamorphRadii
-        shader.uniforms.uAnamorphSize = radiusUniformsRef.current.uAnamorphSize
+        shader.uniforms.uMunariRadii = radiusUniformsRef.current.uMunariRadii
+        shader.uniforms.uMunariSize = radiusUniformsRef.current.uMunariSize
         shader.fragmentShader = shader.fragmentShader
           .replace(
             '#include <clipping_planes_pars_fragment>',
@@ -837,7 +837,7 @@ export function Surface({
           .replace(
             '#include <map_fragment>',
             '#include <map_fragment>\n' +
-              '  diffuseColor.a *= anamorphRadiusMask(vUv);\n' +
+              '  diffuseColor.a *= munariRadiusMask(vUv);\n' +
               '  if (diffuseColor.a < 0.004) discard;\n',
           )
       },

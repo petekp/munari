@@ -1,5 +1,5 @@
 {
-  "name": "anamorph-workspace",
+  "name": "munari-workspace",
   "private": true,
   "type": "module",
   "packageManager": "npm@11.17.0",
@@ -15,9 +15,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p apps/lab && tsc --noEmit -p registry",
     "lint": "oxlint . --deny-warnings",
-    "build": "npm run build -w anamorph",
+    "build": "npm run build -w munari",
     "gate:idle-zero": "node instruments/idle-zero/run.mjs",
-    "dev": "npm run dev -w @anamorph/lab",
+    "dev": "npm run dev -w @munari/lab",
     "gate:sharpness": "node instruments/sharpness/run.mjs"
   },
   "devDependencies": {
