@@ -13,13 +13,13 @@ hard to place, ask whose custody the pixels are in at that moment.
   provenance, arbitration, pure laws. **Zero runtime dependencies**,
   never published independently. The DOM stays the retained model —
   core coordinates, it does not own content.
-- `packages/react` (`@petekp/munari`) — the thinnest binding, and the one
+- `packages/react` (`@petepetrash/munari`) — the thinnest binding, and the one
   package that will ever be published. `three` +
   `@react-three/fiber` are **peer** dependencies. We are three-first;
   renderer abstraction is banned by the second-system guard.
 - `registry/` — copyable behaviors (shadcn model, nothing published):
   tuned constants and perceptual-floor tests travel with the code.
-- `apps/lab` — a consumer. Imports **only** the `@petekp/munari` barrel,
+- `apps/lab` — a consumer. Imports **only** the `@petepetrash/munari` barrel,
   exactly as an outside project would. When a scene wants something
   unexported, export it — don't reach around.
 - `instruments/` — measurement is maintained infrastructure, committed

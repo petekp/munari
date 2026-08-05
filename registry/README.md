@@ -29,6 +29,6 @@ one behavior. Its evidence rides beside the modules instead, at
 `packages/react/src/lib/*.test.ts`, with `docs/focus.md` as the
 contract doc. Import-code, not copy-code.
 
-Registry code imports the library only through the `@petekp/munari` barrel —
+Registry code imports the library only through the `@petepetrash/munari` barrel —
 if a behavior can't be built without patching the kernel, that is a
 kernel bug, not a registry workaround.

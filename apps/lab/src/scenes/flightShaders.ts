@@ -8,7 +8,7 @@
 // shadow's layers are the card's own measured `box-shadow`, parsed by
 // `onChrome`. What is authored here is only how they RASTERIZE.
 
-import { SURFACE_RADIUS_GLSL } from '@petekp/munari'
+import { SURFACE_RADIUS_GLSL } from '@petepetrash/munari'
 
 // ── the airborne copy's material ─────────────────────────────────────────
 //

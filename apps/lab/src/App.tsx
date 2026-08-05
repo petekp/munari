@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, OrbitControls } from '@react-three/drei'
-import { detectHtmlInCanvas, FocusScene, paintStats } from '@petekp/munari'
+import { detectHtmlInCanvas, FocusScene, paintStats } from '@petepetrash/munari'
 import { Workspace, WorkspaceHud } from './scenes/Workspace'
 import { Glass } from './scenes/Glass'
 import { FlightApp } from './scenes/Flight'
@@ -12,7 +12,7 @@ import { WakeApp } from './scenes/Wake'
 // Six scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
 // flight drag trilogy, exploded-paint inspector, passage route transition,
 // wake navigation-through-a-medium.
-// Everything they render reaches the library through the `@petekp/munari` barrel —
+// Everything they render reaches the library through the `@petepetrash/munari` barrel —
 // this app is the proof that the public surface is sufficient.
 
 type SceneId = 'workspace' | 'glass' | 'flight' | 'explode' | 'passage' | 'wake'

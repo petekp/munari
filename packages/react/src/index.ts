@@ -1,4 +1,4 @@
-// @petekp/munari — the public surface.
+// @petepetrash/munari — the public surface.
 //
 // Live DOM as physical matter in WebGL (Chrome's HTML-in-canvas trial):
 // the react/three binding over @munari/core, and the one package that

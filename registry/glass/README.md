@@ -19,7 +19,7 @@ Copy both files; they travel together:
   merged shape needs a merged gradient), dispersion taps, the ripple
   train.
 
-Imports are `@petekp/munari` + peers only (enforced by `tests/boundary.test.ts`
+Imports are `@petepetrash/munari` + peers only (enforced by `tests/boundary.test.ts`
 rule 3). Both files are byte-welded to the reference consumer at
 `apps/lab/src/scenes/` — the glass scene — by `tests/registry/glassPack.test.ts`;
 the lab's typecheck and browser evidence therefore cover this copy

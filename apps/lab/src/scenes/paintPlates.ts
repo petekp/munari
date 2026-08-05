@@ -1,4 +1,4 @@
-import { parseBoxShadow } from '@petekp/munari'
+import { parseBoxShadow } from '@petepetrash/munari'
 
 // Exploded paint — one element's own paint, taken apart into plates.
 //

@@ -3,7 +3,7 @@
 // (decisions.md #4), so the helper lives with the consumer that owns the
 // THREE objects.
 import * as THREE from 'three'
-import type { Plate } from '@petekp/munari'
+import type { Plate } from '@petepetrash/munari'
 
 /**
  * The plate's four corners in world space — what the shadow needs, and the

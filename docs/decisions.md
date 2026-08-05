@@ -8,9 +8,9 @@ a decision that is superseded is amended in place, with the reason.
 ## #1 — The name is munari, and the hourglass is the shape (2026-08-02, renamed 2026-08-04)
 
 **Decision.** Project and repo: `munari`. Sole public package:
-`@petekp/munari`. The monorepo is an hourglass — `@munari/core` (kernel:
+`@petepetrash/munari`. The monorepo is an hourglass — `@munari/core` (kernel:
 custody, provenance, arbitration; zero runtime dependencies; never
-published independently), `@petekp/munari` at `packages/react` (the
+published independently), `@petepetrash/munari` at `packages/react` (the
 three/r3f binding; `three` + `@react-three/fiber` as peer
 dependencies; the only installable), `registry/` (copyable, never
 published), `apps/lab` (consumer, barrel-only), `instruments/`
@@ -68,6 +68,16 @@ Known cost: an owner scope has to be abandoned and re-published if the
 project ever outgrows a single author, which costs exactly what
 today's rename cost. `@munari/core` keeps the project scope — it is
 workspace-internal and never published, so it answers to no registry.
+
+The owner scope is `@petepetrash`, not `@petekp`, and the reason is
+the same collision in a second costume: **npm packages and orgs share
+one namespace**, and `petekp` is already a package here — the `npx
+petekp` terminal portfolio. An org can never take a name a package
+holds, so `@petekp/*` is unreachable without unpublishing the
+portfolio. It fails as a 404 on `PUT` to the scope, which reads like a
+permissions problem and is actually a naming one. `@petepetrash` is
+the username scope, which exists automatically and cannot be taken;
+`@petepetrash/circuit` already ships from it.
 
 **Why one public package.** The shadcn model: a thin published
 substrate with a copyable registry on top. Publishing the kernel
@@ -428,7 +438,7 @@ because that import resolves fine inside the workspace and fails only
 for consumers.
 
 **Why staging instead of repointing `exports` at `dist`.** The lab
-resolves `@petekp/munari` through the workspace with no alias standing in for
+resolves `@petepetrash/munari` through the workspace with no alias standing in for
 the library — that is what makes a missing barrel export fail the lab's
 build instead of slipping past on a relative path. Pointing `exports` at
 `dist` would either break that enforcement or force a rebuild between

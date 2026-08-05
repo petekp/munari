@@ -54,7 +54,7 @@ import {
   useSurfaceChrome,
   useSurfaceTexture,
   type SurfaceChrome,
-} from '@petekp/munari'
+} from '@petepetrash/munari'
 import {
   CARD_FRAG,
   CARD_VERT,
@@ -71,8 +71,8 @@ import {
   pixelGridSnap,
   planeScale,
   screenToPlane,
-} from '@petekp/munari'
-import { attachFlightGestures } from '@petekp/munari'
+} from '@petepetrash/munari'
+import { attachFlightGestures } from '@petepetrash/munari'
 import {
   aeroFollowStep,
   aeroReach,
@@ -87,7 +87,7 @@ import {
   wadOffscreen,
   wadShrink,
   type Plate,
-} from '@petekp/munari'
+} from '@petepetrash/munari'
 import { corners } from './flightCorners'
 
 // ── the data ─────────────────────────────────────────────────────────────

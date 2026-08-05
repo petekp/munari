@@ -34,7 +34,7 @@ the consumer owns the single instance.
 ## Install
 
 ```sh
-npm install @petekp/munari three @react-three/fiber
+npm install @petepetrash/munari three @react-three/fiber
 ```
 
 A `Surface` is one mesh whose material is a live DOM subtree. Hand it
@@ -42,8 +42,8 @@ markup for something static:
 
 ```tsx
 import { Canvas } from '@react-three/fiber'
-import { Surface } from '@petekp/munari'
-import '@petekp/munari/style.css'
+import { Surface } from '@petepetrash/munari'
+import '@petepetrash/munari/style.css'
 
 export function App() {
   return (
@@ -83,7 +83,7 @@ it asks of a consumer's CSS in return.
 | path | what it is |
 | --- | --- |
 | `packages/core` | the kernel — pure laws, **zero runtime dependencies** |
-| `packages/react` | the `@petekp/munari` package — the three/r3f binding |
+| `packages/react` | the `@petepetrash/munari` package — the three/r3f binding |
 | `registry/` | copyable behaviors, shadcn-style (nothing published) |
 | `apps/lab` | the lab application, a *consumer* of the barrel |
 | `instruments/` | probes and gates; measurement as maintained code |

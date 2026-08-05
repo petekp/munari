@@ -12,7 +12,7 @@ import {
   type ArcSlot,
   type FocusRigApi,
   type GroupFocusState,
-} from '@petekp/munari'
+} from '@petepetrash/munari'
 import {
   buildPanels,
   injectWorkspaceStyles,
