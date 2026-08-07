@@ -4,6 +4,7 @@ import { ContactShadows, Environment, OrbitControls } from '@react-three/drei'
 import { detectHtmlInCanvas, FocusScene, paintStats } from '@petepetrash/munari'
 import { Workspace, WorkspaceHud } from './scenes/Workspace'
 import { Glass } from './scenes/Glass'
+import { GlassTweakPanel } from './scenes/GlassTweaks'
 import { FlightApp } from './scenes/Flight'
 import { Explode, ExplodeHud } from './scenes/Explode'
 import { PassageApp } from './scenes/Passage'
@@ -21,8 +22,9 @@ const SCENES = ['workspace', 'glass', 'flight', 'explode', 'passage', 'wake'] as
 const FOOTERS: Record<SceneId, string> = {
   workspace:
     'double-click a panel to approach · double-click the floor to step back · drag a title bar · click into text and type',
-  glass:
-    'drag a lens across the panel — the UI refracts and stays live · click through the glass and type',
+  // Deliberately empty: this scene has to read as a web app, and a caption
+  // explaining what to try is the surest way to make something read as a demo.
+  glass: '',
   flight: 'drag a card off the board · throw it · ✕ to crumple it',
   explode:
     'one div, no children, six plates · orbit to see the depths · drag spread to zero and it stacks back into the card',
@@ -167,17 +169,27 @@ export default function App() {
              * a contact shadow under them would be scene furniture pretending
              * to be paint — in the one scene whose subject IS which paint is
              * whose. */}
-            {scene !== 'explode' && (
+            {scene !== 'explode' && scene !== 'glass' && (
               <ContactShadows position={[0, -0.15, 0]} opacity={0.5} blur={2.2} scale={20} />
             )}
-            <OrbitControls
-              makeDefault
-              enableDamping
-              target={[0, 1.4, 0]}
-              maxPolarAngle={Math.PI / 2.05}
-              minDistance={3}
-              maxDistance={16}
-            />
+            {/* Glass frames itself. It is the one scene that claims to be a
+                PAGE rather than a room, so it owns its camera outright and
+                the shared rig has to get out of the way — not merely be
+                disabled. A disabled OrbitControls still runs `update()` every
+                frame while damping is on, and that call rebuilds the camera's
+                position from the controls' own spherical state, which would
+                silently undo the scene's framing on frame one. The floor
+                shadow goes for the same reason: it is a room's furniture. */}
+            {scene !== 'glass' && (
+              <OrbitControls
+                makeDefault
+                enableDamping
+                target={[0, 1.4, 0]}
+                maxPolarAngle={Math.PI / 2.05}
+                minDistance={3}
+                maxDistance={16}
+              />
+            )}
           </Suspense>
         </FocusScene>
       </Canvas>
@@ -200,9 +212,10 @@ export default function App() {
         )}
       </div>
 
-      <div className="footer">{FOOTERS[scene]}</div>
+      {FOOTERS[scene] && <div className="footer">{FOOTERS[scene]}</div>}
       {scene === 'workspace' && <WorkspaceHud />}
       {scene === 'explode' && <ExplodeHud />}
+      {scene === 'glass' && <GlassTweakPanel />}
     </div>
   )
 }

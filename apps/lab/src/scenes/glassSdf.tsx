@@ -32,7 +32,24 @@ export interface GlassParams {
   roughness: number
   tint: string
   tintAmount: number
+  /** Gain on the light piped out at the rim — a multiplier, not an addition. */
   edgeLight: number
+  /**
+   * How much environment the grazing bezel mirrors, at full Fresnel. This is
+   * what keeps the edge the colour of the room rather than the colour of a
+   * constant: raise it and the outline picks up more of whatever the panel is
+   * standing in front of.
+   */
+  edgeReflect: number
+  /**
+   * Peak displacement of the living boundary, world units. Keep it small — a
+   * distance field with an angle-varying term added no longer has a unit
+   * gradient, and a large warp makes the bezel width drift around the outline.
+   * 0 restores a perfectly still edge (and the cheap analytic gradient).
+   */
+  edgeWarp: number
+  /** How fast the boundary breathes. */
+  edgeWarpSpeed: number
   specular: number
   inkOpacity: number
   /** Smooth-min blend radius for coplanar satellites, world units. */
@@ -47,10 +64,28 @@ export interface GlassParams {
   rippleSource: number
   /** Bulk loss, seconds. */
   rippleDecay: number
-  /** Seconds before a ripple is retired from the array. */
+  /**
+   * Seconds before a ripple is retired from the array. A slot budget, not a
+   * physical constant — `rippleRetirement` fades the ripple out over the last
+   * stretch of it so the eviction is never visible.
+   */
   rippleLife: number
+  /**
+   * Reference wave speed, world units per second — the c in v/c. Only ripples
+   * carrying a velocity use it. LOWER makes a moving source lean its wake
+   * harder, because the same speed is a larger fraction of the wave's.
+   */
+  rippleWaveSpeed: number
   /** How far the ripple drags the DOM's UV with it. 0 keeps text crisp. */
   rippleInk: number
+  /** Peak brightness a unit strike adds. 0 disables glows entirely. */
+  glowAmp: number
+  /** The colour the bloom fades out through; its heart is always white. */
+  glowColor: string
+  /** How far the bloom opens over its life, world units. */
+  glowReach: number
+  /** Seconds from strike to dark — also when the emitter retires it. */
+  glowLife: number
 }
 
 /**
@@ -97,6 +132,46 @@ export interface GlassRipple {
   t0: number
   /** Signed: negative recoils the surface, which is what a release does. */
   amp: number
+  /**
+   * Velocity of whatever made the ripple, panel-local world units per second.
+   * Optional, and omitting it is not a degraded path: a ripple with no
+   * velocity gets the stationary circular law exactly. Supplying it makes the
+   * wave lean the way its source was going — see the Doppler note in the
+   * shader's wave loop, and `rippleWaveSpeed` below for the reference c.
+   */
+  vx?: number
+  vy?: number
+  /**
+   * Radius of the thing that MADE this ripple, world units. Defaults to the
+   * panel's `rippleSource`.
+   *
+   * It is the spectrum knob, not a size knob: a source cannot radiate
+   * wavelengths shorter than itself, so a broad source gives a low-frequency
+   * ring and a small one gives a fine, tight, fast-fading disturbance. That
+   * is the whole difference between a body striking the sheet (source = the
+   * contact patch) and a body leaving it (source = the neck of the liquid
+   * bridge at pinch-off, much smaller than the body).
+   */
+  src?: number
+}
+
+/**
+ * Light struck into the panel where a pointer landed. Same mutable-array
+ * contract as GlassRipple, and the same `t0 < 0 means stamp me` convention:
+ * the array's owner knows the clock, a click handler should not have to.
+ *
+ * A ripple and a glow are deliberately separate primitives even though a real
+ * tap would make both. A ripple is geometry — it tilts the surface and every
+ * refracted ray moves with it. A glow is radiometry — the surface is
+ * untouched and only the light changes. Fusing them would mean a scene could
+ * never have one without the other.
+ */
+export interface GlassGlow {
+  /** Centre in panel-local world units — (0,0) is the panel's centre. */
+  x: number
+  y: number
+  t0: number
+  amp: number
 }
 
 /** How many circular satellites one panel may carry — matches the define. */
@@ -104,11 +179,49 @@ export const MAX_BLOBS = 6
 /** How many rounded-rect satellites — matches the define. */
 export const MAX_RECTS = 12
 /**
- * Concurrent ripples per panel — must match the shader define. Six because a
- * staggered emergence (five thread rows welling out of the rail one
- * after another) overlaps that many wave trains before the first has died.
+ * Concurrent ripples per panel — must match the shader define. Ten, because a
+ * satellite crossing the panel emits a TRAIN as it goes rather than one ping
+ * on arrival, and a single crossing therefore has four or five fronts alive
+ * at once. Six was sized for a staggered emergence where each source fired
+ * once; at that budget a second satellite entering would evict the first
+ * one's wake out from under it mid-flight.
  */
-export const MAX_RIPPLES = 6
+export const MAX_RIPPLES = 10
+
+/**
+ * Fraction of a ripple's budgeted life spent easing out — the TS twin's
+ * RETIRE_FRACTION, kept as a literal here because this file is vendored
+ * standalone. tests/registry/glassPack.test.ts pins the two together.
+ */
+const RETIRE_FRACTION = 0.45
+
+/**
+ * The retirement window. This is NOT part of the wave law and is applied
+ * here, per ripple per frame, rather than in the shader per pixel.
+ *
+ * `rippleLife` is not a property of water: it exists because the uniform
+ * array is finite and something must eventually be evicted. That makes the
+ * horizon a budget, and a budget that shows is a bug — with life 1.8s against
+ * decay 1.2s a ripple still carried about a fifth of its envelope at the
+ * moment it was dropped, so it vanished between two frames instead of
+ * dissipating. Bending `rippleDecay` down until the tail happened to be
+ * invisible by the horizon would have made every ripple die faster to fix a
+ * problem about arrays; instead the law keeps its own decay and this window
+ * closes the ripple out over the last stretch, reaching exactly zero AT the
+ * horizon for any pairing of the two.
+ */
+function rippleRetirement(age: number, life: number): number {
+  if (!(life > 0) || age >= life) return 0
+  if (age <= 0) return 1
+  const k = Math.min(1, (1 - age / life) / RETIRE_FRACTION)
+  return k * k * (3 - 2 * k)
+}
+/**
+ * Concurrent strikes per panel — must match the shader define. Four, because
+ * a person mashing a button is a real input and the fourth press must not
+ * silently delete the first one's light while it is still bright.
+ */
+export const MAX_GLOWS = 4
 
 /**
  * The panel's rounded-rect distance, in JS. The same function the shader
@@ -145,34 +258,83 @@ export function sdRoundRectGrad(px: number, py: number, bx: number, by: number, 
 // blur of the ALREADY-COMPOSITED image rather than a rough-surface BSDF; and
 // `bezel` is the whole look — it is how much of the panel is lens.
 export const GLASS_DEFAULTS: GlassParams = {
-  radius: 0.09,
-  bezel: 0.16,
+  radius: 0.16,
+  // A thin rim over a long throw. Almost all of the panel is flat middle, so
+  // the ink stays legible, and what bending there is happens in a narrow band
+  // at the edge — which is where the eye looks for the evidence anyway.
+  bezel: 0.03,
   thickness: 0.16,
-  spread: 0.45,
-  ior: 1.42,
+  spread: 1.09,
+  ior: 2.2,
   chroma: 0.05,
-  roughness: 0.1,
+  roughness: 0.13,
   tint: '#dfe8ff',
-  tintAmount: 0.05,
-  edgeLight: 0.35,
-  specular: 0.6,
+  // Off on the card. The colour stays because the CTA still uses it; a sheet
+  // this large tinted at all reads as a coloured filter laid over the wall
+  // rather than as glass in front of it.
+  tintAmount: 0,
+  // Piped light, full reflectivity and hot speculars, against a dead-flat
+  // outline: the edge does all the work of saying "solid object", and none of
+  // it comes from movement.
+  edgeLight: 1.52,
+  edgeReflect: 1,
+  edgeWarp: 0,
+  edgeWarpSpeed: 0,
+  specular: 2,
   inkOpacity: 1,
-  // Roughly a third of a satellite's radius: enough that the neck reads as
-  // surface tension rather than a fillet, small enough that a blob still
-  // arrives as a distinct object before it dissolves into the card.
-  smooth: 0.14,
+  // The card's merge radius, and wider than a satellite (r ≈ 0.09–0.18): a
+  // blob starts necking into the sheet well before it touches, so arrivals
+  // read as surface tension taking hold rather than as contact. RIPPLE_BAND
+  // in Glass.tsx is derived from this — half of it — so widening the merge
+  // also widens the hysteresis that stops a grazing bead from firing a ripple
+  // every frame. The CTA keeps the old 0.14, because the only thing merging
+  // into a button is the press bulge and that wants a tighter neck.
+  smooth: 0.245,
   // Ripples. `rippleK` is the only scale knob: the train is self-similar
   // along r ~ t^(2/3), so raising K makes the whole pattern finer AND slower
   // together, the way a real change in surface tension would. `rippleNu`
   // decides how far the fine leading waves get before viscosity eats them —
   // it is the difference between water and syrup.
-  rippleAmp: 1.1,
+  rippleAmp: 0.5,
   rippleK: 3.0,
   rippleNu: 0.0018,
   rippleSource: 0.04,
-  rippleDecay: 1.2,
-  rippleLife: 1.8,
-  rippleInk: 0,
+  // A long time constant against a short window. The sheet loses its motion
+  // slowly — exp(-t/3.4) is still at 66% when the 1.4s budget runs out — so
+  // almost the whole fade is the retire taper in rippleLaw.ts rather than the
+  // bulk loss. That is the taper working as designed (it reaches exactly zero
+  // at the horizon for ANY pairing), and it is what buys a calm sheet that
+  // keeps moving instead of a lively one that stops.
+  rippleDecay: 3.4,
+  rippleLife: 1.4,
+  // Measured against the train it has to be commensurate with, not guessed:
+  // at K = 3 the crest holding phase 2π sits at r = (2π t²/K)^(1/3), so its
+  // speed dr/dt = (2/3)(r/t) is about 1.3 units/s through the middle of a
+  // ripple's life.
+  //
+  // c sits well ABOVE that now. The lab's satellites cross at 0.95–1.75
+  // units/s (orbSpan 6.2, orbCycle 13, six lanes), which at c = 2.9 is a Mach
+  // number of 0.33–0.60 — subsonic all the way across, where an earlier
+  // c = 1.55 put the fastest lanes over 1.0 and the wake became a shock. The
+  // wake is meant to be evidence that something passed, not the loudest event
+  // on the sheet, so nothing here is allowed to go supersonic.
+  rippleWaveSpeed: 2.9,
+  // Just enough that the ink shifts with the surface it is printed on. Past
+  // a few hundredths the type starts swimming and the panel stops reading as
+  // a page behind glass.
+  rippleInk: 0.02,
+  // The strike. `glowReach` was measured down from 0.5 in the browser: at
+  // half a world unit the front had crossed the CTA's whole half-width inside
+  // the first frames, so the panel came up uniformly lit and the one thing
+  // the interaction is FOR — showing where the finger landed — was the first
+  // thing lost. Under a third of a unit the bloom stays a place on the button
+  // instead of a state of it. `glowLife` is short for the neighbouring
+  // reason: long enough to watch the front open, short enough that a second
+  // press reads as answered rather than queued.
+  glowAmp: 1.9,
+  glowColor: '#ffb38a',
+  glowReach: 0.32,
+  glowLife: 0.8,
 }
 
 interface SdfPanel {
@@ -186,6 +348,7 @@ interface SdfPanel {
   blobs: GlassBlob[]
   rects: GlassRect[]
   ripples: GlassRipple[]
+  glows: GlassGlow[]
   /** View-space z, refreshed each frame; the compositing order key. */
   depth: number
 }
@@ -258,6 +421,8 @@ export interface SdfGlassPanelProps {
   rects?: GlassRect[]
   /** Contact ripples, same contract. */
   ripples?: GlassRipple[]
+  /** Pointer strikes, same contract. */
+  glows?: GlassGlow[]
   /** Passed through to the Surface — 'content' gates rays on painted pixels. */
   hitTest?: 'plane' | 'content'
   content: React.ReactNode
@@ -275,6 +440,7 @@ export function SdfGlassPanel({
   blobs,
   rects,
   ripples,
+  glows,
   hitTest,
   content,
   position,
@@ -301,12 +467,13 @@ export function SdfGlassPanel({
       blobs: blobs ?? [],
       rects: rects ?? [],
       ripples: ripples ?? [],
+      glows: glows ?? [],
       depth: 0,
     })
     return () => {
       sdfPanels.delete(label)
     }
-  }, [label, width, height, px, hasBase, live, blobs, rects, ripples])
+  }, [label, width, height, px, hasBase, live, blobs, rects, ripples, glows])
 
   return (
     <group ref={group} position={position} rotation={rotation}>
@@ -389,7 +556,7 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
       new THREE.ShaderMaterial({
         vertexShader: QUAD_VERTEX,
         fragmentShader: GLASS_FRAGMENT,
-        defines: { SAMPLES: 8, MAX_BLOBS, MAX_RECTS, MAX_RIPPLES },
+        defines: { SAMPLES: 8, MAX_BLOBS, MAX_RECTS, MAX_RIPPLES, MAX_GLOWS },
         depthTest: false,
         depthWrite: false,
         uniforms: {
@@ -420,12 +587,24 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
           uRectCount: { value: 0 },
           uSmooth: { value: 0.14 },
           uRipples: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector4()) },
+          uRippleVel: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector2()) },
+          uRippleSrcR: { value: new Array<number>(MAX_RIPPLES).fill(0.04) },
+          uEdgeReflect: { value: 0.55 },
+          uEdgeWarp: { value: 0.018 },
+          uEdgeWarpSpeed: { value: 1 },
+          uTime: { value: 0 },
+          uRippleWaveSpeed: { value: 1.55 },
           uRippleCount: { value: 0 },
           uRippleK: { value: 3.0 },
           uRippleNu: { value: 0.0018 },
           uRippleSrc: { value: 0.04 },
           uRippleDecay: { value: 0.9 },
           uRippleInk: { value: 0 },
+          uGlows: { value: Array.from({ length: MAX_GLOWS }, () => new THREE.Vector4()) },
+          uGlowCount: { value: 0 },
+          uGlowColor: { value: new THREE.Color('#ffb38a') },
+          uGlowReach: { value: 0.5 },
+          uGlowLife: { value: 0.85 },
           uBezel: { value: 0.13 },
           uThickness: { value: 0.1 },
           uSpread: { value: 0.34 },
@@ -555,6 +734,10 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
       u.uTint.value.set(q.tint)
       u.uTintAmount.value = q.tintAmount
       u.uEdgeLight.value = q.edgeLight
+      u.uEdgeReflect.value = q.edgeReflect
+      u.uEdgeWarp.value = Math.max(q.edgeWarp, 0)
+      u.uEdgeWarpSpeed.value = q.edgeWarpSpeed
+      u.uTime.value = now
       u.uSpecular.value = q.specular
       u.uInkOpacity.value = q.inkOpacity
       u.uSmooth.value = Math.max(q.smooth, 1e-4)   // smin divides by k
@@ -587,17 +770,63 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
       u.uRippleSrc.value = Math.max(q.rippleSource, 0)
       u.uRippleDecay.value = Math.max(q.rippleDecay, 1e-3)
       u.uRippleInk.value = q.rippleInk
+      u.uRippleWaveSpeed.value = Math.max(q.rippleWaveSpeed, 1e-3)
       let nr = 0
       if (q.rippleAmp > 0) {
         const slots = u.uRipples.value as THREE.Vector4[]
-        for (const rp of p.ripples) {
-          if (nr >= MAX_RIPPLES) break
+        const vels = u.uRippleVel.value as THREE.Vector2[]
+        const srcs = u.uRippleSrcR.value as number[]
+        // NEWEST first. The array is chronological, so walking it forwards
+        // spends the budget on the oldest — the faintest, nearly-retired
+        // ripples — and silently drops the fresh ones a viewer is actually
+        // watching. That was harmless while every emitter capped its own
+        // array at MAX_RIPPLES; a satellite laying down a wake as it crosses
+        // does not, so the policy has to live here, where the budget is.
+        for (let k = p.ripples.length - 1; k >= 0 && nr < MAX_RIPPLES; k--) {
+          const rp = p.ripples[k]
           const age = now - rp.t0
           if (age < 0 || age > q.rippleLife) continue
-          slots[nr++].set(rp.x, rp.y, age, rp.amp * q.rippleAmp)
+          // The retirement window folds into the amplitude here — one
+          // multiply per ripple per frame instead of per pixel, and it keeps
+          // the shader's loop describing physics only.
+          const fade = rippleRetirement(age, q.rippleLife)
+          if (fade <= 0) continue
+          vels[nr].set(rp.vx ?? 0, rp.vy ?? 0)
+          srcs[nr] = Math.max(rp.src ?? q.rippleSource, 1e-4)
+          slots[nr++].set(rp.x, rp.y, age, rp.amp * q.rippleAmp * fade)
         }
       }
       u.uRippleCount.value = nr
+
+      // Same age-not-timestamp discipline as the ripples above. A strike is
+      // retired by its own life, so a panel nobody has pressed uploads a
+      // count of zero and the shader's loop never runs.
+      u.uGlowColor.value.set(q.glowColor)
+      u.uGlowReach.value = Math.max(q.glowReach, 1e-3)
+      u.uGlowLife.value = Math.max(q.glowLife, 1e-3)
+      // `t0 < 0` means "stamp me", and it is honoured HERE — for every panel's
+      // array, unconditionally — because this is the code that owns `now`.
+      //
+      // It used to live in the scene, next to the array the CTA pushes into.
+      // That worked for exactly one array: when the strike began spilling onto
+      // the card as well, the card's glows kept t0 = -1 forever, `now - (-1)`
+      // was always past glowLife, and the upload skipped every one of them in
+      // silence. The spill never drew a frame, and the two knobs aimed at it
+      // read as dead controls. Stamping where the upload happens is what makes
+      // that class of bug unable to recur — an array that reaches the
+      // compositor is an array that gets a clock.
+      for (const gw of p.glows) if (gw.t0 < 0) gw.t0 = now
+      let ng = 0
+      if (q.glowAmp > 0) {
+        const slots = u.uGlows.value as THREE.Vector4[]
+        for (const gw of p.glows) {
+          if (ng >= MAX_GLOWS) break
+          const age = now - gw.t0
+          if (age < 0 || age > q.glowLife) continue
+          slots[ng++].set(gw.x, gw.y, age, gw.amp * q.glowAmp)
+        }
+      }
+      u.uGlowCount.value = ng
 
       gl.setRenderTarget(dst)
       gl.render(glassScene, quadCam)

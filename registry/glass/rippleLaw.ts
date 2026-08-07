@@ -94,3 +94,96 @@ export const TILT_SATURATION = 1.1
 export function saturateTilt(steepness: number): number {
   return steepness / (1 + steepness / TILT_SATURATION)
 }
+
+// ── the two terms above are physics; the next one is not ──────────────────
+//
+// `rippleLife` is not a property of water. It exists because a panel has a
+// FIXED number of uniform slots, so a ripple must eventually be evicted to
+// make room for the next one. That is a budget, and a budget that shows is a
+// bug: with the tuning that first exposed it (life 1.8s, decay 1.2s) a ripple
+// still carried exp(-1.8/1.2) ≈ 22% of its envelope at the moment it was
+// dropped, so it vanished between two frames instead of dissipating. The
+// current tuning leans on the taper far harder — life 1.4s against decay 3.4s
+// arrives at the horizon still holding 66% — which is exactly the pairing this
+// window exists to make safe.
+//
+// The fix belongs HERE and not in the wave law, and the distinction is worth
+// keeping sharp: the physics must not be bent to hide an implementation
+// limit. Shortening `rippleDecay` until the tail happened to be invisible by
+// 1.8s would have made every ripple die faster to solve a problem about
+// arrays. Instead the law keeps its own decay and a separate window closes
+// the ripple out over the last stretch of its budgeted life, reaching exactly
+// zero AT the horizon for any pairing of life and decay.
+
+/**
+ * Fraction of the ripple's budgeted life spent easing out. The taper is
+ * inert before this — the wave's own physics owns the early life entirely.
+ */
+export const RETIRE_FRACTION = 0.45
+
+/**
+ * The retirement window: 1 while the ripple is young, smoothly to exactly 0
+ * at `age === life`. Smoothstep rather than a linear ramp because the ramp's
+ * corner is itself visible — the eye reads a sudden change in the RATE of
+ * fading as an event, which is the same class of artifact being removed.
+ */
+export function rippleRetirement(age: number, life: number): number {
+  if (!(life > 0) || age >= life) return 0
+  if (age <= 0) return 1
+  const k = Math.min(1, (1 - age / life) / RETIRE_FRACTION)
+  return k * k * (3 - 2 * k)
+}
+
+// ── breaking the circle ───────────────────────────────────────────────────
+//
+// Everything above is a function of r alone, which means that however good
+// the radial profile is, the result is a radially symmetric function sampled
+// at a radius — geometrically a texture lookup, and it reads as one. Real
+// impact rings are not circles, and the reason is not noise: the thing that
+// made them was MOVING.
+//
+// A source travelling through a dispersive medium radiates asymmetrically.
+// Crests it emits forward are laid down into ground it is closing on, so they
+// bunch; crests behind are laid into ground it is leaving, so they stretch.
+// To first order in v/c that is the classical Doppler factor
+//
+//   D = 1 - (v/c)·cos(angle between the source's velocity and the direction)
+//
+// and it enters the wave train in exactly one place: the age. In θ = K r³/t²
+// a smaller t means a larger local wavenumber, so scaling t by D compresses
+// the pattern ahead of the motion and opens it behind. The same factor
+// divides the amplitude, because the energy that piles into the compressed
+// side has to come from somewhere.
+//
+// The point of routing the asymmetry through the emitter's velocity rather
+// than through noise is that it is CORRELATED WITH VISIBLE MOTION: the wake
+// leans the way the bead went, so the eye ties the disturbance to its cause.
+// That correlation is what noise can never buy.
+
+/**
+ * How close to the wave speed a source is allowed to get. At D → 0 the
+ * forward wavelength goes to zero and the model has a genuine singularity —
+ * physically the onset of a cusped shock, which this first-order treatment
+ * has no business rendering. Clamping keeps D ∈ [0.35, 1.65].
+ */
+export const MACH_CEILING = 0.65
+
+/**
+ * The Doppler factor for a source moving at (vx, vy) observed along (dx, dy).
+ * Exactly 1 for a source at rest, so a ripple with no velocity reproduces the
+ * stationary law above term for term.
+ */
+export function rippleDoppler(
+  vx: number,
+  vy: number,
+  dx: number,
+  dy: number,
+  waveSpeed: number,
+): number {
+  const v = Math.hypot(vx, vy)
+  const d = Math.hypot(dx, dy)
+  if (v < 1e-6 || d < 1e-9) return 1
+  const cos = (vx * dx + vy * dy) / (v * d)
+  const mach = Math.min(v / Math.max(waveSpeed, 1e-6), MACH_CEILING)
+  return 1 - mach * cos
+}

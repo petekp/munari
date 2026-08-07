@@ -116,12 +116,34 @@ uniform float uSmooth;       // blend radius: how far out a neck forms
 // seconds, w = signed amplitude (negative for a release, so the surface
 // recoils instead of swelling).
 uniform vec4  uRipples[MAX_RIPPLES];
+// The velocity of whatever MADE each ripple, panel-local world units per
+// second. This is what stops a ripple being a circle: see the Doppler note
+// down in the wave loop. A ripple uploaded with zero velocity reproduces the
+// stationary law exactly, so this is a strict extension of it.
+uniform vec2  uRippleVel[MAX_RIPPLES];
+uniform float uRippleWaveSpeed;  // reference c, for v/c
 uniform int   uRippleCount;
 uniform float uRippleK;      // phase constant, 4/(27 sigma/rho) — sets scale
 uniform float uRippleNu;     // viscosity: how fast short waves are eaten
-uniform float uRippleSrc;    // source RADIUS — a contact is not a delta
+// Source RADIUS, PER RIPPLE — a contact is not a delta, and crucially not
+// every contact is the same size. This is the knob that separates an impact
+// from a release: see the note at the source term in the wave loop.
+uniform float uRippleSrcR[MAX_RIPPLES];
 uniform float uRippleDecay;  // bulk loss, seconds
 uniform float uRippleInk;    // 0 = the DOM stays flat and crisp (see below)
+
+// glows: light struck INTO the glass where a pointer landed. Same array
+// contract as the ripples — xy = origin (panel-local), z = age in seconds,
+// w = amplitude — but a ripple bends the surface and a glow does not touch
+// it at all. This is emission: the panel stops being purely a lens for one
+// beat and becomes a source, which is why it is added after the refraction
+// loop and before the ink. The label keeps its own pixels and the light
+// comes out from underneath it.
+uniform vec4  uGlows[MAX_GLOWS];
+uniform int   uGlowCount;
+uniform vec3  uGlowColor;
+uniform float uGlowReach;    // how far the bloom opens, world units
+uniform float uGlowLife;     // seconds from strike to dark
 
 // glass
 uniform float uBezel;        // width of the lensing rim, world units
@@ -133,7 +155,16 @@ uniform float uChroma;
 uniform float uRough;        // frost
 uniform vec3  uTint;
 uniform float uTintAmount;
-uniform float uEdgeLight;    // the bright hairline on the rim
+uniform float uEdgeLight;    // gain on the light piped out at the rim
+uniform float uEdgeReflect;  // how much environment the grazing bezel mirrors
+uniform float uEdgeWarp;     // peak displacement of the living boundary
+uniform float uEdgeWarpSpeed;
+// The one genuine clock in this shader. Everything else here takes an AGE the
+// compositor already differenced, because an event knows how old it is and not
+// what time it is. A standing oscillation is the exception that proves it: it
+// is not an event, it has no birth to be measured from, so it needs the wall
+// clock itself.
+uniform float uTime;
 uniform float uSpecular;
 uniform vec3  uLightDir;
 
@@ -175,6 +206,34 @@ float smin(float a, float b, float k) {
 // the coverage test below rejects on its own. Nothing has to check for it.
 const float EMPTY = 1e5;
 
+// A body held together by surface tension does not have an OUTLINE, it has a
+// boundary that is still being negotiated — and a rounded rect that holds
+// perfectly still announces that it was authored rather than formed. This
+// perturbs the distance itself, which is why the effect is structural rather
+// than decorative: the bezel, the normal, the coverage test and the ripples'
+// rim absorption all read the same field, so they all follow the new edge
+// without knowing anything about it.
+//
+// Three angular harmonics at rates that share no small integer factor, drifting
+// at speeds that likewise don't, so the boundary never repeats within any span
+// a viewer will sit through. Weighted to sum to 1 so the amplitude means what
+// it says: peak displacement in world units.
+//
+// Kept SMALL on purpose. This is a distance field, and adding an angle-varying
+// term to one costs it the property that its gradient has unit length; a few
+// percent of the panel is invisible to everything downstream, a large warp
+// would make the bezel width drift around the outline.
+float edgeWarp(vec2 p) {
+  if (uEdgeWarp <= 0.0) return 0.0;
+  float a = atan(p.y, p.x);
+  float s = uTime * uEdgeWarpSpeed;
+  return uEdgeWarp * (
+      sin(3.0 * a + s * 0.53)
+    + 0.60 * sin(5.0 * a - s * 0.37)
+    + 0.35 * sin(8.0 * a + s * 0.71)
+  ) * 0.5128;
+}
+
 float fieldAt(vec2 p) {
   float d = uHasBase ? sdRoundRect(p, uHalf, uRadius) : EMPTY;
   for (int i = 0; i < MAX_RECTS; i++) {
@@ -185,7 +244,10 @@ float fieldAt(vec2 p) {
     if (i >= uBlobCount) break;
     d = smin(d, length(p - uBlobs[i].xy) - uBlobs[i].z, uSmooth);
   }
-  return d;
+  // After the union, so the warp travels around the MERGED silhouette — an
+  // orb halfway into the card gets the same living edge as the card does,
+  // and the neck between them breathes instead of sitting still.
+  return d - edgeWarp(p);
 }
 
 float viewZFromDepth(float depth, float near, float far) {
@@ -257,7 +319,11 @@ void main() {
   // one body of glass rather than two overlapping ones. Four extra field
   // evaluations, and only on covered pixels (the early-outs are above).
   vec2 g;
-  if (uBlobCount == 0 && uRectCount == 0 && uHasBase) {
+  // The warp disqualifies the analytic path for the same reason satellites do:
+  // sdRoundRectGrad only knows the rect, so it would return the gradient of a
+  // boundary that is no longer the one being drawn, and the rim would light a
+  // silhouette the coverage test disagrees with.
+  if (uBlobCount == 0 && uRectCount == 0 && uHasBase && uEdgeWarp <= 0.0) {
     g = sdRoundRectGrad(q, uHalf, uRadius);
   } else {
     float eps = max(aa, 0.0015);
@@ -297,8 +363,36 @@ void main() {
     float r = max(length(dv), 1e-4);
     float t = max(rp.z, 0.02);
 
-    float th = uRippleK * r * r * r / (t * t);
-    float kk = 3.0 * uRippleK * r * r / (t * t);
+    // --- the wake leans the way the bead went ---------------------------
+    // Everything else in this loop is a function of r alone, and a radially
+    // symmetric function sampled at a radius is geometrically a texture
+    // lookup no matter how good its radial profile is. That is what makes a
+    // physically correct ripple still read as dead. Real impact rings are
+    // not circles, and the reason is not noise — the thing that made them
+    // was MOVING.
+    //
+    // A source travelling through a dispersive medium lays crests it emits
+    // forward into ground it is closing on, so they bunch, and crests behind
+    // into ground it is leaving, so they stretch. To first order that is the
+    // classical Doppler factor, and it enters in exactly ONE place: the age
+    // that sets the phase. A smaller age means a larger local wavenumber, so
+    // the pattern compresses ahead and opens behind.
+    //
+    // Deliberately only tw — viscosity, bulk decay and the source spectrum
+    // below all read the TRUE age t, because those are about how long the
+    // wave has really been running and losing energy, not about the geometry
+    // of where its crests landed.
+    vec2 vel = uRippleVel[i];
+    float sp = length(vel);
+    float dopp = 1.0;
+    if (sp > 1e-6) {
+      float mach = min(sp / max(uRippleWaveSpeed, 1e-6), 0.65);
+      dopp = 1.0 - mach * dot(vel / sp, dv / r);
+    }
+    float tw = t * dopp;
+
+    float th = uRippleK * r * r * r / (tw * tw);
+    float kk = 3.0 * uRippleK * r * r / (tw * tw);
 
     // Amplitude, three physical terms and no fudge:
     //   inversesqrt(r) — a circular front spreads its energy over a growing
@@ -314,13 +408,40 @@ void main() {
     // cannot radiate wavelengths shorter than itself, and suppressing those
     // (a gaussian source spectrum) flattens the whole run to a smooth decay
     // without a single artificial ramp.
-    float src = exp(-0.5 * kk * kk * uRippleSrc * uRippleSrc);
+    // The source radius is PER RIPPLE, and that is what makes an impact and a
+    // release different events rather than the same event at two volumes.
+    //
+    // A body striking a sheet loads it over its whole contact patch, so the
+    // source is bead-sized and cannot radiate anything shorter than itself:
+    // a broad, low-frequency, long-lived ring.
+    //
+    // A body LEAVING is a different phenomenon. The sheet does not let go
+    // when the body does — capillary adhesion drags a liquid bridge out
+    // behind it, the bridge necks under the Rayleigh–Plateau instability, and
+    // the wave is launched at PINCH-OFF, from the neck. The neck is far
+    // smaller than the body, so the source is small and the radiated spectrum
+    // runs correspondingly finer. The energy is different in kind too: an
+    // impact spends bulk kinetic energy, a pinch-off releases surface energy,
+    // which is the smaller budget by a wide margin.
+    //
+    // So a release is not a quieter impact. It is a finer, tighter, faster-
+    // fading disturbance, and it comes out of this one term — the shorter
+    // waves a small source is free to radiate are also the ones viscosity
+    // (exp(-nu k^2 t), just above) eats first.
+    float srcR = uRippleSrcR[i];
+    float src = exp(-0.5 * kk * kk * srcR * srcR);
 
     float amp = rp.w
       * inversesqrt(1.0 + r / 0.25)
       * exp(-uRippleNu * kk * kk * t)
       * src
-      * exp(-t / uRippleDecay);
+      * exp(-t / uRippleDecay)
+      // The same factor, once more: crests that bunch ahead of the source
+      // have to put the energy they gain somewhere, and the ones stretching
+      // behind have to give it up. One number driving both the spacing and
+      // the brightness is why the wake looks like one phenomenon rather than
+      // two effects tuned to agree.
+      / dopp;
 
     // Nothing may oscillate faster than the pixel grid can carry. This is the
     // antialias, but it is not only cosmetic: those are exactly the waves
@@ -375,12 +496,73 @@ void main() {
   vec3 lightDir = normalize(uLightDir);
   vec3 hv = normalize(lightDir - rd);   // "half" is a reserved word in GLSL
   float spec = pow(max(dot(n, hv), 0.0), 180.0) * uSpecular;
-  // The hairline is a HAIRLINE: it lives in the outermost eighth of the
-  // bezel, where the rim has turned far enough to catch light the flat face
-  // never sees. Widen it and the panel grows a chunky white border instead
-  // of an edge.
-  float rim = (1.0 - smoothstep(0.0, 0.14, e)) * uEdgeLight * (0.35 + fres);
-  glass += spec + rim + fres * 0.12;
+
+  // --- the edge, and why it is not an outline ---------------------------
+  // This used to ADD a white hairline scaled by how close the pixel was to
+  // the outline. That is a sticker, not an edge: a constant colour, blind to
+  // everything the panel is standing in front of. Against a neon wall the
+  // glass wore a cool white border belonging to no light in the scene, and
+  // the eye reads that as a drawn stroke — the halo that looked tacked on.
+  //
+  // A real edge is never emitted. It is BORROWED, twice over:
+  //
+  //   reflection — the bezel curves away from the eye, so near the outline
+  //     the view ray grazes it and the surface turns into a mirror. Fresnel
+  //     is exactly how much. On an orange wall the edge reflects orange.
+  //
+  //   piped light — a ray travelling inside the sheet meets the curved edge
+  //     past the critical angle and leaves there instead of continuing, so
+  //     the outermost sliver carries a concentrated dose of what the glass
+  //     is ALREADY transmitting.
+  //
+  // Both take their colour and their brightness from the scene, which is the
+  // whole difference. It also means the edge now tracks the panel: darken the
+  // content and the edge darkens with it, because there is less light inside
+  // the sheet to leave at the rim. An additive constant could never do that.
+  vec3 rr = reflect(rd, n);
+  vec3 envRefl = texture2D(tSrc, clamp(projectToUv(hit + rr * uSpread), 0.001, 0.999)).rgb;
+  glass = mix(glass, envRefl, clamp(fres * uEdgeReflect, 0.0, 1.0));
+  // The hairline is a HAIRLINE: the outermost eighth of the bezel, where the
+  // rim has turned far enough to pipe light out. A GAIN on what is there, not
+  // a wash over it — widen it and the panel grows a chunky border instead of
+  // an edge.
+  float bezelBand = 1.0 - smoothstep(0.0, 0.14, e);
+  glass *= 1.0 + bezelBand * uEdgeLight * (0.35 + fres);
+  glass += spec;
+
+  // --- the strike: light let into the glass where a pointer landed -------
+  // Two terms, and the second is why a click reads as an event rather than a
+  // lamp being switched on. The CORE is where the energy went in. The SHELL
+  // is the front it left on: it opens as sqrt(age), the deceleration any
+  // disturbance spreading into a resisting medium has, so the bloom lunges
+  // and then eases instead of travelling at a constant speed like a decal
+  // being scaled. Brightness falls twice over — once because the strike is
+  // dying, once because what is left is spread across a growing disc.
+  //
+  // The white-hot heart is a POWER of the core, not a second gaussian: it
+  // costs nothing extra and it guarantees the hot centre always sits exactly
+  // inside the coloured falloff, which two independently tuned radii would
+  // eventually let drift apart.
+  for (int i = 0; i < MAX_GLOWS; i++) {
+    if (i >= uGlowCount) break;
+    vec4 gw = uGlows[i];
+    float life = clamp(gw.z / uGlowLife, 0.0, 1.0);
+    float s = 0.035 + uGlowReach * sqrt(life);
+    float fade = (1.0 - life) * (1.0 - life);
+    float rr = length(q - gw.xy) / s;
+    float core = exp(-rr * rr * 0.5);
+    // The front is a fixed FRACTION of the current radius wide, so it thins
+    // in proportion as it opens rather than staying a drawn ring.
+    float front = (length(q - gw.xy) - s) / (0.42 * s);
+    float shell = exp(-front * front);
+    // The heart is the SIXTH power of the core, not the third. Cubed, the
+    // white ran most of the way to the falloff and the strike read as a pale
+    // wash; at six it collapses to a hot centre with the colour doing all the
+    // spreading, which is what a light source in a coloured medium actually
+    // looks like.
+    vec3 lit = uGlowColor * (core * 0.95 + shell * 0.6) + pow(core, 6.0) * 0.85;
+    glass += lit * gw.w * fade;
+  }
 
   // --- the ink, on top, in the panel's own UV ---------------------------
   // Clipped to the INK RECT, not to the coverage: the DOM is a property of
