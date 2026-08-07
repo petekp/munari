@@ -129,10 +129,12 @@ export default function App() {
             <li data-ok={support.texElementImage2D}>texElementImage2D</li>
           </ul>
           <p className="hint">
-            HTML-in-canvas unavailable — every Surface needs it. Enable{' '}
-            <code>chrome://flags/#canvas-draw-element</code> and relaunch, or start Chrome with{' '}
-            <code>--enable-features=CanvasDrawElement</code>. A Chrome that is already running
-            ignores the flag, so quit it fully first.
+            HTML-in-canvas unavailable — every Surface needs it, and only Chromium ships it
+            today. On the public demo, current <strong>Chrome</strong> gets the capability from
+            the page's origin-trial token just by visiting. Anywhere else — localhost, another
+            Chromium browser — enable <code>chrome://flags/#canvas-draw-element</code> and
+            relaunch; a browser that is already running ignores the flag, so quit it fully
+            first.
           </p>
         </div>
       </div>

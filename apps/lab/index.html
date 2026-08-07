@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>munari · lab</title>
+    <!-- The demo's own permission. An origin-trial token is a signed claim —
+         "this origin may use HTMLInCanvas until this date" — that Chrome
+         verifies against a public key it ships with, so a visitor needs no
+         flag and installs nothing. The claim is bound to
+         https://munari.vercel.app:443 and expires 2026-10-20; the trial's
+         horizon is ~Chrome 154, and past it either the API ships stable and
+         this tag becomes a no-op, or the public demo goes dark until it
+         does. Localhost is a different origin, so development still needs
+         chrome://flags/#canvas-draw-element — the tag is inert there, not
+         permissive. -->
+    <meta
+      http-equiv="origin-trial"
+      content="AuNAQ7es2QAvKBMeNd2IBnkxhUnp2zo/W9qfBRZMhKsUKQT4plJxWErGWEk0yKjlo+kmTs4AZDZlV12dRtA59QkAAABXeyJvcmlnaW4iOiJodHRwczovL211bmFyaS52ZXJjZWwuYXBwOjQ0MyIsImZlYXR1cmUiOiJIVE1MSW5DYW52YXMiLCJleHBpcnkiOjE3OTI0NTQ0MDB9"
+    />
     <!-- The bench type. These load into the DOCUMENT, and a card that lifts
          off the page is rasterized from a parked subtree of that same
          document — so the faces have to be resident before the first
