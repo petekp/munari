@@ -43,7 +43,7 @@
   overflow: hidden;
   background: var(--bg);
   color: var(--ink);
-  font: 15px/1.6 var(--display);
+  font: 15px/1.6 var(--body);
   -webkit-font-smoothing: antialiased;
 }
 

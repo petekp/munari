@@ -119,7 +119,7 @@ export default function App() {
       <div className="app">
         <div className="hud">
           <h1>
-            ana<em>morph</em>
+            mun<em>ari</em>
           </h1>
           <p className="sub">a component library made of real materials</p>
           {/* The lamp carries the verdict — a ✓/✗ pair reads as two glyphs
@@ -196,7 +196,7 @@ export default function App() {
 
       <div className="hud">
         <h1>
-          ana<em>morph</em>
+          mun<em>ari</em>
         </h1>
         <p className="sub">{scene}</p>
         {chips}

@@ -9,11 +9,43 @@
          document — so the faces have to be resident before the first
          capture or the texture bakes a fallback. A stylesheet in <head>
          blocks first paint, which is the gate we want; the lab's first grab
-         is thousands of frames later. -->
+         is thousands of frames later.
+
+         Three voices out of Munari's own working life, one per role:
+
+           Bodoni Moda   Parma, 1790, and then the face of Italian book
+                         publishing for two centuries — the Einaudi and
+                         Bompiani covers Munari was setting while he was also
+                         building the machines. Display only.
+           Archivo       the neutral grotesque. Body and UI: the voice that
+                         is not supposed to have one.
+           Courier Prime the Olivetti Lettera 22 (Nizzoli, 1950). Olivetti
+                         sponsored Arte Programmata in 1962, and a typed
+                         reference number is what a card in a Munari system
+                         actually wore. Codes, notes, identifiers.
+
+         Bodoni is also a deliberate stress test, and one this bench does
+         not yet measure. Its hairlines are the thinnest strokes in the
+         Italian canon, and a Flight card's title is set in it and then
+         rasterized into a texture — so the lab's claim that a page keeps
+         its density after that trip is now being made about the hardest
+         type in the building. But `gate:sharpness` photographs the
+         PASSAGE card, which is Archivo top to bottom, so the gate is
+         silent about the case most likely to fail. Nobody should read a
+         green sharpness run as evidence about Bodoni until the
+         instrument has a Flight subject.
+
+         `display=block` is deliberate: a card that lifts off is
+         rasterized from this document, so a fallback face resident at
+         capture time bakes a fallback into the texture. The cost is an
+         invisible-text window at boot, which is long enough with this
+         payload to outlast an instrument's first screenshot — which is
+         why instruments/sharpness waits on document.fonts.ready before
+         it photographs anything. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Archivo+Narrow:wght@500;600;700&family=Martian+Mono:wght@400;500;700&display=block"
+      href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400..900&family=Archivo:wdth,wght@62..125,400..900&family=Archivo+Narrow:wght@500;600;700&family=Courier+Prime:wght@400;700&display=block"
       rel="stylesheet"
     />
   </head>

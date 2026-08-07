@@ -25,54 +25,87 @@
  * ───────────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* ── chassis ── aluminium-and-ABS instrument body, not paper stock */
-  --bench: #c3c2bc;
-  --bench-hi: #d9d8d1;
-  --bench-lo: #a9a8a1;
-  --stage: #8b8a84;
+  /* ── the board ── Fabriano card stock, not a machined chassis
+   *
+   * The bench used to be aluminium: a cool grey body with a hairline milling
+   * pitch. It was a good instrument and the wrong country. Munari's surfaces
+   * are PAPER — the Danese boxes, the Einaudi jackets, the Libri illeggibili,
+   * which are made of nothing but coloured stock and a fold — so the ground
+   * here is uncoated card with the warm green cast Italian stock of the
+   * period had, and the card that sits on it is a brighter sheet of the same
+   * material. Two papers, not a body and a panel. */
+  --bench: #dcd9c8;
+  --bench-hi: #f2f0e4;
+  --bench-lo: #c6c3b1;
+  --stage: #aaa796;
 
-  /* ── the keybed ── black cluster sunk into the grey body */
-  --screen: #131418;
-  --screen-hi: #24262c;
-  --screen-ink: #f2f0ea;
+  /* ── the black plane ── litho ink, not a display
+   *
+   * Slightly green-black rather than blue-black: black ink on warm uncoated
+   * stock never reads neutral, and a blue-black on this paper reads as a
+   * screen switched on, which is exactly the wrong association now. */
+  --screen: #17170f;
+  --screen-hi: #2b2b1f;
+  --screen-ink: #f4f2e7;
 
   /* ── ink ── */
-  --ink: #121317;
-  --ink-mute: #3e3e3a;
-  --ink-faint: #6e6d68;
-  --rule: rgba(18, 19, 23, 0.3);
-  --rule-hard: rgba(18, 19, 23, 0.62);
+  --ink: #14140f;
+  --ink-mute: #45443a;
+  --ink-faint: #7a7869;
+  --rule: rgba(20, 20, 15, 0.28);
+  --rule-hard: rgba(20, 20, 15, 0.72);
 
   /* ── coded colour ── one hue, one meaning. Never decoration.
    *    signal  the one lit position: selected scene, aimed-at slot, checked
    *    live    measuring / capability present / focus
-   *    fault   unsupported / missing / destructive */
-  --signal: #ff4f17;
-  --live: #1b63e8;
-  --fault: #d6172a;
+   *    fault   unsupported / missing
+   *
+   * The names stay ROLES and only the values move. A palette named `--rosso`
+   * would be a step backwards — the point of the system is that a scene asks
+   * for a meaning and the theme decides what colour that is, which is the
+   * only reason a pass like this one is a few lines rather than a sweep.
+   *
+   * The values are Munari's own five: rosso, oltremare, giallo, nero, carta.
+   * Red is the mark — Campari, and the segno that says HERE. Blue is the
+   * ultramarine of the Libri illeggibili. Yellow is the warning lamp, and it
+   * took the fault slot off red, which mattered: a bright red signal and a
+   * dark red fault on the same board is one hue asked to mean two things. */
+  --signal: #e8402a;
+  --live: #17399b;
+  --fault: #f0b90b;
 
-  /* …and their LIT variants. A hue printed on grey chassis and the same hue
-   * glowing inside a black readout are not the same colour: the printed one
-   * is a swatch, the lit one is an emitter, and dropping the swatch value
-   * onto a dark ground gives you a hue that reads as switched off. Scenes
-   * that live inside the screen (passage, wake) use these. */
-  --signal-lit: #ff6a38;
-  --live-lit: #4d8dff;
+  /* …and their LIT variants. A hue printed on card and the same hue glowing
+   * inside a black readout are not the same colour: the printed one is a
+   * swatch, the lit one is an emitter, and dropping the swatch value onto a
+   * dark ground gives you a hue that reads as switched off. Scenes that live
+   * inside the screen (passage, wake) use these. */
+  --signal-lit: #ff5c3f;
+  --live-lit: #5a7ce8;
 
-  /* ── type ──
-   *    display  Archivo, variable width axis, so the expanded display cut
-   *             and the ordinary body cut are one file
+  /* ── type ── three Italian voices, one per role (see index.html)
+   *    display  Bodoni Moda — headlines ONLY. A didone at body size is a
+   *             hairline at body size, so this token is now display-only and
+   *             `--body` exists to carry what it used to carry by accident.
+   *    body     Archivo — paragraphs and UI, the voice with no accent
    *    label    Archivo Narrow — the tiny silkscreened all-caps labels
-   *    data     Martian Mono — anything that is a NUMBER, tabular */
-  --display: 'Archivo', system-ui, sans-serif;
+   *    data     Courier Prime — the typed reference number: codes, notes,
+   *             identifiers, anything struck rather than set */
+  --display: 'Bodoni Moda', Didot, 'Times New Roman', serif;
+  --body: 'Archivo', system-ui, sans-serif;
   --label: 'Archivo Narrow', 'Archivo', system-ui, sans-serif;
-  --data: 'Martian Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --data: 'Courier Prime', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --radius: 3px;
-  --radius-lg: 6px;
+  /* Concrete art has no soft corners. MAC's whole quarrel with abstraction
+   * was that a form should be exactly itself and not a suggestion of
+   * something rounder — so the chrome is squared off, everywhere, and the
+   * only curve left in the lab is the one the glass scene refracts through.
+   * Kept as tokens rather than deleted: the radius is a design decision the
+   * theme owns, and a future theme may want it back. */
+  --radius: 0px;
+  --radius-lg: 0px;
 
   color-scheme: light;
-  font-family: var(--display);
+  font-family: var(--body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -82,12 +115,12 @@ body,
   margin: 0;
   height: 100%;
   overflow: hidden;
-  /* A machined surface, not paper: a 3px pitch of hairlines you read as
-   * texture rather than as stripes. The 3D scenes' canvas is transparent, so
-   * this is also the room they sit in. */
-  background:
-    repeating-linear-gradient(90deg, rgba(18, 19, 23, 0.035) 0 1px, transparent 1px 3px),
-    var(--bench);
+  /* Flat stock. The milling pitch that used to live here was the last thing
+   * insisting this was a machine surface, and a held card's shadow reads
+   * BETTER falling on plain paper than on a 3px stripe that competes with
+   * it. The 3D scenes' canvas is transparent, so this is also the room they
+   * sit in. */
+  background: var(--bench);
   color: var(--ink);
 }
 
@@ -125,12 +158,17 @@ body,
   user-select: none;
 }
 
+/* The wordmark. A didone wants its optical size told the truth — `opsz` is
+ * what swaps the display cut's hairlines in for the text cut's sturdier
+ * ones — and it wants far less negative tracking than a grotesque: the
+ * contrast IS the texture, and closing the counters up kills it. */
 .hud h1 {
   margin: 0;
-  font-size: 30px;
-  font-weight: 900;
-  font-variation-settings: 'wdth' 112;
-  letter-spacing: -0.055em;
+  font-family: var(--display);
+  font-size: 33px;
+  font-weight: 700;
+  font-variation-settings: 'opsz' 72;
+  letter-spacing: -0.012em;
   line-height: 1;
   text-transform: lowercase;
 }
@@ -221,7 +259,12 @@ body,
 
 /* The lamp itself — lit means the capability is present, and an unlit lamp
  * is a fault rather than an absence. A dot carries that better than a ✓/✗
- * pair, which reads as two glyphs rather than as one instrument state. */
+ * pair, which reads as two glyphs rather than as one instrument state.
+ *
+ * It is yellow now rather than red, and that is a semantic correction as
+ * much as a palette one: what this lamp reports is that the browser is
+ * missing an origin trial, which is a condition to be told about, not a
+ * failure anyone caused. Red on this board means one thing only — HERE. */
 .features li::before {
   content: '';
   width: 7px;
@@ -321,10 +364,10 @@ body,
   display: grid;
   place-items: center;
   font-family: var(--display);
-  font-size: 34px;
-  font-weight: 900;
-  font-variation-settings: 'wdth' 108;
-  letter-spacing: -0.05em;
+  font-size: 36px;
+  font-weight: 700;
+  font-variation-settings: 'opsz' 72;
+  letter-spacing: -0.012em;
   text-transform: lowercase;
   border-radius: var(--radius-lg);
   background: linear-gradient(155deg, #e8e6df 0%, #b7b6af 100%);
@@ -402,7 +445,7 @@ body,
   width: 300px;
   height: 96px;
   padding: 13px 16px;
-  font-family: var(--display);
+  font-family: var(--body);
   color: var(--screen-ink);
   /* Opaque enough to read over the light table AND over the room. A
    * placard that only works against one background is a placard that

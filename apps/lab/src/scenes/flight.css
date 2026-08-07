@@ -8,12 +8,22 @@
  * written by the WebGL layer every frame, so a rigid-body simulation is
  * driving real CSS on real elements. That is the loop closing.
  *
- * The dress is the "bench" language (docs/spikes/design-language.html): a
- * grey instrument chassis, BLACK control clusters sunk into it, and colour
- * that is CODED rather than decorative — one hue, one meaning. Type is
- * Archivo (variable width axis, so the display cut can be expanded without
- * a second file), Archivo Narrow for the silkscreened labels, Martian Mono
- * for anything that is a number.
+ * The dress is the "bench" language (docs/spikes/design-language.html) after
+ * its Munari pass: card stock rather than a machined chassis, BLACK planes
+ * laid on it, exact geometry with no softened corners, and colour that is
+ * CODED rather than decorative — one hue, one meaning. Bodoni Moda sets the
+ * titles, Archivo the body, Archivo Narrow the silkscreened labels, Courier
+ * Prime anything that was typed rather than set.
+ *
+ * ── why THIS board gets that dress ──
+ *
+ * A card lifts off the page, hangs in the air, obeys a rigid-body solver and
+ * does no work. That is a macchina inutile — Munari's useless machines,
+ * 1933: cut card suspended in air, moving under forces, producing nothing.
+ * The scene was already the object before the theme admitted it, which is
+ * why the dress is card and ink and a red mark rather than an instrument
+ * panel: the board is the armature and the cards are the elements hung from
+ * it.
  */
 
 /* The bench tokens come from `:root` in app.css, which is deliberate and
@@ -30,7 +40,7 @@
  * anything inherited rather than matched — the `font` below, most of all,
  * because off the page it would inherit the parking host's. */
 .l14-card {
-  font: 15px/1.5 var(--display);
+  font: 15px/1.5 var(--body);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
 }
@@ -40,14 +50,12 @@
   inset: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  /* A machined chassis, not paper: a 3px pitch of hairlines you read as
-   * texture rather than as stripes. It also gives the shadow of a held card
-   * something with a frequency to fall across. */
-  background:
-    repeating-linear-gradient(90deg, rgba(18, 19, 23, 0.035) 0 1px, transparent 1px 3px),
-    var(--bench);
+  /* Flat stock. The milling pitch that used to be here made the page a
+   * machined surface; a held card's shadow reads better falling on plain
+   * paper than on a 3px stripe of the same frequency. */
+  background: var(--bench);
   color: var(--ink);
-  font: 15px/1.5 var(--display);
+  font: 15px/1.5 var(--body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -77,10 +85,11 @@
 
 .l14-bar h1 {
   margin: 0;
-  font-size: 27px;
-  font-weight: 900;
-  font-variation-settings: 'wdth' 112;
-  letter-spacing: -0.055em;
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 700;
+  font-variation-settings: 'opsz' 72;
+  letter-spacing: -0.012em;
   line-height: 1;
   text-transform: lowercase;
 }
@@ -118,25 +127,33 @@
   gap: 26px;
 }
 
+/* The column head is the armature the elements hang from, so it is a bar
+ * rather than a rule — 4px of solid black, the weight Munari drew a
+ * structural line at. */
 .l14-col > h2 {
   display: flex;
   align-items: baseline;
   gap: 12px;
-  margin: 0 0 14px;
-  padding-bottom: 8px;
-  border-bottom: 2.5px solid var(--ink);
+  margin: 0 0 16px;
+  padding-bottom: 7px;
+  border-bottom: 4px solid var(--ink);
   font: 700 12px/1 var(--label);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--ink);
 }
 
+/* The count is the one number on the board big enough to be a FORM, so it is
+ * set in the didone: a 30px Bodoni numeral at the end of a black bar. Small
+ * tabular figures in a mono said the same thing and said it as data; this
+ * says it as composition, which is what a count of nine cards actually is. */
 .l14-col > h2 .l14-count {
   margin-left: auto;
-  font: 700 16px/1 var(--data);
+  font: 500 30px/0.8 var(--display);
+  font-variation-settings: 'opsz' 48;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.03em;
-  color: var(--ink-faint);
+  letter-spacing: 0;
+  color: var(--ink);
 }
 
 .l14-col > ul {
@@ -187,10 +204,44 @@
  * lightened one frame later. Keyed on altitude, the fade-out spends the
  * descent (the signal flips the instant the card starts home, ~400 ms
  * before rest) and the fade-in spends the climb — both play out under a
- * card in motion, and the swaps have nothing left to remove. */
+ * card in motion, and the swaps have nothing left to remove.
+ *
+ * ── the mark ──
+ *
+ * What it paints is a circle closing on a dot, and that is the one thing on
+ * this board asked to be memorable.
+ *
+ * A wash was the obvious answer and the weaker one: it told you the slot was
+ * warm without telling you anything about the card, and a rectangle glowing
+ * orange is a state, not a target. A red dot sits at the centre of every
+ * open position the moment its card leaves — the segno, the mark that says
+ * HERE, the most-repeated figure Munari ever drew — and the ring collapses
+ * onto it as the physics reports the card getting closer. Circle inside
+ * rectangle, driven by a rigid-body solver: the whole scene in one shape.
+ *
+ * It is two radial-gradients and nothing else, which is what keeps it legal
+ * under the paint-only rule above. The radius is in px rather than %, so the
+ * figure stays circular in a slot three times wider than it is tall.
+ *
+ * The ring CLOSES as the card comes home — radius runs with (1 − near), not
+ * with near — and that direction was found by building it the other way
+ * first. Growing outward is the obvious reading of "getting closer" and it
+ * is invisible: the ring is only large when the card is nearly home, and a
+ * card nearly home is sitting on top of its own slot's centre. Every frame
+ * the figure had anything to say, the card was covering the place it said
+ * it. Closing inward puts the whole statement in the space the card has
+ * VACATED, which is the only space this element ever owns. */
 .l14-slot[data-away='true'] {
   outline-color: color-mix(in oklab, var(--rule), var(--signal) calc(var(--l14-near, 0) * 92%));
-  background: color-mix(in oklab, transparent, var(--signal) calc(var(--l14-near, 0) * 15%));
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      transparent 0 calc((1 - var(--l14-near, 0)) * 74px - 3px),
+      var(--signal) calc((1 - var(--l14-near, 0)) * 74px - 3px)
+        calc((1 - var(--l14-near, 0)) * 74px),
+      transparent calc((1 - var(--l14-near, 0)) * 74px)
+    ),
+    radial-gradient(circle at 50% 50%, var(--signal) 0 4px, transparent 4px);
 }
 
 /* ── the card ─────────────────────────────────────────────────────────────
@@ -228,14 +279,18 @@
   margin-bottom: 9px;
 }
 
+/* A typed reference number on a black square — the way a card in a Munari
+ * card system was actually identified. Courier's own tracking is generous
+ * enough that the two digits need no help; the square needs to stay square,
+ * so the padding is even. */
 .l14-code {
   font: 700 10px/1 var(--data);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  letter-spacing: 0.02em;
   color: var(--screen-ink);
   background: var(--ink);
   padding: 4px 5px 3px;
-  border-radius: 2px;
+  border-radius: 0;
 }
 
 .l14-tag {
@@ -253,13 +308,18 @@
   border-top: 1px solid var(--rule);
 }
 
+/* The one loud thing on the card, and now the one thing on the board with a
+ * thick-to-thin. `opsz` is set well above the rendered size on purpose: it
+ * is the axis that hands you the display cut's hairlines, and a title is
+ * exactly where a didone should be allowed to be fragile. */
 .l14-card h3 {
   margin: 0;
-  font-size: 25px;
-  font-weight: 800;
-  font-variation-settings: 'wdth' 104;
-  letter-spacing: -0.04em;
-  line-height: 1.02;
+  font-family: var(--display);
+  font-size: 27px;
+  font-weight: 700;
+  font-variation-settings: 'opsz' 60;
+  letter-spacing: -0.008em;
+  line-height: 1.06;
   text-wrap: balance;
 }
 
@@ -306,7 +366,7 @@
   border-radius: 2px;
   background: transparent;
   color: var(--ink-faint);
-  font: 400 14px/1 var(--display);
+  font: 400 14px/1 var(--body);
   cursor: pointer;
   opacity: 0;
   transition: opacity 120ms ease;
@@ -318,26 +378,35 @@
   opacity: 1;
 }
 
+/* Removal is a black square, not a red one. Red on this board means HERE —
+ * the aimed-at slot, the checked switch, the mark — and lending it to a
+ * delete button was the one place it meant something else. Black is also
+ * simply what covering something over looks like. The red comes back on
+ * :active, which is the instant the deletion is actually a lit position. */
 .l14-del:hover,
 .l14-del[data-hover] {
-  background: var(--fault);
-  color: #fff;
+  background: var(--ink);
+  color: var(--bench-hi);
 }
 
 .l14-del:active,
 .l14-del[data-active] {
-  background: #a30f1f;
-  color: #fff;
+  background: var(--signal);
+  color: var(--ink);
 }
 
 /* The note is a field, not a box: a stamped rule you write on. A boxed
- * input here read as a third piece of chrome competing with the title. */
+ * input here read as a third piece of chrome competing with the title.
+ *
+ * And it is typed, so it is set in the typewriter — the one piece of text on
+ * this board that a person put there rather than the design. Everything
+ * struck rather than set wears Courier: the reference number, and this. */
 .l14-note {
   flex: 1;
   min-width: 0;
   box-sizing: border-box;
-  font: 500 12px/1 var(--label);
-  letter-spacing: 0.06em;
+  font: 400 12px/1 var(--data);
+  letter-spacing: 0;
   padding: 5px 2px 4px;
   border: 0;
   border-bottom: 1px solid var(--rule);

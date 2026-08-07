@@ -54,7 +54,7 @@
   overflow-x: hidden;
   background: var(--bg);
   color: var(--ink);
-  font: 15px/1.55 var(--display);
+  font: 15px/1.55 var(--body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -223,7 +223,7 @@
   border-radius: 14px;
   overflow: hidden;
   color: var(--ink);
-  font: 15px/1.55 var(--display);
+  font: 15px/1.55 var(--body);
   text-align: left;
   width: 100%;
   padding: 0;
@@ -345,7 +345,7 @@
 
 .psg-stat dd {
   margin: 0;
-  font: 600 clamp(13px, 2.1cqi, 24px) / 1.1 var(--display);
+  font: 600 clamp(13px, 2.1cqi, 24px) / 1.1 var(--body);
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
@@ -540,7 +540,7 @@
   border: 1px solid var(--edge);
   background: var(--panel);
   color: var(--ink);
-  font: 13px/1 var(--display);
+  font: 13px/1 var(--body);
   padding: 9px 13px;
   border-radius: 8px;
   cursor: pointer;

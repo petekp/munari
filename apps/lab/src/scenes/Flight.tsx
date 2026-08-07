@@ -1554,7 +1554,7 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
       <div className="l14-bar">
         <div className="l14-bar-inner">
           <h1>
-            ana<em>morph</em>
+            mun<em>ari</em>
           </h1>
           {chips}
         </div>

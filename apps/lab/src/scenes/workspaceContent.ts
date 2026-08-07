@@ -38,7 +38,7 @@ const STYLE_ID = 'workspace-css'
 
 const CSS = `
 .p6{box-sizing:border-box;width:${PANEL_W}px;height:${PANEL_H}px;padding:16px 18px;
-  font-family:var(--display);
+  font-family:var(--body);
   background:var(--screen);border:1px solid rgba(242,240,234,.16);border-radius:14px;color:var(--screen-ink);
   display:flex;flex-direction:column;gap:10px;overflow:hidden;
   transition:background-color .45s,border-color .45s}
