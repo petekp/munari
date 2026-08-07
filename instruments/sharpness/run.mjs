@@ -48,6 +48,23 @@ const strict = process.env.STRICT_CAPABILITY === '1'
 const FLOOR = Number(process.env.SHARPNESS_FLOOR ?? 0.93)
 
 /**
+ * Parity ceiling. A mesh cannot be meaningfully sharper than the element
+ * it is copying — past a little resampling ringing there is no mechanism
+ * for it — so a large ratio is never good news about the mesh. It means
+ * the two photographs are not of the same thing.
+ *
+ * This is not hypothetical. Adding Bodoni Moda and Courier Prime to the
+ * bench grew the webfont payload enough that `display=block`'s invisible
+ * -text window outlasted the DOM reference shot: the reference came back
+ * with its title, subtitle, and stat values missing while the mesh, shot
+ * 1800ms later, had all of them. Ratio 34.06, floor 0.93, PASSED. A gate
+ * that green-lights a photograph of a card with no type on it is worse
+ * than one that fails, so the runner now enforces both sides of what
+ * gradientEnergy.ts already says in prose.
+ */
+const CEILING = Number(process.env.SHARPNESS_CEILING ?? 2)
+
+/**
  * The band, in card-local CSS px from its top-left. Typography only: the
  * card's header carries a live frame counter that the DOM is running and
  * the mesh at t = 0 has not drawn yet, and including it contaminated the
@@ -161,6 +178,17 @@ try {
     return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }
   })
 
+  // The faces, before anything is photographed. The bench loads its type
+  // with `display=block`, which is correct for the lab — a card that
+  // lifts off is rasterized from the document, so a fallback resident at
+  // capture time bakes a fallback into the texture — but it means text is
+  // INVISIBLE until the faces arrive. The mesh shot happens ~1800ms after
+  // the reference one, which is long enough for the window to close
+  // between them and leave the two photographs disagreeing about whether
+  // the card has any words on it. The instrument's whole premise is that
+  // the two differ in exactly one thing, which is who drew the card.
+  await page.evaluate(() => document.fonts.ready)
+
   /** The DOM reference first, while nothing is flying. */
   const domShot = await page.screenshot({ clip: rect, encoding: 'base64' })
 
@@ -224,7 +252,7 @@ try {
   console.log(
     `  DOM  ${reading.dom.toFixed(2)}\n` +
       `  mesh ${reading.mesh.toFixed(2)}\n` +
-      `  ratio ${reading.ratio.toFixed(4)}  (floor ${FLOOR})`,
+      `  ratio ${reading.ratio.toFixed(4)}  (floor ${FLOOR}, ceiling ${CEILING})`,
   )
 
   if (pageProblems.length) {
@@ -244,6 +272,15 @@ try {
   if (!Number.isFinite(reading.ratio)) {
     console.error('BROKEN MEASUREMENT — the reference band had no edges in it.')
     console.error('Wrong rect, or a photograph taken before the page painted.')
+    process.exit(1)
+  }
+  if (reading.ratio > CEILING) {
+    console.error(`BROKEN MEASUREMENT — the mesh reads ${reading.ratio.toFixed(1)}× the page's edge energy.`)
+    console.error('Nothing makes a copy sharper than its source, so the two photographs')
+    console.error('are not showing the same card. Re-run with SHARPNESS_KEEP=1 and look:')
+    console.error('  type     — is the reference missing text the mesh has (webfont still blocking)')
+    console.error('  scale    — is the texture landing at the wrong size, ringing at every edge')
+    console.error('  state    — did the reference get photographed mid-transition')
     process.exit(1)
   }
   if (reading.ratio < FLOOR) {

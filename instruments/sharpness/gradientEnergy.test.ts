@@ -154,6 +154,33 @@ describe('sharpnessRatio', () => {
     expect(Number.isNaN(r.ratio)).toBe(true)
   })
 
+  /**
+   * The other vacuous pass, and the one that actually shipped. A
+   * reference with NO edges is caught by the NaN rule above; a reference
+   * with SOME edges and most of its content missing is not, and it
+   * reports a spectacular number.
+   *
+   * The live readings: after Bodoni Moda and Courier Prime joined the
+   * bench, `display=block`'s invisible-text window outlasted the DOM
+   * reference shot, so the reference came back carrying only its
+   * letterspaced labels while the mesh — shot 1800ms later, after the
+   * faces landed — carried the title, subtitle, and stat values too. DOM
+   * 50.58 against mesh 605.34 is ratio 11.97, and the gate passed it.
+   *
+   * Nothing makes a copy sharper than its source. So parity is bounded
+   * on both sides, and the runner enforces both.
+   */
+  it('puts a vacuous high reading outside the same band a soft one is outside', () => {
+    const FLOOR = 0.93
+    const CEILING = 2
+    expect(605.34 / 50.58).toBeGreaterThan(CEILING)
+    // The honest readings this instrument has taken all sit inside.
+    for (const ratio of [758.02 / 900.9, 902.19 / 900.9, 1.1318]) {
+      expect(ratio).toBeLessThan(CEILING)
+    }
+    expect(1.1318).toBeGreaterThan(FLOOR)
+  })
+
   it('carries the band it measured, so a report can say where it looked', () => {
     const band = { x: 4, y: 4, width: 8, height: 8 }
     expect(sharpnessRatio(checker(16, 16, 2), checker(16, 16, 2), band).band).toEqual(band)
