@@ -178,9 +178,7 @@
   border-radius: var(--radius-lg);
   outline: 2px dashed transparent;
   outline-offset: -2px;
-  transition:
-    background 140ms linear,
-    outline-color 140ms linear;
+  transition: outline-color 140ms linear;
 }
 
 /* …and what the slot lights up as while its card is away. The
@@ -206,42 +204,19 @@
  * before rest) and the fade-in spends the climb — both play out under a
  * card in motion, and the swaps have nothing left to remove.
  *
- * ── the mark ──
+ * ── no mark ──
  *
- * What it paints is a circle closing on a dot, and that is the one thing on
- * this board asked to be memorable.
- *
- * A wash was the obvious answer and the weaker one: it told you the slot was
- * warm without telling you anything about the card, and a rectangle glowing
- * orange is a state, not a target. A red dot sits at the centre of every
- * open position the moment its card leaves — the segno, the mark that says
- * HERE, the most-repeated figure Munari ever drew — and the ring collapses
- * onto it as the physics reports the card getting closer. Circle inside
- * rectangle, driven by a rigid-body solver: the whole scene in one shape.
- *
- * It is two radial-gradients and nothing else, which is what keeps it legal
- * under the paint-only rule above. The radius is in px rather than %, so the
- * figure stays circular in a slot three times wider than it is tall.
- *
- * The ring CLOSES as the card comes home — radius runs with (1 − near), not
- * with near — and that direction was found by building it the other way
- * first. Growing outward is the obvious reading of "getting closer" and it
- * is invisible: the ring is only large when the card is nearly home, and a
- * card nearly home is sitting on top of its own slot's centre. Every frame
- * the figure had anything to say, the card was covering the place it said
- * it. Closing inward puts the whole statement in the space the card has
- * VACATED, which is the only space this element ever owns. */
+ * This slot used to paint a figure in the vacated space: a segno at the
+ * centre and a ring collapsing onto it as the physics reported the card
+ * coming home. It was the most Munari drawing on the board and it lost its
+ * seat to the card itself — an animated figure in the placeholder splits
+ * the eye exactly when the one thing this scene is FOR is airborne. The
+ * flying card is the star; the slot is an empty seat, and an empty seat
+ * that gestures is upstaging. The outline's warmth still says open, and
+ * still runs with the card's altitude, which is all the state a
+ * placeholder has any business announcing. */
 .l14-slot[data-away='true'] {
   outline-color: color-mix(in oklab, var(--rule), var(--signal) calc(var(--l14-near, 0) * 92%));
-  background:
-    radial-gradient(
-      circle at 50% 50%,
-      transparent 0 calc((1 - var(--l14-near, 0)) * 74px - 3px),
-      var(--signal) calc((1 - var(--l14-near, 0)) * 74px - 3px)
-        calc((1 - var(--l14-near, 0)) * 74px),
-      transparent calc((1 - var(--l14-near, 0)) * 74px)
-    ),
-    radial-gradient(circle at 50% 50%, var(--signal) 0 4px, transparent 4px);
 }
 
 /* ── the card ─────────────────────────────────────────────────────────────
