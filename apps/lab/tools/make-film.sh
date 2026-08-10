@@ -7,10 +7,11 @@
 # are the one kind of content you would expect that replay to miss.
 # (They do arrive — measured 2026-08-09, Chrome 150.)
 #
-# make-sky.mjs, which this replaces, generated its clip rather than
-# sourcing one, and gave the reason in its own header: a stock file is "a
-# binary in the tree with no provenance, no licence story, and no way to
-# change its size, palette, or length without finding another one." That
+# The clip this replaces was GENERATED — a gradient sky, built by a
+# script rather than sourced — and the reason it gave in its own header
+# was a good one: a stock file is "a binary in the tree with no
+# provenance, no licence story, and no way to change its size, palette,
+# or length without finding another one." That
 # objection is still correct, and this script is the answer to it rather
 # than a dismissal of it. Every number below is a parameter, so the size,
 # palette, and length remain changeable; the provenance and the licence

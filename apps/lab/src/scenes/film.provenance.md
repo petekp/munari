@@ -1,10 +1,10 @@
 # film.mp4 — where it came from
 
-The clip in the triangolo window. It replaced a generated one
-(`tools/make-sky.mjs`), and the trade it made was provenance for
-subject: a gradient can be regenerated from a seed and explains itself,
-but nobody looking at it can tell a video from a shader. This file
-cannot explain itself, so this is where it is explained.
+The clip in the triangolo window. It replaced a generated gradient, and
+the trade it made was provenance for subject: a gradient can be
+regenerated from a seed and explains itself, but nobody looking at it
+can tell a video from a shader. This file cannot explain itself, so this
+is where it is explained.
 
 ## The output
 
