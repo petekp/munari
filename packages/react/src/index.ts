@@ -23,8 +23,10 @@ export { Surface, type SurfaceProps } from './primitives/Surface'
 export { SurfaceApp, type SurfaceAppProps } from './primitives/SurfaceApp'
 // The shader seam: with `material="none"` a Surface yields its material slot
 // to its children, and this is how the custom material reaches the live DOM
-// texture it should sample — and the measured chrome it should wear.
-export { useSurfaceTexture, useSurfaceChrome } from './primitives/SurfaceContext'
+// texture it should sample, the measured chrome it should wear, and the
+// painted box it should gate blending on when its own raster's generation
+// might lag the live DOM (the veil's fade zone).
+export { useSurfaceTexture, useSurfaceChrome, useSurfacePaintedSize } from './primitives/SurfaceContext'
 // The GLSL half of the corner mask (the JS half lives in the kernel).
 // A custom material sampling `useSurfaceTexture` splices this and
 // multiplies its alpha by `munariRadiusMask(vUv)`.

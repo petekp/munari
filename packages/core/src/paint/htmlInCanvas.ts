@@ -89,6 +89,21 @@ export interface DomTextureSource {
   /** Current CSS size of the subtree's layout box. */
   size: () => readonly [number, number]
   /**
+   * The CSS box (width, height) the subtree was laid out at when the last
+   * COMPLETED paint replayed it — `[0, 0]` before any paint has succeeded.
+   * Read at `onpaint` FIRE time, not at `setSize` time, and that ordering is
+   * the whole point: `size()` reports the box a consumer just asked for,
+   * this reports the box the delivered raster actually holds, and the gap
+   * between the two IS the capture pipeline's lag (React state ->
+   * `source.setSize` -> `requestPaint` -> compositor `onpaint` -> GL
+   * upload). A consumer that blends the raster against live DOM (the
+   * veil's fade zone) has to know the raster's own generation for exactly
+   * this reason: blending a copy from one layout generation over a page
+   * from a newer one reads as doubled content, not as a soft mismatch —
+   * observed as the veil resize ghosting, 2026-08-08.
+   */
+  paintedSize: () => readonly [number, number]
+  /**
    * Re-rasterize the subtree at `width×k`/`height×k` backing-store pixels.
    * drawElementImage replays paint records — vector draw commands — so this
    * is a true re-render (sharper glyphs), not an upscale. The canvas's CSS
@@ -254,6 +269,11 @@ export function createDomTextureSource(
 
   const ctx = canvas.getContext('2d') as TrialContext2D
   let ok = false
+  // The box paintedSize() reports — set only from onpaint's success path,
+  // at FIRE time, never from setSize. Two plain closure vars rather than a
+  // tuple so a read never allocates.
+  let paintedW = 0
+  let paintedH = 0
 
   const stats: PaintStats = { label, paints: 0, errors: 0, scale }
   registry.add(stats)
@@ -276,6 +296,12 @@ export function createDomTextureSource(
       ctx.drawElementImage(element, 0, 0)
       ok = true
       stats.paints++
+      // The closure's CURRENT width/height, at fire time — this paint just
+      // replayed the subtree at whatever box was live when the compositor
+      // finally got to it, which during a drag is rarely the box `setSize`
+      // most recently asked for.
+      paintedW = width
+      paintedH = height
     } catch (err) {
       ok = false
       stats.errors++
@@ -337,6 +363,7 @@ export function createDomTextureSource(
     repaint: () => canvas.requestPaint(),
     scale: () => scale,
     size: () => [width, height] as const,
+    paintedSize: () => [paintedW, paintedH] as const,
     setScale: (k: number) => {
       const next = clampRawScale(k)
       if (next === scale) return

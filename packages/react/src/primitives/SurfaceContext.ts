@@ -11,6 +11,12 @@ import type { SurfaceChrome } from '@munari/core'
 // must re-render when the texture arrives, or it samples null forever.
 // `chrome` likewise: it changes only when a paint actually changes the
 // element's measured radii/shadow, and a material that wears them must hear.
+// `paintedSize` is the odd one out: a STABLE GETTER, not state. A frame-loop
+// consumer (the veil's generation gate) samples it inside useFrame and wants
+// the freshest answer at read time, not a re-render on every paint — being
+// state would solve a problem this field doesn't have and create one it
+// would (a render per paint, on every Surface, whether anyone's watching or
+// not).
 export interface SurfaceContextValue {
   mesh: React.RefObject<THREE.Mesh | null>
   source: HTMLElement | null
@@ -19,6 +25,7 @@ export interface SurfaceContextValue {
   mirrorU: boolean
   texture: THREE.CanvasTexture | null
   chrome: SurfaceChrome | null
+  paintedSize: () => readonly [number, number]
 }
 
 export const SurfaceContext = createContext<SurfaceContextValue | null>(null)
@@ -54,4 +61,23 @@ export function useSurfaceChrome(): {
   const ctx = use(SurfaceContext)
   if (!ctx) throw new Error('useSurfaceChrome must be used inside a <Surface>')
   return { chrome: ctx.chrome, width: ctx.width, height: ctx.height }
+}
+
+/**
+ * A stable GETTER for the Surface's painted box — the CSS size
+ * `@munari/core`'s `paintedSize()` reports: the box the last COMPLETED
+ * paint actually rasterized, which during a resize can trail the box the
+ * Surface currently measures. Returned as a function, not a value, and
+ * deliberately NOT React state: a paint landing must not re-render the
+ * tree just to report it, and a frame-loop consumer (`useFrame`) wants
+ * the freshest answer at the moment it samples, not the one that was
+ * true when this component last rendered. A material that blends its own
+ * raster against something live (the veil's fade zone) reads this to
+ * know whether the two are even the same generation before it blends
+ * them.
+ */
+export function useSurfacePaintedSize(): () => readonly [number, number] {
+  const ctx = use(SurfaceContext)
+  if (!ctx) throw new Error('useSurfacePaintedSize must be used inside a <Surface>')
+  return ctx.paintedSize
 }

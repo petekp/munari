@@ -1,4 +1,4 @@
-import { use, useEffect, useMemo, useRef, useState } from 'react'
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree, type ThreeElements, type ThreeEvent } from '@react-three/fiber'
 import {
@@ -480,9 +480,31 @@ export function Surface({
     }
   }, [radius, width, height])
 
+  // A stable getter, not state: `paintedSize` is read inside a frame loop
+  // (the veil's generation gate) where a fresh answer at sample time is
+  // what matters, and a paint landing must not force this component to
+  // re-render just to hand a new number down. Empty deps because the
+  // identity itself is the contract — listed below in `context`'s deps
+  // for exhaustive-deps' sake, but since that identity never changes it
+  // adds nothing to compare and the memo still only recomputes when the
+  // fields that DO change do.
+  const paintedSize = useCallback(
+    (): readonly [number, number] => sourceRef.current?.paintedSize() ?? [0, 0],
+    [],
+  )
+
   const context = useMemo<SurfaceContextValue>(
-    () => ({ mesh: meshRef, source: sourceEl, width, height, mirrorU, texture, chrome }),
-    [sourceEl, width, height, mirrorU, texture, chrome],
+    () => ({
+      mesh: meshRef,
+      source: sourceEl,
+      width,
+      height,
+      mirrorU,
+      texture,
+      chrome,
+      paintedSize,
+    }),
+    [sourceEl, width, height, mirrorU, texture, chrome, paintedSize],
   )
 
   // Inside a FocusGroup, this Surface is a composite focus member: its

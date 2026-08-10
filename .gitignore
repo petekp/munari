@@ -1,6 +1,11 @@
 node_modules/
 dist/
 coverage/
+
+# What the instruments PRINT is the record; what they dump is scratch.
+# The scripts are committed infrastructure, their frame grabs are not —
+# they only exist when DUMP=1 asks for a look at a failing frame.
+instruments/**/out/
 *.log
 .DS_Store
 .claude/

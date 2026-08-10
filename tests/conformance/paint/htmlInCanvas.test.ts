@@ -209,6 +209,77 @@ describe('createDomTextureSource sizing', () => {
   })
 })
 
+// PAINTEDSIZE — the box the delivered raster actually holds, as opposed to
+// size()'s box a consumer just asked for. The gap between them is the
+// capture pipeline's lag, and a consumer blending the raster against live
+// DOM (the veil's fade zone) has to read THIS, not size(), to know whether
+// what it is about to blend is even the same generation as the live page.
+describe('paintedSize — the box the last COMPLETED paint actually holds', () => {
+  // onpaint's success path — the one that stamps paintedW/paintedH — only
+  // runs if ctx.drawElementImage doesn't throw. happy-dom's real 2D context
+  // has no idea what that method is (it is a Chrome-only trial API); the
+  // top-level beforeEach only stubs the CONSTRUCTOR's prototype for the
+  // capability gate, not a context these tests can actually paint through.
+  // Fake one, same shape the identity-CTM block below uses.
+  let restoreGetContext = () => {}
+  beforeEach(() => {
+    const proto = HTMLCanvasElement.prototype
+    const original = proto.getContext
+    proto.getContext = (() => ({
+      setTransform: () => {},
+      clearRect: () => {},
+      drawElementImage: () => {},
+    })) as unknown as typeof proto.getContext
+    restoreGetContext = () => {
+      proto.getContext = original
+    }
+  })
+  afterEach(() => restoreGetContext())
+
+  /** The compositor's turn: fire the handler the source installed. */
+  function firePaint(s: DomTextureSource) {
+    ;(s.canvas as unknown as StubCanvas).onpaint?.()
+  }
+
+  it('is [0, 0] before any paint has succeeded', () => {
+    const s = make(360, 460)
+    expect(s.paintedSize()).toEqual([0, 0])
+    s.dispose()
+  })
+
+  it('reports the birth box after the first driven paint', () => {
+    const s = make(360, 460)
+    firePaint(s)
+    expect(s.paintedSize()).toEqual([360, 460])
+    s.dispose()
+  })
+
+  // THE LAG IS THE CONTRACT, NOT A DEFECT. setSize moves the CSS box (and
+  // size()) immediately — the DOM consumer asked for a new layout NOW —
+  // but nothing has rasterized AT that box yet. Reporting the new box here
+  // before a paint has actually delivered it would tell a consumer
+  // blending the raster against live DOM that the copy already matches a
+  // generation it has never painted, which is exactly the ghosting this
+  // seam exists to prevent (the veil resize bug, 2026-08-08).
+  it('still reports the OLD box after setSize, before the next driven paint', () => {
+    const s = make(360, 460)
+    firePaint(s)
+    s.setSize(288, 122)
+    expect(s.size()).toEqual([288, 122])
+    expect(s.paintedSize()).toEqual([360, 460])
+    s.dispose()
+  })
+
+  it('reports the new box once the next paint actually lands', () => {
+    const s = make(360, 460)
+    firePaint(s)
+    s.setSize(288, 122)
+    firePaint(s)
+    expect(s.paintedSize()).toEqual([288, 122])
+    s.dispose()
+  })
+})
+
 // The identity-CTM pin. The replay is auto-scaled by the canvas's
 // backing/CSS ratio, and any CTM multiplies ON TOP of that — effective
 // = ratio × CTM at every k. setScale sets the ratio, so the CTM must
