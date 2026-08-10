@@ -99,20 +99,6 @@
   color: var(--signal);
 }
 
-/* The selector is the shared keybed from app.css. It only needs its margin
- * dropped here — in the 3D scenes it stacks inside the HUD, and on this bar
- * it sits on a row. */
-.l14-bar .tabs {
-  margin: 0;
-  flex: 0 0 auto;
-}
-
-.l14-bar .tabs button {
-  flex: 0 0 auto;
-  padding-left: 13px;
-  padding-right: 13px;
-}
-
 /* ── the board ───────────────────────────────────────────────────────── */
 
 .l14-inner {

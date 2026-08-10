@@ -186,42 +186,55 @@ body,
   color: rgba(242, 240, 234, 0.45);
 }
 
-/* ── the scene selector ── a keybed: one strip, exactly one lit position ── */
+/* ── the scene selector ── a keybed: one strip, exactly one lit position ──
+ *
+ * A fixed rail on the page's left edge. It floats over every scene — the
+ * dark 3D room and the light page scenes alike — so it carries its own
+ * paper ground instead of borrowing the scene's, and it takes a z-index
+ * because the page scenes mount full-viewport overlay canvases after it
+ * in the DOM. Scenes still receive it as `chips` and render it wherever;
+ * `position: fixed` makes the render site cosmetic. */
 
 .tabs {
+  position: fixed;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
   display: flex;
-  margin-bottom: 12px;
-  border: 1px solid rgba(242, 240, 234, 0.22);
+  flex-direction: column;
+  border: 1px solid var(--rule-hard);
   border-radius: var(--radius);
   overflow: hidden;
+  background: var(--bench-hi);
   pointer-events: auto;
 }
 
-/* Content-sized, never stretched. Six positions of very different label
- * lengths in a 430px strip: `flex: 1` gave them all equal cells and the
- * longer labels simply ran over their neighbours' — a key is as wide as the
- * word on it. */
+/* A key is as tall as the word on it, and every key shares the rail's
+ * width — the vertical strip gives the long labels room the old 430px
+ * row never could. */
 .tabs button {
   flex: 0 0 auto;
   font: 600 10px/1 var(--label);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 8px 8px 7px;
+  text-align: left;
+  padding: 9px 14px 8px 12px;
   border: 0;
-  border-left: 1px solid rgba(242, 240, 234, 0.14);
+  border-top: 1px solid var(--rule);
   border-radius: 0;
   background: transparent;
-  color: rgba(242, 240, 234, 0.55);
+  color: var(--ink-mute);
   cursor: pointer;
 }
 
 .tabs button:first-child {
-  border-left: 0;
+  border-top: 0;
 }
 
 .tabs button:hover {
-  color: var(--screen-ink);
-  background: rgba(242, 240, 234, 0.08);
+  color: var(--ink);
+  background: var(--bench-lo);
 }
 
 .tabs button[data-active='true'] {

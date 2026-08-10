@@ -9,15 +9,27 @@ import { FlightApp } from './scenes/Flight'
 import { Explode, ExplodeHud } from './scenes/Explode'
 import { PassageApp } from './scenes/Passage'
 import { WakeApp } from './scenes/Wake'
+import { GenieApp } from './scenes/Genie'
+import { VeilApp } from './scenes/Veil'
 
-// Six scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
+// Eight scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
 // flight drag trilogy, exploded-paint inspector, passage route transition,
-// wake navigation-through-a-medium.
+// wake navigation-through-a-medium, genie minimize-to-dock, veil
+// progressive blur.
 // Everything they render reaches the library through the `@petepetrash/munari` barrel —
 // this app is the proof that the public surface is sufficient.
 
-type SceneId = 'workspace' | 'glass' | 'flight' | 'explode' | 'passage' | 'wake'
-const SCENES = ['workspace', 'glass', 'flight', 'explode', 'passage', 'wake'] as const
+type SceneId = 'workspace' | 'glass' | 'flight' | 'explode' | 'passage' | 'wake' | 'genie' | 'veil'
+const SCENES = [
+  'workspace',
+  'glass',
+  'flight',
+  'explode',
+  'passage',
+  'wake',
+  'genie',
+  'veil',
+] as const
 
 const FOOTERS: Record<SceneId, string> = {
   workspace:
@@ -32,6 +44,11 @@ const FOOTERS: Record<SceneId, string> = {
     'open a note · the card leaves the page and lays itself out again at every width on the way',
   wake:
     'pick a page — the new one arrives through the water · click anywhere to strike the surface · type while it moves',
+  genie:
+    'the amber lamp pours the window into the dock · shift for slow motion · click into it mid-drain — it is still real',
+  // Deliberately empty: the veil page carries its own caption, pinned
+  // above the band where the shared footer would sit inside the blur.
+  veil: '',
 }
 
 // Clicking a canvas normally moves focus to <body>, which would blur
@@ -49,28 +66,36 @@ function KeepDomFocus() {
   return null
 }
 
+// `?scene=flight` opens the flight lab directly. Not a router — just enough
+// of one that a scene can be linked, reloaded into, and screenshotted
+// without a human clicking a chip first. (Deep links used to be `#flight`;
+// the hash is still honored on arrival so old links keep landing.)
+function readScene(): SceneId {
+  const q = new URLSearchParams(window.location.search).get('scene') as SceneId | null
+  if (q && (SCENES as readonly string[]).includes(q)) return q
+  const h = window.location.hash.slice(1) as SceneId
+  return (SCENES as readonly string[]).includes(h) ? h : 'workspace'
+}
+
 export default function App() {
   const support = useMemo(detectHtmlInCanvas, [])
-  // `#flight` opens the flight lab directly. Not a router — just enough of
-  // one that a scene can be linked, reloaded into, and screenshotted without
-  // a human clicking a chip first.
-  const [scene, setScene] = useState<SceneId>(() => {
-    const h = window.location.hash.slice(1) as SceneId
-    return (SCENES as readonly string[]).includes(h) ? h : 'workspace'
-  })
+  const [scene, setScene] = useState<SceneId>(readScene)
 
-  // …and the hash stays authoritative afterwards. Without this, navigating
-  // by URL only works on a cold load: a hash change alone does not reload,
+  // …and the URL stays authoritative afterwards. Without this, navigating
+  // by URL only works on a cold load: back/forward alone does not reload,
   // so the initializer above never runs again and the scene silently stays
   // put — the same screenshot twice, which is a very quiet way to draw the
   // wrong conclusion about a change you just made.
   useEffect(() => {
-    const onHash = () => {
-      const h = window.location.hash.slice(1) as SceneId
-      if ((SCENES as readonly string[]).includes(h)) setScene(h)
+    const onPop = () => setScene(readScene())
+    window.addEventListener('popstate', onPop)
+    // An arrival on the legacy hash form normalizes to the param form once,
+    // so the address bar shows the link worth copying.
+    const h = window.location.hash.slice(1)
+    if (!window.location.search.includes('scene=') && (SCENES as readonly string[]).includes(h)) {
+      window.history.replaceState(null, '', `?scene=${h}`)
     }
-    window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
+    return () => window.removeEventListener('popstate', onPop)
   }, [])
 
   // Console story: the kernel stamps nothing on `window`, so the app hangs
@@ -104,7 +129,7 @@ export default function App() {
           key={id}
           data-active={scene === id}
           onClick={() => {
-            window.location.hash = id
+            window.history.pushState(null, '', `?scene=${id}`)
             setScene(id)
           }}
         >
@@ -148,6 +173,8 @@ export default function App() {
   if (scene === 'flight') return <FlightApp chips={chips} />
   if (scene === 'passage') return <PassageApp chips={chips} />
   if (scene === 'wake') return <WakeApp chips={chips} />
+  if (scene === 'genie') return <GenieApp chips={chips} />
+  if (scene === 'veil') return <VeilApp chips={chips} />
 
   return (
     <div className="app">
