@@ -1,0 +1,147 @@
+/* The veil scene — a reading page under a progressive blur.
+ *
+ * Same rule as flight and genie: this is a PAGE, and everything on it
+ * is paper. The article is real, visible, scrolling DOM the whole time
+ * — the veil is a WebGL window onto its paint, pinned to the bottom of
+ * the viewport, and the blur deepens with distance into the band (the
+ * profile is veilLaw.ts). The overlay canvas never takes pointer
+ * events: you scroll, select, and click THROUGH the veil, because the
+ * thing under it never stopped being the page.
+ *
+ * The article carries its own `font` with a size in every shorthand —
+ * the type tokens are family lists, and a bare `font: var(--body)` is
+ * invalid and silently inherits (fontCarry.test.ts).
+ */
+
+/* The lab pins html/body/#root to height:100% overflow:hidden — every
+ * other scene is a fixed viewport. This page is the scroller instead:
+ * same gesture, same momentum, and the lab's geometry stays untouched.
+ * position: relative anchors the slab into the SCROLLING content —
+ * that placement is the scene's custody fix, not a styling choice. */
+.veil-page {
+  position: relative;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bench);
+}
+
+/* The twin root — this exact subtree renders once on the page and once
+ * parked, so IT carries the font and the ground: anything it left to
+ * inheritance would resolve differently in its two homes. */
+.veil-sheet {
+  background: var(--bench);
+  font: 15px/1.5 var(--body);
+  color: var(--ink);
+}
+
+.veil-head {
+  padding: 20px 24px 0;
+}
+
+.veil-head h1 {
+  font: 700 20px/1.2 var(--display);
+  letter-spacing: 0.01em;
+}
+
+.veil-head h1 em {
+  font-style: normal;
+  color: var(--signal);
+}
+
+/* ── the article ────────────────────────────────────────────────── */
+
+.veil-article {
+  max-width: 560px;
+  margin: 0 auto;
+  /* The tail padding keeps the last lines reachable above the band:
+   * the veil is viewport-fixed, so the page needs room to scroll the
+   * end of the text clear of it. */
+  padding: 56px 24px 40vh;
+}
+
+.veil-article h2 {
+  font: 700 32px/1.15 var(--display);
+  margin-bottom: 6px;
+}
+
+.veil-kicker {
+  font: 600 11px/1 var(--label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--signal);
+  margin-bottom: 14px;
+}
+
+.veil-article p {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--ink-mute);
+  margin: 0 0 18px;
+}
+
+.veil-article p strong {
+  color: var(--ink);
+}
+
+.veil-article a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--signal);
+  text-underline-offset: 2px;
+}
+
+/* A specimen block: hard edges, fine hairlines, tabular figures — the
+ * content that shows a bad blur first, placed where the band will
+ * catch it as it scrolls. */
+.veil-specimen {
+  border: 1px solid var(--rule-hard);
+  border-radius: var(--radius);
+  background: var(--bench-hi);
+  padding: 14px 16px;
+  margin: 26px 0;
+}
+
+.veil-specimen h3 {
+  font: 600 11px/1 var(--label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  margin-bottom: 10px;
+}
+
+.veil-specimen table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 500 13px/1.4 var(--body);
+  font-variant-numeric: tabular-nums;
+}
+
+.veil-specimen td {
+  padding: 5px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.veil-specimen td:last-child {
+  text-align: right;
+  color: var(--ink-mute);
+}
+
+/* The slab — the canvas's ride through the scroller. It lives IN the
+ * scrolling content (not fixed to the viewport) so the compositor
+ * moves it in lockstep with the article around it; the scene only
+ * slides it to a new article row via transform. Never solid: nothing
+ * in this scene's WebGL is interactive, so every pointer event falls
+ * through to the page. */
+.veil-slab {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.veil-slab canvas {
+  pointer-events: none;
+}
