@@ -1,0 +1,814 @@
+/* The genie scene — a desk, four windows, a dock.
+ *
+ * Same rule as flight: this is a PAGE, and everything on it is paper.
+ * The windows are bright sheets of the same stock as the flight cards;
+ * the dock is a row of card tiles along the bottom edge, sitting on the
+ * bench directly with no tray under them.
+ *
+ * The shadow is PAINT, not `box-shadow`. That is the whole trick. A
+ * box-shadow is drawn outside the border box, which is to say outside
+ * the capture — the sheet would carry no shadow in flight, so the
+ * shadow would have to sit on the desk while its window flew away from
+ * it. (The flight scene needs altitude and pays for it with a WebGL
+ * shadow twin gated on the same painted signal; this scene's story is
+ * the warp, and a twin here would be a second system.) So the shadow is
+ * a filled rectangle INSIDE the capture root, offset down and right
+ * with no blur — the Platinum register, and the one form of shadow that
+ * a hard-edged translucent fill can state honestly. It travels with the
+ * sheet, warps with it, and pours into the bay with it, because on a
+ * desk made of paper a shadow is just more ink.
+ *
+ * The window carries its own `font`: a parked subtree keeps :root's
+ * custom properties but INHERITS the parking host's font, not the
+ * page's (see the essay at the top of app.css). And the shorthand has
+ * to be VALID to carry anything — the type tokens are family lists, so
+ * `font: var(--body)` alone is an invalid shorthand and silently
+ * inherits instead (fontCarry.test.ts). Every `font:` here states a
+ * size with its family.
+ */
+
+/* The desk has a surface.
+ *
+ * A bare fill is a hole in the page: nothing tells you how far away it
+ * is, so the windows read as shapes on a colour rather than paper on a
+ * table. One 8px tile fixes that, in the register the rest of the scene
+ * is already speaking — the desktop pattern of a Platinum machine, which
+ * was never a picture and never a texture photograph. It was a few
+ * pixels, repeated, with a light edge and a dark one.
+ *
+ * Which is what this is: each cell is ruled on its top and left by one
+ * dark pixel with one bright pixel beside it. Two pixels next to each
+ * other, one under the bench and one over it, is the whole of how a
+ * 1-bit machine drew a groove — the eye takes the pair as a bevel and
+ * infers a surface with a direction to its light. The pair is also why
+ * the pattern can be this quiet and still read: it is the STEP between
+ * the two that carries the emboss, not either one's distance from the
+ * bench, so both can sit close to it.
+ *
+ * Kept off the sheets on purpose. `.gen-sheet` is the capture root, and
+ * anything painted inside one becomes texture that pours into the bay
+ * with the window — a desk that warped along with the thing standing on
+ * it. The desk is page, the window is paper, and the pattern belongs to
+ * the desk alone.
+ *
+ * The rules are hard stops on integer boundaries in an axis-aligned
+ * gradient, which is the one form of CSS pattern that stays genuinely
+ * crisp: no diagonal for the rasteriser to feather, no bitmap to
+ * resample at 2x, and no data URI — a `url()` cannot see a custom
+ * property, and the tones here have to stay tokens, because
+ * instruments/genie-drain reads ink off this bench and the amplitude of
+ * this pattern is part of what it has to see past (deskPattern.test.ts).
+ */
+.gen-page {
+  /* The groove, as a pair. --tile-lo is the cut and --tile-hi the lit
+   * lip below it; both are stated as alpha over the bench so the pair
+   * survives a change of bench colour without being re-derived.
+   *
+   * Both alphas are small, and both are small for a measured reason
+   * rather than for taste. Window stock is --bench-hi and the bench is
+   * --bench: 23 luma apart, and every instrument that finds a sheet's
+   * edge does it by asking whether a pixel is too far from the desk to
+   * BE the desk. So the desk's own tones have to stay inside that gap
+   * with room, or a scan walks out through the pattern's highlights and
+   * calls the ruling a window.
+   *
+   * The number that governs is the CROSSING, not the rule. Two
+   * gradients paint here, one per axis, and where they meet both of
+   * them land — so a corner is the token composited over itself, which
+   * is a good deal further from the bench than the token reads. It is
+   * the corner a scan meets. Measured on the desk (2026-08-09, deviceScaleFactor 1):
+   *
+   *                    cut    field    lip
+   *      along a rule   207     216     222
+   *      at a crossing  199     216     227
+   *
+   * which leaves 12 luma to window stock above and 12 to the shadow's
+   * own tone below. deskPattern.test.ts derives both from these two
+   * alphas — compositing each twice, which is the correction that
+   * turned an apparently comfortable 15 luma of clearance into the real
+   * 9 — so a retune of this pattern fails in CI rather than as a probe
+   * that mysteriously reads the whole scan region as one row. */
+  --tile: 8px;
+  --tile-lo: rgba(20, 20, 15, 0.045);
+  --tile-hi: rgba(255, 255, 255, 0.15);
+
+  min-height: 100vh;
+  background-color: var(--bench);
+  /* Verticals over horizontals: at each crossing one of the two has to
+   * win, and a continuous vertical rule with the horizontals running
+   * into it is how a ruled sheet looks. The reverse reads as a dashed
+   * grid that has lost its corners. */
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      var(--tile-lo) 0 1px,
+      var(--tile-hi) 1px 2px,
+      transparent 2px var(--tile)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      var(--tile-lo) 0 1px,
+      var(--tile-hi) 1px 2px,
+      transparent 2px var(--tile)
+    );
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font: 15px/1.5 var(--body);
+  color: var(--ink);
+}
+
+.gen-head {
+  align-self: flex-start;
+  padding: 20px 24px 0;
+}
+
+.gen-head h1 {
+  font: 700 20px/1.2 var(--display);
+  letter-spacing: 0.01em;
+}
+
+.gen-head h1 em {
+  font-style: normal;
+  color: var(--signal);
+}
+
+/* ── the desk ───────────────────────────────────────────────────────
+ *
+ * Four windows, absolutely placed against the desk's CENTRE — which is
+ * also the dock's centre, so `--x` doubles as "how far this window sits
+ * from the bay it falls into". Nothing here is a flow layout, because
+ * the arrangement is the point: the three studies cascade down-right
+ * with the FRONT one up-left, which is the only stacking order in which
+ * a down-right shadow actually lands on the window behind it rather
+ * than on the one covering it.
+ *
+ * The working window is held clear of that cascade on the right, and
+ * that clearance is load-bearing rather than compositional: the sheet's
+ * whole descent to its bay has to cross bench and nothing else, or
+ * instruments/genie-drain can no longer tell the sheet's ink from a
+ * window it happens to be passing over. The probe checks the clearance
+ * rather than trusting this comment.
+ */
+.gen-desk {
+  position: relative;
+  flex: 1;
+  width: 100%;
+}
+
+/* Two offsets, kept separate on purpose. `--x`/`--y` are the LAYOUT —
+ * written here, restated at each breakpoint, and the arrangement the
+ * desk is designed around. `--dx`/`--dy` are where the HAND has since
+ * put this window, written by the drag (Genie.tsx) and by nothing else.
+ * Because they compose rather than overwrite, a window that has been
+ * dragged still answers a breakpoint: the desk rearranges under it and
+ * the hand's displacement rides along, instead of the layout silently
+ * losing to a number a pointer left behind. */
+.gen-slot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: calc(-50% + var(--x) + var(--dx, 0px)) calc(-50% + var(--y) + var(--dy, 0px));
+  /* It only ever receives focus programmatically, from a restore that
+   * needs somewhere to put the keyboard while the window's own controls
+   * are hidden. A ring around the whole window for that would be an
+   * indicator for a state the user cannot act on — the controls draw
+   * their own the moment they come back. */
+  outline: none;
+}
+
+/* Away: docked, or airborne and being drawn by the mesh instead. The
+ * hide is on the CONTENTS so the wrapper itself stays focusable (see
+ * Genie.tsx); pointer-events go with them, because a hidden box stops
+ * being a hit target and a merely-empty one does not — without this a
+ * window in flight would keep swallowing presses aimed at the desk. */
+.gen-slot[data-away='true'] > * {
+  visibility: hidden;
+}
+
+.gen-slot[data-away='true'] {
+  pointer-events: none;
+}
+
+.gen-slot[data-win='quadrato'] {
+  --x: -316px;
+  --y: -46px;
+}
+
+.gen-slot[data-win='cerchio'] {
+  --x: -260px;
+  --y: 0px;
+}
+
+.gen-slot[data-win='triangolo'] {
+  --x: -204px;
+  --y: 46px;
+}
+
+.gen-slot[data-win='scheda'] {
+  --x: 210px;
+  --y: 0px;
+}
+
+/* Below the width the cascade needs, the studies tuck BEHIND the working
+ * window instead of beside it — the desk gets crowded, which is what a
+ * small desk does. The corridor guarantee above does not survive this,
+ * and does not have to: the probes run at 1100px. */
+@media (max-width: 960px) {
+  .gen-slot[data-win='quadrato'] {
+    --x: -230px;
+    --y: -80px;
+  }
+
+  .gen-slot[data-win='cerchio'] {
+    --x: -196px;
+    --y: -46px;
+  }
+
+  .gen-slot[data-win='triangolo'] {
+    --x: -162px;
+    --y: -12px;
+  }
+
+  .gen-slot[data-win='scheda'] {
+    --x: 60px;
+    --y: 20px;
+  }
+}
+
+@media (max-width: 660px) {
+  .gen-slot[data-win='quadrato'] {
+    --x: -120px;
+    --y: -96px;
+  }
+
+  .gen-slot[data-win='cerchio'] {
+    --x: -96px;
+    --y: -72px;
+  }
+
+  .gen-slot[data-win='triangolo'] {
+    --x: -72px;
+    --y: -48px;
+  }
+
+  .gen-slot[data-win='scheda'] {
+    --x: 0px;
+    --y: 24px;
+  }
+}
+
+/* ── the window ─────────────────────────────────────────────────── */
+
+/* The capture root, and the reason the shadow works: everything the
+ * texture will contain has to be inside THIS box. The window is drawn at
+ * the top-left of it and the shade fills the same rectangle offset by
+ * --drop, so the root is exactly one drop wider and taller than the
+ * window — two 7px corners of it transparent, which premultiplied alpha
+ * carries through the swap without a seam.
+ *
+ * Every token the shadow needs is declared HERE, on the root itself, and
+ * that is not tidiness. A parked subtree keeps :root's custom properties
+ * and nothing else — it has no .gen-page ancestor, because its parent is
+ * the parking canvas in <body> (the same fact the essay at the top of
+ * this file records about `font`). Declared one level up, `--drop`
+ * resolved on the desk and vanished in the air: the airborne copy laid
+ * out 7px smaller than the box it was measured at, and `--shade` fell
+ * back to transparent, so the sheet took off wearing a white L where its
+ * shadow had been. Both of those were invisible until something was
+ * translucent enough to notice. */
+.gen-sheet {
+  --w: 460px;
+  --h: 340px;
+  /* Hard, offset, translucent: the shade has to READ as a shadow against
+   * the bench (luma ~216) and still let the window it lands on show
+   * through. At 0.15 over the bench it lands near luma 187 — a ~29-step
+   * drop, which is four or five times the smallest step the eye resolves
+   * on a flat field, so it survives a display's gamma and a screenshot's
+   * quantisation with room to spare. Over the brighter window stock
+   * (~239) it drops ~33.
+   *
+   * It shipped at 0.3 and 7px first, which is the Platinum weight and is
+   * too heavy for a desk this pale: four windows each wearing a hard
+   * 60-step band turned the stack into stripes. Halved and slimmed, the
+   * shadow separates the windows without competing with them. */
+  --shade: rgba(20, 20, 15, 0.15);
+  /* How far the shade sits down and right of its window. Small enough to
+   * be a shadow rather than a second rectangle, large enough that the
+   * strip survives being poured through the warp and resampled — and
+   * that lower bound is now real rather than theoretical: see the fade
+   * in genieShaders.ts, which exists because 5px of ink at the mouth's
+   * 0.11 scale is 0.55px, and half a pixel of anything is not a shadow. */
+  --drop: 5px;
+  position: relative;
+  box-sizing: content-box;
+  width: var(--w);
+  padding: 0 var(--drop) var(--drop) 0;
+}
+
+/* The library's root stands in for <body> and the lab paints it opaque,
+ * which is right for a Surface that is a solid plate and wrong for this
+ * one: a sheet whose shadow is 30% ink and whose two offset corners are
+ * empty needs its alpha to reach the compositor intact. Flattened
+ * against white first, the shadow arrives opaque and four shades too
+ * pale, and the corners arrive as small white squares. Unlayered, so it
+ * beats @layer base's `.ui-root` in shadcn.css. */
+.ui-root:has(> .gen-sheet) {
+  background: transparent;
+}
+
+/* Inset against the PADDING box — which is the window's box plus one
+ * drop in each direction — so the shade is the window's own rectangle
+ * shifted down-right, stated once and never restated in numbers. */
+.gen-sheet::before {
+  content: '';
+  position: absolute;
+  inset: var(--drop) 0 0 var(--drop);
+  background: var(--shade);
+}
+
+.gen-sheet[data-win='quadrato'],
+.gen-sheet[data-win='cerchio'] {
+  --w: 236px;
+  --h: 256px;
+}
+
+/* The film window is landscape, because the footage is. Nothing in the
+ * law cares: the funnel is measured from whatever box the window happens
+ * to be at press time, so a window of a different size and aspect than
+ * its neighbours pours into the same 52px bay with no constant anywhere
+ * that knows it is different. */
+.gen-sheet[data-win='triangolo'] {
+  --w: 300px;
+  --h: 232px;
+}
+
+.gen-window {
+  position: relative;
+  width: var(--w);
+  height: var(--h);
+  box-sizing: border-box;
+  background: var(--bench-hi);
+  border: 1px solid var(--rule-hard);
+  border-radius: var(--radius-lg);
+  font: 14px/1.5 var(--body);
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* The titlebar is a handle now: cursor says so, and touch-action/user-
+ * select stay off so a drag is a drag on every input. The lamps sit
+ * inside it and keep their own cursor — a press without travel is still
+ * their click. */
+.gen-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--rule);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.gen-lamp {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1px solid var(--rule-hard);
+  background: var(--bench);
+  padding: 0;
+}
+
+/* The one live control. Hover twins ([data-hover]) so the affordance
+ * survives inside the texture, where :hover can never match. */
+.gen-lamp[data-role='minimize'] {
+  background: var(--signal);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.gen-lamp[data-role='minimize']:hover,
+.gen-lamp[data-role='minimize'][data-hover] {
+  background: var(--signal-lit);
+}
+
+/* The live lamp is also the only red one, and a red widget in a titlebar
+ * means CLOSE everywhere a person has ever used a computer. So it says
+ * what it actually does at the moment you reach for it. Platinum's own
+ * widgets worked exactly this way — the glyph was the hover state, not
+ * the resting one — and it appears with no transition for the same
+ * reason: this vocabulary predates easing.
+ *
+ * A bar, not a character: a glyph would be type, and type at the bay's
+ * minification is the one thing on this sheet that resamples badly. */
+.gen-lamp[data-role='minimize']::before {
+  content: '';
+  width: 7px;
+  height: 1px;
+  background: var(--ink);
+  opacity: 0;
+}
+
+.gen-lamp[data-role='minimize']:hover::before,
+.gen-lamp[data-role='minimize'][data-hover]::before {
+  opacity: 1;
+}
+
+.gen-title {
+  margin-left: 4px;
+  font: 600 12px/1 var(--label);
+  color: var(--ink-mute);
+}
+
+/* ── awake and asleep ────────────────────────────────────────────────
+ *
+ * Only the front window looks live. This is the oldest signal a stack of
+ * windows has, and it is stated in the palette rather than in a pattern
+ * on purpose: the other half of the Platinum vocabulary is a fine
+ * horizontal stripe across the titlebar, and a 2–3px repeating pattern is
+ * exactly the thing that falls apart when this scene's warp minifies a
+ * 460px window into a 52px bay. Type survives that badly too, but type
+ * is not periodic and so does not moiré. Dimming does not care.
+ *
+ * The state is written on the CAPTURE ROOT (data-front, set in
+ * Genie.tsx), so a window that is dimmed on the desk is dimmed in the
+ * air. Anything the page copy knows and the airborne copy does not is a
+ * visible change at the swap frame.
+ */
+.gen-sheet:not([data-front]) .gen-window {
+  border-color: var(--rule);
+}
+
+.gen-sheet:not([data-front]) .gen-lamp,
+.gen-sheet:not([data-front]) .gen-lamp[data-role='minimize'] {
+  background: var(--bench-lo);
+  border-color: var(--rule);
+}
+
+.gen-sheet:not([data-front]) .gen-title {
+  color: var(--ink-faint);
+}
+
+/* A sleeping window's minimize lamp still works — pressing any window's
+ * widget focuses that window first, everywhere — so it still answers the
+ * cursor. Specificity has to beat the dimming rule above, which is why
+ * these are spelled out again rather than inherited. */
+.gen-sheet:not([data-front]) .gen-lamp[data-role='minimize']:hover,
+.gen-sheet:not([data-front]) .gen-lamp[data-role='minimize'][data-hover] {
+  background: var(--signal-lit);
+  border-color: var(--rule-hard);
+}
+
+.gen-body {
+  position: relative;
+  flex: 1;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── the film ────────────────────────────────────────────────────────
+ *
+ * Borderless: no padding, no gap, no mat. The clip runs to all four
+ * edges of the window's inside, so what the genie folds is an image
+ * with nothing between it and the fold.
+ *
+ * `object-fit: cover` rather than `fill` because the window is
+ * resizable in principle and a stretched face is the one distortion the
+ * eye names instantly. The clip is cropped and scaled to exactly this
+ * box's 2x by tools/make-film.sh, so at rest cover crops nothing and
+ * every shipped pixel is a pixel that gets displayed. */
+.gen-body[data-fill] {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.gen-film {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* A video is its own compositor layer and would otherwise sit above
+   * the window's border on the desk copy; the window clips its
+   * children, so this only has to stop the layer from rounding its own
+   * corners out of the clip. */
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* ── the running content ─────────────────────────────────────────────
+ *
+ * Three shapes crossing the window, behind the type. They are here to
+ * be WATCHED DURING A FLIGHT: a snapshot would freeze them, so their
+ * motion is the scene's own proof that the sheet is a live page under
+ * a warp rather than a picture of one.
+ *
+ * Which property moves them is therefore load-bearing, not a style
+ * choice. A transform animation is handed to the compositor and never
+ * repaints its subtree — the capture is driven by paint, so the shapes
+ * would sail along in the DOM and sit perfectly still in the texture,
+ * demonstrating the exact opposite of the point. `left`/`top` on an
+ * out-of-flow box repaints without reflowing anything around it, which
+ * is what keeps the paint counter (and the upload) advancing.
+ */
+.gen-play {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Positioned siblings paint above an in-flow sibling regardless of
+ * order, so the type has to claim its layer explicitly or the shapes
+ * would cross in front of it. */
+.gen-body > :not(.gen-play) {
+  position: relative;
+  z-index: 1;
+}
+
+.gen-shape {
+  position: absolute;
+  width: var(--sz);
+  height: var(--sz);
+  color: var(--rule);
+  /* Linear and alternate: a bounce carries constant speed and reverses
+   * at the wall. Easing here would read as drifting, not travelling. */
+  animation:
+    gen-bounce-x var(--px) linear infinite alternate,
+    gen-bounce-y var(--py) linear infinite alternate;
+}
+
+/* Periods share no small common multiple, so the three never fall into
+ * a repeating formation. */
+.gen-shape[data-shape='quadrato'] {
+  --sz: 38px;
+  --px: 5.1s;
+  --py: 3.4s;
+}
+
+.gen-shape[data-shape='cerchio'] {
+  --sz: 28px;
+  --px: 3.7s;
+  --py: 4.9s;
+  color: var(--signal);
+}
+
+.gen-shape[data-shape='triangolo'] {
+  --sz: 32px;
+  --px: 6.3s;
+  --py: 2.7s;
+}
+
+@keyframes gen-bounce-x {
+  from {
+    left: 0;
+  }
+  to {
+    left: calc(100% - var(--sz));
+  }
+}
+
+@keyframes gen-bounce-y {
+  from {
+    top: 0;
+  }
+  to {
+    top: calc(100% - var(--sz));
+  }
+}
+
+/* Stilled, they still say what they are for — three marks placed in the
+ * window, carried by the warp like everything else on the sheet. */
+@media (prefers-reduced-motion: reduce) {
+  .gen-shape {
+    animation: none;
+  }
+
+  .gen-shape[data-shape='quadrato'] {
+    left: 8%;
+    top: 12%;
+  }
+
+  .gen-shape[data-shape='cerchio'] {
+    left: 62%;
+    top: 58%;
+  }
+
+  .gen-shape[data-shape='triangolo'] {
+    right: 6%;
+    top: 8%;
+  }
+}
+
+.gen-body h2 {
+  font: 700 24px/1.2 var(--display);
+}
+
+.gen-body p {
+  color: var(--ink-mute);
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+/* The study plate. The figure is drawn at its viewBox size so one
+ * strokeWidth is one rendered pixel-and-a-half — the same hairline the
+ * dock's 20px marks are cut at, which is what lets a 104px drawing and a
+ * 13px drawing read as the same hand. */
+.gen-figure {
+  display: grid;
+  place-items: center;
+  padding: 6px 0 2px;
+  color: var(--ink);
+}
+
+.gen-figure svg {
+  display: block;
+}
+
+.gen-field {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--rule-hard);
+  border-radius: var(--radius);
+  background: var(--bench-hi);
+  color: var(--ink);
+  font: 14px/1.4 var(--body);
+  padding: 9px 11px;
+}
+
+.gen-field:focus {
+  outline: 2px solid var(--signal);
+  outline-offset: -1px;
+}
+
+.gen-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-mute);
+  cursor: pointer;
+}
+
+/* ── the dock ───────────────────────────────────────────────────── */
+
+/* No tray: the bays sit on the bench, and the row is a row and nothing
+ * else. What the tray used to supply has to be supplied anyway, so the
+ * two numbers it was really carrying stay behind as spacing.
+ *
+ * The gap is 14px because the working bay grows into it: docked, that
+ * bay is 1.34x (genieDock.ts), leaning ~9px toward each neighbour. Only
+ * the transform grows, so the bays beside it hold their ground and the
+ * swollen one passes in front. */
+.gen-dock {
+  display: flex;
+  gap: 14px;
+  /* The room a 1.34x bay needs to swell DOWN from its fixed mouth (see
+   * the bay's transform-origin) without reaching the bottom of the
+   * page. A ring's peak may briefly press past it — a bounce that
+   * overshoots reads as physics; a resting overhang would read as a
+   * mistake. */
+  padding-bottom: 18px;
+  margin-bottom: 32px;
+}
+
+/* Bays, not icons: each tile holds one hairline drawing at a single
+ * stroke weight, so the row reads as one hand's marks. All four are
+ * live now — each bay is the container for the window whose figure it
+ * draws, and the drawing is what tells you which. */
+.gen-tile {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  background: var(--bench-hi);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink-faint);
+  user-select: none;
+}
+
+.gen-tile svg {
+  display: block;
+}
+
+/* A window's bay — the container the sheet pours into, not a frame
+ * around a picture of it. Its SIZE is written per-frame from the drive
+ * (Driver in Genie.tsx, genieDock.ts's dockPose): transform stays OUT of
+ * this transition list on purpose, or a CSS easing would fight that
+ * write every frame. The transition here is paint only — the border and
+ * mouth seam still cross-fade on the data-filled flip. */
+.gen-tile[data-role='window'] {
+  position: relative;
+  padding: 0;
+  cursor: default;
+  color: var(--ink-mute);
+  /* TOP centre, not bottom: dockY is this box's top edge, captured at
+   * press time and fixed for the whole pour. Scaling from the top keeps
+   * that edge — the mouth — exactly where the sheet is actually landing,
+   * and the container bulges DOWNWARD around it, the way a vessel fills
+   * below a fixed opening. Scaling from the bottom would have walked the
+   * drawn mouth up and away from the real one as the bay grew. */
+  transform-origin: 50% 0;
+  transition: color 140ms linear, border-color 140ms linear;
+}
+
+/* The mark's pane — the LEVEL the bay is holding, not a state it is in.
+ * The stroke around it never changes, so the drawing survives whatever
+ * the level does; only what is INSIDE it moves.
+ *
+ * The pane is always the signal colour, and what `--pour` moves is the
+ * BOTTOM of it: the fill is held to the top edge and grows downward as
+ * the drive writes --pour every frame (Genie.tsx). Downward and not up,
+ * because the sheet arrives from above and lands on the bay's top edge —
+ * a level that rose to meet it would be travelling against the only
+ * motion on screen. The mark fills as the window pours in and empties
+ * upward as it pours out, and a hand scrubbing the drag moves the level
+ * under its own finger — none of which a `fill` that flips on a class
+ * could do, because there is no one moment at which a window becomes
+ * docked when a hand is holding the pour halfway.
+ *
+ * `fill-box` is stated rather than left to the default: percentages in
+ * inset() need a box to be percentages OF, and the one that means
+ * anything here is the mark's own — half of the circle, not half of the
+ * 26px viewport the circle is drawn in. */
+.gen-pane {
+  fill: var(--signal);
+  clip-path: inset(0 0 calc((1 - var(--pour, 0)) * 100%) 0) fill-box;
+}
+
+/* The mouth, drawn: the bay's whole top edge is the opening, because
+ * that is exactly what the law pours through — measure() hands the warp
+ * slotHalf = rect.width / 2, so the sheet's bottom edge is the icon's
+ * width. The inset −1px on each side covers the border, making this the
+ * full 52px border-box span rather than the 50px padding box.
+ *
+ * It deliberately does NOT counter-scale against the bay's swell: the
+ * mouth grows with the icon (the Driver scales slotHalf by the same
+ * dockSwell), so a seam that held still would be the one telling the
+ * lie. Empty, whatever is behind the bay shows through the opening —
+ * which is the bench now that the tray is gone, and has to be stated as
+ * the bench: a seam still painted the tray's colour would be a grey line
+ * across the top of every empty bay with nothing to explain it. */
+.gen-tile[data-role='window']::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  height: 1px;
+  background: var(--bench);
+  transition: background-color 140ms linear, height 140ms linear;
+}
+
+/* Filled: the wireframe STAYS and gains contents — the pane fills, the
+ * notch seals into a seam, and the bay holds the swollen size it rang
+ * out on landing (both size and ring written per-frame, see above).
+ * The border deliberately does NOT light: pane and seam already say
+ * occupied twice, and leaving the border neutral gives hover something
+ * of its own to say. */
+.gen-tile[data-role='window'][data-filled='true'] {
+  cursor: pointer;
+  /* A swollen bay clears the 14px gap at rest, but a landing ring
+   * overshoots past it — and only a bay that is holding something ever
+   * rings, so raising exactly those is enough for the overshoot to pass
+   * IN FRONT of its neighbours instead of tangling edges with them. */
+  z-index: 1;
+}
+
+.gen-tile[data-role='window'][data-filled='true']::before {
+  height: 2px;
+  background: var(--signal);
+}
+
+.gen-tile[data-role='window'][data-filled='true']:hover {
+  border-color: var(--signal-lit);
+}
+
+.gen-tile[data-role='window'][data-filled='true']:hover .gen-pane {
+  fill: var(--signal-lit);
+}
+
+.gen-tile[data-role='window'][data-filled='true']:hover::before {
+  background: var(--signal-lit);
+}
+
+.gen-tile[data-role='window']:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* The overlay canvas — same discipline as flight: never able to eat a
+ * click unless the scene has switched it solid over matter. */
+.gen-overlay,
+.gen-overlay > canvas {
+  pointer-events: none;
+}
