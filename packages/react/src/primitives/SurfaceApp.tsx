@@ -16,7 +16,7 @@ import { useSourceHost } from './useSourceHost'
 // from the scene — pass what it needs through `content`.
 
 export interface SurfaceAppProps
-  extends Omit<ComponentProps<typeof Surface>, 'html' | 'onSource'> {
+  extends Omit<ComponentProps<typeof Surface>, 'frame' | 'html' | 'onSource'> {
   /** The React tree to render into the Surface's source DOM. */
   content: ReactNode
   /**

@@ -1,0 +1,142 @@
+// Real-Chrome receipt and RGB gate for the public frame-backed Surface.
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
+
+import puppeteer from 'puppeteer-core'
+import { createServer } from 'vite'
+
+const here = path.dirname(fileURLToPath(import.meta.url))
+const repoRoot = path.resolve(here, '..', '..')
+
+const CHROME_CANDIDATES = [
+  process.env.CHROME_PATH,
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/chromium-browser',
+  '/usr/bin/chromium',
+].filter(Boolean)
+
+const chromePath = CHROME_CANDIDATES.find((candidate) => existsSync(candidate))
+if (!chromePath) {
+  console.error('frame-surface gate: no Chrome executable found (set CHROME_PATH)')
+  process.exit(1)
+}
+
+let server
+let browser
+const deadline = setTimeout(() => {
+  console.error('frame-surface gate: hard 45s deadline hit')
+  process.exit(1)
+}, 45_000)
+
+try {
+  server = await createServer({
+    configFile: false,
+    root: here,
+    logLevel: 'warn',
+    resolve: {
+      alias: {
+        '@munari/core': path.join(repoRoot, 'packages', 'core', 'src', 'index.ts'),
+        '@petepetrash/munari': path.join(repoRoot, 'packages', 'react', 'src', 'index.ts'),
+      },
+    },
+    server: {
+      host: '127.0.0.1',
+      port: 0,
+      fs: { allow: [repoRoot, here] },
+    },
+  })
+  await server.listen()
+
+  browser = await puppeteer.launch({
+    executablePath: chromePath,
+    headless: true,
+    args: [
+      '--enable-webgl',
+      '--ignore-gpu-blocklist',
+      '--enable-unsafe-swiftshader',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+      ...(process.env.CI ? ['--no-sandbox'] : []),
+    ],
+  })
+
+  const page = await browser.newPage()
+  await page.setViewport({ width: 512, height: 256, deviceScaleFactor: 1 })
+  const pageProblems = []
+  page.on('pageerror', (error) => pageProblems.push(String(error)))
+  page.on('console', (message) => {
+    if (message.type() === 'error' && !/Failed to load resource/.test(message.text())) {
+      pageProblems.push(message.text())
+    }
+  })
+
+  const url = server.resolvedUrls.local[0]
+  await page.goto(url, { waitUntil: 'load' })
+  await page.waitForFunction(() => window.__frameSurfaceGate?.ready === true, {
+    timeout: 10_000,
+  })
+
+  let gateTimeout
+  const result = await Promise.race([
+    page.evaluate(() => window.__frameSurfaceGate.run()),
+    new Promise((_, reject) => {
+      gateTimeout = setTimeout(
+        () => reject(new Error('frame-surface gate: result timed out')),
+        15_000,
+      )
+    }),
+  ]).finally(() => clearTimeout(gateTimeout))
+
+  const receiptTrace = result.receipts
+    .map(
+      ({ receipt }) =>
+        `${receipt.frame.generation}@source-${receipt.frame.sourceId}/epoch-${receipt.surfaceEpoch}`,
+    )
+    .join(', ')
+  console.log(`frame-surface: receipts [${receiptTrace}]`)
+  console.log(
+    `frame-surface: replacement renders ${result.replacementRenderSamples.length}, ` +
+      `clear frames ${result.replacementClearFrames}, stale old-source receipts ` +
+      `${result.staleOldSourceReceipts}`,
+  )
+  for (const acquisition of result.acquisitionEvidence) {
+    console.log(
+      `frame-surface: reacquire ${acquisition.cycle} published ` +
+        `[${acquisition.publishedGenerations.join(', ')}] while released ` +
+        `${acquisition.releasedSurfaceAbsent ? 'yes' : 'NO'}, receipt ` +
+        `${acquisition.receiptGeneration}@epoch-${acquisition.surfaceEpoch}, renders ` +
+        `${acquisition.renderSamples}, clear ${acquisition.clearFrames}, mismatched ` +
+        `${acquisition.mismatchedFrames}, RGB error ${acquisition.receiptRgbError}, ` +
+        `mesh/material/geometry ${acquisition.meshId}/${acquisition.materialId}/` +
+        `${acquisition.geometryId}`,
+    )
+  }
+  console.log(
+    `frame-surface: live replacement identity ` +
+      `${result.liveReplacementIdentityPreserved ? 'preserved' : 'changed'}, ` +
+      `reacquisition objects ${result.reacquisitionObjectsFresh ? 'fresh' : 'reused'}, ` +
+      `default unlit ${result.defaultUnlitVerified ? 'verified' : 'FAILED'}, ` +
+      `worst RGB error ${result.worstRgbError}`,
+  )
+
+  if (pageProblems.length) {
+    console.error('frame-surface gate: page errors during the run:')
+    for (const problem of pageProblems) console.error(`  ${problem}`)
+    process.exitCode = 1
+  } else if (!result.passed) {
+    console.error('frame-surface gate FAILED')
+    console.error(JSON.stringify(result, null, 2))
+    process.exitCode = 1
+  } else {
+    console.log(
+      'frame-surface gate PASSED: live replacement and 3 custody cycles kept current sRGB pixels.',
+    )
+  }
+} finally {
+  clearTimeout(deadline)
+  await browser?.close()
+  await server?.close()
+}

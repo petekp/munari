@@ -31,6 +31,7 @@ import {
 } from '@munari/core'
 import { SURFACE_RADIUS_GLSL } from '../lib/surfaceRadiusGlsl'
 import { FocusGroupContext } from './focusContext'
+import { FrameSurface, type FrameSurfaceProps } from './FrameSurface'
 import { SurfaceContext, type SurfaceContextValue } from './SurfaceContext'
 import { useLatest } from './useLatest'
 
@@ -49,6 +50,8 @@ import { useLatest } from './useLatest'
 // `material` is omitted from the mesh props because Surface owns the material
 // slot — the prop below redefines it as a mode, not an instance.
 export interface SurfaceProps extends Omit<ThreeElements['mesh'], 'children' | 'material'> {
+  /** Frame input is a separate Surface mode; HTML and frame sources cannot mix. */
+  frame?: never
   /**
    * The HTML this surface draws: markup to parse, or an element to **adopt**.
    *
@@ -79,14 +82,14 @@ export interface SurfaceProps extends Omit<ThreeElements['mesh'], 'children' | '
   /** Fires when focus enters/leaves the live subtree. Always the latest one. */
   onFocusWithin?: (focused: boolean) => void
   /**
-   * Fires once, on the frame the texture first uploads real pixels — the
-   * moment this mesh actually carries its content. A handoff that swaps live
-   * DOM for a Surface must not hide the DOM — or draw companion chrome like
-   * a shadow — one frame early, and "how many frames until the upload" is a
-   * race that loses under load (measured: a shadow drawn on the first r3f
-   * frame stamped a card-shaped veil over the still-visible page copy,
-   * because the source hadn't painted yet). Only the upload path knows the
-   * true moment, so it says so here. Resets if the source is recreated.
+   * Fires once when the first real DOM paint is queued for texture upload.
+   * This is the legacy readiness gate used by current DOM Surfaces. It does
+   * not prove that Three uploaded or drew the texture. Frame-backed Surfaces
+   * use `onFrameDrawn`, which does provide that proof.
+   *
+   * The distinction matters: some existing scenes keep their mesh invisible
+   * until this callback runs, so changing it to wait for a draw would create
+   * a visibility deadlock. Resets if the DOM source is recreated.
    */
   onFirstUpload?: () => void
   /**
@@ -270,7 +273,7 @@ function applyMirror(tex: THREE.Texture, mirrorU: boolean) {
   tex.repeat.x = mirrorU ? -1 : 1
 }
 
-export function Surface({
+function DomSurface({
   html,
   label,
   width = 640,
@@ -763,9 +766,9 @@ export function Surface({
       }
     }
     const count = source.paintCount()
-    // Every upload funnels through here so the first-upload latch cannot
-    // care which path wins — and "first upload" is the only honest readiness
-    // signal a handoff can gate on (see the onFirstUpload prop).
+    // Every upload REQUEST funnels through here so the legacy readiness latch
+    // cannot care which paint path wins. This callback intentionally precedes
+    // the renderer receipt; see onFirstUpload's visibility-deadlock contract.
     const upload = () => {
       if (!source.painted()) return
       // three allocates GL texture storage IMMUTABLY (texStorage2D) at
@@ -963,4 +966,19 @@ export function Surface({
       )}
     </mesh>
   )
+}
+
+/**
+ * One mesh backed by either live DOM or a caller-owned frame canvas.
+ *
+ * The two paths share this public door but not an implementation body. DOM
+ * capture owns layout, focus, chrome, LOD, and pointer forwarding. A frame
+ * source already owns its pixels, so it bypasses those systems and adds an
+ * upload-to-draw receipt instead.
+ */
+export function Surface(props: FrameSurfaceProps): React.JSX.Element
+export function Surface(props: SurfaceProps): React.JSX.Element
+export function Surface(props: SurfaceProps | FrameSurfaceProps) {
+  if (props.frame !== undefined) return <FrameSurface {...props} />
+  return <DomSurface {...props} />
 }

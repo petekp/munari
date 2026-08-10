@@ -36,6 +36,40 @@ browser-driving instrument should copy them:
   silently drops these flags hands back numbers from a browser that
   cannot do the thing being measured.
 
+## frame-surface
+
+Does a public frame-backed `Surface` draw the generation it reports, with
+the source's sRGB values intact? `npm run gate:frame-surface`.
+
+The page runs a demand frameloop and reads WebGL pixels inside the mesh's draw
+receipt. It first replaces one live source with another. It then releases and
+reacquires the same persistent source three times. Each release publishes two
+frames before reacquisition. The gate requires receipts
+`[A0, A2, B0, B2, B4, B6, B8]`, a fresh surface epoch for each custody period,
+no stale receipt, no clear or wrong-color acquisition render, and sampled RGB
+within one channel value. It also checks that live replacement preserves the
+mesh, geometry, and material, and that the public default unlit material is a
+non-tone-mapped `MeshBasicMaterial` with an sRGB canvas texture.
+
+R3F currently creates its Canvas reconciler root without strict effects.
+Wrapping either the DOM root or Canvas children in `StrictMode` does not prove
+an effect rehearsal there. This gate makes no StrictMode rehearsal claim. Its
+three explicit release and reacquisition cycles test the lifecycle directly.
+This path uses an ordinary `CanvasTexture`; it does not use or enable
+`CanvasDrawElement`.
+
+## genie-film
+
+Does one video decoder and one frame canvas stay current through repeated
+Genie custody changes? `npm run gate:genie-film`.
+
+The gate runs 24 minimize and restore cycles at 4x CPU throttle. It requires
+stable decoder, canvas, and source identities; monotonic frame generations;
+exact required-to-drawn receipt tuples; complete landings; and no black or
+uncovered compositor frame. Native video loop events are reported separately
+from custody-induced media events. The Genie route uses HTML capture for its
+window chrome, so this gate launches Chrome with `CanvasDrawElement` enabled.
+
 ## sharpness
 
 Is the mesh's rendering of an element as sharp as the element?

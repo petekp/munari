@@ -9,10 +9,11 @@
 /**
  * For a custom material (`material="none"`) that wants its Surface cut to
  * the element's corners. Prepend to the fragment shader, declare the two
- * uniforms, and multiply your alpha by `munariRadiusMask(vUv)` (feed it
- * the UNMIRRORED uv you sample with). `Surface` injects this same chunk
- * into its own standard material — custom shaders opt in because only they
- * know their varyings.
+ * uniforms, and read `munariRadiusMask(vUv)` with the UNMIRRORED uv you
+ * sample. Multiply only alpha for straight-alpha output. Multiply the full
+ * vec4 for premultiplied output so RGB and alpha keep the same coverage.
+ * `Surface` injects this chunk into its own straight-alpha standard material;
+ * custom shaders opt in because only they know their varyings and alpha mode.
  */
 export const SURFACE_RADIUS_GLSL = /* glsl */ `
   uniform vec4 uMunariRadii; // tl, tr, br, bl — CSS px of the source

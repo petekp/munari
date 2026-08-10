@@ -2,24 +2,23 @@
 // come back wearing its clothes?
 //
 // A minimize is supposed to be a change of custody, not a teardown. The
-// page copy is hidden for the duration and shown again on landing, and
-// that is the whole of it: the same elements, still mounted, still
-// running. Nothing in a screenshot can tell that apart from a window
-// that was unmounted and rebuilt, because a rebuilt window looks
-// identical the instant it finishes rebuilding.
+// page canvas is hidden for the duration and shown again on landing. The
+// same canvas stays mounted, and the one decoder outside the window keeps
+// running. Nothing in a screenshot can prove those identities, because a
+// rebuilt element looks identical the instant it finishes rebuilding.
 //
 // What gives it away is anything the DOM was in the MIDDLE of. So this
 // asks three questions of a round trip, each about a thing that cannot
 // survive a remount:
 //
-//   1. IDENTITY. A property stamped on the elements before the flight is
-//      still on them after. Fresh nodes carry no stamp — this is the
-//      question stated in its most direct form, with no proxy.
+//   1. IDENTITY. A property stamped on the decoder, visible film canvas,
+//      window, and field before the flight is still on them after. Fresh
+//      nodes carry no stamp — this is the question stated directly.
 //
-//   2. THE FILM KEPT ROLLING. The video's currentTime advanced by about
-//      the wall time the round trip took. A remounted <video> restarts,
-//      and a paused one does not move at all; both read as a clip that
-//      jumps when the window comes back, which is what a viewer notices.
+//   2. THE FILM KEPT ROLLING. The persistent decoder's currentTime
+//      advanced by about the wall time the round trip took. A replaced
+//      decoder restarts, and a paused one does not move at all; both read
+//      as a clip that jumps when the window comes back.
 //
 //   3. THE TYPING SURVIVED. Text put in the field is still there. React
 //      holds that in state above the window, so it would survive a
@@ -94,8 +93,16 @@ try {
   // and answer leg 2 with a number that proves nothing.
   await page.waitForFunction(
     () => {
-      const v = document.querySelector('.gen-slot[data-win="triangolo"] video')
-      return v && v.readyState >= 2 && !v.paused && v.currentTime > 0
+      const decoder = document.querySelector('.gen-film-decoder')
+      const canvas = document.querySelector('.gen-slot[data-win="triangolo"] canvas.gen-film')
+      return (
+        decoder instanceof HTMLVideoElement &&
+        decoder.readyState >= 2 &&
+        !decoder.paused &&
+        decoder.currentTime > 0 &&
+        canvas instanceof HTMLCanvasElement &&
+        canvas.dataset.genieFilmReady === 'true'
+      )
     },
     { timeout: 15_000 },
   )
@@ -131,7 +138,8 @@ try {
       const mark = (el, n) => {
         if (el) el.__stamp = n
       }
-      mark(document.querySelector(`.gen-slot[data-win="${film}"] video`), 'film')
+      mark(document.querySelector('.gen-film-decoder'), 'decoder')
+      mark(document.querySelector(`.gen-slot[data-win="${film}"] canvas.gen-film`), 'filmCanvas')
       mark(document.querySelector(`.gen-slot[data-win="${film}"] .gen-window`), 'filmWindow')
       mark(document.querySelector(`.gen-slot[data-win="${note}"] .gen-field`), 'note')
     },
@@ -141,11 +149,20 @@ try {
 
   const readFilm = () =>
     page.evaluate((w) => {
-      const v = document.querySelector(`.gen-slot[data-win="${w}"] video`)
-      return v ? { t: v.currentTime, paused: v.paused, stamp: v.__stamp ?? null } : null
+      const decoder = document.querySelector('.gen-film-decoder')
+      const canvas = document.querySelector(`.gen-slot[data-win="${w}"] canvas.gen-film`)
+      return decoder instanceof HTMLVideoElement
+        ? {
+            t: decoder.currentTime,
+            paused: decoder.paused,
+            decoderStamp: decoder.__stamp ?? null,
+            canvasStamp: canvas?.__stamp ?? null,
+          }
+        : null
     }, FILM)
 
-  let lost = 0
+  let lostDecoder = 0
+  let lostCanvas = 0
   const drifts = []
   for (let i = 0; i < ROUNDS; i++) {
     const before = await readFilm()
@@ -164,7 +181,8 @@ try {
 
     const after = await readFilm()
     const wall = (Date.now() - wall0) / 1000
-    if (!after || after.stamp !== 'film') lost++
+    if (!after || after.decoderStamp !== 'decoder') lostDecoder++
+    if (!after || after.canvasStamp !== 'filmCanvas') lostCanvas++
     if (before && after) {
       // Modulo the clip's period, because the film loops mid-trip.
       const moved = (((after.t - before.t) % PERIOD) + PERIOD) % PERIOD
@@ -176,12 +194,14 @@ try {
     (film, note) => {
       const q = (s) => document.querySelector(s)
       const noteEl = q(`.gen-slot[data-win="${note}"] .gen-field`)
+      const decoder = q('.gen-film-decoder')
       return {
-        film: q(`.gen-slot[data-win="${film}"] video`)?.__stamp ?? null,
+        decoder: decoder?.__stamp ?? null,
+        canvas: q(`.gen-slot[data-win="${film}"] canvas.gen-film`)?.__stamp ?? null,
         window: q(`.gen-slot[data-win="${film}"] .gen-window`)?.__stamp ?? null,
         note: noteEl?.__stamp ?? null,
         typed: noteEl?.value ?? null,
-        paused: q(`.gen-slot[data-win="${film}"] video`)?.paused ?? null,
+        paused: decoder?.paused ?? null,
       }
     },
     FILM,
@@ -191,22 +211,30 @@ try {
   const worst = drifts.length ? Math.max(...drifts) : -1
 
   console.log(`\n  ${ROUNDS} round trips, film and note window together`)
-  console.log(`    the <video> node                 ${kept.film === 'film' ? 'the same one' : 'REPLACED'}`)
+  console.log(`    the media decoder                ${kept.decoder === 'decoder' ? 'the same one' : 'REPLACED'}`)
+  console.log(`    the visible film canvas          ${kept.canvas === 'filmCanvas' ? 'the same one' : 'REPLACED'}`)
   console.log(`    the window element               ${kept.window === 'filmWindow' ? 'the same one' : 'REPLACED'}`)
   console.log(`    the text field                   ${kept.note === 'note' ? 'the same one' : 'REPLACED'}`)
-  console.log(`    the film                         ${kept.paused ? 'PAUSED' : 'still playing'}`)
+  console.log(`    the decoder clock                ${kept.paused ? 'PAUSED' : 'still playing'}`)
   console.log(`    worst drift from the wall clock  ${worst < 0 ? 'n/a' : `${worst.toFixed(3)}s`}`)
   console.log(`    what was typed                   ${JSON.stringify(kept.typed)}`)
 
-  if (kept.film !== 'film' || kept.window !== 'filmWindow' || kept.note !== 'note')
+  if (
+    kept.decoder !== 'decoder' ||
+    kept.canvas !== 'filmCanvas' ||
+    kept.window !== 'filmWindow' ||
+    kept.note !== 'note'
+  )
     problems.push(
-      `the round trip replaced DOM nodes (video ${kept.film ? 'kept' : 'lost'}, window ` +
-        `${kept.window ? 'kept' : 'lost'}, field ${kept.note ? 'kept' : 'lost'}) — the window is being ` +
-        `torn down and rebuilt rather than hidden and shown`,
+      `the round trip replaced DOM nodes (decoder ${kept.decoder ? 'kept' : 'lost'}, canvas ` +
+        `${kept.canvas ? 'kept' : 'lost'}, window ${kept.window ? 'kept' : 'lost'}, field ` +
+        `${kept.note ? 'kept' : 'lost'}) — custody changed element identity`,
     )
-  if (lost)
-    problems.push(`${lost} of ${ROUNDS} round trips came back with a different <video> element`)
-  if (kept.paused) problems.push('the film is paused after the round trip — it did not keep playing')
+  if (lostDecoder)
+    problems.push(`${lostDecoder} of ${ROUNDS} round trips replaced the persistent media decoder`)
+  if (lostCanvas)
+    problems.push(`${lostCanvas} of ${ROUNDS} round trips replaced the visible film canvas`)
+  if (kept.paused) problems.push('the decoder is paused after the round trip — the film did not keep playing')
   if (worst > DRIFT_S)
     problems.push(
       `the film's clock drifted ${worst.toFixed(2)}s from the wall clock over a round trip, past the ` +

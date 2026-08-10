@@ -479,11 +479,9 @@
  * edges of the window's inside, so what the genie folds is an image
  * with nothing between it and the fold.
  *
- * `object-fit: cover` rather than `fill` because the window is
- * resizable in principle and a stretched face is the one distortion the
- * eye names instantly. The clip is cropped and scaled to exactly this
- * box's 2x by tools/make-film.sh, so at rest cover crops nothing and
- * every shipped pixel is a pixel that gets displayed. */
+ * The canvas is the one visible frame store in both DOM and WebGL. The
+ * decoder below never owns visible pixels. The clip is cropped and
+ * scaled to exactly this box's 2x by tools/make-film.sh. */
 .gen-body[data-fill] {
   padding: 0;
   gap: 0;
@@ -494,12 +492,20 @@
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  /* A video is its own compositor layer and would otherwise sit above
-   * the window's border on the desk copy; the window clips its
-   * children, so this only has to stop the layer from rounding its own
-   * corners out of the clip. */
   border-radius: inherit;
+  pointer-events: none;
+}
+
+/* Keep the sole decoder connected, composited, and eligible for video-frame
+ * callbacks without letting it own a visible pixel or a hit target. */
+.gen-film-decoder {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
   pointer-events: none;
 }
 

@@ -70,7 +70,62 @@ React root into the same live subtree:
 <SurfaceApp width={400} height={300} content={<Panel />} />
 ```
 
-Either way the content root must declare its own pixel size: the
+A caller-owned canvas can bypass DOM capture. Its frame number crosses the
+renderer with the pixels, so a handoff can wait for the exact frame Three
+uploaded and the mesh drew:
+
+```tsx
+import { createCanvasFrameSource, type FrameId } from '@petepetrash/munari'
+
+const frames = createCanvasFrameSource(canvas, { premultiplyAlpha: false })
+const required = { current: null as FrameId | null }
+
+function publishFrame() {
+  // Finish every canvas write before publishing it.
+  drawNextFrame(canvas)
+  required.current = frames.publish()
+}
+
+<Surface
+  frame={frames}
+  width={400}
+  height={300}
+  onFrameDrawn={({ frame }) => {
+    const target = required.current
+    if (
+      target &&
+      frame.sourceId === target.sourceId &&
+      frame.generation >= target.generation
+    ) {
+      releasePreviousOwner()
+    }
+  }}
+>
+  <planeGeometry args={[400, 300]} />
+</Surface>
+```
+
+The frame path uses an unlit, non-tone-mapped material by default, so scene
+lighting does not change its color. Choose `material="standard"` only when
+lighting is wanted.
+
+The canvas stays with its caller. `publish()` means new pixels are ready; it
+does not mean they were drawn. `onFrameDrawn` proves that the target mesh used
+the named upload in a renderer pass. Several publications can merge before
+one render, so receipts name only the latest frame that was actually uploaded.
+A hidden or culled mesh cannot send a draw receipt.
+
+For every premultiplied frame source, use `material="none"` and a custom
+material. This also applies when the mesh does not blend: pixels with partial
+alpha still contain alpha-weighted RGB. Do not multiply RGB by alpha again.
+Apply masks and fades to the full `vec4`, then blend with `ONE` and
+`ONE_MINUS_SRC_ALPHA` when transparency is visible.
+
+`useSurfaceTexture()` is initially null while the frame runtime is created.
+A custom material must replace or update its sampler when that hook returns
+the texture; do not leave Three bound to the first null uniform.
+
+For DOM-backed Surfaces, the content root must declare its own pixel size: the
 element is rasterized at its own layout box, and a container with
 nothing in flow to size it measures zero and draws an empty rectangle —
 with clean paints and no error.

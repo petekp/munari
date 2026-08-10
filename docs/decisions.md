@@ -1366,3 +1366,46 @@ measured.
 in a 430 px strip got equal cells under `flex: 1` and the longer ones
 printed over their neighbours'. A key is as wide as the word on it.
 Found by cropping the render — the markup looked right.
+
+## #24 — A published frame is not a presented frame (2026-08-09, core + react binding)
+
+**Decision.** A caller-owned canvas enters through a renderer-free
+`FrameSource`: stable source identity, monotonic generation, fixed sRGB and
+alpha interpretation, and a notification after the producer finishes a
+write. The React binding owns the GPU half. It samples the generation inside
+Three's texture upload callback and releases it only after the target mesh
+renders. The lab sees `{ sourceId, generation }`, never Three callbacks.
+
+The distinction closes the gap the DOM `Surface` cannot close for a caller.
+Setting `texture.needsUpdate` asks for an upload. It does not prove which of
+several fast canvas writes Three chose, and it does not prove that a visible
+mesh used those pixels. Several publications may therefore merge; a receipt
+names only the frame that crossed both renderer boundaries.
+
+The frame path is a separate internal primitive behind the public `Surface`
+door. It does not branch through DOM adoption, layout, LOD, chrome, focus, or
+pointer forwarding. The caller keeps the canvas. The binding owns only its
+`CanvasTexture`, applies the pinned texture filter policy, reallocates if the
+backing dimensions change, and invalidates demand-driven render loops when a
+new frame arrives.
+
+Frame input defaults to an unlit, non-tone-mapped material. A standard
+material is an explicit request for scene lighting, so it is not a color-exact
+handoff. All premultiplied input uses the custom-material seam, even on an
+opaque mesh: the texture already carries alpha-weighted RGB. Masks multiply
+the full vec4, and transparent output blends ONE / ONE_MINUS_SRC_ALPHA without
+multiplying RGB again.
+
+`onFirstUpload` keeps its existing DOM-ready meaning. Genie and Veil hide the
+only renderable ancestor until that callback runs; redefining it as a draw
+receipt would make the draw it waits for impossible. Frame-backed Surfaces
+use `onFrameDrawn`. A later DOM receipt needs separate ready and presented
+states and a renderable acquisition path.
+
+**Evidence.** The disposable ordering spike recorded 285 writes, 165 real
+uploads and draws, zero false receipts, and zero reordering under bursts and
+CPU stalls. The retained Chrome gate uses the shipped public API in a demand
+frameloop, merges publications, replaces a live source, releases and
+reacquires it three times, and requires receipts
+`[A0, A2, B0, B2, B4, B6, B8]`. Every receipt is checked against the drawn
+sRGB pixels in the framebuffer.

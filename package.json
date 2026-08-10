@@ -16,6 +16,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p apps/lab && tsc --noEmit -p registry",
     "lint": "oxlint . --deny-warnings",
     "build": "npm run build -w @petepetrash/munari",
+    "gate:frame-surface": "node instruments/frame-surface/run.mjs",
+    "gate:genie-film": "node instruments/genie-drain/film-window.mjs",
     "gate:idle-zero": "node instruments/idle-zero/run.mjs",
     "dev": "npm run dev -w @munari/lab",
     "gate:sharpness": "node instruments/sharpness/run.mjs",

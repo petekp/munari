@@ -1,18 +1,15 @@
-// film-stays-lit — does the film go dark on the frame the sheet takes
-// over?
+// film-stays-lit — does the film go dark when its canvas moves from DOM
+// custody to WebGL custody?
 //
-// film-window.mjs already asks the two hard questions about video: that
-// decoded frames reach the texture at all, and that both copies show the
-// same instant of the clip. Both pass. Both are asked of a flight that
-// is already under way, and neither can see the first moment of one.
+// film-window.mjs checks the long run: one decoder, one canvas, advancing
+// generations, and repeated landings. This gate looks only at the first
+// moment of a flight.
 //
-// That moment is the one video has a problem the markup windows do not.
-// Every other window's airborne copy is a fresh mount of markup, and
-// markup renders the instant it is attached. A <video> does not: a new
-// element starts at readyState 0 with no frame to show, and a box with
-// no frame in it is a hole. The file is cached and the wait is short,
-// which is exactly why it reads as a FLICKER rather than as a window
-// that is simply blank for a while.
+// The film now has one persistent decoder and one persistent page canvas.
+// No second video starts during takeoff. A hole can still appear if the
+// WebGL sheet becomes visible before it has drawn the held canvas frame.
+// The wait is short, which is exactly why that fault reads as a flicker
+// rather than as a window that is simply blank for a while.
 //
 // So this reads the composited output — the pixels a viewer gets — and
 // asks one question of the film's own rectangle:
@@ -51,7 +48,7 @@ const CHROME = [
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-// The one window whose content is decoded video.
+// The one window whose canvas is fed by decoded video.
 const WIN = 'triangolo'
 // The clip's own length, from tools/make-film.sh — how long the baseline
 // has to watch to have seen every shot in it.
@@ -102,8 +99,16 @@ try {
   // Nothing below means anything until the clip is actually running.
   await page.waitForFunction(
     (w) => {
-      const v = document.querySelector(`.gen-slot[data-win="${w}"] video`)
-      return v && v.readyState >= 2 && !v.paused && v.currentTime > 0
+      const decoder = document.querySelector('.gen-film-decoder')
+      const canvas = document.querySelector(`.gen-slot[data-win="${w}"] canvas.gen-film`)
+      return (
+        decoder instanceof HTMLVideoElement &&
+        decoder.readyState >= 2 &&
+        !decoder.paused &&
+        decoder.currentTime > 0 &&
+        canvas instanceof HTMLCanvasElement &&
+        canvas.dataset.genieFilmReady === 'true'
+      )
     },
     { timeout: 15_000 },
     WIN,
@@ -133,7 +138,9 @@ try {
   // corners and its shadow stay out of the measurement. What is left is
   // picture and nothing else.
   const rect = await page.evaluate((w) => {
-    const r = document.querySelector(`.gen-slot[data-win="${w}"] video`).getBoundingClientRect()
+    const canvas = document.querySelector(`.gen-slot[data-win="${w}"] canvas.gen-film`)
+    if (!(canvas instanceof HTMLCanvasElement)) throw new Error('film canvas was not found')
+    const r = canvas.getBoundingClientRect()
     const inx = Math.round(r.width * 0.08)
     const iny = Math.round(r.height * 0.08)
     return {
@@ -289,8 +296,8 @@ try {
   if (holes)
     problems.push(
       `on ${holes} frames the film's rectangle was more nearly black than the clip ever gets ` +
-        `(${darkCeil.toFixed(1)}% at its darkest, ${worst.dark.toFixed(1)}% here) — the airborne copy is ` +
-        `showing an empty box where the picture should be`,
+        `(${darkCeil.toFixed(1)}% at its darkest, ${worst.dark.toFixed(1)}% here) — the WebGL handoff ` +
+        `showed an empty box where the held canvas picture should be`,
     )
 
   console.log(`\nfilm-stays-lit: ${problems.length === 0 ? 'PASS — the picture never goes out' : 'FAIL'}`)

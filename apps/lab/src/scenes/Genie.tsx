@@ -25,12 +25,16 @@
 // landing's leftover momentum is consumed by a settle wobble whose
 // perceptual budget — sub-half-pixel within 350ms — is pinned by test.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
+  Surface,
   SurfaceApp,
   cameraDistance,
+  type FrameDrawReceipt,
+  type FrameId,
+  type FrameSource,
   useSurfaceChrome,
   useSurfaceTexture,
 } from '@petepetrash/munari'
@@ -52,7 +56,17 @@ import {
   pourOut,
 } from './genieDrive'
 import { dockPose, dockRingDone, dockSwell } from './genieDock'
-import { GENIE_FRAG, GENIE_VERT } from './genieShaders'
+import {
+  GENIE_FILM_FRAG,
+  GENIE_FRAG,
+  GENIE_VERT,
+} from './genieShaders'
+import {
+  GENIE_FILM_HEIGHT,
+  GENIE_FILM_WIDTH,
+  createGenieFilmController,
+  type GenieFilmController,
+} from './genieFilm'
 // Archival footage, cut and encoded by tools/make-film.sh. The clip it
 // replaced was generated, so its recipe was its source; this one is a
 // binary, and a binary cannot explain itself — the take, the crop, and
@@ -118,6 +132,16 @@ interface GenieFlight {
    *  shade at all, which switches the shader's fade off by arithmetic
    *  rather than by a branch. */
   shade: [number, number]
+  /** Present only for the one window whose pixels come from the shared film source. */
+  film?: {
+    source: FrameSource
+    required: FrameId
+    token: number
+    /** left, top, width, height in normalized capture-root coordinates. */
+    rect: [number, number, number, number]
+    /** Bottom corner radius in source CSS pixels. */
+    radius: number
+  }
 }
 
 // ── the drive box: who owns t right now, shared by refs ─────────────────
@@ -306,12 +330,6 @@ function PlayLayer() {
   )
 }
 
-/** The clip's length in seconds — must equal LEN in tools/make-film.sh.
- *  A fallback only: the phase below is derived from the FILE's duration
- *  whenever the decoder has read it, so the two copies agree even if
- *  this number and the asset ever drift apart. */
-const FILM_PERIOD = 12
-
 // The window whose content is DECODED VIDEO. Everything else on this
 // desk is markup the replay was always going to catch; a video frame is
 // the one kind of content you would expect it to miss, because frames
@@ -326,96 +344,14 @@ const FILM_PERIOD = 12
  *  from inside the capture root a frame or two late. */
 const FILM_WIN: WinId = 'triangolo'
 
-/** How long a sheet will wait for its film before going up without it. A
- *  seek measures 12ms at rest and 20ms at its worst (2026-08-09, twenty
- *  takeoffs), so this is an order of magnitude clear of the thing it is
- *  bounding — it exists so that a decoder which never answers costs a
- *  frame of black rather than a gesture that never starts. */
-const FILM_WAIT_MS = 150
-
-function FilmLayer({ onPicture }: { onPicture?: () => void }) {
-  // Read through a ref, so the ref callback below can be created once.
-  // A `seek` whose identity changed with its props would be detached and
-  // reattached on every re-render of the capture root, and each attach
-  // issues a fresh seek — the element would never stop seeking, which is
-  // the very state this is here to get out of.
-  const latest = useRef(onPicture)
-  latest.current = onPicture
-  // The same problem PlayLayer solves with a negative animation-delay,
-  // and the same solution. Every window exists twice — once on the desk,
-  // once inside the capture root — and the airborne copy is a fresh
-  // mount, so its <video> would start at currentTime 0 and the swap
-  // frame, which is meant to be invisible, would cut the film back to
-  // the top of the clip. Neither copy can see the other, but both can
-  // read the document clock, so both derive the same phase from it.
-  const seek = useCallback(
-    (el: HTMLVideoElement | null) => {
-      if (!el) return
-      // Fired once, when this element has the frame it was mounted to
-      // show. Only the airborne copy is listening; see `lit` on the page.
-      let toldPicture = false
-      const picture = () => {
-        if (toldPicture) return
-        toldPicture = true
-        latest.current?.()
-      }
-      const go = () => {
-        // The period is taken from the FILE, not from the constant, so a
-        // re-render at another length cannot leave the two copies deriving
-        // their phase from different numbers. Both then satisfy
-        // currentTime = now mod duration at all times — the page copy
-        // because it seeks to its own now at mount and then advances in
-        // real time, the airborne copy because it seeks to the same thing
-        // at its own, later, mount.
-        const period = el.duration || FILM_PERIOD
-        el.currentTime = (performance.now() / 1000) % period
-        // Muted, so autoplay is permitted; the promise still rejects if
-        // the element is torn down mid-flight, which is not an error.
-        void el.play().catch(() => {})
-        // A seeking <video> has NO frame — not the old one, not the new
-        // one — and a box with no frame in it is a hole. Everything else
-        // on this desk is markup, which renders the instant it is
-        // attached; this is the one content that has a gap between
-        // existing and being a picture, and the capture replays the gap
-        // faithfully as black. Measured: one composited frame of pure
-        // black per takeoff at rest, five under load
-        // (instruments/genie-drain/film-stays-lit.mjs).
-        if (el.seeking) el.addEventListener('seeked', picture, { once: true })
-        else picture()
-      }
-      // HAVE_FUTURE_DATA, not HAVE_METADATA. A seek issued the instant the
-      // duration is known is served by a decoder that still has nothing
-      // buffered, and lands late by however long the fetch takes — which
-      // is charged to the clip's position and never paid back. The page
-      // copy pays that at load (cold) and the airborne copy at takeoff
-      // (warm, the file long since cached), so seeking early makes the two
-      // copies disagree by the DIFFERENCE of two unrelated latencies:
-      // measured at 69ms, which is ~7px of travel on the fastest flock and
-      // therefore a visible tick at the swap. Waiting until the decoder
-      // can honour a seek promptly makes both seeks warm, and the
-      // disagreement collapses to the frame quantum.
-      if (el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) go()
-      else el.addEventListener('canplay', go, { once: true })
-      // The deadline. Nothing above is guaranteed to fire — a decoder can
-      // fail, and a sheet that waits forever is a minimize that never
-      // starts. Late is a frame of black; never is a broken desk.
-      setTimeout(picture, FILM_WAIT_MS)
-    },
-    [],
-  )
-
+function FilmLayer({ attach }: { attach: React.RefCallback<HTMLCanvasElement> }) {
   return (
-    <video
-      ref={seek}
+    <canvas
+      ref={attach}
       className="gen-film"
-      src={filmUrl}
-      muted
-      loop
-      playsInline
-      autoPlay
-      preload="auto"
+      width={GENIE_FILM_WIDTH}
+      height={GENIE_FILM_HEIGHT}
       aria-hidden
-      tabIndex={-1}
     />
   )
 }
@@ -432,10 +368,8 @@ interface WindowBodyProps {
   checked: boolean
   setChecked: (v: boolean) => void
   onMinimize: (slow: boolean) => void
-  /** Only the airborne copy passes this, and only the film window fires
-   *  it: the sheet is not fit to be seen until its <video> has a frame.
-   *  See `lit` on the page. */
-  onPicture?: () => void
+  /** Only the page copy gets the persistent film canvas. */
+  attachFilmCanvas?: React.RefCallback<HTMLCanvasElement>
 }
 
 // The capture root is `.gen-sheet`, not `.gen-window`, and the extra box
@@ -456,7 +390,7 @@ function WindowBody({
   checked,
   setChecked,
   onMinimize,
-  onPicture,
+  attachFilmCanvas,
 }: WindowBodyProps) {
   const study = scheda.id === 'quadrato' || scheda.id === 'cerchio' ? STUDY[scheda.id] : null
   return (
@@ -498,7 +432,7 @@ function WindowBody({
           // Borderless: the body's own padding would frame the film, and
           // a film with a mat around it is a picture of a film.
           <div className="gen-body" data-fill="film">
-            <FilmLayer onPicture={onPicture} />
+            {attachFilmCanvas ? <FilmLayer attach={attachFilmCanvas} /> : null}
           </div>
         ) : study ? (
           <div className="gen-body">
@@ -638,7 +572,7 @@ function GenieMaterial({ shade }: { shade: [number, number] }) {
   // shade composites to the same luma as the page copy's, which is what
   // the swap frame needs. (Measured: straight upload with a premultiplied
   // blend puts the airborne shade 14 luma pale of the DOM's.)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!texture) return
     texture.premultiplyAlpha = true
     texture.needsUpdate = true
@@ -673,6 +607,117 @@ function GenieMaterial({ shade }: { shade: [number, number] }) {
   )
 }
 
+interface FilmCompositeMaterialProps {
+  chromeTexture: THREE.Texture | null
+  film: NonNullable<GenieFlight['film']>
+  shade: [number, number]
+  width: number
+  height: number
+  show: boolean
+}
+
+function FilmCompositeMaterial({
+  chromeTexture,
+  film,
+  shade,
+  width,
+  height,
+  show,
+}: FilmCompositeMaterialProps) {
+  const filmTexture = useSurfaceTexture()
+  const uniforms = useMemo(
+    () => ({
+      tMap: { value: chromeTexture },
+      tFilm: { value: filmTexture },
+      uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
+      uMunariSize: { value: new THREE.Vector2(1, 1) },
+      uShadeEdge: { value: new THREE.Vector2(1, 1) },
+      uShadeFade: { value: new THREE.Vector2(SHADE_FADE[0], SHADE_FADE[1]) },
+      uFilmRect: { value: new THREE.Vector4(0, 0, 1, 1) },
+      uFilmRadius: { value: 0 },
+    }),
+    [chromeTexture, filmTexture],
+  )
+  uniforms.tMap.value = chromeTexture
+  uniforms.tFilm.value = filmTexture
+  uniforms.uMunariSize.value.set(width, height)
+  uniforms.uShadeEdge.value.set(shade[0], shade[1])
+  uniforms.uFilmRect.value.set(...film.rect)
+  uniforms.uFilmRadius.value = film.radius
+
+  return (
+    <shaderMaterial
+      // The first child render has no FrameSurface texture. Rebuild the
+      // material when either sampler appears; reusing the first uniforms
+      // object leaves Three bound to that initial null value.
+      key={`${chromeTexture?.uuid ?? 'none'}:${filmTexture?.uuid ?? 'none'}`}
+      uniforms={uniforms}
+      vertexShader={GENIE_VERT}
+      fragmentShader={GENIE_FILM_FRAG}
+      transparent
+      premultipliedAlpha
+      depthWrite={false}
+      toneMapped={false}
+      side={THREE.DoubleSide}
+      colorWrite={show}
+    />
+  )
+}
+
+interface FilmCompositeSurfaceProps {
+  f: GenieFlight
+  geometry: React.RefObject<THREE.PlaneGeometry | null>
+  show: boolean
+  onFrameDrawn: (receipt: FrameDrawReceipt) => void
+}
+
+/**
+ * The outer Surface supplies static window chrome. This inner Surface supplies
+ * the one persistent film canvas and owns the exact upload-to-draw receipt.
+ */
+function FilmCompositeSurface({
+  f,
+  geometry,
+  show,
+  onFrameDrawn,
+}: FilmCompositeSurfaceProps) {
+  const film = f.film
+  const chromeTexture = useSurfaceTexture()
+  const { width, height } = useSurfaceChrome()
+
+  // The chrome texture carries a translucent shadow. Configure its upload
+  // before this child material can expose it to the renderer.
+  useLayoutEffect(() => {
+    if (!chromeTexture) return
+    chromeTexture.premultiplyAlpha = true
+    chromeTexture.needsUpdate = true
+  }, [chromeTexture])
+
+  if (!film) return null
+  return (
+    <Surface
+      frame={film.source}
+      material="none"
+      width={f.w}
+      height={f.h}
+      renderOrder={1}
+      frustumCulled={false}
+      raycast={() => {}}
+      onFrameDrawn={onFrameDrawn}
+    >
+      <planeGeometry ref={geometry} args={[f.w, f.h, GRID_X, GRID_Y]} />
+      <FilmCompositeMaterial
+        chromeTexture={chromeTexture}
+        film={film}
+        shade={f.shade}
+        width={width}
+        height={height}
+        show={show}
+      />
+    </Surface>
+  )
+}
+
 // ── one window's flight: whoever owns t this frame, law out, positions ──
 //
 // One instance per AIRBORNE window, mounted by the page below. Everything
@@ -703,16 +748,44 @@ interface Ring {
 
 type Dir = 'minimizing' | 'restoring'
 
+function frameCovers(receipt: FrameDrawReceipt, required: FrameId): boolean {
+  return (
+    receipt.frame.sourceId === required.sourceId &&
+    receipt.frame.generation >= required.generation
+  )
+}
+
+type GenieFilmProbeEvent =
+  | {
+      type: 'require'
+      token: number
+      direction: Dir
+      frame: FrameId
+      source: FrameSource
+      canvas: HTMLCanvasElement | null
+      video: HTMLVideoElement | null
+    }
+  | { type: 'receipt'; token: number; receipt: FrameDrawReceipt }
+  | { type: 'accept'; token: number; receipt: FrameDrawReceipt }
+  | { type: 'show'; token: number; frame: FrameId }
+  | { type: 'land'; token: number; wall: 0 | 1; frame?: FrameId }
+
+function probeFilm(event: GenieFilmProbeEvent): void {
+  const hook = (
+    window as typeof window & {
+      __genieFilmProbe?: (event: GenieFilmProbeEvent) => void
+    }
+  ).__genieFilmProbe
+  hook?.(event)
+}
+
 interface FlightProps {
   win: WinId
   dir: Dir
   air: Airborne
   ring: Ring
   ringing: boolean
-  /** Fit to be seen. Not the same as "the texture has pixels": a window
-   *  of video has pixels while its <video> is still seeking, and those
-   *  pixels are a black rectangle. The page assembles this from both
-   *  facts — see `painted` and `lit` there. */
+  /** Both the static chrome and, for film, the required generation are ready. */
   ready: boolean
   /** Paint order among the windows — renderOrder for the sheet, and the
    *  tie-break the hand's raycast uses to pick between two of them. */
@@ -720,11 +793,13 @@ interface FlightProps {
   slotOf: (win: WinId) => HTMLButtonElement | null
   kickRing: (win: WinId, vPxPerS: number) => void
   onPainted: (win: WinId) => void
+  freezeFilm: () => FrameId | null
+  onFilmReady: (win: WinId, token: number, receipt: FrameDrawReceipt) => void
   /** Fired once, on the first frame this sheet is actually drawn. The
    *  page copy's hide waits on this rather than on `painted`, so the two
    *  copies overlap instead of leaving a gap — see `shown` on the page. */
   onShown: (win: WinId) => void
-  onLand: (win: WinId, wall: 0 | 1) => void
+  onLand: (win: WinId, wall: 0 | 1, resumeFrame?: FrameId) => void
   content: React.ReactNode
 }
 
@@ -739,13 +814,18 @@ function Flight({
   slotOf,
   kickRing,
   onPainted,
+  freezeFilm,
+  onFilmReady,
   onShown,
   onLand,
   content,
 }: FlightProps) {
   const geoRef = useRef<THREE.PlaneGeometry | null>(null)
+  const filmGeoRef = useRef<THREE.PlaneGeometry | null>(null)
   const groupRef = useRef<THREE.Group | null>(null)
   const told = useRef(false)
+  const filmAcquired = useRef(false)
+  const pendingLanding = useRef<{ frame: FrameId; wall: 0 } | null>(null)
   // This flight is over. Landing asks the page to delete the flight, and
   // the page does — but that deletion has to cross into the Canvas's own
   // reconciler before this component stops existing, and under load that
@@ -763,11 +843,29 @@ function Flight({
   const landed = useRef(false)
   const f = air.f
 
+  const onFilmFrameDrawn = (receipt: FrameDrawReceipt) => {
+    const film = f.film
+    if (!film) return
+    probeFilm({ type: 'receipt', token: film.token, receipt })
+    const landing = pendingLanding.current
+    if (landing && frameCovers(receipt, landing.frame)) {
+      pendingLanding.current = null
+      landed.current = true
+      onLand(win, landing.wall, landing.frame)
+      return
+    }
+    if (!filmAcquired.current && frameCovers(receipt, film.required)) {
+      filmAcquired.current = true
+      onFilmReady(win, film.token, receipt)
+    }
+  }
+
   useFrame(({ clock }, rawDt) => {
-    if (landed.current) return
+    if (landed.current || pendingLanding.current) return
     const dt = Math.min(rawDt, 1 / 20)
     const d = air.drive
     const restoring = dir === 'restoring'
+    let landAt: 0 | 1 | null = null
 
     // The bay's transform, written every frame from the live drive. Any
     // drive mode will do — clock, grab, spring — because while a window
@@ -797,7 +895,7 @@ function Flight({
     // are a frame or more apart under load: `painted` is a state change
     // that has to cross into the Canvas's own reconciler before it
     // becomes `visible` on anything. The group knows now.
-    const drawn = groupRef.current?.visible === true
+    const drawn = f.film ? ready : groupRef.current?.visible === true
     // The page copy's hide waits on this, so it can never hide into an
     // empty frame. Fired from the loop and only once — the first frame
     // the sheet is on screen is the earliest moment the DOM copy is
@@ -841,9 +939,7 @@ function Flight({
           // slowly, and the container's ring answers the ACTUAL landing
           // speed — same divisor the settle handoff uses above.
           kickRing(win, (MIN_END_SLOPE / f.duration) * Math.abs(f.params.dockY))
-          landed.current = true
-          onLand(win, 1)
-          return
+          landAt = 1
         }
       }
     } else if (d.mode === 'grab') {
@@ -859,25 +955,22 @@ function Flight({
           // A dock landing's momentum is now the tile's ring — the
           // sheet is inside the slot, with no room to wobble on its own.
           kickRing(win, next.arrivalV * Math.abs(f.params.dockY))
-          landed.current = true
-          onLand(win, 1)
-          return
+          landAt = 1
+        } else {
+          // A rest landing wobbles: crossing speed becomes the settle's
+          // initial slope. t is decreasing into the wall, so the sheet is
+          // moving UP at contact — the wobble's first swing is upward.
+          d.mode = 'settle'
+          d.settleTau = 0
+          d.settleV = next.arrivalV * Math.abs(f.params.dockY)
         }
-        // A rest landing wobbles: crossing speed becomes the settle's
-        // initial slope. t is decreasing into the wall, so the sheet is
-        // moving UP at contact — the wobble's first swing is upward.
-        d.mode = 'settle'
-        d.settleTau = 0
-        d.settleV = next.arrivalV * Math.abs(f.params.dockY)
       }
     } else {
       // settle: the sheet is home (t = 0 exactly); the wobble hangs off
       // the top edge, anchored at the bottom — jelly, not a slab.
       d.settleTau += dt
       if (genieSettleDone(d.settleTau, d.settleV, SETTLE_DEFAULTS)) {
-        landed.current = true
-        onLand(win, 0)
-        return
+        landAt = 0
       }
     }
 
@@ -893,26 +986,41 @@ function Flight({
       ...f.params,
       slotHalf: f.params.slotHalf * dockSwell(d.t),
     }
-    const pos = geo.attributes.position as THREE.BufferAttribute
-    const uv = geo.attributes.uv as THREE.BufferAttribute
-    // Allocated on first use rather than at construction: the geometry
-    // is the library's, its vertex count is the LOD tier's to choose,
-    // and this is the only code that knows the attribute exists.
-    let sq = geo.attributes.squeeze as THREE.BufferAttribute | undefined
-    if (!sq || sq.count !== pos.count) {
-      sq = new THREE.BufferAttribute(new Float32Array(pos.count), 1)
-      geo.setAttribute('squeeze', sq)
+    for (const geometry of [geo, filmGeoRef.current]) {
+      if (!geometry) continue
+      const pos = geometry.attributes.position as THREE.BufferAttribute
+      const uv = geometry.attributes.uv as THREE.BufferAttribute
+      // Allocated on first use rather than at construction: the geometry
+      // is the library's, its vertex count is the LOD tier's to choose,
+      // and this is the only code that knows the attribute exists.
+      let sq = geometry.attributes.squeeze as THREE.BufferAttribute | undefined
+      if (!sq || sq.count !== pos.count) {
+        sq = new THREE.BufferAttribute(new Float32Array(pos.count), 1)
+        geometry.setAttribute('squeeze', sq)
+      }
+      for (let i = 0; i < pos.count; i++) {
+        // The law's v runs top → bottom (texture convention); a plane's
+        // uv.y runs bottom → top — which also makes uv.y the wobble's
+        // top-anchored weight for free.
+        const p2 = genieWarp(uv.getX(i), 1 - uv.getY(i), d.t, params)
+        pos.setXYZ(i, p2.x, p2.y + wobble * uv.getY(i), 0)
+        sq.setX(i, p2.k)
+      }
+      pos.needsUpdate = true
+      sq.needsUpdate = true
+      // Three caches this on the first raycast. The sheet changes every
+      // frame, so the next raycast must derive bounds from current vertices.
+      geometry.boundingSphere = null
     }
-    for (let i = 0; i < pos.count; i++) {
-      // The law's v runs top → bottom (texture convention); a plane's
-      // uv.y runs bottom → top — which also makes uv.y the wobble's
-      // top-anchored weight for free.
-      const p2 = genieWarp(uv.getX(i), 1 - uv.getY(i), d.t, params)
-      pos.setXYZ(i, p2.x, p2.y + wobble * uv.getY(i), 0)
-      sq.setX(i, p2.k)
+
+    if (landAt === null) return
+    if (landAt === 0 && f.film) {
+      const frame = freezeFilm()
+      if (frame) pendingLanding.current = { frame, wall: 0 }
+      return
     }
-    pos.needsUpdate = true
-    sq.needsUpdate = true
+    landed.current = true
+    onLand(win, landAt, f.film?.required)
   })
 
   return (
@@ -923,7 +1031,14 @@ function Flight({
     // the desk's own. depthWrite is off in the material for the same
     // reason: at equal depth the buffer has no opinion worth having, and
     // a sheet must never reject the one behind it.
-    <group ref={groupRef} renderOrder={stack} position={[f.wx, f.wy, 0]} visible={ready}>
+    <group
+      ref={groupRef}
+      renderOrder={stack}
+      position={[f.wx, f.wy, 0]}
+      // The film child must render with color writes disabled to earn its
+      // first receipt. Hiding this ancestor would make that receipt impossible.
+      visible={f.film ? true : ready}
+    >
       <SurfaceApp
         label="genie-window"
         width={f.w}
@@ -968,7 +1083,19 @@ function Flight({
         content={content}
       >
         <planeGeometry ref={geoRef} args={[f.w, f.h, GRID_X, GRID_Y]} />
-        <GenieMaterial shade={f.shade} />
+        {f.film ? (
+          <>
+            <meshBasicMaterial visible={false} />
+            <FilmCompositeSurface
+              f={f}
+              geometry={filmGeoRef}
+              show={ready}
+              onFrameDrawn={onFilmFrameDrawn}
+            />
+          </>
+        ) : (
+          <GenieMaterial shade={f.shade} />
+        )}
       </SurfaceApp>
     </group>
   )
@@ -1375,6 +1502,21 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
 // ── the page ────────────────────────────────────────────────────────────
 
 export function GenieApp({ chips }: { chips?: React.ReactNode }) {
+  const [filmController] = useState<GenieFilmController>(() =>
+    createGenieFilmController({
+      onError: (error) => console.warn('[munari] Genie film frame failed:', error),
+    }),
+  )
+  const nextFilmToken = useRef(0)
+  const attachFilmCanvas = useCallback<React.RefCallback<HTMLCanvasElement>>(
+    (canvas) => (canvas ? filmController.attachCanvas(canvas) : undefined),
+    [filmController],
+  )
+  const attachFilmDecoder = useCallback<React.RefCallback<HTMLVideoElement>>(
+    (video) => (video ? filmController.attachVideo(video) : undefined),
+    [filmController],
+  )
+
   // Which windows are in the air and which way each is going. Everything
   // that used to be one slot is now keyed by window, and nothing else
   // changed to make that true — the law and the drive were always
@@ -1422,21 +1564,10 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   // an overlap at the wall is invisible: the sheet is drawn exactly over
   // the window it came from.
   const [shown, setShown] = useState<Partial<Record<WinId, boolean>>>({})
-  // The airborne film has a frame in it. A third fact, and again not the
-  // one before it: `painted` says the texture has PIXELS, and a window of
-  // video has pixels while its <video> is still seeking — black ones.
-  //
-  // Every other window's airborne copy is markup, which is a picture the
-  // instant it is attached. The film's copy is a fresh <video> that has
-  // to seek to the page copy's position, and a seeking element presents
-  // no frame at all. The capture replays that honestly as an empty box:
-  // one composited frame of pure black on an idle machine, five under
-  // load (instruments/genie-drain/film-stays-lit.mjs).
-  //
-  // So the sheet does not go up until the picture is in it, and the wait
-  // is the seek — 12ms, 20ms at its worst. The page copy stands there
-  // meanwhile, which is exactly what `shown` above already arranges.
-  const [lit, setLit] = useState<Partial<Record<WinId, boolean>>>({})
+  // The exact frozen film generation has crossed both the WebGL upload
+  // and the sheet's draw. This is stronger than `painted`: it names the
+  // pixels that are safe to take over from the page canvas.
+  const [framed, setFramed] = useState<Partial<Record<WinId, boolean>>>({})
   // Which bays are still ringing. The one React-visible piece of ring
   // state, because it is what the frameloop expression needs — a ring
   // outlives its landing, so "something is moving" is wider than
@@ -1535,14 +1666,13 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     if (!win || !slotEl || !slot) return null
     // The window inside the capture root. The difference between the two
     // boxes IS the shade's band, so the drop stays stated once, in CSS.
-    const inner = winRefs.current[id]
-      ?.querySelector('.gen-window')
-      ?.getBoundingClientRect()
+    const innerEl = winRefs.current[id]?.querySelector<HTMLElement>('.gen-window')
+    const inner = innerEl?.getBoundingClientRect()
     const wx = win.left + win.width / 2 - window.innerWidth / 2
     const wy = window.innerHeight / 2 - (win.top + win.height / 2)
     const mx = slot.left + slot.width / 2 - window.innerWidth / 2
     const my = window.innerHeight / 2 - slot.top
-    return {
+    const measured: GenieFlight = {
       w: win.width,
       h: win.height,
       wx,
@@ -1575,6 +1705,46 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
       },
       duration: duration * (slow ? SLOW : 1),
     }
+    if (id !== FILM_WIN) return measured
+
+    const source = filmController.source
+    const filmEl = winRefs.current[id]?.querySelector<HTMLCanvasElement>('.gen-film')
+    const filmRect = filmEl?.getBoundingClientRect()
+    if (!source || !filmRect || !innerEl) return null
+
+    // Freeze only after all geometry is valid. A null result means that
+    // the decoder has not presented its first real frame yet, so the page
+    // keeps custody and the gesture is safely refused.
+    const required = filmController.freeze()
+    if (!required) return null
+    const style = getComputedStyle(innerEl)
+    const radius = Math.max(
+      0,
+      (Number.parseFloat(style.borderBottomLeftRadius) || 0) -
+        (Number.parseFloat(style.borderLeftWidth) || 0),
+    )
+    measured.film = {
+      source,
+      required,
+      token: ++nextFilmToken.current,
+      rect: [
+        (filmRect.left - win.left) / win.width,
+        (filmRect.top - win.top) / win.height,
+        filmRect.width / win.width,
+        filmRect.height / win.height,
+      ],
+      radius,
+    }
+    probeFilm({
+      type: 'require',
+      token: measured.film.token,
+      direction: docked.includes(id) ? 'restoring' : 'minimizing',
+      frame: required,
+      source,
+      canvas: filmController.canvas,
+      video: filmController.video,
+    })
+    return measured
   }
 
   // Every takeoff runs through here. The only thing refused is a SECOND
@@ -1627,7 +1797,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     }
     setPainted((p) => ({ ...p, [id]: false }))
     setShown((s) => ({ ...s, [id]: false }))
-    setLit((l) => ({ ...l, [id]: false }))
+    setFramed((f) => ({ ...f, [id]: false }))
     setAir((a) => ({ ...a, [id]: to }))
     return true
   }
@@ -1649,7 +1819,9 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   // Where the sheet lands decides the next custody, not which phase it
   // took off from — a minimize caught and flung home lands resting, a
   // restore flicked back down lands docked.
-  const onLand = (id: WinId, wall: 0 | 1) => {
+  const onLand = (id: WinId, wall: 0 | 1, resumeFrame?: FrameId) => {
+    const film = flights.current.get(id)?.f.film
+    if (film) probeFilm({ type: 'land', token: film.token, wall, frame: resumeFrame })
     flights.current.delete(id)
     setDocked((ds) => (wall === 1 ? [...ds.filter((x) => x !== id), id] : ds.filter((x) => x !== id)))
     // No raise here in either direction. A restore claimed the front at
@@ -1671,19 +1843,28 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
       delete next[id]
       return next
     })
-    setLit((l) => {
-      const next = { ...l }
+    setFramed((f) => {
+      const next = { ...f }
       delete next[id]
       return next
     })
+    if (id === FILM_WIN && resumeFrame) {
+      // Keep the transfer pixels fixed through the reveal commit. The
+      // token guard makes this callback harmless if another transfer has
+      // already frozen a newer generation.
+      requestAnimationFrame(() => filmController.resume(resumeFrame))
+    }
   }
 
-  // Fired by the airborne film, so it has to survive the re-renders that
-  // send new content into the capture root — an unstable callback would
-  // re-run the <video>'s ref and start the whole seek again.
-  const tellPicture = useCallback((win: WinId) => {
-    setLit((l) => (l[win] ? l : { ...l, [win]: true }))
-  }, [])
+  const tellFilmReady = useCallback(
+    (win: WinId, token: number, receipt: FrameDrawReceipt) => {
+      const film = flights.current.get(win)?.f.film
+      if (!film || film.token !== token || !frameCovers(receipt, film.required)) return
+      probeFilm({ type: 'accept', token, receipt })
+      setFramed((f) => (f[win] ? f : { ...f, [win]: true }))
+    },
+    [],
+  )
 
   // `airborne` is the only difference between the two copies of a window,
   // and it is one fact: the desk's copy is already a picture, so nobody
@@ -1697,7 +1878,9 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
       checked={checked}
       setChecked={setChecked}
       onMinimize={(slow) => beginMinimize(scheda.id, slow)}
-      onPicture={airborne ? () => tellPicture(scheda.id) : undefined}
+      attachFilmCanvas={
+        !airborne && scheda.id === FILM_WIN ? attachFilmCanvas : undefined
+      }
     />
   )
 
@@ -1718,7 +1901,27 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   apiRef.current = api
 
   return (
-    <div className="gen-page">
+    <div
+      className="gen-page"
+      data-genie-film-direction={air[FILM_WIN]}
+      data-genie-film-painted={painted[FILM_WIN] ? 'true' : 'false'}
+      data-genie-film-framed={framed[FILM_WIN] ? 'true' : 'false'}
+      data-genie-film-shown={shown[FILM_WIN] ? 'true' : 'false'}
+    >
+      {/* This is the only media clock. It stays connected and playing while
+          either the page canvas or WebGL owns the visible pixels. */}
+      <video
+        ref={attachFilmDecoder}
+        className="gen-film-decoder"
+        src={filmUrl}
+        muted
+        loop
+        playsInline
+        autoPlay
+        preload="auto"
+        aria-hidden
+        tabIndex={-1}
+      />
       <header className="gen-head">
         <h1>
           mun<em>ari</em>
@@ -1883,16 +2086,23 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
               air={a}
               ring={ringOf(win)}
               ringing={ringing.includes(win)}
-              // Both facts, and the film window needs both: a texture
-              // with pixels in it whose <video> is still seeking is a
-              // black rectangle, and a black rectangle is worse than
-              // waiting one more frame for the page copy.
-              ready={!!painted[win] && (win !== FILM_WIN || !!lit[win])}
+              // Film waits for a receipt that names the frozen generation.
+              // Other windows still need only the captured chrome upload.
+              ready={!!painted[win] && (win !== FILM_WIN || !!framed[win])}
               stack={order.indexOf(win)}
               slotOf={slotOf}
               kickRing={kickRing}
               onPainted={(w) => setPainted((p) => (p[w] ? p : { ...p, [w]: true }))}
-              onShown={(w) => setShown((s) => (s[w] ? s : { ...s, [w]: true }))}
+              freezeFilm={() => filmController.freeze()}
+              onFilmReady={tellFilmReady}
+              onShown={(w) => {
+                setShown((s) => (s[w] ? s : { ...s, [w]: true }))
+                const film = flights.current.get(w)?.f.film
+                if (film) {
+                  probeFilm({ type: 'show', token: film.token, frame: film.required })
+                  requestAnimationFrame(() => filmController.resume(film.required))
+                }
+              }}
               onLand={onLand}
               content={bodyFor(s, true)}
             />

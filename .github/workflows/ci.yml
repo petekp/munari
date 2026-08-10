@@ -19,6 +19,20 @@ jobs:
       - run: npm run lint
       - run: npm test
 
+  # A published canvas frame is not handed off until the public Surface has
+  # uploaded and drawn those exact sRGB pixels. This uses ordinary WebGL and
+  # does not depend on the HTML-in-canvas origin trial.
+  frame-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run gate:frame-surface
+
   # The idle-zero browser gate: mounted quiescent Surfaces cost
   # 0 paints/s. drawElementImage is an origin-trial API; where the
   # runner's Chrome lacks it the gate warns and exits 0 — a loud
