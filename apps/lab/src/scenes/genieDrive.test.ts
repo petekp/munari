@@ -3,6 +3,7 @@ import {
   DRIVE_DEFAULTS,
   driveCommit,
   driveGrabStep,
+  drivePresentationStep,
   driveSpringStep,
   easeInCubic,
   easeInOutCubic,
@@ -177,5 +178,17 @@ describe('grab tracking', () => {
     }
     expect(s.v).toBeGreaterThan(1.2)
     expect(s.v).toBeLessThan(2.8)
+  })
+})
+
+describe('presentation handoff', () => {
+  it('catches a hidden pointer target without one large visible jump', () => {
+    let shown = 0
+    for (let i = 0; i < 20; i++) {
+      const next = drivePresentationStep(shown, 0.7, DT, P.vMax)
+      expect(next - shown).toBeLessThanOrEqual(P.vMax * DT + 1e-12)
+      shown = next
+    }
+    expect(shown).toBe(0.7)
   })
 })

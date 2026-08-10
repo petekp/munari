@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { DOCK_DEFAULTS, dockPose, dockRing, dockRingDone, dockSwell } from './genieDock'
+import {
+  DOCK_DEFAULTS,
+  dockFill,
+  dockPose,
+  dockRing,
+  dockRingDone,
+  dockSwell,
+} from './genieDock'
 
 // The dock's two contracts: the swell is the container's OWN size,
 // synchronized to the drive's progress with no separate tween; the
@@ -43,6 +50,26 @@ describe('dock swell', () => {
       expect(s).toBeGreaterThanOrEqual(prev - 1e-12)
       prev = s
     }
+  })
+})
+
+describe('dock fill', () => {
+  const THRESHOLD_Y = -400
+
+  it('stays empty until the bottom edge touches the visible top of the mark', () => {
+    expect(dockFill(-200, -350, THRESHOLD_Y)).toBe(0)
+    expect(dockFill(-250, THRESHOLD_Y, THRESHOLD_Y)).toBe(0)
+  })
+
+  it('tracks the fraction of the sheet below the mark boundary', () => {
+    expect(dockFill(-350, -450, THRESHOLD_Y)).toBe(0.5)
+    expect(dockFill(-325, -425, THRESHOLD_Y)).toBe(0.25)
+  })
+
+  it('becomes full only when the top edge has passed the boundary', () => {
+    expect(dockFill(THRESHOLD_Y, -500, THRESHOLD_Y)).toBe(1)
+    expect(dockFill(-450, -500, THRESHOLD_Y)).toBe(1)
+    expect(dockFill(-450, -450, THRESHOLD_Y)).toBe(1)
   })
 })
 

@@ -46,6 +46,19 @@ export interface DriveState {
   v: number
 }
 
+/**
+ * Move the presented progress toward the drive without exceeding the same
+ * velocity ceiling used by a released sheet. This only matters when a hand
+ * has moved while the texture handoff was still hidden: the drive keeps the
+ * real pointer target, while presentation catches it over several frames
+ * instead of appearing one large step away from the wall.
+ */
+export function drivePresentationStep(current: number, target: number, dt: number, maxV: number): number {
+  const delta = target - current
+  const step = Math.min(Math.abs(delta), maxV * dt)
+  return current + Math.sign(delta) * step
+}
+
 export function easeInOutCubic(p: number): number {
   return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
 }

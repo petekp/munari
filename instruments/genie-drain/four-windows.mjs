@@ -568,20 +568,9 @@ try {
 
   // ── 6. the bay is a gauge, not a light ────────────────────────────────
   //
-  // The mark inside a bay fills from the TOP DOWN by how much of its
-  // window the bay is holding — so a hand scrubbing the drag moves the
-  // level under its own finger, and a pour caught halfway leaves the dock
-  // reading halfway. That is only possible because the level IS the
-  // drive's t; a fill hung off the `data-filled` flip has nothing to say
-  // until the landing, and reads as a light switching on at the end of
-  // an animation it was supposed to be describing.
-  //
-  // Downward, because the sheet arrives from above and lands on the bay's
-  // top edge; a level that rose to meet it would run against the only
-  // motion on screen. Direction is asserted and not merely described,
-  // because a count of signal rows cannot tell the two apart — the first
-  // spelling of this leg counted rows in a column and would have passed,
-  // unchanged, on a fill running either way.
+  // The solid white mark fills UP with its own theme colour by how much of
+  // its window the dock is holding. A hand scrubbing the drag moves the
+  // level directly; a class flip could only switch at the landing.
   //
   // Measured off the screen, not off the stylesheet: the question is how
   // many rows of the mark are actually painted in the signal colour and
@@ -601,24 +590,28 @@ try {
         const c = new OffscreenCanvas(img.width, img.height)
         c.getContext('2d').drawImage(img, 0, 0)
         const { data: d, width } = c.getContext('2d').getImageData(0, 0, img.width, img.height)
-        // --signal is #e8402a. Nothing else in a bay is red, so a coarse
-        // test is the robust one — an exact match would be a bet on
-        // antialiasing.
-        let red = 0
+        const fill = getComputedStyle(document.querySelector('.gen-tile[data-win="scheda"] .gen-pane')).fill
+        const target = fill.match(/[\d.]+/g).slice(0, 3).map(Number)
+        let painted = 0
         let first = -1
         let last = -1
         for (let y = b.y0; y < b.y1; y++) {
           const i = (y * width + b.x) * 4
-          if (d[i] > 150 && d[i + 1] < 130 && d[i + 2] < 110) {
-            red++
+          const delta =
+            Math.abs(d[i] - target[0]) +
+            Math.abs(d[i + 1] - target[1]) +
+            Math.abs(d[i + 2] - target[2])
+          if (delta < 75) {
+            painted++
             if (first < 0) first = y
             last = y
           }
         }
-        // `gap` is the unpainted run ABOVE the signal. A fill anchored to
-        // the mark's top edge leaves none; one anchored to the bottom
-        // leaves all of it there. That single number is the direction.
-        return { red, gap: first < 0 ? -1 : first - b.y0, tail: last < 0 ? -1 : b.y1 - 1 - last }
+        return {
+          painted,
+          gap: first < 0 ? -1 : first - b.y0,
+          tail: last < 0 ? -1 : b.y1 - 1 - last,
+        }
       },
       await page.screenshot({ encoding: 'base64' }),
       box,
@@ -629,7 +622,11 @@ try {
   const bar = await page.evaluate(() => {
     const b = document.querySelector('.gen-sheet[data-win="scheda"] .gen-titlebar').getBoundingClientRect()
     const dock = document.querySelector('.gen-tile[data-win="scheda"]').getBoundingClientRect()
-    return { x: b.left + b.width / 2, y: b.top + b.height / 2, dock: dock.top }
+    return {
+      x: b.left + b.width / 2,
+      y: b.top + b.height / 2,
+      dock: dock.top + dock.height / 2,
+    }
   })
   const reach = bar.dock - bar.y
   await page.mouse.move(bar.x, bar.y)
@@ -650,41 +647,41 @@ try {
   )
   await sleep(600)
   const full = await level('scheda')
-  const gaugeFull = full.red
+  // The themed outline and title rule cross this sample column even when the
+  // pane is fully clipped. Treat that stable ink as the empty baseline.
+  const gaugeFull = full.painted - empty.painted
 
-  console.log(`    bay empty                    ${empty.red} rows of signal`)
+  console.log(`    bay empty                    ${empty.painted} rows of colour`)
   for (const h of held)
     console.log(
-      `    held ${(h.part * 100).toFixed(0)}% of the way down       ${h.red} rows, ${h.gap} blank above them`,
+      `    held ${(h.part * 100).toFixed(0)}% of the way down       ${h.painted} rows, ${h.tail} blank below them`,
     )
-  console.log(`    landed                       ${gaugeFull} rows, ${full.gap} blank above them`)
+  console.log(`    landed                       ${gaugeFull} rows, ${full.tail} blank below them`)
 
-  if (empty.red !== 0)
+  if (empty.painted > 6)
     problems.push(
-      `an empty bay is already showing ${empty.red} rows of signal — the mark reads as occupied when it is not`,
+      `an empty bay is already showing ${empty.painted} rows of colour — the mark reads as occupied when it is not`,
     )
   if (gaugeFull < 4)
     problems.push(`a bay holding a window shows only ${gaugeFull} rows of signal — the gauge never fills`)
   else {
     const [a, b] = held
-    if (a.red <= 0 || a.red >= gaugeFull)
+    if (a.painted <= empty.painted || a.painted - empty.painted >= gaugeFull)
       problems.push(
-        `held ${(a.part * 100).toFixed(0)}% down the bay read ${a.red} of ${gaugeFull} rows — the level is not ` +
+        `held ${(a.part * 100).toFixed(0)}% down the bay read ${a.painted - empty.painted} of ${gaugeFull} fill rows — the level is not ` +
           `following the pour, which is what a fill hung off the docked/undocked flip does: nothing until the landing`,
       )
-    if (b.red <= a.red)
+    if (b.painted <= a.painted)
       problems.push(
-        `pulling from ${(a.part * 100).toFixed(0)}% to ${(b.part * 100).toFixed(0)}% moved the level from ${a.red} ` +
-          `to ${b.red} rows — the gauge does not deepen with the hand`,
+        `pulling from ${(a.part * 100).toFixed(0)}% to ${(b.part * 100).toFixed(0)}% moved the level from ${a.painted} ` +
+          `to ${b.painted} rows — the gauge does not deepen with the hand`,
       )
-    // Two rows of slack, not zero: y0 is floored to a whole pixel and the
-    // mark's own top row is antialiased, so a fill flush with the top
-    // edge can still leave one row that fails a colour test.
+    // Two rows of slack allow the antialiased bottom edge.
     for (const h of held)
-      if (h.gap > 2)
+      if (h.tail > 2)
         problems.push(
-          `held ${(h.part * 100).toFixed(0)}% down, the signal starts ${h.gap} rows below the mark's top edge — ` +
-            `the fill is anchored to the bottom and rising to meet the sheet, which arrives from above`,
+          `held ${(h.part * 100).toFixed(0)}% down, the colour leaves ${h.tail} blank rows under the mark — ` +
+            `the fill is not anchored to the bottom`,
         )
   }
   await page.evaluate(() => document.querySelector('.gen-tile[data-win="scheda"]').click())

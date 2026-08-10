@@ -53,7 +53,7 @@ const ROUNDS = 8
 // the honest thing to be showing — the drive holds t at the wall until
 // the texture has real pixels, on purpose. Above it, the sheet is drawn
 // somewhere other than where the window sits, and two of them is two.
-const POUR_MOVED = 0.02
+const PROGRESS_MOVED = 0.02
 
 let server, browser
 const deadline = setTimeout(() => {
@@ -93,7 +93,7 @@ try {
   //           CHILDREN, so asking the slot for its own visibility answers
   //           a question nobody asked)
   //   filled  the bay is holding this window
-  //   pour    the drive's t, which it writes to the bay every frame
+  //   progress the drive's t, which it writes to the bay every frame
   //
   // Not "is a capture root mounted": that was the first spelling and it
   // was useless, because a Surface stays mounted at rest — that is the
@@ -110,6 +110,7 @@ try {
     const wins = ['quadrato', 'cerchio', 'triangolo', 'scheda']
     const tick = () => {
       const row = { t: performance.now(), w: {} }
+      const filmDirection = document.querySelector('.gen-page')?.dataset.genieFilmDirection
       for (const w of wins) {
         const slot = document.querySelector(`.gen-slot[data-win="${w}"]`)
         const tile = document.querySelector(`.gen-tile[data-win="${w}"]`)
@@ -117,7 +118,8 @@ try {
         row.w[w] = {
           away: slot.dataset.away === 'true',
           filled: tile?.dataset.filled === 'true',
-          pour: parseFloat(tile?.style.getPropertyValue('--pour') || '0') || 0,
+          progress: parseFloat(tile?.style.getPropertyValue('--gen-progress') || '0') || 0,
+          direction: w === 'triangolo' ? filmDirection ?? null : null,
         }
       }
       window.__seam.push(row)
@@ -290,17 +292,33 @@ try {
   )
   const rows = WINS.flatMap((w) => byWin[w])
 
-  // Leg 1 — never twice. The pour has moved, so the sheet is drawn
+  // Leg 1 — never twice. The drive has moved, so the sheet is drawn
   // somewhere other than the window's own box, and the window's own box
   // is still showing.
-  const twice = rows.filter((r) => r.pour > POUR_MOVED && !r.away)
+  const twice = rows.filter((r) => r.progress > PROGRESS_MOVED && !r.away)
 
-  // Leg 2 — never back. The bay is holding this window, and the desk is
-  // showing it too. Stated against `filled` rather than against a run of
-  // frames: the dock claiming custody is an unambiguous fact with an
-  // attribute on it, and a page copy visible while the dock holds the
-  // window is a window in two places no matter how it got there.
-  const back = rows.filter((r) => r.filled && !r.away)
+  // Leg 2 — never back, except for the film's deliberate reverse overlap.
+  // That transfer reveals the shared native canvas at the rest wall while
+  // WebGL still covers it, then releases WebGL on the next frame. It is valid
+  // only for the film, only while restoring, and only at the terminal wall.
+  const reverseOverlap = rows.filter(
+    (r) =>
+      r.win === 'triangolo' &&
+      r.direction === 'restoring' &&
+      r.progress <= PROGRESS_MOVED &&
+      r.filled &&
+      !r.away,
+  )
+  const back = rows.filter(
+    (r) =>
+      r.filled &&
+      !r.away &&
+      !(
+        r.win === 'triangolo' &&
+        r.direction === 'restoring' &&
+        r.progress <= PROGRESS_MOVED
+      ),
+  )
 
   // Leg 3 — never snaps. The two legs above ask WHERE the window is
   // showing, and both were quiet; neither of them can see the third way
@@ -328,13 +346,13 @@ try {
     const t = byWin[w]
     for (let i = 1; i < t.length; i++) {
       const dt = t[i].t - t[i - 1].t
-      const step = t[i].pour - t[i - 1].pour
+      const step = t[i].progress - t[i - 1].progress
       if (dt > ON_TIME_MS || Math.abs(step) < SNAP) continue
       // A step across a custody change is the Bays taking the bay back
       // from the Driver on the landing frame, which is the handoff doing
       // its job rather than a jump.
       if (t[i].filled !== t[i - 1].filled) continue
-      snaps.push({ win: w, from: t[i - 1].pour, to: t[i].pour, dt })
+      snaps.push({ win: w, from: t[i - 1].progress, to: t[i].progress, dt })
     }
   }
 
@@ -357,7 +375,12 @@ try {
   console.log(`    minimizes landed             ${downs} of ${EXPECTED}`)
   console.log(`    restores landed              ${ups} of ${EXPECTED}`)
   console.log(`    both copies showing          ${twice.length}`)
+  if (twice.length) {
+    console.log(`      during minimize            ${twice.filter((r) => !r.filled).length}`)
+    console.log(`      during restore             ${twice.filter((r) => r.filled).length}`)
+  }
   console.log(`    docked, yet showing on desk  ${back.length}`)
+  console.log(`    intentional reverse overlap ${reverseOverlap.length}`)
   console.log(`    sheet snapped mid-flight     ${snaps.length}`)
 
   if (downs < EXPECTED || ups < EXPECTED)
@@ -368,7 +391,7 @@ try {
   if (twice.length)
     problems.push(
       `${twice.length} frames drew a window twice — ${twice[0].win}'s page copy was still showing with the ` +
-        `pour ${(twice[0].pour * 100).toFixed(0)}% of the way down`,
+        `progress ${(twice[0].progress * 100).toFixed(0)}% of the way down`,
     )
   if (back.length)
     problems.push(

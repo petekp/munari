@@ -118,6 +118,11 @@ export {
   type ConductorPoseState,
 } from './transfer/conductorTiming'
 export {
+  presentationReceiptSatisfies,
+  type PresentationReceipt,
+  type PresentationRequirement,
+} from './transfer/presentation'
+export {
   DENSITY_RISE_FACTOR,
   DENSITY_FALL_FACTOR,
   densityScheduleStep,

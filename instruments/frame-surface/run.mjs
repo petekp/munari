@@ -80,15 +80,23 @@ try {
   })
 
   let gateTimeout
-  const result = await Promise.race([
-    page.evaluate(() => window.__frameSurfaceGate.run()),
-    new Promise((_, reject) => {
-      gateTimeout = setTimeout(
-        () => reject(new Error('frame-surface gate: result timed out')),
-        15_000,
-      )
-    }),
-  ]).finally(() => clearTimeout(gateTimeout))
+  let result
+  try {
+    result = await Promise.race([
+      page.evaluate(() => window.__frameSurfaceGate.run()),
+      new Promise((_, reject) => {
+        gateTimeout = setTimeout(
+          () => reject(new Error('frame-surface gate: result timed out')),
+          15_000,
+        )
+      }),
+    ])
+  } catch (error) {
+    console.error('frame-surface gate debug:', await page.evaluate(() => window.__frameSurfaceGate.debug()))
+    throw error
+  } finally {
+    clearTimeout(gateTimeout)
+  }
 
   const receiptTrace = result.receipts
     .map(
@@ -121,6 +129,22 @@ try {
       `default unlit ${result.defaultUnlitVerified ? 'verified' : 'FAILED'}, ` +
       `worst RGB error ${result.worstRgbError}`,
   )
+  console.log(
+    `frame-surface: presentation fence frame receipts ` +
+      `${result.presentationFence.frameReceipts.length}, presentation receipts ` +
+      `${result.presentationFence.presentationReceipts.length}, disabled clear ` +
+      `${result.presentationFence.disabledDefaultClear ? 'yes' : 'NO'}, offscreen drew ` +
+      `${result.presentationFence.offscreenHadPixels ? 'yes' : 'NO'}, offscreen RGB error ` +
+      `${result.presentationFence.offscreenRgbError}, visible RGB error ` +
+      `${result.presentationFence.visibleRgbError}`,
+  )
+  console.log(
+    `frame-surface: backing-store resize generations ` +
+      `[${result.backingStoreResize.generations.join(', ')}], size ` +
+      `${result.backingStoreResize.finalWidth}x${result.backingStoreResize.finalHeight}, ` +
+      `same texture ${result.backingStoreResize.sameTexture ? 'yes' : 'NO'}, RGB errors ` +
+      `[${result.backingStoreResize.rgbErrors.join(', ')}]`,
+  )
 
   if (pageProblems.length) {
     console.error('frame-surface gate: page errors during the run:')
@@ -132,7 +156,7 @@ try {
     process.exitCode = 1
   } else {
     console.log(
-      'frame-surface gate PASSED: live replacement and 3 custody cycles kept current sRGB pixels.',
+      'frame-surface gate PASSED: visible presentation, live replacement, and 3 custody cycles kept current sRGB pixels.',
     )
   }
 } finally {

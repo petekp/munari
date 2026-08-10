@@ -25,12 +25,16 @@ const CHROME = [
 
 const WIN = 'triangolo'
 const ROUNDS = Number(process.env.ROUNDS || 24)
-const SLOWCPU = Number(process.env.SLOWCPU ?? 4)
+const SLOWCPU = Number(process.env.SLOWCPU ?? 6)
 const VIEWPORT = { width: 1100, height: 800, deviceScaleFactor: 1 }
 const CAPTURE = { format: 'jpeg', quality: 92, maxWidth: 1100, maxHeight: 800 }
 const SETTLE_MS = Number(process.env.SETTLE_MS || 140)
 const POUR_AT_WALL = 0.025
-const SOURCE_WINDOW_MS = 85
+// Screencast frames are timestamped in the browser process, while the source
+// recorder runs on a CPU-throttled page rAF. Search enough nearby source
+// samples to cover that deliberate scheduling skew; a desk-colored hole still
+// cannot match any of the moving film samples.
+const SOURCE_WINDOW_MS = Math.max(85, SLOWCPU * 45)
 const SCREEN_DARK_LUMA = 20
 const SCREEN_DARK_MAX = 0.72
 const MIN_BASELINE_FRAMES = 2
@@ -198,6 +202,8 @@ try {
         away: slot?.dataset.away === 'true',
         filled: tile?.dataset.filled === 'true',
         pour: Number.parseFloat(tile?.style.getPropertyValue('--pour') || '0') || 0,
+        progress:
+          Number.parseFloat(tile?.style.getPropertyValue('--gen-progress') || '0') || 0,
         rect: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
         sourcePixels: sourcePixels(),
       })
@@ -302,6 +308,7 @@ try {
           ...base,
           direction: event.direction,
           frame: event.frame,
+          presentationRevision: event.presentationRevision,
           sourceId: event.source.currentFrame().sourceId,
           sameSourceObject: event.source === gate.source,
           sameSourceCanvas: event.source.canvas === canvas,
@@ -310,7 +317,7 @@ try {
         })
         return
       }
-      if (event.type === 'receipt' || event.type === 'accept') {
+      if (event.type === 'receipt' || event.type === 'accept' || event.type === 'present') {
         gate.probes.push({ ...base, receipt: event.receipt })
         return
       }
@@ -318,8 +325,12 @@ try {
         gate.probes.push({ ...base, stage: event.stage })
         return
       }
-      if (event.type === 'land') {
+      if (event.type === 'land' || event.type === 'release') {
         gate.probes.push({ ...base, wall: event.wall, frame: event.frame ?? null })
+        return
+      }
+      if (event.type === 'revoke') {
+        gate.probes.push({ ...base, reason: event.reason })
         return
       }
       gate.probes.push({ ...base, frame: event.frame })
@@ -438,6 +449,61 @@ try {
     cycles.push({ cycle, downPhase, downStart, downEnd, upPhase, upStart, upEnd })
   }
 
+  // Post-commit invalidation: once WebGL owns the film, revoke its context.
+  // The native canvas must return without waiting for another renderer draw.
+  const contextLossPhase = 'context-loss'
+  await setPhase(contextLossPhase)
+  await pressKey(
+    `.gen-slot[data-win="${WIN}"] .gen-lamp[data-role="minimize"]`,
+    'context-loss minimize',
+  )
+  await page.waitForFunction(
+    (win) => {
+      const pageRoot = document.querySelector('.gen-page')
+      const slot = document.querySelector(`.gen-slot[data-win="${win}"]`)
+      return (
+        pageRoot?.dataset.genieFilmShown === 'true' &&
+        pageRoot?.dataset.genieFilmDirection === 'minimizing' &&
+        slot?.dataset.away === 'true'
+      )
+    },
+    { timeout: 10_000 },
+    WIN,
+  )
+  const contextLossStart = Date.now()
+  const contextLossSupported = await page.evaluate(() => {
+    const canvas = document.querySelector('.gen-overlay canvas')
+    if (!(canvas instanceof HTMLCanvasElement)) return false
+    const context = canvas.getContext('webgl2') || canvas.getContext('webgl')
+    const extension = context?.getExtension('WEBGL_lose_context')
+    if (!extension) return false
+    extension.loseContext()
+    return true
+  })
+  if (!contextLossSupported) {
+    problems.push('WEBGL_lose_context is not available for the Genie renderer')
+  } else {
+    await page.waitForFunction(
+      (win) => {
+        const pageRoot = document.querySelector('.gen-page')
+        const slot = document.querySelector(`.gen-slot[data-win="${win}"]`)
+        const tile = document.querySelector(`.gen-tile[data-win="${win}"]`)
+        const canvas = document.querySelector('[data-genie-film-role="canvas"]')
+        return (
+          pageRoot?.dataset.genieFilmDirection === undefined &&
+          slot?.dataset.away !== 'true' &&
+          tile?.dataset.filled === 'false' &&
+          canvas?.dataset.genieFilmFrozen === 'false'
+        )
+      },
+      { timeout: 3000 },
+      WIN,
+    )
+  }
+  const contextLossEnd = Date.now()
+  await sleep(250)
+  await setPhase('idle')
+
   castRunning = false
   await client.send('Page.stopScreencast')
   await page.evaluate(() => {
@@ -455,6 +521,12 @@ try {
       final: last,
     }
   })
+  const contextLoss = {
+    phase: contextLossPhase,
+    supported: contextLossSupported,
+    start: contextLossStart,
+    end: contextLossEnd,
+  }
 
   // Decode screenshots in the page. Samples use the same normalized grid as
   // the source canvas recorder. This finds a transparent hole as well as a
@@ -571,14 +643,14 @@ try {
         frame.phase === cycle.downPhase &&
         frame.state.away &&
         !frame.state.filled &&
-        frame.state.pour <= POUR_AT_WALL,
+        frame.state.progress <= POUR_AT_WALL,
     )
     const upAirFrames = measuredScreens.filter(
       (frame) =>
         frame.phase === cycle.upPhase &&
         frame.state.away &&
         frame.state.filled &&
-        frame.state.pour <= POUR_AT_WALL,
+        frame.state.progress <= POUR_AT_WALL,
     )
     const upDomFrames = measuredScreens.filter(
       (frame) => frame.phase === cycle.upPhase && !frame.state.away && !frame.state.filled,
@@ -620,18 +692,29 @@ try {
       const required = requires[0]
       const probes = allProbes.filter((probe) => probe.token === required?.token)
       const accepts = probes.filter((probe) => probe.type === 'accept')
+      const presentations = probes.filter((probe) => probe.type === 'present')
       const shows = probes.filter((probe) => probe.type === 'show')
       const lands = probes.filter((probe) => probe.type === 'land')
+      const reveals = probes.filter((probe) => probe.type === 'reveal')
+      const releases = probes.filter((probe) => probe.type === 'release')
+      const revokes = probes.filter((probe) => probe.type === 'revoke')
       const receipts = probes.filter((probe) => probe.type === 'receipt')
       const accepted = accepts[0]
+      const presented = presentations[0]
       const landed = lands[0]
+      const revealed = reveals[0]
+      const released = releases[0]
       const foreignCritical = allProbes.filter(
         (probe) =>
           probe.token !== required?.token &&
           (probe.type === 'require' ||
             probe.type === 'accept' ||
+            probe.type === 'present' ||
             probe.type === 'show' ||
-            probe.type === 'land'),
+            probe.type === 'land' ||
+            probe.type === 'reveal' ||
+            probe.type === 'release' ||
+            probe.type === 'revoke'),
       )
       const covers = (receipt, frame) =>
         receipt?.frame?.sourceId === frame?.sourceId &&
@@ -639,12 +722,21 @@ try {
       const acquisitionReceipt = receipts.find(
         (probe) => required && probe.seq < (accepted?.seq ?? Infinity) && covers(probe.receipt, required.frame),
       )
-      const landingReceipt = receipts.find(
-        (probe) =>
-          landed?.frame &&
-          probe.seq < landed.seq &&
-          covers(probe.receipt, landed.frame),
-      )
+      const presentationMatches =
+        presented?.receipt?.transferId === required?.token &&
+        presented?.receipt?.presentationRevision === required?.presentationRevision &&
+        Number.isFinite(presented?.receipt?.surfaceEpoch) &&
+        presented.receipt.surfaceEpoch > 0 &&
+        covers(presented.receipt, required?.frame)
+      const showMatches =
+        shows[0]?.frame?.sourceId === presented?.receipt?.frame?.sourceId &&
+        shows[0]?.frame?.generation === presented?.receipt?.frame?.generation
+      const reverseOrder =
+        wall === 1
+          ? reveals.length === 0
+          : reveals.length === 1 &&
+            landed?.seq < revealed.seq &&
+            revealed.seq < released?.seq
       return {
         ok:
           requires.length === 1 &&
@@ -657,21 +749,35 @@ try {
           accepts.length === 1 &&
           covers(accepted.receipt, required.frame) &&
           Boolean(acquisitionReceipt) &&
+          presentations.length === 1 &&
+          presentationMatches &&
           shows.length === 1 &&
-          accepted.seq < shows[0].seq &&
+          accepted.seq < presented.seq &&
+          presented.seq < shows[0].seq &&
+          showMatches &&
           lands.length === 1 &&
           landed.wall === wall &&
-          (wall === 1 || Boolean(landingReceipt)),
+          releases.length === 1 &&
+          released.wall === wall &&
+          reverseOrder &&
+          revokes.length === 0,
         required: required?.frame?.generation ?? null,
         accepted: accepted?.receipt?.frame?.generation ?? null,
+        presented: presented?.receipt?.frame?.generation ?? null,
+        presentationRevision: presented?.receipt?.presentationRevision ?? null,
+        surfaceEpoch: presented?.receipt?.surfaceEpoch ?? null,
         landingRequired: landed?.frame?.generation ?? null,
-        landingReceipt: landingReceipt?.receipt?.frame?.generation ?? null,
+        revealed: revealed?.frame?.generation ?? null,
         counts: {
           require: requires.length,
           receipt: receipts.length,
           accept: accepts.length,
+          present: presentations.length,
           show: shows.length,
           land: lands.length,
+          reveal: reveals.length,
+          release: releases.length,
+          revoke: revokes.length,
         },
         foreignCritical: foreignCritical.map((probe) => ({
           type: probe.type,
@@ -737,6 +843,98 @@ try {
     }
   }
 
+  const contextProbes = evidence.probes.filter(
+    (probe) => probe.phase === contextLoss.phase,
+  )
+  const contextRequired = contextProbes.find((probe) => probe.type === 'require')
+  const contextPresented = contextProbes.find(
+    (probe) =>
+      probe.type === 'present' && probe.token === contextRequired?.token,
+  )
+  const contextShown = contextProbes.find(
+    (probe) => probe.type === 'show' && probe.token === contextRequired?.token,
+  )
+  const contextRevoked = contextProbes.find(
+    (probe) => probe.type === 'revoke' && probe.token === contextRequired?.token,
+  )
+  const staleAfterRevoke = contextRevoked
+    ? contextProbes.filter(
+        (probe) =>
+          probe.seq > contextRevoked.seq &&
+          (probe.type === 'receipt' ||
+            probe.type === 'accept' ||
+            probe.type === 'present'),
+      )
+    : []
+  const contextTraceAfterRevoke = contextRevoked
+    ? evidence.trace.filter(
+        (row) => row.phase === contextLoss.phase && row.t >= contextRevoked.t,
+      )
+    : []
+  const contextNativeFrames = measuredScreens.filter(
+    (frame) =>
+      frame.phase === contextLoss.phase &&
+      contextRevoked &&
+      frame.t >= contextRevoked.t &&
+      !frame.state.away,
+  )
+  const badContextFrames = contextNativeFrames.filter(
+    (frame) => frame.sourceError > visualErrorMax || frame.dark > SCREEN_DARK_MAX,
+  )
+  const firstMatchingNativeFrame = contextNativeFrames.findIndex(
+    (frame) => frame.sourceError <= visualErrorMax && frame.dark <= SCREEN_DARK_MAX,
+  )
+  const regressedNativeFrames =
+    firstMatchingNativeFrame < 0
+      ? []
+      : contextNativeFrames
+          .slice(firstMatchingNativeFrame)
+          .filter(
+            (frame) =>
+              frame.sourceError > visualErrorMax || frame.dark > SCREEN_DARK_MAX,
+          )
+  const contextLossPassed =
+    contextLoss.supported &&
+    contextRequired &&
+    contextPresented &&
+    contextShown &&
+    contextRevoked &&
+    contextShown.seq < contextRevoked.seq &&
+    contextRevoked.reason === 'context-lost' &&
+    contextLoss.end - contextLoss.start < 1000 &&
+    contextTraceAfterRevoke.length > 0 &&
+    contextTraceAfterRevoke.every((row) => !row.away && !row.filled && !row.frozen) &&
+    contextNativeFrames.length >= 1 &&
+    firstMatchingNativeFrame >= 0 &&
+    contextNativeFrames.every((frame) => frame.dark <= SCREEN_DARK_MAX) &&
+    regressedNativeFrames.length === 0 &&
+    staleAfterRevoke.length === 0
+
+  if (!contextLossPassed) {
+    problems.push(
+      `context-loss fallback failed: ${JSON.stringify({
+        supported: contextLoss.supported,
+        durationMs: contextLoss.end - contextLoss.start,
+        required: contextRequired?.seq ?? null,
+        presented: contextPresented?.seq ?? null,
+        shown: contextShown?.seq ?? null,
+        revoked: contextRevoked?.seq ?? null,
+        traceAfterRevoke: contextTraceAfterRevoke.length,
+        nativeFrames: contextNativeFrames.length,
+        badContextFrames: badContextFrames.length,
+        firstMatchingNativeFrame,
+        regressedNativeFrames: regressedNativeFrames.length,
+        contextErrors: contextNativeFrames.map((frame) =>
+          Number(frame.sourceError.toFixed(1)),
+        ),
+        contextDark: contextNativeFrames.map((frame) =>
+          Number((frame.dark * 100).toFixed(0)),
+        ),
+        staleAfterRevoke: staleAfterRevoke.length,
+      })}`,
+    )
+  }
+
   const generations = evidence.changes
     .filter((change) => change.name === 'data-genie-film-generation')
     .map((change) => ({ ...change, old: Number(change.old), next: Number(change.next) }))
@@ -778,7 +976,7 @@ try {
   )
   const staleReceipts = evidence.probes.filter(
     (probe) =>
-      (probe.type === 'receipt' || probe.type === 'accept') &&
+      (probe.type === 'receipt' || probe.type === 'accept' || probe.type === 'present') &&
       !sourceIds.has(String(probe.receipt.frame.sourceId)),
   )
 
@@ -831,6 +1029,10 @@ try {
     `    normal DOM/source MAE p95        ${Number.isFinite(baselineP95) ? baselineP95.toFixed(1) : 'n/a'} ` +
       `(boundary limit ${Number.isFinite(visualErrorMax) ? visualErrorMax.toFixed(1) : 'n/a'})`,
   )
+  console.log(
+    `    context-loss fallback           ${contextLossPassed ? 'yes' : 'NO'} ` +
+      `(${contextLoss.end - contextLoss.start}ms, ${contextNativeFrames.length} native frame(s))`,
+  )
   console.log('')
   console.table(
     cycleRows.map((row) => ({
@@ -869,6 +1071,7 @@ try {
     console.log(`  cycle ${row.cycle} protocol trace: ${JSON.stringify(critical)}`)
   }
   console.log(`  draw-receipt tuples              ${evidence.probes.filter((probe) => probe.type === 'receipt').length}`)
+  console.log(`  presentation-receipt tuples       ${evidence.probes.filter((probe) => probe.type === 'present').length}`)
   exitCode = problems.length ? 1 : 0
 } catch (error) {
   exitCode = 1

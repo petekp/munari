@@ -52,6 +52,25 @@ export const GENIE_VERT = /* glsl */ `
   }
 `
 
+// A one-pixel horizontal border becomes a dark bar when the funnel makes
+// that row narrow. Keep it at rest for exact DOM parity, then replace only
+// the squeezed bottom-border texels with the window color sampled just above
+// them. This removes the bar without cutting a transparent slit in the sheet.
+const GENIE_BOTTOM_BORDER_GLSL = /* glsl */ `
+  vec4 genieWithoutSqueezedBottomBorder(vec4 color) {
+    float windowBottom = 1.0 - uShadeEdge.y;
+    float pixel = 1.0 / max(uMunariSize.y, 1.0);
+    float inBottomBorder = step(windowBottom, vUv.y)
+      * (1.0 - step(windowBottom + pixel * 1.25, vUv.y));
+    float squeezed = 1.0 - smoothstep(0.72, 0.96, vSqueeze);
+    vec4 windowFill = texture2D(
+      tMap,
+      vec2(vUv.x, min(windowBottom + pixel * 2.25, 1.0))
+    );
+    return mix(color, windowFill, inBottomBorder * squeezed);
+  }
+`
+
 export const GENIE_FRAG = /* glsl */ `
   ${SURFACE_RADIUS_GLSL}
   uniform sampler2D tMap;
@@ -65,6 +84,7 @@ export const GENIE_FRAG = /* glsl */ `
   uniform vec2 uShadeFade;
   varying vec2 vUv;
   varying float vSqueeze;
+  ${GENIE_BOTTOM_BORDER_GLSL}
   void main() {
     vec4 c = texture2D(tMap, vUv);
 
@@ -81,6 +101,7 @@ export const GENIE_FRAG = /* glsl */ `
     // colour and alpha together — is exactly a fade, and leaves it
     // premultiplied on the way out.
     c *= mix(1.0, smoothstep(uShadeFade.x, uShadeFade.y, vSqueeze), shade);
+    c = genieWithoutSqueezedBottomBorder(c);
     // The element's corners, enforced analytically. The flight card needs
     // this because its .ui-root paints them opaque and the texture cannot
     // say where the card ends; the genie sheet turns that background off
@@ -120,6 +141,7 @@ export const GENIE_FILM_FRAG = /* glsl */ `
   uniform float uFilmRadius;
   varying vec2 vUv;
   varying float vSqueeze;
+  ${GENIE_BOTTOM_BORDER_GLSL}
 
   float genieFilmRadiusSd(vec2 filmUv, vec2 filmSize) {
     // filmUv follows DOM coordinates: (0, 0) is the film's top-left.
@@ -153,6 +175,7 @@ export const GENIE_FILM_FRAG = /* glsl */ `
     vec2 filmSampleUv = clamp(vec2(filmUv.x, 1.0 - filmUv.y), 0.0, 1.0);
     vec4 film = vec4(texture2D(tFilm, filmSampleUv).rgb, 1.0);
     c = mix(c, film, filmCoverage);
+    c = genieWithoutSqueezedBottomBorder(c);
 
     // The composite remains premultiplied through the outer window mask too.
     c *= munariRadiusMask(vUv);

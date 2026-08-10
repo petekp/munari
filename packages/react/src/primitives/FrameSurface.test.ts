@@ -1,14 +1,37 @@
 import * as THREE from 'three'
-import { describe, expect, it } from 'vitest'
-import { createCanvasFrameSource } from '@munari/core'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  createCanvasFrameSource,
+  type PresentationRequirement,
+} from '@munari/core'
 import {
   assertFrameMaterialSupported,
   createFrameSurfaceRuntime,
+  resolveFrameSurfaceDevelopment,
 } from './FrameSurface'
 
 const canvas = () => ({ width: 4, height: 4 }) as HTMLCanvasElement
 
+const requirement = (
+  sourceId: number,
+  generation: number,
+  transferId = 5,
+  presentationRevision = 9,
+): PresentationRequirement => ({
+  transferId,
+  frame: { sourceId, generation },
+  presentationRevision,
+})
+
 describe('FrameSurface runtime', () => {
+  it('warns only in an explicit development or test environment', () => {
+    expect(resolveFrameSurfaceDevelopment(false, 'development')).toBe(false)
+    expect(resolveFrameSurfaceDevelopment(undefined, 'production')).toBe(false)
+    expect(resolveFrameSurfaceDevelopment(undefined, undefined)).toBe(false)
+    expect(resolveFrameSurfaceDevelopment(true, 'production')).toBe(true)
+    expect(resolveFrameSurfaceDevelopment(undefined, 'test')).toBe(true)
+  })
+
   it('configures the exact caller canvas before exposing the texture', () => {
     const el = canvas()
     const source = createCanvasFrameSource(el, { premultiplyAlpha: true })
@@ -53,6 +76,87 @@ describe('FrameSurface runtime', () => {
     runtime.dispose()
   })
 
+  it('retains the uploaded frame for a later eligible presentation draw', () => {
+    const source = createCanvasFrameSource(canvas(), { premultiplyAlpha: false })
+    const runtime = createFrameSurfaceRuntime(source, 29, false, () => {})
+    const uploaded = source.publish()
+
+    runtime.texture.onUpdate?.(runtime.texture)
+    expect(runtime.takeDrawReceipt()).toEqual({ surfaceEpoch: 29, frame: uploaded })
+    expect(runtime.takeDrawReceipt()).toBeNull()
+
+    const requested = requirement(uploaded.sourceId, uploaded.generation)
+    runtime.beginPresentationPass(requested, true, true)
+    expect(runtime.takePresentationReceipt()).toEqual({
+      ...requested,
+      frame: uploaded,
+      surfaceEpoch: 29,
+    })
+    // The presentation path neither recreates nor consumes a frame receipt.
+    expect(runtime.takeDrawReceipt()).toBeNull()
+
+    runtime.dispose()
+  })
+
+  it('rejects off-screen and color-disabled draws without losing the frame receipt', () => {
+    const source = createCanvasFrameSource(canvas(), { premultiplyAlpha: false })
+    const runtime = createFrameSurfaceRuntime(source, 30, false, () => {})
+    const uploaded = source.publish()
+    const requested = requirement(uploaded.sourceId, uploaded.generation)
+    const warn = vi.fn()
+
+    runtime.texture.onUpdate?.(runtime.texture)
+    runtime.beginPresentationPass(requested, false, true, warn)
+    expect(runtime.takePresentationReceipt(warn)).toBeNull()
+    runtime.beginPresentationPass(requested, true, false, warn)
+    expect(runtime.takePresentationReceipt(warn)).toBeNull()
+
+    expect(runtime.takeDrawReceipt()).toEqual({ surfaceEpoch: 30, frame: uploaded })
+    expect(runtime.rejectedPresentationDraws(requested.transferId)).toBe(2)
+    expect(warn).toHaveBeenCalledTimes(1)
+
+    runtime.dispose()
+  })
+
+  it('emits each accepted presentation tuple once', () => {
+    const source = createCanvasFrameSource(canvas(), { premultiplyAlpha: false })
+    const runtime = createFrameSurfaceRuntime(source, 33, false, () => {})
+    const first = source.publish()
+    const requested = requirement(first.sourceId, first.generation)
+
+    runtime.texture.onUpdate?.(runtime.texture)
+    runtime.beginPresentationPass(requested, true, true)
+    expect(runtime.takePresentationReceipt()?.frame).toEqual(first)
+    runtime.beginPresentationPass(requested, true, true)
+    expect(runtime.takePresentationReceipt()).toBeNull()
+
+    const second = source.publish()
+    runtime.texture.onUpdate?.(runtime.texture)
+    runtime.beginPresentationPass(requested, true, true)
+    expect(runtime.takePresentationReceipt()?.frame).toEqual(second)
+    runtime.beginPresentationPass(requested, true, true)
+    expect(runtime.takePresentationReceipt()).toBeNull()
+
+    runtime.dispose()
+  })
+
+  it('rejects a requirement that the retained source frame cannot satisfy', () => {
+    const source = createCanvasFrameSource(canvas(), { premultiplyAlpha: false })
+    const runtime = createFrameSurfaceRuntime(source, 35, false, () => {})
+    const uploaded = source.publish()
+    runtime.texture.onUpdate?.(runtime.texture)
+
+    runtime.beginPresentationPass(
+      requirement(uploaded.sourceId + 1, uploaded.generation),
+      true,
+      true,
+    )
+    expect(runtime.takePresentationReceipt()).toBeNull()
+    expect(runtime.rejectedPresentationDraws(5)).toBe(1)
+
+    runtime.dispose()
+  })
+
   it('rejects queued upload and draw work after disposal', () => {
     const source = createCanvasFrameSource(canvas(), { premultiplyAlpha: true })
     let invalidations = 0
@@ -69,6 +173,9 @@ describe('FrameSurface runtime', () => {
     expect(invalidations).toBe(1)
     expect(runtime.texture.onUpdate).toBeNull()
     expect(runtime.takeDrawReceipt()).toBeNull()
+    const current = source.currentFrame()
+    runtime.beginPresentationPass(requirement(current.sourceId, current.generation), true, true)
+    expect(runtime.takePresentationReceipt()).toBeNull()
   })
 
   it('releases stale GL storage before a resized canvas uploads', () => {

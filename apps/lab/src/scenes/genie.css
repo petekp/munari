@@ -333,6 +333,26 @@
   --h: 256px;
 }
 
+.gen-sheet[data-win='quadrato'],
+.gen-tile[data-win='quadrato'] {
+  --gen-accent: #3978e6;
+}
+
+.gen-sheet[data-win='cerchio'],
+.gen-tile[data-win='cerchio'] {
+  --gen-accent: #e9a426;
+}
+
+.gen-sheet[data-win='triangolo'],
+.gen-tile[data-win='triangolo'] {
+  --gen-accent: #e75b4d;
+}
+
+.gen-sheet[data-win='scheda'],
+.gen-tile[data-win='scheda'] {
+  --gen-accent: #269a70;
+}
+
 /* The film window is landscape, because the footage is. Nothing in the
  * law cares: the funnel is measured from whatever box the window happens
  * to be at press time, so a window of a different size and aspect than
@@ -511,18 +531,18 @@
 
 /* ── the running content ─────────────────────────────────────────────
  *
- * Three shapes crossing the window, behind the type. They are here to
- * be WATCHED DURING A FLIGHT: a snapshot would freeze them, so their
- * motion is the scene's own proof that the sheet is a live page under
- * a warp rather than a picture of one.
+ * The four dock marks form one nested hierarchy behind the form. Each motif
+ * repeats three times before the next one enters. Every inner outline is a
+ * child of the previous shape, so the browser clips it through all earlier
+ * boundaries. The small three-step rotations sum to zero for each motif, and
+ * the hierarchy grows by exactly one twelve-outline period. At the reset,
+ * depth twelve therefore has the same size, color, shape, and angle as depth
+ * zero. It reads as one continuous contour tunnel rather than loose outlines.
  *
- * Which property moves them is therefore load-bearing, not a style
+ * Which property grows the tunnel is therefore load-bearing, not a style
  * choice. A transform animation is handed to the compositor and never
- * repaints its subtree — the capture is driven by paint, so the shapes
- * would sail along in the DOM and sit perfectly still in the texture,
- * demonstrating the exact opposite of the point. `left`/`top` on an
- * out-of-flow box repaints without reflowing anything around it, which
- * is what keeps the paint counter (and the upload) advancing.
+ * repaints its subtree. Width and height changes repaint this isolated layer,
+ * so the HTML capture sees the same depth step as the DOM copy.
  */
 .gen-play {
   position: absolute;
@@ -540,77 +560,143 @@
   z-index: 1;
 }
 
-.gen-shape {
+.gen-recursive-tunnel {
   position: absolute;
-  width: var(--sz);
-  height: var(--sz);
-  color: var(--rule);
-  /* Linear and alternate: a bounce carries constant speed and reverses
-   * at the wall. Easing here would read as drifting, not travelling. */
-  animation:
-    gen-bounce-x var(--px) linear infinite alternate,
-    gen-bounce-y var(--py) linear infinite alternate;
+  left: 72%;
+  top: 56%;
+  width: 1200px;
+  height: 1200px;
+  transform: translate(-50%, -50%) perspective(900px) rotateX(7deg) rotateY(-9deg) rotateZ(-1.5deg);
+  transform-style: preserve-3d;
+  animation: gen-recursive-enter 9.6s linear infinite;
+  animation-delay: var(--gen-phase);
 }
 
-/* Periods share no small common multiple, so the three never fall into
- * a repeating formation. */
-.gen-shape[data-shape='quadrato'] {
-  --sz: 38px;
-  --px: 5.1s;
-  --py: 3.4s;
+.gen-recursive-shape {
+  --shape-color: #3978e6;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* This is an occlusion surface, not a colored shape fill. It matches the
+   * card stock, so the contour reads as open while each new depth still
+   * covers the outgoing ancestor strokes behind it. Without it, a huge
+   * triangle can cross the whole card just before the loop resets. */
+  background: var(--bench-hi);
+  color: var(--shape-color);
+  transform-origin: center;
+  transform-style: preserve-3d;
 }
 
-.gen-shape[data-shape='cerchio'] {
-  --sz: 28px;
-  --px: 3.7s;
-  --py: 4.9s;
-  color: var(--signal);
+.gen-recursive-shape > .gen-recursive-shape {
+  inset: 5%;
+  z-index: 2;
 }
 
-.gen-shape[data-shape='triangolo'] {
-  --sz: 32px;
-  --px: 6.3s;
-  --py: 2.7s;
+/* Each three-outline motif makes one shallow twist and returns to zero.
+ * A whole twelve-outline period can therefore replace its ancestor without
+ * changing the orientation on the loop boundary. */
+.gen-recursive-shape[data-repeat='0'] {
+  transform: rotate(-1.6deg);
 }
 
-@keyframes gen-bounce-x {
-  from {
-    left: 0;
+.gen-recursive-shape[data-repeat='1'] {
+  transform: rotate(0.6deg);
+}
+
+.gen-recursive-shape[data-repeat='2'] {
+  transform: rotate(1deg);
+}
+
+.gen-recursive-shape[data-shape='quadrato'] {
+  --shape-color: #3978e6;
+  clip-path: inset(0 round 4%);
+}
+
+.gen-recursive-shape[data-shape='cerchio'] {
+  --shape-color: #e9a426;
+  clip-path: circle(50%);
+}
+
+.gen-recursive-shape[data-shape='triangolo'] {
+  --shape-color: #e75b4d;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.gen-recursive-shape[data-shape='scheda'] {
+  --shape-color: #269a70;
+  clip-path: inset(8% 0 round 7%);
+}
+
+.gen-recursive-outline {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.gen-recursive-stroke {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.78;
+}
+
+.gen-recursive-shape[data-repeat='0'] > .gen-recursive-outline {
+  opacity: 0.46;
+}
+
+.gen-recursive-shape[data-repeat='1'] > .gen-recursive-outline {
+  opacity: 0.66;
+}
+
+.gen-recursive-core {
+  position: absolute;
+  inset: 24%;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink-faint);
+}
+
+/* Each child is 90% of its parent. Growing by 1 / 0.9^12 moves the sequence
+ * forward by one complete twelve-outline period. The quarter points match
+ * each three-outline motif boundary, which keeps the apparent depth speed
+ * even while width and height do the repaint that the HTML capture needs.
+ * The first surface starts beyond every corner of the tilted card; its
+ * matching descendant can therefore cover all outgoing ancestors at reset. */
+@keyframes gen-recursive-enter {
+  0% {
+    width: 1200px;
+    height: 1200px;
   }
-  to {
-    left: calc(100% - var(--sz));
+  25% {
+    width: 1646.09px;
+    height: 1646.09px;
   }
-}
-
-@keyframes gen-bounce-y {
-  from {
-    top: 0;
+  50% {
+    width: 2258.01px;
+    height: 2258.01px;
   }
-  to {
-    top: calc(100% - var(--sz));
+  75% {
+    width: 3097.41px;
+    height: 3097.41px;
+  }
+  100% {
+    width: 4248.85px;
+    height: 4248.85px;
   }
 }
 
 /* Stilled, they still say what they are for — three marks placed in the
  * window, carried by the warp like everything else on the sheet. */
 @media (prefers-reduced-motion: reduce) {
-  .gen-shape {
+  .gen-recursive-tunnel {
+    width: 1200px;
+    height: 1200px;
     animation: none;
-  }
-
-  .gen-shape[data-shape='quadrato'] {
-    left: 8%;
-    top: 12%;
-  }
-
-  .gen-shape[data-shape='cerchio'] {
-    left: 62%;
-    top: 58%;
-  }
-
-  .gen-shape[data-shape='triangolo'] {
-    right: 6%;
-    top: 8%;
   }
 }
 
@@ -624,19 +710,64 @@
   font-size: 14px;
 }
 
-/* The study plate. The figure is drawn at its viewBox size so one
- * strokeWidth is one rendered pixel-and-a-half — the same hairline the
- * dock's 20px marks are cut at, which is what lets a 104px drawing and a
- * 13px drawing read as the same hand. */
+/* Small SVG paint animations are deliberate here. A compositor transform
+ * would move the DOM copy without advancing the HTML capture. Dash motion
+ * repaints this isolated 132px drawing, so the airborne copy stays live. */
 .gen-figure {
   display: grid;
   place-items: center;
-  padding: 6px 0 2px;
-  color: var(--ink);
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  color: var(--gen-accent);
 }
 
-.gen-figure svg {
+.gen-body[data-study] {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+}
+
+.gen-math-pattern {
   display: block;
+  width: min(100%, 182px);
+  height: auto;
+  aspect-ratio: 1;
+  overflow: visible;
+}
+
+.gen-math-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.45;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 12 5 2 5;
+  stroke-dashoffset: 0;
+  opacity: var(--line-opacity, 0.7);
+  animation: gen-math-flow 4.8s linear infinite;
+  animation-delay: calc(var(--gen-phase) - var(--line-delay, 0s));
+}
+
+.gen-math-line:nth-child(even) {
+  animation-direction: reverse;
+}
+
+.gen-math-pattern[data-pattern='cerchio'] .gen-math-line {
+  stroke-dasharray: 9 3 1 3;
+  animation-duration: 5.6s;
+}
+
+@keyframes gen-math-flow {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gen-math-line {
+    animation: none;
+  }
 }
 
 .gen-field {
@@ -670,40 +801,44 @@
  * else. What the tray used to supply has to be supplied anyway, so the
  * two numbers it was really carrying stay behind as spacing.
  *
- * The gap is 14px because the working bay grows into it: docked, that
- * bay is 1.34x (genieDock.ts), leaning ~9px toward each neighbour. Only
+ * The gap is 16px because the working mark grows into it: docked, that
+ * mark is 1.34x (genieDock.ts), leaning toward each neighbour. Only
  * the transform grows, so the bays beside it hold their ground and the
  * swollen one passes in front. */
 .gen-dock {
+  position: relative;
+  z-index: 101;
   display: flex;
-  gap: 14px;
-  /* The room a 1.34x bay needs to swell DOWN from its fixed mouth (see
-   * the bay's transform-origin) without reaching the bottom of the
-   * page. A ring's peak may briefly press past it — a bounce that
-   * overshoots reads as physics; a resting overhang would read as a
-   * mistake. */
+  gap: 16px;
+  /* The room a 1.34x mark needs to swell from its centre without reaching
+   * the page edge. A ring may press past it briefly; rest must not. */
   padding-bottom: 18px;
   margin-bottom: 32px;
 }
 
-/* Bays, not icons: each tile holds one hairline drawing at a single
- * stroke weight, so the row reads as one hand's marks. All four are
- * live now — each bay is the container for the window whose figure it
- * draws, and the drawing is what tells you which. */
+/* The button keeps a generous hit target, but it has no visible container.
+ * The solid mark is the dock. It sits above the WebGL layer and covers the
+ * narrow final neck as the sheet enters its centre. */
 .gen-tile {
-  width: 52px;
-  height: 52px;
+  --gen-mouth: 8px;
+  position: relative;
+  width: 58px;
+  height: 58px;
   display: grid;
   place-items: center;
-  background: var(--bench-hi);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-  color: var(--ink-faint);
+  padding: 2px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--gen-accent);
   user-select: none;
 }
 
 .gen-tile svg {
   display: block;
+  overflow: visible;
+  filter: drop-shadow(0 1px 0 rgba(40, 38, 30, 0.18));
+  transition: filter 140ms ease, opacity 140ms ease;
 }
 
 /* A window's bay — the container the sheet pours into, not a frame
@@ -713,66 +848,40 @@
  * write every frame. The transition here is paint only — the border and
  * mouth seam still cross-fade on the data-filled flip. */
 .gen-tile[data-role='window'] {
-  position: relative;
-  padding: 0;
   cursor: default;
-  color: var(--ink-mute);
-  /* TOP centre, not bottom: dockY is this box's top edge, captured at
-   * press time and fixed for the whole pour. Scaling from the top keeps
-   * that edge — the mouth — exactly where the sheet is actually landing,
-   * and the container bulges DOWNWARD around it, the way a vessel fills
-   * below a fixed opening. Scaling from the bottom would have walked the
-   * drawn mouth up and away from the real one as the bay grew. */
-  transform-origin: 50% 0;
-  transition: color 140ms linear, border-color 140ms linear;
+  transform-origin: 50% 50%;
+  transition: color 140ms linear;
 }
 
 /* The mark's pane — the LEVEL the bay is holding, not a state it is in.
  * The stroke around it never changes, so the drawing survives whatever
  * the level does; only what is INSIDE it moves.
  *
- * The pane is always the signal colour, and what `--pour` moves is the
- * BOTTOM of it: the fill is held to the top edge and grows downward as
- * the drive writes --pour every frame (Genie.tsx). Downward and not up,
- * because the sheet arrives from above and lands on the bay's top edge —
- * a level that rose to meet it would be travelling against the only
- * motion on screen. The mark fills as the window pours in and empties
- * upward as it pours out, and a hand scrubbing the drag moves the level
- * under its own finger — none of which a `fill` that flips on a class
- * could do, because there is no one moment at which a window becomes
- * docked when a hand is holding the pour halfway.
+ * The pane is always the icon's theme colour. `--pour` reveals it from the
+ * top down, matching the window as it shrinks toward the dock. It clears in
+ * the opposite direction as the window returns. A hand scrubbing the drag
+ * moves this level directly; no second animation chases the transform.
  *
  * `fill-box` is stated rather than left to the default: percentages in
  * inset() need a box to be percentages OF, and the one that means
  * anything here is the mark's own — half of the circle, not half of the
  * 26px viewport the circle is drawn in. */
 .gen-pane {
-  fill: var(--signal);
+  fill: var(--gen-accent);
   clip-path: inset(0 0 calc((1 - var(--pour, 0)) * 100%) 0) fill-box;
 }
 
-/* The mouth, drawn: the bay's whole top edge is the opening, because
- * that is exactly what the law pours through — measure() hands the warp
- * slotHalf = rect.width / 2, so the sheet's bottom edge is the icon's
- * width. The inset −1px on each side covers the border, making this the
- * full 52px border-box span rather than the 50px padding box.
- *
- * It deliberately does NOT counter-scale against the bay's swell: the
- * mouth grows with the icon (the Driver scales slotHalf by the same
- * dockSwell), so a seam that held still would be the one telling the
- * lie. Empty, whatever is behind the bay shows through the opening —
- * which is the bench now that the tray is gone, and has to be stated as
- * the bench: a seam still painted the tray's colour would be a grey line
- * across the top of every empty bay with nothing to explain it. */
-.gen-tile[data-role='window']::before {
-  content: '';
-  position: absolute;
-  top: -1px;
-  left: -1px;
-  right: -1px;
-  height: 1px;
-  background: var(--bench);
-  transition: background-color 140ms linear, height 140ms linear;
+.gen-icon-base {
+  fill: #fff;
+}
+
+.gen-icon-line,
+.gen-icon-detail {
+  fill: none;
+  stroke: color-mix(in srgb, var(--gen-accent) 76%, #1f241f);
+  stroke-width: 0.62;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* Filled: the wireframe STAYS and gains contents — the pane fills, the
@@ -790,26 +899,22 @@
   z-index: 1;
 }
 
-.gen-tile[data-role='window'][data-filled='true']::before {
-  height: 2px;
-  background: var(--signal);
-}
-
 .gen-tile[data-role='window'][data-filled='true']:hover {
-  border-color: var(--signal-lit);
+  color: color-mix(in srgb, var(--gen-accent) 82%, white);
 }
 
 .gen-tile[data-role='window'][data-filled='true']:hover .gen-pane {
-  fill: var(--signal-lit);
+  fill: color-mix(in srgb, var(--gen-accent) 82%, white);
 }
 
-.gen-tile[data-role='window'][data-filled='true']:hover::before {
-  background: var(--signal-lit);
+.gen-tile[data-role='window'][data-filled='true']:hover svg {
+  filter: drop-shadow(0 2px 1px rgba(40, 38, 30, 0.22));
 }
 
 .gen-tile[data-role='window']:focus-visible {
-  outline: 2px solid var(--signal);
-  outline-offset: 2px;
+  outline: 2px solid var(--gen-accent);
+  outline-offset: 1px;
+  border-radius: 10px;
 }
 
 /* The overlay canvas — same discipline as flight: never able to eat a

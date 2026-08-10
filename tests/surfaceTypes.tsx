@@ -5,11 +5,13 @@ import {
   Surface,
   SurfaceApp,
   type FrameSource,
+  type PresentationRequirement,
   type SurfaceAppProps,
   type SurfaceProps,
 } from '@petepetrash/munari'
 
 declare const frame: FrameSource
+declare const presentation: PresentationRequirement
 const geometry = <planeGeometry args={[1, 1]} />
 
 ;<Surface html="" width={10} height={10}>{geometry}</Surface>
@@ -18,6 +20,8 @@ const geometry = <planeGeometry args={[1, 1]} />
   width={10}
   height={10}
   onFrameDrawn={(receipt) => void receipt.frame.generation}
+  presentation={presentation}
+  onPresented={(receipt) => void receipt.presentationRevision}
 >
   {geometry}
 </Surface>
@@ -29,6 +33,10 @@ const mixed = { html: '', frame, children: geometry }
 ;<Surface frame={frame} onFirstUpload={() => {}}>{geometry}</Surface>
 // @ts-expect-error A DOM Surface has no numbered frame receipt.
 ;<Surface html="" onFrameDrawn={() => {}}>{geometry}</Surface>
+// @ts-expect-error A DOM Surface has no renderer presentation receipt.
+;<Surface html="" presentation={presentation}>{geometry}</Surface>
+// @ts-expect-error FrameSurface owns the renderer fence callbacks.
+;<Surface frame={frame} onBeforeRender={() => {}}>{geometry}</Surface>
 // @ts-expect-error SurfaceApp remains a DOM-owned React root.
 ;<SurfaceApp frame={frame} content={<div />}>{geometry}</SurfaceApp>
 

@@ -51,7 +51,7 @@ export interface DockParams {
 }
 
 export const DOCK_DEFAULTS: DockParams = {
-  // 0.34, not the 0.1 this shipped with first: on the lab's 52px tile a
+  // 0.34, not the 0.1 this shipped with first: on the lab's 58px mark a
   // tenth is five pixels, which is under the threshold where a size
   // change reads as a size change at all rather than as an edge
   // shimmer. The container has to end up plainly bigger than the bays
@@ -83,6 +83,20 @@ function smoothstep(e0: number, e1: number, x: number): number {
  */
 export function dockSwell(progress: number, d: DockParams = DOCK_DEFAULTS): number {
   return 1 + d.swell * smoothstep(d.absorbStart, 1, progress)
+}
+
+/**
+ * How much of the warped sheet has crossed the icon's top boundary.
+ * The fill starts when the bottom edge touches that boundary and reaches
+ * one only when the top edge has passed it, so “full” means the whole
+ * window has been absorbed rather than only its leading edge.
+ */
+export function dockFill(topY: number, bottomY: number, thresholdY: number): number {
+  if (bottomY >= thresholdY) return 0
+  if (topY <= thresholdY) return 1
+  const span = topY - bottomY
+  if (span <= 0) return 0
+  return Math.min(1, Math.max(0, (thresholdY - bottomY) / span))
 }
 
 /**

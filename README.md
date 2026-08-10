@@ -71,38 +71,54 @@ React root into the same live subtree:
 ```
 
 A caller-owned canvas can bypass DOM capture. Its frame number crosses the
-renderer with the pixels, so a handoff can wait for the exact frame Three
-uploaded and the mesh drew:
+renderer with the pixels. A handoff can wait for both the named upload and an
+eligible visible presentation:
 
 ```tsx
-import { createCanvasFrameSource, type FrameId } from '@petepetrash/munari'
+import {
+  createCanvasFrameSource,
+  presentationReceiptSatisfies,
+  type PresentationRequirement,
+} from '@petepetrash/munari'
 
-const frames = createCanvasFrameSource(canvas, { premultiplyAlpha: false })
-const required = { current: null as FrameId | null }
+function FrameExample({ canvas }: { canvas: HTMLCanvasElement }) {
+  const [frames] = useState(() =>
+    createCanvasFrameSource(canvas, { premultiplyAlpha: false }),
+  )
+  const [presentation, setPresentation] = useState<PresentationRequirement>()
+  const nextTransferId = useRef(0)
+  const nextPresentationRevision = useRef(0)
 
-function publishFrame() {
-  // Finish every canvas write before publishing it.
-  drawNextFrame(canvas)
-  required.current = frames.publish()
+  function publishFrame() {
+    // Finish every canvas write before publishing it.
+    drawNextFrame(canvas)
+    setPresentation({
+      transferId: ++nextTransferId.current,
+      frame: frames.publish(),
+      presentationRevision: ++nextPresentationRevision.current,
+    })
+  }
+
+  return <>
+    <button onClick={publishFrame}>draw next frame</button>
+    <Canvas>
+      <Surface
+        frame={frames}
+        width={400}
+        height={300}
+        presentation={presentation}
+        onPresented={(receipt) => {
+          if (presentation && presentationReceiptSatisfies(presentation, receipt)) {
+            setPresentation(undefined)
+            releasePreviousOwner()
+          }
+        }}
+      >
+        <planeGeometry args={[400, 300]} />
+      </Surface>
+    </Canvas>
+  </>
 }
-
-<Surface
-  frame={frames}
-  width={400}
-  height={300}
-  onFrameDrawn={({ frame }) => {
-    const target = required.current
-    if (
-      target &&
-      frame.sourceId === target.sourceId &&
-      frame.generation >= target.generation
-    ) {
-      releasePreviousOwner()
-    }
-  }}
->
-  <planeGeometry args={[400, 300]} />
-</Surface>
 ```
 
 The frame path uses an unlit, non-tone-mapped material by default, so scene
@@ -111,9 +127,12 @@ lighting is wanted.
 
 The canvas stays with its caller. `publish()` means new pixels are ready; it
 does not mean they were drawn. `onFrameDrawn` proves that the target mesh used
-the named upload in a renderer pass. Several publications can merge before
-one render, so receipts name only the latest frame that was actually uploaded.
-A hidden or culled mesh cannot send a draw receipt.
+the named upload in a renderer pass. It can also fire for an off-screen or
+color-disabled pass. `onPresented` adds the exact transfer and presentation
+revision and accepts only a color-writing draw to the default framebuffer.
+Several publications can merge before one render, so receipts name only the
+latest frame that was actually uploaded. A hidden or culled mesh cannot send a
+receipt.
 
 For every premultiplied frame source, use `material="none"` and a custom
 material. This also applies when the mesh does not blend: pixels with partial

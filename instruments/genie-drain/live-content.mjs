@@ -1,19 +1,19 @@
 // live-content — is the flying sheet a running page, or a photograph?
 //
-// The genie window carries three shapes that cross it continuously. The
-// scene's whole claim is that they keep moving while the sheet is warped,
+// The genie window carries a nested shape tunnel that advances continuously.
+// The scene's whole claim is that it keeps moving while the sheet is warped,
 // and there are two independent ways that claim can quietly fail:
 //
 //   1. The capture is driven by PAINT. A transform animation is handed to
-//      the compositor and repaints nothing, so the shapes would travel in
+//      the compositor and repaints nothing, so the tunnel would advance in
 //      the DOM and stand perfectly still in the texture. Measured here as
 //      paint-counter growth on the window source during a flight.
 //
 //   2. The page copy and the airborne copy are the same component in two
 //      different trees, each with its own animation start time. If their
-//      phases differ, the shapes JUMP at the custody swap — the one frame
+//      phases differ, the tunnel JUMPS at the custody swap — the one frame
 //      the scene most needs to be invisible. Measured here by reading the
-//      same shape out of both trees at one instant and differencing it.
+//      same tunnel size out of both trees at one instant and differencing it.
 //
 // Neither is visible in a screenshot, and both would make the demo argue
 // against itself.
@@ -67,7 +67,7 @@ try {
       document.fonts.status === 'loaded',
     { timeout: 15_000 },
   )
-  // Let the shapes get well away from their keyframe origin, so a copy
+  // Let the tunnel get well away from its keyframe origin, so a copy
   // that started its clock at mount is obviously out of phase rather
   // than coincidentally close.
   await sleep(2500)
@@ -78,28 +78,36 @@ try {
       return { x: b.left + b.width / 2, y: b.top + b.height / 2 }
     }, sel)
 
-  // Read the shape out of every tree at one instant, then watch the paint
+  // Read the tunnel out of every tree at one instant, then watch the paint
   // counter across a fixed wall-clock window. Both copies must exist for
   // the whole of it, which is why each caller holds its flight open.
   const read = () =>
     page.evaluate(async () => {
-      const shapeOf = (root) => {
-        const el = root.querySelector('.gen-shape[data-shape="cerchio"]')
+      const tunnelOf = (root) => {
+        // Depth zero is the visible reference layer. The tunnel also carries
+        // one much larger ancestor cycle outside the viewport to hide its
+        // finite loop edge; measuring that guard would magnify a harmless
+        // sub-frame phase difference into several offscreen pixels.
+        const el = root.querySelector('.gen-recursive-shape[data-depth="0"]')
         if (!el) return null
         const cs = getComputedStyle(el)
-        return { left: parseFloat(cs.left), top: parseFloat(cs.top) }
+        return { width: parseFloat(cs.width), height: parseFloat(cs.height) }
       }
       const paints = () =>
         window.__munari?.stats().find((x) => x.label === 'genie-window')?.paints ?? null
 
       // Scoped to the scheda window, and it has to be: three other
       // windows now stand on the desk, and only this one carries the
-      // shapes. Unscoped, `windows.length` would read 4 at rest and 5
+      // tunnel. Unscoped, `windows.length` would read 4 at rest and 5
       // in flight, and the copies check — whose whole job is to prove
       // there were TWO trees to compare — would pass on a scene that
       // never took off.
       const windows = [...document.querySelectorAll('.gen-sheet[data-win="scheda"] .gen-window')]
-      const both = windows.map(shapeOf).filter(Boolean)
+      const both = []
+      for (const window of windows) {
+        const tunnel = tunnelOf(window)
+        if (tunnel) both.push(tunnel)
+      }
 
       const p0 = paints()
       const t0 = performance.now()
@@ -116,21 +124,21 @@ try {
 
   const judge = (name, r) => {
     const [a, b] = r.both
-    const drift = a && b ? Math.hypot(a.left - b.left, a.top - b.top) : null
+    const drift = a && b ? Math.hypot(a.width - b.width, a.height - b.height) : null
 
     console.log(`\n  ${name}`)
     console.log(`    window copies in flight   ${r.copies}`)
     console.log(`    window source paints/s    ${r.paintsPerSecond}`)
-    if (a) console.log(`    page copy shape at        left ${a.left}, top ${a.top}`)
-    if (b) console.log(`    airborne copy shape at    left ${b.left}, top ${b.top}`)
+    if (a) console.log(`    page copy tunnel size     ${a.width} × ${a.height}`)
+    if (b) console.log(`    airborne tunnel size      ${b.width} × ${b.height}`)
     if (drift !== null) console.log(`    twin phase drift          ${drift.toFixed(2)}px`)
 
     if (r.copies < 2) problems.push(`${name}: only one window copy existed mid-flight — nothing to compare`)
     if (!r.paintsPerSecond || r.paintsPerSecond < 20)
       problems.push(
-        `${name}: the sheet repainted ${r.paintsPerSecond}/s in flight — the shapes are frozen in the texture`,
+        `${name}: the sheet repainted ${r.paintsPerSecond}/s in flight — the tunnel is frozen in the texture`,
       )
-    if (drift === null) problems.push(`${name}: could not read the shape out of both trees`)
+    if (drift === null) problems.push(`${name}: could not read the tunnel out of both trees`)
     else if (drift > 2)
       problems.push(
         `${name}: the twins are ${drift.toFixed(1)}px out of phase — the swap frame will jump`,

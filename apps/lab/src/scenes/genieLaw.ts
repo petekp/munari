@@ -58,22 +58,86 @@ export interface GenieParams {
    * line — measured as a hull breach the first time it was tried.
    */
   sway: number
+  /**
+   * Radius and horizontal direction of an optional loop near the mouth.
+   * Zero keeps the classic S. A signed value adds one smooth loop while
+   * preserving the exact rest and dock identities.
+   */
+  loopRadius: number
 }
 
 export const GENIE_DEFAULTS: Omit<GenieParams, 'w' | 'h' | 'dockX' | 'dockY' | 'slotHalf'> = {
   stretchEnd: 0.45,
   slideStart: 0.25,
-  throat: 1.3,
-  sway: 2.4,
+  throat: 1.15,
+  sway: 1.95,
+  loopRadius: 0,
 }
 
-function smoothstep(e0: number, e1: number, x: number): number {
+// The edge paths keep one quarter of their linear slope at both custody
+// walls. The drive itself still leaves either wall from rest, so takeoff
+// remains gentle. On arrival, however, real geometric velocity survives
+// for the landing spring to consume instead of the sheet easing to a stop
+// and starting a separate wobble one frame later.
+const EDGE_MOMENTUM = 0.25
+
+function momentumstep(e0: number, e1: number, x: number): number {
   const k = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)))
-  return k * k * (3 - 2 * k)
+  const smooth = k * k * (3 - 2 * k)
+  return EDGE_MOMENTUM * k + (1 - EDGE_MOMENTUM) * smooth
+}
+
+function smootherstep(e0: number, e1: number, x: number): number {
+  const k = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)))
+  return k * k * k * (k * (k * 6 - 15) + 10)
 }
 
 function lerp(a: number, b: number, k: number): number {
   return a + (b - a) * k
+}
+
+function baseY(v: number, t: number, p: GenieParams): number {
+  const yTop0 = p.h / 2
+  const yBot0 = -p.h / 2
+  const yBot = lerp(yBot0, p.dockY, momentumstep(0, p.stretchEnd, t))
+  const yTop = lerp(yTop0, p.dockY, momentumstep(p.slideStart, 1, t))
+  return lerp(yTop, yBot, v)
+}
+
+/**
+ * Signed screen-space velocity of the bottom edge as it reaches rest.
+ * `tVelocity` is the drive's signed progress speed in t/s; a restore has
+ * a negative value and returns a positive y velocity because the sheet is
+ * moving upward. This is the exact endpoint derivative of `baseY`, so the
+ * settle spring begins with the velocity the visible geometry actually had.
+ */
+export function genieRestBottomVelocity(tVelocity: number, p: GenieParams): number {
+  const bottomJourney = p.dockY + p.h / 2
+  return (bottomJourney * EDGE_MOMENTUM * tVelocity) / p.stretchEnd
+}
+
+function loopOffset(q: number, radius: number): { x: number; y: number } {
+  if (radius === 0) return { x: 0, y: 0 }
+  // Keep the full turn in the lower, narrow part of the funnel. This is the
+  // compact path that reads as a loop rather than a broad S.
+  const loopStart = 0.66
+  if (q >= loopStart) {
+    // The route starts bending with the first deformed row instead of
+    // following the classic path and switching later. sin^4 is flat through
+    // curvature at both ends, so this lead leaves the straight window edge
+    // and meets the compact loop without a visible change in bend.
+    const leadProgress = (1 - q) / (1 - loopStart)
+    const lead = Math.sin(Math.PI * leadProgress) ** 4
+    return { x: -radius * 0.2 * lead, y: 0 }
+  }
+  const loopProgress = Math.min(1, Math.max(0, (q - 0.08) / (loopStart - 0.08)))
+  if (loopProgress === 0 || loopProgress === 1) return { x: 0, y: 0 }
+  const blend = Math.sin(Math.PI * loopProgress) ** 2
+  const angle = 2 * Math.PI * loopProgress
+  return {
+    x: radius * Math.sin(angle) * blend,
+    y: Math.abs(radius) * (Math.cos(angle) - 1) * blend,
+  }
 }
 
 /**
@@ -97,7 +161,6 @@ export function genieWarp(
   t: number,
   p: GenieParams,
 ): { x: number; y: number; k: number } {
-  const yTop0 = p.h / 2
   const yBot0 = -p.h / 2
 
   // The two edges own the timing. The bottom edge is the leading edge:
@@ -105,20 +168,32 @@ export function genieWarp(
   // trailing edge: it holds still until slideStart, then follows. Rows
   // between them interpolate, so the sheet stretches while the edges
   // disagree and drains while they agree.
-  const yBot = lerp(yBot0, p.dockY, smoothstep(0, p.stretchEnd, t))
-  const yTop = lerp(yTop0, p.dockY, smoothstep(p.slideStart, 1, t))
-  const y = lerp(yTop, yBot, v)
+  const yBase = baseY(v, t, p)
 
   // The pinch reads the vertex's CURRENT height, not its rest height:
   // q = 1 at (and above) the resting bottom edge, 0 at the mouth. A
   // vertex is squeezed by where it IS in the funnel, which is why the
   // remaining window narrows on its way down without any extra state.
-  const q = smoothstep(0, 1, Math.min(1, Math.max(0, (y - p.dockY) / (yBot0 - p.dockY))))
+  const rawPath = (yBase - p.dockY) / (yBot0 - p.dockY)
+  // The looped sheet starts its horizontal bend in a shallow band above the
+  // old bottom edge. Without this band, a long vertical side meets the funnel
+  // at one visible point. The band is zero at rest and grows smoothly with
+  // the flight, so t = 0 stays an exact identity while the moving silhouette
+  // becomes one continuous, round curve.
+  const shoulder = p.loopRadius === 0 ? 0 : 0.28 * smootherstep(0, 0.55, t)
+  const qPath = Math.min(1, Math.max(0, rawPath / (1 + shoulder)))
+  const loopPath = Math.min(1, Math.max(0, rawPath))
+  const q = smootherstep(0, 1, qPath)
 
   // The custody moments are exact by construction, not by float luck:
   // untouched above the funnel, seated in the slot at the mouth.
-  if (q === 1) return { x: (u - 0.5) * p.w, y, k: 1 }
-  if (q === 0) return { x: p.dockX + (u - 0.5) * 2 * p.slotHalf, y, k: (2 * p.slotHalf) / p.w }
+  if (q === 1) return { x: (u - 0.5) * p.w, y: yBase, k: 1 }
+  if (q === 0)
+    return {
+      x: p.dockX + (u - 0.5) * 2 * p.slotHalf,
+      y: yBase,
+      k: (2 * p.slotHalf) / p.w,
+    }
 
   const sFar = p.throat === 1 ? q : Math.pow(q, p.throat)
   const sNear = Math.pow(q, p.sway)
@@ -131,20 +206,24 @@ export function genieWarp(
   const nearIsRight = p.dockX >= 0
   const xR = lerp(p.dockX + p.slotHalf, p.w / 2, nearIsRight ? sNear : sFar)
   const xL = lerp(p.dockX - p.slotHalf, -p.w / 2, nearIsRight ? sFar : sNear)
-  return { x: lerp(xL, xR, u), y, k: (xR - xL) / p.w }
+  const loop = loopOffset(loopPath, p.loopRadius)
+  return {
+    x: lerp(xL, xR, u) + loop.x,
+    y: yBase + loop.y,
+    k: (xR - xL) / p.w,
+  }
 }
 
 /**
  * The inverse the grab gesture needs: the t that puts the sheet's
- * MIDLINE (u = 0.5, v = 0.5) at `targetY`. The midline is the one row
- * that moves strictly monotonically through the whole drain — the top
- * edge holds still before slideStart and the bottom edge parks at the
- * mouth after stretchEnd, so an inverse anchored to either edge would
- * jump across those plateaus under a steady hand. Solved by bisection:
+ * unlooped MIDLINE (v = 0.5) at `targetY`. The visual path can curl, but
+ * the hand still needs one monotonic progress axis. The base midline is
+ * that axis: the top edge holds before slideStart and the bottom edge parks
+ * after stretchEnd, while their midpoint keeps moving. Solved by bisection:
  * forty halvings of [0, 1] land within 1e-12, far under a device pixel.
  */
 export function genieGrabSolve(targetY: number, p: GenieParams): number {
-  const midY = (t: number) => genieWarp(0.5, 0.5, t, p).y
+  const midY = (t: number) => baseY(0.5, t, p)
   if (targetY >= midY(0)) return 0
   if (targetY <= midY(1)) return 1
   let lo = 0
@@ -180,8 +259,7 @@ export const SETTLE_DEFAULTS: SettleParams = {
  * initial SLOPE equals the arrival velocity (A = v/ω does that), so
  * motion is continuous through the moment of contact — the sheet does
  * not stop and then wobble, the wobble IS how it stops. Returns a px
- * offset for the scene to apply as it sees fit (the genie hangs it on
- * the top edge, scaled off toward the anchored bottom).
+ * offset for the scene to apply to the edge that carried that momentum.
  */
 export function genieSettle(tau: number, vArrivalPx: number, s: SettleParams): number {
   const omega = 2 * Math.PI * s.hz

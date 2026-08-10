@@ -1409,3 +1409,41 @@ frameloop, merges publications, replaces a live source, releases and
 reacquires it three times, and requires receipts
 `[A0, A2, B0, B2, B4, B6, B8]`. Every receipt is checked against the drawn
 sRGB pixels in the framebuffer.
+
+## #25 — Mesh traversal is not visible presentation (2026-08-09, core + react binding)
+
+**Decision.** `FrameDrawReceipt` keeps its upload-and-traversal meaning. A
+custody transfer that will release another presenter uses a separate optional
+`PresentationRequirement` and `PresentationReceipt`. The consumer owns the
+transfer ID and presentation revision. Core accepts a receipt only when the
+transfer, source, and revision match exactly and the drawn generation meets or
+exceeds the required minimum.
+
+The React binding samples the requirement in `onBeforeRender`. A draw can
+qualify only when it targets the default framebuffer and the rendered material
+has color writes enabled. `onAfterRender` then uses the last uploaded frame,
+not a new frame callback, and emits one receipt for the accepted surface,
+transfer, revision, and frame tuple. Off-screen and color-disabled draws are
+counted as rejections and warn once per transfer in development.
+
+This split is necessary because Three calls `onAfterRender` for a material
+whose `colorWrite` is false and for off-screen render targets. Those draws can
+open the pixel gate, but they cannot release presentation authority. Custom
+shader discard, depth, and occlusion remain caller policy; the binding does
+not inspect shader text or read back the framebuffer.
+
+Genie is the first consumer. Its frozen generation opens the pixel gate. It
+then enables color writes and holds the sheet at the wall until the matching
+presentation receipt releases the native canvas. A manual grab can change its
+hidden target during acquisition, while the visible wall pose and revision
+stay fixed. The reverse transfer does not wait for proof: it reveals the same
+canvas under WebGL, then removes WebGL on the next frame. Context loss hides
+the invalid renderer and revokes all active flights immediately.
+
+**Evidence.** The Chrome gate earns one unchanged `FrameDrawReceipt` while
+color writes are disabled, rejects the same uploaded frame through an
+off-screen target, and earns exactly one `PresentationReceipt` when the default
+framebuffer draw writes color. The same gate verifies a real backing-store
+resize. Genie's retained gate passes 24 minimize and restore cycles at 6x CPU,
+then loses the WebGL context and returns native coverage without a later draw
+receipt.

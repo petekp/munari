@@ -38,8 +38,9 @@ browser-driving instrument should copy them:
 
 ## frame-surface
 
-Does a public frame-backed `Surface` draw the generation it reports, with
-the source's sRGB values intact? `npm run gate:frame-surface`.
+Does a public frame-backed `Surface` draw the generation it reports, and does
+its optional presentation fence reject non-writing and off-screen passes?
+`npm run gate:frame-surface`.
 
 The page runs a demand frameloop and reads WebGL pixels inside the mesh's draw
 receipt. It first replaces one live source with another. It then releases and
@@ -49,7 +50,12 @@ frames before reacquisition. The gate requires receipts
 no stale receipt, no clear or wrong-color acquisition render, and sampled RGB
 within one channel value. It also checks that live replacement preserves the
 mesh, geometry, and material, and that the public default unlit material is a
-non-tone-mapped `MeshBasicMaterial` with an sRGB canvas texture.
+non-tone-mapped `MeshBasicMaterial` with an sRGB canvas texture. A separate
+pass draws with color writes disabled, then through an off-screen target, and
+finally through the default framebuffer without a new source publication. It
+requires one unchanged frame receipt and one presentation receipt from only
+the final draw. A third pass resizes the source backing store and verifies the
+reallocated texture at its new dimensions.
 
 R3F currently creates its Canvas reconciler root without strict effects.
 Wrapping either the DOM root or Canvas children in `StrictMode` does not prove
@@ -63,12 +69,15 @@ This path uses an ordinary `CanvasTexture`; it does not use or enable
 Does one video decoder and one frame canvas stay current through repeated
 Genie custody changes? `npm run gate:genie-film`.
 
-The gate runs 24 minimize and restore cycles at 4x CPU throttle. It requires
+The gate runs 24 minimize and restore cycles at 6x CPU throttle. It requires
 stable decoder, canvas, and source identities; monotonic frame generations;
-exact required-to-drawn receipt tuples; complete landings; and no black or
-uncovered compositor frame. Native video loop events are reported separately
-from custody-induced media events. The Genie route uses HTML capture for its
-window chrome, so this gate launches Chrome with `CanvasDrawElement` enabled.
+exact pixel and presentation receipt tuples; ordered native reveal before
+renderer release; complete landings; and no black or uncovered compositor
+frame. It then loses the WebGL context while WebGL has presentation authority
+and requires immediate native fallback without a later draw receipt. Native
+video loop events are reported separately from custody-induced media events.
+The Genie route uses HTML capture for its window chrome, so this gate launches
+Chrome with `CanvasDrawElement` enabled.
 
 ## sharpness
 

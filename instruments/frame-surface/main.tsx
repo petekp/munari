@@ -1,7 +1,7 @@
 // The page half of the FrameSurface browser gate. It goes through the public
 // package barrel so the gate covers Surface dispatch, exports, and its default
 // unlit material.
-import { useCallback, useLayoutEffect, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Canvas, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -10,6 +10,9 @@ import {
   createCanvasFrameSource,
   type CanvasFrameSource,
   type FrameDrawReceipt,
+  type PresentationReceipt,
+  type PresentationRequirement,
+  useSurfaceTexture,
 } from '@petepetrash/munari'
 
 type RGB = readonly [number, number, number]
@@ -102,7 +105,8 @@ function makeSource(initial: readonly RGB[]): TestSource {
   const paint = (colors: readonly RGB[]) => {
     colors.forEach(([r, g, b], index) => {
       context.fillStyle = `rgb(${r} ${g} ${b})`
-      context.fillRect(index * 16, 0, 16, 16)
+      const stripeWidth = canvas.width / colors.length
+      context.fillRect(index * stripeWidth, 0, stripeWidth, canvas.height)
     })
   }
   paint(initial)
@@ -116,6 +120,20 @@ const first = makeSource(FIRST_0)
 const second = makeSource(SECOND_0)
 const firstSourceId = first.source.currentFrame().sourceId
 const secondSourceId = second.source.currentFrame().sourceId
+
+const PRESENTATION_COLORS: readonly RGB[] = [
+  [26, 86, 146],
+  [206, 76, 46],
+  [66, 196, 126],
+  [176, 56, 216],
+]
+const presentationSource = makeSource(PRESENTATION_COLORS)
+const resizeSource = makeSource(FIRST_0)
+const PRESENTATION_REQUIREMENT: PresentationRequirement = {
+  transferId: 91,
+  frame: presentationSource.source.currentFrame(),
+  presentationRevision: 6,
+}
 
 const ACQUISITIONS = [
   {
@@ -215,7 +233,29 @@ export interface FrameSurfaceGateResult {
   reacquisitionObjectsFresh: boolean
   defaultUnlitVerified: boolean
   freshSurfaceEpochPerCustody: boolean
+  presentationFence: PresentationFenceEvidence
+  backingStoreResize: BackingStoreResizeEvidence
   worstRgbError: number
+  passed: boolean
+}
+
+export interface PresentationFenceEvidence {
+  frameReceipts: FrameDrawReceipt[]
+  presentationReceipts: PresentationReceipt[]
+  disabledDefaultClear: boolean
+  offscreenHadPixels: boolean
+  offscreenRgbError: number
+  visibleRgbError: number
+  offscreenPresentationReceipts: number
+  passed: boolean
+}
+
+export interface BackingStoreResizeEvidence {
+  generations: number[]
+  rgbErrors: number[]
+  finalWidth: number
+  finalHeight: number
+  sameTexture: boolean
   passed: boolean
 }
 
@@ -241,6 +281,10 @@ let firstBurstStarted = false
 let secondBurstStarted = false
 let resultScheduled = false
 let settled = false
+let mainGateComplete = false
+let presentationFence: PresentationFenceEvidence | null = null
+let backingStoreResize: BackingStoreResizeEvidence | null = null
+let presentationFencePhase: PresentationFencePhase = 'disabled'
 
 function objectId(object: object): number {
   const known = objectIds.get(object)
@@ -265,6 +309,26 @@ function sampleStripes(renderer: THREE.WebGLRenderer): RGB[] {
     const x = Math.floor(((index + 0.5) * size.x) / 4)
     const y = Math.floor(size.y / 2)
     gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
+    sampled.push([pixel[0]!, pixel[1]!, pixel[2]!])
+  }
+  return sampled
+}
+
+function sampleTargetStripes(
+  renderer: THREE.WebGLRenderer,
+  target: THREE.WebGLRenderTarget,
+): RGB[] {
+  const sampled: RGB[] = []
+  for (let index = 0; index < 4; index += 1) {
+    const pixel = new Uint8Array(4)
+    renderer.readRenderTargetPixels(
+      target,
+      Math.floor(((index + 0.5) * target.width) / 4),
+      Math.floor(target.height / 2),
+      1,
+      1,
+      pixel,
+    )
     sampled.push([pixel[0]!, pixel[1]!, pixel[2]!])
   }
   return sampled
@@ -376,8 +440,11 @@ function allSame(values: readonly number[]): boolean {
   return values.length > 0 && values.every((value) => value === values[0])
 }
 
-function finish(): void {
+function scheduleResult(): void {
+  if (!mainGateComplete || !presentationFence || !backingStoreResize) return
   if (resultScheduled) return
+  const fenceEvidence = presentationFence
+  const resizeEvidence = backingStoreResize
   resultScheduled = true
   setTimeout(() => {
     if (settled) return
@@ -494,6 +561,7 @@ function finish(): void {
       ]
       const traceMatches =
         generations.length === expectedGenerations.length &&
+        receiptSourceIds.length === expectedSourceIds.length &&
         generations.every((generation, index) => generation === expectedGenerations[index]) &&
         receiptSourceIds.every((sourceId, index) => sourceId === expectedSourceIds[index])
 
@@ -518,6 +586,8 @@ function finish(): void {
         reacquisitionObjectsFresh,
         defaultUnlitVerified,
         freshSurfaceEpochPerCustody,
+        presentationFence: fenceEvidence,
+        backingStoreResize: resizeEvidence,
         worstRgbError,
         passed:
           traceMatches &&
@@ -533,12 +603,262 @@ function finish(): void {
           liveReplacementIdentityPreserved &&
           defaultUnlitVerified &&
           freshSurfaceEpochPerCustody &&
+          fenceEvidence.passed &&
+          resizeEvidence.passed &&
           worstRgbError <= 1,
       })
     } catch (error) {
       fail(error)
     }
   }, 50)
+}
+
+function finish(): void {
+  mainGateComplete = true
+  scheduleResult()
+}
+
+function completePresentationFence(evidence: PresentationFenceEvidence): void {
+  presentationFence = evidence
+  scheduleResult()
+}
+
+function completeBackingStoreResize(evidence: BackingStoreResizeEvidence): void {
+  backingStoreResize = evidence
+  scheduleResult()
+}
+
+type PresentationFencePhase = 'disabled' | 'offscreen' | 'visible' | 'done'
+
+function PresentationMaterial({ colorWrite }: { colorWrite: boolean }) {
+  const texture = useSurfaceTexture()
+  return (
+    <meshBasicMaterial
+      map={texture}
+      color="#ffffff"
+      colorWrite={colorWrite}
+      toneMapped={false}
+    />
+  )
+}
+
+function PresentationRenderMonitor({
+  phase,
+  onRendered,
+}: {
+  phase: PresentationFencePhase
+  onRendered: (phase: PresentationFencePhase, sampled: RGB[]) => void
+}) {
+  const renderer = useThree((state) => state.gl)
+  const target = useMemo(() => new THREE.WebGLRenderTarget(1, 1), [])
+
+  useLayoutEffect(() => () => target.dispose(), [target])
+  useLayoutEffect(() => {
+    const original = renderer.render
+    const wrapped: typeof renderer.render = (scene, camera) => {
+      const offscreen = phase === 'offscreen'
+      const previousTarget = renderer.getRenderTarget()
+      if (offscreen) {
+        const size = renderer.getDrawingBufferSize(new THREE.Vector2())
+        target.setSize(size.x, size.y)
+        renderer.setRenderTarget(target)
+      }
+
+      original.call(renderer, scene, camera)
+      const sampled = offscreen
+        ? sampleTargetStripes(renderer, target)
+        : sampleStripes(renderer)
+      if (offscreen) renderer.setRenderTarget(previousTarget)
+      onRendered(phase, sampled)
+    }
+    renderer.render = wrapped
+    return () => {
+      if (renderer.render === wrapped) renderer.render = original
+    }
+  }, [renderer, target, phase, onRendered])
+
+  return null
+}
+
+function PresentationFenceScene() {
+  const invalidate = useThree((state) => state.invalidate)
+  const [phase, setPhase] = useState<PresentationFencePhase>('disabled')
+  presentationFencePhase = phase
+  const frameReceipts = useRef<FrameDrawReceipt[]>([])
+  const presentationReceipts = useRef<PresentationReceipt[]>([])
+  const handled = useRef(new Set<PresentationFencePhase>())
+  const disabledDefaultClear = useRef(false)
+  const offscreenRgbError = useRef(Number.POSITIVE_INFINITY)
+  const offscreenHadPixels = useRef(false)
+  const offscreenPresentationReceipts = useRef(-1)
+
+  useLayoutEffect(() => invalidate(), [phase, invalidate])
+
+  const onFrameDrawn = useCallback((receipt: FrameDrawReceipt) => {
+    frameReceipts.current.push(receipt)
+    if (frameReceipts.current.length > 1) {
+      fail(new Error('presentation fence changed the FrameDrawReceipt callback count'))
+    }
+  }, [])
+
+  const onPresented = useCallback((receipt: PresentationReceipt) => {
+    presentationReceipts.current.push(receipt)
+    if (presentationReceipts.current.length > 1) {
+      fail(new Error('presentation fence emitted more than one receipt for one tuple'))
+    }
+  }, [])
+
+  const onRendered = useCallback(
+    (renderedPhase: PresentationFencePhase, sampled: RGB[]) => {
+      if (settled || handled.current.has(renderedPhase) || renderedPhase === 'done') return
+      if (renderedPhase === 'disabled' && frameReceipts.current.length === 0) return
+
+      handled.current.add(renderedPhase)
+      if (renderedPhase === 'disabled') {
+        disabledDefaultClear.current = isClearOnly(sampled)
+        if (presentationReceipts.current.length !== 0) {
+          fail(new Error('color-disabled draw produced a presentation receipt'))
+          return
+        }
+        queueMicrotask(() => setPhase('offscreen'))
+        return
+      }
+
+      if (renderedPhase === 'offscreen') {
+        offscreenRgbError.current = maxError(sampled, PRESENTATION_COLORS)
+        offscreenHadPixels.current = !isClearOnly(sampled)
+        offscreenPresentationReceipts.current = presentationReceipts.current.length
+        if (presentationReceipts.current.length !== 0) {
+          fail(new Error('off-screen draw produced a presentation receipt'))
+          return
+        }
+        queueMicrotask(() => setPhase('visible'))
+        return
+      }
+
+      const visibleRgbError = maxError(sampled, PRESENTATION_COLORS)
+      const accepted = presentationReceipts.current[0]
+      const passed =
+        frameReceipts.current.length === 1 &&
+        frameReceipts.current[0]?.frame.sourceId ===
+          PRESENTATION_REQUIREMENT.frame.sourceId &&
+        frameReceipts.current[0]?.frame.generation ===
+          PRESENTATION_REQUIREMENT.frame.generation &&
+        presentationReceipts.current.length === 1 &&
+        accepted?.transferId === PRESENTATION_REQUIREMENT.transferId &&
+        accepted.frame.sourceId === PRESENTATION_REQUIREMENT.frame.sourceId &&
+        accepted.frame.generation === PRESENTATION_REQUIREMENT.frame.generation &&
+        accepted.presentationRevision ===
+          PRESENTATION_REQUIREMENT.presentationRevision &&
+        disabledDefaultClear.current &&
+        offscreenHadPixels.current &&
+        offscreenPresentationReceipts.current === 0 &&
+        visibleRgbError <= 1
+
+      setPhase('done')
+      completePresentationFence({
+        frameReceipts: frameReceipts.current,
+        presentationReceipts: presentationReceipts.current,
+        disabledDefaultClear: disabledDefaultClear.current,
+        offscreenHadPixels: offscreenHadPixels.current,
+        offscreenRgbError: offscreenRgbError.current,
+        visibleRgbError,
+        offscreenPresentationReceipts: offscreenPresentationReceipts.current,
+        passed,
+      })
+    },
+    [],
+  )
+
+  return (
+    <>
+      <PresentationRenderMonitor phase={phase} onRendered={onRendered} />
+      <Surface
+        name="frame-presentation-gate"
+        frame={presentationSource.source}
+        width={64}
+        height={16}
+        material="none"
+        presentation={PRESENTATION_REQUIREMENT}
+        onFrameDrawn={onFrameDrawn}
+        onPresented={onPresented}
+      >
+        <planeGeometry args={[4, 1]} />
+        <PresentationMaterial colorWrite={phase !== 'disabled'} />
+      </Surface>
+    </>
+  )
+}
+
+function BackingStoreResizeScene() {
+  const renderer = useThree((state) => state.gl)
+  const scene = useThree((state) => state.scene)
+  const generations = useRef<number[]>([])
+  const rgbErrors = useRef<number[]>([])
+  const firstTexture = useRef<THREE.Texture | null>(null)
+
+  const onFrameDrawn = useCallback(
+    (receipt: FrameDrawReceipt) => {
+      try {
+        const object = scene.getObjectByName('frame-resize-gate')
+        if (!(object instanceof THREE.Mesh) || Array.isArray(object.material)) {
+          throw new Error('resize gate Surface mesh was not ready')
+        }
+        const texture =
+          object.material instanceof THREE.MeshBasicMaterial
+            ? object.material.map
+            : null
+        if (!texture) throw new Error('resize gate had no CanvasTexture')
+
+        const index = generations.current.length
+        const expected = index === 0 ? FIRST_0 : FIRST_2
+        generations.current.push(receipt.frame.generation)
+        rgbErrors.current.push(maxError(sampleStripes(renderer), expected))
+
+        if (index === 0) {
+          firstTexture.current = texture
+          setTimeout(() => {
+            resizeSource.source.canvas.width = 128
+            resizeSource.source.canvas.height = 32
+            resizeSource.paint(FIRST_2)
+            resizeSource.source.publish()
+          }, 0)
+          return
+        }
+
+        if (index > 1) throw new Error('resize gate emitted an extra frame receipt')
+        completeBackingStoreResize({
+          generations: generations.current,
+          rgbErrors: rgbErrors.current,
+          finalWidth: resizeSource.source.canvas.width,
+          finalHeight: resizeSource.source.canvas.height,
+          sameTexture: firstTexture.current === texture,
+          passed:
+            generations.current[0] === 0 &&
+            generations.current[1] === 1 &&
+            rgbErrors.current.every((error) => error <= 1) &&
+            resizeSource.source.canvas.width === 128 &&
+            resizeSource.source.canvas.height === 32 &&
+            firstTexture.current === texture,
+        })
+      } catch (error) {
+        fail(error)
+      }
+    },
+    [renderer, scene],
+  )
+
+  return (
+    <Surface
+      name="frame-resize-gate"
+      frame={resizeSource.source}
+      width={64}
+      height={16}
+      onFrameDrawn={onFrameDrawn}
+    >
+      <planeGeometry args={[4, 1]} />
+    </Surface>
+  )
 }
 
 function GateScene() {
@@ -698,35 +1018,96 @@ declare global {
     __frameSurfaceGate: {
       ready: boolean
       run: () => Promise<FrameSurfaceGateResult>
+      debug: () => object
     }
   }
 }
 
-window.__frameSurfaceGate = { ready: true, run: () => done }
+window.__frameSurfaceGate = {
+  ready: true,
+  run: () => done,
+  debug: () => ({
+    mainGateComplete,
+    mainReceipts: receipts.length,
+    presentationFencePhase,
+    presentationFence,
+    backingStoreResize,
+  }),
+}
 
 createRoot(document.getElementById('root')!).render(
-  <div id="stage">
-    <Canvas
-      frameloop="demand"
-      dpr={1}
-      orthographic
-      camera={{
-        position: [0, 0, 1],
-        left: -2,
-        right: 2,
-        top: 0.5,
-        bottom: -0.5,
-        near: 0.1,
-        far: 10,
-      }}
-      gl={{ alpha: false, antialias: false, preserveDrawingBuffer: true }}
-      onCreated={({ gl }) => {
-        gl.outputColorSpace = THREE.SRGBColorSpace
-        gl.toneMapping = THREE.NoToneMapping
-        gl.setClearColor(0x000000, 1)
-      }}
-    >
-      <GateScene />
-    </Canvas>
+  <div id="stages">
+    <div id="presentation-stage">
+      <Canvas
+        frameloop="demand"
+        dpr={1}
+        orthographic
+        camera={{
+          position: [0, 0, 1],
+          left: -2,
+          right: 2,
+          top: 0.5,
+          bottom: -0.5,
+          near: 0.1,
+          far: 10,
+        }}
+        gl={{ alpha: false, antialias: false, preserveDrawingBuffer: true }}
+        onCreated={({ gl }) => {
+          gl.outputColorSpace = THREE.SRGBColorSpace
+          gl.toneMapping = THREE.NoToneMapping
+          gl.setClearColor(0x000000, 1)
+        }}
+      >
+        <PresentationFenceScene />
+      </Canvas>
+    </div>
+    <div id="resize-stage">
+      <Canvas
+        frameloop="demand"
+        dpr={1}
+        orthographic
+        camera={{
+          position: [0, 0, 1],
+          left: -2,
+          right: 2,
+          top: 0.5,
+          bottom: -0.5,
+          near: 0.1,
+          far: 10,
+        }}
+        gl={{ alpha: false, antialias: false, preserveDrawingBuffer: true }}
+        onCreated={({ gl }) => {
+          gl.outputColorSpace = THREE.SRGBColorSpace
+          gl.toneMapping = THREE.NoToneMapping
+          gl.setClearColor(0x000000, 1)
+        }}
+      >
+        <BackingStoreResizeScene />
+      </Canvas>
+    </div>
+    <div id="stage">
+      <Canvas
+        frameloop="demand"
+        dpr={1}
+        orthographic
+        camera={{
+          position: [0, 0, 1],
+          left: -2,
+          right: 2,
+          top: 0.5,
+          bottom: -0.5,
+          near: 0.1,
+          far: 10,
+        }}
+        gl={{ alpha: false, antialias: false, preserveDrawingBuffer: true }}
+        onCreated={({ gl }) => {
+          gl.outputColorSpace = THREE.SRGBColorSpace
+          gl.toneMapping = THREE.NoToneMapping
+          gl.setClearColor(0x000000, 1)
+        }}
+      >
+        <GateScene />
+      </Canvas>
+    </div>
   </div>,
 )

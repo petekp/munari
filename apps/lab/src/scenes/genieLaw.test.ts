@@ -3,6 +3,7 @@ import {
   GENIE_DEFAULTS,
   SETTLE_DEFAULTS,
   genieGrabSolve,
+  genieRestBottomVelocity,
   genieSettle,
   genieSettleDone,
   genieWarp,
@@ -103,6 +104,34 @@ describe('genie warp', () => {
     }
   })
 
+  it('can curl through one loop without moving either custody identity', () => {
+    const looped = { ...P, loopRadius: 0.75 }
+    for (const u of STEPS) {
+      for (const v of STEPS) {
+        expect(genieWarp(u, v, 0, looped)).toEqual(genieWarp(u, v, 0, P))
+        expect(genieWarp(u, v, 1, looped)).toEqual(genieWarp(u, v, 1, P))
+      }
+    }
+
+    // At one mid-flight section the centreline visits both sides of the
+    // classic S before it straightens for the icon neck.
+    const offsets: number[] = []
+    for (let v = 0; v <= 1.0001; v += 0.02) {
+      offsets.push(genieWarp(0.5, v, 0.4, looped).x - genieWarp(0.5, v, 0.4, P).x)
+    }
+    expect(Math.min(...offsets)).toBeLessThan(-0.1)
+    expect(Math.max(...offsets)).toBeGreaterThan(0.1)
+
+    const early = genieWarp(0.5, 1, 0.05, looped)
+    const earlyClassic = genieWarp(0.5, 1, 0.05, P)
+    const earlyOffset = Math.abs(early.x - earlyClassic.x)
+    const later = genieWarp(0.5, 1, 0.1, looped)
+    const laterClassic = genieWarp(0.5, 1, 0.1, P)
+    const laterOffset = Math.abs(later.x - laterClassic.x)
+    expect(earlyOffset).toBeGreaterThan(0.001)
+    expect(laterOffset).toBeGreaterThan(earlyOffset * 4)
+  })
+
   it('plants its near edge while the far edge still flares — the asymmetric S', () => {
     // The classic genie's silhouette is not a symmetric funnel gliding
     // sideways: the edge on the dock's side plants early into a taut
@@ -144,7 +173,9 @@ describe('genie warp', () => {
     for (let t = 0; t <= 1.0001; t += 0.05) {
       for (const v of STEPS) {
         const row = genieWarp(0.5, v, t, P)
-        const span = genieWarp(1, v, t, P).x - genieWarp(0, v, t, P).x
+        const left = genieWarp(0, v, t, P)
+        const right = genieWarp(1, v, t, P)
+        const span = Math.hypot(right.x - left.x, right.y - left.y)
         expect(row.k).toBeCloseTo(span / P.w, 12)
       }
     }
@@ -193,6 +224,14 @@ describe('grab solve', () => {
     }
   })
 
+  it('keeps one monotonic hand axis while the visible sheet loops', () => {
+    const looped = { ...P, loopRadius: 0.75 }
+    for (let t = 0; t <= 1.0001; t += 0.05) {
+      const anchorY = genieWarp(0.5, 0.5, t, P).y
+      expect(genieGrabSolve(anchorY, looped)).toBeCloseTo(Math.min(1, t), 3)
+    }
+  })
+
   it('clamps outside the drain: above rest is 0, below the mouth is 1', () => {
     expect(genieGrabSolve(P.h, P)).toBe(0)
     expect(genieGrabSolve(P.dockY - 1, P)).toBe(1)
@@ -201,6 +240,20 @@ describe('grab solve', () => {
 
 describe('settle wobble', () => {
   const V = 220 // px/s, a real flick's arrival
+
+  it('inherits the bottom edge velocity that the warp has at rest', () => {
+    const tVelocity = -1.4
+    const expected = genieRestBottomVelocity(tVelocity, P)
+    const h = 1e-5
+    const y0 = genieWarp(0.5, 1, 0, P).y
+    const y1 = genieWarp(0.5, 1, h, P).y
+    const measured = ((y1 - y0) / h) * tVelocity
+
+    expect(expected).toBeGreaterThan(0)
+    expect(expected).toBeCloseTo(measured, 2)
+    const settleSlope = (genieSettle(h, expected, SETTLE_DEFAULTS) - genieSettle(0, expected, SETTLE_DEFAULTS)) / h
+    expect(settleSlope).toBeCloseTo(expected, 0)
+  })
 
   it('starts from zero displacement with the arrival velocity — motion is continuous through the landing', () => {
     expect(genieSettle(0, V, SETTLE_DEFAULTS)).toBe(0)

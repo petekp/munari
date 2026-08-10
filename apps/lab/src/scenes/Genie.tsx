@@ -25,16 +25,26 @@
 // landing's leftover momentum is consumed by a settle wobble whose
 // perceptual budget — sub-half-pixel within 350ms — is pinned by test.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
   Surface,
   SurfaceApp,
   cameraDistance,
+  presentationReceiptSatisfies,
   type FrameDrawReceipt,
   type FrameId,
   type FrameSource,
+  type PresentationReceipt,
+  type PresentationRequirement,
   useSurfaceChrome,
   useSurfaceTexture,
 } from '@petepetrash/munari'
@@ -42,6 +52,7 @@ import {
   GENIE_DEFAULTS,
   SETTLE_DEFAULTS,
   genieGrabSolve,
+  genieRestBottomVelocity,
   genieSettle,
   genieSettleDone,
   genieWarp,
@@ -51,11 +62,12 @@ import {
   DRIVE_DEFAULTS,
   driveCommit,
   driveGrabStep,
+  drivePresentationStep,
   driveSpringStep,
   easeInCubic,
   pourOut,
 } from './genieDrive'
-import { dockPose, dockRingDone, dockSwell } from './genieDock'
+import { dockFill, dockPose, dockRingDone, dockSwell } from './genieDock'
 import {
   GENIE_FILM_FRAG,
   GENIE_FRAG,
@@ -82,7 +94,7 @@ const FOV = 42
 // entirely in y, and a flat sheet renders identically at any tessellation
 // so the rest cost is zero.
 const GRID_X = 24
-const GRID_Y = 64
+const GRID_Y = 96
 const MINIMIZE_S = 0.62
 const RESTORE_S = 0.52
 const SLOW = 6
@@ -124,6 +136,8 @@ interface GenieFlight {
   wy: number
   /** The law's params, dock mouth already window-local. */
   params: GenieParams
+  /** Untransformed half-height of the visible SVG mark, in CSS pixels. */
+  markHalf: number
   duration: number
   /** Where the window ends and its shade begins, as a fraction of the
    *  capture root: (windowW / rootW, windowH / rootH). Measured off the
@@ -137,6 +151,7 @@ interface GenieFlight {
     source: FrameSource
     required: FrameId
     token: number
+    presentation: PresentationRequirement
     /** left, top, width, height in normalized capture-root coordinates. */
     rect: [number, number, number, number]
     /** Bottom corner radius in source CSS pixels. */
@@ -155,6 +170,9 @@ interface DriveBox {
   mode: 'clock' | 'grab' | 'spring' | 'settle'
   t: number
   v: number
+  /** Progress actually drawn. It only differs from t while catching up
+   *  after a hand moved during the hidden texture handoff. */
+  visibleT: number
   grabT: number
   target: 0 | 1
   clockStart: number | null
@@ -166,6 +184,7 @@ const restingDrive = (): DriveBox => ({
   mode: 'clock',
   t: 0,
   v: 0,
+  visibleT: 0,
   grabT: 0,
   target: 1,
   clockStart: null,
@@ -210,8 +229,9 @@ const SCHEDE: Scheda[] = [
     title: 'quadrato',
     mark: (
       <>
-        <rect className="gen-pane" x="2" y="2" width="16" height="16" />
-        <rect x="2" y="2" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="0.9" />
+        <rect className="gen-icon-base" x="1.4" y="1.4" width="17.2" height="17.2" rx="0.8" />
+        <rect className="gen-pane" x="1.4" y="1.4" width="17.2" height="17.2" rx="0.8" />
+        <rect className="gen-icon-line" x="1.4" y="1.4" width="17.2" height="17.2" rx="0.8" />
       </>
     ),
   },
@@ -220,8 +240,9 @@ const SCHEDE: Scheda[] = [
     title: 'cerchio',
     mark: (
       <>
-        <circle className="gen-pane" cx="10" cy="10" r="8" />
-        <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="0.9" />
+        <circle className="gen-icon-base" cx="10" cy="10" r="8.8" />
+        <circle className="gen-pane" cx="10" cy="10" r="8.8" />
+        <circle className="gen-icon-line" cx="10" cy="10" r="8.8" />
       </>
     ),
   },
@@ -230,12 +251,11 @@ const SCHEDE: Scheda[] = [
     title: 'triangolo',
     mark: (
       <>
-        <path className="gen-pane" d="M10 2.2 L18.4 17.8 L1.6 17.8 Z" />
+        <path className="gen-icon-base" d="M10 0.9 L19.2 18.6 L0.8 18.6 Z" />
+        <path className="gen-pane" d="M10 0.9 L19.2 18.6 L0.8 18.6 Z" />
         <path
-          d="M10 2.2 L18.4 17.8 L1.6 17.8 Z"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="0.9"
+          className="gen-icon-line"
+          d="M10 0.9 L19.2 18.6 L0.8 18.6 Z"
           // The apex of a triangle is a spike, and a mitred spike at
           // this angle runs several units past the point it is drawn
           // at — far enough to clip against the viewBox and come back
@@ -252,9 +272,10 @@ const SCHEDE: Scheda[] = [
     title: 'scheda',
     mark: (
       <>
-        <rect className="gen-pane" x="1.6" y="7" width="16.8" height="10" />
-        <rect x="1.6" y="3" width="16.8" height="14" fill="none" stroke="currentColor" strokeWidth="0.9" />
-        <path d="M1.6 7 L18.4 7" stroke="currentColor" strokeWidth="0.9" />
+        <rect className="gen-icon-base" x="0.9" y="2.2" width="18.2" height="15.6" rx="0.9" />
+        <rect className="gen-pane" x="0.9" y="2.2" width="18.2" height="15.6" rx="0.9" />
+        <rect className="gen-icon-line" x="0.9" y="2.2" width="18.2" height="15.6" rx="0.9" />
+        <path className="gen-icon-detail" d="M0.9 6.6 L19.1 6.6" />
       </>
     ),
   },
@@ -263,6 +284,12 @@ const SCHEDE: Scheda[] = [
 /** Dock order, and the order the desk mounts its windows in. Both loops
  *  below walk it, so a window and its bay can never fall out of step. */
 const WIN_IDS: WinId[] = SCHEDE.map((s) => s.id)
+
+const RECURSIVE_SHAPES = ['quadrato', 'cerchio', 'triangolo', 'scheda'] as const
+const RECURSIVE_REPEATS = 3
+const RECURSIVE_PERIOD = RECURSIVE_SHAPES.length * RECURSIVE_REPEATS
+const RECURSIVE_START_DEPTH = -RECURSIVE_PERIOD
+const RECURSIVE_END_DEPTH = RECURSIVE_PERIOD * 3
 
 /** Where the overlay sits in the desk's stack. The windows take 1..n from
  *  their paint order, so this only has to clear n — but a sheet in the air
@@ -278,28 +305,124 @@ const OVERLAY_Z = 100
 // The triangolo has no study. Its window is the film (below), and the
 // trade is the point: the other two windows show a figure drawn, this
 // one shows the man who drew them turning one by hand.
-const STUDY: Record<'quadrato' | 'cerchio', { figure: React.ReactNode; line: string }> = {
-  quadrato: {
-    figure: <rect x="2.75" y="2.75" width="98.5" height="98.5" fill="none" stroke="currentColor" strokeWidth="1.5" />,
-    line: 'Four equal sides. The module every grid on this page is cut from.',
-  },
-  cerchio: {
-    figure: <circle cx="52" cy="52" r="49.25" fill="none" stroke="currentColor" strokeWidth="1.5" />,
-    line: 'One edge, every point of it the same distance from the middle.',
-  },
-}
+type StudyId = 'quadrato' | 'cerchio'
 
 // ── the window (rendered twice: on the page, and on the sheet) ──────────
+
+type GenieMotionStyle = React.CSSProperties & {
+  '--gen-phase'?: string
+  '--line-delay'?: string
+  '--line-opacity'?: number
+}
+
+// Each live copy joins the document clock at the same phase. A newly mounted
+// airborne tree therefore matches the DOM tree on its first visible frame.
+function useDocumentPhase(): GenieMotionStyle {
+  // CSS animations run on the document timeline, which shares its origin
+  // with performance.now() — so "minus the time already elapsed" places a
+  // freshly mounted copy exactly where a copy mounted at load would be.
+  const [shift] = useState<GenieMotionStyle>(() => ({
+    '--gen-phase': `-${(performance.now() / 1000).toFixed(3)}s`,
+  }))
+  return shift
+}
+
+function StudyPattern({ kind }: { kind: StudyId }) {
+  const phase = useDocumentPhase()
+  const lines = Array.from({ length: kind === 'quadrato' ? 7 : 9 })
+  return (
+    <svg
+      className="gen-math-pattern"
+      data-pattern={kind}
+      style={phase}
+      viewBox="0 0 120 120"
+      aria-hidden
+    >
+      {lines.map((_, i) => {
+        const style: GenieMotionStyle = {
+          '--line-delay': `${i * 0.12}s`,
+          '--line-opacity': 0.28 + i * 0.075,
+        }
+        if (kind === 'quadrato') {
+          const inset = 12 + i * 4.8
+          return (
+            <rect
+              key={i}
+              className="gen-math-line"
+              x={inset}
+              y={inset}
+              width={120 - inset * 2}
+              height={120 - inset * 2}
+              rx={1.5 + i * 0.2}
+              pathLength="100"
+              transform={`rotate(${i * 11.25} 60 60)`}
+              style={style}
+            />
+          )
+        }
+        return (
+          <ellipse
+            key={i}
+            className="gen-math-line"
+            cx="60"
+            cy="60"
+            rx="46"
+            ry="19"
+            pathLength="100"
+            transform={`rotate(${i * 20} 60 60)`}
+            style={style}
+          />
+        )
+      })}
+    </svg>
+  )
+}
+
+type RecursiveShapeName = (typeof RECURSIVE_SHAPES)[number]
+
+const RECURSIVE_STROKE_PROPS = {
+  className: 'gen-recursive-stroke',
+  vectorEffect: 'non-scaling-stroke' as const,
+}
+
+function RecursiveOutline({ shape }: { shape: RecursiveShapeName }) {
+  return (
+    <svg className="gen-recursive-outline" viewBox="0 0 100 100" aria-hidden>
+      {shape === 'quadrato' && (
+        <rect {...RECURSIVE_STROKE_PROPS} x="1.5" y="1.5" width="97" height="97" rx="4" />
+      )}
+      {shape === 'cerchio' && <circle {...RECURSIVE_STROKE_PROPS} cx="50" cy="50" r="48.5" />}
+      {shape === 'triangolo' && (
+        <polygon {...RECURSIVE_STROKE_PROPS} points="50,1.8 98.2,98.2 1.8,98.2" />
+      )}
+      {shape === 'scheda' && (
+        <>
+          <rect {...RECURSIVE_STROKE_PROPS} x="1.5" y="9.5" width="97" height="81" rx="5" />
+          <path {...RECURSIVE_STROKE_PROPS} d="M1.5 28 H98.5" />
+        </>
+      )}
+    </svg>
+  )
+}
+
+function RecursiveShape({ depth }: { depth: number }) {
+  if (depth === RECURSIVE_END_DEPTH) return <span className="gen-recursive-core" />
+  const cycleDepth = ((depth % RECURSIVE_PERIOD) + RECURSIVE_PERIOD) % RECURSIVE_PERIOD
+  const shapeIndex = Math.floor(cycleDepth / RECURSIVE_REPEATS)
+  const shape = RECURSIVE_SHAPES[shapeIndex]
+  const repeat = cycleDepth % RECURSIVE_REPEATS
+  return (
+    <div className="gen-recursive-shape" data-shape={shape} data-repeat={repeat} data-depth={depth}>
+      <RecursiveOutline shape={shape} />
+      <RecursiveShape depth={depth + 1} />
+    </div>
+  )
+}
 
 // The shapes' layer, its own component because the phase shift below is
 // per-INSTANCE state and every window exists twice.
 function PlayLayer() {
-  // CSS animations run on the document timeline, which shares its origin
-  // with performance.now() — so "minus the time already elapsed" places a
-  // freshly mounted copy exactly where a copy mounted at load would be.
-  const shift = useRef<React.CSSProperties | null>(null)
-  if (shift.current === null)
-    shift.current = { animationDelay: `-${(performance.now() / 1000).toFixed(3)}s` }
+  const phase = useDocumentPhase()
 
   // Live content, not decoration. These keep bouncing while the sheet is
   // being warped, which is the claim the whole scene exists to make: what
@@ -317,15 +440,9 @@ function PlayLayer() {
   // shapes stutter as you type.
   return (
     <div className="gen-play" aria-hidden>
-      <svg className="gen-shape" data-shape="quadrato" style={shift.current} viewBox="0 0 40 40">
-        <rect x="2" y="2" width="36" height="36" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      </svg>
-      <svg className="gen-shape" data-shape="cerchio" style={shift.current} viewBox="0 0 40 40">
-        <circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      </svg>
-      <svg className="gen-shape" data-shape="triangolo" style={shift.current} viewBox="0 0 40 40">
-        <path d="M20 2.5 L38 37.5 L2 37.5 Z" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      </svg>
+      <div className="gen-recursive-tunnel" style={phase}>
+        <RecursiveShape depth={RECURSIVE_START_DEPTH} />
+      </div>
     </div>
   )
 }
@@ -392,7 +509,8 @@ function WindowBody({
   onMinimize,
   attachFilmCanvas,
 }: WindowBodyProps) {
-  const study = scheda.id === 'quadrato' || scheda.id === 'cerchio' ? STUDY[scheda.id] : null
+  const study: StudyId | null =
+    scheda.id === 'quadrato' || scheda.id === 'cerchio' ? scheda.id : null
   return (
     <div className="gen-sheet" data-win={scheda.id} data-front={front ? 'true' : undefined}>
       <div className="gen-window">
@@ -417,15 +535,16 @@ function WindowBody({
               the mousedown default suppresses only that focus: the
               click still fires, Tab still reaches the lamp, and the
               press still arms a drag, which rides on pointer events. */}
-          <button className="gen-lamp" aria-hidden tabIndex={-1} onMouseDown={noFocus} />
+          <button type="button" className="gen-lamp" aria-hidden tabIndex={-1} onMouseDown={noFocus} />
           <button
+            type="button"
             className="gen-lamp"
             data-role="minimize"
             aria-label={`minimize ${scheda.title}`}
             onMouseDown={noFocus}
             onClick={(e) => onMinimize(e.shiftKey)}
           />
-          <button className="gen-lamp" aria-hidden tabIndex={-1} onMouseDown={noFocus} />
+          <button type="button" className="gen-lamp" aria-hidden tabIndex={-1} onMouseDown={noFocus} />
           <span className="gen-title">{scheda.title}</span>
         </div>
         {scheda.id === FILM_WIN ? (
@@ -435,13 +554,10 @@ function WindowBody({
             {attachFilmCanvas ? <FilmLayer attach={attachFilmCanvas} /> : null}
           </div>
         ) : study ? (
-          <div className="gen-body">
+          <div className="gen-body" data-study={study}>
             <div className="gen-figure" aria-hidden>
-              <svg viewBox="0 0 104 104" width="104" height="104">
-                {study.figure}
-              </svg>
+              <StudyPattern kind={study} />
             </div>
-            <p>{study.line}</p>
           </div>
         ) : (
           <div className="gen-body">
@@ -669,17 +785,20 @@ interface FilmCompositeSurfaceProps {
   geometry: React.RefObject<THREE.PlaneGeometry | null>
   show: boolean
   onFrameDrawn: (receipt: FrameDrawReceipt) => void
+  onPresented: (receipt: PresentationReceipt) => void
 }
 
 /**
  * The outer Surface supplies static window chrome. This inner Surface supplies
- * the one persistent film canvas and owns the exact upload-to-draw receipt.
+ * the one persistent film canvas and owns both the upload-to-draw receipt and
+ * the qualified default-framebuffer presentation receipt.
  */
 function FilmCompositeSurface({
   f,
   geometry,
   show,
   onFrameDrawn,
+  onPresented,
 }: FilmCompositeSurfaceProps) {
   const film = f.film
   const chromeTexture = useSurfaceTexture()
@@ -704,6 +823,8 @@ function FilmCompositeSurface({
       frustumCulled={false}
       raycast={() => {}}
       onFrameDrawn={onFrameDrawn}
+      presentation={show ? film.presentation : undefined}
+      onPresented={onPresented}
     >
       <planeGeometry ref={geometry} args={[f.w, f.h, GRID_X, GRID_Y]} />
       <FilmCompositeMaterial
@@ -761,14 +882,19 @@ type GenieFilmProbeEvent =
       token: number
       direction: Dir
       frame: FrameId
+      presentationRevision: number
       source: FrameSource
       canvas: HTMLCanvasElement | null
       video: HTMLVideoElement | null
     }
   | { type: 'receipt'; token: number; receipt: FrameDrawReceipt }
   | { type: 'accept'; token: number; receipt: FrameDrawReceipt }
+  | { type: 'present'; token: number; receipt: PresentationReceipt }
   | { type: 'show'; token: number; frame: FrameId }
   | { type: 'land'; token: number; wall: 0 | 1; frame?: FrameId }
+  | { type: 'reveal'; token: number; frame: FrameId }
+  | { type: 'release'; token: number; wall: 0 | 1 }
+  | { type: 'revoke'; token: number; reason: 'context-lost' }
 
 function probeFilm(event: GenieFilmProbeEvent): void {
   const hook = (
@@ -779,6 +905,41 @@ function probeFilm(event: GenieFilmProbeEvent): void {
   hook?.(event)
 }
 
+function WebGLContextGuard({ onLost }: { onLost: () => void }) {
+  const renderer = useThree((state) => state.gl)
+  const onLostRef = useRef(onLost)
+
+  useLayoutEffect(() => {
+    onLostRef.current = onLost
+  }, [onLost])
+
+  // The browser canvas is an external event source. Keep its subscription
+  // paired with this renderer lifetime so a replaced Canvas cannot revoke a
+  // newer scene.
+  useEffect(() => {
+    const canvas = renderer.domElement
+    const handleLost = (event: Event) => {
+      event.preventDefault()
+      // A lost context can leave its last backing store composited above the
+      // native fallback. Remove that invalid presenter in the same event.
+      canvas.style.visibility = 'hidden'
+      onLostRef.current()
+    }
+    const handleRestored = () => {
+      canvas.style.visibility = ''
+    }
+    canvas.addEventListener('webglcontextlost', handleLost)
+    canvas.addEventListener('webglcontextrestored', handleRestored)
+    return () => {
+      canvas.removeEventListener('webglcontextlost', handleLost)
+      canvas.removeEventListener('webglcontextrestored', handleRestored)
+      canvas.style.visibility = ''
+    }
+  }, [renderer])
+
+  return null
+}
+
 interface FlightProps {
   win: WinId
   dir: Dir
@@ -787,6 +948,9 @@ interface FlightProps {
   ringing: boolean
   /** Both the static chrome and, for film, the required generation are ready. */
   ready: boolean
+  /** Reads the DOM copy's committed hide. Automatic motion stays at the
+   *  exact wall until the page itself reports that rendered fact. */
+  pageReleased: () => boolean
   /** Paint order among the windows — renderOrder for the sheet, and the
    *  tie-break the hand's raycast uses to pick between two of them. */
   stack: number
@@ -795,9 +959,13 @@ interface FlightProps {
   onPainted: (win: WinId) => void
   freezeFilm: () => FrameId | null
   onFilmReady: (win: WinId, token: number, receipt: FrameDrawReceipt) => void
-  /** Fired once, on the first frame this sheet is actually drawn. The
-   *  page copy's hide waits on this rather than on `painted`, so the two
-   *  copies overlap instead of leaving a gap — see `shown` on the page. */
+  onFilmPresented: (
+    win: WinId,
+    token: number,
+    receipt: PresentationReceipt,
+  ) => void
+  /** For DOM-captured windows, fired once on the first drawn frame. Film
+   *  releases its page copy only through `onFilmPresented`. */
   onShown: (win: WinId) => void
   onLand: (win: WinId, wall: 0 | 1, resumeFrame?: FrameId) => void
   content: React.ReactNode
@@ -810,12 +978,14 @@ function Flight({
   ring,
   ringing,
   ready,
+  pageReleased,
   stack,
   slotOf,
   kickRing,
   onPainted,
   freezeFilm,
   onFilmReady,
+  onFilmPresented,
   onShown,
   onLand,
   content,
@@ -825,7 +995,7 @@ function Flight({
   const groupRef = useRef<THREE.Group | null>(null)
   const told = useRef(false)
   const filmAcquired = useRef(false)
-  const pendingLanding = useRef<{ frame: FrameId; wall: 0 } | null>(null)
+  const filmPresented = useRef(false)
   // This flight is over. Landing asks the page to delete the flight, and
   // the page does — but that deletion has to cross into the Canvas's own
   // reconciler before this component stops existing, and under load that
@@ -847,45 +1017,31 @@ function Flight({
     const film = f.film
     if (!film) return
     probeFilm({ type: 'receipt', token: film.token, receipt })
-    const landing = pendingLanding.current
-    if (landing && frameCovers(receipt, landing.frame)) {
-      pendingLanding.current = null
-      landed.current = true
-      onLand(win, landing.wall, landing.frame)
-      return
-    }
     if (!filmAcquired.current && frameCovers(receipt, film.required)) {
       filmAcquired.current = true
       onFilmReady(win, film.token, receipt)
     }
   }
 
+  const onFilmPresentation = (receipt: PresentationReceipt) => {
+    const film = f.film
+    if (
+      !film ||
+      filmPresented.current ||
+      !presentationReceiptSatisfies(film.presentation, receipt)
+    ) {
+      return
+    }
+    filmPresented.current = true
+    onFilmPresented(win, film.token, receipt)
+  }
+
   useFrame(({ clock }, rawDt) => {
-    if (landed.current || pendingLanding.current) return
+    if (landed.current) return
     const dt = Math.min(rawDt, 1 / 20)
     const d = air.drive
     const restoring = dir === 'restoring'
     let landAt: 0 | 1 | null = null
-
-    // The bay's transform, written every frame from the live drive. Any
-    // drive mode will do — clock, grab, spring — because while a window
-    // is airborne its t IS the midline, so scrubbing the drag breathes
-    // the container live. (An idle bay is the case t cannot answer, and
-    // Bays handles it from custody instead.)
-    const alive = ringing && !dockRingDone(ring.t, ring.v)
-    const slot = slotOf(win)
-    if (slot) {
-      const pose = dockPose(d.t, alive ? ring.t : 0, alive ? ring.v : 0)
-      slot.style.transform = `scale(${pose.sx}, ${pose.sy})`
-      // How full the bay's mark reads, 0..1 — the same t, so the level
-      // is the drive's and not a second animation with its own opinion.
-      // A minimize raises it, a restore drains it, and a hand scrubbing
-      // the drag moves it in both directions because t is the midline
-      // while a window is airborne. Written as a custom property rather
-      // than a class flip for exactly that reason: there is no discrete
-      // "filled" moment to hang a rule on when the pour is under a hand.
-      slot.style.setProperty('--pour', d.t.toFixed(3))
-    }
 
     const geo = geoRef.current
     if (!geo) return
@@ -896,20 +1052,19 @@ function Flight({
     // that has to cross into the Canvas's own reconciler before it
     // becomes `visible` on anything. The group knows now.
     const drawn = f.film ? ready : groupRef.current?.visible === true
-    // The page copy's hide waits on this, so it can never hide into an
-    // empty frame. Fired from the loop and only once — the first frame
-    // the sheet is on screen is the earliest moment the DOM copy is
-    // safely redundant.
-    if (drawn && !told.current) {
+    const released = pageReleased()
+    // A DOM-captured page copy waits on this, so it cannot hide into an
+    // empty frame. Film uses the stronger default-framebuffer receipt.
+    if (!f.film && drawn && !told.current) {
       told.current = true
       onShown(win)
     }
 
-    // Until the sheet is on screen, the page copy (minimize) or the dock
-    // tile (restore) is still the visible truth — hold the wall. A grab
-    // is allowed to track anyway: the sheet is invisible, and the first
-    // drawn frame then appears already in the hand.
-    if (!drawn && d.mode === 'clock') {
+    // Until the sheet is on screen AND an automatic minimize's DOM copy has
+    // committed its hide, the page copy or dock tile is still the visible
+    // truth — hold the wall. A grab is allowed to track anyway: the sheet
+    // is invisible, and the first drawn frame then appears already in hand.
+    if ((!drawn || !released) && d.mode === 'clock') {
       d.clockStart = null
       d.t = restoring ? 1 : 0
     } else if (d.mode === 'clock') {
@@ -924,7 +1079,7 @@ function Flight({
           d.t = 0
           d.mode = 'settle'
           d.settleTau = 0
-          d.settleV = (POUR_END_SLOPE / f.duration) * Math.abs(f.params.dockY)
+          d.settleV = genieRestBottomVelocity(-POUR_END_SLOPE / f.duration, f.params)
         }
       } else {
         // easeInCubic, not easeInOutCubic: the minimize now has to
@@ -947,44 +1102,78 @@ function Flight({
       d.t = next.t
       d.v = next.v
     } else if (d.mode === 'spring') {
-      const next = driveSpringStep({ t: d.t, v: d.v }, d.target, dt, DRIVE_DEFAULTS)
-      d.t = next.t
-      d.v = next.v
-      if (next.done) {
-        if (d.target === 1) {
-          // A dock landing's momentum is now the tile's ring — the
-          // sheet is inside the slot, with no room to wobble on its own.
-          kickRing(win, next.arrivalV * Math.abs(f.params.dockY))
-          landAt = 1
-        } else {
-          // A rest landing wobbles: crossing speed becomes the settle's
-          // initial slope. t is decreasing into the wall, so the sheet is
-          // moving UP at contact — the wobble's first swing is upward.
-          d.mode = 'settle'
-          d.settleTau = 0
-          d.settleV = next.arrivalV * Math.abs(f.params.dockY)
+      // A release can beat the texture handoff. Preserve its committed
+      // spring state, but do not spend that momentum while the page copy
+      // still owns the pixels.
+      if (drawn && released) {
+        const next = driveSpringStep({ t: d.t, v: d.v }, d.target, dt, DRIVE_DEFAULTS)
+        d.t = next.t
+        d.v = next.v
+        if (next.done) {
+          if (d.target === 1) {
+            // A dock landing's momentum is now the tile's ring — the
+            // sheet is inside the slot, with no room to wobble on its own.
+            kickRing(win, next.arrivalV * Math.abs(f.params.dockY))
+            landAt = 1
+          } else {
+            // A rest landing keeps the bottom edge's exact crossing speed.
+            // t is decreasing into the wall, so the edge moves UP at contact
+            // and the spring's first swing continues in that same direction.
+            d.mode = 'settle'
+            d.settleTau = 0
+            d.settleV = genieRestBottomVelocity(-next.arrivalV, f.params)
+          }
         }
       }
     } else {
-      // settle: the sheet is home (t = 0 exactly); the wobble hangs off
-      // the top edge, anchored at the bottom — jelly, not a slab.
+      // settle: the sheet is home (t = 0 exactly). Its top edge has already
+      // arrived; the bottom edge was the last part moving, so that edge keeps
+      // its momentum while the top stays planted. The bounce is the end of
+      // the restore motion, not a new motion after it.
       d.settleTau += dt
       if (genieSettleDone(d.settleTau, d.settleV, SETTLE_DEFAULTS)) {
         landAt = 0
       }
     }
 
+    // A grab can track before acquisition so it never loses the hand. Until
+    // the DOM copy has actually hidden, though, render the sheet at its wall
+    // identity. This also keeps the film presentation revision stable while
+    // a pre-acquisition grab changes its hidden target. The first displaced
+    // frame then has one owner, not two.
+    const wallT = restoring ? 1 : 0
+    d.visibleT = released
+      ? drivePresentationStep(d.visibleT, d.t, dt, DRIVE_DEFAULTS.vMax)
+      : wallT
+    const visibleT = d.visibleT
     const wobble =
       d.mode === 'settle' ? genieSettle(d.settleTau, d.settleV, SETTLE_DEFAULTS) : 0
-    // The mouth is the ICON's mouth, for the whole pour. measure() took
-    // slotHalf from the bay's resting box, but the bay swells while it
-    // absorbs — so the mouth has to swell by exactly the same factor, or
-    // the sheet funnels down to something narrower than the thing it is
-    // landing in. Same dockSwell the transform above is written from, so
-    // the two cannot drift.
+    // The narrow neck grows with the icon while it absorbs. It remains well
+    // inside the solid mark at every scale, and both values come from the
+    // same dockSwell sample so the visible join cannot drift.
     const params: GenieParams = {
       ...f.params,
-      slotHalf: f.params.slotHalf * dockSwell(d.t),
+      slotHalf: f.params.slotHalf * dockSwell(visibleT),
+    }
+    // The bay and the sheet use the same updated drive sample. The icon
+    // stays white until the sheet's warped bottom edge crosses the visible
+    // top of the mark, then fills by the fraction of the WHOLE sheet below
+    // that boundary. It reaches full only after the trailing top edge passes.
+    // This is spatial absorption, not another animation or a guessed time.
+    const alive = ringing && !dockRingDone(ring.t, ring.v)
+    const slot = slotOf(win)
+    if (slot) {
+      const pose = dockPose(visibleT, alive ? ring.t : 0, alive ? ring.v : 0)
+      const top = genieWarp(0.5, 0, visibleT, params)
+      const bottom = genieWarp(0.5, 1, visibleT, params)
+      const markHalf = f.markHalf * pose.sy
+      const fill = dockFill(top.y, bottom.y, f.params.dockY + markHalf)
+      slot.style.transform = `scale(${pose.sx}, ${pose.sy})`
+      // Non-visual flight progress for the frame-by-frame custody probe.
+      // `--pour` now means spatial icon fill and is deliberately nonlinear,
+      // so it cannot also stand in for the drive without inventing jumps.
+      slot.style.setProperty('--gen-progress', visibleT.toFixed(4))
+      slot.style.setProperty('--pour', fill.toFixed(3))
     }
     for (const geometry of [geo, filmGeoRef.current]) {
       if (!geometry) continue
@@ -1000,10 +1189,10 @@ function Flight({
       }
       for (let i = 0; i < pos.count; i++) {
         // The law's v runs top → bottom (texture convention); a plane's
-        // uv.y runs bottom → top — which also makes uv.y the wobble's
-        // top-anchored weight for free.
-        const p2 = genieWarp(uv.getX(i), 1 - uv.getY(i), d.t, params)
-        pos.setXYZ(i, p2.x, p2.y + wobble * uv.getY(i), 0)
+        // uv.y runs bottom → top, so 1 - uv.y gives the landing spring its
+        // bottom-edge weight while the already-arrived top edge stays put.
+        const p2 = genieWarp(uv.getX(i), 1 - uv.getY(i), visibleT, params)
+        pos.setXYZ(i, p2.x, p2.y + wobble * (1 - uv.getY(i)), 0)
         sq.setX(i, p2.k)
       }
       pos.needsUpdate = true
@@ -1015,12 +1204,13 @@ function Flight({
 
     if (landAt === null) return
     if (landAt === 0 && f.film) {
-      const frame = freezeFilm()
-      if (frame) pendingLanding.current = { frame, wall: 0 }
+      const frame = freezeFilm() ?? f.film.required
+      landed.current = true
+      onLand(win, 0, frame)
       return
     }
     landed.current = true
-    onLand(win, landAt, f.film?.required)
+    onLand(win, landAt)
   })
 
   return (
@@ -1091,6 +1281,7 @@ function Flight({
               geometry={filmGeoRef}
               show={ready}
               onFrameDrawn={onFilmFrameDrawn}
+              onPresented={onFilmPresentation}
             />
           </>
         ) : (
@@ -1143,6 +1334,7 @@ function Bays({ slotOf, ringOf, ringing, held, docked, stopRing }: BaysProps) {
       const full = docked.includes(win)
       const pose = dockPose(full ? 1 : 0, alive ? r.t : 0, alive ? r.v : 0)
       slot.style.transform = `scale(${pose.sx}, ${pose.sy})`
+      slot.style.setProperty('--gen-progress', full ? '1' : '0')
       // The idle ends of the same level the Driver writes mid-flight.
       // Custody is the only thing that can answer it here: an unheld bay
       // is either holding a window or it isn't, and the frame that hands
@@ -1508,6 +1700,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     }),
   )
   const nextFilmToken = useRef(0)
+  const nextFilmPresentationRevision = useRef(0)
   const attachFilmCanvas = useCallback<React.RefCallback<HTMLCanvasElement>>(
     (canvas) => (canvas ? filmController.attachCanvas(canvas) : undefined),
     [filmController],
@@ -1557,16 +1750,15 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   // for finding it. Under load it opens (instruments/genie-drain/
   // rest-blink.mjs runs at 1/6 CPU for exactly this reason).
   //
-  // So the hide waits on the SHEET, not on the texture. Flight reports
-  // this from inside the frame loop, off the group's own `visible` —
-  // the scene graph's answer rather than a prop's, so it cannot be early.
-  // The two copies now overlap by a frame instead of leaving a gap, and
-  // an overlap at the wall is invisible: the sheet is drawn exactly over
-  // the window it came from.
+  // So the hide waits on the SHEET, not on the texture. DOM-captured
+  // windows report that from the frame loop. Film reports it only after
+  // its material wrote through the default framebuffer at the required
+  // transfer and revision. Both paths overlap at the wall instead of
+  // leaving a gap.
   const [shown, setShown] = useState<Partial<Record<WinId, boolean>>>({})
   // The exact frozen film generation has crossed both the WebGL upload
-  // and the sheet's draw. This is stronger than `painted`: it names the
-  // pixels that are safe to take over from the page canvas.
+  // and mesh traversal. This opens the pixel gate, but does not release
+  // the page canvas; `shown` waits for the separate presentation receipt.
   const [framed, setFramed] = useState<Partial<Record<WinId, boolean>>>({})
   // Which bays are still ringing. The one React-visible piece of ring
   // state, because it is what the frameloop expression needs — a ring
@@ -1664,6 +1856,18 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     const slotEl = slotRefs.current[id]
     const slot = slotEl?.getBoundingClientRect()
     if (!win || !slotEl || !slot) return null
+    const mouth = Number.parseFloat(
+      getComputedStyle(slotEl).getPropertyValue('--gen-mouth'),
+    )
+    if (!Number.isFinite(mouth) || mouth <= 0) return null
+    const mark = slotEl.querySelector<SVGGraphicsElement>('.gen-icon-base')
+    const svg = mark?.ownerSVGElement
+    const viewBoxHeight = svg?.viewBox.baseVal.height ?? 0
+    const markHalf =
+      mark && svg && viewBoxHeight > 0
+        ? (mark.getBBox().height / viewBoxHeight) * svg.clientHeight * 0.5
+        : 0
+    if (!Number.isFinite(markHalf) || markHalf <= 0) return null
     // The window inside the capture root. The difference between the two
     // boxes IS the shade's band, so the drop stays stated once, in CSS.
     const innerEl = winRefs.current[id]?.querySelector<HTMLElement>('.gen-window')
@@ -1671,39 +1875,33 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     const wx = win.left + win.width / 2 - window.innerWidth / 2
     const wy = window.innerHeight / 2 - (win.top + win.height / 2)
     const mx = slot.left + slot.width / 2 - window.innerWidth / 2
-    const my = window.innerHeight / 2 - slot.top
+    const my = window.innerHeight / 2 - (slot.top + slot.height / 2)
     const measured: GenieFlight = {
       w: win.width,
       h: win.height,
       wx,
       wy,
+      markHalf,
       shade: inner
         ? [inner.width / win.width, inner.height / win.height]
         : [1, 1],
       params: {
         w: win.width,
         h: win.height,
-        // Both read off the live rect, and both are invariant under the
-        // bay's swell: transform-origin is 50% 0, so a scale moves
-        // neither the centre x nor the top edge.
+        // Both read off the live centre, which stays fixed while the icon
+        // grows from 50% 50%. The narrow neck ends inside the solid mark,
+        // not at the old button-box edge.
         dockX: mx - wx,
         dockY: my - wy,
-        // The full half-width, not inset: the pour's bottom edge is the
-        // icon's width exactly, so the sheet lands the same size as the
-        // thing that swallows it. The flight scales this by the bay's
-        // live swell each frame — which is exactly why the width here
-        // must be the bay's RESTING one, and why this is the one number
-        // that cannot come off the rect. A restore takes off from a bay
-        // that is already holding a window and therefore already swollen
-        // 1.34x; measured through the transform, that swell gets applied
-        // a second time and the sheet pours out of a mouth a third wider
-        // than the container it is pouring out of. offsetWidth is the
-        // border box before any transform, which is the mouth the law
-        // means. (Measured at 1.326x on a slow restore, 2026-08-09.)
-        slotHalf: slotEl.offsetWidth / 2,
         ...GENIE_DEFAULTS,
+        slotHalf: mouth / 2,
+        // The working window gets the deliberate easter egg. Signed radius
+        // chooses which side of the centreline the loop enters from.
+        loopRadius: id === 'scheda' ? 52 : 0,
       },
-      duration: duration * (slow ? SLOW : 1),
+      // The looped route is almost twice as long as the normal drain. Give
+      // it time for the same calm travel speed instead of rushing the circle.
+      duration: duration * (id === 'scheda' ? 1.8 : 1) * (slow ? SLOW : 1),
     }
     if (id !== FILM_WIN) return measured
 
@@ -1723,10 +1921,16 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
       (Number.parseFloat(style.borderBottomLeftRadius) || 0) -
         (Number.parseFloat(style.borderLeftWidth) || 0),
     )
+    const token = ++nextFilmToken.current
     measured.film = {
       source,
       required,
-      token: ++nextFilmToken.current,
+      token,
+      presentation: {
+        transferId: token,
+        frame: required,
+        presentationRevision: ++nextFilmPresentationRevision.current,
+      },
       rect: [
         (filmRect.left - win.left) / win.width,
         (filmRect.top - win.top) / win.height,
@@ -1740,6 +1944,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
       token: measured.film.token,
       direction: docked.includes(id) ? 'restoring' : 'minimizing',
       frame: required,
+      presentationRevision: measured.film.presentation.presentationRevision,
       source,
       canvas: filmController.canvas,
       video: filmController.video,
@@ -1756,6 +1961,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     if (docked.includes(id) !== (to === 'restoring')) return false
     const f = measure(id, slow, to === 'restoring' ? RESTORE_S : MINIMIZE_S)
     if (!f) return false
+    d.visibleT = to === 'restoring' ? 1 : 0
     flights.current.set(id, { f, drive: d })
     // The two directions are NOT symmetric. A restore is a window coming
     // back to work, so it arrives in front — and this is its only chance
@@ -1819,15 +2025,21 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   // Where the sheet lands decides the next custody, not which phase it
   // took off from — a minimize caught and flung home lands resting, a
   // restore flicked back down lands docked.
-  const onLand = (id: WinId, wall: 0 | 1, resumeFrame?: FrameId) => {
-    const film = flights.current.get(id)?.f.film
-    if (film) probeFilm({ type: 'land', token: film.token, wall, frame: resumeFrame })
+  const finishLand = (
+    id: WinId,
+    wall: 0 | 1,
+    flight: Airborne,
+    resumeFrame?: FrameId,
+  ) => {
+    // A context-loss fallback can revoke this flight before a scheduled
+    // reverse release runs. Late work from that old transfer is harmless.
+    if (flights.current.get(id) !== flight) return
+    const film = flight.f.film
+    if (film) probeFilm({ type: 'release', token: film.token, wall })
     flights.current.delete(id)
-    setDocked((ds) => (wall === 1 ? [...ds.filter((x) => x !== id), id] : ds.filter((x) => x !== id)))
-    // No raise here in either direction. A restore claimed the front at
-    // takeoff; a minimize you changed your mind about and flung home has
-    // to land on the exact rung it left, or an abandoned gesture would
-    // reorder the desk as a souvenir.
+    setDocked((ds) =>
+      wall === 1 ? [...ds.filter((x) => x !== id), id] : ds.filter((x) => x !== id),
+    )
     setAir((a) => {
       const next = { ...a }
       delete next[id]
@@ -1856,6 +2068,28 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     }
   }
 
+  const onLand = (id: WinId, wall: 0 | 1, resumeFrame?: FrameId) => {
+    const flight = flights.current.get(id)
+    if (!flight) return
+    const film = flight.f.film
+    if (film) probeFilm({ type: 'land', token: film.token, wall, frame: resumeFrame })
+    if (film && wall === 0 && resumeFrame) {
+      // Reverse custody never waits for renderer proof. Reveal the shared
+      // DOM canvas now, while the landed WebGL sheet still covers it. Release
+      // that sheet on the next frame, after the browser had a paint chance.
+      winRefs.current[id]?.removeAttribute('data-away')
+      probeFilm({ type: 'reveal', token: film.token, frame: resumeFrame })
+      requestAnimationFrame(() => finishLand(id, wall, flight, resumeFrame))
+      return
+    }
+
+    finishLand(id, wall, flight, resumeFrame)
+    // No raise here in either direction. A restore claimed the front at
+    // takeoff; a minimize you changed your mind about and flung home has
+    // to land on the exact rung it left, or an abandoned gesture would
+    // reorder the desk as a souvenir.
+  }
+
   const tellFilmReady = useCallback(
     (win: WinId, token: number, receipt: FrameDrawReceipt) => {
       const film = flights.current.get(win)?.f.film
@@ -1865,6 +2099,54 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     },
     [],
   )
+
+  const tellFilmPresented = useCallback(
+    (win: WinId, token: number, receipt: PresentationReceipt) => {
+      const film = flights.current.get(win)?.f.film
+      if (
+        !film ||
+        film.token !== token ||
+        !presentationReceiptSatisfies(film.presentation, receipt)
+      ) {
+        return
+      }
+      probeFilm({ type: 'present', token, receipt })
+      setShown((s) => (s[win] ? s : { ...s, [win]: true }))
+      probeFilm({ type: 'show', token, frame: receipt.frame })
+      requestAnimationFrame(() => filmController.resume(film.required))
+    },
+    [filmController],
+  )
+
+  const revokeRendererCustody = useCallback(() => {
+    const revoked = [...flights.current.entries()]
+    if (!revoked.length) return
+
+    // A lost renderer cannot remain presentation authority. Reveal every
+    // native window before any React update, then remove the dead flights.
+    // This reverse transfer never waits for renderer evidence.
+    for (const [id, flight] of revoked) {
+      winRefs.current[id]?.removeAttribute('data-away')
+      const slot = slotRefs.current[id]
+      if (slot) {
+        slot.style.transform = ''
+        slot.style.removeProperty('--gen-progress')
+        slot.style.setProperty('--pour', '0')
+      }
+      const film = flight.f.film
+      if (film) probeFilm({ type: 'revoke', token: film.token, reason: 'context-lost' })
+    }
+
+    const ids = new Set(revoked.map(([id]) => id))
+    flights.current.clear()
+    setAir({})
+    setPainted({})
+    setShown({})
+    setFramed({})
+    setDocked((current) => current.filter((id) => !ids.has(id)))
+    setRinging((current) => current.filter((id) => !ids.has(id)))
+    if (filmController.frozen) filmController.resume()
+  }, [filmController])
 
   // `airborne` is the only difference between the two copies of a window,
   // and it is one fact: the desk's copy is already a picture, so nobody
@@ -1991,6 +2273,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
           const full = docked.includes(s.id)
           return (
             <button
+              type="button"
               key={s.id}
               ref={(el) => {
                 slotRefs.current[s.id] = el
@@ -2009,26 +2292,10 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
                   flip: a container that holds something reads as
                   occupied, not just as bigger. The outline strokes over
                   it, so the mark itself never goes anywhere. */}
-              {/* Sized to the bay, not to a fraction of it. The pour
-                  ends at the bay's TOP edge — that is where the law
-                  aims and where the seam is drawn — so every pixel
-                  between that edge and the mark's ink is dead space in
-                  the one place the eye is watching two things meet. At
-                  26px in a 52px bay the mark's ink began about 19px
-                  down: the window vanished into a red line and the
-                  symbol it was supposed to have entered sat a third of
-                  a tile below, with blank card in between. 46px inside
-                  a 50px content box brings the ink up to ~9px, which
-                  is an icon's inset rather than a gap.
-
-                  The viewBox stays 20, so the marks keep their drawn
-                  proportions and only the scale changes — but stroke
-                  is in user units and rides that scale, so the marks
-                  carry 0.9 rather than 1.5 to land at the same ~2px on
-                  screen they had at 26px. A mark that grew its line
-                  along with itself would read as a heavier dock, which
-                  is not what was asked for. */}
-              <svg viewBox="0 0 20 20" width="46" height="46" aria-hidden>
+              {/* The button is only the hit target. The 54px solid mark
+                  is the visible dock and sits above the WebGL sheet, so
+                  its centre masks the law's narrow final neck. */}
+              <svg viewBox="0 0 20 20" width="54" height="54" aria-hidden>
                 {s.mark}
               </svg>
             </button>
@@ -2064,6 +2331,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
         onCreated={(state) => state.gl.setClearAlpha(0)}
       >
         <PixelPerfect />
+        <WebGLContextGuard onLost={revokeRendererCustody} />
         <SolidWhereMatterIs active={anyAir} />
         <GestureRig api={apiRef} />
         <Bays
@@ -2089,19 +2357,16 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
               // Film waits for a receipt that names the frozen generation.
               // Other windows still need only the captured chrome upload.
               ready={!!painted[win] && (win !== FILM_WIN || !!framed[win])}
+              pageReleased={() => winRefs.current[win]?.dataset.away === 'true'}
               stack={order.indexOf(win)}
               slotOf={slotOf}
               kickRing={kickRing}
               onPainted={(w) => setPainted((p) => (p[w] ? p : { ...p, [w]: true }))}
               freezeFilm={() => filmController.freeze()}
               onFilmReady={tellFilmReady}
+              onFilmPresented={tellFilmPresented}
               onShown={(w) => {
                 setShown((s) => (s[w] ? s : { ...s, [w]: true }))
-                const film = flights.current.get(w)?.f.film
-                if (film) {
-                  probeFilm({ type: 'show', token: film.token, frame: film.required })
-                  requestAnimationFrame(() => filmController.resume(film.required))
-                }
               }}
               onLand={onLand}
               content={bodyFor(s, true)}
