@@ -1,4 +1,12 @@
-import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  use,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree, type ThreeElements, type ThreeEvent } from '@react-three/fiber'
 import {
@@ -93,6 +101,17 @@ export interface SurfaceProps extends Omit<ThreeElements['mesh'], 'children' | '
    */
   onFirstUpload?: () => void
   /**
+   * Fires once after the first uploaded DOM raster is drawn with color writes
+   * enabled into the default framebuffer.
+   *
+   * Unlike `onFirstUpload`, this is a presentation boundary. It runs from
+   * Three's post-draw callback, before the browser composites the canvas. A
+   * custody transfer can therefore release an old DOM presenter synchronously
+   * here without exposing a blank frame or double-compositing translucent
+   * pixels. Resets when the DOM source is recreated.
+   */
+  onFirstPresented?: () => void
+  /**
    * Access the live DOM root — attach listeners, mount a React root into it,
    * mutate it. May return a cleanup function.
    *
@@ -149,6 +168,20 @@ export interface SurfaceProps extends Omit<ThreeElements['mesh'], 'children' | '
   side?: THREE.Side
   roughness?: number
   metalness?: number
+  /**
+   * DOM light: how much of the captured content re-emits on its own,
+   * regardless of scene lighting — the standard material's emissive
+   * term, fed by the same DOM texture as the map.
+   *
+   * `0` (default) — the face is pure lit matter, and everything the DOM
+   * painted dims with the room. Raise it and the pixels the DOM painted
+   * bright — lamp halos, LED readouts, backlit windows — keep their own
+   * light in a dim room: a lamp does not ask the room's permission to
+   * glow. Dark paint stays dark (near-black times anything is
+   * near-black), so the term lifts a panel's luminous elements without
+   * washing its body.
+   */
+  emissiveIntensity?: number
   /**
    * Honor the texture's alpha. Off by default (a panel is a solid slab).
    * On for overlay Surfaces — a floating layer's source paints only its
@@ -273,6 +306,25 @@ function applyMirror(tex: THREE.Texture, mirrorU: boolean) {
   tex.repeat.x = mirrorU ? -1 : 1
 }
 
+/** Configure all source-format fields before a DOM texture reaches a material. */
+export function createDomSurfaceTexture(
+  canvas: HTMLCanvasElement,
+  tier: number,
+  pinned: boolean,
+  mirrorU: boolean,
+): THREE.CanvasTexture {
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  // DOM capture is a 2D-canvas backing store. Munari's source contract is
+  // premultiplied from birth; setting this after renderer exposure can let the
+  // first upload use a different alpha interpretation from every later one.
+  texture.premultiplyAlpha = true
+  texture.anisotropy = 8
+  applyFilterPolicy(texture, tier, pinned)
+  applyMirror(texture, mirrorU)
+  return texture
+}
+
 function DomSurface({
   html,
   label,
@@ -281,6 +333,7 @@ function DomSurface({
   children,
   onFocusWithin,
   onFirstUpload,
+  onFirstPresented,
   onSource,
   paint = 'auto',
   mirrorU = false,
@@ -288,11 +341,14 @@ function DomSurface({
   side = THREE.FrontSide,
   roughness = 0.35,
   metalness = 0.05,
+  emissiveIntensity = 0,
   transparent = false,
   hitTest = 'plane',
   radius = 'auto',
   onChrome,
   material = 'standard',
+  onBeforeRender,
+  onAfterRender,
   ...meshProps
 }: SurfaceProps) {
   const controls = useThree(
@@ -300,6 +356,7 @@ function DomSurface({
   )
   const camera = useThree((s) => s.camera)
   const gl = useThree((s) => s.gl)
+  const invalidate = useThree((s) => s.invalidate)
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null)
   const [sourceEl, setSourceEl] = useState<HTMLElement | null>(null)
   const sourceRef = useRef<DomTextureSource | null>(null)
@@ -310,6 +367,14 @@ function DomSurface({
   const extraUploadsRef = useRef(0)
   // One-shot latch for onFirstUpload; re-arms when the source is recreated.
   const firstUploadFiredRef = useRef(false)
+  // Upload and presentation are separate renderer boundaries. Paint counts
+  // keep a texture upload that happened before the first real DOM paint from
+  // satisfying the presentation latch.
+  const pendingUploadPaintRef = useRef(-1)
+  const uploadedPaintRef = useRef(-1)
+  const firstUploadPaintRef = useRef(-1)
+  const presentationPassRef = useRef(false)
+  const firstPresentedFiredRef = useRef(false)
   // What the texture's GL storage was allocated FOR — the backing-store
   // dimensions and the filter-policy pair that were true at the last
   // allocation. null = nothing allocated yet. Every upload compares against
@@ -322,6 +387,14 @@ function DomSurface({
   // before anyone reads the landed card and long enough that a spring's last
   // sub-pixel twitches don't each buy a re-cut.
   const settleRef = useRef({ w: -1, h: -1, quiet: 0, settled: false })
+
+  // Scene removal is not presentation removal until the renderer draws the
+  // scene without this mesh. This matters when a consumer changes an active
+  // Canvas from `always` to `demand` in the same commit: without an explicit
+  // final frame, the transparent canvas can retain this Surface's last pixels
+  // and expose them later as a duplicate. The cleanup schedules that erase
+  // after React finishes removing the mesh.
+  useLayoutEffect(() => () => invalidate(), [invalidate])
   // Everything the source-creation effect needs to READ but must not RE-RUN
   // for. See that effect's dependency note — it is the most consequential
   // line in this file.
@@ -332,6 +405,9 @@ function DomSurface({
   const onSourceRef = useLatest(onSource)
   const onFocusWithinRef = useLatest(onFocusWithin)
   const onFirstUploadRef = useLatest(onFirstUpload)
+  const onFirstPresentedRef = useLatest(onFirstPresented)
+  const onBeforeRenderRef = useLatest(onBeforeRender as THREE.Object3D['onBeforeRender'] | undefined)
+  const onAfterRenderRef = useLatest(onAfterRender as THREE.Object3D['onAfterRender'] | undefined)
   const onChromeRef = useLatest(onChrome)
   const radiusRef = useLatest(radius)
   // The last measurement, and the radii the mask/raycast actually enforce
@@ -581,14 +657,15 @@ function DomSurface({
     setSourceEl(source.element)
     lodRef.current = { tier: source.scale(), proposed: source.scale(), agree: 0, frame: 0 }
 
-    const tex = new THREE.CanvasTexture(source.canvas)
-    tex.colorSpace = THREE.SRGBColorSpace
-    tex.anisotropy = 8
-    applyFilterPolicy(tex, source.scale(), pinnedScaleRef.current !== null)
-    // Set at birth as well as in the effect below: that effect is passive and
-    // r3f draws from its own rAF loop, so a mirrored Surface would otherwise
-    // get one frame of backwards text before the flip lands.
-    applyMirror(tex, mirrorURef.current)
+    const tex = createDomSurfaceTexture(
+      source.canvas,
+      source.scale(),
+      pinnedScaleRef.current !== null,
+      mirrorURef.current,
+    )
+    tex.onUpdate = () => {
+      uploadedPaintRef.current = pendingUploadPaintRef.current
+    }
     setTexture(tex)
 
     lastUploadRef.current = -1
@@ -618,6 +695,11 @@ function DomSurface({
       mips: filterPolicy(pinnedScaleRef.current !== null).mips,
     }
     firstUploadFiredRef.current = false
+    pendingUploadPaintRef.current = -1
+    uploadedPaintRef.current = -1
+    firstUploadPaintRef.current = -1
+    presentationPassRef.current = false
+    firstPresentedFiredRef.current = false
     // New markup is different content: its chrome is unknown until it paints.
     chromeRef.current = EMPTY_CHROME
     if (radiusRef.current === 'auto') applyRadii([0, 0, 0, 0])
@@ -640,6 +722,7 @@ function DomSurface({
       source.element.removeEventListener('focusin', focusIn)
       source.element.removeEventListener('focusout', focusOut)
       cleanupSource?.()
+      tex.onUpdate = null
       tex.dispose()
       source.dispose()
       sourceRef.current = null
@@ -808,9 +891,11 @@ function DomSurface({
         applyFilterPolicy(texture, source.scale(), pinned)
         allocRef.current = { ...store, mips }
       }
+      pendingUploadPaintRef.current = source.paintCount()
       texture.needsUpdate = true
       if (firstUploadFiredRef.current) return
       firstUploadFiredRef.current = true
+      firstUploadPaintRef.current = pendingUploadPaintRef.current
       onFirstUploadRef.current?.()
     }
     if (paint === 'always') {
@@ -836,6 +921,47 @@ function DomSurface({
       upload()
     }
   })
+
+  const handleBeforeRender = useCallback<THREE.Object3D['onBeforeRender']>(
+    (renderer, scene, renderCamera, geometry, renderedMaterial, group) => {
+      onBeforeRenderRef.current?.(
+        renderer,
+        scene,
+        renderCamera,
+        geometry,
+        renderedMaterial,
+        group,
+      )
+      // Sample after the caller's hook: it can change the render target or
+      // material state, and the fence must describe the pass that will draw.
+      presentationPassRef.current =
+        renderer.getRenderTarget() === null && renderedMaterial.colorWrite
+    },
+    [onBeforeRenderRef],
+  )
+
+  const handleAfterRender = useCallback<THREE.Object3D['onAfterRender']>(
+    (renderer, scene, renderCamera, geometry, renderedMaterial, group) => {
+      const presented =
+        presentationPassRef.current &&
+        firstUploadPaintRef.current >= 0 &&
+        uploadedPaintRef.current >= firstUploadPaintRef.current
+      presentationPassRef.current = false
+      if (presented && !firstPresentedFiredRef.current) {
+        firstPresentedFiredRef.current = true
+        onFirstPresentedRef.current?.()
+      }
+      onAfterRenderRef.current?.(
+        renderer,
+        scene,
+        renderCamera,
+        geometry,
+        renderedMaterial,
+        group,
+      )
+    },
+    [onFirstPresentedRef, onAfterRenderRef],
+  )
 
   // The mask, injected into the standard material. Always injected, uniform-
   // driven: radii of zero make it a no-op, so there is one program family and
@@ -942,6 +1068,8 @@ function DomSurface({
       onPointerDown={handleDown}
       onPointerUp={handleUp}
       onPointerMove={handleMove}
+      onBeforeRender={handleBeforeRender}
+      onAfterRender={handleAfterRender}
       onPointerOut={() => {
         pressedRef.current = false
         if (controls) controls.enabled = true
@@ -958,8 +1086,16 @@ function DomSurface({
           color={texture ? '#ffffff' : '#1e293b'}
           roughness={roughness}
           metalness={metalness}
+          // DOM light. The emissive slot always wears the capture (one
+          // shader variant, so sliding the intensity never recompiles);
+          // at the default 0 the term contributes nothing and the face
+          // is pure lit matter, exactly as before the prop existed.
+          emissive={texture ? '#ffffff' : '#000000'}
+          emissiveMap={texture ?? undefined}
+          emissiveIntensity={emissiveIntensity}
           side={side}
           transparent={transparent}
+          premultipliedAlpha
           defines={{ USE_UV: '' }}
           onBeforeCompile={onBeforeCompile}
         />

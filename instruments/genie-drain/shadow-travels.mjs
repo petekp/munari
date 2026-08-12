@@ -63,11 +63,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // 2% of the journey.
 const FROM = 200
 const TO = 650
+// The first transfer frames are a separate concern from whether the shadow
+// travels. The old presenter and the renderer can briefly occupy the same
+// pixels while custody changes; an opaque window hides that overlap, but two
+// translucent shadows compound into a dark flash. Read that boundary too.
+const BOUNDARY_TO = FROM
 // The strip must stay nearer the shadow than the bench for every frame
 // in that stretch. Halfway is the only non-arbitrary line between two
 // measured grounds, and a strip that lost its shadow does not land near
 // it — it lands on the bench exactly.
 const MIDPOINT = 0.5
+// Quality-90 screencast blocks move this flat strip by one or two luma. Six
+// leaves that noise room while catching even a quarter of the measured
+// 30-luma shadow compounding with itself (the bug measured a 24-luma pulse).
+const TRANSFER_LUMA_TOLERANCE = 6
 
 let server, browser
 const deadline = setTimeout(() => {
@@ -174,53 +183,69 @@ try {
       `the page copy was still visible ${FROM}ms in — the strip was reading the DOM's own shadow`,
     )
 
-  const read = await page.evaluate(
-    async (list, strip, control) => {
-      const median = (xs) => [...xs].sort((a, b) => a - b)[xs.length >> 1] ?? 0
-      const out = []
-      for (const b64 of list) {
-        const img = new Image()
-        img.src = 'data:image/jpeg;base64,' + b64
-        await img.decode()
-        const c = new OffscreenCanvas(img.width, img.height)
-        const ctx = c.getContext('2d')
-        ctx.drawImage(img, 0, 0)
-        const { data: d, width } = ctx.getImageData(0, 0, img.width, img.height)
-        const lumas = (r) => {
-          const xs = []
-          for (let y = r.y0; y < r.y1; y++)
-            for (let x = r.x0; x < r.x1; x++) {
-              const i = (y * width + x) * 4
-              xs.push(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])
+  const readStrips = (captured) =>
+    page.evaluate(
+      async (list, strip, control) => {
+        const median = (xs) => [...xs].sort((a, b) => a - b)[xs.length >> 1] ?? 0
+        return Promise.all(
+          list.map(async (b64) => {
+            const img = new Image()
+            img.src = 'data:image/jpeg;base64,' + b64
+            await img.decode()
+            const c = new OffscreenCanvas(img.width, img.height)
+            const ctx = c.getContext('2d')
+            ctx.drawImage(img, 0, 0)
+            const { data: d, width } = ctx.getImageData(0, 0, img.width, img.height)
+            const lumas = (r) => {
+              const xs = []
+              for (let y = r.y0; y < r.y1; y++)
+                for (let x = r.x0; x < r.x1; x++) {
+                  const i = (y * width + x) * 4
+                  xs.push(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])
+                }
+              return xs
             }
-          return xs
-        }
-        // Median, not mean: the cast's jpeg blocks put a few outliers on
-        // either edge of a 7px column, and one of them must not decide
-        // whether a shadow is there.
-        out.push({ strip: median(lumas(strip)), control: median(lumas(control)) })
-      }
-      return out
-    },
-    frames.map((f) => f.data),
-    GEO.strip,
-    GEO.control,
-  )
+            // Median, not mean: the cast's jpeg blocks put a few outliers on
+            // either edge of a 7px column, and one of them must not decide
+            // whether a shadow is there.
+            return { strip: median(lumas(strip)), control: median(lumas(control)) }
+          }),
+        )
+      },
+      captured.map((f) => f.data),
+      GEO.strip,
+      GEO.control,
+    )
+
+  const read = await readStrips(frames)
 
   const rest = []
+  const boundary = []
   const watched = []
   for (let i = 0; i < frames.length; i++) {
     const ms = (frames[i].ts - t0) * 1000
     if (ms < 0) rest.push(read[i])
+    else if (ms < BOUNDARY_TO) boundary.push({ ms: Math.round(ms), ...read[i] })
     else if (ms >= FROM && ms <= TO) watched.push({ ms: Math.round(ms), ...read[i] })
   }
   const med = (xs) => [...xs].sort((a, b) => a - b)[xs.length >> 1] ?? 0
   const restStrip = med(rest.map((r) => r.strip))
   const restControl = med(rest.map((r) => r.control))
   const line = restStrip + (restControl - restStrip) * MIDPOINT
+  const darkestBoundary = boundary.reduce(
+    (a, b) => (b.strip < a.strip ? b : a),
+    { ms: -1, strip: Number.POSITIVE_INFINITY },
+  )
+  const palestBoundary = boundary.reduce(
+    (a, b) => (b.strip > a.strip ? b : a),
+    { ms: -1, strip: Number.NEGATIVE_INFINITY },
+  )
   const worst = watched.reduce((a, b) => (b.strip > a.strip ? b : a), { ms: -1, strip: -1 })
 
   console.log(`  at rest: shadow ${restStrip.toFixed(0)} luma, bench ${restControl.toFixed(0)} luma`)
+  console.log(
+    `  transfer shadow range        ${darkestBoundary.strip.toFixed(0)}..${palestBoundary.strip.toFixed(0)} luma`,
+  )
   console.log(`  frames judged                ${watched.length}`)
   console.log(
     `  palest the strip ever got    ${worst.strip.toFixed(0)} luma at +${worst.ms}ms (line at ${line.toFixed(0)})`,
@@ -247,6 +272,18 @@ try {
     problems.push(
       `the resting window's shadow is only ${(restControl - restStrip).toFixed(0)} luma darker than the bench — ` +
         `too faint for this to distinguish a shadow from its absence, and too faint to see`,
+    )
+  else if (!boundary.length)
+    problems.push('no frames fell in the custody boundary — shadow opacity was not measured')
+  else if (restStrip - darkestBoundary.strip > TRANSFER_LUMA_TOLERANCE)
+    problems.push(
+      `the custody boundary darkened the shadow from ${restStrip.toFixed(0)} to ` +
+        `${darkestBoundary.strip.toFixed(0)} luma — both translucent presenters were composited together`,
+    )
+  else if (palestBoundary.strip - restStrip > TRANSFER_LUMA_TOLERANCE)
+    problems.push(
+      `the custody boundary lightened the shadow from ${restStrip.toFixed(0)} to ` +
+        `${palestBoundary.strip.toFixed(0)} luma — neither presenter owned the translucent shadow`,
     )
   else if (!watched.length) problems.push('no frames fell in the judged stretch — nothing was measured')
   else if (worst.strip > line)
@@ -294,12 +331,50 @@ try {
     { timeout: 9000 },
   )
   await sleep(600)
+  // Read the reverse handoff too. The renderer approaches the same wall strip
+  // from the dock; the native presenter is revealed only when it has arrived.
+  // A window around that reveal therefore sees the normal shadow once, or the
+  // compounded shadow if both presenters survive into one composition.
+  frames.length = 0
+  await client.send('Page.startScreencast', { format: 'jpeg', quality: 90, everyNthFrame: 1 })
   await page.evaluate(() =>
     document
       .querySelector('.gen-tile[data-win="scheda"]')
       .dispatchEvent(new MouseEvent('click', { bubbles: true })),
   )
-  await sleep(1100)
+  await page.waitForFunction(
+    () => document.querySelector('.gen-slot[data-win="scheda"]')?.dataset.away !== 'true',
+    { timeout: 5000 },
+  )
+  const revealAt = frames.length
+  await sleep(180)
+  await client.send('Page.stopScreencast')
+  const reverseWindow = frames.slice(Math.max(0, revealAt - 4), revealAt + 7)
+  const reverseRead = await readStrips(reverseWindow)
+  const darkestReverse = reverseRead.reduce(
+    (darkest, sample) => Math.min(darkest, sample.strip),
+    Number.POSITIVE_INFINITY,
+  )
+  const palestReverse = reverseRead.reduce(
+    (palest, sample) => Math.max(palest, sample.strip),
+    Number.NEGATIVE_INFINITY,
+  )
+  console.log(
+    `  reverse shadow range         ${darkestReverse.toFixed(0)}..${palestReverse.toFixed(0)} luma across ${reverseRead.length} frames`,
+  )
+  if (!reverseRead.length)
+    problems.push('no compositor frames covered the reverse custody boundary')
+  else if (restStrip - darkestReverse > TRANSFER_LUMA_TOLERANCE)
+    problems.push(
+      `the reverse custody boundary darkened the shadow from ${restStrip.toFixed(0)} to ` +
+        `${darkestReverse.toFixed(0)} luma — both translucent presenters were composited together`,
+    )
+  else if (palestReverse - restStrip > TRANSFER_LUMA_TOLERANCE)
+    problems.push(
+      `the reverse custody boundary lightened the shadow from ${restStrip.toFixed(0)} to ` +
+        `${palestReverse.toFixed(0)} luma — neither presenter owned the translucent shadow`,
+    )
+  await sleep(500)
 
   const bar = await page.evaluate(() => {
     const b = document
@@ -573,7 +648,7 @@ try {
   }
 
   console.log(
-    `\nshadow-travels: ${problems.length === 0 ? 'PASS — the shadow takes off with the sheet, and leaves where the funnel squeezes it past reading' : 'FAIL'}`,
+    `\nshadow-travels: ${problems.length === 0 ? 'PASS — custody keeps one shadow, which travels with the sheet and leaves when squeezed' : 'FAIL'}`,
   )
   for (const p of problems) console.log(`  ${p}`)
   process.exit(problems.length === 0 ? 0 : 1)

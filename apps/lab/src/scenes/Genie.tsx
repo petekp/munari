@@ -40,6 +40,7 @@ import {
   SurfaceApp,
   cameraDistance,
   presentationReceiptSatisfies,
+  commitRendererReleaseFrame,
   type FrameDrawReceipt,
   type FrameId,
   type FrameSource,
@@ -68,6 +69,9 @@ import {
   pourOut,
 } from './genieDrive'
 import { dockFill, dockPose, dockRingDone, dockSwell } from './genieDock'
+import { BOUNCE_MARKS, registerBounceCourt } from './genieBounce'
+import { genieKnobs } from './genieKnobs'
+import { GenieTweakPanel } from './GenieTweaks'
 import {
   GENIE_FILM_FRAG,
   GENIE_FRAG,
@@ -285,11 +289,6 @@ const SCHEDE: Scheda[] = [
  *  below walk it, so a window and its bay can never fall out of step. */
 const WIN_IDS: WinId[] = SCHEDE.map((s) => s.id)
 
-const RECURSIVE_SHAPES = ['quadrato', 'cerchio', 'triangolo', 'scheda'] as const
-const RECURSIVE_REPEATS = 3
-const RECURSIVE_PERIOD = RECURSIVE_SHAPES.length * RECURSIVE_REPEATS
-const RECURSIVE_START_DEPTH = -RECURSIVE_PERIOD
-const RECURSIVE_END_DEPTH = RECURSIVE_PERIOD * 3
 
 /** Where the overlay sits in the desk's stack. The windows take 1..n from
  *  their paint order, so this only has to clear n — but a sheet in the air
@@ -378,71 +377,55 @@ function StudyPattern({ kind }: { kind: StudyId }) {
   )
 }
 
-type RecursiveShapeName = (typeof RECURSIVE_SHAPES)[number]
-
-const RECURSIVE_STROKE_PROPS = {
-  className: 'gen-recursive-stroke',
-  vectorEffect: 'non-scaling-stroke' as const,
-}
-
-function RecursiveOutline({ shape }: { shape: RecursiveShapeName }) {
+// One bouncing mark. The box is the mark's rest diameter; the shared
+// simulation (genieBounce.ts) positions it by inline transform, so its
+// layout stays put and the capture sees the same numbers the page
+// draws. Strokes are non-scaling: the size knob resizes the figure,
+// not the pen.
+function BounceMark({ index }: { index: number }) {
+  const mark = BOUNCE_MARKS[index]
+  const d = mark.r * 2
   return (
-    <svg className="gen-recursive-outline" viewBox="0 0 100 100" aria-hidden>
-      {shape === 'quadrato' && (
-        <rect {...RECURSIVE_STROKE_PROPS} x="1.5" y="1.5" width="97" height="97" rx="4" />
-      )}
-      {shape === 'cerchio' && <circle {...RECURSIVE_STROKE_PROPS} cx="50" cy="50" r="48.5" />}
-      {shape === 'triangolo' && (
-        <polygon {...RECURSIVE_STROKE_PROPS} points="50,1.8 98.2,98.2 1.8,98.2" />
-      )}
-      {shape === 'scheda' && (
-        <>
-          <rect {...RECURSIVE_STROKE_PROPS} x="1.5" y="9.5" width="97" height="81" rx="5" />
-          <path {...RECURSIVE_STROKE_PROPS} d="M1.5 28 H98.5" />
-        </>
-      )}
-    </svg>
-  )
-}
-
-function RecursiveShape({ depth }: { depth: number }) {
-  if (depth === RECURSIVE_END_DEPTH) return <span className="gen-recursive-core" />
-  const cycleDepth = ((depth % RECURSIVE_PERIOD) + RECURSIVE_PERIOD) % RECURSIVE_PERIOD
-  const shapeIndex = Math.floor(cycleDepth / RECURSIVE_REPEATS)
-  const shape = RECURSIVE_SHAPES[shapeIndex]
-  const repeat = cycleDepth % RECURSIVE_REPEATS
-  return (
-    <div className="gen-recursive-shape" data-shape={shape} data-repeat={repeat} data-depth={depth}>
-      <RecursiveOutline shape={shape} />
-      <RecursiveShape depth={depth + 1} />
+    <div className="gen-bounce" data-mark={mark.id} style={{ width: d, height: d }}>
+      <svg
+        className="gen-bounce-figure"
+        viewBox="0 0 100 100"
+        style={{ color: mark.color }}
+        aria-hidden
+      >
+        {mark.id === 'quadrato' && (
+          <rect className="gen-mark-stroke" x="4" y="4" width="92" height="92" rx="6" />
+        )}
+        {mark.id === 'cerchio' && <circle className="gen-mark-stroke" cx="50" cy="50" r="46" />}
+        {mark.id === 'triangolo' && (
+          <polygon className="gen-mark-stroke" points="50,5 96,95 4,95" />
+        )}
+      </svg>
     </div>
   )
 }
 
-// The shapes' layer, its own component because the phase shift below is
-// per-INSTANCE state and every window exists twice.
+// The marks' layer, its own component because registering with the
+// simulation is per-INSTANCE work and every window exists twice.
 function PlayLayer() {
-  const phase = useDocumentPhase()
-
   // Live content, not decoration. These keep bouncing while the sheet is
   // being warped, which is the claim the whole scene exists to make: what
   // flies is a running page sampled every frame, not a photograph of one
   // taken at press time.
   //
-  // The delay is what keeps the two copies honest. Page copy and airborne
-  // copy are the same component in different trees, so the airborne one's
-  // keyframes would otherwise start from zero the instant it mounts — and
-  // the swap frame, which is meant to be invisible, would jump the shapes
-  // across the window. A negative delay of the time already elapsed starts
-  // each copy at the phase the document clock is already at. Computed once
-  // per instance, deliberately: recomputing it on a re-render (every
-  // keystroke in the field) would add the mounted time twice and make the
-  // shapes stutter as you type.
+  // Joining the ONE simulation is what keeps the two copies honest:
+  // the page copy and the airborne copy draw the same bodies at the
+  // same instant, so the custody swap has nothing to jump. The old
+  // phase-pinning dance (startTime = 0 on every animation) is gone
+  // with the compositor animations that needed it. Layout effect, so
+  // the copy is in position before its first paint.
+  const root = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => registerBounceCourt(root.current!), [])
   return (
-    <div className="gen-play" aria-hidden>
-      <div className="gen-recursive-tunnel" style={phase}>
-        <RecursiveShape depth={RECURSIVE_START_DEPTH} />
-      </div>
+    <div className="gen-play" aria-hidden ref={root}>
+      {BOUNCE_MARKS.map((mark, i) => (
+        <BounceMark key={mark.id} index={i} />
+      ))}
     </div>
   )
 }
@@ -679,20 +662,8 @@ function GenieMaterial({ shade }: { shade: [number, number] }) {
   )
   uniforms.tMap.value = texture ?? null
   uniforms.uShadeEdge.value.set(shade[0], shade[1])
-  // decisions.md #5, and the sheet only started needing it when it grew a
-  // translucent shadow. A DOM texture uploads STRAIGHT by default, and
-  // GPU filtering averages raw rgb across texels — so every boundary
-  // between the shade and the empty corner beside it would mix a colour
-  // that is only there at 30% as if it were fully present. Premultiply at
-  // upload, blend premultiplied below, and the two halves cancel: the
-  // shade composites to the same luma as the page copy's, which is what
-  // the swap frame needs. (Measured: straight upload with a premultiplied
-  // blend puts the airborne shade 14 luma pale of the DOM's.)
-  useLayoutEffect(() => {
-    if (!texture) return
-    texture.premultiplyAlpha = true
-    texture.needsUpdate = true
-  }, [texture])
+  // Surface creates every DOM texture premultiplied (decisions.md #5).
+  // This material only owns the matching blend rule below.
   const radii = chrome?.radii ?? [0, 0, 0, 0]
   uniforms.uMunariRadii.value.set(radii[0], radii[1], radii[2], radii[3])
   uniforms.uMunariSize.value.set(width, height)
@@ -804,14 +775,6 @@ function FilmCompositeSurface({
   const chromeTexture = useSurfaceTexture()
   const { width, height } = useSurfaceChrome()
 
-  // The chrome texture carries a translucent shadow. Configure its upload
-  // before this child material can expose it to the renderer.
-  useLayoutEffect(() => {
-    if (!chromeTexture) return
-    chromeTexture.premultiplyAlpha = true
-    chromeTexture.needsUpdate = true
-  }, [chromeTexture])
-
   if (!film) return null
   return (
     <Surface
@@ -856,6 +819,9 @@ function FilmCompositeSurface({
 
 /** One flight in progress: the pose it took off from, and who owns t. */
 interface Airborne {
+  /** Unique lifetime. A window can take off again before r3f has unmounted
+   *  its prior Flight, so the window name alone is not a safe React key. */
+  flightId: number
   f: GenieFlight
   drive: DriveBox
 }
@@ -967,6 +933,12 @@ interface FlightProps {
   /** For DOM-captured windows, fired once on the first drawn frame. Film
    *  releases its page copy only through `onFilmPresented`. */
   onShown: (win: WinId) => void
+  /** Reveal native coverage at the rest wall while WebGL still covers it for
+   *  one frame. The page masks its own translucent shadow during the overlap. */
+  onReveal: (win: WinId, resumeFrame?: FrameId) => void
+  /** Give the native presenter its shadow in the same renderer turn that
+   *  suppresses WebGL. This closes the gap before React publishes custody. */
+  onBridgeCommit: (win: WinId) => void
   onLand: (win: WinId, wall: 0 | 1, resumeFrame?: FrameId) => void
   content: React.ReactNode
 }
@@ -987,6 +959,8 @@ function Flight({
   onFilmReady,
   onFilmPresented,
   onShown,
+  onReveal,
+  onBridgeCommit,
   onLand,
   content,
 }: FlightProps) {
@@ -1008,9 +982,11 @@ function Flight({
   // frame. That is the flicker as reported, arriving AFTER the window
   // has docked (instruments/genie-drain/rest-blink.mjs, cameBack).
   //
-  // So a landed flight computes nothing further. The frames before the
-  // unmount draw exactly what the landing frame drew.
+  // So a landed flight computes no more drive state. A restore gets one
+  // deliberate coverage frame at the wall, then the next frame suppresses the
+  // mesh and completes native custody; a dock landing stops immediately.
   const landed = useRef(false)
+  const reverseRelease = useRef<{ frame?: FrameId } | null>(null)
   const f = air.f
 
   const onFilmFrameDrawn = (receipt: FrameDrawReceipt) => {
@@ -1037,7 +1013,27 @@ function Flight({
   }
 
   useFrame(({ clock }, rawDt) => {
-    if (landed.current) return
+    if (landed.current) {
+      const release = reverseRelease.current
+      if (!release) return
+      const outgoing = groupRef.current
+      if (!outgoing) return
+      reverseRelease.current = null
+      // The native presenter had the whole prior compositor frame to become
+      // visible under WebGL. Give it the shadow now, in the same rAF callback
+      // that suppresses this group. The browser cannot composite an
+      // intermediate state, so exactly one presenter owns the translucent
+      // layer even though React publishes custody later.
+      commitRendererReleaseFrame({
+        outgoing,
+        commitIncoming: () => onBridgeCommit(win),
+        // Remove the flight only after this renderer stack has drawn the scene
+        // without its group. A same-stack React commit can switch the loop to
+        // demand before the clearing draw happens.
+        publishRelease: () => onLand(win, 0, release.frame),
+      })
+      return
+    }
     const dt = Math.min(rawDt, 1 / 20)
     const d = air.drive
     const restoring = dir === 'restoring'
@@ -1046,19 +1042,12 @@ function Flight({
     const geo = geoRef.current
     if (!geo) return
 
-    // Is this sheet actually being drawn this frame? Asked of the scene
-    // graph rather than of the `painted` prop, because those two answers
-    // are a frame or more apart under load: `painted` is a state change
-    // that has to cross into the Canvas's own reconciler before it
-    // becomes `visible` on anything. The group knows now.
+    // Is this sheet eligible to draw this frame? Asked of the scene graph
+    // rather than of the `painted` prop, because those two answers are a frame
+    // or more apart under load. Actual presentation is reported by Surface's
+    // post-draw fence below.
     const drawn = f.film ? ready : groupRef.current?.visible === true
     const released = pageReleased()
-    // A DOM-captured page copy waits on this, so it cannot hide into an
-    // empty frame. Film uses the stronger default-framebuffer receipt.
-    if (!f.film && drawn && !told.current) {
-      told.current = true
-      onShown(win)
-    }
 
     // Until the sheet is on screen AND an automatic minimize's DOM copy has
     // committed its hide, the page copy or dock tile is still the visible
@@ -1203,12 +1192,16 @@ function Flight({
     }
 
     if (landAt === null) return
-    if (landAt === 0 && f.film) {
-      const frame = freezeFilm() ?? f.film.required
+    if (landAt === 0) {
+      const frame = f.film ? (freezeFilm() ?? f.film.required) : undefined
       landed.current = true
-      onLand(win, 0, frame)
+      reverseRelease.current = { frame }
+      onReveal(win, frame)
       return
     }
+    // A dock landing needs no native fallback. Suppress the finished mesh
+    // before this render; the filled icon already owns the final neck.
+    if (groupRef.current) groupRef.current.visible = false
     landed.current = true
     onLand(win, landAt)
   })
@@ -1270,6 +1263,18 @@ function Flight({
         // Uploads run from useFrame, not from drawing this mesh, so the
         // signal that clears the gate does not depend on the gate.
         onFirstUpload={() => onPainted(win)}
+        // This callback runs after a color-writing default-framebuffer draw but
+        // before browser composition. Releasing the native copy synchronously
+        // here gives translucent shadow pixels exactly one presenter.
+        onFirstPresented={
+          f.film
+            ? undefined
+            : () => {
+                if (told.current) return
+                told.current = true
+                onShown(win)
+              }
+        }
         content={content}
       >
         <planeGeometry ref={geoRef} args={[f.w, f.h, GRID_X, GRID_Y]} />
@@ -1779,6 +1784,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   // and none of that is anything React should see. `air` above is the
   // React-visible shadow of this map's key set.
   const flights = useRef(new Map<WinId, Airborne>())
+  const nextFlightId = useRef(0)
   const rings = useRef(new Map<WinId, Ring>())
   // Windows that owe the keyboard a place to land. `visibility: hidden`
   // blurs whatever it was covering, so a minimize drops focus on <body>
@@ -1896,8 +1902,10 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
         ...GENIE_DEFAULTS,
         slotHalf: mouth / 2,
         // The working window gets the deliberate easter egg. Signed radius
-        // chooses which side of the centreline the loop enters from.
-        loopRadius: id === 'scheda' ? 52 : 0,
+        // chooses which side of the drain the circle sits on. Read from
+        // the tweak panel's live bag at measure time, so a dragged value
+        // applies to the next flight.
+        loopRadius: id === 'scheda' ? genieKnobs.loopRadius : 0,
       },
       // The looped route is almost twice as long as the normal drain. Give
       // it time for the same calm travel speed instead of rushing the circle.
@@ -1959,10 +1967,13 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   const takeOff = (id: WinId, to: Dir, d: DriveBox, slow: boolean): boolean => {
     if (flights.current.has(id)) return false
     if (docked.includes(id) !== (to === 'restoring')) return false
+    // A same-frame reacquisition can beat the old bridge's deferred marker
+    // cleanup. The new transfer never inherits reverse-only visibility.
+    winRefs.current[id]?.removeAttribute('data-native-bridge')
     const f = measure(id, slow, to === 'restoring' ? RESTORE_S : MINIMIZE_S)
     if (!f) return false
     d.visibleT = to === 'restoring' ? 1 : 0
-    flights.current.set(id, { f, drive: d })
+    flights.current.set(id, { flightId: ++nextFlightId.current, f, drive: d })
     // The two directions are NOT symmetric. A restore is a window coming
     // back to work, so it arrives in front — and this is its only chance
     // to say so, since its press landed on a dock tile and not on the
@@ -2031,8 +2042,8 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     flight: Airborne,
     resumeFrame?: FrameId,
   ) => {
-    // A context-loss fallback can revoke this flight before a scheduled
-    // reverse release runs. Late work from that old transfer is harmless.
+    // A context-loss fallback can revoke this flight before its next-frame
+    // reverse release. Late work from that old transfer is harmless.
     if (flights.current.get(id) !== flight) return
     const film = flight.f.film
     if (film) probeFilm({ type: 'release', token: film.token, wall })
@@ -2066,23 +2077,22 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
       // already frozen a newer generation.
       requestAnimationFrame(() => filmController.resume(resumeFrame))
     }
+    // The public `data-away` removal comes from the React commit above. Once
+    // it leaves, both bridge selectors are inert; clear their private markers
+    // afterward so a later flight cannot inherit them.
+    requestAnimationFrame(() => {
+      winRefs.current[id]?.removeAttribute('data-native-bridge')
+    })
   }
 
   const onLand = (id: WinId, wall: 0 | 1, resumeFrame?: FrameId) => {
     const flight = flights.current.get(id)
     if (!flight) return
     const film = flight.f.film
-    if (film) probeFilm({ type: 'land', token: film.token, wall, frame: resumeFrame })
-    if (film && wall === 0 && resumeFrame) {
-      // Reverse custody never waits for renderer proof. Reveal the shared
-      // DOM canvas now, while the landed WebGL sheet still covers it. Release
-      // that sheet on the next frame, after the browser had a paint chance.
-      winRefs.current[id]?.removeAttribute('data-away')
-      probeFilm({ type: 'reveal', token: film.token, frame: resumeFrame })
-      requestAnimationFrame(() => finishLand(id, wall, flight, resumeFrame))
-      return
-    }
-
+    // Rest-wall film landing is recorded at the earlier reveal boundary. Dock
+    // landing has no bridge frame, so it is recorded here.
+    if (film && wall === 1)
+      probeFilm({ type: 'land', token: film.token, wall, frame: resumeFrame })
     finishLand(id, wall, flight, resumeFrame)
     // No raise here in either direction. A restore claimed the front at
     // takeoff; a minimize you changed your mind about and flung home has
@@ -2111,6 +2121,10 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
         return
       }
       probeFilm({ type: 'present', token, receipt })
+      // onPresented runs inside Three's post-draw callback, before browser
+      // composition. Bridge the two React reconcilers imperatively for this
+      // one boundary; state below becomes the durable source of truth.
+      winRefs.current[win]?.setAttribute('data-away', 'true')
       setShown((s) => (s[win] ? s : { ...s, [win]: true }))
       probeFilm({ type: 'show', token, frame: receipt.frame })
       requestAnimationFrame(() => filmController.resume(film.required))
@@ -2127,6 +2141,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     // This reverse transfer never waits for renderer evidence.
     for (const [id, flight] of revoked) {
       winRefs.current[id]?.removeAttribute('data-away')
+      winRefs.current[id]?.removeAttribute('data-native-bridge')
       const slot = slotRefs.current[id]
       if (slot) {
         slot.style.transform = ''
@@ -2210,6 +2225,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
         </h1>
         {chips}
       </header>
+      <GenieTweakPanel />
 
       {/* Mapped in SCHEDE order and never re-sorted: raising a window has
           to be a z-index, not a move, or React would tear the pressed
@@ -2348,7 +2364,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
           if (!a || !s) return null
           return (
             <Flight
-              key={win}
+              key={`${win}:${a.flightId}`}
               win={win}
               dir={air[win] as Dir}
               air={a}
@@ -2361,14 +2377,43 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
               stack={order.indexOf(win)}
               slotOf={slotOf}
               kickRing={kickRing}
-              onPainted={(w) => setPainted((p) => (p[w] ? p : { ...p, [w]: true }))}
+              onPainted={(w) => {
+                if (flights.current.get(w) !== a) return
+                setPainted((p) => (p[w] ? p : { ...p, [w]: true }))
+              }}
               freezeFilm={() => filmController.freeze()}
               onFilmReady={tellFilmReady}
               onFilmPresented={tellFilmPresented}
               onShown={(w) => {
+                if (flights.current.get(w) !== a) return
+                // Surface reports this from its qualified post-draw fence. Hide
+                // the DOM copy before the browser composites that WebGL frame;
+                // waiting for the separate React commit doubles translucent
+                // pixels for one frame.
+                winRefs.current[w]?.setAttribute('data-away', 'true')
                 setShown((s) => (s[w] ? s : { ...s, [w]: true }))
               }}
-              onLand={onLand}
+              onReveal={(w, resumeFrame) => {
+                if (flights.current.get(w) !== a) return
+                const el = winRefs.current[w]
+                // Native layout and film get one full compositor frame under
+                // the landed WebGL copy. Mask only the native shadow during
+                // that overlap, because translucent duplicates compound.
+                el?.setAttribute('data-native-bridge', 'warming')
+                const film = a.f.film
+                if (film && resumeFrame) {
+                  probeFilm({ type: 'land', token: film.token, wall: 0, frame: resumeFrame })
+                  probeFilm({ type: 'reveal', token: film.token, frame: resumeFrame })
+                }
+              }}
+              onBridgeCommit={(w) => {
+                if (flights.current.get(w) !== a) return
+                winRefs.current[w]?.setAttribute('data-native-bridge', 'native')
+              }}
+              onLand={(w, wall, resumeFrame) => {
+                if (flights.current.get(w) !== a) return
+                onLand(w, wall, resumeFrame)
+              }}
               content={bodyFor(s, true)}
             />
           )

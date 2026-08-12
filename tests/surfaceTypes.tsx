@@ -14,7 +14,9 @@ declare const frame: FrameSource
 declare const presentation: PresentationRequirement
 const geometry = <planeGeometry args={[1, 1]} />
 
-;<Surface html="" width={10} height={10}>{geometry}</Surface>
+;<Surface html="" width={10} height={10} onFirstPresented={() => {}}>{geometry}</Surface>
+;<Surface html="" emissiveIntensity={0.75}>{geometry}</Surface>
+;<SurfaceApp content={<div />} emissiveIntensity={0.75}>{geometry}</SurfaceApp>
 ;<Surface
   frame={frame}
   width={10}
@@ -31,12 +33,16 @@ const mixed = { html: '', frame, children: geometry }
 ;<Surface {...mixed} />
 // @ts-expect-error The legacy DOM-ready callback has no frame semantics.
 ;<Surface frame={frame} onFirstUpload={() => {}}>{geometry}</Surface>
+// @ts-expect-error DOM presentation readiness is not a numbered frame receipt.
+;<Surface frame={frame} onFirstPresented={() => {}}>{geometry}</Surface>
 // @ts-expect-error A DOM Surface has no numbered frame receipt.
 ;<Surface html="" onFrameDrawn={() => {}}>{geometry}</Surface>
 // @ts-expect-error A DOM Surface has no renderer presentation receipt.
 ;<Surface html="" presentation={presentation}>{geometry}</Surface>
 // @ts-expect-error FrameSurface owns the renderer fence callbacks.
 ;<Surface frame={frame} onBeforeRender={() => {}}>{geometry}</Surface>
+// @ts-expect-error DOM light is a capture-material term; a frame source owns its pixels.
+;<Surface frame={frame} emissiveIntensity={1}>{geometry}</Surface>
 // @ts-expect-error SurfaceApp remains a DOM-owned React root.
 ;<SurfaceApp frame={frame} content={<div />}>{geometry}</SurfaceApp>
 

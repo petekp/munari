@@ -7,29 +7,18 @@ import { Glass } from './scenes/Glass'
 import { GlassTweakPanel } from './scenes/GlassTweaks'
 import { FlightApp } from './scenes/Flight'
 import { Explode, ExplodeHud } from './scenes/Explode'
-import { PassageApp } from './scenes/Passage'
-import { WakeApp } from './scenes/Wake'
 import { GenieApp } from './scenes/Genie'
 import { VeilApp } from './scenes/Veil'
+import { KnobsApp } from './scenes/Knobs'
 
-// Eight scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
-// flight drag trilogy, exploded-paint inspector, passage route transition,
-// wake navigation-through-a-medium, genie minimize-to-dock, veil
-// progressive blur.
+// Seven scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
+// flight drag trilogy, exploded-paint inspector, genie minimize-to-dock,
+// veil progressive blur, knobs-and-switches instrument rail.
 // Everything they render reaches the library through the `@petepetrash/munari` barrel —
 // this app is the proof that the public surface is sufficient.
 
-type SceneId = 'workspace' | 'glass' | 'flight' | 'explode' | 'passage' | 'wake' | 'genie' | 'veil'
-const SCENES = [
-  'workspace',
-  'glass',
-  'flight',
-  'explode',
-  'passage',
-  'wake',
-  'genie',
-  'veil',
-] as const
+type SceneId = 'workspace' | 'glass' | 'flight' | 'explode' | 'genie' | 'veil' | 'knobs'
+const SCENES = ['workspace', 'glass', 'flight', 'explode', 'genie', 'veil', 'knobs'] as const
 
 const FOOTERS: Record<SceneId, string> = {
   workspace:
@@ -40,15 +29,12 @@ const FOOTERS: Record<SceneId, string> = {
   flight: 'drag a card off the board · throw it · ✕ to crumple it',
   explode:
     'one div, no children, six plates · orbit to see the depths · drag spread to zero and it stacks back into the card',
-  passage:
-    'open a note · the card leaves the page and lays itself out again at every width on the way',
-  wake:
-    'pick a page — the new one arrives through the water · click anywhere to strike the surface · type while it moves',
   genie:
     'the amber lamp pours the window into the dock · shift for slow motion · click into it mid-drain — it is still real',
   // Deliberately empty: the veil page carries its own caption, pinned
   // above the band where the shared footer would sit inside the blur.
   veil: '',
+  knobs: 'turn a knob, throw a switch — real machined hardware on a live panel, lit by the artwork it drives',
 }
 
 // Clicking a canvas normally moves focus to <body>, which would blur
@@ -166,15 +152,14 @@ export default function App() {
     )
   }
 
-  // Two scenes are not scenes in the shared canvas — they ARE pages, with
+  // Some scenes are not scenes in the shared canvas — they ARE pages, with
   // their own overlay canvas on top. The others are content inside one 3D
   // room; these invert the relationship, so they take the whole route and
   // carry the scene chips themselves.
   if (scene === 'flight') return <FlightApp chips={chips} />
-  if (scene === 'passage') return <PassageApp chips={chips} />
-  if (scene === 'wake') return <WakeApp chips={chips} />
   if (scene === 'genie') return <GenieApp chips={chips} />
   if (scene === 'veil') return <VeilApp chips={chips} />
+  if (scene === 'knobs') return <KnobsApp chips={chips} />
 
   return (
     <div className="app">

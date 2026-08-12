@@ -217,6 +217,52 @@ moment its claim is pinned somewhere cheaper.
   rest *by construction*, not by tuning. Measured: 806 → 806 paints
   across two seconds of settled page.
 
+**Amended 2026-08-10 — back to seven; wake is deleted.** The rule
+above cuts both ways. Wake's claim was real (the raster is addressable
+in flight) but the scene never made it *legible*: as a demo it read as
+a water shader, not as a capability of the library, and a scene is
+judged as a demo. `useSurfaceTexture` stays exercised by every other
+scene, so nothing in the public surface lost its consumer. What went
+with it: `Wake.tsx`, `wake.css`, `wakeField.ts` and its wave-law
+tests, the `?scene=wake` route. The displaced-uv *sampling* claim —
+reading the page at a uv the shader chose — no longer has a scene
+arguing it; if it earns one again, it needs a demo where the sampling
+is the point, not the weather.
+
+**Amended 2026-08-10 — six; passage is deleted, same day, same rule.**
+Judged as a demo, a route transition did not carry munari's argument.
+What it *bought* survives it: the laws its bugs forced (#14, #15, the
+density band of #10, platform.md rows 11 and 12) are pinned in
+`tests/conformance` and stay. What went with it, beyond the scene
+files and the `?scene=passage` route: the **sharpness gate**
+(`instruments/sharpness`, its CI job, `gate:sharpness`), because its
+recipe was passage-specific to the bone — the one frame it measured
+was the passage flight's small endpoint held at t = 0, and no other
+scene currently offers a frame where the mesh stands exactly where a
+page copy was. The mesh-vs-DOM crispness *floor* therefore has no
+browser gate for now; the `gradientEnergy` metric and the bracketed
+floor (0.841 defect / 1.001 fix → 0.93) are in history at this commit
+if a scene earns the measurement again. Two claims now have no scene:
+live relayout in flight (container queries as a size input) and
+displaced-uv sampling.
+
+**Amended 2026-08-10 — seven; knobs joins.**
+
+- **knobs — the instrument rail.** A generative SVG visualization
+  (ordinary page DOM, free to animate every frame) paired with a control
+  rail of rotary knobs, toggle switches, and indicator lamps that live
+  DOM controls, presented as a `SurfaceApp` on a raked, embossed mesh
+  (`knobsGeometry.ts`) lit by the Surface's own default material. Every
+  other panel-shaped scene in this roster either goes unlit
+  (`material="none"` plus a custom unlit shader — genie, flight, wake
+  before it) or is flat and head-on. This is the tree's only scene that
+  argues the DOM-and-WebGL claim from the *lit-geometry* side: a bowed
+  panel with real bosses standing proud of it, shaded by real lights, is
+  something a flat CSS layer under perspective cannot draw regardless of
+  effort — and the same mesh's real triangles are what a dragged knob's
+  pointer event raycasts against, so the geometry is load-bearing for
+  input as well as for light.
+
 ## #4 — Core speaks in shapes; three satisfies them (2026-08-02)
 
 **Decision.** `@munari/core` cannot import `three` (zero-dep,
@@ -1447,3 +1493,74 @@ framebuffer draw writes color. The same gate verifies a real backing-store
 resize. Genie's retained gate passes 24 minimize and restore cycles at 6x CPU,
 then loses the WebGL context and returns native coverage without a later draw
 receipt.
+
+## #26 — Releasing a mesh requires one post-removal draw (2026-08-10, react binding)
+
+**Decision.** Both DOM-backed and frame-backed Surfaces invalidate their r3f
+root when they unmount. A consumer may change a Canvas from `always` to
+`demand` in the same commit that removes its final Surface. Scene removal then
+does not guarantee a render. Without one, the transparent canvas keeps its
+last framebuffer and a later move of the restored DOM presenter exposes two
+windows.
+
+The binding owns this rule because it is part of presenter release, not Genie
+animation policy. The extra frame renders the scene after removal, preserves
+any remaining presenters, and clears the released pixels. It costs nothing at
+steady idle and applies to every Surface consumer. Genie still gives each
+flight a unique lifetime and rejects callbacks from older flights; those are
+scene-owned transfer rules and do not belong in core.
+
+There is also a valid third-party upstream improvement. R3F changes an
+`always` loop to `demand` without guaranteeing one final render. It could
+schedule that frame itself and protect all Three meshes from retained output.
+Munari must still keep its binding invalidation: presenter erasure is part of
+its public custody promise and cannot depend on a future renderer release.
+
+**Evidence.** A headed Chrome trace at Retina density and 6x CPU reproduced
+the exact duplicate: the restored DOM square moved while its last WebGL image
+stayed at the old rectangle. The retained gate starts a real title-bar drag at
+the first observable reveal and checks every compositor frame for both blue
+windows. It also starts a new minimize in that reveal commit and requires the
+fresh flight to land.
+
+## #27 — Custody must not visibly change alpha (2026-08-10, react binding + Genie)
+
+**Decision.** A DOM-backed `Surface` exposes a separate one-shot
+`onFirstPresented` boundary. It fires only after the first real DOM raster has
+uploaded and a color-writing draw has completed in the default framebuffer.
+It runs synchronously before browser composition. It does not change the
+legacy `onFirstUpload` meaning, and it is not a reusable, versioned custody
+receipt.
+
+The React binding also exports `commitRendererReleaseFrame` for reverse
+custody. A consumer calls it from `useFrame` after the incoming presenter is
+warm. It commits incoming visual ownership, suppresses the outgoing renderer
+object synchronously, and defers the durable React-state publication until the
+current renderer stack has drawn. Core keeps only the custody law; the binding
+owns this React/r3f timing.
+
+The binding also enforces decision #5 at texture birth: every DOM
+`CanvasTexture` is sRGB and premultiplied before a material or renderer can see
+it, and the built-in material uses matching premultiplied blending. A scene
+must not repair source format from a later effect.
+
+Genie releases its native presenter inside the qualified post-draw callback.
+For the reverse direction, it first warms the native presenter under the
+landed WebGL sheet for one frame. The private bridge keeps public custody and
+input on WebGL and masks only the native shadow. On the next renderer frame,
+the same `useFrame` callback transfers the shadow to the native presenter and
+makes the WebGL group non-renderable. The browser cannot composite between
+those two synchronous writes. After that draw stack clears the framebuffer,
+React publishes native custody and the private bridge becomes inert. This
+bridge is narrow and intentional: the DOM and r3f reconcilers cannot make an
+atomic shared commit, while one renderer turn can hand each translucent layer
+to one presenter.
+
+**Why.** Acquire-before-release prevents holes, but visible overlap is safe
+only for opaque pixels. The same 15% shadow composited twice is a different
+shadow. Before this change, the normal strip measured 187 luma and the custody
+frame dropped to 163. An earlier reverse bridge also left one frame with no
+shadow at 216 luma because it waited for React after clearing WebGL. After the
+change, both minimize and restore boundaries measure 187, with no doubled or
+uncovered frame. The retained `shadow-travels` Chrome gate checks both
+directions and fails on a change larger than six luma.

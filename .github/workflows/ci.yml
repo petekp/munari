@@ -49,18 +49,3 @@ jobs:
       - run: npm ci
       - run: npm run gate:idle-zero
 
-  # The sharpness gate: a mesh standing in for an element must read as
-  # sharp as the element. Same capability policy as idle-zero — an
-  # origin-trial gap warns and exits 0; past the probe, a ratio under the
-  # floor is a real failure. See instruments/README.md for why the floor
-  # is 0.93 and not a number somebody liked.
-  sharpness:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run gate:sharpness

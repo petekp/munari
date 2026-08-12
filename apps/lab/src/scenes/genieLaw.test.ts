@@ -112,24 +112,82 @@ describe('genie warp', () => {
         expect(genieWarp(u, v, 1, looped)).toEqual(genieWarp(u, v, 1, P))
       }
     }
+  })
 
-    // At one mid-flight section the centreline visits both sides of the
-    // classic S before it straightens for the icon neck.
+  it('the loop is one tangent turn — a single excursion, no return-to-centre wiggles', () => {
+    // A vertical path meets a circle tangentially only at the circle's
+    // side, so the whole turn lives on ONE side of the drain and bows out
+    // to the circle's diameter. The old lead-in swing and radius envelope
+    // each pinched the outline back to the centreline mid-flight — the
+    // hourglass. Pinned: the offset never crosses to the other side, it
+    // reaches a real diameter, and it rises and falls exactly once.
+    // Isolated through the public surface by mirroring: the shoulder and
+    // the vertical dip depend only on |radius|, so half the difference
+    // between the two mirror flights is exactly the turn's x excursion.
+    const r = 0.75
+    const looped = { ...P, loopRadius: r }
+    const mirrored = { ...P, loopRadius: -r }
     const offsets: number[] = []
-    for (let v = 0; v <= 1.0001; v += 0.02) {
-      offsets.push(genieWarp(0.5, v, 0.4, looped).x - genieWarp(0.5, v, 0.4, P).x)
+    for (let v = 0; v <= 1.0001; v += 0.005) {
+      const right = genieWarp(0.5, v, 0.4, looped)
+      const left = genieWarp(0.5, v, 0.4, mirrored)
+      expect(left.y).toBeCloseTo(right.y, 12)
+      offsets.push((right.x - left.x) / 2)
     }
-    expect(Math.min(...offsets)).toBeLessThan(-0.1)
-    expect(Math.max(...offsets)).toBeGreaterThan(0.1)
+    expect(Math.min(...offsets)).toBeGreaterThanOrEqual(0)
+    expect(Math.max(...offsets)).toBeGreaterThan(1.9 * r)
+    let flips = 0
+    for (let i = 2; i < offsets.length; i++) {
+      const a = offsets[i - 1] - offsets[i - 2]
+      const b = offsets[i] - offsets[i - 1]
+      if (a > 1e-12 && b < -1e-12) flips += 1
+      if (a < -1e-12 && b > 1e-12) flips += 1
+    }
+    expect(flips).toBe(1)
 
-    const early = genieWarp(0.5, 1, 0.05, looped)
-    const earlyClassic = genieWarp(0.5, 1, 0.05, P)
-    const earlyOffset = Math.abs(early.x - earlyClassic.x)
-    const later = genieWarp(0.5, 1, 0.1, looped)
-    const laterClassic = genieWarp(0.5, 1, 0.1, P)
-    const laterOffset = Math.abs(later.x - laterClassic.x)
-    expect(earlyOffset).toBeGreaterThan(0.001)
-    expect(laterOffset).toBeGreaterThan(earlyOffset * 4)
+    // And it is an actual loop, not a bulge: somewhere inside the turn
+    // the sheet climbs back upward before continuing to the mouth.
+    let climbs = false
+    let prevY = genieWarp(0.5, 0, 0.4, looped).y
+    for (let v = 0.005; v <= 1.0001; v += 0.005) {
+      const y = genieWarp(0.5, v, 0.4, looped).y
+      if (y > prevY + 1e-9) climbs = true
+      prevY = y
+    }
+    expect(climbs).toBe(true)
+  })
+
+  it('the looped taper never comes back — width shrinks monotonically along the sheet', () => {
+    // The user-visible promise: from the window's bottom edge to the dock
+    // mouth the silhouette only narrows. The loop moves the path, never
+    // the width, so k must stay monotone with the loop exactly as without.
+    const looped = { ...P, loopRadius: 0.75 }
+    for (const t of [0.15, 0.35, 0.55, 0.75, 0.95]) {
+      let prev = Infinity
+      for (let v = 0; v <= 1.0001; v += 0.02) {
+        const { k } = genieWarp(0.5, v, t, looped)
+        expect(k).toBeLessThanOrEqual(prev + 1e-9)
+        expect(k).toBeGreaterThan(0)
+        prev = k
+      }
+    }
+  })
+
+  it('the looped flight moves continuously in t — no frame-to-frame jumps', () => {
+    const looped = { ...P, loopRadius: 0.75 }
+    const dt = 1 / 120
+    const journey = Math.hypot(P.dockX, P.h / 2 - P.dockY)
+    for (const u of STEPS) {
+      for (const v of STEPS) {
+        let prev = genieWarp(u, v, 0, looped)
+        for (let t = dt; t <= 1.0001; t += dt) {
+          const next = genieWarp(u, v, t, looped)
+          const step = Math.hypot(next.x - prev.x, next.y - prev.y)
+          expect(step).toBeLessThan(journey / 10)
+          prev = next
+        }
+      }
+    }
   })
 
   it('plants its near edge while the far edge still flares — the asymmetric S', () => {

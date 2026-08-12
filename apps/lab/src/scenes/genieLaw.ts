@@ -59,9 +59,10 @@ export interface GenieParams {
    */
   sway: number
   /**
-   * Radius and horizontal direction of an optional loop near the mouth.
-   * Zero keeps the classic S. A signed value adds one smooth loop while
-   * preserving the exact rest and dock identities.
+   * Radius of an optional loop near the mouth. Zero keeps the classic S.
+   * A signed value adds one full tangent turn — the sign picks which side
+   * of the drain the circle sits on, and the path bows out to 2·|radius|
+   * on that side — while preserving the exact rest and dock identities.
    */
   loopRadius: number
 }
@@ -116,27 +117,30 @@ export function genieRestBottomVelocity(tVelocity: number, p: GenieParams): numb
   return (bottomJourney * EDGE_MOMENTUM * tVelocity) / p.stretchEnd
 }
 
+// Where the turn lives in the funnel: below loopStart the drain curls,
+// below loopEnd it has already straightened for the icon neck. Kept in
+// the lower, narrow part so the path reads as a loop rather than a broad S.
+const LOOP_START = 0.66
+const LOOP_END = 0.08
+
 function loopOffset(q: number, radius: number): { x: number; y: number } {
-  if (radius === 0) return { x: 0, y: 0 }
-  // Keep the full turn in the lower, narrow part of the funnel. This is the
-  // compact path that reads as a loop rather than a broad S.
-  const loopStart = 0.66
-  if (q >= loopStart) {
-    // The route starts bending with the first deformed row instead of
-    // following the classic path and switching later. sin^4 is flat through
-    // curvature at both ends, so this lead leaves the straight window edge
-    // and meets the compact loop without a visible change in bend.
-    const leadProgress = (1 - q) / (1 - loopStart)
-    const lead = Math.sin(Math.PI * leadProgress) ** 4
-    return { x: -radius * 0.2 * lead, y: 0 }
-  }
-  const loopProgress = Math.min(1, Math.max(0, (q - 0.08) / (loopStart - 0.08)))
-  if (loopProgress === 0 || loopProgress === 1) return { x: 0, y: 0 }
-  const blend = Math.sin(Math.PI * loopProgress) ** 2
-  const angle = 2 * Math.PI * loopProgress
+  if (radius === 0 || q >= LOOP_START || q <= LOOP_END) return { x: 0, y: 0 }
+  // One full turn around a circle entered TANGENT to the drain. A vertical
+  // path can only meet a circle tangentially at the circle's side, so the
+  // whole turn lives on one side of the centreline: x = r(1 − cos θ) and
+  // its slope are both zero at θ = 0 and 2π, which is what lets the loop
+  // begin and end with no lead-in swing and no radius envelope. Both of
+  // those existed before to hide a sideways (non-tangent) entry, and each
+  // return-to-zero they made pinched the silhouette into an hourglass.
+  // Easing θ keeps entry and exit flat through curvature as well, so the
+  // straight drain and the turn meet with no visible change in bend, and
+  // the sheet's taper — monotone in the row's height by construction —
+  // stays the only thing shaping the outline.
+  const d = (LOOP_START - q) / (LOOP_START - LOOP_END)
+  const angle = 2 * Math.PI * smootherstep(0, 1, d)
   return {
-    x: radius * Math.sin(angle) * blend,
-    y: Math.abs(radius) * (Math.cos(angle) - 1) * blend,
+    x: radius * (1 - Math.cos(angle)),
+    y: -Math.abs(radius) * Math.sin(angle),
   }
 }
 

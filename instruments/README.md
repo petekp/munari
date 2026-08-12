@@ -79,47 +79,45 @@ video loop events are reported separately from custody-induced media events.
 The Genie route uses HTML capture for its window chrome, so this gate launches
 Chrome with `CanvasDrawElement` enabled.
 
-## sharpness
+## genie duplicate drag
 
-Is the mesh's rendering of an element as sharp as the element?
-`npm run gate:sharpness`.
+Can a restored window leave its final WebGL image behind when the live DOM
+window moves? `npm run gate:genie-duplicate`.
 
-The question has no absolute answer, which is why the recipe kept being
-re-derived wrong: a texture is only sharp or soft RELATIVE to the DOM it
-stands in for, at the same size, in the same place, on the same display.
-So the instrument drives the passage scene to the one frame where the
-mesh is standing exactly where the page copy was — the small endpoint,
-held at `t = 0` — photographs both, and reports a ratio.
+The gate restores the square window at Retina density and 6x CPU throttle,
+then starts a real title-bar drag as soon as the DOM copy becomes observable.
+A DevTools screencast checks the old and new rectangles in every compositor
+frame and requires zero frames with both copies. It then starts a new minimize
+in the reveal commit. The second flight must get a fresh component lifetime
+and reach the dock instead of inheriting the prior flight's landed state. Use
+`HEADED=1` to exercise the real GPU compositor path.
 
-- `gradientEnergy.ts` — the arithmetic, with its own contract. Mean
-  squared first difference of luma over a band. Blur is a low-pass and
-  first differences are what it takes away first; variance would not
-  answer, and an FFT would answer more precisely at the cost of being
-  something nobody reimplements correctly under pressure.
-- `run.mjs` — transport, following idle-zero's two policies. Also does
-  the decoding in-page rather than in Node: the browser already has a
-  PNG decoder and shipping an image library to compare two rectangles is
-  the wrong trade.
+## genie shadow custody
 
-Three things it will not let you get away with, each one a mistake that
-was actually made:
+Do translucent window shadows keep the same opacity while presentation moves
+between DOM and WebGL? `npm run gate:genie-shadow` measures the fixed shadow
+strip in every compositor frame around both handoff directions. It also checks
+that the shadow travels with the sheet and fades only where the funnel has
+squeezed it past legibility.
 
-- **The band is part of the measurement.** The card's header carries a
-  live frame counter the DOM is running and the held mesh has not drawn,
-  and including it moved the ratio by more than the defect being hunted.
-  The gate measures the typography band and prints which one.
-- **A perfect score can be vacuous.** If the page copy is still visible
-  under the mesh, the ratio is the DOM compared against itself and it
-  passes beautifully. The gate checks the copy is hidden and fails
-  loudly if it is not — idle-zero's provocation, in this instrument's
-  terms.
-- **The floor has to sit between two real readings.** 0.93, because the
-  reported defect measured 0.841 and its fix measured 1.001. A floor
-  invented rather than bracketed cannot fail for the right reason.
+## knobs-hz
 
-Negative control, and the way to check the gate still bites: force
-`snapWeight` to 0 in `passagePath.ts` and re-run. It reproduces the
-original defect at 0.833.
+Can the knobs scene hold 120 Hz? `node instruments/knobs-hz/run.mjs`.
+A reporter, not a gate: it prints per-phase frame statistics against
+the 8.33 ms budget and a verdict line.
+
+The browser runs headed with vsync and the frame-rate limiter off, so
+`requestAnimationFrame` deltas are the true cost of producing a frame
+(throughput), not display cadence. Four phases: `idle` (the standing
+animation), `art-` (idle with the SVG artwork hidden — the difference
+is the artwork's raster share), `drag` (a held dial sweep through the
+real input path), and `off` (POWER off, the demo's floor). Two
+honesty checks are printed before the table: the drag must actually
+move the hue value and the POWER click must actually drop the power
+flag — both are read from the live law module, because a phase that
+failed to engage measures idle twice and calls it interaction. The
+GPU string is printed first for the same reason: numbers from
+SwiftShader are numbers about SwiftShader.
 
 ## House rules
 
@@ -137,8 +135,12 @@ original defect at 0.833.
   driver never sent anything", force the uniform inside the render
   wrapper.
 
-The crispness rule now has an instrument — `sharpness` above, which is
-position-aware by construction because it clips both photographs to one
-measured page rect. The other three are still prose, tracked as issues
-rather than listed here, so this file stays a description of what
-exists.
+The crispness rule HAD an instrument — `sharpness`, which clipped a
+mesh photograph and a DOM photograph to one measured page rect and
+compared their gradient energy. It went with the passage scene, its
+only subject (decisions.md #3, amendment of 2026-08-10); the recipe
+and its `gradientEnergy` contract live at that commit in history. A
+future mesh-vs-DOM gate needs a scene that can hold a mesh exactly
+where a page copy was, then reuses that recipe. The rules above are
+prose, tracked as issues rather than listed here, so this file stays
+a description of what exists.

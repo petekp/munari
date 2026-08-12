@@ -107,6 +107,17 @@ the protocol adds it.
    film work)**
 10. **Scene policy stays outside core.** Core knows nothing about video rates,
     animation curves, dock geometry, React, Three, or stacking. **(new)**
+11. **Release includes erasure.** Removing a renderer presenter from the scene
+    is not enough. The binding must request a post-removal draw so a demand
+    loop cannot leave the released framebuffer composited. **(bled: the
+    duplicate window after a restore and title-bar move)**
+12. **Visible overlap is not neutral for alpha.** Two identical opaque
+    presenters look like one; two identical translucent presenters compound.
+    A qualified post-draw callback must release the old presenter before
+    browser composition. If reverse coverage needs a warm-up overlap, only one
+    presenter may contribute each translucent layer; the fallback takes that
+    layer in the renderer turn that suppresses the departing mesh. **(bled:
+    the shadow opacity pulse at both Genie custody boundaries)**
 
 Pixel format fixed at source birth is already a shipped rule under decisions
 #5 and #24. It does not need another custody law.
@@ -204,7 +215,22 @@ The binding also:
 - omits both `onBeforeRender` and `onAfterRender` from forwarded mesh props;
 - emits once for each accepted tuple;
 - counts rejected draws for one transfer and warns once in development;
-- does not use timeouts and does not warn in production.
+- does not use timeouts and does not warn in production;
+- invalidates once on unmount, after removing the mesh, so demand-driven
+  renderers erase the released presenter.
+
+For the non-blocking reverse path, the React binding supplies
+`commitRendererReleaseFrame`. Called from `useFrame`, it commits the incoming
+presenter's visual layers and suppresses the outgoing object synchronously,
+then publishes durable custody in a microtask after the current renderer
+stack. Core does not know the DOM or Three objects involved.
+
+DOM-backed Surface now has a smaller one-shot counterpart,
+`onFirstPresented`. It qualifies the default framebuffer and color-write state,
+and waits until the first real DOM paint has uploaded. It is enough for a
+fresh, flight-scoped source to release its old presenter synchronously before
+browser composition. It is not a generic DOM `PresentationReceipt`: it has no
+transfer ID, revision, or reusable epoch contract.
 
 If a future consumer presents through a composer, it must select that output
 pass explicitly. An off-screen pass must never qualify by accident.
@@ -240,7 +266,11 @@ grab pose cannot release custody.
 
 The reverse path does not wait for a native paint receipt. It reveals the DOM
 canvas while the WebGL copy still covers it, then releases WebGL. The shared
-canvas keeps their pixels equal during this overlap.
+canvas keeps their opaque pixels equal during this overlap. A translucent
+layer needs one explicit owner: Genie masks the native shadow during the warm
+bridge frame, then restores it synchronously in the same `useFrame` callback
+that suppresses WebGL. React publishes native custody only after that renderer
+turn; it is not the timing boundary for shadow ownership.
 
 ---
 
@@ -313,7 +343,7 @@ It no longer decides this protocol or the Genie film seam.
 - Canvas-child bitmap propagation through HTML capture.
 - A transfer reducer, leases, or a public coordinator.
 - Borrowed DOM and `Element.moveBefore`.
-- A generic DOM presentation receipt.
+- A reusable, versioned DOM presentation receipt.
 - Changes to `onFirstUpload`.
 - Automatic inspection of custom shaders, depth, occlusion, or final pixel
   coverage.

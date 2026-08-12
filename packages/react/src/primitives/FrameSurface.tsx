@@ -315,8 +315,12 @@ export function FrameSurface({
       const current = runtimeRef.current
       runtimeRef.current = null
       current?.dispose()
+      // Runtime release stops future receipts; this draw also removes its
+      // last pixels from a demand-driven renderer. Without it, a transparent
+      // Canvas can keep the released frame after the mesh has gone.
+      invalidate()
     }
-  }, [])
+  }, [invalidate])
 
   const paintedSize = useCallback(
     (): readonly [number, number] => [

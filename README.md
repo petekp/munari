@@ -134,6 +134,13 @@ Several publications can merge before one render, so receipts name only the
 latest frame that was actually uploaded. A hidden or culled mesh cannot send a
 receipt.
 
+The reverse handoff has a different boundary. Prepare the native presenter
+first, then call `commitRendererReleaseFrame` from `useFrame`. Its
+`commitIncoming` callback gives the native presenter any translucent layers;
+the helper suppresses the outgoing object in the same renderer turn and calls
+`publishRelease` after that render stack. React state should publish durable
+custody from `publishRelease`, not from an Effect.
+
 For every premultiplied frame source, use `material="none"` and a custom
 material. This also applies when the mesh does not blend: pixels with partial
 alpha still contain alpha-weighted RGB. Do not multiply RGB by alpha again.

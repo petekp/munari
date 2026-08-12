@@ -40,6 +40,14 @@ export { useSurfaceTexture, useSurfaceChrome, useSurfacePaintedSize } from './pr
 // applies `munariRadiusMask(vUv)` to alpha for straight output, or to the full
 // vec4 for premultiplied output.
 export { SURFACE_RADIUS_GLSL } from './lib/surfaceRadiusGlsl'
+// Reverse custody must give the incoming presenter its translucent layers in
+// the same renderer turn that suppresses the outgoing object. This binding
+// primitive pins that order without teaching the kernel about React or Three.
+export {
+  commitRendererReleaseFrame,
+  type RendererPresenter,
+  type RendererReleaseFrame,
+} from './lib/rendererRelease'
 
 // ── Focus, and the camera that follows it ────────────────────────────────
 export { FocusScene, FocusGroup } from './primitives/FocusScene'

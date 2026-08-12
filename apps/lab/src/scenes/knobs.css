@@ -1,0 +1,588 @@
+/* the knobs-and-switches scene ─────────────────────────────────────────
+ *
+ * The art is ordinary page DOM — a generative SVG that can animate every
+ * frame for free — and it fills the viewport. The control panel floats
+ * over it as a `SurfaceApp`'s captured DOM on a WebGL slab (Knobs.tsx);
+ * nothing reserves space for it in the page. `.knb-panel` below is that
+ * captured subtree's root, so it plays by the Surface rules: it sizes itself in inline px,
+ * its own opacity/transform never animate, nothing under it wears a
+ * mask-image, and every `:hover`/`:active` rule carries the
+ * `[data-hover]`/`[data-active]` twin a forwarded pointer actually sets.
+ *
+ * Material doctrine for everything below: each control is drawn the way
+ * it is machined — a recessed well cut into the face, a part standing
+ * proud of it, a chamfer where the two meet. Concretely that means every
+ * piece carries (1) a form gradient (where the big soft light lands),
+ * (2) an occlusion shadow where it meets the panel, and (3) a hard
+ * 1px catch-light on its top edge. Nothing here animates on its own:
+ * transitions touch paint properties only and fire only on a discrete
+ * state change, so a quiescent panel is idle-zero.
+ */
+
+.knb-page {
+  position: relative;
+  height: 100%;
+  background: var(--bench);
+}
+
+/* The art is the room: full-bleed, and — via the scene's light rig and
+ * environment capture — the thing every piece of metal reflects. The
+ * backdrop is this element's CSS background, not a rect inside the SVG:
+ * the SVG letterboxes to keep the art's aspect, and a viewBox-bound rect
+ * would letterbox with it. KnobsArt repaints this gradient in step with
+ * the art's own colors; the value here is only the first frame. */
+.knb-art {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: linear-gradient(165deg, hsl(110, 55%, 10%), hsl(50, 60%, 4%));
+  /* The art repaints every animation frame. Contain it so those paints
+     invalidate nothing outside this box. (No will-change: forcing a
+     full-viewport compositor layer made every art paint a full-layer
+     texture update — measurably worse, not better.) */
+  contain: strict;
+}
+
+.knb-art svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.knb-art polygon {
+  vector-effect: non-scaling-stroke;
+}
+
+/* ── the captured panel — black anodized aluminum, vertically brushed ── */
+
+.knb-panel {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 16px 14px;
+  background:
+    /* vignette: the face turns away from the light toward its edges */
+    radial-gradient(140% 100% at 50% 0%, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 40%),
+    radial-gradient(120% 120% at 50% 55%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.38) 100%),
+    /* brushing: fine vertical grain, two interleaved pitches so it reads
+     * as texture rather than as stripes */
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0px, rgba(255, 255, 255, 0) 1px, rgba(0, 0, 0, 0.05) 2px, rgba(0, 0, 0, 0) 3px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.02) 0px, rgba(255, 255, 255, 0) 3px, rgba(0, 0, 0, 0.03) 5px, rgba(0, 0, 0, 0) 7px),
+    /* form: lit from above and slightly left */
+    linear-gradient(172deg, #4b4e54 0%, #3a3d42 30%, #2e3034 68%, #26282c 100%);
+  box-shadow:
+    /* machined edge: catch-light along the top, shade along the bottom */
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 1px 0 0 rgba(255, 255, 255, 0.05),
+    inset -1px 0 0 rgba(0, 0, 0, 0.35),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+  color: #cfd2d6;
+  font: 600 10px/1.3 var(--label);
+}
+
+/* Corner fasteners: the HEAD is real turned geometry standing over the
+ * face (Knobs.tsx measures these spans to place it). What the face
+ * paints is only the countersink the head sits in — a dark bore with a
+ * catch-light on its lower lip. */
+.knb-screw {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 42%, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.45) 55%, rgba(0, 0, 0, 0) 76%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.knb-screw[data-corner='tl'] { top: 7px; left: 7px; }
+.knb-screw[data-corner='tr'] { top: 7px; right: 7px; }
+.knb-screw[data-corner='bl'] { bottom: 7px; left: 7px; }
+.knb-screw[data-corner='br'] { bottom: 7px; right: 7px; }
+
+/* ── the carry handle — a machined pull routed into the top edge ──────── */
+
+.knb-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  margin: -6px -4px 0;
+  border-radius: 6px;
+  cursor: grab;
+  touch-action: none;
+  background: linear-gradient(180deg, #202226 0%, #26282c 60%, #2b2d31 100%);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.55),
+    inset 0 1px 1px rgba(0, 0, 0, 0.7),
+    0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+/* The grip: raised ribs a thumb can find without looking. */
+.knb-handle-grip {
+  width: 64px;
+  height: 8px;
+  border-radius: 4px;
+  background: repeating-linear-gradient(
+    90deg,
+    #55595f 0px,
+    #6a7077 2px,
+    #2c2e32 4px,
+    #202226 6px
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.6),
+    0 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.knb-handle:hover .knb-handle-grip,
+.knb-handle[data-hover] .knb-handle-grip {
+  background: repeating-linear-gradient(
+    90deg,
+    #6a7077 0px,
+    #83898f 2px,
+    #35383c 4px,
+    #26282c 6px
+  );
+}
+
+.knb-handle:active,
+.knb-handle[data-active] {
+  cursor: grabbing;
+}
+
+.knb-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 8px 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.55);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+/* Engraved lettering: the glyph is a groove — dark ink, a sliver of
+ * light on its lower lip where the cut catches the overhead light. */
+.knb-panel-title {
+  font: 700 11px/1 var(--label);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #83898f;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.09), 0 -1px 0 rgba(0, 0, 0, 0.7);
+}
+
+.knb-panel-badge {
+  font: 400 9px/1 var(--data);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #62676d;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.07), 0 -1px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* ── rotary knobs — knurled aluminum on a recessed station ────────────── */
+
+.knb-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* One row, three columns, left to right in reading order: the label
+ * rail (right-aligned, so every legend ends at the same engraved
+ * margin), the VFD readout (every window the same width, one shared
+ * left edge), and the knob. The label rail flexes, the readout and
+ * knob columns are fixed — which is what keeps every window and every
+ * grip on its own vertical axis. */
+.knb-rotary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 66px;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  /* a station routed into the face: darker floor, deep top shadow,
+   * catch-light where the routed edge meets the face again */
+  background: linear-gradient(180deg, #202226 0%, #26282c 55%, #2b2d31 100%);
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.55),
+    inset 0 1px 1px rgba(0, 0, 0, 0.7),
+    0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+/* The well the knob sits in — a countersink, darkest just under the
+ * grip's shadowed side. */
+.knb-dial {
+  position: relative;
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  cursor: grab;
+  touch-action: none;
+  outline: none;
+  background:
+    radial-gradient(circle at 50% 42%, #17181b 0%, #1d1f22 52%, #303237 88%, #3a3d42 100%);
+  box-shadow:
+    inset 0 3px 6px rgba(0, 0, 0, 0.65),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.08),
+    0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Graduations, engraved in the countersink's outer margin. */
+.knb-dial-ticks {
+  position: absolute;
+  inset: 0;
+}
+
+/* Each notch is routed INTO the face: a dark slot floor, a deep shadow
+ * under its top edge where the cutter entered, and a catch-light on the
+ * bottom lip where the cut meets the face again. */
+.knb-dial-ticks i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: 6px;
+  margin: -3px 0 0 -1px;
+  border-radius: 1px;
+  background: linear-gradient(180deg, #101214 0%, #1c1e21 55%, #3c4045 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(0, 0, 0, 0.85),
+    0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* the sweep's end stops read slightly brighter */
+.knb-dial-ticks i:first-child,
+.knb-dial-ticks i:last-child {
+  background: linear-gradient(180deg, #17191c 0%, #26282c 55%, #565b61 100%);
+}
+
+/* Swept past: the notch fills with light. CRISP light — a lamp behind
+ * a slot is a hard-edged bar, not a haze, so the core runs hot with a
+ * halo of exactly one pixel where the slot's edge catches. The bloom
+ * that used to be painted here as an 8px shadow is gone: the scene
+ * overdrives these pixels through the dial's emitter ring (DialRings
+ * in Knobs.tsx), the same custody the LCD windows have, so the glow is
+ * emission, not blur. Only the count of lit notches ever changes, and
+ * only on a value change, so a resting dial stays idle-zero. */
+.knb-dial-ticks i[data-lit] {
+  background: linear-gradient(180deg, #fffbe9 0%, #ffd982 45%, #e89b1f 100%);
+  box-shadow:
+    inset 0 -1px 1px rgba(0, 0, 0, 0.35),
+    0 0 1px 0 rgba(255, 200, 90, 0.95);
+}
+
+/* The pool — painted contact occlusion where the REAL grip (a knurled
+ * mesh in Knobs.tsx) stands over this well. The geometry casts no
+ * shadow of its own; this is its grounding, at rest-truth, in the
+ * texture the face actually wears. */
+.knb-dial-pool {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 54%, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.4) 55%, rgba(0, 0, 0, 0) 74%);
+}
+
+.knb-dial:hover .knb-dial-ticks i:not([data-lit]),
+.knb-dial[data-hover] .knb-dial-ticks i:not([data-lit]) {
+  background: linear-gradient(180deg, #17191c 0%, #292c30 55%, #6a7077 100%);
+}
+
+.knb-dial:active,
+.knb-dial[data-active] {
+  cursor: grabbing;
+}
+
+.knb-dial:focus-visible:not([data-pointer-focus]) {
+  box-shadow:
+    0 0 0 2px var(--signal-lit, #ff5c3f),
+    inset 0 3px 6px rgba(0, 0, 0, 0.65);
+}
+
+.knb-dial-label {
+  justify-self: end;
+  text-align: right;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8d939b;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.08), 0 -1px 0 rgba(0, 0, 0, 0.65);
+}
+
+/* The crystals' typeface: DSEG7 Classic (Keshikan, OFL-1.1, vendored
+ * through the workspace dep `dseg` — never fetched from a network).
+ * A seven-segment font draws every glyph on one shared segment grid,
+ * which is the whole trick of the display below: the live digits and
+ * the unenergized ghost are the same skeleton with different crystals
+ * excited, so the two layers align segment-for-segment. One cut
+ * declared, not the package's thirty: Bold Italic, the canonical
+ * forward slant of bench-gear digits. font-display: block — a capture
+ * must never show the fallback face; blank beats wrong. */
+@font-face {
+  font-family: 'DSEG7-Classic';
+  src:
+    url('dseg/fonts/DSEG7-Classic/DSEG7Classic-BoldItalic.woff2') format('woff2'),
+    url('dseg/fonts/DSEG7-Classic/DSEG7Classic-BoldItalic.woff') format('woff');
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
+
+/* The readout — an emissive amber liquid crystal window, the display of
+ * vintage backlit bench gear. An LCD inverts the usual logic: the WINDOW
+ * is the lamp — an amber backlight pooling through the glass — and the
+ * digits are crystals gone opaque, shading that light. So the digits are
+ * dark, the ground glows, and the window blooms softly into the dark
+ * face around it. The box is FIXED (height, min-width): the scene
+ * measures this window for its emitter quad and its point light, and
+ * the measurement must not move when the webfont arrives. */
+.knb-dial-value {
+  position: relative;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
+  min-width: 88px;
+  height: 33px;
+  padding: 0 10px;
+  border-radius: 4px;
+  text-align: right;
+  background:
+    /* the glass sheen crossing the window */
+    linear-gradient(168deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 38%),
+    /* the backlight: hottest low-center, breathing out to the edges.
+     * The stops are var() so the tweak panel can dim the lamp without
+     * touching the digits; the defaults ARE the committed colors, and
+     * knobsTuning.ts mirrors the same literals. */
+    radial-gradient(
+      120% 130% at 50% 68%,
+      var(--knb-lcd-hot, #ffb82e) 0%,
+      var(--knb-lcd-mid, #f4980e) 55%,
+      var(--knb-lcd-edge, #bd7818) 100%
+    ),
+    var(--knb-lcd-base, #cb881b);
+  box-shadow:
+    /* the glass sits recessed: a warm shadow under its top edge */
+    inset 0 1px 3px rgba(96, 52, 0, 0.6),
+    inset 0 0 1px rgba(120, 66, 0, 0.55),
+    /* the lamp leaks: the emissive bloom onto the machined face */
+    0 0 12px 2px rgba(255, 168, 44, var(--knb-lcd-glow, 0.52)),
+    0 1px 0 rgba(255, 255, 255, 0.07);
+  font: italic 700 17px/1 'DSEG7-Classic', var(--data);
+  letter-spacing: 1px;
+}
+
+/* Every unenergized crystal in the glass — the window's full segment
+ * grid at capacity (KnobsPanel renders the widest value this dial can
+ * show, every digit an 8), faintly resting against its own backlight.
+ * Same font, same size, same right edge as the live layer: the two
+ * are one skeleton. */
+.knb-value-ghost {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-style: italic;
+  color: rgba(92, 54, 8, var(--knb-lcd-ghost, 0.12));
+}
+
+/* Energized crystals: dark, crisp, unglowing, unshadowed — an LCD digit
+ * IS a shadow, cast on the lamp behind it, and head-on the crystal sits
+ * a fraction of a millimeter off the diffuser: there is no offset to
+ * see. Any text-shadow here would claim a viewing angle this flat
+ * capture doesn't have. */
+.knb-value-live {
+  position: relative;
+  font-weight: 700;
+  color: #33200a;
+}
+
+/* ── toggle switches — bat handles through hex collars ────────────────── */
+
+.knb-toggles {
+  display: flex;
+  justify-content: space-evenly;
+  gap: 18px;
+  padding: 2px;
+}
+
+.knb-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  color: #8d939b;
+  font: 600 9px/1 var(--label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.knb-toggle-legend {
+  font: 600 7px/1 var(--label);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #6a7076;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.07), 0 -1px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* The recess the lever throws through. */
+.knb-toggle-well {
+  position: relative;
+  width: 34px;
+  height: 52px;
+  border-radius: 8px;
+  background: radial-gradient(120% 90% at 50% 45%, #121316 0%, #1b1d20 60%, #2b2d31 100%);
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.75),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.07),
+    0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* The slot the REAL lever (spring-driven geometry in Knobs.tsx) throws
+ * through — a dark machined groove with the collar's contact pool. */
+.knb-toggle-slot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 38px;
+  margin: -19px 0 0 -5px;
+  border-radius: 5px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0.55) 60%, rgba(0, 0, 0, 0.35) 100%);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.9),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.knb-toggle:hover .knb-toggle-well,
+.knb-toggle[data-hover] .knb-toggle-well {
+  filter: brightness(1.08);
+}
+
+.knb-toggle:active .knb-toggle-well,
+.knb-toggle[data-active] .knb-toggle-well {
+  filter: brightness(0.92);
+}
+
+.knb-toggle:focus-visible:not([data-pointer-focus]) .knb-toggle-well {
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.75),
+    0 0 0 2px var(--signal-lit, #ff5c3f);
+}
+
+.knb-toggle-label {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.08), 0 -1px 0 rgba(0, 0, 0, 0.65);
+}
+
+/* ── indicator lamps — dyed lenses in turned bezels ───────────────────── */
+
+.knb-lamps {
+  display: flex;
+  justify-content: space-evenly;
+  gap: 16px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.55);
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.06) inset;
+}
+
+.knb-lamp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.knb-lamp-bezel {
+  position: relative;
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 38% 30%, #b4b8bd 0%, #83878d 40%, #4b4e53 78%, #33363a 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.5),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.55),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* The lens: a dyed glass dome. Off, it is deep translucent color — you
+ * can tell what color the lamp WILL be, which is how real annunciators
+ * read. The dome highlight sits on the glass whether lit or not. */
+.knb-lamp-bulb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 2px 3px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.12);
+  /* Emissive glow is a paint-property swap on a discrete state change,
+   * never a timer — the panel stays idle-zero. */
+  transition: background 150ms ease, box-shadow 150ms ease;
+}
+
+.knb-lamp-bulb::after {
+  content: '';
+  position: absolute;
+  left: 20%;
+  top: 12%;
+  width: 45%;
+  height: 32%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 40%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 70%);
+}
+
+.knb-lamp[data-tone='ok'] .knb-lamp-bulb { background: radial-gradient(circle at 45% 40%, #14301c, #0a1a0f 80%); }
+.knb-lamp[data-tone='warn'] .knb-lamp-bulb { background: radial-gradient(circle at 45% 40%, #33230b, #1c1206 80%); }
+.knb-lamp[data-tone='signal'] .knb-lamp-bulb { background: radial-gradient(circle at 45% 40%, #331109, #1d0a05 80%); }
+
+/* Lit: white-hot filament core, saturated body, and a bloom the panel
+ * face catches — three shadow radii so the falloff reads as light, not
+ * as an outline. */
+.knb-lamp[data-tone='ok'][data-on='true'] .knb-lamp-bulb {
+  background: radial-gradient(circle at 50% 45%, #f6fff8 0%, #8dffab 28%, #2ee065 62%, #12813a 100%);
+  box-shadow:
+    inset 0 -1px 2px rgba(0, 0, 0, 0.25),
+    0 0 4px 1px rgba(120, 255, 160, 0.9),
+    0 0 12px 4px rgba(70, 240, 120, 0.55),
+    0 0 26px 10px rgba(46, 224, 101, 0.22);
+}
+
+.knb-lamp[data-tone='warn'][data-on='true'] .knb-lamp-bulb {
+  background: radial-gradient(circle at 50% 45%, #fffdf2 0%, #ffd77a 28%, #ffab1f 62%, #9c5f07 100%);
+  box-shadow:
+    inset 0 -1px 2px rgba(0, 0, 0, 0.25),
+    0 0 4px 1px rgba(255, 205, 110, 0.9),
+    0 0 12px 4px rgba(255, 176, 32, 0.55),
+    0 0 26px 10px rgba(255, 171, 31, 0.22);
+}
+
+.knb-lamp[data-tone='signal'][data-on='true'] .knb-lamp-bulb {
+  background: radial-gradient(circle at 50% 45%, #fff5f2 0%, #ff9a82 28%, #ff5c3f 62%, #9e2312 100%);
+  box-shadow:
+    inset 0 -1px 2px rgba(0, 0, 0, 0.25),
+    0 0 4px 1px rgba(255, 140, 110, 0.9),
+    0 0 12px 4px rgba(255, 92, 63, 0.55),
+    0 0 26px 10px rgba(255, 92, 63, 0.22);
+}
+
+.knb-lamp-label {
+  font: 600 8px/1 var(--label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #7a8087;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.07), 0 -1px 0 rgba(0, 0, 0, 0.6);
+}

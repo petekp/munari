@@ -17,10 +17,11 @@
     "lint": "oxlint . --deny-warnings",
     "build": "npm run build -w @petepetrash/munari",
     "gate:frame-surface": "node instruments/frame-surface/run.mjs",
+    "gate:genie-duplicate": "node instruments/genie-drain/no-duplicate-drag.mjs",
     "gate:genie-film": "node instruments/genie-drain/film-window.mjs",
+    "gate:genie-shadow": "node instruments/genie-drain/shadow-travels.mjs",
     "gate:idle-zero": "node instruments/idle-zero/run.mjs",
     "dev": "npm run dev -w @munari/lab",
-    "gate:sharpness": "node instruments/sharpness/run.mjs",
     "deploy:demo": "npm run build -w @munari/lab && VERCEL_ORG_ID=team_d8NmNbma8pPIVCBkDXUnfpMa VERCEL_PROJECT_ID=prj_pe759NtaVMScHyupOSFSJ41NQiz7 vercel deploy --prod --yes --cwd apps/lab/dist"
   },
   "devDependencies": {

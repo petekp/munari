@@ -74,13 +74,12 @@
   --live: #17399b;
   --fault: #f0b90b;
 
-  /* …and their LIT variants. A hue printed on card and the same hue glowing
+  /* …and its LIT variant. A hue printed on card and the same hue glowing
    * inside a black readout are not the same colour: the printed one is a
    * swatch, the lit one is an emitter, and dropping the swatch value onto a
    * dark ground gives you a hue that reads as switched off. Scenes that live
-   * inside the screen (passage, wake) use these. */
+   * inside the screen (genie) use this. */
   --signal-lit: #ff5c3f;
-  --live-lit: #5a7ce8;
 
   /* ── type ── three Italian voices, one per role (see index.html)
    *    display  Bodoni Moda — headlines ONLY. A didone at body size is a
