@@ -116,3 +116,25 @@ describe('the hourglass', () => {
     }
   })
 })
+
+// A module mock is a seam invented at test time. It passes whether or not
+// the real seam exists, which makes the suite agree with itself instead of
+// with the browser — the one thing the conformance layers are here to
+// prevent. Every suite in this repo already injects through a real
+// parameter, patches a real prototype, or drives a real DOM; this pins
+// that as a rule rather than a habit, since the cost of the first mock is
+// paid by whoever writes the second one.
+describe('tests use real seams', () => {
+  it('no suite mocks a module', () => {
+    const offenders: string[] = []
+    for (const dir of ['packages', 'apps', 'registry', 'tests', 'instruments']) {
+      for (const file of sourceFiles(join(ROOT, dir))) {
+        const text = readFileSync(file, 'utf8')
+        for (const m of text.matchAll(/\b(?:vi|vitest|jest)\.(?:do)?mock\b/g)) {
+          offenders.push(`${relative(ROOT, file)}: ${m[0]}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+})

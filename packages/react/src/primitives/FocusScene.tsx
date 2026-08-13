@@ -470,7 +470,7 @@ export function FocusScene({
           rt.reg.onStateChange?.(state, cause)
         }
       }
-      notify({ ...loc, cause } as FocusSceneEvent)
+      notify({ ...loc, cause })
       // The ported scrollIntoView obligation, checked at every transition we
       // caused. Runs AFTER notify so fulfillers see the event first.
       maybeReframe(loc, cause)
@@ -937,8 +937,11 @@ export function FocusScene({
     document.addEventListener('focusin', bundle.onFocusin)
     document.addEventListener('focusout', bundle.onFocusout)
     document.addEventListener('click', bundle.onClick, true)
-    const w = window as unknown as { __focusScene?: unknown }
-    w.__focusScene = {
+    // Debug surface for instruments/ probes — not API, and it tracks the
+    // internals it reflects. `typeof debug` keeps the window slot's type
+    // exact without a hand-maintained interface, so one narrowing cast does
+    // the whole job.
+    const debug = {
       locate: bundle.locate,
       ring: bundle.ringOrder,
       cursor: () => cursorRef.current,
@@ -957,6 +960,8 @@ export function FocusScene({
           focused: document.activeElement === p,
         })),
     }
+    const w = window as Window & { __focusScene?: typeof debug }
+    w.__focusScene = debug
     return () => {
       el.tabIndex = prevTabIndex
       bundle.proxyLayer.remove()

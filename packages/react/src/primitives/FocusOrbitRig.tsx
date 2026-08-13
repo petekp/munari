@@ -37,7 +37,11 @@ import {
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0)
 
-interface OrbitLike extends OrbitLimits {
+/** The subset of OrbitControls this rig drives. Extends EventDispatcher
+ *  because that is what R3F's `state.controls` is typed as and what
+ *  OrbitControls actually is — so narrowing to this is one honest downcast,
+ *  not a round trip through `unknown`. */
+interface OrbitLike extends OrbitLimits, THREE.EventDispatcher {
   enabled: boolean
   target: THREE.Vector3
   update: () => void
@@ -86,7 +90,7 @@ export function FocusOrbitRig({
   apiRef,
 }: FocusOrbitRigProps) {
   const camera = useThree((s) => s.camera)
-  const controls = useThree((s) => s.controls as unknown as OrbitLike | null)
+  const controls = useThree((s) => s.controls as OrbitLike | null)
   const gl = useThree((s) => s.gl)
   const focus = useFocusScene()
 
