@@ -131,6 +131,20 @@ export {
   densitySupply,
   type DensityScheduleInput,
 } from './transfer/densitySchedule'
+export {
+  CROSSING_DEFAULTS,
+  crossingAtRest,
+  crossingRequest,
+  crossingFrame,
+  crossingCustody,
+  crossingPresentation,
+  crossingAmplitude,
+  type CrossingPhase,
+  type CrossingTiming,
+  type CrossingEvidence,
+  type CrossingState,
+} from './transfer/crossing'
+export { createMotionCarrier, type MotionCarrier } from './transfer/motionCarrier'
 
 export { Vec2, type Vec2Like, type Vec2Readonly } from './math/vec2'
 

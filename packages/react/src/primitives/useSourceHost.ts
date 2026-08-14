@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { guardPointerCapture } from '@munari/core'
 import { useLatest } from './useLatest'
@@ -89,7 +90,21 @@ export function useSourceHost({
     // learn.
     if (contentRef.current !== undefined) {
       const root = createRoot(node)
-      root.render(contentRef.current)
+      // The first render is FLUSHED, not scheduled. A concurrent initial
+      // render leaves the container mounted and empty until React's commit
+      // lands a task later — and the capture pipeline is armed in the same
+      // effect that calls `mount`, so Chrome can paint the bare container
+      // in that gap. The capture is then a blank card wearing `.ui-root`'s
+      // opaque background (any `:has(> …)` override the content would
+      // carry cannot match a child that does not exist), and it fires the
+      // Surface's first-upload AND first-presented receipts — the custody
+      // receipts certify pixels, not the right pixels. On a warm remount
+      // the gap is several composited frames wide: the crossing-flash gate
+      // photographed six white cards over the logo (2026-08-13). Flushing
+      // means the source never exists without its content; later updates
+      // stay concurrent because a LIVE tree mid-update is ordinary React,
+      // while an EMPTY root pretending to be the app is not.
+      flushSync(() => root.render(contentRef.current))
       rootRef.current = root
     }
 

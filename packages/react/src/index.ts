@@ -52,6 +52,22 @@ export {
   type RendererPresenter,
   type RendererReleaseFrame,
 } from './lib/rendererRelease'
+// The custody crossing, orchestrated: the kernel's crossing law driven by
+// r3f frames and fed onFirstPresented receipts. A scene that toggles content
+// between the page and the canvas consumes this instead of hand-rolling the
+// evidence gate (the fault every scene rediscovers is hiding the DOM before
+// the canvas has proven it can present).
+export {
+  useCustodyCrossing,
+  CustodyCrossingDriver,
+  type CustodyCrossing,
+  type CustodyCrossingOptions,
+} from './primitives/useCustodyCrossing'
+// Carried motion: idle motion whose source of truth is a JS carrier
+// rather than the compositor's clock. The page writes the sample, the
+// mesh reads the same sample, and the crossing needs no settle for it —
+// motion crosses the threshold mid-flight (decisions.md #30).
+export { useCarriedMotion, type CarriedMotion } from './primitives/useCarriedMotion'
 
 // ── Focus, and the camera that follows it ────────────────────────────────
 export { FocusScene, FocusGroup } from './primitives/FocusScene'

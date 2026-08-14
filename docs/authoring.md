@@ -40,6 +40,56 @@ below), so for whole-panel motion prefer moving the mesh.
 This is the hinge that has cost the most; `platform.md` item 4 has the
 numbers.
 
+## Idle motion must be able to ease flat
+
+If page content moves on its own — a float, a shimmer, anything
+decorative that runs while the user does nothing — a custody crossing
+needs that motion GONE before the swap: the canvas twin holds the page's
+resting geometry, and any offset still live at the swap frame is a
+visible jump.
+
+So drive the motion's *amplitude* through a registered custom property
+and let the keyframes read it:
+
+```css
+@property --float {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+.word { transition: --float 400ms ease; }
+.letter { animation: float 3s infinite; }
+@keyframes float {
+  50% { transform: translateY(var(--float)); }
+}
+```
+
+Registration is what makes this work. An unregistered custom property is
+an untyped string — a transition on it flips discretely — while a
+registered `<length>` interpolates, so setting `--float: 0` eases every
+moving element to rest along its own path. (The keyframes animate a
+descendant's transform, which is fine; the prohibition above is the
+root's own.)
+
+The crossing side of the contract: `useCustodyCrossing`'s `settleMs`
+must outlast the **slowest compositor-clocked transition the content
+runs on its presented pixels** — not only the idle amplitude, but any
+transform hop or color fade a state change can start just before the
+lift (the default 450ms covers a 400ms ease plus a frame of slack).
+Zero the amplitude when the crossing leaves rest, and the settle dwell
+guarantees the page is done moving before the DOM releases.
+
+There is a second way, for motion that should never stop: **carry it**
+(`useCarriedMotion`, decisions.md #30). A carried motion's clock lives
+in JS instead of the compositor — the page writes the carrier's
+per-frame sample to a style, the mesh reads the same sample, and the
+two sides agree in every frame by construction. Carried motion is
+exempt from `settleMs` and crosses the threshold mid-flight, position
+and velocity intact. The trade is honest: the motion rides the main
+thread, giving up the compositor's immunity to jank, so carrying is a
+per-motion declaration — the ease-flat pattern above remains the right
+shape for anything you leave on the compositor's clock.
+
 ## No `mask-image` anywhere in a drawn subtree
 
 A mask on **any** descendant of a drawn element blacks out the entire

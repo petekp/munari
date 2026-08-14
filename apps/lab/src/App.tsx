@@ -11,10 +11,13 @@ import { GenieApp } from './scenes/Genie'
 import { VeilApp } from './scenes/Veil'
 import { KnobsApp } from './scenes/Knobs'
 import { OpticsApp } from './scenes/Optics'
+import { LogoApp } from './scenes/Logo'
 
 // Eight scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
 // flight drag trilogy, exploded-paint inspector, genie minimize-to-dock,
 // veil progressive blur, knobs-and-switches instrument rail, optics bench.
+// Plus one sketch off the roster: the logo playground (animated wordmark,
+// letters liftable into matter).
 // Everything they render reaches the library through the `@petepetrash/munari` barrel —
 // this app is the proof that the public surface is sufficient.
 
@@ -27,6 +30,7 @@ type SceneId =
   | 'veil'
   | 'knobs'
   | 'optics'
+  | 'logo'
 const SCENES = [
   'workspace',
   'glass',
@@ -36,6 +40,7 @@ const SCENES = [
   'veil',
   'knobs',
   'optics',
+  'logo',
 ] as const
 
 const FOOTERS: Record<SceneId, string> = {
@@ -56,6 +61,8 @@ const FOOTERS: Record<SceneId, string> = {
   // Deliberately empty: the bench carries its own readout and footer,
   // and a second caption would sit under the rail the kit rests on.
   optics: '',
+  // Deliberately empty: the playground is a page and carries its own.
+  logo: '',
 }
 
 // Clicking a canvas normally moves focus to <body>, which would blur
@@ -185,6 +192,7 @@ export default function App() {
   if (scene === 'veil') return <VeilApp chips={chips} />
   if (scene === 'knobs') return <KnobsApp chips={chips} />
   if (scene === 'optics') return <OpticsApp chips={chips} />
+  if (scene === 'logo') return <LogoApp chips={chips} />
 
   return (
     <div className="app">

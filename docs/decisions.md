@@ -1570,3 +1570,124 @@ shadow at 216 luma because it waited for React after clearing WebGL. After the
 change, both minimize and restore boundaries measure 187, with no doubled or
 uncovered frame. The retained `shadow-travels` Chrome gate checks both
 directions and fails on a change larger than six luma.
+
+## #28 — The custody crossing is library law (2026-08-13, core + react binding + instruments)
+
+**Decision.** The threshold toggle — content moving between compositor
+custody and canvas custody and back — is now a kernel law with a React
+orchestrator, not a per-scene idiom. Core owns a pure four-phase reducer
+(`dom → lifting → renderer → landing`): the DOM releases only on evidence
+— every incoming presenter's post-draw presentation boundary
+(`onFirstPresented`, never the weaker upload receipt) plus a settle dwell
+for the page's idle motion to ease flat — and a request that arrives
+mid-crossing reverses, never skips. The custody accounting theorem, "at
+every phase someone presents", is a conformance clause
+(`tests/conformance/transfer/crossing`). The binding's
+`useCustodyCrossing` collects receipts, advances the reducer per rendered
+frame, and publishes both swaps as single React commits; scenes state
+their presenter count and timing and consume `amplitude()`.
+
+Three scenes earned the promotion under the second-system guard: Flight
+gated its swap on upload, Genie on presentation, and the logo playground
+on presentation plus a dwell — three hand-rollings of one protocol, with
+the evidence standard drifting between them. The standard is now fixed at
+presented receipts.
+
+The promotion also forced a source-host rule: a parked root's FIRST
+render is flushed (`flushSync` in `useSourceHost`), because a
+concurrently scheduled initial commit leaves the container mounted and
+empty for a paintable gap. A capture in that gap is a blank card wearing
+`.ui-root`'s opaque background — and it legitimately fires both custody
+receipts, which certify pixels, not the right pixels. A source must never
+exist without the content it claims to be.
+
+**Evidence.** The `crossing-flash` gate (CI: `gate:crossing`) screencasts
+the logo page under a default 6x CPU throttle and scores every composited
+frame's ink coverage over the wordmark's rectangle — vanishing is the
+flicker, blooming is the blank-card fault. Before the flush rule it
+photographed the second fault exactly: warm lifts presented five white
+cards, ink blooming from a resting 18.6% to 72.8% (first lifts passed —
+cold GL setup delays the first capture past the content commit, which is
+why no one had seen it by hand). After the rule: 1,245 frames across four
+round trips plus an abandoned lift and a reversed landing, every frame
+inside 18.2–18.9%.
+
+## #29 — Presentation custody is exclusive (2026-08-14, core + react binding + instruments)
+
+**Decision.** Drawing is not showing. `crossingCustody` says who must
+DRAW in each phase and is inclusive — during 'lifting' both sides draw,
+because the warm-up is where the canvas earns its presented receipts.
+`crossingPresentation` says who may be SEEN and is exclusive: exactly
+one side is composited in every phase, and visibility changes hands only
+at the two swap edges. The binding exposes it as `rendererHolds`, and a
+consumer wires that to the canvas element's own visibility (opacity or
+`visibility`), never to mount — an unmounted canvas cannot draw, an
+uncomposited one still can, and the receipts come from the framebuffer,
+which compositing never touches.
+
+The rule exists because the lifting overlap has two ways to be wrongly
+visible, and the logo found both in one day. Canvas composited above the
+page: a twin that painted early covers a letter still finishing its hop,
+a snap. Canvas composited below: the settling page displaces off its
+flat twin and both copies peek out around each other for the whole
+dwell, a ghost leading or trailing every animated element. Z-order just
+picks which fault you get; the only correct amount of early canvas is
+none.
+
+**Evidence.** The ghost was visible by eye on the logo whenever the
+letters were animating at a crossing (2026-08-14). The conformance
+contract pins the law's shape (presentation is exclusive, implies
+custody, and the renderer draws unseen exactly during 'lifting'); the
+`crossing-flash` gate photographs the browser fact — it cranks the idle
+float to its ceiling so a composited twin would fringe the ink
+measurably, then requires every lifting-span frame to hold the resting
+ink band within +2pp.
+
+## #30 — Carried motion crosses mid-flight (2026-08-14, core + react binding + instruments)
+
+**Decision.** Motion whose source of truth lives outside both renderers
+does not need to stop for a custody crossing. The kernel gains the
+motion carrier (`createMotionCarrier`): one clock, one program, one
+evaluation per frame, and any number of readers — sampling never
+advances time, so the page's style write and the mesh's transform read
+the same number in the same frame. The binding (`useCarriedMotion`)
+owns the rAF driver and the page-side applier; the mesh side reads
+`sample()` in useFrame at FULL value, never scaled by the crossing's
+amplitude. A carried motion is exempt from the settle dwell — every
+frame of it is a plateau, because both presenters output one source of
+truth — so the swap lands mid-flight with position and velocity intact.
+`settleMs` now covers only what stays on the compositor's clock.
+
+This is the drag-handoff insight generalized: Flight always carried a
+drag seamlessly because the pointer is a shared truth neither renderer
+owns. The carrier gives autonomous idle motion the same property, at
+the honest price of riding the main thread instead of the compositor
+thread — which is why carrying is a per-motion declaration, never a
+default, and the ease-flat authoring pattern remains for everything
+else.
+
+Promoted on ONE lab, waiving the second-system guard's two-bleeds rule
+at the owner's explicit direction (2026-08-14): seamless threshold
+crossing is the library's core claim, and "the animation pauses when it
+crosses" was judged the most likely common complaint from consumers.
+The waiver is recorded so the guard stays meaningful everywhere else.
+
+**Evidence.** The logo's float, rebuilt on the carrier: the letters
+breathe through both swaps with no park and no jump. The `crossing-flash`
+gate grew a fourth clause — with the float at its ceiling, it fits the
+moving word's ink-centroid path before each swap and requires the first
+frames after the swap to continue that path within budget, both
+directions. Building the clause surfaced two findings. One is a real
+hazard: reclamation shared the return swap's commit, and tearing a
+renderer down is a ~280ms longtask under the gate's throttle — long
+enough to hold every carried style write at exactly the handoff. The
+binding now lingers the dead canvas — invisible, amplitude zero — for
+300ms and unmounts it in a commit of its own; deferred, never skipped.
+The other is a platform fact that first masqueraded as a freeze the
+linger failed to fix: the DevTools screencast emits nothing for ~250ms
+after a custody return while the screen runs on — trace, forced
+composites, and rAF all continuous (platform.md item 13) — so the
+clause reads that window with forced composites instead of the cast.
+The carrier's discipline (epoch at birth, one evaluation per tick,
+sampling never advances) is pinned in
+`tests/conformance/transfer/motionCarrier`.
