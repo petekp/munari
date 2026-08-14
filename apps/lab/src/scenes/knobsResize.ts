@@ -83,19 +83,18 @@ export const PANEL_EDGE_INSET = 26
 
 /**
  * The width a corner drag asks for: the start width plus the hand's
- * travel, quantized, then clamped — against the fixed bounds and
- * against the glass, so a panel can never be dragged wider than the
- * window that has to hold it.
+ * travel, quantized, then clamped against the fixed physical bounds.
+ * A small glass scrolls around the panel; it never changes the panel's
+ * logical size.
  *
  * `dx` is screen travel. The slab carries a small standing yaw, so a
  * screen pixel is not exactly a panel pixel; at the yaws this scene
  * uses the error is under a percent, and the carry handle already makes
  * the same approximation.
  */
-export function resizeWidth(startW: number, dx: number, viewportW: number): number {
-  const ceiling = Math.min(PANEL_MAX_W, Math.max(PANEL_MIN_W, viewportW - PANEL_EDGE_INSET * 2))
+export function resizeWidth(startW: number, dx: number): number {
   const stepped = Math.round((startW + dx) / PANEL_W_STEP) * PANEL_W_STEP
-  return Math.min(ceiling, Math.max(PANEL_MIN_W, stepped))
+  return Math.min(PANEL_MAX_W, Math.max(PANEL_MIN_W, stepped))
 }
 
 /**

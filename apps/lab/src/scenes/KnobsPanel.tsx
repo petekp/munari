@@ -33,9 +33,11 @@ import {
   knobAngle,
   knobsValues,
   lampLit,
+  panelCommands,
   panelDrag,
   panelResize,
 } from './knobsLaw'
+import { PANEL_MAX_W, PANEL_MIN_W } from './knobsResize'
 import './knobs.css'
 
 /** Graduation marks around a knob well, one per 27° across the sweep. */
@@ -93,11 +95,25 @@ const RotaryKnob = memo(function RotaryKnob({
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      const dir =
-        e.key === 'ArrowUp' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowDown' || e.key === 'ArrowLeft' ? -1 : 0
-      if (!dir) return
+      let next: number | null = null
+      if (e.key === 'Home') next = def.min
+      else if (e.key === 'End') next = def.max
+      else {
+        const dir =
+          e.key === 'ArrowUp' || e.key === 'ArrowRight'
+            ? 1
+            : e.key === 'ArrowDown' || e.key === 'ArrowLeft'
+              ? -1
+              : e.key === 'PageUp'
+                ? 10
+                : e.key === 'PageDown'
+                  ? -10
+                  : 0
+        if (dir) next = value + dir * def.step
+      }
+      if (next == null) return
       e.preventDefault()
-      onChange(def, Math.min(def.max, Math.max(def.min, value + dir * def.step)))
+      onChange(def, Math.min(def.max, Math.max(def.min, next)))
     },
     [def, value, onChange],
   )
@@ -405,6 +421,10 @@ export function KnobsPanel() {
       onPointerMove={onPointerMove}
       onPointerUp={endDialDrag}
       onPointerCancel={endDialDrag}
+      onFocusCapture={(event) => {
+        const anchor = (event.target as HTMLElement).closest<HTMLElement>('[data-munari-anchor]')
+        if (anchor?.dataset.munariAnchor) panelCommands.revealAnchor?.(anchor.dataset.munariAnchor)
+      }}
     >
       <span className="knb-screw" data-corner="tl" data-munari-anchor="screw:tl" aria-hidden />
       <span className="knb-screw" data-corner="tr" data-munari-anchor="screw:tr" aria-hidden />
@@ -415,16 +435,38 @@ export function KnobsPanel() {
         * gesture — the scene moves the slab from the real screen
         * pointer, because these coordinates live on the very panel the
         * gesture displaces. */}
-      <div
+      <button
+        type="button"
         className="knb-handle"
-        aria-label="drag to move panel"
+        data-munari-anchor="panel:carry"
+        aria-label="Move panel"
         onPointerDown={(event) => {
           panelDrag.active = true
           panelDrag.pointerId = event.pointerId
         }}
+        onKeyDown={(event) => {
+          const step = event.shiftKey ? 64 : 16
+          const move =
+            event.key === 'ArrowRight'
+              ? [step, 0]
+              : event.key === 'ArrowLeft'
+                ? [-step, 0]
+                : event.key === 'ArrowUp'
+                  ? [0, step]
+                  : event.key === 'ArrowDown'
+                    ? [0, -step]
+                    : null
+          if (event.key === 'Home' || event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            panelCommands.restore?.()
+          } else if (move) {
+            event.preventDefault()
+            panelCommands.moveBy?.(move[0], move[1])
+          }
+        }}
       >
         <span className="knb-handle-grip" aria-hidden />
-      </div>
+      </button>
 
       {/* The corner grip. Same split as the carry handle: this only ARMS
         * the gesture and records where it started, because these
@@ -433,8 +475,13 @@ export function KnobsPanel() {
       <div
         className="knb-resize"
         role="separator"
+        tabIndex={0}
         aria-orientation="vertical"
-        aria-label="drag to resize panel"
+        aria-label="Resize panel"
+        aria-valuemin={PANEL_MIN_W}
+        aria-valuemax={PANEL_MAX_W}
+        aria-valuenow={320}
+        data-munari-anchor="panel:resize"
         onPointerDown={(e) => {
           panelResize.active = true
           panelResize.pointerId = e.pointerId
@@ -448,12 +495,31 @@ export function KnobsPanel() {
           // from the first REAL pointer move instead.
           panelResize.startX = Number.NaN
         }}
+        onKeyDown={(event) => {
+          const current = Math.round(
+            (event.currentTarget.parentElement as HTMLElement | null)?.getBoundingClientRect().width ?? 320,
+          )
+          const step = event.shiftKey ? 32 : 8
+          const next =
+            event.key === 'Home'
+              ? PANEL_MIN_W
+              : event.key === 'End'
+                ? PANEL_MAX_W
+                : event.key === 'ArrowRight' || event.key === 'ArrowUp'
+                  ? current + step
+                  : event.key === 'ArrowLeft' || event.key === 'ArrowDown'
+                    ? current - step
+                    : null
+          if (next == null) return
+          event.preventDefault()
+          panelCommands.resizeTo?.(next)
+        }}
       >
         <span className="knb-resize-grip" aria-hidden />
       </div>
 
       <div className="knb-panel-head">
-        <span className="knb-panel-title">svg control board</span>
+        <span className="knb-panel-title">DOM control panel</span>
         <span className="knb-panel-badge">pp-01</span>
       </div>
 

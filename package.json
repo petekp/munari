@@ -23,6 +23,7 @@
     "gate:idle-zero": "node instruments/idle-zero/run.mjs",
     "gate:knobs-resize": "node instruments/knobs-resize/run.mjs",
     "gate:knobs-input": "node instruments/knobs-input/run.mjs",
+    "gate:knobs-viewport": "node instruments/knobs-viewport/run.mjs",
     "gate:dom-surface-demand": "node instruments/dom-surface-demand/run.mjs",
     "dev": "npm run dev -w @munari/lab",
     "deploy:demo": "npm run build -w @munari/lab && VERCEL_ORG_ID=team_d8NmNbma8pPIVCBkDXUnfpMa VERCEL_PROJECT_ID=prj_pe759NtaVMScHyupOSFSJ41NQiz7 vercel deploy --prod --yes --cwd apps/lab/dist"

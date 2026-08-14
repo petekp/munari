@@ -116,6 +116,14 @@ export const panelResize = {
   startW: 0,
 }
 
+/** Scene commands invoked by controls inside the captured DOM root. */
+export const panelCommands = {
+  resizeTo: null as ((width: number) => void) | null,
+  moveBy: null as ((dx: number, dy: number) => void) | null,
+  restore: null as (() => void) | null,
+  revealAnchor: null as ((key: string) => void) | null,
+}
+
 export interface ToggleDef {
   key: 'power' | 'mirror'
   label: string

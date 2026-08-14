@@ -50,7 +50,11 @@ import {
 } from '@petepetrash/munari'
 import { KnobsArt } from './KnobsArt'
 import { KnobsPanel } from './KnobsPanel'
-import { nineSlice, resizeWidth } from './knobsResize'
+import {
+  PANEL_EDGE_INSET,
+  nineSlice,
+  resizeWidth,
+} from './knobsResize'
 import {
   BEZEL_LIP,
   KNOB,
@@ -77,6 +81,7 @@ import {
   knobAngle,
   knobsValues,
   lampLit,
+  panelCommands,
   panelDrag,
   panelResize,
   slabOcclusion,
@@ -114,7 +119,6 @@ const FOV = 42
 const OVERLAY_Z = 50
 /** The floating slab: side-rail width, inset from the viewport edges. */
 const RAIL_W = 320
-const INSET = 26
 
 /** The size the rim is machined at, once. Every panel size after that
  *  is a nine-slice re-fit of this buffer (knobsResize), so this number
@@ -458,6 +462,15 @@ interface RailRect {
   worldY: number
 }
 
+interface PanelViewportState {
+  scroller: HTMLDivElement | null
+  extent: HTMLDivElement | null
+  overflowX: boolean
+  overflowY: boolean
+  panelWidth: number
+  panelHeight: number
+}
+
 /** A measured box on the face, center + size, panel CSS px. */
 interface FeatureBox {
   x: number
@@ -486,6 +499,7 @@ interface KnobsResizeProbeState {
   presented: PresentationReceipt | null
   anchors: SurfaceAnchorReceipt | null
   projectedHue: { x: number; y: number } | null
+  panelScale: { x: number; y: number; z: number } | null
 }
 
 interface KnobsResizeProbeApi {
@@ -801,6 +815,7 @@ function KnobHardware({
 function KnobsResizeProbeTracker({ state }: { state: RefObject<KnobsResizeProbeState> }) {
   const { scene, camera, gl } = useThree()
   const point = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
   useFrame(() => {
     const hue = scene.getObjectByName('probe:knob:hue')
     if (!hue) {
@@ -812,6 +827,11 @@ function KnobsResizeProbeTracker({ state }: { state: RefObject<KnobsResizeProbeS
     state.current.projectedHue = {
       x: canvas.left + ((point.x + 1) / 2) * canvas.width,
       y: canvas.top + ((1 - point.y) / 2) * canvas.height,
+    }
+    const surface = scene.getObjectByName('knobs-panel-surface')
+    if (surface) {
+      surface.getWorldScale(scale)
+      state.current.panelScale = { x: scale.x, y: scale.y, z: scale.z }
     }
   })
   return null
@@ -1660,10 +1680,12 @@ function SlabRim({ rect }: { rect: RailRect }) {
 function PanelRig({
   rect,
   kick,
+  viewport,
   children,
 }: {
   rect: RailRect
   kick: React.RefObject<((dir: number) => void) | null>
+  viewport: RefObject<PanelViewportState>
   children: React.ReactNode
 }) {
   const group = useRef<THREE.Group>(null)
@@ -1676,8 +1698,17 @@ function PanelRig({
     client: { x: 0, y: 0 },
     pose: null as { x: SpringState; y: SpringState } | null,
     target: { x: 0, y: 0 },
-    grab: null as { dx: number; dy: number } | null,
+    grab: null as {
+      dx: number
+      dy: number
+      clientX: number
+      clientY: number
+      scrollLeft: number
+      scrollTop: number
+    } | null,
     carried: false,
+    overflowX: false,
+    overflowY: false,
   })
 
   useEffect(() => {
@@ -1728,6 +1759,42 @@ function PanelRig({
     }
   }, [kick])
 
+  useEffect(() => {
+    const moveBy = (dx: number, dy: number) => {
+      const m = motion.current
+      const view = viewport.current
+      const scroller = view.scroller
+      if (view.overflowX && scroller) scroller.scrollLeft -= dx
+      else {
+        m.target.x += dx
+        m.carried = true
+      }
+      if (view.overflowY && scroller) scroller.scrollTop += dy
+      else {
+        m.target.y += dy
+        m.carried = true
+      }
+    }
+    const restore = () => {
+      const m = motion.current
+      const view = viewport.current
+      const scroller = view.scroller
+      if (scroller) {
+        scroller.scrollLeft = view.overflowX ? scroller.scrollWidth - scroller.clientWidth : 0
+        scroller.scrollTop = 0
+      }
+      m.carried = false
+      m.target.x = rect.worldX
+      m.target.y = rect.worldY
+    }
+    panelCommands.moveBy = moveBy
+    panelCommands.restore = restore
+    return () => {
+      if (panelCommands.moveBy === moveBy) panelCommands.moveBy = null
+      if (panelCommands.restore === restore) panelCommands.restore = null
+    }
+  }, [rect.worldX, rect.worldY, viewport])
+
   // A resize re-berths a panel the user has not carried; a carried one
   // stays where their hand left it.
   useEffect(() => {
@@ -1740,6 +1807,8 @@ function PanelRig({
 
   useFrame((_, dt) => {
     const m = motion.current
+    const view = viewport.current
+    const scroller = view.scroller
     if (!m.pose) {
       m.pose = {
         x: { x: rect.worldX, v: 0 },
@@ -1749,15 +1818,42 @@ function PanelRig({
     }
     const pointerX = m.client.x - window.innerWidth / 2
     const pointerY = window.innerHeight / 2 - m.client.y
+    if (m.overflowX && !view.overflowX) {
+      m.target.x = rect.worldX
+      m.pose.x.x = rect.worldX
+      m.pose.x.v = 0
+    }
+    if (m.overflowY && !view.overflowY) {
+      m.target.y = rect.worldY
+      m.pose.y.x = rect.worldY
+      m.pose.y.v = 0
+    }
+    m.overflowX = view.overflowX
+    m.overflowY = view.overflowY
     if (panelDrag.active) {
       if (!m.grab) {
         // Grab where the hand landed, not the panel center — the slab
         // must not jump into the hand.
-        m.grab = { dx: m.pose.x.x - pointerX, dy: m.pose.y.x - pointerY }
+        m.grab = {
+          dx: m.pose.x.x - pointerX,
+          dy: m.pose.y.x - pointerY,
+          clientX: m.client.x,
+          clientY: m.client.y,
+          scrollLeft: scroller?.scrollLeft ?? 0,
+          scrollTop: scroller?.scrollTop ?? 0,
+        }
         m.carried = true
       }
-      m.target.x = pointerX + m.grab.dx
-      m.target.y = pointerY + m.grab.dy
+      if (view.overflowX && scroller) {
+        scroller.scrollLeft = m.grab.scrollLeft - (m.client.x - m.grab.clientX)
+      } else {
+        m.target.x = pointerX + m.grab.dx
+      }
+      if (view.overflowY && scroller) {
+        scroller.scrollTop = m.grab.scrollTop - (m.client.y - m.grab.clientY)
+      } else {
+        m.target.y = pointerY + m.grab.dy
+      }
     } else {
       m.grab = null
     }
@@ -1779,15 +1875,32 @@ function PanelRig({
       // drag every commit is a frame of lag. Zeroing the velocity is
       // not tidiness — `leanY`/`leanX` read it, so a nonzero one would
       // tilt the slab as if it were being flown across the glass.
-      m.target.x = rect.worldX
-      m.target.y = rect.worldY
-      m.pose.x.x = rect.worldX
-      m.pose.x.v = 0
-      m.pose.y.x = rect.worldY
-      m.pose.y.v = 0
+      if (!view.overflowX) {
+        m.target.x = rect.worldX
+        m.pose.x.x = rect.worldX
+        m.pose.x.v = 0
+      }
+      if (!view.overflowY) {
+        m.target.y = rect.worldY
+        m.pose.y.x = rect.worldY
+        m.pose.y.v = 0
+      }
     } else {
-      stepSpring(m.pose.x, m.target.x, PANEL_GLIDE_SPRING, dt)
-      stepSpring(m.pose.y, m.target.y, PANEL_GLIDE_SPRING, dt)
+      if (!view.overflowX) stepSpring(m.pose.x, m.target.x, PANEL_GLIDE_SPRING, dt)
+      if (!view.overflowY) stepSpring(m.pose.y, m.target.y, PANEL_GLIDE_SPRING, dt)
+    }
+
+    if (view.overflowX && scroller) {
+      m.pose.x.x =
+        PANEL_EDGE_INSET + rect.w / 2 - scroller.scrollLeft - window.innerWidth / 2
+      m.pose.x.v = 0
+      m.target.x = m.pose.x.x
+    }
+    if (view.overflowY && scroller) {
+      m.pose.y.x =
+        window.innerHeight / 2 - PANEL_EDGE_INSET - rect.h / 2 + scroller.scrollTop
+      m.pose.y.v = 0
+      m.target.y = m.pose.y.x
     }
 
     // The viewport's edges are walls: a thrown slab bumps and keeps
@@ -1798,8 +1911,12 @@ function PanelRig({
     const exH = (rect.h + BEZEL_LIP * 2) / 2
     const e = panelDrag.active ? 0 : PANEL_RESTITUTION
     const clampKick = (n: number) => Math.max(-BOUNCE_TILT_MAX, Math.min(BOUNCE_TILT_MAX, n))
-    const hitX = reflect(m.pose.x, exW - window.innerWidth / 2, window.innerWidth / 2 - exW, e)
-    const hitY = reflect(m.pose.y, exH - window.innerHeight / 2, window.innerHeight / 2 - exH, e)
+    const hitX = view.overflowX
+      ? 0
+      : reflect(m.pose.x, exW - window.innerWidth / 2, window.innerWidth / 2 - exW, e)
+    const hitY = view.overflowY
+      ? 0
+      : reflect(m.pose.y, exH - window.innerHeight / 2, window.innerHeight / 2 - exH, e)
     if (hitX) m.ry.v += clampKick(hitX * BOUNCE_TILT)
     if (hitY) m.rx.v += clampKick(hitY * BOUNCE_TILT)
 
@@ -1881,6 +1998,7 @@ function PanelStage({
   onFrameDrawn,
   onPresented,
   probe,
+  viewport,
 }: {
   handle: RefObject<StageHandle | null>
   widthNow: RefObject<number>
@@ -1891,6 +2009,7 @@ function PanelStage({
   onFrameDrawn: (receipt: FrameDrawReceipt) => void
   onPresented: (receipt: PresentationReceipt) => void
   probe: boolean
+  viewport: RefObject<PanelViewportState>
 }) {
   const [rect, setRect] = useState<RailRect | null>(null)
   const [anchors, setAnchors] = useState<SurfaceAnchorReceipt | null>(null)
@@ -1909,8 +2028,8 @@ function PanelStage({
       const w = widthNow.current
       setRect((prev) => ({
         w,
-        h: prev?.h ?? Math.max(430, window.innerHeight - INSET * 2),
-        worldX: window.innerWidth / 2 - INSET - w / 2,
+        h: prev?.h ?? Math.max(430, window.innerHeight - PANEL_EDGE_INSET * 2),
+        worldX: window.innerWidth / 2 - PANEL_EDGE_INSET - w / 2,
         worldY: 0,
       }))
     }
@@ -1922,11 +2041,12 @@ function PanelStage({
   return (
     <>
       {rect && rect.w > 0 && rect.h > 0 && (
-        <PanelRig rect={rect} kick={kick}>
+        <PanelRig rect={rect} kick={kick} viewport={viewport}>
           <BacklightCorona rect={rect} />
           <SlabRim rect={rect} />
           <SurfaceApp
             label="knobs-panel"
+            name="knobs-panel-surface"
             width={rect.w}
             height={rect.h}
             roughness={0.5}
@@ -2033,6 +2153,14 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
   // The panel's own state lives inside the Canvas — see `PanelStage`. This
   // is the line to it.
   const stage = useRef<StageHandle | null>(null)
+  const viewport = useRef<PanelViewportState>({
+    scroller: null,
+    extent: null,
+    overflowX: false,
+    overflowY: false,
+    panelWidth: RAIL_W,
+    panelHeight: 0,
+  })
   const anchorRoot = useRef<HTMLElement | null>(null)
   const anchorLayoutDirty = useRef(true)
   const anchorMap = useRef<{
@@ -2048,7 +2176,80 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
     presented: null,
     anchors: null,
     projectedHue: null,
+    panelScale: null,
   })
+
+  const syncViewport = useCallback((panelWidth: number, panelHeight: number, pinRight = false) => {
+    const view = viewport.current
+    view.panelWidth = panelWidth
+    view.panelHeight = panelHeight
+    const scroller = view.scroller
+    const extent = view.extent
+    if (!scroller || !extent) return
+
+    const wasOverflowX = view.overflowX
+    const wasOverflowY = view.overflowY
+    const extentWidth = Math.max(window.innerWidth, panelWidth + PANEL_EDGE_INSET * 2)
+    const extentHeight = Math.max(window.innerHeight, panelHeight + PANEL_EDGE_INSET * 2)
+    extent.style.width = `${extentWidth}px`
+    extent.style.height = `${extentHeight}px`
+    view.overflowX = extentWidth > window.innerWidth
+    view.overflowY = extentHeight > window.innerHeight
+
+    const maxX = Math.max(0, extentWidth - window.innerWidth)
+    const maxY = Math.max(0, extentHeight - window.innerHeight)
+    if (!view.overflowX) scroller.scrollLeft = 0
+    else if (!wasOverflowX || panelResize.active || pinRight) scroller.scrollLeft = maxX
+    else scroller.scrollLeft = Math.min(maxX, Math.max(0, scroller.scrollLeft))
+    if (!view.overflowY) scroller.scrollTop = 0
+    else if (!wasOverflowY) scroller.scrollTop = 0
+    else scroller.scrollTop = Math.min(maxY, Math.max(0, scroller.scrollTop))
+  }, [])
+
+  useEffect(() => {
+    const onViewportResize = () => {
+      const view = viewport.current
+      syncViewport(view.panelWidth, view.panelHeight)
+    }
+    window.addEventListener('resize', onViewportResize)
+    return () => window.removeEventListener('resize', onViewportResize)
+  }, [syncViewport])
+
+  useEffect(() => {
+    const revealAnchor = (key: string) => {
+      const view = viewport.current
+      const scroller = view.scroller
+      const cached = anchorMap.current
+      const anchor = cached?.anchors[key]
+      if (!scroller || !cached || !anchor) return
+      const panelLeft = view.overflowX
+        ? PANEL_EDGE_INSET
+        : window.innerWidth - PANEL_EDGE_INSET - view.panelWidth
+      const panelTop = view.overflowY
+        ? PANEL_EDGE_INSET
+        : (window.innerHeight - view.panelHeight) / 2
+      const left = panelLeft + anchor.uMin * view.panelWidth
+      const right = panelLeft + anchor.uMax * view.panelWidth
+      const top = panelTop + (1 - anchor.vMax) * view.panelHeight
+      const bottom = panelTop + (1 - anchor.vMin) * view.panelHeight
+      if (view.overflowX) {
+        if (left - scroller.scrollLeft < PANEL_EDGE_INSET)
+          scroller.scrollLeft = left - PANEL_EDGE_INSET
+        else if (right - scroller.scrollLeft > window.innerWidth - PANEL_EDGE_INSET)
+          scroller.scrollLeft = right - window.innerWidth + PANEL_EDGE_INSET
+      }
+      if (view.overflowY) {
+        if (top - scroller.scrollTop < PANEL_EDGE_INSET)
+          scroller.scrollTop = top - PANEL_EDGE_INSET
+        else if (bottom - scroller.scrollTop > window.innerHeight - PANEL_EDGE_INSET)
+          scroller.scrollTop = bottom - window.innerHeight + PANEL_EDGE_INSET
+      }
+    }
+    panelCommands.revealAnchor = revealAnchor
+    return () => {
+      if (panelCommands.revealAnchor === revealAnchor) panelCommands.revealAnchor = null
+    }
+  }, [])
 
   // The panel's WIDTH is what a hand can drag. Its HEIGHT is not: the
   // panel is a container query container, so its width decides its
@@ -2153,7 +2354,7 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
         panelResize.startX = e.clientX
         resizingNow.current?.(true)
       }
-      const w = resizeWidth(panelResize.startW, e.clientX - panelResize.startX, window.innerWidth)
+      const w = resizeWidth(panelResize.startW, e.clientX - panelResize.startX)
       if (w === widthNow.current) return
       widthNow.current = w
       // One call, and it finishes the whole step before this event
@@ -2219,11 +2420,11 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
       measure()
     })
 
-    const measure = () => {
+    const measure = (pinRight = false) => {
       const root = el.querySelector('.knb-panel') as HTMLElement | null
       const base = root?.getBoundingClientRect()
       if (!root || !base || base.width === 0) {
-        raf = requestAnimationFrame(measure)
+        raf = requestAnimationFrame(() => measure())
         return
       }
       if (watched !== root) {
@@ -2254,6 +2455,8 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
       const w = Math.round(base.width)
       const h = Math.round(base.height)
       anchorLayoutDirty.current = true
+      syncViewport(w, h, pinRight)
+      root.querySelector('.knb-resize')?.setAttribute('aria-valuenow', String(w))
       // Both, in one commit, on the root that can actually take it now.
       //
       // `flushThree` is r3f's flush, not `react-dom`'s, and the
@@ -2279,7 +2482,12 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
         commit.setRect((prev) =>
           prev && prev.w === w && Math.abs(prev.h - h) < 1
             ? prev
-            : { w, h, worldX: window.innerWidth / 2 - INSET - w / 2, worldY: prev?.worldY ?? 0 },
+            : {
+                w,
+                h,
+                worldX: window.innerWidth / 2 - PANEL_EDGE_INSET - w / 2,
+                worldY: prev?.worldY ?? 0,
+              },
         )
       })
     }
@@ -2306,9 +2514,16 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
       // frames in between the host is a step wider than the canvas that
       // scales its replay. Measured, both breakpoints, every run.
       el.style.setProperty('--knb-w', `${w}px`)
-      measure()
+      measure(true)
     }
     resizeNow.current = resize
+    const resizeTo = (requested: number) => {
+      const width = resizeWidth(requested, 0)
+      if (width === widthNow.current) return
+      widthNow.current = width
+      resize(width)
+    }
+    panelCommands.resizeTo = resizeTo
 
     // One class, on the capture root, for the length of one gesture.
     const setResizing = (on: boolean) => el.classList.toggle('knb-resizing', on)
@@ -2320,20 +2535,33 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
     document.fonts?.addEventListener('loadingdone', markFontLayoutDirty)
     void document.fonts?.ready.then(markFontLayoutDirty)
 
-    raf = requestAnimationFrame(measure)
+    raf = requestAnimationFrame(() => measure())
     hostCleanup.current = () => {
       cancelAnimationFrame(raf)
       ro.disconnect()
       resizeNow.current = null
+      if (panelCommands.resizeTo === resizeTo) panelCommands.resizeTo = null
       resizingNow.current = null
       document.fonts?.removeEventListener('loadingdone', markFontLayoutDirty)
       if (anchorRoot.current === watched) anchorRoot.current = null
     }
-  }, [finishResize])
+  }, [finishResize, syncViewport])
 
   return (
-    <div className="knb-page">
+    <div
+      className="knb-page"
+      ref={(element) => {
+        viewport.current.scroller = element
+      }}
+    >
       <KnobsArt />
+      <div
+        className="knb-scroll-extent"
+        aria-hidden
+        ref={(element) => {
+          viewport.current.extent = element
+        }}
+      />
 
       <Canvas
         className="knb-overlay"
@@ -2362,8 +2590,11 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
           onFrameDrawn={onFrameDrawn}
           onPresented={onPresented}
           probe={probeEnabled}
+          viewport={viewport}
         />
       </Canvas>
+
+      <p className="knb-page-instruction">Drag the corner to reflow. Drag the top edge to move.</p>
 
       {chips}
       <KnobsTweakPanel />

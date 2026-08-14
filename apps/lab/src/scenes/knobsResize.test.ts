@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PANEL_RADIUS } from './knobsGeometry'
 import {
-  PANEL_EDGE_INSET,
   PANEL_MAX_W,
   PANEL_MIN_W,
   PANEL_W_STEP,
@@ -12,40 +11,30 @@ import {
 } from './knobsResize'
 
 describe('the width a corner drag may ask for', () => {
-  const GLASS = 1440
-
   it('follows the hand', () => {
-    expect(resizeWidth(320, 80, GLASS)).toBe(400)
-    expect(resizeWidth(320, -80, GLASS)).toBe(240)
+    expect(resizeWidth(320, 80)).toBe(400)
+    expect(resizeWidth(320, -80)).toBe(240)
   })
 
   it('lands on the step, always — a fractional width relayouts forever', () => {
     for (let dx = -200; dx <= 200; dx += 7) {
-      expect(resizeWidth(320, dx, GLASS) % PANEL_W_STEP).toBe(0)
+      expect(resizeWidth(320, dx) % PANEL_W_STEP).toBe(0)
     }
   })
 
   it('stops at both ends', () => {
-    expect(resizeWidth(320, -9999, GLASS)).toBe(PANEL_MIN_W)
-    expect(resizeWidth(320, 9999, GLASS)).toBe(PANEL_MAX_W)
+    expect(resizeWidth(320, -9999)).toBe(PANEL_MIN_W)
+    expect(resizeWidth(320, 9999)).toBe(PANEL_MAX_W)
   })
 
-  it('never outgrows the glass that has to hold it', () => {
-    const narrow = 420
-    const w = resizeWidth(320, 9999, narrow)
-    expect(w).toBeLessThanOrEqual(narrow - PANEL_EDGE_INSET * 2)
-    expect(w).toBeLessThan(PANEL_MAX_W)
-  })
-
-  it('keeps the floor even on a glass narrower than the panel', () => {
-    // A phone-width window may not produce a negative panel.
-    expect(resizeWidth(320, -50, 200)).toBe(PANEL_MIN_W)
+  it('does not change when the viewport becomes smaller', () => {
+    expect(resizeWidth(PANEL_MAX_W, 0)).toBe(PANEL_MAX_W)
   })
 
   it('never moves backwards as the hand moves forwards', () => {
     let last = 0
     for (let dx = -400; dx <= 400; dx += 3) {
-      const w = resizeWidth(320, dx, GLASS)
+      const w = resizeWidth(320, dx)
       expect(w).toBeGreaterThanOrEqual(last)
       last = w
     }

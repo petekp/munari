@@ -126,18 +126,17 @@ Does the panel's face stay the panel's size while a hand drags it?
 `drawElementImage` is unavailable; `STRICT_CAPABILITY=1` makes the gap
 a failure.
 
-Four boxes are sampled once per animation frame across a
-narrow-then-grow drag that crosses both of the panel's container-query
-breakpoints: the panel, the host the replay is rasterized from, the
-canvas the replay is scaled against, and the backing store. A frame is
-the unit because it is what the compositor can photograph. Two
-assertions, on both axes: host box equals canvas box, and panel box
-equals host box.
+The gate runs minimum-to-maximum and reverse gestures at DPR 1 and 2.
+It requires at least 30 moving render samples, all three arrangements in
+both directions, matching panel/host/canvas boxes, bounded backing-store
+density during motion, and exact requested density after eight quiet
+frames. It also compares the successful paint, uploaded draw, presented
+frame, and active keyed-anchor generation. A source marker must agree
+with its receipt within one source texel, and a final-frame GL marker
+must agree with the projected hue hardware within one CSS pixel.
 
-Two honesty checks fail the run rather than let it pass empty — fewer
-than 10 moving frames means the gesture missed the grip and measured a
-stationary panel, and fewer than two arrangements means no breakpoint
-was crossed.
+`DUMP=1` writes the worst source image, final frame, and sample ledger to
+the ignored `instruments/knobs-resize/out` directory.
 
 The bug it was written for: every consumer of the panel's box was one
 drag step behind the face painted for them, so 15px of the panel was
@@ -163,6 +162,16 @@ touch and pen contact, complete pen identity, hover arming, cancellation,
 lost-release cleanup, clear-art pass-through, and single-click ownership.
 It has the same `drawElementImage` capability policy as the other DOM
 Surface browser gates.
+
+## knobs-viewport
+
+Can the panel keep its physical size on small glass while native scroll,
+keyboard focus, and relayed pointers still reach it? Run
+`npm run gate:knobs-viewport`. The real Knobs route is checked at
+320x568, 360x640, 390x667, 390x844, and 640x360. The gate covers every
+captured control plus the move and resize handles, dial and resize keys,
+right-edge pinning, pointer UVs after scroll, exact world scale, and the
+return to a large non-overflowing viewport without a logical-width change.
 
 ## dom-surface-demand
 
