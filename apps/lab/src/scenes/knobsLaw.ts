@@ -103,6 +103,14 @@ export function stepFade(lit: number, target: number, dt: number): number {
  *  coordinates live on the panel — the very thing the gesture moves. */
 export const panelDrag = { active: false }
 
+/** Live bag for the resize gesture, split the same way and for the same
+ *  reason: the corner grip is captured DOM, and its coordinates live on
+ *  the panel whose width the gesture is changing. The grip arms this and
+ *  records the width it started from; `startX` is left NaN, and the
+ *  scene seeds it from the first REAL screen move before applying
+ *  `resizeWidth`. */
+export const panelResize = { active: false, startX: Number.NaN, startW: 0 }
+
 export interface ToggleDef {
   key: 'power' | 'mirror'
   label: string
@@ -113,23 +121,28 @@ export const KNOBS_TOGGLES: ToggleDef[] = [
   { key: 'mirror', label: 'mirror' },
 ]
 
-/** Overdrive threshold — at or past this speed the amber lamp reads the
- *  rig as running hot. */
-export const OVERDRIVE_SPEED = 1.4
-
+/**
+ * An annunciator. One per switch, and only per switch — a lamp stands
+ * beside the toggle it reports on, so `key` indexes BOTH lists and the
+ * two stay in step by construction.
+ *
+ * There is no label here on purpose. The lamp used to carry its own,
+ * which read the same word as the switch two rows away; now that they
+ * share a cell the switch's label serves both, and the lamp is
+ * `aria-hidden` because `aria-pressed` on the switch already says what
+ * it says.
+ */
 export interface LampDef {
-  key: 'power' | 'drive' | 'mirror'
-  label: string
-  tone: 'ok' | 'warn' | 'signal'
+  key: ToggleDef['key']
+  tone: 'ok' | 'signal'
   /** The lit lens color — one value shared by the captured bulb's CSS
    *  and the emissive core + point light standing over it in WebGL. */
   color: string
 }
 
 export const KNOBS_LAMPS: LampDef[] = [
-  { key: 'power', label: 'power', tone: 'ok', color: '#2ee065' },
-  { key: 'drive', label: 'drive', tone: 'warn', color: '#ffab1f' },
-  { key: 'mirror', label: 'mirror', tone: 'signal', color: '#ff5c3f' },
+  { key: 'power', tone: 'ok', color: '#2ee065' },
+  { key: 'mirror', tone: 'signal', color: '#ff5c3f' },
 ]
 
 /** Whether a lamp is lit — the one mapping from the bag to an
@@ -139,8 +152,6 @@ export function lampLit(def: LampDef, values: KnobsValues): boolean {
   switch (def.key) {
     case 'power':
       return values.power
-    case 'drive':
-      return values.speed >= OVERDRIVE_SPEED
     case 'mirror':
       return values.mirror
   }

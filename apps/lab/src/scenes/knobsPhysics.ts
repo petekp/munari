@@ -9,10 +9,13 @@
 //
 // Tuning vocabulary (pinned by knobsPhysics.test.ts):
 //   damping ratio ζ < 1  — underdamped: overshoots, rings, settles.
-//   ζ ≈ 0.3  — a thrown bat switch: one hard overshoot, a visible
-//              wobble or two, dead in half a second.
+//   ζ ≈ 0.6  — the slab carried by its handle: momentum you can see.
 //   ζ ≈ 0.8  — a weighty knob: follows the hand with a whisper of
 //              lag and the barest overshoot, never springy.
+//   ζ = 1.0  — critical: the fastest approach that never crosses its
+//              target. Sealed hardware — it goes where it is thrown
+//              and stops there. Cheap hardware rings; expensive
+//              hardware arrives.
 
 export interface SpringState {
   x: number
@@ -27,7 +30,8 @@ export interface SpringParams {
 }
 
 /** Fixed integration substep. Semi-implicit Euler is stable and energy-
- *  decaying at this rate for every spring below (ωn ≤ ~35 rad/s). */
+ *  decaying at this rate for every spring below (ωn ≤ 40 rad/s, set by
+ *  the lever; the method needs ωn·h < 2 and this is ωn·h = 0.17). */
 const SUBSTEP = 1 / 240
 
 /** Longest frame gap we integrate rather than teleport through — a
@@ -72,11 +76,34 @@ export function dampingRatio(p: SpringParams): number {
   return p.damping / (2 * Math.sqrt(p.stiffness))
 }
 
-/** The bat switch: fast, underdamped, rings once or twice and dies. */
-export const LEVER_SPRING: SpringParams = { stiffness: 900, damping: 19 }
+/**
+ * The bat switch: thrown hard, and it stops dead where it lands.
+ *
+ * ζ is exactly 1 — critical, the fastest approach that never crosses its
+ * target. This replaced { 900, 19 } (ζ = 0.32), which rang: measured at
+ * the lever tip, that spring went 10.61 px PAST its stop and crossed the
+ * target 11 times before it died. A person reads that wobble as light,
+ * hollow plastic. Stiffening it fourfold buys the loss back — both
+ * springs look arrived (inside half a pixel at the tip) at 142 ms, so
+ * the switch is no slower to use; it simply does not ring.
+ *
+ * The no-bounce is structural, not tuned to the current numbers. At
+ * ζ = 1 a spring only overshoots if the donated velocity beats ωn times
+ * the distance left to travel: here 40 × 1.24 rad = 49.6 rad/s, against
+ * a LEVER_THROW of 26. The margin holds for a re-flip at any moment of
+ * the flight — swept every millisecond of the first 300, worst overshoot
+ * 0.00 px — so the lever cannot be abused into a wobble.
+ */
+export const LEVER_SPRING: SpringParams = { stiffness: 1600, damping: 80 }
 
 /** Angular velocity (rad/s) a thumb-flick donates at the moment of a
- *  throw — the lever is thrown, not placed. */
+ *  throw — the lever is thrown, not placed.
+ *
+ *  Against a critically damped lever the thumb owns the LAUNCH and the
+ *  spring owns the arrival: the flick carries the bat past centre in
+ *  25 ms rather than 33, and then has nothing left to say about where it
+ *  stops. That split is the point. Raising it past the 49.6 rad/s margin
+ *  in LEVER_SPRING would buy the ring back. */
 export const LEVER_THROW = 26
 
 /** The knob body: heavy, near-critical, a whisper of lag behind the
@@ -94,11 +121,55 @@ export const PANEL_KICK = 0.045
  *  drop point, and swings once before it rests — momentum you can see. */
 export const PANEL_GLIDE_SPRING: SpringParams = { stiffness: 70, damping: 10 }
 
+/** How far a spring settles BEHIND a target that keeps moving at a
+ *  steady rate. A step response ends on its target; a ramp never does,
+ *  and the standing gap is what a hand reads as lag.
+ *
+ *  The constant is 2ζ/ωn, which reduces to plain c/k — the trailing
+ *  distance does not care how the damping was split into a ratio. For
+ *  the glide spring that is 10/70 = 0.143 s of hand travel. */
+export function rampLag(p: SpringParams, rate: number): number {
+  return (p.damping / p.stiffness) * rate
+}
+
+/** Does the slab glide, or is it pinned to its berth?
+ *
+ *  A carry is a journey, and the glide spring is what a journey feels
+ *  like. A resize is not a journey: the panel stands still and changes
+ *  size, and its berth shifts only because the berth is written in
+ *  terms of w/2. Gliding to a berth that is itself being dragged makes
+ *  the slab trail the hand by `rampLag` — tens of pixels at ordinary
+ *  hand speeds — and then swing for the best part of a second after the
+ *  hand stops. So a hand on the grip pins the slab to its berth, the
+ *  same way a hand on the slab kills the wall bounce. */
+export function berthPinned(resizing: boolean, carried: boolean): boolean {
+  return resizing && !carried
+}
+
 /** How hard the slab leans into its own travel: radians of tilt per
  *  (px/s) of glide velocity, and the hard stop that keeps a flick from
  *  folding the panel over. */
 export const DRAG_TILT = 0.00028
 export const DRAG_TILT_MAX = 0.3
+
+/** The slab shows its face to the middle of the glass: standing yaw at
+ *  the viewport's edge, scaled down linearly toward dead center. */
+export const PANEL_CENTER_YAW = 0.14
+
+/**
+ * Standing yaw (three `rotation.y`, radians) for a slab whose center
+ * sits `centerX` px right of the viewport center on glass reaching
+ * `halfWidth` px to the edge. The sign is the whole law: parked on the
+ * right the yaw is negative, which drops the LEFT edge away from the
+ * camera (−z) and turns the face toward the center — and mirrored on
+ * the left. Clamped at the walls so a bump cannot ask for more lean
+ * than the committed maximum.
+ */
+export function centerFacingYaw(centerX: number, halfWidth: number): number {
+  if (halfWidth <= 0) return 0
+  const off = Math.min(Math.max(centerX / halfWidth, -1), 1)
+  return -off * PANEL_CENTER_YAW
+}
 
 // ── the free-spinning knob — flick it and the bearing carries it ────────
 

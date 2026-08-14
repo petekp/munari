@@ -32,12 +32,16 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
 } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Canvas, flushSync as flushThree, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SurfaceApp, cameraDistance, useSurfaceTexture } from '@petepetrash/munari'
 import { KnobsArt } from './KnobsArt'
 import { KnobsPanel } from './KnobsPanel'
+import { nineSlice, resizeWidth } from './knobsResize'
 import {
   BEZEL_LIP,
   KNOB,
@@ -65,8 +69,16 @@ import {
   knobsValues,
   lampLit,
   panelDrag,
+  panelResize,
   slabOcclusion,
 } from './knobsLaw'
+import {
+  type EnvPixel,
+  parseArtPoints,
+  pathBounds,
+  projectArtPolygon,
+  projectViewportOutline,
+} from './knobsEnvironment'
 import {
   BOUNCE_TILT,
   BOUNCE_TILT_MAX,
@@ -79,6 +91,8 @@ import {
   PANEL_KICK,
   PANEL_RESTITUTION,
   PANEL_SPRING,
+  berthPinned,
+  centerFacingYaw,
   type SpringState,
   reflect,
   stepSpring,
@@ -92,6 +106,13 @@ const OVERLAY_Z = 50
 /** The floating slab: side-rail width, inset from the viewport edges. */
 const RAIL_W = 320
 const INSET = 26
+
+/** The size the rim is machined at, once. Every panel size after that
+ *  is a nine-slice re-fit of this buffer (knobsResize), so this number
+ *  decides nothing about how the rim looks — only that the extrusion is
+ *  built from a fixed reference instead of whatever the first render
+ *  happened to be. */
+const RIM_BUILD = { w: RAIL_W, h: 600 }
 /** Where the captured face sits in front of the rim's front bevel. */
 const FACE_Z = 1.4
 /** Where hardware bases stand, just proud of the face. */
@@ -189,13 +210,40 @@ function SolidWhereMatterIs() {
  * changes (the source is 256×128 and the PMREM target is reused, so a
  * refresh is a handful of tiny GPU passes); a still picture — power
  * down, no knob moving — costs nothing.
+ *
+ * The wrap is a statement about DIRECTION, and it is held to it: the
+ * picture is painted only where the picture actually stands, projected
+ * through three's own equirect mapping by `knobsEnvironment`, and the
+ * rest of the sphere is a dim studio. Camera-facing surfaces therefore
+ * mirror a dark room, which is what is behind the viewer. Painting the
+ * artwork there instead was a measured bug — the knob faces took the
+ * picture's magenta, and which magenta depended on where the slab
+ * stood (docs/spikes/knobs-lighting.md).
  */
 const ENV_W = 256
 const ENV_H = 128
 
+/** Where the picture stands for the room's purposes: the same standoff
+ *  behind the slab its emitters use, so "where the artwork is" is one
+ *  number in this scene rather than two that can drift apart. */
+const ART_ENV_DEPTH = -ART_LIGHT_Z
+
+/** Lay a projected outline into the context as a closed path. Reports
+ *  whether there is a path at all: a degenerate polygon must not leave
+ *  the PREVIOUS path standing for a clip or a fill. */
+function tracePath(ctx: CanvasRenderingContext2D, pts: readonly EnvPixel[]): boolean {
+  if (pts.length < 3) return false
+  ctx.beginPath()
+  ctx.moveTo(pts[0].x, pts[0].y)
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y)
+  ctx.closePath()
+  return true
+}
+
 function ArtEnvironment() {
   const gl = useThree((s) => s.gl)
   const scene = useThree((s) => s.scene)
+  const size = useThree((s) => s.size)
   const state = useMemo(() => {
     const canvas = document.createElement('canvas')
     canvas.width = ENV_W
@@ -204,9 +252,16 @@ function ArtEnvironment() {
     const tex = new THREE.CanvasTexture(canvas)
     tex.mapping = THREE.EquirectangularReflectionMapping
     tex.colorSpace = THREE.SRGBColorSpace
+    // One pixel wide: the whole picture averaged by the browser's own
+    // downscaler, which is how the room learns what color the artwork
+    // is spilling onto it.
+    const meter = document.createElement('canvas')
+    meter.width = 1
+    meter.height = 1
     return {
       ctx,
       tex,
+      meter: meter.getContext('2d', { willReadFrequently: true })!,
       key: '',
       last: 0,
       pmrem: null as THREE.PMREMGenerator | null,
@@ -235,7 +290,7 @@ function ArtEnvironment() {
     const nowMs = performance.now()
     if (nowMs - state.last < 50) return
     const v = knobsValues
-    const key = `${artClock.t}|${artClock.lit.toFixed(2)}|${v.hue}|${v.palette}|${v.layers}|${v.complexity}|${v.speed}|${v.spread}|${v.mirror}`
+    const key = `${artClock.t}|${artClock.lit.toFixed(2)}|${v.hue}|${v.palette}|${v.layers}|${v.complexity}|${v.speed}|${v.spread}|${v.mirror}|${size.width}x${size.height}|${knobsTuning.envArt}|${knobsTuning.envRoom}|${knobsTuning.envSky}`
     if (key === state.key) return
     state.key = key
     state.last = nowMs
@@ -244,40 +299,82 @@ function ArtEnvironment() {
     const { ctx } = state
     const W = ENV_W
     const H = ENV_H
-    const bg = ctx.createLinearGradient(0, 0, 0, H)
-    bg.addColorStop(0, art.backdropFrom)
-    bg.addColorStop(1, art.backdropTo)
+    // The page's own letterbox: the SVG's −100..100 box fitted into the
+    // shorter viewport axis, centered. World px per art unit.
+    const scale = Math.min(size.width, size.height) / 200
+
+    // The picture first, alone on a clear sphere, so the room can be
+    // measured from it and then laid in UNDERNEATH — one pass, no
+    // feedback loop between the two.
+    //
+    // It goes where it is: a plane ART_ENV_DEPTH px behind the slab,
+    // projected through the same equirect mapping the shader samples
+    // with, clipped to the page's own silhouette. A window, not a wall —
+    // and never on the viewer's side of the room.
     ctx.globalAlpha = 1
-    ctx.fillStyle = bg
-    ctx.fillRect(0, 0, W, H)
-    // A soft neutral ceiling, so bare metal always keeps one white glint
-    // even when the art runs dark.
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.clearRect(0, 0, W, H)
+    const gain = Math.max(knobsTuning.envArt, 0)
+    const outline = projectViewportOutline(size.width, size.height, ART_ENV_DEPTH, W, H)
+    if (gain > 0 && tracePath(ctx, outline)) {
+      ctx.save()
+      ctx.clip()
+      const b = pathBounds(outline)
+      const bg = ctx.createLinearGradient(0, b.minY, 0, b.maxY)
+      bg.addColorStop(0, art.backdropFrom)
+      bg.addColorStop(1, art.backdropTo)
+      ctx.globalAlpha = Math.min(gain, 1)
+      ctx.fillStyle = bg
+      ctx.fillRect(b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY)
+      for (const layer of art.layers) {
+        const path = projectArtPolygon(
+          parseArtPoints(layer.points),
+          scale,
+          ART_ENV_DEPTH,
+          W,
+          H,
+        )
+        if (!tracePath(ctx, path)) continue
+        ctx.globalAlpha = Math.min(layer.opacity * gain, 1)
+        ctx.fillStyle = layer.fill
+        ctx.fill()
+      }
+      ctx.restore()
+    }
+    ctx.globalAlpha = 1
+
+    // What the picture has done to everything else. A screen this bright
+    // in a dark room does not leave the room dark: it paints the walls,
+    // and the walls light the panel's FRONT — which is the only way a
+    // picture standing BEHIND the slab can reach a face that points at
+    // the viewer. So the room is the artwork's own average, dimmed to a
+    // bounce. An average, not an image: it is the same in every
+    // direction, so it cannot change when the slab moves. That is the
+    // whole difference between light and the lie this replaced.
+    const { meter } = state
+    meter.clearRect(0, 0, 1, 1)
+    meter.drawImage(ctx.canvas, 0, 0, W / 2, H, 0, 0, 1, 1)
+    const px = meter.getImageData(0, 0, 1, 1).data
+    // Flux, not color: the picture covers only part of its own half, and
+    // the uncovered part spills nothing. Alpha IS that coverage.
+    const cover = px[3] / 255
+    const bounce = Math.max(knobsTuning.envRoom, 0) * cover
+    // A dark room is not a deleted one: a floor survives a dead picture.
+    const ROOM_FLOOR = 4
+    const chan = (c: number) => Math.min(255, Math.round(ROOM_FLOOR + c * bounce))
+    ctx.globalCompositeOperation = 'destination-over'
+    // A soft neutral overhead, so bare metal always keeps one white
+    // glint even when the art runs dark — behind the picture, because
+    // where both claim a direction, what you see is the picture.
+    const sky = Math.min(Math.max(knobsTuning.envSky, 0), 1)
     const ceiling = ctx.createLinearGradient(0, 0, 0, H * 0.2)
-    ceiling.addColorStop(0, 'rgba(255,255,255,0.32)')
+    ceiling.addColorStop(0, `rgba(255,255,255,${sky.toFixed(3)})`)
     ceiling.addColorStop(1, 'rgba(255,255,255,0)')
     ctx.fillStyle = ceiling
     ctx.fillRect(0, 0, W, H * 0.2)
-    // The artwork, twice around the sphere so every reflection angle
-    // finds it — once bright (the page the slab faces), once dim.
-    for (const [cx, gain] of [
-      [W * 0.3, 0.95],
-      [W * 0.82, 0.55],
-    ] as const) {
-      const scale = (H * 0.44) / 100
-      for (const layer of art.layers) {
-        ctx.globalAlpha = layer.opacity * gain
-        ctx.fillStyle = layer.fill
-        ctx.beginPath()
-        layer.points.split(' ').forEach((pair, i) => {
-          const [x, y] = pair.split(',').map(Number)
-          if (i === 0) ctx.moveTo(cx + x * scale, H * 0.56 + y * scale)
-          else ctx.lineTo(cx + x * scale, H * 0.56 + y * scale)
-        })
-        ctx.closePath()
-        ctx.fill()
-      }
-    }
-    ctx.globalAlpha = 1
+    ctx.fillStyle = `rgb(${chan(px[0])}, ${chan(px[1])}, ${chan(px[2])})`
+    ctx.fillRect(0, 0, W, H)
+    ctx.globalCompositeOperation = 'source-over'
     // The blackout: a dead picture stops filling the room. The same
     // `lit` that darkens the page darkens what the metal reflects.
     if (artClock.lit < 0.999) {
@@ -299,8 +396,17 @@ function ArtEnvironment() {
  * The punctual half of the art's light: up to three colored point
  * lights, one per big outer layer, orbiting in the layer's own phase
  * (`artGlow` shares `generateArt`'s math and `artClock`'s clock). These
- * move every frame — the glints they put on the knurl and the levers
- * travel while the art spins, and freeze the instant power drops.
+ * move every frame, so a glint they leave travels while the art spins
+ * and freezes the instant power drops.
+ *
+ * They ship at zero candela, and the rig stays anyway. A punctual light
+ * behind the slab cannot reach a camera-facing surface, and the one
+ * surface that turns away is metal, which has no diffuse term — so the
+ * measured contribution is a rounding error (see `lightArt`). The
+ * artwork lights the front of the panel through the room's bounce
+ * instead. Kept because the dial is how anyone re-tests that claim, and
+ * because a rig that is present and honest at zero beats a deleted one
+ * whose absence has to be re-derived.
  */
 function ArtLightRig() {
   const lights = useRef<(THREE.PointLight | null)[]>([])
@@ -326,6 +432,12 @@ function ArtLightRig() {
       light.position.set(p.x, p.y, ART_LIGHT_Z)
       color.setHSL(src.hue / 360, 0.85, 0.6)
       light.color.copy(color)
+      // Candela, in a scene whose meter is the CSS pixel — the same
+      // unit the window lamps found (lcdReflect). These emitters stand
+      // 100–500 px off the hardware and the falloff is inverse-square,
+      // so a light you can see costs tens of thousands. The reward is
+      // that distance means something: a glint fades as its layer
+      // orbits away instead of tracking the picture's hue alone.
       light.intensity = (0.6 + 2.0 * src.weight) * (1 - hidden) * lit * knobsTuning.lightArt
     })
     for (let i = sources.length; i < 3; i++) {
@@ -336,19 +448,18 @@ function ArtLightRig() {
     if (ambient.current && first) {
       color.setHSL(first.hue / 360, 0.45, 0.5)
       ambient.current.color.copy(color)
-      // Most of the room's bounce IS the picture: cover it and the
-      // fill dies with it. Base intensities read the tuning bag live.
-      ambient.current.intensity =
-        knobsTuning.lightAmbient * (1 - 0.6 * backlight.level) * (0.08 + 0.92 * lit)
+      // A flat tint under everything. The room's real bounce is
+      // `scene.environment`, which already knows which way the picture
+      // is; this only lifts the floor, and it dies with the picture.
+      ambient.current.intensity = knobsTuning.lightAmbient * (0.08 + 0.92 * lit)
     }
     // The studio pair keeps a floor: in a blackout the hardware stays
-    // barely legible — a dark room, not a deleted one.
-    if (key.current)
-      key.current.intensity =
-        knobsTuning.lightKey * (1 - 0.35 * backlight.level) * (0.12 + 0.88 * lit)
-    if (fill.current)
-      fill.current.intensity =
-        knobsTuning.lightFill * (1 - 0.35 * backlight.level) * (0.12 + 0.88 * lit)
+    // barely legible — a dark room, not a deleted one. A studio lamp
+    // does not dim because a panel moved in front of a screen, so it
+    // no longer reads the backlight level: that was a brake on a light
+    // the wrap had already made too bright.
+    if (key.current) key.current.intensity = knobsTuning.lightKey * (0.12 + 0.88 * lit)
+    if (fill.current) fill.current.intensity = knobsTuning.lightFill * (0.12 + 0.88 * lit)
   })
 
   return (
@@ -360,7 +471,6 @@ function ArtLightRig() {
           ref={(el) => {
             lights.current[i] = el
           }}
-          decay={0}
           intensity={0}
         />
       ))}
@@ -516,6 +626,17 @@ function useHardwareAssets() {
       roughness: 0.6,
     })
     chrome.envMapIntensity = 1.2
+    // Painted aluminum, not chrome — a knob top you grip, not jewelry.
+    // It mirrors the room like everything else: the cap once had to run
+    // at zero environment because the wrap put the artwork behind the
+    // viewer, and a camera-facing disc mirrors nothing else. With the
+    // room honest, the compensation goes and the material can say what
+    // it is (docs/spikes/knobs-lighting.md).
+    const capMat = new THREE.MeshStandardMaterial({
+      color: 0xc4c7cb,
+      metalness: 0.35,
+      roughness: 0.8,
+    })
     const steelDark = new THREE.MeshStandardMaterial({
       color: 0x82868c,
       metalness: 0.88,
@@ -560,6 +681,7 @@ function useHardwareAssets() {
       screwHead,
       screwSlot,
       chrome,
+      capMat,
       steelDark,
       graphite,
       indexMat,
@@ -630,7 +752,7 @@ function KnobHardware({
         />
         <mesh
           geometry={assets.cap}
-          material={assets.chrome}
+          material={assets.capMat}
           position={[0, 0, KNOB.skirtHeight - 0.6]}
           raycast={noRaycast}
         />
@@ -1099,13 +1221,15 @@ function FaceShade({ rect, readouts }: { rect: RailRect; readouts: FeatureBox[] 
       }),
     [],
   )
-  useEffect(
-    () => () => {
-      geometry.dispose()
-      mat.dispose()
-    },
-    [geometry, mat],
-  )
+  // Two lifetimes, two effects. They were one, and the shared dependency
+  // list meant a new GEOMETRY — which a resize produces on every single
+  // width — also disposed the material, while that material was still
+  // mounted and drawing. three then had to release its shader program
+  // and link a replacement at the next draw. Measured: 67 program links
+  // across a 100-step drag, none at all when the panel was still. The
+  // rule this broke: dispose a thing on the identity of that thing.
+  useEffect(() => () => geometry.dispose(), [geometry])
+  useEffect(() => () => mat.dispose(), [mat])
 
   useFrame(() => {
     mat.opacity = knobsTuning.shadeMax * backlight.level
@@ -1129,59 +1253,100 @@ function FaceShade({ rect, readouts }: { rect: RailRect; readouts: FeatureBox[] 
  * Children of the Surface mesh, so they ride the rig's tilt and read the
  * capture through the package's own custom-material seam.
  */
+/**
+ * The one material a family of capture-sampling emitters shares.
+ *
+ * A `MeshBasicMaterial` with a map and one without are DIFFERENT shader
+ * programs, so the arrival of the texture is the one moment this has to
+ * recompile. Swapping one texture for another is not: the program is
+ * identical, and flagging `needsUpdate` for it would rebuild every
+ * program the material touches for nothing.
+ */
+function useSharedCaptureMaterial(texture: THREE.Texture | null | undefined) {
+  const material = useMemo(() => new THREE.MeshBasicMaterial({ toneMapped: false }), [])
+  useEffect(() => () => material.dispose(), [material])
+  useLayoutEffect(() => {
+    const had = material.map !== null
+    material.map = texture ?? null
+    if (had !== (material.map !== null)) material.needsUpdate = true
+  }, [material, texture])
+  return material
+}
+
+/**
+ * Point a piece of face hardware at the part of the live capture it
+ * stands over. Writes uvs in place — the attribute already exists at
+ * the right length, so a move costs one pass over it and no allocation.
+ */
+function reprojectUVs(geometry: THREE.BufferGeometry, box: FeatureBox | undefined, rect: RailRect) {
+  if (!box) return
+  const cx = box.x - rect.w / 2
+  const cy = rect.h / 2 - box.y
+  const pos = geometry.attributes.position
+  const uv = geometry.attributes.uv
+  for (let i = 0; i < pos.count; i++) {
+    uv.setXY(i, (pos.getX(i) + cx + rect.w / 2) / rect.w, (pos.getY(i) + cy + rect.h / 2) / rect.h)
+  }
+  uv.needsUpdate = true
+}
+
 function ReadoutWindows({ rect, readouts }: { rect: RailRect; readouts: FeatureBox[] }) {
   const texture = useSurfaceTexture()
-  const windows = useMemo(() => {
-    if (!texture) return []
-    return readouts.map((box) => {
-      const cx = box.x - rect.w / 2
-      const cy = rect.h / 2 - box.y
-      // The geometry IS the rounded rect (the same 4px corner
-      // knobs.css authors), so an opaque material needs no alpha work.
-      const geometry = new THREE.ShapeGeometry(roundedRectShape(box.w, box.h, 4), 8)
-      const pos = geometry.attributes.position
-      const uv = geometry.attributes.uv
-      // ShapeGeometry uvs are raw shape coords; rewrite them to sample
-      // the capture where this window sits on the face (plane uv space:
-      // v = 0 at the bottom, flipY on the capture already agrees).
-      for (let i = 0; i < pos.count; i++) {
-        uv.setXY(
-          i,
-          (pos.getX(i) + cx + rect.w / 2) / rect.w,
-          (pos.getY(i) + cy + rect.h / 2) / rect.h,
-        )
-      }
-      const material = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false })
-      return { geometry, material, cx, cy }
+  // ONE material for every window. They are identical — the same map,
+  // the same settings — and differ only in where they sample, which is
+  // geometry. Building one apiece cost a shader program per window on
+  // every width a drag passed through: 213 ms of compile per second of
+  // dragging, the largest single cost in the gesture (cap-probe34).
+  const material = useSharedCaptureMaterial(texture)
+
+  // Triangulated per SIZE, not per position. Resizing the panel moves a
+  // window; it rarely changes its box. Re-cutting a rounded rect to
+  // move it is the expensive way to do nothing, and earcut was the
+  // second cost the profile named. The sizes are the whole dependency,
+  // so they are the whole key.
+  const sizeKey = readouts.map((b) => `${b.w}x${b.h}`).join(',')
+  const geoms = useMemo(() => {
+    if (!sizeKey) return []
+    // The geometry IS the rounded rect (the same 4px corner knobs.css
+    // authors), so an opaque material needs no alpha work.
+    return sizeKey.split(',').map((s) => {
+      const [w, h] = s.split('x').map(Number)
+      return new THREE.ShapeGeometry(roundedRectShape(w, h, 4), 8)
     })
-  }, [texture, readouts, rect.w, rect.h])
-  useEffect(
-    () => () => {
-      for (const w of windows) {
-        w.geometry.dispose()
-        w.material.dispose()
-      }
-    },
-    [windows],
-  )
+  }, [sizeKey])
+  useEffect(() => () => geoms.forEach((g) => g.dispose()), [geoms])
+
+  // ShapeGeometry uvs are raw shape coords; rewrite them to sample the
+  // capture where this window sits on the face (plane uv space: v = 0
+  // at the bottom, flipY on the capture already agrees). This is the
+  // only part a move has to redo — a write over existing buffers, no
+  // allocation and no re-triangulation.
+  useLayoutEffect(() => {
+    geoms.forEach((g, i) => reprojectUVs(g, readouts[i], rect))
+  }, [geoms, readouts, rect])
 
   // The emission dial. THREE.Color carries components past 1 without
   // complaint, so >1 overdrives the authored paint and <1 dims it.
   useFrame(() => {
-    for (const w of windows) w.material.color.setScalar(knobsTuning.lcdEmit)
+    material.color.setScalar(knobsTuning.lcdEmit)
   })
 
+  if (!texture) return null
   return (
     <>
-      {windows.map((w, i) => (
-        <mesh
-          key={i}
-          geometry={w.geometry}
-          material={w.material}
-          position={[w.cx, w.cy, 0.04]}
-          raycast={noRaycast}
-        />
-      ))}
+      {geoms.map((g, i) => {
+        const box = readouts[i]
+        if (!box) return null
+        return (
+          <mesh
+            key={i}
+            geometry={g}
+            material={material}
+            position={[box.x - rect.w / 2, rect.h / 2 - box.y, 0.04]}
+            raycast={noRaycast}
+          />
+        )
+      })}
     </>
   )
 }
@@ -1202,52 +1367,48 @@ function ReadoutWindows({ rect, readouts }: { rect: RailRect; readouts: FeatureB
  */
 function DialRings({ rect, dials }: { rect: RailRect; dials: FeatureBox[] }) {
   const texture = useSurfaceTexture()
-  const rings = useMemo(() => {
-    if (!texture) return []
-    return dials.map((box) => {
-      const cx = box.x - rect.w / 2
-      const cy = rect.h / 2 - box.y
-      const geometry = new THREE.RingGeometry(box.w / 2 - 9, box.w / 2 + 0.5, 48)
-      const pos = geometry.attributes.position
-      const uv = geometry.attributes.uv
-      // Same rewrite as the windows: sample the capture where this
-      // annulus sits on the face.
-      for (let i = 0; i < pos.count; i++) {
-        uv.setXY(
-          i,
-          (pos.getX(i) + cx + rect.w / 2) / rect.w,
-          (pos.getY(i) + cy + rect.h / 2) / rect.h,
-        )
-      }
-      const material = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false })
-      return { geometry, material, cx, cy }
-    })
-  }, [texture, dials, rect.w, rect.h])
-  useEffect(
-    () => () => {
-      for (const r of rings) {
-        r.geometry.dispose()
-        r.material.dispose()
-      }
-    },
-    [rings],
-  )
+  // Same two economies as the windows above, for the same measured
+  // reasons: one shared material, and an annulus cut once per diameter.
+  // A rotary is 66px on every panel width — hardware re-lays-out, it
+  // does not scale — so in practice this is cut once and then only
+  // ever re-aimed.
+  const material = useSharedCaptureMaterial(texture)
+
+  const sizeKey = dials.map((b) => `${b.w}`).join(',')
+  const geoms = useMemo(() => {
+    if (!sizeKey) return []
+    return sizeKey
+      .split(',')
+      .map((s) => new THREE.RingGeometry(Number(s) / 2 - 9, Number(s) / 2 + 0.5, 48))
+  }, [sizeKey])
+  useEffect(() => () => geoms.forEach((g) => g.dispose()), [geoms])
+
+  // Same rewrite as the windows: sample the capture where this annulus
+  // sits on the face.
+  useLayoutEffect(() => {
+    geoms.forEach((g, i) => reprojectUVs(g, dials[i], rect))
+  }, [geoms, dials, rect])
 
   useFrame(() => {
-    for (const r of rings) r.material.color.setScalar(knobsTuning.lcdEmit)
+    material.color.setScalar(knobsTuning.lcdEmit)
   })
 
+  if (!texture) return null
   return (
     <>
-      {rings.map((r, i) => (
-        <mesh
-          key={i}
-          geometry={r.geometry}
-          material={r.material}
-          position={[r.cx, r.cy, 0.04]}
-          raycast={noRaycast}
-        />
-      ))}
+      {geoms.map((g, i) => {
+        const box = dials[i]
+        if (!box) return null
+        return (
+          <mesh
+            key={i}
+            geometry={g}
+            material={material}
+            position={[box.x - rect.w / 2, rect.h / 2 - box.y, 0.04]}
+            raycast={noRaycast}
+          />
+        )
+      })}
     </>
   )
 }
@@ -1310,9 +1471,18 @@ function SlabRim({ rect }: { rect: RailRect }) {
   // The chamfer's cut is baked into vertices, so those two tuning knobs
   // re-machine the extrusion (rev); the material scalars drip per frame.
   const rev = useSyncExternalStore(subscribeTuning, getTuningRev)
+  // Machined once, at the size it happened to be built for. A resize
+  // does NOT come back here: extruding a bevelled rounded rect is far
+  // too expensive to do per drag tick, so the chamfer is nine-sliced
+  // instead — corners translate, straight spans stretch, normals stay
+  // as machined (knobsResize).
   const assets = useMemo(() => {
     void rev // the geometry knobs in knobsTuning changed
-    const shape = roundedRectShape(rect.w + BEZEL_LIP * 2, rect.h + BEZEL_LIP * 2, PANEL_RADIUS + BEZEL_LIP)
+    // A fixed reference size, not the size it first mounted at: the
+    // re-fit is exact for any target, so the machined buffer should be
+    // deterministic rather than an accident of first render.
+    const built = RIM_BUILD
+    const shape = roundedRectShape(built.w + BEZEL_LIP * 2, built.h + BEZEL_LIP * 2, PANEL_RADIUS + BEZEL_LIP)
     const geometry = new THREE.ExtrudeGeometry(shape, {
       depth: SLAB_DEPTH,
       bevelEnabled: true,
@@ -1326,13 +1496,33 @@ function SlabRim({ rect }: { rect: RailRect }) {
       curveSegments: 24,
     })
     geometry.translate(0, 0, -SLAB_DEPTH)
+    const position = geometry.getAttribute('position') as THREE.BufferAttribute
     const material = new THREE.MeshStandardMaterial({
       color: 0xe8ebef,
       metalness: knobsTuning.rimMetal,
       roughness: knobsTuning.rimRough,
     })
-    return { geometry, material }
-  }, [rect.w, rect.h, rev])
+    // Kept unremapped, so every re-fit starts from the machined shape
+    // and rounding cannot compound across a long drag.
+    return { geometry, material, built, base: Float32Array.from(position.array as Float32Array) }
+  }, [rev])
+
+  useLayoutEffect(() => {
+    const position = assets.geometry.getAttribute('position') as THREE.BufferAttribute
+    nineSlice(
+      assets.base,
+      position.array as Float32Array,
+      assets.built.w,
+      assets.built.h,
+      rect.w,
+      rect.h,
+    )
+    position.needsUpdate = true
+    // The silhouette moved, so the things that cull and light against it
+    // must be told. Normals do not: a rigid corner and a stretched
+    // straight span both leave every normal pointing where it did.
+    assets.geometry.computeBoundingSphere()
+  }, [assets, rect.w, rect.h])
   useEffect(
     () => () => {
       assets.geometry.dispose()
@@ -1439,8 +1629,34 @@ function PanelRig({
     } else {
       m.grab = null
     }
-    stepSpring(m.pose.x, m.target.x, PANEL_GLIDE_SPRING, dt)
-    stepSpring(m.pose.y, m.target.y, PANEL_GLIDE_SPRING, dt)
+    if (berthPinned(panelResize.active, m.carried)) {
+      // A hand on the corner is not a throw. The glide spring is the
+      // slab's momentum AFTER a carry; a resize has no travel to have
+      // momentum about — the berth shift is bookkeeping on w/2. Run one
+      // through the other and the berth runs away from the hand: it
+      // moves at half the hand's speed, and a spring this soft trails a
+      // ramp by 2ζ/ωn × rate. Measured on this very integrator: 15 px
+      // behind at a slow 200 px/s, 46 px at an ordinary 600, 108 px at
+      // 1400 — then 0.88 s of swing across the mark 11 times once the
+      // hand stops. So while the grip is held, the un-carried slab IS
+      // its berth. Same rule the walls already keep: the hand is not a
+      // bounce, and it is not a glide either.
+      //
+      // The berth comes from `rect` here, not from the effect below
+      // that mirrors it: the effect runs a commit later, and during a
+      // drag every commit is a frame of lag. Zeroing the velocity is
+      // not tidiness — `leanY`/`leanX` read it, so a nonzero one would
+      // tilt the slab as if it were being flown across the glass.
+      m.target.x = rect.worldX
+      m.target.y = rect.worldY
+      m.pose.x.x = rect.worldX
+      m.pose.x.v = 0
+      m.pose.y.x = rect.worldY
+      m.pose.y.v = 0
+    } else {
+      stepSpring(m.pose.x, m.target.x, PANEL_GLIDE_SPRING, dt)
+      stepSpring(m.pose.y, m.target.y, PANEL_GLIDE_SPRING, dt)
+    }
 
     // The viewport's edges are walls: a thrown slab bumps and keeps
     // most of its speed; a held one is pressed dead against the glass
@@ -1460,7 +1676,11 @@ function PanelRig({
     const clampTilt = (n: number) => Math.max(-DRAG_TILT_MAX, Math.min(DRAG_TILT_MAX, n))
     const leanY = clampTilt(m.pose.x.v * DRAG_TILT)
     const leanX = clampTilt(-m.pose.y.v * DRAG_TILT)
-    stepSpring(m.ry, m.px * 0.055 + leanY, PANEL_SPRING, dt)
+    // Wherever it stands, the slab shows its face to the middle of the
+    // glass — a standing yaw from its own sprung position, so a carry
+    // re-aims it through the same sway spring instead of snapping.
+    const facing = centerFacingYaw(m.pose.x.x, window.innerWidth / 2)
+    stepSpring(m.ry, facing + m.px * 0.055 + leanY, PANEL_SPRING, dt)
     stepSpring(m.rx, -m.py * 0.04 + leanX, PANEL_SPRING, dt)
 
     // Publish the slab's footprint on the art plane, then how much
@@ -1488,22 +1708,221 @@ function PanelRig({
   )
 }
 
-export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
+/** Panel-local coordinates: the face's centre is the slab's origin. */
+const toLocal = (rectNow: RailRect, f: Feature): [number, number] => [
+  f.x - rectNow.w / 2,
+  rectNow.h / 2 - f.y,
+]
+
+interface StageHandle {
+  setRect: Dispatch<SetStateAction<RailRect | null>>
+  setFeatures: Dispatch<SetStateAction<PanelFeatures | null>>
+}
+
+/**
+ * Everything the panel is, owned by a component the THREE reconciler
+ * renders — and that is the entire point of this component existing.
+ *
+ * The measurement is synchronous: one pointer event writes `--knb-w`,
+ * forces the reflow and reads the arrangement back. Getting that reading
+ * to the slab, the rim and the hardware in the SAME event is the whole
+ * problem, and where the state lives decides whether it is possible.
+ *
+ * State held by the component that renders `<Canvas>` reaches the three
+ * root through Canvas's own layout effect, which `await`s
+ * `root.configure()` before calling `root.render(children)`. That await
+ * makes the handover a microtask, so the three root commits a frame later
+ * and NOTHING flushed from the DOM side can pull it forward — measured:
+ * with `react-dom`'s `flushSync` around the drag, the host's box still
+ * ended 21 of 23 pointer events on the previous step. Every consumer
+ * below was therefore exactly one drag step behind the face painted for
+ * them: a 15px band of the panel cut off the right edge on every frame of
+ * every drag, and at a container query breakpoint a whole arrangement
+ * (panel 463 tall inside a host still declaring 721) squashed into the
+ * top 0.64 of its own texture.
+ *
+ * State held HERE schedules on the three root directly, where r3f's own
+ * `flushSync` commits it inside the event. Measured on the same probe:
+ * plain setState async, `flushThree(setState)` synchronous.
+ */
+function PanelStage({
+  handle,
+  widthNow,
+  assets,
+  kick,
+  onHost,
+}: {
+  handle: RefObject<StageHandle | null>
+  widthNow: RefObject<number>
+  assets: HardwareAssets
+  kick: RefObject<((dir: number) => void) | null>
+  onHost: (el: HTMLElement | null) => void
+}) {
   const [rect, setRect] = useState<RailRect | null>(null)
   const [features, setFeatures] = useState<PanelFeatures | null>(null)
+  // Published during render, not from an effect: the drag's very first
+  // measurement can arrive before any effect in this tree has run, and a
+  // setter's identity never changes, so there is nothing to keep in sync.
+  handle.current = { setRect, setFeatures }
+
+  // Seed the box, and follow the window. A DRAG does not come through
+  // here — it measures the arrangement it produced and sets the whole
+  // rect, worldX included. This is the other two ways the box changes:
+  // first paint, and a viewport that resized under a panel of fixed width.
+  useLayoutEffect(() => {
+    const place = () => {
+      const w = widthNow.current
+      setRect((prev) => ({
+        w,
+        h: prev?.h ?? Math.max(430, window.innerHeight - INSET * 2),
+        worldX: window.innerWidth / 2 - INSET - w / 2,
+        worldY: 0,
+      }))
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [widthNow])
+
+  return (
+    <>
+      {rect && rect.w > 0 && rect.h > 0 && (
+        <PanelRig rect={rect} kick={kick}>
+          <BacklightCorona rect={rect} />
+          <SlabRim rect={rect} />
+          <SurfaceApp
+            label="knobs-panel"
+            width={rect.w}
+            height={rect.h}
+            roughness={0.5}
+            metalness={0.18}
+            // DOM light, held to a low floor: enough for the lamp
+            // halos and engravings to keep a breath of life when the
+            // room dims, low enough that the charcoal body stays
+            // charcoal. The LCD windows do NOT ride this term — they
+            // are pure emitters (ReadoutWindows, below).
+            emissiveIntensity={knobsTuning.lightDom}
+            frustumCulled={false}
+            userData={{ matter: true }}
+            position={[0, 0, FACE_Z]}
+            onHost={onHost}
+            content={<KnobsPanel />}
+          >
+            <planeGeometry args={[rect.w, rect.h]} />
+            <ReadoutWindows rect={rect} readouts={features?.readouts ?? NO_READOUTS} />
+            <DialRings rect={rect} dials={features?.dials ?? NO_READOUTS} />
+          </SurfaceApp>
+          <FaceShade rect={rect} readouts={features?.readouts ?? NO_READOUTS} />
+          <ReadoutLamps rect={rect} readouts={features?.readouts ?? NO_READOUTS} />
+          {features && (
+            <>
+              {features.knobs.map((f, i) => {
+                const def = KNOBS_ROTARY[i]
+                if (!def) return null
+                const [x, y] = toLocal(rect, f)
+                return <KnobHardware key={def.key} def={def} x={x} y={y} assets={assets} />
+              })}
+              {features.toggles.map((f, i) => {
+                const def = KNOBS_TOGGLES[i]
+                if (!def) return null
+                const [x, y] = toLocal(rect, f)
+                return (
+                  <ToggleHardware key={def.key} tKey={def.key} x={x} y={y} assets={assets} kick={kick} />
+                )
+              })}
+              {features.lamps.map((f, i) => {
+                const def = KNOBS_LAMPS[i]
+                if (!def) return null
+                const [x, y] = toLocal(rect, f)
+                return <LampHardware key={def.key} def={def} x={x} y={y} assets={assets} />
+              })}
+              {features.screws.map((f, i) => {
+                const [x, y] = toLocal(rect, f)
+                return (
+                  <ScrewHardware key={i} x={x} y={y} clock={SCREW_CLOCK[i % SCREW_CLOCK.length]} assets={assets} />
+                )
+              })}
+            </>
+          )}
+        </PanelRig>
+      )}
+    </>
+  )
+}
+
+export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
   const hostCleanup = useRef<(() => void) | null>(null)
   const kick = useRef<((dir: number) => void) | null>(null)
   const assets = useHardwareAssets()
+  // The panel's own state lives inside the Canvas — see `PanelStage`. This
+  // is the line to it.
+  const stage = useRef<StageHandle | null>(null)
 
-  useLayoutEffect(() => {
-    const measure = () => {
-      const w = RAIL_W
-      const h = Math.max(430, window.innerHeight - INSET * 2)
-      setRect({ w, h, worldX: window.innerWidth / 2 - INSET - w / 2, worldY: 0 })
+  // The panel's WIDTH is what a hand can drag. Its HEIGHT is not: the
+  // panel is a container query container, so its width decides its
+  // arrangement and its arrangement decides its height. The measure pass
+  // below reports what the DOM settled on, and the slab, the capture and
+  // the rim take their size from that.
+  //
+  // A ref, not state. It used to be state so that a commit would re-run
+  // the placement effect, but the drag path never needed that commit: it
+  // measures the arrangement its own write produced and publishes the
+  // whole rect from one reading. The setState was pure latency — a second
+  // generation of the same number, arriving a frame later, racing the
+  // first.
+  const widthNow = useRef(RAIL_W)
+
+  // The hand's line to the DOM. `onHost` fills this in; a drag calls it
+  // instead of waiting for React, because the panel lives inside the
+  // Surface's OWN root and a prop would need two commits and a reflow to
+  // arrive. See the comment on `resize` below for what one call does.
+  const resizeNow = useRef<((w: number) => void) | null>(null)
+
+  // Set while a corner is being dragged. See `.knb-resizing` in
+  // knobs.css for what the flag buys and why it is not left on.
+  const resizingNow = useRef<((on: boolean) => void) | null>(null)
+
+  // The corner grip armed the gesture; the geometry happens here, on the
+  // real screen pointer, for the same reason the carry does — the
+  // forwarded stream's coordinates live on the panel being resized.
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      // Trusted only. The relay dispatches forwarded copies of every
+      // move into the parked DOM, and those bubble to this same window
+      // carrying CAPTURE coordinates — seeding the origin from one puts
+      // the hand 1100px from where it really is, and the panel jumps to
+      // its stop on the first twitch. isTrusted is the seam.
+      if (!e.isTrusted || !panelResize.active) return
+      // The first real move seeds the origin the DOM could not supply,
+      // and is also the moment `will-change` stops being a lie.
+      if (Number.isNaN(panelResize.startX)) {
+        panelResize.startX = e.clientX
+        resizingNow.current?.(true)
+      }
+      const w = resizeWidth(panelResize.startW, e.clientX - panelResize.startX, window.innerWidth)
+      if (w === widthNow.current) return
+      widthNow.current = w
+      // One call, and it finishes the whole step before this event
+      // returns: write `--knb-w`, force the reflow, read the arrangement
+      // back, and commit it to the slab, the rim and every piece of
+      // hardware. There is no second half to keep in step with, which is
+      // why there is no `flushSync` here any more — see `resize` below.
+      resizeNow.current?.(w)
     }
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
+    const onUp = (e: PointerEvent) => {
+      if (!e.isTrusted) return
+      panelResize.active = false
+      panelResize.startX = Number.NaN
+      resizingNow.current?.(false)
+    }
+    window.addEventListener('pointermove', onMove, true)
+    window.addEventListener('pointerup', onUp, true)
+    window.addEventListener('pointercancel', onUp, true)
+    return () => {
+      window.removeEventListener('pointermove', onMove, true)
+      window.removeEventListener('pointerup', onUp, true)
+      window.removeEventListener('pointercancel', onUp, true)
+    }
   }, [])
 
   // Where each control sits comes from the captured DOM itself — the
@@ -1513,10 +1932,25 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
     hostCleanup.current?.()
     hostCleanup.current = null
     if (!el) {
-      setFeatures(null)
+      stage.current?.setFeatures(null)
       return
     }
     let raf = 0
+    let watched: Element | null = null
+    // The width the panel is being asked for. Written straight onto the
+    // host so the cascade carries it — no render, no root, no props.
+    el.style.setProperty('--knb-w', `${widthNow.current}px`)
+
+    // The PANEL is watched, never the host. The host's box is now a
+    // function of the panel's, written by `measure` below — observing
+    // it would make this a callback that resizes the very thing it just
+    // heard about, which is a ResizeObserver loop by definition.
+    // Watching the panel loses nothing: both ways the arrangement can
+    // change, a dragged width and a reflow at a fixed width, move ITS
+    // box. It is attached from inside `measure` because the panel
+    // belongs to the Surface's own root and does not exist yet here.
+    const ro = new ResizeObserver(() => measure())
+
     const measure = () => {
       const root = el.querySelector('.knb-panel') as HTMLElement | null
       const base = root?.getBoundingClientRect()
@@ -1524,6 +1958,31 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
         raf = requestAnimationFrame(measure)
         return
       }
+      if (watched !== root) {
+        if (watched) ro.unobserve(watched)
+        ro.observe(root)
+        watched = root
+      }
+      // Measure only. The host's box belongs to the package, which sizes
+      // it from `rect` in a layout effect, and `rect` is set below — one
+      // writer, one number.
+      //
+      // This used to write the box here as well, to get ahead of a React
+      // commit that ran late. Two writers for one box is a race, and it
+      // lost: every drag step wrote the box three times — correct, then
+      // the PREVIOUS step's box on top from a commit still carrying the
+      // old `rect`, then correct again. At a container query breakpoint
+      // the middle write is a whole tier, 835px of host declared around
+      // a 721px panel. `drawElementImage` rasterizes the host at its own
+      // box and the mesh maps the canvas's, so a short panel in a tall
+      // host lands in the top 463/721 = 0.64 of its own texture: the
+      // face squashed into the upper two-thirds of the slab with the
+      // hardware standing at full-height positions. What made the second
+      // writer unnecessary is `flushSync` in the drag above — the commit
+      // now happens inside the same pointer event this measurement does,
+      // so there is nothing left to get ahead of.
+      const w = Math.round(base.width)
+      const h = Math.round(base.height)
       const centers = (sel: string): Feature[] =>
         Array.from(root.querySelectorAll(sel)).map((n) => {
           const r = (n as HTMLElement).getBoundingClientRect()
@@ -1547,21 +2006,75 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
         readouts: boxes('.knb-dial-value'),
         dials: boxes('.knb-dial'),
       }
-      setFeatures((prev) => (featuresEqual(prev, next) ? prev : next))
+      // Both, in one commit, on the root that can actually take it now.
+      //
+      // `flushThree` is r3f's flush, not `react-dom`'s, and the
+      // difference is the whole fix: these setters belong to `PanelStage`,
+      // which the three reconciler renders, and only that reconciler's
+      // flush commits them synchronously. Left to their own schedule they
+      // landed a frame later, which put every consumer one drag step
+      // behind the face painted for them.
+      //
+      // The WHOLE rect, from one reading. Width and height used to arrive
+      // on separate commits — the height from here, the width from the
+      // drag's `setWidth` — and the commit in between handed the Surface
+      // a width one step out of date, which the package then wrote onto
+      // the host. Measuring both from the same `base` makes that gap
+      // unrepresentable.
+      //
+      // The height cannot oscillate: the panel's height is auto, so it
+      // measures its content whatever the host is set to, and the next
+      // pass reads the same number back.
+      const commit = stage.current
+      if (!commit) return
+      flushThree(() => {
+        commit.setFeatures((prev) => (featuresEqual(prev, next) ? prev : next))
+        commit.setRect((prev) =>
+          prev && prev.w === w && Math.abs(prev.h - h) < 1
+            ? prev
+            : { w, h, worldX: window.innerWidth / 2 - INSET - w / 2, worldY: prev?.worldY ?? 0 },
+        )
+      })
     }
+
+    // One drag step, start to finish, inside the pointer event: ask for
+    // the width, read back the arrangement it produced.
+    // `getBoundingClientRect` in `measure` forces the reflow, so the
+    // read is of the NEW layout, not the last one — which is what stops
+    // the dials trailing the hand. The container query resolves inside
+    // that same forced layout: swept across both breakpoints, the
+    // in-event read matched the settled height at every width, and no
+    // dial moved by so much as a pixel afterwards.
+    const resize = (w: number) => {
+      // `--knb-w` and nothing else. The panel's width is this custom
+      // property; the HOST's box is the package's business, and it
+      // arrives with the same commit as everything else — which is now
+      // THIS commit, because `measure` flushes the three root before it
+      // returns.
+      //
+      // Writing the host's width here as well was tried, on the argument
+      // that it is a known number rather than a measurement and so
+      // cannot race. It can: the write lands in the event and the
+      // package's identical write lands in the commit, and for the two
+      // frames in between the host is a step wider than the canvas that
+      // scales its replay. Measured, both breakpoints, every run.
+      el.style.setProperty('--knb-w', `${w}px`)
+      measure()
+    }
+    resizeNow.current = resize
+
+    // One class, on the capture root, for the length of one gesture.
+    const setResizing = (on: boolean) => el.classList.toggle('knb-resizing', on)
+    resizingNow.current = setResizing
+
     raf = requestAnimationFrame(measure)
-    const ro = new ResizeObserver(() => measure())
-    ro.observe(el)
     hostCleanup.current = () => {
       cancelAnimationFrame(raf)
       ro.disconnect()
+      resizeNow.current = null
+      resizingNow.current = null
     }
   }, [])
-
-  const toLocal = (rectNow: RailRect, f: Feature): [number, number] => [
-    f.x - rectNow.w / 2,
-    rectNow.h / 2 - f.y,
-  ]
 
   return (
     <div className="knb-page">
@@ -1583,66 +2096,7 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
         <ArtEnvironment />
         <ArtLightRig />
         <TuningDrip assets={assets} />
-        {rect && rect.w > 0 && rect.h > 0 && (
-          <PanelRig rect={rect} kick={kick}>
-            <BacklightCorona rect={rect} />
-            <SlabRim rect={rect} />
-            <SurfaceApp
-              label="knobs-panel"
-              width={rect.w}
-              height={rect.h}
-              roughness={0.5}
-              metalness={0.18}
-              // DOM light, held to a low floor: enough for the lamp
-              // halos and engravings to keep a breath of life when the
-              // room dims, low enough that the charcoal body stays
-              // charcoal. The LCD windows do NOT ride this term — they
-              // are pure emitters (ReadoutWindows, below).
-              emissiveIntensity={knobsTuning.lightDom}
-              frustumCulled={false}
-              userData={{ matter: true }}
-              position={[0, 0, FACE_Z]}
-              onHost={onHost}
-              content={<KnobsPanel width={rect.w} height={rect.h} />}
-            >
-              <planeGeometry args={[rect.w, rect.h]} />
-              <ReadoutWindows rect={rect} readouts={features?.readouts ?? NO_READOUTS} />
-              <DialRings rect={rect} dials={features?.dials ?? NO_READOUTS} />
-            </SurfaceApp>
-            <FaceShade rect={rect} readouts={features?.readouts ?? NO_READOUTS} />
-            <ReadoutLamps rect={rect} readouts={features?.readouts ?? NO_READOUTS} />
-            {features && (
-              <>
-                {features.knobs.map((f, i) => {
-                  const def = KNOBS_ROTARY[i]
-                  if (!def) return null
-                  const [x, y] = toLocal(rect, f)
-                  return <KnobHardware key={def.key} def={def} x={x} y={y} assets={assets} />
-                })}
-                {features.toggles.map((f, i) => {
-                  const def = KNOBS_TOGGLES[i]
-                  if (!def) return null
-                  const [x, y] = toLocal(rect, f)
-                  return (
-                    <ToggleHardware key={def.key} tKey={def.key} x={x} y={y} assets={assets} kick={kick} />
-                  )
-                })}
-                {features.lamps.map((f, i) => {
-                  const def = KNOBS_LAMPS[i]
-                  if (!def) return null
-                  const [x, y] = toLocal(rect, f)
-                  return <LampHardware key={def.key} def={def} x={x} y={y} assets={assets} />
-                })}
-                {features.screws.map((f, i) => {
-                  const [x, y] = toLocal(rect, f)
-                  return (
-                    <ScrewHardware key={i} x={x} y={y} clock={SCREW_CLOCK[i % SCREW_CLOCK.length]} assets={assets} />
-                  )
-                })}
-              </>
-            )}
-          </PanelRig>
-        )}
+        <PanelStage handle={stage} widthNow={widthNow} assets={assets} kick={kick} onHost={onHost} />
       </Canvas>
 
       {chips}

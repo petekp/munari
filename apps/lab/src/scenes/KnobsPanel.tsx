@@ -34,6 +34,7 @@ import {
   knobsValues,
   lampLit,
   panelDrag,
+  panelResize,
 } from './knobsLaw'
 import './knobs.css'
 
@@ -174,34 +175,64 @@ const ToggleSwitch = memo(function ToggleSwitch({
       className="knb-toggle"
       data-on={on}
       aria-pressed={on}
+      // The legend is silkscreen at the foot of the cell now, outside the
+      // button, so the button has to carry its own name.
+      aria-label={def.label}
       onClick={() => onChange(def, !on)}
     >
-      <span className="knb-toggle-legend">on</span>
       <span className="knb-toggle-well">
         <span className="knb-toggle-slot" />
       </span>
-      <span className="knb-toggle-label">{def.label}</span>
     </button>
   )
 })
 
-const IndicatorLamp = memo(function IndicatorLamp({ def, on }: { def: LampDef; on: boolean }) {
+/**
+ * A switch and the lamp that reports on it, in one cell, read top to
+ * bottom: lever, lamp, legend. The panel's order of operations, in the
+ * order a hand meets it — you throw the switch, the lamp under it
+ * answers, and the silkscreen at the foot says which circuit that was.
+ *
+ * Only the lever is the button. The lamp is outside it because an
+ * indicator is read, not pressed, and every press of one would otherwise
+ * throw the switch. The legend is outside it because it is paint on a
+ * panel, not a control — which costs the button its text, so it carries
+ * an `aria-label` instead.
+ *
+ * The lamp is `aria-hidden`: it reports the state the button already
+ * publishes as `aria-pressed`.
+ */
+const LAMP_BY_KEY = new Map(KNOBS_LAMPS.map((l) => [l.key, l]))
+
+const SwitchCell = memo(function SwitchCell({
+  def,
+  lamp,
+  on,
+  lit,
+  onChange,
+}: {
+  def: ToggleDef
+  lamp: LampDef | undefined
+  on: boolean
+  lit: boolean
+  onChange: (def: ToggleDef, v: boolean) => void
+}) {
   return (
-    <div className="knb-lamp" data-on={on} data-tone={def.tone}>
-      <span className="knb-lamp-bezel">
-        <span className="knb-lamp-bulb" />
-      </span>
-      <span className="knb-lamp-label">{def.label}</span>
+    <div className="knb-switch">
+      <ToggleSwitch def={def} on={on} onChange={onChange} />
+      {lamp && (
+        <span className="knb-lamp" data-on={lit} data-tone={lamp.tone} aria-hidden>
+          <span className="knb-lamp-bezel">
+            <span className="knb-lamp-bulb" />
+          </span>
+        </span>
+      )}
+      <span className="knb-toggle-label">{def.label}</span>
     </div>
   )
 })
 
-export interface KnobsPanelProps {
-  width: number
-  height: number
-}
-
-export function KnobsPanel({ width, height }: KnobsPanelProps) {
+export function KnobsPanel() {
   const [values, setValues] = useState<KnobsValues>(() => ({ ...knobsValues }))
   const dialDrag = useRef<DialDrag | null>(null)
   const spin = useRef<{ raf: number } | null>(null)
@@ -325,10 +356,23 @@ export function KnobsPanel({ width, height }: KnobsPanelProps) {
   return (
     /* borderRadius inline from the same constant the rim mesh extrudes —
      * Surface's radius:'auto' reads it off this computed style, so the
-     * DOM stays the one place the corner is authored. */
+     * DOM stays the one place the corner is authored.
+     *
+     * NEITHER dimension is a prop. The width arrives as `--knb-w`, a
+     * custom property the scene writes on the host element, because a
+     * prop would have to travel React → the Surface's OWN root →
+     * commit → layout before it reached this box, and a hand dragging
+     * a corner outruns that every frame. A custom property is one
+     * style write, and the reflow is the next thing the browser does.
+     * The height then falls out of the arrangement: the panel is a
+     * container query container (knobs.css), so its rows choose their
+     * own layout from whatever width they were handed. The scene
+     * measures the result and sizes the slab, the capture and the rim
+     * to it — the DOM stays the retained model, including for how tall
+     * the aluminum is. */
     <div
       className="knb-panel"
-      style={{ width, height, borderRadius: PANEL_RADIUS }}
+      style={{ borderRadius: PANEL_RADIUS }}
       onPointerMove={onPointerMove}
       onPointerUp={endDialDrag}
       onPointerCancel={endDialDrag}
@@ -346,8 +390,33 @@ export function KnobsPanel({ width, height }: KnobsPanelProps) {
         <span className="knb-handle-grip" aria-hidden />
       </div>
 
+      {/* The corner grip. Same split as the carry handle: this only ARMS
+        * the gesture and records where it started, because these
+        * coordinates live on the panel the gesture is about to resize.
+        * The scene reads the real screen pointer from here on. */}
+      <div
+        className="knb-resize"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="drag to resize panel"
+        onPointerDown={(e) => {
+          panelResize.active = true
+          // The width the drag starts from is read off the panel, not
+          // held in React. Nothing about this gesture goes through a
+          // render, which is the point.
+          const root = (e.currentTarget as HTMLElement).parentElement
+          panelResize.startW = Math.round(root?.getBoundingClientRect().width ?? 0)
+          // Not e.clientX: a forwarded coordinate lives on the panel,
+          // and this grip is about to move. The scene seeds the origin
+          // from the first REAL pointer move instead.
+          panelResize.startX = Number.NaN
+        }}
+      >
+        <span className="knb-resize-grip" aria-hidden />
+      </div>
+
       <div className="knb-panel-head">
-        <span className="knb-panel-title">controls</span>
+        <span className="knb-panel-title">svg control board</span>
         <span className="knb-panel-badge">pp-01</span>
       </div>
 
@@ -363,21 +432,29 @@ export function KnobsPanel({ width, height }: KnobsPanelProps) {
         ))}
       </div>
 
+      {/* Switches and their annunciators, one cell each. The lamps used
+        * to be a separate row across the panel's foot, which put
+        * "mirror" the light a full arrangement away from "mirror" the
+        * switch and printed the word twice. */}
       <div className="knb-toggles">
-        {KNOBS_TOGGLES.map((def) => (
-          <ToggleSwitch
-            key={def.key}
-            def={def}
-            on={values[def.key]}
-            onChange={onToggleChange}
-          />
-        ))}
-      </div>
-
-      <div className="knb-lamps">
-        {KNOBS_LAMPS.map((def) => (
-          <IndicatorLamp key={def.key} def={def} on={lampLit(def, values)} />
-        ))}
+        {KNOBS_TOGGLES.map((def) => {
+          const lamp = LAMP_BY_KEY.get(def.key)
+          return (
+            <SwitchCell
+              key={def.key}
+              def={def}
+              lamp={lamp}
+              on={values[def.key]}
+              // The switch's position and the lamp's verdict are two
+              // different questions that happen to share an answer
+              // today. `lampLit` stays the only thing that decides the
+              // second one, so the captured bulb and the emissive die
+              // standing over it cannot drift apart.
+              lit={lamp ? lampLit(lamp, values) : false}
+              onChange={onToggleChange}
+            />
+          )
+        })}
       </div>
     </div>
   )

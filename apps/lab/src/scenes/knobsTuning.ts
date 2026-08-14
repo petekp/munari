@@ -69,7 +69,35 @@ export interface KnobsTuningValues {
   /** Emissive intensity of the knob pointer marks. */
   indexGlow: number
 
-  /** Gain on the art's own orbiting glints. */
+  /** How bright the artwork stands in the room's environment wrap. */
+  envArt: number
+  /** The picture's bounce: how much of the artwork's own average color
+   *  the surrounding room throws back. This is what a CAMERA-FACING
+   *  surface mirrors — a knob top cannot see a picture standing behind
+   *  it, so the bounce is the only honest path by which the artwork
+   *  reaches the front of the panel. Being an average, it is the same
+   *  in every direction and cannot change when the slab moves. */
+  envRoom: number
+  /** The overhead: a soft neutral above everything, so bare metal keeps
+   *  one white glint when the picture runs dark. Was a literal in the
+   *  bake, and measurement caught it carrying most of the scene. */
+  envSky: number
+
+  /** Candela of the art's own orbiting emitters — the picture as three
+   *  punctual lights rather than a reflection. Physical falloff over
+   *  100–500 px puts the range in the tens of thousands, as `lcdReflect`
+   *  found for the window lamps.
+   *
+   *  Expect little from it, and know why before turning it up. These
+   *  lamps stand BEHIND the slab; every surface a viewer sees faces the
+   *  camera, so N·L is negative and the diffuse term is gone. The one
+   *  surface that does turn away, the knob skirt, is metal at 0.88 —
+   *  metal has no diffuse term either, so all a lamp can leave there is
+   *  a pinpoint glint. Measured: 400,000 cd moved the skirt 1.8%, and at
+   *  the committed value the toggle and the rim both read 0.0%. It is
+   *  kept because a travelling glint below a probe's threshold can still
+   *  be worth having, but the picture reaches the front of the panel
+   *  through `envRoom`, not through here. */
   lightArt: number
   /** Base intensities of the tinted fill, warm key, cool fill. */
   lightAmbient: number
@@ -110,40 +138,64 @@ export interface KnobsTuningValues {
 // 0–150 range sat inside physical falloff's dead zone — so the
 // committed value is the probe-tuned candela that dial was reaching
 // for.
+//
+// The light rig's numbers are from the 2026-08-11 relight, measured
+// rather than eyeballed: mean RGB of a 30 px disc on the first dial, art
+// frozen, slab carried within one run, and every crop ANCHORED to the
+// slab's own lit windows — a fixed crop misses the dial by 23 px at the
+// far station and reports a swing that is really a miss.
+//
+// The defect was a magenta that CHANGED with position: excess (r−g) 13
+// at the berth against 29 at the left station. Repainting the wrap
+// killed that, and the balance below cannot bring it back — four
+// balances were read at both stations and the berth-to-left drift is
+// 1.2 here, 0.2 at the deepest, against the bug's 16.
+//
+// So the balance is taste again, and the values below are Pete's
+// 2026-08-11 tuning session on top of the repaired wrap — he moved the
+// white light from fill to ambient, took the corona wide and soft, and
+// dimmed the windows. `envRoom` is the one dial that decides how far
+// the panel stands inside the picture; the sweep that found it read, at
+// both stations, 0.18 → magenta 6/7 and hue response 16.2; 0.25 →
+// 12/11 and 20.2; 0.32 → 16/16 and 30.3; 0.45 → 26/28 and 63.3.
 export const knobsTuning: KnobsTuningValues = {
-  coronaOut: 2,
-  coronaVeil: 120,
-  coronaEdgeOut: 12.1,
-  coronaEdgeIn: 5,
+  coronaOut: 28,
+  coronaVeil: 98,
+  coronaEdgeOut: 1.7,
+  coronaEdgeIn: 3,
   coronaCore: 1.35,
-  coronaVeilGain: 0.55,
-  coronaTone: 1.6,
-  coronaSpill: 0.45,
-  shadeMax: 0.72,
+  coronaVeilGain: 0.5,
+  coronaTone: 0.8,
+  coronaSpill: 1.4,
+  shadeMax: 0.64,
 
-  rimRough: 0.02,
+  rimRough: 0.24,
   rimMetal: 1,
-  rimEnv: 3,
-  rimBevelSize: 8,
-  rimBevelDepth: 1.1,
+  rimEnv: 5,
+  rimBevelSize: 4.2,
+  rimBevelDepth: 1.35,
 
   knurlCount: KNOB.knurlCount,
   knurlAmp: KNOB.knurlAmp,
-  hwRough: 0.6,
+  hwRough: 0.58,
   hwEnv: 1.4,
   indexGlow: 0.9,
 
-  lightArt: 0,
-  lightAmbient: 0,
-  lightKey: 0.08,
-  lightFill: 0.6,
-  lightDom: 0.3,
+  envArt: 1,
+  envRoom: 0.25,
+  envSky: 0.22,
 
-  lcdBright: 1,
-  lcdEmit: 1.3,
-  lcdReflect: 40000,
-  lcdGlow: 0.52,
-  lcdGhost: 0.12,
+  lightArt: 14000,
+  lightAmbient: 0.68,
+  lightKey: 0.35,
+  lightFill: 0,
+  lightDom: 0.2,
+
+  lcdBright: 0.8,
+  lcdEmit: 1.45,
+  lcdReflect: 15000,
+  lcdGlow: 0.32,
+  lcdGhost: 0.15,
 }
 
 /** The LCD backlight's committed colors — the same literals knobs.css
@@ -278,7 +330,10 @@ export const KNOBS_TUNING_GROUPS: { title: string; knobs: KnobsTuningDef[] }[] =
   {
     title: 'light rig',
     knobs: [
-      { key: 'lightArt', label: 'art lights', min: 0, max: 2.5, step: 0.05 },
+      { key: 'envArt', label: 'art in room', min: 0, max: 2, step: 0.05 },
+      { key: 'envRoom', label: 'art bounce', min: 0, max: 0.8, step: 0.01 },
+      { key: 'envSky', label: 'overhead', min: 0, max: 1, step: 0.02 },
+      { key: 'lightArt', label: 'art lights cd', min: 0, max: 60000, step: 1000 },
       { key: 'lightAmbient', label: 'ambient', min: 0, max: 1, step: 0.02 },
       { key: 'lightKey', label: 'key', min: 0, max: 1.5, step: 0.02 },
       { key: 'lightFill', label: 'fill', min: 0, max: 1.2, step: 0.02 },

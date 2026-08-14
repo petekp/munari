@@ -119,6 +119,41 @@ failed to engage measures idle twice and calls it interaction. The
 GPU string is printed first for the same reason: numbers from
 SwiftShader are numbers about SwiftShader.
 
+## knobs-resize
+
+Does the panel's face stay the panel's size while a hand drags it?
+`npm run gate:knobs-resize`. Skips (exit 0, with a warning) where
+`drawElementImage` is unavailable; `STRICT_CAPABILITY=1` makes the gap
+a failure.
+
+Four boxes are sampled once per animation frame across a
+narrow-then-grow drag that crosses both of the panel's container-query
+breakpoints: the panel, the host the replay is rasterized from, the
+canvas the replay is scaled against, and the backing store. A frame is
+the unit because it is what the compositor can photograph. Two
+assertions, on both axes: host box equals canvas box, and panel box
+equals host box.
+
+Two honesty checks fail the run rather than let it pass empty — fewer
+than 10 moving frames means the gesture missed the grip and measured a
+stationary panel, and fewer than two arrangements means no breakpoint
+was crossed.
+
+The bug it was written for: every consumer of the panel's box was one
+drag step behind the face painted for them, so 15px of the panel was
+cut off the right edge on every frame, and at a breakpoint a whole
+arrangement was (panel 463 tall inside a host still declaring 721,
+landing in the top 0.64 of its own texture). The cause was which React
+root owned the state. `<Canvas>` hands its children to the three root
+after an `await`, so state held OUTSIDE the canvas reaches it a frame
+late and no flush can pull it forward; state held inside commits
+synchronously under r3f's own `flushSync`. This gate pins the result,
+not the mechanism.
+
+Its first version asked only about height, and passed 19 of 21 frames
+while all 21 were wrong — height moves only at a breakpoint, so the
+continuous fault hid under the two loud ones. Both axes, always.
+
 ## House rules
 
 - A scene that can't be interrogated from the console isn't done.

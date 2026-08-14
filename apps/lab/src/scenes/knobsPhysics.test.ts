@@ -10,17 +10,22 @@ import {
   KNOB_SPRING,
   LEVER_SPRING,
   LEVER_THROW,
+  PANEL_CENTER_YAW,
   PANEL_GLIDE_SPRING,
   PANEL_RESTITUTION,
   PANEL_SPRING,
   type SpringParams,
   type SpringState,
+  berthPinned,
+  centerFacingYaw,
   dampingRatio,
+  rampLag,
   reflect,
   springSettled,
   stepSpin,
   stepSpring,
 } from './knobsPhysics'
+import { KNOB, TOGGLE } from './knobsGeometry'
 
 /** Run a spring from rest at 0 toward `target` for `seconds`, at a fixed
  *  frame rate, recording every frame's position. */
@@ -82,22 +87,79 @@ describe('stepSpring', () => {
   })
 })
 
-describe('the lever — thrown, not placed', () => {
-  it('is underdamped enough to ring: ζ in (0.25, 0.4)', () => {
-    const z = dampingRatio(LEVER_SPRING)
-    expect(z).toBeGreaterThan(0.25)
-    expect(z).toBeLessThan(0.4)
+describe('the lever — thrown, and it stops dead', () => {
+  /** One real flip, in the scene's own terms: the bat rests at +throw,
+   *  the target moves to −throw, and the thumb donates LEVER_THROW at
+   *  that instant. Mirrors ToggleHardware in Knobs.tsx. */
+  function flip(seconds = 1, fps = 120, reflipAt = -1): number[] {
+    const s: SpringState = { x: TOGGLE.throw, v: -LEVER_THROW }
+    const frames: number[] = []
+    let target = -TOGGLE.throw
+    for (let i = 0; i < Math.round(seconds * fps); i++) {
+      if (i === reflipAt) {
+        target = TOGGLE.throw
+        s.v += LEVER_THROW
+      }
+      stepSpring(s, target, LEVER_SPRING, 1 / fps)
+      // Distance past the stop, signed so positive is always overshoot.
+      frames.push((s.x - target) * Math.sign(target))
+    }
+    return frames
+  }
+
+  /** Half a pixel swept by the bat tip. Below this there is nothing to
+   *  see, whatever the radians say — so it is the unit the feel is
+   *  judged in, and the floor every claim below is measured against. */
+  const HALF_PX = 0.5 / TOGGLE.leverLength
+
+  it('is critically damped: ζ = 1', () => {
+    expect(dampingRatio(LEVER_SPRING)).toBeCloseTo(1, 6)
   })
 
-  it('overshoots and wobbles — crosses its target at least twice', () => {
-    expect(crossings(simulate(LEVER_SPRING, 1, 1.5), 1)).toBeGreaterThanOrEqual(2)
+  it('never crosses its target — no overshoot, no ring', () => {
+    const past = flip(1.5)
+    expect(Math.max(...past)).toBeLessThanOrEqual(0)
+    expect(crossings(past, 0)).toBe(0)
   })
 
-  it('with the thumb-flick kick, lands its first crossing within 150ms', () => {
-    const frames = simulate(LEVER_SPRING, 1, 0.5, 120, LEVER_THROW * 0.1)
-    const first = frames.findIndex((x) => x >= 1)
-    expect(first).toBeGreaterThanOrEqual(0)
-    expect(first / 120).toBeLessThan(0.15)
+  it('the no-bounce is structural: the thumb cannot beat the spring', () => {
+    // At ζ = 1 a spring overshoots only when the donated velocity
+    // exceeds ωn × the distance left to travel. Keep LEVER_THROW under
+    // that and the dead stop holds by construction, not by tuning.
+    const wn = Math.sqrt(LEVER_SPRING.stiffness)
+    expect(LEVER_THROW).toBeLessThan(wn * 2 * TOGGLE.throw)
+  })
+
+  it('not one moment of a re-flip can shake a wobble out of it', () => {
+    // The abuse case: thrown, then thrown back mid-flight, so the second
+    // flick lands on whatever velocity is already there.
+    for (let at = 0; at < 36; at++) {
+      expect(Math.max(...flip(1.5, 120, at))).toBeLessThanOrEqual(0)
+    }
+  })
+
+  it('arrives as fast as a ringing lever did — inside 150ms', () => {
+    // Killing the bounce must not cost speed. The switch looks arrived
+    // when the tip is within half a pixel of its stop.
+    const past = flip(0.5)
+    const arrived = past.findIndex((d) => Math.abs(d) < HALF_PX)
+    expect(arrived).toBeGreaterThanOrEqual(0)
+    expect(arrived / 120).toBeLessThan(0.15)
+  })
+
+  it('the thumb still owns the launch — it is thrown, not placed', () => {
+    // The spring decides where the bat stops; the flick decides how hard
+    // it leaves. Strip the flick and the bat is visibly slower over
+    // centre, which is the whole reason LEVER_THROW still exists.
+    const centre = (v0: number) => {
+      const s: SpringState = { x: TOGGLE.throw, v: v0 }
+      for (let i = 0; i < 120; i++) {
+        stepSpring(s, -TOGGLE.throw, LEVER_SPRING, 1 / 120)
+        if (s.x <= 0) return i / 120
+      }
+      return Infinity
+    }
+    expect(centre(-LEVER_THROW)).toBeLessThan(centre(0))
   })
 })
 
@@ -234,5 +296,115 @@ describe('the edge bounce — the slab bumps, it does not pass through', () => {
   it('the flinch is visible at a throw, and capped under a fold-over', () => {
     expect(500 * BOUNCE_TILT).toBeGreaterThan(0.05)
     expect(BOUNCE_TILT_MAX).toBeLessThan(0.5)
+  })
+})
+
+describe('the standing yaw — the slab faces the middle of the glass', () => {
+  it('parked right of center, the LEFT edge drops away from the camera', () => {
+    // rotation.y = θ sends the left edge (x = −w) to z = w·sin θ, so a
+    // negative yaw is what recedes it. The sign IS the requirement.
+    expect(centerFacingYaw(534, 720)).toBeLessThan(0)
+  })
+
+  it('mirrored on the left, dead-on at dead center', () => {
+    expect(centerFacingYaw(-534, 720)).toBeGreaterThan(0)
+    expect(centerFacingYaw(-534, 720)).toBeCloseTo(-centerFacingYaw(534, 720), 12)
+    expect(Math.abs(centerFacingYaw(0, 720))).toBe(0)
+  })
+
+  it('the wall is the maximum: a bumped slab cannot ask for more lean', () => {
+    expect(centerFacingYaw(720, 720)).toBeCloseTo(-PANEL_CENTER_YAW, 12)
+    expect(centerFacingYaw(2000, 720)).toBeCloseTo(-PANEL_CENTER_YAW, 12)
+  })
+
+  it('slight, not a fold: visible at the berth, under the drag tilt cap', () => {
+    // The berth on a 1440 px glass parks the center ~534 px right. The
+    // standing lean there must clear the pointer sway (±0.055 rad) so
+    // the pose reads as aim rather than jitter, and stay a lean.
+    const berth = Math.abs(centerFacingYaw(534, 720))
+    expect(berth).toBeGreaterThan(0.07)
+    expect(PANEL_CENTER_YAW).toBeLessThan(DRAG_TILT_MAX)
+  })
+})
+
+describe('the resize — the hand is not a glide either', () => {
+  /** Drive a spring against a target that slides at a steady rate, the
+   *  way the berth slides under a hand dragging the grip. Three seconds
+   *  is long past the ζ = 0.6 transient, so what comes back is the
+   *  standing gap, not a swing. */
+  function trail(p: SpringParams, rate: number, seconds = 3, fps = 120): number {
+    const s: SpringState = { x: 0, v: 0 }
+    let target = 0
+    for (let i = 1; i <= seconds * fps; i++) {
+      target -= rate / fps
+      stepSpring(s, target, p, 1 / fps)
+    }
+    return Math.abs(s.x - target)
+  }
+
+  it('rampLag is c/k, and it is what the integrator really does', () => {
+    // The closed form is continuous; the shipping integrator is
+    // semi-implicit Euler at a fixed substep, and it runs a little
+    // under. What matters is that the shortfall is a scale-free bias —
+    // the same ratio at every rate — and not drift.
+    const ratios = [100, 300, 700].map((r) => rampLag(PANEL_GLIDE_SPRING, r) / trail(PANEL_GLIDE_SPRING, r))
+    for (const q of ratios) expect(q).toBeLessThan(1.05)
+    expect(ratios[0]).toBeCloseTo(ratios[2], 6)
+  })
+
+  it('a glided resize would trail the hand by more than a knob', () => {
+    // This is why the pin exists, stated in the units of the panel
+    // itself. A resize slides the berth at HALF the hand's speed,
+    // because the berth is written in terms of w/2.
+    const ordinary = trail(PANEL_GLIDE_SPRING, 600 / 2)
+    expect(ordinary).toBeGreaterThan(KNOB.skirtRadius)
+    // And it is not a corner case: even a slow, careful hand is out by
+    // several pixels.
+    expect(trail(PANEL_GLIDE_SPRING, 200 / 2)).toBeGreaterThan(8)
+  })
+
+  it('and it would still be swinging long after the hand stopped', () => {
+    const s: SpringState = { x: 0, v: 0 }
+    let berth = 0
+    for (let i = 0; i < 60; i++) {
+      berth -= 300 / 120
+      stepSpring(s, berth, PANEL_GLIDE_SPRING, 1 / 120)
+    }
+    // The hand lets go here, tens of pixels from the berth.
+    expect(Math.abs(s.x - berth)).toBeGreaterThan(20)
+    let last = 0
+    for (let i = 1; i <= 240; i++) {
+      stepSpring(s, berth, PANEL_GLIDE_SPRING, 1 / 120)
+      if (Math.abs(s.x - berth) > 0.5) last = i / 120
+    }
+    expect(last).toBeGreaterThan(0.5)
+  })
+
+  it('a hand on the grip pins the slab; a hand on the slab does not', () => {
+    expect(berthPinned(true, false)).toBe(true)
+    // Carried and then resized: the hand chose where this panel stands,
+    // so the resize must not haul it back to the berth.
+    expect(berthPinned(true, true)).toBe(false)
+    // No resize, no pin — an idle or carried slab glides as before.
+    expect(berthPinned(false, false)).toBe(false)
+    expect(berthPinned(false, true)).toBe(false)
+  })
+
+  it('pinned, the slab IS its berth — no gap, and no lean to give away', () => {
+    const s: SpringState = { x: 0, v: 0 }
+    let berth = 0
+    for (let i = 1; i <= 120; i++) {
+      berth -= 300 / 120
+      if (berthPinned(true, false)) {
+        s.x = berth
+        s.v = 0
+      } else {
+        stepSpring(s, berth, PANEL_GLIDE_SPRING, 1 / 120)
+      }
+    }
+    expect(s.x).toBe(berth)
+    // The tilt reads glide velocity. A pinned slab has none, so a
+    // resize cannot make the panel lean as if it were being flown.
+    expect(s.v * DRAG_TILT).toBe(0)
   })
 })

@@ -771,7 +771,17 @@ function DomSurface({
   // allocation — which matters most exactly where a mark is weakest, because a
   // Surface whose size is measured can resize EVERY frame (see the realloc
   // note in the upload path).
-  useEffect(() => {
+  // Before paint, for the same reason the host's declared size is: this
+  // is the head of the capture pipeline (setSize -> requestPaint ->
+  // onpaint -> upload), and starting it a paint late costs a whole
+  // generation. Measured on the knobs lab: from a passive effect the
+  // capture's box trailed the panel's live box by EXACTLY one drag step,
+  // on every step of every drag — a complete, correct picture of a
+  // narrower panel, stretched over the wider slab, while the hardware
+  // standing on that face was placed from the live DOM. The two disagreed
+  // by the step size, which reads as the controls sliding out from under
+  // their own knobs, further out the further right they sit.
+  useLayoutEffect(() => {
     const source = sourceRef.current
     if (!source || !texture) return
     source.setSize(width, height)

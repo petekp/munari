@@ -7,7 +7,6 @@ import {
   KNOBS_TOGGLES,
   KNOB_ANGLE_MIN,
   KNOB_ANGLE_SWEEP,
-  OVERDRIVE_SPEED,
   type KnobsValues,
   artGlow,
   backlightAmount,
@@ -182,10 +181,29 @@ describe('lampLit — one annunciator law for both renderers', () => {
     power: true,
     mirror: true,
   }
-  const lamp = (key: 'power' | 'drive' | 'mirror') => KNOBS_LAMPS.find((l) => l.key === key)!
+  const lamp = (key: 'power' | 'mirror') => KNOBS_LAMPS.find((l) => l.key === key)!
 
-  it('registers three lamps with distinct keys, tones and valid hex colors', () => {
-    expect(KNOBS_LAMPS.map((l) => l.key).sort()).toEqual(['drive', 'mirror', 'power'])
+  // The panel now seats each lamp in the same cell as its switch, and
+  // the pairing is by key alone (KnobsPanel's LAMP_BY_KEY). A lamp with
+  // no switch would render nowhere at all — silently, with no error and
+  // no empty box — so the pairing is the contract, not the count.
+  it('gives every lamp a switch to stand under', () => {
+    const switches = new Set(KNOBS_TOGGLES.map((t) => t.key))
+    for (const l of KNOBS_LAMPS) expect(switches.has(l.key)).toBe(true)
+    expect(new Set(KNOBS_LAMPS.map((l) => l.key)).size).toBe(KNOBS_LAMPS.length)
+  })
+
+  // The hardware in Knobs.tsx pairs measured `.knb-lamp-bezel` centers
+  // with KNOBS_LAMPS BY INDEX, so DOM order and array order have to
+  // agree. The DOM order is the switch order, which makes this the
+  // assertion that keeps an emissive die over the right lens.
+  it('lists lamps in switch order, for the hardware that indexes them', () => {
+    expect(KNOBS_LAMPS.map((l) => l.key)).toEqual(
+      KNOBS_TOGGLES.filter((t) => KNOBS_LAMPS.some((l) => l.key === t.key)).map((t) => t.key),
+    )
+  })
+
+  it('gives each lamp its own tone and a valid hex color', () => {
     expect(new Set(KNOBS_LAMPS.map((l) => l.tone)).size).toBe(KNOBS_LAMPS.length)
     for (const l of KNOBS_LAMPS) expect(l.color).toMatch(/^#[0-9a-f]{6}$/)
   })
@@ -195,12 +213,6 @@ describe('lampLit — one annunciator law for both renderers', () => {
     expect(lampLit(lamp('power'), { ...DEFAULTS, power: false })).toBe(false)
     expect(lampLit(lamp('mirror'), DEFAULTS)).toBe(true)
     expect(lampLit(lamp('mirror'), { ...DEFAULTS, mirror: false })).toBe(false)
-  })
-
-  it('the drive lamp strikes exactly at the overdrive threshold', () => {
-    expect(lampLit(lamp('drive'), { ...DEFAULTS, speed: OVERDRIVE_SPEED - 0.01 })).toBe(false)
-    expect(lampLit(lamp('drive'), { ...DEFAULTS, speed: OVERDRIVE_SPEED })).toBe(true)
-    expect(lampLit(lamp('drive'), { ...DEFAULTS, speed: 2 })).toBe(true)
   })
 })
 

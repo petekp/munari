@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { guardPointerCapture } from '@munari/core'
@@ -118,7 +118,18 @@ export function useSourceHost({
 
   // Keep the declared size current — for a container sized by measurement,
   // this is where a resize actually reaches the DOM.
-  useEffect(() => {
+  //
+  // Before paint, not after. `drawElementImage` rasterizes the host at its
+  // own layout box, so the declared size IS the size of the next capture.
+  // Written from a passive effect, a resize reaches the DOM one paint too
+  // late and every capture during a drag is one step behind the geometry
+  // it is stretched over — the controls on the face slide against the
+  // hardware standing on them. Worse, a commit React chose to defer can
+  // land its own stale size on top of a fresher write a consumer made
+  // synchronously inside the pointer event, which reads as a wobble
+  // rather than a lag. A layout effect writes inside the commit that
+  // knows the number, before anyone can photograph the container.
+  useLayoutEffect(() => {
     if (!host) return
     host.style.width = `${width}px`
     host.style.height = `${height}px`

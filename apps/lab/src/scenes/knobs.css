@@ -55,9 +55,29 @@
 
 /* ── the captured panel — black anodized aluminum, vertically brushed ── */
 
+/* The host the panel is captured from paints an opaque page background
+ * (shadcn.css). Anywhere the panel does not cover the host, that
+ * background is what the camera photographs — so a single frame where
+ * the two disagree shows as a white band. They are kept in step
+ * imperatively (Knobs.tsx), and this rule means even a missed frame
+ * costs nothing. Same move as the glass rule beside it. */
+.ui-root:has(> .knb-panel) {
+  background: transparent;
+}
+
 .knb-panel {
   position: relative;
   box-sizing: border-box;
+  /* Set by the scene, straight onto the host element — see KnobsPanel.
+   * The fallback is the width the scene opens at, so the very first
+   * frame is already the right shape. */
+  width: var(--knb-w, 320px);
+  /* The panel is its own layout context. inline-size, never size: the
+   * two-axis form needs block containment, which would stop the content
+   * root sizing itself (docs/authoring.md) — and this panel's HEIGHT is
+   * exactly what the scene measures to size the slab. So the width is
+   * given, the arrangement answers, and the height falls out. */
+  container: knbpanel / inline-size;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -209,8 +229,19 @@
     0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
-/* The well the knob sits in — a countersink, darkest just under the
- * grip's shadowed side. */
+/* The well the knob sits in — a countersink.
+ *
+ * It paints no material of its own. Every layer here is black at some
+ * alpha, so what shows through the margin the graduations are cut into
+ * is the station's own face from `.knb-rotary` — the same aluminium, one
+ * step down. That is the whole point: a countersink is not a part, it is
+ * an absence of one, and the surface has to run straight through it.
+ *
+ * What was here before was an opaque disc that ran LIGHTER outward, to
+ * #3a3d42 against the station's #2b2d31, finished with a white
+ * catch-light around the full circle. Two bright rings the surrounding
+ * material has no reason to grow — so the well read as a separate piece
+ * dropped onto the panel, with the notches printed on it. */
 .knb-dial {
   position: relative;
   width: 66px;
@@ -220,11 +251,56 @@
   touch-action: none;
   outline: none;
   background:
-    radial-gradient(circle at 50% 42%, #17181b 0%, #1d1f22 52%, #303237 88%, #3a3d42 100%);
-  box-shadow:
-    inset 0 3px 6px rgba(0, 0, 0, 0.65),
-    inset 0 -1px 1px rgba(255, 255, 255, 0.08),
-    0 1px 0 rgba(255, 255, 255, 0.06);
+    /* One layer, and only one. The bore: the face steps down at the
+       grip's edge and falls away to the floor. The last two stops are
+       equal on purpose — the margin the graduations are cut into is ONE
+       flat depth all the way out, because it is the station's face, not
+       a dish. Any gradient across it reads as a ring again, only softer.
+
+       There was a second layer here for the grip's shadow. It is gone
+       as a duplicate — `.knb-dial-pool` below is that same occlusion on
+       its own element — not as a fix. Measured, it was worth 0.6 of a
+       level in the margin. The dish came from the pool. */
+    radial-gradient(
+      circle 34px at 50% 50%,
+      rgba(0, 0, 0, 0.76) 0%,
+      rgba(0, 0, 0, 0.72) 50%,
+      rgba(0, 0, 0, 0.44) 72%,
+      rgba(0, 0, 0, 0.44) 100%
+    );
+  /* Just enough of a lip to say the face steps down here, and no more:
+     a heavier inset dishes the margin and the ring comes back. */
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.38);
+}
+
+/* A dial is 20mm on a 232px panel and 20mm on a 560px one — that is
+ * the scene's rule, and it means every pixel INSIDE a dial is identical
+ * before and after a corner drag. Only the dial's position moved. This
+ * tells the compositor so, for the length of the gesture, and the
+ * rasterizer stops redoing 44 blurred notches for a result that cannot
+ * differ. Measured over an 88px pull at dpr 2 (cap-probe42), art
+ * untouched:
+ *
+ *      as authored              p95 26.4ms   21 of 86 frames over 20ms
+ *      .knb-dial promoted       p95 10.1ms    0 of 86
+ *
+ * with a pixel delta against the unpromoted composite at the noise
+ * floor — max 2 of 255, not one device pixel past a 2-level threshold.
+ *
+ * Why the dial and not the notches: promoting `.knb-dial-ticks i`
+ * measures the same (9.9ms) and costs 44 layers instead of 4.
+ *
+ * Why not `contain`: it does not work here. `contain: paint` and
+ * `contain: strict` both make it WORSE (33.4ms) — the containing box
+ * changes with the panel, so the contained subtree is re-rasterized
+ * anyway, now with an extra clip.
+ *
+ * Why the class and not a standing rule: `will-change` is a promise
+ * about the near future. During a drag it is true; at rest it would be
+ * four live layers held inside the capture, bought with nothing, and
+ * the idle state has a gate to answer to. */
+.knb-resizing .knb-dial {
+  will-change: transform;
 }
 
 /* Graduations, engraved in the countersink's outer margin. */
@@ -274,7 +350,17 @@
 /* The pool — painted contact occlusion where the REAL grip (a knurled
  * mesh in Knobs.tsx) stands over this well. The geometry casts no
  * shadow of its own; this is its grounding, at rest-truth, in the
- * texture the face actually wears. */
+ * texture the face actually wears.
+ *
+ * The circle is sized in px, and that is load-bearing. Written as
+ * `circle at 50% 54%` the default sizing is farthest-corner, which on an
+ * offset centre is 41px — so the shadow was still 0.13 opaque when the
+ * element's own border-radius cut it off at 28px. A hard step, sitting
+ * exactly in the margin the graduations are cut into, dishing it by 5
+ * levels and putting back a soft version of the ring this whole well was
+ * rewritten to remove. Sized explicitly it dies at 24px, inside the
+ * grip's own 26px footprint, where a contact shadow belongs: under the
+ * part casting it, never out on the open face. */
 .knb-dial-pool {
   position: absolute;
   left: 50%;
@@ -283,7 +369,7 @@
   height: 56px;
   margin: -28px 0 0 -28px;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 54%, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.4) 55%, rgba(0, 0, 0, 0) 74%);
+  background: radial-gradient(circle 24px at 50% 54%, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0) 100%);
 }
 
 .knb-dial:hover .knb-dial-ticks i:not([data-lit]),
@@ -299,7 +385,7 @@
 .knb-dial:focus-visible:not([data-pointer-focus]) {
   box-shadow:
     0 0 0 2px var(--signal-lit, #ff5c3f),
-    inset 0 3px 6px rgba(0, 0, 0, 0.65);
+    inset 0 1px 2px rgba(0, 0, 0, 0.38);
 }
 
 .knb-dial-label {
@@ -406,30 +492,39 @@
   display: flex;
   justify-content: space-evenly;
   gap: 18px;
-  padding: 2px;
+  padding: 12px 2px 2px;
+  margin-top: auto;
+  border-top: 1px solid rgba(0, 0, 0, 0.55);
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.06) inset;
+}
+
+/* A switch and its annunciator, stacked in one cell: lever, then the
+ * lamp that answers it, then the legend. The scribed line and the foot
+ * of the panel came from the lamp row this replaced — the switches
+ * inherit the panel's bottom register now that nothing stands below
+ * them. */
+.knb-switch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
 .knb-toggle {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
   border: 0;
   background: transparent;
   padding: 0;
   cursor: pointer;
-  color: #8d939b;
-  font: 600 9px/1 var(--label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.knb-toggle-legend {
-  font: 600 7px/1 var(--label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #6a7076;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.07), 0 -1px 0 rgba(0, 0, 0, 0.6);
+  /* The scene draws its own focus ring below, on the well, keyed off
+   * `data-pointer-focus` — the attribute the forwarder sets because the
+   * browser's own heuristic reads a relayed click as keyboard input.
+   * Chrome's UA ring cannot see that attribute, so it kept painting its
+   * white outline on every press while the scene's ring stayed
+   * correctly hidden. Suppressing it here leaves exactly one ring, and
+   * only for a hand that really did arrive by Tab. */
+  outline: none;
 }
 
 /* The recess the lever throws through. */
@@ -478,27 +573,22 @@
     0 0 0 2px var(--signal-lit, #ff5c3f);
 }
 
+/* Silkscreen at the foot of the cell. It carried the button's own type
+ * until the legend moved out of the button; the type came with it. */
 .knb-toggle-label {
+  color: #8d939b;
+  font: 600 9px/1 var(--label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.08), 0 -1px 0 rgba(0, 0, 0, 0.65);
 }
 
 /* ── indicator lamps — dyed lenses in turned bezels ───────────────────── */
 
-.knb-lamps {
-  display: flex;
-  justify-content: space-evenly;
-  gap: 16px;
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid rgba(0, 0, 0, 0.55);
-  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.06) inset;
-}
-
 .knb-lamp {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
 }
 
 .knb-lamp-bezel {
@@ -546,7 +636,6 @@
 }
 
 .knb-lamp[data-tone='ok'] .knb-lamp-bulb { background: radial-gradient(circle at 45% 40%, #14301c, #0a1a0f 80%); }
-.knb-lamp[data-tone='warn'] .knb-lamp-bulb { background: radial-gradient(circle at 45% 40%, #33230b, #1c1206 80%); }
 .knb-lamp[data-tone='signal'] .knb-lamp-bulb { background: radial-gradient(circle at 45% 40%, #331109, #1d0a05 80%); }
 
 /* Lit: white-hot filament core, saturated body, and a bloom the panel
@@ -561,15 +650,6 @@
     0 0 26px 10px rgba(46, 224, 101, 0.22);
 }
 
-.knb-lamp[data-tone='warn'][data-on='true'] .knb-lamp-bulb {
-  background: radial-gradient(circle at 50% 45%, #fffdf2 0%, #ffd77a 28%, #ffab1f 62%, #9c5f07 100%);
-  box-shadow:
-    inset 0 -1px 2px rgba(0, 0, 0, 0.25),
-    0 0 4px 1px rgba(255, 205, 110, 0.9),
-    0 0 12px 4px rgba(255, 176, 32, 0.55),
-    0 0 26px 10px rgba(255, 171, 31, 0.22);
-}
-
 .knb-lamp[data-tone='signal'][data-on='true'] .knb-lamp-bulb {
   background: radial-gradient(circle at 50% 45%, #fff5f2 0%, #ff9a82 28%, #ff5c3f 62%, #9e2312 100%);
   box-shadow:
@@ -579,10 +659,110 @@
     0 0 26px 10px rgba(255, 92, 63, 0.22);
 }
 
-.knb-lamp-label {
-  font: 600 8px/1 var(--label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #7a8087;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.07), 0 -1px 0 rgba(0, 0, 0, 0.6);
+/* ── the corner grip, and the arrangements it reaches ─────────────────── */
+
+/* A machined pull at the lower-right corner: three diagonal flutes, the
+ * same cut the carry handle wears. It is DOM, not a 3D gizmo, because
+ * the point of the panel is that the layout engine is the thing running
+ * inside the texture — a WebGL handle would prove nothing. */
+.knb-resize {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  width: 26px;
+  height: 26px;
+  padding: 5px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.knb-resize-grip {
+  width: 14px;
+  height: 14px;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.24) 0px,
+    rgba(255, 255, 255, 0.24) 1px,
+    rgba(0, 0, 0, 0.45) 2px,
+    rgba(0, 0, 0, 0) 4px
+  );
+  /* the flutes stop short of the corner radius, like a real cut */
+  clip-path: polygon(100% 0%, 100% 100%, 0% 100%);
+  opacity: 0.75;
+}
+
+/* Hover and active TWINS: captured matter never receives the real
+ * pointer, so the relay marks it with data attributes instead, and every
+ * live state has to be authored twice (docs/authoring.md). */
+.knb-resize:hover .knb-resize-grip,
+.knb-resize[data-hover] .knb-resize-grip {
+  opacity: 1;
+}
+
+.knb-resize:active .knb-resize-grip,
+.knb-resize[data-active] .knb-resize-grip {
+  opacity: 1;
+  transform: scale(0.92);
+}
+
+/* The arrangements. Nothing below scales a control: a rotary is 66px at
+ * every panel width, exactly as a real one is 20mm at every panel size.
+ * What changes is how the stations are arranged, which is the only
+ * honest thing a wider panel buys you. */
+
+/* Every threshold below is a CONTENT-box width: an inline-size
+ * container queries its own content box, so the panel's 16px side
+ * padding is already subtracted. A 320px panel asks these rules about
+ * 288px. Measured the hard way — thresholds written as border-box put
+ * the default panel in the narrow arrangement and made two different
+ * widths lay out identically. */
+
+/* Wide: two stations per row. This is the reflow worth watching — the
+ * machined knobs are placed from these rects, so they physically move
+ * into a second column with the DOM. */
+@container knbpanel (min-width: 380px) {
+  .knb-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .knb-toggles {
+    justify-content: space-around;
+  }
+}
+
+/* Narrow: the label rail cannot hold a legend beside a window and a
+ * grip, so the legend takes its own line and the row grows taller. The
+ * panel's height answering to its width is the container query doing
+ * the thing a media query cannot. */
+@container knbpanel (max-width: 264px) {
+  .knb-rotary {
+    grid-template-columns: minmax(0, 1fr) 66px;
+    grid-template-areas:
+      'label label'
+      'value dial';
+    row-gap: 6px;
+  }
+
+  .knb-dial-label {
+    grid-area: label;
+    text-align: left;
+  }
+
+  .knb-dial-value {
+    grid-area: value;
+  }
+
+  .knb-rotary .knb-dial {
+    grid-area: dial;
+  }
+
+  .knb-toggles {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
 }
