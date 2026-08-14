@@ -429,7 +429,7 @@ export function createDomTextureSource(
       canvas.onpaint = null
       paintSubscribers.clear()
       canvas.remove()
-      // Release the subtree. Custody was for the source's lifetime, and
+      // Release the subtree. The hold was for the source's lifetime, and
       // adoption required the node to arrive unparented — so it leaves that
       // way, making adopt/dispose exactly invertible. Two things depend on
       // it: a React remount (StrictMode mounts, cleans up, mounts again)

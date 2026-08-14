@@ -46,7 +46,7 @@ The page runs a demand frameloop and reads WebGL pixels inside the mesh's draw
 receipt. It first replaces one live source with another. It then releases and
 reacquires the same persistent source three times. Each release publishes two
 frames before reacquisition. The gate requires receipts
-`[A0, A2, B0, B2, B4, B6, B8]`, a fresh surface epoch for each custody period,
+`[A0, A2, B0, B2, B4, B6, B8]`, a fresh surface epoch for each hold period,
 no stale receipt, no clear or wrong-color acquisition render, and sampled RGB
 within one channel value. It also checks that live replacement preserves the
 mesh, geometry, and material, and that the public default unlit material is a
@@ -67,7 +67,7 @@ This path uses an ordinary `CanvasTexture`; it does not use or enable
 ## genie-film
 
 Does one video decoder and one frame canvas stay current through repeated
-Genie custody changes? `npm run gate:genie-film`.
+Genie handoff changes? `npm run gate:genie-film`.
 
 The gate runs 24 minimize and restore cycles at 6x CPU throttle. It requires
 stable decoder, canvas, and source identities; monotonic frame generations;
@@ -75,7 +75,7 @@ exact pixel and presentation receipt tuples; ordered native reveal before
 renderer release; complete landings; and no black or uncovered compositor
 frame. It then loses the WebGL context while WebGL has presentation authority
 and requires immediate native fallback without a later draw receipt. Native
-video loop events are reported separately from custody-induced media events.
+video loop events are reported separately from handoff-induced media events.
 The Genie route uses HTML capture for its window chrome, so this gate launches
 Chrome with `CanvasDrawElement` enabled.
 
@@ -92,7 +92,7 @@ in the reveal commit. The second flight must get a fresh component lifetime
 and reach the dock instead of inheriting the prior flight's landed state. Use
 `HEADED=1` to exercise the real GPU compositor path.
 
-## genie shadow custody
+## genie shadow handoff
 
 Do translucent window shadows keep the same opacity while presentation moves
 between DOM and WebGL? `npm run gate:genie-shadow` measures the fixed shadow

@@ -156,7 +156,7 @@ try {
     process.exitCode = 1
   } else {
     console.log(
-      'frame-surface gate PASSED: visible presentation, live replacement, and 3 custody cycles kept current sRGB pixels.',
+      'frame-surface gate PASSED: visible presentation, live replacement, and 3 handoff cycles kept current sRGB pixels.',
     )
   }
 } finally {

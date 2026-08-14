@@ -8,7 +8,7 @@
 // at the bottom of the viewport samples the article's own paint and
 // blurs it by a per-row radius (veilLaw.ts).
 //
-// The custody story is the inverse of genie's. The article is real,
+// The hold story is the inverse of genie's. The article is real,
 // visible, scrolling DOM the entire time — the compositor never gives
 // it up. What flies in WebGL is a TWIN: the same component rendered
 // from the same (static) props into a parked SurfaceApp root, giving
@@ -21,7 +21,7 @@
 // `scrollTop` paints a copy one-to-two frames stale, and the fade zone
 // shows page and copy at once — so every stale frame reads as doubled
 // text. Predicting the scroll only moved the error around. The fix is
-// custody, not timing: the canvas sits IN the scrolling layer,
+// hold, not timing: the canvas sits IN the scrolling layer,
 // absolutely positioned at an article coordinate we choose, so the
 // compositor moves canvas and article together and the copy can never
 // slide against the page around it. The stale scroll value now steers
@@ -490,7 +490,7 @@ export function VeilApp({ chips }: { chips?: React.ReactNode }) {
       </div>
 
       {/* The slab rides the scroller: the compositor moves it with the
-          article around it, which is the whole custody fix. Its frame
+          article around it, which is the whole hold fix. Its frame
           only chooses which article rows the window covers. */}
       <div className="veil-slab" ref={slabRef} style={{ height: WINDOW_H }}>
         <Canvas

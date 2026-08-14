@@ -43,7 +43,7 @@ numbers.
 ## Idle motion must be able to ease flat
 
 If page content moves on its own — a float, a shimmer, anything
-decorative that runs while the user does nothing — a custody crossing
+decorative that runs while the user does nothing — a crossing
 needs that motion GONE before the swap: the canvas twin holds the page's
 resting geometry, and any offset still live at the swap frame is a
 visible jump.
@@ -71,7 +71,7 @@ moving element to rest along its own path. (The keyframes animate a
 descendant's transform, which is fine; the prohibition above is the
 root's own.)
 
-The crossing side of the contract: `useCustodyCrossing`'s `settleMs`
+The crossing side of the contract: `useLift`'s `settleMs`
 must outlast the **slowest compositor-clocked transition the content
 runs on its presented pixels** — not only the idle amplitude, but any
 transform hop or color fade a state change can start just before the

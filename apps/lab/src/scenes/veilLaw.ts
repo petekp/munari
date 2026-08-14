@@ -5,7 +5,7 @@
 // twins fed the same constants through uniforms) and per test point
 // here; nothing in this file knows about textures or scrolling.
 //
-// Two constraints carry the custody story, pinned by veilLaw.test.ts:
+// Two constraints carry the hold story, pinned by veilLaw.test.ts:
 //
 //   radius(0) is EXACTLY zero. The band's near edge is the seam where
 //   the compositor's pixels stop and the sampled copy begins, and the

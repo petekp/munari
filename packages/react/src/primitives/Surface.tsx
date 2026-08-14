@@ -85,7 +85,7 @@ export interface SurfaceProps extends Omit<ThreeElements['mesh'], 'children' | '
    *
    * An adopted element must have no parent — the source MOVES it, so handing
    * over something still on the page would tear it out (decisions.md #13).
-   * Pass `node.cloneNode(true)`. Custody ends when the Surface unmounts and
+   * Pass `node.cloneNode(true)`. The hold ends when the Surface unmounts and
    * the node is released unparented, so the same node may be handed over
    * again — which is what a StrictMode remount does.
    *
@@ -118,7 +118,7 @@ export interface SurfaceProps extends Omit<ThreeElements['mesh'], 'children' | '
    *
    * Unlike `onFirstUpload`, this is a presentation boundary. It runs from
    * Three's post-draw callback, before the browser composites the canvas. A
-   * custody transfer can therefore release an old DOM presenter synchronously
+   * handoff can therefore release an old DOM presenter synchronously
    * here without exposing a blank frame or double-compositing translucent
    * pixels. Resets when the DOM source is recreated.
    */

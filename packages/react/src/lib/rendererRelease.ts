@@ -11,12 +11,12 @@ export interface RendererReleaseFrame {
    * outgoing presenter is about to stop drawing.
    */
   commitIncoming: () => void
-  /** Publish durable custody after the current renderer stack has drawn. */
+  /** Publish the durable hold after the current renderer stack has drawn. */
   publishRelease: () => void
 }
 
 /**
- * Commit a reverse custody transfer inside an r3f `useFrame` callback.
+ * Commit a reverse handoff inside an r3f `useFrame` callback.
  *
  * The incoming presenter is committed before the outgoing object is hidden.
  * Both writes are synchronous, so the browser cannot composite between them.

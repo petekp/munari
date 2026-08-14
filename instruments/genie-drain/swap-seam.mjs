@@ -348,7 +348,7 @@ try {
       const dt = t[i].t - t[i - 1].t
       const step = t[i].progress - t[i - 1].progress
       if (dt > ON_TIME_MS || Math.abs(step) < SNAP) continue
-      // A step across a custody change is the Bays taking the bay back
+      // A step across a handoff is the Bays taking the bay back
       // from the Driver on the landing frame, which is the handoff doing
       // its job rather than a jump.
       if (t[i].filled !== t[i - 1].filled) continue

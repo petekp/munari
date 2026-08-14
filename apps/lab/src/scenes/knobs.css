@@ -370,7 +370,7 @@
  * halo of exactly one pixel where the slot's edge catches. The bloom
  * that used to be painted here as an 8px shadow is gone: the scene
  * overdrives these pixels through the dial's emitter ring (DialRings
- * in Knobs.tsx), the same custody the LCD windows have, so the glow is
+ * in Knobs.tsx), the same hold the LCD windows have, so the glow is
  * emission, not blur. Only the count of lit notches ever changes, and
  * only on a value change, so a resting dial stays idle-zero. */
 .knb-dial-ticks i[data-lit] {

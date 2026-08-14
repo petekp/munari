@@ -19,7 +19,7 @@
 // rAF callbacks in the same frame; if the renderer's runs first, the
 // mesh reads the previous frame's sample — one frame of staleness,
 // sub-pixel at idle-motion speeds, and never a double image because
-// presentation custody shows only one side at a time. Second, cost:
+// the presentation law shows only one side at a time. Second, cost:
 // carrying moves the motion from the compositor's free thread onto the
 // main thread. A page under heavy script load will stutter a carried
 // motion where a CSS animation would have glided — which is why

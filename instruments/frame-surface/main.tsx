@@ -232,7 +232,7 @@ export interface FrameSurfaceGateResult {
   liveReplacementIdentityPreserved: boolean
   reacquisitionObjectsFresh: boolean
   defaultUnlitVerified: boolean
-  freshSurfaceEpochPerCustody: boolean
+  freshSurfaceEpochPerHandoff: boolean
   presentationFence: PresentationFenceEvidence
   backingStoreResize: BackingStoreResizeEvidence
   worstRgbError: number
@@ -479,10 +479,10 @@ function scheduleResult(): void {
         allSame(liveReplacementReceipts.map((entry) => entry.meshId)) &&
         allSame(liveReplacementReceipts.map((entry) => entry.geometryId)) &&
         allSame(liveReplacementReceipts.map((entry) => entry.materialId))
-      const custodyReceipts = [receipts[3], receipts[4], receipts[5], receipts[6]]
-      const reacquisitionObjectsFresh = custodyReceipts.every((entry, index) => {
+      const handoffReceipts = [receipts[3], receipts[4], receipts[5], receipts[6]]
+      const reacquisitionObjectsFresh = handoffReceipts.every((entry, index) => {
         if (index === 0) return entry !== undefined
-        const previous = custodyReceipts[index - 1]
+        const previous = handoffReceipts[index - 1]
         return (
           entry !== undefined &&
           previous !== undefined &&
@@ -499,7 +499,7 @@ function scheduleResult(): void {
           entry.textureColorSpace === THREE.SRGBColorSpace &&
           entry.textureCanvasMatchesSource,
       )
-      const freshSurfaceEpochPerCustody =
+      const freshSurfaceEpochPerHandoff =
         receiptSurfaceEpochs.length === 7 &&
         receiptSurfaceEpochs[0]! > 0 &&
         receiptSurfaceEpochs[0] === receiptSurfaceEpochs[1] &&
@@ -585,7 +585,7 @@ function scheduleResult(): void {
         liveReplacementIdentityPreserved,
         reacquisitionObjectsFresh,
         defaultUnlitVerified,
-        freshSurfaceEpochPerCustody,
+        freshSurfaceEpochPerHandoff,
         presentationFence: fenceEvidence,
         backingStoreResize: resizeEvidence,
         worstRgbError,
@@ -602,7 +602,7 @@ function scheduleResult(): void {
           acquisitionMismatchedFrames === 0 &&
           liveReplacementIdentityPreserved &&
           defaultUnlitVerified &&
-          freshSurfaceEpochPerCustody &&
+          freshSurfaceEpochPerHandoff &&
           fenceEvidence.passed &&
           resizeEvidence.passed &&
           worstRgbError <= 1,
@@ -977,7 +977,7 @@ function GateScene() {
           const cycle = receiptIndex - 2
           setTimeout(() => {
             if (pendingReleaseCycle !== null || activeAcquisitionCycle !== null) {
-              fail(new Error(`cycle ${cycle} started while another custody change was active`))
+              fail(new Error(`cycle ${cycle} started while another handoff was active`))
               return
             }
             pendingReleaseCycle = cycle

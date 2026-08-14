@@ -191,7 +191,7 @@
 }
 
 /* Reverse acquisition warms the native presenter for one compositor frame
- * while renderer custody and input authority stay unchanged. This private
+ * while the canvas's hold and input authority stay unchanged. This private
  * bridge makes the contents paint without publishing the public `data-away`
  * release that gestures and probes use. */
 .gen-slot[data-away='true'][data-native-bridge] > * {
@@ -203,7 +203,7 @@
  * translucent shadows cannot. WebGL owns the shadow for that bridge frame,
  * then this mask leaves in the same renderer turn that suppresses the sheet.
  * The `native` value keeps the DOM painted and non-interactive until React
- * publishes public custody; it does not hide the shadow. */
+ * publishes the public hold; it does not hide the shadow. */
 .gen-slot[data-away='true'][data-native-bridge='warming'] .gen-sheet::before {
   visibility: hidden;
 }

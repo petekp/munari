@@ -1,6 +1,6 @@
 // lod-timeline — what texture resolution a sheet actually flies at.
 //
-// genie-drain proves the custody cycle happens; this proves it happens
+// genie-drain proves the handoff cycle happens; this proves it happens
 // SHARP. The two are structurally different questions: every observable
 // in genie-drain is a DOM truth (visibility, dataset flags, a typed
 // value, a transform matrix), and a window can pass all of them while

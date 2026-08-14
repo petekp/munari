@@ -510,7 +510,7 @@ describe('createDomTextureSource adopting a node', () => {
     const node = plate()
     const s = createDomTextureSource(node, 360, 460)
     s.dispose()
-    // Custody, not confiscation. The node is required to arrive unparented,
+    // Hold, not confiscation. The node is required to arrive unparented,
     // so dispose returns it to that state and adoption is exactly invertible.
     // Leaving it inside the dead canvas would be a resting state nobody owns:
     // a consumer holding the node holds the canvas through it, so every

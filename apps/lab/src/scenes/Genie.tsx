@@ -20,7 +20,7 @@
 // None of it stops being DOM. The airborne copy is a second React root
 // rendering the SAME component from the SAME state as the page copy;
 // the warp bends geometry on the CPU so raycasts hit the funnel the eye
-// sees; and both custody swaps happen at exact identities. The law
+// sees; and both handoffs happen at exact identities. The law
 // (genieLaw.ts) owns shape, the drive (genieDrive.ts) owns time, and a
 // landing's leftover momentum is consumed by a settle wobble whose
 // perceptual budget — sub-half-pixel within 350ms — is pinned by test.
@@ -421,7 +421,7 @@ function PlayLayer() {
   //
   // Joining the ONE simulation is what keeps the two copies honest:
   // the page copy and the airborne copy draw the same bodies at the
-  // same instant, so the custody swap has nothing to jump. The old
+  // same instant, so the handoff has nothing to jump. The old
   // phase-pinning dance (startTime = 0 on every animation) is gone
   // with the compositor animations that needed it. Layout effect, so
   // the copy is in position before its first paint.
@@ -484,8 +484,8 @@ interface WindowBodyProps {
 // outside the texture — it would sit on the desk at rest and vanish the
 // instant the window took flight. Flight builds a WebGL twin for exactly
 // this reason; the genie does not need one, because a hard offset shadow
-// can simply be painted INSIDE the root, and paint survives the custody
-// swap untouched. It pours into the dock along with everything else,
+// can simply be painted INSIDE the root, and paint survives the handoff
+// untouched. It pours into the dock along with everything else,
 // which on a desk made of paper is the honest thing for it to do.
 const noFocus = (e: React.MouseEvent) => e.preventDefault()
 
@@ -923,7 +923,7 @@ interface FlightProps {
    *  one frame. The page masks its own translucent shadow during the overlap. */
   onReveal: (win: WinId, resumeFrame?: FrameId) => void
   /** Give the native presenter its shadow in the same renderer turn that
-   *  suppresses WebGL. This closes the gap before React publishes custody. */
+   *  suppresses WebGL. This closes the gap before React publishes the hold. */
   onBridgeCommit: (win: WinId) => void
   onLand: (win: WinId, wall: 0 | 1, resumeFrame?: FrameId) => void
   content: React.ReactNode
@@ -972,7 +972,7 @@ function Flight({
   //
   // So a landed flight computes no more drive state. A restore gets one
   // deliberate coverage frame at the wall, then the next frame suppresses the
-  // mesh and completes native custody; a dock landing stops immediately.
+  // mesh and completes the native hold; a dock landing stops immediately.
   const landed = useRef(false)
   const reverseRelease = useRef<{ frame?: FrameId } | null>(null)
   const f = air.f
@@ -1038,7 +1038,7 @@ function Flight({
       // visible under WebGL. Give it the shadow now, in the same rAF callback
       // that suppresses this group. The browser cannot composite an
       // intermediate state, so exactly one presenter owns the translucent
-      // layer even though React publishes custody later.
+      // layer even though React publishes the hold later.
       commitRendererReleaseFrame({
         outgoing,
         commitIncoming: () => onBridgeCommit(win),
@@ -1173,7 +1173,7 @@ function Flight({
       const markHalf = f.markHalf * pose.sy
       const fill = dockFill(top.y, bottom.y, f.params.dockY + markHalf)
       slot.style.transform = `scale(${pose.sx}, ${pose.sy})`
-      // Non-visual flight progress for the frame-by-frame custody probe.
+      // Non-visual flight progress for the frame-by-frame hold probe.
       // `--pour` now means spatial icon fill and is deliberately nonlinear,
       // so it cannot also stand in for the drive without inventing jumps.
       slot.style.setProperty('--gen-progress', visibleT.toFixed(4))
@@ -1322,7 +1322,7 @@ function Flight({
 //
 // A tile's scale has exactly one writer per frame. While a window is
 // airborne that writer is its own Flight, which has the live drive; this
-// takes every other tile, and reads its wall from CUSTODY rather than
+// takes every other tile, and reads its wall from HOLD rather than
 // from t — an idle drive resets t to 0 on every landing, dock and desk
 // alike, so t genuinely cannot say which end an idle bay is resting at.
 //
@@ -1362,7 +1362,7 @@ function Bays({ slotOf, ringOf, ringing, held, docked, stopRing }: BaysProps) {
       slot.style.transform = `scale(${pose.sx}, ${pose.sy})`
       slot.style.setProperty('--gen-progress', full ? '1' : '0')
       // The idle ends of the same level the Driver writes mid-flight.
-      // Custody is the only thing that can answer it here: an unheld bay
+      // Hold is the only thing that can answer it here: an unheld bay
       // is either holding a window or it isn't, and the frame that hands
       // it over is the frame the Driver stops writing.
       slot.style.setProperty('--pour', full ? '1' : '0')
@@ -1939,7 +1939,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
 
     // Freeze only after all geometry is valid. A null result means that
     // the decoder has not presented its first real frame yet, so the page
-    // keeps custody and the gesture is safely refused.
+    // keeps the hold and the gesture is safely refused.
     const required = filmController.freeze()
     if (!required) return null
     const style = getComputedStyle(innerEl)
@@ -2046,7 +2046,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   const beginGrabRestore = (id: WinId) =>
     takeOff(id, 'restoring', { ...restingDrive(), mode: 'grab', t: 1, grabT: 1, target: 0 }, false)
 
-  // Where the sheet lands decides the next custody, not which phase it
+  // Where the sheet lands decides the next hold, not which phase it
   // took off from — a minimize caught and flung home lands resting, a
   // restore flicked back down lands docked.
   const finishLand = (
@@ -2145,7 +2145,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     [filmController],
   )
 
-  const revokeRendererCustody = useCallback(() => {
+  const revokeRendererHold = useCallback(() => {
     const revoked = [...flights.current.entries()]
     if (!revoked.length) return
 
@@ -2346,7 +2346,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
         // and every sheet flew home behind the windows it took off from.
         // Nothing in the scene's own state was wrong; the sheet was
         // simply in a lower layer than the desk. The desk's windows are
-        // 1..n, so anything above n restores custody — and the number is
+        // 1..n, so anything above n restores the hold — and the number is
         // stated here rather than in a stylesheet because r3f writes this
         // wrapper's inline styles and would win against one.
         style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: OVERLAY_Z }}
@@ -2360,7 +2360,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
         onCreated={(state) => state.gl.setClearAlpha(0)}
       >
         <PixelPerfect />
-        <WebGLContextGuard onLost={revokeRendererCustody} />
+        <WebGLContextGuard onLost={revokeRendererHold} />
         <CanvasPointerGate
           enabled={anyAir}
           isTarget={(object) => Boolean(object.userData.matter)}

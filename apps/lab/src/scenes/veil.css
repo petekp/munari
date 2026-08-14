@@ -17,7 +17,7 @@
  * other scene is a fixed viewport. This page is the scroller instead:
  * same gesture, same momentum, and the lab's geometry stays untouched.
  * position: relative anchors the slab into the SCROLLING content —
- * that placement is the scene's custody fix, not a styling choice. */
+ * that placement is the scene's hold fix, not a styling choice. */
 .veil-page {
   position: relative;
   height: 100%;

@@ -2,14 +2,15 @@
 
 munari makes the live DOM available as physical matter in WebGL
 (Chrome HTML-in-canvas). One sentence of theory governs everything:
-**this is a custody protocol between two renderers that both believe
-they own the pixels.** Idle is compositor custody; flight is a custody
-excursion; the swap rules are the transfer protocol. When a change is
-hard to place, ask whose custody the pixels are in at that moment.
+**this is a handoff protocol between two renderers that both believe
+they own the pixels.** Idle is the compositor's hold; flight is an
+excursion out of it; the handoff rules are the transfer protocol. When
+a change is hard to place, ask whose hands the pixels are in at that
+moment.
 
 ## Shape (the hourglass)
 
-- `packages/core` (`@munari/core`) — the kernel: custody,
+- `packages/core` (`@munari/core`) — the kernel: holds and handoffs,
   provenance, arbitration, pure laws. **Zero runtime dependencies**,
   never published independently. The DOM stays the retained model —
   core coordinates, it does not own content.
@@ -32,7 +33,7 @@ hard to place, ask whose custody the pixels are in at that moment.
 ## Conformance
 
 The kernel's behavior is defined by `tests/conformance/`, one
-directory per layer: **mapping → paint (custody) → pointer (relay) →
+directory per layer: **mapping → paint (pixels) → pointer (relay) →
 transfer (handoff) → chrome (measurement) → physics**. The suites are
 the specification — describe/it names, comments, and pinned numbers
 are all load-bearing. A law ships with the contract that pins it, and

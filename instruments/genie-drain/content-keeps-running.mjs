@@ -1,7 +1,7 @@
 // content-keeps-running — does the window come back, or does a new one
 // come back wearing its clothes?
 //
-// A minimize is supposed to be a change of custody, not a teardown. The
+// A minimize is supposed to be a handoff, not a teardown. The
 // page canvas is hidden for the duration and shown again on landing. The
 // same canvas stays mounted, and the one decoder outside the window keeps
 // running. Nothing in a screenshot can prove those identities, because a
@@ -228,7 +228,7 @@ try {
     problems.push(
       `the round trip replaced DOM nodes (decoder ${kept.decoder ? 'kept' : 'lost'}, canvas ` +
         `${kept.canvas ? 'kept' : 'lost'}, window ${kept.window ? 'kept' : 'lost'}, field ` +
-        `${kept.note ? 'kept' : 'lost'}) — custody changed element identity`,
+        `${kept.note ? 'kept' : 'lost'}) — the handoff changed element identity`,
     )
   if (lostDecoder)
     problems.push(`${lostDecoder} of ${ROUNDS} round trips replaced the persistent media decoder`)

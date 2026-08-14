@@ -7,12 +7,12 @@ frames and threw them across a wall — *proiezioni dirette*, direct
 projections, where what you see is not a picture of the material but
 the material itself, enlarged by light. This library does that to the
 browser: the real DOM — layout, focus, accessibility, text you can
-select — stays the retained truth, and a custody protocol lets a WebGL
+select — stays the retained truth, and a handoff protocol lets a WebGL
 scene carry its pixels as matter. At the calibrated vantage (1 world
 unit = 1 CSS pixel on the rest plane) the page resolves exactly;
 everywhere else it is paper you can bend, throw, and crumple.
 
-**Status: pre-release.** The kernel is complete through six custody
+**Status: pre-release.** The kernel is complete through six
 layers — mapping, paint, pointer, transfer, chrome, physics — each defined
 by a conformance suite in `tests/conformance/` and exercised by a scene
 in the lab. The public API is not frozen: the binding re-exports the
@@ -138,8 +138,8 @@ The reverse handoff has a different boundary. Prepare the native presenter
 first, then call `commitRendererReleaseFrame` from `useFrame`. Its
 `commitIncoming` callback gives the native presenter any translucent layers;
 the helper suppresses the outgoing object in the same renderer turn and calls
-`publishRelease` after that render stack. React state should publish durable
-custody from `publishRelease`, not from an Effect.
+`publishRelease` after that render stack. React state should publish the durable
+handoff from `publishRelease`, not from an Effect.
 
 For every premultiplied frame source, use `material="none"` and a custom
 material. This also applies when the mesh does not blend: pixels with partial
@@ -168,7 +168,7 @@ it asks of a consumer's CSS in return.
 | `registry/` | copyable behaviors, shadcn-style (nothing published) |
 | `apps/lab` | the lab application, a *consumer* of the barrel |
 | `instruments/` | probes and gates; measurement as maintained code |
-| `tests/conformance/` | the specification, one suite per custody layer |
+| `tests/conformance/` | the specification, one suite per layer |
 
 The dependency shape is an hourglass — core ← binding ← consumers — and
 `tests/boundary.test.ts` walks real import specifiers to enforce it.

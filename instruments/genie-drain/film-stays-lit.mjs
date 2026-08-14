@@ -1,5 +1,5 @@
-// film-stays-lit — does the film go dark when its canvas moves from DOM
-// custody to WebGL custody?
+// film-stays-lit — does the film go dark when its canvas moves from the
+// page's hold to the canvas's hold?
 //
 // film-window.mjs checks the long run: one decoder, one canvas, advancing
 // generations, and repeated landings. This gate looks only at the first

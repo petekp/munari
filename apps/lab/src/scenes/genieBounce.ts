@@ -15,7 +15,7 @@
 //   but re-painted geometrically in the capture, and the two are
 //   allowed to disagree in both sharpness and TIME — the measured
 //   fat-vs-crisp stroke jump and ~60ms ring displacement at the
-//   custody swap. A style write has one clock and one raster path, so
+//   handoff. A style write has one clock and one raster path, so
 //   the page and the texture cannot diverge. And because every mounted
 //   copy of the window subscribes to the SAME simulation, the page
 //   copy and the airborne copy draw identical numbers on every frame —

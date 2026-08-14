@@ -1,7 +1,7 @@
 // swap-pop — how much does the window change on the frame it stops
 // being DOM and starts being a texture?
 //
-// The custody swap is meant to be invisible. Everything else in this
+// The handoff is meant to be invisible. Everything else in this
 // directory checks that the two copies are in the same PLACE at the same
 // time; none of them checks that they LOOK the same, and place is the
 // easier half. The sheet is drawn at t = 0 exactly over the window it

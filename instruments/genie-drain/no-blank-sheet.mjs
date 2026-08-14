@@ -20,7 +20,7 @@
 // change position" and lives nowhere near the shapes.
 //
 // So this measures the one thing a screenshot pair cannot: INK, in every
-// composited frame across both custody swaps. The measure is a DENSITY —
+// composited frame across both handoffs. The measure is a DENSITY —
 // dark pixels per pixel of sheet — because a sheet mid-pour is honestly
 // smaller, and only a scale-free ratio can tell "narrowing" from "empty".
 // A blank sheet is the one shape that is large and lightless at once.
@@ -255,7 +255,7 @@ try {
     else if (worstDensity < restDensity * FLOOR)
       problems.push(
         `${name}: a full-size sheet carried only ${((worstDensity / restDensity) * 100).toFixed(0)}% ` +
-          `of its resting ink at +${worst.ms}ms — it took custody of the pixels before its texture had any`,
+          `of its resting ink at +${worst.ms}ms — it took the pixels into its hold before its texture had any`,
       )
     return { sheet: fullSheet, ink: fullInk }
   }

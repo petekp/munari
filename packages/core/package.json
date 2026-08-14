@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "munari kernel: custody, provenance, arbitration — pure laws over the retained DOM. Zero runtime dependencies (enforced by tests/boundary.test.ts). Workspace-internal; never published independently (decisions.md #1).",
+  "description": "munari kernel: holds and handoffs, provenance, arbitration — pure laws over the retained DOM. Zero runtime dependencies (enforced by tests/boundary.test.ts). Workspace-internal; never published independently (decisions.md #1).",
   "exports": {
     ".": "./src/index.ts"
   }

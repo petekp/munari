@@ -1,6 +1,6 @@
 // The sound of the hardware — a detent's click and a lever's thunk.
 //
-// Custody note: sound is presentation, like the springs. The source of
+// Hold note: sound is presentation, like the springs. The source of
 // truth is the value change itself — KnobsPanel calls these from the
 // same setter every input path funnels through (drag, flick, keyboard),
 // so a detent is heard exactly when a detent is crossed, whoever turned

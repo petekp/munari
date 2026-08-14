@@ -2,7 +2,7 @@
 // the Canvas and the captured Surface, for the reason GenieTweaks.tsx
 // carries in full: a tuning surface has to be the one thing in the
 // frame you can trust, so measurement infrastructure stays out of the
-// custody excursion. Sliders write into knobsTuning and apply live;
+// excursion. Sliders write into knobsTuning and apply live;
 // React state here is only the panel's own chrome.
 //
 // It anchors top-LEFT where Genie's anchors right: the slab owns the

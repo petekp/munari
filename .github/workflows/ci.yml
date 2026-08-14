@@ -108,10 +108,10 @@ jobs:
       - run: npm ci
       - run: npm run gate:dom-surface-demand
 
-  # The crossing-flash browser gate: while content crosses custody
-  # between the page and the canvas (both directions, and reversed
-  # mid-air), every composited frame keeps the content's ink on screen —
-  # no frame in nobody's custody, no frame of blank capture cards.
+  # The crossing-flash browser gate: while content crosses between
+  # the page and the canvas (both directions, and reversed mid-air),
+  # every composited frame keeps the content's ink on screen — no
+  # frame in nobody's hands, no frame of blank capture cards.
   crossing:
     runs-on: ubuntu-latest
     steps:

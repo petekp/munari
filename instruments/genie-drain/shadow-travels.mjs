@@ -65,7 +65,7 @@ const FROM = 200
 const TO = 650
 // The first transfer frames are a separate concern from whether the shadow
 // travels. The old presenter and the renderer can briefly occupy the same
-// pixels while custody changes; an opaque window hides that overlap, but two
+// pixels while the handoff happens; an opaque window hides that overlap, but two
 // translucent shadows compound into a dark flash. Read that boundary too.
 const BOUNDARY_TO = FROM
 // The strip must stay nearer the shadow than the bench for every frame
@@ -274,15 +274,15 @@ try {
         `too faint for this to distinguish a shadow from its absence, and too faint to see`,
     )
   else if (!boundary.length)
-    problems.push('no frames fell in the custody boundary — shadow opacity was not measured')
+    problems.push('no frames fell in the handoff boundary — shadow opacity was not measured')
   else if (restStrip - darkestBoundary.strip > TRANSFER_LUMA_TOLERANCE)
     problems.push(
-      `the custody boundary darkened the shadow from ${restStrip.toFixed(0)} to ` +
+      `the handoff boundary darkened the shadow from ${restStrip.toFixed(0)} to ` +
         `${darkestBoundary.strip.toFixed(0)} luma — both translucent presenters were composited together`,
     )
   else if (palestBoundary.strip - restStrip > TRANSFER_LUMA_TOLERANCE)
     problems.push(
-      `the custody boundary lightened the shadow from ${restStrip.toFixed(0)} to ` +
+      `the handoff boundary lightened the shadow from ${restStrip.toFixed(0)} to ` +
         `${palestBoundary.strip.toFixed(0)} luma — neither presenter owned the translucent shadow`,
     )
   else if (!watched.length) problems.push('no frames fell in the judged stretch — nothing was measured')
@@ -363,15 +363,15 @@ try {
     `  reverse shadow range         ${darkestReverse.toFixed(0)}..${palestReverse.toFixed(0)} luma across ${reverseRead.length} frames`,
   )
   if (!reverseRead.length)
-    problems.push('no compositor frames covered the reverse custody boundary')
+    problems.push('no compositor frames covered the reverse handoff boundary')
   else if (restStrip - darkestReverse > TRANSFER_LUMA_TOLERANCE)
     problems.push(
-      `the reverse custody boundary darkened the shadow from ${restStrip.toFixed(0)} to ` +
+      `the reverse handoff boundary darkened the shadow from ${restStrip.toFixed(0)} to ` +
         `${darkestReverse.toFixed(0)} luma — both translucent presenters were composited together`,
     )
   else if (palestReverse - restStrip > TRANSFER_LUMA_TOLERANCE)
     problems.push(
-      `the reverse custody boundary lightened the shadow from ${restStrip.toFixed(0)} to ` +
+      `the reverse handoff boundary lightened the shadow from ${restStrip.toFixed(0)} to ` +
         `${palestReverse.toFixed(0)} luma — neither presenter owned the translucent shadow`,
     )
   await sleep(500)
@@ -648,7 +648,7 @@ try {
   }
 
   console.log(
-    `\nshadow-travels: ${problems.length === 0 ? 'PASS — custody keeps one shadow, which travels with the sheet and leaves when squeezed' : 'FAIL'}`,
+    `\nshadow-travels: ${problems.length === 0 ? 'PASS — the handoff keeps one shadow, which travels with the sheet and leaves when squeezed' : 'FAIL'}`,
   )
   for (const p of problems) console.log(`  ${p}`)
   process.exit(problems.length === 0 ? 0 : 1)

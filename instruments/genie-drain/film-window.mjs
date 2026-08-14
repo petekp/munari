@@ -1,4 +1,4 @@
-// film-window — does one film source survive repeated custody changes?
+// film-window — does one film source survive repeated handoffs?
 //
 // The film has one decoder and one canvas. The canvas is visible in the DOM
 // at rest and is the CanvasTexture source in flight. This gate uses the
@@ -420,7 +420,7 @@ try {
     }
   }
 
-  // Establish the normal DOM canvas-to-screen error before a custody swap.
+  // Establish the normal DOM canvas-to-screen error before a handoff.
   await setPhase('baseline')
   await sleep(450)
   await setPhase('idle')
@@ -530,7 +530,7 @@ try {
 
   // Decode screenshots in the page. Samples use the same normalized grid as
   // the source canvas recorder. This finds a transparent hole as well as a
-  // black texture: both differ from the source picture at the custody wall.
+  // black texture: both differ from the source picture at the handoff wall.
   await page.evaluate(() => {
     window.__readFilmScreens = async (batch) => {
       const output = []
@@ -626,7 +626,7 @@ try {
     baseline.map((frame) => frame.sourceError),
     0.95,
   )
-  // JPEG and sample timing set a small non-zero baseline. A custody frame may
+  // JPEG and sample timing set a small non-zero baseline. A handoff frame may
   // move by a fraction of a pixel, but it may not look like the desk behind it.
   const visualErrorMax = Number.isFinite(baselineP95) ? Math.max(24, baselineP95 + 16) : 24
 
@@ -1053,7 +1053,7 @@ try {
   console.log(
     `film-window: ${
       problems.length === 0
-        ? 'PASS — one decoder and one canvas crossed every custody boundary without a blank or stale landing'
+        ? 'PASS — one decoder and one canvas crossed every handoff boundary without a blank or stale landing'
         : 'FAIL'
     }`,
   )

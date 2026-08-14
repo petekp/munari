@@ -10,7 +10,7 @@ import {
   type GenieParams,
 } from './genieLaw'
 
-// The law's two custody constraints, plus the shape guarantees the scene
+// The law's two hold constraints, plus the shape guarantees the scene
 // leans on. Numbers are pinned loose enough to survive tuning the feel
 // (timings, throat) and tight enough that a regression that would show
 // on screen fails here first.
@@ -104,7 +104,7 @@ describe('genie warp', () => {
     }
   })
 
-  it('can curl through one loop without moving either custody identity', () => {
+  it('can curl through one loop without moving either hold identity', () => {
     const looped = { ...P, loopRadius: 0.75 }
     for (const u of STEPS) {
       for (const v of STEPS) {
@@ -239,7 +239,7 @@ describe('genie warp', () => {
     }
   })
 
-  it('k is 1 at rest and the mouth ratio at the mouth — the two custody moments', () => {
+  it('k is 1 at rest and the mouth ratio at the mouth — the two hold moments', () => {
     for (const u of STEPS) {
       for (const v of STEPS) {
         expect(genieWarp(u, v, 0, P).k).toBe(1)

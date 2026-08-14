@@ -8,7 +8,7 @@
 // rows grow downward, and the article y of row 0 arrives as a uniform
 // (uWindow). The scene positions the canvas in the scrolling layer at
 // exactly uWindow, so position and content are computed from the same
-// number and cannot disagree — the custody fix that replaced trying to
+// number and cannot disagree — the hold fix that replaced trying to
 // outguess the compositor's scroll (see Veil.tsx).
 //
 // Three passes, all 13 taps:

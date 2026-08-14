@@ -12,7 +12,7 @@
 // off-screen at left:-10000px, tiling sources side by side) would
 // keep every unit green and break every forwarded pointer in the app.
 //
-// Lives in mapping (it is a coordinate-custody fact) but its subject
+// Lives in mapping (it is a coordinate-hold fact) but its subject
 // API is the paint layer's source factory, so it reuses the paint
 // suite's trial-surface stubs (onpaint / requestPaint / layoutSubtree
 // do not exist in happy-dom).

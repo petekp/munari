@@ -1,6 +1,6 @@
 # The conformance suite
 
-This is the kernel's specification. Each directory is one custody
+This is the kernel's specification. Each directory is one hold
 layer, and each suite defines what that layer's laws mean — not by
 describing them, but by pinning them: describe/it names, the comments
 explaining what failure a case catches, and every measured number are
@@ -11,7 +11,7 @@ Layers, in the order they build on each other:
 
 | layer | what it owns | suites |
 |---|---|---|
-| mapping | coordinate custody — the pixel-calibrated camera, UV anchoring | `camera`, `uvAnchor`, `parkingCoincidence`, `densityIdentity`, `pixelGrid` |
+| mapping | coordinate hold — the pixel-calibrated camera, UV anchoring | `camera`, `uvAnchor`, `parkingCoincidence`, `densityIdentity`, `pixelGrid` |
 | paint | DOM → texture, and what a paint costs | `lodTier`, `htmlInCanvas`, `paintStats`, `styleChannel`, `filterPolicy`, `capabilityProbe` |
 | pointer | provenance and the pointer protocol | `forwardEvents`, `hoverGrace`, `relayDuplication`, `relayTripwire` |
 | transfer | the handoff between page and mesh | `motionSamples`, `conductorTiming`, `densitySchedule` |

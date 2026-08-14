@@ -16,7 +16,7 @@
 //   2. The page copy and the airborne copy are the same component in two
 //      different trees. Both subscribe to ONE simulation (genieBounce.ts),
 //      so they must agree exactly; if they ever run separate clocks, the
-//      marks JUMP at the custody swap — the one frame the scene most needs
+//      marks JUMP at the handoff — the one frame the scene most needs
 //      to be invisible. Measured here by reading the same mark's position
 //      out of both trees at one instant and differencing it.
 //

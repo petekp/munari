@@ -5,7 +5,7 @@
 // Nothing here knows about meshes, textures, or time — `t` arrives
 // already eased.
 //
-// Two constraints carry the custody story, and both are pinned by
+// Two constraints carry the hold story, and both are pinned by
 // genieLaw.test.ts:
 //
 //   t = 0 is an EXACT identity. The moment before the sheet lifts and
@@ -75,7 +75,7 @@ export const GENIE_DEFAULTS: Omit<GenieParams, 'w' | 'h' | 'dockX' | 'dockY' | '
   loopRadius: 0,
 }
 
-// The edge paths keep one quarter of their linear slope at both custody
+// The edge paths keep one quarter of their linear slope at both hold
 // walls. The drive itself still leaves either wall from rest, so takeoff
 // remains gentle. On arrival, however, real geometric velocity survives
 // for the landing spring to consume instead of the sheet easing to a stop
@@ -189,7 +189,7 @@ export function genieWarp(
   const loopPath = Math.min(1, Math.max(0, rawPath))
   const q = smootherstep(0, 1, qPath)
 
-  // The custody moments are exact by construction, not by float luck:
+  // The hold moments are exact by construction, not by float luck:
   // untouched above the funnel, seated in the slot at the mouth.
   if (q === 1) return { x: (u - 0.5) * p.w, y: yBase, k: 1 }
   if (q === 0)

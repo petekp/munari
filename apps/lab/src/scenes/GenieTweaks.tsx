@@ -1,7 +1,7 @@
 // The genie scene's tweak panel — a DOM overlay, deliberately OUTSIDE
 // the windows and their flights, for the same reason GlassTweaks.tsx
 // states in full: a tuning surface has to be the one thing in the frame
-// you can trust, so measurement infrastructure stays out of the custody
+// you can trust, so measurement infrastructure stays out of the
 // excursion. Sliders write into genieKnobs and apply live; React state
 // here is only the panel's own chrome.
 

@@ -1,7 +1,7 @@
 // The knobs-and-switches scene — an instrument slab floating over its
 // own artwork, lit by it.
 //
-// The custody split, control by control:
+// The hold split, control by control:
 //
 //   DOM (captured, KnobsPanel)      WebGL (real geometry, this file)
 //   ─────────────────────────       ────────────────────────────────
@@ -1416,7 +1416,7 @@ function ReadoutWindows({
 }
 
 /**
- * The dial tick rings, on the windows' custody. A lit graduation is a
+ * The dial tick rings, on the windows' hold. A lit graduation is a
  * lamp behind a slot, and paint dimmed to the face's ambient floor
  * reads as paint — so each dial's tick annulus gets the same pure-
  * emitter treatment as the LCD windows: an unlit ring just off the

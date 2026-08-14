@@ -91,7 +91,7 @@ try {
   const presented = events.find((event) => event.type === 'present')
   const shown = events.find((event) => event.type === 'show')
   if (!before || !accepted || !presented || !shown) {
-    throw new Error(`missing custody evidence: ${events.map((event) => event.type).join(', ')}`)
+    throw new Error(`missing handoff evidence: ${events.map((event) => event.type).join(', ')}`)
   }
   if (before.paintedSize.join() !== accepted.paintedSize.join())
     throw new Error(`outer size changed: ${before.paintedSize} -> ${accepted.paintedSize}`)

@@ -6,7 +6,7 @@
 // wobbled and lagged along with everything else, then every judgement made
 // with it would be a judgement about the panel plus the panel's own distortion
 // of the number that set it. Measurement infrastructure stays out of the
-// custody excursion.
+// excursion.
 //
 // Everything here writes STRAIGHT into live mutable objects — scene knobs, or
 // a panel's own params — and nothing re-renders the scene. React state is used

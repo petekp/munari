@@ -1,6 +1,6 @@
 // The motion carrier contract.
 //
-// A carrier is what lets motion cross custody mid-flight: one clock,
+// A carrier is what lets motion cross the handoff mid-flight: one clock,
 // one program, and every output — page style, mesh transform — reading
 // the same number in the same frame. The contract pins the discipline,
 // because the discipline IS the guarantee: a second evaluation at a

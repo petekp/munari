@@ -1,11 +1,11 @@
-// genie-drain probe — drives the genie scene's whole custody cycle with
+// genie-drain probe — drives the genie scene's whole handoff cycle with
 // a real pointer and turns each leg into a pass/fail observable. The
 // scene's claim is that every stage of the old minimize movie is a place
 // a hand can enter; this instrument enters at each of them:
 //
 //   B  clock minimize   amber lamp → page copy yields (painted swap),
 //                       then the dock tile swells shut around it
-//                       (docked custody)
+//                       (docked hold)
 //   C  clock restore    tile click → window visible again, tile unlit —
 //                       then TYPE into it, proving the round trip landed
 //                       on live DOM, not a picture of it
@@ -21,7 +21,7 @@
 //                       proves the catch engaged.
 //
 // Observables are DOM truths, not pixels: the page copy's visibility
-// (custody), the tile's data-filled flip (phase), the tile's own
+// (hold), the tile's data-filled flip (phase), the tile's own
 // transform (DOMMatrix m11/m22 > 1.05 — the container actually swelled
 // around what it caught, not just a class flip), the input's value
 // after typing (the window is still real). Screenshots are saved for
