@@ -101,7 +101,7 @@ export function stepFade(lit: number, target: number, dt: number): number {
  *  real screen pointer moves the slab, and the real document pointerup
  *  disarms it). Split that way because the forwarded stream's
  *  coordinates live on the panel — the very thing the gesture moves. */
-export const panelDrag = { active: false }
+export const panelDrag = { active: false, pointerId: null as number | null }
 
 /** Live bag for the resize gesture, split the same way and for the same
  *  reason: the corner grip is captured DOM, and its coordinates live on
@@ -109,7 +109,12 @@ export const panelDrag = { active: false }
  *  records the width it started from; `startX` is left NaN, and the
  *  scene seeds it from the first REAL screen move before applying
  *  `resizeWidth`. */
-export const panelResize = { active: false, startX: Number.NaN, startW: 0 }
+export const panelResize = {
+  active: false,
+  pointerId: null as number | null,
+  startX: Number.NaN,
+  startW: 0,
+}
 
 export interface ToggleDef {
   key: 'power' | 'mirror'

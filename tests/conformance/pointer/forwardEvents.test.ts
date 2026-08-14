@@ -22,6 +22,7 @@ import {
   trackDrag,
   trackFocusModality,
   trackWheel,
+  type ForwardPointerSample,
 } from '@munari/core'
 
 const ROOT = { left: 0, top: 0, right: 360, bottom: 460 }
@@ -67,6 +68,29 @@ let log: Log[]
 
 const TRIGGER_BOX = [20, 20, 120, 60] as const
 const SIBLING_BOX = [20, 100, 120, 140] as const
+
+function pointerSample(
+  overrides: Partial<ForwardPointerSample> = {},
+): ForwardPointerSample {
+  return {
+    pointerId: 1,
+    pointerType: 'mouse',
+    isPrimary: true,
+    button: 0,
+    buttons: 0,
+    pressure: 0,
+    width: 1,
+    height: 1,
+    tiltX: 0,
+    tiltY: 0,
+    twist: 0,
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    ...overrides,
+  }
+}
 
 beforeEach(() => {
   document.body.innerHTML = ''
@@ -853,7 +877,12 @@ describe('the document-capture drag arbiter', () => {
   })
 
   function canvasMove(init: PointerEventInit, relay = true) {
-    const e = new PointerEvent('pointermove', { bubbles: true, cancelable: true, ...init })
+    const e = new PointerEvent('pointermove', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 1,
+      ...init,
+    })
     canvas.dispatchEvent(relay ? trusted(e) : e)
     return e
   }
@@ -866,7 +895,7 @@ describe('the document-capture drag arbiter', () => {
     trigger.addEventListener('pointermove', (e) => seen.push((e as PointerEvent).buttons))
     forwardPointer(root, at.u, at.v, 'move')
     forwardPointer(root, at.u, at.v, 'down')
-    forwardPointer(root, at.u, at.v, 'move', 1)
+    forwardPointer(root, at.u, at.v, 'move', pointerSample({ buttons: 1 }))
     expect(seen).toEqual([0, 1])
   })
 
@@ -897,7 +926,9 @@ describe('the document-capture drag arbiter', () => {
   it('stands down on a trusted release anywhere', () => {
     forwardPointer(root, at.u, at.v, 'down')
     // The pointer went up over the floor — no Surface handler ever hears it.
-    document.body.dispatchEvent(trusted(new PointerEvent('pointerup', { bubbles: true })))
+    document.body.dispatchEvent(
+      trusted(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 })),
+    )
     expect(canvasMove({ buttons: 1 }).defaultPrevented).toBe(false)
   })
 
@@ -935,13 +966,13 @@ describe('a foreign drag silences the forwarder', () => {
 
   it('forwards nothing for a held-button move that began outside every surface', () => {
     log.length = 0
-    expect(forwardPointer(root, at.u, at.v, 'move', 1)).toBeNull()
+    expect(forwardPointer(root, at.u, at.v, 'move', pointerSample({ buttons: 1 }))).toBeNull()
     expect(log).toHaveLength(0)
     expect(trigger.hasAttribute('data-hover')).toBe(false)
   })
 
   it('so a later exit has no hover to depart from — no leave, no burst', async () => {
-    forwardPointer(root, at.u, at.v, 'move', 1) // crossing ONTO the panel, mid-orbit
+    forwardPointer(root, at.u, at.v, 'move', pointerSample({ buttons: 1 })) // crossing ONTO the panel, mid-orbit
     log.length = 0
     clearPointerState(root) // crossing OFF it
     await settle()
@@ -951,16 +982,102 @@ describe('a foreign drag silences the forwarder', () => {
   it('our own drag still forwards its held-button moves', () => {
     forwardPointer(root, at.u, at.v, 'down')
     log.length = 0
-    expect(forwardPointer(root, at.u, at.v, 'move', 1)).not.toBeNull()
+    expect(
+      forwardPointer(root, at.u, at.v, 'move', pointerSample({ buttons: 1 })),
+    ).not.toBeNull()
     expect(typesAt('trigger')).toContain('pointermove')
     forwardPointer(root, at.u, at.v, 'up')
   })
 
   it('hover forwarding resumes once the foreign button comes up', () => {
-    forwardPointer(root, at.u, at.v, 'move', 1)
+    forwardPointer(root, at.u, at.v, 'move', pointerSample({ buttons: 1 }))
     expect(trigger.hasAttribute('data-hover')).toBe(false)
-    forwardPointer(root, at.u, at.v, 'move', 0)
+    forwardPointer(root, at.u, at.v, 'move', pointerSample({ buttons: 0 }))
     expect(trigger.hasAttribute('data-hover')).toBe(true)
+  })
+})
+
+describe('pointer identity and cancellation', () => {
+  const at = uvOf(...TRIGGER_BOX)
+  const pen = pointerSample({
+    pointerId: 23,
+    pointerType: 'pen',
+    isPrimary: false,
+    buttons: 1,
+    pressure: 0.72,
+    width: 5,
+    height: 7,
+    tiltX: 18,
+    tiltY: -11,
+    twist: 91,
+    altKey: true,
+    shiftKey: true,
+  })
+
+  it('preserves the complete native sample through down and move', () => {
+    const seen: PointerEvent[] = []
+    trigger.addEventListener('pointerdown', (event) => seen.push(event as PointerEvent))
+    trigger.addEventListener('pointermove', (event) => seen.push(event as PointerEvent))
+
+    forwardPointer(root, at.u, at.v, 'down', pen)
+    forwardPointer(root, at.u, at.v, 'move', pen)
+
+    expect(seen).toHaveLength(2)
+    for (const event of seen) {
+      expect({
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        isPrimary: event.isPrimary,
+        buttons: event.buttons,
+        pressure: event.pressure,
+        width: event.width,
+        height: event.height,
+        tiltX: event.tiltX,
+        tiltY: event.tiltY,
+        twist: event.twist,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+      }).toEqual({
+        pointerId: 23,
+        pointerType: 'pen',
+        isPrimary: false,
+        buttons: 1,
+        pressure: 0.72,
+        width: 5,
+        height: 7,
+        tiltX: 18,
+        tiltY: -11,
+        twist: 91,
+        altKey: true,
+        shiftKey: true,
+      })
+    }
+    forwardPointer(root, at.u, at.v, 'cancel', { ...pen, buttons: 0, pressure: 0 })
+  })
+
+  it('cancels active state without release, click, or focus behavior', () => {
+    const heard: string[] = []
+    for (const type of ['pointercancel', 'pointerup', 'mouseup', 'click']) {
+      trigger.addEventListener(type, () => heard.push(type))
+    }
+    forwardPointer(root, at.u, at.v, 'down', pen)
+    forwardPointer(root, at.u, at.v, 'cancel', { ...pen, buttons: 0, pressure: 0 })
+
+    expect(heard).toEqual(['pointercancel'])
+    expect(trigger.hasAttribute('data-active')).toBe(false)
+    expect(document.activeElement).not.toBe(trigger)
+    expect(forwardPointer(root, at.u, at.v, 'move', pen)).toBeNull()
+  })
+
+  it('keeps the latest identity for boundary and departure events', () => {
+    const identities: Array<[number, string]> = []
+    trigger.addEventListener('pointerleave', (event) => {
+      const pointer = event as PointerEvent
+      identities.push([pointer.pointerId, pointer.pointerType])
+    })
+    forwardPointer(root, at.u, at.v, 'move', { ...pen, buttons: 0, pressure: 0 })
+    clearPointerState(root)
+    expect(identities).toEqual([[23, 'pen']])
   })
 })
 

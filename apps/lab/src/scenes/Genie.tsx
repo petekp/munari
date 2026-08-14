@@ -36,6 +36,7 @@ import {
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
+  CanvasPointerGate,
   Surface,
   SurfaceApp,
   cameraDistance,
@@ -582,41 +583,6 @@ function PixelPerfect() {
     camera.far = camera.position.z * 3
     camera.updateProjectionMatrix()
   }, [camera, size.height])
-  return null
-}
-
-// ── canvas solidity: solid only where there is matter (flight rule #3) ──
-
-function SolidWhereMatterIs({ active }: { active: boolean }) {
-  const gl = useThree((s) => s.gl)
-  const camera = useThree((s) => s.camera)
-  const scene = useThree((s) => s.scene)
-  useEffect(() => {
-    const el = gl.domElement
-    if (!active) {
-      el.style.pointerEvents = 'none'
-      return
-    }
-    const ray = new THREE.Raycaster()
-    const ndc = new THREE.Vector2()
-    const onMove = (e: PointerEvent) => {
-      // The library's retold pointer events bubble back to window; acting
-      // on them would toggle the canvas off mid-hover (flight's essay in
-      // physics/gestures.ts).
-      if (!e.isTrusted) return
-      ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1)
-      ray.setFromCamera(ndc, camera)
-      const hit = ray
-        .intersectObjects(scene.children, true)
-        .some((h) => h.object.userData.matter)
-      el.style.pointerEvents = hit ? 'auto' : 'none'
-    }
-    window.addEventListener('pointermove', onMove, true)
-    return () => {
-      window.removeEventListener('pointermove', onMove, true)
-      el.style.pointerEvents = 'none'
-    }
-  }, [active, gl, camera, scene])
   return null
 }
 
@@ -2348,7 +2314,10 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
       >
         <PixelPerfect />
         <WebGLContextGuard onLost={revokeRendererCustody} />
-        <SolidWhereMatterIs active={anyAir} />
+        <CanvasPointerGate
+          enabled={anyAir}
+          isTarget={(object) => Boolean(object.userData.matter)}
+        />
         <GestureRig api={apiRef} />
         <Bays
           slotOf={slotOf}

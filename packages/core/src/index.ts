@@ -89,6 +89,7 @@ export {
   trackDrag,
   trackFocusModality,
   trackWheel,
+  type ForwardPointerSample,
   type ForwardResult,
 } from './pointer/forwardEvents'
 export {

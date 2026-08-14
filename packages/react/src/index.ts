@@ -29,6 +29,10 @@ export type {
   FrameSurfaceProps,
 } from './primitives/FrameSurface'
 export { SurfaceApp, type SurfaceAppProps } from './primitives/SurfaceApp'
+export {
+  CanvasPointerGate,
+  type CanvasPointerGateProps,
+} from './primitives/CanvasPointerGate'
 // The shader seam: with `material="none"` a Surface yields its material slot
 // to its children, and this is how the custom material reaches the live DOM
 // texture it should sample, the measured chrome it should wear, and the

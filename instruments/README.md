@@ -154,6 +154,16 @@ Its first version asked only about height, and passed 19 of 21 frames
 while all 21 were wrong — height moves only at a breakpoint, so the
 continuous fault hid under the two loud ones. Both axes, always.
 
+## knobs-input
+
+Does the full-page canvas accept the first mouse, touch, or pen contact
+without taking input from clear page art? `npm run gate:knobs-input`.
+It uses Chrome's input protocol on the real Knobs route. It checks cold
+touch and pen contact, complete pen identity, hover arming, cancellation,
+lost-release cleanup, clear-art pass-through, and single-click ownership.
+It has the same `drawElementImage` capability policy as the other DOM
+Surface browser gates.
+
 ## House rules
 
 - A scene that can't be interrogated from the console isn't done.

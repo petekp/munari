@@ -35,6 +35,7 @@ import {
   trackWheel,
   uploadNeedsRealloc,
   type DomTextureSource,
+  type ForwardPointerSample,
   type SurfaceChrome,
 } from '@munari/core'
 import { SURFACE_RADIUS_GLSL } from '../lib/surfaceRadiusGlsl'
@@ -362,7 +363,7 @@ function DomSurface({
   const sourceRef = useRef<DomTextureSource | null>(null)
   const meshRef = useRef<THREE.Mesh>(null)
   const materialRef = useRef<THREE.MeshStandardMaterial>(null)
-  const pressedRef = useRef(false)
+  const pressedRef = useRef<ForwardPointerSample | null>(null)
   const lastUploadRef = useRef(-1)
   const extraUploadsRef = useRef(0)
   // One-shot latch for onFirstUpload; re-arms when the source is recreated.
@@ -617,6 +618,49 @@ function DomSurface({
   // are defaultPrevented so drag consumers hear only the forwarded narrator.
   useEffect(() => trackDrag(), [])
 
+  // A release can occur after the ray leaves the Surface. R3F then has no
+  // intersected mesh to notify, so close the matching relay in a microtask if
+  // the normal mesh handler did not already do it.
+  useEffect(() => {
+    const cancelActive = (sample?: ForwardPointerSample) => {
+      const active = pressedRef.current
+      if (!active) return
+      const source = sourceRef.current
+      if (source) {
+        forwardPointer(source.element, 0, 0, 'cancel', {
+          ...(sample ?? active),
+          button: 0,
+          buttons: 0,
+          pressure: 0,
+        })
+      }
+      pressedRef.current = null
+      if (controls) controls.enabled = true
+    }
+    const onEnd = (e: PointerEvent) => {
+      const active = pressedRef.current
+      if (!active || active.pointerId !== e.pointerId) return
+      queueMicrotask(() => {
+        if (pressedRef.current?.pointerId === e.pointerId) cancelActive(e)
+      })
+    }
+    const onBlur = () => cancelActive()
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') cancelActive()
+    }
+    document.addEventListener('pointerup', onEnd, true)
+    document.addEventListener('pointercancel', onEnd, true)
+    window.addEventListener('blur', onBlur)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      document.removeEventListener('pointerup', onEnd, true)
+      document.removeEventListener('pointercancel', onEnd, true)
+      window.removeEventListener('blur', onBlur)
+      document.removeEventListener('visibilitychange', onVisibility)
+      cancelActive()
+    }
+  }, [controls])
+
   // Creating the source is a TEARDOWN. It destroys the live DOM subtree and
   // with it everything that was alive in there: focus, form values, text
   // selection, scroll offsets, and any second React root a scene mounted
@@ -719,6 +763,17 @@ function DomSurface({
     const cleanupSource = onSourceRef.current?.(source.element)
 
     return () => {
+      const active = pressedRef.current
+      if (active) {
+        forwardPointer(source.element, 0, 0, 'cancel', {
+          ...active,
+          button: 0,
+          buttons: 0,
+          pressure: 0,
+        })
+        pressedRef.current = null
+        if (controls) controls.enabled = true
+      }
       source.element.removeEventListener('focusin', focusIn)
       source.element.removeEventListener('focusout', focusOut)
       cleanupSource?.()
@@ -1012,6 +1067,8 @@ function DomSurface({
   }
 
   const handleDown = (e: ThreeEvent<PointerEvent>) => {
+    const active = pressedRef.current
+    if (active && active.pointerId !== e.nativeEvent.pointerId) return
     e.stopPropagation()
     // ...and stop the REAL event at the canvas, so document-level listeners
     // see only the forwarded one.
@@ -1034,20 +1091,33 @@ function DomSurface({
     const uv = uvOf(e)
     const source = sourceRef.current
     if (!uv || !source) return
-    pressedRef.current = true
+    pressedRef.current = e.nativeEvent
     if (controls) controls.enabled = false
-    forwardPointer(source.element, uv.u, uv.v, 'down')
+    forwardPointer(source.element, uv.u, uv.v, 'down', e.nativeEvent)
   }
 
   const handleUp = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation()
     const uv = uvOf(e)
     const source = sourceRef.current
+    const active = pressedRef.current
+    if (!active || active.pointerId !== e.nativeEvent.pointerId) return
     if (controls) controls.enabled = true
-    if (!uv || !source || !pressedRef.current) return
-    pressedRef.current = false
-    const hit = forwardPointer(source.element, uv.u, uv.v, 'up')
+    if (!uv || !source) return
+    pressedRef.current = null
+    const hit = forwardPointer(source.element, uv.u, uv.v, 'up', e.nativeEvent)
     if (hit?.target instanceof HTMLSelectElement) nudgeSelect(hit.target)
+  }
+
+  const handleCancel = (e: ThreeEvent<PointerEvent>) => {
+    const active = pressedRef.current
+    if (!active || active.pointerId !== e.nativeEvent.pointerId) return
+    e.stopPropagation()
+    const uv = uvOf(e) ?? { u: 0, v: 0 }
+    const source = sourceRef.current
+    pressedRef.current = null
+    if (controls) controls.enabled = true
+    if (source) forwardPointer(source.element, uv.u, uv.v, 'cancel', e.nativeEvent)
   }
 
   const handleMove = (e: ThreeEvent<PointerEvent>) => {
@@ -1060,7 +1130,7 @@ function DomSurface({
     if (!uv || !source) return
     // Real buttons state rides along: a drag consumer deactivates on the
     // first move that claims no button is held.
-    forwardPointer(source.element, uv.u, uv.v, 'move', e.nativeEvent.buttons)
+    forwardPointer(source.element, uv.u, uv.v, 'move', e.nativeEvent)
     // The forwarded move above is this pointer's true story; the native one —
     // target CANVAS, screen coordinates — must not also reach document-level
     // coordinate reasoners (Radix's tooltip grace tracker dismisses on it).
@@ -1077,12 +1147,11 @@ function DomSurface({
       {...meshProps}
       onPointerDown={handleDown}
       onPointerUp={handleUp}
+      onPointerCancel={handleCancel}
       onPointerMove={handleMove}
       onBeforeRender={handleBeforeRender}
       onAfterRender={handleAfterRender}
       onPointerOut={() => {
-        pressedRef.current = false
-        if (controls) controls.enabled = true
         // The ray left the mesh — un-hover/un-press the mirrored DOM state.
         const el = sourceRef.current?.element
         if (el) clearPointerState(el)

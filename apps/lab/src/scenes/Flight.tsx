@@ -50,6 +50,7 @@ import {
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
+  CanvasPointerGate,
   SurfaceApp,
   useSurfaceChrome,
   useSurfaceTexture,
@@ -1116,47 +1117,6 @@ function PixelPerfect() {
   return null
 }
 
-/**
- * The canvas is `pointer-events: none` until the pointer is genuinely over a
- * piece of matter, then `auto`, then none again. Without it an overlay eats
- * the page: no text selection, no links, no scrolling.
- */
-function SolidWhereMatterIs({ active }: { active: boolean }) {
-  const gl = useThree((s) => s.gl)
-  const camera = useThree((s) => s.camera)
-  const scene = useThree((s) => s.scene)
-  const size = useThree((s) => s.size)
-
-  useEffect(() => {
-    const el = gl.domElement
-    if (!active) {
-      el.style.pointerEvents = 'none'
-      return
-    }
-    const ray = new THREE.Raycaster()
-    const ndc = new THREE.Vector2()
-    const test = (e: PointerEvent) => {
-      // Same rule as the gesture handlers (physics/gestures.ts): this asks
-      // "is the HAND over matter", and the surface protocol's retold events
-      // — parked-local coordinates, the (−16,−16) departure burst — bubble to
-      // window too. Ray-testing one of those would toggle the canvas off
-      // while the real cursor is still over the card.
-      if (!e.isTrusted) return
-      ndc.set((e.clientX / size.width) * 2 - 1, -(e.clientY / size.height) * 2 + 1)
-      ray.setFromCamera(ndc, camera)
-      const hit = ray.intersectObjects(scene.children, true).some((h) => h.object.userData.matter)
-      el.style.pointerEvents = hit ? 'auto' : 'none'
-    }
-    window.addEventListener('pointermove', test, true)
-    return () => {
-      window.removeEventListener('pointermove', test, true)
-      el.style.pointerEvents = 'none'
-    }
-  }, [gl, camera, scene, size.width, size.height, active])
-
-  return null
-}
-
 // ── FLIP, so the reflow is something you can watch ───────────────────────
 
 function captureRects(root: HTMLElement) {
@@ -1631,7 +1591,10 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
         }}
       >
         <PixelPerfect />
-        <SolidWhereMatterIs active={!!flyingId} />
+        <CanvasPointerGate
+          enabled={!!flyingId}
+          isTarget={(object) => Boolean(object.userData.matter)}
+        />
         {flyingCard && flight.current && (
           <Flying
             key={flyingCard.id}

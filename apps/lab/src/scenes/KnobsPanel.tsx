@@ -386,7 +386,14 @@ export function KnobsPanel() {
         * gesture — the scene moves the slab from the real screen
         * pointer, because these coordinates live on the very panel the
         * gesture displaces. */}
-      <div className="knb-handle" aria-label="drag to move panel" onPointerDown={() => (panelDrag.active = true)}>
+      <div
+        className="knb-handle"
+        aria-label="drag to move panel"
+        onPointerDown={(event) => {
+          panelDrag.active = true
+          panelDrag.pointerId = event.pointerId
+        }}
+      >
         <span className="knb-handle-grip" aria-hidden />
       </div>
 
@@ -401,6 +408,7 @@ export function KnobsPanel() {
         aria-label="drag to resize panel"
         onPointerDown={(e) => {
           panelResize.active = true
+          panelResize.pointerId = e.pointerId
           // The width the drag starts from is read off the panel, not
           // held in React. Nothing about this gesture goes through a
           // render, which is the point.

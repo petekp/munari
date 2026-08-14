@@ -203,16 +203,93 @@ interface PointerMirror {
   active: Element | null
   /** Last forwarded position, in the source subtree's page coordinates. */
   at: { x: number; y: number }
+  /** Identity and device data from the latest forwarded native sample. */
+  sample: ForwardPointerSample
   /** Pending animation frame for the departure moves; 0 when none. */
   away: number
 }
 
 const mirrors = new WeakMap<HTMLElement, PointerMirror>()
 
+/**
+ * The native pointer facts that survive the DOM-to-WebGL-to-DOM relay.
+ * Passing no sample keeps the historic primary-mouse behavior.
+ */
+export interface ForwardPointerSample {
+  readonly pointerId: number
+  readonly pointerType: string
+  readonly isPrimary: boolean
+  readonly button: number
+  readonly buttons: number
+  readonly pressure: number
+  readonly width: number
+  readonly height: number
+  readonly tiltX: number
+  readonly tiltY: number
+  readonly twist: number
+  readonly altKey: boolean
+  readonly ctrlKey: boolean
+  readonly metaKey: boolean
+  readonly shiftKey: boolean
+}
+
+const DEFAULT_POINTER_SAMPLE: ForwardPointerSample = Object.freeze({
+  pointerId: 1,
+  pointerType: 'mouse',
+  isPrimary: true,
+  button: 0,
+  buttons: 0,
+  pressure: 0,
+  width: 1,
+  height: 1,
+  tiltX: 0,
+  tiltY: 0,
+  twist: 0,
+  altKey: false,
+  ctrlKey: false,
+  metaKey: false,
+  shiftKey: false,
+})
+
+function pointerInit(
+  sample: ForwardPointerSample,
+  x: number,
+  y: number,
+): PointerEventInit & MouseEventInit {
+  return {
+    clientX: x,
+    clientY: y,
+    bubbles: true,
+    cancelable: true,
+    pointerId: sample.pointerId,
+    pointerType: sample.pointerType,
+    isPrimary: sample.isPrimary,
+    button: sample.button,
+    buttons: sample.buttons,
+    pressure: sample.pressure,
+    width: sample.width,
+    height: sample.height,
+    tiltX: sample.tiltX,
+    tiltY: sample.tiltY,
+    twist: sample.twist,
+    altKey: sample.altKey,
+    ctrlKey: sample.ctrlKey,
+    metaKey: sample.metaKey,
+    shiftKey: sample.shiftKey,
+    view: window,
+  }
+}
+
 const mirrorOf = (root: HTMLElement): PointerMirror => {
   let m = mirrors.get(root)
   if (!m) {
-    m = { hovered: null, active: null, at: { x: 0, y: 0 }, away: 0 }
+    m = {
+      hovered: null,
+      active: null,
+      at: { x: 0, y: 0 },
+      sample: DEFAULT_POINTER_SAMPLE,
+      away: 0,
+    }
     mirrors.set(root, m)
   }
   return m
@@ -383,7 +460,7 @@ export function clearPointerState(root: HTMLElement) {
   // drag consumer treats as "released" (react-resizable-panels deactivates on
   // its first buttonless move; measured killing a drag 13px in). Defer the
   // whole departure; it runs, honestly, when the drag ends.
-  if (surfaceDrag) {
+  if (surfaceDragPointerId !== null) {
     pendingClears.add(root)
     return
   }
@@ -393,18 +470,7 @@ export function clearPointerState(root: HTMLElement) {
     // anchored at these coordinates, so reporting the away point here would
     // stretch the hull out to meet it and the move below would land inside
     // its own grace area — open forever, for a subtler reason.
-    const init: PointerEventInit & MouseEventInit = {
-      clientX: m.at.x,
-      clientY: m.at.y,
-      bubbles: true,
-      cancelable: true,
-      pointerId: 1,
-      pointerType: 'mouse',
-      isPrimary: true,
-      button: 0,
-      buttons: 0,
-      view: window,
-    }
+    const init = pointerInit({ ...m.sample, button: 0, buttons: 0, pressure: 0 }, m.at.x, m.at.y)
     swapChainAttr(root, m.hovered, null, HOVER_ATTR)
     crossBoundary(root, m.hovered, null, init)
     m.hovered = null
@@ -497,9 +563,14 @@ export function forwardPointer(
   root: HTMLElement,
   u: number,
   v: number,
-  kind: 'down' | 'up' | 'move',
-  buttons?: number,
+  kind: 'down' | 'up' | 'move' | 'cancel',
+  sample?: ForwardPointerSample,
 ): ForwardResult | null {
+  const pointer = sample ?? {
+    ...DEFAULT_POINTER_SAMPLE,
+    buttons: kind === 'down' ? 1 : 0,
+    pressure: kind === 'down' ? 0.5 : 0,
+  }
   // A held-button move that did not begin on any surface is a FOREIGN
   // capture — OrbitControls orbiting from empty space, a text selection
   // sweeping across the canvas, a drag that started in another window — and
@@ -513,18 +584,41 @@ export function forwardPointer(
   // anchor, and the next real 10px hand move threw the camera across
   // the scene. The r3f 'up' side needs no gate here — Surface's
   // pressedRef already refuses a release it never saw the press for.
-  if (kind === 'move' && (buttons ?? 0) !== 0 && !surfaceDrag) return null
+  if (
+    kind === 'move' &&
+    pointer.buttons !== 0 &&
+    surfaceDragPointerId !== pointer.pointerId
+  )
+    return null
   const rect = root.getBoundingClientRect()
   const x = rect.left + u * rect.width
   const y = rect.top + (1 - v) * rect.height
   const target = deepestElementAt(root, x, y)
+  const mirror = mirrorOf(root)
+  if (
+    kind === 'cancel' &&
+    mirror.active &&
+    mirror.sample.pointerId !== pointer.pointerId
+  )
+    return null
+  mirror.sample = pointer
+  if (kind === 'cancel') {
+    const cancelTarget = mirror.active ?? target
+    if (cancelTarget) {
+      relay(cancelTarget, new PointerEvent('pointercancel', pointerInit(pointer, x, y)))
+    }
+    swapChainAttr(root, mirror.active, null, ACTIVE_ATTR)
+    mirror.active = null
+    if (surfaceDragPointerId === pointer.pointerId) surfaceDragPointerId = null
+    flushPendingClears()
+    return cancelTarget ? { target: cancelTarget, focused: false } : null
+  }
   // Nothing here accepts the pointer — the ray passed through clear glass.
   // Whatever this surface was hovering, it is not hovering it now.
   if (!target) {
     clearPointerState(root)
     return null
   }
-  const mirror = mirrorOf(root)
   mirror.at = { x, y }
   lastForward = { root, x, y }
   // The pointer is back before the departure finished sending — call it off,
@@ -534,22 +628,7 @@ export function forwardPointer(
     mirror.away = 0
   }
 
-  const init: PointerEventInit & MouseEventInit = {
-    clientX: x,
-    clientY: y,
-    bubbles: true,
-    cancelable: true,
-    pointerId: 1,
-    pointerType: 'mouse',
-    isPrimary: true,
-    button: 0,
-    // Moves carry the REAL buttons state when the caller has it: a drag
-    // consumer (react-resizable-panels) deactivates the moment it sees a
-    // move with no button held, so a forwarded drag whose moves all said
-    // `buttons: 0` would end on its own first frame.
-    buttons: kind === 'down' ? 1 : kind === 'move' ? (buttons ?? 0) : 0,
-    view: window,
-  }
+  const init = pointerInit(pointer, x, y)
 
   let focused = false
   if (kind === 'move') {
@@ -561,7 +640,7 @@ export function forwardPointer(
     // BEFORE dispatch, because a consumer may focus synchronously from its
     // pointerdown handler and the verdict must already be in.
     modality = 'pointer'
-    surfaceDrag = true
+    surfaceDragPointerId = pointer.pointerId
     // Real browsers hover before they press — a down with no prior move
     // (surface just appeared under the cursor) still hovers correctly.
     updateHover(root, target, init)
@@ -571,7 +650,7 @@ export function forwardPointer(
     relay(target, new MouseEvent('mousedown', init))
   } else {
     modality = 'pointer' // a release is a pointer interaction even without its down
-    surfaceDrag = false
+    if (surfaceDragPointerId === pointer.pointerId) surfaceDragPointerId = null
     relay(target, new PointerEvent('pointerup', init))
     relay(target, new MouseEvent('mouseup', init))
     relay(target, new MouseEvent('click', init))
@@ -720,7 +799,7 @@ let untrackWheel: (() => void) | null = null
 // a Surface. The discriminator matters: a drag that began on empty space and
 // merely travels over a panel is OrbitControls' gesture, and its document
 // stream must not be touched.
-let surfaceDrag = false
+let surfaceDragPointerId: number | null = null
 let dragRefs = 0
 let untrackDrag: (() => void) | null = null
 
@@ -758,15 +837,20 @@ function flushPendingClears() {
 export function trackDrag(): () => void {
   if (dragRefs++ === 0) {
     const onMove = (e: PointerEvent) => {
-      if (!surfaceDrag || !e.isTrusted || e.buttons === 0) return
+      if (
+        surfaceDragPointerId !== e.pointerId ||
+        !e.isTrusted ||
+        e.buttons === 0
+      )
+        return
       if (!(e.target instanceof HTMLCanvasElement)) return
       e.preventDefault()
     }
     // A release anywhere ends the gesture — including over the floor or off
     // the window, where no Surface handler will ever hear it to forward one.
     const onEnd = (e: PointerEvent) => {
-      if (e.isTrusted) {
-        surfaceDrag = false
+      if (e.isTrusted && surfaceDragPointerId === e.pointerId) {
+        surfaceDragPointerId = null
         // This capture listener runs before the same trusted up reaches the
         // canvas and is forwarded — a microtask puts the flush after it, so
         // the up still lands before any deferred boundary events. (When the
@@ -790,6 +874,8 @@ export function trackDrag(): () => void {
     if (--dragRefs === 0) {
       untrackDrag?.()
       untrackDrag = null
+      surfaceDragPointerId = null
+      flushPendingClears()
     }
   }
 }

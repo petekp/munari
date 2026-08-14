@@ -38,7 +38,12 @@ import {
 } from 'react'
 import { Canvas, flushSync as flushThree, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { SurfaceApp, cameraDistance, useSurfaceTexture } from '@petepetrash/munari'
+import {
+  CanvasPointerGate,
+  SurfaceApp,
+  cameraDistance,
+  useSurfaceTexture,
+} from '@petepetrash/munari'
 import { KnobsArt } from './KnobsArt'
 import { KnobsPanel } from './KnobsPanel'
 import { nineSlice, resizeWidth } from './knobsResize'
@@ -154,49 +159,6 @@ function PixelPerfect() {
     camera.lookAt(0, 0, 0)
     camera.updateProjectionMatrix()
   }, [camera, size.width, size.height])
-  return null
-}
-
-// ── canvas solidity: solid only where the panel mesh actually is ────────
-
-function SolidWhereMatterIs() {
-  const gl = useThree((s) => s.gl)
-  const camera = useThree((s) => s.camera)
-  const scene = useThree((s) => s.scene)
-  useEffect(() => {
-    const el = gl.domElement
-    const ray = new THREE.Raycaster()
-    const ndc = new THREE.Vector2()
-    // The decision surface is the face plane — the one mesh flagged
-    // `matter` — not the scene. A recursive scene-wide raycast visits
-    // every knurl tooth of six knobs per pointer move at input rate;
-    // the gate only ever needed the slab's footprint, and the hardware
-    // stands entirely within it. Cached lazily: a remount drops the old
-    // mesh from its parent, and the empty-parent check re-harvests.
-    const matter: THREE.Object3D[] = []
-    const onMove = (e: PointerEvent) => {
-      if (!e.isTrusted) return
-      if (!matter.length || !matter[0].parent) {
-        matter.length = 0
-        scene.traverse((o) => {
-          if (o.userData.matter) matter.push(o)
-        })
-        if (!matter.length) {
-          el.style.pointerEvents = 'none'
-          return
-        }
-      }
-      ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1)
-      ray.setFromCamera(ndc, camera)
-      const hit = ray.intersectObjects(matter, false).length > 0
-      el.style.pointerEvents = hit ? 'auto' : 'none'
-    }
-    window.addEventListener('pointermove', onMove, true)
-    return () => {
-      window.removeEventListener('pointermove', onMove, true)
-      el.style.pointerEvents = 'none'
-    }
-  }, [gl, camera, scene])
   return null
 }
 
@@ -1565,6 +1527,11 @@ function PanelRig({
   })
 
   useEffect(() => {
+    const finishCarry = () => {
+      panelDrag.active = false
+      panelDrag.pointerId = null
+      motion.current.grab = null
+    }
     kick.current = (dir: number) => {
       motion.current.rx.v += PANEL_KICK * dir
     }
@@ -1578,21 +1545,32 @@ function PanelRig({
       m.client.y = e.clientY
       m.px = (e.clientX / window.innerWidth) * 2 - 1
       m.py = (e.clientY / window.innerHeight) * 2 - 1
+      if (panelDrag.active && panelDrag.pointerId === e.pointerId && e.buttons === 0) {
+        finishCarry()
+      }
     }
     // The handle's forwarded pointerdown arms the carry; the trusted
     // release anywhere — over the art, off the panel — disarms it.
     const onUp = (e: PointerEvent) => {
-      if (e.isTrusted) panelDrag.active = false
+      if (e.isTrusted && panelDrag.pointerId === e.pointerId) finishCarry()
+    }
+    const onBlur = () => finishCarry()
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') finishCarry()
     }
     window.addEventListener('pointermove', onMove, true)
     window.addEventListener('pointerup', onUp, true)
     window.addEventListener('pointercancel', onUp, true)
+    window.addEventListener('blur', onBlur)
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       window.removeEventListener('pointermove', onMove, true)
       window.removeEventListener('pointerup', onUp, true)
       window.removeEventListener('pointercancel', onUp, true)
+      window.removeEventListener('blur', onBlur)
+      document.removeEventListener('visibilitychange', onVisibility)
       kick.current = null
-      panelDrag.active = false
+      finishCarry()
     }
   }, [kick])
 
@@ -1882,6 +1860,14 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
   // knobs.css for what the flag buys and why it is not left on.
   const resizingNow = useRef<((on: boolean) => void) | null>(null)
 
+  const finishResize = useCallback(() => {
+    panelResize.active = false
+    panelResize.pointerId = null
+    panelResize.startX = Number.NaN
+    panelResize.startW = 0
+    resizingNow.current?.(false)
+  }, [])
+
   // The corner grip armed the gesture; the geometry happens here, on the
   // real screen pointer, for the same reason the carry does — the
   // forwarded stream's coordinates live on the panel being resized.
@@ -1892,7 +1878,16 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
       // carrying CAPTURE coordinates — seeding the origin from one puts
       // the hand 1100px from where it really is, and the panel jumps to
       // its stop on the first twitch. isTrusted is the seam.
-      if (!e.isTrusted || !panelResize.active) return
+      if (
+        !e.isTrusted ||
+        !panelResize.active ||
+        panelResize.pointerId !== e.pointerId
+      )
+        return
+      if (e.buttons === 0) {
+        finishResize()
+        return
+      }
       // The first real move seeds the origin the DOM could not supply,
       // and is also the moment `will-change` stops being a lie.
       if (Number.isNaN(panelResize.startX)) {
@@ -1910,20 +1905,27 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
       resizeNow.current?.(w)
     }
     const onUp = (e: PointerEvent) => {
-      if (!e.isTrusted) return
-      panelResize.active = false
-      panelResize.startX = Number.NaN
-      resizingNow.current?.(false)
+      if (!e.isTrusted || panelResize.pointerId !== e.pointerId) return
+      finishResize()
+    }
+    const onBlur = () => finishResize()
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') finishResize()
     }
     window.addEventListener('pointermove', onMove, true)
     window.addEventListener('pointerup', onUp, true)
     window.addEventListener('pointercancel', onUp, true)
+    window.addEventListener('blur', onBlur)
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       window.removeEventListener('pointermove', onMove, true)
       window.removeEventListener('pointerup', onUp, true)
       window.removeEventListener('pointercancel', onUp, true)
+      window.removeEventListener('blur', onBlur)
+      document.removeEventListener('visibilitychange', onVisibility)
+      finishResize()
     }
-  }, [])
+  }, [finishResize])
 
   // Where each control sits comes from the captured DOM itself — the
   // layout is measured, not duplicated, so the hardware can only ever
@@ -1931,6 +1933,7 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
   const onHost = useCallback((el: HTMLElement | null) => {
     hostCleanup.current?.()
     hostCleanup.current = null
+    finishResize()
     if (!el) {
       stage.current?.setFeatures(null)
       return
@@ -2074,7 +2077,7 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
       resizeNow.current = null
       resizingNow.current = null
     }
-  }, [])
+  }, [finishResize])
 
   return (
     <div className="knb-page">
@@ -2092,7 +2095,7 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
         onCreated={(state) => state.gl.setClearAlpha(0)}
       >
         <PixelPerfect />
-        <SolidWhereMatterIs />
+        <CanvasPointerGate isTarget={(object) => Boolean(object.userData.matter)} />
         <ArtEnvironment />
         <ArtLightRig />
         <TuningDrip assets={assets} />
