@@ -78,14 +78,14 @@
   will-change: transform;
 }
 
-/* Matter custody, keyed to the library crossing's phase (the word
- * wears it as data-phase): the DOM presents through 'dom' and
- * 'lifting', the canvas through 'renderer' and 'landing'. Hidden page
- * letters keep their layout — they are the measuring rig — but the
- * twins carry the pixels; showing both would double every glyph. The
- * carried float never pauses: the carrier keeps writing the slots
- * (hidden is not stopped) while the meshes read the same sample. */
-.logo-word[data-phase='renderer'] .logo-letter,
+/* Who shows the letters, keyed to the lift's phase (the word wears it
+ * as data-phase): the page presents through 'page' and 'lifting', the
+ * canvas through 'gl' and 'landing'. Hidden page letters keep their
+ * layout — they are the measuring rig — but the twins carry the
+ * pixels; showing both would double every glyph. The carried float
+ * never pauses: the carrier keeps writing the slots (hidden is not
+ * stopped) while the meshes read the same sample. */
+.logo-word[data-phase='gl'] .logo-letter,
 .logo-word[data-phase='landing'] .logo-letter {
   visibility: hidden;
 }
@@ -95,7 +95,7 @@
  * opacity never touches — but showing them would put two copies of
  * every letter on screen while the page is still easing flat, and the
  * pair reads as a ghost leading each letter through the whole settle
- * dwell (2026-08-14). Presentation custody (crossingPresentation) is
+ * dwell (2026-08-14). The presentation law (crossingPresentation) is
  * exclusive: exactly one side is visible in every phase, and the swap
  * commit flips data-holds and the letters' visibility in one recalc. */
 .logo-canvas[data-holds='false'] {

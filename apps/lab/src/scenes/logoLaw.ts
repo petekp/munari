@@ -67,6 +67,14 @@ export const LOGO_PALETTE = [
   '#f76fa2', // bubblegum
 ]
 
+/** The matter deck — what a lifted letter is MADE of. Index 0 is plain
+ *  ink, the page's own look kept as a rest note: a word where one letter
+ *  stays mere ink shows what its siblings transmuted from. The rest are
+ *  substances only the canvas can render (logoShaders): the conductor
+ *  deals them exactly like faces and colors, so in matter mode a beat
+ *  transmutes a letter, not just redecorates it. */
+export const LOGO_MATTERS = ['ink', 'balloon', 'foil', 'gummy', 'neon'] as const
+
 export interface LogoKnobs {
   /** ms between conductor beats. */
   tempo: number
@@ -86,6 +94,14 @@ export interface LogoKnobs {
   depth: number
   /** px — matter mode: how far a letter shies away from the pointer. */
   dodge: number
+  /** 0..1 — matter mode: how hard the substances are lit (bevel shade,
+   *  glints, reflections, glow). Zero is flat ink for every matter. */
+  gloss: number
+  /** 0..1 — matter mode: gel-wave amplitude, scaled per matter (gummy
+   *  full, foil a crinkle, neon rigid). */
+  jelly: number
+  /** 0..1 — matter mode: chromatic fringe on a moving letter. */
+  prism: number
 }
 
 export const LOGO_DEFAULTS: LogoKnobs = {
@@ -98,6 +114,9 @@ export const LOGO_DEFAULTS: LogoKnobs = {
   float: 0.045,
   depth: 60,
   dodge: 46,
+  gloss: 0.7,
+  jelly: 0.55,
+  prism: 0.5,
 }
 
 export interface LetterPose {
@@ -113,13 +132,17 @@ export interface LetterPose {
   /** em. */
   dy: number
   scale: number
+  /** Index into LOGO_MATTERS — the substance this letter becomes when
+   *  the word lifts. The page ignores it; only matter mode can see it. */
+  matter: number
 }
 
-/** What a re-roll must not land on: the letter's own current face and
- *  color, plus whatever its neighbors wear right now. */
+/** What a re-roll must not land on: the letter's own current face,
+ *  color, and matter, plus whatever its neighbors wear right now. */
 export interface PoseAvoid {
   fonts: number[]
   colors: number[]
+  matters: number[]
 }
 
 function pickIndex(r: Rand, n: number, avoid: number[]): number {
@@ -134,6 +157,7 @@ function pickIndex(r: Rand, n: number, avoid: number[]): number {
 export function rollPose(r: Rand, avoid: PoseAvoid, k: LogoKnobs): LetterPose {
   const font = pickIndex(r, LOGO_FONTS.length, avoid.fonts)
   const color = pickIndex(r, LOGO_PALETTE.length, avoid.colors)
+  const matter = pickIndex(r, LOGO_MATTERS.length, avoid.matters)
   const weights = LOGO_FONTS[font].weights
   return {
     font,
@@ -143,17 +167,24 @@ export function rollPose(r: Rand, avoid: PoseAvoid, k: LogoKnobs): LetterPose {
     dx: (r() * 2 - 1) * k.drift,
     dy: (r() * 2 - 1) * k.drift,
     scale: 1 + (r() * 2 - 1) * k.squish,
+    matter,
   }
 }
 
 /** Roll a whole word left to right, each letter dodging its left
- *  neighbor's face and color. */
+ *  neighbor's face, color, and matter. */
 export function seedWord(n: number, r: Rand, k: LogoKnobs): LetterPose[] {
   const word: LetterPose[] = []
   for (let i = 0; i < n; i++) {
     const left = word[i - 1]
     word.push(
-      rollPose(r, left ? { fonts: [left.font], colors: [left.color] } : { fonts: [], colors: [] }, k),
+      rollPose(
+        r,
+        left
+          ? { fonts: [left.font], colors: [left.color], matters: [left.matter] }
+          : { fonts: [], colors: [], matters: [] },
+        k,
+      ),
     )
   }
   return word

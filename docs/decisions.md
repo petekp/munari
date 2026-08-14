@@ -9,8 +9,8 @@ a decision that is superseded is amended in place, with the reason.
 
 **Decision.** Project and repo: `munari`. Sole public package:
 `@petepetrash/munari`. The monorepo is an hourglass — `@munari/core` (kernel:
-custody, provenance, arbitration; zero runtime dependencies; never
-published independently), `@petepetrash/munari` at `packages/react` (the
+holds and handoffs, provenance, arbitration; zero runtime dependencies;
+never published independently), `@petepetrash/munari` at `packages/react` (the
 three/r3f binding; `three` + `@react-three/fiber` as peer
 dependencies; the only installable), `registry/` (copyable, never
 published), `apps/lab` (consumer, barrel-only), `instruments/`
@@ -26,7 +26,7 @@ deliberately: paper and bookbinding names (slipsheet, endpaper — they
 name the flight-card demo's material, and the demo is one registry
 item, not the library); `three-*` names (the namespace files us with
 three-mesh-ui and uikit — the rebuild-UI-as-GL-geometry architecture
-this library is the inversion of); custody and stagecraft words
+this library is the inversion of); legal and stagecraft words
 (bailment, greenroom, foley — precise but the wrong register).
 
 **Amended 2026-08-04 — renamed from `anamorph`.** Not forced by
@@ -61,7 +61,7 @@ and renderer abstraction is banned outright by the second-system
 guard, so that name would advertise an architecture the repo forbids —
 unacceptable in a project whose whole claim is faithfulness. Under an
 owner scope the package is named `munari` exactly, and the scope is
-custody rather than identity. Also rejected: `munari-gl` / `munarijs`
+ownership rather than identity. Also rejected: `munari-gl` / `munarijs`
 (bare, but might trip the same guard — discoverable only by
 publishing) and appealing to npm support (days to weeks, uncertain).
 Known cost: an owner scope has to be abandoned and re-published if the
@@ -106,7 +106,7 @@ names, the comments naming the failure each case catches, and every
 pinned number are all part of the contract — adjusting a number to
 make a test pass is a decision that needs an entry in this file.
 
-**Why the suite is organized by custody layer.** mapping → paint →
+**Why the suite is organized by layer.** mapping → paint →
 pointer → transfer → chrome → physics is a dependency order, not a
 taxonomy: transfer cannot be specified before paint has said what a
 paint costs, and chrome cannot be measured before mapping has fixed
@@ -145,8 +145,8 @@ nothing the others don't is deleted rather than maintained.
   their consumer proof.
 
 **Why these three.** Together they cover the three pillars without
-overlap — input/focus custody, rendering and composition, and the
-custody excursion itself. Each is a standing consumer: if the public
+overlap — input/focus ownership, rendering and composition, and the
+flight excursion itself. Each is a standing consumer: if the public
 barrel can't express it, the barrel is wrong (export it; don't reach
 around).
 
@@ -567,7 +567,7 @@ The refusal is ordered ahead of construction for the same reason the
 capability gate is (#12): a refused source owns no DOM, and the
 consumer's tree is left exactly as it was.
 
-**Why dispose releases the node.** Custody, not confiscation: the node
+**Why dispose releases the node.** A loan, not a confiscation: the node
 is required to *arrive* unparented, so it leaves that way and adoption
 is exactly invertible. The first version of this entry said ownership
 never reverses and left the subtree inside the dead canvas. Two things
@@ -1465,7 +1465,7 @@ sRGB pixels in the framebuffer.
 ## #25 — Mesh traversal is not visible presentation (2026-08-09, core + react binding)
 
 **Decision.** `FrameDrawReceipt` keeps its upload-and-traversal meaning. A
-custody transfer that will release another presenter uses a separate optional
+handoff that will release another presenter uses a separate optional
 `PresentationRequirement` and `PresentationReceipt`. The consumer owns the
 transfer ID and presentation revision. Core accepts a receipt only when the
 transfer, source, and revision match exactly and the drawn generation meets or
@@ -1520,7 +1520,7 @@ There is also a valid third-party upstream improvement. R3F changes an
 `always` loop to `demand` without guaranteeing one final render. It could
 schedule that frame itself and protect all Three meshes from retained output.
 Munari must still keep its binding invalidation: presenter erasure is part of
-its public custody promise and cannot depend on a future renderer release.
+its public handoff promise and cannot depend on a future renderer release.
 
 **Evidence.** A headed Chrome trace at Retina density and 6x CPU reproduced
 the exact duplicate: the restored DOM square moved while its last WebGL image
@@ -1529,20 +1529,20 @@ the first observable reveal and checks every compositor frame for both blue
 windows. It also starts a new minimize in that reveal commit and requires the
 fresh flight to land.
 
-## #27 — Custody must not visibly change alpha (2026-08-10, react binding + Genie)
+## #27 — A handoff must not visibly change alpha (2026-08-10, react binding + Genie)
 
 **Decision.** A DOM-backed `Surface` exposes a separate one-shot
 `onFirstPresented` boundary. It fires only after the first real DOM raster has
 uploaded and a color-writing draw has completed in the default framebuffer.
 It runs synchronously before browser composition. It does not change the
-legacy `onFirstUpload` meaning, and it is not a reusable, versioned custody
+legacy `onFirstUpload` meaning, and it is not a reusable, versioned handoff
 receipt.
 
-The React binding also exports `commitRendererReleaseFrame` for reverse
-custody. A consumer calls it from `useFrame` after the incoming presenter is
+The React binding also exports `commitRendererReleaseFrame` for the reverse
+handoff. A consumer calls it from `useFrame` after the incoming presenter is
 warm. It commits incoming visual ownership, suppresses the outgoing renderer
 object synchronously, and defers the durable React-state publication until the
-current renderer stack has drawn. Core keeps only the custody law; the binding
+current renderer stack has drawn. Core keeps only the handoff law; the binding
 owns this React/r3f timing.
 
 The binding also enforces decision #5 at texture birth: every DOM
@@ -1552,40 +1552,40 @@ must not repair source format from a later effect.
 
 Genie releases its native presenter inside the qualified post-draw callback.
 For the reverse direction, it first warms the native presenter under the
-landed WebGL sheet for one frame. The private bridge keeps public custody and
+landed WebGL sheet for one frame. The private bridge keeps the public hold and
 input on WebGL and masks only the native shadow. On the next renderer frame,
 the same `useFrame` callback transfers the shadow to the native presenter and
 makes the WebGL group non-renderable. The browser cannot composite between
 those two synchronous writes. After that draw stack clears the framebuffer,
-React publishes native custody and the private bridge becomes inert. This
+React publishes the native hold and the private bridge becomes inert. This
 bridge is narrow and intentional: the DOM and r3f reconcilers cannot make an
 atomic shared commit, while one renderer turn can hand each translucent layer
 to one presenter.
 
 **Why.** Acquire-before-release prevents holes, but visible overlap is safe
 only for opaque pixels. The same 15% shadow composited twice is a different
-shadow. Before this change, the normal strip measured 187 luma and the custody
+shadow. Before this change, the normal strip measured 187 luma and the handoff
 frame dropped to 163. An earlier reverse bridge also left one frame with no
 shadow at 216 luma because it waited for React after clearing WebGL. After the
 change, both minimize and restore boundaries measure 187, with no doubled or
 uncovered frame. The retained `shadow-travels` Chrome gate checks both
 directions and fails on a change larger than six luma.
 
-## #28 — The custody crossing is library law (2026-08-13, core + react binding + instruments)
+## #28 — The crossing is library law (2026-08-13, core + react binding + instruments; renamed by #31)
 
-**Decision.** The threshold toggle — content moving between compositor
-custody and canvas custody and back — is now a kernel law with a React
+**Decision.** The threshold toggle — content moving between the page's
+hold and the canvas's hold and back — is now a kernel law with a React
 orchestrator, not a per-scene idiom. Core owns a pure four-phase reducer
-(`dom → lifting → renderer → landing`): the DOM releases only on evidence
+(`page → lifting → gl → landing`): the page releases only on evidence
 — every incoming presenter's post-draw presentation boundary
 (`onFirstPresented`, never the weaker upload receipt) plus a settle dwell
 for the page's idle motion to ease flat — and a request that arrives
-mid-crossing reverses, never skips. The custody accounting theorem, "at
+mid-crossing reverses, never skips. The drawing accounting theorem, "at
 every phase someone presents", is a conformance clause
 (`tests/conformance/transfer/crossing`). The binding's
-`useCustodyCrossing` collects receipts, advances the reducer per rendered
+`useLift` collects receipts, advances the reducer per rendered
 frame, and publishes both swaps as single React commits; scenes state
-their presenter count and timing and consume `amplitude()`.
+their presenter count and timing and consume `progress()`.
 
 Three scenes earned the promotion under the second-system guard: Flight
 gated its swap on upload, Genie on presentation, and the logo playground
@@ -1597,7 +1597,7 @@ The promotion also forced a source-host rule: a parked root's FIRST
 render is flushed (`flushSync` in `useSourceHost`), because a
 concurrently scheduled initial commit leaves the container mounted and
 empty for a paintable gap. A capture in that gap is a blank card wearing
-`.ui-root`'s opaque background — and it legitimately fires both custody
+`.ui-root`'s opaque background — and it legitimately fires both
 receipts, which certify pixels, not the right pixels. A source must never
 exist without the content it claims to be.
 
@@ -1612,14 +1612,14 @@ why no one had seen it by hand). After the rule: 1,245 frames across four
 round trips plus an abandoned lift and a reversed landing, every frame
 inside 18.2–18.9%.
 
-## #29 — Presentation custody is exclusive (2026-08-14, core + react binding + instruments)
+## #29 — Presentation is exclusive (2026-08-14, core + react binding + instruments; renamed by #31)
 
-**Decision.** Drawing is not showing. `crossingCustody` says who must
+**Decision.** Drawing is not showing. `crossingDraws` says who must
 DRAW in each phase and is inclusive — during 'lifting' both sides draw,
 because the warm-up is where the canvas earns its presented receipts.
 `crossingPresentation` says who may be SEEN and is exclusive: exactly
 one side is composited in every phase, and visibility changes hands only
-at the two swap edges. The binding exposes it as `rendererHolds`, and a
+at the two swap edges. The binding exposes it as `glHolds`, and a
 consumer wires that to the canvas element's own visibility (opacity or
 `visibility`), never to mount — an unmounted canvas cannot draw, an
 uncomposited one still can, and the receipts come from the framebuffer,
@@ -1637,7 +1637,7 @@ none.
 **Evidence.** The ghost was visible by eye on the logo whenever the
 letters were animating at a crossing (2026-08-14). The conformance
 contract pins the law's shape (presentation is exclusive, implies
-custody, and the renderer draws unseen exactly during 'lifting'); the
+drawing, and the canvas draws unseen exactly during 'lifting'); the
 `crossing-flash` gate photographs the browser fact — it cranks the idle
 float to its ceiling so a composited twin would fringe the ink
 measurably, then requires every lifting-span frame to hold the resting
@@ -1646,14 +1646,14 @@ ink band within +2pp.
 ## #30 — Carried motion crosses mid-flight (2026-08-14, core + react binding + instruments)
 
 **Decision.** Motion whose source of truth lives outside both renderers
-does not need to stop for a custody crossing. The kernel gains the
+does not need to stop for a crossing. The kernel gains the
 motion carrier (`createMotionCarrier`): one clock, one program, one
 evaluation per frame, and any number of readers — sampling never
 advances time, so the page's style write and the mesh's transform read
 the same number in the same frame. The binding (`useCarriedMotion`)
 owns the rAF driver and the page-side applier; the mesh side reads
 `sample()` in useFrame at FULL value, never scaled by the crossing's
-amplitude. A carried motion is exempt from the settle dwell — every
+progress. A carried motion is exempt from the settle dwell — every
 frame of it is a plateau, because both presenters output one source of
 truth — so the swap lands mid-flight with position and velocity intact.
 `settleMs` now covers only what stays on the compositor's clock.
@@ -1681,13 +1681,56 @@ directions. Building the clause surfaced two findings. One is a real
 hazard: reclamation shared the return swap's commit, and tearing a
 renderer down is a ~280ms longtask under the gate's throttle — long
 enough to hold every carried style write at exactly the handoff. The
-binding now lingers the dead canvas — invisible, amplitude zero — for
+binding now lingers the dead canvas — invisible, progress zero — for
 300ms and unmounts it in a commit of its own; deferred, never skipped.
 The other is a platform fact that first masqueraded as a freeze the
 linger failed to fix: the DevTools screencast emits nothing for ~250ms
-after a custody return while the screen runs on — trace, forced
+after a return handoff while the screen runs on — trace, forced
 composites, and rAF all continuous (platform.md item 13) — so the
 clause reads that window with forced composites instead of the cast.
 The carrier's discipline (epoch at birth, one evaluation per tick,
 sampling never advances) is pinned in
 `tests/conformance/transfer/motionCarrier`.
+
+## #31 — The lift, and choreography as pure functions of progress (2026-08-14, core + react binding)
+
+**Decision.** Two moves in one commit pair, because a rename and an API
+should be born together.
+
+First, the vocabulary. "Custody" is retired everywhere — code, tests,
+docs, instruments — at the owner's direction: it is courtroom language
+in a library whose register is physical (lift, land, float, jelly,
+balloons). The replacements are the words the register already used:
+a renderer **holds** the pixels (state), a **handoff** moves them (the
+swap edges), the excursion is a **flight** and the hook that runs one
+is `useLift`. Phases rename `dom → page` and `renderer → gl` — the
+words consumers actually say — so the reducer reads
+`page → lifting → gl → landing`. `crossingCustody` becomes
+`crossingDraws` (it always answered "who must draw"),
+`crossingAmplitude` becomes `crossingProgress`, and the binding's
+`CustodyCrossing/useCustodyCrossing/CustodyCrossingDriver` become
+`Lift/useLift/LiftDriver` with `pageHolds`/`glMounted`/`glHolds` for
+`domHolds`/`rendererMounted`/`rendererHolds`. Nothing behavioral moved;
+the conformance contracts were renamed in the same commit as their
+laws, per #2. Historical entries above keep their numbers and their
+evidence; titles that named custody are amended in place.
+
+Second, the API the rename makes room for. A scene scripts its
+transition as pure functions of the lift's progress — never as
+timelines. The kernel gains two choreography laws:
+`crossingRange(progress, from, distance)`, a clamped linear window
+(drei's `useScroll().range` shape, deliberately — our consumers are
+R3F developers and their hands know it), and
+`crossingCurve(progress, from, distance)`, the sine bell over the same
+window for effects that exist only mid-flight. The binding exposes
+them on the lift as `range()`/`curve()` beside `progress()`, plus
+`entering`/`exiting` for the two transition phases. Because every
+window composes with the eased progress, any choreographed effect is
+zero — with zero velocity — at both handoff edges by construction:
+reversal-safety and handoff-identity are properties of the functions,
+not disciplines asked of the consumer. Pinned in
+`tests/conformance/transfer/choreography`.
+
+The logo is the reference consumer: its cooling gate
+(`MATTER_LIGHT_GATE`) reshaped from an ad-hoc smoothstep window to
+`lift.range(0.25, 0.35)` — same numbers, now the library's own idiom.

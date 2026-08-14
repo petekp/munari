@@ -44,25 +44,26 @@ export { useSurfaceTexture, useSurfaceChrome, useSurfacePaintedSize } from './pr
 // applies `munariRadiusMask(vUv)` to alpha for straight output, or to the full
 // vec4 for premultiplied output.
 export { SURFACE_RADIUS_GLSL } from './lib/surfaceRadiusGlsl'
-// Reverse custody must give the incoming presenter its translucent layers in
-// the same renderer turn that suppresses the outgoing object. This binding
+// The reverse handoff must give the incoming presenter its translucent layers
+// in the same renderer turn that suppresses the outgoing object. This binding
 // primitive pins that order without teaching the kernel about React or Three.
 export {
   commitRendererReleaseFrame,
   type RendererPresenter,
   type RendererReleaseFrame,
 } from './lib/rendererRelease'
-// The custody crossing, orchestrated: the kernel's crossing law driven by
-// r3f frames and fed onFirstPresented receipts. A scene that toggles content
-// between the page and the canvas consumes this instead of hand-rolling the
-// evidence gate (the fault every scene rediscovers is hiding the DOM before
-// the canvas has proven it can present).
+// The lift, orchestrated: the kernel's crossing law driven by r3f frames
+// and fed onFirstPresented receipts, plus the choreography reads (progress,
+// range, curve) a scene scripts its transition with. A scene that toggles
+// content between the page and the canvas consumes this instead of
+// hand-rolling the evidence gate (the fault every scene rediscovers is
+// hiding the page before the canvas has proven it can present).
 export {
-  useCustodyCrossing,
-  CustodyCrossingDriver,
-  type CustodyCrossing,
-  type CustodyCrossingOptions,
-} from './primitives/useCustodyCrossing'
+  useLift,
+  LiftDriver,
+  type Lift,
+  type LiftOptions,
+} from './primitives/useLift'
 // Carried motion: idle motion whose source of truth is a JS carrier
 // rather than the compositor's clock. The page writes the sample, the
 // mesh reads the same sample, and the crossing needs no settle for it —

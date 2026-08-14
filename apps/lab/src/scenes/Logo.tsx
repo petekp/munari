@@ -7,21 +7,24 @@
 // is ordinary DOM: the page IS the logo, tweakable from the panel.
 //
 // The munari trick is the "matter" switch, and it flips through the
-// library's own threshold guarantee: useCustodyCrossing, the protocol
-// this page bled for before it became law (packages/core crossing +
+// library's own threshold guarantee: useLift, the protocol this page
+// bled for before it became law (packages/core crossing +
 // tests/conformance/transfer/crossing). Lifting mounts a twin of each
 // letter behind a per-letter SurfaceApp, warming unseen and
-// pixel-aligned with the still-visible page word; the crossing releases
+// pixel-aligned with the still-visible page word; the lift releases
 // the page only on evidence — every twin PRESENTED (onFirstPresented,
 // a post-draw proof, not an upload receipt) and any in-flight hop
 // settled — while the idle float, carried on one clock that the page
 // and the meshes both read, keeps breathing straight through the swap.
 // Only then does depth ramp in: z bob, perspective wobble, pointer
-// dodge, all on underdamped springs riding live DOM textures.
-// Landing runs the protocol backwards: amplitude ramps to zero, the
+// dodge, all on underdamped springs riding live DOM textures — and the
+// substance each letter was dealt (logoLaw's matter deck, rendered by
+// logoShaders) lights up on a window of the same progress, so at both
+// handoff edges every letter is exactly its own pixels.
+// Landing runs the protocol backwards: progress ramps to zero, the
 // twins glide back onto the grid, and the page takes its letters back
 // in the same commit that drops the canvas. At no frame is a letter in
-// nobody's custody — a sentence that is now a conformance contract
+// nobody's hands — a sentence that is now a conformance contract
 // rather than a comment.
 
 import {
@@ -33,15 +36,16 @@ import {
   useState,
 } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import * as THREE from 'three'
 import type { Group } from 'three'
-import type * as THREE from 'three'
 import {
-  CustodyCrossingDriver,
+  LiftDriver,
   SurfaceApp,
   cameraDistance,
   useCarriedMotion,
-  useCustodyCrossing,
-  type CustodyCrossing,
+  useLift,
+  useSurfaceTexture,
+  type Lift,
 } from '@petepetrash/munari'
 import {
   LOGO_DEFAULTS,
@@ -59,6 +63,8 @@ import {
   type LetterPose,
   type LogoKnobs,
 } from './logoLaw'
+import { LETTER_FRAG, LETTER_VERT, MATTER_LIGHT_GATE, MATTER_PARAMS } from './logoShaders'
+import { LetterFields } from './logoFields'
 import './logo.css'
 
 const WORD = 'munari'
@@ -150,6 +156,139 @@ function step(s: Spring, target: number, dt: number) {
   s.v = v
 }
 
+// ── the substance driver ────────────────────────────────────────────────
+//
+// One fixed key light and one fixed studio for the whole word, in WORLD
+// space. The shader lifts each letter's normals into world through its
+// quaternion, so a wobbling letter sweeps its reflections across the
+// standing light — the cue that reads as substance instead of decal.
+const WORLD_LIGHT = new THREE.Vector3(-0.42, 0.58, 0.7).normalize()
+
+/** Per-frame uniform feed, written by MatterLetter's frame loop and read
+ *  by MatterMaterial's. A mutable ref, not props: these change every
+ *  frame and must never re-render React. */
+interface LetterFx {
+  /** The letter's world rotation, for lifting normals into the studio. */
+  quat: THREE.Vector4
+  /** Unit direction of screen travel (prism disperses along it). */
+  velDir: THREE.Vector2
+  /** gloss × cooled amplitude — the shaded-substance mix; 0 for ink. */
+  fx: number
+  /** Gel amplitude in px, all factors folded in. */
+  jelly: number
+  /** Prism offset in CSS px (the material converts to texels). */
+  prism: number
+  /** Field weights (MATTER_PARAMS): fine-gradient shoulder, coarse-
+   *  gradient pillow, and the overall height-to-normal gain. The field
+   *  SCALES live in the blur pyramid (logoFields), not here. */
+  shoulder: number
+  pillow: number
+  dome: number
+  matter: number
+}
+
+function MatterMaterial({
+  i,
+  fontPx,
+  boxRef,
+  fx,
+  fields,
+}: {
+  i: number
+  fontPx: number
+  boxRef: React.RefObject<LetterBox>
+  fx: LetterFx
+  fields: LetterFields
+}) {
+  // Inside Surface's material="none" slot: the Surface still owns the
+  // texture (source format, premultiply, receipts); this material only
+  // consumes it.
+  const texture = useSurfaceTexture()
+  const mat = useRef<THREE.ShaderMaterial>(null)
+  const uniforms = useMemo(
+    () => ({
+      tMap: { value: null as THREE.Texture | null },
+      tFine: { value: null as THREE.Texture | null },
+      tCoarse: { value: null as THREE.Texture | null },
+      uTexel: { value: new THREE.Vector2(1e-3, 1e-3) },
+      uTexelF: { value: new THREE.Vector2(1e-2, 1e-2) },
+      uTexelC: { value: new THREE.Vector2(1e-2, 1e-2) },
+      uPlane: { value: new THREE.Vector2(1, 1) },
+      uFont: { value: 100 },
+      uShoulder: { value: 0 },
+      uPillowW: { value: 0 },
+      uDome: { value: 0 },
+      uFx: { value: 0 },
+      uJelly: { value: 0 },
+      uPrism: { value: 0 },
+      uMatter: { value: 0 },
+      uVelDir: { value: new THREE.Vector2(1, 0) },
+      uQuat: { value: new THREE.Vector4(0, 0, 0, 1) },
+      uLight: { value: WORLD_LIGHT.clone() },
+      uTime: { value: 0 },
+      uPhase: { value: i * 2.13 },
+      uWaveK: { value: new THREE.Vector2(0.05, 0.05) },
+    }),
+    [i],
+  )
+  useFrame((state) => {
+    const m = mat.current
+    if (!m) return
+    const u = m.uniforms
+    // The texture binds here, not in the memo — it does not exist on the
+    // first frames, and LOD tiers swap it under the same uuid-keyed
+    // material.
+    u.tMap.value = texture ?? null
+    const img = texture?.image as { width: number; height: number } | undefined
+    const b = boxRef.current
+    // CSS px → texels: the texture covers the capture box at some LOD
+    // scale, and every authored offset must survive a tier change.
+    const texPerCss = img && b.w > 0 ? img.width / b.w : 1
+    if (img) u.uTexel.value.set(1 / img.width, 1 / img.height)
+    // The height fields refresh here, inside the frame write and before
+    // the automatic render — and only on lit frames, so a parked or
+    // cooling letter runs no extra passes at all.
+    if (texture && fx.matter > 0.5 && fx.fx > 0.001) fields.update(state.gl, texture)
+    u.tFine.value = fields.fine.texture
+    u.tCoarse.value = fields.coarse.texture
+    u.uTexelF.value.set(1 / fields.fine.width, 1 / fields.fine.height)
+    u.uTexelC.value.set(1 / fields.coarse.width, 1 / fields.coarse.height)
+    u.uPlane.value.set(b.w, b.h)
+    u.uFont.value = fontPx
+    u.uShoulder.value = fx.shoulder
+    u.uPillowW.value = fx.pillow
+    u.uDome.value = fx.dome
+    u.uFx.value = fx.fx
+    u.uJelly.value = fx.jelly
+    u.uPrism.value = fx.prism * texPerCss
+    u.uMatter.value = fx.matter
+    u.uVelDir.value.copy(fx.velDir)
+    u.uQuat.value.copy(fx.quat)
+    u.uTime.value = state.clock.elapsedTime
+    // Wave numbers from the font size, so every face ripples at the same
+    // physical scale whatever its slot width.
+    u.uWaveK.value.set((Math.PI * 2) / (fontPx * 0.85), (Math.PI * 2) / (fontPx * 0.68))
+  })
+  return (
+    <shaderMaterial
+      // Remount when the texture object changes — a ShaderMaterial does
+      // not re-bind samplers reliably across texture swaps otherwise.
+      key={texture?.uuid ?? 'warming'}
+      ref={mat}
+      uniforms={uniforms}
+      vertexShader={LETTER_VERT}
+      fragmentShader={LETTER_FRAG}
+      // Premultiplied in, premultiplied blend (decisions.md #5); the
+      // letters are paint over the page, so no depth writes and no tone
+      // mapping — same stance as the standard-material path it replaces.
+      transparent
+      premultipliedAlpha
+      depthWrite={false}
+      toneMapped={false}
+    />
+  )
+}
+
 interface MatterLetterProps {
   i: number
   ch: string
@@ -158,9 +297,12 @@ interface MatterLetterProps {
   fontPx: number
   knobs: React.RefObject<LogoKnobs>
   pointer: React.RefObject<{ x: number; y: number } | null>
-  /** The crossing's custody amplitude, 0..1 smoothstepped: 0 pins the
-   *  twin flat on the page grid. */
-  amplitude: () => number
+  /** The lift's progress, 0..1 smoothstepped: 0 pins the twin flat on
+   *  the page grid. */
+  progress: () => number
+  /** A choreography window over the same progress (drei's range shape);
+   *  the cooling gate reads the light's window through it. */
+  range: (from: number, distance: number) => number
   /** The carried idle float, em per letter — the SAME sample the page
    *  is writing to its slots this frame. */
   carried: () => number[]
@@ -176,7 +318,8 @@ function MatterLetter({
   fontPx,
   knobs,
   pointer,
-  amplitude,
+  progress,
+  range,
   carried,
   onPresented,
 }: MatterLetterProps) {
@@ -184,6 +327,12 @@ function MatterLetter({
   const [painted, setPainted] = useState(false)
   const size = useThree((s) => s.size)
   const dpr = useThree((s) => s.viewport.dpr)
+
+  // The letter's blur pyramid (logoFields): sized off the capture box —
+  // which is 16px-quantized, so only a real viewport resize remakes the
+  // targets — and refreshed by the material on lit frames.
+  const fields = useMemo(() => new LetterFields(box.w, box.h), [box.w, box.h])
+  useEffect(() => () => fields.dispose(), [fields])
 
   // Targets live in refs so a pose change never remounts the spring
   // mid-flight — the letter chases the new pose from wherever it is.
@@ -207,6 +356,33 @@ function MatterLetter({
     }
   }
 
+  // The substance's scratch state: the fx feed the material reads, plus
+  // excitation (hop energy that makes a freshly-dealt letter jiggle,
+  // then gel-decay to calm) and last position (screen velocity feeds
+  // the prism). Allocated once, mutated every frame.
+  const drive = useRef<{
+    fx: LetterFx
+    prev: { x: number; y: number }
+    excite: number
+  } | null>(null)
+  if (!drive.current) {
+    drive.current = {
+      fx: {
+        quat: new THREE.Vector4(0, 0, 0, 1),
+        velDir: new THREE.Vector2(1, 0),
+        fx: 0,
+        jelly: 0,
+        prism: 0,
+        shoulder: 0,
+        pillow: 0,
+        dome: 0,
+        matter: pose.matter,
+      },
+      prev: { x: 0, y: 0 },
+      excite: 0,
+    }
+  }
+
   useFrame((state, delta) => {
     const el = g.current
     if (!el) return
@@ -218,9 +394,9 @@ function MatterLetter({
     const b = boxRef.current
     const t = state.clock.elapsedTime
     // Everything matter ADDS to the page pose — bob, wobble, dodge —
-    // rides the crossing's smoothstepped amplitude, so a crossing letter
+    // rides the lift's smoothstepped progress, so a crossing letter
     // holds the page's flat geometry at 0 and full depth only at 1.
-    const amp = amplitude()
+    const amp = progress()
 
     // The pointer dodge, in CSS px: inside reach, a letter leans away.
     let px = 0
@@ -269,6 +445,42 @@ function MatterLetter({
       s.tilt.x,
     )
     el.scale.setScalar(s.scale.x)
+
+    // ── feed the substance ──
+    const d = drive.current!
+    const fx = d.fx
+    // Excitation: spring speed (px/s-ish; tilt folded in at glyph scale)
+    // with a fast attack and a slow gel decay — a beat STRIKES the
+    // letter, and the wobble rings down over ~half a second.
+    const speed = Math.hypot(s.dx.v, s.dy.v) + Math.abs(s.tilt.v) * em
+    d.excite = Math.max(Math.min(speed / 320, 1), d.excite * Math.exp(-dt / 0.45))
+    // Screen velocity (bob + dodge + hop, everything that moves the
+    // mesh) — the prism disperses along it and scales with it, so a
+    // parked letter shows zero fringe whatever the knob says.
+    const vx = dt > 0 ? (el.position.x - d.prev.x) / dt : 0
+    const vy = dt > 0 ? (el.position.y - d.prev.y) / dt : 0
+    d.prev.x = el.position.x
+    d.prev.y = el.position.y
+    const sp = Math.hypot(vx, vy)
+    if (sp > 1) fx.velDir.set(vx / sp, vy / sp)
+    // Every term is × amp: at the handoff edges the letter is exactly
+    // its own pixels (the identity theorem the crossing-flash gate
+    // measures). The LIGHT additionally rides a LATER window of the same
+    // progress — lift.range over MATTER_LIGHT_GATE — so substances
+    // freeze back to ink before touchdown, and the swap-eve frames are
+    // ink and nothing else.
+    const gate = MATTER_LIGHT_GATE
+    const gt = range(gate.from, gate.distance)
+    const par = MATTER_PARAMS[p.matter]
+    fx.matter = p.matter
+    fx.fx = p.matter === 0 ? 0 : k.gloss * gt * gt * (3 - 2 * gt)
+    fx.jelly = k.jelly * amp * par.jelly * (1.1 + 4.5 * d.excite)
+    fx.prism = k.prism * amp * par.prism * Math.min(sp / 300, 1) * 2.6
+    fx.shoulder = par.shoulder
+    fx.pillow = par.pillow
+    fx.dome = par.dome
+    const q = el.quaternion
+    fx.quat.set(q.x, q.y, q.z, q.w)
   })
 
   const f = LOGO_FONTS[pose.font]
@@ -279,10 +491,12 @@ function MatterLetter({
         width={box.w}
         height={box.h}
         transparent
-        // No lights in this canvas on purpose: the letters are paint,
-        // not matter-under-a-lamp, so the emissive term carries the whole
-        // face and the map contributes nothing to argue with it.
-        emissiveIntensity={1}
+        // material="none" yields the material slot to the matter shader
+        // (logoShaders) while the Surface keeps owning the texture —
+        // source format, premultiply, and both receipts survive the
+        // custom material. No lights in this canvas: the shader carries
+        // its own analytic key light per matter.
+        material="none"
         frustumCulled={false}
         onFirstUpload={() => setPainted(true)}
         onFirstPresented={onPresented}
@@ -297,7 +511,16 @@ function MatterLetter({
           </div>
         }
       >
-        <planeGeometry args={[box.w, box.h]} />
+        {/* Subdivided so the gel waves have vertices to travel through —
+            a 1×1 plane would turn uJelly into a rigid-body shear. */}
+        <planeGeometry args={[box.w, box.h, 28, 14]} />
+        <MatterMaterial
+          i={i}
+          fontPx={fontPx}
+          boxRef={boxRef}
+          fx={drive.current.fx}
+          fields={fields}
+        />
       </SurfaceApp>
     </group>
   )
@@ -307,14 +530,14 @@ interface MatterCanvasProps {
   poses: LetterPose[]
   metrics: WordMetrics
   knobs: React.RefObject<LogoKnobs>
-  /** The library crossing this canvas serves: its driver advances the
-   *  protocol, its amplitude gates depth, its receipts gate the lift. */
-  crossing: CustodyCrossing
+  /** The library lift this canvas serves: its driver advances the
+   *  protocol, its progress gates depth, its receipts gate the lift-off. */
+  lift: Lift
   /** The carried float's per-frame sample, shared with the page. */
   carried: () => number[]
 }
 
-function MatterCanvas({ poses, metrics, knobs, crossing, carried }: MatterCanvasProps) {
+function MatterCanvas({ poses, metrics, knobs, lift, carried }: MatterCanvasProps) {
   const pointer = useRef<{ x: number; y: number } | null>(null)
   useEffect(() => {
     const move = (e: PointerEvent) => {
@@ -332,11 +555,11 @@ function MatterCanvas({ poses, metrics, knobs, crossing, carried }: MatterCanvas
   }, [])
 
   return (
-    // data-holds is presentation custody: while lifting it is false and
+    // data-holds is the presentation law: while lifting it is false and
     // logo.css keeps this whole element uncomposited — the twins draw
     // warm (receipts come from the framebuffer, which opacity does not
     // touch) but the eye sees only the page until the swap.
-    <div className="logo-canvas" data-holds={crossing.rendererHolds}>
+    <div className="logo-canvas" data-holds={lift.glHolds}>
       {/* `flat`: the letters are ink, and tone mapping would mute
           exactly the candy this palette is for. */}
       <Canvas
@@ -347,7 +570,7 @@ function MatterCanvas({ poses, metrics, knobs, crossing, carried }: MatterCanvas
         onCreated={(state) => state.gl.setClearAlpha(0)}
       >
         <PixelCam />
-        <CustodyCrossingDriver crossing={crossing} />
+        <LiftDriver lift={lift} />
         {WORD.split('').map((ch, i) => (
           <MatterLetter
             key={i}
@@ -358,9 +581,10 @@ function MatterCanvas({ poses, metrics, knobs, crossing, carried }: MatterCanvas
             fontPx={metrics.fontPx}
             knobs={knobs}
             pointer={pointer}
-            amplitude={crossing.amplitude}
+            progress={lift.progress}
+            range={lift.range}
             carried={carried}
-            onPresented={() => crossing.present(i)}
+            onPresented={() => lift.present(i)}
           />
         ))}
       </Canvas>
@@ -387,6 +611,9 @@ const SLIDERS: {
   { key: 'float', label: 'float em', min: 0, max: 0.15, step: 0.005 },
   { key: 'depth', label: 'depth px', min: 0, max: 160, step: 5, matterOnly: true },
   { key: 'dodge', label: 'dodge px', min: 0, max: 120, step: 5, matterOnly: true },
+  { key: 'gloss', label: 'gloss', min: 0, max: 1, step: 0.05, matterOnly: true },
+  { key: 'jelly', label: 'jelly', min: 0, max: 1, step: 0.05, matterOnly: true },
+  { key: 'prism', label: 'prism', min: 0, max: 1, step: 0.05, matterOnly: true },
 ]
 
 // ── the page ────────────────────────────────────────────────────────────
@@ -405,18 +632,17 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
   const knobsRef = useRef(knobs)
   knobsRef.current = knobs
 
-  // The custody crossing is the library's now (this page is where it
-  // bled first): six presenters must prove post-draw, and the settle
-  // dwell outlasts the compositor-clocked eases — hop and color; the
-  // carried float is exempt — the facts that make the swap frame
-  // pixel-identical even mid-breath. The hook holds the phases, the
-  // evidence gate, and the reversal rule; this page only states its
-  // timing.
-  const crossing = useCustodyCrossing({
+  // The lift is the library's now (this page is where it bled first):
+  // six presenters must prove post-draw, and the settle dwell outlasts
+  // the compositor-clocked eases — hop and color; the carried float is
+  // exempt — the facts that make the swap frame pixel-identical even
+  // mid-breath. The hook holds the phases, the evidence gate, and the
+  // reversal rule; this page only states its timing.
+  const lift = useLift({
     presenters: WORD.length,
     timing: { settleMs: SETTLE_MS },
   })
-  const inCrossing = crossing.phase === 'lifting' || crossing.phase === 'landing'
+  const inCrossing = lift.entering || lift.exiting
 
   const rRef = useRef(makeRng(SEED0))
   const [poses, setPoses] = useState<LetterPose[]>(() =>
@@ -438,6 +664,7 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
         {
           fonts: [prev[i].font, ...near.map((p) => p.font)],
           colors: [prev[i].color, ...near.map((p) => p.color)],
+          matters: [prev[i].matter, ...near.map((p) => p.matter)],
         },
         knobsRef.current,
       )
@@ -555,13 +782,13 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
   // the key dedupe, and it makes the lift's first frame correct
   // without ordering assumptions.
   useLayoutEffect(() => {
-    if (crossing.rendererMounted) measure()
+    if (lift.glMounted) measure()
   })
   useEffect(() => {
-    if (!crossing.rendererMounted) return
+    if (!lift.glMounted) return
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
-  }, [crossing.rendererMounted, measure])
+  }, [lift.glMounted, measure])
 
   const setKnob = (key: keyof LogoKnobs, value: number) =>
     setKnobs((k) => ({ ...k, [key]: value }))
@@ -575,7 +802,7 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
           // The protocol phase, worn on the DOM: logo.css keys letter
           // visibility off it, and the crossing-flash instrument reads
           // it to know when a crossing is mid-air.
-          data-phase={crossing.phase}
+          data-phase={lift.phase}
           style={{ width: `${GRID.width}em` }}
         >
           {WORD.split('').map((ch, i) => (
@@ -607,12 +834,12 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
         </div>
       </div>
 
-      {crossing.rendererMounted && metrics && (
+      {lift.glMounted && metrics && (
         <MatterCanvas
           poses={poses}
           metrics={metrics}
           knobs={knobsRef}
-          crossing={crossing}
+          lift={lift}
           carried={float.sample}
         />
       )}
@@ -629,8 +856,8 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
               — that rule lives in the library now (crossingRequest). */}
           <input
             type="checkbox"
-            checked={crossing.requested}
-            onChange={(e) => crossing.request(e.target.checked)}
+            checked={lift.requested}
+            onChange={(e) => lift.request(e.target.checked)}
           />
           <span>matter — lift the letters into WebGL</span>
         </label>
@@ -638,7 +865,7 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
           <label
             key={s.key}
             className="logo-panel-slider"
-            data-off={s.matterOnly && crossing.phase === 'dom'}
+            data-off={s.matterOnly && lift.phase === 'page'}
           >
             <span>{s.label}</span>
             <input
@@ -656,8 +883,8 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
 
       {chips}
       <div className="footer">
-        six letters, six voices — tune the conductor, then flip on matter and the word lifts off
-        the ink
+        six letters, six voices — tune the conductor, then flip on matter and each beat
+        transmutes a letter: ink, balloon, foil, gummy, neon
       </div>
     </div>
   )

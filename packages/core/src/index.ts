@@ -1,8 +1,8 @@
-// The kernel's public surface. It grows one custody layer at a time —
+// The kernel's public surface. It grows one layer of hold at a time —
 // mapping → paint → pointer → transfer → chrome → physics — and only after
 // the layer's conformance contract has landed.
 
-// mapping — coordinate custody
+// mapping — who owns the coordinates
 export {
   cameraDistance,
   planeScale,
@@ -26,7 +26,7 @@ export {
 } from './mapping/uvAnchor'
 export { Vec3, type Vec3Like, type Vec3Readonly, type SampleVec } from './math/vec3'
 
-// paint — custody + paint (texture contract = decisions.md #5)
+// paint — who owns the pixels + paint (texture contract = decisions.md #5)
 export {
   createCanvasFrameSource,
   type CanvasFrameSource,
@@ -136,9 +136,11 @@ export {
   crossingAtRest,
   crossingRequest,
   crossingFrame,
-  crossingCustody,
+  crossingDraws,
   crossingPresentation,
-  crossingAmplitude,
+  crossingProgress,
+  crossingRange,
+  crossingCurve,
   type CrossingPhase,
   type CrossingTiming,
   type CrossingEvidence,

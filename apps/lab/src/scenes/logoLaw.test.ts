@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   LOGO_DEFAULTS,
   LOGO_FONTS,
+  LOGO_MATTERS,
   LOGO_PALETTE,
   SLOT_FALLBACK_EM,
   SLOT_GAP_EM,
@@ -28,13 +29,18 @@ describe('logo choreography (logoLaw)', () => {
     expect(seedWord(6, makeRng(78), K)).not.toEqual(a)
   })
 
-  it('never re-rolls a letter into the face or color it already wears', () => {
+  it('never re-rolls a letter into the face, color, or matter it already wears', () => {
     const r = makeRng(1)
-    let pose = rollPose(r, { fonts: [], colors: [] }, K)
+    let pose = rollPose(r, { fonts: [], colors: [], matters: [] }, K)
     for (let i = 0; i < 300; i++) {
-      const next = rollPose(r, { fonts: [pose.font], colors: [pose.color] }, K)
+      const next = rollPose(
+        r,
+        { fonts: [pose.font], colors: [pose.color], matters: [pose.matter] },
+        K,
+      )
       expect(next.font).not.toBe(pose.font)
       expect(next.color).not.toBe(pose.color)
+      expect(next.matter).not.toBe(pose.matter)
       pose = next
     }
   })
@@ -42,10 +48,11 @@ describe('logo choreography (logoLaw)', () => {
   it('dodges the neighbors it was told about', () => {
     const r = makeRng(2)
     for (let i = 0; i < 300; i++) {
-      const avoid = { fonts: [0, 3, 5], colors: [1, 2, 6] }
+      const avoid = { fonts: [0, 3, 5], colors: [1, 2, 6], matters: [0, 2] }
       const pose = rollPose(r, avoid, K)
       expect(avoid.fonts).not.toContain(pose.font)
       expect(avoid.colors).not.toContain(pose.color)
+      expect(avoid.matters).not.toContain(pose.matter)
     }
   })
 
@@ -54,18 +61,21 @@ describe('logo choreography (logoLaw)', () => {
     const all = {
       fonts: LOGO_FONTS.map((_, i) => i),
       colors: LOGO_PALETTE.map((_, i) => i),
+      matters: LOGO_MATTERS.map((_, i) => i),
     }
     const pose = rollPose(r, all, K)
     expect(pose.font).toBeGreaterThanOrEqual(0)
     expect(pose.font).toBeLessThan(LOGO_FONTS.length)
     expect(pose.color).toBeGreaterThanOrEqual(0)
     expect(pose.color).toBeLessThan(LOGO_PALETTE.length)
+    expect(pose.matter).toBeGreaterThanOrEqual(0)
+    expect(pose.matter).toBeLessThan(LOGO_MATTERS.length)
   })
 
   it('only deals weights the chosen face actually ships', () => {
     const r = makeRng(4)
     for (let i = 0; i < 300; i++) {
-      const pose = rollPose(r, { fonts: [], colors: [] }, K)
+      const pose = rollPose(r, { fonts: [], colors: [], matters: [] }, K)
       expect(LOGO_FONTS[pose.font].weights).toContain(pose.weight)
     }
   })
@@ -73,7 +83,7 @@ describe('logo choreography (logoLaw)', () => {
   it('keeps every pose inside the knobs that shaped it', () => {
     const r = makeRng(5)
     for (let i = 0; i < 300; i++) {
-      const p = rollPose(r, { fonts: [], colors: [] }, K)
+      const p = rollPose(r, { fonts: [], colors: [], matters: [] }, K)
       expect(Math.abs(p.tilt)).toBeLessThanOrEqual(K.tilt)
       expect(Math.abs(p.dx)).toBeLessThanOrEqual(K.drift)
       expect(Math.abs(p.dy)).toBeLessThanOrEqual(K.drift)
@@ -82,12 +92,13 @@ describe('logo choreography (logoLaw)', () => {
     }
   })
 
-  it('seeds a word where no two neighbors share a face or a color', () => {
+  it('seeds a word where no two neighbors share a face, color, or matter', () => {
     for (let seed = 10; seed < 40; seed++) {
       const word = seedWord(6, makeRng(seed), K)
       for (let i = 1; i < word.length; i++) {
         expect(word[i].font).not.toBe(word[i - 1].font)
         expect(word[i].color).not.toBe(word[i - 1].color)
+        expect(word[i].matter).not.toBe(word[i - 1].matter)
       }
     }
   })
@@ -187,11 +198,13 @@ describe('the matter spring', () => {
 
 // Shared sanity: the constraint model needs headroom. Six letters where
 // each dodges its own current value plus two neighbors consumes at most
-// 3 fonts and 3 colors — both decks must keep at least one card open.
+// 3 fonts, 3 colors, and 3 matters — every deck must keep at least one
+// card open.
 describe('the decks', () => {
   it('leave the rng a real choice under the worst constraint', () => {
     expect(LOGO_FONTS.length).toBeGreaterThan(3)
     expect(LOGO_PALETTE.length).toBeGreaterThan(3)
+    expect(LOGO_MATTERS.length).toBeGreaterThan(3)
   })
 
   it('agree with the poses they deal', () => {
@@ -199,6 +212,7 @@ describe('the decks', () => {
     for (const p of word) {
       expect(LOGO_FONTS[p.font]).toBeDefined()
       expect(LOGO_PALETTE[p.color]).toBeDefined()
+      expect(LOGO_MATTERS[p.matter]).toBeDefined()
     }
   })
 })
