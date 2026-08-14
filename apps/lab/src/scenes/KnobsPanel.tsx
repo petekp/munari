@@ -106,11 +106,13 @@ const RotaryKnob = memo(function RotaryKnob({
     <div className="knb-rotary">
       <span className="knb-dial-label">{def.label}</span>
       <SegmentReadout
+        anchor={`readout:${def.key}`}
         text={value.toFixed(def.step >= 1 ? 0 : 2)}
         cap={def.max.toFixed(def.step >= 1 ? 0 : 2).replace(/\d/g, '8')}
       />
       <div
         className="knb-dial"
+        data-munari-anchor={`knob:${def.key}`}
         role="slider"
         aria-label={def.label}
         aria-valuemin={def.min}
@@ -120,6 +122,24 @@ const RotaryKnob = memo(function RotaryKnob({
         onPointerDown={onPointerDown}
         onKeyDown={onKeyDown}
       >
+        {def.key === 'hue' && new URLSearchParams(window.location.search).get('probe') === 'knobs-resize' && (
+          <span
+            data-knobs-resize-marker="source"
+            data-munari-anchor="probe:hue"
+            aria-hidden
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              width: 4,
+              height: 4,
+              transform: 'translate(-50%, -50%)',
+              background: '#ff00ff',
+              pointerEvents: 'none',
+              zIndex: 20,
+            }}
+          />
+        )}
         <span className="knb-dial-ticks" aria-hidden>
           {/* A notch is lit when the pointer has swept past it — the arc
             * of light IS the dial's setting, readable across a room. */}
@@ -149,9 +169,17 @@ const RotaryKnob = memo(function RotaryKnob({
  * shared segment grid, so ghost and live align segment-for-segment
  * when the window right-aligns them together (knobs.css).
  */
-function SegmentReadout({ text, cap }: { text: string; cap: string }) {
+function SegmentReadout({
+  anchor,
+  text,
+  cap,
+}: {
+  anchor: string
+  text: string
+  cap: string
+}) {
   return (
-    <span className="knb-dial-value">
+    <span className="knb-dial-value" data-munari-anchor={anchor}>
       <i className="knb-value-ghost" aria-hidden>
         {cap}
       </i>
@@ -173,6 +201,7 @@ const ToggleSwitch = memo(function ToggleSwitch({
     <button
       type="button"
       className="knb-toggle"
+      data-munari-anchor={`toggle:${def.key}`}
       data-on={on}
       aria-pressed={on}
       // The legend is silkscreen at the foot of the cell now, outside the
@@ -222,7 +251,7 @@ const SwitchCell = memo(function SwitchCell({
       <ToggleSwitch def={def} on={on} onChange={onChange} />
       {lamp && (
         <span className="knb-lamp" data-on={lit} data-tone={lamp.tone} aria-hidden>
-          <span className="knb-lamp-bezel">
+          <span className="knb-lamp-bezel" data-munari-anchor={`lamp:${lamp.key}`}>
             <span className="knb-lamp-bulb" />
           </span>
         </span>
@@ -377,10 +406,10 @@ export function KnobsPanel() {
       onPointerUp={endDialDrag}
       onPointerCancel={endDialDrag}
     >
-      <span className="knb-screw" data-corner="tl" aria-hidden />
-      <span className="knb-screw" data-corner="tr" aria-hidden />
-      <span className="knb-screw" data-corner="bl" aria-hidden />
-      <span className="knb-screw" data-corner="br" aria-hidden />
+      <span className="knb-screw" data-corner="tl" data-munari-anchor="screw:tl" aria-hidden />
+      <span className="knb-screw" data-corner="tr" data-munari-anchor="screw:tr" aria-hidden />
+      <span className="knb-screw" data-corner="bl" data-munari-anchor="screw:bl" aria-hidden />
+      <span className="knb-screw" data-corner="br" data-munari-anchor="screw:br" aria-hidden />
 
       {/* The carry handle. Its forwarded pointerdown only ARMS the
         * gesture — the scene moves the slab from the real screen

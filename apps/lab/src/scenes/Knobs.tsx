@@ -43,6 +43,10 @@ import {
   SurfaceApp,
   cameraDistance,
   useSurfaceTexture,
+  type DomPaintReceipt,
+  type FrameDrawReceipt,
+  type PresentationReceipt,
+  type PresentationRequirement,
 } from '@petepetrash/munari'
 import { KnobsArt } from './KnobsArt'
 import { KnobsPanel } from './KnobsPanel'
@@ -454,48 +458,100 @@ interface RailRect {
   worldY: number
 }
 
-interface Feature {
+/** A measured box on the face, center + size, panel CSS px. */
+interface FeatureBox {
   x: number
   y: number
-}
-
-/** A measured box on the face, center + size, panel CSS px. */
-interface FeatureBox extends Feature {
   w: number
   h: number
 }
 
-interface PanelFeatures {
-  knobs: Feature[]
-  toggles: Feature[]
-  lamps: Feature[]
-  screws: Feature[]
-  /** The LCD windows — the lamps the face shade must be cut around. */
-  readouts: FeatureBox[]
-  /** The dial circles — each one's tick annulus is an emitter ring. */
-  dials: FeatureBox[]
+interface SourceUvRect {
+  readonly uMin: number
+  readonly vMin: number
+  readonly uMax: number
+  readonly vMax: number
+  readonly cssWidth: number
+  readonly cssHeight: number
 }
 
-/** Stable empty list, so an unmeasured panel doesn't re-cut the shade
- *  geometry on every render. */
-const NO_READOUTS: FeatureBox[] = []
+interface SurfaceAnchorReceipt {
+  readonly paint: DomPaintReceipt
+  readonly anchors: Readonly<Record<string, SourceUvRect>>
+}
 
-function featuresEqual(a: PanelFeatures | null, b: PanelFeatures): boolean {
-  if (!a) return false
-  const same = (xs: Feature[], ys: Feature[]) =>
-    xs.length === ys.length &&
-    xs.every((f, i) => Math.abs(f.x - ys[i].x) < 0.5 && Math.abs(f.y - ys[i].y) < 0.5)
-  const sameBox = (xs: FeatureBox[], ys: FeatureBox[]) =>
-    same(xs, ys) &&
-    xs.every((f, i) => Math.abs(f.w - ys[i].w) < 0.5 && Math.abs(f.h - ys[i].h) < 0.5)
-  return (
-    same(a.knobs, b.knobs) &&
-    same(a.toggles, b.toggles) &&
-    same(a.lamps, b.lamps) &&
-    same(a.screws, b.screws) &&
-    sameBox(a.readouts, b.readouts) &&
-    sameBox(a.dials, b.dials)
-  )
+interface KnobsResizeProbeState {
+  paint: DomPaintReceipt | null
+  draw: FrameDrawReceipt | null
+  presented: PresentationReceipt | null
+  anchors: SurfaceAnchorReceipt | null
+  projectedHue: { x: number; y: number } | null
+}
+
+interface KnobsResizeProbeApi {
+  snapshot(): KnobsResizeProbeState
+  invalidateLayout(): void
+}
+
+const SCREW_KEYS = ['tl', 'tr', 'bl', 'br'] as const
+const REQUIRED_ANCHORS = [
+  ...KNOBS_ROTARY.flatMap((def) => [`knob:${def.key}`, `readout:${def.key}`]),
+  ...KNOBS_TOGGLES.map((def) => `toggle:${def.key}`),
+  ...KNOBS_LAMPS.map((def) => `lamp:${def.key}`),
+  ...SCREW_KEYS.map((key) => `screw:${key}`),
+]
+
+function collectSurfaceAnchors(
+  root: HTMLElement,
+  paint: DomPaintReceipt,
+): Readonly<Record<string, SourceUvRect>> | null {
+  const base = root.getBoundingClientRect()
+  const [paintedWidth, paintedHeight] = paint.paintedSize
+  if (
+    base.width <= 0 ||
+    base.height <= 0 ||
+    Math.abs(base.width - paintedWidth) > 1 ||
+    Math.abs(base.height - paintedHeight) > 1
+  ) {
+    return null
+  }
+
+  const anchors: Record<string, SourceUvRect> = {}
+  for (const node of root.querySelectorAll<HTMLElement>('[data-munari-anchor]')) {
+    const key = node.dataset.munariAnchor
+    if (!key || anchors[key]) return null
+    const box = node.getBoundingClientRect()
+    anchors[key] = Object.freeze({
+      uMin: (box.left - base.left) / base.width,
+      vMin: 1 - (box.bottom - base.top) / base.height,
+      uMax: (box.right - base.left) / base.width,
+      vMax: 1 - (box.top - base.top) / base.height,
+      cssWidth: box.width,
+      cssHeight: box.height,
+    })
+  }
+  if (REQUIRED_ANCHORS.some((key) => !anchors[key])) return null
+  return Object.freeze(anchors)
+}
+
+function projectAnchor(
+  anchors: Readonly<Record<string, SourceUvRect>>,
+  key: string,
+  width: number,
+  height: number,
+  mirrorU = false,
+): FeatureBox | undefined {
+  const anchor = anchors[key]
+  if (!anchor) return undefined
+  const sourceU = (anchor.uMin + anchor.uMax) / 2
+  const u = mirrorU ? 1 - sourceU : sourceU
+  const v = (anchor.vMin + anchor.vMax) / 2
+  return {
+    x: u * width,
+    y: (1 - v) * height,
+    w: anchor.cssWidth,
+    h: anchor.cssHeight,
+  }
 }
 
 /** Everything machined once and shared by every control. The knurl's
@@ -683,11 +739,13 @@ function KnobHardware({
   x,
   y,
   assets,
+  probe = false,
 }: {
   def: KnobDef
   x: number
   y: number
   assets: HardwareAssets
+  probe?: boolean
 }) {
   const grip = useRef<THREE.Group>(null)
   const spring = useRef<SpringState>({
@@ -704,7 +762,7 @@ function KnobHardware({
   })
 
   return (
-    <group position={[x, y, HARDWARE_Z]}>
+    <group name={`knob:${def.key}`} position={[x, y, HARDWARE_Z]}>
       <group ref={grip}>
         <mesh
           geometry={assets.skirt}
@@ -725,8 +783,38 @@ function KnobHardware({
           raycast={noRaycast}
         />
       </group>
+      {probe && (
+        <mesh
+          name="probe:knob:hue"
+          position={[0, 0, KNOB.skirtHeight + KNOB.capHeight + 3]}
+          renderOrder={999}
+          raycast={noRaycast}
+        >
+          <circleGeometry args={[2, 20]} />
+          <meshBasicMaterial color="#ff00ff" toneMapped={false} depthTest={false} />
+        </mesh>
+      )}
     </group>
   )
+}
+
+function KnobsResizeProbeTracker({ state }: { state: RefObject<KnobsResizeProbeState> }) {
+  const { scene, camera, gl } = useThree()
+  const point = useMemo(() => new THREE.Vector3(), [])
+  useFrame(() => {
+    const hue = scene.getObjectByName('probe:knob:hue')
+    if (!hue) {
+      state.current.projectedHue = null
+      return
+    }
+    hue.getWorldPosition(point).project(camera)
+    const canvas = gl.domElement.getBoundingClientRect()
+    state.current.projectedHue = {
+      x: canvas.left + ((point.x + 1) / 2) * canvas.width,
+      y: canvas.top + ((1 - point.y) / 2) * canvas.height,
+    }
+  })
+  return null
 }
 
 function ToggleHardware({
@@ -1161,7 +1249,22 @@ function BacklightCorona({ rect }: { rect: RailRect }) {
  * environment reflections — a backlit chassis still glints; its FACE is
  * what falls dark.
  */
-function FaceShade({ rect, readouts }: { rect: RailRect; readouts: FeatureBox[] }) {
+function FaceShade({
+  rect,
+  anchors,
+}: {
+  rect: RailRect
+  anchors: SurfaceAnchorReceipt
+}) {
+  const readouts = useMemo(
+    () =>
+      KNOBS_ROTARY.map((def) =>
+        projectAnchor(anchors.anchors, `readout:${def.key}`, rect.w, rect.h),
+      ).filter(
+        (box): box is FeatureBox => Boolean(box),
+      ),
+    [anchors.anchors, rect.w, rect.h],
+  )
   const geometry = useMemo(() => {
     const shape = roundedRectShape(rect.w, rect.h, PANEL_RADIUS)
     // The shade is the face falling dark against its own backlight. The
@@ -1240,20 +1343,40 @@ function useSharedCaptureMaterial(texture: THREE.Texture | null | undefined) {
  * stands over. Writes uvs in place — the attribute already exists at
  * the right length, so a move costs one pass over it and no allocation.
  */
-function reprojectUVs(geometry: THREE.BufferGeometry, box: FeatureBox | undefined, rect: RailRect) {
-  if (!box) return
-  const cx = box.x - rect.w / 2
-  const cy = rect.h / 2 - box.y
+function reprojectUVs(
+  geometry: THREE.BufferGeometry,
+  anchor: SourceUvRect | undefined,
+  paint: DomPaintReceipt,
+) {
+  if (!anchor) return
+  const u = (anchor.uMin + anchor.uMax) / 2
+  const v = (anchor.vMin + anchor.vMax) / 2
+  const [paintedW, paintedH] = paint.paintedSize
   const pos = geometry.attributes.position
   const uv = geometry.attributes.uv
   for (let i = 0; i < pos.count; i++) {
-    uv.setXY(i, (pos.getX(i) + cx + rect.w / 2) / rect.w, (pos.getY(i) + cy + rect.h / 2) / rect.h)
+    uv.setXY(i, u + pos.getX(i) / paintedW, v + pos.getY(i) / paintedH)
   }
   uv.needsUpdate = true
 }
 
-function ReadoutWindows({ rect, readouts }: { rect: RailRect; readouts: FeatureBox[] }) {
+function ReadoutWindows({
+  rect,
+  anchors,
+}: {
+  rect: RailRect
+  anchors: SurfaceAnchorReceipt
+}) {
   const texture = useSurfaceTexture()
+  const readouts = useMemo(
+    () =>
+      KNOBS_ROTARY.flatMap((def) => {
+        const anchor = anchors.anchors[`readout:${def.key}`]
+        const box = projectAnchor(anchors.anchors, `readout:${def.key}`, rect.w, rect.h)
+        return anchor && box ? [{ key: def.key, anchor, box }] : []
+      }),
+    [anchors.anchors, rect.w, rect.h],
+  )
   // ONE material for every window. They are identical — the same map,
   // the same settings — and differ only in where they sample, which is
   // geometry. Building one apiece cost a shader program per window on
@@ -1266,7 +1389,7 @@ function ReadoutWindows({ rect, readouts }: { rect: RailRect; readouts: FeatureB
   // move it is the expensive way to do nothing, and earcut was the
   // second cost the profile named. The sizes are the whole dependency,
   // so they are the whole key.
-  const sizeKey = readouts.map((b) => `${b.w}x${b.h}`).join(',')
+  const sizeKey = readouts.map(({ box }) => `${box.w}x${box.h}`).join(',')
   const geoms = useMemo(() => {
     if (!sizeKey) return []
     // The geometry IS the rounded rect (the same 4px corner knobs.css
@@ -1284,8 +1407,8 @@ function ReadoutWindows({ rect, readouts }: { rect: RailRect; readouts: FeatureB
   // only part a move has to redo — a write over existing buffers, no
   // allocation and no re-triangulation.
   useLayoutEffect(() => {
-    geoms.forEach((g, i) => reprojectUVs(g, readouts[i], rect))
-  }, [geoms, readouts, rect])
+    geoms.forEach((g, i) => reprojectUVs(g, readouts[i]?.anchor, anchors.paint))
+  }, [geoms, readouts, anchors.paint])
 
   // The emission dial. THREE.Color carries components past 1 without
   // complaint, so >1 overdrives the authored paint and <1 dims it.
@@ -1297,11 +1420,12 @@ function ReadoutWindows({ rect, readouts }: { rect: RailRect; readouts: FeatureB
   return (
     <>
       {geoms.map((g, i) => {
-        const box = readouts[i]
-        if (!box) return null
+        const entry = readouts[i]
+        if (!entry) return null
+        const box = entry.box
         return (
           <mesh
-            key={i}
+            key={entry.key}
             geometry={g}
             material={material}
             position={[box.x - rect.w / 2, rect.h / 2 - box.y, 0.04]}
@@ -1327,8 +1451,23 @@ function ReadoutWindows({ rect, readouts }: { rect: RailRect; readouts: FeatureB
  * dial box: the notches sit at translateY(-29px) of a 66px dial in
  * knobs.css, i.e. from (w/2 - 9) to the dial's own edge.
  */
-function DialRings({ rect, dials }: { rect: RailRect; dials: FeatureBox[] }) {
+function DialRings({
+  rect,
+  anchors,
+}: {
+  rect: RailRect
+  anchors: SurfaceAnchorReceipt
+}) {
   const texture = useSurfaceTexture()
+  const dials = useMemo(
+    () =>
+      KNOBS_ROTARY.flatMap((def) => {
+        const anchor = anchors.anchors[`knob:${def.key}`]
+        const box = projectAnchor(anchors.anchors, `knob:${def.key}`, rect.w, rect.h)
+        return anchor && box ? [{ key: def.key, anchor, box }] : []
+      }),
+    [anchors.anchors, rect.w, rect.h],
+  )
   // Same two economies as the windows above, for the same measured
   // reasons: one shared material, and an annulus cut once per diameter.
   // A rotary is 66px on every panel width — hardware re-lays-out, it
@@ -1336,7 +1475,7 @@ function DialRings({ rect, dials }: { rect: RailRect; dials: FeatureBox[] }) {
   // ever re-aimed.
   const material = useSharedCaptureMaterial(texture)
 
-  const sizeKey = dials.map((b) => `${b.w}`).join(',')
+  const sizeKey = dials.map((entry) => `${entry.box.w}`).join(',')
   const geoms = useMemo(() => {
     if (!sizeKey) return []
     return sizeKey
@@ -1348,8 +1487,8 @@ function DialRings({ rect, dials }: { rect: RailRect; dials: FeatureBox[] }) {
   // Same rewrite as the windows: sample the capture where this annulus
   // sits on the face.
   useLayoutEffect(() => {
-    geoms.forEach((g, i) => reprojectUVs(g, dials[i], rect))
-  }, [geoms, dials, rect])
+    geoms.forEach((g, i) => reprojectUVs(g, dials[i]?.anchor, anchors.paint))
+  }, [geoms, dials, anchors.paint])
 
   useFrame(() => {
     material.color.setScalar(knobsTuning.lcdEmit)
@@ -1359,11 +1498,12 @@ function DialRings({ rect, dials }: { rect: RailRect; dials: FeatureBox[] }) {
   return (
     <>
       {geoms.map((g, i) => {
-        const box = dials[i]
-        if (!box) return null
+        const entry = dials[i]
+        if (!entry) return null
+        const box = entry.box
         return (
           <mesh
-            key={i}
+            key={entry.key}
             geometry={g}
             material={material}
             position={[box.x - rect.w / 2, rect.h / 2 - box.y, 0.04]}
@@ -1390,16 +1530,30 @@ function DialRings({ rect, dials }: { rect: RailRect; dials: FeatureBox[] }) {
  * mounted through zero (a shader recompile per dial step would cost
  * more than six idle punctual lights).
  */
-function ReadoutLamps({ rect, readouts }: { rect: RailRect; readouts: FeatureBox[] }) {
+function ReadoutLamps({
+  rect,
+  anchors,
+}: {
+  rect: RailRect
+  anchors: SurfaceAnchorReceipt
+}) {
   const lights = useRef<(THREE.PointLight | null)[]>([])
+  const readouts = useMemo(
+    () =>
+      KNOBS_ROTARY.flatMap((def) => {
+        const box = projectAnchor(anchors.anchors, `readout:${def.key}`, rect.w, rect.h)
+        return box ? [{ key: def.key, box }] : []
+      }),
+    [anchors.anchors, rect.w, rect.h],
+  )
   useFrame(() => {
     for (const l of lights.current) if (l) l.intensity = knobsTuning.lcdReflect
   })
   return (
     <>
-      {readouts.map((box, i) => (
+      {readouts.map(({ key, box }, i) => (
         <pointLight
-          key={i}
+          key={key}
           ref={(el) => {
             lights.current[i] = el
           }}
@@ -1686,15 +1840,9 @@ function PanelRig({
   )
 }
 
-/** Panel-local coordinates: the face's centre is the slab's origin. */
-const toLocal = (rectNow: RailRect, f: Feature): [number, number] => [
-  f.x - rectNow.w / 2,
-  rectNow.h / 2 - f.y,
-]
-
 interface StageHandle {
   setRect: Dispatch<SetStateAction<RailRect | null>>
-  setFeatures: Dispatch<SetStateAction<PanelFeatures | null>>
+  setAnchors: Dispatch<SetStateAction<SurfaceAnchorReceipt | null>>
 }
 
 /**
@@ -1729,19 +1877,28 @@ function PanelStage({
   assets,
   kick,
   onHost,
+  onPainted,
+  onFrameDrawn,
+  onPresented,
+  probe,
 }: {
   handle: RefObject<StageHandle | null>
   widthNow: RefObject<number>
   assets: HardwareAssets
   kick: RefObject<((dir: number) => void) | null>
   onHost: (el: HTMLElement | null) => void
+  onPainted: (receipt: DomPaintReceipt) => void
+  onFrameDrawn: (receipt: FrameDrawReceipt) => void
+  onPresented: (receipt: PresentationReceipt) => void
+  probe: boolean
 }) {
   const [rect, setRect] = useState<RailRect | null>(null)
-  const [features, setFeatures] = useState<PanelFeatures | null>(null)
+  const [anchors, setAnchors] = useState<SurfaceAnchorReceipt | null>(null)
+  const [presentation, setPresentation] = useState<PresentationRequirement | undefined>()
   // Published during render, not from an effect: the drag's very first
   // measurement can arrive before any effect in this tree has run, and a
   // setter's identity never changes, so there is nothing to keep in sync.
-  handle.current = { setRect, setFeatures }
+  handle.current = { setRect, setAnchors }
 
   // Seed the box, and follow the window. A DRAG does not come through
   // here — it measures the arrangement it produced and sets the whole
@@ -1784,40 +1941,81 @@ function PanelStage({
             userData={{ matter: true }}
             position={[0, 0, FACE_Z]}
             onHost={onHost}
+            onPainted={(receipt) => {
+              onPainted(receipt)
+              setPresentation((current) =>
+                current ?? {
+                  transferId: 1,
+                  frame: receipt.frame,
+                  presentationRevision: 1,
+                },
+              )
+            }}
+            onFrameDrawn={onFrameDrawn}
+            presentation={presentation}
+            onPresented={onPresented}
             content={<KnobsPanel />}
           >
             <planeGeometry args={[rect.w, rect.h]} />
-            <ReadoutWindows rect={rect} readouts={features?.readouts ?? NO_READOUTS} />
-            <DialRings rect={rect} dials={features?.dials ?? NO_READOUTS} />
+            {anchors && <ReadoutWindows rect={rect} anchors={anchors} />}
+            {anchors && <DialRings rect={rect} anchors={anchors} />}
           </SurfaceApp>
-          <FaceShade rect={rect} readouts={features?.readouts ?? NO_READOUTS} />
-          <ReadoutLamps rect={rect} readouts={features?.readouts ?? NO_READOUTS} />
-          {features && (
+          {anchors && <FaceShade rect={rect} anchors={anchors} />}
+          {anchors && <ReadoutLamps rect={rect} anchors={anchors} />}
+          {anchors && (
             <>
-              {features.knobs.map((f, i) => {
-                const def = KNOBS_ROTARY[i]
-                if (!def) return null
-                const [x, y] = toLocal(rect, f)
-                return <KnobHardware key={def.key} def={def} x={x} y={y} assets={assets} />
-              })}
-              {features.toggles.map((f, i) => {
-                const def = KNOBS_TOGGLES[i]
-                if (!def) return null
-                const [x, y] = toLocal(rect, f)
+              {KNOBS_ROTARY.map((def) => {
+                const box = projectAnchor(anchors.anchors, `knob:${def.key}`, rect.w, rect.h)
+                if (!box) return null
                 return (
-                  <ToggleHardware key={def.key} tKey={def.key} x={x} y={y} assets={assets} kick={kick} />
+                  <KnobHardware
+                    key={def.key}
+                    def={def}
+                    x={box.x - rect.w / 2}
+                    y={rect.h / 2 - box.y}
+                    assets={assets}
+                    probe={probe && def.key === 'hue'}
+                  />
                 )
               })}
-              {features.lamps.map((f, i) => {
-                const def = KNOBS_LAMPS[i]
-                if (!def) return null
-                const [x, y] = toLocal(rect, f)
-                return <LampHardware key={def.key} def={def} x={x} y={y} assets={assets} />
-              })}
-              {features.screws.map((f, i) => {
-                const [x, y] = toLocal(rect, f)
+              {KNOBS_TOGGLES.map((def) => {
+                const box = projectAnchor(anchors.anchors, `toggle:${def.key}`, rect.w, rect.h)
+                if (!box) return null
                 return (
-                  <ScrewHardware key={i} x={x} y={y} clock={SCREW_CLOCK[i % SCREW_CLOCK.length]} assets={assets} />
+                  <ToggleHardware
+                    key={def.key}
+                    tKey={def.key}
+                    x={box.x - rect.w / 2}
+                    y={rect.h / 2 - box.y}
+                    assets={assets}
+                    kick={kick}
+                  />
+                )
+              })}
+              {KNOBS_LAMPS.map((def) => {
+                const box = projectAnchor(anchors.anchors, `lamp:${def.key}`, rect.w, rect.h)
+                if (!box) return null
+                return (
+                  <LampHardware
+                    key={def.key}
+                    def={def}
+                    x={box.x - rect.w / 2}
+                    y={rect.h / 2 - box.y}
+                    assets={assets}
+                  />
+                )
+              })}
+              {SCREW_KEYS.map((key, i) => {
+                const box = projectAnchor(anchors.anchors, `screw:${key}`, rect.w, rect.h)
+                if (!box) return null
+                return (
+                  <ScrewHardware
+                    key={key}
+                    x={box.x - rect.w / 2}
+                    y={rect.h / 2 - box.y}
+                    clock={SCREW_CLOCK[i % SCREW_CLOCK.length]}
+                    assets={assets}
+                  />
                 )
               })}
             </>
@@ -1835,6 +2033,22 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
   // The panel's own state lives inside the Canvas — see `PanelStage`. This
   // is the line to it.
   const stage = useRef<StageHandle | null>(null)
+  const anchorRoot = useRef<HTMLElement | null>(null)
+  const anchorLayoutDirty = useRef(true)
+  const anchorMap = useRef<{
+    paintedSize: readonly [number, number]
+    anchors: Readonly<Record<string, SourceUvRect>>
+  } | null>(null)
+  const probeEnabled =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('probe') === 'knobs-resize'
+  const probeState = useRef<KnobsResizeProbeState>({
+    paint: null,
+    draw: null,
+    presented: null,
+    anchors: null,
+    projectedHue: null,
+  })
 
   // The panel's WIDTH is what a hand can drag. Its HEIGHT is not: the
   // panel is a container query container, so its width decides its
@@ -1867,6 +2081,51 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
     panelResize.startW = 0
     resizingNow.current?.(false)
   }, [])
+
+  const onPainted = useCallback((paint: DomPaintReceipt) => {
+    const root = anchorRoot.current
+    if (!root) return
+    const cached = anchorMap.current
+    const sizeChanged =
+      !cached ||
+      cached.paintedSize[0] !== paint.paintedSize[0] ||
+      cached.paintedSize[1] !== paint.paintedSize[1]
+    let anchors = cached?.anchors
+    if (anchorLayoutDirty.current || sizeChanged) {
+      const next = collectSurfaceAnchors(root, paint)
+      if (!next) return
+      anchors = next
+      anchorMap.current = { paintedSize: paint.paintedSize, anchors: next }
+      anchorLayoutDirty.current = false
+    }
+    if (!anchors) return
+    const receipt = Object.freeze({ paint, anchors })
+    flushThree(() => stage.current?.setAnchors(receipt))
+    probeState.current.paint = paint
+    probeState.current.anchors = receipt
+  }, [])
+
+  const onFrameDrawn = useCallback((receipt: FrameDrawReceipt) => {
+    probeState.current.draw = receipt
+  }, [])
+
+  const onPresented = useCallback((receipt: PresentationReceipt) => {
+    probeState.current.presented = receipt
+  }, [])
+
+  useEffect(() => {
+    if (!probeEnabled) return
+    const target = window as unknown as { __knobsResizeProbe?: KnobsResizeProbeApi }
+    target.__knobsResizeProbe = {
+      snapshot: () => ({ ...probeState.current }),
+      invalidateLayout: () => {
+        anchorLayoutDirty.current = true
+      },
+    }
+    return () => {
+      delete target.__knobsResizeProbe
+    }
+  }, [probeEnabled])
 
   // The corner grip armed the gesture; the geometry happens here, on the
   // real screen pointer, for the same reason the carry does — the
@@ -1935,7 +2194,10 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
     hostCleanup.current = null
     finishResize()
     if (!el) {
-      stage.current?.setFeatures(null)
+      anchorRoot.current = null
+      anchorMap.current = null
+      anchorLayoutDirty.current = true
+      stage.current?.setAnchors(null)
       return
     }
     let raf = 0
@@ -1952,7 +2214,10 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
     // change, a dragged width and a reflow at a fixed width, move ITS
     // box. It is attached from inside `measure` because the panel
     // belongs to the Surface's own root and does not exist yet here.
-    const ro = new ResizeObserver(() => measure())
+    const ro = new ResizeObserver(() => {
+      anchorLayoutDirty.current = true
+      measure()
+    })
 
     const measure = () => {
       const root = el.querySelector('.knb-panel') as HTMLElement | null
@@ -1965,6 +2230,8 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
         if (watched) ro.unobserve(watched)
         ro.observe(root)
         watched = root
+        anchorRoot.current = root
+        anchorLayoutDirty.current = true
       }
       // Measure only. The host's box belongs to the package, which sizes
       // it from `rect` in a layout effect, and `rect` is set below — one
@@ -1986,29 +2253,7 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
       // so there is nothing left to get ahead of.
       const w = Math.round(base.width)
       const h = Math.round(base.height)
-      const centers = (sel: string): Feature[] =>
-        Array.from(root.querySelectorAll(sel)).map((n) => {
-          const r = (n as HTMLElement).getBoundingClientRect()
-          return { x: r.left + r.width / 2 - base.left, y: r.top + r.height / 2 - base.top }
-        })
-      const boxes = (sel: string): FeatureBox[] =>
-        Array.from(root.querySelectorAll(sel)).map((n) => {
-          const r = (n as HTMLElement).getBoundingClientRect()
-          return {
-            x: r.left + r.width / 2 - base.left,
-            y: r.top + r.height / 2 - base.top,
-            w: r.width,
-            h: r.height,
-          }
-        })
-      const next: PanelFeatures = {
-        knobs: centers('.knb-dial'),
-        toggles: centers('.knb-toggle-well'),
-        lamps: centers('.knb-lamp-bezel'),
-        screws: centers('.knb-screw'),
-        readouts: boxes('.knb-dial-value'),
-        dials: boxes('.knb-dial'),
-      }
+      anchorLayoutDirty.current = true
       // Both, in one commit, on the root that can actually take it now.
       //
       // `flushThree` is r3f's flush, not `react-dom`'s, and the
@@ -2031,7 +2276,6 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
       const commit = stage.current
       if (!commit) return
       flushThree(() => {
-        commit.setFeatures((prev) => (featuresEqual(prev, next) ? prev : next))
         commit.setRect((prev) =>
           prev && prev.w === w && Math.abs(prev.h - h) < 1
             ? prev
@@ -2070,12 +2314,20 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
     const setResizing = (on: boolean) => el.classList.toggle('knb-resizing', on)
     resizingNow.current = setResizing
 
+    const markFontLayoutDirty = () => {
+      anchorLayoutDirty.current = true
+    }
+    document.fonts?.addEventListener('loadingdone', markFontLayoutDirty)
+    void document.fonts?.ready.then(markFontLayoutDirty)
+
     raf = requestAnimationFrame(measure)
     hostCleanup.current = () => {
       cancelAnimationFrame(raf)
       ro.disconnect()
       resizeNow.current = null
       resizingNow.current = null
+      document.fonts?.removeEventListener('loadingdone', markFontLayoutDirty)
+      if (anchorRoot.current === watched) anchorRoot.current = null
     }
   }, [finishResize])
 
@@ -2099,7 +2351,18 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
         <ArtEnvironment />
         <ArtLightRig />
         <TuningDrip assets={assets} />
-        <PanelStage handle={stage} widthNow={widthNow} assets={assets} kick={kick} onHost={onHost} />
+        {probeEnabled && <KnobsResizeProbeTracker state={probeState} />}
+        <PanelStage
+          handle={stage}
+          widthNow={widthNow}
+          assets={assets}
+          kick={kick}
+          onHost={onHost}
+          onPainted={onPainted}
+          onFrameDrawn={onFrameDrawn}
+          onPresented={onPresented}
+          probe={probeEnabled}
+        />
       </Canvas>
 
       {chips}
