@@ -16,6 +16,10 @@ extraction waits for a second consumer (decisions.md #10). Its README
 is the inventory; the pack test welds the charter's claims to the
 kernel and the reference scene.
 
+**surface-anchors/** is the keyed source-UV collector used by Knobs and
+Genie. Its vendorable file is byte-welded to the lab module and keeps
+attachment identity tied to a successful DOM paint receipt.
+
 Nothing else is planned *here* — the doctrine above is the whole
 admission rule, and a pack that no consumer has asked for would be a
 second system. Ideas waiting on a consumer (a Toggle/Slider control kit

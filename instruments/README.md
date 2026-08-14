@@ -183,6 +183,16 @@ then requires a newer presented generation and changed framebuffer data.
 It also checks that draw and presentation receipts name the same source
 generation. The gate has the standard `drawElementImage` capability policy.
 
+## genie-film-reorder
+
+Does Genie replace its old live normalized film rectangle with the keyed
+anchor from the successful outer DOM paint? Run
+`npm run gate:genie-film-reorder`. A probe-only airborne source exchanges
+the titlebar and film order without changing the outer sheet size. The gate
+requires a newer accepted paint and moved film UVs, then proves the native
+window stays visible until the required film frame earns a qualifying
+presentation receipt.
+
 ## House rules
 
 - A scene that can't be interrogated from the console isn't done.

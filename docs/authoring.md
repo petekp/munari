@@ -95,6 +95,27 @@ blink self-paints its source about twice a second. That is correct
 behavior, not a leak — but a probe page that holds focus inside a
 source can never measure idle.
 
+## Keep texture attachments on one paint generation
+
+A responsive hybrid has five distinct states:
+
+1. Live layout is what the DOM measures now.
+2. Painted raster is the successful `DomPaintReceipt` now in the source canvas.
+3. Uploaded texture is the paint sampled at Three's upload boundary.
+4. Drawn frame is the uploaded generation named by `onFrameDrawn`.
+5. Presented framebuffer is the qualifying default-framebuffer draw named by `onPresented`.
+
+Do not attach WebGL matter measured from live layout to an older texture.
+Collect stable `data-munari-anchor` keys when `onPainted` fires, store them
+as normalized unmirrored source UVs, and draw them only with that paint
+generation. Keys reject selector-order drift when controls are inserted or
+reordered. Position follows the Surface projection; physical hardware size
+stays in independent CSS or world units.
+
+The copyable collector lives in `registry/surface-anchors`. It rejects a
+duplicate or incomplete key set as one transaction and keeps the prior
+complete receipt usable.
+
 ## Where the rest lives
 
 - `packages/react/src/style.css` — the CSS contract, both directions

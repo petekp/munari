@@ -45,11 +45,16 @@ import {
   type FrameDrawReceipt,
   type FrameId,
   type FrameSource,
+  type DomPaintReceipt,
   type PresentationReceipt,
   type PresentationRequirement,
   useSurfaceChrome,
   useSurfaceTexture,
 } from '@petepetrash/munari'
+import {
+  collectSurfaceAnchors,
+  type SurfaceAnchorReceipt,
+} from '../lib/surfaceAnchors'
 import {
   GENIE_DEFAULTS,
   SETTLE_DEFAULTS,
@@ -157,8 +162,8 @@ interface GenieFlight {
     required: FrameId
     token: number
     presentation: PresentationRequirement
-    /** left, top, width, height in normalized capture-root coordinates. */
-    rect: [number, number, number, number]
+    /** Film region measured from the successful outer DOM paint. */
+    anchor?: SurfaceAnchorReceipt<'film'>
     /** Bottom corner radius in source CSS pixels. */
     radius: number
   }
@@ -445,11 +450,12 @@ function PlayLayer() {
  *  from inside the capture root a frame or two late. */
 const FILM_WIN: WinId = 'triangolo'
 
-function FilmLayer({ attach }: { attach: React.RefCallback<HTMLCanvasElement> }) {
+function FilmLayer({ attach }: { attach?: React.RefCallback<HTMLCanvasElement> }) {
   return (
     <canvas
       ref={attach}
       className="gen-film"
+      data-munari-anchor="film"
       width={GENIE_FILM_WIDTH}
       height={GENIE_FILM_HEIGHT}
       aria-hidden
@@ -535,7 +541,7 @@ function WindowBody({
           // Borderless: the body's own padding would frame the film, and
           // a film with a mat around it is a picture of a film.
           <div className="gen-body" data-fill="film">
-            {attachFilmCanvas ? <FilmLayer attach={attachFilmCanvas} /> : null}
+            <FilmLayer attach={attachFilmCanvas} />
           </div>
         ) : study ? (
           <div className="gen-body" data-study={study}>
@@ -695,7 +701,15 @@ function FilmCompositeMaterial({
   uniforms.tFilm.value = filmTexture
   uniforms.uMunariSize.value.set(width, height)
   uniforms.uShadeEdge.value.set(shade[0], shade[1])
-  uniforms.uFilmRect.value.set(...film.rect)
+  const anchor = film.anchor?.anchors.film
+  if (anchor) {
+    uniforms.uFilmRect.value.set(
+      anchor.uMin,
+      1 - anchor.vMax,
+      anchor.uMax - anchor.uMin,
+      anchor.vMax - anchor.vMin,
+    )
+  }
   uniforms.uFilmRadius.value = film.radius
 
   return (
@@ -741,7 +755,7 @@ function FilmCompositeSurface({
   const chromeTexture = useSurfaceTexture()
   const { width, height } = useSurfaceChrome()
 
-  if (!film) return null
+  if (!film?.anchor) return null
   return (
     <Surface
       frame={film.source}
@@ -820,6 +834,12 @@ type GenieFilmProbeEvent =
       video: HTMLVideoElement | null
     }
   | { type: 'receipt'; token: number; receipt: FrameDrawReceipt }
+  | {
+      type: 'outer-anchor'
+      token: number
+      stage: 'before-reorder' | 'accepted'
+      receipt: SurfaceAnchorReceipt<'film'>
+    }
   | { type: 'accept'; token: number; receipt: FrameDrawReceipt }
   | { type: 'present'; token: number; receipt: PresentationReceipt }
   | { type: 'show'; token: number; frame: FrameId }
@@ -936,6 +956,8 @@ function Flight({
   const told = useRef(false)
   const filmAcquired = useRef(false)
   const filmPresented = useRef(false)
+  const outerAccepted = useRef(false)
+  const captureHost = useRef<HTMLElement | null>(null)
   // This flight is over. Landing asks the page to delete the flight, and
   // the page does — but that deletion has to cross into the Canvas's own
   // reconciler before this component stops existing, and under load that
@@ -954,6 +976,33 @@ function Flight({
   const landed = useRef(false)
   const reverseRelease = useRef<{ frame?: FrameId } | null>(null)
   const f = air.f
+
+  const onOuterPainted = (receipt: DomPaintReceipt) => {
+    if (outerAccepted.current) return
+    const film = f.film
+    if (!film) {
+      outerAccepted.current = true
+      onPainted(win)
+      return
+    }
+    const root = captureHost.current?.querySelector<HTMLElement>('.gen-sheet')
+    if (!root) return
+    const reorderProbe =
+      new URLSearchParams(window.location.search).get('probe') === 'genie-film-reorder'
+    if (reorderProbe && root.dataset.anchorReorder !== 'true') {
+      const before = collectSurfaceAnchors(root, receipt, ['film'] as const)
+      if (!before) return
+      probeFilm({ type: 'outer-anchor', token: film.token, stage: 'before-reorder', receipt: before })
+      root.dataset.anchorReorder = 'true'
+      return
+    }
+    const anchors = collectSurfaceAnchors(root, receipt, ['film'] as const)
+    if (!anchors) return
+    film.anchor = anchors
+    probeFilm({ type: 'outer-anchor', token: film.token, stage: 'accepted', receipt: anchors })
+    outerAccepted.current = true
+    onPainted(win)
+  }
 
   const onFilmFrameDrawn = (receipt: FrameDrawReceipt) => {
     const film = f.film
@@ -1228,7 +1277,13 @@ function Flight({
         // the eye blames the shapes.
         // Uploads run from useFrame, not from drawing this mesh, so the
         // signal that clears the gate does not depend on the gate.
-        onFirstUpload={() => onPainted(win)}
+        onHost={(host) => {
+          captureHost.current = host
+          return () => {
+            if (captureHost.current === host) captureHost.current = null
+          }
+        }}
+        onPainted={onOuterPainted}
         // This callback runs after a color-writing default-framebuffer draw but
         // before browser composition. Releasing the native copy synchronously
         // here gives translucent shadow pixels exactly one presenter.
@@ -1880,9 +1935,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     if (id !== FILM_WIN) return measured
 
     const source = filmController.source
-    const filmEl = winRefs.current[id]?.querySelector<HTMLCanvasElement>('.gen-film')
-    const filmRect = filmEl?.getBoundingClientRect()
-    if (!source || !filmRect || !innerEl) return null
+    if (!source || !innerEl) return null
 
     // Freeze only after all geometry is valid. A null result means that
     // the decoder has not presented its first real frame yet, so the page
@@ -1905,12 +1958,6 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
         frame: required,
         presentationRevision: ++nextFilmPresentationRevision.current,
       },
-      rect: [
-        (filmRect.left - win.left) / win.width,
-        (filmRect.top - win.top) / win.height,
-        filmRect.width / win.width,
-        filmRect.height / win.height,
-      ],
       radius,
     }
     probeFilm({

@@ -19,6 +19,7 @@
     "gate:frame-surface": "node instruments/frame-surface/run.mjs",
     "gate:genie-duplicate": "node instruments/genie-drain/no-duplicate-drag.mjs",
     "gate:genie-film": "node instruments/genie-drain/film-window.mjs",
+    "gate:genie-film-reorder": "node instruments/genie-drain/film-anchor-reorder.mjs",
     "gate:genie-shadow": "node instruments/genie-drain/shadow-travels.mjs",
     "gate:idle-zero": "node instruments/idle-zero/run.mjs",
     "gate:knobs-resize": "node instruments/knobs-resize/run.mjs",

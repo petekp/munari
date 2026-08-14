@@ -396,6 +396,19 @@
   overflow: hidden;
 }
 
+/* Probe-only same-size reorder. The outer sheet keeps the same box while
+ * the film and titlebar exchange order, so only a fresh painted anchor can
+ * tell the composite shader where the film moved. */
+.gen-sheet[data-anchor-reorder='true'] .gen-titlebar {
+  order: 2;
+  border-top: 1px solid var(--rule);
+  border-bottom: 0;
+}
+
+.gen-sheet[data-anchor-reorder='true'] .gen-body {
+  order: 1;
+}
+
 /* The titlebar is a handle now: cursor says so, and touch-action/user-
  * select stay off so a drag is a drag on every input. The lamps sit
  * inside it and keep their own cursor — a press without travel is still

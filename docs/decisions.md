@@ -242,9 +242,11 @@ scene currently offers a frame where the mesh stands exactly where a
 page copy was. The mesh-vs-DOM crispness *floor* therefore has no
 browser gate for now; the `gradientEnergy` metric and the bracketed
 floor (0.841 defect / 1.001 fix → 0.93) are in history at this commit
-if a scene earns the measurement again. Two claims now have no scene:
-live relayout in flight (container queries as a size input) and
-displaced-uv sampling.
+if a scene earns the measurement again. Two claims then had no scene:
+live relayout during a route flight and displaced-uv sampling. Knobs
+later proves container-query relayout during direct resize, but it does
+not reverse this Passage decision: no scene currently changes layout as
+part of an in-flight route transition.
 
 **Amended 2026-08-10 — seven; knobs joins.**
 
@@ -262,6 +264,10 @@ displaced-uv sampling.
   effort — and the same mesh's real triangles are what a dragged knob's
   pointer event raycasts against, so the geometry is load-bearing for
   input as well as for light.
+  It also proves responsive DOM-to-GL reflow: one logical width drives
+  container-query layout, the successful paint stamps keyed source-UV
+  anchors, and the matching WebGL hardware keeps its physical size while
+  moving to the presented raster's positions.
 
 ## #4 — Core speaks in shapes; three satisfies them (2026-08-02)
 
