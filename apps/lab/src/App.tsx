@@ -10,15 +10,33 @@ import { Explode, ExplodeHud } from './scenes/Explode'
 import { GenieApp } from './scenes/Genie'
 import { VeilApp } from './scenes/Veil'
 import { KnobsApp } from './scenes/Knobs'
+import { OpticsApp } from './scenes/Optics'
 
-// Seven scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
+// Eight scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
 // flight drag trilogy, exploded-paint inspector, genie minimize-to-dock,
-// veil progressive blur, knobs-and-switches instrument rail.
+// veil progressive blur, knobs-and-switches instrument rail, optics bench.
 // Everything they render reaches the library through the `@petepetrash/munari` barrel —
 // this app is the proof that the public surface is sufficient.
 
-type SceneId = 'workspace' | 'glass' | 'flight' | 'explode' | 'genie' | 'veil' | 'knobs'
-const SCENES = ['workspace', 'glass', 'flight', 'explode', 'genie', 'veil', 'knobs'] as const
+type SceneId =
+  | 'workspace'
+  | 'glass'
+  | 'flight'
+  | 'explode'
+  | 'genie'
+  | 'veil'
+  | 'knobs'
+  | 'optics'
+const SCENES = [
+  'workspace',
+  'glass',
+  'flight',
+  'explode',
+  'genie',
+  'veil',
+  'knobs',
+  'optics',
+] as const
 
 const FOOTERS: Record<SceneId, string> = {
   workspace:
@@ -35,6 +53,9 @@ const FOOTERS: Record<SceneId, string> = {
   // above the band where the shared footer would sit inside the blur.
   veil: '',
   knobs: 'turn a knob, throw a switch — real machined hardware on a live panel, lit by the artwork it drives',
+  // Deliberately empty: the bench carries its own readout and footer,
+  // and a second caption would sit under the rail the kit rests on.
+  optics: '',
 }
 
 // Clicking a canvas normally moves focus to <body>, which would blur
@@ -163,6 +184,7 @@ export default function App() {
   if (scene === 'genie') return <GenieApp chips={chips} />
   if (scene === 'veil') return <VeilApp chips={chips} />
   if (scene === 'knobs') return <KnobsApp chips={chips} />
+  if (scene === 'optics') return <OpticsApp chips={chips} />
 
   return (
     <div className="app">

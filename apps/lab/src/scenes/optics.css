@@ -1,0 +1,679 @@
+/* The optics bench — a proofing sheet of famous components, and a kit of
+ * glass to study it with.
+ *
+ * Every specimen below is a separate Surface, so every specimen below is
+ * a separate paint record with its own resolution tier. That is what lets
+ * an instrument sharpen the two blocks it covers and leave the rest
+ * cheap; the CSS is organised the same way, one block per rule group.
+ *
+ * Authoring rules the whole file obeys (docs/authoring.md):
+ *   · every specimen root carries its own `font` with a size — a bare
+ *     family token silently inherits differently in its parked home.
+ *   · no `mask-image` anywhere in a drawn subtree (platform.md item 7).
+ *   · no transform or opacity on a specimen root; inner elements only.
+ *   · every :hover has a [data-hover] twin, because a pointer arriving
+ *     through a lens is a forwarded pointer and sets the attribute, not
+ *     the pseudo-class.
+ */
+
+.opt-page {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 50% 0%, #2b2c30 0%, #17181b 60%, #101114 100%);
+}
+
+/* ── the sheet's own paper ─────────────────────────────────────────── */
+
+.opt-paper {
+  font: 12px/1.4 var(--opt-ui);
+  color: #16171a;
+  background: #f4f2ee;
+}
+
+/* ── shared tokens ─────────────────────────────────────────────────── */
+
+.opt-page {
+  --opt-ui: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --opt-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --opt-serif: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+}
+
+/* Specimen roots live in the PARKED subtree, not under .opt-page, so the
+ * tokens have to be restated where they are actually read. */
+.opt-aqua,
+.opt-lcd,
+.opt-luna,
+.opt-calc,
+.opt-type,
+.opt-ledger {
+  --opt-ui: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --opt-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --opt-serif: 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+}
+
+.opt-aqua *,
+.opt-lcd *,
+.opt-luna *,
+.opt-calc *,
+.opt-type *,
+.opt-ledger * {
+  box-sizing: border-box;
+}
+
+/* ── Aqua: the save sheet, 2001 ────────────────────────────────────── */
+/* The pinstripes are the point. A 2px period is the finest repeating
+ * structure a display can carry, so a raster that resolves it is exact
+ * and a raster that does not turns it into flat grey — which makes this
+ * block the sharpness measurement, not an illustration of one. */
+
+.opt-aqua {
+  padding: 18px 20px 16px;
+  border: 1px solid #8e8e8e;
+  border-radius: 7px;
+  font: 11.5px/1.35 var(--opt-ui);
+  color: #16171a;
+  background:
+    repeating-linear-gradient(180deg, #f7f7f7 0 1px, #e8e8e8 1px 2px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+}
+
+.opt-aqua-body {
+  display: flex;
+  gap: 14px;
+}
+
+/* A border triangle, deliberately: its hypotenuse is a stair of single
+ * pixels, and the stair is either visible or averaged away. */
+.opt-aqua-caution {
+  position: relative;
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  margin-top: 2px;
+  border-left: 21px solid transparent;
+  border-right: 21px solid transparent;
+  border-bottom: 37px solid #f2c033;
+}
+
+.opt-aqua-caution::after {
+  content: '!';
+  position: absolute;
+  top: 13px;
+  left: -3px;
+  font: 700 17px/1 var(--opt-ui);
+  color: #2a2205;
+}
+
+.opt-aqua h3 {
+  margin: 0 0 6px;
+  font: 700 12.5px/1.3 var(--opt-ui);
+}
+
+.opt-aqua p {
+  margin: 0;
+  color: #4a4c50;
+}
+
+.opt-aqua-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.opt-aqua-btn {
+  height: 22px;
+  padding: 0 13px;
+  border: 1px solid #9b9b9b;
+  border-radius: 11px;
+  font: 500 11.5px/19px var(--opt-ui);
+  color: #1b1c1e;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.95) 0%,
+      rgba(255, 255, 255, 0.5) 47%,
+      rgba(255, 255, 255, 0) 49%,
+      rgba(0, 0, 0, 0.06) 100%
+    ),
+    linear-gradient(180deg, #fdfdfd, #d6d6d6);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 1px 1px rgba(0, 0, 0, 0.13);
+}
+
+.opt-aqua-btn[data-hover] {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.98) 0%,
+      rgba(255, 255, 255, 0.6) 47%,
+      rgba(255, 255, 255, 0) 49%,
+      rgba(0, 0, 0, 0.04) 100%
+    ),
+    linear-gradient(180deg, #ffffff, #e2e2e2);
+}
+
+.opt-aqua-btn[data-active] {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.24) inset;
+}
+
+.opt-aqua-btn[data-default] {
+  border-color: #2c5fae;
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.9) 0%,
+      rgba(255, 255, 255, 0.38) 47%,
+      rgba(255, 255, 255, 0) 49%,
+      rgba(0, 0, 0, 0.12) 100%
+    ),
+    linear-gradient(180deg, #7cb0ef, #2c6bcd);
+}
+
+.opt-aqua-btn[data-default][data-hover] {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.95) 0%,
+      rgba(255, 255, 255, 0.46) 47%,
+      rgba(255, 255, 255, 0) 49%,
+      rgba(0, 0, 0, 0.1) 100%
+    ),
+    linear-gradient(180deg, #8fbcf4, #3a79d8);
+}
+
+/* ── monochrome LCD ────────────────────────────────────────────────── */
+/* Two crossed hairline gradients on a 3px pitch. Bilinear magnification
+ * averages the grid into a flat wash; a re-raster keeps every cell wall. */
+
+.opt-lcd {
+  padding: 9px;
+  border: 3px solid #35372c;
+  border-radius: 5px;
+  font: 12px/1.3 var(--opt-mono);
+  color: #23300a;
+  background-color: #9cb50f;
+  background-image:
+    linear-gradient(90deg, rgba(20, 30, 0, 0.13) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(20, 30, 0, 0.13) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+.opt-lcd-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  font: 700 9px/1 var(--opt-mono);
+  letter-spacing: 0.06em;
+}
+
+.opt-lcd-signal {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 9px;
+}
+
+.opt-lcd-signal i {
+  width: 2px;
+  background: #23300a;
+}
+
+.opt-lcd-signal i:nth-child(1) { height: 3px; }
+.opt-lcd-signal i:nth-child(2) { height: 5px; }
+.opt-lcd-signal i:nth-child(3) { height: 7px; }
+.opt-lcd-signal i:nth-child(4) { height: 9px; opacity: 0.28; }
+
+.opt-lcd-clock {
+  margin: 14px 0 2px;
+  font: 700 34px/1 var(--opt-mono);
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.opt-lcd-date {
+  font: 9px/1 var(--opt-mono);
+  letter-spacing: 0.14em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.opt-lcd-menu {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 15px;
+  font: 700 9px/1 var(--opt-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Luna taskbar, 2001 ────────────────────────────────────────────── */
+
+.opt-luna {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  border-radius: 2px;
+  font: 11px/1 var(--opt-ui);
+  color: #fff;
+  background: linear-gradient(180deg, #3f8cf3 0%, #2560d6 9%, #1c46ad 88%, #2f6ede 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.45) inset;
+}
+
+.opt-luna-start {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 18px 0 10px;
+  border: 0;
+  color: inherit;
+  border-radius: 0 13px 13px 0;
+  background: linear-gradient(180deg, #6cb862 0%, #3d8b34 44%, #327a2a 56%, #59a850 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    1px 0 3px rgba(0, 0, 0, 0.3);
+}
+
+.opt-luna-start[data-hover] {
+  background: linear-gradient(180deg, #7ec773 0%, #499b3f 44%, #3b8a33 56%, #67b85d 100%);
+}
+
+.opt-luna-flag {
+  display: grid;
+  grid-template-columns: 6px 6px;
+  grid-template-rows: 6px 6px;
+  gap: 1px;
+  transform: skewX(-9deg);
+}
+
+.opt-luna-flag i:nth-child(1) { background: #f05a41; border-radius: 2px 0 0 0; }
+.opt-luna-flag i:nth-child(2) { background: #77c34a; border-radius: 0 2px 0 0; }
+.opt-luna-flag i:nth-child(3) { background: #3f9de0; border-radius: 0 0 0 2px; }
+.opt-luna-flag i:nth-child(4) { background: #f4c025; border-radius: 0 0 2px 0; }
+
+.opt-luna-word {
+  font: italic 700 15px/1 var(--opt-serif);
+  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.45);
+}
+
+.opt-luna-tasks {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  align-items: center;
+  padding: 0 8px;
+}
+
+.opt-luna-task {
+  padding: 4px 9px;
+  border-radius: 2px;
+  font-size: 10.5px;
+  background: linear-gradient(180deg, #4f92ef, #2b62d3);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.28) inset;
+}
+
+.opt-luna-tray {
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+  font-size: 10.5px;
+  background: linear-gradient(180deg, #26aae1 0%, #1878c8 42%, #1466b8 100%);
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.3) inset;
+}
+
+/* ── calculator, after Rams ────────────────────────────────────────── */
+/* The one specimen that still does its job under the glass: the keys are
+ * real buttons, the arithmetic is real state, and a click arriving
+ * through 1.65× of refraction is the same click. */
+
+.opt-calc {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 8px;
+  font: 11px/1 var(--opt-ui);
+  color: #e8e6e1;
+  background: linear-gradient(180deg, #34353a, #232428);
+}
+
+.opt-calc-brand {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font: 600 8px/1 var(--opt-ui);
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: #8b8d94;
+}
+
+.opt-calc-screen {
+  padding: 9px 10px;
+  border-radius: 3px;
+  font: 400 22px/1 var(--opt-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: #1d2415;
+  background: linear-gradient(180deg, #8e9b74, #a3b088);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45) inset;
+}
+
+.opt-calc-keys {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.opt-calc-key {
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 50%;
+  font: 500 13px/1 var(--opt-ui);
+  color: #f2f0eb;
+  background: linear-gradient(180deg, #55575e, #3c3e44);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.16) inset,
+    0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.opt-calc-key[data-hover] {
+  background: linear-gradient(180deg, #64666e, #47494f);
+}
+
+.opt-calc-key[data-active] {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5) inset;
+}
+
+.opt-calc-key[data-kind='op'] {
+  color: #2a2b2e;
+  background: linear-gradient(180deg, #d6d4cd, #b7b5ae);
+}
+
+.opt-calc-key[data-kind='op'][data-hover] {
+  background: linear-gradient(180deg, #e4e2db, #c5c3bc);
+}
+
+.opt-calc-key[data-kind='eq'] {
+  color: #2a2405;
+  background: linear-gradient(180deg, #f5cd3f, #dcae1c);
+}
+
+.opt-calc-key[data-kind='eq'][data-hover] {
+  background: linear-gradient(180deg, #ffd94f, #e8ba28);
+}
+
+.opt-calc-key[data-kind='clear'] {
+  color: #fff;
+  background: linear-gradient(180deg, #4e8f5e, #3a7048);
+}
+
+.opt-calc-key[data-kind='clear'][data-hover] {
+  background: linear-gradient(180deg, #5c9f6c, #468055);
+}
+
+/* ── type specimen ─────────────────────────────────────────────────── */
+/* Where a loupe stops being a demonstration and starts being useful. The
+ * 5.5pt setting is grey at 1× and readable at 3×, and the rules below it
+ * step through a whole pixel in quarters. */
+
+.opt-type {
+  padding: 16px 18px;
+  font: 12px/1.45 var(--opt-serif);
+  color: #1a1b1e;
+  background: #fbfaf7;
+  border: 1px solid #ddd9d1;
+  border-radius: 3px;
+}
+
+.opt-type-kicker {
+  font: 600 8px/1 var(--opt-ui);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #8a857b;
+}
+
+.opt-type h3 {
+  margin: 6px 0 12px;
+  font: 400 26px/1 var(--opt-serif);
+  letter-spacing: -0.01em;
+}
+
+.opt-type-cut {
+  margin-bottom: 9px;
+}
+
+.opt-type-cut b {
+  display: block;
+  margin-bottom: 2px;
+  font: 600 7.5px/1 var(--opt-ui);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #a09a8e;
+}
+
+.opt-type-cut p {
+  margin: 0;
+}
+
+.opt-type-cut[data-size='10'] p { font-size: 10px; line-height: 1.4; }
+.opt-type-cut[data-size='8'] p { font-size: 8px; line-height: 1.35; }
+.opt-type-cut[data-size='6'] p { font-size: 6.5px; line-height: 1.3; }
+.opt-type-cut[data-size='5'] p { font-size: 5.5px; line-height: 1.25; }
+
+.opt-type-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid #e6e2da;
+}
+
+.opt-type-rule {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font: 7.5px/1 var(--opt-mono);
+  color: #a09a8e;
+}
+
+.opt-type-rule i {
+  flex: 1;
+  background: #1a1b1e;
+}
+
+.opt-type-rule[data-w='1'] i { height: 1px; }
+.opt-type-rule[data-w='0.75'] i { height: 0.75px; }
+.opt-type-rule[data-w='0.5'] i { height: 0.5px; }
+.opt-type-rule[data-w='0.25'] i { height: 0.25px; }
+
+/* ── fine print ────────────────────────────────────────────────────── */
+
+.opt-ledger {
+  padding: 14px 15px;
+  font: 12px/1.4 var(--opt-ui);
+  color: #1a1b1e;
+  background: #fffefb;
+  border: 1px solid #ddd9d1;
+  border-radius: 3px;
+}
+
+.opt-ledger h3 {
+  margin: 0 0 2px;
+  font: 600 11px/1.2 var(--opt-ui);
+}
+
+.opt-ledger-sub {
+  margin: 0 0 10px;
+  font: 7px/1.3 var(--opt-ui);
+  letter-spacing: 0.05em;
+  color: #97918a;
+}
+
+.opt-ledger table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 6.5px/1.5 var(--opt-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.opt-ledger th {
+  padding: 0 0 2px;
+  font: 600 6px/1.5 var(--opt-mono);
+  letter-spacing: 0.1em;
+  text-align: right;
+  text-transform: uppercase;
+  color: #97918a;
+  border-bottom: 0.5px solid #1a1b1e;
+}
+
+.opt-ledger th:first-child,
+.opt-ledger td:first-child {
+  text-align: left;
+}
+
+.opt-ledger td {
+  padding: 1.5px 0;
+  text-align: right;
+  border-bottom: 0.25px solid #d8d3ca;
+}
+
+.opt-ledger tr:last-child td {
+  font-weight: 600;
+  border-bottom: 0;
+  border-top: 0.5px solid #1a1b1e;
+}
+
+.opt-ledger-note {
+  margin: 9px 0 0;
+  font: 5px/1.5 var(--opt-ui);
+  color: #8d877f;
+}
+
+/* ── the bench chrome (ordinary page, not a Surface) ───────────────── */
+
+.opt-hud {
+  position: absolute;
+  top: 18px;
+  left: 20px;
+  z-index: 3;
+  color: #d7d9de;
+  font: 12px/1.5 var(--opt-ui);
+  pointer-events: none;
+}
+
+.opt-hud h1 {
+  margin: 0;
+  font: 300 21px/1 var(--opt-ui);
+  letter-spacing: 0.01em;
+}
+
+.opt-hud h1 em {
+  font-style: normal;
+  font-weight: 600;
+}
+
+.opt-hud .sub {
+  margin: 3px 0 12px;
+  color: #7e828b;
+}
+
+.opt-hud .tabs {
+  pointer-events: auto;
+}
+
+.opt-readout {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  z-index: 3;
+  width: 250px;
+  padding: 13px 15px;
+  border: 1px solid #303237;
+  border-radius: 6px;
+  color: #cfd2d8;
+  font: 11px/1.55 var(--opt-ui);
+  background: rgba(20, 21, 24, 0.86);
+}
+
+.opt-readout h2 {
+  margin: 0 0 1px;
+  font: 600 12px/1.3 var(--opt-ui);
+  color: #f0f1f4;
+}
+
+.opt-readout .why {
+  margin: 0 0 10px;
+  color: #7e828b;
+}
+
+.opt-readout dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 0;
+  font: 11px/1.5 var(--opt-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.opt-readout dt {
+  color: #7e828b;
+}
+
+.opt-readout dd {
+  margin: 0;
+  text-align: right;
+  color: #e7e9ed;
+}
+
+.opt-readout dd[data-warn] {
+  color: #f0b23c;
+}
+
+.opt-pin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid #2a2c31;
+  cursor: pointer;
+}
+
+.opt-pin input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #4f9df0;
+}
+
+.opt-pin span {
+  color: #cfd2d8;
+}
+
+.opt-pin small {
+  display: block;
+  margin-top: 2px;
+  color: #7e828b;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.opt-footer {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  z-index: 3;
+  max-width: 460px;
+  color: #7e828b;
+  font: 12px/1.6 var(--opt-ui);
+  pointer-events: none;
+}
