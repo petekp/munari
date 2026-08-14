@@ -124,6 +124,9 @@ export default function App() {
       ))}
     </div>
   )
+  const domSurfaceDemandProbe =
+    scene === 'workspace' &&
+    new URLSearchParams(window.location.search).get('probe') === 'dom-surface-demand'
 
   if (unsupported) {
     return (
@@ -164,6 +167,7 @@ export default function App() {
   return (
     <div className="app">
       <Canvas
+        frameloop={domSurfaceDemandProbe ? 'demand' : 'always'}
         shadows
         camera={{ position: [0, 2.5, 9], fov: 45 }}
         dpr={[1, 2]}

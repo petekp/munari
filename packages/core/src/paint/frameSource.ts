@@ -42,8 +42,6 @@ export interface CanvasFrameSourceOptions {
   readonly premultiplyAlpha: boolean
 }
 
-let nextSourceId = 0
-
 /**
  * Give a caller-owned canvas stable source and generation identity.
  *
@@ -54,7 +52,7 @@ export function createCanvasFrameSource(
   canvas: HTMLCanvasElement,
   options: CanvasFrameSourceOptions,
 ): CanvasFrameSource {
-  const sourceId = nextSourceId++
+  const sourceId = allocateSourceId()
   const format: FrameFormat = Object.freeze({
     colorSpace: 'srgb',
     premultiplyAlpha: options.premultiplyAlpha,
@@ -87,3 +85,4 @@ export function createCanvasFrameSource(
 
   return Object.freeze(source)
 }
+import { allocateSourceId } from './sourceIdentity'

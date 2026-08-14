@@ -30,7 +30,11 @@ function stubTrialContext(present: boolean) {
   vi.stubGlobal('CanvasRenderingContext2D', Ctx2D)
 }
 
-import { createDomTextureSource, type DomTextureSource } from '@munari/core'
+import {
+  createCanvasFrameSource,
+  createDomTextureSource,
+  type DomTextureSource,
+} from '@munari/core'
 
 interface StubCanvas extends HTMLCanvasElement {
   layoutSubtree: boolean
@@ -277,6 +281,81 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
     firePaint(s)
     expect(s.paintedSize()).toEqual([288, 122])
     s.dispose()
+  })
+
+  it('publishes frozen, monotonic receipts after successful paints', () => {
+    const s = make(360, 460, 1.5)
+    const notified: unknown[] = []
+    const unsubscribe = s.subscribePaint((receipt) => {
+      expect(s.currentPaint()).toBe(receipt)
+      notified.push(receipt)
+    })
+    expect(s.currentPaint()).toBeNull()
+
+    firePaint(s)
+    const first = s.currentPaint()
+    expect(first).toEqual({
+      frame: { sourceId: s.sourceId, generation: 1 },
+      paintedSize: [360, 460],
+      storeSize: [540, 690],
+    })
+    expect(Object.isFrozen(first)).toBe(true)
+    expect(Object.isFrozen(first?.frame)).toBe(true)
+    expect(Object.isFrozen(first?.paintedSize)).toBe(true)
+    expect(Object.isFrozen(first?.storeSize)).toBe(true)
+
+    s.setSize(288, 122)
+    firePaint(s)
+    expect(s.currentPaint()?.frame.generation).toBe(2)
+    expect(s.currentPaint()?.paintedSize).toEqual([288, 122])
+    expect(s.currentPaint()?.storeSize).toEqual([432, 183])
+    expect(notified).toHaveLength(2)
+    expect(s.paintCount()).toBe(2)
+    expect(s.painted()).toBe(true)
+    expect(s.paintedSize()).toBe(s.currentPaint()?.paintedSize)
+
+    unsubscribe()
+    unsubscribe()
+    firePaint(s)
+    expect(notified).toHaveLength(2)
+    s.dispose()
+  })
+
+  it('shares globally unique source IDs with frame sources', () => {
+    const frame = createCanvasFrameSource(document.createElement('canvas'), {
+      premultiplyAlpha: false,
+    })
+    const dom = make()
+    expect(dom.sourceId).not.toBe(frame.currentFrame().sourceId)
+    dom.dispose()
+  })
+
+  it('does not replace the last good receipt when a paint fails', () => {
+    let fail = false
+    const proto = HTMLCanvasElement.prototype
+    const original = proto.getContext
+    proto.getContext = (() => ({
+      setTransform: () => {},
+      clearRect: () => {},
+      drawElementImage: () => {
+        if (fail) throw new Error('paint failed')
+      },
+    })) as unknown as typeof proto.getContext
+    try {
+      const s = createDomTextureSource('<div></div>', 80, 40)
+      const notified: unknown[] = []
+      s.subscribePaint((receipt) => notified.push(receipt))
+      firePaint(s)
+      const good = s.currentPaint()
+      fail = true
+      firePaint(s)
+      expect(s.currentPaint()).toBe(good)
+      expect(s.paintCount()).toBe(1)
+      expect(notified).toEqual([good])
+      s.dispose()
+    } finally {
+      proto.getContext = original
+    }
   })
 })
 

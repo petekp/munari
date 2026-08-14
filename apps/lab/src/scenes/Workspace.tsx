@@ -12,6 +12,7 @@ import {
   type ArcSlot,
   type FocusRigApi,
   type GroupFocusState,
+  type PresentationRequirement,
 } from '@petepetrash/munari'
 import {
   buildPanels,
@@ -66,16 +67,19 @@ function WorkPanel({
   order,
   rig,
   register,
+  demandProbe = false,
 }: {
   spec: PanelSpec
   slot: ArcSlot
   order: number
   rig: React.RefObject<FocusRigApi | null>
   register: (id: string, group: THREE.Group | null) => void
+  demandProbe?: boolean
 }) {
   const group = useRef<THREE.Group>(null)
   const camera = useThree((s) => s.camera)
   const controls = useThree((s) => s.controls as unknown as OrbitLike | null)
+  const gl = useThree((s) => s.gl)
   const drag = useRef({ active: false, lastX: 0, lastY: 0, angle: 0, radius: 0 })
   const [hover, setHover] = useState(false)
   const [focus, setFocus] = useState<GroupFocusState>('none')
@@ -83,6 +87,30 @@ function WorkPanel({
   // The live source root, for satellite controls that paint into the panel
   // (the dial's readout is real DOM — that's the point).
   const sourceRoot = useRef<HTMLElement | null>(null)
+  const [probeWidth, setProbeWidth] = useState(PANEL_W)
+  const [probePresentation, setProbePresentation] =
+    useState<PresentationRequirement>()
+
+  const probeRecord = (key: string, value: unknown) => {
+    if (!demandProbe) return
+    const record = (window as unknown as { __domSurfaceDemand?: Record<string, unknown> })
+      .__domSurfaceDemand
+    if (record) record[key] = value
+  }
+
+  const framebufferHash = () => {
+    const context = gl.getContext()
+    const width = gl.domElement.width
+    const height = gl.domElement.height
+    const pixels = new Uint8Array(width * height * 4)
+    context.readPixels(0, 0, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
+    let hash = 2166136261
+    for (let i = 0; i < pixels.length; i += 17) {
+      hash ^= pixels[i]
+      hash = Math.imul(hash, 16777619)
+    }
+    return hash >>> 0
+  }
 
   const approachNow = () => {
     const g = group.current
@@ -158,20 +186,55 @@ function WorkPanel({
           label={`workspace-${spec.id}`}
           name={`workspace-${spec.id}`}
           html={spec.html}
-          width={PANEL_W}
+          width={demandProbe ? probeWidth : PANEL_W}
           height={PANEL_H}
           onSource={(root) => {
             sourceRoot.current = root
             const cleanup = spec.feed?.(root)
+            if (demandProbe) {
+              let mutation = false
+              ;(window as unknown as { __domSurfaceDemand?: Record<string, unknown> })
+                .__domSurfaceDemand = {
+                painted: null,
+                drawn: null,
+                presented: null,
+                framebufferHash: null,
+                mutate: () => {
+                  mutation = !mutation
+                  root.style.background = mutation ? 'rgb(255, 0, 170)' : 'rgb(0, 220, 255)'
+                },
+                resize: (next: number) => setProbeWidth(Math.max(120, Math.round(next))),
+              }
+            }
             return () => {
               sourceRoot.current = null
               cleanup?.()
+              if (demandProbe) {
+                delete (window as unknown as { __domSurfaceDemand?: unknown })
+                  .__domSurfaceDemand
+              }
             }
+          }}
+          onPainted={(receipt) => {
+            probeRecord('painted', receipt)
+            if (demandProbe && !probePresentation) {
+              setProbePresentation({
+                transferId: 1,
+                frame: receipt.frame,
+                presentationRevision: 1,
+              })
+            }
+          }}
+          onFrameDrawn={(receipt) => probeRecord('drawn', receipt)}
+          presentation={demandProbe ? probePresentation : undefined}
+          onPresented={(receipt) => {
+            probeRecord('presented', receipt)
+            probeRecord('framebufferHash', framebufferHash())
           }}
           onDoubleClick={approach}
           castShadow
         >
-          <planeGeometry args={[W3, H3]} />
+          <planeGeometry args={[demandProbe ? probeWidth / 200 : W3, H3]} />
         </Surface>
         {/* Satellite knob: a WebGL leaf in the SAME focus group — Tab flows
             from the panel's last button onto it (the mixed-group
@@ -228,6 +291,8 @@ export function Workspace() {
   const rig = useRef<FocusRigApi | null>(null)
   const groups = useRef(new Map<string, THREE.Group>())
   const panels = useMemo(buildPanels, [])
+  const demandProbe =
+    new URLSearchParams(window.location.search).get('probe') === 'dom-surface-demand'
   const slots = useMemo(
     () => arcLayout({ cols: COLS, rows: ROWS, radius: RADIUS, span: SPAN, rowYs: ROW_YS }),
     [],
@@ -311,6 +376,9 @@ export function Workspace() {
           order={(ROWS - 1 - Math.floor(i / COLS)) * COLS + (i % COLS)}
           rig={rig}
           register={register}
+          // Eye-level center: visible in the product camera and static at
+          // rest, so its only new frames are the probe's own DOM changes.
+          demandProbe={demandProbe && i === 16}
         />
       ))}
     </>

@@ -14,7 +14,18 @@ declare const frame: FrameSource
 declare const presentation: PresentationRequirement
 const geometry = <planeGeometry args={[1, 1]} />
 
-;<Surface html="" width={10} height={10} onFirstPresented={() => {}}>{geometry}</Surface>
+;<Surface
+  html=""
+  width={10}
+  height={10}
+  onFirstPresented={() => {}}
+  onPainted={(receipt) => void receipt.storeSize}
+  onFrameDrawn={(receipt) => void receipt.frame.generation}
+  presentation={presentation}
+  onPresented={(receipt) => void receipt.presentationRevision}
+>
+  {geometry}
+</Surface>
 ;<Surface html="" emissiveIntensity={0.75}>{geometry}</Surface>
 ;<SurfaceApp content={<div />} emissiveIntensity={0.75}>{geometry}</SurfaceApp>
 ;<Surface
@@ -35,10 +46,6 @@ const mixed = { html: '', frame, children: geometry }
 ;<Surface frame={frame} onFirstUpload={() => {}}>{geometry}</Surface>
 // @ts-expect-error DOM presentation readiness is not a numbered frame receipt.
 ;<Surface frame={frame} onFirstPresented={() => {}}>{geometry}</Surface>
-// @ts-expect-error A DOM Surface has no numbered frame receipt.
-;<Surface html="" onFrameDrawn={() => {}}>{geometry}</Surface>
-// @ts-expect-error A DOM Surface has no renderer presentation receipt.
-;<Surface html="" presentation={presentation}>{geometry}</Surface>
 // @ts-expect-error FrameSurface owns the renderer fence callbacks.
 ;<Surface frame={frame} onBeforeRender={() => {}}>{geometry}</Surface>
 // @ts-expect-error DOM light is a capture-material term; a frame source owns its pixels.

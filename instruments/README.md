@@ -164,6 +164,16 @@ lost-release cleanup, clear-art pass-through, and single-click ownership.
 It has the same `drawElementImage` capability policy as the other DOM
 Surface browser gates.
 
+## dom-surface-demand
+
+Can a successful DOM paint wake an idle demand renderer and keep its paint,
+draw, and presentation identities honest? `npm run gate:dom-surface-demand`.
+The gate uses the real Workspace route in a probe-only demand mode. It
+mutates and resizes one static product panel without calling `invalidate`,
+then requires a newer presented generation and changed framebuffer data.
+It also checks that draw and presentation receipts name the same source
+generation. The gate has the standard `drawElementImage` capability policy.
+
 ## House rules
 
 - A scene that can't be interrogated from the console isn't done.

@@ -35,12 +35,23 @@ import {
   trackWheel,
   uploadNeedsRealloc,
   type DomTextureSource,
+  type DomPaintReceipt,
   type ForwardPointerSample,
+  type PresentationReceipt,
+  type PresentationRequirement,
   type SurfaceChrome,
 } from '@munari/core'
 import { SURFACE_RADIUS_GLSL } from '../lib/surfaceRadiusGlsl'
 import { FocusGroupContext } from './focusContext'
-import { FrameSurface, type FrameSurfaceProps } from './FrameSurface'
+import {
+  FrameSurface,
+  type FrameDrawReceipt,
+  type FrameSurfaceProps,
+} from './FrameSurface'
+import {
+  createDomSurfaceRuntime,
+  type DomSurfaceRuntime,
+} from './DomSurfaceRuntime'
 import { SurfaceContext, type SurfaceContextValue } from './SurfaceContext'
 import { useLatest } from './useLatest'
 
@@ -112,6 +123,14 @@ export interface SurfaceProps extends Omit<ThreeElements['mesh'], 'children' | '
    * pixels. Resets when the DOM source is recreated.
    */
   onFirstPresented?: () => void
+  /** Fires after each successful DOM replay, before its demand invalidation. */
+  onPainted?: (receipt: DomPaintReceipt) => void
+  /** Fires after an uploaded DOM paint is drawn. */
+  onFrameDrawn?: (receipt: FrameDrawReceipt) => void
+  /** Optional proof requested by a presentation-authority transfer. */
+  presentation?: PresentationRequirement
+  /** Fires only after an eligible output draw satisfies `presentation`. */
+  onPresented?: (receipt: PresentationReceipt) => void
   /**
    * Access the live DOM root — attach listeners, mount a React root into it,
    * mutate it. May return a cleanup function.
@@ -326,6 +345,15 @@ export function createDomSurfaceTexture(
   return texture
 }
 
+let nextDomSurfaceEpoch = 0
+
+const warnDomPresentation = (message: string) => {
+  const development = (
+    import.meta as ImportMeta & { readonly env?: { readonly DEV?: boolean } }
+  ).env?.DEV
+  if (development) console.warn(message)
+}
+
 function DomSurface({
   html,
   label,
@@ -335,6 +363,10 @@ function DomSurface({
   onFocusWithin,
   onFirstUpload,
   onFirstPresented,
+  onPainted,
+  onFrameDrawn,
+  presentation,
+  onPresented,
   onSource,
   paint = 'auto',
   mirrorU = false,
@@ -361,6 +393,7 @@ function DomSurface({
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null)
   const [sourceEl, setSourceEl] = useState<HTMLElement | null>(null)
   const sourceRef = useRef<DomTextureSource | null>(null)
+  const runtimeRef = useRef<DomSurfaceRuntime | null>(null)
   const meshRef = useRef<THREE.Mesh>(null)
   const materialRef = useRef<THREE.MeshStandardMaterial>(null)
   const pressedRef = useRef<ForwardPointerSample | null>(null)
@@ -407,6 +440,10 @@ function DomSurface({
   const onFocusWithinRef = useLatest(onFocusWithin)
   const onFirstUploadRef = useLatest(onFirstUpload)
   const onFirstPresentedRef = useLatest(onFirstPresented)
+  const onPaintedRef = useLatest(onPainted)
+  const onFrameDrawnRef = useLatest(onFrameDrawn)
+  const presentationRef = useLatest(presentation)
+  const onPresentedRef = useLatest(onPresented)
   const onBeforeRenderRef = useLatest(onBeforeRender as THREE.Object3D['onBeforeRender'] | undefined)
   const onAfterRenderRef = useLatest(onAfterRender as THREE.Object3D['onAfterRender'] | undefined)
   const onChromeRef = useLatest(onChrome)
@@ -707,7 +744,15 @@ function DomSurface({
       pinnedScaleRef.current !== null,
       mirrorURef.current,
     )
+    const runtime = createDomSurfaceRuntime(
+      source,
+      ++nextDomSurfaceEpoch,
+      invalidate,
+      (receipt) => onPaintedRef.current?.(receipt),
+    )
+    runtimeRef.current = runtime
     tex.onUpdate = () => {
+      runtime.recordUpload()
       uploadedPaintRef.current = pendingUploadPaintRef.current
     }
     setTexture(tex)
@@ -777,6 +822,8 @@ function DomSurface({
       source.element.removeEventListener('focusin', focusIn)
       source.element.removeEventListener('focusout', focusOut)
       cleanupSource?.()
+      runtime.dispose()
+      if (runtimeRef.current === runtime) runtimeRef.current = null
       tex.onUpdate = null
       tex.dispose()
       source.dispose()
@@ -870,9 +917,12 @@ function DomSurface({
       settle.h = height
       settle.quiet = 0
       settle.settled = false
+      invalidate()
     } else if (!settle.settled && ++settle.quiet >= QUIET_FRAMES) {
       settle.settled = true
       source.resettle()
+    } else if (!settle.settled) {
+      invalidate()
     }
     // Dynamic LOD: every LOD_EVERY-th frame (phase-offset per instance),
     // compare projected screen density — device px per CSS px — against the
@@ -968,6 +1018,7 @@ function DomSurface({
       upload()
       if (count !== lastUploadRef.current) measureChrome(source)
       lastUploadRef.current = count
+      invalidate()
       return
     }
     // Upload-on-paint: the compositor already tells us exactly when the
@@ -981,6 +1032,7 @@ function DomSurface({
       extraUploadsRef.current = 1
       upload()
       measureChrome(source)
+      invalidate()
     } else if (extraUploadsRef.current > 0) {
       extraUploadsRef.current -= 1
       upload()
@@ -999,10 +1051,19 @@ function DomSurface({
       )
       // Sample after the caller's hook: it can change the render target or
       // material state, and the fence must describe the pass that will draw.
-      presentationPassRef.current =
-        renderer.getRenderTarget() === null && renderedMaterial.colorWrite
+      const outputEligible = renderer.getRenderTarget() === null
+      presentationPassRef.current = outputEligible && renderedMaterial.colorWrite
+      const runtime = runtimeRef.current
+      if (runtime && runtime.source === sourceRef.current) {
+        runtime.beginPresentationPass(
+          presentationRef.current,
+          outputEligible,
+          renderedMaterial.colorWrite,
+          warnDomPresentation,
+        )
+      }
     },
-    [onBeforeRenderRef],
+    [onBeforeRenderRef, presentationRef],
   )
 
   const handleAfterRender = useCallback<THREE.Object3D['onAfterRender']>(
@@ -1016,6 +1077,13 @@ function DomSurface({
         firstPresentedFiredRef.current = true
         onFirstPresentedRef.current?.()
       }
+      const runtime = runtimeRef.current
+      if (runtime && runtime.source === sourceRef.current) {
+        const drawReceipt = runtime.takeDrawReceipt()
+        if (drawReceipt) onFrameDrawnRef.current?.(drawReceipt)
+        const presentationReceipt = runtime.takePresentationReceipt(warnDomPresentation)
+        if (presentationReceipt) onPresentedRef.current?.(presentationReceipt)
+      }
       onAfterRenderRef.current?.(
         renderer,
         scene,
@@ -1025,7 +1093,12 @@ function DomSurface({
         group,
       )
     },
-    [onFirstPresentedRef, onAfterRenderRef],
+    [
+      onFirstPresentedRef,
+      onFrameDrawnRef,
+      onPresentedRef,
+      onAfterRenderRef,
+    ],
   )
 
   // The mask, injected into the standard material. Always injected, uniform-

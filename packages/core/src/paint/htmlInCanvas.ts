@@ -33,6 +33,14 @@
 // `paintStats` and hang it wherever their console story wants it.
 
 import { storeForBox } from './textureStorage'
+import { allocateSourceId } from './sourceIdentity'
+import type { FrameId } from './frameSource'
+
+export interface DomPaintReceipt {
+  readonly frame: FrameId
+  readonly paintedSize: readonly [number, number]
+  readonly storeSize: readonly [number, number]
+}
 
 export interface HtmlInCanvasSupport {
   drawElementImage: boolean
@@ -68,6 +76,8 @@ interface TrialContext2D extends CanvasRenderingContext2D {
 }
 
 export interface DomTextureSource {
+  /** Stable identity shared with frame-backed sources. */
+  readonly sourceId: number
   /** The 2D canvas receiving the rasterized DOM — feed this to CanvasTexture. */
   canvas: HTMLCanvasElement
   /**
@@ -103,6 +113,10 @@ export interface DomTextureSource {
    * observed as the veil resize ghosting, 2026-08-08.
    */
   paintedSize: () => readonly [number, number]
+  /** The last successful immutable paint receipt, or null before success. */
+  currentPaint: () => DomPaintReceipt | null
+  /** Subscribe to successful paints. Failed paints do not notify. */
+  subscribePaint: (listener: (receipt: DomPaintReceipt) => void) => () => void
   /**
    * Re-rasterize the subtree at `width×k`/`height×k` backing-store pixels.
    * drawElementImage replays paint records — vector draw commands — so this
@@ -240,6 +254,7 @@ export function createDomTextureSource(
   // Parsing markup only touches a detached host div, and adoption only reads
   // `parentNode`, so nothing here is visible to the page if this throws.
   const element = adoptContent(content)
+  const sourceId = allocateSourceId()
 
   const { label = `source-${sourceSeq++}`, onError } = options
   let scale = clampRawScale(options.scale ?? 1)
@@ -274,6 +289,8 @@ export function createDomTextureSource(
   // tuple so a read never allocates.
   let paintedW = 0
   let paintedH = 0
+  let currentPaint: DomPaintReceipt | null = null
+  const paintSubscribers = new Set<(receipt: DomPaintReceipt) => void>()
 
   const stats: PaintStats = { label, paints: 0, errors: 0, scale }
   registry.add(stats)
@@ -302,6 +319,14 @@ export function createDomTextureSource(
       // most recently asked for.
       paintedW = width
       paintedH = height
+      const generation = (currentPaint?.frame.generation ?? 0) + 1
+      const receipt: DomPaintReceipt = Object.freeze({
+        frame: Object.freeze({ sourceId, generation }),
+        paintedSize: Object.freeze([paintedW, paintedH] as const),
+        storeSize: Object.freeze([canvas.width, canvas.height] as const),
+      })
+      currentPaint = receipt
+      for (const listener of paintSubscribers) listener(receipt)
     } catch (err) {
       ok = false
       stats.errors++
@@ -358,12 +383,23 @@ export function createDomTextureSource(
   canvas.requestPaint()
 
   return {
+    sourceId,
     canvas,
     element,
     repaint: () => canvas.requestPaint(),
     scale: () => scale,
     size: () => [width, height] as const,
-    paintedSize: () => [paintedW, paintedH] as const,
+    paintedSize: () => currentPaint?.paintedSize ?? ([0, 0] as const),
+    currentPaint: () => currentPaint,
+    subscribePaint: (listener) => {
+      paintSubscribers.add(listener)
+      let subscribed = true
+      return () => {
+        if (!subscribed) return
+        subscribed = false
+        paintSubscribers.delete(listener)
+      }
+    },
     setScale: (k: number) => {
       const next = clampRawScale(k)
       if (next === scale) return
@@ -391,6 +427,7 @@ export function createDomTextureSource(
     paintCount: () => stats.paints,
     dispose: () => {
       canvas.onpaint = null
+      paintSubscribers.clear()
       canvas.remove()
       // Release the subtree. Custody was for the source's lifetime, and
       // adoption required the node to arrive unparented — so it leaves that

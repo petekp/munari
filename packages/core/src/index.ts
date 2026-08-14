@@ -52,6 +52,7 @@ export {
   detectHtmlInCanvas,
   UnsupportedPlatformError,
   paintStats,
+  type DomPaintReceipt,
   type DomTextureSource,
   type DomTextureSourceOptions,
   type HtmlInCanvasSupport,
