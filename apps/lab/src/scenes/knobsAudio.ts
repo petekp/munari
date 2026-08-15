@@ -19,6 +19,52 @@ import { PANEL_MIN_W } from './knobsResize'
 let ctx: AudioContext | null = null
 let lastDetent = 0
 
+/** Everything the hardware makes goes through this one node, so the
+ *  panel moves as a single object rather than as a dial that pans and a
+ *  switch that does not. */
+let bus: StereoPannerNode | null = null
+
+/** Where the panel sits across the glass, in NDC: -1 at the left edge, 0
+ *  at the middle, +1 at the right. The scene writes it every frame; the
+ *  sound reads it at the moment of a strike, which is the only moment it
+ *  matters. Same live-bag discipline the knob values use — the panel's
+ *  place is owned by the scene graph, and lifting it into React state to
+ *  make a sound would cost a re-render per frame for a number nobody
+ *  ever looks at. */
+let panelNdcX = 0
+
+/**
+ * Hardest the room will pan. The edge of the glass is not the edge of
+ * the field: a person at a desk sees the screen's edge about 20° off
+ * centre, and stereo speakers sit at 30°, so a panel parked against the
+ * right edge is still well inside the pair.
+ *
+ * It is also the difference between an object in a room and a toy. Hard
+ * panning takes the sound out of the box in front of you and puts it in
+ * one ear, and no expensive thing has ever sounded like that.
+ */
+export const PAN_MAX = 0.65
+
+/** Where a panel at `ndcX` is heard. Left of centre is left, which is
+ *  the whole rule; the clamp matters because a carried panel can be
+ *  dragged past the edge of the glass, and the pan must stop when the
+ *  field does. */
+export function panFor(ndcX: number): number {
+  return Math.max(-1, Math.min(1, ndcX)) * PAN_MAX
+}
+
+/** Called by the scene, every frame, with the panel's projected centre. */
+export function setPanelPan(ndcX: number) {
+  panelNdcX = ndcX
+}
+
+/** The one output every layer connects to. Falls back to the raw
+ *  destination if the platform has no panner, because a mono click is a
+ *  much better failure than a silent one. */
+function out(ac: AudioContext): AudioNode {
+  return bus ?? ac.destination
+}
+
 /** Quietest gap between detent clicks — a fast sweep buzzes like a real
  *  ratchet instead of machine-gunning one click per value step. */
 const DETENT_GAP = 0.015
@@ -32,12 +78,21 @@ function ensure(): AudioContext | null {
   if (!ctx) {
     try {
       ctx = new AudioContext()
+      if (typeof ctx.createStereoPanner === 'function') {
+        bus = ctx.createStereoPanner()
+        bus.connect(ctx.destination)
+      }
     } catch {
       return null
     }
   }
   if (ctx.state === 'suspended') void ctx.resume()
-  return ctx.state === 'running' ? ctx : null
+  if (ctx.state !== 'running') return null
+  // Set here, not on every frame: the pan only has to be right at the
+  // instant something is struck, and 60 param ramps a second for a value
+  // read a few times a minute is work for nobody.
+  if (bus) bus.pan.value = panFor(panelNdcX)
+  return ctx
 }
 
 /** One strike: an oscillator with an exponential decay envelope. `at`
@@ -59,7 +114,7 @@ function strike(
   env.gain.setValueAtTime(gain, now)
   env.gain.exponentialRampToValueAtTime(0.0001, now + decay)
   osc.connect(env)
-  env.connect(ac.destination)
+  env.connect(out(ac))
   osc.start(now)
   osc.stop(now + decay + 0.01)
 }
@@ -93,20 +148,49 @@ function driftVoice(sweeping: boolean) {
   if (voice < 0) voice = -voice
 }
 
+/** Nothing in a detent lives under this. It is two poles, not one: a
+ *  single 12 dB/oct highpass still leaves the strike's skirt sitting in
+ *  the low mids, and that skirt is the whole difference between a
+ *  machined click and a knock on a hollow box. A small hard part struck
+ *  by a small hard part has no low end — so we do not leave it any. */
+const CLICK_FLOOR = 3600
+
+/** How loud a detent is at its loudest, and the one number to move to
+ *  make the dial quieter or louder — the ring is a fixed ratio of it, so
+ *  the balance cannot drift when the level does.
+ *
+ *  The reference is a wristwatch escapement, not a button: a sound you
+ *  find in a quiet room and lose in a loud one. At this level the detent
+ *  is felt more than heard, and that is the intent. The hand already
+ *  knows a stop was crossed — the sound only has to agree. */
+const CLICK_PEAK = 0.021
+
+/** The ring against the click. A tenth is not a mix decision; it is what
+ *  keeps the tail under the transient, so the ear reads one event. */
+const RING_RATIO = 0.16
+
 /**
  * A dial crossing one graduation. An expensive detent is not a beep —
  * it is a tiny impact: a ball bearing dropping into a machined groove.
- * Three layers, quietest first-class citizens:
+ * The whole event lives above CLICK_FLOOR, peaks at CLICK_PEAK, and is
+ * over in about 4 ms. There is no midrange in it, no body under it, and
+ * no tail after it.
  *
- *   1. the click — a few ms of noise through a bandpass: the broadband
- *      transient of the strike itself. The filter's center wears the
+ * Two layers. There used to be a third — a "seat", the knob settling —
+ * and it is gone, because an event this short has nothing to settle. A
+ * layer that only fills time is the exact thing that makes a mechanism
+ * sound cheap.
+ *
+ *   1. the click — two ms of noise through a bandpass: the broadband
+ *      transient of the strike itself. The noise is played
+ *      back fast, so the band is fed bright material instead of the
+ *      filters throwing most of it away. The filter's center wears the
  *      drifting voice; rate, slice, width and level jitter per click.
- *   2. the ring — one damped high partial, barely audible: the knob's
- *      metal answering the impact. Expensive mechanisms are tight, so
- *      it dies in under 15 ms.
- *   3. the seat — a faint, brief tap of the knob settling, most of its
- *      low end cut away: the voice of this mechanism is the click up
- *      high, not the mass underneath.
+ *   2. the ring — one damped high partial just above the click band, at
+ *      RING_RATIO of it: the metal answering the impact. Barely present
+ *      on its own; it is what stops the click reading as a tap on
+ *      plastic. A tight part dies fast, so it is gone in 4 ms — twice
+ *      the click's length, and the longest thing in the event.
  */
 export function clickDetent() {
   const ac = ensure()
@@ -121,32 +205,41 @@ export function clickDetent() {
   // 1. the click
   const src = ac.createBufferSource()
   src.buffer = noise(ac)
-  src.playbackRate.value = vary(0.14)
+  src.playbackRate.value = 1.55 * vary(0.14)
   const bp = ac.createBiquadFilter()
   bp.type = 'bandpass'
-  bp.frequency.value = (3200 + voice * 1800) * vary(0.06)
-  bp.Q.value = 1.8 * vary(0.2)
-  // A bandpass has wide skirts; the highpass under it is what actually
-  // keeps the strike out of the low mids.
-  const hp = ac.createBiquadFilter()
-  hp.type = 'highpass'
-  hp.frequency.value = 1500
+  bp.frequency.value = (5600 + voice * 2400) * vary(0.06)
+  // Tighter than it was: a wide band is mostly skirt, and the skirt is
+  // the part that lands where we do not want it.
+  bp.Q.value = 2.8 * vary(0.2)
+  // A bandpass has wide skirts whatever its Q; the two highpasses under
+  // it are what actually keep the strike out of the low mids.
+  const hp1 = ac.createBiquadFilter()
+  hp1.type = 'highpass'
+  hp1.frequency.value = CLICK_FLOOR
+  const hp2 = ac.createBiquadFilter()
+  hp2.type = 'highpass'
+  hp2.frequency.value = CLICK_FLOOR
   const env = ac.createGain()
-  const dur = 0.011 * fine * vary(0.18)
-  env.gain.setValueAtTime(0.05 * fine * vary(0.18), now)
+  const dur = 0.002 * fine * vary(0.18)
+  env.gain.setValueAtTime(CLICK_PEAK * fine * vary(0.18), now)
   env.gain.exponentialRampToValueAtTime(0.0001, now + dur)
   src.connect(bp)
-  bp.connect(hp)
-  hp.connect(env)
-  env.connect(ac.destination)
+  bp.connect(hp1)
+  hp1.connect(hp2)
+  hp2.connect(env)
+  env.connect(out(ac))
   src.start(now, Math.random() * 0.05)
   src.stop(now + dur + 0.01)
 
   // 2. the ring
-  strike(ac, 'sine', (4300 + voice * 600) * vary(0.05), 0.007 * fine * vary(0.25), 0.012 * vary(0.2))
-
-  // 3. the seat
-  strike(ac, 'sine', 420 * vary(0.08), 0.0045 * fine * vary(0.2), 0.016 * vary(0.15))
+  strike(
+    ac,
+    'sine',
+    (6800 + voice * 900) * vary(0.05),
+    CLICK_PEAK * RING_RATIO * fine * vary(0.25),
+    0.004 * vary(0.2),
+  )
 }
 
 // ── the switch's voice, derived from the switch ─────────────────────────
@@ -255,6 +348,14 @@ const VOICE = leverVoice()
  *  about 15 dB down, under a strike that is still sounding. */
 export const AUDIBLE_ARRIVAL = 4
 
+/** The switch against one detent. A flip is the one moment the whole
+ *  mechanism speaks, so it stands above a graduation by design — but by
+ *  a stated amount, and stated as a ratio of CLICK_PEAK rather than as
+ *  its own number. The dial has been retuned four times; each time, the
+ *  switch stayed where it was and ended up shouting over it. A ratio
+ *  cannot do that: move the dial and the switch moves with it. */
+const THUNK_PEAK = CLICK_PEAK * 1.8
+
 /**
  * A bat switch thrown.
  *
@@ -308,15 +409,18 @@ function strikeBody(ac: AudioContext, f: number, at: number) {
   const env = ac.createGain()
   const dur = 0.009 * vary(0.05)
   const now = ac.currentTime + at
-  env.gain.setValueAtTime(0.075 * f * vary(0.05), now)
+  // The three layers keep the balance they have always had — 0.83 : 0.22
+  // : 1 — because that balance is what makes them one impact heard
+  // through three bodies. Only the level they all hang from moved.
+  env.gain.setValueAtTime(THUNK_PEAK * 0.83 * f * vary(0.05), now)
   env.gain.exponentialRampToValueAtTime(0.0001, now + dur)
   src.connect(bp)
   bp.connect(hp)
   hp.connect(env)
-  env.connect(ac.destination)
+  env.connect(out(ac))
   src.start(now, Math.random() * 0.05)
   src.stop(now + dur + 0.01)
 
-  strike(ac, 'sine', BAT_HZ * vary(0.02), 0.02 * f, ringDecay(BAT_HZ, BAT_Q) * 4, at)
-  strike(ac, 'sine', SLAB_HZ * vary(0.02), 0.09 * f, ringDecay(SLAB_HZ, SLAB_Q), at)
+  strike(ac, 'sine', BAT_HZ * vary(0.02), THUNK_PEAK * 0.22 * f, ringDecay(BAT_HZ, BAT_Q) * 4, at)
+  strike(ac, 'sine', SLAB_HZ * vary(0.02), THUNK_PEAK * f, ringDecay(SLAB_HZ, SLAB_Q), at)
 }

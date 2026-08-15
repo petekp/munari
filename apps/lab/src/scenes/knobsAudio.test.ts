@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { AUDIBLE_ARRIVAL, BAT_HZ, MM_PER_PX, SLAB_HZ, leverVoice, ringDecay, ringHz } from './knobsAudio'
+import {
+  AUDIBLE_ARRIVAL,
+  BAT_HZ,
+  MM_PER_PX,
+  PAN_MAX,
+  SLAB_HZ,
+  leverVoice,
+  panFor,
+  ringDecay,
+  ringHz,
+} from './knobsAudio'
 import { KNOB, TOGGLE } from './knobsGeometry'
 import { LEVER_SPRING, LEVER_THROW } from './knobsPhysics'
 
@@ -34,6 +44,41 @@ describe('ringing — bigger parts sound lower, tighter parts die sooner', () =>
 
   it('a damper part rings shorter at the same pitch', () => {
     expect(ringDecay(1000, 5)).toBeLessThan(ringDecay(1000, 50))
+  })
+})
+
+describe('the sound comes from where the panel is', () => {
+  it('a panel left of centre is heard on the left, and right on the right', () => {
+    // The sign is the whole law and the easy thing to invert. NDC is
+    // negative to the left, and a stereo pan is negative to the left, so
+    // the two agree and nothing here should ever flip them.
+    expect(panFor(-0.8)).toBeLessThan(0)
+    expect(panFor(0.8)).toBeGreaterThan(0)
+  })
+
+  it('the middle of the glass is both speakers', () => {
+    expect(panFor(0)).toBe(0)
+  })
+
+  it('the edge of the glass is not the edge of the field', () => {
+    // A panel parked against the right edge must still be inside the
+    // pair. Hard panning is what makes a room sound like a headphone
+    // demo instead of an object on a desk.
+    expect(Math.abs(panFor(1))).toBeLessThan(0.8)
+    expect(Math.abs(panFor(1))).toBeGreaterThan(0.3)
+  })
+
+  it('a panel carried off the glass stops panning at the edge', () => {
+    // A carry gesture can drag the panel past NDC ±1. StereoPanner
+    // clamps anyway, but then the far edge and twice the far edge would
+    // be indistinguishable here — so the clamp is ours, and pinned.
+    expect(panFor(4)).toBe(PAN_MAX)
+    expect(panFor(-4)).toBe(-PAN_MAX)
+  })
+
+  it('moves monotonically across the glass', () => {
+    const across = [-1, -0.5, 0, 0.5, 1].map(panFor)
+    for (let i = 1; i < across.length; i++) expect(across[i]).toBeGreaterThan(across[i - 1])
   })
 })
 
