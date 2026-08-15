@@ -1732,5 +1732,6 @@ not disciplines asked of the consumer. Pinned in
 `tests/conformance/transfer/choreography`.
 
 The logo is the reference consumer: its cooling gate
-(`MATTER_LIGHT_GATE`) reshaped from an ad-hoc smoothstep window to
+(`MATTER_LIGHT_GATE`, since widened to relief and extrusion and renamed
+`MATTER_GATE`) reshaped from an ad-hoc smoothstep window to
 `lift.range(0.25, 0.35)` — same numbers, now the library's own idiom.

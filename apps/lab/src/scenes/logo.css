@@ -1,8 +1,8 @@
 /* the logo playground ──────────────────────────────────────────────────
  *
- * A printed specimen: the candy wordmark sits on a slab of litho ink
- * (--screen) laid on the paper bench, which is how the sketch's dark
- * ground joins a lab that is otherwise Fabriano stock.
+ * A printed specimen: the candy wordmark sits on litho ink (--screen),
+ * and the whole page is the ink — plate and ground share the colour, so
+ * the sketch's dark field runs edge to edge.
  *
  * Motion rules: the letters animate transform and color ONLY — both
  * paint-cheap, neither ever on a Surface capture root. The `.logo-twin`
@@ -15,7 +15,7 @@
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: var(--bench);
+  background: var(--screen);
   display: flex;
   align-items: center;
   justify-content: center;

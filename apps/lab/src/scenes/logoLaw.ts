@@ -102,6 +102,18 @@ export interface LogoKnobs {
   jelly: number
   /** 0..1 — matter mode: chromatic fringe on a moving letter. */
   prism: number
+  /** px — matter mode: how far the height field PUSHES the sheet at
+   *  full coverage, scaled per matter by `dome`. Shading alone makes a
+   *  letter look domed; this makes it one. */
+  relief: number
+  /** 0..1 — matter mode: how much of `relief` the MESH carries. The
+   *  rest stays a bump. Lighting is identical at both ends, so this
+   *  buys parallax and a real silhouette without restyling the letter:
+   *  0 is a flat card lit as a dome, 1 is a dome. */
+  body: number
+  /** px — matter mode: how far the letter's traced outline (logoContour)
+   *  extrudes back into real side walls. Zero is a sheet. */
+  extrude: number
 }
 
 export const LOGO_DEFAULTS: LogoKnobs = {
@@ -117,6 +129,12 @@ export const LOGO_DEFAULTS: LogoKnobs = {
   gloss: 0.7,
   jelly: 0.55,
   prism: 0.5,
+  relief: 22,
+  body: 1,
+  // Off by default. Extrusion is the one effect that costs a readback
+  // and a mesh rebuild per glyph change, so it stays something the
+  // bench opts into rather than something every visit pays for.
+  extrude: 0,
 }
 
 export interface LetterPose {

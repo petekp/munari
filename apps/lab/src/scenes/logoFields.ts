@@ -97,6 +97,7 @@ export class LetterFields {
     const u = material.uniforms
     const prev = renderer.getRenderTarget()
     u.tSrc.value = src
+    u.uSpread.value = 2
     u.uSrcTexel.value.set(1 / img.width, 1 / img.height)
     renderer.setRenderTarget(this.fine)
     renderer.render(scene, camera)
@@ -111,4 +112,63 @@ export class LetterFields {
     this.fine.dispose()
     this.coarse.dispose()
   }
+}
+
+// ── the outline readback ────────────────────────────────────────────────
+//
+// One shared target and one shared buffer, because the reads are
+// sequential: a letter asks for its own alpha, traces it (logoContour),
+// and is done before the next letter asks. Sharing keeps a rebuild from
+// allocating a megabyte per letter.
+
+let readback: {
+  target: THREE.WebGLRenderTarget
+  rgba: Uint8Array
+  alpha: Uint8Array
+} | null = null
+
+/**
+ * The letter's alpha, resampled to `w × h` and pulled back to the CPU
+ * so the outline law can trace it.
+ *
+ * Two costs worth naming. This BLOCKS: `readRenderTargetPixels` drains
+ * the pipeline, so it belongs on a shape change and nowhere near a
+ * per-frame path. And the returned array is the shared buffer — read it
+ * before calling again, never keep it.
+ *
+ * The blit is a tent filter at half the downsample stride, which is
+ * what band-limits the alpha before it is traced: without it the
+ * outline would inherit the source's own aliasing as permanent bumps in
+ * the geometry. Rows come back bottom-up, which is the order
+ * `traceContour` documents.
+ */
+export function readAlphaField(
+  renderer: THREE.WebGLRenderer,
+  src: THREE.Texture,
+  w: number,
+  h: number,
+): Uint8Array | null {
+  const img = src.image as { width: number; height: number } | undefined
+  if (!img || !img.width || w < 2 || h < 2) return null
+  if (!readback || readback.target.width !== w || readback.target.height !== h) {
+    readback?.target.dispose()
+    readback = {
+      target: makeTarget(w, h),
+      rgba: new Uint8Array(w * h * 4),
+      alpha: new Uint8Array(w * h),
+    }
+  }
+  const { scene, camera, material } = ensureRig()
+  const u = material.uniforms
+  const prev = renderer.getRenderTarget()
+  u.tSrc.value = src
+  u.uSrcTexel.value.set(1 / img.width, 1 / img.height)
+  u.uSpread.value = Math.max(1, img.width / w / 2)
+  renderer.setRenderTarget(readback.target)
+  renderer.render(scene, camera)
+  renderer.readRenderTargetPixels(readback.target, 0, 0, w, h, readback.rgba)
+  renderer.setRenderTarget(prev)
+  const { rgba, alpha } = readback
+  for (let i = 0; i < alpha.length; i++) alpha[i] = rgba[i * 4 + 3]
+  return alpha
 }

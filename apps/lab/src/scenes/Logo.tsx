@@ -63,8 +63,10 @@ import {
   type LetterPose,
   type LogoKnobs,
 } from './logoLaw'
-import { LETTER_FRAG, LETTER_VERT, MATTER_LIGHT_GATE, MATTER_PARAMS } from './logoShaders'
-import { LetterFields } from './logoFields'
+import { LETTER_FRAG, LETTER_VERT, MATTER_GATE, MATTER_PARAMS } from './logoShaders'
+import { FIELD_DS, LetterFields, readAlphaField } from './logoFields'
+import { traceContour, type ContourShape } from './logoContour'
+import { buildLetterMesh } from './logoSlab'
 import './logo.css'
 
 const WORD = 'munari'
@@ -178,6 +180,12 @@ interface LetterFx {
   jelly: number
   /** Prism offset in CSS px (the material converts to texels). */
   prism: number
+  /** Peak relief in CSS px — how far the height field pushes the sheet. */
+  relief: number
+  /** 0..1 — the share of `relief` the mesh carries; the rest is bump. */
+  body: number
+  /** Extrusion depth in CSS px; 0 collapses every wall to a line. */
+  slab: number
   /** Field weights (MATTER_PARAMS): fine-gradient shoulder, coarse-
    *  gradient pillow, and the overall height-to-normal gain. The field
    *  SCALES live in the blur pyramid (logoFields), not here. */
@@ -187,24 +195,55 @@ interface LetterFx {
   matter: number
 }
 
+/** How many texels the outline is traced at, on the letter's long side.
+ *  Around one texel per CSS px: the tracer interpolates each crossing
+ *  between samples, so this is already sub-pixel, and going finer only
+ *  buys a longer readback stall. */
+const OUTLINE_TEXELS = 384
+
+/** px of extrusion past which a letter is fully a body rather than a
+ *  picture of one — the depth at which the shader stops trusting the
+ *  texture's painted outline and starts trusting the walls'. A wall
+ *  only has to clear the sheet's own antialiased fringe to be the thing
+ *  the eye sees at the edge, so it is small. */
+const SOLID_FULL_PX = 8
+
 function MatterMaterial({
   i,
   fontPx,
   boxRef,
   fx,
   fields,
+  solid,
+  outlineKey,
+  onOutline,
 }: {
   i: number
   fontPx: number
   boxRef: React.RefObject<LetterBox>
   fx: LetterFx
   fields: LetterFields
+  /** Extrusion is switched on: write depth (a slab has to sort against
+   *  its own walls) and keep the traced outline current. */
+  solid: boolean
+  /** Everything about a pose that can change the glyph's SHAPE. Color
+   *  and tilt are deliberately absent — neither moves an outline, and
+   *  re-tracing on a color fade would stall a frame for nothing. */
+  outlineKey: string
+  /** The traced shapes, tagged with the key they were traced UNDER —
+   *  the tag is what lets the letter refuse walls that belong to a
+   *  glyph it no longer is. */
+  onOutline: (key: string, shapes: ContourShape[]) => void
 }) {
   // Inside Surface's material="none" slot: the Surface still owns the
   // texture (source format, premultiply, receipts); this material only
   // consumes it.
   const texture = useSurfaceTexture()
   const mat = useRef<THREE.ShaderMaterial>(null)
+  // The outline's schedule: which shape it last traced, a checksum of
+  // the pixels it traced, when the next read is due, and how many reads
+  // this change still gets.
+  const trace = useRef({ key: '', sig: 0, due: 0, tries: 0 })
   const uniforms = useMemo(
     () => ({
       tMap: { value: null as THREE.Texture | null },
@@ -220,6 +259,11 @@ function MatterMaterial({
       uDome: { value: 0 },
       uFx: { value: 0 },
       uJelly: { value: 0 },
+      uRelief: { value: 0 },
+      uMeshFrac: { value: 1 },
+      uFieldPx: { value: new THREE.Vector2(FIELD_DS.fine, FIELD_DS.coarse) },
+      uSlab: { value: 0 },
+      uSolid: { value: 0 },
       uPrism: { value: 0 },
       uMatter: { value: 0 },
       uVelDir: { value: new THREE.Vector2(1, 0) },
@@ -246,9 +290,11 @@ function MatterMaterial({
     const texPerCss = img && b.w > 0 ? img.width / b.w : 1
     if (img) u.uTexel.value.set(1 / img.width, 1 / img.height)
     // The height fields refresh here, inside the frame write and before
-    // the automatic render — and only on lit frames, so a parked or
-    // cooling letter runs no extra passes at all.
-    if (texture && fx.matter > 0.5 && fx.fx > 0.001) fields.update(state.gl, texture)
+    // the automatic render — and only on frames that USE them, so a
+    // parked letter runs no extra passes at all. The vertex stage reads
+    // them too now, so relief and extrusion join the light in asking.
+    const wantsFields = fx.fx > 0.001 || fx.relief > 0.001 || fx.slab > 0.001
+    if (texture && fx.matter > 0.5 && wantsFields) fields.update(state.gl, texture)
     u.tFine.value = fields.fine.texture
     u.tCoarse.value = fields.coarse.texture
     u.uTexelF.value.set(1 / fields.fine.width, 1 / fields.fine.height)
@@ -260,6 +306,18 @@ function MatterMaterial({
     u.uDome.value = fx.dome
     u.uFx.value = fx.fx
     u.uJelly.value = fx.jelly
+    u.uRelief.value = fx.relief
+    u.uMeshFrac.value = fx.body
+    u.uSlab.value = fx.slab
+    // How much of a BODY the letter is, from how far its walls have
+    // opened. The shader needs this separately from the depth in px:
+    // a slab 200px deep and one 20px deep are equally solid, and both
+    // want the geometric silhouette. SOLID_FULL_PX is the depth past
+    // which the letter is fully a body — small, because a wall only has
+    // to clear the sheet's own fringe to be the thing you see at the
+    // edge. Zero depth still means zero, which is what keeps the
+    // handoff identity.
+    u.uSolid.value = Math.min(1, fx.slab / SOLID_FULL_PX)
     u.uPrism.value = fx.prism * texPerCss
     u.uMatter.value = fx.matter
     u.uVelDir.value.copy(fx.velDir)
@@ -268,6 +326,48 @@ function MatterMaterial({
     // Wave numbers from the font size, so every face ripples at the same
     // physical scale whatever its slot width.
     u.uWaveK.value.set((Math.PI * 2) / (fontPx * 0.85), (Math.PI * 2) / (fontPx * 0.68))
+
+    // ── the outline, re-traced when the glyph changes shape ──
+    //
+    // This is the one blocking thing on the page: reading pixels back
+    // drains the pipeline. It is scheduled rather than polled — a beat
+    // marks the letter, and the reads follow until one of them sees
+    // new pixels. Several reads, because a pose lands in the DOM before
+    // its capture reaches the GPU: the early reads may still hold the
+    // old glyph, and the signature is what says so — a read whose
+    // pixels match the last commit is a glyph that has not repainted
+    // yet, not a new outline. The letter melts its walls while this
+    // key is untraced (MatterLetter), so the schedule is part of the
+    // look: the sooner a read lands, the sooner the slab re-forms.
+    //
+    // The last try commits even on a matching signature. By then the
+    // pixels are either truly identical (a re-roll that renders the
+    // same — walls traced from these exact pixels are right whatever
+    // key they carry) or the paint is pathologically late, and flat is
+    // the honest shape for a letter whose face is unknown.
+    if (!solid) return
+    const tr = trace.current
+    const now = state.clock.elapsedTime
+    if (tr.key !== outlineKey) {
+      tr.key = outlineKey
+      tr.due = now
+      tr.tries = 4
+    }
+    if (tr.tries < 1 || !texture || now < tr.due) return
+    tr.tries--
+    tr.due = now + 0.15
+    const fit = Math.min(1, OUTLINE_TEXELS / Math.max(b.w, b.h))
+    const rw = Math.max(8, Math.round(b.w * fit))
+    const rh = Math.max(8, Math.round(b.h * fit))
+    const alpha = readAlphaField(state.gl, texture, rw, rh)
+    if (!alpha) return
+    let sig = rw * 8191 + rh
+    for (let q = 0; q < alpha.length; q += 7) sig = (sig * 31 + alpha[q]) | 0
+    if (sig === tr.sig && tr.tries > 0) return
+    tr.sig = sig
+    // Half coverage is the perceptual edge of an antialiased glyph, so
+    // the wall meets the letter where the eye says the letter ends.
+    onOutline(tr.key, traceContour(alpha, rw, rh, { threshold: 128 }))
   })
   return (
     <shaderMaterial
@@ -279,11 +379,16 @@ function MatterMaterial({
       vertexShader={LETTER_VERT}
       fragmentShader={LETTER_FRAG}
       // Premultiplied in, premultiplied blend (decisions.md #5); the
-      // letters are paint over the page, so no depth writes and no tone
-      // mapping — same stance as the standard-material path it replaces.
+      // letters are paint over the page, so no tone mapping — same
+      // stance as the standard-material path it replaces.
+      //
+      // Depth follows the form. A sheet is paint and wants none of it. A
+      // slab has to sort against its OWN walls, and the index order
+      // (walls, then sheet — logoSlab) plus a depth buffer is what puts
+      // the front face over the edges instead of under them.
       transparent
       premultipliedAlpha
-      depthWrite={false}
+      depthWrite={solid}
       toneMapped={false}
     />
   )
@@ -308,7 +413,15 @@ interface MatterLetterProps {
   carried: () => number[]
   /** Post-draw proof that this twin's pixels reached the framebuffer. */
   onPresented: () => void
+  /** Extrusion is switched on, so this letter carries walls and sorts
+   *  them with depth. */
+  solid: boolean
 }
+
+/** CSS px per sheet segment. The grid was 28×14 — enough for a gel wave
+ *  to travel through, nowhere near enough for a height field to push,
+ *  which would have shown up as a faceted letter. */
+const SHEET_STEP_PX = 4
 
 function MatterLetter({
   i,
@@ -322,6 +435,7 @@ function MatterLetter({
   range,
   carried,
   onPresented,
+  solid,
 }: MatterLetterProps) {
   const g = useRef<Group>(null)
   const [painted, setPainted] = useState(false)
@@ -333,6 +447,33 @@ function MatterLetter({
   // targets — and refreshed by the material on lit frames.
   const fields = useMemo(() => new LetterFields(box.w, box.h), [box.w, box.h])
   useEffect(() => () => fields.dispose(), [fields])
+
+  // The letter's body (logoSlab): a dense sheet, plus walls once the
+  // outline has been traced. Shapes arrive from the material's frame
+  // write, which is the only place the live texture exists. Until then
+  // — and whenever extrusion is off — this is the sheet alone, which is
+  // exactly what the letter has always been.
+  const [traced, setTraced] = useState<{ key: string; shapes: ContourShape[] } | null>(null)
+  const geometry = useMemo(() => {
+    const sx = Math.max(8, Math.min(160, Math.round(box.w / SHEET_STEP_PX)))
+    const sy = Math.max(8, Math.min(160, Math.round(box.h / SHEET_STEP_PX)))
+    return buildLetterMesh(box.w, box.h, sx, sy, traced?.shapes ?? null)
+  }, [box.w, box.h, traced])
+  useEffect(() => () => geometry.dispose(), [geometry])
+  // Everything that can change the glyph's SHAPE. A re-roll that only
+  // repaints (new color) leaves this alone, and costs no readback.
+  const outlineKey = `${ch}|${pose.font}|${pose.weight}|${fontPx}|${box.w}x${box.h}`
+  // The freshness law: a letter never wears another glyph's walls. A
+  // beat re-deals the face NOW; its outline arrives a readback later,
+  // and between the two this letter is wearing walls traced from the
+  // glyph it used to be — serif feet jutting out of a sans face, a
+  // counter's tube standing where the new bowl is not, the back cap
+  // showing through every mismatch as black (2026-08-14, both of
+  // Pete's artifact screenshots). So while the traced key is not THIS
+  // key, the slab melts flat (fast), and it re-forms (slower) when the
+  // fresh outline lands. The melt is the correctness guarantee; the
+  // asymmetry is what keeps it from reading as flicker.
+  const fresh = traced !== null && traced.key === outlineKey
 
   // Targets live in refs so a pose change never remounts the spring
   // mid-flight — the letter chases the new pose from wherever it is.
@@ -373,6 +514,9 @@ function MatterLetter({
         fx: 0,
         jelly: 0,
         prism: 0,
+        relief: 0,
+        body: 1,
+        slab: 0,
         shoulder: 0,
         pillow: 0,
         dome: 0,
@@ -465,17 +609,40 @@ function MatterLetter({
     if (sp > 1) fx.velDir.set(vx / sp, vy / sp)
     // Every term is × amp: at the handoff edges the letter is exactly
     // its own pixels (the identity theorem the crossing-flash gate
-    // measures). The LIGHT additionally rides a LATER window of the same
-    // progress — lift.range over MATTER_LIGHT_GATE — so substances
+    // measures). What makes a letter a SUBSTANCE rides a LATER window of
+    // the same progress — lift.range over MATTER_GATE — so substances
     // freeze back to ink before touchdown, and the swap-eve frames are
     // ink and nothing else.
-    const gate = MATTER_LIGHT_GATE
+    const gate = MATTER_GATE
     const gt = range(gate.from, gate.distance)
+    const gs = gt * gt * (3 - 2 * gt)
     const par = MATTER_PARAMS[p.matter]
     fx.matter = p.matter
-    fx.fx = p.matter === 0 ? 0 : k.gloss * gt * gt * (3 - 2 * gt)
+    fx.fx = p.matter === 0 ? 0 : k.gloss * gs
     fx.jelly = k.jelly * amp * par.jelly * (1.1 + 4.5 * d.excite)
     fx.prism = k.prism * amp * par.prism * Math.min(sp / 300, 1) * 2.6
+    // Body on the same gate as light. Relief and extrusion are geometry,
+    // and geometry near a swap drags the ink mask exactly the way
+    // substance light does — a sheet pushed toward the camera grows the
+    // letter by perspective alone. So the letter lifts flat, inflates
+    // once it is clear of the page, and deflates before it lands.
+    // Relief scales by the matter's own dome, so a balloon puffs and a
+    // neon tube stays a tube.
+    // NOT scaled by par.dome here — the shader's height description owns
+    // that (uDome), and folding it in twice is exactly the two-numbers-
+    // for-one-surface mistake this refactor removes.
+    fx.relief = p.matter === 0 ? 0 : k.relief * gs
+    fx.body = k.body
+    // The slab chases its target through an asymmetric ease: melting
+    // (stale outline, or a matter that carries none) is near-immediate,
+    // re-forming takes long enough to read as the letter setting. The
+    // snap to exact zero is for the handoff identity — an exponential
+    // never arrives on its own, and the swap needs the walls at
+    // literally no area.
+    const slabWant = p.matter === 0 || !fresh ? 0 : k.extrude * gs
+    const eased =
+      fx.slab + (slabWant - fx.slab) * (1 - Math.exp(-dt / (slabWant < fx.slab ? 0.05 : 0.14)))
+    fx.slab = eased < 0.01 ? 0 : eased
     fx.shoulder = par.shoulder
     fx.pillow = par.pillow
     fx.dome = par.dome
@@ -511,15 +678,16 @@ function MatterLetter({
           </div>
         }
       >
-        {/* Subdivided so the gel waves have vertices to travel through —
-            a 1×1 plane would turn uJelly into a rigid-body shear. */}
-        <planeGeometry args={[box.w, box.h, 28, 14]} />
+        <primitive object={geometry} attach="geometry" />
         <MatterMaterial
           i={i}
           fontPx={fontPx}
           boxRef={boxRef}
           fx={drive.current.fx}
           fields={fields}
+          solid={solid}
+          outlineKey={outlineKey}
+          onOutline={(key, shapes) => setTraced({ key, shapes })}
         />
       </SurfaceApp>
     </group>
@@ -535,9 +703,13 @@ interface MatterCanvasProps {
   lift: Lift
   /** The carried float's per-frame sample, shared with the page. */
   carried: () => number[]
+  /** The extrude knob is off zero. A boolean rather than the number,
+   *  so sliding thickness stays a uniform write and only switching the
+   *  form on or off re-renders. */
+  solid: boolean
 }
 
-function MatterCanvas({ poses, metrics, knobs, lift, carried }: MatterCanvasProps) {
+function MatterCanvas({ poses, metrics, knobs, lift, carried, solid }: MatterCanvasProps) {
   const pointer = useRef<{ x: number; y: number } | null>(null)
   useEffect(() => {
     const move = (e: PointerEvent) => {
@@ -585,6 +757,7 @@ function MatterCanvas({ poses, metrics, knobs, lift, carried }: MatterCanvasProp
             range={lift.range}
             carried={carried}
             onPresented={() => lift.present(i)}
+            solid={solid}
           />
         ))}
       </Canvas>
@@ -614,6 +787,9 @@ const SLIDERS: {
   { key: 'gloss', label: 'gloss', min: 0, max: 1, step: 0.05, matterOnly: true },
   { key: 'jelly', label: 'jelly', min: 0, max: 1, step: 0.05, matterOnly: true },
   { key: 'prism', label: 'prism', min: 0, max: 1, step: 0.05, matterOnly: true },
+  { key: 'relief', label: 'relief px', min: 0, max: 60, step: 2, matterOnly: true },
+  { key: 'body', label: 'body (mesh)', min: 0, max: 1, step: 0.05, matterOnly: true },
+  { key: 'extrude', label: 'extrude px', min: 0, max: 80, step: 2, matterOnly: true },
 ]
 
 // ── the page ────────────────────────────────────────────────────────────
@@ -841,6 +1017,7 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
           knobs={knobsRef}
           lift={lift}
           carried={float.sample}
+          solid={knobs.extrude > 0}
         />
       )}
 
@@ -882,10 +1059,6 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
       </div>
 
       {chips}
-      <div className="footer">
-        six letters, six voices — tune the conductor, then flip on matter and each beat
-        transmutes a letter: ink, balloon, foil, gummy, neon
-      </div>
     </div>
   )
 }
