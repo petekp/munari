@@ -113,7 +113,7 @@ try {
         failures.push(`${width}x${height}: panel world scale is not 1`)
 
       const focusSelectors = [
-        ...['complexity', 'hue', 'layers', 'palette', 'speed', 'spread'].map(
+        ...['complexity', 'chroma', 'hue', 'layers', 'palette', 'speed'].map(
           (key) => `[data-munari-anchor="knob:${key}"]`,
         ),
         '[data-munari-anchor="toggle:power"]',

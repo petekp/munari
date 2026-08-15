@@ -45,6 +45,14 @@ export interface KnobsTuningValues {
   coronaTone: number
   /** Multiplies the three spill sample distances past the edge. */
   coronaSpill: number
+  /** Brightest surround CHANNEL below which the corona is fully off —
+   *  the backdrop is dark but saturated, so a coloured sample is not
+   *  proof of light. Sits above the brightest backdrop the art law can
+   *  paint (0.155). See litGate for why the measure is not luminance. */
+  coronaLitFloor: number
+  /** Brightest surround channel at which the corona is fully on. Sits
+   *  below the dimmest drawn layer (0.773), so art never gates itself. */
+  coronaLitKnee: number
   /** Face shade ceiling: how dark a fully backlit face falls. */
   shadeMax: number
 
@@ -167,6 +175,8 @@ export const knobsTuning: KnobsTuningValues = {
   coronaVeilGain: 0.5,
   coronaTone: 0.8,
   coronaSpill: 1.4,
+  coronaLitFloor: 0.24,
+  coronaLitKnee: 0.62,
   shadeMax: 0.64,
 
   rimRough: 0.24,
@@ -304,6 +314,8 @@ export const KNOBS_TUNING_GROUPS: { title: string; knobs: KnobsTuningDef[] }[] =
       { key: 'coronaVeilGain', label: 'veil gain', min: 0, max: 2, step: 0.05 },
       { key: 'coronaTone', label: 'tone knee', min: 0.4, max: 4, step: 0.05 },
       { key: 'coronaSpill', label: 'spill reach', min: 0.3, max: 4, step: 0.05 },
+      { key: 'coronaLitFloor', label: 'lit floor', min: 0, max: 1, step: 0.01 },
+      { key: 'coronaLitKnee', label: 'lit knee', min: 0, max: 1, step: 0.01 },
       { key: 'shadeMax', label: 'face shade', min: 0, max: 0.9, step: 0.02 },
     ],
   },

@@ -12,9 +12,13 @@
 export interface KnobsValues {
   /** Base hue, degrees around the wheel. */
   hue: number
-  /** Hue fan across the layers, degrees: 0 paints them all one color,
-   *  360 spreads them around the full wheel. */
+  /** Which harmony the layers are colored by — an index into
+   *  `PALETTE_SCHEMES`, not an angle. */
   palette: number
+  /** How far the palette opens, 0–1. At 0 every layer takes the base hue
+   *  and the picture is a true monochromatic study; at 1 each layer sits
+   *  on its scheme's own stop. */
+  chroma: number
   /** Concentric layers drawn, clamped to [2, 8]. */
   layers: number
   /** Vertices per layer's polygon, clamped to [3, 12]. */
@@ -32,36 +36,113 @@ export interface KnobsValues {
 
 export const knobsValues: KnobsValues = {
   hue: 210,
-  palette: 150,
-  layers: 5,
-  complexity: 6,
-  speed: 0.6,
+  palette: 4,
+  chroma: 0.85,
+  layers: 10,
+  complexity: 20,
+  speed: 1.5,
   spread: 0.85,
   power: true,
   mirror: true,
 }
 
+/**
+ * One color harmony — the classical wheel relationships, as hue offsets
+ * from whatever the `hue` dial is pointing at.
+ *
+ * A scheme with fewer stops than there are layers REPEATS its stops
+ * rather than inventing hues between them: a triad has three colors at
+ * fifteen layers exactly as it does at three. What it must not do is
+ * alternate them ring by ring — see `schemeAt`. The one scheme that
+ * ramps instead of stopping is `spectrum`, which has no stops to repeat;
+ * it carries `fan` and spreads that many degrees across the layers.
+ *
+ * Offsets are written in wheel order, innermost stop first, because that
+ * order IS the order the picture walks through them.
+ */
+export interface PaletteScheme {
+  key: 'mono' | 'analogous' | 'complement' | 'split' | 'triad' | 'tetrad' | 'spectrum'
+  /** The word the seven-segment window shows. Every glyph here has to be
+   *  one DSEG7-Classic can actually draw — no k, m, v, w, x or z. */
+  code: string
+  /** Hue offsets from the base, degrees. Null means this scheme ramps. */
+  offsets: number[] | null
+  /** Degrees a ramping scheme covers across the layers. */
+  fan?: number
+}
+
+/**
+ * Ordered by how much of the wheel the scheme touches — 0°, 120°, 180°,
+ * 210°, 240°, 270°, 360°. That ordering is what makes `palette` read as
+ * a single knob from monochromatic to full color rather than as an
+ * arbitrary list, and it holds at every chroma setting.
+ */
+export const PALETTE_SCHEMES: PaletteScheme[] = [
+  { key: 'mono', code: 'one', offsets: [0] },
+  // Centred on the dial's hue rather than starting from it: an analogous
+  // scheme is a neighbourhood, and the base belongs in the middle of it.
+  { key: 'analogous', code: 'AnA', offsets: [-60, -30, 0, 30, 60] },
+  { key: 'complement', code: 'duo', offsets: [0, 180] },
+  { key: 'split', code: 'SPL', offsets: [0, 150, 210] },
+  { key: 'triad', code: 'tri', offsets: [0, 120, 240] },
+  { key: 'tetrad', code: 'tEt', offsets: [0, 90, 180, 270] },
+  { key: 'spectrum', code: 'FUL', offsets: null, fan: 360 },
+]
+
+/** The scheme a `palette` knob value selects, clamped to the table. */
+export function paletteAt(value: number): PaletteScheme {
+  return PALETTE_SCHEMES[clampInt(value, 0, PALETTE_SCHEMES.length - 1)]
+}
+
 export interface KnobDef {
-  key: 'hue' | 'palette' | 'layers' | 'complexity' | 'speed' | 'spread'
+  key: 'hue' | 'palette' | 'chroma' | 'layers' | 'complexity' | 'speed' | 'spread'
   label: string
   min: number
   max: number
   step: number
+  /** What the seven-segment window shows for a value. Default is the
+   *  number itself, at this dial's own precision. */
+  format?: (value: number) => string
+  /** The window's full segment grid — every character position at
+   *  capacity, drawn behind the live text as the unenergized ghost.
+   *  Default is the widest number this dial can reach. */
+  capacity?: string
+  /** Spoken value, for a dial whose number is really a name. */
+  valueText?: (value: number) => string
 }
 
 // Steps are also the detent pitch: every crossing is one audible click
 // and one felt stop, so a coarser step is a chunkier, more deliberate
-// dial. The two hue-fan dials sweep 0–360 in tens; the counts stay
-// integer; speed and spread keep their fine pitch — their whole point
-// is the last few hundredths.
+// dial. Hue sweeps the wheel in tens; the counts stay integer; palette
+// is a seven-position SELECTOR, so its step is one whole scheme and
+// every detent lands on a named harmony; speed, spread and chroma keep
+// their fine pitch — their whole point is the last few hundredths.
 export const KNOBS_ROTARY: KnobDef[] = [
   { key: 'hue', label: 'hue', min: 0, max: 360, step: 10 },
-  { key: 'palette', label: 'palette', min: 0, max: 360, step: 10 },
-  { key: 'layers', label: 'layers', min: 2, max: 8, step: 1 },
-  { key: 'complexity', label: 'facets', min: 3, max: 12, step: 1 },
+  {
+    key: 'palette',
+    label: 'palette',
+    min: 0,
+    max: PALETTE_SCHEMES.length - 1,
+    step: 1,
+    format: (v) => paletteAt(v).code,
+    capacity: '888',
+    valueText: (v) => paletteAt(v).key,
+  },
+  { key: 'chroma', label: 'chroma', min: 0, max: 1, step: 0.05 },
+  { key: 'layers', label: 'layers', min: 2, max: 16, step: 1 },
+  { key: 'complexity', label: 'facets', min: 6, max: 24, step: 1 },
   { key: 'speed', label: 'speed', min: 0, max: 2, step: 0.05 },
-  { key: 'spread', label: 'spread', min: 0.4, max: 1, step: 0.02 },
 ]
+
+/** Values the picture reads that no dial exposes. `spread` sets how far
+ *  the layers reach toward the frame edge, and every setting of it was a
+ *  worse picture than the committed one — so it keeps its default and
+ *  gives its station on the panel to a dial worth turning. The field
+ *  stays in the bag rather than being folded into a constant: it is
+ *  still a real parameter of the law, and the conformance suite still
+ *  sweeps it. */
+export const KNOBS_FIXED: (keyof KnobsValues)[] = ['spread']
 
 /** The dial sweep both renderers agree on: the DOM's ticks and the
  *  hardware's spring target come from the same two numbers. Degrees,
@@ -75,6 +156,45 @@ export function knobAngle(def: KnobDef, value: number): number {
   const clamped = Math.min(def.max, Math.max(def.min, value))
   const frac = (clamped - def.min) / (def.max - def.min)
   return KNOB_ANGLE_MIN + frac * KNOB_ANGLE_SWEEP
+}
+
+/**
+ * The most graduations a 66 px dial can wear and still be read as marks.
+ *
+ * The notches sit on a 29 px radius across the 270° sweep, so they are
+ * strung along 2π·29·(270/360) ≈ 137 px of arc, and each one is 2 px
+ * wide (knobs.css). 23 marks put 6.2 px between neighbours — a 2 px cut
+ * with a 4 px land, which reads as engraving. `speed` has 41 detents; at
+ * one notch each they would sit 3.3 px apart, 2 px of cut against 1.3 px
+ * of land, and the ring turns into a moiré nobody can count.
+ */
+export const DIAL_TICK_MAX = 23
+
+/**
+ * The angles a dial's graduations are cut at.
+ *
+ * A graduation means a stop. The rule is one notch per detent, and when
+ * a dial has more detents than the face can hold, every k-th detent —
+ * with k an exact divisor of the interval count, so a notch never lands
+ * between two stops. A hand counting notches is therefore always
+ * counting real positions, on every dial, at every setting.
+ *
+ * The degenerate case is a dial whose interval count is a large prime:
+ * nothing divides it but itself, and the face falls back to the two end
+ * stops. That is honest — better two marks that mean something than
+ * twenty that do not — and no dial in KNOBS_ROTARY reaches it.
+ */
+export function dialTicks(def: KnobDef): number[] {
+  const intervals = Math.max(1, Math.round((def.max - def.min) / def.step))
+  let k = 0
+  for (let d = 1; d <= intervals; d++) {
+    if (intervals % d === 0 && intervals / d + 1 <= DIAL_TICK_MAX) {
+      k = d
+      break
+    }
+  }
+  const marks = k === 0 ? 1 : intervals / k
+  return Array.from({ length: marks + 1 }, (_, i) => KNOB_ANGLE_MIN + (i * KNOB_ANGLE_SWEEP) / marks)
 }
 
 /** The art's clock and its life, a live bag like `knobsValues`: KnobsArt
@@ -179,6 +299,14 @@ export interface ArtLayer {
 }
 
 export interface ArtScene {
+  /** In PAINT order, back to front: the widest layer first, the tightest
+   *  last. Both consumers draw the array straight through — the SVG by
+   *  element order, the environment bake by draw order — so the order
+   *  here is the stacking, and it is decided in one place.
+   *
+   *  It reads outward-in because the big layers are the translucent,
+   *  slow ones: stacked the other way they covered the small bright
+   *  cores completely and the picture lost its center. */
   layers: ArtLayer[]
   backdropFrom: string
   backdropTo: string
@@ -186,11 +314,11 @@ export interface ArtScene {
 
 /** Upper bound on layers a knob turn can ever request — the fixed count of
  *  `<polygon>` elements a consumer needs to pre-mount. */
-export const ART_MAX_LAYERS = 8
+export const ART_MAX_LAYERS = 16
 const MAX_LAYERS = ART_MAX_LAYERS
 const MIN_LAYERS = 2
-const MIN_FACETS = 3
-const MAX_FACETS = 12
+const MIN_FACETS = 6
+const MAX_FACETS = 24
 const OUTER_R = 92
 const INNER_R = 14
 /** Wobble amplitude cap (see the `mirror` term below) — bounds a layer's
@@ -208,21 +336,73 @@ function clamp(n: number, min: number, max: number): number {
 /** The farthest a drawn point can land from the origin, any knob setting. */
 export const ART_MAX_RADIUS = OUTER_R * (1 + WOBBLE)
 
+/** Degrees, folded into [0, 360) — including from a negative offset. */
+function wrapHue(deg: number): number {
+  return ((deg % 360) + 360) % 360
+}
+
+/**
+ * Where a scheme puts one layer, and where it puts that layer's outline
+ * — both in degrees off the base hue.
+ *
+ * A discrete scheme gives each stop a CONTIGUOUS RUN of layers. It used
+ * to hand out `offsets[i % offsets.length]`, which put the scheme's full
+ * separation — 120° for a triad — between every pair of touching rings.
+ * At three layers that is the harmony. At fifteen it is a barcode: no
+ * two neighbours ever share a hue, so the picture reads as stripes and
+ * the harmony itself becomes invisible.
+ *
+ * Runs fix it without softening anything. The drawn hues are still
+ * exactly the scheme's stops and no others — nothing is interpolated,
+ * nothing between the stops is ever painted — but the eye gets areas of
+ * color instead of alternation, which is how a harmony is meant to be
+ * seen. The lightness and saturation ramps keep running underneath, so
+ * rings inside one run still separate; they separate on value, the way
+ * they do in a monochromatic study.
+ *
+ * A ramping scheme has no stops to run, so it reads position straight.
+ */
+function schemeAt(scheme: PaletteScheme, t: number, tNext: number) {
+  const stops = scheme.offsets
+  if (!stops) {
+    const fan = scheme.fan ?? 0
+    return { fill: t * fan, edge: tNext * fan }
+  }
+  const band = Math.min(stops.length - 1, Math.floor(t * stops.length))
+  /** The outline takes the next stop in the scheme — not the next
+   *  layer's, which inside a run is the same one. An edge is therefore
+   *  always another member of the harmony, whatever the run lengths do. */
+  return { fill: stops[band], edge: stops[(band + 1) % stops.length] }
+}
+
 /** One layer's shared parameters — the single source both `generateArt`
  *  (which draws the layer) and `artGlow` (which lights the scene with
  *  it) read, so the reflection in the metal can never drift out of
  *  phase with the picture on the page. */
 function layerSpec(values: KnobsValues, i: number, layerCount: number) {
   const spread = clamp(values.spread, 0.4, 1)
-  const baseHue = ((values.hue % 360) + 360) % 360
-  const t01 = layerCount === 1 ? 0 : i / (layerCount - 1)
+  const baseHue = wrapHue(values.hue)
+  const denom = Math.max(1, layerCount - 1)
+  const t01 = layerCount === 1 ? 0 : i / denom
+  const tNext = layerCount === 1 ? 0 : (i + 1) / denom
   const radius = (INNER_R + t01 * (OUTER_R - INNER_R)) * spread
   const dir = i % 2 === 0 ? 1 : -1
   /** × speed × tSeconds gives the layer's current rotation. */
   const rotRate = dir * (0.15 + t01 * 0.35)
-  const fan = clamp(values.palette, 0, 360)
-  const hue = (baseHue + t01 * fan) % 360
-  return { t01, radius, rotRate, hue }
+
+  const scheme = paletteAt(values.palette)
+  const chroma = clamp(values.chroma, 0, 1)
+  const band = schemeAt(scheme, t01, tNext)
+  const hue = wrapHue(baseHue + band.fill * chroma)
+  /** At mono the fill and the edge collapse, which is what monochromatic
+   *  means — the edge still reads, on lightness. */
+  const edgeHue = wrapHue(baseHue + band.edge * chroma)
+  /** Tints and shades run outward whatever the hues are doing. This is
+   *  what keeps chroma 0 a monochromatic STUDY — one hue in many values,
+   *  the way a painter means the word — instead of one flat disc. */
+  const sat = 70 + 20 * t01
+  const light = 66 - 16 * t01
+  return { t01, radius, rotRate, hue, edgeHue, sat, light }
 }
 
 /** Pure and deterministic: the same `(values, t)` always draws the same frame. */
@@ -230,11 +410,14 @@ export function generateArt(values: KnobsValues, tSeconds: number): ArtScene {
   const layerCount = clampInt(values.layers, MIN_LAYERS, MAX_LAYERS)
   const facets = clampInt(values.complexity, MIN_FACETS, MAX_FACETS)
   const speed = clamp(values.speed, 0, 2)
-  const baseHue = ((values.hue % 360) + 360) % 360
+  const baseHue = wrapHue(values.hue)
 
+  // Built outermost first, which is both the paint order the consumers
+  // want and the order that puts the tight bright cores on top.
   const layers: ArtLayer[] = []
-  for (let i = 0; i < layerCount; i++) {
-    const { t01: t, radius, rotRate, hue } = layerSpec(values, i, layerCount)
+  for (let n = 0; n < layerCount; n++) {
+    const i = layerCount - 1 - n
+    const { t01: t, radius, rotRate, hue, edgeHue, sat, light } = layerSpec(values, i, layerCount)
     const rot = tSeconds * speed * rotRate
     const pts: string[] = []
     for (let p = 0; p < facets; p++) {
@@ -245,16 +428,21 @@ export function generateArt(values: KnobsValues, tSeconds: number): ArtScene {
     }
     layers.push({
       points: pts.join(' '),
-      fill: `hsla(${hue.toFixed(1)}, 82%, 58%, 0.85)`,
-      stroke: `hsla(${((hue + 40) % 360).toFixed(1)}, 90%, 72%, 0.9)`,
+      fill: `hsla(${hue.toFixed(1)}, ${sat.toFixed(1)}%, ${light.toFixed(1)}%, 0.85)`,
+      stroke: `hsla(${edgeHue.toFixed(1)}, 90%, ${(light + 16).toFixed(1)}%, 0.9)`,
       opacity: 0.55 + 0.45 * (1 - t),
     })
   }
 
+  // The ground takes the OUTERMOST layer's hue, so opening the palette
+  // pulls the two corners of the gradient apart with it. At chroma 0
+  // that hue is the base hue again and the backdrop is exactly what a
+  // monochromatic setting has always painted.
+  const outerHue = layerSpec(values, layerCount - 1, layerCount).hue
   return {
     layers,
-    backdropFrom: `hsl(${((baseHue + 260) % 360).toFixed(1)}, 55%, 10%)`,
-    backdropTo: `hsl(${((baseHue + 200) % 360).toFixed(1)}, 60%, 4%)`,
+    backdropFrom: `hsl(${wrapHue(outerHue + 260).toFixed(1)}, 55%, 10%)`,
+    backdropTo: `hsl(${wrapHue(baseHue + 200).toFixed(1)}, 60%, 4%)`,
   }
 }
 
@@ -314,9 +502,15 @@ export function slabOcclusion(px: number, py: number, panel: PanelFootprint, sof
   return clamp(0.5 - (outside + inside) / soft, 0, 1)
 }
 
-/** Ceiling of `artGlow`'s summed weights (layers 8, spread 1) — the
- *  normalizer that makes `backlightAmount` read as a 0..1 level. */
-const GLOW_WEIGHT_MAX = 1.6
+/** Ceiling of `artGlow`'s summed weights (layers 16, spread 1) — the
+ *  normalizer that makes `backlightAmount` read as a 0..1 level.
+ *
+ *  It rises with the layer ceiling because the three outermost layers
+ *  crowd toward the rim as the stack gets denser: 1.604 at 8 layers,
+ *  1.630 at 12, 1.638 at 16. Left at the 8-layer value the level would
+ *  saturate a hair early on a dense picture — clamped, so never wrong,
+ *  just no longer telling the truth about the top of its range. */
+const GLOW_WEIGHT_MAX = 1.638
 
 /**
  * The luminous energy the slab is actually standing in front of: each
@@ -352,6 +546,45 @@ export function backlightAmount(
 export function veilProfile(t: number): number {
   const c = clamp(t, 0, 1)
   return (1 - c) * (1 - c)
+}
+
+/**
+ * How much of the surround at one point is an EMITTER, 0..1 — the gate
+ * that keeps the corona inside the picture's positive space.
+ *
+ * The corona samples the art just past the slab's edge and paints that
+ * color back over the boundary. Colour alone cannot tell an emitter from
+ * a background here, because the backdrop is not black: it is a dark but
+ * SATURATED gradient, so sampling it returns a perfectly good teal. The
+ * halo therefore drew a full hot line along every edge the background
+ * touched — light standing where nothing is lit, which is exactly what
+ * reads as artificial.
+ *
+ * The measure is the brightest CHANNEL, not luminance, and that is the
+ * whole trick. Rec.709 weights blue at 0.07, so a saturated blue blade —
+ * plainly an emitter, and half of what this palette paints — scores
+ * lower than a teal backdrop. Swept across every scheme, chroma, hue and
+ * layer count:
+ *
+ *     luma          backdrop 0.023..0.145   layers 0.101..0.761
+ *     max channel   backdrop 0.064..0.155   layers 0.773..0.817
+ *
+ * Luma's two bands OVERLAP; no floor exists that separates them. The max
+ * channel leaves a gap from 0.155 to 0.773, five times wider than either
+ * band, and it is hue-blind, which is the property actually wanted: the
+ * question is whether something bright is there, not what colour it is.
+ * The contract measures both sides from `generateArt` itself, so
+ * brightening the backdrop or dimming the palette fails with a number
+ * rather than quietly putting the edge glow back.
+ *
+ * Mirrored in the corona's GLSL, like `veilProfile`, because a shader
+ * cannot carry a test. Smoothstep, so the gate opens with zero slope at
+ * both ends: a linear ramp would seam where a blade's blur crosses the
+ * floor.
+ */
+export function litGate(level: number, floor: number, knee: number): number {
+  const t = clamp((level - floor) / Math.max(knee - floor, 1e-6), 0, 1)
+  return t * t * (3 - 2 * t)
 }
 
 /** Pure like `generateArt`, and phase-locked to it: same `(values, t)`,

@@ -171,16 +171,49 @@ export function centerFacingYaw(centerX: number, halfWidth: number): number {
   return -off * PANEL_CENTER_YAW
 }
 
-// ── the free-spinning knob — flick it and the bearing carries it ────────
+// ── the dial under the hand ─────────────────────────────────────────────
+
+/** Hand travel, px, that sweeps a dial from one end stop to the other.
+ *
+ *  This is the dial's PRECISION, and it is the constant a hand actually
+ *  reads. At 140 the worst case was hue: 36 detents across the throw,
+ *  3.9 px of hand travel each, close enough that ordinary jitter walked
+ *  the value on its own. A longer throw does not make the dial slower to
+ *  use — the end stops are still two flicks away — it makes each detent
+ *  a deliberate act, which is the whole difference between a game
+ *  control and an instrument.
+ *
+ *  6.1 px per detent at the worst dial, 44 px at the coarsest. */
+export const KNOB_DRAG_THROW = 220
+
+// ── the flick — what is left of the bearing after the hand lets go ──────
 
 /** Bearing friction: seconds for a free spin to drain to 1/e. Total
- *  travel of a flick released at v is exactly v·τ — a hard flick
- *  carries a good arc of the sweep and can never run away. */
-export const KNOB_SPIN_TAU = 0.4
+ *  travel of a flick released at v is exactly v·τ.
+ *
+ *  This was 0.4 s, which is a FLYWHEEL: a knob on a good bearing, thrown
+ *  and left to run down. It reads as cheap under the hand, because the
+ *  value keeps moving after the hand has decided where it wants to be —
+ *  and a dial you have to catch is a dial you cannot place. Expensive
+ *  gear is the opposite: a detented pot has enough friction in the
+ *  detents alone that a flick moves it a few clicks and stops.
+ *
+ *  So the coast is now vestigial rather than absent. It survives because
+ *  a release that lands DEAD on the last sampled value reads as a snag,
+ *  and a few clicks of run-out is what tells a hand the part has mass.
+ *  Setting KNOB_FLICK_MIN above any reachable hand speed switches it off
+ *  entirely without touching the code that rides it. */
+export const KNOB_SPIN_TAU = 0.08
 
 /** Release slower than this (as a fraction of the knob's range per
- *  second) and the hand PLACED the knob — no spin. */
-export const KNOB_FLICK_MIN = 0.25
+ *  second) and the hand PLACED the knob — no spin.
+ *
+ *  Raised from 0.25 with the throw: an ordinary placing gesture crosses
+ *  a quarter of the range per second without meaning anything by it, so
+ *  at the old floor almost every release ended in a coast. At 1.1 the
+ *  hand has to be moving most of the sweep per second — a deliberate
+ *  whip, not a hand arriving somewhere. */
+export const KNOB_FLICK_MIN = 1.1
 
 /** A spin slower than this (fraction of range per second) is dead: the
  *  value stops moving and the loop may stop scheduling. */

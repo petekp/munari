@@ -756,7 +756,7 @@
 /* Wide: two stations per row. This is the reflow worth watching — the
  * machined knobs are placed from these rects, so they physically move
  * into a second column with the DOM. */
-@container knbpanel (min-width: 380px) {
+@container knbpanel (min-width: 480px) {
   .knb-group {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

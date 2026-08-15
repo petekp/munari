@@ -16,16 +16,15 @@
 // the instant it happens; panel-local React state exists only so this
 // captured subtree repaints its readouts and lamps.
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PANEL_RADIUS } from './knobsGeometry'
-import { KNOB_FLICK_MIN, KNOB_SPIN_MIN, stepSpin } from './knobsPhysics'
+import { KNOB_DRAG_THROW, KNOB_FLICK_MIN, KNOB_SPIN_MIN, stepSpin } from './knobsPhysics'
 import { clickDetent, thunkToggle } from './knobsAudio'
 import {
   KNOBS_LAMPS,
   KNOBS_ROTARY,
   KNOBS_TOGGLES,
-  KNOB_ANGLE_MIN,
-  KNOB_ANGLE_SWEEP,
+  dialTicks,
   type KnobDef,
   type KnobsValues,
   type LampDef,
@@ -40,9 +39,10 @@ import {
 import { PANEL_MAX_W, PANEL_MIN_W } from './knobsResize'
 import './knobs.css'
 
-/** Graduation marks around a knob well, one per 27° across the sweep. */
-const TICK_COUNT = 11
-const TICKS = Array.from({ length: TICK_COUNT }, (_, i) => KNOB_ANGLE_MIN + (i * KNOB_ANGLE_SWEEP) / (TICK_COUNT - 1))
+/* Graduations used to be a flat 11 on every dial, which made the ring
+ * decoration: it agreed with no dial's detents, so counting the lit
+ * notches told you nothing about where the knob was set. `dialTicks`
+ * cuts them per dial, on the stops. */
 
 /** A live dial drag: which knob, and where the hand started. Held at
  *  panel scope because the MOVES arrive at panel scope — the relay
@@ -118,13 +118,21 @@ const RotaryKnob = memo(function RotaryKnob({
     [def, value, onChange],
   )
 
+  // `def` is a module constant, so this is computed once per dial for
+  // the life of the page — a value change re-renders the row and reuses
+  // the same array.
+  const ticks = useMemo(() => dialTicks(def), [def])
+
   return (
     <div className="knb-rotary">
       <span className="knb-dial-label">{def.label}</span>
+      {/* A dial whose number is really a name brings its own word and its
+        * own segment grid; every other dial shows the number at its own
+        * precision, and its capacity is the widest one it can reach. */}
       <SegmentReadout
         anchor={`readout:${def.key}`}
-        text={value.toFixed(def.step >= 1 ? 0 : 2)}
-        cap={def.max.toFixed(def.step >= 1 ? 0 : 2).replace(/\d/g, '8')}
+        text={def.format ? def.format(value) : value.toFixed(def.step >= 1 ? 0 : 2)}
+        cap={def.capacity ?? def.max.toFixed(def.step >= 1 ? 0 : 2).replace(/\d/g, '8')}
       />
       <div
         className="knb-dial"
@@ -134,6 +142,9 @@ const RotaryKnob = memo(function RotaryKnob({
         aria-valuemin={def.min}
         aria-valuemax={def.max}
         aria-valuenow={value}
+        // A selector's number says nothing out loud — "palette 4" is not
+        // a color scheme. The spoken value is the scheme's name.
+        aria-valuetext={def.valueText?.(value)}
         tabIndex={0}
         onPointerDown={onPointerDown}
         onKeyDown={onKeyDown}
@@ -159,7 +170,7 @@ const RotaryKnob = memo(function RotaryKnob({
         <span className="knb-dial-ticks" aria-hidden>
           {/* A notch is lit when the pointer has swept past it — the arc
             * of light IS the dial's setting, readable across a room. */}
-          {TICKS.map((deg) => (
+          {ticks.map((deg) => (
             <i
               key={deg}
               data-lit={deg <= knobAngle(def, value) + 0.25 ? '' : undefined}
@@ -382,7 +393,7 @@ export function KnobsPanel() {
         return
       }
       const range = d.def.max - d.def.min
-      const raw = d.startValue + ((d.startY - e.clientY) / 140) * range
+      const raw = d.startValue + ((d.startY - e.clientY) / KNOB_DRAG_THROW) * range
       const now = performance.now() / 1000
       const dt = now - d.lastT
       if (dt > 0.005) {
@@ -519,7 +530,7 @@ export function KnobsPanel() {
       </div>
 
       <div className="knb-panel-head">
-        <span className="knb-panel-title">DOM control panel</span>
+        <span className="knb-panel-title">SVG control panel</span>
         <span className="knb-panel-badge">pp-01</span>
       </div>
 

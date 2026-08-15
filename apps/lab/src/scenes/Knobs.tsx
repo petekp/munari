@@ -111,8 +111,10 @@ import {
   reflect,
   stepSpring,
 } from './knobsPhysics'
+import { setPanelPan } from './knobsAudio'
 import { getTuningRev, knobsTuning, subscribeTuning } from './knobsTuning'
 import { KnobsTweakPanel } from './KnobsTweaks'
+import { showChrome } from '../chrome'
 import {
   collectSurfaceAnchors,
   projectSurfaceAnchor,
@@ -267,7 +269,7 @@ function ArtEnvironment() {
     const nowMs = performance.now()
     if (nowMs - state.last < 50) return
     const v = knobsValues
-    const key = `${artClock.t}|${artClock.lit.toFixed(2)}|${v.hue}|${v.palette}|${v.layers}|${v.complexity}|${v.speed}|${v.spread}|${v.mirror}|${size.width}x${size.height}|${knobsTuning.envArt}|${knobsTuning.envRoom}|${knobsTuning.envSky}`
+    const key = `${artClock.t}|${artClock.lit.toFixed(2)}|${v.hue}|${v.palette}|${v.chroma}|${v.layers}|${v.complexity}|${v.speed}|${v.spread}|${v.mirror}|${size.width}x${size.height}|${knobsTuning.envArt}|${knobsTuning.envRoom}|${knobsTuning.envSky}`
     if (key === state.key) return
     state.key = key
     state.last = nowMs
@@ -770,6 +772,28 @@ function KnobHardware({
   )
 }
 
+/**
+ * The panel's place in the room, handed to the sound.
+ *
+ * The projection is the whole point: the panel is a thing in a scene,
+ * not a div, so its place on the glass is the product of its world
+ * position, whatever the carry gesture is doing to it, and the camera.
+ * Reading `worldX` off the layout would be right only while the panel is
+ * parked, which is exactly when nobody is listening for it to move.
+ *
+ * Position is the only signal sent. Everything about how far a given
+ * place pans lives in knobsAudio, where it can be pinned.
+ */
+function KnobsAudioPan() {
+  const { scene, camera } = useThree()
+  const point = useMemo(() => new THREE.Vector3(), [])
+  useFrame(() => {
+    const surface = scene.getObjectByName('knobs-panel-surface')
+    if (surface) setPanelPan(surface.getWorldPosition(point).project(camera).x)
+  })
+  return null
+}
+
 function KnobsResizeProbeTracker({ state }: { state: RefObject<KnobsResizeProbeState> }) {
   const { scene, camera, gl } = useThree()
   const point = useMemo(() => new THREE.Vector3(), [])
@@ -1033,6 +1057,8 @@ function BacklightCorona({ rect }: { rect: RailRect }) {
         uVeilGain: { value: knobsTuning.coronaVeilGain },
         uToneK: { value: knobsTuning.coronaTone },
         uSpill: { value: knobsTuning.coronaSpill },
+        uLitFloor: { value: knobsTuning.coronaLitFloor },
+        uLitKnee: { value: knobsTuning.coronaLitKnee },
       },
       vertexShader: /* glsl */ `
         varying vec2 vPos;
@@ -1062,6 +1088,9 @@ function BacklightCorona({ rect }: { rect: RailRect }) {
         uniform float uVeilGain;
         uniform float uToneK;
         uniform float uSpill;
+        // The emitter gate. See litGate in knobsLaw — this is its mirror.
+        uniform float uLitFloor;
+        uniform float uLitKnee;
 
         // Signed distance to the slab's rounded rect — the same
         // corner the DOM authors and the rim extrudes.
@@ -1115,7 +1144,23 @@ function BacklightCorona({ rect }: { rect: RailRect }) {
           float tv = clamp(-d / uVeilReach, 0.0, 1.0);
           float veil = d < 0.0 ? (1.0 - tv) * (1.0 - tv) * L : 0.0;
 
-          vec3 col = spill * (uCoreGain * core + uVeilGain * veil) * uLit;
+          // Is this edge standing in front of an emitter, or in front of
+          // the backdrop? The backdrop is dark but SATURATED, so the
+          // spill comes back a perfectly good teal either way and colour
+          // alone cannot tell. The BRIGHTEST CHANNEL can, and luminance
+          // cannot: Rec.709 weights blue at 0.07, so a saturated blue
+          // blade scores under a teal backdrop and the two bands
+          // overlap. On max channel the backdrop tops out at 0.155 and
+          // the dimmest drawn layer starts at 0.773. See litGate in
+          // knobsLaw, which pins this and carries the measurements.
+          float E = max(spill.r, max(spill.g, spill.b));
+          // Written out rather than smoothstep() because the tweak panel
+          // can drag the knee under the floor, which smoothstep leaves
+          // undefined.
+          float lt = clamp((E - uLitFloor) / max(uLitKnee - uLitFloor, 1e-6), 0.0, 1.0);
+          float lit = lt * lt * (3.0 - 2.0 * lt);
+
+          vec3 col = spill * (uCoreGain * core + uVeilGain * veil) * uLit * lit;
           // Tone-map instead of clip: clipping is what rotated dusty
           // pink into a neon tube.
           col = vec3(1.0) - exp(-col * uToneK);
@@ -1142,7 +1187,7 @@ function BacklightCorona({ rect }: { rect: RailRect }) {
     // same key discipline as ArtEnvironment, so a still artwork costs
     // no canvas work and no texture upload.
     const v = knobsValues
-    const key = `${artClock.t}|${v.hue}|${v.palette}|${v.layers}|${v.complexity}|${v.speed}|${v.spread}|${v.mirror}`
+    const key = `${artClock.t}|${v.hue}|${v.palette}|${v.chroma}|${v.layers}|${v.complexity}|${v.speed}|${v.spread}|${v.mirror}`
     if (key !== assets.key) {
       assets.key = key
       const vw = window.innerWidth
@@ -1208,6 +1253,8 @@ function BacklightCorona({ rect }: { rect: RailRect }) {
     u.uVeilGain.value = t.coronaVeilGain
     u.uToneK.value = t.coronaTone
     u.uSpill.value = t.coronaSpill
+    u.uLitFloor.value = t.coronaLitFloor
+    u.uLitKnee.value = t.coronaLitKnee
   })
 
   return (
@@ -2537,6 +2584,7 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
         <ArtEnvironment />
         <ArtLightRig />
         <TuningDrip assets={assets} />
+        <KnobsAudioPan />
         {probeEnabled && <KnobsResizeProbeTracker state={probeState} />}
         <PanelStage
           handle={stage}
@@ -2552,10 +2600,12 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
         />
       </Canvas>
 
-      <p className="knb-page-instruction">Drag the corner to reflow. Drag the top edge to move.</p>
+      {showChrome && (
+        <p className="knb-page-instruction">Drag the corner to reflow. Drag the top edge to move.</p>
+      )}
 
       {chips}
-      <KnobsTweakPanel />
+      {showChrome && <KnobsTweakPanel />}
     </div>
   )
 }
