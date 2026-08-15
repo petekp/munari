@@ -193,6 +193,29 @@ requires a newer accepted paint and moved film UVs, then proves the native
 window stays visible until the required film frame earns a qualifying
 presentation receipt.
 
+## shader-compile
+
+Do the lab's shaders actually become programs? `npm run gate:shaders`.
+A shader is a JavaScript string until a browser compiles it, so nothing
+else in CI can tell a working one from a broken one — typecheck, lint
+and the unit suites all see a string, and answer only what they were
+asked. This gate hooks `compileShader` and `linkProgram` from inside
+the page, walks the logo scene through the states that build materials
+(page, matter, extruded, bump-only relief, back to page), and prints
+every info log against its own source lines.
+
+Coverage is honest rather than total: a program no state in the walk
+constructs is a program this gate does not see. A new material means a
+new state here.
+
+It exists because a shared GLSL block once dropped two sampler
+declarations — used in both stages, declared in neither. The unit suite
+guarding that block passed: it checked that no uniform was declared
+twice, never that each was declared at all. The failure surfaced two
+commands later as a phase-wait timeout inside `gate:crossing`
+(2026-08-14). This is the cheapest gate in the repo and the one the
+others assume.
+
 ## House rules
 
 - A scene that can't be interrogated from the console isn't done.

@@ -25,6 +25,7 @@
     "gate:knobs-resize": "node instruments/knobs-resize/run.mjs",
     "gate:knobs-input": "node instruments/knobs-input/run.mjs",
     "gate:knobs-viewport": "node instruments/knobs-viewport/run.mjs",
+    "gate:shaders": "node instruments/shader-compile/run.mjs",
     "gate:dom-surface-demand": "node instruments/dom-surface-demand/run.mjs",
     "gate:crossing": "node instruments/crossing-flash/run.mjs",
     "dev": "npm run dev -w @munari/lab",

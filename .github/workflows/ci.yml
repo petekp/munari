@@ -122,3 +122,19 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run gate:crossing
+
+  # The shader-compile browser gate: a shader is a string until a
+  # browser makes a program of it, so nothing else in CI can tell a
+  # working one from a broken one. Cheapest gate here, and the one the
+  # rest assume — a shader that never compiles surfaces in the others
+  # as a timeout, if it surfaces at all.
+  shaders:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run gate:shaders
