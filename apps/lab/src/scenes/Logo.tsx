@@ -51,13 +51,18 @@ import {
   LOGO_DEFAULTS,
   LOGO_FONTS,
   LOGO_PALETTE,
+  RIPPLE,
+  WEAVE,
   beatPlan,
+  lightDir,
   makeRng,
   nextBeat,
   rollPose,
   seedWord,
   slotLayout,
   springStep,
+  strikeSlot,
+  stretchAmount,
   waveSteps,
   type BeatStep,
   type LetterPose,
@@ -160,11 +165,16 @@ function step(s: Spring, target: number, dt: number) {
 
 // ── the substance driver ────────────────────────────────────────────────
 //
-// One fixed key light and one fixed studio for the whole word, in WORLD
-// space. The shader lifts each letter's normals into world through its
-// quaternion, so a wobbling letter sweeps its reflections across the
-// standing light — the cue that reads as substance instead of decal.
-const WORLD_LIGHT = new THREE.Vector3(-0.42, 0.58, 0.7).normalize()
+// One key light and one studio for the whole word, in WORLD space —
+// standing, but no longer fixed: the panel's rig dials aim the key
+// (lightDir) and scale the studio's terms, and this default is just
+// the dials at rest. The shader lifts each letter's normals into world
+// through its quaternion, so a wobbling letter sweeps its reflections
+// across the standing light — the cue that reads as substance instead
+// of decal.
+const WORLD_LIGHT = new THREE.Vector3(
+  ...lightDir(LOGO_DEFAULTS.lightYaw, LOGO_DEFAULTS.lightPitch)
+)
 
 /** Per-frame uniform feed, written by MatterLetter's frame loop and read
  *  by MatterMaterial's. A mutable ref, not props: these change every
@@ -176,7 +186,7 @@ interface LetterFx {
   velDir: THREE.Vector2
   /** gloss × cooled amplitude — the shaded-substance mix; 0 for ink. */
   fx: number
-  /** Gel amplitude in px, all factors folded in. */
+  /** The weave's orbit radius in em (the material folds in font px). */
   jelly: number
   /** Prism offset in CSS px (the material converts to texels). */
   prism: number
@@ -193,6 +203,52 @@ interface LetterFx {
   pillow: number
   dome: number
   matter: number
+  /** The rest of the deck row — surface response and pop channels —
+   *  with the panel's trims already folded in, so the shader stays a
+   *  pure consumer of finished numbers. */
+  rough: number
+  metal: number
+  sss: number
+  crinkle: number
+  sheen: number
+  irid: number
+  glow: number
+  /** The lighting rig — global to the word, but fed per letter like
+   *  any other uniform: the key's world direction from the two
+   *  position dials, then the studio's five gains. */
+  light: THREE.Vector3
+  key: number
+  keySoft: number
+  fill: number
+  room: number
+  front: number
+  /** The motion rig: the weave's dials (the material folds them with
+   *  the font size), the strike buffer (plane px, uTime seconds,
+   *  power), and the folded gates for rings and travel stretch. */
+  waveScale: number
+  waveSpeed: number
+  waveDir: THREE.Vector2
+  /** The letter's center in the shared word frame, px — the weave's
+   *  phases are continuous across the word, one sea for six letters. */
+  waveOrigin: THREE.Vector2
+  ripples: THREE.Vector4[]
+  ripAmp: number
+  stretch: number
+}
+
+/** The latest tap, routed by MatterCanvas to exactly one letter: seq
+ *  bumps on every hit, and the letter named by `i` consumes it. */
+interface Strike {
+  i: number
+  x: number
+  y: number
+  seq: number
+}
+
+/** Drop a strike into the deadest ring slot — strikeSlot is the law's
+ *  recycling order, so the budget clause speaks for this buffer too. */
+function strikeRing(fx: LetterFx, x: number, y: number, t: number, power: number) {
+  fx.ripples[strikeSlot(fx.ripples.map((r) => r.z))].set(x, y, t, power)
 }
 
 /** How many texels the outline is traced at, on the letter's long side.
@@ -241,14 +297,33 @@ function MatterMaterial({
   const texture = useSurfaceTexture()
   const mat = useRef<THREE.ShaderMaterial>(null)
   // The outline's schedule: which shape it last traced, a checksum of
-  // the pixels it traced, when the next read is due, and how many reads
-  // this change still gets.
-  const trace = useRef({ key: '', sig: 0, due: 0, tries: 0 })
+  // the pixels it traced, when the next read is due, how many reads
+  // this change still gets — and the committed field itself, uploaded
+  // for the shader (tTrace) so the face cuts on the curve the walls
+  // stand on.
+  const trace = useRef({
+    key: '',
+    sig: 0,
+    due: 0,
+    tries: 0,
+    tex: null as THREE.DataTexture | null,
+  })
+  // The traced field's texture is owned by this schedule; three will
+  // not free a DataTexture it was only handed.
+  useEffect(() => {
+    const tr = trace.current
+    return () => {
+      tr.tex?.dispose()
+      tr.tex = null
+    }
+  }, [])
   const uniforms = useMemo(
     () => ({
       tMap: { value: null as THREE.Texture | null },
       tFine: { value: null as THREE.Texture | null },
       tCoarse: { value: null as THREE.Texture | null },
+      tTrace: { value: null as THREE.Texture | null },
+      tHalo: { value: null as THREE.Texture | null },
       uTexel: { value: new THREE.Vector2(1e-3, 1e-3) },
       uTexelF: { value: new THREE.Vector2(1e-2, 1e-2) },
       uTexelC: { value: new THREE.Vector2(1e-2, 1e-2) },
@@ -257,6 +332,13 @@ function MatterMaterial({
       uShoulder: { value: 0 },
       uPillowW: { value: 0 },
       uDome: { value: 0 },
+      uRough: { value: 0.5 },
+      uMetal: { value: 0 },
+      uSss: { value: 0 },
+      uCrinkle: { value: 0 },
+      uSheen: { value: 0 },
+      uIrid: { value: 0 },
+      uGlow: { value: 0 },
       uFx: { value: 0 },
       uJelly: { value: 0 },
       uRelief: { value: 0 },
@@ -269,9 +351,25 @@ function MatterMaterial({
       uVelDir: { value: new THREE.Vector2(1, 0) },
       uQuat: { value: new THREE.Vector4(0, 0, 0, 1) },
       uLight: { value: WORLD_LIGHT.clone() },
+      uKey: { value: 1 },
+      uKeySoft: { value: 1 },
+      uFill: { value: 1 },
+      uRoom: { value: 1 },
+      uFront: { value: 1 },
       uTime: { value: 0 },
+      // The glow pulse's per-letter stagger (fragment only — the weave
+      // phases in the shared word frame instead).
       uPhase: { value: i * 2.13 },
+      uWaveOrigin: { value: new THREE.Vector2(0, 0) },
       uWaveK: { value: new THREE.Vector2(0.05, 0.05) },
+      uWaveW: { value: new THREE.Vector2(WEAVE.w[0], WEAVE.w[1]) },
+      uWaveDir: { value: new THREE.Vector2(1, 0) },
+      uRipples: {
+        value: Array.from({ length: RIPPLE.slots }, () => new THREE.Vector4(0, 0, -1e3, 0)),
+      },
+      uRipK: { value: new THREE.Vector4(1, 1, 1, 1) },
+      uRipAmp: { value: 0 },
+      uStretch: { value: 0 },
     }),
     [i],
   )
@@ -297,6 +395,7 @@ function MatterMaterial({
     if (texture && fx.matter > 0.5 && wantsFields) fields.update(state.gl, texture)
     u.tFine.value = fields.fine.texture
     u.tCoarse.value = fields.coarse.texture
+    u.tHalo.value = fields.halo.texture
     u.uTexelF.value.set(1 / fields.fine.width, 1 / fields.fine.height)
     u.uTexelC.value.set(1 / fields.coarse.width, 1 / fields.coarse.height)
     u.uPlane.value.set(b.w, b.h)
@@ -304,8 +403,14 @@ function MatterMaterial({
     u.uShoulder.value = fx.shoulder
     u.uPillowW.value = fx.pillow
     u.uDome.value = fx.dome
+    u.uRough.value = fx.rough
+    u.uMetal.value = fx.metal
+    u.uSss.value = fx.sss
+    u.uCrinkle.value = fx.crinkle
+    u.uSheen.value = fx.sheen
+    u.uIrid.value = fx.irid
+    u.uGlow.value = fx.glow
     u.uFx.value = fx.fx
-    u.uJelly.value = fx.jelly
     u.uRelief.value = fx.relief
     u.uMeshFrac.value = fx.body
     u.uSlab.value = fx.slab
@@ -322,10 +427,34 @@ function MatterMaterial({
     u.uMatter.value = fx.matter
     u.uVelDir.value.copy(fx.velDir)
     u.uQuat.value.copy(fx.quat)
+    u.uLight.value.copy(fx.light)
+    u.uKey.value = fx.key
+    u.uKeySoft.value = fx.keySoft
+    u.uFill.value = fx.fill
+    u.uRoom.value = fx.room
+    u.uFront.value = fx.front
     u.uTime.value = state.clock.elapsedTime
-    // Wave numbers from the font size, so every face ripples at the same
-    // physical scale whatever its slot width.
-    u.uWaveK.value.set((Math.PI * 2) / (fontPx * 0.85), (Math.PI * 2) / (fontPx * 0.68))
+    // The weave in this letter's own px — wavelengths, speeds, and
+    // heights are the law's WEAVE (em and rad/s) under the dials, so
+    // every face waves at the same physical scale whatever its slot
+    // width. Heights land as px here, the same way uRipAmp does.
+    const wl = fontPx * fx.waveScale
+    u.uWaveK.value.set((Math.PI * 2) / (wl * WEAVE.lambda[0]), (Math.PI * 2) / (wl * WEAVE.lambda[1]))
+    u.uWaveW.value.set(WEAVE.w[0] * fx.waveSpeed, WEAVE.w[1] * fx.waveSpeed)
+    u.uJelly.value = fx.jelly * fontPx
+    u.uWaveDir.value.copy(fx.waveDir)
+    u.uWaveOrigin.value.copy(fx.waveOrigin)
+    // The strike rig in this letter's own px — RIPPLE's em constants
+    // scaled by the font — and the buffer, copied slot for slot.
+    u.uRipK.value.set(
+      (Math.PI * 2) / (RIPPLE.lambda * fontPx),
+      RIPPLE.speed * fontPx,
+      RIPPLE.width * fontPx,
+      RIPPLE.tau,
+    )
+    for (let r = 0; r < RIPPLE.slots; r++) u.uRipples.value[r].copy(fx.ripples[r])
+    u.uRipAmp.value = fx.ripAmp * RIPPLE.amp * fontPx
+    u.uStretch.value = fx.stretch
 
     // ── the outline, re-traced when the glyph changes shape ──
     //
@@ -365,6 +494,21 @@ function MatterMaterial({
     for (let q = 0; q < alpha.length; q += 7) sig = (sig * 31 + alpha[q]) | 0
     if (sig === tr.sig && tr.tries > 0) return
     tr.sig = sig
+    // The committed field IS the outline now, on both sides of the
+    // seam: the walls are traced from these texels and the face
+    // hardens onto the same texels (tTrace). Two consumers, one curve
+    // — they cannot disagree. The readback buffer is shared, so the
+    // texture takes a copy.
+    const field = new THREE.DataTexture(alpha.slice(), rw, rh, THREE.RedFormat)
+    field.minFilter = THREE.LinearFilter
+    field.magFilter = THREE.LinearFilter
+    // Single-channel rows at arbitrary widths: without byte alignment
+    // the upload shears.
+    field.unpackAlignment = 1
+    field.needsUpdate = true
+    tr.tex?.dispose()
+    tr.tex = field
+    u.tTrace.value = field
     // Half coverage is the perceptual edge of an antialiased glyph, so
     // the wall meets the letter where the eye says the letter ends.
     onOutline(tr.key, traceContour(alpha, rw, rh, { threshold: 128 }))
@@ -402,6 +546,9 @@ interface MatterLetterProps {
   fontPx: number
   knobs: React.RefObject<LogoKnobs>
   pointer: React.RefObject<{ x: number; y: number } | null>
+  /** The latest tap, routed by the canvas to exactly one letter (`i`),
+   *  consumed by seq so a strike lands once. */
+  strike: React.RefObject<Strike>
   /** The lift's progress, 0..1 smoothstepped: 0 pins the twin flat on
    *  the page grid. */
   progress: () => number
@@ -431,6 +578,7 @@ function MatterLetter({
   fontPx,
   knobs,
   pointer,
+  strike,
   progress,
   range,
   carried,
@@ -498,13 +646,16 @@ function MatterLetter({
   }
 
   // The substance's scratch state: the fx feed the material reads, plus
-  // excitation (hop energy that makes a freshly-dealt letter jiggle,
-  // then gel-decay to calm) and last position (screen velocity feeds
-  // the prism). Allocated once, mutated every frame.
+  // last position (screen velocity feeds the prism and the travel
+  // stretch). Allocated once, mutated every frame.
   const drive = useRef<{
     fx: LetterFx
+    /** Last frame's UNSNAPPED screen position, and whether a frame has
+     *  written one yet — the first frame has nothing to difference. */
     prev: { x: number; y: number }
-    excite: number
+    tracked: boolean
+    /** Strikes consumed, by the router's seq. */
+    strikeSeq: number
   } | null>(null)
   if (!drive.current) {
     drive.current = {
@@ -521,9 +672,32 @@ function MatterLetter({
         pillow: 0,
         dome: 0,
         matter: pose.matter,
+        rough: 0.5,
+        metal: 0,
+        sss: 0,
+        crinkle: 0,
+        sheen: 0,
+        irid: 0,
+        glow: 0,
+        light: WORLD_LIGHT.clone(),
+        key: 1,
+        keySoft: 1,
+        fill: 1,
+        room: 1,
+        front: 1,
+        waveScale: 1,
+        waveSpeed: 1,
+        waveDir: new THREE.Vector2(1, 0),
+        waveOrigin: new THREE.Vector2(0, 0),
+        // Slots idle far in the past, where the ring-down term has
+        // long rounded them to zero.
+        ripples: Array.from({ length: RIPPLE.slots }, () => new THREE.Vector4(0, 0, -1e3, 0)),
+        ripAmp: 0,
+        stretch: 0,
       },
       prev: { x: 0, y: 0 },
-      excite: 0,
+      tracked: false,
+      strikeSeq: strike.current.seq,
     }
   }
 
@@ -578,11 +752,12 @@ function MatterLetter({
     // frame, which is what lets the swap land mid-breath. Only motion
     // the page cannot mirror — bob, wobble, dodge — rides amplitude.
     const snap = (v: number) => Math.round(v * dpr) / dpr
-    el.position.set(
-      snap(b.cx - size.width / 2 + s.dx.x),
-      snap(size.height / 2 - b.cy - s.dy.x - carried()[i] * fontPx),
-      Math.sin(t * 1.1 + i * 1.9) * k.depth * amp,
-    )
+    // The continuous screen position, kept BEFORE the snap: the feed
+    // differentiates these for velocity, and a rounded position
+    // cannot be differentiated (see the velocity block below).
+    const rawX = b.cx - size.width / 2 + s.dx.x
+    const rawY = size.height / 2 - b.cy - s.dy.x - carried()[i] * fontPx
+    el.position.set(snap(rawX), snap(rawY), Math.sin(t * 1.1 + i * 1.9) * k.depth * amp)
     el.rotation.set(
       Math.sin(t * 0.8 + i * 2.3) * 0.1 * amp - (py / fontPx) * 0.5,
       Math.sin(t * 0.6 + i * 1.4) * 0.14 * amp + (px / fontPx) * 0.5,
@@ -593,20 +768,55 @@ function MatterLetter({
     // ── feed the substance ──
     const d = drive.current!
     const fx = d.fx
-    // Excitation: spring speed (px/s-ish; tilt folded in at glyph scale)
-    // with a fast attack and a slow gel decay — a beat STRIKES the
-    // letter, and the wobble rings down over ~half a second.
-    const speed = Math.hypot(s.dx.v, s.dy.v) + Math.abs(s.tilt.v) * em
-    d.excite = Math.max(Math.min(speed / 320, 1), d.excite * Math.exp(-dt / 0.45))
     // Screen velocity (bob + dodge + hop, everything that moves the
     // mesh) — the prism disperses along it and scales with it, so a
     // parked letter shows zero fringe whatever the knob says.
-    const vx = dt > 0 ? (el.position.x - d.prev.x) / dt : 0
-    const vy = dt > 0 ? (el.position.y - d.prev.y) / dt : 0
-    d.prev.x = el.position.x
-    d.prev.y = el.position.y
+    //
+    // Differentiated from the UNSNAPPED position, which is the whole
+    // subtlety here. el.position is rounded onto the device pixel
+    // grid to keep the glyph crisp, and differencing a rounded signal
+    // measures the rounding: at dpr 2 and 120 Hz a nearly-still
+    // letter reads a ±60 px/s square wave. That noise sized the
+    // squash AND aimed it, so the soft, refractive letters shimmered
+    // at frame rate — a bug, not a wobble (2026-08-15, the law test
+    // pins why the noise is not negligible).
+    //
+    // A letter is born at rest: with no previous frame there is no
+    // velocity, or the first frame differences against the origin and
+    // the letter arrives mid-throw, fully stretched.
+    const vx = d.tracked && dt > 0 ? (rawX - d.prev.x) / dt : 0
+    const vy = d.tracked && dt > 0 ? (rawY - d.prev.y) / dt : 0
+    d.prev.x = rawX
+    d.prev.y = rawY
+    d.tracked = true
     const sp = Math.hypot(vx, vy)
     if (sp > 1) fx.velDir.set(vx / sp, vy / sp)
+    // ── strikes: a tap on the letter, or a beat re-dealing it ──
+    // Consumed here, never in an event handler: a strike is a write
+    // into the fx buffer, and the fx buffer belongs to the frame loop.
+    const st = strike.current
+    if (st.seq !== d.strikeSeq) {
+      d.strikeSeq = st.seq
+      if (st.i === i) {
+        // Client → this letter's plane frame: world is y-up with its
+        // origin mid-screen, the mesh's center is el.position, the
+        // plane 1:1 CSS px at scale 1. Tilt is ignored — a ring
+        // center a few px off at ±8° is below what a ring shows.
+        const sc = Math.max(s.scale.x, 0.2)
+        strikeRing(
+          fx,
+          (st.x - size.width / 2 - el.position.x) / sc,
+          (size.height / 2 - st.y - el.position.y) / sc,
+          t,
+          1,
+        )
+      }
+    }
+    // Beats used to strike the letter they re-dealt. Removed
+    // 2026-08-14: a beat lands every second or so, so the word was
+    // percussing on its own forever — read as jitter, and it drowned
+    // the sea it was supposed to season. A ring is an ANSWER now; the
+    // only thing that strikes a letter is a hand on it.
     // Every term is × amp: at the handoff edges the letter is exactly
     // its own pixels (the identity theorem the crossing-flash gate
     // measures). What makes a letter a SUBSTANCE rides a LATER window of
@@ -619,7 +829,26 @@ function MatterLetter({
     const par = MATTER_PARAMS[p.matter]
     fx.matter = p.matter
     fx.fx = p.matter === 0 ? 0 : k.gloss * gs
-    fx.jelly = k.jelly * amp * par.jelly * (1.1 + 4.5 * d.excite)
+    // The weave, in em (the material lands it as px): one STEADY sea.
+    // Excitation never scales it — the beat excites some letter every
+    // second or two, and a sea that pumps with it reads as erratic
+    // shaking, not a wave (2026-08-14). A strike answers through the
+    // rings instead, which a hand can aim.
+    //
+    // The matter's softness rides a FLOOR, the same shape rings use:
+    // most of the deck is stiff (chrome 0.12, enamel 0.1), and a sea
+    // that skips two thirds of the word is not a sea. Softness scales
+    // the remainder, so gummy still rolls deeper than chrome. Ink is
+    // the page's own look and never moves at all.
+    //
+    // On the MATTER GATE (gs), not raw progress: standing substance
+    // motion must freeze back to ink before touchdown, the way light
+    // and relief do. The surge moves real ink, and riding raw
+    // progress broke the crossing gate's 1.5 px budget (2026-08-14).
+    fx.jelly =
+      p.matter === 0
+        ? 0
+        : k.jelly * gs * (WEAVE.floor + (1 - WEAVE.floor) * par.jelly) * WEAVE.amp
     fx.prism = k.prism * amp * par.prism * Math.min(sp / 300, 1) * 2.6
     // Body on the same gate as light. Relief and extrusion are geometry,
     // and geometry near a swap drags the ink mask exactly the way
@@ -646,6 +875,43 @@ function MatterLetter({
     fx.shoulder = par.shoulder
     fx.pillow = par.pillow
     fx.dome = par.dome
+    // The surface, trims folded in HERE so the shader stays a pure
+    // consumer. Polish walks roughness matte ↔ mirror around the deck
+    // value (1 is identity); the floor matches the shader's numeric
+    // one. The channel trims scale what a matter already has — a
+    // matter whose row carries zero stays zero at any trim.
+    fx.rough = Math.min(Math.max(par.rough * (2 - k.polish), 0.03), 1)
+    fx.metal = par.metal
+    fx.sss = par.sss
+    fx.crinkle = par.crinkle
+    fx.sheen = par.sheen * k.sheen
+    fx.irid = par.irid * k.irid
+    fx.glow = par.glow * k.glow
+    // The rig, straight off the dials — direction from the yaw/pitch
+    // pair (one source with the conformance sweep), gains verbatim.
+    const [lx, ly, lz] = lightDir(k.lightYaw, k.lightPitch)
+    fx.light.set(lx, ly, lz)
+    fx.key = k.key
+    fx.keySoft = k.keySoft
+    fx.fill = k.fill
+    fx.room = k.room
+    fx.front = k.front
+    // The motion rig. The weave's dials pass through (the material
+    // folds them with the font size). Rings and stretch fold their
+    // gates HERE: × amp so both are zero at every handoff, × the
+    // matter's softness so gummy rings deep and chrome barely — and
+    // ink, matter 0, moves not at all.
+    fx.waveScale = Math.max(k.waveScale, 0.05)
+    fx.waveSpeed = k.waveSpeed
+    const wa = (k.waveAngle * Math.PI) / 180
+    fx.waveDir.set(Math.cos(wa), Math.sin(wa))
+    // The shared frame: this letter's center in the scene, so all six
+    // meshes sample ONE wave field. Pose scale and the float bend the
+    // field a hair per letter — organic, and well under a wavelength.
+    fx.waveOrigin.set(el.position.x, el.position.y)
+    fx.ripAmp =
+      p.matter === 0 ? 0 : k.ripple * amp * (RIPPLE.floor + (1 - RIPPLE.floor) * par.jelly)
+    fx.stretch = p.matter === 0 ? 0 : k.stretch * amp * par.jelly * stretchAmount(sp)
     const q = el.quaternion
     fx.quat.set(q.x, q.y, q.z, q.w)
   })
@@ -726,6 +992,36 @@ function MatterCanvas({ poses, metrics, knobs, lift, carried, solid }: MatterCan
     }
   }, [])
 
+  // A tap strikes the letter under it. Routed HERE, where the boxes
+  // live, so overlapping capture pads resolve to the nearest heart —
+  // one tap, one letter. The letters consume by seq from their frame
+  // loops; nothing re-renders, so the idle-zero stance holds.
+  const strike = useRef<Strike>({ i: -1, x: 0, y: 0, seq: 0 })
+  useEffect(() => {
+    const down = (e: PointerEvent) => {
+      let best = -1
+      let bestD = Infinity
+      metrics.boxes.forEach((b, j) => {
+        const dx = e.clientX - b.cx
+        const dy = e.clientY - b.cy
+        if (Math.abs(dx) > b.w / 2 || Math.abs(dy) > b.h / 2) return
+        const dd = dx * dx + dy * dy
+        if (dd < bestD) {
+          bestD = dd
+          best = j
+        }
+      })
+      if (best < 0) return
+      const s = strike.current
+      s.i = best
+      s.x = e.clientX
+      s.y = e.clientY
+      s.seq++
+    }
+    window.addEventListener('pointerdown', down, { passive: true })
+    return () => window.removeEventListener('pointerdown', down)
+  }, [metrics])
+
   return (
     // data-holds is the presentation law: while lifting it is false and
     // logo.css keeps this whole element uncomposited — the twins draw
@@ -753,6 +1049,7 @@ function MatterCanvas({ poses, metrics, knobs, lift, carried, solid }: MatterCan
             fontPx={metrics.fontPx}
             knobs={knobs}
             pointer={pointer}
+            strike={strike}
             progress={lift.progress}
             range={lift.range}
             carried={carried}
@@ -785,11 +1082,27 @@ const SLIDERS: {
   { key: 'depth', label: 'depth px', min: 0, max: 160, step: 5, matterOnly: true },
   { key: 'dodge', label: 'dodge px', min: 0, max: 120, step: 5, matterOnly: true },
   { key: 'gloss', label: 'gloss', min: 0, max: 1, step: 0.05, matterOnly: true },
+  { key: 'polish', label: 'polish', min: 0, max: 2, step: 0.05, matterOnly: true },
+  { key: 'sheen', label: 'sheen', min: 0, max: 2, step: 0.05, matterOnly: true },
+  { key: 'irid', label: 'irid', min: 0, max: 2, step: 0.05, matterOnly: true },
+  { key: 'glow', label: 'glow', min: 0, max: 2, step: 0.05, matterOnly: true },
   { key: 'jelly', label: 'jelly', min: 0, max: 1, step: 0.05, matterOnly: true },
   { key: 'prism', label: 'prism', min: 0, max: 1, step: 0.05, matterOnly: true },
   { key: 'relief', label: 'relief px', min: 0, max: 60, step: 2, matterOnly: true },
   { key: 'body', label: 'body (mesh)', min: 0, max: 1, step: 0.05, matterOnly: true },
   { key: 'extrude', label: 'extrude px', min: 0, max: 80, step: 2, matterOnly: true },
+  { key: 'lightYaw', label: 'light yaw°', min: -80, max: 80, step: 1, matterOnly: true },
+  { key: 'lightPitch', label: 'light pitch°', min: -45, max: 80, step: 1, matterOnly: true },
+  { key: 'key', label: 'key light', min: 0, max: 2, step: 0.05, matterOnly: true },
+  { key: 'keySoft', label: 'key soft', min: 0.2, max: 2, step: 0.05, matterOnly: true },
+  { key: 'fill', label: 'fill', min: 0, max: 2, step: 0.05, matterOnly: true },
+  { key: 'room', label: 'room', min: 0, max: 2, step: 0.05, matterOnly: true },
+  { key: 'front', label: 'front fill', min: 0, max: 2, step: 0.05, matterOnly: true },
+  { key: 'waveScale', label: 'wave scale', min: 0.3, max: 3, step: 0.05, matterOnly: true },
+  { key: 'waveSpeed', label: 'wave speed', min: 0, max: 3, step: 0.05, matterOnly: true },
+  { key: 'waveAngle', label: 'wave angle°', min: -90, max: 90, step: 5, matterOnly: true },
+  { key: 'ripple', label: 'ripple', min: 0, max: 2, step: 0.05, matterOnly: true },
+  { key: 'stretch', label: 'stretch', min: 0, max: 2, step: 0.05, matterOnly: true },
 ]
 
 // ── the page ────────────────────────────────────────────────────────────

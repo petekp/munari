@@ -146,6 +146,10 @@
   background: var(--bench-hi);
   border: 1px solid var(--rule-hard);
   border-radius: 6px;
+  /* The slider stack outgrows every viewport; the panel scrolls
+   * rather than parking its tail off screen. */
+  max-height: min(88vh, 660px);
+  overflow-y: auto;
 }
 
 .logo-panel-title {

@@ -1,12 +1,12 @@
 // The blur pyramid behind the matter shader (logoShaders): each lifted
-// letter carries two PRE-BLURRED copies of its own live texture — a
-// fine field at 1/4 of the CSS box and a coarse field at 1/16 — and the
-// shader reads geometry (shoulder, pillow, thickness, halo) from those
-// instead of point-sampling the raw mask. A handful of taps at a wide
-// radius does not blur, it copies (the ghost-trail screenshots,
-// 2026-08-14); a real downsample chain is band-limited by construction,
-// and hardware bilinear over the small targets hands the shader smooth
-// gradients everywhere.
+// letter carries three PRE-BLURRED copies of its own live texture — a
+// fine field at 1/4 of the CSS box, a coarse field at 1/16, and a halo
+// field at 1/32 — and the shader reads geometry (shoulder, pillow,
+// thickness, halo) from those instead of point-sampling the raw mask.
+// A handful of taps at a wide radius does not blur, it copies (the
+// ghost-trail screenshots, 2026-08-14); a real downsample chain is
+// band-limited by construction, and hardware bilinear over the small
+// targets hands the shader smooth gradients everywhere.
 //
 // Two deliberate choices:
 //   · sizes ride the CSS box, not the texture — a LOD tier swap changes
@@ -23,11 +23,14 @@
 import * as THREE from 'three'
 import { BLIT_VERT, DOWN_FRAG } from './logoShaders'
 
-/** Downsample factors of the two fields, relative to the CSS box.
- *  Fine sets the edge-shoulder scale (~4px blur, gradients spanning
- *  ~8px); coarse the pillow scale (~16px footprint, gradients spanning
- *  ~32px) — the pair the MATTER_PARAMS weights blend between. */
-export const FIELD_DS = { fine: 4, coarse: 16 }
+/** Downsample factors of the fields, relative to the CSS box. Fine
+ *  sets the edge-shoulder scale (~4px blur, gradients spanning ~8px);
+ *  coarse the pillow scale (~16px footprint, gradients spanning ~32px)
+ *  — the pair the MATTER_PARAMS weights blend between. Halo is the
+ *  glow's skirt (~64px of falloff): height and slope never read it,
+ *  only the emissive halo does, because a glow that ends at the coarse
+ *  field's ~32px support edge ends visibly — light has no edges. */
+export const FIELD_DS = { fine: 4, coarse: 16, halo: 32 }
 
 // One shared blit rig per module (one canvas on this page): a
 // matrix-free fullscreen quad and the tent-filter material.
@@ -69,12 +72,13 @@ function makeTarget(w: number, h: number) {
   })
 }
 
-/** The two height fields of one letter. Owned by MatterLetter (sized
- *  off the capture box, remade only when the box itself reallocates)
- *  and refreshed by MatterMaterial on lit frames. */
+/** The blur pyramid of one letter. Owned by MatterLetter (sized off
+ *  the capture box, remade only when the box itself reallocates) and
+ *  refreshed by MatterMaterial on lit frames. */
 export class LetterFields {
   readonly fine: THREE.WebGLRenderTarget
   readonly coarse: THREE.WebGLRenderTarget
+  readonly halo: THREE.WebGLRenderTarget
 
   constructor(boxW: number, boxH: number) {
     this.fine = makeTarget(
@@ -85,9 +89,14 @@ export class LetterFields {
       Math.max(Math.round(boxW / FIELD_DS.coarse), 4),
       Math.max(Math.round(boxH / FIELD_DS.coarse), 4),
     )
+    this.halo = makeTarget(
+      Math.max(Math.round(boxW / FIELD_DS.halo), 2),
+      Math.max(Math.round(boxH / FIELD_DS.halo), 2),
+    )
   }
 
-  /** Two tent-filtered hops: src → fine → coarse. ~6k texels total, so
+  /** Three tent-filtered hops: src → fine → coarse → halo. Still ~6k
+   *  texels total (the halo level is a quarter of the coarse one), so
    *  refreshing every lit frame (the twin's color keeps easing after a
    *  beat) is cheaper than deciding when not to. */
   update(renderer: THREE.WebGLRenderer, src: THREE.Texture) {
@@ -105,12 +114,20 @@ export class LetterFields {
     u.uSrcTexel.value.set(1 / this.fine.width, 1 / this.fine.height)
     renderer.setRenderTarget(this.coarse)
     renderer.render(scene, camera)
+    // The last hop is a 2× stride, not 4× — spread 1 already covers
+    // every source texel at that stride, and spread 2 would double-blur.
+    u.tSrc.value = this.coarse.texture
+    u.uSpread.value = 1
+    u.uSrcTexel.value.set(1 / this.coarse.width, 1 / this.coarse.height)
+    renderer.setRenderTarget(this.halo)
+    renderer.render(scene, camera)
     renderer.setRenderTarget(prev)
   }
 
   dispose() {
     this.fine.dispose()
     this.coarse.dispose()
+    this.halo.dispose()
   }
 }
 
