@@ -190,7 +190,11 @@ interface LetterFx {
   jelly: number
   /** Prism offset in CSS px (the material converts to texels). */
   prism: number
-  /** Peak relief in CSS px — how far the height field pushes the sheet. */
+  /** Relief AMOUNT, not a peak height: the gain on the height field,
+   *  referenced to RELIEF_REF = 22 (logoShaders). The px the sheet
+   *  actually rises is `relief / 22 × dome × (shoulder × 9.6 + pillow ×
+   *  51.2)` at full coverage, so it is per-matter — balloon at the
+   *  default 22 already domes 83 px. */
   relief: number
   /** 0..1 — the share of `relief` the mesh carries; the rest is bump. */
   body: number
@@ -1088,7 +1092,9 @@ const SLIDERS: {
   { key: 'glow', label: 'glow', min: 0, max: 2, step: 0.05, matterOnly: true },
   { key: 'jelly', label: 'jelly', min: 0, max: 1, step: 0.05, matterOnly: true },
   { key: 'prism', label: 'prism', min: 0, max: 1, step: 0.05, matterOnly: true },
-  { key: 'relief', label: 'relief px', min: 0, max: 60, step: 2, matterOnly: true },
+  // Not 'relief px': the number is a gain referenced to 22, and the px
+  // it buys are per-matter (LogoKnobs.relief).
+  { key: 'relief', label: 'relief', min: 0, max: 60, step: 2, matterOnly: true },
   { key: 'body', label: 'body (mesh)', min: 0, max: 1, step: 0.05, matterOnly: true },
   { key: 'extrude', label: 'extrude px', min: 0, max: 80, step: 2, matterOnly: true },
   { key: 'lightYaw', label: 'light yaw°', min: -80, max: 80, step: 1, matterOnly: true },

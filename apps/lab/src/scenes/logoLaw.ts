@@ -129,8 +129,13 @@ export interface LogoKnobs {
   jelly: number
   /** 0..1 — matter mode: chromatic fringe on a moving letter. */
   prism: number
-  /** px — matter mode: how far the height field PUSHES the sheet at
-   *  full coverage, scaled per matter by `dome`. Shading alone makes a
+  /** Relief amount — matter mode: the gain on the height field, NOT a
+   *  peak height in px. It is referenced to RELIEF_REF = 22
+   *  (logoShaders), where the multiplier is exactly 1 and the shipped
+   *  look sits; the rise at full coverage is `relief / 22 × dome ×
+   *  (shoulder × 9.6 + pillow × 51.2)` px, which is per-matter. So the
+   *  default 22 domes balloon 83 px and neon 12 px, and the ceiling 60
+   *  domes balloon 227 (209 of it in the mesh). Shading alone makes a
    *  letter look domed; this makes it one. */
   relief: number
   /** 0..1 — matter mode: how much of `relief` the MESH carries. The

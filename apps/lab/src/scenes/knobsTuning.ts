@@ -54,9 +54,10 @@ export interface KnobsTuningValues {
   /** Brightest surround CHANNEL below which the corona is fully off —
    *  the backdrop is dark but saturated, so a coloured sample is not
    *  proof of light. At 0 it sits under the brightest backdrop the art
-   *  law can paint (0.155), which leaves that backdrop a sixth of the
-   *  halo; above 0.155 it shuts the background out entirely. See litGate
-   *  for why the measure is not luminance. */
+   *  law can paint (0.155), which leaves that backdrop 6.5% of the halo
+   *  — litGate is a smoothstep, so a LEVEL of 0.155 is not a share of
+   *  0.155; above 0.155 it shuts the background out entirely. See
+   *  litGate for why the measure is not luminance. */
   coronaLitFloor: number
   /** Brightest surround channel at which the corona is fully on. Above
    *  the dimmest drawn layer (0.773) the ramp is still climbing there,
@@ -183,30 +184,35 @@ export interface KnobsTuningValues {
 // 1.2 here, 0.2 at the deepest, against the bug's 16.
 //
 // So the balance is taste again. `envRoom` is the one dial that decides
-// how far the panel stands inside the picture; the sweep that found it
-// read, at both stations, 0.18 → magenta 6/7 and hue response 16.2;
+// how far the panel stands inside the picture; the sweep that read it
+// gave, at both stations, 0.18 → magenta 6/7 and hue response 16.2;
 // 0.25 → 12/11 and 20.2; 0.32 → 16/16 and 30.3; 0.45 → 26/28 and 63.3.
+// It ships at 0.34, between the third and fourth rows — the sweep is
+// the cost curve, not the choice.
 //
 // The values below are Pete's 2026-08-14 session, and they undo a good
 // deal of the 2026-08-11 one on purpose. That session took the corona
 // wide and soft and moved the white light from fill to ambient; this
-// one takes the corona TIGHT — 8 px of reach against the old 28, and
-// spill samples pulled in to 0.3, so the halo wears the colour of
-// exactly what it touches instead of an average of a 56 px
-// neighbourhood — and puts the cool fill back at 0.58 while dropping
-// the key. `coronaEdgeOut` at 10.8 against 8 px of reach is not a
-// contradiction: the exponential barely decays inside that distance, so
-// the compact-support term does the shaping and the edge light lands
-// even rather than as a hot line with a tail.
+// one takes the corona TIGHT — 13 px of reach against the old 28, and
+// spill samples pulled in from 1.4 to 0.3, so the halo wears the colour
+// of what it touches instead of an average smeared nearly five times
+// wider — and puts the cool fill back at 1.2 while dropping the key to
+// 0.1. `coronaEdgeOut` at 10.8 against 13 px of reach is not a
+// contradiction: a tau that long decays to 0.30 across the WHOLE reach,
+// so the compact-support term does the shaping and the edge light lands
+// even. The old pair did the opposite — tau 1.7 over 28 px of reach is
+// dead by 7 px, which is a hot line with a long empty tail.
 //
 // `lightDom` goes to zero. It lifts ALL the authored paint, and with the
 // ambient at 1 the charcoal body no longer needs the floor.
 //
 // One number here is a deliberate softening of the corona's emitter
 // gate rather than a look: `coronaLitFloor` at 0 lets the backdrop keep
-// 3–16% of the halo instead of none. With the corona pulled in from 28
-// px to 8 and its spill from 1.4 to 0.3, that trace reads as an edge
-// rather than the standoff glow the gate was built to kill — so the
+// 1.2–6.5% of the halo instead of none (measured across the litGate
+// sweep; the gate is a smoothstep, so the brightest backdrop's level of
+// 0.155 becomes a share of 0.065, not of 0.155). With the corona pulled
+// in from 28 px to 13 and its spill from 1.4 to 0.3, that trace is an
+// edge rather than the standoff glow the gate was built to kill — so the
 // contract moved with it, from "the background gets none" to "the
 // background gets under a quarter of what the picture gets" (litGate,
 // knobsLaw.test.ts). Push the floor past 0.155 to shut it completely;
