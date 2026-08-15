@@ -2,6 +2,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, OrbitControls } from '@react-three/drei'
 import { detectHtmlInCanvas, FocusScene, paintStats } from '@petepetrash/munari'
+import { showChrome } from './chrome'
 import { Workspace, WorkspaceHud } from './scenes/Workspace'
 import { Glass } from './scenes/Glass'
 import { GlassTweakPanel } from './scenes/GlassTweaks'
@@ -42,28 +43,6 @@ const SCENES = [
   'optics',
   'logo',
 ] as const
-
-const FOOTERS: Record<SceneId, string> = {
-  workspace:
-    'double-click a panel to approach · double-click the floor to step back · drag a title bar · click into text and type',
-  // Deliberately empty: this scene has to read as a web app, and a caption
-  // explaining what to try is the surest way to make something read as a demo.
-  glass: '',
-  flight: 'drag a card off the board · throw it · ✕ to crumple it',
-  explode:
-    'one div, no children, six plates · orbit to see the depths · drag spread to zero and it stacks back into the card',
-  genie:
-    'the amber lamp pours the window into the dock · shift for slow motion · click into it mid-drain — it is still real',
-  // Deliberately empty: the veil page carries its own caption, pinned
-  // above the band where the shared footer would sit inside the blur.
-  veil: '',
-  knobs: 'turn a knob, throw a switch — real machined hardware on a live panel, lit by the artwork it drives',
-  // Deliberately empty: the bench carries its own readout and footer,
-  // and a second caption would sit under the rail the kit rests on.
-  optics: '',
-  // Deliberately empty: the playground is a page and carries its own.
-  logo: '',
-}
 
 // Clicking a canvas normally moves focus to <body>, which would blur
 // whatever hidden form field a Surface has focused — killing native typing.
@@ -136,7 +115,9 @@ export default function App() {
   // with its own overlay canvas on top of it. The other scenes are content
   // inside one 3D room; this one inverts the relationship, so it takes the
   // whole route and carries the scene chips itself.
-  const chips = (
+  // `?bare` hands every page scene `undefined` instead, which is already
+  // the "no chips" case each of them handles.
+  const chips = !showChrome ? undefined : (
     <div className="tabs">
       {SCENES.map((id) => (
         <button
@@ -242,28 +223,29 @@ export default function App() {
         </FocusScene>
       </Canvas>
 
-      <div className="hud">
-        <h1>
-          mun<em>ari</em>
-        </h1>
-        <p className="sub">{scene}</p>
-        {chips}
-        <ul className="features">
-          <li data-ok={support.drawElementImage}>drawElementImage</li>
-          <li data-ok={support.texElementImage2D}>texElementImage2D</li>
-        </ul>
-        {!support.drawElementImage && (
-          <p className="hint">
-            HTML-in-canvas unavailable — every Surface needs it. Chrome
-            148–151 with <code>chrome://flags/#canvas-draw-element</code>.
-          </p>
-        )}
-      </div>
+      {showChrome && (
+        <div className="hud">
+          <h1>
+            mun<em>ari</em>
+          </h1>
+          <p className="sub">{scene}</p>
+          {chips}
+          <ul className="features">
+            <li data-ok={support.drawElementImage}>drawElementImage</li>
+            <li data-ok={support.texElementImage2D}>texElementImage2D</li>
+          </ul>
+          {!support.drawElementImage && (
+            <p className="hint">
+              HTML-in-canvas unavailable — every Surface needs it. Chrome
+              148–151 with <code>chrome://flags/#canvas-draw-element</code>.
+            </p>
+          )}
+        </div>
+      )}
 
-      {FOOTERS[scene] && <div className="footer">{FOOTERS[scene]}</div>}
-      {scene === 'workspace' && <WorkspaceHud />}
-      {scene === 'explode' && <ExplodeHud />}
-      {scene === 'glass' && <GlassTweakPanel />}
+      {showChrome && scene === 'workspace' && <WorkspaceHud />}
+      {showChrome && scene === 'explode' && <ExplodeHud />}
+      {showChrome && scene === 'glass' && <GlassTweakPanel />}
     </div>
   )
 }

@@ -310,26 +310,6 @@ body,
   border-radius: 2px;
 }
 
-/* ── the instruction strip ── stamped into the bench, bottom centre ────── */
-
-.footer {
-  position: absolute;
-  bottom: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 7px 14px 6px;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.18);
-  font: 600 10px/1 var(--label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-mute);
-  pointer-events: none;
-  user-select: none;
-  white-space: nowrap;
-}
-
 /* ── the exploded-paint inspector ───────────────────────────────────────
  *
  * The specimen below is the subject of the whole scene: ONE div, no

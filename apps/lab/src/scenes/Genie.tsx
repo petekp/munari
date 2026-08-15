@@ -78,6 +78,7 @@ import { dockFill, dockPose, dockRingDone, dockSwell } from './genieDock'
 import { BOUNCE_MARKS, registerBounceCourt } from './genieBounce'
 import { genieKnobs } from './genieKnobs'
 import { GenieTweakPanel } from './GenieTweaks'
+import { showChrome } from '../chrome'
 import {
   GENIE_FILM_FRAG,
   GENIE_FRAG,
@@ -2232,13 +2233,15 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
         aria-hidden
         tabIndex={-1}
       />
-      <header className="gen-head">
-        <h1>
-          mun<em>ari</em>
-        </h1>
-        {chips}
-      </header>
-      <GenieTweakPanel />
+      {showChrome && (
+        <header className="gen-head">
+          <h1>
+            mun<em>ari</em>
+          </h1>
+          {chips}
+        </header>
+      )}
+      {showChrome && <GenieTweakPanel />}
 
       {/* Mapped in SCHEDE order and never re-sorted: raising a window has
           to be a z-index, not a move, or React would tear the pressed

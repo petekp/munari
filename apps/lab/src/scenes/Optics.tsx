@@ -81,6 +81,7 @@ import {
   type Specimen,
 } from './opticsSheet'
 import { AquaSheet, Calculator, Ledger, LcdPanel, LunaBar, TypeSpecimen } from './opticsSpecimens'
+import { showChrome } from '../chrome'
 import './optics.css'
 
 const FOV = 42
@@ -1084,12 +1085,14 @@ export function OpticsApp({ chips }: { chips: ReactNode }) {
         </label>
       </div>
 
-      <div className="opt-footer">
-        take a piece of glass off the rack · drag the rim to move it, twist the knurled collar to
-        change its power · the free sheet resizes by its corners, and sets its power on the track
-        along its bottom edge · the calculator still works through the glass · drop it back in its
-        cradle, or press esc
-      </div>
+      {showChrome && (
+        <div className="opt-footer">
+          take a piece of glass off the rack · drag the rim to move it, twist the knurled collar to
+          change its power · the free sheet resizes by its corners, and sets its power on the track
+          along its bottom edge · the calculator still works through the glass · drop it back in its
+          cradle, or press esc
+        </div>
+      )}
     </div>
   )
 }
