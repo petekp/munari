@@ -260,3 +260,119 @@ node node_modules/.p.mjs; rm …`). The discipline that mattered:
 - **Alternate the stations inside one run.** One carry cannot separate
   a station effect from a run-level one. Three round trips can, because
   everything else is held fixed across all six readings.
+
+## The bounce came out the color of the middle of the picture (2026-08-14)
+
+**Symptom.** The panel's front took its light from the smallest, innermost
+blades of the artwork, not from the large outer ones that cover most of it.
+
+**Cause.** The room bounce is one flat color flooded under the whole
+environment sphere, and it was averaged off the equirect bake. An
+equirect is equal-**angle**. The art plane is ~918 px wide standing 48 px
+behind the slab, so it spans 84° of half-angle: the middle is magnified
+and the rim is squashed onto the horizon.
+
+Integrating the projection against a 10-layer stack (1440×900, `envArt`
+0.6):
+
+| | equirect share | true area share |
+|---|---|---|
+| inner half-radius (¼ of the picture) | 83.3% | 25.0% |
+| outer half of the stack | 21.7% | 75.3% |
+| two smallest blades (4.3% of the area) | 40.1% | 4.3% |
+
+A second bounce is driven by **flux**, and flux goes with **area**. Solid
+angle is the right measure for *how much* of the surroundings is lit
+picture, and the wrong one for *what color* that light is.
+
+**Fix.** Split the two questions. Coverage stays on the equirect. Color
+moves to a flat 32×32 copy of the picture in its own frame
+(`roomLight`, `knobsEnvironment.ts`), luminance-weighted so a bright
+region counts for more than its area, with the chroma that RGB averaging
+destroys restored — opposed hues used to bounce **gray**, which is the
+one answer a complementary scheme cannot have.
+
+**Measured swing**, defaults at hue 210, chroma 0.85, 10 layers:
+
+| scheme | angle-weighted | area-weighted | Δhue |
+|---|---|---|---|
+| mono | 209° sat 0.66 val 0.85 | 202° sat 0.75 val 0.50 | 7° |
+| analogous | 189° sat 0.62 val 0.80 | 211° sat 0.71 val 0.52 | 22° |
+| p2 | 224° sat 0.51 val 0.73 | 328° sat 0.64 val 0.45 | 104° |
+| p3 | 280° sat 0.47 val 0.64 | 3° sat 0.67 val 0.56 | 83° |
+| p4 | 267° sat 0.49 val 0.69 | 24° sat 0.67 val 0.59 | 117° |
+| p5 | 249° sat 0.52 val 0.68 | 33° sat 0.71 val 0.49 | 144° |
+| p6 | 293° sat 0.53 val 0.60 | 74° sat 0.69 val 0.43 | 141° |
+
+Mono barely moves, which is the control: with one hue there is nothing to
+redistribute. The wide schemes swing up to 144° — the bounce was landing
+on the far side of the wheel from where the picture's bulk stands.
+
+Value falls ~30% across the board, because the outer blades really are
+the darker ones (`light = 66 − 16·t`). That is the correction working,
+not a regression; `envRoom` absorbs it.
+
+**Method.** `generateArt` is pure, so both averages can be taken offline
+with no browser: point-sample the plane through `equirectUV` for the
+angle-weighted figure, on a uniform grid for the area-weighted one,
+composite the layers at each sample, and hand both to `roomLight`.
+
+## The frame drops were one pixel (2026-08-14)
+
+**Symptom.** Visible hitches. `instruments/knobs-hz` on committed code:
+idle p99 **141.5 ms**, max **317 ms**, **42 long tasks** across four phases.
+The median said 0.40 ms, which is not a fast scene — it is the signature
+of a blocked pipeline flushing a burst between stalls.
+
+**Cause.** One `getImageData(0, 0, 1, 1)`. The room bounce measured its
+coverage by downscaling the equirect to a single pixel and reading it
+back. That canvas also feeds a `CanvasTexture`, so it lives on the GPU,
+and reading any part of it makes the CPU wait for the GPU: **~18 ms per
+call, 20 times a second**. A CPU profile put it at **70.9% of all JS
+time** — 7.2 s out of 10.
+
+It was also wrong, in the same way and for the same reason as the color
+was: a 1x1 `drawImage` downscale is not a box filter. It reported
+coverage **1.0000** against a true **0.8137**.
+
+**Two fixes that did not work**, both measured before being discarded:
+
+- *Software-back the equirect* (`willReadFrequently`). Kills the stall and
+  **doubles the mean frame** (1.67 → 3.47 ms): every polygon fill and the
+  texture upload go through the CPU instead. Net loss.
+- *Throttle the PMREM re-bake.* Costs nothing. Interleaved A/B, six
+  alternations inside one session: re-bake on 5.73 ms mean, off 5.70 ms.
+  Identical at every percentile.
+
+**Fix.** Stop asking the GPU. Coverage is solid angle, and solid angle is
+geometry: each texel of the flat raster the color is already measured
+from subtends `dA·d/r³`, and the hemisphere is `2π`. The weights depend
+only on the viewport and the art plane's depth, so they are built once
+per resize (`solidAngleField`, `roomCover`). Measured against the
+equirect: 0.918 where the readback said 1.000 and the equirect's own
+pixel mean says 0.814 — the residual is the equal-angle/solid-angle
+difference, and solid angle is the physical one. Stable across the
+`envArt` range (12.8% at 2.0, 14.1% at 0.6) where a flat-area weighting
+drifts 0.2% → 27%.
+
+**Result.** Every long task in the scene, gone.
+
+| | committed | fixed |
+|---|---|---|
+| idle p99 / max | 141.5 / 317.0 ms | 15.7 / 29.2 ms |
+| drag p99 / max | 139.4 / 284.4 ms | 18.6 / 32.1 ms |
+| long tasks | 42 | **0** |
+
+**What is left is fill rate, not JS.** With the stall gone the profile is
+76% `uniformMatrix4fv`/`3fv` — at 129 matrix uniforms and 54 draw calls a
+frame, those calls are blocking, not working. Interleaved, dpr 1 against
+dpr 2: **mean 2.59 vs 5.16 ms, p95 7.3 vs 16.0**. The panel covers 18% of
+a 5.2 Mpx buffer, so the cost tracks the canvas, not the content. The
+lever is `dpr={[1, 2]}` in `App.tsx`; it is a sharpness trade, not a free
+win, so it is recorded here rather than taken.
+
+**Method.** Seven sequential headed-Chrome runs drift upward as the
+machine heats: the same build measured 3.59, 3.69, 3.78, 4.05, 5.39 ms.
+Sequential A/B is worthless at that scale. Every comparison above
+alternates its arms inside ONE session, which is the same lesson the
+relight recorded about stations.

@@ -92,6 +92,10 @@ import {
   pathBounds,
   projectArtPolygon,
   projectViewportOutline,
+  ROOM_SAMPLE,
+  roomCover,
+  roomLight,
+  solidAngleField,
 } from './knobsEnvironment'
 import {
   BOUNCE_TILT,
@@ -179,6 +183,32 @@ function PixelPerfect() {
   return null
 }
 
+/**
+ * The render-scale dial, applied. Every other tuning number is either
+ * dripped into a uniform or rebuilt as geometry; this one resizes the
+ * drawing buffer, so it goes through r3f's own setDpr — which updates
+ * the store, resizes the renderer, and re-fits the camera in one step.
+ * Reaching for gl.setPixelRatio directly would move the buffer and
+ * leave viewport.dpr lying about it.
+ *
+ * The dial is a CEILING, not a scale: `[1, n]` keeps the old clamp, so
+ * a 1x display stays at 1 until the dial goes under 1. Polled rather
+ * than subscribed because the tuning bag is deliberately mutable with
+ * no notifier, and the comparison is one number against another.
+ */
+function RenderScale() {
+  const setDpr = useThree((s) => s.setDpr)
+  const current = useThree((s) => s.viewport.dpr)
+  useFrame(() => {
+    // Mirrors r3f's own calculateDpr for the [1, n] form. It has to
+    // agree to the digit: if this resolved differently, the guard would
+    // never settle and the scene would re-render every frame.
+    const want = Math.min(Math.max(1, window.devicePixelRatio), knobsTuning.dpr)
+    if (Math.abs(want - current) > 1e-3) setDpr([1, knobsTuning.dpr])
+  })
+  return null
+}
+
 // ── the art as illuminant ───────────────────────────────────────────────
 
 /**
@@ -231,16 +261,18 @@ function ArtEnvironment() {
     const tex = new THREE.CanvasTexture(canvas)
     tex.mapping = THREE.EquirectangularReflectionMapping
     tex.colorSpace = THREE.SRGBColorSpace
-    // One pixel wide: the whole picture averaged by the browser's own
-    // downscaler, which is how the room learns what color the artwork
-    // is spilling onto it.
-    const meter = document.createElement('canvas')
-    meter.width = 1
-    meter.height = 1
+    // The picture, flat, in its own frame. WHAT color it spills is a
+    // question about flux, and flux goes with area — so it is asked
+    // here, where a blade counts for the size it is. HOW MUCH of the
+    // room it fills is solid angle, and that one is now geometry
+    // (silhouetteCover): the equirect must never be read back.
+    const room = document.createElement('canvas')
+    room.width = ROOM_SAMPLE
+    room.height = ROOM_SAMPLE
     return {
       ctx,
       tex,
-      meter: meter.getContext('2d', { willReadFrequently: true })!,
+      room: room.getContext('2d', { willReadFrequently: true })!,
       key: '',
       last: 0,
       pmrem: null as THREE.PMREMGenerator | null,
@@ -259,6 +291,13 @@ function ArtEnvironment() {
       state.tex.dispose()
     }
   }, [gl, scene, state])
+
+  // Solid angle per flat texel. Depends on the page and the art plane's
+  // depth alone, so it is built on resize, not per refresh.
+  const field = useMemo(
+    () => solidAngleField(size.width, size.height, ART_ENV_DEPTH),
+    [size.width, size.height],
+  )
 
   useFrame(() => {
     if (!state.pmrem) return
@@ -330,17 +369,60 @@ function ArtEnvironment() {
     // bounce. An average, not an image: it is the same in every
     // direction, so it cannot change when the slab moves. That is the
     // whole difference between light and the lie this replaced.
-    const { meter } = state
-    meter.clearRect(0, 0, 1, 1)
-    meter.drawImage(ctx.canvas, 0, 0, W / 2, H, 0, 0, 1, 1)
-    const px = meter.getImageData(0, 0, 1, 1).data
-    // Flux, not color: the picture covers only part of its own half, and
-    // the uncovered part spills nothing. Alpha IS that coverage.
-    const cover = px[3] / 255
+    //
+    // The average is asked in TWO spaces, because it is two questions.
+    const { room } = state
+    // What color that light is — flux, which goes with area. Asked of a
+    // flat copy of the picture in its own frame, because the equirect
+    // magnifies the middle 3.3x and the bounce came out the color of the
+    // center (knobsEnvironment.test.ts pins the measurement).
+    room.setTransform(1, 0, 0, 1, 0, 0)
+    room.clearRect(0, 0, ROOM_SAMPLE, ROOM_SAMPLE)
+    if (gain > 0) {
+      const halfW = size.width / 2 / scale
+      const halfH = size.height / 2 / scale
+      // Art units in, room texels out. A uniform squash of the page into
+      // a square costs nothing here: it scales every area alike, so the
+      // shares this average is built on survive it.
+      room.setTransform(
+        (ROOM_SAMPLE / size.width) * scale,
+        0,
+        0,
+        (ROOM_SAMPLE / size.height) * scale,
+        ROOM_SAMPLE / 2,
+        ROOM_SAMPLE / 2,
+      )
+      const flat = room.createLinearGradient(0, -halfH, 0, halfH)
+      flat.addColorStop(0, art.backdropFrom)
+      flat.addColorStop(1, art.backdropTo)
+      room.globalAlpha = Math.min(gain, 1)
+      room.fillStyle = flat
+      room.fillRect(-halfW, -halfH, halfW * 2, halfH * 2)
+      for (const layer of art.layers) {
+        const pts = parseArtPoints(layer.points)
+        if (pts.length < 3) continue
+        room.beginPath()
+        room.moveTo(pts[0][0], pts[0][1])
+        for (let i = 1; i < pts.length; i++) room.lineTo(pts[i][0], pts[i][1])
+        room.closePath()
+        room.globalAlpha = Math.min(layer.opacity * gain, 1)
+        room.fillStyle = layer.fill
+        room.fill()
+      }
+      room.globalAlpha = 1
+    }
+    const flatPx = room.getImageData(0, 0, ROOM_SAMPLE, ROOM_SAMPLE).data
+    const spill = roomLight(flatPx)
+    // How much of the surroundings is lit picture — solid angle, times
+    // how solidly the picture is painted. Both without touching the
+    // equirect: reading one pixel back off a canvas that also feeds a
+    // texture made the CPU wait for the GPU, and that wait was every
+    // long frame the scene had.
+    const cover = roomCover(flatPx, field)
     const bounce = Math.max(knobsTuning.envRoom, 0) * cover
     // A dark room is not a deleted one: a floor survives a dead picture.
     const ROOM_FLOOR = 4
-    const chan = (c: number) => Math.min(255, Math.round(ROOM_FLOOR + c * bounce))
+    const chan = (c: number) => Math.min(255, Math.round(ROOM_FLOOR + c * 255 * bounce))
     ctx.globalCompositeOperation = 'destination-over'
     // A soft neutral overhead, so bare metal always keeps one white
     // glint even when the art runs dark — behind the picture, because
@@ -351,7 +433,7 @@ function ArtEnvironment() {
     ceiling.addColorStop(1, 'rgba(255,255,255,0)')
     ctx.fillStyle = ceiling
     ctx.fillRect(0, 0, W, H * 0.2)
-    ctx.fillStyle = `rgb(${chan(px[0])}, ${chan(px[1])}, ${chan(px[2])})`
+    ctx.fillStyle = `rgb(${chan(spill.r)}, ${chan(spill.g)}, ${chan(spill.b)})`
     ctx.fillRect(0, 0, W, H)
     ctx.globalCompositeOperation = 'source-over'
     // The blackout: a dead picture stops filling the room. The same
@@ -2575,11 +2657,15 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
         // A held knob drag paints the captured DOM many times a second,
         // and the springs/lights move every frame regardless.
         frameloop="always"
-        dpr={[1, 2]}
+        // The ceiling is a tuning dial now (see RenderScale). This prop
+        // only sets the value the scene MOUNTS at; every later move goes
+        // through setDpr, so the two must read the same number.
+        dpr={[1, knobsTuning.dpr]}
         camera={{ fov: FOV, position: [0, 0, 1000] }}
         onCreated={(state) => state.gl.setClearAlpha(0)}
       >
         <PixelPerfect />
+        <RenderScale />
         <CanvasPointerGate isTarget={(object) => Boolean(object.userData.matter)} />
         <ArtEnvironment />
         <ArtLightRig />

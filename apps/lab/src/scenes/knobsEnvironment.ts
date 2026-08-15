@@ -202,3 +202,146 @@ export function pathBounds(pts: readonly EnvPixel[]): {
   }
   return { minX, minY, maxX, maxY }
 }
+
+// ---------------------------------------------------------------------
+// What color the picture spills.
+//
+// The room bounce is one flat color laid under the whole sphere, and it
+// is the ONLY path by which a picture standing behind the slab reaches
+// a panel face pointing at the viewer. So the number it averages had
+// better be the right number.
+//
+// It used to be measured off the equirect itself, and that was a
+// category mistake. An equirect is equal-ANGLE. The picture is ~918 px
+// wide standing 48 px away, so it spans 84 degrees of half-angle: its
+// center is magnified enormously and its rim is squashed onto the
+// horizon. Integrated against the layer stack, the two smallest blades
+// are 4.3% of the picture and set 40% of the color, while the outer
+// half of the stack falls from its true 75% share to 21.7%. The bounce
+// came out the color of the middle of the picture — which is exactly
+// what it looked like.
+//
+// A second bounce is driven by FLUX, and flux goes with AREA. So the
+// average is taken in the picture's own flat space, where each blade
+// counts for the size it is. Solid angle still decides HOW MUCH of the
+// surroundings is lit picture — that part the equirect had right, and
+// the scene still measures coverage there.
+
+/** The picture's flat sample, per side. Small on purpose: this is one
+ *  color, and 1024 texels already over-resolve it. */
+export const ROOM_SAMPLE = 32
+
+/** The color a picture throws into the room, in 0..1 channels. */
+export interface RoomLight {
+  r: number
+  g: number
+  b: number
+}
+
+const REC709 = (r: number, g: number, b: number) => 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+/**
+ * The bounce color of a flat RGBA raster of the picture.
+ *
+ * Two departures from a plain mean, both of them the difference between
+ * light and paint:
+ *
+ * 1. Each texel is weighted by its own luminance, not just its cover. A
+ *    dim wide field and a bright narrow one do not throw equal light,
+ *    and a plain color mean says they do.
+ * 2. The chroma destroyed by averaging is put back. Opposed hues cancel
+ *    in RGB, so a complementary palette — the whole point of the wide
+ *    schemes — bounced GRAY, the one color it is not. The mean carries
+ *    the right hue and the right brightness; only its saturation is an
+ *    artifact of the averaging, so only its saturation is restored, and
+ *    only ever upward, to the mean saturation of the texels themselves.
+ */
+export function roomLight(px: ArrayLike<number>): RoomLight {
+  let wr = 0
+  let wg = 0
+  let wb = 0
+  let ws = 0
+  let sum = 0
+  for (let i = 0; i + 3 < px.length; i += 4) {
+    const a = px[i + 3] / 255
+    if (a <= 0) continue
+    const r = px[i] / 255
+    const g = px[i + 1] / 255
+    const b = px[i + 2] / 255
+    const w = a * REC709(r, g, b)
+    if (w <= 0) continue
+    wr += w * r
+    wg += w * g
+    wb += w * b
+    const mx = Math.max(r, g, b)
+    ws += w * (mx > 0 ? (mx - Math.min(r, g, b)) / mx : 0)
+    sum += w
+  }
+  if (sum <= 0) return { r: 0, g: 0, b: 0 }
+  const mean = { r: wr / sum, g: wg / sum, b: wb / sum }
+  const want = ws / sum
+  // Push the mean away from its own gray until it carries the chroma
+  // its texels did. The brightest channel is held fixed, so this moves
+  // saturation alone — never hue, never brightness.
+  const mx = Math.max(mean.r, mean.g, mean.b)
+  if (mx <= 0) return mean
+  const have = (mx - Math.min(mean.r, mean.g, mean.b)) / mx
+  if (have <= 1e-4 || want <= have) return mean
+  const k = want / have
+  const pull = (c: number) => Math.max(0, mx - (mx - c) * k)
+  return { r: pull(mean.r), g: pull(mean.g), b: pull(mean.b) }
+}
+
+/**
+ * How much of the room the picture fills — its solid angle, as a
+ * fraction of the hemisphere it stands in.
+ *
+ * This was read back off the equirect with a one-pixel `getImageData`,
+ * and that one pixel cost more than everything else the scene does. A
+ * readback from a canvas that also feeds a texture makes the CPU wait
+ * for the GPU: ~18 ms per call, 20 times a second, and it owned EVERY
+ * long task in the scene — 51 across a four-phase run, idle frames
+ * spiking to 142 ms (instruments/knobs-hz). Software-backing that canvas
+ * cures the stall and doubles the mean frame instead, so the answer is
+ * to stop asking the GPU.
+ *
+ * It was also wrong. A 1x1 `drawImage` downscale is not a box average;
+ * Chrome samples near the middle, so the meter reported 1.0000 against a
+ * true 0.8137 — the same center bias that made the bounce come out the
+ * color of the middle of the picture.
+ *
+ * Nothing here needs a pixel of the equirect. The lit region is the page
+ * at a known depth, and the flat raster the color is already measured
+ * from says how solidly each part of it is painted. Each texel of that
+ * raster subtends dA·cos(theta)/r^2 = dA·d/r^3, and the hemisphere is
+ * 2*pi — so the weights depend only on the viewport and the depth, and
+ * are built once per resize rather than per frame.
+ */
+export function solidAngleField(
+  viewportW: number,
+  viewportH: number,
+  depth: number,
+  n = ROOM_SAMPLE,
+): Float32Array {
+  const w = new Float32Array(n * n)
+  const dA = (viewportW / n) * (viewportH / n)
+  const d = Math.abs(depth)
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const px = ((x + 0.5) / n - 0.5) * viewportW
+      const py = ((y + 0.5) / n - 0.5) * viewportH
+      const r = Math.hypot(px, py, d)
+      w[y * n + x] = (dA * d) / (r * r * r) / (Math.PI * 2)
+    }
+  }
+  return w
+}
+
+/** The picture's share of the hemisphere: how solidly each texel is
+ *  painted, weighted by the solid angle that texel subtends. */
+export function roomCover(px: ArrayLike<number>, field: ArrayLike<number>): number {
+  let sum = 0
+  const n = Math.min(field.length, px.length >> 2)
+  for (let i = 0; i < n; i++) sum += (px[i * 4 + 3] / 255) * field[i]
+  return Math.min(1, sum)
+}

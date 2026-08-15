@@ -9,6 +9,10 @@ import {
   pathBounds,
   projectArtPolygon,
   projectViewportOutline,
+  ROOM_SAMPLE,
+  roomCover,
+  roomLight,
+  solidAngleField,
 } from './knobsEnvironment'
 
 /** A 1440×900 glass, the art plane where the scene puts it. */
@@ -189,5 +193,178 @@ describe('the picture is a window, not a wall', () => {
   it('a page far enough away is a patch, not a hemisphere', () => {
     const b = pathBounds(projectViewportOutline(VW, VH, 4000, W, H))
     expect(b.maxX - b.minX).toBeLessThan(W * 0.12)
+  })
+})
+
+describe('the room bounce is measured by area, not by angle', () => {
+  // The load-bearing measurement. It is the reason `roomLight` takes a
+  // FLAT raster of the picture and not the equirect the scene already
+  // has in hand — which was the obvious thing to do, and wrong.
+  it('the equirect magnifies the picture center, so it cannot be the space the color is averaged in', () => {
+    const R = 102 // the outermost blade, art units
+    let inner = 0
+    let total = 0
+    for (let py = 0; py < H; py++) {
+      for (let px = 0; px < W / 2; px++) {
+        const theta = ((px + 0.5) / W - 0.5) * 2 * Math.PI
+        const phi = ((py + 0.5) / H - 0.5) * Math.PI
+        const dz = Math.cos(phi) * Math.sin(theta)
+        if (dz >= 0) continue // the plane stands at −z
+        const t = -DEPTH / dz
+        const x = ((Math.cos(phi) * Math.cos(theta)) * t) / SCALE
+        const y = (Math.sin(phi) * t) / SCALE
+        const rho = Math.hypot(x, y)
+        if (rho > R) continue
+        if (Math.abs(x * SCALE) > VW / 2 || Math.abs(y * SCALE) > VH / 2) continue
+        total++
+        if (rho <= R / 2) inner++
+      }
+    }
+    // Half the radius is a quarter of the picture. In the equirect it is
+    // five sixths of the pixels — a 3.3x over-count of the middle, which
+    // is what made the bounce come out the color of the center.
+    expect(inner / total).toBeGreaterThan(0.8)
+    expect(inner / total).toBeLessThan(0.87)
+    expect(inner / total / 0.25).toBeGreaterThan(3)
+  })
+})
+
+describe('roomLight — the color a picture throws', () => {
+  /** A flat RGBA raster: a field, with a square patch at its center. */
+  function raster(
+    field: [number, number, number],
+    patch: [number, number, number],
+    patchSide: number,
+    side = ROOM_SAMPLE,
+  ): Uint8ClampedArray {
+    const px = new Uint8ClampedArray(side * side * 4)
+    const lo = Math.round((side - patchSide) / 2)
+    const hi = lo + patchSide
+    for (let y = 0; y < side; y++) {
+      for (let x = 0; x < side; x++) {
+        const inPatch = x >= lo && x < hi && y >= lo && y < hi
+        const c = inPatch ? patch : field
+        const i = (y * side + x) * 4
+        px[i] = c[0]
+        px[i + 1] = c[1]
+        px[i + 2] = c[2]
+        px[i + 3] = 255
+      }
+    }
+    return px
+  }
+
+  it('one flat color bounces itself back', () => {
+    const { r, g, b } = roomLight(raster([180, 60, 200], [180, 60, 200], 0))
+    expect(r).toBeCloseTo(180 / 255, 5)
+    expect(g).toBeCloseTo(60 / 255, 5)
+    expect(b).toBeCloseTo(200 / 255, 5)
+  })
+
+  it('an empty picture throws no light', () => {
+    expect(roomLight(new Uint8ClampedArray(ROOM_SAMPLE * ROOM_SAMPLE * 4))).toEqual({
+      r: 0,
+      g: 0,
+      b: 0,
+    })
+  })
+
+  it('a bright speck at the center cannot outvote the field around it', () => {
+    // This is the whole complaint, as a test. The innermost blades are a
+    // few percent of the picture and they are the LIGHTEST ones the
+    // palette draws, so brightness alone must not hand them the room.
+    const px = raster([170, 40, 30], [250, 250, 255], 4) // patch is 1.6% of the area
+    const { r, g, b } = roomLight(px)
+    expect(r).toBeGreaterThan(g * 2)
+    expect(r).toBeGreaterThan(b * 2)
+  })
+
+  it('but a brighter region does count for more than its area', () => {
+    // Weighting by cover alone would make these two identical. Light is
+    // not paint: the bright half throws more of it.
+    const dim = roomLight(raster([120, 0, 0], [0, 0, 120], 22))
+    const lit = roomLight(raster([120, 0, 0], [0, 0, 250], 22))
+    expect(lit.b / lit.r).toBeGreaterThan(dim.b / dim.r)
+  })
+
+  it('opposed hues do not average to gray', () => {
+    // A complementary palette is half the point of the wide schemes. A
+    // plain RGB mean of red against cyan is a neutral, which is the one
+    // answer that cannot be right.
+    const px = raster([200, 40, 40], [40, 200, 200], 22)
+    const { r, g, b } = roomLight(px)
+    const mx = Math.max(r, g, b)
+    const sat = (mx - Math.min(r, g, b)) / mx
+    expect(sat).toBeGreaterThan(0.5)
+  })
+
+  it('never invents chroma a flat picture did not have', () => {
+    // The restoration only ever pushes UP to the mean saturation of the
+    // texels. A gray picture stays gray.
+    const { r, g, b } = roomLight(raster([90, 90, 90], [200, 200, 200], 10))
+    expect(r).toBeCloseTo(g, 6)
+    expect(g).toBeCloseTo(b, 6)
+  })
+
+  it('ignores what the picture does not cover', () => {
+    const px = raster([200, 40, 40], [0, 0, 0], 0)
+    for (let i = 0; i < px.length; i += 8) px[i + 3] = 0 // punch half of it out
+    const { r, g, b } = roomLight(px)
+    expect(r).toBeCloseTo(200 / 255, 5)
+    expect(g).toBeCloseTo(40 / 255, 5)
+    expect(b).toBeCloseTo(40 / 255, 5)
+  })
+})
+
+describe('how much of the room the picture fills', () => {
+  const field = solidAngleField(VW, VH, DEPTH)
+  const full = new Uint8ClampedArray(ROOM_SAMPLE * ROOM_SAMPLE * 4).fill(255)
+
+  it('a page this close fills most of its hemisphere', () => {
+    // 1440x900 standing 48 px behind the slab: 0.918 of the half-sphere.
+    // The readback this replaced said 1.0000 against a true 0.8137 — a
+    // 1x1 drawImage downscale samples the middle, it does not average.
+    expect(roomCover(full, field)).toBeCloseTo(0.918, 2)
+  })
+
+  it('the middle of the page subtends more than its corner', () => {
+    // The same fact that made the equirect the wrong place to average a
+    // COLOR makes it the right shape for a coverage weight.
+    const n = ROOM_SAMPLE
+    const mid = field[(n / 2) * n + n / 2]
+    expect(mid).toBeGreaterThan(field[0] * 5)
+  })
+
+  it('a page pushed further back fills less of the room', () => {
+    const near = roomCover(full, solidAngleField(VW, VH, DEPTH))
+    const far = roomCover(full, solidAngleField(VW, VH, DEPTH * 6))
+    expect(far).toBeLessThan(near)
+    expect(far).toBeGreaterThan(0)
+  })
+
+  it('an unpainted picture fills nothing, and a half-painted one half', () => {
+    expect(roomCover(new Uint8ClampedArray(ROOM_SAMPLE * ROOM_SAMPLE * 4), field)).toBe(0)
+    const half = new Uint8ClampedArray(full)
+    for (let i = 3; i < half.length; i += 4) half[i] = 128
+    expect(roomCover(half, field)).toBeCloseTo(roomCover(full, field) * (128 / 255), 3)
+  })
+
+  it('never reports more room than there is', () => {
+    // A fraction cannot exceed 1, and a bounce scaled by one that did
+    // would blow past the tuned brightness.
+    const over = new Float32Array(ROOM_SAMPLE * ROOM_SAMPLE).fill(1)
+    expect(roomCover(full, over)).toBe(1)
+  })
+
+  it('32 texels a side already resolves the page', () => {
+    // The weights are a quadrature, and a quadrature too coarse for its
+    // integrand quietly reports a smaller room than there is. At the
+    // scene's own geometry 32 lands within a third of a percent of a
+    // grid eight times finer, which is what makes ROOM_SAMPLE safe to
+    // share with the color raster.
+    const total = (f: Float32Array) => f.reduce((a, b) => a + b, 0)
+    const coarse = total(solidAngleField(VW, VH, DEPTH, ROOM_SAMPLE))
+    const fine = total(solidAngleField(VW, VH, DEPTH, ROOM_SAMPLE * 8))
+    expect(Math.abs(coarse - fine) / fine).toBeLessThan(0.01)
   })
 })

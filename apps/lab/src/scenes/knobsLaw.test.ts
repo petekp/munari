@@ -713,29 +713,47 @@ describe('litGate — the corona belongs to the picture, not the background', ()
   // artificial edge glow back on the panel.
   const sweep = [0, 60, 120, 210, 240, 300]
 
-  it('shuts on every backdrop the art law can paint, at every hue and scheme', () => {
+  it('leaves every backdrop far under the picture, at every hue and scheme', () => {
+    // A ratio, not a zero. The floor is tuned to the bottom of its range,
+    // which lets the very brightest backdrop carry a trace of halo — and
+    // with the corona pulled in to 8 px that trace is wanted. What may
+    // never come back is the artificial glow standing off the panel's
+    // edge against open background, so what is pinned is the gap: the
+    // layers below open the gate to exactly 1, so this number IS the
+    // fraction of the halo the background gets. Delete the gate and it
+    // goes to 1 and this fails.
+    let worst = 0
     for (let palette = 0; palette < PALETTE_SCHEMES.length; palette++) {
       for (const chroma of [0, 0.5, 1]) {
         for (const hue of sweep) {
           const scene = generateArt({ ...DEFAULTS, palette, chroma, hue }, 3.1)
           for (const stop of [scene.backdropFrom, scene.backdropTo]) {
-            expect(gate(levelOf(stop))).toBe(0)
+            worst = Math.max(worst, gate(levelOf(stop)))
           }
         }
       }
     }
+    expect(worst).toBeLessThan(0.25)
   })
 
   it('opens on every drawn layer, at every hue and scheme', () => {
+    // Not "to exactly 1" any more. With the knee at the top of its range
+    // the ramp is still climbing at the dimmest blade, so a faint layer
+    // glows a little less than a bright one — which is what an emitter
+    // does, and the reason this pins a floor rather than a ceiling. The
+    // measured worst case is 0.869 against the brightest backdrop's
+    // 0.065: a 13x gap, and the gap is the law.
+    let dimmest = 1
     for (let palette = 0; palette < PALETTE_SCHEMES.length; palette++) {
       for (const layers of [2, 10, 16]) {
         for (const hue of sweep) {
           const scene = generateArt({ ...DEFAULTS, palette, chroma: 1, layers, hue }, 3.1)
           // Worst case: a translucent layer over the DARKER backdrop stop.
           const under = Math.min(levelOf(scene.backdropFrom), levelOf(scene.backdropTo))
-          for (const layer of scene.layers) expect(gate(levelOf(layer.fill, under))).toBe(1)
+          for (const layer of scene.layers) dimmest = Math.min(dimmest, gate(levelOf(layer.fill, under)))
         }
       }
     }
+    expect(dimmest).toBeGreaterThan(0.75)
   })
 })

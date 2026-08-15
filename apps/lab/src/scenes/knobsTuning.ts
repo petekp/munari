@@ -1,8 +1,8 @@
 // The knobs scene's tuning surface — the visual numbers a hand wants to
 // drag while judging the slab, and the machinery that applies them live.
 //
-// Three kinds of application, because the scene has three kinds of
-// number (the genieKnobs doctrine, plus one):
+// Four kinds of application, because the scene has four kinds of
+// number (the genieKnobs doctrine, plus two):
 //
 //   CSS custom properties. The LCD windows are captured DOM, styled by
 //   knobs.css through var() with defaults equal to the committed
@@ -20,11 +20,17 @@
 //   the geometry re-machines through React. Dev-only cost, paid only
 //   when one of them moves.
 //
+//   Renderer settings. One knob — render scale — is not a look at all
+//   but a property of the drawing buffer, so it can neither be dripped
+//   into a uniform nor rebuilt as geometry. It is pushed to r3f's
+//   setDpr, which resizes the buffer and the camera together. Watched
+//   by RenderScale in Knobs.tsx, which is the only place in the scene
+//   allowed to touch it.
+//
 // Writes go straight into live objects; nothing re-renders the scene
 // except the rebuild path, which exists because a chamfer has no other
 // way to change.
 
-import { KNOB } from './knobsGeometry'
 
 export interface KnobsTuningValues {
   /** Corona reach outside the silhouette, px. The corona quad's margin
@@ -47,11 +53,16 @@ export interface KnobsTuningValues {
   coronaSpill: number
   /** Brightest surround CHANNEL below which the corona is fully off —
    *  the backdrop is dark but saturated, so a coloured sample is not
-   *  proof of light. Sits above the brightest backdrop the art law can
-   *  paint (0.155). See litGate for why the measure is not luminance. */
+   *  proof of light. At 0 it sits under the brightest backdrop the art
+   *  law can paint (0.155), which leaves that backdrop a sixth of the
+   *  halo; above 0.155 it shuts the background out entirely. See litGate
+   *  for why the measure is not luminance. */
   coronaLitFloor: number
-  /** Brightest surround channel at which the corona is fully on. Sits
-   *  below the dimmest drawn layer (0.773), so art never gates itself. */
+  /** Brightest surround channel at which the corona is fully on. Above
+   *  the dimmest drawn layer (0.773) the ramp is still climbing there,
+   *  so a faint blade glows a little less than a bright one — which is
+   *  what an emitter does. What must hold is the GAP, not the ceiling:
+   *  see the litGate contract. */
   coronaLitKnee: number
   /** Face shade ceiling: how dark a fully backlit face falls. */
   shadeMax: number
@@ -135,6 +146,18 @@ export interface KnobsTuningValues {
   lcdGlow: number
   /** Alpha of the unenergized segments against the backlight. */
   lcdGhost: number
+
+  /** Render-scale CEILING, not a fixed scale: the renderer draws at
+   *  min(devicePixelRatio, this), which is what `dpr={[1, n]}` always
+   *  meant. So 2 is "full retina, no supersampling" and on a 1x display
+   *  the dial does nothing until it goes below 1.
+   *
+   *  This is the one dial that trades sharpness for fill rate, and the
+   *  only one whose right value is a property of the MACHINE rather than
+   *  the look — which is why the committed number is the quality
+   *  ceiling, not the fastest setting. Judge it on the knurl teeth and
+   *  the LCD text; they blur first. */
+  dpr: number
 }
 
 // The committed look — Pete's second 2026-08-11 tuning session, baked:
@@ -159,53 +182,85 @@ export interface KnobsTuningValues {
 // balances were read at both stations and the berth-to-left drift is
 // 1.2 here, 0.2 at the deepest, against the bug's 16.
 //
-// So the balance is taste again, and the values below are Pete's
-// 2026-08-11 tuning session on top of the repaired wrap — he moved the
-// white light from fill to ambient, took the corona wide and soft, and
-// dimmed the windows. `envRoom` is the one dial that decides how far
-// the panel stands inside the picture; the sweep that found it read, at
-// both stations, 0.18 → magenta 6/7 and hue response 16.2; 0.25 →
-// 12/11 and 20.2; 0.32 → 16/16 and 30.3; 0.45 → 26/28 and 63.3.
+// So the balance is taste again. `envRoom` is the one dial that decides
+// how far the panel stands inside the picture; the sweep that found it
+// read, at both stations, 0.18 → magenta 6/7 and hue response 16.2;
+// 0.25 → 12/11 and 20.2; 0.32 → 16/16 and 30.3; 0.45 → 26/28 and 63.3.
+//
+// The values below are Pete's 2026-08-14 session, and they undo a good
+// deal of the 2026-08-11 one on purpose. That session took the corona
+// wide and soft and moved the white light from fill to ambient; this
+// one takes the corona TIGHT — 8 px of reach against the old 28, and
+// spill samples pulled in to 0.3, so the halo wears the colour of
+// exactly what it touches instead of an average of a 56 px
+// neighbourhood — and puts the cool fill back at 0.58 while dropping
+// the key. `coronaEdgeOut` at 10.8 against 8 px of reach is not a
+// contradiction: the exponential barely decays inside that distance, so
+// the compact-support term does the shaping and the edge light lands
+// even rather than as a hot line with a tail.
+//
+// `lightDom` goes to zero. It lifts ALL the authored paint, and with the
+// ambient at 1 the charcoal body no longer needs the floor.
+//
+// One number here is a deliberate softening of the corona's emitter
+// gate rather than a look: `coronaLitFloor` at 0 lets the backdrop keep
+// 3–16% of the halo instead of none. With the corona pulled in from 28
+// px to 8 and its spill from 1.4 to 0.3, that trace reads as an edge
+// rather than the standoff glow the gate was built to kill — so the
+// contract moved with it, from "the background gets none" to "the
+// background gets under a quarter of what the picture gets" (litGate,
+// knobsLaw.test.ts). Push the floor past 0.155 to shut it completely;
+// the picture's own gate value does not move either way.
 export const knobsTuning: KnobsTuningValues = {
-  coronaOut: 28,
-  coronaVeil: 98,
-  coronaEdgeOut: 1.7,
-  coronaEdgeIn: 3,
-  coronaCore: 1.35,
-  coronaVeilGain: 0.5,
+  coronaOut: 13,
+  coronaVeil: 76,
+  coronaEdgeOut: 10.8,
+  coronaEdgeIn: 7.5,
+  coronaCore: 0.75,
+  coronaVeilGain: 1.4,
   coronaTone: 0.8,
-  coronaSpill: 1.4,
-  coronaLitFloor: 0.24,
-  coronaLitKnee: 0.62,
+  coronaSpill: 0.3,
+  coronaLitFloor: 0,
+  coronaLitKnee: 1,
   shadeMax: 0.64,
 
-  rimRough: 0.24,
+  rimRough: 0.3,
   rimMetal: 1,
   rimEnv: 5,
-  rimBevelSize: 4.2,
+  rimBevelSize: 2,
   rimBevelDepth: 1.35,
 
-  knurlCount: KNOB.knurlCount,
-  knurlAmp: KNOB.knurlAmp,
-  hwRough: 0.58,
-  hwEnv: 1.4,
-  indexGlow: 0.9,
+  knurlCount: 76,
+  knurlAmp: 0.35,
+  hwRough: 0.05,
+  hwEnv: 4,
+  indexGlow: 0.8,
 
-  envArt: 1,
-  envRoom: 0.25,
-  envSky: 0.22,
+  envArt: 2,
+  envRoom: 0.34,
+  envSky: 0.9,
 
-  lightArt: 14000,
-  lightAmbient: 0.68,
-  lightKey: 0.35,
-  lightFill: 0,
-  lightDom: 0.2,
+  lightArt: 26000,
+  lightAmbient: 1,
+  lightKey: 0.1,
+  lightFill: 1.2,
+  lightDom: 0,
 
   lcdBright: 0.8,
   lcdEmit: 1.45,
   lcdReflect: 15000,
   lcdGlow: 0.32,
   lcdGhost: 0.15,
+
+  // Back at the quality ceiling. Pinning this to 1 was a diagnostic —
+  // the scene is one forward pass of 54 draws into a 5.2 Mpx buffer, and
+  // with the frame limiter OFF, halving the pixels halves the frame
+  // (5.16 -> 2.59 ms mean, p95 16.0 -> 7.3). But that is throughput, and
+  // throughput was never the complaint: at dpr 1 the drops Pete sees
+  // while carrying the panel did not go with it. So fill rate is real
+  // and is NOT the cause, and this ships at the value that looks right
+  // while the search moves on.
+  dpr: 2,
 }
 
 /** The LCD backlight's committed colors — the same literals knobs.css
@@ -360,6 +415,14 @@ export const KNOBS_TUNING_GROUPS: { title: string; knobs: KnobsTuningDef[] }[] =
       { key: 'lcdReflect', label: 'reflection', min: 0, max: 80000, step: 2500 },
       { key: 'lcdGlow', label: 'window bloom', min: 0, max: 0.8, step: 0.02 },
       { key: 'lcdGhost', label: 'ghost segments', min: 0, max: 0.4, step: 0.01 },
+    ],
+  },
+  {
+    title: 'render',
+    knobs: [
+      // Below 1 is deliberately reachable: it is the fastest way to ask
+      // "is this fill rate?" and get an unmistakable answer.
+      { key: 'dpr', label: 'render scale', min: 0.5, max: 3, step: 0.25 },
     ],
   },
 ]
