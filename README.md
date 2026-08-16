@@ -1,6 +1,6 @@
 # munari
 
-## Munari seamlessly bridges HTML with WebGL, unlocking a new frontier of visual expression on the web.
+### Munari seamlessly bridges HTML with WebGL, unlocking a new frontier of visual expression on the web.
 
 Munari enables you to seamlessly 'lift' any single or group of HTML elements, including whole pages, into a WebGL context, and back, on demand. Seamlessness is the key and focus on Munari. Here's what happens when an element is lifted into WebGL and returned back to the DOM.
 
