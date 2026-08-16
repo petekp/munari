@@ -840,10 +840,10 @@ function MatterLetter({
     // only thing that strikes a letter is a hand on it.
     // Every term is × amp: at the handoff edges the letter is exactly
     // its own pixels (the identity theorem the crossing-flash gate
-    // measures). What makes a letter a SUBSTANCE rides a LATER window of
-    // the same progress — lift.range over MATTER_GATE — so substances
-    // freeze back to ink before touchdown, and the swap-eve frames are
-    // ink and nothing else.
+    // measured, before it was removed). What makes a letter a SUBSTANCE
+    // rides a LATER window of the same progress — lift.range over
+    // MATTER_GATE — so substances freeze back to ink before touchdown,
+    // and the swap-eve frames are ink and nothing else.
     const gate = MATTER_GATE
     const gt = range(gate.from, gate.distance)
     const gs = gt * gt * (3 - 2 * gt)
@@ -1135,9 +1135,10 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
 
   const [knobs, setKnobs] = useState<LogoKnobs>(LOGO_DEFAULTS)
   const [seed, setSeed] = useState(SEED0)
-  // `?probe=still` boots with the conductor paused: the crossing-flash
-  // instrument measures the CROSSING, and beats mid-capture would fold
-  // the choreography into the measurement.
+  // `?probe=still` boots with the conductor paused, so a capture reads
+  // the CROSSING alone: beats mid-capture fold the choreography into the
+  // measurement. Written for crossing-flash, which is gone; kept because
+  // any future crossing instrument needs the same still page.
   const [running, setRunning] = useState(
     () => new URLSearchParams(window.location.search).get('probe') !== 'still',
   )
@@ -1312,8 +1313,8 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
           className="logo-word"
           ref={wordRef}
           // The protocol phase, worn on the DOM: logo.css keys letter
-          // visibility off it, and the crossing-flash instrument reads
-          // it to know when a crossing is mid-air.
+          // visibility off it, and an instrument can read it to know
+          // when a crossing is mid-air.
           data-phase={lift.phase}
           style={{ width: `${GRID.width}em` }}
         >

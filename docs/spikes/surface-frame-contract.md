@@ -3,6 +3,12 @@
 Run 2026-08-09 in local Chrome 151 with React 19.2.8, R3F 9.7.0, and Three r185.
 All test code and scratch package changes lived in `/private/tmp` and were deleted.
 
+**Status: a dated measurement, kept for its numbers.** Its recommendation
+shipped — `FrameSource`, frame-backed `Surface`, and the draw receipt are
+in the kernel. The proposals it fed were deleted on 2026-08-15. Read this
+for what was measured, not for what to build; its vocabulary was brought
+in line with decision #31 at the same time.
+
 ## Questions
 
 1. Can a frame number pass through the real Three upload and draw path without a false receipt?
@@ -15,13 +21,13 @@ The spike stopped on any wrong draw receipt, any required rewrite of the DOM `Su
 
 **Yes. Fix the missing frame contract upstream. Do not put the whole video fix in core.**
 
-Core should describe a canvas frame and its identity. The React package should turn the private GPU upload and draw events into one public draw receipt. Genie should own its video decoder, draw video frames into the canvas, and delay each custody change until the required frame receipt arrives.
+Core should describe a canvas frame and its identity. The React package should turn the private GPU upload and draw events into one public draw receipt. Genie should own its video decoder, draw video frames into the canvas, and delay each handoff until the required frame receipt arrives.
 
 The safe implementation is additive: public `Surface` dispatches frame input to a separate internal `FrameSurface`. The current DOM implementation stays intact.
 
 ## Why this is an upstream defect
 
-A seamless handoff is a custody protocol, not a visibility toggle:
+A seamless handoff is a transfer protocol, not a visibility toggle:
 
 1. A producer finishes source frame N.
 2. Three uploads some source frame. Several fast source writes can merge into one upload.
@@ -111,7 +117,7 @@ The exact helper names are not important. These rules are important:
 - `surfaceEpoch` rejects a late receipt from an old mesh or texture.
 - Genie sees frame identities and receipts, not textures or renderer callbacks.
 
-The current `<Surface html={...}>` call stays valid. A later borrowed-DOM custody option is separate from `FrameSource`.
+The current `<Surface html={...}>` call stays valid. A later borrowed-DOM hold is separate from `FrameSource`.
 
 ## Recommended first build
 
@@ -144,7 +150,7 @@ The minimum proof set is:
 - Whether a transparent readiness mesh is better than keeping the real mesh traversable for its first receipt.
 - Pixel parity on other browsers and GPUs.
 - Direct `HTMLTexture` color correctness. This proposal keeps the proven `CanvasTexture` path.
-- General borrowed DOM custody. That remains a separate upstream improvement.
+- General borrowed DOM holds. That remains a separate upstream improvement.
 
 ## Decision
 

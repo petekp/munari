@@ -1,7 +1,8 @@
-// The bouncing marks' contract. The law is bounceStep alone — the
-// harness around it (the shared simulation) is exercised by
-// live-content.mjs, which reads the same mark out of both window
-// copies and requires zero drift.
+// The bouncing marks' contract. The law is bounceStep alone. The
+// harness around it (the shared simulation) was exercised by
+// live-content.mjs, which read the same mark out of both window copies
+// and required zero drift; that probe was removed on 2026-08-15, so
+// this file is now the only thing holding the law.
 import { describe, expect, it } from 'vitest'
 
 import { type BounceBody, type MarkOutline, bounceStep, markOutline } from './genieBounce'

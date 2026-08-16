@@ -1,7 +1,13 @@
-# Spike: seamless DOM and WebGL custody
+# Spike: seamless DOM and WebGL handoff
 
 Run 2026-08-09 in local Chrome 151, React 19.2.8, and Three r185.
 The apparatus was standalone Puppeteer/Vite code in `/tmp`. It was deleted.
+
+**Status: a dated measurement, kept for its numbers.** The proposals it
+fed (`custody-protocol-v2`/`v3`) shipped as decisions #28–#31 and were
+deleted on 2026-08-15. Nothing here is a plan. The numbers below are the
+only record of what Chrome did on that date, which is why the file
+stays; its vocabulary was brought in line with #31 at the same time.
 
 **Questions asked**
 
@@ -13,12 +19,12 @@ The apparatus was standalone Puppeteer/Vite code in `/tmp`. It was deleted.
 
 ## What we learned
 
-### 1. One decoder and one shared frame canvas give exact video custody
+### 1. One decoder and one shared frame canvas hand off video exactly
 
 One persistent `<video>` fed one visible 600×396 canvas. The same canvas fed a Three `CanvasTexture`.
 
 - Decoded generations: **90**
-- Simulated custody swaps: **30**
+- Simulated handoffs: **30**
 - Frame-generation mismatches: **0**
 - RGB mismatches: **0 of 64,152,000 channel comparisons**
 - Maximum and mean RGB error: **0**
@@ -31,7 +37,7 @@ This path did not need `CanvasDrawElement`. It removes both causes of the report
 
 This proves the pixel and frame-source invariant. It does not yet prove Genie's warped geometry or final compositing.
 
-### 2. A React-owned host survives `moveBefore` when the canvas has layout custody
+### 2. A React-owned host survives `moveBefore` when the canvas holds layout
 
 With `CanvasDrawElement` and `canvas.layoutSubtree = true`, one host completed 100 alternating moves. A React commit was forced after every move.
 
@@ -46,7 +52,7 @@ With `CanvasDrawElement` and `canvas.layoutSubtree = true`, one host completed 1
 - Dropped frames: **0**
 - Pause, seek, wait, stall, empty, and abort events: **0**
 
-A plain canvas control lost nested scroll on its first move. `layoutSubtree = true` is therefore a required custody invariant, not an optional optimization.
+A plain canvas control lost nested scroll on its first move. `layoutSubtree = true` is therefore a required invariant of the hold, not an optional optimization.
 
 One node cannot be visible in its native slot while it is also the immediate child required by HTML-in-canvas. The real handoff still needs a short texture bridge and a receipt that proves the new owner drew the right generation.
 
@@ -63,7 +69,7 @@ The installed Three code still gives two decisive blockers:
 
 `texture.onUpdate` followed by `mesh.onAfterRender` can probably form an upload-to-draw fence. The paint event has element identity but no generation number, so exact generation continuity still needs a separate test.
 
-The decision is to avoid direct `HTMLTexture` in the first implementation. It is an optional future optimization, not a requirement for single-root custody.
+The decision is to avoid direct `HTMLTexture` in the first implementation. It is an optional future optimization, not a requirement for a single-root hold.
 
 ## What surprised us
 
@@ -77,7 +83,7 @@ The decision is to avoid direct `HTMLTexture` in the first implementation. It is
 - Pixel continuity through Genie's real identity geometry at both walls.
 - The exact bridge schedule when a host moves into or out of the capture canvas.
 - A source-generation → paint → upload → draw receipt under CPU load.
-- Pointer forwarding, accessibility, resize, cancellation, and WebGL context loss during borrowed custody.
+- Pointer forwarding, accessibility, resize, cancellation, and WebGL context loss while the host is borrowed.
 - Direct `HTMLTexture` color parity after an explicit sRGB decode.
 - Results on other browsers, Chrome builds, and GPUs. HTML-in-canvas remains experimental, and cross-browser `moveBefore` behavior was not tested.
 
@@ -107,10 +113,10 @@ The decision is to avoid direct `HTMLTexture` in the first implementation. It is
 2. **Borrowed source ownership.** Add a cancellable, idempotent opt-in lifecycle in `@munari/core`, then expose it through `@petepetrash/munari`. Record the original parent and anchor and always return the host.
 3. **A shared media-frame source.** Provide one reusable decoder → sRGB canvas → generation stream for any lab with live video. This avoids per-scene decoder synchronization.
 4. **Color and alpha contracts.** Declare canvas color space and premultiplication at texture birth. Add real-Chrome conformance assets for sRGB and BT.709 media. The current capability probe checks API presence, not pixel correctness.
-5. **Context-loss custody.** Let a borrowed host return to native DOM before a renderer reset can leave both owners invisible.
+5. **Context loss.** Let a borrowed host return to native DOM before a renderer reset can leave both owners invisible.
 6. **Dynamic raycast bounds.** If CPU-deformed consumer geometry becomes a supported package contract, add an opt-in bounds invalidation helper. Keep the immediate Genie fix local.
 
-Do not replace `SurfaceApp` globally. The repo has nine other runtime consumers. Additive borrowed custody lets them keep the present contract.
+Do not replace `SurfaceApp` globally. The repo has nine other runtime consumers. An additive borrowed hold lets them keep the present contract.
 
 ## Cost signals
 

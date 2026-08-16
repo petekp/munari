@@ -354,8 +354,9 @@ function VeilBand({ painted, content, scroller, slab, sheet }: BandProps) {
     // band's texture delivers on a separate, delayed one (React state ->
     // source.setSize -> requestPaint -> compositor onpaint -> GL upload).
     // Blending the two at partial alpha while they disagree reads as text
-    // doubled at a horizontal offset — measured by instruments/veil-resize
-    // at 2.6-3.0x the noise floor on every mid-drag frame (2026-08-08).
+    // doubled at a horizontal offset — measured by the veil-resize probe
+    // at 2.6-3.0x the noise floor on every mid-drag frame (2026-08-08;
+    // the probe was removed 2026-08-15, the number stands).
     //
     // `content` is this component's own last-committed dims — during a
     // drag that is a commit BEHIND the live page, because the resize

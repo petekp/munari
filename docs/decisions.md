@@ -1601,16 +1601,26 @@ empty for a paintable gap. A capture in that gap is a blank card wearing
 receipts, which certify pixels, not the right pixels. A source must never
 exist without the content it claims to be.
 
-**Evidence.** The `crossing-flash` gate (CI: `gate:crossing`) screencasts
-the logo page under a default 6x CPU throttle and scores every composited
-frame's ink coverage over the wordmark's rectangle — vanishing is the
-flicker, blooming is the blank-card fault. Before the flush rule it
-photographed the second fault exactly: warm lifts presented five white
-cards, ink blooming from a resting 18.6% to 72.8% (first lifts passed —
-cold GL setup delays the first capture past the content commit, which is
-why no one had seen it by hand). After the rule: 1,245 frames across four
-round trips plus an abandoned lift and a reversed landing, every frame
-inside 18.2–18.9%.
+**Evidence.** The `crossing-flash` gate screencast the logo page under a
+default 6x CPU throttle and scored every composited frame's ink coverage
+over the wordmark's rectangle — vanishing is the flicker, blooming is the
+blank-card fault. Before the flush rule it photographed the second fault
+exactly: warm lifts presented five white cards, ink blooming from a
+resting 18.6% to 72.8% (first lifts passed — cold GL setup delays the
+first capture past the content commit, which is why no one had seen it by
+hand). After the rule: 1,245 frames across four round trips plus an
+abandoned lift and a reversed landing, every frame inside 18.2–18.9%.
+
+**Amended 2026-08-15 — the gate is gone; the laws are not.** The
+`crossing-flash` instrument was deleted along with the three Knobs
+browser gates: it photographed a lab scene that is still provisional, and
+its carry clause had been failing on a measurement artifact since it
+entered CI. This decision, #29 and #30 keep their evidence — the numbers
+above were measured, and the conformance suites still pin every law's
+shape. What is gone is the browser check that the two reconcilers agree
+in the same frame. Nothing enforces that now. The recipe, and the
+screencast blind spot any replacement must handle, are in
+`docs/platform.md` item 13.
 
 ## #29 — Presentation is exclusive (2026-08-14, core + react binding + instruments; renamed by #31)
 

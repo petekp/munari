@@ -119,60 +119,6 @@ failed to engage measures idle twice and calls it interaction. The
 GPU string is printed first for the same reason: numbers from
 SwiftShader are numbers about SwiftShader.
 
-## knobs-resize
-
-Does the panel's face stay the panel's size while a hand drags it?
-`npm run gate:knobs-resize`. Skips (exit 0, with a warning) where
-`drawElementImage` is unavailable; `STRICT_CAPABILITY=1` makes the gap
-a failure.
-
-The gate runs minimum-to-maximum and reverse gestures at DPR 1 and 2.
-It requires at least 30 moving render samples, all three arrangements in
-both directions, matching panel/host/canvas boxes, bounded backing-store
-density during motion, and exact requested density after eight quiet
-frames. It also compares the successful paint, uploaded draw, presented
-frame, and active keyed-anchor generation. A source marker must agree
-with its receipt within one source texel, and a final-frame GL marker
-must agree with the projected hue hardware within one CSS pixel.
-
-`DUMP=1` writes the worst source image, final frame, and sample ledger to
-the ignored `instruments/knobs-resize/out` directory.
-
-The bug it was written for: every consumer of the panel's box was one
-drag step behind the face painted for them, so 15px of the panel was
-cut off the right edge on every frame, and at a breakpoint a whole
-arrangement was (panel 463 tall inside a host still declaring 721,
-landing in the top 0.64 of its own texture). The cause was which React
-root owned the state. `<Canvas>` hands its children to the three root
-after an `await`, so state held OUTSIDE the canvas reaches it a frame
-late and no flush can pull it forward; state held inside commits
-synchronously under r3f's own `flushSync`. This gate pins the result,
-not the mechanism.
-
-Its first version asked only about height, and passed 19 of 21 frames
-while all 21 were wrong — height moves only at a breakpoint, so the
-continuous fault hid under the two loud ones. Both axes, always.
-
-## knobs-input
-
-Does the full-page canvas accept the first mouse, touch, or pen contact
-without taking input from clear page art? `npm run gate:knobs-input`.
-It uses Chrome's input protocol on the real Knobs route. It checks cold
-touch and pen contact, complete pen identity, hover arming, cancellation,
-lost-release cleanup, clear-art pass-through, and single-click ownership.
-It has the same `drawElementImage` capability policy as the other DOM
-Surface browser gates.
-
-## knobs-viewport
-
-Can the panel keep its physical size on small glass while native scroll,
-keyboard focus, and relayed pointers still reach it? Run
-`npm run gate:knobs-viewport`. The real Knobs route is checked at
-320x568, 360x640, 390x667, 390x844, and 640x360. The gate covers every
-captured control plus the move and resize handles, dial and resize keys,
-right-edge pinning, pointer UVs after scroll, exact world scale, and the
-return to a large non-overflowing viewport without a logical-width change.
-
 ## dom-surface-demand
 
 Can a successful DOM paint wake an idle demand renderer and keep its paint,
@@ -212,9 +158,9 @@ It exists because a shared GLSL block once dropped two sampler
 declarations — used in both stages, declared in neither. The unit suite
 guarding that block passed: it checked that no uniform was declared
 twice, never that each was declared at all. The failure surfaced two
-commands later as a phase-wait timeout inside `gate:crossing`
-(2026-08-14). This is the cheapest gate in the repo and the one the
-others assume.
+commands later as a phase-wait timeout inside the crossing-flash gate
+(2026-08-14, since removed). This is the cheapest gate in the repo and
+the one the others assume.
 
 ## House rules
 
@@ -231,6 +177,32 @@ others assume.
 - To bisect a dead effect into "the shader never ran" versus "the
   driver never sent anything", force the uniform inside the render
   wrapper.
+
+Four gates left on 2026-08-15. `crossing-flash` asked whether the
+wordmark was on screen in every composited frame while it crossed
+between page and canvas, and whether a carried motion kept its path
+through the swap. `knobs-input`, `knobs-viewport` and `knobs-resize`
+asked about cold touch and pen contact on the shared canvas, physical
+panel size and focus reachability on small glass, and paint/anchor/
+generation agreement through a drag. All four photographed lab scenes
+that are still provisional, and three of them wanted a GPU that CI does
+not have. The recipes live at this commit in history. The technique
+`crossing-flash` proved out — reading the composited output through the
+DevTools screencast, and forcing composites where that channel goes
+dark — is written up in `docs/platform.md` item 13, which is where a
+future crossing gate should start.
+
+Thirteen probes left the same day, for a plainer reason: nothing could
+run them. Twelve one-off files under `genie-drain` (`rest-blink`,
+`mouth-anchor`, `live-content`, `swap-seam`, `swap-pop`, `four-windows`,
+`no-blank-sheet`, `film-stays-lit`, `hand-and-keyboard`,
+`content-keeps-running`, `lod-timeline`, and the scene-wide `run`) plus
+the whole `veil-resize` directory had no npm script and no section here,
+and most hard-coded one laptop's absolute path. A probe you can only run
+by remembering its filename is the prose recipe this directory exists to
+replace. The findings they convicted are cited where the code they
+changed lives; the apparatus is in history. **The bar for a new file
+here: an npm script, a section in this file, and no absolute paths.**
 
 The crispness rule HAD an instrument — `sharpness`, which clipped a
 mesh photograph and a DOM photograph to one measured page rect and

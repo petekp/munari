@@ -1010,7 +1010,7 @@ function Flight({
   // reads "no clock yet", starts one, and computes p = 0 — t snaps to 0
   // and the sheet is drawn back at the window's rest position for a
   // frame. That is the flicker as reported, arriving AFTER the window
-  // has docked (instruments/genie-drain/rest-blink.mjs, cameBack).
+  // has docked (rest-blink.mjs, cameBack — probe removed 2026-08-15).
   //
   // So a landed flight computes no more drive state. A restore gets one
   // deliberate coverage frame at the wall, then the next frame suppresses the
@@ -1817,8 +1817,9 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   //
   // On an idle machine the two commits land in the same frame every
   // time; the gap is real and zero frames wide, which is the worst width
-  // for finding it. Under load it opens (instruments/genie-drain/
-  // rest-blink.mjs runs at 1/6 CPU for exactly this reason).
+  // for finding it. Under load it opens — which is why rest-blink.mjs
+  // ran at 1/6 CPU. That probe was removed on 2026-08-15; anything
+  // hunting this gap again has to squeeze the main thread the same way.
   //
   // So the hide waits on the SHEET, not on the texture. DOM-captured
   // windows report that from the frame loop. Film reports it only after

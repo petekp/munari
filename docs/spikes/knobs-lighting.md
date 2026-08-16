@@ -54,7 +54,7 @@ Also established on the way, and worth keeping:
 
 - **The canvas presents the slab at every station, always.** The DOM
   panel is capture source only, never the visible thing. (This scene
-  never rests into compositor custody; its picture animates, so there is
+  never rests into a compositor hold; its picture animates, so there is
   no quiescent state to hand back to. Fine — but it means the WebGL
   lighting story is THE story. There is no CSS twin on screen to agree
   with; the capture and the meshes must agree with each other.)
@@ -155,7 +155,7 @@ is that sentence applied.
    there, never in the material.
 4. **The face stays split: matter in `map`, light in the windows.**
    The current structure (lit capture + emissive floor, LCDs as pure
-   emitters on their own custody) is right. With a dark camera
+   emitters on their own) is right. With a dark camera
    hemisphere the lit term goes quiet on its own — no face-specific
    knob needed. `lightDom` stays the one dial for how much the panel's
    painted content self-illuminates.
@@ -239,7 +239,7 @@ node node_modules/.p.mjs; rm …`). The discipline that mattered:
   comparisons are invalid**. Every A/B above toggles within one run.
 - Verify the carry: after dragging the slab, the vacated berth
   readout's luma must collapse, or the run is measuring the berth twice.
-- Custody is only discriminable by starving the canvas
+- Who holds the pixels is only discriminable by starving the canvas
   (`canvas.style.visibility = 'hidden'`). Hiding source DOM empties the
   capture and proves nothing about who presents.
 - Decode screenshots in-page (data URL → canvas → `getImageData`) —

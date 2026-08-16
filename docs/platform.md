@@ -38,12 +38,14 @@ of answers.
 is load-bearing for anyone instrumenting a crossing: a passive
 screencast read of the first ~250ms after a return swap measures
 nothing, and an instrument that trusts it will report a freeze that is
-not there. `instruments/crossing-flash` reads that window with forced
-composites instead — each screenshot is the compositor's own output of
-the committed state, clocked by the instrument rather than by damage.
-In headed runs the same blindness skews the cast's timestamps enough
-that path-continuity over-reads by ~3.5px at forward swaps; the gate's
-contract is the headless run.
+not there. `crossing-flash` read that window with forced composites
+instead — each screenshot is the compositor's own output of the
+committed state, clocked by the instrument rather than by damage. In
+headed runs the same blindness skewed the cast's timestamps enough that
+path-continuity over-read by ~3.5px at forward swaps, so that gate's
+contract was the headless run. The gate itself was removed on
+2026-08-15 (instruments/README.md); the recipe is the part worth
+keeping, and it is this paragraph.
 
 **Item 11 is the responsive seam, and it is the useful half of item 3.**
 Item 3 is a list of things that do NOT work in a parked canvas (`vw`,

@@ -50,7 +50,9 @@ import {
 // zero — before its unmount commit. Long enough that the swap frame and
 // its neighbors are composited before teardown touches the main
 // thread; short enough that the renderer's memory is not hoarded. The
-// crossing-flash carry clause photographs the frames this protects.
+// crossing-flash carry clause photographed the frames this protects; that
+// gate was removed on 2026-08-15, so this number is now tuned by the
+// measurement above and checked by nothing.
 const RECLAIM_LINGER_MS = 300
 
 export interface LiftOptions {

@@ -112,10 +112,12 @@ describe('the desk pattern stays measurable', () => {
   })
 
   it('keeps its lit side clear of window stock', () => {
-    // The edge walks in instruments/genie-drain run at 8 (mouth-anchor)
-    // and 6 (shadow-travels). A pixel of paper sitting over a lip
-    // column has to still test as NOT-desk against the lip's own
-    // ground, so the gap has to clear the larger of the two with room.
+    // The edge walks in instruments/genie-drain ran at 8 (mouth-anchor,
+    // removed 2026-08-15) and 6 (shadow-travels). A pixel of paper
+    // sitting over a lip column has to still test as NOT-desk against
+    // the lip's own ground, so the gap has to clear the larger of the
+    // two with room. 8 is why this number is 12, and nothing walks at 8
+    // any more.
     expect(stock - lip).toBeGreaterThan(12)
   })
 
@@ -135,8 +137,8 @@ describe('the desk pattern stays measurable', () => {
   })
 
   it('is periodic, and says so in a property the probes can read', () => {
-    // --tile is not a comment: shadow-travels and mouth-anchor ask the
-    // page for it and build their residue classes at that period. A
+    // --tile is not a comment: shadow-travels asks the page for it and
+    // builds its residue classes at that period. A
     // pattern whose real period stopped matching this number would be
     // measured against a ground averaged across phases, which is the
     // scalar ground all over again.

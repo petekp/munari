@@ -95,8 +95,8 @@ import { RIPPLE } from './logoLaw'
  *  side of a swap is literally the page's own pixels.
  *
  *  That is first a perceptual choice (matter cooling as it lands) and
- *  second what keeps the crossing-flash carry clause honest. Its
- *  ink-mask centroid is only a POSITION while the mask is ink, and
+ *  second what kept the crossing-flash carry clause honest. That
+ *  clause's ink-mask centroid is only a POSITION while the mask is ink, and
  *  anything that swells the mask near a swap moves it without moving a
  *  letter. Light does this — measured 2026-08-14: a ~7px mask arc on the
  *  landing tail against shots steady to 0.1px.
