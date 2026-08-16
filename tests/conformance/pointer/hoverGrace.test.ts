@@ -128,7 +128,7 @@ describe('createGraceTracker', () => {
     tracker.leave(trigger)
     log.length = 0
 
-    // Straight flight toward the quad: inside the hull the whole way.
+    // A direct path toward the quad stays inside the hull.
     tracker.move(180, 150)
     tracker.move(260, 150)
     tracker.move(320, 150) // arrived on the quad itself
@@ -169,17 +169,17 @@ describe('createGraceTracker', () => {
   })
 
   it('a departure burst leave with the pointer already parked outside never re-arms', () => {
-    // The measured live bug: leaving the card onto the panel below, the
-    // trusted move releases the grace — and then the card surface's
+    // The measured live bug: leaving the layer for the content below, the
+    // trusted move releases the grace — and then the layer's
     // departure burst fires a leave on the content root. Anchored at the
     // pointer's parked position that leave re-armed forever; anchored at
     // the previous sample it is judged, found outside, and stays silent.
     tracker.move(100, 150)
     tracker.leave(trigger)
-    tracker.move(350, 150) // on the card
+    tracker.move(350, 150) // on the layer
     log.length = 0
 
-    tracker.move(700, 450) // flick off the card, far outside the corridor
+    tracker.move(700, 450) // flick off the layer, far outside the corridor
     expect(log.map((l) => l.type)).toEqual(['pointerout', 'pointerleave'])
 
     log.length = 0

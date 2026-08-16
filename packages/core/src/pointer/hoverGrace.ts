@@ -4,7 +4,7 @@
 // arms a close (300ms by default), `pointerenter` on the content cancels it.
 // On a page that works because trigger and content are pixels apart. A
 // detached layer (FloatingSurface) stands somewhere in the ROOM, so the
-// trigger-leave → content-enter gap becomes a mouse flight across the
+// trigger-leave → content-enter gap becomes a pointer trip across the
 // screen, racing the close timer — the geometric grace question reborn as a
 // timing question.
 //
@@ -23,7 +23,7 @@
 // Radix's own timers do the rest: enter on the content root holds the
 // layer, leave re-arms the close. Dismissal semantics stay exactly Radix's
 // — exit the hull and the layer closes precisely `closeDelay` later, the
-// same lag a page hover-card has.
+// same delay as an ordinary page layer.
 //
 // Two asymmetries worth knowing, both measured facts of the medium:
 //
@@ -155,7 +155,7 @@ export function createGraceTracker({
   // is already one sample past the crossing; for a fast flick (or a
   // teleporting test pointer) that sample is far away. Anchoring the hull
   // there would make the corridor follow the pointer — measured live as a
-  // card that never closed: the departure burst's leave re-armed the
+  // layer that never closed: the departure burst's leave re-armed the
   // tracker at the pointer's parked position, whose own pad is inside its
   // own hull by construction, and a stopped pointer re-judges nothing.
   let prev: Pt | null = null
@@ -243,7 +243,7 @@ export function createGraceTracker({
 export function observeGrace(tracker: GraceTracker, doc: Document = document): () => void {
   const onMove = (e: PointerEvent) => {
     // Trusted, hover only. Synthetic moves carry parked coordinates (skip),
-    // and a drag crossing the scene is OrbitControls' business.
+    // and dragging belongs to the surrounding controls.
     if (!e.isTrusted || e.buttons !== 0) return
     tracker.move(e.clientX, e.clientY)
   }

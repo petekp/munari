@@ -12,7 +12,7 @@
 // That makes the cascade a channel authority for the MESH: Tailwind
 // utilities (`[--depth:0.5]`, `hover:[--depth:1]`, `transition-[--depth]`)
 // or plain CSS declare what a surface's depth/tilt/glow should be and how it
-// should get there; the scene reads the channel per frame and moves matter.
+// should get there; the consumer reads the channel per frame and moves matter.
 // The hover twin (`data-hover`) makes variant-driven channels work
 // through a texture unmodified.
 //

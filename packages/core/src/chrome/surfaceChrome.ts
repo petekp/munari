@@ -7,7 +7,7 @@
 // of the texture are not even transparent — the drawn subtree's content root
 // carries the consumer's app background, so the region outside a rounded
 // corner is opaquely painted in the app's background color (measured: corner
-// texel 255,255,255,255 under a 14px-radius card). The texture cannot say
+// texel 255,255,255,255 outside a 14px corner radius). The texture cannot say
 // where the element ends; only the element's computed style can.
 //
 // So the element is measured, and the measurement is the API:
@@ -23,12 +23,12 @@
 //     corners are cut by geometry, resolution-independent, crisp at every LOD
 //     tier — not by texture alpha, which is opaque there.
 //   - The shadow layers become data (`SurfaceShadowLayer[]`) a consumer can
-//     render at rest-truth and evolve dynamically — height, tilt, whatever
-//     the scene's physics wants — with identity meaning "exactly the DOM".
+//     render at rest-truth and evolve dynamically — height, tilt, or another
+//     consumer value — with identity meaning "exactly the DOM".
 //
 // Everything below is string parsing, a resolved per-corner clamp, a DOM
-// walk, and one signed-distance formula. It does not decide how a scene draws
-// the result.
+// walk, and one signed-distance formula. It does not decide how a consumer
+// draws the result.
 
 export interface SurfaceShadowLayer {
   /** Horizontal offset, CSS px (positive = right, in DOM screen space). */

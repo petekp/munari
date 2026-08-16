@@ -3,8 +3,8 @@
 // The crossing is the library's threshold guarantee: content moving
 // between the page's hold (the DOM at rest) and the canvas's hold (a
 // mesh wearing the capture) must never spend a frame in nobody's hands.
-// Three scenes hand-rolled the protocol before it became law; this
-// contract is what "became law" means. The reducer under test is pure —
+// Independent consumers repeated the protocol before it became law. The
+// reducer under test is pure —
 // a whole crossing simulates as ticks — so every clause here walks real
 // protocol time.
 
@@ -70,7 +70,7 @@ describe('presentation accounting', () => {
   // Drawing is inclusive (the lifting overlap), presentation exclusive:
   // two composited copies of the same content read as a ghost around
   // every animated element the moment the page's motion displaces one
-  // off the other (the logo, 2026-08-14).
+  // off the other (decisions.md #29).
   it('exactly one side is composited in every phase — never zero, never both', () => {
     for (const phase of PHASES) {
       const { page, gl } = crossingPresentation(phase)

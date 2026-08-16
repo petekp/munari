@@ -45,7 +45,7 @@ export function uploadNeedsRealloc(
 
 /**
  * How far the raster density may drift from the one that was asked for
- * before the backing store is re-cut. ±40%: at the low end a card is
+ * before the backing store is re-cut. ±40%: at the low end a Surface is
  * carrying about half the texels per axis it wants, which is the point
  * where measured text goes visibly soft; at the high end it is oversupplied,
  * which costs memory and nothing else.
@@ -63,9 +63,9 @@ export const DENSITY_BAND = 1.4
  * **Why the store stops tracking the box.** Writing `canvas.width` CLEARS
  * the backing store, and the repaint that refills it is the compositor's to
  * schedule — it lands after the frame that asked. A Surface resized on every
- * frame therefore has a *blank* canvas at every upload: measured on the
- * passage flight as coverage 0/576 on 38 of 40 frames, the two exceptions
- * being the two frames whose width happened to repeat. (This is what the
+ * frame therefore has a *blank* canvas at every upload: a browser resize
+ * probe measured coverage 0/576 on 38 of 40 frames, with two repeated-width
+ * frames as the only exceptions (platform.md #12). (This is what the
  * immutable-storage bug above was hiding: the uploads GL rejected were
  * blank, so the stale texels it kept were the only thing on screen.)
  *

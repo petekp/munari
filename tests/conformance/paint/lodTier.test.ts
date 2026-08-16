@@ -8,8 +8,7 @@
 // thresholds are separated by the hysteresis band so a camera parked
 // exactly on a boundary can never oscillate the tier, and an approach
 // sharpens in ONE jump rather than ratcheting. The 4096 long-edge clamp
-// is the boundary two scenes guessed at before it had a name
-// (MAX_TEXTURE_EDGE).
+// is the named boundary every consumer shares (MAX_TEXTURE_EDGE).
 
 import { describe, expect, it } from 'vitest'
 
@@ -81,7 +80,7 @@ describe('seedTier', () => {
   // prior is the renderer's pixel ratio (world ≈ CSS px for almost every
   // consumer). Seeding at 1× regardless made retina Surfaces be born at
   // half density: a visible blur-then-pop on every popover open and every
-  // page→mesh handoff (measured on the flight scene, 2026-08-02: born tier 1,
+  // page→mesh handoff (measured 2026-08-02: born tier 1,
   // ~130ms of 2.2×-undersampled text, then the tier-3 swap).
 
   it('seeds at the tier nearest the pixel ratio', () => {
@@ -167,9 +166,9 @@ describe('tiersInRange', () => {
 })
 
 describe('maxTier', () => {
-  it('resolves to the highest tier the guard admits (the glass-scene cases)', () => {
-    // Card 360×440: 6× = 2640 fits → 6. Wall 880×560: 6× = 5280 is out,
-    // 4× = 3520 fits → 4.
+  it('resolves to the highest tier the guard admits', () => {
+    // A 360×440 Surface: 6× = 2640 fits → 6. An 880×560 Surface:
+    // 6× = 5280 is out, 4× = 3520 fits → 4.
     expect(maxTier(DEFAULT_TIERS, 360, 440)).toBe(6)
     expect(maxTier(DEFAULT_TIERS, 880, 560)).toBe(4)
   })

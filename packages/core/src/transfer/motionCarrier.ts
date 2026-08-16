@@ -12,15 +12,15 @@
 // style, the mesh applies the same sample to its transform, and the two
 // outputs agree in every frame because they are one animation wearing
 // two costumes. A crossing then needs no settle for this motion —
-// every frame is a plateau — and the swap lands mid-flight with
+// every frame is a plateau — and the swap lands during motion with
 // position and velocity intact (decisions.md #30).
 //
 // The law is small and it is a discipline, not a formula:
 //
 // - ONE EVALUATION PER FRAME. `tick` evaluates the program once and
 //   caches; `sample` only reads the cache. However many outputs read a
-//   carrier in one frame — six letters, their six meshes — they read
-//   the same number. Two evaluations at two times inside one frame is
+//   carrier in one frame, every reader sees the same number. Two
+//   evaluations at two times inside one frame is
 //   exactly the two-clocks fault this exists to remove.
 // - THE CLOCK IS THE CALLER'S. `tick` takes an absolute timestamp
 //   (a rAF timestamp in practice) and the carrier's epoch is its first

@@ -1,15 +1,15 @@
-// The phase law: a card's texels land on the display's pixels only if
-// the card itself does.
+// The phase law: a Surface's texels land on the display's pixels only if
+// the Surface itself does.
 //
 // `densityIdentity` pins how MANY texels a plane needs. This pins where
-// they have to arrive, and the two are independent budgets — a card can
+// they have to arrive, and the two are independent budgets — a Surface can
 // be supplied at exactly 1 : 1 and still read soft, which is the defect
 // that produced this module. Measured on a live route transition: a
 // 0.156 px origin offset cost 16% of the typography's gradient energy
 // against the same pixels of real DOM (900.90 → 758.02), and snapping
 // the origin returned 1.001×.
 //
-// The kernel owns the correction. Deciding a card is at rest is the
+// The kernel owns the correction. Deciding a Surface is at rest is the
 // consumer's judgement, so every number here is the correction at full
 // strength; blending is the caller's.
 import { describe, expect, it } from 'vitest'
@@ -21,7 +21,7 @@ const VW = 1280
 const FOV = 42
 const CAM = cameraDistance(VH, FOV)
 
-/** The route-transition card that produced the measurement, at rest. */
+/** The measured Surface at rest. */
 const RESTING = {
   x: -326,
   y: 50.15625,
@@ -34,7 +34,7 @@ const RESTING = {
   density: 2,
 }
 
-/** Where the card's top-left corner actually lands, in device px. */
+/** Where the Surface's top-left corner actually lands, in device px. */
 function corner(input: Parameters<typeof pixelGridSnap>[0]) {
   const s = pixelGridSnap(input)
   const mag = input.mag
@@ -47,15 +47,15 @@ function corner(input: Parameters<typeof pixelGridSnap>[0]) {
 describe('the pixel-grid snap', () => {
   it('lands the corner on an integer device pixel', () => {
     // The whole point, stated as the thing a probe can read off the
-    // screen. The reported card sat at y 50.15625 — a sixth of a pixel,
+    // screen. The measured Surface sat at y 50.15625 — a sixth of a pixel,
     // and enough to smear every glyph edge across two device pixels.
     const { left, top } = corner(RESTING)
     expect(left).toBeCloseTo(Math.round(left), 9)
     expect(top).toBeCloseTo(Math.round(top), 9)
   })
 
-  it('is already zero for a card that was on the grid', () => {
-    // A snap that moves an aligned card is a snap that would jitter one.
+  it('is already zero for a Surface that was on the grid', () => {
+    // A snap that moves an aligned Surface is a snap that would jitter one.
     const aligned = { ...RESTING, x: -326, y: 50 }
     const s = pixelGridSnap(aligned)
     expect(s.dx).toBe(0)
@@ -78,13 +78,13 @@ describe('the pixel-grid snap', () => {
 
   /**
    * The second correction, and the one a corner-only snap is missing.
-   * A 514 px card magnified by planeScale at the lab's lift altitude
+   * A 514 px Surface magnified by planeScale at a raised plane
    * does not cover a whole number of device pixels, so the phase walks
-   * across the card's own width even with the top-left nailed down.
+   * across the Surface's own width even with the top-left nailed down.
    */
   describe('the footprint', () => {
-    const LIFT = 96
-    const mag = planeScale(CAM, LIFT)
+    const RAISED_Z = 96
+    const mag = planeScale(CAM, RAISED_Z)
     const lifted = {
       ...RESTING,
       width: 514,
@@ -101,11 +101,11 @@ describe('the pixel-grid snap', () => {
       expect(lifted.height * mag * lifted.dpr * s.sy).toBeCloseTo(th, 9)
     })
 
-    it('lies about the size by at most half a texel, over the whole card', () => {
+    it('lies about the size by at most half a texel, over the whole Surface', () => {
       // That is the cost side, and it is the bound the law actually
-      // gives — a rounding of the demand, spread across the card. In
+      // gives — a rounding of the demand, spread across the Surface. In
       // fractions it is half a texel over the count, which is a tenth of
-      // a percent here and smaller the bigger the card. A correction
+      // a percent here and smaller for a larger Surface. A correction
       // larger than this means the density it was handed is not the one
       // the capture happened at.
       const s = pixelGridSnap(lifted)
@@ -116,7 +116,7 @@ describe('the pixel-grid snap', () => {
     })
 
     it('is the identity when the capture is already whole', () => {
-      // dpr density on an integral card: the demand is already a texel
+      // dpr density on an integral Surface: the demand is already a texel
       // count and there is nothing to correct.
       const s = pixelGridSnap({ ...RESTING, width: 308, height: 324, density: 2, mag: 1 })
       expect(s.sx).toBe(1)
@@ -125,16 +125,16 @@ describe('the pixel-grid snap', () => {
   })
 
   /**
-   * The correction is applied to a card that is centred on its pose, so
+   * The correction is applied to a Surface that is centred on its pose, so
    * the two axes cannot share a sign: world y runs up and screen y runs
    * down. Getting this wrong doubles the error instead of cancelling it,
    * silently, on one axis only.
    */
   it('corrects each axis in the direction its own screen edge needs', () => {
     // Same fractional quarter-pixel on both axes, at dpr 2 with an even
-    // card: the left edge sits half a device pixel past the grid and so
-    // does the top. Pushing the card RIGHT fixes the left edge; fixing
-    // the top means pushing the card DOWN, which is world −y. A shared
+    // Surface: the left edge sits half a device pixel past the grid and so
+    // does the top. Pushing the Surface RIGHT fixes the left edge; fixing
+    // the top means pushing the Surface DOWN, which is world −y. A shared
     // sign here doubles the error on one axis instead of cancelling it,
     // silently, and only on that axis.
     const s = pixelGridSnap({ ...RESTING, x: -326.25, y: 50.25 })
@@ -160,10 +160,10 @@ describe('the pixel-grid snap', () => {
     expect(Object.is(s.dy, -0)).toBe(false)
   })
 
-  it('answers a degenerate card instead of dividing by it', () => {
-    // A slot measured before layout, a card mid-unmount: zero size is a
-    // frame that happens, and NaN would propagate straight into the
-    // scene graph where nothing checks for it.
+  it('answers a degenerate Surface instead of dividing by it', () => {
+    // A slot before layout or a Surface during unmount can have zero size.
+    // NaN would propagate straight into the
+    // render graph where nothing checks for it.
     for (const box of [
       { width: 0, height: 324 },
       { width: 308, height: 0 },

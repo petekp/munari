@@ -112,11 +112,11 @@ export interface DomTextureSource {
    * this reports the box the delivered raster actually holds, and the gap
    * between the two IS the capture pipeline's lag (React state ->
    * `source.setSize` -> `requestPaint` -> compositor `onpaint` -> GL
-   * upload). A consumer that blends the raster against live DOM (the
-   * veil's fade zone) has to know the raster's own generation for exactly
-   * this reason: blending a copy from one layout generation over a page
-   * from a newer one reads as doubled content, not as a soft mismatch —
-   * observed as the veil resize ghosting, 2026-08-08.
+   * upload). A consumer that blends the raster against live DOM has to know
+   * the raster's own generation for exactly this reason. Blending a copy
+   * from one layout generation over a page from a newer one reads as doubled
+   * content, not as a soft mismatch —
+   * observed as resize ghosting on 2026-08-08.
    */
   paintedSize: () => readonly [number, number]
   /** The last successful immutable paint receipt, or null before success. */
@@ -149,7 +149,7 @@ export interface DomTextureSource {
    * ignoring the band `setSize`/`setScale` are allowed to drift inside.
    *
    * The band exists to keep a moving Surface's pixels alive across a resize;
-   * it has no business surviving into rest, where a card can be left up to
+   * it has no business surviving into rest, where a Surface can be left up to
    * 40% under-supplied with nothing to knock it back out of tolerance.
    * Callers settle a Surface once its box stops moving — motion is
    * approximate, rest is exact.
@@ -290,8 +290,8 @@ export function createDomTextureSource(
   // hit-testing can never wander into a parked subtree — but that value
   // inherits, and the forwarder's own hit test reads the computed one. Left
   // alone, every element in every Surface would read as clear glass and
-  // nothing would ever be hittable. A scene that wants a transparent root (a
-  // floating layer) overrides this from onSource, which runs after.
+  // nothing would ever be hittable. A consumer that wants a transparent root
+  // overrides this from onSource, which runs after.
   element.style.pointerEvents = 'auto'
   canvas.appendChild(element)
   document.body.appendChild(canvas)
@@ -456,7 +456,7 @@ export function createDomTextureSource(
       // re-adopts the same node and would otherwise be refused for being
       // parented to the canvas that just died; and a consumer holding a node
       // would hold its dead canvas through the parent pointer, leaking one
-      // parked canvas per disposed plate.
+      // parked canvas per disposed source.
       element.remove()
       registry.delete(stats)
     },
@@ -468,13 +468,11 @@ export function createDomTextureSource(
  * **adopted**.
  *
  * Markup is the convenient door and stays the common one. Adoption exists
- * because some subtrees cannot survive a round trip through `innerHTML` —
- * a plate in an exploded-paint teardown is a `cloneNode` of a live page
- * element, wrapped in padding to defeat the border-box clip (platform.md
- * #9) and carrying an injected neutralizing stylesheet. Serializing that
- * back to a string would throw away everything the consumer just built,
- * and re-parsing it would produce a *different* subtree than the one they
- * measured.
+ * because some subtrees cannot survive a round trip through `innerHTML`.
+ * A detached tree can contain cloned elements, padding that avoids the
+ * border-box clip (platform.md #9), and injected styles. Serializing it would
+ * throw away the constructed tree, and parsing it again would create a
+ * different tree than the one the consumer measured.
  *
  * **Adoption is one-way, and only an unparented node may cross.**
  * `canvas.appendChild` MOVES a node — it does not copy it. An element that
@@ -483,8 +481,7 @@ export function createDomTextureSource(
  * anywhere to say why. That is precisely the shape of bug this kernel
  * refuses to leave findable-by-debugging: requiring the node to be
  * parentless makes it unwritable instead. A consumer who wants to capture
- * something they are still displaying passes `node.cloneNode(true)`, which
- * is what a plate wanted in the first place.
+ * something they are still displaying passes `node.cloneNode(true)`.
  *
  * Once adopted the node belongs to the source: it is restyled
  * (`pointer-events`), it is relaid out inside the canvas's box, and

@@ -95,7 +95,7 @@ export function deepestElementAt(root: Element, x: number, y: number): Element |
 // tabbable of every popover it opens) — is judged as if the user had been
 // tabbing. Measured 2026-08-01: every pointer-opened popover materialized a
 // focus ring a real page would not show, and with shadcn's `transition-all`
-// on the button, paid ~18 paints of ring fade under the entrance flight.
+// on the button, paid ~18 paints of ring fade during its entrance transition.
 //
 // Same doctrine as the boundary protocol above: the forwarder is the only
 // thing that knows the pointer's real story, so whatever it declines to say,
@@ -581,8 +581,8 @@ export function forwardPointer(
   // exactly the duration of its drag and does raw clientX/Y delta
   // math on whatever arrives, so one panel-edge crossing mid-orbit
   // fed it a departure burst at (−16,−16), poisoned its rotate
-  // anchor, and the next real 10px hand move threw the camera across
-  // the scene. The r3f 'up' side needs no gate here — Surface's
+  // anchor, and the next real 10px hand move moved the controlled view.
+  // The r3f 'up' side needs no gate here — Surface's
   // pressedRef already refuses a release it never saw the press for.
   if (
     kind === 'move' &&
@@ -698,7 +698,7 @@ export function nudgeSelect(el: HTMLSelectElement) {
 // if no handler claims it, walk up from the target for the nearest scroll
 // container that can still move in the delta's direction and move it.
 //
-// The return value is the arbitration verdict the SCENE needs: `true` means
+// The return value is the arbitration verdict the consumer needs: `true` means
 // the surface consumed the wheel (a handler claimed it, a scroller moved, or
 // an `overscroll-behavior: contain|none` boundary swallowed it), and the
 // camera must not also zoom. `false` means the wheel fell all the way
@@ -733,7 +733,7 @@ function overscrollStops(el: Element, axis: 'x' | 'y'): boolean {
 /**
  * Forward a wheel at page point (x, y) into `root`. Returns true when the
  * surface consumed it (the camera must stand down), false when it chained
- * through to the scene.
+ * through to the surrounding view.
  */
 export function forwardWheel(
   root: HTMLElement,
@@ -904,7 +904,7 @@ export function trackWheel(): () => void {
   if (wheelRefs++ === 0) {
     const onWheel = (e: WheelEvent) => {
       // Only wheels aimed at a canvas are ours to arbitrate — page scrolling
-      // outside the scene stays untouched, and the synthetic wheel dispatched
+      // outside the canvas stays untouched, and the synthetic wheel dispatched
       // by forwardWheel (whose target is parked DOM, never a canvas) can't
       // re-enter here.
       if (!(e.target instanceof HTMLCanvasElement)) return

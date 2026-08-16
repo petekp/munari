@@ -30,8 +30,8 @@ export function planeScale(camZ: number, z: number): number {
  * Backing texels per CSS px that make a plane at z texel-for-pixel
  * with the display: exactly dpr × planeScale — no more (wasted
  * upload), no less (soup). "Born at the display's density" is this
- * identity at z = 0; the density schedule is this identity evaluated
- * at the plate's altitudes.
+ * identity at z = 0. A consumer can evaluate the same identity at any
+ * target plane.
  */
 export function texelDemand(dpr: number, camZ: number, z: number): number {
   return dpr * planeScale(camZ, z)
@@ -49,12 +49,9 @@ export function texelDemand(dpr: number, camZ: number, z: number): number {
  * the same similar-triangle ratio that makes things on that plane
  * look bigger.
  *
- * An earlier version shipped without it, computing the drag target as
- * if the card were on z = 0 while actually holding it at z = 96. That
- * is a 1.0796× GAIN error, not an offset: the card tracked the cursor
- * at 108% of its speed, drifting out from under the pointer toward
- * the edges of the screen — read, correctly, as "something fighting
- * the drag".
+ * Using the z = 0 mapping for an object on another plane creates a gain
+ * error, not an offset. The object then moves faster or slower than the
+ * pointer, and the error grows with distance from the screen center.
  */
 export function screenToPlane<V extends Vec3Like>(
   clientX: number,
@@ -80,13 +77,10 @@ export function screenToPlane<V extends Vec3Like>(
  * the original. Similar triangles once more — world x/y scale by the
  * ratio of the two magnifications.
  *
- * A tapped card needs this. The float anchor is captured wherever the
- * plate happened to be when the fingers let go — mid-rise, on no
- * plane in particular — but the texture is pinned for the LIFT plane,
- * and a card hanging below it shows its texels squeezed into fewer
- * screen pixels: permanently minified, permanently soft. Carrying the
- * anchor up finishes the climb the tap interrupted, without the card
- * sliding sideways while it rises.
+ * This lets a consumer move an anchor to a new depth without changing its
+ * screen position. It is useful when a texture is prepared for one plane
+ * but its anchor was captured on another; leaving the anchor on the wrong
+ * plane would keep the texture minified or magnified.
  */
 export function carryToPlane<V extends Vec3Like>(p: V, camZ: number, z: number): V {
   const k = planeScale(camZ, p.z) / planeScale(camZ, z)

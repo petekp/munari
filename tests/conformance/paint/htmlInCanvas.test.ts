@@ -167,11 +167,12 @@ describe('createDomTextureSource sizing', () => {
     s.dispose()
   })
 
-  // THE LAW THE PASSAGE FLIGHT BOUGHT. Writing `canvas.width` clears the
+  // THE CONTINUOUS-RESIZE LAW. Writing `canvas.width` clears the
   // backing store, and the paint that refills it is the compositor's to
   // schedule — it lands after the frame that asked. A store cut to the box
   // exactly, on a Surface resized every frame, is therefore BLANK at every
-  // upload (measured: coverage 0/576 on 38 of 40 frames of a flight). So the
+  // upload (measured: coverage 0/576 on 38 of 40 frames; platform.md #12).
+  // So the
   // store holds while the density it supplies is close enough, and the
   // element simply rasters at a slightly different density in the meantime.
   it('HOLDS the store through a resize the band can absorb — pixels survive', () => {
@@ -272,7 +273,7 @@ describe('createDomTextureSource sizing', () => {
 // PAINTEDSIZE — the box the delivered raster actually holds, as opposed to
 // size()'s box a consumer just asked for. The gap between them is the
 // capture pipeline's lag, and a consumer blending the raster against live
-// DOM (the veil's fade zone) has to read THIS, not size(), to know whether
+// DOM has to read THIS, not size(), to know whether
 // what it is about to blend is even the same generation as the live page.
 describe('paintedSize — the box the last COMPLETED paint actually holds', () => {
   // onpaint's success path — the one that stamps paintedW/paintedH — only
@@ -310,7 +311,7 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
   // before a paint has actually delivered it would tell a consumer
   // blending the raster against live DOM that the copy already matches a
   // generation it has never painted, which is exactly the ghosting this
-  // seam exists to prevent (the veil resize bug, 2026-08-08).
+  // seam exists to prevent (measured 2026-08-08).
   it('still reports the OLD box after setSize, before the next driven paint', () => {
     const s = make(360, 460)
     firePaint(s)
@@ -473,53 +474,51 @@ describe('identity CTM — the backing ratio is the only scale', () => {
 // Adoption is not sugar. `drawElementImage` accepts only immediate children
 // of the trial canvas — measured 2026-08-03, with an explicit InvalidStateError
 // for a page element AND for a descendant of a legitimate child — so anything
-// captured is necessarily a clone living in its own parked canvas. An
-// exploded-paint plate is exactly that: a `cloneNode` of a live element,
-// wrapped in padding to defeat the border-box clip (platform.md #9), carrying
-// an injected descendant-wide neutralizing stylesheet. That subtree is
-// assembled by the consumer and cannot round-trip through `innerHTML`.
+// captured is necessarily a clone living in its own parked canvas. A detached
+// tree can contain a clone, padding that avoids the border-box clip
+// (platform.md #9), and an injected stylesheet. A consumer-assembled subtree
+// cannot round-trip through `innerHTML` without losing its identity.
 //
 // The door is one-way BY CONSTRUCTION, and these cases are what makes it so:
 // `appendChild` MOVES a node, so a parented element handed over would be torn
 // out of the consumer's page with no error anywhere. Refusing it is the whole
 // point of the seam.
 describe('createDomTextureSource adopting a node', () => {
-  /** A plate as the consumer builds one: detached, already assembled. */
-  function plate(): HTMLElement {
+  /** A detached tree as a consumer builds one. */
+  function detachedTree(): HTMLElement {
     const wrapper = document.createElement('div')
     wrapper.style.padding = '100px'
     const style = document.createElement('style')
     style.textContent = '*{color:transparent !important}'
-    const card = document.createElement('div')
-    card.className = 'card'
-    card.textContent = 'live'
-    wrapper.append(style, card)
+    const content = document.createElement('div')
+    content.className = 'content'
+    content.textContent = 'live'
+    wrapper.append(style, content)
     return wrapper
   }
 
   it('adopts the node ITSELF — identity survives, so the consumer can keep a handle', () => {
-    const node = plate()
-    const s = createDomTextureSource(node, 360, 460, { label: 'plate' })
-    // Not a copy, not a re-parse: the same object. A plate builder holds its
+    const node = detachedTree()
+    const s = createDomTextureSource(node, 360, 460, { label: 'tree' })
+    // Not a copy, not a re-parse: the same object. A consumer holds its
     // wrapper to re-style or re-measure it after the source exists.
     expect(s.element).toBe(node)
     s.dispose()
   })
 
   it('carries the assembled subtree across intact', () => {
-    const node = plate()
+    const node = detachedTree()
     const s = createDomTextureSource(node, 360, 460)
-    // The injected stylesheet and the card are both still there. This is what
-    // markup round-tripping would have cost: `innerHTML` on a detached wrapper
-    // serializes, and the re-parsed subtree is a different object graph than
-    // the one whose geometry the consumer measured.
+    // The injected stylesheet and the content are both still there. Markup
+    // round-tripping would serialize the detached wrapper and create a new
+    // object graph instead of the one whose geometry the consumer measured.
     expect(s.element.querySelector('style')?.textContent).toContain('color:transparent')
-    expect(s.element.querySelector('.card')?.textContent).toBe('live')
+    expect(s.element.querySelector('.content')?.textContent).toBe('live')
     s.dispose()
   })
 
   it('parks the adopted node inside the canvas — the drawn element is a canvas CHILD', () => {
-    const node = plate()
+    const node = detachedTree()
     const s = createDomTextureSource(node, 360, 460)
     // The platform's hardest structural rule: only immediate children of the
     // trial canvas can be drawn. An adopted node that landed anywhere else
@@ -529,25 +528,25 @@ describe('createDomTextureSource adopting a node', () => {
   })
 
   it('re-roots the pointer-events cascade on the adopted node too', () => {
-    const node = plate()
+    const node = detachedTree()
     const s = createDomTextureSource(node, 360, 460)
     // The parked canvas is `pointer-events: none` and that value INHERITS.
     // The forwarder's hit test reads the computed style, so without this the
-    // whole plate would read as clear glass. The markup path has always done
+    // whole tree would read as clear glass. The markup path has always done
     // it; the node path is the same subtree and needs the same re-rooting.
     expect(s.element.style.pointerEvents).toBe('auto')
     s.dispose()
   })
 
   it('dispose RELEASES the node — it leaves unparented, exactly as it arrived', () => {
-    const node = plate()
+    const node = detachedTree()
     const s = createDomTextureSource(node, 360, 460)
     s.dispose()
     // Hold, not confiscation. The node is required to arrive unparented,
     // so dispose returns it to that state and adoption is exactly invertible.
     // Leaving it inside the dead canvas would be a resting state nobody owns:
     // a consumer holding the node holds the canvas through it, so every
-    // disposed plate would leak its parked canvas.
+    // disposed source would leak its parked canvas.
     expect(document.body.contains(s.canvas)).toBe(false)
     expect(document.body.contains(node)).toBe(false)
     expect(node.parentNode).toBe(null)
@@ -556,12 +555,12 @@ describe('createDomTextureSource adopting a node', () => {
   // THE REMOUNT. React StrictMode mounts, cleans up, and mounts again — so a
   // <Surface html={node}> adopts the SAME node twice, with a dispose between.
   // Without release the second adoption sees a node parented to the first
-  // (detached) canvas and refuses it: the plate would throw on the second
+  // (detached) canvas and refuses it: the tree would throw on the second
   // pass of every dev-mode mount, and the refusal would be *correct* by the
   // rule while being nonsense in the situation. Release is what makes the
   // rule and the lifecycle agree.
   it('the same node can be re-adopted after dispose — a StrictMode remount', () => {
-    const node = plate()
+    const node = detachedTree()
     const first = createDomTextureSource(node, 360, 460)
     first.dispose()
     const second = createDomTextureSource(node, 360, 460)
@@ -625,7 +624,7 @@ describe('createDomTextureSource adopting a node', () => {
       drawElementImage: (el) => void drawn.push(el),
     })
     try {
-      const node = plate()
+      const node = detachedTree()
       const s = createDomTextureSource(node, 360, 460)
       // Nothing about the door is a second paint path: same onpaint, same
       // counter, and the element handed to the platform is the consumer's own

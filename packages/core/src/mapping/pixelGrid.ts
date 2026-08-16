@@ -29,8 +29,7 @@
 // size by at most half a texel in each direction — the trade is not a
 // close one, because half a pixel of displacement is invisible and half
 // a pixel of blur is what gets reported. Consumers apply it where the
-// pose is CONSUMED and leave the trajectory exact (the truth/presentation
-// split the grounded damper is built on).
+// pose is CONSUMED and leave the source trajectory exact.
 //
 // The kernel owns the correction; the consumer owns WHEN it applies.
 // Deciding a Surface is at rest is the consumer's judgement. A quantized
@@ -66,10 +65,10 @@ export interface PixelGridInput {
 
 /** The correction, in the two units the caller applies it in. */
 export interface PixelGridSnap {
-  /** World-unit offsets to ADD to the card's centre. */
+  /** World-unit offsets to ADD to the Surface's centre. */
   dx: number
   dy: number
-  /** Multipliers on the card's rendered size, ~1 ± half a texel. */
+  /** Multipliers on the Surface's rendered size, ~1 ± half a texel. */
   sx: number
   sy: number
 }

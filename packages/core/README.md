@@ -51,7 +51,7 @@ threshold before the tier changes. This hysteresis prevents repeated tier
 changes when the camera rests near that threshold.
 
 `pixelGrid` makes small position and size corrections so texture pixels land
-on display pixels. More texels cannot fix a card that sits between display
+on display pixels. More texels cannot fix a Surface that sits between display
 pixels because WebGL still blends each texel across its neighbors.
 
 WebGL minifies a texture when it covers fewer screen pixels than its source
@@ -105,8 +105,8 @@ interpolate. For example, `transition: --depth 300ms ease` changes `--depth`
 over 300 milliseconds. If no paint rule reads that property, the transition
 does not repaint the DOM. A 600 millisecond test produced zero paints.
 
-`getComputedStyle` returns the current value during the transition. A scene can
-read that value each frame and apply it to depth, tilt, or another mesh value.
+`getComputedStyle` returns the current value during the transition. A consumer
+can read that value each frame and apply it to depth, tilt, or another mesh value.
 CSS and Tailwind can define the target value and transition.
 
 ## Forwarding clicks, hover, and typing

@@ -1,6 +1,6 @@
 // The choreography contract.
 //
-// A scene scripts its crossing as pure functions of progress — windows
+// A consumer scripts its crossing as pure functions of progress — windows
 // (crossingRange) and bells (crossingCurve) — never as timelines. The
 // shape is drei's useScroll().range/.curve, because our users' hands
 // already know it; the law is what the shape buys: any composition of
@@ -60,7 +60,7 @@ describe('the bell (crossingCurve)', () => {
     expect(crossingCurve(0.7, 0.3, 0.4)).toBeCloseTo(0, 12)
   })
 
-  it('stays zero outside its window — a mid-flight effect never leaks to the edges', () => {
+  it('stays zero outside its window — a middle effect never leaks to the edges', () => {
     expect(crossingCurve(0, 0.3, 0.4)).toBeCloseTo(0, 12)
     expect(crossingCurve(0.1, 0.3, 0.4)).toBeCloseTo(0, 12)
     expect(crossingCurve(0.9, 0.3, 0.4)).toBeCloseTo(0, 12)
@@ -76,7 +76,7 @@ describe('the bell (crossingCurve)', () => {
 
 describe('composition with the eased progress', () => {
   // The identity law: at rest (ramp 0) and only trivially at full
-  // flight, every window agrees with the phase it composes into. An
+  // progress, every window agrees with the phase it composes into. An
   // effect scaled by any range is exactly absent on the page side of
   // the forward handoff and exactly absent again at touchdown —
   // pixel-identity with the page cannot be broken by choreography.
@@ -100,7 +100,7 @@ describe('composition with the eased progress', () => {
   it('a windowed effect leaves rest with zero velocity, inherited from the eased progress', () => {
     // The chain d(range∘progress)/d(ramp) at ramp≈0: smoothstep's flat
     // start multiplies into every window, so even a window opening at
-    // from=0 cannot jerk the first frame of flight.
+    // from=0 cannot jerk the first transition frame.
     const eps = 1e-4
     const slope = crossingRange(crossingProgress(eps), 0, 0.5) / eps
     expect(slope).toBeLessThan(0.01)

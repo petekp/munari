@@ -5,9 +5,8 @@
 // altitude z is magnified by planeScale(camZ, z), so the backing
 // density that makes its texture texel-for-pixel with the display is
 // exactly dpr × planeScale — no more (wasted upload), no less (soup).
-// "Born at the display's density" is this identity at the seed; the
-// density schedule is this identity evaluated at the two plate
-// altitudes (page density at handoff, altitude density at cruise).
+// "Born at the display's density" is this identity at the seed. A
+// consumer can evaluate it at any target plane.
 // The kernel owns the identity; consumers own geometries.
 import { describe, expect, it } from 'vitest'
 
@@ -16,7 +15,7 @@ import { cameraDistance, planeScale, texelDemand } from '@munari/core'
 const VH = 1000
 const FOV = 42
 const CAM = cameraDistance(VH, FOV)
-const LIFT = 96
+const RAISED_Z = 96
 
 describe('the density identity', () => {
   it('is exactly dpr on the calibrated plane — born at the display density', () => {
@@ -29,7 +28,7 @@ describe('the density identity', () => {
   })
 
   it('is dpr × planeScale everywhere, to the last bit', () => {
-    const zs = [0, 12, 55, LIFT, 200]
+    const zs = [0, 12, 55, RAISED_Z, 200]
     const dprs = [1, 2, 2.25]
     for (const z of zs) {
       for (const dpr of dprs) {
@@ -38,13 +37,11 @@ describe('the density identity', () => {
     }
   })
 
-  it('pins the lift-plane demand for the lab geometry', () => {
+  it('pins demand for a raised plane', () => {
     // planeScale(CAM, 96) ≈ 1.0796 for VH 1000 / FOV 42 (the camera
-    // contract pins it); at dpr 2 the lift demand is its double. The
-    // flight card's "pinned at 2.22807, zero tier swaps" was this same
-    // identity on the real window's geometry.
-    expect(texelDemand(2, CAM, LIFT)).toBeCloseTo(2.1592, 3)
-    expect(texelDemand(1, CAM, LIFT)).toBeCloseTo(1.0796, 4)
+    // contract pins it); at dpr 2 the demand is its double.
+    expect(texelDemand(2, CAM, RAISED_Z)).toBeCloseTo(2.1592, 3)
+    expect(texelDemand(1, CAM, RAISED_Z)).toBeCloseTo(1.0796, 4)
   })
 
   it('grows monotonically with altitude — closer to the eye always demands more', () => {

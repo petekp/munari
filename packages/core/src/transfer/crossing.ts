@@ -2,14 +2,12 @@
 //
 // A crossing moves content between the two renderers that both believe
 // they own the pixels: the compositor (the page at rest) and the canvas
-// (meshes wearing the page's capture). Three scenes hand-rolled this
-// protocol before it became law — Flight gated its swap on the weaker
-// upload receipt, Genie on the presentation boundary, the logo
-// playground on presentation plus a settle dwell — and each met the same
-// fault on the way: hide the page before the canvas has PROVEN it can
-// present, and the content spends a frame in nobody's hands. That
+// (meshes wearing the page's capture). Independent consumers repeated this
+// protocol before it became law, and each met the same fault: hide the page
+// before the canvas has PROVEN it can present, and the content spends a frame
+// in nobody's hands. That
 // frame is the flicker a viewer reads as a seam. This law exists so no
-// scene can reach that frame.
+// consumer can reach that frame (decisions.md #28 and #29).
 //
 // The protocol is a four-phase machine:
 //
@@ -40,7 +38,7 @@
 //   in nobody's hands.
 //
 // The kernel owns the machine because the machine is renderer-agnostic:
-// phases, evidence, reversal, and the progress that scene motion must
+// phases, evidence, reversal, and the progress that consumer motion must
 // scale by. The React binding owns the timing of the swap itself
 // (commit order, microtasks, r3f frames) and reports evidence in.
 
@@ -54,7 +52,7 @@ export interface CrossingTiming {
    * this: six presenters proving in 80ms must still wait for the ease.
    */
   settleMs: number
-  /** ms the flight ramp takes to traverse 0..1, either direction. */
+  /** ms the transition ramp takes to traverse 0..1, either direction. */
   rampMs: number
 }
 
@@ -79,10 +77,10 @@ export interface CrossingEvidence {
 export interface CrossingState {
   phase: CrossingPhase
   /**
-   * The flight ramp, 0..1 linear. Zero in 'page' and 'lifting' — the
+   * The transition ramp, 0..1 linear. Zero in 'page' and 'lifting' — the
    * canvas must overlap the page pixel-identically until the page has
    * released — rising only in 'gl', falling through 'landing'.
-   * Scenes read it through crossingProgress, not raw.
+   * Consumers read it through crossingProgress, not raw.
    */
   ramp: number
   /** ms spent in 'lifting' so far — the settle-dwell clock. */
@@ -176,7 +174,7 @@ export function crossingDraws(phase: CrossingPhase): SideFlags {
  * copies of the same content on screen at once, and the moment the
  * page's motion displaces it off its twin the viewer sees both — a
  * ghost trailing or leading every animated element through the whole
- * settle dwell (the logo, 2026-08-14). So the theorem here is exclusive
+ * settle dwell (decisions.md #29). So the theorem here is exclusive
  * where the drawing one is inclusive: EXACTLY ONE side presents in every
  * phase, and visibility changes hands only at the two handoff edges. A
  * consumer wires this to the canvas's own visibility, never to mount —
@@ -191,9 +189,9 @@ export function crossingPresentation(phase: CrossingPhase): SideFlags {
 
 /**
  * The eased read of the ramp — smoothstep, so an excursion leaves rest
- * and arrives at full depth with zero velocity. Scene motion (bob,
- * wobble, dodge — anything that would break pixel-identity with the
- * page) multiplies by this, which is what makes lift-off a growth
+ * and arrives at full depth with zero velocity. Any consumer motion that
+ * would break pixel identity with the page multiplies by this. That makes
+ * lift-off a growth
  * instead of a jump and landing an exhale instead of a cut.
  */
 export function crossingProgress(ramp: number): number {
@@ -202,7 +200,7 @@ export function crossingProgress(ramp: number): number {
 
 /**
  * A choreography window over the progress: how far through
- * [from, from + distance] the flight is, clamped to 0..1 and linear
+ * [from, from + distance] the transition is, clamped to 0..1 and linear
  * inside — the same shape as drei's useScroll().range, because our
  * users' hands already know it. Staggering effects is nothing but
  * giving each its own window; every window evaluates to 0 at progress 0
@@ -216,8 +214,8 @@ export function crossingRange(progress: number, from: number, distance: number):
 
 /**
  * The bell over the same window — 0 → 1 → 0, drei's useScroll().curve —
- * for effects that should exist only MID-flight (streaks, an extra
- * bloom): zero at both ends of its window wherever the window sits, so
+ * for effects that should exist only during the middle of a transition:
+ * zero at both ends of its window wherever the window sits, so
  * it can never violate the handoff-identity law even at full width.
  */
 export function crossingCurve(progress: number, from: number, distance: number): number {

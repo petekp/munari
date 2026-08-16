@@ -120,6 +120,31 @@ describe('the hourglass', () => {
   })
 })
 
+// Core states library laws. Demo names belong in their own modules or in the
+// historical decision and platform records that explain where a law came
+// from. Keeping the names out of package prose stops a working example from
+// becoming the implied shape of the API.
+describe('core prose is independent of demos', () => {
+  it('does not name a Munari demo', () => {
+    const files = [
+      ...sourceFiles(join(ROOT, 'packages/core/src')),
+      ...sourceFiles(join(ROOT, 'tests/conformance')),
+      join(ROOT, 'packages/core/README.md'),
+      join(ROOT, 'packages/core/package.json'),
+    ]
+    const demoName =
+      /\b(?:genie|knobs|optics|veil|explode|workspace|passage|logo|labs?)\b|\bFlight\b|\b(?:flight|glass)[- ](?:lab|scene|demo)\b/gi
+    const offenders: string[] = []
+    for (const file of files) {
+      const text = readFileSync(file, 'utf8')
+      for (const match of text.matchAll(demoName)) {
+        offenders.push(`${relative(ROOT, file)}: ${match[0]}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+})
+
 // A module mock is a seam invented at test time. It passes whether or not
 // the real seam exists, which makes the suite agree with itself instead of
 // with the browser — the one thing the conformance layers are here to

@@ -9,13 +9,12 @@ import { DENSITY_BAND, storeForBox, uploadNeedsRealloc, type TextureStore } from
 // rejected outright — GL_INVALID_VALUE, "Offset overflows texture dimensions"
 // — and the texture silently keeps its stale texels. Nothing throws in JS.
 //
-// This was found by a lab that resizes a Surface EVERY FRAME (a card whose
-// layout width is swept from a tile's box to an article's box). The shipped
+// This was found with a Surface that resizes EVERY FRAME. The shipped
 // policy deferred the reallocation until "the first upload after the
 // post-resize paint lands", which is correct for an occasional resize and
 // unreachable for a continuous one: the mark was re-armed on every commit, so
 // it chased the paint counter forever and the dispose fired three times in a
-// flight of a hundred and twenty. Traced at the GL boundary: one
+// 120-frame resize. Traced at the GL boundary: one
 // `ALLOC 308x324` followed by uploads at 400x372, 520x468, 811x498 — all
 // rejected, all invisible.
 //
@@ -49,7 +48,7 @@ describe('uploadNeedsRealloc', () => {
   })
 
   it('cannot be outrun by a source that resizes every frame', () => {
-    // The regression, as a loop. A hundred and twenty frames of a flight, the
+    // The regression, as a loop. A hundred and twenty frames with the
     // box growing on every one of them, and the invariant is that after each
     // upload the allocation is EXACTLY the store it just uploaded — never one
     // frame behind, whatever order the resizes and paints arrive in.
@@ -86,8 +85,8 @@ describe('uploadNeedsRealloc', () => {
   //
   // After that the ledger and the driver agree with each other forever about a
   // size neither of them is using. Traced at the GL boundary 2026-08-04 on the
-  // passage scene's live counter: `texStorage2D 308x43` once, then
-  // `texSubImage2D 940x106` returning 1281 on every frame of the flight, with
+  // browser probe: `texStorage2D 308x43` once, then
+  // `texSubImage2D 940x106` returning 1281 on every frame, with
   // the predicate below answering `false` to all of them — correctly, from a
   // baseline that was a lie. On screen: a mesh that is present, visible,
   // correctly placed, holding a texture whose canvas demonstrably has ink in
@@ -143,8 +142,9 @@ describe('uploadNeedsRealloc', () => {
 // Writing `canvas.width` clears the backing store, and the repaint that
 // refills it belongs to the compositor's schedule, not to the frame that
 // asked. So a store cut to the box EXACTLY, on a Surface whose box moves
-// every frame, is blank at every upload — measured on the passage flight as
-// coverage 0/576 on 38 of 40 frames. The two exceptions are the tell: both
+// every frame, is blank at every upload — a browser resize probe measured
+// coverage 0/576 on 38 of 40 frames (platform.md #12). The two exceptions
+// are the tell: both
 // were frames whose width happened to repeat, and on those the canvas was
 // full. The store has to stop tracking the box.
 
@@ -186,10 +186,9 @@ describe('storeForBox', () => {
     expect(storeForBox(308, 324, 3, store)).toEqual({ width: 924, height: 972 })
   })
 
-  it('turns a per-frame clear into a handful — the passage flight', () => {
-    // The real sweep: a card growing from a tile's box to an article's box
-    // over 120 frames at dpr 2. Count how many frames would have cleared the
-    // canvas under the exact-fit rule, and how many do under the band.
+  it('turns a per-frame clear into a handful during a continuous resize', () => {
+    // A Surface grows over 120 frames at dpr 2. Count how many frames would
+    // clear the canvas under the exact-fit rule, and how many do under the band.
     let store: { width: number; height: number } | null = null
     let cuts = 0
     let exactCuts = 0
@@ -207,7 +206,7 @@ describe('storeForBox', () => {
     }
     expect(exactCuts).toBe(120)
     expect(cuts).toBeLessThanOrEqual(5)
-    // And the store the card lands on still supplies a real density.
+    // The final store still supplies a real density.
     expect(store!.width / 939).toBeGreaterThan(2 / DENSITY_BAND)
   })
 

@@ -23,12 +23,9 @@
  * The long-edge ceiling every backing store obeys, in texels.
  *
  * Exported because it is not private arithmetic — it is the number a
- * consumer's own density law has to end in, and one that used to be
- * guessed. Two lab scenes independently capped themselves at 4000, a
- * fear-margin around a boundary they could not name and did not want to
- * trip the warning at; the honest form is to clamp with `clampScale`,
- * which lands exactly here and therefore reads to `resolveFixedScale` as
- * "nothing was changed". A guard nobody can cite gets approximated.
+ * consumer's own density law has to end in. Consumers once guessed at this
+ * limit. The exact form is `clampScale`, which lands here and therefore reads
+ * to `resolveFixedScale` as "nothing was changed" (decisions.md #21).
  */
 export const MAX_TEXTURE_EDGE = 4096
 
@@ -86,8 +83,8 @@ export function selectLodTier(
  * approximates) world units to CSS pixels, which makes density ≈ dpr the
  * right prior. Seeding at 1× regardless (the old rule) made every Surface
  * on a retina display be BORN at half density and sharpen ~10–30 frames
- * later — a visible blur-then-pop on anything revealed at mount: a popover
- * opening, a toast, a page card handed off to a mesh mid-gesture.
+ * later — a visible blur-then-pop on anything revealed at mount: a popover,
+ * a toast, or a Surface handed to a mesh during a gesture.
  *
  * The ladder passed in is already range-sliced and 4096-guarded, so an
  * authored ceiling still wins (range [0.25, 1] seeds at 1 on any display),

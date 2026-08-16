@@ -2,8 +2,8 @@
 //
 // Surface chrome: the parser, the resolver, and the walk.
 //
-// The parser fixtures are REAL computed-style strings, captured from Chrome
-// against the flight-scene card (2026-08-02) — computed box-shadow serializes
+// The parser fixtures are real computed-style strings, captured from Chrome
+// on 2026-08-02. Computed box-shadow serializes
 // color-FIRST with commas inside the function, which is exactly the form a
 // naive comma-split shreds. Layout-dependent radii resolution is tested
 // through the pure `resolveRadii` (happy-dom has no layout engine); the walk
@@ -19,7 +19,7 @@ import {
 } from '@munari/core'
 
 describe('parseBoxShadow', () => {
-  it('parses the lab card computed form: color-first, two layers, negative spread', () => {
+  it('parses the computed form: color-first, two layers, negative spread', () => {
     const layers = parseBoxShadow(
       'rgba(22, 21, 15, 0.04) 0px 1px 0px 0px, rgba(22, 21, 15, 0.3) 0px 6px 18px -12px',
     )
@@ -121,9 +121,9 @@ describe('measureSurfaceChrome', () => {
   it('walks a single-child chain to the element that owns the shadow', () => {
     const root = document.createElement('div')
     const host = document.createElement('div')
-    const card = document.createElement('div')
-    card.style.boxShadow = 'rgba(22, 21, 15, 0.3) 0px 6px 18px -12px'
-    host.appendChild(card)
+    const surface = document.createElement('div')
+    surface.style.boxShadow = 'rgba(22, 21, 15, 0.3) 0px 6px 18px -12px'
+    host.appendChild(surface)
     root.appendChild(host)
     document.body.appendChild(root)
     const chrome = measureSurfaceChrome(root)

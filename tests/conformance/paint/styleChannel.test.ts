@@ -5,7 +5,7 @@
 // so getComputedStyle is stubbed per element and the tests exercise what the
 // channel DOES with values: live reads, the transition-bounded rAF sampling
 // window, discrete-change coalescing, and teardown. Whether real CSS eases
-// the value is the browser's half (verified live — see the lab journal).
+// the value is the browser's half (verified in a browser probe).
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 

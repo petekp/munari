@@ -4,7 +4,7 @@
 // only while the tier tracks screen density. A PINNED tier
 // deliberately oversupplies at range, and bilinear minification
 // without mips is aliasing by construction (measured: shredded fine
-// text and grid moiré the moment a lab pinned 'max'), so pinned
+// text and grid moiré under a pinned maximum resolution), so pinned
 // carries mips and trilinear; ladder-tracked stays plain linear. The
 // anisotropy knob does nothing without a mip chain to select from —
 // order matters: allocation first, then filtering, then the shader.

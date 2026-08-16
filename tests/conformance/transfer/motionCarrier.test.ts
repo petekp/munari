@@ -1,6 +1,6 @@
 // The motion carrier contract.
 //
-// A carrier is what lets motion cross the handoff mid-flight: one clock,
+// A carrier is what lets motion cross the handoff without stopping: one clock,
 // one program, and every output — page style, mesh transform — reading
 // the same number in the same frame. The contract pins the discipline,
 // because the discipline IS the guarantee: a second evaluation at a
@@ -49,7 +49,7 @@ describe('one evaluation per frame', () => {
     expect(evaluations).toBe(atBirth + 1)
   })
 
-  it('hands every reader in a frame the identical value — six letters, one number', () => {
+  it('hands every reader in a frame the identical value', () => {
     const carrier = createMotionCarrier((t) => ({ y: t * 0.01 }))
     carrier.tick(2_000)
     carrier.tick(2_400)

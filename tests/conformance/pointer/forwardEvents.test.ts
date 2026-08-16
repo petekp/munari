@@ -823,7 +823,7 @@ describe('the document-capture wheel arbiter', () => {
     expect(orbitHeard).toBe(0)
   })
 
-  it('lets an unconsumed wheel through to the scene', () => {
+  it('lets an unconsumed wheel through to the surrounding view', () => {
     const at = uvOf(...TRIGGER_BOX)
     forwardPointer(root, at.u, at.v, 'move')
     let orbitHeard = 0
@@ -959,8 +959,8 @@ describe('a foreign drag silences the forwarder', () => {
   // and does raw clientX/Y delta math on whatever arrives. An orbit drag that
   // began on empty space kept hovering panels as they swept under the cursor,
   // so a panel-edge crossing mid-drag fed that listener a departure burst at
-  // (−16, −16), poisoned its rotate anchor, and the next real 10px hand move
-  // threw the camera across the scene. Capture semantics are the fix: a held
+  // (−16, −16), poisoned its rotate anchor, and the next real 10px pointer move
+  // moved the controlled view. Capture semantics are the fix: a held
   // button that is not OUR drag is someone else's capture, and a captured
   // pointer reports to nobody else.
   const at = uvOf(...TRIGGER_BOX)
