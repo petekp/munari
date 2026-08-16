@@ -4,15 +4,25 @@
 
 Munari enables you to seamlessly 'lift' any single or group of HTML elements, including whole pages, into a WebGL context, and back, on demand. Seamlessness is the key and focus on Munari. Here's what happens when an element is lifted into WebGL and returned back to the DOM:
 
-- 
-- 
--
+- A copy of the element warms up in the scene, matched to the page pixel
+  for pixel, while the page keeps showing the original.
+- The two swap only once the scene has proven it can draw. Both sides look
+  the same at that instant, so there is nothing to flicker.
+- In the air it is still a live element. You can type in it, select its
+  text, and click things inside it.
+- The page holds its spot open the whole time, so the layout never jumps
+  and the element has somewhere to land.
+- Bring it back and the reverse runs: it settles into the space it left
+  and goes back to being ordinary DOM.
+
+The protocol behind this, and the `useLift` hook that drives it, is in
+[packages/core](packages/core/README.md).
 
 I'm continually surprised at what this simple technique can unlock, and I'm often adding new examples in the labs.
 
-The [Flight demo] is a good example. It's an ordinary drag and drop card stack. But what if the cards really behaved like actual paper? Not a lot of options there. You could build your app in WebGL, add a landing loading bar, and have max flexibility. But then you lose all the benefits of the DOM. There are some hacks that might work like (the `<foreignObject>` trick)[https://surma.dev/things/dom2texture/], but it's limited and brittle.
+The [Flight demo](https://munari.vercel.app) is a good example. It's an ordinary drag and drop card stack. But what if the cards really behaved like actual paper? Not a lot of options there. You could build your app in WebGL, add a landing loading bar, and have max flexibility. But then you lose all the benefits of the DOM. There are some hacks that might work like [the `<foreignObject>` trick](https://surma.dev/things/dom2texture/), but it's limited and brittle.
 
-Munari is built upon ThreeJS and the experimental (HTML-in-Canvas API in Chrome)[https://developer.chrome.com/blog/html-in-canvas-origin-trial]. Today, this means it's only visible to an infinitesimally small number of design engineering nerds, like myself, who happen to have this Chrome flag enabled.
+Munari is built upon ThreeJS and the experimental [HTML-in-Canvas API in Chrome](https://developer.chrome.com/blog/html-in-canvas-origin-trial). Today, this means it's only visible to an infinitesimally small number of design engineering nerds, like myself, who happen to have this Chrome flag enabled.
 
 Munari is a bet on the future of web UI. The HTML-in-Canvas API is a big deal. It's like Core Animation for the web. Coveted effects like liquid glass, depth of field, real progressive blur, and other shader-driven effects are all unlocked. Because of this, I believe HTML-in-Canvas will get the momentum it needs to become a standard. When that day arrives, I want Munari to be one of the first things you reach for when building a new UI.
 
