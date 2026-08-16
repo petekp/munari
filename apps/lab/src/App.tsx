@@ -59,9 +59,9 @@ function KeepDomFocus() {
   return null
 }
 
-// `?scene=flight` opens the flight lab directly. Not a router — just enough
+// `?scene=glass` opens that scene directly. Not a router — just enough
 // of one that a scene can be linked, reloaded into, and screenshotted
-// without a human clicking a chip first. (Deep links used to be `#flight`;
+// without a human clicking a chip first. (Deep links used to be `#glass`;
 // the hash is still honored on arrival so old links keep landing.)
 const SCENE_IDS = new Set<string>(SCENES)
 
@@ -74,7 +74,9 @@ function readScene(): SceneId {
   const q = new URLSearchParams(window.location.search).get('scene')
   if (isSceneId(q)) return q
   const h = window.location.hash.slice(1)
-  return isSceneId(h) ? h : 'workspace'
+  // Flight is the landing scene: what a cold visitor should see first. Every
+  // browser gate names its scene in the URL, so none of them ride this default.
+  return isSceneId(h) ? h : 'flight'
 }
 
 export default function App() {

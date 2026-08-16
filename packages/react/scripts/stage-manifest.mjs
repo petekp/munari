@@ -13,7 +13,7 @@
 //
 // The workspace package staying `private: true` is therefore a feature —
 // a stray `npm publish` at the root cannot ship raw source by accident.
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -74,10 +74,26 @@ writeFileSync(join(dist, 'package.json'), `${JSON.stringify(staged, null, 2)}\n`
 // so nothing else would put it in the package.
 copyFileSync(join(pkgDir, 'src', 'style.css'), join(dist, 'style.css'))
 
-for (const file of ['README.md', 'LICENSE']) {
-  const from = existsSync(join(pkgDir, file)) ? join(pkgDir, file) : join(repoRoot, file)
-  if (existsSync(from)) copyFileSync(from, join(dist, file))
-  else console.warn(`stage-manifest: no ${file} to include`)
+// These files have one authored home at the repository root. Keep their
+// package paths stable so a person, npm, and an installed coding agent read
+// the same release guidance.
+const packageFiles = [
+  ['README.md', 'README.md'],
+  ['LICENSE', 'LICENSE'],
+  ['CHANGELOG.md', 'CHANGELOG.md'],
+  ['llms.txt', 'llms.txt'],
+  [join('.agents', 'skills', 'munari', 'SKILL.md'), join('.agents', 'skills', 'munari', 'SKILL.md')],
+]
+
+for (const [sourcePath, packagePath] of packageFiles) {
+  const from = join(repoRoot, sourcePath)
+  const to = join(dist, packagePath)
+  if (!existsSync(from)) {
+    console.error(`stage-manifest: ${sourcePath} is missing`)
+    process.exit(1)
+  }
+  mkdirSync(dirname(to), { recursive: true })
+  copyFileSync(from, to)
 }
 
 console.log(`stage-manifest: staged ${staged.name}@${staged.version} in packages/react/dist`)

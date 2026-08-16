@@ -151,35 +151,35 @@ try {
   // The walk. Every state below builds materials the previous one did
   // not, and a state that reaches the canvas is a state whose programs
   // must link.
-  const slider = (name, v) =>
-    page.evaluate(
+  // Knobs move through the scene's own handle, never through the tuning
+  // panel. A panel row is a design decision and gets hidden; a walk that
+  // clicked one reported 'ok' for a state it never reached. A missing
+  // handle throws here instead.
+  const knob = async (name, v) => {
+    const ok = await page.evaluate(
       (name_, v_) => {
-        const label = [...document.querySelectorAll('.logo-panel-slider')].find((l) =>
-          l.textContent.includes(name_),
-        )
-        if (!label) return false
-        const input = label.querySelector('input')
-        const set = Object.getOwnPropertyDescriptor(
-          window.HTMLInputElement.prototype,
-          'value',
-        ).set
-        set.call(input, String(v_))
-        input.dispatchEvent(new Event('input', { bubbles: true }))
+        if (!window.__logo) return false
+        window.__logo.setKnob(name_, v_)
         return true
       },
       name,
       v,
     )
+    if (!ok) throw new Error(`window.__logo is missing: cannot set ${name}`)
+  }
 
   const steps = [
     ['the page at rest', async () => {}],
-    ['matter mode', async () => page.click('.logo-panel-matter input')],
+    ['matter mode', async () => page.click('.logo-matter button[data-renderer="gl"]')],
     // Extrusion is off by default and builds the slab material, so the
     // gate has to ask for it — the default-on states alone would have
     // left the letter's edge shader unproven.
-    ['extruded', async () => slider('extrude', 60)],
-    ['relief as bump only', async () => slider('body', 0)],
-    ['back to the page', async () => page.click('.logo-panel-matter input')],
+    ['extruded', async () => knob('extrude', 60)],
+    // Same reasoning, other direction: `body` now defaults to 0, so the
+    // states above are the bump-only relief and the mesh body is the one
+    // nothing reaches by default.
+    ['mesh body', async () => knob('body', 1)],
+    ['back to the page', async () => page.click('.logo-matter button[data-renderer="html"]')],
   ]
   const seen = []
   for (const [what, act] of steps) {

@@ -22,6 +22,7 @@ import type {
 } from '@petepetrash/munari'
 import type { KnobsResizeProbeApi } from '../scenes/knobs/Knobs'
 import type { GenieFilmProbeEvent } from '../scenes/genie/Genie'
+import type { LogoProbeApi } from '../scenes/logo/Logo'
 
 /**
  * The demand probe's record. An instrument reads the three receipts to prove
@@ -69,5 +70,7 @@ declare global {
     __knobsResizeProbe?: KnobsResizeProbeApi
     /** Installed by a watcher: every step of the film's handoff, in order. */
     __genieFilmProbe?: (event: GenieFilmProbeEvent) => void
+    /** The logo scene's knob driver, for the shader gate's material walk. */
+    __logo?: LogoProbeApi
   }
 }

@@ -2,8 +2,8 @@
 
 A draggable card that behaves like paper: it bends under drag, floats
 on tap so you can type in it mid-air, throws between columns with real
-velocity, and crumples into a ball to delete. Nothing here is copyable
-yet; this file lists where the pieces live.
+velocity, and crumples into a ball to delete. Registry extraction has not
+happened; use the lab implementation as the reference.
 
 ## What already exists
 
@@ -54,9 +54,15 @@ Each of these came from a shipped bug:
   behind the shadow plane; additive light clips at white; an output
   gate outside the smoother caused both the flicker and the settle
   hitch.
-- **Handoffs key on `onFirstUpload`, not frame counts**, and a vacated
-  slot may change paint properties only. A 1.5px border once marched
-  the page 2px at every liftoff.
+- **Handoffs use `useLift` and keyed `onFirstPresented` receipts, never
+  `onFirstUpload` or frame counts:** keep the canvas-side presenter mounted while
+  `glMounted`, composite it only while `glHolds`, show the page while
+  `pageHolds`, and gate mesh motion with `progress()`. Flight's plate
+  solver owns the continuous excursion, so its lift ramp is only a
+  one-tick identity edge; do not stack a second static landing ramp on
+  top. Do not reorder the board or start FLIP while `pageHolds`. A
+  vacated slot may change paint properties only. A 1.5px border once
+  marched the page 2px at every liftoff.
 
 ## Tuned constants
 

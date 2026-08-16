@@ -75,8 +75,9 @@ export interface SurfaceProps extends Omit<ThreeElements['mesh'], 'children' | '
   /**
    * The HTML this surface draws: markup to parse, or an element to **adopt**.
    *
-   * Markup is the ordinary door, and `SurfaceApp` is the ordinary way to put
-   * a component tree behind it. An element is for a subtree the scene
+   * String markup is parsed with `innerHTML`, so pass trusted markup only.
+   * `SurfaceApp` is the ordinary way to put a component tree behind it. An
+   * element is for a subtree the scene
    * assembled itself and cannot serialize — an exploded-paint plate is a
    * `cloneNode` of a live page element, padded to defeat the border-box clip
    * (platform.md #9) and wearing an injected neutralizing stylesheet. Round

@@ -1,0 +1,18 @@
+# Munari
+
+> Munari renders live, interactive DOM as physical matter in Three.js. It uses Chrome's experimental HTML-in-Canvas API and keeps the DOM as the source of truth.
+
+## Start
+
+- [README and current setup](https://github.com/petekp/munari/blob/main/README.md)
+- [Munari agent skill](https://github.com/petekp/munari/blob/main/.agents/skills/munari/SKILL.md)
+- [DOM authoring rules](https://github.com/petekp/munari/blob/main/docs/authoring.md)
+- [Public React API](https://github.com/petekp/munari/blob/main/packages/react/src/index.ts)
+
+## Go deeper
+
+- [Renderer handoff decisions](https://github.com/petekp/munari/blob/main/docs/decisions.md)
+- [Measured platform behavior](https://github.com/petekp/munari/blob/main/docs/platform.md)
+- [Copyable recipes](https://github.com/petekp/munari/tree/main/registry)
+- [Lab scenes](https://github.com/petekp/munari/tree/main/apps/lab/src/scenes)
+- [Conformance specification](https://github.com/petekp/munari/tree/main/tests/conformance)

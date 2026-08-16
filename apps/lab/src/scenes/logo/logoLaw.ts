@@ -201,7 +201,7 @@ export const LOGO_DEFAULTS: LogoKnobs = {
   jelly: 0.55,
   prism: 0.5,
   relief: 22,
-  body: 1,
+  body: 0,
   // Off by default. Extrusion is the one effect that costs a readback
   // and a mesh rebuild per glyph change, so it stays something the
   // bench opts into rather than something every visit pays for.

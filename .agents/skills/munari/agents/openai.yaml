@@ -1,0 +1,4 @@
+interface:
+  display_name: "Munari"
+  short_description: "Build sound DOM-to-WebGL interactions"
+  default_prompt: "Use $munari to build this interaction with the smallest sound Munari API."

@@ -1,8 +1,8 @@
 /* the logo playground ──────────────────────────────────────────────────
  *
  * A printed specimen: the candy wordmark sits on litho ink (--screen),
- * and the whole page is the ink — plate and ground share the colour, so
- * the sketch's dark field runs edge to edge.
+ * and the whole page is the ink, so the sketch's dark field runs edge
+ * to edge.
  *
  * Motion rules: the letters animate transform and color ONLY — both
  * paint-cheap, neither ever on a Surface capture root. The `.logo-twin`
@@ -21,19 +21,6 @@
   justify-content: center;
 }
 
-.logo-plate {
-  position: relative;
-  width: min(88vw, 1100px);
-  padding: clamp(48px, 9vh, 110px) clamp(24px, 4vw, 72px);
-  background: var(--screen);
-  border-radius: 20px;
-  box-shadow:
-    inset 0 1px 0 rgba(244, 242, 231, 0.06),
-    0 2px 0 rgba(20, 20, 15, 0.25);
-  display: flex;
-  justify-content: center;
-}
-
 /* The word is a fixed grid (logoLaw slotLayout): explicit width and
  * height in em from inline style, slots absolutely positioned inside.
  * Nothing here ever re-lays out when a glyph changes face — a swap
@@ -41,7 +28,12 @@
 .logo-word {
   position: relative;
   height: 1em;
-  font-size: clamp(64px, 9vw, 148px);
+  /* The responsive base, named so the text-size control can multiply it
+   * (Logo.tsx sets font-size to a calc over this var) instead of
+   * replacing it. A control that wrote a px size would trade the
+   * viewport response away for the scale. */
+  --logo-base: clamp(64px, 9vw, 148px);
+  font-size: var(--logo-base);
   line-height: 1;
   user-select: none;
   cursor: default;
@@ -153,11 +145,44 @@
 }
 
 .logo-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
   font: 600 10px/1 var(--label);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-mute);
   margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.logo-panel-title:hover {
+  color: var(--ink);
+}
+
+.logo-panel-toggle {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ink-faint);
+}
+
+/* Minimized: the title bar is the whole panel, and it stays as the
+ * handle that brings the rest back. */
+.logo-panel[data-compact='true'] {
+  padding-bottom: 12px;
+}
+
+.logo-panel[data-compact='true'] .logo-panel-title {
+  margin-bottom: 0;
+}
+
+.logo-panel[data-compact='true'] > :not(.logo-panel-title) {
+  display: none;
 }
 
 .logo-panel-row {
@@ -184,18 +209,42 @@
   background: var(--bench-lo);
 }
 
-.logo-panel-matter {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font: 600 10px/1.3 var(--label);
-  color: var(--ink-mute);
-  margin-bottom: 10px;
-  cursor: pointer;
+/* The renderer switch. Both names carry weight against an inset track,
+ * so the panel reads as a two-state control at a glance instead of a
+ * checkbox to decode. */
+.logo-matter {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  margin-bottom: 12px;
+  background: var(--bench-lo);
+  border: 1px solid var(--rule-hard);
+  border-radius: 5px;
 }
 
-.logo-panel-matter input {
-  accent-color: var(--ink);
+.logo-matter button {
+  padding: 9px 0 8px;
+  font: 700 10px/1 var(--label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink-mute);
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.logo-matter button:hover {
+  color: var(--ink);
+}
+
+.logo-matter button[data-on='true'] {
+  background: var(--ink);
+  color: var(--bench-hi);
 }
 
 .logo-panel-slider {

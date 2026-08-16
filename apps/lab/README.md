@@ -1,7 +1,7 @@
 # apps/lab
 
-The demo and development app. Run it with `npm run dev` from the repo
-root.
+The demo and development app. Run it with `npm run lab` from the repo
+root. `npm run dev` starts Vite only.
 
 The lab imports only from `@petepetrash/munari`, the same way an
 outside project would; `tests/boundary.test.ts` enforces this. If a
@@ -30,6 +30,8 @@ playground.
 - `src/bareMode.ts`: the `?bare` URL flag, which strips the lab UI so
   browser probes measure the scene alone.
 - `src/components/ui/`: vendored shadcn primitives.
+- `tools/runLab.mjs`: opens Vite in an isolated, flag-enabled Chrome and
+  checks the public origin-trial token.
 - `tools/make-film.sh`: rebuilds the genie film asset;
   `src/scenes/genie/film.provenance.md` records its source and
   license.

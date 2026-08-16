@@ -42,127 +42,158 @@ without an error. Your app owns the single copy.
 npm install @petepetrash/munari three @react-three/fiber
 ```
 
-A `Surface` is one mesh whose material is a live DOM subtree. Hand it
-markup for something static:
+## Your first Surface
+
+Start with `SurfaceApp`. It gives a React tree to one Three.js mesh. The
+button below is still live DOM: click it on the mesh and its React state
+updates normally.
 
 ```tsx
+import { useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { Surface } from '@petepetrash/munari'
+import { detectHtmlInCanvas, SurfaceApp } from '@petepetrash/munari'
 import '@petepetrash/munari/style.css'
+import './app.css'
+
+function Panel() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <div className="surface-panel">
+      <p>Ordinary React, rendered as matter.</p>
+      <button onClick={() => setCount((value) => value + 1)}>
+        Pressed {count} times
+      </button>
+    </div>
+  )
+}
 
 export function App() {
-  return (
-    <Canvas>
-      <Surface
-        width={400}
-        height={300}
-        html={`
-          <div style="width:400px;height:300px">
-            <h1>ordinary DOM</h1>
-            <input placeholder="really, type in it" />
-          </div>
-        `}
-      />
-    </Canvas>
-  )
-}
-```
-
-…or `SurfaceApp` to hand it a React tree, rendered by a second React
-root into the same live subtree:
-
-```tsx
-<SurfaceApp width={400} height={300} content={<Panel />} />
-```
-
-A caller-owned canvas can bypass DOM capture. Its frame number crosses the
-renderer with the pixels. A handoff can wait for both the named upload and an
-eligible visible presentation:
-
-```tsx
-import {
-  createCanvasFrameSource,
-  presentationReceiptSatisfies,
-  type PresentationRequirement,
-} from '@petepetrash/munari'
-
-function FrameExample({ canvas }: { canvas: HTMLCanvasElement }) {
-  const [frames] = useState(() =>
-    createCanvasFrameSource(canvas, { premultiplyAlpha: false }),
-  )
-  const [presentation, setPresentation] = useState<PresentationRequirement>()
-  const nextTransferId = useRef(0)
-  const nextPresentationRevision = useRef(0)
-
-  function publishFrame() {
-    // Finish every canvas write before publishing it.
-    drawNextFrame(canvas)
-    setPresentation({
-      transferId: ++nextTransferId.current,
-      frame: frames.publish(),
-      presentationRevision: ++nextPresentationRevision.current,
-    })
+  if (!detectHtmlInCanvas().drawElementImage) {
+    return (
+      <p>
+        Enable <code>chrome://flags/#canvas-draw-element</code>, then fully
+        restart Chrome.
+      </p>
+    )
   }
 
-  return <>
-    <button onClick={publishFrame}>draw next frame</button>
-    <Canvas>
-      <Surface
-        frame={frames}
-        width={400}
-        height={300}
-        presentation={presentation}
-        onPresented={(receipt) => {
-          if (presentation && presentationReceiptSatisfies(presentation, receipt)) {
-            setPresentation(undefined)
-            releasePreviousOwner()
-          }
-        }}
-      >
-        <planeGeometry args={[400, 300]} />
-      </Surface>
-    </Canvas>
-  </>
+  return (
+    <main className="munari-demo">
+      <Canvas camera={{ position: [0, 0, 6], fov: 45 }}>
+        <ambientLight intensity={2} />
+        <SurfaceApp width={400} height={300} content={<Panel />}>
+          <planeGeometry args={[4, 3]} />
+        </SurfaceApp>
+      </Canvas>
+    </main>
+  )
 }
 ```
 
-The frame path uses an unlit, non-tone-mapped material by default, so scene
-lighting does not change its color. Choose `material="standard"` only when
-you want lighting.
+```css
+html,
+body,
+#root,
+.munari-demo {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
 
-The canvas stays with its caller. `publish()` means new pixels are ready; it
-does not mean they were drawn. `onFrameDrawn` proves that the target mesh used
-the named upload in a renderer pass. It fires for an off-screen or
-color-disabled pass too. `onPresented` adds the exact transfer and
-presentation revision and accepts only a color-writing draw to the default
-framebuffer. Several publications can merge before one render, so receipts
-name only the latest frame that was uploaded. A hidden or culled mesh cannot
-send a receipt.
+.munari-demo {
+  background: #171612;
+}
 
-The reverse handoff has a different boundary. Prepare the native presenter
-first, then call `commitRendererReleaseFrame` from `useFrame`. Its
-`commitIncoming` callback gives the native presenter any translucent layers;
-the helper suppresses the outgoing object in the same renderer turn and calls
-`publishRelease` after that render stack. React state should publish the durable
-handoff from `publishRelease`, not from an Effect.
+.surface-panel {
+  box-sizing: border-box;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-content: center;
+  gap: 16px;
+  padding: 32px;
+  border-radius: 24px;
+  color: #171612;
+  background: #f4efdf;
+  font: 16px/1.4 system-ui, sans-serif;
+  text-align: center;
+}
+```
 
-For every premultiplied frame source, use `material="none"` and a custom
-material. This also applies when the mesh does not blend: pixels with partial
-alpha still contain alpha-weighted RGB. Do not multiply RGB by alpha again.
-Apply masks and fades to the full `vec4`, then blend with `ONE` and
-`ONE_MINUS_SRC_ALPHA` when transparency is visible.
+The `400 × 300` values are CSS pixels for the DOM layout and texture.
+The `4 × 3` plane is Three.js geometry in world units. A Surface can wear
+any geometry, so it never creates that geometry for you.
 
-`useSurfaceTexture()` returns null until the frame runtime exists. Replace
-or update your custom material's sampler when the hook returns the texture;
-do not leave Three bound to the first null uniform.
+`SurfaceApp` creates a second React root. Context from the outer app does
+not cross into it; pass values through `content`, or put the needed
+providers inside `content`.
 
-For DOM-backed Surfaces, the content root must declare its own pixel size:
-Chrome rasterizes the element at its own layout box, and a container with
-nothing in flow to size it measures zero and draws an empty rectangle, with
-clean paints and no error.
+### Static markup
 
-The stylesheet is required plumbing; its header comment lists what it
-expects from your CSS.
+Use `Surface` when the content is a trusted, static HTML string. Put it
+inside the same lit `Canvas` and give it geometry:
+
+```tsx
+import { Surface } from '@petepetrash/munari'
+
+export function StaticPanel() {
+  return (
+    <Surface
+      width={400}
+      height={300}
+      html={`<article style="box-sizing:border-box;width:400px;height:300px;padding:32px;background:#f4efdf;color:#171612">
+        <h1>Static HTML</h1>
+        <p>This is still a live DOM subtree.</p>
+      </article>`}
+    >
+      <planeGeometry args={[4, 3]} />
+    </Surface>
+  )
+}
+```
+
+`html` is parsed with `innerHTML`, so use it only for trusted markup.
+Use `SurfaceApp` for application content.
+
+For either path, the content root must declare its own pixel size. Chrome
+rasterizes that element at its layout box. A zero-sized root produces an
+empty texture without an error. Import the package stylesheet once, then
+read its short header for the hover, active, focus, and floating-layer CSS
+contract.
+
+## Run the lab locally
+
+The repo uses Node 24 and npm 11. The local launcher starts Vite, opens an
+isolated Chrome with `CanvasDrawElement` enabled, and stops the server when
+you close that Chrome window:
+
+```sh
+npm ci
+npm run lab
+```
+
+Set `CHROME_PATH` if Chrome is installed somewhere unusual. `npm run dev`
+still starts only Vite for a browser that already has the flag enabled.
+
+## Go further
+
+`useLift` and `LiftDriver` move presentation between the page and WebGL
+without a blank frame. The Flight and Logo labs are the working references.
+
+`createCanvasFrameSource` lets caller-owned canvas pixels bypass DOM capture.
+Write the complete frame, then call `publish()`. Its default material is
+unlit and color-preserving. Presentation receipts are available when another
+renderer must not release its pixels until the named frame reaches the screen.
+
+For a custom shader, use `material="none"` and read the texture with
+`useSurfaceTexture()`. The hook returns `null` until the texture exists. DOM
+textures are premultiplied; apply masks to the full `vec4` and blend with
+`ONE` / `ONE_MINUS_SRC_ALPHA`.
+
+Read [the authoring contract](docs/authoring.md) before you capture an
+existing component system. Coding agents can start at [llms.txt](llms.txt)
+and the shipped [Munari skill](.agents/skills/munari/SKILL.md).
 
 ## Repo shape
 
@@ -188,8 +219,10 @@ measured to do,
 ## Development
 
 ```sh
-npm install
-npm run dev          # the lab
+npm ci
+npm run lab              # Vite + a compatible local Chrome
+npm run dev              # Vite only
+npm run check:origin-trial
 npm run typecheck
 npm test
 npm run lint
@@ -204,9 +237,12 @@ Eight browser gates exist. CI runs five on every push (`gate:idle-zero`,
 `instruments/README.md` explains what each one checks.
 
 `npm run build` stages the package with core bundled in and peers left
-external; publish from the staged directory:
+external. The staged package includes the canonical root README, license,
+changelog, `llms.txt`, and Munari skill. Inspect it, then publish from the
+staged directory:
 
 ```sh
 npm run build
+npm pack --dry-run packages/react/dist
 npm publish packages/react/dist
 ```

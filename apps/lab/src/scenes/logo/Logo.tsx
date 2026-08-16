@@ -1085,6 +1085,11 @@ function MatterCanvas({ poses, metrics, knobs, lift, carried, solid }: MatterCan
 
 // ── the tweak panel ─────────────────────────────────────────────────────
 
+// The panel shows the subset of LogoKnobs still being tuned by eye. The
+// settled ones ship at LOGO_DEFAULTS and move in logoLaw.ts; adding a row
+// back here exposes one again. The shader gate drives knobs through
+// `window.__logo` rather than this list, so hiding a row cannot silently
+// drop a material from its walk.
 const SLIDERS: {
   key: keyof LogoKnobs
   label: string
@@ -1093,16 +1098,12 @@ const SLIDERS: {
   step: number
   matterOnly?: boolean
 }[] = [
-  { key: 'tempo', label: 'tempo ms', min: 250, max: 4000, step: 50 },
-  { key: 'swing', label: 'swing', min: 0, max: 0.9, step: 0.05 },
-  { key: 'wave', label: 'wave odds', min: 0, max: 1, step: 0.05 },
-  { key: 'tilt', label: 'tilt deg', min: 0, max: 30, step: 1 },
-  { key: 'drift', label: 'drift em', min: 0, max: 0.25, step: 0.01 },
-  { key: 'squish', label: 'squish', min: 0, max: 0.5, step: 0.02 },
-  { key: 'float', label: 'float em', min: 0, max: 0.15, step: 0.005 },
-  { key: 'depth', label: 'depth px', min: 0, max: 160, step: 5, matterOnly: true },
-  { key: 'dodge', label: 'dodge px', min: 0, max: 120, step: 5, matterOnly: true },
-  { key: 'gloss', label: 'gloss', min: 0, max: 1, step: 0.05, matterOnly: true },
+  // 0.9, not 1: gloss becomes uFx, the mix weight in
+  // `mix(base.rgb, aces(lit) * base.a, uFx)` (logoShaders.ts). At exactly 1
+  // the page's own texel leaves the blend and the letters render from
+  // lighting alone, which comes up black (2026-08-15). The cap is on what
+  // the panel can ask for; LogoKnobs still carries the full range.
+  { key: 'gloss', label: 'gloss', min: 0, max: 0.9, step: 0.05, matterOnly: true },
   { key: 'polish', label: 'polish', min: 0, max: 2, step: 0.05, matterOnly: true },
   { key: 'sheen', label: 'sheen', min: 0, max: 2, step: 0.05, matterOnly: true },
   { key: 'irid', label: 'irid', min: 0, max: 2, step: 0.05, matterOnly: true },
@@ -1112,21 +1113,22 @@ const SLIDERS: {
   // Not 'relief px': the number is a gain referenced to 22, and the px
   // it buys are per-matter (LogoKnobs.relief).
   { key: 'relief', label: 'relief', min: 0, max: 60, step: 2, matterOnly: true },
-  { key: 'body', label: 'body (mesh)', min: 0, max: 1, step: 0.05, matterOnly: true },
   { key: 'extrude', label: 'extrude px', min: 0, max: 80, step: 2, matterOnly: true },
   { key: 'lightYaw', label: 'light yaw°', min: -80, max: 80, step: 1, matterOnly: true },
   { key: 'lightPitch', label: 'light pitch°', min: -45, max: 80, step: 1, matterOnly: true },
   { key: 'key', label: 'key light', min: 0, max: 2, step: 0.05, matterOnly: true },
   { key: 'keySoft', label: 'key soft', min: 0.2, max: 2, step: 0.05, matterOnly: true },
-  { key: 'fill', label: 'fill', min: 0, max: 2, step: 0.05, matterOnly: true },
   { key: 'room', label: 'room', min: 0, max: 2, step: 0.05, matterOnly: true },
-  { key: 'front', label: 'front fill', min: 0, max: 2, step: 0.05, matterOnly: true },
   { key: 'waveScale', label: 'wave scale', min: 0.3, max: 3, step: 0.05, matterOnly: true },
   { key: 'waveSpeed', label: 'wave speed', min: 0, max: 3, step: 0.05, matterOnly: true },
   { key: 'waveAngle', label: 'wave angle°', min: -90, max: 90, step: 5, matterOnly: true },
-  { key: 'ripple', label: 'ripple', min: 0, max: 2, step: 0.05, matterOnly: true },
-  { key: 'stretch', label: 'stretch', min: 0, max: 2, step: 0.05, matterOnly: true },
 ]
+
+/** The logo scene's probe handle: the shader gate walks the material states
+ *  by setting knobs directly, independent of which rows the panel shows. */
+export interface LogoProbeApi {
+  setKnob: (key: keyof LogoKnobs, value: number) => void
+}
 
 // ── the page ────────────────────────────────────────────────────────────
 
@@ -1134,6 +1136,14 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
   useEffect(ensureLogoFonts, [])
 
   const [knobs, setKnobs] = useState<LogoKnobs>(LOGO_DEFAULTS)
+  // Multiplies the stylesheet's responsive base (--logo-base) rather than
+  // naming a px size, so the wordmark still answers the viewport at every
+  // setting. Not a LogoKnob: those reach the shaders through a ref, and this
+  // one never leaves the DOM. Everything downstream is em — slots, drift,
+  // float amplitude — and the WebGL twins size themselves from the fontPx
+  // measured below, so this single number carries the whole scene.
+  const [textScale, setTextScale] = useState(1)
+  const [compact, setCompact] = useState(false)
   const [seed, setSeed] = useState(SEED0)
   // `?probe=still` boots with the conductor paused, so a capture reads
   // the CROSSING alone: beats mid-capture fold the choreography into the
@@ -1144,6 +1154,17 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
   )
   const knobsRef = useRef(knobs)
   knobsRef.current = knobs
+
+  // The shader gate reaches materials the panel no longer exposes. Driving
+  // knobs from here keeps its walk independent of panel layout: a hidden row
+  // costs the gate nothing, where clicking a slider that stopped existing
+  // passed while proving less.
+  useEffect(() => {
+    window.__logo = { setKnob: (key, value) => setKnobs((k) => ({ ...k, [key]: value })) }
+    return () => {
+      delete window.__logo
+    }
+  }, [])
 
   // The lift is the library's now (this page is where it bled first):
   // six presenters must prove post-draw, and the settle dwell outlasts
@@ -1316,7 +1337,11 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
           // visibility off it, and an instrument can read it to know
           // when a crossing is mid-air.
           data-phase={lift.phase}
-          style={{ width: `${GRID.width}em` }}
+          // React writes this during the commit, so the layout effect that
+          // measures fontPx below reads the new size in the same frame —
+          // an effect that set it afterwards would leave the twins one
+          // commit behind, at the wrong size for a frame after every step.
+          style={{ width: `${GRID.width}em`, fontSize: `calc(var(--logo-base) * ${textScale})` }}
         >
           {WORD.split('').map((ch, i) => (
             <span
@@ -1358,22 +1383,53 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
         />
       )}
 
-      <div className="logo-panel">
-        <div className="logo-panel-title">wordmark</div>
+      <div className="logo-panel" data-compact={compact}>
+        <button
+          className="logo-panel-title"
+          aria-expanded={!compact}
+          onClick={() => setCompact((v) => !v)}
+        >
+          <span>wordmark</span>
+          <span className="logo-panel-toggle">{compact ? '+' : '−'}</span>
+        </button>
+        {/* The scene's subject, so it leads the panel: the same letters
+            drawn by the page or by WebGL. Naming both renderers as
+            segments states which one owns the pixels right now, where a
+            checkbox stated only the destination. A flip mid-crossing
+            reverses the crossing, never skips it — that rule lives in the
+            library now (crossingRequest), so both segments stay live
+            while one is in flight. */}
+        {/* `data-renderer` is the probe's handle: shader-compile walks the
+            scene through both directions by name, so reordering or
+            restyling the segments cannot quietly change what it clicks. */}
+        <div className="logo-matter">
+          <button
+            data-renderer="html"
+            data-on={!lift.requested}
+            onClick={() => lift.request(false)}
+          >
+            HTML
+          </button>
+          <button data-renderer="gl" data-on={lift.requested} onClick={() => lift.request(true)}>
+            WebGL
+          </button>
+        </div>
         <div className="logo-panel-row">
           <button onClick={() => setRunning((v) => !v)}>{running ? 'pause' : 'play'}</button>
           <button onClick={() => schedule(waveSteps(rRef.current, WORD.length))}>wave</button>
           <button onClick={() => setSeed(Math.floor(Math.random() * 2 ** 31))}>reroll</button>
         </div>
-        <label className="logo-panel-matter">
-          {/* A flip mid-crossing reverses the crossing, never skips it
-              — that rule lives in the library now (crossingRequest). */}
+        <label className="logo-panel-slider">
+          <span>text size</span>
           <input
-            type="checkbox"
-            checked={lift.requested}
-            onChange={(e) => lift.request(e.target.checked)}
+            type="range"
+            min={0.5}
+            max={2}
+            step={0.05}
+            value={textScale}
+            onChange={(e) => setTextScale(Number(e.target.value))}
           />
-          <span>matter — lift the letters into WebGL</span>
+          <em>{textScale.toFixed(2)}×</em>
         </label>
         {SLIDERS.map((s) => (
           <label

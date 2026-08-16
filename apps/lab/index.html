@@ -8,10 +8,9 @@
          "this origin may use HTMLInCanvas until this date" — that Chrome
          verifies against a public key it ships with, so a visitor needs no
          flag and installs nothing. The claim is bound to
-         https://munari.vercel.app:443 and expires 2026-10-20; the trial's
-         horizon is ~Chrome 154, and past it either the API ships stable and
-         this tag becomes a no-op, or the public demo goes dark until it
-         does. Localhost is a different origin, so development still needs
+         https://munari.vercel.app:443. Its signed payload is the one expiry
+         source; `npm run check:origin-trial` reads it before the renewal
+         window. Localhost is a different origin, so development still needs
          chrome://flags/#canvas-draw-element — the tag is inert there, not
          permissive. -->
     <meta

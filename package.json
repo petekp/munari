@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p apps/lab && tsc --noEmit -p registry && tsc --noEmit -p tools",
     "lint": "oxlint . --deny-warnings",
     "build": "npm run build -w @petepetrash/munari",
+    "check:origin-trial": "node apps/lab/tools/runLab.mjs --check-origin-trial",
     "gate:frame-surface": "node instruments/frame-surface/run.mjs",
     "gate:genie-duplicate": "node instruments/genie-drain/no-duplicate-drag.mjs",
     "gate:genie-film": "node instruments/genie-drain/film-window.mjs",
@@ -25,6 +26,7 @@
     "gate:shaders": "node instruments/shader-compile/run.mjs",
     "gate:dom-surface-demand": "node instruments/dom-surface-demand/run.mjs",
     "dev": "npm run dev -w @munari/lab",
+    "lab": "node apps/lab/tools/runLab.mjs",
     "deploy:demo": "npm run build -w @munari/lab && VERCEL_ORG_ID=team_d8NmNbma8pPIVCBkDXUnfpMa VERCEL_PROJECT_ID=prj_pe759NtaVMScHyupOSFSJ41NQiz7 vercel deploy --prod --yes --cwd apps/lab/dist"
   },
   "devDependencies": {

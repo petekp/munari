@@ -23,9 +23,9 @@
 //    not twitch and the slot is already the right size to be a drop target.
 //    The airborne copy is a second React root rendering the SAME component
 //    from the SAME state. That is why there is no flash to hide: the page
-//    copy stays visible until the Surface has actually painted, and for the
-//    two frames where both exist they are pixel-identical and in the same
-//    place.
+//    copy stays visible until the Surface has proved a color-writing draw.
+//    `useLift` keeps the canvas warm but unseen until that
+//    `onFirstPresented` receipt arrives, then changes custody in one commit.
 //
 // 3. THE CANVAS IS ONLY SOLID WHERE THERE IS MATTER. The overlay is
 //    `pointer-events: none` at rest — a canvas with nothing in it must not be
@@ -51,9 +51,12 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
   CanvasPointerGate,
+  LiftDriver,
   SurfaceApp,
+  useLift,
   useSurfaceChrome,
   useSurfaceTexture,
+  type Lift,
   type SurfaceChrome,
 } from '@petepetrash/munari'
 import {
@@ -300,6 +303,16 @@ interface Flight {
   prevTarget: THREE.Vector3
   /** False until `prevTarget` means something. */
   handSeeded: boolean
+  /**
+   * Event-rate release velocity. `handVel` remains the frame-rate feed for
+   * the held spring; this second channel covers a complete press/move/release
+   * burst that arrives before Driver gets its first frame.
+   */
+  releaseVel: THREE.Vector3
+  releaseX: number
+  releaseY: number
+  releaseAt: number
+  releaseSeeded: boolean
   /** 0 → 1 as the card leaves the page. */
   lift: number
   /**
@@ -467,6 +480,8 @@ type ShadowUniforms = {
 
 interface DriverProps {
   flight: React.RefObject<Flight | null>
+  /** The public handoff edge: zero keeps the plate at page identity. */
+  progress: Lift['progress']
   slotRect: (id: string) => DOMRect | null
   /** The page's scroll offset — a floating card's anchor rides it. */
   scrollTop: () => number
@@ -529,6 +544,46 @@ const _wadOff = new THREE.Vector3()
  */
 const HAND_TAU = 0.022
 const _handRaw = new THREE.Vector3()
+const _releaseFrom = new THREE.Vector3()
+const _releaseTo = new THREE.Vector3()
+const _releaseRaw = new THREE.Vector3()
+
+function releasePlaneZ(f: Flight) {
+  const e = 1 - Math.pow(1 - f.lift, 3)
+  return (f.mode === 'crumple' ? CRUMPLE_Z : LIFT_Z) * e
+}
+
+function resetReleaseSample(f: Flight, x: number, y: number, at: number) {
+  f.releaseVel.set(0, 0, 0)
+  f.releaseX = x
+  f.releaseY = y
+  f.releaseAt = at
+  f.releaseSeeded = false
+}
+
+function sampleRelease(f: Flight, e: PointerEvent) {
+  const viewW = window.innerWidth
+  const viewH = window.innerHeight
+  const camZ = cameraDistance(viewH, FOV)
+  const z = releasePlaneZ(f)
+  screenToPlane(f.releaseX, f.releaseY, viewW, viewH, camZ, z, _releaseFrom)
+  screenToPlane(e.clientX, e.clientY, viewW, viewH, camZ, z, _releaseTo)
+
+  // PointerEvent.timeStamp shares the page's monotonic clock. Some injected
+  // event bursts can carry the same timestamp; one millisecond is the narrow
+  // fallback that avoids division by zero without inventing a frame count.
+  const dt = Math.max((e.timeStamp - f.releaseAt) / 1000, 0.001)
+  _releaseRaw.copy(_releaseTo).sub(_releaseFrom).divideScalar(dt)
+  if (f.releaseSeeded) {
+    f.releaseVel.lerp(_releaseRaw, 1 - Math.exp(-dt / HAND_TAU))
+  } else {
+    f.releaseVel.copy(_releaseRaw)
+  }
+  f.releaseX = e.clientX
+  f.releaseY = e.clientY
+  f.releaseAt = e.timeStamp
+  f.releaseSeeded = true
+}
 
 function trackHand(f: Flight, dt: number, target: THREE.Vector3) {
   if (!f.handSeeded) {
@@ -544,6 +599,7 @@ function trackHand(f: Flight, dt: number, target: THREE.Vector3) {
 
 function Driver({
   flight,
+  progress,
   slotRect,
   scrollTop,
   onLanded,
@@ -562,11 +618,15 @@ function Driver({
   // The bend's smoothed state. A ref, not module scratch: it must start at
   // zero for EVERY flight, and Driver mounts once per flight.
   const aeroSm = useRef({ amt: 0, dirX: 1, dirY: 0 })
+  const ownedLastFrame = useRef(false)
 
   useFrame((_, rawDt) => {
     const f = flight.current
     const group = cardRef.current
     if (!f || !group) return
+    const crossing = progress()
+    const firstOwnedFrame = crossing > 0 && !ownedLastFrame.current
+    ownedLastFrame.current = crossing > 0
     // A tab that was backgrounded hands back a dt measured in seconds; a
     // stiff spring integrated over one of those explodes. Clamp, don't trust.
     const dt = Math.min(rawDt, 1 / 30)
@@ -579,7 +639,16 @@ function Driver({
     // shader and the shadow below never need to know which mode this is.
     let crush = 0
 
-    if (f.mode === 'held') {
+    if (crossing <= 0) {
+      // The hidden twin must prove the page identity, so plate physics and
+      // crumple time do not advance before custody changes. The REAL hand
+      // still moves during this wait. Track it on the page plane so a fast
+      // release carries honest velocity into the first owned flight frame.
+      if (f.mode === 'held' || (f.mode === 'crumple' && f.crumpleHeld)) {
+        screenToPlane(f.px, f.py, vw, vh, camZ, 0, _target)
+        trackHand(f, dt, _target)
+      }
+    } else if (f.mode === 'held') {
       f.lift = Math.min(1, f.lift + dt / LIFT_T)
       // easeOutCubic — a hand accelerates the card away from the page and
       // then stops; a linear rise reads as a lift dialog, not a lift.
@@ -593,6 +662,10 @@ function Driver({
       // decisions #4 has always said intersect the ray with the DRAG plane;
       // this is that rule, on the plane that is actually being dragged on.
       screenToPlane(f.px, f.py, vw, vh, camZ, LIFT_Z * e, _target)
+      // Changing the ray plane is the card rising, not the hand moving.
+      // Preserve the velocity measured during warm-up, but reseed its
+      // position channel so the plane change cannot create a false flick.
+      if (firstOwnedFrame) f.prevTarget.copy(_target)
       trackHand(f, dt, _target)
       stepHeld(f.plate, dt, _target, f.hold, FLAT, f.handVel)
     } else if (f.mode === 'float') {
@@ -603,6 +676,7 @@ function Driver({
       // up, so the anchor moves the same way by the same amount.
       _target.copy(f.anchor)
       _target.y += scrollTop() - f.anchorScroll
+      if (firstOwnedFrame) f.prevTarget.copy(_target)
       trackHand(f, dt, _target)
       stepHeld(f.plate, dt, _target, f.hold, FLAT, f.handVel)
     } else if (f.mode === 'crumple') {
@@ -625,15 +699,16 @@ function Driver({
         f.lift = Math.min(1, f.lift + dt / LIFT_T)
         const e = 1 - Math.pow(1 - f.lift, 3)
         screenToPlane(f.px, f.py, vw, vh, camZ, CRUMPLE_Z * e, _target)
+        if (firstOwnedFrame) f.prevTarget.copy(_target)
         trackHand(f, dt, _target)
         stepHeld(f.plate, dt, _target, f.hold, FLAT, f.handVel)
       } else if (!f.tossed && f.crumpleT <= CRUMPLE_RISE_T) {
         // The KEYBOARD delete's rise — the HANDOFF window wearing a
         // gesture's clothes. The plate springs gently off the page (the
         // same free solver as a throw home, aimed up instead of down)
-        // while the page copy hides on first upload. The crush may not
-        // begin until the sheet is fully matter — crumplePhase holds crush
-        // at exactly 0 through this window, so the swap keeps its
+        // while the page copy stays visible until presentation proof. The
+        // crush may not begin until the sheet is fully matter. `crumplePhase`
+        // holds it at exactly 0 through this window, so the swap keeps its
         // pixel-copy guarantee. Never for a released press (`tossed`):
         // this solver's damping is sized to STOP a card, and it was
         // measured bleeding a 9148 px/s flick to a ~450 px drift when a
@@ -743,7 +818,10 @@ function Driver({
     // quantized flat — slerped toward FLAT mid-tumble, visibly yanked.
     if (f.mode !== 'crumple' && Math.abs(mag - supply) < supply * 0.02) {
       const edge = Math.hypot(f.w, f.h) / 2
-      const speed = f.plate.v.length() + f.plate.w.length() * edge
+      // A release during hidden warm-up parks its future throw velocity on
+      // the plate. That velocity is real, but the plate has not moved yet;
+      // presentation must still settle as the motionless page identity.
+      const speed = crossing <= 0 ? 0 : f.plate.v.length() + f.plate.w.length() * edge
       const settle = 1 - Math.min(1, Math.max(0, (speed - 2) / 28))
       if (settle > 0) {
         const snap = pixelGridSnap({
@@ -779,13 +857,20 @@ function Driver({
       // held = any mode but 'home': the swap can only fire at the end of a
       // free flight home, so only there does the relax race a deadline.
       const sm = aeroSm.current
-      const amp = aeroFollowStep(
-        sm,
-        f.plate.v.x,
-        f.plate.v.y,
-        dt,
-        f.mode !== 'home',
-      )
+      let amp = 0
+      if (crossing <= 0) {
+        // The stored release velocity belongs to the future flight. It must
+        // not bend the hidden twin that is proving the flat page frame.
+        sm.amt = 0
+      } else {
+        amp = aeroFollowStep(
+          sm,
+          f.plate.v.x,
+          f.plate.v.y,
+          dt,
+          f.mode !== 'home',
+        )
+      }
       const reach = aeroReach(sm.dirX, sm.dirY, f.w, f.h, f.hold.x, f.hold.y)
       aero.pack.set(sm.dirX, sm.dirY, amp, reach)
       aero.grab.set(f.hold.x, f.hold.y)
@@ -911,17 +996,14 @@ function Driver({
 interface FlyingProps {
   card: Card
   flight: React.RefObject<Flight | null>
+  lift: Lift
   onChange: (patch: Partial<Card>) => void
-  onRegrab: (localX: number, localY: number, clientX: number, clientY: number) => void
+  onRegrab: (localX: number, localY: number) => void
   slotRect: (id: string) => DOMRect | null
   scrollTop: () => number
   onLanded: () => void
-  /** The Surface's first real upload landed — fired by the library, not a frame count. */
-  onPainted: () => void
-  /** Board's `painted` state, reflected back down: gates the page-copy hide AND the shadow. */
-  painted: boolean
   /**
-   * Board-owned altitude state, reflected back down like `painted`. The
+   * Board-owned altitude state, reflected back down from the driver. The
    * driver's density schedule writes it (via `onAltitude`) and TWO consumers
    * read it: the texture pin here, and the vacated slot's outline on the
    * page — which must fade while the card is still in the air, because the
@@ -935,7 +1017,20 @@ interface FlyingProps {
   onCrumpled: () => void
 }
 
-function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLanded, onPainted, painted, atAltitude, onAltitude, onDelete, onCrumpled }: FlyingProps) {
+function Flying({
+  card,
+  flight,
+  lift,
+  onChange,
+  onRegrab,
+  slotRect,
+  scrollTop,
+  onLanded,
+  atAltitude,
+  onAltitude,
+  onDelete,
+  onCrumpled,
+}: FlyingProps) {
   const f = flight.current!
   const cardRef = useRef<THREE.Group>(null)
   const shadowRef = useRef<THREE.Mesh>(null)
@@ -998,8 +1093,6 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
         onRegrab(
           ev.clientX - r.left - f.w / 2,
           -(ev.clientY - r.top - f.h / 2),
-          ev.clientX,
-          ev.clientY,
         )
       }
       el.addEventListener('pointerdown', down)
@@ -1048,6 +1141,7 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
     <>
       <Driver
         flight={flight}
+        progress={lift.progress}
         slotRect={slotRect}
         scrollTop={scrollTop}
         onLanded={onLanded}
@@ -1061,13 +1155,12 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
         onCrumpled={onCrumpled}
       />
 
-      {/* The shadow may not exist before the card does. On the first r3f
-          frame the source hasn't painted, the quad draws nothing — and a
-          shadow drawn anyway is a card-shaped 30% veil stamped over the
-          still-visible page copy for exactly one frame (measured: rgba
-          4/4/3/76 at the card centre, paints 0). Pete saw it as a black
-          flicker at every grab. Gate on the same first-upload signal that
-          hides the page copy: card first, then its shadow.
+      {/* The shadow must draw during hidden warm-up. `onFirstPresented`
+          proves the card mesh after its draw; that frame then draws this
+          later renderOrder before the next lift tick may release the page.
+          The Canvas wrapper's opacity keeps both unseen during warm-up.
+          Hiding this mesh instead would prove a framebuffer without one of
+          the incoming presenters and reveal the shadow one frame late.
 
           renderOrder 2 — AFTER the card, on purpose. The card writes depth
           (matter occludes its own shadow), so drawing the shadow second lets
@@ -1078,7 +1171,7 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
           border" on the right edge. The corners still show fringe: the
           radius mask DISCARDS there, no depth is written, and the shadow
           paints the notch exactly where CSS would. */}
-      <mesh ref={shadowRef} renderOrder={2} frustumCulled={false} visible={painted}>
+      <mesh ref={shadowRef} renderOrder={2} frustumCulled={false}>
         <planeGeometry args={[1, 1]} />
         <shaderMaterial
           uniforms={shadowUniforms}
@@ -1101,13 +1194,12 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
           frustumCulled={false}
           userData={{ matter: true }}
           onHost={onHost}
-          // The handoff's readiness signal. Counting r3f frames here was a
-          // race dressed as a constant: three frames USUALLY covers "second
-          // root committed, compositor painted, texture uploaded" — until
-          // load makes it four, the page copy hides early, and the slot
-          // flashes through where the card should be. Only the upload path
-          // knows the true moment, so only it gets to say.
-          onFirstUpload={onPainted}
+          // The handoff's readiness signal. An upload only says that texture
+          // bytes reached the GPU; it does not prove that the default
+          // framebuffer received the card. `useLift` releases the page only
+          // after this post-draw receipt, and keys it by card so remounts do
+          // not count twice.
+          onFirstPresented={() => lift.present(card.id)}
           onChrome={(c) => {
             chromeRef.current = c
           }}
@@ -1189,7 +1281,23 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
   })
   const [board, setBoard] = useState<Record<ColId, string[]>>(() => ({ ...START }))
   const [flyingId, setFlyingId] = useState<string | null>(null)
-  const [painted, setPainted] = useState(false)
+  // Flight's existing f.lift and plate solver own the continuous excursion.
+  // The public lift owns only custody: zero is the identity frame at either
+  // edge, then one renderer tick admits the scene's motion. The page has no
+  // autonomous motion, and drop reflow is barred until GL holds, so no settle
+  // dwell is owed. One millisecond is deliberate: LiftDriver still publishes
+  // both zero-progress handoff frames without adding a second visible ramp.
+  const lift = useLift({
+    presenters: 1,
+    timing: { settleMs: 0, rampMs: 1 },
+  })
+  const requestLift = lift.request
+  const glHolds = lift.glHolds
+  // A finished card stays mounted, unseen, through useLift's reclaim linger.
+  // That keeps the Surface React-root teardown out of the commit that gives pixels back to
+  // the page and also keeps the old presentation receipt from proving a new
+  // card during the linger.
+  const ending = useRef(false)
   // The density schedule's altitude verdict, lifted here because the vacated
   // slot's outline keys on it too: the outline may only be lit while the
   // card is safely away, and must fade on the DESCENT — the swap instant is
@@ -1241,6 +1349,18 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
       return null
     },
     [board, slotRect],
+  )
+
+  // A board reorder starts FLIP transforms on the page. While the page owns
+  // the pixels, that would move the source underneath the still-identity
+  // hidden twin and make a zero settle dwell false. Pointer coordinates keep
+  // updating during warm-up, but a slot may move only after GL owns pixels.
+  const ownedDropTarget = useCallback(
+    (x: number, y: number, id: string) => {
+      if (!glHolds) return null
+      return dropTarget(x, y, id)
+    },
+    [dropTarget, glHolds],
   )
 
   const moveTo = useCallback(
@@ -1309,14 +1429,20 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
         handVel: new THREE.Vector3(),
         prevTarget: new THREE.Vector3(),
         handSeeded: false,
+        releaseVel: new THREE.Vector3(),
+        releaseX: e.clientX,
+        releaseY: e.clientY,
+        releaseAt: e.timeStamp,
+        releaseSeeded: false,
         lift: 0,
         done: false,
       }
-      setPainted(false)
+      ending.current = false
       setAtAltitude(false)
+      requestLift(true)
       setFlyingId(id)
     },
-    [],
+    [requestLift],
   )
 
   // ── the delete ──
@@ -1329,9 +1455,10 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
   // the crumple already running) it is the hands-free delete: rise, crush,
   // drop. A card already in flight crumples from its current pose —
   // momentum and all; a card at rest on the page becomes matter first, the
-  // same flight machinery as a grab (page copy hides on first upload, plate
-  // springs off the page), except the mode is `crumple` from birth.
+  // same flight machinery as a grab (page copy releases on presentation
+  // proof, plate springs off the page), except the mode is `crumple` from birth.
   const deleteCard = useCallback((id: string, e?: React.PointerEvent<HTMLButtonElement>) => {
+    if (ending.current) return
     const cardEl = e ? closestFrom(e.target, '.l14-card') : null
     const f = flight.current
     if (f) {
@@ -1364,6 +1491,8 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
         const m = planeScale(cameraDistance(window.innerHeight, FOV), _pressWorld.z)
         f.px = window.innerWidth / 2 + _pressWorld.x * m
         f.py = window.innerHeight / 2 - _pressWorld.y * m
+        f.handVel.set(0, 0, 0)
+        resetReleaseSample(f, f.px, f.py, performance.now())
       } else {
         f.crumpleHeld = false
         f.spin.set(
@@ -1425,15 +1554,21 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
       handVel: new THREE.Vector3(),
       prevTarget: new THREE.Vector3(),
       handSeeded: false,
+      releaseVel: new THREE.Vector3(),
+      releaseX: e ? e.clientX : 0,
+      releaseY: e ? e.clientY : 0,
+      releaseAt: e ? e.timeStamp : performance.now(),
+      releaseSeeded: false,
       lift: 0,
       done: false,
     }
-    setPainted(false)
+    ending.current = false
     setAtAltitude(false)
+    requestLift(true)
     setFlyingId(id)
-  }, [])
+  }, [requestLift])
 
-  const regrab = useCallback((localX: number, localY: number, cx: number, cy: number) => {
+  const regrab = useCallback((localX: number, localY: number) => {
     const f = flight.current
     if (!f) return
     if (f.mode === 'crumple') return
@@ -1441,14 +1576,21 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
     f.mode = 'held'
     f.lift = Math.max(f.lift, 0.35)
     f.done = false
-    f.px = cx
-    f.py = cy
     // The target jumps from the float anchor to wherever the ray now lands;
     // differentiating across that would read as a flick nobody performed.
     f.handSeeded = false
+    f.handVel.set(0, 0, 0)
+    // The Surface relay reports parked-local client coordinates. Recover the
+    // trusted pointer's real screen position from the pressed world point,
+    // then seed the event-rate release channel from that same point.
+    _pressWorld.copy(f.hold).applyQuaternion(f.plate.q).add(f.plate.p)
+    const m = planeScale(cameraDistance(window.innerHeight, FOV), _pressWorld.z)
+    f.px = window.innerWidth / 2 + _pressWorld.x * m
+    f.py = window.innerHeight / 2 - _pressWorld.y * m
+    resetReleaseSample(f, f.px, f.py, performance.now())
     f.downAt = performance.now()
-    f.downX = cx
-    f.downY = cy
+    f.downX = f.px
+    f.downY = f.py
   }, [])
 
   // Registered once and always, NOT gated on `flyingId`. An effect keyed on
@@ -1467,20 +1609,43 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
     [],
   )
 
-  useEffect(
-    () => attachFlightGestures({ flight, dropTarget, moveTo, snapshot, scrollTop, toLiftPlane }),
-    [dropTarget, moveTo, snapshot, scrollTop, toLiftPlane],
-  )
+  useEffect(() => {
+    // Pointer events can complete an entire flick before Driver receives one
+    // animation frame. Sample them in capture phase, then give the release
+    // handler the event-rate estimate before it transfers velocity to the
+    // plate. The frame-rate hand channel remains the held spring's input.
+    const onReleaseSample = (event: PointerEvent) => {
+      if (!event.isTrusted) return
+      const f = flight.current
+      if (!f || (f.mode !== 'held' && !(f.mode === 'crumple' && f.crumpleHeld))) return
+      sampleRelease(f, event)
+      if (event.type !== 'pointermove') f.handVel.copy(f.releaseVel)
+    }
+    window.addEventListener('pointermove', onReleaseSample, true)
+    window.addEventListener('pointerup', onReleaseSample, true)
+    window.addEventListener('pointercancel', onReleaseSample, true)
+
+    const detach = attachFlightGestures({
+      flight,
+      dropTarget: ownedDropTarget,
+      moveTo,
+      snapshot,
+      scrollTop,
+      toLiftPlane,
+    })
+    return () => {
+      window.removeEventListener('pointermove', onReleaseSample, true)
+      window.removeEventListener('pointerup', onReleaseSample, true)
+      window.removeEventListener('pointercancel', onReleaseSample, true)
+      detach()
+    }
+  }, [ownedDropTarget, moveTo, snapshot, scrollTop, toLiftPlane])
 
   const onLanded = useCallback(() => {
-    flight.current = null
-    setFlyingId(null)
-    setPainted(false)
-    setAtAltitude(false)
-    document.querySelectorAll<HTMLElement>('.l14-slot').forEach((el) => {
-      el.style.removeProperty('--l14-near')
-    })
-  }, [])
+    if (ending.current) return
+    ending.current = true
+    requestLift(false)
+  }, [requestLift])
 
   // The wad faded out: NOW the board forgets. The FLIP snapshot goes first,
   // so the neighbours close over the vacated slot as a layout animation
@@ -1488,7 +1653,8 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
   // cause, and the user watches it happen.
   const onCrumpled = useCallback(() => {
     const f = flight.current
-    if (!f) return
+    if (!f || ending.current) return
+    ending.current = true
     const id = f.id
     snapshot()
     setCards((prev) => {
@@ -1500,14 +1666,22 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
       queue: prev.queue.filter((x) => x !== id),
       today: prev.today.filter((x) => x !== id),
     }))
+    requestLift(false)
+  }, [requestLift, snapshot])
+
+  // The page already holds when this runs. Waiting for `glMounted` to fall
+  // keeps the Surface React-root teardown in useLift's later reclaim commit and
+  // clears its keyed receipt before another card can start a flight.
+  useEffect(() => {
+    if (!ending.current || lift.glMounted) return
+    ending.current = false
     flight.current = null
     setFlyingId(null)
-    setPainted(false)
     setAtAltitude(false)
     document.querySelectorAll<HTMLElement>('.l14-slot').forEach((el) => {
       el.style.removeProperty('--l14-near')
     })
-  }, [snapshot])
+  }, [lift.glMounted])
 
   // The loop closing: the physics writes a CSS custom property onto the slot
   // it is aimed at, every frame, and ordinary CSS does the rest.
@@ -1572,8 +1746,8 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
                   <li
                     className="l14-slot"
                     key={id}
-                    data-empty={flyingId === id && painted}
-                    data-away={flyingId === id && painted && atAltitude}
+                    data-empty={flyingId === id && !lift.pageHolds}
+                    data-away={flyingId === id && !lift.pageHolds && atAltitude}
                     ref={(el) => {
                       if (el) slots.current.set(id, el)
                       else slots.current.delete(id)
@@ -1584,7 +1758,7 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
                       onChange={(p) => patch(id, p)}
                       onGrab={(e) => beginDrag(id, e)}
                       onDelete={(e) => deleteCard(id, e)}
-                      hidden={flyingId === id && painted}
+                      hidden={flyingId === id && !lift.pageHolds}
                     />
                   </li>
                 ))}
@@ -1612,14 +1786,19 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
         // the arrangement we want: the wrapper is permanently transparent to
         // the pointer, and the canvas inside it is solid only while the ray
         // says it is over matter.
-        style={{ position: 'fixed', inset: 0, pointerEvents: 'none' }}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          pointerEvents: 'none',
+          opacity: lift.glHolds ? 1 : 0,
+        }}
         gl={{ alpha: true, antialias: true }}
         // An overlay stretched across somebody's document does not get to burn
         // a GPU frame every 8 ms for the privilege of being empty. There is a
         // card in flight or there is nothing to draw, and the difference is
         // this prop. (Same instinct as the upload-on-paint contract one layer
         // down: idle costs nothing, and "idle" is the normal case.)
-        frameloop={flyingId ? 'always' : 'demand'}
+        frameloop={lift.phase === 'page' ? 'demand' : 'always'}
         dpr={[1, 2]}
         camera={{ fov: FOV, position: [0, 0, 1000] }}
         onCreated={(state) => {
@@ -1628,22 +1807,22 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
         }}
       >
         <PixelPerfect />
+        <LiftDriver lift={lift} />
         <CanvasPointerGate
-          enabled={!!flyingId}
+          enabled={!!flyingId && lift.glHolds && !ending.current}
           isTarget={(object) => Boolean(object.userData.matter)}
         />
-        {flyingCard && flight.current && (
+        {flyingCard && flight.current && lift.glMounted && (
           <Flying
             key={flyingCard.id}
             card={flyingCard}
             flight={flight}
+            lift={lift}
             onChange={(p) => patch(flyingCard.id, p)}
             onRegrab={regrab}
             slotRect={slotRect}
             scrollTop={scrollTop}
             onLanded={onLanded}
-            onPainted={() => setPainted(true)}
-            painted={painted}
             atAltitude={atAltitude}
             onAltitude={setAtAltitude}
             onDelete={(e) => deleteCard(flyingCard.id, e)}

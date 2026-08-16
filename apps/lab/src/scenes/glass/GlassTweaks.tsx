@@ -15,6 +15,7 @@
 // learns that a slider moved, it just reads a different number next frame.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { TuningGroup, TuningPanel, TuningSlider } from '@/components/TuningPanel'
 import {
   GLASS_KNOB_GROUPS,
   glassTuning,
@@ -68,63 +69,29 @@ function Row({ knob }: { knob: Knob }) {
   }, [knob])
 
   const onInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const v = Number(e.target.value)
-      setValue(v)
-      writeKnob(knob, v)
+    (nextValue: number) => {
+      setValue(nextValue)
+      writeKnob(knob, nextValue)
     },
     [knob],
   )
 
   return (
-    <label className="flex items-center gap-2 py-[3px] text-[10px] leading-none">
-      <span className="w-[104px] shrink-0 truncate text-white/55">{knob.label}</span>
-      <input
-        type="range"
-        min={knob.min}
-        max={knob.max}
-        step={knob.step}
-        value={value}
-        onChange={onInput}
-        className="h-[3px] flex-1 cursor-pointer appearance-none rounded-full bg-white/15 accent-[#ff4f17]"
-      />
-      <span className="w-[46px] shrink-0 text-right tabular-nums text-white/80">
-        {/* Steps below 0.01 are the ones where the last digit is the whole
-            point of the knob, so the precision follows the step. */}
-        {value.toFixed(knob.step >= 1 ? 0 : knob.step >= 0.01 ? 2 : 4)}
-      </span>
-    </label>
-  )
-}
-
-function Group({ title, knobs }: { title: string; knobs: Knob[] }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="border-t border-white/10 first:border-t-0">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-1.5 py-1.5 text-[10px] uppercase tracking-wider text-white/70 hover:text-white"
-      >
-        <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
-        {title}
-      </button>
-      {open && (
-        <div className="pb-2">
-          {knobs.map((k) => (
-            // Keyed by target too: `radius` appears under both the card and
-            // the CTA, and they are genuinely different knobs.
-            <Row key={`${k.target}:${k.key}`} knob={k} />
-          ))}
-        </div>
-      )}
-    </div>
+    <TuningSlider
+      label={knob.label}
+      min={knob.min}
+      max={knob.max}
+      step={knob.step}
+      value={value}
+      // Steps below 0.01 are the ones where the last digit is the whole
+      // point of the knob, so the precision follows the step.
+      decimalPlaces={knob.step >= 1 ? 0 : knob.step >= 0.01 ? 2 : 4}
+      onValueChange={onInput}
+    />
   )
 }
 
 export function GlassTweakPanel() {
-  const [open, setOpen] = useState(false)
-
   // A tuning session is worth nothing if it cannot leave the browser. This
   // prints the current state of every knob as a paste-ready object, which is
   // how a value found by dragging becomes a value committed to the file.
@@ -140,42 +107,17 @@ export function GlassTweakPanel() {
     void navigator.clipboard?.writeText(JSON.stringify(out, null, 2)).catch(() => {})
   }, [])
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="fixed right-4 top-4 z-50 rounded border border-white/15 bg-black/70 px-2.5 py-1.5 text-[10px] uppercase tracking-wider text-white/75 backdrop-blur hover:text-white"
-      >
-        tweaks
-      </button>
-    )
-  }
-
   return (
-    <div className="fixed right-4 top-4 z-50 max-h-[calc(100vh-2rem)] w-[300px] overflow-y-auto rounded border border-white/15 bg-black/80 px-3 py-2 text-white backdrop-blur">
-      <div className="flex items-center justify-between pb-1">
-        <span className="text-[10px] uppercase tracking-wider text-white/50">tweaks</span>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={dump}
-            className="text-[10px] uppercase tracking-wider text-white/50 hover:text-white"
-          >
-            copy
-          </button>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="text-[10px] uppercase tracking-wider text-white/50 hover:text-white"
-          >
-            ✕
-          </button>
-        </div>
-      </div>
+    <TuningPanel title="tweaks" side="right" zIndex={50} onCopy={dump}>
       {GLASS_KNOB_GROUPS.map((g) => (
-        <Group key={g.title} title={g.title} knobs={g.knobs} />
+        <TuningGroup key={g.title} title={g.title} initialState="closed">
+          {g.knobs.map((k) => (
+            // Keyed by target too: `radius` appears under both the card and
+            // the CTA, and they are genuinely different knobs.
+            <Row key={`${k.target}:${k.key}`} knob={k} />
+          ))}
+        </TuningGroup>
       ))}
-    </div>
+    </TuningPanel>
   )
 }

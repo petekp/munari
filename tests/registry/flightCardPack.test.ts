@@ -15,6 +15,8 @@ import { TOSS_SPIN_V0, TOSS_SPIN_MAX, aeroAmplitude } from '@munari/core'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const scene = () =>
   readFileSync(join(ROOT, 'apps/lab/src/scenes/flight/Flight.tsx'), 'utf8')
+const charter = () =>
+  readFileSync(join(ROOT, 'registry/flight-card/README.md'), 'utf8')
 // The scene's GLSL lives beside it (flightShaders.ts), the way the glass
 // pack splits glassSdfShader.ts from glassSdf.tsx. A constant the charter
 // quotes from a shader has to be read from the file that holds it.
@@ -45,5 +47,14 @@ describe('the charter names the real scene constants (text weld to the reference
 
   it('the crumple happens at altitude 55', () => {
     expect(scene()).toContain('const CRUMPLE_Z = 55')
+  })
+
+  it('the handoff charter names the presentation-proof contract', () => {
+    expect(charter()).toContain('keyed `onFirstPresented` receipts')
+    expect(scene()).toContain('onFirstPresented={() => lift.present(card.id)}')
+    expect(scene()).toContain('<LiftDriver lift={lift} />')
+    expect(scene()).toContain('progress={lift.progress}')
+    expect(scene()).toContain('timing: { settleMs: 0, rampMs: 1 }')
+    expect(scene()).not.toContain('onFirstUpload=')
   })
 })
