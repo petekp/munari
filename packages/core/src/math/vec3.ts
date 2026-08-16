@@ -5,15 +5,8 @@
 // (decisions.md #4). Callers who hand in their own vector get their
 // own type back: out-params are generic, never widened.
 //
-// The physics layer grew this file's method list:
-// a plate's grab point has to be rotated into the world and damped
-// against a hand, which is exactly the vocabulary a spring-damper over
-// a lever arm needs. `applyQuaternion` is the one method that reaches
-// outside this file's own vocabulary — it takes `QuatReadonly` from
-// `./quat`, a type-only import, so the two files can cite each other's
-// shapes without either owning a runtime dependency on the other.
-
-import type { QuatReadonly } from './quat'
+// `Vec3` stays small. It supports the values core allocates for surface
+// sampling without trying to replace a consumer's math library.
 
 /** The read half: anything with x/y/z. THREE.Vector3 qualifies. */
 export interface Vec3Readonly {
@@ -83,84 +76,4 @@ export class Vec3 implements SampleVec {
     return Math.hypot(this.x - v.x, this.y - v.y, this.z - v.z)
   }
 
-  copy(v: Vec3Readonly): this {
-    this.x = v.x
-    this.y = v.y
-    this.z = v.z
-    return this
-  }
-
-  add(v: Vec3Readonly): this {
-    this.x += v.x
-    this.y += v.y
-    this.z += v.z
-    return this
-  }
-
-  sub(v: Vec3Readonly): this {
-    this.x -= v.x
-    this.y -= v.y
-    this.z -= v.z
-    return this
-  }
-
-  /** Componentwise product — NOT the cross product. Used to apply a diagonal tensor. */
-  multiply(v: Vec3Readonly): this {
-    this.x *= v.x
-    this.y *= v.y
-    this.z *= v.z
-    return this
-  }
-
-  multiplyScalar(s: number): this {
-    this.x *= s
-    this.y *= s
-    this.z *= s
-    return this
-  }
-
-  addScaledVector(v: Vec3Readonly, s: number): this {
-    this.x += v.x * s
-    this.y += v.y * s
-    this.z += v.z * s
-    return this
-  }
-
-  cross(v: Vec3Readonly): this {
-    const ax = this.x
-    const ay = this.y
-    const az = this.z
-    this.x = ay * v.z - az * v.y
-    this.y = az * v.x - ax * v.z
-    this.z = ax * v.y - ay * v.x
-    return this
-  }
-
-  /**
-   * Rotate this vector by `q`, in place. Matches
-   * `THREE.Vector3.prototype.applyQuaternion`'s optimized tx/ty/tz form —
-   * see decisions.md #4: three's own `Vector3Like`/`QuaternionLike`
-   * parameter types are already this file's `Vec3Readonly`/`QuatReadonly`
-   * shape, so this reads a real `THREE.Quaternion` for free.
-   */
-  applyQuaternion(q: QuatReadonly): this {
-    const vx = this.x
-    const vy = this.y
-    const vz = this.z
-    const qx = q.x
-    const qy = q.y
-    const qz = q.z
-    const qw = q.w
-
-    // t = 2 * cross(q.xyz, v)
-    const tx = 2 * (qy * vz - qz * vy)
-    const ty = 2 * (qz * vx - qx * vz)
-    const tz = 2 * (qx * vy - qy * vx)
-
-    // v + q.w * t + cross(q.xyz, t)
-    this.x = vx + qw * tx + (qy * tz - qz * ty)
-    this.y = vy + qw * ty + (qz * tx - qx * tz)
-    this.z = vz + qw * tz + (qx * ty - qy * tx)
-    return this
-  }
 }

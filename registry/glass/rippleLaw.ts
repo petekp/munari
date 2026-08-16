@@ -1,6 +1,6 @@
 // The capillary ripple, as arithmetic — the TS twin of the wave train in
 // glassSdfShader.ts. The shader is a string, so the two halves cannot
-// share one computation the way shadowQuadFrame's geometry and uniforms
+// share one computation the way Flight's shadow geometry and uniforms
 // do; instead the pack's test welds them: these functions are pinned
 // against the law's own mathematical properties, and the shader text is
 // pinned to contain these exact formula expressions. Change either half

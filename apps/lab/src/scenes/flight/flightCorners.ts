@@ -1,9 +1,7 @@
-// Scene-local twin of the kernel's plate geometry: `corners` writes into
-// THREE.Vector3 tuples, and the kernel is zero-dep and shape-typed
-// (decisions.md #4), so the helper lives with the consumer that owns the
-// THREE objects.
+// Flight plate geometry. `corners` writes into the THREE.Vector3 tuples
+// owned by this scene.
 import * as THREE from 'three'
-import type { Plate } from '@petepetrash/munari'
+import type { Plate } from './flightPhysicsLaw'
 
 /**
  * The plate's four corners in world space — what the shadow needs, and the

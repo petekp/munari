@@ -14,9 +14,9 @@ Layers, in the order they build on each other:
 | mapping | coordinate hold — the pixel-calibrated camera, UV anchoring | `camera`, `uvAnchor`, `parkingCoincidence`, `densityIdentity`, `pixelGrid` |
 | paint | DOM → texture, and what a paint costs | `lodTier`, `htmlInCanvas`, `paintStats`, `styleChannel`, `filterPolicy`, `capabilityProbe` |
 | pointer | provenance and the pointer protocol | `forwardEvents`, `hoverGrace`, `relayDuplication`, `relayTripwire` |
-| transfer | the handoff between page and mesh | `crossing`, `presentation`, `motionSamples`, `motionCarrier`, `conductorTiming`, `densitySchedule`, `choreography` |
-| chrome | measuring what the DOM won't hand over in pixels | `surfaceChrome`, `shadowQuadFrame` |
-| physics | the laws of held and thrown matter | `physics1D`, `plate`, `gestures`, `quat` |
+| transfer | the handoff between page and mesh | `crossing`, `presentation`, `motionCarrier`, `choreography` |
+| chrome | measuring what the DOM won't hand over in pixels | `surfaceChrome` |
+| physics | physical controls | `physics1D` |
 
 Seven suites are named for the law they pin, not for a module, so a
 search by module name will miss them:
@@ -31,8 +31,8 @@ search by module name will miss them:
 | `pointer/relayTripwire` | `pointer/relay.ts` — a source scan, not a behavior test |
 | `transfer/choreography` | `transfer/crossing.ts` — `crossingRange`, `crossingCurve` |
 
-`packages/core/src/math/` is substrate, not a layer: `quat` files under
-physics (its consumer), and vec2/vec3 are covered where physics uses them.
+`packages/core/src/math/` is substrate, not a layer. Vec3 is covered with the
+core modules that use it.
 
 ## Rules
 

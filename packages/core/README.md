@@ -1,180 +1,196 @@
 # @munari/core
 
-Everything in munari that has no idea React or `three` exist. It has no
-dependencies and never ships on its own; the build bundles it into
-`@petepetrash/munari`.
+`@munari/core` is an internal package. It contains shared code that does not
+depend on React or `three`, and it has no runtime dependencies. You do not
+install it. The build includes it in [`@petepetrash/munari`](../../README.md).
 
-The DOM stays the real thing. This package decides when its pixels move
-to a WebGL scene, how many of them there should be, where they have to
-land, and who is allowed to show them.
+The DOM remains the source of content and interaction. Core coordinates its
+captured pixels with WebGL and routes input back to the live elements.
 
 ## Turning a live element into a texture
 
-`htmlInCanvas` `textureStorage` `frameSource`
+Modules: [`htmlInCanvas`](./src/paint/htmlInCanvas.ts),
+[`textureStorage`](./src/paint/textureStorage.ts), and
+[`frameSource`](./src/paint/frameSource.ts).
 
-Chrome's HTML-in-canvas trial (versions 148 to 150) is the foundation,
-and its contract came from experiment rather than a spec: the element
-has to be a child of the canvas you draw into, the canvas needs
-`layoutSubtree`, and the draw only succeeds inside an `onpaint`
-callback. Chrome defers it to paint time, so a texture trails the DOM by
-one frame.
+Munari uses Chrome's HTML-in-canvas origin trial, a browser experiment available
+in Chrome 148 to 150. Tests found three requirements:
 
-`textureStorage` is here because GL storage is immutable once allocated.
-A source canvas that changes size falls out of step with its own texture
-and nothing throws: a grow is rejected and the stale texels stay, a
-shrink writes into one corner and leaves the old image around it. Both
-read as a paint bug.
+1. The source element must be a child of the canvas.
+2. The canvas must set `layoutSubtree` to `true`.
+3. The code must call `drawElementImage` from the canvas's `onpaint` callback.
 
-`frameSource` is the other way in, for pixels you render yourself. Core
-names the frames so a receipt can prove which one a mesh actually drew.
+Chrome completes the draw during its paint step. The resulting texture shows
+the DOM from the previous frame.
 
-## Keeping it sharp
+WebGL allocates fixed storage when it creates a texture. If the source canvas
+grows, the next upload fails and leaves the old pixels in place. If the canvas
+shrinks, WebGL writes the new image into one corner of the old storage. The
+browser reports neither case to JavaScript. `textureStorage` detects a size
+change and tells the renderer to allocate new storage.
 
-`camera` `lodTier` `pixelGrid` `densitySchedule` `filterPolicy`
+`frameSource` gives each frame in a caller-owned canvas a source ID and
+generation number. The renderer records which generation it uploaded and drew.
 
-Sharpness is three budgets and you have to pay all of them: enough
-texels, texels that land on the display's pixel grid, and filtering that
-doesn't undo the first two.
+## Keeping a Surface sharp
 
-Supply is cheaper here than it would be for a screenshot.
-`drawElementImage` replays paint records, so the same element
-re-rasterizes at a larger scale and the glyphs come out sharper.
-`lodTier` picks that scale with a dead zone, so a camera parked on a
-threshold cannot thrash between two tiers. `densitySchedule` decides
-when a flying card may change its answer, going by the card's measured
-height rather than a mode flag, with hysteresis so a card bobbing on its
-spring can't flap it.
+Modules: [`camera`](./src/mapping/camera.ts),
+[`lodTier`](./src/paint/lodTier.ts), [`pixelGrid`](./src/mapping/pixelGrid.ts),
+[`filterPolicy`](./src/paint/filterPolicy.ts).
 
-Phase is the budget nothing else can cover. Put a card a third of a
-pixel off the grid and every texel gets read across two, so the whole
-card blurs by the same amount. Adding texels doesn't help, because the
-new ones land off-grid too.
+A Surface stays sharp when three conditions hold:
 
-Then `filterPolicy`. A tier pinned high oversupplies at distance, and
-minifying without mipmaps aliases: shredded text and grid moiré, the
-first time a lab pinned the top tier.
+1. Its texture contains enough texels. A texel is one pixel in a texture.
+2. Its texture grid lines up with the display's pixel grid.
+3. WebGL uses the right filter when it shrinks the texture on screen.
 
-## Handing pixels between the page and the scene
+`drawElementImage` can redraw the DOM at a larger scale. It replays Chrome's
+paint commands, so text gains detail instead of stretching an old image.
+`lodTier` chooses the scale. Demand must cross a small boundary around the
+threshold before the tier changes. This hysteresis prevents repeated tier
+changes when the camera rests near that threshold.
 
-`crossing` `presentation` `motionCarrier` `motionSamples` `conductorTiming`
+`pixelGrid` makes small position and size corrections so texture pixels land
+on display pixels. More texels cannot fix a card that sits between display
+pixels because WebGL still blends each texel across its neighbors.
 
-`crossing` is a four-phase machine with one invariant: in every phase,
-somebody is drawing. Three scenes wrote this by hand before it was law
-and all three hit the same bug. Hide the page before the canvas has
-proven it can draw, and the content spends a frame belonging to nobody.
-That frame is the flicker people see.
+WebGL minifies a texture when it covers fewer screen pixels than its source
+image contains. Mipmaps are smaller copies that reduce jagged text and grid
+patterns during this shrink. `filterPolicy` gives pinned high-resolution
+textures mipmaps and blends between them with trilinear filtering. Textures
+that track screen density use linear filtering.
 
-Proof is narrow on purpose. A queued upload proves nothing.
-`presentation` accepts only a color-writing draw that reached the
-default framebuffer, and it turns down stale transfers and reused
-revisions on the way.
+## Moving pixels between the page and WebGL
 
-Motion is the other half. A CSS animation's clock lives in the
-compositor, and neither renderer can read it at the swap, so idle motion
-eases to zero and the swap waits for it. `motionCarrier` is the
-exemption: keep the clock in JS, have the page and the mesh read the
-same sample, and motion crosses mid-flight with its velocity intact.
+Modules: [`crossing`](./src/transfer/crossing.ts),
+[`presentation`](./src/transfer/presentation.ts),
+and [`motionCarrier`](./src/transfer/motionCarrier.ts).
 
-`motionSamples` covers CSS animations that still need to fly. It pauses
-one, asks the style engine what it would have painted at a series of
-times, and replays that table on the mesh; letting it play inside the
-texture instead costs a paint and an upload every frame, around 120 a
-second with a popover open. `conductorTiming` keeps the small print,
-like stopping half a millisecond short of the end, because an animation
-scrubbed to its exact end fires `animationend` and a library listening
-for that tears the content out 130ms early.
+A handoff changes which renderer shows the content. During the change, the
+page and WebGL may both draw. The user sees one renderer's output. In this
+table, "draws" means a renderer produces pixels, while "visible" means the
+user sees those pixels.
 
-## CSS as a channel to the mesh
+| Phase | Page draws | WebGL draws | Visible output |
+| --- | --- | --- | --- |
+| `page` | Yes | No | Page |
+| `lifting` | Yes | Yes | Page |
+| `gl` | No | Yes | WebGL |
+| `landing` | No | Yes | WebGL |
 
-`styleChannel`
+`crossing` controls these phases. It keeps the page visible until each WebGL
+surface has drawn the required content. Hiding the page sooner can leave one
+frame with no content, which appears as a flicker.
 
-A custom property registered with a real syntax is interpolable, so
-`transition: --depth 300ms ease` is a genuine CSS transition, timed and
-eased by the cascade and painting nothing: zero paints across a full
-600ms run. Read it mid-transition and `getComputedStyle` returns the
-eased intermediate value, so the style engine does the interpolation and
-no easing math exists in our code. A Tailwind utility can declare what a
-surface's depth or tilt should be and how it gets there, and the scene
-reads that channel every frame and moves matter.
+`presentation` checks the draw record used for that handoff. A queued texture
+upload does not show that a mesh reached the screen. The record must come from
+a draw that wrote color to the browser's visible framebuffer. It must also
+match the current transfer, pixel source, and presenter version.
 
-## Clicks, hover and typing
+A CSS animation can run on Chrome's compositor, which places page layers on the
+screen. JavaScript cannot read the same animation state from both renderers on
+the handoff frame. Munari lets idle CSS motion settle to zero before it changes
+the visible renderer.
 
-`forwardEvents` `relay` `gestures` `hoverGrace`
+`motionCarrier` supports motion that must continue through the handoff. It
+keeps the animation clock in JavaScript. The page and the mesh read the same
+sample, so their position and velocity match.
 
-A hit on a mesh becomes a UV, the UV becomes pixel coordinates inside
-the live subtree parked behind the canvas, and the deepest element under
-that point gets the event. The browser handles the rest: hover and focus
-styles repaint into the texture on their own, and once an input has
-focus, real keystrokes reach it with no forwarding at all.
+## Sending CSS values to a mesh
 
-Every synthetic event leaves through `relay` and carries a marker. The
-user's hand and the library's echo arrive at the same window, and code
-on the page side has to tell them apart. `gestures` is the listener that
-does, reading the real pointer while a card is in flight and ignoring
-everything munari sent.
+Module: [`styleChannel`](./src/paint/styleChannel.ts).
 
-`hoverGrace` handles a hover layer standing across the room from its
-trigger, where the walk from trigger to content stops being a few pixels
-and becomes a flight across the screen, racing a 300ms close timer
-written for the short version.
+`CSS.registerProperty` gives a custom property a type that Chrome can
+interpolate. For example, `transition: --depth 300ms ease` changes `--depth`
+over 300 milliseconds. If no paint rule reads that property, the transition
+does not repaint the DOM. A 600 millisecond test produced zero paints.
 
-## The parts of a component the rasterizer misses
+`getComputedStyle` returns the current value during the transition. A scene can
+read that value each frame and apply it to depth, tilt, or another mesh value.
+CSS and Tailwind can define the target value and transition.
 
-`surfaceChrome` `shadowQuadFrame`
+## Forwarding clicks, hover, and typing
 
-A texture is a rectangle and a component isn't. Border radius and outer
-shadows never reach the capture, and the corners aren't even empty:
-under a 14px radius, the corner texel measured 255,255,255,255, which is
-the app's own background. The texture can't say where the element ends,
-so the element's computed style is measured instead, and the radius
-becomes a distance function a shader can read. The shadow comes back as
-its own quad, with `shadowQuadFrame` computing the geometry and the
-shader's uniforms in one pass so the two can't disagree.
+Modules: [`forwardEvents`](./src/pointer/forwardEvents.ts),
+[`relay`](./src/pointer/relay.ts), and
+[`hoverGrace`](./src/pointer/hoverGrace.ts).
 
-## Controls that behave like objects
+A WebGL raycast finds where the pointer hit a 3D object. It returns a UV
+coordinate, which marks a position on the texture from 0 to 1 on each axis.
+`forwardEvents` converts that coordinate into a point inside the live DOM
+subtree behind the canvas. It finds the deepest element at that point and sends
+the pointer event there.
 
-`physics1D` `plate`
+The live element keeps its browser behavior. Focus changes repaint into the
+texture. Once a form control has focus, browser keyboard events reach it
+without forwarding.
 
-Feel is written as force fields. A dial is a detent field plus damping;
-a toggle is an over-center field plus damping. Release velocity flows
-into the field and the field decides where things come to rest, so there
-are no durations and no easing curves.
+The browser cannot apply `:hover` or `:active` to DOM behind the canvas.
+`forwardEvents` mirrors those states to `data-hover` and `data-active`.
+Authors must give each hover or active rule a matching attribute selector.
 
-`plate` is a rigid body rather than the one-dimensional integrator,
-because a card picked up by a corner has to swing, and swing is the
-lever arm between the hand and the mass. It works in CSS pixels and
-seconds, which is what lets a `getBoundingClientRect` be a world pose
-with nothing in between.
+Munari creates synthetic pointer events for the live DOM. `relay` marks each
+one so page code can separate Munari events from browser events created by the
+user.
+
+`hoverGrace` keeps a detached hover layer open while the pointer travels from
+its trigger to the layer's projected position. It builds a corridor in screen
+coordinates and closes the layer after the pointer leaves that corridor.
+
+## Restoring border radius and shadows
+
+Module: [`surfaceChrome`](./src/chrome/surfaceChrome.ts).
+
+HTML capture covers the element's layout box. It cannot include an outer
+shadow because the shadow lies outside that box. Rounded corners can contain
+the application's background color instead of transparent pixels. A test with
+a 14-pixel radius measured an opaque white corner texel.
+
+`surfaceChrome` reads border radius and outer shadows from the element's
+computed style. A material can use the radius to cut the captured rectangle
+into the correct shape and can draw the measured shadows outside it.
+
+## Giving controls physical motion
+
+Module: [`physics1D`](./src/physics/physics1D.ts).
+
+`physics1D` models a control with a position, velocity, and forces. A detent is
+a spring that pulls the control toward a stop. Damping slows the control. A
+toggle uses two stable positions with an unstable point between them. The
+release velocity carries into the simulation, so the control settles from the
+gesture instead of following a fixed duration.
 
 ## Smaller pieces
 
-- `uvAnchor` runs the raycast backwards: hand it a texture coordinate
-  and it finds the point on the surface. The triangle search reads only
-  the UV attribute, which holds still while vertices move, so an anchor
-  resolves once and then rides a deforming surface for free.
-- `math` is `vec2`, `vec3` and `quat`, written out because core can't
-  import them from three.
-- `sourceIdentity` numbers the pixel sources. Internal, not exported.
+- [`uvAnchor`](./src/mapping/uvAnchor.ts) starts with a texture coordinate and
+  finds its position on the surface. It finds the triangle once, then reads
+  the current vertex positions as the surface deforms.
+- [`vec3`](./src/math/vec3.ts) provides the math types that core needs without
+  importing `three`.
+- [`sourceIdentity`](./src/paint/sourceIdentity.ts) assigns IDs to pixel
+  sources. Core does not export it.
 
-## Two rules that hold everywhere
+## Rules that apply across core
 
-Every DOM-sourced texture uploads premultiplied, and every material
-sampling one blends premultiplied (`docs/decisions.md` #5).
+DOM textures use premultiplied alpha. Each color channel is multiplied by the
+pixel's alpha before upload, and materials use the matching blend mode. See
+[`docs/decisions.md` #5](../../docs/decisions.md).
 
-A Surface nobody is touching costs nothing: zero paints per second,
-checked on every push by `npm run gate:idle-zero`.
+An idle Surface produces zero paints per second. CI checks this on each push
+with `npm run gate:idle-zero`.
 
 ## House rules
 
-Tests live in `tests/conformance/`, one directory per area, never beside
-the module. `tests/boundary.test.ts` enforces both halves: no import
-here may leave `packages/core/src`, and no test file may sit in this
-directory. Move the test; don't widen the allowlist.
+Core tests live in [`tests/conformance/`](../../tests/conformance/), grouped by
+area. They do not sit beside the modules. [`tests/boundary.test.ts`](../../tests/boundary.test.ts)
+checks that imports stay inside `packages/core/src` and that no test file sits
+in this directory. Move a misplaced test instead of widening the allowlist.
 
-`src/index.ts` is the export list, grouped to match the directories. A
-module gets exported once its tests exist.
+[`src/index.ts`](./src/index.ts) lists exports in the same groups as the source
+directories. Export a module after its tests exist.
 
-Modules open with a comment saying what the thing is, then the browser
-behavior or bug that shaped it, with the date and the measured number.
-Constants cite `docs/decisions.md` or `docs/platform.md` by entry
-number. Keep that pattern.
+Start each module with a comment that names the module and explains the browser
+behavior or bug that shaped it. Include the date and measured value when a
+test produced them. Cite [`docs/decisions.md`](../../docs/decisions.md) or
+[`docs/platform.md`](../../docs/platform.md) for constants that come from a
+recorded decision or measurement.

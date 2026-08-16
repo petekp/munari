@@ -1,4 +1,4 @@
-// The density schedule — the toggle law that decides WHICH density
+// Flight's density schedule — the toggle law that decides WHICH density
 // the mapping identity is evaluated at.
 //
 // texelDemand (mapping/camera) answers "how many texels per CSS px make
@@ -11,14 +11,14 @@
 // flap the pin, and each flip motion-masked by the very flight that
 // caused it (~2 re-rasters per round trip).
 //
-// Kernel vocabulary collapses gesture modes into two mechanism flags.
+// The schedule collapses gesture modes into two mechanism flags.
 // `returning` forces the pin low from any height — the fall IS the
 // motion mask, and what matters is arriving at the page 1 : 1.
 // `frozen` holds the pin wherever it was: flipping would spend a full
 // re-raster and a texture swap on a sheet that is about to stop being
 // a card.
 
-import { texelDemand } from '../mapping/camera'
+import { texelDemand } from '@petepetrash/munari'
 
 /** Rising edge: a pin at page density flips to altitude density only
  * above liftZ × 0.65 — past the approach, unmistakably airborne. */

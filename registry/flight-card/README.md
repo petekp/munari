@@ -7,8 +7,8 @@ happened; use the lab implementation as the reference.
 
 ## What already exists
 
-- **The physics is in `packages/core`, covered by
-  `tests/conformance/physics/`:** the plate integrator and `HAND`
+- **The physics is beside the Flight scene, covered by local tests:**
+  the plate integrator and `HAND`
   grip, `aeroAmplitude` (AMP 55 / V0 650, set by measurement after a
   version tuned by eye shipped a bend too small to see; tests pin the
   minimum visible bend), `aeroFollowStep`, `crumplePhase` (crush stays
@@ -17,9 +17,8 @@ happened; use the lab implementation as the reference.
   `wadShrink`, and `attachFlightGestures` (only trusted user events
   start a gesture; tap/throw/crumple release rules; the `tossed` flag
   makes a released ball ballistic from the first frame).
-- **Shadow measurement is in `tests/conformance/chrome/`:**
-  `parseBoxShadow`, and `shadowQuadFrame` (geometry and uniforms come
-  from one computation).
+- **Core measures the DOM shadow.** Flight's `flightShadowFrameLaw` builds
+  the matching mesh geometry and shader values from that measurement.
 - **The working implementation is the flight scene**
   (`apps/lab/src/scenes/flight/Flight.tsx`), verified in the browser:
   tap→float→type→Escape home, cross-column throw with real velocity,
@@ -32,8 +31,8 @@ The scene-side machinery (aero vertex bow, crumple shader, depth-tested
 shadow quad, density-pin driver) lives inside the flight scene as one
 unit. Extracting a reusable component is design work in its own right,
 and no second consumer exists to shape it. Per decisions.md #7, we add
-API when a real consumer needs it. Until then, read the flight scene
-next to the core tests.
+API when a real consumer needs it. Until then, read the Flight scene with
+`flightPhysicsLaw`, `flightGestures`, `flightDensityLaw`, and their tests.
 
 ## Rules any future extraction must preserve
 
@@ -74,4 +73,4 @@ scene:
 | fold grid | 6×3 uv cells | flightShaders.ts, crumple shader |
 | fold remainder | 0.35 per-vertex mix | same |
 | crumple altitude | `CRUMPLE_Z = 55` | Flight.tsx |
-| core values | AMP 55 / V0 650 / spin V0 220 / MAX 7 | `@munari/core` plate.ts |
+| physics values | AMP 55 / V0 650 / spin V0 220 / MAX 7 | flightPhysicsLaw.ts |

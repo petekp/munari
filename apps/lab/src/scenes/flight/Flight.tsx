@@ -70,13 +70,13 @@ import './flight.css'
 import {
   cameraDistance,
   carryToPlane,
-  densityScheduleStep,
-  densitySupply,
   pixelGridSnap,
   planeScale,
   screenToPlane,
 } from '@petepetrash/munari'
-import { attachFlightGestures } from '@petepetrash/munari'
+import { corners } from './flightCorners'
+import { densityScheduleStep, densitySupply } from './flightDensityLaw'
+import { attachFlightGestures } from './flightGestures'
 import {
   aeroFollowStep,
   aeroReach,
@@ -84,15 +84,13 @@ import {
   CRUMPLE_RISE_T,
   crumplePhase,
   makePlate,
-  makeShadowFrame,
-  shadowQuadFrame,
   stepFree,
   stepHeld,
   wadOffscreen,
   wadShrink,
   type Plate,
-} from '@petepetrash/munari'
-import { corners } from './flightCorners'
+} from './flightPhysicsLaw'
+import { makeShadowFrame, shadowQuadFrame } from './flightShadowFrameLaw'
 import { closestFrom } from '../../lib/dom'
 import { plainAttribute } from '../../lib/geometry'
 import { textureSlot } from '../../lib/uniforms'
@@ -764,7 +762,7 @@ function Driver({
 
     // ── the density schedule ──
     //
-    // The law itself is the kernel's (`densityScheduleStep`): page density on
+    // `densityScheduleStep` keeps page density at handoff and altitude density
     // the page, altitude density at altitude, toggled on where the plate
     // actually IS rather than on what a mode flag thinks. This scene's only
     // job is translating its four gesture modes into the two mechanism flags
@@ -795,14 +793,14 @@ function Driver({
     // by bilinear at that fraction — every glyph edge smeared across two
     // device pixels, the fattened-fuzzy look the bisect shots measured.
     //
-    // `pixelGridSnap` is the law and it is the kernel's (#21); what stays
+    // `pixelGridSnap` is the shared mapping law; what stays
     // here is the judgement of WHEN a card counts as at rest, which is the
     // only part of this that was ever about flights. The physics never hears
     // about the answer — same truth/presentation split as the grounded
     // damper (#49) — and the blend runs on plate speed, so a moving card is
     // pure truth and nothing pops in between.
     //
-    // Tilt is the one correction the kernel does not own: flat-at-rest is
+    // Tilt is the one correction the shared mapping law does not own: flat-at-rest is
     // this scene's idea of rest, and it needs a quaternion.
     group.position.copy(f.plate.p)
     group.quaternion.copy(f.plate.q)
@@ -844,7 +842,7 @@ function Driver({
 
     // ── the aero bend: the sheet reads the plate's own velocity ──
     //
-    // The law lives in aeroFollowStep (physics/plate.ts), under test:
+    // The law lives in `flightPhysicsLaw`, under test:
     // direction only follows real motion, amplitude chases the gated curve
     // with a time constant per phase of the paper, and the returned value
     // IS the rendered amplitude — nothing instantaneous touches it on the
@@ -1041,10 +1039,10 @@ function Flying({
   // The card must be indistinguishable from the resting DOM it replaces —
   // and it lives on TWO planes, so it needs two densities, not one.
   //
-  // Both are one kernel identity evaluated at two heights — `densitySupply`,
+  // Both are one mapping identity evaluated at two heights — `densitySupply`,
   // which is `texelDemand` at the plate's altitude and degenerates to exactly
-  // dpr on the page. Spelling it out here was how this scene ended up owning
-  // a private copy of a law the kernel already had under contract (#21).
+  // dpr on the page. `densitySupply` keeps those two calculations in one
+  // scene-local place.
   //
   // On the page (z ≈ 0) a CSS pixel is a device pixel × dpr, full stop. At
   // altitude the card sits on the lift plane, magnified by exactly
@@ -1600,7 +1598,7 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
   // yet and the card stayed glued to a pointer whose button was already up.
   // Every handler reads `flight.current`, which is set synchronously, so
   // there is nothing to gate: with no flight they all return on the first
-  // line. The handlers themselves live in physics/gestures.ts — they filter
+  // line. The handlers themselves live in `flightGestures` — they filter
   // `isTrusted`, and the test file is the story of why.
   // The gesture's lift-plane carry, with the lab's own camera. The canvas
   // fills the window here, so `innerHeight` is the calibration height.

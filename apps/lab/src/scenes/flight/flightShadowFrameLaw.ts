@@ -1,16 +1,14 @@
-// The shadow quad's frame — geometry and shader uniforms built from ONE
+// Flight's shadow quad — geometry and shader uniforms built from ONE
 // computation so they can't disagree.
 //
-// Vector parameters are the structural `Vec2` pair (decisions.md #4):
-// THREE.Vector2/Vector3 pass through unchanged, satisfying `Vec2Readonly`
-// by shape (z, if present, is simply never read). Vector METHODS on
-// scratch objects (`.length()`, `.divideScalar()`) are avoided — core
-// writes the arithmetic out longhand instead: a scratch vector would
-// have to be one of three's own, which core can't import, and
-// module-scope reuse-buffers are exactly the kind of allocation this
-// file has no library left to make.
+// The input can use Vector2 or Vector3 because only x and y are read.
 
-import { Vec2, type Vec2Like, type Vec2Readonly } from '../math/vec2'
+import * as THREE from 'three'
+
+interface Point2 {
+  readonly x: number
+  readonly y: number
+}
 
 /**
  * The shadow quad's frame: vertices for the inflated footprint plus the two
@@ -36,24 +34,17 @@ import { Vec2, type Vec2Like, type Vec2Readonly } from '../math/vec2'
  * p-space metric is the CSS pixel grid — identity, which is what the
  * measured layers assume.
  */
-export interface ShadowFrameLike {
-  verts: [Vec2Like, Vec2Like, Vec2Like, Vec2Like]
-  quadHalf: Vec2Like
-  cardHalf: Vec2Like
-}
-
-/** What `makeShadowFrame` allocates when no caller-owned target exists. */
 export interface ShadowFrame {
-  verts: [Vec2, Vec2, Vec2, Vec2]
-  quadHalf: Vec2
-  cardHalf: Vec2
+  verts: [THREE.Vector2, THREE.Vector2, THREE.Vector2, THREE.Vector2]
+  quadHalf: THREE.Vector2
+  cardHalf: THREE.Vector2
 }
 
 export function makeShadowFrame(): ShadowFrame {
   return {
-    verts: [new Vec2(), new Vec2(), new Vec2(), new Vec2()],
-    quadHalf: new Vec2().set(1, 1),
-    cardHalf: new Vec2().set(1, 1),
+    verts: [new THREE.Vector2(), new THREE.Vector2(), new THREE.Vector2(), new THREE.Vector2()],
+    quadHalf: new THREE.Vector2(1, 1),
+    cardHalf: new THREE.Vector2(1, 1),
   }
 }
 
@@ -61,22 +52,18 @@ export function makeShadowFrame(): ShadowFrame {
  * `proj` is the projected footprint in `corners` order (TL, TR, BR, BL — z,
  * if the caller's vector type carries one, ignored: this frame is a
  * screen-space quantity); `verts` comes back in PlaneGeometry vertex order
- * (TL, TR, BL, BR). Everything is written into `out`, allocation-free —
- * generic so a caller's own vector type (e.g. real `THREE.Vector2`s living
- * on a persistent geometry) comes back out intact, the same pattern as
- * `mapping/camera.ts`'s `screenToPlane`/`carryToPlane`.
+ * (TL, TR, BL, BR). Everything is written into `out`, allocation-free.
  */
-export function shadowQuadFrame<F extends ShadowFrameLike>(
-  proj: readonly [Vec2Readonly, Vec2Readonly, Vec2Readonly, Vec2Readonly],
+export function shadowQuadFrame(
+  proj: readonly [Point2, Point2, Point2, Point2],
   margin: number,
-  out: F,
-): F {
+  out: ShadowFrame,
+): ShadowFrame {
   const [tl, tr, br, bl] = proj
   const fcx = (tl.x + tr.x + br.x + bl.x) / 4
   const fcy = (tl.y + tr.y + br.y + bl.y) / 4
   // Half-edge vectors of the parallelogram (averaged across the two parallel
-  // edges, which are equal up to float noise for a true projection). Scalar,
-  // not scratch Vec2s — see the file header.
+  // edges, which are equal up to float noise for a true projection).
   let eux = (tr.x + br.x - tl.x - bl.x) / 4
   let euy = (tr.y + br.y - tl.y - bl.y) / 4
   let evx = (tl.x + tr.x - bl.x - br.x) / 4

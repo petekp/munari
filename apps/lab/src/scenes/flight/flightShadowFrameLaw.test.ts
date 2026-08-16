@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { makeShadowFrame, shadowQuadFrame } from '@munari/core'
+import { makeShadowFrame, shadowQuadFrame } from './flightShadowFrameLaw'
 
 describe('shadow quad frame — the mapping never lies', () => {
   type Corners = [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3]

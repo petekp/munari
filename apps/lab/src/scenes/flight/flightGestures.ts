@@ -1,4 +1,4 @@
-// The window-level half of the gesture: the three listeners that read the
+// Flight's window-level gesture: the three listeners that read the
 // REAL pointer while a card is in flight.
 //
 // Extracted so this seam can be tested as DOM: these handlers live on
@@ -10,42 +10,11 @@
 // on. This one lives on the page side: it is the hand, and only the
 // hand.
 
-import type { QuatReadonly } from '../math/quat'
-import type { Vec3Like, Vec3Readonly } from '../math/vec3'
-import { tossSpin } from './plate'
-
-/**
- * The mutable-vector vocabulary this file's caller-owned fields need. A
- * `THREE.Vector3` satisfies it for free — three.js's own `Vector3Like`/
- * `QuaternionLike` parameter types are already this kernel's
- * `Vec3Readonly`/`QuatReadonly` shape (decisions.md #4) — but these fields
- * are never ALLOCATED by `attachFlightGestures`; they arrive on the flight
- * the caller constructed, so they can't be typed as this kernel's own
- * concrete `Vec3`. `clone`/`length` are for the CALLER's own reads (a
- * dropped card's grab point, `spin.length()` after a dead-drop toss);
- * `copy`/`add`/`applyQuaternion` are the float-anchor chain this file
- * performs itself.
- *
- * This is a BOUND, not the working type: flight and deps are generic in
- * `V extends Vec3Chain` because `toLiftPlane` is a callback — a
- * contravariant position — and every vector it will ever receive is one
- * the caller put on the flight itself (`toLiftPlane(f.anchor)` is the only
- * call). A consumer whose flight carries `THREE.Vector3`s may therefore
- * annotate its callback `(a: THREE.Vector3) => void` and have that be
- * TRUE, not a strictFunctionTypes error: `V` infers as the consumer's own
- * vector type, and the kernel's promise narrows to exactly the vectors it
- * round-trips.
- */
-export interface Vec3Chain extends Vec3Like {
-  clone(): Vec3Chain
-  length(): number
-  copy(v: Vec3Readonly): Vec3Chain
-  add(v: Vec3Readonly): Vec3Chain
-  applyQuaternion(q: QuatReadonly): Vec3Chain
-}
+import * as THREE from 'three'
+import { tossSpin, type Plate } from './flightPhysicsLaw'
 
 /** The slice of `Flight` the window gesture actually touches. */
-export interface GestureFlight<V extends Vec3Chain = Vec3Chain> {
+export interface GestureFlight {
   id: string
   mode: 'held' | 'float' | 'home' | 'crumple'
   px: number
@@ -65,25 +34,16 @@ export interface GestureFlight<V extends Vec3Chain = Vec3Chain> {
    */
   tossed: boolean
   /** The wad's tumble — written here at release, read by the driver. */
-  spin: V
-  anchor: V
+  spin: THREE.Vector3
+  anchor: THREE.Vector3
   anchorScroll: number
-  hold: V
-  handVel: Vec3Readonly
-  /**
-   * NOT `V`: the plate is the kernel's own allocation (`makePlate` fills
-   * it with kernel `Vec3`s), so a real flight is bimodal — kernel vectors
-   * under the physics, the consumer's under the hand — and welding
-   * `plate.v` to `V` would demand the one thing no consumer can supply.
-   * The bound is enough: the release adds the hand velocity onto it and
-   * reads `x`/`y` for topspin; it never crosses `toLiftPlane`. Same
-   * reasoning that keeps `handVel` a plain readonly rather than a `V`.
-   */
-  plate: { p: Vec3Readonly; v: Vec3Chain; q: QuatReadonly }
+  hold: THREE.Vector3
+  handVel: THREE.Vector3
+  plate: Pick<Plate, 'p' | 'v' | 'q'>
 }
 
-export interface GestureDeps<Col, V extends Vec3Chain = Vec3Chain> {
-  flight: { current: GestureFlight<V> | null }
+export interface GestureDeps<Col> {
+  flight: { current: GestureFlight | null }
   dropTarget: (x: number, y: number, id: string) => { col: Col; index: number } | null
   moveTo: (col: Col, index: number, id: string) => void
   snapshot: () => void
@@ -94,7 +54,7 @@ export interface GestureDeps<Col, V extends Vec3Chain = Vec3Chain> {
    * camera). A tap releases mid-rise, and an anchor left below the lift
    * plane hangs the card where its pinned texture is minified forever.
    */
-  toLiftPlane: (a: V) => void
+  toLiftPlane: (a: THREE.Vector3) => void
 }
 
 /**
@@ -115,14 +75,14 @@ export interface GestureDeps<Col, V extends Vec3Chain = Vec3Chain> {
  * The user's hand is the only pointer with `isTrusted: true`; everything the
  * library retells is constructed, and constructed events cannot lie about it.
  */
-export function attachFlightGestures<Col, V extends Vec3Chain>({
+export function attachFlightGestures<Col>({
   flight,
   dropTarget,
   moveTo,
   snapshot,
   scrollTop,
   toLiftPlane,
-}: GestureDeps<Col, V>): () => void {
+}: GestureDeps<Col>): () => void {
   const onMove = (e: PointerEvent) => {
     if (!e.isTrusted) return
     const f = flight.current

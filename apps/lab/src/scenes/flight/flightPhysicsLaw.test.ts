@@ -1,4 +1,4 @@
-// A card held in a hand — the rigid thin plate, pinned.
+// Flight's card physics — the rigid thin plate, pinned.
 //
 // Everything is CSS pixels and seconds, readable straight off
 // getBoundingClientRect (the plate module's calibration). The cases pin
@@ -12,9 +12,8 @@
 // and the crumple exit is a place, not a time.
 //
 // makeShadowFrame, shadowQuadFrame, and their ShadowFrame return type are
-// deliberately not imported here: the describe block that exercises them
-// ('shadow quad frame — the mapping never lies') belongs to
-// tests/conformance/chrome/shadowQuadFrame.test.ts.
+// deliberately not imported here. `flightShadowFrameLaw.test.ts` owns that
+// separate contract.
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import {
@@ -36,7 +35,7 @@ import {
   wadOffscreen,
   tossSpin,
   wadShrink,
-} from '@munari/core'
+} from './flightPhysicsLaw'
 
 const DT = 1 / 120
 const FLAT = new THREE.Quaternion()

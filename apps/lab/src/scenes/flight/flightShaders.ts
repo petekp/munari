@@ -4,7 +4,7 @@
 // between components is 300 lines you scroll past to read either one.
 //
 // Both pairs are welded to laws that live elsewhere: the card's bend is
-// driven by `aeroAmplitude`/`aeroFollowStep` in the kernel, and the
+// driven by `aeroAmplitude`/`aeroFollowStep` in `flightPhysicsLaw`, and the
 // shadow's layers are the card's own measured `box-shadow`, parsed by
 // `onChrome`. What is authored here is only how they RASTERIZE.
 

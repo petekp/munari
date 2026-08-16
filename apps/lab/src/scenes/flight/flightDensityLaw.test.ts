@@ -1,4 +1,4 @@
-// The density schedule — page density at handoff, altitude density at
+// Flight's density schedule — page density at handoff, altitude density at
 // cruise, hysteresis on plate z; descent flips low immediately, a
 // dying sheet freezes its pin.
 //
@@ -11,13 +11,15 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  cameraDistance,
+  texelDemand,
+} from '@petepetrash/munari'
+import {
   DENSITY_FALL_FACTOR,
   DENSITY_RISE_FACTOR,
-  cameraDistance,
   densityScheduleStep,
   densitySupply,
-  texelDemand,
-} from '@munari/core'
+} from './flightDensityLaw'
 
 const LIFT_Z = 96
 

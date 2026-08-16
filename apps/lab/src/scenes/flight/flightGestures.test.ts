@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// The window-level flight gesture vs the surface protocol's relays.
+// Flight's window-level gesture vs the surface protocol's relays.
 //
 // Pete's report, verbatim: "when i drag a card, it seems to jump towards the
 // top left of the screen, sometimes even getting stuck there as long as i
@@ -20,10 +20,9 @@ import {
   cameraDistance,
   carryToPlane,
   planeToScreen,
-  makePlate,
-  type GestureFlight,
-  attachFlightGestures,
-} from '@munari/core'
+} from '@petepetrash/munari'
+import { makePlate } from './flightPhysicsLaw'
+import { attachFlightGestures, type GestureFlight } from './flightGestures'
 
 // The lab's calibration at the reference viewport — the tests hand the
 // gesture the same lift-plane carry the Board does.
@@ -31,14 +30,8 @@ const CAM_Z = cameraDistance(720, 42)
 const LIFT_Z = 96
 
 function makeFlight(
-  over: Partial<GestureFlight<THREE.Vector3>> = {},
-): GestureFlight<THREE.Vector3> {
-  // The plate is the kernel's own allocation, deliberately: a real flight
-  // is BIMODAL — kernel vectors under the physics (`makePlate`), the
-  // consumer's THREE.Vector3s under the hand — and a mock that hand-builds
-  // the plate from THREE objects cannot catch a deps type that welds the
-  // two vocabularies together. (The first generic did exactly that, and
-  // this mock let it through.)
+  over: Partial<GestureFlight> = {},
+): GestureFlight {
   const plate = makePlate(240, 150)
   plate.p.set(300, -80, 96)
   return {
@@ -281,14 +274,7 @@ describe('the ✕ is a toss, not a timer', () => {
   })
 })
 
-describe('the deps are typed in the consumer’s own vectors', () => {
-  // `toLiftPlane` is a callback — a contravariant position — so a kernel
-  // that pinned its parameter to `Vec3Chain` made every consumer's honest
-  // annotation a strictFunctionTypes error: the flight scene's
-  // `(a: THREE.Vector3) => carryToPlane(…)` refused to compile against it.
-  // The flight and deps are generic in the flight's vector type instead,
-  // which is sound because the only vector the kernel ever hands the
-  // callback is one the caller put on the flight itself.
+describe('the lift-plane callback receives Flight vectors', () => {
   it('an annotated (a: THREE.Vector3) => void compiles, and receives the very anchor the caller built', () => {
     const flight = { current: makeFlight() }
     let received: THREE.Vector3 | null = null
@@ -298,8 +284,6 @@ describe('the deps are typed in the consumer’s own vectors', () => {
       moveTo: () => {},
       snapshot: () => {},
       scrollTop: () => 0,
-      // The annotation IS the assertion: this line typechecks only while
-      // `V` infers as the consumer's vector type.
       toLiftPlane: (a: THREE.Vector3) => {
         received = a
         carryToPlane(a, CAM_Z, LIFT_Z)
@@ -308,9 +292,7 @@ describe('the deps are typed in the consumer’s own vectors', () => {
     window.dispatchEvent(pointer('pointerup', 369, 284, true))
 
     expect(flight.current.mode).toBe('float')
-    // Round-trip, not manufacture: the vector in the callback is the very
-    // anchor on the caller's flight — the fact the generic's soundness
-    // rests on.
+    // The callback receives the same anchor that the flight owns.
     expect(received).toBe(flight.current.anchor)
   })
 })

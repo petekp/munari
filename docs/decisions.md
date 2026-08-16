@@ -1765,3 +1765,23 @@ The logo is the reference consumer: its cooling gate
 (`MATTER_LIGHT_GATE`, since widened to relief and extrusion and renamed
 `MATTER_GATE`) reshaped from an ad-hoc smoothstep window to
 `lift.range(0.25, 0.35)` — same numbers, now the library's own idiom.
+
+## #32 — A tested demo law is still a demo law (2026-08-16, core + Flight)
+
+**Decision.** Flight now owns its plate solver, bend and crumple rules,
+gesture state, texture-density schedule, and custom shadow geometry. Their
+tests move beside the scene. These laws are pure and well tested, but they
+have one consumer and name that consumer's card modes, delete gesture, lift
+height, and visual tuning. Tests prove behavior; they do not make a demo
+detail a shared API.
+
+Core keeps the parts that describe Munari itself: capture, coordinate mapping,
+pointer relay, handoff, CSS chrome measurement, and the 1D control physics
+used by the published `Dial`. The unused `motionSamples` and
+`conductorTiming` modules
+are removed with the deleted experiment they described. The standalone
+quaternion class goes with Flight's plate solver; the scene uses `three`
+directly.
+
+The earlier entries remain as history. This entry changes their ownership
+conclusion before the next package release.

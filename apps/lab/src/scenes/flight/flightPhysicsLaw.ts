@@ -1,4 +1,4 @@
-// A card held in a hand, as a rigid thin plate.
+// Flight's card physics — a card held in a hand as a rigid thin plate.
 //
 // Everything in this file is in CSS PIXELS and SECONDS — the calibration
 // that makes a card's rect readable straight off `getBoundingClientRect`
@@ -12,24 +12,21 @@
 // needs an orientation to act on. The whole feel of the lab is in the two
 // lines that turn `r × F` into angular acceleration.
 //
-// Core has no `three`, so orientation and position travel as this kernel's
-// own `Vec3`/`Quat` (decisions.md #4) — which, per three.js's own
-// `Vector3Like`/`QuaternionLike` parameter types, a real `THREE.Vector3` /
-// `THREE.Quaternion` satisfies for free in either direction.
+// The lab already depends on `three`, so this scene owns its vectors and
+// quaternions directly. Core does not need a second math layer for one demo.
 
-import { Quat, type QuatReadonly } from '../math/quat'
-import { Vec3, type Vec3Like, type Vec3Readonly } from '../math/vec3'
+import * as THREE from 'three'
 
 /** A thin rectangular plate in the body's xy plane, facing +z. */
 export interface Plate {
   /** Centre of mass, world px. */
-  p: Vec3
+  p: THREE.Vector3
   /** Linear velocity, px/s. */
-  v: Vec3
+  v: THREE.Vector3
   /** Orientation. Identity = facing the camera, unrotated. */
-  q: Quat
+  q: THREE.Quaternion
   /** Angular velocity, WORLD frame, rad/s. */
-  w: Vec3
+  w: THREE.Vector3
   /** Mass. 1 for every card — the interesting ratios are all rotational. */
   m: number
   /**
@@ -40,7 +37,7 @@ export interface Plate {
    * at a top corner tips toward you before it swings sideways — it is not
    * a tuned behaviour, it is the aspect ratio.
    */
-  invI: Vec3
+  invI: THREE.Vector3
 }
 
 export function makePlate(w: number, h: number, m = 1): Plate {
@@ -48,12 +45,12 @@ export function makePlate(w: number, h: number, m = 1): Plate {
   const iyy = (m * w * w) / 12
   const izz = (m * (w * w + h * h)) / 12
   return {
-    p: new Vec3(),
-    v: new Vec3(),
-    q: new Quat(),
-    w: new Vec3(),
+    p: new THREE.Vector3(),
+    v: new THREE.Vector3(),
+    q: new THREE.Quaternion(),
+    w: new THREE.Vector3(),
     m,
-    invI: new Vec3().set(1 / ixx, 1 / iyy, 1 / izz),
+    invI: new THREE.Vector3().set(1 / ixx, 1 / iyy, 1 / izz),
   }
 }
 
@@ -104,7 +101,7 @@ export interface Grip {
 // grip is critically damped, because a hand does not ring.
 export const HAND: Grip = { ks: 1400, kd: 75, grip: 0.3, wUp: 121, cUp: 22 }
 
-const ZERO = new Vec3()
+const ZERO = new THREE.Vector3()
 
 /**
  * The physics timestep is NOT the frame timestep.
@@ -132,16 +129,16 @@ function substep(dt: number, once: (h: number) => void) {
   for (let i = 0; i < n; i++) once(h)
 }
 
-const _r = new Vec3()
-const _f = new Vec3()
-const _t = new Vec3()
-const _pointVel = new Vec3()
-const _axis = new Vec3()
-const _a = new Vec3()
-const _ang = new Vec3()
-const _qe = new Quat()
-const _dq = new Quat()
-const _qi = new Quat()
+const _r = new THREE.Vector3()
+const _f = new THREE.Vector3()
+const _t = new THREE.Vector3()
+const _pointVel = new THREE.Vector3()
+const _axis = new THREE.Vector3()
+const _a = new THREE.Vector3()
+const _ang = new THREE.Vector3()
+const _qe = new THREE.Quaternion()
+const _dq = new THREE.Quaternion()
+const _qi = new THREE.Quaternion()
 
 /**
  * One frame of "a hand at `target` is holding the plate at body-local point
@@ -156,10 +153,10 @@ const _qi = new Quat()
 export function stepHeld(
   plate: Plate,
   dt: number,
-  target: Vec3Readonly,
-  hold: Vec3Readonly,
-  faceTo: QuatReadonly,
-  handVel: Vec3Readonly = ZERO,
+  target: THREE.Vector3,
+  hold: THREE.Vector3,
+  faceTo: THREE.Quaternion,
+  handVel: THREE.Vector3 = ZERO,
   g: Grip = HAND,
 ): void {
   substep(dt, (h) => heldOnce(plate, h, target, hold, faceTo, handVel, g))
@@ -168,10 +165,10 @@ export function stepHeld(
 function heldOnce(
   plate: Plate,
   dt: number,
-  target: Vec3Readonly,
-  hold: Vec3Readonly,
-  faceTo: QuatReadonly,
-  handVel: Vec3Readonly,
+  target: THREE.Vector3,
+  hold: THREE.Vector3,
+  faceTo: THREE.Quaternion,
+  handVel: THREE.Vector3,
   g: Grip,
 ) {
   // Where the grab point actually IS right now: centre + the held corner
@@ -222,7 +219,7 @@ function heldOnce(
  * term, a perfectly stable wrong answer. Fingers hold an orientation, not a
  * direction, so the error has to be one too.
  */
-function faceError(plate: Plate, faceTo: QuatReadonly) {
+function faceError(plate: Plate, faceTo: THREE.Quaternion) {
   _qe.copy(faceTo).multiply(_qi.copy(plate.q).invert())
   // q and −q are the same rotation; the one with w ≥ 0 is the short way
   // round, and taking the other is how a servo talks itself into a 350°
@@ -246,8 +243,8 @@ function faceError(plate: Plate, faceTo: QuatReadonly) {
 export function stepFree(
   plate: Plate,
   dt: number,
-  target: Vec3Readonly,
-  faceTo: QuatReadonly,
+  target: THREE.Vector3,
+  faceTo: THREE.Quaternion,
   ks = 300,
   kd = 33,
   wUp = 196,
@@ -259,8 +256,8 @@ export function stepFree(
 function freeOnce(
   plate: Plate,
   dt: number,
-  target: Vec3Readonly,
-  faceTo: QuatReadonly,
+  target: THREE.Vector3,
+  faceTo: THREE.Quaternion,
   ks: number,
   kd: number,
   wUp: number,
@@ -289,9 +286,9 @@ function freeOnce(
 function integrate(
   plate: Plate,
   dt: number,
-  force: Vec3Readonly,
-  torque: Vec3Readonly,
-  angAcc: Vec3Readonly,
+  force: THREE.Vector3,
+  torque: THREE.Vector3,
+  angAcc: THREE.Vector3,
 ) {
   plate.v.addScaledVector(force, dt / plate.m)
   plate.p.addScaledVector(plate.v, dt)
@@ -316,7 +313,7 @@ function integrate(
 /** Has it stopped? Both channels, because a flat card can still be spinning. */
 export function atRest(
   plate: Plate,
-  target: Vec3Readonly,
+  target: THREE.Vector3,
   posEps = 0.6,
   velEps = 8,
 ): boolean {
@@ -545,10 +542,9 @@ export const TOSS_SPIN_MAX = 7
  * tumble for that case, because randomness has no business in a pure
  * function the tests need to hold still.
  *
- * Generic out-param (mapping/camera.ts's convention): a caller's own vector
- * type comes back out, never widened to this kernel's `Vec3`.
+ * The caller provides the output vector so the driver can reuse it each frame.
  */
-export function tossSpin<V extends Vec3Like>(vx: number, vy: number, out: V): V {
+export function tossSpin(vx: number, vy: number, out: THREE.Vector3): THREE.Vector3 {
   const speed = Math.hypot(vx, vy)
   if (speed < 1e-6) {
     out.set(0, 0, 0)

@@ -105,32 +105,10 @@ export {
 
 // transfer — the handoff
 export {
-  decomposeMatrix,
-  sampleAt,
-  isStatic,
-  type MotionSample,
-  type MotionValue,
-} from './transfer/motionSamples'
-export {
-  END_EPSILON_MS,
-  conductorScrubEnd,
-  CONDUCTOR_REST,
-  conductorTick,
-  conductorCancel,
-  type ConductorPoseState,
-} from './transfer/conductorTiming'
-export {
   presentationReceiptSatisfies,
   type PresentationReceipt,
   type PresentationRequirement,
 } from './transfer/presentation'
-export {
-  DENSITY_RISE_FACTOR,
-  DENSITY_FALL_FACTOR,
-  densityScheduleStep,
-  densitySupply,
-  type DensityScheduleInput,
-} from './transfer/densitySchedule'
 export {
   CROSSING_DEFAULTS,
   crossingAtRest,
@@ -148,8 +126,6 @@ export {
 } from './transfer/crossing'
 export { createMotionCarrier, type MotionCarrier } from './transfer/motionCarrier'
 
-export { Vec2, type Vec2Like, type Vec2Readonly } from './math/vec2'
-
 // chrome — measurement
 export {
   parseBoxShadow,
@@ -161,16 +137,7 @@ export {
   type SurfaceShadowLayer,
   type SurfaceChrome,
 } from './chrome/surfaceChrome'
-export {
-  makeShadowFrame,
-  shadowQuadFrame,
-  type ShadowFrame,
-  type ShadowFrameLike,
-} from './chrome/shadowQuadFrame'
-
-export { Quat, type QuatReadonly } from './math/quat'
-
-// physics — the kit
+// physics — physical controls
 export {
   type Body1D,
   type Field,
@@ -184,32 +151,3 @@ export {
   flipImpulse,
   hopImpulse,
 } from './physics/physics1D'
-export {
-  type Plate,
-  type Grip,
-  type AeroFollow,
-  type CrumplePhase,
-  HAND,
-  CRUMPLE_RISE_T,
-  CRUMPLE_CRUSH_T,
-  TOSS_SPIN_V0,
-  TOSS_SPIN_MAX,
-  makePlate,
-  stepHeld,
-  stepFree,
-  atRest,
-  aeroAmplitude,
-  aeroGate,
-  aeroReach,
-  aeroFollowStep,
-  crumplePhase,
-  wadOffscreen,
-  tossSpin,
-  wadShrink,
-} from './physics/plate'
-export {
-  type GestureFlight,
-  type GestureDeps,
-  type Vec3Chain,
-  attachFlightGestures,
-} from './physics/gestures'

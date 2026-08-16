@@ -1,30 +1,30 @@
-// The phase law — where a card has to SIT for the texels it already has
+// The phase law — where a Surface has to sit for the texels it already has
 // to land on the display's pixels.
 //
 // The third budget in `sharpness = supply × phase × transfer`, and the
 // one nothing else can pay for. `texelDemand` answers how MANY texels a
-// card needs; this answers where those texels must arrive. Get the count
-// exactly right and put the card a third of a pixel off the grid, and
+// Surface needs; this answers where those texels must arrive. Get the count
+// exactly right and put the Surface a third of a pixel off the grid, and
 // every texel in it is read across two — one bilinear tap of blur,
 // applied uniformly, to type that was rasterized to be read. More
 // density does not help: the extra texels land off-grid too.
 //
-// A card's texture is a capture of its own box, so the texture's texel
-// grid IS the card's pixel grid. That is what makes this a single
+// A Surface texture is a capture of its own box, so the texture's texel
+// grid is the Surface's pixel grid. That is what makes this a single
 // correction to a single object rather than a per-glyph problem: the
-// parts inside the card are at fractional positions too, and that is
+// parts inside the Surface are at fractional positions too, and that is
 // correct and must stay — a part's fraction is baked into the capture
-// and its uv rect is `box / card` exactly, so it asks for precisely the
-// texels it was drawn into. One grid per card, not one per word.
+// and its UV rect is `part / Surface` exactly, so it asks for precisely the
+// texels it was drawn into. One grid per Surface, not one per word.
 //
 // Two corrections come out of that, and both are needed. Pinning the
 // top-left corner to an integer device pixel fixes where the grid
 // STARTS; pinning the projected footprint to the texture's exact texel
-// count fixes its PITCH, because a card 514 CSS px wide magnified by
+// count fixes its pitch, because a Surface 514 CSS px wide magnified by
 // 1.114 does not cover an integer number of device pixels and the phase
 // drifts across its own width even with the corner nailed down.
 //
-// This is presentation, not physics. It moves a card by up to half a
+// This is presentation, not physics. It moves a Surface by up to half a
 // pixel from where its own trajectory says it is, and lies about its
 // size by at most half a texel in each direction — the trade is not a
 // close one, because half a pixel of displacement is invisible and half
@@ -33,22 +33,21 @@
 // split the grounded damper is built on).
 //
 // The kernel owns the correction; the consumer owns WHEN it applies.
-// Deciding a card is at rest is a scene's judgement — a flight blends on
-// plate speed, a route transition on how far into the flight it is — and
-// a quantized position on a moving card is just a way to make it move in
+// Deciding a Surface is at rest is the consumer's judgement. A quantized
+// position on a moving Surface is just a way to make it move in
 // steps.
 
-/** What the snap needs to know about a card and the display it is on. */
+/** What the snap needs to know about a Surface and its display. */
 export interface PixelGridInput {
-  /** Card centre on its plane, world units (= CSS px at z = 0). */
+  /** Surface centre on its plane, world units (= CSS px at z = 0). */
   x: number
   y: number
-  /** The card's CSS size — the box its texture was captured from. */
+  /** The Surface's CSS size — the box its texture was captured from. */
   width: number
   height: number
   /**
-   * How much bigger the card's plane projects than z = 0:
-   * `planeScale(camZ, z)`. Exactly 1 for a card lying on the page.
+   * How much bigger the Surface's plane projects than z = 0:
+   * `planeScale(camZ, z)`. Exactly 1 for a Surface on the page plane.
    */
   mag: number
   /** The viewport, CSS px. */
@@ -58,7 +57,7 @@ export interface PixelGridInput {
   dpr: number
   /**
    * Backing texels per CSS px the texture was actually cut at — normally
-   * `texelDemand` at this card's altitude. It is the texture's own
+   * `texelDemand` at this Surface's altitude. It is the texture's own
    * dimensions that the footprint has to match, so this must be the
    * density the capture happened at, not the one it ideally wants.
    */
@@ -75,20 +74,20 @@ export interface PixelGridSnap {
   sy: number
 }
 
-/** `-0` is a delta a caller would otherwise have to know not to test for. */
+/** `-0` is a delta a caller would otherwise have to handle. */
 function noNegZero(v: number): number {
   return v === 0 ? 0 : v
 }
 
 /**
- * Where this card has to be drawn for its texels to land on device pixels.
+ * Where this Surface has to be drawn for its texels to land on device pixels.
  *
  * The returned correction is at FULL strength: it assumes the caller has
- * already decided this card is somewhere a reader can stop. Blend it
+ * already decided this Surface is somewhere a reader can stop. Blend it
  * yourself — `x + snap.dx * w`, `scale.x = 1 + w * (snap.sx - 1)` — so
- * that a card in motion is pure trajectory and nothing pops in between.
+ * that a Surface in motion follows its trajectory without stepping.
  *
- * A degenerate card (zero or negative width or height) has no grid to be
+ * A degenerate Surface (zero or negative width or height) has no grid to be
  * on and gets an identity correction rather than a NaN.
  */
 export function pixelGridSnap(input: PixelGridInput): PixelGridSnap {

@@ -27,9 +27,8 @@
 //     the scene's physics wants — with identity meaning "exactly the DOM".
 //
 // Everything below is string parsing, a resolved per-corner clamp, a DOM
-// walk, and one signed-distance formula — scalar/string work with no vector
-// types anywhere (decisions.md #4's structural-shapes treatment is for
-// `chrome/shadowQuadFrame.ts`, which actually carries geometry).
+// walk, and one signed-distance formula. It does not decide how a scene draws
+// the result.
 
 export interface SurfaceShadowLayer {
   /** Horizontal offset, CSS px (positive = right, in DOM screen space). */
