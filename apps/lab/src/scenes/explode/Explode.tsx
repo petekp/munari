@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Surface, useSurfaceTexture } from '@petepetrash/munari'
-import { explodePaint, measureBleed, type Plate } from './paintPlates'
+import { explodePaint, measureBleed, type Plate } from './explodePlates'
 
 // The exploded-paint inspector — a live element taken apart into its OWN
 // paint layers, laid out in CSS paint order, as matter.
@@ -14,7 +14,7 @@ import { explodePaint, measureBleed, type Plate } from './paintPlates'
 // div they stop: there is nothing below it to separate. Here the div comes
 // apart into six sheets you can orbit around, because the decomposition is
 // done in the PAINT, by rendering the same box once per feature with the
-// others neutralized (see paintPlates.ts for the mechanism and the
+// others neutralized (see explodePlates.ts for the mechanism and the
 // measurements behind each step).
 //
 // The live element is never touched. It sits in the page the whole time,

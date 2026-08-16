@@ -54,7 +54,7 @@ import {
 import {
   collectSurfaceAnchors,
   type SurfaceAnchorReceipt,
-} from '../lib/surfaceAnchors'
+} from '../../lib/surfaceAnchors'
 import {
   GENIE_DEFAULTS,
   SETTLE_DEFAULTS,
@@ -76,9 +76,9 @@ import {
 } from './genieDrive'
 import { dockFill, dockPose, dockRingDone, dockSwell } from './genieDock'
 import { BOUNCE_MARKS, registerBounceCourt } from './genieBounce'
-import { genieKnobs } from './genieKnobs'
+import { genieTuning } from './genieTuning'
 import { GenieTweakPanel } from './GenieTweaks'
-import { showChrome } from '../chrome'
+import { showChrome } from '../../bareMode'
 import {
   GENIE_FILM_FRAG,
   GENIE_FRAG,
@@ -98,9 +98,9 @@ import {
 // served from public/ so the bundler hashes it and a missing file is a
 // build error rather than a 404 in front of a visitor.
 import filmUrl from './film.mp4'
-import { closestFrom } from '../lib/dom'
-import { plainAttribute } from '../lib/geometry'
-import { textureSlot } from '../lib/uniforms'
+import { closestFrom } from '../../lib/dom'
+import { plainAttribute } from '../../lib/geometry'
+import { textureSlot } from '../../lib/uniforms'
 import './genie.css'
 
 const FOV = 42
@@ -1971,7 +1971,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
         // chooses which side of the drain the circle sits on. Read from
         // the tweak panel's live bag at measure time, so a dragged value
         // applies to the next flight.
-        loopRadius: id === 'scheda' ? genieKnobs.loopRadius : 0,
+        loopRadius: id === 'scheda' ? genieTuning.loopRadius : 0,
       },
       // The looped route is almost twice as long as the normal drain. Give
       // it time for the same calm travel speed instead of rushing the circle.

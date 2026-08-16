@@ -20,8 +20,8 @@ import type {
   FrameDrawReceipt,
   PresentationReceipt,
 } from '@petepetrash/munari'
-import type { KnobsResizeProbeApi } from '../scenes/Knobs'
-import type { GenieFilmProbeEvent } from '../scenes/Genie'
+import type { KnobsResizeProbeApi } from '../scenes/knobs/Knobs'
+import type { GenieFilmProbeEvent } from '../scenes/genie/Genie'
 
 /**
  * The demand probe's record. An instrument reads the three receipts to prove

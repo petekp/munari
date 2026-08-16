@@ -1,3 +1,29 @@
+// FocusScene — the focus manager, implementing docs/focus.md.
+//
+// The invariant everything else hangs off: SCENE FOCUS IS DOCUMENT FOCUS.
+// This component never stores "what is focused" — it derives its level from
+// document.activeElement at every decision point (locate()) and routes real
+// browser focus with element.focus(). The only state it keeps is
+// presentation/continuity state the DOM can't hold: the ring cursor (last
+// unit visited) and per-group interior memory stacks.
+//
+// Levels (docs/focus.md "The model"):
+//   page     — focus is outside the scene entirely; we never touch it
+//   scene    — the GL canvas itself is focused (the page's single entry stop)
+//   unit     — a group's unit element is focused (the Surface source root,
+//              tabindex=-1): the group selected "as a thing"
+//   interior — focus is inside a group's DOM subtree; the browser owns
+//              traversal, we only guard the boundary
+//
+// Keys: Tab/Shift+Tab move between units (one stop per group — APG
+// composite convention). Enter/F2 descend into a unit's DOM. Escape
+// ascends: interior → unit (clearing that group's memory — Flutter's
+// clear-on-explicit-unfocus), unit → scene, scene → subscribers (labs
+// decide; e.g. camera home). The scene ring is a closed loop this
+// increment: page-embed edge handoff needs the parked subtrees pulled out
+// of the native tab order first, which is proxy-layer work (next
+// increment).
+
 import {
   use,
   useEffect,
@@ -43,33 +69,6 @@ import {
   type ReframeFulfiller,
   type ReframeRequest,
 } from './focusContext'
-
-// FocusScene — the focus manager, implementing docs/focus.md.
-//
-// The invariant everything else hangs off: SCENE FOCUS IS DOCUMENT FOCUS.
-// This component never stores "what is focused" — it derives its level from
-// document.activeElement at every decision point (locate()) and routes real
-// browser focus with element.focus(). The only state it keeps is
-// presentation/continuity state the DOM can't hold: the ring cursor (last
-// unit visited) and per-group interior memory stacks.
-//
-// Levels (docs/focus.md "The model"):
-//   page     — focus is outside the scene entirely; we never touch it
-//   scene    — the GL canvas itself is focused (the page's single entry stop)
-//   unit     — a group's unit element is focused (the Surface source root,
-//              tabindex=-1): the group selected "as a thing"
-//   interior — focus is inside a group's DOM subtree; the browser owns
-//              traversal, we only guard the boundary
-//
-// Keys: Tab/Shift+Tab move between units (one stop per group — APG
-// composite convention). Enter/F2 descend into a unit's DOM. Escape
-// ascends: interior → unit (clearing that group's memory — Flutter's
-// clear-on-explicit-unfocus), unit → scene, scene → subscribers (labs
-// decide; e.g. camera home). The scene ring is a closed loop this
-// increment: page-embed edge handoff needs the parked subtrees pulled out
-// of the native tab order first, which is proxy-layer work (next
-// increment).
-
 
 /** One shape for both member kinds: a composite's root is the Surface source
  *  subtree; a leaf's root is its ARIA proxy in the shared portal layer. */

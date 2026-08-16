@@ -1,10 +1,3 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
-import { flushSync } from 'react-dom'
-import { createRoot, type Root } from 'react-dom/client'
-import { guardPointerCapture } from '@munari/core'
-import { useLatest } from './useLatest'
-
 // The DOM half of a Surface that hosts live UI.
 //
 // `Surface` takes markup and rasterizes it. Everything past a static string —
@@ -12,6 +5,13 @@ import { useLatest } from './useLatest'
 // container plumbing, and each piece of it is load-bearing for a reason that
 // took a bug to find. Every host-owning primitive (`SurfaceApp` today)
 // is built on this, so those reasons are paid for once.
+
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { flushSync } from 'react-dom'
+import { createRoot, type Root } from 'react-dom/client'
+import { guardPointerCapture } from '@munari/core'
+import { useLatest } from './useLatest'
 
 export interface SourceHost {
   /** Hand to `Surface`'s `onSource`. */

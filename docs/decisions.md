@@ -269,6 +269,26 @@ part of an in-flight route transition.
   anchors, and the matching WebGL hardware keeps its physical size while
   moving to the presented raster's positions.
 
+**Amended 2026-08-15 — eight; optics joins, and the ledger catches up.**
+
+- **optics — the bench.** A refracting loupe rides live specimens:
+  re-raster sharpness under magnification (`opticsLod`'s tier walk),
+  forward-ray refraction so a click lands where the bent light says it
+  does, and the measured paint cost of a moving lens
+  (`docs/spikes/optics-loupe.md` holds the numbers). It entered
+  `App.tsx` on 2026-08-14; the roster comment there moved to eight
+  while this entry still said seven.
+
+The same amendment settles an older debt: genie and veil entered the
+roster on 2026-08-09 without the argument bullet every other member
+received. For the record — **genie** is the minimize-to-dock handoff
+under a live film clock, the scene whose bugs forced #24–#27 and whose
+retained gates are `instruments/genie-drain`; **veil** is progressive
+blur over a live Surface, its law pinned in the scene's `veilLaw`
+tests. The roster is workspace, glass, flight, explode, genie, veil,
+knobs, optics. The logo playground stays what its registering commit
+called it: a sketch off the roster.
+
 ## #4 — Core speaks in shapes; three satisfies them (2026-08-02)
 
 **Decision.** `@munari/core` cannot import `three` (zero-dep,

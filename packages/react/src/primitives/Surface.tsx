@@ -1,3 +1,15 @@
+// <Surface> — the atom of munari: a live DOM subtree as the skin of any
+// geometry. Pass geometry as children; the DOM is rasterized into the
+// material's map every frame, and pointer events on the mesh are forwarded
+// back into the DOM via the intersection's UV coordinates.
+//
+// Because the DOM is real: :focus styles show up in the texture, form state
+// is real state, the accessibility tree is intact, and once a field is
+// focused the browser types into it natively — no key forwarding. :hover and
+// :active are the exception — real hit-testing never reaches the parked
+// subtree — so forwardEvents mirrors them as data-hover/data-active
+// attributes; author CSS with both selectors.
+
 import {
   use,
   useCallback,
@@ -54,18 +66,6 @@ import {
 } from './DomSurfaceRuntime'
 import { SurfaceContext, type SurfaceContextValue } from './SurfaceContext'
 import { useLatest } from './useLatest'
-
-// <Surface> — the atom of munari: a live DOM subtree as the skin of any
-// geometry. Pass geometry as children; the DOM is rasterized into the
-// material's map every frame, and pointer events on the mesh are forwarded
-// back into the DOM via the intersection's UV coordinates.
-//
-// Because the DOM is real: :focus styles show up in the texture, form state
-// is real state, the accessibility tree is intact, and once a field is
-// focused the browser types into it natively — no key forwarding. :hover and
-// :active are the exception — real hit-testing never reaches the parked
-// subtree — so forwardEvents mirrors them as data-hover/data-active
-// attributes; author CSS with both selectors.
 
 // `material` is omitted from the mesh props because Surface owns the material
 // slot — the prop below redefines it as a mode, not an instance.

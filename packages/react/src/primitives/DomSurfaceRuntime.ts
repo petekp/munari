@@ -1,3 +1,16 @@
+// The renderer-order ledger for a DOM-backed Surface.
+//
+// One paint's journey is upload → draw → presentation, and each step has
+// different evidence (decisions.md #24, #25): recordUpload() samples the
+// latest paint at three's upload callback; takeDrawReceipt() names each
+// uploaded frame once, only after a renderer pass actually used it; the
+// presentation pair admits a receipt only for a color-writing draw to
+// the default framebuffer. Three calls onAfterRender for off-screen
+// targets and colorWrite=false materials too — those draws may open the
+// pixel gate, but they must never release another presenter. Rejections
+// are counted per transfer and warned once, so a mis-wired transfer is
+// diagnosable without a console flood.
+
 import type {
   DomPaintReceipt,
   DomTextureSource,

@@ -72,7 +72,7 @@ import { LETTER_FRAG, LETTER_VERT, MATTER_GATE, MATTER_PARAMS } from './logoShad
 import { FIELD_DS, LetterFields, raster, readAlphaField } from './logoFields'
 import { traceContour, type InkIsland } from './logoContour'
 import { buildLetterMesh } from './logoSlab'
-import { textureSlot } from '../lib/uniforms'
+import { textureSlot } from '../../lib/uniforms'
 import './logo.css'
 
 const WORD = 'munari'

@@ -14,8 +14,8 @@ import {
   type GroupFocusState,
   type PresentationRequirement,
 } from '@petepetrash/munari'
-import type { DemandProbeRecord } from '../lib/devGlobals'
-import { capturePointer, releasePointer } from '../lib/dom'
+import type { DemandProbeRecord } from '../../lib/devGlobals'
+import { capturePointer, releasePointer } from '../../lib/dom'
 import {
   buildPanels,
   injectWorkspaceStyles,

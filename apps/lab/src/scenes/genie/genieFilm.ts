@@ -1,3 +1,28 @@
+// The genie film clock — one decoder, one canvas, two renderers.
+//
+// The film shows in the page (a <canvas> in the DOM) and in the scene
+// (the same canvas as a FrameSource texture). If each side ran its own
+// decode, the handoff could land between two different frames and the
+// seam would read as a time jump. So one controller owns the clock:
+// requestVideoFrameCallback drives drawImage into a single opaque sRGB
+// canvas, and publish() (decisions.md #24) names each drawn frame so
+// both consumers provably show the same generation.
+//
+// freeze()/resume() are the handoff hooks: freeze holds and republishes
+// the last drawn pixels while a crossing is in flight; resume takes the
+// freeze's FrameId as a token, so a crossing that was superseded cannot
+// unfreeze the film out from under the current one.
+//
+// videoEpoch guards the pump. A pending video-frame callback survives
+// detachment, and React ref cleanup detaches and reattaches these same
+// elements. Bumping the epoch on every stop makes a callback from an
+// earlier attachment return without drawing instead of double-pumping
+// the canvas.
+//
+// The controller owns timing only. The DOM elements stay caller-owned;
+// the data-genie-film-* attributes exist so browser probes can read the
+// clock without a JS handle.
+
 import {
   createCanvasFrameSource,
   type FrameId,

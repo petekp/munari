@@ -4,6 +4,20 @@
 // does not say that a renderer uploaded or drew them. Consumers must sample
 // currentFrame() at the renderer boundary because several publications may
 // merge into one upload.
+//
+// That gap is the module's whole reason to exist (decisions.md #24):
+// `texture.needsUpdate` asks for an upload without proving which of
+// several fast canvas writes the renderer took, or that a visible mesh
+// used the pixels. Core owns only the naming half — a live-unique
+// sourceId, a generation that advances on each completed write, sRGB and
+// alpha interpretation fixed at birth. The GPU half (sampling the
+// generation inside the upload callback, releasing a receipt only after
+// the target mesh renders) belongs to the binding, so a receipt names
+// exactly the frame that crossed both renderer boundaries. Measured
+// under bursts and CPU stalls: 285 writes, 165 real uploads and draws,
+// zero false receipts, zero reordering.
+
+import { allocateSourceId } from './sourceIdentity'
 
 export interface FrameId {
   readonly sourceId: number
@@ -85,4 +99,3 @@ export function createCanvasFrameSource(
 
   return Object.freeze(source)
 }
-import { allocateSourceId } from './sourceIdentity'

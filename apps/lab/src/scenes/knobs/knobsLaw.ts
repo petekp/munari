@@ -1,7 +1,7 @@
 // The knobs-and-switches scene's parameter bag, and the pure law that turns
 // it into a frame of generative artwork.
 //
-// Same doctrine as genieKnobs.ts: a live mutable bag a hand can drag, read
+// Same doctrine as genieTuning.ts: a live mutable bag a hand can drag, read
 // every frame by whatever draws the picture — no push, no React state, so a
 // knob turning sixty times a second never asks anything to re-render.
 //

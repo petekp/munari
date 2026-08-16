@@ -29,7 +29,7 @@ import {
   measureBleed,
   suppressionSheet,
   type PaintFeature,
-} from './paintPlates'
+} from './explodePlates'
 
 /**
  * The property names a sheet actually declares. Substring matching is not

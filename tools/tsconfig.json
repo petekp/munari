@@ -1,0 +1,14 @@
+{
+  // Oxlint loads this plugin directly at the path named in .oxlintrc.json,
+  // not through either bundler in this repo, so its own sources import
+  // each other with an explicit `.ts` extension — the spelling the loader
+  // needs to find the file. The root config's "bundler" dialect rejects
+  // that spelling by default; this program adds back only the flag that
+  // permits it, keeping every other strict setting the root gives the
+  // kernel, `noUncheckedIndexedAccess` included.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true
+  },
+  "include": ["."]
+}

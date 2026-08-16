@@ -1,8 +1,3 @@
-import { createContext, type RefObject } from 'react'
-import type * as THREE from 'three'
-import type { Viewport } from '../lib/focusTree'
-import type { Dir } from '../lib/spatialNav'
-
 // The focus subsystem's contract: what a scene and a group promise each
 // other, and the two contexts that carry those promises down the tree.
 //
@@ -19,6 +14,11 @@ import type { Dir } from '../lib/spatialNav'
 //    the machine that satisfies it is a different kind of document.
 //
 // docs/focus.md is the specification these types are the API surface of.
+
+import { createContext, type RefObject } from 'react'
+import type * as THREE from 'three'
+import type { Viewport } from '../lib/focusTree'
+import type { Dir } from '../lib/spatialNav'
 
 export type FocusLevel = 'page' | 'scene' | 'unit' | 'interior'
 export type GroupFocusState = 'none' | 'unit' | 'interior'

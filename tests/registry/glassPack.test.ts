@@ -37,7 +37,7 @@ describe('the vendorable files are the lab files', () => {
   for (const f of ['glassSdf.tsx', 'glassSdfShader.ts']) {
     it(`registry/glass/${f} is byte-identical to apps/lab's`, () => {
       expect(read(`registry/glass/${f}`)).toBe(
-        read(`apps/lab/src/scenes/${f}`),
+        read(`apps/lab/src/scenes/glass/${f}`),
       )
     })
   }
@@ -55,7 +55,7 @@ describe('the vendorable files are the lab files', () => {
 // tweak knobs pointed at a strike that had never drawn a frame.
 describe('every glow array gets a clock', () => {
   const compositor = read('registry/glass/glassSdf.tsx')
-  const scene = read('apps/lab/src/scenes/Glass.tsx')
+  const scene = read('apps/lab/src/scenes/glass/Glass.tsx')
 
   it('stamps in the compositor, before the age that consumes it', () => {
     const stamp = compositor.indexOf('if (gw.t0 < 0) gw.t0 = now')

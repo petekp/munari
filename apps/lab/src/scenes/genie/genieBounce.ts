@@ -21,7 +21,7 @@
 //   copy and the airborne copy draw identical numbers on every frame —
 //   twin agreement is by construction, not by phase-pinning.
 
-import { genieKnobs } from './genieKnobs'
+import { genieTuning } from './genieTuning'
 
 export interface Vec {
   x: number
@@ -255,13 +255,13 @@ function seed(): BounceBody[] {
     y: SEEDS[i].fy * courtH,
     vx: Math.cos(SEEDS[i].heading),
     vy: Math.sin(SEEDS[i].heading),
-    outline: markOutline(m.id, m.r * genieKnobs.markScale * genieKnobs.markBounds),
+    outline: markOutline(m.id, m.r * genieTuning.markScale * genieTuning.markBounds),
   }))
 }
 
 function write(court: Court): void {
   if (!bodies) return
-  const s = genieKnobs.markScale
+  const s = genieTuning.markScale
   for (let i = 0; i < court.marks.length; i++) {
     const b = bodies[i]
     const base = BOUNCE_MARKS[i].r
@@ -276,12 +276,12 @@ function tick(now: number): void {
   if (bodies) {
     // Speed, size, and bounds are live knobs: direction integrates,
     // magnitude and silhouette obey the panel on every frame.
-    const s = genieKnobs.markScale * genieKnobs.markBounds
+    const s = genieTuning.markScale * genieTuning.markBounds
     for (let i = 0; i < bodies.length; i++) {
       const b = bodies[i]
       const mag = Math.hypot(b.vx, b.vy) || 1
-      b.vx = (b.vx / mag) * genieKnobs.markSpeed
-      b.vy = (b.vy / mag) * genieKnobs.markSpeed
+      b.vx = (b.vx / mag) * genieTuning.markSpeed
+      b.vy = (b.vy / mag) * genieTuning.markSpeed
       b.outline = markOutline(BOUNCE_MARKS[i].id, BOUNCE_MARKS[i].r * s)
     }
     bounceStep(bodies, dt, courtW, courtH)

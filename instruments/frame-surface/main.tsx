@@ -1,6 +1,21 @@
 // The page half of the FrameSurface browser gate. It goes through the public
 // package barrel so the gate covers Surface dispatch, exports, and its default
 // unlit material.
+//
+// The fixtures are 64×16 canvases painted as four vertical RGB stripes, and
+// every generation gets its own four colors — so a WebGL readback within one
+// channel value identifies WHICH frame the mesh drew, not merely that it
+// drew. Publishes deliberately outnumber draws: each step publishes an
+// intermediate frame and then a final one, and the demand frameloop uploads
+// once, so intermediate generations must never reach a receipt — the
+// coalescing half of publish ≠ upload ≠ draw (decisions.md #24).
+//
+// EXPECTED_RECEIPTS pins the whole journey: [A0, A2] on the first source,
+// live replacement to the second, [B0, B2] there, then three release/
+// reacquire cycles of the same persistent source landing [B4, B6, B8] —
+// each hold period under a fresh surface epoch, with no stale receipt and
+// no clear or wrong-color frame in between (instruments/README.md has the
+// full claim list).
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Canvas, useThree } from '@react-three/fiber'

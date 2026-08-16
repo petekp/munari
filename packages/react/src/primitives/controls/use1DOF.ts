@@ -1,9 +1,3 @@
-import { useMemo, useRef } from 'react'
-import * as THREE from 'three'
-import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { step, type Body1D, type Field } from '@munari/core'
-import { useLatest } from '../useLatest'
-
 // The shared mechanism under every physical control: a 1-DOF body driven by
 // a force field (@munari/core's physics1D), coupled kinematically to the
 // hand during a drag, free-running otherwise.
@@ -15,6 +9,12 @@ import { useLatest } from '../useLatest'
 // - Gesture velocity is tracked (lerp-smoothed) and handed to the field on
 //   release — flicks are real momentum, not synthesized animation.
 // - Camera controls are disabled for the duration of a drag.
+
+import { useMemo, useRef } from 'react'
+import * as THREE from 'three'
+import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
+import { step, type Body1D, type Field } from '@munari/core'
+import { useLatest } from '../useLatest'
 
 export interface Use1DOFOptions {
   field: Field
@@ -31,6 +31,10 @@ export interface Use1DOFOptions {
   onSettle?: (q: number) => void
 }
 
+// Rest = |v| under SETTLE_V for SETTLE_FRAMES consecutive frames. The
+// consecutive count matters: a body reversing direction passes through
+// v≈0, and that instant must not read as rest. Both values are verbatim
+// from the pre-repo oracle port; no measurement pins them.
 const SETTLE_V = 1e-3
 const SETTLE_FRAMES = 15
 

@@ -173,7 +173,7 @@ it asks of a consumer's CSS in return.
 The dependency shape is an hourglass — core ← binding ← consumers — and
 `tests/boundary.test.ts` walks real import specifiers to enforce it.
 
-See `CLAUDE.md` for the working rules, `docs/decisions.md` for the
+See `AGENTS.md` for the working rules, `docs/decisions.md` for the
 ledger, `docs/platform.md` for what the platform is measured to do,
 `docs/authoring.md` for how to write markup a Surface can draw, and
 `docs/focus.md` for the focus and spatial-navigation contract.
@@ -188,6 +188,13 @@ npm test
 npm run lint
 npm run gate:idle-zero   # browser gate: idle Surfaces cost 0 paints/s
 ```
+
+Eight browser gates exist. CI runs five on every push (`gate:idle-zero`,
+`gate:frame-surface`, `gate:shaders`, `gate:dom-surface-demand`,
+`gate:genie-film-reorder`); three run locally on demand
+(`gate:genie-duplicate`, `gate:genie-film`, `gate:genie-shadow`), and
+`instruments/knobs-hz` is a reporter with no gate script.
+`instruments/README.md` says what each one convicts, and how.
 
 Publishing builds a staged package (the kernel bundled in, peers left
 external) and publishes from it, so the workspace can keep resolving

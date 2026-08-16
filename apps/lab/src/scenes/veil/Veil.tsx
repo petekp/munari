@@ -51,7 +51,7 @@ import {
   VEIL_PASS_FRAG,
   VEIL_QUAD_VERT,
 } from './veilShaders'
-import { textureSlot } from '../lib/uniforms'
+import { textureSlot } from '../../lib/uniforms'
 import './veil.css'
 
 const FOV = 42

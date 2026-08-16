@@ -1,5 +1,17 @@
 // @vitest-environment happy-dom
 
+// Frame identity — a name for pixels, not a proof of pixels.
+//
+// createCanvasFrameSource gives a caller-owned canvas a stable sourceId
+// and a generation that advances only on publish() (decisions.md #24).
+// These cases pin the identity discipline the binding's receipts stand
+// on: format frozen at birth (the GPU alpha representation is fixed at
+// first upload), the generation incremented before subscribers are
+// notified (a subscriber sampling inside the notification must see the
+// published frame, or a merged upload gets misattributed), cleanup
+// idempotent, and the contract structural so a custom producer needs no
+// factory.
+
 import { describe, expect, it, vi } from 'vitest'
 
 import {

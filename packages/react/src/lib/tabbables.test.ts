@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
-import { radioIsStop, sortByTabOrder } from './tabbables'
-
 // The DOM-walking half of tabbables.ts is browser-verified (vitest has no
 // DOM here); these pin the pure ordering + radio-collapse rules.
+
+import { describe, expect, it } from 'vitest'
+import { radioIsStop, sortByTabOrder } from './tabbables'
 
 describe('sortByTabOrder', () => {
   const e = (tabIndex: number, seq: number) => ({ tabIndex, seq })

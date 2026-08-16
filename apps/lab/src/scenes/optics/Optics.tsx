@@ -81,7 +81,7 @@ import {
   type Specimen,
 } from './opticsSheet'
 import { AquaSheet, Calculator, Ledger, LcdPanel, LunaBar, TypeSpecimen } from './opticsSpecimens'
-import { showChrome } from '../chrome'
+import { showChrome } from '../../bareMode'
 import './optics.css'
 
 const FOV = 42

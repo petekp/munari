@@ -43,9 +43,9 @@ import { describe, expect, it } from 'vitest'
 // the moment it is written instead of turning up as a probe that
 // mysteriously reads 897px rows.
 
-const ROOT = join(__dirname, '..', '..', '..', '..')
+const ROOT = join(__dirname, '..', '..', '..', '..', '..')
 const APP_CSS = readFileSync(join(ROOT, 'apps/lab/src/app.css'), 'utf8')
-const GENIE_CSS = readFileSync(join(ROOT, 'apps/lab/src/scenes/genie.css'), 'utf8')
+const GENIE_CSS = readFileSync(join(ROOT, 'apps/lab/src/scenes/genie/genie.css'), 'utf8')
 
 /** sRGB luma, the same weights every probe in instruments/ uses. */
 const luma = (r: number, g: number, b: number) => 0.299 * r + 0.587 * g + 0.114 * b

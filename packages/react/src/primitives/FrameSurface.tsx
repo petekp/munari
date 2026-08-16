@@ -1,3 +1,34 @@
+// FrameSurface — a caller-owned canvas worn as scene matter.
+//
+// This is the React half of the frame path (decisions.md #24, #25).
+// The kernel names pixels (FrameSource: sourceId + generation) and
+// judges receipts (presentationReceiptSatisfies); this file owns the
+// only Three objects in the path — one CanvasTexture and the mesh that
+// draws it — and turns renderer callbacks into the receipts the kernel
+// judges. Publish, upload, draw, and presentation are four different
+// events with four different evidence points:
+//
+//   publish       source.subscribe()   → needsUpdate + invalidate
+//   upload        texture.onUpdate     → label the pixels Three took
+//   draw          mesh.onAfterRender   → FrameDrawReceipt
+//   presentation  onBeforeRender gate  → PresentationReceipt, only for
+//                 + onAfterRender take   a color-writing draw to the
+//                                        default framebuffer
+//
+// The gate exists because Three fires onAfterRender for off-screen
+// render targets and colorWrite:false materials too. Those draws move
+// pixels, but they cannot have reached the screen, so a transfer that
+// released the page on one would flicker (decisions.md #25: drawing is
+// not showing). Rejections are counted per transfer and warned once,
+// so a mis-wired transfer is diagnosable without a console flood.
+//
+// The runtime is split from the component so this ordering is testable
+// without mocking a renderer. The component's job is lifecycle: build
+// the replacement runtime before releasing the current one, swap in
+// the layout phase so no renderer frame lands between the two, and
+// never let a disposed runtime's mesh report into the new source's
+// callbacks.
+
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useThree, type ThreeElements } from '@react-three/fiber'

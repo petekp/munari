@@ -1,3 +1,17 @@
+// Presentation evidence — the predicate a handoff waits on.
+//
+// Drawing is not showing (decisions.md #25, #29): three calls
+// onAfterRender for color-disabled materials and for off-screen render
+// targets, so mesh traversal alone must never release another presenter.
+// A transfer states its requirement — transferId, minimum source frame,
+// exact presentation revision — and only a receipt earned by a
+// color-writing draw to the default framebuffer can satisfy it. The
+// consumer mints the transferId and revision; core only checks them. A
+// newer generation may satisfy an older minimum, because publications
+// merge before an upload. Everything else matches exactly, so a stale
+// transfer, a different source, or a reused revision cannot release
+// presentation authority.
+
 import type { FrameId } from '../paint/frameSource'
 
 /** The minimum source frame and exact presenter state one transfer needs. */

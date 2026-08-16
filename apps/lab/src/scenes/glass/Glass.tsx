@@ -21,7 +21,7 @@ import {
   type GlassParams,
   type GlassRipple,
 } from './glassSdf'
-import { glassKnobs } from './glassKnobs'
+import { glassTuning } from './glassTuning'
 import { animate, motionValue } from 'motion'
 
 // The glass scene — the glass spike, and then the compositor that replaced it.
@@ -416,7 +416,7 @@ function MtmGlassPanel({
 // last frame — so it is detected here, on the CPU, at three SDF evaluations
 // per frame. The shader gets the conclusion (an origin and an age) rather
 // than the state machine.
-// The numbers this law runs on live in glassKnobs, not here, because every one
+// The numbers this law runs on live in glassTuning, not here, because every one
 // of them is something you have to SEE to judge — how sparse is sparse, how
 // hard is a hit, how far apart wake fronts want to be. They are read fresh
 // each frame from a mutable object the tweak panel writes to, so a drag
@@ -439,7 +439,7 @@ function OrbDrift({
   const lastWake = useRef<[number, number][]>([])
   useFrame(({ clock }, dt) => {
     const t = clock.elapsedTime
-    const k = glassKnobs
+    const k = glassTuning
     // Resized in place: the compositor holds this exact array and reads its
     // length every frame, so growing or shrinking it is the whole operation.
     const want = Math.max(0, Math.min(MAX_BLOBS, Math.round(k.orbCount)))
@@ -750,8 +750,8 @@ function usePressSpring() {
     (to: number) => {
       animate(press, to, {
         type: 'spring',
-        stiffness: glassKnobs.pressStiffness,
-        damping: glassKnobs.pressDamping,
+        stiffness: glassTuning.pressStiffness,
+        damping: glassTuning.pressDamping,
       })
     },
     [press],
@@ -913,7 +913,7 @@ function WebAppFraming() {
   // happens when you move your head.
   const eased = useRef(new THREE.Vector2())
   useFrame((s, dt) => {
-    const k = glassKnobs
+    const k = glassTuning
     const tx = k.parallax > 0 ? s.pointer.x * k.parallax : 0
     const ty = k.parallax > 0 ? s.pointer.y * k.parallax : 0
     // Exponential approach written against dt, so the feel of the easing is
@@ -968,7 +968,7 @@ export function Glass() {
 
   const strike = useCallback(
     (px: number, py: number) => {
-      const k = glassKnobs
+      const k = glassTuning
       // DOM px within the chip → panel-local world units. The y axis flips:
       // the DOM counts down from the top, the panel counts up from its centre.
       const x = (px - PILL_W / 2) / PX
@@ -1001,7 +1001,7 @@ export function Glass() {
   // form; the bulge is the local swell under the contact. They cannot disagree
   // because there is only one number.
   useFrame(() => {
-    const k = glassKnobs
+    const k = glassTuning
     const p = press.get()
     if (pillGroup.current) pillGroup.current.position.z = -p * k.pressDepth
 

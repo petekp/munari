@@ -2,7 +2,7 @@
 // drag while judging the slab, and the machinery that applies them live.
 //
 // Four kinds of application, because the scene has four kinds of
-// number (the genieKnobs doctrine, plus two):
+// number (the genieTuning doctrine, plus two):
 //
 //   CSS custom properties. The LCD windows are captured DOM, styled by
 //   knobs.css through var() with defaults equal to the committed

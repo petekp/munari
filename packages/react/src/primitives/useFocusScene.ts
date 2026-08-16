@@ -1,12 +1,3 @@
-import { use, useEffect } from 'react'
-import { useLatest } from './useLatest'
-import {
-  FocusSceneContext,
-  type FocusSceneEvent,
-  type NavPolicy,
-  type ReframeFulfiller,
-} from './focusContext'
-
 // The consumer-facing half of the focus subsystem: four hooks an app reaches
 // for, all of them reads of FocusSceneContext.
 //
@@ -20,6 +11,15 @@ import {
 // stable trampoline. Registration is a subscription with real teardown —
 // re-running it on every render because a consumer passed an inline arrow
 // would churn the scene's subscriber list once a frame.
+
+import { use, useEffect } from 'react'
+import { useLatest } from './useLatest'
+import {
+  FocusSceneContext,
+  type FocusSceneEvent,
+  type NavPolicy,
+  type ReframeFulfiller,
+} from './focusContext'
 
 /** The scene api for imperative integration — chiefly syncProxyRects() at
  *  camera tween-settle / drag-end. Null outside a FocusScene. */

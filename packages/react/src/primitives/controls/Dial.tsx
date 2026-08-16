@@ -1,10 +1,3 @@
-import { use, useEffect, useMemo, useRef, useState } from 'react'
-import * as THREE from 'three'
-import type { ThreeElements } from '@react-three/fiber'
-import { composeFields, damping, detentField, hopImpulse } from '@munari/core'
-import { use1DOF, wrapAngle } from './use1DOF'
-import { FocusGroupContext, type LeafHandle } from '../focusContext'
-
 // <Dial> — a rotary control as a primitive: its feel is
 // detentField + damping. Flicks ratchet through wells; onDetent fires LIVE
 // as the index changes (mid-ratchet included), so a readout can tick along.
@@ -14,6 +7,13 @@ import { FocusGroupContext, type LeafHandle } from '../focusContext'
 // through the physics, not around it — arrows are impulses calibrated to hop
 // exactly one detent from rest (key repeat compounds into momentum), Home/End
 // are APG-mandatory absolute jumps that snap to the extreme well and settle.
+
+import { use, useEffect, useMemo, useRef, useState } from 'react'
+import * as THREE from 'three'
+import type { ThreeElements } from '@react-three/fiber'
+import { composeFields, damping, detentField, hopImpulse } from '@munari/core'
+import { use1DOF, wrapAngle } from './use1DOF'
+import { FocusGroupContext, type LeafHandle } from '../focusContext'
 
 export interface DialProps extends Omit<ThreeElements['group'], 'children'> {
   detents?: number

@@ -22,7 +22,7 @@
 
 import * as THREE from 'three'
 import { BLIT_VERT, DOWN_FRAG } from './logoShaders'
-import { textureSlot } from '../lib/uniforms'
+import { textureSlot } from '../../lib/uniforms'
 
 /** Downsample factors of the fields, relative to the CSS box. Fine
  *  sets the edge-shoulder scale (~4px blur, gradients spanning ~8px);

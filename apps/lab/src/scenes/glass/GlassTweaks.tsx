@@ -17,9 +17,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   GLASS_KNOB_GROUPS,
-  glassKnobs,
+  glassTuning,
   type Knob,
-} from './glassKnobs'
+} from './glassTuning'
 import { sdfPanelParams, type GlassParams } from './glassSdf'
 
 // Every knob addresses a number. The two strings in a panel's params (`tint`
@@ -29,7 +29,7 @@ type NumericParams = Omit<GlassParams, 'tint' | 'glowColor'>
 
 /** Every live object a knob might address, resolved at the moment of use. */
 function targetsOf(target: Knob['target']): Bag[] {
-  if (target === 'scene') return [glassKnobs]
+  if (target === 'scene') return [glassTuning]
   const out: Bag[] = []
   if (target === 'card' || target === 'both') {
     const p: NumericParams | null = sdfPanelParams('glass-card')
@@ -129,9 +129,9 @@ export function GlassTweakPanel() {
   // prints the current state of every knob as a paste-ready object, which is
   // how a value found by dragging becomes a value committed to the file.
   const dump = useCallback(() => {
-    const scene = { ...glassKnobs }
+    const scene = { ...glassTuning }
     const out = {
-      glassKnobs: scene,
+      glassTuning: scene,
       card: sdfPanelParams('glass-card'),
       pill: sdfPanelParams('glass-pill'),
     }

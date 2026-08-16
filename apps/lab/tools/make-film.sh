@@ -1,5 +1,5 @@
 #!/bin/bash
-# make-film — the source of apps/lab/src/scenes/film.mp4
+# make-film — the source of apps/lab/src/scenes/genie/film.mp4
 #
 # The lab needs a window whose content is DECODED VIDEO rather than
 # markup, because that is the strongest claim this scene can make: the
@@ -28,7 +28,7 @@
 #
 set -euo pipefail
 SRC="${1:?usage: make-film.sh <source-video> [outdir]}"
-OUT="${2:-$(cd "$(dirname "$0")/../src/scenes" && pwd)}"
+OUT="${2:-$(cd "$(dirname "$0")/../src/scenes/genie" && pwd)}"
 
 # ── the take ──────────────────────────────────────────────────────────
 #

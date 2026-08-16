@@ -14,12 +14,12 @@ import { TOSS_SPIN_V0, TOSS_SPIN_MAX, aeroAmplitude } from '@munari/core'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const scene = () =>
-  readFileSync(join(ROOT, 'apps/lab/src/scenes/Flight.tsx'), 'utf8')
+  readFileSync(join(ROOT, 'apps/lab/src/scenes/flight/Flight.tsx'), 'utf8')
 // The scene's GLSL lives beside it (flightShaders.ts), the way the glass
 // pack splits glassSdfShader.ts from glassSdf.tsx. A constant the charter
 // quotes from a shader has to be read from the file that holds it.
 const shaders = () =>
-  readFileSync(join(ROOT, 'apps/lab/src/scenes/flightShaders.ts'), 'utf8')
+  readFileSync(join(ROOT, 'apps/lab/src/scenes/flight/flightShaders.ts'), 'utf8')
 
 describe('the charter names real kernel surface', () => {
   it('the toss constants are the archived tuning', () => {

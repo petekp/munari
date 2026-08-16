@@ -1,7 +1,3 @@
-import type { ComponentProps, ReactNode } from 'react'
-import { Surface } from './Surface'
-import { useSourceHost } from './useSourceHost'
-
 // <SurfaceApp> — mount a React tree as a Surface's live DOM.
 //
 // This is the seam that makes an entire component library usable as matter.
@@ -14,6 +10,10 @@ import { useSourceHost } from './useSourceHost'
 // reconciler, and `react-dom`'s createPortal cannot cross that boundary. The
 // practical consequence is that the inner tree does not see React context
 // from the scene — pass what it needs through `content`.
+
+import type { ComponentProps, ReactNode } from 'react'
+import { Surface } from './Surface'
+import { useSourceHost } from './useSourceHost'
 
 export interface SurfaceAppProps
   extends Omit<ComponentProps<typeof Surface>, 'frame' | 'html' | 'onSource'> {

@@ -41,12 +41,14 @@
 // on the clock is the plausible wrong implementation this leg exists to
 // reject.
 import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
 
-const labRoot = path.join('/Users/petepetrash/Code/munari', 'apps', 'lab')
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+const labRoot = path.join(repoRoot, 'apps', 'lab')
 const CHROME = [
   process.env.CHROME_PATH,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -253,7 +255,7 @@ try {
 
   if (process.env.DUMP) {
     const { writeFileSync, mkdirSync } = await import('node:fs')
-    const dir = path.join('/Users/petepetrash/Code/munari', 'instruments/genie-drain/out')
+    const dir = path.join(repoRoot, 'instruments/genie-drain/out')
     mkdirSync(dir, { recursive: true })
     const at = frames.find((f) => Math.round((f.ts - t0) * 1000) === worst.ms)
     if (at) writeFileSync(path.join(dir, 'worst-shadow.jpg'), Buffer.from(at.data, 'base64'))
@@ -401,7 +403,7 @@ try {
   const held = await page.screenshot({ encoding: 'base64' })
   if (process.env.DUMP) {
     const { writeFileSync, mkdirSync } = await import('node:fs')
-    const dir = path.join('/Users/petepetrash/Code/munari', 'instruments/genie-drain/out')
+    const dir = path.join(repoRoot, 'instruments/genie-drain/out')
     mkdirSync(dir, { recursive: true })
     writeFileSync(path.join(dir, 'held-funnel.png'), Buffer.from(held, 'base64'))
   }

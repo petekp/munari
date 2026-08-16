@@ -54,9 +54,14 @@ try {
     executablePath: chromePath,
     headless: true,
     args: [
+      // Headless has no GPU here; SwiftShader supplies a real WebGL
+      // context so the render path under test exists at all.
       '--enable-webgl',
       '--ignore-gpu-blocklist',
       '--enable-unsafe-swiftshader',
+      // The idle-zero pair: a backgrounded renderer stops compositing,
+      // and a receipt that never arrives must mean the library failed,
+      // not that throttling starved the frameloop.
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
       ...(process.env.CI ? ['--no-sandbox'] : []),

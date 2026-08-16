@@ -185,7 +185,7 @@ try {
     }, sel)
   const readLaw = (key) =>
     page.evaluate(async (k) => {
-      const m = await import('/src/scenes/knobsLaw.ts')
+      const m = await import('/src/scenes/knobs/knobsLaw.ts')
       return m.knobsValues[k]
     }, key)
 

@@ -33,7 +33,7 @@ export interface GenieKnobValues {
   loopRadius: number
 }
 
-export const genieKnobs: GenieKnobValues = {
+export const genieTuning: GenieKnobValues = {
   markSpeed: 32,
   markScale: 1.55,
   markBounds: 1,
@@ -43,7 +43,7 @@ export const genieKnobs: GenieKnobValues = {
 }
 
 /** Push every knob into the live page. Cheap enough to call per input. */
-export function applyGenieKnobs(k: GenieKnobValues = genieKnobs): void {
+export function applyGenieKnobs(k: GenieKnobValues = genieTuning): void {
   const root = document.documentElement.style
   root.setProperty('--gen-mark-stroke', `${k.markStroke}px`)
   root.setProperty('--gen-mark-opacity', String(k.markOpacity))
@@ -53,7 +53,7 @@ export function applyGenieKnobs(k: GenieKnobValues = genieKnobs): void {
 
 /** The paste-ready record of a tuning session. */
 export function dumpGenieKnobs(): string {
-  return JSON.stringify({ genieKnobs }, null, 2)
+  return JSON.stringify({ genieTuning }, null, 2)
 }
 
 export interface GenieKnobDef {

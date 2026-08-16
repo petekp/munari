@@ -52,7 +52,7 @@ export type GlassSceneKnobs = {
   spillReach: number
 }
 
-export const glassKnobs: GlassSceneKnobs = {
+export const glassTuning: GlassSceneKnobs = {
   orbCount: 6,
   orbSpan: 6.2,
   orbCycle: 13,

@@ -1,3 +1,16 @@
+// A card held in a hand — the rigid thin plate, pinned.
+//
+// Everything is CSS pixels and seconds, readable straight off
+// getBoundingClientRect (the plate module's calibration). The cases pin
+// the feel the lab paid for: an off-centre grab SWINGS (r × F, the
+// lever arm between hand and mass), the grab point — not the centre —
+// settles under the hand, tracking lags only while the hand
+// accelerates, and a stiff spring at 60 Hz does not walk itself apart.
+// The aero and crumple blocks guard the handoff contract: flat at rest
+// is a theorem, the rendered bend is zero at the swap by construction,
+// the bend must be VISIBLE at real hand speeds (a perceptual floor),
+// and the crumple exit is a place, not a time.
+//
 // makeShadowFrame, shadowQuadFrame, and their ShadowFrame return type are
 // deliberately not imported here: the describe block that exercises them
 // ('shadow quad frame — the mapping never lies') belongs to

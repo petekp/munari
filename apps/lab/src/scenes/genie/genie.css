@@ -57,7 +57,7 @@
  * resample at 2x, and no data URI — a `url()` cannot see a custom
  * property, and the tones here have to stay tokens, because
  * instruments/genie-drain reads ink off this bench and the amplitude of
- * this pattern is part of what it has to see past (deskPattern.test.ts).
+ * this pattern is part of what it has to see past (genieDeskPattern.test.ts).
  */
 .gen-page {
   /* The groove, as a pair. --tile-lo is the cut and --tile-hi the lit
@@ -83,7 +83,7 @@
    *      at a crossing  199     216     227
    *
    * which leaves 12 luma to window stock above and 12 to the shadow's
-   * own tone below. deskPattern.test.ts derives both from these two
+   * own tone below. genieDeskPattern.test.ts derives both from these two
    * alphas — compositing each twice, which is the correction that
    * turned an apparently comfortable 15 luma of clearance into the real
    * 9 — so a retune of this pattern fails in CI rather than as a probe

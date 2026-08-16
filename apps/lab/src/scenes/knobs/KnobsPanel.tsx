@@ -37,7 +37,7 @@ import {
   panelResize,
 } from './knobsLaw'
 import { PANEL_MAX_W, PANEL_MIN_W } from './knobsResize'
-import { closestFrom } from '../lib/dom'
+import { closestFrom } from '../../lib/dom'
 import './knobs.css'
 
 /* Graduations used to be a flat 11 on every dial, which made the ring

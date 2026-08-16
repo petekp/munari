@@ -118,15 +118,15 @@ import {
 import { setPanelPan } from './knobsAudio'
 import { getTuningRev, knobsTuning, subscribeTuning } from './knobsTuning'
 import { KnobsTweakPanel } from './KnobsTweaks'
-import { showChrome } from '../chrome'
+import { showChrome } from '../../bareMode'
 import {
   collectSurfaceAnchors,
   projectSurfaceAnchor,
   stampSurfaceAnchors,
   type SourceUvRect,
   type SurfaceAnchorReceipt,
-} from '../lib/surfaceAnchors'
-import { floatData, plainAttribute } from '../lib/geometry'
+} from '../../lib/surfaceAnchors'
+import { floatData, plainAttribute } from '../../lib/geometry'
 import './knobs.css'
 
 const FOV = 42

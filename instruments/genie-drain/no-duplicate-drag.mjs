@@ -8,12 +8,14 @@
 // exposes two windows. State and DOM counts cannot see this; it is retained
 // compositor output, so this gate records the real page.
 import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
 
-const labRoot = path.join('/Users/petepetrash/Code/munari', 'apps', 'lab')
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+const labRoot = path.join(repoRoot, 'apps', 'lab')
 const CHROME = [
   process.env.CHROME_PATH,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',

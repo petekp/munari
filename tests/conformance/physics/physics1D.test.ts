@@ -1,3 +1,13 @@
+// The 1-DOF control kit — feel as force fields, pinned.
+//
+// The claim under test: every control feel in the kit — dial detents, switch
+// snap, slider stops and travel bounds — is the SAME tiny integrator run over
+// different composable force fields. If these hold, the control kit is one
+// physics core plus geometry. No easing curves, no durations: release
+// velocity flows into the field and the field decides where things land,
+// machine-exact, and stable at a coarse 30 fps timestep — which is what
+// semi-implicit Euler is for.
+
 import { describe, expect, it } from 'vitest'
 import {
   type Body1D,
@@ -12,11 +22,6 @@ import {
   flipImpulse,
   hopImpulse,
 } from '@munari/core'
-
-// The claim under test: every control feel in the kit — dial detents, switch
-// snap, slider stops and travel bounds — is the SAME tiny integrator run over
-// different composable force fields. If these hold, the control kit is one
-// physics core plus geometry.
 
 const STEP = (Math.PI * 2) / 8
 

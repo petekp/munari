@@ -1,3 +1,23 @@
+// Surface anchors — named DOM boxes as UV coordinates, stamped by a paint.
+//
+// A scene that parks WebGL matter over a region of a DOM Surface needs that
+// region's place in TEXTURE space, not on the page. The collector walks the
+// live root for [data-munari-anchor] elements and publishes each box as a
+// normalized, unmirrored source-UV rectangle (origin bottom-left), tied to
+// the DomPaintReceipt that made the pixels. Keys, not selector order, define
+// identity; a duplicate key, a missing required key, or a root whose size no
+// longer matches the paint rejects the whole transaction — a receipt is all
+// its anchors or nothing.
+//
+// A receipt is only valid against texture pixels from the same paint
+// generation. Live layout, painted raster, uploaded texture, drawn frame,
+// and presented framebuffer are different states; never infer one from
+// another.
+//
+// This file is byte-welded to its twin (registry/surface-anchors ≡
+// apps/lab/src/lib), pinned by tests/registry/surfaceAnchorsPack.test.ts.
+// Edit both copies in the same commit.
+
 import type { DomPaintReceipt } from '@petepetrash/munari'
 
 export interface SourceUvRect {

@@ -1,3 +1,16 @@
+// LOD selection — the mip level the GPU wishes it had, pinned.
+//
+// Hardware solves minification (mipmaps); nothing solves magnification,
+// and drawElementImage can re-rasterize the live DOM at a higher scale
+// instead of stretching a stale raster. density = desired texels per
+// CSS px (projected device px per css px). selectLodTier is a Schmitt
+// trigger over a quantized tier ladder: the upshift and downshift
+// thresholds are separated by the hysteresis band so a camera parked
+// exactly on a boundary can never oscillate the tier, and an approach
+// sharpens in ONE jump rather than ratcheting. The 4096 long-edge clamp
+// is the boundary two scenes guessed at before it had a name
+// (MAX_TEXTURE_EDGE).
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -10,11 +23,6 @@ import {
   selectLodTier,
   tiersInRange,
 } from '@munari/core'
-
-// density = desired texels per CSS px (projected device px per css px).
-// selectLodTier is a Schmitt trigger over a quantized tier ladder: the
-// upshift and downshift thresholds are separated by the hysteresis band so a
-// camera parked exactly on a boundary can never oscillate the tier.
 
 const TIERS = [0.5, 1, 1.5, 2, 3]
 

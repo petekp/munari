@@ -12,6 +12,24 @@ export interface CanvasPointerGateProps {
  * Keep a full-page R3F canvas clear except where selected scene matter exists.
  * It also gives a cold touch or pen contact one route into R3F before the
  * browser has had a pointer move with which to arm the canvas.
+ *
+ * Three guards, each a paid-for interaction contract:
+ * - `claims`: from a pointerdown on matter until its release, every event
+ *   of that pointerId is retargeted through the canvas, so a drag that
+ *   leaves the canvas cannot strand the Surface's active pointer
+ *   mid-gesture, and the release is delivered even when the browser's
+ *   hit target has moved on.
+ * - the per-frame target cache: arming events raycast against the scene's
+ *   matter, so the traversal is built once per frame, not once per
+ *   pointermove.
+ * - `suppressedClick`: a claimed contact was already delivered to the
+ *   scene, but the browser still synthesizes a click from the same
+ *   press; a click within 8 px of the contact point is swallowed while
+ *   the window is open. The window expires (1 s) so a later, unrelated
+ *   click at the same spot is not eaten.
+ *
+ * Relayed events (`isRelayed`) and this gate's own clones (`routed`) pass
+ * untouched — the gate must not re-route what the relay already routed.
  */
 export function CanvasPointerGate({
   enabled = true,

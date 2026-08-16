@@ -21,7 +21,7 @@ inventory of what exists and where:
 - **The chrome laws** (`tests/conformance/chrome/`): `parseBoxShadow`,
   `shadowQuadFrame` (geometry and uniforms from ONE computation).
 - **The reference implementation is the flight scene**
-  (`apps/lab/src/scenes/Flight.tsx`), browser-verified:
+  (`apps/lab/src/scenes/flight/Flight.tsx`), browser-verified:
   tap→float→type→Escape home, cross-column throw with real velocity,
   crumple ball under the ✕ with the board forgetting LAST, paint ledger
   empty after the wad exits.

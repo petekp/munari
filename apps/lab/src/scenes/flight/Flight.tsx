@@ -90,9 +90,9 @@ import {
   type Plate,
 } from '@petepetrash/munari'
 import { corners } from './flightCorners'
-import { closestFrom } from '../lib/dom'
-import { plainAttribute } from '../lib/geometry'
-import { textureSlot } from '../lib/uniforms'
+import { closestFrom } from '../../lib/dom'
+import { plainAttribute } from '../../lib/geometry'
+import { textureSlot } from '../../lib/uniforms'
 
 // ── the data ─────────────────────────────────────────────────────────────
 

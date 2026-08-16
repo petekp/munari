@@ -42,6 +42,9 @@ try {
     headless: true,
     args: [
       '--enable-features=CanvasDrawElement',
+      // The idle-zero pair: a backgrounded renderer stops compositing,
+      // and a paint receipt that fails to wake the renderer must mean
+      // the library failed, not that throttling stalled the page.
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
       ...(process.env.CI ? ['--no-sandbox'] : []),

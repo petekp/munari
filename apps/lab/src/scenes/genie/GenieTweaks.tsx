@@ -2,7 +2,7 @@
 // the windows and their flights, for the same reason GlassTweaks.tsx
 // states in full: a tuning surface has to be the one thing in the frame
 // you can trust, so measurement infrastructure stays out of the
-// excursion. Sliders write into genieKnobs and apply live; React state
+// excursion. Sliders write into genieTuning and apply live; React state
 // here is only the panel's own chrome.
 
 import { useCallback, useState } from 'react'
@@ -10,20 +10,20 @@ import {
   GENIE_KNOB_GROUPS,
   applyGenieKnobs,
   dumpGenieKnobs,
-  genieKnobs,
+  genieTuning,
   type GenieKnobDef,
-} from './genieKnobs'
+} from './genieTuning'
 
 function Row({ knob }: { knob: GenieKnobDef }) {
   // Seeded from the live bag, so the panel shows the truth even when the
   // console has been poking the same values.
-  const [value, setValue] = useState(() => genieKnobs[knob.key])
+  const [value, setValue] = useState(() => genieTuning[knob.key])
 
   const onInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const v = Number(e.target.value)
       setValue(v)
-      genieKnobs[knob.key] = v
+      genieTuning[knob.key] = v
       applyGenieKnobs()
     },
     [knob],
