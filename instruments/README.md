@@ -1,7 +1,8 @@
 # instruments
 
 Browser probes and CI gates. Each section below says what one
-instrument checks and how to run it.
+instrument checks and how to run it. The bar for a file here: an npm
+script, a section in this file, and no absolute paths.
 
 ## idle-zero
 
@@ -173,38 +174,3 @@ gate in the repo and the one the others assume.
 - To bisect a dead effect into "the shader never ran" versus "the
   driver never sent anything", force the uniform inside the render
   wrapper.
-
-## Removed instruments
-
-Four gates left on 2026-08-15. `crossing-flash` asked whether the
-wordmark stayed on screen in every composited frame while it crossed
-between page and canvas, and whether a carried motion kept its path
-through the swap. `knobs-input`, `knobs-viewport`, and `knobs-resize`
-asked about cold touch and pen contact on the shared canvas, physical
-panel size and focus reachability on small glass, and
-paint/anchor/generation agreement through a drag. All four tested lab
-scenes that are still provisional, and three needed a GPU that CI does
-not have. The recipes live at that commit in history. The
-`crossing-flash` technique (reading the composited output through the
-DevTools screencast, and forcing composites where that channel goes
-dark) is written up in `docs/platform.md` item 13; start a future
-crossing gate there.
-
-Thirteen probes left the same day because nothing could run them:
-twelve one-off files under `genie-drain` (`rest-blink`, `mouth-anchor`,
-`live-content`, `swap-seam`, `swap-pop`, `four-windows`,
-`no-blank-sheet`, `film-stays-lit`, `hand-and-keyboard`,
-`content-keeps-running`, `lod-timeline`, and the scene-wide `run`) plus
-the whole `veil-resize` directory had no npm script and no section
-here, and most hard-coded one laptop's absolute path. The findings they
-produced are cited where the changed code lives; the apparatus is in
-history. **The bar for a new file here: an npm script, a section in
-this file, and no absolute paths.**
-
-The crispness rule once had an instrument, `sharpness`, which clipped a
-mesh photograph and a DOM photograph to one measured page rect and
-compared their gradient energy. It went with the passage scene, its
-only subject (decisions.md #3, amendment of 2026-08-10); the recipe and
-its `gradientEnergy` contract live at that commit in history. A future
-mesh-vs-DOM gate needs a scene that can hold a mesh exactly where a
-page copy was, then reuses that recipe.
