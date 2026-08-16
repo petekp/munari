@@ -5,6 +5,7 @@
 - Add `useLift` and `LiftDriver` for evidence-gated DOM/WebGL handoffs.
 - Add presentation receipts, caller-owned frame sources, and `CanvasPointerGate`.
 - Add carried motion and painted Surface anchors.
+- Keep Surface pointer releases alive through R3F's event phase.
 - Add the Genie, Knobs, Optics, and Logo labs.
 - Add a local lab launcher and concise agent guidance.
 

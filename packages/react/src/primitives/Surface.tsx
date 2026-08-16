@@ -672,9 +672,10 @@ function DomSurface({
   useEffect(() => trackDrag(), [])
 
   // A release can occur after the ray leaves the Surface. R3F then has no
-  // intersected mesh to notify, so close the matching relay in a microtask if
-  // the normal mesh handler did not already do it.
+  // intersected mesh to notify, so close the matching relay in the next task
+  // if the normal mesh handler did not already do it.
   useEffect(() => {
+    let pendingEnd = 0
     const cancelActive = (sample?: ForwardPointerSample) => {
       const active = pressedRef.current
       if (!active) return
@@ -693,9 +694,17 @@ function DomSurface({
     const onEnd = (e: PointerEvent) => {
       const active = pressedRef.current
       if (!active || active.pointerId !== e.pointerId) return
-      queueMicrotask(() => {
+      // Chrome runs a microtask checkpoint after document capture and before
+      // R3F handles the same event on its connected div (2026-08-16). A
+      // microtask therefore canceled the press before the mesh saw pointerup,
+      // so a button rendered on a Surface received down but never click.
+      // A timer crosses the event-dispatch boundary; the mesh clears the ref
+      // first on an ordinary hit, and only an off-mesh release reaches cancel.
+      if (pendingEnd) window.clearTimeout(pendingEnd)
+      pendingEnd = window.setTimeout(() => {
+        pendingEnd = 0
         if (pressedRef.current?.pointerId === e.pointerId) cancelActive(e)
-      })
+      }, 0)
     }
     const onBlur = () => cancelActive()
     const onVisibility = () => {
@@ -710,6 +719,7 @@ function DomSurface({
       document.removeEventListener('pointercancel', onEnd, true)
       window.removeEventListener('blur', onBlur)
       document.removeEventListener('visibilitychange', onVisibility)
+      if (pendingEnd) window.clearTimeout(pendingEnd)
       cancelActive()
     }
   }, [controls])
