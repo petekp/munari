@@ -56,12 +56,17 @@
 // skew the cast's timestamps through the same window; the gate's
 // contract is the headless run.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
 
-const ROOT = '/Users/petepetrash/Code/munari'
+// Derived from this file, never from a machine. A hard-coded absolute
+// root sends Vite to mkdir a path that only exists on one laptop, which
+// on a Linux runner is an EACCES the gate reports as a page timeout.
+const here = path.dirname(fileURLToPath(import.meta.url))
+const ROOT = path.resolve(here, '..', '..')
 const labRoot = path.join(ROOT, 'apps', 'lab')
 const CHROME = [
   process.env.CHROME_PATH,

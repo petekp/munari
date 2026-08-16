@@ -68,7 +68,7 @@ async function writeDump(dpr, result) {
   }
 }
 
-async function runAtDpr(browser, origin, dpr) {
+async function runAtDpr(browser, origin, dpr, step) {
   const page = await browser.newPage()
   const errors = []
   page.on('pageerror', (error) => errors.push(String(error)))
@@ -78,12 +78,14 @@ async function runAtDpr(browser, origin, dpr) {
   })
   await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: dpr })
   await page.goto(`${origin}/?scene=knobs&probe=knobs-resize`, { waitUntil: 'load' })
+  step(`dpr ${dpr} loaded`)
   await page.waitForFunction(
     () =>
       window.__knobsResizeProbe?.snapshot().presented &&
       document.querySelector('[data-knobs-resize-marker="source"]'),
     { timeout: 20_000 },
   )
+  step(`dpr ${dpr} presented`)
 
   await page.evaluate(() => {
     const panel = document.querySelector('.knb-panel')
@@ -365,18 +367,31 @@ async function runAtDpr(browser, origin, dpr) {
 
 let server
 let browser
+
+// A gate that dies at a hard deadline with no output cannot be read. Each
+// phase names itself as it begins, so the deadline reports where the time
+// went instead of only that it ran out.
+const started = Date.now()
+let phase = 'startup'
+const step = (label) => {
+  phase = label
+  console.log(`knobs-resize ${((Date.now() - started) / 1000).toFixed(1)}s · ${label}`)
+}
+
 const deadline = setTimeout(() => {
-  console.error('knobs-resize gate: hard 180s deadline hit')
+  console.error(`knobs-resize gate: hard 180s deadline hit during ${phase}`)
   process.exit(1)
 }, 180_000)
 
 try {
   browser = await puppeteer.launch({ executablePath: chromePath, headless: true, args })
+  step('chrome launched')
   const capabilityPage = await browser.newPage()
   const capable = await capabilityPage.evaluate(
     () => 'drawElementImage' in document.createElement('canvas').getContext('2d'),
   )
   await capabilityPage.close()
+  step(`capability probed (drawElementImage: ${capable})`)
   if (!capable) {
     await browser.close()
     browser = null
@@ -384,10 +399,14 @@ try {
   } else {
     server = await createServer({ root: labRoot, logLevel: 'warn', server: { port: 0 } })
     await server.listen()
+    step('vite listening')
     const port = server.config.server.port ?? server.httpServer.address().port
     const origin = `http://localhost:${port}`
     const dprs = process.env.DPR ? [Number(process.env.DPR)] : [1, 2]
-    for (const dpr of dprs) await runAtDpr(browser, origin, dpr)
+    for (const dpr of dprs) {
+      step(`dpr ${dpr} starting`)
+      await runAtDpr(browser, origin, dpr, step)
+    }
     console.log('\nknobs-resize gate PASSED')
   }
 } finally {
