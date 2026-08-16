@@ -39,7 +39,10 @@ function importSpecifiers(file: string): string[] {
     /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g, // dynamic import
     /^\s*import\s+['"]([^'"]+)['"]/gm, // bare side-effect import
   ]) {
-    for (const m of text.matchAll(re)) specs.push(m[1] as string)
+    for (const m of text.matchAll(re)) {
+      const spec = m[1]
+      if (spec !== undefined) specs.push(spec)
+    }
   }
   return specs
 }

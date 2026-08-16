@@ -30,7 +30,10 @@ function uniforms(src: string): string[] {
 // uniform feed uses. Retuning the studio breaks a regex here on
 // purpose: the mirror must be re-read, not assumed.
 type V3 = [number, number, number]
-const vec = (s: string) => s.split(',').map(Number) as V3
+const vec = (s: string): V3 => {
+  const [x, y, z] = s.split(',').map(Number)
+  return [x, y, z]
+}
 const norm = (v: V3): V3 => {
   const l = Math.hypot(...v)
   return [v[0] / l, v[1] / l, v[2] / l]
@@ -64,7 +67,8 @@ function buildStudio() {
   const studio = (d: V3, rg: number): V3 => {
     const g = smooth(-0.8, 0.5, d[1])
     const c = smooth(0.1, 1.0, d[1])
-    const col: V3 = [0, 1, 2].map((i) => lo[i] + (hi[i] - lo[i]) * g + ceil[i] * c) as V3
+    const chan = (i: number) => lo[i] + (hi[i] - lo[i]) * g + ceil[i] * c
+    const col: V3 = [chan(0), chan(1), chan(2)]
     for (const { dir, sz, tint } of lobes) {
       const s = sz + rg * 0.5
       const e = Math.exp((dot(d, dir) - 1) / Math.max(s * s, 1e-4))

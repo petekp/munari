@@ -199,12 +199,20 @@ export function clampTiers(
  * from ever reading as clamped — it is the caller's bug to see un-mangled,
  * not a guard event.
  */
+/** The scale a caller may actually use, and the verdict on whether the
+ *  kernel had to reduce the one it was handed. Warn-and-clamp needs both
+ *  halves, so they travel together. */
+export interface FixedScale {
+  scale: number
+  clamped: boolean
+}
+
 export function resolveFixedScale(
   scale: number,
   cssWidth: number,
   cssHeight: number,
   maxDim = MAX_TEXTURE_EDGE,
-): { scale: number; clamped: boolean } {
+): FixedScale {
   if (Number.isNaN(scale)) return { scale, clamped: false }
   const clamped = clampScale(scale, cssWidth, cssHeight, maxDim)
   return { scale: clamped, clamped: clamped !== scale }

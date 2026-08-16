@@ -59,7 +59,7 @@ try {
   })
   const capability = await browser.newPage()
   const supported = await capability.evaluate(
-    () => typeof document.createElement('canvas').getContext('2d').drawElementImage === 'function',
+    () => 'drawElementImage' in document.createElement('canvas').getContext('2d'),
   )
   await capability.close()
   if (!supported) {

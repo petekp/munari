@@ -40,7 +40,14 @@ interface Brandable {
  * (false when a handler called `preventDefault` on a cancelable event).
  */
 export function relay(target: EventTarget, ev: Event): boolean {
-  ;(ev as Brandable)[RELAYED] = true
+  // SAFETY: `Brandable` names one optional key and nothing else, and that
+  // key is a registry symbol only this module writes. The assertion adds a
+  // property to `ev`; it narrows nothing the platform already declared, so
+  // no member of Event is being re-described here. Augmenting the global
+  // Event interface would say the same thing to every consumer of the
+  // library, which is the wrong blast radius for a private brand.
+  const branded = ev as Brandable
+  branded[RELAYED] = true
   return target.dispatchEvent(ev)
 }
 
@@ -59,5 +66,8 @@ export function relay(target: EventTarget, ev: Event): boolean {
  *   })
  */
 export function isRelayed(ev: Event): boolean {
+  // SAFETY: the read half of the brand `relay` writes. Absent is the
+  // answer for every event the library did not emit, which is why the key
+  // is optional and the test is `=== true` rather than a truthiness check.
   return (ev as Brandable)[RELAYED] === true
 }

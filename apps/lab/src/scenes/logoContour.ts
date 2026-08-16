@@ -57,7 +57,7 @@ export interface ContourOptions {
  *  Coordinates are NORMALIZED to the sample grid — u and v both run 0..1
  *  across the box the samples covered, v up — so a consumer scales them
  *  by its own box and never needs to know the readback resolution. */
-export interface ContourShape {
+export interface InkIsland {
   /** Counter-clockwise, flat `[u0, v0, u1, v1, …]`, not closed (the last
    *  point does not repeat the first). */
   outer: number[]
@@ -177,7 +177,7 @@ function chain(ring: number[], from: number, to: number, tol: number): number[] 
 
 /**
  * Trace `alpha` (row-major, row 0 at the BOTTOM — the order a GL
- * readback hands back) into normalized shapes.
+ * readback hands back) into normalized islands.
  *
  * Returns outer rings paired with the holes they enclose, largest ring
  * first. An empty or fully-covered grid both return sensibly: nothing,
@@ -188,7 +188,7 @@ export function traceContour(
   w: number,
   h: number,
   options: ContourOptions = {},
-): ContourShape[] {
+): InkIsland[] {
   const t = options.threshold ?? DEFAULTS.threshold
   const tol = options.simplify ?? DEFAULTS.simplify
   const minArea = options.minArea ?? DEFAULTS.minArea
@@ -339,12 +339,12 @@ export function traceContour(
     return flipped
   }
 
-  const shapes: ContourShape[] = []
+  const islands: InkIsland[] = []
   const owner = new Map<number, number>()
   for (let i = 0; i < kept.length; i++) {
     if (depth[i] % 2 !== 0) continue
-    owner.set(i, shapes.length)
-    shapes.push({ outer: norm(kept[i], true), holes: [] })
+    owner.set(i, islands.length)
+    islands.push({ outer: norm(kept[i], true), holes: [] })
   }
   for (let i = 0; i < kept.length; i++) {
     if (depth[i] % 2 === 0) continue
@@ -355,8 +355,8 @@ export function traceContour(
       if (parent < 0 || areas[k] < areas[parent]) parent = k
     }
     const slot = parent >= 0 ? owner.get(parent) : undefined
-    if (slot !== undefined) shapes[slot].holes.push(norm(kept[i], false))
+    if (slot !== undefined) islands[slot].holes.push(norm(kept[i], false))
   }
 
-  return shapes
+  return islands
 }

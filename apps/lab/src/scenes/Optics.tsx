@@ -104,14 +104,16 @@ function planePoint(ray: THREE.Ray, z: number) {
   return { x: ray.origin.x + t * ray.direction.x, y: ray.origin.y + t * ray.direction.y }
 }
 
-const CONTENT: Record<string, ReactNode> = {
-  aqua: <AquaSheet />,
-  nokia: <LcdPanel />,
-  luna: <LunaBar />,
-  calc: <Calculator />,
-  type: <TypeSpecimen />,
-  ledger: <Ledger />,
-}
+const CONTENT = new Map<string, ReactNode>(
+  Object.entries({
+    aqua: <AquaSheet />,
+    nokia: <LcdPanel />,
+    luna: <LunaBar />,
+    calc: <Calculator />,
+    type: <TypeSpecimen />,
+    ledger: <Ledger />,
+  }),
+)
 
 // ── shared mutable state ───────────────────────────────────────────────
 //
@@ -132,11 +134,17 @@ type Drag =
   | { kind: 'track' }
   | null
 
+/**
+ * One number per instrument. A mapped type over the closed id union rather
+ * than an open dictionary, because every key is known at the type level.
+ */
+type PerInstrument = { [K in InstrumentId]: number }
+
 interface Hand {
   x: number
   y: number
   /** Collar reading per instrument, authoritative. */
-  collar: Record<InstrumentId, number>
+  collar: PerInstrument
   /**
    * Half-width and half-height of the free sheet. One pair, not one per
    * instrument, because exactly one instrument has a face you can resize.
@@ -147,7 +155,7 @@ interface Hand {
   /** The disc of page the instrument is reading, world coordinates. */
   disc: Disc | null
   /** Turned angle of the collar, radians, for the mesh. */
-  turn: Record<InstrumentId, number>
+  turn: PerInstrument
   /**
    * The live grip. It lives out here rather than inside `useGrab` because
    * taking an instrument off the rail has to ARM a drag in the same
@@ -167,13 +175,19 @@ interface Hand {
   nearHome: boolean
 }
 
+/** One number per instrument, seeded from the kit itself. */
+function perInstrument(seed: (i: Instrument) => number): PerInstrument {
+  const out: Partial<PerInstrument> = {}
+  for (const i of KIT) out[i.id] = seed(i)
+  // SAFETY: `InstrumentId` is the union of the ids in KIT and the loop above
+  // walks KIT itself, so every key of the record is there. `Partial` is what
+  // lets it be built up a key at a time.
+  return out as PerInstrument
+}
+
 function initialHand(): Hand {
-  const collar = {} as Record<InstrumentId, number>
-  const turn = {} as Record<InstrumentId, number>
-  for (const i of KIT) {
-    collar[i.id] = i.collar.start
-    turn[i.id] = 0
-  }
+  const collar = perInstrument((i) => i.collar.start)
+  const turn = perInstrument(() => 0)
   const start = KIT.find((i) => i.sheet)!.sheet!.start
   return {
     x: 0,
@@ -200,6 +214,10 @@ const gripOf = (hw: number) => hw * 0.72
 // ── the camera ─────────────────────────────────────────────────────────
 
 function PixelPerfect({ onScale }: { onScale: (s: number) => void }) {
+  // SAFETY: r3f types the store's camera as the base class and hands back a
+  // PerspectiveCamera unless the Canvas asks for `orthographic`. This one
+  // does not, and could not: fitting the frustum to the viewport is what
+  // makes a CSS pixel a world unit, and orthographic has no fov to fit.
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
   const size = useThree((s) => s.size)
   useEffect(() => {
@@ -275,7 +293,7 @@ function SpecimenSurface({
       // slot at full strength, so the blocks need no lights and cannot go
       // dark. The instruments are drawn the same way (opticsShaders).
       emissiveIntensity={1}
-      content={CONTENT[block.id]}
+      content={CONTENT.get(block.id)}
     >
       <planeGeometry args={[block.w, block.h]} />
     </SurfaceApp>
@@ -686,7 +704,7 @@ function Bench({
     // The sheet's reachable band moves with its size, so the collar is
     // clamped here, every frame, and not only when it is turned: drag a
     // corner outward past the cap bound and the power comes down with it.
-    const half = inst.sheet ? (h.half as readonly [number, number]) : undefined
+    const half = inst.sheet ? h.half : undefined
     const range = collarRange(inst, half)
     const collar = clamp(h.collar[inst.id], range.min, range.max)
     h.collar[inst.id] = collar
@@ -702,12 +720,12 @@ function Bench({
     // because a framing that disagreed with the coverage would sample a
     // block that was never asked to sharpen.
     const eye = camera.position
-    const disc = footprint({ x: h.x, y: h.y }, spec, (lx, ly) => {
+    const disc = footprint({ x: h.x, y: h.y }, spec, (lx, ly): Vec3 => {
       const dx = h.x + lx - eye.x
       const dy = h.y + ly - eye.y
       const dz = spec.standoff - eye.z
       const m = Math.hypot(dx, dy, dz)
-      return [dx / m, dy / m, dz / m] as Vec3
+      return [dx / m, dy / m, dz / m]
     })
     h.disc = disc
 
@@ -1018,7 +1036,7 @@ export function OpticsApp({ chips }: { chips: ReactNode }) {
         dpr={[1, 2]}
         gl={{ antialias: true }}
         onCreated={(state) => {
-          ;(window as unknown as { __r3f: unknown }).__r3f = state
+          window.__r3f = state
         }}
       >
         <PixelPerfect onScale={setScale} />

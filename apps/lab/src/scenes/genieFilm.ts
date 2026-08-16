@@ -23,7 +23,7 @@ export const GENIE_FILM_DATA_ATTRIBUTES = Object.freeze({
 
 export interface GenieFilmControllerOptions {
   /** Draw errors do not stop the decoder callback chain. */
-  readonly onError?: (error: unknown) => void
+  readonly onError?: (error: Error) => void
 }
 
 export interface GenieFilmController {
@@ -77,9 +77,10 @@ export function createGenieFilmController(
   let drawCount = 0
   let lastMetadata: VideoFrameCallbackMetadata | null = null
 
-  const reportError = (error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error)
-    canvas?.setAttribute(GENIE_FILM_DATA_ATTRIBUTES.error, message)
+  // Normalized at the one place a throw is caught, so the attribute, the
+  // console and the consumer's handler all read the same sentence.
+  const reportError = (error: Error) => {
+    canvas?.setAttribute(GENIE_FILM_DATA_ATTRIBUTES.error, error.message)
     options.onError?.(error)
   }
 
@@ -128,8 +129,8 @@ export function createGenieFilmController(
   ): FrameId | null => {
     try {
       return publishDrawnPixels(metadata)
-    } catch (error) {
-      reportError(error)
+    } catch (cause) {
+      reportError(cause instanceof Error ? cause : new Error(String(cause)))
       return null
     }
   }
@@ -286,8 +287,8 @@ export function createGenieFilmController(
         throw new Error('Genie film controller accepts one video for its lifetime')
       }
       if (
-        typeof nextVideo.requestVideoFrameCallback !== 'function' ||
-        typeof nextVideo.cancelVideoFrameCallback !== 'function'
+        !('requestVideoFrameCallback' in nextVideo) ||
+        !('cancelVideoFrameCallback' in nextVideo)
       ) {
         throw new Error('Genie film needs requestVideoFrameCallback support')
       }

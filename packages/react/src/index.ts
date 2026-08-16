@@ -28,6 +28,9 @@ export type {
   FrameDrawReceipt,
   FrameSurfaceProps,
 } from './primitives/FrameSurface'
+// The three receipts a Surface hands its own callbacks. A consumer that
+// stores one — a probe, a HUD, a replay log — needs to be able to name it.
+export type { DomPaintReceipt, PresentationReceipt } from '@munari/core'
 export { SurfaceApp, type SurfaceAppProps } from './primitives/SurfaceApp'
 export {
   CanvasPointerGate,

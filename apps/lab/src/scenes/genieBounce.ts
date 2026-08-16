@@ -1,4 +1,4 @@
-// The bouncing marks — the genie window's live content, and the shape
+// The bouncing marks — the genie window's live content, and the outline
 // of the lesson the wormhole taught (genie.css's section comment is
 // the short form):
 //
@@ -32,18 +32,26 @@ export interface Vec {
  *  translate but never rotate, so a polygon's vertices are fixed
  *  offsets and the axis-aligned walls can read extents straight off
  *  them. Polygons must be convex — the contact law is SAT. */
-export type BounceShape = { kind: 'circle'; r: number } | { kind: 'poly'; verts: Vec[] }
+export type MarkOutline = { kind: 'circle'; r: number } | { kind: 'poly'; verts: Vec[] }
 
 export interface BounceBody {
   x: number
   y: number
   vx: number
   vy: number
-  shape: BounceShape
+  outline: MarkOutline
 }
 
 /** How far the silhouette reaches from the center toward each wall. */
-function extents(s: BounceShape): { l: number; r: number; t: number; b: number } {
+/** How far a silhouette reaches toward each wall, from its own center. */
+interface Extents {
+  l: number
+  r: number
+  t: number
+  b: number
+}
+
+function extents(s: MarkOutline): Extents {
   if (s.kind === 'circle') return { l: s.r, r: s.r, t: s.r, b: s.r }
   let l = 0
   let r = 0
@@ -61,10 +69,10 @@ function extents(s: BounceShape): { l: number; r: number; t: number; b: number }
 /** The body's shadow on a unit axis, as a [min, max] interval. */
 function project(b: BounceBody, ax: number, ay: number): [number, number] {
   const c = b.x * ax + b.y * ay
-  if (b.shape.kind === 'circle') return [c - b.shape.r, c + b.shape.r]
+  if (b.outline.kind === 'circle') return [c - b.outline.r, c + b.outline.r]
   let min = Infinity
   let max = -Infinity
-  for (const v of b.shape.verts) {
+  for (const v of b.outline.verts) {
     const p = c + v.x * ax + v.y * ay
     if (p < min) min = p
     if (p > max) max = p
@@ -77,11 +85,11 @@ function project(b: BounceBody, ax: number, ay: number): [number, number] {
  *  body's closest feature (center, or nearest polygon vertex) — the
  *  standard complete axis set for convex SAT with circles. */
 function axesOf(b: BounceBody, other: BounceBody): Vec[] {
-  if (b.shape.kind === 'circle') {
-    if (other.shape.kind === 'circle') return [{ x: other.x - b.x, y: other.y - b.y }]
+  if (b.outline.kind === 'circle') {
+    if (other.outline.kind === 'circle') return [{ x: other.x - b.x, y: other.y - b.y }]
     let best: Vec = { x: other.x - b.x, y: other.y - b.y }
     let bestD = Infinity
-    for (const v of other.shape.verts) {
+    for (const v of other.outline.verts) {
       const dx = other.x + v.x - b.x
       const dy = other.y + v.y - b.y
       const d = dx * dx + dy * dy
@@ -92,7 +100,7 @@ function axesOf(b: BounceBody, other: BounceBody): Vec[] {
     }
     return [best]
   }
-  const verts = b.shape.verts
+  const verts = b.outline.verts
   const out: Vec[] = []
   for (let i = 0; i < verts.length; i++) {
     const p = verts[i]
@@ -137,7 +145,7 @@ function contact(a: BounceBody, b: BounceBody): { nx: number; ny: number; depth:
  *  each silhouette's own extents (position reflects about the wall so
  *  contact time inside the step is honoured); walls run last so the
  *  frame always ends contained. Total kinetic energy is invariant; the
- *  contract test pins that, containment, shape-true misses, and
+ *  contract test pins that, containment, outline-true misses, and
  *  slanted-edge deflection. */
 export function bounceStep(bodies: BounceBody[], dt: number, w: number, h: number): void {
   for (const b of bodies) {
@@ -165,7 +173,7 @@ export function bounceStep(bodies: BounceBody[], dt: number, w: number, h: numbe
     }
   }
   for (const b of bodies) {
-    const e = extents(b.shape)
+    const e = extents(b.outline)
     if (b.x - e.l < 0) {
       b.x = 2 * e.l - b.x
       b.vx = Math.abs(b.vx)
@@ -196,7 +204,7 @@ type MarkId = (typeof BOUNCE_MARKS)[number]['id']
  *  (viewBox 0..100 drawn into a box of side 2r, so px = (svg − 50)
  *  / 50 · r). One source for eye and law: resize the figure and the
  *  bounds follow. */
-export function markShape(id: MarkId, r: number): BounceShape {
+export function markOutline(id: MarkId, r: number): MarkOutline {
   const u = (n: number) => ((n - 50) / 50) * r
   if (id === 'cerchio') return { kind: 'circle', r: (46 / 50) * r }
   if (id === 'quadrato')
@@ -247,7 +255,7 @@ function seed(): BounceBody[] {
     y: SEEDS[i].fy * courtH,
     vx: Math.cos(SEEDS[i].heading),
     vy: Math.sin(SEEDS[i].heading),
-    shape: markShape(m.id, m.r * genieKnobs.markScale * genieKnobs.markBounds),
+    outline: markOutline(m.id, m.r * genieKnobs.markScale * genieKnobs.markBounds),
   }))
 }
 
@@ -274,7 +282,7 @@ function tick(now: number): void {
       const mag = Math.hypot(b.vx, b.vy) || 1
       b.vx = (b.vx / mag) * genieKnobs.markSpeed
       b.vy = (b.vy / mag) * genieKnobs.markSpeed
-      b.shape = markShape(BOUNCE_MARKS[i].id, BOUNCE_MARKS[i].r * s)
+      b.outline = markOutline(BOUNCE_MARKS[i].id, BOUNCE_MARKS[i].r * s)
     }
     bounceStep(bodies, dt, courtW, courtH)
     for (const court of courts) write(court)

@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import { buildLetterMesh, WALL_STEP_PX } from './logoSlab'
-import type { ContourShape } from './logoContour'
+import type { InkIsland } from './logoContour'
 
 const W = 131
 const H = 291
@@ -99,13 +99,13 @@ describe('buildLetterMesh with no outline', () => {
 describe('buildLetterMesh with an outline', () => {
   // A square ring, counter-clockwise in uv, with a square hole wound the
   // other way — the shape of an 'o', reduced to what the walls care about.
-  const shapes: ContourShape[] = [
+  const islands: InkIsland[] = [
     {
       outer: [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8],
       holes: [[0.4, 0.4, 0.4, 0.6, 0.6, 0.6, 0.6, 0.4]],
     },
   ]
-  const slab = buildLetterMesh(W, H, SX, SY, shapes)
+  const slab = buildLetterMesh(W, H, SX, SY, islands)
 
   it('keeps the sheet intact underneath the walls', () => {
     const sheetOnly = new Set(triangles(buildLetterMesh(W, H, SX, SY, null)))

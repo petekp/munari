@@ -52,11 +52,16 @@ export function useSurfaceTexture(): THREE.CanvasTexture | null {
  * no-op), exactly like the texture being null. A frame source has no DOM
  * chrome and returns null.
  */
-export function useSurfaceChrome(): {
+/** What a child of a Surface can learn about the skin it is drawn on: the
+ *  measured chrome, and the CSS box it was measured in. Null chrome means
+ *  no measurement has landed yet, not "no chrome". */
+export interface SurfaceChromeState {
   chrome: SurfaceChrome | null
   width: number
   height: number
-} {
+}
+
+export function useSurfaceChrome(): SurfaceChromeState {
   const ctx = use(SurfaceContext)
   if (!ctx) throw new Error('useSurfaceChrome must be used inside a <Surface>')
   return { chrome: ctx.chrome, width: ctx.width, height: ctx.height }

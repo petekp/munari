@@ -193,11 +193,17 @@ export function capIsValid(spec: LensSpec): boolean {
  * for K = c/(CAP_MARGIN·A). When K ≥ 1 the magnifying side is unbounded —
  * the cap can stay a cap at any power.
  */
+/** The two ends of a power range, in magnification. */
+export interface PowerRange {
+  min: number
+  max: number
+}
+
 export function powerLimit(
   aperture: number,
   standoff: number,
   ior: number,
-): { min: number; max: number } {
+): PowerRange {
   const k = (standoff * (1 - 1 / ior)) / (CAP_MARGIN * aperture)
   return { min: 1 / (1 + k), max: k >= 1 ? Infinity : 1 / (1 - k) }
 }

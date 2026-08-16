@@ -51,6 +51,7 @@ import {
   VEIL_PASS_FRAG,
   VEIL_QUAD_VERT,
 } from './veilShaders'
+import { textureSlot } from '../lib/uniforms'
 import './veil.css'
 
 const FOV = 42
@@ -159,6 +160,10 @@ function VeilSheet() {
 // ── the camera: 1 world unit = 1 CSS px of the window ───────────────────
 
 function PixelPerfect() {
+  // SAFETY: r3f types the store's camera as the base class and hands back a
+  // PerspectiveCamera unless the Canvas asks for `orthographic`. This one
+  // does not, and could not: fitting the frustum to the viewport is what
+  // makes a CSS pixel a world unit, and orthographic has no fov to fit.
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
   const size = useThree((s) => s.size)
   useEffect(() => {
@@ -236,6 +241,7 @@ function makeRt(w: number, h: number) {
   })
 }
 
+
 function VeilBand({ painted, content, scroller, slab, sheet }: BandProps) {
   const texture = useSurfaceTexture()
   const paintedSize = useSurfacePaintedSize()
@@ -304,7 +310,7 @@ function VeilBand({ painted, content, scroller, slab, sheet }: BandProps) {
 
   const bandUniforms = useMemo(
     () => ({
-      tBlur: { value: null as THREE.Texture | null },
+      tBlur: textureSlot(),
       uStrip: { value: new THREE.Vector2(0, 1) },
       uSize: { value: new THREE.Vector2(1, 1) },
       uDpr: { value: 1 },
@@ -420,8 +426,7 @@ function VeilBand({ painted, content, scroller, slab, sheet }: BandProps) {
       // Diagnostic ring log for instruments — one record per frame that
       // reached this point, so a probe can see WHICH frames ran and what
       // the gate saw on each, not just the last survivor.
-      const w = window as unknown as Record<string, unknown>
-      const log = (w.__veilGateLog ??= []) as Array<Record<string, unknown>>
+      const log = (window.__veilGateLog ??= [])
       log.push({
         t: Math.round(performance.now() * 10) / 10,
         pw, ph, liveW, liveH,

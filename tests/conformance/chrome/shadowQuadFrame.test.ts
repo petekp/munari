@@ -3,13 +3,13 @@ import * as THREE from 'three'
 import { makeShadowFrame, shadowQuadFrame } from '@munari/core'
 
 describe('shadow quad frame — the mapping never lies', () => {
-  const rect = (w: number, h: number, cx = 0, cy = 0) =>
-    [
-      new THREE.Vector3(cx - w / 2, cy + h / 2, 0), // TL
-      new THREE.Vector3(cx + w / 2, cy + h / 2, 0), // TR
-      new THREE.Vector3(cx + w / 2, cy - h / 2, 0), // BR
-      new THREE.Vector3(cx - w / 2, cy - h / 2, 0), // BL
-    ] as [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3]
+  type Corners = [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3]
+  const rect = (w: number, h: number, cx = 0, cy = 0): Corners => [
+    new THREE.Vector3(cx - w / 2, cy + h / 2, 0), // TL
+    new THREE.Vector3(cx + w / 2, cy + h / 2, 0), // TR
+    new THREE.Vector3(cx + w / 2, cy - h / 2, 0), // BR
+    new THREE.Vector3(cx - w / 2, cy - h / 2, 0), // BL
+  ]
 
   it('at rest the quad reaches the FULL margin past every edge', () => {
     // The bug this guards: the old radial push gave a 514×157 card only

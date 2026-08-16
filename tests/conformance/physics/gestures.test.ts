@@ -69,12 +69,8 @@ function makeFlight(
  * event, and the platform is what we are standing in for.
  */
 function pointer(type: string, x: number, y: number, trusted: boolean) {
-  const e = new Event(type, { bubbles: true }) as PointerEvent
-  Object.defineProperties(e, {
-    clientX: { value: x },
-    clientY: { value: y },
-    isTrusted: { value: trusted },
-  })
+  const e = new PointerEvent(type, { bubbles: true, clientX: x, clientY: y })
+  Object.defineProperty(e, 'isTrusted', { value: trusted })
   return e
 }
 

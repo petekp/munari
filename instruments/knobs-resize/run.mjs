@@ -374,7 +374,7 @@ try {
   browser = await puppeteer.launch({ executablePath: chromePath, headless: true, args })
   const capabilityPage = await browser.newPage()
   const capable = await capabilityPage.evaluate(
-    () => typeof document.createElement('canvas').getContext('2d').drawElementImage === 'function',
+    () => 'drawElementImage' in document.createElement('canvas').getContext('2d'),
   )
   await capabilityPage.close()
   if (!capable) {

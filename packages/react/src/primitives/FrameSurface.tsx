@@ -227,14 +227,20 @@ export function resolveFrameSurfaceDevelopment(
   metaDevelopment: boolean | undefined,
   nodeEnvironment: string | undefined,
 ): boolean {
-  if (typeof metaDevelopment === 'boolean') return metaDevelopment
+  if (metaDevelopment !== undefined) return metaDevelopment
   return nodeEnvironment === 'development' || nodeEnvironment === 'test'
 }
 
 function isDevelopmentRuntime(): boolean {
+  // SAFETY: both of these are the HOST's, not the language's. `import.meta
+  // .env` exists under Vite and nowhere else; `process` exists under Node
+  // and nowhere else. The library has to build and run under every host, so
+  // each shape is described here instead of imported from one of them, and
+  // every member is optional because absence is the normal answer.
   const metaEnvironment = (
     import.meta as ImportMeta & { readonly env?: { readonly DEV?: boolean } }
   ).env
+  // SAFETY: as above, for the Node half.
   const nodeEnvironment = (
     globalThis as typeof globalThis & {
       readonly process?: { readonly env?: { readonly NODE_ENV?: string } }

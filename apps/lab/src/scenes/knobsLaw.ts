@@ -216,12 +216,18 @@ export function stepFade(lit: number, target: number, dt: number): number {
   return target + (lit - target) * Math.exp(-Math.max(dt, 0) / POWER_FADE_TAU)
 }
 
+export interface PanelDrag {
+  active: boolean
+  /** The armed pointer, or null while no carry is in progress. */
+  pointerId: number | null
+}
+
 /** Live bag for the carry gesture. The DOM handle owns the DECISION (its
  *  forwarded pointerdown arms this); the scene owns the GEOMETRY (the
  *  real screen pointer moves the slab, and the real document pointerup
  *  disarms it). Split that way because the forwarded stream's
  *  coordinates live on the panel — the very thing the gesture moves. */
-export const panelDrag = { active: false, pointerId: null as number | null }
+export const panelDrag: PanelDrag = { active: false, pointerId: null }
 
 /** Live bag for the resize gesture, split the same way and for the same
  *  reason: the corner grip is captured DOM, and its coordinates live on
@@ -229,19 +235,37 @@ export const panelDrag = { active: false, pointerId: null as number | null }
  *  records the width it started from; `startX` is left NaN, and the
  *  scene seeds it from the first REAL screen move before applying
  *  `resizeWidth`. */
-export const panelResize = {
+export interface PanelResize {
+  active: boolean
+  /** The armed pointer, or null while no resize is in progress. */
+  pointerId: number | null
+  /** NaN until the scene seeds it from the first real screen move. */
+  startX: number
+  startW: number
+}
+
+export const panelResize: PanelResize = {
   active: false,
-  pointerId: null as number | null,
+  pointerId: null,
   startX: Number.NaN,
   startW: 0,
 }
 
+/** Every command the scene lends to the DOM. Null means the scene is not
+ *  mounted, which a control inside the root has to be able to see. */
+export interface PanelCommands {
+  resizeTo: ((width: number) => void) | null
+  moveBy: ((dx: number, dy: number) => void) | null
+  restore: (() => void) | null
+  revealAnchor: ((key: string) => void) | null
+}
+
 /** Scene commands invoked by controls inside the captured DOM root. */
-export const panelCommands = {
-  resizeTo: null as ((width: number) => void) | null,
-  moveBy: null as ((dx: number, dy: number) => void) | null,
-  restore: null as (() => void) | null,
-  revealAnchor: null as ((key: string) => void) | null,
+export const panelCommands: PanelCommands = {
+  resizeTo: null,
+  moveBy: null,
+  restore: null,
+  revealAnchor: null,
 }
 
 export interface ToggleDef {
@@ -480,7 +504,13 @@ export const ART_ANCHOR_FRACTION = -0.1
  * `backlightAmount` — so the glint that dies behind the slab and the
  * bloom that replaces it are always the same light.
  */
-export function glowPoint(src: GlowSource, viewportW: number): { x: number; y: number } {
+/** A point in the picture's own plane, in CSS px. */
+export interface GlowPoint {
+  x: number
+  y: number
+}
+
+export function glowPoint(src: GlowSource, viewportW: number): GlowPoint {
   const orbit = 90 + 260 * src.reach
   return {
     x: viewportW * ART_ANCHOR_FRACTION + Math.cos(src.angle) * orbit,

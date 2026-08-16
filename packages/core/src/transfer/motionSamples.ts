@@ -57,6 +57,9 @@ export function decomposeMatrix(transform: string): Omit<MotionSample, 't' | 'op
   if (m2) {
     const n = m2[1]!.split(',').map((v) => parseFloat(v))
     if (n.length !== 6 || n.some((v) => !Number.isFinite(v))) return { ...IDENTITY }
+    // SAFETY: the line above returns unless `n` has exactly six entries and
+    // every one is finite, so the tuple is the shape just proven — the
+    // assertion carries that proof past `map`, which cannot express it.
     const [a, b, c, d, e, f] = n as [number, number, number, number, number, number]
     // Column norms are the scale factors surviving any rotation.
     const sx = Math.hypot(a, b)

@@ -35,6 +35,10 @@ const SETTLE_V = 1e-3
 const SETTLE_FRAMES = 15
 
 export function use1DOF(opts: Use1DOFOptions) {
+  // SAFETY: r3f's store types `controls` as a bare event target — whatever
+  // the app set, if anything. Every control set this hook suspends carries
+  // `enabled`; the key stays optional so one that does not is simply never
+  // disabled, not a crash.
   const controls = useThree((s) => s.controls as { enabled?: boolean } | null)
   const body = useRef<Body1D>({ q: opts.initialQ ?? 0, v: 0 })
   // Latest options in a ref so handlers/useFrame never see stale closures.
@@ -68,7 +72,7 @@ export function use1DOF(opts: Use1DOFOptions) {
         )
         const raw = rawQ(e)
         if (raw === null) return
-        ;(e.target as Element).setPointerCapture(e.pointerId)
+        if (e.target instanceof Element) e.target.setPointerCapture(e.pointerId)
         if (controls) controls.enabled = false
         const d = drag.current
         d.active = true
@@ -103,7 +107,7 @@ export function use1DOF(opts: Use1DOFOptions) {
     const d = drag.current
     if (!d.active) return
     d.active = false
-    ;(e.target as Element).releasePointerCapture?.(e.pointerId)
+    if (e.target instanceof Element) e.target.releasePointerCapture?.(e.pointerId)
     if (controls) controls.enabled = true
   }
 

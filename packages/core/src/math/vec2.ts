@@ -14,7 +14,10 @@ export interface Vec2Readonly {
 export interface Vec2Like {
   x: number
   y: number
-  set(x: number, y: number): unknown
+  /** Called for effect; core ignores what it hands back. `void` is what
+   *  core needs, and a method returning `this` (THREE's does) satisfies
+   *  it — so this stays the loosest contract that still says something. */
+  set(x: number, y: number): void
 }
 
 /**

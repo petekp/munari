@@ -19,13 +19,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * happy-dom does not define `CanvasRenderingContext2D` as a global at all —
- * which is why the probe reaches it through `typeof`. Stub the constructor so
- * the trial can be switched on and off from a test.
+ * which is why the probe asks whether the name is declared before it reads
+ * the value. Stub the constructor so the trial can be switched on and off
+ * from a test.
  */
 function stubTrialContext(present: boolean) {
-  class Ctx2D {}
+  class Ctx2D {
+    drawElementImage?: () => void
+  }
   if (present) {
-    ;(Ctx2D.prototype as unknown as Record<string, unknown>).drawElementImage = function () {}
+    Ctx2D.prototype.drawElementImage = function () {}
   }
   vi.stubGlobal('CanvasRenderingContext2D', Ctx2D)
 }
@@ -43,6 +46,56 @@ interface StubCanvas extends HTMLCanvasElement {
 }
 
 /**
+ * The 2d context these tests paint through. onpaint's success path — the one
+ * that stamps paintedW/paintedH — only runs if `drawElementImage` does not
+ * throw, and happy-dom's real context has no idea what that method is. These
+ * three members are the whole of what the paint path calls.
+ */
+interface StubContext2D {
+  setTransform: (...args: number[]) => void
+  clearRect: (...args: number[]) => void
+  drawElementImage: (...args: unknown[]) => void
+}
+
+/** Put `context` behind every `getContext('2d')`, and hand back the undo. */
+function stubGetContext(context: StubContext2D) {
+  const proto = HTMLCanvasElement.prototype
+  const original = proto.getContext
+  // SAFETY: the real `getContext` is overloaded across every context id and
+  // answers each with a different class. This one answers '2d' with the
+  // members above and every other id with `null`, which is the whole of what
+  // the code under test asks for.
+  proto.getContext = ((id: string) => (id === '2d' ? context : null)) as typeof proto.getContext
+  return () => {
+    proto.getContext = original
+  }
+}
+
+/** The compositor's turn: fire the handler the source installed. */
+function firePaint(s: DomTextureSource) {
+  // SAFETY: `beforeEach` puts the trial members on the canvas prototype, so
+  // every canvas this file makes carries `onpaint`.
+  const canvas = s.canvas as StubCanvas
+  canvas.onpaint?.()
+}
+
+/**
+ * The Error `run` threw. A test that pins a message or an error class is
+ * pinning what the library owes the consumer, so a clean return — or a throw
+ * of something that is not an Error — fails right here rather than a line
+ * later against a widened type.
+ */
+function errorFrom(run: () => void): Error {
+  try {
+    run()
+  } catch (cause) {
+    if (cause instanceof Error) return cause
+    throw new Error(`expected an Error, got ${String(cause)}`)
+  }
+  throw new Error('expected a throw, got a clean return')
+}
+
+/**
  * Stub the origin-trial API onto every canvas this module creates, and let a
  * test drive paints by hand. `requestPaint` is deliberately asynchronous-ish
  * (it only records intent) so a test can assert on the state the compositor
@@ -52,7 +105,10 @@ let paintRequests = 0
 
 beforeEach(() => {
   paintRequests = 0
-  const proto = HTMLCanvasElement.prototype as unknown as StubCanvas
+  // SAFETY: the three writes below are what MAKE the prototype a StubCanvas.
+  // happy-dom ships none of the trial members, so this names the shape the
+  // harness is about to install rather than one it found.
+  const proto = HTMLCanvasElement.prototype as StubCanvas
   proto.layoutSubtree = false
   proto.onpaint = null
   proto.requestPaint = function (this: StubCanvas) {
@@ -227,23 +283,13 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
   // Fake one, same shape the identity-CTM block below uses.
   let restoreGetContext = () => {}
   beforeEach(() => {
-    const proto = HTMLCanvasElement.prototype
-    const original = proto.getContext
-    proto.getContext = (() => ({
+    restoreGetContext = stubGetContext({
       setTransform: () => {},
       clearRect: () => {},
       drawElementImage: () => {},
-    })) as unknown as typeof proto.getContext
-    restoreGetContext = () => {
-      proto.getContext = original
-    }
+    })
   })
   afterEach(() => restoreGetContext())
-
-  /** The compositor's turn: fire the handler the source installed. */
-  function firePaint(s: DomTextureSource) {
-    ;(s.canvas as unknown as StubCanvas).onpaint?.()
-  }
 
   it('is [0, 0] before any paint has succeeded', () => {
     const s = make(360, 460)
@@ -332,15 +378,13 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
 
   it('does not replace the last good receipt when a paint fails', () => {
     let fail = false
-    const proto = HTMLCanvasElement.prototype
-    const original = proto.getContext
-    proto.getContext = (() => ({
+    const restore = stubGetContext({
       setTransform: () => {},
       clearRect: () => {},
       drawElementImage: () => {
         if (fail) throw new Error('paint failed')
       },
-    })) as unknown as typeof proto.getContext
+    })
     try {
       const s = createDomTextureSource('<div></div>', 80, 40)
       const notified: unknown[] = []
@@ -354,7 +398,7 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
       expect(notified).toEqual([good])
       s.dispose()
     } finally {
-      proto.getContext = original
+      restore()
     }
   })
 })
@@ -373,25 +417,14 @@ describe('identity CTM — the backing ratio is the only scale', () => {
 
   beforeEach(() => {
     calls = []
-    const proto = HTMLCanvasElement.prototype
-    const original = proto.getContext
-    const fake = {
-      setTransform: (...args: number[]) => void calls.push({ op: 'setTransform', args }),
-      clearRect: (...args: number[]) => void calls.push({ op: 'clearRect', args }),
-      drawElementImage: (...args: unknown[]) => void calls.push({ op: 'drawElementImage', args }),
-    }
-    proto.getContext = (() => fake) as unknown as typeof proto.getContext
-    restoreGetContext = () => {
-      proto.getContext = original
-    }
+    restoreGetContext = stubGetContext({
+      setTransform: (...args) => void calls.push({ op: 'setTransform', args }),
+      clearRect: (...args) => void calls.push({ op: 'clearRect', args }),
+      drawElementImage: (...args) => void calls.push({ op: 'drawElementImage', args }),
+    })
   })
 
   afterEach(() => restoreGetContext())
-
-  /** The compositor's turn: fire the handler the source installed. */
-  function firePaint(s: DomTextureSource) {
-    ;(s.canvas as unknown as StubCanvas).onpaint?.()
-  }
 
   it('every paint begins by resetting the CTM to identity', () => {
     const s = make(360, 460, 1.5)
@@ -541,16 +574,10 @@ describe('createDomTextureSource adopting a node', () => {
   it('REFUSES an element that still has a parent, rather than moving it', () => {
     const live = document.createElement('div')
     document.body.appendChild(live)
-    let thrown: unknown
-    try {
-      createDomTextureSource(live, 360, 460)
-    } catch (err) {
-      thrown = err
-    }
-    expect(thrown).toBeInstanceOf(Error)
+    const thrown = errorFrom(() => createDomTextureSource(live, 360, 460))
     // The message has to name the mechanism, because the symptom the consumer
     // would otherwise see is their own page silently losing an element.
-    expect((thrown as Error).message).toMatch(/cloneNode/)
+    expect(thrown.message).toMatch(/cloneNode/)
     live.remove()
   })
 
@@ -591,14 +618,12 @@ describe('createDomTextureSource adopting a node', () => {
   })
 
   it('the ADOPTED NODE is the element drawn, through the ordinary paint path', () => {
-    const proto = HTMLCanvasElement.prototype
-    const original = proto.getContext
     const drawn: unknown[] = []
-    proto.getContext = (() => ({
+    const restore = stubGetContext({
       setTransform: () => {},
       clearRect: () => {},
-      drawElementImage: (el: unknown) => void drawn.push(el),
-    })) as unknown as typeof proto.getContext
+      drawElementImage: (el) => void drawn.push(el),
+    })
     try {
       const node = plate()
       const s = createDomTextureSource(node, 360, 460)
@@ -607,12 +632,12 @@ describe('createDomTextureSource adopting a node', () => {
       // object — not a copy of it, which would rasterize a subtree they can
       // no longer reach to update.
       expect(s.paintCount()).toBe(0)
-      ;(s.canvas as unknown as StubCanvas).onpaint?.()
+      firePaint(s)
       expect(s.paintCount()).toBe(1)
       expect(drawn).toEqual([node])
       s.dispose()
     } finally {
-      proto.getContext = original
+      restore()
     }
   })
 })
@@ -635,7 +660,10 @@ describe('createDomTextureSource adopting a node', () => {
 // gate, and this needs no third capability key.
 describe('createDomTextureSource without the origin trial', () => {
   beforeEach(() => {
-    const proto = HTMLCanvasElement.prototype as unknown as Record<string, unknown>
+    // SAFETY: the top-level beforeEach installed these three; taking them off
+    // again is what a browser without the flag looks like. `Partial` is what
+    // makes the removal expressible — on StubCanvas itself they are required.
+    const proto = HTMLCanvasElement.prototype as Partial<StubCanvas>
     delete proto.requestPaint
     delete proto.layoutSubtree
     delete proto.onpaint
@@ -643,26 +671,13 @@ describe('createDomTextureSource without the origin trial', () => {
   })
 
   it('refuses with a named error instead of a bare TypeError', () => {
-    let thrown: unknown
-    try {
-      make()
-    } catch (err) {
-      thrown = err
-    }
-    expect(thrown).toBeInstanceOf(Error)
-    expect((thrown as Error).name).toBe('UnsupportedPlatformError')
-    expect((thrown as Error).message).not.toMatch(/is not a function/)
+    const thrown = errorFrom(() => make())
+    expect(thrown.name).toBe('UnsupportedPlatformError')
+    expect(thrown.message).not.toMatch(/is not a function/)
   })
 
   it("the message names the API and the flag that turns it on", () => {
-    const message = (() => {
-      try {
-        make()
-        return ''
-      } catch (err) {
-        return (err as Error).message
-      }
-    })()
+    const { message } = errorFrom(() => make())
     expect(message).toMatch(/drawElementImage/)
     expect(message).toMatch(/CanvasDrawElement/)
   })

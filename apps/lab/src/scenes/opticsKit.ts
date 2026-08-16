@@ -21,6 +21,7 @@ import {
   curvatureFor,
   powerLimit,
   type LensSpec,
+  type PowerRange,
 } from './opticsLaw'
 
 export type InstrumentId = 'loupe' | 'reducer' | 'scope' | 'sheet'
@@ -35,7 +36,7 @@ export interface Collar {
 }
 
 /** A rectangular face, and the sizes it may be dragged between. */
-export interface SheetShape {
+export interface SheetSizing {
   start: readonly [number, number]
   min: readonly [number, number]
   max: readonly [number, number]
@@ -58,7 +59,7 @@ export interface Instrument {
   tier: number
   mode: 'glass' | 'scope'
   /** Present when the face is a rectangle you resize. */
-  sheet?: SheetShape
+  sheet?: SheetSizing
   collar: Collar
   /** Rim and collar finish. */
   metal: string
@@ -148,9 +149,11 @@ export const KIT: readonly Instrument[] = [
   },
 ]
 
-export const INSTRUMENT: Record<InstrumentId, Instrument> = Object.fromEntries(
-  KIT.map((i) => [i.id, i]),
-) as Record<InstrumentId, Instrument>
+export const INSTRUMENT =
+  // SAFETY: `InstrumentId` is the union of the ids in KIT, and the map below
+  // walks KIT itself — every key of the record is present by construction.
+  // fromEntries widens every key back to `string` and cannot see that.
+  Object.fromEntries(KIT.map((i) => [i.id, i])) as Record<InstrumentId, Instrument>
 
 /**
  * The collar reading, as glass.
@@ -188,7 +191,7 @@ export function specFor(
 export function collarRange(
   inst: Instrument,
   half?: readonly [number, number],
-): { min: number; max: number } {
+): PowerRange {
   const c = inst.collar
   if (!inst.sheet) return { min: c.min, max: c.max }
   const limit = powerLimit(apertureOf(half ?? inst.sheet.start), inst.standoff, inst.ior)

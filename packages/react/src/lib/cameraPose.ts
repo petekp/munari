@@ -121,10 +121,14 @@ export function gazeAt(
  * unbounded for orbit-style rigs, so only pitch needs a predicate; a rig
  * with azimuth limits would add the horizontal analog.
  */
-export function viewPitchRoom(
-  d: THREE.Vector3,
-  limits: OrbitLimits,
-): { up: number; down: number } {
+/** Radians of pitch still available in each direction before the rig's
+ *  polar limits stop the view. Zero means that way is already spent. */
+export interface PitchRoom {
+  up: number
+  down: number
+}
+
+export function viewPitchRoom(d: THREE.Vector3, limits: OrbitLimits): PitchRoom {
   const yA = -Math.cos(limits.minPolarAngle ?? 0)
   const yB = -Math.cos(limits.maxPolarAngle ?? Math.PI)
   const pitchLo = Math.asin(THREE.MathUtils.clamp(Math.min(yA, yB), -1, 1))

@@ -215,6 +215,8 @@ export function explodePaint(subject: HTMLElement, options: ExplodeOptions = {})
       `box-sizing:content-box;width:${contentWidth}px;height:${contentHeight}px;` +
       `padding:${bleed}px;margin:0;background:transparent;`
 
+    // SAFETY: `subject` is an HTMLElement and cloneNode returns its own kind.
+    // Node's signature predates generics and still says Node.
     const clone = subject.cloneNode(true) as HTMLElement
     // Pin the clone to what the subject actually measured. Its size may have
     // come from a layout context that does not exist in here — a flex parent,

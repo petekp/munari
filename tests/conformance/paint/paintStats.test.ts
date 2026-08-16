@@ -12,7 +12,7 @@
 // no compositor, so the trial surface is stubbed and paints are driven
 // by hand.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 import { createDomTextureSource, paintStats } from '@munari/core'
 
@@ -22,15 +22,24 @@ interface StubCanvas extends HTMLCanvasElement {
   requestPaint: () => void
 }
 
+/**
+ * A 2d context plus the origin-trial member the DOM types do not carry at
+ * all. `Partial` covers the hundreds of members the paint path never calls.
+ */
+type TrialContext2D = Partial<CanvasRenderingContext2D> & { drawElementImage: Mock }
+
 /** The paint path's whole context vocabulary, controllable per test. */
-const ctx = {
+const ctx: TrialContext2D = {
   setTransform: () => {},
   clearRect: () => {},
   drawElementImage: vi.fn(),
 }
 
 beforeEach(() => {
-  const proto = HTMLCanvasElement.prototype as unknown as StubCanvas
+  // SAFETY: the three writes below are what MAKE the prototype a StubCanvas.
+  // happy-dom ships none of the trial members, so this names the shape the
+  // harness is about to install rather than one it found.
+  const proto = HTMLCanvasElement.prototype as StubCanvas
   proto.layoutSubtree = false
   proto.onpaint = null
   proto.requestPaint = function () {}
@@ -39,12 +48,16 @@ beforeEach(() => {
   // does not exist, and the gate refuses to pretend otherwise. happy-dom has
   // no CanvasRenderingContext2D global (the probe reaches it via `typeof`),
   // so the constructor itself has to be stubbed in.
-  class Ctx2D {}
-  ;(Ctx2D.prototype as unknown as Record<string, unknown>).drawElementImage = function () {}
+  class Ctx2D {
+    drawElementImage() {}
+  }
   vi.stubGlobal('CanvasRenderingContext2D', Ctx2D)
   ctx.drawElementImage = vi.fn()
+  // SAFETY: the paint path calls the three members above and nothing else.
+  // No subtype relation can carry this one: `drawElementImage` is an
+  // origin-trial member the DOM lib has never heard of.
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
-    ctx as unknown as CanvasRenderingContext2D,
+    ctx as CanvasRenderingContext2D,
   )
 })
 
@@ -68,7 +81,10 @@ function only() {
 
 /** Fire the compositor's callback by hand — one "paint". */
 function paint(s: { canvas: HTMLCanvasElement }) {
-  ;(s.canvas as StubCanvas).onpaint?.()
+  // SAFETY: `beforeEach` puts the trial members on the canvas prototype, so
+  // every canvas this file makes carries `onpaint`.
+  const canvas = s.canvas as StubCanvas
+  canvas.onpaint?.()
 }
 
 describe('paintStats', () => {

@@ -260,7 +260,7 @@ export interface BackingStoreResizeEvidence {
 }
 
 let resolveDone!: (value: FrameSurfaceGateResult) => void
-let rejectDone!: (error: unknown) => void
+let rejectDone!: (error: Error) => void
 const done = new Promise<FrameSurfaceGateResult>((resolve, reject) => {
   resolveDone = resolve
   rejectDone = reject
@@ -270,7 +270,11 @@ const receipts: FrameSurfaceGateReceipt[] = []
 const replacementRenderSamples: RenderSample[] = []
 const acquisitionRenderSamples: AcquisitionRenderSample[] = []
 const releasePublications: ReleasePublication[] = []
-const objectIds = new WeakMap<object, number>()
+/** Anything in the render graph the gate wants a stable id for, so two
+ *  receipts can be compared for "same object" without holding references. */
+type RenderNode = THREE.Object3D | THREE.BufferGeometry | THREE.Material
+
+const objectIds = new WeakMap<RenderNode, number>()
 let nextObjectId = 1
 let renderCount = 0
 let replacementRequested = false
@@ -286,15 +290,22 @@ let presentationFence: PresentationFenceEvidence | null = null
 let backingStoreResize: BackingStoreResizeEvidence | null = null
 let presentationFencePhase: PresentationFencePhase = 'disabled'
 
-function objectId(object: object): number {
-  const known = objectIds.get(object)
+function objectId(node: RenderNode): number {
+  const known = objectIds.get(node)
   if (known !== undefined) return known
   const id = nextObjectId++
-  objectIds.set(object, id)
+  objectIds.set(node, id)
   return id
 }
 
-function fail(error: unknown): void {
+/** Whatever the platform threw, as an Error. A catch is a boundary: the
+ *  gate reports failures with a message and a stack, so the normalizing
+ *  happens once, here. */
+function asError(cause: unknown): Error {
+  return cause instanceof Error ? cause : new Error(String(cause))
+}
+
+function fail(error: Error): void {
   if (settled) return
   settled = true
   rejectDone(error)
@@ -608,7 +619,7 @@ function scheduleResult(): void {
           worstRgbError <= 1,
       })
     } catch (error) {
-      fail(error)
+      fail(asError(error))
     }
   }, 50)
 }
@@ -842,7 +853,7 @@ function BackingStoreResizeScene() {
             firstTexture.current === texture,
         })
       } catch (error) {
-        fail(error)
+        fail(asError(error))
       }
     },
     [renderer, scene],
@@ -895,7 +906,7 @@ function GateScene() {
         activeAcquisitionCycle = cycle
         setMounted(true)
       } catch (error) {
-        fail(error)
+        fail(asError(error))
       }
     }, 0)
   }, [scene])
@@ -988,7 +999,7 @@ function GateScene() {
 
         if (receiptIndex === 6) finish()
       } catch (error) {
-        fail(error)
+        fail(asError(error))
       }
     },
     [renderer, scene],

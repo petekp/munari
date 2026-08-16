@@ -10,6 +10,9 @@ import {
   resolveFrameSurfaceDevelopment,
 } from './FrameSurface'
 
+// SAFETY: a stub, not a canvas. The code under test reads `width` and
+// `height` and nothing else — a real element would drag a DOM into a test
+// that is about arithmetic.
 const canvas = () => ({ width: 4, height: 4 }) as HTMLCanvasElement
 
 const requirement = (

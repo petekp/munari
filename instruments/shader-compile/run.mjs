@@ -64,8 +64,8 @@ if (!CHROME) skip('no Chrome executable found (set CHROME_PATH)')
 const INSTALL = () => {
   window.__glslFails = []
   const classes = [
-    typeof WebGLRenderingContext === 'undefined' ? null : WebGLRenderingContext,
-    typeof WebGL2RenderingContext === 'undefined' ? null : WebGL2RenderingContext,
+    'WebGLRenderingContext' in globalThis ? WebGLRenderingContext : null,
+    'WebGL2RenderingContext' in globalThis ? WebGL2RenderingContext : null,
   ].filter(Boolean)
   for (const C of classes) {
     const shaderSource = C.prototype.shaderSource

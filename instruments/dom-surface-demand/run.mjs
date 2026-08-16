@@ -49,7 +49,7 @@ try {
   })
   const probe = await browser.newPage()
   const capable = await probe.evaluate(
-    () => typeof document.createElement('canvas').getContext('2d').drawElementImage === 'function',
+    () => 'drawElementImage' in document.createElement('canvas').getContext('2d'),
   )
   await probe.close()
   if (!capable) skip(`Chrome at ${chromePath} has no drawElementImage`)

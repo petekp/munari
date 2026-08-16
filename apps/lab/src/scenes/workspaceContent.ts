@@ -337,7 +337,8 @@ function deployPanel(): PanelSpec {
       const ver = root.querySelector<HTMLInputElement>('[data-ver]')!
       let timer = 0
       const onEnv = (e: Event) => {
-        const btn = (e.target as HTMLElement).closest('[data-env]')
+        if (!(e.target instanceof Element)) return
+        const btn = e.target.closest('[data-env]')
         if (!btn) return
         root.querySelectorAll('[data-env]').forEach((b) => b.removeAttribute('data-selected'))
         btn.setAttribute('data-selected', '1')
@@ -390,7 +391,8 @@ function synthPanel(): PanelSpec {
     feed: (root) => {
       const waves = root.querySelector<HTMLElement>('[data-waves]')!
       const onWave = (e: Event) => {
-        const btn = (e.target as HTMLElement).closest('[data-wave]')
+        if (!(e.target instanceof Element)) return
+        const btn = e.target.closest('[data-wave]')
         if (!btn) return
         root.querySelectorAll('[data-wave]').forEach((b) => b.removeAttribute('data-selected'))
         btn.setAttribute('data-selected', '1')

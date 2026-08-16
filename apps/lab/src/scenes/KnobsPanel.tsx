@@ -37,6 +37,7 @@ import {
   panelResize,
 } from './knobsLaw'
 import { PANEL_MAX_W, PANEL_MIN_W } from './knobsResize'
+import { closestFrom } from '../lib/dom'
 import './knobs.css'
 
 /* Graduations used to be a flat 11 on every dial, which made the ring
@@ -298,7 +299,7 @@ export function KnobsPanel() {
     knobsValues[key] = v
     // Every value change is a real mechanism moving: a graduation
     // clicking past the detent, or a bat lever landing.
-    if (typeof v === 'boolean') thunkToggle()
+    if (v === true || v === false) thunkToggle()
     else clickDetent()
     setValues((prev) => ({ ...prev, [key]: v }))
   }, [])
@@ -433,7 +434,7 @@ export function KnobsPanel() {
       onPointerUp={endDialDrag}
       onPointerCancel={endDialDrag}
       onFocusCapture={(event) => {
-        const anchor = (event.target as HTMLElement).closest<HTMLElement>('[data-munari-anchor]')
+        const anchor = closestFrom(event.target, '[data-munari-anchor]')
         if (anchor?.dataset.munariAnchor) panelCommands.revealAnchor?.(anchor.dataset.munariAnchor)
       }}
     >
@@ -499,7 +500,7 @@ export function KnobsPanel() {
           // The width the drag starts from is read off the panel, not
           // held in React. Nothing about this gesture goes through a
           // render, which is the point.
-          const root = (e.currentTarget as HTMLElement).parentElement
+          const root = e.currentTarget.parentElement
           panelResize.startW = Math.round(root?.getBoundingClientRect().width ?? 0)
           // Not e.clientX: a forwarded coordinate lives on the panel,
           // and this grip is about to move. The scene seeds the origin
@@ -508,7 +509,7 @@ export function KnobsPanel() {
         }}
         onKeyDown={(event) => {
           const current = Math.round(
-            (event.currentTarget.parentElement as HTMLElement | null)?.getBoundingClientRect().width ?? 320,
+            event.currentTarget.parentElement?.getBoundingClientRect().width ?? 320,
           )
           const step = event.shiftKey ? 32 : 8
           const next =

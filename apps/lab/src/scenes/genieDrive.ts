@@ -103,12 +103,21 @@ export function driveCommit(t: number, v: number, p: DriveParams): 0 | 1 {
  * and velocity are beneath perception (and t snaps then too — the swap
  * frame reads t, and identity is only exact at the walls).
  */
+/** One integration step, and what the caller does with it. */
+export interface DriveStep {
+  t: number
+  v: number
+  /** Speed at the wall, reported once, on the frame that lands. */
+  arrivalV: number
+  done: boolean
+}
+
 export function driveSpringStep(
   s: DriveState,
   target: 0 | 1,
   dt: number,
   p: DriveParams,
-): { t: number; v: number; arrivalV: number; done: boolean } {
+): DriveStep {
   const vIn = Math.max(-p.vMax, Math.min(p.vMax, s.v))
   const x0 = s.t - target
   const zw = p.zeta * p.omega

@@ -184,12 +184,15 @@ export function projectViewportOutline(
 
 /** The bounding box of a projected path, for laying a gradient along
  *  the picture's own height rather than the whole bitmap's. */
-export function pathBounds(pts: readonly EnvPixel[]): {
+/** A projected path's box, in bitmap pixels. */
+export interface PathBounds {
   minX: number
   minY: number
   maxX: number
   maxY: number
-} {
+}
+
+export function pathBounds(pts: readonly EnvPixel[]): PathBounds {
   let minX = Infinity
   let minY = Infinity
   let maxX = -Infinity

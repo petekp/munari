@@ -69,9 +69,10 @@ import {
   type LogoKnobs,
 } from './logoLaw'
 import { LETTER_FRAG, LETTER_VERT, MATTER_GATE, MATTER_PARAMS } from './logoShaders'
-import { FIELD_DS, LetterFields, readAlphaField } from './logoFields'
-import { traceContour, type ContourShape } from './logoContour'
+import { FIELD_DS, LetterFields, raster, readAlphaField } from './logoFields'
+import { traceContour, type InkIsland } from './logoContour'
 import { buildLetterMesh } from './logoSlab'
+import { textureSlot } from '../lib/uniforms'
 import './logo.css'
 
 const WORD = 'munari'
@@ -140,6 +141,10 @@ interface WordMetrics {
 
 /** 1 world unit = 1 CSS px, same rig as the veil. */
 function PixelCam() {
+  // SAFETY: r3f types the store's camera as the base class and hands back a
+  // PerspectiveCamera unless the Canvas asks for `orthographic`. This one
+  // does not, and could not: fitting the frustum to the viewport is what
+  // makes a CSS pixel a world unit, and orthographic has no fov to fit.
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
   const size = useThree((s) => s.size)
   useEffect(() => {
@@ -268,6 +273,24 @@ const OUTLINE_TEXELS = 384
  *  the eye sees at the edge, so it is small. */
 const SOLID_FULL_PX = 8
 
+/** The outline's schedule: what one letter has traced, and what it owes. */
+interface TraceSchedule {
+  /** The outline key the committed islands were traced UNDER. */
+  key: string
+  /** A checksum of the pixels that were read, so an unchanged glyph
+   *  costs nothing to re-check. */
+  sig: number
+  /** When the next readback is due, in the clock the frame loop reads. */
+  due: number
+  /** How many reads this change still gets before it settles. */
+  tries: number
+  /** The committed field itself, uploaded for the shader (tTrace) so the
+   *  face cuts on the curve the walls stand on. Null until the first
+   *  readback lands; owned here, because three will not free a
+   *  DataTexture it was only handed. */
+  tex: THREE.DataTexture | null
+}
+
 function MatterMaterial({
   i,
   fontPx,
@@ -290,30 +313,24 @@ function MatterMaterial({
    *  and tilt are deliberately absent — neither moves an outline, and
    *  re-tracing on a color fade would stall a frame for nothing. */
   outlineKey: string
-  /** The traced shapes, tagged with the key they were traced UNDER —
+  /** The traced islands, tagged with the key they were traced UNDER —
    *  the tag is what lets the letter refuse walls that belong to a
    *  glyph it no longer is. */
-  onOutline: (key: string, shapes: ContourShape[]) => void
+  onOutline: (key: string, islands: InkIsland[]) => void
 }) {
   // Inside Surface's material="none" slot: the Surface still owns the
   // texture (source format, premultiply, receipts); this material only
   // consumes it.
   const texture = useSurfaceTexture()
   const mat = useRef<THREE.ShaderMaterial>(null)
-  // The outline's schedule: which shape it last traced, a checksum of
-  // the pixels it traced, when the next read is due, how many reads
-  // this change still gets — and the committed field itself, uploaded
-  // for the shader (tTrace) so the face cuts on the curve the walls
-  // stand on.
-  const trace = useRef({
+  const trace = useRef<TraceSchedule>({
     key: '',
     sig: 0,
     due: 0,
     tries: 0,
-    tex: null as THREE.DataTexture | null,
+    tex: null,
   })
-  // The traced field's texture is owned by this schedule; three will
-  // not free a DataTexture it was only handed.
+  // Owned here (see TraceSchedule.tex), so freed here.
   useEffect(() => {
     const tr = trace.current
     return () => {
@@ -323,11 +340,11 @@ function MatterMaterial({
   }, [])
   const uniforms = useMemo(
     () => ({
-      tMap: { value: null as THREE.Texture | null },
-      tFine: { value: null as THREE.Texture | null },
-      tCoarse: { value: null as THREE.Texture | null },
-      tTrace: { value: null as THREE.Texture | null },
-      tHalo: { value: null as THREE.Texture | null },
+      tMap: textureSlot(),
+      tFine: textureSlot(),
+      tCoarse: textureSlot(),
+      tTrace: textureSlot(),
+      tHalo: textureSlot(),
       uTexel: { value: new THREE.Vector2(1e-3, 1e-3) },
       uTexelF: { value: new THREE.Vector2(1e-2, 1e-2) },
       uTexelC: { value: new THREE.Vector2(1e-2, 1e-2) },
@@ -385,7 +402,7 @@ function MatterMaterial({
     // first frames, and LOD tiers swap it under the same uuid-keyed
     // material.
     u.tMap.value = texture ?? null
-    const img = texture?.image as { width: number; height: number } | undefined
+    const img = raster(texture)
     const b = boxRef.current
     // CSS px → texels: the texture covers the capture box at some LOD
     // scale, and every authored offset must survive a tier change.
@@ -601,15 +618,15 @@ function MatterLetter({
   useEffect(() => () => fields.dispose(), [fields])
 
   // The letter's body (logoSlab): a dense sheet, plus walls once the
-  // outline has been traced. Shapes arrive from the material's frame
+  // outline has been traced. Islands arrive from the material's frame
   // write, which is the only place the live texture exists. Until then
   // — and whenever extrusion is off — this is the sheet alone, which is
   // exactly what the letter has always been.
-  const [traced, setTraced] = useState<{ key: string; shapes: ContourShape[] } | null>(null)
+  const [traced, setTraced] = useState<{ key: string; islands: InkIsland[] } | null>(null)
   const geometry = useMemo(() => {
     const sx = Math.max(8, Math.min(160, Math.round(box.w / SHEET_STEP_PX)))
     const sy = Math.max(8, Math.min(160, Math.round(box.h / SHEET_STEP_PX)))
-    return buildLetterMesh(box.w, box.h, sx, sy, traced?.shapes ?? null)
+    return buildLetterMesh(box.w, box.h, sx, sy, traced?.islands ?? null)
   }, [box.w, box.h, traced])
   useEffect(() => () => geometry.dispose(), [geometry])
   // Everything that can change the glyph's SHAPE. A re-roll that only
@@ -957,7 +974,7 @@ function MatterLetter({
           fields={fields}
           solid={solid}
           outlineKey={outlineKey}
-          onOutline={(key, shapes) => setTraced({ key, shapes })}
+          onOutline={(key, islands) => setTraced({ key, islands })}
         />
       </SurfaceApp>
     </group>
@@ -1152,7 +1169,7 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
   // neighbors — the constraint that keeps the word six distinct voices.
   const swapLetter = useCallback((i: number) => {
     setPoses((prev) => {
-      const near = [prev[i - 1], prev[i + 1]].filter(Boolean) as LetterPose[]
+      const near = [prev[i - 1], prev[i + 1]].filter((p) => p !== undefined)
       const next = prev.slice()
       next[i] = rollPose(
         rRef.current,

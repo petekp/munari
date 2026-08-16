@@ -123,7 +123,13 @@ export function genieRestBottomVelocity(tVelocity: number, p: GenieParams): numb
 const LOOP_START = 0.66
 const LOOP_END = 0.08
 
-function loopOffset(q: number, radius: number): { x: number; y: number } {
+/** A displacement in the sheet's own plane. */
+interface Offset {
+  x: number
+  y: number
+}
+
+function loopOffset(q: number, radius: number): Offset {
   if (radius === 0 || q >= LOOP_START || q <= LOOP_END) return { x: 0, y: 0 }
   // One full turn around a circle entered TANGENT to the drain. A vertical
   // path can only meet a circle tangentially at the circle's side, so the
@@ -159,12 +165,20 @@ function loopOffset(q: number, radius: number): { x: number; y: number } {
  * to know how hard a piece of the sheet is being squeezed would
  * otherwise have to evaluate this function twice to find out.
  */
+/** Where one sheet vertex lands, and the local horizontal stretch there. */
+export interface WarpPoint {
+  x: number
+  y: number
+  /** Width at this row over rest width — 1 at the page, small at the slot. */
+  k: number
+}
+
 export function genieWarp(
   u: number,
   v: number,
   t: number,
   p: GenieParams,
-): { x: number; y: number; k: number } {
+): WarpPoint {
   const yBot0 = -p.h / 2
 
   // The two edges own the timing. The bottom edge is the leading edge:

@@ -147,13 +147,16 @@ describe('measureSurfaceChrome', () => {
 })
 
 describe('chromeEquals', () => {
+  /** One corner set per call — the test below mutates the second copy. */
+  const FOUR_EQUAL_RADII = (): [number, number, number, number] => [14, 14, 14, 14]
+
   it('compares radii and layers by value', () => {
     const a = {
-      radii: [14, 14, 14, 14] as [number, number, number, number],
+      radii: FOUR_EQUAL_RADII(),
       shadow: parseBoxShadow('rgba(0, 0, 0, 0.3) 0px 6px 18px -12px'),
     }
     const b = {
-      radii: [14, 14, 14, 14] as [number, number, number, number],
+      radii: FOUR_EQUAL_RADII(),
       shadow: parseBoxShadow('rgba(0, 0, 0, 0.3) 0px 6px 18px -12px'),
     }
     expect(chromeEquals(a, b)).toBe(true)

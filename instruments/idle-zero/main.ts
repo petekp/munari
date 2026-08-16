@@ -27,7 +27,7 @@ const hud = document.getElementById('hud')!
  * 2D context or the machine can't run this gate. */
 function detectCapability(): boolean {
   const ctx = document.createElement('canvas').getContext('2d')
-  return typeof (ctx as unknown as { drawElementImage?: unknown }).drawElementImage === 'function'
+  return ctx !== null && 'drawElementImage' in ctx
 }
 
 /** A realistic quiescent card: text, border, radius, background — the

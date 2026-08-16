@@ -20,12 +20,10 @@ function channelEl(): HTMLElement {
     const style = real(target)
     if (target === el) {
       const orig = style.getPropertyValue.bind(style)
-      return new Proxy(style, {
-        get: (t, k) =>
-          k === 'getPropertyValue'
-            ? (p: string) => (p === '--depth' ? value : orig(p))
-            : Reflect.get(t, k),
-      }) as CSSStyleDeclaration
+      // SAFETY: the channel reads exactly one thing off a computed style —
+      // `getPropertyValue` — so the stub carries that method and nothing
+      // else. A channel that grew a second reader would fail here loudly.
+      return { getPropertyValue: (p: string) => (p === '--depth' ? value : orig(p)) } as CSSStyleDeclaration
     }
     return style
   })
@@ -47,7 +45,9 @@ afterEach(() => {
 
 const flush = () => new Promise<void>((r) => queueMicrotask(() => r()))
 const transition = (el: HTMLElement, type: string, propertyName = '--depth') => {
-  const e = new Event(type, { bubbles: true }) as TransitionEvent & { propertyName: string }
+  const e = new TransitionEvent(type, { bubbles: true })
+  // happy-dom drops `propertyName` from the init, and the channel keys its
+  // whole sampling window on that one field.
   Object.defineProperty(e, 'propertyName', { value: propertyName })
   el.dispatchEvent(e)
 }

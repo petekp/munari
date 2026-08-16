@@ -90,6 +90,9 @@ export function FocusOrbitRig({
   apiRef,
 }: FocusOrbitRigProps) {
   const camera = useThree((s) => s.camera)
+  // SAFETY: r3f's store types `controls` as a bare event target. OrbitLike
+  // names only the members this rig reads, all optional, so a control set
+  // that lacks them reads as "no limits" rather than throwing.
   const controls = useThree((s) => s.controls as OrbitLike | null)
   const gl = useThree((s) => s.gl)
   const focus = useFocusScene()

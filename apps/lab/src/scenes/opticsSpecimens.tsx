@@ -109,14 +109,19 @@ export function LunaBar() {
 
 type Op = '+' | '−' | '×' | '÷'
 
-const APPLY: Record<Op, (a: number, b: number) => number> = {
-  '+': (a, b) => a + b,
-  '−': (a, b) => a - b,
-  '×': (a, b) => a * b,
-  '÷': (a, b) => (b === 0 ? NaN : a / b),
+const APPLY = {
+  '+': (a: number, b: number) => a + b,
+  '−': (a: number, b: number) => a - b,
+  '×': (a: number, b: number) => a * b,
+  '÷': (a: number, b: number) => (b === 0 ? NaN : a / b),
+} satisfies Record<Op, (a: number, b: number) => number>
+
+interface KeyCap {
+  label: string
+  kind?: 'op' | 'eq' | 'clear'
 }
 
-const KEYS: Array<{ label: string; kind?: 'op' | 'eq' | 'clear' }> = [
+const KEYS: KeyCap[] = [
   { label: 'C', kind: 'clear' },
   { label: '±', kind: 'op' },
   { label: '%', kind: 'op' },
@@ -192,6 +197,8 @@ export function Calculator() {
         return
       }
       default: {
+        // SAFETY: the switch above has taken every non-operator cap, so the
+        // default arm is reached only by the four in APPLY.
         const next = label as Op
         // Chaining: a pending operator resolves before the new one is
         // taken, so 2 + 3 × 4 reads left to right like the hardware does.

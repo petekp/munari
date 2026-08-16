@@ -149,11 +149,19 @@ export function crossingFrame(
   return { ...state, ramp }
 }
 
+/** One yes/no per side — the page's compositor and the canvas. Both
+ *  theorems below answer in this shape, which is why they can be
+ *  compared phase by phase. */
+export interface SideFlags {
+  page: boolean
+  gl: boolean
+}
+
 /** Who DRAWS pixels in a phase. The accounting theorem —
  *  `page || gl` for every phase — is the guarantee in law form,
  *  and the conformance contract walks every phase to pin it. Drawing is
  *  not showing: see crossingPresentation for who may be SEEN. */
-export function crossingDraws(phase: CrossingPhase): { page: boolean; gl: boolean } {
+export function crossingDraws(phase: CrossingPhase): SideFlags {
   return {
     page: phase === 'page' || phase === 'lifting',
     gl: phase !== 'page',
@@ -174,7 +182,7 @@ export function crossingDraws(phase: CrossingPhase): { page: boolean; gl: boolea
  * consumer wires this to the canvas's own visibility, never to mount —
  * an unmounted canvas cannot draw, an uncomposited one still can.
  */
-export function crossingPresentation(phase: CrossingPhase): { page: boolean; gl: boolean } {
+export function crossingPresentation(phase: CrossingPhase): SideFlags {
   return {
     page: phase === 'page' || phase === 'lifting',
     gl: phase === 'gl' || phase === 'landing',

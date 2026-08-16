@@ -151,7 +151,8 @@ export function CanvasPointerGate({
         y: event.clientY,
         until: performance.now() + 1000,
       }
-      if (event.target === canvas || canvas.contains(event.target as Node)) return
+      if (event.target === canvas) return
+      if (event.target instanceof Node && canvas.contains(event.target)) return
 
       // The page received the cold contact because the canvas was clear.
       // Retarget this one event through R3F and stop the false page story.
