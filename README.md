@@ -2,21 +2,13 @@
 
 ## Munari seamlessly bridges HTML with WebGL, unlocking a new frontier of visual expression on the web.
 
-Munari enables you to seamlessly 'lift' any single or group of HTML elements, including whole pages, into a WebGL context, and back, on demand. Seamlessness is the key and focus on Munari. Here's what happens when an element is lifted into WebGL and returned back to the DOM:
+Munari enables you to seamlessly 'lift' any single or group of HTML elements, including whole pages, into a WebGL context, and back, on demand. Seamlessness is the key and focus on Munari. Here's what happens when an element is lifted into WebGL and returned back to the DOM.
 
-- A copy of the element warms up in the scene, matched to the page pixel
-  for pixel, while the page keeps showing the original.
-- The two swap only once the scene has proven it can draw. Both sides look
-  the same at that instant, so there is nothing to flicker.
-- In the air it is still a live element. You can type in it, select its
-  text, and click things inside it.
-- The page holds its spot open the whole time, so the layout never jumps
-  and the element has somewhere to land.
-- Bring it back and the reverse runs: it settles into the space it left
-  and goes back to being ordinary DOM.
+The hard part is the swap. Hide the page and show the scene on different frames and you get a flash, a jump, or a frame of nothing at all. So the scene draws its copy underneath first, same size, same place, invisible, and the page keeps holding until that copy proves it has painted. When the two trade places they are identical, so there is nothing to see.
 
-The protocol behind this, and the `useLift` hook that drives it, is in
-[packages/core](packages/core/README.md).
+In the air it is still the same element. You can type in it, select its text, click things inside it. The page holds its old spot open the whole time, so sending it back drops it where it started and it goes on being ordinary DOM.
+
+The `useLift` hook drives it. The protocol underneath is in [packages/core](packages/core/README.md).
 
 I'm continually surprised at what this simple technique can unlock, and I'm often adding new examples in the labs.
 
