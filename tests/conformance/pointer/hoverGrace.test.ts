@@ -103,9 +103,11 @@ describe('createGraceTracker', () => {
     contentChild = document.getElementById('child')!
     log = []
     for (const type of ['pointerover', 'pointerenter', 'pointerout', 'pointerleave'])
-      contentRoot.addEventListener(type, (e) =>
-        log.push({ type, target: (e.target as Element).id }),
-      )
+      contentRoot.addEventListener(type, (e) => {
+        // An event with no element target never happens here; if one did, it
+        // would drop out of the log and fail the test that expected it.
+        if (e.target instanceof Element) log.push({ type, target: e.target.id })
+      })
     quad = QUAD
     tracker = createGraceTracker({
       trigger: () => trigger,
@@ -250,7 +252,7 @@ describe('observeGrace', () => {
     const calls: string[] = []
     const fake: GraceTracker = {
       move: (x, y) => calls.push(`move ${x},${y}`),
-      leave: (t) => calls.push(`leave ${(t as HTMLElement).id}`),
+      leave: (t) => calls.push(`leave ${t.id}`),
       reset: () => calls.push('reset'),
       armed: false,
     }

@@ -78,7 +78,7 @@ function ensure(): AudioContext | null {
   if (!ctx) {
     try {
       ctx = new AudioContext()
-      if (typeof ctx.createStereoPanner === 'function') {
+      if ('createStereoPanner' in ctx) {
         bus = ctx.createStereoPanner()
         bus.connect(ctx.destination)
       }

@@ -1,4 +1,10 @@
+// @vitest-environment happy-dom
+//
+// Real elements, not stubs: the selector the collector uses is half of what
+// this pins, and a stub that answers every query with the same list would
+// pass whatever selector the code drifted to.
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { DomPaintReceipt } from '@petepetrash/munari'
 import {
@@ -6,28 +12,36 @@ import {
   projectSurfaceAnchor,
 } from '../../registry/surface-anchors/surfaceAnchors'
 
-const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
+const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8')
 const paint = (generation: number, width = 200, height = 100): DomPaintReceipt =>
   Object.freeze({
     frame: Object.freeze({ sourceId: 7, generation }),
     paintedSize: Object.freeze([width, height] as const),
     storeSize: Object.freeze([width * 2, height * 2] as const),
   })
-const box = (left: number, top: number, width: number, height: number) => ({
+const box = (left: number, top: number, width: number, height: number): DOMRect => ({
   left,
   top,
   right: left + width,
   bottom: top + height,
   width,
   height,
+  x: left,
+  y: top,
+  toJSON: () => ({}),
 })
-const node = (key: string, rect: ReturnType<typeof box>) =>
-  ({ dataset: { munariAnchor: key }, getBoundingClientRect: () => rect }) as unknown as HTMLElement
-const root = (nodes: HTMLElement[], rect = box(10, 20, 200, 100)) =>
-  ({
-    getBoundingClientRect: () => rect,
-    querySelectorAll: () => nodes,
-  }) as unknown as HTMLElement
+const node = (key: string, rect: DOMRect) => {
+  const el = document.createElement('div')
+  el.dataset.munariAnchor = key
+  el.getBoundingClientRect = () => rect
+  return el
+}
+const root = (nodes: HTMLElement[], rect = box(10, 20, 200, 100)) => {
+  const el = document.createElement('div')
+  el.append(...nodes)
+  el.getBoundingClientRect = () => rect
+  return el
+}
 
 describe('surface-anchor registry weld', () => {
   it('is byte-identical to the two-consumer lab module', () => {

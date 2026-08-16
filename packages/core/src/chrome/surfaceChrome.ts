@@ -246,7 +246,8 @@ export function measureSurfaceChrome(root: HTMLElement): SurfaceChrome {
       }
     }
     if (radii && shadow) break
-    el = el.childElementCount === 1 ? (el.firstElementChild as HTMLElement) : null
+    const only: Element | null = el.childElementCount === 1 ? el.firstElementChild : null
+    el = only instanceof HTMLElement ? only : null
   }
   if (!radii && !shadow) return EMPTY_CHROME
   return { radii: radii ?? [0, 0, 0, 0], shadow: shadow ?? [] }

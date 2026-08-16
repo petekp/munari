@@ -27,12 +27,16 @@ export interface Vec3Like {
   x: number
   y: number
   z: number
-  set(x: number, y: number, z: number): unknown
+  /** Called for effect; core ignores what it hands back. `void` is what
+   *  core needs, and a method returning `this` (THREE's does) satisfies
+   *  it — so this stays the loosest contract that still says something. */
+  set(x: number, y: number, z: number): void
 }
 
 /** What a surface sample writes into. THREE.Vector3 qualifies. */
 export interface SampleVec extends Vec3Like {
-  normalize(): unknown
+  /** Called for effect, like `set`. */
+  normalize(): void
 }
 
 /**

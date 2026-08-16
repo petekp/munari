@@ -41,8 +41,19 @@ const viewports = [
 
 let browser
 let server
+
+// A gate that dies at a hard deadline with no output cannot be read. Each
+// phase names itself as it begins, so the deadline reports where the time
+// went instead of only that it ran out.
+const started = Date.now()
+let phase = 'startup'
+const step = (label) => {
+  phase = label
+  console.log(`knobs-viewport ${((Date.now() - started) / 1000).toFixed(1)}s · ${label}`)
+}
+
 const deadline = setTimeout(() => {
-  console.error('knobs-viewport gate: hard 120s deadline hit')
+  console.error(`knobs-viewport gate: hard 120s deadline hit during ${phase}`)
   process.exit(1)
 }, 120_000)
 
@@ -57,11 +68,13 @@ try {
       ...(process.env.CI ? ['--no-sandbox'] : []),
     ],
   })
+  step('chrome launched')
   const capability = await browser.newPage()
   const supported = await capability.evaluate(
-    () => typeof document.createElement('canvas').getContext('2d').drawElementImage === 'function',
+    () => 'drawElementImage' in document.createElement('canvas').getContext('2d'),
   )
   await capability.close()
+  step(`capability probed (drawElementImage: ${supported})`)
   if (!supported) {
     await browser.close()
     browser = null
@@ -69,6 +82,7 @@ try {
   } else {
     server = await createServer({ root: 'apps/lab', logLevel: 'warn', server: { port: 0 } })
     await server.listen()
+    step('vite listening')
     const port = server.config.server.port ?? server.httpServer.address().port
     const failures = []
     let baseline = null
@@ -82,13 +96,16 @@ try {
           pageErrors.push(message.text())
       })
       await page.setViewport({ width, height, deviceScaleFactor: 1 })
+      step(`${width}x${height} loading`)
       await page.goto(`http://localhost:${port}/?scene=knobs&probe=knobs-resize`, {
         waitUntil: 'load',
       })
+      step(`${width}x${height} loaded`)
       await page.waitForFunction(
         () => window.__knobsResizeProbe?.snapshot().presented && document.querySelector('.knb-panel'),
         { timeout: 20_000 },
       )
+      step(`${width}x${height} presented`)
       await frames(page, 8)
 
       const initial = await page.evaluate(() => {

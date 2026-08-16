@@ -27,9 +27,17 @@ import { flushSync } from 'react-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { useSourceHost } from './useSourceHost'
 
+// React reads this global to decide whether renders must be wrapped in
+// `act`. It is React's own contract, not ours, so it is declared rather
+// than asserted onto globalThis at the point of use.
+declare global {
+  // eslint-disable-next-line no-var
+  var IS_REACT_ACT_ENVIRONMENT: boolean
+}
+
 // `act` flushes everything, which would erase the distinction under test.
 // These renders are driven by hand instead.
-;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = false
+globalThis.IS_REACT_ACT_ENVIRONMENT = false
 
 interface Size {
   w: string
@@ -43,7 +51,8 @@ let root: ReturnType<typeof createRoot>
 let inCommit: (Size | null)[]
 
 const hostSize = (): Size | null => {
-  const node = parked.firstElementChild as HTMLElement | null
+  const first = parked.firstElementChild
+  const node = first instanceof HTMLElement ? first : null
   return node ? { w: node.style.width, h: node.style.height } : null
 }
 

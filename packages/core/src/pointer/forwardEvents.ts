@@ -56,7 +56,7 @@ export function deepestElementAt(root: Element, x: number, y: number): Element |
   const doc = root.ownerDocument
   const view = doc.defaultView
   if (
-    typeof doc.elementsFromPoint === 'function' &&
+    'elementsFromPoint' in doc &&
     view &&
     x >= 0 &&
     y >= 0 &&
@@ -118,7 +118,7 @@ const POINTER_FOCUS_ATTR = 'data-pointer-focus'
  */
 function ringSuppressible(el: Element): boolean {
   if (el instanceof HTMLTextAreaElement) return false
-  if ((el as HTMLElement).isContentEditable) return false
+  if (el instanceof HTMLElement && el.isContentEditable) return false
   if (el instanceof HTMLInputElement) {
     return ['button', 'submit', 'reset', 'checkbox', 'radio', 'range', 'color', 'file', 'image'].includes(el.type)
   }
@@ -658,12 +658,13 @@ export function forwardPointer(
     swapChainAttr(root, m.active, null, ACTIVE_ATTR)
     m.active = null
     // Synthetic clicks don't run the browser's focus fixup, so do it by hand.
-    const focusable = target.closest(FOCUSABLE) as HTMLElement | null
+    const focusable = target.closest<HTMLElement>(FOCUSABLE)
     if (focusable) {
       focusable.focus({ preventScroll: true })
       focused = document.activeElement === focusable
     } else {
-      ;(document.activeElement as HTMLElement | null)?.blur?.()
+      const active = document.activeElement
+      if (active instanceof HTMLElement) active.blur()
     }
     // Departures deferred during the drag unwind now — the order a real
     // capture ends in: the up reaches its target first, then the boundary
@@ -891,9 +892,8 @@ export function trackDrag(): () => void {
  * check simply re-asks next move and is refused again.
  */
 export function guardPointerCapture(host: HTMLElement): () => void {
-  const onGot = (e: Event) => {
-    const t = e.target as Element
-    t.releasePointerCapture?.((e as PointerEvent).pointerId)
+  const onGot = (e: PointerEvent) => {
+    if (e.target instanceof Element) e.target.releasePointerCapture?.(e.pointerId)
   }
   host.addEventListener('gotpointercapture', onGot, true)
   return () => host.removeEventListener('gotpointercapture', onGot, true)

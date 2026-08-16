@@ -332,11 +332,18 @@ export function needsReframe(
  * An axis where the rect outsizes the inset box centers instead — there is
  * no "inside", so aim at balance.
  */
+/** How far the view must travel on each axis to bring a rect inside the
+ *  margins — zero on an axis that already fits. */
+export interface ReframeDelta {
+  dx: number
+  dy: number
+}
+
 export function reframeDelta(
   r: { x: number; y: number; w: number; h: number },
   vp: Viewport,
   margin = 24,
-): { dx: number; dy: number } {
+): ReframeDelta {
   const axis = (pos: number, size: number, span: number): number => {
     const lo = margin
     const hi = span - margin

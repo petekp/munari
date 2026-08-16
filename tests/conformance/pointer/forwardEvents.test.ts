@@ -27,19 +27,13 @@ import {
 
 const ROOT = { left: 0, top: 0, right: 360, bottom: 460 }
 
+/** The hover-crossing events the log below is built from. */
+const RECORDED = ['pointerover', 'pointerenter', 'pointerout', 'pointerleave', 'pointermove'] as const
+
 /** Give `el` a fixed layout box. */
 function box(el: Element, left: number, top: number, right: number, bottom: number) {
-  el.getBoundingClientRect = () =>
-    ({
-      left,
-      top,
-      right,
-      bottom,
-      x: left,
-      y: top,
-      width: right - left,
-      height: bottom - top,
-    }) as DOMRect
+  const rect = new DOMRect(left, top, right - left, bottom - top)
+  el.getBoundingClientRect = () => rect
 }
 
 /** Texture coordinates that land on the centre of a box inside ROOT. */
@@ -111,10 +105,12 @@ beforeEach(() => {
   // non-bubbling event caught on an ancestor is distinguishable from one
   // dispatched there directly.
   const record = (el: Element | Document, name: string) => {
-    for (const type of ['pointerover', 'pointerenter', 'pointerout', 'pointerleave', 'pointermove']) {
+    for (const type of RECORDED) {
       el.addEventListener(type, (e) => {
-        const pe = e as PointerEvent
-        log.push({ type, at: name, x: pe.clientX, y: pe.clientY })
+        // A document and an element do not share one typed listener overload,
+        // so the narrowing happens here. Anything that is not a pointer event
+        // would drop out of the log, which fails the test that expected it.
+        if (e instanceof PointerEvent) log.push({ type, at: name, x: e.clientX, y: e.clientY })
       })
     }
   }
@@ -616,7 +612,7 @@ describe('silencing the trusted canvas move', () => {
     let reached = 0
     const reasoner = () => reached++
     document.addEventListener('pointermove', reasoner)
-    host.addEventListener('pointermove', (e) => silenceHoverMove(e as PointerEvent))
+    host.addEventListener('pointermove', silenceHoverMove)
     host.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, buttons }))
     document.removeEventListener('pointermove', reasoner)
     host.remove()
@@ -642,8 +638,13 @@ describe('stacking order (z-index) in the hit test', () => {
   // own hit test — and only fall back to the walk when the environment
   // cannot answer (no layout, point outside the viewport).
 
+  // The document's own hit test, which happy-dom does not ship. `Partial` is
+  // what makes installing and removing it expressible: the real Document
+  // declares the method required.
+  const hitTest: Partial<Document> = document
+
   afterEach(() => {
-    delete (document as { elementsFromPoint?: unknown }).elementsFromPoint
+    delete hitTest.elementsFromPoint
   })
 
   it('prefers the browser paint-order stack over DOM order', () => {
@@ -654,7 +655,7 @@ describe('stacking order (z-index) in the hit test', () => {
     box(toast, 200, 300, 340, 360)
     box(overlay, 0, 0, 360, 460)
     // The browser says the toast paints on top at this point.
-    ;(document as { elementsFromPoint?: unknown }).elementsFromPoint = () => [
+    hitTest.elementsFromPoint = () => [
       toast,
       overlay,
       root,
@@ -667,7 +668,7 @@ describe('stacking order (z-index) in the hit test', () => {
   it('returns null when the browser stack holds nothing of this root', () => {
     // Clear glass: the stack exists (environment can answer) but nothing of
     // ours is hittable at the point — and the walk agrees (no painted box).
-    ;(document as { elementsFromPoint?: unknown }).elementsFromPoint = () => [
+    hitTest.elementsFromPoint = () => [
       document.body,
       document.documentElement,
     ]
@@ -675,7 +676,7 @@ describe('stacking order (z-index) in the hit test', () => {
   })
 
   it('falls back to the geometric walk when the environment cannot answer', () => {
-    ;(document as { elementsFromPoint?: unknown }).elementsFromPoint = () => []
+    hitTest.elementsFromPoint = () => []
     const on = uvOf(...TRIGGER_BOX)
     expect(deepestElementAt(root, on.x, on.y)).toBe(trigger)
   })
@@ -892,7 +893,7 @@ describe('the document-capture drag arbiter', () => {
     // with no drag of ours live is a foreign capture — see the silence
     // describe below), so the drag is opened first.
     const seen: number[] = []
-    trigger.addEventListener('pointermove', (e) => seen.push((e as PointerEvent).buttons))
+    trigger.addEventListener('pointermove', (e) => seen.push(e.buttons))
     forwardPointer(root, at.u, at.v, 'move')
     forwardPointer(root, at.u, at.v, 'down')
     forwardPointer(root, at.u, at.v, 'move', pointerSample({ buttons: 1 }))
@@ -1016,8 +1017,8 @@ describe('pointer identity and cancellation', () => {
 
   it('preserves the complete native sample through down and move', () => {
     const seen: PointerEvent[] = []
-    trigger.addEventListener('pointerdown', (event) => seen.push(event as PointerEvent))
-    trigger.addEventListener('pointermove', (event) => seen.push(event as PointerEvent))
+    trigger.addEventListener('pointerdown', (event) => seen.push(event))
+    trigger.addEventListener('pointermove', (event) => seen.push(event))
 
     forwardPointer(root, at.u, at.v, 'down', pen)
     forwardPointer(root, at.u, at.v, 'move', pen)
@@ -1072,8 +1073,7 @@ describe('pointer identity and cancellation', () => {
   it('keeps the latest identity for boundary and departure events', () => {
     const identities: Array<[number, string]> = []
     trigger.addEventListener('pointerleave', (event) => {
-      const pointer = event as PointerEvent
-      identities.push([pointer.pointerId, pointer.pointerType])
+      identities.push([event.pointerId, event.pointerType])
     })
     forwardPointer(root, at.u, at.v, 'move', { ...pen, buttons: 0, pressure: 0 })
     clearPointerState(root)
@@ -1179,8 +1179,7 @@ describe('the pointer-capture guard', () => {
     document.body.append(host)
 
     const released: number[] = []
-    ;(child as unknown as { releasePointerCapture: (id: number) => void }).releasePointerCapture =
-      (id) => released.push(id)
+    child.releasePointerCapture = (id) => void released.push(id)
 
     const unguard = guardPointerCapture(host)
     child.dispatchEvent(new PointerEvent('gotpointercapture', { bubbles: true, pointerId: 7 }))

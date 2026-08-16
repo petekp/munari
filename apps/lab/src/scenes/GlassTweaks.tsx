@@ -19,31 +19,32 @@ import {
   GLASS_KNOB_GROUPS,
   glassKnobs,
   type Knob,
-  type GlassSceneKnobs,
 } from './glassKnobs'
-import { sdfPanelParams } from './glassSdf'
+import { sdfPanelParams, type GlassParams } from './glassSdf'
 
+// Every knob addresses a number. The two strings in a panel's params (`tint`
+// and `glowColor`) have no knob — the colour inputs write them directly.
 type Bag = Record<string, number>
+type NumericParams = Omit<GlassParams, 'tint' | 'glowColor'>
 
 /** Every live object a knob might address, resolved at the moment of use. */
 function targetsOf(target: Knob['target']): Bag[] {
-  if (target === 'scene') return [glassKnobs as unknown as Bag]
+  if (target === 'scene') return [glassKnobs]
   const out: Bag[] = []
   if (target === 'card' || target === 'both') {
-    const p = sdfPanelParams('glass-card')
-    if (p) out.push(p as unknown as Bag)
+    const p: NumericParams | null = sdfPanelParams('glass-card')
+    if (p) out.push(p)
   }
   if (target === 'pill' || target === 'both') {
-    const p = sdfPanelParams('glass-pill')
-    if (p) out.push(p as unknown as Bag)
+    const p: NumericParams | null = sdfPanelParams('glass-pill')
+    if (p) out.push(p)
   }
   return out
 }
 
 function readKnob(k: Knob): number {
   const [first] = targetsOf(k.target)
-  const v = first?.[k.key]
-  return typeof v === 'number' ? v : 0
+  return first?.[k.key] ?? 0
 }
 
 function writeKnob(k: Knob, value: number) {
@@ -128,10 +129,7 @@ export function GlassTweakPanel() {
   // prints the current state of every knob as a paste-ready object, which is
   // how a value found by dragging becomes a value committed to the file.
   const dump = useCallback(() => {
-    const scene: Record<string, number> = {}
-    for (const key of Object.keys(glassKnobs)) {
-      scene[key] = glassKnobs[key as keyof GlassSceneKnobs]
-    }
+    const scene = { ...glassKnobs }
     const out = {
       glassKnobs: scene,
       card: sdfPanelParams('glass-card'),

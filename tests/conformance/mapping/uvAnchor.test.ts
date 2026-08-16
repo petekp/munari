@@ -24,9 +24,7 @@ describe('sampleSurfaceAtUV on PlaneGeometry', () => {
 
   it('handles exact corners and edges of UV space', () => {
     const geo = new THREE.PlaneGeometry(2, 2, 3, 3)
-    for (const [u, v] of [[0, 0], [1, 1], [0, 1], [1, 0], [0.5, 0], [0, 0.5]] as Array<
-      [number, number]
-    >) {
+    for (const [u, v] of [[0, 0], [1, 1], [0, 1], [1, 0], [0.5, 0], [0, 0.5]] as const) {
       const s = sampleSurfaceAtUV(geo, u, v)
       expect(s, `uv(${u},${v})`).not.toBeNull()
       expect(close(s!.position.x, (u - 0.5) * 2)).toBe(true)
@@ -56,9 +54,7 @@ describe('sampleSurfaceAtUV on CylinderGeometry (curved surface)', () => {
   const geo = new THREE.CylinderGeometry(R, R, H, 32, 4, true)
 
   it('sampled points lie on the cylinder shell with outward normals', () => {
-    for (const [u, v] of [[0.1, 0.2], [0.4, 0.5], [0.8, 0.9], [0.5, 0.5]] as Array<
-      [number, number]
-    >) {
+    for (const [u, v] of [[0.1, 0.2], [0.4, 0.5], [0.8, 0.9], [0.5, 0.5]] as const) {
       const s = sampleSurfaceAtUV(geo, u, v)
       expect(s, `uv(${u},${v})`).not.toBeNull()
       const radial = Math.hypot(s!.position.x, s!.position.z)

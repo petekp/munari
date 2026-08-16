@@ -284,9 +284,19 @@ function LightTable({ w, h, z }: { w: number; h: number; z: number }) {
  * view belongs to whoever is orbiting it, and a scene that kept re-asserting
  * its opinion would fight the hand on the mouse.
  */
+
+/** All this scene needs from OrbitControls: re-aim it after a re-fit. */
+interface OrbitTarget {
+  target?: THREE.Vector3
+  update?: () => void
+}
+
 function ObliqueArrival() {
   const camera = useThree((s) => s.camera)
-  const controls = useThree((s) => s.controls) as { target?: THREE.Vector3; update?: () => void } | null
+  // SAFETY: r3f types its controls slot as the base EventDispatcher, which
+  // carries neither member. Whether OrbitControls is mounted at all is a
+  // scene decision, so both are read optionally rather than assumed.
+  const controls = useThree((s) => s.controls) as OrbitTarget | null
   useEffect(() => {
     const { distance: d, azimuth: a, elevation: e } = VIEW
     camera.position.set(d * Math.cos(e) * Math.sin(a), CENTER_Y + d * Math.sin(e), d * Math.cos(e) * Math.cos(a))
@@ -302,7 +312,7 @@ export function Explode() {
 
   // The console/automation seam, matching the other scenes' house style.
   useEffect(() => {
-    ;(window as unknown as { __explode?: unknown }).__explode = {
+    window.__explode = {
       plates: () => snapshot.plates.map((p) => ({ id: p.feature.id, w: p.width, h: p.height })),
       subject: () => snapshot.subject,
       spread: () => control.spread,

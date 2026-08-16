@@ -1,3 +1,12 @@
+// @vitest-environment happy-dom
+//
+// The two doubles below are REAL elements with the one origin-trial member
+// each stubbed. That is the difference between a test that proves the
+// controller drives a canvas and a test that proves it drives an object
+// shaped like the controller's own idea of one: the attributes it writes are
+// read back off the element that received them, not out of a Map the double
+// kept in parallel.
+
 import { describe, expect, it, vi } from 'vitest'
 import {
   GENIE_FILM_DATA_ATTRIBUTES as DATA,
@@ -6,58 +15,64 @@ import {
   createGenieFilmController,
 } from './genieFilm'
 
+/** What the controller wrote, as the element itself holds it. */
+interface AttributeLog {
+  get(name: string): string | undefined
+  has(name: string): boolean
+}
+
+function attributeLog(element: Element): AttributeLog {
+  return {
+    get: (name) => element.getAttribute(name) ?? undefined,
+    has: (name) => element.hasAttribute(name),
+  }
+}
+
 interface FakeCanvas {
-  width: number
-  height: number
-  attributes: Map<string, string>
-  contextOptions: CanvasRenderingContext2DSettings | undefined
-  drawImage: ReturnType<typeof vi.fn>
-  element: HTMLCanvasElement
+  readonly width: number
+  readonly height: number
+  readonly attributes: AttributeLog
+  readonly contextOptions: CanvasRenderingContext2DSettings | undefined
+  readonly drawImage: ReturnType<typeof vi.fn>
+  readonly element: HTMLCanvasElement
 }
 
 function fakeCanvas(): FakeCanvas {
-  const attributes = new Map<string, string>()
   const drawImage = vi.fn()
   let contextOptions: CanvasRenderingContext2DSettings | undefined
   const context = {
     drawImage,
     getContextAttributes: () => ({ alpha: false, colorSpace: 'srgb' as const }),
   }
-  const raw = {
-    width: 0,
-    height: 0,
-    setAttribute: (name: string, value: string) => attributes.set(name, value),
-    removeAttribute: (name: string) => attributes.delete(name),
-    getContext: (_kind: string, options?: CanvasRenderingContext2DSettings) => {
-      contextOptions = options
-      return context
-    },
-  }
+  const element = document.createElement('canvas')
+  // SAFETY: the real `getContext` is overloaded across every context id and
+  // answers each with a different class. This one answers '2d' with the two
+  // members the controller uses — the draw call, and the attributes it
+  // checks before it trusts the context — and every other id with `null`.
+  element.getContext = ((kind: string, options?: CanvasRenderingContext2DSettings) => {
+    contextOptions = options
+    return kind === '2d' ? context : null
+  }) as typeof element.getContext
+
   return {
+    element,
+    attributes: attributeLog(element),
     get width() {
-      return raw.width
-    },
-    set width(value: number) {
-      raw.width = value
+      return element.width
     },
     get height() {
-      return raw.height
+      return element.height
     },
-    set height(value: number) {
-      raw.height = value
-    },
-    attributes,
     get contextOptions() {
       return contextOptions
     },
     drawImage,
-    element: raw as unknown as HTMLCanvasElement,
   }
 }
 
 interface FakeVideo {
   readonly element: HTMLVideoElement
-  readonly attributes: Map<string, string>
+  readonly attributes: AttributeLog
   readonly cancelled: number[]
   readonly pendingCount: () => number
   readonly listenerCount: () => number
@@ -84,34 +99,59 @@ function frameMetadata(
 }
 
 function fakeVideo(options: FakeVideoOptions = {}): FakeVideo {
-  const attributes = new Map<string, string>()
   const callbacks = new Map<number, VideoFrameRequestCallback>()
   const allCallbacks = new Map<number, VideoFrameRequestCallback>()
   const listeners = new Map<string, Set<EventListenerOrEventListenerObject>>()
   const cancelled: number[] = []
   let nextId = 1
 
-  const raw = {
-    readyState: options.readyState ?? 0,
-    setAttribute: (name: string, value: string) => attributes.set(name, value),
-    requestVideoFrameCallback(callback: VideoFrameRequestCallback) {
-      const id = nextId++
-      callbacks.set(id, callback)
-      allCallbacks.set(id, callback)
-      return id
-    },
-    cancelVideoFrameCallback(id: number) {
-      cancelled.push(id)
-      callbacks.delete(id)
-    },
-    addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
-      const group = listeners.get(type) ?? new Set<EventListenerOrEventListenerObject>()
-      group.add(listener)
-      listeners.set(type, group)
-    },
-    removeEventListener(type: string, listener: EventListenerOrEventListenerObject) {
-      listeners.get(type)?.delete(listener)
-    },
+  const element = document.createElement('video')
+
+  // A decoder's readiness is the browser's to report and this suite's to
+  // drive, so the real read-only property is replaced by one the test moves.
+  let readyState = options.readyState ?? 0
+  Object.defineProperty(element, 'readyState', {
+    configurable: true,
+    get: () => readyState,
+  })
+
+  // The frame callback is an origin-trial member no test environment ships.
+  element.requestVideoFrameCallback = (callback) => {
+    const id = nextId++
+    callbacks.set(id, callback)
+    allCallbacks.set(id, callback)
+    return id
+  }
+  element.cancelVideoFrameCallback = (id) => {
+    cancelled.push(id)
+    callbacks.delete(id)
+  }
+
+  // Counted on the way through, never intercepted: the element still gets
+  // every listener, so `listenerCount` measures what the controller left
+  // behind rather than what it announced.
+  const install = element.addEventListener.bind(element)
+  const uninstall = element.removeEventListener.bind(element)
+  element.addEventListener = (
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    listenerOptions?: boolean | AddEventListenerOptions,
+  ) => {
+    // A null listener is a no-op in the DOM, so it is one here too.
+    if (!listener) return
+    const group = listeners.get(type) ?? new Set<EventListenerOrEventListenerObject>()
+    group.add(listener)
+    listeners.set(type, group)
+    install(type, listener, listenerOptions)
+  }
+  element.removeEventListener = (
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    listenerOptions?: boolean | EventListenerOptions,
+  ) => {
+    if (!listener) return
+    listeners.get(type)?.delete(listener)
+    uninstall(type, listener, listenerOptions)
   }
 
   const invoke = (
@@ -123,20 +163,18 @@ function fakeVideo(options: FakeVideoOptions = {}): FakeVideo {
   }
 
   return {
-    element: raw as unknown as HTMLVideoElement,
-    attributes,
+    element,
+    attributes: attributeLog(element),
     cancelled,
     pendingCount: () => callbacks.size,
     listenerCount: () =>
       [...listeners.values()].reduce((count, group) => count + group.size, 0),
     present(metadata) {
-      const entry = callbacks.entries().next().value as
-        | [number, VideoFrameRequestCallback]
-        | undefined
-      if (!entry) throw new Error('No pending video frame callback')
-      callbacks.delete(entry[0])
-      raw.readyState = 2
-      invoke(entry[1], metadata)
+      const [id, callback] = callbacks.entries().next().value ?? []
+      if (id === undefined || !callback) throw new Error('No pending video frame callback')
+      callbacks.delete(id)
+      readyState = 2
+      invoke(callback, metadata)
     },
     invokeStale(id, metadata) {
       invoke(allCallbacks.get(id), metadata)
@@ -313,7 +351,7 @@ describe('Genie film controller', () => {
   it('does not publish a failed canvas draw and keeps the callback pump alive', () => {
     const canvas = fakeCanvas()
     const video = fakeVideo()
-    const errors: unknown[] = []
+    const errors: Error[] = []
     canvas.drawImage.mockImplementationOnce(() => {
       throw new Error('decoder not drawable')
     })

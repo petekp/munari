@@ -166,7 +166,7 @@ describe('explodePaint geometry', () => {
 
   it('pins the clone to what the subject MEASURED, not to what it can resolve', () => {
     const plates = explodePaint(specimen(), { bleed: 8 })
-    const clone = plates[0].node.querySelector('.card') as HTMLElement
+    const clone = plates[0].node.querySelector<HTMLElement>('.card')!
     // The subject's 200px could have come from a flex parent or a percentage
     // — neither of which exists inside a parked canvas. A plate that resolved
     // its own width would be a different box than the page's.

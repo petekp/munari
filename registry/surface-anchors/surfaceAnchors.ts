@@ -43,22 +43,29 @@ export function collectSurfaceAnchors<K extends string>(
     return null
   }
 
-  const anchors: Record<string, SourceUvRect> = {}
+  // A Map while collecting, because the keys are whatever the DOM says —
+  // untrusted input, checked below against `required` before it becomes a
+  // record with known keys.
+  const collected = new Map<string, SourceUvRect>()
   for (const node of root.querySelectorAll<HTMLElement>('[data-munari-anchor]')) {
     const key = node.dataset.munariAnchor
-    if (!key || anchors[key]) return null
+    if (!key || collected.has(key)) return null
     const box = node.getBoundingClientRect()
-    anchors[key] = Object.freeze({
+    collected.set(key, Object.freeze({
       uMin: (box.left - base.left) / base.width,
       vMin: 1 - (box.bottom - base.top) / base.height,
       uMax: (box.right - base.left) / base.width,
       vMax: 1 - (box.top - base.top) / base.height,
       cssWidth: box.width,
       cssHeight: box.height,
-    })
+    }))
   }
-  if (required.some((key) => !anchors[key])) return null
-  return stampSurfaceAnchors(paint, anchors as Record<K, SourceUvRect>)
+  if (required.some((key) => !collected.has(key))) return null
+  // SAFETY: the line above returns unless every required key is present, so
+  // the entries carry at least K. This is the boundary the DOM's key
+  // strings cross into the typed map the receipt promises.
+  const anchors = Object.fromEntries(collected) as Record<K, SourceUvRect>
+  return stampSurfaceAnchors(paint, anchors)
 }
 
 /** Stamp a previously validated immutable UV map with a newer paint. */

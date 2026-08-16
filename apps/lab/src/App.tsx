@@ -63,11 +63,18 @@ function KeepDomFocus() {
 // of one that a scene can be linked, reloaded into, and screenshotted
 // without a human clicking a chip first. (Deep links used to be `#flight`;
 // the hash is still honored on arrival so old links keep landing.)
+const SCENE_IDS = new Set<string>(SCENES)
+
+/** Whether an arbitrary URL fragment names a scene this build ships. */
+function isSceneId(value: string | null): value is SceneId {
+  return value !== null && SCENE_IDS.has(value)
+}
+
 function readScene(): SceneId {
-  const q = new URLSearchParams(window.location.search).get('scene') as SceneId | null
-  if (q && (SCENES as readonly string[]).includes(q)) return q
-  const h = window.location.hash.slice(1) as SceneId
-  return (SCENES as readonly string[]).includes(h) ? h : 'workspace'
+  const q = new URLSearchParams(window.location.search).get('scene')
+  if (isSceneId(q)) return q
+  const h = window.location.hash.slice(1)
+  return isSceneId(h) ? h : 'workspace'
 }
 
 export default function App() {
@@ -85,7 +92,7 @@ export default function App() {
     // An arrival on the legacy hash form normalizes to the param form once,
     // so the address bar shows the link worth copying.
     const h = window.location.hash.slice(1)
-    if (!window.location.search.includes('scene=') && (SCENES as readonly string[]).includes(h)) {
+    if (!window.location.search.includes('scene=') && isSceneId(h)) {
       window.history.replaceState(null, '', `?scene=${h}`)
     }
     return () => window.removeEventListener('popstate', onPop)
@@ -96,7 +103,7 @@ export default function App() {
   // `__munari.stats()`. This is a consumer choice, not library behavior
   // — the seam it reads is `paintStats()` (decisions.md #7).
   useEffect(() => {
-    ;(window as unknown as { __munari?: unknown }).__munari = {
+    window.__munari = {
       stats: paintStats,
     }
   }, [])
@@ -184,7 +191,7 @@ export default function App() {
         dpr={[1, 2]}
         onCreated={(state) => {
           // Dev diagnostics: lets automation inspect the scene graph.
-          ;(window as unknown as { __r3f: unknown }).__r3f = state
+          window.__r3f = state
         }}
       >
         <KeepDomFocus />

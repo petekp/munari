@@ -10,10 +10,15 @@ function sourceHarness(sourceId = 70) {
   let receipt: DomPaintReceipt | null = null
   let generation = 0
   const listeners = new Set<(next: DomPaintReceipt) => void>()
+  // SAFETY: stubs, not DOM. The runtime under test reads the canvas's two
+  // dimensions and never touches `element` at all — it only has to be
+  // present for the source to be well formed.
   const canvas = { width: 80, height: 40 } as HTMLCanvasElement
   const source: DomTextureSource = {
     sourceId,
     canvas,
+    // SAFETY: never read by the runtime under test — present only so the
+    // source satisfies its own interface.
     element: {} as HTMLElement,
     repaint: () => {},
     scale: () => 1,

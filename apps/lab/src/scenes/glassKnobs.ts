@@ -11,7 +11,7 @@
 // own live params object (sdfPanelParams) because they are per-panel, and
 // duplicating them would create two sources of truth for the same number.
 
-export interface GlassSceneKnobs {
+export type GlassSceneKnobs = {
   // ── orbs ───────────────────────────────────────────────────────────────
   orbCount: number
   /** Half-width of the crossing, world units — where orbs enter and leave. */

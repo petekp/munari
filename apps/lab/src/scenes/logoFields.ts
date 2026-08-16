@@ -22,6 +22,7 @@
 
 import * as THREE from 'three'
 import { BLIT_VERT, DOWN_FRAG } from './logoShaders'
+import { textureSlot } from '../lib/uniforms'
 
 /** Downsample factors of the fields, relative to the CSS box. Fine
  *  sets the edge-shoulder scale (~4px blur, gradients spanning ~8px);
@@ -44,7 +45,7 @@ function ensureRig() {
   if (rig) return rig
   const material = new THREE.ShaderMaterial({
     uniforms: {
-      tSrc: { value: null as THREE.Texture | null },
+      tSrc: textureSlot(),
       uSrcTexel: { value: new THREE.Vector2(1e-3, 1e-3) },
       uSpread: { value: 2 },
     },
@@ -70,6 +71,27 @@ function makeTarget(w: number, h: number) {
     wrapS: THREE.ClampToEdgeWrapping,
     wrapT: THREE.ClampToEdgeWrapping,
   })
+}
+
+/** Pixel dimensions of a texture source. All this rig wants from one. */
+export interface Raster {
+  width: number
+  height: number
+}
+
+/**
+ * The one boundary parse behind the fields. three types `Texture.image` as
+ * `any` because the source can be a canvas, a bitmap, a video element, or
+ * the plain `{ width, height }` a render target carries. Every one of them
+ * reports its pixel size, and a texture that reports none is not one this
+ * rig can sample from.
+ */
+export function raster(src: THREE.Texture | null | undefined): Raster | null {
+  if (!src) return null
+  // SAFETY: the guard on the next line is the parse. Nothing downstream
+  // reads the value until both dimensions come back as real pixels.
+  const image = src.image as Raster | undefined
+  return image && image.width > 0 && image.height > 0 ? image : null
 }
 
 /** The blur pyramid of one letter. Owned by MatterLetter (sized off
@@ -100,8 +122,8 @@ export class LetterFields {
    *  refreshing every lit frame (the twin's color keeps easing after a
    *  beat) is cheaper than deciding when not to. */
   update(renderer: THREE.WebGLRenderer, src: THREE.Texture) {
-    const img = src.image as { width: number; height: number } | undefined
-    if (!img || !img.width) return
+    const img = raster(src)
+    if (!img) return
     const { scene, camera, material } = ensureRig()
     const u = material.uniforms
     const prev = renderer.getRenderTarget()
@@ -165,8 +187,8 @@ export function readAlphaField(
   w: number,
   h: number,
 ): Uint8Array | null {
-  const img = src.image as { width: number; height: number } | undefined
-  if (!img || !img.width || w < 2 || h < 2) return null
+  const img = raster(src)
+  if (!img || w < 2 || h < 2) return null
   if (!readback || readback.target.width !== w || readback.target.height !== h) {
     readback?.target.dispose()
     readback = {

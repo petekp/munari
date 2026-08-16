@@ -13,12 +13,12 @@
 
 export type Dir = 'up' | 'down' | 'left' | 'right'
 
-export const OPPOSITE: Record<Dir, Dir> = {
+export const OPPOSITE = {
   up: 'down',
   down: 'up',
   left: 'right',
   right: 'left',
-}
+} satisfies Record<Dir, Dir>
 
 const isVertical = (d: Dir) => d === 'up' || d === 'down'
 

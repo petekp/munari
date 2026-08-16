@@ -98,6 +98,9 @@ import {
 // served from public/ so the bundler hashes it and a missing file is a
 // build error rather than a 404 in front of a visitor.
 import filmUrl from './film.mp4'
+import { closestFrom } from '../lib/dom'
+import { plainAttribute } from '../lib/geometry'
+import { textureSlot } from '../lib/uniforms'
 import './genie.css'
 
 const FOV = 42
@@ -295,6 +298,43 @@ const SCHEDE: Scheda[] = [
 /** Dock order, and the order the desk mounts its windows in. Both loops
  *  below walk it, so a window and its bay can never fall out of step. */
 const WIN_IDS: WinId[] = SCHEDE.map((s) => s.id)
+
+/** Kept as a set of plain strings so the question below can be ASKED of
+ *  one — a dataset attribute and a mesh's userData both hand back strings
+ *  the desk may no longer recognise. */
+const WIN_ID_SET: ReadonlySet<string> = new Set(WIN_IDS)
+
+/** Does this name still belong to a window on the desk? */
+function isWinId(value: string | undefined | null): value is WinId {
+  return value !== undefined && value !== null && WIN_ID_SET.has(value)
+}
+
+/**
+ * A window's inline style. React's own CSSProperties has no room for a
+ * custom property, so the two the stylesheet reads are named here.
+ */
+interface WindowVars extends React.CSSProperties {
+  '--dx': string
+  '--dy': string
+}
+
+/**
+ * Stack order plus the drag's COMMITTED offset.
+ *
+ * During a drag the two offsets are written straight to the element and this
+ * object holds the value from before it — which is safe only because React
+ * diffs style property by property against its own last render, never
+ * against the DOM, so an unchanged `--dx` here is not re-asserted over the
+ * hand's.
+ */
+function windowStyle(zIndex: number, at: { x: number; y: number } | undefined): WindowVars {
+  return {
+    zIndex,
+    '--dx': `${at?.x ?? 0}px`,
+    '--dy': `${at?.y ?? 0}px`,
+  }
+}
+
 
 
 /** Where the overlay sits in the desk's stack. The windows take 1..n from
@@ -514,7 +554,7 @@ function WindowBody({
           // and takeOff refuses a second flight of a window already in
           // the air, so a double-tap on one is not a third gesture.
           onDoubleClick={(e) => {
-            if ((e.target as HTMLElement).closest('.gen-lamp')) return
+            if (closestFrom(e.target, '.gen-lamp')) return
             onMinimize(e.shiftKey)
           }}
         >
@@ -581,6 +621,10 @@ function WindowBody({
 // ── the camera: z = 0 is the viewport, 1 world unit = 1 CSS px ──────────
 
 function PixelPerfect() {
+  // SAFETY: r3f types the store's camera as the base class and hands back a
+  // PerspectiveCamera unless the Canvas asks for `orthographic`. This one
+  // does not, and could not: fitting the frustum to the viewport is what
+  // makes a CSS pixel a world unit, and orthographic has no fov to fit.
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
   const size = useThree((s) => s.size)
   useEffect(() => {
@@ -625,7 +669,7 @@ function GenieMaterial({ shade }: { shade: [number, number] }) {
   const { chrome, width, height } = useSurfaceChrome()
   const uniforms = useMemo(
     () => ({
-      tMap: { value: null as THREE.Texture | null },
+      tMap: textureSlot(),
       uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
       uMunariSize: { value: new THREE.Vector2(1, 1) },
       uShadeEdge: { value: new THREE.Vector2(1, 1) },
@@ -823,7 +867,7 @@ function frameCovers(receipt: FrameDrawReceipt, required: FrameId): boolean {
   )
 }
 
-type GenieFilmProbeEvent =
+export type GenieFilmProbeEvent =
   | {
       type: 'require'
       token: number
@@ -849,13 +893,10 @@ type GenieFilmProbeEvent =
   | { type: 'release'; token: number; wall: 0 | 1 }
   | { type: 'revoke'; token: number; reason: 'context-lost' }
 
+/** Hand one step of the film's handoff to whoever is watching. Nothing in
+ *  the scene reads this; the hook is installed by a probe or by hand. */
 function probeFilm(event: GenieFilmProbeEvent): void {
-  const hook = (
-    window as typeof window & {
-      __genieFilmProbe?: (event: GenieFilmProbeEvent) => void
-    }
-  ).__genieFilmProbe
-  hook?.(event)
+  window.__genieFilmProbe?.(event)
 }
 
 function WebGLContextGuard({ onLost }: { onLost: () => void }) {
@@ -1182,12 +1223,13 @@ function Flight({
     }
     for (const geometry of [geo, filmGeoRef.current]) {
       if (!geometry) continue
-      const pos = geometry.attributes.position as THREE.BufferAttribute
-      const uv = geometry.attributes.uv as THREE.BufferAttribute
+      const pos = plainAttribute(geometry, 'position')
+      const uv = plainAttribute(geometry, 'uv')
+      if (!pos || !uv) continue
       // Allocated on first use rather than at construction: the geometry
       // is the library's, its vertex count is the LOD tier's to choose,
       // and this is the only code that knows the attribute exists.
-      let sq = geometry.attributes.squeeze as THREE.BufferAttribute | undefined
+      let sq = plainAttribute(geometry, 'squeeze')
       if (!sq || sq.count !== pos.count) {
         sq = new THREE.BufferAttribute(new Float32Array(pos.count), 1)
         geometry.setAttribute('squeeze', sq)
@@ -1481,18 +1523,17 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
 
     const onDown = (e: PointerEvent) => {
       if (!e.isTrusted || gest.current.kind !== 'idle') return
-      const el = e.target as HTMLElement | null
 
       // The page copy's titlebar: arm, and only a real drag claims — the
       // lamps keep their clicks.
-      const bar = el?.closest?.('.gen-titlebar')
+      const bar = closestFrom(e.target, '.gen-titlebar')
       if (bar) {
-        const win = (bar.closest('[data-win]') as HTMLElement | null)?.dataset.win
-        if (win)
+        const win = closestFrom(bar, '[data-win]')?.dataset.win
+        if (isWinId(win))
           gest.current = {
             kind: 'armed-window',
             id: e.pointerId,
-            win: win as WinId,
+            win,
             x0: e.clientX,
             y0: e.clientY,
           }
@@ -1500,12 +1541,13 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
       }
       // A FILLED bay arms; drag up pours, release clicks. An empty bay is
       // just a drawing of a window that is already on the desk.
-      const tile = el?.closest?.('.gen-tile[data-role="window"]') as HTMLElement | null
-      if (tile?.dataset.filled === 'true' && tile.dataset.win) {
+      const tile = closestFrom(e.target, '.gen-tile[data-role="window"]')
+      const tileWin = tile?.dataset.win
+      if (tile?.dataset.filled === 'true' && isWinId(tileWin)) {
         gest.current = {
           kind: 'armed-tile',
           id: e.pointerId,
-          win: tile.dataset.win as WinId,
+          win: tileWin,
           y0: e.clientY,
         }
         return
@@ -1518,9 +1560,10 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
       if (!api.current.anyAir) return
       const hit = topHit(e)
       if (!hit?.uv || 1 - hit.uv.y >= TITLEBAR_V) return
-      const win = hit.object.userData.win as WinId | undefined
-      const a = win ? api.current.airOf(win) : undefined
-      if (!win || !a) return
+      const win = hit.object.userData.win
+      if (!isWinId(win)) return
+      const a = api.current.airOf(win)
+      if (!a) return
       // Catching a sheet is picking it up: it comes to the front, the
       // same as pressing any window would.
       api.current.raise(win)
@@ -2269,26 +2312,13 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
             // Programmatic focus only — never in the tab ring, because
             // the window's own controls are what a tab should land on.
             tabIndex={-1}
-            style={
-              {
-                zIndex: order.indexOf(s.id) + 1,
-                // The drag's committed offset. During a drag these two
-                // are written straight to the element and this object
-                // holds the value from BEFORE it — which is safe only
-                // because React diffs style property by property against
-                // its own last render, never against the DOM, so an
-                // unchanged `--dx` here is not re-asserted over the
-                // hand's.
-                '--dx': `${pos[s.id]?.x ?? 0}px`,
-                '--dy': `${pos[s.id]?.y ?? 0}px`,
-              } as React.CSSProperties
-            }
+            style={windowStyle(order.indexOf(s.id) + 1, pos[s.id])}
             onPointerDown={(e) => {
               // Everything on a window raises it except its own lamps.
               // Same reason the Dock button doesn't: the lamps act on a
               // background window in place, so you can put the thing
               // behind away without it stepping in front on the way down.
-              if ((e.target as HTMLElement).closest('.gen-lamp')) return
+              if (closestFrom(e.target, '.gen-lamp')) return
               raise(s.id)
             }}
           >
@@ -2380,12 +2410,15 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
         {airborne.map((win) => {
           const a = flights.current.get(win)
           const s = SCHEDE.find((x) => x.id === win)
-          if (!a || !s) return null
+          // `airborne` is read off `air` itself, so the direction is there
+          // by construction — asked for anyway, with the two beside it.
+          const dir = air[win]
+          if (!a || !s || !dir) return null
           return (
             <Flight
               key={`${win}:${a.flightId}`}
               win={win}
-              dir={air[win] as Dir}
+              dir={dir}
               air={a}
               ring={ringOf(win)}
               ringing={ringing.includes(win)}

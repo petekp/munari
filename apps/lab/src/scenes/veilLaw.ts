@@ -134,7 +134,13 @@ export function veilLod(spacingPx: number, texelPx: number): number {
  * containment. The +2 covers bilinear filtering's half-texel look-past
  * at the outermost rows.
  */
-export function veilStrip(windowH: number, p: VeilParams): { top: number; height: number } {
+/** The band of window the veil paints, in CSS px. */
+export interface VeilStrip {
+  top: number
+  height: number
+}
+
+export function veilStrip(windowH: number, p: VeilParams): VeilStrip {
   const reach = Math.ceil(p.maxRadius) + 2
   return { top: -reach, height: windowH + 2 * reach }
 }

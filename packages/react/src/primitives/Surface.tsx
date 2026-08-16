@@ -348,6 +348,11 @@ export function createDomSurfaceTexture(
 let nextDomSurfaceEpoch = 0
 
 const warnDomPresentation = (message: string) => {
+  // SAFETY: `import.meta.env` is the bundler's, not the language's — Vite
+  // defines it, Node and a bare tsc do not. The library must build under
+  // every one of them, so the shape is described here rather than pulled
+  // from vite/client, and every member is optional because absence is the
+  // normal answer outside a dev server.
   const development = (
     import.meta as ImportMeta & { readonly env?: { readonly DEV?: boolean } }
   ).env?.DEV
@@ -384,9 +389,11 @@ function DomSurface({
   onAfterRender,
   ...meshProps
 }: SurfaceProps) {
-  const controls = useThree(
-    (s) => s.controls as { enabled?: boolean } | null,
-  )
+  // SAFETY: r3f's store types `controls` as a bare event target — whatever
+  // the app set, if anything. Every control set this library suspends
+  // (OrbitControls, the lab's own rigs) carries `enabled`; the key stays
+  // optional so one that does not is simply never disabled, not a crash.
+  const controls = useThree((s) => s.controls as { enabled?: boolean } | null)
   const camera = useThree((s) => s.camera)
   const gl = useThree((s) => s.gl)
   const invalidate = useThree((s) => s.invalidate)
@@ -444,7 +451,12 @@ function DomSurface({
   const onFrameDrawnRef = useLatest(onFrameDrawn)
   const presentationRef = useLatest(presentation)
   const onPresentedRef = useLatest(onPresented)
+  // SAFETY: r3f's JSX props widen these two callbacks past what Object3D
+  // declares. The mesh below assigns them straight onto an Object3D, so the
+  // node's own signature is the contract that actually has to hold, and
+  // asserting to it here is what keeps that assignment honest.
   const onBeforeRenderRef = useLatest(onBeforeRender as THREE.Object3D['onBeforeRender'] | undefined)
+  // SAFETY: the same widening, on the other side of the draw.
   const onAfterRenderRef = useLatest(onAfterRender as THREE.Object3D['onAfterRender'] | undefined)
   const onChromeRef = useLatest(onChrome)
   const radiusRef = useLatest(radius)
@@ -564,18 +576,19 @@ function DomSurface({
   // own bug, but letting a 5000px canvas through is a worse one.
   const pinnedScale = useMemo(() => {
     if (resolution === 'max') return maxTier(DEFAULT_TIERS, width, height)
-    if (typeof resolution === 'number') {
-      const safe = clampScale(resolution, width, height)
-      if (safe !== resolution) {
-        console.warn(
-          `[munari] Surface${label ? ` "${label}"` : ''}: resolution ${resolution} ` +
-            `exceeds the ${MAX_TEXTURE_EDGE}px long-edge texture guard at ` +
-            `${width}×${height} CSS px; clamped to ${safe}.`,
-        )
-      }
-      return safe
+    // The rest of the union is the dynamic half — 'auto' and a [min, max]
+    // range both leave the ladder in charge — so what survives is the bare
+    // number, the only authored value that pins a scale.
+    if (resolution === 'auto' || Array.isArray(resolution)) return null
+    const safe = clampScale(resolution, width, height)
+    if (safe !== resolution) {
+      console.warn(
+        `[munari] Surface${label ? ` "${label}"` : ''}: resolution ${resolution} ` +
+          `exceeds the ${MAX_TEXTURE_EDGE}px long-edge texture guard at ` +
+          `${width}×${height} CSS px; clamped to ${safe}.`,
+      )
     }
-    return null
+    return safe
   }, [resolution, width, height, label])
   const pinnedScaleRef = useLatest(pinnedScale)
   const lodRef = useRef({ tier: 1, proposed: 1, agree: 0, frame: 0 })
@@ -590,9 +603,11 @@ function DomSurface({
     if (radius === 'auto') {
       applyRadii(chromeRef.current.radii)
     } else {
-      const values = (
-        typeof radius === 'number' ? [radius, radius, radius, radius] : radius
-      ).map((r) => `${r}px`) as [string, string, string, string]
+      const corners = Array.isArray(radius) ? radius : [radius, radius, radius, radius]
+      // SAFETY: `corners` is a four-corner list either way — the authored
+      // tuple, or one number written to all four — so mapping it yields
+      // exactly four strings. `map` cannot carry that length across.
+      const values = corners.map((r) => `${r}px`) as [string, string, string, string]
       applyRadii(resolveRadii(values, width, height))
     }
   }, [radius, width, height])
@@ -931,6 +946,11 @@ function DomSurface({
     if ((resolution === 'auto' || Array.isArray(resolution)) && meshRef.current) {
       const lod = lodRef.current
       if (lod.frame++ % LOD_EVERY === lodPhase) {
+        // SAFETY: asserted only to reach `isPerspectiveCamera` — three's own
+        // brand, safe across duplicate module copies where instanceof is
+        // not — which the next line tests before any perspective-only field
+        // is read. r3f types the store's camera as the base class, so there
+        // is nothing narrower to ask first.
         const cam = camera as THREE.PerspectiveCamera
         const geom = meshRef.current.geometry
         if (cam.isPerspectiveCamera && geom) {

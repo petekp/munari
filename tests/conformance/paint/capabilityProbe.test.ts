@@ -29,8 +29,9 @@ describe('detectHtmlInCanvas', () => {
   })
 
   it('reports the trial present when the prototype carries the member', () => {
-    class WithTrial {}
-    ;(WithTrial.prototype as Record<string, unknown>).drawElementImage = () => {}
+    class WithTrial {
+      drawElementImage() {}
+    }
     vi.stubGlobal('CanvasRenderingContext2D', WithTrial)
     expect(detectHtmlInCanvas().drawElementImage).toBe(true)
   })

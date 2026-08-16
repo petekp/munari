@@ -34,15 +34,19 @@ interface StubCanvas extends HTMLCanvasElement {
 // not a cross-file hook, and this file owns its own copy. None of these
 // tests fire onpaint or count paints, so the stub is a no-op.
 beforeEach(() => {
-  const proto = HTMLCanvasElement.prototype as unknown as StubCanvas
+  // SAFETY: the three writes below are what MAKE the prototype a StubCanvas.
+  // happy-dom ships none of the trial members, so this names the shape the
+  // harness is about to install rather than one it found.
+  const proto = HTMLCanvasElement.prototype as StubCanvas
   proto.layoutSubtree = false
   proto.onpaint = null
   proto.requestPaint = function (this: StubCanvas) {}
   // The CONTEXT half too: the factory's capability gate reads
   // CanvasRenderingContext2D.prototype before it builds anything, and
   // happy-dom has no such global (the probe reaches it via `typeof`).
-  class Ctx2D {}
-  ;(Ctx2D.prototype as unknown as Record<string, unknown>).drawElementImage = function () {}
+  class Ctx2D {
+    drawElementImage() {}
+  }
   vi.stubGlobal('CanvasRenderingContext2D', Ctx2D)
 })
 

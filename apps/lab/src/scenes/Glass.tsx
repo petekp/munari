@@ -18,6 +18,7 @@ import {
   sdfPanelParams,
   type GlassBlob,
   type GlassGlow,
+  type GlassParams,
   type GlassRipple,
 } from './glassSdf'
 import { glassKnobs } from './glassKnobs'
@@ -130,19 +131,19 @@ const RIPPLE_LIFE = GLASS_DEFAULTS.rippleLife
 // ---- geometry: an extruded rounded rect --------------------------------
 
 function roundedRectGeometry(w: number, h: number, r: number, depth: number) {
-  const shape = new THREE.Shape()
+  const outline = new THREE.Shape()
   const x = -w / 2
   const y = -h / 2
-  shape.moveTo(x + r, y)
-  shape.lineTo(x + w - r, y)
-  shape.absarc(x + w - r, y + r, r, -Math.PI / 2, 0, false)
-  shape.lineTo(x + w, y + h - r)
-  shape.absarc(x + w - r, y + h - r, r, 0, Math.PI / 2, false)
-  shape.lineTo(x + r, y + h)
-  shape.absarc(x + r, y + h - r, r, Math.PI / 2, Math.PI, false)
-  shape.lineTo(x, y + r)
-  shape.absarc(x + r, y + r, r, Math.PI, Math.PI * 1.5, false)
-  const geo = new THREE.ExtrudeGeometry(shape, {
+  outline.moveTo(x + r, y)
+  outline.lineTo(x + w - r, y)
+  outline.absarc(x + w - r, y + r, r, -Math.PI / 2, 0, false)
+  outline.lineTo(x + w, y + h - r)
+  outline.absarc(x + w - r, y + h - r, r, 0, Math.PI / 2, false)
+  outline.lineTo(x + r, y + h)
+  outline.absarc(x + r, y + h - r, r, Math.PI / 2, Math.PI, false)
+  outline.lineTo(x, y + r)
+  outline.absarc(x + r, y + r, r, Math.PI, Math.PI * 1.5, false)
+  const geo = new THREE.ExtrudeGeometry(outline, {
     depth,
     bevelEnabled: true,
     bevelThickness: 0.02,
@@ -161,9 +162,53 @@ const BEVEL = 0.02
 // the ink floats just above it.
 const INK_LIFT = 0.012
 
-type GlassKnobs = Record<string, number | boolean>
+// Every knob the console addresses is a number. The two strings in a panel's
+// params (`tint`, `glowColor`) are set through their own colour entries.
+type GlassKnobs = Record<string, number>
+type NumericParams = Omit<GlassParams, 'tint' | 'glowColor'>
 
-const glassMaterials = new Map<string, THREE.MeshPhysicalMaterial>()
+/**
+ * The transmission knobs this scene tunes. `Pick` keeps them welded to drei's
+ * own types instead of restating them, and a mapped type indexes by name —
+ * which is what lets the console address one by string with no assertion.
+ */
+type MtmKnobs = Pick<
+  TransmissionMaterial,
+  | 'transmission'
+  | 'thickness'
+  | 'roughness'
+  | 'ior'
+  | 'chromaticAberration'
+  | 'anisotropicBlur'
+  | 'distortion'
+>
+
+/**
+ * Write one named knob onto a live object, and report whether it landed.
+ *
+ * The caller is a person at a console, so the name is untrusted and this is
+ * the boundary that checks it. A name the target does not already carry is
+ * refused rather than installed — otherwise a typo leaves a dead property on
+ * an object the renderer reads every frame, and the console says it worked.
+ */
+function pokeKnob(bag: GlassKnobs, key: string, value: number): boolean {
+  // `in` walks the REAL object, which carries names this type never listed:
+  // a material's `name` and `uuid` are there and are strings. The second
+  // guard is what refuses those, even though the index type says otherwise.
+  if (!(key in bag)) return false
+  if (!Number.isFinite(bag[key])) return false
+  bag[key] = value
+  return true
+}
+
+/**
+ * drei's transmission material — a physical material plus the knobs its own
+ * shader adds. Taken from the component's own ref type rather than restated,
+ * so the tweak panel and drei cannot drift apart.
+ */
+type TransmissionMaterial = NonNullable<React.ComponentRef<typeof MeshTransmissionMaterial>>
+
+const glassMaterials = new Map<string, TransmissionMaterial>()
 
 // ---- the refraction buffers --------------------------------------------
 //
@@ -325,8 +370,8 @@ function MtmGlassPanel({
       >
         <primitive object={geo} attach="geometry" />
         <MeshTransmissionMaterial
-          ref={(m: unknown) => {
-            if (m) glassMaterials.set(label, m as THREE.MeshPhysicalMaterial)
+          ref={(m: TransmissionMaterial | null) => {
+            if (m) glassMaterials.set(label, m)
             else glassMaterials.delete(label)
           }}
           buffer={fbo.texture}
@@ -822,6 +867,11 @@ function WebAppFraming() {
     camera.position.set(0, 0, CAM_Z)
     camera.up.set(0, 1, 0)
     camera.lookAt(0, 0, 0)
+    // SAFETY: asserted only to reach `isPerspectiveCamera` — three's own
+    // brand, which holds across duplicate module copies where instanceof
+    // does not — and the next line tests it before any perspective-only
+    // field is read. r3f types the store's camera as the base class, so
+    // there is nothing narrower to ask first.
     const cam = camera as THREE.PerspectiveCamera
     if (cam.isPerspectiveCamera) {
       cam.fov = CAM_FOV
@@ -970,7 +1020,7 @@ export function Glass() {
   })
 
   useEffect(() => {
-    ;(window as unknown as { __glass?: object }).__glass = {
+    window.__glass = {
       mode: () => mode,
       setMode: (next: GlassMode) => {
         setMode(next === 'mtm' ? 'mtm' : 'sdf')
@@ -980,33 +1030,38 @@ export function Glass() {
       // a per-panel params object the compositor reads each frame; in `mtm`
       // mode they are properties on a MeshTransmissionMaterial. Same call.
       set: (key: string, value: GlassKnobs[string]) => {
+        let n = 0
         if (mode === 'sdf') {
-          let n = 0
           for (const label of sdfPanelLabels()) {
-            const p = sdfPanelParams(label)
-            if (p) {
-              ;(p as unknown as GlassKnobs)[key] = value
-              n++
-            }
+            const p: NumericParams | null = sdfPanelParams(label)
+            if (p && pokeKnob(p, key, value)) n++
           }
-          return `set ${key}=${value} on ${n} sdf panels`
+          return n === 0
+            ? `no sdf panel takes ${key}=${value}`
+            : `set ${key}=${value} on ${n} sdf panels`
         }
         for (const m of glassMaterials.values()) {
-          ;(m as unknown as GlassKnobs)[key] = value
+          const knobs: MtmKnobs = m
+          if (pokeKnob(knobs, key, value)) n++
         }
-        return `set ${key}=${value} on ${glassMaterials.size} materials`
+        return n === 0
+          ? `no material takes ${key}=${value}`
+          : `set ${key}=${value} on ${n} materials`
       },
       setFor: (label: string, key: string, value: GlassKnobs[string]) => {
         if (mode === 'sdf') {
-          const p = sdfPanelParams(label)
+          const p: NumericParams | null = sdfPanelParams(label)
           if (!p) return `no sdf panel: ${label}`
-          ;(p as unknown as GlassKnobs)[key] = value
-          return `set ${key}=${value} on ${label}`
+          return pokeKnob(p, key, value)
+            ? `set ${key}=${value} on ${label}`
+            : `${label} does not take ${key}=${value}`
         }
         const m = glassMaterials.get(label)
         if (!m) return `no material: ${label}`
-        ;(m as unknown as GlassKnobs)[key] = value
-        return `set ${key}=${value} on ${label}`
+        const knobs: MtmKnobs = m
+        return pokeKnob(knobs, key, value)
+          ? `set ${key}=${value} on ${label}`
+          : `${label} does not take ${key}=${value}`
       },
       // Resized in place — the compositor holds this exact array, and reads
       // its length every frame. 0 turns the merge off entirely (and with it
@@ -1045,15 +1100,14 @@ export function Glass() {
         if (mode === 'sdf') return sdfPanelParams(l)
         const m = glassMaterials.get(l)
         if (!m) return null
-        const u = m as unknown as Record<string, unknown>
         return {
-          transmission: u.transmission,
-          thickness: u.thickness,
-          roughness: u.roughness,
-          ior: u.ior,
-          chromaticAberration: u.chromaticAberration,
-          anisotropicBlur: u.anisotropicBlur,
-          distortion: u.distortion,
+          transmission: m.transmission,
+          thickness: m.thickness,
+          roughness: m.roughness,
+          ior: m.ior,
+          chromaticAberration: m.chromaticAberration,
+          anisotropicBlur: m.anisotropicBlur,
+          distortion: m.distortion,
         }
       },
     }

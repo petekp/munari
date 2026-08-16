@@ -90,6 +90,9 @@ import {
   type Plate,
 } from '@petepetrash/munari'
 import { corners } from './flightCorners'
+import { closestFrom } from '../lib/dom'
+import { plainAttribute } from '../lib/geometry'
+import { textureSlot } from '../lib/uniforms'
 
 // ── the data ─────────────────────────────────────────────────────────────
 
@@ -195,10 +198,10 @@ const SEED: Card[] = [
   },
 ]
 
-const START: Record<ColId, string[]> = {
+const START = {
   queue: ['c1', 'c2', 'c4', 'c8', 'c9'],
   today: ['c3', 'c5', 'c6', 'c7'],
-}
+} satisfies Record<ColId, string[]>
 
 // ── flight ───────────────────────────────────────────────────────────────
 
@@ -402,7 +405,7 @@ function CardMaterial({ gloss = 0.5, aero }: { gloss?: number; aero: AeroState }
   const { chrome, width, height } = useSurfaceChrome()
   const uniforms = useMemo(
     () => ({
-      tMap: { value: null as THREE.Texture | null },
+      tMap: textureSlot(),
       uGloss: { value: gloss },
       // Gain on the curvature shade. The bend's normals only swing ~10-15°,
       // so the pow-6 band needs amplification to move a white pixel a
@@ -439,6 +442,29 @@ const LIGHT = new THREE.Vector3(-0.30, -0.46, -1).normalize()
 
 // ── the driver ───────────────────────────────────────────────────────────
 
+/**
+ * The shadow material's uniforms. Written by the driver every frame, held by
+ * the material as the very same objects — so this passes by reference, and
+ * neither side ever reads the other's copy.
+ *
+ * Declared as a type alias rather than an interface on purpose: r3f's
+ * `uniforms` prop is an index signature, and only a mapped type is assignable
+ * to one. Written out rather than inferred so the driver can read
+ * `uOff.value[i]` as a Vector2 without asking three, whose `IUniform.value`
+ * is `any` and would hand back nothing checkable.
+ */
+type ShadowUniforms = {
+  uQuadHalf: { value: THREE.Vector2 }
+  uCardHalf: { value: THREE.Vector2 }
+  uRadii: { value: THREE.Vector4 }
+  /** How many of the layer slots below are live this frame. */
+  uCount: { value: number }
+  uOff: { value: THREE.Vector2[] }
+  uSigma: { value: number[] }
+  uSpread: { value: number[] }
+  uColor: { value: THREE.Vector4[] }
+}
+
 interface DriverProps {
   flight: React.RefObject<Flight | null>
   slotRect: (id: string) => DOMRect | null
@@ -454,6 +480,8 @@ interface DriverProps {
    */
   cardRef: React.RefObject<THREE.Group | null>
   shadowRef: React.RefObject<THREE.Mesh | null>
+  /** The shadow's shared uniforms — driver writes, the material holds. */
+  shadowUniforms: ShadowUniforms
   /** The texture's CURRENT pin, texels per CSS px — the density schedule's live value. */
   density: number
   /** Flip the schedule: true as the plate climbs through the approach, false for home. */
@@ -521,6 +549,7 @@ function Driver({
   onLanded,
   cardRef,
   shadowRef,
+  shadowUniforms,
   density,
   onAltitude,
   chromeRef,
@@ -808,11 +837,10 @@ function Driver({
     const chrome = chromeRef.current
     const layers = chrome?.shadow ?? []
     const n = Math.min(layers.length, SHADOW_MAX_LAYERS)
-    const mat = sh.material as THREE.ShaderMaterial
-    const uOff = mat.uniforms.uOff.value as THREE.Vector2[]
-    const uSigma = mat.uniforms.uSigma.value as number[]
-    const uSpread = mat.uniforms.uSpread.value as number[]
-    const uColor = mat.uniforms.uColor.value as THREE.Vector4[]
+    const { value: uOff } = shadowUniforms.uOff
+    const { value: uSigma } = shadowUniforms.uSigma
+    const { value: uSpread } = shadowUniforms.uSpread
+    const { value: uColor } = shadowUniforms.uColor
     const grow = 0.17 * height
     const fade = 1 / (1 + height / 210)
     const relax = 1 / (1 + height / 140)
@@ -827,9 +855,9 @@ function Driver({
       uColor[i].set(l.color[0], l.color[1], l.color[2], l.color[3] * fade)
       reach = Math.max(reach, Math.hypot(l.x, l.y) + 3 * sigma + Math.max(spread, 0))
     }
-    mat.uniforms.uCount.value = n
+    shadowUniforms.uCount.value = n
     const radii = chrome?.radii
-    ;(mat.uniforms.uRadii.value as THREE.Vector4).set(
+    shadowUniforms.uRadii.value.set(
       radii?.[0] ?? 0,
       radii?.[1] ?? 0,
       radii?.[2] ?? 0,
@@ -852,7 +880,8 @@ function Driver({
     }
     shadowQuadFrame(_proj, margin, _frame)
 
-    const pos = sh.geometry.getAttribute('position') as THREE.BufferAttribute
+    const pos = plainAttribute(sh.geometry, 'position')
+    if (!pos) return
     // The frame's verts are already in PlaneGeometry vertex order (TL, TR,
     // BL, BR) — `shadowQuadFrame` did the reorder from `corners` order so
     // the bow-tie mistake has exactly one place to not happen.
@@ -870,8 +899,8 @@ function Driver({
     pos.needsUpdate = true
     sh.geometry.computeBoundingSphere()
 
-    ;(mat.uniforms.uQuadHalf.value as THREE.Vector2).copy(_frame.quadHalf)
-    ;(mat.uniforms.uCardHalf.value as THREE.Vector2).copy(_frame.cardHalf)
+    shadowUniforms.uQuadHalf.value.copy(_frame.quadHalf)
+    shadowUniforms.uCardHalf.value.copy(_frame.cardHalf)
   })
 
   return null
@@ -943,7 +972,7 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
   // for console interrogation): the flight ref and the card's transform
   // group, alive exactly while a card is airborne.
   useEffect(() => {
-    const w = window as unknown as { __flight?: unknown }
+    const w = window
     w.__flight = { flight, cardRef }
     return () => {
       delete w.__flight
@@ -964,7 +993,7 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
       grabbed.current = null
       if (!el) return
       const down = (ev: PointerEvent) => {
-        if ((ev.target as Element).closest('[data-nodrag]')) return
+        if (closestFrom(ev.target, '[data-nodrag]')) return
         const r = el.getBoundingClientRect()
         onRegrab(
           ev.clientX - r.left - f.w / 2,
@@ -980,7 +1009,7 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
   )
   useEffect(() => () => grabbed.current?.(), [])
 
-  const shadowUniforms = useMemo(
+  const shadowUniforms = useMemo<ShadowUniforms>(
     () => ({
       uQuadHalf: { value: new THREE.Vector2(1, 1) },
       uCardHalf: { value: new THREE.Vector2(1, 1) },
@@ -1024,6 +1053,7 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
         onLanded={onLanded}
         cardRef={cardRef}
         shadowRef={shadowRef}
+        shadowUniforms={shadowUniforms}
         density={density}
         onAltitude={onAltitude}
         chromeRef={chromeRef}
@@ -1100,6 +1130,10 @@ function Flying({ card, flight, onChange, onRegrab, slotRect, scrollTop, onLande
 const FOV = 42
 
 function PixelPerfect() {
+  // SAFETY: r3f types the store's camera as the base class and hands back a
+  // PerspectiveCamera unless the Canvas asks for `orthographic`. This one
+  // does not, and could not: the frustum-fitting below is what makes a CSS
+  // pixel a world unit, and an orthographic camera has no fov to fit.
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
   const size = useThree((s) => s.size)
   useLayoutEffect(() => {
@@ -1148,9 +1182,11 @@ function playFlip(root: HTMLElement, before: Map<Element, DOMRect>) {
 // ── the lab ──────────────────────────────────────────────────────────────
 
 export function FlightApp({ chips }: { chips?: React.ReactNode }) {
-  const [cards, setCards] = useState<Record<string, Card>>(
-    () => Object.fromEntries(SEED.map((c) => [c.id, c])) as Record<string, Card>,
-  )
+  const [cards, setCards] = useState<Record<string, Card>>(() => {
+    const byId: Record<string, Card> = {}
+    for (const c of SEED) byId[c.id] = c
+    return byId
+  })
   const [board, setBoard] = useState<Record<ColId, string[]>>(() => ({ ...START }))
   const [flyingId, setFlyingId] = useState<string | null>(null)
   const [painted, setPainted] = useState(false)
@@ -1210,7 +1246,8 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
   const moveTo = useCallback(
     (col: ColId, index: number, id: string) => {
       setBoard((prev) => {
-        const cur = (Object.keys(prev) as ColId[]).find((c) => prev[c].includes(id))!
+        const cur = COLS.map((c) => c.id).find((c) => prev[c].includes(id))
+        if (!cur) return prev
         if (cur === col && prev[cur].indexOf(id) === index) return prev
         const next = { queue: [...prev.queue], today: [...prev.today] }
         next[cur].splice(next[cur].indexOf(id), 1)
@@ -1234,9 +1271,9 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
   // ── the gesture ──
   const beginDrag = useCallback(
     (id: string, e: React.PointerEvent<HTMLDivElement>) => {
-      if ((e.target as Element).closest('[data-nodrag]')) return
+      if (closestFrom(e.target, '[data-nodrag]')) return
       if (flight.current) return
-      const el = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      const el = e.currentTarget.getBoundingClientRect()
       e.preventDefault()
 
       const plate = makePlate(el.width, el.height)
@@ -1295,7 +1332,7 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
   // same flight machinery as a grab (page copy hides on first upload, plate
   // springs off the page), except the mode is `crumple` from birth.
   const deleteCard = useCallback((id: string, e?: React.PointerEvent<HTMLButtonElement>) => {
-    const cardEl = e ? (e.target as Element).closest<HTMLElement>('.l14-card') : null
+    const cardEl = e ? closestFrom(e.target, '.l14-card') : null
     const f = flight.current
     if (f) {
       // One flight at a time — and a crumple, once started, is not restarted.
@@ -1587,7 +1624,7 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
         camera={{ fov: FOV, position: [0, 0, 1000] }}
         onCreated={(state) => {
           state.gl.setClearAlpha(0)
-          ;(window as unknown as { __r3f: unknown }).__r3f = state
+          window.__r3f = state
         }}
       >
         <PixelPerfect />

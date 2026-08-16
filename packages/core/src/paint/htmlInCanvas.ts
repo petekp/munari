@@ -55,13 +55,17 @@ export interface HtmlInCanvasSupport {
  * `onError` reports with more context than a boolean can).
  */
 export function detectHtmlInCanvas(): HtmlInCanvasSupport {
+  // Two questions, not one. `in` asks whether the name is DECLARED, which
+  // is what keeps Node (no DOM globals at all) from throwing a
+  // ReferenceError. Reading the value then asks whether anything is
+  // actually there — a runner that stubs the global to `undefined` answers
+  // yes to the first and no to the second, and the contract says that must
+  // read as absence rather than blow up on `.prototype`.
+  const context2d = 'CanvasRenderingContext2D' in globalThis ? CanvasRenderingContext2D : undefined
+  const gl2 = 'WebGL2RenderingContext' in globalThis ? WebGL2RenderingContext : undefined
   return {
-    drawElementImage:
-      typeof CanvasRenderingContext2D !== 'undefined' &&
-      'drawElementImage' in CanvasRenderingContext2D.prototype,
-    texElementImage2D:
-      typeof WebGL2RenderingContext !== 'undefined' &&
-      'texElementImage2D' in WebGL2RenderingContext.prototype,
+    drawElementImage: context2d !== undefined && 'drawElementImage' in context2d.prototype,
+    texElementImage2D: gl2 !== undefined && 'texElementImage2D' in gl2.prototype,
   }
 }
 
@@ -72,7 +76,9 @@ interface TrialCanvas extends HTMLCanvasElement {
 }
 
 interface TrialContext2D extends CanvasRenderingContext2D {
-  drawElementImage: (el: Element, x: number, y: number) => unknown
+  /** Called for effect — the trial API's return value is not part of any
+   *  contract this kernel relies on. */
+  drawElementImage: (el: Element, x: number, y: number) => void
 }
 
 export interface DomTextureSource {
@@ -170,7 +176,10 @@ export interface DomTextureSourceOptions {
   label?: string
   /** Initial texture scale (backing-store px per CSS px). Default 1. */
   scale?: number
-  onError?: (err: unknown) => void
+  /** Paint failures, normalized to an Error at the catch that produced
+   *  them — so a consumer always has a message and a stack, whatever the
+   *  platform threw. */
+  onError?: (err: Error) => void
 }
 
 /** One live source's paint ledger, as `paintStats()` reports it. */
@@ -258,6 +267,11 @@ export function createDomTextureSource(
 
   const { label = `source-${sourceSeq++}`, onError } = options
   let scale = clampRawScale(options.scale ?? 1)
+  // SAFETY: the trial members (layoutSubtree, onpaint, requestPaint) are
+  // Chrome's HTML-in-canvas additions to a plain canvas element; no
+  // TypeScript lib declares them yet. Absence is not a type error but a
+  // paint error — every use below runs inside the try that reports through
+  // onError, and detectHtmlInCanvas() is the gate a UI reads first.
   const canvas = document.createElement('canvas') as TrialCanvas
   const born = storeForBox(width, height, scale, null)
   canvas.width = born.width
@@ -282,6 +296,10 @@ export function createDomTextureSource(
   canvas.appendChild(element)
   document.body.appendChild(canvas)
 
+  // SAFETY: same trial API as the canvas above — drawElementImage is
+  // Chrome's addition to the 2d context. The '2d' context id cannot return
+  // null for a canvas this function just created and has not asked for
+  // another context on.
   const ctx = canvas.getContext('2d') as TrialContext2D
   let ok = false
   // The box paintedSize() reports — set only from onpaint's success path,
@@ -327,11 +345,13 @@ export function createDomTextureSource(
       })
       currentPaint = receipt
       for (const listener of paintSubscribers) listener(receipt)
-    } catch (err) {
+    } catch (cause) {
       ok = false
       stats.errors++
-      stats.lastError = String(err)
-      onError?.(err)
+      stats.lastError = String(cause)
+      // The catch IS the boundary: whatever the platform threw becomes an
+      // Error here, once, so no consumer has to re-derive the shape.
+      onError?.(cause instanceof Error ? cause : new Error(String(cause)))
     }
   }
   // The only place the backing store is allowed to move. Everything else —
@@ -360,12 +380,12 @@ export function createDomTextureSource(
       // stub with no rasterizer (happy-dom, where the conformance suite runs)
       // there are no pixels to save and no blitter to save them with. Skip it
       // there rather than make every caller carry a mock.
-      if (ok && typeof ctx.drawImage === 'function') {
+      if (ok && 'drawImage' in ctx) {
         const scratch = document.createElement('canvas')
         scratch.width = canvas.width
         scratch.height = canvas.height
         const kctx = scratch.getContext('2d')
-        if (kctx && typeof kctx.drawImage === 'function') {
+        if (kctx && 'drawImage' in kctx) {
           kctx.drawImage(canvas, 0, 0)
           keep = scratch
         }
@@ -471,7 +491,7 @@ export function createDomTextureSource(
  * `dispose()` removes the canvas with the subtree still inside it.
  */
 function adoptContent(content: string | HTMLElement): HTMLElement {
-  if (typeof content !== 'string') {
+  if (content instanceof HTMLElement) {
     if (content.parentNode) {
       throw new Error(
         'munari: createDomTextureSource adopts only an unparented element — ' +
@@ -484,7 +504,8 @@ function adoptContent(content: string | HTMLElement): HTMLElement {
   }
   const host = document.createElement('div')
   host.innerHTML = content
-  return (host.firstElementChild ?? host) as HTMLElement
+  const first = host.firstElementChild
+  return first instanceof HTMLElement ? first : host
 }
 
 // Sane bounds on the raw scale option — a caller error (negative, zero,

@@ -69,7 +69,7 @@ async function probeCapability(browser) {
   const page = await browser.newPage()
   const capable = await page.evaluate(() => {
     const ctx = document.createElement('canvas').getContext('2d')
-    return typeof ctx.drawElementImage === 'function'
+    return ctx !== null && 'drawElementImage' in ctx
   })
   await page.close()
   return capable

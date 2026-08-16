@@ -14,6 +14,8 @@ import {
   type GroupFocusState,
   type PresentationRequirement,
 } from '@petepetrash/munari'
+import type { DemandProbeRecord } from '../lib/devGlobals'
+import { capturePointer, releasePointer } from '../lib/dom'
 import {
   buildPanels,
   injectWorkspaceStyles,
@@ -56,10 +58,27 @@ interface OrbitLike {
   enabled: boolean
 }
 
+/**
+ * r3f keeps whatever controls a scene installed, and types them as no more
+ * than an event dispatcher — the store cannot know which library they came
+ * from. This scene needs one switch off them: the one it flips while a drag
+ * owns the pointer. So it asks whether that switch is there, which is a real
+ * question with a real no (a scene with no controls at all, or with controls
+ * that turn off some other way).
+ */
+function hasEnabledSwitch(
+  controls: THREE.EventDispatcher | null,
+): controls is THREE.EventDispatcher & OrbitLike {
+  if (controls === null || !('enabled' in controls)) return false
+  return controls.enabled === true || controls.enabled === false
+}
+
 // ---------------------------------------------------------------------------
 // One workspace panel: a Surface plus a grab handle. Dragging follows
 // MomentumCard's idiom — pointer capture on the handle, all math from
 // e.ray ∩ a horizontal plane seated at grab time (decisions.md #4).
+
+
 
 function WorkPanel({
   spec,
@@ -78,7 +97,7 @@ function WorkPanel({
 }) {
   const group = useRef<THREE.Group>(null)
   const camera = useThree((s) => s.camera)
-  const controls = useThree((s) => s.controls as unknown as OrbitLike | null)
+  const controls = useThree((s) => (hasEnabledSwitch(s.controls) ? s.controls : null))
   const gl = useThree((s) => s.gl)
   const drag = useRef({ active: false, lastX: 0, lastY: 0, angle: 0, radius: 0 })
   const [hover, setHover] = useState(false)
@@ -91,10 +110,12 @@ function WorkPanel({
   const [probePresentation, setProbePresentation] =
     useState<PresentationRequirement>()
 
-  const probeRecord = (key: string, value: unknown) => {
+  const probeRecord = <K extends keyof DemandProbeRecord>(
+    key: K,
+    value: DemandProbeRecord[K],
+  ) => {
     if (!demandProbe) return
-    const record = (window as unknown as { __domSurfaceDemand?: Record<string, unknown> })
-      .__domSurfaceDemand
+    const record = window.__domSurfaceDemand
     if (record) record[key] = value
   }
 
@@ -137,7 +158,7 @@ function WorkPanel({
     e.stopPropagation()
     const g = group.current
     if (!g) return
-    ;(e.target as Element).setPointerCapture(e.pointerId)
+    capturePointer(e.target, e.pointerId)
     if (controls) controls.enabled = false
     const d = drag.current
     d.active = true
@@ -166,7 +187,7 @@ function WorkPanel({
     const d = drag.current
     if (!d.active) return
     d.active = false
-    ;(e.target as Element).releasePointerCapture?.(e.pointerId)
+    releasePointer(e.target, e.pointerId)
     if (controls) controls.enabled = true
     // The panel (and its satellite dial) came to rest somewhere new.
     focusScene?.syncProxyRects()
@@ -193,8 +214,7 @@ function WorkPanel({
             const cleanup = spec.feed?.(root)
             if (demandProbe) {
               let mutation = false
-              ;(window as unknown as { __domSurfaceDemand?: Record<string, unknown> })
-                .__domSurfaceDemand = {
+              window.__domSurfaceDemand = {
                 painted: null,
                 drawn: null,
                 presented: null,
@@ -210,8 +230,7 @@ function WorkPanel({
               sourceRoot.current = null
               cleanup?.()
               if (demandProbe) {
-                delete (window as unknown as { __domSurfaceDemand?: unknown })
-                  .__domSurfaceDemand
+                delete window.__domSurfaceDemand
               }
             }
           }}
@@ -309,7 +328,7 @@ export function Workspace() {
 
   // Automation hooks: deterministic camera moves for agent-browser runs.
   useEffect(() => {
-    const w = window as unknown as { __workspace?: unknown }
+    const w = window
     w.__workspace = {
       panelIds: panels.map((p) => p.id),
       approach: (id: string) => {
@@ -411,7 +430,7 @@ export function WorkspaceHud() {
       const fps = frames * 2
       frames = 0
       setLine(`${stats.length} surfaces · ${pps} paints/s · ${fps} fps`)
-      ;(window as unknown as { __workspaceHud?: unknown }).__workspaceHud = {
+      window.__workspaceHud = {
         surfaces: stats.length,
         paintsPerSec: pps,
         fps,

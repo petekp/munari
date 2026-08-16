@@ -32,13 +32,14 @@
     "deploy:demo": "npm run build -w @munari/lab && VERCEL_ORG_ID=team_d8NmNbma8pPIVCBkDXUnfpMa VERCEL_PROJECT_ID=prj_pe759NtaVMScHyupOSFSJ41NQiz7 vercel deploy --prod --yes --cwd apps/lab/dist"
   },
   "devDependencies": {
+    "@oxlint/plugins": "^1.78.0",
     "@react-three/fiber": "^9.6.1",
     "@types/node": "^26.1.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.185.3",
     "happy-dom": "^20.11.1",
-    "oxlint": "^1.77.0",
+    "oxlint": "^1.78.0",
     "puppeteer-core": "^25.4.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

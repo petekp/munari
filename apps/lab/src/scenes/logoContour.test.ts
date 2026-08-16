@@ -52,13 +52,13 @@ function bounds(ring: number[]) {
 
 describe('the outline (traceContour)', () => {
   it('traces one ring around one blob, at the half-coverage isoline', () => {
-    const shapes = trace(['......', '......', '..##..', '..##..', '......', '......'])
-    expect(shapes).toHaveLength(1)
-    expect(shapes[0].holes).toHaveLength(0)
+    const islands = trace(['......', '......', '..##..', '..##..', '......', '......'])
+    expect(islands).toHaveLength(1)
+    expect(islands[0].holes).toHaveLength(0)
     // The blob covers samples 2..3 on both axes. Half coverage falls
     // half a sample outside it, which normalizes to exactly a third and
     // two thirds of the box.
-    const b = bounds(shapes[0].outer)
+    const b = bounds(islands[0].outer)
     expect(b.x0).toBeCloseTo(1 / 3, 6)
     expect(b.x1).toBeCloseTo(2 / 3, 6)
     expect(b.y0).toBeCloseTo(1 / 3, 6)
@@ -69,13 +69,13 @@ describe('the outline (traceContour)', () => {
     // logoSlab builds each wall face from the ring's direction of
     // travel, so a reversed ring would point every face into the letter
     // instead of out of it. Positive signed area IS the guarantee.
-    const shapes = trace(['.....', '.###.', '.###.', '.###.', '.....'])
-    expect(shapes).toHaveLength(1)
-    expect(ringArea(shapes[0].outer)).toBeGreaterThan(0)
+    const islands = trace(['.....', '.###.', '.###.', '.###.', '.....'])
+    expect(islands).toHaveLength(1)
+    expect(ringArea(islands[0].outer)).toBeGreaterThan(0)
   })
 
   it('gives a counter its own ring, wound the other way', () => {
-    const shapes = trace([
+    const islands = trace([
       '.........',
       '.#######.',
       '.#######.',
@@ -86,18 +86,18 @@ describe('the outline (traceContour)', () => {
       '.#######.',
       '.........',
     ])
-    expect(shapes).toHaveLength(1)
-    expect(shapes[0].holes).toHaveLength(1)
-    expect(ringArea(shapes[0].outer)).toBeGreaterThan(0)
-    expect(ringArea(shapes[0].holes[0])).toBeLessThan(0)
+    expect(islands).toHaveLength(1)
+    expect(islands[0].holes).toHaveLength(1)
+    expect(ringArea(islands[0].outer)).toBeGreaterThan(0)
+    expect(ringArea(islands[0].holes[0])).toBeLessThan(0)
     // A hole is enclosed by its own outer ring — the nesting test, not
     // just a naming convention.
-    const hole = shapes[0].holes[0]
-    expect(pointInRing(shapes[0].outer, hole[0], hole[1])).toBe(true)
+    const hole = islands[0].holes[0]
+    expect(pointInRing(islands[0].outer, hole[0], hole[1])).toBe(true)
   })
 
   it('keeps disjoint pieces apart (the dot and the stem of an i)', () => {
-    const shapes = trace([
+    const islands = trace([
       '.......',
       '..##...',
       '..##...',
@@ -106,18 +106,18 @@ describe('the outline (traceContour)', () => {
       '..##...',
       '.......',
     ])
-    expect(shapes).toHaveLength(2)
-    expect(shapes.every((s) => s.holes.length === 0)).toBe(true)
-    expect(shapes.every((s) => ringArea(s.outer) > 0)).toBe(true)
+    expect(islands).toHaveLength(2)
+    expect(islands.every((s) => s.holes.length === 0)).toBe(true)
+    expect(islands.every((s) => ringArea(s.outer) > 0)).toBe(true)
   })
 
   it('closes a ring around ink that runs off the box', () => {
     // A swash can overhang its capture box. Without the zero pad the
     // contour would run off the grid and never close, and an open ring
     // is not a shape.
-    const shapes = trace(['####', '####', '....', '....'])
-    expect(shapes).toHaveLength(1)
-    const b = bounds(shapes[0].outer)
+    const islands = trace(['####', '####', '....', '....'])
+    expect(islands).toHaveLength(1)
+    const b = bounds(islands[0].outer)
     expect(b.x0).toBeCloseTo(0, 6)
     expect(b.x1).toBeCloseTo(1, 6)
   })
@@ -151,9 +151,9 @@ describe('the outline (traceContour)', () => {
     const h = 3
     const a: number[] = []
     for (let r = 0; r < h; r++) a.push(0, 1, 0.25, 0)
-    const shapes = traceContour(a, w, h, { simplify: 0, minArea: 1 })
-    expect(shapes).toHaveLength(1)
-    const b = bounds(shapes[0].outer)
+    const islands = traceContour(a, w, h, { simplify: 0, minArea: 1 })
+    expect(islands).toHaveLength(1)
+    const b = bounds(islands[0].outer)
     // Left edge: 0 → 1 crosses halfway between the two samples.
     expect(b.x0).toBeCloseTo(0.25, 6)
     // Right edge: 1 → 0.25 crosses two thirds of the way along.

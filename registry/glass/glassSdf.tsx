@@ -353,6 +353,13 @@ interface SdfPanel {
   depth: number
 }
 
+/** A shader uniform holding a texture that is not bound yet. Named so the
+ *  uniform bag can be inferred whole: a bare `{ value: null }` would infer
+ *  the slot as permanently null. */
+interface TextureSlot {
+  value: THREE.Texture | null
+}
+
 const sdfPanels = new Map<string, SdfPanel>()
 // Separate from the panel entry on purpose: React runs child effects before
 // parent ones, so the registrar inside `SurfaceApp` cannot write into a
@@ -361,8 +368,14 @@ const sdfPanels = new Map<string, SdfPanel>()
 const sdfInk = new Map<string, THREE.Texture>()
 // Dev handle: `__glassInk.get('glass-wall').image` is the parking canvas the
 // compositor is sampling, which is the only way to tell a UV bug apart from a
-// rasterization bug from the outside.
-;(window as unknown as { __glassInk: typeof sdfInk }).__glassInk = sdfInk
+// rasterization bug from the outside. Declared rather than asserted onto
+// window, so the console and this file agree on what the handle holds.
+declare global {
+  interface Window {
+    __glassInk?: Map<string, THREE.Texture>
+  }
+}
+window.__glassInk = sdfInk
 
 export function sdfPanelParams(label: string) {
   return sdfPanels.get(label)?.params ?? null
@@ -551,6 +564,79 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
   const pingA = useTarget(w, h)
   const pingB = useTarget(w, h)
 
+  // A uniform slot that starts empty. Inference alone would freeze the
+  // initial `null` into the type and then refuse the texture that
+  // arrives on the first pass.
+  const emptyTexture = (): TextureSlot => ({ value: null })
+  // The uniform bag lives here, not inside the material, so its literal
+  // type survives: three declares `material.uniforms` as a string-keyed
+  // bag whose every value is `any`, and reading the writers below off
+  // that would need one assertion per uniform. Same object either way —
+  // the material is constructed with exactly this one.
+  const uniforms = useMemo(
+    () => ({
+      tSrc: emptyTexture(),
+      tDepth: emptyTexture(),
+      tInk: emptyTexture(),
+      uHasInk: { value: false },
+      uInkOpacity: { value: 1 },
+      uInkRect: { value: new THREE.Vector4(0, 0, 1, 1) },
+      uCamPos: { value: new THREE.Vector3() },
+      uInvProjView: { value: new THREE.Matrix4() },
+      uProjView: { value: new THREE.Matrix4() },
+      uView: { value: new THREE.Matrix4() },
+      uNear: { value: 0.1 },
+      uFar: { value: 100 },
+      uPanelInv: { value: new THREE.Matrix4() },
+      uPanelRot: { value: new THREE.Matrix3() },
+      uHalf: { value: new THREE.Vector2() },
+      uRadius: { value: 0.09 },
+      uHasBase: { value: true },
+      // Allocated full-length once: three uploads a vec3[] as one
+      // uniform3fv, so the array must keep its size even when the panel
+      // carries fewer blobs — uBlobCount is what bounds the loop.
+      uBlobs: { value: Array.from({ length: MAX_BLOBS }, () => new THREE.Vector3()) },
+      uBlobCount: { value: 0 },
+      uRects: { value: Array.from({ length: MAX_RECTS }, () => new THREE.Vector4()) },
+      uRectR: { value: new Array<number>(MAX_RECTS).fill(0) },
+      uRectCount: { value: 0 },
+      uSmooth: { value: 0.14 },
+      uRipples: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector4()) },
+      uRippleVel: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector2()) },
+      uRippleSrcR: { value: new Array<number>(MAX_RIPPLES).fill(0.04) },
+      uEdgeReflect: { value: 0.55 },
+      uEdgeWarp: { value: 0.018 },
+      uEdgeWarpSpeed: { value: 1 },
+      uTime: { value: 0 },
+      uRippleWaveSpeed: { value: 1.55 },
+      uRippleCount: { value: 0 },
+      uRippleK: { value: 3.0 },
+      uRippleNu: { value: 0.0018 },
+      uRippleSrc: { value: 0.04 },
+      uRippleDecay: { value: 0.9 },
+      uRippleInk: { value: 0 },
+      uGlows: { value: Array.from({ length: MAX_GLOWS }, () => new THREE.Vector4()) },
+      uGlowCount: { value: 0 },
+      uGlowColor: { value: new THREE.Color('#ffb38a') },
+      uGlowReach: { value: 0.5 },
+      uGlowLife: { value: 0.85 },
+      uBezel: { value: 0.13 },
+      uThickness: { value: 0.1 },
+      uSpread: { value: 0.34 },
+      uIor: { value: 1.42 },
+      uChroma: { value: 0.035 },
+      uRough: { value: 0.28 },
+      uTint: { value: new THREE.Color('#dfe8ff') },
+      uTintAmount: { value: 0.06 },
+      uEdgeLight: { value: 0.28 },
+      uSpecular: { value: 0.55 },
+      uLightDir: { value: new THREE.Vector3(...lightDir) },
+    }),
+
+    // lightDir is read into the uniform below every frame.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
   const glass = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -559,68 +645,9 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
         defines: { SAMPLES: 8, MAX_BLOBS, MAX_RECTS, MAX_RIPPLES, MAX_GLOWS },
         depthTest: false,
         depthWrite: false,
-        uniforms: {
-          tSrc: { value: null },
-          tDepth: { value: null },
-          tInk: { value: null },
-          uHasInk: { value: false },
-          uInkOpacity: { value: 1 },
-          uInkRect: { value: new THREE.Vector4(0, 0, 1, 1) },
-          uCamPos: { value: new THREE.Vector3() },
-          uInvProjView: { value: new THREE.Matrix4() },
-          uProjView: { value: new THREE.Matrix4() },
-          uView: { value: new THREE.Matrix4() },
-          uNear: { value: 0.1 },
-          uFar: { value: 100 },
-          uPanelInv: { value: new THREE.Matrix4() },
-          uPanelRot: { value: new THREE.Matrix3() },
-          uHalf: { value: new THREE.Vector2() },
-          uRadius: { value: 0.09 },
-          uHasBase: { value: true },
-          // Allocated full-length once: three uploads a vec3[] as one
-          // uniform3fv, so the array must keep its size even when the panel
-          // carries fewer blobs — uBlobCount is what bounds the loop.
-          uBlobs: { value: Array.from({ length: MAX_BLOBS }, () => new THREE.Vector3()) },
-          uBlobCount: { value: 0 },
-          uRects: { value: Array.from({ length: MAX_RECTS }, () => new THREE.Vector4()) },
-          uRectR: { value: new Array(MAX_RECTS).fill(0) as number[] },
-          uRectCount: { value: 0 },
-          uSmooth: { value: 0.14 },
-          uRipples: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector4()) },
-          uRippleVel: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector2()) },
-          uRippleSrcR: { value: new Array<number>(MAX_RIPPLES).fill(0.04) },
-          uEdgeReflect: { value: 0.55 },
-          uEdgeWarp: { value: 0.018 },
-          uEdgeWarpSpeed: { value: 1 },
-          uTime: { value: 0 },
-          uRippleWaveSpeed: { value: 1.55 },
-          uRippleCount: { value: 0 },
-          uRippleK: { value: 3.0 },
-          uRippleNu: { value: 0.0018 },
-          uRippleSrc: { value: 0.04 },
-          uRippleDecay: { value: 0.9 },
-          uRippleInk: { value: 0 },
-          uGlows: { value: Array.from({ length: MAX_GLOWS }, () => new THREE.Vector4()) },
-          uGlowCount: { value: 0 },
-          uGlowColor: { value: new THREE.Color('#ffb38a') },
-          uGlowReach: { value: 0.5 },
-          uGlowLife: { value: 0.85 },
-          uBezel: { value: 0.13 },
-          uThickness: { value: 0.1 },
-          uSpread: { value: 0.34 },
-          uIor: { value: 1.42 },
-          uChroma: { value: 0.035 },
-          uRough: { value: 0.28 },
-          uTint: { value: new THREE.Color('#dfe8ff') },
-          uTintAmount: { value: 0.06 },
-          uEdgeLight: { value: 0.28 },
-          uSpecular: { value: 0.55 },
-          uLightDir: { value: new THREE.Vector3(...lightDir) },
-        },
+        uniforms,
       }),
-    // lightDir is read into the uniform below every frame.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [uniforms],
   )
   const blit = useMemo(
     () =>
@@ -696,15 +723,20 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
     }
     panels.sort((a, b) => a.depth - b.depth)
 
-    const u = glass.uniforms
+    const u = uniforms
     tmpProjView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
     tmpInvProjView.multiplyMatrices(camera.matrixWorld, camera.projectionMatrixInverse)
     u.uProjView.value.copy(tmpProjView)
     u.uInvProjView.value.copy(tmpInvProjView)
     u.uView.value.copy(camera.matrixWorldInverse)
     u.uCamPos.value.setFromMatrixPosition(camera.matrixWorld)
-    u.uNear.value = (camera as THREE.PerspectiveCamera).near
-    u.uFar.value = (camera as THREE.PerspectiveCamera).far
+    // SAFETY: the depth reconstruction below is perspective math — it is
+    // only reached from this composite pass, which the scene mounts under a
+    // perspective camera. r3f types the store's camera as the base class,
+    // which carries neither plane.
+    const perspective = camera as THREE.PerspectiveCamera
+    u.uNear.value = perspective.near
+    u.uFar.value = perspective.far
     u.tDepth.value = sceneFbo.depthTexture
     u.uLightDir.value.set(lightDir[0], lightDir[1], lightDir[2])
 
@@ -744,13 +776,13 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
       const blobs = p.blobs
       const nb = Math.min(blobs.length, MAX_BLOBS)
       for (let i = 0; i < nb; i++) {
-        ;(u.uBlobs.value as THREE.Vector3[])[i].set(blobs[i].x, blobs[i].y, blobs[i].r)
+        u.uBlobs.value[i].set(blobs[i].x, blobs[i].y, blobs[i].r)
       }
       u.uBlobCount.value = nb
       const rects = p.rects
       const nq = Math.min(rects.length, MAX_RECTS)
-      const rectSlots = u.uRects.value as THREE.Vector4[]
-      const radii = u.uRectR.value as number[]
+      const rectSlots = u.uRects.value
+      const radii = u.uRectR.value
       for (let i = 0; i < nq; i++) {
         const r = rects[i]
         rectSlots[i].set(r.x, r.y, r.hw, r.hh)
@@ -773,9 +805,9 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
       u.uRippleWaveSpeed.value = Math.max(q.rippleWaveSpeed, 1e-3)
       let nr = 0
       if (q.rippleAmp > 0) {
-        const slots = u.uRipples.value as THREE.Vector4[]
-        const vels = u.uRippleVel.value as THREE.Vector2[]
-        const srcs = u.uRippleSrcR.value as number[]
+        const slots = u.uRipples.value
+        const vels = u.uRippleVel.value
+        const srcs = u.uRippleSrcR.value
         // NEWEST first. The array is chronological, so walking it forwards
         // spends the budget on the oldest — the faintest, nearly-retired
         // ripples — and silently drops the fresh ones a viewer is actually
@@ -818,7 +850,7 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
       for (const gw of p.glows) if (gw.t0 < 0) gw.t0 = now
       let ng = 0
       if (q.glowAmp > 0) {
-        const slots = u.uGlows.value as THREE.Vector4[]
+        const slots = u.uGlows.value
         for (const gw of p.glows) {
           if (ng >= MAX_GLOWS) break
           const age = now - gw.t0

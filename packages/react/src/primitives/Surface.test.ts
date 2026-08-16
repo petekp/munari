@@ -4,6 +4,8 @@ import { createDomSurfaceTexture } from './Surface'
 
 describe('DOM Surface texture', () => {
   it('sets the pixel format before renderer exposure', () => {
+    // SAFETY: a stub, not a canvas. The texture path under test reads
+    // `width` and `height` and nothing else.
     const canvas = { width: 8, height: 8 } as HTMLCanvasElement
     const texture = createDomSurfaceTexture(canvas, 2, true, false)
 

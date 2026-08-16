@@ -40,7 +40,7 @@ describe('screenToPlane', () => {
       [900, 405],
       [1500, 800],
       [12, 990],
-    ] as Array<[number, number]>) {
+    ] as const) {
       const s = planeToScreen(screenToPlane(x, y, VW, VH, CAM, 0, _v), VW, VH, CAM)
       expect(s.x).toBeCloseTo(x, 9)
       expect(s.y).toBeCloseTo(y, 9)
@@ -56,7 +56,7 @@ describe('screenToPlane', () => {
       [900, 405],
       [1500, 800],
       [12, 990],
-    ] as Array<[number, number]>) {
+    ] as const) {
       const s = planeToScreen(screenToPlane(x, y, VW, VH, CAM, LIFT, _v), VW, VH, CAM)
       expect(s.x).toBeCloseTo(x, 9)
       expect(s.y).toBeCloseTo(y, 9)
@@ -106,7 +106,7 @@ describe('screenToPlane', () => {
       [-600, 340, 55],
       [0, 0, 0],
       [700, 480, 96],
-    ] as Array<[number, number, number]>) {
+    ] as const) {
       const p = _v.set(x, y, z).clone()
       const before = planeToScreen(p, VW, VH, CAM)
       carryToPlane(p, CAM, LIFT)
@@ -132,7 +132,7 @@ describe('screenToPlane', () => {
       [900, 405],
       [1500, 800],
       [12, 990],
-    ] as Array<[number, number]>) {
+    ] as const) {
       ray.setFromCamera(
         new THREE.Vector2((x / VW) * 2 - 1, -(y / VH) * 2 + 1),
         cam,

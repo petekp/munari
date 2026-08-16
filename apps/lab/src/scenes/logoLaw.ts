@@ -307,14 +307,14 @@ export function seedWord(n: number, r: Rand, k: LogoKnobs): LetterPose[] {
 // room. The widths are eyeballed averages across the nine faces, in em
 // of the word's size, and meant to be re-eyeballed here.
 
-export const LETTER_SLOT_EM: Record<string, number> = {
-  m: 0.98,
-  u: 0.68,
-  n: 0.68,
-  a: 0.62,
-  r: 0.52,
-  i: 0.34,
-}
+export const LETTER_SLOT_EM = new Map<string, number>([
+  ['m', 0.98],
+  ['u', 0.68],
+  ['n', 0.68],
+  ['a', 0.62],
+  ['r', 0.52],
+  ['i', 0.34],
+])
 export const SLOT_GAP_EM = 0.08
 export const SLOT_FALLBACK_EM = 0.66
 
@@ -325,11 +325,18 @@ export interface SlotBox {
   width: number
 }
 
-export function slotLayout(word: string): { slots: SlotBox[]; width: number } {
+/** Where every glyph of a word sits, and how wide the word ends up. */
+export interface SlotLayout {
+  slots: SlotBox[]
+  /** em. */
+  width: number
+}
+
+export function slotLayout(word: string): SlotLayout {
   const slots: SlotBox[] = []
   let x = 0
   for (const ch of word) {
-    const width = LETTER_SLOT_EM[ch] ?? SLOT_FALLBACK_EM
+    const width = LETTER_SLOT_EM.get(ch) ?? SLOT_FALLBACK_EM
     slots.push({ left: x, width })
     x += width + SLOT_GAP_EM
   }

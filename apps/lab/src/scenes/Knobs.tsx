@@ -126,6 +126,7 @@ import {
   type SourceUvRect,
   type SurfaceAnchorReceipt,
 } from '../lib/surfaceAnchors'
+import { floatData, plainAttribute } from '../lib/geometry'
 import './knobs.css'
 
 const FOV = 42
@@ -164,6 +165,10 @@ const ART_LIGHT_Z = -(SLAB_DEPTH + 34)
 // ── the camera: z = 0 is the viewport, 1 world unit = 1 CSS px ──────────
 
 function PixelPerfect() {
+  // SAFETY: r3f types the store's camera as the base class and hands back a
+  // PerspectiveCamera unless the Canvas asks for `orthographic`. This one
+  // does not, and could not: fitting the frustum to the viewport is what
+  // makes a CSS pixel a world unit, and orthographic has no fov to fit.
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
   const size = useThree((s) => s.size)
   useLayoutEffect(() => {
@@ -249,11 +254,28 @@ function tracePath(ctx: CanvasRenderingContext2D, pts: readonly EnvPixel[]): boo
   return true
 }
 
+/** What one mounted ArtEnvironment holds for its lifetime. */
+interface EnvRig {
+  /** The equirect the room is painted into. */
+  ctx: CanvasRenderingContext2D
+  tex: THREE.CanvasTexture
+  /** The picture's own frame, sampled for the color it spills. */
+  room: CanvasRenderingContext2D
+  /** The pose the equirect was last painted for. */
+  key: string
+  /** When that paint happened, in the frame clock. */
+  last: number
+  /** Both arrive with the renderer and leave on unmount, so both are
+   *  null for the window between construction and the first effect. */
+  pmrem: THREE.PMREMGenerator | null
+  rt: THREE.WebGLRenderTarget | null
+}
+
 function ArtEnvironment() {
   const gl = useThree((s) => s.gl)
   const scene = useThree((s) => s.scene)
   const size = useThree((s) => s.size)
-  const state = useMemo(() => {
+  const state = useMemo<EnvRig>(() => {
     const canvas = document.createElement('canvas')
     canvas.width = ENV_W
     canvas.height = ENV_H
@@ -275,8 +297,8 @@ function ArtEnvironment() {
       room: room.getContext('2d', { willReadFrequently: true })!,
       key: '',
       last: 0,
-      pmrem: null as THREE.PMREMGenerator | null,
-      rt: null as THREE.WebGLRenderTarget | null,
+      pmrem: null,
+      rt: null,
     }
   }, [])
 
@@ -579,7 +601,7 @@ interface KnobsResizeProbeState {
   panelScale: { x: number; y: number; z: number } | null
 }
 
-interface KnobsResizeProbeApi {
+export interface KnobsResizeProbeApi {
   snapshot(): KnobsResizeProbeState
   invalidateLayout(): void
 }
@@ -633,7 +655,8 @@ function useHardwareAssets() {
       1,
       false,
     )
-    const pos = skirt.attributes.position as THREE.BufferAttribute
+    const pos = plainAttribute(skirt, 'position')
+    if (!pos) throw new Error('knurled skirt has no plain position attribute')
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i)
       const z = pos.getZ(i)
@@ -1036,22 +1059,22 @@ function ScrewHardware({ x, y, clock, assets }: { x: number; y: number; clock: n
 /** The panel's rounded rect, centered on the origin — one path builder
  *  for the rim extrusion, the face shade, and anything else that must
  *  wear the corner the DOM authored. */
-function roundedRectShape(w: number, h: number, r: number): THREE.Shape {
-  const shape = new THREE.Shape()
-  shape.moveTo(-w / 2 + r, -h / 2)
-  shape.lineTo(w / 2 - r, -h / 2)
-  shape.absarc(w / 2 - r, -h / 2 + r, r, -Math.PI / 2, 0, false)
-  shape.lineTo(w / 2, h / 2 - r)
-  shape.absarc(w / 2 - r, h / 2 - r, r, 0, Math.PI / 2, false)
-  shape.lineTo(-w / 2 + r, h / 2)
-  shape.absarc(-w / 2 + r, h / 2 - r, r, Math.PI / 2, Math.PI, false)
-  shape.lineTo(-w / 2, -h / 2 + r)
-  shape.absarc(-w / 2 + r, -h / 2 + r, r, Math.PI, Math.PI * 1.5, false)
-  return shape
+function roundedRectOutline(w: number, h: number, r: number): THREE.Shape {
+  const outline = new THREE.Shape()
+  outline.moveTo(-w / 2 + r, -h / 2)
+  outline.lineTo(w / 2 - r, -h / 2)
+  outline.absarc(w / 2 - r, -h / 2 + r, r, -Math.PI / 2, 0, false)
+  outline.lineTo(w / 2, h / 2 - r)
+  outline.absarc(w / 2 - r, h / 2 - r, r, 0, Math.PI / 2, false)
+  outline.lineTo(-w / 2 + r, h / 2)
+  outline.absarc(-w / 2 + r, h / 2 - r, r, Math.PI / 2, Math.PI, false)
+  outline.lineTo(-w / 2, -h / 2 + r)
+  outline.absarc(-w / 2 + r, -h / 2 + r, r, Math.PI, Math.PI * 1.5, false)
+  return outline
 }
 
 /** The same rounded rect as a Path (for cutting holes), centered at
- *  (cx, cy) in the parent shape's local space. */
+ *  (cx, cy) in the parent outline's local space. */
 function roundedRectPath(cx: number, cy: number, w: number, h: number, r: number): THREE.Path {
   const p = new THREE.Path()
   p.moveTo(cx - w / 2 + r, cy - h / 2)
@@ -1100,6 +1123,29 @@ const LEAK_H = 144
  * (1 - exp(-x)), never squared-and-gained into channel clipping — the
  * clipped rim is what turned dusty pink art into a neon tube.
  */
+/**
+ * The corona's uniforms. A type alias, not an interface: three's `uniforms`
+ * is an index signature, and only a mapped type is assignable to one.
+ */
+type CoronaUniforms = {
+  uHalf: { value: THREE.Vector2 }
+  uRadius: { value: number }
+  uArt: { value: THREE.Texture }
+  uView: { value: THREE.Vector2 }
+  uCenter: { value: THREE.Vector2 }
+  uLit: { value: number }
+  uOutReach: { value: number }
+  uVeilReach: { value: number }
+  uCoreTauOut: { value: number }
+  uCoreTauIn: { value: number }
+  uCoreGain: { value: number }
+  uVeilGain: { value: number }
+  uToneK: { value: number }
+  uSpill: { value: number }
+  uLitFloor: { value: number }
+  uLitKnee: { value: number }
+}
+
 function BacklightCorona({ rect }: { rect: RailRect }) {
   const assets = useMemo(() => {
     const canvas = document.createElement('canvas')
@@ -1107,6 +1153,30 @@ function BacklightCorona({ rect }: { rect: RailRect }) {
     canvas.height = LEAK_H
     const ctx = canvas.getContext('2d')!
     const tex = new THREE.CanvasTexture(canvas)
+    // Held by name rather than read back off the material: three types every
+    // uniform's `value` as `any`, so the frame loop below could not get a
+    // Vector2 back from `mat.uniforms` without saying so on faith.
+    const uniforms: CoronaUniforms = {
+      uHalf: { value: new THREE.Vector2(1, 1) },
+      uRadius: { value: PANEL_RADIUS + BEZEL_LIP },
+      uArt: { value: tex },
+      uView: { value: new THREE.Vector2(1, 1) },
+      uCenter: { value: new THREE.Vector2(0, 0) },
+      uLit: { value: 1 },
+      // The tuned numbers, dripped from knobsTuning each frame. The
+      // defaults are the committed look; an untouched tweak panel
+      // renders the same corona the constants used to.
+      uOutReach: { value: knobsTuning.coronaOut },
+      uVeilReach: { value: knobsTuning.coronaVeil },
+      uCoreTauOut: { value: knobsTuning.coronaEdgeOut },
+      uCoreTauIn: { value: knobsTuning.coronaEdgeIn },
+      uCoreGain: { value: knobsTuning.coronaCore },
+      uVeilGain: { value: knobsTuning.coronaVeilGain },
+      uToneK: { value: knobsTuning.coronaTone },
+      uSpill: { value: knobsTuning.coronaSpill },
+      uLitFloor: { value: knobsTuning.coronaLitFloor },
+      uLitKnee: { value: knobsTuning.coronaLitKnee },
+    }
     const mat = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
@@ -1121,27 +1191,7 @@ function BacklightCorona({ rect }: { rect: RailRect }) {
       blendDst: THREE.OneFactor,
       blendSrcAlpha: THREE.ZeroFactor,
       blendDstAlpha: THREE.OneFactor,
-      uniforms: {
-        uHalf: { value: new THREE.Vector2(1, 1) },
-        uRadius: { value: PANEL_RADIUS + BEZEL_LIP },
-        uArt: { value: tex },
-        uView: { value: new THREE.Vector2(1, 1) },
-        uCenter: { value: new THREE.Vector2(0, 0) },
-        uLit: { value: 1 },
-        // The tuned numbers, dripped from knobsTuning each frame. The
-        // defaults are the committed look; an untouched tweak panel
-        // renders the same corona the constants used to.
-        uOutReach: { value: knobsTuning.coronaOut },
-        uVeilReach: { value: knobsTuning.coronaVeil },
-        uCoreTauOut: { value: knobsTuning.coronaEdgeOut },
-        uCoreTauIn: { value: knobsTuning.coronaEdgeIn },
-        uCoreGain: { value: knobsTuning.coronaCore },
-        uVeilGain: { value: knobsTuning.coronaVeilGain },
-        uToneK: { value: knobsTuning.coronaTone },
-        uSpill: { value: knobsTuning.coronaSpill },
-        uLitFloor: { value: knobsTuning.coronaLitFloor },
-        uLitKnee: { value: knobsTuning.coronaLitKnee },
-      },
+      uniforms,
       vertexShader: /* glsl */ `
         varying vec2 vPos;
         void main() {
@@ -1254,7 +1304,7 @@ function BacklightCorona({ rect }: { rect: RailRect }) {
         }
       `,
     })
-    return { canvas, ctx, tex, mat, key: '' }
+    return { canvas, ctx, tex, mat, uniforms, key: '' }
   }, [])
   useEffect(
     () => () => {
@@ -1321,10 +1371,10 @@ function BacklightCorona({ rect }: { rect: RailRect }) {
       assets.tex.needsUpdate = true
     }
 
-    const u = assets.mat.uniforms
-    ;(u.uHalf.value as THREE.Vector2).set(backlight.w / 2, backlight.h / 2)
-    ;(u.uView.value as THREE.Vector2).set(window.innerWidth, window.innerHeight)
-    ;(u.uCenter.value as THREE.Vector2).set(backlight.x, backlight.y)
+    const u = assets.uniforms
+    u.uHalf.value.set(backlight.w / 2, backlight.h / 2)
+    u.uView.value.set(window.innerWidth, window.innerHeight)
+    u.uCenter.value.set(backlight.x, backlight.y)
     u.uLit.value = artClock.lit
     const t = knobsTuning
     u.uOutReach.value = t.coronaOut
@@ -1373,15 +1423,15 @@ function FaceShade({
     [anchors.anchors, rect.w, rect.h],
   )
   const geometry = useMemo(() => {
-    const shape = roundedRectShape(rect.w, rect.h, PANEL_RADIUS)
+    const outline = roundedRectOutline(rect.w, rect.h, PANEL_RADIUS)
     // The shade is the face falling dark against its own backlight. The
     // LCD windows are lamps STANDING in that face — a lamp does not
     // fall dark — so the shade is cut around each measured window (the
     // same 4px corner knobs.css authors on .knb-dial-value).
     for (const box of readouts) {
-      shape.holes.push(roundedRectPath(box.x - rect.w / 2, rect.h / 2 - box.y, box.w, box.h, 4))
+      outline.holes.push(roundedRectPath(box.x - rect.w / 2, rect.h / 2 - box.y, box.w, box.h, 4))
     }
-    return new THREE.ShapeGeometry(shape, 24)
+    return new THREE.ShapeGeometry(outline, 24)
   }, [rect.w, rect.h, readouts])
   const mat = useMemo(
     () =>
@@ -1503,12 +1553,12 @@ function ReadoutWindows({
     // authors), so an opaque material needs no alpha work.
     return sizeKey.split(',').map((s) => {
       const [w, h] = s.split('x').map(Number)
-      return new THREE.ShapeGeometry(roundedRectShape(w, h, 4), 8)
+      return new THREE.ShapeGeometry(roundedRectOutline(w, h, 4), 8)
     })
   }, [sizeKey])
   useEffect(() => () => geoms.forEach((g) => g.dispose()), [geoms])
 
-  // ShapeGeometry uvs are raw shape coords; rewrite them to sample the
+  // ShapeGeometry uvs are raw outline coords; rewrite them to sample the
   // capture where this window sits on the face (plane uv space: v = 0
   // at the bottom, flipY on the capture already agrees). This is the
   // only part a move has to redo — a write over existing buffers, no
@@ -1705,8 +1755,8 @@ function SlabRim({ rect }: { rect: RailRect }) {
     // re-fit is exact for any target, so the machined buffer should be
     // deterministic rather than an accident of first render.
     const built = RIM_BUILD
-    const shape = roundedRectShape(built.w + BEZEL_LIP * 2, built.h + BEZEL_LIP * 2, PANEL_RADIUS + BEZEL_LIP)
-    const geometry = new THREE.ExtrudeGeometry(shape, {
+    const outline = roundedRectOutline(built.w + BEZEL_LIP * 2, built.h + BEZEL_LIP * 2, PANEL_RADIUS + BEZEL_LIP)
+    const geometry = new THREE.ExtrudeGeometry(outline, {
       depth: SLAB_DEPTH,
       bevelEnabled: true,
       // Thickness stays under FACE_Z: the captured face must keep
@@ -1719,7 +1769,8 @@ function SlabRim({ rect }: { rect: RailRect }) {
       curveSegments: 24,
     })
     geometry.translate(0, 0, -SLAB_DEPTH)
-    const position = geometry.getAttribute('position') as THREE.BufferAttribute
+    const position = plainAttribute(geometry, 'position')
+    if (!position) throw new Error('extruded slab has no plain position attribute')
     const material = new THREE.MeshStandardMaterial({
       color: 0xe8ebef,
       metalness: knobsTuning.rimMetal,
@@ -1727,19 +1778,14 @@ function SlabRim({ rect }: { rect: RailRect }) {
     })
     // Kept unremapped, so every re-fit starts from the machined shape
     // and rounding cannot compound across a long drag.
-    return { geometry, material, built, base: Float32Array.from(position.array as Float32Array) }
+    return { geometry, material, built, base: Float32Array.from(position.array) }
   }, [rev])
 
   useLayoutEffect(() => {
-    const position = assets.geometry.getAttribute('position') as THREE.BufferAttribute
-    nineSlice(
-      assets.base,
-      position.array as Float32Array,
-      assets.built.w,
-      assets.built.h,
-      rect.w,
-      rect.h,
-    )
+    const position = plainAttribute(assets.geometry, 'position')
+    const live = position && floatData(position)
+    if (!position || !live) return
+    nineSlice(assets.base, live, assets.built.w, assets.built.h, rect.w, rect.h)
     position.needsUpdate = true
     // The silhouette moved, so the things that cull and light against it
     // must be told. Normals do not: a rigid corner and a stretched
@@ -1761,6 +1807,40 @@ function SlabRim({ rect }: { rect: RailRect }) {
   return <mesh geometry={assets.geometry} material={assets.material} userData={{ matter: true }} />
 }
 
+/** Where a carry took hold: the offset from the slab's origin to the
+ *  finger, and the page the finger took hold ON. The scroll pair is what
+ *  keeps the grip under the finger when the page scrolls mid-carry. */
+interface PanelGrab {
+  dx: number
+  dy: number
+  clientX: number
+  clientY: number
+  scrollLeft: number
+  scrollTop: number
+}
+
+/** The slab's live motion. Everything here is written per frame and read
+ *  per frame; none of it is React state, because a spring that re-rendered
+ *  on every step would cost a paint per step. */
+interface PanelMotion {
+  /** Rake springs: x tilts about the horizontal, y about the vertical. */
+  rx: SpringState
+  ry: SpringState
+  /** Pointer position in slab space, the rake's input. */
+  px: number
+  py: number
+  /** Last REAL screen pointer, CSS px — the carry gesture's ruler. */
+  client: { x: number; y: number }
+  /** The carried pose, or null when the slab is at rest on its rail. */
+  pose: { x: SpringState; y: SpringState } | null
+  target: { x: number; y: number }
+  /** Non-null exactly while a carry is in progress. */
+  grab: PanelGrab | null
+  carried: boolean
+  overflowX: boolean
+  overflowY: boolean
+}
+
 /** The slab on its mount: pointer-follow rake with spring dynamics, and
  *  the counter-thunk a landing lever kicks into it. Real geometry under
  *  a moving vantage is the parallax a flat page cannot counterfeit. */
@@ -1776,23 +1856,15 @@ function PanelRig({
   children: React.ReactNode
 }) {
   const group = useRef<THREE.Group>(null)
-  const motion = useRef({
-    rx: { x: 0, v: 0 } as SpringState,
-    ry: { x: 0, v: 0 } as SpringState,
+  const motion = useRef<PanelMotion>({
+    rx: { x: 0, v: 0 },
+    ry: { x: 0, v: 0 },
     px: 0,
     py: 0,
-    /** Last REAL screen pointer, CSS px — the carry gesture's ruler. */
     client: { x: 0, y: 0 },
-    pose: null as { x: SpringState; y: SpringState } | null,
+    pose: null,
     target: { x: 0, y: 0 },
-    grab: null as {
-      dx: number
-      dy: number
-      clientX: number
-      clientY: number
-      scrollLeft: number
-      scrollTop: number
-    } | null,
+    grab: null,
     carried: false,
     overflowX: false,
     overflowY: false,
@@ -2255,7 +2327,7 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
     anchors: Readonly<Record<string, SourceUvRect>>
   } | null>(null)
   const probeEnabled =
-    typeof window !== 'undefined' &&
+    'window' in globalThis &&
     new URLSearchParams(window.location.search).get('probe') === 'knobs-resize'
   const probeState = useRef<KnobsResizeProbeState>({
     paint: null,
@@ -2403,7 +2475,7 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
 
   useEffect(() => {
     if (!probeEnabled) return
-    const target = window as unknown as { __knobsResizeProbe?: KnobsResizeProbeApi }
+    const target = window
     target.__knobsResizeProbe = {
       snapshot: () => ({ ...probeState.current }),
       invalidateLayout: () => {
@@ -2508,7 +2580,7 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
     })
 
     const measure = (pinRight = false) => {
-      const root = el.querySelector('.knb-panel') as HTMLElement | null
+      const root = el.querySelector<HTMLElement>('.knb-panel')
       const base = root?.getBoundingClientRect()
       if (!root || !base || base.width === 0) {
         raf = requestAnimationFrame(() => measure())

@@ -31,8 +31,19 @@ if (!chromePath) skip('no Chrome executable found (set CHROME_PATH)')
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 let browser
 let server
+
+// A gate that dies at a hard deadline with no output cannot be read. Each
+// phase names itself as it begins, so the deadline reports where the time
+// went instead of only that it ran out.
+const started = Date.now()
+let phase = 'startup'
+const step = (label) => {
+  phase = label
+  console.log(`knobs-input ${((Date.now() - started) / 1000).toFixed(1)}s · ${label}`)
+}
+
 const deadline = setTimeout(() => {
-  console.error('knobs-input gate: hard 120s deadline hit')
+  console.error(`knobs-input gate: hard 120s deadline hit during ${phase}`)
   process.exit(1)
 }, 120_000)
 
@@ -47,15 +58,18 @@ try {
       ...(process.env.CI ? ['--no-sandbox'] : []),
     ],
   })
+  step('chrome launched')
   const probe = await browser.newPage()
   const capable = await probe.evaluate(
-    () => typeof document.createElement('canvas').getContext('2d').drawElementImage === 'function',
+    () => 'drawElementImage' in document.createElement('canvas').getContext('2d'),
   )
   await probe.close()
+  step(`capability probed (drawElementImage: ${capable})`)
   if (!capable) skip(`Chrome at ${chromePath} has no drawElementImage`)
 
   server = await createServer({ root: labRoot, logLevel: 'warn', server: { port: 0 } })
   await server.listen()
+  step('vite listening')
   const port = server.config.server.port ?? server.httpServer.address().port
   const page = await browser.newPage()
   const cdp = await page.createCDPSession()
@@ -64,11 +78,14 @@ try {
   page.on('pageerror', (error) => { pageError ??= String(error) })
 
   const load = async () => {
+    step('knobs route loading')
     await page.goto(`http://localhost:${port}/?scene=knobs`, { waitUntil: 'load' })
+    step('knobs route loaded')
     await page.waitForFunction(
       () => document.querySelector('.knb-panel') && document.querySelector('canvas'),
       { timeout: 15_000 },
     )
+    step('panel and canvas present')
     await sleep(1200)
     await page.evaluate(() => {
       window.__ki = { pointers: [], events: [], clicks: [] }

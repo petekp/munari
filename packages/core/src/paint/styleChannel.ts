@@ -54,10 +54,12 @@ export function ensureChannelRegistered(
 ): void {
   if (registered.has(property)) return
   registered.add(property)
-  const css = (globalThis as { CSS?: { registerProperty?: (d: object) => void } }).CSS
-  if (!css?.registerProperty) return // layoutless envs; CSS may declare @property
+  // layoutless envs have no CSS namespace at all, and older engines have one
+  // without registerProperty; a stylesheet @property may have declared it
+  // either way. Both are `in` checks so neither throws on the missing name.
+  if (!('CSS' in globalThis) || !('registerProperty' in CSS)) return
   try {
-    css.registerProperty({ name: property, syntax, initialValue, inherits })
+    CSS.registerProperty({ name: property, syntax, initialValue, inherits })
   } catch {
     // Already registered (by CSS @property or an earlier run) — fine.
   }
@@ -109,14 +111,13 @@ export function createStyleChannel(
     emit()
     requestAnimationFrame(tick)
   }
-  const isOurs = (e: Event) =>
-    e.target === el && (e as TransitionEvent).propertyName === property
-  const onRun = (e: Event) => {
+  const isOurs = (e: TransitionEvent) => e.target === el && e.propertyName === property
+  const onRun = (e: TransitionEvent) => {
     if (!isOurs(e)) return
     live += 1
     if (live === 1) requestAnimationFrame(tick)
   }
-  const onDone = (e: Event) => {
+  const onDone = (e: TransitionEvent) => {
     if (!isOurs(e)) return
     live = Math.max(0, live - 1)
     schedule() // land the exact final value

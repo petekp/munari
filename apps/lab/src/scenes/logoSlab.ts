@@ -46,7 +46,7 @@
 // into the hole instead of out of it.
 
 import * as THREE from 'three'
-import type { ContourShape } from './logoContour'
+import type { InkIsland } from './logoContour'
 
 /** A sane ceiling on wall detail, counted AFTER subdivision. A traced,
  *  simplified, subdivided letter lands in the low hundreds of points;
@@ -91,7 +91,7 @@ function subdivideRing(ring: number[], boxW: number, boxH: number): number[] {
 /**
  * The letter's mesh in local CSS pixels, centered on its capture box.
  *
- * `shapes` may be empty or null — then this is the plain sheet, which is
+ * `islands` may be empty or null — then this is the plain sheet, which is
  * what a letter runs until its outline has been traced.
  *
  * Positions carry the slab in a form the vertex stage can scale: the
@@ -104,11 +104,11 @@ export function buildLetterMesh(
   boxH: number,
   segX: number,
   segY: number,
-  shapes: ContourShape[] | null,
+  islands: InkIsland[] | null,
 ): THREE.BufferGeometry {
   const rings: number[][] = []
   let wallPts = 0
-  for (const s of shapes ?? []) {
+  for (const s of islands ?? []) {
     for (const r of [s.outer, ...s.holes]) {
       if (r.length / 2 < 3) continue
       const sub = subdivideRing(r, boxW, boxH)

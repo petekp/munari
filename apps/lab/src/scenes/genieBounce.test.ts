@@ -4,40 +4,40 @@
 // copies and requires zero drift.
 import { describe, expect, it } from 'vitest'
 
-import { type BounceBody, type BounceShape, bounceStep, markShape } from './genieBounce'
+import { type BounceBody, type MarkOutline, bounceStep, markOutline } from './genieBounce'
 
 const W = 460
 const H = 340
 
-const body = (x: number, y: number, vx: number, vy: number, shape: BounceShape): BounceBody => ({
+const body = (x: number, y: number, vx: number, vy: number, outline: MarkOutline): BounceBody => ({
   x,
   y,
   vx,
   vy,
-  shape,
+  outline,
 })
 
-const circle = (r: number): BounceShape => ({ kind: 'circle', r })
+const circle = (r: number): MarkOutline => ({ kind: 'circle', r })
 
 const energy = (bodies: BounceBody[]) =>
   bodies.reduce((sum, b) => sum + b.vx * b.vx + b.vy * b.vy, 0)
 
 // The three marks as the scene ships them: square, circle, triangle.
 const marks = () => [
-  body(100, 90, 40, 31, markShape('quadrato', 34)),
-  body(300, 80, -37, 22, markShape('cerchio', 30)),
-  body(240, 240, 25, -44, markShape('triangolo', 36)),
+  body(100, 90, 40, 31, markOutline('quadrato', 34)),
+  body(300, 80, -37, 22, markOutline('cerchio', 30)),
+  body(240, 240, 25, -44, markOutline('triangolo', 36)),
 ]
 
 const inside = (b: BounceBody) => {
-  if (b.shape.kind === 'circle') {
-    expect(b.x).toBeGreaterThanOrEqual(b.shape.r - 1e-9)
-    expect(b.x).toBeLessThanOrEqual(W - b.shape.r + 1e-9)
-    expect(b.y).toBeGreaterThanOrEqual(b.shape.r - 1e-9)
-    expect(b.y).toBeLessThanOrEqual(H - b.shape.r + 1e-9)
+  if (b.outline.kind === 'circle') {
+    expect(b.x).toBeGreaterThanOrEqual(b.outline.r - 1e-9)
+    expect(b.x).toBeLessThanOrEqual(W - b.outline.r + 1e-9)
+    expect(b.y).toBeGreaterThanOrEqual(b.outline.r - 1e-9)
+    expect(b.y).toBeLessThanOrEqual(H - b.outline.r + 1e-9)
     return
   }
-  for (const v of b.shape.verts) {
+  for (const v of b.outline.verts) {
     expect(b.x + v.x).toBeGreaterThanOrEqual(-1e-9)
     expect(b.x + v.x).toBeLessThanOrEqual(W + 1e-9)
     expect(b.y + v.y).toBeGreaterThanOrEqual(-1e-9)
@@ -86,8 +86,8 @@ describe('bounceStep', () => {
     // the top-right corner, beside the apex — but outside its actual
     // slanted edge. Box bounds would fire here; the true silhouette
     // must not.
-    const tri = body(200, 170, 0, 0, markShape('triangolo', 36))
-    const orb = body(228, 142, 0, 0, markShape('cerchio', 18))
+    const tri = body(200, 170, 0, 0, markOutline('triangolo', 36))
+    const orb = body(228, 142, 0, 0, markOutline('cerchio', 18))
     bounceStep([tri, orb], 0, W, H)
     expect(tri.x).toBe(200)
     expect(tri.y).toBe(170)
@@ -99,8 +99,8 @@ describe('bounceStep', () => {
     // A circle falling straight down onto the right slant must be
     // shoved sideways — the contact normal belongs to the edge, not to
     // an axis-aligned box (which would return the fall straight up).
-    const tri = body(200, 170, 0, 0, markShape('triangolo', 36))
-    const orb = body(230, 140, 0, 30, markShape('cerchio', 30))
+    const tri = body(200, 170, 0, 0, markOutline('triangolo', 36))
+    const orb = body(230, 140, 0, 30, markOutline('cerchio', 30))
     const before = energy([tri, orb])
     bounceStep([tri, orb], 0, W, H)
     expect(orb.vx).toBeGreaterThan(0)

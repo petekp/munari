@@ -133,14 +133,18 @@ type Located =
   | { level: 'unit'; groupId: string }
   | { level: 'interior'; groupId: string }
 
-const ARROW_DIRS: Record<string, Dir> = {
-  ArrowUp: 'up',
-  ArrowDown: 'down',
-  ArrowLeft: 'left',
-  ArrowRight: 'right',
-}
+/** The four keys this scene routes as directions. A Map, not an object,
+ *  because the lookup below is keyed by whatever the keyboard said — `get`
+ *  answers that honestly with `undefined`, where an object literal would
+ *  need the key laundered into its own key type first. */
+const ARROW_DIRS = new Map<string, Dir>([
+  ['ArrowUp', 'up'],
+  ['ArrowDown', 'down'],
+  ['ArrowLeft', 'left'],
+  ['ArrowRight', 'right'],
+])
 
-const ROUTED_KEYS = new Set(['Tab', 'Enter', 'F2', 'Escape', ...Object.keys(ARROW_DIRS)])
+const ROUTED_KEYS = new Set(['Tab', 'Enter', 'F2', 'Escape', ...ARROW_DIRS.keys()])
 
 /** ONE portal layer for every proxy (docs/focus.md: never a React root per
  *  proxy — that's react-three-a11y's crash class). Plain imperative DOM:
@@ -587,7 +591,7 @@ export function FocusScene({
       const loc = locate()
       if (loc.level === 'page') return
 
-      const arrowDir = ARROW_DIRS[e.key]
+      const arrowDir = ARROW_DIRS.get(e.key)
       if (arrowDir) {
         // Modified arrows belong to the platform (OS window management,
         // word navigation) — never route them.
@@ -956,10 +960,14 @@ export function FocusScene({
           role: p.getAttribute('role'),
           now: p.getAttribute('aria-valuenow'),
           text: p.getAttribute('aria-valuetext'),
-          rect: (p as HTMLElement).getBoundingClientRect().toJSON(),
+          rect: p.getBoundingClientRect().toJSON(),
           focused: document.activeElement === p,
         })),
     }
+    // SAFETY: a debug handle, hung on window for a console session and
+    // removed on cleanup below. The key is described locally rather than
+    // declared into the global Window interface, which would put a
+    // development-only field on every consumer's `window`.
     const w = window as Window & { __focusScene?: typeof debug }
     w.__focusScene = debug
     return () => {
