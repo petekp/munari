@@ -23,10 +23,10 @@ moment.
 - `apps/lab` — a consumer. Imports **only** the `@petepetrash/munari` barrel,
   exactly as an outside project would. When a scene wants something
   unexported, export it — don't reach around.
-- `instruments/` — measurement is maintained infrastructure, committed
-  and reviewed like kernel code. A capture recipe that lives as prose
-  has to be re-derived by whoever needs it next; that is the failure
-  this directory exists to prevent.
+- `instruments/` — browser probes and CI gates, committed and
+  reviewed like kernel code. A measurement that exists only as prose
+  has to be re-derived by whoever needs it next, so every probe is a
+  runnable script.
 - `tools/oxlint/anti-slop/` — the local lint rules `npm run lint`
   enforces as hard errors.
 
@@ -119,7 +119,7 @@ gates: `gate:idle-zero` (mounted quiescent Surfaces cost 0 paints/s),
 `gate:frame-surface`, `gate:shaders`, `gate:dom-surface-demand`,
 `gate:genie-film-reorder`. Three more run locally on demand:
 `gate:genie-duplicate`, `gate:genie-film`, `gate:genie-shadow`.
-`instruments/README.md` says what each one convicts.
+`instruments/README.md` says what each one checks.
 
 `npm run build` produces the publishable package under
 `packages/react/dist` — the kernel bundled in, `three`/`@react-three/fiber`/
