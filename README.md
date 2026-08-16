@@ -3,33 +3,32 @@
 Live DOM as physical matter in WebGL.
 
 Bruno Munari mounted gauze, torn film, and scraps of plastic in slide
-frames and threw them across a wall — *proiezioni dirette*, direct
-projections, where what you see is not a picture of the material but
-the material itself, enlarged by light. This library does that to the
-browser: the real DOM — layout, focus, accessibility, text you can
-select — stays the retained truth, and a handoff protocol lets a WebGL
-scene carry its pixels as matter. At the calibrated vantage (1 world
+frames and threw them across a wall. He called them *proiezioni
+dirette*, direct projections: the material itself, enlarged by light.
+This library does that to the browser. The real DOM (layout, focus,
+accessibility, text you can select) stays the source of truth, and a
+WebGL scene carries its pixels. At the calibrated vantage (1 world
 unit = 1 CSS pixel on the rest plane) the page resolves exactly;
 everywhere else it is paper you can bend, throw, and crumple.
 
-**Status: pre-release.** The kernel is complete through six
-layers — mapping, paint, pointer, transfer, chrome, physics — each defined
-by a conformance suite in `tests/conformance/` and exercised by a scene
-in the lab. The public API is not frozen: the binding re-exports the
-kernel whole, so every kernel law is currently reachable, and that
-surface will be narrowed before 1.0.
+**Status: pre-release.** Core covers coordinate mapping, DOM capture,
+pointer forwarding, the page↔scene handoff, chrome measurement, and
+physics; each area has a suite in `tests/conformance/` and a lab scene
+that exercises it. The public API is not frozen: the package
+re-exports all of core today, and we will narrow that surface before
+1.0.
 
 ## Requirements
 
 The library is built on Chrome's **HTML-in-canvas origin trial**
 (`drawElementImage`). Without that capability a Surface has nothing to
-rasterize — there is no fallback path, by design. Chrome needs
+rasterize; there is no fallback path. Chrome needs
 `--enable-features=CanvasDrawElement`, or a registered origin-trial
 token.
 
-`three` and `@react-three/fiber` are **peer dependencies**. three does
-internal `instanceof` checks, so two copies in one graph fail silently;
-the consumer owns the single instance.
+`three` and `@react-three/fiber` are **peer dependencies**. three uses
+`instanceof` internally; two copies in one dependency graph fail
+without an error. Your app owns the single copy.
 
 ## Install
 
@@ -63,8 +62,8 @@ export function App() {
 }
 ```
 
-…or `SurfaceApp` to hand it a React tree instead, rendered by a second
-React root into the same live subtree:
+…or `SurfaceApp` to hand it a React tree, rendered by a second React
+root into the same live subtree:
 
 ```tsx
 <SurfaceApp width={400} height={300} content={<Panel />} />
@@ -123,16 +122,16 @@ function FrameExample({ canvas }: { canvas: HTMLCanvasElement }) {
 
 The frame path uses an unlit, non-tone-mapped material by default, so scene
 lighting does not change its color. Choose `material="standard"` only when
-lighting is wanted.
+you want lighting.
 
 The canvas stays with its caller. `publish()` means new pixels are ready; it
 does not mean they were drawn. `onFrameDrawn` proves that the target mesh used
-the named upload in a renderer pass. It can also fire for an off-screen or
-color-disabled pass. `onPresented` adds the exact transfer and presentation
-revision and accepts only a color-writing draw to the default framebuffer.
-Several publications can merge before one render, so receipts name only the
-latest frame that was actually uploaded. A hidden or culled mesh cannot send a
-receipt.
+the named upload in a renderer pass. It fires for an off-screen or
+color-disabled pass too. `onPresented` adds the exact transfer and
+presentation revision and accepts only a color-writing draw to the default
+framebuffer. Several publications can merge before one render, so receipts
+name only the latest frame that was uploaded. A hidden or culled mesh cannot
+send a receipt.
 
 The reverse handoff has a different boundary. Prepare the native presenter
 first, then call `commitRendererReleaseFrame` from `useFrame`. Its
@@ -147,34 +146,36 @@ alpha still contain alpha-weighted RGB. Do not multiply RGB by alpha again.
 Apply masks and fades to the full `vec4`, then blend with `ONE` and
 `ONE_MINUS_SRC_ALPHA` when transparency is visible.
 
-`useSurfaceTexture()` is initially null while the frame runtime is created.
-A custom material must replace or update its sampler when that hook returns
-the texture; do not leave Three bound to the first null uniform.
+`useSurfaceTexture()` returns null until the frame runtime exists. Replace
+or update your custom material's sampler when the hook returns the texture;
+do not leave Three bound to the first null uniform.
 
-For DOM-backed Surfaces, the content root must declare its own pixel size: the
-element is rasterized at its own layout box, and a container with
-nothing in flow to size it measures zero and draws an empty rectangle —
-with clean paints and no error.
+For DOM-backed Surfaces, the content root must declare its own pixel size:
+Chrome rasterizes the element at its own layout box, and a container with
+nothing in flow to size it measures zero and draws an empty rectangle, with
+clean paints and no error.
 
-The stylesheet is mechanism, not theme; it documents the three things
-it asks of a consumer's CSS in return.
+The stylesheet is required plumbing; its header comment lists what it
+expects from your CSS.
 
 ## Repo shape
 
 | path | what it is |
 | --- | --- |
-| `packages/core` | the kernel — pure laws, **zero runtime dependencies** |
-| `packages/react` | the `@petepetrash/munari` package — the three/r3f binding |
-| `registry/` | copyable behaviors, shadcn-style (nothing published) |
-| `apps/lab` | the lab application, a *consumer* of the barrel |
-| `instruments/` | probes and gates; measurement as maintained code |
-| `tests/conformance/` | the specification, one suite per layer |
+| `packages/core` | the renderer-agnostic core; no dependencies, bundled into the package |
+| `packages/react` | the `@petepetrash/munari` package: React/three components over core |
+| `registry/` | source you copy into your project (nothing published) |
+| `apps/lab` | the demo and development app |
+| `instruments/` | browser probes and CI gates |
+| `tests/conformance/` | the test suites that define core's behavior |
 
-The dependency shape is an hourglass — core ← binding ← consumers — and
-`tests/boundary.test.ts` walks real import specifiers to enforce it.
+Dependencies point one way: apps depend on `packages/react`, which
+depends on `packages/core`. `tests/boundary.test.ts` checks the actual
+imports.
 
 See `AGENTS.md` for the working rules, `docs/decisions.md` for the
-ledger, `docs/platform.md` for what the platform is measured to do,
+numbered design decisions, `docs/platform.md` for what the platform is
+measured to do,
 `docs/authoring.md` for how to write markup a Surface can draw, and
 `docs/focus.md` for the focus and spatial-navigation contract.
 
@@ -194,11 +195,10 @@ Eight browser gates exist. CI runs five on every push (`gate:idle-zero`,
 `gate:genie-film-reorder`); three run locally on demand
 (`gate:genie-duplicate`, `gate:genie-film`, `gate:genie-shadow`), and
 `instruments/knobs-hz` is a reporter with no gate script.
-`instruments/README.md` says what each one convicts, and how.
+`instruments/README.md` explains what each one checks.
 
-Publishing builds a staged package (the kernel bundled in, peers left
-external) and publishes from it, so the workspace can keep resolving
-source:
+`npm run build` stages the package with core bundled in and peers left
+external; publish from the staged directory:
 
 ```sh
 npm run build

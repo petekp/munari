@@ -1,50 +1,58 @@
-# @petepetrash/munari — the binding
+# @petepetrash/munari
 
-The thinnest react/three binding over `@munari/core`, and the one
-package that will ever be published (decisions.md #1). `three`,
-`@react-three/fiber`, `react`, and `react-dom` are **peer**
-dependencies — we are three-first, and renderer abstraction is banned
-by the second-system guard. `tests/boundary.test.ts` holds this
-directory to exactly those imports plus `@munari/core`.
+React components and hooks that render live DOM (or a canvas you draw
+into) as textured meshes inside a `@react-three/fiber` scene.
 
-The kernel is re-exported whole (see the preamble in `src/index.ts`
-for why). A binding export earns its place by a scene consuming it:
-the lab imports from the barrel and nowhere else, so a missing export
-shows up as a broken scene, not a relative path reaching around it.
+```sh
+npm install @petepetrash/munari three @react-three/fiber
+```
 
-## Layout
+`three`, `@react-three/fiber`, `react`, and `react-dom` are peer
+dependencies: your app supplies them. Keep one copy of `three` in the
+dependency graph; three uses `instanceof` internally, and two copies
+fail without an error.
 
-- `src/primitives/` — the React-facing surface. `Surface` is the atom;
-  `FrameSurface` and `DomSurfaceRuntime` are its two pixel paths
-  (caller-owned canvas frames with receipts, and live-DOM capture);
-  `SurfaceApp` renders a React tree into the captured subtree;
-  `FocusScene` + `FocusOrbitRig` + `useFocusScene` are the focus
-  contract (`docs/focus.md`); `useLift` drives the kernel's crossing
-  law from r3f frames; `CanvasPointerGate` decides when the canvas is
-  solid to pointers; `controls/` holds physical controls (`Dial`,
-  `use1DOF`).
-- `src/lib/` — pure helpers (`focusTree`, `spatialNav`, `cameraPose`,
-  `tabbables`, `arcLayout`, `rendererRelease`, `surfaceRadiusGlsl`).
-- `src/style.css` — mechanism, not theme. Its header documents the
-  three things the library asks of a consumer's stylesheet; that
-  contract lives only there.
+This package re-exports everything in `@munari/core`, so you import
+from it alone.
 
-## Conventions that differ from core
+## What's where
 
-- **Tests sit beside the modules they test** (`foo.ts` + `foo.test.ts`),
-  not in `tests/conformance/`. The boundary test licenses this with a
-  `vitest`-in-`*.test.ts` carve-out. Pinned numbers in these suites are
-  contract all the same.
-- **Module preambles sit at the top of the file, above the imports**,
-  same as core — a reader's first screenful should be the law, not the
-  import block.
+- `src/primitives/`: the components and hooks.
+  - `Surface`: a mesh whose material is a live DOM subtree or a
+    caller-owned canvas; everything else supports it.
+  - `SurfaceApp`: mounts a React tree as a Surface's DOM.
+  - `FrameSurface`, `DomSurfaceRuntime`: the two pixel paths behind
+    `Surface`, canvas frames with draw/presentation receipts and live
+    DOM capture.
+  - `FocusScene`, `FocusOrbitRig`, `useFocusScene`: keyboard focus and
+    spatial navigation. `docs/focus.md` explains the model.
+  - `useLift`: moves a Surface between the page and the scene without
+    a visible seam.
+  - `CanvasPointerGate`: lets a full-page canvas pass pointer events
+    through to the page, except where a pointer hits scene content.
+  - `controls/`: draggable physics controls (`Dial`, `use1DOF`).
+- `src/lib/`: plain functions used by the primitives (`focusTree`,
+  `spatialNav`, `cameraPose`, `tabbables`, `arcLayout`,
+  `rendererRelease`, `surfaceRadiusGlsl`).
+- `src/style.css`: required styles for DOM capture. Its header comment
+  lists what it expects from your CSS.
+
+## Conventions
+
+- Tests sit next to the modules they test (`foo.ts` + `foo.test.ts`).
+- A module opens with a comment block, above the imports, that says
+  what it does and why it works the way it does.
+- Numbers asserted in tests are deliberate. Record a change in
+  `docs/decisions.md` before adjusting one.
 
 ## Publishing
 
-`npm run build` (from the root) stages a publishable package under
-`packages/react/dist` — kernel bundled in, peers left external — and
-`npm publish packages/react/dist` ships it. The workspace package
-itself stays `private` with `exports` pointing at `src/`, which is
-what lets the lab consume the barrel with no alias and makes a missing
-export fail the build, while a stray publish at the root cannot ship
-raw source.
+From the repo root:
+
+```sh
+npm run build              # writes packages/react/dist; core bundled in, peers external
+npm publish packages/react/dist
+```
+
+The workspace package stays `private`; you publish only the staged
+`dist`.

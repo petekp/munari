@@ -1,22 +1,18 @@
-# docs/ — what is canon, and what is only evidence
+# docs
 
-Four documents are load-bearing. Code cites them by number
-(`decisions.md #5`, `platform.md #9`), so their numbering is stable by
-doctrine.
+Code comments cite these documents by entry number (`decisions.md #5`,
+`platform.md #9`), so numbering never changes.
 
-| doc | what it is |
+| file | what it is |
 |---|---|
-| `decisions.md` | The ledger: numbered standing decisions, `#1`–. Entries are never renumbered and never rewritten; supersession is a dated **Amended** block in place. Changing a pinned number to make a test pass is a decision, and lands here. |
-| `platform.md` | The platform, **as measured** — what Chrome's HTML-in-canvas actually does, one row per finding, each with the probe that established it. Browser evidence beats reasoning, including the reasoning in these documents; this file is where the evidence lives. Dated against a Chrome version — re-measure before trusting it across a major release. |
-| `authoring.md` | What a Surface asks of anyone authoring content for it: the content root sizes itself, no opacity/transform on that root, no `mask-image` in the subtree, hover/active twins, and the rest. Every rule is a measured platform property, not a preference. |
-| `focus.md` | The focus and spatial-navigation contract — the most-cited doc in the codebase. Its evidence rides beside the modules at `packages/react/src/lib/*.test.ts` (decisions.md #9). |
+| `decisions.md` | Numbered design decisions. An entry keeps its number and text forever; a change gets a dated "Amended" note under the original. |
+| `platform.md` | Measured behavior of Chrome's HTML-in-canvas: one finding per row, with the probe that produced it and the Chrome version. Re-check after a major Chrome release. |
+| `authoring.md` | Rules for HTML that a Surface will draw: the content root sizes itself, no opacity or transform on that root, no `mask-image` in the subtree, hover/active styles written as attribute selectors. Each rule comes from a measured platform behavior. |
+| `focus.md` | Keyboard focus and spatial navigation. `packages/react` implements it, with tests beside those modules. |
 
 ## spikes/
 
-Dated measurements, kept for their numbers. **A spike is never a
-plan** — several predate laws that ended up shaped differently, and
-two carry that warning in their own headers. Read one for what was
-measured, on which Chrome, on which date; do not mine one for a
-roadmap. `design-language.html` is the exception in kind: a live
-sticker sheet for the lab's visual language, meant to be opened in a
-browser.
+One-off measurement write-ups, kept for their numbers. Each records
+the measurement, the Chrome version, and the date. They are not plans;
+some predate designs that later changed shape. `design-language.html`
+is a visual reference sheet for the lab; open it in a browser.

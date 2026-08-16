@@ -8,7 +8,7 @@ excursion out of it; the handoff rules are the transfer protocol. When
 a change is hard to place, ask whose hands the pixels are in at that
 moment.
 
-## Shape (the hourglass)
+## Shape
 
 - `packages/core` (`@munari/core`) — the kernel: holds and handoffs,
   provenance, arbitration, pure laws. **Zero runtime dependencies**,

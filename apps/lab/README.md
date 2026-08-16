@@ -1,50 +1,48 @@
-# apps/lab — the consumer
+# apps/lab
 
-The lab is a *consumer* of the library, deliberately: everything its
-scenes render reaches the code through the `@petepetrash/munari` barrel,
-exactly as an outside project would (`tests/boundary.test.ts` rejects
-anything else, including `@munari/core`). This app is the proof that
-the public surface is sufficient — when a scene wants something
-unexported, the fix is to export it, never to reach around.
+The demo and development app. Run it with `npm run dev` from the repo
+root.
 
-Scenes are evidence, not product (decisions.md #3): each exists to
-prove a claim the others don't, and one that stops proving anything is
-deleted. The current roster is eight — workspace, glass, flight,
-explode, genie, veil, knobs, optics — plus the logo playground, a
-sketch off the roster.
+The lab imports only from `@petepetrash/munari`, the same way an
+outside project would; `tests/boundary.test.ts` enforces this. If a
+scene needs something the package doesn't export, add the export;
+don't import package internals.
 
-## Layout
+Each scene exercises a different part of the library: workspace,
+glass, flight, explode, genie, veil, knobs, and optics, plus a logo
+playground.
 
-- `src/App.tsx` — the scene registry and router.
-- `src/scenes/<scene>/` — one folder per scene: `SceneName.tsx` (the
-  entry), `sceneName.css`, and prefixed modules whose suffix names
-  their kind — `*Law.ts` pure laws, `*Shaders.ts` GLSL strings,
-  `*Tweaks.tsx` tuning panels, `*Tuning.ts` tuned value bags, plain
-  mechanism nouns otherwise (`genieDock`, `knobsGeometry`). Filenames
-  keep the scene prefix inside the folder so every module name is
-  unique repo-wide. Tests sit beside their modules. "Knobs" the scene
-  is the one exception to grep for carefully: its own value bag is
-  `knobsTuning.ts`.
-- `src/scenes/fontCarry.test.ts` — cross-scene, on purpose: a CSS
-  authoring rule every scene stylesheet must obey.
-- `src/lib/` — lab-local helpers; `devGlobals.ts` declares every
-  `window.__*` diagnostic handle in one place, and probe authors read
-  that file as the diff.
-- `src/bareMode.ts` — the `?bare` flag: strips lab furniture so
-  instruments measure the scene, not the shell.
-- `src/components/ui/` — vendored shadcn primitives.
-- `tools/make-film.sh` — rebuilds the genie film asset;
-  `src/scenes/genie/film.provenance.md` records its source and license.
+## What's where
 
-## Welded files — edit both or the weld test fails
+- `src/App.tsx`: the scene registry and router.
+- `src/scenes/<scene>/`: one folder per scene. `SceneName.tsx` is the
+  entry, `sceneName.css` its stylesheet. Supporting modules carry a
+  suffix: `*Law.ts` for pure math and logic, `*Shaders.ts` for GLSL
+  strings, `*Tweaks.tsx` for tuning panels, `*Tuning.ts` for tuned
+  values. Filenames keep the scene prefix so every module name is
+  unique across the repo. Tests sit next to their modules. (In the
+  knobs scene the value file is `knobsTuning.ts`; "Knobs" is the
+  scene's name.)
+- `src/scenes/fontCarry.test.ts`: cross-scene on purpose, a CSS rule
+  every scene stylesheet must follow.
+- `src/lib/`: lab-local helpers. `devGlobals.ts` declares every
+  `window.__*` debug handle in one place.
+- `src/bareMode.ts`: the `?bare` URL flag, which strips the lab UI so
+  browser probes measure the scene alone.
+- `src/components/ui/`: vendored shadcn primitives.
+- `tools/make-film.sh`: rebuilds the genie film asset;
+  `src/scenes/genie/film.provenance.md` records its source and
+  license.
 
-Three lab files are byte-identical twins of registry packs, enforced
-by `tests/registry/*Pack.test.ts`:
+## Files with copies in registry/
 
-- `src/scenes/glass/glassSdf.tsx` ≡ `registry/glass/glassSdf.tsx`
-- `src/scenes/glass/glassSdfShader.ts` ≡ `registry/glass/glassSdfShader.ts`
-- `src/lib/surfaceAnchors.ts` ≡ `registry/surface-anchors/surfaceAnchors.ts`
+Three files must stay byte-identical to their copies under
+`registry/`; `tests/registry/*Pack.test.ts` fails if they differ. Edit
+both copies in the same commit:
 
-A change to either copy lands in both, in the same commit. This is
-also why `glassSdf.tsx` is camelCase where scene entries are
-PascalCase: it is a vendorable module first, a lab file second.
+- `src/scenes/glass/glassSdf.tsx` ↔ `registry/glass/glassSdf.tsx`
+- `src/scenes/glass/glassSdfShader.ts` ↔ `registry/glass/glassSdfShader.ts`
+- `src/lib/surfaceAnchors.ts` ↔ `registry/surface-anchors/surfaceAnchors.ts`
+
+(`glassSdf.tsx` is camelCase, unlike other component files, because it
+is shared with the registry.)
