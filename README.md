@@ -1,30 +1,34 @@
 # munari
 
-Live DOM as physical matter in WebGL.
+## Munari seamlessly bridges HTML with WebGL, unlocking a new frontier of visual expression on the web.
 
-Bruno Munari mounted gauze, torn film, and scraps of plastic in slide
-frames and threw them across a wall. He called them *proiezioni
-dirette*, direct projections: the material itself, enlarged by light.
-This library does that to the browser. The real DOM (layout, focus,
-accessibility, text you can select) stays the source of truth, and a
-WebGL scene carries its pixels. At the calibrated vantage (1 world
-unit = 1 CSS pixel on the rest plane) the page resolves exactly;
-everywhere else it is paper you can bend, throw, and crumple.
+Munari enables you to seamlessly 'lift' any single or group of HTML elements, including whole pages, into a WebGL context, and back, on demand. Seamlessness is the key and focus on Munari. Here's what happens when an element is lifted into WebGL and returned back to the DOM:
 
-**Status: pre-release.** Core covers coordinate mapping, DOM capture,
-pointer forwarding, the page↔scene handoff, chrome measurement, and
-physics; each area has a suite in `tests/conformance/` and a lab scene
-that exercises it. The public API is not frozen: the package
-re-exports all of core today, and we will narrow that surface before
-1.0.
+- 
+- 
+-
+
+I'm continually surprised at what this simple technique can unlock, and I'm often adding new examples in the labs.
+
+The [Flight demo] is a good example. It's an ordinary drag and drop card stack. But what if the cards really behaved like actual paper? Not a lot of options there. You could build your app in WebGL, add a landing loading bar, and have max flexibility. But then you lose all the benefits of the DOM. There are some hacks that might work like (the `<foreignObject>` trick)[https://surma.dev/things/dom2texture/], but it's limited and brittle.
+
+Munari is built upon ThreeJS and the experimental (HTML-in-Canvas API in Chrome)[https://developer.chrome.com/blog/html-in-canvas-origin-trial]. Today, this means it's only visible to an infinitesimally small number of design engineering nerds, like myself, who happen to have this Chrome flag enabled.
+
+Munari is a bet on the future of web UI. The HTML-in-Canvas API is a big deal. It's like Core Animation for the web. Coveted effects like liquid glass, depth of field, real progressive blur, and other shader-driven effects are all unlocked. Because of this, I believe HTML-in-Canvas will get the momentum it needs to become a standard. When that day arrives, I want Munari to be one of the first things you reach for when building a new UI.
+
+While we all wait, I intend to make Munari easy to use as a progressive enhancement with a clear fallback path. Apparently, you can also register a token with Google that enables the experimental API for your users automatically! That's over a billion people to treat to the impossible, with an easy fallback.
+
+[ web api adoption chart ].
+
+### Why 'Munari'
+
+Bruno Munari was a playful Italian designer, artist, and inventor. Sometimes he'd mount gauze, torn film, and scraps of plastic in slide frames and throw them across a wall. He called them *proiezioni dirette*, direct projections: the material itself, making them larger and immersive with light. This library brings the same energy to the web. The real DOM (layout, focus, accessibility, scrolling, selectable text) is the source of truth, and can now project into WebGL, coming alive, while still the DOM.
+
 
 ## Requirements
 
 The library is built on Chrome's **HTML-in-canvas origin trial**
-(`drawElementImage`). Without that capability a Surface has nothing to
-rasterize; there is no fallback path. Chrome needs
-`--enable-features=CanvasDrawElement`, or a registered origin-trial
-token.
+(`drawElementImage`). Without that capability a Surface has nothing to rasterize; there is no fallback path. Chrome needs `--enable-features=CanvasDrawElement`, or a registered origin-trial token.
 
 `three` and `@react-three/fiber` are **peer dependencies**. three uses
 `instanceof` internally; two copies in one dependency graph fail
