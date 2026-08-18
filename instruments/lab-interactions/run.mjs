@@ -61,18 +61,20 @@ try {
   server = await createServer({ root: labRoot, logLevel: 'warn', server: { port: 0 } })
   await server.listen()
   const port = server.config.server.port ?? server.httpServer.address().port
-  const page = await browser.newPage()
-  await page.setViewport({ width: 1200, height: 820, deviceScaleFactor: 1 })
   const errors = []
-  page.on('pageerror', (error) => errors.push(String(error)))
-  page.on('console', (message) => {
-    if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) {
-      errors.push(message.text())
-    }
-  })
+  let page
 
   const problems = []
   const go = async (scene) => {
+    await page?.close()
+    page = await browser.newPage()
+    await page.setViewport({ width: 1200, height: 820, deviceScaleFactor: 1 })
+    page.on('pageerror', (error) => errors.push(String(error)))
+    page.on('console', (message) => {
+      if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) {
+        errors.push(message.text())
+      }
+    })
     await page.goto(`http://localhost:${port}/?scene=${scene}&bare`, { waitUntil: 'load' })
     if (scene === 'logo') await page.waitForSelector('.logo-word', { timeout: 20_000 })
     else await page.waitForSelector('canvas[data-engine]', { timeout: 20_000 })
