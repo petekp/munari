@@ -41,5 +41,18 @@ jobs:
       - run: npm run gate:surface-dom
       - run: npm run gate:surface-canvas
       - run: npm run gate:surface-twin
+
+  # Broad walks get a fresh runner after the focused gates. Reusing the same
+  # runner after eight Chrome lifecycles caused the OS to close the target.
+  broad-browser-gates:
+    needs: browser-gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
       - run: npm run gate:lab-interactions
       - run: npm run gate:knobs-resize
