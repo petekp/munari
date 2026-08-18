@@ -20,6 +20,11 @@ jobs:
       - run: npm run build
       - run: npm run lint
       - run: npm test
+      # These broad routes are intentionally last. Running them as separate
+      # jobs launched two more Chrome processes beside every focused browser
+      # gate, which exhausted the hosted runner and closed targets mid-probe.
+      - run: npm run gate:lab-interactions
+      - run: npm run gate:knobs-resize
 
   # A published canvas frame is not handed off until the public Surface has
   # uploaded and drawn those exact sRGB pixels. This uses ordinary WebGL and
@@ -134,28 +139,3 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run gate:surface-twin
-
-  # The lab is a public consumer of the package. This catches broken input
-  # wiring, focus handoff, interactive scene state, and visual custody that
-  # unit suites cannot exercise through a real browser.
-  lab-interactions:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run gate:lab-interactions
-
-  knobs-resize:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run gate:knobs-resize
