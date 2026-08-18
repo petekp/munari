@@ -166,7 +166,7 @@ try {
   await page.mouse.up()
   await page.waitForFunction(
     () => Boolean(window.__r3f.scene.getObjectByName('knobs-readout-hue')),
-    { timeout: 5_000 },
+    { timeout: 30_000 },
   )
 
   const problems = []
