@@ -41,6 +41,7 @@ import {
   type PresentationRequirement,
 } from '@munari/core'
 import { SurfaceContext, type SurfaceContextValue } from './SurfaceContext'
+import { useSurfaceHostContext } from './surface/surfaceHostContext'
 import { useLatest } from './useLatest'
 
 export interface FrameDrawReceipt {
@@ -381,6 +382,11 @@ export function FrameSurface({
     [width, height, mirrorU, runtime, paintedSize],
   )
 
+  // The Canvas this mesh draws in, when it is a <SurfaceCanvas>. Null in a
+  // plain r3f Canvas, which is the case that keeps the old refusal.
+  const host = useSurfaceHostContext()
+  const deferredRef = useRef(false)
+
   const reportRejectedPresentation = useCallback(
     (message: string) => {
       const transferId = presentationRef.current?.transferId
@@ -401,14 +407,21 @@ export function FrameSurface({
     ) => {
       const current = runtimeRef.current
       if (!current || current !== runtime || current.source !== frameRef.current) return
+      // A pass into a render target has not reached the screen, so on its
+      // own it cannot present. Inside a <SurfaceCanvas> it does not have to
+      // decide alone: the host closes its frame tail once the frame it
+      // belongs to reached the default framebuffer, and the receipt waits
+      // there. Without a host there is no tail and the old refusal stands.
+      const target = renderer.getRenderTarget() === null
+      deferredRef.current = !target && host !== null && renderedMaterial.colorWrite
       current.beginPresentationPass(
         presentationRef.current,
-        renderer.getRenderTarget() === null,
+        target || deferredRef.current,
         renderedMaterial.colorWrite,
         reportRejectedPresentation,
       )
     },
-    [runtime, frameRef, presentationRef, reportRejectedPresentation],
+    [runtime, frameRef, presentationRef, reportRejectedPresentation, host],
   )
 
   const handleAfterRender = useCallback(() => {
@@ -419,13 +432,19 @@ export function FrameSurface({
     const receipt = current.takeDrawReceipt()
     if (receipt) onFrameDrawnRef.current?.(receipt)
     const presentationReceipt = current.takePresentationReceipt(reportRejectedPresentation)
-    if (presentationReceipt) onPresentedRef.current?.(presentationReceipt)
+    if (!presentationReceipt) return
+    if (deferredRef.current && host) {
+      host.deferPresentation(() => onPresentedRef.current?.(presentationReceipt))
+      return
+    }
+    onPresentedRef.current?.(presentationReceipt)
   }, [
     runtime,
     frameRef,
     onFrameDrawnRef,
     onPresentedRef,
     reportRejectedPresentation,
+    host,
   ])
 
   assertFrameMaterialSupported(frame, material)

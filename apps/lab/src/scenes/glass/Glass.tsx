@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { MeshTransmissionMaterial, useFBO } from '@react-three/drei'
-import { SurfaceApp, useSurfaceTexture } from '@petepetrash/munari'
+import { Surface, useSurfaceTexture } from '@petepetrash/munari'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -40,7 +40,7 @@ import { animate, motionValue } from 'motion'
 // switch exists so the comparison is a console call, not a git checkout.
 //
 // Architecture per MTM glass panel, all through the material-slot seam:
-//   - `material="none"` Surface wearing drei's MeshTransmissionMaterial on
+//   - Surface.WebGL wearing drei's MeshTransmissionMaterial on
 //     an extruded rounded-rect (flat faces, rounded corner EDGES — a card,
 //     not a soap bar). The glass body never samples the DOM.
 //   - The DOM rides a hair-lifted transparent quad reading
@@ -277,7 +277,7 @@ function GlassInk({ w, h, depth }: { w: number; h: number; depth: number }) {
   // rectangle, measured in the glass scene. Premultiplying at upload makes the
   // filtering average premultiplied values; the blend factors below stop
   // the already-multiplied rgb from being multiplied by alpha again. Exact
-  // for an unlit passthrough material — and under material="none" the ink
+  // for an unlit passthrough material — and in this custom material path the ink
   // is this texture's only consumer, so the upload flag can't skew anyone
   // else.
   useEffect(() => {
@@ -361,35 +361,35 @@ function MtmGlassPanel({
 
   return (
     <group ref={group} position={position} rotation={rotation}>
-      <SurfaceApp
-        label={label}
-        width={width}
-        height={height}
-        material="none"
-        content={content}
-      >
-        <primitive object={geo} attach="geometry" />
-        <MeshTransmissionMaterial
-          ref={(m: TransmissionMaterial | null) => {
-            if (m) glassMaterials.set(label, m)
-            else glassMaterials.delete(label)
-          }}
-          buffer={fbo.texture}
-          transmission={1}
-          thickness={depth * 2.5}
-          roughness={0.08}
-          ior={1.5}
-          chromaticAberration={0.06}
-          anisotropicBlur={0.2}
-          distortion={0}
-          samples={6}
-          // MTM still allocates its internal fboMain/fboBack even though the
-          // `buffer` prop short-circuits its render pass; keep them tiny so
-          // the only real buffer is ours.
-          resolution={32}
-        />
-        <GlassInk w={width} h={height} depth={depth} />
-      </SurfaceApp>
+      <Surface name={label} size={[width, height]} source={content}>
+        <Surface.WebGL
+          name={label}
+          geometry={<primitive object={geo} attach="geometry" />}
+          material={
+            <MeshTransmissionMaterial
+              ref={(m: TransmissionMaterial | null) => {
+                if (m) glassMaterials.set(label, m)
+                else glassMaterials.delete(label)
+              }}
+              buffer={fbo.texture}
+              transmission={1}
+              thickness={depth * 2.5}
+              roughness={0.08}
+              ior={1.5}
+              chromaticAberration={0.06}
+              anisotropicBlur={0.2}
+              distortion={0}
+              samples={6}
+              // MTM still allocates its internal fboMain/fboBack even though the
+              // `buffer` prop short-circuits its render pass; keep them tiny so
+              // the only real buffer is ours.
+              resolution={32}
+            />
+          }
+        >
+          <GlassInk w={width} h={height} depth={depth} />
+        </Surface.WebGL>
+      </Surface>
     </group>
   )
 }
@@ -834,7 +834,7 @@ function WallArt() {
   )
 }
 
-// An unlit wall. `material="none"` plus a basic-material quad reading the
+// An unlit wall: a basic-material quad reads the
 // same texture, exactly as the ink quads do — because the moment a
 // DOM-sourced colour goes through a lit material it stops being the colour
 // the CSS asked for. The neon is a token (`--signal`), and a token that
@@ -1129,18 +1129,16 @@ export function Glass() {
       <pointLight position={[-3, 2.5, 3]} intensity={8} color="#f2f0ea" distance={14} />
 
       {/* Layer 0 — the wall, itself live DOM, unlit so the neon lands exact */}
-      <SurfaceApp
-        label="glass-wall"
-        width={WALL_W}
-        height={WALL_H}
-        material="none"
-        position={[0, 0, WALL_Z]}
-        content={<WallArt />}
-      >
-        <planeGeometry args={[WALL_W / PX, WALL_H / PX]} />
-        <meshBasicMaterial visible={false} />
-        <WallInk />
-      </SurfaceApp>
+      <Surface name="glass-wall" size={[WALL_W, WALL_H]} source={<WallArt />}>
+        <Surface.WebGL
+          name="glass-wall"
+          position={[0, 0, WALL_Z]}
+          geometry={<planeGeometry args={[WALL_W / PX, WALL_H / PX]} />}
+          material={<meshBasicMaterial transparent opacity={0} depthWrite={false} />}
+        >
+          <WallInk />
+        </Surface.WebGL>
+      </Surface>
 
       {/* Layers 1 and 2 — the form, and the CTA surfacing out of its face.
           The CTA's refraction must show the form's glass AND its ink AND the

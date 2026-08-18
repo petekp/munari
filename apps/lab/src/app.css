@@ -246,6 +246,81 @@ body,
   outline-offset: -2px;
 }
 
+/* Gold is both an acceptance route and a demo. Keep its diagnostic controls
+ * visible instead of letting the tall test stack push them below the fold. */
+[data-gold-heading] {
+  position: fixed;
+  top: 28px;
+  left: 50%;
+  z-index: 20;
+  width: min(560px, calc(100vw - 160px));
+  translate: -50% 0;
+  color: #f4efe6;
+  font: 13px/1.35 ui-monospace, monospace;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+[data-gold-heading] span {
+  color: var(--signal);
+  text-transform: uppercase;
+}
+
+[data-gold-heading] strong {
+  display: block;
+  margin-block: 4px;
+  font: 700 clamp(28px, 5vw, 52px)/1 system-ui, sans-serif;
+  letter-spacing: -0.04em;
+}
+
+[data-gold-heading] p {
+  margin: 0;
+  color: rgb(244 239 230 / 70%);
+}
+
+[data-gold-controls] {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  left: 118px;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgb(244 239 230 / 20%);
+  border-radius: 12px;
+  color: #15120c;
+  background: rgb(244 239 230 / 94%);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 34%);
+  backdrop-filter: blur(14px);
+}
+
+[data-gold-controls] button {
+  min-height: 34px;
+  padding-inline: 11px;
+  border: 1px solid rgb(21 18 12 / 18%);
+  border-radius: 8px;
+  color: #15120c;
+  background: #fff;
+  cursor: pointer;
+}
+
+[data-gold-controls] button:hover:not(:disabled) {
+  border-color: var(--signal);
+}
+
+[data-gold-controls] button:disabled {
+  opacity: 0.42;
+}
+
+[data-gold-state] {
+  margin-left: auto;
+  color: rgb(21 18 12 / 68%);
+  white-space: nowrap;
+}
+
 /* ── capability lamps ── the one place `--live` and `--fault` both appear ─ */
 
 .features {

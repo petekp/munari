@@ -8,6 +8,7 @@
 - [Munari agent skill](https://github.com/petekp/munari/blob/main/.agents/skills/munari/SKILL.md)
 - [DOM authoring rules](https://github.com/petekp/munari/blob/main/docs/authoring.md)
 - [Public React API](https://github.com/petekp/munari/blob/main/packages/react/src/index.ts)
+- [The advanced entry](https://github.com/petekp/munari/blob/main/packages/react/src/advanced.ts)
 
 ## Go deeper
 

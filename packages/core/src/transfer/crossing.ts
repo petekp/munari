@@ -147,6 +147,42 @@ export function crossingFrame(
   return { ...state, ramp }
 }
 
+/**
+ * One frame of protocol whose ramp a scene owns rather than the clock.
+ *
+ * Same phase machine, same evidence gate: a driver decides HOW the ramp
+ * moves, never whether the page may let go. `ramp` is the scene's answer
+ * for this frame, clamped here — a spring that overshoots to 1.04 must not
+ * become a phase the machine has no rule for, and a non-finite answer (a
+ * spring divided by a zero timestep) leaves the ramp exactly where it was
+ * rather than teleporting the content somewhere nobody asked for.
+ *
+ * Landing is exact. A driver that decays toward zero reaches 1e-9 and stays
+ * there forever, so the page would never take the hold back and the content
+ * would sit in WebGL at a progress no one can see is not zero.
+ */
+export function crossingDrive(
+  state: CrossingState,
+  evidence: CrossingEvidence,
+  dtMs: number,
+  ramp: number,
+  timing: CrossingTiming = CROSSING_DEFAULTS,
+): CrossingState {
+  const { phase } = state
+  if (phase === 'page') return state
+  if (phase === 'lifting') {
+    const heldMs = state.heldMs + dtMs
+    const proven = evidence.presented >= evidence.required
+    if (proven && heldMs >= timing.settleMs) return { phase: 'gl', ramp: 0, heldMs }
+    return { ...state, heldMs }
+  }
+  if (!Number.isFinite(ramp)) return state
+  const next = Math.min(1, Math.max(0, ramp))
+  if (phase === 'landing' && next <= 0) return { phase: 'page', ramp: 0, heldMs: 0 }
+  if (next === state.ramp) return state
+  return { ...state, ramp: next }
+}
+
 /** One yes/no per side — the page's compositor and the canvas. Both
  *  theorems below answer in this shape, which is why they can be
  *  compared phase by phase. */

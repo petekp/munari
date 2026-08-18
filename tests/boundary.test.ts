@@ -4,9 +4,10 @@
 //      is a tested property, not a description.
 //   2. packages/react reaches core only through the @munari/core
 //      specifier (plus its declared peers), never a relative path.
-//   3. Consumers (apps/, registry/) reach the library only through the
-//      `@petepetrash/munari` barrel — @munari/core and relative reach-arounds
-//      are both violations.
+//   3. Consumers (apps/, registry/) reach the library only through its
+//      published entries — `@petepetrash/munari` and
+//      `@petepetrash/munari/advanced`. @munari/core and relative
+//      reach-arounds are both violations.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -106,7 +107,7 @@ describe('the hourglass', () => {
     ).toEqual([])
   })
 
-  it('consumers reach the library only through the @petepetrash/munari barrel', () => {
+  it('consumers reach the library only through its published entries', () => {
     for (const consumer of ['apps', 'registry']) {
       const base = join(ROOT, consumer)
       expect(

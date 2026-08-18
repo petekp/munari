@@ -53,15 +53,19 @@ Each of these came from a shipped bug:
   behind the shadow plane; additive light clips at white; an output
   gate outside the smoother caused both the flicker and the settle
   hitch.
-- **Handoffs use `useLift` and keyed `onFirstPresented` receipts, never
-  `onFirstUpload` or frame counts:** keep the canvas-side presenter mounted while
-  `glMounted`, composite it only while `glHolds`, show the page while
-  `pageHolds`, and gate mesh motion with `progress()`. Flight's plate
-  solver owns the continuous excursion, so its lift ramp is only a
-  one-tick identity edge; do not stack a second static landing ramp on
-  top. Do not reorder the board or start FLIP while `pageHolds`. A
-  vacated slot may change paint properties only. A 1.5px border once
-  marched the page 2px at every liftoff.
+- **The handoff is the protocol's and the ramp is the plate's:** one
+  `useSurface` handle, its source declared in the card's own slot and
+  presented by a `manual` `Surface.WebGL` inside the Canvas, with
+  `useSurfaceDriver` answering the crossing from the plate's altitude
+  (`Math.max(ADMIT, Math.min(1, f.plate.p.z / LIFT_Z))`, and exact zero
+  the moment the board asks for the page back). Never a frame count and
+  never a second static landing ramp. Keep the presenter mounted for the
+  whole reclaim linger, gate mesh motion with `progress.get()`, and
+  never hide the canvas to warm one Surface — the mesh warms by drawing
+  write-free, and a scene mesh that is not a presenter (the shadow) hides
+  itself instead. Do not reorder the board or start FLIP while the page
+  still holds. A vacated slot may change paint properties only. A 1.5px
+  border once marched the page 2px at every liftoff.
 
 ## Tuned constants
 

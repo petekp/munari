@@ -45,6 +45,12 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* A deleted card stays mounted only until the page owns the pixels again.
+ * Hide that page copy while the off-screen wad completes the handoff. */
+.l14-slot[data-deleting] .l14-card {
+  visibility: hidden;
+}
+
 .l14 {
   position: fixed;
   inset: 0;
@@ -496,14 +502,16 @@
  *
  * `pointer-events: none` is the default state and the honest one: a canvas
  * with nothing in it must not be able to intercept a click, a text
- * selection, or a scroll. It is switched to `auto` for exactly as long as
- * the pointer is over a piece of matter — see `SolidWhereMatterIs` in
- * Flight.tsx, which toggles the canvas one level inside this wrapper.
+ * selection, or a scroll. The canvas inside is switched to `auto` for
+ * exactly as long as the pointer is over a piece of matter, by the Surface
+ * host's pointer gate.
  *
- * `position` and `pointer-events` are ALSO set inline in Flight.tsx and have
- * to be: r3f writes both onto this same wrapper as inline styles, which
- * outrank anything here. They are left in the file because they say what the
- * element is for. */
+ * This element wraps the canvas rather than being it. R3F writes
+ * `position: relative` and `pointer-events: auto` onto its own div as inline
+ * styles, and an inline declaration outranks any class — so a clear PARENT,
+ * with the canvas re-enabling itself inside, is the only arrangement that
+ * holds. A `pointer-events: none` ancestor still lets a descendant take
+ * events, which is exactly the shape wanted here. */
 .l14-overlay {
   position: fixed;
   inset: 0;
@@ -512,6 +520,6 @@
 }
 
 /* Belt and braces: the canvas is only solid when JS says so. */
-.l14-overlay > canvas {
+.l14-overlay canvas {
   pointer-events: none;
 }

@@ -13,7 +13,14 @@
 //
 // The workspace package staying `private: true` is therefore a feature —
 // a stray `npm publish` at the root cannot ship raw source by accident.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -22,8 +29,9 @@ const pkgDir = resolve(here, '..')
 const repoRoot = resolve(pkgDir, '..', '..')
 const dist = join(pkgDir, 'dist')
 
-if (!existsSync(join(dist, 'index.js'))) {
-  console.error('stage-manifest: dist/index.js is missing — run the build first.')
+for (const entry of ['index.js', 'advanced.js']) {
+  if (existsSync(join(dist, entry))) continue
+  console.error(`stage-manifest: dist/${entry} is missing — run the build first.`)
   process.exit(1)
 }
 
@@ -44,6 +52,7 @@ const staged = {
   sideEffects: ['*.css'],
   exports: {
     '.': { types: './index.d.ts', default: './index.js' },
+    './advanced': { types: './advanced.d.ts', default: './advanced.js' },
     './style.css': './style.css',
   },
   types: './index.d.ts',
@@ -61,10 +70,12 @@ const staged = {
 // resolves only inside this workspace, so a surviving import is an install
 // failure for every consumer — and a silent one here, because the workspace
 // itself resolves it fine. Check the emitted artifact, not the intent.
-const emitted = readFileSync(join(dist, 'index.js'), 'utf8')
-if (/from\s*['"]@munari\/core['"]/.test(emitted)) {
-  console.error('stage-manifest: dist/index.js still imports @munari/core — it was not bundled.')
-  console.error('Check `noExternal` in tsdown.config.ts.')
+const javascript = readdirSync(dist).filter((entry) => entry.endsWith('.js'))
+for (const entry of javascript) {
+  const emitted = readFileSync(join(dist, entry), 'utf8')
+  if (!emitted.includes('@munari/core')) continue
+  console.error(`stage-manifest: dist/${entry} still imports @munari/core — it was not bundled.`)
+  console.error('Check `deps.alwaysBundle` in tsdown.config.ts.')
   process.exit(1)
 }
 

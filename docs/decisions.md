@@ -253,7 +253,7 @@ part of an in-flight route transition.
 - **knobs — the instrument rail.** A generative SVG visualization
   (ordinary page DOM, free to animate every frame) paired with a control
   rail of rotary knobs, toggle switches, and indicator lamps that live
-  DOM controls, presented as a `SurfaceApp` on a raked, embossed mesh
+  DOM controls, presented as a Surface on a raked, embossed mesh
   (`knobsGeometry.ts`) lit by the Surface's own default material. Every
   other panel-shaped scene in this roster either goes unlit
   (`material="none"` plus a custom unlit shader — genie, flight, wake
@@ -361,7 +361,7 @@ the consumer. Every name in `@munari/core` is contract-covered, so a
 second doorway would only accumulate drift between what the kernel
 guarantees and what consumers are allowed to see. A name earns barrel
 placement in the binding's OWN half by a preserved lab consuming it:
-Surface, SurfaceApp, the texture/chrome hooks, the focus kit, Dial,
+Surface, the texture/chrome hooks, the focus kit, Dial,
 arcLayout. Everything else waits for a consumer.
 
 **SURFACE_RADIUS_GLSL** lands in the binding
@@ -373,6 +373,21 @@ distance so a ray and a fragment agree about where a corner ends. The
 uniform names are the library's own (`uMunariRadii`,
 `uMunariSize`, `munariRadiusMask(vUv)`) because a custom
 material's opt-in call sites are consumer-visible contract.
+
+**Amendment (2026-08-17, react binding).** The root is CURATED, and
+`@petepetrash/munari/advanced` is the second doorway that re-exports the
+kernel whole. Uncurated worked while the only consumer was the lab. It
+stopped working when the root started carrying scene recipes
+(`FocusOrbitRig`, `arcLayout`) whose tuning is one demo's answer, and
+escape hatches (`FrameSurface`, `useCarriedMotion`, the manual presenter
+seam) a newcomer finds before the primitive they actually want. Both are
+paid for by consumers who then depend on them. So the root is the
+supported way to use a Surface and nothing else, `./advanced` is the
+deliberate opt-in, and `packages/react/src/index.test.ts` pins both lists
+by name — adding an export is now an edit to that test, not a side
+effect. `FocusOrbitRig` and `arcLayout` leave the package entirely:
+copyable behaviors are `registry/` policy (#10), welded to the lab
+reference.
 
 ## #7 — The kernel answers for what it observes; the app owns the window (2026-08-03, lab app)
 
@@ -918,7 +933,7 @@ The same three lines are in the vertex shader.
 **One thing on the card stays a live document.** The counter. It is
 excluded from the measurement by selector, its band is measured and its
 element hidden in the same pass, and it rides the flight as a real
-`SurfaceApp` whose box is lerped between the two measured bands. A
+Surface whose box is lerped between the two measured bands. A
 frozen counter is the exact charge this scene levels at
 `startViewTransition`; a demo that froze its own would be making the
 foil's argument for it. Its content root has to declare
@@ -1602,8 +1617,8 @@ orchestrator, not a per-scene idiom. Core owns a pure four-phase reducer
 for the page's idle motion to ease flat — and a request that arrives
 mid-crossing reverses, never skips. The drawing accounting theorem, "at
 every phase someone presents", is a conformance clause
-(`tests/conformance/transfer/crossing`). The binding's
-`useLift` collects receipts, advances the reducer per rendered
+(`tests/conformance/transfer/crossing`). The Surface binding collects
+receipts, advances the reducer per rendered
 frame, and publishes both swaps as single React commits; scenes state
 their presenter count and timing and consume `progress()`.
 
@@ -1732,14 +1747,13 @@ docs, instruments — at the owner's direction: it is courtroom language
 in a library whose register is physical (lift, land, float, jelly,
 balloons). The replacements are the words the register already used:
 a renderer **holds** the pixels (state), a **handoff** moves them (the
-swap edges), the excursion is a **flight** and the hook that runs one
-is `useLift`. Phases rename `dom → page` and `renderer → gl` — the
+swap edges), and the excursion is a **flight**. Phases rename
+`dom → page` and `renderer → gl` — the
 words consumers actually say — so the reducer reads
 `page → lifting → gl → landing`. `crossingCustody` becomes
 `crossingDraws` (it always answered "who must draw"),
-`crossingAmplitude` becomes `crossingProgress`, and the binding's
-`CustodyCrossing/useCustodyCrossing/CustodyCrossingDriver` become
-`Lift/useLift/LiftDriver` with `pageHolds`/`glMounted`/`glHolds` for
+`crossingAmplitude` becomes `crossingProgress`, and the binding publishes
+`pageHolds`/`glMounted`/`glHolds` for
 `domHolds`/`rendererMounted`/`rendererHolds`. Nothing behavioral moved;
 the conformance contracts were renamed in the same commit as their
 laws, per #2. Historical entries above keep their numbers and their

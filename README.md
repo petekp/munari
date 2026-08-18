@@ -8,7 +8,9 @@ The hard part is the swap. Hide the page and show the scene on different frames 
 
 In the air it is still the same element. You can type in it, select its text, click things inside it. The page holds its old spot open the whole time, so sending it back drops it where it started and it goes on being ordinary DOM.
 
-The `useLift` hook drives it. The protocol underneath is in [packages/core](packages/core/README.md).
+One `<Surface>` declares both copies, and its `view` prop says which
+renderer should be holding the pixels. The protocol underneath is in
+[packages/core](packages/core/README.md).
 
 I'm continually surprised at what this simple technique can unlock, and I'm often adding new examples in the labs.
 
@@ -44,31 +46,34 @@ npm install @petepetrash/munari three @react-three/fiber
 
 ## Your first Surface
 
-Start with `SurfaceApp`. It gives a React tree to one Three.js mesh. The
-button below is still live DOM: click it on the mesh and its React state
-updates normally.
+A `<Surface>` names one piece of content and declares the two copies of
+it: `<Surface.DOM>` is the page copy, `<Surface.WebGL>` is the mesh.
+`<SurfaceCanvas>` is the r3f `Canvas` that hosts them. Set `view` to
+`'webgl'` and the page copy is released the frame the mesh proves it has
+drawn; set it back to `'dom'` and the page takes the hold again.
+
+The button below is still live DOM in both places: click it on the mesh
+and its React state updates normally.
 
 ```tsx
 import { useState } from 'react'
-import { Canvas } from '@react-three/fiber'
-import { detectHtmlInCanvas, SurfaceApp } from '@petepetrash/munari'
+import { detectHtmlInCanvas, Surface, SurfaceCanvas } from '@petepetrash/munari'
 import '@petepetrash/munari/style.css'
 import './app.css'
 
-function Panel() {
-  const [count, setCount] = useState(0)
-
+function Panel({ count, onPress }: { count: number; onPress: () => void }) {
   return (
     <div className="surface-panel">
       <p>Ordinary React, rendered as matter.</p>
-      <button onClick={() => setCount((value) => value + 1)}>
-        Pressed {count} times
-      </button>
+      <button onClick={onPress}>Pressed {count} times</button>
     </div>
   )
 }
 
 export function App() {
+  const [count, setCount] = useState(0)
+  const [lifted, setLifted] = useState(false)
+
   if (!detectHtmlInCanvas().drawElementImage) {
     return (
       <p>
@@ -78,14 +83,22 @@ export function App() {
     )
   }
 
+  const panel = <Panel count={count} onPress={() => setCount((value) => value + 1)} />
+
   return (
     <main className="munari-demo">
-      <Canvas camera={{ position: [0, 0, 6], fov: 45 }}>
+      <SurfaceCanvas camera={{ position: [0, 0, 6], fov: 45 }}>
         <ambientLight intensity={2} />
-        <SurfaceApp width={400} height={300} content={<Panel />}>
-          <planeGeometry args={[4, 3]} />
-        </SurfaceApp>
-      </Canvas>
+      </SurfaceCanvas>
+
+      <Surface name="panel" source={panel} view={lifted ? 'webgl' : 'dom'}>
+        <Surface.DOM>{panel}</Surface.DOM>
+        <Surface.WebGL alpha="source" pointerEvents="content" />
+      </Surface>
+
+      <button onClick={() => setLifted((value) => !value)}>
+        {lifted ? 'Land it' : 'Lift it'}
+      </button>
     </main>
   )
 }
@@ -108,8 +121,8 @@ body,
 .surface-panel {
   box-sizing: border-box;
   display: grid;
-  width: 100%;
-  height: 100%;
+  width: 400px;
+  height: 300px;
   place-content: center;
   gap: 16px;
   padding: 32px;
@@ -121,42 +134,48 @@ body,
 }
 ```
 
-The `400 × 300` values are CSS pixels for the DOM layout and texture.
-The `4 × 3` plane is Three.js geometry in world units. A Surface can wear
-any geometry, so it never creates that geometry for you.
+`source` is what Munari captures; the same element rendered inside
+`<Surface.DOM>` is what the user sees and tabs to while the page holds it.
+The two are separate React renders of the same component, so any state
+they share is held above the Surface — that is why `count` lives in `App`.
 
-`SurfaceApp` creates a second React root. Context from the outer app does
-not cross into it; pass values through `content`, or put the needed
-providers inside `content`.
+By default `<Surface.WebGL>` stands exactly where the page copy stands,
+at the page copy's size, so you do not size or place the mesh yourself.
+Pass `placement="manual"` and your own `geometry` when you want to put it
+somewhere else.
 
-### Static markup
+### A detached element
 
-Use `Surface` when the content is a trusted, static HTML string. Put it
-inside the same lit `Canvas` and give it geometry:
+When the content is not React — markup you built by hand, or a subtree
+another system owns — hand the element to `adopt` instead of `source`.
+Munari takes ownership of it; do not also mount it in the page.
 
 ```tsx
+import { useEffect, useState } from 'react'
 import { Surface } from '@petepetrash/munari'
 
 export function StaticPanel() {
+  const [element, setElement] = useState<HTMLElement>()
+
+  useEffect(() => {
+    const node = document.createElement('article')
+    node.style.cssText =
+      'box-sizing:border-box;width:400px;height:300px;padding:32px;background:#f4efdf;color:#171612'
+    node.innerHTML = '<h1>Static HTML</h1><p>This is still a live DOM subtree.</p>'
+    setElement(node)
+  }, [])
+
   return (
-    <Surface
-      width={400}
-      height={300}
-      html={`<article style="box-sizing:border-box;width:400px;height:300px;padding:32px;background:#f4efdf;color:#171612">
-        <h1>Static HTML</h1>
-        <p>This is still a live DOM subtree.</p>
-      </article>`}
-    >
-      <planeGeometry args={[4, 3]} />
+    <Surface name="static" adopt={element} view="webgl">
+      <Surface.WebGL />
     </Surface>
   )
 }
 ```
 
-`html` is parsed with `innerHTML`, so use it only for trusted markup.
-Use `SurfaceApp` for application content.
+`innerHTML` is your call to make, so use it only for trusted markup.
 
-For either path, the content root must declare its own pixel size. Chrome
+Either way, the content root must declare its own pixel size. Chrome
 rasterizes that element at its layout box. A zero-sized root produces an
 empty texture without an error. Import the package stylesheet once, then
 read its short header for the hover, active, focus, and floating-layer CSS
@@ -178,18 +197,43 @@ still starts only Vite for a browser that already has the flag enabled.
 
 ## Go further
 
-`useLift` and `LiftDriver` move presentation between the page and WebGL
-without a blank frame. The Flight and Logo labs are the working references.
+A Surface with no `view` is a **Twin**: both copies present at once and the
+page copy is never released, which is what you want for a translucent
+reflection or a shadow that reads the live content.
 
-`createCanvasFrameSource` lets caller-owned canvas pixels bypass DOM capture.
-Write the complete frame, then call `publish()`. Its default material is
-unlit and color-preserving. Presentation receipts are available when another
-renderer must not release its pixels until the named frame reaches the screen.
+A Surface can be split into named parts with `<Surface.Part>`. All of its
+parts transfer together or not at all, so a multi-piece object cannot be
+caught half in the air. `<Surface.Anchor name="…">` stands a scene object
+on a box inside the source that is marked `data-munari-anchor`, in the
+geometry's own coordinates.
 
-For a custom shader, use `material="none"` and read the texture with
-`useSurfaceTexture()`. The hook returns `null` until the texture exists. DOM
-textures are premultiplied; apply masks to the full `vec4` and blend with
-`ONE` / `ONE_MINUS_SRC_ALPHA`.
+`useSurface()` and `createSurface()` give you the handle behind a Surface —
+content identity independent of the trees presenting it. Both take identity
+only (an optional `name`); `view`, `timing` and the callbacks are props of
+the `<Surface>` that presents the handle, so one declaration owns them.
+`useSurfaceProgress` and `useSurfaceDriver` are how a scene scales its own
+motion by the crossing.
+
+For a custom shader, pass your own `material` to `<Surface.WebGL>` and read
+the texture with `useSurfaceTexture()`. The hook returns `null` until the
+texture exists. DOM textures are premultiplied; apply masks to the full
+`vec4` and blend with `ONE` / `ONE_MINUS_SRC_ALPHA`. `SURFACE_RADIUS_GLSL`
+is the GLSL half of the corner mask.
+
+### The advanced entry
+
+`@petepetrash/munari/advanced` is the second, deliberate doorway. It
+re-exports the whole of the renderer-agnostic core — the crossing law,
+paint accounting, chrome measurement, the plane/screen math — plus
+`FrameSurface`, which wears a canvas you already render yourself.
+`createCanvasFrameSource` publishes into one: write the complete frame,
+then call `publish()`. Presentation receipts are available there when
+another renderer must not release its pixels until the named frame reaches
+the screen.
+
+Names behind `/advanced` move with the kernel rather than with the
+component API. If a scene only needs a Surface, it should never import
+from it.
 
 Read [the authoring contract](docs/authoring.md) before you capture an
 existing component system. Coding agents can start at [llms.txt](llms.txt)
@@ -229,10 +273,12 @@ npm run lint
 npm run gate:idle-zero   # browser gate: idle Surfaces cost 0 paints/s
 ```
 
-Eight browser gates exist. CI runs five on every push (`gate:idle-zero`,
+Twelve browser gates exist. CI runs eight on every push (`gate:idle-zero`,
 `gate:frame-surface`, `gate:shaders`, `gate:dom-surface-demand`,
-`gate:genie-film-reorder`); three run locally on demand
-(`gate:genie-duplicate`, `gate:genie-film`, `gate:genie-shadow`), and
+`gate:genie-film-reorder`, `gate:surface-dom`, `gate:surface-canvas`,
+`gate:surface-twin`); four run locally on demand
+(`gate:genie-duplicate`, `gate:genie-film`, `gate:genie-film-context`,
+`gate:genie-shadow`), and
 `instruments/knobs-hz` is a reporter with no gate script.
 `instruments/README.md` explains what each one checks.
 

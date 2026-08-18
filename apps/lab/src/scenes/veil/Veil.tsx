@@ -11,7 +11,7 @@
 // The hold story is the inverse of genie's. The article is real,
 // visible, scrolling DOM the entire time — the compositor never gives
 // it up. What flies in WebGL is a TWIN: the same component rendered
-// from the same (static) props into a parked SurfaceApp root, giving
+// from the same controlled props into a parked Surface source, giving
 // the band a texture of paint that is identical to the page by
 // construction.
 //
@@ -35,14 +35,15 @@
 // click THROUGH the veil, because the thing under it is the page.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
-  SurfaceApp,
-  cameraDistance,
+  Surface,
+  SurfaceCanvas,
   useSurfacePaintedSize,
   useSurfaceTexture,
 } from '@petepetrash/munari'
+import { cameraDistance } from '@petepetrash/munari/advanced'
 import { VEIL_DEFAULTS, veilReturn, veilStrip } from './veilLaw'
 import {
   VEIL_BAND_FRAG,
@@ -479,61 +480,78 @@ export function VeilApp({ chips }: { chips?: React.ReactNode }) {
   // The twin must be told its size: the page copy's layout is the truth,
   // and the observer keeps it true through resizes and late font loads.
   useLayoutEffect(() => {
-    const el = sheetRef.current
-    if (!el) return
-    const measure = () =>
-      setDims({ w: Math.round(el.offsetWidth), h: Math.round(el.offsetHeight) })
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
+    let frame = 0
+    let observer: ResizeObserver | null = null
+    const attach = () => {
+      const pageSheet = document.querySelector('.veil-page .veil-sheet')
+      const pageHolder = pageSheet?.parentElement
+      const el =
+        sheetRef.current ?? (pageHolder instanceof HTMLDivElement ? pageHolder : null)
+      if (!el) {
+        frame = requestAnimationFrame(attach)
+        return
+      }
+      sheetRef.current = el
+      const measure = () =>
+        setDims({ w: Math.round(el.offsetWidth), h: Math.round(el.offsetHeight) })
+      measure()
+      observer = new ResizeObserver(measure)
+      observer.observe(el)
+    }
+    frame = requestAnimationFrame(attach)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer?.disconnect()
+    }
   }, [])
 
   return (
     <div className="veil-page" ref={pageRef}>
-      <div ref={sheetRef}>
-        <VeilSheet />
-      </div>
+      <Surface
+        name="veil-sheet"
+        canvas="veil"
+        source={<VeilSheet />}
+        onReady={() => setPainted(true)}
+      >
+        <Surface.DOM ref={sheetRef}>
+          <VeilSheet />
+        </Surface.DOM>
 
-      {/* The slab rides the scroller: the compositor moves it with the
-          article around it, which is the whole hold fix. Its frame
-          only chooses which article rows the window covers. */}
-      <div className="veil-slab" ref={slabRef} style={{ height: WINDOW_H }}>
-        <Canvas
-          gl={{ alpha: true }}
-          frameloop={painted ? 'demand' : 'always'}
-          dpr={[1, 2]}
-          camera={{ fov: FOV, position: [0, 0, 1000] }}
-          onCreated={(state) => state.gl.setClearAlpha(0)}
-        >
-          <PixelPerfect />
-          <WakeOn />
-          {dims && (
-            <SurfaceApp
-              label="veil-sheet"
-              width={dims.w}
-              height={dims.h}
-              material="none"
-              frustumCulled={false}
-              onFirstUpload={() => setPainted(true)}
-              content={<VeilSheet />}
-            >
-              {/* The invisible plane is the Surface's honest footprint —
-                  the density schedule reads the mesh, and a token-sized
-                  quad would raster the article at a token density. */}
-              <planeGeometry args={[dims.w, dims.h]} />
-              <meshBasicMaterial visible={false} />
-              <VeilBand
-                painted={painted}
-                content={dims}
-                scroller={pageRef}
-                slab={slabRef}
-                sheet={sheetRef}
-              />
-            </SurfaceApp>
-          )}
-        </Canvas>
-      </div>
+        {dims && (
+          <Surface.WebGL
+            placement="manual"
+            frustumCulled={false}
+            geometry={<planeGeometry args={[dims.w, dims.h]} />}
+            material={<meshBasicMaterial transparent opacity={0} depthWrite={false} />}
+          >
+            <VeilBand
+              painted={painted}
+              content={dims}
+              scroller={pageRef}
+              slab={slabRef}
+              sheet={sheetRef}
+            />
+          </Surface.WebGL>
+        )}
+
+        {/* The slab rides the scroller: the compositor moves it with the
+            article around it, which is the whole hold fix. Its frame
+            only chooses which article rows the window covers. */}
+        <div className="veil-slab" ref={slabRef} style={{ height: WINDOW_H }}>
+          <SurfaceCanvas
+            pointerMode="surfaces"
+            id="veil"
+            gl={{ alpha: true }}
+            frameloop={painted ? 'demand' : 'always'}
+            dpr={[1, 2]}
+            camera={{ fov: FOV, position: [0, 0, 1000] }}
+            onCreated={(state) => state.gl.setClearAlpha(0)}
+          >
+            <PixelPerfect />
+            <WakeOn />
+          </SurfaceCanvas>
+        </div>
+      </Surface>
 
       {chips}
     </div>

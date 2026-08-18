@@ -1,5 +1,5 @@
-// The captured face of the control slab — live DOM, mounted as a
-// `SurfaceApp`'s content by Knobs.tsx.
+// The captured face of the control slab — live DOM, handed to a
+// Surface as its `source` by Knobs.tsx.
 //
 // Division of labor with the 3D hardware standing over this face: the
 // DOM owns everything DOM is unbeatable at — state, focus, ARIA, crisp

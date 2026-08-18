@@ -3,11 +3,12 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-// The lab is a CONSUMER. `munari` and `@petepetrash/munari/style.css` resolve through
-// the workspace exactly as they would from npm — no aliases standing in for
-// the library, so anything missing from the barrel fails the build instead
-// of quietly slipping past it on a relative path (tests/boundary.test.ts
-// enforces the same rule statically).
+// The lab is a CONSUMER. `@petepetrash/munari`, its `/advanced` entry, and
+// `@petepetrash/munari/style.css` resolve through the workspace exactly as
+// they would from npm — no aliases standing in for the library, so anything
+// missing from a published entry fails the build instead of quietly slipping
+// past it on a relative path (tests/boundary.test.ts enforces the same rule
+// statically).
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {

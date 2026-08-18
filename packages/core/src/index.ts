@@ -24,6 +24,30 @@ export {
   type SurfaceSample,
   type SurfaceSampleLike,
 } from './mapping/uvAnchor'
+export {
+  AFFINE_IDENTITY,
+  affineIsMatchable,
+  composeMatchableChain,
+  parseTransformMatrix,
+  rectEquals,
+  rectIsMeasurable,
+  rectToNdc,
+  type Affine2D,
+  type NdcBox,
+  type RectLike,
+  type ViewportLike,
+} from './mapping/domRect'
+export {
+  SURFACE_ANCHOR_ATTRIBUTE,
+  anchorReceiptMatchesDrawn,
+  collectSurfaceAnchors,
+  projectSurfaceAnchor,
+  stampSurfaceAnchors,
+  type SourceUvRect,
+  type SurfaceAnchorProjection,
+  type SurfaceAnchorReceipt,
+} from './mapping/surfaceAnchors'
+export { sampleUvPosition, type UvSample } from './mapping/uvSampling'
 export { Vec3, type Vec3Like, type Vec3Readonly, type SampleVec } from './math/vec3'
 
 // paint — who owns the pixels + paint (texture contract = decisions.md #5)
@@ -78,7 +102,7 @@ export {
 } from './paint/textureStorage'
 
 // pointer — provenance + the pointer-exit protocol
-export { relay, isRelayed } from './pointer/relay'
+export { relay, isRelayed, isRelayedEvent, type NativeEventCarrier } from './pointer/relay'
 export {
   clearPointerState,
   deepestElementAt,
@@ -105,14 +129,49 @@ export {
 
 // transfer — the handoff
 export {
+  hostTailPresents,
+  passIsWarmUp,
+  passNeedsHostTail,
+  passPresentsDirectly,
   presentationReceiptSatisfies,
   type PresentationReceipt,
   type PresentationRequirement,
+  type SurfaceHostTail,
+  type SurfacePassEvidence,
 } from './transfer/presentation'
+export {
+  partSetComplete,
+  partSetEmpty,
+  partSetExpect,
+  partSetForget,
+  partSetMissing,
+  partSetRegister,
+  partSetUnregister,
+  surfaceAcquire,
+  surfaceEpochCurrent,
+  surfaceHolds,
+  surfaceRelease,
+  surfaceUnclaimed,
+  type SurfaceIdentity,
+  type SurfacePartId,
+  type SurfacePartSet,
+} from './transfer/surfaceIdentity'
+export {
+  readinessAtBirth,
+  readinessPending,
+  readinessProve,
+  readinessReborn,
+  readinessRegister,
+  readinessSettled,
+  readinessUnregister,
+  type SurfacePresenterKey,
+  type SurfaceReadiness,
+} from './transfer/surfaceReadiness'
 export {
   CROSSING_DEFAULTS,
   crossingAtRest,
   crossingRequest,
+  crossingDrive,
   crossingFrame,
   crossingDraws,
   crossingPresentation,

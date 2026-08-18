@@ -149,10 +149,10 @@
  * element). Outline, not box-shadow, so the card's own shadow-sm survives;
  * paint properties only. */
 [data-focus='unit'] .ui-root [data-slot='card'] {
-  outline: 2px solid var(--ring);
+  outline: 3px solid var(--signal, #ff4b35);
   outline-offset: -2px;
 }
 [data-focus='interior'] .ui-root [data-slot='card'] {
-  outline: 3px solid var(--ring);
+  outline: 3px solid var(--signal, #ff4b35);
   outline-offset: -3px;
 }

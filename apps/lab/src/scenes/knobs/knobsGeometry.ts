@@ -1,8 +1,8 @@
 // The measurements of the hardware standing off the panel face — and the
 // pure shape math the scene lathes and knurls it from.
 //
-// The panel face itself is flat, captured live DOM (KnobsPanel via a
-// SurfaceApp). Everything three-dimensional about the controls is REAL
+// The panel face itself is flat, captured live DOM (KnobsPanel, as a
+// Surface's source). Everything three-dimensional about the controls is REAL
 // geometry built from these numbers: knurled skirt cylinders, lathed
 // caps, bat levers, collar bezels, lamp domes. That split is the scene's
 // claim: the DOM owns the truth (state, text, glow, input), the mesh

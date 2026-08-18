@@ -18,7 +18,7 @@
 // re-raster and a texture swap on a sheet that is about to stop being
 // a card.
 
-import { texelDemand } from '@petepetrash/munari'
+import { texelDemand } from '@petepetrash/munari/advanced'
 
 /** Rising edge: a pin at page density flips to altitude density only
  * above liftZ × 0.65 — past the approach, unmistakably airborne. */

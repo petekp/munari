@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { SurfaceApp, useSurfaceTexture } from '@petepetrash/munari'
+import { Surface, useSurfaceTexture } from '@petepetrash/munari'
 import { BLIT_FRAGMENT, GLASS_FRAGMENT, QUAD_VERTEX } from './glassSdfShader'
 
 // The SDF glass path — the shared kit every glass panel builds on (beads,
 // a morphing chat shell).
 //
 // `SdfGlassPanel` is a Surface that renders NOTHING of its own: the mesh
-// carries `material="none"` and an invisible material, so it exists only to
+// carries a custom invisible material, so it exists only to
 // be raycast (the pointer forwarding still needs a real quad with real
 // UVs). Its pixels are produced later, by `GlassSdfCompositor`, from
 // the panel's world matrix and its DOM texture.
@@ -362,7 +362,7 @@ interface TextureSlot {
 
 const sdfPanels = new Map<string, SdfPanel>()
 // Separate from the panel entry on purpose: React runs child effects before
-// parent ones, so the registrar inside `SurfaceApp` cannot write into a
+// parent ones, so the registrar inside `Surface.WebGL` cannot write into a
 // record its own parent has not created yet. Keyed by label, joined at
 // composite time.
 const sdfInk = new Map<string, THREE.Texture>()
@@ -490,18 +490,16 @@ export function SdfGlassPanel({
 
   return (
     <group ref={group} position={position} rotation={rotation}>
-      <SurfaceApp
-        label={label}
-        width={width}
-        height={height}
-        material="none"
-        hitTest={hitTest}
-        content={content}
-      >
-        <planeGeometry args={[width / px, height / px]} />
-        <meshBasicMaterial visible={false} />
-        <InkRegistrar label={label} />
-      </SurfaceApp>
+      <Surface name={label} size={[width, height]} source={content}>
+        <Surface.WebGL
+          name={label}
+          geometry={<planeGeometry args={[width / px, height / px]} />}
+          material={<meshBasicMaterial transparent opacity={0} depthWrite={false} />}
+          pointerEvents={hitTest === 'content' ? 'content' : 'geometry'}
+        >
+          <InkRegistrar label={label} />
+        </Surface.WebGL>
+      </Surface>
     </group>
   )
 }

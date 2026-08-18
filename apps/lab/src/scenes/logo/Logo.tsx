@@ -7,15 +7,16 @@
 // is ordinary DOM: the page IS the logo, tweakable from the panel.
 //
 // The munari trick is the "matter" switch, and it flips through the
-// library's own threshold guarantee: useLift, the protocol this page
-// bled for before it became law (packages/core crossing +
-// tests/conformance/transfer/crossing). Lifting mounts a twin of each
-// letter behind a per-letter SurfaceApp, warming unseen and
-// pixel-aligned with the still-visible page word; the lift releases
-// the page only on evidence — every twin PRESENTED (onFirstPresented,
-// a post-draw proof, not an upload receipt) and any in-flight hop
-// settled — while the idle float, carried on one clock that the page
-// and the meshes both read, keeps breathing straight through the swap.
+// library's own threshold guarantee: ONE <Surface> whose six letters
+// are <Surface.Part>s, so the word transfers whole or not at all — a
+// letter whose raster is late holds the whole handoff rather than
+// crossing alone (the fault that made parts exist). Lifting mounts a
+// twin of each letter behind its part, warming unseen and pixel-
+// aligned with the still-visible page word; the page is released only
+// on evidence — every twin's mesh proved a color-writing draw, and any
+// in-flight hop settled — while the idle float, carried on one clock
+// that the page and the meshes both read, keeps breathing straight
+// through the swap.
 // Only then does depth ramp in: z bob, perspective wobble, pointer
 // dodge, all on underdamped springs riding live DOM textures — and the
 // substance each letter was dealt (logoLaw's matter deck, rendered by
@@ -35,18 +36,18 @@ import {
   useRef,
   useState,
 } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { Group } from 'three'
 import {
-  LiftDriver,
-  SurfaceApp,
-  cameraDistance,
-  useCarriedMotion,
-  useLift,
+  Surface,
+  SurfaceCanvas,
+  type SurfaceHandle,
+  type SurfaceProgress,
+  type SurfaceView,
+  useSurface,
   useSurfaceTexture,
-  type Lift,
 } from '@petepetrash/munari'
+import { cameraDistance, useCarriedMotion } from '@petepetrash/munari/advanced'
 import {
   LOGO_DEFAULTS,
   LOGO_FONTS,
@@ -559,6 +560,18 @@ function MatterMaterial({
   )
 }
 
+/** One letter's scratch state: the fx feed the material reads, plus what
+ *  the frame loop has to remember between frames. */
+interface LetterDriveState {
+  fx: LetterFx
+  /** Last frame's UNSNAPPED screen position, and whether a frame has
+   *  written one yet — the first frame has nothing to difference. */
+  prev: { x: number; y: number }
+  tracked: boolean
+  /** Strikes consumed, by the router's seq. */
+  strikeSeq: number
+}
+
 interface MatterLetterProps {
   i: number
   ch: string
@@ -570,17 +583,12 @@ interface MatterLetterProps {
   /** The latest tap, routed by the canvas to exactly one letter (`i`),
    *  consumed by seq so a strike lands once. */
   strike: React.RefObject<Strike>
-  /** The lift's progress, 0..1 smoothstepped: 0 pins the twin flat on
-   *  the page grid. */
-  progress: () => number
-  /** A choreography window over the same progress (drei's range shape);
-   *  the cooling gate reads the light's window through it. */
-  range: (from: number, distance: number) => number
+  /** The Surface's excursion: `get()` is 0 at the page grid and 1
+   *  airborne, `between` is the window a choreography gate reads. */
+  progress: SurfaceProgress
   /** The carried idle float, em per letter — the SAME sample the page
    *  is writing to its slots this frame. */
   carried: () => number[]
-  /** Post-draw proof that this twin's pixels reached the framebuffer. */
-  onPresented: () => void
   /** Extrusion is switched on, so this letter carries walls and sorts
    *  them with depth. */
   solid: boolean
@@ -601,15 +609,10 @@ function MatterLetter({
   pointer,
   strike,
   progress,
-  range,
   carried,
-  onPresented,
   solid,
 }: MatterLetterProps) {
-  const g = useRef<Group>(null)
-  const [painted, setPainted] = useState(false)
-  const size = useThree((s) => s.size)
-  const dpr = useThree((s) => s.viewport.dpr)
+  const meshRef = useRef<THREE.Mesh>(null)
 
   // The letter's blur pyramid (logoFields): sized off the capture box —
   // which is 16px-quantized, so only a real viewport resize remakes the
@@ -669,15 +672,7 @@ function MatterLetter({
   // The substance's scratch state: the fx feed the material reads, plus
   // last position (screen velocity feeds the prism and the travel
   // stretch). Allocated once, mutated every frame.
-  const drive = useRef<{
-    fx: LetterFx
-    /** Last frame's UNSNAPPED screen position, and whether a frame has
-     *  written one yet — the first frame has nothing to difference. */
-    prev: { x: number; y: number }
-    tracked: boolean
-    /** Strikes consumed, by the router's seq. */
-    strikeSeq: number
-  } | null>(null)
+  const drive = useRef<LetterDriveState | null>(null)
   if (!drive.current) {
     drive.current = {
       fx: {
@@ -722,8 +717,115 @@ function MatterLetter({
     }
   }
 
+  const f = LOGO_FONTS[pose.font]
+  return (
+    <Surface.Part
+      name={`letter-${i}`}
+      size={[box.w, box.h]}
+      source={
+        <div className="logo-twin" style={{ width: box.w, height: box.h }}>
+          <span
+            className="logo-twin-glyph"
+            style={{ ...glyphPaint(pose), fontSize: fontPx * f.trim }}
+          >
+            {ch}
+          </span>
+        </div>
+      }
+    >
+      {/* Declared beside the word and drawn inside the Canvas: a page-
+          declared presentation registers inward, so the mesh stands in
+          the scene while the part feeding it stands next to the letter
+          it copies. `manual` because the grid places a letter — the
+          page word is the measuring rig, never a layout box to match.
+          The material slot goes to the matter shader (logoShaders)
+          while the part keeps owning the texture; no lights in this
+          canvas, the shader carries its own analytic key light. */}
+      <Surface.WebGL
+        ref={meshRef}
+        placement="manual"
+        alpha="source"
+        pointerEvents="none"
+        frustumCulled={false}
+        geometry={<primitive object={geometry} attach="geometry" />}
+        material={
+          <MatterMaterial
+            i={i}
+            fontPx={fontPx}
+            boxRef={boxRef}
+            fx={drive.current.fx}
+            fields={fields}
+            solid={solid}
+            outlineKey={outlineKey}
+            onOutline={(key, islands) => setTraced({ key, islands })}
+          />
+        }
+      >
+        <LetterDrive
+          i={i}
+          mesh={meshRef}
+          fontPx={fontPx}
+          knobs={knobs}
+          pointer={pointer}
+          strike={strike}
+          progress={progress}
+          carried={carried}
+          poseRef={poseRef}
+          boxRef={boxRef}
+          springs={springs.current}
+          drive={drive.current}
+          fresh={fresh}
+        />
+      </Surface.WebGL>
+    </Surface.Part>
+  )
+}
+
+interface LetterDriveProps {
+  i: number
+  mesh: React.RefObject<THREE.Mesh | null>
+  fontPx: number
+  knobs: React.RefObject<LogoKnobs>
+  pointer: React.RefObject<{ x: number; y: number } | null>
+  strike: React.RefObject<Strike>
+  progress: SurfaceProgress
+  carried: () => number[]
+  poseRef: React.RefObject<LetterPose>
+  boxRef: React.RefObject<LetterBox>
+  springs: { dx: Spring; dy: Spring; tilt: Spring; scale: Spring }
+  drive: LetterDriveState
+  /** The committed outline belongs to THIS glyph, so walls may stand. */
+  fresh: boolean
+}
+
+/**
+ * One letter's frame loop, drawn inside the Canvas.
+ *
+ * Split from <MatterLetter> because the halves live in different trees:
+ * the part and its twin are page DOM, and `useFrame` exists only under
+ * the renderer. Everything written here is a ref — the mesh transform
+ * and the fx feed — so a beat never re-renders the scene.
+ */
+function LetterDrive({
+  i,
+  mesh,
+  fontPx,
+  knobs,
+  pointer,
+  strike,
+  progress,
+  carried,
+  poseRef,
+  boxRef,
+  springs,
+  drive,
+  fresh,
+}: LetterDriveProps) {
+  const size = useThree((s) => s.size)
+  const dpr = useThree((s) => s.viewport.dpr)
+
   useFrame((state, delta) => {
-    const el = g.current
+    const el = mesh.current
     if (!el) return
     // A backgrounded tab returns with a giant delta; an unclamped spring
     // step that large explodes instead of settling.
@@ -733,9 +835,9 @@ function MatterLetter({
     const b = boxRef.current
     const t = state.clock.elapsedTime
     // Everything matter ADDS to the page pose — bob, wobble, dodge —
-    // rides the lift's smoothstepped progress, so a crossing letter
+    // rides the crossing's smoothstepped progress, so a crossing letter
     // holds the page's flat geometry at 0 and full depth only at 1.
-    const amp = progress()
+    const amp = progress.get()
 
     // The pointer dodge, in CSS px: inside reach, a letter leans away.
     let px = 0
@@ -754,7 +856,7 @@ function MatterLetter({
     }
 
     const em = fontPx * LOGO_FONTS[p.font].trim
-    const s = springs.current!
+    const s = springs
     step(s.dx, p.dx * em + px, dt)
     step(s.dy, p.dy * em + py, dt)
     step(s.tilt, (-p.tilt * Math.PI) / 180, dt)
@@ -787,7 +889,7 @@ function MatterLetter({
     el.scale.setScalar(s.scale.x)
 
     // ── feed the substance ──
-    const d = drive.current!
+    const d = drive
     const fx = d.fx
     // Screen velocity (bob + dodge + hop, everything that moves the
     // mesh) — the prism disperses along it and scales with it, so a
@@ -841,11 +943,11 @@ function MatterLetter({
     // Every term is × amp: at the handoff edges the letter is exactly
     // its own pixels (the identity theorem the crossing-flash gate
     // measured, before it was removed). What makes a letter a SUBSTANCE
-    // rides a LATER window of the same progress — lift.range over
+    // rides a LATER window of the same progress — progress.between over
     // MATTER_GATE — so substances freeze back to ink before touchdown,
     // and the swap-eve frames are ink and nothing else.
     const gate = MATTER_GATE
-    const gt = range(gate.from, gate.distance)
+    const gt = progress.between(gate.from, gate.from + gate.distance)
     const gs = gt * gt * (3 - 2 * gt)
     const par = MATTER_PARAMS[p.matter]
     fx.matter = p.matter
@@ -937,57 +1039,26 @@ function MatterLetter({
     fx.quat.set(q.x, q.y, q.z, q.w)
   })
 
-  const f = LOGO_FONTS[pose.font]
-  return (
-    <group ref={g} visible={painted}>
-      <SurfaceApp
-        label={`logo-${WORD[i]}${i}`}
-        width={box.w}
-        height={box.h}
-        transparent
-        // material="none" yields the material slot to the matter shader
-        // (logoShaders) while the Surface keeps owning the texture —
-        // source format, premultiply, and both receipts survive the
-        // custom material. No lights in this canvas: the shader carries
-        // its own analytic key light per matter.
-        material="none"
-        frustumCulled={false}
-        onFirstUpload={() => setPainted(true)}
-        onFirstPresented={onPresented}
-        content={
-          <div className="logo-twin" style={{ width: box.w, height: box.h }}>
-            <span
-              className="logo-twin-glyph"
-              style={{ ...glyphPaint(pose), fontSize: fontPx * f.trim }}
-            >
-              {ch}
-            </span>
-          </div>
-        }
-      >
-        <primitive object={geometry} attach="geometry" />
-        <MatterMaterial
-          i={i}
-          fontPx={fontPx}
-          boxRef={boxRef}
-          fx={drive.current.fx}
-          fields={fields}
-          solid={solid}
-          outlineKey={outlineKey}
-          onOutline={(key, islands) => setTraced({ key, islands })}
-        />
-      </SurfaceApp>
-    </group>
-  )
+  return null
 }
 
-interface MatterCanvasProps {
+interface MatterWordProps {
   poses: LetterPose[]
   metrics: WordMetrics
   knobs: React.RefObject<LogoKnobs>
-  /** The library lift this canvas serves: its driver advances the
-   *  protocol, its progress gates depth, its receipts gate the lift-off. */
-  lift: Lift
+  /** The word's identity — one handle for all six letters. */
+  surface: SurfaceHandle
+  /** What the page is asking for; the root wears it to stay exclusive. */
+  view: SurfaceView
+  /** Which renderer holds the pixels right now. */
+  presented: SurfaceView
+  /** The canvas wrapper changed synchronously at the handoff edge. */
+  canvasRef: React.RefObject<HTMLDivElement | null>
+  /** The root's callbacks. The root owns them, so they arrive as props
+   *  rather than being written onto the handle from the page above. */
+  onPresentedViewChange: (view: SurfaceView) => void
+  onMotionComplete: (view: SurfaceView) => void
+  onWebGLReleased: () => void
   /** The carried float's per-frame sample, shared with the page. */
   carried: () => number[]
   /** The extrude knob is off zero. A boolean rather than the number,
@@ -996,7 +1067,30 @@ interface MatterCanvasProps {
   solid: boolean
 }
 
-function MatterCanvas({ poses, metrics, knobs, lift, carried, solid }: MatterCanvasProps) {
+/**
+ * The word as matter: six parts of ONE Surface, and the Canvas they draw
+ * in.
+ *
+ * Parts rather than six Surfaces — that is the whole reason this shape
+ * exists. Six independent handoffs each crossed the moment their own
+ * raster was ready, so the word came apart mid-lift: four letters in
+ * WebGL and two still on the page for as long as the slowest one took.
+ * One readiness ledger cannot do that.
+ */
+function MatterWord({
+  poses,
+  metrics,
+  knobs,
+  surface,
+  view,
+  presented,
+  canvasRef,
+  onPresentedViewChange,
+  onMotionComplete,
+  onWebGLReleased,
+  carried,
+  solid,
+}: MatterWordProps) {
   const pointer = useRef<{ x: number; y: number } | null>(null)
   useEffect(() => {
     const move = (e: PointerEvent) => {
@@ -1044,22 +1138,19 @@ function MatterCanvas({ poses, metrics, knobs, lift, carried, solid }: MatterCan
   }, [metrics])
 
   return (
-    // data-holds is the presentation law: while lifting it is false and
-    // logo.css keeps this whole element uncomposited — the twins draw
-    // warm (receipts come from the framebuffer, which opacity does not
-    // touch) but the eye sees only the page until the swap.
-    <div className="logo-canvas" data-holds={lift.glHolds}>
-      {/* `flat`: the letters are ink, and tone mapping would mute
-          exactly the candy this palette is for. */}
-      <Canvas
-        flat
-        gl={{ alpha: true }}
-        dpr={[1, 2]}
-        camera={{ fov: FOV, position: [0, 0, 1000] }}
-        onCreated={(state) => state.gl.setClearAlpha(0)}
+    <>
+      {/* `view` is what keeps this an exclusive handoff rather than a
+          Twin; the handle it presents was declared by the page, which is
+          where the request and the timing live. */}
+      <Surface
+        surface={surface}
+        view={view}
+        canvas="logo"
+        timing={{ settleMs: SETTLE_MS }}
+        onPresentedViewChange={onPresentedViewChange}
+        onMotionComplete={onMotionComplete}
+        onWebGLReleased={onWebGLReleased}
       >
-        <PixelCam />
-        <LiftDriver lift={lift} />
         {WORD.split('').map((ch, i) => (
           <MatterLetter
             key={i}
@@ -1071,15 +1162,34 @@ function MatterCanvas({ poses, metrics, knobs, lift, carried, solid }: MatterCan
             knobs={knobs}
             pointer={pointer}
             strike={strike}
-            progress={lift.progress}
-            range={lift.range}
+            progress={surface.progress}
             carried={carried}
-            onPresented={() => lift.present(i)}
             solid={solid}
           />
         ))}
-      </Canvas>
-    </div>
+      </Surface>
+
+      {/* data-holds is the presentation law: until the page lets go it is
+          false and logo.css keeps this whole element uncomposited — the
+          twins draw warm (a write-free pass still compiles the program
+          and samples the texture) but the eye sees only the page until
+          the swap. */}
+      <div ref={canvasRef} className="logo-canvas" data-holds={presented === 'webgl'}>
+        {/* `flat`: the letters are ink, and tone mapping would mute
+            exactly the candy this palette is for. */}
+        <SurfaceCanvas
+          pointerMode="surfaces"
+          id="logo"
+          flat
+          gl={{ alpha: true }}
+          dpr={[1, 2]}
+          camera={{ fov: FOV, position: [0, 0, 1000] }}
+          onCreated={(state) => state.gl.setClearAlpha(0)}
+        >
+          <PixelCam />
+        </SurfaceCanvas>
+      </div>
+    </>
   )
 }
 
@@ -1166,17 +1276,33 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
     }
   }, [])
 
-  // The lift is the library's now (this page is where it bled first):
-  // six presenters must prove post-draw, and the settle dwell outlasts
-  // the compositor-clocked eases — hop and color; the carried float is
-  // exempt — the facts that make the swap frame pixel-identical even
-  // mid-breath. The hook holds the phases, the evidence gate, and the
-  // reversal rule; this page only states its timing.
-  const lift = useLift({
-    presenters: WORD.length,
-    timing: { settleMs: SETTLE_MS },
-  })
-  const inCrossing = lift.entering || lift.exiting
+  // The handoff is the library's now (this page is where it bled
+  // first): six parts must each prove a post-draw color write, and the
+  // settle dwell outlasts the compositor-clocked eases — hop and color;
+  // the carried float is exempt — the facts that make the swap frame
+  // pixel-identical even mid-breath. The handle holds the phases, the
+  // evidence gate, and the reversal rule; this page states its timing
+  // and reads back what it needs to dress the DOM.
+  const [view, setView] = useState<SurfaceView>('dom')
+  const [presented, setPresented] = useState<SurfaceView>('dom')
+  const [settledOn, setSettledOn] = useState<SurfaceView>('dom')
+  // The canvas is mounted from the moment a lift is asked for until the
+  // protocol says the WebGL side may go — which is after the landing
+  // linger, not at the swap, so the teardown never shares the commit
+  // that hands the letters back.
+  const [glMounted, setGlMounted] = useState(false)
+  // Identity only. The view, the timing, and the callbacks are stated once,
+  // on the `<Surface>` that declares this handle.
+  const surface = useSurface({ name: 'logo' })
+  const request = useCallback((webgl: boolean) => {
+    if (webgl) setGlMounted(true)
+    setView(webgl ? 'webgl' : 'dom')
+  }, [])
+  const inCrossing = view !== presented || view !== settledOn
+  // Who shows the letters. The page keeps them until it actually lets
+  // go, which is a draw, not a commit — so the phase the word wears is
+  // read from the hold rather than from the request.
+  const phase = presented === 'webgl' ? 'gl' : inCrossing ? 'lifting' : 'page'
 
   const rRef = useRef(makeRng(SEED0))
   const [poses, setPoses] = useState<LetterPose[]>(() =>
@@ -1288,6 +1414,16 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
   // px (two device px on Retina) off its letter — a visible up-and-
   // sideways step at the swap frame (2026-08-13).
   const wordRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const syncPresented = useCallback((next: SurfaceView) => {
+    // The hold changes inside a renderer frame. React state commits later,
+    // which left one frame where the canvas had stopped writing but the page
+    // letters were still hidden. Put the two CSS ownership flags on their
+    // elements synchronously, then let React record the same state.
+    if (wordRef.current) wordRef.current.dataset.phase = next === 'webgl' ? 'gl' : 'page'
+    if (canvasRef.current) canvasRef.current.dataset.holds = String(next === 'webgl')
+    setPresented(next)
+  }, [])
   const [metrics, setMetrics] = useState<WordMetrics | null>(null)
   const lastKey = useRef('')
   const measure = useCallback(() => {
@@ -1316,13 +1452,13 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
   // the key dedupe, and it makes the lift's first frame correct
   // without ordering assumptions.
   useLayoutEffect(() => {
-    if (lift.glMounted) measure()
+    if (glMounted) measure()
   })
   useEffect(() => {
-    if (!lift.glMounted) return
+    if (!glMounted) return
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
-  }, [lift.glMounted, measure])
+  }, [glMounted, measure])
 
   const setKnob = (key: keyof LogoKnobs, value: number) =>
     setKnobs((k) => ({ ...k, [key]: value }))
@@ -1336,7 +1472,7 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
           // The protocol phase, worn on the DOM: logo.css keys letter
           // visibility off it, and an instrument can read it to know
           // when a crossing is mid-air.
-          data-phase={lift.phase}
+          data-phase={phase}
           // React writes this during the commit, so the layout effect that
           // measures fontPx below reads the new size in the same frame —
           // an effect that set it afterwards would leave the twins one
@@ -1372,12 +1508,18 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
         </div>
       </div>
 
-      {lift.glMounted && metrics && (
-        <MatterCanvas
+      {glMounted && metrics && (
+        <MatterWord
           poses={poses}
           metrics={metrics}
           knobs={knobsRef}
-          lift={lift}
+          surface={surface}
+          view={view}
+          presented={presented}
+          canvasRef={canvasRef}
+          onPresentedViewChange={syncPresented}
+          onMotionComplete={setSettledOn}
+          onWebGLReleased={() => setGlMounted(false)}
           carried={float.sample}
           solid={knobs.extrude > 0}
         />
@@ -1405,12 +1547,12 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
         <div className="logo-matter">
           <button
             data-renderer="html"
-            data-on={!lift.requested}
-            onClick={() => lift.request(false)}
+            data-on={view === 'dom'}
+            onClick={() => request(false)}
           >
             HTML
           </button>
-          <button data-renderer="gl" data-on={lift.requested} onClick={() => lift.request(true)}>
+          <button data-renderer="gl" data-on={view === 'webgl'} onClick={() => request(true)}>
             WebGL
           </button>
         </div>
@@ -1435,7 +1577,7 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
           <label
             key={s.key}
             className="logo-panel-slider"
-            data-off={s.matterOnly && lift.phase === 'page'}
+            data-off={s.matterOnly && phase === 'page'}
           >
             <span>{s.label}</span>
             <input

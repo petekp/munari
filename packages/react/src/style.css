@@ -9,7 +9,7 @@
  * What the library asks of YOUR stylesheet, in return
  * ─────────────────────────────────────────────────────────────────────────
  *
- *  `.ui-root`  — the container of a `SurfaceApp`'s React tree. It stands in
+ *  `.ui-root`  — the container of a Surface's captured React tree. It stands in
  *                for `<body>`, which the host page owns. Put your global
  *                background, colour and typography base rules here.
  *

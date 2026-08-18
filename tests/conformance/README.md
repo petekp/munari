@@ -11,10 +11,10 @@ Layers, in the order they build on each other:
 
 | layer | what it owns | suites |
 |---|---|---|
-| mapping | coordinate hold — the pixel-calibrated camera, UV anchoring | `camera`, `uvAnchor`, `parkingCoincidence`, `densityIdentity`, `pixelGrid` |
+| mapping | coordinate hold — the pixel-calibrated camera, UV anchoring | `camera`, `uvAnchor`, `parkingCoincidence`, `densityIdentity`, `pixelGrid`, `domRect`, `surfaceAnchors`, `uvSampling` |
 | paint | DOM → texture, and what a paint costs | `lodTier`, `htmlInCanvas`, `paintStats`, `styleChannel`, `filterPolicy`, `capabilityProbe` |
-| pointer | provenance and the pointer protocol | `forwardEvents`, `hoverGrace`, `relayDuplication`, `relayTripwire` |
-| transfer | the handoff between page and mesh | `crossing`, `presentation`, `motionCarrier`, `choreography` |
+| pointer | provenance and the pointer protocol | `forwardEvents`, `hoverGrace`, `relayDuplication`, `relayTripwire`, `relaySynthetic` |
+| transfer | the handoff between page and mesh | `crossing`, `presentation`, `motionCarrier`, `choreography`, `surfaceIdentity`, `surfaceReadiness` |
 | chrome | measuring what the DOM won't hand over in pixels | `surfaceChrome` |
 | physics | physical controls | `physics1D` |
 
@@ -29,6 +29,7 @@ search by module name will miss them:
 | `paint/paintStats` | `paint/htmlInCanvas.ts` — the paint ledger |
 | `pointer/relayDuplication` | `pointer/relay.ts` — one door, one dispatch |
 | `pointer/relayTripwire` | `pointer/relay.ts` — a source scan, not a behavior test |
+| `pointer/relaySynthetic` | `pointer/relay.ts` — `isRelayedEvent` through React's wrapper |
 | `transfer/choreography` | `transfer/crossing.ts` — `crossingRange`, `crossingCurve` |
 
 `packages/core/src/math/` is substrate, not a layer. Vec3 is covered with the

@@ -13,3 +13,9 @@ instruments/**/out/
 
 # TypeScript incremental build state
 *.tsbuildinfo
+
+# Review-agent working state: transcripts and their database. Local by
+# nature and often huge, and `git add -A` would otherwise sweep them into
+# a commit. Ignore them while active; remove them after every run is terminal.
+.smithers/
+smithers.db*

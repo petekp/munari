@@ -15,14 +15,13 @@
 //   interior — focus is inside a group's DOM subtree; the browser owns
 //              traversal, we only guard the boundary
 //
-// Keys: Tab/Shift+Tab move between units (one stop per group — APG
-// composite convention). Enter/F2 descend into a unit's DOM. Escape
-// ascends: interior → unit (clearing that group's memory — Flutter's
-// clear-on-explicit-unfocus), unit → scene, scene → subscribers (labs
-// decide; e.g. camera home). The scene ring is a closed loop this
-// increment: page-embed edge handoff needs the parked subtrees pulled out
-// of the native tab order first, which is proxy-layer work (next
-// increment).
+// Keys: Tab/Shift+Tab follow one flat path through real controls, crossing
+// group boundaries at each interior edge. A read-only group contributes its
+// unit root as one stop. Enter/F2 explicitly engages a focused unit; Escape
+// ascends: interior → unit (clearing that group's memory), unit → scene,
+// scene → subscribers (labs decide; e.g. camera home). The scene ring is a
+// closed loop because parked source subtrees cannot safely rejoin the page's
+// native tab order.
 
 import {
   use,
@@ -529,6 +528,24 @@ export function FocusScene({
       }
     }
 
+    // Tab is a flat path through real controls. Unit focus remains available
+    // to arrows, clicks, Escape, and explicit Enter/F2 engagement, but the
+    // browser's ordinary traversal should not make a person stop on the
+    // canvas or on a panel wrapper before reaching its content.
+    const focusInteriorEdge = (
+      groupId: string,
+      direction: 1 | -1,
+      cause: FocusCause,
+    ): boolean => {
+      const flat = memberSequences(groupId).flat()
+      const target = direction === 1 ? flat[0] : flat[flat.length - 1]
+      if (target) {
+        focusEl(target, cause)
+        return document.activeElement === target
+      }
+      return focusUnit(groupId, cause)
+    }
+
     const step = (ring: string[], from: string | null, dir: 1 | -1): string | null => {
       if (ring.length === 0) return null
       const idx = from ? ring.indexOf(from) : -1
@@ -621,7 +638,7 @@ export function FocusScene({
             cursor !== null && ring.includes(cursor)
               ? step(ring, cursor, e.shiftKey ? -1 : 1)
               : (entryTarget(ring) ?? step(ring, null, e.shiftKey ? -1 : 1))
-          if (next) focusUnit(next, 'ring')
+          if (next) focusInteriorEdge(next, e.shiftKey ? -1 : 1, 'ring')
         } else if (e.key === 'Enter' || e.key === 'F2') {
           const ring = ringOrder()
           if (ring.length === 0) return
@@ -654,7 +671,7 @@ export function FocusScene({
           }
           const ring = ringOrder()
           const next = step(ring, loc.groupId, e.shiftKey ? -1 : 1)
-          if (next) focusUnit(next, 'ring')
+          if (next) focusInteriorEdge(next, e.shiftKey ? -1 : 1, 'ring')
         } else if (e.key === 'Enter' || e.key === 'F2') {
           e.preventDefault()
           descend(loc.groupId)
@@ -697,7 +714,7 @@ export function FocusScene({
             return
           }
           const next = step(ringOrder(), loc.groupId, 1)
-          if (next) focusUnit(next, 'exit')
+          if (next) focusInteriorEdge(next, 1, 'exit')
         } else {
           if (isEngaged(loc.groupId)) {
             // Trap wrap, backward: before the first member → the last.
@@ -706,7 +723,8 @@ export function FocusScene({
             if (last) focusEl(last, 'interior')
             return
           }
-          focusUnit(loc.groupId, 'ascend') // one step up: own unit
+          const previous = step(ringOrder(), loc.groupId, -1)
+          if (previous) focusInteriorEdge(previous, -1, 'exit')
         }
       } else if (e.key === 'Escape') {
         e.preventDefault()
@@ -904,6 +922,11 @@ export function FocusScene({
       locate,
       ringOrder,
       entryTarget,
+      enterFromPage: () => {
+        const ring = ringOrder()
+        const target = entryTarget(ring) ?? ring[0]
+        if (target) focusInteriorEdge(target, 1, 'ring')
+      },
       isEngaged,
       proxyLayer,
       debugMembers,
@@ -932,6 +955,12 @@ export function FocusScene({
     const el = gl.domElement
     const prevTabIndex = el.tabIndex
     el.tabIndex = 0
+    const enterFromPage = () => {
+      // A pending cause means Munari deliberately focused the canvas while
+      // ascending. Null is the browser's native Tab arriving from the page.
+      if (pendingCauseRef.current === null) bundle.enterFromPage()
+    }
+    el.addEventListener('focus', enterFromPage)
     // The proxy layer mounts adjacent to the canvas (docs/focus.md). Leaf
     // registrations from child effects ran before this parent effect and
     // appended into the (detached) layer — insertion carries them along.
@@ -971,6 +1000,7 @@ export function FocusScene({
     w.__focusScene = debug
     return () => {
       el.tabIndex = prevTabIndex
+      el.removeEventListener('focus', enterFromPage)
       bundle.proxyLayer.remove()
       document.removeEventListener('keydown', bundle.onKeydown)
       document.removeEventListener('focusin', bundle.onFocusin)
@@ -986,9 +1016,10 @@ export function FocusScene({
 // --------------------------------------------------------------------------
 
 /**
- * Declares a focus group: one tab stop in the scene ring. Surfaces inside
- * auto-register as composite members via FocusGroupContext; WebGL leaf
- * controls join in the proxy increment. Renders no scene-graph object.
+ * Declares one logical group in the scene ring. Tab reaches its real
+ * controls directly; a read-only group contributes its unit root as one
+ * stop. Surfaces auto-register as composite members via FocusGroupContext,
+ * and WebGL leaf controls join through proxies. Renders no scene object.
  */
 export function FocusGroup({
   id,

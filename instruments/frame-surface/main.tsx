@@ -1,6 +1,6 @@
 // The page half of the FrameSurface browser gate. It goes through the public
-// package barrel so the gate covers Surface dispatch, exports, and its default
-// unlit material.
+// package entries so the gate covers the `./advanced` exports and
+// FrameSurface's default unlit material.
 //
 // The fixtures are 64×16 canvases painted as four vertical RGB stripes, and
 // every generation gets its own four colors — so a WebGL readback within one
@@ -20,15 +20,15 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Canvas, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import type { PresentationReceipt } from '@petepetrash/munari'
 import {
-  Surface,
+  FrameSurface,
   createCanvasFrameSource,
+  useFrameTexture,
   type CanvasFrameSource,
   type FrameDrawReceipt,
-  type PresentationReceipt,
   type PresentationRequirement,
-  useSurfaceTexture,
-} from '@petepetrash/munari'
+} from '@petepetrash/munari/advanced'
 
 type RGB = readonly [number, number, number]
 
@@ -389,10 +389,10 @@ function inspectSurface(
 ): Omit<FrameSurfaceGateReceipt, 'receipt' | 'sampledRgb' | 'maxChannelError'> {
   const object = scene.getObjectByName(SURFACE_NAME)
   if (!(object instanceof THREE.Mesh)) {
-    throw new Error(`Surface mesh ${SURFACE_NAME} was not in the rendered scene`)
+    throw new Error(`FrameSurface mesh ${SURFACE_NAME} was not in the rendered scene`)
   }
   if (Array.isArray(object.material)) {
-    throw new Error('frame Surface unexpectedly used a material array')
+    throw new Error('FrameSurface unexpectedly used a material array')
   }
   const material = object.material
   const map = material instanceof THREE.MeshBasicMaterial ? material.map : null
@@ -657,7 +657,7 @@ function completeBackingStoreResize(evidence: BackingStoreResizeEvidence): void 
 type PresentationFencePhase = 'disabled' | 'offscreen' | 'visible' | 'done'
 
 function PresentationMaterial({ colorWrite }: { colorWrite: boolean }) {
-  const texture = useSurfaceTexture()
+  const texture = useFrameTexture()
   return (
     <meshBasicMaterial
       map={texture}
@@ -799,7 +799,7 @@ function PresentationFenceScene() {
   return (
     <>
       <PresentationRenderMonitor phase={phase} onRendered={onRendered} />
-      <Surface
+      <FrameSurface
         name="frame-presentation-gate"
         frame={presentationSource.source}
         width={64}
@@ -811,7 +811,7 @@ function PresentationFenceScene() {
       >
         <planeGeometry args={[4, 1]} />
         <PresentationMaterial colorWrite={phase !== 'disabled'} />
-      </Surface>
+      </FrameSurface>
     </>
   )
 }
@@ -828,7 +828,7 @@ function BackingStoreResizeScene() {
       try {
         const object = scene.getObjectByName('frame-resize-gate')
         if (!(object instanceof THREE.Mesh) || Array.isArray(object.material)) {
-          throw new Error('resize gate Surface mesh was not ready')
+          throw new Error('resize gate FrameSurface mesh was not ready')
         }
         const texture =
           object.material instanceof THREE.MeshBasicMaterial
@@ -875,7 +875,7 @@ function BackingStoreResizeScene() {
   )
 
   return (
-    <Surface
+    <FrameSurface
       name="frame-resize-gate"
       frame={resizeSource.source}
       width={64}
@@ -883,7 +883,7 @@ function BackingStoreResizeScene() {
       onFrameDrawn={onFrameDrawn}
     >
       <planeGeometry args={[4, 1]} />
-    </Surface>
+    </FrameSurface>
   )
 }
 
@@ -902,7 +902,7 @@ function GateScene() {
         const acquisition = acquisitionForCycle(cycle)
         const surfaceAbsent = scene.getObjectByName(SURFACE_NAME) === undefined
         if (!surfaceAbsent) {
-          throw new Error(`Surface was still in the scene after release ${cycle}`)
+          throw new Error(`FrameSurface was still in the scene after release ${cycle}`)
         }
         second.paint(acquisition.intermediateColors)
         const intermediate = second.source.publish()
@@ -1024,7 +1024,7 @@ function GateScene() {
     <>
       <RenderMonitor />
       {mounted && (
-        <Surface
+        <FrameSurface
           name={SURFACE_NAME}
           frame={activeSource}
           width={64}
@@ -1033,7 +1033,7 @@ function GateScene() {
         >
           <planeGeometry args={[4, 1]} />
           <LeaseWitness onReleased={onReleased} />
-        </Surface>
+        </FrameSurface>
       )}
     </>
   )

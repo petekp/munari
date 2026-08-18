@@ -36,9 +36,10 @@ future browser-driving instrument:
 
 ## frame-surface
 
-Checks that a public frame-backed `Surface` draws the generation it
-reports, and that its optional presentation fence rejects non-writing
-and off-screen passes. `npm run gate:frame-surface`.
+Checks that a public `FrameSurface` — the caller-owned canvas path
+behind `@petepetrash/munari/advanced` — draws the generation it reports,
+and that its optional presentation fence rejects non-writing and
+off-screen passes. `npm run gate:frame-surface`.
 
 The page runs a demand frameloop and reads WebGL pixels inside the mesh's draw
 receipt. It first replaces one live source with another. It then releases and
@@ -67,15 +68,27 @@ This path uses an ordinary `CanvasTexture`; it does not use or enable
 Checks that one video decoder and one frame canvas stay current through
 repeated Genie handoff changes. `npm run gate:genie-film`.
 
-The gate runs 24 minimize and restore cycles at 6x CPU throttle. It requires
+The required gate runs two minimize and restore cycles with maximum-quality
+compositor frames. It requires
 stable decoder, canvas, and source identities; monotonic frame generations;
 exact pixel and presentation receipt tuples; ordered native reveal before
 renderer release; complete landings; and no black or uncovered compositor
 frame. It then loses the WebGL context while WebGL has presentation authority
-and requires immediate native fallback without a later draw receipt. Native
-video loop events are reported separately from handoff-induced media events.
+and requires immediate native state and receipt fallback. Native video loop
+events are reported separately from handoff-induced media events.
 The Genie route uses HTML capture for its window chrome, so this gate launches
 Chrome with `CanvasDrawElement` enabled.
+
+`npm run gate:genie-film-context` is the focused stressed compositor check.
+It runs one cycle at 6x CPU throttle, then loses the context and requires that,
+after the first matching native frame, no later frame regresses to stale WebGL
+pixels.
+
+The 24-cycle, 6x CPU version is a deliberate soak, not a normal completion
+gate: `npm run probe:genie-film-soak`. It keeps the original 240-second
+watchdog and pixel thresholds. The throttle is lifted after the screencast
+stops because the remaining work decodes evidence rather than exercising the
+scene; each screenshot is read back once. A full soak takes about 115 seconds.
 
 ## genie duplicate drag
 
@@ -117,6 +130,15 @@ module. A phase that failed to engage would measure idle twice. The
 GPU string prints first because SwiftShader numbers describe
 SwiftShader, not your GPU.
 
+## knobs-resize
+
+Checks that physical Knobs hardware stays on the live DOM layout through
+each resize step, including the one-column to two-column breakpoint. Run
+`npm run gate:knobs-resize`. It compares the slab geometry with the measured
+panel box and projects both the DOM hue marker and its WebGL marker. The
+allowed offset is fixed depth parallax; an anchor from the prior layout is a
+large jump and fails the gate.
+
 ## dom-surface-demand
 
 Checks that a successful DOM paint wakes an idle demand renderer and
@@ -127,6 +149,108 @@ product panel without calling `invalidate`, then requires a newer
 presented generation and changed framebuffer data. It also checks
 that draw and presentation receipts name the same source generation.
 The gate has the standard `drawElementImage` capability policy.
+
+## surface-twin
+
+Checks that a Twin Surface — one with no `view` — keeps its page copy
+reachable while its WebGL copy presents. `npm run gate:surface-twin`.
+It runs the Gold route, counts the accessible instances of the twin's
+content, and requires exactly one: the page copy. The parked source
+copy is `aria-hidden` and `inert`, and the check filters copies by
+their `[data-munari-source-host]` container rather than by the element
+itself, because the attributes sit on the container.
+
+A Twin that released its page copy would be an exclusive handoff
+wearing a Twin's API, and the only visible symptom is a screen reader
+losing the content.
+
+## surface-dom
+
+Checks the interaction half of a Surface: keyboard, focus, and the
+pointer modes. `npm run gate:surface-dom`. On the Gold route it tabs to
+the page copy and activates it, types into a field, lifts the Surface
+and requires the focus and the caret to arrive in the parked copy,
+lands it and requires them home again, then clicks the mesh at the page
+box's own coordinates — which only reaches the button if the mesh is
+standing where the DOM copy was.
+
+The three pointer modes are checked side by side in one canvas:
+`geometry` takes the whole plane, `content` declines a pointer over
+clear pixels and takes one over the field, and `none` declines
+everything. A touch tap has to relay like a click, and the relay has to
+survive context loss.
+
+The fault it exists for: the page copy is released with `inert`, and
+`inert` blurs its subtree. A user who had tabbed to a control and then
+lifted the Surface lost focus to `<body>` — no error, no ring, and the
+next Tab restarted at the top of the document (2026-08-17).
+
+## lab-interactions
+
+Checks the real public lab routes through a capability-enabled browser.
+`npm run gate:lab-interactions` tabs into Workspace content, clicks its
+captured checkbox, recovers camera control after a panel drag, and checks
+Glass, Knobs, Optics, and Explode pointer paths. It then deletes two Flight
+cards, checks their column counts and two-layer drag shadow, samples Logo's
+two renderer handoffs for blank frames, and requires every Gold control to
+remain in the viewport. This gate is the regression contract for the lab
+faults found in manual QA on 2026-08-18.
+
+## surface-canvas
+
+Checks the exclusive handoff with several Surfaces sharing one Canvas.
+`npm run gate:surface-canvas`. The Gold route composites two exclusive
+Surfaces and one translucent Twin in a single `frameloop="demand"`
+Canvas. The gate drives forward, reverse, a reversal arriving
+mid-crossing, a source replaced while the mesh is presenting, WebGL
+context loss and recovery, and teardown, and reads the protocol's own
+event order rather than pixels.
+
+It pins the order that costs the most to notice: `ready` — every
+registered presenter proved a drawn frame — must appear before the
+page hands the hold over, and a mid-crossing reversal must never hand
+the page back on the way. Both faults look like a one-frame flicker in
+a screenshot and like nothing at all in a unit test.
+
+It also covers the multi-part and anchor transactions: a Surface with two
+parts transfers both or neither, dropping one part leaves the other
+presenting, and a child parked on a named box lands on that box in the
+geometry's own coordinates rather than existing before the geometry has
+drawn the paint the box was measured against.
+
+It also pins that the shared Canvas keeps running. R3F re-applies the
+`frameloop` prop on every Canvas re-render, so a parent rendering
+during a crossing demotes a promoted loop back to `demand`; the second
+Surface's lift then froze mid-phase (2026-08-17). The host asks for
+the next frame from inside the current one while any work claim is
+live, which a prop re-sync cannot undo.
+
+Five more cases arrived on 2026-08-17, each pinning a fault that a unit
+test could not see:
+
+- **Post-processing.** The route can render the scene into an off-screen
+  target and composite it to the default framebuffer in the same frame,
+  which is what every effect-composer library does. A presenter that drew
+  into a target defers its presentation to the host's frame tail; draining
+  that tail at the scene pass threw every presenter away one pass before
+  the one that showed them, and the Surface warmed forever without ever
+  releasing its page copy.
+- **Material writes.** A warm-up draws with colour, depth and stencil
+  writes disabled and must give back exactly what the caller authored. The
+  gate reads the flags off the Surface's own material and off a scene mesh
+  overlapping it, before and after a handoff. The old warm-up wrote `false`
+  onto the shared material and read the next pass's value back out of it,
+  so depth and stencil never came back — for every mesh using that
+  material.
+- **Two Surfaces with no name.** They must keep their own content. The
+  cross-tree registry replaces by key, and a key built from the optional
+  name made two unnamed Surfaces one entry: the second commit took the
+  first one's content away.
+- **Two Canvases with one id.** The library faults and the first Canvas to
+  mount keeps the id; the second renders none of the host's registrations,
+  so the Surfaces stay in the Canvas the caller pointed them at.
+- **The fallback.** A supplied `fallback` appears when the context is lost
+  and goes away when it comes back, without the Canvas remounting.
 
 ## genie-film-reorder
 

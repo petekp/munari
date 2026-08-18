@@ -31,6 +31,7 @@
   ],
   "exports": {
     ".": "./src/index.ts",
+    "./advanced": "./src/advanced.ts",
     "./style.css": "./src/style.css"
   },
   "scripts": {
