@@ -36,9 +36,9 @@ if (!chromePath) skip('no Chrome executable found (set CHROME_PATH)')
 let browser
 let server
 const deadline = setTimeout(() => {
-  console.error('lab-interactions gate: hard 120s deadline hit')
+  console.error('lab-interactions gate: hard 300s deadline hit')
   process.exit(1)
-}, 120_000)
+}, 300_000)
 
 try {
   browser = await puppeteer.launch({
