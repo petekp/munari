@@ -61,9 +61,9 @@ try {
       const row = { type: event.type, away: slot?.dataset.away === 'true' }
       if (event.type === 'outer-anchor') {
         row.stage = event.stage
-        row.generation = event.receipt.paint.frame.generation
-        row.paintedSize = [...event.receipt.paint.paintedSize]
-        row.anchor = { ...event.receipt.anchors.film }
+        row.generation = event.generation
+        row.paintedSize = [...event.paintedSize]
+        row.anchor = { ...event.anchor }
       } else if ('receipt' in event && event.receipt?.frame) {
         row.generation = event.receipt.frame.generation
       } else if ('frame' in event && event.frame) {

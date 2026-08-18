@@ -1,21 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useThree, type ThreeEvent } from '@react-three/fiber'
 import {
-  arcLayout,
   Dial,
   FocusGroup,
-  FocusOrbitRig,
-  paintStats,
   Surface,
-  useFocusScene,
-  type ArcSlot,
-  type FocusRigApi,
   type GroupFocusState,
-  type PresentationRequirement,
+  useFocusScene,
 } from '@petepetrash/munari'
-import type { DemandProbeRecord } from '../../lib/devGlobals'
-import { capturePointer, releasePointer } from '../../lib/dom'
+import { paintStats } from '@petepetrash/munari/advanced'
+import { arcLayout, type ArcSlot } from './recipe/arcLayout'
+import {
+  FocusOrbitRig,
+  type FocusRigApi,
+} from './recipe/FocusOrbitRig'
+import { SurfaceProviderProbe } from '../../lib/surfaceProvider'
 import {
   buildPanels,
   injectWorkspaceStyles,
@@ -97,9 +96,25 @@ function WorkPanel({
 }) {
   const group = useRef<THREE.Group>(null)
   const camera = useThree((s) => s.camera)
-  const controls = useThree((s) => (hasEnabledSwitch(s.controls) ? s.controls : null))
   const gl = useThree((s) => s.gl)
-  const drag = useRef({ active: false, lastX: 0, lastY: 0, angle: 0, radius: 0 })
+  const controls = useThree((s) => (hasEnabledSwitch(s.controls) ? s.controls : null))
+  const drag = useRef<{
+    active: boolean
+    pointerId: number
+    lastX: number
+    lastY: number
+    angle: number
+    radius: number
+    controls: OrbitLike | null
+  }>({
+    active: false,
+    pointerId: -1,
+    lastX: 0,
+    lastY: 0,
+    angle: 0,
+    radius: 0,
+    controls: null,
+  })
   const [hover, setHover] = useState(false)
   const [focus, setFocus] = useState<GroupFocusState>('none')
   const focusScene = useFocusScene()
@@ -107,31 +122,6 @@ function WorkPanel({
   // (the dial's readout is real DOM — that's the point).
   const sourceRoot = useRef<HTMLElement | null>(null)
   const [probeWidth, setProbeWidth] = useState(PANEL_W)
-  const [probePresentation, setProbePresentation] =
-    useState<PresentationRequirement>()
-
-  const probeRecord = <K extends keyof DemandProbeRecord>(
-    key: K,
-    value: DemandProbeRecord[K],
-  ) => {
-    if (!demandProbe) return
-    const record = window.__domSurfaceDemand
-    if (record) record[key] = value
-  }
-
-  const framebufferHash = () => {
-    const context = gl.getContext()
-    const width = gl.domElement.width
-    const height = gl.domElement.height
-    const pixels = new Uint8Array(width * height * 4)
-    context.readPixels(0, 0, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
-    let hash = 2166136261
-    for (let i = 0; i < pixels.length; i += 17) {
-      hash ^= pixels[i]
-      hash = Math.imul(hash, 16777619)
-    }
-    return hash >>> 0
-  }
 
   const approachNow = () => {
     const g = group.current
@@ -158,24 +148,26 @@ function WorkPanel({
     e.stopPropagation()
     const g = group.current
     if (!g) return
-    capturePointer(e.target, e.pointerId)
+    gl.domElement.setPointerCapture(e.pointerId)
     if (controls) controls.enabled = false
     const d = drag.current
     d.active = true
+    d.pointerId = e.pointerId
+    d.controls = controls
     d.lastX = e.nativeEvent.clientX
     d.lastY = e.nativeEvent.clientY
     d.angle = Math.atan2(g.position.x, -g.position.z)
     d.radius = Math.hypot(g.position.x, g.position.z)
   }
 
-  const onHandleMove = (e: ThreeEvent<PointerEvent>) => {
+  const moveHandle = (clientX: number, clientY: number) => {
     const d = drag.current
     const g = group.current
     if (!d.active || !g) return
-    const dx = e.nativeEvent.clientX - d.lastX
-    const dy = e.nativeEvent.clientY - d.lastY
-    d.lastX = e.nativeEvent.clientX
-    d.lastY = e.nativeEvent.clientY
+    const dx = clientX - d.lastX
+    const dy = clientY - d.lastY
+    d.lastX = clientX
+    d.lastY = clientY
     d.angle += dx * 0.0032
     d.radius = THREE.MathUtils.clamp(d.radius - dy * 0.011, 2.2, 8.6)
     g.position.x = d.radius * Math.sin(d.angle)
@@ -183,15 +175,37 @@ function WorkPanel({
     g.lookAt(camera.position.x, g.position.y, camera.position.z)
   }
 
-  const onHandleUp = (e: ThreeEvent<PointerEvent>) => {
+  const finishHandle = () => {
     const d = drag.current
     if (!d.active) return
     d.active = false
-    releasePointer(e.target, e.pointerId)
-    if (controls) controls.enabled = true
+    if (gl.domElement.hasPointerCapture(d.pointerId)) {
+      gl.domElement.releasePointerCapture(d.pointerId)
+    }
+    d.pointerId = -1
+    if (d.controls) d.controls.enabled = true
+    d.controls = null
     // The panel (and its satellite dial) came to rest somewhere new.
     focusScene?.syncProxyRects()
   }
+
+  // R3F pointer targets are scene objects, not DOM elements. Capture on the
+  // canvas so the drag remains live beyond the small handle, and restore the
+  // camera controls from native pointer-up/cancel even when the ray leaves it.
+  useEffect(() => {
+    const move = (event: PointerEvent) => moveHandle(event.clientX, event.clientY)
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', finishHandle)
+    window.addEventListener('pointercancel', finishHandle)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', finishHandle)
+      window.removeEventListener('pointercancel', finishHandle)
+    }
+  })
+
+  const onHandleMove = (e: ThreeEvent<PointerEvent>) =>
+    moveHandle(e.nativeEvent.clientX, e.nativeEvent.clientY)
 
   return (
     <group
@@ -204,56 +218,27 @@ function WorkPanel({
     >
       <FocusGroup id={spec.id} order={order} objectRef={group} onStateChange={setFocus}>
         <Surface
-          label={`workspace-${spec.id}`}
           name={`workspace-${spec.id}`}
-          html={spec.html}
-          width={demandProbe ? probeWidth : PANEL_W}
-          height={PANEL_H}
-          onSource={(root) => {
-            sourceRoot.current = root
-            const cleanup = spec.feed?.(root)
-            if (demandProbe) {
-              let mutation = false
-              window.__domSurfaceDemand = {
-                painted: null,
-                drawn: null,
-                presented: null,
-                framebufferHash: null,
-                mutate: () => {
-                  mutation = !mutation
-                  root.style.background = mutation ? 'rgb(255, 0, 170)' : 'rgb(0, 220, 255)'
-                },
-                resize: (next: number) => setProbeWidth(Math.max(120, Math.round(next))),
-              }
-            }
-            return () => {
-              sourceRoot.current = null
-              cleanup?.()
-              if (demandProbe) {
-                delete window.__domSurfaceDemand
-              }
-            }
+          source={
+            <WorkspacePanelSource
+              spec={spec}
+              sourceRoot={sourceRoot}
+              demandProbe={demandProbe}
+              setProbeWidth={setProbeWidth}
+            />
+          }
+          size={[demandProbe ? probeWidth : PANEL_W, PANEL_H]}
+          onReady={() => {
+            const record = window.__domSurfaceDemand
+            if (record) record.ready = true
           }}
-          onPainted={(receipt) => {
-            probeRecord('painted', receipt)
-            if (demandProbe && !probePresentation) {
-              setProbePresentation({
-                transferId: 1,
-                frame: receipt.frame,
-                presentationRevision: 1,
-              })
-            }
-          }}
-          onFrameDrawn={(receipt) => probeRecord('drawn', receipt)}
-          presentation={demandProbe ? probePresentation : undefined}
-          onPresented={(receipt) => {
-            probeRecord('presented', receipt)
-            probeRecord('framebufferHash', framebufferHash())
-          }}
-          onDoubleClick={approach}
-          castShadow
-        >
-          <planeGeometry args={[demandProbe ? probeWidth / 200 : W3, H3]} />
+          >
+          <Surface.WebGL
+            name={`workspace-${spec.id}`}
+            geometry={<planeGeometry args={[demandProbe ? probeWidth / 200 : W3, H3]} />}
+            onDoubleClick={approach}
+            castShadow
+          />
         </Surface>
         {/* Satellite knob: a WebGL leaf in the SAME focus group — Tab flows
             from the panel's last button onto it (the mixed-group
@@ -281,7 +266,7 @@ function WorkPanel({
           position={[0, H3 / 2 + 0.09, 0]}
           onPointerDown={onHandleDown}
           onPointerMove={onHandleMove}
-          onPointerUp={onHandleUp}
+          onPointerUp={finishHandle}
           onPointerOver={() => {
             setHover(true)
             document.body.style.cursor = 'grab'
@@ -304,6 +289,73 @@ function WorkPanel({
   )
 }
 
+// The panel owns live form controls through `dangerouslySetInnerHTML`.
+// React replaces those descendants whenever this component renders, even
+// when the HTML string is unchanged. FocusScene updates the panel's GL lamp
+// when focus moves, so an un-memoized source removed the newly focused
+// control one commit later. Stable props mean stable source DOM.
+const WorkspacePanelSource = memo(function WorkspacePanelSource({
+  spec,
+  sourceRoot,
+  demandProbe,
+  setProbeWidth,
+}: {
+  spec: PanelSpec
+  sourceRoot: React.MutableRefObject<HTMLElement | null>
+  demandProbe: boolean
+  setProbeWidth: React.Dispatch<React.SetStateAction<number>>
+}) {
+  const wrapper = useRef<HTMLDivElement>(null)
+  const provider = useContext(SurfaceProviderProbe)
+
+  useEffect(() => {
+    const root = wrapper.current?.firstElementChild
+    if (!(root instanceof HTMLElement)) return
+    sourceRoot.current = root
+    const cleanup = spec.feed?.(root)
+    if (demandProbe) {
+      let mutation = false
+      window.__domSurfaceDemand = {
+        ready: false,
+        mutate: () => {
+          mutation = !mutation
+          root.style.background = mutation ? 'rgb(255, 0, 170)' : 'rgb(0, 220, 255)'
+        },
+        resize: (next: number) => setProbeWidth(Math.max(120, Math.round(next))),
+        readSource: () => {
+          const canvas = root.closest('[data-munari-source-host]')?.parentElement
+          if (!(canvas instanceof HTMLCanvasElement)) return -1
+          const context = canvas.getContext('2d')
+          if (!context) return -1
+          const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+          let hash = 2166136261
+          for (let i = 0; i < pixels.length; i += 17) {
+            hash ^= pixels[i]
+            hash = Math.imul(hash, 16777619)
+          }
+          return hash >>> 0
+        },
+        readPaints: () =>
+          paintStats().find((entry) => entry.label === `workspace-${spec.id}`)?.paints ?? -1,
+        readSourceWidth: () => root.closest('[data-munari-source-host]')?.clientWidth ?? -1,
+      }
+    }
+    return () => {
+      sourceRoot.current = null
+      cleanup?.()
+      if (demandProbe) delete window.__domSurfaceDemand
+    }
+  }, [spec, sourceRoot, demandProbe, setProbeWidth])
+
+  return (
+    <div
+      ref={wrapper}
+      data-surface-provider={provider}
+      dangerouslySetInnerHTML={{ __html: spec.html }}
+    />
+  )
+})
+
 // ---------------------------------------------------------------------------
 
 export function Workspace() {
@@ -319,12 +371,12 @@ export function Workspace() {
 
   useEffect(() => injectWorkspaceStyles(), [])
 
-  // Keyboard grammar (docs/focus.md × this lab): Tab SELECTS a panel (glow
-  // only), Enter is the commitment gesture (zoom in), Escape's last rung
-  // steps home. All of it — descend→approach, release→home-holding-the-
-  // panel, scene-escape→home — is FocusOrbitRig's contract now; this scene
-  // only supplies the poses. Mouse keeps its own grammar: double-click
-  // approaches, and 'pointer'-caused focus never moves the camera.
+  // Keyboard grammar (docs/focus.md × this lab): Tab walks the real controls
+  // and crosses to the next panel at an edge. A read-only panel is one unit
+  // stop. Enter on a unit is the commitment gesture (zoom in), and Escape's
+  // last rung steps home. FocusOrbitRig owns those camera reactions; this
+  // scene only supplies poses. Mouse keeps its own grammar: double-click
+  // approaches, and pointer focus never moves the camera.
 
   // Automation hooks: deterministic camera moves for agent-browser runs.
   useEffect(() => {

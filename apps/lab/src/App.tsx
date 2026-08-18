@@ -1,7 +1,8 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { Canvas, useThree } from '@react-three/fiber'
+import { useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, OrbitControls } from '@react-three/drei'
-import { detectHtmlInCanvas, FocusScene, paintStats } from '@petepetrash/munari'
+import { detectHtmlInCanvas, FocusScene, SurfaceCanvas } from '@petepetrash/munari'
+import { paintStats } from '@petepetrash/munari/advanced'
 import { showChrome } from './bareMode'
 import { Workspace, WorkspaceHud } from './scenes/workspace/Workspace'
 import { Glass } from './scenes/glass/Glass'
@@ -13,13 +14,15 @@ import { VeilApp } from './scenes/veil/Veil'
 import { KnobsApp } from './scenes/knobs/Knobs'
 import { OpticsApp } from './scenes/optics/Optics'
 import { LogoApp } from './scenes/logo/Logo'
+import { GoldApp } from './scenes/gold/Gold'
+import { SurfaceProviderProbe } from './lib/surfaceProvider'
 
 // Eight scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
 // flight drag trilogy, exploded-paint inspector, genie minimize-to-dock,
 // veil progressive blur, knobs-and-switches instrument rail, optics bench.
 // Plus one sketch off the roster: the logo playground (animated wordmark,
 // letters liftable into matter).
-// Everything they render reaches the library through the `@petepetrash/munari` barrel —
+// Everything they render reaches the library through its published entries —
 // this app is the proof that the public surface is sufficient.
 
 type SceneId =
@@ -32,6 +35,7 @@ type SceneId =
   | 'knobs'
   | 'optics'
   | 'logo'
+  | 'gold'
 const SCENES = [
   'workspace',
   'glass',
@@ -42,6 +46,7 @@ const SCENES = [
   'knobs',
   'optics',
   'logo',
+  'gold',
 ] as const
 
 // Clicking a canvas normally moves focus to <body>, which would blur
@@ -183,19 +188,21 @@ export default function App() {
   if (scene === 'knobs') return <KnobsApp chips={chips} />
   if (scene === 'optics') return <OpticsApp chips={chips} />
   if (scene === 'logo') return <LogoApp chips={chips} />
+  if (scene === 'gold') return <GoldApp chips={chips} />
 
   return (
     <div className="app">
-      <Canvas
-        frameloop={domSurfaceDemandProbe ? 'demand' : 'always'}
-        shadows
-        camera={{ position: [0, 2.5, 9], fov: 45 }}
-        dpr={[1, 2]}
-        onCreated={(state) => {
-          // Dev diagnostics: lets automation inspect the scene graph.
-          window.__r3f = state
-        }}
-      >
+      <SurfaceProviderProbe value="lab">
+        <SurfaceCanvas
+          frameloop={domSurfaceDemandProbe ? 'demand' : 'always'}
+          shadows
+          camera={{ position: [0, 2.5, 9], fov: 45 }}
+          dpr={[1, 2]}
+          onCreated={(state) => {
+            // Dev diagnostics: lets automation inspect the scene graph.
+            window.__r3f = state
+          }}
+        >
         <KeepDomFocus />
         <FocusScene>
           <Suspense fallback={null}>
@@ -230,7 +237,8 @@ export default function App() {
             )}
           </Suspense>
         </FocusScene>
-      </Canvas>
+        </SurfaceCanvas>
+      </SurfaceProviderProbe>
 
       {showChrome && (
         <div className="hud">

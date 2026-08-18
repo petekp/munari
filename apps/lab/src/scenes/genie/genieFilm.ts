@@ -27,7 +27,7 @@ import {
   createCanvasFrameSource,
   type FrameId,
   type FrameSource,
-} from '@petepetrash/munari'
+} from '@petepetrash/munari/advanced'
 
 export const GENIE_FILM_WIDTH = 600
 export const GENIE_FILM_HEIGHT = 396

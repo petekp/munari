@@ -20,9 +20,11 @@ moment.
   renderer abstraction is banned by the second-system guard.
 - `registry/` — copyable behaviors (shadcn model, nothing published):
   tuned constants and perceptual-floor tests travel with the code.
-- `apps/lab` — a consumer. Imports **only** the `@petepetrash/munari` barrel,
-  exactly as an outside project would. When a scene wants something
-  unexported, export it — don't reach around.
+- `apps/lab` — a consumer. Imports **only** the published entries
+  `@petepetrash/munari` (curated) and `@petepetrash/munari/advanced`
+  (the whole kernel, plus `FrameSurface`), exactly as an outside
+  project would. When a scene wants something unexported, export it —
+  don't reach around.
 - `instruments/` — browser probes and CI gates, committed and
   reviewed like kernel code. A measurement that exists only as prose
   has to be re-derived by whoever needs it next, so every probe is a
@@ -114,11 +116,13 @@ by no test runner, wired invisibly through the root tsconfig include.
 `npm test` (vitest), `npm run typecheck` (four tsc programs: root,
 `apps/lab`, `registry`, `tools`), and `npm run lint` (oxlint with the
 anti-slop rules — its README explains what each rule rejects and what
-to write instead). CI runs all three on every push, plus five browser
+to write instead). CI runs all three on every push, plus eight browser
 gates: `gate:idle-zero` (mounted quiescent Surfaces cost 0 paints/s),
 `gate:frame-surface`, `gate:shaders`, `gate:dom-surface-demand`,
-`gate:genie-film-reorder`. Three more run locally on demand:
-`gate:genie-duplicate`, `gate:genie-film`, `gate:genie-shadow`.
+`gate:genie-film-reorder`, `gate:surface-dom`, `gate:surface-canvas`,
+`gate:surface-twin`. Four more run locally on demand:
+`gate:genie-duplicate`, `gate:genie-film`, `gate:genie-film-context`,
+`gate:genie-shadow`.
 `instruments/README.md` says what each one checks.
 
 `npm run build` produces the publishable package under
@@ -126,7 +130,7 @@ gates: `gate:idle-zero` (mounted quiescent Surfaces cost 0 paints/s),
 `react` left external as peers — and `npm publish packages/react/dist`
 ships it. The workspace package itself stays `private`, so the source
 tree can keep pointing `exports` at `src/` (which is what lets the lab
-consume the barrel with no alias, and what makes a missing export fail
+consume both entries with no alias, and what makes a missing export fail
 the build) while a stray publish at the root can't ship raw source.
 
 ## Traps

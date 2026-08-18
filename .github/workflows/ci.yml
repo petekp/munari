@@ -88,3 +88,74 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run gate:shaders
+
+  # Interaction acceptance: keyboard, focus, and the three pointer modes.
+  # A Surface shows one of two copies of its content at a time, so every
+  # keystroke and pointer goes through a redirection that only a real
+  # browser's focus and hit testing can exercise. Same capability policy as
+  # the other origin-trial gates — a runner without the API warns and exits
+  # 0; a capable runner that misroutes an event fails.
+  surface-dom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run gate:surface-dom
+
+  # Several Surfaces sharing one Canvas: forward, reverse, a reversal
+  # arriving mid-crossing, source replacement, context loss, and teardown.
+  # It reads the handoff's own event order, because the faults it exists
+  # for read as a one-frame flicker in a screenshot.
+  surface-canvas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run gate:surface-canvas
+
+  # A Twin keeps its page copy reachable while its WebGL copy presents.
+  # The only visible symptom of a Twin that released the page copy is a
+  # screen reader losing the content, so nothing cheaper catches it.
+  surface-twin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run gate:surface-twin
+
+  # The lab is a public consumer of the package. This catches broken input
+  # wiring, focus handoff, interactive scene state, and visual custody that
+  # unit suites cannot exercise through a real browser.
+  lab-interactions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run gate:lab-interactions
+
+  knobs-resize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run gate:knobs-resize

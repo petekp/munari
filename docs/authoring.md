@@ -71,7 +71,7 @@ moving element to rest along its own path. (The keyframes animate a
 descendant's transform, which is fine; the prohibition above is the
 root's own.)
 
-The crossing side of the contract: `useLift`'s `settleMs`
+The crossing side of the contract: a Surface's `timing.settleMs`
 must outlast the **slowest compositor-clocked transition the content
 runs on its presented pixels** — not only the idle amplitude, but any
 transform hop or color fade a state change can start just before the

@@ -190,24 +190,6 @@
   pointer-events: none;
 }
 
-/* Reverse acquisition warms the native presenter for one compositor frame
- * while the canvas's hold and input authority stay unchanged. This private
- * bridge makes the contents paint without publishing the public `data-away`
- * release that gestures and probes use. */
-.gen-slot[data-away='true'][data-native-bridge] > * {
-  visibility: visible;
-}
-
-/* A restore gives the native window one compositor frame under the landed
- * WebGL sheet before renderer release. Opaque pixels can overlap unchanged;
- * translucent shadows cannot. WebGL owns the shadow for that bridge frame,
- * then this mask leaves in the same renderer turn that suppresses the sheet.
- * The `native` value keeps the DOM painted and non-interactive until React
- * publishes the public hold; it does not hide the shadow. */
-.gen-slot[data-away='true'][data-native-bridge='warming'] .gen-sheet::before {
-  visibility: hidden;
-}
-
 .gen-slot[data-win='quadrato'] {
   --x: -316px;
   --y: -46px;
@@ -857,7 +839,7 @@
 
 /* The overlay canvas — same discipline as flight: never able to eat a
  * click unless the scene has switched it solid over matter. */
-.gen-overlay,
-.gen-overlay > canvas {
-  pointer-events: none;
-}
+/* The overlay's input is the host's: SurfaceCanvas keeps its wrapper clear
+ * and writes the canvas's own pointer-events per frame, solid only where a
+ * Surface mesh is under the hand. A stylesheet rule here would either lose
+ * to that inline write or fight it. */

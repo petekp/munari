@@ -7,12 +7,15 @@ import { defineConfig } from 'tsdown'
 //    gets the kernel inside it. The workspace dependency exists so the
 //    lab and the type-checker resolve the source; it must never survive
 //    into the published manifest as something npm would try to fetch.
-// 2. three, @react-three/fiber and react are EXTERNAL because they are
+// 2. `./advanced` is a second entry, not a second package. It is where the
+//    whole kernel and the caller-owned-renderer primitives are named, and
+//    it must be built and declared everywhere the root entry is.
+// 3. three, @react-three/fiber and react are EXTERNAL because they are
 //    peers. three does internal `instanceof` checks, so a second copy in
 //    the graph fails silently and confusingly — the consumer owns the one
 //    instance, and bundling ours would manufacture the second.
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/advanced.ts'],
   outDir: 'dist',
   format: ['esm'],
   dts: true,

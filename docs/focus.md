@@ -10,10 +10,11 @@ focus model underneath — nothing here invents a focus system; it
 *routes* the browser's.
 
 **Where the mechanism lives:** `packages/react/src/lib/` (`focusTree`,
-`spatialNav`, `cameraPose`, `tabbables`, `arcLayout`) and
-`packages/react/src/primitives/` (`FocusScene`, `FocusOrbitRig`), with
-six vitest suites beside those modules. The workspace scene is the
-browser evidence and the reference consumer.
+`spatialNav`, `tabbables`) and `packages/react/src/primitives/`
+(`FocusScene`), with vitest suites beside those modules. The orbit rig,
+`arcLayout` and `cameraPose` left the package on 2026-08-17 and are
+copyable recipes in `registry/focus-orbit/` (decisions.md #6, amended);
+the workspace scene is the welded reference and the browser evidence.
 
 **Where the evidence lives:** pure laws are pinned in the suites next
 to their modules; full-field rect captures replay real browser picks
@@ -62,65 +63,32 @@ the group. It is honest because the *gesture* is the source of truth —
 `activeElement` cannot encode commitment — and the stamp doubles as the
 CSS chrome hook and dies with its subtree.
 
-## Tab model — one stop per group
+## Tab model — a flat path through real controls
 
-APG's core convention is "the tab sequence should include only one
-focusable element of a composite UI component": grouping exists to
-reduce tab stops. Eight screens × six controls must not be a 48-press
-sweep, and no screen reader has a model for Tab hopping between scene
-panels mid-form.
+Tab must reach useful content on the first press. The canvas is the
+page's entry element, but its focus event immediately routes to the
+first real control in the entry group. The canvas never remains as a
+visible stop. A group with no controls contributes its source root as
+one unit stop, so read-only matter is still reachable.
 
-- The GL canvas is the page's single entry stop (ARIA composite-widget
-  pattern). Tab enters the scene; Shift+Tab from the first unit leaves
-  it. The page never sees scene internals.
-- **Scene ring: Tab moves group-to-group** (units glow via
-  focus-as-light). A *free-standing leaf* is its own stop, focused
-  directly — no descend ceremony (APG single-widget-cell rule: a lone
-  switch/button gets focus itself; enter/exit machinery is only for
-  multi-control or arrow-hungry content).
-- **Enter descends** into a group (grid pattern: "places focus on the
-  first widget" — or the remembered one, see focus memory). **F2** is
-  the APG toggle-descend key, supported as an alias. **Escape
-  ascends** — control → group-as-unit → scene → (optionally) release to
-  page. Escape also dismisses any open floating layer first.
-- Enter-descend exists **only at unit level**. Once a control has
-  focus, Enter belongs to the control (switch/button activation) —
-  the grid pattern's mode distinction, kept strictly.
-- **Descend intent always fires.** Enter on a group with no interior
-  tabbables keeps unit focus but still emits `cause: 'descend'` —
-  read-only panels are zoomed into to *read*, and camera reactions key
-  on the commitment, not on whether the DOM had an input.
-
-**The altitude rule.** Tab traverses peers at your current altitude.
-Scene level walks units; a DESCENDED group is modal — Tab cycles its
-members and WRAPS (composite tabbables and leaf proxies in one ring),
-and Escape is the release that un-latches, lands on the unit, and emits
-`cause: 'release'` (the rig's cue to zoom home).
-
-- **Inside a descended group, Tab walks members in authored order** —
-  composite interiors first-class: the Surface's own tabbables in DOM
-  order (browser-owned), then satellite leaves. At the group's **last
-  member, Tab exits upward** to the next unit at scene level — never
-  into a neighboring group's interior. This is Flutter's
-  `TraversalEdgeBehavior.parentScope`, including its guard: after
-  delegating upward, *verify focus actually moved*, else you recurse
-  forever at the root.
-- Edge behavior is a per-group knob, defaulting to `parentScope`;
-  `closedLoop` (wrap inside) for modal-ish panels. Flutter's deliberate
-  asymmetry is adopted: Tab wraps/exits, **arrows stop at edges** by
-  default.
-- **Click-in interior focus WITHOUT Enter never traps.** APG
-  exit-at-edge holds, so the trap binds to *camera commitment*, not to
-  interior focus. WCAG no-keyboard-trap is satisfied by Escape as the
-  documented exit.
-- **Scene-level Tab advances FROM the cursor, never re-enters it.**
-  After Escape-from-unit, Tab means "move on" — re-entry is Enter's
-  job. This avoids both of Flutter's documented memory bugs without
-  clearing the cursor.
-- **`interiorBoundary`** (`focusTree.ts`, vitest-pinned) is where
-  member boundaries are decided: it turns per-member element sequences
-  into native / move / exit / ascend. Member boundaries are the
-  manager's; composite interiors stay the browser's.
+- Inside a composite, the browser owns ordinary Tab order, form
+  semantics, and `:focus-visible`.
+- At the last control in a group, Tab moves to the first control in the
+  next group. Shift+Tab performs the exact reverse move. A leaf proxy
+  participates at its authored position in the same path.
+- **Enter/F2 engages a focused unit.** This is useful for a read-only
+  panel or for a unit selected with arrows or a pointer. The gesture
+  latches `data-engaged`, emits `cause: 'descend'`, and lets an app move
+  the camera. Enter on an interior control remains the control's own
+  key.
+- **Escape ascends**: interior → unit → scene. An engaged group releases
+  its latch and emits `cause: 'release'`, which lets an app return the
+  camera home.
+- An engaged group wraps Tab inside its own members until Escape. A
+  group entered by an ordinary click or Tab does not trap focus.
+- **`interiorBoundary`** (`focusTree.ts`, vitest-pinned) decides native,
+  member, and group-edge moves. It uses element identity, not a count of
+  key presses.
 
 **The scene ring is a closed loop.** Native edge handoff exists (probe
 1), but parked subtrees still sit in the page's tab order, so a "hand
@@ -378,8 +346,9 @@ threshold — no ambiguous mid-zoom band.
 **Packaged rig.** Everything this section asks of a scene —
 approach/home tweens with pose legality, the reframe fulfiller's
 head-turn, the no-candidate nudge ladder, motion modes, live-aim
-publishing — ships as one primitive, `FocusOrbitRig` (`home`,
-`approachDistance`, `nudgeAngle`, `comfortFraction`, `apiRef`). The
+publishing — ships as one component, `FocusOrbitRig` (`home`, `approachDistance`,
+`nudgeAngle`, `comfortFraction`, `apiRef`) — a copyable recipe in
+`registry/focus-orbit/`, not a published name. The
 grammar wiring (descend→approach, release→home-holding-the-unit,
 scene-escape→home) lives inside it, fed by `FocusSceneEvent.object`:
 resolved at the notify chokepoint from the registry the manager already

@@ -10,10 +10,7 @@
 // flap the pin into re-raster churn.
 import { describe, expect, it } from 'vitest'
 
-import {
-  cameraDistance,
-  texelDemand,
-} from '@petepetrash/munari'
+import { cameraDistance, texelDemand } from '@petepetrash/munari/advanced'
 import {
   DENSITY_FALL_FACTOR,
   DENSITY_RISE_FACTOR,

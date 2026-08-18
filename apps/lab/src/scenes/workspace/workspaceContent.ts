@@ -104,9 +104,9 @@ const CSS = `
 /* SELF selectors, not descendant: the stamped unit element IS the .p6 root
    (browser-verified — the descendant form never matched, and was dead CSS). */
 .p6[data-focus]{border-color:var(--signal-lit)}
-.p6[data-focus="unit"]{box-shadow:inset 0 0 0 2px rgba(56,189,248,.38)}
-.p6[data-focus="interior"]{box-shadow:inset 0 0 0 2px rgba(125,211,252,.6)}
-.p6[data-engaged]{border-color:var(--signal-lit);box-shadow:inset 0 0 0 3px rgba(125,211,252,.78)}
+.p6[data-focus="unit"]{box-shadow:inset 0 0 0 3px rgba(255,92,63,.92),0 0 16px rgba(255,92,63,.38)}
+.p6[data-focus="interior"]{box-shadow:inset 0 0 0 3px rgba(125,211,252,.95),0 0 18px rgba(56,189,248,.42)}
+.p6[data-engaged]{border-color:var(--signal-lit);box-shadow:inset 0 0 0 4px rgba(125,211,252,1),0 0 22px rgba(56,189,248,.5)}
 `
 
 export function injectWorkspaceStyles(): () => void {
@@ -488,7 +488,7 @@ const DOCS: Array<[string, string[]]> = [
   ['glossary', ['Surface: DOM subtree as the skin of geometry. SurfaceLayer: floating UI anchored to a UV point.', 'Paint record: the display list drawElementImage replays.']],
   ['incident · 007', ['A transition: opacity in a teammate panel shipped a stale texture that healed on unrelated repaints.', 'Root cause: compositor-owned property. Now a hard authoring rule.']],
   ['roadmap', ['v0: floating layers ✓, control kit ✓, focus/keyboard ◐, scale contract ✓.', 'Next: graceful degradation to overlay DOM when the API is absent.']],
-  ['api sketch', ['<Surface html width height paint> wraps any geometry.', 'onSource hands you the live root — attach listeners, mutate, cleanup on return.']],
+  ['api sketch', ['<Surface source size> names one DOM source.', '<Surface.WebGL geometry> gives it a physical presentation.']],
   ['perf notes', ['Ceiling is per-source fixed cost, not pixels: 4× texels, same fps.', 'Budget ~64–96 concurrently painting at 120Hz. Idle is free.']],
   ['reading list', ['Data Mountain (Robertson 98) — spatial memory beats lists.', 'Calm technology (Weiser) — the periphery is a feature, not noise.']],
   ['oncall', ['This week: devon. Escalation: #munari-alerts.', 'Known flake: daemon relaunches Chrome without --args when the window closes.']],

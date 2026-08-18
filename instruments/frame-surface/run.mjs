@@ -39,6 +39,9 @@ try {
     resolve: {
       alias: {
         '@munari/core': path.join(repoRoot, 'packages', 'core', 'src', 'index.ts'),
+        '@petepetrash/munari/advanced': path.join(
+          repoRoot, 'packages', 'react', 'src', 'advanced.ts',
+        ),
         '@petepetrash/munari': path.join(repoRoot, 'packages', 'react', 'src', 'index.ts'),
       },
     },

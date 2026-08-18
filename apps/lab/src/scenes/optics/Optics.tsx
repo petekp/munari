@@ -37,9 +37,10 @@
 // anywhere in this file.
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
+import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
-import { SurfaceApp, cameraDistance, paintStats } from '@petepetrash/munari'
+import { Surface, SurfaceCanvas } from '@petepetrash/munari'
+import { cameraDistance, paintStats } from '@petepetrash/munari/advanced'
 import {
   apertureOf,
   footprint,
@@ -282,21 +283,19 @@ function SpecimenSurface({
   const raycast = useLensRaycast(block, hand)
   const [cx, cy] = worldCenter(block)
   return (
-    <SurfaceApp
-      label={block.id}
-      width={block.w}
-      height={block.h}
+    <Surface
+      name={block.id}
+      size={[block.w, block.h]}
       resolution={resolution}
-      position={[cx, cy, 0]}
-      raycast={raycast}
-      // The sheet is paint, not an object: the capture rides the emissive
-      // slot at full strength, so the blocks need no lights and cannot go
-      // dark. The instruments are drawn the same way (opticsShaders).
-      emissiveIntensity={1}
-      content={CONTENT.get(block.id)}
+      source={CONTENT.get(block.id)}
     >
-      <planeGeometry args={[block.w, block.h]} />
-    </SurfaceApp>
+      <Surface.WebGL
+        position={[cx, cy, 0]}
+        raycast={raycast}
+        geometry={<planeGeometry args={[block.w, block.h]} />}
+        material={<Surface.LitMaterial emissiveIntensity={1} />}
+      />
+    </Surface>
   )
 }
 
@@ -508,7 +507,7 @@ function Frame({
 function OnRail({ inst, onTake }: { inst: Instrument; onTake: (e: ThreeEvent<PointerEvent>) => void }) {
   const s = inst.sheet
   return (
-    <group position={[railSlot(inst.id), RAIL_Y, 0]} scale={CHIP}>
+    <group name={`optics-rail-${inst.id}`} position={[railSlot(inst.id), RAIL_Y, 0]} scale={CHIP}>
       {s ? (
         <mesh onPointerDown={onTake}>
           <planeGeometry args={[2 * (s.start[0] + FRAME), 2 * (s.start[1] + FRAME)]} />
@@ -827,9 +826,11 @@ function Bench({
         <Cradle key={i.id} inst={i} />
       ))}
       <group ref={kit}>
-        {KIT.filter((i) => i.id !== handId).map((i) => (
+      {KIT.map((i) =>
+        i.id === handId ? null : (
           <OnRail key={i.id} inst={i} onTake={(e) => onTake(i.id, e)} />
-        ))}
+        ),
+      )}
         {inst && (
           <group ref={lens}>
             <mesh ref={lensMesh} raycast={NO_HIT}>
@@ -1032,7 +1033,7 @@ export function OpticsApp({ chips }: { chips: ReactNode }) {
 
   return (
     <div className="opt-page">
-      <Canvas
+      <SurfaceCanvas
         dpr={[1, 2]}
         gl={{ antialias: true }}
         onCreated={(state) => {
@@ -1049,7 +1050,7 @@ export function OpticsApp({ chips }: { chips: ReactNode }) {
           onPinned={setPinnedKey}
           onReading={setReading}
         />
-      </Canvas>
+      </SurfaceCanvas>
 
       <div className="opt-hud">
         <h1>

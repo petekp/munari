@@ -15,27 +15,22 @@
 // `__glassInk` is missing on purpose — it is declared inside `glassSdf.tsx`,
 // which is welded byte-for-byte to its registry twin.
 
-import type {
-  DomPaintReceipt,
-  FrameDrawReceipt,
-  PresentationReceipt,
-} from '@petepetrash/munari'
 import type { KnobsResizeProbeApi } from '../scenes/knobs/Knobs'
 import type { GenieFilmProbeEvent } from '../scenes/genie/Genie'
 import type { LogoProbeApi } from '../scenes/logo/Logo'
 
 /**
- * The demand probe's record. An instrument reads the three receipts to prove
- * a quiescent Surface costs nothing, and drives the scene through
- * `mutate`/`resize` without a pointer.
+ * The demand probe's record. An instrument reads the real paint ledger and
+ * framebuffer, and drives the scene through `mutate`/`resize` without a
+ * pointer.
  */
 export interface DemandProbeRecord {
-  painted: DomPaintReceipt | null
-  drawn: FrameDrawReceipt | null
-  presented: PresentationReceipt | null
-  framebufferHash: number | null
+  ready: boolean
   mutate: () => void
   resize: (next: number) => void
+  readSource: () => number
+  readPaints: () => number
+  readSourceWidth: () => number
 }
 
 /** One line of the veil gate's dev log: what a single frame saw. */
@@ -72,5 +67,7 @@ declare global {
     __genieFilmProbe?: (event: GenieFilmProbeEvent) => void
     /** The logo scene's knob driver, for the shader gate's material walk. */
     __logo?: LogoProbeApi
+    /** Gold's ordered protocol log, for the shared-canvas gate. */
+    __gold?: { readonly log: readonly { surface: string; event: string }[] }
   }
 }

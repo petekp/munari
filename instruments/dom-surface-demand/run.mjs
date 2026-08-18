@@ -1,6 +1,6 @@
 // Demand-mode DOM Surface proof on the real Workspace route.
 // The instrument mutates and resizes a static product panel. It never calls
-// R3F invalidate; the successful DOM paint receipt must wake the renderer.
+// R3F invalidate; a new DOM paint must wake the renderer and reach pixels.
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -69,77 +69,77 @@ try {
     { waitUntil: 'load' },
   )
   await page.waitForFunction(
-    () => window.__domSurfaceDemand?.presented?.frame?.generation > 0,
+    () => window.__domSurfaceDemand?.ready === true,
     { timeout: 20_000 },
   )
   await sleep(600)
 
-  const read = () => page.evaluate(() => {
-    const probe = window.__domSurfaceDemand
-    return {
-      painted: probe.painted,
-      drawn: probe.drawn,
-      presented: probe.presented,
-      framebufferHash: probe.framebufferHash,
+  const read = async () => {
+    const [sample, screenshot] = await Promise.all([
+      page.evaluate(() => {
+        const probe = window.__domSurfaceDemand
+        return {
+          paints: probe.readPaints(),
+          sourceHash: probe.readSource(),
+          sourceWidth: probe.readSourceWidth(),
+        }
+      }),
+      page.screenshot({ type: 'png' }),
+    ])
+    let framebufferHash = 2166136261
+    for (let i = 0; i < screenshot.length; i += 17) {
+      framebufferHash ^= screenshot[i]
+      framebufferHash = Math.imul(framebufferHash, 16777619)
     }
-  })
+    return { ...sample, framebufferHash: framebufferHash >>> 0 }
+  }
 
   const baseline = await read()
-  const mutationGeneration = baseline.painted.frame.generation + 1
   await page.evaluate(() => window.__domSurfaceDemand.mutate())
   await page.waitForFunction(
-    (generation, hash) => {
+    (paints) => {
       const probe = window.__domSurfaceDemand
-      return (
-        probe.presented?.frame?.generation >= generation &&
-        probe.framebufferHash !== hash
-      )
+      return probe.readPaints() > paints
     },
     { timeout: 10_000 },
-    mutationGeneration,
-    baseline.framebufferHash,
+    baseline.paints,
   )
+  await sleep(100)
   const mutated = await read()
 
-  const resizeGeneration = mutated.painted.frame.generation + 1
-  await page.evaluate(() => window.__domSurfaceDemand.resize(420))
+  await page.evaluate(() => window.__domSurfaceDemand.resize(360))
   await page.waitForFunction(
-    (generation) => {
+    () => {
       const probe = window.__domSurfaceDemand
-      return (
-        probe.painted?.paintedSize?.[0] === 420 &&
-        probe.presented?.frame?.generation >= generation
-      )
+      return probe.readSourceWidth() === 360
     },
     { timeout: 10_000 },
-    resizeGeneration,
   )
+  await sleep(100)
   const resized = await read()
+  await sleep(600)
+  const idleBefore = await read()
+  await sleep(600)
+  const idleAfter = await read()
 
   const problems = []
-  for (const [name, sample] of [['mutation', mutated], ['resize', resized]]) {
-    const paint = sample.painted?.frame
-    const draw = sample.drawn?.frame
-    const presented = sample.presented?.frame
-    if (!paint || !draw || !presented) {
-      problems.push(`${name}: missing paint, draw, or presentation receipt`)
-    } else if (
-      paint.sourceId !== draw.sourceId ||
-      paint.sourceId !== presented.sourceId ||
-      draw.generation !== presented.generation ||
-      presented.generation > paint.generation
-    ) {
-      problems.push(
-        `${name}: receipt order is invalid: paint ${paint.sourceId}:${paint.generation}, ` +
-          `draw ${draw.sourceId}:${draw.generation}, presented ${presented.sourceId}:${presented.generation}`,
-      )
-    }
-  }
   if (mutated.framebufferHash === baseline.framebufferHash) {
     problems.push('mutation: framebuffer pixels did not change')
   }
-  if (resized.painted?.paintedSize?.[0] !== 420) {
-    problems.push(`resize: painted width is ${resized.painted?.paintedSize?.[0]}, expected 420`)
+  if (mutated.sourceHash === baseline.sourceHash) {
+    problems.push('mutation: source pixels did not change')
+  }
+  if (mutated.paints <= baseline.paints) {
+    problems.push('mutation: paint ledger did not advance')
+  }
+  if (resized.sourceWidth !== 360) {
+    problems.push(`resize: source width is ${resized.sourceWidth}, expected 360`)
+  }
+  if (resized.paints <= mutated.paints) {
+    problems.push('resize: paint ledger did not advance')
+  }
+  if (idleAfter.paints !== idleBefore.paints) {
+    problems.push(`idle: paint ledger advanced ${idleBefore.paints} -> ${idleAfter.paints}`)
   }
   if (errors.length) problems.push(...errors.map((error) => `page error: ${error}`))
 
@@ -149,9 +149,8 @@ try {
     process.exitCode = 1
   } else {
     console.log(
-      `dom-surface-demand: generation ${baseline.presented.frame.generation} -> ` +
-        `${mutated.presented.frame.generation} -> ${resized.presented.frame.generation}, ` +
-        `paint/draw/presentation agree`,
+      `dom-surface-demand: paints ${baseline.paints} -> ` +
+        `${mutated.paints} -> ${resized.paints}, then idle at ${idleAfter.paints}`,
     )
     console.log('dom-surface-demand gate PASSED')
   }

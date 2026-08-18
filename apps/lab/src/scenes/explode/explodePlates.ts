@@ -1,4 +1,4 @@
-import { parseBoxShadow } from '@petepetrash/munari'
+import { parseBoxShadow } from '@petepetrash/munari/advanced'
 
 // Exploded paint — one element's own paint, taken apart into plates.
 //
@@ -133,7 +133,7 @@ export const PAINT_FEATURES: readonly PaintFeature[] = [
   },
 ]
 
-/** A built plate: hand `node` to a `<Surface html={…}>` at `width × height`. */
+/** A built plate: hand `node` to `<Surface adopt={…}>` at `width × height`. */
 export interface Plate {
   feature: PaintFeature
   /**

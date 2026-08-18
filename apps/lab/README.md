@@ -48,3 +48,32 @@ both copies in the same commit:
 
 (`glassSdf.tsx` is camelCase, unlike other component files, because it
 is shared with the registry.)
+
+## Retained React Doctor diagnostics
+
+`react-doctor --scope changed` reports 13 warnings and 0 errors across the
+scenes, all of them pre-dating this branch and all of them in `apps/lab`,
+never in `packages/`. They are kept, with the reasons:
+
+- **A parent told from an effect** (`no-prop-callback-in-effect`,
+  `no-pass-data-to-parent` — `Genie.tsx:853,867`, `Knobs.tsx:2086,2108`).
+  The values handed up are anchor rectangles and a host element, both
+  measured from the DOM after layout. There is no render-time value to
+  lift: the measurement does not exist until the browser has laid the
+  subtree out.
+- **An effect that re-subscribes on a callback** (`prefer-use-effect-event`
+  — `Flight.tsx:1201`). `useEffectEvent` is still experimental in React
+  19.2; the handler here is a pointer listener whose identity changes once
+  per gesture, not per frame.
+- **Chained state updates** (`no-chain-state-updates` —
+  `Flight.tsx:1705,1706`). The second update reads the first one's
+  committed layout, which is the point: they are two commits on purpose.
+- **`useRef(new Map())`** (`rerender-lazy-ref-init` — `Genie.tsx:1885,1897`).
+  One Map allocated and dropped per render of one component. Measured
+  against `gate:genie-film`, which runs 24 throttled round trips: not
+  visible.
+- **`<button>` with no `type`** (`button-has-type` — `Logo.tsx:1540`) and
+  **`useContext`** (`no-react19-deprecated-apis` — `Workspace.tsx:1`).
+  Both are in tuning panels that are not part of any published surface.
+
+Re-run with `react-doctor --scope changed --no-supply-chain --no-dead-code`.

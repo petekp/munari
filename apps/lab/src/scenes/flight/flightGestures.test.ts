@@ -20,7 +20,7 @@ import {
   cameraDistance,
   carryToPlane,
   planeToScreen,
-} from '@petepetrash/munari'
+} from '@petepetrash/munari/advanced'
 import { makePlate } from './flightPhysicsLaw'
 import { attachFlightGestures, type GestureFlight } from './flightGestures'
 

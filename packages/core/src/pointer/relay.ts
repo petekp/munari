@@ -71,3 +71,33 @@ export function isRelayed(ev: Event): boolean {
   // is optional and the test is `=== true` rather than a truthiness check.
   return (ev as Brandable)[RELAYED] === true
 }
+
+/**
+ * A React event, as far as provenance is concerned: a wrapper that carries
+ * the platform event it was made from.
+ */
+export interface NativeEventCarrier {
+  readonly nativeEvent: Event
+}
+
+/**
+ * `isRelayed`, for a handler that may be given either a platform event or
+ * React's wrapper around one.
+ *
+ * The brand is written on the event the library DISPATCHED. React does not
+ * copy unknown properties onto its synthetic wrapper, so `isRelayed` handed
+ * a synthetic event answers `false` for every relay — the wrapper is not the
+ * event that was branded. A component that guards with the wrong one is
+ * guarding nothing, and the symptom is not a crash: it is the library's own
+ * retellings being processed as the hand, at parked-source coordinates, in
+ * the top-left corner of whatever the listener controls.
+ */
+export function isRelayedEvent(ev: Event | NativeEventCarrier): boolean {
+  // SAFETY: the union's two arms are distinguished by the one field only
+  // the React arm declares. Reading it as optional is the narrowing itself
+  // — a platform Event has no `nativeEvent`, so the fallback is the event.
+  const native = (ev as Partial<NativeEventCarrier>).nativeEvent
+  // SAFETY: the union above admits nothing else, so what remains when the
+  // carrier field is absent is the platform event.
+  return isRelayed(native ?? (ev as Event))
+}

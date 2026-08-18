@@ -51,12 +51,20 @@ describe('the charter names the real scene constants (text weld to the reference
     expect(scene()).toContain('const CRUMPLE_Z = 55')
   })
 
-  it('the handoff charter names the presentation-proof contract', () => {
-    expect(charter()).toContain('keyed `onFirstPresented` receipts')
-    expect(scene()).toContain('onFirstPresented={() => lift.present(card.id)}')
-    expect(scene()).toContain('<LiftDriver lift={lift} />')
-    expect(scene()).toContain('progress={lift.progress}')
-    expect(scene()).toContain('timing: { settleMs: 0, rampMs: 1 }')
+  it('the handoff charter names the ramp the plate owns', () => {
+    expect(charter()).toContain('answering the crossing from the plate')
+    // The crossing is the altitude, and the landing is exact. Both halves
+    // are welded: a driver that lost the floor would never leave the page,
+    // and one that lost the zero would never come back to it.
+    expect(scene()).toContain('if (target === \'dom\' || !f) return 0')
+    expect(scene()).toContain('return Math.max(ADMIT, Math.min(1, f.plate.p.z / LIFT_Z))')
+    expect(scene()).toContain('progress={surface.progress}')
+    // Stated on the root, not on the handle: `<Surface>` owns view,
+    // timing and callbacks, and `useSurface` is identity only.
+    expect(scene()).toContain('timing={{ settleMs: 0, durationMs: 1 }}')
     expect(scene()).not.toContain('onFirstUpload=')
+    // The shadow is scene matter, not a presenter: it cannot warm write-free,
+    // so it hides itself for exactly the frames the page still holds.
+    expect(scene()).toContain('sh.visible = crossing > 0')
   })
 })
