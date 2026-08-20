@@ -261,15 +261,6 @@ try {
   const logo = await logoSamples
   if (logo.gaps !== 0) problems.push(`logo had ${logo.gaps}/${logo.total} invisible handoff frames`)
 
-  await go('gold')
-  const hiddenGoldControls = await page.evaluate(() => [...document.querySelectorAll('[data-gold-controls] button')]
-    .filter((element) => {
-      const rect = element.getBoundingClientRect()
-      return rect.width === 0 || rect.height === 0 || rect.top < 0 || rect.bottom > innerHeight
-    })
-    .map((element) => element.textContent))
-  if (hiddenGoldControls.length) problems.push(`gold controls were off screen: ${hiddenGoldControls.join(', ')}`)
-
   if (errors.length) problems.push(...errors.map((error) => `page error: ${error}`))
   if (problems.length) {
     console.error(`lab-interactions gate FAILED (${problems.length})`)

@@ -118,21 +118,6 @@
   color: var(--ink);
 }
 
-.gen-head {
-  align-self: flex-start;
-  padding: 20px 24px 0;
-}
-
-.gen-head h1 {
-  font: 700 20px/1.2 var(--display);
-  letter-spacing: 0.01em;
-}
-
-.gen-head h1 em {
-  font-style: normal;
-  color: var(--signal);
-}
-
 /* ── the desk ───────────────────────────────────────────────────────
  *
  * Four windows, absolutely placed against the desk's CENTRE — which is

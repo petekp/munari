@@ -1792,18 +1792,7 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
 
   return (
     <div className="l14" ref={scroller}>
-      {/* The black cluster: wordmark and scene selector, nothing else. The
-       * board is the whole page — a paragraph explaining what you are
-       * about to do to it would only be read once, and by then the card is
-       * already in the air. */}
-      <div className="l14-bar">
-        <div className="l14-bar-inner">
-          <h1>
-            mun<em>ari</em>
-          </h1>
-          {chips}
-        </div>
-      </div>
+      {chips}
 
       <div className="l14-inner">
         <div className="l14-board" ref={boardEl}>

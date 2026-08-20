@@ -14,8 +14,8 @@ import { VeilApp } from './scenes/veil/Veil'
 import { KnobsApp } from './scenes/knobs/Knobs'
 import { OpticsApp } from './scenes/optics/Optics'
 import { LogoApp } from './scenes/logo/Logo'
-import { GoldApp } from './scenes/gold/Gold'
 import { SurfaceProviderProbe } from './lib/surfaceProvider'
+import { SceneNav } from './components/SceneNav'
 
 // Eight scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
 // flight drag trilogy, exploded-paint inspector, genie minimize-to-dock,
@@ -35,7 +35,6 @@ type SceneId =
   | 'knobs'
   | 'optics'
   | 'logo'
-  | 'gold'
 const SCENES = [
   'workspace',
   'glass',
@@ -46,8 +45,11 @@ const SCENES = [
   'knobs',
   'optics',
   'logo',
-  'gold',
 ] as const
+
+// The nav shows only the focus four; the rest stay routable by URL so the
+// browser gates and old links keep working, they just aren't advertised.
+const NAV_SCENES = ['flight', 'genie', 'knobs', 'logo'] as const satisfies readonly SceneId[]
 
 // Clicking a canvas normally moves focus to <body>, which would blur
 // whatever hidden form field a Surface has focused — killing native typing.
@@ -132,20 +134,14 @@ export default function App() {
   // `?bare` hands every page scene `undefined` instead, which is already
   // the "no chips" case each of them handles.
   const chips = !showChrome ? undefined : (
-    <div className="tabs">
-      {SCENES.map((id) => (
-        <button
-          key={id}
-          data-active={scene === id}
-          onClick={() => {
-            window.history.pushState(null, '', `?scene=${id}`)
-            setScene(id)
-          }}
-        >
-          {id}
-        </button>
-      ))}
-    </div>
+    <SceneNav
+      scenes={NAV_SCENES}
+      active={scene}
+      onSelect={(id) => {
+        window.history.pushState(null, '', `?scene=${id}`)
+        setScene(id)
+      }}
+    />
   )
   const domSurfaceDemandProbe =
     scene === 'workspace' &&
@@ -188,7 +184,6 @@ export default function App() {
   if (scene === 'knobs') return <KnobsApp chips={chips} />
   if (scene === 'optics') return <OpticsApp chips={chips} />
   if (scene === 'logo') return <LogoApp chips={chips} />
-  if (scene === 'gold') return <GoldApp chips={chips} />
 
   return (
     <div className="app">

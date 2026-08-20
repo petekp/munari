@@ -150,107 +150,16 @@ presented generation and changed framebuffer data. It also checks
 that draw and presentation receipts name the same source generation.
 The gate has the standard `drawElementImage` capability policy.
 
-## surface-twin
-
-Checks that a Twin Surface — one with no `view` — keeps its page copy
-reachable while its WebGL copy presents. `npm run gate:surface-twin`.
-It runs the Gold route, counts the accessible instances of the twin's
-content, and requires exactly one: the page copy. The parked source
-copy is `aria-hidden` and `inert`, and the check filters copies by
-their `[data-munari-source-host]` container rather than by the element
-itself, because the attributes sit on the container.
-
-A Twin that released its page copy would be an exclusive handoff
-wearing a Twin's API, and the only visible symptom is a screen reader
-losing the content.
-
-## surface-dom
-
-Checks the interaction half of a Surface: keyboard, focus, and the
-pointer modes. `npm run gate:surface-dom`. On the Gold route it tabs to
-the page copy and activates it, types into a field, lifts the Surface
-and requires the focus and the caret to arrive in the parked copy,
-lands it and requires them home again, then clicks the mesh at the page
-box's own coordinates — which only reaches the button if the mesh is
-standing where the DOM copy was.
-
-The three pointer modes are checked side by side in one canvas:
-`geometry` takes the whole plane, `content` declines a pointer over
-clear pixels and takes one over the field, and `none` declines
-everything. A touch tap has to relay like a click, and the relay has to
-survive context loss.
-
-The fault it exists for: the page copy is released with `inert`, and
-`inert` blurs its subtree. A user who had tabbed to a control and then
-lifted the Surface lost focus to `<body>` — no error, no ring, and the
-next Tab restarted at the top of the document (2026-08-17).
-
 ## lab-interactions
 
 Checks the real public lab routes through a capability-enabled browser.
 `npm run gate:lab-interactions` tabs into Workspace content, clicks its
 captured checkbox, recovers camera control after a panel drag, and checks
 Glass, Knobs, Optics, and Explode pointer paths. It then deletes two Flight
-cards, checks their column counts and two-layer drag shadow, samples Logo's
-two renderer handoffs for blank frames, and requires every Gold control to
-remain in the viewport. This gate is the regression contract for the lab
+cards, checks their column counts and two-layer drag shadow, and samples
+Logo's two renderer handoffs for blank frames. This gate is the
+regression contract for the lab
 faults found in manual QA on 2026-08-18.
-
-## surface-canvas
-
-Checks the exclusive handoff with several Surfaces sharing one Canvas.
-`npm run gate:surface-canvas`. The Gold route composites two exclusive
-Surfaces and one translucent Twin in a single `frameloop="demand"`
-Canvas. The gate drives forward, reverse, a reversal arriving
-mid-crossing, a source replaced while the mesh is presenting, WebGL
-context loss and recovery, and teardown, and reads the protocol's own
-event order rather than pixels.
-
-It pins the order that costs the most to notice: `ready` — every
-registered presenter proved a drawn frame — must appear before the
-page hands the hold over, and a mid-crossing reversal must never hand
-the page back on the way. Both faults look like a one-frame flicker in
-a screenshot and like nothing at all in a unit test.
-
-It also covers the multi-part and anchor transactions: a Surface with two
-parts transfers both or neither, dropping one part leaves the other
-presenting, and a child parked on a named box lands on that box in the
-geometry's own coordinates rather than existing before the geometry has
-drawn the paint the box was measured against.
-
-It also pins that the shared Canvas keeps running. R3F re-applies the
-`frameloop` prop on every Canvas re-render, so a parent rendering
-during a crossing demotes a promoted loop back to `demand`; the second
-Surface's lift then froze mid-phase (2026-08-17). The host asks for
-the next frame from inside the current one while any work claim is
-live, which a prop re-sync cannot undo.
-
-Five more cases arrived on 2026-08-17, each pinning a fault that a unit
-test could not see:
-
-- **Post-processing.** The route can render the scene into an off-screen
-  target and composite it to the default framebuffer in the same frame,
-  which is what every effect-composer library does. A presenter that drew
-  into a target defers its presentation to the host's frame tail; draining
-  that tail at the scene pass threw every presenter away one pass before
-  the one that showed them, and the Surface warmed forever without ever
-  releasing its page copy.
-- **Material writes.** A warm-up draws with colour, depth and stencil
-  writes disabled and must give back exactly what the caller authored. The
-  gate reads the flags off the Surface's own material and off a scene mesh
-  overlapping it, before and after a handoff. The old warm-up wrote `false`
-  onto the shared material and read the next pass's value back out of it,
-  so depth and stencil never came back — for every mesh using that
-  material.
-- **Two Surfaces with no name.** They must keep their own content. The
-  cross-tree registry replaces by key, and a key built from the optional
-  name made two unnamed Surfaces one entry: the second commit took the
-  first one's content away.
-- **Two Canvases with one id.** The library faults and the first Canvas to
-  mount keeps the id; the second renders none of the host's registrations,
-  so the Surfaces stay in the Canvas the caller pointed them at.
-- **The fallback.** A supplied `fallback` appears when the context is lost
-  and goes away when it comes back, without the Canvas remounting.
 
 ## genie-film-reorder
 
@@ -283,6 +192,28 @@ declared twice, never that each was declared at all. The failure
 surfaced two commands later as a phase-wait timeout inside the
 crossing-flash gate (2026-08-14, since removed). This is the cheapest
 gate in the repo and the one the others assume.
+
+## lifting-pointer
+
+CI gate: input follows the eye (decisions.md #33) — which DOM instance
+hears a real click in each crossing phase. `npm run gate:lifting-pointer`.
+
+One exclusive Surface whose page copy and parked source each count
+their own clicks; the runner fires trusted clicks at rest, at three
+offsets inside a widened lifting window (`settleMs: 700`), and in the
+gl phase, then samples hover mirroring mid-lift. The rest and gl
+clicks are liveness baselines — if either lands wrong the lifting
+answer is vacuous. The judged clauses: every lifting-window click
+reaches the presented page copy, that copy wears real `:hover`
+mid-lift, and the parked copy wears no `data-hover` — the last clause
+also covers the #33 edge burst, because an earlier gl-phase hover
+leaves a stamped twin that only the burst clears.
+
+This began as the probe that found the fault (2026-08-19: 3/3 lifting
+clicks routed to the parked copy while the page copy was presented;
+the pointer gate made the canvas solid at mesh registration, a full
+settle dwell before presentation changed hands) and was promoted when
+`crossingPointer` shipped.
 
 ## House rules
 

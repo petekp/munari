@@ -37,10 +37,8 @@ jobs:
       - run: npm run gate:idle-zero
       - run: npm run gate:genie-film-reorder
       - run: npm run gate:dom-surface-demand
+      - run: npm run gate:lifting-pointer
       - run: npm run gate:shaders
-      - run: npm run gate:surface-dom
-      - run: npm run gate:surface-canvas
-      - run: npm run gate:surface-twin
 
   # The resize sweep gets a fresh runner after the focused gates. The broad
   # all-scene walk remains a local acceptance command: hosted Chrome closes

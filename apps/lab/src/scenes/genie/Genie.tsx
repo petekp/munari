@@ -2401,14 +2401,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
         aria-hidden
         tabIndex={-1}
       />
-      {showChrome && (
-        <header className="gen-head">
-          <h1>
-            mun<em>ari</em>
-          </h1>
-          {chips}
-        </header>
-      )}
+      {chips}
       {showChrome && <GenieTweakPanel />}
 
       {/* Mapped in SCHEDE order and never re-sorted: raising a window has

@@ -67,7 +67,5 @@ declare global {
     __genieFilmProbe?: (event: GenieFilmProbeEvent) => void
     /** The logo scene's knob driver, for the shader gate's material walk. */
     __logo?: LogoProbeApi
-    /** Gold's ordered protocol log, for the shared-canvas gate. */
-    __gold?: { readonly log: readonly { surface: string; event: string }[] }
   }
 }

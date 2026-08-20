@@ -65,46 +65,6 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── the bar ──────────────────────────────────────────────────────────────
- *
- * The black cluster: the one place on the page that is not chassis. It
- * carries the wordmark and the scene selector and says nothing else — this
- * lab is the board, and the board explains itself by being handled. */
-
-.l14-bar {
-  position: sticky;
-  top: 0;
-  z-index: 6;
-  background: var(--screen);
-  color: var(--screen-ink);
-}
-
-.l14-bar-inner {
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 13px 32px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.l14-bar h1 {
-  margin: 0;
-  font-family: var(--display);
-  font-size: 30px;
-  font-weight: 700;
-  font-variation-settings: 'opsz' 72;
-  letter-spacing: -0.012em;
-  line-height: 1;
-  text-transform: lowercase;
-}
-
-.l14-bar h1 em {
-  font-style: normal;
-  color: var(--signal);
-}
-
 /* ── the board ───────────────────────────────────────────────────────── */
 
 .l14-inner {

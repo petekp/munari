@@ -273,10 +273,9 @@ npm run lint
 npm run gate:idle-zero   # browser gate: idle Surfaces cost 0 paints/s
 ```
 
-Twelve browser gates exist. CI runs eight on every push (`gate:idle-zero`,
+Nine browser gates exist. CI runs five on every push (`gate:idle-zero`,
 `gate:frame-surface`, `gate:shaders`, `gate:dom-surface-demand`,
-`gate:genie-film-reorder`, `gate:surface-dom`, `gate:surface-canvas`,
-`gate:surface-twin`); four run locally on demand
+`gate:genie-film-reorder`); four run locally on demand
 (`gate:genie-duplicate`, `gate:genie-film`, `gate:genie-film-context`,
 `gate:genie-shadow`), and
 `instruments/knobs-hz` is a reporter with no gate script.

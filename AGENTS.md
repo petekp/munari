@@ -42,7 +42,7 @@ directory per layer: **mapping → paint (pixels) → pointer (relay) →
 transfer (handoff) → chrome (measurement) → physics**. The suites are
 the specification — describe/it names, comments, and pinned numbers
 are all load-bearing. A law ships with the contract that pins it, and
-changing a law means changing its contract in the same commit. Seven
+changing a law means changing its contract in the same commit. Eight
 suites are named for the law they pin, not for a module — the
 conformance README maps each to its module.
 
@@ -116,11 +116,10 @@ by no test runner, wired invisibly through the root tsconfig include.
 `npm test` (vitest), `npm run typecheck` (four tsc programs: root,
 `apps/lab`, `registry`, `tools`), and `npm run lint` (oxlint with the
 anti-slop rules — its README explains what each rule rejects and what
-to write instead). CI runs all three on every push, plus eight browser
+to write instead). CI runs all three on every push, plus six browser
 gates: `gate:idle-zero` (mounted quiescent Surfaces cost 0 paints/s),
 `gate:frame-surface`, `gate:shaders`, `gate:dom-surface-demand`,
-`gate:genie-film-reorder`, `gate:surface-dom`, `gate:surface-canvas`,
-`gate:surface-twin`. Four more run locally on demand:
+`gate:lifting-pointer`, `gate:genie-film-reorder`. Four more run locally on demand:
 `gate:genie-duplicate`, `gate:genie-film`, `gate:genie-film-context`,
 `gate:genie-shadow`.
 `instruments/README.md` says what each one checks.

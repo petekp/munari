@@ -6,7 +6,8 @@
   "description": "The lab application — a consumer. Reaches the library only through the `@petepetrash/munari` barrel, exactly as an outside project would (enforced by tests/boundary.test.ts).",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "thumbs": "node tools/captureThumbs.mjs"
   },
   "dependencies": {
     "@petepetrash/munari": "*",
