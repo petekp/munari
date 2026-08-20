@@ -316,6 +316,57 @@ describe('the two-stage receipt', () => {
     expect(store.getState().presentedView).toBe('webgl')
   })
 
+  // Input follows the eye (decisions.md #33), and the eye follows the HOLD:
+  // hearing must not move at the phase turn, because the pixels move in
+  // that frame's draw — a phase-read here would let the canvas hear clicks
+  // while the page copy is still the one on screen.
+  it('the canvas hears the pointer only once the releasing draw has run', () => {
+    const store = exclusiveStore()
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.request('webgl')
+    store.tick(500)
+    // Presentation authority has moved; the page is still on screen.
+    expect(store.canvasPresents()).toBe(true)
+    expect(store.canvasHearsPointer()).toBe(false)
+    store.present('a', store.epoch())
+    expect(store.canvasHearsPointer()).toBe(true)
+  })
+
+  it('hearing returns to the page with the hold, at the reclaim', () => {
+    const store = exclusiveStore()
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.request('webgl')
+    store.tick(500)
+    store.present('a', store.epoch())
+    store.request('dom')
+    store.tick(5000)
+    expect(store.holdsPage()).toBe(true)
+    expect(store.canvasHearsPointer()).toBe(false)
+  })
+
+  it('a Twin always hears — hearing is an exclusivity question', () => {
+    const store = createSurfaceStore('twin')
+    store.acquire(1)
+    expect(store.canvasHearsPointer()).toBe(true)
+  })
+
+  it('toggling exclusivity notifies the hold listeners', () => {
+    // The one hearing flip with no hold movement: a Twin gaining `view`.
+    // The edge bursts listen on the hold, so this edge reaches them too.
+    const store = createSurfaceStore('twin')
+    store.acquire(1)
+    let heard = 0
+    store.subscribeHold(() => heard++)
+    store.setExclusive(true)
+    expect(heard).toBe(1)
+    expect(store.canvasHearsPointer()).toBe(false)
+    store.setExclusive(true)
+    expect(heard).toBe(1)
+    store.setExclusive(false)
+    expect(heard).toBe(2)
+    expect(store.canvasHearsPointer()).toBe(true)
+  })
+
   it('a color-writing draw before the lift gate releases nothing', () => {
     // A resident presentation of a Surface that is still the page's.
     const store = exclusiveStore()

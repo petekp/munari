@@ -1799,3 +1799,96 @@ directly.
 
 The earlier entries remain as history. This entry changes their ownership
 conclusion before the next package release.
+
+## #33 — Input follows the eye (2026-08-19, core + react binding + instruments)
+
+**Decision.** The crossing gains a third per-phase theorem,
+`crossingPointer`: who HEARS the pointer. It equals
+`crossingPresentation` in every phase — the side that is seen is the
+side that hears — and it is exclusive: exactly one side, never zero,
+never both. Pinned in `tests/conformance/transfer/pointer`.
+
+**The fault.** Before this law, input followed mesh registration: the
+pointer gate made the canvas solid the moment a presenter's mesh
+registered, which happens at the start of 'lifting' — a full settle
+dwell before presentation changes hands. Measured 2026-08-19
+(`gate:lifting-pointer`): during 'lifting', 3/3 real clicks routed
+through the relay to the parked, hidden source copy while the page copy
+was the composited one, and hover mirroring stamped `data-hover` on the
+parked copy — the visible copy showed no hover or pressed feedback for
+the entire dwell (450ms at default timing, on every lift). Because both
+copies render from one React tree, a click handler that writes shared
+state still appears to work; content with local state (an uncontrolled
+input, a `useState` counter) diverges invisibly between the copies.
+
+**The consumption.** The binding reads the law in the presenter's
+raycast: while `canvasHearsPointer()` is false the mesh declines every
+ray, so neither the pointer gate nor r3f's relay ever sees it. Declining
+at the raycast rather than in handlers is the same principle the hit
+region already uses — an intersection r3f never sees is one it never
+counts.
+
+**The edge bursts.** The theorem routes the next event and says nothing
+about state either side holds across a flip; the relay speaks only on
+pointer motion, so a pointer that sits still through a flip leaves the
+loser wearing stale state and the gainer blind to a pointer already
+over it. When the canvas loses input (the hold returning to the page),
+the presenter cancels any active relayed press and clears the stamped
+twins, synchronously from the hold flip. When it gains input (the page
+releasing), the presenter forwards one buttonless move at the pointer's
+last trusted position — kept by `trackPointerPlace`, since the flip is
+a protocol event with no pointer event attached — so hover the page
+copy was showing continues on the texture instead of popping off at
+the swap.
+
+**The press fate, pinned.** A press that straddles a flip dies at the
+edge. Canvas-side, the burst cancels it explicitly. Page-side (down on
+the page copy during 'lifting', flip mid-press), the copy goes hidden
+and the browser itself drops its `:active`; the release is lost.
+Measured (spike, 2026-08-19): no state sticks on either copy. Holding
+the swap open for an active press was considered and rejected — the
+lift gate's evidence rules must not gain an input-dependent clause. A
+burst of 14 clicks at ~35ms across the flip landed every one on exactly
+one copy: there is no dead window, because the gate's pointerdown path
+raycasts directly rather than waiting for an arming move.
+
+**The refinements (adversarial review, 2026-08-19).** The binding reads
+the HOLD, not the phase: `canvasHearsPointer()` is
+`!exclusive || !holdsPage()`. The phase turns at the top of a frame and
+the pixels turn in that frame's draw, so a phase-read would open a
+window at gl entry — phase already 'gl', releasing draw not yet run —
+where the canvas hears clicks the page copy is still showing. Reading
+the hold also puts every hearing flip at the exact moment
+`subscribeHold` fires, and `setExclusive` notifies the same listeners,
+because a Twin gaining `view` is the one hearing flip with no hold
+movement. The bursts run one microtask after the flip (the flip fires
+from inside the frame loop; a synchronous burst would run consumer DOM
+handlers mid-draw) and the arrival burst declines when placement is not
+`match-dom` (a manual mesh is not at the page box), when `pointerEvents`
+is `"none"`, or when any button is held — a held button means some
+pointer's press story is open, possibly another surface's live relayed
+drag, which one buttonless document-bubbling move would break. Samples
+that outlive their event are plain copies (`pointerSampleOf`): a
+retained PointerEvent spreads to nothing, and a cancel built by
+spreading one carries `pointerId: undefined` and is refused by the
+relay's own cancel guard.
+
+**Known, accepted.** A press CLAIMED by the canvas gate that straddles
+a gl→page flip has its tail consumed by the claim (the gate retargets
+every event of that pointerId until release, and the declining raycast
+gives the clones nowhere to land); the gesture dies at the edge, which
+is the pinned fate, but a click within the suppression window after
+release is also eaten. Cross-module machinery to cancel gate claims at
+the flip waits for a lab to bleed on it (decisions.md #1). The arrival
+burst also cannot know about page content occluding the Surface (a
+modal over the page box); the first real pointer motion corrects it.
+Every kind of crossing matter follows the law: `<Surface.WebGL>` gates
+its own raycast; `<FrameSurface surface={handle}>` gates its default
+raycast when told which crossing it participates in (an authored
+`raycast` prop wins — `raycast={() => {}}` is the full opt-out); and the
+manual-presenter seam exposes `hearsPointer()` for meshes the library
+never touches. A `FrameSurface` in a crossing whose author passes
+neither `surface` nor `raycast` cannot be gated — the component does
+not know it is crossing matter — but it can be caught: receiving a
+presentation requirement is the one moment it knows, and an ungated
+raycast at that moment warns once in development.

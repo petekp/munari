@@ -178,6 +178,15 @@ export interface SurfaceStore {
    * own draw has to cause.
    */
   canvasPresents(): boolean
+  /**
+   * May the canvas HEAR the pointer this frame? Input follows the eye
+   * (crossingPointer): during 'lifting' the mesh is registered and drawing
+   * warm, but the page copy is the one on screen, so it is the one a click
+   * must reach. A presenter reads this in its raycast — an intersection
+   * declined there is one r3f never counts, so neither the pointer gate nor
+   * the relay ever hears about matter that is not the presented copy.
+   */
+  canvasHearsPointer(): boolean
   /** Does the page copy still hold the pixels? Read from a frame, not a render. */
   holdsPage(): boolean
   /**
@@ -403,6 +412,15 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       publish()
     },
     canvasPresents: () => !exclusive || crossingPresentation(crossing.phase).gl,
+    // crossingPointer says hearing equals presentation, and presentation is
+    // refined by the HOLD, not the phase: the phase turns at the top of a
+    // frame, the pixels turn in that frame's draw. Reading the phase here
+    // would open a window at gl entry — phase already 'gl', releasing draw
+    // not yet run (mesh culled, host tail stalled) — where the canvas hears
+    // clicks the page copy is still showing. Reading the hold also puts the
+    // hearing flip at the exact moment subscribeHold fires, which is what
+    // lets the edge bursts run at the boundary they describe.
+    canvasHearsPointer: () => !exclusive || !pageHeld,
     holdsPage: () => pageHeld,
     subscribeHold(listener) {
       holdListeners.add(listener)
@@ -494,7 +512,13 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     },
     exclusive: () => exclusive,
     setExclusive(value) {
+      if (value === exclusive) return
       exclusive = value
+      // A Twin gaining or losing `view` flips who hears the pointer without
+      // the hold moving. The edge bursts listen on the hold, so this edge
+      // notifies them too — otherwise a press relayed as a Twin survives
+      // into a phase where the canvas no longer hears.
+      for (const listener of holdListeners) listener()
     },
     publishPart(id, value) {
       if (value === null) partMap.delete(id)

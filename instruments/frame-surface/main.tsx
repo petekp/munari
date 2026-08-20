@@ -805,6 +805,8 @@ function PresentationFenceScene() {
         width={64}
         height={16}
         material="none"
+        // Not pointer matter: this rig only exercises the receipt gate.
+        raycast={() => {}}
         presentation={PRESENTATION_REQUIREMENT}
         onFrameDrawn={onFrameDrawn}
         onPresented={onPresented}

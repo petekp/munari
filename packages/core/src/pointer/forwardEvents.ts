@@ -882,6 +882,90 @@ export function trackDrag(): () => void {
 }
 
 /**
+ * The relay-surviving facts of a native event, as a PLAIN object. A retained
+ * PointerEvent spreads to nothing — its properties live on prototype getters
+ * — so a sample built by `{...event}` carries `pointerId: undefined`, and
+ * forwardPointer's cancel guard then refuses the cancel it was built for.
+ * Every sample that will be stored or spread goes through here.
+ */
+export function pointerSampleOf(e: PointerEvent): ForwardPointerSample {
+  return {
+    pointerId: e.pointerId,
+    pointerType: e.pointerType,
+    isPrimary: e.isPrimary,
+    button: e.button,
+    buttons: e.buttons,
+    pressure: e.pressure,
+    width: e.width,
+    height: e.height,
+    tiltX: e.tiltX,
+    tiltY: e.tiltY,
+    twist: e.twist,
+    altKey: e.altKey,
+    ctrlKey: e.ctrlKey,
+    metaKey: e.metaKey,
+    shiftKey: e.shiftKey,
+  }
+}
+
+/** Where the trusted pointer last was, in viewport coordinates. */
+export interface PointerPlace {
+  readonly x: number
+  readonly y: number
+  readonly sample: ForwardPointerSample
+}
+
+let pointerPlace: PointerPlace | null = null
+let placeRefs = 0
+let untrackPlace: (() => void) | null = null
+
+/**
+ * Reference-counted document-capture record of the pointer's last trusted
+ * position. It exists for the crossing's arrival burst (decisions.md #33):
+ * the flip that gives the canvas input is a protocol event with no pointer
+ * event attached, so a presenter re-arming hover under a STILL pointer has
+ * no event to read the position from — only this record, written before
+ * the flip.
+ */
+export function trackPointerPlace(): () => void {
+  if (placeRefs++ === 0) {
+    const onPoint = (e: PointerEvent) => {
+      if (!e.isTrusted) return
+      pointerPlace = { x: e.clientX, y: e.clientY, sample: pointerSampleOf(e) }
+    }
+    // A pointerout with no relatedTarget is the pointer leaving the
+    // document: a place kept past that would re-arm hover on content the
+    // pointer is no longer over at all.
+    const onOut = (e: PointerEvent) => {
+      if (e.isTrusted && e.relatedTarget === null) pointerPlace = null
+    }
+    document.addEventListener('pointermove', onPoint, true)
+    document.addEventListener('pointerdown', onPoint, true)
+    document.addEventListener('pointerout', onOut, true)
+    untrackPlace = () => {
+      document.removeEventListener('pointermove', onPoint, true)
+      document.removeEventListener('pointerdown', onPoint, true)
+      document.removeEventListener('pointerout', onOut, true)
+    }
+  }
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    if (--placeRefs === 0) {
+      untrackPlace?.()
+      untrackPlace = null
+      pointerPlace = null
+    }
+  }
+}
+
+/** The record `trackPointerPlace` keeps; null before any trusted event. */
+export function lastPointerPlace(): PointerPlace | null {
+  return pointerPlace
+}
+
+/**
  * Parked matter must never hold the real pointer. A consumer that calls
  * `setPointerCapture` from a parked subtree (react-resizable-panels does,
  * per forwarded move, on its separator) captures the REAL mouse — synthetic

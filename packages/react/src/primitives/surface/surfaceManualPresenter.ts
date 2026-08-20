@@ -39,6 +39,13 @@ export interface SurfaceManualPresenter {
   present(): void
   /** May this presenter's pixels be SEEN this frame? */
   canvasPresents(): boolean
+  /**
+   * May this presenter's matter HEAR the pointer this frame? Input follows
+   * the eye (decisions.md #33): a scene-owned mesh that raycasts while this
+   * is false routes clicks to the parked copy the viewer cannot see. Gate
+   * the mesh's `raycast` on this, the way `<Surface.WebGL>` gates its own.
+   */
+  hearsPointer(): boolean
   /** Does the page copy still hold the pixels? */
   holdsPage(): boolean
 }
@@ -60,6 +67,7 @@ export function surfaceManualPresenter(
     prove: () => store.prove(key, store.readinessLifetime(), store.epoch()),
     present: () => store.present(key, store.epoch()),
     canvasPresents: () => store.canvasPresents(),
+    hearsPointer: () => store.canvasHearsPointer(),
     holdsPage: () => store.holdsPage(),
   }
 }

@@ -1560,7 +1560,26 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
       const bar = closestFrom(e.target, '.gen-titlebar')
       if (bar) {
         const win = closestFrom(bar, '[data-win]')?.dataset.win
-        if (isWinId(win))
+        if (isWinId(win)) {
+          // While the window is crossing, the presented copy is the PAGE
+          // one (decisions.md #33), so a titlebar press mid-lift arrives
+          // here instead of at the sheet. It means what pressing the sheet
+          // means: catch. Arming a window-move instead would drag the page
+          // copy while the flight's pose stays frozen — two copies of one
+          // window disagreeing at the swap.
+          const a = api.current.airOf(win)
+          if (a) {
+            api.current.raise(win)
+            a.drive.mode = 'grab'
+            a.drive.grabT = a.drive.t
+            beginGrip(
+              e,
+              win,
+              genieWarp(0.5, 0.5, a.drive.t, a.f.params).y,
+              api.current.dirOf(win) === 'minimizing' ? 1 : 0,
+            )
+            return
+          }
           gest.current = {
             kind: 'armed-window',
             id: e.pointerId,
@@ -1568,6 +1587,7 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
             x0: e.clientX,
             y0: e.clientY,
           }
+        }
         return
       }
       // A FILLED bay arms; drag up pours, release clicks. An empty bay is

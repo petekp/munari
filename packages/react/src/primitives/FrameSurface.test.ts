@@ -7,6 +7,7 @@ import {
 import {
   assertFrameMaterialSupported,
   createFrameSurfaceRuntime,
+  hearingGatedRaycast,
   resolveFrameSurfaceDevelopment,
 } from './FrameSurface'
 
@@ -243,5 +244,34 @@ describe('FrameSurface runtime', () => {
     expect(() => assertFrameMaterialSupported(premultiplied, 'none')).not.toThrow()
     expect(() => assertFrameMaterialSupported(straight, 'standard')).not.toThrow()
     expect(() => assertFrameMaterialSupported(straight, 'unlit')).not.toThrow()
+  })
+
+  // Input follows the eye (decisions.md #33): a crossing-participating mesh
+  // must not be pointer matter while the page copy is the presented one.
+  // The gate lives in the raycast so no raycaster — r3f's or a scene's own
+  // Raycaster — ever counts an intersection the law forbids.
+  it('the hearing gate silences the raycast, and only the raycast', () => {
+    const base = vi.spyOn(THREE.Mesh.prototype, 'raycast').mockImplementation(function (
+      this: THREE.Mesh,
+      _raycaster: THREE.Raycaster,
+      intersects: THREE.Intersection[],
+    ) {
+      intersects.push({ distance: 1, point: new THREE.Vector3(), object: this })
+    })
+    try {
+      let hears = false
+      const mesh = new THREE.Mesh()
+      mesh.raycast = hearingGatedRaycast(() => hears)
+      const hits: THREE.Intersection[] = []
+      mesh.raycast(new THREE.Raycaster(), hits)
+      expect(hits).toHaveLength(0)
+      expect(base).not.toHaveBeenCalled()
+      hears = true
+      mesh.raycast(new THREE.Raycaster(), hits)
+      expect(hits).toHaveLength(1)
+      expect(hits[0]?.object).toBe(mesh)
+    } finally {
+      base.mockRestore()
+    }
   })
 })

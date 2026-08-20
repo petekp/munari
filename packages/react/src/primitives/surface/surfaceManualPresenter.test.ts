@@ -77,6 +77,7 @@ describe('the manual presenter seam', () => {
     const { presenter } = airborne()
     expect(Object.keys(presenter).sort()).toEqual([
       'canvasPresents',
+      'hearsPointer',
       'holdsPage',
       'present',
       'prove',

@@ -41,6 +41,7 @@ import {
   type PresentationRequirement,
 } from '@munari/core'
 import { SurfaceContext, type SurfaceContextValue } from './SurfaceContext'
+import { surfaceStoreOf, type SurfaceHandle } from './surface/surfaceHandle'
 import { useSurfaceHostContext } from './surface/surfaceHostContext'
 import { useLatest } from './useLatest'
 
@@ -57,6 +58,13 @@ export interface FrameSurfaceProps
   /** HTML input is a separate Surface mode; frame and DOM sources cannot mix. */
   html?: never
   frame: FrameSource
+  /**
+   * The crossing this mesh participates in, when it is crossing matter and
+   * not plain scene furniture. While the page copy is the presented one the
+   * mesh declines every ray — input follows the eye (decisions.md #33) —
+   * exactly as `<Surface.WebGL>` does. An authored `raycast` prop wins.
+   */
+  surface?: SurfaceHandle
   children: React.ReactNode
   onFrameDrawn?: (receipt: FrameDrawReceipt) => void
   /** Optional proof requested by a presentation-authority transfer. */
@@ -285,6 +293,21 @@ const warnRejectedPresentation = (message: string) => {
   if (isDevelopmentRuntime()) console.warn(message)
 }
 
+/**
+ * A raycast that exists only while `hears()` answers true. Declining at the
+ * raycast rather than in handlers means no raycaster — r3f's or a scene's
+ * own — ever counts the mesh as pointer matter while the page copy is the
+ * presented one.
+ */
+export function hearingGatedRaycast(
+  hears: () => boolean,
+): (this: THREE.Mesh, raycaster: THREE.Raycaster, intersects: THREE.Intersection[]) => void {
+  return function raycast(raycaster, intersects) {
+    if (!hears()) return
+    THREE.Mesh.prototype.raycast.call(this, raycaster, intersects)
+  }
+}
+
 export function assertFrameMaterialSupported(
   source: FrameSource,
   material: 'unlit' | 'standard' | 'none',
@@ -304,6 +327,8 @@ export function assertFrameMaterialSupported(
  */
 export function FrameSurface({
   frame,
+  surface,
+  raycast,
   children,
   onFrameDrawn,
   presentation,
@@ -328,6 +353,24 @@ export function FrameSurface({
   const presentationRef = useLatest(presentation)
   const onPresentedRef = useLatest(onPresented)
   const warnedTransferRef = useRef<number | null>(null)
+  const warnedHearingRef = useRef(false)
+
+  // A presentation requirement is the one moment this component KNOWS it is
+  // crossing matter. With neither `surface` nor an authored `raycast`, the
+  // mesh will hear the pointer in every phase — the misroute decisions.md
+  // #33 exists to forbid — and nothing else in the system can notice.
+  useLayoutEffect(() => {
+    if (!presentation || surface || raycast !== undefined || warnedHearingRef.current) return
+    warnedHearingRef.current = true
+    if (isDevelopmentRuntime()) {
+      console.warn(
+        'munari: this FrameSurface is crossing (it received a presentation ' +
+          'requirement) but its raycast is ungated, so it hears the pointer ' +
+          'even while the page copy is the presented one. Pass surface={handle} ' +
+          'to follow input-follows-the-eye, or an explicit raycast to own it.',
+      )
+    }
+  }, [presentation, surface, raycast])
 
   // Build the replacement before releasing the current runtime, then flush
   // the state swap in the layout phase. No renderer frame can land between
@@ -449,9 +492,19 @@ export function FrameSurface({
 
   assertFrameMaterialSupported(frame, material)
 
+  const store = surface ? surfaceStoreOf(surface) : null
+  const gatedRaycast = useMemo(
+    () => (store ? hearingGatedRaycast(() => store.canvasHearsPointer()) : undefined),
+    [store],
+  )
+  // An authored raycast wins — `raycast={() => {}}` is the full opt-out —
+  // and only absence falls through to the gate.
+  const effectiveRaycast = raycast === undefined ? gatedRaycast : raycast
+
   return (
     <mesh
       {...meshProps}
+      {...(effectiveRaycast !== undefined ? { raycast: effectiveRaycast } : {})}
       ref={meshRef}
       visible={runtime !== null && visible}
       onBeforeRender={handleBeforeRender}

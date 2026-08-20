@@ -224,6 +224,26 @@ export function crossingPresentation(phase: CrossingPhase): SideFlags {
 }
 
 /**
+ * Who HEARS the pointer in a phase. Input follows the eye: this theorem
+ * equals crossingPresentation in every phase, and it exists as its own
+ * law because the two failed to agree once. Before it, the binding gave
+ * the canvas input the moment its mesh registered — a full settle dwell
+ * before presentation changed hands — so during 'lifting' every real
+ * click routed to the parked, hidden copy while the page copy was the
+ * one on screen (measured 2026-08-19, gate:lifting-pointer: 3/3 clicks
+ * misrouted, hover feedback dead on the visible copy for the whole
+ * dwell). Exclusive like presentation: EXACTLY ONE side hears, and the
+ * side that hears is always the side that is seen. The binding also owes
+ * each flip an edge burst — the loser's hover twins cleared and its
+ * active relayed press cancelled — because this theorem routes the NEXT
+ * event and says nothing about state the LAST owner left behind
+ * (decisions.md #33).
+ */
+export function crossingPointer(phase: CrossingPhase): SideFlags {
+  return crossingPresentation(phase)
+}
+
+/**
  * The eased read of the ramp — smoothstep, so an excursion leaves rest
  * and arrives at full depth with zero velocity. Any consumer motion that
  * would break pixel identity with the page multiplies by this. That makes

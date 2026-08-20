@@ -38,10 +38,12 @@ import {
   clearPointerState,
   deepestElementAt,
   forwardPointer,
+  lastPointerPlace,
   nudgeSelect,
   passIsWarmUp,
   passNeedsHostTail,
   passPresentsDirectly,
+  pointerSampleOf,
   rectIsMeasurable,
   resolveRadii,
   selectLodTier,
@@ -49,6 +51,7 @@ import {
   surfaceRadiusSd,
   trackDrag,
   trackFocusModality,
+  trackPointerPlace,
   trackWheel,
   type ForwardPointerSample,
   type SurfacePartId,
@@ -292,6 +295,8 @@ function SurfacePresenter({
   const anchors = useSurfaceAnchorScope(runtime, part?.captureRoot ?? null)
 
   const pointerEventsRef = useLatest(pointerEvents)
+  const storeRef = useLatest(store)
+  const partRef = useLatest(part)
   const mirrorU = runtime?.mirrorU() ?? false
   const mirrorURef = useLatest(mirrorU)
   const widthRef = useLatest(width)
@@ -327,6 +332,7 @@ function SurfacePresenter({
   useEffect(() => trackFocusModality(), [])
   useEffect(() => trackWheel(), [])
   useEffect(() => trackDrag(), [])
+  useEffect(() => trackPointerPlace(), [])
 
   // Scene removal is not presentation removal until the renderer draws the
   // scene without this mesh. A consumer that switches an active Canvas from
@@ -384,6 +390,12 @@ function SurfacePresenter({
   const raycast = useMemo<THREE.Object3D['raycast']>(
     () =>
       function (this: THREE.Mesh, raycaster, intersects) {
+        // Input follows the eye (crossingPointer, decisions.md #33). While
+        // the canvas is not the presented side this mesh is not pointer
+        // matter: the gate never goes solid, so a lifting-phase click
+        // reaches the page copy the viewer is actually looking at instead
+        // of relaying to the parked one.
+        if (!storeRef.current.canvasHearsPointer()) return
         const cast = authoredRaycastRef.current ?? THREE.Mesh.prototype.raycast
         const mode = pointerEventsRef.current
         if (mode === 'none') return
@@ -422,7 +434,7 @@ function SurfacePresenter({
         }
       },
     // Stable ref identities — this memo never actually re-runs.
-    [pointerEventsRef, mirrorURef, widthRef, heightRef, authoredRaycastRef],
+    [storeRef, pointerEventsRef, mirrorURef, widthRef, heightRef, authoredRaycastRef],
   )
 
   const elementRef = useRef<HTMLElement | null>(null)
@@ -647,7 +659,11 @@ function SurfacePresenter({
     const uv = uvOf(e)
     const el = runtime?.element
     if (uv && el) {
-      pressedRef.current = e.nativeEvent
+      // A plain copy, not the event: this record outlives the dispatch and
+      // gets spread into a cancel later, and a retained PointerEvent spreads
+      // to nothing — the cancel would carry pointerId: undefined and be
+      // refused by the relay's cancel guard, leaving the press open forever.
+      pressedRef.current = pointerSampleOf(e.nativeEvent)
       if (controls) controls.enabled = false
       forwardPointer(el, uv.u, uv.v, 'down', e.nativeEvent)
     }
@@ -738,7 +754,7 @@ function SurfacePresenter({
       if (pendingEnd) window.clearTimeout(pendingEnd)
       pendingEnd = window.setTimeout(() => {
         pendingEnd = 0
-        if (pressedRef.current?.pointerId === e.pointerId) cancelActive(e)
+        if (pressedRef.current?.pointerId === e.pointerId) cancelActive(pointerSampleOf(e))
       }, 0)
     }
     const onBlur = () => cancelActive()
@@ -758,6 +774,80 @@ function SurfacePresenter({
       cancelActive()
     }
   }, [controls])
+
+  // The edge bursts (decisions.md #33). crossingPointer routes the NEXT
+  // event; it says nothing about state either side holds ACROSS the flip,
+  // and the relay only speaks on pointer MOTION — so a pointer that sits
+  // still through a flip leaves the loser wearing stale state and the
+  // gainer blind to a pointer already over it. Losing, the canvas closes
+  // its story out: the active relayed press is cancelled and the stamped
+  // twins cleared. Gaining, it re-arms: one forwarded move at the
+  // pointer's last trusted position, so the hover the page copy was
+  // showing continues on the texture instead of popping off at the swap.
+  // The hold flip is the signal because it fires synchronously from the
+  // frame that moved it — a React commit would arrive a frame after the
+  // state it is correcting.
+  useEffect(
+    () =>
+      store.subscribeHold(() => {
+        // One microtask later: the losing flip fires from tick() and the
+        // gaining flip from inside a presenter's post-draw callback, and a
+        // burst dispatched there would run consumer DOM handlers in the
+        // middle of the frame. The branch is re-read at run time, so two
+        // flips inside one frame act once each on whatever is then true.
+        queueMicrotask(() => {
+          const el = elementRef.current
+          if (!store.canvasHearsPointer()) {
+            const active = pressedRef.current
+            pressedRef.current = null
+            if (controls) controls.enabled = true
+            if (!el) return
+            if (active) {
+              forwardPointer(el, 0, 0, 'cancel', {
+                ...active,
+                button: 0,
+                buttons: 0,
+                pressure: 0,
+              })
+            }
+            clearPointerState(el)
+            return
+          }
+          if (!el) return
+          // Re-arm only where the arrival position is knowable: a manual
+          // mesh is wherever the scene put it, so mapping through the page
+          // box would stamp hover on content the pointer is not over.
+          if (effectivePlacement !== 'match-dom') return
+          if (pointerEventsRef.current === 'none') return
+          const place = lastPointerPlace()
+          if (!place) return
+          // A held button means some pointer's press story is still open —
+          // possibly another surface's live relayed drag, which one
+          // buttonless document-bubbling move would break mid-gesture. The
+          // pointer's first real motion re-arms hover instead.
+          if (place.sample.buttons !== 0) return
+          const rect = partRef.current?.pageRoot?.getBoundingClientRect()
+          if (!rect || !rectIsMeasurable(rect)) return
+          if (
+            place.x < rect.left ||
+            place.x > rect.right ||
+            place.y < rect.top ||
+            place.y > rect.bottom
+          )
+            return
+          // Hover only: a press held across the flip died at the edge
+          // (its side of the story), so the arrival move carries no buttons.
+          forwardPointer(
+            el,
+            (place.x - rect.left) / rect.width,
+            1 - (place.y - rect.top) / rect.height,
+            'move',
+            { ...place.sample, button: 0, buttons: 0, pressure: 0 },
+          )
+        })
+      }),
+    [store, controls, partRef, effectivePlacement, pointerEventsRef],
+  )
 
   // A presenter mounted after the scene's first frame compiles its material
   // BEFORE the texture exists; three will not recompile the program when
