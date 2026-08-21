@@ -1879,7 +1879,7 @@ every event of that pointerId until release, and the declining raycast
 gives the clones nowhere to land); the gesture dies at the edge, which
 is the pinned fate, but a click within the suppression window after
 release is also eaten. Cross-module machinery to cancel gate claims at
-the flip waits for a lab to bleed on it (decisions.md #1). The arrival
+the flip is open work, judged not yet worth its coupling. The arrival
 burst also cannot know about page content occluding the Surface (a
 modal over the page box); the first real pointer motion corrects it.
 Every kind of crossing matter follows the law: `<Surface.WebGL>` gates
@@ -1892,3 +1892,25 @@ neither `surface` nor `raycast` cannot be gated — the component does
 not know it is crossing matter — but it can be caught: receiving a
 presentation requirement is the one moment it knows, and an ungated
 raycast at that moment warns once in development.
+
+## #34 — The second-system guard is repealed (2026-08-19)
+
+**Decision.** The standing rule "no new generality (multi-flight,
+non-planar sheets, extra renderers) unless a lab bleeds on it twice" is
+repealed. Generality is a design judgment made on its merits, the same
+as any other design question. Entries that cite the guard (#10 and the
+prose of #1 among them) are history, not instruction.
+
+**Why.** The guard was calibrated for an earlier phase: a young kernel
+with unproven laws, where speculative generality was the cheapest way
+to rot. The laws now carry conformance contracts, the boundary tests
+make the seams real, and the project's stated criterion is the most
+elegant library achievable regardless of time and cost. Under that
+criterion, an evidence threshold on design thinking blocks exactly the
+work that matters — a mid-flight retarget law, atomic multi-surface
+commits — while protecting nothing the contracts don't already protect.
+
+**What survives it.** Three-first stands: renderer abstraction stays
+banned (#1's reasoning is about faithfulness to platform facts, not
+about waiting for evidence). The conformance suite still defines done,
+and a new generality still ships with its contract in the same commit.

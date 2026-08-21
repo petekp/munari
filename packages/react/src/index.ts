@@ -4,7 +4,7 @@
 // the react/three binding over @munari/core, and the one package that
 // is ever published (decisions.md #1). three + @react-three/fiber are
 // PEER dependencies — we are three-first, and renderer abstraction is
-// banned by the second-system guard.
+// banned (decisions.md #1).
 //
 // This entry is CURATED. Everything here is something an ordinary scene
 // reaches for: a Surface, the canvas that hosts one, the handle that

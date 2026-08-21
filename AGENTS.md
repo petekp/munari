@@ -17,7 +17,7 @@ moment.
 - `packages/react` (`@petepetrash/munari`) — the thinnest binding, and the one
   package that will ever be published. `three` +
   `@react-three/fiber` are **peer** dependencies. We are three-first;
-  renderer abstraction is banned by the second-system guard.
+  renderer abstraction is banned (decisions.md #1).
 - `registry/` — copyable behaviors (shadcn model, nothing published):
   tuned constants and perceptual-floor tests travel with the code.
 - `apps/lab` — a consumer. Imports **only** the published entries
@@ -95,9 +95,10 @@ by no test runner, wired invisibly through the root tsconfig include.
 
 ## Standing decisions (do not re-litigate; docs/decisions.md)
 
-- **Second-system guard:** no new generality (multi-flight, non-planar
-  sheets, extra renderers) unless a lab bleeds on it twice. The
-  conformance suite defines done.
+- **Generality is a design judgment, not an evidence threshold**
+  (decisions.md #34): the old second-system guard ("no new generality
+  unless a lab bleeds on it twice") is repealed. Weigh a proposed
+  generality on its merits. The conformance suite still defines done.
 - **Premultiplied alpha, library-wide** (decisions.md #5): every
   DOM-sourced texture uploads premultiplied and every material
   consuming one blends premultiplied.
