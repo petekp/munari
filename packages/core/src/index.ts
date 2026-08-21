@@ -114,6 +114,7 @@ export {
   nudgeSelect,
   pointerSampleOf,
   silenceHoverMove,
+  surfaceCursorAt,
   trackDrag,
   trackFocusModality,
   trackPointerPlace,

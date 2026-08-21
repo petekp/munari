@@ -49,6 +49,7 @@ import {
   resolveRadii,
   selectLodTier,
   silenceHoverMove,
+  surfaceCursorAt,
   surfaceRadiusSd,
   trackDrag,
   trackFocusModality,
@@ -335,6 +336,15 @@ function SurfacePresenter({
   useEffect(() => trackWheel(), [])
   useEffect(() => trackDrag(), [])
   useEffect(() => trackPointerPlace(), [])
+
+  // A presenter that unmounts mid-hover must not leave its content's
+  // cursor on the canvas it no longer draws to.
+  useEffect(
+    () => () => {
+      gl.domElement.style.cursor = ''
+    },
+    [gl],
+  )
 
   // Scene removal is not presentation removal until the renderer draws the
   // scene without this mesh. A consumer that switches an active Canvas from
@@ -696,7 +706,10 @@ function SurfacePresenter({
       // refused by the relay's cancel guard, leaving the press open forever.
       pressedRef.current = pointerSampleOf(e.nativeEvent)
       if (controls) controls.enabled = false
-      forwardPointer(el, uv.u, uv.v, 'down', e.nativeEvent)
+      const hit = forwardPointer(el, uv.u, uv.v, 'down', e.nativeEvent)
+      // A down with no prior move (surface appeared under the cursor)
+      // still needs the content's cursor on the canvas.
+      if (hit) gl.domElement.style.cursor = surfaceCursorAt(hit.target)
     }
     onPointerDown?.(e)
   }
@@ -738,7 +751,11 @@ function SurfacePresenter({
     const uv = uvOf(e)
     const el = runtime?.element
     if (uv && el) {
-      forwardPointer(el, uv.u, uv.v, 'move', e.nativeEvent)
+      const hit = forwardPointer(el, uv.u, uv.v, 'move', e.nativeEvent)
+      // Cursor continuity: the content's cursor travels with the pixels —
+      // without this the canvas showed its default arrow over a lifted
+      // control whose page copy wore `cursor: pointer` (2026-08-20).
+      gl.domElement.style.cursor = hit ? surfaceCursorAt(hit.target) : ''
       // The forwarded move is this pointer's true story; the native one —
       // target CANVAS, screen coordinates — must not also reach
       // document-level coordinate reasoners. Hover only: drag moves keep
@@ -751,6 +768,7 @@ function SurfacePresenter({
   const handleOut = (e: ThreeEvent<PointerEvent>) => {
     const el = runtime?.element
     if (el) clearPointerState(el)
+    gl.domElement.style.cursor = ''
     onPointerOut?.(e)
   }
 
@@ -844,6 +862,8 @@ function SurfacePresenter({
               })
             }
             clearPointerState(el)
+            // The page copy under the pointer declares its own cursor now.
+            gl.domElement.style.cursor = ''
             // The cleared twin is handed to the PAGE copy in this same
             // microtask. The gaining side hears only the browser, and real
             // :hover cannot re-form until a trusted contact hit-tests the
@@ -911,12 +931,13 @@ function SurfacePresenter({
           }
           // Hover only: a press held across the flip died at the edge
           // (its side of the story), so the arrival move carries no buttons.
-          forwardPointer(el, u, v, 'move', {
+          const hit = forwardPointer(el, u, v, 'move', {
             ...place.sample,
             button: 0,
             buttons: 0,
             pressure: 0,
           })
+          if (hit) gl.domElement.style.cursor = surfaceCursorAt(hit.target)
         })
       }),
     [store, controls, partRef, effectivePlacement, pointerEventsRef, camera, gl, mirrorURef],

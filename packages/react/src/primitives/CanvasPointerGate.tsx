@@ -58,9 +58,16 @@ export function CanvasPointerGate({
     const setSolid = (solid: boolean) => {
       canvas.style.pointerEvents = solid ? 'auto' : 'none'
       if (solid) startRecheck()
-      else if (recheckFrame) {
-        cancelAnimationFrame(recheckFrame)
-        recheckFrame = 0
+      else {
+        // Clear glass has no cursor opinion. The presenters wear content
+        // cursors on the canvas while it hears (SurfaceWebGL); a miss can
+        // arm-clear without r3f ever firing the mesh's out, which left the
+        // last content cursor on a canvas no pointer can hit.
+        canvas.style.cursor = ''
+        if (recheckFrame) {
+          cancelAnimationFrame(recheckFrame)
+          recheckFrame = 0
+        }
       }
     }
 
@@ -163,17 +170,24 @@ export function CanvasPointerGate({
 
     const finishClaim = (pointerId: number, sample?: PointerEvent) => {
       claims.delete(pointerId)
-      if (claims.size === 0) {
-        clearR3fHover(sample)
-        setSolid(false)
+      if (claims.size !== 0) return
+      // The claim is over, not the hover. Dropping r3f's hover here relayed
+      // a pointerout that stripped the parked copy's twins under a still
+      // pointer — the second click of a quick double press lost its hover
+      // background until the hand moved (measured 2026-08-20). A release
+      // still over matter keeps the canvas solid and replays one buttonless
+      // move so hover is re-derived at the release point.
+      if (sample && hitsTarget(sample)) {
+        setSolid(true)
+        routeThroughR3f(sample, 'pointermove')
+        return
       }
+      clearR3fHover(sample)
+      setSolid(false)
     }
 
     const cancelClaims = () => {
-      for (const [pointerId, sample] of claims) {
-        routeThroughR3f(sample, 'pointercancel')
-        finishClaim(pointerId, sample)
-      }
+      for (const [, sample] of claims) routeThroughR3f(sample, 'pointercancel')
       claims.clear()
       clearR3fHover()
       setSolid(false)

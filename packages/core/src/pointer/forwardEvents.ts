@@ -524,6 +524,21 @@ export function clearPointerState(root: HTMLElement) {
   }
 }
 
+/**
+ * The cursor the page would show over the relay's hover target, for the
+ * canvas to wear while it hears the pointer — the content's `cursor` is as
+ * much of the pointer story as its hover, and the canvas otherwise shows
+ * its own default the moment the pixels lift. `auto` is resolved the way
+ * the browser would: the I-beam over text-entry content, the arrow
+ * otherwise (plain selectable text also gets the arrow — the real rule
+ * needs the browser's own hit-test data).
+ */
+export function surfaceCursorAt(target: Element): string {
+  const cursor = getComputedStyle(target).cursor
+  if (cursor !== 'auto') return cursor
+  return target.closest('input, textarea, [contenteditable]') ? 'text' : 'default'
+}
+
 // ---- the landing bridge --------------------------------------------------
 
 const bridges = new WeakMap<HTMLElement, () => void>()
