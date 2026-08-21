@@ -304,12 +304,15 @@ try {
   // flat row — the fixed point — even while the amplitude animates.
   await probe.unlock()
   const c20 = await probe.rowScreenCenter(20)
-  // Dense steps, because the relay routes each event against the frame's
-  // CURRENT geometry: the lens re-anchors to the cursor one frame behind,
-  // so a synthetic stream that jumps 40px per event overstates any real
-  // hand and reads a row stale at 22px rows. ~8px per step is hand-like
-  // and keeps the per-event anchor error under half a row.
-  await page.mouse.move(c20.flatX, c20.flatY, { steps: 32 })
+  // COARSE steps on purpose — this is the re-route trial. Each event
+  // raycasts the pose of the frame it arrived in, so a stream jumping
+  // ~50px per event ends with its last routing more than a row stale at
+  // 22px rows (measured 2026-08-20, before the presenter re-route: this
+  // stream heard row 18). The presenter now replays the pointer's last
+  // position whenever the geometry's position attribute bumps, so once the
+  // hand stops and the lens settles, the hover must have caught up to the
+  // fixed-point row — no dense hand-like stream to hide behind.
+  await page.mouse.move(c20.flatX, c20.flatY, { steps: 5 })
   await sleep(400)
   const live = await probe.state()
   if (live.amp < 1.9) {

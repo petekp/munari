@@ -243,8 +243,14 @@ the displaced row, a click on the displaced filter input lands focus
 and five real keystrokes narrow the queue (no key is ever forwarded —
 focus routing is the whole test), and with the lens riding the live
 cursor the fixed-point row takes both hover and click while the
-amplitude is engaged. A vertex-shader warp — geometry flat, pixels
-bent — fails every displaced clause and passes the counter-clauses.
+amplitude is engaged. That last clause drives a deliberately coarse
+event stream (~50px per event over 22px rows): each event raycasts the
+pose of the frame it arrived in, so before the presenter's re-route
+(decisions.md #33, amended 2026-08-20) the settled hover sat more than
+a row stale and never corrected — the clause is the browser proof that
+routing now follows the presented pose after the hand stops. A
+vertex-shader warp — geometry flat, pixels bent — fails every
+displaced clause and passes the counter-clauses.
 
 ## slider-drag
 

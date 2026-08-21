@@ -226,6 +226,7 @@ function SurfacePresenter({
   ...meshProps
 }: PresenterProps) {
   const camera = useThree((s) => s.camera)
+  const events = useThree((s) => s.events)
   const gl = useThree((s) => s.gl)
   const size = useThree((s) => s.size)
   const invalidate = useThree((s) => s.invalidate)
@@ -473,6 +474,9 @@ function SurfacePresenter({
   // so a distant panel cannot downgrade the raster a near one needs.
   const lodKey = useMemo(() => lodSeq++, [])
 
+  /** Position-attribute version as of the last frame; null until seen once. */
+  const rerouteRef = useRef<number | null>(null)
+
   useFrame(() => {
     const mesh = meshRef.current
     if (!mesh) return
@@ -494,6 +498,32 @@ function SurfacePresenter({
         mesh.scale.copy(match.scale)
         mesh.updateMatrixWorld()
       }
+    }
+
+    // The pointer is retold after the world moves. Events raycast the
+    // geometry as it stood when they arrived, so under a per-frame
+    // deformation every relay is one frame stale — and when the hand then
+    // stops, the LAST event's routing is never corrected while the geometry
+    // settles on. Measured (2026-08-20, instruments/fisheye-pointer): at
+    // 40px event spacing over 22px rows the relayed hover landed more than
+    // one row off and stayed there. A position-attribute version bump is
+    // the deformation's own receipt (deformSurfaceGeometry sets it), and
+    // r3f's `events.update` re-raycasts the pointer's last position against
+    // the current pose — hover twins and coordinates catch up within a
+    // frame, whether the hand moved or only the matter did.
+    const position = mesh.geometry?.getAttribute('position')
+    // An interleaved position carries its version on the shared buffer, and
+    // no Surface geometry interleaves — the plain-attribute case is the law
+    // deformSurfaceGeometry already enforces.
+    if (position instanceof THREE.BufferAttribute) {
+      if (
+        rerouteRef.current !== null &&
+        rerouteRef.current !== position.version &&
+        store.canvasHearsPointer()
+      ) {
+        events.update?.()
+      }
+      rerouteRef.current = position.version
     }
 
     // Dynamic LOD: compare projected screen density — device px per CSS px

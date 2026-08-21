@@ -1893,6 +1893,22 @@ not know it is crossing matter — but it can be caught: receiving a
 presentation requirement is the one moment it knows, and an ungated
 raycast at that moment warns once in development.
 
+**Amended 2026-08-20 — the eye's pose, not just the eye's side.** The
+theorem picks which side hears and says nothing about a frame in which
+the presented geometry itself moves. Every event raycasts the pose of
+the frame it arrived in, so under a per-frame deformation each relay is
+one frame stale — and a pointer that then stops over still-animating
+matter keeps the last frame's routing forever. Measured 2026-08-20
+(`gate:fisheye-pointer`, before the fix): a coarse synthetic stream
+(~50px per event, 22px rows) settled with `data-hover` more than one
+row off the fixed-point row and never corrected. The presenter now
+takes the position attribute's version as the deformation's own receipt
+(`deformSurfaceGeometry` bumps it) and, on any frame the version moved
+while the canvas hears, replays the pointer's last position through
+r3f's event manager — routing and the stamped twins catch up within a
+frame whether the hand moved or only the matter did. The gate's
+live-follow clause drives the coarse stream on purpose.
+
 ## #34 — The second-system guard is repealed (2026-08-19)
 
 **Decision.** The standing rule "no new generality (multi-flight,
