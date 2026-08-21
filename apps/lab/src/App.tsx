@@ -16,6 +16,7 @@ import { VeilApp } from './scenes/veil/Veil'
 import { KnobsApp } from './scenes/knobs/Knobs'
 import { OpticsApp } from './scenes/optics/Optics'
 import { LogoApp } from './scenes/logo/Logo'
+import { CandidatesApp } from './scenes/candidates/Candidates'
 import { SurfaceProviderProbe } from './lib/surfaceProvider'
 import { SceneNav } from './components/SceneNav'
 
@@ -39,6 +40,7 @@ type SceneId =
   | 'knobs'
   | 'optics'
   | 'logo'
+  | 'candidates'
 const SCENES = [
   'workspace',
   'glass',
@@ -51,6 +53,7 @@ const SCENES = [
   'knobs',
   'optics',
   'logo',
+  'candidates',
 ] as const
 
 // The nav shows only the focus four; the rest stay routable by URL so the
@@ -192,6 +195,9 @@ export default function App() {
   if (scene === 'knobs') return <KnobsApp chips={chips} />
   if (scene === 'optics') return <OpticsApp chips={chips} />
   if (scene === 'logo') return <LogoApp chips={chips} />
+  // No chips: the candidates page has its own left-column nav, and the two
+  // menus side by side read as one broken one.
+  if (scene === 'candidates') return <CandidatesApp />
 
   return (
     <div className="app">

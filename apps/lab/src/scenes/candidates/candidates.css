@@ -1,0 +1,795 @@
+/* The candidates' bench — one page shell, seven demos.
+ *
+ * Two rules run through everything here and are not cosmetic:
+ *
+ * 1. Hover and active are stated TWICE on every control. The page copy
+ *    wears the browser's own :hover/:active; the parked source copy wears
+ *    the relay's data-hover/data-active twins (forwardEvents.ts). A rule
+ *    that names only one works in exactly one of the two holds, and the
+ *    control changes appearance the moment it changes hands.
+ *
+ * 2. ::selection is transparent inside the selection candidate. The bead
+ *    IS the selection highlight there — the words it covers must not also
+ *    wear the browser's blue, or the page shows a second, flat selection
+ *    under the glass.
+ *
+ * Nothing in a captured subtree carries opacity, transform, or mask-image
+ * (docs/authoring.md): those are the three properties a capture root
+ * cannot survive.
+ */
+
+.cand-app {
+  position: fixed;
+  inset: 0;
+  background: var(--bench);
+  color: var(--ink);
+  font: 14px/1.5 var(--body);
+  overflow: hidden;
+}
+
+/* ── page shells ─────────────────────────────────────────────────────── */
+
+.cand-page {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  padding: 48px 96px 48px 176px;
+  overflow: auto;
+}
+
+.cand-page--center {
+  place-items: center;
+  align-content: center;
+  justify-items: center;
+  gap: 20px;
+}
+
+.cand-page--split {
+  grid-template-columns: minmax(0, 1fr) 260px;
+  align-items: start;
+  gap: 48px;
+}
+
+.cand-hint {
+  max-width: 520px;
+  margin: 0;
+  text-align: center;
+  color: var(--ink-faint);
+  font: 13px/1.5 var(--body);
+}
+
+/* ── the rail ────────────────────────────────────────────────────────── */
+
+.cand-rail {
+  position: fixed;
+  left: 16px;
+  top: 50%;
+  z-index: 150;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 138px;
+}
+
+.cand-rail button {
+  appearance: none;
+  border: 0;
+  border-left: 2px solid transparent;
+  margin: 0;
+  padding: 7px 10px;
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--ink-mute);
+  cursor: pointer;
+}
+
+.cand-rail button:hover {
+  background: var(--bench-hi);
+}
+
+.cand-rail button[data-on] {
+  border-left-color: var(--signal);
+  background: var(--bench-hi);
+  color: var(--ink);
+}
+
+.cand-rail strong {
+  display: block;
+  font: 600 13px/1.2 var(--label);
+  letter-spacing: 0.02em;
+}
+
+.cand-rail span {
+  display: block;
+  margin-top: 1px;
+  font: 11px/1.3 var(--body);
+  color: var(--ink-faint);
+}
+
+/* ── cards ───────────────────────────────────────────────────────────── */
+
+.cand-card {
+  background: var(--bench-hi);
+  outline: 1px solid var(--bench-lo);
+  padding: 20px;
+}
+
+.cand-card header h2 {
+  margin: 0;
+  font: 700 20px/1.2 var(--display);
+}
+
+.cand-card header p {
+  margin: 4px 0 0;
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+
+.cand-card--form {
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cand-card--menu {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.cand-card--list {
+  width: 470px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.cand-card--list header {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ── controls ────────────────────────────────────────────────────────── */
+
+/* The holder is the layout box the mesh is measured from. It must be
+ * shrink-to-fit in both axes or the mesh gets the column's width and the
+ * ripple runs through empty texture.
+ *
+ * A flex container, NOT inline-block. An inline-block wraps its child in a
+ * line box, and a line box reserves the font's descender under the child —
+ * about 3px at 13px/1.4. The holder's rect is therefore taller than the
+ * control it holds, its centre sits ~1.5px below the control's, and the
+ * mesh is drawn that far down the page. On a bordered button nobody sees
+ * it; on a 15px checkbox it is the row visibly jumping at the handoff. */
+.cand-target {
+  position: relative;
+  display: flex;
+  align-self: flex-start;
+}
+
+/* The shadow the raised control casts, drawn on the page rather than in
+ * GL. It belongs to the page because that is where it falls: the sticker
+ * is the thing that left, and the card it left is still DOM. A pseudo
+ * element on the HOLDER, never on the content root — a filter or opacity
+ * on the root is what the authoring contract forbids. */
+.cand-target::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #2a2820;
+  opacity: 0;
+  filter: blur(10px);
+  transform: translateY(7px) scale(0.96);
+  transition: opacity 150ms linear;
+  pointer-events: none;
+}
+
+.cand-target[data-lifted]::before {
+  opacity: 0.22;
+}
+
+/* Every ripple target's content root paints its own background — on the
+ * CONTENT CLASS, not on a holder-scoped selector.
+ *
+ * Chrome's html-in-canvas capture gives a root with no background an
+ * OPAQUE WHITE backdrop, not a transparent one — the same platform fact
+ * that stops Surface deriving its corner radius from texture alpha. And
+ * the content renders twice: the page copy under `.cand-target`, the
+ * captured copy inside the parked source host, where a `.cand-target > *`
+ * rule never reaches. 2026-08-20: that scoping drew the waving checkbox
+ * row on flat white while the card stayed #f2f0e4. */
+.cand-field,
+.cand-check {
+  background: var(--bench-hi);
+}
+
+.cand-btn {
+  appearance: none;
+  border: 1px solid var(--rule);
+  margin: 0;
+  padding: 9px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bench-hi);
+  color: var(--ink);
+  font: 600 13px/1 var(--label);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.cand-btn:hover,
+.cand-btn[data-hover] {
+  background: #fff;
+}
+
+.cand-btn:active,
+.cand-btn[data-active] {
+  background: var(--bench);
+}
+
+.cand-btn--primary {
+  border-color: var(--signal);
+  background: var(--signal);
+  color: #fff;
+}
+
+.cand-btn--primary:hover,
+.cand-btn--primary[data-hover] {
+  background: var(--signal-lit);
+}
+
+.cand-btn--primary:active,
+.cand-btn--primary[data-active] {
+  background: #cf3520;
+}
+
+.cand-btn--small {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+.cand-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.cand-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 264px;
+}
+
+.cand-field span {
+  font: 600 11px/1 var(--label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.cand-field input {
+  border: 1px solid var(--rule);
+  padding: 8px 10px;
+  background: #fff;
+  color: var(--ink);
+  font: 14px/1 var(--body);
+}
+
+.cand-check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* Sized explicitly. A native checkbox left to `auto` is laid out from the
+ * platform's own widget metrics, and the capture does not have to agree
+ * with the page about what those are. */
+.cand-check input {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+}
+
+.cand-segment {
+  display: inline-flex;
+  border: 1px solid var(--rule);
+}
+
+.cand-segment button {
+  appearance: none;
+  border: 0;
+  border-right: 1px solid var(--rule);
+  margin: 0;
+  padding: 6px 12px;
+  background: var(--bench-hi);
+  color: var(--ink-mute);
+  font: 600 11px/1 var(--label);
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+
+.cand-segment button:last-child {
+  border-right: 0;
+}
+
+.cand-segment button[data-on] {
+  background: var(--ink);
+  color: var(--screen-ink);
+}
+
+.cand-readout {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-top: 1px solid var(--rule);
+  padding-top: 10px;
+  color: var(--ink-faint);
+  font: 11px/1 var(--label);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.cand-readout strong {
+  color: var(--ink);
+  font: 700 20px/1 var(--data);
+}
+
+/* ── selection ───────────────────────────────────────────────────────── */
+
+.cand-prose-holder {
+  width: 520px;
+}
+
+.cand-prose {
+  background: var(--bench-hi);
+  outline: 1px solid var(--bench-lo);
+  padding: 28px 32px;
+}
+
+.cand-prose h2 {
+  margin: 0 0 12px;
+  font: 700 26px/1.15 var(--display);
+}
+
+.cand-prose p {
+  margin: 0 0 10px;
+  font: 15px/1.62 var(--body);
+}
+
+.cand-prose__note {
+  margin: 16px 0 0 !important;
+  color: var(--ink-faint);
+  font-size: 12px !important;
+}
+
+/* The bead is the highlight. See rule 2 in the header. */
+.cand-prose ::selection,
+.cand-prose::selection {
+  background: transparent;
+  color: inherit;
+}
+
+/* The Surface's page copy. Parked out of flow like the dropdown's menu:
+ * it exists to be captured, and it must never be the copy the user can
+ * select, because a captured selection arrives as a black bar. */
+.cand-prose-park {
+  position: absolute;
+  left: -10000px;
+  top: 0;
+}
+
+.cand-prose-holder {
+  position: relative;
+}
+
+/* ── unroll ──────────────────────────────────────────────────────────── */
+
+/* The page copy is never the visible menu — the mesh is the only menu
+ * anyone sees. It has to exist and have a layout box (it is what the
+ * relay routes into and what the roll is measured against), so it is
+ * parked off-screen rather than hidden.
+ *
+ * `z-index: -1` was not enough: on the close, the Surface hands its view
+ * back to `dom` a few frames before `onWebGLReleased` unmounts it, and
+ * for those frames the page copy painted a whole second menu in the
+ * top-left corner. Off-screen has no such window. */
+.cand-menu-park {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  pointer-events: none;
+}
+
+.cand-menu {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: var(--bench-hi);
+  outline: 1px solid var(--bench-lo);
+}
+
+.cand-menu__item {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  text-align: left;
+  background: transparent;
+  color: var(--ink);
+  font: 14px/1 var(--body);
+  cursor: pointer;
+}
+
+.cand-menu__item:hover,
+.cand-menu__item[data-hover] {
+  background: var(--ink);
+  color: var(--screen-ink);
+}
+
+.cand-menu__item[data-danger] {
+  color: var(--signal);
+}
+
+.cand-menu__item[data-danger]:hover,
+.cand-menu__item[data-danger][data-hover] {
+  background: var(--signal);
+  color: #fff;
+}
+
+.cand-caret {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+}
+
+.cand-caret[data-open] {
+  border-top: 0;
+  border-bottom: 5px solid currentColor;
+}
+
+/* ── dissolve ────────────────────────────────────────────────────────── */
+
+.cand-slots {
+  display: flex;
+  align-items: center;
+  gap: 128px;
+}
+
+.cand-slot {
+  width: 180px;
+  height: 180px;
+}
+
+.cand-slot[data-empty] {
+  outline: 1px dashed var(--rule);
+}
+
+.cand-slot__hit {
+  cursor: pointer;
+}
+
+.cand-slot__empty {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--ink-faint);
+  font: 600 11px/1 var(--label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.cand-shape {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--bench-hi);
+  outline: 1px solid var(--bench-lo);
+  padding: 18px;
+}
+
+.cand-shape svg {
+  width: 96px;
+  height: 96px;
+  overflow: visible;
+}
+
+.cand-shape__base {
+  fill: #fff;
+}
+
+.cand-shape__line {
+  fill: none;
+  stroke-width: 0.62;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The two figures the crossing is between. The colours are the ones the
+ * grains travel toward mid-flight (COLD and WARM in the scene), so a
+ * figure and the cloud leaving it are never in disagreement about what
+ * colour this thing is. */
+.cand-shape--cold {
+  background: #e2ecf5;
+  outline-color: #a9c4dc;
+}
+
+.cand-shape--cold .cand-shape__base {
+  fill: #f3f8fc;
+}
+
+.cand-shape--cold .cand-shape__line {
+  stroke: #2f6da6;
+}
+
+.cand-shape--warm {
+  background: #f7e7dd;
+  outline-color: #dcb49c;
+}
+
+.cand-shape--warm .cand-shape__base {
+  fill: #fdf6f0;
+}
+
+.cand-shape--warm .cand-shape__line {
+  stroke: #b05528;
+}
+
+.cand-shape footer button {
+  appearance: none;
+  border: 1px solid var(--rule);
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--ink-faint);
+  font: 11px/1 var(--data);
+  cursor: pointer;
+}
+
+/* ── analyze ─────────────────────────────────────────────────────────── */
+
+.cand-article {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 470px;
+}
+
+.cand-block-holder {
+  width: 100%;
+}
+
+.cand-block {
+  box-sizing: border-box;
+  background: var(--bench-hi);
+  /* A border, not an outline: outlines paint outside the border-box, and
+   * the capture clips at the element's bounds — a lifted block arrived on
+   * the canvas with its edge missing (2026-08-20). */
+  border: 1px solid var(--bench-lo);
+  padding: 16px 20px;
+}
+
+.cand-block h3 {
+  margin: 0 0 6px;
+  font: 700 17px/1.2 var(--display);
+}
+
+.cand-block p {
+  margin: 0;
+  font: 14px/1.55 var(--body);
+  color: var(--ink-mute);
+}
+
+.cand-agent {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+  border-left: 1px solid var(--rule);
+  padding-left: 20px;
+}
+
+.cand-agent h2 {
+  margin: 0;
+  font: 600 11px/1 var(--label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.cand-findings {
+  margin: 0;
+  padding: 0 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font: 12px/1.45 var(--body);
+  color: var(--ink-mute);
+}
+
+.cand-findings__live {
+  list-style: none;
+  margin-left: -18px;
+  color: var(--signal);
+  font-family: var(--data);
+}
+
+/* ── copy ────────────────────────────────────────────────────────────── */
+
+.cand-code-wrap {
+  width: 460px;
+  background: var(--screen);
+  outline: 1px solid var(--rule-hard);
+}
+
+.cand-code-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(244, 242, 231, 0.16);
+  padding: 8px 10px;
+  color: var(--screen-ink);
+  font: 11px/1 var(--data);
+}
+
+.cand-code-bar .cand-btn {
+  border-color: rgba(244, 242, 231, 0.3);
+  background: transparent;
+  color: var(--screen-ink);
+}
+
+.cand-code-bar .cand-btn:hover,
+.cand-code-bar .cand-btn[data-hover] {
+  background: var(--screen-hi);
+}
+
+/* The hole the copy leaves behind, and the regeneration that fills it.
+ *
+ * Out fast, back slow and out of focus — the asymmetry is the whole read:
+ * something was taken in one motion and had to be rebuilt.
+ *
+ * On the HOLDER, not on the `<pre>`. Animating a drawn element's own
+ * opacity does not invalidate its paint record, so the texture would
+ * freeze; the holder is outside the captured subtree and safe. */
+.cand-code-holder {
+  padding: 0;
+  transition: opacity 360ms ease, filter 360ms ease;
+}
+
+.cand-code-park {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  pointer-events: none;
+}
+
+.cand-code-holder[data-gone] {
+  opacity: 0;
+  filter: blur(5px);
+  transition-duration: 100ms;
+}
+
+/* Four colours, from candidateTokens. Chosen against --screen rather than
+ * borrowed from an editor theme: the block is going to fly through the
+ * page's own paper as it is drawn into the cursor, and a palette tuned for
+ * a dark editor loses half its contrast on the way. */
+.cand-code [data-tok='keyword'] {
+  color: #d79bf0;
+}
+
+.cand-code [data-tok='string'] {
+  color: #9fd88a;
+}
+
+.cand-code [data-tok='tag'] {
+  color: #7cc0ff;
+}
+
+.cand-code [data-tok='attr'] {
+  color: #f0c26b;
+}
+
+.cand-code [data-tok='call'] {
+  color: #6fd4c8;
+}
+
+.cand-code {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 14px 16px;
+  width: 100%;
+  background: var(--screen);
+  color: var(--screen-ink);
+  font: 12px/1.6 var(--data);
+  white-space: pre;
+  overflow: hidden;
+}
+
+/* ── delete ──────────────────────────────────────────────────────────── */
+
+/* Five rows of 46px plus their 1px rules. Pinned rather than left to the
+ * content, because the whole claim of the scene is that a row leaves the
+ * page as an object — and a list that shortens the moment the last row is
+ * gone pulls the card up under the piece still falling. */
+.cand-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  width: 100%;
+  min-height: calc(5 * 47px);
+  display: flex;
+  flex-direction: column;
+}
+
+.cand-row-holder {
+  width: 100%;
+}
+
+/* The row keeps its own box while the mesh stands in for it, so the list
+ * does not close the gap until the effect has actually ended. */
+.cand-row-holder[data-dying] {
+  pointer-events: none;
+}
+
+.cand-row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 46px;
+  padding: 0 4px 0 12px;
+  background: var(--bench-hi);
+  border-bottom: 1px solid var(--bench-lo);
+}
+
+.cand-row__title {
+  flex: none;
+  font: 600 14px/1 var(--body);
+}
+
+.cand-row__sub {
+  flex: 1;
+  color: var(--ink-faint);
+  font: 12px/1 var(--body);
+}
+
+.cand-row__x {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--ink-faint);
+  font: 16px/1 var(--body);
+  cursor: pointer;
+}
+
+.cand-row__x:hover,
+.cand-row__x[data-hover] {
+  background: var(--signal);
+  color: #fff;
+}
