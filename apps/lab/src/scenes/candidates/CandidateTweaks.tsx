@@ -74,6 +74,9 @@ function BagGroups<B extends Record<string, number>>({
 
 const PANELS = {
   ripple: { bag: rippleTuning, body: <BagGroups bag={rippleTuning} groups={RIPPLE_GROUPS} /> },
+  // Billow is the ripple mechanism on a lone button — one bag, one set of
+  // knobs, tuned once for both.
+  billow: { bag: rippleTuning, body: <BagGroups bag={rippleTuning} groups={RIPPLE_GROUPS} /> },
   selection: {
     bag: selectionTuning,
     body: <BagGroups bag={selectionTuning} groups={SELECTION_GROUPS} />,

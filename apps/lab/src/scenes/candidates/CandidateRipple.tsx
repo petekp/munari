@@ -219,7 +219,7 @@ function WaveDrive({
  * parked capture — from one `content` node, which is what lets the copy
  * that hears the click be either one without the handler caring.
  */
-function RippleTarget({ name, content }: { name: string; content: React.ReactNode }) {
+export function RippleTarget({ name, content }: { name: string; content: React.ReactNode }) {
   const lift = useLift(name)
   const holder = useRef<HTMLDivElement>(null)
   const waves = useRef<RippleWave[]>([])

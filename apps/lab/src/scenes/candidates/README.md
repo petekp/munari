@@ -15,6 +15,7 @@ Open the bench at `?scene=candidates`; each demo deep-links as
 | id | what it does | the claim to check |
 | --- | --- | --- |
 | `ripple` | a press lifts the control off the page and sends one crest across it | the press still registers — the counter is incremented by the copy that heard the click, through the relay |
+| `billow` | the ripple press on a single primary button, alone on the bench | the same mechanism and tuning bag as `ripple`, isolated for judging the wave itself |
 | `selection` | each selected line sits in its own strip of glass that refracts it off the page | the paragraph never leaves the DOM; this is the one **inclusive** demo, a second presentation of live text |
 | `unroll` | a dropdown is a sheet wound on a roll, paid out as it opens | the menu is usable mid-roll — the vertices are warped on the CPU, so the hit test follows the pixels |
 | `dissolve` | a card comes apart into its own pixels, crosses the page, and reassembles | it lands as a real card; the edit counter inside it keeps counting |

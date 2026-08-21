@@ -1,4 +1,4 @@
-// Candidates — seven prototypes of one question, on one bench.
+// Candidates — eight prototypes of one question, on one bench.
 //
 // Each is a state change a component already has (pressed, selected, open,
 // moved, being read, copied, deleted) handed to the other renderer for as
@@ -14,13 +14,14 @@
 // self-contained file with no store, no portal, and no canvas of its own.
 //
 // Frameloop is 'always' here, unlike the scenes that earn their zero-paint
-// gate: seven effects with seven independent clocks would each need to
+// gate: eight effects with eight independent clocks would each need to
 // claim and release demand, and a bench is not the place to prove that.
 
 import { useCallback, useEffect, useState } from 'react'
 import { SurfaceCanvas } from '@petepetrash/munari'
 import { PixelPerfect } from './candidateStage'
 import { CandidateRipple } from './CandidateRipple'
+import { CandidateBillow } from './CandidateBillow'
 import { CandidateSelection } from './CandidateSelection'
 import { CandidateUnroll } from './CandidateUnroll'
 import { CandidateDissolve } from './CandidateDissolve'
@@ -32,6 +33,7 @@ import './candidates.css'
 
 const CANDIDATES = [
   { id: 'ripple', label: 'Ripple', blurb: 'a press, spent in the material', Body: CandidateRipple },
+  { id: 'billow', label: 'Billow', blurb: 'the same press, one button alone', Body: CandidateBillow },
   { id: 'selection', label: 'Selection', blurb: 'chosen words under glass', Body: CandidateSelection },
   { id: 'unroll', label: 'Unroll', blurb: 'a menu wound on a roll', Body: CandidateUnroll },
   { id: 'dissolve', label: 'Dissolve', blurb: 'a card as its own pixels', Body: CandidateDissolve },
