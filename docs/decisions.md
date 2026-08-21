@@ -1914,3 +1914,38 @@ commits — while protecting nothing the contracts don't already protect.
 banned (#1's reasoning is about faithfulness to platform facts, not
 about waiting for evidence). The conformance suite still defines done,
 and a new generality still ships with its contract in the same commit.
+
+## #35 — Deformation moves vertices, so the hand and the eye agree (2026-08-20, react binding + lab)
+
+**Decision.** The one sanctioned way to bend a presented Surface is
+`deformSurfaceGeometry` (react binding, exported from the curated
+entry): the caller supplies a placement function in content
+coordinates (px, origin top-left, y down), and the helper moves the
+geometry's vertices, owns the uv→content flip, the upload flag, and
+the bounding-sphere reset. Deforming in a vertex shader is rejected as
+a supported path: it bends only the pixels, three keeps raycasting the
+flat plane, and every relayed event lands off by exactly the
+displacement — with no error anywhere saying so.
+
+**Why.** Measured 2026-08-20 by `gate:fisheye-pointer`: at that
+scene's lens rim the displacement is 60px, more than one of its 44px
+rows, so a flat-pose raycast routes clicks and hover to the wrong row
+on every magnified target. Moving vertices makes hit testing correct
+by construction — the raycast hits the shape the eye sees, and the
+hit's interpolated uv rides the vertices to the correct source pixel.
+Before the helper this lived as a convention copied between Genie and
+the fisheye scene (per-frame CPU rewrite plus `boundingSphere = null`),
+each copy re-deriving the uv flip and both footguns by hand. The
+alternative — accepting a caller-supplied inverse map so shader
+deformation could route honestly — was considered and rejected: it
+makes correctness depend on two pieces of consumer code (the shader
+and the inverse) agreeing, and nothing can check them against each
+other. At texture-quad vertex counts the CPU path costs nothing worth
+that risk.
+
+**The shape.** `deformSurfaceGeometry(geometry, [w, h], place)`,
+called from the consumer's own frame loop with the current
+deformation. The law stays the consumer's; the mechanism is the
+library's. Extra per-vertex outputs (Genie's squeeze, a curl's
+normals) write through the callback's index argument. An identity
+`place` restores the flat plane.

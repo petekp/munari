@@ -25,6 +25,7 @@ const ROOT_ENTRY = [
   'Surface',
   'SurfaceCanvas',
   'createSurface',
+  'deformSurfaceGeometry',
   'detectHtmlInCanvas',
   'surfaceFocusKey',
   'surfaceFocusTarget',

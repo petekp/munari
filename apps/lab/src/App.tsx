@@ -10,6 +10,8 @@ import { GlassTweakPanel } from './scenes/glass/GlassTweaks'
 import { FlightApp } from './scenes/flight/Flight'
 import { Explode, ExplodeHud } from './scenes/explode/Explode'
 import { GenieApp } from './scenes/genie/Genie'
+import { FisheyeApp } from './scenes/fisheye/Fisheye'
+import { SliderApp } from './scenes/slider/Slider'
 import { VeilApp } from './scenes/veil/Veil'
 import { KnobsApp } from './scenes/knobs/Knobs'
 import { OpticsApp } from './scenes/optics/Optics'
@@ -31,6 +33,8 @@ type SceneId =
   | 'flight'
   | 'explode'
   | 'genie'
+  | 'fisheye'
+  | 'slider'
   | 'veil'
   | 'knobs'
   | 'optics'
@@ -41,6 +45,8 @@ const SCENES = [
   'flight',
   'explode',
   'genie',
+  'fisheye',
+  'slider',
   'veil',
   'knobs',
   'optics',
@@ -180,6 +186,8 @@ export default function App() {
   // carry the scene chips themselves.
   if (scene === 'flight') return <FlightApp chips={chips} />
   if (scene === 'genie') return <GenieApp chips={chips} />
+  if (scene === 'fisheye') return <FisheyeApp chips={chips} />
+  if (scene === 'slider') return <SliderApp chips={chips} />
   if (scene === 'veil') return <VeilApp chips={chips} />
   if (scene === 'knobs') return <KnobsApp chips={chips} />
   if (scene === 'optics') return <OpticsApp chips={chips} />

@@ -1,0 +1,132 @@
+/* The slider scene — a trim track under glass.
+ *
+ * The panel is the capture root. Hover and active are stated TWICE on
+ * every interactive rule: the page copy wears the browser's own
+ * :hover, the parked source wears the relay's data-hover/data-active
+ * twins (forwardEvents.ts).
+ *
+ * The tick labels are set at 7px on purpose (Slider.tsx says why):
+ * legible under the lens, not without it.
+ */
+
+.lslider-page {
+  position: fixed;
+  inset: 0;
+  background: var(--bench);
+  display: grid;
+  place-items: center;
+}
+
+.lslider-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 48px;
+}
+
+.lslider-caption {
+  max-width: 460px;
+  color: var(--ink);
+  text-align: center;
+}
+
+.lslider-caption h2 {
+  margin: 0 0 10px;
+  font: 700 24px/1.2 var(--display);
+}
+
+.lslider-caption p {
+  margin: 0;
+  font: 14px/1.55 var(--body);
+  opacity: 0.75;
+}
+
+.lslider-readout {
+  margin-top: 18px;
+  font: 700 28px/1 var(--display);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The lens grows the track past its own box; the holder keeps the page
+ * copy's layout honest while the mesh overflows it. */
+.lslider-holder {
+  flex: none;
+}
+
+.lslider-panel {
+  position: relative;
+  background: var(--bench-hi);
+  outline: 1px solid var(--bench-lo);
+  border-radius: 12px;
+}
+
+.lslider-rail {
+  position: absolute;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: var(--bench-lo);
+}
+
+.lslider-fill {
+  position: absolute;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: var(--signal-lit);
+  opacity: 0.55;
+}
+
+.lslider-tick {
+  position: absolute;
+  top: 50%;
+  width: 1px;
+  height: 8px;
+  transform: translate(-0.5px, -14px);
+  background: var(--ink);
+  opacity: 0.22;
+}
+
+.lslider-tick[data-major] {
+  height: 12px;
+  transform: translate(-0.5px, -18px);
+  opacity: 0.45;
+}
+
+.lslider-label {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, 10px);
+  font: 600 7px/1 var(--label);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  opacity: 0.55;
+}
+
+.lslider-thumb {
+  appearance: none;
+  border: 1px solid var(--bench-lo);
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  top: 50%;
+  height: 24px;
+  transform: translate(-50%, -50%);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  cursor: ew-resize;
+}
+
+.lslider-thumb:hover,
+.lslider-thumb[data-hover] {
+  border-color: var(--signal-lit);
+}
+
+.lslider-thumb:active,
+.lslider-thumb[data-active] {
+  background: var(--bench);
+  border-color: var(--signal-lit);
+}

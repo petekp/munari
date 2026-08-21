@@ -17,6 +17,8 @@
     "lint": "oxlint . --deny-warnings",
     "build": "npm run build -w @petepetrash/munari",
     "check:origin-trial": "node apps/lab/tools/runLab.mjs --check-origin-trial",
+    "gate:fisheye-pointer": "node instruments/fisheye-pointer/run.mjs",
+    "gate:slider-drag": "node instruments/slider-drag/run.mjs",
     "gate:frame-surface": "node instruments/frame-surface/run.mjs",
     "gate:genie-duplicate": "node instruments/genie-drain/no-duplicate-drag.mjs",
     "gate:genie-film": "node instruments/genie-drain/film-window.mjs",

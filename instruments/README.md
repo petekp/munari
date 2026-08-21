@@ -215,6 +215,64 @@ the pointer gate made the canvas solid at mesh registration, a full
 settle dwell before presentation changed hands) and was promoted when
 `crossingPointer` shipped.
 
+## fisheye-pointer
+
+Local gate: deformed-pose hit testing, pressed with a real mouse.
+`npm run gate:fisheye-pointer`.
+
+Drives the lab's fisheye scene (`?scene=fisheye`), a 28-row triage
+queue whose mesh is warped on the CPU by an anchored magnifying lens
+that scales BOTH axes by the same local factor (fisheyeLaw.ts). At the
+scene's defaults the lens moves a rim row by 60px — nearly three 22px
+rows — and moves off-center targets sideways by 85–107px, so the
+warped and flat predictions name different targets on both axes and a
+press can only satisfy one. The scene's `window.__fisheye` probe
+computes expected screen points from the law and the live panel rect;
+the runner supplies trusted clicks and keystrokes and judges which
+handler ran.
+
+The judged clauses: a flat-lens click reaches its own row through the
+relay (liveness), clicks at three displaced row centers under a held
+lens reach the rows whose pixels are there, a click where the FLAT map
+says row 12 lives reaches the row the law says is presented there (the
+y counter-clause a flat-pose raycast would pass), the done button —
+107px off its flat x — fires its own handler without triggering its
+row while a press at its FLAT x hits only the row (the x clause and
+counter-clause), hover at a displaced center stamps `data-hover` on
+the displaced row, a click on the displaced filter input lands focus
+and five real keystrokes narrow the queue (no key is ever forwarded —
+focus routing is the whole test), and with the lens riding the live
+cursor the fixed-point row takes both hover and click while the
+amplitude is engaged. A vertex-shader warp — geometry flat, pixels
+bent — fails every displaced clause and passes the counter-clauses.
+
+## slider-drag
+
+Local gate: a drag under traveling glass, pressed with a real mouse.
+`npm run gate:slider-drag`.
+
+Drives the lab's slider scene (`?scene=slider`), a 5,000ms trim track
+magnified by the fisheye law — with the anchor's owner changing hands
+on grab: hovering, the lens follows the cursor; holding the thumb, the
+lens rides the THUMB, so the magnified ruler travels with the scrub
+while the value maps 1:1 from the hand (plus the grab's own offset, so
+a press never teleports the value). The scene's `window.__slider`
+probe computes expected points from the law and the live panel rect;
+the runner presses, drags, and releases.
+
+The judged clauses: a flat-lens grab and drag releases at the
+predicted value (liveness), a press at the thumb's displaced position —
+58px off flat, four thumb widths — grabs it (a flat-pose raycast hits
+bare rail), the warped drag releases exactly at valueAtPress + Δpx
+with the grab offset holding through the anchor handoff, the lens's
+focus sits ON the thumb after every drag (the riding check — a lens
+left where the cursor was fails it), the held glass never collapses
+mid-scrub, a press at the thumb's FLAT position under the warp grabs
+nothing and moves nothing (the counter-clause), and the real-user
+path — hover in, grab at the lens's own fixed point, scrub — lands the
+same predictions. The drag itself never touches the relay: trusted
+window moves drive both the value and the focus.
+
 ## House rules
 
 - Scenes hang their live state on a `window.__<scene>` hook so a probe

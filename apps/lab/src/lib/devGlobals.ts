@@ -15,6 +15,8 @@
 // `__glassInk` is missing on purpose — it is declared inside `glassSdf.tsx`,
 // which is welded byte-for-byte to its registry twin.
 
+import type { FisheyeProbeApi } from '../scenes/fisheye/Fisheye'
+import type { SliderProbeApi } from '../scenes/slider/Slider'
 import type { KnobsResizeProbeApi } from '../scenes/knobs/Knobs'
 import type { GenieFilmProbeEvent } from '../scenes/genie/Genie'
 import type { LogoProbeApi } from '../scenes/logo/Logo'
@@ -67,5 +69,9 @@ declare global {
     __genieFilmProbe?: (event: GenieFilmProbeEvent) => void
     /** The logo scene's knob driver, for the shader gate's material walk. */
     __logo?: LogoProbeApi
+    /** The fisheye scene's lens state and click ledger, for the pointer gate. */
+    __fisheye?: FisheyeProbeApi
+    /** The slider scene's lens and drag state, for the drag gate. */
+    __slider?: SliderProbeApi
   }
 }

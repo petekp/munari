@@ -78,6 +78,14 @@ export {
 // custom material splices this and applies `munariRadiusMask(vUv)` to alpha
 // for straight output, or to the full vec4 for premultiplied output.
 export { SURFACE_RADIUS_GLSL } from './lib/surfaceRadiusGlsl'
+// The one sanctioned way to bend a presented Surface. Vertices move, so the
+// raycast hits the shape the eye sees and relayed input stays correct on any
+// deformation; a vertex-shader warp bends only pixels and silently gets
+// flat-pose hit testing (decisions.md #35).
+export {
+  deformSurfaceGeometry,
+  type SurfaceDeformPoint,
+} from './primitives/surface/surfaceDeform'
 
 // ── DOM-aligned objects ──────────────────────────────────────────────────
 // A named box inside the source, read in the geometry's own coordinates,

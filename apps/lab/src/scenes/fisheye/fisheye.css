@@ -1,0 +1,202 @@
+/* The fisheye scene — a dense triage queue under glass.
+ *
+ * The panel is the capture root, so everything a row draws travels
+ * into the texture with it. Hover and active are stated TWICE on
+ * every rule: the page copy wears the browser's own :hover, the
+ * parked source wears the relay's data-hover/data-active twins
+ * (forwardEvents.ts), and a rule that names only one of them works in
+ * exactly one of the two holds.
+ *
+ * The type is set at 10px on purpose (Fisheye.tsx says why): the row
+ * is legible under the lens, not without it.
+ */
+
+.fisheye-page {
+  position: fixed;
+  inset: 0;
+  background: var(--bench);
+  display: grid;
+  place-items: center;
+}
+
+.fisheye-stage {
+  display: flex;
+  align-items: center;
+  gap: 96px;
+}
+
+.fisheye-caption {
+  max-width: 280px;
+  color: var(--ink);
+}
+
+.fisheye-caption h2 {
+  margin: 0 0 10px;
+  font: 700 24px/1.2 var(--display);
+}
+
+.fisheye-caption p {
+  margin: 0;
+  font: 14px/1.55 var(--body);
+  opacity: 0.75;
+}
+
+/* The lens grows the list past its own box; the holder keeps the page
+ * copy's layout honest while the mesh overflows it. */
+.fisheye-holder {
+  flex: none;
+}
+
+.fisheye-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--bench-hi);
+  outline: 1px solid var(--bench-lo);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.fisheye-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--bench-lo);
+  background: var(--bench-hi);
+}
+
+.fisheye-filter {
+  appearance: none;
+  border: 1px solid var(--bench-lo);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font: 11px/1 var(--body);
+  padding: 5px 8px;
+  width: 150px;
+  outline-offset: 1px;
+}
+
+.fisheye-filter::placeholder {
+  color: var(--ink);
+  opacity: 0.35;
+}
+
+.fisheye-count {
+  margin-left: auto;
+  font: 600 9px/1 var(--label);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  opacity: 0.5;
+}
+
+.fisheye-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 10px;
+  background: var(--bench-hi);
+  color: var(--ink);
+  font: 10px/1 var(--body);
+  border-bottom: 1px solid var(--bench-lo);
+  cursor: pointer;
+  user-select: none;
+}
+
+.fisheye-row:last-child {
+  border-bottom: 0;
+}
+
+.fisheye-row:hover,
+.fisheye-row[data-hover] {
+  background: #fff;
+}
+
+.fisheye-row:active,
+.fisheye-row[data-active] {
+  background: var(--bench);
+}
+
+/* A non-matching row stays present (the mesh never resizes) and steps
+ * back; the matches read as the result set. */
+.fisheye-row[data-dim] {
+  opacity: 0.22;
+}
+
+.fisheye-num {
+  font: 600 8px/1 var(--label);
+  letter-spacing: 0.03em;
+  opacity: 0.45;
+  width: 32px;
+  flex: none;
+}
+
+.fisheye-title {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fisheye-row[data-selected] .fisheye-title {
+  font-weight: 700;
+}
+
+.fisheye-row[data-done] .fisheye-title {
+  text-decoration: line-through;
+  opacity: 0.4;
+}
+
+.fisheye-tag {
+  flex: none;
+  font: 600 7.5px/1 var(--label);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2.5px 5px;
+  border-radius: 999px;
+  background: var(--bench);
+  opacity: 0.75;
+}
+
+.fisheye-tag[data-tag='bug'] {
+  background: #f3ddd6;
+}
+
+.fisheye-tag[data-tag='perf'] {
+  background: #dde8d8;
+}
+
+.fisheye-act {
+  appearance: none;
+  border: 1px solid var(--bench-lo);
+  border-radius: 5px;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--ink);
+  font: 700 9px/1 var(--body);
+  opacity: 0.35;
+  cursor: pointer;
+}
+
+.fisheye-act:hover,
+.fisheye-act[data-hover] {
+  opacity: 1;
+  background: #fff;
+}
+
+.fisheye-act:active,
+.fisheye-act[data-active] {
+  background: var(--bench);
+}
+
+.fisheye-row[data-done] .fisheye-act {
+  opacity: 1;
+  background: var(--signal-lit);
+  border-color: var(--signal-lit);
+  color: #fff;
+}

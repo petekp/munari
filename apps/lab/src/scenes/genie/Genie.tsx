@@ -38,6 +38,7 @@ import { flushSync } from 'react-dom'
 import * as THREE from 'three'
 import {
   createSurface,
+  deformSurfaceGeometry,
   Surface,
   type SurfaceHandle,
   SurfaceCanvas,
@@ -1282,8 +1283,7 @@ function Flight({
     for (const geometry of [geo, filmGeoRef.current]) {
       if (!geometry) continue
       const pos = plainAttribute(geometry, 'position')
-      const uv = plainAttribute(geometry, 'uv')
-      if (!pos || !uv) continue
+      if (!pos) continue
       // Allocated on first use rather than at construction: the geometry
       // is the library's, its vertex count is the LOD tier's to choose,
       // and this is the only code that knows the attribute exists.
@@ -1292,19 +1292,19 @@ function Flight({
         sq = new THREE.BufferAttribute(new Float32Array(pos.count), 1)
         geometry.setAttribute('squeeze', sq)
       }
-      for (let i = 0; i < pos.count; i++) {
-        // The law's v runs top → bottom (texture convention); a plane's
-        // uv.y runs bottom → top, so 1 - uv.y gives the landing spring its
-        // bottom-edge weight while the already-arrived top edge stays put.
-        const p2 = genieWarp(uv.getX(i), 1 - uv.getY(i), visibleT, params)
-        pos.setXYZ(i, p2.x, p2.y + wobble * (1 - uv.getY(i)), 0)
-        sq.setX(i, p2.k)
-      }
-      pos.needsUpdate = true
-      sq.needsUpdate = true
-      // Three caches this on the first raycast. The sheet changes every
-      // frame, so the next raycast must derive bounds from current vertices.
-      geometry.boundingSphere = null
+      const squeeze = sq
+      // genieWarp speaks the mesh's own centered y-up space; the deform
+      // seam speaks content px, top-down — the arithmetic on both sides
+      // of the call is that adapter. The wobble weights by v so the
+      // landing spring moves the bottom edge while the already-arrived
+      // top edge stays put.
+      deformSurfaceGeometry(geometry, [f.w, f.h], (x, y, i) => {
+        const v = y / f.h
+        const p2 = genieWarp(x / f.w, v, visibleT, params)
+        squeeze.setX(i, p2.k)
+        return { x: p2.x + f.w / 2, y: f.h / 2 - (p2.y + wobble * v) }
+      })
+      squeeze.needsUpdate = true
     }
 
     if (landAt === null) return
