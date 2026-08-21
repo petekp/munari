@@ -21,7 +21,7 @@
 // Ownership: this module owns material configuration and GLSL splices. It
 // owns no texture, no mesh, and no protocol.
 
-import { use, useMemo } from 'react'
+import { use, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { SURFACE_RADIUS_GLSL } from '../../lib/surfaceRadiusGlsl'
 import { SurfaceMaterialContext, useSurfaceTexture } from './surfaceContext'
@@ -52,6 +52,52 @@ function spliceRadiusMask(shader: ShaderStage, value: SurfaceMaterialUniforms) {
 interface SurfaceMaterialUniforms {
   radii: { value: THREE.Vector4 }
   size: { value: THREE.Vector2 }
+}
+
+/**
+ * The three uniforms every custom Surface shader needs, under the names
+ * `SURFACE_RADIUS_GLSL` declares (`tMap` is this hook's naming for the
+ * capture — the GLSL mask reads only the other two).
+ */
+export interface SurfaceUniforms {
+  /** The live capture, premultiplied (decisions.md #5). */
+  tMap: { value: THREE.Texture }
+  uMunariRadii: { value: THREE.Vector4 }
+  uMunariSize: { value: THREE.Vector2 }
+}
+
+/**
+ * The uniform set a custom `<Surface.WebGL material={…}>` shader wires.
+ *
+ * The radii and size slots are the PRESENTER's own uniform objects, shared
+ * by reference — a chrome change is a value write into them, so a material
+ * wired here tracks it with no re-render. A material that allocates its own
+ * copies instead compiles fine and then never moves (the fault this hook
+ * exists to make unwritable). Extra uniforms merge by spread:
+ *
+ *   const surface = useSurfaceUniforms()
+ *   const uniforms = useMemo(() => ({ ...surface, uTime: { value: 0 } }), [surface])
+ */
+export function useSurfaceUniforms(): SurfaceUniforms {
+  const texture = useSurfaceTexture()
+  const slot = use(SurfaceMaterialContext)
+  if (!slot) {
+    throw new Error(
+      'munari: useSurfaceUniforms() must be called from the `material` of a ' +
+        '<Surface.WebGL>. It wires that presenter’s corner mask, so there is ' +
+        'nothing for it to wire anywhere else.',
+    )
+  }
+  // The slots live for the component's whole life and take new textures as
+  // value writes: the objects' identity is what a mounted shaderMaterial
+  // holds, and replacing them mid-life would leave the compiled program
+  // reading the abandoned copies.
+  const tMap = useRef({ value: texture }).current
+  tMap.value = texture
+  return useMemo<SurfaceUniforms>(
+    () => ({ tMap, uMunariRadii: slot.radii, uMunariSize: slot.size }),
+    [slot, tMap],
+  )
 }
 
 export interface SurfaceLitMaterialProps {

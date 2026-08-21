@@ -51,6 +51,7 @@ import {
   useSurfacePaintedSize,
   useSurfaceSourceRoot,
   useSurfaceTexture,
+  useSurfaceUniforms,
 } from '@petepetrash/munari'
 import {
   cameraDistance,
@@ -110,7 +111,6 @@ import {
 import filmUrl from './film.mp4'
 import { closestFrom } from '../../lib/dom'
 import { plainAttribute } from '../../lib/geometry'
-import { textureSlot } from '../../lib/uniforms'
 import './genie.css'
 
 const FOV = 42
@@ -685,28 +685,20 @@ function PixelPerfect() {
 const SHADE_FADE: [number, number] = [0.55, 0.95]
 
 function GenieMaterial({ shade }: { shade: [number, number] }) {
-  const texture = useSurfaceTexture()
-  const { chrome, width, height } = useSurfaceChrome()
+  const surface = useSurfaceUniforms()
   const uniforms = useMemo(
     () => ({
-      tMap: textureSlot(),
-      uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uMunariSize: { value: new THREE.Vector2(1, 1) },
+      ...surface,
       uShadeEdge: { value: new THREE.Vector2(1, 1) },
       uShadeFade: { value: new THREE.Vector2(SHADE_FADE[0], SHADE_FADE[1]) },
     }),
-    [],
+    [surface],
   )
-  uniforms.tMap.value = texture ?? null
   uniforms.uShadeEdge.value.set(shade[0], shade[1])
   // Surface creates every DOM texture premultiplied (decisions.md #5).
   // This material only owns the matching blend rule below.
-  const radii = chrome?.radii ?? [0, 0, 0, 0]
-  uniforms.uMunariRadii.value.set(radii[0], radii[1], radii[2], radii[3])
-  uniforms.uMunariSize.value.set(width, height)
   return (
     <shaderMaterial
-      key={texture?.uuid ?? 'none'}
       uniforms={uniforms}
       vertexShader={GENIE_VERT}
       fragmentShader={GENIE_FRAG}

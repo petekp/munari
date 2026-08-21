@@ -34,15 +34,13 @@ import {
   Surface,
   SurfaceCanvas,
   useSurface,
-  useSurfaceChrome,
   useSurfaceInstance,
   useSurfaceState,
-  useSurfaceTexture,
+  useSurfaceUniforms,
   type SurfaceView,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { plainAttribute } from '../../lib/geometry'
-import { textureSlot } from '../../lib/uniforms'
 import {
   FISHEYE_DEFAULTS,
   fisheyeDisplace,
@@ -198,24 +196,13 @@ function PixelPerfect() {
 // ── the glass: capture lit by the law's fake normals ────────────────────
 
 function LensMaterial() {
-  const texture = useSurfaceTexture()
-  const { chrome, width, height } = useSurfaceChrome()
+  const surface = useSurfaceUniforms()
   const uniforms = useMemo(
-    () => ({
-      tMap: textureSlot(),
-      uLightDir: { value: new THREE.Vector3(...LENS_LIGHT) },
-      uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uMunariSize: { value: new THREE.Vector2(1, 1) },
-    }),
-    [],
+    () => ({ ...surface, uLightDir: { value: new THREE.Vector3(...LENS_LIGHT) } }),
+    [surface],
   )
-  uniforms.tMap.value = texture
-  const radii = chrome?.radii ?? [0, 0, 0, 0]
-  uniforms.uMunariRadii.value.set(radii[0], radii[1], radii[2], radii[3])
-  uniforms.uMunariSize.value.set(width, height)
   return (
     <shaderMaterial
-      key={texture.uuid}
       uniforms={uniforms}
       vertexShader={LENS_VERT}
       fragmentShader={LENS_FRAG}

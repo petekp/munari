@@ -44,6 +44,7 @@ const ROOT_ENTRY = [
   'useSurfaceSourceRoot',
   'useSurfaceState',
   'useSurfaceTexture',
+  'useSurfaceUniforms',
 ]
 
 // The kernel is re-exported WHOLE, so this list is core's own surface plus
