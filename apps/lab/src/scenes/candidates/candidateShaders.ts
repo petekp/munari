@@ -69,54 +69,150 @@ const HASH = /* glsl */ `
 //   shared light, MINUS the flat surface's own response, so a flat region
 //   shades to exactly zero. The first version summed slope magnitudes,
 //   which biased negative and darkened the whole control to its clamp.
+//
+//   PRESSES ADD. Each press is its own wave with its own clock, and the
+//   field is their sum — a second click mid-flight raises a second ring
+//   through the first instead of restarting it. Every wave ends through
+//   the settle window: past uSettle its envelope tapers to zero height
+//   AND zero velocity, so the sheet is flat and still before the DOM
+//   takes the pixels back. The first version landed at sin's full exit
+//   slope, and the swap read as a stop rather than a settle.
 
-export const RIPPLE_VERT = /* glsl */ `
+/** Concurrent press waves a ripple field carries; excess presses recycle
+ *  the oldest slot. */
+export const RIPPLE_MAX_WAVES = 6
+
+// The wave field, shared verbatim by the control's vertex stage and the
+// shadow's — the shadow is believable exactly as long as the two agree on
+// where the surface is.
+const RIPPLE_FIELD = /* glsl */ `
   uniform vec2 uSize;
-  uniform vec2 uOrigin;
-  uniform float uT;
+  uniform vec2 uWaveOrigin[${RIPPLE_MAX_WAVES}];
+  uniform float uWaveT[${RIPPLE_MAX_WAVES}];
+  uniform int uWaveCount;
   uniform float uLift;
   uniform float uBend;
   uniform float uWaveLen;
   uniform float uFlap;
-  varying vec2 vUv;
-  varying vec3 vNormal;
+  uniform float uSettle;
 
   const float PI = 3.141592653589793;
+
+  // Height and in-plane slope gradient of the summed field at content
+  // point p (content y runs down).
+  void rippleField(vec2 p, out float z, out vec2 grad) {
+    z = 0.0;
+    grad = vec2(0.0);
+    float span = max(0.5 * length(uSize), 1.0);
+    for (int i = 0; i < ${RIPPLE_MAX_WAVES}; i++) {
+      if (i >= uWaveCount) break;
+      float t = clamp(uWaveT[i], 1e-4, 1.0);
+      float d = distance(p, uWaveOrigin[i]);
+      float far = clamp(d / span, 0.0, 1.0);
+
+      // Up fast — the 0.7 power puts the peak around a third of the run,
+      // where a finger's own press peaks — then out through the settle
+      // window, value and velocity both zero at t = 1.
+      float env = sin(PI * pow(t, 0.7)) * (1.0 - smoothstep(uSettle, 1.0, t));
+
+      // Pinned at the finger: both terms carry the far-field weight, so
+      // the pressed point never moves and the free corners do the flapping.
+      float rise = uLift * pow(max(far, 1e-4), 1.4);
+      float phase = 2.0 * PI * d / uWaveLen - uFlap * t;
+      float flap = uBend * sin(phase) * far;
+      z += env * (rise + flap);
+
+      // dz/dd, analytically. The far-field ramp of the flap term
+      // contributes an order less than the wave itself and is dropped.
+      float slope = env * (
+        uLift * 1.4 * pow(max(far, 1e-3), 0.4) / span +
+        uBend * cos(phase) * (2.0 * PI / uWaveLen) * far
+      );
+      vec2 dir = d > 1e-3 ? (p - uWaveOrigin[i]) / d : vec2(0.0);
+      grad += slope * dir;
+    }
+  }
+`
+
+export const RIPPLE_VERT = /* glsl */ `
+  ${RIPPLE_FIELD}
+  varying vec2 vUv;
+  varying vec3 vNormal;
 
   void main() {
     vUv = uv;
     // uv.y runs bottom → top; the click arrives in content coordinates,
     // which run top → bottom.
     vec2 p = vec2(uv.x * uSize.x, (1.0 - uv.y) * uSize.y);
-    float d = distance(p, uOrigin);
-    float span = max(0.5 * length(uSize), 1.0);
-    float far = clamp(d / span, 0.0, 1.0);
-
-    // Up fast, settle slow. The 0.7 power puts the peak around a third of
-    // the effect, where a finger's own press peaks.
-    float env = sin(PI * pow(clamp(uT, 1e-4, 1.0), 0.7));
-
-    // Pinned at the finger: both terms carry the far-field weight, so the
-    // pressed point never moves and the free corners do the flapping.
-    float rise = uLift * pow(max(far, 1e-4), 1.4);
-    float phase = 2.0 * PI * d / uWaveLen - uFlap * uT;
-    float flap = uBend * sin(phase) * far;
-    float z = env * (rise + flap);
-
-    // dz/dd, analytically, for the normal. The far-field ramp of the flap
-    // term contributes an order less than the wave itself and is dropped.
-    float slope = env * (
-      uLift * 1.4 * pow(max(far, 1e-3), 0.4) / span +
-      uBend * cos(phase) * (2.0 * PI / uWaveLen) * far
-    );
-    vec2 dir = d > 1e-3 ? (p - uOrigin) / d : vec2(0.0);
+    float z;
+    vec2 grad;
+    rippleField(p, z, grad);
     // Content y runs down; the world's runs up. Flip so the shared light
     // means the same thing here as everywhere else.
-    vNormal = normalize(vec3(-slope * dir.x, slope * dir.y, 1.0));
+    vNormal = normalize(vec3(-grad.x, grad.y, 1.0));
 
     vec3 moved = position;
     moved.z += z;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(moved, 1.0);
+  }
+`
+
+// The shadow is the same grid, relit as its own projection: each vertex
+// slides along the light onto the page plane, so the dark shape IS the
+// deformed sheet's outline — it spreads where the sheet lifts, keeps the
+// pinned point dark and tight, and vanishes with the settle window because
+// its height does. No blur pass: the penumbra is the edge feather widening
+// with the caster's height.
+export const RIPPLE_SHADOW_VERT = /* glsl */ `
+  ${RIPPLE_FIELD}
+  uniform vec3 uLightDir;
+  varying vec2 vUv;
+  varying float vHeight;
+
+  void main() {
+    vUv = uv;
+    vec2 p = vec2(uv.x * uSize.x, (1.0 - uv.y) * uSize.y);
+    float z;
+    vec2 grad;
+    rippleField(p, z, grad);
+    vHeight = z;
+
+    vec3 L = normalize(uLightDir);
+    vec3 moved = position;
+    // Project the lifted point along the light onto the page. The grid
+    // stretches past the quad where the sheet rises, which is the whole
+    // reason this is a mesh and not a repainted rectangle.
+    moved.xy -= (L.xy / L.z) * z;
+    moved.z = 0.0;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(moved, 1.0);
+  }
+`
+
+export const RIPPLE_SHADOW_FRAG = /* glsl */ `
+  uniform vec2 uSize;
+  uniform float uLift;
+  uniform float uShadowAlpha;
+  uniform float uShadowSoft;
+  varying vec2 vUv;
+  varying float vHeight;
+
+  void main() {
+    float h = max(vHeight, 0.0);
+    float k = clamp(h / max(uLift, 1.0), 0.0, 1.0);
+    // Distance to the caster's own edge, in content px. Feather widens
+    // with height: contact-tight where the sheet is pinned, penumbral
+    // where it flies.
+    float edge = min(
+      min(vUv.x, 1.0 - vUv.x) * uSize.x,
+      min(vUv.y, 1.0 - vUv.y) * uSize.y
+    );
+    float feather = mix(1.0, max(uShadowSoft, 1.0), k);
+    float body = smoothstep(0.0, feather, edge);
+    // Zero at contact — a landed sticker is page again, and pages do not
+    // shadow themselves — rising fast, then thinning as the gap grows.
+    float occ = clamp(k * 3.0, 0.0, 1.0) * (1.0 - 0.45 * k);
+    gl_FragColor = vec4(0.0, 0.0, 0.0, uShadowAlpha * body * occ);
+    #include <colorspace_fragment>
   }
 `
 

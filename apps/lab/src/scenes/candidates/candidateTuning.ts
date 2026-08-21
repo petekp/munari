@@ -23,6 +23,14 @@ export const rippleTuning = {
   /** Full wave cycles over one press. */
   flapCycles: 2.1,
   shadeGain: 0.9,
+  /** Where the settle window opens, as a fraction of the run. Past this
+   *  every wave tapers to zero height and zero velocity, so the sheet is
+   *  flat before the DOM takes the pixels back. */
+  settle: 0.72,
+  /** Shadow opacity under a mid-height caster. */
+  shadowAlpha: 0.28,
+  /** Penumbra width at full lift, px of edge feather. */
+  shadowSoft: 14,
 }
 
 export const selectionTuning = {
@@ -135,6 +143,14 @@ export const RIPPLE_GROUPS: CandidateKnobGroup<typeof rippleTuning>[] = [
       { key: 'waveSpan', label: 'wavelength', min: 0.2, max: 2, step: 0.05 },
       { key: 'flapCycles', label: 'flap cycles', min: 0.5, max: 5, step: 0.1 },
       { key: 'shadeGain', label: 'shading', min: 0, max: 2, step: 0.05 },
+      { key: 'settle', label: 'settle from', min: 0.4, max: 0.95, step: 0.01 },
+    ],
+  },
+  {
+    title: 'shadow',
+    knobs: [
+      { key: 'shadowAlpha', label: 'opacity', min: 0, max: 0.8, step: 0.02 },
+      { key: 'shadowSoft', label: 'penumbra px', min: 1, max: 40, step: 1 },
     ],
   },
 ]

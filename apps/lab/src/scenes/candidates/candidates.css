@@ -176,38 +176,49 @@
   align-self: flex-start;
 }
 
-/* The shadow the raised control casts, drawn on the page rather than in
- * GL. It belongs to the page because that is where it falls: the sticker
- * is the thing that left, and the card it left is still DOM. A pseudo
- * element on the HOLDER, never on the content root — a filter or opacity
- * on the root is what the authoring contract forbids. */
-.cand-target::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: #2a2820;
-  opacity: 0;
-  filter: blur(10px);
-  transform: translateY(7px) scale(0.96);
-  transition: opacity 150ms linear;
-  pointer-events: none;
+/* The parked copy of a ripple control renders inside the library's capture
+ * container, not under .cand-app — so it inherits `.ui-root`'s Tailwind
+ * cascade instead: system font at 16px/24px, block layout, opaque white
+ * background. Measured 2026-08-20: the checkbox row wrapped to two lines
+ * (39px of content in a 19.5px capture, "only" cropped away, the box
+ * centered 12px down against the two-line text) and the segmented control
+ * sat on the host's text baseline, 2px below its own box, wearing a white
+ * strip where the host showed through. Flex removes the baseline strut,
+ * the font matches .cand-app's, and transparent lets `alpha="source"`
+ * keep the capture's silhouette. Unlayered, so it beats @layer base's
+ * `.ui-root` in shadcn.css. */
+.ui-root:has(> .cand-btn),
+.ui-root:has(> .cand-input),
+.ui-root:has(> .cand-check),
+.ui-root:has(> .cand-segment) {
+  display: flex;
+  /* flex-start, not the default stretch: the container is the control's
+   * box ceiled to whole px, and stretching a 19.5px row into a 20px
+   * container draws its contents 0.25px off the page copy's. The ceil
+   * slack stays an empty transparent sliver at the bottom instead. */
+  align-items: flex-start;
+  background: transparent;
+  font: 14px/1.5 var(--body);
+  color: var(--ink);
 }
 
-.cand-target[data-lifted]::before {
-  opacity: 0.22;
+/* `pointerEvents="content"` clears the capture root itself, and computed
+ * pointer-events inherits — content inside a content-mode Surface must
+ * re-declare its own touchability, or the relay's hit test reads the whole
+ * parked subtree as clear. Measured 2026-08-20: every mid-flight press
+ * fell straight through the mesh to the page holder and activated
+ * nothing. */
+.cand-btn,
+.cand-input,
+.cand-check,
+.cand-segment {
+  pointer-events: auto;
 }
 
-/* Every ripple target's content root paints its own background — on the
- * CONTENT CLASS, not on a holder-scoped selector.
- *
- * Chrome's html-in-canvas capture gives a root with no background an
- * OPAQUE WHITE backdrop, not a transparent one — the same platform fact
- * that stops Surface deriving its corner radius from texture alpha. And
- * the content renders twice: the page copy under `.cand-target`, the
- * captured copy inside the parked source host, where a `.cand-target > *`
- * rule never reaches. 2026-08-20: that scoping drew the waving checkbox
- * row on flat white while the card stayed #f2f0e4. */
-.cand-field,
+/* The checkbox row paints its own background — on the CONTENT CLASS, not
+ * a holder-scoped selector, because the content renders twice: the page
+ * copy under `.cand-target`, the captured copy inside the parked source
+ * host, where a `.cand-target > *` rule never reaches. */
 .cand-check {
   background: var(--bench-hi);
 }
@@ -277,12 +288,29 @@
   color: var(--ink-faint);
 }
 
-.cand-field input {
+/* Only the input lifts, so only the input is a capture root — the label
+ * span stays page DOM. Its own class, not `.cand-field input`: the parked
+ * copy renders outside `.cand-field` and a descendant selector never
+ * reaches it. */
+.cand-input {
   border: 1px solid var(--rule);
   padding: 8px 10px;
+  width: 100%;
   background: #fff;
   color: var(--ink);
   font: 14px/1 var(--body);
+}
+
+/* The input's holder fills the field column, and so does everything on
+ * the path down to the input — Surface.DOM wraps content in a plain div,
+ * and an unstretched wrapper would hand `width: 100%` its own
+ * shrink-to-fit box. */
+.cand-field .cand-target {
+  align-self: stretch;
+}
+
+.cand-field .cand-target > * {
+  flex: 1;
 }
 
 .cand-check {
