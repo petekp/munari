@@ -64,6 +64,7 @@ function waveUniforms() {
     uWaveLen: { value: 60 },
     uFlap: { value: rippleTuning.flapCycles * 2 * Math.PI },
     uSettle: { value: rippleTuning.settle },
+    uTail: { value: rippleTuning.tail },
   }
 }
 
@@ -83,6 +84,7 @@ function writeWaveUniforms(
   uniforms.uBend.value = rippleTuning.bend
   uniforms.uFlap.value = rippleTuning.flapCycles * 2 * Math.PI
   uniforms.uSettle.value = rippleTuning.settle
+  uniforms.uTail.value = rippleTuning.tail
   uniforms.uWaveLen.value = Math.max(rippleTuning.waveSpan * 0.5 * Math.hypot(width, height), 30)
 }
 

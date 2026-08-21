@@ -95,6 +95,7 @@ const RIPPLE_FIELD = /* glsl */ `
   uniform float uWaveLen;
   uniform float uFlap;
   uniform float uSettle;
+  uniform float uTail;
 
   const float PI = 3.141592653589793;
 
@@ -118,15 +119,34 @@ const RIPPLE_FIELD = /* glsl */ `
       // Pinned at the finger: both terms carry the far-field weight, so
       // the pressed point never moves and the free corners do the flapping.
       float rise = uLift * pow(max(far, 1e-4), 1.4);
-      float phase = 2.0 * PI * d / uWaveLen - uFlap * t;
-      float flap = uBend * sin(phase) * far;
-      z += env * (rise + flap);
 
-      // dz/dd, analytically. The far-field ramp of the flap term
-      // contributes an order less than the wave itself and is dropped.
+      // The wave travels. xi is the retarded phase in cycles — how many
+      // wavelengths have swept past this point; negative means the front
+      // has not arrived and the sheet is still flat there. Without the
+      // front the sinusoid is a standing pattern the whole sheet wears
+      // from the first frame (seen 2026-08-20: rings spanning the surface
+      // within two frames of the click). The lead-in keeps the front C1
+      // so the light shows no crease at the leading ring; the decay calms
+      // the train so one ring leads and a couple follow.
+      float xi = uFlap * t / (2.0 * PI) - d / uWaveLen;
+      float lead = smoothstep(0.0, 0.35, xi);
+      float decay = exp(-max(xi, 0.0) / uTail);
+      float S = xi <= 0.0 ? 0.0 : sin(2.0 * PI * xi) * decay * lead;
+      z += env * (rise + uBend * S * far);
+
+      // dz/dd, analytically (dxi/dd = -1/uWaveLen). The far-field ramp of
+      // the wave term contributes an order less than the wave itself and
+      // is dropped.
+      float dSdxi = 0.0;
+      if (xi > 0.0) {
+        float ls = clamp(xi / 0.35, 0.0, 1.0);
+        float dLead = 6.0 * ls * (1.0 - ls) / 0.35;
+        dSdxi = (2.0 * PI * cos(2.0 * PI * xi) * lead
+                 + sin(2.0 * PI * xi) * (dLead - lead / uTail)) * decay;
+      }
       float slope = env * (
-        uLift * 1.4 * pow(max(far, 1e-3), 0.4) / span +
-        uBend * cos(phase) * (2.0 * PI / uWaveLen) * far
+        uLift * 1.4 * pow(max(far, 1e-3), 0.4) / span
+        - uBend * dSdxi * far / uWaveLen
       );
       vec2 dir = d > 1e-3 ? (p - uWaveOrigin[i]) / d : vec2(0.0);
       grad += slope * dir;

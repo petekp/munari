@@ -22,6 +22,8 @@ export const rippleTuning = {
   waveSpan: 0.8,
   /** Full wave cycles over one press. */
   flapCycles: 2.1,
+  /** Ring train length behind the front, in wavelengths. */
+  tail: 1.4,
   shadeGain: 0.9,
   /** Where the settle window opens, as a fraction of the run. Past this
    *  every wave tapers to zero height and zero velocity, so the sheet is
@@ -142,6 +144,7 @@ export const RIPPLE_GROUPS: CandidateKnobGroup<typeof rippleTuning>[] = [
       { key: 'bend', label: 'bend px', min: 0, max: 40, step: 1 },
       { key: 'waveSpan', label: 'wavelength', min: 0.2, max: 2, step: 0.05 },
       { key: 'flapCycles', label: 'flap cycles', min: 0.5, max: 5, step: 0.1 },
+      { key: 'tail', label: 'ring tail', min: 0.3, max: 4, step: 0.05 },
       { key: 'shadeGain', label: 'shading', min: 0, max: 2, step: 0.05 },
       { key: 'settle', label: 'settle from', min: 0.4, max: 0.95, step: 0.01 },
     ],
