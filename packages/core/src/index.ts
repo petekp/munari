@@ -104,6 +104,7 @@ export {
 // pointer — provenance + the pointer-exit protocol
 export { relay, isRelayed, isRelayedEvent, type NativeEventCarrier } from './pointer/relay'
 export {
+  bridgeHover,
   clearPointerState,
   deepestElementAt,
   forwardPointer,

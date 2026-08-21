@@ -52,8 +52,37 @@ export function CanvasPointerGate({
     let clearTargetCacheFrame = 0
     let suppressedClick: { x: number; y: number; until: number } | null = null
 
+    let lastArm: PointerEvent | null = null
+    let recheckFrame = 0
+
     const setSolid = (solid: boolean) => {
       canvas.style.pointerEvents = solid ? 'auto' : 'none'
+      if (solid) startRecheck()
+      else if (recheckFrame) {
+        cancelAnimationFrame(recheckFrame)
+        recheckFrame = 0
+      }
+    }
+
+    // Matter can vanish beneath a STILL pointer — an exclusive Surface lands
+    // and its mesh's raycast starts declining — and with no trusted move to
+    // re-arm, the canvas stayed solid over nothing: the browser's hover
+    // recompute hit the canvas instead of the restored page copy, and a
+    // motionless follow-up click died on it (measured 2026-08-20). While
+    // solid and unclaimed, re-ask the raycast each frame at the last armed
+    // position. Runs only while the pointer is over Surface matter; one
+    // quad intersect per frame, no paints, so gate:idle-zero holds.
+    const startRecheck = () => {
+      if (recheckFrame) return
+      recheckFrame = requestAnimationFrame(function step() {
+        recheckFrame = 0
+        if (canvas.style.pointerEvents === 'none') return
+        if (claims.size === 0 && lastArm && !hitsTarget(lastArm)) {
+          setSolid(false)
+          return
+        }
+        recheckFrame = requestAnimationFrame(step)
+      })
     }
 
     const targetsThisFrame = () => {
@@ -152,6 +181,7 @@ export function CanvasPointerGate({
 
     const arm = (event: PointerEvent) => {
       if (isRelayed(event) || routed.has(event)) return
+      lastArm = event
       if (claims.has(event.pointerId)) {
         setSolid(true)
         return

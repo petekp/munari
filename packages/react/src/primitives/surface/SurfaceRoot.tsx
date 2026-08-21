@@ -22,7 +22,7 @@
 // material, and no placement.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { SurfaceChrome, SurfacePartId } from '@munari/core'
+import { trackPointerPlace, type SurfaceChrome, type SurfacePartId } from '@munari/core'
 import {
   useSurfaceController,
   useSurfaceControls,
@@ -155,6 +155,13 @@ export function SurfaceRoot({
   // additional presentation of it, never a replacement.
   const exclusive = view !== undefined
   useLayoutEffect(() => store.setExclusive(exclusive), [store, exclusive])
+
+  // Tracked from the ROOT, not only the presenter: a presenter mounted at
+  // press time (flight-only meshes) installs its tracker after the last
+  // trusted event, so the arrival burst read a null place and a still
+  // pointer lost its hover across the flip (2026-08-20). Ref-counted, so
+  // doubling up with the presenter's own tracker costs nothing.
+  useEffect(() => trackPointerPlace(), [])
 
   const contextHost = useSurfaceHostContext()
   const wiring: SurfaceWiring = contextHost ? 'canvas' : 'page'

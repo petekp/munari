@@ -1909,6 +1909,33 @@ r3f's event manager — routing and the stamped twins catch up within a
 frame whether the hand moved or only the matter did. The gate's
 live-follow clause drives the coarse stream on purpose.
 
+**Amended 2026-08-20 — the bursts reach both shores.** Three
+refinements above are superseded. The arrival burst no longer declines
+manual placement: the mesh itself answers, through the same instance
+raycast every live pointer event uses, so a flight-only mesh re-arms
+hover wherever the scene put it. `lastPointerPlace` now records
+pointerup (a lift triggered on release otherwise flipped the hold with
+the down as the newest sample, and its `buttons: 1` made the burst
+read a finished press as still open) and is tracked from the always-
+mounted root, not only the presenter (a presenter mounted at press
+time installs its tracker after the last trusted event and read null).
+And the losing burst gains a third act, the landing bridge
+(`bridgeHover`): clearing the parked twins is not enough, because the
+gaining page copy hears only the browser, and real `:hover` cannot
+re-form until a trusted contact hit-tests the copy — the pointer
+gate's canvas stays solid until its first post-flip miss. Measured
+2026-08-20: a pointer sweeping through a landing showed two frames
+with no hover on either copy, and a pointer that moved during flight
+then stopped left the canvas solid over nothing — the browser's own
+hover recompute hit the canvas and a motionless follow-up click died
+on it. The bridge stamps the hover twin onto the page copy in the
+same microtask that clears the parked one and lifts it on the first
+trusted contact proving the real story resumed; the gate re-asks its
+raycast each frame while solid and unclaimed, so matter vanishing
+beneath a still pointer clears the canvas within a frame. After both:
+a full sweep through a landing shows zero unhovered frames on the
+presented side, and the motionless click lands.
+
 ## #34 — The second-system guard is repealed (2026-08-19)
 
 **Decision.** The standing rule "no new generality (multi-flight,

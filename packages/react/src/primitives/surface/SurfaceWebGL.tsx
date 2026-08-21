@@ -35,6 +35,7 @@ import {
 import * as THREE from 'three'
 import { useFrame, useThree, type ThreeElements, type ThreeEvent } from '@react-three/fiber'
 import {
+  bridgeHover,
   clearPointerState,
   deepestElementAt,
   forwardPointer,
@@ -810,10 +811,12 @@ function SurfacePresenter({
   // and the relay only speaks on pointer MOTION — so a pointer that sits
   // still through a flip leaves the loser wearing stale state and the
   // gainer blind to a pointer already over it. Losing, the canvas closes
-  // its story out: the active relayed press is cancelled and the stamped
-  // twins cleared. Gaining, it re-arms: one forwarded move at the
-  // pointer's last trusted position, so the hover the page copy was
-  // showing continues on the texture instead of popping off at the swap.
+  // its story out: the active relayed press is cancelled, the stamped
+  // twins cleared, and the hover twin handed to the page copy until the
+  // browser's own :hover resumes (bridgeHover). Gaining, it re-arms: one
+  // forwarded move at the pointer's last trusted position, so the hover
+  // the page copy was showing continues on the texture instead of
+  // popping off at the swap.
   // The hold flip is the signal because it fires synchronously from the
   // frame that moved it — a React commit would arrive a frame after the
   // state it is correcting.
@@ -841,13 +844,21 @@ function SurfacePresenter({
               })
             }
             clearPointerState(el)
+            // The cleared twin is handed to the PAGE copy in this same
+            // microtask. The gaining side hears only the browser, and real
+            // :hover cannot re-form until a trusted contact hit-tests the
+            // copy — the pointer gate's canvas stays solid until its first
+            // post-flip miss. Measured 2026-08-20: a pointer sweeping
+            // through a landing showed two frames with no hover on either
+            // copy. Buttonless only, for the arrival burst's reason.
+            const pageRoot = partRef.current?.pageRoot
+            const landingPlace = lastPointerPlace()
+            if (pageRoot && landingPlace && landingPlace.sample.buttons === 0) {
+              bridgeHover(pageRoot, landingPlace.x, landingPlace.y)
+            }
             return
           }
           if (!el) return
-          // Re-arm only where the arrival position is knowable: a manual
-          // mesh is wherever the scene put it, so mapping through the page
-          // box would stamp hover on content the pointer is not over.
-          if (effectivePlacement !== 'match-dom') return
           if (pointerEventsRef.current === 'none') return
           const place = lastPointerPlace()
           if (!place) return
@@ -856,27 +867,59 @@ function SurfacePresenter({
           // buttonless document-bubbling move would break mid-gesture. The
           // pointer's first real motion re-arms hover instead.
           if (place.sample.buttons !== 0) return
-          const rect = partRef.current?.pageRoot?.getBoundingClientRect()
-          if (!rect || !rectIsMeasurable(rect)) return
-          if (
-            place.x < rect.left ||
-            place.x > rect.right ||
-            place.y < rect.top ||
-            place.y > rect.bottom
-          )
-            return
+          // The arrival position must be honest per placement. A match-dom
+          // mesh stands on the page box, so the box maps client → uv. A
+          // manual mesh is wherever the scene put it — the page box would
+          // stamp hover on content the pointer is not over — so the mesh
+          // itself answers, through the same instance raycast every live
+          // pointer event uses (hit policy and corner mask included).
+          let u: number
+          let v: number
+          if (effectivePlacement === 'match-dom') {
+            const rect = partRef.current?.pageRoot?.getBoundingClientRect()
+            if (!rect || !rectIsMeasurable(rect)) return
+            if (
+              place.x < rect.left ||
+              place.x > rect.right ||
+              place.y < rect.top ||
+              place.y > rect.bottom
+            )
+              return
+            u = (place.x - rect.left) / rect.width
+            v = 1 - (place.y - rect.top) / rect.height
+          } else {
+            const mesh = meshRef.current
+            if (!mesh) return
+            const rect = gl.domElement.getBoundingClientRect()
+            if (!rectIsMeasurable(rect)) return
+            camera.updateMatrixWorld()
+            mesh.updateWorldMatrix(true, false)
+            const raycaster = new THREE.Raycaster()
+            raycaster.setFromCamera(
+              new THREE.Vector2(
+                ((place.x - rect.left) / rect.width) * 2 - 1,
+                -((place.y - rect.top) / rect.height) * 2 + 1,
+              ),
+              camera,
+            )
+            const hits: THREE.Intersection[] = []
+            mesh.raycast(raycaster, hits)
+            const uv = hits.sort((a, b) => a.distance - b.distance)[0]?.uv
+            if (!uv) return
+            u = mirrorURef.current ? 1 - uv.x : uv.x
+            v = uv.y
+          }
           // Hover only: a press held across the flip died at the edge
           // (its side of the story), so the arrival move carries no buttons.
-          forwardPointer(
-            el,
-            (place.x - rect.left) / rect.width,
-            1 - (place.y - rect.top) / rect.height,
-            'move',
-            { ...place.sample, button: 0, buttons: 0, pressure: 0 },
-          )
+          forwardPointer(el, u, v, 'move', {
+            ...place.sample,
+            button: 0,
+            buttons: 0,
+            pressure: 0,
+          })
         })
       }),
-    [store, controls, partRef, effectivePlacement, pointerEventsRef],
+    [store, controls, partRef, effectivePlacement, pointerEventsRef, camera, gl, mirrorURef],
   )
 
   // A presenter mounted after the scene's first frame compiles its material

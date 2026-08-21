@@ -524,6 +524,71 @@ export function clearPointerState(root: HTMLElement) {
   }
 }
 
+// ---- the landing bridge --------------------------------------------------
+
+const bridges = new WeakMap<HTMLElement, () => void>()
+
+/**
+ * Hand the hover twin to the page copy when the canvas loses the hold.
+ *
+ * The gaining page copy hears only the browser, and the browser's own
+ * `:hover` cannot re-form until a trusted contact hit-tests the copy — the
+ * pointer gate's canvas stays solid until its first post-flip miss, so the
+ * copy shows unhovered for the contacts in between. Measured 2026-08-20: a
+ * pointer sweeping through a landing left two frames with no hover on
+ * either copy. The twin is stamped at the pointer's place and lifted on the
+ * first trusted contact that proves the real story resumed: a target inside
+ * `root` (`:hover` is applied before dispatch), a position off the stamped
+ * element (the pointer left), or a departure out of the document.
+ */
+export function bridgeHover(root: HTMLElement, x: number, y: number): void {
+  bridges.get(root)?.()
+  const target = deepestElementAt(root, x, y)
+  if (!target) return
+  const chain = chainOf(root, target)
+  for (const el of chain) el.setAttribute(HOVER_ATTR, '')
+  const doc = root.ownerDocument
+  const lift = () => {
+    bridges.delete(root)
+    doc.removeEventListener('pointermove', onContact, true)
+    doc.removeEventListener('pointerover', onContact, true)
+    doc.removeEventListener('pointerdown', onContact, true)
+    doc.removeEventListener('mousemove', onContact, true)
+    doc.removeEventListener('pointerout', onOut, true)
+    for (const el of chain) el.removeAttribute(HOVER_ATTR)
+  }
+  const onContact = (e: Event) => {
+    if (!e.isTrusted) return
+    if (e.target instanceof Node && root.contains(e.target)) {
+      lift()
+      return
+    }
+    // SAFETY: this handler is attached only to pointer and mouse event
+    // types, and every PointerEvent is a MouseEvent.
+    const { clientX, clientY } = e as MouseEvent
+    const r = target.getBoundingClientRect()
+    const over =
+      clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom
+    // Still over the stamped element but heard elsewhere: the gate's canvas
+    // is still solid above the copy. Keep the twin until it goes clear.
+    if (!over) lift()
+  }
+  const onOut = (e: PointerEvent) => {
+    // relatedTarget null: the pointer left the document, and no further
+    // contact will come to lift the twin by position.
+    if (e.isTrusted && e.relatedTarget === null) lift()
+  }
+  bridges.set(root, lift)
+  doc.addEventListener('pointermove', onContact, true)
+  doc.addEventListener('pointerover', onContact, true)
+  doc.addEventListener('pointerdown', onContact, true)
+  // Chrome re-hit-tests a still pointer after a hit-affecting style change
+  // with a fake MOUSE move, never a pointer event — without this listener a
+  // still landing keeps the twin past the browser's own re-hover.
+  doc.addEventListener('mousemove', onContact, true)
+  doc.addEventListener('pointerout', onOut, true)
+}
+
 /**
  * Stop a native canvas pointermove from bubbling on to document — the
  * same truth-telling as Surface's pointerdown suppression, extended to
@@ -939,12 +1004,17 @@ export function trackPointerPlace(): () => void {
     const onOut = (e: PointerEvent) => {
       if (e.isTrusted && e.relatedTarget === null) pointerPlace = null
     }
+    // pointerup included: a lift triggered on release flips the hold with
+    // the DOWN as the newest sample otherwise, and its buttons:1 made the
+    // arrival burst read a finished press as still open (2026-08-20).
     document.addEventListener('pointermove', onPoint, true)
     document.addEventListener('pointerdown', onPoint, true)
+    document.addEventListener('pointerup', onPoint, true)
     document.addEventListener('pointerout', onOut, true)
     untrackPlace = () => {
       document.removeEventListener('pointermove', onPoint, true)
       document.removeEventListener('pointerdown', onPoint, true)
+      document.removeEventListener('pointerup', onPoint, true)
       document.removeEventListener('pointerout', onOut, true)
     }
   }
