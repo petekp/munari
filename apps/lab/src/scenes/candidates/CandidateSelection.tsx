@@ -101,7 +101,9 @@ function BubbleMaterial({ bead }: { bead: React.RefObject<BeadState> }) {
       uDepth: { value: selectionTuning.depth },
       uSpec: { value: selectionTuning.spec },
       uSpecPow: { value: selectionTuning.specPow },
+      uSpecOp: { value: selectionTuning.specOpacity },
       uSheenPow: { value: selectionTuning.sheenPow },
+      uSheenOp: { value: selectionTuning.sheenOpacity },
       uRimPow: { value: selectionTuning.rimPow },
       // The broad sheen across the whole top. Kept well under the tight
       // specular: raise it and the glass turns to frosted plastic.
@@ -134,7 +136,17 @@ function BubbleMaterial({ bead }: { bead: React.RefObject<BeadState> }) {
     // paragraph-sized body folds a single thin line into ringing, because
     // a thin strip is all rim. Saturates at the tuned value once the body
     // reaches bodyPx. The shadow throw below rides the same law.
-    const bodyK = Math.min(b.len / Math.max(k2.bodyPx, 1), 1)
+    //
+    // But √area is the size of the WHOLE selection, and that is only a
+    // size cue to the degree the strips are one body. Unwelded, each line
+    // is its own bead that knows nothing of its neighbours — this file's
+    // founding law — so the total area says nothing about any single
+    // strip, and adding a line below must not change how the line above
+    // bends. So the area law fades in with the weld: at weld 0 the bend
+    // and the throw are the tuned values whole, at weldFull they scale.
+    const weldK = Math.min(k2.weld / Math.max(k2.weldFull, 1e-3), 1)
+    const areaK = Math.min(b.len / Math.max(k2.bodyPx, 1), 1)
+    const bodyK = 1 - weldK * (1 - areaK)
     uniforms.uRefract.value = k2.refract * bodyK
     uniforms.uIor.value = k2.ior
     uniforms.uDisperse.value = k2.disperse
@@ -163,8 +175,10 @@ function BubbleMaterial({ bead }: { bead: React.RefObject<BeadState> }) {
     uniforms.uDepth.value = k2.depth
     uniforms.uSpec.value = k2.spec
     uniforms.uSpecPow.value = k2.specPow
+    uniforms.uSpecOp.value = k2.specOpacity
     uniforms.uSheen.value = k2.sheen
     uniforms.uSheenPow.value = k2.sheenPow
+    uniforms.uSheenOp.value = k2.sheenOpacity
     uniforms.uRim.value = k2.rim
     uniforms.uRimPow.value = k2.rimPow
     uniforms.uLightPos.value.set(b.light.x, b.light.y, k2.lightZ)
@@ -319,10 +333,6 @@ export function CandidateSelection() {
       {PROSE.map((line) => (
         <p key={line}>{line}</p>
       ))}
-      <p className="cand-prose__note">
-        Drag across any of it. The page keeps the paragraph; the bead is the
-        only thing the canvas draws.
-      </p>
     </div>
   )
 

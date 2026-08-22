@@ -36,61 +36,70 @@ export const rippleTuning = {
 }
 
 export const selectionTuning = {
-  height: 8,
-  /** Bevel width, px, capped in-shader at each strip's half-height — at
-   *  the cap the cross-section is a half-capsule with no flat plateau. */
+  height: 17.5,
+  /** Rolloff scale of the drop profile h = H·√(1 − exp(d/edge)), px:
+   *  smaller is a steeper rim and a fuller middle. */
   edge: 24,
   /** Corner radius, px, capped at the strip's half-height: at the cap the
    *  strip's ends are stadium-round. */
   corner: 24,
   /** Smooth-min radius, px, fusing neighbouring strips into one body. */
   weld: 0,
-  magnify: 0.01,
-  refract: 2.75,
+  /** Weld px at which the strips count as fully merged. Gates the √area
+   *  law — see WELD_FULL's use in CandidateSelection. */
+  weldFull: 30,
+  magnify: 0.03,
+  refract: 5,
   /** Body size — √(selection area), px — at which the bend reaches the
-   *  full `refract` value. Smaller selections bend proportionally less. */
+   *  full `refract` value. Smaller selections bend proportionally less.
+   *  Only applies to the degree the strips are welded into one body. */
   bodyPx: 130,
   /** Index of refraction; 1.45 is crown-glass territory. The bend length
    *  stays `refract` — this shapes how it ramps toward the rim. */
-  ior: 1.42,
-  disperse: 0.07,
+  ior: 2.4,
+  disperse: 0,
   /** Scatter radius of the frosted body, px. Shares the dispersion loop's
    *  eight taps, so it costs nothing extra. */
-  frost: 2.5,
+  frost: 0,
   shadowX: 0,
-  shadowY: 7,
-  shadowSoft: 7.5,
-  shadowAlpha: 0.12,
+  shadowY: 5,
+  shadowSoft: 8,
+  shadowAlpha: 0.1,
   /** Gain on the caustic — the bright band the rim focuses just outside
    *  the silhouette, down-light of the body. */
-  caustic: 0.38,
+  caustic: 0.74,
   /** Light bearing, degrees. 123/51 reproduces the shared LIGHT vector
    *  the other candidates are lit by. */
-  lightAz: 78,
-  lightEl: 68,
+  lightAz: 83,
+  lightEl: 34,
   /** 0 = the fixed bearing above; 1 = a point light riding the cursor.
    *  The shadow direction follows the same blend. */
-  follow: 1,
+  follow: 0.36,
   /** The cursor light's height above the page, px. Lower swings the
    *  highlights faster as the pointer passes. */
-  lightZ: 240,
+  lightZ: 570,
   /** Absorption strength: how deeply the body colours what shows through
    *  it. Multiplicative — the ink stays dark, the paper takes the cast. */
-  tintGain: 0.6,
+  tintGain: 0.59,
   /** Gain on the mirrored environment: the white streak on the upper
    *  curvature and the dark floor in the lower rim. */
-  reflect: 1,
-  depth: 0.24,
+  reflect: 0.66,
+  depth: 0,
   /** Post-normalization gains: the shader's (n+2)/2π factor keeps lobe
    *  energy constant, so these run ~10x smaller than the old raw gains. */
   spec: 0.05,
   /** Highlight tightness: higher is a smaller, harder glint. */
   specPow: 256,
-  sheen: 0.07,
+  /** Alpha of the glint layer: 0 is no highlight, 1 is opaque white that
+   *  hides the words it crosses. Gain sizes the lobe, this dims it. */
+  specOpacity: 1,
+  sheen: 0.6,
   sheenPow: 24,
-  rim: 0.44,
+  /** Alpha of the sheen layer — same meaning as specOpacity. */
+  sheenOpacity: 0.34,
+  rim: 0.48,
   /** Fresnel falloff: lower spreads the rim glow inward from the border. */
-  rimPow: 1,
+  rimPow: 1.9,
 }
 
 export const unrollTuning = {
@@ -202,9 +211,14 @@ export const SELECTION_GROUPS: CandidateKnobGroup<typeof selectionTuning>[] = [
     title: 'glass body',
     knobs: [
       { key: 'height', label: 'inflate px', min: 0, max: 24, step: 0.5 },
-      { key: 'edge', label: 'rim width px', min: 1, max: 24, step: 0.5 },
+      // Rolloff scale of the drop profile h = H·sqrt(1 - exp(d/edge)):
+      // smaller is a steeper rim and a fuller middle; larger melts the
+      // whole body toward a shallow film.
+      { key: 'edge', label: 'rim rolloff px', min: 1, max: 48, step: 0.5 },
       { key: 'corner', label: 'corner px', min: 0, max: 24, step: 0.5 },
-      { key: 'weld', label: 'weld px', min: 0, max: 30, step: 0.5 },
+      // Top of range is weldFull, so "slider at max" and "strips fully
+      // merged" stay the same number.
+      { key: 'weld', label: 'weld px', min: 0, max: selectionTuning.weldFull, step: 0.5 },
       { key: 'magnify', label: 'magnify', min: 0, max: 0.2, step: 0.005 },
       { key: 'refract', label: 'refract px', min: 0, max: 20, step: 0.25 },
       { key: 'bodyPx', label: 'full bend √px', min: 60, max: 600, step: 10 },
@@ -225,8 +239,10 @@ export const SELECTION_GROUPS: CandidateKnobGroup<typeof selectionTuning>[] = [
       { key: 'depth', label: 'depth', min: 0, max: 0.5, step: 0.01 },
       { key: 'spec', label: 'specular', min: 0, max: 2, step: 0.05 },
       { key: 'specPow', label: 'spec power', min: 4, max: 256, step: 2 },
+      { key: 'specOpacity', label: 'spec opacity', min: 0, max: 1, step: 0.02 },
       { key: 'sheen', label: 'sheen', min: 0, max: 0.6, step: 0.01 },
       { key: 'sheenPow', label: 'sheen power', min: 2, max: 24, step: 0.5 },
+      { key: 'sheenOpacity', label: 'sheen opacity', min: 0, max: 1, step: 0.02 },
       { key: 'rim', label: 'rim light', min: 0, max: 1, step: 0.02 },
       { key: 'rimPow', label: 'rim falloff', min: 1, max: 6, step: 0.1 },
     ],

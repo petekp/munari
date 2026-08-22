@@ -380,25 +380,27 @@
 }
 
 .cand-prose {
-  background: var(--bench-hi);
+  /* Paper tooth: fractal-noise grain at ~5% ink — the texture of the
+   * uncoated stock the bench is styled as, not a printed motif. An SVG
+   * filter inside a background IMAGE, not a filter on the element, so
+   * the capture rules (no opacity/transform/mask on the subtree) are
+   * untouched. Shared by the visible copy and the parked capture copy
+   * through this one class, so the twins can't drift. */
+  background:
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.08 0 0 0 0 0.08 0 0 0 0 0.06 0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23g)'/></svg>"),
+    var(--bench-hi);
   outline: 1px solid var(--bench-lo);
   padding: 28px 32px;
 }
 
 .cand-prose h2 {
   margin: 0 0 12px;
-  font: 700 26px/1.15 var(--display);
+  font: 700 41px/1.55 var(--display);
 }
 
 .cand-prose p {
   margin: 0 0 10px;
-  font: 15px/1.62 var(--body);
-}
-
-.cand-prose__note {
-  margin: 16px 0 0 !important;
-  color: var(--ink-faint);
-  font-size: 12px !important;
+  font: 21px/1.62 var(--body);
 }
 
 /* The bead is the highlight. See rule 2 in the header. */

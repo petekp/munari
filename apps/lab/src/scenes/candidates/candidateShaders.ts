@@ -387,36 +387,20 @@ const BUBBLE_FIELD = /* glsl */ `
     return bubbleNear(p, g, c, hh);
   }
 
-  // A circular arc from the rim inward: vertical at the edge, which is
-  // what gives a droplet its bright thin border. The bevel width is
-  // capped by the strip's own half-height, so at the cap the arc reaches
-  // the centreline with zero slope — a half-capsule cross-section, no
-  // flat plateau and no crease.
-  // The cap is a soft-min of t against 1: the circular arc meets the top
-  // over a band, not along a ring. A hard clamp leaves a curvature step
-  // at t = 1 that shading draws as a bright seam around the plateau.
-  float capT(float t, float w) {
-    float cw = clamp(0.5 + 0.5 * (1.0 - t) / w, 0.0, 1.0);
-    return mix(1.0, t, cw) - w * cw * (1.0 - cw);
-  }
-
-  // The cap width is the room past t = 1: the full 0.35 band when the
-  // bevel stops short of the centreline (a real plateau to blend into),
-  // shrinking to nothing as the rims close on each other. At full rim
-  // width the opposing arcs meet AT t = 1, where the arc's own crest is
-  // already zero-slope — and the cap, built to remove a crease, was
-  // creating one: it held slope 0.175·w at the seam while the gradient
-  // flipped sign, and the specular cut off along a razor line at the
-  // strip's centre (2026-08-21).
-  float capW(float halfH, float e) {
-    return clamp(halfH / e - 1.0, 1e-3, 0.35);
-  }
-
-  float bubbleHeight(float d, float halfH) {
-    float e = max(min(uEdge, halfH), 1e-3);
-    float t = max(-d, 0.0) / e;
-    float ts = capT(t, capW(halfH, e));
-    return uHeight * sqrt(max(ts * (2.0 - ts), 0.0));
+  // A drop, not a bevel: h = H·sqrt(1 - exp(d/uEdge)). At the rim this is
+  // the same square-root contact a spherical cap has — vertical tangent,
+  // the bright thin border — and inward the curvature decays
+  // exponentially without ever reaching flat, so there is no ring where
+  // dome meets plateau. The bevel-extrude it replaces (arc rim, capped
+  // top, normalized per strip) drew that ring as a squarish inner bezel
+  // once the specular could find it (2026-08-21). Depth is the only
+  // input: a thin strip never gets deep enough to reach full height, so a
+  // single line is a shallow film and a paragraph a full drop with no
+  // separate area law. uEdge is the rolloff scale — smaller is a steeper
+  // rim and a fuller, flatter middle.
+  float bubbleHeight(float d) {
+    float u = exp(min(d, 0.0) / max(uEdge, 1e-3));
+    return uHeight * sqrt(max(1.0 - u, 1e-4));
   }
 `
 
@@ -453,8 +437,10 @@ export const BUBBLE_FRAG = /* glsl */ `
   uniform float uDepth;
   uniform float uSpec;
   uniform float uSpecPow;
+  uniform float uSpecOp;
   uniform float uSheen;
   uniform float uSheenPow;
+  uniform float uSheenOp;
   uniform float uRim;
   uniform float uRimPow;
   uniform float uReflect;
@@ -477,26 +463,33 @@ export const BUBBLE_FRAG = /* glsl */ `
     halfH = max(halfH, 1.0);
 
     if (d > 0.0) {
-      // Outside the glass, three coupled terms, all bounded by the paper:
+      // Outside the glass, three coupled terms, all bounded by the paper.
+      // Every one of them is DIRECTIONAL. The version this replaced had an
+      // isotropic contact line at full weight while the cast shadow ran at
+      // half, so the darkest thing on the page was a flat ring hugging the
+      // silhouette — a CSS box-shadow with a spread, reported 2026-08-21
+      // (~0.12 alpha over the whole 4.5px band, dark on the lit side of the
+      // bead as much as the shaded one). Nothing round lit from one side
+      // does that. Light leaks under the up-light rim of a droplet, so the
+      // darkness has to thin out toward the light.
       //
-      //   CONTACT. A thin occlusion line hugging the silhouette, no
-      //   offset — this is what grounds the bead. The offset blob alone
-      //   reads as a UI drop shadow.
+      //   CONTACT. Occlusion at the foot of the rim: an exponential that
+      //   is gone within a couple of px, weighted to the shaded side and
+      //   floored low so the lit rim keeps a trace of ground.
       //
-      //   SHADE. The directional soft shadow, at half weight, its
-      //   interior lightened where transmission puts light straight
-      //   through.
+      //   SHADE. The directional cast shadow, its interior lightened where
+      //   transmission puts light straight through.
       //
       //   CAUSTIC. Mostly CARVED out of the shade — unshadowed paper
       //   showing through, which cannot clip — plus a small warm residue.
       //   The residue is squared before the sRGB encode below: the encode
       //   lifts small linear values ~5x, which is what made the additive
       //   version blow out at the lowest knob settings on light paper.
-      float sd = bubbleSd(p - uShadowOffset);
-      float contact = 1.0 - smoothstep(0.0, max(uShadowSoft * 0.6, 1.0), d);
-      float shade = 1.0 - smoothstep(-uShadowSoft, uShadowSoft, sd);
-      float inner = smoothstep(0.0, uShadowSoft * 2.5, -sd);
-      float shadow = max(contact, shade * 0.5) * (1.0 - 0.6 * uCaustic * inner);
+      //
+      // Contact and shade compose as independent occluders — 1-(1-a)(1-b),
+      // not a max. The max left a visible crease where the two crossed,
+      // because the winner switches term mid-gradient.
+      //
       // Light direction in content coordinates (y runs down): the fixed
       // world bearing flipped once, blended toward the point light riding
       // the cursor uLightPos.z px above the page.
@@ -505,6 +498,14 @@ export const BUBBLE_FRAG = /* glsl */ `
       vec3 L = normalize(mix(Lfix, Lpt, uFollow));
       vec2 Lc = normalize(L.xy + vec2(1e-5));
       float down = clamp(0.5 - 0.5 * dot(grad, Lc), 0.0, 1.0);
+
+      float sd = bubbleSd(p - uShadowOffset);
+      float shade = 1.0 - smoothstep(-uShadowSoft, uShadowSoft, sd);
+      float inner = smoothstep(0.0, uShadowSoft * 2.5, -sd);
+      float contact = exp(-d / max(uShadowSoft * 0.35, 0.5))
+                    * (0.12 + 0.88 * down * down);
+      float occ = 1.0 - (1.0 - contact * 0.7) * (1.0 - shade * 0.9);
+      float shadow = occ * (1.0 - 0.6 * uCaustic * inner);
       float q = (sd + uShadowSoft * 1.2) / max(uShadowSoft, 1.0);
       float band = exp(-q * q) * down * down;
       float carve = clamp(1.0 - 1.5 * uCaustic * band, 0.0, 1.0);
@@ -516,29 +517,27 @@ export const BUBBLE_FRAG = /* glsl */ `
       return;
     }
 
-    float h = bubbleHeight(d, halfH);
+    float h = bubbleHeight(d);
     float fill = h / max(uHeight, 1e-4);
 
-    // The normal, analytically: the SDF's gradient is the outward
-    // direction, the arc's derivative is the slope, and the product is
-    // exact at the one place finite differences blur it — the rim, where
-    // the profile turns vertical. t is floored so the vertical tangent is
-    // a large finite slope rather than a divide-by-zero normal.
-    float eEff = max(min(uEdge, halfH), 1e-3);
-    float tt = max(max(-d, 0.0) / eEff, 0.01);
-    // The slope chains through the soft cap: dcapT/dt is exactly the cap
-    // weight, zero past the cap, so the top shades flat.
-    float cwW = capW(halfH, eEff);
-    float cw = clamp(0.5 + 0.5 * (1.0 - tt) / cwW, 0.0, 1.0);
-    float ts = max(capT(tt, cwW), 0.01);
-    float dhdd = -uHeight * (1.0 - ts) * cw / (sqrt(ts * (2.0 - ts)) * eEff);
+    // The normal, analytically: the SDF's gradient (true magnitude) times
+    // the profile's derivative dh/dd = -H·u / (2e·sqrt(1-u)) — exact at
+    // the rim, where finite differences blur the vertical tangent. The
+    // root is floored so the tangent is a large finite slope rather than
+    // a divide-by-zero normal.
+    float eEff = max(uEdge, 1e-3);
+    float uu = exp(min(d, 0.0) / eEff);
+    float root = max(sqrt(max(1.0 - uu, 0.0)), 0.01);
+    float dhdd = -uHeight * uu / (2.0 * eEff * root);
     vec3 n = normalize(vec3(-dhdd * grad, 1.0));
 
     // The top is a lens: it pulls the page in toward THIS strip's centre.
-    // The rim is Snell: the eye ray refracts through the bezel normal at a
-    // real index, so the flat top bends exactly nothing — the words stay
-    // the page's own — and the bend grows toward the border with the
-    // profile real glass has, words compressing into the rim.
+    // The rim is Snell: the eye ray refracts through the rim normal at a
+    // real index. The middle is never exactly flat now, but its slope
+    // decays exponentially — the residual bend mid-drop is sub-pixel, so
+    // the words stay the page's own to the eye — and the bend grows
+    // toward the border with the profile real glass has, words
+    // compressing into the rim.
     vec2 lensed = mix(p, center, uMagnify * fill * uT);
     vec2 bend = refract(vec3(0.0, 0.0, -1.0), n, 1.0 / max(uIor, 1.0)).xy * uRefract * uT;
 
@@ -590,10 +589,10 @@ export const BUBBLE_FRAG = /* glsl */ `
     // passes is filtered.
     c.rgb *= exp(-(vec3(1.0) - uTint) * (uTintGain * 2.0 * fill * uT));
 
-    // Glass adds light, it does not replace pixels — and it is lit
-    // RELATIVE TO FLAT (the ripple lesson): the flat top's own response is
-    // subtracted from the specular and the sheen, so the interior of a
-    // strip adds no constant wash over the words. The light lives where
+    // The lighting is computed RELATIVE TO FLAT (the ripple lesson): the
+    // flat top's own response is subtracted from the specular and the
+    // sheen, so the interior of a strip adds no constant wash over the
+    // words. The light lives where
     // the normal actually tips, brightening the rim the light faces and
     // shading the rim it leaves. The rim glow is Fresnel — grazing
     // incidence is what actually brightens a droplet's border — not a
@@ -633,6 +632,30 @@ export const BUBBLE_FRAG = /* glsl */ `
     float sheen = max(pow(lambert, uSheenPow) - pow(flatL, uSheenPow), 0.0) * sheenN;
     float rim = pow(clamp(1.0 - n.z, 1e-4, 1.0), uRimPow);
 
+    // THE FOOTPRINT — the shadow pass's contact occlusion, continued under
+    // the bead. Light that cannot reach the paper at the foot of the rim
+    // does not start reaching it again because the paper is now behind
+    // glass: the field was truncated at d = 0 for implementation reasons,
+    // not physical ones. Without it the bead reads as a glass object
+    // resting on the page rather than a drop wetting it, because surface
+    // shading alone tracks the specular and this does not.
+    //
+    // Inward the decay is the glass thickening, not a penumbra width, so
+    // it rides (1 - fill) — matching the exterior's rim value at the edge,
+    // zero at the crest — where outside it rides exp(-d). Same 0.12 floor
+    // and down-light weighting as the exterior term, and it spends
+    // uShadowAlpha rather than a knob of its own: one light budget with
+    // the shadow, which is the only reason this coupling means anything.
+    //
+    // The CAST shadow deliberately does not continue inward — that is
+    // light blocked from paper the bead is not covering. So a step the
+    // size of the shade term's rim value survives at the silhouette. It
+    // sits under the specular and the Fresnel rim glow, which is what
+    // keeps it from reading as an edge.
+    float downIn = clamp(0.5 - 0.5 * dot(grad, Lc), 0.0, 1.0);
+    float foot = (1.0 - fill) * (1.0 - fill) * (0.12 + 0.88 * downIn * downIn);
+    c.rgb *= 1.0 - uShadowAlpha * 0.7 * foot * uT;
+
     // The environment: glass is defined by what it mirrors, and a mirror
     // REPLACES transmission rather than adding to it — the text under a
     // strong streak dims as the reflection takes over, where the old
@@ -658,21 +681,39 @@ export const BUBBLE_FRAG = /* glsl */ `
     // along the opposite interior wall — the glowing lower lip a real
     // droplet shows. Lives at mid-fill, down-light side only.
     float ql = (fill - 0.35) / 0.25;
-    float downIn = clamp(0.5 - 0.5 * dot(grad, Lc), 0.0, 1.0);
     float lip = exp(-ql * ql) * downIn * downIn;
 
-    c.rgb += (spec * uSpec + sheen * uSheen + rim * uRim
-              + 0.12 * uCaustic * lip) * uT * c.a;
+    c.rgb += (rim * uRim + 0.12 * uCaustic * lip) * uT * c.a;
 
+    // The spec and sheen are PAINT, not added light. Additive spec ran
+    // ~1.9 at the lobe core over 0.85 paper — deep in clip, so the gain
+    // slider had a dead zone the size of the core, and an opacity knob
+    // crossfading additive→paint DIMMED as it rose (2026-08-21). As a
+    // premultiplied white layer (the reflection's pattern) the glint is
+    // bounded at paper-white, shows over blank paper and ink alike, and
+    // hides what it covers. Gain shapes the lobe's footprint — how much
+    // of it saturates; opacity is the layer's alpha.
+    float wH = min(clamp(spec * uSpec, 0.0, 1.0) * uSpecOp
+                 + clamp(sheen * uSheen, 0.0, 1.0) * uSheenOp, 1.0) * uT;
+    c.rgb = c.rgb * (1.0 - wH) + vec3(wH);
+    c.a = c.a * (1.0 - wH) + wH;
+
+    // The strip rides the ease — but the fade multiplies AFTER the sRGB
+    // encode, never before. The encode is nonlinear: for the paper texel,
+    // encode(0.45 · 0.85) = 0.65 where the correct contribution is
+    // 0.45 · encode(0.85) = 0.42, and the blender still adds the page at
+    // (1 − 0.45) underneath — 1.16, clipped. Measured 2026-08-21: every
+    // mid-fade frame drew the bead as a flat white pill over the words
+    // (255 pure at uT 0.07–0.14 against 237 paper), at any knob setting,
+    // with the geometry flattened, with every effect term zeroed — the
+    // white was the compositing tail itself. Fading the encoded output
+    // scales the premultiplied pair consistently, so a bead over
+    // unchanged paper fades without ever being visible.
     float aa = fwidth(d) + 1e-4;
-    c *= 1.0 - smoothstep(-aa, aa, d);
-    // The whole strip rides the ease. Without this the glass at uT ≈ 0
-    // still draws the texture's copy of the paragraph over the page's at
-    // full alpha — invisible when they agree, a faint permanent blur where
-    // the resampling doesn't.
-    c *= min(uT * 3.0, 1.0);
+    float fade = (1.0 - smoothstep(-aa, aa, d)) * min(uT * 3.0, 1.0);
     gl_FragColor = c;
     #include <colorspace_fragment>
+    gl_FragColor *= fade;
   }
 `
 
