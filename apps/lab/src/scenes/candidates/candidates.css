@@ -1,17 +1,11 @@
 /* The candidates' bench — one page shell, seven demos.
  *
- * Two rules run through everything here and are not cosmetic:
- *
- * 1. Hover and active are stated TWICE on every control. The page copy
- *    wears the browser's own :hover/:active; the parked source copy wears
- *    the relay's data-hover/data-active twins (forwardEvents.ts). A rule
- *    that names only one works in exactly one of the two holds, and the
- *    control changes appearance the moment it changes hands.
- *
- * 2. ::selection is transparent inside the selection candidate. The bead
- *    IS the selection highlight there — the words it covers must not also
- *    wear the browser's blue, or the page shows a second, flat selection
- *    under the glass.
+ * One rule runs through everything here and is not cosmetic: hover and
+ * active are stated TWICE on every control. The page copy wears the
+ * browser's own :hover/:active; the parked source copy wears the relay's
+ * data-hover/data-active twins (forwardEvents.ts). A rule that names only
+ * one works in exactly one of the two holds, and the control changes
+ * appearance the moment it changes hands.
  *
  * Nothing in a captured subtree carries opacity, transform, or mask-image
  * (docs/authoring.md): those are the three properties a capture root
@@ -371,56 +365,6 @@
 .cand-readout strong {
   color: var(--ink);
   font: 700 20px/1 var(--data);
-}
-
-/* ── selection ───────────────────────────────────────────────────────── */
-
-.cand-prose-holder {
-  width: 520px;
-}
-
-.cand-prose {
-  /* Paper tooth: fractal-noise grain at ~5% ink — the texture of the
-   * uncoated stock the bench is styled as, not a printed motif. An SVG
-   * filter inside a background IMAGE, not a filter on the element, so
-   * the capture rules (no opacity/transform/mask on the subtree) are
-   * untouched. Shared by the visible copy and the parked capture copy
-   * through this one class, so the twins can't drift. */
-  background:
-    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.08 0 0 0 0 0.08 0 0 0 0 0.06 0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23g)'/></svg>"),
-    var(--bench-hi);
-  outline: 1px solid var(--bench-lo);
-  padding: 28px 32px;
-}
-
-.cand-prose h2 {
-  margin: 0 0 12px;
-  font: 700 41px/1.55 var(--display);
-}
-
-.cand-prose p {
-  margin: 0 0 10px;
-  font: 21px/1.62 var(--body);
-}
-
-/* The bead is the highlight. See rule 2 in the header. */
-.cand-prose ::selection,
-.cand-prose::selection {
-  background: transparent;
-  color: inherit;
-}
-
-/* The Surface's page copy. Parked out of flow like the dropdown's menu:
- * it exists to be captured, and it must never be the copy the user can
- * select, because a captured selection arrives as a black bar. */
-.cand-prose-park {
-  position: absolute;
-  left: -10000px;
-  top: 0;
-}
-
-.cand-prose-holder {
-  position: relative;
 }
 
 /* ── unroll ──────────────────────────────────────────────────────────── */

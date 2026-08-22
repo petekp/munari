@@ -1,4 +1,4 @@
-// Candidate 2 — the selection, as a bead of glass.
+// Selection — the chosen words, as a bead of glass.
 //
 // Select any run of text. Each selected LINE lifts off the page inside its
 // own strip of glass: magnified about that strip's own centre, refracted
@@ -25,16 +25,23 @@
 //
 // (The black strikethrough this arrangement was first blamed for —
 // 2026-08-20 — turned out to be shader NaN, not the capture: see the
-// pow() rule in candidateShaders.ts. The texture was clean all along.)
+// pow() rule in selectionShaders.ts. The texture was clean all along.)
+//
+// This scene grew up on the candidates bench and graduated off it. The
+// stage helpers still come from there: PixelPerfect, worldBoxOf and
+// useOwnUniforms are the bench's, not this scene's, and duplicating them
+// would be the fourth copy in the lab (candidates/README.md, gaps 6 and 7).
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurface, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
+import { Surface, SurfaceCanvas, useSurface, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
-import { BUBBLE_FRAG, BUBBLE_VERT, LIGHT } from './candidateShaders'
-import { useOwnUniforms, worldBoxOf, type WorldBox } from './candidateStage'
-import { selectionTuning } from './candidateTuning'
+import { PixelPerfect, useOwnUniforms, worldBoxOf, type WorldBox } from '../candidates/candidateStage'
+import { BUBBLE_FRAG, BUBBLE_VERT, LIGHT } from './selectionShaders'
+import { selectionTuning } from './selectionTuning'
+import { SelectionTweaks } from './selectionTweaks'
+import './selection.css'
 
 /** Client rects a selection may span before the bead stops growing. */
 const MAX_RECTS = 8
@@ -216,7 +223,7 @@ const PROSE = [
   'The designer of today re-establishes the long-lost contact between art and the public, between living people and art as a living thing. Instead of pictures for the drawing-room, electric gadgets for the kitchen. There should be no such thing as art divorced from life.',
 ]
 
-export function CandidateSelection() {
+function SelectionPage() {
   const surface = useSurface({ name: 'selection-prose' })
   const holder = useRef<HTMLDivElement>(null)
   const live = useRef<HTMLDivElement>(null)
@@ -328,7 +335,7 @@ export function CandidateSelection() {
   }, [])
 
   const prose = (
-    <div className="cand-prose">
+    <div className="sel-prose">
       <h2>Design as Art</h2>
       {PROSE.map((line) => (
         <p key={line}>{line}</p>
@@ -337,8 +344,8 @@ export function CandidateSelection() {
   )
 
   return (
-    <div className="cand-page cand-page--center">
-      <div ref={holder} className="cand-prose-holder">
+    <div className="sel-page">
+      <div ref={holder} className="sel-prose-holder">
         {/* The copy the user reads and selects. Plain DOM, outside the
             Surface, so its selection can never reach the capture. */}
         <div ref={live}>{prose}</div>
@@ -356,7 +363,7 @@ export function CandidateSelection() {
             {/* The capture source: identical, parked, never selected. The
                 width is pinned to the live copy's measurement so both wrap
                 on the same words. */}
-            <div className="cand-prose-park" style={{ width: size[0] }} aria-hidden>
+            <div className="sel-prose-park" style={{ width: size[0] }} aria-hidden>
               <Surface.DOM>{prose}</Surface.DOM>
             </div>
             {box && (
@@ -378,6 +385,38 @@ export function CandidateSelection() {
           </Surface>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+// Frameloop is 'always': the bead has its own clock and the scene does not
+// claim demand, so it gives up the zero-paint property the gated scenes
+// hold. A presenter-scoped animation claim is the missing piece
+// (candidates/README.md, gap 9).
+export function SelectionApp({ chips }: { chips?: React.ReactNode }) {
+  return (
+    <div className="sel-app">
+      <SelectionPage />
+
+      <SurfaceCanvas
+        pointerMode="surfaces"
+        style={{ position: 'fixed', inset: 0, zIndex: 40 }}
+        gl={{ alpha: true, antialias: true }}
+        // No dpr clamp: PixelPerfect owns render density and follows the
+        // live devicePixelRatio, browser zoom included.
+        camera={{ fov: 42, position: [0, 0, 1000] }}
+        onCreated={(state) => {
+          // The page under the canvas IS the background; a cleared opaque
+          // frame would hide the paragraph the bead is drawn over.
+          state.gl.setClearAlpha(0)
+          window.__r3f = state
+        }}
+      >
+        <PixelPerfect />
+      </SurfaceCanvas>
+
+      <SelectionTweaks />
+      {chips}
     </div>
   )
 }

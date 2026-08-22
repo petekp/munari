@@ -16,15 +16,16 @@ import { VeilApp } from './scenes/veil/Veil'
 import { KnobsApp } from './scenes/knobs/Knobs'
 import { OpticsApp } from './scenes/optics/Optics'
 import { LogoApp } from './scenes/logo/Logo'
+import { SelectionApp } from './scenes/selection/Selection'
 import { CandidatesApp } from './scenes/candidates/Candidates'
 import { SurfaceProviderProbe } from './lib/surfaceProvider'
 import { SceneNav } from './components/SceneNav'
 
-// Eight scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
+// Nine scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
 // flight drag trilogy, exploded-paint inspector, genie minimize-to-dock,
-// veil progressive blur, knobs-and-switches instrument rail, optics bench.
-// Plus one sketch off the roster: the logo playground (animated wordmark,
-// letters liftable into matter).
+// veil progressive blur, knobs-and-switches instrument rail, optics bench,
+// selection bead. Plus one sketch off the roster: the logo playground
+// (animated wordmark, letters liftable into matter).
 // Everything they render reaches the library through its published entries —
 // this app is the proof that the public surface is sufficient.
 
@@ -40,6 +41,7 @@ type SceneId =
   | 'knobs'
   | 'optics'
   | 'logo'
+  | 'selection'
   | 'candidates'
 const SCENES = [
   'workspace',
@@ -53,12 +55,13 @@ const SCENES = [
   'knobs',
   'optics',
   'logo',
+  'selection',
   'candidates',
 ] as const
 
-// The nav shows only the focus four; the rest stay routable by URL so the
+// The nav shows only the focus five; the rest stay routable by URL so the
 // browser gates and old links keep working, they just aren't advertised.
-const NAV_SCENES = ['flight', 'genie', 'knobs', 'logo'] as const satisfies readonly SceneId[]
+const NAV_SCENES = ['flight', 'genie', 'knobs', 'selection', 'logo'] as const satisfies readonly SceneId[]
 
 // Clicking a canvas normally moves focus to <body>, which would blur
 // whatever hidden form field a Surface has focused — killing native typing.
@@ -195,6 +198,7 @@ export default function App() {
   if (scene === 'knobs') return <KnobsApp chips={chips} />
   if (scene === 'optics') return <OpticsApp chips={chips} />
   if (scene === 'logo') return <LogoApp chips={chips} />
+  if (scene === 'selection') return <SelectionApp chips={chips} />
   // No chips: the candidates page has its own left-column nav, and the two
   // menus side by side read as one broken one.
   if (scene === 'candidates') return <CandidatesApp />

@@ -289,6 +289,38 @@ tests. The roster is workspace, glass, flight, explode, genie, veil,
 knobs, optics. The logo playground stays what its registering commit
 called it: a sketch off the roster.
 
+**Amended 2026-08-22 — nine; selection joins, off the candidates bench.**
+
+- **selection — the words stay the page's.** A run of selected text
+  lifts into a bead of glass that refracts it, one strip of glass per
+  selected line box. It is the roster's only **inclusive** scene: every
+  other member takes the pixels away for the length of the effect, and
+  this one adds a second presentation on top of live DOM that never
+  stops being live. The paragraph under the glass is still selectable,
+  still copyable, still found by Cmd-F, still read by a screen reader
+  while the bead is on it. That is the whole argument — a capability
+  that reads as decoration in a screenshot and as something else
+  entirely the moment you try to copy the words out of it.
+
+  It is also the only scene whose geometry is driven by a browser-owned
+  primitive the page does not control: `document.getSelection()`'s
+  client rects, arriving at whatever line breaks the layout chose, up to
+  eight strips welded by a soft-min. And it is the only scene that must
+  capture a DIFFERENT copy of its content than the one the user touches
+  — a captured selection arrives as a black bar, so the source is a
+  parked twin pinned to the live copy's measured width. That constraint
+  belongs in `docs/authoring.md`'s territory and no other scene meets
+  it.
+
+  It grew up on the candidates bench and graduated on its own terms:
+  the bench exists for prototypes to be COMPARED, and a scene that has
+  stopped being a comparison has stopped belonging there. What moved
+  with it: `scenes/selection/` (entry, shaders, tuning bag, tweak panel,
+  css) and the `?scene=selection` route. What stayed behind: the stage
+  helpers (`PixelPerfect`, `worldBoxOf`, `useOwnUniforms`), which are
+  the bench's and which the lab already duplicates four times over
+  (candidates/README.md, gaps 6 and 7).
+
 ## #4 — Core speaks in shapes; three satisfies them (2026-08-02)
 
 **Decision.** `@munari/core` cannot import `three` (zero-dep,

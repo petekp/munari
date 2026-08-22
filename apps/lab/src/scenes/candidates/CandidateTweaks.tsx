@@ -12,14 +12,12 @@ import {
   DELETE_GROUPS,
   DISSOLVE_GROUPS,
   RIPPLE_GROUPS,
-  SELECTION_GROUPS,
   UNROLL_GROUPS,
   analyzeTuning,
   copyTuning,
   deleteTuning,
   dissolveTuning,
   rippleTuning,
-  selectionTuning,
   unrollTuning,
   type CandidateKnobDef,
   type CandidateKnobGroup,
@@ -77,10 +75,6 @@ const PANELS = {
   // Billow is the ripple mechanism on a lone button — one bag, one set of
   // knobs, tuned once for both.
   billow: { bag: rippleTuning, body: <BagGroups bag={rippleTuning} groups={RIPPLE_GROUPS} /> },
-  selection: {
-    bag: selectionTuning,
-    body: <BagGroups bag={selectionTuning} groups={SELECTION_GROUPS} />,
-  },
   unroll: { bag: unrollTuning, body: <BagGroups bag={unrollTuning} groups={UNROLL_GROUPS} /> },
   dissolve: {
     bag: dissolveTuning,

@@ -18,6 +18,9 @@ import { createServer } from 'vite'
 const labRoot = path.resolve(import.meta.dirname, '..')
 const outDir = path.join(labRoot, 'public', 'thumbs')
 
+// `selection` is missing on purpose: its bead only exists while a drag is
+// held, and a scene loaded and left alone shows a bare paragraph. Its
+// thumb is a hand-picked frame — re-take it by hand, not by adding it here.
 const SCENES = ['flight', 'genie', 'knobs', 'logo']
 // The nav renders cards ~144px wide; 1280×720 keeps the capture sharp on
 // dense displays and crops nothing (the scenes are viewport-sized pages).

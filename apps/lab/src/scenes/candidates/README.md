@@ -3,11 +3,17 @@
 Seven prototypes of one question, on one bench: **which state changes are
 worth handing to the other renderer?**
 
-Each candidate takes a state a component already has — pressed, selected,
-open, moved, being read, copied, deleted — and gives the pixels to WebGL
-for exactly as long as that state lasts. They exist to be compared, not
+Each candidate takes a state a component already has — pressed, open,
+moved, being read, copied, deleted — and gives the pixels to WebGL for
+exactly as long as that state lasts. They exist to be compared, not
 shipped. Nothing here is a public API, and nothing here is welded to
 `registry/`.
+
+One candidate has left: **selection** graduated to a scene of its own at
+`?scene=selection` (`scenes/selection/`, decisions.md #3, amended
+2026-08-22). It still borrows this bench's stage helpers — `PixelPerfect`,
+`worldBoxOf`, `useOwnUniforms` in `candidateStage.tsx` — which is gaps 6
+and 7 below showing their cost.
 
 Open the bench at `?scene=candidates`; each demo deep-links as
 `?scene=candidates&candidate=<id>`.
@@ -16,7 +22,6 @@ Open the bench at `?scene=candidates`; each demo deep-links as
 | --- | --- | --- |
 | `ripple` | a press lifts the control off the page and sends one crest across it | the press still registers — the counter is incremented by the copy that heard the click, through the relay |
 | `billow` | the ripple press on a single primary button, alone on the bench | the same mechanism and tuning bag as `ripple`, isolated for judging the wave itself |
-| `selection` | each selected line sits in its own strip of glass that refracts it off the page | the paragraph never leaves the DOM; this is the one **inclusive** demo, a second presentation of live text |
 | `unroll` | a dropdown is a sheet wound on a roll, paid out as it opens | the menu is usable mid-roll — the vertices are warped on the CPU, so the hit test follows the pixels |
 | `dissolve` | a card comes apart into its own pixels, crosses the page, and reassembles | it lands as a real card; the edit counter inside it keeps counting |
 | `analyze` | the block an agent is reading turns to glass with a travelling read head | the colour is derived from the block's own luminance edges and the sheet's own slope, not a wash laid over it |
@@ -61,8 +66,8 @@ not currently offer, and that a workaround had to stand in for.
    copy, because both containers hold the same Vector or Texture instance.
    A **number** does not: the material keeps its own `{ value }` box, and a
    per-frame write to the memoized bag lands in an object nothing samples.
-   Five of the seven candidates drew their `t = 0` frame forever while their
-   clocks ran perfectly. `useOwnUniforms()` in `candidateStage.tsx` swaps
+   Five of the eight candidates then on the bench drew their `t = 0` frame
+   forever while their clocks ran perfectly. `useOwnUniforms()` swaps
    the container back. No other lab scene is affected — flight and genie
    write theirs during render, where the prop is re-applied, and veil writes
    through `m.uniforms` on a ref, which is the material's own bag already.

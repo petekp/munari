@@ -1,0 +1,77 @@
+/* The selection scene's page — a paragraph on a sheet of paper.
+ *
+ * One rule here is not cosmetic: ::selection is transparent inside the
+ * prose. The bead IS the selection highlight — the words it covers must
+ * not also wear the browser's blue, or the page shows a second, flat
+ * selection under the glass.
+ *
+ * Nothing in the captured subtree carries opacity, transform, or
+ * mask-image (docs/authoring.md): those are the three properties a
+ * capture root cannot survive.
+ */
+
+.sel-app {
+  position: fixed;
+  inset: 0;
+  background: var(--bench);
+  color: var(--ink);
+  font: 14px/1.5 var(--body);
+  overflow: hidden;
+}
+
+.sel-page {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  justify-items: center;
+  gap: 20px;
+  padding: 48px 96px;
+  overflow: auto;
+}
+
+.sel-prose-holder {
+  position: relative;
+  width: 520px;
+}
+
+.sel-prose {
+  /* Paper tooth: fractal-noise grain at ~5% ink — the texture of the
+   * uncoated stock this page is styled as, not a printed motif. An SVG
+   * filter inside a background IMAGE, not a filter on the element, so
+   * the capture rules (no opacity/transform/mask on the subtree) are
+   * untouched. Shared by the visible copy and the parked capture copy
+   * through this one class, so the twins can't drift. */
+  background:
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.08 0 0 0 0 0.08 0 0 0 0 0.06 0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23g)'/></svg>"),
+    var(--bench-hi);
+  outline: 1px solid var(--bench-lo);
+  padding: 28px 32px;
+}
+
+.sel-prose h2 {
+  margin: 0 0 12px;
+  font: 700 41px/1.55 var(--display);
+}
+
+.sel-prose p {
+  margin: 0 0 10px;
+  font: 21px/1.62 var(--body);
+}
+
+/* The bead is the highlight. See the note in the header. */
+.sel-prose ::selection,
+.sel-prose::selection {
+  background: transparent;
+  color: inherit;
+}
+
+/* The Surface's page copy. It exists to be captured, and it must never be
+ * the copy the user can select, because a captured selection arrives as a
+ * black bar. */
+.sel-prose-park {
+  position: absolute;
+  left: -10000px;
+  top: 0;
+}
