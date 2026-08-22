@@ -30,7 +30,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Surface, useSurface, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
-import { SUCK_FRAG, SUCK_VERT } from './candidateShaders'
+import { LIGHT, SUCK_FRAG, SUCK_VERT } from './candidateShaders'
 import { tokenize } from './candidateTokens'
 import {
   PhaseDrive,
@@ -49,12 +49,33 @@ const SNIPPET = `const surface = useSurface({ name: 'card' })
   <Surface.DOM>{card}</Surface.DOM>
 </Surface>`
 
+// Each run rolls its own shape — twist handedness and sharpness, arc
+// height, the bow's direction — so no two copies fly the same road. The
+// ranges are bounded to keep it the same gesture: the twist never
+// doubles, and the arc never dips below what clears the block.
+interface FlightShape {
+  twist: number
+  arc: number
+  sway: THREE.Vector2
+}
+
+const rollShape = (): FlightShape => {
+  const a = Math.random() * Math.PI * 2
+  return {
+    twist: (Math.random() < 0.5 ? -1 : 1) * (0.75 + Math.random() * 0.5),
+    arc: 0.8 + Math.random() * 0.4,
+    sway: new THREE.Vector2(Math.cos(a), Math.sin(a)),
+  }
+}
+
 function SuckMaterial({
   phase,
   cursor,
+  shape,
 }: {
   phase: React.RefObject<Phase>
   cursor: React.RefObject<THREE.Vector2>
+  shape: React.RefObject<FlightShape>
 }) {
   const texture = useSurfaceTexture()
   const { chrome, width, height } = useSurfaceChrome()
@@ -75,6 +96,12 @@ function SuckMaterial({
       // distance from the cursor. This is the whole gesture: at 0 the block
       // scales toward a point, which is a transform, not a suction.
       uLag: { value: copyTuning.lag },
+      uSway: { value: new THREE.Vector2() },
+      // A GLSL uniform left out of this bag reads vec3(0), and
+      // normalize(0) is NaN: Metal's clamp resolved the NaN diffuse to its
+      // floor, darkening every pixel of the sheet for the whole flight
+      // (2026-08-20).
+      uLightDir: { value: new THREE.Vector3(...LIGHT) },
       uDiffuse: { value: copyTuning.diffuse },
       uSpecPow: { value: copyTuning.specPow },
       uSpecGain: { value: copyTuning.specGain },
@@ -93,9 +120,10 @@ function SuckMaterial({
   useFrame(() => {
     uniforms.uT.value = phase.current.t
     uniforms.uCursor.value.copy(cursor.current)
-    uniforms.uTwist.value = copyTuning.twist
-    uniforms.uArc.value = copyTuning.arc
+    uniforms.uTwist.value = copyTuning.twist * shape.current.twist
+    uniforms.uArc.value = copyTuning.arc * shape.current.arc
     uniforms.uLag.value = copyTuning.lag
+    uniforms.uSway.value.copy(shape.current.sway).multiplyScalar(copyTuning.sway)
     uniforms.uDiffuse.value = copyTuning.diffuse
     uniforms.uSpecPow.value = copyTuning.specPow
     uniforms.uSpecGain.value = copyTuning.specGain
@@ -122,6 +150,7 @@ export function CandidateCopy() {
   const holder = useRef<HTMLDivElement>(null)
   const phase = usePhase()
   const cursor = useRef(new THREE.Vector2())
+  const shape = useRef<FlightShape>({ twist: 1, arc: 1, sway: new THREE.Vector2() })
   const [size, setSize] = useState<[number, number] | null>(null)
   const [box, setBox] = useState<WorldBox | null>(null)
   const [flying, setFlying] = useState(false)
@@ -168,6 +197,13 @@ export function CandidateCopy() {
 
   const copy = useCallback(
     (e: React.MouseEvent) => {
+      const el = holder.current
+      if (!el) return
+      // Measured at the click, not at mount: layout shifting above or
+      // below moves the block without resizing it, and a pure move fires
+      // neither the ResizeObserver nor window resize.
+      setBox(worldBoxOf(el))
+      shape.current = rollShape()
       track(e.clientX, e.clientY)
       void navigator.clipboard?.writeText(SNIPPET).catch(() => undefined)
       setCopies((n) => n + 1)
@@ -227,7 +263,7 @@ export function CandidateCopy() {
                 // rotation about the cursor, so the mesh only needs
                 // enough vertices for the per-vertex LAG to look smooth.
                 geometry={<planeGeometry args={[size[0], size[1], 48, 32]} />}
-                material={<SuckMaterial phase={phase} cursor={cursor} />}
+                material={<SuckMaterial phase={phase} cursor={cursor} shape={shape} />}
               >
                 <PhaseDrive
                   phase={phase}

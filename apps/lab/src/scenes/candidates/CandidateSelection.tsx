@@ -7,10 +7,11 @@
 // every other candidate, and casting a real shadow back down onto the
 // paragraph it came out of.
 //
-// One strip per line, independent, is not a stylistic choice — see the
-// shader's own note. A single welded blob magnified about a shared
-// centroid made every word on every line jump the moment a new line was
-// added to the selection.
+// The magnify anchors on each line's own strip — see the shader's note. A
+// single welded blob magnified about a shared centroid made every word on
+// every line jump the moment a new line was added. The strips' SHAPE does
+// weld (a smooth-min, so multi-line selections read as one liquid body);
+// only the lens centres stay per-line.
 //
 // The paragraph the user selects is NOT the paragraph the canvas samples.
 // The capture source lives inside a parked capture canvas, so the page
@@ -42,6 +43,13 @@ const MAX_RECTS = 8
 export interface BeadState {
   rects: THREE.Vector4[]
   count: number
+  /** √(selection area), px — the size cue the optics scale by. */
+  len: number
+  /** Area-weighted centre of the selection, content px. */
+  cx: number
+  cy: number
+  /** The pointer, in content px — the cursor light's position. */
+  light: THREE.Vector2
   /** 1 while a selection exists, eased toward 0 when it collapses. */
   on: number
   target: number
@@ -63,28 +71,38 @@ function BubbleMaterial({ bead }: { bead: React.RefObject<BeadState> }) {
       uCorner: { value: selectionTuning.corner },
       uEdge: { value: selectionTuning.edge },
       uHeight: { value: selectionTuning.height },
+      uWeld: { value: selectionTuning.weld },
+      uCaustic: { value: selectionTuning.caustic },
       // 0.06 = the words under a strip sit ~6% closer to its centre than
       // the page put them. Past ~0.12 the strip stops agreeing with the
       // line it came from and the eye reads two texts.
       uMagnify: { value: selectionTuning.magnify },
       uRefract: { value: selectionTuning.refract },
+      uIor: { value: selectionTuning.ior },
       // How far apart red and blue leave the rim, as a fraction of the
       // bend. 0.16 of a 6.5px bend is about a pixel of fringe — the width
       // at which the eye calls it glass rather than a printing error.
       uDisperse: { value: selectionTuning.disperse },
+      uFrost: { value: selectionTuning.frost },
       uShadowOffset: { value: new THREE.Vector2(selectionTuning.shadowX, selectionTuning.shadowY) },
       uShadowSoft: { value: selectionTuning.shadowSoft },
       uShadowAlpha: { value: selectionTuning.shadowAlpha },
       uLightDir: { value: new THREE.Vector3(...LIGHT) },
+      uLightPos: { value: new THREE.Vector3() },
+      uFollow: { value: selectionTuning.follow },
       // A cold body, because the paper is warm. Tinting toward the page's
       // own hue would make the glass disappear into it.
       uTint: { value: new THREE.Color('#7cc0ff') },
       uTintGain: { value: selectionTuning.tintGain },
+      uReflect: { value: selectionTuning.reflect },
       // Top-of-strip brightening and bottom-of-strip shading, as a
       // fraction. This is the term that gives a strip thickness — without
       // it the body is evenly tinted and reads as a coloured highlighter.
       uDepth: { value: selectionTuning.depth },
       uSpec: { value: selectionTuning.spec },
+      uSpecPow: { value: selectionTuning.specPow },
+      uSheenPow: { value: selectionTuning.sheenPow },
+      uRimPow: { value: selectionTuning.rimPow },
       // The broad sheen across the whole top. Kept well under the tight
       // specular: raise it and the glass turns to frosted plastic.
       uSheen: { value: selectionTuning.sheen },
@@ -109,17 +127,55 @@ function BubbleMaterial({ bead }: { bead: React.RefObject<BeadState> }) {
     uniforms.uCorner.value = k2.corner
     uniforms.uEdge.value = k2.edge
     uniforms.uHeight.value = k2.height
+    uniforms.uWeld.value = k2.weld
+    uniforms.uCaustic.value = k2.caustic
     uniforms.uMagnify.value = k2.magnify
-    uniforms.uRefract.value = k2.refract
+    // Bend follows body size: a bend that reads as glass on a
+    // paragraph-sized body folds a single thin line into ringing, because
+    // a thin strip is all rim. Saturates at the tuned value once the body
+    // reaches bodyPx. The shadow throw below rides the same law.
+    const bodyK = Math.min(b.len / Math.max(k2.bodyPx, 1), 1)
+    uniforms.uRefract.value = k2.refract * bodyK
+    uniforms.uIor.value = k2.ior
     uniforms.uDisperse.value = k2.disperse
-    uniforms.uShadowOffset.value.set(k2.shadowX, k2.shadowY)
+    uniforms.uFrost.value = k2.frost
+    // The shadow's throw is similar triangles from the point light: a body
+    // of height H under a light lightZ above the page lands its rim
+    // H·d/lightZ away, so the shadow tucks under the glass when the cursor
+    // is overhead and stretches as the light goes grazing. Capped at 3H —
+    // past ~70° incidence a real room also dims the light, which the shade
+    // alpha does not model, and an undimmed 30px-flung shadow reads as
+    // detached. The same √area law that scales the bend scales the throw:
+    // a thin line is a thin lens and throws like one. follow blends toward
+    // the static knob pair, which is the throw at follow 0.
+    const dx = b.cx - b.light.x
+    const dy = b.cy - b.light.y
+    const dl = Math.hypot(dx, dy) || 1
+    const mag = Math.min((dl / Math.max(k2.lightZ, 1)) * k2.height, 3 * k2.height)
+    uniforms.uShadowOffset.value.set(
+      (k2.shadowX * (1 - k2.follow) + (dx / dl) * mag * k2.follow) * bodyK,
+      (k2.shadowY * (1 - k2.follow) + (dy / dl) * mag * k2.follow) * bodyK,
+    )
     uniforms.uShadowSoft.value = k2.shadowSoft
     uniforms.uShadowAlpha.value = k2.shadowAlpha
     uniforms.uTintGain.value = k2.tintGain
+    uniforms.uReflect.value = k2.reflect
     uniforms.uDepth.value = k2.depth
     uniforms.uSpec.value = k2.spec
+    uniforms.uSpecPow.value = k2.specPow
     uniforms.uSheen.value = k2.sheen
+    uniforms.uSheenPow.value = k2.sheenPow
     uniforms.uRim.value = k2.rim
+    uniforms.uRimPow.value = k2.rimPow
+    uniforms.uLightPos.value.set(b.light.x, b.light.y, k2.lightZ)
+    uniforms.uFollow.value = k2.follow
+    const az = (k2.lightAz * Math.PI) / 180
+    const el = (k2.lightEl * Math.PI) / 180
+    uniforms.uLightDir.value.set(
+      Math.cos(el) * Math.cos(az),
+      Math.cos(el) * Math.sin(az),
+      Math.sin(el),
+    )
   })
 
   return (
@@ -142,8 +198,8 @@ function BubbleMaterial({ bead }: { bead: React.RefObject<BeadState> }) {
 // order to show that a selection dragged through four of them leaves the
 // first three exactly where they were.
 const PROSE = [
-  'A designer is a planner with an aesthetic sense. What he plans has a function, and the function is what gives the object its form. There is no such thing as decoration that is added afterwards and improves anything.',
-  'Complicating is easy, simplifying is difficult. To complicate, add whatever you like: colours, shapes, ornament. Everyone is capable of complicating. Very few are capable of simplifying.',
+  'Anyone who uses a properly designed object feels the presence of an artist who has worked for him, bettering his living conditions and encouraging him to develop his taste and sense of beauty.',
+  'The designer of today re-establishes the long-lost contact between art and the public, between living people and art as a living thing. Instead of pictures for the drawing-room, electric gadgets for the kitchen. There should be no such thing as art divorced from life.',
 ]
 
 export function CandidateSelection() {
@@ -155,6 +211,10 @@ export function CandidateSelection() {
   const bead = useRef<BeadState>({
     rects: Array.from({ length: MAX_RECTS }, () => new THREE.Vector4()),
     count: 0,
+    len: 0,
+    cx: 0,
+    cy: 0,
+    light: new THREE.Vector2(),
     on: 0,
     target: 0,
   })
@@ -205,17 +265,52 @@ export function CandidateSelection() {
         return
       }
       const n = Math.min(rects.length, MAX_RECTS)
+      let area = 0
+      let cx = 0
+      let cy = 0
+      // Pad ±2 so a strip clears its glyphs' descenders — but only on the
+      // edges that face the page. Adjacent line boxes tile exactly, and
+      // padding interior seams overlapped every pair of strips by 4px:
+      // overlapping boxes are one connected body under any union, so the
+      // lines stayed welded with the weld knob at zero (2026-08-21).
+      let prevRawBot = -1e9
+      let prevBot = 0
       for (let i = 0; i < n; i++) {
         const r = rects[i]
-        // Line boxes are tighter than the glyphs they hold; a strip has to
-        // clear the descenders or a selected 'g' pokes out of its own glass.
-        b.rects[i].set(r.left - host.left - 2, r.top - host.top - 2, r.width + 4, r.height + 4)
+        const rawTop = r.top - host.top
+        const rawBot = rawTop + r.height
+        const top = rawTop - prevRawBot < 1 ? prevBot : rawTop - 2
+        const nextTop = i + 1 < n ? rects[i + 1].top - host.top : 1e9
+        const bot = nextTop - rawBot < 1 ? rawBot : rawBot + 2
+        b.rects[i].set(r.left - host.left - 2, top, r.width + 4, bot - top)
+        prevRawBot = rawBot
+        prevBot = bot
+        const a = b.rects[i].z * b.rects[i].w
+        area += a
+        cx += (b.rects[i].x + b.rects[i].z / 2) * a
+        cy += (b.rects[i].y + b.rects[i].w / 2) * a
       }
       b.count = n
+      b.len = Math.sqrt(area)
+      b.cx = cx / Math.max(area, 1)
+      b.cy = cy / Math.max(area, 1)
       b.target = 1
     }
     document.addEventListener('selectionchange', read)
     return () => document.removeEventListener('selectionchange', read)
+  }, [])
+
+  // The cursor light, in the paragraph's content coordinates — the same
+  // space the rects are in, so the shader needs no transform of its own.
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      const el = live.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      bead.current.light.set(e.clientX - r.left, e.clientY - r.top)
+    }
+    window.addEventListener('pointermove', move)
+    return () => window.removeEventListener('pointermove', move)
   }, [])
 
   const prose = (
@@ -241,10 +336,11 @@ export function CandidateSelection() {
           <Surface
             surface={surface}
             size={size}
-            // The bead magnifies. Without the extra texels the words inside
-            // it arrive as the page's own raster stretched, which is the
-            // exact failure the optics bench exists to name.
-            resolution={2.2}
+            // Pinned at the tier ladder's top: always-sharp interior text
+            // up to 300% zoom on a 2x display, no re-rasterize hitch when
+            // the zoom crosses a tier boundary. The 4096px long-edge guard
+            // would allow ~7.9 on this 520px-wide block.
+            resolution={6}
             source={prose}
           >
             {/* The capture source: identical, parked, never selected. The
@@ -259,11 +355,12 @@ export function CandidateSelection() {
                 alpha="source"
                 frustumCulled={false}
                 position={[box.x, box.y, 0]}
-                // The mesh covers the whole paragraph and draws almost none
-                // of it: everything outside the bead's skirt is discarded.
-                // 96×64 is the bead's resolution, not the paragraph's — the
-                // arc at the rim needs a vertex every ~4px to stay round.
-                geometry={<planeGeometry args={[size[0], size[1], 96, 64]} />}
+                // One flat quad. The bump is optics computed in the
+                // fragment, not displaced geometry — a lifted mesh makes the
+                // screen→content mapping piecewise-projective, and the
+                // silhouette steps at every quad seam no matter how fine the
+                // tessellation (3px quads still stepped ~2px, 2026-08-21).
+                geometry={<planeGeometry args={[size[0], size[1]]} />}
                 material={<BubbleMaterial bead={bead} />}
                 pointerEvents="none"
               />

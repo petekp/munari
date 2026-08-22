@@ -40,6 +40,8 @@ export function PixelPerfect() {
   // makes a CSS pixel a world unit, and orthographic has no fov to fit.
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
   const size = useThree((s) => s.size)
+  const setDpr = useThree((s) => s.setDpr)
+  const dpr = useThree((s) => s.viewport.dpr)
   useEffect(() => {
     camera.fov = FOV
     camera.position.set(0, 0, cameraDistance(size.height, FOV))
@@ -47,6 +49,18 @@ export function PixelPerfect() {
     camera.far = camera.position.z * 3
     camera.updateProjectionMatrix()
   }, [camera, size.height])
+  // The buffer follows the REAL devicePixelRatio, no ceiling. Browser zoom
+  // multiplies dpr while shrinking the CSS viewport by the same factor, so
+  // the buffer stays at physical-screen size at any zoom — a cap buys no
+  // memory back, it only lowers quality. 2026-08-21: with the usual [1, 2]
+  // clamp, a bench inspected at ~290% zoom drew the bead's silhouette in
+  // ~3px stair steps while the DOM heading beside it — rasterized by the
+  // page at the full zoomed density — stayed razor sharp. Polled per frame
+  // like the knobs dial: zoom fires no dedicated event.
+  useFrame(() => {
+    const want = Math.max(1, window.devicePixelRatio)
+    if (Math.abs(want - dpr) > 1e-3) setDpr(want)
+  })
   return null
 }
 

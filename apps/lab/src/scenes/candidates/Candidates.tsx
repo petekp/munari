@@ -102,7 +102,8 @@ export function CandidatesApp({ chips }: { chips?: React.ReactNode }) {
         pointerMode="surfaces"
         style={{ position: 'fixed', inset: 0, zIndex: 40 }}
         gl={{ alpha: true, antialias: true }}
-        dpr={[1, 2]}
+        // No dpr clamp: PixelPerfect owns render density and follows the
+        // live devicePixelRatio, browser zoom included.
         camera={{ fov: 42, position: [0, 0, 1000] }}
         onCreated={(state) => {
           // The page under the canvas IS the background; a cleared opaque

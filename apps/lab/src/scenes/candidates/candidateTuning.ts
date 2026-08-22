@@ -13,48 +13,84 @@
 // files no longer carry their own copies.
 
 export const rippleTuning = {
-  durationMs: 820,
+  durationMs: 1640,
   /** Peak lift of the far corners, px toward the camera. */
-  lift: 56,
+  lift: 36,
   /** Wave amplitude at the free edge, px of silhouette bend. */
   bend: 14,
   /** Wavelength, as a fraction of the control's half-diagonal. */
-  waveSpan: 0.8,
+  waveSpan: 0.4,
   /** Full wave cycles over one press. */
-  flapCycles: 2.1,
+  flapCycles: 4.6,
   /** Ring train length behind the front, in wavelengths. */
-  tail: 1.4,
-  shadeGain: 0.9,
+  tail: 3.35,
+  shadeGain: 0.55,
   /** Where the settle window opens, as a fraction of the run. Past this
    *  every wave tapers to zero height and zero velocity, so the sheet is
    *  flat before the DOM takes the pixels back. */
   settle: 0.72,
   /** Shadow opacity under a mid-height caster. */
-  shadowAlpha: 0.28,
+  shadowAlpha: 0.14,
   /** Penumbra width at full lift, px of edge feather. */
-  shadowSoft: 14,
+  shadowSoft: 10,
 }
 
 export const selectionTuning = {
-  /** Bead height, px. Tall enough that the rim reads as a bevel at a 16px
-   *  line; short enough the shadow stays a contact shadow. */
-  height: 9,
-  /** Skirt past the selection's own box, px — the bevel. Below ~5 there is
-   *  no glass, only a rounded highlight. */
-  edge: 7,
-  corner: 9,
-  magnify: 0.06,
-  refract: 6.5,
-  disperse: 0.16,
-  shadowX: 2.5,
-  shadowY: 3.5,
-  shadowSoft: 5,
-  shadowAlpha: 0.22,
-  tintGain: 0.16,
-  depth: 0.13,
-  spec: 0.7,
-  sheen: 0.1,
-  rim: 0.3,
+  height: 8,
+  /** Bevel width, px, capped in-shader at each strip's half-height — at
+   *  the cap the cross-section is a half-capsule with no flat plateau. */
+  edge: 24,
+  /** Corner radius, px, capped at the strip's half-height: at the cap the
+   *  strip's ends are stadium-round. */
+  corner: 24,
+  /** Smooth-min radius, px, fusing neighbouring strips into one body. */
+  weld: 0,
+  magnify: 0.01,
+  refract: 2.75,
+  /** Body size — √(selection area), px — at which the bend reaches the
+   *  full `refract` value. Smaller selections bend proportionally less. */
+  bodyPx: 130,
+  /** Index of refraction; 1.45 is crown-glass territory. The bend length
+   *  stays `refract` — this shapes how it ramps toward the rim. */
+  ior: 1.42,
+  disperse: 0.07,
+  /** Scatter radius of the frosted body, px. Shares the dispersion loop's
+   *  eight taps, so it costs nothing extra. */
+  frost: 2.5,
+  shadowX: 0,
+  shadowY: 7,
+  shadowSoft: 7.5,
+  shadowAlpha: 0.12,
+  /** Gain on the caustic — the bright band the rim focuses just outside
+   *  the silhouette, down-light of the body. */
+  caustic: 0.38,
+  /** Light bearing, degrees. 123/51 reproduces the shared LIGHT vector
+   *  the other candidates are lit by. */
+  lightAz: 78,
+  lightEl: 68,
+  /** 0 = the fixed bearing above; 1 = a point light riding the cursor.
+   *  The shadow direction follows the same blend. */
+  follow: 1,
+  /** The cursor light's height above the page, px. Lower swings the
+   *  highlights faster as the pointer passes. */
+  lightZ: 240,
+  /** Absorption strength: how deeply the body colours what shows through
+   *  it. Multiplicative — the ink stays dark, the paper takes the cast. */
+  tintGain: 0.6,
+  /** Gain on the mirrored environment: the white streak on the upper
+   *  curvature and the dark floor in the lower rim. */
+  reflect: 1,
+  depth: 0.24,
+  /** Post-normalization gains: the shader's (n+2)/2π factor keeps lobe
+   *  energy constant, so these run ~10x smaller than the old raw gains. */
+  spec: 0.05,
+  /** Highlight tightness: higher is a smaller, harder glint. */
+  specPow: 256,
+  sheen: 0.07,
+  sheenPow: 24,
+  rim: 0.44,
+  /** Fresnel falloff: lower spreads the rim glow inward from the border. */
+  rimPow: 1,
 }
 
 export const unrollTuning = {
@@ -98,6 +134,9 @@ export const copyTuning = {
   arc: 90,
   /** Fraction of the flight spent handing out per-vertex start times. */
   lag: 0.42,
+  /** Peak sideways bow of the flight path, px; each run rolls its own
+   *  direction at the click. */
+  sway: 60,
   /** Bound on the broad diffuse term, ± fraction of the sheet's colour. */
   diffuse: 0.1,
   specPow: 48,
@@ -163,21 +202,33 @@ export const SELECTION_GROUPS: CandidateKnobGroup<typeof selectionTuning>[] = [
     title: 'glass body',
     knobs: [
       { key: 'height', label: 'inflate px', min: 0, max: 24, step: 0.5 },
-      { key: 'edge', label: 'rim width px', min: 1, max: 20, step: 0.5 },
-      { key: 'corner', label: 'corner px', min: 0, max: 20, step: 0.5 },
+      { key: 'edge', label: 'rim width px', min: 1, max: 24, step: 0.5 },
+      { key: 'corner', label: 'corner px', min: 0, max: 24, step: 0.5 },
+      { key: 'weld', label: 'weld px', min: 0, max: 30, step: 0.5 },
       { key: 'magnify', label: 'magnify', min: 0, max: 0.2, step: 0.005 },
       { key: 'refract', label: 'refract px', min: 0, max: 20, step: 0.25 },
+      { key: 'bodyPx', label: 'full bend √px', min: 60, max: 600, step: 10 },
+      { key: 'ior', label: 'ior', min: 1, max: 2.4, step: 0.01 },
       { key: 'disperse', label: 'disperse', min: 0, max: 0.6, step: 0.01 },
+      { key: 'frost', label: 'frost px', min: 0, max: 12, step: 0.25 },
     ],
   },
   {
     title: 'light',
     knobs: [
+      { key: 'lightAz', label: 'light az °', min: 0, max: 360, step: 1 },
+      { key: 'lightEl', label: 'light el °', min: 5, max: 85, step: 1 },
+      { key: 'follow', label: 'follow cursor', min: 0, max: 1, step: 0.02 },
+      { key: 'lightZ', label: 'light height px', min: 60, max: 800, step: 10 },
       { key: 'tintGain', label: 'tint', min: 0, max: 0.6, step: 0.01 },
+      { key: 'reflect', label: 'reflect', min: 0, max: 1, step: 0.02 },
       { key: 'depth', label: 'depth', min: 0, max: 0.5, step: 0.01 },
       { key: 'spec', label: 'specular', min: 0, max: 2, step: 0.05 },
+      { key: 'specPow', label: 'spec power', min: 4, max: 256, step: 2 },
       { key: 'sheen', label: 'sheen', min: 0, max: 0.6, step: 0.01 },
+      { key: 'sheenPow', label: 'sheen power', min: 2, max: 24, step: 0.5 },
       { key: 'rim', label: 'rim light', min: 0, max: 1, step: 0.02 },
+      { key: 'rimPow', label: 'rim falloff', min: 1, max: 6, step: 0.1 },
     ],
   },
   {
@@ -187,6 +238,7 @@ export const SELECTION_GROUPS: CandidateKnobGroup<typeof selectionTuning>[] = [
       { key: 'shadowY', label: 'offset y px', min: -10, max: 10, step: 0.5 },
       { key: 'shadowSoft', label: 'soften px', min: 0, max: 20, step: 0.5 },
       { key: 'shadowAlpha', label: 'opacity', min: 0, max: 0.8, step: 0.02 },
+      { key: 'caustic', label: 'caustic', min: 0, max: 1, step: 0.02 },
     ],
   },
 ]
@@ -253,6 +305,7 @@ export const COPY_GROUPS: CandidateKnobGroup<typeof copyTuning>[] = [
       { key: 'twist', label: 'twist rad', min: 0, max: 6, step: 0.1 },
       { key: 'arc', label: 'arc px', min: 0, max: 300, step: 5 },
       { key: 'lag', label: 'lag', min: 0, max: 0.8, step: 0.02 },
+      { key: 'sway', label: 'sway px', min: 0, max: 200, step: 5 },
     ],
   },
   {
