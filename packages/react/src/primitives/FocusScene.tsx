@@ -38,6 +38,7 @@ import {
   createMemoryStack,
   entryPick,
   interiorBoundary,
+  memberId,
   needsReframe,
   readingOrder,
   reframeDelta,
@@ -181,12 +182,13 @@ export function FocusScene({
   // memo is keyed on `camera`, so a scene that swapped its default camera
   // would build a fresh layer while every proxy already registered stayed
   // behind in the old, removed one — reachable by nothing, focusable by no
-  // one. The leaf-id counter has to move with it: restarting at 0 while the
-  // tree (a ref, so it survives) still holds those ids mints duplicates. The
-  // directional trail is here for the plain reason that a trail is scene
+  // one. The member-id counters have to move with it: restarting at 0 while
+  // the tree (a ref, so it survives) still holds those ids mints duplicates.
+  // The directional trail is here for the plain reason that a trail is scene
   // state and a camera is not a new scene.
   const proxyLayer = useRef(createProxyLayer()).current
   const leafSeq = useRef(0)
+  const compositeSeq = useRef(0)
   const history = useRef(createDirectionalHistory()).current
   const cursorRef = useRef<string | null>(null)
   // Cause of the focusin we are about to trigger; a focusin with no pending
@@ -805,18 +807,18 @@ export function FocusScene({
         }
       },
       registerMember(groupId, entry) {
-        const memberId = entry.label ?? `${groupId}:composite`
+        const id = memberId(groupId, 'composite', compositeSeq.current++, entry.label)
         // The unit element contract: focusable by script only. Focusing it
         // paints the browser's own focus treatment into the texture (probe
         // 2) and makes document.activeElement the honest unit-level truth.
         entry.root.tabIndex = -1
         tree.registerMember(groupId, {
-          id: memberId,
+          id,
           kind: 'composite',
           order: entry.order,
           data: { root: entry.root, object: entry.object },
         })
-        return () => tree.unregisterMember(groupId, memberId)
+        return () => tree.unregisterMember(groupId, id)
       },
       registerLeaf(groupId, entry) {
         const proxy = document.createElement('div')
@@ -861,9 +863,9 @@ export function FocusScene({
         proxy.addEventListener('blur', onBlur)
         proxyLayer.appendChild(proxy)
 
-        const memberId = `${groupId}:leaf:${leafSeq.current++}:${entry.label}`
+        const id = memberId(groupId, 'leaf', leafSeq.current++, entry.label)
         tree.registerMember(groupId, {
-          id: memberId,
+          id,
           kind: 'leaf',
           order: entry.order,
           data: { root: proxy, object: entry.object },
@@ -880,10 +882,10 @@ export function FocusScene({
             // silently drops focus to <body> (react-three-a11y's culling
             // bug). Hand focus up first: own unit, else the canvas.
             if (document.activeElement === proxy) {
-              tree.unregisterMember(groupId, memberId)
+              tree.unregisterMember(groupId, id)
               if (!focusUnit(groupId, 'ascend')) focusEl(gl.domElement, 'ascend')
             } else {
-              tree.unregisterMember(groupId, memberId)
+              tree.unregisterMember(groupId, id)
             }
             proxy.removeEventListener('keydown', onKeydown)
             proxy.removeEventListener('focus', onFocus)
@@ -934,7 +936,7 @@ export function FocusScene({
     }
     // The trailing refs are stable identities, not re-run triggers.
   }, [camera, gl, tree, runtimes, subscribers, fulfillers, navPolicies, proxyLayer,
-      history, leafSeq, marginRef, initialFocusRef, onFocusChangeRef])
+      history, leafSeq, compositeSeq, marginRef, initialFocusRef, onFocusChangeRef])
 
   // The built-in fulfiller's consumer: a 0.32s smoothstep truck. Armed only
   // in rigless scenes — registering any app fulfiller disarms it for good.

@@ -4,6 +4,7 @@ import {
   createMemoryStack,
   entryPick,
   interiorBoundary,
+  memberId,
   needsReframe,
   readingOrder,
   reframeDelta,
@@ -402,5 +403,43 @@ describe('focus-visibility geometry (the ported scroll-into-view obligation)', (
     const d = reframeDelta({ x: 0, y: 100, w: 2000, h: 100 }, vp)
     expect(d.dx).toBe(-500) // center 1000 → viewport center 500
     expect(d.dy).toBe(0)
+  })
+})
+
+describe('focusTree member ids', () => {
+  it('separates two unnamed composites in the same group', () => {
+    // The shipped bug: no sequence and no label collapsed both to
+    // 'g:composite'. FocusScene mints these from a scene-lifetime counter
+    // per kind, so the sequence is the only thing keeping them apart.
+    expect(memberId('g', 'composite', 0)).not.toBe(memberId('g', 'composite', 1))
+  })
+
+  it('separates two members that share a label', () => {
+    // A Surface `name` is not unique, so the label alone can never be the id.
+    expect(memberId('g', 'composite', 0, 'panel')).not.toBe(
+      memberId('g', 'composite', 1, 'panel'),
+    )
+  })
+
+  it('keeps the label on the id, because debugMembers prints these', () => {
+    expect(memberId('g', 'leaf', 3, 'Volume')).toBe('g:leaf:3:Volume')
+    expect(memberId('g', 'composite', 0)).toBe('g:composite:0')
+  })
+
+  it('separates the two kinds, which count independently', () => {
+    expect(memberId('g', 'leaf', 0, 'x')).not.toBe(memberId('g', 'composite', 0, 'x'))
+  })
+
+  it('collapses two members when their ids do collide', () => {
+    // Why the sequence is load-bearing: the members map is keyed by id, so a
+    // duplicate replaces rather than joins — and the first member's
+    // unregister then takes the survivor's entry with it.
+    const t = createFocusTree<string>()
+    t.registerGroup('g')
+    t.registerMember('g', { id: 'g:composite', kind: 'composite', data: 'first' })
+    t.registerMember('g', { id: 'g:composite', kind: 'composite', data: 'second' })
+    expect(t.members('g').map((m) => m.data)).toEqual(['second'])
+    t.unregisterMember('g', 'g:composite')
+    expect(t.members('g')).toEqual([])
   })
 })

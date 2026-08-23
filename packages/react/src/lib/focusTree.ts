@@ -20,6 +20,28 @@ export interface MemberInfo<T> {
 }
 
 /**
+ * Mint a member id. The sequence is what makes it unique; the label is only
+ * there so `debugMembers` prints something a human recognises.
+ *
+ * The label cannot carry uniqueness. For a composite it is a Surface's
+ * `name`, which is optional and need not be distinct, and the composite
+ * branch used to fall back to a bare `<group>:composite` when it was absent
+ * — so two unnamed Surfaces in one group minted the same id, the second
+ * registration replaced the first in the members map, and the first one's
+ * unregister then deleted the survivor (2026-08-23). Callers pass a
+ * scene-lifetime counter per kind; restarting one while the tree still holds
+ * its earlier ids mints duplicates again.
+ */
+export function memberId(
+  groupId: string,
+  kind: TargetKind,
+  seq: number,
+  label?: string,
+): string {
+  return `${groupId}:${kind}:${seq}${label === undefined ? '' : `:${label}`}`
+}
+
+/**
  * The focus-memory discipline (Flutter _focusedChildren), reusable at both
  * layers: the tree remembers member ids per group; the manager remembers
  * interior HTMLElements per composite. Same rules everywhere — push-to-top
