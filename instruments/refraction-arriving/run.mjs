@@ -1,10 +1,12 @@
 // refraction-arriving gate — is the page you are arriving at really live,
-// and really the only thing on the sheet at the end of the crossing?
+// really the only thing on the sheet at the end of the crossing, and really
+// handed back to the browser once it lands?
 //
-// The refraction scene puts two documents in one material. Only one of
-// them is presented; the other is a resident source, sampled by handle
-// through `useSurfaceTextureOf` and drawn nowhere in the scene graph.
-// Two claims hold the scene up, and both fail silently:
+// The refraction scene puts two documents in one material. At most one is
+// presented at a time; while the drop is open neither is, and both are
+// resident sources, sampled by handle through `useSurfaceTextureOf` and
+// drawn nowhere in the scene graph. Three claims hold the scene up, and all
+// three fail silently:
 //
 //   1. The arriving document keeps painting while it is only being
 //      sampled. If its capture stalls, the sheet still draws — it just
@@ -13,6 +15,9 @@
 //      nothing else. A transmission that never reaches 1 leaves the
 //      leaving page faintly on top forever, which reads as a soft mix
 //      rather than a bug.
+//   3. At t = 1 the crossing has LANDED: no mesh, and the arriving document
+//      is ordinary DOM the browser hit-tests, focuses and selects. A scene
+//      that lifts and never lands looks identical in a screenshot.
 //
 // The teeth for (2): switch the figure inside the LEAVING document —
 // square to grid, the largest change its height field can take. At the
@@ -20,13 +25,19 @@
 // because by then nothing of the leaving page is being drawn.
 //
 // The teeth for (1): both documents print the same shared clock, so a
-// full-resolution luminance sum over the sheet must move while the
-// scrub is parked at 1 and nothing is touched.
+// full-resolution luminance sum over the sheet must move while the crossing
+// is parked at its end and nothing is touched.
+//
+// The teeth for (3), from Pete's report on 2026-08-22: count the meshes,
+// read the GL rect over the sheet, and ask the browser for a caret at thirty
+// points across it. Both halves are needed. A canvas that still covers the
+// sheet passes the caret test on its own, because the pointer relay lets a
+// hit through to the DOM underneath — which is exactly the state the scene
+// was in when the report came in.
 //
 // This also stands in for a compile check on the scene's program: a
 // shader that fails to link draws nothing, and the opaque-coverage
 // assertion below would read 0 instead of the full rect.
-
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
@@ -68,21 +79,6 @@ const CHANGED = 2.0
 // one's digits move between the two grabs.
 const SETTLED = 0.5
 
-/**
- * Share of the sheet's pixels that must change when the light crosses it.
- *
- * The raking highlight lives on glyph edges, which are a few per cent of a
- * page, so mean luminance cannot see it at all — measured 2026-08-22,
- * sweeping the pointer the full width of the panel moved the mean by 0.002
- * of a luminance unit and moved 4.18% of pixels by more than eight. A
- * frozen light is otherwise invisible: the sheet still glints, it just
- * stops answering the hand.
- */
-const LIT_FLOOR = 0.02
-
-/** Luminance step that counts one pixel as having changed under the light. */
-const LIT_STEP = 8
-
 /** Luminance gap that counts a cell as showing different content. */
 const CONTENT = 20
 
@@ -93,10 +89,32 @@ const NEAR = 4
  * How many of the changing cells must be whole at the midpoint.
  *
  * A global crossfade scores 0 here by construction — every pixel is a blend
- * of both. Measured 2026-08-22 the front scores 63–66% across runs, so 25% is a floor with
- * real room in it that still cannot be reached by any blend.
+ * of both, and a crossfade behind the same glass still scores 0, because a
+ * reflection does not make a cell match a document.
+ *
+ * The glass is why this number is not 100%. Everything optical — the bend,
+ * the dispersion, the room reflection, the rim — lives on the drop's
+ * meniscus, which is a thin band, so most of what the drop covers is the
+ * arriving page shown straight. Measured 2026-08-22 at the committed
+ * tuning: 59%, and 59% again with the mirror dragged to 0 and to its
+ * maximum, because a knob that only paints the meniscus cannot move a
+ * whole-cell score. This floor is set well under that so retuning the drop
+ * has room, and no blend can reach it.
+ *
+ * The same front scored 37% before the rewrite that day, when the glass was
+ * a relief of the leaving page's ink and the reflection sat on every glyph
+ * edge on the sheet.
  */
 const PURE_FLOOR = 0.25
+
+/**
+ * The last scrub position that is still a lift, one step short of the end.
+ *
+ * The input's own `step` is 0.001, so this is as close to the landing as the
+ * gate can park without taking it. Everything that reads the sheet's PIXELS
+ * at the end of the crossing reads here; t = 1 has no sheet to read.
+ */
+const END = 0.999
 
 let browser, server
 const deadline = setTimeout(() => {
@@ -206,26 +224,6 @@ try {
     }
   }
 
-  /** Per-pixel luminance over the sheet. The light is too local for a mean. */
-  const grabLuma = () => {
-    const { gl, scene, camera } = window.__r3f
-    gl.render(scene, camera)
-    const canvas = gl.domElement
-    const dpr = canvas.width / canvas.clientWidth
-    const r = document.querySelector('.refraction-holder').getBoundingClientRect()
-    const x = Math.round(r.left * dpr)
-    const w = Math.round(r.width * dpr)
-    const h = Math.round(r.height * dpr)
-    const y = Math.round((canvas.clientHeight - r.bottom) * dpr)
-    const px = new Uint8Array(w * h * 4)
-    gl.getContext().readPixels(x, y, w, h, 0x1908, 0x1401, px)
-    const out = new Array(w * h)
-    for (let i = 0; i < w * h; i++) {
-      out[i] = px[i * 4] * 0.2126 + px[i * 4 + 1] * 0.7152 + px[i * 4 + 2] * 0.0722
-    }
-    return out
-  }
-
   const uniforms = () => {
     let found = null
     window.__r3f?.scene?.traverse((o) => {
@@ -242,6 +240,49 @@ try {
       }
     })
     return found
+  }
+
+  // What the browser owns over the sheet, and what it will let a user do
+  // there. Points are sampled across the holder rather than at its centre: a
+  // single probe lands in a margin often enough to pass a broken landing.
+  const handoff = () => {
+    const { gl, scene, camera } = window.__r3f
+    let meshes = 0
+    scene.traverse((o) => {
+      if (o.isMesh && o.material?.uniforms?.uTransmission) meshes++
+    })
+    gl.render(scene, camera)
+    const canvas = gl.domElement
+    const dpr = canvas.width / canvas.clientWidth
+    const r = document.querySelector('.refraction-holder').getBoundingClientRect()
+    const x = Math.round(r.left * dpr)
+    const w = Math.round(r.width * dpr)
+    const h = Math.round(r.height * dpr)
+    const y = Math.round((canvas.clientHeight - r.bottom) * dpr)
+    const px = new Uint8Array(w * h * 4)
+    gl.getContext().readPixels(x, y, w, h, 0x1908, 0x1401, px)
+    let opaque = 0
+    for (let i = 0; i < w * h; i++) if (px[i * 4 + 3] > 200) opaque++
+
+    const docs = new Set()
+    let points = 0
+    let carets = 0
+    for (let fy = 0.12; fy < 0.92; fy += 0.16) {
+      for (let fx = 0.06; fx < 0.62; fx += 0.11) {
+        points++
+        const range = document.caretRangeFromPoint?.(
+          Math.round(r.left + r.width * fx),
+          Math.round(r.top + r.height * fy),
+        )
+        const node = range?.startContainer
+        const el = node ? (node.nodeType === 1 ? node : node.parentElement) : null
+        const doc = el?.closest('[data-doc]')
+        if (!doc) continue
+        carets++
+        docs.add(doc.getAttribute('data-doc'))
+      }
+    }
+    return { meshes, opaque, points, carets, docs: [...docs].sort() }
   }
 
   const clocks = () =>
@@ -318,20 +359,50 @@ try {
   )
 
   // ── the arriving document is a live layout, not a picture ────────────
-  await scrub(1)
+  // Parked one scrub step short of the end, not at it. At t = 1 the crossing
+  // has LANDED: the mesh is gone and the arriving document is ordinary DOM,
+  // so there is no texture left to sample and a GL read returns an empty
+  // rect. 0.999 is the last position where the sheet is still drawn from a
+  // texture, and the picture there is the landing's — measured 2026-08-22,
+  // relief 8.3e-16, transmission 0.999997, zoom 1.0000007.
+  await scrub(END)
   const settled = await page.evaluate(uniforms)
   check(
-    settled.transmission === 1 && settled.relief === 0 && settled.zoom === 1,
-    `the crossing lands exactly ` +
-      `(relief ${settled.relief}, transmission ${settled.transmission}, zoom ${settled.zoom})`,
+    settled.transmission > 1 - 1e-5 && settled.relief < 1e-9 && settled.zoom < 1 + 1e-5,
+    `the crossing reaches its end ` +
+      `(relief ${settled.relief.toExponential(1)}, ` +
+      `transmission ${settled.transmission.toFixed(6)}, zoom ${settled.zoom.toFixed(6)})`,
   )
   const first = await page.evaluate(grab)
   await sleep(600)
   const second = await page.evaluate(grab)
   check(
     first.sum !== second.sum,
-    `the arriving document keeps painting while parked at t=1 ` +
+    `the arriving document keeps painting while it is only being sampled ` +
       `(luminance sum ${first.sum} → ${second.sum})`,
+  )
+
+  // ── the crossing lands back in the compositor's hold ──────────────────
+  // The defect this pins, from Pete's report on 2026-08-22: the scene lifted
+  // at any t above zero and never landed on the far side, so a GL layer sat
+  // over the page forever and none of the arriving document's words could be
+  // selected. They had never been anywhere but a texture.
+  //
+  // Both halves are checked because either alone passes while broken. A
+  // canvas that still covers the sheet passes the caret test, since the
+  // relay lets a hit through to the DOM underneath — that is exactly the
+  // state this scene was in when the report came in.
+  await scrub(1, 900)
+  const landing = await page.evaluate(handoff)
+  check(
+    landing.meshes === 0 && landing.opaque === 0,
+    `the sheet goes back to the compositor at t=1 ` +
+      `(${landing.meshes} meshes, ${landing.opaque} opaque GL px over the holder)`,
+  )
+  check(
+    landing.carets === landing.points && landing.docs.join() === 'II',
+    `and the arriving document is selectable DOM ` +
+      `(${landing.carets}/${landing.points} points take a caret, in [${landing.docs}])`,
   )
 
   // ── nothing of the leaving document survives the landing ─────────────
@@ -366,7 +437,7 @@ try {
     `switching the leaving figure changes the sheet at the start (${startDelta.toFixed(2)} > ${CHANGED})`,
   )
 
-  await scrub(1)
+  await scrub(END)
   const landedGrid = await page.evaluate(grab)
   await page.evaluate(() => {
     const host = document.querySelector(
@@ -379,27 +450,8 @@ try {
   const endDelta = diff(landedGrid, landedSquare)
   check(
     endDelta < SETTLED,
-    `and does not change it at the end (${endDelta.toFixed(2)} < ${SETTLED})`,
-  )
-
-  // ── the light answers the hand ───────────────────────────────────────
-  await scrub(0.33, 400)
-  const panel = await page.evaluate(() => {
-    const r = document.querySelector('.refraction-holder').getBoundingClientRect()
-    return { l: r.left, t: r.top, w: r.width, h: r.height }
-  })
-  await page.mouse.move(panel.l + panel.w * 0.18, panel.t + panel.h * 0.5)
-  await sleep(250)
-  const litLeft = await page.evaluate(grabLuma)
-  await page.mouse.move(panel.l + panel.w * 0.82, panel.t + panel.h * 0.5)
-  await sleep(250)
-  const litRight = await page.evaluate(grabLuma)
-  const moved =
-    litLeft.filter((v, i) => Math.abs(v - litRight[i]) > LIT_STEP).length / litLeft.length
-  check(
-    moved > LIT_FLOOR,
-    `the raking light follows the pointer ` +
-      `(${(moved * 100).toFixed(2)}% of pixels moved by >${LIT_STEP}, floor ${LIT_FLOOR * 100}%)`,
+    `and does not change the sheet at the end of the crossing ` +
+      `(${endDelta.toFixed(2)} < ${SETTLED})`,
   )
 
   check(errors.length === 0, `no page errors (${errors.length})`)

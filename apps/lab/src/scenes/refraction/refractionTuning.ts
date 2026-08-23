@@ -8,37 +8,14 @@
 // reader (AGENTS.md).
 //
 // What is NOT in the bag: the stage box, which the DOM lays itself out in
-// and so cannot move per frame, and the three measured gradients, which are
-// facts about this page rather than choices about the effect.
+// and so cannot move per frame, and the perceptual floor, which is a fact
+// about eyes rather than a choice about the effect.
 
 /** The stage box both views lay themselves out in, CSS px. */
 export const STAGE_W = 560
 export const STAGE_H = 420
 
 // ── measurements, not knobs ────────────────────────────────────────────
-
-/**
- * The lens field's slope over a text block, measured off the panel.
- *
- * Re-measured 2026-08-22 at `fieldPx` 18 as the 90th percentile of the
- * field's gradient over the leaving document: half the page is bare paper
- * and reads 0, so the interesting mass sits in the top decile. A text block
- * is where the perceptual floor has to be argued, so the floor is stated
- * against this.
- *
- * Both gradients are per STEP, not per px, so they move with `fieldPx`. At
- * the old 8px texel these read 0.10 and 0.73; the same page at 18px steps
- * 36 CSS px instead of 16 and so measures a larger slope for the same ink.
- */
-export const LENS_GRADIENT = 0.3663
-
-/**
- * The same slope at the figure's border, where the field steps hardest.
- *
- * The 99th percentile of the same measurement. The bend's ceiling exists to
- * keep this case from tearing whatever is behind it.
- */
-export const FIGURE_GRADIENT = 0.8314
 
 /**
  * The floor a human eye needs to see the bend at all, CSS px.
@@ -93,79 +70,93 @@ export const refractionTuning = {
    *  fading up in place. */
   approachZoom: 1.24,
 
-  /**
-   * Peak refraction, in CSS px of displacement per unit field gradient.
-   *
-   * 43px against a text block (field gradient 0.3663) wants 15.8px of
-   * travel, which `maxBendPx` then knees down to 2.86px at peak relief —
-   * clear of the 2px perceptual floor the law's test pins, and a fifth of a
-   * line of body text.
-   *
-   * At this setting the ceiling, not this number, is what the eye sees:
-   * every part of the page wants more bend than the ceiling allows, so
-   * raising this barely moves the result. See `maxBendPx`.
-   */
-  amplitude: 43,
+  // ── the drop ─────────────────────────────────────────────────────────
+  //
+  // The front is the contact line of a drop of glass, and these four shape
+  // it. The ink decides where the drop grows; none of it decides what the
+  // drop looks like. Before 2026-08-22 the surface was cut from the leaving
+  // page's ink field, which made the glass a relief of its letterforms with
+  // the front merely masking it — embossed text, not liquid emerging.
 
   /**
-   * Ceiling on the displacement, CSS px.
+   * How wide the meniscus is, CSS px.
    *
-   * The figure's border steps the field more than twice as hard as a
-   * paragraph does, so uncapped it would displace by 35.8px — past the
-   * margin the approach zoom leaves around the arriving page, where the uv
-   * clamp smears its border row into a straight streak.
+   * The whole lens. Inside about three of these the profile is flat and the
+   * arriving page reads straight through; outside the contact line there is
+   * no surface at all. At 10 the bend measures 13.3px half a pixel in, 8.8px
+   * two in, 2.6px ten in, and 0.8px twenty in.
    *
-   * A soft knee, not a hard cap: want / (1 + want / max) approaches this
-   * and never reaches it. A hard cap leaves a plateau where neighbouring
-   * pixels share a magnitude but not a direction, and the title's heavy
-   * strokes sheared along it — seen 2026-08-22, fixed by the knee.
-   *
-   * 3.5 is well under what even bare body text wants (15.8px), so the knee
-   * is saturated everywhere and the page bends almost uniformly: 2.86px
-   * over text against 3.19px at the figure's border, a ratio of 1.11. The
-   * bevel that used to distinguish the two is gone, and so is any visible
-   * dispersion, because the fringe is a fraction of a bend that is now
-   * 3px everywhere. Around 14 the figure gets three times what a paragraph
-   * gets, which is the ratio that reads as an edge of glass.
+   * Narrow reads as a hard bevel and wide reads as a lens over the whole
+   * blob, which stops the arriving page being legible while it arrives.
    */
-  maxBendPx: 3.5,
+  rimPx: 10,
+
+  /**
+   * How tall the drop stands, CSS px.
+   *
+   * Only ever seen through the slope it implies, so it trades against
+   * `rimPx`: the steepest surface is roughly height over rim width. It is
+   * stated as a height anyway because that is the thing with a shape.
+   */
+  heightPx: 14,
+
+  /**
+   * Refractive index of the glass. 1.45 is soda-lime; 1.33 is water.
+   *
+   * Sets how far the meniscus can bend before total internal reflection
+   * takes over. At 1 there is no bend at any slope, which is a legal answer
+   * and a useful one for seeing what the front alone does.
+   */
+  ior: 1.45,
+
+  /**
+   * CSS px the arriving page moves per unit of lateral deviation.
+   *
+   * The drop's thickness, in effect — Snell gives an angle and this turns it
+   * into a distance. 26 puts the steepest bend at 17.3px, which the rim
+   * taper is pinned against (`bendTaperPx` must outrun it at every distance
+   * from the sheet's edge, and at 34 it clears by 3.3px at the tightest
+   * point).
+   */
+  refractPx: 26,
 
   /**
    * How many CSS px from the sheet's rim the bend dies out over.
    *
    * Wide enough that the taper always outruns the bend it is limiting: the
-   * law's test walks every distance and pins taper(d) * bend <= d, which is
-   * what makes the border streak unreachable rather than merely unlikely.
+   * law's test walks every distance and pins taper(d) * bend <= d against
+   * the steepest bend the drop can ask for (17.3px at the committed shape),
+   * which is what makes the border streak unreachable rather than merely
+   * unlikely. At 34 the tightest point clears by 3.3px.
    */
   bendTaperPx: 34,
 
   /**
    * How many CSS px one texel of the lens field covers.
    *
-   * Wider than a word, so the lens is the page's ink MASS and not its
-   * letterforms. Body text here sets 13px lines of about 7px glyphs. The
-   * bend steps one texel either side, so at 18 it measures the slope over
-   * 36px, and the whole field is 31x23 texels.
+   * Wider than a word, so the front opens on the page's ink MASS and not on
+   * its letterforms. Body text here sets 13px lines of about 7px glyphs; at
+   * 18 the whole field is 31x23 texels.
    *
-   * This is the knob the scene's worst bug hid behind. Turn it down toward
-   * 2 and the lens becomes the letterforms again, which tears the arriving
-   * page apart at any amplitude — refractionField.tsx has the measurement.
+   * This field now feeds only the aperture — the ink term of the front, and
+   * the spread grown out of it. Nothing optical reads it since the drop's
+   * surface stopped being a relief of the leaving page (2026-08-22). Turn it
+   * down toward 2 and the front picks out individual words instead of text
+   * blocks.
    */
   fieldPx: 18,
 
   /**
    * How far red and blue diverge from green, as a fraction of the bend.
    *
-   * The fringe is this times twice the bend, so it can only be as wide as
-   * the bend allows. At the current `maxBendPx` that is 0.77px at the
-   * figure's border and 0.69px over body text — both under the 2px
-   * perceptual floor, which is to say the colour split is off. It comes
-   * back with the bend ceiling, not with this number.
+   * The fringe is this times twice the bend, so it lives exactly where the
+   * bend does: 4.15px across the contact line, 0.6px ten pixels in, nothing
+   * over the flat top. That is the shape colour should have — a spectrum on
+   * the meniscus and clean words inside it.
    *
    * Colour edges are much easier to see than position ones, so the useful
-   * band is narrow: with a 14px ceiling, 0.12 put 2.4px of fringe on the
-   * bevel and left the words alone, and 0.25 fringed the arriving title
-   * magenta and cyan at full size — a printing misregistration, not glass.
+   * band is narrow. At 0.25 the arriving title fringed magenta and cyan at
+   * full size and read as a printing misregistration rather than as glass.
    */
   dispersion: 0.12,
 
@@ -291,35 +282,40 @@ export const refractionTuning = {
    */
   apertureEdgePx: 8,
 
-  // ── the raking light ─────────────────────────────────────────────────
+  // ── the room the drop mirrors ────────────────────────────────────────
+  //
+  // What the glass REFLECTS, not what a light does to it. There is no light
+  // position and no pointer here: the highlight lives on the meniscus, so it
+  // moves as the front sweeps across the page. The scene carried a raking
+  // point light until 2026-08-22, and it read as a hot spot chasing the
+  // cursor rather than as glass.
+  //
+  // Nothing here needs a gate for the page outside the drop. The normal is
+  // exactly flat there, F0 is renormalised out of the mix weight, and both
+  // terms come to zero on their own.
 
-  /** Specular gain on the relief's own slope. Pure light, added
-   *  premultiplied. */
-  sheenGain: 6.7,
-  sheenAmount: 0.32,
+  /** How much of the room the glass mirrors, at full grazing. Replaces what
+   *  is behind it rather than adding, so past about 0.8 the words under a
+   *  streak stop being readable through it. */
+  reflect: 0.6,
 
-  /**
-   * How much of the light survives behind the front, 0 = none, 1 = all.
-   *
-   * The relief IS the leaving page, so once a pixel has been handed to the
-   * arriving one there is no letterform left there to catch light. At 1 the
-   * light redraws the leaving page's headline in white over the arriving
-   * page's headline — which is the "both documents at once" the aperture
-   * exists to prevent, arriving by the one route the aperture does not
-   * control (seen 2026-08-22). 0.42 keeps enough that the front's own lip
-   * stays lit as it passes.
-   */
-  sheenTransmit: 0.42,
+  /** Where the window streak sits, as a reflected-ray y. 0 is a light
+   *  straight ahead; ±1 puts it at the grazing limit, which is where the
+   *  meniscus looks. */
+  roomBand: 0.5,
 
-  /** Distance at which the raking light is half strength, in the same units
-   *  the shader measures uv distance in (aspect-corrected, so a corner of
-   *  the panel sits at 0.83). At 1.6 the falloff is longer than the panel's
-   *  own diagonal, so the sheet is lit nearly evenly. */
-  lightFalloff: 1.6,
+  /** How broad that streak is, in the same units. Under about 0.15 it reads
+   *  as a hard line rather than as a window. */
+  roomWidth: 0.3,
 
-  /** Tightness of the raking highlight. 3 lights roughly a quadrant of
-   *  edges. */
-  specPower: 3,
+  /** Weight of the grazing-incidence rim — the bright border a raised edge
+   *  of glass shows before its body does. White paint, so it is bounded at
+   *  paper-white and the knob stays linear all the way up. */
+  rim: 0.1,
+
+  /** How tightly the rim hugs the steepest slope. Low values wash the whole
+   *  drop; 3 keeps it on the contact line. */
+  rimPow: 3,
 }
 
 export const REFRACTION_GROUPS: RefractionKnobGroup<typeof refractionTuning>[] = [
@@ -334,16 +330,14 @@ export const REFRACTION_GROUPS: RefractionKnobGroup<typeof refractionTuning>[] =
     ],
   },
   {
-    title: 'lens',
+    title: 'drop',
     knobs: [
-      { key: 'amplitude', label: 'bend px per slope', min: 0, max: 200, step: 1 },
-      { key: 'maxBendPx', label: 'bend ceiling px', min: 1, max: 40, step: 0.5 },
-      { key: 'bendTaperPx', label: 'rim taper px', min: 1, max: 64, step: 1 },
-      // 2 is one texel per two CSS px, which is where the lens stops being
-      // a mass and becomes letterforms again. Left reachable on purpose:
-      // the failure is worth being able to see.
-      { key: 'fieldPx', label: 'field texel px', min: 2, max: 32, step: 1 },
+      { key: 'rimPx', label: 'meniscus px', min: 2, max: 40, step: 1 },
+      { key: 'heightPx', label: 'drop height px', min: 0, max: 40, step: 0.5 },
+      { key: 'ior', label: 'index', min: 1, max: 2, step: 0.01 },
+      { key: 'refractPx', label: 'bend px', min: 0, max: 80, step: 1 },
       { key: 'dispersion', label: 'dispersion', min: 0, max: 0.4, step: 0.005 },
+      { key: 'bendTaperPx', label: 'rim taper px', min: 1, max: 64, step: 1 },
     ],
   },
   {
@@ -357,16 +351,20 @@ export const REFRACTION_GROUPS: RefractionKnobGroup<typeof refractionTuning>[] =
       { key: 'apertureCeil', label: 'text level', min: 0.05, max: 0.6, step: 0.005 },
       { key: 'apertureOvershoot', label: 'sweep past ends', min: 0.02, max: 0.4, step: 0.01 },
       { key: 'apertureEdgePx', label: 'seam px', min: 0.25, max: 8, step: 0.25 },
+      // 2 is one texel per two CSS px, which is where the front stops
+      // opening on ink mass and starts picking out letterforms. Left
+      // reachable on purpose: the failure is worth being able to see.
+      { key: 'fieldPx', label: 'field texel px', min: 2, max: 32, step: 1 },
     ],
   },
   {
-    title: 'raking light',
+    title: 'room',
     knobs: [
-      { key: 'sheenAmount', label: 'sheen', min: 0, max: 2, step: 0.02 },
-      { key: 'sheenGain', label: 'slope gain', min: 0, max: 8, step: 0.1 },
-      { key: 'specPower', label: 'highlight tightness', min: 1, max: 32, step: 0.5 },
-      { key: 'sheenTransmit', label: 'lit behind front', min: 0, max: 1, step: 0.02 },
-      { key: 'lightFalloff', label: 'falloff', min: 0.05, max: 2, step: 0.01 },
+      { key: 'reflect', label: 'mirror', min: 0, max: 1, step: 0.02 },
+      { key: 'roomBand', label: 'window place', min: -1, max: 1, step: 0.02 },
+      { key: 'roomWidth', label: 'window width', min: 0.05, max: 1, step: 0.01 },
+      { key: 'rim', label: 'rim', min: 0, max: 1, step: 0.02 },
+      { key: 'rimPow', label: 'rim tightness', min: 1, max: 16, step: 0.5 },
     ],
   },
 ]

@@ -1,5 +1,5 @@
-// The refraction law — the shape of a crossing where the OUTGOING view is
-// the lens and the incoming one is only ever seen through it.
+// The refraction law — the shape of a crossing where a drop of glass opens
+// out of the OUTGOING view and the incoming one is only seen inside it.
 //
 // The law: three numbers describe the whole transition, all pure functions
 // of one scrub `t`. `relief` is how proud the glass stands, and it is zero
@@ -54,7 +54,7 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
  *
  * Normalising by the analytic peak rather than by a sampled maximum is what
  * keeps the tuning honest: change `rise` or `fall` and the peak stays 1, so
- * the amplitude constant in the tuning bag still means the pixels it says.
+ * `heightPx` in the tuning bag still means the pixels it says.
  */
 export function reliefPulse(t: number, rise: number, fall: number): number {
   const x = clamp01(t)
@@ -180,53 +180,88 @@ export function apertureReveal(
   return smoothstep(edge - half, edge + half, field)
 }
 
+/** Where the drop's vertical tangent is floored, as a share of full height. */
+const ROOT_FLOOR = 0.06
+
 /**
- * How far the incoming view is displaced, in CSS px, at peak relief.
+ * Height of the emerging glass, `distPx` inside its contact line, CSS px.
  *
- * `gradient` is the slope of the box-filtered ink field, not of the page's
- * own luminance — a text block measures about 0.1 and the figure's border
- * about 0.73. The scene's perceptual floor is stated against the text-block
- * number, because amplitude alone says nothing: the same constant over a
- * blank panel displaces nothing at all.
- *
- * A soft knee, so the result approaches `maxPx` and never reaches it. See
- * the tuning's note on the shear a hard cap left along heavy strokes.
+ * A drop, not a ramp: zero at the line, a vertical tangent there, a flat top
+ * about three rim widths in. The flat top is what keeps the arriving page
+ * readable through the middle of a blob, because every optical term the
+ * scene has lives in the meniscus and dies inside it.
  */
-export function peakDisplacementPx(
-  amplitudePx: number,
-  gradient: number,
-  maxPx: number,
-): number {
-  const want = amplitudePx * gradient
-  return want / (1 + want / maxPx)
+export function blobHeightPx(distPx: number, heightPx: number, rimPx: number): number {
+  if (distPx <= 0) return 0
+  return heightPx * Math.sqrt(1 - Math.exp(-distPx / Math.max(rimPx, 0.5)))
 }
 
 /**
- * How much of the bend survives `edgePx` from the sheet's rim.
+ * The drop's slope there, dh/dd, dimensionless.
  *
- * The bend samples the arriving view at an offset, and that sample is
- * clamped to the texture. Within a bend's distance of the rim an outward
- * bend therefore repeats the border row, and the sheet grows a hard
- * straight streak beside whatever caused it. Dying to zero at the rim makes
- * the case unreachable, which is stronger than making it rare.
+ * A vertical tangent has no normal, so the root is floored at ROOT_FLOOR of
+ * full height. That floor, and not the profile, is what sets the steepest
+ * surface the glass can present — which makes it, and not the profile, what
+ * bounds the widest bend the scene can ask for.
  */
+export function blobSlope(distPx: number, heightPx: number, rimPx: number): number {
+  if (distPx <= 0) return 0
+  const e = Math.max(rimPx, 0.5)
+  const uu = Math.exp(-distPx / e)
+  const fill = Math.sqrt(Math.max(1 - uu, 0))
+  return (heightPx * uu) / (2 * e * Math.max(fill, ROOT_FLOOR))
+}
+
+/**
+ * How far a surface of that slope moves what is behind it, CSS px.
+ *
+ * Snell at the front face of a flat-backed sheet: the eye ray refracts
+ * through the normal and lands `refractPx` times its lateral deviation away.
+ * Past the critical angle there is no refracted ray at all — total internal
+ * reflection — and this returns 0 rather than a clamped guess, which is what
+ * the shader's own `refract` does.
+ */
+export function blobBendPx(slope: number, ior: number, refractPx: number): number {
+  const eta = 1 / Math.max(ior, 1)
+  const nz = 1 / Math.sqrt(1 + slope * slope)
+  const nxy = slope * nz
+  const k = 1 - eta * eta * (1 - nz * nz)
+  if (k < 0) return 0
+  return Math.abs(Math.sqrt(k) - eta * nz) * nxy * refractPx
+}
+
+/**
+ * The steepest bend a drop of this shape can ask for, CSS px.
+ *
+ * Not at the contact line: there the profile is exactly zero and the slope
+ * with it. The steepest real surface is wherever the floored root takes
+ * over, which is where the profile reaches ROOT_FLOOR of full height. The
+ * rim taper is pinned against this rather than against a typical bend,
+ * because the border streak it prevents needs only one pixel to appear.
+ */
+export function maxBlobBendPx(
+  heightPx: number,
+  rimPx: number,
+  ior: number,
+  refractPx: number,
+): number {
+  const e = Math.max(rimPx, 0.5)
+  const dAtFloor = -e * Math.log(1 - ROOT_FLOOR * ROOT_FLOOR)
+  return blobBendPx(blobSlope(dAtFloor, heightPx, e), ior, refractPx)
+}
+
 export function bendTaper(edgePx: number, taperPx: number): number {
   return smoothstep(0, taperPx, edgePx)
 }
 
 /**
- * How far apart red and blue land at peak relief, in CSS px.
+ * How far apart red and blue land, in CSS px, for a bend of `bendPx`.
  *
- * Red bends by `1 + dispersion` and blue by `1 - dispersion`, so the two
- * are separated by twice the dispersion times the bend. Stated as its own
- * function because the fringe, not the dispersion constant, is the thing
- * a perceptual floor can be argued about.
+ * Red bends by `1 + dispersion` and blue by `1 - dispersion`, so the two are
+ * separated by twice the dispersion times the bend. Stated as its own
+ * function because the fringe, not the dispersion constant, is the thing a
+ * perceptual floor can be argued about.
  */
-export function channelSeparationPx(
-  amplitudePx: number,
-  gradient: number,
-  dispersion: number,
-  maxPx: number,
-): number {
-  return peakDisplacementPx(amplitudePx, gradient, maxPx) * 2 * dispersion
+export function channelSeparationPx(bendPx: number, dispersion: number): number {
+  return bendPx * 2 * dispersion
 }

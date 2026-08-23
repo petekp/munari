@@ -4,9 +4,9 @@
 // relief that is nonzero at an endpoint leaves a permanent lens over a
 // landed page — visible only as text that never quite sharpens. A
 // transmission that does not reach exactly 1 leaves the outgoing view
-// faintly on top of the incoming one forever. And an amplitude under the
-// perceptual floor turns the whole crossing into a crossfade with a soft
-// middle, which reads as a bug in the easing rather than a missing effect.
+// faintly on top of the incoming one forever. And a drop whose bend is
+// under the perceptual floor turns the whole crossing into a crossfade with
+// a soft middle, which reads as a bug in the easing rather than as glass.
 //
 // The tuning is a live bag the panel writes into, so what is pinned here is
 // the COMMITTED default of each number. Dragging a slider past one of these
@@ -18,20 +18,25 @@ import {
   apertureField,
   apertureReveal,
   bendTaper,
+  blobBendPx,
+  blobHeightPx,
+  blobSlope,
   channelSeparationPx,
-  peakDisplacementPx,
+  maxBlobBendPx,
   refractionStage,
   reliefPulse,
   signedSpread,
   spreadDecay,
   spreadPasses,
 } from './refractionLaw'
-import {
-  DISPLACEMENT_FLOOR_PX,
-  FIGURE_GRADIENT,
-  LENS_GRADIENT,
-  refractionTuning as tune,
-} from './refractionTuning'
+import { DISPLACEMENT_FLOOR_PX, refractionTuning as tune } from './refractionTuning'
+
+/** The steepest bend the committed drop can ask for, in CSS px. */
+const MOST = maxBlobBendPx(tune.heightPx, tune.rimPx, tune.ior, tune.refractPx)
+
+/** The bend at a point d CSS px inside the contact line. */
+const bendAt = (d: number) =>
+  blobBendPx(blobSlope(d, tune.heightPx, tune.rimPx), tune.ior, tune.refractPx)
 
 /** Every value the aperture field can take, sampled densely. */
 const FIELD = Array.from({ length: 101 }, (_, i) => i / 100)
@@ -49,7 +54,7 @@ describe('the relief pulse', () => {
     expect(reliefPulse(1, tune.rise, tune.fall)).toBe(0)
   })
 
-  it('peaks at exactly 1, so the amplitude constant means the pixels it says', () => {
+  it('peaks at exactly 1, so the height constant means the pixels it says', () => {
     const peakAt = tune.rise / (tune.rise + tune.fall)
     expect(reliefPulse(peakAt, tune.rise, tune.fall)).toBeCloseTo(1, 12)
   })
@@ -269,51 +274,89 @@ describe('the spread', () => {
   })
 })
 
+describe('the drop', () => {
+  it('is flat paper outside the contact line, and nothing else', () => {
+    // The front and the surface are the same object: at and outside the
+    // contact line the drop has no height, so the page under it is untouched
+    // by the bend, the room reflection, and the rim alike.
+    for (const d of [-40, -1, -0.01, 0]) {
+      expect(blobHeightPx(d, tune.heightPx, tune.rimPx)).toBe(0)
+      expect(blobSlope(d, tune.heightPx, tune.rimPx)).toBe(0)
+      expect(bendAt(d)).toBe(0)
+    }
+  })
+
+  it('climbs to its full height and stays there, so the middle is a window', () => {
+    // sqrt(1 - exp(-d/e)) is 97.5% of the way up three meniscus widths in
+    // and never reaches 1. A profile that kept climbing would make the drop
+    // a lens over its whole area, and the arriving page would never be
+    // readable while it arrived.
+    let last = 0
+    for (let d = 0; d <= 200; d += 0.5) {
+      const h = blobHeightPx(d, tune.heightPx, tune.rimPx)
+      expect(h).toBeGreaterThanOrEqual(last)
+      expect(h).toBeLessThan(tune.heightPx)
+      last = h
+    }
+    const flat = blobHeightPx(3 * tune.rimPx, tune.heightPx, tune.rimPx)
+    expect(flat / tune.heightPx).toBeCloseTo(0.9748, 4)
+  })
+
+  it('has a finite steepest bend, though its tangent at the contact line is vertical', () => {
+    // The profile's derivative diverges at d = 0 — that vertical tangent is
+    // what makes the edge read as liquid rather than as a ramp. Sampled
+    // naively it is an infinity that reaches the uv clamp and streaks the
+    // arriving page's border row across the sheet. ROOT_FLOOR stops the
+    // climb a twentieth of the way up, which is the number this pins.
+    expect(Number.isFinite(MOST)).toBe(true)
+    expect(MOST).toBeCloseTo(17.2895, 3)
+  })
+
+  it('is no glass at all at an index of 1', () => {
+    // Not a degenerate case to guard against — it is the useful setting for
+    // seeing what the front alone does, with every other knob untouched.
+    // Zero to a rounding error rather than exactly zero: the ray leaves at
+    // the angle it arrived, and sqrt(nz * nz) - nz is not bit-exact.
+    for (const d of [0.5, 2, 10, 40]) {
+      const flat = blobBendPx(blobSlope(d, tune.heightPx, tune.rimPx), 1, tune.refractPx)
+      expect(flat).toBeCloseTo(0, 12)
+    }
+  })
+})
+
 describe('the perceptual floor', () => {
-  it('bends a text block past the floor a human can see', () => {
-    const peak = peakDisplacementPx(tune.amplitude, LENS_GRADIENT, tune.maxBendPx)
-    expect(peak).toBeGreaterThan(DISPLACEMENT_FLOOR_PX)
-    // Stated as a number rather than a ratio so a tuning change has to come
-    // back here and say what it did: 43px × 0.3663 asks for 15.8px, and the
-    // knee against a 3.5px ceiling grants 2.86px at peak relief.
-    expect(peak).toBeCloseTo(2.8632, 3)
+  it('bends the meniscus past the floor a human can see', () => {
+    expect(MOST).toBeGreaterThan(DISPLACEMENT_FLOOR_PX)
+    // Stated as numbers rather than as ratios so a tuning change has to come
+    // back here and say what it did. 17.29px at the contact line, 13.30 half
+    // a pixel in, 8.80 two in — the whole lens lives in the first few px.
+    expect(bendAt(0.5)).toBeCloseTo(13.2985, 3)
+    expect(bendAt(2)).toBeCloseTo(8.7973, 3)
   })
 
-  it('bevels the figure harder than it bends text, but barely, at this ceiling', () => {
-    const text = peakDisplacementPx(tune.amplitude, LENS_GRADIENT, tune.maxBendPx)
-    const figure = peakDisplacementPx(tune.amplitude, FIGURE_GRADIENT, tune.maxBendPx)
-    expect(figure).toBeGreaterThan(text)
-    // The knee approaches the ceiling without reaching it: 43 × 0.8314 = 35.8
-    // asked for, 3.19 granted against a ceiling of 3.5.
-    expect(figure).toBeCloseTo(3.1878, 3)
-    expect(figure).toBeLessThan(tune.maxBendPx)
-    // The bevel is what makes the figure's border read as an edge of glass
-    // rather than as more of the same warp, and at a 3.5px ceiling it is
-    // gone: both the figure and bare body text want far more than the
-    // ceiling grants, so the knee flattens them to within 11% of each other.
-    // Around 14 the ratio is 3. This pins how far the committed tuning is
-    // from that, so raising the ceiling has to come back here and say so.
-    expect(figure / text).toBeCloseTo(1.113, 3)
+  it('leaves the words inside the drop straight', () => {
+    // The defect this pins, from Pete's report on 2026-08-22: the glass was
+    // a relief of the LEAVING page's letterforms, so every stroke of it bent
+    // the arriving page and nothing was ever readable through it. The bend
+    // now belongs to the meniscus, and dies within two meniscus widths.
+    expect(bendAt(10)).toBeCloseTo(2.5722, 3)
+    expect(bendAt(20)).toBeCloseTo(0.8207, 3)
+    expect(bendAt(20)).toBeLessThan(DISPLACEMENT_FLOOR_PX)
+    expect(bendAt(3 * tune.rimPx)).toBeLessThan(DISPLACEMENT_FLOOR_PX)
   })
 
-  it('keeps colour off the words, and at this ceiling off everything else too', () => {
+  it('puts colour on the meniscus and nowhere else', () => {
     // The defect this pins, from Pete's screenshot on 2026-08-22: the title
     // came out with a rainbow along every stroke. Dispersion is a fraction
-    // of the bend, so it is only visible where the bend is — and over body
-    // text the bend is small on purpose.
-    const onText = channelSeparationPx(
-      tune.amplitude, LENS_GRADIENT, tune.dispersion, tune.maxBendPx)
-    const onFigure = channelSeparationPx(
-      tune.amplitude, FIGURE_GRADIENT, tune.dispersion, tune.maxBendPx)
-    expect(onText).toBeLessThan(DISPLACEMENT_FLOOR_PX)
-    // 2.8632 x 2 x 0.12 = 0.69px on text; 3.1878 x 2 x 0.12 = 0.77px at the
-    // figure. Both are under the floor, so at the committed ceiling there is
-    // no visible colour split anywhere — the bevel that used to carry it is
-    // knee-flattened into the rest of the page. Raising `maxBendPx` brings it
-    // back, and the ceiling is what to raise, not this fraction.
-    expect(onText).toBeCloseTo(0.6872, 3)
-    expect(onFigure).toBeCloseTo(0.7651, 3)
-    expect(onFigure).toBeLessThan(DISPLACEMENT_FLOOR_PX)
+    // of the bend, so it goes exactly where the bend goes — 17.2895 x 2 x
+    // 0.12 = 4.15px of spectrum across the contact line, 0.62px ten pixels
+    // in, and nothing over the flat top.
+    const onEdge = channelSeparationPx(MOST, tune.dispersion)
+    expect(onEdge).toBeGreaterThan(DISPLACEMENT_FLOOR_PX)
+    expect(onEdge).toBeCloseTo(4.1495, 3)
+    const inside = channelSeparationPx(bendAt(10), tune.dispersion)
+    expect(inside).toBeLessThan(DISPLACEMENT_FLOOR_PX)
+    expect(inside).toBeCloseTo(0.6173, 3)
   })
 
   it('never bends a pixel further than that pixel is from the rim', () => {
@@ -323,9 +366,13 @@ describe('the perceptual floor', () => {
     // has to outrun the bend at EVERY distance, not just at the ends — the
     // dangerous case is halfway out, where the taper is at half strength and
     // the distance is only half the width.
-    const most = peakDisplacementPx(tune.amplitude, FIGURE_GRADIENT, tune.maxBendPx)
     for (let d = 0; d <= tune.bendTaperPx; d += 0.05) {
-      expect(bendTaper(d, tune.bendTaperPx) * most).toBeLessThanOrEqual(d)
+      expect(bendTaper(d, tune.bendTaperPx) * MOST).toBeLessThanOrEqual(d)
     }
+    // Where the headroom actually is: a smoothstep's steepest slope is 1.5
+    // over its width, so the taper outruns every bend under bendTaperPx/1.5
+    // and fails every bend over it, whatever the curve does in between. At
+    // 34 that ceiling is 22.7px and the drop asks for 17.3.
+    expect(tune.bendTaperPx / 1.5).toBeGreaterThan(MOST)
   })
 })

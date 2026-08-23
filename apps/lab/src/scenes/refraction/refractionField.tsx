@@ -1,19 +1,23 @@
-// The lens field — the leaving page's ink mass, box-filtered to an eighth
-// of its own scale and kept in a render target — and the spread grown out
-// of it, which is what the aperture front travels along.
+// The ink field — the leaving page's ink mass, box-filtered to an eighth of
+// its own scale and kept in a render target — and the spread grown out of
+// it, which is what the aperture front travels along.
 //
-// The law: the bend samples the FIELD and never the page texture. The page
-// is text, and text is a high-frequency signal; a lens cut from it displaces
-// every arriving glyph in a different direction and tears the arriving page
-// apart instead of bending it.
+// The law: nothing optical reads either field. They decide WHERE the drop of
+// glass opens and nothing about what it looks like. The page is text, and
+// text is a high-frequency signal; a surface cut from it is a relief of
+// letterforms, and an arriving page seen through that is torn apart rather
+// than bent.
 //
-// The fault this exists to avoid, measured 2026-08-22 at full size: with
-// the bend driven off the page's own luminance, both documents were legible
-// on top of each other across the whole panel. Amplitudes 26, 12 and 6 were
-// equally bad and only 0 was clean, which is the tell that the magnitude
-// was never the problem. Spreading the finite difference out to 16px did
-// not fix it either — five taps at that spacing over 13px lines is point
-// sampling a periodic signal, and the result was colour noise.
+// Two faults, both measured 2026-08-22 at full size. First, with the bend
+// driven straight off the page's luminance, both documents were legible on
+// top of each other across the whole panel — amplitudes 26, 12 and 6 were
+// equally bad and only 0 was clean, which is the tell that the magnitude was
+// never the problem. Spreading the finite difference to 16px did not fix it
+// either: five taps at that spacing over 13px lines is point sampling a
+// periodic signal, and the result was colour noise. Filtering to this field
+// fixed the noise but not the shape, and Pete's report the same day named
+// what was left — the glass was embossed text, with the front merely masking
+// it. The surface is now a drop grown off the front itself.
 //
 // The SPREAD is a second, coarser field, and it is really two: the same ink
 // pushed outward a pass at a time until it covers the margins, and the paper
@@ -24,9 +28,8 @@
 // the second chain. The material takes the difference of the two.
 //
 // Ownership: this module owns both targets and the passes that fill them.
-// The material owns the bend and the front; the tuning owns how coarse the
+// The material owns the drop and the front; the tuning owns how coarse the
 // field is and how far the spread reaches.
-
 import { useEffect, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -41,10 +44,18 @@ const sizeInTexels = (px: number) => ({
 })
 
 export interface InkField {
-  /** The lens the bend samples. */
+  /** The ink field the front's ink term samples. */
   target: THREE.WebGLRenderTarget
-  /** 1 / field size, so the material can step exactly one texel. */
-  texel: THREE.Vector2
+  /**
+   * 1 / spread-field size, so the material can step exactly one spread texel.
+   *
+   * It measures the front's gradient with a central difference over this,
+   * not with `dFdx`. A coarse bilinear texture's screen derivative jumps at
+   * every texel boundary — invisible in a seam width, and very visible in a
+   * surface normal, which showed as facets on the spread field's own 22px
+   * grid (2026-08-22).
+   */
+  spreadTexel: THREE.Vector2
   /**
    * The ink grown outward, in 0..1, whichever of the ping-pong pair was
    * written last. A uniform slot rather than a texture, because the material
@@ -115,7 +126,7 @@ export function useInkField(source: { value: THREE.Texture | null }): InkField {
       material,
       scene: fullscreen(material),
       camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1),
-      texel: new THREE.Vector2(1 / w, 1 / h),
+      spreadTexel: new THREE.Vector2(1 / s.w, 1 / s.h),
       spreadPair: [smallTarget(s.w, s.h), smallTarget(s.w, s.h)] as const,
       hollowPair: [smallTarget(s.w, s.h), smallTarget(s.w, s.h)] as const,
       spreadMaterial,
@@ -153,7 +164,6 @@ export function useInkField(source: { value: THREE.Texture | null }): InkField {
     const { w, h } = sizeInTexels(tune.fieldPx)
     if (rig.target.width !== w || rig.target.height !== h) {
       rig.target.setSize(w, h)
-      rig.texel.set(1 / w, 1 / h)
       rig.material.uniforms.uStep.value.set(1 / (w * 8), 1 / (h * 8))
     }
     const s = sizeInTexels(tune.spreadPx)
@@ -161,6 +171,7 @@ export function useInkField(source: { value: THREE.Texture | null }): InkField {
       rig.spreadPair.forEach((t) => t.setSize(s.w, s.h))
       rig.hollowPair.forEach((t) => t.setSize(s.w, s.h))
       rig.spreadMaterial.uniforms.uStep.value.set(0.5 / s.w, 0.5 / s.h)
+      rig.spreadTexel.set(1 / s.w, 1 / s.h)
     }
     const passes = spreadPasses(tune.spreadReachPx, tune.spreadPx)
     const su = rig.spreadMaterial.uniforms

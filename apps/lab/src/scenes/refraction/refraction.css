@@ -131,7 +131,7 @@
 /* ── the stage box ─────────────────────────────────────────────────── */
 
 /* Holds the page copy's layout box while the mesh draws over it. The
- * mesh never leaves this box — the lens displaces samples inside the
+ * mesh never leaves this box — the drop displaces samples inside the
  * sheet, it does not grow it. */
 .refraction-holder {
   flex: none;
@@ -196,10 +196,10 @@
   color: var(--ink-faint);
 }
 
-/* The figure is the reason the lens is legible. A solid form against
- * paper is the largest luminance step on the page, so its edge is where
- * the finite difference in refractionShaders.ts finds the most slope —
- * the transmitted page bends hardest exactly along this outline. */
+/* The figure is the reason the front is legible. A solid form against
+ * paper is the largest luminance step on the page, so the aperture in
+ * refractionShaders.ts opens over it first — the drop starts here and
+ * spreads outward into the text. */
 .refraction-figure {
   flex: none;
   width: 132px;
@@ -251,8 +251,8 @@
 }
 
 /* The grid is the third figure: nine cells, five inked. It has far more
- * edge per unit area than the square, so switching to it multiplies the
- * places the lens finds slope — the same amplitude, visibly more bend. */
+ * edge per unit area than the square, so switching to it gives the front
+ * five separate places to open from instead of one. */
 .refraction-grid {
   width: 108px;
   height: 108px;

@@ -55,7 +55,7 @@ export function RefractionTweaks() {
   return (
     <TuningPanel title="refraction tweaks" side="right" zIndex={200} onCopy={dump}>
       {REFRACTION_GROUPS.map((g) => (
-        <TuningGroup key={g.title} title={g.title} initialState={g.title === 'lens' ? 'open' : 'closed'}>
+        <TuningGroup key={g.title} title={g.title} initialState={g.title === 'drop' ? 'open' : 'closed'}>
           {g.knobs.map((k) => (
             <Row key={k.key} knob={k} />
           ))}

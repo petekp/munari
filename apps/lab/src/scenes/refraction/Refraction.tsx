@@ -1,13 +1,23 @@
 // The refraction scene — one sheet of glass showing two live documents at
 // once, the second one seen only through the first.
 //
-// The law: the page you are leaving IS the lens. Its own ink is the height
-// field, and the page you are arriving at is sampled through that height's
-// slope. Only one of the two Surfaces is ever presented. The other is a
-// RESIDENT SOURCE — declared with content, no view, no `Surface.DOM`, no
-// `Surface.WebGL` — and its pixels reach the shader by handle through
-// `useSurfaceTextureOf` (decisions.md #36). Nothing in the scene graph
-// draws it, and nothing in the document shows it.
+// The law: the page you are leaving decides WHERE a drop of glass opens,
+// and the page you are arriving at is seen through that drop. The leaving
+// page's ink grows a front; the front is the drop's contact line; the
+// arriving page is refracted by the meniscus and reads straight through the
+// flat middle. At most one of the two Surfaces is presented at a time, and
+// while the drop is open NEITHER is: the sheet belongs to the mesh and both
+// documents are RESIDENT SOURCES — declared with content, no view, no
+// `Surface.DOM`, no `Surface.WebGL` — whose pixels reach the shader by handle
+// through `useSurfaceTextureOf` (decisions.md #36). Nothing in the scene
+// graph draws a resident source and nothing in the document shows it.
+//
+// The two trade roles at the ends. The crossing lifts off the leaving page
+// and LANDS on the arriving one, which becomes ordinary DOM the browser
+// hit-tests, focuses and selects. Skipping that landing is why a GL layer
+// used to sit over the page forever (Pete, 2026-08-22): the words a viewer
+// had just watched arrive could not be selected, because they had never been
+// anywhere but a texture.
 //
 // The fault this scene exists to press on: a transition between two views
 // is normally a crossfade between two *pictures*, because only one of the
@@ -21,7 +31,7 @@
 // the arriving one lags the leaving one, that capture stopped painting.
 //
 // The correspondence is content-space, not screen-space: the shader picks
-// the arriving page at a uv the leaving page's slope decides. A framebuffer
+// the arriving page at a uv the leaving page's ink decides. A framebuffer
 // copy could not produce this picture even in principle, because the
 // arriving page is drawn nowhere to copy from.
 //
@@ -115,7 +125,7 @@ function Doc({
 }) {
   const tick = useTenthSecond()
   return (
-    <div className="refraction-doc" style={{ width: STAGE_W, height: STAGE_H }}>
+    <div className="refraction-doc" data-doc={mark} style={{ width: STAGE_W, height: STAGE_H }}>
       <div className="refraction-eyebrow">
         <b>{mark}</b>
         <span>{eyebrow}</span>
@@ -186,12 +196,9 @@ interface RefractionDrive {
 function RefractionMaterial({
   incoming,
   drive,
-  center,
 }: {
   incoming: SurfaceHandle
   drive: React.RefObject<RefractionDrive>
-  /** Where the sheet stands, in world units, so the pointer can be put in its uv. */
-  center: { wx: number; wy: number }
 }) {
   const surface = useSurfaceUniforms()
   const arriving = useSurfaceTextureOf(incoming)
@@ -219,42 +226,40 @@ function RefractionMaterial({
       // exactly those frames, so nothing of it survives the mix.
       tIncoming: { value: surface.tMap.value },
       uHasIncoming: { value: 0 },
-      // The finite difference steps ONE CSS PIXEL either side, not one
-      // texel: the amplitude in the tuning is stated in CSS px, and a step
-      // that followed the texture's resolution would change the measured
-      // gradient — and so the displacement — every time `resolution` moved.
+      // One CSS PIXEL, not one texel of anything. Every px constant in the
+      // tuning — the drop's height, its meniscus, its bend — is stated in CSS
+      // px, and a unit that followed the texture's resolution would change
+      // what all of them meant every time `resolution` moved.
       uTexel: { value: new THREE.Vector2(1 / STAGE_W, 1 / STAGE_H) },
       uRelief: { value: 0 },
       uTransmission: { value: 0 },
       uZoom: { value: tune.approachZoom },
-      uAmplitude: { value: tune.amplitude },
       tField: { value: field.target.texture },
-      uFieldTexel: { value: field.texel },
+      uSpreadTexel: { value: field.spreadTexel },
       tSpread: { value: field.spread.value },
       tHollow: { value: field.hollow.value },
       uDispersion: { value: tune.dispersion },
-      uAspect: { value: STAGE_W / STAGE_H },
       uApertureFloor: { value: tune.apertureFloor },
       uApertureCeil: { value: tune.apertureCeil },
       uApertureInk: { value: tune.apertureInk },
       uApertureGamma: { value: tune.apertureGamma },
       uApertureOvershoot: { value: tune.apertureOvershoot },
       uApertureEdge: { value: tune.apertureEdgePx },
-      uMaxBendPx: { value: tune.maxBendPx },
       uBendTaper: { value: tune.bendTaperPx },
-      uSheenTransmit: { value: tune.sheenTransmit },
-      // Centred until the hand says otherwise, so a sheet nobody has
-      // pointed at is still lit rather than flat.
-      uLight: { value: new THREE.Vector2(0.5, 0.5) },
-      uLightFalloff: { value: tune.lightFalloff },
-      uSpecPower: { value: tune.specPower },
-      uSheenGain: { value: tune.sheenGain },
-      uSheenAmount: { value: tune.sheenAmount },
+      uRimPx: { value: tune.rimPx },
+      uHeightPx: { value: tune.heightPx },
+      uIor: { value: tune.ior },
+      uRefractPx: { value: tune.refractPx },
+      uReflect: { value: tune.reflect },
+      uRoomBand: { value: tune.roomBand },
+      uRoomWidth: { value: tune.roomWidth },
+      uRim: { value: tune.rim },
+      uRimPow: { value: tune.rimPow },
     }),
     [surface, field],
   )
 
-  useFrame((state) => {
+  useFrame(() => {
     const u = material.current?.uniforms
     if (!u) return
     const stage = refractionStage(drive.current.t, tune)
@@ -265,8 +270,10 @@ function RefractionMaterial({
     // Every tuned uniform, every frame. The panel writes into the bag and
     // nothing tells the material about it, so re-reading is the whole
     // subscription — and it costs a handful of assignments.
-    u.uAmplitude.value = tune.amplitude
-    u.uMaxBendPx.value = tune.maxBendPx
+    u.uRimPx.value = tune.rimPx
+    u.uHeightPx.value = tune.heightPx
+    u.uIor.value = tune.ior
+    u.uRefractPx.value = tune.refractPx
     u.uBendTaper.value = tune.bendTaperPx
     u.uDispersion.value = tune.dispersion
     // Each chain alternates between two targets, so the answer is different
@@ -279,11 +286,11 @@ function RefractionMaterial({
     u.uApertureGamma.value = tune.apertureGamma
     u.uApertureOvershoot.value = tune.apertureOvershoot
     u.uApertureEdge.value = tune.apertureEdgePx
-    u.uSheenGain.value = tune.sheenGain
-    u.uSheenAmount.value = tune.sheenAmount
-    u.uSheenTransmit.value = tune.sheenTransmit
-    u.uLightFalloff.value = tune.lightFalloff
-    u.uSpecPower.value = tune.specPower
+    u.uReflect.value = tune.reflect
+    u.uRoomBand.value = tune.roomBand
+    u.uRoomWidth.value = tune.roomWidth
+    u.uRim.value = tune.rim
+    u.uRimPow.value = tune.rimPow
     const texture = arrivingRef.current
     u.tIncoming.value = texture ?? outgoingSlot.value
     u.uHasIncoming.value = texture ? 1 : 0
@@ -291,15 +298,6 @@ function RefractionMaterial({
     // the material holds a copy of that slot — so a source replaced mid-life
     // would leave the sheet drawing the disposed texture.
     u.tMap.value = outgoingSlot.value
-
-    // The pointer, put in the sheet's own uv. Off the panel is a legal
-    // answer — the light rakes in from the side and the falloff dims it.
-    // Sized from `state.size` rather than `state.viewport`, because the
-    // pixel-perfect camera is set in an effect and r3f may still be holding
-    // the frustum it computed before that ran.
-    const px = (state.pointer.x * state.size.width) / 2 - center.wx
-    const py = (state.pointer.y * state.size.height) / 2 - center.wy
-    u.uLight.value.set(px / STAGE_W + 0.5, py / STAGE_H + 0.5)
   })
 
   return (
@@ -330,11 +328,19 @@ export function RefractionApp({ chips }: { chips?: React.ReactNode }) {
   const drive = useRef<RefractionDrive>({ t: 0 })
   drive.current.t = t
 
-  // Above zero the sheet is matter and the mesh owns the pixels; at exactly
-  // zero it is ordinary DOM again, selectable and hit-testable by the
-  // browser. So the leaving page lands back into the compositor's hold every
-  // time the scrub returns to its start.
-  const lifted = t > 0 || running
+  // Which document the compositor is holding, if either. At both ends of
+  // the crossing one of them is ordinary DOM — selectable, focusable, and
+  // hit-tested by the browser — and the other is a resident source. In
+  // between the answer is NEITHER: the mesh owns the sheet and both
+  // documents feed it by handle.
+  //
+  // Landing on the far side is the half this scene skipped until Pete's
+  // report on 2026-08-22. A crossing that lifts and never lands leaves a GL
+  // layer over the page forever, and the words a viewer just watched arrive
+  // cannot be selected, because they were never anywhere but a texture.
+  const landed: 'leaving' | 'arriving' | null =
+    running ? null : t === 0 ? 'leaving' : t === 1 ? 'arriving' : null
+  const lifted = landed === null
 
   // The animated crossing. Driven from `requestAnimationFrame` rather than
   // the renderer's frame because it also moves the scrub input, which is
@@ -407,9 +413,11 @@ export function RefractionApp({ chips }: { chips?: React.ReactNode }) {
     [form],
   )
 
-  // No controls: nothing can reach this document. It is sampled, never
-  // presented, so there is no mesh to point at and no relay to carry a
-  // click into it (docs/spikes/cross-surface-sampling.md, still unknown #2).
+  // No controls, because for most of the crossing nothing can reach this
+  // document: while it is a resident source there is no mesh to point at and
+  // no relay to carry a click into it (docs/spikes/cross-surface-sampling.md,
+  // still unknown #2). It is directly interactive only once the crossing has
+  // landed on it, which is a presented Surface like any other.
   const arriving = useMemo(
     () => (
       <Doc
@@ -430,12 +438,15 @@ export function RefractionApp({ chips }: { chips?: React.ReactNode }) {
         <div className="refraction-caption">
           <h2>refraction</h2>
           <p>
-            Two documents, one sheet. The page you are leaving is the lens:
-            its own ink is the height field, and the page you are arriving
-            at is bent through it. The arriving page is drawn nowhere —
-            it has no mesh and no DOM presenter, and the shader reads its
-            texture by handle. Park the scrub anywhere: both clocks keep
-            running, because both captures are still live layouts.
+            Two documents, one sheet. A drop of glass spreads out of the
+            leaving page&rsquo;s own ink, and the page you are arriving at is
+            what you see inside it — bent at the meniscus, straight through
+            the middle. While the drop is open the arriving page is drawn
+            nowhere: no mesh, no DOM presenter, and the shader reads its
+            texture by handle. Land the crossing and it becomes ordinary DOM
+            you can select. Park the scrub anywhere in between and both
+            clocks keep running, because both captures are still live
+            layouts.
           </p>
           <div className="refraction-drive">
             <div className="refraction-row">
@@ -468,20 +479,41 @@ export function RefractionApp({ chips }: { chips?: React.ReactNode }) {
         </div>
 
         <div ref={holderRef} className="refraction-holder">
+          {/* The two documents trade roles at the ends. Whichever the
+              compositor is holding is exclusive (`view`) and carries a
+              presenter; the other has neither, which makes it a resident
+              source — content and a size, composited nowhere, existing to
+              be sampled. Mid-crossing both are resident and the mesh is the
+              only thing drawing either of them.
+
+              The leaving page goes to no `view` at all on the far side
+              rather than back to `'dom'`. `'dom'` is a request for the DOM
+              to take the hold, and the store grants it inside a draw while
+              React unmounts the holder in a later commit — so the leaving
+              document was visible for exactly one frame in the middle of
+              landing on the arriving one. Measured 2026-08-22 off a 60fps
+              screencast: frames 407 and 409 read the circle at 227.6 mean
+              luminance and frame 408 read the square at 224.8, which is the
+              square's own resting value. */}
           <Surface
             surface={outgoing}
-            view={lifted ? 'webgl' : 'dom'}
+            view={landed === 'arriving' ? undefined : lifted ? 'webgl' : 'dom'}
             timing={{ settleMs: 0, durationMs: 1 }}
             size={[STAGE_W, STAGE_H]}
             source={leaving}
           >
-            <Surface.DOM>{leaving}</Surface.DOM>
+            {landed !== 'arriving' && <Surface.DOM>{leaving}</Surface.DOM>}
           </Surface>
 
-          {/* The resident source. Content and a size, and nothing else: no
-              `view`, so it never crosses; no presenter, so it is composited
-              nowhere. It exists to be sampled. */}
-          <Surface surface={incoming} size={[STAGE_W, STAGE_H]} source={arriving} />
+          <Surface
+            surface={incoming}
+            view={landed === 'arriving' ? 'dom' : undefined}
+            timing={{ settleMs: 0, durationMs: 1 }}
+            size={[STAGE_W, STAGE_H]}
+            source={arriving}
+          >
+            {landed === 'arriving' && <Surface.DOM>{arriving}</Surface.DOM>}
+          </Surface>
         </div>
       </div>
 
@@ -498,7 +530,13 @@ export function RefractionApp({ chips }: { chips?: React.ReactNode }) {
         }}
       >
         <PixelPerfect />
-        {st.isWebGLMounted && pos && (
+        {/* `lifted` and not `isWebGLMounted` alone: without a `view` the
+            Surface is a Twin, and a Twin never releases its WebGL side —
+            `isWebGLMounted` stays true and the mesh would keep drawing over
+            the landed page. Unmounting it here is what hands the sheet back.
+            The store flag stays in the condition so the mesh still waits for
+            the handoff on the way up. */}
+        {lifted && st.isWebGLMounted && pos && (
           <group position={[pos.wx, pos.wy, 0]}>
             <Surface.WebGL
               surface={outgoing}
@@ -507,7 +545,7 @@ export function RefractionApp({ chips }: { chips?: React.ReactNode }) {
               frustumCulled={false}
               geometry={<planeGeometry args={[STAGE_W, STAGE_H]} />}
               material={
-                <RefractionMaterial incoming={incoming} drive={drive} center={pos} />
+                <RefractionMaterial incoming={incoming} drive={drive} />
               }
             />
           </group>
