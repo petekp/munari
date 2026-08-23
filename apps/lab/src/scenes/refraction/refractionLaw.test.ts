@@ -260,9 +260,9 @@ describe('the spread', () => {
   it('lands every blob on bare paper at the tuned reach, whatever made it', () => {
     // The failure this pins cost two rewrites of the spread pass. A decay in
     // raw field units is right for one mark and wrong for every other: the
-    // figure's border is seven times a paragraph's height, so a drop that
-    // killed a paragraph's blob in four passes left the figure's at 0.86 and
-    // it flooded the sheet. Normalising first is what makes one number work.
+    // drop that killed a paragraph's blob in four passes left the figure
+    // border's at 0.86 and it flooded the sheet. Normalising first is what
+    // makes one number work.
     for (const passes of [1, 2, 4, 8, 16]) {
       expect(spreadDecay(passes) * passes).toBeCloseTo(1, 12)
     }
