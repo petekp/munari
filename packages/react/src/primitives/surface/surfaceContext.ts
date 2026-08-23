@@ -12,9 +12,10 @@
 // could set it could claim a page slot that does not exist, and the fault
 // would surface as a DOM presentation that silently never appears.
 
-import { createContext, use, useCallback } from 'react'
+import { createContext, use, useCallback, useMemo, useSyncExternalStore } from 'react'
 import type * as THREE from 'three'
 import type { SurfaceChrome, SurfacePartId } from '@munari/core'
+import { surfaceStoreOf } from './surfaceHandle'
 import type { SurfaceStore, SurfaceHandle } from './surfaceHandle'
 import type { SurfaceHost } from './surfaceHostRegistry'
 import type { SurfaceSourceRuntime, SurfaceSize } from './surfaceSourceRuntime'
@@ -164,6 +165,46 @@ export function useSurfaceTexture(): THREE.Texture {
     )
   }
   return texture
+}
+
+/**
+ * ANOTHER Surface's texture, named by handle rather than by position.
+ *
+ * The law `useSurfaceTexture` implies — a material reaches the Surface it
+ * is mounted in — is a statement about the material slot, not about the
+ * runtime. A source rasterizes, uploads, and versions its texture with ZERO
+ * presenters registered: no crossing, no mesh, no DOM presentation, nothing
+ * composited anywhere (decisions.md #36). Measured 2026-08-22
+ * (docs/spikes/cross-surface-sampling.md):
+ * a Surface declared `<Surface surface={h} source={…} />` and presented
+ * nowhere held `texture.version` climbing 175 → 318 over 1.2s, under
+ * `frameloop="demand"` as well as `"always"`, while a static control held
+ * exactly still. That is what lets one material mix two live captures —
+ * the second view is matter the page never shows.
+ *
+ * Null, unlike `useSurfaceTexture`, and the difference is load-bearing. In
+ * the material slot the texture is guaranteed because Munari mounts the
+ * material after it exists; a handle names content whose source may mount
+ * later, never, or in another tree entirely. A material binds `null` and
+ * rebinds when this answers — so sample it behind a `has` flag rather than
+ * deferring the material's own mount, which a memoized material may never
+ * take back.
+ */
+export function useSurfaceTextureOf(
+  handle: SurfaceHandle,
+  part: SurfacePartId = DEFAULT_PART,
+): THREE.Texture | null {
+  const store = surfaceStoreOf(handle)
+  const subscribe = useMemo(() => store.subscribeParts.bind(store), [store])
+  // The runtime keeps ONE texture for its whole life and re-cuts storage
+  // into it, so this reference is stable across every upload and every LOD
+  // re-raster. `useSyncExternalStore` compares snapshots by reference: an
+  // answer allocated per read would re-render every subscriber forever.
+  const snapshot = useMemo(
+    () => () => store.part(part)?.runtime?.texture() ?? null,
+    [store, part],
+  )
+  return useSyncExternalStore(subscribe, snapshot, snapshot)
 }
 
 /**

@@ -279,6 +279,45 @@ path — hover in, grab at the lens's own fixed point, scrub — lands the
 same predictions. The drag itself never touches the relay: trusted
 window moves drive both the value and the focus.
 
+## refraction-arriving
+
+Local gate: the refraction scene's *arriving* document is a live layout
+and it is the only thing on the sheet at the end of the crossing.
+`npm run gate:refraction-arriving`.
+
+That scene puts two documents in one material. Only one is presented;
+the other is a resident source, sampled by handle through
+`useSurfaceTextureOf` and drawn nowhere in the scene graph. Both claims
+fail silently — a stalled capture still draws, it just draws a picture,
+and a transmission short of 1 leaves the leaving page faintly on top
+forever.
+
+The teeth are a figure switch inside the LEAVING document, square to
+grid: the sheet must change at the start of the crossing (measured 6.8
+on a 12×12 luminance signature) and must not change at the end (0.0).
+Liveness is a full-resolution luminance sum over the sheet while the
+scrub is parked at 1 and nothing is touched — both documents print the
+same shared clock, so a frozen capture holds that sum still.
+
+Two more clauses guard the crossing's own mechanics. The first is that
+the midpoint is a front and not a crossfade: of the cells where the two
+documents differ, at least a quarter must match one of them exactly
+(measured 63–66% across runs). A global blend scores zero there by construction, and no
+simpler statistic works — contrast cannot tell a working bend from a
+broken blend, because the revealed part of the sheet is genuinely softer
+than either endpoint. The second is that the raking light follows the
+pointer: sweeping the mouse the width of the panel must move more than
+2% of its pixels by more than eight luminance units (measured 4.2%).
+Mean luminance is blind to this, since the highlight lives on glyph
+edges — the same sweep moves the mean by 0.002.
+
+The gate
+also pins the law's three stage numbers at `t = 0.5` against the
+material's own uniforms, which catches the r3f uniform-copy trap
+(`apps/lab/src/scenes/candidates/README.md` gap 1), and it stands in as
+a compile check for the scene's program: a shader that fails to link
+draws nothing and the coverage clause reads 0 instead of the full rect.
+
 ## House rules
 
 - Scenes hang their live state on a `window.__<scene>` hook so a probe

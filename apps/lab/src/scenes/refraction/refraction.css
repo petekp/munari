@@ -1,0 +1,311 @@
+/* The refraction scene — two pages, one sheet of glass.
+ *
+ * Both documents are laid out by the SAME rules and sized to the same
+ * stage box (STAGE_W × STAGE_H in refractionTuning.ts). That is not
+ * tidiness: the material samples one page through the other at matching
+ * uv, so a page that sized itself differently would refract a picture
+ * that is offset from the one behind it, and the mismatch reads as a
+ * shader bug rather than a layout one.
+ *
+ * The captured tree is `.refraction-doc` and everything under it. Its
+ * root carries no opacity and no transform, per docs/authoring.md — a
+ * transform on a capture root moves the pixels out from under the
+ * texture's own box.
+ *
+ * Hover and active are stated twice on every interactive rule: the page
+ * copy wears the browser's :hover, the parked source wears the relay's
+ * data-hover / data-active twins.
+ */
+
+.refraction-page {
+  position: fixed;
+  inset: 0;
+  background: var(--bench);
+  display: grid;
+  place-items: center;
+}
+
+.refraction-stage {
+  display: flex;
+  align-items: center;
+  gap: 88px;
+}
+
+/* ── the caption and the drive ─────────────────────────────────────── */
+
+.refraction-caption {
+  max-width: 300px;
+  color: var(--ink);
+}
+
+.refraction-caption h2 {
+  margin: 0 0 10px;
+  font: 700 24px/1.2 var(--display);
+}
+
+.refraction-caption p {
+  margin: 0 0 20px;
+  font: 14px/1.55 var(--body);
+  color: var(--ink-mute);
+}
+
+.refraction-drive {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--rule);
+  padding-top: 16px;
+}
+
+.refraction-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.refraction-label {
+  font: 600 9px/1 var(--label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  width: 52px;
+  flex: none;
+}
+
+.refraction-scrub {
+  flex: 1;
+  appearance: none;
+  height: 2px;
+  background: var(--rule);
+  outline-offset: 4px;
+}
+
+.refraction-scrub::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  background: var(--signal);
+  border: 0;
+  cursor: grab;
+}
+
+.refraction-scrub:active::-webkit-slider-thumb {
+  cursor: grabbing;
+}
+
+.refraction-readout {
+  font: 10px/1 var(--data);
+  color: var(--ink-mute);
+  width: 34px;
+  flex: none;
+  text-align: right;
+  /* The number changes every frame during a crossing; a proportional
+   * width would make the whole row twitch. */
+  font-variant-numeric: tabular-nums;
+}
+
+.refraction-cross {
+  appearance: none;
+  border: 1px solid var(--rule-hard);
+  background: transparent;
+  color: var(--ink);
+  font: 600 10px/1 var(--label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.refraction-cross:hover,
+.refraction-cross[data-hover] {
+  background: var(--ink);
+  color: var(--bench-hi);
+}
+
+.refraction-cross:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ── the stage box ─────────────────────────────────────────────────── */
+
+/* Holds the page copy's layout box while the mesh draws over it. The
+ * mesh never leaves this box — the lens displaces samples inside the
+ * sheet, it does not grow it. */
+.refraction-holder {
+  flex: none;
+  position: relative;
+}
+
+/* ── a document ────────────────────────────────────────────────────── */
+
+.refraction-doc {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: var(--bench-hi);
+  color: var(--ink);
+  padding: 34px 38px 26px;
+  outline: 1px solid var(--bench-lo);
+}
+
+.refraction-eyebrow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font: 600 9px/1 var(--label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.refraction-eyebrow b {
+  color: var(--signal);
+  font-weight: 700;
+}
+
+.refraction-title {
+  margin: 14px 0 0;
+  font: 400 40px/1.02 var(--display);
+  letter-spacing: -0.01em;
+}
+
+.refraction-rule {
+  margin: 18px 0 16px;
+  height: 1px;
+  background: var(--rule-hard);
+  flex: none;
+}
+
+.refraction-body {
+  display: flex;
+  gap: 26px;
+  flex: 1;
+  min-height: 0;
+}
+
+.refraction-col {
+  flex: 1;
+  margin: 0;
+  font: 11px/1.6 var(--body);
+  color: var(--ink-mute);
+}
+
+.refraction-col + .refraction-col {
+  color: var(--ink-faint);
+}
+
+/* The figure is the reason the lens is legible. A solid form against
+ * paper is the largest luminance step on the page, so its edge is where
+ * the finite difference in refractionShaders.ts finds the most slope —
+ * the transmitted page bends hardest exactly along this outline. */
+.refraction-figure {
+  flex: none;
+  width: 132px;
+  display: grid;
+  place-items: center;
+}
+
+.refraction-form {
+  width: 108px;
+  height: 108px;
+  background: var(--ink);
+}
+
+.refraction-form[data-form='circle'] {
+  border-radius: 50%;
+}
+
+.refraction-foot {
+  margin-top: 16px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-top: 1px solid var(--rule);
+  padding-top: 10px;
+  flex: none;
+}
+
+.refraction-folio {
+  font: 600 9px/1 var(--label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* The liveness proof. Both documents run one of these, and during a
+ * crossing BOTH are visible at once — the outgoing one on the sheet's
+ * own pixels, the incoming one refracted through it. If either readout
+ * is frozen, that capture stopped painting. */
+.refraction-tick {
+  font: 11px/1 var(--data);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.refraction-tick i {
+  font-style: normal;
+  color: var(--signal);
+  padding-right: 6px;
+}
+
+/* The grid is the third figure: nine cells, five inked. It has far more
+ * edge per unit area than the square, so switching to it multiplies the
+ * places the lens finds slope — the same amplitude, visibly more bend. */
+.refraction-grid {
+  width: 108px;
+  height: 108px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.refraction-grid > div {
+  background: transparent;
+  outline: 1px solid var(--rule-hard);
+}
+
+.refraction-grid > div[data-on] {
+  background: var(--ink);
+}
+
+/* The one live control inside a capture. It edits the LENS: the figure it
+ * switches is the tallest part of the height field, so clicking through the
+ * glass changes the shape of the glass. */
+.refraction-forms {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+  flex: none;
+}
+
+.refraction-formbtn {
+  appearance: none;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink-mute);
+  font: 600 8.5px/1 var(--label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.refraction-formbtn:hover,
+.refraction-formbtn[data-hover] {
+  border-color: var(--rule-hard);
+  color: var(--ink);
+}
+
+.refraction-formbtn:active,
+.refraction-formbtn[data-active] {
+  background: var(--bench);
+}
+
+.refraction-formbtn[data-on] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bench-hi);
+}

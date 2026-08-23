@@ -44,6 +44,7 @@ const ROOT_ENTRY = [
   'useSurfaceSourceRoot',
   'useSurfaceState',
   'useSurfaceTexture',
+  'useSurfaceTextureOf',
   'useSurfaceUniforms',
 ]
 

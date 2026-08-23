@@ -2024,3 +2024,50 @@ deformation. The law stays the consumer's; the mechanism is the
 library's. Extra per-vertex outputs (Genie's squeeze, a curl's
 normals) write through the callback's index argument. An identity
 `place` restores the flat plane.
+
+## #36 — A source is enough (2026-08-22, react binding + lab)
+
+**Decision.** A material may name another Surface's texture by handle,
+through `useSurfaceTextureOf(handle, part?)` on the curated entry. It
+answers `THREE.Texture | null` — null before that Surface's runtime
+lands, never a throw — so a material mounts first and binds later
+rather than depending on which of two independent trees commits first.
+The Surface being sampled needs no `view`, no `Surface.DOM`, and no
+`Surface.WebGL`: content and a size are the whole declaration, and
+such a Surface is a *resident source*.
+
+**Why.** `SurfaceSourceRuntime`'s law is "one source, one texture, any
+number of presenters", and the number may be zero. Measured 2026-08-22
+(`docs/spikes/cross-surface-sampling.md`): a Surface with no
+presentation rasterized, uploaded, and versioned a texture throughout,
+`texture.version` climbing 175 → 318 over 1.2s, identical under
+`frameloop="demand"` because a painting source claims work through the
+host's reference-counted busy flag. Arbitration said nothing about it —
+no warning, no readiness complaint — and its `ready: false` is correct
+rather than a fault, because readiness is a statement about registered
+WebGL presenters and it has none.
+
+The capability this buys cannot be had another way. A view transition
+between two live layouts needs both views painting at once, and every
+alternative freezes the arriving one: a screen grab, a CSS view
+transition, or a render target of a second scene all sample *pixels
+already drawn*. The arriving view here is drawn nowhere in the scene
+graph, so there is nothing to copy from — measured in the same spike,
+2,590 pixels of the sampled Surface appeared inside the sampling
+Surface's rect and 0 anywhere else on the canvas. The correspondence is
+also content-space rather than screen-space: the shader picks the
+arriving view at a uv the leaving view's own content decides, which is
+what a morph needs and what a framebuffer copy structurally cannot
+give.
+
+**The shape.** The hook is a read over machinery separated wiring
+already uses — `storeByHandle` maps handle → store, the store publishes
+`SurfacePartPublication { runtime }` per part, and `subscribeParts` is
+the notification. No second source, no second parked canvas, no second
+texture: the runtime keeps ONE texture for its whole life and re-cuts
+storage into it, so the answer is reference-stable and safe as a
+`useSyncExternalStore` snapshot. Pointer routing is explicitly out of
+scope — a sampled Surface has no mesh, so nothing can hit it. The
+contract is `packages/react/src/primitives/surface/surfaceContext.test.ts`;
+the demonstration is the refraction lab scene, gated by
+`gate:refraction-arriving`.

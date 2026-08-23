@@ -66,12 +66,17 @@ export type {
 // how the custom material reaches the live texture, the measured chrome,
 // and the painted box it gates blending on when its own raster's
 // generation might lag the live DOM.
+//
+// `useSurfaceTextureOf` is the one that reaches OUTSIDE the slot: a handle
+// names content, and a source paints and uploads with no presenter at all,
+// so a material can mix a second live capture the page shows nowhere.
 export {
   useSurfaceChrome,
   useSurfaceInstance,
   useSurfacePaintedSize,
   useSurfaceSourceRoot,
   useSurfaceTexture,
+  useSurfaceTextureOf,
   type SurfaceInstance,
 } from './primitives/surface/surfaceContext'
 export {

@@ -93,13 +93,16 @@ not currently offer, and that a workaround had to stand in for.
    where one point sprite would do. A `Points` presentation would be a
    real saving for any particulate effect.
 
-4. **A material can only reach its own Surface's texture.**
-   `useSurfaceTexture()` answers with the enclosing Surface's capture and
-   there is no way to sample another one, so a single cloud cannot morph
-   card A into card B. `dissolve` is staged instead as two overlapping
-   clouds, one fading out and one fading in, sharing a path and a clock.
-   A cross-fade between two captures in one material is the shape that is
-   missing.
+4. **A material can only reach its own Surface's texture.** *Closed
+   2026-08-22 by `useSurfaceTextureOf(handle)`.* It was an ergonomics gap,
+   not a capability gap: a Surface with zero presenters already rasterizes,
+   uploads and versions a texture, and the store already maps handle →
+   runtime (`docs/spikes/cross-surface-sampling.md`). The refraction scene
+   samples two live captures in one material.
+
+   `dissolve` still stands as two overlapping clouds, one fading out and
+   one fading in, sharing a path and a clock — worth revisiting now that
+   one cloud can hold both captures.
 
 5. **`placement="match-dom"` is unusable for anything physical.** It
    places a *unit* plane at `MATCH_DOM_DISTANCE = 1` from the camera and

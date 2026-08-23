@@ -18,6 +18,7 @@ import { OpticsApp } from './scenes/optics/Optics'
 import { LogoApp } from './scenes/logo/Logo'
 import { SelectionApp } from './scenes/selection/Selection'
 import { CandidatesApp } from './scenes/candidates/Candidates'
+import { RefractionApp } from './scenes/refraction/Refraction'
 import { SurfaceProviderProbe } from './lib/surfaceProvider'
 import { SceneNav } from './components/SceneNav'
 
@@ -43,6 +44,7 @@ type SceneId =
   | 'logo'
   | 'selection'
   | 'candidates'
+  | 'refraction'
 const SCENES = [
   'workspace',
   'glass',
@@ -57,6 +59,7 @@ const SCENES = [
   'logo',
   'selection',
   'candidates',
+  'refraction',
 ] as const
 
 // The nav shows only the focus five; the rest stay routable by URL so the
@@ -199,6 +202,7 @@ export default function App() {
   if (scene === 'optics') return <OpticsApp chips={chips} />
   if (scene === 'logo') return <LogoApp chips={chips} />
   if (scene === 'selection') return <SelectionApp chips={chips} />
+  if (scene === 'refraction') return <RefractionApp chips={chips} />
   // No chips: the candidates page has its own left-column nav, and the two
   // menus side by side read as one broken one.
   if (scene === 'candidates') return <CandidatesApp />
