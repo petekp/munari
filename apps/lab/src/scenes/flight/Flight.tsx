@@ -63,6 +63,7 @@ import {
   useSurfaceDriver,
   useSurfaceSourceRoot,
   useSurfaceTexture,
+  useSupportsDOMSurfaces,
 } from '@petepetrash/munari'
 import {
   cameraDistance,
@@ -1243,6 +1244,18 @@ function PixelPerfect() {
   return null
 }
 
+/** A card being carried by hand, with no renderer under it. */
+interface Carry {
+  id: string
+  /** Where the card's top-left should be on screen, from the hand. */
+  x: number
+  y: number
+  /** The correction currently written to `transform`. */
+  tx: number
+  ty: number
+  el: HTMLElement | null
+}
+
 // ── FLIP, so the reflow is something you can watch ───────────────────────
 
 function captureRects(root: HTMLElement) {
@@ -1283,6 +1296,8 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
     return byId
   })
   const [board, setBoard] = useState<Record<ColId, string[]>>(() => ({ ...START }))
+  // No trial, no flight — see `carryPlainly`.
+  const supported = useSupportsDOMSurfaces()
   const [flyingId, setFlyingId] = useState<string | null>(null)
   // The card's identity, declared here because the board is what asks for a
   // handoff and what has to know when one has happened. The excursion's
@@ -1300,7 +1315,7 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
   const [glMounted, setGlMounted] = useState(false)
   // Identity only. What the Surface is DOING — its view, its timing, who
   // hears about it — is stated once, on the `<Surface>` below.
-  const surface = useSurface({ name: 'flight-card' })
+  const surface = useSurface('flight-card')
   const requestLift = useCallback((webgl: boolean) => {
     if (webgl) setGlMounted(true)
     setView(webgl ? 'webgl' : 'dom')
@@ -1367,10 +1382,19 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
   // already in the list — it is the card's own slot, still holding its full
   // height because the page copy is only hidden, not removed. So this is a
   // plain "which slot is the pointer nearest the top half of".
+  // The board as the pointer handlers must see it: a carry commits several
+  // reorders before it ends, and each one has to be measured against the
+  // slots the last one produced. Synced before paint, so the move that
+  // follows a commit already reads the new list.
+  const boardRef = useRef(board)
+  useLayoutEffect(() => {
+    boardRef.current = board
+  }, [board])
+
   const dropTarget = useCallback(
     (x: number, y: number, id: string): { col: ColId; index: number } | null => {
       for (const { id: col } of COLS) {
-        const list = board[col]
+        const list = boardRef.current[col]
         const ul = boardEl.current?.querySelector(`[data-col="${col}"] ul`)
         if (!ul) continue
         const r = ul.getBoundingClientRect()
@@ -1390,7 +1414,7 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
       }
       return null
     },
-    [board, slotRect],
+    [slotRect],
   )
 
   // A board reorder starts FLIP transforms on the page. While the page owns
@@ -1425,16 +1449,141 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
   const snapshot = useCallback(() => {
     if (boardEl.current) pending.current = captureRects(boardEl.current)
   }, [])
+
+  // The carried card, while `carryPlainly` is running one. Held here rather
+  // than in that closure because the commit it triggers has to be able to
+  // reach it — see `placeCarried`.
+  const carry = useRef<Carry | null>(null)
+
+  /**
+   * Put the carried card back under the hand.
+   *
+   * Closed loop, not a running total of the hand's deltas: measure where the
+   * card actually is, correct toward where it should be. Between two calls
+   * the card's layout box moves for reasons this has no way to enumerate —
+   * its slot was spliced into the other column, `playFlip` is animating that
+   * slot's transform, the board scrolled — and measuring the result absorbs
+   * all of them without naming any.
+   *
+   * The element is re-resolved every time, and that is the load-bearing
+   * part. The two columns are different `<ul>` parents, so a card crossing
+   * between them is not moved by React — it is unmounted from one list and
+   * mounted in the other. A reference captured at pointerdown goes on
+   * pointing at a detached node from the first cross-column reorder onward,
+   * which left the card sitting in its new slot while the hand carried
+   * nothing (2026-08-23).
+   */
+  const placeCarried = useCallback(() => {
+    const c = carry.current
+    if (!c) return
+    const el = slots.current.get(c.id)?.querySelector<HTMLElement>('.l14-card')
+    if (!el) return
+    if (el !== c.el) {
+      c.el?.classList.remove('l14-carrying')
+      c.el?.style.removeProperty('transform')
+      el.classList.add('l14-carrying')
+      c.el = el
+      // The replacement carries no transform, so the correction below is
+      // measured from its resting box rather than from the dead node's.
+      c.tx = 0
+      c.ty = 0
+    }
+    const at = el.getBoundingClientRect()
+    c.tx += c.x - at.left
+    c.ty += c.y - at.top
+    el.style.transform = `translate(${c.tx}px, ${c.ty}px)`
+  }, [])
+
   useLayoutEffect(() => {
     if (pending.current && boardEl.current) playFlip(boardEl.current, pending.current)
     pending.current = null
-  }, [board])
+    // Before paint, in the same commit that moved the slots: a carried card
+    // must not be seen in its new seat for even one frame.
+    placeCarried()
+  }, [board, placeCarried])
+
+  // One step of a carry: aim, snapshot, commit. The same three calls
+  // `flightGestures` makes on every trusted move of a flight.
+  const carryStep = useCallback(
+    (x: number, y: number, id: string) => {
+      const to = dropTarget(x, y, id)
+      if (!to) return
+      snapshot()
+      moveTo(to.col, to.index, id)
+    },
+    [dropTarget, snapshot, moveTo],
+  )
+
+  /**
+   * The card carry with no renderer under it.
+   *
+   * What is lost without the trial is the peel, the mass and the shadow.
+   * Everything else is the same board: the reorder commits CONTINUOUSLY
+   * under the hand, through the same `dropTarget` → `snapshot` → `moveTo`
+   * the flight calls from `flightGestures`, so the gap opens where the card
+   * is headed and the neighbours slide with the same FLIP. Committing only
+   * on release read as a different, worse board — the page sat still under a
+   * moving card and then jumped once (2026-08-23).
+   *
+   * This function owns the hand; `placeCarried` owns the pixels, and runs
+   * both from here per frame and from the commit that moves the slots.
+   */
+  const carryPlainly = useCallback(
+    (id: string, e: React.PointerEvent<HTMLDivElement>) => {
+      const card = e.currentTarget
+      const rect = card.getBoundingClientRect()
+      // Where inside the card the hand took hold. The card keeps that
+      // relationship for the whole carry, so it never re-centres on the
+      // pointer.
+      const grabX = e.clientX - rect.left
+      const grabY = e.clientY - rect.top
+      let raf = 0
+      e.preventDefault()
+      card.classList.add('l14-carrying')
+      carry.current = { id, x: rect.left, y: rect.top, tx: 0, ty: 0, el: card }
+
+      const frame = () => {
+        placeCarried()
+        raf = requestAnimationFrame(frame)
+      }
+      raf = requestAnimationFrame(frame)
+
+      const onMove = (ev: PointerEvent) => {
+        if (ev.pointerId !== e.pointerId) return
+        const c = carry.current
+        if (!c) return
+        c.x = ev.clientX - grabX
+        c.y = ev.clientY - grabY
+        carryStep(ev.clientX, ev.clientY, id)
+      }
+      const onDone = (ev: PointerEvent) => {
+        if (ev.pointerId !== e.pointerId) return
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onDone)
+        window.removeEventListener('pointercancel', onDone)
+        cancelAnimationFrame(raf)
+        // The board is already where it is going, so the card only has to
+        // stop being carried. The last FLIP is still playing on the slots;
+        // dropping the transform in the same frame lets the card finish that
+        // animation in its slot rather than teleport into it.
+        const el = carry.current?.el
+        carry.current = null
+        el?.classList.remove('l14-carrying')
+        el?.style.removeProperty('transform')
+      }
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onDone)
+      window.addEventListener('pointercancel', onDone)
+    },
+    [carryStep, placeCarried],
+  )
 
   // ── the gesture ──
   const beginDrag = useCallback(
     (id: string, e: React.PointerEvent<HTMLDivElement>) => {
       if (closestFrom(e.target, '[data-nodrag]')) return
       if (flight.current) return
+      if (!supported) return carryPlainly(id, e)
       const el = e.currentTarget.getBoundingClientRect()
       e.preventDefault()
 
@@ -1484,7 +1633,7 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
       requestLift(true)
       setFlyingId(id)
     },
-    [requestLift],
+    [requestLift, supported, carryPlainly],
   )
 
   // ── the delete ──
@@ -1499,8 +1648,43 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
   // momentum and all; a card at rest on the page becomes matter first, the
   // same flight machinery as a grab (page copy releases on presentation
   // proof, plate springs off the page), except the mode is `crumple` from birth.
+  // The wad faded out: NOW the board forgets. The FLIP snapshot goes first,
+  // so the neighbours close over the vacated slot as a layout animation
+  // rather than a cut — the one reflow in this lab a delete is allowed to
+  // cause, and the user watches it happen.
+  const commitDelete = useCallback((id: string) => {
+    setCards((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+    setBoard((prev) => ({
+      queue: prev.queue.filter((x) => x !== id),
+      today: prev.today.filter((x) => x !== id),
+    }))
+    pendingDelete.current = null
+    ending.current = false
+    setFlyingId(null)
+    setAtAltitude(false)
+    setGlMounted(false)
+    setView('dom')
+    setPresented('dom')
+    document.querySelectorAll<HTMLElement>('.l14-slot').forEach((el) => {
+      el.style.removeProperty('--l14-near')
+    })
+  }, [])
+
   const deleteCard = useCallback((id: string, e?: React.PointerEvent<HTMLButtonElement>) => {
     if (ending.current) return
+    // No crumple to watch, so the card just goes. The FLIP still plays, so
+    // the neighbours close over the gap as a layout animation rather than a
+    // cut — which is the part of a delete this scene cares about anyway.
+    if (!supported) {
+      if (e) e.preventDefault()
+      snapshot()
+      commitDelete(id)
+      return
+    }
     const cardEl = e ? closestFrom(e.target, '.l14-card') : null
     const f = flight.current
     if (f) {
@@ -1608,7 +1792,7 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
     setAtAltitude(false)
     requestLift(true)
     setFlyingId(id)
-  }, [requestLift])
+  }, [requestLift, supported, snapshot, commitDelete])
 
   const regrab = useCallback((localX: number, localY: number) => {
     const f = flight.current
@@ -1689,31 +1873,6 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
     requestLift(false)
   }, [requestLift])
 
-  // The wad faded out: NOW the board forgets. The FLIP snapshot goes first,
-  // so the neighbours close over the vacated slot as a layout animation
-  // rather than a cut — the one reflow in this lab a delete is allowed to
-  // cause, and the user watches it happen.
-  const commitDelete = useCallback((id: string) => {
-    setCards((prev) => {
-      const next = { ...prev }
-      delete next[id]
-      return next
-    })
-    setBoard((prev) => ({
-      queue: prev.queue.filter((x) => x !== id),
-      today: prev.today.filter((x) => x !== id),
-    }))
-    pendingDelete.current = null
-    ending.current = false
-    setFlyingId(null)
-    setAtAltitude(false)
-    setGlMounted(false)
-    setView('dom')
-    setPresented('dom')
-    document.querySelectorAll<HTMLElement>('.l14-slot').forEach((el) => {
-      el.style.removeProperty('--l14-near')
-    })
-  }, [])
 
   useLayoutEffect(() => {
     // Clear only after React has committed the Flying subtree's removal.

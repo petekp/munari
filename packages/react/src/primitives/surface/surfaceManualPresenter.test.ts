@@ -5,7 +5,7 @@ import { surfaceManualPresenter } from './surfaceManualPresenter'
 // An exclusive Surface with one manual presenter and nothing else: the
 // shape a scene compositing its own pixels over a Surface's capture is in.
 const airborne = () => {
-  const handle = createSurface({ name: 'panel' })
+  const handle = createSurface('panel')
   const store = surfaceStoreOf(handle)
   store.acquire(1)
   store.setExclusive(true)

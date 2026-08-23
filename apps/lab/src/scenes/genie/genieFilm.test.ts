@@ -37,12 +37,14 @@ interface FakeCanvas {
   readonly element: HTMLCanvasElement
 }
 
-function fakeCanvas(): FakeCanvas {
+function fakeCanvas(
+  reported: CanvasRenderingContext2DSettings = { alpha: false, colorSpace: 'srgb' },
+): FakeCanvas {
   const drawImage = vi.fn()
   let contextOptions: CanvasRenderingContext2DSettings | undefined
   const context = {
     drawImage,
-    getContextAttributes: () => ({ alpha: false, colorSpace: 'srgb' as const }),
+    getContextAttributes: () => reported,
   }
   const element = document.createElement('canvas')
   // SAFETY: the real `getContext` is overloaded across every context id and
@@ -183,6 +185,31 @@ function fakeVideo(options: FakeVideoOptions = {}): FakeVideo {
 }
 
 describe('Genie film controller', () => {
+  // Safari 18.6 omits `alpha` from getContextAttributes() altogether — the
+  // keys it answers with are colorSpace, desynchronized, willReadFrequently.
+  // Reading that absence as a refusal threw out of the ref callback that
+  // attaches this canvas and blanked the whole lab page (2026-08-23).
+  it('accepts a context whose browser does not report the alpha it was asked for', () => {
+    const canvas = fakeCanvas({ colorSpace: 'srgb', willReadFrequently: false })
+    const controller = createGenieFilmController()
+    expect(() => controller.attachCanvas(canvas.element)).not.toThrow()
+    expect(canvas.contextOptions).toEqual({ alpha: false, colorSpace: 'srgb' })
+    expect(controller.source?.format).toEqual({ colorSpace: 'srgb', premultiplyAlpha: false })
+  })
+
+  // A browser that says yes to the request and then reports the opposite is
+  // the fault the check is actually for, and it still is one.
+  it('refuses a context reported as non-opaque or not sRGB', () => {
+    expect(() =>
+      createGenieFilmController().attachCanvas(fakeCanvas({ alpha: true, colorSpace: 'srgb' }).element),
+    ).toThrow(/opaque sRGB/)
+    expect(() =>
+      createGenieFilmController().attachCanvas(
+        fakeCanvas({ alpha: false, colorSpace: 'display-p3' }).element,
+      ),
+    ).toThrow(/opaque sRGB/)
+  })
+
   it('creates one opaque sRGB source and keeps it across ref reattachment', () => {
     const canvas = fakeCanvas()
     const controller = createGenieFilmController()

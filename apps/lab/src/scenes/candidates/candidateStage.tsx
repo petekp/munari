@@ -16,16 +16,9 @@
 // lift handle's view state, and the 0→1 clock. It owns no geometry, no
 // material, and no opinion about what an effect looks like.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import {
-  useSurface,
-  useSurfaceState,
-  type SurfaceHandle,
-  type SurfaceState,
-  type SurfaceView,
-} from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 
 /** Shared by every candidate so a mesh can move between them unchanged. */
@@ -90,42 +83,6 @@ export function worldBoxOf(el: HTMLElement | null): WorldBox | null {
 /** A viewport point (a click, the cursor) in the same coordinates. */
 export function worldPoint(clientX: number, clientY: number): [number, number] {
   return [clientX - window.innerWidth / 2, window.innerHeight / 2 - clientY]
-}
-
-// ── the lift: a Surface that spends most of its life as page DOM ────────
-
-export interface Lift {
-  surface: SurfaceHandle
-  view: SurfaceView
-  state: SurfaceState
-  /** True while the WebGL side should be mounted, including the linger. */
-  mounted: boolean
-  lift(): void
-  drop(): void
-  /** Wire to `onWebGLReleased` — unmounts the mesh after the pixels are back. */
-  released(): void
-}
-
-/**
- * One piece of content that can change hands and change back.
- *
- * `mounted` is deliberately not `view === 'webgl'`: the protocol keeps the
- * presenter alive through its reclaim linger, and unmounting on the view
- * change instead would tear the mesh down inside the very commit that is
- * handing the pixels back — a one-frame hole where neither side draws.
- */
-export function useLift(name: string): Lift {
-  const surface = useSurface({ name })
-  const state = useSurfaceState(surface)
-  const [view, setView] = useState<SurfaceView>('dom')
-  const [mounted, setMounted] = useState(false)
-  const lift = useCallback(() => {
-    setMounted(true)
-    setView('webgl')
-  }, [])
-  const drop = useCallback(() => setView('dom'), [])
-  const released = useCallback(() => setMounted(false), [])
-  return { surface, view, state, mounted, lift, drop, released }
 }
 
 // ── uniforms the material actually reads ────────────────────────────────

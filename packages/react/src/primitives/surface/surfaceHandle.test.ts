@@ -146,7 +146,7 @@ describe('controlled options and the latest callback', () => {
   // is a DIFFERENT type to React, which remounts the tree and hands back a
   // fresh handle — the exact thing these cases claim does not happen.
   const Host = (props: SurfaceControls) => {
-    const store = useSurfaceStore({ name: 'panel' })
+    const store = useSurfaceStore('panel')
     useSurfaceControls(store, props)
     seen = store
     return null
@@ -551,13 +551,13 @@ describe('the public handle is identity only', () => {
   // those in reach of a caller who only wanted a name to pass around, and
   // the components below it would be arguing with them for the pixels.
   it('createSurface answers with a handle, not the store', () => {
-    const handle = createSurface({ name: 'panel' })
+    const handle = createSurface('panel')
     expect(Object.keys(handle)).toEqual(['progress'])
     expect(handle.progress.get()).toBe(0)
   })
 
   it('the name reaches the store behind the handle', () => {
-    const handle = createSurface({ name: 'panel' })
+    const handle = createSurface('panel')
     expect(surfaceStoreOf(handle).name).toBe('panel')
   })
 
@@ -573,7 +573,7 @@ describe('the public handle is identity only', () => {
   })
 
   it('a handle created and never mounted registers nothing', () => {
-    const handle = createSurface({ name: 'panel' })
+    const handle = createSurface('panel')
     const store = surfaceStoreOf(handle)
     expect(store.hasController()).toBe(false)
     expect(store.getState().ready).toBe(false)

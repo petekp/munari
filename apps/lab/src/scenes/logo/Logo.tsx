@@ -44,6 +44,7 @@ import {
   type SurfaceHandle,
   type SurfaceProgress,
   type SurfaceView,
+  useSupportsDOMSurfaces,
   useSurface,
   useSurfaceTexture,
 } from '@petepetrash/munari'
@@ -1283,6 +1284,7 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
   // pixel-identical even mid-breath. The handle holds the phases, the
   // evidence gate, and the reversal rule; this page states its timing
   // and reads back what it needs to dress the DOM.
+  const supported = useSupportsDOMSurfaces()
   const [view, setView] = useState<SurfaceView>('dom')
   const [presented, setPresented] = useState<SurfaceView>('dom')
   const [settledOn, setSettledOn] = useState<SurfaceView>('dom')
@@ -1293,7 +1295,7 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
   const [glMounted, setGlMounted] = useState(false)
   // Identity only. The view, the timing, and the callbacks are stated once,
   // on the `<Surface>` that declares this handle.
-  const surface = useSurface({ name: 'logo' })
+  const surface = useSurface('logo')
   const request = useCallback((webgl: boolean) => {
     if (webgl) setGlMounted(true)
     setView(webgl ? 'webgl' : 'dom')
@@ -1544,18 +1546,28 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
         {/* `data-renderer` is the probe's handle: shader-compile walks the
             scene through both directions by name, so reordering or
             restyling the segments cannot quietly change what it clicks. */}
-        <div className="logo-matter">
-          <button
-            data-renderer="html"
-            data-on={view === 'dom'}
-            onClick={() => request(false)}
-          >
-            HTML
-          </button>
-          <button data-renderer="gl" data-on={view === 'webgl'} onClick={() => request(true)}>
-            WebGL
-          </button>
-        </div>
+        {/* Only where there is a second renderer to name. Without the
+            trial the WebGL segment offered a destination nothing could
+            reach: the request mounted a Canvas whose frameloop never
+            advanced, so react-three-fiber's `onCreated` stayed pending
+            until the segment was flipped back — and fired against the
+            wrapper div it had just unmounted, throwing (2026-08-23). The
+            letters are the page's either way, so the scene loses a label
+            here and nothing else. */}
+        {supported && (
+          <div className="logo-matter">
+            <button
+              data-renderer="html"
+              data-on={view === 'dom'}
+              onClick={() => request(false)}
+            >
+              HTML
+            </button>
+            <button data-renderer="gl" data-on={view === 'webgl'} onClick={() => request(true)}>
+              WebGL
+            </button>
+          </div>
+        )}
         <div className="logo-panel-row">
           <button onClick={() => setRunning((v) => !v)}>{running ? 'pause' : 'play'}</button>
           <button onClick={() => schedule(waveSteps(rRef.current, WORD.length))}>wave</button>

@@ -281,7 +281,7 @@ function Track({
 // ── the page ─────────────────────────────────────────────────────────────
 
 export function SliderApp({ chips }: { chips?: React.ReactNode }) {
-  const surface = useSurface({ name: 'slider-track' })
+  const surface = useSurface('slider-track')
   const st = useSurfaceState(surface)
   const [view, setView] = useState<SurfaceView>('dom')
   const [value, setValue] = useState(START_MS)

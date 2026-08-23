@@ -88,19 +88,22 @@ const geometry = <planeGeometry args={[1, 1]} />
 // View, timing and callbacks are `<Surface>`'s. A handle that also took
 // them let one Surface be driven from two declarations.
 void createSurface()
-void createSurface({ name: 'check' })
-// @ts-expect-error `createSurface` takes options, never a bare name.
 void createSurface('check')
+// A bare name is the whole signature, so there is no field to smuggle a
+// view, a timing or a callback through. These were `@ts-expect-error`s on
+// an options object; the string makes them arity and type errors instead.
+// @ts-expect-error `createSurface` takes the name itself, not an options bag.
+void createSurface({ name: 'check' })
 // @ts-expect-error The view belongs to the root that presents the handle.
-void createSurface({ name: 'check', view: 'webgl' })
+void createSurface('check', { view: 'webgl' })
 // @ts-expect-error Timing likewise.
-void createSurface({ name: 'check', timing: { settleMs: 0 } })
+void createSurface('check', { timing: { settleMs: 0 } })
 // @ts-expect-error And the callbacks with it.
-void createSurface({ name: 'check', onReady: () => {} })
+void createSurface('check', { onReady: () => {} })
 
 function IdentityOnly() {
-  const own: SurfaceHandle = useSurface({ name: 'check' })
-  // @ts-expect-error `useSurface` takes the same identity-only options.
+  const own: SurfaceHandle = useSurface('check')
+  // @ts-expect-error `useSurface` takes the same bare name.
   useSurface({ name: 'check', onPresentedViewChange: () => {} })
   return <Surface surface={own} source={<div />} />
 }

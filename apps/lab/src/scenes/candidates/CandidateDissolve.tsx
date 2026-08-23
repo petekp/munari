@@ -30,7 +30,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceTexture } from '@petepetrash/munari'
+import { Surface, useSurfaceTexture, useSurfaceView } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { buildCloud, grainSize, type CloudSpec } from './candidateCloud'
 import { CLOUD_FRAG, CLOUD_VERT } from './candidateShaders'
@@ -39,7 +39,6 @@ import {
   easeInOutCubic,
   useOwnUniforms,
   usePhase,
-  useLift,
   worldBoxOf,
   type Phase,
   type WorldBox,
@@ -156,8 +155,8 @@ export function CandidateDissolve() {
   const [slot, setSlot] = useState<Slot>('left')
   const [flying, setFlying] = useState(false)
   const [edits, setEdits] = useState(0)
-  const origin = useLift('dissolve-origin')
-  const arrival = useLift('dissolve-arrival')
+  const origin = useSurfaceView('dissolve-origin')
+  const arrival = useSurfaceView('dissolve-arrival')
   const phase = usePhase()
   const runId = useRef(0)
   const holders = useRef<Record<Slot, HTMLDivElement | null>>({ left: null, right: null })
@@ -181,8 +180,8 @@ export function CandidateDissolve() {
     phase.current.t = 0
     phase.current.running = true
     setFlying(true)
-    origin.lift()
-    arrival.lift()
+    origin.show('webgl')
+    arrival.show('webgl')
   }, [arrival, flying, origin, phase])
 
   const land = useCallback(() => {
@@ -190,8 +189,8 @@ export function CandidateDissolve() {
     setFlying(false)
     // The destination becomes page DOM; the origin gives its pixels back to
     // a slot that is now empty, which is why its own view goes home too.
-    arrival.drop()
-    origin.drop()
+    arrival.show('dom')
+    origin.show('dom')
   }, [arrival, origin])
 
   const bump = (e: React.MouseEvent) => {
@@ -243,7 +242,7 @@ export function CandidateDissolve() {
         {(['left', 'right'] as const).map((side) => {
           const holds = slot === side
           const isOrigin = holds
-          const lift = isOrigin ? origin : arrival
+          const piece = isOrigin ? origin : arrival
           const box = boxes[side]
           const card = cards[side]
           // While a flight is running BOTH slots carry a presenter: the one
@@ -260,12 +259,11 @@ export function CandidateDissolve() {
             >
               {showSurface ? (
                 <Surface
-                  surface={lift.surface}
-                  view={lift.view}
+                  surface={piece.surface}
+                  view={piece.view}
                   timing={{ settleMs: 0, durationMs: 1 }}
                   size={[CARD_W, CARD_H]}
                   source={card}
-                  onWebGLReleased={lift.released}
                 >
                   <Surface.DOM>
                     <div
@@ -280,7 +278,7 @@ export function CandidateDissolve() {
                       {card}
                     </div>
                   </Surface.DOM>
-                  {lift.mounted && flying && box && (
+                  {piece.mounted && flying && box && (
                     <Surface.WebGL
                       key={runId.current}
                       placement="manual"

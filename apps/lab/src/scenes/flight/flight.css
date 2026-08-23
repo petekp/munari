@@ -483,3 +483,36 @@
 .l14-overlay canvas {
   pointer-events: none;
 }
+
+/* The card carry with no renderer under it — see `carryPlainly` in
+ * Flight.tsx. It is still an ordinary card in flow, transformed under the
+ * hand, so it needs to come off the page in the stacking order and say by
+ * its shadow that it has been picked up. The flight's own lift does both
+ * with real geometry; this is the flat version of the same claim. */
+.l14-card.l14-carrying {
+  cursor: grabbing;
+  will-change: transform;
+  box-shadow:
+    0 2px 4px rgb(18 19 23 / 18%),
+    0 18px 40px -16px rgb(18 19 23 / 62%);
+}
+
+/* The slot the carried card belongs to — the gap that follows it around the
+ * board as the reorder commits under the hand.
+ *
+ * The z-index is on the SLOT, not the card. `playFlip` animates a transform
+ * on every slot that moves, and a transformed element paints as its own
+ * stacking context — so a neighbour sliding past would draw over a card
+ * raised only within its own slot.
+ *
+ * The outline lands on the same colour the flight's own vacated slot
+ * reaches at `--l14-near: 1`, and it is a constant here rather than a
+ * distance because the reorder is live: this slot is always where the card
+ * is going. `:has` rather than an attribute because the card's class is the
+ * one piece of carry state that already exists, and a second copy on the
+ * slot could disagree with it. */
+.l14-slot:has(.l14-card.l14-carrying) {
+  position: relative;
+  z-index: 5;
+  outline-color: color-mix(in oklab, var(--rule), var(--signal) 92%);
+}

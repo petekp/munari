@@ -249,8 +249,25 @@ export function createGenieFilmController(
         })
         if (!nextContext) throw new Error('Genie film needs a Canvas 2D context')
 
+        // Only a REPORTED contradiction is a fault. Safari 18.6 omits
+        // `alpha` from getContextAttributes() altogether — the keys are
+        // colorSpace, desynchronized, willReadFrequently — so reading a
+        // missing field as a refusal threw out of the ref callback that
+        // calls this and took the whole React tree with it. The genie lab
+        // was a blank page in Safari (measured 2026-08-23).
+        //
+        // Safari does not honour `alpha: false` either: an untouched
+        // alpha:false canvas reads [0,0,0,0] there, not opaque black. That
+        // costs nothing here. What the source below needs is opaque
+        // PIXELS, because it uploads unpremultiplied, and every frame is a
+        // full-canvas drawImage of a video — which writes alpha 255
+        // whatever the context flag says. The only difference is the
+        // canvas before its first draw, which is transparent black rather
+        // than opaque black and is replaced by the first video frame.
         const attributes = nextContext.getContextAttributes()
-        if (attributes.alpha !== false || attributes.colorSpace !== 'srgb') {
+        const opaque = attributes.alpha !== true
+        const srgb = attributes.colorSpace === undefined || attributes.colorSpace === 'srgb'
+        if (!opaque || !srgb) {
           throw new Error('Genie film needs an opaque sRGB Canvas 2D context')
         }
 

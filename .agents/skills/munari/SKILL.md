@@ -31,7 +31,8 @@ When working outside the repository, use the README and skill shipped with the i
 ## Build a visible Surface
 
 - Import `@petepetrash/munari/style.css` once.
-- Check `detectHtmlInCanvas().drawElementImage` and keep ordinary DOM when it is false.
+- Content that changes hands and changes back uses `useSurfaceView('name')`. It returns the handle, the `view` for `<Surface>`, `show(view)` to ask with, and `mounted` — keep the WebGL side in the tree for exactly as long as that is true. Do not unmount on the view change; the protocol holds its presenter through the reclaim linger, and cutting early leaves one frame where neither side draws. `show('webgl')` is refused where the trial is absent, so `view` never names a renderer that cannot arrive.
+- Call `useSupportsDOMSurfaces()` and render ordinary DOM when it is false. Do not read the capability directly during render — that breaks hydration. `supportsDOMSurfaces()` is the same question for events, effects and diagnostics; `detectHtmlInCanvas()` reports both trial entry points and is for diagnostics only.
 - Mount one `<SurfaceCanvas>`. Name it with `id` and point Surfaces at it with `canvas` once there is more than one.
 - Render the page copy inside `<Surface.DOM>` and the mesh inside `<Surface.WebGL>`.
 - Leave `<Surface.WebGL>` at its default `placement="match-dom"`: it stands where the page copy stands, at the page copy's size. Pass `placement="manual"` and your own `geometry` only when the mesh belongs somewhere else.
@@ -48,6 +49,16 @@ When working outside the repository, use the README and skill shipped with the i
 - Scale mesh-side movement by `useSurfaceProgress()` or a `useSurfaceDriver` step.
 - Set `timing.settleMs` to outlast the slowest compositor-clocked transition the content runs on its presented pixels.
 
+## Degrade every gesture, not just the scene
+
+Most browsers do not have the trial. Content degrades on its own: the page copy keeps rendering, `presentedView` stays `'dom'`, and munari reports the reason through `onError`. Gestures do not degrade on their own, and this is the failure this library is most prone to.
+
+- A pointer handler that sets scene state and then asks for `'webgl'` strands the scene when no renderer can arrive. No further input can leave that state, and nothing throws.
+- Branch inside the gesture, not only at the scene root: `if (!supported) return <the plain DOM version>`.
+- Derive "is this lifted" from `useSurfaceState(handle)` instead of keeping a second copy in scene state. Munari never claims a hold it cannot take, so derived state cannot strand; a duplicated boolean can.
+- Reuse the scene's own commit functions on the degraded path so both paths end in one place. Do not write a second version of the outcome.
+- Exercise the degraded path in a browser without `--enable-features=CanvasDrawElement` before calling the work done.
+
 ## Preserve the capture rules
 
 - Size the captured root from its own layout box.
@@ -60,7 +71,6 @@ When working outside the repository, use the README and skill shipped with the i
 ## Keep the library lean
 
 - Keep visual treatment, scene thresholds, shaders, lighting, and tuned constants local to a scene or registry recipe.
-- Add a binding API only after two real consumers need the same coordination rule.
 - Prefer one canonical example and link to it. Do not copy long examples into several documents.
 
 ## Verify

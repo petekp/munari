@@ -150,6 +150,42 @@ presented generation and changed framebuffer data. It also checks
 that draw and presentation receipts name the same source generation.
 The gate has the standard `drawElementImage` capability policy.
 
+## degraded
+
+CI gate: every lab gesture in a browser with no origin trial.
+`npm run gate:degraded`. It launches Chrome **without**
+`--enable-features=CanvasDrawElement` — that omission is the gate — and
+skips loudly if the browser turns out to have the trial anyway.
+
+A Surface without the trial keeps its DOM and reports the reason, so
+nothing throws and nothing looks broken from outside. What breaks is a
+gesture that arms a transition only a renderer can finish: the scene
+enters a state no further input can leave, and it does so silently.
+That shape shipped four times before anyone noticed — the knobs panel
+carry and resize had no consumer, genie's minimize waited on a flight
+that could not take off, flight's drag waited on the same thing, and
+logo offered a WebGL segment whose Canvas never advanced a frame
+(2026-08-23). The other gates all launch capability-enabled, which is
+also every machine anyone develops on, so this path was the one nothing
+exercised.
+
+Per scene: flight carries a card across columns and requires the board
+to reorder **while the pointer is still down**, the card to stay under
+the hand within 4px, and delete to remove exactly one card; genie
+minimizes a window to the dock, restores it, and drags one by its
+titlebar; knobs moves its panel by the carry handle and resizes it by
+the grip; selection drags over the prose and requires real characters
+selected; logo requires the word on the page and the renderer toggle
+absent. Every scene must also finish with an empty console — a scene
+that throws is a blank page, and that is how the Safari fault stayed
+invisible.
+
+Every clause here was falsified before it was kept: a plausible bug was
+reintroduced and the gate had to report it. Two that could not fail were
+removed rather than repaired. The logo scene animates continuously, so
+"a control moved the word" passed whether the control was wired up or
+not.
+
 ## lab-interactions
 
 Checks the real public lab routes through a capability-enabled browser.
@@ -296,24 +332,54 @@ The teeth are a figure switch inside the LEAVING document, square to
 grid: the sheet must change at the start of the crossing (measured 6.8
 on a 12×12 luminance signature) and must not change at the end (0.0).
 Liveness is a full-resolution luminance sum over the sheet while the
-scrub is parked at 1 and nothing is touched — both documents print the
-same shared clock, so a frozen capture holds that sum still.
+crossing is parked at its end and nothing is touched — both documents
+print the same shared clock, so a frozen capture holds that sum still.
 
-Two more clauses guard the crossing's own mechanics. The first is that
-the midpoint is a front and not a crossfade: of the cells where the two
-documents differ, at least a quarter must match one of them exactly
-(measured 63–66% across runs). A global blend scores zero there by construction, and no
-simpler statistic works — contrast cannot tell a working bend from a
-broken blend, because the revealed part of the sheet is genuinely softer
-than either endpoint. The second is that the raking light follows the
-pointer: sweeping the mouse the width of the panel must move more than
-2% of its pixels by more than eight luminance units (measured 4.2%).
-Mean luminance is blind to this, since the highlight lives on glyph
-edges — the same sweep moves the mean by 0.002.
+Everything that reads the sheet's pixels at the end of the crossing
+parks at t = 0.999, one step of the scrub short of the landing, because
+at t = 1 there is no sheet left to read. The stage numbers there are
+relief 8.3e-16, transmission 0.999997 and zoom 1.0000007 — the landing's
+picture, still drawn from a texture.
 
-The gate
-also pins the law's three stage numbers at `t = 0.5` against the
-material's own uniforms, which catches the r3f uniform-copy trap
+A third clause checks the landing itself: at t = 1 the scene must hold
+no mesh, the GL rect over the sheet must be empty, and the browser must
+give a caret at all thirty points sampled across it, all of them inside
+the arriving document. Both halves are needed, because a canvas that
+still covers the sheet passes the caret test on its own — the pointer
+relay lets the hit through to the DOM underneath. That was the scene's
+real state until 2026-08-22: it lifted at any scrub above zero and never
+landed, so a GL layer sat over the page forever and none of the words a
+viewer had just watched arrive could be selected.
+
+One more clause guards the crossing's own mechanics: the midpoint is a
+front and not a crossfade. Of the cells where the two documents differ,
+at least a quarter must match one of them exactly. A global blend scores
+zero there by construction, and no simpler statistic works, because
+contrast cannot tell a working bend from a broken blend: the revealed
+part of the sheet is genuinely softer than either endpoint.
+
+Read the measured share against the glass, not on its own. Everything
+optical in the scene — the bend, the dispersion, the room reflection,
+the rim — lives on the drop's meniscus, so most of what the drop covers
+is the arriving page shown straight. The committed tuning measures 59%,
+and it measures 59% with the mirror dragged to 0 and to its maximum
+alike. The 25% floor leaves room to retune the drop.
+
+Before the drop rewrite on 2026-08-22 the same front scored 37%: the
+glass was then a relief of the leaving page's ink, so the reflection sat
+on every glyph edge on the sheet rather than on a thin band.
+
+What this gate no longer checks is the raking light. It used to sweep
+the pointer the width of the panel and require that more than 2% of the
+sheet's pixels moved by eight luminance units or more (measured 4.2%,
+against a mean that shifted by 0.002 — the highlight lives on glyph
+edges, so a mean is blind to it). The committed tuning now ships with
+`sheenAmount` at 0, which multiplies the light out entirely, and the
+pointer drives nothing else in the scene. Turn the sheen back up and the
+check is worth restoring.
+
+The gate also pins the law's three stage numbers at `t = 0.5` against
+the material's own uniforms, which catches the r3f uniform-copy trap
 (`apps/lab/src/scenes/candidates/README.md` gap 1), and it stands in as
 a compile check for the scene's program: a shader that fails to link
 draws nothing and the coverage clause reads 0 instead of the full rect.

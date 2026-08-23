@@ -93,21 +93,6 @@ export interface SurfaceHandle {
   readonly progress: SurfaceProgress
 }
 
-/**
- * What a handle is created WITH, and it is identity only.
- *
- * View, timing, and callbacks are `<Surface>`'s, not the handle's. A handle
- * that also carried them would be a second place to say which renderer
- * holds the content, and two callers writing that one fact is a Surface
- * that flips between the answers on whichever of them renders last.
- */
-export interface SurfaceIdentityOptions {
-  name?: string
-}
-
-/** Identity-only, same as `createSurface`'s. */
-export type UseSurfaceOptions = SurfaceIdentityOptions
-
 // How long a landed WebGL side stays mounted — invisible, at progress zero
 // — before its unmount commit. Tearing a renderer group down is heavy
 // main-thread work (measured at ~280ms for a full renderer, 2026-08-14),
@@ -571,10 +556,12 @@ export function surfaceStoreOf(handle: SurfaceHandle): SurfaceStore {
  *
  * The handle is a name and a progress reader, nothing else. What it is
  * DOING — which renderer should hold it, how long the motion takes, who
- * hears about it — belongs to the `<Surface>` that declares it.
+ * hears about it — belongs to the `<Surface>` that declares it. The bare
+ * name is what says so: there is no field here for a caller to put a view
+ * in, so one Surface cannot be driven from two declarations.
  */
-export function createSurface(options: SurfaceIdentityOptions = {}): SurfaceHandle {
-  return createSurfaceStore(options.name).handle
+export function createSurface(name?: string): SurfaceHandle {
+  return createSurfaceStore(name).handle
 }
 
 /**
@@ -584,19 +571,19 @@ export function createSurface(options: SurfaceIdentityOptions = {}): SurfaceHand
  * read once at creation: it names the handle rather than describing its
  * state. Pass the handle to the `<Surface>` that owns its view and timing.
  */
-export function useSurface(options: UseSurfaceOptions = {}): SurfaceHandle {
-  return useSurfaceStore(options).handle
+export function useSurface(name?: string): SurfaceHandle {
+  return useSurfaceStore(name).handle
 }
 
 /**
  * `useSurface`, keeping the private store. The compound components use this;
  * consumers get the handle.
  */
-export function useSurfaceStore(options: UseSurfaceOptions = {}): SurfaceStore {
+export function useSurfaceStore(name?: string): SurfaceStore {
   // `name` is deliberately outside the deps: it is birth-only, and putting
   // it in would rebuild the handle — and drop every registration made
   // against it — because a caller renamed a Surface.
-  const nameRef = useLatest(options.name)
+  const nameRef = useLatest(name)
   const [store] = useState(() => createSurfaceStore(nameRef.current))
   return store
 }

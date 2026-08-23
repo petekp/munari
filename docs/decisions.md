@@ -57,8 +57,8 @@ first instinct — it matches the workspace vocabulary and reads like
 `@tanstack/*`. It was rejected because those scopes are families, and
 the member name is the family member: `@munari/react` promises
 `@munari/vue` and `@munari/svelte` next. This library is three-first
-and renderer abstraction is banned outright by the second-system
-guard, so that name would advertise an architecture the repo forbids —
+and renderer abstraction is banned outright, so that name would
+advertise an architecture the repo forbids —
 unacceptable in a project whose whole claim is faithfulness. Under an
 owner scope the package is named `munari` exactly, and the scope is
 ownership rather than identity. Also rejected: `munari-gl` / `munarijs`
@@ -82,8 +82,7 @@ the username scope, which exists automatically and cannot be taken;
 **Why one public package.** The shadcn model: a thin published
 substrate with a copyable registry on top. Publishing the kernel
 independently is a *promise* — semver, changelogs, unknown consumers —
-that no lab has bled for; the second-system guard says not yet, maybe
-never. Core stays a workspace-internal discipline, real because the
+that nothing in the project needs. Not yet, maybe never. Core stays a workspace-internal discipline, real because the
 boundary tests make it real.
 
 **Why three as peers, unabstracted.** Every platform fact we own that
@@ -381,8 +380,8 @@ already-weighted) and nowhere else.
 
 **Out of contract.** Lit standard materials on partially-transparent
 Surfaces — premultiplied rgb entering lighting math is not a
-passthrough, no lab has bled on it, and the second-system guard says
-we don't design for it until one does. Documented as unsupported; a
+passthrough, and nothing in the lab needs it, so it is not designed
+for. Documented as unsupported; a
 future lab that needs it reopens this entry with measurements.
 
 ## #6 — The binding re-exports the kernel whole, and the shader string lives beside the material (2026-08-03, react binding)
@@ -523,10 +522,9 @@ flight scene.
 **Why not extract it now.** Extracting a reusable component from that
 organism is design work in its own right, and no second consumer
 exists to size it. Cutting it up now would trade a working,
-browser-verified reference for an untested abstraction — the
-second-system guard's exact target, and the same doctrine that gates
-kernel surface (#7: a consumer arrives holding the need, or nothing
-crosses).
+browser-verified reference for an untested abstraction. The same
+reasoning gates kernel surface (#7: a consumer arrives holding the
+need, or nothing crosses).
 
 **What the charter is.** The inventory of what lives where, the rules
 any future extraction must preserve, and the tuned-constant table —
@@ -1351,9 +1349,9 @@ tall narrow card walked straight through it. `clampScale` guards the long
 edge because that is what the platform limits. Now tested on both axes.
 
 **What did not cross.** The phase law from #20 has the opposite problem —
-two independent scene copies and nothing in the kernel — which is the
-second-system guard (#10) satisfied rather than violated: a second
-consumer arrived holding the need. That extraction is the next entry, and
+two independent scene copies and nothing in the kernel — and a second
+consumer has now arrived holding the need. That extraction is the next
+entry, and
 it waits for the superset, because the two copies are not the same law.
 `Flight`'s pins the projected *footprint* to the texture's exact texel
 count as well as the corner; `passage`'s pins only the corner and is
@@ -1369,9 +1367,8 @@ is the whole claim.
 ## #22 — The phase law crosses, and the probe that found it becomes a gate (2026-08-04, kernel + instruments)
 
 #21 left one thing on the board: the phase correction had two
-independent scene copies and nothing in the kernel. That is the
-second-system guard (#10) SATISFIED rather than violated — a second
-consumer arrived holding the need — so this is the extraction, plus the
+independent scene copies and nothing in the kernel. A second consumer
+had arrived holding the need, so this is the extraction, plus the
 instrument that made the need visible in the first place.
 
 **What crossed is the superset, not either copy.** The two were not the
@@ -1654,8 +1651,7 @@ receipts, advances the reducer per rendered
 frame, and publishes both swaps as single React commits; scenes state
 their presenter count and timing and consume `progress()`.
 
-Three scenes earned the promotion under the second-system guard: Flight
-gated its swap on upload, Genie on presentation, and the logo playground
+Three scenes earned the promotion: Flight gated its swap on upload, Genie on presentation, and the logo playground
 on presentation plus a dwell — three hand-rollings of one protocol, with
 the evidence standard drifting between them. The standard is now fixed at
 presented receipts.
@@ -1743,11 +1739,10 @@ thread — which is why carrying is a per-motion declaration, never a
 default, and the ease-flat authoring pattern remains for everything
 else.
 
-Promoted on ONE lab, waiving the second-system guard's two-bleeds rule
-at the owner's explicit direction (2026-08-14): seamless threshold
-crossing is the library's core claim, and "the animation pauses when it
-crosses" was judged the most likely common complaint from consumers.
-The waiver is recorded so the guard stays meaningful everywhere else.
+Promoted on ONE lab, at the owner's explicit direction (2026-08-14):
+seamless threshold crossing is the library's core claim, and "the
+animation pauses when it crosses" was judged the most likely common
+complaint from consumers.
 
 **Evidence.** The logo's float, rebuilt on the carrier: the letters
 breathe through both swaps with no park and no jump. The `crossing-flash`
@@ -1967,28 +1962,6 @@ raycast each frame while solid and unclaimed, so matter vanishing
 beneath a still pointer clears the canvas within a frame. After both:
 a full sweep through a landing shows zero unhovered frames on the
 presented side, and the motionless click lands.
-
-## #34 — The second-system guard is repealed (2026-08-19)
-
-**Decision.** The standing rule "no new generality (multi-flight,
-non-planar sheets, extra renderers) unless a lab bleeds on it twice" is
-repealed. Generality is a design judgment made on its merits, the same
-as any other design question. Entries that cite the guard (#10 and the
-prose of #1 among them) are history, not instruction.
-
-**Why.** The guard was calibrated for an earlier phase: a young kernel
-with unproven laws, where speculative generality was the cheapest way
-to rot. The laws now carry conformance contracts, the boundary tests
-make the seams real, and the project's stated criterion is the most
-elegant library achievable regardless of time and cost. Under that
-criterion, an evidence threshold on design thinking blocks exactly the
-work that matters — a mid-flight retarget law, atomic multi-surface
-commits — while protecting nothing the contracts don't already protect.
-
-**What survives it.** Three-first stands: renderer abstraction stays
-banned (#1's reasoning is about faithfulness to platform facts, not
-about waiting for evidence). The conformance suite still defines done,
-and a new generality still ships with its contract in the same commit.
 
 ## #35 — Deformation moves vertices, so the hand and the eye agree (2026-08-20, react binding + lab)
 

@@ -317,8 +317,8 @@ function RefractionMaterial({
 // ── the page ───────────────────────────────────────────────────────────
 
 export function RefractionApp({ chips }: { chips?: React.ReactNode }) {
-  const outgoing = useSurface({ name: 'refraction-square' })
-  const incoming = useSurface({ name: 'refraction-circle' })
+  const outgoing = useSurface('refraction-square')
+  const incoming = useSurface('refraction-circle')
   const st = useSurfaceState(outgoing)
 
   const [t, setT] = useState(0)

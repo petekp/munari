@@ -18,8 +18,8 @@ same law underneath.
   surface={...}>` is a native mesh placed anywhere inside a
   `SurfaceCanvas` scene graph.
 
-Assumed surface identity API: `useSurface(options)` inside a component,
-and `createSurface(options)` outside React for data-driven fleets —
+Assumed surface identity API: `useSurface(name)` inside a component,
+and `createSurface(name)` outside React for data-driven fleets —
 hooks cannot be called in a loop over 33 panels, so identity must be
 creatable in a store. (`useSurface` is the memoized component-scoped
 form of the same thing.)
@@ -69,7 +69,7 @@ panel width is swept as a prop; quiescent panels must cost 0 paints/s.
 ```tsx
 // Panel store — identity lives with the data, not in a hook.
 const panels = usePanelStore()
-// each entry: { id, width, height, surface: createSurface({ name: `panel:${id}` }) }
+// each entry: { id, width, height, surface: createSurface(`panel:${id}`) }
 
 // App tree: content under the real providers. No Surface.DOM — these
 // panels have no page presence. One line per panel declares the source.
@@ -124,7 +124,7 @@ const plates = useMemo(
   () =>
     buildPlates(rootElement).map((p) => ({
       ...p,
-      surface: createSurface({ name: `plate:${p.id}` }),
+      surface: createSurface(`plate:${p.id}`),
     })),
   [rootElement],
 )
@@ -197,7 +197,7 @@ inside the content (`data-munari-anchor`); dials and captured DOM share
 focus; the library must stay the single writer of the host box.
 
 ```tsx
-const board = useSurface({ name: 'knobs' })
+const board = useSurface('knobs')
 
 <Surface
   surface={board}

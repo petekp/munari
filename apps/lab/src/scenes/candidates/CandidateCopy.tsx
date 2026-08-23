@@ -43,7 +43,7 @@ import {
 import { copyTuning } from './candidateTuning'
 
 
-const SNIPPET = `const surface = useSurface({ name: 'card' })
+const SNIPPET = `const surface = useSurface('card')
 
 <Surface surface={surface} view={view} source={card}>
   <Surface.DOM>{card}</Surface.DOM>
@@ -146,7 +146,7 @@ function SuckMaterial({
 }
 
 export function CandidateCopy() {
-  const surface = useSurface({ name: 'copy-block' })
+  const surface = useSurface('copy-block')
   const holder = useRef<HTMLDivElement>(null)
   const phase = usePhase()
   const cursor = useRef(new THREE.Vector2())

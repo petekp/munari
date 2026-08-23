@@ -34,7 +34,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
+import { Surface, useSurfaceChrome, useSurfaceTexture, useSurfaceView } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { plainAttribute } from '../../lib/geometry'
 import { buildShards } from './candidateShards'
@@ -50,7 +50,6 @@ import {
 } from './candidateShaders'
 import {
   PhaseDrive,
-  useLift,
   useOwnUniforms,
   usePhase,
   worldBoxOf,
@@ -343,7 +342,7 @@ function DeleteRow({
   variant: Variant
   onGone: (id: string) => void
 }) {
-  const lift = useLift(`delete-${id}`)
+  const piece = useSurfaceView(`delete-${id}`)
   const holder = useRef<HTMLLIElement>(null)
   const phase = usePhase()
   const origin = useRef(new THREE.Vector2())
@@ -387,15 +386,15 @@ function DeleteRow({
       phase.current.t = 0
       phase.current.running = true
       setDying(true)
-      lift.lift()
+      piece.show('webgl')
     },
-    [dying, lift, phase],
+    [dying, piece, phase],
   )
 
   const done = useCallback(() => {
-    lift.drop()
+    piece.show('dom')
     onGone(id)
-  }, [id, lift, onGone])
+  }, [id, piece, onGone])
 
   const row = (
     <div className="cand-row">
@@ -414,15 +413,14 @@ function DeleteRow({
     <li ref={holder} className="cand-row-holder" data-dying={dying || undefined}>
       {size ? (
         <Surface
-          surface={lift.surface}
-          view={lift.view}
+          surface={piece.surface}
+          view={piece.view}
           timing={{ settleMs: 0, durationMs: 1 }}
           size={size}
           source={row}
-          onWebGLReleased={lift.released}
         >
           <Surface.DOM>{row}</Surface.DOM>
-          {lift.mounted && box && (
+          {piece.mounted && box && (
             <Surface.WebGL
               placement="manual"
               alpha="source"

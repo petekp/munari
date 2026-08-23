@@ -799,3 +799,19 @@
     gap: 12px;
   }
 }
+
+/* The panel with no renderer under it — see `supported` in Knobs.tsx.
+ * Centred in the page instead of parked, because here it IS the page.
+ *
+ * The left edge is pinned rather than the centre, so the panel grows to
+ * the right and the corner grip stays under the hand. Centring it with
+ * `justify-content` instead splits every resize delta across both edges
+ * and the grip tracks at half speed. 160px is half of `RAIL_W`, which is
+ * what makes the pinned position land dead centre at the default width. */
+.knb-page-degraded {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-start;
+  padding: 48px 24px 48px max(24px, calc(50% - 160px));
+}

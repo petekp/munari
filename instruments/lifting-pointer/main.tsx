@@ -119,7 +119,7 @@ function TargetButton() {
 }
 
 function App() {
-  const surface = useSurface({ name: 'lifting-pointer' })
+  const surface = useSurface('lifting-pointer')
   const [view, setView] = useState<SurfaceView>('dom')
   const st = useSurfaceState(surface)
   probe.setView = setView

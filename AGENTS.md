@@ -95,10 +95,6 @@ by no test runner, wired invisibly through the root tsconfig include.
 
 ## Standing decisions (do not re-litigate; docs/decisions.md)
 
-- **Generality is a design judgment, not an evidence threshold**
-  (decisions.md #34): the old second-system guard ("no new generality
-  unless a lab bleeds on it twice") is repealed. Weigh a proposed
-  generality on its merits. The conformance suite still defines done.
 - **Premultiplied alpha, library-wide** (decisions.md #5): every
   DOM-sourced texture uploads premultiplied and every material
   consuming one blends premultiplied.
@@ -117,10 +113,12 @@ by no test runner, wired invisibly through the root tsconfig include.
 `npm test` (vitest), `npm run typecheck` (four tsc programs: root,
 `apps/lab`, `registry`, `tools`), and `npm run lint` (oxlint with the
 anti-slop rules — its README explains what each rule rejects and what
-to write instead). CI runs all three on every push, plus six browser
+to write instead). CI runs all three on every push, plus seven browser
 gates: `gate:idle-zero` (mounted quiescent Surfaces cost 0 paints/s),
 `gate:frame-surface`, `gate:shaders`, `gate:dom-surface-demand`,
-`gate:lifting-pointer`, `gate:genie-film-reorder`. Seven more run locally on demand:
+`gate:lifting-pointer`, `gate:genie-film-reorder`, and `gate:degraded`
+(every lab gesture in a browser with NO origin trial — the one path no
+capability-enabled gate can see). Seven more run locally on demand:
 `gate:genie-duplicate`, `gate:genie-film`, `gate:genie-film-context`,
 `gate:genie-shadow`, `gate:fisheye-pointer`, `gate:slider-drag`,
 `gate:refraction-arriving`.

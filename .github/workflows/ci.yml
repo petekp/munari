@@ -39,6 +39,10 @@ jobs:
       - run: npm run gate:dom-surface-demand
       - run: npm run gate:lifting-pointer
       - run: npm run gate:shaders
+      # Launches Chrome WITHOUT the trial flag, so it must not share a job
+      # with the gates above — they need the flag, and the browser is
+      # launched per gate. Last because it walks five scenes.
+      - run: npm run gate:degraded
 
   # The resize sweep gets a fresh runner after the focused gates. The broad
   # all-scene walk remains a local acceptance command: hosted Chrome closes

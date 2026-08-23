@@ -23,7 +23,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
+import { Surface, useSurfaceChrome, useSurfaceTexture, useSurfaceView } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import {
   LIGHT,
@@ -33,7 +33,7 @@ import {
   RIPPLE_SHADOW_VERT,
   RIPPLE_VERT,
 } from './candidateShaders'
-import { useLift, useOwnUniforms, type WorldBox } from './candidateStage'
+import { useOwnUniforms, type WorldBox } from './candidateStage'
 import { rippleTuning } from './candidateTuning'
 
 // The press's tuned numbers live in rippleTuning; the committed defaults
@@ -220,7 +220,7 @@ function WaveDrive({
  * that hears the click be either one without the handler caring.
  */
 export function RippleTarget({ name, content }: { name: string; content: React.ReactNode }) {
-  const lift = useLift(name)
+  const piece = useSurfaceView(name)
   const holder = useRef<HTMLDivElement>(null)
   const waves = useRef<RippleWave[]>([])
   const down = useRef<{ x: number; y: number } | null>(null)
@@ -282,9 +282,9 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
         waves.current.shift()
       }
       waves.current.push(wave)
-      lift.lift()
+      piece.show('webgl')
     },
-    [lift],
+    [piece],
   )
 
   // The lift fires on RELEASE, never on the down edge. A press that begins
@@ -331,8 +331,8 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
     <div ref={holder} className="cand-target" onPointerDown={onHolderDown} onPointerUp={onHolderUp}>
       {size ? (
         <Surface
-          surface={lift.surface}
-          view={lift.view}
+          surface={piece.surface}
+          view={piece.view}
           timing={{ settleMs: 0, durationMs: 1 }}
           size={size}
           // Resolution stays 'auto', which seeds at the display's own
@@ -343,10 +343,9 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
           // tier above 0.5 has no mips: bilinear on a grid-aligned quad
           // is point sampling.
           source={content}
-          onWebGLReleased={lift.released}
         >
           <Surface.DOM>{content}</Surface.DOM>
-          {lift.mounted && box && (
+          {piece.mounted && box && (
             <Surface.WebGL
               key={runId.current}
               placement="manual"
@@ -367,7 +366,7 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
               material={<RippleMaterial waves={waves} />}
             >
               <RippleShadow waves={waves} size={size} />
-              <WaveDrive waves={waves} onDone={lift.drop} />
+              <WaveDrive waves={waves} onDone={() => piece.show('dom')} />
             </Surface.WebGL>
           )}
         </Surface>

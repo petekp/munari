@@ -135,7 +135,7 @@ export function SurfaceRoot({
   // the unpassed case mints one. Both paths call the same hooks, so the
   // owned store is created either way and simply goes unused — the cost is
   // one plain object, and the alternative is a conditional hook.
-  const ownStore = useSurfaceStore({ name })
+  const ownStore = useSurfaceStore(name)
   const store: SurfaceStore = surface ? surfaceStoreOf(surface) : ownStore
   useSurfaceController(store)
   // The controlled half, written by THIS declaration whether the handle is

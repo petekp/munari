@@ -27,12 +27,14 @@ const ROOT_ENTRY = [
   'createSurface',
   'deformSurfaceGeometry',
   'detectHtmlInCanvas',
+  'supportsDOMSurfaces',
   'surfaceFocusKey',
   'surfaceFocusTarget',
   'useFocusNavPolicy',
   'useFocusReframe',
   'useFocusScene',
   'useFocusSceneEvents',
+  'useSupportsDOMSurfaces',
   'useSurface',
   'useSurfaceAnchorBox',
   'useSurfaceAnchorRects',
@@ -46,6 +48,7 @@ const ROOT_ENTRY = [
   'useSurfaceTexture',
   'useSurfaceTextureOf',
   'useSurfaceUniforms',
+  'useSurfaceView',
 ]
 
 // The kernel is re-exported WHOLE, so this list is core's own surface plus

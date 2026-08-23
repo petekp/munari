@@ -224,7 +224,7 @@ const PROSE = [
 ]
 
 function SelectionPage() {
-  const surface = useSurface({ name: 'selection-prose' })
+  const surface = useSurface('selection-prose')
   const holder = useRef<HTMLDivElement>(null)
   const live = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<[number, number] | null>(null)

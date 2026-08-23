@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { tokenize } from './candidateTokens'
 
-const SOURCE = `const surface = useSurface({ name: 'card' })
+const SOURCE = `const surface = useSurface('card')
 <Surface.DOM>{card}</Surface.DOM>`
 
 describe('tokenize', () => {

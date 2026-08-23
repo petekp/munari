@@ -341,7 +341,7 @@ function Queue({
 // ── the page ─────────────────────────────────────────────────────────────
 
 export function FisheyeApp({ chips }: { chips?: React.ReactNode }) {
-  const surface = useSurface({ name: 'fisheye-list' })
+  const surface = useSurface('fisheye-list')
   const st = useSurfaceState(surface)
   const [view, setView] = useState<SurfaceView>('dom')
   const [query, setQuery] = useState('')

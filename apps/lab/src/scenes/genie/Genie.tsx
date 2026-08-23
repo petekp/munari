@@ -52,6 +52,7 @@ import {
   useSurfaceSourceRoot,
   useSurfaceTexture,
   useSurfaceUniforms,
+  useSupportsDOMSurfaces,
 } from '@petepetrash/munari'
 import {
   cameraDistance,
@@ -1807,6 +1808,8 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
 // ── the page ────────────────────────────────────────────────────────────
 
 export function GenieApp({ chips }: { chips?: React.ReactNode }) {
+  // No trial, no flight — see `fold`.
+  const supported = useSupportsDOMSurfaces()
   const [filmController] = useState<GenieFilmController>(() =>
     createGenieFilmController({
       onError: (error) => console.warn('[munari] Genie film frame failed:', error),
@@ -1905,7 +1908,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   const storeOf = (win: WinId): GenieSurface => {
     let store = surfaces.current.get(win)
     if (!store) {
-      const handle = createSurface({ name: surfaceNameOf(win) })
+      const handle = createSurface(surfaceNameOf(win))
       store = { handle, film: surfaceManualPresenter(handle, FILM_PRESENTER) }
       surfaces.current.set(win, store)
     }
@@ -2097,9 +2100,74 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   // flight of the same window — one sheet cannot be minimizing and
   // restoring at once — and a window already on the side of the dock it
   // is being asked to fly to. Other windows are none of its business.
+  // Hand the keyboard over before the page copy hides, not after: once it
+  // is hidden the focus is already on <body> and there is nothing left to
+  // read the intent off.
+  //
+  // :focus-visible is doing the real work here, and "focus is inside this
+  // window" on its own is not enough — Chrome focuses a <button> on
+  // mousedown, so the click that starts the minimize satisfies that test
+  // by itself, and docking one window with the mouse would pull the caret
+  // out of whatever you were typing in another. The pseudo-class is the
+  // browser's own answer to "was this a keyboard's doing", which is
+  // exactly the question, and it is better calibrated than anything this
+  // scene could infer.
+  const handKeyboardOver = (id: WinId, to: Dir) => {
+    const active = document.activeElement
+    if (to === 'minimizing') {
+      if (active?.matches(':focus-visible') && winRefs.current[id]?.contains(active))
+        slotRefs.current[id]?.focus()
+      return
+    }
+    // Expanding a window hands it the keyboard NOW, not on landing. The
+    // bay it came from is emptying under the focus otherwise, and a window
+    // that is visibly on its way to the front should already be the one
+    // keys are talking to — the same promise the raise makes to the eye.
+    // The wrapper takes it because the window's own controls are inside
+    // the hidden subtree for the whole flight; the settle moves it onto a
+    // real control.
+    winRefs.current[id]?.focus({ preventScroll: true })
+    // The keyboard hand-back is claimed only when the keyboard asked. A
+    // mouse restore leaves focus on the wrapper, which is where a click on
+    // a window puts it anyway — no ring, nothing to read.
+    if (active === slotRefs.current[id]) wantsFocus.current.add(id)
+  }
+
+  /**
+   * The minimize with no renderer under it.
+   *
+   * Without the trial there is no sheet to pour, so the window folds to
+   * its bay on a CSS transition instead (`[data-degraded]` in genie.css)
+   * and the desk's state changes exactly as it would after a landing.
+   * Everything else about the desk already worked degraded — the windows
+   * are page DOM, titlebar drags write the element directly — but the
+   * minimize went through `air`, and an `air` entry whose Surface can
+   * never present webgl never lands: the window stayed on the desk, the
+   * bay stayed empty, and a second click was refused by the in-flight
+   * guard. It read as a dead lamp (2026-08-23).
+   *
+   * The travel is measured here rather than declared in CSS because the
+   * bays sit in a flex row and the windows in a cascade, so the distance
+   * between a window and its own bay is not a number either one knows.
+   */
+  const fold = (id: WinId, to: Dir): boolean => {
+    const win = winRefs.current[id]
+    const bay = slotRefs.current[id]?.getBoundingClientRect()
+    const from = win?.getBoundingClientRect()
+    if (win && bay && from) {
+      win.style.setProperty('--gen-fold-x', `${Math.round(bay.x + bay.width / 2 - (from.x + from.width / 2))}px`)
+      win.style.setProperty('--gen-fold-y', `${Math.round(bay.y + bay.height / 2 - (from.y + from.height / 2))}px`)
+    }
+    if (to === 'restoring') raise(id)
+    handKeyboardOver(id, to)
+    settleDock(id, to === 'restoring' ? 0 : 1)
+    return true
+  }
+
   const takeOff = (id: WinId, to: Dir, d: DriveBox, slow: boolean): boolean => {
     if (flights.current.has(id)) return false
     if (dockedRef.current.includes(id) !== (to === 'restoring')) return false
+    if (!supported) return fold(id, to)
     const f = measure(id, slow, to === 'restoring' ? RESTORE_S : MINIMIZE_S)
     if (!f) return false
     d.visibleT = to === 'restoring' ? 1 : 0
@@ -2112,36 +2180,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     // window you were actually reading does not blink out of focus for
     // half a second every time you dock one of the others.
     if (to === 'restoring') raise(id)
-    // Hand the keyboard over before the page copy hides, not after: once
-    // it is hidden the focus is already on <body> and there is nothing
-    // left to read the intent off.
-    //
-    // :focus-visible is doing the real work here, and "focus is inside
-    // this window" on its own is not enough — Chrome focuses a <button>
-    // on mousedown, so the click that starts the minimize satisfies that
-    // test by itself, and docking one window with the mouse would pull
-    // the caret out of whatever you were typing in another. The pseudo-
-    // class is the browser's own answer to "was this a keyboard's doing",
-    // which is exactly the question, and it is better calibrated than
-    // anything this scene could infer.
-    const active = document.activeElement
-    if (to === 'minimizing') {
-      if (active?.matches(':focus-visible') && winRefs.current[id]?.contains(active))
-        slotRefs.current[id]?.focus()
-    } else {
-      // Expanding a window hands it the keyboard NOW, not on landing.
-      // The bay it came from is emptying under the focus otherwise, and
-      // a window that is visibly on its way to the front should already
-      // be the one keys are talking to — the same promise the raise
-      // above makes to the eye. The wrapper takes it because the
-      // window's own controls are inside the hidden subtree for the
-      // whole flight; the settle below moves it onto a real control.
-      winRefs.current[id]?.focus({ preventScroll: true })
-      // The keyboard hand-back is claimed only when the keyboard asked.
-      // A mouse restore leaves focus on the wrapper, which is where a
-      // click on a window puts it anyway — no ring, nothing to read.
-      if (active === slotRefs.current[id]) wantsFocus.current.add(id)
-    }
+    handKeyboardOver(id, to)
     setShown((s) => ({ ...s, [id]: false }))
     setFramed((f) => ({ ...f, [id]: false }))
     setAir((a) => ({ ...a, [id]: { direction: to, view: 'webgl' } }))
@@ -2165,6 +2204,17 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   // Where the sheet lands decides the next hold, not which phase it
   // took off from — a minimize caught and flung home lands resting, a
   // restore flicked back down lands docked.
+  // Which windows are in their bay, frame-exact and committed together.
+  // Both the flight's landing and the degraded fold end here, so there is
+  // one answer to "is this window put away" and not two that can drift.
+  const settleDock = (id: WinId, wall: 0 | 1) => {
+    dockedRef.current =
+      wall === 1
+        ? [...dockedRef.current.filter((x) => x !== id), id]
+        : dockedRef.current.filter((x) => x !== id)
+    setDocked(dockedRef.current)
+  }
+
   const finishLand = (
     id: WinId,
     wall: 0 | 1,
@@ -2177,11 +2227,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
     const film = flight.f.film
     if (film) probeFilm({ type: 'release', token: film.token, wall })
     flights.current.delete(id)
-    dockedRef.current =
-      wall === 1
-        ? [...dockedRef.current.filter((x) => x !== id), id]
-        : dockedRef.current.filter((x) => x !== id)
-    setDocked(dockedRef.current)
+    settleDock(id, wall)
     setAir((a) => {
       const next = { ...a }
       delete next[id]
@@ -2375,6 +2421,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   return (
     <div
       className="gen-page"
+      data-degraded={supported ? undefined : 'true'}
       data-genie-film-direction={air[FILM_WIN]?.direction}
       data-genie-film-framed={framed[FILM_WIN] ? 'true' : 'false'}
       data-genie-film-shown={shown[FILM_WIN] ? 'true' : 'false'}

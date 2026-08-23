@@ -32,7 +32,13 @@ Bruno Munari was a playful Italian designer, artist, and inventor. Sometimes he'
 ## Requirements
 
 The library is built on Chrome's **HTML-in-canvas origin trial**
-(`drawElementImage`). Without that capability a Surface has nothing to rasterize; there is no fallback path. Chrome needs `--enable-features=CanvasDrawElement`, or a registered origin-trial token.
+(`drawElementImage`). Chrome needs `--enable-features=CanvasDrawElement`,
+or a registered origin-trial token.
+
+Without that capability a Surface has nothing to rasterize, so it stays on
+its page copy and never presents in WebGL. Your DOM is still there and
+still works. See [When the trial is absent](#when-the-trial-is-absent) for
+the one thing you have to handle yourself.
 
 `three` and `@react-three/fiber` are **peer dependencies**. three uses
 `instanceof` internally; two copies in one dependency graph fail
@@ -57,7 +63,12 @@ and its React state updates normally.
 
 ```tsx
 import { useState } from 'react'
-import { detectHtmlInCanvas, Surface, SurfaceCanvas } from '@petepetrash/munari'
+import {
+  Surface,
+  SurfaceCanvas,
+  useSupportsDOMSurfaces,
+  useSurfaceView,
+} from '@petepetrash/munari'
 import '@petepetrash/munari/style.css'
 import './app.css'
 
@@ -71,10 +82,11 @@ function Panel({ count, onPress }: { count: number; onPress: () => void }) {
 }
 
 export function App() {
+  const supported = useSupportsDOMSurfaces()
   const [count, setCount] = useState(0)
-  const [lifted, setLifted] = useState(false)
+  const { surface, view, show } = useSurfaceView('panel')
 
-  if (!detectHtmlInCanvas().drawElementImage) {
+  if (!supported) {
     return (
       <p>
         Enable <code>chrome://flags/#canvas-draw-element</code>, then fully
@@ -91,13 +103,13 @@ export function App() {
         <ambientLight intensity={2} />
       </SurfaceCanvas>
 
-      <Surface name="panel" source={panel} view={lifted ? 'webgl' : 'dom'}>
+      <Surface surface={surface} source={panel} view={view}>
         <Surface.DOM>{panel}</Surface.DOM>
         <Surface.WebGL alpha="source" pointerEvents="content" />
       </Surface>
 
-      <button onClick={() => setLifted((value) => !value)}>
-        {lifted ? 'Land it' : 'Lift it'}
+      <button onClick={() => show(view === 'webgl' ? 'dom' : 'webgl')}>
+        {view === 'webgl' ? 'Bring it back' : 'Hand it over'}
       </button>
     </main>
   )
@@ -181,6 +193,59 @@ empty texture without an error. Import the package stylesheet once, then
 read its short header for the hover, active, focus, and floating-layer CSS
 contract.
 
+## When the trial is absent
+
+Most browsers do not have the trial, and that is a supported state rather
+than a failure. Every `<Surface>` keeps rendering its page copy,
+`presentedView` stays `'dom'`, and munari reports the reason through
+`onError` — or to the console if you have not passed one.
+
+Ask before you branch:
+
+```tsx
+import { useSupportsDOMSurfaces } from '@petepetrash/munari'
+
+function Workspace() {
+  const supported = useSupportsDOMSurfaces()
+  return supported ? <WorkspaceScene /> : <WorkspaceDOM />
+}
+```
+
+The hook answers `false` on the server and through hydration, then the
+real answer. Reading the capability directly during render instead — a
+`useMemo`, a module constant — disagrees with server markup on exactly the
+machines that do have the trial. `supportsDOMSurfaces()` is the same
+question without the hook, for events, effects and diagnostics.
+
+### The one thing that does not degrade by itself
+
+Content degrades on its own. **Gestures do not.** If a pointer handler
+puts the scene into a state that only the renderer can leave, and the
+renderer never arrives, no further input can leave it either:
+
+```tsx
+// Wrong without the trial: `flying` is set and nothing ever clears it.
+const onPointerDown = (id) => {
+  setFlying(id)
+  setView('webgl')
+}
+```
+
+Branch at the gesture, not only at the scene:
+
+```tsx
+const onPointerDown = (id) => {
+  if (!supported) return carryWithCss(id)
+  setFlying(id)
+  setView('webgl')
+}
+```
+
+Prefer deriving that state from the Surface over keeping your own copy of
+it. `useSurfaceState(handle)` reports `presentedView`, `isChanging` and
+`supported`, and none of them can strand you, because munari never claims
+a hold it cannot take.
+
 ## Run the lab locally
 
 The repo uses Node 24 and npm 11. The local launcher starts Vite, opens an
@@ -207,10 +272,17 @@ caught half in the air. `<Surface.Anchor name="…">` stands a scene object
 on a box inside the source that is marked `data-munari-anchor`, in the
 geometry's own coordinates.
 
-`useSurface()` and `createSurface()` give you the handle behind a Surface —
-content identity independent of the trees presenting it. Both take identity
-only (an optional `name`); `view`, `timing` and the callbacks are props of
-the `<Surface>` that presents the handle, so one declaration owns them.
+`useSurfaceView('card')` is what a scene reaches for when its content
+changes hands and changes back. It gives you the handle, the `view` to pass
+to `<Surface>`, a `show(view)` to ask with, and `mounted` — true for exactly
+as long as the WebGL side should be in the tree, including the linger after
+it lands. `show('webgl')` does nothing on a browser without the trial, so
+`view` can never name a renderer that will not arrive.
+
+`useSurface('card')` and `createSurface('card')` give you the handle alone —
+content identity independent of the trees presenting it. Both take just a
+name, and the name is optional. `view`, `timing` and the callbacks are props
+of the `<Surface>` that presents the handle, so one declaration owns them.
 `useSurfaceProgress` and `useSurfaceDriver` are how a scene scales its own
 motion by the crossing.
 

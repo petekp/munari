@@ -23,12 +23,12 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
+import { Surface, useSurfaceChrome, useSurfaceTexture, useSurfaceView } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { curlSample, unrolledLength } from './candidateCurlLaw'
 import { LIGHT, SHEET_FRAG, SHEET_VERT } from './candidateShaders'
 import { plainAttribute } from '../../lib/geometry'
-import { useLift, useOwnUniforms, type WorldBox } from './candidateStage'
+import { useOwnUniforms, type WorldBox } from './candidateStage'
 import { unrollTuning } from './candidateTuning'
 
 const ITEMS = ['Duplicate', 'Move to…', 'Rename', 'Export PDF', 'Share link', 'Delete'] as const
@@ -175,7 +175,7 @@ function RollSheet({
 }
 
 export function CandidateUnroll() {
-  const lift = useLift('unroll-menu')
+  const piece = useSurfaceView('unroll-menu')
   const anchor = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
   const [chosen, setChosen] = useState<string | null>(null)
@@ -189,7 +189,7 @@ export function CandidateUnroll() {
   // the first frame anyone could SEE, t had already reached ~0.7 and the
   // menu appeared mid-unroll. Closing is ungated: the pixels are already
   // in GL.
-  drive.current.target = open && lift.state.presentedView === 'webgl' ? 1 : 0
+  drive.current.target = open && piece.state.presentedView === 'webgl' ? 1 : 0
 
   // The menu hangs from the trigger's bottom edge, so the mesh's centre is
   // half a menu below it. Measured on open rather than on mount: the page
@@ -218,8 +218,8 @@ export function CandidateUnroll() {
   // Outside the updater: an updater runs under React's replay rules, and a
   // side effect inside one is allowed to be dropped or doubled.
   useLayoutEffect(() => {
-    if (open) lift.lift()
-  }, [open, lift])
+    if (open) piece.show('webgl')
+  }, [open, piece])
 
   const pick = useCallback((item: string) => {
     setChosen(item)
@@ -256,14 +256,13 @@ export function CandidateUnroll() {
         </button>
       </div>
 
-      {(open || lift.mounted) && (
+      {(open || piece.mounted) && (
         <Surface
-          surface={lift.surface}
-          view={lift.view}
+          surface={piece.surface}
+          view={piece.view}
           timing={{ settleMs: 0, durationMs: 1 }}
           size={[MENU_W, MENU_H]}
           source={menu}
-          onWebGLReleased={lift.released}
         >
           {/* The page copy exists to be measured and to hold the rows'
               identity; it is never the visible one, because a menu is only
@@ -272,7 +271,7 @@ export function CandidateUnroll() {
           <div className="cand-menu-park">
             <Surface.DOM>{menu}</Surface.DOM>
           </div>
-          {lift.mounted && box && (
+          {piece.mounted && box && (
             <Surface.WebGL
               placement="manual"
               alpha="source"
@@ -282,7 +281,7 @@ export function CandidateUnroll() {
               geometry={<planeGeometry ref={geoRef} args={[MENU_W, MENU_H, GRID_X, GRID_Y]} />}
               material={<SheetMaterial opacity={sheetOpacity} />}
             >
-              <RollSheet drive={drive} geoRef={geoRef} opacity={sheetOpacity} onClosed={lift.drop} />
+              <RollSheet drive={drive} geoRef={geoRef} opacity={sheetOpacity} onClosed={() => piece.show('dom')} />
             </Surface.WebGL>
           )}
         </Surface>

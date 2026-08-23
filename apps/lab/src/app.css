@@ -402,3 +402,92 @@ body,
   line-height: 1.45;
   color: rgba(242, 240, 234, 0.6);
 }
+
+/* ── the degraded-lab notice ─────────────────────────────────────────────
+ *
+ * Shown when the origin trial is absent, over whatever the scene renders
+ * as plain DOM. Closed it is a pill in the bottom-left corner, which is
+ * the one corner no nav scene puts anything in — see the comment on
+ * `notice` in App.tsx for the measurement.
+ *
+ * The bottom edge is pinned, so opening it grows the panel upward and the
+ * pill rides up with it. Nothing else has to move.
+ */
+.trial-notice {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  z-index: 9999;
+  max-width: 460px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(242, 240, 234, 0.16);
+  background: rgba(18, 18, 20, 0.92);
+  backdrop-filter: blur(12px);
+}
+
+.trial-notice > summary {
+  padding: 7px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  /* The marker is the only thing saying there is more behind this, so it
+   * stays. The list-style reset is Safari's: without it the disclosure
+   * triangle sits outside the padding box and clips against the border. */
+  list-style-position: inside;
+}
+
+.trial-notice[open] > summary {
+  border-bottom: 1px solid rgba(242, 240, 234, 0.12);
+  margin-bottom: 12px;
+}
+
+.trial-notice > .features,
+.trial-notice > .hint {
+  padding: 0 14px;
+}
+
+.trial-notice > .hint {
+  margin-top: 10px;
+  padding-bottom: 14px;
+}
+
+/* ── a scene that threw ──────────────────────────────────────────────────
+ *
+ * See SceneBoundary.tsx. Plain and centred, because whatever styling the
+ * scene brought is gone with the scene. */
+.scene-error {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px;
+  overflow: auto;
+  background: #121214;
+  color: #f2f0ea;
+  font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.scene-error h1 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.scene-error-message {
+  color: #ff9a8b;
+}
+
+.scene-error-stack {
+  max-height: 40vh;
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.scene-error-hint {
+  color: rgba(242, 240, 234, 0.6);
+}

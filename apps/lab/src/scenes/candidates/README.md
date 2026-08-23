@@ -137,7 +137,8 @@ not currently offer, and that a workaround had to stand in for.
    "I am animating" claim is the missing piece.
 
 10. **`onWebGLReleased` is the only end-of-handoff signal.** It says the
-   pixels are back, which is what `useLift` uses to unmount the mesh. What
+   pixels are back, and `useSurfaceView` reads the same fact off
+   `state.isWebGLMounted` to keep the mesh up for exactly that long. What
    several candidates actually wanted is a signal for *the mesh is about to
    be torn down*, so a material can hold its last frame — the current
    workaround is to keep `mounted` as separate state from `view`.

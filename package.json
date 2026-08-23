@@ -29,6 +29,7 @@
     "gate:idle-zero": "node instruments/idle-zero/run.mjs",
     "gate:shaders": "node instruments/shader-compile/run.mjs",
     "gate:dom-surface-demand": "node instruments/dom-surface-demand/run.mjs",
+    "gate:degraded": "node instruments/degraded/run.mjs",
     "gate:lab-interactions": "node instruments/lab-interactions/run.mjs",
     "gate:lifting-pointer": "node instruments/lifting-pointer/run.mjs",
     "gate:knobs-resize": "node instruments/knobs-resize/run.mjs",

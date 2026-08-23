@@ -43,6 +43,7 @@ import * as THREE from 'three'
 import {
   Surface,
   SurfaceCanvas,
+  useSupportsDOMSurfaces,
   type SourceUvRect,
   useSurfaceAnchorBox,
   useSurfaceAnchorRects,
@@ -2353,7 +2354,194 @@ function PanelStage({
   )
 }
 
+/**
+ * The other end of the panel's gesture seam, for a page with no renderer.
+ *
+ * The carry handle and the corner grip only ARM their gestures: they set
+ * `panelDrag` / `panelResize` and leave the geometry to whoever is reading
+ * the real screen pointer. The keyboard paths call out through
+ * `panelCommands`. That split exists because a forwarded coordinate lives
+ * on the panel that is about to move, but it is also what makes the panel
+ * renderer-agnostic. What was missing was the consumer: with no scene
+ * mounted, `panelCommands.*` stayed null and nothing listened to the armed
+ * flags, so the handle and the grip did nothing at all (2026-08-22).
+ *
+ * The arithmetic is shared rather than copied: `resizeWidth` is the same
+ * call the scene makes. Only the destination differs — the scene spends
+ * these numbers on a spring and a world position, this spends them on
+ * `transform` and `--knb-w` — and where the origin comes from, which is
+ * `onDown` below.
+ *
+ * No `isTrusted` gate, unlike the scene's consumer. That one is there to
+ * reject the relay's forwarded copies, which carry capture coordinates,
+ * and here there is no relay.
+ *
+ * No clamp to the viewport either. Carrying the panel off the edge is
+ * recoverable — Home, Enter or Space on the handle calls `restore` — and a
+ * clamp here would be a second law competing with the scene's, which
+ * scrolls the page instead of stopping the panel.
+ */
+function useDegradedPanelGestures(host: RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    let width = RAIL_W
+    let carryX = 0
+    let carryY = 0
+    // Where the hand was when the carry began, and the offset it began
+    // from. Null until the first real move, for the same reason
+    // `panelResize.startX` starts NaN: the pointerdown that armed this
+    // carried no coordinate worth keeping.
+    let carry: { fromX: number; fromY: number; atX: number; atY: number } | null = null
+    let frame = 0
+
+    const paint = () => {
+      frame = 0
+      const el = host.current
+      if (!el) return
+      el.style.setProperty('--knb-w', `${width}px`)
+      el.style.transform = `translate(${carryX}px, ${carryY}px)`
+    }
+    // Pointer hardware reports moves faster than the compositor draws them.
+    // The scene's consumer coalesces to one rAF for the same reason.
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(paint)
+    }
+
+    const moveBy = (dx: number, dy: number) => {
+      carryX += dx
+      // The handle speaks in world Y, which points up. CSS translate
+      // points down.
+      carryY -= dy
+      schedule()
+    }
+    const restore = () => {
+      carryX = 0
+      carryY = 0
+      carry = null
+      schedule()
+    }
+    const resizeTo = (requested: number) => {
+      width = resizeWidth(requested, 0)
+      schedule()
+    }
+    panelCommands.moveBy = moveBy
+    panelCommands.restore = restore
+    panelCommands.resizeTo = resizeTo
+
+    const endCarry = () => {
+      panelDrag.active = false
+      panelDrag.pointerId = null
+      carry = null
+    }
+    const endResize = () => {
+      panelResize.active = false
+      panelResize.pointerId = null
+      panelResize.startX = Number.NaN
+      panelResize.startW = 0
+    }
+
+    const onMove = (event: PointerEvent) => {
+      if (panelDrag.active && panelDrag.pointerId === event.pointerId) {
+        // A button released outside the window never delivers its
+        // pointerup, and the next move is the first chance to notice.
+        if (event.buttons === 0) endCarry()
+        else {
+          carry ??= { fromX: event.clientX, fromY: event.clientY, atX: carryX, atY: carryY }
+          carryX = carry.atX + (event.clientX - carry.fromX)
+          carryY = carry.atY + (event.clientY - carry.fromY)
+          schedule()
+        }
+      }
+      if (panelResize.active && panelResize.pointerId === event.pointerId) {
+        if (event.buttons === 0) endResize()
+        else {
+          if (Number.isNaN(panelResize.startX)) panelResize.startX = event.clientX
+          width = resizeWidth(panelResize.startW, event.clientX - panelResize.startX)
+          schedule()
+        }
+      }
+    }
+    // The handle and the grip arm their gestures without an origin, and the
+    // scene takes the first real MOVE as one. Here the pointerdown that
+    // armed it is itself real, and this listener bubbles to the window after
+    // React's root has already run the arming handler — so the origin is the
+    // press, and no part of the gesture is spent finding it. Seeding from
+    // the first move instead loses that move: the panel came up 20px short
+    // of the hand on a 20px step, on both gestures (2026-08-22).
+    const onDown = (event: PointerEvent) => {
+      if (panelDrag.active && panelDrag.pointerId === event.pointerId) {
+        carry = { fromX: event.clientX, fromY: event.clientY, atX: carryX, atY: carryY }
+      }
+      if (panelResize.active && panelResize.pointerId === event.pointerId) {
+        panelResize.startX = event.clientX
+      }
+    }
+    const onUp = (event: PointerEvent) => {
+      if (panelDrag.pointerId === event.pointerId) endCarry()
+      if (panelResize.pointerId === event.pointerId) endResize()
+    }
+    const onBlur = () => {
+      endCarry()
+      endResize()
+    }
+
+    window.addEventListener('pointerdown', onDown)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      window.removeEventListener('pointerdown', onDown)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      window.removeEventListener('blur', onBlur)
+      if (panelCommands.moveBy === moveBy) panelCommands.moveBy = null
+      if (panelCommands.restore === restore) panelCommands.restore = null
+      if (panelCommands.resizeTo === resizeTo) panelCommands.resizeTo = null
+      endCarry()
+      endResize()
+    }
+  }, [host])
+}
+
+/**
+ * The panel with no renderer under it.
+ *
+ * This scene's panel is a RESIDENT source — no `view`, no `<Surface.DOM>`,
+ * because the slab is its only presentation — so a browser without the
+ * trial got an empty room: 0 characters of reader-visible text and 0
+ * focusable elements, measured 2026-08-22 against flight/genie/logo/
+ * selection, which are identical either way.
+ *
+ * No control's handler is duplicated here. Every dial, switch and lamp
+ * writes into `knobsValues` from inside `KnobsPanel`, and the two
+ * whole-panel gestures arm the same `panelDrag` / `panelResize` seam
+ * either way — `useDegradedPanelGestures` is standing in for the scene as
+ * the consumer. What this loses is the hardware standing on the face,
+ * which is geometry below and needs a renderer.
+ *
+ * No `knb-scroll-extent`: that is scroll room for a FIXED overlay, and
+ * this panel is in ordinary flow where `.knb-page`'s own `overflow: auto`
+ * already scrolls it. Leaving it in pushed the panel a full viewport down,
+ * below the fold (2026-08-22).
+ */
+function DegradedKnobs({ chips }: { chips?: React.ReactNode }) {
+  const host = useRef<HTMLDivElement | null>(null)
+  useDegradedPanelGestures(host)
+  return (
+    <div className="knb-page">
+      <KnobsArt />
+      <div className="knb-page-degraded" ref={host}>
+        <KnobsPanel />
+      </div>
+      {chips}
+    </div>
+  )
+}
+
 export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
+  const supported = useSupportsDOMSurfaces()
   const hostCleanup = useRef<(() => void) | null>(null)
   const kick = useRef<((dir: number) => void) | null>(null)
   const assets = useHardwareAssets()
@@ -2749,6 +2937,8 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
       document.fonts?.removeEventListener('loadingdone', remeasure)
     }
   }, [finishResize, liveAnchors, syncViewport])
+
+  if (!supported) return <DegradedKnobs chips={chips} />
 
   return (
     <div

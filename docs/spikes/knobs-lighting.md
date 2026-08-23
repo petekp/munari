@@ -172,7 +172,7 @@ is that sentence applied.
    verification, single-run toggles) and the window anchor. The bug
    becomes a gate the way idle-zero did.
 
-**What this is not** (second-system guard): no per-object reflection
+**What this is not**: no per-object reflection
 probes, no light-probe grids, no bounce simulation. The whole rig is
 one honest environment, ≤3 colored points, two white directionals, and
 the emitters the scene already has.

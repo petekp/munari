@@ -93,10 +93,11 @@ Use this form when the page and scene have independent structure. A handle
 connects the declarations without tunneling either presentation.
 
 ```tsx
-const card = useSurface({ view })
+const card = useSurface('card')
 
 <Surface
   surface={card}
+  view={view}
   source={<Card onGrab={startDrag} />}
   capture={<Card />}
 >
@@ -650,9 +651,15 @@ for both directions.
 Flight should use a physics driver instead of a one-millisecond timer. Genie's
 velocity catch-up stays in its driver. Munari keeps renderer release ordering.
 `useLift` and `LiftDriver` remain public until both scenes migrate and pass
-their gates.
+their gates. (Both are gone. The lab's replacement was folded back into the
+package as `useSurfaceView` on 2026-08-23 — see the migration table.)
 
 ## Progressive fallback
+
+**Shipped 2026-08-23.** Both helpers are live on the package root; the
+consumer guide is the README's "When the trial is absent", and the agent
+guidance is in `.agents/skills/munari/SKILL.md`. The rest of this section
+is the design as built.
 
 ```ts
 export function supportsDOMSurfaces(): boolean
@@ -838,9 +845,9 @@ acceptance targets.
 ### Logo
 
 ```tsx
-const logo = useSurface({ view, timing: { settleMs: SETTLE_MS } })
+const logo = useSurface('logo')
 
-<Surface surface={logo}>
+<Surface surface={logo} view={view} timing={{ settleMs: SETTLE_MS }}>
   {letters.map((letter) => (
     <Surface.Part
       key={letter.id}
@@ -871,10 +878,16 @@ const logo = useSurface({ view, timing: { settleMs: SETTLE_MS } })
 ### Genie
 
 ```tsx
-const surface = useSurface({ view, timing: { settleMs: 0 } })
+const surface = useSurface('genie-window')
 useSurfaceDriver(surface, pourDriver)
 
-<Surface surface={surface} source={<WindowBody />} capture={<AirborneBody />}>
+<Surface
+  surface={surface}
+  view={view}
+  timing={{ settleMs: 0 }}
+  source={<WindowBody />}
+  capture={<AirborneBody />}
+>
   <Surface.DOM />
 </Surface>
 
@@ -919,7 +932,7 @@ useSurfaceDriver(surface, pourDriver)
 | Static `Surface html` | React `source` with `dangerouslySetInnerHTML` |
 | Adopted `Surface html={element}` | `<Surface adopt={element}>` |
 | `Surface frame` | Advanced `FrameSurface source` |
-| `useLift` | `useSurface` plus internal timed driver |
+| `useLift` (old) | `useSurfaceView` — handle, `view`, `show(view)`, and a `mounted` the protocol releases. Shipped 2026-08-23. |
 | `LiftDriver` | Internal host driver |
 | `presenters` and `present()` | `Surface.Part` registration |
 | `pageHolds`, `glHolds`, `glMounted` | Surface and host presentation ownership |
@@ -937,7 +950,7 @@ useSurfaceDriver(surface, pourDriver)
 | `onSource` | Advanced `onCaptureRoot` |
 | `onChrome` | Advanced `useSurfaceChrome()` |
 | `onFocusWithin` | `onFocusWithinChange` or supported focus events |
-| `detectHtmlInCanvas().drawElementImage` | Hydration-safe support hook for render; synchronous helper for events and diagnostics |
+| `detectHtmlInCanvas().drawElementImage` | `useSupportsDOMSurfaces()` in render; `supportsDOMSurfaces()` for events and diagnostics (shipped) |
 
 The migration guide must state that `Surface` changes meaning. The current name
 means a mesh inside Canvas. Revision 3 uses it for the renderer-independent
