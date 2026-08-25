@@ -63,6 +63,38 @@ export function reliefPulse(t: number, rise: number, fall: number): number {
   return (Math.pow(x, rise) * Math.pow(1 - x, fall)) / peak
 }
 
+/**
+ * A critically damped spring's step response, normalised to land on 1.
+ *
+ * The playthrough drove the scrub linearly until 2026-08-24, so the crossing
+ * started and stopped at full speed. Nothing in the shape below can hide
+ * that: the relief pulse and the transmission are both functions of the
+ * scrub, so a linear scrub means the glass forms at a constant rate and the
+ * motion stops dead at the landing.
+ *
+ * Critically damped rather than bouncy on purpose. An underdamped spring
+ * overshoots past 1, and past 1 there is nothing to see — `reliefPulse`
+ * clamps to a relief of 0 and the transmission clamps to fully arrived, so
+ * the bounce would be invisible and the damping ratio would be a knob with a
+ * dead end. What is left, and what actually reads as a spring, is the
+ * asymmetry: it leaves at rest, covers most of the distance early, and
+ * settles into the landing.
+ *
+ * `stiffness` is the spring's rate over the crossing's own duration, so the
+ * curve is the same shape whatever `crossingMs` says. The raw response only
+ * approaches 1, so it is divided by its own value at the end — at the tuned
+ * stiffness that is a 1.7% correction, which is the sense in which the
+ * crossing is long enough for the spring to have settled. Drop the stiffness
+ * far and the correction grows, which is the curve landing while it is still
+ * moving.
+ */
+export function springEase(p: number, stiffness: number): number {
+  const t = clamp01(p)
+  const k = Math.max(1e-3, stiffness)
+  const step = (x: number) => 1 - (1 + k * x) * Math.exp(-k * x)
+  return step(t) / step(1)
+}
+
 /** The whole crossing at one scrub position. */
 export function refractionStage(t: number, shape: RefractionShape): RefractionStage {
   const scrub = clamp01(t)

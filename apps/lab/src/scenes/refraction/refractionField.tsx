@@ -30,17 +30,41 @@
 // Ownership: this module owns both targets and the passes that fill them.
 // The material owns the drop and the front; the tuning owns how coarse the
 // field is and how far the spread reaches.
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { spreadDecay, spreadPasses } from './refractionLaw'
 import { FIELD_FRAG, FIELD_VERT, SPREAD_FRAG } from './refractionShaders'
-import { refractionTuning as tune, STAGE_H, STAGE_W } from './refractionTuning'
+import { refractionTuning, STAGE_H, STAGE_W } from './refractionTuning'
+
+/**
+ * What the two fields need from a scene's tuning bag, and the stage they
+ * cover. Named as its own shape so a second scene can drive these passes
+ * from its own bag — the gallery's content is photographs, which want a
+ * different `apertureDetail` and a different stage box, and nothing else
+ * about the passes changes.
+ */
+export interface FieldConfig {
+  fieldPx: number
+  spreadPx: number
+  spreadReachPx: number
+  apertureFloor: number
+  apertureCeil: number
+  apertureDetail: number
+  stageW: number
+  stageH: number
+}
+
+const REFRACTION_FIELD: FieldConfig = {
+  ...refractionTuning,
+  stageW: STAGE_W,
+  stageH: STAGE_H,
+}
 
 /** A field's own size in texels, for a given CSS px per texel. */
-const sizeInTexels = (px: number) => ({
-  w: Math.max(4, Math.round(STAGE_W / px)),
-  h: Math.max(4, Math.round(STAGE_H / px)),
+const sizeInTexels = (px: number, stageW: number, stageH: number) => ({
+  w: Math.max(4, Math.round(stageW / px)),
+  h: Math.max(4, Math.round(stageH / px)),
 })
 
 export interface InkField {
@@ -88,11 +112,20 @@ const smallTarget = (w: number, h: number) =>
  * is the same shape whatever `resolution` the Surface happens to be
  * rasterising at.
  */
-export function useInkField(source: { value: THREE.Texture | null }): InkField {
+export function useInkField(
+  source: { value: THREE.Texture | null },
+  config: FieldConfig = REFRACTION_FIELD,
+): InkField {
+  // Read through a ref, not captured: the panel writes the bag in place and
+  // nothing tells this hook, so every frame has to re-read whatever the
+  // caller is holding.
+  const cfg = useRef(config)
+  cfg.current = config
+  const texels = (px: number) => sizeInTexels(px, cfg.current.stageW, cfg.current.stageH)
   const gl = useThree((state) => state.gl)
 
   const rig = useMemo(() => {
-    const { w, h } = sizeInTexels(tune.fieldPx)
+    const { w, h } = texels(cfg.current.fieldPx)
     const target = smallTarget(w, h)
     const material = new THREE.ShaderMaterial({
       vertexShader: FIELD_VERT,
@@ -100,12 +133,13 @@ export function useInkField(source: { value: THREE.Texture | null }): InkField {
       uniforms: {
         tSource: { value: null },
         uStep: { value: new THREE.Vector2(1 / (w * 8), 1 / (h * 8)) },
+        uDetail: { value: cfg.current.apertureDetail },
       },
       depthTest: false,
       depthWrite: false,
     })
 
-    const s = sizeInTexels(tune.spreadPx)
+    const s = texels(cfg.current.spreadPx)
     const spreadMaterial = new THREE.ShaderMaterial({
       vertexShader: FIELD_VERT,
       fragmentShader: SPREAD_FRAG,
@@ -161,24 +195,25 @@ export function useInkField(source: { value: THREE.Texture | null }): InkField {
 
     // Resized in place rather than through a dependency: the panel writes
     // the bag and nothing tells this hook, so the check IS the subscription.
-    const { w, h } = sizeInTexels(tune.fieldPx)
+    const { w, h } = texels(cfg.current.fieldPx)
     if (rig.target.width !== w || rig.target.height !== h) {
       rig.target.setSize(w, h)
       rig.material.uniforms.uStep.value.set(1 / (w * 8), 1 / (h * 8))
     }
-    const s = sizeInTexels(tune.spreadPx)
+    const s = texels(cfg.current.spreadPx)
     if (rig.spreadPair[0].width !== s.w || rig.spreadPair[0].height !== s.h) {
       rig.spreadPair.forEach((t) => t.setSize(s.w, s.h))
       rig.hollowPair.forEach((t) => t.setSize(s.w, s.h))
       rig.spreadMaterial.uniforms.uStep.value.set(0.5 / s.w, 0.5 / s.h)
       rig.spreadTexel.set(1 / s.w, 1 / s.h)
     }
-    const passes = spreadPasses(tune.spreadReachPx, tune.spreadPx)
+    const passes = spreadPasses(cfg.current.spreadReachPx, cfg.current.spreadPx)
     const su = rig.spreadMaterial.uniforms
     su.uDecay.value = spreadDecay(passes)
 
     const previous = gl.getRenderTarget()
 
+    rig.material.uniforms.uDetail.value = cfg.current.apertureDetail
     rig.material.uniforms.tSource.value = texture
     gl.setRenderTarget(rig.target)
     gl.render(rig.scene, rig.camera)
@@ -187,11 +222,11 @@ export function useInkField(source: { value: THREE.Texture | null }): InkField {
     // paper inward. Pass zero reads raw ink heights and normalises them, and
     // is the only pass that inverts; every pass after it reads a field
     // already in 0..1, so its own normalisation has to be the identity.
-    const scale = 1 / Math.max(1e-4, tune.apertureCeil - tune.apertureFloor)
+    const scale = 1 / Math.max(1e-4, cfg.current.apertureCeil - cfg.current.apertureFloor)
     const chain = (pair: readonly THREE.WebGLRenderTarget[], invert: number) => {
       let read: THREE.Texture = rig.target.texture
       for (let i = 0; i < passes; i++) {
-        su.uFloor.value = i === 0 ? tune.apertureFloor : 0
+        su.uFloor.value = i === 0 ? cfg.current.apertureFloor : 0
         su.uScale.value = i === 0 ? scale : 1
         su.uInvert.value = i === 0 ? invert : 0
         su.tSource.value = read

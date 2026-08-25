@@ -35,28 +35,28 @@
 // copy could not produce this picture even in principle, because the
 // arriving page is drawn nowhere to copy from.
 //
-// Ownership: this module owns time, layout and the two handles. Shape
-// belongs to `refractionLaw.ts`, numbers to `refractionTuning.ts`, pixels
-// to `refractionShaders.ts`.
+// Ownership: this module owns time, layout and the two handles. The sheet
+// itself is `refractionMaterial.tsx`, which the gallery scene mounts too.
+// Shape belongs to `refractionLaw.ts`, numbers to `refractionTuning.ts`,
+// pixels to `refractionShaders.ts`.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useFrame, useThree } from '@react-three/fiber'
+import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
   Surface,
   SurfaceCanvas,
   useSurface,
   useSurfaceState,
-  useSurfaceTextureOf,
-  useSurfaceUniforms,
-  type SurfaceHandle,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { showChrome } from '../../bareMode'
-import { useInkField } from './refractionField'
 import { RefractionTweaks } from './RefractionTweaks'
-import { refractionStage } from './refractionLaw'
-import { REFRACTION_FRAG, REFRACTION_VERT } from './refractionShaders'
+import { springEase } from './refractionLaw'
+import {
+  RefractionMaterial,
+  type RefractionDrive,
+} from './refractionMaterial'
 import {
   refractionTuning as tune,
   STAGE_H,
@@ -186,134 +186,6 @@ function PixelPerfect() {
   return null
 }
 
-// ── the glass ──────────────────────────────────────────────────────────
-
-interface RefractionDrive {
-  /** Scrub position, 0 at the leaving page and 1 at the arriving one. */
-  t: number
-}
-
-function RefractionMaterial({
-  incoming,
-  drive,
-}: {
-  incoming: SurfaceHandle
-  drive: React.RefObject<RefractionDrive>
-}) {
-  const surface = useSurfaceUniforms()
-  const arriving = useSurfaceTextureOf(incoming)
-  const material = useRef<THREE.ShaderMaterial>(null)
-
-  // The frame loop reads these; it cannot read a render closure.
-  const arrivingRef = useRef(arriving)
-  arrivingRef.current = arriving
-  const outgoingSlot = surface.tMap
-
-  // Registered before the frame write below, so the field the bend samples
-  // is this frame's and not the one before it.
-  const field = useInkField(outgoingSlot)
-
-  // Initial values only. r3f 9.7 copies the `uniforms` prop entry by entry
-  // into slots the material owns and re-runs only when the prop's identity
-  // changes, so a per-frame write to this bag lands in an object nothing
-  // samples (candidates/README.md gap 1). The frame writes below go through
-  // the material's own slots, which is the channel that reaches the GPU.
-  const uniforms = useMemo(
-    () => ({
-      ...surface,
-      // Sampling the leaving page as its own stand-in keeps a valid texture
-      // bound before the resident source publishes. `uHasIncoming` is 0 on
-      // exactly those frames, so nothing of it survives the mix.
-      tIncoming: { value: surface.tMap.value },
-      uHasIncoming: { value: 0 },
-      // One CSS PIXEL, not one texel of anything. Every px constant in the
-      // tuning — the drop's height, its meniscus, its bend — is stated in CSS
-      // px, and a unit that followed the texture's resolution would change
-      // what all of them meant every time `resolution` moved.
-      uTexel: { value: new THREE.Vector2(1 / STAGE_W, 1 / STAGE_H) },
-      uRelief: { value: 0 },
-      uTransmission: { value: 0 },
-      uZoom: { value: tune.approachZoom },
-      tField: { value: field.target.texture },
-      uSpreadTexel: { value: field.spreadTexel },
-      tSpread: { value: field.spread.value },
-      tHollow: { value: field.hollow.value },
-      uDispersion: { value: tune.dispersion },
-      uApertureFloor: { value: tune.apertureFloor },
-      uApertureCeil: { value: tune.apertureCeil },
-      uApertureInk: { value: tune.apertureInk },
-      uApertureGamma: { value: tune.apertureGamma },
-      uApertureOvershoot: { value: tune.apertureOvershoot },
-      uApertureEdge: { value: tune.apertureEdgePx },
-      uBendTaper: { value: tune.bendTaperPx },
-      uRimPx: { value: tune.rimPx },
-      uHeightPx: { value: tune.heightPx },
-      uIor: { value: tune.ior },
-      uRefractPx: { value: tune.refractPx },
-      uReflect: { value: tune.reflect },
-      uRoomBand: { value: tune.roomBand },
-      uRoomWidth: { value: tune.roomWidth },
-      uRim: { value: tune.rim },
-      uRimPow: { value: tune.rimPow },
-    }),
-    [surface, field],
-  )
-
-  useFrame(() => {
-    const u = material.current?.uniforms
-    if (!u) return
-    const stage = refractionStage(drive.current.t, tune)
-    u.uRelief.value = stage.relief
-    u.uTransmission.value = stage.transmission
-    u.uZoom.value = stage.zoom
-
-    // Every tuned uniform, every frame. The panel writes into the bag and
-    // nothing tells the material about it, so re-reading is the whole
-    // subscription — and it costs a handful of assignments.
-    u.uRimPx.value = tune.rimPx
-    u.uHeightPx.value = tune.heightPx
-    u.uIor.value = tune.ior
-    u.uRefractPx.value = tune.refractPx
-    u.uBendTaper.value = tune.bendTaperPx
-    u.uDispersion.value = tune.dispersion
-    // Each chain alternates between two targets, so the answer is different
-    // every frame even though nothing about the material changed.
-    u.tSpread.value = field.spread.value
-    u.tHollow.value = field.hollow.value
-    u.uApertureFloor.value = tune.apertureFloor
-    u.uApertureCeil.value = tune.apertureCeil
-    u.uApertureInk.value = tune.apertureInk
-    u.uApertureGamma.value = tune.apertureGamma
-    u.uApertureOvershoot.value = tune.apertureOvershoot
-    u.uApertureEdge.value = tune.apertureEdgePx
-    u.uReflect.value = tune.reflect
-    u.uRoomBand.value = tune.roomBand
-    u.uRoomWidth.value = tune.roomWidth
-    u.uRim.value = tune.rim
-    u.uRimPow.value = tune.rimPow
-    const texture = arrivingRef.current
-    u.tIncoming.value = texture ?? outgoingSlot.value
-    u.uHasIncoming.value = texture ? 1 : 0
-    // `useSurfaceUniforms` refreshes its own `tMap` slot every render, but
-    // the material holds a copy of that slot — so a source replaced mid-life
-    // would leave the sheet drawing the disposed texture.
-    u.tMap.value = outgoingSlot.value
-  })
-
-  return (
-    <shaderMaterial
-      ref={material}
-      uniforms={uniforms}
-      vertexShader={REFRACTION_VERT}
-      fragmentShader={REFRACTION_FRAG}
-      transparent
-      premultipliedAlpha
-      depthWrite={false}
-      toneMapped={false}
-    />
-  )
-}
-
 // ── the page ───────────────────────────────────────────────────────────
 
 export function RefractionApp({ chips }: { chips?: React.ReactNode }) {
@@ -354,7 +226,10 @@ export function RefractionApp({ chips }: { chips?: React.ReactNode }) {
     let raf = 0
     const step = () => {
       const p = span <= 0 ? 1 : Math.min(1, (performance.now() - start) / span)
-      setT(from + (to - from) * p)
+      // Eased here rather than inside the law: the law is a function of the
+      // scrub, and the scrub is also a slider a hand drags. Easing it there
+      // would bend the hand's own timing and move where a parked scrub sits.
+      setT(from + (to - from) * springEase(p, tune.crossingSpring))
       if (p < 1) raf = requestAnimationFrame(step)
       else setRunning(false)
     }
@@ -545,7 +420,13 @@ export function RefractionApp({ chips }: { chips?: React.ReactNode }) {
               frustumCulled={false}
               geometry={<planeGeometry args={[STAGE_W, STAGE_H]} />}
               material={
-                <RefractionMaterial incoming={incoming} drive={drive} />
+                <RefractionMaterial
+                  incoming={incoming}
+                  drive={drive}
+                  tune={tune}
+                  stageW={STAGE_W}
+                  stageH={STAGE_H}
+                />
               }
             />
           </group>

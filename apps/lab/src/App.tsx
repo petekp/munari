@@ -24,6 +24,7 @@ import { LogoApp } from './scenes/logo/Logo'
 import { SelectionApp } from './scenes/selection/Selection'
 import { CandidatesApp } from './scenes/candidates/Candidates'
 import { RefractionApp } from './scenes/refraction/Refraction'
+import { GalleryApp } from './scenes/gallery/Gallery'
 import { SurfaceProviderProbe } from './lib/surfaceProvider'
 import { SceneNav } from './components/SceneNav'
 import { SceneBoundary } from './components/SceneBoundary'
@@ -51,6 +52,7 @@ type SceneId =
   | 'selection'
   | 'candidates'
   | 'refraction'
+  | 'gallery'
 const SCENES = [
   'workspace',
   'glass',
@@ -66,6 +68,7 @@ const SCENES = [
   'selection',
   'candidates',
   'refraction',
+  'gallery',
 ] as const
 
 // The nav shows only the focus five; the rest stay routable by URL so the
@@ -134,6 +137,8 @@ function pageSceneFor(scene: SceneId, chips: React.ReactNode) {
       return <SelectionApp chips={chips} />
     case 'refraction':
       return <RefractionApp chips={chips} />
+    case 'gallery':
+      return <GalleryApp chips={chips} />
     // No chips: the candidates page has its own left-column nav, and the two
     // menus side by side read as one broken one.
     case 'candidates':

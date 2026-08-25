@@ -1,0 +1,384 @@
+/* The gallery scene — five items, one sheet of glass, full screen.
+ *
+ * The stage is the viewport, so every card is sized in JS from a measured
+ * box rather than by a rule here. Two things follow from that. Every card
+ * lays out by the SAME rules at the SAME size, because the material samples
+ * one through the other at matching uv and a card that sized itself
+ * differently would refract a picture offset from the one behind it. And
+ * nothing outside `.gallery-card` may be a sibling of it in flow — the
+ * holder is the whole window, so the controls are overlays above the
+ * canvas.
+ *
+ * The captured tree is `.gallery-card` and everything under it. Its root
+ * carries no opacity and no transform, per docs/authoring.md — a transform
+ * on a capture root moves the pixels out from under the texture's own box.
+ *
+ * Hover and active are stated twice on every interactive rule inside a
+ * card: the page copy wears the browser's :hover, the parked source wears
+ * the relay's data-hover / data-active twins. The overlay controls need
+ * only the real one, because they are never captured.
+ */
+
+.gallery-page {
+  position: fixed;
+  inset: 0;
+  background: var(--bench);
+  overflow: hidden;
+}
+
+/* ── the stage box ─────────────────────────────────────────────────── */
+
+/* The whole viewport. It holds the presented card's layout box while the
+ * mesh draws over it, and the mesh is sized to this rect — the scene reads
+ * it with a ResizeObserver and there is no size stated here to disagree
+ * with. */
+.gallery-holder {
+  position: absolute;
+  inset: 0;
+}
+
+/* ── the overlays ──────────────────────────────────────────────────── */
+
+/* z-index 120: above the scene's own full-viewport canvas, below the scene
+ * nav at 150 and the tuning panel at 200. */
+.gallery-caption {
+  position: fixed;
+  left: 26px;
+  top: 24px;
+  z-index: 120;
+  max-width: 300px;
+  color: var(--ink);
+  /* The nav is a left-edge column pinned to the vertical center, so a
+   * caption anchored to the top clears it at any usable window height. */
+}
+
+.gallery-caption h2 {
+  margin: 0 0 8px;
+  font: 700 22px/1.2 var(--display);
+}
+
+.gallery-caption p {
+  margin: 0;
+  font: 12.5px/1.5 var(--body);
+  color: var(--ink-mute);
+}
+
+.gallery-hud {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 0 24px 26px;
+  /* The bar spans the window so it can center its contents, but only the
+   * controls themselves may take a pointer — the rest of that band is the
+   * card, and the card is hit-tested through it when the crossing has
+   * landed. */
+  pointer-events: none;
+}
+
+.gallery-hud > * {
+  pointer-events: auto;
+}
+
+/* ── the item picker ───────────────────────────────────────────────── */
+
+/* Disabled mid-crossing, because starting a second crossing from inside
+ * the first would swap the far handle's content out from under the drop
+ * that is currently reading it. */
+.gallery-rail {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--bench) 82%, transparent);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--rule);
+}
+
+.gallery-pick {
+  appearance: none;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 104px;
+}
+
+.gallery-pick img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  /* Five small competing pictures under one large one; draining them
+   * leaves the card as the only thing in colour. */
+  filter: grayscale(1);
+  opacity: 0.4;
+  transition: opacity 120ms linear, filter 120ms linear;
+}
+
+.gallery-pick span {
+  font: 600 8.5px/1 var(--label);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-align: left;
+  padding-left: 1px;
+}
+
+.gallery-pick:hover img {
+  opacity: 0.75;
+}
+
+.gallery-pick:hover span {
+  color: var(--ink-mute);
+}
+
+.gallery-pick[data-on] {
+  border-color: var(--signal);
+}
+
+.gallery-pick[data-on] img {
+  filter: none;
+  opacity: 1;
+}
+
+.gallery-pick[data-on] span {
+  color: var(--signal);
+}
+
+.gallery-pick:disabled {
+  cursor: default;
+}
+
+/* ── the drive ─────────────────────────────────────────────────────── */
+
+.gallery-drive {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  background: color-mix(in srgb, var(--bench) 82%, transparent);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--rule);
+}
+
+.gallery-label {
+  font: 600 9px/1 var(--label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  flex: none;
+}
+
+.gallery-scrub {
+  width: 260px;
+  appearance: none;
+  height: 2px;
+  background: var(--rule-hard);
+  outline-offset: 4px;
+  flex: none;
+}
+
+.gallery-scrub::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  background: var(--signal);
+  border: 0;
+  cursor: grab;
+}
+
+.gallery-scrub:active::-webkit-slider-thumb {
+  cursor: grabbing;
+}
+
+.gallery-readout {
+  font: 10px/1 var(--data);
+  color: var(--ink-mute);
+  width: 30px;
+  flex: none;
+  text-align: right;
+  /* The number changes every frame during a crossing; a proportional width
+   * would make the whole row twitch. */
+  font-variant-numeric: tabular-nums;
+}
+
+.gallery-cross {
+  appearance: none;
+  border: 1px solid var(--rule-hard);
+  background: transparent;
+  color: var(--ink);
+  font: 600 10px/1 var(--label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  cursor: pointer;
+  flex: none;
+}
+
+.gallery-cross:hover {
+  background: var(--ink);
+  color: var(--bench-hi);
+}
+
+.gallery-cross:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ── a card ────────────────────────────────────────────────────────── */
+
+.gallery-card {
+  box-sizing: border-box;
+  display: grid;
+  /* Two columns: the photograph, then the text. Stated as a fraction of the
+   * card rather than in px so the split is the same at any window size —
+   * the front crosses the frame edge between them on every crossing, and a
+   * boundary that moved with the viewport would move where the drop opens
+   * relative to the picture. */
+  grid-template-columns: 54fr 46fr;
+  background: var(--bench-hi);
+  color: var(--ink);
+}
+
+.gallery-figure {
+  position: relative;
+  overflow: hidden;
+  background: var(--bench-lo);
+}
+
+.gallery-figure img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Cropped rather than letterboxed. Letterboxing would put a wide flat
+   * band on both sides of every photograph, and a flat band is exactly the
+   * region the busyness field reads as empty — the front would have to
+   * cross it with nothing to travel along. Nothing in this subtree may
+   * carry `mask-image` (docs/authoring.md), which is the other reason the
+   * crop is `object-fit`. */
+  object-fit: cover;
+}
+
+.gallery-text {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  /* Scales with the window so the type keeps its distance from the frame
+   * edge at any size, with a floor for small windows. */
+  padding: clamp(32px, 5.5vh, 76px) clamp(32px, 4.5vw, 92px);
+  min-width: 0;
+}
+
+.gallery-eyebrow {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  font: 600 10px/1 var(--label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  flex: none;
+}
+
+.gallery-eyebrow b {
+  color: var(--signal);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.gallery-title {
+  margin: clamp(14px, 2.4vh, 30px) 0 0;
+  font: 400 clamp(44px, 6.4vw, 104px) / 0.98 var(--display);
+  letter-spacing: -0.015em;
+  flex: none;
+}
+
+.gallery-rule {
+  margin: clamp(18px, 3vh, 38px) 0 clamp(16px, 2.6vh, 32px);
+  height: 1px;
+  background: var(--rule-hard);
+  flex: none;
+}
+
+.gallery-blurb {
+  margin: 0;
+  font: clamp(14px, 1.15vw, 19px) / 1.6 var(--body);
+  color: var(--ink-mute);
+  max-width: 34em;
+  flex: none;
+}
+
+/* The call to action. A real anchor with a real href, so at the ends of a
+ * crossing the browser focuses it, shows its target, and follows it. */
+.gallery-cta {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: clamp(22px, 3.4vh, 44px);
+  flex: none;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--bench-hi);
+  text-decoration: none;
+  font: 600 10.5px/1 var(--label);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 12px 17px;
+  cursor: pointer;
+}
+
+.gallery-cta:hover,
+.gallery-cta[data-hover] {
+  background: transparent;
+  color: var(--ink);
+}
+
+.gallery-cta:active,
+.gallery-cta[data-active] {
+  background: var(--bench);
+}
+
+.gallery-foot {
+  /* Pushed to the bottom of the text column rather than spaced by a
+   * margin, so the footer sits on the card's own baseline at any height. */
+  margin-top: auto;
+  padding-top: clamp(20px, 3vh, 40px);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-top: 1px solid var(--rule);
+  flex: none;
+}
+
+.gallery-folio {
+  font: 600 9px/1 var(--label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* The liveness proof. Both cards run one of these, and during a crossing
+ * BOTH are visible at once — the leaving one on the sheet's own pixels, the
+ * arriving one refracted through it. If either readout is frozen, that
+ * capture stopped painting. */
+.gallery-tick {
+  font: 11px/1 var(--data);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.gallery-tick i {
+  font-style: normal;
+  color: var(--signal);
+  padding-right: 6px;
+}

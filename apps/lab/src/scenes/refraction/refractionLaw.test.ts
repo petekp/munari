@@ -28,6 +28,7 @@ import {
   signedSpread,
   spreadDecay,
   spreadPasses,
+  springEase,
 } from './refractionLaw'
 import { DISPLACEMENT_FLOOR_PX, refractionTuning as tune } from './refractionTuning'
 
@@ -73,6 +74,49 @@ describe('the relief pulse', () => {
   it('clamps outside 0..1 rather than running away', () => {
     expect(reliefPulse(-3, tune.rise, tune.fall)).toBe(0)
     expect(reliefPulse(7, tune.rise, tune.fall)).toBe(0)
+  })
+})
+
+describe('the spring', () => {
+  it('leaves at rest and lands exactly on 1, so the crossing finishes', () => {
+    // Exact, not close. The driver multiplies the crossing's distance by
+    // this, so anything short of 1 parks the scrub next to the landing
+    // instead of on it — and the scene only hands the pixels back to the
+    // browser at exactly 0 and exactly 1.
+    expect(springEase(0, tune.crossingSpring)).toBe(0)
+    expect(springEase(1, tune.crossingSpring)).toBe(1)
+  })
+
+  it('never runs backwards, at any stiffness the panel can reach', () => {
+    // Critically damped, so there is no overshoot to undo. This is the
+    // property that makes the damping ratio not worth a knob: past 1 the
+    // relief clamps to 0 and the transmission to fully arrived, so a bounce
+    // would cost frames and show nothing.
+    for (const k of [2, 6, 14]) {
+      for (let p = 0; p < 1; p += 0.005) {
+        expect(springEase(p + 0.005, k)).toBeGreaterThanOrEqual(springEase(p, k))
+      }
+    }
+  })
+
+  it('spends its speed early, which is the half of a spring that shows', () => {
+    // The numbers a linear drive cannot produce: 45% of the crossing's
+    // distance is gone in the first quarter of its time, and 82% by the
+    // half. Pinned so a stiffness change has to come back here and say what
+    // it did.
+    expect(springEase(0.25, tune.crossingSpring)).toBeCloseTo(0.45, 3)
+    expect(springEase(0.5, tune.crossingSpring)).toBeCloseTo(0.815, 3)
+  })
+
+  it('has effectively settled by the time the crossing ends', () => {
+    // What the normalisation costs. The raw response only approaches 1, so
+    // dividing by its value at the end tilts the whole curve — harmless at
+    // 1.7%, which is where the committed stiffness sits, and a different
+    // curve entirely at the bottom of the slider: stiffness 2 arrives at
+    // 0.594, so 41% of what you see is the normalisation and not the spring.
+    const raw = (k: number) => 1 - (1 + k) * Math.exp(-k)
+    expect(raw(tune.crossingSpring)).toBeGreaterThan(0.98)
+    expect(raw(2)).toBeLessThan(0.6)
   })
 })
 
@@ -161,14 +205,17 @@ describe('the aperture front', () => {
 
   it('carries the measured median of a real page past the middle of its travel', () => {
     // The quantile the tuning cites, taken off 8281 points of the leaving
-    // document on 2026-08-22 at the committed settings. Without the gamma the
+    // document on 2026-08-24 at the committed settings. Without the gamma the
     // front crosses most of its range before it reaches half the panel, and
     // the crossing looks like nothing happens and then everything does.
     //
-    // 0.624 would land the median exactly at 0.5. The committed 0.43 pushes it
-    // to 0.62, so the front opens most of the page in its first half and spends
-    // the second half finishing the margins.
-    const RAW_MEDIAN = 0.3294
+    // Re-measured that day because it had gone stale: the spread's reach and
+    // texel had both moved, and 0.3294 was reading a field that no longer
+    // existed. 0.695 would land the median exactly at 0.5. The committed 0.48
+    // pushes it to 0.62, which the front reaches at t=0.44 — just behind the
+    // relief peak, so the page opens in the glass's wake rather than after it
+    // has gone.
+    const RAW_MEDIAN = 0.3686
     expect(Math.pow(RAW_MEDIAN, tune.apertureGamma)).toBeCloseTo(0.62, 2)
     expect(Math.pow(RAW_MEDIAN, tune.apertureGamma)).toBeGreaterThan(0.5)
   })
@@ -309,7 +356,7 @@ describe('the drop', () => {
     // arriving page's border row across the sheet. ROOT_FLOOR stops the
     // climb a twentieth of the way up, which is the number this pins.
     expect(Number.isFinite(MOST)).toBe(true)
-    expect(MOST).toBeCloseTo(17.2895, 3)
+    expect(MOST).toBeCloseTo(20.8651, 3)
   })
 
   it('is no glass at all at an index of 1', () => {
@@ -328,10 +375,11 @@ describe('the perceptual floor', () => {
   it('bends the meniscus past the floor a human can see', () => {
     expect(MOST).toBeGreaterThan(DISPLACEMENT_FLOOR_PX)
     // Stated as numbers rather than as ratios so a tuning change has to come
-    // back here and say what it did. 17.29px at the contact line, 13.30 half
-    // a pixel in, 8.80 two in — the whole lens lives in the first few px.
-    expect(bendAt(0.5)).toBeCloseTo(13.2985, 3)
-    expect(bendAt(2)).toBeCloseTo(8.7973, 3)
+    // back here and say what it did. 20.87px at the contact line, 19.35 half
+    // a pixel in, 16.05 two in — the bend is near its steepest across the
+    // whole first stripe of the meniscus, and falls off over the rest of it.
+    expect(bendAt(0.5)).toBeCloseTo(19.3488, 3)
+    expect(bendAt(2)).toBeCloseTo(16.0519, 3)
   })
 
   it('leaves the words inside the drop straight', () => {
@@ -339,24 +387,36 @@ describe('the perceptual floor', () => {
     // a relief of the LEAVING page's letterforms, so every stroke of it bent
     // the arriving page and nothing was ever readable through it. The bend
     // now belongs to the meniscus, and dies within two meniscus widths.
-    expect(bendAt(10)).toBeCloseTo(2.5722, 3)
-    expect(bendAt(20)).toBeCloseTo(0.8207, 3)
-    expect(bendAt(20)).toBeLessThan(DISPLACEMENT_FLOOR_PX)
+    //
+    // Sampled in meniscus widths, which is the scale the sentence above
+    // states. The distances were the literals 10 and 20, written when rimPx
+    // was 10 and so equal to one and two widths; at rimPx 40 they landed
+    // INSIDE the lens and failed a drop that obeys the law (2026-08-23).
+    // The pinned values stay absolute, so a tuning change still has to come
+    // back here and say what it did.
+    expect(bendAt(2 * tune.rimPx)).toBeCloseTo(0.9448, 3)
+    expect(bendAt(2 * tune.rimPx)).toBeLessThan(DISPLACEMENT_FLOOR_PX)
+    expect(bendAt(3 * tune.rimPx)).toBeCloseTo(0.3319, 3)
     expect(bendAt(3 * tune.rimPx)).toBeLessThan(DISPLACEMENT_FLOOR_PX)
   })
 
   it('puts colour on the meniscus and nowhere else', () => {
     // The defect this pins, from Pete's screenshot on 2026-08-22: the title
     // came out with a rainbow along every stroke. Dispersion is a fraction
-    // of the bend, so it goes exactly where the bend goes — 17.2895 x 2 x
-    // 0.12 = 4.15px of spectrum across the contact line, 0.62px ten pixels
-    // in, and nothing over the flat top.
+    // of the bend, so it goes exactly where the bend goes — 20.8651 x 2 x
+    // 0.12 = 5.01px of spectrum across the contact line, 0.71px one meniscus
+    // width in, and nothing over the flat top.
+    //
+    // The inside sample is one meniscus width for the same reason as the
+    // test above: it was the literal 10, which was one width at rimPx 10 but
+    // a quarter of the way into the lens at rimPx 40, where colour still
+    // measures 2.24px (2026-08-23).
     const onEdge = channelSeparationPx(MOST, tune.dispersion)
     expect(onEdge).toBeGreaterThan(DISPLACEMENT_FLOOR_PX)
-    expect(onEdge).toBeCloseTo(4.1495, 3)
-    const inside = channelSeparationPx(bendAt(10), tune.dispersion)
+    expect(onEdge).toBeCloseTo(5.0076, 3)
+    const inside = channelSeparationPx(bendAt(tune.rimPx), tune.dispersion)
     expect(inside).toBeLessThan(DISPLACEMENT_FLOOR_PX)
-    expect(inside).toBeCloseTo(0.6173, 3)
+    expect(inside).toBeCloseTo(0.7124, 3)
   })
 
   it('never bends a pixel further than that pixel is from the rim', () => {
@@ -372,7 +432,7 @@ describe('the perceptual floor', () => {
     // Where the headroom actually is: a smoothstep's steepest slope is 1.5
     // over its width, so the taper outruns every bend under bendTaperPx/1.5
     // and fails every bend over it, whatever the curve does in between. At
-    // 34 that ceiling is 22.7px and the drop asks for 17.3.
+    // 34 that ceiling is 22.7px and the drop asks for 20.9.
     expect(tune.bendTaperPx / 1.5).toBeGreaterThan(MOST)
   })
 })

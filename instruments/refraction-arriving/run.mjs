@@ -69,7 +69,7 @@ const STAGE_W = 560
 const STAGE_H = 420
 // The law at t = 0.5, computed by hand from REFRACTION_SHAPE. Pinned as
 // numbers so a tuning change has to come back here and say what it did.
-const MID = { relief: 0.81762, transmission: 0.5, zoom: 1.12 }
+const MID = { relief: 0.81762, transmission: 0.5, zoom: 1.0625 }
 const MID_TOL = 1e-3
 // Below this the figure switch did not reach the sheet at all; the
 // measured value with a live leaving page is ≈6.8 (2026-08-22).

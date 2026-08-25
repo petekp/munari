@@ -73,6 +73,7 @@ export const REFRACTION_FRAG = /* glsl */ `
   uniform sampler2D tSpread;     // that same mass, grown outward into blobs
   uniform sampler2D tHollow;     // and the paper grown inward, for their insides
   uniform vec2 uSpreadTexel;     // 1 / spread size, the step the normal measures over
+  uniform float uRounding;       // 0 straight bilinear, 1 eased at texel boundaries
   uniform float uDispersion;     // fraction of the bend red and blue differ by
   uniform float uApertureFloor;  // measured ink density of bare paper
   uniform float uApertureCeil;   // measured ink density of a dense text block
@@ -90,6 +91,7 @@ export const REFRACTION_FRAG = /* glsl */ `
   uniform float uRoomWidth;      // how broad that streak is
   uniform float uRim;            // weight of the grazing-incidence rim
   uniform float uRimPow;         // how tightly the rim hugs the steepest slope
+  uniform float uFresPow;        // how fast the mirror falls off away from grazing
   ${SURFACE_RADIUS_GLSL}
   varying vec2 vUv;
 
@@ -127,11 +129,32 @@ export const REFRACTION_FRAG = /* glsl */ `
   // Both live in 0..1 against the same floor and ceiling, but the spread
   // was normalised in its own first pass rather than here — SPREAD_FRAG
   // says why one decay cannot serve marks of different heights otherwise.
+  // Hermite reconstruction of a coarse field, at the cost of no extra taps.
+  //
+  // Bilinear is C0. Its iso-lines are straight inside a texel and kink at
+  // every boundary, so the contact line drawn from a 25x19 spread is a
+  // polygon with roughly one edge per texel it crosses — the stark facets
+  // Pete photographed on 2026-08-23. Easing the fractional coordinate before
+  // the hardware lerp makes the interpolant C1 across the boundary, which is
+  // what rounds the corners out.
+  //
+  // The easing zeroes the interpolant's slope AT the boundary. Nothing here
+  // reads that slope: the normal is a central difference two spread texels
+  // wide (below), so it never straddles a single boundary and cannot pick up
+  // the flat spot.
+  vec2 roundedUv(vec2 uv, vec2 texel) {
+    vec2 t = uv / texel - 0.5;
+    vec2 i = floor(t);
+    vec2 f = t - i;
+    return (i + 0.5 + mix(f, f * f * (3.0 - 2.0 * f), uRounding)) * texel;
+  }
+
   float apertureAt(vec2 uv) {
     float ink = clamp(
       (texture2D(tField, uv).r - uApertureFloor) / (uApertureCeil - uApertureFloor),
       0.0, 1.0);
-    float spread = 0.5 + 0.5 * (texture2D(tSpread, uv).r - texture2D(tHollow, uv).r);
+    vec2 su = roundedUv(uv, uSpreadTexel);
+    float spread = 0.5 + 0.5 * (texture2D(tSpread, su).r - texture2D(tHollow, su).r);
     return pow(mix(spread, ink, uApertureInk), uApertureGamma);
   }
 
@@ -260,8 +283,15 @@ export const REFRACTION_FRAG = /* glsl */ `
     // renormalised out of the mix weight so a flat sheet stays EXACTLY
     // untouched rather than veiled by the 5% every dielectric reflects
     // head-on — which is also what keeps the page outside the drop a page.
+    //
+    // The exponent is a knob, not Schlick's 5. lip above zeroes the normal at
+    // the contact line, which is the profile's steepest point, so this
+    // surface never tilts past about 59 degrees — and a fifth power there
+    // leaves 2.4% once F0 is renormalised out. mirrorFalloff in
+    // refractionTuning.ts carries the measurement. Any positive exponent
+    // keeps the flat page exactly untouched, because 1 - n.z is 0 there.
     float F0 = 0.05;
-    float fres = F0 + (1.0 - F0) * pow(clamp(1.0 - n.z, 1e-4, 1.0), 5.0);
+    float fres = F0 + (1.0 - F0) * pow(clamp(1.0 - n.z, 1e-4, 1.0), uFresPow);
     float fresR = (fres - F0) / (1.0 - F0);
     vec3 R = reflect(vec3(0.0, 0.0, -1.0), n);
     float qb = (R.y - uRoomBand) / max(uRoomWidth, 1e-3);
@@ -305,20 +335,34 @@ export const FIELD_VERT = /* glsl */ `
 export const FIELD_FRAG = /* glsl */ `
   uniform sampler2D tSource;
   uniform vec2 uStep;            // an eighth of a field texel, in uv
+  uniform float uDetail;         // 0 how dark the patch is, 1 how busy it is
   varying vec2 vUv;
 
   float lum(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
   void main() {
     float sum = 0.0;
+    float vs = 0.0;
+    float vss = 0.0;
     for (int y = 0; y < 8; y++) {
       for (int x = 0; x < 8; x++) {
         vec2 o = (vec2(float(x), float(y)) - 3.5) * 2.0 * uStep;
         vec4 c = texture2D(tSource, vUv + o);
         sum += (1.0 - lum(c.rgb)) * c.a;
+        // Composited over white, which is what an eye integrates. The source
+        // is premultiplied, so its colour is already scaled by alpha and the
+        // paper is whatever alpha did not cover (decisions.md #5).
+        float v = lum(c.rgb) + (1.0 - c.a);
+        vs += v;
+        vss += v * v;
       }
     }
-    gl_FragColor = vec4(sum / 64.0, 0.0, 0.0, 1.0);
+    // Standard deviation across the 64 taps: how much the patch varies rather
+    // than how dark it is. Doubled because the busiest a patch can be is half
+    // black and half white, which deviates by 0.5.
+    float mean = vs / 64.0;
+    float busy = clamp(2.0 * sqrt(max(vss / 64.0 - mean * mean, 0.0)), 0.0, 1.0);
+    gl_FragColor = vec4(mix(sum / 64.0, busy, uDetail), 0.0, 0.0, 1.0);
   }
 `
 
