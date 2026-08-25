@@ -384,6 +384,32 @@ the material's own uniforms, which catches the r3f uniform-copy trap
 a compile check for the scene's program: a shader that fails to link
 draws nothing and the coverage clause reads 0 instead of the full rect.
 
+## chrome-over-canvas
+
+`npm run gate:chrome-over-canvas` — page UI painted above a
+`pointerMode="surfaces"` canvas must still receive clicks where it
+overlaps Surface matter.
+
+The gate parks the refraction crossing at `t = 0.5`, which is the only
+state where the scene holds a mesh, and clicks three headers in the lab's
+tuning panel. `crossing` sits above the mesh and is the control: it must
+open in every build, and a failure there means the probe is broken rather
+than the kernel. `aperture` and `room` sit inside the overlap.
+
+The aim is the header's left end, 20px in, not its centre. At the gate's
+1280x900 viewport the stage row (caption 300 + gap 88 + stage 560) centres
+so the holder's right edge lands at x=1114 and the panel spans 964..1264 —
+the panel's own centre sits on the mesh's far edge, where the raycast
+grazes and the fault does not reproduce.
+
+What it caught: `CanvasPointerGate` decided a press belonged to the glass
+from a raycast alone. A raycast answers in scene coordinates and knows
+nothing about what the browser paints on top at the same point, so presses
+on the panel were claimed, stopped in the document capture phase, and their
+clicks swallowed by the 8px suppressor. Hover kept working the whole time,
+because hover never consults the raycast — the buttons highlighted and
+would not activate, which reads as a React state fault (2026-08-23).
+
 ## House rules
 
 - Scenes hang their live state on a `window.__<scene>` hook so a probe

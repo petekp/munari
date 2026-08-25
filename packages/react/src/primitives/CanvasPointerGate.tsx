@@ -127,6 +127,26 @@ export function CanvasPointerGate({
       return raycaster.intersectObjects(targetsThisFrame(), false).length > 0
     }
 
+    // Does the press belong to the glass, or to page chrome drawn over it?
+    // The raycast alone cannot say: it answers in scene coordinates and knows
+    // nothing about what the browser paints on top at the same point. The
+    // canvas is clear (`pointerEvents: none`) until a move arms it, so the
+    // browser's own hit target is no help either — it has already skipped the
+    // canvas. Make the canvas hit-testable for exactly one query and ask.
+    //
+    // A lab tuning panel at `z-[200]` overlapped the mesh. Every press inside
+    // the overlap raycast onto the glass, so the gate claimed it, stopped it
+    // in the document capture phase, and swallowed the follow-up click, while
+    // hover kept working because hover never consults the raycast. Buttons
+    // that highlighted and would not activate (2026-08-23).
+    const canvasIsTopmost = (event: PointerEvent) => {
+      const held = canvas.style.pointerEvents
+      canvas.style.pointerEvents = 'auto'
+      const top = document.elementFromPoint(event.clientX, event.clientY)
+      canvas.style.pointerEvents = held
+      return top === canvas || (top instanceof Node && canvas.contains(top))
+    }
+
     const clone = (event: PointerEvent, type = event.type) => {
       const copy = new PointerEvent(type, {
         bubbles: true,
@@ -206,6 +226,7 @@ export function CanvasPointerGate({
 
     const onDown = (event: PointerEvent) => {
       if (isRelayed(event) || routed.has(event) || !hitsTarget(event)) return
+      if (!canvasIsTopmost(event)) return
       claims.set(event.pointerId, event)
       setSolid(true)
       suppressedClick = {
