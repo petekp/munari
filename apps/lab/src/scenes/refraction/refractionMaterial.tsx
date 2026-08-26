@@ -27,7 +27,7 @@
 // belongs to `refractionLaw.ts`, pixels to `refractionShaders.ts`, numbers
 // to whichever tuning bag the caller passes.
 
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
@@ -85,6 +85,7 @@ export function RefractionMaterial({
   stageH,
   fieldW = stageW,
   fieldH = stageH,
+  probe,
 }: {
   incoming: SurfaceHandle
   drive: React.RefObject<RefractionDrive>
@@ -95,6 +96,16 @@ export function RefractionMaterial({
   /** The box the field grids are counted against; defaults to the stage. */
   fieldW?: number
   fieldH?: number
+  /**
+   * Filled, while this material is mounted, with the aperture the shader
+   * samples — for a scene that has to route the pointer between the two
+   * documents rather than only draw them.
+   *
+   * A second field mounted alongside this one would be a second answer, and
+   * the two would agree until someone touched one of them. Handing this one
+   * out keeps the picture and the pointer reading the same texels.
+   */
+  probe?: React.RefObject<((u: number, v: number) => number) | null>
 }) {
   const surface = useSurfaceUniforms()
   const arriving = useSurfaceTextureOf(incoming)
@@ -175,6 +186,17 @@ export function RefractionMaterial({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [surface, field],
   )
+
+  // Indirect rather than assigning `field.apertureAt` itself: the field
+  // reassigns that slot every render, and a captured copy would go stale.
+  useEffect(() => {
+    if (!probe) return
+    const ref = probe
+    ref.current = (u, v) => field.apertureAt(u, v)
+    return () => {
+      ref.current = null
+    }
+  }, [probe, field])
 
   useFrame(() => {
     const u = material.current?.uniforms

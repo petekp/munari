@@ -33,7 +33,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { spreadDecay, spreadPasses } from './refractionLaw'
+import { roundedCoord, spreadDecay, spreadPasses } from './refractionLaw'
 import { FIELD_FRAG, FIELD_VERT, SPREAD_FRAG } from './refractionShaders'
 import { refractionTuning, STAGE_H, STAGE_W } from './refractionTuning'
 
@@ -53,6 +53,14 @@ export interface FieldConfig {
   apertureDetail: number
   stageW: number
   stageH: number
+  // These three the PASSES do not use — the material does. They are here
+  // because `apertureAt` is here, and it is the shader's own expression:
+  // ink mixed with spread, eased across texel boundaries, gamma'd. A field
+  // that only knew how to fill its targets could not answer where a
+  // pointer landed.
+  apertureInk: number
+  apertureGamma: number
+  frontRounding: number
 }
 
 const REFRACTION_FIELD: FieldConfig = {
@@ -88,6 +96,21 @@ export interface InkField {
   spread: { value: THREE.Texture }
   /** The paper grown inward, the same way. The material takes the difference. */
   hollow: { value: THREE.Texture }
+  /**
+   * `apertureAt` from the fragment shader, on the CPU, for routing a pointer.
+   *
+   * The fields live only on the GPU, so this reads them back — both spread
+   * chains and, when the ink term is mixed in at all, the ink field too. The
+   * readback is LAZY and cached for the frame: nothing pays for it unless a
+   * pointer asks, and a pointer that asks a hundred times in one frame pays
+   * once. `readRenderTargetPixels` is a pipeline stall, and the cheapest
+   * honest answer was to make the stall rare rather than to make it fast.
+   *
+   * The buffers total a few KB — the fields are counted in texels of tens of
+   * CSS px, so at the gallery's reference box the two spread targets are
+   * 29x18 each.
+   */
+  apertureAt(u: number, v: number): number
 }
 
 function fullscreen(material: THREE.ShaderMaterial) {
@@ -140,6 +163,8 @@ export function useInkField(
     })
 
     const s = texels(cfg.current.spreadPx)
+    const spreadPair = [smallTarget(s.w, s.h), smallTarget(s.w, s.h)] as const
+    const hollowPair = [smallTarget(s.w, s.h), smallTarget(s.w, s.h)] as const
     const spreadMaterial = new THREE.ShaderMaterial({
       vertexShader: FIELD_VERT,
       fragmentShader: SPREAD_FRAG,
@@ -161,12 +186,20 @@ export function useInkField(
       scene: fullscreen(material),
       camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1),
       spreadTexel: new THREE.Vector2(1 / s.w, 1 / s.h),
-      spreadPair: [smallTarget(s.w, s.h), smallTarget(s.w, s.h)] as const,
-      hollowPair: [smallTarget(s.w, s.h), smallTarget(s.w, s.h)] as const,
+      spreadPair,
+      hollowPair,
       spreadMaterial,
       spreadScene: fullscreen(spreadMaterial),
       spread: { value: target.texture },
       hollow: { value: target.texture },
+      // The textures above are what the material samples; these are the
+      // same two surfaces as TARGETS, which is what a readback needs.
+      spreadTargets: { spread: spreadPair[0], hollow: hollowPair[0] },
+      // Reassigned below on every render so the closure sees fresh tuning,
+      // while the rig's own identity stays put — the material's uniform bag
+      // is memoized on it, and a new rig per render would rebuild that bag
+      // every frame of a resize.
+      apertureAt: (_u: number, _v: number): number => 0,
     }
   }, [])
 
@@ -185,6 +218,95 @@ export function useInkField(
     },
     [rig],
   )
+
+  // ── the CPU mirror ───────────────────────────────────────────────────
+  //
+  // One law in two languages. Every line below has a counterpart in
+  // FIELD_FRAG or in `apertureAt`, and `refractionRouting.test.ts` pins the
+  // pair to the same numbers on the same inputs. A change to either without
+  // the other is the exact bug this repo is worst at noticing: the picture
+  // stays right and only the pointer goes to the wrong document.
+  const mirror = useMemo(
+    () => ({
+      frame: -1,
+      spread: new Uint8Array(0),
+      hollow: new Uint8Array(0),
+      ink: new Uint8Array(0),
+      w: 0,
+      h: 0,
+      iw: 0,
+      ih: 0,
+    }),
+    [],
+  )
+
+  const readBack = () => {
+    const frame = gl.info.render.frame
+    if (mirror.frame === frame) return
+    mirror.frame = frame
+    const s = rig.spreadTargets
+    const { width: w, height: h } = s.spread
+    if (mirror.w !== w || mirror.h !== h) {
+      mirror.w = w
+      mirror.h = h
+      mirror.spread = new Uint8Array(w * h * 4)
+      mirror.hollow = new Uint8Array(w * h * 4)
+    }
+    gl.readRenderTargetPixels(s.spread, 0, 0, w, h, mirror.spread)
+    gl.readRenderTargetPixels(s.hollow, 0, 0, w, h, mirror.hollow)
+    // Read only when the ink term is actually mixed in. A gallery reading
+    // busyness sets `apertureInk` to 0, and that third stall buys nothing.
+    if (cfg.current.apertureInk > 0) {
+      const { width: iw, height: ih } = rig.target
+      if (mirror.iw !== iw || mirror.ih !== ih) {
+        mirror.iw = iw
+        mirror.ih = ih
+        mirror.ink = new Uint8Array(iw * ih * 4)
+      }
+      gl.readRenderTargetPixels(rig.target, 0, 0, iw, ih, mirror.ink)
+    }
+  }
+
+  // Bilinear over a readback, matching the targets' own LinearFilter and
+  // clamp-to-edge. `readRenderTargetPixels` hands back rows bottom-up, which
+  // is the direction v already runs, so nothing is flipped here.
+  const tap = (buf: Uint8Array, w: number, h: number, u: number, v: number) => {
+    if (w === 0 || h === 0) return 0
+    const x = u * w - 0.5
+    const y = v * h - 0.5
+    const x0 = Math.floor(x)
+    const y0 = Math.floor(y)
+    const fx = x - x0
+    const fy = y - y0
+    const cx = (i: number) => Math.min(w - 1, Math.max(0, i))
+    const cy = (i: number) => Math.min(h - 1, Math.max(0, i))
+    const at = (i: number, j: number) => buf[(cy(j) * w + cx(i)) * 4] / 255
+    const top = at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx
+    const bot = at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx
+    return top * (1 - fy) + bot * fy
+  }
+
+  const apertureAt = (u: number, v: number) => {
+    readBack()
+    const t = cfg.current
+    const su = roundedCoord(u, 1 / Math.max(1, mirror.w), t.frontRounding)
+    const sv = roundedCoord(v, 1 / Math.max(1, mirror.h), t.frontRounding)
+    const spread =
+      0.5 +
+      0.5 *
+        (tap(mirror.spread, mirror.w, mirror.h, su, sv) -
+          tap(mirror.hollow, mirror.w, mirror.h, su, sv))
+    let field = spread
+    if (t.apertureInk > 0) {
+      const raw = tap(mirror.ink, mirror.iw, mirror.ih, u, v)
+      const ink = Math.min(
+        1,
+        Math.max(0, (raw - t.apertureFloor) / Math.max(1e-4, t.apertureCeil - t.apertureFloor)),
+      )
+      field = spread + (ink - spread) * t.apertureInk
+    }
+    return Math.pow(Math.max(0, field), t.apertureGamma)
+  }
 
   // Restores whatever target was bound rather than assuming null: this runs
   // inside the frame loop, and a scene that rendered to a target of its own
@@ -239,9 +361,13 @@ export function useInkField(
     }
     rig.spread.value = chain(rig.spreadPair, 0)
     rig.hollow.value = chain(rig.hollowPair, 1)
+    rig.spreadTargets.spread = rig.spreadPair[(passes - 1) % 2]
+    rig.spreadTargets.hollow = rig.hollowPair[(passes - 1) % 2]
 
     gl.setRenderTarget(previous)
   })
+
+  rig.apertureAt = apertureAt
 
   return rig
 }
