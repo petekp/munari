@@ -315,6 +315,49 @@ path — hover in, grab at the lens's own fixed point, scrub — lands the
 same predictions. The drag itself never touches the relay: trusted
 window moves drive both the value and the focus.
 
+## gallery-pointer
+
+Local gate: mid-crossing, the gallery item that hears the pointer is the
+item you can see at that point. `npm run gate:gallery-pointer`.
+
+The scene draws two live documents in one sheet and decides per fragment
+which of them a pixel shows. Hover has to make the same decision at one
+point, on the CPU. It does that by giving each item its own presenter and
+letting the aperture partition the plane: each mesh declines the ray
+wherever the other item is on screen, so Munari's relay carries the event
+into whichever subtree its own mesh accepted.
+
+That partition is a second copy of the shader's aperture, written in
+JavaScript against the same render targets read back off the GPU. Two
+copies of one law fail in a way nothing else here catches: the picture
+stays right, because the shader is untouched, and only the pointer goes
+to the wrong document. No screenshot shows it and no diff reads wrong.
+
+The gate walks a real mouse over a 13×9 grid and reads which card wears
+`[data-hover]`. One scrub step into the crossing all 85 reachable points
+must relay to the item being left; one step short of the landing all 85
+must relay to the item arriving; at the midpoint both must hear part of
+the sheet.
+
+The teeth are the midpoint clause. For each grid point the gate compares
+the sheet against two reference frames — the same sheet parked at each
+end, with the arriving one sampled through the approach zoom — and the
+item that heard the point must be the item its pixels are nearer. That
+measures the CPU copy against what the GPU drew rather than against
+itself. Points where the two items look alike are skipped, and so are
+points on the front, found from the routing map rather than the field: a
+point whose four neighbours do not all route the same way is on it.
+
+Measured 2026-08-24 at the committed tuning: 32 of 34 judgeable points,
+94%, against a 90% floor. The floor is not 100% because the router
+deliberately ignores the drop's bend — up to 26 CSS px of local
+displacement — and applies only the approach zoom the whole sheet shares.
+
+The counter-clause, run the same day: swap the field the router reads for
+a plain horizontal ramp. The ends stay correct, because the sweep carries
+the threshold past both of them, and the sheet still splits, so the other
+clauses pass unchanged. The midpoint clause fell to 20%.
+
 ## refraction-arriving
 
 Local gate: the refraction scene's *arriving* document is a live layout

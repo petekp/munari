@@ -49,7 +49,7 @@ import {
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { showChrome } from '../../bareMode'
-import { springEase } from '../refraction/refractionLaw'
+import { apertureEdge, approachUv, refractionStage, springEase } from '../refraction/refractionLaw'
 import {
   RefractionMaterial,
   type RefractionDrive,
@@ -403,6 +403,56 @@ export function GalleryApp({ chips }: { chips?: React.ReactNode }) {
 
   const leavingState = origin === 0 ? stateA : stateB
 
+  // ── which item a point of the sheet is showing ─────────────────────────
+  //
+  // The material answers this per fragment. A pointer needs the same answer
+  // at one point, on the CPU, before anything can decide which card should
+  // hear it. Both halves already exist: `apertureAt` is the field the
+  // fragment shader samples, read back off the GPU, and `apertureEdge` is
+  // the sweeping threshold it is compared against. Past the edge the drop
+  // has opened there and the point shows the arriving item.
+  //
+  // Two presenters and not one, because who a pointer belongs to is exactly
+  // who presents it (crossingPointer, decisions.md #33). Each mesh declines
+  // the ray wherever the OTHER item is the one on screen, so the two
+  // partition the sheet and Munari's own relay carries the event into the
+  // right subtree. The alternative — one mesh forwarding into both sources
+  // by hand — means a second copy of the enter/leave bookkeeping, and the
+  // copy is what drifts.
+  //
+  // What this deliberately gets wrong: the bend. The arriving item is
+  // sampled through the drop, and the approach zoom below is the part of
+  // that mapping the whole sheet shares. On top of it the shader displaces
+  // each fragment by up to `refractPx` — 26 CSS px here — concentrated in
+  // the meniscus, and routing ignores it. So a hover within about a
+  // meniscus-width of the front can land on the neighbouring line; away
+  // from the front it is exact.
+  const probe = useRef<((u: number, v: number) => number) | null>(null)
+  const [leavingRay, arrivingRay] = useMemo(() => {
+    const route = (wantArriving: boolean): THREE.Object3D['raycast'] =>
+      function (this: THREE.Mesh, raycaster, intersects) {
+        const shape = refractionStage(drive.current.t, tune)
+        const edge = apertureEdge(shape.transmission, tune.apertureOvershoot)
+        const read = probe.current
+        const hits: THREE.Intersection[] = []
+        THREE.Mesh.prototype.raycast.call(this, raycaster, hits)
+        for (const hit of hits) {
+          if (!hit.uv) continue
+          // No field yet — the first frame of a lift, before the material's
+          // effect has run — means the drop has not opened anywhere, which
+          // is the leaving item everywhere.
+          const arriving = read !== null && read(hit.uv.x, hit.uv.y) > edge
+          if (arriving !== wantArriving) continue
+          if (wantArriving) {
+            const [u, v] = approachUv(hit.uv.x, hit.uv.y, shape.zoom)
+            hit.uv.set(u, v)
+          }
+          intersects.push(hit)
+        }
+      }
+    return [route(false), route(true)] as const
+  }, [])
+
   return (
     <div className="gallery-page">
       {/* The holder is the whole viewport and the mesh covers it, so every
@@ -540,6 +590,7 @@ export function GalleryApp({ chips }: { chips?: React.ReactNode }) {
               placement="manual"
               alpha="source"
               frustumCulled={false}
+              raycast={leavingRay}
               geometry={<planeGeometry args={[stage.w, stage.h]} />}
               material={
                 <RefractionMaterial
@@ -550,8 +601,26 @@ export function GalleryApp({ chips }: { chips?: React.ReactNode }) {
                   stageH={stage.h}
                   fieldW={GALLERY_REF_W}
                   fieldH={GALLERY_REF_H}
+                  probe={probe}
                 />
               }
+            />
+            {/* The arriving item's ear. The sheet above already has its
+                pixels, sampled as a texture; this mesh exists only so the
+                arriving source has a presenter of its own, which is what
+                makes a pointer over it that source's to hear.
+
+                An opaque material draws before the transparent sheet does,
+                so both writes are turned off: `colorWrite` leaves no pixels
+                and `depthWrite` leaves nothing for the sheet's own fragments
+                to be tested against. */}
+            <Surface.WebGL
+              surface={handles[1 - origin]}
+              placement="manual"
+              frustumCulled={false}
+              raycast={arrivingRay}
+              geometry={<planeGeometry args={[stage.w, stage.h]} />}
+              material={<meshBasicMaterial colorWrite={false} depthWrite={false} />}
             />
           </group>
         )}
