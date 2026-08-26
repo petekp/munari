@@ -297,3 +297,43 @@ export function bendTaper(edgePx: number, taperPx: number): number {
 export function channelSeparationPx(bendPx: number, dispersion: number): number {
   return bendPx * 2 * dispersion
 }
+
+// ── routing the pointer: which document is under a given point ──────────
+//
+// The material decides per fragment which of two live documents a pixel
+// shows. A pointer needs the same answer on the CPU, at one point, to send
+// a hover into the right subtree. `apertureEdge` above is already half of
+// it — a point is showing the incoming document where its field is past
+// that edge. These two are the rest of the pure part; the field itself has
+// to be read back off the GPU.
+
+/**
+ * A uv snapped toward the centre of a texel, eased across the boundary.
+ *
+ * The spread field is bilinear on a coarse grid, so a front sweeping across
+ * it turns a corner at every texel edge. `rounding` at 1 replaces the linear
+ * ramp between texel centres with a smoothstep, which is what rounds those
+ * corners out. Mirrors `roundedUv` in the fragment shader — the two are one
+ * law and `refractionRouting.test.ts` pins them to the same numbers.
+ */
+export function roundedCoord(x: number, texel: number, rounding: number): number {
+  const t = x / texel - 0.5
+  const i = Math.floor(t)
+  const f = t - i
+  return (i + 0.5 + (f + (f * f * (3 - 2 * f) - f) * rounding)) * texel
+}
+
+/**
+ * Where on the incoming document a point of the sheet is looking.
+ *
+ * The outgoing view is sampled undisplaced, so a hit on the sheet is already
+ * the right point of it. The incoming view is sampled through the drop, and
+ * this is the part of that mapping the whole sheet shares: the approach
+ * zoom, about the centre. The bend on top of it is a local displacement of
+ * at most `refractPx`, and routing deliberately ignores it — see the
+ * scene's own note on what that costs.
+ */
+export function approachUv(u: number, v: number, zoom: number): [number, number] {
+  const z = Math.max(zoom, 1e-4)
+  return [(u - 0.5) / z + 0.5, (v - 0.5) / z + 0.5]
+}
