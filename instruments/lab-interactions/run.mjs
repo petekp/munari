@@ -78,9 +78,8 @@ try {
   // each route names the handle its own checks read first.
   const ready = {
     // The shared room mounts its scene and its OrbitControls behind the same
-    // Suspense boundary as <Environment>, which fetches an HDR from a CDN and
-    // on a cold cache has taken upwards of ten seconds. `scene.environment`
-    // lands with that fetch, so it is the one signal that means "the room is
+    // Suspense boundary as <Environment>, and `scene.environment` lands when
+    // that boundary resolves. So it is the one signal that means "the room is
     // up" for all three — including explode, whose plates come from a HUD that
     // `&bare` never renders, leaving its scene graph legitimately empty.
     workspace: () => Boolean(window.__r3f?.scene?.environment),

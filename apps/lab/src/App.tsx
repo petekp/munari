@@ -158,7 +158,10 @@ function pageSceneFor(scene: SceneId, chips: React.ReactNode) {
 function Room({ scene }: { scene: SceneId }) {
   return (
     <>
-      <Environment preset="city" />
+      {/* The `city` preset's own HDR, served from this app. As a preset it
+          came from a CDN inside this Suspense boundary, so nothing in the
+          room mounted until that fetch landed — 11.8s on a cold cache. */}
+      <Environment files="/hdri/potsdamer_platz_1k.hdr" />
       {scene === 'glass' && <Glass />}
       {scene === 'explode' && <Explode />}
       {scene === 'workspace' && <Workspace />}
