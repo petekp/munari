@@ -22,8 +22,11 @@
 // The picture can superimpose every exit; a pointer has to name ONE page
 // pixel. So `traceCrystal` returns the first DOWNWARD exit — the ray that
 // crossed the stone once — and falls back to a bounced one only where that
-// path does not exist. Measured 2026-08-25 over the 40,264 pixels the
-// crystal covers: 40,248 have a direct path and 16 do not.
+// path does not exist. Measured 2026-08-26 over the 7,319 pixels the crystal
+// covers at the committed cut: all 7,319 have a direct path, and none of
+// them misses the solid. The fallback is dead code here and stays because
+// the cut is a knob — at a real brilliant's 34/41 it takes over, where 2,890
+// of the same rays find no exit at all and a quarter of the rest bounce.
 //
 // The fault this file exists to guard, and the reason `crystalLaw.test.ts`
 // pins every function below against the GLSL: the two copies can drift
@@ -141,7 +144,9 @@ export function sdInner2(x: number, y: number, t: CrystalTuning): number {
  * The solid itself, LOCAL space, negative inside — a brilliant cut swept
  * along the arrow's own outline.
  *
- * Five surfaces. From the page up: a KEEL where the pavilion facets meet, a
+ * Five surfaces. From the page up: a KEEL where the pavilion facets would
+ * meet — 233.7px in from the girdle at the committed cut, so on a 76px-wide
+ * arrow they never do and it is unreachable — a
  * PAVILION tilted `pavilionDeg` and running up to the widest point, a
  * vertical GIRDLE band `girdleThickPx` tall, a CROWN of facets tilted
  * `crownDeg` back inward, and a flat TABLE on top. Offsetting the outline
@@ -152,16 +157,18 @@ export function sdInner2(x: number, y: number, t: CrystalTuning): number {
  * The crown is what makes the arrow a lens at all. A slab with parallel
  * faces DEVIATES NOTHING at normal incidence, so the flat-topped version of
  * this solid was a window over its whole interior: measured 2026-08-25, the
- * median displacement over its 42,880 interior pixels was 2.7px against
- * 21.2 at the hotspot, and on screen that read as grey plastic.
+ * median displacement over its interior pixels was 2.7px against 21.2 at
+ * the hotspot, and on screen that read as grey plastic.
  *
  * The pavilion is what makes it a STONE rather than a lens. A ray that has
- * crossed the crown meets the pavilion from inside, where index 1.62 puts
- * the critical angle at 38.1 degrees, so most of the pavilion mirrors
- * instead of transmitting. The ray crosses to the far side, bounces again,
- * and leaves through the crown carrying a piece of the page from somewhere
- * else entirely. `traceCrystal` follows that zigzag; a single pass down
- * through a flat bottom cannot produce it at any angle.
+ * crossed the crown meets the pavilion from inside, where index 1.58 puts
+ * the critical angle at 39.27 degrees, so a steep pavilion mirrors instead
+ * of transmitting. The ray crosses to the far side, bounces again, and
+ * leaves through the crown carrying a piece of the page from somewhere else
+ * entirely. `traceCrystal` follows that zigzag; a single pass down through a
+ * flat bottom cannot produce it at any angle. The committed cut stops 2.27
+ * degrees short of the line, so what bounces is the picture's business and
+ * the pointer takes the direct path everywhere.
  *
  * Every term is a half-space in the (`sdInner2`, z) plane and they are
  * combined with `max`. That is an INTERSECTION, and for an intersection the
@@ -632,6 +639,18 @@ export function tipPlanePoint(
 ): [number, number] {
   const s = (eye[2] - liftZ) / eye[2]
   return [eye[0] + (screenX - eye[0]) * s, eye[1] + (screenY - eye[1]) * s]
+}
+
+/**
+ * Where the tip is DRAWN — the inverse of `tipPlanePoint`.
+ *
+ * The pointer's hotspot is the tip, so this is the screen point the hotspot
+ * appears at, which trails the hand by however far it moved since the last
+ * frame.
+ */
+export function tipScreenPoint(f: CrystalFrame, eye: Vec3): [number, number] {
+  const s = eye[2] / Math.max(eye[2] - f.tipZ, 1e-9)
+  return [eye[0] + (f.tipX - eye[0]) * s, eye[1] + (f.tipY - eye[1]) * s]
 }
 
 // ── the hand ───────────────────────────────────────────────────────────

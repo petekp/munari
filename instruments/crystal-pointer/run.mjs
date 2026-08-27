@@ -4,7 +4,7 @@
 // The crystal scene floats a cut solid of glass over the page and traces a
 // ray through it — in a crown facet, bouncing between the inside faces, out
 // through the pavilion and across the air gap — so at the pointer's own
-// hotspot the page arrives 63.0 CSS px away from
+// hotspot the page arrives 48.1 CSS px away from
 // where the hand is. The DOM under the sheet never moved, so a click
 // delivered at the hand's own coordinates lands on whatever the glass slid
 // out of the way. The scene closes that gap by handing Munari's pointer
@@ -36,8 +36,8 @@
 //      the boxes are read out of the parked source tree, and if that
 //      arithmetic were wrong every measurement below would be wrong with it.
 //   2. Corrected, the click is the eye — and it is a DIFFERENT key. The bend
-//      at the hotspot is 63.0px against a 52px key pitch, so the correction
-//      has to move the target a whole key or the scene is claiming nothing.
+//      at the hotspot is 48.1px against a 52px key pitch, so the correction
+//      has to move the target most of a key, or the scene claims nothing.
 //   3. The switch moved a highlight and did not repaint the world: both a
 //      patch that came on and a patch that went off, each well above a floor.
 //   4. The eye's key is the one drawn under the tip. This is the clause that
@@ -60,11 +60,11 @@
 // reason is worth keeping. A slab with parallel faces deviates NOTHING at
 // normal incidence, so a flat top is a window over its interior and a lens
 // only at its rim: 12px in along the arrow's axis there were zero displaced
-// pixels at all, and the median displacement over the crystal's 42,880
-// interior pixels was 2.7px against 21.2 at the hotspot. The fix was the
-// shape and not the gate — crown facets sprung from the girdle cover 88% of
-// the outline's area, and the same median is now 62.9px. The stone was
-// later cut a pavilion as well, so the exit face is not flat either.
+// pixels at all, and the median displacement over the crystal's interior
+// pixels was 2.7px against 21.2 at the hotspot. The fix was the shape and
+// not the gate — crown facets sprung from the girdle cover 78% of the
+// outline's area, and the same median is now 130px. The stone was later cut
+// a pavilion as well, so the exit face is not flat either.
 //
 // There is no fifth clause asking where the HAND's key ended up. It sounds
 // like a second independent reading and is not one: the two keys differ and
@@ -150,6 +150,33 @@ const HOVER_STEP = 8
  * "there is a key here" rather than a measurement of one.
  */
 const BLOB_FLOOR = 300
+
+/**
+ * The sweep clause 5 walks, and how far apart its samples are.
+ *
+ * 8px between samples at 8ms is about 1000px/s, which is an ordinary flick
+ * across a keyboard and enough to put the drawn pose a frame behind the
+ * hand. 360px keeps both ends on the pad.
+ */
+const SWEEP_PX = 360
+const SWEEP_STEPS = 45
+const SWEEP_SETTLE = 8
+
+/**
+ * The furthest the RELAYED point may sit from the hand while sweeping, px.
+ *
+ * Measured 2026-08-26 walking this sweep at the committed cut: 67px median
+ * and 99 worst, so the ceiling is that with room. A pose read against the
+ * hand's position instead of the tip's put the same walk at 141px median
+ * and 180 worst.
+ *
+ * Read off the relayed event rather than off which key is lit: when the
+ * correction is wrong it mostly returns [0, 0] instead, and the key under
+ * an UNcorrected pointer is 12px from the hand — a better-looking number
+ * than the honest one. Same reason hop-to-hop between lit keys is no good:
+ * the highlight drops out too often to measure a hop across.
+ */
+const SWEEP_OFFSET = 130
 
 let browser, server
 const deadline = setTimeout(() => {
@@ -354,6 +381,71 @@ try {
     `the corrected key is drawn UNDER the tip ` +
       `(in a ${TIP_R}px disc at the hotspot: ${d.tipOn}px came on, ${d.tipOff}px went off)`,
   )
+
+  // 5 — the hand MOVING.
+  //
+  // Every clause above holds the hand still, so the pose the raycast reads
+  // is the pose that drew the picture and the two can never disagree. In
+  // motion the drawn pose is a frame behind, and the bend field answers a
+  // query put to it off the tip so badly that the highlight used to land
+  // three keys from the cursor and jump 170px between one sample and the
+  // next. Walking it and watching the size of each hop is the only clause
+  // here that can see that.
+  await setCorrect(true)
+  const sweep = []
+  for (let i = 0; i <= SWEEP_STEPS; i++) {
+    sweep.push([aim.x - SWEEP_PX / 2 + (i * SWEEP_PX) / SWEEP_STEPS, aim.y])
+  }
+  await page.mouse.move(sweep[0][0], sweep[0][1])
+  await sleep(400)
+
+  // The relay's own output, caught where it lands: a synthetic move into the
+  // parked subtree, which is the corrected point and nothing else.
+  await page.evaluate(() => {
+    const host = document.querySelector(
+      '[data-munari-source-host][data-munari-instance="source"]',
+    )
+    window.__relayed = []
+    host.addEventListener(
+      'pointermove',
+      (e) => {
+        if (!e.isTrusted) window.__relayed.push([e.clientX, e.clientY])
+      },
+      true,
+    )
+    window.__drainRelayed = () => {
+      const r = window.__relayed
+      window.__relayed = []
+      return r
+    }
+  })
+
+  const offsets = []
+  let litSamples = 0
+  for (const [x, y] of sweep) {
+    await page.mouse.move(x, y)
+    await sleep(SWEEP_SETTLE)
+    const [rel, lit] = await page.evaluate(() => {
+      const r = window.__drainRelayed()
+      const el = document.querySelector('[data-munari-instance="source"] [data-key][data-hover]')
+      return [r.length ? r[r.length - 1] : null, Boolean(el)]
+    })
+    if (lit) litSamples++
+    if (rel) offsets.push(Math.hypot(rel[0] - x, rel[1] - y))
+  }
+  const sorted = [...offsets].sort((a, b) => a - b)
+  const worstOffset = Math.round(sorted[sorted.length - 1] ?? 0)
+  const medOffset = Math.round(sorted[sorted.length >> 1] ?? 0)
+  check(
+    litSamples >= sweep.length / 2,
+    `moving, the hand keeps a key lit (${litSamples}/${sweep.length} samples)`,
+  )
+  check(
+    offsets.length > 0 && worstOffset <= SWEEP_OFFSET,
+    `moving, the relayed point stays under the tip ` +
+      `(median ${medOffset}px from the hand, worst ${worstOffset}px, ceiling ${SWEEP_OFFSET}px)`,
+  )
+
   check(errors.length === 0, `no page errors (${errors.length})`)
 } catch (e) {
   problems.push(String(e?.stack ?? e))

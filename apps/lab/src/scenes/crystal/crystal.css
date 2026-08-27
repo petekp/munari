@@ -11,7 +11,7 @@
  *
  * Nothing here is decoration. High contrast and hard edges, because the
  * whole scene is an argument about WHERE a pixel is, and a soft gradient
- * shows a 63px displacement as a slightly different shade of the same
+ * shows a 48px displacement as a slightly different shade of the same
  * thing. Letterforms show it as a different letter.
  *
  * The pad is LIT, not dark. The screen pair is used inverted — `--screen-ink`
@@ -128,8 +128,8 @@
   gap: 4px;
 }
 
-/* 48px on a 52px pitch, against a 63px bend at the hotspot: an uncorrected
- * click lands a whole key away, and downward, so it lands in the next row.
+/* 48px on a 52px pitch, against a 48px bend at the hotspot: an uncorrected
+ * click lands most of a key away, and downward, so it lands in the next row.
  * Crystal.tsx carries the measurement, and KEY_PX there is the same number.
  *
  * 24px bold, because the letterform is the evidence. At 16px on a lit ground
@@ -161,7 +161,7 @@
 
 /* Hover DEEPENS the row's own tint over the whole key. It has to be a fill
  * and not an outline: this is what the crystal-pointer gate reads to prove
- * the correction moved the highlight, and it is read through 63px of
+ * the correction moved the highlight, and it is read through 48px of
  * refraction. A 2px ring measured 246 changed pixels where a fill measures
  * 850 — under glass that is the difference between a legible answer and a
  * shade. The hue stays, because the hue is which row you are on. */

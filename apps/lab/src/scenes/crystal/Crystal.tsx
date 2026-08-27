@@ -2,12 +2,14 @@
 // lying on a live page it refracts.
 //
 // The law: WHAT YOU CLICK IS WHAT YOU SEE. The page is one Surface drawn as
-// a full-viewport quad, and the arrow is a cut solid of glass floating 96px
+// a full-viewport quad, and the arrow is a cut solid of glass floating 110px
 // over it — an actual stone with a crown, a girdle and a pavilion, not a
 // picture of one. The shader traces a ray from the camera into a crown
 // facet, lets it bounce between the inside faces until its light runs out,
 // and follows what escapes downward across the air gap to the page. At the
-// tip the page arrives displaced by 63.0 CSS px (measured 2026-08-25).
+// tip the page arrives displaced by 48.1 CSS px, and over the body by 130
+// (measured 2026-08-26) — the tip looks through the thinnest wedge on the
+// stone, so it is the steadiest place on it and the least displaced.
 // Nothing on the page moved. A click delivered at the hand's own coordinates
 // would land on whatever the glass slid out of the way, so the pointer relay
 // is handed the SAME trace the shader drew with. Turn it off with the switch
@@ -38,7 +40,7 @@ import { cameraDistance } from '@petepetrash/munari/advanced'
 import { showChrome } from '../../bareMode'
 import { CrystalTweaks } from './CrystalTweaks'
 import { CrystalMaterial, type CrystalDrive } from './crystalMaterial'
-import { bendAt, REST_FRAME, type CrystalFrame } from './crystalLaw'
+import { bendAt, tipScreenPoint, REST_FRAME, type CrystalFrame } from './crystalLaw'
 import { crystalTuning as tune } from './crystalTuning'
 import './crystal.css'
 
@@ -62,7 +64,7 @@ function useTenthSecond(): string {
 
 // A real keyboard's rows, because the point is that you can aim at one
 // letter and hit the one beside it. `KEY_PX` is what makes the miss legible:
-// the bend at the hotspot is 63.0px and the pitch here is 52 including the
+// the bend at the hotspot is 48.1px and the pitch here is 52 including the
 // gap, so an uncorrected click lands a whole key away, and downward — a
 // different letter AND a different coloured row, not a near miss you could
 // argue about.
@@ -218,11 +220,13 @@ export function CrystalApp({ chips }: { chips?: React.ReactNode }) {
   // page's parked subtree, so mutating the hit's uv is the whole of it —
   // there is no second copy of the enter/leave bookkeeping to keep in step.
   //
-  // The pose read here is the one the last DRAWN frame used, which is up to
-  // one frame behind the pointer this ray came from. At 60fps and a hand
-  // moving 1000px/s that is 17px of stale tip — but the tip's own bend is
-  // smooth over that distance, and what it costs is well under the 0.64px of
-  // tremor the hotspot carries anyway (measured 2026-08-25).
+  // The pose read here is the one the last DRAWN frame used, up to one frame
+  // behind the pointer this ray came from. Tracing the POINTER through a
+  // crystal that has not caught up to it is a query the bend field answers
+  // badly: on a 900px/s sweep, 6px of stale tip put the hit 141px from the
+  // hand and moved it 170px between two consecutive moves — keys lighting up
+  // three away from the cursor (measured 2026-08-26). Tracing the TIP holds
+  // the query and the solid together, and that drops to 9px.
   const raycast = useMemo<THREE.Object3D['raycast']>(
     () =>
       function (this: THREE.Mesh, raycaster, intersects) {
@@ -233,14 +237,16 @@ export function CrystalApp({ chips }: { chips?: React.ReactNode }) {
           if (hit.uv && p.corrected) {
             // uv's v runs up and the law's y runs down; the same flip the
             // fragment shader makes, and the only conversion on this path.
-            const [bx, by] = bendAt(
-              hit.uv.x * p.w,
-              (1 - hit.uv.y) * p.h,
-              frame.current,
-              tune,
-              eye.current,
-            )
-            hit.uv.set(hit.uv.x + bx / p.w, hit.uv.y - by / p.h)
+            //
+            // Following, the hotspot IS the tip, so the query goes there.
+            // Parked, the glass is a fixed lens the pointer can walk off, so
+            // the query stays on the pointer and takes the [0, 0] that comes
+            // back once it is off the solid.
+            const [qx, qy] = p.parked
+              ? [hit.uv.x * p.w, (1 - hit.uv.y) * p.h]
+              : tipScreenPoint(frame.current, eye.current)
+            const [bx, by] = bendAt(qx, qy, frame.current, tune, eye.current)
+            hit.uv.set((qx + bx) / p.w, 1 - (qy + by) / p.h)
           }
           intersects.push(hit)
         }
@@ -307,7 +313,7 @@ export function CrystalApp({ chips }: { chips?: React.ReactNode }) {
           The pointer is a solid lump of cut glass floating over the page, and
           the page under it is still a page — the clock runs, the keys take
           clicks, and the glass casts a shadow and a caustic onto both. What
-          you see through the arrow has been displaced by up to 140 pixels, so
+          you see through the arrow has been displaced by up to 180 pixels, so
           where you click and where you look are two different places.
           Munari&rsquo;s relay is handed the same ray the shader drew with,
           which is what makes the key under the tip the key that answers.

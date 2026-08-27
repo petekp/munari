@@ -436,10 +436,10 @@ The crystal scene floats a cut solid of glass over the whole page — a real
 stone with a crown, a girdle and a pavilion, not a picture of one — and
 traces a ray through it: into a crown facet, bouncing between the inside
 faces until its light runs out, then out through the pavilion and across the
-air gap to the page. At the pointer's own hotspot the page arrives 63.0
+air gap to the page. At the pointer's own hotspot the page arrives 48.1
 CSS px away from where the hand is, against a 52 px key pitch on the pad
 underneath. The DOM never moved, so a click delivered at the hand's own
-coordinates lands a whole key away from the one the eye picked. The scene
+coordinates lands on the next key down from the one the eye picked. The scene
 closes that by handing Munari's relay the same trace the shader drew with,
 through the authored `raycast` prop.
 
@@ -451,7 +451,7 @@ one and not the other. It cannot catch a disagreement about what the numbers
 MEAN, and this gate can, because the two only ever actually meet in a
 browser.
 
-Four clauses. With the scene's correction switch off, a click at a key's
+Five clauses. With the scene's correction switch off, a click at a key's
 own layout box types that key — which also fixes the frame the other two are
 measured in. With it on, the same click types a DIFFERENT key. Then the
 pixels: two frames grabbed with the hand held still, one per switch
@@ -460,9 +460,11 @@ cancels in the difference. What is left is the hover twin moving from one
 key to another, drawn through the same glass, and the tip has to sit inside
 the patch that came on.
 
-Measured 2026-08-25 at the committed tuning, aiming at G: 1013 px came on
-and 868 px went off across the window, and inside a 6 px disc at the hotspot
-50 px came on against 0 that went off.
+Measured 2026-08-26 at the committed tuning, aiming at G: 2100 px came on
+and 1535 px went off across the window, and inside a 6 px disc at the
+hotspot 23 px came on against 0 that went off. The disc's count scales with
+`scalePx` and has to be re-derived when the stone changes size — at
+`scalePx: 9.75` the same disc read 50 px.
 
 "Came on" means DARKER. The pad is lit paper and the highlighted key fills
 near-black, so the sign that says which way the highlight moved is a palette
@@ -479,13 +481,34 @@ This clause failed once at a flat-topped version of the solid, and the
 reason is worth keeping. A slab with parallel faces deviates nothing at
 normal incidence, so a flat top is a window over its interior and a lens
 only at its rim — 12 px in along the arrow's axis there were zero displaced
-pixels at all. The median displacement over the crystal's 42,880 interior
-pixels was 2.7 px against 21.2 at the hotspot. The fix was the shape, not
-the gate: crown facets sprung from the girdle now cover 88% of the outline's
-area and the same median is 62.9 px. The stone was later cut a pavilion as
-well, so the exit face is not flat either.
+pixels at all. The median displacement over the crystal's interior pixels
+was 2.7 px against 21.2 at the hotspot. The fix was the shape, not the gate:
+crown facets sprung from the girdle now cover 78% of the outline's area and
+the same median is 130 px. The stone was later cut a pavilion as well, so
+the exit face is not flat either.
 
-There is no fifth clause asking where the HAND's key ended up. It sounds like a
+The fifth clause moves the hand, and the four above are why it has to. They
+all hold the hand still, which is not a simplification but a blind spot: the
+raycast reads the pose the last DRAWN frame used, so with the hand parked the
+pose and the pointer cannot disagree, and every clause reads the one case that
+works. Sweeping 360 px at about 1000 px/s puts the drawn pose a frame behind
+the hand, and the clause records where the relay actually delivered each move.
+
+Measured 2026-08-26: 67 px median from the hand and 99 px worst, against a
+ceiling of 130 and a designed bend of 48.1. Tracing the HAND's position
+through a crystal that has not caught up to it read 160 px median and 180
+worst, and held a key lit for 19 of 46 samples against 38 — keys three away
+from the cursor lighting up, with long stretches of nothing lit at all.
+
+The reading comes off the relayed event rather than off which key is lit,
+and that is the same trap the pixel clauses set for themselves. When the
+correction is wrong it mostly returns no correction, and the key under an
+UNcorrected pointer sits 12 px from the hand — so the lit-key reading scores
+the broken build better than the fixed one. Hop-to-hop between lit keys fails
+for the matching reason: the highlight drops out too often to measure a hop
+across.
+
+No clause asks where the HAND's key ended up. It sounds like a
 second independent reading and is not one — the two keys differ and the
 glass is one function of position, so "B is under the tip" already says G is
 not.

@@ -34,9 +34,14 @@ export const crystalTuning = {
    * How many CSS px one unit of the arrow polygon is worth.
    *
    * The polygon in `crystalLaw.ts` is 16 units wide and 26.5 tall — the
-   * proportions of the pointer every desktop has shipped since 1984. At 9
-   * that is 144x239 px of glass, which is the whole joke: it is your cursor,
-   * at the size of a playing card.
+   * proportions of the pointer every desktop has shipped since 1984. At 4.75
+   * that is 76x126 px of glass, which is the whole joke: it is your cursor,
+   * at the size of a credit card.
+   *
+   * It scales the OUTLINE only. The crown, girdle and pavilion are stated in
+   * px and stay put, so a smaller arrow is the same slab of glass cut to a
+   * smaller footprint — which is why halving this from 9.75 left the bend at
+   * the hotspot unchanged at 48.1px and the tremor unchanged at 6.09.
    */
   scalePx: 4.75,
 
@@ -47,14 +52,18 @@ export const crystalTuning = {
    * How far up the arrow's axis its point is ground off, CSS px.
    *
    * `chamferPx - roundPx` is the hotspot's own `sdInner2`, and the girdle is
-   * at `girdlePx` — so the tip sits `girdlePx - chamferPx + roundPx` = 8.5px
+   * at `girdlePx` — so the tip sits `girdlePx - chamferPx + roundPx` = 7px
    * inside it. It has to be well inside, because the stone is a thin wedge
-   * at its point: measured 2026-08-25, the glass over the hotspot is 11px
-   * from pavilion to crown, and a slanted line of sight walks sideways
-   * through all of it. At 3.5px in (chamferPx 14) the hotspot's own ray
-   * missed the solid at the right of the screen and the correction reported
-   * zero; at 8.5px in it lands at all four screen edges with a 2px hand
-   * tremor moving it 0.8px.
+   * at its point: measured 2026-08-26, the glass over the hotspot is 11.3px
+   * from pavilion to crown against 28.1px at the body, and a slanted line of
+   * sight walks sideways through all of it.
+   *
+   * Raising this number moves the hotspot TOWARD the rim, not away from it.
+   * Zero is as deep as the cut can put it, and it is the only value that
+   * still reports a correction everywhere: measured 2026-08-26 at five
+   * screen positions, chamferPx 2 misses two of them and 8 puts the hotspot
+   * outside the stone and misses all five. To go deeper than 7 the knob is
+   * `girdlePx`, not this one.
    */
   chamferPx: 0,
 
@@ -81,13 +90,24 @@ export const crystalTuning = {
    * entering a facet at `crownDeg` leaves the entry turned `crownDeg -
    * asin(sin(crownDeg) / ior)` off vertical, and then meets a pavilion facet
    * already tilted `pavilionDeg` the other way, so the incidence inside is
-   * about the sum. Past 38.1 degrees — the critical angle at index 1.62 —
+   * about the sum. Past 39.27 degrees — the critical angle at index 1.58 —
    * that pavilion is a mirror and the page is not visible through the stone
-   * at all. Measured 2026-08-25 at the hotspot: 30 + 15 puts the incidence
-   * at 27.0 degrees and every ray goes through; 30 + 20 puts it at 38.6 and
-   * the correction dies at the right of the screen; 50 + 24, which is what a
-   * real brilliant is cut to, traps 51% of the light and reports no answer at
-   * three of four screen positions.
+   * at all.
+   *
+   * The committed 50 + 16 lands at 37.0, which is 2.27 degrees under the
+   * line. That margin is the knob nobody would guess is a knob: it is what
+   * the hotspot's stability is made of, because a ray this close to critical
+   * flips between crossing the pavilion and bouncing off it under a hand
+   * that cannot hold still. Measured 2026-08-26, worst move of the corrected
+   * point under a 2px shake:
+   *
+   *     30/15  margin 12.7  ->  0.66 px      40/20  margin  3.3  ->  4.45 px
+   *     40/14  margin  9.3  ->  1.86 px      50/16  margin  2.3  ->  6.09 px
+   *     50/10  margin  8.3  ->  2.92 px
+   *
+   * Committed deliberately at the jumpy end, for the look. Over the keypad
+   * that reads as the hover highlight flicking to a neighbouring key without
+   * the hand moving, on about a seventh of the pad.
    */
   crownDeg: 50,
 
@@ -100,29 +120,41 @@ export const crystalTuning = {
    *
    * The pavilion is what makes a cut stone a cut stone rather than a lens.
    * A ray that crosses the crown meets the pavilion from INSIDE, where the
-   * critical angle is 38.1 degrees at index 1.62 — so most of the pavilion
+   * critical angle is 39.27 degrees at index 1.58 — so a steep pavilion
    * reflects rather than transmits, the ray zigzags across to the far side,
    * and it leaves through the crown carrying an image of somewhere else on
    * the page entirely. That superposition of several exits is the thing the
    * eye reads as a gem — and the reason a real brilliant is cut to 41
    * degrees is that at 41 almost NONE of it gets through, which is what
-   * makes a diamond sparkle instead of being see-through. This scene needs
-   * the page visible through the glass, so the cut is shallow and the
-   * bouncing is what happens at the rim and the ridges rather than
-   * everywhere. Measured 2026-08-25 over the arrow's interior: 3% of the
-   * light that leaves the stone has crossed more than one face, against 24%
-   * at a true brilliant's angles. `crownDeg` carries the budget the two
-   * angles share.
+   * makes a diamond sparkle instead of being see-through.
    *
-   * `pavilionPx` decides where the facets meet: they converge on the
-   * arrow's own medial axis, a ridge down the shaft and a peak under the
-   * head, at `pavilionPx / tan(pavilionDeg)` in from the girdle. The culet
-   * plane at z = 0 catches whatever has not converged by then.
+   * This scene needs the page visible through the glass, so the cut stays
+   * under the line and the bouncing is what the PICTURE superimposes rather
+   * than what the pointer follows. Measured 2026-08-26 over the arrow's
+   * 7,319 interior pixels: every one of them has a direct path across the
+   * stone, and at a brilliant's 34/41 the same rays lose 2,890 to total
+   * internal reflection with a quarter of the rest bouncing. `crownDeg`
+   * carries the budget the two angles share, and the margin left in it.
+   *
+   * `pavilionPx` decides where the facets would meet: on the arrow's own
+   * medial axis, at `pavilionPx / tan(pavilionDeg)` in from the girdle. At
+   * 16 degrees that is 233.7px and the arrow is 76px across, so they never
+   * meet — this stone has no culet, and the plane at z = 0 that would catch
+   * one is unreachable.
    */
   pavilionDeg: 16,
   pavilionPx: 67,
 
-  /** How high the HOTSPOT floats above the page, CSS px — see `hotspotDrop`. */
+  /**
+   * How high the HOTSPOT floats above the page, CSS px — see `hotspotDrop`.
+   *
+   * Sets how far the correction reaches, near enough linearly: measured
+   * 2026-08-26 at the committed cut, 60px of lift bends the page 35px at
+   * the hotspot and 200px bends it 108. What caps it is the pad, not the
+   * optics — at 200 the corrected point lands off the bottom edge of the
+   * keyboard from most of the keyboard, and `gate:crystal-pointer` reads a
+   * key that is not there.
+   */
   liftPx: 110,
 
   // ── the optics ───────────────────────────────────────────────────────
@@ -136,11 +168,16 @@ export const crystalTuning = {
    * Not a fudge for the strength of the effect — the geometry decides that.
    * This is a cap on the handful of pixels at the silhouette where a grazing
    * ray bounces off the pavilion instead of crossing it and leaves almost
-   * horizontally. Measured 2026-08-25 uncapped over the 40,264 pixels the
-   * crystal covers at rest: the median displacement is 63px, the 99th
-   * percentile is 67, and SEVEN pixels — 0.017% — want more than this. Those
-   * seven want hundreds, and they move by hundreds when the hand moves by
-   * one. Uncapped they smear the whole page into the rim.
+   * horizontally. Measured 2026-08-26 uncapped over the crystal at rest:
+   * the median displacement is 130px, the 99th percentile is 172, and 0.85%
+   * of pixels want more than this. The worst of them wants 44,775px, and
+   * they move by hundreds when the hand moves by one — uncapped they smear
+   * the whole page into the rim.
+   *
+   * The headroom is now 8px at the 99th percentile, against 113 at the
+   * shallower cut this number was set for. Steepening either facet angle
+   * from here walks the MEDIAN into the cap, and a clamped median is the
+   * clamp drawing the picture instead of the glass.
    *
    * Both copies clamp, so the picture and the click stay the same function.
    */
@@ -196,10 +233,12 @@ export const crystalTuning = {
    * Tinted so red goes first — the green cast every thick edge of real glass
    * has — and applied per SEGMENT, so a ray that bounced around inside comes
    * out darker than one that went straight through. That is what tells the
-   * eye which exit it is looking at. Measured 2026-08-25 over the arrow's
-   * interior: the median path is 22.9px and leaves 81/86/83% of r/g/b, the
-   * 99th percentile is 44.4px at 66/74/70%, and the longest bounced path is
-   * 290px, which arrives at 7/14/10% and reads as the stone's dark heart.
+   * eye which exit it is looking at. Measured 2026-08-26 over the arrow's
+   * interior: the median path is 20.0px and leaves 78/83/80% of r/g/b, and
+   * the longest is 28.2px at 70/77/73%. Nothing here goes darker than that,
+   * because at this cut nothing bounces — a brilliant's 34/41 runs the same
+   * median to 39.2px and its longest to 129.5px, which arrives at 19/30/24%
+   * and reads as the stone's dark heart.
    */
   absorbPer100: 1.1,
 
