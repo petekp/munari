@@ -76,6 +76,170 @@ const deadline = setTimeout(() => {
   process.exit(1)
 }, DEADLINE_MS)
 
+// ── receipt protocol ─────────────────────────────────────────────────
+//
+// What a cycle has to prove, read back off the probe log. One `require`
+// names the transfer; every probe downstream of it must carry the same
+// token and arrive in order, and no probe from a foreign token may appear
+// in the critical set. Split into four laws because a single verdict says
+// only "incomplete" — a failing law names which half of the handoff broke.
+
+/** The probe types that must all belong to the one required token. */
+const CRITICAL_PROBE_TYPES = [
+  'require',
+  'accept',
+  'present',
+  'show',
+  'land',
+  'reveal',
+  'release',
+  'revoke',
+]
+
+/** A probe's frame generation, or null when the probe or a hop is missing. */
+const frameGeneration = (probe) => probe?.frame?.generation ?? null
+
+/** The generation of the frame a probe's receipt covers, or null. */
+const receiptGeneration = (probe) => probe?.receipt?.frame?.generation ?? null
+
+/** Same source, and no older: does `receipt` account for `frame`? */
+const covers = (receipt, frame) =>
+  receipt?.frame?.sourceId === frame?.sourceId &&
+  receipt.frame.generation >= frame.generation
+
+/** `phase`'s probes split by type, narrowed to the required token. */
+const partitionProbes = (probes, phase) => {
+  const all = probes.filter((probe) => probe.phase === phase)
+  const requires = all.filter((probe) => probe.type === 'require')
+  const required = requires[0]
+  const mine = all.filter((probe) => probe.token === required?.token)
+  const byType = (type) => mine.filter((probe) => probe.type === type)
+  return {
+    required,
+    requires,
+    accepts: byType('accept'),
+    presentations: byType('present'),
+    shows: byType('show'),
+    lands: byType('land'),
+    reveals: byType('reveal'),
+    releases: byType('release'),
+    revokes: byType('revoke'),
+    receipts: byType('receipt'),
+    foreignCritical: all.filter(
+      (probe) =>
+        probe.token !== required?.token && CRITICAL_PROBE_TYPES.includes(probe.type),
+    ),
+  }
+}
+
+/** One transfer was asked for, it named this direction, and it was ours. */
+const requireIsClean = (p, direction) =>
+  p.requires.length === 1 &&
+  p.foreignCritical.length === 0 &&
+  p.required.direction === direction &&
+  p.required.sameSourceObject &&
+  p.required.sameSourceCanvas &&
+  p.required.sameCanvas &&
+  p.required.sameVideo
+
+/** The frame accepted and presented is the frame that was required. */
+const receiptsCoverRequire = (p) => {
+  const accepted = p.accepts[0]
+  const receipt = p.presentations[0]?.receipt
+  const acquisition = p.receipts.find(
+    (probe) =>
+      p.required &&
+      probe.seq < (accepted?.seq ?? Infinity) &&
+      covers(probe.receipt, p.required.frame),
+  )
+  return (
+    p.accepts.length === 1 &&
+    covers(accepted.receipt, p.required.frame) &&
+    Boolean(acquisition) &&
+    p.presentations.length === 1 &&
+    receipt?.transferId === p.required.token &&
+    receipt?.presentationRevision === p.required.presentationRevision &&
+    Number.isFinite(receipt?.surfaceEpoch) &&
+    receipt.surfaceEpoch > 0 &&
+    covers(receipt, p.required.frame)
+  )
+}
+
+/** The frame that reached the screen is the frame that was presented. */
+const shownFrameMatches = (p) => {
+  const shown = p.shows[0]?.frame
+  const presented = p.presentations[0]?.receipt?.frame
+  return (
+    shown?.sourceId === presented?.sourceId && shown?.generation === presented?.generation
+  )
+}
+
+/** accept → present → show → land → reveal → release, and nothing revoked. */
+const orderHolds = (p, wall) => {
+  const presented = p.presentations[0]
+  const landed = p.lands[0]
+  const revealed = p.reveals[0]
+  const released = p.releases[0]
+  // Landing ON the wall reveals nothing; coming OFF it reveals exactly
+  // once, between the landing and the release.
+  const reverseOrder =
+    wall === 1
+      ? p.reveals.length === 0
+      : p.reveals.length === 1 &&
+        landed?.seq < revealed.seq &&
+        revealed.seq < released?.seq
+  return (
+    p.shows.length === 1 &&
+    p.accepts[0].seq < presented.seq &&
+    presented.seq < p.shows[0].seq &&
+    p.lands.length === 1 &&
+    landed.wall === wall &&
+    p.releases.length === 1 &&
+    released.wall === wall &&
+    reverseOrder &&
+    p.revokes.length === 0
+  )
+}
+
+/**
+ * The receipt protocol for one phase: the verdict, plus the generations
+ * and counts a failure has to be diagnosed from.
+ */
+const checkProtocol = (probes, phase, direction, wall) => {
+  const p = partitionProbes(probes, phase)
+  const presented = p.presentations[0]
+  return {
+    ok:
+      requireIsClean(p, direction) &&
+      receiptsCoverRequire(p) &&
+      shownFrameMatches(p) &&
+      orderHolds(p, wall),
+    required: frameGeneration(p.required),
+    accepted: receiptGeneration(p.accepts[0]),
+    presented: receiptGeneration(presented),
+    presentationRevision: presented?.receipt?.presentationRevision ?? null,
+    surfaceEpoch: presented?.receipt?.surfaceEpoch ?? null,
+    landingRequired: frameGeneration(p.lands[0]),
+    revealed: frameGeneration(p.reveals[0]),
+    counts: {
+      require: p.requires.length,
+      receipt: p.receipts.length,
+      accept: p.accepts.length,
+      present: p.presentations.length,
+      show: p.shows.length,
+      land: p.lands.length,
+      reveal: p.reveals.length,
+      release: p.releases.length,
+      revoke: p.revokes.length,
+    },
+    foreignCritical: p.foreignCritical.map((probe) => ({
+      type: probe.type,
+      token: probe.token,
+      seq: probe.seq,
+    })),
+  }
+}
+
 try {
   browser = await puppeteer.launch({
     executablePath: CHROME,
@@ -715,108 +879,8 @@ try {
         change.name === 'data-genie-film-frozen' &&
         change.next === 'false',
     )
-    const checkProtocol = (phase, direction, wall) => {
-      const allProbes = evidence.probes.filter((probe) => probe.phase === phase)
-      const requires = allProbes.filter((probe) => probe.type === 'require')
-      const required = requires[0]
-      const probes = allProbes.filter((probe) => probe.token === required?.token)
-      const accepts = probes.filter((probe) => probe.type === 'accept')
-      const presentations = probes.filter((probe) => probe.type === 'present')
-      const shows = probes.filter((probe) => probe.type === 'show')
-      const lands = probes.filter((probe) => probe.type === 'land')
-      const reveals = probes.filter((probe) => probe.type === 'reveal')
-      const releases = probes.filter((probe) => probe.type === 'release')
-      const revokes = probes.filter((probe) => probe.type === 'revoke')
-      const receipts = probes.filter((probe) => probe.type === 'receipt')
-      const accepted = accepts[0]
-      const presented = presentations[0]
-      const landed = lands[0]
-      const revealed = reveals[0]
-      const released = releases[0]
-      const foreignCritical = allProbes.filter(
-        (probe) =>
-          probe.token !== required?.token &&
-          (probe.type === 'require' ||
-            probe.type === 'accept' ||
-            probe.type === 'present' ||
-            probe.type === 'show' ||
-            probe.type === 'land' ||
-            probe.type === 'reveal' ||
-            probe.type === 'release' ||
-            probe.type === 'revoke'),
-      )
-      const covers = (receipt, frame) =>
-        receipt?.frame?.sourceId === frame?.sourceId &&
-        receipt.frame.generation >= frame.generation
-      const acquisitionReceipt = receipts.find(
-        (probe) => required && probe.seq < (accepted?.seq ?? Infinity) && covers(probe.receipt, required.frame),
-      )
-      const presentationMatches =
-        presented?.receipt?.transferId === required?.token &&
-        presented?.receipt?.presentationRevision === required?.presentationRevision &&
-        Number.isFinite(presented?.receipt?.surfaceEpoch) &&
-        presented.receipt.surfaceEpoch > 0 &&
-        covers(presented.receipt, required?.frame)
-      const showMatches =
-        shows[0]?.frame?.sourceId === presented?.receipt?.frame?.sourceId &&
-        shows[0]?.frame?.generation === presented?.receipt?.frame?.generation
-      const reverseOrder =
-        wall === 1
-          ? reveals.length === 0
-          : reveals.length === 1 &&
-            landed?.seq < revealed.seq &&
-            revealed.seq < released?.seq
-      return {
-        ok:
-          requires.length === 1 &&
-          foreignCritical.length === 0 &&
-          required.direction === direction &&
-          required.sameSourceObject &&
-          required.sameSourceCanvas &&
-          required.sameCanvas &&
-          required.sameVideo &&
-          accepts.length === 1 &&
-          covers(accepted.receipt, required.frame) &&
-          Boolean(acquisitionReceipt) &&
-          presentations.length === 1 &&
-          presentationMatches &&
-          shows.length === 1 &&
-          accepted.seq < presented.seq &&
-          presented.seq < shows[0].seq &&
-          showMatches &&
-          lands.length === 1 &&
-          landed.wall === wall &&
-          releases.length === 1 &&
-          released.wall === wall &&
-          reverseOrder &&
-          revokes.length === 0,
-        required: required?.frame?.generation ?? null,
-        accepted: accepted?.receipt?.frame?.generation ?? null,
-        presented: presented?.receipt?.frame?.generation ?? null,
-        presentationRevision: presented?.receipt?.presentationRevision ?? null,
-        surfaceEpoch: presented?.receipt?.surfaceEpoch ?? null,
-        landingRequired: landed?.frame?.generation ?? null,
-        revealed: revealed?.frame?.generation ?? null,
-        counts: {
-          require: requires.length,
-          receipt: receipts.length,
-          accept: accepts.length,
-          present: presentations.length,
-          show: shows.length,
-          land: lands.length,
-          reveal: reveals.length,
-          release: releases.length,
-          revoke: revokes.length,
-        },
-        foreignCritical: foreignCritical.map((probe) => ({
-          type: probe.type,
-          token: probe.token,
-          seq: probe.seq,
-        })),
-      }
-    }
-    const downProtocol = checkProtocol(cycle.downPhase, 'minimizing', 1)
-    const upProtocol = checkProtocol(cycle.upPhase, 'restoring', 0)
+    const downProtocol = checkProtocol(evidence.probes, cycle.downPhase, 'minimizing', 1)
+    const upProtocol = checkProtocol(evidence.probes, cycle.upPhase, 'restoring', 0)
     const maxError = boundaryFrames.length
       ? Math.max(...boundaryFrames.map((frame) => frame.sourceError))
       : NaN

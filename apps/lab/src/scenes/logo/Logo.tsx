@@ -71,6 +71,7 @@ import {
   type LogoKnobs,
 } from './logoLaw'
 import { LETTER_FRAG, LETTER_VERT, MATTER_GATE, MATTER_PARAMS } from './logoShaders'
+import type { MatterSpec } from './logoShaders'
 import { FIELD_DS, LetterFields, raster, readAlphaField } from './logoFields'
 import { traceContour, type InkIsland } from './logoContour'
 import { buildLetterMesh } from './logoSlab'
@@ -258,6 +259,113 @@ interface Strike {
 
 /** Drop a strike into the deadest ring slot — strikeSlot is the law's
  *  recycling order, so the budget clause speaks for this buffer too. */
+/** How far this letter leans away from the pointer, in CSS px. Zero
+ *  outside reach, and zero while the page still owns the geometry. */
+function dodgeOffset(
+  pt: { x: number; y: number } | null,
+  b: LetterBox,
+  dodge: number,
+  amp: number,
+  fontPx: number,
+): [number, number] {
+  if (!pt || dodge <= 0 || amp <= 0) return [0, 0]
+  const ox = b.cx - pt.x
+  const oy = b.cy - pt.y
+  const dist = Math.hypot(ox, oy)
+  const reach = fontPx * 2.4
+  if (dist <= 1 || dist >= reach) return [0, 0]
+  const fall = 1 - dist / reach
+  return [
+    (ox / dist) * fall * fall * dodge * amp,
+    (oy / dist) * fall * fall * dodge * amp,
+  ]
+}
+
+/** The substance half of the fx buffer: what the letter is MADE of, and
+ *  how much of that the matter gate is letting through this frame. Ink
+ *  (matter 0) is the page's own look, so every term of it stays zero. */
+function writeMatterFx(
+  fx: LetterFx,
+  p: LetterPose,
+  k: LogoKnobs,
+  par: MatterSpec,
+  gs: number,
+  amp: number,
+  sp: number,
+  dt: number,
+  fresh: boolean,
+) {
+  fx.matter = p.matter
+  fx.fx = p.matter === 0 ? 0 : k.gloss * gs
+  // The weave, in em (the material lands it as px): one STEADY sea.
+  // Excitation never scales it — the beat excites some letter every
+  // second or two, and a sea that pumps with it reads as erratic
+  // shaking, not a wave (2026-08-14). A strike answers through the
+  // rings instead, which a hand can aim.
+  //
+  // The matter's softness rides a FLOOR, the same shape rings use:
+  // most of the deck is stiff (chrome 0.12, enamel 0.1), and a sea
+  // that skips two thirds of the word is not a sea. Softness scales
+  // the remainder, so gummy still rolls deeper than chrome. Ink is
+  // the page's own look and never moves at all.
+  //
+  // On the MATTER GATE (gs), not raw progress: standing substance
+  // motion must freeze back to ink before touchdown, the way light
+  // and relief do. The surge moves real ink, and riding raw
+  // progress broke the crossing gate's 1.5 px budget (2026-08-14).
+  fx.jelly =
+    p.matter === 0
+      ? 0
+      : k.jelly * gs * (WEAVE.floor + (1 - WEAVE.floor) * par.jelly) * WEAVE.amp
+  fx.prism = k.prism * amp * par.prism * Math.min(sp / 300, 1) * 2.6
+  // Body on the same gate as light. Relief and extrusion are geometry,
+  // and geometry near a swap drags the ink mask exactly the way
+  // substance light does — a sheet pushed toward the camera grows the
+  // letter by perspective alone. So the letter lifts flat, inflates
+  // once it is clear of the page, and deflates before it lands.
+  // Relief scales by the matter's own dome, so a balloon puffs and a
+  // neon tube stays a tube.
+  // NOT scaled by par.dome here — the shader's height description owns
+  // that (uDome), and folding it in twice is exactly the two-numbers-
+  // for-one-surface mistake this refactor removes.
+  fx.relief = p.matter === 0 ? 0 : k.relief * gs
+  fx.body = k.body
+  // The slab chases its target through an asymmetric ease: melting
+  // (stale outline, or a matter that carries none) is near-immediate,
+  // re-forming takes long enough to read as the letter setting. The
+  // snap to exact zero is for the handoff identity — an exponential
+  // never arrives on its own, and the swap needs the walls at
+  // literally no area.
+  const slabWant = p.matter === 0 || !fresh ? 0 : k.extrude * gs
+  const eased =
+    fx.slab + (slabWant - fx.slab) * (1 - Math.exp(-dt / (slabWant < fx.slab ? 0.05 : 0.14)))
+  fx.slab = eased < 0.01 ? 0 : eased
+  fx.shoulder = par.shoulder
+  fx.pillow = par.pillow
+  fx.dome = par.dome
+  // The surface, trims folded in HERE so the shader stays a pure
+  // consumer. Polish walks roughness matte ↔ mirror around the deck
+  // value (1 is identity); the floor matches the shader's numeric
+  // one. The channel trims scale what a matter already has — a
+  // matter whose row carries zero stays zero at any trim.
+  fx.rough = Math.min(Math.max(par.rough * (2 - k.polish), 0.03), 1)
+  fx.metal = par.metal
+  fx.sss = par.sss
+  fx.crinkle = par.crinkle
+  fx.sheen = par.sheen * k.sheen
+  fx.irid = par.irid * k.irid
+  fx.glow = par.glow * k.glow
+  // The rig, straight off the dials — direction from the yaw/pitch
+  // pair (one source with the conformance sweep), gains verbatim.
+  const [lx, ly, lz] = lightDir(k.lightYaw, k.lightPitch)
+  fx.light.set(lx, ly, lz)
+  fx.key = k.key
+  fx.keySoft = k.keySoft
+  fx.fill = k.fill
+  fx.room = k.room
+  fx.front = k.front
+}
+
 function strikeRing(fx: LetterFx, x: number, y: number, t: number, power: number) {
   fx.ripples[strikeSlot(fx.ripples.map((r) => r.z))].set(x, y, t, power)
 }
@@ -396,6 +504,69 @@ function MatterMaterial({
     }),
     [i],
   )
+
+    /** Re-traces the glyph outline when the letter changes shape, and
+     *  commits it as the field both the walls and the face read from. */
+    const retraceOutline = (
+      gl: THREE.WebGLRenderer,
+      m: THREE.ShaderMaterial,
+      b: LetterBox,
+      now: number,
+    ) => {
+      // This is the one blocking thing on the page: reading pixels back
+      // drains the pipeline. It is scheduled rather than polled — a beat
+      // marks the letter, and the reads follow until one of them sees
+      // new pixels. Several reads, because a pose lands in the DOM before
+      // its capture reaches the GPU: the early reads may still hold the
+      // old glyph, and the signature is what says so — a read whose
+      // pixels match the last commit is a glyph that has not repainted
+      // yet, not a new outline. The letter melts its walls while this
+      // key is untraced (MatterLetter), so the schedule is part of the
+      // look: the sooner a read lands, the sooner the slab re-forms.
+      //
+      // The last try commits even on a matching signature. By then the
+      // pixels are either truly identical (a re-roll that renders the
+      // same — walls traced from these exact pixels are right whatever
+      // key they carry) or the paint is pathologically late, and flat is
+      // the honest shape for a letter whose face is unknown.
+      const tr = trace.current
+      if (tr.key !== outlineKey) {
+        tr.key = outlineKey
+        tr.due = now
+        tr.tries = 4
+      }
+      if (tr.tries < 1 || !texture || now < tr.due) return
+      tr.tries--
+      tr.due = now + 0.15
+      const fit = Math.min(1, OUTLINE_TEXELS / Math.max(b.w, b.h))
+      const rw = Math.max(8, Math.round(b.w * fit))
+      const rh = Math.max(8, Math.round(b.h * fit))
+      const alpha = readAlphaField(gl, texture, rw, rh)
+      if (!alpha) return
+      let sig = rw * 8191 + rh
+      for (let q = 0; q < alpha.length; q += 7) sig = (sig * 31 + alpha[q]) | 0
+      if (sig === tr.sig && tr.tries > 0) return
+      tr.sig = sig
+      // The committed field IS the outline now, on both sides of the
+      // seam: the walls are traced from these texels and the face
+      // hardens onto the same texels (tTrace). Two consumers, one curve
+      // — they cannot disagree. The readback buffer is shared, so the
+      // texture takes a copy.
+      const field = new THREE.DataTexture(alpha.slice(), rw, rh, THREE.RedFormat)
+      field.minFilter = THREE.LinearFilter
+      field.magFilter = THREE.LinearFilter
+      // Single-channel rows at arbitrary widths: without byte alignment
+      // the upload shears.
+      field.unpackAlignment = 1
+      field.needsUpdate = true
+      tr.tex?.dispose()
+      tr.tex = field
+      m.uniforms.tTrace.value = field
+      // Half coverage is the perceptual edge of an antialiased glyph, so
+      // the wall meets the letter where the eye says the letter ends.
+      onOutline(tr.key, traceContour(alpha, rw, rh, { threshold: 128 }))
+    }
+
   useFrame((state) => {
     const m = mat.current
     if (!m) return
@@ -478,63 +649,7 @@ function MatterMaterial({
     for (let r = 0; r < RIPPLE.slots; r++) u.uRipples.value[r].copy(fx.ripples[r])
     u.uRipAmp.value = fx.ripAmp * RIPPLE.amp * fontPx
     u.uStretch.value = fx.stretch
-
-    // ── the outline, re-traced when the glyph changes shape ──
-    //
-    // This is the one blocking thing on the page: reading pixels back
-    // drains the pipeline. It is scheduled rather than polled — a beat
-    // marks the letter, and the reads follow until one of them sees
-    // new pixels. Several reads, because a pose lands in the DOM before
-    // its capture reaches the GPU: the early reads may still hold the
-    // old glyph, and the signature is what says so — a read whose
-    // pixels match the last commit is a glyph that has not repainted
-    // yet, not a new outline. The letter melts its walls while this
-    // key is untraced (MatterLetter), so the schedule is part of the
-    // look: the sooner a read lands, the sooner the slab re-forms.
-    //
-    // The last try commits even on a matching signature. By then the
-    // pixels are either truly identical (a re-roll that renders the
-    // same — walls traced from these exact pixels are right whatever
-    // key they carry) or the paint is pathologically late, and flat is
-    // the honest shape for a letter whose face is unknown.
-    if (!solid) return
-    const tr = trace.current
-    const now = state.clock.elapsedTime
-    if (tr.key !== outlineKey) {
-      tr.key = outlineKey
-      tr.due = now
-      tr.tries = 4
-    }
-    if (tr.tries < 1 || !texture || now < tr.due) return
-    tr.tries--
-    tr.due = now + 0.15
-    const fit = Math.min(1, OUTLINE_TEXELS / Math.max(b.w, b.h))
-    const rw = Math.max(8, Math.round(b.w * fit))
-    const rh = Math.max(8, Math.round(b.h * fit))
-    const alpha = readAlphaField(state.gl, texture, rw, rh)
-    if (!alpha) return
-    let sig = rw * 8191 + rh
-    for (let q = 0; q < alpha.length; q += 7) sig = (sig * 31 + alpha[q]) | 0
-    if (sig === tr.sig && tr.tries > 0) return
-    tr.sig = sig
-    // The committed field IS the outline now, on both sides of the
-    // seam: the walls are traced from these texels and the face
-    // hardens onto the same texels (tTrace). Two consumers, one curve
-    // — they cannot disagree. The readback buffer is shared, so the
-    // texture takes a copy.
-    const field = new THREE.DataTexture(alpha.slice(), rw, rh, THREE.RedFormat)
-    field.minFilter = THREE.LinearFilter
-    field.magFilter = THREE.LinearFilter
-    // Single-channel rows at arbitrary widths: without byte alignment
-    // the upload shears.
-    field.unpackAlignment = 1
-    field.needsUpdate = true
-    tr.tex?.dispose()
-    tr.tex = field
-    u.tTrace.value = field
-    // Half coverage is the perceptual edge of an antialiased glyph, so
-    // the wall meets the letter where the eye says the letter ends.
-    onOutline(tr.key, traceContour(alpha, rw, rh, { threshold: 128 }))
+    if (solid) retraceOutline(state.gl, m, b, state.clock.elapsedTime)
   })
   return (
     <shaderMaterial
@@ -841,20 +956,7 @@ function LetterDrive({
     const amp = progress.get()
 
     // The pointer dodge, in CSS px: inside reach, a letter leans away.
-    let px = 0
-    let py = 0
-    const pt = pointer.current
-    if (pt && k.dodge > 0 && amp > 0) {
-      const ox = b.cx - pt.x
-      const oy = b.cy - pt.y
-      const dist = Math.hypot(ox, oy)
-      const reach = fontPx * 2.4
-      if (dist > 1 && dist < reach) {
-        const fall = 1 - dist / reach
-        px = (ox / dist) * fall * fall * k.dodge * amp
-        py = (oy / dist) * fall * fall * k.dodge * amp
-      }
-    }
+    const [px, py] = dodgeOffset(pointer.current, b, k.dodge, amp, fontPx)
 
     const em = fontPx * LOGO_FONTS[p.font].trim
     const s = springs
@@ -951,75 +1053,7 @@ function LetterDrive({
     const gt = progress.between(gate.from, gate.from + gate.distance)
     const gs = gt * gt * (3 - 2 * gt)
     const par = MATTER_PARAMS[p.matter]
-    fx.matter = p.matter
-    fx.fx = p.matter === 0 ? 0 : k.gloss * gs
-    // The weave, in em (the material lands it as px): one STEADY sea.
-    // Excitation never scales it — the beat excites some letter every
-    // second or two, and a sea that pumps with it reads as erratic
-    // shaking, not a wave (2026-08-14). A strike answers through the
-    // rings instead, which a hand can aim.
-    //
-    // The matter's softness rides a FLOOR, the same shape rings use:
-    // most of the deck is stiff (chrome 0.12, enamel 0.1), and a sea
-    // that skips two thirds of the word is not a sea. Softness scales
-    // the remainder, so gummy still rolls deeper than chrome. Ink is
-    // the page's own look and never moves at all.
-    //
-    // On the MATTER GATE (gs), not raw progress: standing substance
-    // motion must freeze back to ink before touchdown, the way light
-    // and relief do. The surge moves real ink, and riding raw
-    // progress broke the crossing gate's 1.5 px budget (2026-08-14).
-    fx.jelly =
-      p.matter === 0
-        ? 0
-        : k.jelly * gs * (WEAVE.floor + (1 - WEAVE.floor) * par.jelly) * WEAVE.amp
-    fx.prism = k.prism * amp * par.prism * Math.min(sp / 300, 1) * 2.6
-    // Body on the same gate as light. Relief and extrusion are geometry,
-    // and geometry near a swap drags the ink mask exactly the way
-    // substance light does — a sheet pushed toward the camera grows the
-    // letter by perspective alone. So the letter lifts flat, inflates
-    // once it is clear of the page, and deflates before it lands.
-    // Relief scales by the matter's own dome, so a balloon puffs and a
-    // neon tube stays a tube.
-    // NOT scaled by par.dome here — the shader's height description owns
-    // that (uDome), and folding it in twice is exactly the two-numbers-
-    // for-one-surface mistake this refactor removes.
-    fx.relief = p.matter === 0 ? 0 : k.relief * gs
-    fx.body = k.body
-    // The slab chases its target through an asymmetric ease: melting
-    // (stale outline, or a matter that carries none) is near-immediate,
-    // re-forming takes long enough to read as the letter setting. The
-    // snap to exact zero is for the handoff identity — an exponential
-    // never arrives on its own, and the swap needs the walls at
-    // literally no area.
-    const slabWant = p.matter === 0 || !fresh ? 0 : k.extrude * gs
-    const eased =
-      fx.slab + (slabWant - fx.slab) * (1 - Math.exp(-dt / (slabWant < fx.slab ? 0.05 : 0.14)))
-    fx.slab = eased < 0.01 ? 0 : eased
-    fx.shoulder = par.shoulder
-    fx.pillow = par.pillow
-    fx.dome = par.dome
-    // The surface, trims folded in HERE so the shader stays a pure
-    // consumer. Polish walks roughness matte ↔ mirror around the deck
-    // value (1 is identity); the floor matches the shader's numeric
-    // one. The channel trims scale what a matter already has — a
-    // matter whose row carries zero stays zero at any trim.
-    fx.rough = Math.min(Math.max(par.rough * (2 - k.polish), 0.03), 1)
-    fx.metal = par.metal
-    fx.sss = par.sss
-    fx.crinkle = par.crinkle
-    fx.sheen = par.sheen * k.sheen
-    fx.irid = par.irid * k.irid
-    fx.glow = par.glow * k.glow
-    // The rig, straight off the dials — direction from the yaw/pitch
-    // pair (one source with the conformance sweep), gains verbatim.
-    const [lx, ly, lz] = lightDir(k.lightYaw, k.lightPitch)
-    fx.light.set(lx, ly, lz)
-    fx.key = k.key
-    fx.keySoft = k.keySoft
-    fx.fill = k.fill
-    fx.room = k.room
-    fx.front = k.front
+    writeMatterFx(fx, p, k, par, gs, amp, sp, dt, fresh)
     // The motion rig. The weave's dials pass through (the material
     // folds them with the font size). Rings and stretch fold their
     // gates HERE: × amp so both are zero at every handoff, × the

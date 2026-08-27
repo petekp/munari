@@ -175,35 +175,64 @@ function chain(ring: number[], from: number, to: number, tol: number): number[] 
   return out
 }
 
-/**
- * Trace `alpha` (row-major, row 0 at the BOTTOM — the order a GL
- * readback hands back) into normalized islands.
- *
- * Returns outer rings paired with the holes they enclose, largest ring
- * first. An empty or fully-covered grid both return sensibly: nothing,
- * and one ring around the whole box.
- */
-export function traceContour(
-  alpha: ArrayLike<number>,
-  w: number,
-  h: number,
-  options: ContourOptions = {},
-): InkIsland[] {
-  const t = options.threshold ?? DEFAULTS.threshold
-  const tol = options.simplify ?? DEFAULTS.simplify
-  const minArea = options.minArea ?? DEFAULTS.minArea
-  if (w < 1 || h < 1) return []
+/** The padded sample grid — one ring of zeros around the samples, so ink
+ *  at the border still closes. Padded (i, j) reads sample (i-1, j-1). */
+interface PaddedGrid {
+  readonly W: number
+  readonly H: number
+  /** The sample at padded (i, j), and 0 anywhere in the pad. */
+  readonly at: (i: number, j: number) => number
+}
 
-  // The padded grid: one ring of zeros around the samples, so ink at the
-  // border still closes. Padded (i, j) reads sample (i-1, j-1).
+/** Crossed edges as a graph. Every crossed edge is shared by exactly two
+ *  cells, so every id collects exactly two neighbors — which is what makes
+ *  the ring walk terminate. */
+interface EdgeGraph {
+  readonly linkA: Int32Array
+  readonly linkB: Int32Array
+  /** Horizontal edge ids run below this; vertical ids run above it. */
+  readonly hCount: number
+}
+
+function paddedGrid(alpha: ArrayLike<number>, w: number, h: number): PaddedGrid {
   const W = w + 2
   const H = h + 2
   const at = (i: number, j: number) =>
     i <= 0 || j <= 0 || i >= W - 1 || j >= H - 1 ? 0 : alpha[(j - 1) * w + (i - 1)]
+  return { W, H, at }
+}
 
-  // Edge ids. A horizontal edge spans (i, j)→(i+1, j); a vertical edge
-  // spans (i, j)→(i, j+1). Every crossed edge is shared by exactly two
-  // cells, so every id collects exactly two neighbors.
+// Marching-squares case table, indexed by the four-corner code. Each entry
+// names the two cell edges the contour crosses, as offsets into the cell's
+// [bottom, top, left, right]. The cases pair up (1/14, 2/13, …) because one
+// corner in and one corner out trace the same line. Codes 0 and 15 are
+// uncrossed; 5 and 10 are the saddles, which the case alone cannot resolve.
+const CELL_BOTTOM = 0
+const CELL_TOP = 1
+const CELL_LEFT = 2
+const CELL_RIGHT = 3
+const CASE_EDGES: readonly (readonly [number, number] | null)[] = [
+  null, // 0  — no corner in
+  [CELL_LEFT, CELL_BOTTOM], // 1
+  [CELL_BOTTOM, CELL_RIGHT], // 2
+  [CELL_LEFT, CELL_RIGHT], // 3  — two adjacent corners: straight across
+  [CELL_RIGHT, CELL_TOP], // 4
+  null, // 5  — saddle
+  [CELL_BOTTOM, CELL_TOP], // 6  — straight across
+  [CELL_LEFT, CELL_TOP], // 7
+  [CELL_LEFT, CELL_TOP], // 8
+  [CELL_BOTTOM, CELL_TOP], // 9
+  null, // 10 — saddle
+  [CELL_RIGHT, CELL_TOP], // 11
+  [CELL_LEFT, CELL_RIGHT], // 12
+  [CELL_BOTTOM, CELL_RIGHT], // 13
+  [CELL_LEFT, CELL_BOTTOM], // 14
+  null, // 15 — every corner in
+]
+
+/** Link every crossed cell edge to its two neighbors, one cell at a time. */
+function linkCrossedEdges(grid: PaddedGrid, t: number): EdgeGraph {
+  const { W, H, at } = grid
   const hCount = (W - 1) * H
   const total = hCount + W * (H - 1)
   const linkA = new Int32Array(total).fill(-1)
@@ -224,55 +253,36 @@ export function traceContour(
       const code =
         (a >= t ? 1 : 0) | (b >= t ? 2 : 0) | (c >= t ? 4 : 0) | (d >= t ? 8 : 0)
       if (code === 0 || code === 15) continue
-      const eB = j * (W - 1) + i
-      const eT = (j + 1) * (W - 1) + i
+      const pair = CASE_EDGES[code]
       const eL = hCount + j * W + i
-      const eR = hCount + j * W + i + 1
-      switch (code) {
-        // One corner in (or one corner out — the contour is the same
-        // line either way, which is why the cases pair up).
-        case 1:
-        case 14:
-          join(eL, eB)
-          break
-        case 2:
-        case 13:
-          join(eB, eR)
-          break
-        case 4:
-        case 11:
-          join(eR, eT)
-          break
-        case 7:
-        case 8:
-          join(eL, eT)
-          break
-        // Two adjacent corners in: the contour runs straight across.
-        case 3:
-        case 12:
-          join(eL, eR)
-          break
-        case 6:
-        case 9:
-          join(eB, eT)
-          break
-        // The saddles, where two contours cross one cell and the case
-        // alone cannot say which corners are connected. The cell's mean
-        // decides: if the middle is ink, the two ink corners are one
-        // band and the contour isolates the other pair.
-        default: {
-          const solid = (a + b + c + d) / 4 >= t
-          if ((code === 5) === solid) {
-            join(eB, eR)
-            join(eL, eT)
-          } else {
-            join(eL, eB)
-            join(eR, eT)
-          }
-        }
+      const cell = [j * (W - 1) + i, (j + 1) * (W - 1) + i, eL, eL + 1]
+      if (pair) {
+        join(cell[pair[0]], cell[pair[1]])
+        continue
+      }
+      // The saddles, where two contours cross one cell. The cell's mean
+      // decides: if the middle is ink, the two ink corners are one band and
+      // the contour isolates the other pair.
+      const solid = (a + b + c + d) / 4 >= t
+      if ((code === 5) === solid) {
+        join(cell[CELL_BOTTOM], cell[CELL_RIGHT])
+        join(cell[CELL_LEFT], cell[CELL_TOP])
+      } else {
+        join(cell[CELL_LEFT], cell[CELL_BOTTOM])
+        join(cell[CELL_RIGHT], cell[CELL_TOP])
       }
     }
   }
+  return { linkA, linkB, hCount }
+}
+
+/**
+ * Walk each chain of linked edges back to where it started. Rings come back
+ * in padded-grid coordinates; anything shorter than a triangle is dropped.
+ */
+function walkRings(grid: PaddedGrid, graph: EdgeGraph, t: number): number[][] {
+  const { W, at } = grid
+  const { linkA, linkB, hCount } = graph
 
   // Where on its edge does the contour cross? Linear between the two
   // samples — this is where the sub-texel accuracy comes from, and why
@@ -291,10 +301,9 @@ export function traceContour(
     return [i, j + cut(at(i, j), at(i, j + 1))]
   }
 
-  // Walk each chain of linked edges back to where it started.
-  const seen = new Uint8Array(total)
+  const seen = new Uint8Array(linkA.length)
   const rings: number[][] = []
-  for (let e = 0; e < total; e++) {
+  for (let e = 0; e < linkA.length; e++) {
     if (linkA[e] < 0 || seen[e]) continue
     const ring: number[] = []
     let prev = -1
@@ -312,10 +321,37 @@ export function traceContour(
     }
     if (ring.length >= 6) rings.push(ring)
   }
+  return rings
+}
 
-  // Speckle out, then nest. Depth is how many other rings enclose this
-  // one: even is an outer ring, odd is a hole, and a hole belongs to the
-  // smallest ring that contains it.
+/** Which kept ring encloses `hole` most tightly, or -1 when none does. */
+function tightestParent(
+  kept: number[][],
+  areas: number[],
+  depth: number[],
+  hole: number,
+): number {
+  let parent = -1
+  for (let k = 0; k < kept.length; k++) {
+    if (k === hole || depth[k] % 2 !== 0) continue
+    if (!pointInRing(kept[k], kept[hole][0], kept[hole][1])) continue
+    if (parent < 0 || areas[k] < areas[parent]) parent = k
+  }
+  return parent
+}
+
+/**
+ * Speckle out, then nest. Depth is how many other rings enclose this one:
+ * even is an outer ring, odd is a hole belonging to the smallest ring that
+ * contains it.
+ */
+function nestIslands(
+  rings: number[][],
+  w: number,
+  h: number,
+  tol: number,
+  minArea: number,
+): InkIsland[] {
   const kept = rings.filter((r) => Math.abs(ringArea(r)) >= minArea)
   const areas = kept.map((r) => Math.abs(ringArea(r)))
   const depth = kept.map((r, i) =>
@@ -348,15 +384,33 @@ export function traceContour(
   }
   for (let i = 0; i < kept.length; i++) {
     if (depth[i] % 2 === 0) continue
-    let parent = -1
-    for (let k = 0; k < kept.length; k++) {
-      if (k === i || depth[k] % 2 !== 0) continue
-      if (!pointInRing(kept[k], kept[i][0], kept[i][1])) continue
-      if (parent < 0 || areas[k] < areas[parent]) parent = k
-    }
+    const parent = tightestParent(kept, areas, depth, i)
     const slot = parent >= 0 ? owner.get(parent) : undefined
     if (slot !== undefined) islands[slot].holes.push(norm(kept[i], false))
   }
 
   return islands
+}
+
+/**
+ * Trace `alpha` (row-major, row 0 at the BOTTOM — the order a GL
+ * readback hands back) into normalized islands.
+ *
+ * Returns outer rings paired with the holes they enclose, largest ring
+ * first. An empty or fully-covered grid both return sensibly: nothing,
+ * and one ring around the whole box.
+ */
+export function traceContour(
+  alpha: ArrayLike<number>,
+  w: number,
+  h: number,
+  options: ContourOptions = {},
+): InkIsland[] {
+  const t = options.threshold ?? DEFAULTS.threshold
+  const tol = options.simplify ?? DEFAULTS.simplify
+  const minArea = options.minArea ?? DEFAULTS.minArea
+  if (w < 1 || h < 1) return []
+
+  const grid = paddedGrid(alpha, w, h)
+  return nestIslands(walkRings(grid, linkCrossedEdges(grid, t), t), w, h, tol, minArea)
 }

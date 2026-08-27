@@ -1,0 +1,247 @@
+/* The crystal scene — a keyboard under a lump of glass.
+ *
+ * The captured tree is `.crystal-page-inner` and everything under it. Its
+ * root carries no opacity and no transform, per docs/authoring.md — a
+ * transform on a capture root moves the pixels out from under the
+ * texture's own box.
+ *
+ * Hover and active are stated twice on every key: the relay parks the
+ * subtree, so the browser's own :hover can never match there and munari
+ * mirrors the state onto data-hover / data-active instead.
+ *
+ * Nothing here is decoration. High contrast and hard edges, because the
+ * whole scene is an argument about WHERE a pixel is, and a soft gradient
+ * shows a 63px displacement as a slightly different shade of the same
+ * thing. Letterforms show it as a different letter.
+ *
+ * The pad is LIT, not dark. The screen pair is used inverted — `--screen-ink`
+ * as the ground and `--screen` as the ink — because glass shows itself by
+ * what it bends, and a dark page hands it almost nothing to bend. Measured
+ * 2026-08-25 on the dark version: the pad averaged 21 of 255 with the
+ * letterforms the only thing above it, so the arrow was reading a black
+ * field through a lens and the lens had nothing to say.
+ *
+ * The row tints carry the same argument one axis further. The correction at
+ * the hotspot is most of a key pitch straight DOWN, so an uncorrected click
+ * aimed at G lands on B — a different row, not just a different letter. One
+ * hue per row makes that miss legible in a glance, which a grid of identical
+ * white keys does not. Three of Munari's five, plus carta for the digits.
+ */
+
+.crystal-page {
+  position: fixed;
+  inset: 0;
+  background: var(--screen-ink);
+}
+
+/* The OS pointer is replaced, not accompanied. Both rules are needed: the
+ * canvas is a fixed sibling that covers the page, so it does not inherit. */
+.crystal-page,
+.crystal-page canvas,
+.crystal-page * {
+  cursor: none;
+}
+
+/* And again on the captured tree, which is NOT under `.crystal-page` — the
+ * source host is a child of the canvas element, so the selector above never
+ * reaches the keys. The relay mirrors the hovered content's computed cursor
+ * onto the canvas as an inline style, and inline beats the rule above: over
+ * a key, a plain `<button>` resolving to `default` put the OS arrow back on
+ * top of the crystal. Stating it here is what makes the canvas wear `none`
+ * while the pointer is over the pad. */
+.crystal-page-inner,
+.crystal-page-inner * {
+  cursor: none;
+}
+
+/* Parked, the crystal has stopped standing in for the pointer, so the real
+ * one has to come back — the tweak panel is unusable without it. Stated on
+ * the captured tree too, for the same reason the rule above it is: over the
+ * pad the canvas wears whatever the content computes, so without this the
+ * arrow would come back everywhere EXCEPT the keys you are trying to hit. */
+.crystal-page[data-parked],
+.crystal-page[data-parked] canvas,
+.crystal-page[data-parked] * {
+  cursor: auto;
+}
+
+.crystal-page-inner[data-parked],
+.crystal-page-inner[data-parked] * {
+  cursor: auto;
+}
+
+/* ── the captured page ─────────────────────────────────────────────── */
+
+.crystal-page-inner {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-content: center;
+  gap: 34px;
+  background: var(--screen-ink);
+  color: var(--screen);
+}
+
+.crystal-readout {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid var(--rule-hard);
+  padding-bottom: 10px;
+}
+
+.crystal-typed {
+  font: 700 28px/1 var(--data);
+  letter-spacing: 0.14em;
+  color: var(--screen);
+  min-height: 28px;
+  white-space: pre;
+}
+
+.crystal-tick {
+  font: 12px/1 var(--data);
+  color: var(--ink-mute);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.crystal-tick i {
+  font: 10px/1 var(--label);
+  font-style: normal;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+
+/* ── the keys ──────────────────────────────────────────────────────── */
+
+.crystal-pad {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.crystal-row {
+  display: flex;
+  gap: 4px;
+}
+
+/* 48px on a 52px pitch, against a 63px bend at the hotspot: an uncorrected
+ * click lands a whole key away, and downward, so it lands in the next row.
+ * Crystal.tsx carries the measurement, and KEY_PX there is the same number.
+ *
+ * 24px bold, because the letterform is the evidence. At 16px on a lit ground
+ * the strokes are thin enough that the glass smears one into the next and
+ * the reader cannot tell which letter is under the tip. */
+.crystal-key {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--rule);
+  background: #ffffff;
+  color: var(--screen);
+  font: 700 24px/1 var(--data);
+  border-radius: var(--radius);
+}
+
+/* One hue per row. Carta for the digits, then giallo, oltremare, rosso —
+ * tinted far enough back that the black letterform stays the loudest thing
+ * on the key. Aim at G and the click lands on B: blue row to red row. */
+.crystal-row[data-row='1'] .crystal-key {
+  background: #fdefc0;
+}
+.crystal-row[data-row='2'] .crystal-key {
+  background: #d5ddf4;
+}
+.crystal-row[data-row='3'] .crystal-key {
+  background: #fbd9d3;
+}
+
+/* Hover DEEPENS the row's own tint over the whole key. It has to be a fill
+ * and not an outline: this is what the crystal-pointer gate reads to prove
+ * the correction moved the highlight, and it is read through 63px of
+ * refraction. A 2px ring measured 246 changed pixels where a fill measures
+ * 850 — under glass that is the difference between a legible answer and a
+ * shade. The hue stays, because the hue is which row you are on. */
+.crystal-key:hover,
+.crystal-key[data-hover] {
+  background: #e2ded0;
+  border-color: var(--ink-faint);
+}
+.crystal-row[data-row='1'] .crystal-key:hover,
+.crystal-row[data-row='1'] .crystal-key[data-hover] {
+  background: #f5d472;
+}
+.crystal-row[data-row='2'] .crystal-key:hover,
+.crystal-row[data-row='2'] .crystal-key[data-hover] {
+  background: #a8b8e8;
+}
+.crystal-row[data-row='3'] .crystal-key:hover,
+.crystal-row[data-row='3'] .crystal-key[data-hover] {
+  background: #f3a99b;
+}
+
+/* Near-black, not --signal: one of the rows is already red, and the pressed
+ * key has to be unmistakable on all four grounds. */
+.crystal-key:active,
+.crystal-key[data-active] {
+  background: var(--screen);
+  border-color: var(--screen);
+  color: var(--screen-ink);
+}
+
+/* ── the chrome over the sheet ─────────────────────────────────────── */
+
+.crystal-chrome {
+  position: fixed;
+  left: 40px;
+  top: 40px;
+  z-index: 120;
+  max-width: 320px;
+  color: var(--ink);
+}
+
+.crystal-chrome h2 {
+  margin: 0 0 10px;
+  font: 700 24px/1.2 var(--display);
+}
+
+.crystal-chrome p {
+  margin: 0 0 18px;
+  font: 14px/1.55 var(--body);
+  color: var(--ink-mute);
+}
+
+.crystal-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font: 12px/1 var(--label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+/* ── the park switch, in the tweak panel ───────────────────────────── */
+
+.crystal-park {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 10px;
+  font: 11px/1 var(--label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.crystal-park kbd {
+  margin-left: auto;
+  padding: 3px 6px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  font: 10px/1 var(--data);
+  color: var(--ink-mute);
+}

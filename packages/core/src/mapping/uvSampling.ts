@@ -30,6 +30,10 @@ export interface UvSample {
   readonly inside: boolean
 }
 
+// A short array means a malformed geometry, not a hole to propagate: zero
+// keeps the barycentric math finite so the caller still gets a triangle.
+const at = (source: ArrayLike<number>, i: number): number => source[i] ?? 0
+
 /**
  * Where `(u, v)` lands on the surface described by `position` and `uv`.
  *
@@ -56,12 +60,12 @@ export function sampleUvPosition(
     const b = index ? index[t * 3 + 1] : t * 3 + 1
     const c = index ? index[t * 3 + 2] : t * 3 + 2
     if (a === undefined || b === undefined || c === undefined) continue
-    const au = uv[a * 2] ?? 0
-    const av = uv[a * 2 + 1] ?? 0
-    const bu = uv[b * 2] ?? 0
-    const bv = uv[b * 2 + 1] ?? 0
-    const cu = uv[c * 2] ?? 0
-    const cv = uv[c * 2 + 1] ?? 0
+    const au = at(uv, a * 2)
+    const av = at(uv, a * 2 + 1)
+    const bu = at(uv, b * 2)
+    const bv = at(uv, b * 2 + 1)
+    const cu = at(uv, c * 2)
+    const cv = at(uv, c * 2 + 1)
     // Barycentric coordinates in UV space. A degenerate triangle — a
     // collapsed quad on a folded sheet — divides by zero, and skipping it
     // is right: it covers no area, so nothing is inside it.
@@ -80,15 +84,15 @@ export function sampleUvPosition(
     const ka = clampA / total
     const kb = clampB / total
     const kc = clampC / total
-    const ax = position[a * 3] ?? 0
-    const ay = position[a * 3 + 1] ?? 0
-    const az = position[a * 3 + 2] ?? 0
-    const bx = position[b * 3] ?? 0
-    const by = position[b * 3 + 1] ?? 0
-    const bz = position[b * 3 + 2] ?? 0
-    const cx = position[c * 3] ?? 0
-    const cy = position[c * 3 + 1] ?? 0
-    const cz = position[c * 3 + 2] ?? 0
+    const ax = at(position, a * 3)
+    const ay = at(position, a * 3 + 1)
+    const az = at(position, a * 3 + 2)
+    const bx = at(position, b * 3)
+    const by = at(position, b * 3 + 1)
+    const bz = at(position, b * 3 + 2)
+    const cx = at(position, c * 3)
+    const cy = at(position, c * 3 + 1)
+    const cz = at(position, c * 3 + 2)
     const e1x = bx - ax
     const e1y = by - ay
     const e1z = bz - az

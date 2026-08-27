@@ -88,6 +88,146 @@ function subdivideRing(ring: number[], boxW: number, boxH: number): number[] {
   return out
 }
 
+/** The three vertex arrays every writer below fills in lockstep. */
+interface VertexArrays {
+  position: Float32Array
+  normal: Float32Array
+  uv: Float32Array
+}
+
+/** How far the writers have filled the vertex and index arrays. */
+interface MeshCursor {
+  v: number
+  f: number
+}
+
+/** Writes one (segX + 1) × (segY + 1) grid of vertices at `z`, facing `nz`,
+ *  and returns the next free vertex slot. */
+function writeGrid(
+  a: VertexArrays,
+  v: number,
+  boxW: number,
+  boxH: number,
+  segX: number,
+  segY: number,
+  z: number,
+  nz: number,
+): number {
+  for (let iy = 0; iy <= segY; iy++) {
+    const fy = iy / segY
+    for (let ix = 0; ix <= segX; ix++) {
+      const fx = ix / segX
+      a.position[v * 3] = (fx - 0.5) * boxW
+      a.position[v * 3 + 1] = (fy - 0.5) * boxH
+      a.position[v * 3 + 2] = z
+      a.normal[v * 3] = 0
+      a.normal[v * 3 + 1] = 0
+      a.normal[v * 3 + 2] = nz
+      a.uv[v * 2] = fx
+      a.uv[v * 2 + 1] = fy
+      v++
+    }
+  }
+  return v
+}
+
+/** Triangulates a grid written by writeGrid and returns the next free index
+ *  slot. `flip` swaps two corners: same surface, wound the other way, so the
+ *  cap faces the viewer exactly when the sheet has turned away. */
+function writeGridIndex(
+  index: Uint32Array,
+  f: number,
+  base: number,
+  segX: number,
+  segY: number,
+  flip: boolean,
+): number {
+  const cols = segX + 1
+  for (let iy = 0; iy < segY; iy++) {
+    for (let ix = 0; ix < segX; ix++) {
+      const a = base + iy * cols + ix
+      const b = a + 1
+      const c = a + cols
+      const d = c + 1
+      if (flip) {
+        index[f++] = a
+        index[f++] = d
+        index[f++] = b
+        index[f++] = a
+        index[f++] = c
+        index[f++] = d
+      } else {
+        index[f++] = a
+        index[f++] = b
+        index[f++] = d
+        index[f++] = a
+        index[f++] = d
+        index[f++] = c
+      }
+    }
+  }
+  return f
+}
+
+/** Extrudes each traced ring into a wall quad per segment, advancing the
+ *  shared cursor. Top pair sits on the sheet (z 0, so the height field lifts
+ *  it too), bottom pair on the back face (z -1). */
+function writeWalls(
+  a: VertexArrays,
+  index: Uint32Array,
+  at: MeshCursor,
+  rings: readonly number[][],
+  boxW: number,
+  boxH: number,
+) {
+  for (const ring of rings) {
+    const n = ring.length / 2
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n
+      const u0 = ring[i * 2]
+      const v0 = ring[i * 2 + 1]
+      const u1 = ring[j * 2]
+      const v1 = ring[j * 2 + 1]
+      const x0 = (u0 - 0.5) * boxW
+      const y0 = (v0 - 0.5) * boxH
+      const x1 = (u1 - 0.5) * boxW
+      const y1 = (v1 - 0.5) * boxH
+      // Out of the material is to the RIGHT of the direction of travel,
+      // which the ring's winding already decided.
+      const dx = x1 - x0
+      const dy = y1 - y0
+      const len = Math.hypot(dx, dy)
+      const nx = len > 1e-6 ? dy / len : 1
+      const ny = len > 1e-6 ? -dx / len : 0
+      const quad = [
+        [x0, y0, 0, u0, v0],
+        [x1, y1, 0, u1, v1],
+        [x0, y0, -1, u0, v0],
+        [x1, y1, -1, u1, v1],
+      ]
+      const base = at.v
+      for (const [x, y, z, qu, qv] of quad) {
+        a.position[at.v * 3] = x
+        a.position[at.v * 3 + 1] = y
+        a.position[at.v * 3 + 2] = z
+        a.normal[at.v * 3] = nx
+        a.normal[at.v * 3 + 1] = ny
+        a.normal[at.v * 3 + 2] = 0
+        a.uv[at.v * 2] = qu
+        a.uv[at.v * 2 + 1] = qv
+        at.v++
+      }
+      const [t0, t1, b0, b1] = [base, base + 1, base + 2, base + 3]
+      index[at.f++] = t0
+      index[at.f++] = b0
+      index[at.f++] = b1
+      index[at.f++] = t0
+      index[at.f++] = b1
+      index[at.f++] = t1
+    }
+  }
+}
+
 /**
  * The letter's mesh in local CSS pixels, centered on its capture box.
  *
@@ -120,8 +260,7 @@ export function buildLetterMesh(
   }
 
   const sheetCols = segX + 1
-  const sheetRows = segY + 1
-  const sheetVerts = sheetCols * sheetRows
+  const sheetVerts = sheetCols * (segY + 1)
   const wallVerts = wallPts * 4
   // The cap exists only where walls do: with no outline there is no
   // slab, and a second copy of the sheet at the same z is z-fighting
@@ -129,137 +268,33 @@ export function buildLetterMesh(
   const capped = rings.length > 0
   const total = sheetVerts + wallVerts + (capped ? sheetVerts : 0)
 
-  const position = new Float32Array(total * 3)
-  const normal = new Float32Array(total * 3)
-  const uv = new Float32Array(total * 2)
+  const arrays = {
+    position: new Float32Array(total * 3),
+    normal: new Float32Array(total * 3),
+    uv: new Float32Array(total * 2),
+  }
   const index = new Uint32Array(segX * segY * 6 * (capped ? 2 : 1) + wallPts * 6)
 
   // ── the back cap, then the walls, then the sheet ──
   // Index order is draw order, and it runs back to front: the cap is
   // behind everything, the walls are opaque, and the sheet has a soft
   // edge that must blend over what it stands on.
-  let v = 0
-  let f = 0
-  const capBase = v
+  const at = { v: 0, f: 0 }
   if (capped) {
-    for (let iy = 0; iy < sheetRows; iy++) {
-      const fy = iy / segY
-      for (let ix = 0; ix < sheetCols; ix++) {
-        const fx = ix / segX
-        position[v * 3] = (fx - 0.5) * boxW
-        position[v * 3 + 1] = (fy - 0.5) * boxH
-        position[v * 3 + 2] = -1
-        normal[v * 3] = 0
-        normal[v * 3 + 1] = 0
-        normal[v * 3 + 2] = -1
-        uv[v * 2] = fx
-        uv[v * 2 + 1] = fy
-        v++
-      }
-    }
-    // The sheet's triangles with two corners swapped: same surface,
-    // wound the other way, so the cap faces the viewer exactly when the
-    // sheet has turned away.
-    for (let iy = 0; iy < segY; iy++) {
-      for (let ix = 0; ix < segX; ix++) {
-        const a = capBase + iy * sheetCols + ix
-        const b = a + 1
-        const c = a + sheetCols
-        const d = c + 1
-        index[f++] = a
-        index[f++] = d
-        index[f++] = b
-        index[f++] = a
-        index[f++] = c
-        index[f++] = d
-      }
-    }
+    const capBase = at.v
+    at.v = writeGrid(arrays, at.v, boxW, boxH, segX, segY, -1, -1)
+    at.f = writeGridIndex(index, at.f, capBase, segX, segY, true)
   }
-  for (const ring of rings) {
-    const n = ring.length / 2
-    for (let i = 0; i < n; i++) {
-      const j = (i + 1) % n
-      const u0 = ring[i * 2]
-      const v0 = ring[i * 2 + 1]
-      const u1 = ring[j * 2]
-      const v1 = ring[j * 2 + 1]
-      const x0 = (u0 - 0.5) * boxW
-      const y0 = (v0 - 0.5) * boxH
-      const x1 = (u1 - 0.5) * boxW
-      const y1 = (v1 - 0.5) * boxH
-      // Out of the material is to the RIGHT of the direction of travel,
-      // which the ring's winding already decided.
-      const dx = x1 - x0
-      const dy = y1 - y0
-      const len = Math.hypot(dx, dy)
-      const nx = len > 1e-6 ? dy / len : 1
-      const ny = len > 1e-6 ? -dx / len : 0
-      // Four corners: top pair on the sheet (z 0, so the height field
-      // lifts them with it), bottom pair on the back face (z -1).
-      const quad = [
-        [x0, y0, 0, u0, v0],
-        [x1, y1, 0, u1, v1],
-        [x0, y0, -1, u0, v0],
-        [x1, y1, -1, u1, v1],
-      ]
-      const base = v
-      for (const [x, y, z, qu, qv] of quad) {
-        position[v * 3] = x
-        position[v * 3 + 1] = y
-        position[v * 3 + 2] = z
-        normal[v * 3] = nx
-        normal[v * 3 + 1] = ny
-        normal[v * 3 + 2] = 0
-        uv[v * 2] = qu
-        uv[v * 2 + 1] = qv
-        v++
-      }
-      const [t0, t1, b0, b1] = [base, base + 1, base + 2, base + 3]
-      index[f++] = t0
-      index[f++] = b0
-      index[f++] = b1
-      index[f++] = t0
-      index[f++] = b1
-      index[f++] = t1
-    }
-  }
+  writeWalls(arrays, index, at, rings, boxW, boxH)
 
-  // ── the sheet ──
-  const sheetBase = v
-  for (let iy = 0; iy < sheetRows; iy++) {
-    const fy = iy / segY
-    for (let ix = 0; ix < sheetCols; ix++) {
-      const fx = ix / segX
-      position[v * 3] = (fx - 0.5) * boxW
-      position[v * 3 + 1] = (fy - 0.5) * boxH
-      position[v * 3 + 2] = 0
-      normal[v * 3] = 0
-      normal[v * 3 + 1] = 0
-      normal[v * 3 + 2] = 1
-      uv[v * 2] = fx
-      uv[v * 2 + 1] = fy
-      v++
-    }
-  }
-  for (let iy = 0; iy < segY; iy++) {
-    for (let ix = 0; ix < segX; ix++) {
-      const a = sheetBase + iy * sheetCols + ix
-      const b = a + 1
-      const c = a + sheetCols
-      const d = c + 1
-      index[f++] = a
-      index[f++] = b
-      index[f++] = d
-      index[f++] = a
-      index[f++] = d
-      index[f++] = c
-    }
-  }
+  const sheetBase = at.v
+  at.v = writeGrid(arrays, at.v, boxW, boxH, segX, segY, 0, 1)
+  at.f = writeGridIndex(index, at.f, sheetBase, segX, segY, false)
 
   const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.BufferAttribute(position, 3))
-  geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3))
-  geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
+  geometry.setAttribute('position', new THREE.BufferAttribute(arrays.position, 3))
+  geometry.setAttribute('normal', new THREE.BufferAttribute(arrays.normal, 3))
+  geometry.setAttribute('uv', new THREE.BufferAttribute(arrays.uv, 2))
   geometry.setIndex(new THREE.BufferAttribute(index, 1))
   // Computed, NOT stated — and the difference is measurable.
   //

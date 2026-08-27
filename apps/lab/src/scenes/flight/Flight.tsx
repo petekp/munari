@@ -609,6 +609,359 @@ function trackHand(f: Flight, dt: number, target: THREE.Vector3) {
   f.prevTarget.copy(target)
 }
 
+/**
+ * One frame of whichever gesture owns the card, and the crumple's live crush
+ * scalar for the shader and the shadow. Everything before the plate's pose is
+ * settled belongs here; everything after it reads `f.plate` and does not care
+ * which mode wrote it.
+ */
+/**
+ * The delete: a CRUSH on one clock, then a fall with none. The exit is a
+ * PLACE, not a time — the flight ends when the wad has fully left the
+ * viewport — because a wad that dimmed on a timer was fading in plain sight
+ * whenever the fall was slow. Gravity guarantees it terminates: once falling,
+ * terminal velocity is ~3060 px/s straight down.
+ */
+function stepCrumple(
+  f: Flight,
+  dt: number,
+  vw: number,
+  vh: number,
+  camZ: number,
+  firstOwnedFrame: boolean,
+  onCrumpled: () => void,
+): number {
+    // The delete's CRUSH has one clock — crumplePhase(t) of it. Its EXIT
+    // deliberately has none: the wad is done when it has fully left the
+    // viewport (below), because a wad that dimmed on a timer was fading
+    // in plain sight whenever the fall was slow.
+    f.crumpleT += dt
+    const ph = crumplePhase(f.crumpleT, f.crumpleHeld)
+    if (f.crumpleHeld) {
+      // The ✕ is still pressed: the forming ball is IN the hand. Same
+      // machinery as a held card — ray→plane hand, tracked velocity, the
+      // pressed point pinned to the pointer — so the sheet lifts into
+      // the grip like any grab, crushes there (the shader contracts the
+      // sheet toward this same pin), and the eventual release inherits
+      // an honest throw velocity from the damper. The altitude eases in
+      // exactly like a lift; no gravity while held (crumplePhase says
+      // `falling: false` for a held wad — you are holding it).
+      f.lift = Math.min(1, f.lift + dt / LIFT_T)
+      const e = 1 - Math.pow(1 - f.lift, 3)
+      screenToPlane(f.px, f.py, vw, vh, camZ, CRUMPLE_Z * e, _target)
+      if (firstOwnedFrame) f.prevTarget.copy(_target)
+      trackHand(f, dt, _target)
+      stepHeld(f.plate, dt, _target, f.hold, FLAT, f.handVel)
+    } else if (!f.tossed && f.crumpleT <= CRUMPLE_RISE_T) {
+      // The KEYBOARD delete's rise — the HANDOFF window wearing a
+      // gesture's clothes. The plate springs gently off the page (the
+      // same free solver as a throw home, aimed up instead of down)
+      // while the page copy stays visible until presentation proof. The
+      // crush may not begin until the sheet is fully matter. `crumplePhase`
+      // holds it at exactly 0 through this window, so the swap keeps its
+      // pixel-copy guarantee. Never for a released press (`tossed`):
+      // this solver's damping is sized to STOP a card, and it was
+      // measured bleeding a 9148 px/s flick to a ~450 px drift when a
+      // mid-rise release fell back in here.
+      _target.set(f.plate.p.x, f.plate.p.y, CRUMPLE_Z)
+      stepFree(f.plate, dt, _target, FLAT)
+    } else {
+      // Ballistic — the toss in flight, from the instant the hand opens.
+      // The wad keeps whatever momentum the hand imparted, drag bleeds
+      // it, gravity takes over only once the sheet IS a wad (a flat card
+      // dropping like a stone reads as a glitch, so crumplePhase
+      // withholds `falling` until the crush completes — a hard flick
+      // therefore flies flat-out first, balls up mid-air, and only then
+      // starts to drop), and the tumble is the release's own topspin —
+      // no aerodynamics, just enough spin that the wad reads as a thing
+      // and not a sprite.
+      const drag = Math.exp(-dt / 0.9)
+      f.plate.v.multiplyScalar(drag)
+      if (ph.falling) f.plate.v.y -= 3400 * dt
+      f.plate.p.addScaledVector(f.plate.v, dt)
+      const rate = f.spin.length()
+      if (rate > 1e-6) {
+        _spinAxis.copy(f.spin).multiplyScalar(1 / rate)
+        _spinQ.setFromAxisAngle(_spinAxis, rate * dt)
+        f.plate.q.premultiply(_spinQ)
+      }
+    }
+    // The exit is a PLACE, not a time: the flight ends when the wad —
+    // inflated by the shadow's worst-case reach, projected to screen
+    // scale at its own plane — has fully left the viewport. Never during
+    // the rise (the handoff window must complete) and never in the hand
+    // (a ball dragged off-screen and back must not be torn from the
+    // grip). Gravity guarantees this terminates: once falling, terminal
+    // velocity is ~3060 px/s straight down.
+    if (!f.done && !f.crumpleHeld && f.crumpleT > CRUMPLE_RISE_T) {
+      const wm = planeScale(camZ, f.plate.p.z)
+      const wr = (Math.hypot(f.w, f.h) / 2 + 240) * wm
+      if (wadOffscreen(f.plate.p.x * wm, f.plate.p.y * wm, wr, vw, vh)) {
+        f.done = true
+        onCrumpled()
+      }
+    }
+  return ph.crush
+}
+
+function stepFlightMode(
+  f: Flight,
+  dt: number,
+  vw: number,
+  vh: number,
+  camZ: number,
+  crossing: number,
+  firstOwnedFrame: boolean,
+  slotRect: (id: string) => DOMRect | null,
+  scrollTop: () => number,
+  onCrumpled: () => void,
+  onLanded: () => void,
+): number {
+  let crush = 0
+  if (crossing <= 0) {
+    // The hidden twin must prove the page identity, so plate physics and
+    // crumple time do not advance before the hold changes. The REAL hand
+    // still moves during this wait. Track it on the page plane so a fast
+    // release carries honest velocity into the first owned flight frame.
+    if (f.mode === 'held' || (f.mode === 'crumple' && f.crumpleHeld)) {
+      screenToPlane(f.px, f.py, vw, vh, camZ, 0, _target)
+      trackHand(f, dt, _target)
+    }
+  } else if (f.mode === 'held') {
+    f.lift = Math.min(1, f.lift + dt / LIFT_T)
+    // easeOutCubic — a hand accelerates the card away from the page and
+    // then stops; a linear rise reads as a lift dialog, not a lift.
+    const e = 1 - Math.pow(1 - f.lift, 3)
+    // The hand is wherever the cursor's RAY meets the plane the card is
+    // currently on — NOT the z = 0 mapping. One world unit is one CSS pixel
+    // on exactly one plane, and a lifted card is not on it. Reading the
+    // cursor as if it were cost an 8% gain: the card outran the hand,
+    // drifting out from under the pointer toward the edges of the screen
+    // and back toward the middle, which is what "fighting the drag" was.
+    // decisions #4 has always said intersect the ray with the DRAG plane;
+    // this is that rule, on the plane that is actually being dragged on.
+    screenToPlane(f.px, f.py, vw, vh, camZ, LIFT_Z * e, _target)
+    // Changing the ray plane is the card rising, not the hand moving.
+    // Preserve the velocity measured during warm-up, but reseed its
+    // position channel so the plane change cannot create a false flick.
+    if (firstOwnedFrame) f.prevTarget.copy(_target)
+    trackHand(f, dt, _target)
+    stepHeld(f.plate, dt, _target, f.hold, FLAT, f.handVel)
+  } else if (f.mode === 'float') {
+    // Identical machinery, with the hand replaced by a fixed point in the
+    // air. The card settles flat and stays there — and because it is still
+    // the held solver, grabbing it again is a change of one target vector.
+    // Scrolling the page down moves content up the screen, and world y is
+    // up, so the anchor moves the same way by the same amount.
+    _target.copy(f.anchor)
+    _target.y += scrollTop() - f.anchorScroll
+    if (firstOwnedFrame) f.prevTarget.copy(_target)
+    trackHand(f, dt, _target)
+    stepHeld(f.plate, dt, _target, f.hold, FLAT, f.handVel)
+  } else if (f.mode === 'crumple') {
+    crush = stepCrumple(f, dt, vw, vh, camZ, firstOwnedFrame, onCrumpled)
+  } else {
+    const r = slotRect(f.id)
+    if (r) _target.set(r.left + r.width / 2 - vw / 2, vh / 2 - (r.top + r.height / 2), 0)
+    else _target.set(f.plate.p.x, f.plate.p.y, 0)
+    stepFree(f.plate, dt, _target, FLAT)
+    if (!f.done && atRest(f.plate, _target)) {
+      f.done = true
+      onLanded()
+    }
+  }
+  return crush
+}
+
+// ── the shadow, from the plate's own corners ──
+//
+// A crumpling sheet no longer spans the plate, so the corners are computed
+// from SHRUNKEN dimensions (wadShrink: identity at crush 0, a sixth at full
+// crush) — the shadow contracts with the thing that casts it, and leaves the
+// screen with it (the shadow sits at the wad's own x/y, so the offscreen
+// verdict that ends the flight covers both; its reach is why that verdict
+// inflates the radius).
+/**
+ * The measured layers are the h = 0 truth; height only EVOLVES them. Every
+ * factor below is exactly 1 at h = 0, so the liftoff frame draws the DOM's own
+ * shadow — same offsets, blurs, colors — and the swap has nothing to pop.
+ * Rising: blur grows (the page is farther from the caster), weight fades (more
+ * sky reaches around the card), and any authored spread — usually negative,
+ * the tight contact hug — relaxes toward zero. A card whose DOM casts nothing
+ * casts nothing here either. Returns the worst-case reach, which is the margin
+ * the quad has to carry.
+ */
+function writeShadowLayers(
+  chrome: SurfaceChrome | null,
+  shadowUniforms: ShadowUniforms,
+  sh: THREE.Mesh,
+  height: number,
+): number {
+  const layers = chrome?.shadow ?? []
+  const n = Math.min(layers.length, SHADOW_MAX_LAYERS)
+  const { value: uOff } = shadowUniforms.uOff
+  const { value: uSigma } = shadowUniforms.uSigma
+  const { value: uSpread } = shadowUniforms.uSpread
+  const { value: uColor } = shadowUniforms.uColor
+  const grow = 0.17 * height
+  const fade = 1 / (1 + height / 210)
+  const relax = 1 / (1 + height / 140)
+  let reach = 8
+  for (let i = 0; i < n; i++) {
+    const l = layers[i]
+    const sigma = l.blur / 2 + grow
+    const spread = l.spread * relax
+    uOff[i].set(l.x, -l.y) // CSS y is down, world y is up
+    uSigma[i] = sigma
+    uSpread[i] = spread
+    uColor[i].set(l.color[0], l.color[1], l.color[2], l.color[3] * fade)
+    reach = Math.max(reach, Math.hypot(l.x, l.y) + 3 * sigma + Math.max(spread, 0))
+  }
+  shadowUniforms.uCount.value = n
+  // ShaderMaterial copies scalar uniform values when it is constructed.
+  // The vectors above stay live because they are mutated in place; replacing
+  // this number only changed the source bag and left the material at zero,
+  // which disabled every shadow layer.
+  if (sh.material instanceof THREE.ShaderMaterial) {
+    sh.material.uniforms.uCount.value = n
+  }
+  const radii = chrome?.radii
+  shadowUniforms.uRadii.value.set(
+    radii?.[0] ?? 0,
+    radii?.[1] ?? 0,
+    radii?.[2] ?? 0,
+    radii?.[3] ?? 0,
+  )
+  return reach
+}
+
+function writeShadow(
+  f: Flight,
+  crush: number,
+  sh: THREE.Mesh | null,
+  chrome: SurfaceChrome | null,
+  shadowUniforms: ShadowUniforms,
+  crossing: number,
+) {
+  if (!sh) return
+  // Unseen until the pixels are the scene's. The card's own mesh warms by
+  // drawing write-free, but this plane is ordinary scene matter: during
+  // warm-up it would lay a second copy of the card's box-shadow over the
+  // page copy still casting its own. Progress is exactly zero on both
+  // handoff frames, which are the two moments the DOM's shadow is the one
+  // on screen.
+  sh.visible = crossing > 0
+  const shrink = wadShrink(crush)
+  corners(f.plate, f.w * shrink, f.h * shrink, _corners)
+  if (crush > 0) {
+    // The wad contracts toward the GRAB point (the shader's 13%-around-
+    // uAeroGrab formula), so the shadow must follow its caster: at full
+    // crush the ball's centroid sits at grab·0.87 body-local, and the
+    // offset rides the same crush that drives the contraction — exactly 0
+    // at liftoff (the handoff still draws the DOM's own shadow), under
+    // the ball once it is a ball. A keyboard delete's grab is the centre,
+    // offset 0 throughout: the old shadow. Without this the blob stayed
+    // at the plate's centre while the ball formed at the pressed corner —
+    // a shadow half a card away from the thing casting it.
+    _wadOff
+      .set(f.hold.x * 0.87 * crush, f.hold.y * 0.87 * crush, 0)
+      .applyQuaternion(f.plate.q)
+    for (const c of _corners) c.add(_wadOff)
+  }
+  _centroid.set(0, 0, 0)
+  for (const c of _corners) _centroid.add(c)
+  _centroid.multiplyScalar(0.25)
+
+  const margin = writeShadowLayers(chrome, shadowUniforms, sh, Math.max(_centroid.z, 0))
+
+  // Project the plate's corners onto the page along the light, then let
+  // `shadowQuadFrame` rebuild the quad with the margin added along the
+  // footprint's own axes. The frame's halves go to the shader VERBATIM —
+  // the p-space metric and the world metric are the same numbers, which is
+  // the whole fix: the old radial corner-push under-delivered the margin
+  // vertically (≈0.29× on a wide card) while the uniforms claimed all of
+  // it, so every below-card pixel sampled the shadow 2–3σ too far out and
+  // the at-rest fringe rendered entirely underneath the card.
+  for (let i = 0; i < 4; i++) {
+    const c = _corners[i]
+    const t = -c.z / LIGHT.z
+    _proj[i].set(c.x + LIGHT.x * t, c.y + LIGHT.y * t, 0)
+  }
+  shadowQuadFrame(_proj, margin, _frame)
+
+  const pos = plainAttribute(sh.geometry, 'position')
+  if (!pos) return
+  // The frame's verts are already in PlaneGeometry vertex order (TL, TR,
+  // BL, BR) — `shadowQuadFrame` did the reorder from `corners` order so
+  // the bow-tie mistake has exactly one place to not happen.
+  //
+  // z = −0.5: strictly BEHIND the card at every altitude, including h = 0.
+  // The card renders first and writes depth, so the depth test deletes the
+  // shadow wherever the card touched a pixel — which is exactly CSS's rule
+  // that box-shadow paints only outside the border box. At +0.5 the plane
+  // sat in FRONT of a resting card, the order put the card's blend on top,
+  // and the shadow's interior (hairline α .04 + fringe) showed through the
+  // border's AA column as a dark seam line.
+  for (let i = 0; i < 4; i++) {
+    pos.setXYZ(i, _frame.verts[i].x, _frame.verts[i].y, -0.5)
+  }
+  pos.needsUpdate = true
+  sh.geometry.computeBoundingSphere()
+
+  shadowUniforms.uQuadHalf.value.copy(_frame.quadHalf)
+  shadowUniforms.uCardHalf.value.copy(_frame.cardHalf)
+}
+
+/**
+ * Turn a flight already in the air into a crumple. A held delete pins the
+ * pressed point body-local so the ball forms in the fingers and the release
+ * inherits an honest throw; a keyboard delete takes the centre and a random
+ * tumble.
+ */
+function crumpleInFlight(
+  f: Flight,
+  e: React.PointerEvent<HTMLButtonElement> | undefined,
+  cardEl: HTMLElement | null,
+) {
+  f.mode = 'crumple'
+  f.crumpleT = 0
+  f.done = false
+  f.lift = 1
+  f.tossed = false
+  if (e && cardEl) {
+    e.preventDefault()
+    // The pressed point, body-local. The event's coordinates are
+    // PARKED-LOCAL for an airborne copy (the host is fixed at page
+    // (0,0)), so "relative to the card element's own rect" is the
+    // body-local point in both worlds — the same formula as
+    // beginDrag and onHost.
+    const r = cardEl.getBoundingClientRect()
+    f.hold.set(e.clientX - (r.left + r.width / 2), r.top + r.height / 2 - e.clientY, 0)
+    f.crumpleHeld = true
+    f.spin.set(0, 0, 0)
+    // The held solver's target jumps to the pointer ray; differentiating
+    // across that jump would read as a flick nobody performed.
+    f.handSeeded = false
+    // px/py must be the REAL pointer's page position, and the relayed
+    // event's coordinates are parked-local — but the pressed point's
+    // world position is exactly under the real pointer at this instant:
+    // project it back to the screen.
+    _pressWorld.copy(f.hold).applyQuaternion(f.plate.q).add(f.plate.p)
+    const m = planeScale(cameraDistance(window.innerHeight, FOV), _pressWorld.z)
+    f.px = window.innerWidth / 2 + _pressWorld.x * m
+    f.py = window.innerHeight / 2 - _pressWorld.y * m
+    f.handVel.set(0, 0, 0)
+    resetReleaseSample(f, f.px, f.py, performance.now())
+  } else {
+    f.crumpleHeld = false
+    f.spin.set(
+      (Math.random() - 0.5) * 2.0,
+      (Math.random() - 0.5) * 2.0,
+      (Math.random() - 0.5) * 5.0,
+    )
+  }
+}
+
 function Driver({
   flight,
   progress,
@@ -649,130 +1002,19 @@ function Driver({
 
     // The crumple's live scalar — identity for every other mode, so the
     // shader and the shadow below never need to know which mode this is.
-    let crush = 0
-
-    if (crossing <= 0) {
-      // The hidden twin must prove the page identity, so plate physics and
-      // crumple time do not advance before the hold changes. The REAL hand
-      // still moves during this wait. Track it on the page plane so a fast
-      // release carries honest velocity into the first owned flight frame.
-      if (f.mode === 'held' || (f.mode === 'crumple' && f.crumpleHeld)) {
-        screenToPlane(f.px, f.py, vw, vh, camZ, 0, _target)
-        trackHand(f, dt, _target)
-      }
-    } else if (f.mode === 'held') {
-      f.lift = Math.min(1, f.lift + dt / LIFT_T)
-      // easeOutCubic — a hand accelerates the card away from the page and
-      // then stops; a linear rise reads as a lift dialog, not a lift.
-      const e = 1 - Math.pow(1 - f.lift, 3)
-      // The hand is wherever the cursor's RAY meets the plane the card is
-      // currently on — NOT the z = 0 mapping. One world unit is one CSS pixel
-      // on exactly one plane, and a lifted card is not on it. Reading the
-      // cursor as if it were cost an 8% gain: the card outran the hand,
-      // drifting out from under the pointer toward the edges of the screen
-      // and back toward the middle, which is what "fighting the drag" was.
-      // decisions #4 has always said intersect the ray with the DRAG plane;
-      // this is that rule, on the plane that is actually being dragged on.
-      screenToPlane(f.px, f.py, vw, vh, camZ, LIFT_Z * e, _target)
-      // Changing the ray plane is the card rising, not the hand moving.
-      // Preserve the velocity measured during warm-up, but reseed its
-      // position channel so the plane change cannot create a false flick.
-      if (firstOwnedFrame) f.prevTarget.copy(_target)
-      trackHand(f, dt, _target)
-      stepHeld(f.plate, dt, _target, f.hold, FLAT, f.handVel)
-    } else if (f.mode === 'float') {
-      // Identical machinery, with the hand replaced by a fixed point in the
-      // air. The card settles flat and stays there — and because it is still
-      // the held solver, grabbing it again is a change of one target vector.
-      // Scrolling the page down moves content up the screen, and world y is
-      // up, so the anchor moves the same way by the same amount.
-      _target.copy(f.anchor)
-      _target.y += scrollTop() - f.anchorScroll
-      if (firstOwnedFrame) f.prevTarget.copy(_target)
-      trackHand(f, dt, _target)
-      stepHeld(f.plate, dt, _target, f.hold, FLAT, f.handVel)
-    } else if (f.mode === 'crumple') {
-      // The delete's CRUSH has one clock — crumplePhase(t) of it. Its EXIT
-      // deliberately has none: the wad is done when it has fully left the
-      // viewport (below), because a wad that dimmed on a timer was fading
-      // in plain sight whenever the fall was slow.
-      f.crumpleT += dt
-      const ph = crumplePhase(f.crumpleT, f.crumpleHeld)
-      crush = ph.crush
-      if (f.crumpleHeld) {
-        // The ✕ is still pressed: the forming ball is IN the hand. Same
-        // machinery as a held card — ray→plane hand, tracked velocity, the
-        // pressed point pinned to the pointer — so the sheet lifts into
-        // the grip like any grab, crushes there (the shader contracts the
-        // sheet toward this same pin), and the eventual release inherits
-        // an honest throw velocity from the damper. The altitude eases in
-        // exactly like a lift; no gravity while held (crumplePhase says
-        // `falling: false` for a held wad — you are holding it).
-        f.lift = Math.min(1, f.lift + dt / LIFT_T)
-        const e = 1 - Math.pow(1 - f.lift, 3)
-        screenToPlane(f.px, f.py, vw, vh, camZ, CRUMPLE_Z * e, _target)
-        if (firstOwnedFrame) f.prevTarget.copy(_target)
-        trackHand(f, dt, _target)
-        stepHeld(f.plate, dt, _target, f.hold, FLAT, f.handVel)
-      } else if (!f.tossed && f.crumpleT <= CRUMPLE_RISE_T) {
-        // The KEYBOARD delete's rise — the HANDOFF window wearing a
-        // gesture's clothes. The plate springs gently off the page (the
-        // same free solver as a throw home, aimed up instead of down)
-        // while the page copy stays visible until presentation proof. The
-        // crush may not begin until the sheet is fully matter. `crumplePhase`
-        // holds it at exactly 0 through this window, so the swap keeps its
-        // pixel-copy guarantee. Never for a released press (`tossed`):
-        // this solver's damping is sized to STOP a card, and it was
-        // measured bleeding a 9148 px/s flick to a ~450 px drift when a
-        // mid-rise release fell back in here.
-        _target.set(f.plate.p.x, f.plate.p.y, CRUMPLE_Z)
-        stepFree(f.plate, dt, _target, FLAT)
-      } else {
-        // Ballistic — the toss in flight, from the instant the hand opens.
-        // The wad keeps whatever momentum the hand imparted, drag bleeds
-        // it, gravity takes over only once the sheet IS a wad (a flat card
-        // dropping like a stone reads as a glitch, so crumplePhase
-        // withholds `falling` until the crush completes — a hard flick
-        // therefore flies flat-out first, balls up mid-air, and only then
-        // starts to drop), and the tumble is the release's own topspin —
-        // no aerodynamics, just enough spin that the wad reads as a thing
-        // and not a sprite.
-        const drag = Math.exp(-dt / 0.9)
-        f.plate.v.multiplyScalar(drag)
-        if (ph.falling) f.plate.v.y -= 3400 * dt
-        f.plate.p.addScaledVector(f.plate.v, dt)
-        const rate = f.spin.length()
-        if (rate > 1e-6) {
-          _spinAxis.copy(f.spin).multiplyScalar(1 / rate)
-          _spinQ.setFromAxisAngle(_spinAxis, rate * dt)
-          f.plate.q.premultiply(_spinQ)
-        }
-      }
-      // The exit is a PLACE, not a time: the flight ends when the wad —
-      // inflated by the shadow's worst-case reach, projected to screen
-      // scale at its own plane — has fully left the viewport. Never during
-      // the rise (the handoff window must complete) and never in the hand
-      // (a ball dragged off-screen and back must not be torn from the
-      // grip). Gravity guarantees this terminates: once falling, terminal
-      // velocity is ~3060 px/s straight down.
-      if (!f.done && !f.crumpleHeld && f.crumpleT > CRUMPLE_RISE_T) {
-        const wm = planeScale(camZ, f.plate.p.z)
-        const wr = (Math.hypot(f.w, f.h) / 2 + 240) * wm
-        if (wadOffscreen(f.plate.p.x * wm, f.plate.p.y * wm, wr, vw, vh)) {
-          f.done = true
-          onCrumpled()
-        }
-      }
-    } else {
-      const r = slotRect(f.id)
-      if (r) _target.set(r.left + r.width / 2 - vw / 2, vh / 2 - (r.top + r.height / 2), 0)
-      else _target.set(f.plate.p.x, f.plate.p.y, 0)
-      stepFree(f.plate, dt, _target, FLAT)
-      if (!f.done && atRest(f.plate, _target)) {
-        f.done = true
-        onLanded()
-      }
-    }
+    const crush = stepFlightMode(
+      f,
+      dt,
+      vw,
+      vh,
+      camZ,
+      crossing,
+      firstOwnedFrame,
+      slotRect,
+      scrollTop,
+      onCrumpled,
+      onLanded,
+    )
 
     // ── the density schedule ──
     //
@@ -891,127 +1133,7 @@ function Driver({
       aero.wad.x = crush
     }
 
-    // ── the shadow, from the plate's own corners ──
-    //
-    // A crumpling sheet no longer spans the plate, so the corners are
-    // computed from SHRUNKEN dimensions (wadShrink: identity at crush 0,
-    // a sixth at full crush) — the shadow contracts with the thing that
-    // casts it, and leaves the screen with it (the shadow sits at the wad's
-    // own x/y, so the offscreen verdict that ends the flight covers both;
-    // its reach is why that verdict inflates the radius).
-    const sh = shadowRef.current
-    if (!sh) return
-    // Unseen until the pixels are the scene's. The card's own mesh warms by
-    // drawing write-free, but this plane is ordinary scene matter: during
-    // warm-up it would lay a second copy of the card's box-shadow over the
-    // page copy still casting its own. Progress is exactly zero on both
-    // handoff frames, which are the two moments the DOM's shadow is the one
-    // on screen.
-    sh.visible = crossing > 0
-    const shrink = wadShrink(crush)
-    corners(f.plate, f.w * shrink, f.h * shrink, _corners)
-    if (crush > 0) {
-      // The wad contracts toward the GRAB point (the shader's 13%-around-
-      // uAeroGrab formula), so the shadow must follow its caster: at full
-      // crush the ball's centroid sits at grab·0.87 body-local, and the
-      // offset rides the same crush that drives the contraction — exactly 0
-      // at liftoff (the handoff still draws the DOM's own shadow), under
-      // the ball once it is a ball. A keyboard delete's grab is the centre,
-      // offset 0 throughout: the old shadow. Without this the blob stayed
-      // at the plate's centre while the ball formed at the pressed corner —
-      // a shadow half a card away from the thing casting it.
-      _wadOff
-        .set(f.hold.x * 0.87 * crush, f.hold.y * 0.87 * crush, 0)
-        .applyQuaternion(f.plate.q)
-      for (const c of _corners) c.add(_wadOff)
-    }
-    _centroid.set(0, 0, 0)
-    for (const c of _corners) _centroid.add(c)
-    _centroid.multiplyScalar(0.25)
-
-    const height = Math.max(_centroid.z, 0)
-
-    // The measured layers are the h = 0 truth; height only EVOLVES them.
-    // Every factor below is exactly 1 at h = 0, so the liftoff frame draws
-    // the DOM's own shadow — same offsets, blurs, colors — and the swap has
-    // nothing to pop. Rising: blur grows (the page is farther from the
-    // caster), weight fades (more sky reaches around the card), and any
-    // authored spread — usually negative, the tight contact hug — relaxes
-    // toward zero. A card whose DOM casts nothing casts nothing here either.
-    const chrome = chromeRef.current
-    const layers = chrome?.shadow ?? []
-    const n = Math.min(layers.length, SHADOW_MAX_LAYERS)
-    const { value: uOff } = shadowUniforms.uOff
-    const { value: uSigma } = shadowUniforms.uSigma
-    const { value: uSpread } = shadowUniforms.uSpread
-    const { value: uColor } = shadowUniforms.uColor
-    const grow = 0.17 * height
-    const fade = 1 / (1 + height / 210)
-    const relax = 1 / (1 + height / 140)
-    let reach = 8
-    for (let i = 0; i < n; i++) {
-      const l = layers[i]
-      const sigma = l.blur / 2 + grow
-      const spread = l.spread * relax
-      uOff[i].set(l.x, -l.y) // CSS y is down, world y is up
-      uSigma[i] = sigma
-      uSpread[i] = spread
-      uColor[i].set(l.color[0], l.color[1], l.color[2], l.color[3] * fade)
-      reach = Math.max(reach, Math.hypot(l.x, l.y) + 3 * sigma + Math.max(spread, 0))
-    }
-    shadowUniforms.uCount.value = n
-    // ShaderMaterial copies scalar uniform values when it is constructed.
-    // The vectors above stay live because they are mutated in place; replacing
-    // this number only changed the source bag and left the material at zero,
-    // which disabled every shadow layer.
-    if (sh.material instanceof THREE.ShaderMaterial) {
-      sh.material.uniforms.uCount.value = n
-    }
-    const radii = chrome?.radii
-    shadowUniforms.uRadii.value.set(
-      radii?.[0] ?? 0,
-      radii?.[1] ?? 0,
-      radii?.[2] ?? 0,
-      radii?.[3] ?? 0,
-    )
-    const margin = reach
-
-    // Project the plate's corners onto the page along the light, then let
-    // `shadowQuadFrame` rebuild the quad with the margin added along the
-    // footprint's own axes. The frame's halves go to the shader VERBATIM —
-    // the p-space metric and the world metric are the same numbers, which is
-    // the whole fix: the old radial corner-push under-delivered the margin
-    // vertically (≈0.29× on a wide card) while the uniforms claimed all of
-    // it, so every below-card pixel sampled the shadow 2–3σ too far out and
-    // the at-rest fringe rendered entirely underneath the card.
-    for (let i = 0; i < 4; i++) {
-      const c = _corners[i]
-      const t = -c.z / LIGHT.z
-      _proj[i].set(c.x + LIGHT.x * t, c.y + LIGHT.y * t, 0)
-    }
-    shadowQuadFrame(_proj, margin, _frame)
-
-    const pos = plainAttribute(sh.geometry, 'position')
-    if (!pos) return
-    // The frame's verts are already in PlaneGeometry vertex order (TL, TR,
-    // BL, BR) — `shadowQuadFrame` did the reorder from `corners` order so
-    // the bow-tie mistake has exactly one place to not happen.
-    //
-    // z = −0.5: strictly BEHIND the card at every altitude, including h = 0.
-    // The card renders first and writes depth, so the depth test deletes the
-    // shadow wherever the card touched a pixel — which is exactly CSS's rule
-    // that box-shadow paints only outside the border box. At +0.5 the plane
-    // sat in FRONT of a resting card, the order put the card's blend on top,
-    // and the shadow's interior (hairline α .04 + fringe) showed through the
-    // border's AA column as a dark seam line.
-    for (let i = 0; i < 4; i++) {
-      pos.setXYZ(i, _frame.verts[i].x, _frame.verts[i].y, -0.5)
-    }
-    pos.needsUpdate = true
-    sh.geometry.computeBoundingSphere()
-
-    shadowUniforms.uQuadHalf.value.copy(_frame.quadHalf)
-    shadowUniforms.uCardHalf.value.copy(_frame.cardHalf)
+    writeShadow(f, crush, shadowRef.current, chromeRef.current, shadowUniforms, crossing)
   })
 
   return null
@@ -1690,43 +1812,7 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
     if (f) {
       // One flight at a time — and a crumple, once started, is not restarted.
       if (f.id !== id || f.mode === 'crumple') return
-      f.mode = 'crumple'
-      f.crumpleT = 0
-      f.done = false
-      f.lift = 1
-      f.tossed = false
-      if (e && cardEl) {
-        e.preventDefault()
-        // The pressed point, body-local. The event's coordinates are
-        // PARKED-LOCAL for an airborne copy (the host is fixed at page
-        // (0,0)), so "relative to the card element's own rect" is the
-        // body-local point in both worlds — the same formula as
-        // beginDrag and onHost.
-        const r = cardEl.getBoundingClientRect()
-        f.hold.set(e.clientX - (r.left + r.width / 2), r.top + r.height / 2 - e.clientY, 0)
-        f.crumpleHeld = true
-        f.spin.set(0, 0, 0)
-        // The held solver's target jumps to the pointer ray; differentiating
-        // across that jump would read as a flick nobody performed.
-        f.handSeeded = false
-        // px/py must be the REAL pointer's page position, and the relayed
-        // event's coordinates are parked-local — but the pressed point's
-        // world position is exactly under the real pointer at this instant:
-        // project it back to the screen.
-        _pressWorld.copy(f.hold).applyQuaternion(f.plate.q).add(f.plate.p)
-        const m = planeScale(cameraDistance(window.innerHeight, FOV), _pressWorld.z)
-        f.px = window.innerWidth / 2 + _pressWorld.x * m
-        f.py = window.innerHeight / 2 - _pressWorld.y * m
-        f.handVel.set(0, 0, 0)
-        resetReleaseSample(f, f.px, f.py, performance.now())
-      } else {
-        f.crumpleHeld = false
-        f.spin.set(
-          (Math.random() - 0.5) * 2.0,
-          (Math.random() - 0.5) * 2.0,
-          (Math.random() - 0.5) * 5.0,
-        )
-      }
+      crumpleInFlight(f, e, cardEl)
       return
     }
     const el = slots.current.get(id)?.querySelector<HTMLElement>('.l14-card')

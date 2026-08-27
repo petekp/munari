@@ -118,11 +118,11 @@ gates: `gate:idle-zero` (mounted quiescent Surfaces cost 0 paints/s),
 `gate:frame-surface`, `gate:shaders`, `gate:dom-surface-demand`,
 `gate:lifting-pointer`, `gate:genie-film-reorder`, and `gate:degraded`
 (every lab gesture in a browser with NO origin trial — the one path no
-capability-enabled gate can see). Nine more run locally on demand:
+capability-enabled gate can see). Ten more run locally on demand:
 `gate:genie-duplicate`, `gate:genie-film`, `gate:genie-film-context`,
 `gate:genie-shadow`, `gate:fisheye-pointer`, `gate:slider-drag`,
 `gate:refraction-arriving`, `gate:gallery-pointer`,
-`gate:chrome-over-canvas`.
+`gate:crystal-pointer`, `gate:chrome-over-canvas`.
 `instruments/README.md` says what each one checks.
 
 `npm run build` produces the publishable package under

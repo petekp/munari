@@ -615,6 +615,93 @@ export interface Reading {
   range: [number, number] | null
 }
 
+/** One block's paint history: the last raw count, and its rate as an EMA. */
+interface HeatEntry {
+  paints: number
+  ema: number
+}
+
+/** Advances every block's paint-rate average and returns the total rate of
+ *  the blocks currently under the glass. */
+function accumulateHeat(
+  heat: Map<string, HeatEntry>,
+  covered: readonly string[],
+  alpha: number,
+  dt: number,
+): number {
+  let underGlass = 0
+  for (const s of paintStats()) {
+    const prev = heat.get(s.label) ?? { paints: s.paints, ema: 0 }
+    const rate = (s.paints - prev.paints) / dt
+    const ema = prev.ema + alpha * (rate - prev.ema)
+    heat.set(s.label, { paints: s.paints, ema })
+    if (covered.includes(s.label)) underGlass += ema
+  }
+  return underGlass
+}
+
+/** Uploads each specimen's box and its heat. An empty slot is a zero rect,
+ *  which the shader reads as "no block here". */
+function writeHeatRects(
+  rects: THREE.Vector4[],
+  heatSlots: number[],
+  heat: Map<string, HeatEntry>,
+  win: number,
+) {
+  for (let i = 0; i < SCOPE_RECTS; i++) {
+    const b = SPECIMENS[i]
+    const slot = rects[i]
+    if (!b) {
+      slot.set(0, 0, 0, 0)
+      heatSlots[i] = 0
+      continue
+    }
+    const [cx, cy] = worldCenter(b)
+    slot.set(cx, cy, b.w / 2, b.h / 2)
+    // Counts, not rates: one paint should be visible, sixteen should
+    // saturate, and a log ramp is the only thing that does both.
+    const count = (heat.get(b.id)?.ema ?? 0) * win
+    heatSlots[i] = clamp(Math.log2(1 + count) / Math.log2(17), 0, 1)
+  }
+}
+
+/** What the lens shader needs to draw this frame's reading. */
+interface LensFrame {
+  page: THREE.Texture
+  disc: Disc
+  eye: THREE.Vector3
+  center: [number, number]
+  spec: LensSpec
+  half: [number, number] | undefined
+  inst: Instrument
+  rects: THREE.Vector4[]
+  heat: number[]
+}
+
+/** Uniforms go through the material ref, never the memoized bag: writing to
+ *  the bag leaves the sampler unbound, and a transparent material at alpha 0
+ *  renders INVISIBLE rather than black — so the glass silently shows the page
+ *  behind it and every reading looks plausible (docs/spikes/optics-loupe.md). */
+function writeLensUniforms(m: THREE.ShaderMaterial | null, frame: LensFrame) {
+  if (!m) return
+  const { disc, spec, half, inst } = frame
+  const u = m.uniforms
+  u.uPage.value = frame.page
+  u.uFrame.value.set(disc.x, disc.y, disc.r + 2, disc.r + 2)
+  u.uCamPos.value.copy(frame.eye)
+  u.uCenter.value.set(frame.center[0], frame.center[1])
+  u.uAperture.value = spec.aperture
+  // (0, 0) is the shader's word for "a disc" — see faceEdge.
+  u.uHalf.value.set(half ? half[0] : 0, half ? half[1] : 0)
+  u.uCurvature.value = Number.isFinite(spec.curvature) ? spec.curvature : 1e9
+  u.uStandoff.value = spec.standoff
+  u.uIor.value = spec.ior
+  u.uTint.value = inst.tint
+  u.uMode.value = inst.mode === 'scope' ? 1 : 0
+  u.uRects.value = frame.rects
+  u.uHeat.value = frame.heat
+}
+
 function Bench({
   hand,
   handId,
@@ -660,7 +747,7 @@ function Bench({
 
   const holds = useRef<Hold[]>([])
   const lastKey = useRef('')
-  const heat = useRef(new Map<string, { paints: number; ema: number }>())
+  const heat = useRef(new Map<string, HeatEntry>())
   const lastSample = useRef(performance.now())
   const lastReading = useRef(0)
 
@@ -744,54 +831,25 @@ function Bench({
     lastSample.current = now
     const win = inst.mode === 'scope' ? collar : 1
     const alpha = 1 - Math.exp(-dt / win)
-    let underGlass = 0
-    for (const s of paintStats()) {
-      const prev = heat.current.get(s.label) ?? { paints: s.paints, ema: 0 }
-      const rate = (s.paints - prev.paints) / dt
-      const ema = prev.ema + alpha * (rate - prev.ema)
-      heat.current.set(s.label, { paints: s.paints, ema })
-      if (covered.includes(s.label)) underGlass += ema
-    }
-
-    for (let i = 0; i < SCOPE_RECTS; i++) {
-      const b = SPECIMENS[i]
-      const slot = uniforms.uRects.value[i]
-      if (!b) {
-        slot.set(0, 0, 0, 0)
-        uniforms.uHeat.value[i] = 0
-        continue
-      }
-      const [cx, cy] = worldCenter(b)
-      slot.set(cx, cy, b.w / 2, b.h / 2)
-      // Counts, not rates: one paint should be visible, sixteen should
-      // saturate, and a log ramp is the only thing that does both.
-      const count = (heat.current.get(b.id)?.ema ?? 0) * win
-      uniforms.uHeat.value[i] = clamp(Math.log2(1 + count) / Math.log2(17), 0, 1)
-    }
+    const underGlass = accumulateHeat(heat.current, covered, alpha, dt)
+    writeHeatRects(uniforms.uRects.value, uniforms.uHeat.value, heat.current, win)
 
     // Uniforms through the material ref. Writing them to the memoized
     // object above leaves the sampler unbound, and a transparent material
     // with alpha 0 renders INVISIBLE rather than black — so the glass
     // silently shows the page behind it and every reading looks plausible
     // (docs/spikes/optics-loupe.md).
-    const m = lensMat.current
-    if (m) {
-      const u = m.uniforms
-      u.uPage.value = rt.texture
-      u.uFrame.value.set(disc.x, disc.y, disc.r + 2, disc.r + 2)
-      u.uCamPos.value.copy(eye)
-      u.uCenter.value.set(h.x, h.y)
-      u.uAperture.value = spec.aperture
-      // (0, 0) is the shader's word for "a disc" — see faceEdge.
-      u.uHalf.value.set(half ? half[0] : 0, half ? half[1] : 0)
-      u.uCurvature.value = Number.isFinite(spec.curvature) ? spec.curvature : 1e9
-      u.uStandoff.value = spec.standoff
-      u.uIor.value = spec.ior
-      u.uTint.value = inst.tint
-      u.uMode.value = inst.mode === 'scope' ? 1 : 0
-      u.uRects.value = uniforms.uRects.value
-      u.uHeat.value = uniforms.uHeat.value
-    }
+    writeLensUniforms(lensMat.current, {
+      page: rt.texture,
+      disc,
+      eye,
+      center: [h.x, h.y],
+      spec,
+      half,
+      inst,
+      rects: uniforms.uRects.value,
+      heat: uniforms.uHeat.value,
+    })
 
     if (lens.current) lens.current.position.set(h.x, h.y, spec.standoff)
     // A unit plane scaled to the live size. Rebuilding the geometry every

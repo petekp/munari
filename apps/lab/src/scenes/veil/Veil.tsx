@@ -35,6 +35,7 @@
 // click THROUGH the veil, because the thing under it is the page.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
@@ -53,6 +54,7 @@ import {
   VEIL_QUAD_VERT,
 } from './veilShaders'
 import { textureSlot } from '../../lib/uniforms'
+import type { VeilGateEntry } from '../../lib/devGlobals'
 import './veil.css'
 
 const FOV = 42
@@ -182,6 +184,34 @@ function PixelPerfect() {
 // under frameloop='demand'. The page scrolls in its own container, and
 // element scrolls never reach a window listener — the document capture
 // phase is the one place that hears them all.
+/** How far the return ramp has opened this frame. The raster's box has to
+ *  match the live page's before the ramp starts, and any mismatch restarts
+ *  it — blending two disagreeing layouts reads as text doubled sideways. */
+function stepGate(matched: boolean, matchedSince: RefObject<number | null>): number {
+  if (!matched) {
+    matchedSince.current = null
+  } else if (matchedSince.current === null) {
+    matchedSince.current = performance.now()
+  }
+  return matched && matchedSince.current !== null
+    ? veilReturn(performance.now() - matchedSince.current, VEIL_DEFAULTS)
+    : 0
+}
+
+/** Appends one frame to the dev ring and trims it back to 400. */
+function pushGateRecord(
+  m: THREE.ShaderMaterial | null,
+  facts: Omit<VeilGateEntry, 't' | 'muGate'>,
+) {
+  const log = (window.__veilGateLog ??= [])
+  log.push({
+    t: Math.round(performance.now() * 10) / 10,
+    ...facts,
+    muGate: m ? Math.round((m.uniforms.uGate?.value ?? -1) * 1000) / 1000 : 'no-mat',
+  })
+  if (log.length > 400) log.splice(0, log.length - 400)
+}
+
 function WakeOn() {
   const invalidate = useThree((s) => s.invalidate)
   const lastScroll = useRef(0)
@@ -371,15 +401,7 @@ function VeilBand({ painted, content, scroller, slab, sheet }: BandProps) {
     const liveH = sheet.current?.offsetHeight ?? content.h
     const [pw, ph] = paintedSize()
     const matched = pw > 0 && pw === liveW && ph === liveH
-    if (!matched) {
-      matchedSinceRef.current = null
-    } else if (matchedSinceRef.current === null) {
-      matchedSinceRef.current = performance.now()
-    }
-    const gate =
-      matched && matchedSinceRef.current !== null
-        ? veilReturn(performance.now() - matchedSinceRef.current, VEIL_DEFAULTS)
-        : 0
+    const gate = stepGate(matched, matchedSinceRef)
 
     const cu = passes.copy.material.uniforms
     cu.tMap.value = texture
@@ -428,15 +450,11 @@ function VeilBand({ painted, content, scroller, slab, sheet }: BandProps) {
       // Diagnostic ring log for instruments — one record per frame that
       // reached this point, so a probe can see WHICH frames ran and what
       // the gate saw on each, not just the last survivor.
-      const log = (window.__veilGateLog ??= [])
-      log.push({
-        t: Math.round(performance.now() * 10) / 10,
+      pushGateRecord(m, {
         pw, ph, liveW, liveH,
         cw: content.w, ch: content.h,
         matched, gate: Math.round(gate * 1000) / 1000,
-        muGate: m ? Math.round((m.uniforms.uGate?.value ?? -1) * 1000) / 1000 : 'no-mat',
       })
-      if (log.length > 400) log.splice(0, log.length - 400)
     }
 
     // A mismatch (or a still-closing return) must keep frames flowing:

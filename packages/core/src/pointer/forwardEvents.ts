@@ -635,6 +635,65 @@ export interface ForwardResult {
 }
 
 /**
+ * Cancel unwinds a press without a click. The element that heard the down
+ * hears the cancel even when the ray has since left it, so `mirror.active`
+ * wins over whatever is under the pointer now.
+ */
+function forwardCancel(
+  root: HTMLElement,
+  mirror: PointerMirror,
+  pointer: ForwardPointerSample,
+  target: Element | null,
+  x: number,
+  y: number,
+): ForwardResult | null {
+  const cancelTarget = mirror.active ?? target
+  if (cancelTarget) {
+    relay(cancelTarget, new PointerEvent('pointercancel', pointerInit(pointer, x, y)))
+  }
+  swapChainAttr(root, mirror.active, null, ACTIVE_ATTR)
+  mirror.active = null
+  if (surfaceDragPointerId === pointer.pointerId) surfaceDragPointerId = null
+  flushPendingClears()
+  return cancelTarget ? { target: cancelTarget, focused: false } : null
+}
+
+/**
+ * The release half — up, click, then the focus fixup a synthetic click does
+ * not run. Returns whether focus actually landed on the target.
+ */
+function forwardRelease(
+  root: HTMLElement,
+  target: Element,
+  init: PointerEventInit & MouseEventInit,
+  pointer: ForwardPointerSample,
+): boolean {
+  modality = 'pointer' // a release is a pointer interaction even without its down
+  if (surfaceDragPointerId === pointer.pointerId) surfaceDragPointerId = null
+  relay(target, new PointerEvent('pointerup', init))
+  relay(target, new MouseEvent('mouseup', init))
+  relay(target, new MouseEvent('click', init))
+  const m = mirrorOf(root)
+  swapChainAttr(root, m.active, null, ACTIVE_ATTR)
+  m.active = null
+  // Synthetic clicks don't run the browser's focus fixup, so do it by hand.
+  const focusable = target.closest<HTMLElement>(FOCUSABLE)
+  let focused = false
+  if (focusable) {
+    focusable.focus({ preventScroll: true })
+    focused = document.activeElement === focusable
+  } else {
+    const active = document.activeElement
+    if (active instanceof HTMLElement) active.blur()
+  }
+  // Departures deferred during the drag unwind now — the order a real
+  // capture ends in: the up reaches its target first, then the boundary
+  // events fire.
+  flushPendingClears()
+  return focused
+}
+
+/**
  * Forward a pointer interaction to the DOM subtree rooted at `root`.
  * (u, v) are texture coordinates: u ∈ [0,1] left→right, v ∈ [0,1] bottom→top
  * (GL convention — we flip v internally to DOM's top-down y).
@@ -682,17 +741,7 @@ export function forwardPointer(
   )
     return null
   mirror.sample = pointer
-  if (kind === 'cancel') {
-    const cancelTarget = mirror.active ?? target
-    if (cancelTarget) {
-      relay(cancelTarget, new PointerEvent('pointercancel', pointerInit(pointer, x, y)))
-    }
-    swapChainAttr(root, mirror.active, null, ACTIVE_ATTR)
-    mirror.active = null
-    if (surfaceDragPointerId === pointer.pointerId) surfaceDragPointerId = null
-    flushPendingClears()
-    return cancelTarget ? { target: cancelTarget, focused: false } : null
-  }
+  if (kind === 'cancel') return forwardCancel(root, mirror, pointer, target, x, y)
   // Nothing here accepts the pointer — the ray passed through clear glass.
   // Whatever this surface was hovering, it is not hovering it now.
   if (!target) {
@@ -729,27 +778,7 @@ export function forwardPointer(
     relay(target, new PointerEvent('pointerdown', init))
     relay(target, new MouseEvent('mousedown', init))
   } else {
-    modality = 'pointer' // a release is a pointer interaction even without its down
-    if (surfaceDragPointerId === pointer.pointerId) surfaceDragPointerId = null
-    relay(target, new PointerEvent('pointerup', init))
-    relay(target, new MouseEvent('mouseup', init))
-    relay(target, new MouseEvent('click', init))
-    const m = mirrorOf(root)
-    swapChainAttr(root, m.active, null, ACTIVE_ATTR)
-    m.active = null
-    // Synthetic clicks don't run the browser's focus fixup, so do it by hand.
-    const focusable = target.closest<HTMLElement>(FOCUSABLE)
-    if (focusable) {
-      focusable.focus({ preventScroll: true })
-      focused = document.activeElement === focusable
-    } else {
-      const active = document.activeElement
-      if (active instanceof HTMLElement) active.blur()
-    }
-    // Departures deferred during the drag unwind now — the order a real
-    // capture ends in: the up reaches its target first, then the boundary
-    // events fire.
-    flushPendingClears()
+    focused = forwardRelease(root, target, init, pointer)
   }
 
   return { target, focused }

@@ -40,6 +40,7 @@ import {
   deepestElementAt,
   forwardPointer,
   lastPointerPlace,
+  type PointerPlace,
   nudgeSelect,
   passIsWarmUp,
   passNeedsHostTail,
@@ -79,7 +80,11 @@ import {
   restoreAuthoredWrites,
   type AuthoredWrites,
 } from './surfaceWrites'
-import { surfaceTierLadder, type SurfaceResolution } from './surfaceSourceRuntime'
+import {
+  surfaceTierLadder,
+  type SurfaceResolution,
+  type SurfacePartPublication,
+} from './surfaceSourceRuntime'
 import {
   MATCH_DOM_DISTANCE,
   createMatchDomResult,
@@ -199,11 +204,36 @@ export function SurfaceWebGL({ surface, part, ...props }: SurfaceWebGLProps) {
   return <SurfacePresenter {...props} store={store} partId={partId} tunneled={tunneled} />
 }
 
+/** A pointer arrival in a Surface's own texture coordinates. */
+interface ArrivalUv {
+  u: number
+  v: number
+}
+
 interface PresenterProps extends Omit<SurfaceWebGLProps, 'surface' | 'part'> {
   store: SurfaceStore
   partId: SurfacePartId
   /** True when the host renders this on behalf of a page declaration. */
   tunneled: boolean
+}
+
+/**
+ * Everything a presenter reads off its part's live runtime. A null runtime is
+ * the ordinary pre-registration state, not an error — the stand-ins let the
+ * hooks below stay unconditional either way.
+ */
+function readRuntimeFacts(part: SurfacePartPublication | null) {
+  const runtime = part?.runtime ?? null
+  const [width, height] = part?.size ?? [1, 1]
+  return {
+    runtime,
+    texture: runtime?.texture() ?? null,
+    width,
+    height,
+    mirrorU: runtime?.mirrorU() ?? false,
+    sourceEl: runtime?.element ?? null,
+    chromeRadii: runtime?.chrome().radii,
+  }
 }
 
 function SurfacePresenter({
@@ -271,10 +301,9 @@ function SurfacePresenter({
     useMemo(() => () => store.part(partId), [store, partId]),
     useMemo(() => () => store.part(partId), [store, partId]),
   )
-  const runtime = part?.runtime ?? null
-  const texture = runtime?.texture() ?? null
+  const { runtime, texture, width, height, mirrorU, sourceEl, chromeRadii } =
+    readRuntimeFacts(part)
   const reportError = useMemo(() => store.reportError.bind(store), [store])
-  const [width, height] = part?.size ?? [1, 1]
   const presenterPart = useMemo<SurfacePartValue | null>(
     () =>
       part
@@ -300,7 +329,6 @@ function SurfacePresenter({
   const pointerEventsRef = useLatest(pointerEvents)
   const storeRef = useLatest(store)
   const partRef = useLatest(part)
-  const mirrorU = runtime?.mirrorU() ?? false
   const mirrorURef = useLatest(mirrorU)
   const widthRef = useLatest(width)
   const heightRef = useLatest(height)
@@ -357,7 +385,6 @@ function SurfacePresenter({
   // texture alpha: the authoring contract puts the app background on the
   // content root, so the region outside a rounded corner is opaquely
   // PAINTED — measured at 255,255,255,255 under a 14px-radius card.
-  const chromeRadii = runtime?.chrome().radii
   useEffect(() => {
     radiusUniforms.current.uMunariSize.value.set(width, height)
     const corners = Array.isArray(radius) ? radius : [radius, radius, radius, radius]
@@ -469,7 +496,6 @@ function SurfacePresenter({
   // source root becomes the group's unit element and its interior is
   // browser-traversed DOM (docs/focus.md). Outside one, nothing changes.
   const focusGroup = use(FocusGroupContext)
-  const sourceEl = runtime?.element ?? null
   const label = store.name
   useEffect(() => {
     if (!focusGroup || !sourceEl) return
@@ -488,40 +514,40 @@ function SurfacePresenter({
   /** Position-attribute version as of the last frame; null until seen once. */
   const rerouteRef = useRef<number | null>(null)
 
-  useFrame(() => {
-    const mesh = meshRef.current
-    if (!mesh) return
-
-    if (effectivePlacement === 'match-dom') {
-      const pageRoot = part?.pageRoot
-      const rect = pageRoot?.getBoundingClientRect()
-      if (pageRoot) reportUnmatchableChain(pageRoot, reportError)
-      if (rect && rectIsMeasurable(rect)) {
-        const match = matchDomTransform(
-          camera,
-          rect,
-          { width: size.width, height: size.height },
-          MATCH_DOM_DISTANCE,
-          matchRef.current,
-        )
-        mesh.position.copy(match.position)
-        mesh.quaternion.copy(match.quaternion)
-        mesh.scale.copy(match.scale)
-        mesh.updateMatrixWorld()
-      }
+  /** Stand the mesh on the page box this Surface is matched to. */
+  const placeOnDom = (mesh: THREE.Mesh) => {
+    const pageRoot = part?.pageRoot
+    const rect = pageRoot?.getBoundingClientRect()
+    if (pageRoot) reportUnmatchableChain(pageRoot, reportError)
+    if (rect && rectIsMeasurable(rect)) {
+      const match = matchDomTransform(
+        camera,
+        rect,
+        { width: size.width, height: size.height },
+        MATCH_DOM_DISTANCE,
+        matchRef.current,
+      )
+      mesh.position.copy(match.position)
+      mesh.quaternion.copy(match.quaternion)
+      mesh.scale.copy(match.scale)
+      mesh.updateMatrixWorld()
     }
+  }
 
-    // The pointer is retold after the world moves. Events raycast the
-    // geometry as it stood when they arrived, so under a per-frame
-    // deformation every relay is one frame stale — and when the hand then
-    // stops, the LAST event's routing is never corrected while the geometry
-    // settles on. Measured (2026-08-20, instruments/fisheye-pointer): at
-    // 40px event spacing over 22px rows the relayed hover landed more than
-    // one row off and stayed there. A position-attribute version bump is
-    // the deformation's own receipt (deformSurfaceGeometry sets it), and
-    // r3f's `events.update` re-raycasts the pointer's last position against
-    // the current pose — hover twins and coordinates catch up within a
-    // frame, whether the hand moved or only the matter did.
+  /**
+   * Retell the pointer after the world moves. Events raycast the geometry as
+   * it stood when they arrived, so under a per-frame deformation every relay
+   * is one frame stale — and when the hand stops, the LAST event's routing is
+   * never corrected while the geometry settles. Measured (2026-08-20,
+   * instruments/fisheye-pointer): at 40px event spacing over 22px rows the
+   * relayed hover landed more than one row off and stayed there.
+   */
+  const rerouteAfterDeform = (mesh: THREE.Mesh) => {
+    // A position-attribute version bump is the deformation's own receipt
+    // (deformSurfaceGeometry sets it), and r3f's `events.update` re-raycasts
+    // the pointer's last position against the current pose — hover twins and
+    // coordinates catch up within a frame, whether the hand moved or only the
+    // matter did.
     const position = mesh.geometry?.getAttribute('position')
     // An interleaved position carries its version on the shared buffer, and
     // no Surface geometry interleaves — the plain-attribute case is the law
@@ -535,8 +561,10 @@ function SurfacePresenter({
         events.update?.()
       }
       rerouteRef.current = position.version
-    }
+  }
+  }
 
+  const stepLod = (mesh: THREE.Mesh) => {
     // Dynamic LOD: compare projected screen density — device px per CSS px
     // — against the current tier every LOD_EVERY-th frame. `proposeTier`
     // re-rasterizes through the normal onpaint path, so the source's upload
@@ -573,7 +601,15 @@ function SurfacePresenter({
     } else {
       lod.proposed = proposal
       lod.agree = 1
-    }
+  }
+  }
+
+  useFrame(() => {
+    const mesh = meshRef.current
+    if (!mesh) return
+    if (effectivePlacement === 'match-dom') placeOnDom(mesh)
+    rerouteAfterDeform(mesh)
+    stepLod(mesh)
   })
 
   useEffect(() => {
@@ -838,108 +874,127 @@ function SurfacePresenter({
   // The hold flip is the signal because it fires synchronously from the
   // frame that moved it — a React commit would arrive a frame after the
   // state it is correcting.
-  useEffect(
-    () =>
-      store.subscribeHold(() => {
-        // One microtask later: the losing flip fires from tick() and the
-        // gaining flip from inside a presenter's post-draw callback, and a
-        // burst dispatched there would run consumer DOM handlers in the
-        // middle of the frame. The branch is re-read at run time, so two
-        // flips inside one frame act once each on whatever is then true.
-        queueMicrotask(() => {
-          const el = elementRef.current
-          if (!store.canvasHearsPointer()) {
-            const active = pressedRef.current
-            pressedRef.current = null
-            if (controls) controls.enabled = true
-            if (!el) return
-            if (active) {
-              forwardPointer(el, 0, 0, 'cancel', {
-                ...active,
-                button: 0,
-                buttons: 0,
-                pressure: 0,
-              })
-            }
-            clearPointerState(el)
-            // The page copy under the pointer declares its own cursor now.
-            gl.domElement.style.cursor = ''
-            // The cleared twin is handed to the PAGE copy in this same
-            // microtask. The gaining side hears only the browser, and real
-            // :hover cannot re-form until a trusted contact hit-tests the
-            // copy — the pointer gate's canvas stays solid until its first
-            // post-flip miss. Measured 2026-08-20: a pointer sweeping
-            // through a landing showed two frames with no hover on either
-            // copy. Buttonless only, for the arrival burst's reason.
-            const pageRoot = partRef.current?.pageRoot
-            const landingPlace = lastPointerPlace()
-            if (pageRoot && landingPlace && landingPlace.sample.buttons === 0) {
-              bridgeHover(pageRoot, landingPlace.x, landingPlace.y)
-            }
-            return
-          }
-          if (!el) return
-          if (pointerEventsRef.current === 'none') return
-          const place = lastPointerPlace()
-          if (!place) return
-          // A held button means some pointer's press story is still open —
-          // possibly another surface's live relayed drag, which one
-          // buttonless document-bubbling move would break mid-gesture. The
-          // pointer's first real motion re-arms hover instead.
-          if (place.sample.buttons !== 0) return
-          // The arrival position must be honest per placement. A match-dom
-          // mesh stands on the page box, so the box maps client → uv. A
-          // manual mesh is wherever the scene put it — the page box would
-          // stamp hover on content the pointer is not over — so the mesh
-          // itself answers, through the same instance raycast every live
-          // pointer event uses (hit policy and corner mask included).
-          let u: number
-          let v: number
-          if (effectivePlacement === 'match-dom') {
-            const rect = partRef.current?.pageRoot?.getBoundingClientRect()
-            if (!rect || !rectIsMeasurable(rect)) return
-            if (
-              place.x < rect.left ||
-              place.x > rect.right ||
-              place.y < rect.top ||
-              place.y > rect.bottom
-            )
-              return
-            u = (place.x - rect.left) / rect.width
-            v = 1 - (place.y - rect.top) / rect.height
-          } else {
-            const mesh = meshRef.current
-            if (!mesh) return
-            const rect = gl.domElement.getBoundingClientRect()
-            if (!rectIsMeasurable(rect)) return
-            camera.updateMatrixWorld()
-            mesh.updateWorldMatrix(true, false)
-            const raycaster = new THREE.Raycaster()
-            raycaster.setFromCamera(
-              new THREE.Vector2(
-                ((place.x - rect.left) / rect.width) * 2 - 1,
-                -((place.y - rect.top) / rect.height) * 2 + 1,
-              ),
-              camera,
-            )
-            const hits: THREE.Intersection[] = []
-            mesh.raycast(raycaster, hits)
-            const uv = hits.sort((a, b) => a.distance - b.distance)[0]?.uv
-            if (!uv) return
-            u = mirrorURef.current ? 1 - uv.x : uv.x
-            v = uv.y
-          }
-          // Hover only: a press held across the flip died at the edge
-          // (its side of the story), so the arrival move carries no buttons.
-          const hit = forwardPointer(el, u, v, 'move', {
-            ...place.sample,
-            button: 0,
-            buttons: 0,
-            pressure: 0,
-          })
-          if (hit) gl.domElement.style.cursor = surfaceCursorAt(hit.target)
+  useEffect(() => {
+    // Losing: close the canvas's story out. The active relayed press is
+    // cancelled, the stamped twins cleared, and the hover twin handed to the
+    // page copy until the browser's own :hover resumes.
+    const closeOutLosingSide = (el: HTMLElement | null) => {
+      const active = pressedRef.current
+      pressedRef.current = null
+      if (controls) controls.enabled = true
+      if (!el) return
+      if (active) {
+        forwardPointer(el, 0, 0, 'cancel', {
+          ...active,
+          button: 0,
+          buttons: 0,
+          pressure: 0,
         })
-      }),
+      }
+      clearPointerState(el)
+      // The page copy under the pointer declares its own cursor now.
+      gl.domElement.style.cursor = ''
+      // The cleared twin is handed to the PAGE copy in this same microtask.
+      // The gaining side hears only the browser, and real :hover cannot
+      // re-form until a trusted contact hit-tests the copy — the pointer
+      // gate's canvas stays solid until its first post-flip miss. Measured
+      // 2026-08-20: a pointer sweeping through a landing showed two frames
+      // with no hover on either copy. Buttonless only, for the arrival
+      // burst's reason.
+      const pageRoot = partRef.current?.pageRoot
+      const landingPlace = lastPointerPlace()
+      if (pageRoot && landingPlace && landingPlace.sample.buttons === 0) {
+        bridgeHover(pageRoot, landingPlace.x, landingPlace.y)
+      }
+    }
+
+    /**
+     * Where the pointer's last trusted position lands in this Surface's uv,
+     * or null when it lands nowhere. A match-dom mesh stands on the page box,
+     * so the box maps client → uv. A manual mesh is wherever the scene put it
+     * — the page box would stamp hover on content the pointer is not over —
+     * so the mesh itself answers, through the same instance raycast every
+     * live pointer event uses (hit policy and corner mask included).
+     */
+    const arrivalUv = (place: PointerPlace): ArrivalUv | null => {
+      if (effectivePlacement === 'match-dom') {
+        const rect = partRef.current?.pageRoot?.getBoundingClientRect()
+        if (!rect || !rectIsMeasurable(rect)) return null
+        if (
+          place.x < rect.left ||
+          place.x > rect.right ||
+          place.y < rect.top ||
+          place.y > rect.bottom
+        )
+          return null
+        return {
+          u: (place.x - rect.left) / rect.width,
+          v: 1 - (place.y - rect.top) / rect.height,
+        }
+      }
+      const mesh = meshRef.current
+      if (!mesh) return null
+      const rect = gl.domElement.getBoundingClientRect()
+      if (!rectIsMeasurable(rect)) return null
+      camera.updateMatrixWorld()
+      mesh.updateWorldMatrix(true, false)
+      const raycaster = new THREE.Raycaster()
+      raycaster.setFromCamera(
+        new THREE.Vector2(
+          ((place.x - rect.left) / rect.width) * 2 - 1,
+          -((place.y - rect.top) / rect.height) * 2 + 1,
+        ),
+        camera,
+      )
+      const hits: THREE.Intersection[] = []
+      mesh.raycast(raycaster, hits)
+      const uv = hits.sort((a, b) => a.distance - b.distance)[0]?.uv
+      if (!uv) return null
+      return { u: mirrorURef.current ? 1 - uv.x : uv.x, v: uv.y }
+    }
+
+    // Gaining: re-arm with one forwarded move at the pointer's last trusted
+    // position, so the hover the page copy was showing continues on the
+    // texture instead of popping off at the swap.
+    const rearmGainingSide = (el: HTMLElement) => {
+      if (pointerEventsRef.current === 'none') return
+      const place = lastPointerPlace()
+      if (!place) return
+      // A held button means some pointer's press story is still open —
+      // possibly another surface's live relayed drag, which one buttonless
+      // document-bubbling move would break mid-gesture. The pointer's first
+      // real motion re-arms hover instead.
+      if (place.sample.buttons !== 0) return
+      const arrival = arrivalUv(place)
+      if (!arrival) return
+      // Hover only: a press held across the flip died at the edge (its side
+      // of the story), so the arrival move carries no buttons.
+      const hit = forwardPointer(el, arrival.u, arrival.v, 'move', {
+        ...place.sample,
+        button: 0,
+        buttons: 0,
+        pressure: 0,
+      })
+      if (hit) gl.domElement.style.cursor = surfaceCursorAt(hit.target)
+    }
+
+    return store.subscribeHold(() => {
+      // One microtask later: the losing flip fires from tick() and the
+      // gaining flip from inside a presenter's post-draw callback, and a
+      // burst dispatched there would run consumer DOM handlers in the middle
+      // of the frame. The branch is re-read at run time, so two flips inside
+      // one frame act once each on whatever is then true.
+      queueMicrotask(() => {
+        const el = elementRef.current
+        if (!store.canvasHearsPointer()) {
+          closeOutLosingSide(el)
+          return
+        }
+        if (!el) return
+        rearmGainingSide(el)
+      })
+    })
+  },
     [store, controls, partRef, effectivePlacement, pointerEventsRef, camera, gl, mirrorURef],
   )
 

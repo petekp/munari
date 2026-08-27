@@ -1048,6 +1048,165 @@ interface FlightProps {
  *  copy and the sheet are the same picture. */
 const FILM_PRESENTER = 'genie-film'
 
+/** Half-height of the visible SVG mark in CSS px, or null before the icon
+ *  has a laid-out box — a flight measured then would pour into nothing. */
+function measureMarkHalf(slotEl: HTMLElement): number | null {
+  const mark = slotEl.querySelector<SVGGraphicsElement>('.gen-icon-base')
+  const svg = mark?.ownerSVGElement
+  const viewBoxHeight = svg?.viewBox.baseVal.height ?? 0
+  const markHalf =
+    mark && svg && viewBoxHeight > 0
+      ? (mark.getBBox().height / viewBoxHeight) * svg.clientHeight * 0.5
+      : 0
+  return Number.isFinite(markHalf) && markHalf > 0 ? markHalf : null
+}
+
+/** Advances the drive one frame and returns the wall it landed at, if any.
+ *  The four modes are exclusive; only `clock` and `spring` can land. */
+function stepDrive(
+  d: DriveBox,
+  f: GenieFlight,
+  live: boolean,
+  restoring: boolean,
+  elapsed: number,
+  dt: number,
+  kick: (v: number) => void,
+): 0 | 1 | null {
+  let landAt: 0 | 1 | null = null
+  if (!live && d.mode === 'clock') {
+    d.clockStart = null
+    d.t = restoring ? 1 : 0
+  } else if (d.mode === 'clock') {
+    if (d.clockStart === null) d.clockStart = elapsed
+    const p = Math.min(1, (elapsed - d.clockStart) / f.duration)
+    if (restoring) {
+      // The pour-out ease ARRIVES WITH SPEED (pinned ~0.8 of linear),
+      // and that speed is what the settle consumes: convert the end
+      // slope from t/s to px/s through the midline's full journey.
+      d.t = 1 - pourOut(p)
+      if (p >= 1) {
+        d.t = 0
+        d.mode = 'settle'
+        d.settleTau = 0
+        d.settleV = genieRestBottomVelocity(-POUR_END_SLOPE / f.duration, f.params)
+      }
+    } else {
+      // easeInCubic, not easeInOutCubic: the minimize now has to
+      // ARRIVE WITH SPEED too (slope 3 at p = 1, MIN_END_SLOPE) to
+      // feed the dock's landing ring — and its flat START (slope 0)
+      // is what a slow-motion catch relies on, so the titlebar still
+      // reads as at-rest a beat into the flight.
+      d.t = easeInCubic(p)
+      if (p >= 1) {
+        d.clockStart = null
+        // f.duration, not MINIMIZE_S: a slow-motion flight arrives
+        // slowly, and the container's ring answers the ACTUAL landing
+        // speed — same divisor the settle handoff uses above.
+        kick((MIN_END_SLOPE / f.duration) * Math.abs(f.params.dockY))
+        landAt = 1
+      }
+    }
+  } else if (d.mode === 'grab') {
+    const next = driveGrabStep({ t: d.t, v: d.v }, d.grabT, dt)
+    d.t = next.t
+    d.v = next.v
+  } else if (d.mode === 'spring') {
+    // A release can beat the texture handoff. Preserve its committed
+    // spring state, but do not spend that momentum while the page copy
+    // still owns the pixels.
+    if (live) {
+      const next = driveSpringStep({ t: d.t, v: d.v }, d.target, dt, DRIVE_DEFAULTS)
+      d.t = next.t
+      d.v = next.v
+      if (next.done) {
+        if (d.target === 1) {
+          // A dock landing's momentum is now the tile's ring — the
+          // sheet is inside the slot, with no room to wobble on its own.
+          kick(next.arrivalV * Math.abs(f.params.dockY))
+          landAt = 1
+        } else {
+          // A rest landing keeps the bottom edge's exact crossing speed.
+          // t is decreasing into the wall, so the edge moves UP at contact
+          // and the spring's first swing continues in that same direction.
+          d.mode = 'settle'
+          d.settleTau = 0
+          d.settleV = genieRestBottomVelocity(-next.arrivalV, f.params)
+        }
+      }
+    }
+  } else {
+    // settle: the sheet is home (t = 0 exactly). Its top edge has already
+    // arrived; the bottom edge was the last part moving, so that edge keeps
+    // its momentum while the top stays planted. The bounce is the end of
+    // the restore motion, not a new motion after it.
+    d.settleTau += dt
+    if (genieSettleDone(d.settleTau, d.settleV, SETTLE_DEFAULTS)) {
+      landAt = 0
+    }
+  }
+  return landAt
+}
+
+/** Writes the dock tile's pose and the two probe-readable custom properties. */
+function writeSlot(
+  slot: HTMLButtonElement,
+  f: GenieFlight,
+  params: GenieParams,
+  visibleT: number,
+  alive: boolean,
+  ring: Ring,
+) {
+  const pose = dockPose(visibleT, alive ? ring.t : 0, alive ? ring.v : 0)
+  const top = genieWarp(0.5, 0, visibleT, params)
+  const bottom = genieWarp(0.5, 1, visibleT, params)
+  const markHalf = f.markHalf * pose.sy
+  const fill = dockFill(top.y, bottom.y, f.params.dockY + markHalf)
+  slot.style.transform = `scale(${pose.sx}, ${pose.sy})`
+  // Non-visual flight progress for the frame-by-frame hold probe.
+  // `--pour` now means spatial icon fill and is deliberately nonlinear,
+  // so it cannot also stand in for the drive without inventing jumps.
+  slot.style.setProperty('--gen-progress', visibleT.toFixed(4))
+  slot.style.setProperty('--pour', fill.toFixed(3))
+}
+
+/** Rewrites every vertex of the sheet and its film twin from the same warp
+ *  sample. A missing squeeze attribute is allocated on first use. */
+function deformSheets(
+  geometries: readonly (THREE.PlaneGeometry | null)[],
+  f: GenieFlight,
+  params: GenieParams,
+  visibleT: number,
+  wobble: number,
+) {
+  for (const geometry of geometries) {
+    if (!geometry) continue
+    const pos = plainAttribute(geometry, 'position')
+    if (!pos) continue
+    // Allocated on first use rather than at construction: the geometry
+    // is the library's, its vertex count is the LOD tier's to choose,
+    // and this is the only code that knows the attribute exists.
+    let sq = plainAttribute(geometry, 'squeeze')
+    if (!sq || sq.count !== pos.count) {
+      sq = new THREE.BufferAttribute(new Float32Array(pos.count), 1)
+      geometry.setAttribute('squeeze', sq)
+    }
+    const squeeze = sq
+    // genieWarp speaks the mesh's own centered y-up space; the deform
+    // seam speaks content px, top-down — the arithmetic on both sides
+    // of the call is that adapter. The wobble weights by v so the
+    // landing spring moves the bottom edge while the already-arrived
+    // top edge stays put.
+    deformSurfaceGeometry(geometry, [f.w, f.h], (x, y, i) => {
+      const v = y / f.h
+      const p2 = genieWarp(x / f.w, v, visibleT, params)
+      squeeze.setX(i, p2.k)
+      return { x: p2.x + f.w / 2, y: f.h / 2 - (p2.y + wobble * v) }
+    })
+    squeeze.needsUpdate = true
+  }
+}
+
+
 function Flight({
   win,
   dir,
@@ -1149,7 +1308,6 @@ function Flight({
     const dt = Math.min(rawDt, 1 / 20)
     const d = air.drive
     const restoring = dir === 'restoring'
-    let landAt: 0 | 1 | null = null
 
     const geo = geoRef.current
     if (!geo) return
@@ -1162,77 +1320,9 @@ function Flight({
     // drawn frame then appears already in hand.
     const live = !store.film.holdsPage()
 
-    if (!live && d.mode === 'clock') {
-      d.clockStart = null
-      d.t = restoring ? 1 : 0
-    } else if (d.mode === 'clock') {
-      if (d.clockStart === null) d.clockStart = clock.elapsedTime
-      const p = Math.min(1, (clock.elapsedTime - d.clockStart) / f.duration)
-      if (restoring) {
-        // The pour-out ease ARRIVES WITH SPEED (pinned ~0.8 of linear),
-        // and that speed is what the settle consumes: convert the end
-        // slope from t/s to px/s through the midline's full journey.
-        d.t = 1 - pourOut(p)
-        if (p >= 1) {
-          d.t = 0
-          d.mode = 'settle'
-          d.settleTau = 0
-          d.settleV = genieRestBottomVelocity(-POUR_END_SLOPE / f.duration, f.params)
-        }
-      } else {
-        // easeInCubic, not easeInOutCubic: the minimize now has to
-        // ARRIVE WITH SPEED too (slope 3 at p = 1, MIN_END_SLOPE) to
-        // feed the dock's landing ring — and its flat START (slope 0)
-        // is what a slow-motion catch relies on, so the titlebar still
-        // reads as at-rest a beat into the flight.
-        d.t = easeInCubic(p)
-        if (p >= 1) {
-          d.clockStart = null
-          // f.duration, not MINIMIZE_S: a slow-motion flight arrives
-          // slowly, and the container's ring answers the ACTUAL landing
-          // speed — same divisor the settle handoff uses above.
-          kickRing(win, (MIN_END_SLOPE / f.duration) * Math.abs(f.params.dockY))
-          landAt = 1
-        }
-      }
-    } else if (d.mode === 'grab') {
-      const next = driveGrabStep({ t: d.t, v: d.v }, d.grabT, dt)
-      d.t = next.t
-      d.v = next.v
-    } else if (d.mode === 'spring') {
-      // A release can beat the texture handoff. Preserve its committed
-      // spring state, but do not spend that momentum while the page copy
-      // still owns the pixels.
-      if (live) {
-        const next = driveSpringStep({ t: d.t, v: d.v }, d.target, dt, DRIVE_DEFAULTS)
-        d.t = next.t
-        d.v = next.v
-        if (next.done) {
-          if (d.target === 1) {
-            // A dock landing's momentum is now the tile's ring — the
-            // sheet is inside the slot, with no room to wobble on its own.
-            kickRing(win, next.arrivalV * Math.abs(f.params.dockY))
-            landAt = 1
-          } else {
-            // A rest landing keeps the bottom edge's exact crossing speed.
-            // t is decreasing into the wall, so the edge moves UP at contact
-            // and the spring's first swing continues in that same direction.
-            d.mode = 'settle'
-            d.settleTau = 0
-            d.settleV = genieRestBottomVelocity(-next.arrivalV, f.params)
-          }
-        }
-      }
-    } else {
-      // settle: the sheet is home (t = 0 exactly). Its top edge has already
-      // arrived; the bottom edge was the last part moving, so that edge keeps
-      // its momentum while the top stays planted. The bounce is the end of
-      // the restore motion, not a new motion after it.
-      d.settleTau += dt
-      if (genieSettleDone(d.settleTau, d.settleV, SETTLE_DEFAULTS)) {
-        landAt = 0
-      }
-    }
+    const landAt = stepDrive(d, f, live, restoring, clock.elapsedTime, dt, (v) =>
+      kickRing(win, v),
+    )
 
     // A grab can track before acquisition so it never loses the hand. Until
     // the DOM copy has actually hidden, though, render the sheet at its wall
@@ -1260,45 +1350,8 @@ function Flight({
     // This is spatial absorption, not another animation or a guessed time.
     const alive = ringing && !dockRingDone(ring.t, ring.v)
     const slot = slotOf(win)
-    if (slot) {
-      const pose = dockPose(visibleT, alive ? ring.t : 0, alive ? ring.v : 0)
-      const top = genieWarp(0.5, 0, visibleT, params)
-      const bottom = genieWarp(0.5, 1, visibleT, params)
-      const markHalf = f.markHalf * pose.sy
-      const fill = dockFill(top.y, bottom.y, f.params.dockY + markHalf)
-      slot.style.transform = `scale(${pose.sx}, ${pose.sy})`
-      // Non-visual flight progress for the frame-by-frame hold probe.
-      // `--pour` now means spatial icon fill and is deliberately nonlinear,
-      // so it cannot also stand in for the drive without inventing jumps.
-      slot.style.setProperty('--gen-progress', visibleT.toFixed(4))
-      slot.style.setProperty('--pour', fill.toFixed(3))
-    }
-    for (const geometry of [geo, filmGeoRef.current]) {
-      if (!geometry) continue
-      const pos = plainAttribute(geometry, 'position')
-      if (!pos) continue
-      // Allocated on first use rather than at construction: the geometry
-      // is the library's, its vertex count is the LOD tier's to choose,
-      // and this is the only code that knows the attribute exists.
-      let sq = plainAttribute(geometry, 'squeeze')
-      if (!sq || sq.count !== pos.count) {
-        sq = new THREE.BufferAttribute(new Float32Array(pos.count), 1)
-        geometry.setAttribute('squeeze', sq)
-      }
-      const squeeze = sq
-      // genieWarp speaks the mesh's own centered y-up space; the deform
-      // seam speaks content px, top-down — the arithmetic on both sides
-      // of the call is that adapter. The wobble weights by v so the
-      // landing spring moves the bottom edge while the already-arrived
-      // top edge stays put.
-      deformSurfaceGeometry(geometry, [f.w, f.h], (x, y, i) => {
-        const v = y / f.h
-        const p2 = genieWarp(x / f.w, v, visibleT, params)
-        squeeze.setX(i, p2.k)
-        return { x: p2.x + f.w / 2, y: f.h / 2 - (p2.y + wobble * v) }
-      })
-      squeeze.needsUpdate = true
-    }
+    if (slot) writeSlot(slot, f, params, visibleT, alive, ring)
+    deformSheets([geo, filmGeoRef.current], f, params, visibleT, wobble)
 
     if (landAt === null) return
     landed.current = true
@@ -1466,12 +1519,20 @@ interface GestureApi {
   desk: () => DOMRect | null
 }
 
+interface ArmedWindow {
+  kind: 'armed-window'
+  id: number
+  win: WinId
+  x0: number
+  y0: number
+}
+
 // Every state after `idle` names its window. It has to now: four sheets
 // can be in the air at once, so "the flight" is never a thing the rig
 // can refer to without saying which.
 type GestState =
   | { kind: 'idle' }
-  | { kind: 'armed-window'; id: number; win: WinId; x0: number; y0: number }
+  | ArmedWindow
   | { kind: 'armed-tile'; id: number; win: WinId; y0: number }
   | {
       kind: 'move'
@@ -1621,68 +1682,73 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
       )
     }
 
+    // A titlebar drag does nothing until it has travelled CLAIM_PX.
+    const dragArmedWindow = (e: PointerEvent, g: ArmedWindow) => {
+      const dx = e.clientX - g.x0
+      const dy = e.clientY - g.y0
+      if (Math.hypot(dx, dy) < CLAIM_PX) return
+      // A titlebar drag has two jobs, and the drag's own direction
+      // picks between them. Down is where the dock is, so a pull
+      // within POUR_CONE of straight down hands the window to the
+      // genie — the scene's signature gesture, and the one the
+      // window's own copy tells you to try. Anything else moves the
+      // window, which is what a titlebar does everywhere else. The
+      // cone is narrow enough that "down and over" still repositions:
+      // only a deliberate pull toward the dock pours.
+      if (dy > 0 && Math.abs(dx) <= dy * POUR_CONE) {
+        if (api.current.beginGrabMinimize(g.win)) {
+          const a = api.current.airOf(g.win)
+          if (a) beginGrip(e, g.win, genieWarp(0.5, 0.5, 0, a.f.params).y, 0)
+        }
+        return
+      }
+      const el = api.current.elOf(g.win)
+      const desk = api.current.desk()
+      if (!el || !desk) {
+        gest.current = { kind: 'idle' }
+        return
+      }
+      const r = el.getBoundingClientRect()
+      const p = api.current.posOf(g.win)
+      gest.current = {
+        kind: 'move',
+        id: g.id,
+        win: g.win,
+        el,
+        x0: g.x0,
+        y0: g.y0,
+        ox: p.x,
+        oy: p.y,
+        lx: p.x,
+        ly: p.y,
+        // A window may hang off an edge of the desk; it may not be
+        // lost over one, and it may never end up behind the dock
+        // where its own bay is. KEEP is the graspable remainder — a
+        // titlebar's worth, in every direction.
+        bounds: {
+          minX: desk.left + KEEP - r.right,
+          maxX: desk.right - KEEP - r.left,
+          minY: desk.top - r.top,
+          maxY: desk.bottom - KEEP - r.top,
+        },
+      }
+      // Captured on the WINDOW, not the canvas: the canvas is
+      // pointer-events:none whenever nothing is airborne, which is
+      // most of the time a window gets dragged.
+      try {
+        el.setPointerCapture(g.id)
+      } catch {
+        /* a pointer that already ended cannot be captured — fine */
+      }
+      hold()
+    }
+
     const onMove = (e: PointerEvent) => {
       if (!e.isTrusted) return
       const g = gest.current
 
       if (g.kind === 'armed-window' && e.pointerId === g.id) {
-        const dx = e.clientX - g.x0
-        const dy = e.clientY - g.y0
-        if (Math.hypot(dx, dy) < CLAIM_PX) return
-        // A titlebar drag has two jobs, and the drag's own direction
-        // picks between them. Down is where the dock is, so a pull
-        // within POUR_CONE of straight down hands the window to the
-        // genie — the scene's signature gesture, and the one the
-        // window's own copy tells you to try. Anything else moves the
-        // window, which is what a titlebar does everywhere else. The
-        // cone is narrow enough that "down and over" still repositions:
-        // only a deliberate pull toward the dock pours.
-        if (dy > 0 && Math.abs(dx) <= dy * POUR_CONE) {
-          if (api.current.beginGrabMinimize(g.win)) {
-            const a = api.current.airOf(g.win)
-            if (a) beginGrip(e, g.win, genieWarp(0.5, 0.5, 0, a.f.params).y, 0)
-          }
-          return
-        }
-        const el = api.current.elOf(g.win)
-        const desk = api.current.desk()
-        if (!el || !desk) {
-          gest.current = { kind: 'idle' }
-          return
-        }
-        const r = el.getBoundingClientRect()
-        const p = api.current.posOf(g.win)
-        gest.current = {
-          kind: 'move',
-          id: g.id,
-          win: g.win,
-          el,
-          x0: g.x0,
-          y0: g.y0,
-          ox: p.x,
-          oy: p.y,
-          lx: p.x,
-          ly: p.y,
-          // A window may hang off an edge of the desk; it may not be
-          // lost over one, and it may never end up behind the dock
-          // where its own bay is. KEEP is the graspable remainder — a
-          // titlebar's worth, in every direction.
-          bounds: {
-            minX: desk.left + KEEP - r.right,
-            maxX: desk.right - KEEP - r.left,
-            minY: desk.top - r.top,
-            maxY: desk.bottom - KEEP - r.top,
-          },
-        }
-        // Captured on the WINDOW, not the canvas: the canvas is
-        // pointer-events:none whenever nothing is airborne, which is
-        // most of the time a window gets dragged.
-        try {
-          el.setPointerCapture(g.id)
-        } catch {
-          /* a pointer that already ended cannot be captured — fine */
-        }
-        hold()
+        dragArmedWindow(e, g)
       } else if (g.kind === 'armed-tile' && e.pointerId === g.id) {
         if (g.y0 - e.clientY >= CLAIM_PX && api.current.beginGrabRestore(g.win)) {
           const a = api.current.airOf(g.win)
@@ -1999,6 +2065,53 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
   const raise = (win: WinId) =>
     setOrder((o) => (o[o.length - 1] === win ? o : [...o.filter((x) => x !== win), win]))
 
+  // Only the film window carries pixels it does not own. Freezing is the
+  // last step so a refusal costs nothing: a null return leaves the page
+  // holding its copy and the gesture never starts.
+  const attachFilm = (
+    measured: GenieFlight,
+    id: WinId,
+    innerEl: HTMLElement | null | undefined,
+  ): GenieFlight | null => {
+    const source = filmController.source
+    if (!source || !innerEl) return null
+
+    // Freeze only after all geometry is valid. A null result means that
+    // the decoder has not presented its first real frame yet, so the page
+    // keeps the hold and the gesture is safely refused.
+    const required = filmController.freeze()
+    if (!required) return null
+    const style = getComputedStyle(innerEl)
+    const radius = Math.max(
+      0,
+      (Number.parseFloat(style.borderBottomLeftRadius) || 0) -
+        (Number.parseFloat(style.borderLeftWidth) || 0),
+    )
+    const token = ++nextFilmToken.current
+    measured.film = {
+      source,
+      required,
+      token,
+      presentation: {
+        transferId: token,
+        frame: required,
+        presentationRevision: ++nextFilmPresentationRevision.current,
+      },
+      radius,
+    }
+    probeFilm({
+      type: 'require',
+      token: measured.film.token,
+      direction: dockedRef.current.includes(id) ? 'restoring' : 'minimizing',
+      frame: required,
+      presentationRevision: measured.film.presentation.presentationRevision,
+      source,
+      canvas: filmController.canvas,
+      video: filmController.video,
+    })
+    return measured
+  }
+
   // Both gestures measure at the moment of the press: visibility:hidden
   // keeps the window's box in flow, so the rects are always live.
   const measure = (id: WinId, slow: boolean, duration: number): GenieFlight | null => {
@@ -2010,14 +2123,8 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
       getComputedStyle(slotEl).getPropertyValue('--gen-mouth'),
     )
     if (!Number.isFinite(mouth) || mouth <= 0) return null
-    const mark = slotEl.querySelector<SVGGraphicsElement>('.gen-icon-base')
-    const svg = mark?.ownerSVGElement
-    const viewBoxHeight = svg?.viewBox.baseVal.height ?? 0
-    const markHalf =
-      mark && svg && viewBoxHeight > 0
-        ? (mark.getBBox().height / viewBoxHeight) * svg.clientHeight * 0.5
-        : 0
-    if (!Number.isFinite(markHalf) || markHalf <= 0) return null
+    const markHalf = measureMarkHalf(slotEl)
+    if (markHalf === null) return null
     // The window inside the capture root. The difference between the two
     // boxes IS the shade's band, so the drop stays stated once, in CSS.
     const innerEl = winRefs.current[id]?.querySelector<HTMLElement>('.gen-window')
@@ -2056,44 +2163,7 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
       duration: duration * (id === 'scheda' ? 1.8 : 1) * (slow ? SLOW : 1),
     }
     if (id !== FILM_WIN) return measured
-
-    const source = filmController.source
-    if (!source || !innerEl) return null
-
-    // Freeze only after all geometry is valid. A null result means that
-    // the decoder has not presented its first real frame yet, so the page
-    // keeps the hold and the gesture is safely refused.
-    const required = filmController.freeze()
-    if (!required) return null
-    const style = getComputedStyle(innerEl)
-    const radius = Math.max(
-      0,
-      (Number.parseFloat(style.borderBottomLeftRadius) || 0) -
-        (Number.parseFloat(style.borderLeftWidth) || 0),
-    )
-    const token = ++nextFilmToken.current
-    measured.film = {
-      source,
-      required,
-      token,
-      presentation: {
-        transferId: token,
-        frame: required,
-        presentationRevision: ++nextFilmPresentationRevision.current,
-      },
-      radius,
-    }
-    probeFilm({
-      type: 'require',
-      token: measured.film.token,
-      direction: dockedRef.current.includes(id) ? 'restoring' : 'minimizing',
-      frame: required,
-      presentationRevision: measured.film.presentation.presentationRevision,
-      source,
-      canvas: filmController.canvas,
-      video: filmController.video,
-    })
-    return measured
+    return attachFilm(measured, id, innerEl)
   }
 
   // Every takeoff runs through here. The only thing refused is a SECOND

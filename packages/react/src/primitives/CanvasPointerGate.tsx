@@ -260,6 +260,14 @@ export function CanvasPointerGate({
     }
 
     const onClick = (event: MouseEvent) => {
+      // The relay's own click is the delivery this window exists to protect,
+      // and it is the one event the coordinate test cannot tell from the
+      // browser's. A source parked at page (0,0) that fills the viewport
+      // puts the parked copy of a control within a pixel of the hand that
+      // pressed it, so the retelling reads as the cold click and gets eaten
+      // (measured 2026-08-25: the crystal scene's uncorrected press relayed
+      // pointerup and mouseup into the key, then lost the click).
+      if (isRelayed(event)) return
       const pending = suppressedClick
       if (!pending || performance.now() > pending.until) {
         suppressedClick = null

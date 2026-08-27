@@ -427,6 +427,76 @@ the material's own uniforms, which catches the r3f uniform-copy trap
 a compile check for the scene's program: a shader that fails to link
 draws nothing and the coverage clause reads 0 instead of the full rect.
 
+## crystal-pointer
+
+Local gate: the key you SEE under the crystal cursor's tip is the key the
+click reaches. `npm run gate:crystal-pointer`.
+
+The crystal scene floats a cut solid of glass over the whole page — a real
+stone with a crown, a girdle and a pavilion, not a picture of one — and
+traces a ray through it: into a crown facet, bouncing between the inside
+faces until its light runs out, then out through the pavilion and across the
+air gap to the page. At the pointer's own hotspot the page arrives 63.0
+CSS px away from where the hand is, against a 52 px key pitch on the pad
+underneath. The DOM never moved, so a click delivered at the hand's own
+coordinates lands a whole key away from the one the eye picked. The scene
+closes that by handing Munari's relay the same trace the shader drew with,
+through the authored `raycast` prop.
+
+That is two copies of one function, which is the shape of bug this repo is
+worst at noticing: the picture comes from the shader, so it stays perfect
+while the copies drift, and only the click goes somewhere nobody looked.
+`crystalLaw.test.ts` pins them by transcription, which catches an edit to
+one and not the other. It cannot catch a disagreement about what the numbers
+MEAN, and this gate can, because the two only ever actually meet in a
+browser.
+
+Four clauses. With the scene's correction switch off, a click at a key's
+own layout box types that key — which also fixes the frame the other two are
+measured in. With it on, the same click types a DIFFERENT key. Then the
+pixels: two frames grabbed with the hand held still, one per switch
+position, so the crystal's pose is identical in both and everything optical
+cancels in the difference. What is left is the hover twin moving from one
+key to another, drawn through the same glass, and the tip has to sit inside
+the patch that came on.
+
+Measured 2026-08-25 at the committed tuning, aiming at G: 1013 px came on
+and 868 px went off across the window, and inside a 6 px disc at the hotspot
+50 px came on against 0 that went off.
+
+"Came on" means DARKER. The pad is lit paper and the highlighted key fills
+near-black, so the sign that says which way the highlight moved is a palette
+fact, not a physical one. `SIGN` in `__diff` is the only place it lives.
+
+The last clause counts pixels rather than averaging their brightness, and
+that is not a detail. An average over the same disc is a tug of war: the
+disc is a fixed 6 px circle and the hotspot sits inside the silhouette, so
+part of it reads undisplaced page that gets darker as the old key's
+highlight leaves. A count ignores that; an average would need its floor
+retuned every time the edge profile moved.
+
+This clause failed once at a flat-topped version of the solid, and the
+reason is worth keeping. A slab with parallel faces deviates nothing at
+normal incidence, so a flat top is a window over its interior and a lens
+only at its rim — 12 px in along the arrow's axis there were zero displaced
+pixels at all. The median displacement over the crystal's 42,880 interior
+pixels was 2.7 px against 21.2 at the hotspot. The fix was the shape, not
+the gate: crown facets sprung from the girdle now cover 88% of the outline's
+area and the same median is 62.9 px. The stone was later cut a pavilion as
+well, so the exit face is not flat either.
+
+There is no fifth clause asking where the HAND's key ended up. It sounds like a
+second independent reading and is not one — the two keys differ and the
+glass is one function of position, so "B is under the tip" already says G is
+not.
+
+The first clause has teeth beyond the scene. Munari's canvas gate swallows
+the browser's own click after a press it already relayed, and it decides by
+coordinate. An uncorrected press puts the relay's retelling within a pixel
+of the hand, so the retelling was what got eaten — hover correct, press
+correct, nothing typed. `CanvasPointerGate.tsx` now checks `isRelayed`
+first, and this clause is what would catch that guard being dropped.
+
 ## chrome-over-canvas
 
 `npm run gate:chrome-over-canvas` — page UI painted above a

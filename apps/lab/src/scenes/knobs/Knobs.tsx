@@ -1844,6 +1844,108 @@ function SlabRim({ rect }: { rect: RailRect }) {
   return <mesh geometry={assets.geometry} material={assets.material} userData={{ matter: true }} />
 }
 
+/** Where a carry has the slab: sprung x and y, in world units. */
+interface PanelPose {
+  x: SpringState
+  y: SpringState
+}
+
+/** Tracks a live carry. The grip is taken where the hand landed, and an
+ *  axis that can scroll moves the page under the slab instead of the slab. */
+function carryPanel(
+  m: PanelMotion,
+  pose: PanelPose,
+  view: PanelViewportState,
+  pointerX: number,
+  pointerY: number,
+) {
+  const scroller = view.scroller
+  if (panelDrag.active) {
+    if (!m.grab) {
+      // Grab where the hand landed, not the panel center — the slab
+      // must not jump into the hand.
+      m.grab = {
+        dx: pose.x.x - pointerX,
+        dy: pose.y.x - pointerY,
+        clientX: m.client.x,
+        clientY: m.client.y,
+        scrollLeft: scroller?.scrollLeft ?? 0,
+        scrollTop: scroller?.scrollTop ?? 0,
+      }
+      m.carried = true
+    }
+    if (view.overflowX && scroller) {
+      scroller.scrollLeft = m.grab.scrollLeft - (m.client.x - m.grab.clientX)
+    } else {
+      m.target.x = pointerX + m.grab.dx
+    }
+    if (view.overflowY && scroller) {
+      scroller.scrollTop = m.grab.scrollTop - (m.client.y - m.grab.clientY)
+    } else {
+      m.target.y = pointerY + m.grab.dy
+    }
+  } else {
+    m.grab = null
+  }
+}
+
+/** Advances the slab toward its berth, then pins any axis the page is
+ *  scrolling — a scrolled axis has no spring, only the scroll offset. */
+function settlePanel(
+  m: PanelMotion,
+  pose: PanelPose,
+  view: PanelViewportState,
+  rect: RailRect,
+  dt: number,
+) {
+  const scroller = view.scroller
+  if (berthPinned(panelResize.active, m.carried)) {
+    // A hand on the corner is not a throw. The glide spring is the
+    // slab's momentum AFTER a carry; a resize has no travel to have
+    // momentum about — the berth shift is bookkeeping on w/2. Run one
+    // through the other and the berth runs away from the hand: it
+    // moves at half the hand's speed, and a spring this soft trails a
+    // ramp by 2ζ/ωn × rate. Measured on this very integrator: 15 px
+    // behind at a slow 200 px/s, 46 px at an ordinary 600, 108 px at
+    // 1400 — then 0.88 s of swing across the mark 11 times once the
+    // hand stops. So while the grip is held, the un-carried slab IS
+    // its berth. Same rule the walls already keep: the hand is not a
+    // bounce, and it is not a glide either.
+    //
+    // The berth comes from `rect` here, not from the effect below
+    // that mirrors it: the effect runs a commit later, and during a
+    // drag every commit is a frame of lag. Zeroing the velocity is
+    // not tidiness — `leanY`/`leanX` read it, so a nonzero one would
+    // tilt the slab as if it were being flown across the glass.
+    if (!view.overflowX) {
+      m.target.x = rect.worldX
+      pose.x.x = rect.worldX
+      pose.x.v = 0
+    }
+    if (!view.overflowY) {
+      m.target.y = rect.worldY
+      pose.y.x = rect.worldY
+      pose.y.v = 0
+    }
+  } else {
+    if (!view.overflowX) stepSpring(pose.x, m.target.x, PANEL_GLIDE_SPRING, dt)
+    if (!view.overflowY) stepSpring(pose.y, m.target.y, PANEL_GLIDE_SPRING, dt)
+  }
+
+  if (view.overflowX && scroller) {
+    pose.x.x =
+      PANEL_EDGE_INSET + rect.w / 2 - scroller.scrollLeft - window.innerWidth / 2
+    pose.x.v = 0
+    m.target.x = pose.x.x
+  }
+  if (view.overflowY && scroller) {
+    pose.y.x =
+      window.innerHeight / 2 - PANEL_EDGE_INSET - rect.h / 2 + scroller.scrollTop
+    pose.y.v = 0
+    m.target.y = pose.y.x
+  }
+}
+
 /** Where a carry took hold: the offset from the slab's origin to the
  *  finger, and the page the finger took hold ON. The scroll pair is what
  *  keeps the grip under the finger when the page scrolls mid-carry. */
@@ -1869,7 +1971,7 @@ interface PanelMotion {
   /** Last REAL screen pointer, CSS px — the carry gesture's ruler. */
   client: { x: number; y: number }
   /** The carried pose, or null when the slab is at rest on its rail. */
-  pose: { x: SpringState; y: SpringState } | null
+  pose: PanelPose | null
   target: { x: number; y: number }
   /** Non-null exactly while a carry is in progress. */
   grab: PanelGrab | null
@@ -2004,7 +2106,6 @@ function PanelRig({
   useFrame((_, dt) => {
     const m = motion.current
     const view = viewport.current
-    const scroller = view.scroller
     if (!m.pose) {
       m.pose = {
         x: { x: rect.worldX, v: 0 },
@@ -2012,6 +2113,7 @@ function PanelRig({
       }
       m.target = { x: rect.worldX, y: rect.worldY }
     }
+    const pose = m.pose
     const pointerX = m.client.x - window.innerWidth / 2
     const pointerY = window.innerHeight / 2 - m.client.y
     if (m.overflowX && !view.overflowX) {
@@ -2026,78 +2128,8 @@ function PanelRig({
     }
     m.overflowX = view.overflowX
     m.overflowY = view.overflowY
-    if (panelDrag.active) {
-      if (!m.grab) {
-        // Grab where the hand landed, not the panel center — the slab
-        // must not jump into the hand.
-        m.grab = {
-          dx: m.pose.x.x - pointerX,
-          dy: m.pose.y.x - pointerY,
-          clientX: m.client.x,
-          clientY: m.client.y,
-          scrollLeft: scroller?.scrollLeft ?? 0,
-          scrollTop: scroller?.scrollTop ?? 0,
-        }
-        m.carried = true
-      }
-      if (view.overflowX && scroller) {
-        scroller.scrollLeft = m.grab.scrollLeft - (m.client.x - m.grab.clientX)
-      } else {
-        m.target.x = pointerX + m.grab.dx
-      }
-      if (view.overflowY && scroller) {
-        scroller.scrollTop = m.grab.scrollTop - (m.client.y - m.grab.clientY)
-      } else {
-        m.target.y = pointerY + m.grab.dy
-      }
-    } else {
-      m.grab = null
-    }
-    if (berthPinned(panelResize.active, m.carried)) {
-      // A hand on the corner is not a throw. The glide spring is the
-      // slab's momentum AFTER a carry; a resize has no travel to have
-      // momentum about — the berth shift is bookkeeping on w/2. Run one
-      // through the other and the berth runs away from the hand: it
-      // moves at half the hand's speed, and a spring this soft trails a
-      // ramp by 2ζ/ωn × rate. Measured on this very integrator: 15 px
-      // behind at a slow 200 px/s, 46 px at an ordinary 600, 108 px at
-      // 1400 — then 0.88 s of swing across the mark 11 times once the
-      // hand stops. So while the grip is held, the un-carried slab IS
-      // its berth. Same rule the walls already keep: the hand is not a
-      // bounce, and it is not a glide either.
-      //
-      // The berth comes from `rect` here, not from the effect below
-      // that mirrors it: the effect runs a commit later, and during a
-      // drag every commit is a frame of lag. Zeroing the velocity is
-      // not tidiness — `leanY`/`leanX` read it, so a nonzero one would
-      // tilt the slab as if it were being flown across the glass.
-      if (!view.overflowX) {
-        m.target.x = rect.worldX
-        m.pose.x.x = rect.worldX
-        m.pose.x.v = 0
-      }
-      if (!view.overflowY) {
-        m.target.y = rect.worldY
-        m.pose.y.x = rect.worldY
-        m.pose.y.v = 0
-      }
-    } else {
-      if (!view.overflowX) stepSpring(m.pose.x, m.target.x, PANEL_GLIDE_SPRING, dt)
-      if (!view.overflowY) stepSpring(m.pose.y, m.target.y, PANEL_GLIDE_SPRING, dt)
-    }
-
-    if (view.overflowX && scroller) {
-      m.pose.x.x =
-        PANEL_EDGE_INSET + rect.w / 2 - scroller.scrollLeft - window.innerWidth / 2
-      m.pose.x.v = 0
-      m.target.x = m.pose.x.x
-    }
-    if (view.overflowY && scroller) {
-      m.pose.y.x =
-        window.innerHeight / 2 - PANEL_EDGE_INSET - rect.h / 2 + scroller.scrollTop
-      m.pose.y.v = 0
-      m.target.y = m.pose.y.x
-    }
+    carryPanel(m, pose, view, pointerX, pointerY)
+    settlePanel(m, pose, view, rect, dt)
 
     // The viewport's edges are walls: a thrown slab bumps and keeps
     // most of its speed; a held one is pressed dead against the glass

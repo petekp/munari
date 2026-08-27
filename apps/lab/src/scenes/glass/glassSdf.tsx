@@ -548,6 +548,72 @@ const tmpPanelInv = new THREE.Matrix4()
 const tmpRot = new THREE.Matrix3()
 const tmpPos = new THREE.Vector3()
 
+/** Fills the ripple uniform slots newest-first and returns how many it used.
+ *
+ *  NEWEST first because the array is chronological: walking it forwards
+ *  spends the budget on the oldest — the faintest, nearly-retired ripples —
+ *  and silently drops the fresh ones a viewer is actually watching. That was
+ *  harmless while every emitter capped its own array at MAX_RIPPLES; a
+ *  satellite laying down a wake as it crosses does not, so the policy has to
+ *  live here, where the budget is. */
+function uploadRipples(
+  slots: THREE.Vector4[],
+  vels: THREE.Vector2[],
+  srcs: number[],
+  ripples: readonly GlassRipple[],
+  q: GlassParams,
+  now: number,
+): number {
+  if (q.rippleAmp <= 0) return 0
+  let nr = 0
+  for (let k = ripples.length - 1; k >= 0 && nr < MAX_RIPPLES; k--) {
+    const rp = ripples[k]
+    const age = now - rp.t0
+    if (age < 0 || age > q.rippleLife) continue
+    // The retirement window folds into the amplitude here — one multiply per
+    // ripple per frame instead of per pixel, and it keeps the shader's loop
+    // describing physics only.
+    const fade = rippleRetirement(age, q.rippleLife)
+    if (fade <= 0) continue
+    vels[nr].set(rp.vx ?? 0, rp.vy ?? 0)
+    srcs[nr] = Math.max(rp.src ?? q.rippleSource, 1e-4)
+    slots[nr++].set(rp.x, rp.y, age, rp.amp * q.rippleAmp * fade)
+  }
+  return nr
+}
+
+/** Stamps any glow still waiting for a clock, then fills the glow uniform
+ *  slots and returns how many it used.
+ *
+ *  `t0 < 0` means "stamp me", and it is honoured HERE — for every panel's
+ *  array, unconditionally — because this is the code that owns `now`.
+ *
+ *  It used to live in the scene, next to the array the CTA pushes into. That
+ *  worked for exactly one array: when the strike began spilling onto the card
+ *  as well, the card's glows kept t0 = -1 forever, `now - (-1)` was always
+ *  past glowLife, and the upload skipped every one of them in silence. The
+ *  spill never drew a frame, and the two knobs aimed at it read as dead
+ *  controls. Stamping where the upload happens is what makes that class of
+ *  bug unable to recur — an array that reaches the compositor is an array
+ *  that gets a clock. */
+function uploadGlows(
+  slots: THREE.Vector4[],
+  glows: GlassGlow[],
+  q: GlassParams,
+  now: number,
+): number {
+  for (const gw of glows) if (gw.t0 < 0) gw.t0 = now
+  if (q.glowAmp <= 0) return 0
+  let ng = 0
+  for (const gw of glows) {
+    if (ng >= MAX_GLOWS) break
+    const age = now - gw.t0
+    if (age < 0 || age > q.glowLife) continue
+    slots[ng++].set(gw.x, gw.y, age, gw.amp * q.glowAmp)
+  }
+  return ng
+}
+
 export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [number, number, number] }) {
   const size = useThree((s) => s.size)
   const dpr = useThree((s) => s.viewport.dpr)
@@ -801,32 +867,14 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
       u.uRippleDecay.value = Math.max(q.rippleDecay, 1e-3)
       u.uRippleInk.value = q.rippleInk
       u.uRippleWaveSpeed.value = Math.max(q.rippleWaveSpeed, 1e-3)
-      let nr = 0
-      if (q.rippleAmp > 0) {
-        const slots = u.uRipples.value
-        const vels = u.uRippleVel.value
-        const srcs = u.uRippleSrcR.value
-        // NEWEST first. The array is chronological, so walking it forwards
-        // spends the budget on the oldest — the faintest, nearly-retired
-        // ripples — and silently drops the fresh ones a viewer is actually
-        // watching. That was harmless while every emitter capped its own
-        // array at MAX_RIPPLES; a satellite laying down a wake as it crosses
-        // does not, so the policy has to live here, where the budget is.
-        for (let k = p.ripples.length - 1; k >= 0 && nr < MAX_RIPPLES; k--) {
-          const rp = p.ripples[k]
-          const age = now - rp.t0
-          if (age < 0 || age > q.rippleLife) continue
-          // The retirement window folds into the amplitude here — one
-          // multiply per ripple per frame instead of per pixel, and it keeps
-          // the shader's loop describing physics only.
-          const fade = rippleRetirement(age, q.rippleLife)
-          if (fade <= 0) continue
-          vels[nr].set(rp.vx ?? 0, rp.vy ?? 0)
-          srcs[nr] = Math.max(rp.src ?? q.rippleSource, 1e-4)
-          slots[nr++].set(rp.x, rp.y, age, rp.amp * q.rippleAmp * fade)
-        }
-      }
-      u.uRippleCount.value = nr
+      u.uRippleCount.value = uploadRipples(
+        u.uRipples.value,
+        u.uRippleVel.value,
+        u.uRippleSrcR.value,
+        p.ripples,
+        q,
+        now,
+      )
 
       // Same age-not-timestamp discipline as the ripples above. A strike is
       // retired by its own life, so a panel nobody has pressed uploads a
@@ -834,29 +882,7 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
       u.uGlowColor.value.set(q.glowColor)
       u.uGlowReach.value = Math.max(q.glowReach, 1e-3)
       u.uGlowLife.value = Math.max(q.glowLife, 1e-3)
-      // `t0 < 0` means "stamp me", and it is honoured HERE — for every panel's
-      // array, unconditionally — because this is the code that owns `now`.
-      //
-      // It used to live in the scene, next to the array the CTA pushes into.
-      // That worked for exactly one array: when the strike began spilling onto
-      // the card as well, the card's glows kept t0 = -1 forever, `now - (-1)`
-      // was always past glowLife, and the upload skipped every one of them in
-      // silence. The spill never drew a frame, and the two knobs aimed at it
-      // read as dead controls. Stamping where the upload happens is what makes
-      // that class of bug unable to recur — an array that reaches the
-      // compositor is an array that gets a clock.
-      for (const gw of p.glows) if (gw.t0 < 0) gw.t0 = now
-      let ng = 0
-      if (q.glowAmp > 0) {
-        const slots = u.uGlows.value
-        for (const gw of p.glows) {
-          if (ng >= MAX_GLOWS) break
-          const age = now - gw.t0
-          if (age < 0 || age > q.glowLife) continue
-          slots[ng++].set(gw.x, gw.y, age, gw.amp * q.glowAmp)
-        }
-      }
-      u.uGlowCount.value = ng
+      u.uGlowCount.value = uploadGlows(u.uGlows.value, p.glows, q, now)
 
       gl.setRenderTarget(dst)
       gl.render(glassScene, quadCam)

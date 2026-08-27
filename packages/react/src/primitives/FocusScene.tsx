@@ -601,6 +601,134 @@ export function FocusScene({
       }
     }
 
+    /**
+     * Arrows move the CURSOR, not the DOM's focus. Below unit altitude the
+     * DOM owns them: leaf proxies already stepped their physics, carets and
+     * scroll containers keep native behavior, and an engaged panel scrolls
+     * its committed content.
+     */
+    const keyAtArrow = (e: KeyboardEvent, loc: Located, dir: Dir) => {
+      // Modified arrows belong to the platform (OS window management,
+      // word navigation) — never route them.
+      if (e.altKey || e.ctrlKey || e.metaKey) return
+      if (loc.level === 'interior') return
+      if (loc.level === 'unit' && isEngaged(loc.groupId)) return
+      e.preventDefault()
+      handleArrow(dir, loc.level === 'unit' ? loc.groupId : cursorRef.current)
+    }
+
+    /** At the scene root: Tab walks the ring, Enter descends, Escape cues home. */
+    const keyAtScene = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // No focus move at the root — subscribers decide (camera home).
+        notify({ level: 'scene', cause: 'escape' })
+        return
+      }
+      const ring = ringOrder()
+      if (ring.length === 0) return // no groups — browser's Tab, unchanged
+      const cursor = cursorRef.current
+      const live = cursor !== null && ring.includes(cursor)
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        // With a live cursor, advance FROM it, never re-enter it: after
+        // Escape-from-unit, Tab means "move on". With none, this is scene
+        // ENTRY: select what the user is looking at (entry policy), not
+        // ring[0] — the ratified fix for "first Tab landed off-screen".
+        const next = live
+          ? step(ring, cursor, e.shiftKey ? -1 : 1)
+          : (entryTarget(ring) ?? step(ring, null, e.shiftKey ? -1 : 1))
+        if (next) focusInteriorEdge(next, e.shiftKey ? -1 : 1, 'ring')
+        return
+      }
+      if (e.key !== 'Enter' && e.key !== 'F2') return
+      e.preventDefault()
+      focusUnit(live ? cursor : (entryTarget(ring) ?? ring[0]!), 'ring')
+    }
+
+    /** On a unit: Tab traverses (members when engaged, the ring when not),
+     *  Enter descends, Escape releases or ascends. */
+    const keyAtUnit = (e: KeyboardEvent, groupId: string) => {
+      if (e.key !== 'Tab' && e.key !== 'Enter' && e.key !== 'F2' && e.key !== 'Escape')
+        return
+      e.preventDefault()
+      if (e.key === 'Enter' || e.key === 'F2') {
+        descend(groupId)
+        return
+      }
+      if (e.key === 'Escape') {
+        if (isEngaged(groupId)) {
+          // RELEASE: un-latch and cue the camera home in one gesture.
+          // Focus HOLDS on the unit — no focusin fires — so the event
+          // dispatches manually; the next Tab resumes the ring from here.
+          setEngaged(groupId, false)
+          notify({ level: 'unit', groupId, cause: 'release' })
+          return
+        }
+        focusEl(gl.domElement, 'ascend')
+        return
+      }
+      if (isEngaged(groupId)) {
+        // Trapped: at descended altitude Tab traverses THIS group's
+        // members — forward enters at the first element, backward at the
+        // last (wrap grammar). A read-only engaged panel has no interior:
+        // Tab is dead until Escape releases.
+        const flat = memberSequences(groupId).flat()
+        const target = e.shiftKey ? flat[flat.length - 1] : flat[0]
+        if (target) focusEl(target, 'interior')
+        return
+      }
+      const next = step(ringOrder(), groupId, e.shiftKey ? -1 : 1)
+      if (next) focusInteriorEdge(next, e.shiftKey ? -1 : 1, 'ring')
+    }
+
+    /** Leaving a member boundary: wrap inside an engaged group, else hand
+     *  the ring the next unit in `sign`'s direction. */
+    const exitInterior = (groupId: string, sign: 1 | -1) => {
+      if (isEngaged(groupId)) {
+        // Trap wrap: past the end → back to the other end.
+        const flat = sign === 1 ? null : memberSequences(groupId).flat()
+        const wrapped = flat ? flat[flat.length - 1] : interiorFirst(groupId)
+        if (wrapped) focusEl(wrapped, 'interior')
+        return
+      }
+      const next = step(ringOrder(), groupId, sign)
+      if (next) focusInteriorEdge(next, sign, 'exit')
+    }
+
+    /**
+     * Inside a composite member the browser owns traversal; the manager owns
+     * every member boundary (composite edges, both sides of a leaf proxy).
+     * Identity checks, not press counting (docs/focus.md tab hygiene) —
+     * interiorBoundary is the vitest-pinned decision. Enter/F2 here are the
+     * DOM's business.
+     */
+    const keyAtInterior = (e: KeyboardEvent, groupId: string) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        // Explicit unfocus clears the stack (Flutter): Enter right after
+        // must land on the FIRST tabbable, not the thing just escaped.
+        runtimes.get(groupId)?.memory.clear()
+        if (isEngaged(groupId)) {
+          // RELEASE from inside: one Escape un-latches, lands on the unit,
+          // and cues the camera home ('release' rides the focusin).
+          setEngaged(groupId, false)
+          focusUnit(groupId, 'release')
+          return
+        }
+        focusUnit(groupId, 'ascend')
+        return
+      }
+      if (e.key !== 'Tab') return
+      const active = document.activeElement
+      if (!(active instanceof HTMLElement)) return
+      const sign = e.shiftKey ? -1 : 1
+      const action = interiorBoundary(memberSequences(groupId), active, sign)
+      if (action.type === 'native') return // native Tab walks the subtree (probe 1)
+      e.preventDefault()
+      if (action.type === 'move') focusEl(action.to, 'interior')
+      else exitInterior(groupId, action.type === 'exit' ? 1 : -1)
+    }
+
     const onKeydown = (e: KeyboardEvent) => {
       if (!ROUTED_KEYS.has(e.key)) return
       // Bubble phase on document: interior markup (dismissals, editors) has
@@ -611,138 +739,21 @@ export function FocusScene({
 
       const arrowDir = ARROW_DIRS.get(e.key)
       if (arrowDir) {
-        // Modified arrows belong to the platform (OS window management,
-        // word navigation) — never route them.
-        if (e.altKey || e.ctrlKey || e.metaKey) return
-        // The DOM owns arrows below unit altitude: leaf proxies stepped
-        // their physics before this handler ran (the defaultPrevented gate
-        // above), text carets and scroll containers keep native behavior.
-        // An ENGAGED unit reads the same way — arrows scroll the committed
-        // panel's content natively; Tab is the member traversal.
-        if (loc.level === 'interior') return
-        if (loc.level === 'unit' && isEngaged(loc.groupId)) return
-        e.preventDefault()
-        handleArrow(arrowDir, loc.level === 'unit' ? loc.groupId : cursorRef.current)
+        keyAtArrow(e, loc, arrowDir)
         return
       }
 
       if (loc.level === 'scene') {
-        if (e.key === 'Tab') {
-          const ring = ringOrder()
-          if (ring.length === 0) return // no groups — browser's Tab, unchanged
-          e.preventDefault()
-          const cursor = cursorRef.current
-          // With a live cursor, advance FROM it, never re-enter it: after
-          // Escape-from-unit, Tab means "move on". With none, this is scene
-          // ENTRY: select what the user is looking at (entry policy), not
-          // ring[0] — the ratified fix for "first Tab landed off-screen".
-          const next =
-            cursor !== null && ring.includes(cursor)
-              ? step(ring, cursor, e.shiftKey ? -1 : 1)
-              : (entryTarget(ring) ?? step(ring, null, e.shiftKey ? -1 : 1))
-          if (next) focusInteriorEdge(next, e.shiftKey ? -1 : 1, 'ring')
-        } else if (e.key === 'Enter' || e.key === 'F2') {
-          const ring = ringOrder()
-          if (ring.length === 0) return
-          e.preventDefault()
-          const cursor = cursorRef.current
-          const target =
-            cursor !== null && ring.includes(cursor)
-              ? cursor
-              : (entryTarget(ring) ?? ring[0]!)
-          focusUnit(target, 'ring')
-        } else if (e.key === 'Escape') {
-          // No focus move at the root — subscribers decide (camera home).
-          notify({ level: 'scene', cause: 'escape' })
-        }
+        keyAtScene(e)
         return
       }
 
       if (loc.level === 'unit') {
-        if (e.key === 'Tab') {
-          e.preventDefault()
-          if (isEngaged(loc.groupId)) {
-            // Trapped: at descended altitude Tab traverses THIS group's
-            // members — forward enters at the first element, backward at the
-            // last (wrap grammar). A read-only engaged panel has no interior:
-            // Tab is dead until Escape releases.
-            const flat = memberSequences(loc.groupId).flat()
-            const target = e.shiftKey ? flat[flat.length - 1] : flat[0]
-            if (target) focusEl(target, 'interior')
-            return
-          }
-          const ring = ringOrder()
-          const next = step(ring, loc.groupId, e.shiftKey ? -1 : 1)
-          if (next) focusInteriorEdge(next, e.shiftKey ? -1 : 1, 'ring')
-        } else if (e.key === 'Enter' || e.key === 'F2') {
-          e.preventDefault()
-          descend(loc.groupId)
-        } else if (e.key === 'Escape') {
-          e.preventDefault()
-          if (isEngaged(loc.groupId)) {
-            // RELEASE: un-latch and cue the camera home in one gesture.
-            // Focus HOLDS on the unit — no focusin fires — so the event
-            // dispatches manually; the next Tab resumes the ring from here.
-            setEngaged(loc.groupId, false)
-            notify({ level: 'unit', groupId: loc.groupId, cause: 'release' })
-            return
-          }
-          focusEl(gl.domElement, 'ascend')
-        }
+        keyAtUnit(e, loc.groupId)
         return
       }
 
-      // interior — the browser owns traversal INSIDE a composite member;
-      // the manager owns every member boundary (composite edges, both sides
-      // of a leaf proxy). Identity checks, not press counting (docs/focus.md
-      // tab hygiene) — interiorBoundary is the vitest-pinned decision.
-      if (e.key === 'Tab') {
-        const active = document.activeElement
-        if (!(active instanceof HTMLElement)) return
-        const action = interiorBoundary(
-          memberSequences(loc.groupId),
-          active,
-          e.shiftKey ? -1 : 1,
-        )
-        if (action.type === 'native') return // native Tab walks the subtree (probe 1)
-        e.preventDefault()
-        if (action.type === 'move') {
-          focusEl(action.to, 'interior')
-        } else if (action.type === 'exit') {
-          if (isEngaged(loc.groupId)) {
-            // Trap wrap: past the last member → back to the first.
-            const first = interiorFirst(loc.groupId)
-            if (first) focusEl(first, 'interior')
-            return
-          }
-          const next = step(ringOrder(), loc.groupId, 1)
-          if (next) focusInteriorEdge(next, 1, 'exit')
-        } else {
-          if (isEngaged(loc.groupId)) {
-            // Trap wrap, backward: before the first member → the last.
-            const flat = memberSequences(loc.groupId).flat()
-            const last = flat[flat.length - 1]
-            if (last) focusEl(last, 'interior')
-            return
-          }
-          const previous = step(ringOrder(), loc.groupId, -1)
-          if (previous) focusInteriorEdge(previous, -1, 'exit')
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        // Explicit unfocus clears the stack (Flutter): Enter right after
-        // must land on the FIRST tabbable, not the thing just escaped.
-        runtimes.get(loc.groupId)?.memory.clear()
-        if (isEngaged(loc.groupId)) {
-          // RELEASE from inside: one Escape un-latches, lands on the unit,
-          // and cues the camera home ('release' rides the focusin).
-          setEngaged(loc.groupId, false)
-          focusUnit(loc.groupId, 'release')
-          return
-        }
-        focusUnit(loc.groupId, 'ascend')
-      }
-      // Enter/F2 at interior are the DOM's business.
+      keyAtInterior(e, loc.groupId)
     }
 
     const onFocusin = (e: FocusEvent) => {

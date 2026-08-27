@@ -466,6 +466,57 @@ function allSame(values: readonly number[]): boolean {
   return values.length > 0 && values.every((value) => value === values[0])
 }
 
+/** Two epochs per surface: the pair either side of a handoff shares one,
+ *  and every later surface's epoch is higher than the one it replaced. */
+function epochsFreshPerHandoff(epochs: readonly number[]): boolean {
+  return (
+    epochs.length === 7 &&
+    epochs[0]! > 0 &&
+    epochs[0] === epochs[1] &&
+    epochs[2] === epochs[3] &&
+    epochs[2]! > epochs[1]! &&
+    epochs[4]! > epochs[3]! &&
+    epochs[5]! > epochs[4]! &&
+    epochs[6]! > epochs[5]!
+  )
+}
+
+/** Same length, same values, same order. */
+function sameTrace(actual: readonly number[], expected: readonly number[]): boolean {
+  return (
+    actual.length === expected.length &&
+    actual.every((value, index) => value === expected[index])
+  )
+}
+
+type FrameSurfaceGateEvidence = Omit<FrameSurfaceGateResult, 'passed'>
+
+/** Every condition the gate asserts, read off the assembled evidence. */
+function gatePassed(
+  e: FrameSurfaceGateEvidence,
+  traceMatches: boolean,
+  acquisitionsPassed: boolean,
+): boolean {
+  return (
+    traceMatches &&
+    e.sourceIds.length === 2 &&
+    e.surfaceEpochs.length === 5 &&
+    e.staleReceipts === 0 &&
+    e.staleOldSourceReceipts === 0 &&
+    e.replacementRenderSamples.length >= 1 &&
+    e.replacementClearFrames === 0 &&
+    acquisitionsPassed &&
+    e.acquisitionClearFrames === 0 &&
+    e.acquisitionMismatchedFrames === 0 &&
+    e.liveReplacementIdentityPreserved &&
+    e.defaultUnlitVerified &&
+    e.freshSurfaceEpochPerHandoff &&
+    e.presentationFence.passed &&
+    e.backingStoreResize.passed &&
+    e.worstRgbError <= 1
+  )
+}
+
 function scheduleResult(): void {
   if (!mainGateComplete || !presentationFence || !backingStoreResize) return
   if (resultScheduled) return
@@ -525,15 +576,7 @@ function scheduleResult(): void {
           entry.textureColorSpace === THREE.SRGBColorSpace &&
           entry.textureCanvasMatchesSource,
       )
-      const freshSurfaceEpochPerHandoff =
-        receiptSurfaceEpochs.length === 7 &&
-        receiptSurfaceEpochs[0]! > 0 &&
-        receiptSurfaceEpochs[0] === receiptSurfaceEpochs[1] &&
-        receiptSurfaceEpochs[2] === receiptSurfaceEpochs[3] &&
-        receiptSurfaceEpochs[2]! > receiptSurfaceEpochs[1]! &&
-        receiptSurfaceEpochs[4]! > receiptSurfaceEpochs[3]! &&
-        receiptSurfaceEpochs[5]! > receiptSurfaceEpochs[4]! &&
-        receiptSurfaceEpochs[6]! > receiptSurfaceEpochs[5]!
+      const freshSurfaceEpochPerHandoff = epochsFreshPerHandoff(receiptSurfaceEpochs)
       const worstRgbError = Math.max(...receipts.map((entry) => entry.maxChannelError))
       const acquisitionEvidence = ACQUISITIONS.map((acquisition) => {
         const receipt = receipts.find(
@@ -586,13 +629,11 @@ function scheduleResult(): void {
         secondSourceId,
       ]
       const traceMatches =
-        generations.length === expectedGenerations.length &&
-        receiptSourceIds.length === expectedSourceIds.length &&
-        generations.every((generation, index) => generation === expectedGenerations[index]) &&
-        receiptSourceIds.every((sourceId, index) => sourceId === expectedSourceIds[index])
+        sameTrace(generations, expectedGenerations) &&
+        sameTrace(receiptSourceIds, expectedSourceIds)
 
       settled = true
-      resolveDone({
+      const evidence = {
         generations,
         receiptSourceIds,
         sourceIds,
@@ -615,23 +656,10 @@ function scheduleResult(): void {
         presentationFence: fenceEvidence,
         backingStoreResize: resizeEvidence,
         worstRgbError,
-        passed:
-          traceMatches &&
-          sourceIds.length === 2 &&
-          surfaceEpochs.length === 5 &&
-          staleReceipts === 0 &&
-          staleOldSourceReceipts === 0 &&
-          replacementRenderSamples.length >= 1 &&
-          replacementClearFrames === 0 &&
-          acquisitionsPassed &&
-          acquisitionClearFrames === 0 &&
-          acquisitionMismatchedFrames === 0 &&
-          liveReplacementIdentityPreserved &&
-          defaultUnlitVerified &&
-          freshSurfaceEpochPerHandoff &&
-          fenceEvidence.passed &&
-          resizeEvidence.passed &&
-          worstRgbError <= 1,
+      }
+      resolveDone({
+        ...evidence,
+        passed: gatePassed(evidence, traceMatches, acquisitionsPassed),
       })
     } catch (error) {
       fail(asError(error))
@@ -655,6 +683,31 @@ function completeBackingStoreResize(evidence: BackingStoreResizeEvidence): void 
 }
 
 type PresentationFencePhase = 'disabled' | 'offscreen' | 'visible' | 'done'
+
+type PresentationFenceFacts = Omit<PresentationFenceEvidence, 'passed'>
+
+/** The fence's verdict: exactly one frame receipt and one presentation
+ *  receipt, both naming the required frame, with neither earlier phase
+ *  having presented anything of its own. */
+function presentationFencePassed(e: PresentationFenceFacts): boolean {
+  const accepted = e.presentationReceipts[0]
+  return (
+    e.frameReceipts.length === 1 &&
+    e.frameReceipts[0]?.frame.sourceId === PRESENTATION_REQUIREMENT.frame.sourceId &&
+    e.frameReceipts[0]?.frame.generation ===
+      PRESENTATION_REQUIREMENT.frame.generation &&
+    e.presentationReceipts.length === 1 &&
+    accepted?.transferId === PRESENTATION_REQUIREMENT.transferId &&
+    accepted.frame.sourceId === PRESENTATION_REQUIREMENT.frame.sourceId &&
+    accepted.frame.generation === PRESENTATION_REQUIREMENT.frame.generation &&
+    accepted.presentationRevision === PRESENTATION_REQUIREMENT.presentationRevision &&
+    e.disabledDefaultClear &&
+    e.offscreenHadPixels &&
+    e.offscreenPresentationReceipts === 0 &&
+    e.visibleRgbError <= 1
+  )
+}
+
 
 function PresentationMaterial({ colorWrite }: { colorWrite: boolean }) {
   const texture = useFrameTexture()
@@ -762,36 +815,18 @@ function PresentationFenceScene() {
         return
       }
 
-      const visibleRgbError = maxError(sampled, PRESENTATION_COLORS)
-      const accepted = presentationReceipts.current[0]
-      const passed =
-        frameReceipts.current.length === 1 &&
-        frameReceipts.current[0]?.frame.sourceId ===
-          PRESENTATION_REQUIREMENT.frame.sourceId &&
-        frameReceipts.current[0]?.frame.generation ===
-          PRESENTATION_REQUIREMENT.frame.generation &&
-        presentationReceipts.current.length === 1 &&
-        accepted?.transferId === PRESENTATION_REQUIREMENT.transferId &&
-        accepted.frame.sourceId === PRESENTATION_REQUIREMENT.frame.sourceId &&
-        accepted.frame.generation === PRESENTATION_REQUIREMENT.frame.generation &&
-        accepted.presentationRevision ===
-          PRESENTATION_REQUIREMENT.presentationRevision &&
-        disabledDefaultClear.current &&
-        offscreenHadPixels.current &&
-        offscreenPresentationReceipts.current === 0 &&
-        visibleRgbError <= 1
-
-      setPhase('done')
-      completePresentationFence({
+      const facts = {
         frameReceipts: frameReceipts.current,
         presentationReceipts: presentationReceipts.current,
         disabledDefaultClear: disabledDefaultClear.current,
         offscreenHadPixels: offscreenHadPixels.current,
         offscreenRgbError: offscreenRgbError.current,
-        visibleRgbError,
+        visibleRgbError: maxError(sampled, PRESENTATION_COLORS),
         offscreenPresentationReceipts: offscreenPresentationReceipts.current,
-        passed,
-      })
+      }
+
+      setPhase('done')
+      completePresentationFence({ ...facts, passed: presentationFencePassed(facts) })
     },
     [],
   )

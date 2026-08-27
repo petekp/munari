@@ -117,6 +117,24 @@ following a forwarded click reads as keyboard unless your rules exclude
 asks of your CSS in return, with the two-line Tailwind form for each.
 Read it once; it is short, and it is the authority.
 
+## `cursor` belongs on the content, not on the canvas
+
+The canvas wears whatever cursor your content computes under the
+pointer: on every forwarded move the relay reads the hover target's
+computed `cursor` and writes it onto the canvas as an inline style, so a
+lifted `cursor: pointer` control still shows a hand.
+
+That inline style beats any rule you wrote for the canvas. Selectors
+rooted outside the content do not reach it either — the source host is a
+child of the canvas element, so a rule scoped to your page wrapper never
+matches the parked subtree at all.
+
+So state the cursor you want inside the captured tree. A scene replacing
+the OS pointer with a drawn one needs `cursor: none` on the content root
+and its descendants; without it a plain `<button>` in the content
+resolves to `default` and the arrow comes back over exactly the elements
+the pointer is aimed at.
+
 ## Focus and state chrome: paint properties only
 
 `FocusScene` stamps `[data-focus='unit' | 'interior']` and

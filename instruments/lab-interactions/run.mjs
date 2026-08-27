@@ -23,7 +23,6 @@ const chromePath = [
   '/usr/bin/chromium',
 ].filter(Boolean).find(existsSync)
 const strict = process.env.STRICT_CAPABILITY === '1'
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function skip(reason) {
   const message = `lab-interactions gate SKIPPED: ${reason}`
@@ -65,6 +64,41 @@ try {
   let page
 
   const problems = []
+  // Wait for a condition instead of guessing at a delay. Returns false on
+  // timeout rather than throwing, so the caller reports what it actually saw.
+  const settle = async (fn, timeout = 5_000, ...args) => {
+    try {
+      await page.waitForFunction(fn, { timeout, polling: 'raf' }, ...args)
+      return true
+    } catch {
+      return false
+    }
+  }
+  // A canvas element exists long before the route behind it can be driven, so
+  // each route names the handle its own checks read first.
+  const ready = {
+    // The shared room mounts its scene and its OrbitControls behind the same
+    // Suspense boundary as <Environment>, which fetches an HDR from a CDN and
+    // on a cold cache has taken upwards of ten seconds. `scene.environment`
+    // lands with that fetch, so it is the one signal that means "the room is
+    // up" for all three — including explode, whose plates come from a HUD that
+    // `&bare` never renders, leaving its scene graph legitimately empty.
+    workspace: () => Boolean(window.__r3f?.scene?.environment),
+    explode: () => Boolean(window.__r3f?.scene?.environment),
+    glass: () => Boolean(window.__r3f?.scene?.environment),
+    // Knobs and optics run their own canvases, with no shared room to wait on.
+    knobs: () => Boolean(window.__r3f?.scene?.children?.length),
+    optics: () => Boolean(window.__r3f?.scene?.getObjectByName('optics-rail-loupe')),
+    // Flight's overlay canvas stays empty until a card is airborne, so it is
+    // the dealt deck in the DOM that says the route is up.
+    flight: () => document.querySelectorAll('.l14-slot').length === 9,
+    // Logo runs its own canvas and hangs nothing on window.
+    logo: () =>
+      Boolean(
+        document.querySelector('.logo-word')?.getAttribute('data-phase') &&
+          document.querySelector('button[data-renderer="gl"]'),
+      ),
+  }
   const go = async (scene) => {
     await page?.close()
     page = await browser.newPage()
@@ -78,10 +112,23 @@ try {
     await page.goto(`http://localhost:${port}/?scene=${scene}&bare`, { waitUntil: 'load' })
     if (scene === 'logo') await page.waitForSelector('.logo-word', { timeout: 20_000 })
     else await page.waitForSelector('canvas[data-engine]', { timeout: 20_000 })
-    await sleep(550)
+    if (!(await settle(ready[scene], 30_000))) problems.push(`${scene} never finished mounting`)
   }
-  const sourcePoint = (sourceName, objectName, selector) =>
-    page.evaluate(
+  const sourcePoint = async (sourceName, objectName, selector) => {
+    // The parked DOM the point is measured FROM and the mesh it is measured
+    // ONTO arrive on different clocks; projecting before both are up returns
+    // null, which reads as a missing control rather than a slow one.
+    await settle(
+      ({ sourceName, objectName, selector }) =>
+        Boolean(
+          document
+            .querySelector(`[data-munari-source-host][data-munari-surface="${sourceName}"]`)
+            ?.querySelector(selector) && window.__r3f?.scene?.getObjectByName(objectName),
+        ),
+      5_000,
+      { sourceName, objectName, selector },
+    )
+    return page.evaluate(
       ({ sourceName, objectName, selector }) => {
         const host = document.querySelector(
           `[data-munari-source-host][data-munari-surface="${sourceName}"]`,
@@ -111,6 +158,7 @@ try {
       },
       { sourceName, objectName, selector },
     )
+  }
   const drag = async (from, to) => {
     await page.mouse.move(from[0], from[1])
     await page.mouse.down()
@@ -122,14 +170,29 @@ try {
   // Workspace: real focus enters a real field, a relayed click changes it,
   // and a panel drag cannot strand the camera controls disabled.
   await go('workspace')
+  // The reroute happens on the canvas's own focus event, so the interior
+  // control has to exist BEFORE focus is handed over — waiting afterwards
+  // would never recover, because the event has already been handled.
+  if (!(await settle(() =>
+    Boolean(document.querySelector('[data-munari-surface="workspace-pr"] input')),
+  ))) {
+    problems.push('workspace source published no control to route focus into')
+  }
   await page.evaluate(() => document.querySelector('canvas[data-engine]')?.focus())
-  await sleep(80)
-  const focus = await page.evaluate(() => ({
-    tag: document.activeElement?.tagName,
-    level: window.__focusScene?.locate?.().level,
-  }))
-  if (focus.tag !== 'INPUT' || focus.level !== 'interior') {
-    problems.push(`workspace first Tab target was ${JSON.stringify(focus)}, not an interior control`)
+  const routed = await settle(
+    () =>
+      document.activeElement?.tagName === 'INPUT' &&
+      window.__focusScene?.locate?.().level === 'interior',
+    2_000,
+  )
+  if (!routed) {
+    const focus = await page.evaluate(() => ({
+      tag: document.activeElement?.tagName,
+      level: window.__focusScene?.locate?.().level,
+    }))
+    problems.push(
+      `focusing the workspace canvas left focus at ${JSON.stringify(focus)}, not an interior control`,
+    )
   }
   const workspace = await sourcePoint('workspace-pr', 'workspace-pr', 'input')
   if (!workspace) problems.push('workspace did not expose a projected checkbox')
@@ -151,22 +214,38 @@ try {
   // nested DOM button through the transparent material.
   await go('glass')
   await page.mouse.move(100, 100)
-  await sleep(80)
-  const glassA = await page.evaluate(() => window.__r3f.camera.position.toArray())
+  // The parallax camera is damped, so it keeps moving for a while after the
+  // pointer stops. Take the baseline once it has come to rest, then wait for
+  // the second pointer position to move it off that rest.
+  const cameraAtRest = async () => {
+    await settle(() => {
+      const now = window.__r3f.camera.position.toArray().join()
+      const still = now === window.__labCam
+      window.__labCam = now
+      return still
+    }, 3_000)
+    return page.evaluate(() => window.__r3f.camera.position.toArray())
+  }
+  const glassA = await cameraAtRest()
   await page.mouse.move(1100, 700)
-  await sleep(80)
-  const glassB = await page.evaluate(() => window.__r3f.camera.position.toArray())
-  if (!changed(glassA, glassB)) problems.push('glass pointer movement did not move the parallax camera')
+  const moved = await settle(
+    (from) =>
+      window.__r3f.camera.position
+        .toArray()
+        .some((value, index) => Math.abs(value - from[index]) > 1e-3),
+    3_000,
+    glassA,
+  )
+  if (!moved) problems.push('glass pointer movement did not move the parallax camera')
   const glass = await sourcePoint('glass-pill', 'glass-pill', 'button')
   if (!glass) problems.push('glass did not expose the CTA hit point')
   else {
     const before = await page.evaluate(() => window.__glass.glows().length)
     await page.mouse.move(glass.x, glass.y)
     await page.mouse.down()
-    await sleep(60)
-    const after = await page.evaluate(() => window.__glass.glows().length)
+    const struck = await settle((count) => window.__glass.glows().length > count, 2_000, before)
     await page.mouse.up()
-    if (after <= before) problems.push('glass CTA press did not reach its DOM button')
+    if (!struck) problems.push('glass CTA press did not reach its DOM button')
   }
 
   // Knobs and Optics are full-scene canvases, not overlay routes. Their
@@ -213,7 +292,6 @@ try {
   // Flight: a delete keeps the Surface alive until it hands back, so this
   // checks two full delete cycles as well as the measured two-layer shadow.
   await go('flight')
-  await page.waitForFunction(() => document.querySelectorAll('.l14-slot').length === 9)
   const erase = async (nextCount) => {
     const button = await page.$('[data-card] .l14-del')
     await button.click()

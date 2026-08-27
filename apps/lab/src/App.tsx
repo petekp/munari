@@ -25,6 +25,7 @@ import { SelectionApp } from './scenes/selection/Selection'
 import { CandidatesApp } from './scenes/candidates/Candidates'
 import { RefractionApp } from './scenes/refraction/Refraction'
 import { GalleryApp } from './scenes/gallery/Gallery'
+import { CrystalApp } from './scenes/crystal/Crystal'
 import { SurfaceProviderProbe } from './lib/surfaceProvider'
 import { SceneNav } from './components/SceneNav'
 import { SceneBoundary } from './components/SceneBoundary'
@@ -53,6 +54,7 @@ type SceneId =
   | 'candidates'
   | 'refraction'
   | 'gallery'
+  | 'crystal'
 const SCENES = [
   'workspace',
   'glass',
@@ -69,6 +71,7 @@ const SCENES = [
   'candidates',
   'refraction',
   'gallery',
+  'crystal',
 ] as const
 
 // The nav shows only the focus five; the rest stay routable by URL so the
@@ -139,6 +142,8 @@ function pageSceneFor(scene: SceneId, chips: React.ReactNode) {
       return <RefractionApp chips={chips} />
     case 'gallery':
       return <GalleryApp chips={chips} />
+    case 'crystal':
+      return <CrystalApp chips={chips} />
     // No chips: the candidates page has its own left-column nav, and the two
     // menus side by side read as one broken one.
     case 'candidates':
@@ -146,6 +151,52 @@ function pageSceneFor(scene: SceneId, chips: React.ReactNode) {
     default:
       return null
   }
+}
+
+/** Everything inside the shared 3D room: the mounted scene, and the
+ *  furniture that scene wants standing in it. */
+function Room({ scene }: { scene: SceneId }) {
+  return (
+    <>
+      <Environment preset="city" />
+      {scene === 'glass' && <Glass />}
+      {scene === 'explode' && <Explode />}
+      {scene === 'workspace' && <Workspace />}
+      {/* The inspector's plates are unlit sheets on a light table, and
+       * a contact shadow under them would be scene furniture pretending
+       * to be paint — in the one scene whose subject IS which paint is
+       * whose. */}
+      {scene !== 'explode' && scene !== 'glass' && (
+        <ContactShadows position={[0, -0.15, 0]} opacity={0.5} blur={2.2} scale={20} />
+      )}
+      {/* Glass frames itself. It is the one scene that claims to be a
+          PAGE rather than a room, so it owns its camera outright and
+          the shared rig has to get out of the way — not merely be
+          disabled. A disabled OrbitControls still runs `update()` every
+          frame while damping is on, and that call rebuilds the camera's
+          position from the controls' own spherical state, which would
+          silently undo the scene's framing on frame one. The floor
+          shadow goes for the same reason: it is a room's furniture. */}
+      {scene !== 'glass' && (
+        <OrbitControls
+          makeDefault
+          enableDamping
+          target={[0, 1.4, 0]}
+          maxPolarAngle={Math.PI / 2.05}
+          minDistance={3}
+          maxDistance={16}
+        />
+      )}
+    </>
+  )
+}
+
+/** The mounted scene's own control panel, on a chromed page. */
+function SceneHud({ scene }: { scene: SceneId }) {
+  if (scene === 'workspace') return <WorkspaceHud />
+  if (scene === 'explode') return <ExplodeHud />
+  if (scene === 'glass') return <GlassTweakPanel />
+  return null
 }
 
 export default function App() {
@@ -288,35 +339,7 @@ export default function App() {
         <KeepDomFocus />
         <FocusScene>
           <Suspense fallback={null}>
-            <Environment preset="city" />
-            {scene === 'glass' && <Glass />}
-            {scene === 'explode' && <Explode />}
-            {scene === 'workspace' && <Workspace />}
-            {/* The inspector's plates are unlit sheets on a light table, and
-             * a contact shadow under them would be scene furniture pretending
-             * to be paint — in the one scene whose subject IS which paint is
-             * whose. */}
-            {scene !== 'explode' && scene !== 'glass' && (
-              <ContactShadows position={[0, -0.15, 0]} opacity={0.5} blur={2.2} scale={20} />
-            )}
-            {/* Glass frames itself. It is the one scene that claims to be a
-                PAGE rather than a room, so it owns its camera outright and
-                the shared rig has to get out of the way — not merely be
-                disabled. A disabled OrbitControls still runs `update()` every
-                frame while damping is on, and that call rebuilds the camera's
-                position from the controls' own spherical state, which would
-                silently undo the scene's framing on frame one. The floor
-                shadow goes for the same reason: it is a room's furniture. */}
-            {scene !== 'glass' && (
-              <OrbitControls
-                makeDefault
-                enableDamping
-                target={[0, 1.4, 0]}
-                maxPolarAngle={Math.PI / 2.05}
-                minDistance={3}
-                maxDistance={16}
-              />
-            )}
+            <Room scene={scene} />
           </Suspense>
         </FocusScene>
         </SurfaceCanvas>
@@ -339,9 +362,7 @@ export default function App() {
       )}
       {notice}
 
-      {showChrome && scene === 'workspace' && <WorkspaceHud />}
-      {showChrome && scene === 'explode' && <ExplodeHud />}
-      {showChrome && scene === 'glass' && <GlassTweakPanel />}
+      {showChrome && <SceneHud scene={scene} />}
     </div>
   )
 }
