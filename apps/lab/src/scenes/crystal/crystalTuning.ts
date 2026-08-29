@@ -250,11 +250,17 @@ export const crystalTuning = {
   /** How far the shadow's edge is smeared, CSS px. */
   shadowSoftPx: 22.5,
 
-  /** Weight of the light the glass focuses back onto the page. */
-  caustic: 3,
+  /**
+   * Weight of the light the glass focuses back onto the page — the bright
+   * band just inside the shadow's down-light edge, and how much of the
+   * shadow's interior that gathering lifts.
+   */
+  caustic: 0.74,
 
-  /** The brightest a fold is allowed to get, as a multiple of flat light. */
-  causticClamp: 7.6,
+  /** How wide the focused band is, CSS px. Independent of the shadow's
+   * own softness: the shadow is a big soft thing and this is a thin sharp
+   * one drawn at its edge. */
+  causticWidthPx: 6,
 
   // ── the hand ─────────────────────────────────────────────────────────
 
@@ -325,8 +331,8 @@ export const CRYSTAL_GROUPS: CrystalKnobGroup[] = [
     knobs: [
       { key: 'shadow', label: 'shadow', min: 0, max: 1, step: 0.01 },
       { key: 'shadowSoftPx', label: 'shadow soft px', min: 0.5, max: 60, step: 0.5 },
-      { key: 'caustic', label: 'caustic', min: 0, max: 3, step: 0.02 },
-      { key: 'causticClamp', label: 'caustic cap', min: 1, max: 8, step: 0.1 },
+      { key: 'caustic', label: 'caustic', min: 0, max: 1, step: 0.02 },
+      { key: 'causticWidthPx', label: 'caustic px', min: 1, max: 40, step: 0.5 },
     ],
   },
   {

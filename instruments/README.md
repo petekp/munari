@@ -451,7 +451,7 @@ one and not the other. It cannot catch a disagreement about what the numbers
 MEAN, and this gate can, because the two only ever actually meet in a
 browser.
 
-Five clauses. With the scene's correction switch off, a click at a key's
+Six clauses. With the scene's correction switch off, a click at a key's
 own layout box types that key — which also fixes the frame the other two are
 measured in. With it on, the same click types a DIFFERENT key. Then the
 pixels: two frames grabbed with the hand held still, one per switch
@@ -507,6 +507,31 @@ UNcorrected pointer sits 12 px from the hand — so the lit-key reading scores
 the broken build better than the fixed one. Hop-to-hop between lit keys fails
 for the matching reason: the highlight drops out too often to measure a hop
 across.
+
+The sixth clause asks whether the caustic reaches the page at all. The
+scene's light is steep — 75 degrees over a solid 187 px across — so the
+shadow lies almost entirely under the stone and the caustic is what the page
+is supposed to show. The measurement is the caustic's own knob turned to
+zero and back: one term changes, so every pixel that moves moved because of
+it, and nothing has to be masked off the stone.
+
+It exists because the caustic drew NOTHING for as long as it had been
+written. It inverted the light map with a single Newton step to find which
+ray landed on a pixel, but that map's image is a sliver of page mostly
+hidden under the stone; from any pixel outside the sliver the step landed
+where no ray enters, the guard on the Jacobian never opened, and the gain
+was zero on every pixel of every frame. Three `toContain` pins in
+`crystalLaw.test.ts` passed the entire time, because the code they name was
+present and correct and never ran. Measured 2026-08-27 after the rewrite:
+peak +52/255 over 4275 px; before it, +0 over 0.
+
+Inverting it properly is not a tuning fix. At a fold the map is many-to-one
+and the iteration has no fixed point to find — light landing in two places
+at once has to be SCATTERED into the page, which is a second pass and not a
+fragment. What is drawn instead is the band a lens actually makes: keyed on
+the same silhouette distance the shadow is keyed on, weighted by the outline
+gradient against the light so only the far side lights, and carving the
+shadow it brightens so the light it adds is light the shadow lost.
 
 No clause asks where the HAND's key ended up. It sounds like a
 second independent reading and is not one — the two keys differ and the

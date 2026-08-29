@@ -112,7 +112,7 @@ export function CrystalMaterial({
       uShadow: { value: tune.shadow },
       uShadowSoftPx: { value: tune.shadowSoftPx },
       uCaustic: { value: tune.caustic },
-      uCausticClamp: { value: tune.causticClamp },
+      uCausticWidthPx: { value: tune.causticWidthPx },
     }),
     // Read once for starting values; the frame loop owns them from there.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -184,7 +184,7 @@ export function CrystalMaterial({
     u.uShadow.value = t.shadow
     u.uShadowSoftPx.value = t.shadowSoftPx
     u.uCaustic.value = t.caustic
-    u.uCausticClamp.value = t.causticClamp
+    u.uCausticWidthPx.value = t.causticWidthPx
 
     // `useSurfaceUniforms` refreshes its own `tMap` slot every render, but
     // the material holds a copy of that slot — so a source replaced mid-life

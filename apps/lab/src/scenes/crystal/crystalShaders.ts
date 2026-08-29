@@ -271,60 +271,11 @@ export const CRYSTAL_FRAG = /* glsl */ `
   uniform float uShadow;
   uniform float uShadowSoftPx;
   uniform float uCaustic;
-  uniform float uCausticClamp;
+  uniform float uCausticWidthPx;
   ${SURFACE_RADIUS_GLSL}
   varying vec2 vUv;
 
   ${SOLID_GLSL}
-
-  // Where a light ray aimed at page point \`a\` actually lands, having been
-  // bent by the glass on the way. Zero when it misses the solid.
-  //
-  // Analytic, not marched: the light only ever meets the crown first and the
-  // pavilion second, and \`topAt\` and \`bottomAt\` are those two surfaces in
-  // closed form. This runs four times per page pixel under the crystal and
-  // two marches each would not fit in a frame.
-  vec2 lightDisp(vec2 a) {
-    vec3 o = toLocal(vec3(a, 0.0));
-    vec3 d = toLocalDir(uLightDir);
-    if (abs(d.z) < 1e-6) return vec2(0.0);
-
-    // A fixed point on the crown: guess the girdle's height, read the field
-    // there, and let \`topAt\` walk the guess up the facet. Three passes,
-    // because a facet this steep moves the answer a long way on the first.
-    float s = (girdleZ() - o.z) / d.z;
-    float d2 = 0.0;
-    for (int k = 0; k < 3; k++) {
-      d2 = sdInner2((o + d * s).xy);
-      s = (topAt(d2) - o.z) / d.z;
-    }
-    vec3 q = o + d * s;
-    d2 = sdInner2(q.xy);
-    if (d2 > uGirdlePx) return vec2(0.0);
-    vec3 n = topNormal(q.xy, d2);
-
-    vec3 r1;
-    if (!refractAt(d, n, 1.0 / max(uIor, 1.0), r1)) return vec2(0.0);
-    if (r1.z > -1e-6) return vec2(0.0);
-
-    // The same fixed point again on the way out, against the pavilion. The
-    // bottom used to be flat and this step used to be a division.
-    float sb = (bottomAt(d2) - q.z) / r1.z;
-    float e2 = d2;
-    for (int k = 0; k < 3; k++) {
-      e2 = sdInner2((q + r1 * sb).xy);
-      sb = (bottomAt(e2) - q.z) / r1.z;
-    }
-    vec3 b = q + r1 * sb;
-    e2 = sdInner2(b.xy);
-    vec3 r2;
-    if (!refractAt(r1, -bottomNormal(b.xy, e2), max(uIor, 1.0), r2)) return vec2(0.0);
-
-    vec3 B = toSheet(b);
-    vec3 R = toSheetDir(r2);
-    if (R.z > -1e-6) return vec2(0.0);
-    return (B.xy + R.xy * (B.z / -R.z)) - a;
-  }
 
   // What a ray leaving the glass sees, given where it left and where it is
   // going. Sheet space, where +z is out of the page toward the eye.
@@ -492,7 +443,7 @@ export const CRYSTAL_FRAG = /* glsl */ `
     // the same glass, so the eye's cap bounds how far it can carry.
     float lift = uTip.z + girdleZ();
     vec2 centre = uTip.xy + uLightDir.xy * (lift / -uLightDir.z);
-    float reach = boundsRadius() + uMaxBendPx + uShadowSoftPx * 2.0;
+    float reach = boundsRadius() + uShadowSoftPx * 2.0;
     if (dot(p - centre, p - centre) < reach * reach) {
       // The shadow: walk the light BACKWARDS to the girdle plane and ask the
       // silhouette there. The stone tapers above and below it, so this is the
@@ -501,34 +452,51 @@ export const CRYSTAL_FRAG = /* glsl */ `
       vec3 ol = toLocal(vec3(p, 0.0));
       vec3 dl = toLocalDir(uLightDir);
       float occ = 0.0;
+      float band = 0.0;
+      float inner = 0.0;
       if (abs(dl.z) > 1e-6) {
         vec2 q = (ol + dl * ((girdleZ() - ol.z) / dl.z)).xy;
-        occ = 1.0 - smoothstep(-uShadowSoftPx, uShadowSoftPx, sdInner2(q) - uGirdlePx);
-      }
+        float sdS = sdInner2(q) - uGirdlePx;
+        occ = 1.0 - smoothstep(-uShadowSoftPx, uShadowSoftPx, sdS);
 
-      // The caustic: light is conserved, so wherever the map from entry to
-      // landing SQUEEZES, the page gets brighter by exactly the reciprocal of
-      // how much it squeezed. One inverse step to find which ray landed here,
-      // then that map's Jacobian by difference.
-      vec2 a = p - lightDisp(p);
-      vec2 d0 = lightDisp(a);
-      float gain = 0.0;
-      if (dot(d0, d0) > 0.0) {
-        float e = 2.0;
-        vec2 jx = (lightDisp(a + vec2(e, 0.0)) - d0) / e;
-        vec2 jy = (lightDisp(a + vec2(0.0, e)) - d0) / e;
-        float det = (1.0 + jx.x) * (1.0 + jy.y) - jy.x * jx.y;
-        // A fold is a real singularity: the physical answer there is
-        // unbounded, so the cap is where the picture stops being physics and
-        // the knob takes over, and it is named as such.
-        gain = min(1.0 / max(abs(det), 1e-3), uCausticClamp) - 1.0;
+        // The caustic. The stone gathers light hardest at the rim, where the
+        // facet slope is steepest, and drops it just inside the shadow's
+        // down-light edge — so the band rides the same silhouette distance
+        // the shadow does, weighted to the side facing away from the light.
+        // The interior it gathers FROM is left lighter than a flat occluder
+        // would leave it.
+        //
+        // Inverting the light map is what this did until 2026-08-27, and it
+        // drew nothing at all: the map's image is a sliver of page mostly
+        // hidden under the stone, so a single Newton step from a pixel
+        // outside that sliver lands where no ray enters, the guard on the
+        // Jacobian never opened, and the gain stayed zero for every pixel on
+        // screen. Inverting it properly is not a tuning fix — at a fold the
+        // map is many-to-one and the iteration has no fixed point to find.
+        // Light that lands in more than one place at once has to be
+        // SCATTERED, which is a second pass, not a fragment.
+        // Centred just OUTSIDE the silhouette, not inside it like the bead
+        // in the selection scene: the light here comes down at 75 degrees
+        // over a solid 187px across, so only about 29px of shadow ever
+        // clears the stone and a band drawn inside the outline is a band
+        // drawn underneath the thing casting it.
+        float cw = max(uCausticWidthPx, 0.5);
+        float away = clamp(
+          0.5 + 0.5 * dot(outlineGrad(q), normalize(dl.xy + vec2(1e-5))), 0.0, 1.0);
+        float qb = (sdS - cw * 0.4) / cw;
+        band = exp(-qb * qb) * away * away;
+        inner = smoothstep(0.0, max(uShadowSoftPx, 1.0) * 2.5, -sdS);
       }
 
       // Shadow first, focused light on top of it: the light the glass bent
       // had to pass through the glass, so it lands inside the glass's own
       // shadow and nowhere else.
-      c.rgb *= 1.0 - occ * uShadow;
-      c.rgb = mix(c.rgb, vec3(c.a), clamp(gain * uCaustic * occ, 0.0, 1.0));
+      float carve = clamp(1.0 - 1.5 * uCaustic * band, 0.0, 1.0);
+      c.rgb *= 1.0 - occ * uShadow * (1.0 - 0.35 * uCaustic * inner) * carve;
+      // Squared before the encode below, which lifts small linear values
+      // about 5x — additive blew out at the lowest knob settings without it.
+      float gleam = 0.75 * uCaustic * band;
+      c.rgb += vec3(1.0, 0.97, 0.88) * gleam * gleam * c.a;
     }
 
     // ── the glass ──────────────────────────────────────────────────────

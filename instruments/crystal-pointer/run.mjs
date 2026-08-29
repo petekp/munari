@@ -178,6 +178,23 @@ const SWEEP_SETTLE = 8
  */
 const SWEEP_OFFSET = 130
 
+/**
+ * What the caustic has to actually put on the page.
+ *
+ * Read by turning its own knob down to zero and back, so the difference is
+ * the caustic and nothing else — no masking off the stone, no reference
+ * capture of a page with no crystal on it.
+ *
+ * `PEAK` is luminance out of 255 at the brightest pixel of the band, and it
+ * is the clause with the teeth. The version this replaced inverted the light
+ * map and drew NOTHING at all: every pixel came back identical with the knob
+ * at 0 and at 0.74, which is a peak of 0 and an `up` of 0. Measured
+ * 2026-08-27 at the committed tuning: peak 52, 4275 px brighter.
+ */
+const CAUSTIC_PEAK = 8
+const CAUSTIC_UP = 400
+const CAUSTIC_WIN = 150
+
 let browser, server
 const deadline = setTimeout(() => {
   console.error('crystal-pointer: hard 150s deadline hit')
@@ -267,6 +284,30 @@ try {
         lum[i] = 0.2126 * px[i * 4] + 0.7152 * px[i * 4 + 1] + 0.0722 * px[i * 4 + 2]
       }
       window.__frames[tag] = { lum, w, h, ch: c.clientHeight, dpr: w / c.clientWidth }
+    }
+    // How much brighter and darker one frame is than another over a window,
+    // in luminance. Used against a knob that changes ONE term, so the
+    // difference IS that term and nothing has to be masked off.
+    window.__gain = (hx, hy, win) => {
+      const A = window.__frames.on
+      const B = window.__frames.off
+      const at = (f, x, y) => {
+        const gx = Math.min(f.w - 1, Math.max(0, Math.round(x * f.dpr)))
+        const gy = Math.min(f.h - 1, Math.max(0, Math.round((f.ch - y) * f.dpr)))
+        return f.lum[gy * f.w + gx]
+      }
+      let up = 0
+      let down = 0
+      let peak = 0
+      for (let y = hy - win; y <= hy + win; y++) {
+        for (let x = hx - win; x <= hx + win; x++) {
+          const d = at(A, x, y) - at(B, x, y)
+          if (d > 1) up++
+          if (d < -1) down++
+          peak = Math.max(peak, d)
+        }
+      }
+      return { up, down, peak: Math.round(peak) }
     }
     // GL row 0 is the BOTTOM of the canvas; every read below is in CSS px
     // from the top, so the flip happens once, here.
@@ -444,6 +485,42 @@ try {
     offsets.length > 0 && worstOffset <= SWEEP_OFFSET,
     `moving, the relayed point stays under the tip ` +
       `(median ${medOffset}px from the hand, worst ${worstOffset}px, ceiling ${SWEEP_OFFSET}px)`,
+  )
+
+
+  // 6 — the caustic reaches the page.
+  //
+  // The scene's light is steep (75 degrees over a solid 187px across), so
+  // the shadow lies almost entirely under the stone and the caustic is what
+  // the page is supposed to show. Turning the knob off and on is the whole
+  // measurement: one term changes, so every pixel that moves moved because
+  // of it.
+  await setCorrect(true)
+  await page.mouse.move(aim.x, aim.y)
+  await sleep(500)
+  const setCaustic = (v) =>
+    page.evaluate(async (val) => {
+      const m = await import('/src/scenes/crystal/crystalTuning.ts')
+      m.crystalTuning.caustic = val
+    }, v)
+  const causticWas = await page.evaluate(async () => {
+    const m = await import('/src/scenes/crystal/crystalTuning.ts')
+    return m.crystalTuning.caustic
+  })
+  await sleep(200)
+  await page.evaluate(() => window.__grab('on'))
+  await setCaustic(0)
+  await sleep(200)
+  await page.evaluate(() => window.__grab('off'))
+  await setCaustic(causticWas)
+  const g = await page.evaluate(
+    ([x, y, win]) => window.__gain(Math.round(x), Math.round(y), win),
+    [aim.x, aim.y, CAUSTIC_WIN],
+  )
+  check(
+    g.peak >= CAUSTIC_PEAK && g.up >= CAUSTIC_UP,
+    `the caustic puts light on the page ` +
+      `(peak +${g.peak}/255 over ${g.up}px, floors ${CAUSTIC_PEAK} and ${CAUSTIC_UP})`,
   )
 
   check(errors.length === 0, `no page errors (${errors.length})`)

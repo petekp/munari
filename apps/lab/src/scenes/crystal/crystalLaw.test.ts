@@ -44,6 +44,8 @@ import {
   schlick,
   sdInner2,
   stepCrystal,
+  tipPlanePoint,
+  tipScreenPoint,
   toLocal,
   topAt,
   traceCrystal,
@@ -430,6 +432,44 @@ describe('the hotspot', () => {
     const g = bendAt(1060, H / 2, frameAt(1060, H / 2), tune, EYE)
     expect(Math.hypot(g[0], g[1])).toBeCloseTo(74.7, 1)
     expect(tremorAt(1060, H / 2)).toBeLessThan(1)
+  })
+
+  it('puts the tip back on the hand it was placed for', () => {
+    for (const [x, y] of [
+      [100, 80],
+      [640, 430],
+      [1180, 820],
+    ]) {
+      const [tx, ty] = tipPlanePoint(x, y, EYE, tune.liftPx)
+      const f: CrystalFrame = { tipX: tx, tipY: ty, tipZ: tune.liftPx, rot: REST_FRAME.rot }
+      const [sx, sy] = tipScreenPoint(f, EYE)
+      expect(sx).toBeCloseTo(x, 6)
+      expect(sy).toBeCloseTo(y, 6)
+    }
+  })
+
+  it('is smooth along the tip and violent across it', () => {
+    // Every other measurement here moves the crystal with the hand, and that
+    // hides the question the runtime actually asks. The raycast reads the
+    // pose the last DRAWN frame used, so under a moving hand the solid is
+    // NAILED where it was a frame ago and the query walks across it.
+    //
+    // Over the same 12px of hand: 10.7px of change with the query riding
+    // the tip, 132.1px with it walking across a solid held still. The
+    // second number is the hover landing three keys from the cursor, and no
+    // other test in this file can see it, because they all ride.
+    const f0 = frameAt(600, 480)
+    const a = bendAt(600, 480, f0, tune, EYE)
+    let ridden = 0
+    let across = 0
+    for (let d = 1; d <= 12; d++) {
+      const r = bendAt(600 + d, 480, frameAt(600 + d, 480), tune, EYE)
+      ridden = Math.max(ridden, Math.hypot(r[0] - a[0], r[1] - a[1]))
+      const c = bendAt(600 + d, 480, f0, tune, EYE)
+      across = Math.max(across, Math.hypot(c[0] - a[0], c[1] - a[1]))
+    }
+    expect(ridden).toBeCloseTo(10.7, 1)
+    expect(across).toBeCloseTo(132.1, 1)
   })
 
   it('leaves through the FIRST face it meets, and reports that one', () => {
@@ -840,9 +880,13 @@ describe('the GLSL is the same function', () => {
   })
 
   it('leaves the page alone wherever the crystal cannot reach it', () => {
-    // The shadow and the caustic cost four traces per pixel, and the page is
-    // the whole viewport. Both live inside one bounded test.
-    expect(CODE).toContain('float reach = boundsRadius() + uMaxBendPx + uShadowSoftPx * 2.0;')
+    // The page is the whole viewport and the stone covers a few per cent of
+    // it, so the shadow and the caustic live inside one bounded test.
+    //
+    // The reach is the outline plus the smear, and no longer the outline
+    // plus `uMaxBendPx`: the caustic stopped displacing light on 2026-08-27
+    // and nothing inside the test carries past the shadow's own edge.
+    expect(CODE).toContain('float reach = boundsRadius() + uShadowSoftPx * 2.0;')
     expect(CODE).toContain('if (dot(p - centre, p - centre) < reach * reach) {')
   })
 
@@ -856,14 +900,29 @@ describe('the GLSL is the same function', () => {
       'float girdleZ() { return uPavilionPx + uGirdleThickPx * 0.5 - hotDrop(); }',
     )
     expect(CODE).toContain('vec2 q = (ol + dl * ((girdleZ() - ol.z) / dl.z)).xy;')
+    expect(CODE).toContain('float sdS = sdInner2(q) - uGirdlePx;')
+    expect(CODE).toContain('occ = 1.0 - smoothstep(-uShadowSoftPx, uShadowSoftPx, sdS);')
+  })
+
+  it('lands the caustic on the shadow`s down-light edge, off the same outline', () => {
+    // Keyed on the SAME silhouette distance the shadow is, so the band can
+    // never drift off the shadow it belongs to, and weighted by the outline
+    // gradient against the light so it only lights the far side.
+    expect(CODE).toContain('float qb = (sdS - cw * 0.4) / cw;')
+    expect(CODE).toContain('band = exp(-qb * qb) * away * away;')
     expect(CODE).toContain(
-      'smoothstep(-uShadowSoftPx, uShadowSoftPx, sdInner2(q) - uGirdlePx)',
+      '0.5 + 0.5 * dot(outlineGrad(q), normalize(dl.xy + vec2(1e-5))), 0.0, 1.0);',
     )
   })
 
-  it('brightens the caustic by how much the light squeezed, and says where it stopped', () => {
-    expect(CODE).toContain('vec2 a = p - lightDisp(p);')
-    expect(CODE).toContain('float det = (1.0 + jx.x) * (1.0 + jy.y) - jy.x * jx.y;')
-    expect(CODE).toContain('gain = min(1.0 / max(abs(det), 1e-3), uCausticClamp) - 1.0;')
+  it('has no light-map inversion left to go quiet on', () => {
+    // What this replaced inverted the light map with one Newton step and
+    // drew NOTHING: the map's image is a sliver of page mostly hidden under
+    // the stone, so from a pixel outside it the step landed where no ray
+    // enters, the Jacobian guard never opened, and the gain was zero on
+    // every pixel of every frame. Three string pins passed the whole time.
+    // The clause that can actually see this is in the browser gate.
+    expect(CODE).not.toContain('lightDisp')
+    expect(CODE).not.toContain('uCausticClamp')
   })
 })
