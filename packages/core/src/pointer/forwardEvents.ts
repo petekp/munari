@@ -155,7 +155,27 @@ const onModalityFocusOut = (e: FocusEvent) => {
   if (el instanceof HTMLElement) el.removeAttribute(POINTER_FOCUS_ATTR)
 }
 
-let modalityInstalls = 0
+/**
+ * One shared document-level install: the first caller installs, the last
+ * release tears down, and a release called twice counts once. `install`
+ * returns the teardown.
+ */
+function refCounted(install: () => () => void): () => () => void {
+  let refs = 0
+  let teardown: (() => void) | null = null
+  return () => {
+    if (refs++ === 0) teardown = install()
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      if (--refs === 0) {
+        teardown?.()
+        teardown = null
+      }
+    }
+  }
+}
 
 /**
  * Install the document-level half of the mirror (keydown resets to keyboard;
@@ -166,23 +186,16 @@ let modalityInstalls = 0
  * claims Tab and arrows at the document) cannot hide a keyboard interaction
  * from the mirror.
  */
-export function trackFocusModality(): () => void {
-  if (modalityInstalls++ === 0) {
-    document.addEventListener('keydown', onModalityKeydown, true)
-    document.addEventListener('focusin', onModalityFocusIn)
-    document.addEventListener('focusout', onModalityFocusOut)
-  }
-  let released = false
+export const trackFocusModality: () => () => void = refCounted(() => {
+  document.addEventListener('keydown', onModalityKeydown, true)
+  document.addEventListener('focusin', onModalityFocusIn)
+  document.addEventListener('focusout', onModalityFocusOut)
   return () => {
-    if (released) return
-    released = true
-    if (--modalityInstalls === 0) {
-      document.removeEventListener('keydown', onModalityKeydown, true)
-      document.removeEventListener('focusin', onModalityFocusIn)
-      document.removeEventListener('focusout', onModalityFocusOut)
-    }
+    document.removeEventListener('keydown', onModalityKeydown, true)
+    document.removeEventListener('focusin', onModalityFocusIn)
+    document.removeEventListener('focusout', onModalityFocusOut)
   }
-}
+})
 
 // ---- hover / active mirroring -------------------------------------------
 //
@@ -664,6 +677,7 @@ function forwardCancel(
  */
 function forwardRelease(
   root: HTMLElement,
+  mirror: PointerMirror,
   target: Element,
   init: PointerEventInit & MouseEventInit,
   pointer: ForwardPointerSample,
@@ -673,9 +687,8 @@ function forwardRelease(
   relay(target, new PointerEvent('pointerup', init))
   relay(target, new MouseEvent('mouseup', init))
   relay(target, new MouseEvent('click', init))
-  const m = mirrorOf(root)
-  swapChainAttr(root, m.active, null, ACTIVE_ATTR)
-  m.active = null
+  swapChainAttr(root, mirror.active, null, ACTIVE_ATTR)
+  mirror.active = null
   // Synthetic clicks don't run the browser's focus fixup, so do it by hand.
   const focusable = target.closest<HTMLElement>(FOCUSABLE)
   let focused = false
@@ -774,11 +787,11 @@ export function forwardPointer(
     // (surface just appeared under the cursor) still hovers correctly.
     updateHover(root, target, init)
     swapChainAttr(root, null, target, ACTIVE_ATTR)
-    mirrorOf(root).active = target
+    mirror.active = target
     relay(target, new PointerEvent('pointerdown', init))
     relay(target, new MouseEvent('mousedown', init))
   } else {
-    focused = forwardRelease(root, target, init, pointer)
+    focused = forwardRelease(root, mirror, target, init, pointer)
   }
 
   return { target, focused }
@@ -902,16 +915,12 @@ export function forwardWheel(
 // the mirrors already know whether the pointer is over a surface and where
 // its parked point is; if that surface consumes the wheel, the event is
 // stopped before OrbitControls ever hears it.
-let wheelRefs = 0
-let untrackWheel: (() => void) | null = null
 
 // True from a forwarded pointerdown until its release — a drag that BEGAN on
 // a Surface. The discriminator matters: a drag that began on empty space and
 // merely travels over a panel is OrbitControls' gesture, and its document
 // stream must not be touched.
 let surfaceDragPointerId: number | null = null
-let dragRefs = 0
-let untrackDrag: (() => void) | null = null
 
 // Departures announced while the drag was live, waiting for the release.
 // (See clearPointerState — capture semantics defer them, not drop them:
@@ -944,51 +953,40 @@ function flushPendingClears() {
  * Suppressing a drag-move's compat `mousemove` is the only side effect, and
  * only while a surface drag is live.
  */
-export function trackDrag(): () => void {
-  if (dragRefs++ === 0) {
-    const onMove = (e: PointerEvent) => {
-      if (
-        surfaceDragPointerId !== e.pointerId ||
-        !e.isTrusted ||
-        e.buttons === 0
-      )
-        return
-      if (!(e.target instanceof HTMLCanvasElement)) return
-      e.preventDefault()
-    }
-    // A release anywhere ends the gesture — including over the floor or off
-    // the window, where no Surface handler will ever hear it to forward one.
-    const onEnd = (e: PointerEvent) => {
-      if (e.isTrusted && surfaceDragPointerId === e.pointerId) {
-        surfaceDragPointerId = null
-        // This capture listener runs before the same trusted up reaches the
-        // canvas and is forwarded — a microtask puts the flush after it, so
-        // the up still lands before any deferred boundary events. (When the
-        // forwarded up flushed already, this finds the set empty.)
-        queueMicrotask(flushPendingClears)
-      }
-    }
-    document.addEventListener('pointermove', onMove, { capture: true, passive: false })
-    document.addEventListener('pointerup', onEnd, true)
-    document.addEventListener('pointercancel', onEnd, true)
-    untrackDrag = () => {
-      document.removeEventListener('pointermove', onMove, { capture: true })
-      document.removeEventListener('pointerup', onEnd, true)
-      document.removeEventListener('pointercancel', onEnd, true)
-    }
+export const trackDrag: () => () => void = refCounted(() => {
+  const onMove = (e: PointerEvent) => {
+    if (
+      surfaceDragPointerId !== e.pointerId ||
+      !e.isTrusted ||
+      e.buttons === 0
+    )
+      return
+    if (!(e.target instanceof HTMLCanvasElement)) return
+    e.preventDefault()
   }
-  let released = false
-  return () => {
-    if (released) return
-    released = true
-    if (--dragRefs === 0) {
-      untrackDrag?.()
-      untrackDrag = null
+  // A release anywhere ends the gesture — including over the floor or off
+  // the window, where no Surface handler will ever hear it to forward one.
+  const onEnd = (e: PointerEvent) => {
+    if (e.isTrusted && surfaceDragPointerId === e.pointerId) {
       surfaceDragPointerId = null
-      flushPendingClears()
+      // This capture listener runs before the same trusted up reaches the
+      // canvas and is forwarded — a microtask puts the flush after it, so
+      // the up still lands before any deferred boundary events. (When the
+      // forwarded up flushed already, this finds the set empty.)
+      queueMicrotask(flushPendingClears)
     }
   }
-}
+  document.addEventListener('pointermove', onMove, { capture: true, passive: false })
+  document.addEventListener('pointerup', onEnd, true)
+  document.addEventListener('pointercancel', onEnd, true)
+  return () => {
+    document.removeEventListener('pointermove', onMove, { capture: true })
+    document.removeEventListener('pointerup', onEnd, true)
+    document.removeEventListener('pointercancel', onEnd, true)
+    surfaceDragPointerId = null
+    flushPendingClears()
+  }
+})
 
 /**
  * The relay-surviving facts of a native event, as a PLAIN object. A retained
@@ -1025,8 +1023,6 @@ export interface PointerPlace {
 }
 
 let pointerPlace: PointerPlace | null = null
-let placeRefs = 0
-let untrackPlace: (() => void) | null = null
 
 /**
  * Reference-counted document-capture record of the pointer's last trusted
@@ -1036,43 +1032,32 @@ let untrackPlace: (() => void) | null = null
  * no event to read the position from — only this record, written before
  * the flip.
  */
-export function trackPointerPlace(): () => void {
-  if (placeRefs++ === 0) {
-    const onPoint = (e: PointerEvent) => {
-      if (!e.isTrusted) return
-      pointerPlace = { x: e.clientX, y: e.clientY, sample: pointerSampleOf(e) }
-    }
-    // A pointerout with no relatedTarget is the pointer leaving the
-    // document: a place kept past that would re-arm hover on content the
-    // pointer is no longer over at all.
-    const onOut = (e: PointerEvent) => {
-      if (e.isTrusted && e.relatedTarget === null) pointerPlace = null
-    }
-    // pointerup included: a lift triggered on release flips the hold with
-    // the DOWN as the newest sample otherwise, and its buttons:1 made the
-    // arrival burst read a finished press as still open (2026-08-20).
-    document.addEventListener('pointermove', onPoint, true)
-    document.addEventListener('pointerdown', onPoint, true)
-    document.addEventListener('pointerup', onPoint, true)
-    document.addEventListener('pointerout', onOut, true)
-    untrackPlace = () => {
-      document.removeEventListener('pointermove', onPoint, true)
-      document.removeEventListener('pointerdown', onPoint, true)
-      document.removeEventListener('pointerup', onPoint, true)
-      document.removeEventListener('pointerout', onOut, true)
-    }
+export const trackPointerPlace: () => () => void = refCounted(() => {
+  const onPoint = (e: PointerEvent) => {
+    if (!e.isTrusted) return
+    pointerPlace = { x: e.clientX, y: e.clientY, sample: pointerSampleOf(e) }
   }
-  let released = false
+  // A pointerout with no relatedTarget is the pointer leaving the
+  // document: a place kept past that would re-arm hover on content the
+  // pointer is no longer over at all.
+  const onOut = (e: PointerEvent) => {
+    if (e.isTrusted && e.relatedTarget === null) pointerPlace = null
+  }
+  // pointerup included: a lift triggered on release flips the hold with
+  // the DOWN as the newest sample otherwise, and its buttons:1 made the
+  // arrival burst read a finished press as still open (2026-08-20).
+  document.addEventListener('pointermove', onPoint, true)
+  document.addEventListener('pointerdown', onPoint, true)
+  document.addEventListener('pointerup', onPoint, true)
+  document.addEventListener('pointerout', onOut, true)
   return () => {
-    if (released) return
-    released = true
-    if (--placeRefs === 0) {
-      untrackPlace?.()
-      untrackPlace = null
-      pointerPlace = null
-    }
+    document.removeEventListener('pointermove', onPoint, true)
+    document.removeEventListener('pointerdown', onPoint, true)
+    document.removeEventListener('pointerup', onPoint, true)
+    document.removeEventListener('pointerout', onOut, true)
+    pointerPlace = null
   }
-}
+})
 
 /** The record `trackPointerPlace` keeps; null before any trusted event. */
 export function lastPointerPlace(): PointerPlace | null {
@@ -1098,35 +1083,23 @@ export function guardPointerCapture(host: HTMLElement): () => void {
 }
 
 /** Reference-counted document-capture wheel arbiter. Returns a release. */
-export function trackWheel(): () => void {
-  if (wheelRefs++ === 0) {
-    const onWheel = (e: WheelEvent) => {
-      // Only wheels aimed at a canvas are ours to arbitrate — page scrolling
-      // outside the canvas stays untouched, and the synthetic wheel dispatched
-      // by forwardWheel (whose target is parked DOM, never a canvas) can't
-      // re-enter here.
-      if (!(e.target instanceof HTMLCanvasElement)) return
-      for (const rootEl of hoverRoots) {
-        const m = mirrors.get(rootEl)
-        if (!m?.hovered) continue
-        if (forwardWheel(rootEl, m.at.x, m.at.y, e)) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          return
-        }
+export const trackWheel: () => () => void = refCounted(() => {
+  const onWheel = (e: WheelEvent) => {
+    // Only wheels aimed at a canvas are ours to arbitrate — page scrolling
+    // outside the canvas stays untouched, and the synthetic wheel dispatched
+    // by forwardWheel (whose target is parked DOM, never a canvas) can't
+    // re-enter here.
+    if (!(e.target instanceof HTMLCanvasElement)) return
+    for (const rootEl of hoverRoots) {
+      const m = mirrors.get(rootEl)
+      if (!m?.hovered) continue
+      if (forwardWheel(rootEl, m.at.x, m.at.y, e)) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        return
       }
     }
-    document.addEventListener('wheel', onWheel, { capture: true, passive: false })
-    untrackWheel = () =>
-      document.removeEventListener('wheel', onWheel, { capture: true })
   }
-  let released = false
-  return () => {
-    if (released) return
-    released = true
-    if (--wheelRefs === 0) {
-      untrackWheel?.()
-      untrackWheel = null
-    }
-  }
-}
+  document.addEventListener('wheel', onWheel, { capture: true, passive: false })
+  return () => document.removeEventListener('wheel', onWheel, { capture: true })
+})

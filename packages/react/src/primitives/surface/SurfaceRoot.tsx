@@ -21,7 +21,7 @@
 // ledger, the source host, and the protocol tick. It owns no mesh, no
 // material, and no placement.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { trackPointerPlace, type SurfaceChrome, type SurfacePartId } from '@munari/core'
 import {
   useSurfaceController,
@@ -208,21 +208,6 @@ export function SurfaceRoot({
     })
   }, [])
 
-  // The expected set is a COUNT per part, not a boolean. Strict Mode and
-  // any ordinary remount run the new registration before the old cleanup,
-  // so a boolean would be cleared by the departing copy and the part would
-  // drop out of the readiness set it is still in.
-  const expectedRef = useRef(new Map<SurfacePartId, number>())
-  const expectPart = useCallback((id: SurfacePartId) => {
-    const map = expectedRef.current
-    map.set(id, (map.get(id) ?? 0) + 1)
-    return () => {
-      const live = (map.get(id) ?? 1) - 1
-      if (live <= 0) map.delete(id)
-      else map.set(id, live)
-    }
-  }, [])
-
   const root = useMemo<SurfaceRootValue>(
     () => ({
       store,
@@ -233,8 +218,6 @@ export function SurfaceRoot({
       instanceId,
       wiring,
       exclusive,
-      expectPart,
-      registerPartPresenter: expectPart,
       reportMeasuredSize,
       measuredSize: (id) => measured.get(id) ?? null,
       partRuntime: (id): SurfaceSourceRuntime | null => store.part(id)?.runtime ?? null,
@@ -246,7 +229,6 @@ export function SurfaceRoot({
       instanceId,
       wiring,
       exclusive,
-      expectPart,
       reportMeasuredSize,
       measured,
     ],

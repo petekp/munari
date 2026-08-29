@@ -31,6 +31,10 @@ import {
   crossingRange,
   crossingRequest,
   detectHtmlInCanvas,
+  partSetEmpty,
+  partSetExpect,
+  partSetMissing,
+  partSetRegister,
   readinessAtBirth,
   readinessProve,
   readinessReborn,
@@ -79,7 +83,8 @@ export interface SurfaceState {
   readonly targetView: SurfaceView
   /** Which renderer holds the pixels right now. */
   readonly presentedView: SurfaceView
-  /** Every registered presenter has completed its first eligible draw. */
+  /** Every declared part has a presenter, and every registered presenter
+   *  has completed its first eligible draw. */
   readonly ready: boolean
   /** A handoff is under way in either direction. */
   readonly isChanging: boolean
@@ -142,6 +147,14 @@ export interface SurfaceStore {
   setTiming(next: CrossingTiming): void
   request(view: SurfaceView): void
   registerPresenter(key: SurfacePresenterKey): () => void
+  /**
+   * Declare a part id in the expected set; the return forgets it. The
+   * all-or-none gates read this ledger — a declared part with no presenter
+   * holds the handoff (decisions.md #37).
+   */
+  expectPart(id: SurfacePartId): () => void
+  /** A presenter arrived covering a part; the return withdraws it. */
+  registerPartPresenter(id: SurfacePartId): () => void
   /**
    * Stage one: one presenter completed an eligible draw of uploaded pixels.
    * A write-free warm-up qualifies — it compiled the program and sampled the
@@ -258,6 +271,14 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // took presentation authority. Cleared whenever it gives that authority
   // back, so a return and a second lift do not inherit the first one's proof.
   const presenting = new Set<SurfacePresenterKey>()
+  // The multi-part ledger: parts declared, parts covered by a presenter.
+  // The gates read `partSetMissing` — a declared part with no presenter is
+  // a requirement nothing can prove, which is what keeps a five-part word
+  // from crossing four-fifths whole. Counts on both sides, not booleans:
+  // Strict Mode runs a remount's new registration before the old cleanup.
+  let parts = partSetEmpty()
+  const expectCounts = new Map<SurfacePartId, number>()
+  const presenterCounts = new Map<SurfacePartId, number>()
   let pageHeld = true
   const holdListeners = new Set<() => void>()
   const partMap = new Map<SurfacePartId, SurfacePartPublication>()
@@ -286,7 +307,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       // the pixels turn in that frame's draw, so a consumer reading the
       // phase would see the canvas holding content it had not drawn yet.
       presentedView: exclusive ? (pageHeld ? 'dom' : 'webgl') : viewOf(crossing),
-      ready: readinessSettled(readiness),
+      ready: readinessSettled(readiness) && partSetMissing(parts).length === 0,
       isChanging: crossing.phase === 'lifting' || crossing.phase === 'landing',
       isWebGLMounted: crossing.phase !== 'page' || elapsedMs < lingerUntilMs,
       supported: state.supported,
@@ -311,6 +332,32 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     // once per set of proven pixels wants to hear both times.
     if (next.ready && !previous.ready) callbacks.onReady?.()
     if (previous.isWebGLMounted && !next.isWebGLMounted) callbacks.onWebGLReleased?.()
+  }
+
+  // Rebuilt from the counts through the law's own transitions, expecting
+  // before registering, so a presenter that named its part before the
+  // declaration arrived still lands once it does — the two declarations
+  // live in different trees and commit in either order.
+  const rebuildParts = () => {
+    let next = partSetEmpty()
+    for (const id of expectCounts.keys()) next = partSetExpect(next, id)
+    for (const id of presenterCounts.keys()) next = partSetRegister(next, id)
+    parts = next
+    publish()
+  }
+
+  const counted = (counts: Map<SurfacePartId, number>) => (id: SurfacePartId) => {
+    counts.set(id, (counts.get(id) ?? 0) + 1)
+    rebuildParts()
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      const count = counts.get(id) ?? 0
+      if (count <= 1) counts.delete(id)
+      else counts.set(id, count - 1)
+      rebuildParts()
+    }
   }
 
   const progress: SurfaceProgress = {
@@ -369,6 +416,8 @@ export function createSurfaceStore(name?: string): SurfaceStore {
         publish()
       }
     },
+    expectPart: counted(expectCounts),
+    registerPartPresenter: counted(presenterCounts),
     present(key, epoch) {
       if (!exclusive) return
       if (!surfaceEpochCurrent(identity, epoch)) return
@@ -391,6 +440,9 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       // releases all of its parts or none: a page copy hidden while one
       // letter is still warming is a word with a hole in it.
       if (readiness.registered.length === 0) return
+      // A declared part with no presenter is the same hole with nobody
+      // even warming it.
+      if (partSetMissing(parts).length > 0) return
       for (const registered of readiness.registered) if (!presenting.has(registered)) return
       pageHeld = false
       for (const listener of holdListeners) listener()
@@ -438,7 +490,9 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       const before = crossing
       const evidence = {
         presented: readiness.proven.length,
-        required: readiness.registered.length,
+        // Each declared part with no presenter is a requirement nothing can
+        // prove, so the lift gate holds while one exists (decisions.md #37).
+        required: readiness.registered.length + partSetMissing(parts).length,
       }
       if (driver) {
         const answer = driver({

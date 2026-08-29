@@ -1,10 +1,9 @@
-// The other thing that bakes at allocation.
+// When the DIMENSIONS invalidate GL storage.
 //
-// `filterPolicyTransition` answers when the MIP COUNT invalidates GL
-// storage. This answers when the DIMENSIONS do. Both exist because
 // texStorage2D is immutable: three allocates once at first-upload
 // size and texSubImage2Ds every upload after, forever, without ever
-// re-reading the source's dimensions.
+// re-reading the source's dimensions. (The mip count bakes at that
+// same allocation — that half is `filterPolicy`.)
 //
 // So a source canvas that changes size silently desynchronizes from
 // its own texture. A grow is rejected by the driver

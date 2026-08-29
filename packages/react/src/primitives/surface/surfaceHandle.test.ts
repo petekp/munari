@@ -580,3 +580,68 @@ describe('the public handle is identity only', () => {
     expect(store.parts()).toEqual([])
   })
 })
+
+describe('the part ledger — all of the parts or none (decisions.md #37)', () => {
+  // The gap this closes: readiness quantifies over presenters that MOUNTED,
+  // so a Surface with a declared part whose presenter never arrived used to
+  // lift and release with that part's content nowhere.
+  const wordStore = () => {
+    const store = createSurfaceStore('word')
+    store.acquire(1)
+    store.setExclusive(true)
+    store.expectPart('W')
+    store.expectPart('O')
+    store.registerPresenter('w')
+    store.registerPartPresenter('W')
+    store.prove('w', store.readinessLifetime(), store.epoch())
+    return store
+  }
+
+  it('a declared part with no presenter holds the gate and the page', () => {
+    const store = wordStore()
+    store.request('webgl')
+    store.tick(500)
+    expect(store.canvasPresents()).toBe(false)
+    expect(store.getState().ready).toBe(false)
+    store.present('w', store.epoch())
+    expect(store.holdsPage()).toBe(true)
+  })
+
+  it('the arriving part presenter completes the set and the handoff proceeds', () => {
+    const store = wordStore()
+    store.request('webgl')
+    store.tick(500)
+    store.registerPresenter('o')
+    store.registerPartPresenter('O')
+    store.prove('o', store.readinessLifetime(), store.epoch())
+    store.tick(500)
+    expect(store.canvasPresents()).toBe(true)
+    store.present('w', store.epoch())
+    store.present('o', store.epoch())
+    expect(store.holdsPage()).toBe(false)
+  })
+
+  it('a presenter naming its part before the declaration still counts', () => {
+    const store = createSurfaceStore()
+    store.acquire(1)
+    // Separated wiring: the scene tree can commit before the page tree.
+    store.registerPartPresenter('late')
+    store.registerPresenter('a')
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.expectPart('late')
+    expect(store.getState().ready).toBe(true)
+  })
+
+  it('a Strict Mode overlap keeps the part declared', () => {
+    const store = createSurfaceStore()
+    store.acquire(1)
+    store.registerPresenter('a')
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    const first = store.expectPart('p')
+    store.expectPart('p') // the remount registers before the old cleanup runs
+    first()
+    expect(store.getState().ready).toBe(false)
+    store.registerPartPresenter('p')
+    expect(store.getState().ready).toBe(true)
+  })
+})

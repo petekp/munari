@@ -11,9 +11,9 @@ Layers, in the order they build on each other:
 
 | layer | what it owns | suites |
 |---|---|---|
-| mapping | coordinate hold — the pixel-calibrated camera, UV anchoring | `camera`, `uvAnchor`, `parkingCoincidence`, `densityIdentity`, `pixelGrid`, `domRect`, `surfaceAnchors`, `uvSampling` |
+| mapping | coordinate hold — the pixel-calibrated camera, UV anchoring | `camera`, `parkingCoincidence`, `densityIdentity`, `pixelGrid`, `domRect`, `surfaceAnchors`, `uvSampling` |
 | paint | DOM → texture, and what a paint costs | `lodTier`, `htmlInCanvas`, `paintStats`, `styleChannel`, `filterPolicy`, `capabilityProbe` |
-| pointer | provenance and the pointer protocol | `forwardEvents`, `hoverGrace`, `relayDuplication`, `relayTripwire`, `relaySynthetic` |
+| pointer | provenance and the pointer protocol | `forwardEvents`, `relayDuplication`, `relayTripwire`, `relaySynthetic` |
 | transfer | the handoff between page and mesh | `crossing`, `presentation`, `pointer`, `motionCarrier`, `choreography`, `surfaceIdentity`, `surfaceReadiness` |
 | chrome | measuring what the DOM won't hand over in pixels | `surfaceChrome` |
 | physics | physical controls | `physics1D` |
@@ -33,8 +33,8 @@ search by module name will miss them:
 | `transfer/choreography` | `transfer/crossing.ts` — `crossingRange`, `crossingCurve` |
 | `transfer/pointer` | `transfer/crossing.ts` — `crossingPointer`, input follows the eye (decisions.md #33) |
 
-`packages/core/src/math/` is substrate, not a layer. Vec3 is covered with the
-core modules that use it.
+`packages/core/src/math/` is substrate, not a layer. The Vec3 types are
+covered with the core modules that use them.
 
 ## Rules
 

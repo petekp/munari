@@ -2044,3 +2044,37 @@ scope — a sampled Surface has no mesh, so nothing can hit it. The
 contract is `packages/react/src/primitives/surface/surfaceContext.test.ts`;
 the demonstration is the refraction lab scene, gated by
 `gate:refraction-arriving`.
+
+## #37 — A cull stands on its own evidence (2026-08-28, core + react binding)
+
+**Decision.** Three pieces of the kernel are removed rather than wired:
+`hoverGrace` (the corridor tracker with its convex-hull helpers),
+`uvAnchor` (the triangle-pinning sampler, taking the `Vec3` class and
+`SampleVec` type that existed only for it), and `filterPolicyTransition`
+(the reallocate-or-retain half of the filter policy, with its
+`PolicyState` pair). Each removal deletes the law and its conformance
+contract in the same commit. `filterPolicy` itself stays — the runtime
+reads it at every allocation.
+
+**Why.** #21 says a law with no callers is a rumour, and its remedy is
+to WIRE the consumer. These three fail that remedy in different ways.
+`hoverGrace` arrived as a byte-faithful port from the ancestor repo
+(bff2fbd) and the floating-layer consumer that motivated it never
+existed here. `uvAnchor` has never been called since its birth commit
+(9f67543), and it duplicates `uvSampling`'s barycentric math with a
+divergent edge policy, so the kernel answered one question two ways.
+`filterPolicyTransition` cannot be wired even in principle: #15 stores
+texels in a density band precisely so GL storage is NOT keyed on the
+(pinned, tier) pair — the consumer shape this law guards was
+deliberately made impossible, which is what #14's amendment records. A
+law whose consumer a later decision forbids is not dormant; it is over.
+
+**The shape.** The mechanisms stay reachable in git history; the burden
+on a future consumer is to re-land the law WITH the caller and the
+contract in one commit. The counter-example decided the same day proves
+the rule: the multi-part ledger (`SurfacePartSet`) also had no callers,
+but its absence was a live enforcement gap — the react binding declared
+`expectPart`/`registerPartPresenter` and wired them to nothing, so a
+Surface with a declared part and no presenter passed the readiness gate,
+the exact fault `partSetComplete` exists to refuse. That one is wired
+into the store's gates, not culled.

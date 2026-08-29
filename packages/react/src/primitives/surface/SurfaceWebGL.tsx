@@ -345,6 +345,10 @@ function SurfacePresenter({
   // makes a missing part BLOCK a handoff instead of silently shortening the
   // required set.
   useEffect(() => store.registerPresenter(presenterKey), [store, presenterKey])
+  // The part ledger covers what presenter registration cannot: a declared
+  // part whose presenter never mounts at all. Naming the part here marks it
+  // covered; a part no presenter ever names keeps holding the handoff.
+  useEffect(() => store.registerPartPresenter(partId), [store, partId])
 
   // The Canvas this presenter draws in — the pointer gate registers its
   // mesh here, and a deferred presentation waits on this host's frame tail.

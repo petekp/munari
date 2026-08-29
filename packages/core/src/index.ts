@@ -17,14 +17,6 @@ export {
   type PixelGridSnap,
 } from './mapping/pixelGrid'
 export {
-  UVAnchor,
-  sampleSurfaceAtUV,
-  type AttributeLike,
-  type GeometryLike,
-  type SurfaceSample,
-  type SurfaceSampleLike,
-} from './mapping/uvAnchor'
-export {
   AFFINE_IDENTITY,
   affineIsMatchable,
   composeMatchableChain,
@@ -48,7 +40,7 @@ export {
   type SurfaceAnchorReceipt,
 } from './mapping/surfaceAnchors'
 export { sampleUvPosition, type UvSample } from './mapping/uvSampling'
-export { Vec3, type Vec3Like, type Vec3Readonly, type SampleVec } from './math/vec3'
+export { type Vec3Like, type Vec3Readonly } from './math/vec3'
 
 // paint — who owns the pixels + paint (texture contract = decisions.md #5)
 export {
@@ -88,12 +80,7 @@ export {
   type StyleChannel,
   type StyleChannelOptions,
 } from './paint/styleChannel'
-export {
-  filterPolicy,
-  filterPolicyTransition,
-  type FilterPolicy,
-  type PolicyState,
-} from './paint/filterPolicy'
+export { filterPolicy, type FilterPolicy } from './paint/filterPolicy'
 export {
   DENSITY_BAND,
   storeForBox,
@@ -123,15 +110,6 @@ export {
   type PointerPlace,
   type ForwardResult,
 } from './pointer/forwardEvents'
-export {
-  convexHull,
-  createGraceTracker,
-  observeGrace,
-  pointInConvex,
-  type GraceTracker,
-  type GraceTrackerOptions,
-  type Pt,
-} from './pointer/hoverGrace'
 
 // transfer — the handoff
 export {

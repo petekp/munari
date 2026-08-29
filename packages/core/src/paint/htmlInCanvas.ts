@@ -302,11 +302,6 @@ export function createDomTextureSource(
   // another context on.
   const ctx = canvas.getContext('2d') as TrialContext2D
   let ok = false
-  // The box paintedSize() reports — set only from onpaint's success path,
-  // at FIRE time, never from setSize. Two plain closure vars rather than a
-  // tuple so a read never allocates.
-  let paintedW = 0
-  let paintedH = 0
   let currentPaint: DomPaintReceipt | null = null
   const paintSubscribers = new Set<(receipt: DomPaintReceipt) => void>()
 
@@ -331,16 +326,14 @@ export function createDomTextureSource(
       ctx.drawElementImage(element, 0, 0)
       ok = true
       stats.paints++
-      // The closure's CURRENT width/height, at fire time — this paint just
-      // replayed the subtree at whatever box was live when the compositor
-      // finally got to it, which during a drag is rarely the box `setSize`
-      // most recently asked for.
-      paintedW = width
-      paintedH = height
       const generation = (currentPaint?.frame.generation ?? 0) + 1
+      // paintedSize reads the closure's CURRENT width/height, at fire time —
+      // this paint just replayed the subtree at whatever box was live when
+      // the compositor finally got to it, which during a drag is rarely the
+      // box `setSize` most recently asked for.
       const receipt: DomPaintReceipt = Object.freeze({
         frame: Object.freeze({ sourceId, generation }),
-        paintedSize: Object.freeze([paintedW, paintedH] as const),
+        paintedSize: Object.freeze([width, height] as const),
         storeSize: Object.freeze([canvas.width, canvas.height] as const),
       })
       currentPaint = receipt

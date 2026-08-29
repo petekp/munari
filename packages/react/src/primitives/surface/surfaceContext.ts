@@ -45,10 +45,6 @@ export interface SurfaceRootValue {
   readonly wiring: SurfaceWiring
   /** True when the root carries `view` — an exclusive handoff, not a Twin. */
   readonly exclusive: boolean
-  /** Declare a part id in the expected set; the return forgets it. */
-  expectPart(id: SurfacePartId): () => void
-  /** A WebGL presenter arrived for a part; the return unregisters it. */
-  registerPartPresenter(id: SurfacePartId): () => void
   /** The measured page box for a part, from its DOM presentation. */
   reportMeasuredSize(id: SurfacePartId, size: SurfaceSize | null): void
   measuredSize(id: SurfacePartId): SurfaceSize | null

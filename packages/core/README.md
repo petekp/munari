@@ -111,9 +111,8 @@ CSS and Tailwind can define the target value and transition.
 
 ## Forwarding clicks, hover, and typing
 
-Modules: [`forwardEvents`](./src/pointer/forwardEvents.ts),
-[`relay`](./src/pointer/relay.ts), and
-[`hoverGrace`](./src/pointer/hoverGrace.ts).
+Modules: [`forwardEvents`](./src/pointer/forwardEvents.ts) and
+[`relay`](./src/pointer/relay.ts).
 
 A WebGL raycast finds where the pointer hit a 3D object. It returns a UV
 coordinate, which marks a position on the texture from 0 to 1 on each axis.
@@ -132,10 +131,6 @@ Authors must give each hover or active rule a matching attribute selector.
 Munari creates synthetic pointer events for the live DOM. `relay` marks each
 one so page code can separate Munari events from browser events created by the
 user.
-
-`hoverGrace` keeps a detached hover layer open while the pointer travels from
-its trigger to the layer's projected position. It builds a corridor in screen
-coordinates and closes the layer after the pointer leaves that corridor.
 
 ## Restoring border radius and shadows
 
@@ -162,9 +157,6 @@ gesture instead of following a fixed duration.
 
 ## Smaller pieces
 
-- [`uvAnchor`](./src/mapping/uvAnchor.ts) starts with a texture coordinate and
-  finds its position on the surface. It finds the triangle once, then reads
-  the current vertex positions as the surface deforms.
 - [`vec3`](./src/math/vec3.ts) provides the math types that core needs without
   importing `three`.
 - [`sourceIdentity`](./src/paint/sourceIdentity.ts) assigns IDs to pixel

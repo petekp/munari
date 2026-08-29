@@ -18,7 +18,8 @@
 // Ownership: this module owns nothing. It is a typed view of the store
 // behind a handle, valid for as long as the handle is.
 
-import type { SurfacePresenterKey } from '@munari/core'
+import type { SurfacePartId, SurfacePresenterKey } from '@munari/core'
+import { DEFAULT_PART } from './surfaceContext'
 import { surfaceStoreOf, type SurfaceHandle } from './surfaceHandle'
 
 
@@ -27,9 +28,11 @@ export interface SurfaceManualPresenter {
   /**
    * Join the readiness ledger. The Surface cannot release its page copy
    * until this presenter has presented; the returned release leaves the
-   * ledger, which is what an unmount mid-crossing owes it.
+   * ledger, which is what an unmount mid-crossing owes it. `part` names
+   * the part this presenter covers — omitted, the single-source root's
+   * own part.
    */
-  register(): () => void
+  register(part?: SurfacePartId): () => void
   /**
    * Stage one: this presenter drew the uploaded pixels once. A write-free
    * warm-up counts — it is what opens the lift gate.
@@ -63,7 +66,14 @@ export function surfaceManualPresenter(
 ): SurfaceManualPresenter {
   const store = surfaceStoreOf(handle)
   return {
-    register: () => store.registerPresenter(key),
+    register: (part = DEFAULT_PART) => {
+      const releasePresenter = store.registerPresenter(key)
+      const releasePart = store.registerPartPresenter(part)
+      return () => {
+        releasePresenter()
+        releasePart()
+      }
+    },
     prove: () => store.prove(key, store.readinessLifetime(), store.epoch()),
     present: () => store.present(key, store.epoch()),
     canvasPresents: () => store.canvasPresents(),

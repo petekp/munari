@@ -53,8 +53,13 @@ export function sampleUvPosition(
   v: number,
 ): UvSample | null {
   const triangles = (index ? index.length : uv.length / 2) / 3
-  let best: UvSample | null = null
   let bestPenalty = Number.POSITIVE_INFINITY
+  let bestX = 0
+  let bestY = 0
+  let bestZ = 0
+  let bestNx = 0
+  let bestNy = 0
+  let bestNz = 1
   for (let t = 0; t < triangles; t++) {
     const a = index ? index[t * 3] : t * 3
     const b = index ? index[t * 3 + 1] : t * 3 + 1
@@ -110,16 +115,22 @@ export function sampleUvPosition(
     } else {
       nz = 1
     }
-    best = Object.freeze({
-      x: ax * ka + bx * kb + cx * kc,
-      y: ay * ka + by * kb + cy * kc,
-      z: az * ka + bz * kb + cz * kc,
-      nx,
-      ny,
-      nz,
-      inside: penalty === 0,
-    })
-    if (penalty === 0) return best
+    bestX = ax * ka + bx * kb + cx * kc
+    bestY = ay * ka + by * kb + cy * kc
+    bestZ = az * ka + bz * kb + cz * kc
+    bestNx = nx
+    bestNy = ny
+    bestNz = nz
+    if (penalty === 0) break
   }
-  return best
+  if (bestPenalty === Number.POSITIVE_INFINITY) return null
+  return Object.freeze({
+    x: bestX,
+    y: bestY,
+    z: bestZ,
+    nx: bestNx,
+    ny: bestNy,
+    nz: bestNz,
+    inside: bestPenalty === 0,
+  })
 }

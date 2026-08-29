@@ -47,7 +47,7 @@ interface StubCanvas extends HTMLCanvasElement {
 
 /**
  * The 2d context these tests paint through. onpaint's success path — the one
- * that stamps paintedW/paintedH — only runs if `drawElementImage` does not
+ * that stamps the paint receipt — only runs if `drawElementImage` does not
  * throw, and happy-dom's real context has no idea what that method is. These
  * three members are the whole of what the paint path calls.
  */
@@ -276,7 +276,7 @@ describe('createDomTextureSource sizing', () => {
 // DOM has to read THIS, not size(), to know whether
 // what it is about to blend is even the same generation as the live page.
 describe('paintedSize — the box the last COMPLETED paint actually holds', () => {
-  // onpaint's success path — the one that stamps paintedW/paintedH — only
+  // onpaint's success path — the one that stamps the paint receipt — only
   // runs if ctx.drawElementImage doesn't throw. happy-dom's real 2D context
   // has no idea what that method is (it is a Chrome-only trial API); the
   // top-level beforeEach only stubs the CONSTRUCTOR's prototype for the

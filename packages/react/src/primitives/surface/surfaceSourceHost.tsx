@@ -296,6 +296,11 @@ export function SurfaceSourceHost({
     }
   }, [captureRoot, root.exclusive, pageRoot])
 
+  // Declared parts are the all-or-none set the store's gates read. Declared
+  // here because both roads lead through this component: the single-source
+  // root and <Surface.Part> each render one source host per part.
+  useEffect(() => store.expectPart(id), [store, id])
+
   // Published to the STORE as well as the context. A presenter reached
   // through separated wiring holds only the handle — it has no ancestor
   // that ever saw this source, so context alone would leave it blank.

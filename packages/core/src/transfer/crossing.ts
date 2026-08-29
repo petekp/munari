@@ -169,13 +169,7 @@ export function crossingDrive(
   timing: CrossingTiming = CROSSING_DEFAULTS,
 ): CrossingState {
   const { phase } = state
-  if (phase === 'page') return state
-  if (phase === 'lifting') {
-    const heldMs = state.heldMs + dtMs
-    const proven = evidence.presented >= evidence.required
-    if (proven && heldMs >= timing.settleMs) return { phase: 'gl', ramp: 0, heldMs }
-    return { ...state, heldMs }
-  }
+  if (phase === 'page' || phase === 'lifting') return crossingFrame(state, evidence, dtMs, timing)
   if (!Number.isFinite(ramp)) return state
   const next = Math.min(1, Math.max(0, ramp))
   if (phase === 'landing' && next <= 0) return { phase: 'page', ramp: 0, heldMs: 0 }
