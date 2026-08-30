@@ -1,0 +1,162 @@
+/* Marble-hand instruments — quiet native chrome beside the sculpture.
+ * This is not captured content. Keeping it above the canvas preserves text
+ * editing, focus and pointer ownership while the model changes underneath. */
+
+.mh-controls,
+.mh-tweaks-opener {
+  position: fixed;
+  right: 16px;
+  top: 16px;
+  z-index: 200;
+  border: 1px solid #4b504b;
+  border-radius: 12px;
+  background: #202521;
+  color: #edf0e9;
+  font: 13px/1.4 var(--body, sans-serif);
+  box-shadow: 0 12px 42px #11181035, 0 2px 6px #11181020;
+  cursor: auto;
+}
+
+.mh-controls {
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+  color-scheme: dark;
+}
+
+.mh-controls *,
+.mh-controls *::before,
+.mh-controls *::after {
+  box-sizing: border-box;
+}
+
+.mh-controls button,
+.mh-controls select,
+.mh-tweaks-opener {
+  font: inherit;
+  cursor: pointer;
+}
+
+.mh-tweaks-opener {
+  display: flex;
+  gap: 24px;
+  padding: 10px 14px;
+  border-radius: 8px;
+}
+
+.mh-tweaks-opener span { color: #a1b6ff; }
+
+.mh-controls-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid #454b43;
+}
+
+.mh-controls-eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: #aab5a5;
+  font: 10px/1.3 var(--label, sans-serif);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.mh-controls h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.025em; }
+
+.mh-controls-close {
+  display: grid;
+  place-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #4b5248;
+  border-radius: 6px;
+  background: #2d342d;
+  color: #dae1d4;
+}
+
+.mh-controls-close span { font-size: 22px; line-height: 1; }
+.mh-controls-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #626f5d transparent; }
+.mh-controls-fields { min-width: 0; margin: 0; padding: 0 18px; border: 0; }
+.mh-controls-fields:disabled { opacity: 0.5; }
+.mh-material-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 14px 0 0; }
+.mh-material-mode button { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 35px; padding: 7px 10px; border: 1px solid #515b4b; border-radius: 6px; background: #2d352b; color: #c6d0be; font-size: 12px; }
+.mh-material-mode button[aria-pressed='true'] { border-color: #9cb3ff; background: #35456a; color: #e4eaff; }
+.mh-finish-swatch { width: 17px; height: 17px; border: 1px solid #e8eefc80; border-radius: 50%; box-shadow: 0 1px 3px #0005; }
+.mh-finish-marble { background: linear-gradient(125deg, #f0eddf 15%, #c8c2b1 19%, #eee9dc 24%, #ded8c6 65%, #f5f0e4 85%); }
+.mh-finish-chrome { background: linear-gradient(140deg, #fcfeff 10%, #d9e5f2 25%, #647487 32%, #182337 42%, #fff 48%, #d5e3f0 56%, #657790 70%, #e9f2fc 87%); }
+.mh-preview-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; padding: 12px 0; }
+.mh-preview-controls p,
+.mh-tweak-help { margin: 6px 0 12px; color: #aab5a5; font-size: 11px; line-height: 1.5; }
+.mh-preview-controls p { grid-column: 1 / -1; margin-bottom: 0; }
+
+.mh-tweak-toggle { display: flex; gap: 9px; align-items: center; min-height: 30px; cursor: pointer; }
+.mh-tweak-toggle input { width: 15px; height: 15px; margin: 0; accent-color: #9cb3ff; cursor: pointer; }
+.mh-tweak-group { border-top: 1px solid #454b43; }
+.mh-tweak-group summary { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; font-size: 13px; font-weight: 600; list-style: none; cursor: pointer; }
+.mh-tweak-group summary::-webkit-details-marker { display: none; }
+.mh-tweak-group summary::after { content: '›'; color: #a6b69c; font-size: 20px; line-height: 12px; }
+.mh-tweak-group[open] summary::after { transform: rotate(90deg); }
+.mh-tweak-group-body { padding-bottom: 12px; }
+.mh-tweak-group-body > .mh-tweak-help { margin-top: -2px; }
+.mh-pose-presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 0 0 13px; }
+.mh-pose-presets button { padding: 6px 0; border: 1px solid #515b4b; border-radius: 5px; background: #2d352b; color: #c6d0be; font-size: 11px; }
+.mh-pose-presets button[aria-pressed='true'] { border-color: #9cb3ff; background: #35456a; color: #e4eaff; }
+
+.mh-tweak-control { padding: 7px 0 9px; }
+.mh-tweak-control-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 7px; }
+.mh-tweak-control-heading > label { font-size: 12px; color: #d5ddcf; cursor: pointer; }
+.mh-tweak-value { display: flex; align-items: baseline; justify-content: flex-end; gap: 3px; flex: none; min-width: 76px; }
+.mh-tweak-value input { width: 68px; padding: 3px 4px; border: 1px solid #45513f; border-radius: 4px; outline-offset: 1px; background: #171d17; color: #e9efe3; text-align: right; font: 11px/1.3 var(--data, monospace); font-variant-numeric: tabular-nums; }
+.mh-tweak-value > span { min-width: 14px; color: #9caa93; font-size: 10px; }
+.mh-tweak-value input::-webkit-inner-spin-button { opacity: 0.45; }
+.mh-tweak-control > input[type='range'] { display: block; width: 100%; height: 16px; margin: 0; background: transparent; appearance: none; accent-color: #9cb3ff; cursor: ew-resize; }
+.mh-tweak-control > input[type='range']::-webkit-slider-runnable-track { height: 3px; border-radius: 3px; background: #59654f; }
+.mh-tweak-control > input[type='range']::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; margin-top: -4.5px; border: 1px solid #cfdbff; border-radius: 50%; background: #9cb3ff; box-shadow: 0 1px 3px #0007; }
+.mh-tweak-control > input[type='range']::-moz-range-track { height: 3px; border-radius: 3px; background: #59654f; }
+.mh-tweak-control > input[type='range']::-moz-range-thumb { width: 12px; height: 12px; border: 1px solid #cfdbff; border-radius: 50%; background: #9cb3ff; }
+.mh-tweak-color,
+.mh-tweak-select { display: flex; align-items: center; gap: 8px; min-height: 36px; font-size: 12px; }
+.mh-tweak-color > span,
+.mh-tweak-select > span { flex: 1; color: #d5ddcf; }
+.mh-tweak-color code { color: #aab5a5; font: 10px/1 var(--data, monospace); }
+.mh-tweak-color input { width: 30px; height: 24px; padding: 0; border: 1px solid #59654f; border-radius: 4px; background: transparent; cursor: pointer; }
+.mh-tweak-select select { max-width: 145px; padding: 5px; border: 1px solid #4b5744; border-radius: 4px; background: #171d17; color: #d5ddcf; font-size: 11px; }
+
+.mh-controls-footer { flex: none; padding: 12px 18px 13px; border-top: 1px solid #454b43; background: #242b23; }
+.mh-controls-actions { display: flex; gap: 8px; }
+.mh-controls-actions button { flex: 1; min-height: 32px; padding: 6px 8px; border: 1px solid #56634d; border-radius: 5px; background: #333d2e; color: #e0e9d8; font-size: 12px; }
+.mh-controls-actions button:last-child { border-color: #7c96d9; background: #3b4e75; color: #edf2ff; }
+.mh-controls-status { min-height: 15px; margin: 9px 0 0; color: #aab5a5; font-size: 10px; line-height: 1.5; }
+.mh-controls-notice { margin: 14px 18px 0; padding: 10px; border: 1px solid #92825c; border-radius: 5px; background: #463f29; color: #eee3c2; font-size: 12px; line-height: 1.5; }
+.mh-controls button:hover:not(:disabled),
+.mh-tweaks-opener:hover { filter: brightness(1.15); }
+.mh-controls :focus-visible,
+.mh-tweaks-opener:focus-visible { outline: 2px solid #adc2ff; outline-offset: 3px; }
+.mh-controls button:disabled { opacity: 0.5; cursor: default; }
+.mh-tweak-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+@media (max-width: 700px) {
+  .mh-controls { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); top: auto; width: calc(100% - 24px); max-height: 60dvh; border-radius: 14px; }
+  .mh-controls-header { padding-top: 10px; padding-bottom: 10px; }
+  .mh-controls-eyebrow { display: none; }
+  .mh-preview-controls { padding-top: 8px; padding-bottom: 8px; }
+  .mh-material-mode { padding-top: 8px; }
+  /* Keep the finish switch and all three axes visible together on phones. */
+  .mh-preview-controls p,
+  .mh-tweak-group:first-of-type .mh-tweak-help { display: none; }
+  .mh-tweak-group summary { padding-top: 10px; padding-bottom: 10px; }
+  .mh-tweak-group-body > .mh-tweak-help { margin-bottom: 8px; }
+  .mh-tweak-control { padding-top: 5px; padding-bottom: 7px; }
+  .mh-tweak-control > input[type='range'] { height: 22px; }
+  .mh-controls-footer { padding-top: 9px; padding-bottom: 10px; }
+  .mh-controls-status { margin-top: 6px; }
+  .mh-tweak-toggle { min-height: 34px; }
+  .mh-pose-presets button { min-height: 34px; }
+  .mh-tweaks-opener { right: 12px; top: 12px; }
+}

@@ -26,17 +26,18 @@ import { CandidatesApp } from './scenes/candidates/Candidates'
 import { RefractionApp } from './scenes/refraction/Refraction'
 import { GalleryApp } from './scenes/gallery/Gallery'
 import { CrystalApp } from './scenes/crystal/Crystal'
+import { ControlsApp } from './scenes/controls/Controls'
+import { MarbleHandApp } from './scenes/marble-hand/MarbleHand'
+import { PlumeApp } from './scenes/plume/Plume'
 import { SurfaceProviderProbe } from './lib/surfaceProvider'
 import { SceneNav } from './components/SceneNav'
 import { SceneBoundary } from './components/SceneBoundary'
 
-// Nine scenes (decisions.md #3): workspace focus wall, glass SDF compositor,
-// flight drag trilogy, exploded-paint inspector, genie minimize-to-dock,
-// veil progressive blur, knobs-and-switches instrument rail, optics bench,
-// selection bead. Plus one sketch off the roster: the logo playground
-// (animated wordmark, letters liftable into matter).
-// Everything they render reaches the library through its published entries —
-// this app is the proof that the public surface is sufficient.
+// The promoted scene roster is decisions.md #3. URL-only studies stay beside
+// it without claiming promotion: the candidates bench, refraction, gallery,
+// crystal, and the controls / plume / marble-hand trio. Everything they render
+// reaches the library through its published entries — this app is the proof
+// that the public surface is sufficient.
 
 type SceneId =
   | 'workspace'
@@ -55,6 +56,9 @@ type SceneId =
   | 'refraction'
   | 'gallery'
   | 'crystal'
+  | 'controls'
+  | 'marble-hand'
+  | 'plume'
 const SCENES = [
   'workspace',
   'glass',
@@ -72,6 +76,9 @@ const SCENES = [
   'refraction',
   'gallery',
   'crystal',
+  'controls',
+  'marble-hand',
+  'plume',
 ] as const
 
 // The nav shows only the focus five; the rest stay routable by URL so the
@@ -144,6 +151,14 @@ function pageSceneFor(scene: SceneId, chips: React.ReactNode) {
       return <GalleryApp chips={chips} />
     case 'crystal':
       return <CrystalApp chips={chips} />
+    // Candidate pages are direct studies, like the candidates bench. They do
+    // not carry the promoted-scene rail over their own composition.
+    case 'controls':
+      return <ControlsApp />
+    case 'marble-hand':
+      return <MarbleHandApp />
+    case 'plume':
+      return <PlumeApp />
     // No chips: the candidates page has its own left-column nav, and the two
     // menus side by side read as one broken one.
     case 'candidates':
@@ -274,8 +289,10 @@ export default function App() {
   // handling and the ARIA are the browser's, and this is the one piece of
   // lab furniture that shows up on a page whose whole subject is that the
   // browser's own machinery still works.
+  // Marble Hand keeps the whole page native and uses ordinary WebGL only
+  // for decoration. Missing HTML capture does not degrade that scene.
   const notice =
-    showChrome && unsupported ? (
+    showChrome && unsupported && scene !== 'marble-hand' ? (
       <details className="trial-notice">
         <summary>HTML-in-canvas unavailable</summary>
         <ul className="features">

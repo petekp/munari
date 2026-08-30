@@ -8,9 +8,31 @@ outside project would; `tests/boundary.test.ts` enforces this. If a
 scene needs something the package doesn't export, add the export;
 don't import package internals.
 
-Each scene exercises a different part of the library: workspace,
-glass, flight, explode, genie, veil, knobs, and optics, plus a logo
-playground.
+Each scene exercises a different part of the library. Three unlisted page
+studies are direct links rather than promoted navigation: `?scene=controls`
+turns one live HTML form into physical hardware, `?scene=plume` lets native
+typed words leave as WebGL ink, and `?scene=marble-hand` replaces the pointer
+with a reflected, shadow-casting classical marble hand.
+
+Marble Hand keeps one visible native HTML page under a pointer-transparent
+overlay. Only the hand and its transparent shadow render over the page.
+A source-only Surface captures a hidden, inert mirror of the full catalogue,
+including headings, text, borders and other content. A private cube camera
+uses that full texture for reflections; it never presents the page in WebGL.
+Native colors still drive matching page lights and room bounce, as in Knobs.
+Full-page reflections require HTML-in-canvas. Without it, the native page and
+ordinary WebGL hand remain usable, with an explicit reflection-limit notice.
+
+The marble-hand page opens with a parked preview and native tweak panel.
+It exposes orientation, size, movement, marble, lighting, and shadows, with
+view presets, reset, and JSON copy. Close the panel to resume pointer motion.
+Its Marble/Chrome switch uses separate finish settings: Chrome is bare,
+low-roughness mirrored metal with no stone veins. Switching back preserves
+the saved marble finish. Both modes use the same native page-derived room.
+Reflections has a shared 1–120 fps update limit, with 20 fps as the default.
+It does not slow hand movement, and unchanged reflections do not update.
+The `?scene=marble-hand&bare` route keeps the original pointer-only study for
+browser gates.
 
 ## What's where
 
@@ -35,6 +57,9 @@ playground.
 - `tools/make-film.sh`: rebuilds the genie film asset;
   `src/scenes/genie/film.provenance.md` records its source and
   license.
+- `tools/make-marble-hand.mjs`: extracts the anatomical cursor hand, seals
+  the wrist and bakes the fingertip pivot; `public/models/marble-hand/PROVENANCE.md`
+  records the source, license and rebuild command.
 
 ## Files with copies in registry/
 

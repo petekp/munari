@@ -1,0 +1,318 @@
+/* The marble-hand scene — an Italian catalogue under a marble sculpture.
+ *
+ * The catalogue is one native DOM tree. The overlay carries only the hand
+ * and transparent shadow; its input stays clear through SurfaceCanvas.
+ *
+ * The signature is one object: the carved hand. The page stays flat and
+ * exact so its long physical shadow has something quiet to fall across.
+ */
+
+.mh-app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #d8d0bd;
+  color: #171610;
+}
+
+/* Cursor paint belongs to the native hit target. A clear overlay cannot
+ * replace it. Loading, parked preview and context loss keep the OS pointer. */
+.mh-sheet[data-marble-hand-pointer],
+.mh-sheet[data-marble-hand-pointer] * {
+  cursor: none;
+}
+
+.mh-sheet {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(300px, 0.82fr) minmax(440px, 1.18fr);
+  grid-template-rows: auto 1fr auto;
+  gap: clamp(26px, 4vw, 72px);
+  padding: clamp(28px, 4vw, 64px);
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, transparent 0 49.9%, rgba(23, 22, 16, 0.08) 50%, transparent 50.1%),
+    #d8d0bd;
+  color: #171610;
+  font: 15px/1.5 var(--body);
+}
+
+.mh-masthead {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 2px solid #171610;
+  border-bottom: 1px solid rgba(23, 22, 16, 0.48);
+  padding: 9px 0 8px;
+  font: 600 11px/1 var(--label);
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+}
+
+.mh-intro {
+  align-self: center;
+  max-width: 610px;
+}
+
+.mh-kicker {
+  margin: 0 0 22px;
+  color: #24479a;
+  font: 700 11px/1 var(--label);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.mh-intro h1 {
+  margin: 0;
+  max-width: 10ch;
+  color: #171610;
+  font: 650 clamp(64px, 6.8vw, 116px) / 0.84 var(--display);
+  letter-spacing: -0.055em;
+}
+
+.mh-deck {
+  max-width: 430px;
+  margin: clamp(28px, 4vw, 54px) 0 0;
+  color: #403e34;
+  font: 16px/1.55 var(--body);
+}
+
+.mh-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 22px;
+  color: #555144;
+  font: 600 10px/1 var(--label);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.mh-status i {
+  width: 8px;
+  height: 8px;
+  border: 1px solid #171610;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.mh-status i[data-enhanced] {
+  border-color: #d94934;
+  background: #d94934;
+  box-shadow: 0 0 0 3px rgba(217, 73, 52, 0.16);
+}
+
+.mh-capture-notice {
+  max-width: 430px;
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #8b7e5b;
+  border-radius: 5px;
+  background: #e7ddbf;
+  color: #4d452e;
+  font: 12px/1.5 var(--body);
+}
+
+.mh-specimens {
+  align-self: center;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(170px, 1fr));
+  border-top: 1px solid #171610;
+  border-left: 1px solid #171610;
+}
+
+.mh-specimen {
+  appearance: none;
+  box-sizing: border-box;
+  min-height: clamp(154px, 19vh, 224px);
+  margin: 0;
+  border: 0;
+  border-right: 1px solid #171610;
+  border-bottom: 1px solid #171610;
+  padding: 0;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  text-align: left;
+  background: rgba(244, 240, 224, 0.38);
+  color: #171610;
+  font: inherit;
+  pointer-events: auto;
+}
+
+.mh-specimen:hover,
+.mh-specimen[data-hover] {
+  background: rgba(244, 240, 224, 0.82);
+  box-shadow: inset 0 0 0 4px rgba(36, 71, 154, 0.32);
+}
+
+.mh-specimen:active,
+.mh-specimen[data-active] {
+  background: #171610;
+  color: #f4f0e0;
+  box-shadow: inset 0 0 0 5px #d94934;
+}
+
+.mh-specimen[data-selected] {
+  box-shadow: inset 0 0 0 4px #24479a;
+}
+
+.mh-specimen:focus-visible,
+.mh-specimen[data-focus-visible] {
+  outline: 3px solid #d94934;
+  outline-offset: -7px;
+}
+
+.mh-swatch {
+  display: block;
+  min-height: 72px;
+  border-bottom: 1px solid rgba(23, 22, 16, 0.42);
+}
+
+.mh-specimen-copy {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  grid-template-rows: auto auto;
+  gap: 2px 12px;
+  padding: 13px 14px 15px;
+}
+
+.mh-specimen-copy b {
+  grid-row: 1 / 3;
+  align-self: center;
+  color: #d94934;
+  font: 700 11px/1 var(--data);
+}
+
+.mh-specimen-copy strong {
+  font: 700 18px/1.05 var(--display);
+}
+
+.mh-specimen-copy small {
+  color: #5b584b;
+  font: 10px/1 var(--label);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.mh-specimen:active .mh-specimen-copy small,
+.mh-specimen[data-active] .mh-specimen-copy small {
+  color: #d8d0bd;
+}
+
+.mh-footer {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 34px;
+  align-items: baseline;
+  border-top: 1px solid #171610;
+  padding-top: 10px;
+  font: 600 10px/1.2 var(--label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mh-footer p {
+  margin: 0;
+}
+
+.mh-footer p:last-child {
+  justify-self: end;
+  color: #5b584b;
+}
+
+.mh-footer strong {
+  margin-left: 7px;
+  color: #24479a;
+  font-family: var(--data);
+}
+
+@media (max-width: 900px) {
+  .mh-sheet {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr auto;
+    gap: 20px;
+    padding: 20px;
+    background: #d8d0bd;
+  }
+
+  .mh-masthead,
+  .mh-footer {
+    grid-column: 1;
+  }
+
+  .mh-intro {
+    align-self: start;
+  }
+
+  .mh-kicker {
+    margin-bottom: 12px;
+  }
+
+  .mh-intro h1 {
+    max-width: 11ch;
+    font-size: clamp(48px, 15vw, 70px);
+    line-height: 0.84;
+  }
+
+  .mh-deck {
+    margin-top: 18px;
+    max-width: 36ch;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .mh-status {
+    margin-top: 12px;
+  }
+
+  .mh-specimens {
+    align-self: stretch;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mh-specimen {
+    min-height: 118px;
+  }
+
+  .mh-swatch {
+    min-height: 52px;
+  }
+
+  .mh-specimen-copy {
+    grid-template-columns: 24px 1fr;
+    gap: 1px 7px;
+    padding: 9px;
+  }
+
+  .mh-specimen-copy strong {
+    font-size: 15px;
+  }
+
+  .mh-footer {
+    grid-template-columns: auto auto;
+    gap: 8px 18px;
+  }
+
+  .mh-footer p:last-child {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+@media (max-height: 650px) and (min-width: 901px) {
+  .mh-sheet {
+    gap: 24px;
+    padding-top: 24px;
+    padding-bottom: 24px;
+  }
+
+  .mh-intro h1 {
+    font-size: 78px;
+  }
+
+  .mh-deck {
+    margin-top: 22px;
+  }
+}

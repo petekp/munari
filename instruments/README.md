@@ -545,6 +545,40 @@ of the hand, so the retelling was what got eaten — hover correct, press
 correct, nothing typed. `CanvasPointerGate.tsx` now checks `isRelayed`
 first, and this clause is what would catch that guard being dropped.
 
+## marble-hand
+
+Local gate: the anatomical cursor keeps its real index vertex on the
+browser hotspot. Run `npm run gate:marble-hand`.
+
+The gate opens the real `?scene=marble-hand&bare` route in its own Vite
+server and Chrome with HTML-in-canvas enabled. It requires one visible native
+sheet plus one hidden inert capture, no main-scene page presenter, a clear
+canvas, direct native click/focus, and real text selection. While STL is held, the
+page and OS pointer must remain usable. Trusted moves then require a
+projected tip within 1 CSS px, a wrist that trails down/right, and stone
+above the page. Press heights come from `marbleHandTuning.ts`, not the
+rendered hand. The native page hides its cursor only while the hand is ready.
+
+It reads the existing `window.__r3f`, named sculpture, and native DOM;
+it adds no scene probe fields. The standard Chrome/capability skip policy and
+`STRICT_CAPABILITY=1` apply. A separate no-flag browser checks native input
+and the explicit full-reflection-unavailable notice.
+
+A second page opens the normal route and tests its native tweak panel:
+parked preview, live degree inputs, scale, material and lighting updates,
+typed-value precision, copied JSON, reset, hold-press, and close/reopen.
+Editing the panel must leave the preview still and add no specimen contacts.
+With page lights disabled, a native swatch recolor must update the PMREM
+source signature and change opaque hand pixels in the overlay framebuffer.
+This isolates the reflection term from the page's direct colored light.
+The decisive full-page clause hides only the native H1: its actual captured
+ink must disappear, the capture must advance, and opaque hand pixels must
+change. The old color-field approximation cannot pass that clause.
+The finish switch must install a vein-free metallic Chrome material without
+replacing the hand or its pose. Its pixels must change, while a return to
+Marble restores the edited stone settings. Copy and reset also preserve the
+selected material mode correctly.
+
 ## chrome-over-canvas
 
 `npm run gate:chrome-over-canvas` — page UI painted above a

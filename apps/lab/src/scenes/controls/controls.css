@@ -1,0 +1,686 @@
+/* The controls scene — warm paper around a porcelain HTML specimen.
+ *
+ * The captured root is `.controls-board`. It declares its own fixed box and
+ * never animates its opacity or transform. The scene moves WebGL attachments,
+ * not this root. No descendant uses mask-image. Hover and active selectors
+ * include the attributes Munari forwards into the parked source.
+ *
+ * The visual split is deliberate: the DOM is a crisp two-color typesetter's
+ * form. Porcelain, cobalt glaze, brass edges and cast shadows arrive only from
+ * WebGL. This keeps the flat state honest and makes the renderer handoff easy
+ * to read without cloning the dark instrument language of Knobs.
+ */
+
+.controls-page {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background:
+    radial-gradient(circle at 76% 22%, rgba(255, 255, 255, 0.74), transparent 34%),
+    linear-gradient(135deg, #d7d0be 0%, #ebe6d8 54%, #c9c2b1 100%);
+  color: #171a22;
+}
+
+/* Paper grain made from color stops, not a mask. It is page furniture and
+ * never enters the captured subtree. */
+.controls-page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg, rgba(63, 50, 32, 0.018) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 7px);
+  mix-blend-mode: multiply;
+}
+
+.controls-layout {
+  position: relative;
+  z-index: 20;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 240px 760px;
+  align-items: center;
+  gap: 42px;
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  padding: 56px 28px 72px max(170px, calc((100vw - 1070px) / 2));
+}
+
+.controls-intro {
+  position: relative;
+  z-index: 80;
+  align-self: center;
+}
+
+.controls-kicker {
+  display: block;
+  color: #2148bd;
+  font: 700 10px/1 var(--label);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.controls-intro h1 {
+  max-width: 260px;
+  margin: 17px 0 18px;
+  color: #171a22;
+  font: 700 48px/0.98 var(--display);
+  font-variation-settings: 'opsz' 72;
+  letter-spacing: -0.035em;
+}
+
+.controls-intro > p {
+  max-width: 272px;
+  margin: 0;
+  color: #565448;
+  font: 14px/1.58 var(--body);
+}
+
+.controls-mode {
+  margin-top: 30px;
+}
+
+.controls-mode > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 178px;
+  padding: 13px 17px;
+  border: 1px solid #171a22;
+  border-radius: 999px;
+  background: #f8f3e7;
+  color: #171a22;
+  cursor: pointer;
+  font: 700 11px/1 var(--label);
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.controls-mode > button > span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #b8b09e;
+  box-shadow: 0 0 0 1px rgba(23, 26, 34, 0.32);
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.controls-mode > button > span[data-on] {
+  background: #2148bd;
+  box-shadow: 0 0 0 1px #18348a, 0 0 12px rgba(33, 72, 189, 0.46);
+}
+
+.controls-mode > button:hover,
+.controls-mode > button[data-hover] {
+  background: #171a22;
+  color: #f8f3e7;
+}
+
+.controls-mode > button:disabled {
+  color: #8b8678;
+  cursor: not-allowed;
+  border-color: #aaa392;
+  background: rgba(248, 243, 231, 0.55);
+}
+
+.controls-mode > button:focus-visible:not([data-pointer-focus]) {
+  outline: 3px solid #2148bd;
+  outline-offset: 3px;
+}
+
+.controls-mode > p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0 4px;
+  color: #777264;
+  font: 10px/1.2 var(--data);
+}
+
+.controls-mode > p i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9e9787;
+}
+
+.controls-mode > p i[data-on] {
+  background: #2148bd;
+}
+
+.controls-board-place {
+  position: relative;
+  width: 760px;
+  height: 540px;
+}
+
+/* ── captured root ──────────────────────────────────────────────────── */
+
+.controls-board {
+  position: relative;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 22px;
+  padding: 28px 30px 24px;
+  overflow: hidden;
+  border: 1px solid rgba(48, 42, 31, 0.22);
+  border-radius: 28px;
+  background:
+    linear-gradient(115deg, rgba(255, 255, 255, 0.7), transparent 38%),
+    linear-gradient(165deg, #fbf7ed 0%, #f2ecdf 100%);
+  color: #191b22;
+  font-family: var(--body);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    inset 0 -1px 0 rgba(96, 78, 48, 0.11);
+}
+
+/* Source hosts inherit app background through `.ui-root`; the board is the
+ * full capture, so clear the host around its rounded corners. */
+.ui-root:has(> .controls-board) {
+  background: transparent;
+}
+
+.controls-board__head,
+.controls-board__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.controls-board__head {
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(32, 34, 42, 0.16);
+}
+
+.controls-board__head h2 {
+  margin: 8px 0 0;
+  font: 700 25px/1.05 var(--display);
+  font-variation-settings: 'opsz' 48;
+  letter-spacing: -0.018em;
+}
+
+.controls-board__readout {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  gap: 10px;
+  color: #706b5d;
+  font: 700 9px/1 var(--label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.controls-board__readout strong {
+  color: #2148bd;
+  font: 700 25px/1 var(--data);
+  letter-spacing: -0.05em;
+}
+
+.controls-board__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 34px;
+  min-height: 0;
+}
+
+.controls-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.controls-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(32, 34, 42, 0.11);
+}
+
+.controls-section-head span,
+.controls-field > span:first-child,
+.controls-radios legend {
+  color: #343640;
+  font: 700 10px/1 var(--label);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.controls-section-head i {
+  color: #9a9383;
+  font: 9px/1 var(--data);
+  font-style: normal;
+}
+
+.controls-field {
+  display: grid;
+  gap: 7px;
+  color: #343640;
+}
+
+.controls-field > span:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.controls-range-value {
+  color: #2148bd;
+  font: 700 11px/1 var(--data);
+  letter-spacing: 0;
+}
+
+.controls-field input:not([type='range']),
+.controls-field textarea,
+.controls-select,
+.controls-select select {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.controls-field input:not([type='range']),
+.controls-field textarea,
+.controls-select {
+  border: 1px solid rgba(32, 34, 42, 0.24);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.62);
+  color: #20222a;
+  box-shadow: inset 0 1px 1px rgba(64, 50, 30, 0.05);
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.controls-field input:not([type='range']) {
+  height: 39px;
+  padding: 0 12px;
+  font: 14px/1 var(--body);
+}
+
+.controls-field textarea {
+  height: 66px;
+  padding: 10px 12px;
+  resize: none;
+  font: 12px/1.4 var(--body);
+}
+
+.controls-field input:hover,
+.controls-field input[data-hover],
+.controls-field textarea:hover,
+.controls-field textarea[data-hover],
+.controls-select:hover,
+.controls-select[data-hover] {
+  border-color: rgba(33, 72, 189, 0.58);
+  background-color: rgba(255, 255, 255, 0.84);
+}
+
+.controls-field input:focus-visible:not([data-pointer-focus]),
+.controls-field textarea:focus-visible:not([data-pointer-focus]),
+.controls-select:has(select:focus-visible:not([data-pointer-focus])) {
+  outline: 2px solid #2148bd;
+  outline-offset: 2px;
+}
+
+.controls-select {
+  position: relative;
+  display: block;
+  height: 39px;
+}
+
+.controls-select select {
+  height: 100%;
+  padding: 0 38px 0 12px;
+  border: 0;
+  outline: 0;
+  appearance: none;
+  background: transparent;
+  color: #20222a;
+  font: 14px/1 var(--body);
+  cursor: pointer;
+}
+
+.controls-select > i {
+  position: absolute;
+  right: 13px;
+  top: 50%;
+  color: #8b6b32;
+  font: 700 16px/1 var(--data);
+  font-style: normal;
+  pointer-events: none;
+  transform: translateY(-55%);
+}
+
+.controls-field--range {
+  margin-top: 1px;
+}
+
+.controls-field input[type='range'] {
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.controls-field input[type='range']::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2148bd, #7894ea);
+  box-shadow: inset 0 1px 2px rgba(20, 28, 58, 0.32);
+}
+
+.controls-field input[type='range']::-webkit-slider-thumb {
+  width: 21px;
+  height: 21px;
+  margin-top: -8px;
+  border: 2px solid #785b2d;
+  border-radius: 50%;
+  appearance: none;
+  background: #c9a665;
+}
+
+.controls-check-row,
+.controls-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 13px;
+  border: 1px solid rgba(32, 34, 42, 0.13);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.controls-check-row {
+  justify-content: flex-start;
+  cursor: pointer;
+}
+
+.controls-check-row input,
+.controls-radios input {
+  display: grid;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  place-content: center;
+  appearance: none;
+  border: 1px solid rgba(24, 27, 35, 0.42);
+  background: #faf6eb;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.controls-check-row input {
+  border-radius: 7px;
+}
+
+.controls-check-row input::after {
+  content: '✓';
+  color: white;
+  font: 700 14px/1 var(--body);
+  opacity: 0;
+}
+
+.controls-check-row input:checked,
+.controls-radios input:checked {
+  border-color: #17358e;
+  background: #2148bd;
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.12);
+}
+
+.controls-check-row input:checked::after {
+  opacity: 1;
+}
+
+.controls-check-row input:hover,
+.controls-check-row input[data-hover],
+.controls-radios input:hover,
+.controls-radios input[data-hover] {
+  border-color: #2148bd;
+}
+
+.controls-check-row input:focus-visible:not([data-pointer-focus]),
+.controls-radios input:focus-visible:not([data-pointer-focus]) {
+  outline: 2px solid #2148bd;
+  outline-offset: 2px;
+}
+
+.controls-check-row strong,
+.controls-color-row strong {
+  display: block;
+  color: #292b33;
+  font: 700 12px/1.15 var(--body);
+}
+
+.controls-check-row small,
+.controls-color-row small {
+  display: block;
+  margin-top: 4px;
+  color: #8b8576;
+  font: 10px/1.2 var(--data);
+}
+
+.controls-radios {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.controls-radios legend {
+  grid-column: 1 / -1;
+  margin-bottom: 1px;
+}
+
+.controls-radios label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  cursor: pointer;
+  color: #59564d;
+  font: 10px/1 var(--label);
+  text-transform: capitalize;
+}
+
+.controls-radios input {
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+}
+
+.controls-radios input::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: white;
+  opacity: 0;
+}
+
+.controls-radios input:checked::after {
+  opacity: 1;
+}
+
+.controls-segments {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+
+.controls-segments button {
+  height: 34px;
+  padding: 0 7px;
+  border: 1px solid rgba(32, 34, 42, 0.2);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.56);
+  color: #777164;
+  cursor: pointer;
+  font: 700 9px/1 var(--label);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.controls-segments button:hover,
+.controls-segments button[data-hover] {
+  border-color: #2148bd;
+  color: #2148bd;
+}
+
+.controls-segments button[data-on] {
+  border-color: #2148bd;
+  background: #2148bd;
+  color: white;
+}
+
+.controls-segments button:active,
+.controls-segments button[data-active] {
+  background: #17358e;
+  color: white;
+}
+
+.controls-segments button:focus-visible:not([data-pointer-focus]) {
+  outline: 2px solid #2148bd;
+  outline-offset: 2px;
+}
+
+.controls-color-row input[type='color'] {
+  box-sizing: border-box;
+  width: 42px;
+  height: 34px;
+  padding: 3px;
+  border: 1px solid #8c6b34;
+  border-radius: 10px;
+  background: #d0ac68;
+  cursor: pointer;
+}
+
+.controls-color-row input[type='color']:focus-visible:not([data-pointer-focus]) {
+  outline: 2px solid #2148bd;
+  outline-offset: 2px;
+}
+
+.controls-board__foot {
+  padding-top: 17px;
+  border-top: 1px solid rgba(32, 34, 42, 0.16);
+}
+
+.controls-board__foot > p {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: #777164;
+  font: 10px/1.2 var(--data);
+}
+
+.controls-board__foot > p i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(23, 26, 34, 0.28);
+}
+
+.controls-board__foot > div {
+  display: flex;
+  gap: 8px;
+}
+
+.controls-button {
+  height: 39px;
+  padding: 0 16px;
+  border-radius: 11px;
+  cursor: pointer;
+  font: 700 10px/1 var(--label);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.controls-button--quiet {
+  border: 1px solid rgba(32, 34, 42, 0.24);
+  background: rgba(255, 255, 255, 0.56);
+  color: #4e4c45;
+}
+
+.controls-button--primary {
+  border: 1px solid #17358e;
+  background: #2148bd;
+  color: white;
+}
+
+.controls-button:hover,
+.controls-button[data-hover] {
+  border-color: #171a22;
+  background: #171a22;
+  color: white;
+}
+
+.controls-button:active,
+.controls-button[data-active] {
+  background: #0d0f15;
+}
+
+.controls-button:focus-visible:not([data-pointer-focus]) {
+  outline: 2px solid #2148bd;
+  outline-offset: 2px;
+}
+
+@media (max-width: 1120px) {
+  .controls-layout {
+    grid-template-columns: 760px;
+    gap: 30px;
+    padding-left: max(170px, calc((100vw - 760px) / 2));
+    padding-right: 28px;
+  }
+
+  .controls-intro {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) minmax(300px, 1fr);
+    column-gap: 38px;
+    width: 760px;
+  }
+
+  .controls-intro h1 {
+    margin-bottom: 0;
+  }
+
+  .controls-intro > p {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: end;
+    max-width: 330px;
+  }
+
+  .controls-mode {
+    margin-top: 22px;
+  }
+}
+
+@media (max-height: 680px) and (min-width: 1121px) {
+  .controls-layout {
+    align-items: start;
+    padding-top: 34px;
+  }
+}
+
+/* The candidate routes do not mount the lab rail. Keep the 760px physical
+ * specimen at full scale and let a narrow viewport pan across it, but begin
+ * that scroll from the content itself instead of from a rail-sized gutter. */
+@media (max-width: 600px) {
+  .controls-layout {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
