@@ -11,7 +11,7 @@
 
 export const MARBLE_HAND_THEMES = [
   { id: 'waves', name: 'Waves', note: 'Liquid silk', color: '#ff8062' },
-  { id: 'checker', name: 'Checker', note: 'Infinite floor', color: '#d1b4e6' },
+  { id: 'tide', name: 'Tide', note: 'Luminous sea', color: '#8fd0d8' },
   { id: 'prism', name: 'Prism', note: 'Kaleidoscope glass', color: '#efa173' },
 ] as const
 

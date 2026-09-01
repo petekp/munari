@@ -11,6 +11,8 @@
 // Ownership: this file owns perceptual scene values. Pointer truth stays in
 // MarbleHand.tsx and the source model stays under public/models.
 
+import type { MarbleHandThemeId } from './marbleHandThemes'
+
 export type MarbleHandFinish = 'marble' | 'chrome'
 
 export interface MarbleHandTuning {
@@ -67,6 +69,38 @@ export interface MarbleHandTuning {
   shadowIntensity: number
   shadowRadius: number
   shadowMapSize: number
+  wavesZoom: number
+  wavesWarp: number
+  wavesRipple: number
+  wavesContrast: number
+  wavesShift: number
+  wavesSheen: number
+  wavesGloss: number
+  wavesVignette: number
+  tideHorizon: number
+  tideLift: number
+  tideEclipseSize: number
+  tideSwell: number
+  tideGlow: number
+  tideHueShift: number
+  tideSurgeRate: number
+  tideGlitter: number
+  tideGlade: number
+  tideFlare: number
+  tideStarDensity: number
+  prismSegments: number
+  prismZoom: number
+  prismDispersion: number
+  prismCells: number
+  prismEdge: number
+  prismGlint: number
+  prismCore: number
+  prismSpin: number
+  prismMorph: number
+  prismPlates: number
+  prismPlateTint: number
+  prismDepth: number
+  prismSpark: number
 }
 
 // A fresh scene copies these defaults. The panel never mutates them, so
@@ -163,6 +197,43 @@ export const marbleHandTuning: Readonly<MarbleHandTuning> = Object.freeze({
   // The final DPR 2 browser frame keeps the long index shadow smooth at
   // 2048. A larger map would quadruple this candidate's shadow storage.
   shadowMapSize: 2048,
+  // All three backgrounds carry the 2026-08-31 user export — warped,
+  // rippled waves; a low-horizon sea with a calm swell and heavy glitter,
+  // glade, and flare; and a dense fast-morphing sixteen-mirror prism. The
+  // gate's theme fps and diff clauses measure this look, and Reset all
+  // restores it.
+  wavesZoom: 2.4,
+  wavesWarp: 1.65,
+  wavesRipple: 0.15,
+  wavesContrast: 1.55,
+  wavesShift: -0.18,
+  wavesSheen: 0.13,
+  wavesGloss: 0.14,
+  wavesVignette: 0.26,
+  tideHorizon: 0.21,
+  tideLift: 0.34,
+  tideEclipseSize: 0.11,
+  tideSwell: 0.8,
+  tideGlow: 0.65,
+  tideHueShift: -0.17,
+  tideSurgeRate: 0.3,
+  tideGlitter: 1.95,
+  tideGlade: 1.06,
+  tideFlare: 1.45,
+  tideStarDensity: 0.56,
+  prismSegments: 16,
+  prismZoom: 3.5,
+  prismDispersion: 0.05,
+  prismCells: 8,
+  prismEdge: 0.25,
+  prismGlint: 0.65,
+  prismCore: 0.3,
+  prismSpin: 0.04,
+  prismMorph: 3.75,
+  prismPlates: 1.5,
+  prismPlateTint: 2,
+  prismDepth: 1.2,
+  prismSpark: 0.59,
 })
 
 export type MarbleHandNumberKey = {
@@ -184,6 +255,7 @@ export interface MarbleHandControlGroup {
   description: string
   initiallyOpen?: boolean
   material?: MarbleHandFinish
+  theme?: MarbleHandThemeId
   controls: readonly MarbleHandControl[]
 }
 
@@ -196,6 +268,46 @@ export function normalizeMarbleHandInput(control: MarbleHandControl, value: numb
   const decimals = control.step.toString().split('.')[1]?.length ?? 0
   const snapped = Number((control.min + steps * control.step).toFixed(decimals))
   return control.degrees ? snapped * Math.PI / 180 : snapped
+}
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+const MARBLE_HAND_FINISHES = new Set<MarbleHandFinish>(['marble', 'chrome'])
+const MARBLE_HAND_COLOR_KEYS = ['stoneColor', 'veinColor', 'chromeTint', 'strokeColor', 'lightColor'] as const
+const MARBLE_HAND_BOOLEAN_KEYS = [
+  'motionEnabled', 'keepAbovePage', 'tapEnabled', 'pinchEnabled', 'strokeEnabled', 'shadowsEnabled',
+] as const
+
+// Turns a stored bag — shaped like MarbleHandTuning but not necessarily
+// valid at runtime (an older build, a hand-edited localStorage entry) —
+// into a complete, in-range tuning object. Restore clamps to a control's
+// bounds but never snaps to its step: authored defaults sit off the step
+// grid (maxTilt 0.12rad is 6.8755° on a 0.1° step), and the marble-hand
+// gate requires an untouched field to survive a reload with its exact
+// value (2026-09-01, restore-snapping drifted it to 6.9°). Step snapping
+// belongs to typed input only (normalizeMarbleHandInput). Bounds are in
+// display units, so a degrees field clamps in degrees, not radians.
+export function normalizeMarbleHandTuning(raw: MarbleHandTuning): MarbleHandTuning {
+  const next = { ...marbleHandTuning }
+  for (const group of MARBLE_HAND_GROUPS) {
+    for (const control of group.controls) {
+      const stored = raw[control.key]
+      if (!Number.isFinite(stored)) continue
+      const display = control.degrees ? (stored * 180) / Math.PI : stored
+      const bounded = Math.min(control.max, Math.max(control.min, display))
+      // An in-range value keeps its stored bits: the deg→rad round trip
+      // alone shifts a radian value by 1 ULP, which the gate's exact-
+      // radians clause counts as a change.
+      next[control.key] = bounded === display ? stored : control.degrees ? (bounded * Math.PI) / 180 : bounded
+    }
+  }
+  for (const key of MARBLE_HAND_COLOR_KEYS) {
+    if (HEX_COLOR.test(raw[key])) next[key] = raw[key].toLowerCase()
+  }
+  for (const key of MARBLE_HAND_BOOLEAN_KEYS) {
+    if (raw[key] === true || raw[key] === false) next[key] = raw[key]
+  }
+  if (MARBLE_HAND_FINISHES.has(raw.materialMode)) next.materialMode = raw.materialMode
+  return next
 }
 
 // Angle ranges are displayed in degrees; stored values stay in radians so
@@ -301,6 +413,59 @@ export const MARBLE_HAND_GROUPS: readonly MarbleHandControlGroup[] = [
       { key: 'lightY', label: 'Light vertical', min: -1000, max: 1000, step: 10, unit: 'px' },
       { key: 'lightZ', label: 'Light height', min: 100, max: 1500, step: 10, unit: 'px' },
       { key: 'exposure', label: 'Exposure', min: 0.25, max: 2.5, step: 0.01 },
+    ],
+  },
+  {
+    title: 'Waves background',
+    theme: 'waves',
+    description: 'The silk field behind the poster. Zoom and warp reshape the folds; contrast and shift move the palette.',
+    controls: [
+      { key: 'wavesZoom', label: 'Pattern zoom', min: 0.8, max: 6, step: 0.1, unit: '×' },
+      { key: 'wavesWarp', label: 'Warp depth', min: 0, max: 2, step: 0.05, unit: '×' },
+      { key: 'wavesRipple', label: 'Fine ripple', min: 0, max: 0.15, step: 0.005 },
+      { key: 'wavesContrast', label: 'Palette contrast', min: 0.5, max: 2.5, step: 0.05 },
+      { key: 'wavesShift', label: 'Palette shift', min: -0.5, max: 0.5, step: 0.01 },
+      { key: 'wavesSheen', label: 'Fold sheen', min: 0, max: 1, step: 0.01 },
+      { key: 'wavesGloss', label: 'Traveling gloss', min: 0, max: 0.4, step: 0.01 },
+      { key: 'wavesVignette', label: 'Vignette', min: 0, max: 0.5, step: 0.01 },
+    ],
+  },
+  {
+    title: 'Tide background',
+    theme: 'tide',
+    description: 'The luminous sea and its eclipse. A speed change jumps the phase once, then runs smoothly.',
+    controls: [
+      { key: 'tideHorizon', label: 'Horizon height', min: 0.05, max: 0.6, step: 0.01 },
+      { key: 'tideLift', label: 'Eclipse height', min: 0.05, max: 0.6, step: 0.01 },
+      { key: 'tideEclipseSize', label: 'Eclipse size', min: 0.06, max: 0.2, step: 0.002 },
+      { key: 'tideSwell', label: 'Swell', min: 0, max: 2.5, step: 0.05, unit: '×' },
+      { key: 'tideGlow', label: 'Filament glow', min: 0, max: 2, step: 0.05, unit: '×' },
+      { key: 'tideHueShift', label: 'Glow hue', min: -0.5, max: 0.5, step: 0.01 },
+      { key: 'tideSurgeRate', label: 'Surge speed', min: 0, max: 0.3, step: 0.005, unit: '/s' },
+      { key: 'tideGlitter', label: 'Glitter', min: 0, max: 3, step: 0.05, unit: '×' },
+      { key: 'tideGlade', label: 'Light path', min: 0, max: 1.5, step: 0.02 },
+      { key: 'tideFlare', label: 'Lens flare', min: 0, max: 2, step: 0.05, unit: '×' },
+      { key: 'tideStarDensity', label: 'Star density', min: 0, max: 1, step: 0.02 },
+    ],
+  },
+  {
+    title: 'Prism background',
+    theme: 'prism',
+    description: 'The kaleidoscope. Changing segments pops a mirror line into place; every other control moves smoothly.',
+    controls: [
+      { key: 'prismSegments', label: 'Mirror segments', min: 3, max: 16, step: 1 },
+      { key: 'prismZoom', label: 'Glass zoom', min: 1, max: 5, step: 0.1, unit: '×' },
+      { key: 'prismDispersion', label: 'Dispersion', min: 0, max: 0.05, step: 0.001 },
+      { key: 'prismCells', label: 'Cell scale', min: 1, max: 8, step: 0.1, unit: '×' },
+      { key: 'prismEdge', label: 'Edge glow', min: 0, max: 1.5, step: 0.05 },
+      { key: 'prismGlint', label: 'Caustic glint', min: 0, max: 1, step: 0.05 },
+      { key: 'prismCore', label: 'Core glow', min: 0, max: 1, step: 0.05 },
+      { key: 'prismSpin', label: 'Spin speed', min: 0, max: 0.2, step: 0.005, unit: '/s' },
+      { key: 'prismMorph', label: 'Morph speed', min: 0, max: 4, step: 0.05, unit: '×' },
+      { key: 'prismPlates', label: 'Plate scale', min: 0.2, max: 1.5, step: 0.05, unit: '×' },
+      { key: 'prismPlateTint', label: 'Plate tint', min: 0, max: 2, step: 0.05 },
+      { key: 'prismDepth', label: 'Depth layer', min: 0, max: 2, step: 0.05 },
+      { key: 'prismSpark', label: 'Sparkle', min: 0, max: 0.6, step: 0.01 },
     ],
   },
   {

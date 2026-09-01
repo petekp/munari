@@ -108,6 +108,7 @@ function CataloguePage({
   pointer,
   colorMotion,
   reducedMotion,
+  tuning,
   onSelect,
 }: {
   page: React.RefObject<HTMLElement | null>
@@ -117,13 +118,14 @@ function CataloguePage({
   pointer: boolean
   colorMotion: boolean
   reducedMotion: boolean
+  tuning: MarbleHandTuning
   onSelect: (id: MarbleHandThemeId) => void
 }) {
   return (
     <main ref={page} className="mh-sheet" data-theme={selected} data-motion={colorMotion ? 'running' : 'paused'} data-marble-hand-pointer={pointer || undefined} style={{ width, height }}>
       <div className="mh-atmosphere" aria-hidden="true">
         {/* No key: remounting would drop the WebGL context on every theme. */}
-        <MarbleHandBackground theme={selected} motion={colorMotion} reducedMotion={reducedMotion} />
+        <MarbleHandBackground theme={selected} motion={colorMotion} reducedMotion={reducedMotion} tuning={tuning} />
       </div>
       <section className="mh-themes" aria-label="Background themes">
         {MARBLE_HAND_THEMES.map((theme) => (
@@ -564,14 +566,16 @@ export function MarbleHandApp() {
         pointer={handReady && !parked}
         colorMotion={colorMotion}
         reducedMotion={reducedMotion}
+        tuning={tuning}
         onSelect={choose}
       />
     ),
-    [box.height, box.width, choose, selected, handReady, parked, colorMotion, reducedMotion],
+    [box.height, box.width, choose, selected, handReady, parked, colorMotion, reducedMotion, tuning],
   )
   const controls = showChrome ? (
     <MarbleHandTweaks
       tuning={tuning}
+      theme={selected}
       onChange={setTuning}
       ready={handReady}
       unavailable={overlayFailed || contextLost}

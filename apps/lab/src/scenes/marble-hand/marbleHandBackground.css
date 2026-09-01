@@ -40,12 +40,11 @@
 }
 
 
-.mh-background[data-fallback][data-visualization="checker"] {
-  background-color: #fff0cf;
+.mh-background[data-fallback][data-visualization="tide"] {
+  background-color: #3b6f8e;
   background-image:
-    linear-gradient(#cfe6ff 0 34%, rgba(255, 240, 207, 0) 46%),
-    conic-gradient(#f6a47c 25%, #fff0cf 25% 50%, #b9a3ee 50% 75%, #fff0cf 75%);
-  background-size: 100% 100%, 96px 96px;
+    radial-gradient(circle at 50% 22%, #17111f 0 6%, rgba(255, 214, 168, 0.9) 7% 9%, rgba(255, 214, 168, 0) 20%),
+    linear-gradient(#2d2255 0 26%, #f0a9b4 36% 40%, #3b6f8e 46%, #46c4b4 74%, #1c2f4d 100%);
 }
 
 .mh-background[data-fallback][data-visualization="prism"] {

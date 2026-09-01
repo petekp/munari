@@ -168,6 +168,39 @@ export function normalizePlumeInput(control: PlumeControl, value: number): numbe
   return Math.min(control.max, Math.max(control.min, snapped))
 }
 
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+const PLUME_COLOR_KEYS: readonly PlumeColorKey[] = ['inkColor', 'backgroundColor', 'particleColor', 'sparkColor']
+const PLUME_FONT_FAMILIES = new Set<PlumeFontFamily>(['serif', 'sans', 'mono'])
+const PLUME_RELEASE_UNITS = new Set<PlumeReleaseUnitSetting>(['word', 'character'])
+
+// Turns a stored bag — shaped like PlumeTuning but not necessarily valid at
+// runtime (an older build, a hand-edited localStorage entry) — into a
+// complete, in-range tuning object. Every field falls back to its shipped
+// default independently; one bad field cannot invalidate the rest. Runtime
+// safety comes from Number.isFinite/RegExp.test/Set.has, which give correct
+// answers on a mistyped value even though `raw`'s declared type promises
+// more than storage actually guarantees.
+// Restore clamps to bounds but never snaps to step — a stored value off
+// the step grid must survive a reload exactly (see
+// normalizeMarbleHandTuning); step snapping belongs to typed input only
+// (normalizePlumeInput).
+export function normalizePlumeTuning(raw: PlumeTuning): PlumeTuning {
+  const next = { ...plumeTuning }
+  for (const group of PLUME_GROUPS) {
+    for (const control of group.controls) {
+      const stored = raw[control.key]
+      if (!Number.isFinite(stored)) continue
+      next[control.key] = Math.min(control.max, Math.max(control.min, stored))
+    }
+  }
+  for (const key of PLUME_COLOR_KEYS) {
+    if (HEX_COLOR.test(raw[key])) next[key] = raw[key].toLowerCase()
+  }
+  if (PLUME_FONT_FAMILIES.has(raw.fontFamily)) next.fontFamily = raw.fontFamily
+  if (PLUME_RELEASE_UNITS.has(raw.releaseUnit)) next.releaseUnit = raw.releaseUnit
+  return next
+}
+
 export const PLUME_GROUPS: readonly PlumeControlGroup[] = [
   {
     key: 'type',

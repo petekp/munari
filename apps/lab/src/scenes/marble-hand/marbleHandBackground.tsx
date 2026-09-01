@@ -22,6 +22,7 @@ import {
 } from './marbleHandBackgroundClock'
 import { createMarbleBackgroundMaterial, setMarbleBackgroundFrame } from './marbleHandBackgroundShaders'
 import type { MarbleHandThemeId } from './marbleHandThemes'
+import type { MarbleHandTuning } from './marbleHandTuning'
 import './marbleHandBackground.css'
 
 /** The gate's read-only view of the field: what is drawn, and from when. */
@@ -39,9 +40,11 @@ export interface MarbleBackgroundProbe {
   sampleHash: () => number
 }
 
-// Beyond 1.5 the field costs more than it shows: it is a soft colour wash
-// behind 288px type, not an edge the eye can resolve at device pixels.
-const FIELD_PIXEL_RATIO = 1.5
+// Device pixels, capped at 2: the tide's filaments and single-pixel
+// glitter resolve at native resolution, and below it the whole field
+// blurs. Above 2 the eye stops resolving the gain but the fill cost keeps
+// growing.
+const FIELD_PIXEL_RATIO = 2
 // A 64px square read back from the middle of the canvas. Wide enough that
 // every theme moves something inside it within one frame, small enough that
 // the pipeline flush it forces stays under a millisecond.
@@ -116,10 +119,11 @@ function hashFrame(renderer: THREE.WebGLRenderer, pixels: Uint8Array): number {
   return hash >>> 0
 }
 
-export function MarbleHandBackground({ theme, motion, reducedMotion }: {
+export function MarbleHandBackground({ theme, motion, reducedMotion, tuning }: {
   theme: MarbleHandThemeId
   motion: boolean
   reducedMotion: boolean
+  tuning: MarbleHandTuning
 }) {
   const host = useRef<HTMLDivElement>(null)
   const state = useMemo(createFieldState, [])
@@ -128,6 +132,10 @@ export function MarbleHandBackground({ theme, motion, reducedMotion }: {
   // default one, or an arrival on any other theme pays for two.
   const selected = useRef(theme)
   selected.current = theme
+  // The draw closure lives inside the mount effect; the ref keeps it on
+  // the latest panel values without re-mounting the renderer.
+  const tuningRef = useRef(tuning)
+  tuningRef.current = tuning
 
   useLayoutEffect(() => {
     const box = host.current
@@ -159,7 +167,7 @@ export function MarbleHandBackground({ theme, motion, reducedMotion }: {
     let raf = 0
     const draw = () => {
       const time = marbleBackgroundClock.now()
-      setMarbleBackgroundFrame(state.mesh.material, time, state.width, state.height)
+      setMarbleBackgroundFrame(state.mesh.material, time, state.width, state.height, tuningRef.current)
       renderer.render(state.scene, state.camera)
       state.handle.time = time
       state.handle.draws += 1
@@ -239,6 +247,11 @@ export function MarbleHandBackground({ theme, motion, reducedMotion }: {
       canvas.remove()
     }
   }, [state])
+
+  // A paused or reduced-motion field still has to show a slider's change.
+  useEffect(() => {
+    if (state.renderer) state.draw()
+  }, [state, tuning])
 
   useEffect(() => {
     state.handle.theme = theme

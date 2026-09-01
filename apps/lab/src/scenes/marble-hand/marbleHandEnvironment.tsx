@@ -31,7 +31,7 @@ import {
   type MarblePageField,
 } from './marbleHandEnvironmentLaw'
 import { marbleBackgroundClock } from './marbleHandBackgroundClock'
-import { createMarbleBackgroundMaterial, setMarbleBackgroundFrame } from './marbleHandBackgroundShaders'
+import { createMarbleBackgroundMaterial, marbleBackgroundTuningStamp, setMarbleBackgroundFrame } from './marbleHandBackgroundShaders'
 import type { MarbleHandThemeId } from './marbleHandThemes'
 import type { MarbleHandTuning } from './marbleHandTuning'
 import type { MarblePageCaptureState } from './marbleHandPageCapture'
@@ -390,7 +390,7 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture, theme }: 
     // background's second is what tells a still page it still has to bake.
     // Quantising it to the bake interval keeps a held clock from baking.
     const beat = Math.round(state.backgroundTime * tuning.reflectionFps)
-    const key = `${state.revision}|${capture.ready}:${capture.revision}:${capture.width}x${capture.height}|${Math.round(origin.x / 8)},${Math.round(origin.y / 8)},${Math.round(origin.z / 4)}|${tuning.roomBounce}|${theme}:${beat}`
+    const key = `${state.revision}|${capture.ready}:${capture.revision}:${capture.width}x${capture.height}|${Math.round(origin.x / 8)},${Math.round(origin.y / 8)},${Math.round(origin.z / 4)}|${tuning.roomBounce}|${theme}:${beat}|${marbleBackgroundTuningStamp(tuning, theme)}`
     if (key === state.bakeKey) return
     // Only the room is approximated. The page's headings, glyphs, images,
     // backgrounds and borders come from the full captured texture below.
@@ -410,7 +410,7 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture, theme }: 
     const fieldHeight = capture.height || state.field.viewportHeight
     state.backgroundMesh.visible = fieldWidth > 0 && fieldHeight > 0
     state.backgroundMesh.scale.set(fieldWidth || 1, fieldHeight || 1, 1)
-    setMarbleBackgroundFrame(state.backgroundMesh.material, state.backgroundTime, fieldWidth, fieldHeight)
+    setMarbleBackgroundFrame(state.backgroundMesh.material, state.backgroundTime, fieldWidth, fieldHeight, tuning)
     state.camera.position.copy(origin)
     // The private scene is never mounted in the page overlay. Its plane
     // cannot replace, cover, or receive input meant for the native HTML.

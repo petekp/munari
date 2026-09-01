@@ -57,13 +57,13 @@ motion dissolves ink in place; without HTML-in-canvas the native textarea
 keeps its quiet DOM fallback. `npm run gate:plume` checks particle shape,
 color retention, character release, tuning, replay, input, and fallback.
 
-Marble Hand uses a bold type poster over four full-screen fragment shaders,
+Marble Hand uses a bold type poster over three full-screen fragment shaders,
 drawn on a second WebGL canvas behind the native text: Waves is domain-warped
-liquid silk, Orbit is a ringed planet with parallax stars and a passing moon,
-Checker is an undulating tile floor running to a foggy horizon, and Prism is
-a kaleidoscope of dispersed glass. The bottom buttons select the whole
-background, not only its colors. The page shows only the headline and theme
-buttons; background controls and reflection notices live inside Tweak hand.
+liquid silk, Tide is a luminous sea under a total eclipse with a lens flare,
+and Prism is a kaleidoscope of dispersed glass. The top buttons select the
+whole background, not only its colors. The page shows only the headline and
+theme buttons; background controls and reflection notices live inside Tweak
+hand.
 Theme changes keep the hand's saved settings and the current pause state.
 
 A cloned `<canvas>` is blank, so the page capture the hand reflects cannot

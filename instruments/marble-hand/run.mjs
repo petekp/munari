@@ -55,7 +55,7 @@ const nativeThemeClicks = new WeakMap()
 const artifactDirectory = process.env.MARBLE_HAND_ARTIFACT_DIR
 const themes = [
   { id: 'waves', name: 'Waves' },
-  { id: 'checker', name: 'Checker' },
+  { id: 'tide', name: 'Tide' },
   { id: 'prism', name: 'Prism' },
 ]
 let browser
@@ -170,7 +170,7 @@ function readFieldCanvas(page) {
 async function setPageMotion(page, running) {
   const desired = running ? 'running' : 'paused'
   const before = await readColorMotion(page)
-  const panelWasOpen = Boolean(await page.$(`aside${panelSelector}`))
+  const panelWasOpen = await isPanelOpen(page)
   if (before.state !== desired) {
     await setPanelOpen(page, true)
     await page.click(`${panelSelector} [data-marble-motion-toggle]`)
@@ -509,13 +509,24 @@ function checkHand(sample, point, label) {
 // These keys cross both boundaries, including degrees in the UI and radians
 // in Three (the unit mismatch this 2026-08-30 panel can otherwise hide).
 const panelSelector = '[data-marble-hand-controls]'
+
+// The shared tweak panel mounts its <aside> once and toggles the `hidden`
+// attribute rather than adding/removing it, so `page.$(panelSelector)`
+// alone is always truthy once the scene has rendered — it answers "does
+// the panel exist" not "is it open". Open/closed reads the attribute.
+function isPanelOpen(page) {
+  return page.$eval(`aside${panelSelector}`, (panel) => !panel.hidden).catch(() => false)
+}
+
 const panelKeys = ['baseRotation', 'sculptureRoll', 'sculpturePitch', 'scale', 'roughness',
   'keyIntensity', 'envMapIntensity', 'pageLightIntensity', 'roomBounce', 'reflectionFps',
   'strokeWidthPx', 'strokeOpacity', 'poseDamping', 'velocityTilt', 'maxTilt', 'maxSpin',
   'pressPitch', 'ambientIntensity', 'lightX', 'lightY', 'lightZ', 'exposure', 'shadowIntensity', 'shadowRadius']
 const chromePanelKeys = panelKeys.map((key) =>
   key === 'roughness' ? 'chromeRoughness' : key === 'envMapIntensity' ? 'chromeReflectionIntensity' : key)
-const panelSections = ['Orientation', 'Size & height', 'Movement', 'Idle tap', 'Pinch', 'Marble', 'Stroke', 'Reflections', 'Lighting', 'Shadows']
+// One background section shows at a time — the selected theme's. The panel
+// checks run on the arrival theme, Waves.
+const panelSections = ['Orientation', 'Size & height', 'Movement', 'Idle tap', 'Pinch', 'Marble', 'Stroke', 'Reflections', 'Lighting', 'Waves background', 'Shadows']
 
 function numberSelector(key) {
   return `${panelSelector} input[data-tuning-key="${key}"][type="number"]`
@@ -549,7 +560,7 @@ function readPanelScene(page) {
     const group = scene?.getObjectByName('marble-hand-pointer')
     const key = scene?.getObjectByName('marble-hand-key-light')
     const ambient = scene?.children.find((object) => object.type === 'AmbientLight')
-    const pageLights = ['waves', 'checker', 'prism']
+    const pageLights = ['waves', 'tide', 'prism']
       .map((id) => scene?.getObjectByName(`marble-hand-page-light-${id}`))
     if (!hand?.material || !group || !key || pageLights.some((light) => !light)) return null
     return {
@@ -629,7 +640,7 @@ async function requireTheme(page, id) {
 async function selectTheme(page, id) {
   let reopenPanel = false
   let target = await readTheme(page, id)
-  if (!target.directHit && await page.$(`aside${panelSelector}`)) {
+  if (!target.directHit && await isPanelOpen(page)) {
     await page.click(`${panelSelector} [aria-label="Close hand controls"]`)
     await page.waitForSelector(`aside${panelSelector}`, { hidden: true, timeout: 5_000 })
     reopenPanel = true
@@ -766,7 +777,7 @@ async function clickText(page, selector, text, rootSelector = panelSelector) {
 }
 
 async function setPanelOpen(page, open) {
-  const current = Boolean(await page.$(`aside${panelSelector}`))
+  const current = await isPanelOpen(page)
   if (current === open) return
   if (open) await clickText(page, 'button', 'Tweak hand', '')
   else await page.click(`${panelSelector} [aria-label="Close hand controls"]`)
@@ -863,7 +874,7 @@ async function waitForPanelScene(page, expected, label) {
       const group = scene?.getObjectByName('marble-hand-pointer')
       const key = scene?.getObjectByName('marble-hand-key-light')
       const ambient = scene?.children.find((object) => object.type === 'AmbientLight')
-      const pageLights = ['waves', 'checker', 'prism']
+      const pageLights = ['waves', 'tide', 'prism']
         .map((id) => scene?.getObjectByName(`marble-hand-page-light-${id}`))
       if (!hand?.material || !group || !key || pageLights.some((light) => !light)) return false
       const actual = {
@@ -905,7 +916,7 @@ async function verifyPageReflections(page) {
   await page.waitForFunction(() => {
     const scene = window.__r3f?.scene
     const hand = scene?.getObjectByName('marble-hand-sculpture')
-    const lights = ['waves', 'checker', 'prism']
+    const lights = ['waves', 'tide', 'prism']
       .map((id) => scene?.getObjectByName(`marble-hand-page-light-${id}`))
     return hand?.material.envMapIntensity === 3 && hand.material.roughness === 0.1 &&
       lights.every((light) => light && light.intensity === 0)
@@ -1129,6 +1140,10 @@ async function verifyThemeReflections(page) {
   try {
     for (const theme of themes) {
       await selectTheme(page, theme.id)
+      const backgroundSections = await page.$$eval(`${panelSelector} details > summary`, (summaries) =>
+        summaries.map((summary) => summary.textContent.trim()).filter((name) => name.endsWith(' background')))
+      requireThat(backgroundSections.length === 1 && backgroundSections[0] === `${theme.name} background`,
+        `background section did not follow the ${theme.id} theme: ${backgroundSections.join(', ') || 'none'}`)
       // Reaching the last button briefly closes the panel and un-parks the
       // hand. Its press/tilt damping must finish before optical comparison.
       await page.waitForFunction((height, rotation) => {
@@ -1563,13 +1578,14 @@ async function verifyStroke(page) {
     requireThat(translucent.peakAlpha >= 55 && translucent.peakAlpha <= 70,
       `stroke color/opacity did not survive Marble mode: ${JSON.stringify(translucent)}`)
     await page.evaluate(() => navigator.clipboard.writeText('marble-hand-stroke-empty'))
-    await clickText(page, 'button', 'Copy settings')
+    await page.click('[data-tweak-copy]')
     const copied = await page.evaluate(async () => {
-      const payload = JSON.parse(await navigator.clipboard.readText())
-      if (!payload?.marbleHand) {
-        throw new Error('Copy settings did not write a marbleHand settings object')
+      const text = await navigator.clipboard.readText()
+      if (text === 'marble-hand-stroke-empty') {
+        throw new Error('Copy values did not write a settings object')
       }
-      return payload.marbleHand
+      // The panel copies a bare TS object literal, not JSON.
+      return new Function('return ' + text)()
     })
     requireThat(copied.strokeEnabled && copied.strokeColor === '#00ff00' &&
       copied.strokeWidthPx === 3 && copied.strokeOpacity === 0.25,
@@ -1661,7 +1677,7 @@ async function verifyHeadingReflections(page) {
     const scene = window.__r3f.scene
     return scene.getObjectByName('marble-hand-sculpture').material.envMapIntensity === 3 &&
       scene.getObjectByName('marble-hand-sculpture').material.roughness === 0.008 &&
-      ['waves', 'checker', 'prism'].every((id) => scene.getObjectByName(`marble-hand-page-light-${id}`).intensity === 0)
+      ['waves', 'tide', 'prism'].every((id) => scene.getObjectByName(`marble-hand-page-light-${id}`).intensity === 0)
   }, { timeout: 5_000 })
   await togglePanelCheckbox(page, 'Park hand')
   const point = await page.$eval('.mh-app > .mh-sheet h1', (heading) => {
@@ -1791,14 +1807,14 @@ async function verifyChromeMode(page, savedSettings) {
       `Chrome material switch did not visibly change the hand: ${JSON.stringify(pixels)}`)
 
     await page.evaluate(() => navigator.clipboard.writeText('marble-hand-chrome-empty'))
-    await clickText(page, 'button', 'Copy settings')
+    await page.click('[data-tweak-copy]')
     await page.waitForFunction(async () => {
       const text = await navigator.clipboard.readText()
-      return text !== 'marble-hand-chrome-empty' && JSON.parse(text).marbleHand?.materialMode === 'chrome'
+      return text !== 'marble-hand-chrome-empty' && new Function('return ' + text)().materialMode === 'chrome'
     }, { timeout: 5_000 })
-    const copied = await page.evaluate(async () => JSON.parse(await navigator.clipboard.readText()).marbleHand)
+    const copied = await page.evaluate(async () => new Function('return ' + await navigator.clipboard.readText())())
     requireThat(Object.entries(savedSettings).every(([key, value]) => key === 'materialMode' || copied[key] === value),
-      'Chrome mode changed saved marble settings in copied JSON')
+      'Chrome mode changed saved marble settings in copied text')
 
     const intensity = await verifyMirrorIntensity(page)
     const restoredChrome = await readHandMaterial(page)
@@ -2087,12 +2103,12 @@ async function verifyPanel(port) {
     // pass. The real write is then read back through the browser permission.
     clause = 'Copy settings'
     await page.evaluate(() => navigator.clipboard.writeText('marble-hand-gate-empty'))
-    await clickText(page, 'button', 'Copy settings')
+    await page.click('[data-tweak-copy]')
     await page.waitForFunction(async (keys) => {
       const text = await navigator.clipboard.readText()
       return text !== 'marble-hand-gate-empty' && keys.every((key) => text.includes(key))
     }, { timeout: 5_000 }, panelKeys)
-    const copied = await page.evaluate(async () => JSON.parse(await navigator.clipboard.readText()).marbleHand)
+    const copied = await page.evaluate(async () => new Function('return ' + await navigator.clipboard.readText())())
     const copiedExpected = {
       baseRotation: degrees.baseRotation * Math.PI / 180,
       sculptureRoll: degrees.sculptureRoll * Math.PI / 180,
@@ -2326,15 +2342,15 @@ async function run() {
     'cold-load clause did not hold the sculpture request with a native cursor')
   requireThat(cold.pageCursor !== 'none' && cold.hitCursor !== null && cold.hitCursor !== 'none',
     `cold page hid the native cursor: ${JSON.stringify(cold)}`)
-  const coldChecker = await readTheme(page, 'checker')
+  const coldTide = await readTheme(page, 'tide')
   const coldClicks = await readThemeClickCount(page)
-  requireThat(coldChecker.directHit, 'cold page did not hit the native Checker button')
-  await page.mouse.click(coldChecker.x, coldChecker.y)
-  await requireTheme(page, 'checker')
+  requireThat(coldTide.directHit, 'cold page did not hit the native Tide button')
+  await page.mouse.click(coldTide.x, coldTide.y)
+  await requireTheme(page, 'tide')
   requireThat(await readThemeClickCount(page) === coldClicks + 1 &&
-    await page.$eval('.mh-app > .mh-sheet [data-theme-option="checker"]',
+    await page.$eval('.mh-app > .mh-sheet [data-theme-option="tide"]',
       (button) => document.activeElement === button),
-  'cold Checker click did not keep native focus or produced duplicate events')
+  'cold Tide click did not keep native focus or produced duplicate events')
   delayAsset = false
   await Promise.all(held.map((request) => request.continue()))
   await page.waitForSelector('.mh-app[data-live]', { timeout: 30_000 })

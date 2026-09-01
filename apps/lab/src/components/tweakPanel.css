@@ -1,0 +1,412 @@
+/* Tweak panel shell — the chrome plume, marble-hand, and lamp shared byte
+ * for byte before this file existed. Position and palette are the only
+ * axes a scene still owns, both through custom properties a scene's own
+ * CSS may override on the class it passes as `className`; nothing here
+ * paints the scene itself, so a closed or hidden panel leaves it alone. */
+
+.tweak-opener,
+.tweak-panel {
+  --tweak-ink: #28333d;
+  --tweak-quiet: #65737d;
+  --tweak-edge: #d0d9de;
+  --tweak-focus: #667b8d;
+  --tweak-accent: #596b78;
+  --tweak-bg: #f8fafb;
+  --tweak-opener-bg: rgb(248 250 251 / 0.68);
+  --tweak-panel-width: 296px;
+  position: fixed;
+  /* 200: above a scene's own overlay canvases (<=100). Generous on
+   * purpose: a floating nav at 150 once swallowed a panel's left-edge
+   * buttons, navigating the scene away mid-click (2026-08-31, plume). */
+  z-index: 200;
+  color: var(--tweak-ink);
+  font: 400 13px/1.4 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.tweak-panel--top-right {
+  top: 20px;
+  right: 20px;
+}
+
+.tweak-panel--bottom-right {
+  right: 16px;
+  bottom: 16px;
+}
+
+.tweak-opener[hidden],
+.tweak-panel[hidden] {
+  display: none;
+}
+
+.tweak-opener {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--tweak-edge);
+  border-radius: 8px;
+  background: var(--tweak-opener-bg);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tweak-opener:hover {
+  background: var(--tweak-bg);
+}
+
+.tweak-opener svg,
+.tweak-panel-close svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.tweak-panel {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: var(--tweak-panel-width);
+  max-height: calc(100dvh - 40px);
+  overflow: hidden;
+  border: 1px solid var(--tweak-edge);
+  border-radius: 12px;
+  background: var(--tweak-bg);
+  box-shadow: 0 12px 40px rgb(40 51 61 / 0.09), 0 2px 6px rgb(40 51 61 / 0.03);
+}
+
+.tweak-panel-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 0 6px 0 20px;
+  border-bottom: 1px solid var(--tweak-edge);
+}
+
+.tweak-panel-header h2 {
+  margin: 0;
+  font: 600 14px/1.3 var(--body);
+  letter-spacing: -0.015em;
+}
+
+.tweak-panel-eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--tweak-quiet);
+  font: 10px/1.3 var(--label, var(--body));
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.tweak-panel-close {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tweak-quiet);
+  cursor: pointer;
+}
+
+.tweak-panel-close:hover {
+  background: rgb(0 0 0 / 0.06);
+  color: var(--tweak-ink);
+}
+
+.tweak-panel-body {
+  min-height: 0;
+  padding: 16px 20px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.tweak-panel-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.tweak-panel-fields:disabled {
+  opacity: 0.5;
+}
+
+.tweak-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.tweak-group {
+  border-top: 1px solid var(--tweak-edge);
+}
+
+.tweak-group:first-child {
+  border-top: 0;
+}
+
+.tweak-group summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.tweak-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.tweak-group summary svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--tweak-quiet);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tweak-group[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.tweak-group-body {
+  display: grid;
+  gap: 16px;
+  padding-bottom: 20px;
+}
+
+.tweak-group-description {
+  margin: 0;
+  color: var(--tweak-quiet);
+  font: 400 11px/1.5 var(--body);
+}
+
+.tweak-control {
+  display: grid;
+  gap: 7px;
+}
+
+.tweak-control-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tweak-control-heading > label {
+  font-size: 11px;
+}
+
+.tweak-value {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.tweak-value input {
+  box-sizing: border-box;
+  width: 62px;
+  min-height: 30px;
+  padding: 4px 5px;
+  border: 1px solid var(--tweak-edge);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--tweak-ink);
+  font: 400 11px/1.3 var(--data);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tweak-value > span {
+  min-width: 13px;
+  color: var(--tweak-quiet);
+  font-size: 10px;
+}
+
+.tweak-control > input[type='range'] {
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--tweak-accent);
+  cursor: pointer;
+}
+
+.tweak-select,
+.tweak-color {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+}
+
+.tweak-select select {
+  min-width: 0;
+  max-width: 180px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid var(--tweak-edge);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--tweak-ink);
+  font: 400 12px/1.4 var(--body);
+}
+
+.tweak-color .tweak-hex {
+  box-sizing: border-box;
+  width: 72px;
+  height: 32px;
+  margin-left: auto;
+  padding: 4px 5px;
+  border: 1px solid var(--tweak-edge);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--tweak-quiet);
+  font: 400 10px/1.4 var(--data);
+  text-align: center;
+}
+
+.tweak-color input[type='color'] {
+  box-sizing: border-box;
+  width: 36px;
+  height: 32px;
+  padding: 3px;
+  border: 1px solid var(--tweak-edge);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.tweak-toggle {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  min-height: 30px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.tweak-toggle input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--tweak-accent);
+  cursor: pointer;
+}
+
+.tweak-panel-footer {
+  flex: none;
+  padding: 12px 20px;
+  border-top: 1px solid var(--tweak-edge);
+}
+
+.tweak-panel-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.tweak-panel-actions button {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--tweak-edge);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--tweak-ink);
+  cursor: pointer;
+  font: 500 12px/1.4 var(--body);
+}
+
+.tweak-panel-actions button:hover {
+  border-color: var(--tweak-accent);
+  background: rgb(0 0 0 / 0.05);
+}
+
+.tweak-panel-feedback {
+  margin: 10px 0 0;
+  color: var(--tweak-quiet);
+  font: 400 11px/1.4 var(--body);
+}
+
+.tweak-panel-copy-fallback {
+  margin: 10px 0 0;
+}
+
+.tweak-panel-copy-fallback p {
+  margin: 0 0 6px;
+  color: var(--tweak-quiet);
+  font: 400 11px/1.4 var(--body);
+}
+
+.tweak-panel-copy-fallback textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 96px;
+  padding: 8px;
+  border: 1px solid var(--tweak-edge);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--tweak-ink);
+  font: 400 11px/1.4 var(--data);
+  resize: vertical;
+}
+
+.tweak-opener:focus-visible,
+.tweak-panel button:focus-visible,
+.tweak-panel input:focus-visible,
+.tweak-panel select:focus-visible,
+.tweak-panel summary:focus-visible {
+  outline: 2px solid var(--tweak-focus);
+  outline-offset: 3px;
+}
+
+@media (max-width: 600px) {
+  .tweak-panel-eyebrow {
+    display: none;
+  }
+
+  .tweak-panel--top-right.tweak-opener {
+    top: max(14px, env(safe-area-inset-top));
+    right: max(14px, env(safe-area-inset-right));
+  }
+
+  .tweak-panel--top-right.tweak-panel {
+    top: auto;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: max(12px, env(safe-area-inset-left));
+    width: auto;
+    max-height: min(72dvh, 540px);
+  }
+
+  .tweak-panel--bottom-right.tweak-panel {
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: 12px;
+    width: auto;
+    max-height: 60dvh;
+  }
+
+  .tweak-panel--bottom-right.tweak-opener {
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+}

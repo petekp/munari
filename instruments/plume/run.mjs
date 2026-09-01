@@ -559,10 +559,10 @@ async function revealControl(page, selector) {
   const group = await page.$eval(selector, (input) => {
     const details = input.closest('details')
     return details && !details.open
-      ? [...document.querySelectorAll('.plume-tweak-group')].indexOf(details) + 1
+      ? [...document.querySelectorAll('.tweak-group')].indexOf(details) + 1
       : 0
   })
-  if (group) await page.click(`.plume-tweak-group:nth-child(${group}) > summary`)
+  if (group) await page.click(`.tweak-group:nth-child(${group}) > summary`)
 }
 
 async function replaceField(page, selector, value) {
@@ -773,16 +773,22 @@ async function verifyCopiedTuning(page, url) {
     ['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write'])
   await setPanelOpen(page, true)
   await page.evaluate(() => navigator.clipboard.writeText('plume-gate-empty'))
-  await page.click('[data-plume-copy]')
-  await page.waitForFunction(() => document.querySelector('.plume-controls-feedback')?.textContent === 'Settings copied.',
+  await page.click('[data-tweak-copy]')
+  await page.waitForFunction(() => document.querySelector('.tweak-panel-feedback')?.textContent === 'Copied',
     { timeout: 3000 })
-  const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()))
-  requireThat(copied.plume?.holdMs === 1300 && copied.plume.particleOpacity === 0.63 &&
-    copied.plume.sparkAmount === 0.125 && copied.plume.ghostOpacity === 0.23 &&
-    copied.plume.pitch === 6 && copied.plume.fontFamily === 'serif' &&
-    copied.plume.releaseUnit === 'character' &&
-    Object.keys(copied.plume).length === Object.keys(plumeTuning).length + 1,
-  `Copy JSON changed stored units or dropped fields: ${JSON.stringify(copied)}`)
+  // The panel copies a bare TS object literal, not JSON — evaluating it in
+  // the page context turns it back into an object without a JSON.parse
+  // that would reject the unquoted keys.
+  const copied = await page.evaluate(async () => {
+    const text = await navigator.clipboard.readText()
+    return new Function('return ' + text)()
+  })
+  requireThat(copied.holdMs === 1300 && copied.particleOpacity === 0.63 &&
+    copied.sparkAmount === 0.125 && copied.ghostOpacity === 0.23 &&
+    copied.pitch === 6 && copied.fontFamily === 'serif' &&
+    copied.releaseUnit === 'character' &&
+    Object.keys(copied).length === Object.keys(plumeTuning).length,
+  `Copy text changed stored units or dropped fields: ${JSON.stringify(copied)}`)
   await capturePage(page, 'tuned-controls')
 }
 

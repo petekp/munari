@@ -45,8 +45,8 @@
   font: 16px/1.5 var(--body);
 }
 
-.mh-sheet[data-theme="checker"] {
-  --mh-paper: #f7e5cf;
+.mh-sheet[data-theme="tide"] {
+  --mh-paper: #d9ebe8;
   --mh-ink: #2b2039;
 }
 
@@ -144,11 +144,10 @@
     linear-gradient(148deg, #f6a4cf 0 18%, #d4f6ea 26%, #90d8c4 38%, #f7ffb9 48%, #e0f46d 58%, #ffbca6 68%, #ff8062 80%, #8aa7ef 100%);
 }
 
-.mh-theme-preview[data-preview="checker"] {
+.mh-theme-preview[data-preview="tide"] {
   background-image:
-    linear-gradient(#dfe7f6 0 26%, rgba(255, 240, 207, 0) 40%),
-    conic-gradient(#f6a47c 25%, #fff0cf 25% 50%, #b9a3ee 50% 75%, #fff0cf 75%);
-  background-size: 100% 100%, 20px 20px;
+    radial-gradient(circle at 50% 26%, #17111f 0 15%, rgba(255, 214, 168, 0.95) 17% 21%, rgba(255, 214, 168, 0) 38%),
+    linear-gradient(#2d2255 0 32%, #f0a9b4 40% 44%, #3b6f8e 50%, #46c4b4 72%, #1c2f4d 100%);
 }
 
 .mh-theme-preview[data-preview="prism"] {
