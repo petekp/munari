@@ -7,14 +7,19 @@ install it. The build includes it in [`@petepetrash/munari`](../../README.md).
 The DOM remains the source of content and interaction. Core coordinates its
 captured pixels with WebGL and routes input back to the live elements.
 
+The [system model](../../docs/system-model.md) places these laws in the full
+intent-to-evidence path. Use the [operating guide](../../docs/agent-workflow.md)
+to find the public binding and the check for a task.
+
 ## Turning a live element into a texture
 
 Modules: [`htmlInCanvas`](./src/paint/htmlInCanvas.ts),
 [`textureStorage`](./src/paint/textureStorage.ts), and
 [`frameSource`](./src/paint/frameSource.ts).
 
-Munari uses Chrome's HTML-in-canvas origin trial, a browser experiment available
-in Chrome 148 to 150. Tests found three requirements:
+Munari uses Chrome's experimental HTML-in-canvas capability. Check support at
+runtime instead of inferring it from a browser version. Tests found three
+requirements:
 
 1. The source element must be a child of the canvas.
 2. The canvas must set `layoutSubtree` to `true`.

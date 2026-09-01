@@ -8,6 +8,23 @@ excursion out of it; the handoff rules are the transfer protocol. When
 a change is hard to place, ask whose hands the pixels are in at that
 moment.
 
+## Start with the task
+
+Confirm the checkout, branch, and dirty files. Preserve unrelated work. Use
+the [task-to-owner guide](docs/agent-workflow.md) to find the public control,
+canonical example, and smallest decisive check. Read the
+[system model](docs/system-model.md) when ownership or evidence is unclear;
+[CONTEXT.md](CONTEXT.md) is the shared glossary.
+
+Current APIs come from the published entries and their types. Numbered
+decisions explain constraints; historical proposals are not instructions.
+[The agent-system plan](docs/agent-system-plan.md) is unbuilt work except
+where a status and acceptance evidence say otherwise. Do not infer runtime
+features or authority from a plan.
+
+Do not use, install, or run Smithers. No new orchestrator is a prerequisite
+for working in this repo.
+
 ## Shape
 
 - `packages/core` (`@munari/core`) — the kernel: holds and handoffs,
@@ -42,7 +59,7 @@ directory per layer: **mapping → paint (pixels) → pointer (relay) →
 transfer (handoff) → chrome (measurement) → physics**. The suites are
 the specification — describe/it names, comments, and pinned numbers
 are all load-bearing. A law ships with the contract that pins it, and
-changing a law means changing its contract in the same commit. Eight
+changing a law means changing its contract in the same commit. Some
 suites are named for the law they pin, not for a module — the
 conformance README maps each to its module.
 
@@ -113,17 +130,18 @@ by no test runner, wired invisibly through the root tsconfig include.
 `npm test` (vitest), `npm run typecheck` (four tsc programs: root,
 `apps/lab`, `registry`, `tools`), and `npm run lint` (oxlint with the
 anti-slop rules — its README explains what each rule rejects and what
-to write instead). CI runs all three on every push, plus seven browser
-gates: `gate:idle-zero` (mounted quiescent Surfaces cost 0 paints/s),
-`gate:frame-surface`, `gate:shaders`, `gate:dom-surface-demand`,
-`gate:lifting-pointer`, `gate:genie-film-reorder`, and `gate:degraded`
-(every lab gesture in a browser with NO origin trial — the one path no
-capability-enabled gate can see). Ten more run locally on demand:
-`gate:genie-duplicate`, `gate:genie-film`, `gate:genie-film-context`,
-`gate:genie-shadow`, `gate:fisheye-pointer`, `gate:slider-drag`,
-`gate:refraction-arriving`, `gate:gallery-pointer`,
-`gate:crystal-pointer`, `gate:chrome-over-canvas`.
-`instruments/README.md` says what each one checks.
+to write instead). `package.json` owns the available commands;
+`.github/workflows/ci.yml` owns CI membership; `instruments/README.md` owns
+each browser check's purpose and limits. Use the operating guide to select
+the relevant gate, then run the required broader checks. Keep GPU gates
+serial. Use `STRICT_CAPABILITY=1` when claiming the enhanced path passed,
+and verify the no-flag native path separately. A zero-exit skip is not a pass.
+
+For documentation-only changes, validate links, exported names, status
+labels, and affected examples; unrelated GPU runs add no evidence. Keep
+observed facts separate from intended behavior and unbuilt plans. Retain a
+new lesson in its owning test, rule, recipe, or decision, rather than in a
+second reference document.
 
 `npm run build` produces the publishable package under
 `packages/react/dist` — the kernel bundled in, `three`/`@react-three/fiber`/

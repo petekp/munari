@@ -2078,3 +2078,36 @@ but its absence was a live enforcement gap — the react binding declared
 Surface with a declared part and no presenter passed the readiness gate,
 the exact fault `partSetComplete` exists to refuse. That one is wired
 into the store's gates, not culled.
+
+## #38 — Agent control uses existing owners; observations carry their limits (2026-08-31, documentation + tooling design)
+
+**Decision.** Agent-facing work follows the same content, control and evidence
+owners as ordinary consumer code. An agent requests application intent and
+checks the relevant receipts and visible result. It does not gain a second
+mutable protocol graph or a setter that can manufacture readiness or a
+renderer hold. Scene tuning remains scene policy. New observations are bounded,
+read-only projections; they do not claim work or retain sources by default.
+
+**Why.** The source audit found a shorter route to error than a missing API:
+the Revision 3 proposal advertised an implemented status beside retired
+signatures, current entry docs disagreed about gate rosters, and installed
+guidance referenced files that package staging did not ship. Existing runtime
+facts also differ by design: a source-only Surface can remain unready (#36),
+and a useful draw can lack presentation authority (#24–25). A generic agent
+state store would require the agent to reconcile another version of these facts.
+
+**Shape.** The [system model](system-model.md) names ownership and evidence;
+the [operating guide](agent-workflow.md) routes a current task to its public
+control and check. The [delivery plan](agent-system-plan.md) specifies separate
+pilots for version-local guidance, structured probe results, a read-only
+explanation and scene control metadata. Those pilots are unbuilt. Public API
+placement follows the actual need and its contract, not an arbitrary consumer
+count. The one published package and Three-first boundaries remain unchanged.
+
+**Evidence and cost.** This decision changes documentation and future design
+constraints, not runtime behavior. The audit compared the current exports,
+staging script, gate scripts and CI workflow. It does not claim token or time
+savings. Each pilot must measure correct task outcomes and work cost against
+the corrected manual workflow. A smaller result with equal correctness is
+preferred. Remove a pilot that adds state, idle work or required reading without
+an observed benefit, following #37.

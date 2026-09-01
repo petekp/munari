@@ -1,8 +1,10 @@
 # Compound API sketches
 
 > Status: superseded working material from the Revision 3 design process
-> (2026-08-17). Do not implement these sketches. The corrected proposal and
-> acceptance sketches live in `docs/public-api-proposal.md`.
+> (2026-08-17). Do not implement these sketches. The
+> [Revision 3 proposal](public-api-proposal.md) is also historical, including
+> its intermediate acceptance sketches. Use the [consumer guide](../README.md)
+> and [current system model](system-model.md) for supported behavior.
 
 ## Rules of the exercise
 

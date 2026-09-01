@@ -2,18 +2,36 @@
 
 > Munari renders live, interactive DOM as physical matter in Three.js. It uses Chrome's experimental HTML-in-Canvas API and keeps the DOM as the source of truth.
 
-## Start
+## Start in the version you are using
 
-- [README and current setup](https://github.com/petekp/munari/blob/main/README.md)
-- [Munari agent skill](https://github.com/petekp/munari/blob/main/.agents/skills/munari/SKILL.md)
-- [DOM authoring rules](https://github.com/petekp/munari/blob/main/docs/authoring.md)
-- [Public React API](https://github.com/petekp/munari/blob/main/packages/react/src/index.ts)
-- [The advanced entry](https://github.com/petekp/munari/blob/main/packages/react/src/advanced.ts)
+- [README and package setup](README.md)
+- [Munari agent skill](.agents/skills/munari/SKILL.md)
 
-## Go deeper
+In a checkout, confirm the repository, branch and dirty scope, then choose a
+task route below. In an installed package, read its index.d.ts and advanced.d.ts
+for exact APIs. The package currently ships the two guides above, not the full
+repository docs or registry. Obtain missing guidance from a proven matching
+release revision; do not substitute mutable main as version-local truth.
 
-- [Renderer handoff decisions](https://github.com/petekp/munari/blob/main/docs/decisions.md)
-- [Measured platform behavior](https://github.com/petekp/munari/blob/main/docs/platform.md)
-- [Copyable recipes](https://github.com/petekp/munari/tree/main/registry)
-- [Lab scenes](https://github.com/petekp/munari/tree/main/apps/lab/src/scenes)
-- [Conformance specification](https://github.com/petekp/munari/tree/main/tests/conformance)
+## Repository task routes (checkout only)
+
+- [Task → owner → control → proof](docs/agent-workflow.md)
+- [System model and evidence boundaries](docs/system-model.md)
+- [Shared terms](CONTEXT.md)
+- [DOM authoring rules](docs/authoring.md)
+- [Current public React exports](packages/react/src/index.ts)
+- [Current advanced exports](packages/react/src/advanced.ts)
+- [Copyable recipes](registry/README.md)
+- [Lab scene contracts](apps/lab/README.md)
+- [Browser gates and limits](instruments/README.md)
+
+## Read only when the task needs it (checkout only)
+
+- [Canonical document map and status](docs/README.md)
+- [Numbered handoff decisions and amendments](docs/decisions.md)
+- [Dated platform measurements](docs/platform.md)
+- [Conformance specification](tests/conformance/README.md)
+- [Agent system delivery plan: proposed, not shipped](docs/agent-system-plan.md)
+
+The Revision 3 proposal and compound sketches are design history. Use current
+exported types for signatures. Treat a capability skip as untested behavior.

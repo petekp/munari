@@ -9,20 +9,20 @@ Use the smallest public Munari API that owns the renderer handoff. Keep the DOM 
 
 ## Start from the canonical sources
 
-1. Read `README.md` for the supported package setup and first Surface.
-2. Read `docs/authoring.md` before writing captured markup.
-3. Read the relevant registry entry before copying a lab technique.
+1. Establish the version and context. In a checkout, use `docs/agent-workflow.md` to select the task owner and smallest check; read `docs/system-model.md` only when ownership or evidence is unclear.
+2. Read `README.md` for supported package setup. Before writing captured markup, read `docs/authoring.md` from the same source revision.
+3. Read the relevant registry entry before copying a lab technique. Historical proposals and compound sketches are not current API references.
 4. Import from `@petepetrash/munari`, or from `@petepetrash/munari/advanced` when you need the renderer-agnostic core or `FrameSurface`. Do not reach into package source paths.
 
-When working outside the repository, use the README and skill shipped with the installed package version. Do not assume that an online example matches the installed version.
+When working outside the repository, use the installed README, skill, `index.d.ts`, and `advanced.d.ts`. The current package does not ship the full repository docs or registry. Obtain missing guidance from a proven matching release revision or report the gap; do not substitute mutable GitHub `main`. The package-guidance stage in `docs/agent-system-plan.md` is proposed, not shipped.
 
 ## Choose the path
 
 - Use one `<Surface>` for a piece of content, with `source` for React content or `adopt` for an element you already built.
-- Set `view` when the handoff is exclusive. Omit it for a Twin, where both copies present and the page copy is never released.
+- Set `view` when the handoff is exclusive. With page and WebGL presentations, omit it for a Twin. A source-only Surface has no presenter and can supply another material's texture without becoming ready.
 - Use `<Surface.Part>` when one Surface has several sources that must transfer together or not at all.
 - Use `<Surface.Anchor>` to stand a scene object on a named box inside the source.
-- Pass your own `material` to `<Surface.WebGL>` and read `useSurfaceTexture()` for a custom material.
+- Pass your own `material` to `<Surface.WebGL>` and read its non-null `useSurfaceTexture()`. Outside that slot, `useSurfaceTextureOf(handle)` samples another source and can return `null`.
 - Use `useSurface`, `useSurfaceProgress`, or `useSurfaceDriver` to scale scene motion by the crossing.
 - Use `Dial` for a package-owned physical control.
 - Use `FocusScene` for keyboard and spatial navigation.
@@ -45,7 +45,7 @@ When working outside the repository, use the README and skill shipped with the i
 
 - Drive it with `view`: `'webgl'` lifts, `'dom'` lands. Reverse it at any time; the protocol handles a reversal mid-crossing.
 - Never release on a frame count or a timer. The Surface releases the page copy on a proven color-writing draw.
-- Read `onReady`, `onPresentedViewChange`, and `onMotionComplete` rather than inferring the phase.
+- Keep the signals distinct: `onReady` can follow a write-free eligible draw; `onPresentedViewChange` reports the exclusive hold; `onMotionComplete` reports motion, not resource release. Retain the WebGL side according to `mounted`.
 - Scale mesh-side movement by `useSurfaceProgress()` or a `useSurfaceDriver` step.
 - Set `timing.settleMs` to outlast the slowest compositor-clocked transition the content runs on its presented pixels.
 
@@ -72,7 +72,11 @@ Most browsers do not have the trial. Content degrades on its own: the page copy 
 
 - Keep visual treatment, scene thresholds, shaders, lighting, and tuned constants local to a scene or registry recipe.
 - Prefer one canonical example and link to it. Do not copy long examples into several documents.
+- Use existing state owners for writes. Read-only diagnostics must not force protocol readiness or presentation. Scene tuning declares its units and whether an edit updates live, rebuilds, recaptures, or replays.
+- Retain a verified lesson in its owning contract, authoring rule, platform measurement, or recipe. Keep unbuilt work in the plan rather than a second current reference.
 
 ## Verify
 
-Run the consumer's typecheck and production build. In this repository, also run `npm test`, `npm run typecheck`, and `npm run lint`. Use the named browser gate when the change affects paint, presentation, pointer relay, or a handoff.
+Run the consumer's typecheck and production build. In this repository, also run `npm test`, `npm run typecheck`, and `npm run lint`. Use the named browser gate when the change affects paint, presentation, pointer relay, or a handoff. `package.json` lists commands; `.github/workflows/ci.yml` selects CI gates; `instruments/README.md` defines their scope.
+
+Run GPU gates serially. Wait for observable state with a deadline, not a sleep presented as readiness proof. Use `STRICT_CAPABILITY=1` when claiming the enhanced path passed and check native fallback separately. Record pass, failure, skip, and unmeasured scope without treating a zero exit code as proof. Documentation-only edits need link, status, symbol and example checks, not unrelated GPU runs.

@@ -76,7 +76,7 @@ function Panel({ count, onPress }: { count: number; onPress: () => void }) {
   return (
     <div className="surface-panel">
       <p>Ordinary React, rendered as matter.</p>
-      <button onClick={onPress}>Pressed {count} times</button>
+      <button type="button" onClick={onPress}>Pressed {count} times</button>
     </div>
   )
 }
@@ -85,17 +85,11 @@ export function App() {
   const supported = useSupportsDOMSurfaces()
   const [count, setCount] = useState(0)
   const { surface, view, show } = useSurfaceView('panel')
+  const panel = <Panel count={count} onPress={() => setCount((value) => value + 1)} />
 
   if (!supported) {
-    return (
-      <p>
-        Enable <code>chrome://flags/#canvas-draw-element</code>, then fully
-        restart Chrome.
-      </p>
-    )
+    return <main className="munari-demo">{panel}</main>
   }
-
-  const panel = <Panel count={count} onPress={() => setCount((value) => value + 1)} />
 
   return (
     <main className="munari-demo">
@@ -108,7 +102,7 @@ export function App() {
         <Surface.WebGL alpha="source" pointerEvents="content" />
       </Surface>
 
-      <button onClick={() => show(view === 'webgl' ? 'dom' : 'webgl')}>
+      <button type="button" onClick={() => show(view === 'webgl' ? 'dom' : 'webgl')}>
         {view === 'webgl' ? 'Bring it back' : 'Hand it over'}
       </button>
     </main>
@@ -262,9 +256,11 @@ still starts only Vite for a browser that already has the flag enabled.
 
 ## Go further
 
-A Surface with no `view` is a **Twin**: both copies present at once and the
-page copy is never released, which is what you want for a translucent
-reflection or a shadow that reads the live content.
+A Surface with page and WebGL presentations but no `view` is a **Twin**:
+both copies present at once and the page copy is never released. A Surface
+can also supply a capture without either presentation. That source-only path
+lets a material sample live page content for a reflection without drawing a
+WebGL copy of the page.
 
 A Surface can be split into named parts with `<Surface.Part>`. All of its
 parts transfer together or not at all, so a multi-piece object cannot be
@@ -287,8 +283,10 @@ of the `<Surface>` that presents the handle, so one declaration owns them.
 motion by the crossing.
 
 For a custom shader, pass your own `material` to `<Surface.WebGL>` and read
-the texture with `useSurfaceTexture()`. The hook returns `null` until the
-texture exists. DOM textures are premultiplied; apply masks to the full
+the texture with `useSurfaceTexture()`. In that material slot, the hook returns
+a configured texture; it is not nullable. To sample another Surface by handle,
+use `useSurfaceTextureOf(handle)`, which returns `null` until that source has
+a texture. DOM textures are premultiplied; apply masks to the full
 `vec4` and blend with `ONE` / `ONE_MINUS_SRC_ALPHA`. `SURFACE_RADIUS_GLSL`
 is the GLSL half of the corner mask.
 
@@ -310,6 +308,20 @@ from it.
 Read [the authoring contract](docs/authoring.md) before you capture an
 existing component system. Coding agents can start at [llms.txt](llms.txt)
 and the shipped [Munari skill](.agents/skills/munari/SKILL.md).
+
+### Working with an agent
+
+In a repository checkout, start with the [task-to-owner guide](docs/agent-workflow.md).
+The [system model](docs/system-model.md) explains the linked abstractions and
+the difference between requested view, readiness, presentation, and release.
+The Revision 3 proposal and compound sketches are historical design material,
+not current API references.
+
+For an installed package, use its README, skill, `index.d.ts`, and
+`advanced.d.ts`. The current package does not include the full repository
+docs or registry. Repository-relative links outside those shipped files need
+source matched to that release; GitHub `main` can describe a different API.
+The version-local documentation work is [planned, not shipped](docs/agent-system-plan.md#p1-version-local-package-guidance).
 
 ## Repo shape
 
@@ -345,13 +357,11 @@ npm run lint
 npm run gate:idle-zero   # browser gate: idle Surfaces cost 0 paints/s
 ```
 
-Nine browser gates exist. CI runs five on every push (`gate:idle-zero`,
-`gate:frame-surface`, `gate:shaders`, `gate:dom-surface-demand`,
-`gate:genie-film-reorder`); four run locally on demand
-(`gate:genie-duplicate`, `gate:genie-film`, `gate:genie-film-context`,
-`gate:genie-shadow`), and
-`instruments/knobs-hz` is a reporter with no gate script.
-`instruments/README.md` explains what each one checks.
+[package.json](package.json) lists available gate commands;
+[the CI workflow](.github/workflows/ci.yml) selects the gates run on each push.
+[The instrument guide](instruments/README.md) gives each check's scope and
+limits. Run GPU gates in series. A capability skip is not a passing behavior
+check; use `STRICT_CAPABILITY=1` where HTML-in-canvas must be present.
 
 `npm run build` stages the package with core bundled in and peers left
 external. The staged package includes the canonical root README, license,

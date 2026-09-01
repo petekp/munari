@@ -1,9 +1,32 @@
-# Public API proposal
+# Public API proposal (historical)
 
-> Revision 3. Status: implemented in source on 2026-08-18. The package now
-> centers the compound `Surface`, shared `SurfaceCanvas`, and explicit handles
-> described here; the former `SurfaceApp`, `useLift`, and `LiftDriver` API has
-> been removed in the full cutover.
+> **HISTORICAL DESIGN RECORD.** The Revision 3 cutover landed on 2026-08-18,
+> but this proposal contains intermediate signatures, rejected choices and
+> acceptance targets. It is not an API reference or an active implementation
+> plan. Do not copy its code as current usage. Start with the
+> [consumer guide](../README.md), [operating guide](agent-workflow.md), and
+> [current exported types](../packages/react/src/index.ts).
+
+## Current-contract corrections (2026-08-31)
+
+The body below remains design history. In the current implementation:
+
+- `useSurface(name?)` and `createSurface(name?)` create identity only.
+  `Surface` owns `view`, `timing` and callbacks, including with explicit handles.
+- React content enters through `source`; an existing element enters through
+  `adopt`. The root does not have the proposed `capture` prop.
+- `Surface.Part` and `Surface.Anchor` use `name`, not the historical `id` prop.
+- `useLift`, `LiftDriver` and `commitRendererReleaseFrame` are retired.
+  Use the current view helper and controlled declaration.
+- `onReady` can follow a write-free eligible draw. Readiness does not by
+  itself prove presentation. A source-only Surface can remain unready by design.
+- The proposed `SurfaceDiagnostic` below is not shipped. Current `paintStats()`
+  supplies source labels and paint counters, not a joined Surface graph.
+
+The [system model](system-model.md) explains these distinctions. New
+agent-facing work lives only in [the current delivery plan](agent-system-plan.md).
+
+## Original Revision 3 proposal
 
 Munari should center one noun: a **Surface** is DOM content with one or more
 presentations. It may reside in WebGL, appear in DOM and WebGL together, or

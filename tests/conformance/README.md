@@ -18,7 +18,7 @@ Layers, in the order they build on each other:
 | chrome | measuring what the DOM won't hand over in pixels | `surfaceChrome` |
 | physics | physical controls | `physics1D` |
 
-Eight suites are named for the law they pin, not for a module, so a
+These suites are named for the law they pin, not for a module, so a
 search by module name will miss them:
 
 | suite | pins |
