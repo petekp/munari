@@ -6,7 +6,7 @@
 .mh-tweaks-opener {
   position: fixed;
   right: 16px;
-  top: 16px;
+  bottom: 16px;
   z-index: 200;
   border: 1px solid #4b504b;
   border-radius: 12px;
@@ -41,12 +41,19 @@
 
 .mh-tweaks-opener {
   display: flex;
-  gap: 24px;
-  padding: 10px 14px;
-  border-radius: 8px;
+  gap: 14px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border-color: rgba(75, 80, 75, 0.5);
+  background: rgba(32, 37, 33, 0.55);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: rgba(237, 240, 233, 0.75);
+  font-size: 11px;
+  box-shadow: 0 4px 16px #11181022;
 }
 
-.mh-tweaks-opener span { color: #a1b6ff; }
+.mh-tweaks-opener span { color: rgba(161, 182, 255, 0.8); }
 
 .mh-controls-header {
   flex: none;
@@ -84,6 +91,11 @@
 .mh-controls-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #626f5d transparent; }
 .mh-controls-fields { min-width: 0; margin: 0; padding: 0 18px; border: 0; }
 .mh-controls-fields:disabled { opacity: 0.5; }
+.mh-background-controls { padding: 12px 18px; border-bottom: 1px solid #454b43; }
+.mh-background-controls-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mh-background-controls h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.mh-background-motion { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 108px; }
+.mh-background-controls > .mh-controls-notice { margin: 10px 0 0; }
 .mh-material-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 14px 0 0; }
 .mh-material-mode button { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 35px; padding: 7px 10px; border: 1px solid #515b4b; border-radius: 6px; background: #2d352b; color: #c6d0be; font-size: 12px; }
 .mh-material-mode button[aria-pressed='true'] { border-color: #9cb3ff; background: #35456a; color: #e4eaff; }
@@ -130,7 +142,9 @@
 
 .mh-controls-footer { flex: none; padding: 12px 18px 13px; border-top: 1px solid #454b43; background: #242b23; }
 .mh-controls-actions { display: flex; gap: 8px; }
-.mh-controls-actions button { flex: 1; min-height: 32px; padding: 6px 8px; border: 1px solid #56634d; border-radius: 5px; background: #333d2e; color: #e0e9d8; font-size: 12px; }
+.mh-controls-actions button,
+.mh-background-motion { min-height: 32px; padding: 6px 8px; border: 1px solid #56634d; border-radius: 5px; background: #333d2e; color: #e0e9d8; font-size: 12px; }
+.mh-controls-actions button { flex: 1; }
 .mh-controls-actions button:last-child { border-color: #7c96d9; background: #3b4e75; color: #edf2ff; }
 .mh-controls-status { min-height: 15px; margin: 9px 0 0; color: #aab5a5; font-size: 10px; line-height: 1.5; }
 .mh-controls-notice { margin: 14px 18px 0; padding: 10px; border: 1px solid #92825c; border-radius: 5px; background: #463f29; color: #eee3c2; font-size: 12px; line-height: 1.5; }
@@ -145,6 +159,7 @@
   .mh-controls { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); top: auto; width: calc(100% - 24px); max-height: 60dvh; border-radius: 14px; }
   .mh-controls-header { padding-top: 10px; padding-bottom: 10px; }
   .mh-controls-eyebrow { display: none; }
+  .mh-background-controls { padding-top: 8px; padding-bottom: 8px; }
   .mh-preview-controls { padding-top: 8px; padding-bottom: 8px; }
   .mh-material-mode { padding-top: 8px; }
   /* Keep the finish switch and all three axes visible together on phones. */
@@ -158,5 +173,5 @@
   .mh-controls-status { margin-top: 6px; }
   .mh-tweak-toggle { min-height: 34px; }
   .mh-pose-presets button { min-height: 34px; }
-  .mh-tweaks-opener { right: 12px; top: 12px; }
+  .mh-tweaks-opener { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); }
 }

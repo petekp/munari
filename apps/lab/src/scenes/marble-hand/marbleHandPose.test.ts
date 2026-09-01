@@ -59,4 +59,24 @@ describe('marble-hand floor support', () => {
       expect(marbleHandSafeHeight(support, transform, requested)).toBe(requested)
     }
   })
+
+  it('keeps the real mesh above the page through half-turn movement and press sweeps', () => {
+    const sculpture = new Matrix4().makeRotationFromEuler(
+      new Euler(tune.sculptureRoll, tune.sculpturePitch, 0, 'YXZ'),
+    )
+    // Rock and press add on X. Their new limits permit a combined full
+    // turn; checking only each half-turn endpoint misses the poses between.
+    for (const press of [-Math.PI, 0, Math.PI]) {
+      for (let step = 0; step <= 12; step++) {
+        const motion = -Math.PI + step * Math.PI / 6
+        const transform = new Matrix4()
+          .makeRotationFromEuler(new Euler(motion + press, motion, tune.baseRotation - motion, 'XYZ'))
+          .scale(new Vector3(1.6, 1.6, 1.6))
+          .multiply(sculpture)
+        expect(minimumMarbleHandZ(support, transform)).toBeCloseTo(fullMinimum(transform), 9)
+        const height = marbleHandSafeHeight(support, transform, 4)
+        expect(fullMinimum(transform) + height).toBeGreaterThanOrEqual(1 - 1e-9)
+      }
+    }
+  })
 })

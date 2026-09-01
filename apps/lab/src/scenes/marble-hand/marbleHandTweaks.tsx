@@ -9,6 +9,7 @@
 // This panel owns input drafts and disclosure, not a second tuning store.
 
 import { useLayoutEffect, useRef, useState } from 'react'
+import type { MarblePageCaptureState } from './marbleHandPageCapture'
 import {
   MARBLE_HAND_GROUPS,
   MARBLE_HAND_ORIENTATIONS,
@@ -28,6 +29,10 @@ interface MarbleHandTweaksProps {
   onParked: (next: boolean) => void
   previewPressed: boolean
   onPreviewPressed: (next: boolean) => void
+  colorMotion: boolean
+  reducedMotion: boolean
+  onToggleColorMotion: () => void
+  reflection: MarblePageCaptureState['status']
 }
 
 function NumberControl({
@@ -141,6 +146,10 @@ export function MarbleHandTweaks({
   onParked,
   previewPressed,
   onPreviewPressed,
+  colorMotion,
+  reducedMotion,
+  onToggleColorMotion,
+  reflection,
 }: MarbleHandTweaksProps) {
   const [open, setOpen] = useState(true)
   const [status, setStatus] = useState('')
@@ -214,6 +223,28 @@ export function MarbleHandTweaks({
               : 'The hand is loading. The native page and browser pointer are ready.'}
           </p>
         ) : null}
+        <section className="mh-background-controls" aria-label="Background controls">
+          <div className="mh-background-controls-heading">
+            <h3>Background</h3>
+            <button
+              className="mh-background-motion"
+              type="button"
+              data-marble-motion-toggle
+              disabled={reducedMotion}
+              onClick={onToggleColorMotion}
+            >
+              <span aria-hidden="true">{colorMotion ? 'Ⅱ' : '▶'}</span>
+              {reducedMotion ? 'Motion off' : colorMotion ? 'Pause color' : 'Play color'}
+            </button>
+          </div>
+          {reflection === 'unsupported' || reflection === 'error' ? (
+            <p className="mh-controls-notice" data-marble-reflection-notice role="status">
+              {reflection === 'unsupported'
+                ? 'Full-page reflections need Chrome with HTML-in-canvas enabled. The native page still works here.'
+                : 'Page capture is unavailable. Reload to restore full-page reflections.'}
+            </p>
+          ) : null}
+        </section>
         <fieldset disabled={!ready} className="mh-controls-fields">
           <legend className="mh-tweak-sr-only">Live hand settings</legend>
           <div className="mh-material-mode" role="group" aria-label="Hand material">
@@ -275,6 +306,9 @@ export function MarbleHandTweaks({
                 {group.title === 'Movement' ? (
                   <Toggle label="Motion rocking" checked={tuning.motionEnabled} onChange={(motionEnabled) => update({ ...tuning, motionEnabled })} />
                 ) : null}
+                {group.title === 'Idle tap' ? (
+                  <Toggle label="Idle tapping" checked={tuning.tapEnabled} onChange={(tapEnabled) => update({ ...tuning, tapEnabled })} />
+                ) : null}
                 {group.title === 'Marble' ? (
                   <div className="mh-tweak-colors">
                     <ColorControl label="Stone color" value={tuning.stoneColor} onChange={(stoneColor) => update({ ...tuning, stoneColor })} />
@@ -283,6 +317,12 @@ export function MarbleHandTweaks({
                 ) : null}
                 {group.title === 'Chrome' ? (
                   <ColorControl label="Chrome tint" value={tuning.chromeTint} onChange={(chromeTint) => update({ ...tuning, chromeTint })} />
+                ) : null}
+                {group.title === 'Stroke' ? (
+                  <>
+                    <Toggle label="Show stroke" checked={tuning.strokeEnabled} onChange={(strokeEnabled) => update({ ...tuning, strokeEnabled })} />
+                    <ColorControl label="Stroke color" value={tuning.strokeColor} onChange={(strokeColor) => update({ ...tuning, strokeColor })} />
+                  </>
                 ) : null}
                 {group.title === 'Lighting' ? (
                   <ColorControl label="Light color" value={tuning.lightColor} onChange={(lightColor) => update({ ...tuning, lightColor })} />

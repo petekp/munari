@@ -1,318 +1,210 @@
-/* The marble-hand scene — an Italian catalogue under a marble sculpture.
- *
- * The catalogue is one native DOM tree. The overlay carries only the hand
- * and transparent shadow; its input stays clear through SurfaceCanvas.
- *
- * The signature is one object: the carved hand. The page stays flat and
- * exact so its long physical shadow has something quiet to fall across.
+/* A moving color poster — native ink and type over a shader field.
+ * The page owns every letter. The colour behind them is a second WebGL
+ * canvas (see marbleHandBackground.css); only the sculpture, stroke, and
+ * shadow enter the visible overlay. Nothing here animates: a clone of this
+ * sheet is what the hand reflects, and a still DOM is what keeps that
+ * capture at zero repaints while the field keeps moving.
+ * The swatch gradients below stand in for each shader, and their measured
+ * colours are also the four page lights the environment reads.
  */
 
 .mh-app {
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: #d8d0bd;
-  color: #171610;
+  background: #e0f46d;
+  color: #17251f;
 }
 
-/* Cursor paint belongs to the native hit target. A clear overlay cannot
- * replace it. Loading, parked preview and context loss keep the OS pointer. */
 .mh-sheet[data-marble-hand-pointer],
 .mh-sheet[data-marble-hand-pointer] * {
   cursor: none;
 }
 
 .mh-sheet {
+  --mh-ink: #17251f;
+  --mh-paper: #f4a9cf;
+  --mh-control: rgba(255, 255, 246, 0.8);
+  --mh-control-hover: #fffef0;
+  --mh-control-active-ink: #fffef0;
+  --mh-acid: #e0f46d;
+  --mh-rose: #f4a9cf;
+  --mh-coral: #ff8062;
+  --mh-mint: #90d8c4;
+  --mh-blue: #8aa7ef;
   box-sizing: border-box;
+  position: relative;
+  isolation: isolate;
   display: grid;
-  grid-template-columns: minmax(300px, 0.82fr) minmax(440px, 1.18fr);
-  grid-template-rows: auto 1fr auto;
-  gap: clamp(26px, 4vw, 72px);
-  padding: clamp(28px, 4vw, 64px);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  padding: clamp(24px, 3.2vw, 52px);
   overflow: hidden;
-  background:
-    linear-gradient(90deg, transparent 0 49.9%, rgba(23, 22, 16, 0.08) 50%, transparent 50.1%),
-    #d8d0bd;
-  color: #171610;
-  font: 15px/1.5 var(--body);
+  background: var(--mh-paper);
+  color: var(--mh-ink);
+  font: 16px/1.5 var(--body);
 }
 
-.mh-masthead {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-top: 2px solid #171610;
-  border-bottom: 1px solid rgba(23, 22, 16, 0.48);
-  padding: 9px 0 8px;
-  font: 600 11px/1 var(--label);
-  letter-spacing: 0.17em;
-  text-transform: uppercase;
+.mh-sheet[data-theme="checker"] {
+  --mh-paper: #f7e5cf;
+  --mh-ink: #2b2039;
+}
+
+.mh-sheet[data-theme="prism"] {
+  --mh-paper: #fcf0db;
+  --mh-ink: #302242;
+}
+
+.mh-atmosphere {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .mh-intro {
+  grid-area: 1 / 1;
   align-self: center;
-  max-width: 610px;
-}
-
-.mh-kicker {
-  margin: 0 0 22px;
-  color: #24479a;
-  font: 700 11px/1 var(--label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  min-width: 0;
 }
 
 .mh-intro h1 {
   margin: 0;
-  max-width: 10ch;
-  color: #171610;
-  font: 650 clamp(64px, 6.8vw, 116px) / 0.84 var(--display);
-  letter-spacing: -0.055em;
+  color: var(--mh-ink);
+  font: italic 900 clamp(88px, min(17.8vw, 25.3vh), 288px) / 0.84 'Playfair Display', var(--display);
+  letter-spacing: -0.03em;
+  text-align: center;
 }
 
-.mh-deck {
-  max-width: 430px;
-  margin: clamp(28px, 4vw, 54px) 0 0;
-  color: #403e34;
-  font: 16px/1.55 var(--body);
-}
-
-.mh-status {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 22px;
-  color: #555144;
-  font: 600 10px/1 var(--label);
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-}
-
-.mh-status i {
-  width: 8px;
-  height: 8px;
-  border: 1px solid #171610;
-  border-radius: 50%;
-  background: transparent;
-}
-
-.mh-status i[data-enhanced] {
-  border-color: #d94934;
-  background: #d94934;
-  box-shadow: 0 0 0 3px rgba(217, 73, 52, 0.16);
-}
-
-.mh-capture-notice {
-  max-width: 430px;
-  margin: 14px 0 0;
-  padding: 10px 12px;
-  border: 1px solid #8b7e5b;
-  border-radius: 5px;
-  background: #e7ddbf;
-  color: #4d452e;
-  font: 12px/1.5 var(--body);
-}
-
-.mh-specimens {
-  align-self: center;
+.mh-themes {
+  grid-area: 1 / 1;
+  align-self: start;
+  z-index: 1;
   display: grid;
-  grid-template-columns: repeat(2, minmax(170px, 1fr));
-  border-top: 1px solid #171610;
-  border-left: 1px solid #171610;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  justify-self: center;
+  width: min(100%, 720px);
 }
 
-.mh-specimen {
+.mh-theme-button {
   appearance: none;
   box-sizing: border-box;
-  min-height: clamp(154px, 19vh, 224px);
-  margin: 0;
-  border: 0;
-  border-right: 1px solid #171610;
-  border-bottom: 1px solid #171610;
-  padding: 0;
   display: grid;
-  grid-template-rows: 1fr auto;
-  text-align: left;
-  background: rgba(244, 240, 224, 0.38);
-  color: #171610;
+  grid-template-columns: minmax(36px, 0.32fr) minmax(0, 1fr) auto;
+  min-height: 64px;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--mh-ink) 42%, transparent);
+  border-radius: 2px;
+  padding: 5px;
+  /* Translucent over the shader field; the blur is what reads as glass.
+   * The reflection capture redraws the field itself, so a blank spot
+   * behind these buttons in the clone only softens the paper colour. */
+  background: color-mix(in srgb, var(--mh-control) 55%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+  backdrop-filter: blur(16px) saturate(1.25);
+  color: var(--mh-ink);
   font: inherit;
+  text-align: left;
   pointer-events: auto;
 }
 
-.mh-specimen:hover,
-.mh-specimen[data-hover] {
-  background: rgba(244, 240, 224, 0.82);
-  box-shadow: inset 0 0 0 4px rgba(36, 71, 154, 0.32);
+.mh-theme-button:hover,
+.mh-theme-button[data-hover] {
+  background: var(--mh-control-hover);
+  box-shadow: inset 0 0 0 2px var(--mh-ink);
 }
 
-.mh-specimen:active,
-.mh-specimen[data-active] {
-  background: #171610;
-  color: #f4f0e0;
-  box-shadow: inset 0 0 0 5px #d94934;
+.mh-theme-button[data-selected] {
+  box-shadow: inset 0 0 0 2px var(--mh-ink);
 }
 
-.mh-specimen[data-selected] {
-  box-shadow: inset 0 0 0 4px #24479a;
+.mh-theme-button:active,
+.mh-theme-button[data-active] {
+  background: var(--mh-ink);
+  color: var(--mh-control-active-ink);
 }
 
-.mh-specimen:focus-visible,
-.mh-specimen[data-focus-visible] {
-  outline: 3px solid #d94934;
-  outline-offset: -7px;
+.mh-theme-button:focus-visible,
+.mh-theme-button[data-focus-visible] {
+  outline: 3px solid var(--mh-ink);
+  outline-offset: 3px;
 }
 
-.mh-swatch {
+.mh-theme-preview {
   display: block;
-  min-height: 72px;
-  border-bottom: 1px solid rgba(23, 22, 16, 0.42);
+  min-height: 50px;
+  border: 1px solid rgba(23, 37, 31, 0.12);
+  border-radius: 1px;
 }
 
-.mh-specimen-copy {
-  display: grid;
-  grid-template-columns: 34px 1fr;
-  grid-template-rows: auto auto;
-  gap: 2px 12px;
-  padding: 13px 14px 15px;
+.mh-theme-preview[data-preview="waves"] {
+  background-image:
+    linear-gradient(148deg, #f6a4cf 0 18%, #d4f6ea 26%, #90d8c4 38%, #f7ffb9 48%, #e0f46d 58%, #ffbca6 68%, #ff8062 80%, #8aa7ef 100%);
 }
 
-.mh-specimen-copy b {
-  grid-row: 1 / 3;
+.mh-theme-preview[data-preview="checker"] {
+  background-image:
+    linear-gradient(#dfe7f6 0 26%, rgba(255, 240, 207, 0) 40%),
+    conic-gradient(#f6a47c 25%, #fff0cf 25% 50%, #b9a3ee 50% 75%, #fff0cf 75%);
+  background-size: 100% 100%, 20px 20px;
+}
+
+.mh-theme-preview[data-preview="prism"] {
+  background-image:
+    conic-gradient(from 200deg at 45% 50%, rgba(255, 107, 107, 0.55) 0deg 45deg, rgba(255, 230, 109, 0.55) 45deg 90deg, rgba(126, 232, 162, 0.55) 90deg 135deg, rgba(92, 207, 230, 0.55) 135deg 180deg, rgba(123, 140, 255, 0.55) 180deg 225deg, rgba(199, 125, 255, 0.55) 225deg 270deg, rgba(255, 126, 201, 0.55) 270deg 315deg, rgba(255, 179, 71, 0.55) 315deg),
+    conic-gradient(from 20deg at 45% 50%, #efa173 0deg 60deg, #ddb0df 60deg 120deg, #abd6dc 120deg 185deg, #f5dc9c 185deg 245deg, #a3bed6 245deg 310deg, #efa173 310deg);
+}
+
+.mh-theme-state {
+  align-self: start;
+  padding: 5px 4px 0 0;
+  font: 700 12px/1 var(--body);
+}
+
+.mh-theme-copy {
+  display: flex;
+  flex-direction: column;
   align-self: center;
-  color: #d94934;
-  font: 700 11px/1 var(--data);
+  gap: 4px;
+  padding: 9px 13px;
 }
 
-.mh-specimen-copy strong {
-  font: 700 18px/1.05 var(--display);
+.mh-theme-copy strong {
+  font: 750 18px/1.1 var(--body);
+  letter-spacing: -0.035em;
 }
 
-.mh-specimen-copy small {
-  color: #5b584b;
-  font: 10px/1 var(--label);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+.mh-theme-copy small {
+  font: 500 11px/1.2 var(--label);
+  letter-spacing: 0.04em;
 }
 
-.mh-specimen:active .mh-specimen-copy small,
-.mh-specimen[data-active] .mh-specimen-copy small {
-  color: #d8d0bd;
+@media (max-width: 700px) {
+  .mh-sheet { padding: 22px; }
+
+  .mh-intro h1 { font-size: clamp(66px, 23vw, 150px); }
+  .mh-themes { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .mh-theme-button { min-height: 62px; grid-template-columns: minmax(0, 1fr); }
+  .mh-theme-state { display: none; }
+  .mh-theme-copy { padding: 5px 7px; }
+  .mh-theme-copy strong { font-size: 14px; }
+  .mh-theme-copy small { display: none; }
+  .mh-theme-preview { min-height: 26px; }
 }
 
-.mh-footer {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: auto auto 1fr;
-  gap: 34px;
-  align-items: baseline;
-  border-top: 1px solid #171610;
-  padding-top: 10px;
-  font: 600 10px/1.2 var(--label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+@media (max-height: 680px) {
+  .mh-sheet { padding-top: 20px; padding-bottom: 20px; }
+  .mh-intro h1 { font-size: clamp(66px, min(17vw, 25vh), 170px); }
+  .mh-theme-button { min-height: 56px; }
+  .mh-theme-preview { min-height: 36px; }
 }
 
-.mh-footer p {
-  margin: 0;
-}
-
-.mh-footer p:last-child {
-  justify-self: end;
-  color: #5b584b;
-}
-
-.mh-footer strong {
-  margin-left: 7px;
-  color: #24479a;
-  font-family: var(--data);
-}
-
-@media (max-width: 900px) {
-  .mh-sheet {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr auto;
-    gap: 20px;
-    padding: 20px;
-    background: #d8d0bd;
-  }
-
-  .mh-masthead,
-  .mh-footer {
-    grid-column: 1;
-  }
-
-  .mh-intro {
-    align-self: start;
-  }
-
-  .mh-kicker {
-    margin-bottom: 12px;
-  }
-
-  .mh-intro h1 {
-    max-width: 11ch;
-    font-size: clamp(48px, 15vw, 70px);
-    line-height: 0.84;
-  }
-
-  .mh-deck {
-    margin-top: 18px;
-    max-width: 36ch;
-    font-size: 13px;
-    line-height: 1.45;
-  }
-
-  .mh-status {
-    margin-top: 12px;
-  }
-
-  .mh-specimens {
-    align-self: stretch;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .mh-specimen {
-    min-height: 118px;
-  }
-
-  .mh-swatch {
-    min-height: 52px;
-  }
-
-  .mh-specimen-copy {
-    grid-template-columns: 24px 1fr;
-    gap: 1px 7px;
-    padding: 9px;
-  }
-
-  .mh-specimen-copy strong {
-    font-size: 15px;
-  }
-
-  .mh-footer {
-    grid-template-columns: auto auto;
-    gap: 8px 18px;
-  }
-
-  .mh-footer p:last-child {
-    grid-column: 1 / -1;
-    justify-self: start;
-  }
-}
-
-@media (max-height: 650px) and (min-width: 901px) {
-  .mh-sheet {
-    gap: 24px;
-    padding-top: 24px;
-    padding-bottom: 24px;
-  }
-
-  .mh-intro h1 {
-    font-size: 78px;
-  }
-
-  .mh-deck {
-    margin-top: 22px;
-  }
+@media (max-width: 700px) and (max-height: 680px) {
+  .mh-sheet { padding: 16px; }
+  .mh-intro h1 { font-size: clamp(64px, min(22vw, 14vh), 90px); }
+  .mh-theme-button { min-height: 52px; }
+  .mh-theme-copy { padding: 4px 7px; }
+  .mh-theme-preview { min-height: 22px; }
 }

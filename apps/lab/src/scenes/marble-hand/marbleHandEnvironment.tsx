@@ -10,9 +10,16 @@
 // initial field-only reflection omitted all headings and labels; those now
 // come from the browser's actual paint through a source-only Surface.
 //
+// The second fault, 2026-08-31: the page's colour now comes from a canvas,
+// and cloneNode gives a blank one, so the capture carries transparent pixels
+// where the field used to be. This scene draws that field itself, from the
+// same GLSL and the same published second as the page canvas, on a plane
+// directly behind the captured page.
+//
 // Ownership: native DOM owns text, input and paint. This module owns the
-// room model, private cube target, PMREM target and swatch lights. Surface
-// owns the borrowed full-page texture, including its type and other content.
+// room model, private cube target, PMREM target, the reflected copy of the
+// background field, and swatch lights. Surface owns the borrowed full-page
+// texture, including its type and other content.
 
 import { useEffect, useLayoutEffect, useMemo, type RefObject } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
@@ -23,6 +30,9 @@ import {
   paintMarbleEnvironment,
   type MarblePageField,
 } from './marbleHandEnvironmentLaw'
+import { marbleBackgroundClock } from './marbleHandBackgroundClock'
+import { createMarbleBackgroundMaterial, setMarbleBackgroundFrame } from './marbleHandBackgroundShaders'
+import type { MarbleHandThemeId } from './marbleHandThemes'
 import type { MarbleHandTuning } from './marbleHandTuning'
 import type { MarblePageCaptureState } from './marbleHandPageCapture'
 
@@ -36,7 +46,7 @@ const FLAT_HEIGHT = 80
 // smaller colour-field map remains sufficient for the room's soft bounce.
 const REFLECTION_FACE_SIZE = 256
 const ROOM_RADIUS = 10000
-const FIELDS = '.mh-masthead, .mh-specimens, .mh-specimen, .mh-swatch, .mh-footer'
+const FIELDS = '.mh-themes, .mh-theme-button, .mh-theme-preview'
 const BOUNDARIES = ['pointerover', 'pointerout', 'pointerdown', 'pointerup', 'pointercancel', 'focusin', 'focusout']
 
 interface PaintField {
@@ -73,6 +83,9 @@ interface EnvironmentState {
   camera: THREE.CubeCamera
   pageMesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>
   roomMesh: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>
+  backgroundMesh: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>
+  backgroundMaterials: Map<MarbleHandThemeId, THREE.ShaderMaterial>
+  backgroundTime: number
 }
 
 function context(width: number, height: number, cpu = false): CanvasRenderingContext2D {
@@ -134,11 +147,20 @@ function paintField(ctx: CanvasRenderingContext2D, field: PaintField) {
   }
 }
 
-export function MarbleHandEnvironment({ page, origin, tuning, capture }: {
+function backgroundMaterialFor(state: EnvironmentState, theme: MarbleHandThemeId): THREE.ShaderMaterial {
+  const existing = state.backgroundMaterials.get(theme)
+  if (existing) return existing
+  const created = createMarbleBackgroundMaterial(theme)
+  state.backgroundMaterials.set(theme, created)
+  return created
+}
+
+export function MarbleHandEnvironment({ page, origin, tuning, capture, theme }: {
   page: RefObject<HTMLElement | null>
   origin: THREE.Vector3
   tuning: MarbleHandTuning
   capture: MarblePageCaptureState
+  theme: MarbleHandThemeId
 }) {
   const gl = useThree((state) => state.gl)
   const scene = useThree((state) => state.scene)
@@ -159,13 +181,25 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture }: {
     }))
     pageMesh.name = 'marble-hand-reflection-page'
     pageMesh.visible = false
+    // The capture is transparent where the page's canvas stood, so the page
+    // has to blend rather than paint the field out.
+    pageMesh.material.transparent = true
+    pageMesh.renderOrder = 2
+    const backgroundMaterial = createMarbleBackgroundMaterial('waves')
+    const backgroundMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), backgroundMaterial)
+    backgroundMesh.name = 'marble-hand-reflection-background'
+    backgroundMesh.visible = false
+    // Coincident with the page plane, so the field shows no parallax against
+    // the type it sits behind. Order decides which wins, not depth.
+    backgroundMesh.renderOrder = 1
     const roomMesh = new THREE.Mesh(new THREE.SphereGeometry(ROOM_RADIUS, 32, 16), new THREE.MeshBasicMaterial({
       side: THREE.BackSide,
       toneMapped: false,
       depthWrite: false,
     }))
     roomMesh.name = 'marble-hand-reflection-room'
-    reflectionScene.add(roomMesh, pageMesh)
+    roomMesh.renderOrder = 0
+    reflectionScene.add(roomMesh, backgroundMesh, pageMesh)
     const field: MarblePageField = {
       pixels: new Uint8ClampedArray(FLAT_WIDTH * FLAT_HEIGHT * 4),
       width: FLAT_WIDTH,
@@ -180,12 +214,15 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture }: {
       texture: null, pmrem: null, target: null,
       weights: [0, 0, 0, 0], revision: 0, signature: 0, bakes: 0,
       modelKey: '', bakeKey: '', lastBake: -Infinity, nextBake: -Infinity, bakeFps: 0,
-      reflectionScene, cube, camera, pageMesh, roomMesh,
+      reflectionScene, cube, camera, pageMesh, roomMesh, backgroundMesh,
+      backgroundMaterials: new Map([['waves', backgroundMaterial]]),
+      backgroundTime: 0,
     }
   }, [])
 
   useEffect(() => {
     const previous = scene.environment
+    const previousIntensity = scene.environmentIntensity
     state.texture = new THREE.CanvasTexture(state.env.canvas)
     state.texture.mapping = THREE.EquirectangularReflectionMapping
     state.texture.colorSpace = THREE.SRGBColorSpace
@@ -203,9 +240,20 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture }: {
     }
     restore()
     gl.domElement.addEventListener('webglcontextrestored', restore)
+    // Taking the value as it is published, rather than reading the clock in
+    // useFrame, keeps the reflected field on the page canvas's exact second
+    // however the two render loops happen to be ordered within a frame.
+    const stopClock = marbleBackgroundClock.subscribe((seconds) => {
+      state.backgroundTime = seconds
+      scene.userData.marbleBackgroundTime = seconds
+    })
     return () => {
+      stopClock()
       gl.domElement.removeEventListener('webglcontextrestored', restore)
-      if (scene.environment === state.target?.texture) scene.environment = previous
+      if (scene.environment === state.target?.texture) {
+        scene.environment = previous
+        scene.environmentIntensity = previousIntensity
+      }
       state.target?.dispose()
       state.pmrem?.dispose()
       state.texture?.dispose()
@@ -215,11 +263,21 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture }: {
       state.cube.dispose()
       state.pageMesh.geometry.dispose()
       state.pageMesh.material.dispose()
+      state.backgroundMesh.geometry.dispose()
+      for (const material of state.backgroundMaterials.values()) material.dispose()
+      state.backgroundMaterials.clear()
       state.roomMesh.geometry.dispose()
       state.roomMesh.material.dispose()
       for (const light of lights) light.dispose()
     }
   }, [gl, scene, state, lights])
+
+  useEffect(() => {
+    state.backgroundMesh.material = backgroundMaterialFor(state, theme)
+    // The page's own theme attribute already moves state.revision, but the
+    // reflected field must not wait on that to change programs.
+    state.bakeKey = ''
+  }, [state, theme])
 
   // The returned cleanup owns both observers, listener loops and the queued
   // measure frame. fonts.ready cannot be cancelled; `alive` prevents its
@@ -245,7 +303,7 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture }: {
         if (!currentElements.has(element)) { resize.unobserve(element); watched.delete(element) }
       }
       const fields = elements.map((element) => measureField(element, viewport,
-        element.matches('.mh-swatch') ? element.closest('[data-specimen]')?.getAttribute('data-specimen') ?? null : null))
+        element.matches('.mh-theme-preview') ? element.closest('[data-theme-option]')?.getAttribute('data-theme-option') ?? null : null))
       const key = JSON.stringify([viewport.width, viewport.height, fields])
       if (key === state.modelKey) return
       state.modelKey = key
@@ -291,7 +349,7 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture }: {
     }
     const mutation = new MutationObserver(schedule)
     mutation.observe(root, { subtree: true, childList: true, characterData: true, attributes: true,
-      attributeFilter: ['class', 'style', 'data-selected', 'data-specimen', 'aria-pressed'] })
+      attributeFilter: ['class', 'style', 'data-selected', 'data-theme', 'data-theme-option', 'aria-pressed'] })
     for (const event of BOUNDARIES) root.addEventListener(event, schedule, true)
     window.addEventListener('resize', schedule, { passive: true })
     window.addEventListener('scroll', schedule, { capture: true, passive: true })
@@ -313,6 +371,13 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture }: {
   useFrame(() => {
     lights.forEach((light, index) => { light.intensity = tuning.pageLightIntensity * state.weights[index] })
     if (!state.pmrem || !state.texture || state.revision === 0) return
+    // Three uses the scene's intensity for an inherited environment map,
+    // not material.envMapIntensity. On 2026-08-30, mirror values 0 and 3
+    // produced identical pixels. Apply the active finish before the bake
+    // limit: changing its strength needs no new capture or reflection map.
+    scene.environmentIntensity = tuning.materialMode === 'chrome'
+      ? tuning.chromeReflectionIntensity
+      : tuning.envMapIntensity
     const now = performance.now()
     if (state.bakeFps !== tuning.reflectionFps) {
       state.bakeFps = tuning.reflectionFps
@@ -321,7 +386,11 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture }: {
     if (now < state.nextBake) return
     // Eight-pixel lateral cells and four-pixel depth cells keep a resting
     // hand quiet while tracking changes below this coarse reflection map.
-    const key = `${state.revision}|${capture.ready}:${capture.revision}:${capture.width}x${capture.height}|${Math.round(origin.x / 8)},${Math.round(origin.y / 8)},${Math.round(origin.z / 4)}|${tuning.roomBounce}`
+    // The DOM stops changing once the field moved into a canvas, so the
+    // background's second is what tells a still page it still has to bake.
+    // Quantising it to the bake interval keeps a held clock from baking.
+    const beat = Math.round(state.backgroundTime * tuning.reflectionFps)
+    const key = `${state.revision}|${capture.ready}:${capture.revision}:${capture.width}x${capture.height}|${Math.round(origin.x / 8)},${Math.round(origin.y / 8)},${Math.round(origin.z / 4)}|${tuning.roomBounce}|${theme}:${beat}`
     if (key === state.bakeKey) return
     // Only the room is approximated. The page's headings, glyphs, images,
     // backgrounds and borders come from the full captured texture below.
@@ -335,6 +404,13 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture }: {
       state.pageMesh.material.needsUpdate = true
     }
     state.pageMesh.scale.set(capture.width || 1, capture.height || 1, 1)
+    // Without HTML-in-canvas there is no capture to size against, and the
+    // measured viewport is the same rectangle the page canvas fills.
+    const fieldWidth = capture.width || state.field.viewportWidth
+    const fieldHeight = capture.height || state.field.viewportHeight
+    state.backgroundMesh.visible = fieldWidth > 0 && fieldHeight > 0
+    state.backgroundMesh.scale.set(fieldWidth || 1, fieldHeight || 1, 1)
+    setMarbleBackgroundFrame(state.backgroundMesh.material, state.backgroundTime, fieldWidth, fieldHeight)
     state.camera.position.copy(origin)
     // The private scene is never mounted in the page overlay. Its plane
     // cannot replace, cover, or receive input meant for the native HTML.
@@ -347,6 +423,8 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture }: {
     state.target.texture.userData.sourceSignature = `${capture.sourceRevision}:${capture.revision}`
     state.target.texture.userData.sourceWidth = capture.width
     state.target.texture.userData.sourceHeight = capture.height
+    state.target.texture.userData.backgroundTheme = theme
+    state.target.texture.userData.backgroundTime = state.backgroundTime
     state.target.texture.userData.generation = ++state.bakes
     scene.environment = state.target.texture
     state.bakeKey = key

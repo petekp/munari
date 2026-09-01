@@ -100,8 +100,7 @@ export function MarbleHandPageCapture({ page, target }: {
       const height = root.offsetHeight
       if (width <= 0 || height <= 0) return
       try {
-        const clone = cloneMarbleHandPage(root, width, height)
-        wrapper.replaceChildren(clone)
+        wrapper.replaceChildren(cloneMarbleHandPage(root, width, height))
         target.sourceRevision += 1
         setSize((current) => current?.[0] === width && current[1] === height ? current : [width, height])
       } catch (cause) {

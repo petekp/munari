@@ -31,10 +31,9 @@ const triangles = Array.from({ length: positions.count / 3 }, (_, index) => [
 // precision absorbs float32 export noise without merging visible detail.
 const WRIST_X = -215
 const WELD_PRECISION = 10000
-// MarbleHand.tsx uses a 42-degree pixel camera and clamps motion roll to
-// 0.07 radians. Keep those authored bounds in the asset's pose contract.
+// MarbleHand.tsx uses a 42-degree pixel camera. Sweep the current tuning's
+// full spin range so an exported preset cannot exceed the tested envelope.
 const FOV = 42
-const MAX_MOTION_ROLL = 0.07
 // The 2026-08-30 vertex sweep measured 5.885px at the press extreme. Keep
 // 5.8px clear so a pose change cannot put the curled fingers through paper.
 const MIN_CLEARANCE_PX = 5.8
@@ -57,7 +56,7 @@ const poses: Matrix4[] = []
 for (const pressPitch of [0, tune.pressPitch]) {
   for (const rx of [-tune.maxTilt, 0, tune.maxTilt]) {
     for (const ry of [-tune.maxTilt, 0, tune.maxTilt]) {
-      for (const rz of [-MAX_MOTION_ROLL, 0, MAX_MOTION_ROLL]) {
+      for (const rz of [-tune.maxSpin, 0, tune.maxSpin]) {
         poses.push(new Matrix4()
           .makeRotationFromEuler(new Euler(rx + pressPitch, ry, tune.baseRotation + rz, 'XYZ'))
           .scale(new Vector3(tune.scale, tune.scale, tune.scale))

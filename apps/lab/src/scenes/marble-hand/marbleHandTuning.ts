@@ -29,6 +29,13 @@ export interface MarbleHandTuning {
   sculpturePitch: number
   motionEnabled: boolean
   keepAbovePage: boolean
+  tapEnabled: boolean
+  tapIdleDelayMs: number
+  tapPeriodMs: number
+  tapLiftRad: number
+  pinchEnabled: boolean
+  pinchIndexRad: number
+  pinchThumbRad: number
   stoneColor: string
   veinColor: string
   veinStrength: number
@@ -42,6 +49,10 @@ export interface MarbleHandTuning {
   chromeRoughness: number
   chromeReflectionIntensity: number
   chromeTint: string
+  strokeEnabled: boolean
+  strokeWidthPx: number
+  strokeColor: string
+  strokeOpacity: number
   reflectionFps: number
   ambientIntensity: number
   keyIntensity: number
@@ -61,33 +72,52 @@ export interface MarbleHandTuning {
 // A fresh scene copies these defaults. The panel never mutates them, so
 // Reset all restores the tested pose instead of a previously edited bag.
 export const marbleHandTuning: Readonly<MarbleHandTuning> = Object.freeze({
-  materialMode: 'marble',
+  materialMode: 'chrome',
   // The 2026-08-30 user export makes the 215-unit fragment about 148px
   // at the page plane. Keep the selected values exact for Reset all.
   scale: 0.69,
   mobileScale: 0.76,
-  // A 40px press closes the tip shadow. The exported pose leaves at least
-  // 15.94px above the page across the motion/press sweep (2026-08-30).
+  // The user's 40px press travel tightens the tip shadow. The floor guard
+  // still protects poses outside this saved orientation and motion range.
   heightPx: 92,
   pressHeightPx: 52,
   pressPitch: -0.2565634000431664,
-  // One ordinary 30px pointer step produces 0.054rad of tilt, below the
-  // 0.12rad clamp where the curled fingers stay above the page on press.
-  velocityTilt: 0.0018,
+  // The latest export reaches the 0.12rad rock limit after about 11px of
+  // pointer travel; the wider spin limit gives lateral motion more room.
+  velocityTilt: 0.0111,
   maxTilt: 0.12,
-  maxSpin: 0.07,
-  // 12/s settles 98% in about 330ms: weight after the hand stops, without
+  maxSpin: 0.3490658503988659,
+  // 7.5/s settles 98% in about 520ms: weight after the hand stops, without
   // making the cursor look detached from its own input.
-  poseDamping: 12,
+  poseDamping: 7.5,
   // Local +X points from wrist to tip. The user's 151.9-degree direction
   // retains the index upper-left and wrist down-right cursor relation.
   baseRotation: 2.651155133779387,
   // The user-selected roll and tilt remain in radians here; the panel
   // displays degrees without rounding these stored values on focus.
-  sculptureRoll: 1.8081611050661253,
-  sculpturePitch: 0.6387905062299246,
+  sculptureRoll: 1.9355701404617116,
+  sculpturePitch: 0.582939970166106,
   motionEnabled: true,
   keepAbovePage: true,
+  // Idle drumming. 1200ms is past the longest pause inside a normal reach
+  // across the page, so the fingers do not start twitching mid-gesture.
+  // 720ms per finger with the three staggered reads as one impatient roll
+  // rather than three separate taps. The two-joint chain turns the tip
+  // 1.8x this knuckle angle (marbleHandTapLaw chain constants), so 0.22rad
+  // keeps roughly the tip travel the flat 0.35rad hinge had — well past
+  // the few pixels a reader notices in peripheral vision — while the curl
+  // now bends through the finger. Every tap angle tightens the existing
+  // curl, lifting the stone further off the page rather than into it.
+  tapEnabled: true,
+  tapIdleDelayMs: 1200,
+  tapPeriodMs: 720,
+  tapLiftRad: 0.22,
+  // The pinch closes thumb and index while text is being selected. The
+  // angles are capped by the same page-clearance law the tap obeys; the
+  // pair stops short of touching so the stone never intersects itself.
+  pinchEnabled: true,
+  pinchIndexRad: 0.46,
+  pinchThumbRad: 0.36,
   // The exported finish uses a broad coat highlight and a stronger room
   // reflection, balanced by the lower key light and exposure below.
   roughness: 0.25,
@@ -100,30 +130,36 @@ export const marbleHandTuning: Readonly<MarbleHandTuning> = Object.freeze({
   veinScale: 1.05,
   ior: 2.05,
   specularIntensity: 0.73,
-  // Bare polished metal needs its own finish: reusing the saved stone's
-  // broad clearcoat would obscure the mirror. These values never overwrite
-  // the user's marble settings when the material mode changes.
-  chromeRoughness: 0.008,
-  chromeReflectionIntensity: 1.65,
+  // The 2026-08-30 user export softens the chrome reflection without adding
+  // the stone's broad clearcoat. Keep this finish separate so switching
+  // materials never overwrites the saved marble settings.
+  chromeRoughness: 0.364,
+  chromeReflectionIntensity: 2.95,
   chromeTint: '#eef2f7',
-  // Preserve the 2026-08-30 full-page reflection cadence as the default.
-  // This limit does not change the hand's own animation frame rate.
-  reflectionFps: 20,
-  ambientIntensity: 0,
-  keyIntensity: 0.8,
-  lightX: -280,
-  lightY: 280,
-  lightZ: 430,
+  // The edge uses CSS pixels so camera distance and hand size cannot thin
+  // it. A narrow, partly transparent edge keeps the reflected finish clear.
+  strokeEnabled: true,
+  strokeWidthPx: 2,
+  strokeColor: '#171914',
+  strokeOpacity: 0.85,
+  // The user's latest export allows high-refresh reflections. This is a
+  // ceiling, not a guaranteed rate, and does not cap the hand's motion.
+  reflectionFps: 120,
+  ambientIntensity: 0.25,
+  keyIntensity: 1.2,
+  lightX: -170,
+  lightY: 270,
+  lightZ: 950,
   lightColor: '#fff3db',
-  exposure: 0.8,
+  exposure: 0.45,
   // Like Knobs, native colour fields illuminate the object through a dim
   // room bounce and page-plane lights. Pixel-scale inverse-square falloff
   // needs candela in the thousands; neither term changes the native page.
-  roomBounce: 0.35,
+  roomBounce: 0.29,
   pageLightIntensity: 16000,
   shadowsEnabled: true,
-  shadowIntensity: 1,
-  shadowRadius: 1,
+  shadowIntensity: 0.8,
+  shadowRadius: 10.5,
   // The final DPR 2 browser frame keeps the long index shadow smooth at
   // 2048. A larger map would quadruple this candidate's shadow storage.
   shadowMapSize: 2048,
@@ -190,11 +226,28 @@ export const MARBLE_HAND_GROUPS: readonly MarbleHandControlGroup[] = [
     title: 'Movement',
     description: 'Higher settle speed makes the hand stop rocking sooner.',
     controls: [
-      { key: 'poseDamping', label: 'Settle speed', min: 2, max: 30, step: 0.5, unit: '/s' },
-      { key: 'velocityTilt', label: 'Tilt sensitivity', min: 0, max: 0.008, step: 0.0001 },
-      { key: 'maxTilt', label: 'Rock limit', min: 0, max: 30, step: 0.1, degrees: true },
-      { key: 'maxSpin', label: 'Spin limit', min: 0, max: 20, step: 0.1, degrees: true },
-      { key: 'pressPitch', label: 'Press tilt', min: -35, max: 35, step: 0.1, degrees: true },
+      { key: 'poseDamping', label: 'Settle speed', min: 2, max: 120, step: 0.5, unit: '/s' },
+      { key: 'velocityTilt', label: 'Tilt sensitivity', min: 0, max: 0.08, step: 0.0001 },
+      { key: 'maxTilt', label: 'Rock limit', min: 0, max: 180, step: 0.1, degrees: true },
+      { key: 'maxSpin', label: 'Spin limit', min: 0, max: 180, step: 0.1, degrees: true },
+      { key: 'pressPitch', label: 'Press tilt', min: -180, max: 180, step: 0.1, degrees: true },
+    ],
+  },
+  {
+    title: 'Idle tap',
+    description: 'The three curled fingers drum while the pointer rests. The index fingertip never moves.',
+    controls: [
+      { key: 'tapIdleDelayMs', label: 'Wait before tapping', min: 200, max: 5000, step: 50, unit: 'ms' },
+      { key: 'tapPeriodMs', label: 'Tap period', min: 200, max: 2000, step: 10, unit: 'ms' },
+      { key: 'tapLiftRad', label: 'Tap depth', min: 0, max: 60, step: 0.5, degrees: true },
+    ],
+  },
+  {
+    title: 'Pinch',
+    description: 'Thumb and index close together while text is selected.',
+    controls: [
+      { key: 'pinchIndexRad', label: 'Index reach', min: 0, max: 45, step: 0.5, degrees: true },
+      { key: 'pinchThumbRad', label: 'Thumb reach', min: 0, max: 45, step: 0.5, degrees: true },
     ],
   },
   {
@@ -217,8 +270,16 @@ export const MARBLE_HAND_GROUPS: readonly MarbleHandControlGroup[] = [
     material: 'chrome',
     description: 'Pure mirrored metal, with no stone veins. Your marble settings are kept separately.',
     controls: [
-      { key: 'chromeRoughness', label: 'Mirror roughness', min: 0, max: 0.2, step: 0.001 },
+      { key: 'chromeRoughness', label: 'Mirror roughness', min: 0, max: 1, step: 0.001 },
       { key: 'chromeReflectionIntensity', label: 'Mirror reflection', min: 0, max: 4, step: 0.05 },
+    ],
+  },
+  {
+    title: 'Stroke',
+    description: 'Width is in screen pixels. It stays the same at any distance from the camera.',
+    controls: [
+      { key: 'strokeWidthPx', label: 'Stroke width', min: 0, max: 12, step: 0.25, unit: 'px' },
+      { key: 'strokeOpacity', label: 'Stroke opacity', min: 0, max: 1, step: 0.05 },
     ],
   },
   {

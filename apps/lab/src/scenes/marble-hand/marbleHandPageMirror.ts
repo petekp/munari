@@ -4,6 +4,11 @@
 // approximation omitted every heading and label; reflection capture must
 // instead contain the actual native subtree, including later DOM edits.
 //
+// The fault, 2026-08-31: cloneNode gives a blank canvas, so the copy of the
+// page's shader field is empty — and the sheet's paper colour then filled
+// the whole frame, leaving the hand reflecting a flat card. The copy's root
+// paints nothing; the reflection scene draws that field behind it instead.
+//
 // Ownership: this helper owns only the copy. The capture host owns its
 // placement and lifetime; native HTML still owns events and accessibility.
 
@@ -16,6 +21,7 @@ export function cloneMarbleHandPage(page: HTMLElement, width: number, height: nu
   clone.style.height = `${height}px`
   clone.style.margin = '0'
   clone.style.boxSizing = 'border-box'
+  clone.style.background = 'transparent'
 
   const originals = [page, ...page.querySelectorAll('*')]
   const copies = [clone, ...clone.querySelectorAll('*')]

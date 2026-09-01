@@ -6,6 +6,18 @@
 // native cursor before the asset loaded. A settled centre-only check missed
 // the depth parallax, so this gate also moves to off-centre points.
 //
+// The 2026-08-31 change moved the poster's colour into a second WebGL canvas
+// inside the page. cloneNode gives a blank canvas, so the reflection draws
+// the same GLSL for itself; this gate's colour section now measures that the
+// two renderers share one published second rather than two CSS clocks.
+//
+// The same day added the idle tap. Its section is the only one that reads the
+// overlay's pixels twice with nothing touched in between: three curled fingers
+// bend in a vertex shader, so a broken patch leaves the pose, the height and
+// every projected vertex correct while the drawn stone does not move at all.
+// It also pins the fingertip across the drum, because a hinge whose capsule
+// caught the index would move the hotspot without moving the group.
+//
 // Ownership: the lab owns its model and renderer. This runner owns an
 // isolated Vite server and Chrome, then reads the existing scene and DOM.
 // The visible page never enters a Surface. An inert mirror supplies full-page
@@ -17,7 +29,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
-import { marbleHandTuning as authoredTuning } from '../../apps/lab/src/scenes/marble-hand/marbleHandTuning.ts'
+import { MARBLE_HAND_GROUPS, marbleHandTuning as authoredTuning } from '../../apps/lab/src/scenes/marble-hand/marbleHandTuning.ts'
+import { MARBLE_BACKGROUND_REDUCED_TIME } from '../../apps/lab/src/scenes/marble-hand/marbleHandBackgroundClock.ts'
 
 // Node 24 strips this module's type-only declarations. Heights come from the
 // authored settings, never from the object the gate is judging: sampling its
@@ -38,7 +51,13 @@ const viewport = { width: 1280, height: 900, deviceScaleFactor: 1 }
 const assetPath = '/models/marble-hand/classical-hand.stl'
 const problems = []
 const hdrRequests = []
+const nativeThemeClicks = new WeakMap()
 const artifactDirectory = process.env.MARBLE_HAND_ARTIFACT_DIR
+const themes = [
+  { id: 'waves', name: 'Waves' },
+  { id: 'checker', name: 'Checker' },
+  { id: 'prism', name: 'Prism' },
+]
 let browser
 let server
 
@@ -89,6 +108,337 @@ function watchEnvironmentRequests(page) {
 const nextPaint = (page) => page.evaluate(() => new Promise((resolve) => {
   requestAnimationFrame(() => requestAnimationFrame(resolve))
 }))
+
+function readColorMotion(page) {
+  return page.evaluate(() => {
+    // Small readers, not one guarded expression: this runs on a cold page
+    // with no hand, no capture copy and no field canvas as well as a live one.
+    const values = (source, keys) => {
+      const out = {}
+      for (const key of keys) out[key] = source ? source[key] : null
+      return out
+    }
+    const marks = (selector) => {
+      const root = document.querySelector(selector)
+      const background = root ? root.querySelector('.mh-background') : null
+      return {
+        state: root ? root.getAttribute('data-motion') : null,
+        visualization: background ? background.getAttribute('data-visualization') : null,
+      }
+    }
+    const store = window.__r3f
+    const environment = store ? store.scene.environment : null
+    const native = marks('.mh-app > .mh-sheet')
+    const copy = marks('[data-marble-page-capture] .mh-sheet')
+    return {
+      state: native.state,
+      visualization: native.visualization,
+      copyState: copy.state,
+      copyVisualization: copy.visualization,
+      // The reflected copy takes the clock through a subscription, so this
+      // is the second it will draw, not a second reading of wall time.
+      reflectedTime: store ? store.scene.userData.marbleBackgroundTime : null,
+      ...values(window.__marbleBackground, ['theme', 'frames', 'draws', 'time', 'running', 'contextLost']),
+      ...values(environment ? environment.userData : null,
+        ['backgroundTheme', 'backgroundTime', 'generation', 'sourceRevision', 'captureRevision']),
+    }
+  })
+}
+
+// The field canvas is a second WebGL context inside the page. A cloned
+// canvas is blank, which is why the reflection draws the shader itself; if
+// this one is missing or lost, the page falls back to a CSS gradient.
+function readFieldCanvas(page) {
+  return page.evaluate(() => {
+    const background = document.querySelector('.mh-app > .mh-sheet .mh-atmosphere .mh-background')
+    const canvas = background ? background.querySelector('canvas.mh-field') : null
+    if (!canvas) return { background: Boolean(background), canvas: false }
+    const context = canvas.getContext('webgl2') || canvas.getContext('webgl')
+    return {
+      background: true,
+      canvas: true,
+      fallback: background.hasAttribute('data-fallback'),
+      width: canvas.width,
+      cssWidth: Math.round(canvas.getBoundingClientRect().width),
+      context: Boolean(context),
+      lost: context ? context.isContextLost() : null,
+      copies: document.querySelectorAll('[data-marble-page-capture] canvas.mh-field').length,
+    }
+  })
+}
+
+async function setPageMotion(page, running) {
+  const desired = running ? 'running' : 'paused'
+  const before = await readColorMotion(page)
+  const panelWasOpen = Boolean(await page.$(`aside${panelSelector}`))
+  if (before.state !== desired) {
+    await setPanelOpen(page, true)
+    await page.click(`${panelSelector} [data-marble-motion-toggle]`)
+  }
+  await page.waitForFunction((desired) => {
+    const native = document.querySelector('.mh-app > .mh-sheet')
+    const copy = document.querySelector('[data-marble-page-capture] .mh-sheet')
+    const field = window.__marbleBackground
+    return native?.getAttribute('data-motion') === desired &&
+      (!copy || copy.getAttribute('data-motion') === desired) &&
+      (!field || field.running === (desired === 'running'))
+  }, { timeout: 5_000 }, desired).catch(async () => {
+    throw new Error(`color motion did not become ${desired}: ${JSON.stringify(await readColorMotion(page))}`)
+  })
+  await nextPaint(page)
+  if (!panelWasOpen) await setPanelOpen(page, false)
+}
+
+// A held clock still bakes once: the reflection has to reach the second the
+// page stopped on. Everything a pause claims is measured after that bake.
+async function settleReflection(page) {
+  await page.waitForFunction(() => {
+    const environment = window.__r3f?.scene.environment
+    const generation = environment?.userData.generation
+    if (!Number.isFinite(generation)) return false
+    const record = window.__marbleGateSettle || { generation: -1, quiet: 0 }
+    record.quiet = generation === record.generation ? record.quiet + 1 : 0
+    record.generation = generation
+    window.__marbleGateSettle = record
+    return record.quiet >= 8
+  }, { timeout: 10_000, polling: 'raf' })
+  await page.evaluate(() => { window.__marbleGateSettle = undefined })
+}
+
+async function sampleColorMotion(page, durationMs = 400) {
+  return page.evaluate((durationMs) => new Promise((resolve) => {
+    const values = (source, keys) => {
+      const out = {}
+      for (const key of keys) out[key] = source ? source[key] : null
+      return out
+    }
+    // sampleHash draws one frame off the loop and reads it back, so it
+    // counts as a draw and never as a frame: a held page must look held.
+    const sample = () => {
+      const field = window.__marbleBackground
+      const environment = window.__r3f ? window.__r3f.scene.environment : null
+      return {
+        hash: field ? field.sampleHash() : null,
+        ...values(field, ['theme', 'frames', 'draws', 'time', 'running', 'contextLost']),
+        ...values(environment ? environment.userData : null,
+          ['backgroundTheme', 'backgroundTime', 'generation', 'sourceRevision', 'captureRevision']),
+      }
+    }
+    const first = sample()
+    const started = performance.now()
+    let maxClockError = 0
+    let unreflected = 0
+    const tick = () => {
+      const field = window.__marbleBackground
+      const reflected = window.__r3f?.scene.userData.marbleBackgroundTime
+      if (field && Number.isFinite(reflected)) {
+        maxClockError = Math.max(maxClockError, Math.abs(reflected - field.time) * 1000)
+      } else unreflected++
+      const elapsed = performance.now() - started
+      if (elapsed < durationMs) { requestAnimationFrame(tick); return }
+      const last = sample()
+      resolve({
+        first, last, maxClockError, unreflected, elapsed,
+        fps: Math.round((last.frames - first.frames) / (elapsed / 1000)),
+      })
+    }
+    requestAnimationFrame(tick)
+  }), durationMs)
+}
+
+function requireMoving(sample, label) {
+  // Twenty frames in 400 ms is a third of a 60 Hz page; anything slower is
+  // the gate watching a stopped loop, not the loop running slowly.
+  requireThat(sample.first.theme && sample.first.theme === sample.last.theme &&
+    sample.first.running && sample.last.running && sample.last.contextLost === false &&
+    sample.last.frames > sample.first.frames + 20 && sample.first.hash !== sample.last.hash,
+  `${label}: the page field stopped drawing, or drew the same picture twice: ${JSON.stringify(sample)}`)
+  // The reflected copy is a second renderer. It must draw the page canvas's
+  // published second, and a still page must not reclone itself per frame.
+  // One reclone can still follow a real event — the panel click that resumed
+  // the page raises a window pointerup — so the bound is two, not zero. The
+  // CSS poster this replaced recloned on every animation frame.
+  const reclones = sample.last.sourceRevision - sample.first.sourceRevision
+  requireThat(sample.unreflected === 0 && sample.maxClockError <= 1 &&
+    sample.last.time > sample.first.time + 0.1 &&
+    sample.last.backgroundTheme === sample.last.theme &&
+    sample.last.generation > sample.first.generation && reclones <= 2,
+  `${label}: the reflected field lost the page's clock or the page recloned: ${JSON.stringify(sample)}`)
+}
+
+function waitForField(page, theme) {
+  return page.waitForFunction((theme) => {
+    const field = window.__marbleBackground
+    const background = document.querySelector('.mh-app > .mh-sheet .mh-background')
+    const environment = window.__r3f?.scene.environment
+    return Boolean(field) && field.theme === theme && field.running && !field.contextLost &&
+      field.frames > 0 && background?.getAttribute('data-visualization') === theme &&
+      environment?.userData.captureKind === 'full-page' &&
+      environment.userData.backgroundTheme === theme
+  }, { timeout: 10_000 }, theme)
+}
+
+async function verifyPausedField(page, id) {
+  await setPageMotion(page, true)
+  await selectTheme(page, id)
+  await waitForField(page, id)
+  await setPageMotion(page, false)
+  requireThat((await readColorMotion(page)).state === 'paused',
+    `${id}: theme selection discarded Pause color`)
+  await settleReflection(page)
+  const paused = await sampleColorMotion(page)
+  requireThat(paused.first.running === false && paused.first.frames === paused.last.frames &&
+    paused.first.time === paused.last.time && paused.first.hash === paused.last.hash &&
+    paused.last.backgroundTime === paused.last.time && paused.last.backgroundTheme === id &&
+    paused.first.generation === paused.last.generation && paused.maxClockError === 0,
+  `${id}: Pause color did not hold the page and its reflection: ${JSON.stringify(paused)}`)
+  // Wall time keeps running while the page does not. A clock that resumed
+  // from performance.now() would owe this whole second back in one frame.
+  const held = paused.last.time
+  await new Promise((resolve) => setTimeout(resolve, 1_000))
+  requireThat((await readColorMotion(page)).time === held,
+    `${id}: a paused field clock advanced with wall time`)
+  const startedAt = Date.now()
+  await setPageMotion(page, true)
+  const resumedAt = await readColorMotion(page)
+  const wall = (Date.now() - startedAt) / 1000
+  requireThat(resumedAt.time > held && resumedAt.time - held <= wall + 0.05,
+    `${id}: resume did not continue from the held second: ${JSON.stringify({ held, resumedAt, wall })}`)
+  const resumed = await sampleColorMotion(page)
+  requireMoving(resumed, `${id} resumed`)
+  await setPageMotion(page, false)
+  return { paused, resumed, held }
+}
+
+async function verifyReducedField(page, id) {
+  await selectTheme(page, id)
+  await page.waitForFunction((still) => window.__marbleBackground?.running === false &&
+    window.__marbleBackground.time === still, { timeout: 5_000 }, MARBLE_BACKGROUND_REDUCED_TIME)
+    .catch(async () => {
+      throw new Error(`${id}: reduced motion kept the field moving: ${JSON.stringify(await readColorMotion(page))}`)
+    })
+  await settleReflection(page)
+  const reduced = await sampleColorMotion(page)
+  requireThat(reduced.first.frames === reduced.last.frames && reduced.first.running === false &&
+    reduced.first.time === MARBLE_BACKGROUND_REDUCED_TIME &&
+    reduced.last.time === MARBLE_BACKGROUND_REDUCED_TIME &&
+    reduced.first.hash === reduced.last.hash &&
+    reduced.last.backgroundTime === MARBLE_BACKGROUND_REDUCED_TIME &&
+    reduced.first.generation === reduced.last.generation,
+  `${id}: reduced motion still moved the field or its reflection: ${JSON.stringify(reduced)}`)
+  return reduced
+}
+
+async function verifyThemeKeyboard(page) {
+  await page.focus('.mh-app > .mh-sheet [data-theme-option="waves"]')
+  for (const [index, theme] of themes.entries()) {
+    if (index > 0) await page.keyboard.press('Tab')
+    const clicks = await readThemeClickCount(page)
+    await page.keyboard.press(index % 2 ? 'Space' : 'Enter')
+    await requireTheme(page, theme.id)
+    requireThat(await readThemeClickCount(page) === clicks + 1 &&
+      await page.$eval(`.mh-app > .mh-sheet [data-theme-option="${theme.id}"]`,
+        (button) => document.activeElement === button),
+    `${theme.id}: keyboard activation did not keep native button focus or produce one click`)
+  }
+}
+
+async function verifyColorMotion(page) {
+  await page.evaluate(() => document.fonts.ready)
+  const canvas = await readFieldCanvas(page)
+  // One live field canvas in the page, one blank clone in the capture. The
+  // clone is the whole reason the reflection has to draw the shader itself.
+  requireThat(canvas.canvas && canvas.context && canvas.lost === false && !canvas.fallback &&
+    canvas.width >= canvas.cssWidth && canvas.cssWidth > 1000 && canvas.copies === 1,
+  `the page field canvas is missing, blank, or fell back to CSS: ${JSON.stringify(canvas)}`)
+
+  const results = []
+  for (const theme of themes) {
+    await selectTheme(page, theme.id)
+    await setPageMotion(page, true)
+    await waitForField(page, theme.id)
+    const moving = await sampleColorMotion(page)
+    requireMoving(moving, theme.id)
+    // Re-select the current theme through a real button. Its native state
+    // update must not restart the field's clock or reclone the page.
+    const before = await readColorMotion(page)
+    await selectTheme(page, theme.id)
+    const afterInput = await sampleColorMotion(page)
+    requireMoving(afterInput, `${theme.id} after native input`)
+    requireThat(afterInput.first.time >= before.time,
+      `${theme.id}: native input restarted the field clock: ${JSON.stringify({ before, afterInput })}`)
+    results.push({ id: theme.id, moving, afterInput })
+  }
+
+  for (const result of results) {
+    Object.assign(result, await verifyPausedField(page, result.id))
+    if (!artifactDirectory) continue
+    await mkdir(artifactDirectory, { recursive: true })
+    await page.mouse.move(viewport.width * 0.53, viewport.height * 0.42)
+    await nextPaint(page)
+    await page.screenshot({ path: path.join(artifactDirectory, `theme-${result.id}-desktop.png`) })
+  }
+
+  await setPageMotion(page, true)
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+  await setPanelOpen(page, true)
+  await page.waitForFunction((panelSelector) => {
+    const button = document.querySelector(`${panelSelector} [data-marble-motion-toggle]`)
+    return button?.disabled && button.textContent.includes('Motion off')
+  }, { timeout: 5_000 }, panelSelector)
+  await setPanelOpen(page, false)
+  for (const result of results) result.reduced = await verifyReducedField(page, result.id)
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }])
+  await setPanelOpen(page, true)
+  await page.waitForFunction((panelSelector) =>
+    document.querySelector(`${panelSelector} [data-marble-motion-toggle]`)?.disabled === false,
+  { timeout: 5_000 }, panelSelector)
+  await setPanelOpen(page, false)
+  await waitForField(page, results[results.length - 1].id)
+  await setPageMotion(page, false)
+  await verifyThemeKeyboard(page)
+  await selectTheme(page, 'waves')
+  return results
+}
+
+async function verifyMobileLayout(page) {
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 })
+  await nextPaint(page)
+  const layouts = []
+  for (const theme of themes) {
+    await selectTheme(page, theme.id)
+    const layout = await page.evaluate(() => {
+      const sheet = document.querySelector('.mh-app > .mh-sheet')
+      const heading = sheet.querySelector('h1').getBoundingClientRect()
+      const controls = [...sheet.querySelectorAll('.mh-theme-button')]
+        .map((element) => {
+          const box = element.getBoundingClientRect()
+          return { text: element.textContent.trim(), left: box.left, right: box.right, width: box.width, height: box.height }
+        })
+      return {
+        viewport: innerWidth,
+        document: document.documentElement.scrollWidth,
+        sheet: sheet.scrollWidth,
+        heading: { left: heading.left, right: heading.right },
+        controls,
+      }
+    })
+    requireThat(layout.document <= layout.viewport && layout.sheet <= layout.viewport &&
+      layout.heading.left >= 0 && layout.heading.right <= layout.viewport &&
+      layout.controls.every((control) => control.left >= 0 && control.right <= layout.viewport &&
+        control.width >= 24 && control.height >= 24),
+    `390px poster layout overflowed or hid its native controls: ${JSON.stringify(layout)}`)
+    if (artifactDirectory) {
+      await mkdir(artifactDirectory, { recursive: true })
+      await page.screenshot({ path: path.join(artifactDirectory, `theme-${theme.id}-mobile.png`), fullPage: true })
+    }
+    layouts.push({ id: theme.id, ...layout })
+  }
+  await page.setViewport(viewport)
+  await nextPaint(page)
+  await selectTheme(page, 'waves')
+  return layouts
+}
 
 function readHand(page) {
   return page.evaluate(() => {
@@ -160,14 +510,18 @@ function checkHand(sample, point, label) {
 // in Three (the unit mismatch this 2026-08-30 panel can otherwise hide).
 const panelSelector = '[data-marble-hand-controls]'
 const panelKeys = ['baseRotation', 'sculptureRoll', 'sculpturePitch', 'scale', 'roughness',
-  'keyIntensity', 'envMapIntensity', 'pageLightIntensity', 'roomBounce', 'reflectionFps']
-const panelSections = ['Orientation', 'Size & height', 'Movement', 'Marble', 'Reflections', 'Lighting', 'Shadows']
+  'keyIntensity', 'envMapIntensity', 'pageLightIntensity', 'roomBounce', 'reflectionFps',
+  'strokeWidthPx', 'strokeOpacity', 'poseDamping', 'velocityTilt', 'maxTilt', 'maxSpin',
+  'pressPitch', 'ambientIntensity', 'lightX', 'lightY', 'lightZ', 'exposure', 'shadowIntensity', 'shadowRadius']
+const chromePanelKeys = panelKeys.map((key) =>
+  key === 'roughness' ? 'chromeRoughness' : key === 'envMapIntensity' ? 'chromeReflectionIntensity' : key)
+const panelSections = ['Orientation', 'Size & height', 'Movement', 'Idle tap', 'Pinch', 'Marble', 'Stroke', 'Reflections', 'Lighting', 'Shadows']
 
 function numberSelector(key) {
   return `${panelSelector} input[data-tuning-key="${key}"][type="number"]`
 }
 
-function readPanelNumbers(page) {
+function readPanelNumbers(page, keys = panelKeys) {
   return page.evaluate((rootSelector, keys) => {
     const root = document.querySelector(rootSelector)
     return Object.fromEntries(keys.map((key) => {
@@ -175,7 +529,17 @@ function readPanelNumbers(page) {
       if (!(input instanceof HTMLInputElement)) throw new Error(`missing numeric control ${key}`)
       return [key, Number(input.value)]
     }))
-  }, panelSelector, panelKeys)
+  }, panelSelector, keys)
+}
+
+function requireAuthoredPanelNumbers(values, label) {
+  for (const [key, value] of Object.entries(values)) {
+    const control = MARBLE_HAND_GROUPS.flatMap((group) => group.controls).find((item) => item.key === key)
+    requireThat(control, `${label}: missing authored control ${key}`)
+    const decimals = control.step.toString().split('.')[1]?.length ?? 0
+    const expected = Number((authoredTuning[key] * (control.degrees ? 180 / Math.PI : 1)).toFixed(decimals))
+    requireThat(value === expected, `${label}: ${key} showed ${value}, expected authored ${expected}`)
+  }
 }
 
 function readPanelScene(page) {
@@ -184,7 +548,8 @@ function readPanelScene(page) {
     const hand = scene?.getObjectByName('marble-hand-sculpture')
     const group = scene?.getObjectByName('marble-hand-pointer')
     const key = scene?.getObjectByName('marble-hand-key-light')
-    const pageLights = ['carta', 'nero', 'cobalto', 'rosso']
+    const ambient = scene?.children.find((object) => object.type === 'AmbientLight')
+    const pageLights = ['waves', 'checker', 'prism']
       .map((id) => scene?.getObjectByName(`marble-hand-page-light-${id}`))
     if (!hand?.material || !group || !key || pageLights.some((light) => !light)) return null
     return {
@@ -197,23 +562,41 @@ function readPanelScene(page) {
       roughness: hand.material.roughness,
       envMapIntensity: hand.material.envMapIntensity,
       keyIntensity: key.intensity,
+      ambientIntensity: ambient?.intensity,
+      lightX: key.position.x,
+      lightY: key.position.y,
+      lightZ: key.position.z,
+      exposure: window.__r3f.gl.toneMappingExposure,
+      shadowIntensity: key.shadow.intensity,
+      shadowRadius: key.shadow.radius,
       pageLightTotal: pageLights.reduce((sum, light) => sum + light.intensity, 0),
       height: group.position.z,
     }
   })
 }
 
-function readContacts(page) {
-  return page.$eval('.mh-app > .mh-sheet', (sheet) =>
-    Number(sheet.querySelector('.mh-footer p:nth-child(2) strong').textContent))
+async function observeThemeClicks(page) {
+  const counter = await page.evaluateHandle(() => {
+    const clicks = { count: 0 }
+    document.querySelector('.mh-app > .mh-sheet').addEventListener('click', (event) => {
+      if (event.isTrusted && event.target instanceof Element && event.target.closest('.mh-theme-button')) clicks.count++
+    })
+    return clicks
+  })
+  nativeThemeClicks.set(page, counter)
 }
 
-function readSpecimen(page, name) {
-  return page.evaluate((name) => {
+function readThemeClickCount(page) {
+  const counter = nativeThemeClicks.get(page)
+  if (!counter) throw new Error('native theme clicks are not observed by this instrument')
+  return page.evaluate((clicks) => clicks.count, counter)
+}
+
+function readTheme(page, id) {
+  return page.evaluate((id) => {
     const sheet = document.querySelector('.mh-app > .mh-sheet')
-    const button = [...sheet.querySelectorAll('.mh-specimen')]
-      .find((item) => item.querySelector('strong')?.textContent === name)
-    if (!(button instanceof HTMLButtonElement)) throw new Error(`missing native specimen ${name}`)
+    const button = sheet.querySelector(`.mh-theme-button[data-theme-option="${id}"]`)
+    if (!(button instanceof HTMLButtonElement)) throw new Error(`missing native theme ${id}`)
     const box = button.getBoundingClientRect()
     const x = box.left + box.width / 2
     const y = box.top + box.height / 2
@@ -222,9 +605,55 @@ function readSpecimen(page, name) {
       x,
       y,
       directHit: hit === button || button.contains(hit),
-      contacts: Number(sheet.querySelector('.mh-footer p:nth-child(2) strong').textContent),
     }
-  }, name)
+  }, id)
+}
+
+async function requireTheme(page, id) {
+  await page.waitForFunction((id) => {
+    const sheet = document.querySelector('.mh-app > .mh-sheet')
+    const copy = document.querySelector('[data-marble-page-capture] .mh-sheet')
+    const buttons = sheet?.querySelectorAll('.mh-themes[aria-label="Background themes"] .mh-theme-button')
+    const active = sheet?.querySelectorAll('.mh-theme-button[aria-pressed="true"]')
+    return sheet?.getAttribute('data-theme') === id &&
+      buttons?.length === 3 && [...buttons].every((button) =>
+        ['true', 'false'].includes(button.getAttribute('aria-pressed'))) &&
+      sheet.querySelector('.mh-background')?.getAttribute('data-visualization') === id &&
+      active?.length === 1 && active[0].getAttribute('data-theme-option') === id &&
+      (!copy || copy.getAttribute('data-theme') === id &&
+        copy.querySelector('.mh-background')?.getAttribute('data-visualization') === id)
+  }, { timeout: 5_000 }, id).catch(() => { throw new Error(`${id}: native theme selection did not reach both copies`) })
+  await nextPaint(page)
+}
+
+async function selectTheme(page, id) {
+  let reopenPanel = false
+  let target = await readTheme(page, id)
+  if (!target.directHit && await page.$(`aside${panelSelector}`)) {
+    await page.click(`${panelSelector} [aria-label="Close hand controls"]`)
+    await page.waitForSelector(`aside${panelSelector}`, { hidden: true, timeout: 5_000 })
+    reopenPanel = true
+    target = await readTheme(page, id)
+  }
+  requireThat(target.directHit, `${id}: native theme button is blocked`)
+  const clicks = await readThemeClickCount(page)
+  const revision = await page.evaluate(() => window.__r3f?.scene.environment?.userData.sourceRevision)
+  await page.mouse.click(target.x, target.y)
+  await requireTheme(page, id)
+  requireThat(await readThemeClickCount(page) === clicks + 1 &&
+    await page.$eval(`.mh-app > .mh-sheet [data-theme-option="${id}"]`,
+      (button) => document.activeElement === button),
+  `${id}: one native click did not keep button focus or produced duplicate events`)
+  if (Number.isFinite(revision)) {
+    await page.waitForFunction((revision) => {
+      const environment = window.__r3f?.scene.environment
+      return environment.userData.captureKind !== 'full-page' || environment.userData.sourceRevision > revision
+    }, { timeout: 5_000 }, revision)
+  }
+  if (reopenPanel) {
+    await clickText(page, 'button', 'Tweak hand', '')
+    await page.waitForSelector(`aside${panelSelector}`, { visible: true, timeout: 5_000 })
+  }
 }
 
 async function requireNativePage(page, label) {
@@ -232,6 +661,7 @@ async function requireNativePage(page, label) {
   const sample = await page.evaluate(() => {
     const receiver = window.__r3f.scene.getObjectByName('marble-hand-shadow-receiver')
     const capture = document.querySelector('[data-marble-page-capture]')
+    const removed = '.mh-masthead, .mh-kicker, .mh-deck, .mh-status, .mh-footer, .mh-capture-notice, [data-marble-motion-toggle], [data-marble-reflection-notice]'
     let pagePresenters = 0
     window.__r3f.scene.traverse((object) => {
       if (object.material?.map?.name === 'marble-hand-native-page') pagePresenters++
@@ -241,30 +671,37 @@ async function requireNativePage(page, label) {
       copies: document.querySelectorAll('.mh-sheet[data-marble-reflection-copy]').length,
       sources: document.querySelectorAll('[data-munari-source-host], [data-marble-page-capture]').length,
       inertCapture: capture?.inert === true && capture.getAttribute('aria-hidden') === 'true',
+      removedNative: document.querySelector('.mh-app > .mh-sheet').querySelectorAll(removed).length,
+      removedCapture: capture?.querySelectorAll(removed).length,
       pagePresenters,
       canvasPointerEvents: getComputedStyle(window.__r3f.gl.domElement).pointerEvents,
       shadowOnly: receiver?.material?.isShadowMaterial === true && !receiver.material.map,
     }
   })
   requireThat(sample.sheets === 1 && sample.copies === 1 && sample.sources === 1 && sample.inertCapture &&
-    sample.pagePresenters === 0 && sample.canvasPointerEvents === 'none' && sample.shadowOnly,
+    sample.pagePresenters === 0 && sample.canvasPointerEvents === 'none' && sample.shadowOnly &&
+    sample.removedNative === 0 && sample.removedCapture === 0,
     `${label}: page is not one native sheet under a clear overlay: ${JSON.stringify(sample)}`)
 }
 
 async function selectNativeText(page) {
-  const points = await page.$eval('.mh-app > .mh-sheet .mh-deck', (paragraph) => {
-    const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT)
-    let node = walker.nextNode()
-    while (node && !node.textContent.trim()) node = walker.nextNode()
-    if (!node) throw new Error('native deck has no text node')
-    const start = node.textContent.search(/\S/)
-    const end = Math.min(node.textContent.length, start + 24)
+  const points = await page.$eval('.mh-app > .mh-sheet h1', (heading) => {
+    const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT)
+    const nodes = []
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.textContent.trim()) nodes.push(node)
+    }
+    if (nodes.length < 2) throw new Error('native heading no longer spans both sides of its line break')
+    const startNode = nodes[0]
+    const endNode = nodes.at(-1)
+    const start = startNode.textContent.search(/\S/)
+    const end = endNode.textContent.trimEnd().length
     const first = document.createRange()
-    first.setStart(node, start)
-    first.setEnd(node, start + 1)
+    first.setStart(startNode, start)
+    first.setEnd(startNode, start + 1)
     const last = document.createRange()
-    last.setStart(node, end - 1)
-    last.setEnd(node, end)
+    last.setStart(endNode, end - 1)
+    last.setEnd(endNode, end)
     const a = first.getBoundingClientRect()
     const b = last.getBoundingClientRect()
     return {
@@ -275,19 +712,33 @@ async function selectNativeText(page) {
   await page.mouse.move(points.from.x, points.from.y)
   await page.mouse.down()
   await page.mouse.move(points.to.x, points.to.y, { steps: 12 })
+  // The press landed on the heading's text, so the thumb and index must be
+  // closing while the drag is still down. The spring needs a few frames.
+  await page.waitForFunction(() => {
+    const bend = window.__r3f.scene.getObjectByName('marble-hand-sculpture')
+      .userData.marbleHandTap.uTapBend.value
+    return bend[3] > 0.1 && bend[4] > 0.08
+  }, { timeout: 3_000 }).catch(() => { throw new Error('selection drag did not close the pinch') })
   await page.mouse.up()
   const selected = await page.evaluate(() => {
     const selection = window.getSelection()
-    const paragraph = document.querySelector('.mh-app > .mh-sheet .mh-deck')
+    const heading = document.querySelector('.mh-app > .mh-sheet h1')
     return {
       text: selection?.toString().trim() ?? '',
       native: Boolean(selection?.anchorNode && selection?.focusNode &&
-        paragraph.contains(selection.anchorNode) && paragraph.contains(selection.focusNode)),
+        heading.contains(selection.anchorNode) && heading.contains(selection.focusNode) &&
+        selection.anchorNode !== selection.focusNode),
     }
   })
   requireThat(selected.native && selected.text.length >= 10,
     `native text selection failed: ${JSON.stringify(selected)}`)
   await page.evaluate(() => window.getSelection()?.removeAllRanges())
+  // Released: both pinch joints return to exactly rest (the spring floors
+  // at zero), so the later stillness clause reads an unbent hand.
+  await page.waitForFunction(() => window.__r3f.scene
+    .getObjectByName('marble-hand-sculpture').userData.marbleHandTap.uTapBend.value
+    .every((bend) => bend === 0), { timeout: 3_000 })
+    .catch(() => { throw new Error('the pinch never reopened after the selection released') })
   return selected.text.length
 }
 
@@ -311,6 +762,15 @@ async function clickText(page, selector, text, rootSelector = panelSelector) {
   } finally {
     await Promise.all(elements.map((element) => element.dispose()))
   }
+  await nextPaint(page)
+}
+
+async function setPanelOpen(page, open) {
+  const current = Boolean(await page.$(`aside${panelSelector}`))
+  if (current === open) return
+  if (open) await clickText(page, 'button', 'Tweak hand', '')
+  else await page.click(`${panelSelector} [aria-label="Close hand controls"]`)
+  await page.waitForSelector(`aside${panelSelector}`, { visible: open, hidden: !open, timeout: 5_000 })
   await nextPaint(page)
 }
 
@@ -354,6 +814,24 @@ async function togglePanelCheckbox(page, text) {
   await nextPaint(page)
 }
 
+async function setPanelCheckbox(page, text, checked) {
+  if ((await readPanelCheckbox(page, text)).checked !== checked) await togglePanelCheckbox(page, text)
+}
+
+async function setPanelColor(page, label, value) {
+  // Native color dialogs are OS UI. Dispatch the color input's own edit
+  // event instead; this still exercises the mounted panel's React handler.
+  await page.$eval(panelSelector, (root, label, value) => {
+    const input = [...root.querySelectorAll('input[type="color"]')].find((node) =>
+      [...node.labels].some((item) => item.textContent.trim().startsWith(label)))
+    if (!(input instanceof HTMLInputElement)) throw new Error(`missing color control ${label}`)
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  }, label, value)
+  await nextPaint(page)
+}
+
 async function setPanelNumber(page, key, value, displayed = value) {
   const selector = numberSelector(key)
   const input = await page.waitForSelector(selector, { visible: true })
@@ -384,7 +862,8 @@ async function waitForPanelScene(page, expected, label) {
       const hand = scene?.getObjectByName('marble-hand-sculpture')
       const group = scene?.getObjectByName('marble-hand-pointer')
       const key = scene?.getObjectByName('marble-hand-key-light')
-      const pageLights = ['carta', 'nero', 'cobalto', 'rosso']
+      const ambient = scene?.children.find((object) => object.type === 'AmbientLight')
+      const pageLights = ['waves', 'checker', 'prism']
         .map((id) => scene?.getObjectByName(`marble-hand-page-light-${id}`))
       if (!hand?.material || !group || !key || pageLights.some((light) => !light)) return false
       const actual = {
@@ -397,6 +876,13 @@ async function waitForPanelScene(page, expected, label) {
         roughness: hand.material.roughness,
         envMapIntensity: hand.material.envMapIntensity,
         keyIntensity: key.intensity,
+        ambientIntensity: ambient?.intensity,
+        lightX: key.position.x,
+        lightY: key.position.y,
+        lightZ: key.position.z,
+        exposure: window.__r3f.gl.toneMappingExposure,
+        shadowIntensity: key.shadow.intensity,
+        shadowRadius: key.shadow.radius,
         pageLightTotal: pageLights.reduce((sum, light) => sum + light.intensity, 0),
         height: group.position.z,
       }
@@ -408,7 +894,9 @@ async function waitForPanelScene(page, expected, label) {
 }
 
 async function verifyPageReflections(page) {
-  // Keep direct page lights out of the optical clause. The native swatch
+  await requireTheme(page, 'waves')
+  await setPageMotion(page, false)
+  // Keep direct page lights out of the optical clause. The native heading
   // never enters this framebuffer, so changed opaque hand pixels can then
   // come only from its page-derived environment, not from a repainted page.
   await setPanelNumber(page, 'envMapIntensity', 3)
@@ -417,7 +905,7 @@ async function verifyPageReflections(page) {
   await page.waitForFunction(() => {
     const scene = window.__r3f?.scene
     const hand = scene?.getObjectByName('marble-hand-sculpture')
-    const lights = ['carta', 'nero', 'cobalto', 'rosso']
+    const lights = ['waves', 'checker', 'prism']
       .map((id) => scene?.getObjectByName(`marble-hand-page-light-${id}`))
     return hand?.material.envMapIntensity === 3 && hand.material.roughness === 0.1 &&
       lights.every((light) => light && light.intensity === 0)
@@ -427,13 +915,13 @@ async function verifyPageReflections(page) {
     const state = window.__r3f
     const renderer = state.gl
     const scene = state.scene
-    const swatch = document.querySelector('.mh-app > .mh-sheet [data-specimen="cobalto"] .mh-swatch')
-    const light = scene.getObjectByName('marble-hand-page-light-cobalto')
-    if (!(swatch instanceof HTMLElement) || !light) throw new Error('missing native Cobalto field or page light')
-    const previousBackground = swatch.style.background
-    const previousColor = light.color.clone()
+    // The field moved into a canvas the copy cannot carry, so the native
+    // edit this clause needs is ordinary DOM: the heading's own ink.
+    const heading = document.querySelector('.mh-app > .mh-sheet .mh-intro h1')
+    if (!(heading instanceof HTMLElement)) throw new Error('missing native heading')
+    const previousInk = heading.style.color
+    const previousColor = getComputedStyle(heading).color
     const replacement = '#18d97c'
-    const expectedColor = light.color.clone().set(replacement)
     const stamp = () => {
       const environment = scene.environment
       if (environment?.name !== 'marble-hand-page-environment' || environment.userData.captureKind !== 'full-page') return null
@@ -443,11 +931,10 @@ async function verifyPageReflections(page) {
         signature: environment.userData.captureRevision,
       }
     }
-    const colorMatches = (expected) => Math.max(
-      Math.abs(light.color.r - expected.r),
-      Math.abs(light.color.g - expected.g),
-      Math.abs(light.color.b - expected.b),
-    ) < 0.01
+    const colorMatches = (expected) => {
+      const copy = document.querySelector('[data-marble-page-capture] .mh-intro h1')
+      return copy && getComputedStyle(copy).color === expected
+    }
     const until = (ready, label) => new Promise((resolve, reject) => {
       const deadline = performance.now() + 5_000
       const tick = () => {
@@ -498,7 +985,8 @@ async function verifyPageReflections(page) {
     const before = await capture()
     let changedCapture = beforeStamp.signature
     try {
-      swatch.style.background = replacement
+      heading.style.color = replacement
+      const expectedColor = getComputedStyle(heading).color
       await until(() => {
         const current = stamp()
         return current && current.generation > beforeStamp.generation &&
@@ -536,13 +1024,15 @@ async function verifyPageReflections(page) {
         meanDelta: opaquePixels > 0 ? totalDelta / opaquePixels : 0,
       }
     } finally {
-      swatch.style.background = previousBackground
+      heading.style.color = previousInk
       await until(() => stamp()?.signature > changedCapture && colorMatches(previousColor),
-        'restored native swatch')
+        'restored native heading')
     }
   })
   // Four channel counts reject ordinary one-count GPU rounding. Plain Chrome
   // measured 1,281 changed opaque pixels and a 42-count peak on 2026-08-30.
+  // The heading is 288px type across half the page, so it is the largest
+  // opaque thing the capture still carries now that the field is a canvas.
   // The 100-pixel/eight-count floor proves a material change without pinning
   // one highlight's exact location across GPU implementations.
   requireThat(result.opaquePixels > 100 && result.changedPixels >= 100 && result.maxDelta >= 8,
@@ -573,6 +1063,7 @@ function readHandMaterial(page) {
       clearcoat: material.clearcoat,
       clearcoatRoughness: material.clearcoatRoughness,
       envMapIntensity: material.envMapIntensity,
+      environmentIntensity: state.scene.environmentIntensity,
       color: `#${material.color.getHexString()}`,
       ior: material.ior,
       specularIntensity: material.specularIntensity,
@@ -622,6 +1113,262 @@ function captureMaterialFrame(page) {
       }
     }
   }))
+}
+
+async function verifyThemeReflections(page) {
+  await setPageMotion(page, false)
+  await selectHandMaterial(page, 'chrome')
+  await openPanelSection(page, 'Chrome')
+  await setPanelNumber(page, 'chromeRoughness', 0.12)
+  await openPanelSection(page, 'Lighting')
+  await setPanelNumber(page, 'pageLightIntensity', 0)
+  await openPanelSection(page, 'Stroke')
+  await setPanelCheckbox(page, 'Show stroke', false)
+  const samples = []
+  const comparisons = []
+  try {
+    for (const theme of themes) {
+      await selectTheme(page, theme.id)
+      // Reaching the last button briefly closes the panel and un-parks the
+      // hand. Its press/tilt damping must finish before optical comparison.
+      await page.waitForFunction((height, rotation) => {
+        const group = window.__r3f.scene.getObjectByName('marble-hand-pointer')
+        return Math.abs(group.position.z - height) < 0.0001 &&
+          Math.abs(group.rotation.x) < 0.000001 && Math.abs(group.rotation.y) < 0.000001 &&
+          Math.abs(group.rotation.z - rotation) < 0.000001
+      }, { timeout: 5_000 }, authoredTuning.heightPx, authoredTuning.baseRotation)
+      await page.evaluate(() => new Promise((resolve, reject) => {
+        let previous = -1
+        let stable = 0
+        const deadline = performance.now() + 5_000
+        const tick = () => {
+          const data = window.__r3f.scene.environment?.userData
+          const generation = data?.generation
+          stable = data?.captureKind === 'full-page' && generation === previous ? stable + 1 : 0
+          previous = generation
+          if (stable >= 8) resolve()
+          else if (performance.now() >= deadline) reject(new Error('theme reflection did not settle'))
+          else requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      }))
+      const source = await page.evaluateHandle(() => {
+        const canvas = document.querySelector('[data-marble-page-capture]').closest('canvas')
+        const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data
+        return { width: canvas.width, height: canvas.height, pixels }
+      })
+      const hand = await captureMaterialFrame(page)
+      const material = await readHandMaterial(page)
+      requireThat((await readPanelScene(page)).pageLightTotal === 0 && material.roughness === 0.12 &&
+        material.name === 'marble-hand-mirrored-chrome' && !(await readPanelCheckbox(page, 'Show stroke')).checked,
+      `${theme.id}: theme selection changed the isolated optical setup`)
+      const prior = [...samples]
+      samples.push({ id: theme.id, source, hand, material })
+      for (const previous of prior) {
+        requireThat(previous.material.mesh === material.mesh && previous.material.geometry === material.geometry &&
+          previous.material.pose.every((value, index) => Math.abs(value - material.pose[index]) < 0.001),
+        `${previous.id} → ${theme.id} moved the optical reference hand`)
+        const sourcePixels = await compareHandFrames(page, previous.source, source)
+        const handPixels = await compareHandFrames(page, previous.hand, hand)
+        // Theme changes must reach a large part of the actual page raster,
+        // then the opaque hand with page lights and its stroke disabled.
+        // Different labels alone cannot satisfy this 8%-of-page floor.
+        requireThat(sourcePixels.changedPixels >= sourcePixels.opaquePixels * 0.08 && sourcePixels.maxDelta >= 32,
+          `${previous.id} and ${theme.id} are not distinct page visuals: ${JSON.stringify(sourcePixels)}`)
+        requireThat(handPixels.changedPixels >= 100 && handPixels.maxDelta >= 8,
+          `${previous.id} → ${theme.id} did not change reflected hand pixels: ${JSON.stringify(handPixels)}`)
+        comparisons.push({ from: previous.id, to: theme.id, source: sourcePixels, hand: handPixels })
+      }
+    }
+    return comparisons
+  } finally {
+    for (const sample of samples) {
+      await sample.source.dispose()
+      await sample.hand.dispose()
+    }
+    await selectTheme(page, 'waves')
+    await clickText(page, 'button', 'Reset all')
+  }
+}
+
+/**
+ * One overlay frame, read straight out of the default framebuffer, plus the
+ * live bend angles and the projected index tip from that same draw. The
+ * changed count compares against the previous call, so two calls with an
+ * interval between them measure exactly what moved in that interval.
+ */
+function tapFrame(page) {
+  return page.evaluate(() => new Promise((resolve, reject) => {
+    const renderer = window.__r3f.gl
+    const original = renderer.render
+    const timer = setTimeout(() => {
+      renderer.render = original
+      reject(new Error('no default-framebuffer draw for tap sample'))
+    }, 5_000)
+    renderer.render = function (scene, camera) {
+      try {
+        original.call(this, scene, camera)
+        if (this.getRenderTarget() !== null) return
+        renderer.render = original
+        clearTimeout(timer)
+        const context = this.getContext()
+        const width = context.drawingBufferWidth
+        const height = context.drawingBufferHeight
+        const pixels = new Uint8Array(width * height * 4)
+        context.readPixels(0, 0, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
+        const previous = window.__marbleTapFrame
+        let hash = 2166136261
+        let changed = null
+        if (previous?.length === pixels.length) changed = 0
+        for (let offset = 0; offset < pixels.length; offset += 4) {
+          hash = Math.imul(hash ^ pixels[offset], 16777619)
+          hash = Math.imul(hash ^ pixels[offset + 3], 16777619)
+          if (changed === null) continue
+          const delta = Math.max(
+            Math.abs(previous[offset] - pixels[offset]),
+            Math.abs(previous[offset + 1] - pixels[offset + 1]),
+            Math.abs(previous[offset + 2] - pixels[offset + 2]),
+            Math.abs(previous[offset + 3] - pixels[offset + 3]),
+          )
+          if (delta >= 8) changed++
+        }
+        window.__marbleTapFrame = pixels
+        const hand = window.__r3f.scene.getObjectByName('marble-hand-sculpture')
+        const tip = hand.position.clone().set(0, 0, 0)
+          .applyMatrix4(hand.matrixWorld).project(window.__r3f.camera)
+        const rect = renderer.domElement.getBoundingClientRect()
+        resolve({
+          hash: hash >>> 0,
+          changed,
+          bend: [...hand.userData.marbleHandTap.uTapBend.value],
+          tip: {
+            x: rect.left + (tip.x + 1) * rect.width / 2,
+            y: rect.top + (1 - tip.y) * rect.height / 2,
+          },
+        })
+      } catch (error) {
+        renderer.render = original
+        clearTimeout(timer)
+        reject(error)
+      }
+    }
+  }))
+}
+
+function readTapBend(page) {
+  return page.evaluate(() => [...window.__r3f.scene
+    .getObjectByName('marble-hand-sculpture').userData.marbleHandTap.uTapBend.value])
+}
+
+function waitForTapRest(page, timeout) {
+  return page.waitForFunction(() => window.__r3f.scene
+    .getObjectByName('marble-hand-sculpture').userData.marbleHandTap.uTapBend.value
+    .every((bend) => bend < 0.01), { timeout })
+}
+
+// Re-sending the pointer to the same screen point is still a pointer move:
+// it resets the idle clock without giving the rocking a new target, so the
+// pose can damp to a standstill while the drum stays away.
+async function holdPointerStill(page, at, ms) {
+  const until = Date.now() + ms
+  do {
+    await page.mouse.move(at.x, at.y)
+    await nextPaint(page)
+  } while (Date.now() < until)
+}
+
+async function verifyIdleTap(page) {
+  // Plain paper, clear of every theme button and of the panel's edge.
+  const at = { x: Math.round(viewport.width * 0.6), y: Math.round(viewport.height * 0.3) }
+  await setPageMotion(page, false)
+  // The joint springs decay to an exact clamped zero, but not in one frame.
+  await page.waitForFunction(() => window.__r3f.scene
+    .getObjectByName('marble-hand-sculpture').userData.marbleHandTap.uTapBend.value
+    .every((bend) => bend === 0), { timeout: 3_000 })
+  await page.mouse.move(at.x, at.y)
+  await nextPaint(page)
+  const moving = await readTapBend(page)
+  requireThat(moving.length === 5 && moving.every((bend) => bend === 0),
+    `tap: the hand was still bent right after a pointer move: ${JSON.stringify(moving)}`)
+
+  const askedAt = Date.now()
+  await page.waitForFunction(() => window.__r3f.scene
+    .getObjectByName('marble-hand-sculpture').userData.marbleHandTap.uTapBend.value
+    .some((bend) => bend > 0.05), { timeout: authoredTuning.tapIdleDelayMs + 5_000 })
+  const startedAfter = Date.now() - askedAt
+  requireThat(startedAfter >= authoredTuning.tapIdleDelayMs * 0.75,
+    `tap: drumming began after only ${startedAfter}ms of rest`)
+
+  // Three moments a third of a period apart. A hand that never leaves its
+  // rest pose returns one hash for all three.
+  const samples = []
+  await tapFrame(page)
+  for (let index = 0; index < 3; index++) {
+    await new Promise((resolve) => setTimeout(resolve, authoredTuning.tapPeriodMs / 3))
+    samples.push(await tapFrame(page))
+  }
+  const hashes = new Set(samples.map((sample) => sample.hash))
+  requireThat(hashes.size >= 2,
+    `tap: the overlay drew identical pixels through a whole cycle: ${JSON.stringify(samples.map((s) => s.bend))}`)
+  // A third of a period apart the cycle moves about 1300 of the overlay's
+  // 1.15M pixels (measured 2026-08-31). The floor is a quarter of that, so a
+  // finger that only quivers still fails.
+  const drumChanged = Math.max(...samples.map((sample) => sample.changed))
+  requireThat(drumChanged >= 300,
+    `tap: only ${drumChanged} overlay pixels moved across a cycle`)
+  let tipDrift = 0
+  for (const first of samples) {
+    for (const second of samples) {
+      tipDrift = Math.max(tipDrift, Math.hypot(first.tip.x - second.tip.x, first.tip.y - second.tip.y))
+    }
+  }
+  requireThat(tipDrift <= 0.5, `tap: the index fingertip moved ${tipDrift.toFixed(3)}px while drumming`)
+
+  await page.mouse.move(at.x + 40, at.y)
+  const movedAt = Date.now()
+  await waitForTapRest(page, 2_000)
+  const stoppedAfter = Date.now() - movedAt
+  // The 120ms fade drains the drum's amplitude, and the joint springs then
+  // ride a sub-degree tail down to their clamped zero. The tail is beneath
+  // a pixel almost immediately; this bound is on mathematical rest.
+  requireThat(stoppedAfter <= 500, `tap: the fingers took ${stoppedAfter}ms to flatten after a 40px move`)
+  const held = { x: at.x + 40, y: at.y }
+  await holdPointerStill(page, held, 1_400)
+  await tapFrame(page)
+  await holdPointerStill(page, held, 260)
+  const rest = await tapFrame(page)
+  // Measures 0. The small allowance is for the rocking's own damping tail,
+  // which can still flip an antialiased edge pixel long after it is invisible.
+  requireThat(rest.bend.every((bend) => bend === 0) && rest.changed <= 20,
+    `tap: the overlay kept moving with the pointer awake: ${JSON.stringify(rest)}`)
+
+  // Opening the panel parks the hand, so un-park it again before the wait:
+  // a parked hand reports flat fingers whatever the toggle says.
+  await setPanelOpen(page, true)
+  await openPanelSection(page, 'Idle tap')
+  await setPanelCheckbox(page, 'Idle tapping', false)
+  await setPanelCheckbox(page, 'Park hand', false)
+  const clear = { x: Math.round(viewport.width * 0.3), y: Math.round(viewport.height * 0.3) }
+  await page.mouse.move(clear.x, clear.y)
+  await new Promise((resolve) => setTimeout(resolve, authoredTuning.tapIdleDelayMs + 400))
+  const switched = await readTapBend(page)
+  requireThat(switched.every((bend) => bend === 0),
+    `tap: the panel switch did not stop the drum: ${JSON.stringify(switched)}`)
+  await setPanelCheckbox(page, 'Idle tapping', true)
+  await setPanelOpen(page, false)
+
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+  try {
+    await page.mouse.move(at.x, at.y)
+    await new Promise((resolve) => setTimeout(resolve, authoredTuning.tapIdleDelayMs + 400))
+    const reduced = await readTapBend(page)
+    requireThat(reduced.every((bend) => bend === 0),
+      `tap: reduced motion still drummed: ${JSON.stringify(reduced)}`)
+  } finally {
+    await page.emulateMediaFeatures([])
+  }
+  await setPageMotion(page, true)
+  return { startedAfter, stoppedAfter, drumChanged, tipDrift, restChanged: rest.changed, hashes: hashes.size }
 }
 
 function readHeadingCapture(page) {
@@ -686,19 +1433,241 @@ function compareHandFrames(page, before, after) {
   }, before, after)
 }
 
+function measureStrokeFrame(page, body, frame, dpr, widthPx, color = 'magenta') {
+  return page.evaluate((body, frame, dpr, widthPx, color) => {
+    if (body.width !== frame.width || body.height !== frame.height) throw new Error('stroke sample resized')
+    const radius = Math.ceil((widthPx + 2) * dpr)
+    const neighbors = []
+    for (let y = -radius; y <= radius; y++) {
+      for (let x = -radius; x <= radius; x++) neighbors.push({ x, y, squared: x * x + y * y })
+    }
+    neighbors.sort((a, b) => a.squared - b.squared)
+    const distanceToBody = (x, y) => {
+      for (const neighbor of neighbors) {
+        const nx = x + neighbor.x
+        const ny = y + neighbor.y
+        if (nx < 0 || nx >= frame.width || ny < 0 || ny >= frame.height) continue
+        if (body.pixels[(ny * frame.width + nx) * 4 + 3] >= 128) return Math.sqrt(neighbor.squared) / dpr
+      }
+      return null
+    }
+    const matchesColor = color === 'magenta'
+      ? (r, g, b) => r > 15 && b > 15 && g < Math.min(r, b) * 0.2
+      : (r, g, b) => g > 15 && r < g * 0.2 && b < g * 0.2
+    const distances = []
+    let bodyPixels = 0
+    let strokePixels = 0
+    let colorPixels = 0
+    let peakAlpha = 0
+    let unmatchedPixels = 0
+    for (let offset = 0; offset < frame.pixels.length; offset += 4) {
+      const r = frame.pixels[offset]
+      const g = frame.pixels[offset + 1]
+      const b = frame.pixels[offset + 2]
+      const a = frame.pixels[offset + 3]
+      const matches = matchesColor(r, g, b)
+      if (matches && a >= 128) colorPixels++
+      if (body.pixels[offset + 3] >= 128) { bodyPixels++; continue }
+      if (!matches || a < 8) continue
+      if (body.pixels[offset + 3] < 8) peakAlpha = Math.max(peakAlpha, a)
+      if (a < 128) continue
+      strokePixels++
+      const pixel = offset / 4
+      const x = pixel % frame.width
+      const y = Math.floor(pixel / frame.width)
+      const distance = distanceToBody(x, y)
+      if (distance === null) unmatchedPixels++
+      else distances.push(distance)
+    }
+    distances.sort((a, b) => a - b)
+    return { bodyPixels: bodyPixels / dpr ** 2, strokePixels: strokePixels / dpr ** 2, colorPixels,
+      peakAlpha, unmatchedPixels, widthPx: distances[Math.floor(distances.length * 0.95)] ?? 0 }
+  }, body, frame, dpr, widthPx, color)
+}
+
+async function verifyStroke(page) {
+  await clickText(page, 'button', 'Reset all')
+  await openPanelSection(page, 'Stroke')
+  requireThat((await readPanelCheckbox(page, 'Show stroke')).checked === authoredTuning.strokeEnabled,
+    'stroke did not start at its authored visibility')
+  const controls = await page.$$eval(`${panelSelector} input[data-tuning-key="strokeWidthPx"]`, (inputs) =>
+    inputs.map((input) => ({ min: Number(input.min), max: Number(input.max), step: Number(input.step) })))
+  requireThat(controls.length === 2 && controls.every((input) =>
+    input.min === 0 && input.max === 12 && input.step === 0.25),
+  `stroke controls lost their CSS-pixel range: ${JSON.stringify(controls)}`)
+  await setPanelColor(page, 'Stroke color', '#ff00ff')
+  await setPanelNumber(page, 'strokeOpacity', 1)
+  await setPanelNumber(page, 'strokeWidthPx', 6)
+  await openPanelSection(page, 'Shadows')
+  await setPanelCheckbox(page, 'Cast shadows', false)
+  await openPanelSection(page, 'Size & height')
+  await setPanelCheckbox(page, 'Keep above page', false)
+  const samples = []
+  let body
+  let frame
+  try {
+    // A 6px silhouette is broad enough to separate projection scaling from
+    // one raster edge. The object grows by about 25% between these depths;
+    // a world-space shell would grow with it. DPR must not double CSS width.
+    for (const dpr of [1, 2]) {
+      await page.setViewport({ ...viewport, width: viewport.width + dpr - 1, deviceScaleFactor: dpr })
+      await page.waitForFunction((dpr) => window.__r3f.gl.getPixelRatio() === dpr,
+        { timeout: 5_000 }, dpr)
+      for (const height of [4, 240]) {
+        await setPanelNumber(page, 'heightPx', height)
+        await waitForPanelScene(page, { height }, 'stroke distance')
+        await openPanelSection(page, 'Stroke')
+        await setPanelCheckbox(page, 'Show stroke', false)
+        body = await captureMaterialFrame(page)
+        const disabled = await measureStrokeFrame(page, body, body, dpr, 6)
+        requireThat(disabled.colorPixels === 0 && disabled.peakAlpha === 0,
+          `disabled stroke still drew colored pixels: ${JSON.stringify(disabled)}`)
+        await setPanelCheckbox(page, 'Show stroke', true)
+        frame = await captureMaterialFrame(page)
+        const sample = { dpr, height, ...await measureStrokeFrame(page, body, frame, dpr, 6) }
+        requireThat(sample.strokePixels > 500 && sample.unmatchedPixels === 0 &&
+          Math.abs(sample.widthPx - 6) <= 0.75,
+        `stroke did not draw a 6 CSS-pixel silhouette: ${JSON.stringify(sample)}`)
+        samples.push(sample)
+        await frame.dispose()
+        frame = null
+        await body.dispose()
+        body = null
+      }
+    }
+    const widths = samples.map((sample) => sample.widthPx)
+    requireThat(Math.max(...widths) - Math.min(...widths) <= 0.75,
+      `stroke thickness changed with distance or DPR: ${JSON.stringify(samples)}`)
+    for (const dpr of [1, 2]) {
+      const far = samples.find((sample) => sample.dpr === dpr && sample.height === 4)
+      const near = samples.find((sample) => sample.dpr === dpr && sample.height === 240)
+      requireThat(near.bodyPixels > far.bodyPixels * 1.35,
+        `distance proof did not enlarge the actual hand: ${JSON.stringify({ far, near })}`)
+    }
+
+    await setPanelCheckbox(page, 'Show stroke', false)
+    body = await captureMaterialFrame(page)
+    await setPanelCheckbox(page, 'Show stroke', true)
+    await setPanelNumber(page, 'strokeWidthPx', 3)
+    frame = await captureMaterialFrame(page)
+    const narrow = await measureStrokeFrame(page, body, frame, 2, 3)
+    requireThat(narrow.strokePixels > 200 && Math.abs(narrow.widthPx - 3) <= 0.75,
+      `stroke width control did not narrow the actual edge: ${JSON.stringify(narrow)}`)
+    await frame.dispose()
+    frame = null
+    await setPanelColor(page, 'Stroke color', '#00ff00')
+    await setPanelNumber(page, 'strokeOpacity', 0.25)
+    await selectHandMaterial(page, 'marble')
+    frame = await captureMaterialFrame(page)
+    const translucent = await measureStrokeFrame(page, body, frame, 2, 3, 'green')
+    requireThat(translucent.peakAlpha >= 55 && translucent.peakAlpha <= 70,
+      `stroke color/opacity did not survive Marble mode: ${JSON.stringify(translucent)}`)
+    await page.evaluate(() => navigator.clipboard.writeText('marble-hand-stroke-empty'))
+    await clickText(page, 'button', 'Copy settings')
+    const copied = await page.evaluate(async () => {
+      const payload = JSON.parse(await navigator.clipboard.readText())
+      if (!payload?.marbleHand) {
+        throw new Error('Copy settings did not write a marbleHand settings object')
+      }
+      return payload.marbleHand
+    })
+    requireThat(copied.strokeEnabled && copied.strokeColor === '#00ff00' &&
+      copied.strokeWidthPx === 3 && copied.strokeOpacity === 0.25,
+    `copy lost edited stroke settings: ${JSON.stringify(copied)}`)
+    return { samples, narrow, translucent }
+  } finally {
+    await body?.dispose()
+    await frame?.dispose()
+    await page.setViewport(viewport)
+    await nextPaint(page)
+  }
+}
+
+async function verifyMirrorIntensity(page) {
+  const previousFps = await page.$eval(numberSelector('reflectionFps'), (input) => Number(input.value))
+  await openPanelSection(page, 'Reflections')
+  await setPanelNumber(page, 'reflectionFps', 1)
+  await openPanelSection(page, 'Chrome')
+  const selector = numberSelector('chromeReflectionIntensity')
+  const previous = await page.$eval(selector, (input) => Number(input.value))
+  const stamp = () => page.evaluate(() => ({
+    texture: window.__r3f.scene.environment.uuid,
+    generation: window.__r3f.scene.environment.userData.generation,
+    intensity: window.__r3f.scene.environmentIntensity,
+  }))
+  const adjust = async (value) => {
+    // Settle React's input draft before filling. Refocusing and filling in
+    // one step can overwrite the new number with the previous draft.
+    await page.focus(selector)
+    await nextPaint(page)
+    await page.locator(selector).fill(String(value))
+    await page.keyboard.press('Tab')
+    try {
+      await page.waitForFunction((value) =>
+        window.__r3f.scene.getObjectByName('marble-hand-sculpture').material.envMapIntensity === value,
+      { timeout: 5_000 }, value)
+    } catch {
+      const actual = await page.$eval(selector, (input) => input.value)
+      throw new Error(`Mirror reflection did not accept ${value}: field ${actual}, material ${JSON.stringify(await readHandMaterial(page))}`)
+    }
+    await nextPaint(page)
+  }
+  let before
+  let after
+  try {
+    const previousMap = await stamp()
+    await setPanelNumber(page, 'chromeReflectionIntensity', 0)
+    // The trusted click queues a capture at window pointerup. Start just
+    // after that bake, with a full second before another is permitted.
+    await page.waitForFunction((generation) => {
+      const environment = window.__r3f.scene.environment
+      return environment?.userData.captureKind === 'full-page' && environment.userData.generation > generation
+    }, { timeout: 5_000 }, previousMap.generation)
+    const dark = await stamp()
+    before = await captureMaterialFrame(page)
+    await adjust(3)
+    after = await captureMaterialFrame(page)
+    const bright = await stamp()
+    const pixels = await compareHandFrames(page, before, after)
+    // On 2026-08-30 the material property moved while Three inherited the
+    // scene environment at intensity 1: zero and three produced 0 changed
+    // pixels. This clause measures the opaque hand, not the displayed value.
+    requireThat(pixels.changedPixels >= 100 && pixels.maxDelta >= 8,
+      `Mirror reflection changed its number but not the hand: ${JSON.stringify({ ...pixels, dark, bright })}`)
+    requireThat(dark.intensity === 0 && bright.intensity === 3,
+      `Mirror reflection did not reach the inherited environment: ${JSON.stringify({ dark, bright })}`)
+    requireThat(dark.texture === bright.texture && dark.generation === bright.generation,
+      `Mirror reflection needed another map bake: ${JSON.stringify({ dark, bright })}`)
+    return { ...pixels, generation: dark.generation }
+  } finally {
+    await setPanelNumber(page, 'chromeReflectionIntensity', previous)
+    await openPanelSection(page, 'Reflections')
+    await setPanelNumber(page, 'reflectionFps', previousFps)
+    await before?.dispose()
+    await after?.dispose()
+  }
+}
+
 async function verifyHeadingReflections(page) {
+  await requireTheme(page, 'waves')
+  await setPageMotion(page, false)
   await selectHandMaterial(page, 'chrome')
   await openPanelSection(page, 'Chrome')
+  // Keep the H1 visibility floor on the polished finish measured on
+  // 2026-08-30, independent of the user's softer startup preset.
+  await setPanelNumber(page, 'chromeRoughness', 0.008)
   await setPanelNumber(page, 'chromeReflectionIntensity', 3)
   await page.waitForFunction(() => {
     const scene = window.__r3f.scene
     return scene.getObjectByName('marble-hand-sculpture').material.envMapIntensity === 3 &&
-      ['carta', 'nero', 'cobalto', 'rosso'].every((id) => scene.getObjectByName(`marble-hand-page-light-${id}`).intensity === 0)
+      scene.getObjectByName('marble-hand-sculpture').material.roughness === 0.008 &&
+      ['waves', 'checker', 'prism'].every((id) => scene.getObjectByName(`marble-hand-page-light-${id}`).intensity === 0)
   }, { timeout: 5_000 })
   await togglePanelCheckbox(page, 'Park hand')
   const point = await page.$eval('.mh-app > .mh-sheet h1', (heading) => {
     const box = heading.getBoundingClientRect()
-    return { x: box.right - 35, y: box.top + box.height * 0.55 }
+    const panel = document.querySelector('aside[data-marble-hand-controls]').getBoundingClientRect()
+    return { x: Math.min(box.left + box.width * 0.55, panel.left - 160), y: box.top + box.height * 0.55 }
   })
   await page.mouse.move(point.x, point.y)
   await page.waitForFunction(() => {
@@ -750,15 +1719,16 @@ function requireSameHand(actual, expected, label) {
 
 function requireMirroredChrome(chrome) {
   requireThat(chrome?.physical && chrome.name === 'marble-hand-mirrored-chrome' &&
-    chrome.metalness === 1 && chrome.clearcoat === 0 && chrome.roughness <= 0.02 &&
+    chrome.metalness === 1 && chrome.clearcoat === 0 &&
     Math.abs(chrome.roughness - authoredTuning.chromeRoughness) < 0.000001 &&
     Math.abs(chrome.envMapIntensity - authoredTuning.chromeReflectionIntensity) < 0.000001 &&
+    Math.abs(chrome.environmentIntensity - authoredTuning.chromeReflectionIntensity) < 0.000001 &&
     chrome.color === authoredTuning.chromeTint.toLowerCase() && chrome.compiled && !chrome.carrara,
-  `Chrome did not render bare polished metal: ${JSON.stringify(chrome)}`)
+  `Chrome did not render the authored metal preset: ${JSON.stringify(chrome)}`)
 }
 
 function requireRestoredMarble(restored, marble) {
-  const fields = ['roughness', 'metalness', 'clearcoat', 'clearcoatRoughness', 'envMapIntensity',
+  const fields = ['roughness', 'metalness', 'clearcoat', 'clearcoatRoughness', 'envMapIntensity', 'environmentIntensity',
     'color', 'ior', 'specularIntensity']
   requireThat(restored?.name === 'marble-hand-carrara' && restored.carrara &&
     fields.every((key) => restored[key] === marble[key]),
@@ -830,12 +1800,18 @@ async function verifyChromeMode(page, savedSettings) {
     requireThat(Object.entries(savedSettings).every(([key, value]) => key === 'materialMode' || copied[key] === value),
       'Chrome mode changed saved marble settings in copied JSON')
 
+    const intensity = await verifyMirrorIntensity(page)
+    const restoredChrome = await readHandMaterial(page)
+    requireThat(restoredChrome.environmentIntensity === authoredTuning.chromeReflectionIntensity,
+      `Chrome reflection did not restore its intensity: ${JSON.stringify(restoredChrome)}`)
     await selectHandMaterial(page, 'marble')
     const restored = await readHandMaterial(page)
     requireRestoredMarble(restored, marble)
+    requireThat(restored.environmentIntensity === savedSettings.envMapIntensity,
+      `Marble did not restore its environment intensity: ${JSON.stringify(restored)}`)
     await openPanelSection(page, 'Marble')
     await openPanelSection(page, 'Lighting')
-    return pixels
+    return { ...pixels, intensity }
   } finally {
     await before.dispose()
     await after?.dispose()
@@ -954,7 +1930,7 @@ async function verifyPanel(port) {
     const origin = `http://127.0.0.1:${port}`
     await browser.defaultBrowserContext().overridePermissions(origin,
       ['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write'])
-    await page.goto(`${origin}/?scene=marble-hand`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`${origin}/?scene=marble-hand&framed`, { waitUntil: 'domcontentloaded' })
     await page.waitForSelector(panelSelector, { visible: true, timeout: 30_000 })
     await page.waitForSelector('.mh-app[data-live]', { timeout: 30_000 })
     await page.waitForFunction(() => Boolean(
@@ -963,9 +1939,17 @@ async function verifyPanel(port) {
     ), { timeout: 30_000 })
     await nextPaint(page)
     await requireNativePage(page, 'controls')
-    requireThat(authoredTuning.materialMode === 'marble', 'the authored material default is not marble')
-    requireThat(await page.$eval(`${panelSelector} [data-hand-material="marble"]`,
-      (button) => button.getAttribute('aria-pressed') === 'true'), 'normal route did not start in Marble mode')
+    await observeThemeClicks(page)
+    // A moving background can change the hand by itself and satisfy an
+    // H1, swatch, or intensity floor. Optical clauses need one fixed page.
+    await setPageMotion(page, false)
+    await page.waitForFunction((rotation) =>
+      window.__r3f.scene.getObjectByName('marble-hand-pointer').rotation.z === rotation,
+    { timeout: 5_000 }, authoredTuning.baseRotation)
+    requireThat(authoredTuning.materialMode === 'chrome', 'the authored material default is not chrome')
+    requireThat(await page.$eval(`${panelSelector} [data-hand-material="chrome"]`,
+      (button) => button.getAttribute('aria-pressed') === 'true'), 'normal route did not start in Chrome mode')
+    requireMirroredChrome(await readHandMaterial(page))
 
     clause = 'section defaults'
     const sections = await page.$eval(panelSelector, (panel) =>
@@ -973,7 +1957,7 @@ async function verifyPanel(port) {
         name: details.querySelector('summary')?.textContent.replace(/\s+/g, ' ').trim(),
         open: details.open,
       })))
-    for (const name of panelSections) {
+    for (const name of panelSections.map((name) => name === 'Marble' ? 'Chrome' : name)) {
       const section = sections.find((item) => item.name === name)
       requireThat(section, `controls: missing native details section ${name}`)
       requireThat(section.open === (name === 'Orientation'),
@@ -984,14 +1968,32 @@ async function verifyPanel(port) {
     requireThat(!(await readPanelCheckbox(page, 'Hold press')).checked,
       'controls: Hold press was checked on arrival')
 
+    const chromeDefaults = await readPanelNumbers(page, chromePanelKeys)
+    requireAuthoredPanelNumbers(chromeDefaults, 'controls startup')
+    await waitForPanelScene(page, {
+      height: authoredTuning.heightPx,
+      baseRotation: authoredTuning.baseRotation,
+      sculptureRoll: authoredTuning.sculptureRoll,
+      sculpturePitch: authoredTuning.sculpturePitch,
+      keyIntensity: authoredTuning.keyIntensity,
+      ambientIntensity: authoredTuning.ambientIntensity,
+      lightX: authoredTuning.lightX,
+      lightY: authoredTuning.lightY,
+      lightZ: authoredTuning.lightZ,
+      exposure: authoredTuning.exposure,
+      shadowIntensity: authoredTuning.shadowIntensity,
+      shadowRadius: authoredTuning.shadowRadius,
+    }, 'authored Chrome pose and lighting')
+    const initialChromeScene = await readPanelScene(page)
+    await selectHandMaterial(page, 'marble')
+
     clause = 'parked pointer'
     const defaults = await readPanelNumbers(page)
-    requireThat(defaults.reflectionFps === 20 && defaults.reflectionFps === authoredTuning.reflectionFps,
-      `controls: reflection frame rate did not start at 20fps: ${defaults.reflectionFps}`)
+    requireAuthoredPanelNumbers(defaults, 'controls Marble startup')
     await waitForPanelScene(page, { height: authoredTuning.heightPx }, 'authored hover height')
     const initialScene = await readPanelScene(page)
     requireThat(initialScene, 'controls: named live scene objects did not load')
-    const contacts = await readContacts(page)
+    const themeClicks = await readThemeClickCount(page)
     const parked = await readHand(page)
     requireThat(parked?.cursor !== 'none', 'controls: parked hand hid the native page cursor')
     requireThat(!parked.pointerAttribute, 'controls: parked native sheet kept cursor suppression')
@@ -1102,13 +2104,33 @@ async function verifyPanel(port) {
       pageLightIntensity: authoredTuning.pageLightIntensity,
       roomBounce: authoredTuning.roomBounce,
       reflectionFps: 12,
+      strokeWidthPx: authoredTuning.strokeWidthPx,
+      strokeOpacity: authoredTuning.strokeOpacity,
+      poseDamping: authoredTuning.poseDamping,
+      velocityTilt: authoredTuning.velocityTilt,
+      maxTilt: authoredTuning.maxTilt,
+      maxSpin: authoredTuning.maxSpin,
+      pressPitch: authoredTuning.pressPitch,
+      ambientIntensity: authoredTuning.ambientIntensity,
+      lightX: authoredTuning.lightX,
+      lightY: authoredTuning.lightY,
+      lightZ: authoredTuning.lightZ,
+      exposure: authoredTuning.exposure,
+      shadowIntensity: authoredTuning.shadowIntensity,
+      shadowRadius: authoredTuning.shadowRadius,
     }
     requireThat(Object.entries(copiedExpected).every(([key, value]) => Math.abs(copied?.[key] - value) < 0.000001),
       `controls: copied JSON did not contain the edited runtime values: ${JSON.stringify(copied)}`)
     requireThat(copied.materialMode === 'marble', 'copied settings did not name the active Marble mode')
+    requireThat(copied.strokeEnabled === authoredTuning.strokeEnabled && copied.strokeColor === authoredTuning.strokeColor,
+      'copied settings lost the authored stroke visibility or color')
 
     clause = 'mirrored Chrome mode'
-    const chrome = await verifyChromeMode(page, copied)
+    // Keep the independent stroke out of every optical comparison. A broad
+    // colored edge must not satisfy a reflection or H1 changed-pixel floor.
+    await openPanelSection(page, 'Stroke')
+    await setPanelCheckbox(page, 'Show stroke', false)
+    const chrome = await verifyChromeMode(page, { ...copied, strokeEnabled: false })
 
     clause = 'native page reflections'
     const reflection = await verifyPageReflections(page)
@@ -1119,18 +2141,30 @@ async function verifyPanel(port) {
     clause = 'reflection frame rate'
     const reflectionRate = await verifyReflectionRate(page)
 
+    clause = 'constant-width stroke'
+    const stroke = await verifyStroke(page)
+
     clause = 'Reset all'
-    await selectHandMaterial(page, 'chrome')
+    await selectHandMaterial(page, 'marble')
     await clickText(page, 'button', 'Reset all')
     await page.waitForFunction((rootSelector) =>
-      document.querySelector(`${rootSelector} [data-hand-material="marble"]`)?.getAttribute('aria-pressed') === 'true' &&
-      window.__r3f.scene.getObjectByName('marble-hand-sculpture')?.material.name === 'marble-hand-carrara',
+      document.querySelector(`${rootSelector} [data-hand-material="chrome"]`)?.getAttribute('aria-pressed') === 'true' &&
+      window.__r3f.scene.getObjectByName('marble-hand-sculpture')?.material.name === 'marble-hand-mirrored-chrome',
     { timeout: 5_000 }, panelSelector)
     await page.waitForFunction((rootSelector, expected) => Object.entries(expected).every(([key, value]) => {
       const input = document.querySelector(`${rootSelector} input[data-tuning-key="${key}"][type="number"]`)
       return input instanceof HTMLInputElement && Math.abs(Number(input.value) - value) < 0.000001
-    }), { timeout: 5_000 }, panelSelector, defaults)
-    await waitForPanelScene(page, { ...initialScene, height: authoredTuning.heightPx }, 'Reset all')
+    }), { timeout: 5_000 }, panelSelector, chromeDefaults)
+    requireAuthoredPanelNumbers(await readPanelNumbers(page, chromePanelKeys), 'controls Reset all')
+    await waitForPanelScene(page, { ...initialChromeScene, height: authoredTuning.heightPx }, 'Reset all')
+    requireMirroredChrome(await readHandMaterial(page))
+    requireThat((await readPanelCheckbox(page, 'Show stroke')).checked === authoredTuning.strokeEnabled,
+      'Reset all did not restore stroke visibility')
+    const resetStrokeColor = await page.$eval(panelSelector, (root) =>
+      [...root.querySelectorAll('input[type="color"]')].find((input) =>
+        [...input.labels].some((label) => label.textContent.trim().startsWith('Stroke color')))?.value)
+    requireThat(resetStrokeColor === authoredTuning.strokeColor,
+      `Reset all did not restore stroke color: ${resetStrokeColor}`)
 
     clause = 'Hold press'
     const pressHeight = await page.$eval(numberSelector('pressHeightPx'), (input) => Number(input.value))
@@ -1153,9 +2187,11 @@ async function verifyPanel(port) {
     await page.waitForSelector(`aside${panelSelector}`, { visible: true, timeout: 5_000 })
     requireThat((await readPanelCheckbox(page, 'Park hand')).checked,
       'controls: closing and reopening lost Park hand')
-    const afterContacts = await readContacts(page)
-    requireThat(afterContacts === contacts,
-      `controls: panel input added specimen contacts ${contacts} → ${afterContacts}`)
+    const afterThemeClicks = await readThemeClickCount(page)
+    requireThat(afterThemeClicks === themeClicks,
+      `controls: panel input clicked a native theme ${themeClicks} → ${afterThemeClicks}`)
+    clause = 'distinct theme reflections'
+    const themeReflections = await verifyThemeReflections(page)
     requireThat(problems.length === 0, `page errors: ${problems.join('\n')}`)
     if (artifactDirectory) {
       await mkdir(artifactDirectory, { recursive: true })
@@ -1165,8 +2201,8 @@ async function verifyPanel(port) {
       await writeFile(path.join(artifactDirectory, 'full-page-source.png'), Buffer.from(png, 'base64'))
       console.log(`marble-hand artifacts: ${artifactDirectory}`)
     }
-    return { parkedDrift, contacts, heldHeight: heldPress.height, restoredHeight: authoredTuning.heightPx,
-      reflection, chrome, heading, reflectionRate }
+    return { parkedDrift, themeClicks, heldHeight: heldPress.height, restoredHeight: authoredTuning.heightPx,
+      reflection, chrome, heading, reflectionRate, stroke, themeReflections }
   } catch (error) {
     throw new Error(`controls ${clause}: ${error.message}`)
   } finally {
@@ -1182,28 +2218,38 @@ async function verifyReflectionUnavailable(port, headless) {
     watchEnvironmentRequests(page)
     const errors = []
     page.on('pageerror', (error) => errors.push(String(error)))
-    await page.goto(`http://127.0.0.1:${port}/?scene=marble-hand&bare`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`http://127.0.0.1:${port}/?scene=marble-hand&framed`, { waitUntil: 'domcontentloaded' })
     const available = await page.evaluate(() => 'drawElementImage' in document.createElement('canvas').getContext('2d'))
     if (available) {
       console.warn('marble-hand no-flag clause SKIPPED: this browser exposes HTML-in-canvas without the flag')
       return false
     }
-    await page.waitForSelector('.mh-app > .mh-sheet .mh-capture-notice', { visible: true, timeout: 30_000 })
+    await page.waitForSelector(`${panelSelector} [data-marble-reflection-notice]`, { visible: true, timeout: 30_000 })
     await page.waitForFunction(() => Boolean(window.__r3f?.scene.environment), { timeout: 30_000 })
+    await observeThemeClicks(page)
     const native = await page.evaluate(() => ({
       sheets: document.querySelectorAll('.mh-app > .mh-sheet').length,
       copies: document.querySelectorAll('[data-marble-reflection-copy]').length,
       clear: getComputedStyle(window.__r3f.gl.domElement).pointerEvents === 'none',
       kind: window.__r3f.scene.environment.userData.captureKind,
-      notice: document.querySelector('.mh-app > .mh-sheet .mh-capture-notice').textContent,
+      notice: document.querySelector('[data-marble-hand-controls] [data-marble-reflection-notice]').textContent,
+      removed: document.querySelector('.mh-app > .mh-sheet').querySelectorAll(
+        '.mh-masthead, .mh-kicker, .mh-deck, .mh-status, .mh-footer, .mh-capture-notice, [data-marble-motion-toggle], [data-marble-reflection-notice]',
+      ).length,
     }))
     requireThat(native.sheets === 1 && native.copies === 0 && native.clear && native.kind !== 'full-page' &&
-      native.notice.includes('Full-page reflections need Chrome'),
+      native.notice.includes('Full-page reflections need Chrome') && native.removed === 0,
     `no-flag page falsely claimed full capture or lost native ownership: ${JSON.stringify(native)}`)
-    const nero = await readSpecimen(page, 'Nero')
-    requireThat(nero.directHit, 'no-flag page blocked its native Nero button')
-    await page.mouse.click(nero.x, nero.y)
-    requireThat(await readContacts(page) === nero.contacts + 1, 'no-flag native button did not activate')
+    await setPanelOpen(page, false)
+    for (const theme of themes) await selectTheme(page, theme.id)
+    await setPageMotion(page, false)
+    for (const theme of themes) {
+      await selectTheme(page, theme.id)
+      requireThat((await readColorMotion(page)).state === 'paused',
+        `no-flag ${theme.id}: theme discarded Pause color`)
+    }
+    await setPageMotion(page, true)
+    await selectTheme(page, 'waves')
     await selectNativeText(page)
     requireThat(errors.length === 0, `no-flag page errors: ${errors.join('\n')}`)
     return true
@@ -1252,9 +2298,16 @@ async function run() {
     else void request.continue().catch((error) => problems.push(String(error)))
   })
   const requested = page.waitForRequest((request) => new URL(request.url()).pathname === assetPath)
-  await page.goto(`http://127.0.0.1:${port}/?scene=marble-hand&bare`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`http://127.0.0.1:${port}/?scene=marble-hand&framed`, { waitUntil: 'domcontentloaded' })
   await requested
   await page.waitForSelector('.mh-app > .mh-sheet', { visible: true, timeout: 30_000 })
+  await page.waitForSelector(`aside${panelSelector}`, { visible: true, timeout: 30_000 })
+  await observeThemeClicks(page)
+  await setPageMotion(page, false)
+  requireThat((await readColorMotion(page)).state === 'paused',
+    'cold page could not pause its background before the hand loaded')
+  await setPageMotion(page, true)
+  await setPanelOpen(page, false)
   await page.waitForFunction(() => Boolean(window.__r3f?.gl), { timeout: 30_000 })
   await nextPaint(page)
   await requireNativePage(page, 'cold load')
@@ -1273,13 +2326,15 @@ async function run() {
     'cold-load clause did not hold the sculpture request with a native cursor')
   requireThat(cold.pageCursor !== 'none' && cold.hitCursor !== null && cold.hitCursor !== 'none',
     `cold page hid the native cursor: ${JSON.stringify(cold)}`)
-  const coldNero = await readSpecimen(page, 'Nero')
-  requireThat(coldNero.directHit, 'cold page did not hit the native Nero button')
-  await page.mouse.click(coldNero.x, coldNero.y)
-  await page.waitForFunction(() => document.querySelector('.mh-app > .mh-sheet .mh-footer p:first-child strong')?.textContent === 'nero')
-  const coldContacts = await readContacts(page)
-  requireThat(coldContacts === coldNero.contacts + 1,
-    `cold native click produced ${coldContacts} contacts from ${coldNero.contacts}`)
+  const coldChecker = await readTheme(page, 'checker')
+  const coldClicks = await readThemeClickCount(page)
+  requireThat(coldChecker.directHit, 'cold page did not hit the native Checker button')
+  await page.mouse.click(coldChecker.x, coldChecker.y)
+  await requireTheme(page, 'checker')
+  requireThat(await readThemeClickCount(page) === coldClicks + 1 &&
+    await page.$eval('.mh-app > .mh-sheet [data-theme-option="checker"]',
+      (button) => document.activeElement === button),
+  'cold Checker click did not keep native focus or produced duplicate events')
   delayAsset = false
   await Promise.all(held.map((request) => request.continue()))
   await page.waitForSelector('.mh-app[data-live]', { timeout: 30_000 })
@@ -1290,6 +2345,7 @@ async function run() {
   const loaded = await readHand(page)
   requireThat(loaded?.cursor === 'none' && loaded.pointerAttribute,
     'loaded sculpture did not hand cursor suppression to the native page')
+  const colorMotion = await verifyColorMotion(page)
 
   let worstTipError = 0
   let lowestStone = Infinity
@@ -1301,9 +2357,10 @@ async function run() {
     lowestStone = Math.min(lowestStone, sample.minWorldZ)
   }
 
-  const carta = await readSpecimen(page, 'Carta')
-  requireThat(carta.directHit, 'loaded overlay blocked the native Carta button')
-  await page.mouse.move(carta.x, carta.y)
+  const waves = await readTheme(page, 'waves')
+  const wavesClicks = await readThemeClickCount(page)
+  requireThat(waves.directHit, 'loaded overlay blocked the native Waves button')
+  await page.mouse.move(waves.x, waves.y)
   await page.waitForFunction((height) => Math.abs(
     window.__r3f.scene.getObjectByName('marble-hand-pointer').position.z - height,
   ) < 0.1, undefined, authoredTuning.heightPx)
@@ -1313,30 +2370,35 @@ async function run() {
   ) < 0.1, undefined, authoredTuning.pressHeightPx)
   await nextPaint(page)
   const pressed = await readHand(page)
-  checkHand(pressed, carta, 'press')
+  checkHand(pressed, waves, 'press')
   lowestStone = Math.min(lowestStone, pressed.minWorldZ)
   await page.mouse.up()
-  await page.waitForFunction(() =>
-    document.querySelector('.mh-app > .mh-sheet .mh-footer p:first-child strong')?.textContent === 'carta')
+  await requireTheme(page, 'waves')
   await page.waitForFunction((height) => Math.abs(
     window.__r3f.scene.getObjectByName('marble-hand-pointer').position.z - height,
   ) < 0.1, undefined, authoredTuning.heightPx)
   await nextPaint(page)
   const released = await readHand(page)
-  checkHand(released, carta, 'click release')
+  checkHand(released, waves, 'click release')
   const after = await page.$eval('.mh-app > .mh-sheet', (sheet) => {
-    const button = [...sheet.querySelectorAll('.mh-specimen')]
-      .find((item) => item.querySelector('strong')?.textContent === 'Carta')
+    const button = sheet.querySelector('.mh-theme-button[data-theme-option="waves"]')
     return {
-      contacts: Number(sheet.querySelector('.mh-footer p:nth-child(2) strong').textContent),
-      cartaPressed: button?.getAttribute('aria-pressed'),
-      cartaFocused: document.activeElement === button,
+      wavesPressed: button?.getAttribute('aria-pressed'),
+      wavesFocused: document.activeElement === button,
     }
   })
-  requireThat(after.contacts === carta.contacts + 1 && after.cartaPressed === 'true' && after.cartaFocused,
-    `one Carta click produced ${JSON.stringify(after)} from ${carta.contacts} contacts`)
+  requireThat(await readThemeClickCount(page) === wavesClicks + 1 && after.wavesPressed === 'true' && after.wavesFocused,
+    `one Waves click did not keep native focus or produced duplicate events: ${JSON.stringify(after)}`)
   const selectedCharacters = await selectNativeText(page)
-  requireThat(await readContacts(page) === after.contacts, 'native text selection activated a specimen')
+  requireThat(await readThemeClickCount(page) === wavesClicks + 1, 'native text selection activated a theme')
+  const tap = await verifyIdleTap(page)
+  if (artifactDirectory) {
+    await mkdir(artifactDirectory, { recursive: true })
+    await page.mouse.move(viewport.width * 0.53, viewport.height * 0.42)
+    await nextPaint(page)
+    await page.screenshot({ path: path.join(artifactDirectory, 'poster-desktop.png') })
+  }
+  const mobile = await verifyMobileLayout(page)
   requireThat(problems.length === 0, `page errors: ${problems.join('\n')}`)
   await page.close()
   const panel = await verifyPanel(port)
@@ -1344,17 +2406,29 @@ async function run() {
   requireThat(hdrRequests.length === 0, `page-derived room requested HDR assets: ${hdrRequests.join(', ')}`)
   console.log(`marble-hand gate PASSED: native full-page capture; cold cursor ${cold.pageCursor}; ` +
     `one native sheet; ${selectedCharacters} selected characters; no HDR requests; ` +
+    `field ${colorMotion.map((result) => `${result.id} ${result.moving.fps}fps ±${result.moving.maxClockError.toFixed(2)}ms`).join(', ')}; ` +
+    `all themes support native click, keyboard, pause/resume, reduced motion; ` +
+    `all six theme pairs change page and hand pixels (${panel.themeReflections.map((pair) => `${pair.from}/${pair.to}: ${pair.hand.changedPixels}`).join(', ')}); ` +
+    `${mobile[0].viewport}px mobile without overflow in all themes; ` +
     `tip error ${worstTipError.toFixed(3)}px; height ${authoredTuning.heightPx} → ${pressed.height.toFixed(2)} → ${released.height.toFixed(2)}; ` +
-    `lowest stone ${lowestStone.toFixed(2)}px; Carta contacts ${carta.contacts} → ${after.contacts}; ` +
+    `lowest stone ${lowestStone.toFixed(2)}px; one trusted Waves click with native focus; ` +
     `panel degree/material/light/reset checks; parked drift ${panel.parkedDrift.toFixed(3)}px; ` +
     `held press ${panel.restoredHeight.toFixed(2)} → ${panel.heldHeight.toFixed(2)}; ` +
-    `panel contacts ${panel.contacts} unchanged; reflection ${panel.reflection.changedPixels} hand pixels, ` +
+    `panel did not click themes; reflection ${panel.reflection.changedPixels} hand pixels, ` +
     `peak ${panel.reflection.maxDelta}/255; Chrome ${panel.chrome.changedPixels} hand pixels, ` +
-    `peak ${panel.chrome.maxDelta}/255; H1 ink ${panel.heading.sourceInk} → ${panel.heading.hiddenInk}, ` +
+    `peak ${panel.chrome.maxDelta}/255; mirror intensity ${panel.chrome.intensity.changedPixels} hand pixels, ` +
+    `peak ${panel.chrome.intensity.maxDelta}/255, unchanged map generation ${panel.chrome.intensity.generation}; ` +
+    `H1 ink ${panel.heading.sourceInk} → ${panel.heading.hiddenInk}, ` +
     `${panel.heading.changedPixels} reflected hand pixels; no-flag notice ${unavailable ? 'passed' : 'skipped'}; ` +
     `reflection rate ${panel.reflectionRate.low.measuredFps.toFixed(1)}fps at 2 → ` +
     `${panel.reflectionRate.high.measuredFps.toFixed(1)}fps at 60; ` +
     `${panel.reflectionRate.low.movingBetweenReflections} hand moves between low-rate reflections; ` +
+    `stroke 6px measured ${panel.stroke.samples.map((sample) => `${sample.widthPx.toFixed(2)}px at DPR${sample.dpr}/z${sample.height}`).join(', ')}; ` +
+    `stroke color/opacity/mode/copy/reset passed; ` +
+    `idle tap after ${tap.startedAfter}ms rest, ${tap.hashes} distinct frames and ` +
+    `${tap.drumChanged} moving overlay pixels per cycle, fingertip drift ${tap.tipDrift.toFixed(3)}px, ` +
+    `flat ${tap.stoppedAfter}ms after a 40px move with ${tap.restChanged} pixels still moving, ` +
+    `off for reduced motion and for the panel switch; ` +
     `marble settings preserved`)
 }
 

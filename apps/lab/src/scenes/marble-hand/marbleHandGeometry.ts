@@ -9,13 +9,16 @@
 //
 // Ownership: the CC BY source credit lives with the asset. make-marble-hand
 // bakes the fingertip pivot and closed wrist. This module supplies smooth
-// anatomical normals while keeping the cut edge sharp.
+// anatomical normals while keeping the cut edge sharp, and bakes the idle
+// tap's per-vertex finger weights so every program that draws this geometry
+// bends the same stone.
 
 import { useEffect, useMemo } from 'react'
 import { useLoader } from '@react-three/fiber'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { buildMarbleHandTapAttribute } from './marbleHandTapLaw'
 
 const MODEL_URL = '/models/marble-hand/classical-hand.stl'
 
@@ -27,6 +30,9 @@ export function useMarbleHandGeometry(): THREE.BufferGeometry {
     // wrist's 90-degree edge. Smoothing the whole closed mesh softened that
     // edge into a melted rim during the 2026-08-30 browser pass.
     const next = toCreasedNormals(source.clone(), Math.PI / 3)
+    // After creasing: that pass rebuilds the vertex list, and the weights
+    // are indexed by vertex.
+    buildMarbleHandTapAttribute(next)
     next.computeBoundingBox()
     next.computeBoundingSphere()
     return next

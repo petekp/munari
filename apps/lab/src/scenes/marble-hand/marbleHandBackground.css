@@ -1,0 +1,65 @@
+/* The field's box, and the poster that stands in when it cannot draw.
+ * No animation lives here any more: the colour moves inside a canvas, so a
+ * settled page has nothing for the reflection capture to repaint. The
+ * gradients below are only reached through [data-fallback], which the
+ * component sets when the renderer will not build or its context is lost.
+ * They must stay unreachable otherwise — an opaque gradient here would
+ * survive the page clone and hide the shader the hand reflects.
+ */
+
+.mh-background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mh-field {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.mh-background[data-fallback] .mh-field {
+  display: none;
+}
+
+/* ── the no-WebGL posters ───────────────────────────────────────────── */
+
+.mh-background[data-fallback][data-visualization="waves"] {
+  background-image: linear-gradient(
+    148deg,
+    #f4a9cf 0 18%,
+    #d4f6ea 30%,
+    #90d8c4 42%,
+    #e0f46d 58%,
+    #ff8062 74%,
+    #8aa7ef 100%
+  );
+}
+
+
+.mh-background[data-fallback][data-visualization="checker"] {
+  background-color: #fff0cf;
+  background-image:
+    linear-gradient(#cfe6ff 0 34%, rgba(255, 240, 207, 0) 46%),
+    conic-gradient(#f6a47c 25%, #fff0cf 25% 50%, #b9a3ee 50% 75%, #fff0cf 75%);
+  background-size: 100% 100%, 96px 96px;
+}
+
+.mh-background[data-fallback][data-visualization="prism"] {
+  background-image:
+    conic-gradient(
+      from 200deg at 50% 50%,
+      rgba(244, 169, 207, 0.6) 0deg 45deg,
+      rgba(224, 244, 109, 0.6) 45deg 90deg,
+      rgba(144, 216, 196, 0.6) 90deg 135deg,
+      rgba(138, 167, 239, 0.6) 135deg 180deg,
+      rgba(255, 128, 98, 0.6) 180deg 225deg,
+      rgba(224, 244, 109, 0.6) 225deg 270deg,
+      rgba(144, 216, 196, 0.6) 270deg 315deg,
+      rgba(244, 169, 207, 0.6) 315deg
+    ),
+    radial-gradient(circle at 50% 50%, #fff0cf 0 12%, #efd8b6 55%, #d9bfe4 100%);
+}

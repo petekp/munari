@@ -35,6 +35,14 @@ describe('the marble hand full-page mirror', () => {
     expect(clone.style.height).toBe('800px')
   })
 
+  it('leaves the copy root unpainted so the reflected field shows through', () => {
+    const page = nativePage()
+    page.style.background = 'rgb(244, 169, 207)'
+    const clone = cloneMarbleHandPage(page, 1280, 800)
+    expect(clone.style.background).toBe('transparent')
+    expect(page.style.background).toBe('rgb(244, 169, 207)')
+  })
+
   it('copies native text and style changes made outside React', () => {
     const page = nativePage()
     const heading = page.querySelector('h1')!

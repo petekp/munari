@@ -33,10 +33,20 @@ import { SurfaceCanvas } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { showChrome } from '../../bareMode'
 import { useMarbleHandGeometry } from './marbleHandGeometry'
-import { MarbleHandMaterial } from './marbleHandMaterial'
+import { MarbleHandMaterial, useMarbleHandDepthMaterial } from './marbleHandMaterial'
 import { MarbleHandEnvironment } from './marbleHandEnvironment'
+import { MarbleHandStroke } from './marbleHandStroke'
+import { MarbleHandBackground } from './marbleHandBackground'
+import { MARBLE_HAND_THEMES, type MarbleHandThemeId } from './marbleHandThemes'
 import { MarbleHandPageCapture, createMarblePageCaptureState, type MarblePageCaptureState } from './marbleHandPageCapture'
 import { buildMarbleHandSupport, marbleHandSafeHeight } from './marbleHandPose'
+import {
+  MARBLE_HAND_TAP_PHASE,
+  marbleHandTapEnvelope,
+  stepMarbleHandSpring,
+  type MarbleHandSpring,
+} from './marbleHandTapLaw'
+import { createMarbleHandTapUniforms, type MarbleHandTapUniforms } from './marbleHandTapShaders'
 import { MarbleHandTweaks } from './marbleHandTweaks'
 import { marbleHandTuning, type MarbleHandTuning } from './marbleHandTuning'
 import './marbleHand.css'
@@ -49,20 +59,30 @@ const PIXEL_CAMERA = { fov: FOV, position: new THREE.Vector3(0, 0, 1000) }
 // actual paper colour visible beneath it, rather than painting a black cutout.
 const PAGE_SHADOW_OPACITY = 0.28
 
+// The tap arrives over 300ms so the first lift grows out of stillness, and
+// leaves over 120ms so the hand is already flat by the time a 40px move has
+// carried the fingertip anywhere a reader is looking.
+const TAP_FADE_IN_MS = 300
+const TAP_FADE_OUT_MS = 120
+
 interface PointerDrive {
   x: number
   y: number
   pressed: boolean
+  /** True from a press that landed on text until that press releases —
+   *  the window in which a selection drag makes the hand pinch. */
+  pinching: boolean
+  /** performance.now() of the last trusted pointer event. Drives the idle tap. */
+  movedAt: number
 }
 
-const SPECIMENS = [
-  { id: 'carta', name: 'Carta', note: 'warm fibre', color: '#e9e2cf' },
-  { id: 'nero', name: 'Nero', note: 'litho ink', color: '#171812' },
-  { id: 'cobalto', name: 'Cobalto', note: 'mineral blue', color: '#24479a' },
-  { id: 'rosso', name: 'Rosso', note: 'signal red', color: '#d94934' },
-] as const
-
-type SpecimenId = (typeof SPECIMENS)[number]['id']
+/** Whether a press at client (x, y) lands on visible text — the gesture
+ *  that starts a selection, and so the one that starts the pinch. */
+function pressOnText(x: number, y: number): boolean {
+  const caret = document.caretPositionFromPoint?.(x, y)
+  const node = caret?.offsetNode
+  return node?.nodeType === Node.TEXT_NODE && /\S/.test(node.textContent ?? '')
+}
 
 function subscribeReducedMotion(change: () => void) {
   const query = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -85,81 +105,51 @@ function CataloguePage({
   width,
   height,
   selected,
-  contacts,
-  enhanced,
   pointer,
-  finish,
-  reflection,
+  colorMotion,
+  reducedMotion,
   onSelect,
 }: {
   page: React.RefObject<HTMLElement | null>
   width: number
   height: number
-  selected: SpecimenId
-  contacts: number
-  enhanced: boolean
+  selected: MarbleHandThemeId
   pointer: boolean
-  finish: MarbleHandTuning['materialMode']
-  reflection: MarblePageCaptureState['status']
-  onSelect: (id: SpecimenId) => void
+  colorMotion: boolean
+  reducedMotion: boolean
+  onSelect: (id: MarbleHandThemeId) => void
 }) {
   return (
-    <main ref={page} className="mh-sheet" data-marble-hand-pointer={pointer || undefined} style={{ width, height }}>
-      <header className="mh-masthead">
-        <span>Munari · pointer studies</span>
-        <span>Study M–07</span>
-      </header>
-
-      <section className="mh-intro">
-        <p className="mh-kicker">A classical hand for the machine age</p>
-        <h1>The cursor<br />has weight now.</h1>
-        <p className="mh-deck">
-          Move across the specimens. The page stays native HTML.
-          Only the hand and its shadow are drawn above it.
-        </p>
-        <div className="mh-status" aria-live="polite">
-          <i data-enhanced={enhanced || undefined} />
-          {enhanced ? `Native page · ${finish} hand` : 'Native page · browser pointer'}
-        </div>
-        {reflection === 'unsupported' || reflection === 'error' ? (
-          <p className="mh-capture-notice" role="status">
-            {reflection === 'unsupported'
-              ? 'Full-page reflections need Chrome with HTML-in-canvas enabled. The native page still works here.'
-              : 'Page capture is unavailable. Reload to restore full-page reflections.'}
-          </p>
-        ) : null}
-      </section>
-
-      <section className="mh-specimens" aria-label="stone and print specimens">
-        {SPECIMENS.map((specimen, index) => (
+    <main ref={page} className="mh-sheet" data-theme={selected} data-motion={colorMotion ? 'running' : 'paused'} data-marble-hand-pointer={pointer || undefined} style={{ width, height }}>
+      <div className="mh-atmosphere" aria-hidden="true">
+        {/* No key: remounting would drop the WebGL context on every theme. */}
+        <MarbleHandBackground theme={selected} motion={colorMotion} reducedMotion={reducedMotion} />
+      </div>
+      <section className="mh-themes" aria-label="Background themes">
+        {MARBLE_HAND_THEMES.map((theme) => (
           <button
-            key={specimen.id}
+            key={theme.id}
             type="button"
-            className="mh-specimen"
-            data-specimen={specimen.id}
-            data-selected={selected === specimen.id || undefined}
-            aria-pressed={selected === specimen.id}
-            onClick={() => onSelect(specimen.id)}
+            className="mh-theme-button"
+            data-theme-option={theme.id}
+            data-selected={selected === theme.id || undefined}
+            aria-pressed={selected === theme.id}
+            onClick={() => onSelect(theme.id)}
           >
-            <span className="mh-swatch" style={{ background: specimen.color }} aria-hidden />
-            <span className="mh-specimen-copy">
-              <b>{String(index + 1).padStart(2, '0')}</b>
-              <strong>{specimen.name}</strong>
-              <small>{specimen.note}</small>
+            <span className="mh-theme-preview" data-preview={theme.id} style={{ backgroundColor: theme.color }} aria-hidden="true" />
+            <span className="mh-theme-copy">
+              <strong>{theme.name}</strong>
+              <small>{theme.note}</small>
             </span>
+            <span className="mh-theme-state" aria-hidden="true">{selected === theme.id ? '●' : '↗'}</span>
           </button>
         ))}
       </section>
 
-      <footer className="mh-footer">
-        <p>
-          selected <strong>{selected}</strong>
-        </p>
-        <p>
-          contacts <strong>{String(contacts).padStart(2, '0')}</strong>
-        </p>
-        <p>Move · press · watch the shadow tighten</p>
-      </footer>
+      <section className="mh-intro">
+        <h1>Point<br />of view.</h1>
+      </section>
+
     </main>
   )
 }
@@ -182,6 +172,66 @@ function PixelPerfect() {
   return null
 }
 
+interface MarbleHandTapState {
+  clockMs: number
+  gain: number
+  springs: MarbleHandSpring[]
+}
+
+// uTapBend order (marbleHandTapLaw MARBLE_HAND_HINGES): drum fingers
+// first, then index, then thumb.
+const PINCH_INDEX_FINGER = MARBLE_HAND_TAP_PHASE.length
+
+/**
+ * Advances the drum and pinch targets and writes all five bend angles.
+ * The drum clock only runs while the tap is audible, so a fresh idle
+ * always starts on the first finger's rest rather than wherever a
+ * free-running clock happened to be. Every joint reaches its target
+ * through a slightly underdamped spring: the overshoot-and-settle is
+ * what separates flesh arriving from a servo stopping.
+ */
+/** Which gestures may animate this frame, from one place, so the drum and
+ *  the pinch cannot disagree about what "at rest" means. */
+function marbleHandGestures(
+  tuning: MarbleHandTuning,
+  motion: boolean,
+  pressed: boolean,
+  pointer: PointerDrive,
+  idleFor: number,
+) {
+  return {
+    drumming: tuning.tapEnabled && motion && !pressed && idleFor >= tuning.tapIdleDelayMs,
+    pinching: tuning.pinchEnabled && motion && pointer.pinching,
+  }
+}
+
+function driveMarbleHandTap(
+  state: MarbleHandTapState,
+  tap: MarbleHandTapUniforms,
+  tuning: MarbleHandTuning,
+  stepMs: number,
+  drumming: boolean,
+  pinching: boolean,
+) {
+  state.gain = drumming
+    ? Math.min(1, state.gain + stepMs / TAP_FADE_IN_MS)
+    : Math.max(0, state.gain - stepMs / TAP_FADE_OUT_MS)
+  state.clockMs = state.gain > 0 ? state.clockMs + stepMs : 0
+  const cycle = state.clockMs / tuning.tapPeriodMs
+  const bend = tap.uTapBend.value
+  for (let finger = 0; finger < bend.length; finger++) {
+    let target = 0
+    if (finger < MARBLE_HAND_TAP_PHASE.length) {
+      target = tuning.tapLiftRad * state.gain
+        * marbleHandTapEnvelope(cycle + MARBLE_HAND_TAP_PHASE[finger])
+    } else if (pinching) {
+      target = finger === PINCH_INDEX_FINGER ? tuning.pinchIndexRad : tuning.pinchThumbRad
+    }
+    stepMarbleHandSpring(state.springs[finger], target, stepMs)
+    bend[finger] = state.springs[finger].bend
+  }
+}
+
 function MarblePointer({
   drive,
   reducedMotion,
@@ -189,6 +239,7 @@ function MarblePointer({
   parked,
   previewPressed,
   origin,
+  tap,
   onMount,
 }: {
   drive: React.RefObject<PointerDrive>
@@ -197,9 +248,11 @@ function MarblePointer({
   parked: boolean
   previewPressed: boolean
   origin: THREE.Vector3
+  tap: MarbleHandTapUniforms
   onMount: (mesh: THREE.Mesh | null) => void
 }) {
   const geometry = useMarbleHandGeometry()
+  const depthMaterial = useMarbleHandDepthMaterial(tap)
   const support = useMemo(() => buildMarbleHandSupport(geometry), [geometry])
   const supportTransform = useMemo(() => new THREE.Matrix4(), [])
   const sculptureTransform = useMemo(() => new THREE.Matrix4().makeRotationFromEuler(
@@ -218,6 +271,13 @@ function MarblePointer({
     z: tuning.heightPx,
     x: drive.current.x,
     y: drive.current.y,
+  })
+  // The drum keeps its own clock rather than reading the frame clock, so a
+  // tap always begins on the first finger's rest rather than mid-roll.
+  const tapState = useRef<MarbleHandTapState>({
+    clockMs: 0,
+    gain: 0,
+    springs: tap.uTapBend.value.map(() => ({ bend: 0, velocity: 0 })),
   })
 
   useFrame((_, delta) => {
@@ -283,7 +343,12 @@ function MarblePointer({
       height,
     )
     origin.copy(node.position)
-  })
+
+    const idleFor = performance.now() - pointer.movedAt
+    const gestures = marbleHandGestures(tuning, motion, pressed, pointer, idleFor)
+    driveMarbleHandTap(tapState.current, tap, tuning, delta * 1000,
+      gestures.drumming, gestures.pinching)
+  }, -1)
 
   const responsiveScale = size.width <= 700 ? tuning.scale * tuning.mobileScale : tuning.scale
 
@@ -298,8 +363,12 @@ function MarblePointer({
         receiveShadow
         frustumCulled={false}
         raycast={IGNORE_RAYCAST}
+        customDepthMaterial={depthMaterial}
+        // Three copies patched uniforms into the program, never back onto
+        // the material, so the gate has no other way to read the live bend.
+        userData={{ marbleHandTap: tap }}
       >
-        <MarbleHandMaterial tuning={tuning} />
+        <MarbleHandMaterial tuning={tuning} tap={tap} />
       </mesh>
     </group>
   )
@@ -373,7 +442,7 @@ function MarbleLighting({ tuning, width, height }: {
 
 // ── scene ─────────────────────────────────────────────────────────────
 
-export function MarbleHandApp({ chips }: { chips?: React.ReactNode }) {
+export function MarbleHandApp() {
   const reducedMotion = useReducedMotion()
   const page = useRef<HTMLElement>(null)
   const origin = useMemo(() => new THREE.Vector3(0, 0, marbleHandTuning.heightPx), [])
@@ -387,17 +456,24 @@ export function MarbleHandApp({ chips }: { chips?: React.ReactNode }) {
   const [tuning, setTuning] = useState<MarbleHandTuning>(marbleHandTuning)
   const [parked, setParked] = useState(showChrome)
   const [previewPressed, setPreviewPressed] = useState(false)
+  const [colorPaused, setColorPaused] = useState(false)
+  const toggleColorMotion = useCallback(() => setColorPaused((paused) => !paused), [])
+  const colorMotion = !reducedMotion && !colorPaused
   const [box, setBox] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }))
-  const [selected, setSelected] = useState<SpecimenId>('cobalto')
-  const [contacts, setContacts] = useState(0)
+  const [selected, setSelected] = useState<MarbleHandThemeId>('waves')
+  const tap = useMemo(createMarbleHandTapUniforms, [])
   const drive = useRef<PointerDrive>({
     x: window.innerWidth * 0.7,
     y: window.innerHeight * 0.48,
     pressed: false,
+    pinching: false,
+    movedAt: performance.now(),
   })
   const lastPointer = useRef({ x: window.innerWidth * 0.7, y: window.innerHeight * 0.48 })
   const park = useCallback((next: boolean) => {
     drive.current.pressed = false
+    drive.current.pinching = false
+    drive.current.movedAt = performance.now()
     if (!next) {
       drive.current.x = lastPointer.current.x
       drive.current.y = lastPointer.current.y
@@ -432,6 +508,7 @@ export function MarbleHandApp({ chips }: { chips?: React.ReactNode }) {
       if (parked || (event.target instanceof Element && event.target.closest('[data-marble-hand-controls]'))) return
       drive.current.x = event.clientX
       drive.current.y = event.clientY
+      drive.current.movedAt = event.timeStamp
     }
     const down = (event: PointerEvent) => {
       if (!event.isTrusted) return
@@ -441,10 +518,22 @@ export function MarbleHandApp({ chips }: { chips?: React.ReactNode }) {
       drive.current.x = event.clientX
       drive.current.y = event.clientY
       drive.current.pressed = true
+      drive.current.pinching = pressOnText(event.clientX, event.clientY)
+      drive.current.movedAt = event.timeStamp
     }
     const release = () => {
       drive.current.pressed = false
+      drive.current.pinching = false
+      drive.current.movedAt = performance.now()
     }
+    // A drag that starts beside a headline still selects its words; the
+    // moment a real range exists, the fingers close on it.
+    const selection = () => {
+      if (drive.current.pressed && !(document.getSelection()?.isCollapsed ?? true)) {
+        drive.current.pinching = true
+      }
+    }
+    document.addEventListener('selectionchange', selection)
     window.addEventListener('pointermove', move, { capture: true, passive: true })
     window.addEventListener('pointerdown', down, { capture: true, passive: true })
     window.addEventListener('pointerup', release, { capture: true, passive: true })
@@ -456,12 +545,12 @@ export function MarbleHandApp({ chips }: { chips?: React.ReactNode }) {
       window.removeEventListener('pointerup', release, { capture: true })
       window.removeEventListener('pointercancel', release, { capture: true })
       window.removeEventListener('blur', release)
+      document.removeEventListener('selectionchange', selection)
     }
   }, [parked])
 
-  const choose = useCallback((id: SpecimenId) => {
+  const choose = useCallback((id: MarbleHandThemeId) => {
     setSelected(id)
-    setContacts((value) => value + 1)
   }, [])
 
   const handReady = hand !== null && !contextLost && !overlayFailed
@@ -472,15 +561,13 @@ export function MarbleHandApp({ chips }: { chips?: React.ReactNode }) {
         width={box.width}
         height={box.height}
         selected={selected}
-        contacts={contacts}
-        enhanced={handReady}
         pointer={handReady && !parked}
-        finish={tuning.materialMode}
-        reflection={reflection}
+        colorMotion={colorMotion}
+        reducedMotion={reducedMotion}
         onSelect={choose}
       />
     ),
-    [box.height, box.width, choose, contacts, selected, handReady, parked, tuning.materialMode, reflection],
+    [box.height, box.width, choose, selected, handReady, parked, colorMotion, reducedMotion],
   )
   const controls = showChrome ? (
     <MarbleHandTweaks
@@ -492,6 +579,10 @@ export function MarbleHandApp({ chips }: { chips?: React.ReactNode }) {
       onParked={park}
       previewPressed={previewPressed}
       onPreviewPressed={setPreviewPressed}
+      colorMotion={colorMotion}
+      reducedMotion={reducedMotion}
+      onToggleColorMotion={toggleColorMotion}
+      reflection={reflection}
     />
   ) : null
 
@@ -520,7 +611,7 @@ export function MarbleHandApp({ chips }: { chips?: React.ReactNode }) {
         <MarbleHandPageCapture page={page} target={capture} />
         <ReflectionStatus capture={capture} onStatus={setReflection} />
         <MarbleLighting tuning={tuning} width={box.width} height={box.height} />
-        <MarbleHandEnvironment page={page} origin={origin} tuning={tuning} capture={capture} />
+        <MarbleHandEnvironment page={page} origin={origin} tuning={tuning} capture={capture} theme={selected} />
         <mesh
           name="marble-hand-shadow-receiver"
           visible={tuning.shadowsEnabled}
@@ -538,13 +629,14 @@ export function MarbleHandApp({ chips }: { chips?: React.ReactNode }) {
               parked={parked}
               previewPressed={previewPressed}
               origin={origin}
+              tap={tap}
               onMount={setHand}
             />
         </Suspense>
+        {hand ? <MarbleHandStroke hand={hand} tuning={tuning} tap={tap} /> : null}
       </SurfaceCanvas>
       </MarbleOverlayBoundary>
 
-      {chips}
       {controls}
     </div>
   )
