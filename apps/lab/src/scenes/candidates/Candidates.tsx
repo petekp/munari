@@ -53,7 +53,7 @@ function readCandidate(): CandidateId {
   return isCandidateId(q) ? q : 'ripple'
 }
 
-export function CandidatesApp({ chips }: { chips?: React.ReactNode }) {
+export function CandidatesApp() {
   const [id, setId] = useState<CandidateId>(readCandidate)
 
   const select = useCallback((next: CandidateId) => {
@@ -117,7 +117,6 @@ export function CandidatesApp({ chips }: { chips?: React.ReactNode }) {
       </SurfaceCanvas>
 
       <CandidateTweaks id={id} />
-      {chips}
     </div>
   )
 }

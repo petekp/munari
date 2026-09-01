@@ -19,7 +19,17 @@
 /** True when the URL asks for the scene alone, with no lab furniture. */
 export const BARE = new URLSearchParams(window.location.search).has('bare')
 
+/** True when this window is the shell's scene frame: the scene keeps its
+ *  own furniture (tuning panels, capability notice) but the shell across
+ *  the frame boundary owns the nav and masthead. Without the param the
+ *  frame would render the shell again, recursively. */
+export const FRAMED = new URLSearchParams(window.location.search).has('framed')
+
 /** True when the lab may draw its own chrome — the common spelling at
  *  the call sites, so a reader sees `showChrome && <Panel/>` rather than
  *  a negation to unpick. */
 export const showChrome = !BARE
+
+/** True when this window should render the nav shell around a framed
+ *  scene rather than a scene itself. */
+export const showShell = !BARE && !FRAMED

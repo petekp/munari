@@ -1411,7 +1411,7 @@ const canvasDpr = () => Math.min(2, Math.max(1, window.devicePixelRatio))
 
 // ── the lab ──────────────────────────────────────────────────────────────
 
-export function FlightApp({ chips }: { chips?: React.ReactNode }) {
+export function FlightApp() {
   const [cards, setCards] = useState<Record<string, Card>>(() => {
     const byId: Record<string, Card> = {}
     for (const c of SEED) byId[c.id] = c
@@ -2037,7 +2037,6 @@ export function FlightApp({ chips }: { chips?: React.ReactNode }) {
 
   return (
     <div className="l14" ref={scroller}>
-      {chips}
 
       <div className="l14-inner">
         <div className="l14-board" ref={boardEl}>

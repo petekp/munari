@@ -602,7 +602,7 @@ interface ControlsProtocol {
   show: (view: SurfaceView) => void
 }
 
-export function ControlsApp({ chips }: { chips?: React.ReactNode }) {
+export function ControlsApp() {
   const supported = useSupportsDOMSurfaces()
   const piece = useSurfaceView('controls-board')
   const [values, setValues] = useState<ControlValues>(INITIAL_VALUES)
@@ -709,7 +709,6 @@ export function ControlsApp({ chips }: { chips?: React.ReactNode }) {
           )}
         </div>
       </main>
-      {chips}
     </div>
   )
 }

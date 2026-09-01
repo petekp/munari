@@ -20,6 +20,7 @@ import type { SliderProbeApi } from '../scenes/slider/Slider'
 import type { KnobsResizeProbeApi } from '../scenes/knobs/Knobs'
 import type { GenieFilmProbeEvent } from '../scenes/genie/Genie'
 import type { LogoProbeApi } from '../scenes/logo/Logo'
+import type { MarbleBackgroundProbe } from '../scenes/marble-hand/marbleHandBackground'
 
 /**
  * The demand probe's record. An instrument reads the real paint ledger and
@@ -73,5 +74,7 @@ declare global {
     __fisheye?: FisheyeProbeApi
     /** The slider scene's lens and drag state, for the drag gate. */
     __slider?: SliderProbeApi
+    /** The marble hand's page-canvas field: what it drew, and from when. */
+    __marbleBackground?: MarbleBackgroundProbe
   }
 }

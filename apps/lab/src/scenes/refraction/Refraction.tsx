@@ -188,7 +188,7 @@ function PixelPerfect() {
 
 // ── the page ───────────────────────────────────────────────────────────
 
-export function RefractionApp({ chips }: { chips?: React.ReactNode }) {
+export function RefractionApp() {
   const outgoing = useSurface('refraction-square')
   const incoming = useSurface('refraction-circle')
   const st = useSurfaceState(outgoing)
@@ -434,7 +434,6 @@ export function RefractionApp({ chips }: { chips?: React.ReactNode }) {
       </SurfaceCanvas>
 
       {showChrome && <RefractionTweaks />}
-      {chips}
     </div>
   )
 }

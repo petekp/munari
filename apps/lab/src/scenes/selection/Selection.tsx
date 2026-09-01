@@ -393,7 +393,7 @@ function SelectionPage() {
 // claim demand, so it gives up the zero-paint property the gated scenes
 // hold. A presenter-scoped animation claim is the missing piece
 // (candidates/README.md, gap 9).
-export function SelectionApp({ chips }: { chips?: React.ReactNode }) {
+export function SelectionApp() {
   return (
     <div className="sel-app">
       <SelectionPage />
@@ -416,7 +416,6 @@ export function SelectionApp({ chips }: { chips?: React.ReactNode }) {
       </SurfaceCanvas>
 
       <SelectionTweaks />
-      {chips}
     </div>
   )
 }

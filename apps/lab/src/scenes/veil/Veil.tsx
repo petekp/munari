@@ -488,7 +488,7 @@ function VeilBand({ painted, content, scroller, slab, sheet }: BandProps) {
 
 // ── the page ────────────────────────────────────────────────────────────
 
-export function VeilApp({ chips }: { chips?: React.ReactNode }) {
+export function VeilApp() {
   const sheetRef = useRef<HTMLDivElement | null>(null)
   const pageRef = useRef<HTMLDivElement | null>(null)
   const slabRef = useRef<HTMLDivElement | null>(null)
@@ -571,7 +571,6 @@ export function VeilApp({ chips }: { chips?: React.ReactNode }) {
         </div>
       </Surface>
 
-      {chips}
     </div>
   )
 }

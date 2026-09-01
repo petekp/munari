@@ -280,7 +280,7 @@ function Track({
 
 // ── the page ─────────────────────────────────────────────────────────────
 
-export function SliderApp({ chips }: { chips?: React.ReactNode }) {
+export function SliderApp() {
   const surface = useSurface('slider-track')
   const st = useSurfaceState(surface)
   const [view, setView] = useState<SurfaceView>('dom')
@@ -492,7 +492,6 @@ export function SliderApp({ chips }: { chips?: React.ReactNode }) {
         )}
       </SurfaceCanvas>
 
-      {chips}
     </div>
   )
 }

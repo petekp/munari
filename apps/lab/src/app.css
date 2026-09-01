@@ -142,26 +142,13 @@ body,
   color: var(--ink-mute);
 }
 
-/* ── the hud ── a black cluster, not a floating caption ────────────────── */
-
-.hud {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  max-width: 430px;
-  padding: 16px 18px 15px;
-  border-radius: var(--radius-lg);
-  background: var(--screen);
-  color: var(--screen-ink);
-  pointer-events: none;
-  user-select: none;
-}
-
-/* The wordmark. A didone wants its optical size told the truth — `opsz` is
+/* ── the masthead ── lives on the nav console (components/SceneNav.tsx) ──
+ *
+ * The wordmark. A didone wants its optical size told the truth — `opsz` is
  * what swaps the display cut's hairlines in for the text cut's sturdier
  * ones — and it wants far less negative tracking than a grotesque: the
  * contrast IS the texture, and closing the counters up kills it. */
-.hud h1 {
+.masthead {
   margin: 0;
   font-family: var(--display);
   font-size: 33px;
@@ -172,21 +159,15 @@ body,
   text-transform: lowercase;
 }
 
-.hud h1 em {
+/* The lit variant, not the printed swatch: the mark sits on the console's
+ * black, where the printed red reads as switched off. */
+.masthead em {
   font-style: normal;
-  color: var(--signal);
+  color: var(--signal-lit);
 }
 
-.hud .sub {
-  margin: 7px 0 14px;
-  font: 600 10px/1.4 var(--label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: rgba(242, 240, 234, 0.45);
-}
-
-/* The scene selector lives in components/SceneNav.tsx, styled in the
- * tuning panel's Tailwind idiom rather than here. */
+/* The rest of the nav console lives in components/SceneNav.tsx, styled in
+ * the tuning panel's Tailwind idiom rather than here. */
 
 /* ── capability lamps ── the one place `--live` and `--fault` both appear ─ */
 

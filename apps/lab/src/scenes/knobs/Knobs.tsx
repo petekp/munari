@@ -2558,7 +2558,7 @@ function useDegradedPanelGestures(host: RefObject<HTMLDivElement | null>) {
  * already scrolls it. Leaving it in pushed the panel a full viewport down,
  * below the fold (2026-08-22).
  */
-function DegradedKnobs({ chips }: { chips?: React.ReactNode }) {
+function DegradedKnobs() {
   const host = useRef<HTMLDivElement | null>(null)
   useDegradedPanelGestures(host)
   return (
@@ -2567,12 +2567,11 @@ function DegradedKnobs({ chips }: { chips?: React.ReactNode }) {
       <div className="knb-page-degraded" ref={host}>
         <KnobsPanel />
       </div>
-      {chips}
     </div>
   )
 }
 
-export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
+export function KnobsApp() {
   const supported = useSupportsDOMSurfaces()
   const hostCleanup = useRef<(() => void) | null>(null)
   const kick = useRef<((dir: number) => void) | null>(null)
@@ -2970,7 +2969,7 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
     }
   }, [finishResize, liveAnchors, syncViewport])
 
-  if (!supported) return <DegradedKnobs chips={chips} />
+  if (!supported) return <DegradedKnobs />
 
   return (
     <div
@@ -3035,7 +3034,6 @@ export function KnobsApp({ chips }: { chips?: React.ReactNode }) {
         <p className="knb-page-instruction">Drag the corner to reflow. Drag the top edge to move.</p>
       )}
 
-      {chips}
       {showChrome && <KnobsTweakPanel />}
     </div>
   )

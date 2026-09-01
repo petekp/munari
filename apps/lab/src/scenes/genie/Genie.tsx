@@ -1873,7 +1873,7 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
 
 // ── the page ────────────────────────────────────────────────────────────
 
-export function GenieApp({ chips }: { chips?: React.ReactNode }) {
+export function GenieApp() {
   // No trial, no flight — see `fold`.
   const supported = useSupportsDOMSurfaces()
   const [filmController] = useState<GenieFilmController>(() =>
@@ -2510,7 +2510,6 @@ export function GenieApp({ chips }: { chips?: React.ReactNode }) {
         aria-hidden
         tabIndex={-1}
       />
-      {chips}
       {showChrome && <GenieTweakPanel />}
 
       {/* Mapped in SCHEDE order and never re-sorted: raising a window has

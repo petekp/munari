@@ -220,7 +220,7 @@ function PixelPerfect() {
 
 type Slot = 0 | 1
 
-export function GalleryApp({ chips }: { chips?: React.ReactNode }) {
+export function GalleryApp() {
   const surfaceA = useSurface('gallery-a')
   const surfaceB = useSurface('gallery-b')
   const handles = useMemo(() => [surfaceA, surfaceB] as const, [surfaceA, surfaceB])
@@ -627,7 +627,6 @@ export function GalleryApp({ chips }: { chips?: React.ReactNode }) {
       </SurfaceCanvas>
 
       {showChrome && <GalleryTweaks />}
-      {chips}
     </div>
   )
 }

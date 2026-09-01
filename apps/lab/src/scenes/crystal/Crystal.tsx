@@ -135,7 +135,7 @@ function PixelPerfect() {
 
 // ── the scene ──────────────────────────────────────────────────────────
 
-export function CrystalApp({ chips }: { chips?: React.ReactNode }) {
+export function CrystalApp() {
   const page = useSurface('crystal-page')
   const st = useSurfaceState(page)
 
@@ -330,7 +330,6 @@ export function CrystalApp({ chips }: { chips?: React.ReactNode }) {
       </div>
 
       {showChrome && <CrystalTweaks parked={parked} onParked={setParked} />}
-      {chips}
     </div>
   )
 }

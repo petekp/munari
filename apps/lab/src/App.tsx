@@ -8,7 +8,7 @@ import {
   useSupportsDOMSurfaces,
 } from '@petepetrash/munari'
 import { paintStats } from '@petepetrash/munari/advanced'
-import { showChrome } from './bareMode'
+import { showChrome, showShell } from './bareMode'
 import { Workspace, WorkspaceHud } from './scenes/workspace/Workspace'
 import { Glass } from './scenes/glass/Glass'
 import { GlassTweakPanel } from './scenes/glass/GlassTweaks'
@@ -81,9 +81,9 @@ const SCENES = [
   'plume',
 ] as const
 
-// The nav shows only the focus five; the rest stay routable by URL so the
-// browser gates and old links keep working, they just aren't advertised.
-const NAV_SCENES = ['flight', 'genie', 'knobs', 'selection', 'logo'] as const satisfies readonly SceneId[]
+// The nav shows only the advertised scenes; the rest stay routable by URL so
+// the browser gates and old links keep working, they just aren't advertised.
+const NAV_SCENES = ['flight', 'genie', 'knobs', 'selection', 'logo', 'marble-hand', 'plume'] as const satisfies readonly SceneId[]
 
 // Clicking a canvas normally moves focus to <body>, which would blur
 // whatever hidden form field a Surface has focused — killing native typing.
@@ -122,45 +122,43 @@ function readScene(): SceneId {
 
 /**
  * The scenes that ARE pages, with their own overlay canvas on top, rather
- * than content inside the one shared 3D room. They take the whole route and
- * carry the scene chips themselves; `null` means the room renders it.
+ * than content inside the one shared 3D room. They take the whole route;
+ * `null` means the room renders it.
  */
-function pageSceneFor(scene: SceneId, chips: React.ReactNode) {
+function pageSceneFor(scene: SceneId) {
   switch (scene) {
     case 'flight':
-      return <FlightApp chips={chips} />
+      return <FlightApp />
     case 'genie':
-      return <GenieApp chips={chips} />
+      return <GenieApp />
     case 'fisheye':
-      return <FisheyeApp chips={chips} />
+      return <FisheyeApp />
     case 'slider':
-      return <SliderApp chips={chips} />
+      return <SliderApp />
     case 'veil':
-      return <VeilApp chips={chips} />
+      return <VeilApp />
     case 'knobs':
-      return <KnobsApp chips={chips} />
+      return <KnobsApp />
     case 'optics':
-      return <OpticsApp chips={chips} />
+      return <OpticsApp />
     case 'logo':
-      return <LogoApp chips={chips} />
+      return <LogoApp />
     case 'selection':
-      return <SelectionApp chips={chips} />
+      return <SelectionApp />
     case 'refraction':
-      return <RefractionApp chips={chips} />
+      return <RefractionApp />
     case 'gallery':
-      return <GalleryApp chips={chips} />
+      return <GalleryApp />
     case 'crystal':
-      return <CrystalApp chips={chips} />
-    // Candidate pages are direct studies, like the candidates bench. They do
-    // not carry the promoted-scene rail over their own composition.
+      return <CrystalApp />
+    // The controls bench is a direct study and does not carry the
+    // promoted-scene rail over its own composition.
     case 'controls':
       return <ControlsApp />
     case 'marble-hand':
       return <MarbleHandApp />
     case 'plume':
       return <PlumeApp />
-    // No chips: the candidates page has its own left-column nav, and the two
-    // menus side by side read as one broken one.
     case 'candidates':
       return <CandidatesApp />
     default:
@@ -289,10 +287,10 @@ export default function App() {
   // handling and the ARIA are the browser's, and this is the one piece of
   // lab furniture that shows up on a page whose whole subject is that the
   // browser's own machinery still works.
-  // Marble Hand keeps the whole page native and uses ordinary WebGL only
-  // for decoration. Missing HTML capture does not degrade that scene.
+  // Marble Hand and Plume keep native pages and put their capability
+  // notices in their own tweak panels, leaving the artwork clear.
   const notice =
-    showChrome && unsupported && scene !== 'marble-hand' ? (
+    showChrome && unsupported && scene !== 'marble-hand' && scene !== 'plume' ? (
       <details className="trial-notice">
         <summary>HTML-in-canvas unavailable</summary>
         <ul className="features">
@@ -310,28 +308,51 @@ export default function App() {
       </details>
     ) : null
 
-  // The flight scene is not a scene in the shared canvas — it IS a page,
-  // with its own overlay canvas on top of it. The other scenes are content
-  // inside one 3D room; this one inverts the relationship, so it takes the
-  // whole route and carries the scene chips itself.
-  // `?bare` hands every page scene `undefined` instead, which is already
-  // the "no chips" case each of them handles.
-  const chips = !showChrome ? undefined : (
-    <SceneNav
-      scenes={NAV_SCENES}
-      active={scene}
-      onSelect={(id) => {
-        window.history.pushState(null, '', `?scene=${id}`)
-        setScene(id)
-      }}
-    />
-  )
+  // The shell: nav console on the left, the scene in its own frame on the
+  // right. The frame is not decoration — every scene maps DOM rects to
+  // world space assuming its canvas IS its window (`rect center −
+  // innerWidth/2`, in fourteen modules), so a shell that shrank the
+  // scene's box in this window would silently skew every handoff. Inside
+  // a same-origin frame, `innerWidth` is the frame's own width and the
+  // registration holds; drawElementImage and the plume cloud were both
+  // measured live inside one (2026-08-31).
+  //
+  // `key={scene}` mounts a fresh frame instead of mutating `src`:
+  // navigating an existing frame pushes a joint session-history entry,
+  // and Back would then step the frame instead of the shell.
+  if (showShell) {
+    return (
+      <div className="flex h-full">
+        <SceneNav
+          scenes={NAV_SCENES}
+          active={scene}
+          onSelect={(id) => {
+            window.history.pushState(null, '', `?scene=${id}`)
+            setScene(id)
+          }}
+          footer={
+            <ul className="features flex-wrap">
+              <li data-ok={support.drawElementImage}>drawElementImage</li>
+              <li data-ok={support.texElementImage2D}>texElementImage2D</li>
+            </ul>
+          }
+        />
+        <iframe
+          key={scene}
+          src={`/?scene=${scene}&framed`}
+          title={`${scene} scene`}
+          className="h-full min-w-0 flex-1 border-0"
+        />
+      </div>
+    )
+  }
+
   const domSurfaceDemandProbe =
     scene === 'workspace' &&
     new URLSearchParams(window.location.search).get('probe') === 'dom-surface-demand'
 
   // The notice rides along rather than replacing the scene — see `unsupported`.
-  const page = pageSceneFor(scene, chips)
+  const page = pageSceneFor(scene)
   if (page !== null) {
     return (
       <>
@@ -365,21 +386,6 @@ export default function App() {
         </SurfaceCanvas>
       </SurfaceProviderProbe>
 
-      {showChrome && (
-        <div className="hud">
-          <h1>
-            mun<em>ari</em>
-          </h1>
-          <p className="sub">{scene}</p>
-          {chips}
-          {!unsupported && (
-            <ul className="features">
-              <li data-ok={support.drawElementImage}>drawElementImage</li>
-              <li data-ok={support.texElementImage2D}>texElementImage2D</li>
-            </ul>
-          )}
-        </div>
-      )}
       {notice}
 
       {showChrome && <SceneHud scene={scene} />}

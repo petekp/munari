@@ -340,7 +340,7 @@ function Queue({
 
 // ── the page ─────────────────────────────────────────────────────────────
 
-export function FisheyeApp({ chips }: { chips?: React.ReactNode }) {
+export function FisheyeApp() {
   const surface = useSurface('fisheye-list')
   const st = useSurfaceState(surface)
   const [view, setView] = useState<SurfaceView>('dom')
@@ -600,7 +600,6 @@ export function FisheyeApp({ chips }: { chips?: React.ReactNode }) {
         )}
       </SurfaceCanvas>
 
-      {chips}
     </div>
   )
 }

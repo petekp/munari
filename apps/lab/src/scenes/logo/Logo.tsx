@@ -1277,7 +1277,7 @@ export interface LogoProbeApi {
 
 // ── the page ────────────────────────────────────────────────────────────
 
-export function LogoApp({ chips }: { chips?: React.ReactNode }) {
+export function LogoApp() {
   useEffect(ensureLogoFonts, [])
 
   const [knobs, setKnobs] = useState<LogoKnobs>(LOGO_DEFAULTS)
@@ -1639,7 +1639,6 @@ export function LogoApp({ chips }: { chips?: React.ReactNode }) {
         ))}
       </div>
 
-      {chips}
     </div>
   )
 }

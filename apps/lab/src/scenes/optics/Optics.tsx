@@ -1044,7 +1044,7 @@ function useGrab(hand: React.RefObject<Hand>, id: InstrumentId | null) {
 
 // ── the page ───────────────────────────────────────────────────────────
 
-export function OpticsApp({ chips }: { chips: ReactNode }) {
+export function OpticsApp() {
   const hand = useRef<Hand>(initialHand())
   const [handId, setHandId] = useState<InstrumentId | null>(null)
   const [pinning, setPinning] = useState(true)
@@ -1115,7 +1115,6 @@ export function OpticsApp({ chips }: { chips: ReactNode }) {
           mun<em>ari</em>
         </h1>
         <p className="sub">optics</p>
-        {chips}
       </div>
 
       <div className="opt-readout">
