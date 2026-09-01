@@ -1,0 +1,124 @@
+/* Rain — a still, overcast magazine page with real ledges for real weather.
+ * The page never scrolls: everything below fits one viewport so the
+ * overlay's collision world (measured from these boxes) never changes
+ * shape except on an actual resize.
+ */
+
+.rain-app {
+  --rain-paper: #e9ecef;
+  --rain-ink: #262b31;
+  --rain-card: #f4f6f8;
+  --rain-rule: rgba(38, 43, 49, 0.14);
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--rain-paper);
+  color: var(--rain-ink);
+  font: 16px/1.5 var(--body, system-ui, sans-serif);
+}
+
+.rain-page {
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(14px, 2.4vh, 26px);
+  padding: clamp(28px, 5vh, 64px) clamp(24px, 6vw, 96px);
+}
+
+.rain-page h1 {
+  margin: 0;
+  font: 900 clamp(40px, 6.4vw, 84px) / 1.02 var(--display, system-ui, sans-serif);
+  letter-spacing: -0.02em;
+}
+
+.rain-lede {
+  margin: 0;
+  max-width: 62ch;
+  font: 400 clamp(16px, 1.7vw, 21px) / 1.5 var(--body, system-ui, sans-serif);
+  color: color-mix(in srgb, var(--rain-ink) 82%, transparent);
+}
+
+.rain-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(14px, 1.6vw, 22px);
+}
+
+.rain-card {
+  box-sizing: border-box;
+  min-width: 0;
+  border: 1px solid var(--rain-rule);
+  background: var(--rain-card);
+  padding: clamp(14px, 1.8vh, 22px) clamp(16px, 1.6vw, 22px);
+}
+
+.rain-card h2 {
+  margin: 0 0 0.4em;
+  font: 700 clamp(15px, 1.3vw, 18px) / 1.25 var(--display, system-ui, sans-serif);
+}
+
+.rain-card p {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font: 400 clamp(13px, 1.05vw, 15px) / 1.45 var(--body, system-ui, sans-serif);
+  color: color-mix(in srgb, var(--rain-ink) 78%, transparent);
+}
+
+.rain-tail {
+  margin: 0;
+  max-width: 74ch;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font: 400 clamp(14px, 1.3vw, 17px) / 1.5 var(--body, system-ui, sans-serif);
+  color: color-mix(in srgb, var(--rain-ink) 78%, transparent);
+}
+
+/* The overlay: fixed above the page, never intercepting a pointer. */
+.rain-field {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.rain-field-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* No WebGL — a faint static drizzle stands in for the simulated one. */
+.rain-field[data-fallback] {
+  background-image: repeating-linear-gradient(
+    102deg,
+    transparent 0,
+    transparent 10px,
+    rgba(89, 100, 112, 0.12) 10px,
+    rgba(89, 100, 112, 0.12) 11px,
+    transparent 11px,
+    transparent 26px
+  );
+}
+
+.rain-hint {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: clamp(10px, 1.8vh, 20px);
+  z-index: 3;
+  margin: 0;
+  text-align: center;
+  pointer-events: none;
+  font: 400 clamp(11px, 1vw, 13px) / 1.4 var(--body, system-ui, sans-serif);
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--rain-ink) 55%, transparent);
+}

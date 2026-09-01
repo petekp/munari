@@ -29,6 +29,9 @@ import { CrystalApp } from './scenes/crystal/Crystal'
 import { ControlsApp } from './scenes/controls/Controls'
 import { MarbleHandApp } from './scenes/marble-hand/MarbleHand'
 import { PlumeApp } from './scenes/plume/Plume'
+import { GravityApp } from './scenes/gravity/Gravity'
+import { LampApp } from './scenes/lamp/Lamp'
+import { RainApp } from './scenes/rain/Rain'
 import { SurfaceProviderProbe } from './lib/surfaceProvider'
 import { SceneNav } from './components/SceneNav'
 import { SceneBoundary } from './components/SceneBoundary'
@@ -59,6 +62,9 @@ type SceneId =
   | 'controls'
   | 'marble-hand'
   | 'plume'
+  | 'gravity'
+  | 'lamp'
+  | 'rain'
 const SCENES = [
   'workspace',
   'glass',
@@ -79,6 +85,9 @@ const SCENES = [
   'controls',
   'marble-hand',
   'plume',
+  'gravity',
+  'lamp',
+  'rain',
 ] as const
 
 // The nav shows only the advertised scenes; the rest stay routable by URL so
@@ -159,8 +168,23 @@ function pageSceneFor(scene: SceneId) {
       return <MarbleHandApp />
     case 'plume':
       return <PlumeApp />
+
     case 'candidates':
       return <CandidatesApp />
+    default:
+      return spikeSceneFor(scene)
+  }
+}
+
+/** The 2026-09-01 spikes: page studies under review, URL-only. */
+function spikeSceneFor(scene: SceneId) {
+  switch (scene) {
+    case 'gravity':
+      return <GravityApp />
+    case 'lamp':
+      return <LampApp />
+    case 'rain':
+      return <RainApp />
     default:
       return null
   }

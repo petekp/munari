@@ -1,0 +1,71 @@
+/* Gravity poetry's page — paper, ink, and the floor words fall to.
+ *
+ * The lab pins html/body/#root to a fixed viewport (veil.css explains the
+ * rule); this page fills that box and centers the poem inside it. The
+ * overlay canvas is the only WebGL surface, laid straight over the page
+ * with pointer-events disabled — every click and mousedown lands on the
+ * real DOM underneath it.
+ */
+
+.gv-page {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3efe6;
+  overflow: hidden;
+}
+
+.gv-poem {
+  max-width: 28ch;
+  margin: 0;
+  padding: 0 24px;
+  font-family: Iowan Old Style, Georgia, serif;
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 1.55;
+  color: #1d1a24;
+  text-align: left;
+}
+
+.gv-word {
+  display: inline;
+  cursor: grab;
+  transition: color 0.15s ease;
+}
+
+.gv-word:hover {
+  color: #7d6b52;
+}
+
+.gv-word:active {
+  cursor: grabbing;
+}
+
+.gv-hint {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 28px;
+  margin: 0;
+  text-align: center;
+  font-family: Iowan Old Style, Georgia, serif;
+  font-style: italic;
+  font-size: 13px;
+  color: #9a8f7c;
+  pointer-events: none;
+}
+
+.gv-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.gv-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

@@ -1,0 +1,168 @@
+/* Lamp — an article page lit by one physical light.
+ *
+ * The paper and the type are real DOM, fully selectable. The canvas above
+ * them only multiplies what is already there: mix-blend-mode: multiply
+ * cannot brighten, so a lit pixel of 1.0 has to mean "leave this alone."
+ * The page is sized to one viewport, never scrolls, and stays fixed so the
+ * lamp's pointer-space position and the mask's measured rect never drift
+ * out of the frame they were read in.
+ */
+
+.lamp-page {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: #f5f1e8;
+  color: #241f1a;
+  font-family: var(--body, system-ui, sans-serif);
+}
+
+.lamp-overlay-host {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  /* The blend must sit on the host: its fixed+z-index stacking context
+   * walls the canvas off from the page, so multiply on the canvas alone
+   * blends into the host's transparent ground and covers the article. */
+  mix-blend-mode: multiply;
+}
+
+.lamp-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* No WebGL: the page stays plain paper rather than showing an unlit
+ * canvas (which would default to opaque black and multiply everything
+ * to nothing). */
+.lamp-page[data-degraded] .lamp-canvas {
+  display: none;
+}
+
+.lamp-page[data-degraded] .lamp-fixture,
+.lamp-page[data-degraded] .lamp-hint {
+  display: none;
+}
+
+/* The lantern's own normal-blend canvas, above the multiply host so its
+ * lit metal and glass render as a real object instead of the silhouette
+ * multiply blending would produce, and below the fixture so the drag
+ * handle's hit box and cursor stay on top of it. */
+.lamp-lantern-host {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.lamp-lantern-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The 3D canvas failed (or never got a context): the fixture still drags
+ * and still casts a shadow through the multiply pass, so it keeps a small
+ * visible handle instead of going fully invisible. */
+.lamp-page[data-lantern-degraded] .lamp-lantern-canvas {
+  display: none;
+}
+
+.lamp-fixture {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 30;
+  /* Tracks LANTERN_TOTAL_HEIGHT (112) and LANTERN_MAX_RADIUS (34) in
+   * lampLantern.ts — a plain CSS file can't import them, so this stays a
+   * hand-kept approximation with slack, not the exact figure (round 4,
+   * squat-silhouette rebuild: was 166/36 for the old tall lantern). */
+  width: 76px;
+  height: 128px;
+  /* The lantern's rendered base sits at its anchor point, not this box's
+   * center: the model rises upward from there, so the hit box hangs above
+   * the anchor with a little slack below for easy grabbing near the base. */
+  margin: -112px 0 0 -38px;
+  cursor: grab;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.lamp-fixture.is-dragging {
+  cursor: grabbing;
+}
+
+.lamp-fixture__fallback {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  width: 34px;
+  height: 34px;
+  margin-left: -17px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #524940, #17130f 72%);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+  display: none;
+}
+
+.lamp-page[data-lantern-degraded] .lamp-fixture__fallback {
+  display: block;
+}
+
+.lamp-article {
+  position: relative;
+  z-index: 10;
+  width: min(980px, 92vw);
+  margin: 0 auto;
+}
+
+.lamp-headline {
+  margin: 0 0 5vh;
+  font-family: var(--display, Georgia, serif);
+  font-weight: 800;
+  font-size: clamp(48px, 8vw, 110px);
+  line-height: 0.98;
+  letter-spacing: -0.01em;
+}
+
+.lamp-headline span {
+  display: inline-block;
+}
+
+.lamp-columns {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 48px;
+  max-width: 760px;
+}
+
+.lamp-column {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: #4a4038;
+}
+
+.lamp-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  z-index: 30;
+  transform: translateX(-50%);
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: rgba(36, 31, 26, 0.45);
+  pointer-events: none;
+}
+
+@media (max-width: 680px) {
+  .lamp-columns {
+    grid-template-columns: 1fr;
+  }
+}
