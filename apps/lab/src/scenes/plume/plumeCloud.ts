@@ -12,7 +12,7 @@
 
 import * as THREE from 'three'
 import type { SourceUvRect } from '@petepetrash/munari'
-import type { TimedWord } from './plumeLaw'
+import type { TimedUnit } from './plumeLaw'
 
 const CORNERS: readonly (readonly [number, number])[] = [
   [-0.5, -0.5],
@@ -91,7 +91,7 @@ export function buildPlumeGrid(width: number, height: number, pitch: number): Pl
   geometry.setAttribute('aSeed', new THREE.BufferAttribute(seed, 3))
   geometry.setAttribute('aRelease', new THREE.BufferAttribute(release, 1))
   geometry.setIndex(new THREE.BufferAttribute(index, 1))
-  // Wisps intentionally leave the source box. A source-fitted sphere would
+  // Particles intentionally leave the source box. A source-fitted sphere would
   // cull the effect at the exact point it becomes visible.
   geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 4000)
   return { geometry, width, height, cols, rows, cellWidth, cellHeight }
@@ -101,10 +101,10 @@ function clampCell(value: number, max: number): number {
   return Math.min(max - 1, Math.max(0, value))
 }
 
-/** Stamp absolute release seconds into every cell covered by a word box. */
+/** Stamp absolute release seconds into every cell covered by a unit box. */
 export function stampPlumeReleases(
   grid: PlumeGrid,
-  words: readonly TimedWord[],
+  units: readonly TimedUnit[],
   anchors: Readonly<Record<string, SourceUvRect>>,
 ): void {
   const attribute = grid.geometry.getAttribute('aRelease')
@@ -112,14 +112,14 @@ export function stampPlumeReleases(
   const release = attribute.array
   release.fill(UNRELEASED)
 
-  for (const word of words) {
-    const box = anchors[word.id]
+  for (const unit of units) {
+    const box = anchors[unit.id]
     if (!box) continue
     const colStart = clampCell(Math.floor(box.uMin * grid.cols), grid.cols)
     const colEnd = clampCell(Math.ceil(box.uMax * grid.cols) - 1, grid.cols)
     const rowStart = clampCell(Math.floor((1 - box.vMax) * grid.rows), grid.rows)
     const rowEnd = clampCell(Math.ceil((1 - box.vMin) * grid.rows) - 1, grid.rows)
-    const releaseSeconds = word.releaseAt / 1000
+    const releaseSeconds = unit.releaseAt / 1000
     for (let row = rowStart; row <= rowEnd; row++) {
       for (let col = colStart; col <= colEnd; col++) {
         const cell = row * grid.cols + col

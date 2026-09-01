@@ -9,7 +9,7 @@
 // field repaints its source about twice per second from caret blink alone.
 // Keeping the field outside the capture preserves idle paint and prevents a
 // shader from becoming the accessibility tree. Ownership: this file owns the
-// React wiring and DOM. plumeLaw owns word time, plumeCloud owns grains, and
+// React wiring and DOM. plumeLaw owns unit time, plumeCloud owns grains, and
 // plumeShaders owns their motion.
 
 import {
@@ -37,26 +37,47 @@ import { textureSlot } from '../../lib/uniforms'
 import { buildPlumeGrid, stampPlumeReleases, type PlumeGrid } from './plumeCloud'
 import {
   nextTimelineBoundary,
-  rearmWords,
-  reconcileWords,
-  wordPhase,
-  type TimedWord,
-  type WordPhase,
+  rearmUnits,
+  reconcileUnits,
+  unitPhase,
+  type TimedUnit,
+  type UnitPhase,
 } from './plumeLaw'
 import { PLUME_FRAG, PLUME_VERT } from './plumeShaders'
+import { PlumeTweaks } from './plumeTweaks'
 import {
   defaultPlumeEffects,
   plumeTuning,
   type PlumeEffects,
+  type PlumeTuning,
 } from './plumeTuning'
 import './plume.css'
 
 const FOV = 42
-const OPENING = 'Some thoughts only need enough time to become weather.'
+const OPENING = 'Some thoughts only need\nenough time to become weather.'
+const FONT_FAMILIES = {
+  serif: 'var(--display)',
+  sans: 'var(--body)',
+  mono: 'var(--data)',
+} satisfies Readonly<Record<PlumeTuning['fontFamily'], string>>
+
+type PlumeStyle = React.CSSProperties & { [key: `--plume-${string}`]: string | number }
+
+// A new letter shape needs new anchor keys. Reusing a painted key after a
+// font edit would let that old receipt release ink the new texture never drew.
+const CAPTURE_TUNING_KEYS = [
+  'fontFamily', 'typeScale', 'fontWeight', 'lineHeight', 'letterSpacing', 'textWidth', 'inkColor',
+  // Switching between words and characters changes how many anchors exist
+  // and what each one covers, so every painted receipt has to be reissued.
+  'releaseUnit',
+] as const satisfies readonly (keyof PlumeTuning)[]
+const REPLAY_TUNING_KEYS = [
+  'holdMs', 'durationMs', 'reducedDurationMs', 'staggerMs', 'pitch',
+] as const satisfies readonly (keyof PlumeTuning)[]
 
 interface TextLedger {
   readonly value: string
-  readonly words: readonly TimedWord[]
+  readonly units: readonly TimedUnit[]
   readonly nextId: number
 }
 
@@ -69,47 +90,44 @@ interface StageBox {
 
 interface PlumeCopyProps {
   readonly value: string
-  readonly words: readonly TimedWord[]
+  readonly units: readonly TimedUnit[]
   readonly scrollTop: number
   readonly capture: boolean
-  readonly phaseOf: (word: TimedWord) => WordPhase
+  readonly phaseOf: (unit: TimedUnit) => UnitPhase
+  readonly typeStyle: PlumeStyle
 }
 
-function PlumeCopy({ value, words, scrollTop, capture, phaseOf }: PlumeCopyProps) {
+function PlumeCopy({ value, units, scrollTop, capture, phaseOf, typeStyle }: PlumeCopyProps) {
   const pieces: React.ReactNode[] = []
   let cursor = 0
-  for (const word of words) {
-    if (word.start > cursor) {
+  for (const unit of units) {
+    if (unit.start > cursor) {
       pieces.push(
         <Fragment key={`space-${cursor}`}>
-          {value.slice(cursor, word.start)}
+          {value.slice(cursor, unit.start)}
         </Fragment>,
       )
     }
     pieces.push(
       <span
-        key={word.id}
+        key={unit.id}
         className="plume-word"
-        data-munari-anchor={capture ? word.id : undefined}
-        data-phase={capture ? undefined : phaseOf(word)}
+        data-munari-anchor={capture ? unit.id : undefined}
+        data-phase={capture ? undefined : phaseOf(unit)}
       >
-        {word.text}
+        {unit.text}
       </span>,
     )
-    cursor = word.end
+    cursor = unit.end
   }
   if (cursor < value.length) {
     pieces.push(<Fragment key={`space-${cursor}`}>{value.slice(cursor)}</Fragment>)
   }
 
   return (
-    <div className={capture ? 'plume-capture plume-copy' : 'plume-mirror plume-copy'} aria-hidden>
+    <div className={capture ? 'plume-capture plume-copy' : 'plume-mirror plume-copy'} style={typeStyle} aria-hidden>
       <div className="plume-copy__flow" style={{ transform: `translateY(${-scrollTop}px)` }}>
-        {pieces.length > 0 ? (
-          pieces
-        ) : capture ? null : (
-          <span className="plume-prompt">Write something you can let go of.</span>
-        )}
+        {pieces}
       </div>
     </div>
   )
@@ -129,15 +147,15 @@ function useReducedMotion(): boolean {
   return reduced
 }
 
-function useTimeline(words: readonly TimedWord[], durationMs: number): number {
+function useTimeline(units: readonly TimedUnit[], durationMs: number): number {
   const [now, setNow] = useState(() => performance.now())
   useEffect(() => {
-    const boundary = nextTimelineBoundary(words, now, durationMs)
+    const boundary = nextTimelineBoundary(units, now, durationMs)
     if (boundary === null) return
     const wait = Math.max(0, boundary - performance.now() + 8)
     const timer = window.setTimeout(() => setNow(performance.now()), wait)
     return () => window.clearTimeout(timer)
-  }, [words, now, durationMs])
+  }, [units, now, durationMs])
   return now
 }
 
@@ -146,15 +164,19 @@ function useStageBox(ref: React.RefObject<HTMLElement | null>): StageBox | null 
   useLayoutEffect(() => {
     const element = ref.current
     if (!element) return
+    let alive = true
     const measure = () => {
+      if (!alive) return
       const rect = element.getBoundingClientRect()
       if (rect.width <= 0 || rect.height <= 0) return
-      setBox({
+      const next = {
         width: rect.width,
         height: rect.height,
         worldX: rect.left + rect.width / 2 - window.innerWidth / 2,
         worldY: window.innerHeight / 2 - (rect.top + rect.height / 2),
-      })
+      }
+      setBox((current) => current && current.width === next.width && current.height === next.height &&
+        current.worldX === next.worldX && current.worldY === next.worldY ? current : next)
     }
     measure()
     void document.fonts.ready.then(measure)
@@ -162,6 +184,7 @@ function useStageBox(ref: React.RefObject<HTMLElement | null>): StageBox | null 
     observer.observe(element)
     window.addEventListener('resize', measure)
     return () => {
+      alive = false
       observer.disconnect()
       window.removeEventListener('resize', measure)
     }
@@ -213,46 +236,95 @@ interface PlumeMaterialProps {
   readonly durationMs: number
   readonly reduced: boolean
   readonly effects: PlumeEffects
+  readonly tuning: PlumeTuning
   readonly draft: React.RefObject<THREE.Vector2>
 }
 
-function PlumeMaterial({ grid, durationMs, reduced, effects, draft }: PlumeMaterialProps) {
+function PlumeMaterial({ grid, durationMs, reduced, effects, tuning, draft }: PlumeMaterialProps) {
   const texture = useSurfaceTexture()
   const material = useRef<THREE.ShaderMaterial>(null)
+  const invalidate = useThree((state) => state.invalidate)
   const uniforms = useMemo(
     () => ({
       tMap: textureSlot(),
       uTime: { value: 0 },
-      uDuration: { value: durationMs / 1000 },
+      uDuration: { value: plumeTuning.durationMs / 1000 },
       uStagger: { value: plumeTuning.staggerMs / 1000 },
       uRise: { value: plumeTuning.rise },
-      uCurl: { value: plumeTuning.curl },
+      uSpread: { value: plumeTuning.spread },
       uDepth: { value: plumeTuning.depth },
+      uTurbulence: { value: plumeTuning.turbulence },
+      uBillow: { value: plumeTuning.billow },
+      uShading: { value: plumeTuning.shading },
+      uDepthFog: { value: plumeTuning.depthFog },
+      uTurbulenceSpeed: { value: plumeTuning.turbulenceSpeed },
+      uDraftStrength: { value: plumeTuning.draftStrength },
+      uParticleSize: { value: plumeTuning.particleSize },
+      uSizeVariation: { value: plumeTuning.sizeVariation },
+      uParticleGrowth: { value: plumeTuning.particleGrowth },
+      uParticleOpacity: { value: plumeTuning.particleOpacity },
+      uParticleSoftness: { value: plumeTuning.particleSoftness },
+      uLifetimeVariation: { value: plumeTuning.lifetimeVariation },
+      uSparkAmount: { value: plumeTuning.sparkAmount },
+      uTint: { value: plumeTuning.tint },
       uWisps: { value: 1 },
       uDraftOn: { value: 1 },
       uReduced: { value: 0 },
       uDraft: { value: new THREE.Vector2() },
       uGrain: { value: new THREE.Vector2(grid.cellWidth, grid.cellHeight) },
       uPitchUv: { value: new THREE.Vector2(1 / grid.cols, 1 / grid.rows) },
-      uSmoke: { value: new THREE.Color('#53677d') },
-      uEmber: { value: new THREE.Color('#ef694b') },
+      uSmoke: { value: new THREE.Color(plumeTuning.particleColor) },
+      uEmber: { value: new THREE.Color(plumeTuning.sparkColor) },
+      uPaper: { value: new THREE.Color(plumeTuning.backgroundColor) },
       uEmbers: { value: 1 },
     }),
-    [durationMs, grid.cellHeight, grid.cellWidth, grid.cols, grid.rows],
+    [grid.cellHeight, grid.cellWidth, grid.cols, grid.rows],
   )
-  uniforms.tMap.value = texture
 
-  useFrame(() => {
+  // Sliders update the existing material. They must also request one frame
+  // when the cloud is at rest; otherwise a demand canvas can show old values.
+  useLayoutEffect(() => {
     const owned = material.current?.uniforms
     if (!owned) return
-    owned.uTime!.value = performance.now() / 1000
+    owned.tMap!.value = texture
     owned.uDuration!.value = durationMs / 1000
+    owned.uStagger!.value = tuning.staggerMs / 1000
+    owned.uRise!.value = tuning.rise
+    owned.uSpread!.value = tuning.spread
+    owned.uDepth!.value = tuning.depth
+    owned.uTurbulence!.value = tuning.turbulence
+    owned.uBillow!.value = tuning.billow
+    owned.uShading!.value = tuning.shading
+    owned.uDepthFog!.value = tuning.depthFog
+    owned.uTurbulenceSpeed!.value = tuning.turbulenceSpeed
+    owned.uDraftStrength!.value = tuning.draftStrength
+    owned.uParticleSize!.value = tuning.particleSize
+    owned.uSizeVariation!.value = tuning.sizeVariation
+    owned.uParticleGrowth!.value = tuning.particleGrowth
+    owned.uParticleOpacity!.value = tuning.particleOpacity
+    owned.uParticleSoftness!.value = tuning.particleSoftness
+    owned.uLifetimeVariation!.value = tuning.lifetimeVariation
+    owned.uSparkAmount!.value = tuning.sparkAmount
+    owned.uTint!.value = tuning.tint
     owned.uWisps!.value = effects.wisps ? 1 : 0
     owned.uDraftOn!.value = effects.draft ? 1 : 0
     owned.uReduced!.value = reduced ? 1 : 0
     owned.uEmbers!.value = effects.embers && !reduced ? 1 : 0
+    const smoke = owned.uSmoke!.value
+    const ember = owned.uEmber!.value
+    const paper = owned.uPaper!.value
+    if (smoke instanceof THREE.Color) smoke.set(tuning.particleColor)
+    if (ember instanceof THREE.Color) ember.set(tuning.sparkColor)
+    if (paper instanceof THREE.Color) paper.set(tuning.backgroundColor)
+    invalidate()
+  }, [durationMs, effects, invalidate, reduced, texture, tuning, uniforms])
+
+  useFrame((_, delta) => {
+    const owned = material.current?.uniforms
+    if (!owned) return
+    owned.uTime!.value = performance.now() / 1000
     const wind = owned.uDraft!.value
-    if (wind instanceof THREE.Vector2) wind.lerp(draft.current, 0.08)
+    if (wind instanceof THREE.Vector2) wind.lerp(draft.current, 1 - Math.exp(-tuning.draftDamping * delta))
   })
 
   return (
@@ -293,46 +365,7 @@ function PlumeReleaseBridge({
   return null
 }
 
-const EFFECTS: readonly {
-  readonly key: keyof PlumeEffects
-  readonly label: string
-  readonly detail: string
-}[] = [
-  { key: 'wisps', label: 'Curl', detail: 'lift ink into long threads' },
-  { key: 'afterglow', label: 'Ghost ink', detail: 'leave a faint impression' },
-  { key: 'embers', label: 'Warm fibres', detail: 'catch a few lit edges' },
-  { key: 'draft', label: 'Draft', detail: 'let the pointer bend the air' },
-]
-
-function EffectControls({
-  effects,
-  onToggle,
-}: {
-  readonly effects: PlumeEffects
-  readonly onToggle: (key: keyof PlumeEffects) => void
-}) {
-  return (
-    <fieldset className="plume-effects">
-      <legend>What the ink carries</legend>
-      {EFFECTS.map((effect) => (
-        <label key={effect.key} className="plume-effect">
-          <input
-            type="checkbox"
-            checked={effects[effect.key]}
-            onChange={() => onToggle(effect.key)}
-          />
-          <span className="plume-effect__mark" aria-hidden />
-          <span>
-            <strong>{effect.label}</strong>
-            <small>{effect.detail}</small>
-          </span>
-        </label>
-      ))}
-    </fieldset>
-  )
-}
-
-export function PlumeApp({ chips }: { chips?: React.ReactNode }) {
+export function PlumeApp() {
   const supported = useSupportsDOMSurfaces()
   const reduced = useReducedMotion()
   const surface = useSurface('plume-ink')
@@ -341,41 +374,42 @@ export function PlumeApp({ chips }: { chips?: React.ReactNode }) {
   const draft = useRef(new THREE.Vector2())
   const [scrollTop, setScrollTop] = useState(0)
   const [effects, setEffects] = useState<PlumeEffects>(defaultPlumeEffects)
+  const [tuning, setTuning] = useState<PlumeTuning>(plumeTuning)
   const [readyIds, setReadyIds] = useState<ReadonlySet<string>>(new Set())
   const readyIdsRef = useRef<ReadonlySet<string>>(new Set())
   const [paintedAnchors, setPaintedAnchors] = useState<Readonly<Record<string, SourceUvRect>> | null>(null)
   const [ledger, setLedger] = useState<TextLedger>(() => {
-    const reconciled = reconcileWords([], OPENING, performance.now(), plumeTuning.holdMs, 0)
-    return { value: OPENING, words: reconciled.words, nextId: reconciled.nextId }
+    const reconciled = reconcileUnits([], OPENING, plumeTuning.releaseUnit, performance.now(), plumeTuning.holdMs, 0)
+    return { value: OPENING, units: reconciled.units, nextId: reconciled.nextId }
   })
 
-  const durationMs = reduced ? plumeTuning.reducedDurationMs : plumeTuning.durationMs
-  const now = useTimeline(ledger.words, durationMs)
+  const durationMs = reduced ? tuning.reducedDurationMs : tuning.durationMs
+  const now = useTimeline(ledger.units, durationMs)
   const phaseOf = useCallback(
-    (word: TimedWord): WordPhase => {
-      const phase = wordPhase(word, now, durationMs)
+    (unit: TimedUnit): UnitPhase => {
+      const phase = unitPhase(unit, now, durationMs)
       // A delayed or failed capture keeps its DOM ink. Blank is never the
       // fallback for a visual enhancement.
-      if (supported && phase !== 'held' && !readyIds.has(word.id)) return 'held'
+      if (supported && phase !== 'held' && !readyIds.has(unit.id)) return 'held'
       return phase
     },
     [durationMs, now, readyIds, supported],
   )
-  const animating = ledger.words.some((word) => phaseOf(word) === 'pluming')
+  const animating = ledger.units.some((unit) => phaseOf(unit) === 'pluming')
 
   const grid = useMemo(
     () =>
       box
-        ? buildPlumeGrid(box.width, box.height, plumeTuning.pitch)
+        ? buildPlumeGrid(box.width, box.height, tuning.pitch)
         : null,
-    [box],
+    [box, tuning.pitch],
   )
   useEffect(() => () => grid?.geometry.dispose(), [grid])
 
-  const wordIds = useMemo(() => ledger.words.map((word) => word.id), [ledger.words])
-  const wordIdSignature = wordIds.join('\u0000')
-  const releaseSignature = ledger.words
-    .map((word) => `${word.id}:${word.releaseAt.toFixed(2)}`)
+  const unitIds = useMemo(() => ledger.units.map((unit) => unit.id), [ledger.units])
+  const unitIdSignature = unitIds.join('\u0000')
+  const releaseSignature = ledger.units
+    .map((unit) => `${unit.id}:${unit.releaseAt.toFixed(2)}`)
     .join('\u0000')
 
   // An authored release time cannot predate the paint that supplies its
@@ -386,33 +420,33 @@ export function PlumeApp({ chips }: { chips?: React.ReactNode }) {
     if (!paintedAnchors) return
     const previous = readyIdsRef.current
     const next = new Set(
-      ledger.words.filter((word) => paintedAnchors[word.id] !== undefined).map((word) => word.id),
+      ledger.units.filter((unit) => paintedAnchors[unit.id] !== undefined).map((unit) => unit.id),
     )
-    const newlyReady = ledger.words.some(
-      (word) => next.has(word.id) && !previous.has(word.id),
+    const newlyReady = ledger.units.some(
+      (unit) => next.has(unit.id) && !previous.has(unit.id),
     )
     readyIdsRef.current = next
     setReadyIds((current) => (sameIds(current, next) ? current : next))
     if (!newlyReady) return
-    const releaseAt = performance.now() + plumeTuning.holdMs
+    const releaseAt = performance.now() + tuning.holdMs
     setLedger((current) => ({
       ...current,
-      words: current.words.map((word) =>
-        next.has(word.id) && !previous.has(word.id)
-          ? { ...word, releaseAt: Math.max(word.releaseAt, releaseAt) }
-          : word,
+      units: current.units.map((unit) =>
+        next.has(unit.id) && !previous.has(unit.id)
+          ? { ...unit, releaseAt: Math.max(unit.releaseAt, releaseAt) }
+          : unit,
       ),
     }))
-  }, [paintedAnchors, wordIdSignature, ledger.words])
+  }, [paintedAnchors, unitIdSignature, ledger.units, tuning.holdMs])
 
   // Stamping lives in the page owner, not in the tunneled presenter. A
-  // Restore changes no word IDs and no anchor boxes, so an anchor effect in
+  // Restore changes no unit IDs and no anchor boxes, so an anchor effect in
   // that other reconciler has no reason to run. This primitive signature is
   // the release transaction: every new clock reaches the existing buffer.
   useEffect(() => {
     if (!grid || !paintedAnchors) return
-    stampPlumeReleases(grid, ledger.words, paintedAnchors)
-  }, [grid, ledger.words, paintedAnchors, releaseSignature])
+    stampPlumeReleases(grid, ledger.units, paintedAnchors)
+  }, [grid, ledger.units, paintedAnchors, releaseSignature])
 
   useEffect(() => {
     const move = (event: PointerEvent) => {
@@ -428,73 +462,113 @@ export function PlumeApp({ chips }: { chips?: React.ReactNode }) {
 
   const changeText = useCallback((value: string) => {
     setLedger((current) => {
-      const reconciled = reconcileWords(
-        current.words,
+      const reconciled = reconcileUnits(
+        current.units,
         value,
+        tuning.releaseUnit,
         performance.now(),
-        plumeTuning.holdMs,
+        tuning.holdMs,
         current.nextId,
       )
-      return { value, words: reconciled.words, nextId: reconciled.nextId }
+      return { value, units: reconciled.units, nextId: reconciled.nextId }
     })
-  }, [])
+  }, [tuning.holdMs, tuning.releaseUnit])
 
   const restore = useCallback(() => {
     setLedger((current) => ({
       ...current,
-      words: rearmWords(current.words, performance.now(), plumeTuning.holdMs),
+      units: rearmUnits(current.units, performance.now(), tuning.holdMs),
     }))
-  }, [])
+  }, [tuning.holdMs])
 
   const clear = useCallback(() => {
-    setLedger((current) => ({ ...current, value: '', words: [] }))
+    setLedger((current) => ({ ...current, value: '', units: [] }))
     setScrollTop(0)
   }, [])
 
   const toggle = useCallback((key: keyof PlumeEffects) => {
     setEffects((current) => ({ ...current, [key]: !current[key] }))
+    if (!animating) restore()
+  }, [animating, restore])
+
+  const changeTuning = useCallback((next: PlumeTuning) => {
+    const recapture = CAPTURE_TUNING_KEYS.some((key) => next[key] !== tuning[key])
+    const replay = recapture || REPLAY_TUNING_KEYS.some((key) => next[key] !== tuning[key])
+    setTuning(next)
+    if (!replay && animating) return
+    const editedAt = performance.now()
+    setLedger((current) => {
+      if (!recapture) return { ...current, units: rearmUnits(current.units, editedAt, next.holdMs) }
+      const reconciled = reconcileUnits([], current.value, next.releaseUnit, editedAt, next.holdMs, current.nextId)
+      return { ...current, units: reconciled.units, nextId: reconciled.nextId }
+    })
+  }, [animating, tuning])
+
+  const reset = useCallback(() => {
+    setEffects(defaultPlumeEffects)
+    setTuning(plumeTuning)
+    setLedger((current) => {
+      const reconciled = reconcileUnits([], current.value, plumeTuning.releaseUnit,
+        performance.now(), plumeTuning.holdMs, current.nextId)
+      return { ...current, units: reconciled.units, nextId: reconciled.nextId }
+    })
   }, [])
 
   const noteAnchors = useCallback((anchors: Readonly<Record<string, SourceUvRect>>) => {
     setPaintedAnchors((current) => (current === anchors ? current : anchors))
   }, [])
 
+  // The parked capture lives outside this page's DOM ancestry. Carry the
+  // same type values on every copy rather than relying on inherited styles.
+  const typeStyle: PlumeStyle = {
+    '--plume-font-family': FONT_FAMILIES[tuning.fontFamily],
+    '--plume-type-scale': tuning.typeScale,
+    '--plume-font-weight': tuning.fontWeight,
+    '--plume-line-height': tuning.lineHeight,
+    '--plume-letter-spacing': `${tuning.letterSpacing}em`,
+    '--plume-ink': tuning.inkColor,
+  }
+  const pageStyle: PlumeStyle = {
+    ...typeStyle,
+    '--plume-text-width': `${tuning.textWidth}px`,
+    '--plume-ghost-opacity': tuning.ghostOpacity,
+    '--plume-ghost-blur': `${tuning.ghostBlur}px`,
+    backgroundColor: tuning.backgroundColor,
+  }
   const capture = (
     <PlumeCopy
       value={ledger.value}
-      words={ledger.words}
+      units={ledger.units}
       scrollTop={scrollTop}
       capture
       phaseOf={phaseOf}
+      typeStyle={typeStyle}
     />
   )
-  const held = ledger.words.filter((word) => phaseOf(word) === 'held').length
-
   return (
     <main
       className="plume-page"
+      style={pageStyle}
       data-degraded={!supported || undefined}
       data-reduced={reduced || undefined}
       data-afterglow={effects.afterglow || undefined}
     >
-      <header className="plume-intro">
-        <span className="plume-kicker">live carbon study</span>
-        <h1>Plume</h1>
-        <p>Words hold for one breath, then leave the page.</p>
-      </header>
-
       <section className="plume-work" aria-label="evaporating writing surface">
         <div ref={sheet} className="plume-sheet">
-          <div className="plume-rule" aria-hidden />
+          {/* The retained text sizes the centered field even after its ink
+              fades. The final zero-width glyph preserves a trailing line. */}
+          <div className="plume-measure plume-copy" style={typeStyle} aria-hidden="true">{ledger.value}{'\u200B'}</div>
           <PlumeCopy
             value={ledger.value}
-            words={ledger.words}
+            units={ledger.units}
             scrollTop={scrollTop}
             capture={false}
             phaseOf={phaseOf}
+            typeStyle={typeStyle}
           />
           <textarea
             className="plume-input plume-copy"
+            style={typeStyle}
             value={ledger.value}
             onChange={(event) => changeText(event.target.value)}
             onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
@@ -504,35 +578,12 @@ export function PlumeApp({ chips }: { chips?: React.ReactNode }) {
             spellCheck
             autoCapitalize="sentences"
           />
-          <div className="plume-sheet__meta" aria-hidden>
-            <span>{String(ledger.words.length).padStart(2, '0')} set</span>
-            <span>{String(held).padStart(2, '0')} held</span>
-          </div>
-        </div>
-
-        <div className="plume-actions">
-          <p id="plume-note">
-            The words remain in the native textarea. <kbd>⌘A</kbd> can still find what the page no
-            longer shows.
-          </p>
-          <div>
-            <button type="button" onClick={restore}>Restore text</button>
-            <button type="button" onClick={clear}>Clear</button>
-          </div>
         </div>
       </section>
 
-      <EffectControls effects={effects} onToggle={toggle} />
-
-      <p className="plume-status" role="status">
-        {!supported
-          ? 'HTML-in-canvas is unavailable · using the quiet DOM dissolve'
-          : reduced
-            ? 'Reduced motion · ink dissolves in place'
-            : animating
-              ? 'Ink is in the air'
-              : 'Waiting for the next word'}
-      </p>
+      <PlumeTweaks effects={effects} onToggle={toggle} onRestore={restore} onClear={clear}
+        tuning={tuning} onTuningChange={changeTuning} onReset={reset}
+        supported={supported} reduced={reduced} animating={animating} />
 
       {supported && box && grid ? (
         <>
@@ -555,13 +606,14 @@ export function PlumeApp({ chips }: { chips?: React.ReactNode }) {
                   durationMs={durationMs}
                   reduced={reduced}
                   effects={effects}
+                  tuning={tuning}
                   draft={draft}
                 />
               }
             >
               <PlumeReleaseBridge
-                key={wordIdSignature}
-                ids={wordIds}
+                key={unitIdSignature}
+                ids={unitIds}
                 onAnchors={noteAnchors}
               />
             </Surface.WebGL>
@@ -584,7 +636,6 @@ export function PlumeApp({ chips }: { chips?: React.ReactNode }) {
         </>
       ) : null}
 
-      {chips}
     </main>
   )
 }

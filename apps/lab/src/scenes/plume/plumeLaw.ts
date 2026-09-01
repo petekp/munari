@@ -1,16 +1,18 @@
-// Plume word ledger — stable word identity across ordinary text edits.
+// Plume unit ledger — stable identity for words or characters across edits.
 //
-// The law: exact words that survive an edit keep their release time, while a
-// changed or newly inserted word gets a fresh hold. LCS supplies that identity
+// The law: units that survive an edit keep their release time, while a
+// changed or newly inserted unit gets a fresh hold. LCS supplies that identity
 // without asking the textarea to surrender selection or caret ownership.
 //
 // The failure mode this prevents, 2026-08-30: position-derived keys make one
-// insertion restart every later word; in a 20-word line, inserting at the
+// insertion restart every later unit; in a 20-word line, inserting at the
 // front would restart 19 unrelated timers. Ownership: this module owns text
 // segmentation and time classification only. React owns state and the shader
 // owns motion.
 
-export interface TimedWord {
+export type PlumeReleaseUnit = 'word' | 'character'
+
+export interface TimedUnit {
   readonly id: string
   readonly text: string
   readonly start: number
@@ -18,33 +20,52 @@ export interface TimedWord {
   readonly releaseAt: number
 }
 
-export interface ReconciledWords {
-  readonly words: readonly TimedWord[]
+export interface ReconciledUnits {
+  readonly units: readonly TimedUnit[]
   readonly nextId: number
 }
 
-interface RawWord {
+interface RawUnit {
   readonly text: string
   readonly start: number
   readonly end: number
 }
 
-export type WordPhase = 'held' | 'pluming' | 'gone'
+export type UnitPhase = 'held' | 'pluming' | 'gone'
 
-/** Find every non-whitespace run while retaining offsets into the textarea. */
-export function splitWords(value: string): readonly RawWord[] {
-  const words: RawWord[] = []
-  for (const match of value.matchAll(/\S+/gu)) {
-    const start = match.index
-    words.push({ text: match[0], start, end: start + match[0].length })
-  }
-  return words
+// One clock per grapheme cluster, not per code unit: an emoji with a skin-tone
+// modifier releases as the single mark a reader sees, and a combining accent
+// never leaves its letter behind. Segmenter is absent in older Safari, where
+// code points are the closest available split.
+function graphemes(value: string): readonly string[] {
+  if (!('Segmenter' in Intl)) return Array.from(value)
+  const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+  return [...segmenter.segment(value)].map((segment) => segment.segment)
 }
 
-/** Keep the longest ordered set of exact words through an edit. */
+/** Find every releasable unit while retaining offsets into the textarea. */
+export function splitUnits(value: string, unit: PlumeReleaseUnit): readonly RawUnit[] {
+  const units: RawUnit[] = []
+  if (unit === 'word') {
+    for (const match of value.matchAll(/\S+/gu)) {
+      const start = match.index
+      units.push({ text: match[0], start, end: start + match[0].length })
+    }
+    return units
+  }
+  let start = 0
+  for (const cluster of graphemes(value)) {
+    const end = start + cluster.length
+    if (!/^\s+$/u.test(cluster)) units.push({ text: cluster, start, end })
+    start = end
+  }
+  return units
+}
+
+/** Keep the longest ordered set of exact units through an edit. */
 function retainedPairs(
-  previous: readonly TimedWord[],
-  next: readonly RawWord[],
+  previous: readonly TimedUnit[],
+  next: readonly RawUnit[],
 ): ReadonlyMap<number, number> {
   const width = next.length + 1
   const table = new Uint16Array((previous.length + 1) * width)
@@ -82,58 +103,59 @@ function retainedPairs(
 }
 
 /** Reconcile one textarea value without touching the textarea itself. */
-export function reconcileWords(
-  previous: readonly TimedWord[],
+export function reconcileUnits(
+  previous: readonly TimedUnit[],
   value: string,
+  unit: PlumeReleaseUnit,
   nowMs: number,
   holdMs: number,
   nextId: number,
-): ReconciledWords {
-  const raw = splitWords(value)
+): ReconciledUnits {
+  const raw = splitUnits(value, unit)
   const retained = retainedPairs(previous, raw)
   let id = nextId
-  const words = raw.map((word, index): TimedWord => {
+  const units = raw.map((item, index): TimedUnit => {
     const oldIndex = retained.get(index)
     const old = oldIndex === undefined ? undefined : previous[oldIndex]
     if (old) {
-      return { ...word, id: old.id, releaseAt: old.releaseAt }
+      return { ...item, id: old.id, releaseAt: old.releaseAt }
     }
-    const created: TimedWord = {
-      ...word,
-      id: `plume-word-${id}`,
+    const created: TimedUnit = {
+      ...item,
+      id: `plume-unit-${id}`,
       releaseAt: nowMs + holdMs,
     }
     id++
     return created
   })
-  return { words, nextId: id }
+  return { units, nextId: id }
 }
 
-/** Give every retained word another full hold without changing its identity. */
-export function rearmWords(
-  words: readonly TimedWord[],
+/** Give every retained unit another full hold without changing its identity. */
+export function rearmUnits(
+  units: readonly TimedUnit[],
   nowMs: number,
   holdMs: number,
-): readonly TimedWord[] {
-  return words.map((word) => ({ ...word, releaseAt: nowMs + holdMs }))
+): readonly TimedUnit[] {
+  return units.map((unit) => ({ ...unit, releaseAt: nowMs + holdMs }))
 }
 
-export function wordPhase(word: TimedWord, nowMs: number, durationMs: number): WordPhase {
-  if (nowMs < word.releaseAt) return 'held'
-  if (nowMs < word.releaseAt + durationMs) return 'pluming'
+export function unitPhase(unit: TimedUnit, nowMs: number, durationMs: number): UnitPhase {
+  if (nowMs < unit.releaseAt) return 'held'
+  if (nowMs < unit.releaseAt + durationMs) return 'pluming'
   return 'gone'
 }
 
-/** The next moment React must change a DOM word's phase. */
+/** The next moment React must change a DOM unit's phase. */
 export function nextTimelineBoundary(
-  words: readonly TimedWord[],
+  units: readonly TimedUnit[],
   nowMs: number,
   durationMs: number,
 ): number | null {
   let next = Number.POSITIVE_INFINITY
-  for (const word of words) {
-    if (word.releaseAt > nowMs) next = Math.min(next, word.releaseAt)
-    const goneAt = word.releaseAt + durationMs
+  for (const unit of units) {
+    if (unit.releaseAt > nowMs) next = Math.min(next, unit.releaseAt)
+    const goneAt = unit.releaseAt + durationMs
     if (goneAt > nowMs) next = Math.min(next, goneAt)
   }
   return Number.isFinite(next) ? next : null

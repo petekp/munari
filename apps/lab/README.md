@@ -8,29 +8,106 @@ outside project would; `tests/boundary.test.ts` enforces this. If a
 scene needs something the package doesn't export, add the export;
 don't import package internals.
 
+For a new scene or agent-driven visual change, use the
+[task-to-owner guide](../../docs/agent-workflow.md) and
+[system model](../../docs/system-model.md). Scene settings remain owned here;
+the [proposed control descriptor](../../docs/agent-system-plan.md#p4-scene-control-descriptor-pilot)
+is not an additional runtime API.
+
 Each scene exercises a different part of the library. Three unlisted page
 studies are direct links rather than promoted navigation: `?scene=controls`
 turns one live HTML form into physical hardware, `?scene=plume` lets native
 typed words leave as WebGL ink, and `?scene=marble-hand` replaces the pointer
 with a reflected, shadow-casting classical marble hand.
 
-Marble Hand keeps one visible native HTML page under a pointer-transparent
+Plume places centered serif writing on a plain background, with no paper
+frame or surrounding labels. Tweak Plume opens its closed-by-default panel
+for type, timing, particles, motion, colors, and status. It offers 36 tuning
+values, four effect switches, Restore, Clear, Reset all, and JSON copy.
+Type changes replay the text with fresh paint-matched anchors. Timing and
+spacing changes also replay it; other edits apply live or replay when idle.
+Particle size is independent of particle spacing. Reset keeps the words.
+One shared type rule aligns native
+input, visible ink, capture, and a hidden text measurement; the writing
+block stays centered as its line count changes and still scrolls natively.
+
+Captured letter shapes leave as smoke. Every particle follows a swirling
+flow field that carries it sideways as it rises, so the cloud tears and
+folds instead of drifting in straight lines. Each puff is a soft, noisy
+blob that grows and thins as it travels, lit from the upper left so the
+mass has visible form, and particles pushed away from the viewer fade
+toward the background color. Turbulence, Billow, Shading, and Depth fog
+control the air; Depth sets how far particles travel toward and away from
+the reader.
+
+Particles keep the color of the ink they were captured from, so writing in
+two colors evaporates in two colors. The Tint slider replaces that captured
+color with the Particles swatch and starts at 0.
+
+Release unit chooses what gets its own timer. Word is the default: a whole
+word waits out the hold and then leaves together. Character gives every
+letter its own clock, so a word typed slowly dissolves letter by letter in
+the order it was typed. Character mode splits on what a reader sees as one
+mark, so an accent stays on its letter and an emoji with a skin-tone
+modifier leaves as one piece. The split changes no glyph positions: measured
+drift against the plain text is 0.11px horizontally and 0px vertically.
+
+Updraft, Ghost ink, Sparks, and Draft remain independent effects. Reduced
+motion dissolves ink in place; without HTML-in-canvas the native textarea
+keeps its quiet DOM fallback. `npm run gate:plume` checks particle shape,
+color retention, character release, tuning, replay, input, and fallback.
+
+Marble Hand uses a bold type poster over four full-screen fragment shaders,
+drawn on a second WebGL canvas behind the native text: Waves is domain-warped
+liquid silk, Orbit is a ringed planet with parallax stars and a passing moon,
+Checker is an undulating tile floor running to a foggy horizon, and Prism is
+a kaleidoscope of dispersed glass. The bottom buttons select the whole
+background, not only its colors. The page shows only the headline and theme
+buttons; background controls and reflection notices live inside Tweak hand.
+Theme changes keep the hand's saved settings and the current pause state.
+
+A cloned `<canvas>` is blank, so the page capture the hand reflects cannot
+see that field. The reflection scene draws the same shader itself, on a
+plane behind the captured page, from one clock both renderers read — the
+page canvas publishes each second and the reflection takes that exact value.
+Pause color holds that second in both; reduced motion freezes it at a fixed
+one and draws a single frame. Nothing in the page animates any more, so a
+settled poster costs the capture zero repaints. Without WebGL in the page,
+each theme falls back to a CSS gradient and nothing throws.
+
+It keeps one visible native HTML page under a pointer-transparent
 overlay. Only the hand and its transparent shadow render over the page.
-A source-only Surface captures a hidden, inert mirror of the full catalogue,
+A source-only Surface captures a hidden, inert mirror of the full poster,
 including headings, text, borders and other content. A private cube camera
 uses that full texture for reflections; it never presents the page in WebGL.
 Native colors still drive matching page lights and room bounce, as in Knobs.
 Full-page reflections require HTML-in-canvas. Without it, the native page and
-ordinary WebGL hand remain usable, with an explicit reflection-limit notice.
+ordinary WebGL hand remain usable, with a reflection-limit notice in the
+tweak panel.
 
-The marble-hand page opens with a parked preview and native tweak panel.
-It exposes orientation, size, movement, marble, lighting, and shadows, with
-view presets, reset, and JSON copy. Close the panel to resume pointer motion.
-Its Marble/Chrome switch uses separate finish settings: Chrome is bare,
-low-roughness mirrored metal with no stone veins. Switching back preserves
+The marble-hand page opens in Chrome mode with a parked preview and native
+tweak panel. Reset all restores the user's chrome preset: roughness 0.364
+and reflection strength 2.95.
+It exposes orientation, size, movement, idle tap, marble, lighting, and
+shadows, with view presets, reset, and JSON copy. Close the panel to resume
+pointer motion.
+Its Marble/Chrome switch uses separate finish settings: Chrome is bare
+metal with no stone veins. Switching back preserves
 the saved marble finish. Both modes use the same native page-derived room.
-Reflections has a shared 1–120 fps update limit, with 20 fps as the default.
+Reflections has a shared 1–120 fps update limit, with 120 fps as the default.
 It does not slow hand movement, and unchanged reflections do not update.
+Stroke adds a hand-only screen-space outline, with width, color, opacity,
+and an on/off switch in both finishes. The default is 2 CSS pixels at
+85% opacity. Its width is independent of camera distance and display DPR;
+it does not change the shadow, reflection capture, or pointer hitbox.
+When the pointer rests for 1.2 seconds the hand drums its three curled
+fingers — middle, then ring, then little — and stops on the first move. The
+pointing index fingertip does not move, so it still owns the click. The bend
+happens in the vertex shader and is applied to the visible finish, the cast
+shadow and the outline together. Idle tap sets the wait, the period and the
+depth, and its switch turns the whole thing off; reduced motion and Motion
+rocking off also stop it.
+
 The `?scene=marble-hand&bare` route keeps the original pointer-only study for
 browser gates.
 

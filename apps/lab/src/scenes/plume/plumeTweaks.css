@@ -1,0 +1,376 @@
+/* Plume controls — quiet white and slate, separate from the captured ink.
+ * These selectors stay inside the native panel so a closed panel leaves
+ * the page's typography and particle layout unchanged. */
+
+.plume-tweaks-opener,
+.plume-controls {
+  --plume-control-ink: #28333d;
+  --plume-control-quiet: #65737d;
+  --plume-control-edge: #d0d9de;
+  --plume-control-focus: #667b8d;
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  /* 200: above the scene's own overlay canvases (<=100). Generous on
+   * purpose: a floating nav at 150 once swallowed this panel's left-edge
+   * buttons, navigating the scene away mid-click (2026-08-31). The shell
+   * now frames scenes beside the nav, but the headroom stays. */
+  z-index: 200;
+  color: var(--plume-control-ink);
+  font: 400 13px/1.4 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.plume-tweaks-opener[hidden],
+.plume-controls[hidden] {
+  display: none;
+}
+
+.plume-tweaks-opener {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--plume-control-edge);
+  border-radius: 8px;
+  background: rgba(248, 250, 251, 0.68);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.plume-tweaks-opener:hover {
+  background: #f8fafb;
+}
+
+.plume-tweaks-opener svg,
+.plume-controls-close svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.plume-controls {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 296px;
+  max-height: calc(100dvh - 40px);
+  overflow: hidden;
+  border: 1px solid var(--plume-control-edge);
+  border-radius: 12px;
+  background: #f8fafb;
+  box-shadow: 0 12px 40px rgba(40, 51, 61, 0.09), 0 2px 6px rgba(40, 51, 61, 0.03);
+}
+
+.plume-controls-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 0 6px 0 20px;
+  border-bottom: 1px solid var(--plume-control-edge);
+}
+
+.plume-controls-header h2 {
+  margin: 0;
+  font: 600 14px/1.3 var(--body);
+  letter-spacing: -0.015em;
+}
+
+.plume-controls-close {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--plume-control-quiet);
+  cursor: pointer;
+}
+
+.plume-controls-close:hover {
+  background: #e7ecee;
+  color: var(--plume-control-ink);
+}
+
+.plume-controls-body {
+  min-height: 0;
+  padding: 16px 20px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.plume-controls .plume-effects {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  min-width: 0;
+  margin: 20px 0;
+  padding: 0;
+  border: 0;
+}
+
+.plume-controls .plume-effects legend {
+  margin: 0 0 8px;
+  padding: 0;
+  font: 500 11px/1.3 var(--body);
+  color: var(--plume-control-quiet);
+}
+
+.plume-controls .plume-effect {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  align-items: start;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.plume-controls .plume-effect input {
+  width: 15px;
+  height: 15px;
+  margin: 1px 0 0;
+  accent-color: #596b78;
+  cursor: pointer;
+}
+
+.plume-controls .plume-effect strong,
+.plume-controls .plume-effect small {
+  display: block;
+}
+
+.plume-controls .plume-effect strong {
+  font: 500 12px/1.3 var(--body);
+}
+
+.plume-controls .plume-effect small {
+  margin-top: 3px;
+  color: var(--plume-control-quiet);
+  font: 400 10px/1.45 var(--body);
+}
+
+.plume-controls .plume-actions,
+.plume-settings-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+}
+
+.plume-controls .plume-actions button,
+.plume-settings-actions button {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--plume-control-edge);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--plume-control-ink);
+  cursor: pointer;
+  font: 500 12px/1.4 var(--body);
+}
+
+.plume-controls .plume-actions button:hover,
+.plume-settings-actions button:hover {
+  border-color: #a8b5bf;
+  background: #e7ecee;
+}
+
+.plume-controls-help {
+  margin: 12px 0 0;
+  color: var(--plume-control-quiet);
+  font: 400 11px/1.6 var(--body);
+  text-wrap: pretty;
+}
+
+.plume-controls .plume-status {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--plume-control-edge);
+  color: var(--plume-control-quiet);
+  font: 400 11px/1.5 var(--body);
+}
+
+.plume-tweak-group {
+  border-top: 1px solid var(--plume-control-edge);
+}
+
+.plume-tweak-group summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.plume-tweak-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.plume-tweak-group summary svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--plume-control-quiet);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plume-tweak-group[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.plume-tweak-group-body {
+  display: grid;
+  gap: 16px;
+  padding-bottom: 20px;
+}
+
+.plume-tweak-description {
+  margin: 0;
+  color: var(--plume-control-quiet);
+  font: 400 11px/1.5 var(--body);
+}
+
+.plume-tweak-control {
+  display: grid;
+  gap: 7px;
+}
+
+.plume-tweak-control-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plume-tweak-control-heading > label {
+  font-size: 11px;
+}
+
+.plume-tweak-value {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.plume-tweak-value input {
+  box-sizing: border-box;
+  width: 62px;
+  min-height: 30px;
+  padding: 4px 5px;
+  border: 1px solid var(--plume-control-edge);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--plume-control-ink);
+  font: 400 11px/1.3 var(--data);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.plume-tweak-value > span {
+  min-width: 13px;
+  color: var(--plume-control-quiet);
+  font-size: 10px;
+}
+
+.plume-tweak-control > input[type='range'] {
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  accent-color: #596b78;
+  cursor: pointer;
+}
+
+.plume-tweak-select,
+.plume-tweak-color {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+}
+
+.plume-tweak-select select {
+  min-width: 0;
+  max-width: 180px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid var(--plume-control-edge);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--plume-control-ink);
+  font: 400 12px/1.4 var(--body);
+}
+
+.plume-tweak-color .plume-tweak-hex {
+  box-sizing: border-box;
+  width: 72px;
+  height: 32px;
+  margin-left: auto;
+  padding: 4px 5px;
+  border: 1px solid var(--plume-control-edge);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--plume-control-quiet);
+  font: 400 10px/1.4 var(--data);
+  text-align: center;
+}
+
+.plume-tweak-color input[type='color'] {
+  box-sizing: border-box;
+  width: 36px;
+  height: 32px;
+  padding: 3px;
+  border: 1px solid var(--plume-control-edge);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.plume-controls-footer {
+  flex: none;
+  padding: 12px 20px;
+  border-top: 1px solid var(--plume-control-edge);
+}
+
+.plume-controls-feedback {
+  margin: 10px 0 0;
+  color: var(--plume-control-quiet);
+  font: 400 11px/1.4 var(--body);
+}
+
+.plume-tweaks-opener:focus-visible,
+.plume-controls button:focus-visible,
+.plume-controls input:focus-visible,
+.plume-controls select:focus-visible,
+.plume-controls summary:focus-visible {
+  outline: 2px solid var(--plume-control-focus);
+  outline-offset: 3px;
+}
+
+@media (max-width: 600px) {
+  .plume-tweaks-opener {
+    top: max(14px, env(safe-area-inset-top));
+    right: max(14px, env(safe-area-inset-right));
+  }
+
+  .plume-controls {
+    top: auto;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: max(12px, env(safe-area-inset-left));
+    width: auto;
+    max-height: min(72dvh, 540px);
+  }
+}

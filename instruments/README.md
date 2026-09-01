@@ -4,6 +4,13 @@ Browser probes and CI gates. Each section below says what one
 instrument checks and how to run it. The bar for a file here: an npm
 script, a section in this file, and no absolute paths.
 
+Use the [task-to-owner guide](../docs/agent-workflow.md#route-the-task-to-its-owner)
+to choose the smallest decisive check. `package.json` owns available commands;
+`.github/workflows/ci.yml` owns CI membership. Keep GPU runs serial and read
+each result: a successful capability skip leaves that behavior untested.
+The [common evidence envelope](../docs/agent-system-plan.md#evidence) is a
+proposed addition to these probes, not a format they all produce today.
+
 ## idle-zero
 
 CI gate: mounted quiescent Surfaces cost **0 paints/s**.
@@ -545,15 +552,60 @@ of the hand, so the retelling was what got eaten — hover correct, press
 correct, nothing typed. `CanvasPointerGate.tsx` now checks `isRelayed`
 first, and this clause is what would catch that guard being dropped.
 
+## plume
+
+Local gate: `npm run gate:plume`. Opens the real `?scene=plume` route in
+isolated flag-enabled Chrome, then a separate browser without the flag.
+
+Full-cloud framebuffer samples at 0.5, 2, and 4 seconds must contain visible
+particles. The probe then isolates real ink quads with the existing geometry's
+draw range, without changing the shader: sprites must fit within 36px and have
+an aspect ratio no greater than 2.5. Smoke puffs grow as they thin, and 16
+real sprites at 4s top out at 27px, so the cap sits a third above what the
+shader actually produces. The aspect clause is what rejects the former
+22–40× strings; a stretched grain fails it at any diameter.
+RGB must stay within alpha, with one byte of rounding tolerance. The cloud
+must leave no visible pixels once its lifetime ends.
+
+Native text and caret survive evaporation; Restore restamps the same buffer
+and visibly replays it. The closed-by-default panel is the only page control;
+the gate checks focus restoration, all four effects and text actions. It
+also checks plain backgrounds, viewport centering on desktop and 390px
+mobile, equal typography across all text copies, intrinsic height changes,
+and native scrolling with a stable caret. The 36 tuning values are checked
+against the native fields and renderer: type edits need fresh painted keys,
+spacing must not change sprite size, and pointer response must change the
+measured drift.
+
+Two clauses cover the 2026-08-31 smoke rework. Color retention writes text in
+a purple ink against an orange particle swatch, then measures the hue of the
+flying particles: at Tint 0 it must sit within 20 degrees of the ink and more
+than 60 degrees from the swatch, and at Tint 1 within 20 degrees of the
+swatch. Neither the page background nor the swatch can supply the measured
+hue, so a shader that ignored the captured color would fail. Character
+release then switches the release unit to characters and types with a 40ms
+delay: every non-whitespace grapheme must get its own anchor, at least half
+must hold distinct clocks, and those clocks must span at least the typing
+time minus the hold. The same run repeats the puff-shape and same-buffer
+Restore clauses in character mode and times a getBoundingClientRect pass over
+every anchor. Copy keeps fractional values and milliseconds; Reset keeps
+the text. Maximum stagger must still end within a 600ms lifetime and a
+150ms reduced-motion fade. Reduced motion and the no-flag DOM dissolve
+remain covered. `PLUME_ARTIFACT_DIR` saves the page
+and transparent particle images. The usual capability skip policy and
+`STRICT_CAPABILITY=1` apply.
+
 ## marble-hand
 
 Local gate: the anatomical cursor keeps its real index vertex on the
 browser hotspot. Run `npm run gate:marble-hand`.
 
-The gate opens the real `?scene=marble-hand&bare` route in its own Vite
+The gate opens the real `?scene=marble-hand` route in its own Vite
 server and Chrome with HTML-in-canvas enabled. It requires one visible native
 sheet plus one hidden inert capture, no main-scene page presenter, a clear
-canvas, direct native click/focus, and real text selection. While STL is held, the
+canvas, direct native click/focus, and real H1 text selection. It verifies
+that the removed header, descriptions, page status, notice and footer are
+absent from both native and captured content. While STL is held, the
 page and OS pointer must remain usable. Trusted moves then require a
 projected tip within 1 CSS px, a wrist that trails down/right, and stone
 above the page. Press heights come from `marbleHandTuning.ts`, not the
@@ -562,14 +614,17 @@ rendered hand. The native page hides its cursor only while the hand is ready.
 It reads the existing `window.__r3f`, named sculpture, and native DOM;
 it adds no scene probe fields. The standard Chrome/capability skip policy and
 `STRICT_CAPABILITY=1` apply. A separate no-flag browser checks native input
-and the explicit full-reflection-unavailable notice.
+and the full-reflection-unavailable notice inside the tweak panel. The
+panel's background pause control must also work before the hand loads.
 
 A second page opens the normal route and tests its native tweak panel:
 parked preview, live degree inputs, scale, material and lighting updates,
 typed-value precision, copied JSON, reset, hold-press, and close/reopen.
-Editing the panel must leave the preview still and add no specimen contacts.
-With page lights disabled, a native swatch recolor must update the PMREM
-source signature and change opaque hand pixels in the overlay framebuffer.
+Editing the panel must leave the preview still and add no theme-button clicks.
+Click accounting is owned by the probe; the page has no contact counter.
+With page lights disabled, recoloring the native H1's ink must update the
+PMREM source signature and change opaque hand pixels in the overlay
+framebuffer.
 This isolates the reflection term from the page's direct colored light.
 The decisive full-page clause hides only the native H1: its actual captured
 ink must disappear, the capture must advance, and opaque hand pixels must
@@ -578,6 +633,45 @@ The finish switch must install a vein-free metallic Chrome material without
 replacing the hand or its pose. Its pixels must change, while a return to
 Marble restores the edited stone settings. Copy and reset also preserve the
 selected material mode correctly.
+Mirror reflection must change opaque hand pixels from zero to nonzero
+strength without rebuilding an unchanged reflection map. This checks the
+scene-level intensity used by Three for inherited environments, not only
+the material property. Switching back restores Marble's reflection strength.
+The idle tap gets its own section, and it is the one place the gate reads the
+overlay's pixels twice with nothing touched in between. After 1.2 seconds of
+rest the drum must start, at least two of three frames a third of a period
+apart must differ, and at least 300 overlay pixels must move across the cycle
+while the projected index fingertip stays within 0.5 CSS px. A 40 px pointer
+move must flatten all three bends within 250 ms, after which repeated moves to
+one point hold the pose still and the overlay must stop changing. Reduced
+motion and the panel's Idle tapping switch must each leave the fingers flat.
+Pose, height and every projected vertex stay correct when the vertex patch is
+missing, so only the pixel clause can see that failure.
+
+Stroke checks compare the actual hand and outline at two heights and DPR 1/2.
+The body must grow while a 6px outline keeps its CSS-pixel width. Width,
+color, opacity, toggle, material switch, copy and reset are also checked.
+Reflection pixel checks disable the stroke so it cannot supply false evidence.
+The moving poster is a second WebGL canvas inside the page, so the checks
+are about two renderers agreeing rather than about CSS animations. The
+canvas must exist in the native sheet with a live context (never the CSS
+gradient fallback), and the capture must hold exactly one blank clone of it.
+While running, the field's frame counter and a pixel hash read back from a
+freshly drawn frame must both advance, the reflection must keep baking, and
+the page must not reclone itself per frame. The environment's copy of the
+field must sit within 1ms of the page canvas's published second — it
+measures 0.00ms, because both read the same number. Pause color must stop
+the frame counter, hold the second, bake once and stop, hold that second
+against a full wall second, then resume from it rather than from wall time.
+Reduced motion must draw one still at a fixed second and hold it in both
+renderers. Theme changes must move the page canvas and the reflected plane
+to the same shader together. Mouse and keyboard input must activate the
+actual theme buttons. Each theme pair must change the captured page and
+opaque hand pixels without changing the hand's mesh, geometry, or pose.
+The H1 optical check selects and pauses Waves, so unrelated motion cannot
+fake a reflection change. The 390px layout must retain the heading and theme
+controls in view. Pause checks open the tweak panel and use its real
+background control.
 
 ## chrome-over-canvas
 

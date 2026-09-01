@@ -38,6 +38,7 @@
     "gate:gallery-pointer": "node instruments/gallery-pointer/run.mjs",
     "gate:crystal-pointer": "node instruments/crystal-pointer/run.mjs",
     "gate:marble-hand": "node instruments/marble-hand/run.mjs",
+    "gate:plume": "node instruments/plume/run.mjs",
     "dev": "npm run dev -w @munari/lab",
     "lab": "node apps/lab/tools/runLab.mjs",
     "deploy:demo": "npm run build -w @munari/lab && VERCEL_ORG_ID=team_d8NmNbma8pPIVCBkDXUnfpMa VERCEL_PROJECT_ID=prj_pe759NtaVMScHyupOSFSJ41NQiz7 vercel deploy --prod --yes --cwd apps/lab/dist"
