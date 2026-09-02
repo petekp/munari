@@ -140,8 +140,13 @@ try {
   await page.evaluateOnNewDocument(INSTALL)
 
   // probe=still pauses the conductor: this gate wants every material
-  // built, not a choreography running under it.
-  await page.goto(`http://localhost:${port}/?scene=logo&probe=still`, { waitUntil: 'load' })
+  // built, not a choreography running under it. `framed` keeps the nav
+  // shell from wrapping the scene in an iframe this page handle cannot
+  // see into; the scene's own panel (the data-renderer buttons this
+  // gate clicks) still renders.
+  await page.goto(`http://localhost:${port}/?scene=logo&probe=still&framed`, {
+    waitUntil: 'load',
+  })
   await page.waitForFunction(
     () => document.querySelector('.logo-word') && document.fonts.status === 'loaded',
     { timeout: 15_000 },
