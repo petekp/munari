@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 — Unreleased
+## 0.3.0 — 2026-09-01
 
 - Breaking: replace `SurfaceApp`, the markup-string `Surface`, `useLift`,
   `LiftDriver`, and `commitRendererReleaseFrame` with one `<Surface>` that
