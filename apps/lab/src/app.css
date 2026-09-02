@@ -142,32 +142,10 @@ body,
   color: var(--ink-mute);
 }
 
-/* ── the masthead ── lives on the nav console (components/SceneNav.tsx) ──
- *
- * The wordmark. A didone wants its optical size told the truth — `opsz` is
- * what swaps the display cut's hairlines in for the text cut's sturdier
- * ones — and it wants far less negative tracking than a grotesque: the
- * contrast IS the texture, and closing the counters up kills it. */
-.masthead {
-  margin: 0;
-  font-family: var(--display);
-  font-size: 33px;
-  font-weight: 700;
-  font-variation-settings: 'opsz' 72;
-  letter-spacing: -0.012em;
-  line-height: 1;
-  text-transform: lowercase;
-}
-
-/* The lit variant, not the printed swatch: the mark sits on the console's
- * black, where the printed red reads as switched off. */
-.masthead em {
-  font-style: normal;
-  color: var(--signal-lit);
-}
-
-/* The rest of the nav console lives in components/SceneNav.tsx, styled in
- * the tuning panel's Tailwind idiom rather than here. */
+/* The masthead is the official wordmark (components/MunariLogo.tsx),
+ * mounted on the nav console. The rest of the nav console lives in
+ * components/SceneNav.tsx, styled in the tuning panel's Tailwind idiom
+ * rather than here. */
 
 /* ── capability lamps ── the one place `--live` and `--fault` both appear ─ */
 

@@ -1,0 +1,17 @@
+/* The official wordmark's own frame. The letters, slots, float and
+ * canvas rules come from logo.css (the classes are shared with the
+ * playground); this file only sizes the word for use as furniture.
+ * The candy palette was tuned on --screen ink and drowns on light
+ * grounds — the host provides the dark surface (the nav already is
+ * one). */
+
+.munari-logo {
+  display: inline-block;
+}
+
+/* .logo-word declares --logo-base on itself, so a host override has to
+ * land here, not on an ancestor: the word reads --wordmark-base from
+ * the host and falls back to a display size. */
+.munari-logo .logo-word {
+  --logo-base: var(--wordmark-base, clamp(32px, 4.5vw, 64px));
+}

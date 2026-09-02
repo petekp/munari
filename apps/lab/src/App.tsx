@@ -32,6 +32,7 @@ import { PlumeApp } from './scenes/plume/Plume'
 import { GravityApp } from './scenes/gravity/Gravity'
 import { LampApp } from './scenes/lamp/Lamp'
 import { RainApp } from './scenes/rain/Rain'
+import { WordmarkApp } from './scenes/wordmark/Wordmark'
 import { SurfaceProviderProbe } from './lib/surfaceProvider'
 import { SceneNav } from './components/SceneNav'
 import { SceneBoundary } from './components/SceneBoundary'
@@ -65,6 +66,7 @@ type SceneId =
   | 'gravity'
   | 'lamp'
   | 'rain'
+  | 'wordmark'
 const SCENES = [
   'workspace',
   'glass',
@@ -88,6 +90,7 @@ const SCENES = [
   'gravity',
   'lamp',
   'rain',
+  'wordmark',
 ] as const
 
 // The nav shows only the advertised scenes; the rest stay routable by URL so
@@ -168,6 +171,9 @@ function pageSceneFor(scene: SceneId) {
       return <MarbleHandApp />
     case 'plume':
       return <PlumeApp />
+    // Private dial-in bench for the official mark: URL-only, never in the nav.
+    case 'wordmark':
+      return <WordmarkApp />
 
     case 'candidates':
       return <CandidatesApp />

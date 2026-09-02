@@ -13,6 +13,8 @@
 // `active` is a plain string rather than one of `scenes`: unlisted scenes
 // are still routable by URL, and the nav simply shows no lit row then.
 
+import { MunariLogo } from './MunariLogo'
+
 const GITHUB_SCENES = 'https://github.com/petekp/munari/tree/main/apps/lab/src/scenes'
 
 // One line per row, written for a visitor who has not opened the scene
@@ -50,9 +52,13 @@ export function SceneNav<T extends string>({ scenes, active, onSelect, footer }:
     // get the scene full-bleed and keep the roster reachable by URL.
     <nav className="hidden h-full w-[280px] flex-none flex-col bg-[#17170f] text-[#f4f2e7] md:flex">
       <header className="px-5 pb-5 pt-6">
-        <h1 className="masthead">
-          mun<em>ari</em>
-        </h1>
+        {/* The wordmark's letters are six positioned spans a screen
+            reader would spell out, so the heading is a plain sr-only
+            twin. */}
+        <h1 className="sr-only">munari</h1>
+        <div aria-hidden className="[--wordmark-base:28px]">
+          <MunariLogo />
+        </div>
         <p className="lbl mt-2 !text-[#f4f2e7]/45">html-in-canvas demos</p>
       </header>
       <ul className="m-0 min-h-0 flex-1 list-none overflow-y-auto p-0">
