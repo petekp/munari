@@ -13,7 +13,7 @@ Layers, in the order they build on each other:
 |---|---|---|
 | mapping | coordinate hold — the pixel-calibrated camera, UV anchoring | `camera`, `parkingCoincidence`, `densityIdentity`, `pixelGrid`, `domRect`, `surfaceAnchors`, `uvSampling` |
 | paint | DOM → texture, and what a paint costs | `lodTier`, `htmlInCanvas`, `paintStats`, `styleChannel`, `filterPolicy`, `capabilityProbe` |
-| pointer | provenance and the pointer protocol | `forwardEvents`, `relayDuplication`, `relayTripwire`, `relaySynthetic` |
+| pointer | provenance and the pointer protocol | `forwardEvents`, `relayDuplication`, `relayTripwire`, `relaySynthetic`, `pointerRoute`, `surfacePose`, `routeParity` |
 | transfer | the handoff between page and mesh | `crossing`, `presentation`, `pointer`, `motionCarrier`, `choreography`, `surfaceIdentity`, `surfaceReadiness` |
 | chrome | measuring what the DOM won't hand over in pixels | `surfaceChrome` |
 | physics | physical controls | `physics1D` |
@@ -30,6 +30,7 @@ search by module name will miss them:
 | `pointer/relayDuplication` | `pointer/relay.ts` — one door, one dispatch |
 | `pointer/relayTripwire` | `pointer/relay.ts` — a source scan, not a behavior test |
 | `pointer/relaySynthetic` | `pointer/relay.ts` — `isRelayedEvent` through React's wrapper |
+| `pointer/routeParity` | `pointer/nativeRoute.ts` + `pointer/forwardEvents.ts` — either route, one observable story (decisions.md #39) |
 | `transfer/choreography` | `transfer/crossing.ts` — `crossingRange`, `crossingCurve` |
 | `transfer/pointer` | `transfer/crossing.ts` — `crossingPointer`, input follows the eye (decisions.md #33) |
 

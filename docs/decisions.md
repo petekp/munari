@@ -2111,3 +2111,138 @@ savings. Each pilot must measure correct task outcomes and work cost against
 the corrected manual workflow. A smaller result with equal correctness is
 preferred. Remove a pilot that adds state, idle work or required reading without
 an observed benefit, following #37.
+
+## #39 — The pointer has two routes, and one law picks between them (2026-09-02, core + react binding)
+
+**Decision.** A Surface whose canvas hears the pointer (#33) has TWO
+routes into its parked content, and `routeFor` — pure, in
+`packages/core/src/pointer/pointerRoute.ts` — decides which one owns
+input at any instant. The *relay* synthesizes the whole interaction and
+serves every pose. The *native route* lifts the parked capture canvas
+above the renderer canvas, puts the presented pose on the canvas itself
+as a CSS `matrix3d`, and lets Chrome hit-test the real child through it.
+The verdict is a function of one request and five observed booleans and
+nothing else; routes consult it and never negotiate with each other. A
+change of verdict is a handoff with named duties, in a fixed order.
+
+The native route is opt-in per presenter: `<Surface.WebGL
+pointerRoute="auto">`. The default stays `"relay"`.
+
+**Why a second route at all.** A synthetic dispatch cannot produce a
+trusted event, and four things follow only from trusted events: caret
+placement, drag selection, the browser's own `:focus-visible` verdict,
+and any consumer that checks `isTrusted`. Real `:hover` is a fifth, and
+it is better than a twin because it self-paints into the capture with no
+relay code at all (measured 2026-09-02: the hover state change alone
+took the source from 2 paints to 4). None of that is reachable by
+improving the relay; it is a property of who dispatched.
+
+**Why one pose, not two.** The `matrix3d` string the browser hit-tests
+through and the point the relay walks to come from one function,
+`surfacePose`. A projection computed twice is a projection that drifts:
+the copies agree in the case the author tried and part company under a
+mirrored source, a non-square viewport, or a scrolled page, and the
+symptom is a click a few pixels off with no error anywhere. The chain is
+three's own (`viewport · P · V · M · pixelToLocal`, three.js PR #31233),
+which predicts Chrome's own transformed rects to 0.01px, with the
+browser's hit region agreeing with GL rasterization to ≤1.25px (median
+0.75px), unchanged at dpr 2 (measured 2026-09-02, Chrome 151).
+
+**The fault the single verdict prevents.** #33 was written because one
+press was heard by two live copies and the visible copy was not the one
+that changed (3/3 clicks to the hidden copy through a whole 450ms
+dwell). Two routes into ONE copy is the same fault at a smaller scale
+and it is harder to see: the press lands on the right element twice, so
+a counter counts two, a toggle returns to where it started, and a form
+submits twice — all of which read as consumer bugs. Making the route a
+single derived value rather than two enable flags that happen to
+disagree is what makes that state unrepresentable, and
+`pointerRouteDuties` is where "exactly one owner" is checkable rather
+than asserted.
+
+**The rig, and its three hard rules** (all measured 2026-09-02, Chrome
+151; platform.md #20–#21). Invisibility is `visibility: hidden` on the
+canvas with `visibility: visible` on the child, NEVER `opacity` — a
+static `opacity: 0` root bakes blank into the paint record and the
+capture reads `[0,0,0,0]`, while the visibility rig keeps paints firing
+and the capture fully alive. The pose goes on the CANVAS, never the
+child: a transform restyle on the drawn child costs one paint per
+restyle — a paint every frame of a flight — while transform restyles on
+the canvas are paint-free after the first, and the capture never sees
+them. And hit-testing is CLIPPED to the canvas's box — the TRANSFORMED
+box, so a canvas wearing the full pose is hit-testable on exactly the
+projected quad (0.25px agreement at a perspective edge) and nowhere
+else, with the CSS box, and therefore the replay density (platform.md
+#8), never changing size.
+
+**Coverage is not a condition, and tilts ride.** An earlier draft of
+this route kept the pose on the child and moved a content-sized canvas
+box under the projected quad, which made "does the box cover the quad"
+a per-frame judgement — and under a pixel-calibrated perspective camera
+it refused every tilt, because a rotation swings one edge toward the
+eye and magnifies it (a 40° tilt of a 320×200 panel projects 215.5px
+tall; the number is pinned in the surfacePose contract). The
+canvas-wears-pose rig removed the judgement: the clip follows the worn
+transform, so coverage is exact by construction for every planar pose.
+A grown box was rejected because the replay ratio is the backing/CSS
+ratio (platform.md #8) — a box wider than the content rasterizes the
+content into a corner of its own texture — and a second hit-only canvas
+holding a copy of the content was rejected outright: two live copies is
+#33's own fault, restored.
+
+**Facing is a condition, computed rather than bet.** three's default
+raycast refuses a back-facing hit under `FrontSide`, and the browser
+knows nothing of material sides — so without a facing law the same
+Surface turned past 90° takes clicks natively and refuses them on the
+relay. The pose reports `frontFacing` from the projected quad's winding
+(mirrorU flips the expectation with the map), and a double-sided
+material rides either face. CSS `backface-visibility` on the canvas was
+rejected as the mechanism: whether it governs hit-testing of an
+unpainted canvas child is unmeasured, and the winding is arithmetic
+already in hand.
+
+**The shape.** `surfacePose` (arithmetic, no DOM), `pointerRoute` (the
+verdict, no DOM and no arithmetic), `nativeRoute` (the DOM rig and the
+twins the browser's own events drive), `twins.ts` (the attribute names
+and the chain walk, now shared by both routes rather than owned by the
+relay), and `surfaceNativeRoute.ts` in the binding, which observes and
+applies but decides nothing. Planarity is the one judgement the binding
+makes, because only the binding can see the geometry: this library
+claims it for a plane it built, nobody deformed
+(`deformSurfaceGeometry` stamps its marker on the geometry instance —
+the receipt survives a presenter swap and catches a deform through a
+mesh ref), and no scene raycast reshapes — an authored raycast is a hit
+policy the browser cannot be told to honor. Never a tolerance on the
+vertices: a Surface bent by less than a tolerance is still one whose
+pointer lands in the wrong row (#35's 60px at 44px rows). Two
+presenters of one source share one parked canvas; the first to lift
+holds it until it parks, and the other's native request quietly stays
+on the relay.
+
+**The authoring contract does not move.** Scenes keep writing
+`[data-hover]`/`[data-active]` twins (docs/authoring.md); the native
+route sets those same attributes from the browser's real events, through
+the same module the relay uses. A scene never learns which route it got.
+
+**The contracts.** `tests/conformance/pointer/pointerRoute` (the law,
+enumerated over all 64 condition sets),
+`tests/conformance/pointer/surfacePose` (agreement: at rest `posePoint`
+IS the relay's own `rect.left + u * rect.width`, and the `matrix3d`
+string parsed and applied lands on the same point),
+`tests/conformance/pointer/routeParity` (one behavioural spec run
+against both routes, plus route-scoped contracts for what only the
+native route can express), and `surfaceNativeRoute.test.ts` beside the
+binding module (planarity receipts, duty order, style-write economy).
+
+**Known, accepted, open.** The z-index the rig takes is the tallest
+explicit one between the renderer canvas and the document, plus one;
+page chrome above the renderer canvas with a TALLER z-index than
+anything on that chain keeps its hits inside the projected quad. While
+the rig rides, the library writes no cursor: the relay's mirrored
+cursor on the renderer canvas is cleared at lift, and the cursor is the
+browser's — whether Chrome applies an unpainted canvas child's `cursor`
+property is unmeasured, and the answer is a probe, not a write the rig
+cannot verify. And capability is taken as an input rather than probed:
+nothing here has been exercised in a browser inside the library — the
+evidence is the spikes', on rigs built by hand — so the route stays
+opt-in until an instrument drives the real one.

@@ -16,7 +16,9 @@ I'm continually surprised at what this simple technique can unlock, and I'm ofte
 
 The [Flight demo](https://munari.vercel.app) is a good example. It's an ordinary drag and drop card stack. But what if the cards really behaved like actual paper? Not a lot of options there. You could build your app in WebGL, add a landing loading bar, and have max flexibility. But then you lose all the benefits of the DOM. There are some hacks that might work like [the `<foreignObject>` trick](https://surma.dev/things/dom2texture/), but it's limited and brittle.
 
-Munari is built upon ThreeJS and the experimental [HTML-in-Canvas API in Chrome](https://developer.chrome.com/blog/html-in-canvas-origin-trial). Today, this means it's only visible to an infinitesimally small number of design engineering nerds, like myself, who happen to have this Chrome flag enabled.
+Munari lets a live piece of your page behave like an object in a ThreeJS scene. The element keeps its state and focus while it tilts, bends, or sits at depth among 3D objects, and you can still click it and select its text. At rest the mesh is pixel-identical to the page element it came from. Chrome's [HTML-in-Canvas API](https://developer.chrome.com/blog/html-in-canvas-origin-trial) supplies the raw pixels and ThreeJS draws them; Munari does the work in between: it keeps the texture sharp and current, carries your input to the real element wherever its picture stands, and trades the pixels between page and scene without a flash.
+
+The HTML-in-Canvas API is experimental. Today, this means Munari is only visible to an infinitesimally small number of design engineering nerds, like myself, who happen to have this Chrome flag enabled.
 
 Munari is a bet on the future of web UI. The HTML-in-Canvas API is a big deal. It's like Core Animation for the web. Coveted effects like liquid glass, depth of field, real progressive blur, and other shader-driven effects are all unlocked. Because of this, I believe HTML-in-Canvas will get the momentum it needs to become a standard. When that day arrives, I want Munari to be one of the first things you reach for when building a new UI.
 

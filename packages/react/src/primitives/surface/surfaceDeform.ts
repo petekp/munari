@@ -22,7 +22,13 @@
 // and the bounds reset (three caches boundingSphere on the first
 // raycast and never invalidates it when positions change; a stale
 // sphere rejects rays at a deformation's grown edges before uv routing
-// even runs).
+// even runs). It also stamps `DEFORMED_MARKER`: a scene reaches its
+// geometry by a mesh ref, not always by a custom `geometry` prop
+// (Slider.tsx deforms the default plane this way), so "was this
+// geometry ever deformed" cannot be read off the prop — only off the
+// geometry instance itself, which is what the pointer route law
+// (`pointerRoute.ts`'s `planar` condition) needs to know a matrix3d can
+// no longer express this Surface's pose.
 
 import * as THREE from 'three'
 
@@ -32,6 +38,10 @@ export interface SurfaceDeformPoint {
   y: number
   z?: number
 }
+
+/** `geometry.userData` key stamped `true` by every `deformSurfaceGeometry`
+ *  call, regardless of how the caller reached the geometry. */
+export const DEFORMED_MARKER = 'munariDeformed'
 
 /**
  * Move a Surface geometry's vertices to `place`'s answer, per frame.
@@ -63,4 +73,5 @@ export function deformSurfaceGeometry(
   }
   position.needsUpdate = true
   geometry.boundingSphere = null
+  geometry.userData[DEFORMED_MARKER] = true
 }
