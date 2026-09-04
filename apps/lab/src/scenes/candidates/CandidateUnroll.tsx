@@ -23,7 +23,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceTexture, useSurfaceView } from '@petepetrash/munari'
+import { Surface, useSurfaceChrome, useSurfaceHandle, useSurfaceState, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { curlSample, unrolledLength } from './candidateCurlLaw'
 import { LIGHT, SHEET_FRAG, SHEET_VERT } from './candidateShaders'
@@ -175,7 +175,9 @@ function RollSheet({
 }
 
 export function CandidateUnroll() {
-  const piece = useSurfaceView('unroll-menu')
+  const surface = useSurfaceHandle('unroll-menu')
+  const state = useSurfaceState(surface)
+  const [presenting, setPresenting] = useState(false)
   const anchor = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
   const [chosen, setChosen] = useState<string | null>(null)
@@ -189,7 +191,7 @@ export function CandidateUnroll() {
   // the first frame anyone could SEE, t had already reached ~0.7 and the
   // menu appeared mid-unroll. Closing is ungated: the pixels are already
   // in GL.
-  drive.current.target = open && piece.state.presentedView === 'webgl' ? 1 : 0
+  drive.current.target = open && state.presented === 'canvas' ? 1 : 0
 
   // The menu hangs from the trigger's bottom edge, so the mesh's centre is
   // half a menu below it. Measured on open rather than on mount: the page
@@ -218,8 +220,8 @@ export function CandidateUnroll() {
   // Outside the updater: an updater runs under React's replay rules, and a
   // side effect inside one is allowed to be dropped or doubled.
   useLayoutEffect(() => {
-    if (open) piece.show('webgl')
-  }, [open, piece])
+    if (open) setPresenting(true)
+  }, [open])
 
   const pick = useCallback((item: string) => {
     setChosen(item)
@@ -256,10 +258,9 @@ export function CandidateUnroll() {
         </button>
       </div>
 
-      {(open || piece.mounted) && (
-        <Surface
-          surface={piece.surface}
-          view={piece.view}
+      <Surface
+          surface={surface}
+          renderIn={presenting ? 'canvas' : 'none'}
           timing={{ settleMs: 0, durationMs: 1 }}
           size={[MENU_W, MENU_H]}
           source={menu}
@@ -269,10 +270,10 @@ export function CandidateUnroll() {
               ever on screen while the sheet is in GL. It is parked out of
               flow so an unrolling menu does not push the card around. */}
           <div className="cand-menu-park">
-            <Surface.DOM>{menu}</Surface.DOM>
+            <Surface.DOM />
           </div>
-          {piece.mounted && box && (
-            <Surface.WebGL
+          {box && (
+            <Surface.Mesh
               placement="manual"
               alpha="source"
               frustumCulled={false}
@@ -281,11 +282,10 @@ export function CandidateUnroll() {
               geometry={<planeGeometry ref={geoRef} args={[MENU_W, MENU_H, GRID_X, GRID_Y]} />}
               material={<SheetMaterial opacity={sheetOpacity} />}
             >
-              <RollSheet drive={drive} geoRef={geoRef} opacity={sheetOpacity} onClosed={() => piece.show('dom')} />
-            </Surface.WebGL>
+              <RollSheet drive={drive} geoRef={geoRef} opacity={sheetOpacity} onClosed={() => setPresenting(false)} />
+            </Surface.Mesh>
           )}
         </Surface>
-      )}
     </div>
   )
 }

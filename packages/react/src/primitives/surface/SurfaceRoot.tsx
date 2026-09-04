@@ -21,7 +21,7 @@
 // ledger, the source host, and the protocol tick. It owns no mesh, no
 // material, and no placement.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { trackPointerPlace, type SurfaceChrome, type SurfacePartId } from '@munari/core'
 import {
   useSurfaceController,
@@ -34,6 +34,7 @@ import {
 } from './surfaceHandle'
 import {
   DEFAULT_PART,
+  SurfaceHandleContext,
   SurfaceRootContext,
   nextSurfaceInstanceId,
   type SurfaceRootValue,
@@ -47,7 +48,7 @@ import type { SurfaceResolution, SurfaceSize, SurfaceSourceRuntime } from './sur
 /**
  * Everything true of a Surface however its content arrives.
  *
- * `view`, `timing`, and the callbacks are HERE and nowhere else: one
+ * `renderIn`, `timing`, and the callbacks are HERE and nowhere else: one
  * declaration writes what the Surface is doing, so a handle created above
  * cannot disagree with the root presenting it.
  */
@@ -116,16 +117,15 @@ export function SurfaceRoot({
   source,
   adopt,
   canvas,
-  view,
+  renderIn,
   timing,
   size,
   resolution,
   mirrorU,
   paint,
-  onPresentedViewChange,
+  onPresentationChange,
   onMotionComplete,
   onReady,
-  onWebGLReleased,
   onFocusWithinChange,
   onChrome,
   onError,
@@ -141,20 +141,13 @@ export function SurfaceRoot({
   // The controlled half, written by THIS declaration whether the handle is
   // this root's or one it was handed.
   useSurfaceControls(store, {
-    view,
+    renderIn,
     timing,
-    onPresentedViewChange,
+    onPresentationChange,
     onMotionComplete,
     onReady,
-    onWebGLReleased,
     onError,
   })
-
-  // `view` is what makes this an exclusive handoff. Without it the Surface
-  // is a Twin: the DOM keeps the hold forever and the WebGL side is an
-  // additional presentation of it, never a replacement.
-  const exclusive = view !== undefined
-  useLayoutEffect(() => store.setExclusive(exclusive), [store, exclusive])
 
   // Tracked from the ROOT, not only the presenter: a presenter mounted at
   // press time (flight-only meshes) installs its tracker after the last
@@ -166,6 +159,44 @@ export function SurfaceRoot({
   const contextHost = useSurfaceHostContext()
   const wiring: SurfaceWiring = contextHost ? 'canvas' : 'page'
   const host = useResolvedHost(store, wiring, contextHost, canvas)
+  const exclusive = renderIn === undefined || renderIn === 'page' || renderIn === 'canvas'
+
+  useEffect(() => {
+    host?.invalidate()
+  }, [host, renderIn])
+
+  useEffect(() => {
+    let releaseTick: (() => void) | null = null
+    let releaseRuntime: (() => void) | null = null
+    let timer: number | null = null
+    const validate = () => store.validatePresentation()
+    const afterRuntime = () => {
+      if (!host?.runtime) return
+      releaseRuntime?.()
+      releaseRuntime = null
+      releaseTick = host.registerTick(() => {
+        releaseTick?.()
+        releaseTick = null
+        validate()
+      })
+      host.invalidate()
+    }
+    const afterCommit = () => {
+      if (!host?.mounted()) {
+        validate()
+        return
+      }
+      if (host.runtime) afterRuntime()
+      else releaseRuntime = host.subscribeRuntime(afterRuntime)
+    }
+    if (host?.mounted()) afterCommit()
+    else timer = window.setTimeout(afterCommit, 0)
+    return () => {
+      if (timer !== null) window.clearTimeout(timer)
+      releaseTick?.()
+      releaseRuntime?.()
+    }
+  }, [host, store, renderIn])
 
   // The protocol advances from the renderer's frame, and only while there
   // is something for it to advance — a crossing under way, or a linger
@@ -175,8 +206,7 @@ export function SurfaceRoot({
     let claim: (() => void) | null = null
     const release = host.registerTick((dtMs) => {
       store.tick(dtMs)
-      const state = store.getState()
-      const working = state.isChanging || state.isWebGLMounted
+      const working = store.hasProtocolWork()
       if (working) {
         if (!claim) claim = host.claimWork()
       } else if (claim) {
@@ -233,6 +263,7 @@ export function SurfaceRoot({
       measured,
     ],
   )
+  const handleValue = useMemo(() => ({ handle: store.handle, store }), [store])
 
   // A root carrying its own content IS a part — the single-source case is
   // the one-part case with the name filled in, so anchors, readiness, and
@@ -240,26 +271,28 @@ export function SurfaceRoot({
   const single = source !== undefined || adopt !== undefined
 
   return (
-    <SurfaceRootContext value={root}>
-      {single ? (
-        <SurfaceSourceHost
-          root={root}
-          id={DEFAULT_PART}
-          source={source}
-          adopt={adopt}
-          size={size}
-          resolution={resolution}
-          mirrorU={mirrorU}
-          paint={paint}
-          onFocusWithinChange={onFocusWithinChange}
-          onChrome={onChrome}
-        >
-          {children}
-        </SurfaceSourceHost>
-      ) : (
-        children
-      )}
-    </SurfaceRootContext>
+    <SurfaceHandleContext value={handleValue}>
+      <SurfaceRootContext value={root}>
+        {single ? (
+          <SurfaceSourceHost
+            root={root}
+            id={DEFAULT_PART}
+            source={source}
+            adopt={adopt}
+            size={size}
+            resolution={resolution}
+            mirrorU={mirrorU}
+            paint={paint}
+            onFocusWithinChange={onFocusWithinChange}
+            onChrome={onChrome}
+          >
+            {children}
+          </SurfaceSourceHost>
+        ) : (
+          children
+        )}
+      </SurfaceRootContext>
+    </SurfaceHandleContext>
   )
 }
 

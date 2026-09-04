@@ -62,7 +62,7 @@ export interface FrameSurfaceProps
    * The crossing this mesh participates in, when it is crossing matter and
    * not plain scene furniture. While the page copy is the presented one the
    * mesh declines every ray — input follows the eye (decisions.md #33) —
-   * exactly as `<Surface.WebGL>` does. An authored `raycast` prop wins.
+   * exactly as `<Surface.Mesh>` does. An authored `raycast` prop wins.
    */
   surface?: SurfaceHandle
   children: React.ReactNode

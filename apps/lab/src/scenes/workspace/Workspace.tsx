@@ -219,6 +219,7 @@ function WorkPanel({
       <FocusGroup id={spec.id} order={order} objectRef={group} onStateChange={setFocus}>
         <Surface
           name={`workspace-${spec.id}`}
+          renderIn="canvas"
           source={
             <WorkspacePanelSource
               spec={spec}
@@ -233,8 +234,9 @@ function WorkPanel({
             if (record) record.ready = true
           }}
           >
-          <Surface.WebGL
+          <Surface.Mesh
             name={`workspace-${spec.id}`}
+            placement="manual"
             geometry={<planeGeometry args={[demandProbe ? probeWidth / 200 : W3, H3]} />}
             onDoubleClick={approach}
             castShadow

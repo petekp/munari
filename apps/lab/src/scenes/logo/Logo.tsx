@@ -27,9 +27,10 @@ import {
   useState,
 } from 'react'
 import {
-  type SurfaceView,
-  useSupportsDOMSurfaces,
-  useSurface,
+  Surface,
+  type SurfacePresentation,
+  useSurfaceSupport,
+  useSurfaceHandle,
 } from '@petepetrash/munari'
 import { useCarriedMotion } from '@petepetrash/munari/advanced'
 import {
@@ -146,27 +147,21 @@ export function LogoApp() {
   // pixel-identical even mid-breath. The handle holds the phases, the
   // evidence gate, and the reversal rule; this page states its timing
   // and reads back what it needs to dress the DOM.
-  const supported = useSupportsDOMSurfaces()
-  const [view, setView] = useState<SurfaceView>('dom')
-  const [presented, setPresented] = useState<SurfaceView>('dom')
-  const [settledOn, setSettledOn] = useState<SurfaceView>('dom')
-  // The canvas is mounted from the moment a lift is asked for until the
-  // protocol says the WebGL side may go — which is after the landing
-  // linger, not at the swap, so the teardown never shares the commit
-  // that hands the letters back.
-  const [glMounted, setGlMounted] = useState(false)
+  const supported = useSurfaceSupport()
+  const [view, setView] = useState<SurfacePresentation>('page')
+  const [presented, setPresented] = useState<SurfacePresentation>('page')
+  const [settledOn, setSettledOn] = useState<SurfacePresentation>('page')
   // Identity only. The view, the timing, and the callbacks are stated once,
   // on the `<Surface>` that declares this handle.
-  const surface = useSurface('logo')
+  const surface = useSurfaceHandle('logo')
   const request = useCallback((webgl: boolean) => {
-    if (webgl) setGlMounted(true)
-    setView(webgl ? 'webgl' : 'dom')
+    setView(webgl ? 'canvas' : 'page')
   }, [])
   const inCrossing = view !== presented || view !== settledOn
   // Who shows the letters. The page keeps them until it actually lets
   // go, which is a draw, not a commit — so the phase the word wears is
   // read from the hold rather than from the request.
-  const phase = presented === 'webgl' ? 'gl' : inCrossing ? 'lifting' : 'page'
+  const phase = presented === 'canvas' ? 'gl' : inCrossing ? 'lifting' : 'page'
 
   const rRef = useRef(makeRng(SEED0))
   const [poses, setPoses] = useState<LetterPose[]>(() =>
@@ -279,13 +274,13 @@ export function LogoApp() {
   // sideways step at the swap frame (2026-08-13).
   const wordRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
-  const syncPresented = useCallback((next: SurfaceView) => {
+  const syncPresented = useCallback((next: SurfacePresentation) => {
     // The hold changes inside a renderer frame. React state commits later,
     // which left one frame where the canvas had stopped writing but the page
     // letters were still hidden. Put the two CSS ownership flags on their
     // elements synchronously, then let React record the same state.
-    if (wordRef.current) wordRef.current.dataset.phase = next === 'webgl' ? 'gl' : 'page'
-    if (canvasRef.current) canvasRef.current.dataset.holds = String(next === 'webgl')
+    if (wordRef.current) wordRef.current.dataset.phase = next === 'canvas' ? 'gl' : 'page'
+    if (canvasRef.current) canvasRef.current.dataset.holds = String(next === 'canvas')
     setPresented(next)
   }, [])
   const [metrics, setMetrics] = useState<WordMetrics | null>(null)
@@ -316,13 +311,13 @@ export function LogoApp() {
   // the key dedupe, and it makes the lift's first frame correct
   // without ordering assumptions.
   useLayoutEffect(() => {
-    if (glMounted) measure()
+    if (supported) measure()
   })
   useEffect(() => {
-    if (!glMounted) return
+    if (!supported) return
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
-  }, [glMounted, measure])
+  }, [supported, measure])
 
   const setKnob = (key: keyof LogoKnobs, value: number) =>
     setKnobs((k) => ({ ...k, [key]: value }))
@@ -330,7 +325,8 @@ export function LogoApp() {
   return (
     <div className="logo-page">
       <div className="logo-plate">
-        <div
+        <Surface.DOM surface={surface} className="logo-page-copy">
+          <div
           className="logo-word"
           ref={wordRef}
           // The protocol phase, worn on the DOM: logo.css keys letter
@@ -369,21 +365,21 @@ export function LogoApp() {
               </span>
             </span>
           ))}
-        </div>
+          </div>
+        </Surface.DOM>
       </div>
 
-      {glMounted && metrics && (
+      {supported && metrics && (
         <MatterWord
           poses={poses}
           metrics={metrics}
           knobs={knobsRef}
           surface={surface}
-          view={view}
+          renderIn={view}
           presented={presented}
           canvasRef={canvasRef}
-          onPresentedViewChange={syncPresented}
+          onPresentationChange={syncPresented}
           onMotionComplete={setSettledOn}
-          onWebGLReleased={() => setGlMounted(false)}
           carried={float.sample}
           solid={knobs.extrude > 0}
         />
@@ -420,12 +416,12 @@ export function LogoApp() {
           <div className="logo-matter">
             <button
               data-renderer="html"
-              data-on={view === 'dom'}
+              data-on={view === 'page'}
               onClick={() => request(false)}
             >
               HTML
             </button>
-            <button data-renderer="gl" data-on={view === 'webgl'} onClick={() => request(true)}>
+            <button data-renderer="gl" data-on={view === 'canvas'} onClick={() => request(true)}>
               WebGL
             </button>
           </div>

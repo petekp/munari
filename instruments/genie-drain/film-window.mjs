@@ -265,7 +265,7 @@ try {
       pageErrors.push(`console: ${message.text()}`)
     }
   })
-  await page.goto(`http://localhost:${port}/?scene=genie`, { waitUntil: 'load' })
+  await page.goto(`http://localhost:${port}/?scene=genie&framed`, { waitUntil: 'load' })
   await page.waitForFunction(
     () => {
       const decoder = document.querySelector('[data-genie-film-role="decoder"]')

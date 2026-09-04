@@ -111,7 +111,7 @@ function stamped(attr: string): Element[] {
 //
 // Each one plays the same gesture through the route that owns it. Nothing
 // below reaches past what the presenter itself does: the relay driver's cursor
-// write is `SurfaceWebGL`'s own line, and the native driver dispatches only
+// write is `SurfaceMesh`'s own line, and the native driver dispatches only
 // events a browser dispatches.
 
 interface RouteDriver {

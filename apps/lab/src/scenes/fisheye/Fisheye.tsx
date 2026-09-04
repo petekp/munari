@@ -33,11 +33,10 @@ import {
   deformSurfaceGeometry,
   Surface,
   SurfaceCanvas,
-  useSurface,
+  useSurfaceHandle,
   useSurfaceInstance,
   useSurfaceState,
   useSurfaceUniforms,
-  type SurfaceView,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { plainAttribute } from '../../lib/geometry'
@@ -157,7 +156,7 @@ export interface FisheyeProbeApi {
     amp: number
     ampTarget: number
     locked: boolean
-    presentedView: string
+    presented: string
   }
   lock(focus: number, amp: number): void
   unlock(): void
@@ -341,9 +340,8 @@ function Queue({
 // ── the page ─────────────────────────────────────────────────────────────
 
 export function FisheyeApp() {
-  const surface = useSurface('fisheye-list')
+  const surface = useSurfaceHandle('fisheye-list')
   const st = useSurfaceState(surface)
-  const [view, setView] = useState<SurfaceView>('dom')
   const [query, setQuery] = useState('')
   const [done, setDone] = useState<ReadonlySet<number>>(new Set())
   const [selected, setSelected] = useState<number | null>(null)
@@ -364,16 +362,6 @@ export function FisheyeApp() {
   // the gate polls between React commits.
   const stRef = useRef(st)
   stRef.current = st
-
-  // The list is matter from the start: request the lift on mount and stay
-  // lifted — this scene has no page phase to return to. Not gated on
-  // `st.ready`: readiness is a statement about registered WebGL presenters,
-  // and the mesh only mounts once the crossing this view change starts has
-  // flipped `isWebGLMounted`. The protocol's own warm-up holds the page
-  // visible until that mesh proves its first draw.
-  useEffect(() => {
-    setView('webgl')
-  }, [])
 
   // The mesh stands where the page copy's layout box is. Measured, not
   // authored: the panel is centered by CSS and the center moves with the
@@ -458,7 +446,7 @@ export function FisheyeApp() {
         amp: drive.current.amp,
         ampTarget: drive.current.ampTarget,
         locked: drive.current.locked,
-        presentedView: stRef.current.presentedView,
+        presented: stRef.current.presented,
       }),
       lock: (focus, amp) => {
         const d = drive.current
@@ -554,7 +542,7 @@ export function FisheyeApp() {
         <div ref={holderRef} className="fisheye-holder">
           <Surface
             surface={surface}
-            view={view}
+            renderIn="canvas"
             timing={{ settleMs: 0, durationMs: 1 }}
             size={[PANEL_W, PANEL_H]}
             // The lens shows rows at up to amplitude× their CSS size; the
@@ -582,9 +570,10 @@ export function FisheyeApp() {
         }}
       >
         <PixelPerfect />
-        {st.isWebGLMounted && pos && (
+        {pos && (
+          <Surface.Scene surface={surface}>
           <group position={[pos.wx, pos.wy, 0]}>
-            <Surface.WebGL
+            <Surface.Mesh
               surface={surface}
               placement="manual"
               alpha="source"
@@ -595,8 +584,9 @@ export function FisheyeApp() {
               material={<LensMaterial />}
             >
               <WarpDrive drive={drive} geoRef={geoRef} onRest={() => setLensLive(false)} />
-            </Surface.WebGL>
+            </Surface.Mesh>
           </group>
+          </Surface.Scene>
         )}
       </SurfaceCanvas>
 

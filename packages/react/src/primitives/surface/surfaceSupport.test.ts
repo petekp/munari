@@ -20,7 +20,7 @@ import { flushSync } from 'react-dom'
 import { hydrateRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { detectHtmlInCanvas } from '@munari/core'
-import { supportsDOMSurfaces, useSupportsDOMSurfaces } from './supportsDOMSurfaces'
+import { supportsSurfaces, useSurfaceSupport } from './surfaceSupport'
 
 const containers: HTMLElement[] = []
 
@@ -46,7 +46,7 @@ function hydrate() {
   containers.push(container)
   const seen: string[] = []
   const Probe = () => {
-    const answer = useSupportsDOMSurfaces() ? 'yes' : 'no'
+    const answer = useSurfaceSupport() ? 'yes' : 'no'
     seen.push(answer)
     return createElement('p', null, answer)
   }
@@ -57,15 +57,15 @@ function hydrate() {
   return { seen, errors, text: () => container.textContent }
 }
 
-describe('supportsDOMSurfaces', () => {
+describe('supportsSurfaces', () => {
   it('names the one trial entry point a Surface needs, of the two core reports', () => {
-    expect(supportsDOMSurfaces()).toBe(detectHtmlInCanvas().drawElementImage)
+    expect(supportsSurfaces()).toBe(detectHtmlInCanvas().drawElementImage)
     stubTrial()
-    expect(supportsDOMSurfaces()).toBe(true)
+    expect(supportsSurfaces()).toBe(true)
   })
 })
 
-describe('useSupportsDOMSurfaces', () => {
+describe('useSurfaceSupport', () => {
   it('answers no on the first pass in a browser that can present, then yes', () => {
     stubTrial()
     const { seen, errors, text } = hydrate()

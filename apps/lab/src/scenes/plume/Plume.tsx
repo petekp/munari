@@ -26,10 +26,10 @@ import * as THREE from 'three'
 import {
   Surface,
   SurfaceCanvas,
-  useSurface,
+  useSurfaceHandle,
   useSurfaceAnchorRects,
   useSurfaceTexture,
-  useSupportsDOMSurfaces,
+  useSurfaceSupport,
   type SourceUvRect,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
@@ -366,9 +366,9 @@ function PlumeReleaseBridge({
 }
 
 export function PlumeApp() {
-  const supported = useSupportsDOMSurfaces()
+  const supported = useSurfaceSupport()
   const reduced = useReducedMotion()
-  const surface = useSurface('plume-ink')
+  const surface = useSurfaceHandle('plume-ink')
   const sheet = useRef<HTMLDivElement>(null)
   const box = useStageBox(sheet)
   const draft = useRef(new THREE.Vector2())
@@ -589,11 +589,12 @@ export function PlumeApp() {
         <>
           <Surface
             surface={surface}
+            renderIn="canvas"
             size={[box.width, box.height]}
             resolution={Math.min(3.4, Math.max(2, 3600 / box.width))}
             source={capture}
           >
-            <Surface.WebGL
+            <Surface.Mesh
               placement="manual"
               alpha="source"
               pointerEvents="none"
@@ -616,7 +617,7 @@ export function PlumeApp() {
                 ids={unitIds}
                 onAnchors={noteAnchors}
               />
-            </Surface.WebGL>
+            </Surface.Mesh>
           </Surface>
 
           <SurfaceCanvas

@@ -12,13 +12,14 @@
 // solid to input, and whether the page copy was the visible one.
 import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { useFrame } from '@react-three/fiber'
 import {
   Surface,
   SurfaceCanvas,
-  useSurface,
+  useSurfaceHandle,
   useSurfaceInstance,
   useSurfaceState,
-  type SurfaceView,
+  type SurfacePresentation,
 } from '@petepetrash/munari'
 import { detectHtmlInCanvas } from '@munari/core'
 
@@ -28,7 +29,7 @@ const H = 160
 interface ClickRecord {
   instance: string
   t: number
-  state: { presentedView: string; isChanging: boolean }
+  state: { presented: string; isChanging: boolean }
   canvasSolid: boolean | null
   pageVisible: boolean | null
 }
@@ -36,10 +37,9 @@ interface ClickRecord {
 interface EventRecord {
   t: number
   label?: string
-  presentedView?: string
+  presented?: string
   isChanging?: boolean
   ready?: boolean
-  isWebGLMounted?: boolean
 }
 
 const clicks: ClickRecord[] = []
@@ -50,8 +50,9 @@ const probe = {
   ready: false,
   clicks,
   events,
-  state: { presentedView: 'dom', isChanging: false, ready: false },
-  setView: (_: SurfaceView) => {},
+  scene: { active: 0, frames: 0, lastFrameAt: 0 },
+  state: { presented: 'page', isChanging: false, ready: false },
+  setRenderIn: (_: SurfacePresentation) => {},
   mark(label: string) {
     probe.events.push({ t: performance.now(), label })
   },
@@ -106,7 +107,7 @@ function TargetButton() {
           probe.clicks.push({
             instance,
             t: performance.now(),
-            state: { presentedView: probe.state.presentedView, isChanging: probe.state.isChanging },
+            state: { presented: probe.state.presented, isChanging: probe.state.isChanging },
             canvasSolid: probe.canvasSolid(),
             pageVisible: probe.pageVisible(),
           })
@@ -118,19 +119,36 @@ function TargetButton() {
   )
 }
 
+// A custom scene contributes a frame subscription outside its mesh. Its
+// cleanup proves that Surface.Scene retains and releases the entire subtree.
+function TrackedPresenter() {
+  useFrame(() => {
+    probe.scene.frames++
+    probe.scene.lastFrameAt = performance.now()
+  })
+  useEffect(() => {
+    probe.scene.active++
+    return () => {
+      probe.scene.active--
+    }
+  }, [])
+  return <Surface.Mesh placement="match-dom" />
+}
+
 function App() {
-  const surface = useSurface('lifting-pointer')
-  const [view, setView] = useState<SurfaceView>('dom')
+  const surface = useSurfaceHandle('lifting-pointer')
+  const [view, setRenderIn] = useState<SurfacePresentation>(() =>
+    new URLSearchParams(window.location.search).get('initial') === 'canvas' ? 'canvas' : 'page',
+  )
   const st = useSurfaceState(surface)
-  probe.setView = setView
-  probe.state = { presentedView: st.presentedView, isChanging: st.isChanging, ready: st.ready }
+  probe.setRenderIn = setRenderIn
+  probe.state = { presented: st.presented, isChanging: st.isChanging, ready: st.ready }
   useEffect(() => {
     probe.events.push({
       t: performance.now(),
-      presentedView: st.presentedView,
+      presented: st.presented,
       isChanging: st.isChanging,
       ready: st.ready,
-      isWebGLMounted: st.isWebGLMounted,
     })
   }, [st])
   useEffect(() => {
@@ -143,7 +161,7 @@ function App() {
       <div style={{ position: 'fixed', left: 60, top: 60, width: W, height: H }}>
         <Surface
           surface={surface}
-          view={view}
+          renderIn={view}
           // A long settle so the lifting window is wide enough to click into
           // at several offsets. Nothing here animates, so the dwell is pure
           // window: proof lands in the first frames, then ~700ms of lifting.
@@ -151,7 +169,7 @@ function App() {
           size={[W, H]}
           source={content}
         >
-          <Surface.DOM>{content}</Surface.DOM>
+          <Surface.DOM />
         </Surface>
       </div>
       <SurfaceCanvas
@@ -163,7 +181,9 @@ function App() {
         camera={{ fov: 40, position: [0, 0, 10] }}
         onCreated={(s) => s.gl.setClearAlpha(0)}
       >
-        {st.isWebGLMounted && <Surface.WebGL surface={surface} placement="match-dom" />}
+        <Surface.Scene surface={surface}>
+          <TrackedPresenter />
+        </Surface.Scene>
       </SurfaceCanvas>
     </>
   )

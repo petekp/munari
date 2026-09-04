@@ -44,8 +44,7 @@ import * as THREE from 'three'
 import {
   Surface,
   SurfaceCanvas,
-  useSurface,
-  useSurfaceState,
+  useSurfaceHandle,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { showChrome } from '../../bareMode'
@@ -221,11 +220,9 @@ function PixelPerfect() {
 type Slot = 0 | 1
 
 export function GalleryApp() {
-  const surfaceA = useSurface('gallery-a')
-  const surfaceB = useSurface('gallery-b')
+  const surfaceA = useSurfaceHandle('gallery-a')
+  const surfaceB = useSurfaceHandle('gallery-b')
   const handles = useMemo(() => [surfaceA, surfaceB] as const, [surfaceA, surfaceB])
-  const stateA = useSurfaceState(surfaceA)
-  const stateB = useSurfaceState(surfaceB)
 
   /** Which item each handle is holding. */
   const [slots, setSlots] = useState<[number, number]>([0, 1])
@@ -401,8 +398,6 @@ export function GalleryApp() {
     [slots, box],
   )
 
-  const leavingState = origin === 0 ? stateA : stateB
-
   // ── which item a point of the sheet is showing ─────────────────────────
   //
   // The material answers this per fragment. A pointer needs the same answer
@@ -520,14 +515,14 @@ export function GalleryApp() {
 
       <div ref={holderRef} className="gallery-holder">
         {/* The two handles trade roles at the ends. Whichever the
-            compositor is holding is exclusive (`view`) and carries a
+            compositor is holding is exclusive and carries a
             presenter; the other has neither, which makes it a resident
             source — content and a size, composited nowhere, existing to be
-            sampled. Mid-crossing the leaving one goes to `'webgl'` and the
+            sampled. Mid-crossing the leaving one goes to `'canvas'` and the
             arriving one stays resident.
 
-            The handle that is neither goes to no `view` at all rather than
-            back to `'dom'`. `'dom'` is a request for the DOM to take the
+            The handle that is neither requests `'none'` rather than
+            `'page'`. `'page'` is a request for the DOM to take the
             hold, and the store grants it inside a draw while React
             unmounts the holder in a later commit — which showed in the
             refraction scene as the leaving document flashing for exactly
@@ -535,24 +530,21 @@ export function GalleryApp() {
 
             The DOM presenter on the LEAVING handle outlives the landing it
             started from, and that is what covers the start of a lift. The
-            mesh cannot mount in the commit that starts the crossing: it
-            waits on `isWebGLMounted`, which the store only reports after
-            the Surface has rendered with `view: 'webgl'`, one commit later.
-            Unmounting this presenter on `landedAt` alone left that commit
-            with no card and no mesh, and the compositor presented it.
+            mesh stays declared through preparation and return. Unmounting
+            it on `landedAt` alone left a composited frame with no card.
             Screencast of a thumbnail click, 2026-08-24: one to three
             consecutive frames of flat page background starting about 34ms
             after the click, standard deviation over the stage exactly 0
             against a 70 median. A per-frame trace of the DOM cannot see it
             — the rAF sample straddles the commit — so the measurement is
             composited frames. Keeping the presenter mounted through the
-            lift costs nothing: one whose `view` is `'webgl'` is not the one
+            lift costs nothing: one whose request is `'canvas'` is not the one
             being shown. */}
         {([0, 1] as const).map((i) => (
           <Surface
             key={i}
             surface={handles[i]}
-            view={landedAt === i ? 'dom' : lifted && origin === i ? 'webgl' : undefined}
+            renderIn={landedAt === i ? 'page' : lifted && origin === i ? 'canvas' : 'none'}
             timing={{ settleMs: 0, durationMs: 1 }}
             size={[stage.w, stage.h]}
             source={cards[i]}
@@ -577,15 +569,12 @@ export function GalleryApp() {
         }}
       >
         <PixelPerfect />
-        {/* `lifted` and not `isWebGLMounted` alone: without a `view` the
-            Surface is a Twin, and a Twin never releases its WebGL side —
-            `isWebGLMounted` stays true and the mesh would keep drawing over
-            the landed card. Unmounting it here is what hands the sheet back.
-            The store flag stays in the condition so the mesh still waits for
-            the handoff on the way up. */}
-        {lifted && leavingState.isWebGLMounted && (
+        {/* The gallery controls this custom subtree from its interaction
+            state; each declared mesh manages its own presenter lifetime. */}
+        {lifted && (
+          <Surface.Scene surface={handles[origin]}>
           <group position={[stage.wx, stage.wy, 0]}>
-            <Surface.WebGL
+            <Surface.Mesh
               surface={handles[origin]}
               placement="manual"
               alpha="source"
@@ -614,7 +603,7 @@ export function GalleryApp() {
                 so both writes are turned off: `colorWrite` leaves no pixels
                 and `depthWrite` leaves nothing for the sheet's own fragments
                 to be tested against. */}
-            <Surface.WebGL
+            <Surface.Mesh
               surface={handles[1 - origin]}
               placement="manual"
               frustumCulled={false}
@@ -623,6 +612,7 @@ export function GalleryApp() {
               material={<meshBasicMaterial colorWrite={false} depthWrite={false} />}
             />
           </group>
+          </Surface.Scene>
         )}
       </SurfaceCanvas>
 

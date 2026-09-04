@@ -23,7 +23,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceTexture, useSurfaceView } from '@petepetrash/munari'
+import { Surface, useSurfaceChrome, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import {
   LIGHT,
@@ -220,7 +220,8 @@ function WaveDrive({
  * that hears the click be either one without the handler caring.
  */
 export function RippleTarget({ name, content }: { name: string; content: React.ReactNode }) {
-  const piece = useSurfaceView(name)
+  const surface = useSurfaceHandle(name)
+  const [renderIn, setRenderIn] = useState<'page' | 'canvas'>('page')
   const holder = useRef<HTMLDivElement>(null)
   const waves = useRef<RippleWave[]>([])
   const down = useRef<{ x: number; y: number } | null>(null)
@@ -282,9 +283,9 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
         waves.current.shift()
       }
       waves.current.push(wave)
-      piece.show('webgl')
+      setRenderIn('canvas')
     },
-    [piece],
+    [],
   )
 
   // The lift fires on RELEASE, never on the down edge. A press that begins
@@ -331,8 +332,8 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
     <div ref={holder} className="cand-target" onPointerDown={onHolderDown} onPointerUp={onHolderUp}>
       {size ? (
         <Surface
-          surface={piece.surface}
-          view={piece.view}
+          surface={surface}
+          renderIn={renderIn}
           timing={{ settleMs: 0, durationMs: 1 }}
           size={size}
           // Resolution stays 'auto', which seeds at the display's own
@@ -344,9 +345,9 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
           // is point sampling.
           source={content}
         >
-          <Surface.DOM>{content}</Surface.DOM>
-          {piece.mounted && box && (
-            <Surface.WebGL
+          <Surface.DOM />
+          {box && (
+            <Surface.Mesh
               key={runId.current}
               placement="manual"
               alpha="source"
@@ -366,8 +367,8 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
               material={<RippleMaterial waves={waves} />}
             >
               <RippleShadow waves={waves} size={size} />
-              <WaveDrive waves={waves} onDone={() => piece.show('dom')} />
-            </Surface.WebGL>
+              <WaveDrive waves={waves} onDone={() => setRenderIn('page')} />
+            </Surface.Mesh>
           )}
         </Surface>
       ) : (

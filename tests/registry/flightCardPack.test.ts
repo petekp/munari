@@ -56,11 +56,11 @@ describe('the charter names the real scene constants (text weld to the reference
     // The crossing is the altitude, and the landing is exact. Both halves
     // are welded: a driver that lost the floor would never leave the page,
     // and one that lost the zero would never come back to it.
-    expect(scene()).toContain('if (target === \'dom\' || !f) return 0')
+    expect(scene()).toContain('if (target === \'page\' || !f) return 0')
     expect(scene()).toContain('return Math.max(ADMIT, Math.min(1, f.plate.p.z / LIFT_Z))')
     expect(scene()).toContain('progress={surface.progress}')
     // Stated on the root, not on the handle: `<Surface>` owns view,
-    // timing and callbacks, and `useSurface` is identity only.
+    // timing and callbacks, and `useSurfaceHandle` is identity only.
     expect(scene()).toContain('timing={{ settleMs: 0, durationMs: 1 }}')
     expect(scene()).not.toContain('onFirstUpload=')
     // The shadow is scene matter, not a presenter: it cannot warm write-free,

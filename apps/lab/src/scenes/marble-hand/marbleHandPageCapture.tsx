@@ -12,10 +12,10 @@ import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from '
 import { useFrame } from '@react-three/fiber'
 import {
   Surface,
-  useSurface,
+  useSurfaceHandle,
   useSurfacePaintedSize,
   useSurfaceTextureOf,
-  useSupportsDOMSurfaces,
+  useSurfaceSupport,
   type SurfaceHandle,
   type SurfaceSize,
 } from '@petepetrash/munari'
@@ -58,8 +58,8 @@ export function MarbleHandPageCapture({ page, target }: {
   page: RefObject<HTMLElement | null>
   target: MarblePageCaptureState
 }) {
-  const supported = useSupportsDOMSurfaces()
-  const surface = useSurface('marble-hand-native-page')
+  const supported = useSurfaceSupport()
+  const surface = useSurfaceHandle('marble-hand-native-page')
   const [wrapper] = useState(captureWrapper)
   const [size, setSize] = useState<SurfaceSize | null>(null)
   const reportError = useCallback((error: Error) => {
@@ -139,7 +139,7 @@ export function MarbleHandPageCapture({ page, target }: {
 
   if (!supported || !size) return null
   return (
-    <Surface surface={surface} adopt={wrapper} size={size} resolution={1} mirrorU={false} onError={reportError}>
+    <Surface surface={surface} renderIn="none" adopt={wrapper} size={size} resolution={1} mirrorU={false} onError={reportError}>
       <PublishPageCapture surface={surface} target={target} />
     </Surface>
   )

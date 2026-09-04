@@ -211,9 +211,11 @@ function PlateSheet({ plate, index, count }: { plate: Plate; index: number; coun
       <Surface
         adopt={plate.node}
         name={`plate-${plate.feature.id}`}
+        renderIn="canvas"
         size={[plate.width, plate.height]}
       >
-        <Surface.WebGL
+        <Surface.Mesh
+          placement="manual"
           geometry={<planeGeometry args={[w, h]} />}
           material={<PlateMaterial />}
           alpha="source"
@@ -227,9 +229,11 @@ function PlateSheet({ plate, index, count }: { plate: Plate; index: number; coun
       <Surface
         source={<div dangerouslySetInnerHTML={{ __html: labelMarkup(plate) }} />}
         name={`label-${plate.feature.id}`}
+        renderIn="canvas"
         size={[LABEL_W, LABEL_H]}
       >
-        <Surface.WebGL
+        <Surface.Mesh
+          placement="manual"
           geometry={<planeGeometry args={[LABEL_W / PX, LABEL_H / PX]} />}
           material={<PlateMaterial />}
           alpha="source"

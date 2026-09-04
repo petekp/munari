@@ -1,7 +1,7 @@
 // The grain buffer — one captured element, rebuilt as loose quads.
 //
 // A cloud of billboarded quads rather than `THREE.Points`, for a reason
-// that is about this library and not about taste: `Surface.WebGL` presents
+// that is about this library and not about taste: `Surface.Mesh` presents
 // a Surface as a mesh, and there is no seam for presenting one as a point
 // cloud. Quads cost four vertices where a point costs one, and they buy
 // back the two things points would have cost — `gl_PointSize` is capped by

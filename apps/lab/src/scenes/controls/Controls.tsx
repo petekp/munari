@@ -29,11 +29,12 @@ import * as THREE from 'three'
 import {
   Surface,
   SurfaceCanvas,
-  useSupportsDOMSurfaces,
+  useSurfaceSupport,
   useSurfaceAnchorBox,
+  useSurfaceHandle,
+  useSurfaceState,
   useSurfaceTexture,
-  useSurfaceView,
-  type SurfaceView,
+  type SurfacePresentation,
 } from '@petepetrash/munari'
 import {
   CONTROLS_BOARD,
@@ -569,7 +570,7 @@ function ModeControl({
 }: {
   supported: boolean
   wantsMatter: boolean
-  presented: SurfaceView
+  presented: SurfacePresentation
   changing: boolean
   onToggle: () => void
 }) {
@@ -579,7 +580,7 @@ function ModeControl({
       ? wantsMatter
         ? 'giving the pixels depth'
         : 'returning them to the page'
-      : presented === 'webgl'
+      : presented === 'canvas'
         ? 'live WebGL matter'
         : 'ordinary live DOM'
   return (
@@ -589,53 +590,28 @@ function ModeControl({
         {wantsMatter ? 'Return to HTML' : 'Make physical'}
       </button>
       <p>
-        <i data-on={presented === 'webgl' || undefined} />
+        <i data-on={presented === 'canvas' || undefined} />
         {status}
       </p>
     </div>
   )
 }
 
-interface ControlsProtocol {
-  wantsMatter: boolean
-  presented: SurfaceView
-  show: (view: SurfaceView) => void
-}
-
 export function ControlsApp() {
-  const supported = useSupportsDOMSurfaces()
-  const piece = useSurfaceView('controls-board')
+  const supported = useSurfaceSupport()
+  const surface = useSurfaceHandle('controls-board')
+  const state = useSurfaceState(surface)
   const [values, setValues] = useState<ControlValues>(INITIAL_VALUES)
   const [wantsMatter, setWantsMatter] = useState(false)
-  const protocol = useRef<ControlsProtocol>({
-    wantsMatter: false,
-    presented: 'dom',
-    show: piece.show,
-  })
-  useLayoutEffect(() => {
-    protocol.current = {
-      wantsMatter,
-      presented: piece.state.presentedView,
-      show: piece.show,
-    }
-  }, [piece.show, piece.state.presentedView, wantsMatter])
-
-  const onRetracted = useCallback(() => {
-    const current = protocol.current
-    if (!current.wantsMatter && current.presented === 'webgl') current.show('dom')
-  }, [])
 
   const toggleMatter = useCallback(() => {
-    if (!piece.state.supported) return
+    if (!state.supported) return
     if (wantsMatter) {
       setWantsMatter(false)
-      // A reversal before WebGL presents has no physical body to retract.
-      if (piece.state.presentedView === 'dom') piece.show('dom')
     } else {
       setWantsMatter(true)
-      piece.show('webgl')
     }
-  }, [piece, wantsMatter])
+  }, [state.supported, wantsMatter])
 
   const fallbackBoard = <ControlBoard copy="fallback" values={values} setValues={setValues} />
   const sourceBoard = <ControlBoard copy="source" values={values} setValues={setValues} />
@@ -674,8 +650,8 @@ export function ControlsApp() {
           <ModeControl
             supported={supported}
             wantsMatter={wantsMatter}
-            presented={piece.state.presentedView}
-            changing={piece.state.isChanging || (piece.state.presentedView === 'webgl' && !wantsMatter)}
+            presented={state.presented}
+            changing={state.isChanging || (state.presented === 'canvas' && !wantsMatter)}
             onToggle={toggleMatter}
           />
         </aside>
@@ -683,26 +659,24 @@ export function ControlsApp() {
         <div className="controls-board-place">
           {supported ? (
             <Surface
-              surface={piece.surface}
+              surface={surface}
               canvas="controls"
               source={sourceBoard}
-              view={piece.view}
+              renderIn={wantsMatter ? 'canvas' : 'page'}
               timing={{ settleMs: 220, durationMs: 360 }}
             >
               <Surface.DOM>{pageBoard}</Surface.DOM>
-              {piece.mounted && (
-                <Surface.WebGL
+              <Surface.Mesh
                   name="controls-board-surface"
                   alpha="source"
                   pointerEvents="geometry"
                   frustumCulled={false}
                 >
                   <MatterStage
-                    active={wantsMatter && piece.state.presentedView === 'webgl'}
-                    onRetracted={onRetracted}
+                    active={wantsMatter && state.presented === 'canvas'}
+                    onRetracted={() => undefined}
                   />
-                </Surface.WebGL>
-              )}
+                </Surface.Mesh>
             </Surface>
           ) : (
             fallbackBoard

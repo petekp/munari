@@ -34,8 +34,9 @@ export type { SurfacePartProps } from './primitives/surface/SurfacePart'
 export type {
   SurfacePointerEvents,
   SurfaceRadius,
-  SurfaceWebGLProps,
-} from './primitives/surface/SurfaceWebGL'
+  SurfaceMeshProps,
+} from './primitives/surface/SurfaceMesh'
+export type { SurfaceSceneProps } from './primitives/surface/SurfaceScene'
 export type { SurfaceResolution, SurfaceSize } from './primitives/surface/surfaceSourceRuntime'
 
 // ── The handle, and the frames that drive it ─────────────────────────────
@@ -43,7 +44,7 @@ export type { SurfaceResolution, SurfaceSize } from './primitives/surface/surfac
 // a scene asks for a view and reads the progress it scales motion by.
 export {
   createSurface,
-  useSurface,
+  useSurfaceHandle,
   useSurfaceProgress,
   useSurfaceState,
   type SurfaceHandle,
@@ -51,15 +52,9 @@ export {
   type SurfaceState,
   type SurfaceControls,
   type SurfaceTiming,
-  type SurfaceView,
+  type SurfaceDestination,
+  type SurfacePresentation,
 } from './primitives/surface/surfaceHandle'
-// The view a scene asks for, with the mount the protocol releases. This is
-// what a scene reaches for when its content changes hands and changes back;
-// `useSurface` alone is identity, and everything else here is read-only.
-export {
-  useSurfaceView,
-  type SurfaceViewControls,
-} from './primitives/surface/useSurfaceView'
 export { useSurfaceDriver } from './primitives/surface/useSurfaceDriver'
 export type {
   SurfaceDriverFrame,
@@ -125,15 +120,15 @@ export {
 // one — a probe, a HUD, a replay log — needs to be able to name it.
 export type { DomPaintReceipt, PresentationReceipt } from '@munari/core'
 // The capability check every consumer runs before deciding which tree to
-// render. `useSupportsDOMSurfaces` is the one to reach for: it is
+// render. `useSurfaceSupport` is the one to reach for: it is
 // hydration-safe, and the branch it answers is decided above the Surface,
 // where a handle's state is not yet the obvious place to look.
 // `detectHtmlInCanvas` remains for diagnostics — it reports both trial
 // entry points, and a Surface only needs `drawElementImage`.
 export {
-  supportsDOMSurfaces,
-  useSupportsDOMSurfaces,
-} from './primitives/surface/supportsDOMSurfaces'
+  supportsSurfaces,
+  useSurfaceSupport,
+} from './primitives/surface/surfaceSupport'
 export { detectHtmlInCanvas } from '@munari/core'
 
 // ── Focus, and the camera that follows it ────────────────────────────────

@@ -9,6 +9,8 @@ import {
   SurfaceOutwardContent,
   createSurfaceOutwardContentStore,
 } from './surfaceOutwardContent'
+import { SurfaceHandleContext } from './surfaceContext'
+import { createSurface, surfaceStoreOf, useSurfaceState } from './surfaceHandle'
 
 let container: HTMLDivElement
 
@@ -20,6 +22,30 @@ beforeEach(() => {
 afterEach(() => container.remove())
 
 describe('outward source content', () => {
+  it('keeps the source handle context through the outward portal', () => {
+    const handle = createSurface('outward')
+    const store = surfaceStoreOf(handle)
+    let requested = ''
+    const Probe = () => {
+      requested = useSurfaceState().requested
+      return null
+    }
+    const outward = createSurfaceOutwardContentStore()
+    const root = createRoot(container)
+    flushSync(() => {
+      root.render(createElement(SurfaceOutwardContent, { store: outward }))
+      outward.publish(
+        createElement(
+          SurfaceHandleContext,
+          { value: { handle, store } },
+          createElement(Probe),
+        ),
+      )
+    })
+    expect(requested).toBe('page')
+    flushSync(() => root.unmount())
+  })
+
   it('updates props without replacing or blurring the live control', () => {
     const store = createSurfaceOutwardContentStore()
     const root = createRoot(container)

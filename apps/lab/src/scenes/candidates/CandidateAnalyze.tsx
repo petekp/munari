@@ -21,7 +21,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceTexture, useSurfaceView } from '@petepetrash/munari'
+import { Surface, useSurfaceChrome, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { LIGHT, PRISM_FRAG, PRISM_VERT } from './candidateShaders'
 import { useOwnUniforms, worldBoxOf, type WorldBox } from './candidateStage'
@@ -166,7 +166,8 @@ function AnalyzedBlock({
   body: string
   active: boolean
 }) {
-  const piece = useSurfaceView(`analyze-${id}`)
+  const surface = useSurfaceHandle(`analyze-${id}`)
+  const [renderIn, setRenderIn] = useState<'page' | 'canvas'>('page')
   const holder = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<[number, number] | null>(null)
   const [box, setBox] = useState<WorldBox | null>(null)
@@ -188,10 +189,9 @@ function AnalyzedBlock({
     return () => ro.disconnect()
   }, [])
 
-  const { show } = piece
   useEffect(() => {
-    if (active) show('webgl')
-  }, [active, show])
+    if (active) setRenderIn('canvas')
+  }, [active])
 
   const content = (
     <section className="cand-block">
@@ -204,16 +204,16 @@ function AnalyzedBlock({
     <div ref={holder} className="cand-block-holder" data-active={active || undefined}>
       {size ? (
         <Surface
-          surface={piece.surface}
-          view={piece.view}
+          surface={surface}
+          renderIn={renderIn}
           timing={{ settleMs: 0, durationMs: 1 }}
           size={size}
           resolution={2}
           source={content}
         >
-          <Surface.DOM>{content}</Surface.DOM>
-          {piece.mounted && box && (
-            <Surface.WebGL
+          <Surface.DOM />
+          {box && (
+            <Surface.Mesh
               placement="manual"
               alpha="source"
               frustumCulled={false}
@@ -223,7 +223,7 @@ function AnalyzedBlock({
               // is the effect's resolution: 64×40 puts one every ~7px on a
               // 430px block, comfortably inside the wave's period.
               geometry={<planeGeometry args={[size[0], size[1], 64, 40]} />}
-              material={<PrismMaterial on={active} onFaded={() => piece.show('dom')} />}
+              material={<PrismMaterial on={active} onFaded={() => setRenderIn('page')} />}
             />
           )}
         </Surface>

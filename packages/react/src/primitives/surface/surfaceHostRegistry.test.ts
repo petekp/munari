@@ -68,6 +68,19 @@ describe('host identity', () => {
     // A registration that outlives its Canvas is harmless, not a throw.
     expect(() => host.invalidate()).not.toThrow()
   })
+
+  it('announces renderer bootstrap once the mounted host has a runtime', () => {
+    const host = surfaceHost('boot')
+    const mount = mountSurfaceHost(host)
+    const seen: Array<SurfaceHostRuntime | null> = []
+    const release = host.subscribeRuntime(() => seen.push(host.runtime))
+    const live = runtime()
+    host.setRuntime(live)
+    expect(host.mounted()).toBe(true)
+    expect(seen).toEqual([live])
+    release()
+    mount.release()
+  })
 })
 
 describe('registration', () => {

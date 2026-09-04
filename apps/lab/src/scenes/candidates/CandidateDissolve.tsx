@@ -25,12 +25,12 @@
 // The claim to check: the landing is not an animation that ENDS at the
 // figure, it is the figure. Grain home positions are exactly where the DOM put
 // them, so at t = 1 the cloud is bit-identical to the element underneath
-// it and the swap to `view: 'dom'` has nothing to hide.
+// it and the swap to `view: 'page'` has nothing to hide.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceTexture, useSurfaceView } from '@petepetrash/munari'
+import { Surface, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { buildCloud, grainSize, type CloudSpec } from './candidateCloud'
 import { CLOUD_FRAG, CLOUD_VERT } from './candidateShaders'
@@ -155,8 +155,8 @@ export function CandidateDissolve() {
   const [slot, setSlot] = useState<Slot>('left')
   const [flying, setFlying] = useState(false)
   const [edits, setEdits] = useState(0)
-  const origin = useSurfaceView('dissolve-origin')
-  const arrival = useSurfaceView('dissolve-arrival')
+  const origin = useSurfaceHandle('dissolve-origin')
+  const arrival = useSurfaceHandle('dissolve-arrival')
   const phase = usePhase()
   const runId = useRef(0)
   const holders = useRef<Record<Slot, HTMLDivElement | null>>({ left: null, right: null })
@@ -180,18 +180,14 @@ export function CandidateDissolve() {
     phase.current.t = 0
     phase.current.running = true
     setFlying(true)
-    origin.show('webgl')
-    arrival.show('webgl')
-  }, [arrival, flying, origin, phase])
+  }, [flying, phase])
 
   const land = useCallback(() => {
     setSlot((s) => (s === 'left' ? 'right' : 'left'))
     setFlying(false)
     // The destination becomes page DOM; the origin gives its pixels back to
     // a slot that is now empty, which is why its own view goes home too.
-    arrival.show('dom')
-    origin.show('dom')
-  }, [arrival, origin])
+  }, [])
 
   const bump = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -259,8 +255,8 @@ export function CandidateDissolve() {
             >
               {showSurface ? (
                 <Surface
-                  surface={piece.surface}
-                  view={piece.view}
+                  surface={piece}
+                  renderIn={flying ? 'canvas' : 'page'}
                   timing={{ settleMs: 0, durationMs: 1 }}
                   size={[CARD_W, CARD_H]}
                   source={card}
@@ -278,8 +274,8 @@ export function CandidateDissolve() {
                       {card}
                     </div>
                   </Surface.DOM>
-                  {piece.mounted && flying && box && (
-                    <Surface.WebGL
+                  {box && (
+                    <Surface.Mesh
                       key={runId.current}
                       placement="manual"
                       alpha="source"
@@ -301,7 +297,7 @@ export function CandidateDissolve() {
                       {isOrigin && (
                         <PhaseDrive phase={phase} durationMs={dissolveTuning.flightMs} onDone={land} />
                       )}
-                    </Surface.WebGL>
+                    </Surface.Mesh>
                   )}
                 </Surface>
               ) : (

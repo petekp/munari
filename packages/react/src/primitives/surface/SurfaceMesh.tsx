@@ -1,4 +1,4 @@
-// <Surface.WebGL> — one presentation of a source, as scene matter.
+// <Surface.Mesh> — one presentation of a source, as scene matter.
 //
 // The law: a warming presenter DRAWS, it does not hide. Several independent
 // handoffs composite in one Canvas, so the old trick — hide the canvas
@@ -68,6 +68,7 @@ import { createSurfaceRoute, type SurfaceRouteRelayDuties } from './surfaceNativ
 import { useLatest } from '../useLatest'
 import {
   DEFAULT_PART,
+  SurfaceHandleContext,
   SurfaceMaterialContext,
   SurfacePartContext,
   SurfaceRootContext,
@@ -111,7 +112,7 @@ export type SurfacePointerEvents = 'geometry' | 'content' | 'none'
  */
 type SurfacePointerHandler = (event: ThreeEvent<PointerEvent>) => void
 
-export interface SurfaceWebGLProps
+export interface SurfaceMeshProps
   extends Omit<
     ThreeElements['mesh'],
     | 'children'
@@ -146,6 +147,8 @@ export interface SurfaceWebGLProps
   radius?: SurfaceRadius
   /** `'opaque'` is a solid slab; `'source'` honors the capture's alpha. */
   alpha?: 'opaque' | 'source'
+  /** A raycast proxy whose compositor reports the actual presentation draw. */
+  presentation?: 'auto' | 'manual'
   pointerEvents?: SurfacePointerEvents
   /**
    * `'relay'` keeps every pointer event synthetic. `'auto'` lets the browser
@@ -181,20 +184,23 @@ const _surfScale = new THREE.Vector3()
  * Canvas, with the store and part passed as props rather than through a
  * context the two trees do not share.
  */
-export function SurfaceWebGL({ surface, part, ...props }: SurfaceWebGLProps) {
+export function SurfaceMesh({ surface, part, ...props }: SurfaceMeshProps) {
   const root = use(SurfaceRootContext)
   const inheritedPart = use(SurfacePartContext)
   const tunneled = use(SurfaceTunnelContext)
   const store = surface ? surfaceStoreOf(surface) : (root?.store ?? null)
   if (!store) {
     throw new Error(
-      'munari: <Surface.WebGL> found no Surface. Put it inside a <Surface>, or ' +
+      'munari: <Surface.Mesh> found no Surface. Put it inside a <Surface>, or ' +
         'pass the handle it presents as `surface={…}` for separated wiring.',
     )
   }
   const partId = part ?? inheritedPart?.id ?? DEFAULT_PART
   const registerKey = useMemo(() => `webgl-${presenterSeq++}`, [])
   const host = root?.host ?? null
+  const mounted = useSurfaceCanvasPresence(store)
+  const handleValue = useMemo(() => ({ handle: store.handle, store }), [store])
+  useEffect(() => store.declarePresentation('canvas'), [store])
 
   // A page-declared presentation is registered, not rendered. The element
   // is rebuilt on every render so prop changes reach the scene, and the
@@ -203,17 +209,31 @@ export function SurfaceWebGL({ surface, part, ...props }: SurfaceWebGLProps) {
   // handoff it was in the middle of.
   const inward = root !== null && root.wiring === 'page' && !tunneled
   const element = (
-    <SurfaceTunnelContext value>
-      <SurfacePresenter {...props} store={store} partId={partId} tunneled />
-    </SurfaceTunnelContext>
+    <SurfaceHandleContext value={handleValue}>
+      <SurfaceTunnelContext value>
+        <SurfacePresenter {...props} store={store} partId={partId} tunneled />
+      </SurfaceTunnelContext>
+    </SurfaceHandleContext>
   )
   useEffect(() => {
-    if (!inward || !host) return
+    if (!inward || !host || !mounted) return
     return host.registerPresenter({ key: registerKey, element })
   })
 
-  if (inward) return null
-  return <SurfacePresenter {...props} store={store} partId={partId} tunneled={tunneled} />
+  if (inward || !mounted) return null
+  return (
+    <SurfaceHandleContext value={handleValue}>
+      <SurfacePresenter {...props} store={store} partId={partId} tunneled={tunneled} />
+    </SurfaceHandleContext>
+  )
+}
+
+function useSurfaceCanvasPresence(store: SurfaceStore): boolean {
+  return useSyncExternalStore(
+    useMemo(() => store.subscribePresence.bind(store), [store]),
+    useMemo(() => store.canvasMounted.bind(store), [store]),
+    useMemo(() => store.canvasMounted.bind(store), [store]),
+  )
 }
 
 /** A pointer arrival in a Surface's own texture coordinates. */
@@ -222,7 +242,7 @@ interface ArrivalUv {
   v: number
 }
 
-interface PresenterProps extends Omit<SurfaceWebGLProps, 'surface' | 'part'> {
+interface PresenterProps extends Omit<SurfaceMeshProps, 'surface' | 'part'> {
   store: SurfaceStore
   partId: SurfacePartId
   /** True when the host renders this on behalf of a page declaration. */
@@ -259,6 +279,7 @@ function SurfacePresenter({
   resolution = 'auto',
   radius = 'auto',
   alpha = 'opaque',
+  presentation = 'auto',
   pointerEvents = 'geometry',
   pointerRoute = 'relay',
   ref,
@@ -327,6 +348,7 @@ function SurfacePresenter({
       part
         ? {
             ...part,
+            source: undefined,
             setPageRoot: () => {},
             setMeasuredSize: () => {},
           }
@@ -362,11 +384,21 @@ function SurfacePresenter({
   // color-writing draw. Registering here rather than at first draw is what
   // makes a missing part BLOCK a handoff instead of silently shortening the
   // required set.
-  useEffect(() => store.registerPresenter(presenterKey), [store, presenterKey])
+  useEffect(() => {
+    if (presentation === 'manual') return
+    return store.registerPresenter(presenterKey)
+  }, [store, presenterKey, presentation])
   // The part ledger covers what presenter registration cannot: a declared
   // part whose presenter never mounts at all. Naming the part here marks it
   // covered; a part no presenter ever names keeps holding the handoff.
-  useEffect(() => store.registerPartPresenter(partId), [store, partId])
+  useEffect(() => {
+    if (presentation === 'manual') return
+    return store.registerPartPresenter(partId)
+  }, [store, partId, presentation])
+  useEffect(() => {
+    if (presentation !== 'manual') return
+    return store.expectManualPresenter(partId)
+  }, [store, partId, presentation])
 
   // The Canvas this presenter draws in — the pointer gate registers its
   // mesh here, and a deferred presentation waits on this host's frame tail.
@@ -838,6 +870,7 @@ function SurfacePresenter({
     const pass = passRef.current
     passRef.current = null
     if (!pass) return
+    if (presentation === 'manual') return
     if (!runtime?.uploaded()) return
     // The generation on the geometry, which is the one an anchor set has to
     // describe. Read after the draw because that is when it is true.
@@ -859,7 +892,7 @@ function SurfacePresenter({
     }
     if (!passNeedsHostTail(pass)) return
     presenterHost?.deferPresentation(() => store.present(presenterKey, epoch))
-  }, [runtime, store, presenterKey, presenterHost, anchors])
+  }, [runtime, store, presenterKey, presenterHost, anchors, presentation])
 
   // The mask, injected into the default material. Always injected and
   // uniform-driven: radii of zero make it a no-op, so there is one program

@@ -100,7 +100,7 @@ try {
   await page.goto(`http://localhost:${port}/?scene=fisheye&bare`, { waitUntil: 'load' })
   await page.waitForFunction(() => window.__fisheye?.ready === true, { timeout: 20_000 })
   await page.waitForFunction(
-    () => window.__fisheye.state().presentedView === 'webgl',
+    () => window.__fisheye.state().presented === 'canvas',
     { timeout: 20_000 },
   )
 

@@ -37,9 +37,14 @@ try {
   const page = await browser.newPage()
   const errors = []
   page.on('pageerror', (error) => errors.push(String(error)))
+  page.on('console', (message) => {
+    if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) {
+      errors.push(message.text())
+    }
+  })
   await page.setViewport({ width: 1100, height: 800, deviceScaleFactor: 1 })
   await page.goto(
-    `http://localhost:${port}/?scene=genie&probe=genie-film-reorder`,
+    `http://localhost:${port}/?scene=genie&probe=genie-film-reorder&framed`,
     { waitUntil: 'load' },
   )
   await page.waitForFunction(

@@ -370,14 +370,12 @@
 /* ── unroll ──────────────────────────────────────────────────────────── */
 
 /* The page copy is never the visible menu — the mesh is the only menu
- * anyone sees. It has to exist and have a layout box (it is what the
- * relay routes into and what the roll is measured against), so it is
- * parked off-screen rather than hidden.
- *
- * `z-index: -1` was not enough: on the close, the Surface hands its view
- * back to `dom` a few frames before `onWebGLReleased` unmounts it, and
- * for those frames the page copy painted a whole second menu in the
- * top-left corner. Off-screen has no such window. */
+ * anyone sees. It has to stay mounted with a layout box (the relay routes
+ * into it and the roll is measured against it), so it is parked off-screen
+ * rather than hidden. `renderIn="none"` at rest and `renderIn="canvas"`
+ * while open control presentation; keep the source and page copy mounted so
+ * measurement and relay remain valid. Off-screen keeps the native page copy
+ * from painting a second menu while the canvas presentation owns the hold. */
 .cand-menu-park {
   position: fixed;
   left: -10000px;

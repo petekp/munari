@@ -16,9 +16,10 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
-  type SurfaceView,
-  useSupportsDOMSurfaces,
-  useSurface,
+  Surface,
+  type SurfacePresentation,
+  useSurfaceSupport,
+  useSurfaceHandle,
 } from '@petepetrash/munari'
 import { useCarriedMotion } from '@petepetrash/munari/advanced'
 import {
@@ -75,23 +76,21 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
   const knobsRef = useRef(knobs ?? WORDMARK_KNOBS)
   knobsRef.current = knobs ?? WORDMARK_KNOBS
 
-  const supported = useSupportsDOMSurfaces()
-  const [view, setView] = useState<SurfaceView>('dom')
-  const [presented, setPresented] = useState<SurfaceView>('dom')
-  const [settledOn, setSettledOn] = useState<SurfaceView>('dom')
-  const [glMounted, setGlMounted] = useState(false)
-  const surface = useSurface('logo')
+  const supported = useSurfaceSupport()
+  const [view, setView] = useState<SurfacePresentation>('page')
+  const [presented, setPresented] = useState<SurfacePresentation>('page')
+  const [settledOn, setSettledOn] = useState<SurfacePresentation>('page')
+  const surface = useSurfaceHandle('logo')
   // The one behavioral difference from the playground: no renderer
   // switch. The capability answer IS the request — the hook reports
   // false through hydration and flips once, so this fires at most one
   // lift, and a browser without the trial never mounts a canvas.
   useEffect(() => {
     if (!supported) return
-    setGlMounted(true)
-    setView('webgl')
+    setView('canvas')
   }, [supported])
   const inCrossing = view !== presented || view !== settledOn
-  const phase = presented === 'webgl' ? 'gl' : inCrossing ? 'lifting' : 'page'
+  const phase = presented === 'canvas' ? 'gl' : inCrossing ? 'lifting' : 'page'
 
   const rRef = useRef(makeRng(SEED0))
   const [poses, setPoses] = useState<LetterPose[]>(() =>
@@ -186,9 +185,9 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
   // host moves the grid without firing resize.
   const wordRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
-  const syncPresented = useCallback((next: SurfaceView) => {
-    if (wordRef.current) wordRef.current.dataset.phase = next === 'webgl' ? 'gl' : 'page'
-    if (canvasRef.current) canvasRef.current.dataset.holds = String(next === 'webgl')
+  const syncPresented = useCallback((next: SurfacePresentation) => {
+    if (wordRef.current) wordRef.current.dataset.phase = next === 'canvas' ? 'gl' : 'page'
+    if (canvasRef.current) canvasRef.current.dataset.holds = String(next === 'canvas')
     setPresented(next)
   }, [])
   const [metrics, setMetrics] = useState<WordMetrics | null>(null)
@@ -213,10 +212,10 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
     setMetrics({ fontPx, boxes })
   }, [])
   useLayoutEffect(() => {
-    if (glMounted) measure()
+    if (supported) measure()
   })
   useEffect(() => {
-    if (!glMounted) return
+    if (!supported) return
     window.addEventListener('resize', measure)
     // Capture: the host's scroller is usually an inner div, and scroll
     // does not bubble.
@@ -225,16 +224,17 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
       window.removeEventListener('resize', measure)
       window.removeEventListener('scroll', measure, true)
     }
-  }, [glMounted, measure])
+  }, [supported, measure])
 
   return (
     <div className={className ? `munari-logo ${className}` : 'munari-logo'}>
-      <div
-        className="logo-word"
-        ref={wordRef}
-        data-phase={phase}
-        style={{ width: `${GRID.width}em` }}
-      >
+      <Surface.DOM surface={surface} className="munari-logo__page">
+        <div
+          className="logo-word"
+          ref={wordRef}
+          data-phase={phase}
+          style={{ width: `${GRID.width}em` }}
+        >
         {WORD.split('').map((ch, i) => (
           <span
             key={i}
@@ -258,20 +258,20 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
             </span>
           </span>
         ))}
-      </div>
+        </div>
+      </Surface.DOM>
 
-      {glMounted && metrics && (
+      {supported && metrics && (
         <MatterWord
           poses={poses}
           metrics={metrics}
           knobs={knobsRef}
           surface={surface}
-          view={view}
+          renderIn={view}
           presented={presented}
           canvasRef={canvasRef}
-          onPresentedViewChange={syncPresented}
+          onPresentationChange={syncPresented}
           onMotionComplete={setSettledOn}
-          onWebGLReleased={() => setGlMounted(false)}
           carried={float.sample}
           solid={false}
         />

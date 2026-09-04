@@ -2242,7 +2242,84 @@ the rig rides, the library writes no cursor: the relay's mirrored
 cursor on the renderer canvas is cleared at lift, and the cursor is the
 browser's — whether Chrome applies an unpainted canvas child's `cursor`
 property is unmeasured, and the answer is a probe, not a write the rig
-cannot verify. And capability is taken as an input rather than probed:
-nothing here has been exercised in a browser inside the library — the
-evidence is the spikes', on rigs built by hand — so the route stays
-opt-in until an instrument drives the real one.
+cannot verify. And capability is taken as an input rather than probed.
+The library's own rig is driven by `instruments/native-pointer`
+(2026-09-02): trusted clicks land flat and tilted, real `:hover` and
+the twin follow the pointer, a real input takes focus and keystrokes,
+and the park restores every written style. The route stays opt-in
+while the cursor question above is open and no scene has shipped on it.
+
+## #40 — The public Surface contract names intent, hold, and motion separately (2026-09-04, documentation + react binding)
+
+**Status: implemented and locally verified, 2026-09-04.** The public
+Surface API uses `renderIn`, defaulting to `page`, with four explicit request
+values: `page`, `canvas`, `both`, and `none`. `page` and `canvas` require their
+corresponding declared presentations; `both` keeps page and mesh presentations
+visible with page primary for keyboard and accessibility; `none` keeps a
+source available to another material without registering a visible presenter.
+These values describe the request, not a proof that a missing presenter or an
+unsupported capture path will arrive.
+
+The tradeoff is one explicit presentation choice at the declaration boundary
+instead of a binary toggle helper whose omission could mean different things.
+That small request surface covers exclusive handoff, a Twin, and source-only
+capture without making `undefined` carry a hidden relationship between the
+renderers.
+
+`Surface.DOM` renders its part source when no children are provided. The
+captured source and page presentation are separate React instances, so shared
+state belongs above the Surface. `Surface.Mesh` is the public scene presenter
+name. `Surface.Scene` is an always-declared lifecycle boundary under the
+shared `SurfaceCanvas`; it retains one Surface's custom scene subtree through
+preparation, reversal, return and cleanup. The shared host remains mounted
+for the capability and scene lifetime. A Scene cannot retain a caller-owned
+host.
+
+Separated wiring passes the same handle to `<Surface.DOM surface={handle}>`;
+that form requires explicit children and can keep a stable native page copy
+outside the captured source tree. A canvas-only resident has no page handoff
+delay and does not claim a protocol frame loop. It still distinguishes
+presenter readiness from actual presentation evidence. `useSurfaceState()`,
+`useSurfaceProgress()`, and `useSurfaceDriver(step)` read the
+nearest Surface identity, including across page and scene renderer trees.
+
+The default `<Surface.Mesh presentation="auto">` owns its draw evidence. The
+specialist `presentation="manual"` seam retains the mesh proxy and pointer
+relay while delegating final compositor evidence to the advanced
+`surfaceManualPresenter`. A manual presenter must cover every declared part
+and call `present()` only for that part's actual final compositor draw.
+
+`useSurfaceHandle(name?)` replaces `useSurface` as the identity hook for
+separate trees and external observers; `createSurface` remains available. A
+name is a diagnostic label, not a global lookup key. `useSurfaceState(handle?)`
+reports `requested`, `presented`, `ready`, `supported`, and `isChanging` from
+the nearest context or explicit handle. `SurfacePresentation` has the four
+hold values above; `SurfaceDestination` has `page` and `canvas` for motion
+callbacks and driver targets. `onPresentationChange` reports the hold and
+`onMotionComplete` reports the motion endpoint. They are distinct. The public
+API does not add a phase enum that conflates preparation with completion.
+
+`useSurfaceSupport()` is hydration-safe and returns a boolean;
+`supportsSurfaces()` is the imperative capability check. The revision removes
+`useSurfaceView`, `mounted`, `useSurfaceView().mounted`, and
+`onWebGLReleased` from the public contract. This naming choice does not claim
+WebGPU support; current renderer requirements remain documented by the
+implementation and measured platform behavior.
+
+Validation in this checkout: 1,457 tests, all four TypeScript programs,
+`npm run lint`, and the package build passed. Strict-capability Chrome runs
+passed the handoff/input and custom-scene lifetime gate, native pointer and
+controlled-input round trip, idle capture, demand DOM mutation/resize, the
+broad scene interaction sweep, custom shader compilation, the 14-step Knobs
+resize sweep, deformed Fisheye and Slider input, and Genie film-reorder and
+shadow checks. The five-scene
+`gate:degraded` passed without the capture flag. The browser probes use the
+real scene window (`framed`) when they need scene-local state.
+
+Review fixes are pinned at their owners: actual presentation and request
+state stay separate; returning from `none` wakes DOM visibility; residents do
+not run a page handoff or retain frame work for offscreen draws; context reads
+cross the renderer boundary; custom compositors supply their own evidence;
+and stable scene declarations precede deferred R3F contributions. Initial
+canvas requests wait for renderer bootstrap before declaration validation. No release
+or deployment is part of this verification.

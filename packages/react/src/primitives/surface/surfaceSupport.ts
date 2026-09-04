@@ -1,9 +1,8 @@
 // Support — the one question a consumer asks before deciding which tree to
 // render at all.
 //
-// The law: a Surface without the HTML-in-canvas trial keeps its DOM
-// visible and never leaves `presentedView: 'dom'`. Nothing breaks. What
-// does break is a scene that ARMS a gesture on that Surface, because the
+// Without HTML-in-canvas, a declared page presentation stays visible.
+// A scene can still arm a gesture that the canvas cannot finish, because the
 // transition it armed can only be finished by a renderer that will never
 // arrive, and no further input can leave that state.
 //
@@ -33,7 +32,7 @@ import { detectHtmlInCanvas } from '@munari/core'
  * For events, effects and diagnostics. Branching a RENDER on this is a
  * hydration mismatch on any server-rendered page; use the hook.
  */
-export function supportsDOMSurfaces(): boolean {
+export function supportsSurfaces(): boolean {
   return detectHtmlInCanvas().drawElementImage
 }
 
@@ -52,6 +51,6 @@ const unsupported = () => false
  * A capability cannot change under a mounted page, so this never updates
  * more than once.
  */
-export function useSupportsDOMSurfaces(): boolean {
-  return useSyncExternalStore(subscribe, supportsDOMSurfaces, unsupported)
+export function useSurfaceSupport(): boolean {
+  return useSyncExternalStore(subscribe, supportsSurfaces, unsupported)
 }
