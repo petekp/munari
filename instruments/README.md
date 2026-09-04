@@ -642,7 +642,7 @@ overlay's pixels twice with nothing touched in between. After 1.2 seconds of
 rest the drum must start, at least two of three frames a third of a period
 apart must differ, and at least 300 overlay pixels must move across the cycle
 while the projected index fingertip stays within 0.5 CSS px. A 40 px pointer
-move must flatten all three bends within 250 ms, after which repeated moves to
+move must flatten all three bends within 500 ms, after which repeated moves to
 one point hold the pose still and the overlay must stop changing. Reduced
 motion and the panel's Idle tapping switch must each leave the fingers flat.
 Pose, height and every projected vertex stay correct when the vertex patch is
