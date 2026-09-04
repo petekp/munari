@@ -167,7 +167,7 @@
  * Genie.tsx); pointer-events go with them, because a hidden box stops
  * being a hit target and a merely-empty one does not — without this a
  * window in flight would keep swallowing presses aimed at the desk. */
-.gen-slot[data-away='true'] > * {
+.gen-slot[data-away='true'] > .gen-page-presentation {
   visibility: hidden;
 }
 
@@ -200,13 +200,21 @@
     visibility 280ms;
 }
 
-.gen-page[data-degraded] .gen-slot[data-away='true'] > .gen-sheet {
+.gen-page[data-degraded] .gen-slot[data-away='true'] > .gen-page-presentation {
+  /* The page presenter is a structural wrapper. Let the sheet carry the
+   * delayed visibility transition below instead of hiding that wrapper on
+   * the state change. */
+  visibility: visible;
+}
+
+.gen-page[data-degraded] .gen-slot[data-away='true'] .gen-sheet {
   translate: var(--gen-fold-x, 0px) var(--gen-fold-y, 0px);
   /* Not 0. The bay's own mark is 54px across and the smallest window is
    * 236px, so a fold that lands near the bay's size reads as the window
    * becoming the tile rather than vanishing near it. */
   scale: 0.23;
   opacity: 0;
+  visibility: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {

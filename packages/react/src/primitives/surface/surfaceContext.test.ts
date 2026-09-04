@@ -101,8 +101,8 @@ describe('useSurfaceTextureOf', () => {
     expect(probe.reads.at(-1)).toBe(texture)
     // The point of the whole mechanism: nothing presents this Surface, and
     // the readiness ledger is empty, yet its pixels are nameable.
-    expect(store.getState().isWebGLMounted).toBe(false)
-    expect(store.getState().presentedView).toBe('dom')
+    expect(store.canvasMounted()).toBe(false)
+    expect(store.getState().presented).toBe('none')
     probe.unmount()
   })
 

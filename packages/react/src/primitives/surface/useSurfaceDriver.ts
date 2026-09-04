@@ -12,7 +12,7 @@
 
 import { use, useEffect } from 'react'
 import { useLatest } from '../useLatest'
-import { SurfaceRootContext } from './surfaceContext'
+import { SurfaceHandleContext } from './surfaceContext'
 import {
   surfaceStoreOf,
   type SurfaceDriverFrame,
@@ -21,15 +21,15 @@ import {
 } from './surfaceHandle'
 
 /**
- * Drive `surface`'s ramp, or the enclosing `<Surface>`'s when no handle is
- * given. Passing `null` gives the ramp back to the built-in timed motion.
+ * Drive the enclosing Surface's ramp, or pass an explicit handle second.
+ * Passing `null` gives the ramp back to the built-in timed motion.
  */
 export function useSurfaceDriver(
-  surface: SurfaceHandle | null | undefined,
   step: SurfaceDriverStep | null,
+  surface?: SurfaceHandle,
 ): void {
-  const root = use(SurfaceRootContext)
-  const store = surface ? surfaceStoreOf(surface) : (root?.store ?? null)
+  const context = use(SurfaceHandleContext)
+  const store = surface ? surfaceStoreOf(surface) : (context?.store ?? null)
   const stepRef = useLatest(step)
   const driving = step !== null
 

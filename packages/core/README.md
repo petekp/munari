@@ -137,6 +137,32 @@ Munari creates synthetic pointer events for the live DOM. `relay` marks each
 one so page code can separate Munari events from browser events created by the
 user.
 
+## Letting the browser deliver the pointer instead
+
+Modules: [`pointerRoute`](./src/pointer/pointerRoute.ts),
+[`surfacePose`](./src/pointer/surfacePose.ts) and
+[`nativeRoute`](./src/pointer/nativeRoute.ts).
+
+Chrome can hit-test the canvas child directly, through a CSS `matrix3d`. When
+it does, the click is a real browser click: it places a text caret, drags a
+selection, and passes an `isTrusted` check. A synthetic event does none of
+those. So there is a second route. It hides the capture canvas with
+`visibility`, raises it over the WebGL canvas, and puts the current pose on
+the canvas itself as a `matrix3d`. The browser then delivers the event to the
+drawn element.
+
+The browser only hit-tests inside the canvas's box — the transformed box, so
+a canvas wearing the pose is hit-testable exactly on the projected content
+and nowhere else. The canvas's untransformed size never changes, so the
+capture never rasterizes at the wrong scale. The second route works for every
+flat pose facing the camera and hands the pointer back to the synthetic route
+otherwise, including for anything bent by `deformSurfaceGeometry`.
+
+`routeFor` picks between the two. It is a plain function of what the caller
+observed, it always names exactly one route, and switching routes is an
+explicit step with named cleanup. Both routes write the same `data-hover` and
+`data-active` attributes, so page code cannot tell them apart.
+
 ## Restoring border radius and shadows
 
 Module: [`surfaceChrome`](./src/chrome/surfaceChrome.ts).

@@ -60,7 +60,7 @@ export function CanvasPointerGate({
       if (solid) startRecheck()
       else {
         // Clear glass has no cursor opinion. The presenters wear content
-        // cursors on the canvas while it hears (SurfaceWebGL); a miss can
+        // cursors on the canvas while it hears (SurfaceMesh); a miss can
         // arm-clear without r3f ever firing the mesh's out, which left the
         // last content cursor on a canvas no pointer can hit.
         canvas.style.cursor = ''

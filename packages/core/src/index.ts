@@ -90,6 +90,7 @@ export {
 
 // pointer — provenance + the pointer-exit protocol
 export { relay, isRelayed, isRelayedEvent, type NativeEventCarrier } from './pointer/relay'
+export { ACTIVE_ATTR, HOVER_ATTR } from './pointer/twins'
 export {
   bridgeHover,
   clearPointerState,
@@ -98,6 +99,7 @@ export {
   forwardWheel,
   guardPointerCapture,
   lastPointerPlace,
+  notePointerModality,
   nudgeSelect,
   pointerSampleOf,
   silenceHoverMove,
@@ -110,6 +112,35 @@ export {
   type PointerPlace,
   type ForwardResult,
 } from './pointer/forwardEvents'
+// pointer — the second route, and the law that picks between them (#39)
+export {
+  pointerRouteDuties,
+  pointerRouteHandoff,
+  routeFor,
+  type PointerRoute,
+  type PointerRouteConditions,
+  type PointerRouteDuties,
+  type PointerRouteHandoff,
+  type PointerRouteRequest,
+} from './pointer/pointerRoute'
+export {
+  createSurfacePose,
+  poseMatrix3d,
+  poseOnScreen,
+  posePoint,
+  surfacePose,
+  type Mat4Elements,
+  type PosePoint,
+  type SurfacePose,
+  type SurfacePoseInput,
+} from './pointer/surfacePose'
+export {
+  createNativePointerRig,
+  nativeRideStyle,
+  zIndexAbove,
+  type NativePointerRig,
+  type SurfaceRideStyle,
+} from './pointer/nativeRoute'
 
 // transfer — the handoff
 export {

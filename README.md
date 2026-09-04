@@ -8,15 +8,17 @@ The hard part is the swap. Hide the page and show the scene on different frames 
 
 In the air it is still the same element. You can type in it, select its text, click things inside it. The page holds its old spot open the whole time, so sending it back drops it where it started and it goes on being ordinary DOM.
 
-One `<Surface>` declares both copies, and its `view` prop says which
-renderer should be holding the pixels. The protocol underneath is in
+One `<Surface>` declares its source and any presentations, and its
+`renderIn` prop says where the content should be held. The protocol underneath is in
 [packages/core](packages/core/README.md).
 
 I'm continually surprised at what this simple technique can unlock, and I'm often adding new examples in the labs.
 
 The [Flight demo](https://munari.vercel.app) is a good example. It's an ordinary drag and drop card stack. But what if the cards really behaved like actual paper? Not a lot of options there. You could build your app in WebGL, add a landing loading bar, and have max flexibility. But then you lose all the benefits of the DOM. There are some hacks that might work like [the `<foreignObject>` trick](https://surma.dev/things/dom2texture/), but it's limited and brittle.
 
-Munari is built upon ThreeJS and the experimental [HTML-in-Canvas API in Chrome](https://developer.chrome.com/blog/html-in-canvas-origin-trial). Today, this means it's only visible to an infinitesimally small number of design engineering nerds, like myself, who happen to have this Chrome flag enabled.
+Munari lets a live piece of your page behave like an object in a ThreeJS scene. The element keeps its state and focus while it tilts, bends, or sits at depth among 3D objects, and you can still click it and select its text. At rest the mesh is pixel-identical to the page element it came from. Chrome's [HTML-in-Canvas API](https://developer.chrome.com/blog/html-in-canvas-origin-trial) supplies the raw pixels and ThreeJS draws them; Munari does the work in between: it keeps the texture sharp and current, carries your input to the real element wherever its picture stands, and trades the pixels between page and scene without a flash.
+
+The HTML-in-Canvas API is experimental. Today, this means Munari is only visible to an infinitesimally small number of design engineering nerds, like myself, who happen to have this Chrome flag enabled.
 
 Munari is a bet on the future of web UI. The HTML-in-Canvas API is a big deal. It's like Core Animation for the web. Coveted effects like liquid glass, depth of field, real progressive blur, and other shader-driven effects are all unlocked. Because of this, I believe HTML-in-Canvas will get the momentum it needs to become a standard. When that day arrives, I want Munari to be one of the first things you reach for when building a new UI.
 
@@ -50,11 +52,12 @@ npm install @petepetrash/munari three @react-three/fiber
 
 ## Your first Surface
 
-A `<Surface>` names one piece of content and declares the two copies of
-it: `<Surface.DOM>` is the page copy, `<Surface.WebGL>` is the mesh.
-`<SurfaceCanvas>` is the r3f `Canvas` that hosts them. Set `view` to
-`'webgl'` and the page copy is released the frame the mesh proves it has
-drawn; set it back to `'dom'` and the page takes the hold again.
+A `<Surface>` names one piece of content and declares the presentations
+you need: `<Surface.DOM>` is the page copy and `<Surface.Mesh>` is the
+scene copy. `<SurfaceCanvas>` is the shared r3f `Canvas` that hosts them.
+`renderIn` defaults to `'page'`; set it to `'canvas'` to request a handoff
+to the scene, or to `'both'` when both declared presentations should stay
+visible. `'none'` keeps the source available without showing either copy.
 
 The button below is still live DOM in both places: click it on the mesh
 and its React state updates normally.
@@ -64,8 +67,7 @@ import { useState } from 'react'
 import {
   Surface,
   SurfaceCanvas,
-  useSupportsDOMSurfaces,
-  useSurfaceView,
+  useSurfaceSupport,
 } from '@petepetrash/munari'
 import '@petepetrash/munari/style.css'
 import './app.css'
@@ -80,28 +82,33 @@ function Panel({ count, onPress }: { count: number; onPress: () => void }) {
 }
 
 export function App() {
-  const supported = useSupportsDOMSurfaces()
+  const supported = useSurfaceSupport()
+  const [selected, setSelected] = useState(false)
   const [count, setCount] = useState(0)
-  const { surface, view, show } = useSurfaceView('panel')
   const panel = <Panel count={count} onPress={() => setCount((value) => value + 1)} />
-
-  if (!supported) {
-    return <main className="munari-demo">{panel}</main>
-  }
 
   return (
     <main className="munari-demo">
-      <SurfaceCanvas camera={{ position: [0, 0, 6], fov: 45 }}>
-        <ambientLight intensity={2} />
-      </SurfaceCanvas>
+      {supported && (
+        <SurfaceCanvas
+          pointerMode="surfaces"
+          frameloop="demand"
+          camera={{ position: [0, 0, 6], fov: 45 }}
+          style={{ position: 'fixed', inset: 0 }}
+        />
+      )}
 
-      <Surface surface={surface} source={panel} view={view}>
-        <Surface.DOM>{panel}</Surface.DOM>
-        <Surface.WebGL alpha="source" pointerEvents="content" />
+      <Surface source={panel} renderIn={selected ? 'canvas' : 'page'}>
+        <Surface.DOM />
+        <Surface.Mesh alpha="source" pointerEvents="content" />
       </Surface>
 
-      <button type="button" onClick={() => show(view === 'webgl' ? 'dom' : 'webgl')}>
-        {view === 'webgl' ? 'Bring it back' : 'Hand it over'}
+      <button
+        type="button"
+        disabled={!supported}
+        onClick={() => setSelected((value) => !value)}
+      >
+        {selected ? 'Show on the page' : 'Show in the canvas'}
       </button>
     </main>
   )
@@ -138,15 +145,35 @@ body,
 }
 ```
 
-`source` is what Munari captures; the same element rendered inside
-`<Surface.DOM>` is what the user sees and tabs to while the page holds it.
-The two are separate React renders of the same component, so any state
+`source` is what Munari captures. With no children, `<Surface.DOM>` renders
+that part's source as the page presentation. The captured source and the
+`<Surface.DOM>` page presentation are separate React instances, so any state
 they share is held above the Surface — that is why `count` lives in `App`.
 
-By default `<Surface.WebGL>` stands exactly where the page copy stands,
-at the page copy's size, so you do not size or place the mesh yourself.
+By default `<Surface.Mesh>` stands exactly where the page copy stands, at
+the page copy's size, so you do not size or place the mesh yourself.
 Pass `placement="manual"` and your own `geometry` when you want to put it
 somewhere else.
+
+For separate page and scene trees, create a handle once and pass it to the
+declarations. A separated `<Surface.DOM surface={handle}>` must receive
+explicit children; this lets a stable native page copy live outside the
+captured source tree.
+
+```tsx
+const handle = useSurfaceHandle('panel')
+
+<Surface surface={handle} source={capturePanel} renderIn="page" />
+<Surface.DOM surface={handle}>{nativePanel}</Surface.DOM>
+
+<SurfaceCanvas id="main" pointerMode="surfaces" frameloop="demand">
+  <Surface.Mesh surface={handle} />
+</SurfaceCanvas>
+```
+
+`capturePanel` and `nativePanel` are separate React instances. Keep shared
+state above them. With multiple hosts, give each `<SurfaceCanvas>` a distinct
+`id` and pass the matching `canvas="…"` to the Surface declaration.
 
 ### A detached element
 
@@ -170,8 +197,8 @@ export function StaticPanel() {
   }, [])
 
   return (
-    <Surface name="static" adopt={element} view="webgl">
-      <Surface.WebGL />
+    <Surface name="static" adopt={element} renderIn="canvas">
+      <Surface.Mesh />
     </Surface>
   )
 }
@@ -188,17 +215,17 @@ contract.
 ## When the trial is absent
 
 Most browsers do not have the trial, and that is a supported state rather
-than a failure. Every `<Surface>` keeps rendering its page copy,
-`presentedView` stays `'dom'`, and munari reports the reason through
-`onError` — or to the console if you have not passed one.
+than a failure. A Surface with a declared page presentation keeps rendering
+it, `useSurfaceState().presented` stays `'page'`, and the capability answer
+is available through `useSurfaceSupport()` or `supportsSurfaces()`.
 
 Ask before you branch:
 
 ```tsx
-import { useSupportsDOMSurfaces } from '@petepetrash/munari'
+import { useSurfaceSupport } from '@petepetrash/munari'
 
 function Workspace() {
-  const supported = useSupportsDOMSurfaces()
+  const supported = useSurfaceSupport()
   return supported ? <WorkspaceScene /> : <WorkspaceDOM />
 }
 ```
@@ -206,8 +233,8 @@ function Workspace() {
 The hook answers `false` on the server and through hydration, then the
 real answer. Reading the capability directly during render instead — a
 `useMemo`, a module constant — disagrees with server markup on exactly the
-machines that do have the trial. `supportsDOMSurfaces()` is the same
-question without the hook, for events, effects and diagnostics.
+machines that do have the trial. `supportsSurfaces()` is the same question
+without the hook, for events, effects and diagnostics.
 
 ### The one thing that does not degrade by itself
 
@@ -219,7 +246,7 @@ renderer never arrives, no further input can leave it either:
 // Wrong without the trial: `flying` is set and nothing ever clears it.
 const onPointerDown = (id) => {
   setFlying(id)
-  setView('webgl')
+  setSelected(true)
 }
 ```
 
@@ -229,14 +256,15 @@ Branch at the gesture, not only at the scene:
 const onPointerDown = (id) => {
   if (!supported) return carryWithCss(id)
   setFlying(id)
-  setView('webgl')
+  setSelected(true)
 }
 ```
 
 Prefer deriving that state from the Surface over keeping your own copy of
-it. `useSurfaceState(handle)` reports `presentedView`, `isChanging` and
-`supported`, and none of them can strand you, because munari never claims
-a hold it cannot take.
+it. `useSurfaceState(handle?)` reports `requested`, `presented`, `ready`,
+`supported` and `isChanging`. It reads the nearest Surface when no handle is
+passed, and none of these observations can claim a canvas hold the browser
+cannot take.
 
 ## Run the lab locally
 
@@ -254,11 +282,16 @@ still starts only Vite for a browser that already has the flag enabled.
 
 ## Go further
 
-A Surface with page and WebGL presentations but no `view` is a **Twin**:
-both copies present at once and the page copy is never released. A Surface
-can also supply a capture without either presentation. That source-only path
-lets a material sample live page content for a reflection without drawing a
-WebGL copy of the page.
+A Surface with page and mesh presentations and `renderIn="both"` is a
+**Twin**: both copies stay visible and the page remains the primary keyboard
+and accessibility presentation. `renderIn="none"` supplies a capture
+without either presentation, so another material can sample live page
+content without drawing a mesh copy of the page.
+
+`renderIn="canvas"` with no declared page presentation is a resident Surface.
+It has no page handoff delay or protocol frame loop; its progress starts at
+the canvas endpoint. Presenter readiness and actual presentation evidence are
+still separate observations.
 
 A Surface can be split into named parts with `<Surface.Part>`. All of its
 parts transfer together or not at all, so a multi-piece object cannot be
@@ -266,21 +299,46 @@ caught half in the air. `<Surface.Anchor name="…">` stands a scene object
 on a box inside the source that is marked `data-munari-anchor`, in the
 geometry's own coordinates.
 
-`useSurfaceView('card')` is what a scene reaches for when its content
-changes hands and changes back. It gives you the handle, the `view` to pass
-to `<Surface>`, a `show(view)` to ask with, and `mounted` — true for exactly
-as long as the WebGL side should be in the tree, including the linger after
-it lands. `show('webgl')` does nothing on a browser without the trial, so
-`view` can never name a renderer that will not arrive.
+`useSurfaceHandle(name?)` and `createSurface(name?)` give you a handle when
+content is declared in separate React trees or observed externally. A name
+is a diagnostic label, not a global lookup key. A basic `<Surface>` needs no
+handle. `renderIn`, timing and callbacks belong to the declaration that
+presents the handle.
 
-`useSurface('card')` and `createSurface('card')` give you the handle alone —
-content identity independent of the trees presenting it. Both take just a
-name, and the name is optional. `view`, `timing` and the callbacks are props
-of the `<Surface>` that presents the handle, so one declaration owns them.
+`useSurfaceState(handle?)` reads the nearest Surface context or an explicit
+handle. Its `requested` value is the application's `renderIn` request;
+`presented` is the current `SurfacePresentation` (`'page'`, `'canvas'`,
+`'both'`, or `'none'`); `ready` covers presenter preparation;
+`isChanging` covers an active handoff; and `supported` reports capture
+capability. `onPresentationChange` reports changes to the hold, while
+`onMotionComplete` reports a motion endpoint. They are separate events.
+
+The handle argument is optional for `useSurfaceState`, `useSurfaceProgress`,
+and `useSurfaceDriver`; without it, each reads the nearest Surface identity,
+including when page and scene declarations live in separate renderer trees.
+
+For a specialist draw path, `<Surface.Mesh presentation="manual">` keeps the
+mesh proxy and pointer relay while delegating final draw evidence. The
+advanced `surfaceManualPresenter` must register every declared part and call
+`prove()` after an eligible preparation draw, then `present()` only after that
+part's final compositor draw. A page hold cannot
+be released from readiness or an offscreen draw alone.
+During a handoff, use the presenter's `canvasPresents()` to gate visible output.
+
+`Surface.Scene` is an always-declared lifecycle boundary for one Surface's
+custom scene subtree. Keep it under the shared `<SurfaceCanvas>` so the
+subtree survives preparation, reversal and return until cleanup is complete.
+The host itself stays mounted while its Surfaces need the renderer. If an app
+uses multiple hosts, give each `<SurfaceCanvas>` a distinct `id` and pass the
+matching `canvas="…"` to each Surface. A Scene cannot retain a caller-owned
+host; the caller owns the host lifetime.
 `useSurfaceProgress` and `useSurfaceDriver` are how a scene scales its own
 motion by the crossing.
+Use `useSurfaceDriver(step)` inside a Surface or Scene, or
+`useSurfaceDriver(step, handle)` for an explicit identity. A `null` step
+restores the built-in timed motion.
 
-For a custom shader, pass your own `material` to `<Surface.WebGL>` and read
+For a custom shader, pass your own `material` to `<Surface.Mesh>` and read
 the texture with `useSurfaceTexture()`. In that material slot, the hook returns
 a configured texture; it is not nullable. To sample another Surface by handle,
 use `useSurfaceTextureOf(handle)`, which returns `null` until that source has
@@ -311,7 +369,8 @@ and the shipped [Munari skill](.agents/skills/munari/SKILL.md).
 
 In a repository checkout, start with the [task-to-owner guide](docs/agent-workflow.md).
 The [system model](docs/system-model.md) explains the linked abstractions and
-the difference between requested view, readiness, presentation, and release.
+the difference between the `renderIn` request, readiness, presentation, and
+release.
 The Revision 3 proposal and compound sketches are historical design material,
 not current API references.
 

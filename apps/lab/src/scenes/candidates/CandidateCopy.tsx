@@ -28,7 +28,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurface, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
+import { Surface, useSurfaceHandle, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { LIGHT, SUCK_FRAG, SUCK_VERT } from './candidateShaders'
 import { tokenize } from './candidateTokens'
@@ -43,10 +43,11 @@ import {
 import { copyTuning } from './candidateTuning'
 
 
-const SNIPPET = `const surface = useSurface('card')
+const SNIPPET = `const surface = useSurfaceHandle('card')
 
-<Surface surface={surface} view={view} source={card}>
-  <Surface.DOM>{card}</Surface.DOM>
+<Surface surface={surface} renderIn="both" source={card}>
+  <Surface.DOM />
+  <Surface.Mesh />
 </Surface>`
 
 // Each run rolls its own shape — twist handedness and sharpness, arc
@@ -146,7 +147,7 @@ function SuckMaterial({
 }
 
 export function CandidateCopy() {
-  const surface = useSurface('copy-block')
+  const surface = useSurfaceHandle('copy-block')
   const holder = useRef<HTMLDivElement>(null)
   const phase = usePhase()
   const cursor = useRef(new THREE.Vector2())
@@ -243,38 +244,37 @@ export function CandidateCopy() {
           {block}
         </div>
         {size ? (
-          <Surface surface={surface} size={size} resolution={2} source={block}>
+          <Surface surface={surface} renderIn={flying ? 'canvas' : 'none'} size={size} resolution={2} source={block}>
             {/* The capture source, parked off-flow OUTSIDE the fading
                 holder, so no state of the visible copy — the [data-gone]
                 opacity and blur included — can ever reach the texture the
                 sheet is flying. */}
             <div className="cand-code-park" style={{ width: size[0] }} aria-hidden>
-              <Surface.DOM>{block}</Surface.DOM>
+              <Surface.DOM />
             </div>
-            {flying && box && (
-              <Surface.WebGL
+            <Surface.Mesh
                 key={runId.current}
+                visible={flying && Boolean(box)}
                 placement="manual"
                 alpha="source"
                 frustumCulled={false}
                 pointerEvents="none"
-                position={[box.x, box.y, 0]}
+                position={[box?.x ?? 0, box?.y ?? 0, 0]}
                 // 48×32 across a 420px block: the twist is a rigid
                 // rotation about the cursor, so the mesh only needs
                 // enough vertices for the per-vertex LAG to look smooth.
                 geometry={<planeGeometry args={[size[0], size[1], 48, 32]} />}
                 material={<SuckMaterial phase={phase} cursor={cursor} shape={shape} />}
               >
-                <PhaseDrive
+                {flying && <PhaseDrive
                   phase={phase}
                   durationMs={copyTuning.durationMs}
                   onDone={() => {
                     setFlying(false)
                     setGone(false)
                   }}
-                />
-              </Surface.WebGL>
-            )}
+                />}
+              </Surface.Mesh>
           </Surface>
         ) : null}
       </div>

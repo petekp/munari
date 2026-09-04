@@ -2,7 +2,7 @@
 // page tree and a scene tree.
 //
 // The law: registration is by NAME, never by React context. A page-side
-// `<Surface.WebGL>` and a Canvas-side `<Surface source>` are declared in
+// `<Surface.Mesh>` and a Canvas-side `<Surface source>` are declared in
 // trees that cannot see each other — react-dom's portals do not cross the
 // three.js reconciler, and the R3F scene is not an ancestor of the page —
 // so the only thing both sides can hold is a string. One unnamed host is
@@ -58,6 +58,9 @@ export interface SurfaceHostRuntime {
 export interface SurfaceHost {
   readonly id: SurfaceCanvasId | undefined
   runtime: SurfaceHostRuntime | null
+  setRuntime(runtime: SurfaceHostRuntime | null): void
+  subscribeRuntime(listener: () => void): () => void
+  mounted(): boolean
   registerSource(entry: SurfaceSourceEntry): () => void
   sources(): readonly SurfaceSourceEntry[]
   subscribeSources(listener: () => void): () => void
@@ -125,6 +128,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
   const presenterMap = new Map<string, SurfacePresenterEntry>()
   const sourceListeners = new Set<() => void>()
   const presenterListeners = new Set<() => void>()
+  const runtimeListeners = new Set<() => void>()
   const tickSet = new Set<(dtMs: number) => void>()
   const objectSet = new Set<Object3D>()
   let objectSnapshot: readonly Object3D[] = NO_OBJECTS
@@ -144,6 +148,16 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
   const host: SurfaceHost = {
     id,
     runtime: null,
+    setRuntime(runtime) {
+      if (host.runtime === runtime) return
+      host.runtime = runtime
+      for (const listener of runtimeListeners) listener()
+    },
+    subscribeRuntime(listener) {
+      runtimeListeners.add(listener)
+      return () => runtimeListeners.delete(listener)
+    },
+    mounted: () => mounts.has(host),
     registerSource(entry) {
       sourceMap.set(entry.key, entry)
       sourceSnapshot = Array.from(sourceMap.values())
@@ -358,7 +372,7 @@ export function mountSurfaceHost(candidate: SurfaceHost): SurfaceHostMount {
       mounts.delete(host)
       const remainingForId = mountedSurfaceHosts().filter((entry) => (entry.id ?? '') === key)
       if (remainingForId.length < 2) faulted.delete(key)
-      host.runtime = null
+      host.setRuntime(null)
     },
   }
 }

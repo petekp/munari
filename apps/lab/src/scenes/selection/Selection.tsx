@@ -35,7 +35,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, SurfaceCanvas, useSurface, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
+import { Surface, SurfaceCanvas, useSurfaceHandle, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { PixelPerfect, useOwnUniforms, worldBoxOf, type WorldBox } from '../candidates/candidateStage'
 import { BUBBLE_FRAG, BUBBLE_VERT, LIGHT } from './selectionShaders'
@@ -224,7 +224,7 @@ const PROSE = [
 ]
 
 function SelectionPage() {
-  const surface = useSurface('selection-prose')
+  const surface = useSurfaceHandle('selection-prose')
   const holder = useRef<HTMLDivElement>(null)
   const live = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<[number, number] | null>(null)
@@ -352,6 +352,7 @@ function SelectionPage() {
         {size ? (
           <Surface
             surface={surface}
+            renderIn="canvas"
             size={size}
             // Pinned at the tier ladder's top: always-sharp interior text
             // up to 300% zoom on a 2x display, no re-rasterize hitch when
@@ -367,7 +368,7 @@ function SelectionPage() {
               <Surface.DOM>{prose}</Surface.DOM>
             </div>
             {box && (
-              <Surface.WebGL
+              <Surface.Mesh
                 placement="manual"
                 alpha="source"
                 frustumCulled={false}

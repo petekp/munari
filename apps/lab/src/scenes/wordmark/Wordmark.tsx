@@ -10,7 +10,7 @@
 // wordmarkTuning.ts, the panel in wordmarkTweaks.tsx.
 
 import { useMemo, useState } from 'react'
-import { useSupportsDOMSurfaces } from '@petepetrash/munari'
+import { useSurfaceSupport } from '@petepetrash/munari'
 import { MunariLogo } from '../../components/MunariLogo'
 import { WordmarkTweaks } from './wordmarkTweaks'
 import { toLogoKnobs, wordmarkTuning } from './wordmarkTuning'
@@ -19,7 +19,7 @@ import './wordmark.css'
 export function WordmarkApp() {
   const [tuning, setTuning] = useState(wordmarkTuning)
   const knobs = useMemo(() => toLogoKnobs(tuning), [tuning])
-  const lifted = useSupportsDOMSurfaces()
+  const lifted = useSurfaceSupport()
 
   return (
     <div className="wordmark-page">

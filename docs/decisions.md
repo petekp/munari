@@ -2111,3 +2111,215 @@ savings. Each pilot must measure correct task outcomes and work cost against
 the corrected manual workflow. A smaller result with equal correctness is
 preferred. Remove a pilot that adds state, idle work or required reading without
 an observed benefit, following #37.
+
+## #39 — The pointer has two routes, and one law picks between them (2026-09-02, core + react binding)
+
+**Decision.** A Surface whose canvas hears the pointer (#33) has TWO
+routes into its parked content, and `routeFor` — pure, in
+`packages/core/src/pointer/pointerRoute.ts` — decides which one owns
+input at any instant. The *relay* synthesizes the whole interaction and
+serves every pose. The *native route* lifts the parked capture canvas
+above the renderer canvas, puts the presented pose on the canvas itself
+as a CSS `matrix3d`, and lets Chrome hit-test the real child through it.
+The verdict is a function of one request and five observed booleans and
+nothing else; routes consult it and never negotiate with each other. A
+change of verdict is a handoff with named duties, in a fixed order.
+
+The native route is opt-in per presenter: `<Surface.WebGL
+pointerRoute="auto">`. The default stays `"relay"`.
+
+**Why a second route at all.** A synthetic dispatch cannot produce a
+trusted event, and four things follow only from trusted events: caret
+placement, drag selection, the browser's own `:focus-visible` verdict,
+and any consumer that checks `isTrusted`. Real `:hover` is a fifth, and
+it is better than a twin because it self-paints into the capture with no
+relay code at all (measured 2026-09-02: the hover state change alone
+took the source from 2 paints to 4). None of that is reachable by
+improving the relay; it is a property of who dispatched.
+
+**Why one pose, not two.** The `matrix3d` string the browser hit-tests
+through and the point the relay walks to come from one function,
+`surfacePose`. A projection computed twice is a projection that drifts:
+the copies agree in the case the author tried and part company under a
+mirrored source, a non-square viewport, or a scrolled page, and the
+symptom is a click a few pixels off with no error anywhere. The chain is
+three's own (`viewport · P · V · M · pixelToLocal`, three.js PR #31233),
+which predicts Chrome's own transformed rects to 0.01px, with the
+browser's hit region agreeing with GL rasterization to ≤1.25px (median
+0.75px), unchanged at dpr 2 (measured 2026-09-02, Chrome 151).
+
+**The fault the single verdict prevents.** #33 was written because one
+press was heard by two live copies and the visible copy was not the one
+that changed (3/3 clicks to the hidden copy through a whole 450ms
+dwell). Two routes into ONE copy is the same fault at a smaller scale
+and it is harder to see: the press lands on the right element twice, so
+a counter counts two, a toggle returns to where it started, and a form
+submits twice — all of which read as consumer bugs. Making the route a
+single derived value rather than two enable flags that happen to
+disagree is what makes that state unrepresentable, and
+`pointerRouteDuties` is where "exactly one owner" is checkable rather
+than asserted.
+
+**The rig, and its three hard rules** (all measured 2026-09-02, Chrome
+151; platform.md #20–#21). Invisibility is `visibility: hidden` on the
+canvas with `visibility: visible` on the child, NEVER `opacity` — a
+static `opacity: 0` root bakes blank into the paint record and the
+capture reads `[0,0,0,0]`, while the visibility rig keeps paints firing
+and the capture fully alive. The pose goes on the CANVAS, never the
+child: a transform restyle on the drawn child costs one paint per
+restyle — a paint every frame of a flight — while transform restyles on
+the canvas are paint-free after the first, and the capture never sees
+them. And hit-testing is CLIPPED to the canvas's box — the TRANSFORMED
+box, so a canvas wearing the full pose is hit-testable on exactly the
+projected quad (0.25px agreement at a perspective edge) and nowhere
+else, with the CSS box, and therefore the replay density (platform.md
+#8), never changing size.
+
+**Coverage is not a condition, and tilts ride.** An earlier draft of
+this route kept the pose on the child and moved a content-sized canvas
+box under the projected quad, which made "does the box cover the quad"
+a per-frame judgement — and under a pixel-calibrated perspective camera
+it refused every tilt, because a rotation swings one edge toward the
+eye and magnifies it (a 40° tilt of a 320×200 panel projects 215.5px
+tall; the number is pinned in the surfacePose contract). The
+canvas-wears-pose rig removed the judgement: the clip follows the worn
+transform, so coverage is exact by construction for every planar pose.
+A grown box was rejected because the replay ratio is the backing/CSS
+ratio (platform.md #8) — a box wider than the content rasterizes the
+content into a corner of its own texture — and a second hit-only canvas
+holding a copy of the content was rejected outright: two live copies is
+#33's own fault, restored.
+
+**Facing is a condition, computed rather than bet.** three's default
+raycast refuses a back-facing hit under `FrontSide`, and the browser
+knows nothing of material sides — so without a facing law the same
+Surface turned past 90° takes clicks natively and refuses them on the
+relay. The pose reports `frontFacing` from the projected quad's winding
+(mirrorU flips the expectation with the map), and a double-sided
+material rides either face. CSS `backface-visibility` on the canvas was
+rejected as the mechanism: whether it governs hit-testing of an
+unpainted canvas child is unmeasured, and the winding is arithmetic
+already in hand.
+
+**The shape.** `surfacePose` (arithmetic, no DOM), `pointerRoute` (the
+verdict, no DOM and no arithmetic), `nativeRoute` (the DOM rig and the
+twins the browser's own events drive), `twins.ts` (the attribute names
+and the chain walk, now shared by both routes rather than owned by the
+relay), and `surfaceNativeRoute.ts` in the binding, which observes and
+applies but decides nothing. Planarity is the one judgement the binding
+makes, because only the binding can see the geometry: this library
+claims it for a plane it built, nobody deformed
+(`deformSurfaceGeometry` stamps its marker on the geometry instance —
+the receipt survives a presenter swap and catches a deform through a
+mesh ref), and no scene raycast reshapes — an authored raycast is a hit
+policy the browser cannot be told to honor. Never a tolerance on the
+vertices: a Surface bent by less than a tolerance is still one whose
+pointer lands in the wrong row (#35's 60px at 44px rows). Two
+presenters of one source share one parked canvas; the first to lift
+holds it until it parks, and the other's native request quietly stays
+on the relay.
+
+**The authoring contract does not move.** Scenes keep writing
+`[data-hover]`/`[data-active]` twins (docs/authoring.md); the native
+route sets those same attributes from the browser's real events, through
+the same module the relay uses. A scene never learns which route it got.
+
+**The contracts.** `tests/conformance/pointer/pointerRoute` (the law,
+enumerated over all 64 condition sets),
+`tests/conformance/pointer/surfacePose` (agreement: at rest `posePoint`
+IS the relay's own `rect.left + u * rect.width`, and the `matrix3d`
+string parsed and applied lands on the same point),
+`tests/conformance/pointer/routeParity` (one behavioural spec run
+against both routes, plus route-scoped contracts for what only the
+native route can express), and `surfaceNativeRoute.test.ts` beside the
+binding module (planarity receipts, duty order, style-write economy).
+
+**Known, accepted, open.** The z-index the rig takes is the tallest
+explicit one between the renderer canvas and the document, plus one;
+page chrome above the renderer canvas with a TALLER z-index than
+anything on that chain keeps its hits inside the projected quad. While
+the rig rides, the library writes no cursor: the relay's mirrored
+cursor on the renderer canvas is cleared at lift, and the cursor is the
+browser's — whether Chrome applies an unpainted canvas child's `cursor`
+property is unmeasured, and the answer is a probe, not a write the rig
+cannot verify. And capability is taken as an input rather than probed.
+The library's own rig is driven by `instruments/native-pointer`
+(2026-09-02): trusted clicks land flat and tilted, real `:hover` and
+the twin follow the pointer, a real input takes focus and keystrokes,
+and the park restores every written style. The route stays opt-in
+while the cursor question above is open and no scene has shipped on it.
+
+## #40 — The public Surface contract names intent, hold, and motion separately (2026-09-04, documentation + react binding)
+
+**Status: implemented and locally verified, 2026-09-04.** The public
+Surface API uses `renderIn`, defaulting to `page`, with four explicit request
+values: `page`, `canvas`, `both`, and `none`. `page` and `canvas` require their
+corresponding declared presentations; `both` keeps page and mesh presentations
+visible with page primary for keyboard and accessibility; `none` keeps a
+source available to another material without registering a visible presenter.
+These values describe the request, not a proof that a missing presenter or an
+unsupported capture path will arrive.
+
+The tradeoff is one explicit presentation choice at the declaration boundary
+instead of a binary toggle helper whose omission could mean different things.
+That small request surface covers exclusive handoff, a Twin, and source-only
+capture without making `undefined` carry a hidden relationship between the
+renderers.
+
+`Surface.DOM` renders its part source when no children are provided. The
+captured source and page presentation are separate React instances, so shared
+state belongs above the Surface. `Surface.Mesh` is the public scene presenter
+name. `Surface.Scene` is an always-declared lifecycle boundary under the
+shared `SurfaceCanvas`; it retains one Surface's custom scene subtree through
+preparation, reversal, return and cleanup. The shared host remains mounted
+for the capability and scene lifetime. A Scene cannot retain a caller-owned
+host.
+
+Separated wiring passes the same handle to `<Surface.DOM surface={handle}>`;
+that form requires explicit children and can keep a stable native page copy
+outside the captured source tree. A canvas-only resident has no page handoff
+delay and does not claim a protocol frame loop. It still distinguishes
+presenter readiness from actual presentation evidence. `useSurfaceState()`,
+`useSurfaceProgress()`, and `useSurfaceDriver(step)` read the
+nearest Surface identity, including across page and scene renderer trees.
+
+The default `<Surface.Mesh presentation="auto">` owns its draw evidence. The
+specialist `presentation="manual"` seam retains the mesh proxy and pointer
+relay while delegating final compositor evidence to the advanced
+`surfaceManualPresenter`. A manual presenter must cover every declared part
+and call `present()` only for that part's actual final compositor draw.
+
+`useSurfaceHandle(name?)` replaces `useSurface` as the identity hook for
+separate trees and external observers; `createSurface` remains available. A
+name is a diagnostic label, not a global lookup key. `useSurfaceState(handle?)`
+reports `requested`, `presented`, `ready`, `supported`, and `isChanging` from
+the nearest context or explicit handle. `SurfacePresentation` has the four
+hold values above; `SurfaceDestination` has `page` and `canvas` for motion
+callbacks and driver targets. `onPresentationChange` reports the hold and
+`onMotionComplete` reports the motion endpoint. They are distinct. The public
+API does not add a phase enum that conflates preparation with completion.
+
+`useSurfaceSupport()` is hydration-safe and returns a boolean;
+`supportsSurfaces()` is the imperative capability check. The revision removes
+`useSurfaceView`, `mounted`, `useSurfaceView().mounted`, and
+`onWebGLReleased` from the public contract. This naming choice does not claim
+WebGPU support; current renderer requirements remain documented by the
+implementation and measured platform behavior.
+
+Validation in this checkout: 1,457 tests, all four TypeScript programs,
+`npm run lint`, and the package build passed. Strict-capability Chrome runs
+passed the handoff/input and custom-scene lifetime gate, native pointer and
+controlled-input round trip, idle capture, demand DOM mutation/resize, the
+broad scene interaction sweep, custom shader compilation, the 14-step Knobs
+resize sweep, deformed Fisheye and Slider input, and Genie film-reorder and
+shadow checks. The five-scene
+`gate:degraded` passed without the capture flag. The browser probes use the
+real scene window (`framed`) when they need scene-local state.
+
+Review fixes are pinned at their owners: actual presentation and request
+state stay separate; returning from `none` wakes DOM visibility; residents do
+not run a page handoff or retain frame work for offscreen draws; context reads
+cross the renderer boundary; custom compositors supply their own evidence;
+and stable scene declarations precede deferred R3F contributions. Initial
+canvas requests wait for renderer bootstrap before declaration validation. No release
+or deployment is part of this verification.

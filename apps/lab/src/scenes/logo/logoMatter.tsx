@@ -25,8 +25,9 @@ import {
   Surface,
   SurfaceCanvas,
   type SurfaceHandle,
+  type SurfaceDestination,
   type SurfaceProgress,
-  type SurfaceView,
+  type SurfacePresentation,
   useSurfaceTexture,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
@@ -843,7 +844,7 @@ function MatterLetter({
           The material slot goes to the matter shader (logoShaders)
           while the part keeps owning the texture; no lights in this
           canvas, the shader carries its own analytic key light. */}
-      <Surface.WebGL
+      <Surface.Mesh
         ref={meshRef}
         placement="manual"
         alpha="source"
@@ -878,7 +879,7 @@ function MatterLetter({
           drive={drive.current}
           fresh={fresh}
         />
-      </Surface.WebGL>
+      </Surface.Mesh>
     </Surface.Part>
   )
 }
@@ -1070,16 +1071,15 @@ export interface MatterWordProps {
   /** The word's identity — one handle for all six letters. */
   surface: SurfaceHandle
   /** What the page is asking for; the root wears it to stay exclusive. */
-  view: SurfaceView
+  renderIn: SurfacePresentation
   /** Which renderer holds the pixels right now. */
-  presented: SurfaceView
+  presented: SurfacePresentation
   /** The canvas wrapper changed synchronously at the handoff edge. */
   canvasRef: React.RefObject<HTMLDivElement | null>
   /** The root's callbacks. The root owns them, so they arrive as props
    *  rather than being written onto the handle from the page above. */
-  onPresentedViewChange: (view: SurfaceView) => void
-  onMotionComplete: (view: SurfaceView) => void
-  onWebGLReleased: () => void
+  onPresentationChange: (presentation: SurfacePresentation) => void
+  onMotionComplete: (destination: SurfaceDestination) => void
   /** The carried float's per-frame sample, shared with the page. */
   carried: () => number[]
   /** The extrude knob is off zero. A boolean rather than the number,
@@ -1103,12 +1103,11 @@ export function MatterWord({
   metrics,
   knobs,
   surface,
-  view,
+  renderIn,
   presented,
   canvasRef,
-  onPresentedViewChange,
+  onPresentationChange,
   onMotionComplete,
-  onWebGLReleased,
   carried,
   solid,
 }: MatterWordProps) {
@@ -1173,17 +1172,16 @@ export function MatterWord({
 
   return (
     <>
-      {/* `view` is what keeps this an exclusive handoff rather than a
+      {/* `renderIn` is what keeps this an exclusive handoff rather than a
           Twin; the handle it presents was declared by the page, which is
           where the request and the timing live. */}
       <Surface
         surface={surface}
-        view={view}
+        renderIn={renderIn}
         canvas="logo"
         timing={{ settleMs: SETTLE_MS }}
-        onPresentedViewChange={onPresentedViewChange}
+        onPresentationChange={onPresentationChange}
         onMotionComplete={onMotionComplete}
-        onWebGLReleased={onWebGLReleased}
       >
         {WORD.split('').map((ch, i) => (
           <MatterLetter
@@ -1208,7 +1206,7 @@ export function MatterWord({
           twins draw warm (a write-free pass still compiles the program
           and samples the texture) but the eye sees only the page until
           the swap. */}
-      <div ref={canvasRef} className="logo-canvas" data-holds={presented === 'webgl'}>
+      <div ref={canvasRef} className="logo-canvas" data-holds={presented === 'canvas'}>
         {/* `flat`: the letters are ink, and tone mapping would mute
             exactly the candy this palette is for. */}
         <SurfaceCanvas

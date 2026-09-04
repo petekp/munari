@@ -15,7 +15,7 @@
 import { StrictMode, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { crossingProgress } from '@munari/core'
 import {
   createSurface,
@@ -23,10 +23,21 @@ import {
   surfaceStoreOf,
   useSurfaceController,
   useSurfaceControls,
+  useSurfaceProgress,
+  useSurfaceState,
   useSurfaceStore,
   type SurfaceControls,
-  type SurfaceView,
+  type SurfacePresentation,
+  type SurfaceDestination,
 } from './surfaceHandle'
+import { SurfaceDOM } from './SurfaceDOM'
+import { SurfaceMesh } from './SurfaceMesh'
+import { SurfaceRoot } from './SurfaceRoot'
+
+interface ObservedContext {
+  state: ReturnType<typeof useSurfaceState> | null
+  progress: ReturnType<typeof useSurfaceProgress> | null
+}
 
 // React reads this global to decide whether renders must be wrapped in
 // `act`. It is React's own contract, not ours, so it is declared rather
@@ -40,26 +51,31 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = false
 let container: HTMLDivElement
 
 beforeEach(() => {
+  class WithTrial { drawElementImage() {} }
+  vi.stubGlobal('CanvasRenderingContext2D', WithTrial)
   container = document.createElement('div')
   document.body.append(container)
 })
 
 afterEach(() => {
+  vi.unstubAllGlobals()
   container.remove()
 })
 
 describe('a handle owns no DOM and no renderer resource', () => {
   it('a created handle registers nothing and starts on the page', () => {
     const store = createSurfaceStore('panel')
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     expect(store.hasController()).toBe(false)
     expect(store.epoch()).toBe(0)
     expect(store.getState()).toMatchObject({
-      targetView: 'dom',
-      presentedView: 'dom',
+      requested: 'page',
+      presented: 'page',
       ready: false,
       isChanging: false,
-      isWebGLMounted: false,
     })
+    expect(store.canvasMounted()).toBe(false)
     expect(store.handle.progress.get()).toBe(0)
   })
 
@@ -67,6 +83,8 @@ describe('a handle owns no DOM and no renderer resource', () => {
     // The retained-handle case: a store keeps handles for content that is
     // not on screen, and every one of them must be inert.
     const store = createSurfaceStore()
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     const release = store.registerPresenter('a')
     store.acquire(1)
     expect(store.getState().ready).toBe(false)
@@ -79,9 +97,120 @@ describe('a handle owns no DOM and no renderer resource', () => {
   })
 })
 
+describe('context-reading hooks', () => {
+  it('inherit a separated DOM declaration’s actual handle', () => {
+    const handle = createSurface('separated')
+    const observed: ObservedContext = { state: null, progress: null }
+    const Probe = () => {
+      observed.state = useSurfaceState()
+      observed.progress = useSurfaceProgress()
+      return null
+    }
+    const root = createRoot(container)
+    flushSync(() =>
+      root.render(
+        createElement(SurfaceDOM, { surface: handle }, createElement(Probe)),
+      ),
+    )
+    expect(observed.state?.requested).toBe('page')
+    expect(observed.progress).toBe(handle.progress)
+    flushSync(() => root.unmount())
+  })
+})
+
+describe('presentation declarations', () => {
+  const afterDeclarations = async () => {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+  }
+
+  it('reports a missing page presentation without waiting for a renderer frame', async () => {
+    const errors: Error[] = []
+    const root = createRoot(container)
+    flushSync(() =>
+      root.render(createElement(SurfaceRoot, { renderIn: 'page', onError: (error) => errors.push(error) })),
+    )
+    await afterDeclarations()
+    expect(errors.map((error) => error.message)).toEqual([
+      'Surface requested page but declared no <Surface.DOM>.',
+    ])
+    flushSync(() => root.unmount())
+  })
+
+  it('does not diagnose while a renderer frame arrives before separate declarations', () => {
+    const store = createSurfaceStore('separate')
+    const errors: Error[] = []
+    store.setCallbacks({ onError: (error) => errors.push(error) })
+    store.request('both')
+    store.tick(16)
+    expect(errors).toEqual([])
+
+    const releasePage = store.declarePresentation('page')
+    const releaseCanvas = store.declarePresentation('canvas')
+    store.validatePresentation()
+    expect(errors).toEqual([])
+    releaseCanvas()
+    releasePage()
+  })
+
+  it('accepts a DOM declaration committed in the same tree', async () => {
+    const errors: Error[] = []
+    const root = createRoot(container)
+    flushSync(() =>
+      root.render(
+        createElement(
+          SurfaceRoot,
+          { renderIn: 'page', onError: (error) => errors.push(error) },
+          createElement(SurfaceDOM, null, createElement('span', null, 'page')),
+        ),
+      ),
+    )
+    await afterDeclarations()
+    expect(errors).toEqual([])
+    flushSync(() => root.unmount())
+  })
+
+  it('reports the missing half of both after declarations commit', async () => {
+    const errors: Error[] = []
+    const root = createRoot(container)
+    flushSync(() =>
+      root.render(
+        createElement(
+          SurfaceRoot,
+          { renderIn: 'both', onError: (error) => errors.push(error) },
+          createElement(SurfaceDOM, null, createElement('span', null, 'page')),
+        ),
+      ),
+    )
+    await afterDeclarations()
+    expect(errors.map((error) => error.message)).toEqual([
+      'Surface requested canvas but declared no <Surface.Mesh> or <Surface.Scene>.',
+    ])
+    flushSync(() => root.unmount())
+  })
+
+  it('keeps a declared page-to-canvas Surface on the crossing law', () => {
+    const handle = createSurface('crossing')
+    const root = createRoot(container)
+    flushSync(() =>
+      root.render(
+        createElement(
+          SurfaceRoot,
+          { surface: handle, renderIn: 'canvas' },
+          createElement(SurfaceDOM, null, createElement('span', null, 'page')),
+          createElement(SurfaceMesh),
+        ),
+      ),
+    )
+    expect(handle.progress.get()).toBe(0)
+    flushSync(() => root.unmount())
+  })
+})
+
 describe('the controller ledger', () => {
   it('acquire, release, and reacquire advance the epoch', () => {
     const store = createSurfaceStore()
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     expect(store.acquire(1)).toBe(true)
     expect(store.epoch()).toBe(1)
     store.release(1)
@@ -91,6 +220,8 @@ describe('the controller ledger', () => {
 
   it('a second controller is refused and the incumbent keeps the identity', () => {
     const store = createSurfaceStore()
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
     expect(store.acquire(2)).toBe(false)
     expect(store.epoch()).toBe(1)
@@ -101,6 +232,8 @@ describe('the controller ledger', () => {
 
   it('reports the duplicate through onError, naming the handle', () => {
     const store = createSurfaceStore('panel')
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     const errors: Error[] = []
     store.setCallbacks({ onError: (error) => errors.push(error) })
     // A token no component can mint, so the incumbent here is unambiguously
@@ -125,6 +258,8 @@ describe('the controller ledger', () => {
     // component on screen believes it holds the identity, and every
     // registration made after that point is attributed to nobody.
     const store = createSurfaceStore()
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     const Controller = () => {
       useSurfaceController(store)
       return null
@@ -158,58 +293,65 @@ describe('controlled options and the latest callback', () => {
 
   it('view is read on every render, and the handle stays stable across them', () => {
     const root = createRoot(container)
-    render(root, { view: 'dom' })
+    render(root, { renderIn: 'page' })
     const first = seen
-    expect(first?.getState().targetView).toBe('dom')
-    render(root, { view: 'webgl' })
+    expect(first?.getState().requested).toBe('page')
+    render(root, { renderIn: 'canvas' })
     expect(seen).toBe(first)
-    expect(seen?.getState().targetView).toBe('webgl')
+    expect(seen?.getState().requested).toBe('canvas')
     flushSync(() => root.unmount())
   })
 
   it('the newest callback runs without resetting the handle', () => {
     const root = createRoot(container)
     const heard: string[] = []
-    render(root, { view: 'dom', onPresentedViewChange: () => heard.push('first') })
+    render(root, { renderIn: 'page', onPresentationChange: () => heard.push('first') })
     const store = seen
-    render(root, { view: 'dom', onPresentedViewChange: () => heard.push('second') })
+    render(root, { renderIn: 'page', onPresentationChange: () => heard.push('second') })
     expect(seen).toBe(store)
     // Drive a full forward crossing: a controller (receipts are refused
     // without one), one presenter, proven, then the settle dwell and the ramp.
     store?.acquire(1)
+    store?.declarePresentation('page')
+    store?.declarePresentation('canvas')
     store?.registerPresenter('a')
     store?.prove('a', store.readinessLifetime(), store.epoch())
-    store?.request('webgl')
+    heard.length = 0
+    store?.request('canvas')
     store?.tick(500)
+    store?.present('a', store.epoch())
     expect(heard).toEqual(['second'])
     flushSync(() => root.unmount())
   })
 
   it('releases component callbacks when the controller unmounts', () => {
     const root = createRoot(container)
-    const heard: SurfaceView[] = []
-    render(root, { view: 'dom', onPresentedViewChange: (view) => heard.push(view) })
+    const heard: SurfacePresentation[] = []
+    render(root, { renderIn: 'page', onPresentationChange: (view) => heard.push(view) })
     const store = seen
     flushSync(() => root.unmount())
     store?.acquire(1)
     store?.registerPresenter('a')
     store?.prove('a', store.readinessLifetime(), store.epoch())
-    store?.request('webgl')
+    store?.request('canvas')
     store?.tick(500)
     expect(heard).toEqual([])
   })
 
   it('timing is controlled: a longer settle holds the page longer', () => {
     const store = createSurfaceStore()
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
     store.setTiming({ settleMs: 1000, rampMs: 600 })
     store.registerPresenter('a')
     store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
-    expect(store.getState().presentedView).toBe('dom')
+    expect(store.getState().presented).toBe('page')
     store.tick(600)
-    expect(store.getState().presentedView).toBe('webgl')
+    store.present('a', store.epoch())
+    expect(store.getState().presented).toBe('canvas')
   })
 })
 
@@ -218,6 +360,8 @@ describe('semantic publication', () => {
     // The ramp moves every frame. A subscriber woken by each new value
     // would commit React between every pair of frames of a transition.
     const store = createSurfaceStore()
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
     let heard = 0
     store.subscribe(() => {
@@ -225,7 +369,7 @@ describe('semantic publication', () => {
     })
     store.registerPresenter('a')
     store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500) // lifting → gl: one semantic change
     const afterHandoff = heard
     store.tick(16)
@@ -238,12 +382,16 @@ describe('semantic publication', () => {
 
   it('progress windows are zero at both handoff edges', () => {
     const store = createSurfaceStore()
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     expect(store.handle.progress.between(0.2, 0.8)).toBe(0)
     expect(store.handle.progress.pulse(0.2, 0.8)).toBe(0)
   })
 
   it('a source replacement voids readiness and starts a new lifetime', () => {
     const store = createSurfaceStore()
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
     store.registerPresenter('a')
     const first = store.readinessLifetime()
@@ -260,21 +408,24 @@ describe('semantic publication', () => {
 
   it('reversal mid-crossing returns the hold without skipping the far side', () => {
     const store = createSurfaceStore()
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
     store.registerPresenter('a')
     store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
-    expect(store.getState().presentedView).toBe('webgl')
+    store.present('a', store.epoch())
+    expect(store.getState().presented).toBe('canvas')
     store.tick(300) // ramp half way
     const midway = store.handle.progress.get()
     expect(midway).toBeGreaterThan(0)
     expect(midway).toBeLessThan(1)
-    const back: SurfaceView = 'dom'
+    const back: SurfaceDestination = 'page'
     store.request(back)
     store.tick(300)
     expect(store.handle.progress.get()).toBe(0)
-    expect(store.getState().presentedView).toBe('dom')
+    expect(store.getState().presented).toBe('page')
   })
 })
 
@@ -284,8 +435,9 @@ describe('the two-stage receipt', () => {
   // color is exactly what the lift gate is deciding whether to allow.
   const exclusiveStore = () => {
     const store = createSurfaceStore('panel')
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
-    store.setExclusive(true)
     store.registerPresenter('a')
     return store
   }
@@ -293,14 +445,14 @@ describe('the two-stage receipt', () => {
   it('a warm-up opens the lift gate without releasing the page', () => {
     const store = exclusiveStore()
     store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
     // Presentation authority has moved, which is what authorizes the next
     // draw to write color. The page is still what is ON SCREEN until that
     // draw completes.
     expect(store.canvasPresents()).toBe(true)
     expect(store.holdsPage()).toBe(true)
-    expect(store.getState().presentedView).toBe('dom')
+    expect(store.getState()).toMatchObject({ presented: 'page', isChanging: true })
   })
 
   it('the page is released by the color-writing draw, in that draw', () => {
@@ -308,12 +460,13 @@ describe('the two-stage receipt', () => {
     const heard: boolean[] = []
     store.subscribeHold(() => heard.push(store.holdsPage()))
     store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
     store.present('a', store.epoch())
     expect(store.holdsPage()).toBe(false)
+    expect(store.getState().isChanging).toBe(true)
     expect(heard).toEqual([false])
-    expect(store.getState().presentedView).toBe('webgl')
+    expect(store.getState().presented).toBe('canvas')
   })
 
   // Input follows the eye (decisions.md #33), and the eye follows the HOLD:
@@ -323,7 +476,7 @@ describe('the two-stage receipt', () => {
   it('the canvas hears the pointer only once the releasing draw has run', () => {
     const store = exclusiveStore()
     store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
     // Presentation authority has moved; the page is still on screen.
     expect(store.canvasPresents()).toBe(true)
@@ -335,36 +488,124 @@ describe('the two-stage receipt', () => {
   it('hearing returns to the page with the hold, at the reclaim', () => {
     const store = exclusiveStore()
     store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
     store.present('a', store.epoch())
-    store.request('dom')
+    store.request('page')
     store.tick(5000)
     expect(store.holdsPage()).toBe(true)
     expect(store.canvasHearsPointer()).toBe(false)
   })
 
-  it('a Twin always hears — hearing is an exclusivity question', () => {
-    const store = createSurfaceStore('twin')
+  it('keeps the canvas presented through a return until the page takes the hold', () => {
+    const store = exclusiveStore()
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.request('canvas')
+    store.tick(500)
+    store.present('a', store.epoch())
+    expect(store.getState().presented).toBe('canvas')
+    store.tick(300)
+
+    store.request('page')
+    expect(store.getState().requested).toBe('page')
+    expect(store.getState().presented).toBe('canvas')
+    store.tick(100)
+    expect(store.getState().presented).toBe('canvas')
+    store.tick(5_000)
+    expect(store.getState().presented).toBe('page')
+  })
+
+  it('reports both only after a color-writing draw and hides both immediately for none', () => {
+    const store = exclusiveStore()
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.request('both')
+    store.tick(500)
+    expect(store.getState()).toMatchObject({ requested: 'both', presented: 'page' })
+    store.present('a', store.epoch())
+    expect(store.getState().presented).toBe('both')
+    store.request('none')
+    expect(store.getState()).toMatchObject({ requested: 'none', presented: 'none' })
+  })
+
+  it('requires a fresh color draw when canvas is re-requested from none', () => {
+    const store = exclusiveStore()
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.request('canvas')
+    store.tick(500)
+    store.present('a', store.epoch())
+    expect(store.getState().presented).toBe('canvas')
+
+    store.request('none')
+    expect(store.getState().presented).toBe('none')
+    store.request('canvas')
+    expect(store.getState().presented).toBe('page')
+    store.present('a', store.epoch())
+    expect(store.getState().presented).toBe('canvas')
+  })
+
+  it('keeps a static settled canvas idle but advances the return linger', () => {
+    const store = exclusiveStore()
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.request('canvas')
+    store.tick(500)
+    store.present('a', store.epoch())
+    store.tick(1_000)
+    expect(store.hasProtocolWork()).toBe(false)
+
+    store.request('page')
+    expect(store.hasProtocolWork()).toBe(true)
+    store.tick(5_000)
+    expect(store.hasProtocolWork()).toBe(true)
+    store.tick(300)
+    expect(store.hasProtocolWork()).toBe(false)
+  })
+
+  it('lets a resident canvas present on its first color draw without protocol work', () => {
+    const store = createSurfaceStore('resident')
+    store.declarePresentation('canvas')
     store.acquire(1)
+    store.registerPresenter('a')
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.request('canvas')
+
+    expect(store.handle.progress.get()).toBe(1)
+    expect(store.getState()).toMatchObject({ isChanging: false, presented: 'none' })
+    expect(store.canvasPresents()).toBe(true)
+    expect(store.hasProtocolWork()).toBe(false)
+    expect(store.canvasHearsPointer()).toBe(false)
+
+    store.present('a', store.epoch())
+    expect(store.getState().presented).toBe('canvas')
+    expect(store.canvasHearsPointer()).toBe(true)
+    expect(store.hasProtocolWork()).toBe(false)
+  })
+
+  it('both enables canvas pointer input only after it has presented', () => {
+    const store = exclusiveStore()
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.request('both')
+    expect(store.canvasHearsPointer()).toBe(false)
+    store.tick(500)
+    store.present('a', store.epoch())
     expect(store.canvasHearsPointer()).toBe(true)
   })
 
-  it('toggling exclusivity notifies the hold listeners', () => {
-    // The one hearing flip with no hold movement: a Twin gaining `view`.
-    // The edge bursts listen on the hold, so this edge reaches them too.
+  it('both and none notify page presentation listeners without a hold swap', () => {
     const store = createSurfaceStore('twin')
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
     let heard = 0
     store.subscribeHold(() => heard++)
-    store.setExclusive(true)
+    store.request('both')
     expect(heard).toBe(1)
     expect(store.canvasHearsPointer()).toBe(false)
-    store.setExclusive(true)
-    expect(heard).toBe(1)
-    store.setExclusive(false)
+    store.request('none')
     expect(heard).toBe(2)
-    expect(store.canvasHearsPointer()).toBe(true)
+    expect(store.canvasHearsPointer()).toBe(false)
+    store.request('page')
+    expect(heard).toBe(3)
+    expect(store.pagePresents()).toBe(true)
   })
 
   it('a color-writing draw before the lift gate releases nothing', () => {
@@ -381,7 +622,7 @@ describe('the two-stage receipt', () => {
     store.registerPresenter('b')
     store.prove('a', store.readinessLifetime(), store.epoch())
     store.prove('b', store.readinessLifetime(), store.epoch())
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
     store.present('a', store.epoch())
     expect(store.holdsPage()).toBe(true)
@@ -396,11 +637,12 @@ describe('the two-stage receipt', () => {
     // it reads as "already presented", the new instance's own draw returns
     // at the duplicate guard, and the page is never released.
     const store = createSurfaceStore('panel')
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
-    store.setExclusive(true)
     const release = store.registerPresenter('a')
     store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
 
     // The unmount half of the remount lands first, so the draw already in
@@ -418,15 +660,15 @@ describe('the two-stage receipt', () => {
   it('the page takes the hold back at the end of the return, with no proof', () => {
     const store = exclusiveStore()
     store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
     store.present('a', store.epoch())
     expect(store.holdsPage()).toBe(false)
-    store.request('dom')
+    store.request('page')
     store.tick(700) // the whole ramp home
     expect(store.holdsPage()).toBe(true)
     // And a second lift has to earn its release again.
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
     expect(store.holdsPage()).toBe(true)
     store.present('a', store.epoch())
@@ -435,6 +677,8 @@ describe('the two-stage receipt', () => {
 
   it('a Twin never releases its page copy', () => {
     const store = createSurfaceStore()
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
     store.registerPresenter('a')
     store.prove('a', store.readinessLifetime(), store.epoch())
@@ -459,11 +703,12 @@ describe('a scene-owned ramp', () => {
   /** An exclusive Surface already past the lift gate. */
   const airborne = () => {
     const store = createSurfaceStore('panel')
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
-    store.setExclusive(true)
     store.registerPresenter('a')
     store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
     store.present('a', store.epoch())
     return store
@@ -480,22 +725,23 @@ describe('a scene-owned ramp', () => {
     const store = airborne()
     const seen: unknown[] = []
     store.drive((frame) => {
-      seen.push({ phase: frame.phase, target: frame.target, progress: frame.progress })
+      seen.push({ target: frame.target, progress: frame.progress })
       return 0.5
     })
     store.tick(16)
-    expect(seen).toEqual([{ phase: 'gl', target: 'webgl', progress: 0 }])
+    expect(seen).toEqual([{ target: 'canvas', progress: 0 }])
   })
 
   // A driver that decides the page may let go would make the whole evidence
   // rule optional. The gate is the protocol's, always.
   it('cannot buy its way past the lift gate', () => {
     const store = createSurfaceStore('panel')
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
-    store.setExclusive(true)
     store.registerPresenter('a')
     store.drive(() => 1)
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
     expect(store.holdsPage()).toBe(true)
     expect(store.handle.progress.get()).toBe(0)
@@ -522,13 +768,13 @@ describe('a scene-owned ramp', () => {
     store.drive(() => ramp)
     store.tick(16)
     expect(store.holdsPage()).toBe(false)
-    store.request('dom')
+    store.request('page')
     ramp = 1e-9
     store.tick(16)
-    expect(store.getState().presentedView).toBe('webgl')
+    expect(store.getState().presented).toBe('canvas')
     ramp = 0
     store.tick(16)
-    expect(store.getState().presentedView).toBe('dom')
+    expect(store.getState().presented).toBe('page')
     expect(store.handle.progress.get()).toBe(0)
     expect(store.holdsPage()).toBe(true)
   })
@@ -587,8 +833,9 @@ describe('the part ledger — all of the parts or none (decisions.md #37)', () =
   // lift and release with that part's content nowhere.
   const wordStore = () => {
     const store = createSurfaceStore('word')
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
-    store.setExclusive(true)
     store.expectPart('W')
     store.expectPart('O')
     store.registerPresenter('w')
@@ -599,7 +846,7 @@ describe('the part ledger — all of the parts or none (decisions.md #37)', () =
 
   it('a declared part with no presenter holds the gate and the page', () => {
     const store = wordStore()
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
     expect(store.canvasPresents()).toBe(false)
     expect(store.getState().ready).toBe(false)
@@ -609,7 +856,7 @@ describe('the part ledger — all of the parts or none (decisions.md #37)', () =
 
   it('the arriving part presenter completes the set and the handoff proceeds', () => {
     const store = wordStore()
-    store.request('webgl')
+    store.request('canvas')
     store.tick(500)
     store.registerPresenter('o')
     store.registerPartPresenter('O')
@@ -623,6 +870,8 @@ describe('the part ledger — all of the parts or none (decisions.md #37)', () =
 
   it('a presenter naming its part before the declaration still counts', () => {
     const store = createSurfaceStore()
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
     // Separated wiring: the scene tree can commit before the page tree.
     store.registerPartPresenter('late')
@@ -634,6 +883,8 @@ describe('the part ledger — all of the parts or none (decisions.md #37)', () =
 
   it('a Strict Mode overlap keeps the part declared', () => {
     const store = createSurfaceStore()
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
     store.acquire(1)
     store.registerPresenter('a')
     store.prove('a', store.readinessLifetime(), store.epoch())

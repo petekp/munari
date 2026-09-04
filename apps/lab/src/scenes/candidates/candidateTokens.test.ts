@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { tokenize } from './candidateTokens'
 
-const SOURCE = `const surface = useSurface('card')
-<Surface.DOM>{card}</Surface.DOM>`
+const SOURCE = `const surface = useSurfaceHandle('card')
+<Surface renderIn="both" source={card}>
+  <Surface.DOM />
+  <Surface.Mesh />
+</Surface>`
 
 describe('tokenize', () => {
   it('loses nothing', () => {
@@ -19,10 +22,10 @@ describe('tokenize', () => {
 
   it('reads both halves of a JSX element as tags', () => {
     const tags = tokenize(SOURCE).filter((t) => t.kind === 'tag').map((t) => t.text)
-    expect(tags).toEqual(['<Surface.DOM', '>', '</Surface.DOM', '>'])
+    expect(tags).toEqual(['<Surface', '>', '<Surface.DOM', '/>', '<Surface.Mesh', '/>', '</Surface', '>'])
   })
 
   it('reads a prop written with a brace as an attribute', () => {
-    expect(tokenize('<S view={v}>')).toContainEqual({ kind: 'attr', text: 'view' })
+    expect(tokenize('<S renderIn={v}>')).toContainEqual({ kind: 'attr', text: 'renderIn' })
   })
 })

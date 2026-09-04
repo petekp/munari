@@ -5,7 +5,7 @@ import {
   detectHtmlInCanvas,
   FocusScene,
   SurfaceCanvas,
-  useSupportsDOMSurfaces,
+  useSurfaceSupport,
 } from '@petepetrash/munari'
 import { paintStats } from '@petepetrash/munari/advanced'
 import { showChrome, showShell } from './bareMode'
@@ -246,7 +246,7 @@ function SceneHud({ scene }: { scene: SceneId }) {
 }
 
 export default function App() {
-  const unsupported = !useSupportsDOMSurfaces()
+  const unsupported = !useSurfaceSupport()
   // Both trial entry points, for the capability chips only. The branch
   // above is the hook's job — a Surface needs `drawElementImage`, and
   // `texElementImage2D` is reported here as diagnostics.
@@ -282,7 +282,7 @@ export default function App() {
 
   // A missing trial is a degraded lab, not a blocked one. Every scene keeps
   // its page DOM: `surfaceSourceHost` catches UnsupportedPlatformError and
-  // leaves `presentedView` at `dom`, so the DOM presenters stay mounted and
+  // leaves the page presented, so the DOM presenters stay mounted and
   // the r3f tree survives. Measured 2026-08-22, Chrome without the flag,
   // all 14 scenes: zero page errors, 100% of sampled points take a caret.
   //

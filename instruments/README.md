@@ -252,11 +252,54 @@ mid-lift, and the parked copy wears no `data-hover` — the last clause
 also covers the #33 edge burst, because an earlier gl-phase hover
 leaves a stamped twin that only the burst clears.
 
+The presenter lives inside `Surface.Scene`. The gate also requests `both`,
+`none`, `page`, and `canvas`, checks the reported presentation against page
+visibility and subtree lifetime, then verifies that the custom child's frame
+subscription stops after return and cleanup. It exercises inherited content
+through an empty `Surface.DOM` declaration. Settled static `canvas` and `both`
+presentations must also let their demand canvas stop rendering while the
+presenter remains mounted.
+
 This began as the probe that found the fault (2026-08-19: 3/3 lifting
 clicks routed to the parked copy while the page copy was presented;
 the pointer gate made the canvas solid at mesh registration, a full
 settle dwell before presentation changed hands) and was promoted when
 `crossingPointer` shipped.
+
+## native-pointer
+
+Local gate: the native pointer route (decisions.md #39), driven for the
+first time inside the library. `npm run gate:native-pointer`.
+
+One exclusive Surface opts into `pointerRoute="auto"` in the gl phase.
+The gate's discriminator is `isTrusted`: the relay's synthetic dispatch
+can never set it, so a source-copy click record with `trusted: true` is
+proof the browser itself delivered the pointer through the rig.
+
+The judged clauses: a rest click and a default-route gl click are the
+liveness baselines (native page hit, then the synthetic relay); asking
+for `'auto'` on a flat pose dresses the parked canvas exactly as
+`nativeRoute.ts` says (matrix3d from `transform-origin: 0 0`,
+`visibility: hidden`, z lifted, drawn root visible); a trusted click at
+the projected button reaches the real element; real `:hover` engages
+and the `data-hover` twin follows it on and off; a click focuses the
+real input and typed keys land in it; a 30°/12° tilt moves the
+projected box and still takes the trusted click; and returning the
+request to `'relay'` restores every written style and the relay hears
+again. Clicks aim at the content's own `getBoundingClientRect()` —
+under the worn pose the browser's rects ARE the projection (platform.md
+#19: 0.01px), so no gate-side matrix math can drift from the rig.
+
+The input is controlled above the Surface. After typing through the native
+canvas route, the gate returns to the page, verifies the value, edits it there,
+and re-enters the canvas to check that both instances retain the shared state.
+
+What it deliberately does not judge: the OS cursor. Whether Chrome
+applies an unpainted canvas child's `cursor` is #39's open question and
+no API reads the pointer's actual glyph, so the gate prints where the
+hit-test landed and the answer needs `HEADED=1` and an eye on the
+target. The pose-hold paint economy (0 paints/frame, platform.md #21)
+is pinned by the cover-clip spike and not re-measured here.
 
 ## fisheye-pointer
 

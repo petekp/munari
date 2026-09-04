@@ -1,6 +1,7 @@
 # Agent operating guide
 
-**Status: current workflow, 2026-08-31.** The commands and APIs below exist.
+**Status: current workflow, 2026-09-04.** The Surface API revision is implemented
+and locally verified; [decision #40](decisions.md) records the evidence.
 The [agent-system plan](agent-system-plan.md) contains unbuilt work. Read only
 the route that fits the task; the [system model](system-model.md) explains the
 ownership and evidence behind it.
@@ -26,9 +27,9 @@ effect does not need a handoff.
 
 | Task | Start here | Control and completion | Smallest relevant evidence |
 |---|---|---|---|
-| First Surface or separated DOM/R3F trees | [Consumer setup](../README.md#your-first-surface), [public entries](../packages/react/src/index.ts), [compile-only examples](../tests/surfaceTypes.tsx) | Identity from `useSurface(name?)` or `createSurface(name?)`; view, timing and callbacks on `Surface` | Typecheck the consumer; check the real gesture and native fallback |
-| Page ↔ WebGL handoff | [View helper](../packages/react/src/primitives/surface/useSurfaceView.ts), [crossing contracts](../tests/conformance/transfer/crossing.test.ts) | `show(view)` requests; `presentedView` confirms hold; `mounted` protects teardown | `gate:dom-surface-demand`; add `gate:lifting-pointer` when input ownership changes |
-| Custom material or captured reflection | [Material context](../packages/react/src/primitives/surface/surfaceContext.ts), [Marble Hand](../apps/lab/src/scenes/marble-hand/MarbleHand.tsx) | `useSurfaceTexture()` inside its material slot; nullable `useSurfaceTextureOf(handle)` outside it | `gate:shaders`; the scene's visual gate for reflected content or appearance |
+| First Surface or separated DOM/R3F trees | [Consumer setup](../README.md#your-first-surface), [public entries](../packages/react/src/index.ts), [compile-only examples](../tests/surfaceTypes.tsx) | A basic Surface needs no identity; use `useSurfaceHandle(name?)` or `createSurface(name?)` for separated trees. `renderIn`, timing and callbacks belong on `Surface` | Typecheck the consumer; check the real gesture and native fallback |
+| Page ↔ canvas handoff | [API naming contract](api-naming-proposal.md), [crossing contracts](../tests/conformance/transfer/crossing.test.ts) | `renderIn="page" | "canvas"` requests; `useSurfaceState().presented` and `onPresentationChange` confirm the hold; `Surface.Scene` retains custom scene children | `gate:dom-surface-demand`; add `gate:lifting-pointer` when input ownership changes |
+| Custom material or captured reflection | [Material context](../packages/react/src/primitives/surface/surfaceContext.ts), [Marble Hand](../apps/lab/src/scenes/marble-hand/MarbleHand.tsx) | `useSurfaceTexture()` inside `<Surface.Mesh>`; nullable `useSurfaceTextureOf(handle)` outside it | `gate:shaders`; the scene's visual gate for reflected content or appearance |
 | DOM-aligned controls or responsive layout | [Anchor API](../packages/react/src/primitives/surface/SurfaceAnchor.tsx), [anchor recipe](../registry/surface-anchors/README.md), [Knobs](../apps/lab/src/scenes/knobs/Knobs.tsx) | Named anchors from the painted generation; manual hardware size remains scene-owned | Anchor contracts, then `gate:knobs-resize`; box agreement alone is not pixel proof |
 | Deformation and pointer accuracy | [Deformation API](../packages/react/src/primitives/surface/surfaceDeform.ts), decision #35 | Move geometry through the public seam so raycast and drawn shape agree | The matching pointer gate, such as `gate:fisheye-pointer` or `gate:crystal-pointer` |
 | Pixels from a caller-owned canvas | [FrameSurface](../packages/react/src/primitives/FrameSurface.tsx), [advanced entry](../packages/react/src/advanced.ts) | Publish a complete frame; distinguish frame-draw and presentation receipts | `gate:frame-surface` |
@@ -39,7 +40,15 @@ effect does not need a handoff.
 The root entry is `@petepetrash/munari`. Use `/advanced` for a deliberate
 lower-level need. Do not reach around either entry from the lab or registry.
 An advanced manual presenter must report actual draw evidence; it is not a
-shortcut for forcing a status.
+shortcut for forcing a status. `SurfacePresentation` describes the current
+hold (`page`, `canvas`, `both` or `none`); `SurfaceDestination` describes a
+motion target (`page` or `canvas`).
+
+The handle parameter is optional for state, progress, and driver reads; with
+no handle, they use the nearest Surface identity across page and scene trees.
+`Surface.Mesh presentation="manual"` keeps its proxy and pointer relay while
+an advanced manual presenter supplies final draw evidence for every declared
+part. It must report each part's actual final compositor draw.
 
 ## Run a small, decisive experiment
 
@@ -68,12 +77,12 @@ do not need this capability; [their contracts](../instruments/README.md) say so.
 | Observation | Next check |
 |---|---|
 | Capability absent | Test the native outcome; label the enhanced path untested |
-| Source-only texture updates but `ready` is false | Confirm that no presenter is intended; do not manufacture readiness |
+| Source-only texture updates but `ready` is false | Confirm that `renderIn="none"` is intended; do not manufacture readiness |
 | `ready` is true but a handoff waits | Check writing versus warm-up draws, required parts, source lifetime, and host presentation |
 | Texture changes but the visible result does not | Check the consuming material, drawn generation, target framebuffer and scene pixels |
 | Anchors align after settling but jump during resize | Compare the paint generation and placement in the same frame |
 | Pointer misses a visible control | Check coordinate space, geometry, input hold and native event outcome |
-| Motion finishes but old pixels remain | Check mount duty, final post-removal draw and resource lifetime |
+| Motion finishes but old pixels remain | Check `Surface.Scene` cleanup duty, final post-removal draw and resource lifetime |
 | Screencast reports a freeze | Check observer health before blaming rendering; see [platform item 13](platform.md) |
 | A gate exits zero | Read its result: a capability skip is not behavior proof |
 

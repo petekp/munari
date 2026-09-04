@@ -67,7 +67,7 @@ export interface SurfaceUniforms {
 }
 
 /**
- * The uniform set a custom `<Surface.WebGL material={…}>` shader wires.
+ * The uniform set a custom `<Surface.Mesh material={…}>` shader wires.
  *
  * The radii and size slots are the PRESENTER's own uniform objects, shared
  * by reference — a chrome change is a value write into them, so a material
@@ -84,7 +84,7 @@ export function useSurfaceUniforms(): SurfaceUniforms {
   if (!slot) {
     throw new Error(
       'munari: useSurfaceUniforms() must be called from the `material` of a ' +
-        '<Surface.WebGL>. It wires that presenter’s corner mask, so there is ' +
+        '<Surface.Mesh>. It wires that presenter’s corner mask, so there is ' +
         'nothing for it to wire anywhere else.',
     )
   }
@@ -116,7 +116,7 @@ export interface SurfaceLitMaterialProps {
 /**
  * A lit slab wearing the Surface's capture.
  *
- * Mounted in `<Surface.WebGL material={…}>`, where a configured texture is
+ * Mounted in `<Surface.Mesh material={…}>`, where a configured texture is
  * guaranteed to already exist. The emissive slot always carries the capture
  * so sliding `emissiveIntensity` is a uniform write rather than a program
  * change — at the default `0` the term contributes nothing.
@@ -131,7 +131,7 @@ export function SurfaceLitMaterial({
   const slot = use(SurfaceMaterialContext)
   if (!slot) {
     throw new Error(
-      'munari: <Surface.LitMaterial> must be the `material` of a <Surface.WebGL>. ' +
+      'munari: <Surface.LitMaterial> must be the `material` of a <Surface.Mesh>. ' +
         'It reads that presenter’s corner mask and alpha policy, so there is ' +
         'nothing for it to describe on its own.',
     )

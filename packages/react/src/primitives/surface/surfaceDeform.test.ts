@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { deformSurfaceGeometry } from './surfaceDeform'
+import { DEFORMED_MARKER, deformSurfaceGeometry } from './surfaceDeform'
 
 const W = 300
 const H = 352
@@ -97,5 +97,17 @@ describe('the mechanism owns the raycast footguns', () => {
     expect(() => deformSurfaceGeometry(geometry, [W, H], (x, y) => ({ x, y }))).toThrow(
       /plain position and uv/,
     )
+  })
+
+  it('stamps the deformed marker on the geometry instance, identity place included', () => {
+    // The receipt the pointer route law reads (surfaceNativeRoute.ts): a
+    // deformed Surface has no matrix3d to wear. On the instance because a
+    // scene deforms through a mesh ref, not always a geometry prop — and
+    // stamped even for an identity place, because "was this ever deformed"
+    // is the honest answer a frame-loop deformation can give.
+    const geometry = new THREE.PlaneGeometry(W, H, 1, 1)
+    expect(geometry.userData[DEFORMED_MARKER]).toBeUndefined()
+    deformSurfaceGeometry(geometry, [W, H], (x, y) => ({ x, y }))
+    expect(geometry.userData[DEFORMED_MARKER]).toBe(true)
   })
 })

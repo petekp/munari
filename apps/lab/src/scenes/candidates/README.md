@@ -55,8 +55,9 @@ deformation's own period, never guessed — the comment at each
 
 ## Capability gaps found while building this
 
-Notes for later. Each is something a candidate wanted, that munari does
-not currently offer, and that a workaround had to stand in for.
+These notes retain what candidates wanted and the workaround that exposed it.
+Some gaps now have an API seam; implementation and browser verification still
+belong to the current API work.
 
 1. **A scalar uniform written in `useFrame` never reaches the GPU.** This
    one is a live trap, not a wish. `@react-three/fiber` 9.7 stopped adopting
@@ -86,12 +87,13 @@ not currently offer, and that a workaround had to stand in for.
    warning when a material sampling a Surface texture has no encode in its
    fragment source would have caught all eight at once.
 
-3. **A presenter is always a mesh.** `Surface.WebGL` renders a `<mesh>`,
-   so the pixel cloud could not be `THREE.Points`. Worked around by
-   building billboarded quads by hand (`candidateCloud.ts`) and expanding
-   them in the vertex shader — four vertices and two triangles per grain
-   where one point sprite would do. A `Points` presentation would be a
-   real saving for any particulate effect.
+3. **Closed by the manual presentation seam (verified 2026-09-04).**
+   `<Surface.Mesh presentation="manual">` keeps Munari's mesh proxy and
+   pointer relay while delegating final draw evidence to the scene. The
+   advanced `surfaceManualPresenter` must register every declared part and
+   report each part's actual final compositor draw. A particle cloud can now
+   use `THREE.Points` or another scene object without pretending that a
+   proxy mesh's warm-up draw was the visible presentation.
 
 4. **A material can only reach its own Surface's texture.** *Closed
    2026-08-22 by `useSurfaceTextureOf(handle)`.* It was an ergonomics gap,
@@ -136,9 +138,9 @@ not currently offer, and that a workaround had to stand in for.
    `always` and gives up the zero-paint property. A presenter-scoped
    "I am animating" claim is the missing piece.
 
-10. **`onWebGLReleased` is the only end-of-handoff signal.** It says the
-   pixels are back, and `useSurfaceView` reads the same fact off
-   `state.isWebGLMounted` to keep the mesh up for exactly that long. What
-   several candidates actually wanted is a signal for *the mesh is about to
-   be torn down*, so a material can hold its last frame — the current
-   workaround is to keep `mounted` as separate state from `view`.
+10. **Closed by Surface.Scene (verified 2026-09-04).** An always-declared
+   `<Surface.Scene>` retains one Surface's scene subtree through preparation,
+   reversal, return, and cleanup. Presentation state comes from
+   `useSurfaceState().presented`; motion completion comes from
+   `onMotionComplete`. A caller-owned `<SurfaceCanvas>` remains the caller's
+   lifetime and cannot be retained by a child boundary.

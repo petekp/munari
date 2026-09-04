@@ -8,7 +8,7 @@
 // flat middle. At most one of the two Surfaces is presented at a time, and
 // while the drop is open NEITHER is: the sheet belongs to the mesh and both
 // documents are RESIDENT SOURCES — declared with content, no view, no
-// `Surface.DOM`, no `Surface.WebGL` — whose pixels reach the shader by handle
+// `Surface.DOM`, no `Surface.Mesh` — whose pixels reach the shader by handle
 // through `useSurfaceTextureOf` (decisions.md #36). Nothing in the scene
 // graph draws a resident source and nothing in the document shows it.
 //
@@ -46,8 +46,7 @@ import * as THREE from 'three'
 import {
   Surface,
   SurfaceCanvas,
-  useSurface,
-  useSurfaceState,
+  useSurfaceHandle,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { showChrome } from '../../bareMode'
@@ -189,9 +188,8 @@ function PixelPerfect() {
 // ── the page ───────────────────────────────────────────────────────────
 
 export function RefractionApp() {
-  const outgoing = useSurface('refraction-square')
-  const incoming = useSurface('refraction-circle')
-  const st = useSurfaceState(outgoing)
+  const outgoing = useSurfaceHandle('refraction-square')
+  const incoming = useSurfaceHandle('refraction-circle')
 
   const [t, setT] = useState(0)
   const [running, setRunning] = useState(false)
@@ -362,7 +360,7 @@ export function RefractionApp() {
               only thing drawing either of them.
 
               The leaving page goes to no `view` at all on the far side
-              rather than back to `'dom'`. `'dom'` is a request for the DOM
+              rather than back to `'page'`. `'page'` is a request for the DOM
               to take the hold, and the store grants it inside a draw while
               React unmounts the holder in a later commit — so the leaving
               document was visible for exactly one frame in the middle of
@@ -372,7 +370,7 @@ export function RefractionApp() {
               square's own resting value. */}
           <Surface
             surface={outgoing}
-            view={landed === 'arriving' ? undefined : lifted ? 'webgl' : 'dom'}
+            renderIn={landed === 'arriving' ? 'none' : lifted ? 'canvas' : 'page'}
             timing={{ settleMs: 0, durationMs: 1 }}
             size={[STAGE_W, STAGE_H]}
             source={leaving}
@@ -382,7 +380,7 @@ export function RefractionApp() {
 
           <Surface
             surface={incoming}
-            view={landed === 'arriving' ? 'dom' : undefined}
+            renderIn={landed === 'arriving' ? 'page' : 'none'}
             timing={{ settleMs: 0, durationMs: 1 }}
             size={[STAGE_W, STAGE_H]}
             source={arriving}
@@ -405,15 +403,13 @@ export function RefractionApp() {
         }}
       >
         <PixelPerfect />
-        {/* `lifted` and not `isWebGLMounted` alone: without a `view` the
-            Surface is a Twin, and a Twin never releases its WebGL side —
-            `isWebGLMounted` stays true and the mesh would keep drawing over
-            the landed page. Unmounting it here is what hands the sheet back.
-            The store flag stays in the condition so the mesh still waits for
-            the handoff on the way up. */}
-        {lifted && st.isWebGLMounted && pos && (
+        {/* The custom scene subtree is active only during the business
+            interaction. The declared meshes retain their own handoff
+            lifetime, including preparation and return. */}
+        {lifted && pos && (
+          <Surface.Scene surface={outgoing}>
           <group position={[pos.wx, pos.wy, 0]}>
-            <Surface.WebGL
+            <Surface.Mesh
               surface={outgoing}
               placement="manual"
               alpha="source"
@@ -430,6 +426,7 @@ export function RefractionApp() {
               }
             />
           </group>
+          </Surface.Scene>
         )}
       </SurfaceCanvas>
 

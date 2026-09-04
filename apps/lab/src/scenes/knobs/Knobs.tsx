@@ -43,7 +43,7 @@ import * as THREE from 'three'
 import {
   Surface,
   SurfaceCanvas,
-  useSupportsDOMSurfaces,
+  useSurfaceSupport,
   type SourceUvRect,
   useSurfaceAnchorBox,
   useSurfaceAnchorRects,
@@ -2316,12 +2316,13 @@ function PanelStage({
               is no page copy for it to be exclusive against. */}
           <Surface
             name="knobs-panel"
+            renderIn="canvas"
             source={<KnobsPanel />}
             size={[rect.w, rect.h]}
             paint={resizing ? 'always' : 'auto'}
           >
             <PanelSourceRoot onHost={onHost} />
-            <Surface.WebGL
+            <Surface.Mesh
               name="knobs-panel-surface"
               placement="manual"
               position={[0, 0, FACE_Z]}
@@ -2378,7 +2379,7 @@ function PanelStage({
                 </KnobsAnchor>
               ))}
             </LiveKnobsAnchorContext>
-            </Surface.WebGL>
+            </Surface.Mesh>
           </Surface>
         </PanelRig>
       )}
@@ -2572,7 +2573,7 @@ function DegradedKnobs() {
 }
 
 export function KnobsApp() {
-  const supported = useSupportsDOMSurfaces()
+  const supported = useSurfaceSupport()
   const hostCleanup = useRef<(() => void) | null>(null)
   const kick = useRef<((dir: number) => void) | null>(null)
   const assets = useHardwareAssets()

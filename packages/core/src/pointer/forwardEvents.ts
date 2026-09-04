@@ -12,6 +12,7 @@
 // no forwarding needed at all (we just stop the canvas from stealing focus).
 
 import { relay } from './relay'
+import { ACTIVE_ATTR, HOVER_ATTR, chainOf, swapChainAttr } from './twins'
 
 const FOCUSABLE = 'input, textarea, select, button, [tabindex], [contenteditable]'
 
@@ -197,19 +198,27 @@ export const trackFocusModality: () => () => void = refCounted(() => {
   }
 })
 
+/**
+ * Declare that the user's last interaction was a pointer press, for a route
+ * that does not dispatch through `forwardPointer`.
+ *
+ * The native route's press IS trusted, so the browser reaches the right
+ * `:focus-visible` verdict on its own — but nothing else in the document
+ * tells this mirror, and `data-pointer-focus` would then be absent after a
+ * native click and present after a relayed one. A scene that reads the twin
+ * directly (rather than through the `:focus-visible` exclusion variant) would
+ * see two different stories for the same press.
+ */
+export function notePointerModality(): void {
+  modality = 'pointer'
+}
+
 // ---- hover / active mirroring -------------------------------------------
 //
-// :hover and :active are set by the browser's REAL hit-testing, which never
-// reaches the parked subtree (it sits behind the canvas with pointer-events
-// off) — and dispatching synthetic events cannot flip pseudo-classes. So the
-// forwarder owns those states: it mirrors the pseudo-class chains onto
-// `data-hover` / `data-active` attributes (target + ancestors, like the real
-// thing) and dispatches pointerover/pointerout on hover changes.
-//
-// Author CSS with both selectors:  button:hover, button[data-hover] { … }
-
-const HOVER_ATTR = 'data-hover'
-const ACTIVE_ATTR = 'data-active'
+// The attribute names and the chain walk live in `twins.ts`, because the
+// native route writes the same twins from the browser's own events. What
+// belongs here is WHEN the relay swaps them: mirror before dispatch, clear on
+// departure, and hand the hover twin to the page copy at a landing.
 
 interface PointerMirror {
   hovered: Element | null
@@ -306,24 +315,6 @@ const mirrorOf = (root: HTMLElement): PointerMirror => {
     mirrors.set(root, m)
   }
   return m
-}
-
-/** `el` and its ancestors up to and including `root`. */
-function chainOf(root: Element, el: Element | null): Element[] {
-  const out: Element[] = []
-  for (let n: Element | null = el; n; n = n.parentElement) {
-    out.push(n)
-    if (n === root) break
-  }
-  return out
-}
-
-function swapChainAttr(root: Element, prev: Element | null, next: Element | null, attr: string) {
-  if (prev === next) return
-  const nextChain = chainOf(root, next)
-  const keep = new Set(nextChain)
-  for (const el of chainOf(root, prev)) if (!keep.has(el)) el.removeAttribute(attr)
-  for (const el of nextChain) if (!el.hasAttribute(attr)) el.setAttribute(attr, '')
 }
 
 /**

@@ -44,7 +44,7 @@ import {
   SurfaceCanvas,
   type PresentationReceipt,
   type SourceUvRect,
-  type SurfaceView,
+  type SurfacePresentation,
   useSurfaceAnchorRects,
   useSurfaceChrome,
   useSurfaceDriver,
@@ -52,7 +52,7 @@ import {
   useSurfaceSourceRoot,
   useSurfaceTexture,
   useSurfaceUniforms,
-  useSupportsDOMSurfaces,
+  useSurfaceSupport,
 } from '@petepetrash/munari'
 import {
   cameraDistance,
@@ -934,7 +934,7 @@ interface Ring {
 type Dir = 'minimizing' | 'restoring'
 interface AirState {
   direction: Dir
-  view: SurfaceView
+  renderIn: SurfacePresentation
 }
 
 function frameCovers(receipt: FrameDrawReceipt, required: FrameId): boolean {
@@ -1251,9 +1251,9 @@ function Flight({
   // serves both. Zero the moment the board asks for the page back: a
   // dock landing ends at visibleT 1 and would otherwise never hand over,
   // and there is nothing left to interpolate once the sheet has arrived.
-  useSurfaceDriver(store.handle, ({ target }) =>
-    target === 'dom' ? 0 : Math.min(1, Math.max(0, air.drive.visibleT)),
-  )
+  useSurfaceDriver(({ target }) =>
+    target === 'page' ? 0 : Math.min(1, Math.max(0, air.drive.visibleT)),
+  store.handle)
 
   // The film's own presenter, registered for as long as this flight is in
   // the air. Registration is the whole mechanism: the crossing releases
@@ -1378,7 +1378,7 @@ function Flight({
     // reason: at equal depth the buffer has no opinion worth having, and
     // a sheet must never reject the one behind it.
     <group ref={groupRef} renderOrder={stack} position={[f.wx, f.wy, 0]}>
-      <Surface.WebGL
+      <Surface.Mesh
         surface={store.handle}
         // The page declares this window's source in its own slot; the
         // sheet is placed by the warp, not by the box the page copy is in.
@@ -1433,7 +1433,7 @@ function Flight({
             onAnchor={onAnchor}
           />
         )}
-      </Surface.WebGL>
+      </Surface.Mesh>
     </group>
   )
 }
@@ -1875,7 +1875,7 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
 
 export function GenieApp() {
   // No trial, no flight — see `fold`.
-  const supported = useSupportsDOMSurfaces()
+  const supported = useSurfaceSupport()
   const [filmController] = useState<GenieFilmController>(() =>
     createGenieFilmController({
       onError: (error) => console.warn('[munari] Genie film frame failed:', error),
@@ -2253,7 +2253,7 @@ export function GenieApp() {
     handKeyboardOver(id, to)
     setShown((s) => ({ ...s, [id]: false }))
     setFramed((f) => ({ ...f, [id]: false }))
-    setAir((a) => ({ ...a, [id]: { direction: to, view: 'webgl' } }))
+    setAir((a) => ({ ...a, [id]: { direction: to, renderIn: 'canvas' } }))
     return true
   }
 
@@ -2348,7 +2348,7 @@ export function GenieApp() {
       setAir((current) => {
         const flightState = current[id]
         return flightState
-          ? { ...current, [id]: { ...flightState, view: 'dom' } }
+          ? { ...current, [id]: { ...flightState, renderIn: 'page' } }
           : current
       })
     })
@@ -2357,8 +2357,8 @@ export function GenieApp() {
   // The handle's own answer about who is showing, which is the only edge
   // either side of this scene may act on: hiding the page copy early
   // doubles translucent pixels, and revealing it early shows two of them.
-  const onPresentedView = (id: WinId, view: SurfaceView) => {
-    if (view === 'webgl') {
+  const onPresentedView = (id: WinId, view: SurfacePresentation) => {
+    if (view === 'canvas') {
       winRefs.current[id]?.setAttribute('data-away', 'true')
       setShown((s) => (s[id] ? s : { ...s, [id]: true }))
       const film = flights.current.get(id)?.f.film
@@ -2548,24 +2548,22 @@ export function GenieApp() {
               raise(s.id)
             }}
           >
-            {/* The desk's own copy, never wrapped and never re-parented.
-                A <Surface.DOM> here would be the tidier declaration and is
-                wrong: taking off would move this subtree, React would
-                unmount it and mount a second one, and the film's canvas —
-                which the controller accepts exactly one of for its
-                lifetime — would be torn down mid-flight. The hide is this
-                scene's own `data-away`, which it has to be anyway: the
-                dock landing hides at a different moment from the release. */}
-            {bodyFor(s)}
+            {/* This page instance never moves between React positions. The
+                flight Surface supplies a second capture source only while a
+                window is airborne; its presentation cannot own the decoder
+                canvas that belongs to this native window for its lifetime. */}
+            <Surface.DOM surface={storeOf(s.id).handle} className="gen-page-presentation">
+              {bodyFor(s)}
+            </Surface.DOM>
             {air[s.id] && (
               <Surface
                 surface={storeOf(s.id).handle}
-                view={air[s.id]?.view ?? 'webgl'}
+                renderIn={air[s.id]?.renderIn ?? 'canvas'}
                 // No settle and no ramp of its own. The pour driver in
                 // Flight is the whole motion; a second ramp underneath it
                 // would cross-fade a sheet already interpolating.
                 timing={{ settleMs: 0, durationMs: 1 }}
-                onPresentedViewChange={(view) => onPresentedView(s.id, view)}
+                onPresentationChange={(view) => onPresentedView(s.id, view)}
                 size={[
                   flights.current.get(s.id)?.f.w ?? 0,
                   flights.current.get(s.id)?.f.h ?? 0,
@@ -2662,33 +2660,37 @@ export function GenieApp() {
           docked={docked}
           stopRing={stopRing}
         />
-        {airborne.map((win) => {
+        {SCHEDE.map((scheda) => {
+          const win = scheda.id
+          const store = storeOf(win)
           const a = flights.current.get(win)
-          const s = SCHEDE.find((x) => x.id === win)
           // `airborne` is read off `air` itself, so the direction is there
           // by construction — asked for anyway, with the two beside it.
           const dir = air[win]?.direction
-          if (!a || !s || !dir) return null
           return (
-            <Flight
-              key={`${win}:${a.flightId}`}
-              win={win}
-              dir={dir}
-              air={a}
-              store={storeOf(win)}
-              ring={ringOf(win)}
-              ringing={ringing.includes(win)}
-              stack={order.indexOf(win)}
-              slotOf={slotOf}
-              kickRing={kickRing}
-              freezeFilm={() => filmController.freeze()}
-              onFramed={tellFilmReady}
-              onFilmPresented={tellFilmPresented}
-              onLand={(w, wall, resumeFrame) => {
-                if (flights.current.get(w) !== a) return
-                onLand(w, wall, resumeFrame)
-              }}
-            />
+            <Surface.Scene key={win} surface={store.handle}>
+              {a && dir && (
+                <Flight
+                  key={`${win}:${a.flightId}`}
+                  win={win}
+                  dir={dir}
+                  air={a}
+                  store={store}
+                  ring={ringOf(win)}
+                  ringing={ringing.includes(win)}
+                  stack={order.indexOf(win)}
+                  slotOf={slotOf}
+                  kickRing={kickRing}
+                  freezeFilm={() => filmController.freeze()}
+                  onFramed={tellFilmReady}
+                  onFilmPresented={tellFilmPresented}
+                  onLand={(w, wall, resumeFrame) => {
+                    if (flights.current.get(w) !== a) return
+                    onLand(w, wall, resumeFrame)
+                  }}
+                />
+              )}
+            </Surface.Scene>
           )
         })}
       </SurfaceCanvas>

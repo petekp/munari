@@ -24,28 +24,42 @@
 // interactivity, and the page instance of the content. It owns no texture
 // and no protocol.
 
-import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
+import { use, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { rectIsMeasurable } from '@munari/core'
 import {
   SurfaceInstanceContext,
-  useSurfacePart,
-  useSurfaceRoot,
+  SurfaceHandleContext,
+  SurfacePartContext,
+  SurfaceRootContext,
   type SurfaceInstance,
 } from './surfaceContext'
+import { surfaceStoreOf, type SurfaceHandle } from './surfaceHandle'
 
 export interface SurfaceDOMProps extends React.HTMLAttributes<HTMLDivElement> {
   /** The page copy of the content. Usually the same element as `source`. */
   children?: React.ReactNode
   ref?: React.Ref<HTMLDivElement>
+  /** Separated wiring: the handle whose page presentation this declares. */
+  surface?: SurfaceHandle
 }
 
-export function SurfaceDOM({ children, style, ref, ...rest }: SurfaceDOMProps) {
-  const root = useSurfaceRoot('Surface.DOM')
-  const part = useSurfacePart('Surface.DOM')
+export function SurfaceDOM({ children, style, ref, surface, ...rest }: SurfaceDOMProps) {
+  const inheritedRoot = use(SurfaceRootContext)
+  const contextualPart = use(SurfacePartContext)
+  const part = surface && inheritedRoot?.handle !== surface ? null : contextualPart
+  const store = surface ? surfaceStoreOf(surface) : inheritedRoot?.store
+  if (!store) {
+    throw new Error('munari: <Surface.DOM> needs an enclosing <Surface> or `surface={…}`.')
+  }
+  if (!part && children === undefined) {
+    throw new Error('munari: separated <Surface.DOM surface={…}> needs explicit children.')
+  }
+  const handleValue = useMemo(() => ({ handle: store.handle, store }), [store])
   const [holder, setHolder] = useState<HTMLDivElement | null>(null)
 
-  const setPageRoot = part.setPageRoot
+  const setPageRoot = part?.setPageRoot
   useLayoutEffect(() => {
+    if (!setPageRoot) return
     setPageRoot(holder)
     return () => setPageRoot(null)
   }, [setPageRoot, holder])
@@ -53,10 +67,10 @@ export function SurfaceDOM({ children, style, ref, ...rest }: SurfaceDOMProps) {
   // Measured, not authored: a Surface that never declared a `size` takes
   // the box the page gave this element, so the raster matches the layout
   // instead of a number somebody guessed and then let drift.
-  const setMeasuredSize = part.setMeasuredSize
+  const setMeasuredSize = part?.setMeasuredSize
   const measuredRef = useRef<readonly [number, number] | null>(null)
   useEffect(() => {
-    if (!holder) return
+    if (!holder || !setMeasuredSize) return
     const read = () => {
       const rect = holder.getBoundingClientRect()
       if (!rectIsMeasurable(rect)) return
@@ -76,7 +90,7 @@ export function SurfaceDOM({ children, style, ref, ...rest }: SurfaceDOMProps) {
   // changes do not re-render anything, and on a demand Canvas the plane
   // would simply stay where the last drawn frame put it — the Surface slides
   // away from the box it is supposed to be standing in.
-  const host = root.host
+  const host = inheritedRoot?.host ?? null
   useEffect(() => {
     if (!host || !holder) return
     const wake = () => host.invalidate()
@@ -103,12 +117,11 @@ export function SurfaceDOM({ children, style, ref, ...rest }: SurfaceDOMProps) {
   //
   // A Twin never releases at all: nothing took the hold from it, so the
   // page presentation remains the one reachable DOM instance.
-  const store = root.store
-  const exclusive = root.exclusive
+  useLayoutEffect(() => store.declarePresentation('page'), [store])
   useEffect(() => {
     if (!holder) return
     const apply = () => {
-      const released = exclusive && !store.holdsPage()
+      const released = !store.pagePresents()
       // Visibility, not display: the layout box must survive the handoff,
       // because match-DOM reads it every frame and a collapsed box places
       // the plane at nothing.
@@ -123,7 +136,7 @@ export function SurfaceDOM({ children, style, ref, ...rest }: SurfaceDOMProps) {
     }
     apply()
     return store.subscribeHold(apply)
-  }, [holder, store, exclusive])
+  }, [holder, store])
 
   // SAFETY: the handle is read after the commit that set `holder`, so it is
   // the live element. Before the first commit there is no div to hand back
@@ -132,10 +145,12 @@ export function SurfaceDOM({ children, style, ref, ...rest }: SurfaceDOMProps) {
 
   const instance: SurfaceInstance = 'page'
   return (
-    <SurfaceInstanceContext value={instance}>
-      <div {...rest} ref={setHolder} style={style}>
-        {children}
-      </div>
-    </SurfaceInstanceContext>
+    <SurfaceHandleContext value={handleValue}>
+      <SurfaceInstanceContext value={instance}>
+        <div {...rest} ref={setHolder} style={style}>
+          {children === undefined ? part?.source : children}
+        </div>
+      </SurfaceInstanceContext>
+    </SurfaceHandleContext>
   )
 }

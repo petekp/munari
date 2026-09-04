@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceTexture } from '@petepetrash/munari'
+import { Surface, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
+import { surfaceManualPresenter, type SurfaceManualPresenter } from '@petepetrash/munari/advanced'
 import { BLIT_FRAGMENT, GLASS_FRAGMENT, QUAD_VERTEX } from './glassSdfShader'
 
 // The SDF glass path — the shared kit every glass panel builds on (beads,
@@ -339,6 +340,8 @@ export const GLASS_DEFAULTS: GlassParams = {
 
 interface SdfPanel {
   label: string
+  /** The compositor's receipt for this panel's final screen draw. */
+  presenter: SurfaceManualPresenter
   group: React.RefObject<THREE.Group | null>
   half: THREE.Vector2
   /** Where the DOM lands, in panel-local units: [cx, cy, hw, hh]. */
@@ -362,7 +365,7 @@ interface TextureSlot {
 
 const sdfPanels = new Map<string, SdfPanel>()
 // Separate from the panel entry on purpose: React runs child effects before
-// parent ones, so the registrar inside `Surface.WebGL` cannot write into a
+// parent ones, so the registrar inside `Surface.Mesh` cannot write into a
 // record its own parent has not created yet. Keyed by label, joined at
 // composite time.
 const sdfInk = new Map<string, THREE.Texture>()
@@ -460,6 +463,12 @@ export function SdfGlassPanel({
   rotation,
 }: SdfGlassPanelProps) {
   const group = useRef<THREE.Group | null>(null)
+  const surface = useSurfaceHandle(label)
+  const presenter = useMemo(
+    () => surfaceManualPresenter(surface, `sdf-compositor-${label}`),
+    [label, surface],
+  )
+  useEffect(() => presenter.register(), [presenter])
   // One mutable params object per panel, created once and then poked in place
   // by the console knobs — no re-render, no uniform plumbing, and nothing to
   // clobber a live tuning session. `params` is an INITIAL value.
@@ -472,6 +481,7 @@ export function SdfGlassPanel({
   useEffect(() => {
     sdfPanels.set(label, {
       label,
+      presenter,
       group,
       half: new THREE.Vector2(width / px / 2, height / px / 2),
       inkRect: new THREE.Vector4(0, 0, width / px / 2, height / px / 2),
@@ -486,19 +496,21 @@ export function SdfGlassPanel({
     return () => {
       sdfPanels.delete(label)
     }
-  }, [label, width, height, px, hasBase, live, blobs, rects, ripples, glows])
+  }, [label, presenter, width, height, px, hasBase, live, blobs, rects, ripples, glows])
 
   return (
     <group ref={group} position={position} rotation={rotation}>
-      <Surface name={label} size={[width, height]} source={content}>
-        <Surface.WebGL
+      <Surface surface={surface} renderIn="canvas" size={[width, height]} source={content}>
+        <Surface.Mesh
           name={label}
+          presentation="manual"
+          placement="manual"
           geometry={<planeGeometry args={[width / px, height / px]} />}
           material={<meshBasicMaterial transparent opacity={0} depthWrite={false} />}
           pointerEvents={hitTest === 'content' ? 'content' : 'geometry'}
         >
           <InkRegistrar label={label} />
-        </Surface.WebGL>
+        </Surface.Mesh>
       </Surface>
     </group>
   )
@@ -806,6 +818,7 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
 
     let src: THREE.WebGLRenderTarget = sceneFbo
     let dst = pingA
+    const presentedPanels: SdfPanel[] = []
     for (const p of panels) {
       const g = p.group.current!
       tmpPanelInv.copy(g.matrixWorld).invert()
@@ -886,6 +899,11 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
 
       gl.setRenderTarget(dst)
       gl.render(glassScene, quadCam)
+      // A panel cannot claim canvas input until this pass actually sampled
+      // its current DOM texture. An unpainted source may still contribute
+      // the field's backdrop, but it has no live content for a pointer to
+      // reach.
+      if (ink) presentedPanels.push(p)
       src = dst
       dst = dst === pingA ? pingB : pingA
     }
@@ -894,6 +912,13 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
     blit.uniforms.tSrc.value = src.texture
     gl.setRenderTarget(null)
     gl.render(blitScene, quadCam)
+    // This is the sole color-writing presentation of each sampled SDF panel.
+    // Proxy meshes are input geometry only, so a panel earns canvas input
+    // only after this actual screen draw includes its composited pixels.
+    for (const p of presentedPanels) {
+      p.presenter.prove()
+      p.presenter.present()
+    }
   }, 1)
 
   return null

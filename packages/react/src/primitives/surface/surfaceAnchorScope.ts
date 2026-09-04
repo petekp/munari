@@ -121,7 +121,7 @@ export function useSurfaceAnchorContext(component: string): SurfaceAnchorScope {
   const scope = use(SurfaceAnchorContext)
   if (!scope) {
     throw new Error(
-      `munari: <${component}> must be rendered inside a <Surface.WebGL>. An anchor ` +
+      `munari: <${component}> must be rendered inside a <Surface.Mesh>. An anchor ` +
         'is a place on a presenter’s geometry, and outside one there is no ' +
         'geometry to stand on.',
     )

@@ -32,6 +32,7 @@
     "gate:degraded": "node instruments/degraded/run.mjs",
     "gate:lab-interactions": "node instruments/lab-interactions/run.mjs",
     "gate:lifting-pointer": "node instruments/lifting-pointer/run.mjs",
+    "gate:native-pointer": "node instruments/native-pointer/run.mjs",
     "gate:chrome-over-canvas": "node instruments/chrome-over-canvas/run.mjs",
     "gate:knobs-resize": "node instruments/knobs-resize/run.mjs",
     "gate:refraction-arriving": "node instruments/refraction-arriving/run.mjs",

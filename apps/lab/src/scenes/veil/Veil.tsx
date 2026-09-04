@@ -528,6 +528,7 @@ export function VeilApp() {
       <Surface
         name="veil-sheet"
         canvas="veil"
+        renderIn="both"
         source={<VeilSheet />}
         onReady={() => setPainted(true)}
       >
@@ -536,7 +537,7 @@ export function VeilApp() {
         </Surface.DOM>
 
         {dims && (
-          <Surface.WebGL
+          <Surface.Mesh
             placement="manual"
             frustumCulled={false}
             geometry={<planeGeometry args={[dims.w, dims.h]} />}
@@ -549,7 +550,7 @@ export function VeilApp() {
               slab={slabRef}
               sheet={sheetRef}
             />
-          </Surface.WebGL>
+          </Surface.Mesh>
         )}
 
         {/* The slab rides the scroller: the compositor moves it with the

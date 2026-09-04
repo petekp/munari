@@ -4,7 +4,12 @@ import type { ComponentProps } from 'react'
 import {
   createSurface,
   Surface,
-  useSurface,
+  useSurfaceHandle,
+  useSurfaceDriver,
+  useSurfaceState,
+  useSurfaceSupport,
+  supportsSurfaces,
+  type SurfacePresentation,
   type SurfaceContentProps,
   type SurfaceDOMProps,
   type SurfaceProps,
@@ -25,17 +30,17 @@ const geometry = <planeGeometry args={[1, 1]} />
 ;<Surface
   name="check"
   source={<div />}
-  view="webgl"
+  renderIn="canvas"
   timing={{ settleMs: 300 }}
   size={[10, 10]}
   onReady={() => {}}
   onChrome={(chrome) => void chrome.radii}
-  onPresentedViewChange={(view) => void view}
+  onPresentationChange={(view) => void view}
 >
   <Surface.DOM className="page" />
-  <Surface.WebGL placement="match-dom" pointerEvents="content">
+  <Surface.Mesh placement="match-dom" pointerEvents="content">
     {geometry}
-  </Surface.WebGL>
+  </Surface.Mesh>
 </Surface>
 ;<Surface surface={handle} adopt={detached} canvas="lab" paint="always" />
 ;<Surface source={<div />}>
@@ -59,7 +64,7 @@ const geometry = <planeGeometry args={[1, 1]} />
 ;<Surface source={<div />} onFirstPresented={() => {}} />
 // @ts-expect-error Markup is captured through `source`/`adopt`, never a string.
 ;<Surface html="<b>x</b>" />
-// @ts-expect-error A presentation lives on `<Surface.WebGL>`, not the root.
+// @ts-expect-error A presentation lives on `<Surface.Mesh>`, not the root.
 ;<Surface source={<div />} material="none" />
 // @ts-expect-error FrameSurface owns the renderer fence callbacks.
 ;<FrameSurface frame={frame} onBeforeRender={() => {}}>{geometry}</FrameSurface>
@@ -81,7 +86,7 @@ const geometry = <planeGeometry args={[1, 1]} />
 // Positives, one per branch of each union.
 ;<Surface source={<div />} size={[10, 10]} mirrorU />
 ;<Surface adopt={detached} paint="always" />
-;<Surface name="empty" view="webgl" />
+;<Surface name="empty" renderIn="canvas" />
 ;<Surface surface={handle} source={<div />} />
 
 // ── identity-only creation ───────────────────────────────────────
@@ -95,16 +100,20 @@ void createSurface('check')
 // @ts-expect-error `createSurface` takes the name itself, not an options bag.
 void createSurface({ name: 'check' })
 // @ts-expect-error The view belongs to the root that presents the handle.
-void createSurface('check', { view: 'webgl' })
+void createSurface('check', { renderIn: 'canvas' })
 // @ts-expect-error Timing likewise.
 void createSurface('check', { timing: { settleMs: 0 } })
 // @ts-expect-error And the callbacks with it.
 void createSurface('check', { onReady: () => {} })
 
 function IdentityOnly() {
-  const own: SurfaceHandle = useSurface('check')
-  // @ts-expect-error `useSurface` takes the same bare name.
-  useSurface({ name: 'check', onPresentedViewChange: () => {} })
+  const own: SurfaceHandle = useSurfaceHandle('check')
+  const presented: SurfacePresentation = useSurfaceState(own).presented
+  void presented
+  void useSurfaceSupport()
+  void supportsSurfaces()
+  // @ts-expect-error `useSurfaceHandle` takes the same bare name.
+  useSurfaceHandle({ name: 'check', onPresentationChange: () => {} })
   return <Surface surface={own} source={<div />} />
 }
 void IdentityOnly
@@ -119,3 +128,35 @@ const inferred: ComponentProps<typeof Surface> = root
 const page: SurfaceDOMProps = { className: 'page' }
 void inferred
 void page
+
+// The complete request is explicit; no omitted-prop mode or public mount flag.
+for (const renderIn of ['page', 'canvas', 'both', 'none'] as const) {
+  ;<Surface source={<div />} renderIn={renderIn}><Surface.DOM /><Surface.Mesh /></Surface>
+}
+;<Surface.Scene surface={handle}><Surface.Mesh /></Surface.Scene>
+;<Surface.DOM surface={handle}><div>Persistent native content</div></Surface.DOM>
+;<Surface.Mesh surface={handle} presentation="manual" />
+// @ts-expect-error Draw-evidence ownership is not a presentation destination.
+;<Surface.Mesh surface={handle} presentation="canvas" />
+// @ts-expect-error The old renderer-specific component is removed.
+;<Surface.WebGL surface={handle} />
+// @ts-expect-error The controlled request is renderIn.
+;<Surface source={<div />} view="webgl" />
+// @ts-expect-error The managed boundary owns release.
+;<Surface source={<div />} onWebGLReleased={() => {}} />
+
+function ContextObservation() {
+  const state = useSurfaceState()
+  useSurfaceDriver(({ target }) => (target === 'page' ? 0 : 1))
+  useSurfaceDriver(null)
+  // @ts-expect-error Mount duty is private to the managed scene boundary.
+  void state.isWebGLMounted
+  return <span>{state.presented}</span>
+}
+void ContextObservation
+
+function ExplicitDriver() {
+  useSurfaceDriver(({ target }) => (target === 'page' ? 0 : 1), handle)
+  return null
+}
+void ExplicitDriver

@@ -117,7 +117,7 @@ function SurfaceHostBridge({
     // updating with nothing on screen saying why.
     const owned = host.runtime === null
     if (owned) {
-      host.runtime = runtime
+      host.setRuntime(runtime)
       // A host that already has claims when its renderer arrives — a page
       // tree that committed first — is promoted now rather than at the next
       // claim, which may never come.
@@ -128,7 +128,7 @@ function SurfaceHostBridge({
       // Identity-checked: a remount installs the replacement before this
       // cleanup runs, and clearing it here would leave a live Canvas with
       // no way to be invalidated.
-      if (host.runtime === runtime) host.runtime = null
+      if (host.runtime === runtime) host.setRuntime(null)
     }
   }, [host, invalidate, setFrameloop, idleMode])
 

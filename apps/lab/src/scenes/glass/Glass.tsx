@@ -40,7 +40,7 @@ import { animate, motionValue } from 'motion'
 // switch exists so the comparison is a console call, not a git checkout.
 //
 // Architecture per MTM glass panel, all through the material-slot seam:
-//   - Surface.WebGL wearing drei's MeshTransmissionMaterial on
+//   - Surface.Mesh wearing drei's MeshTransmissionMaterial on
 //     an extruded rounded-rect (flat faces, rounded corner EDGES — a card,
 //     not a soap bar). The glass body never samples the DOM.
 //   - The DOM rides a hair-lifted transparent quad reading
@@ -361,9 +361,10 @@ function MtmGlassPanel({
 
   return (
     <group ref={group} position={position} rotation={rotation}>
-      <Surface name={label} size={[width, height]} source={content}>
-        <Surface.WebGL
+      <Surface name={label} renderIn="canvas" size={[width, height]} source={content}>
+        <Surface.Mesh
           name={label}
+          placement="manual"
           geometry={<primitive object={geo} attach="geometry" />}
           material={
             <MeshTransmissionMaterial
@@ -388,7 +389,7 @@ function MtmGlassPanel({
           }
         >
           <GlassInk w={width} h={height} depth={depth} />
-        </Surface.WebGL>
+        </Surface.Mesh>
       </Surface>
     </group>
   )
@@ -1129,15 +1130,16 @@ export function Glass() {
       <pointLight position={[-3, 2.5, 3]} intensity={8} color="#f2f0ea" distance={14} />
 
       {/* Layer 0 — the wall, itself live DOM, unlit so the neon lands exact */}
-      <Surface name="glass-wall" size={[WALL_W, WALL_H]} source={<WallArt />}>
-        <Surface.WebGL
+      <Surface name="glass-wall" renderIn="canvas" size={[WALL_W, WALL_H]} source={<WallArt />}>
+        <Surface.Mesh
           name="glass-wall"
+          placement="manual"
           position={[0, 0, WALL_Z]}
           geometry={<planeGeometry args={[WALL_W / PX, WALL_H / PX]} />}
           material={<meshBasicMaterial transparent opacity={0} depthWrite={false} />}
         >
           <WallInk />
-        </Surface.WebGL>
+        </Surface.Mesh>
       </Surface>
 
       {/* Layers 1 and 2 — the form, and the CTA surfacing out of its face.

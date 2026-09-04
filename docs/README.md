@@ -16,6 +16,7 @@ output. Preserve both distinctions when resolving a conflict.
 | Implement focus and spatial navigation | [Focus](focus.md) | Contract, implemented in the binding |
 | Check a kernel law | [Conformance suites](../tests/conformance/README.md) | Executable specification |
 | Recover the API design process | [Revision 3 proposal](public-api-proposal.md), [compound sketches](compound-api-sketches.md) | Historical, not implementation instructions |
+| Recover the Surface API revision | [API naming proposal](api-naming-proposal.md), [decision #40](decisions.md) | Proposal is historical; decision records implementation and local verification |
 
 Code comments cite `decisions.md #N` and `platform.md #N`; numbering never
 changes. Decision entries retain their original text, with dated amendments

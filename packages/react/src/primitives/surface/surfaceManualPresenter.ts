@@ -2,7 +2,7 @@
 // readiness ledger.
 //
 // The law: a Surface releases the page only when every REGISTERED presenter
-// has written color. `<Surface.WebGL>` registers itself and reports its own
+// has written color. `<Surface.Mesh>` registers itself and reports its own
 // passes; a scene that draws a Surface's pixels some other way — a
 // composite of a frozen film over the live capture, a caller-owned frame —
 // has the same obligation and no component to discharge it.
@@ -46,7 +46,7 @@ export interface SurfaceManualPresenter {
    * May this presenter's matter HEAR the pointer this frame? Input follows
    * the eye (decisions.md #33): a scene-owned mesh that raycasts while this
    * is false routes clicks to the parked copy the viewer cannot see. Gate
-   * the mesh's `raycast` on this, the way `<Surface.WebGL>` gates its own.
+   * the mesh's `raycast` on this, the way `<Surface.Mesh>` gates its own.
    */
   hearsPointer(): boolean
   /** Does the page copy still hold the pixels? */
@@ -67,9 +67,13 @@ export function surfaceManualPresenter(
   const store = surfaceStoreOf(handle)
   return {
     register: (part = DEFAULT_PART) => {
+      const releasePresentation = store.declarePresentation('canvas')
+      const releaseManual = store.registerManualPresenter(part)
       const releasePresenter = store.registerPresenter(key)
       const releasePart = store.registerPartPresenter(part)
       return () => {
+        releasePresentation()
+        releaseManual()
         releasePresenter()
         releasePart()
       }

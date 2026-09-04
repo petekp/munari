@@ -285,11 +285,13 @@ function SpecimenSurface({
   return (
     <Surface
       name={block.id}
+      renderIn="canvas"
       size={[block.w, block.h]}
       resolution={resolution}
       source={CONTENT.get(block.id)}
     >
-      <Surface.WebGL
+      <Surface.Mesh
+        placement="manual"
         position={[cx, cy, 0]}
         raycast={raycast}
         geometry={<planeGeometry args={[block.w, block.h]} />}

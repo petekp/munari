@@ -29,6 +29,7 @@ import { useLatest } from '../useLatest'
 import { createSurfaceFocusLedger, transferSurfaceFocus } from './surfaceFocus'
 import {
   SurfaceInstanceContext,
+  SurfaceHandleContext,
   SurfacePartContext,
   sourceContentKey,
   type SurfacePartValue,
@@ -91,6 +92,7 @@ export function SurfaceSourceHost({
   const [pageRoot, setPageRoot] = useState<HTMLElement | null>(null)
   const outwardContent = useMemo(createSurfaceOutwardContentStore, [])
   const store = root.store
+  const handleValue = useMemo(() => ({ handle: store.handle, store }), [store])
   const [measured, setMeasured] = useState<SurfaceSize | null>(null)
   const onFocusWithinRef = useLatest(onFocusWithinChange)
   const onChromeRef = useLatest(onChrome)
@@ -157,7 +159,7 @@ export function SurfaceSourceHost({
       })
     } catch (error) {
       // A browser without the trial is a first-class answer, not a crash:
-      // the DOM presentation stays visible and `presentedView` never leaves
+      // the DOM presentation stays visible and `presented` never leaves
       // `dom`. Throwing here would unmount the whole R3F tree instead.
       root.store.reportError(error instanceof Error ? error : new Error(String(error)))
       return
@@ -234,10 +236,11 @@ export function SurfaceSourceHost({
       size: [sourceWidth, sourceHeight],
       captureRoot,
       pageRoot,
+      source,
       setPageRoot,
       setMeasuredSize: setMeasured,
     }),
-    [id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot],
+    [id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot, source],
   )
 
   // One logical focus over two DOM copies, and a transfer when the hold
@@ -326,7 +329,9 @@ export function SurfaceSourceHost({
   const contentKey = sourceContentKey(root.instanceId, id)
   const wrapped =
     source === undefined ? null : (
-      <SurfaceInstanceContext value="source">{source}</SurfaceInstanceContext>
+      <SurfaceHandleContext value={handleValue}>
+        <SurfaceInstanceContext value="source">{source}</SurfaceInstanceContext>
+      </SurfaceHandleContext>
     )
   const hasOutwardContent = source !== undefined
   const outwardElement = useMemo(
