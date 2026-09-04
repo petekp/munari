@@ -23,7 +23,7 @@ with a reflected, shadow-casting classical marble hand.
 Plume places centered serif writing on a plain background, with no paper
 frame or surrounding labels. Tweak Plume opens its closed-by-default panel
 for type, timing, particles, motion, colors, and status. It offers 36 tuning
-values, four effect switches, Restore, Clear, Reset all, and JSON copy.
+values, four effect switches, Restore, Clear, Reset all, and Copy values.
 Type changes replay the text with fresh paint-matched anchors. Timing and
 spacing changes also replay it; other edits apply live or replay when idle.
 Particle size is independent of particle spacing. Reset keeps the words.
@@ -89,7 +89,7 @@ The marble-hand page opens in Chrome mode with a parked preview and native
 tweak panel. Reset all restores the user's chrome preset: roughness 0.364
 and reflection strength 2.95.
 It exposes orientation, size, movement, idle tap, marble, lighting, and
-shadows, with view presets, reset, and JSON copy. Close the panel to resume
+shadows, with view presets, reset, and copy values. Close the panel to resume
 pointer motion.
 Its Marble/Chrome switch uses separate finish settings: Chrome is bare
 metal with no stone veins. Switching back preserves

@@ -619,7 +619,7 @@ panel's background pause control must also work before the hand loads.
 
 A second page opens the normal route and tests its native tweak panel:
 parked preview, live degree inputs, scale, material and lighting updates,
-typed-value precision, copied JSON, reset, hold-press, and close/reopen.
+typed-value precision, copied values, reset, hold-press, and close/reopen.
 Editing the panel must leave the preview still and add no theme-button clicks.
 Click accounting is owned by the probe; the page has no contact counter.
 With page lights disabled, recoloring the native H1's ink must update the
