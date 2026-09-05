@@ -89,6 +89,7 @@ import {
 import { dockFill, dockPose, dockRingDone, dockSwell } from './genieDock'
 import { BOUNCE_MARKS, registerBounceCourt } from './genieBounce'
 import { genieTuning } from './genieTuning'
+import { shouldClaimRestoreFocus } from './genieFocus'
 import { GenieTweakPanel } from './GenieTweaks'
 import { showChrome } from '../../bareMode'
 import {
@@ -2199,8 +2200,11 @@ export function GenieApp() {
     winRefs.current[id]?.focus({ preventScroll: true })
     // The keyboard hand-back is claimed only when the keyboard asked. A
     // mouse restore leaves focus on the wrapper, which is where a click on
-    // a window puts it anyway — no ring, nothing to read.
-    if (active === slotRefs.current[id]) wantsFocus.current.add(id)
+    // a window puts it anyway — no ring, nothing to read. See
+    // `shouldClaimRestoreFocus` for why the identity check alone is not
+    // enough (and why the gate mirrors the minimize branch above).
+    if (shouldClaimRestoreFocus(active, slotRefs.current[id] ?? null))
+      wantsFocus.current.add(id)
   }
 
   /**
