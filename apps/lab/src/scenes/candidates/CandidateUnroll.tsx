@@ -30,6 +30,7 @@ import { LIGHT, SHEET_FRAG, SHEET_VERT } from './candidateShaders'
 import { plainAttribute } from '../../lib/geometry'
 import { useOwnUniforms, type WorldBox } from './candidateStage'
 import { unrollTuning } from './candidateTuning'
+import { unrollCloseGate } from './candidateUnrollGate'
 
 const ITEMS = ['Duplicate', 'Move to…', 'Rename', 'Export PDF', 'Share link', 'Delete'] as const
 const ROW_H = 38
@@ -113,12 +114,15 @@ function RollSheet({
   drive,
   geoRef,
   opacity,
+  open,
   onClosed,
 }: {
   drive: React.RefObject<RollDrive>
   geoRef: React.RefObject<THREE.PlaneGeometry | null>
   /** The sheet material's uOpacity slot, written here so one loop owns t. */
   opacity: { value: number }
+  /** The user's ask this frame — the open intent, not the post-lift drive. */
+  open: boolean
   onClosed: () => void
 }) {
   // The rest is an edge, not a state: without this the drop would be
@@ -128,6 +132,14 @@ function RollSheet({
   // until the canvas presents, so the first frames after a click look
   // exactly like rest. 2026-08-20: starting false dropped the lift on
   // frame one and the menu never appeared at all.
+  //
+  // The edge is read off `open` (the user's ask), not `drive.target`:
+  // an open cancelled before the lift lands keeps target at 0 the whole
+  // time, so a target-only edge would stay true through such a cycle and
+  // the close would look like rest — leaving the view stranded on 'webgl'
+  // and `useFrame` warping a sheet nobody sees (c7f78067, fixed by
+  // unrollCloseGate). The gate is pure and lifted out so the abandoned
+  // case is pinned by a test.
   const rested = useRef(true)
   useFrame((_, delta) => {
     const d = drive.current
@@ -165,11 +177,9 @@ function RollSheet({
       }
     }
 
-    if (d.target !== 0) rested.current = false
-    else if (d.t === 0 && !rested.current) {
-      rested.current = true
-      onClosed()
-    }
+    const gate = unrollCloseGate({ target: d.target, t: d.t, open, rested: rested.current })
+    rested.current = gate.rested
+    if (gate.close) onClosed()
   })
   return null
 }
@@ -281,7 +291,7 @@ export function CandidateUnroll() {
               geometry={<planeGeometry ref={geoRef} args={[MENU_W, MENU_H, GRID_X, GRID_Y]} />}
               material={<SheetMaterial opacity={sheetOpacity} />}
             >
-              <RollSheet drive={drive} geoRef={geoRef} opacity={sheetOpacity} onClosed={() => piece.show('dom')} />
+              <RollSheet drive={drive} geoRef={geoRef} opacity={sheetOpacity} open={open} onClosed={() => piece.show('dom')} />
             </Surface.WebGL>
           )}
         </Surface>
