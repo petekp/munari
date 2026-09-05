@@ -17,10 +17,11 @@
 // the promotion rule. The presenter owns which generation is drawn and
 // tells it here; the anchor components own only their own subscription.
 
-import { createContext, use, useCallback, useMemo, useRef } from 'react'
+import { createContext, use, useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   anchorReceiptMatchesDrawn,
   collectSurfaceAnchors,
+  stampSurfaceAnchors,
   type SourceUvRect,
   type SurfaceAnchorReceipt,
 } from '@munari/core'
@@ -39,6 +40,21 @@ export interface SurfaceAnchorScope {
 }
 
 export const SurfaceAnchorContext = createContext<SurfaceAnchorScope | null>(null)
+
+// A mirror flip is a presentation transform on the texture: the boxes are
+// mirror-invariant source-UV rects, the paint does not advance, and nothing
+// re-rasterises. The committed receipt's CONTENT is still true of the
+// generation on this geometry — only a consumer needs to be told, and the
+// only signal it reads is a new `box()` reference. Re-stamp the validated
+// receipt with fresh object identity, keeping the same paint and the same
+// anchor values, so `setBox(scope.box(name))` does not bail on `Object.is`.
+function reissueReceipt(receipt: SurfaceAnchorReceipt): SurfaceAnchorReceipt {
+  const anchors: Record<string, SourceUvRect> = {}
+  for (const [name, rect] of Object.entries(receipt.anchors)) {
+    anchors[name] = Object.freeze({ ...rect })
+  }
+  return stampSurfaceAnchors(receipt.paint, anchors)
+}
 
 export function useSurfaceAnchorScope(
   runtime: SurfaceSourceRuntime | null,
@@ -69,6 +85,29 @@ export function useSurfaceAnchorScope(
     const receipt = collectSurfaceAnchors(root, paint, keys)
     if (receipt) pending.current = receipt
   }, [])
+
+  // The bridge a live mirror flip has no other path through. `setMirrorU`
+  // mutates the runtime in place, advances no paint generation, and fires no
+  // `subscribePaint`, so neither `require` nor `noteDrawn` is reached and the
+  // one consumer of `mirrorU()` — `<Surface.Anchor>`'s `placed` memo — never
+  // recomputes: the texture flips and the anchored matter stays on the
+  // un-mirrored side. The runtime tells this scope through `subscribeMirrorU`;
+  // on a flip the committed receipt is re-issued with fresh identity (kept in
+  // lockstep with `pending` so a same-generation redraw still short-circuits)
+  // and `announce()` wakes the consumer's `read`, which `setBox`s a
+  // non-`Object.is`-equal value and lets `placed` re-read the now-current
+  // `mirrorU()`. No DOM repaint, no generation advance, no rasterisation.
+  useEffect(() => {
+    if (!runtime) return
+    return runtime.subscribeMirrorU(() => {
+      const current = committed.current
+      if (!current) return
+      const reissued = reissueReceipt(current)
+      committed.current = reissued
+      if (pending.current === current) pending.current = reissued
+      announce()
+    })
+  }, [runtime, announce])
 
   return useMemo<SurfaceAnchorScope>(
     () => ({

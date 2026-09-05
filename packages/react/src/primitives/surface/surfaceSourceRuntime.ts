@@ -100,6 +100,12 @@ export interface SurfaceSourceRuntime {
   /** Every completed paint, for anchor transactions. */
   currentPaint(): DomPaintReceipt | null
   subscribePaint(listener: (receipt: DomPaintReceipt) => void): () => void
+  /**
+   * A live mirror flip activates no paint, so it advances no generation and
+   * fires no `subscribePaint`. Anchor scopes read it through this channel to
+   * re-issue their committed receipt and wake the consumer.
+   */
+  subscribeMirrorU(listener: (mirrorU: boolean) => void): () => void
   setSize(size: SurfaceSize): void
   setResolution(resolution: SurfaceResolution): void
   setMirrorU(mirrorU: boolean): void
@@ -225,6 +231,7 @@ export function createSurfaceSourceRuntime(
   let anyUpload = false
   const settle = { w: -1, h: -1, quiet: 0, settled: false }
   const proposals = new Map<number, number>()
+  const mirrorListeners = new Set<(mirrorU: boolean) => void>()
   let disposed = false
 
   texture.onUpdate = () => {
@@ -284,6 +291,12 @@ export function createSurfaceSourceRuntime(
     uploadedGeneration: () => uploadedGeneration,
     currentPaint: () => source.currentPaint(),
     subscribePaint: (listener) => source.subscribePaint(listener),
+    subscribeMirrorU: (listener) => {
+      mirrorListeners.add(listener)
+      return () => {
+        mirrorListeners.delete(listener)
+      }
+    },
     setSize(next) {
       if (next[0] === size[0] && next[1] === size[1]) return
       size = next
@@ -314,9 +327,13 @@ export function createSurfaceSourceRuntime(
     setMirrorU(next) {
       if (next === mirrorU) return
       mirrorU = next
-      if (!texture) return
-      applyMirror(texture, mirrorU)
-      texture.needsUpdate = true
+      if (texture) {
+        applyMirror(texture, mirrorU)
+        texture.needsUpdate = true
+      }
+      // A flip advances no paint generation and fires no `subscribePaint`, so
+      // this is the one channel a mirror change reaches anchor consumers by.
+      for (const listener of mirrorListeners) listener(mirrorU)
     },
     setPaint(next) {
       paint = next
@@ -377,6 +394,7 @@ export function createSurfaceSourceRuntime(
       if (disposed) return
       disposed = true
       unsubscribePaint()
+      mirrorListeners.clear()
       if (texture) {
         texture.onUpdate = null
         texture.dispose()
