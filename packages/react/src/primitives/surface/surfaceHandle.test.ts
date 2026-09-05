@@ -161,7 +161,10 @@ describe('controlled options and the latest callback', () => {
     render(root, { view: 'dom' })
     const first = seen
     expect(first?.getState().targetView).toBe('dom')
-    render(root, { view: 'webgl' })
+    // `view` is read with no content alongside it, which the request gate
+    // now diagnoses. This test is about the read, not the crossing, so the
+    // diagnostic is swallowed; the empty-content behavior has its own suite.
+    render(root, { view: 'webgl', onError: () => {} })
     expect(seen).toBe(first)
     expect(seen?.getState().targetView).toBe('webgl')
     flushSync(() => root.unmount())
@@ -643,5 +646,158 @@ describe('the part ledger — all of the parts or none (decisions.md #37)', () =
     expect(store.getState().ready).toBe(false)
     store.registerPartPresenter('p')
     expect(store.getState().ready).toBe(true)
+  })
+})
+
+describe('a content-less Surface — no source, no parts, no presenters', () => {
+  // The fault this closes: a `<Surface view="webgl">` that declared nothing
+  // used to enter 'lifting' anyway, hold a work-claim forever (a silent
+  // busy-loop on a demand Canvas), and report nothing. The request gate now
+  // refuses the lift and reports it, and the lift gate (refusing zero
+  // evidence) backs that up. See decisions.md #37 and the `required > 0`
+  // clause in `crossingFrame`.
+
+  it('refuses to enter the crossing and reports the diagnostic', () => {
+    const store = createSurfaceStore('panel')
+    store.acquire(1)
+    const errors: Error[] = []
+    store.setCallbacks({ onError: (error) => errors.push(error) })
+    store.request('webgl')
+    // Never entered 'lifting': no claim is acquired, nothing mounts, the
+    // page stays on screen, and `onReady` never fires.
+    expect(store.getState()).toMatchObject({
+      targetView: 'webgl',
+      presentedView: 'dom',
+      isChanging: false,
+      isWebGLMounted: false,
+      ready: false,
+    })
+    expect(errors).toHaveLength(1)
+    expect(errors[0]?.message).toContain('panel')
+    expect(errors[0]?.message).toContain('no content')
+    // A tick changes nothing: the protocol never left the page, so `working`
+    // stays false and no host work-claim would be acquired.
+    store.setExclusive(true)
+    store.tick(500)
+    expect(store.getState().isChanging).toBe(false)
+    expect(store.holdsPage()).toBe(true)
+  })
+
+  it('takes up the request the moment a part is declared', () => {
+    const store = createSurfaceStore()
+    store.acquire(1)
+    store.setExclusive(true)
+    const errors: Error[] = []
+    store.setCallbacks({ onError: (error) => errors.push(error) })
+    store.request('webgl')
+    expect(errors).toHaveLength(1)
+    // The list populates a frame later: declaring a part takes up the ask
+    // and enters 'lifting' — the designed wait for its presenter.
+    store.expectPart('a')
+    expect(store.getState().isChanging).toBe(true)
+    store.registerPresenter('p')
+    store.registerPartPresenter('a')
+    store.prove('p', store.readinessLifetime(), store.epoch())
+    store.tick(500)
+    expect(store.canvasPresents()).toBe(true)
+    store.present('p', store.epoch())
+    expect(store.holdsPage()).toBe(false)
+    // The diagnostic fired once, on the empty request; the take-up is silent.
+    expect(errors).toHaveLength(1)
+  })
+
+  it('takes up the request the moment a presenter registers', () => {
+    const store = createSurfaceStore()
+    store.acquire(1)
+    store.request('webgl') // refused: no content
+    expect(store.getState().isChanging).toBe(false)
+    // A manual presenter with no declared part is content too: registration
+    // alone takes up a held lift.
+    store.registerPresenter('a')
+    expect(store.getState().isChanging).toBe(true)
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.tick(500)
+    expect(store.getState().presentedView).toBe('webgl')
+  })
+
+  it('abandons a held lift when the view returns to dom', () => {
+    const store = createSurfaceStore()
+    store.acquire(1)
+    store.request('webgl') // refused and held
+    // Asking for dom clears the held ask; a later declaration does not take
+    // up a lift that is no longer wanted.
+    store.request('dom')
+    store.expectPart('a')
+    expect(store.getState().isChanging).toBe(false)
+  })
+
+  it('does not repeat the diagnostic while the view stays webgl', () => {
+    // `request` is called once per `view` value; a repeat ask for the same
+    // view is a no-op by the `view === target` guard, so the diagnostic
+    // fires once rather than once per frame.
+    const store = createSurfaceStore()
+    store.acquire(1)
+    const errors: Error[] = []
+    store.setCallbacks({ onError: (error) => errors.push(error) })
+    store.request('webgl')
+    expect(errors).toHaveLength(1)
+    store.request('webgl')
+    expect(errors).toHaveLength(1)
+  })
+
+  it('a populated Surface with a declared part and no presenter still lifts', () => {
+    // Regression guard: the request gate refuses only the EMPTY case. A
+    // Surface that declared a part but has not wired its presenter yet is
+    // the designed waiting state, and enters 'lifting' as before.
+    const store = createSurfaceStore('word')
+    store.acquire(1)
+    store.setExclusive(true)
+    store.expectPart('W')
+    store.request('webgl')
+    expect(store.getState().isChanging).toBe(true)
+    store.registerPresenter('w')
+    store.registerPartPresenter('W')
+    store.prove('w', store.readinessLifetime(), store.epoch())
+    store.tick(500)
+    expect(store.canvasPresents()).toBe(true)
+    store.present('w', store.epoch())
+    expect(store.holdsPage()).toBe(false)
+  })
+
+  it('a lone registered presenter with no declared part still crosses', () => {
+    // Regression guard for the gate: `required > 0` reads a single registered
+    // presenter as content, so the lift completes. `partSetComplete` would
+    // have refused this — which is why the fix uses `required > 0` rather
+    // than the part-set predicate.
+    const store = createSurfaceStore()
+    store.acquire(1)
+    store.setExclusive(true)
+    store.registerPresenter('a')
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.request('webgl')
+    store.tick(500)
+    expect(store.canvasPresents()).toBe(true)
+    expect(store.getState().presentedView).toBe('dom')
+  })
+
+  it('a lift cannot vacuously complete after its content leaves', () => {
+    // Defense-in-depth at the gate: a Surface that reached 'lifting' and
+    // then had every part and presenter withdrawn must not read the now-empty
+    // evidence (0 >= 0) as proven. The request gate holds an empty Surface
+    // out of 'lifting' in the first place; this guards a lift that began with
+    // content and lost it.
+    const store = createSurfaceStore()
+    store.acquire(1)
+    store.setExclusive(true)
+    const releasePart = store.expectPart('a')
+    const releasePresenter = store.registerPresenter('p')
+    store.prove('p', store.readinessLifetime(), store.epoch())
+    store.request('webgl')
+    // Content leaves before the settle dwell elapses.
+    releasePresenter()
+    releasePart()
+    store.tick(500)
+    expect(store.canvasPresents()).toBe(false)
+    expect(store.getState().presentedView).toBe('dom')
   })
 })

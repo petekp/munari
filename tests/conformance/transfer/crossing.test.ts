@@ -205,6 +205,27 @@ describe('the lift gate', () => {
     s = crossingFrame(s, ALL, 16, T)
     expect(s.phase).toBe('gl')
   })
+
+  it('refuses a content-less lift: zero evidence does not read as proven', () => {
+    // A crossing with nothing to prove (`required` is zero) has declared no
+    // content; `0 >= 0` must not complete the lift (decisions.md #37). The
+    // binding's request gate holds an empty Surface out of 'lifting' in the
+    // first place; this is the gate's own refusal of the empty case.
+    let s = crossingRequest(crossingAtRest(), true)
+    expect(s.phase).toBe('lifting')
+    s = tickUntil(s, { presented: 0, required: 0 }, (x) => x.heldMs >= T.settleMs * 3)
+    expect(s.phase).toBe('lifting')
+    expect(s.ramp).toBe(0)
+  })
+
+  it('a lone required presenter still completes the lift', () => {
+    // Guard against over-refusal: a crossing that requires one presenter and
+    // has proven it must still land. `required > 0` reads a single presenter
+    // as content; a part-set-completeness predicate would have refused it.
+    let s = crossingRequest(crossingAtRest(), true)
+    s = tickUntil(s, { presented: 1, required: 1 }, (x) => x.phase === 'gl')
+    expect(s.phase).toBe('gl')
+  })
 })
 
 describe('the ramp', () => {
