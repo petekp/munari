@@ -40,11 +40,13 @@ const WORLD_UP = new THREE.Vector3(0, 1, 0)
 /** The subset of OrbitControls this rig drives. Extends EventDispatcher
  *  because that is what R3F's `state.controls` is typed as and what
  *  OrbitControls actually is — so narrowing to this is one honest downcast,
- *  not a round trip through `unknown`. */
+ *  not a round trip through `unknown`. `update()` returns `true` while the
+ *  camera is still moving (damping) and `false` at rest — three-stdlib's
+ *  own contract, used below to detect damping settle. */
 interface OrbitLike extends OrbitLimits, THREE.EventDispatcher {
   enabled: boolean
   target: THREE.Vector3
-  update: () => void
+  update: () => boolean
 }
 
 export type MotionMode = 'animated' | 'instant' | 'auto'
@@ -116,17 +118,32 @@ export function FocusOrbitRig({
   } | null>(null)
   const curTarget = useRef(new THREE.Vector3())
   const motion = useRef<MotionMode>('auto')
+  // Re-project ARIA proxy rects once an OrbitControls-driven camera move
+  // comes to rest. `release` arms it on pointerup; useFrame clears it at
+  // damping rest. See the pointer/cancel effect below and docs/focus.md
+  // "Camera integration".
+  const orbitPendingSync = useRef(false)
 
   // Browser-only inspection for the workspace acceptance route. It exposes
   // the same control instance this rig gates, so a pointer failure can tell
-  // "events never arrived" from "a gesture left controls disabled".
+  // "events never arrived" from "a gesture left controls disabled". `pending`
+  // is the orbit re-projection arm — false at rest, so a gate can confirm the
+  // post-orbit proxy-rect sync fired without waiting on a wall-clock guess.
   useEffect(() => {
     // SAFETY: this local development handle is removed in the cleanup below
-    // and exposes only the two values the browser acceptance gate reads.
+    // and exposes only the values the browser acceptance gate reads.
     const w = window as Window & {
-      __workspaceRig?: () => { enabled: boolean | null; tweening: boolean }
+      __workspaceRig?: () => {
+        enabled: boolean | null
+        tweening: boolean
+        pending: boolean
+      }
     }
-    w.__workspaceRig = () => ({ enabled: controls?.enabled ?? null, tweening: tween.current !== null })
+    w.__workspaceRig = () => ({
+      enabled: controls?.enabled ?? null,
+      tweening: tween.current !== null,
+      pending: orbitPendingSync.current,
+    })
     return () => {
       delete w.__workspaceRig
     }
@@ -162,6 +179,10 @@ export function FocusOrbitRig({
       controls.enabled = true
       controls.update()
       focus?.syncProxyRects()
+      // A concurrent orbit drag settling into this (reduced-motion) jump-cut
+      // would otherwise re-sync on the next frame; the jump-cut sync is
+      // already current, so cancel it. (See `release` below.)
+      orbitPendingSync.current = false
       return
     }
     controls.enabled = false
@@ -341,9 +362,17 @@ export function FocusOrbitRig({
     // A scene-object handler may disable OrbitControls for its own drag.
     // The browser owns the final pointer-up, and it always arrives on this
     // canvas even if the ray has left the small initiating mesh. A missed
-    // release left the whole workspace frozen after one screen click.
+    // release left the whole workspace frozen after one screen click. This
+    // also closes an OrbitControls-initiated camera drag: re-enable the
+    // controls AND arm a proxy-rect re-projection for damping rest. drei
+    // fires OrbitControls `end` synchronously here — BEFORE damping settles
+    // — so a sync at pointerup would project at the mid-damping pose; the
+    // useFrame below re-projects once when controls.update() reports rest.
     const release = () => {
-      if (controls && tween.current === null) controls.enabled = true
+      if (controls && tween.current === null) {
+        controls.enabled = true
+        orbitPendingSync.current = true
+      }
     }
     el.addEventListener('pointerdown', cancel)
     el.addEventListener('wheel', cancel)
@@ -359,27 +388,49 @@ export function FocusOrbitRig({
 
   useFrame((_, delta) => {
     const tw = tween.current
-    if (!tw || !controls) return
-    tw.t = Math.min(1, tw.t + delta / tw.dur)
-    const k = tw.t * tw.t * (3 - 2 * tw.t) // smoothstep
-    camera.position.lerpVectors(tw.fromPos, tw.toPos, k)
-    gazeAt(tw.gaze, camera.position, k, curTarget.current)
-    // Publish the live aim every frame (controls are disabled — no fight).
-    // Arming a NEW tween mid-flight reads controls.target as "where am I
-    // looking"; without this it held the stale settle-time value, and fast
-    // Tab snapped the view back to it — instantaneous jank by construction.
-    controls.target.copy(curTarget.current)
-    camera.lookAt(curTarget.current)
-    if (tw.t >= 1) {
-      tween.current = null
-      camera.position.copy(tw.toPos)
-      controls.target.copy(tw.toTarget)
-      controls.enabled = true
-      controls.update()
-      // Tween-settle is the sanctioned proxy-rect sync point (docs/focus.md:
-      // on demand, never per frame) — AT reads geometry from wherever the
-      // camera came to rest.
-      focus?.syncProxyRects()
+    if (tw && controls) {
+      tw.t = Math.min(1, tw.t + delta / tw.dur)
+      const k = tw.t * tw.t * (3 - 2 * tw.t) // smoothstep
+      camera.position.lerpVectors(tw.fromPos, tw.toPos, k)
+      gazeAt(tw.gaze, camera.position, k, curTarget.current)
+      // Publish the live aim every frame (controls are disabled — no fight).
+      // Arming a NEW tween mid-flight reads controls.target as "where am I
+      // looking"; without this it held the stale settle-time value, and fast
+      // Tab snapped the view back to it — instantaneous jank by construction.
+      controls.target.copy(curTarget.current)
+      camera.lookAt(curTarget.current)
+      if (tw.t >= 1) {
+        tween.current = null
+        camera.position.copy(tw.toPos)
+        controls.target.copy(tw.toTarget)
+        controls.enabled = true
+        controls.update()
+        // Tween-settle is the sanctioned proxy-rect sync point (docs/focus.md:
+        // on demand, never per frame) — AT reads geometry from wherever the
+        // camera came to rest.
+        focus?.syncProxyRects()
+        // The settle update() above can re-arm a sync from a concurrent orbit
+        // drag (release fired while damping was still running); the proxies
+        // are already current, so cancel any pending orbit sync to avoid a
+        // redundant re-projection next frame.
+        orbitPendingSync.current = false
+      }
+      return
+    }
+    // No tween. OrbitControls may still be damping the camera from a pointer
+    // drag: drei runs controls.update() every enabled frame but dispatches
+    // `end` synchronously at pointerup (BEFORE damping rests) and nothing at
+    // rest, so syncing at `pointerup`/`end` would project at the mid-damping
+    // pose. `release` armed the re-projection; rest is the first frame where
+    // controls.update() reports no further movement — the damped deltas decay
+    // below the EPS cutoff and never recover, so one `false` IS rest. One
+    // sync at rest clears the flag; this is the same sync-at-rest contract as
+    // the tween-settle path above, never per frame (docs/focus.md).
+    if (orbitPendingSync.current && controls?.enabled) {
+      if (!controls.update()) {
+        orbitPendingSync.current = false
+        focus?.syncProxyRects()
+      }
     }
   })
 
