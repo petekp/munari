@@ -1063,14 +1063,13 @@ export function Glass() {
           ? `set ${key}=${value} on ${label}`
           : `${label} does not take ${key}=${value}`
       },
-      // Resized in place — the compositor holds this exact array, and reads
-      // its length every frame. 0 turns the merge off entirely (and with it
-      // the numeric-gradient branch in the shader), which is the A/B.
+      // Backed by `orbCount` — OrbDrift re-resizes the array from it every
+      // frame, so writing the knob (not the array) is what sticks and keeps
+      // the console and the tweak-panel slider in agreement.
       setBlobs: (n: number) => {
         const next = Math.max(0, Math.min(MAX_BLOBS, Math.round(n)))
-        while (blobs.length > next) blobs.pop()
-        while (blobs.length < next) blobs.push({ x: 0, y: 0, r: 0 })
-        return `${blobs.length} blobs`
+        glassTuning.orbCount = next
+        return `${next} blobs`
       },
       blobs: () => blobs.map((b) => ({ ...b })),
       // Fire one by hand, in panel-local units, to tune the wave without
