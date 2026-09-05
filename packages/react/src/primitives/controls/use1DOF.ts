@@ -38,6 +38,20 @@ export interface Use1DOFOptions {
 const SETTLE_V = 1e-3
 const SETTLE_FRAMES = 15
 
+// A drag whose release lands more than STILL_RELEASE_S after its last
+// pointermove was a still hand, not a flick. pointermove is the only writer
+// of `b.v` while a drag is active and useFrame skips the integrator then,
+// so a hand held still after its last move leaves the smoothed velocity
+// frozen at a stale estimate instead of decaying to the hand's actual
+// (zero) speed — release would hand the field a synthesized fling. The
+// guard in endDrag zeros it across that gap; a genuine flick's last move
+// lands inside the gate, so its tracked momentum still flows into the
+// field (file header: "flicks are real momentum"). 0.1s sits well past
+// inter-event spacing during active motion (pointermove fires at 60-120Hz,
+// ≈ 8-16ms) and short enough that a hand held still for even a beat reads
+// as still.
+export const STILL_RELEASE_S = 0.1
+
 export function use1DOF(opts: Use1DOFOptions) {
   // SAFETY: r3f's store types `controls` as a bare event target — whatever
   // the app set, if anything. Every control set this hook suspends carries
@@ -111,6 +125,11 @@ export function use1DOF(opts: Use1DOFOptions) {
     const d = drag.current
     if (!d.active) return
     d.active = false
+    body.current.v = releaseVelocity(
+      body.current.v,
+      (e.timeStamp - d.lastT) / 1000,
+      STILL_RELEASE_S,
+    )
     if (e.target instanceof Element) e.target.releasePointerCapture?.(e.pointerId)
     if (controls) controls.enabled = true
   }
@@ -143,3 +162,14 @@ export function use1DOF(opts: Use1DOFOptions) {
 }
 
 export const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
+
+/**
+ * Release velocity after the still-handed-release guard. Returns 0 when
+ * the gap since the last pointermove exceeds `stillS` — a still hand
+ * carries no momentum, so the field must inherit the hand's actual
+ * (zero) speed, not the frozen pre-pause estimate (see STILL_RELEASE_S).
+ * Otherwise returns `v` unchanged so a genuine flick keeps its tracked
+ * momentum.
+ */
+export const releaseVelocity = (v: number, moveGapS: number, stillS: number): number =>
+  moveGapS > stillS ? 0 : v
