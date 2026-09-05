@@ -41,6 +41,36 @@ export function radioIsStop(group: { checked: boolean }[], index: number): boole
   return checkedIdx === -1 || checkedIdx === index
 }
 
+/** Boolean presence of an explicit `tabindex` attribute (the `tabbable`
+ *  library's `hasTabIndex`). `parseInt` on a missing attribute is `NaN`, so
+ *  only a literal — even `"-1"` — counts; this is what distinguishes a
+ *  genuine `[tabindex="-1"]` removal (which must stay dropped) from a
+ *  contenteditable that simply reports a negative IDL `tabIndex` by default. */
+const hasTabIndexAttr = (el: HTMLElement): boolean =>
+  !Number.isNaN(parseInt(el.getAttribute('tabindex') ?? '', 10))
+
+/** The effective tab index of an element, transcribing `tabbable`'s
+ *  `getTabIndex`. In Chrome an `<audio controls>`/`<video controls>`/
+ *  `<details>`, and a `contentEditable` element without an explicit
+ *  `tabindex`, reports an IDL `tabIndex` of `-1` even though Chrome places it
+ *  in the real Tab order; `tabbable` treats those as effective `0`. The
+ *  attribute check keeps a genuine `[tabindex="-1"]` removal dropped — the
+ *  quirk only rescues elements that never declared a tabindex. The
+ *  AV/DETAILS arms are parity with `tabbable` even though Surface markup
+ *  bans them (docs/focus.md "Surface markup rules"); `contenteditable` is
+ *  the rule-permitted case that ships (the lab notes panel). */
+export function effectiveTabIndex(el: HTMLElement): number {
+  if (el.tabIndex < 0) {
+    const editableAttr = el.getAttribute('contenteditable')
+    const nativeTabStopByDefault =
+      /^(AUDIO|VIDEO|DETAILS)$/.test(el.tagName) ||
+      editableAttr === '' ||
+      editableAttr === 'true'
+    if (nativeTabStopByDefault && !hasTabIndexAttr(el)) return 0
+  }
+  return el.tabIndex
+}
+
 function isRadio(el: Element): el is HTMLInputElement {
   return el instanceof HTMLInputElement && el.type === 'radio'
 }
@@ -55,8 +85,11 @@ function radioTabbable(el: HTMLInputElement, root: ParentNode): boolean {
 }
 
 /**
- * Tabbable elements under `root` in Tab order. Browser-verified (vitest runs
- * without a DOM); the pure pieces above carry the unit tests.
+ * Tabbable elements under `root` in Tab order. The pure pieces above carry
+ * node-environment unit tests; the walk itself is pinned by the happy-dom
+ * suite in `tabbables.dom.test.ts` (which models Chrome's IDL `tabIndex`
+ * quirk for contenteditable), and re-verified against real Chromium via the
+ * platform probes in docs/focus.md.
  */
 export function tabbables(root: ParentNode): HTMLElement[] {
   const found: { el: HTMLElement; tabIndex: number; seq: number }[] = []
@@ -69,12 +102,17 @@ export function tabbables(root: ParentNode): HTMLElement[] {
     if (el instanceof HTMLDetailsElement && el.querySelector(':scope>summary')) continue
     if (isRadio(el) && !radioTabbable(el, root)) continue
     // el.tabIndex (IDL) resolves defaults per element type; the attribute
-    // check keeps [tabindex="-1"] unit containers out of the walk.
-    if (el.tabIndex < 0) continue
+    // check keeps [tabindex="-1"] unit containers out of the walk. A bare
+    // contenteditable reports IDL -1 in Chrome yet is a real tab stop, so
+    // effectiveTabIndex (transcribing `tabbable`'s getTabIndex) lifts it to
+    // 0 only when no explicit tabindex is present — keeping genuine
+    // [tabindex="-1"] removals dropped.
+    const tabIndex = effectiveTabIndex(el)
+    if (tabIndex < 0) continue
     // Zero client rects = display:none somewhere above, closed <details>
     // content, etc. opacity:0 proxies still have rects — stays tabbable.
     if (el.getClientRects().length === 0) continue
-    found.push({ el, tabIndex: el.tabIndex, seq: seq++ })
+    found.push({ el, tabIndex, seq: seq++ })
   }
   return sortByTabOrder(found).map((f) => f.el)
 }
