@@ -23,9 +23,9 @@ import { LampTweaks } from './lampTweaks'
 import './lamp.css'
 
 const PIXEL_RATIO_CAP = 2
-const DRIFT_RADIUS_X = 34
-const DRIFT_RADIUS_Y = 20
-const DRIFT_PERIOD_MS = 22000
+export const DRIFT_RADIUS_X = 34
+export const DRIFT_RADIUS_Y = 20
+export const DRIFT_PERIOD_MS = 22000
 // Camera-to-page-plane distance for the lantern's perspective camera, CSS
 // px. A camera bore-sighted straight down the lantern's own height axis
 // (which any position on this z=0-mapped plane necessarily is) shows no
@@ -185,9 +185,15 @@ function useReducedMotion(): boolean {
   return reduced
 }
 
-function ellipseOffset(elapsedMs: number): Point {
+export function ellipseOffset(elapsedMs: number): Point {
   const angle = (elapsedMs / DRIFT_PERIOD_MS) * Math.PI * 2
-  return { x: Math.cos(angle) * DRIFT_RADIUS_X, y: Math.sin(angle) * DRIFT_RADIUS_Y }
+  // Phase 0 is the release point itself: the orbit is centered at
+  // (0, DRIFT_RADIUS_Y), so its bottom touches the drag anchor. The
+  // pointer-up handler re-seeds the drift clock to now(), making the
+  // first post-release frame evaluate at elapsed ≈ 0; this parameterization
+  // returns (0, 0) there, so the lamp stays where the user let go and
+  // drifts from it instead of jumping to the ellipse's rightmost point.
+  return { x: Math.sin(angle) * DRIFT_RADIUS_X, y: (1 - Math.cos(angle)) * DRIFT_RADIUS_Y }
 }
 
 function clampToViewport(point: Point, margins: LanternMargins): Point {
