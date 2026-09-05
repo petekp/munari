@@ -85,6 +85,7 @@ import {
   type SurfaceResolution,
   type SurfacePartPublication,
 } from './surfaceSourceRuntime'
+import { createLodSchedule } from './lodSchedule'
 import {
   MATCH_DOM_DISTANCE,
   createMatchDomResult,
@@ -153,8 +154,8 @@ export interface SurfaceWebGLProps
 // cohort on the same frame.
 const LOD_EVERY = 10
 const LOD_AGREE = 2
-let lodSeq = 0
 let presenterSeq = 0
+const lodSchedule = createLodSchedule(LOD_EVERY)
 
 const _camPos = new THREE.Vector3()
 const _surfPos = new THREE.Vector3()
@@ -277,7 +278,7 @@ function SurfacePresenter({
   const materialRef = useRef<THREE.MeshBasicMaterial>(null)
   const pressedRef = useRef<ForwardPointerSample | null>(null)
   const presenterKey = useMemo(() => `presenter-${presenterSeq++}`, [])
-  const lodPhase = useMemo(() => lodSeq++ % LOD_EVERY, [])
+  const lodPhase = useMemo(() => lodSchedule.nextPhase(), [])
   const lodRef = useRef({ tier: 1, proposed: 1, agree: 0, frame: 0 })
   // What the pass in flight is doing, written by the before hook and read
   // once by the after hook. Not a boolean: the after hook has to tell a
@@ -513,7 +514,7 @@ function SurfacePresenter({
   // The presenter's own name in the source's tier ledger. Every presenter
   // of one source proposes independently and the source takes the maximum,
   // so a distant panel cannot downgrade the raster a near one needs.
-  const lodKey = useMemo(() => lodSeq++, [])
+  const lodKey = useMemo(() => lodSchedule.nextKey(), [])
 
   /** Position-attribute version as of the last frame; null until seen once. */
   const rerouteRef = useRef<number | null>(null)
