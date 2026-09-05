@@ -41,6 +41,7 @@ import { showChrome } from '../../bareMode'
 import { CrystalTweaks } from './CrystalTweaks'
 import { CrystalMaterial, type CrystalDrive } from './crystalMaterial'
 import { bendAt, tipScreenPoint, REST_FRAME, type CrystalFrame } from './crystalLaw'
+import { attachCrystalParking } from './crystalParkingKey'
 import { crystalTuning as tune } from './crystalTuning'
 import './crystal.css'
 
@@ -158,15 +159,10 @@ export function CrystalApp() {
   // is itself a walk across the screen, so a box on its own could never park
   // the crystal anywhere you wanted it.
   const [parked, setParked] = useState(false)
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (e.key !== 'p' && e.key !== 'P') return
-      if (e.metaKey || e.ctrlKey || e.altKey) return
-      setParked((v) => !v)
-    }
-    window.addEventListener('keydown', key)
-    return () => window.removeEventListener('keydown', key)
-  }, [])
+  // The listener lives in `crystalParkingKey.ts` so the `p`-repeats-while-
+  // held seam can be tested as DOM (crystalParkingKey.test.ts drives the
+  // real attach); the `e.repeat` guard there is the load-bearing part.
+  useEffect(() => attachCrystalParking({ onToggle: () => setParked((v) => !v) }), [])
 
   // Four refs, all read from inside the raycast, which runs between React
   // renders and can see no closure of its own.
