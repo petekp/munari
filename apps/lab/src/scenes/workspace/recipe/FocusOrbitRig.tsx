@@ -345,13 +345,22 @@ export function FocusOrbitRig({
     const release = () => {
       if (controls && tween.current === null) controls.enabled = true
     }
-    el.addEventListener('pointerdown', cancel)
-    el.addEventListener('wheel', cancel)
+    // Capture phase so `cancel` re-enables controls BEFORE OrbitControls'
+    // bubble-phase onPointerDown/onMouseWheel see the event — drei's
+    // makeDefault re-keys this effect on `controls`, appending `cancel`
+    // after OrbitControls' handlers; bubble-phase ordering lets them bail
+    // on `enabled === false` before `cancel` can re-enable, dead-arming the
+    // in-progress grab (release-and-re-press to orbit; first wheel tick
+    // swallowed). Same pointer-integrity pattern as CanvasPointerGate
+    // and forwardEvents. `release` stays bubble — ordering against
+    // OrbitControls' onPointerUp is not load-bearing.
+    el.addEventListener('pointerdown', cancel, { capture: true })
+    el.addEventListener('wheel', cancel, { capture: true })
     el.addEventListener('pointerup', release)
     el.addEventListener('pointercancel', release)
     return () => {
-      el.removeEventListener('pointerdown', cancel)
-      el.removeEventListener('wheel', cancel)
+      el.removeEventListener('pointerdown', cancel, { capture: true })
+      el.removeEventListener('wheel', cancel, { capture: true })
       el.removeEventListener('pointerup', release)
       el.removeEventListener('pointercancel', release)
     }
