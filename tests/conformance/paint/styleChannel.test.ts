@@ -12,6 +12,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createStyleChannel, ensureChannelRegistered, type StyleChannel } from '@munari/core'
 
 let value = '0'
+// Opt-in counter for tests that assert on per-frame read counts (the
+// interrupt-deformation tests). Off by default so the value-only suites are
+// unaffected. Hurled into the shared `channelEl` stub so it sees real reads.
+let computeCalls = 0
+let counting = false
 function channelEl(): HTMLElement {
   const el = document.createElement('div')
   document.body.append(el)
@@ -23,7 +28,15 @@ function channelEl(): HTMLElement {
       // SAFETY: the channel reads exactly one thing off a computed style —
       // `getPropertyValue` — so the stub carries that method and nothing
       // else. A channel that grew a second reader would fail here loudly.
-      return { getPropertyValue: (p: string) => (p === '--depth' ? value : orig(p)) } as CSSStyleDeclaration
+      return {
+        getPropertyValue: (p: string) => {
+          if (p === '--depth') {
+            if (counting) computeCalls += 1
+            return value
+          }
+          return orig(p)
+        },
+      } as CSSStyleDeclaration
     }
     return style
   })
@@ -40,6 +53,8 @@ afterEach(() => {
   while (channels.length) channels.pop()!.dispose()
   vi.restoreAllMocks()
   value = '0'
+  computeCalls = 0
+  counting = false
   document.body.innerHTML = ''
 })
 
@@ -117,6 +132,146 @@ describe('the transition window', () => {
     transition(el, 'transitionrun', 'opacity')
     expect(raf).not.toHaveBeenCalled()
     raf.mockRestore()
+  })
+})
+
+describe('the interrupt window', () => {
+  // The documented invariant for the ref-count + rAF loop: "overlapping
+  // transitions (interrupted + restarted) keep one loop." A `transitioncancel`
+  // followed by a `transitionrun` must NOT spawn a second self-perpetuating
+  // `tick` on top of the one already pending from the prior run. The harness
+  // mirrors `the transition window` — rAF captured into `frames[]` — and adds
+  // per-frame `getComputedStyle` read counts to surface a duplicated loop as a
+  // measurable quantity, not just a count of pending callbacks.
+
+  it('a single cancel→run interrupt keeps one pending tick loop', () => {
+    const el = channelEl()
+    channel(el)
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((f) => (frames.push(f), frames.length))
+
+    transition(el, 'transitionrun') // live 0→1, start the sampling loop
+    expect(frames.length).toBe(1)
+    value = '0.25'
+    frames[0]!(0) // tick fires (live>0): emit + reschedule
+    transition(el, 'transitioncancel') // live 1→0
+    transition(el, 'transitionrun') // live 0→1; NO new loop (one already pending)
+
+    // Buggy source receives 3 here: cancel→run re-triggers `if (live === 1)`.
+    expect(frames.length).toBe(2)
+  })
+
+  it('bounds getComputedStyle reads to 1 per frame across a 60-move drag', () => {
+    const el = channelEl()
+    counting = true
+    channel(el)
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((f) => (frames.push(f), frames.length))
+
+    transition(el, 'transitionrun')
+    const N = 60
+    const perFrame: number[] = []
+    for (let i = 0; i < N; i++) {
+      value = String(i / 100)
+      const pending = frames.splice(0)
+      const before = computeCalls
+      for (const f of pending) f(0)
+      perFrame.push(computeCalls - before)
+      transition(el, 'transitioncancel')
+      transition(el, 'transitionrun')
+    }
+    // Buggy: maxPerFrame 60, total 1831, frames.length 61. Fix: 1 / 61 / 1.
+    expect(Math.max(...perFrame)).toBe(1)
+    expect(computeCalls).toBe(61)
+    expect(frames.length).toBe(1)
+  })
+
+  it('duplicate loops self-drain to zero once the final transition settles', () => {
+    const el = channelEl()
+    channel(el)
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((f) => (frames.push(f), frames.length))
+
+    transition(el, 'transitionrun')
+    const N = 10
+    for (let i = 0; i < N; i++) {
+      value = String(i / 100)
+      const pending = frames.splice(0)
+      for (const f of pending) f(0)
+      transition(el, 'transitioncancel')
+      transition(el, 'transitionrun')
+    }
+    // Buggy: 11 pending loops. Fix: 1.
+    expect(frames.length).toBe(1)
+
+    transition(el, 'transitionend') // live → 0
+    const pending = frames.splice(0)
+    for (const f of pending) f(0) // one rAF batch collapses the loop
+    expect(frames.length).toBe(0)
+  })
+
+  it('a cancel that fully drains then a run starts exactly one fresh loop', () => {
+    const el = channelEl()
+    channel(el)
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((f) => (frames.push(f), frames.length))
+
+    transition(el, 'transitionrun')
+    transition(el, 'transitioncancel') // live → 0
+    const pending = frames.splice(0)
+    for (const f of pending) f(0) // tick fires with live<=0: clears loop, no reschedule
+    expect(frames.length).toBe(0)
+
+    transition(el, 'transitionrun') // live===0 && !loop → start fresh loop
+    expect(frames.length).toBe(1)
+    value = '0.5'
+    frames[0]!(0) // tick fires: emit + reschedule
+    transition(el, 'transitionend')
+    const rest = frames.splice(0)
+    for (const f of rest) f(0)
+    expect(frames.length).toBe(0)
+  })
+
+  it('two genuinely overlapping transitions keep one loop and stop only after both end', () => {
+    const el = channelEl()
+    channel(el)
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((f) => (frames.push(f), frames.length))
+
+    transition(el, 'transitionrun') // live 1, loop starts
+    transition(el, 'transitionrun') // live 2; second run must NOT start a second loop
+    expect(frames.length).toBe(1)
+
+    transition(el, 'transitionend') // live → 1; loop must still be alive
+    const pending = frames.splice(0)
+    for (const f of pending) f(0)
+    expect(frames.length).toBe(1) // tick rescheduled because live > 0
+
+    transition(el, 'transitionend') // live → 0; loop now stops
+    const rest = frames.splice(0)
+    for (const f of rest) f(0)
+    expect(frames.length).toBe(0)
+  })
+
+  it('dispose mid-loop halts the tick and clears the loop flag', () => {
+    const el = channelEl()
+    const c = channel(el)
+    const cb = vi.fn()
+    c.observe(cb)
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((f) => (frames.push(f), frames.length))
+
+    transition(el, 'transitionrun')
+    value = '0.5'
+    frames[0]!(0) // tick fires: emit + reschedule (frames has the rescheduled tick)
+    expect(cb).toHaveBeenCalledWith(0.5)
+    cb.mockClear()
+
+    c.dispose()
+    const pending = frames.splice(0)
+    for (const f of pending) f(0) // tick short-circuits on `disposed`; clears loop
+    expect(cb).not.toHaveBeenCalled()
+    expect(frames.length).toBe(0) // no further rAF scheduled
   })
 })
 
