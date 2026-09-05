@@ -117,9 +117,9 @@ function render(fail) {
 
 let server, browser
 const deadline = setTimeout(() => {
-  console.error('shader-compile: hard 120s deadline hit')
+  console.error('shader-compile: hard 240s deadline hit')
   process.exit(1)
-}, 120_000)
+}, 240_000)
 
 try {
   browser = await puppeteer.launch({
@@ -193,6 +193,84 @@ try {
     const fails = await page.evaluate(() => window.__glslFails.splice(0))
     for (const f of fails) seen.push({ what, f })
     console.log(`  ${what.padEnd(22)} ${fails.length ? `${fails.length} FAILED` : 'ok'}`)
+  }
+
+  // ── candidates walk ──────────────────────────────────────────────────
+  //
+  // The logo walk never builds a candidate program. Each candidate is its
+  // own scene (?candidate=<id>) with its own Surface.WebGL, and the one
+  // this walk exists to protect (copy → SUCK_VERT/SUCK_FRAG) only builds
+  // its material on the Copy click. The README's "a new material needs a
+  // new state here" rule applies: this loop is that state for every
+  // candidate, with the click that mounts the surface for the one that
+  // needs it.
+  //
+  // The walk is best-effort on the click side (a missing button is a
+  // printed zero, not a throw — the gate judges compile/link, not the
+  // click) and strict on the result side: any shader that DID build must
+  // have compiled and linked.
+  const candidateIds = [
+    'ripple',
+    'billow',
+    'unroll',
+    'dissolve',
+    'analyze',
+    'copy',
+    'delete',
+  ]
+  // Each candidate's primary action button, chosen so the click mounts
+  // the surface that carries the candidate's program. For `delete` the
+  // per-row `.cand-row__x` buttons each trigger one of melt/shatter/peel,
+  // so all three variants build across the row list.
+  const candidateAction = async (id) => {
+    if (id === 'delete') {
+      const xs = await page.$$('.cand-row__x')
+      for (const x of xs) {
+        try {
+          await x.click({ delay: 30 })
+          await sleep(500)
+        } catch {
+          // a row that is already gone is a printed zero, not a throw
+        }
+      }
+      return
+    }
+    const sel =
+      id === 'copy'
+        ? '.cand-btn--small'
+        : id === 'dissolve'
+          ? '[role="button"]'
+          : '.cand-btn'
+    const handle = await page.$(sel)
+    if (handle) {
+      try {
+        await handle.click({ delay: 30 })
+      } catch {
+        // best-effort: the gate judges compile/link, not the click
+      }
+    }
+  }
+  for (const id of candidateIds) {
+    await page.goto(
+      `http://localhost:${port}/?scene=candidates&candidate=${id}&probe=still&framed`,
+      { waitUntil: 'load' },
+    )
+    // Wait for the bench shell to mount: each candidate carries a
+    // `.cand-*` element that exists once its DOM side has rendered.
+    await page
+      .waitForFunction(
+        () => document.querySelector('[class^="cand-"]') !== null,
+        { timeout: 15_000 },
+      )
+      .catch(() => {})
+    await sleep(900)
+    await candidateAction(id)
+    await sleep(1200)
+    const fails = await page.evaluate(() => window.__glslFails.splice(0))
+    for (const f of fails) seen.push({ what: `candidates:${id}`, f })
+    console.log(
+      `  ${`candidates:${id}`.padEnd(22)} ${fails.length ? `${fails.length} FAILED` : 'ok'}`,
+    )
   }
 
   clearTimeout(deadline)
