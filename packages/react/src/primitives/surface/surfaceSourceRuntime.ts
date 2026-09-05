@@ -261,6 +261,30 @@ export function createSurfaceSourceRuntime(
     anyUpload = true
   }
 
+  // Reclaim texture storage when the LOD ladder re-cuts the canvas mid-frame.
+  // r3f runs the host tick (upload) BEFORE the presenter's stepLod (applyTier)
+  // in the same frame, so upload() can arm needsUpdate against size A and then
+  // applyTier re-cuts the canvas to size B before gl.render. Without this
+  // reclaim, the renderer texSubImage2Ds the B-sized canvas into GL storage
+  // allocated for A — a one-frame desync (shrink: corner write with stale
+  // border; grow: GL_INVALID_VALUE, old tier persists one frame). This mirrors
+  // the realloc branch in upload(), making the behavior ordering-independent:
+  // even when upload() armed first, a later recut forces a fresh allocation.
+  const reclaimStorage = (store: { width: number; height: number }) => {
+    if (!texture) return
+    const mips = filterPolicy(pinned !== null).mips
+    if (!alloc) {
+      alloc = { ...store, mips }
+      return
+    }
+    if (uploadNeedsRealloc(alloc, store) || alloc.mips !== mips) {
+      texture.dispose()
+      applyFilterPolicy(texture, source.scale(), pinned !== null)
+      alloc = { ...store, mips }
+      texture.needsUpdate = true
+    }
+  }
+
   const applyTier = () => {
     if (pinned !== null) {
       source.setScale(pinned)
@@ -270,7 +294,10 @@ export function createSurfaceSourceRuntime(
     for (const tier of proposals.values()) {
       if (best === null || tier > best) best = tier
     }
-    if (best !== null && best !== source.scale()) source.setScale(best)
+    if (best !== null && best !== source.scale()) {
+      source.setScale(best)
+      reclaimStorage({ width: source.canvas.width, height: source.canvas.height })
+    }
   }
 
   return {
