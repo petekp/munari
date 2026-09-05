@@ -1,4 +1,4 @@
-import { memo, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useThree, type ThreeEvent } from '@react-three/fiber'
 import {
@@ -123,6 +123,14 @@ function WorkPanel({
   const sourceRoot = useRef<HTMLElement | null>(null)
   const [probeWidth, setProbeWidth] = useState(PANEL_W)
 
+  const setGroup = useCallback(
+    (g: THREE.Group | null) => {
+      group.current = g
+      register(spec.id, g)
+    },
+    [spec.id, register],
+  )
+
   const approachNow = () => {
     const g = group.current
     if (!g || !rig.current) return
@@ -204,18 +212,15 @@ function WorkPanel({
     }
   })
 
+  useEffect(() => {
+    group.current?.lookAt(LOOK_TARGET.x, LOOK_TARGET.y, LOOK_TARGET.z)
+  }, [])
+
   const onHandleMove = (e: ThreeEvent<PointerEvent>) =>
     moveHandle(e.nativeEvent.clientX, e.nativeEvent.clientY)
 
   return (
-    <group
-      position={slot.position}
-      ref={(g) => {
-        group.current = g
-        register(spec.id, g)
-        if (g) g.lookAt(LOOK_TARGET.x, LOOK_TARGET.y, LOOK_TARGET.z)
-      }}
-    >
+    <group position={slot.position} ref={setGroup}>
       <FocusGroup id={spec.id} order={order} objectRef={group} onStateChange={setFocus}>
         <Surface
           name={`workspace-${spec.id}`}
@@ -404,10 +409,10 @@ export function Workspace() {
     }
   }, [panels])
 
-  const register = (id: string, g: THREE.Group | null) => {
+  const register = useCallback((id: string, g: THREE.Group | null) => {
     if (g) groups.current.set(id, g)
     else groups.current.delete(id)
-  }
+  }, [])
 
   return (
     <>
