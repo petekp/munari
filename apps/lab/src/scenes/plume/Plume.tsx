@@ -219,11 +219,19 @@ function PlumeCamera() {
  * scene work, so the scene invalidates the next frame until its last word is
  * gone. Keeping the Canvas prop at `demand` avoids a prop-change race across
  * r3f's separate reconciler: the active child arrives, invalidates once, and
- * every frame schedules its successor. */
+ * every frame schedules its successor.
+ *
+ * The arrival guard draws one frame on every `active` transition, including the
+ * stop. A Restore re-arms every unit to `held` mid-flight, flipping `active`
+ * false in the same commit that stamps the future-dated `aRelease` buffer. One
+ * final frame must paint that buffer, or the demand canvas freezes on the last
+ * flying-particle framebuffer until the next timeline boundary. The invalidate
+ * is deferred to the next animation frame, so it samples the parent stamp that
+ * runs in the same passive-effect flush. */
 function PlumeFrames({ active }: { readonly active: boolean }) {
   const invalidate = useThree((state) => state.invalidate)
   useEffect(() => {
-    if (active) invalidate()
+    invalidate()
   }, [active, invalidate])
   useFrame(() => {
     if (active) invalidate()
