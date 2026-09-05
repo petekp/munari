@@ -103,8 +103,44 @@ export function SurfaceDOM({ children, style, ref, ...rest }: SurfaceDOMProps) {
   //
   // A Twin never releases at all: nothing took the hold from it, so the
   // page presentation remains the one reachable DOM instance.
+  //
+  // The two listeners below are ordered PER EDGE, and that order is what
+  // keeps focus alive across the handoff. The focus-transfer listener in
+  // the source host is subscribed from a LAYOUT effect, so on the mount
+  // re-render it is registered before this component's PASSIVE `apply`
+  // below and fires FIRST on every hold change. That is correct on the
+  // RELEASE edge (page → WebGL): `apply` inerts the page after focus has
+  // left it, which is the order `inert` is designed for. It is the defect
+  // on the RETURN edge (WebGL → page): the page is released by `inert` AND
+  // `visibility: hidden`, and `focus()` inside either is a silent spec
+  // no-op (HTML §6.7.2), so the return edge must CLEAR the page before
+  // focus moves into it. The passive `apply` runs after the transfer on
+  // every edge, so it cannot do that clearing.
+  //
+  // The early-clear is the return edge's clearing. It is subscribed from a
+  // LAYOUT effect so it registers before the parent's transfer subscription
+  // on the mount re-render (child layout effects run before the parent's,
+  // and `holder` lands a commit before `pageRoot` does), and so it fires
+  // FIRST on every hold. It touches the page holder only while the page is
+  // taking the hold back; on the release edge it is a no-op and the passive
+  // `apply` inerts the page after focus has left, which preserves the
+  // release-edge guarantee. See surfaceReturnFocus.test.ts.
   const store = root.store
   const exclusive = root.exclusive
+  useLayoutEffect(() => {
+    if (!holder) return
+    // The return edge only. `holdsPage()` has flipped back to true; if it
+    // has not, this is the release edge and the passive `apply` below is
+    // what inerts the page, after the transfer.
+    const clearIfHeld = () => {
+      if (!store.holdsPage()) return
+      holder.style.visibility = ''
+      holder.inert = false
+      holder.removeAttribute('aria-hidden')
+    }
+    clearIfHeld()
+    return store.subscribeHold(clearIfHeld)
+  }, [holder, store])
   useEffect(() => {
     if (!holder) return
     const apply = () => {
