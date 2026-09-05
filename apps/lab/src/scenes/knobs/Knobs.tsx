@@ -481,14 +481,14 @@ function ArtEnvironment() {
  * move every frame, so a glint they leave travels while the art spins
  * and freezes the instant power drops.
  *
- * They ship at zero candela, and the rig stays anyway. A punctual light
- * behind the slab cannot reach a camera-facing surface, and the one
- * surface that turns away is metal, which has no diffuse term — so the
- * measured contribution is a rounding error (see `lightArt`). The
- * artwork lights the front of the panel through the room's bounce
- * instead. Kept because the dial is how anyone re-tests that claim, and
- * because a rig that is present and honest at zero beats a deleted one
- * whose absence has to be re-derived.
+ * They ship at `lightArt` candela (default 26000; the dial is
+ * `art lights cd`, 0..60000). Two parallel planes facing the viewer
+ * cannot light each other's flat faces — so the captured flat face
+ * is lit by the room's bounce instead. What turns away — the slab's
+ * rim, the chamfer, the standing hardware — is metal (chrome,
+ * steelDark, graphite), and metal answers a point light through
+ * specular, not diffuse. Kept because the dial is how anyone re-tests
+ * that split.
  */
 function ArtLightRig() {
   const lights = useRef<(THREE.PointLight | null)[]>([])
