@@ -106,16 +106,23 @@ export function createStyleChannel(
   // restarted) keep one loop.
   let live = 0
   let disposed = false
+  let loop = false
   const tick = () => {
-    if (disposed || live <= 0) return
+    if (disposed || live <= 0) {
+      loop = false
+      return
+    }
     emit()
     requestAnimationFrame(tick)
   }
   const isOurs = (e: TransitionEvent) => e.target === el && e.propertyName === property
   const onRun = (e: TransitionEvent) => {
     if (!isOurs(e)) return
+    if (live === 0 && !loop) {
+      loop = true
+      requestAnimationFrame(tick)
+    }
     live += 1
-    if (live === 1) requestAnimationFrame(tick)
   }
   const onDone = (e: TransitionEvent) => {
     if (!isOurs(e)) return
