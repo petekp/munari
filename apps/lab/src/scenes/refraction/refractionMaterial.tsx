@@ -129,11 +129,11 @@ export function RefractionMaterial({
   box.current.h = stageH
 
   // Registered before the frame write below, so the field the bend samples
-  // is this frame's and not the one before it.
-  const field = useInkField(
-    outgoingSlot,
-    useMemo(() => ({ ...tune, stageW: fieldW, stageH: fieldH }), [tune, fieldW, fieldH]),
-  )
+  // is this frame's and not the one before it. The bag goes by reference,
+  // never spread: a spread copies the number knobs by value into a frozen
+  // snapshot, and the panel mutates the bag without re-rendering here, so
+  // the field's per-frame re-read would hold the mount-time value forever.
+  const field = useInkField(outgoingSlot, tune, { stageW: fieldW, stageH: fieldH })
 
   // Initial values only. r3f 9.7 copies the `uniforms` prop entry by entry
   // into slots the material owns and re-runs only when the prop's identity

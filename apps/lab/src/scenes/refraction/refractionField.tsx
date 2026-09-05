@@ -38,11 +38,16 @@ import { FIELD_FRAG, FIELD_VERT, SPREAD_FRAG } from './refractionShaders'
 import { refractionTuning, STAGE_H, STAGE_W } from './refractionTuning'
 
 /**
- * What the two fields need from a scene's tuning bag, and the stage they
- * cover. Named as its own shape so a second scene can drive these passes
- * from its own bag — the gallery's content is photographs, which want a
- * different `apertureDetail` and a different stage box, and nothing else
- * about the passes changes.
+ * The knobs the two fields read from a scene's tuning bag. Named as its own
+ * shape so a second scene can drive these passes from its own bag — the
+ * gallery's content is photographs, which want a different `apertureDetail`
+ * and nothing else about the passes changes.
+ *
+ * Passed by REFERENCE, never by spread: the panel writes the bag in place
+ * and nothing re-renders this hook, so a spread — which copies the number
+ * knobs by value — leaves every per-frame read holding the mount-time
+ * snapshot forever. The frame loop re-reads this bag through a ref, and a
+ * ref to the live singleton is the only thing that can see a slider drag.
  */
 export interface FieldConfig {
   fieldPx: number
@@ -51,8 +56,6 @@ export interface FieldConfig {
   apertureFloor: number
   apertureCeil: number
   apertureDetail: number
-  stageW: number
-  stageH: number
   // These three the PASSES do not use — the material does. They are here
   // because `apertureAt` is here, and it is the shader's own expression:
   // ink mixed with spread, eased across texel boundaries, gamma'd. A field
@@ -63,11 +66,18 @@ export interface FieldConfig {
   frontRounding: number
 }
 
-const REFRACTION_FIELD: FieldConfig = {
-  ...refractionTuning,
-  stageW: STAGE_W,
-  stageH: STAGE_H,
+/**
+ * The box the field grids are counted against, CSS px. Separate from the
+ * bag because the bag is a live singleton the panel mutates, while the box
+ * is a render prop that only moves on a resize — and a resize re-renders
+ * the caller, so reading it through its own ref is already live.
+ */
+export interface FieldStage {
+  stageW: number
+  stageH: number
 }
+
+const REFRACTION_STAGE: FieldStage = { stageW: STAGE_W, stageH: STAGE_H }
 
 /** A field's own size in texels, for a given CSS px per texel. */
 const sizeInTexels = (px: number, stageW: number, stageH: number) => ({
@@ -137,18 +147,23 @@ const smallTarget = (w: number, h: number) =>
  */
 export function useInkField(
   source: { value: THREE.Texture | null },
-  config: FieldConfig = REFRACTION_FIELD,
+  tune: FieldConfig = refractionTuning,
+  stage: FieldStage = REFRACTION_STAGE,
 ): InkField {
-  // Read through a ref, not captured: the panel writes the bag in place and
+  // Read through refs, not captured: the panel writes the bag in place and
   // nothing tells this hook, so every frame has to re-read whatever the
-  // caller is holding.
-  const cfg = useRef(config)
-  cfg.current = config
-  const texels = (px: number) => sizeInTexels(px, cfg.current.stageW, cfg.current.stageH)
+  // caller is holding. `tune` is the live singleton by reference — a spread
+  // here would copy the number knobs by value into a frozen snapshot, which
+  // is the exact bug this hook's per-frame re-read is built to avoid.
+  const tuneRef = useRef(tune)
+  tuneRef.current = tune
+  const stageRef = useRef(stage)
+  stageRef.current = stage
+  const texels = (px: number) => sizeInTexels(px, stageRef.current.stageW, stageRef.current.stageH)
   const gl = useThree((state) => state.gl)
 
   const rig = useMemo(() => {
-    const { w, h } = texels(cfg.current.fieldPx)
+    const { w, h } = texels(tuneRef.current.fieldPx)
     const target = smallTarget(w, h)
     const material = new THREE.ShaderMaterial({
       vertexShader: FIELD_VERT,
@@ -156,13 +171,13 @@ export function useInkField(
       uniforms: {
         tSource: { value: null },
         uStep: { value: new THREE.Vector2(1 / (w * 8), 1 / (h * 8)) },
-        uDetail: { value: cfg.current.apertureDetail },
+        uDetail: { value: tuneRef.current.apertureDetail },
       },
       depthTest: false,
       depthWrite: false,
     })
 
-    const s = texels(cfg.current.spreadPx)
+    const s = texels(tuneRef.current.spreadPx)
     const spreadPair = [smallTarget(s.w, s.h), smallTarget(s.w, s.h)] as const
     const hollowPair = [smallTarget(s.w, s.h), smallTarget(s.w, s.h)] as const
     const spreadMaterial = new THREE.ShaderMaterial({
@@ -256,7 +271,7 @@ export function useInkField(
     gl.readRenderTargetPixels(s.hollow, 0, 0, w, h, mirror.hollow)
     // Read only when the ink term is actually mixed in. A gallery reading
     // busyness sets `apertureInk` to 0, and that third stall buys nothing.
-    if (cfg.current.apertureInk > 0) {
+    if (tuneRef.current.apertureInk > 0) {
       const { width: iw, height: ih } = rig.target
       if (mirror.iw !== iw || mirror.ih !== ih) {
         mirror.iw = iw
@@ -288,7 +303,7 @@ export function useInkField(
 
   const apertureAt = (u: number, v: number) => {
     readBack()
-    const t = cfg.current
+    const t = tuneRef.current
     const su = roundedCoord(u, 1 / Math.max(1, mirror.w), t.frontRounding)
     const sv = roundedCoord(v, 1 / Math.max(1, mirror.h), t.frontRounding)
     const spread =
@@ -317,25 +332,25 @@ export function useInkField(
 
     // Resized in place rather than through a dependency: the panel writes
     // the bag and nothing tells this hook, so the check IS the subscription.
-    const { w, h } = texels(cfg.current.fieldPx)
+    const { w, h } = texels(tuneRef.current.fieldPx)
     if (rig.target.width !== w || rig.target.height !== h) {
       rig.target.setSize(w, h)
       rig.material.uniforms.uStep.value.set(1 / (w * 8), 1 / (h * 8))
     }
-    const s = texels(cfg.current.spreadPx)
+    const s = texels(tuneRef.current.spreadPx)
     if (rig.spreadPair[0].width !== s.w || rig.spreadPair[0].height !== s.h) {
       rig.spreadPair.forEach((t) => t.setSize(s.w, s.h))
       rig.hollowPair.forEach((t) => t.setSize(s.w, s.h))
       rig.spreadMaterial.uniforms.uStep.value.set(0.5 / s.w, 0.5 / s.h)
       rig.spreadTexel.set(1 / s.w, 1 / s.h)
     }
-    const passes = spreadPasses(cfg.current.spreadReachPx, cfg.current.spreadPx)
+    const passes = spreadPasses(tuneRef.current.spreadReachPx, tuneRef.current.spreadPx)
     const su = rig.spreadMaterial.uniforms
     su.uDecay.value = spreadDecay(passes)
 
     const previous = gl.getRenderTarget()
 
-    rig.material.uniforms.uDetail.value = cfg.current.apertureDetail
+    rig.material.uniforms.uDetail.value = tuneRef.current.apertureDetail
     rig.material.uniforms.tSource.value = texture
     gl.setRenderTarget(rig.target)
     gl.render(rig.scene, rig.camera)
@@ -344,11 +359,11 @@ export function useInkField(
     // paper inward. Pass zero reads raw ink heights and normalises them, and
     // is the only pass that inverts; every pass after it reads a field
     // already in 0..1, so its own normalisation has to be the identity.
-    const scale = 1 / Math.max(1e-4, cfg.current.apertureCeil - cfg.current.apertureFloor)
+    const scale = 1 / Math.max(1e-4, tuneRef.current.apertureCeil - tuneRef.current.apertureFloor)
     const chain = (pair: readonly THREE.WebGLRenderTarget[], invert: number) => {
       let read: THREE.Texture = rig.target.texture
       for (let i = 0; i < passes; i++) {
-        su.uFloor.value = i === 0 ? cfg.current.apertureFloor : 0
+        su.uFloor.value = i === 0 ? tuneRef.current.apertureFloor : 0
         su.uScale.value = i === 0 ? scale : 1
         su.uInvert.value = i === 0 ? invert : 0
         su.tSource.value = read
