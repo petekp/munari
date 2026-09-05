@@ -118,7 +118,13 @@ export function driveSpringStep(
   dt: number,
   p: DriveParams,
 ): DriveStep {
-  const vIn = Math.max(-p.vMax, Math.min(p.vMax, s.v))
+  // vMax is an ENTRY guard (its doc string: a wild sample cannot launch
+  // it), applied once where the drive switches to 'spring' (Genie.tsx:
+  // commitGrab and the Escape handler). Re-clamping here each step would
+  // cap the spring's own evolving velocity and make the closed-form
+  // trajectory depend on dt — breaking "frame rate cannot change where
+  // the sheet goes" wherever the natural peak beats vMax. Trust it.
+  const vIn = s.v
   const x0 = s.t - target
   const zw = p.zeta * p.omega
   const wd = p.omega * Math.sqrt(1 - p.zeta * p.zeta)
