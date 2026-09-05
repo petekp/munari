@@ -168,15 +168,25 @@ export function SurfaceRoot({
   const host = useResolvedHost(store, wiring, contextHost, canvas)
 
   // The protocol advances from the renderer's frame, and only while there
-  // is something for it to advance — a crossing under way, or a linger
-  // still holding the WebGL side mounted after one landed.
+  // is something for it to advance. A crossing under way is always work;
+  // a WebGL side that is mounted is work only while a presenter is still
+  // registered for it. The store's `isWebGLMounted` is overloaded — true
+  // mid-crossing, through the reclaim linger, and for a Twin whose WebGL
+  // side never releases — and a consumer that demotes `view` from `'webgl'`
+  // to `undefined` on landing leaves the store parked in `'gl'` with
+  // `isWebGLMounted` true but no `request('dom')` to drive the
+  // `landing → page` edge that would bound the linger, then unmounts the
+  // mesh. Without the presenter gate that parked, presenter-less store
+  // would hold a busy claim forever: nothing to advance, nothing to
+  // render. A genuine Twin keeps its presenter registered, so the claim
+  // holds for it and releases for the demoted, presenter-less one.
   useEffect(() => {
     if (!host) return
     let claim: (() => void) | null = null
     const release = host.registerTick((dtMs) => {
       store.tick(dtMs)
       const state = store.getState()
-      const working = state.isChanging || state.isWebGLMounted
+      const working = state.isChanging || (state.isWebGLMounted && state.presenterRegistered)
       if (working) {
         if (!claim) claim = host.claimWork()
       } else if (claim) {

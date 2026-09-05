@@ -90,6 +90,8 @@ export interface SurfaceState {
   readonly isChanging: boolean
   /** The WebGL side should be mounted — including the linger after landing. */
   readonly isWebGLMounted: boolean
+  /** A WebGL presenter is currently registered for this Surface. */
+  readonly presenterRegistered: boolean
   /** This browser can capture DOM into a texture at all. */
   readonly supported: boolean
 }
@@ -249,6 +251,23 @@ const viewOf = (state: CrossingState): SurfaceView =>
   crossingPresentation(state.phase).gl ? 'webgl' : 'dom'
 
 /**
+ * Reference-equality for `SurfaceState`. `publish()` rebuilds the snapshot
+ * unconditionally but notifies only when this returns `false`, so
+ * `useSyncExternalStore` can compare by reference and a frame that moved
+ * only the ramp commits nothing. One clause per published field that can
+ * change; `supported` is constant for a handle's life and so is not gated.
+ * Adding a field adds a clause here, or the new field would never gate a
+ * publish and every subscriber would re-render every frame.
+ */
+const surfaceStateEqual = (a: SurfaceState, b: SurfaceState): boolean =>
+  a.targetView === b.targetView &&
+  a.presentedView === b.presentedView &&
+  a.ready === b.ready &&
+  a.isChanging === b.isChanging &&
+  a.isWebGLMounted === b.isWebGLMounted &&
+  a.presenterRegistered === b.presenterRegistered
+
+/**
  * The private store behind one handle.
  *
  * Nothing here allocates. The store is plain state and a listener set, so a
@@ -292,6 +311,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     ready: false,
     isChanging: false,
     isWebGLMounted: false,
+    presenterRegistered: false,
     supported: detectHtmlInCanvas().drawElementImage,
   }
   const listeners = new Set<() => void>()
@@ -310,15 +330,10 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       ready: readinessSettled(readiness) && partSetMissing(parts).length === 0,
       isChanging: crossing.phase === 'lifting' || crossing.phase === 'landing',
       isWebGLMounted: crossing.phase !== 'page' || elapsedMs < lingerUntilMs,
+      presenterRegistered: readiness.registered.length > 0,
       supported: state.supported,
     }
-    if (
-      next.targetView === state.targetView &&
-      next.presentedView === state.presentedView &&
-      next.ready === state.ready &&
-      next.isChanging === state.isChanging &&
-      next.isWebGLMounted === state.isWebGLMounted
-    ) {
+    if (surfaceStateEqual(next, state)) {
       return
     }
     const previous = state
