@@ -27,7 +27,7 @@ import { SURFACE_RADIUS_GLSL } from '../../lib/surfaceRadiusGlsl'
 import { SurfaceMaterialContext, useSurfaceTexture } from './surfaceContext'
 
 /** What a three shader looks like at `onBeforeCompile` time. */
-interface ShaderStage {
+export interface ShaderStage {
   uniforms: Record<string, { value: unknown }>
   fragmentShader: string
 }
@@ -49,7 +49,7 @@ function spliceRadiusMask(shader: ShaderStage, value: SurfaceMaterialUniforms) {
   )
 }
 
-interface SurfaceMaterialUniforms {
+export interface SurfaceMaterialUniforms {
   radii: { value: THREE.Vector4 }
   size: { value: THREE.Vector2 }
 }
@@ -114,6 +114,45 @@ export interface SurfaceLitMaterialProps {
 }
 
 /**
+ * The full `<Surface.LitMaterial>` `onBeforeCompile` body: declare the
+ * corner mask (with its uniforms spliced onto the shader), un-premultiply
+ * the capture before lighting, then re-apply the mask after three's own
+ * premultiply.
+ *
+ * Exported so the conformance suite can pin the splice textually. Three's
+ * `premultiplied_alpha_fragment` runs `gl_FragColor.rgb *= gl_FragColor.a`
+ * immediately before the `#include <dithering_fragment>` anchor in
+ * meshphysical, so the tail must scale by the corner mask alone — a second
+ * `*= gl_FragColor.a` would double-premultiply the translucent
+ * `alpha = 'source'` edge, darkening it by an extra factor of the source
+ * alpha.
+ */
+export function spliceSurfaceLitShader(
+  shader: ShaderStage,
+  value: SurfaceMaterialUniforms,
+): void {
+  spliceRadiusMask(shader, value)
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      '#include <map_fragment>',
+      '#include <map_fragment>\n' +
+        // Lighting multiplies against STRAIGHT color. Feeding it a
+        // premultiplied sample scales every translucent fragment twice
+        // — once here and once at the blend — which reads as a dark
+        // fringe around type rather than as an obvious error.
+        '  if ( diffuseColor.a > 0.0 ) diffuseColor.rgb /= diffuseColor.a;\n',
+    )
+    .replace(
+      '#include <dithering_fragment>',
+      '#include <dithering_fragment>\n' +
+        '  float munariMask = munariRadiusMask( vUv );\n' +
+        '  gl_FragColor.a *= munariMask;\n' +
+        '  if ( gl_FragColor.a < 0.004 ) discard;\n' +
+        '  gl_FragColor.rgb *= munariMask;\n',
+    )
+}
+
+/**
  * A lit slab wearing the Surface's capture.
  *
  * Mounted in `<Surface.WebGL material={…}>`, where a configured texture is
@@ -139,31 +178,11 @@ export function SurfaceLitMaterial({
 
   // Identical source text across every instance on purpose: three keys its
   // program cache on this function's `toString`, so all lit Surfaces share
-  // one compiled program while each wires its own uniform objects.
+  // one compiled program while each wires its own uniform objects. Delegating
+  // the splice to one exported function keeps that text stable across
+  // instances while exposing the body to the conformance suite.
   const onBeforeCompile = useMemo(
-    () => (shader: ShaderStage) => {
-      spliceRadiusMask(shader, slot)
-      shader.fragmentShader = shader.fragmentShader
-        .replace(
-          '#include <map_fragment>',
-          '#include <map_fragment>\n' +
-            // Lighting multiplies against STRAIGHT color. Feeding it a
-            // premultiplied sample scales every translucent fragment twice
-            // — once here and once at the blend — which reads as a dark
-            // fringe around type rather than as an obvious error.
-            '  if ( diffuseColor.a > 0.0 ) diffuseColor.rgb /= diffuseColor.a;\n',
-        )
-        .replace(
-          '#include <dithering_fragment>',
-          '#include <dithering_fragment>\n' +
-            '  gl_FragColor.a *= munariRadiusMask( vUv );\n' +
-            '  if ( gl_FragColor.a < 0.004 ) discard;\n' +
-            // Back to premultiplied, which is what `premultipliedAlpha`
-            // below tells the blender to expect. Three sets the blend
-            // factors; it does not multiply the output.
-            '  gl_FragColor.rgb *= gl_FragColor.a;\n',
-        )
-    },
+    () => (shader: ShaderStage) => spliceSurfaceLitShader(shader, slot),
     [slot],
   )
 
