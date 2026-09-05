@@ -42,10 +42,11 @@ const declared = new WeakMap<object, Map<SurfacePartId, number>>()
 export function SurfacePart({ name, children, ...rest }: SurfacePartProps) {
   const root = useSurfaceRoot('Surface.Part')
 
-  // A duplicate name is silent otherwise: the second declaration replaces
-  // the first's publication, so one part's content simply stops appearing
-  // and the readiness ledger still counts both presenters — a handoff that
-  // waits forever on a source nobody can see.
+  // A duplicate name is silent otherwise: the publication slot answers one
+  // source per name, so one part's content simply stops appearing while the
+  // readiness ledger still counts both presenters. The parts ledger dedupes
+  // by name, so the handoff proceeds and no hang comes to find it — the
+  // failure is the silent shadow, and removing one duplicate is the remedy.
   //
   // Checked in a microtask, not inline: Strict Mode and any ordinary
   // remount run the new registration before the old cleanup, so a live
