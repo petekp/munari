@@ -588,7 +588,7 @@ export const SUCK_VERT = /* glsl */ `
     float slope = PI * cos(PI * e) * uArc * 6.0 * t * (1.0 - t)
                 * uLag / (max(uSpan, 1e-4) * max(1.0 - uLag, 1e-3));
     vec2 dir = dist > 1e-3 ? rel / dist : vec2(0.0);
-    vNormal = normalize(vec3(-slope * dir.x, slope * dir.y, 1.0));
+    vNormal = normalize(vec3(slope * dir.x, slope * dir.y, 1.0));
 
     // The bow: a per-run sideways drift, zero at both ends of the flight,
     // so the sheet still leaves the block and lands in the cursor — only
