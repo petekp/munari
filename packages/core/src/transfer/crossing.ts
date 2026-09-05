@@ -134,7 +134,13 @@ export function crossingFrame(
   if (phase === 'page') return state
   if (phase === 'lifting') {
     const heldMs = state.heldMs + dtMs
-    const proven = evidence.presented >= evidence.required
+    // A lift requires evidence. A crossing with nothing to prove (`required`
+    // is zero) has declared no content, and `0 >= 0` must not read as proven:
+    // the lift law refuses a content-less Surface (decisions.md #37). The
+    // binding's request gate holds an empty Surface out of 'lifting' in the
+    // first place; this is the defense-in-depth that a request which slips
+    // through still cannot vacuously land.
+    const proven = evidence.presented >= evidence.required && evidence.required > 0
     if (proven && heldMs >= timing.settleMs) return { phase: 'gl', ramp: 0, heldMs }
     return { ...state, heldMs }
   }

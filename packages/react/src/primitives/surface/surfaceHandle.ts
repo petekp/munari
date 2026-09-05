@@ -277,6 +277,12 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // from crossing four-fifths whole. Counts on both sides, not booleans:
   // Strict Mode runs a remount's new registration before the old cleanup.
   let parts = partSetEmpty()
+  // A 'webgl' request held for lack of content. A content-less Surface can
+  // never prove or release, so the lift is refused at the request rather
+  // than entered and held forever; the ask is taken up the moment a part or
+  // presenter is declared, so a Surface whose list arrives a frame after
+  // `view="webgl"` still crosses.
+  let liftRefused = false
   const expectCounts = new Map<SurfacePartId, number>()
   const presenterCounts = new Map<SurfacePartId, number>()
   let pageHeld = true
@@ -334,6 +340,19 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     if (previous.isWebGLMounted && !next.isWebGLMounted) callbacks.onWebGLReleased?.()
   }
 
+  // Take up a held 'webgl' request the moment content is declared. The
+  // request effect runs once per `view`, so a Surface that was empty at
+  // first commit relies on this to enter the crossing when its parts or
+  // presenters arrive. Only the 'webgl' direction is ever held; 'dom' is
+  // the rest pose and always served immediately.
+  const takeUpPendingLift = () => {
+    if (!liftRefused) return
+    if (parts.expected.length === 0 && readiness.registered.length === 0) return
+    liftRefused = false
+    const next = crossingRequest(crossing, true)
+    if (next !== crossing) crossing = next
+  }
+
   // Rebuilt from the counts through the law's own transitions, expecting
   // before registering, so a presenter that named its part before the
   // declaration arrived still lands once it does — the two declarations
@@ -343,6 +362,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     for (const id of expectCounts.keys()) next = partSetExpect(next, id)
     for (const id of presenterCounts.keys()) next = partSetRegister(next, id)
     parts = next
+    takeUpPendingLift()
     publish()
   }
 
@@ -394,13 +414,39 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     },
     request(view) {
       if (view === target) return
+      liftRefused = false
       target = view
+      // A content-less Surface — no source, no adopt, no part, and no
+      // registered presenter — has declared nothing to present. Entering
+      // 'lifting' would acquire a permanent work-claim on a Surface that can
+      // never prove or release (a silent busy-loop on a demand Canvas), so
+      // the lift is refused and reported rather than silently held. Only the
+      // 'webgl' direction is ever refused: 'dom' is the rest pose. The ask
+      // is held (`liftRefused`) so a declaration landing a frame later takes
+      // it up — see `takeUpPendingLift`, wired into the declaration paths.
+      if (
+        view === 'webgl' &&
+        parts.expected.length === 0 &&
+        readiness.registered.length === 0
+      ) {
+        liftRefused = true
+        store.reportError(
+          new Error(
+            `Surface${name ? ` "${name}"` : ''} requested view="webgl" with no content. ` +
+              'A Surface crossing needs a source, an adopt, or a <Surface.Part> to ' +
+              'present; give it content or drop the view.',
+          ),
+        )
+        publish()
+        return
+      }
       const next = crossingRequest(crossing, view === 'webgl')
       if (next !== crossing) crossing = next
       publish()
     },
     registerPresenter(key) {
       readiness = readinessRegister(readiness, key)
+      takeUpPendingLift()
       publish()
       return () => {
         readiness = readinessUnregister(readiness, key)
