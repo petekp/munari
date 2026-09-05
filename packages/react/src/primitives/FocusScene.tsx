@@ -47,7 +47,7 @@ import {
   type OrderRect,
   type Viewport,
 } from '../lib/focusTree'
-import { tabbables } from '../lib/tabbables'
+import { effectiveTabIndex, tabbables } from '../lib/tabbables'
 import {
   createDirectionalHistory,
   directionalPick,
@@ -500,10 +500,13 @@ export function FocusScene({
 
     // A remembered interior element is valid if it's still operable AND
     // still one of ours: inside a composite member's subtree (not the unit
-    // root itself), or a leaf member's proxy.
+    // root itself), or a leaf member's proxy. The effective tab index matches
+    // tabbables: a remembered contenteditable (no explicit tabindex) reports
+    // IDL -1 in Chrome yet stays a real tab stop, so recall must not
+    // destructively pop it.
     const interiorValid = (groupId: string) => (el: HTMLElement) => {
       if (!el.isConnected || el.matches(':disabled')) return false
-      if (el.tabIndex < 0 || el.getClientRects().length === 0) return false
+      if (effectiveTabIndex(el) < 0 || el.getClientRects().length === 0) return false
       return tree
         .members(groupId)
         .some((m) =>
