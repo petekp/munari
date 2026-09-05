@@ -301,29 +301,32 @@ export function SurfaceSourceHost({
   // root and <Surface.Part> each render one source host per part.
   useEffect(() => store.expectPart(id), [store, id])
 
+  // Keyed by the ROOT INSTANCE, not the name. The publish map and the
+  // source registry both replace by key, so two hosts sharing a name would
+  // land on one entry and the second commit would take the first one's
+  // content away — a panel that mounts, paints once, and goes blank.
+  const contentKey = sourceContentKey(root.instanceId, id)
+
   // Published to the STORE as well as the context. A presenter reached
   // through separated wiring holds only the handle — it has no ancestor
   // that ever saw this source, so context alone would leave it blank.
+  // Keyed per host, so one host unmounting only deletes its own entry; a
+  // name-keyed slot would take the survivor's pixels with it for good.
   useEffect(() => {
-    store.publishPart(id, {
+    store.publishPart(contentKey, {
       id,
       runtime,
       size: [sourceWidth, sourceHeight],
       captureRoot,
       pageRoot,
     })
-    return () => store.publishPart(id, null)
-  }, [store, id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot])
+    return () => store.publishPart(contentKey, null)
+  }, [store, contentKey, id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot])
 
   // Content reaches the container by whichever door this wiring has. Both
   // render the SAME element into the SAME container; only the reconciler
   // that owns the commit differs.
   const outward = root.wiring === 'canvas'
-  // Keyed by the ROOT INSTANCE, not the name. The registry replaces by key,
-  // so two unnamed Surfaces sharing a Canvas would publish their sources
-  // under one entry and the second commit would take the first one's
-  // content away — a panel that mounts, paints once, and goes blank.
-  const contentKey = sourceContentKey(root.instanceId, id)
   const wrapped =
     source === undefined ? null : (
       <SurfaceInstanceContext value="source">{source}</SurfaceInstanceContext>

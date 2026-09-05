@@ -209,8 +209,16 @@ export interface SurfaceStore {
   /** Is this an exclusive handoff (the root carries `view`) or a Twin? */
   exclusive(): boolean
   setExclusive(value: boolean): void
-  /** Announce one part's source to every presenter holding this handle. */
-  publishPart(id: SurfacePartId, value: SurfacePartPublication | null): void
+  /**
+   * Announce one part's source to every presenter holding this handle.
+   *
+   * Keyed per host — the caller passes its `sourceContentKey`, not the part
+   * name — so two hosts that share a name each own their own entry and one
+   * unmounting only deletes its own; a name-keyed slot would take the
+   * survivor's pixels with it. `part(id)` reads by name, finding the
+   * publication whose `id` matches, so the read side is unchanged.
+   */
+  publishPart(key: SurfacePartId, value: SurfacePartPublication | null): void
   part(id: SurfacePartId): SurfacePartPublication | null
   parts(): readonly SurfacePartPublication[]
   subscribeParts(listener: () => void): () => void
@@ -559,13 +567,21 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       // into a phase where the canvas no longer hears.
       for (const listener of holdListeners) listener()
     },
-    publishPart(id, value) {
-      if (value === null) partMap.delete(id)
-      else partMap.set(id, value)
+    publishPart(key, value) {
+      if (value === null) partMap.delete(key)
+      else partMap.set(key, value)
       partSnapshot = Array.from(partMap.values())
       for (const listener of partListeners) listener()
     },
-    part: (id) => partMap.get(id) ?? null,
+    part: (id) => {
+      // Read by name, not by key: the map is keyed per host so one
+      // unmounting deletes only its own entry, and a same-named survivor
+      // keeps its publication here. The last host to publish wins, which is
+      // the one-slot-per-name contract a duplicate name already pays for.
+      let found: SurfacePartPublication | null = null
+      for (const pub of partMap.values()) if (pub.id === id) found = pub
+      return found
+    },
     parts: () => partSnapshot,
     subscribeParts(listener) {
       partListeners.add(listener)
