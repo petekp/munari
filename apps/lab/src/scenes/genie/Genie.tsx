@@ -1778,6 +1778,11 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
       const a = api.current.airOf(win)
       if (!a) return
       a.drive.target = driveCommit(a.drive.t, v, DRIVE_DEFAULTS)
+      // vMax is an ENTRY guard (its doc string: a wild sample cannot launch
+      // it), applied ONCE at the grab→spring handoff. driveSpringStep does
+      // not re-clamp: doing so each step made the analytic trajectory depend
+      // on frame rate wherever the spring's natural peak beat vMax.
+      a.drive.v = Math.max(-DRIVE_DEFAULTS.vMax, Math.min(DRIVE_DEFAULTS.vMax, a.drive.v))
       a.drive.mode = 'spring'
     }
 
@@ -1848,6 +1853,10 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
         const a = api.current.airOf(g.win)
         if (a) {
           a.drive.target = g.home
+          // Same one-shot entry clamp as commitGrab — driveSpringStep no
+          // longer clamps internally, so the spring's initial speed is
+          // bounded here at the Escape→spring handoff.
+          a.drive.v = Math.max(-DRIVE_DEFAULTS.vMax, Math.min(DRIVE_DEFAULTS.vMax, a.drive.v))
           a.drive.mode = 'spring'
         }
       }

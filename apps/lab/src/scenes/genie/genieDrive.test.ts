@@ -160,6 +160,49 @@ describe('release spring', () => {
     expect(coarse.t).toBeCloseTo(fine.t, 3)
     expect(coarse.v).toBeCloseTo(fine.v, 2)
   })
+
+  it('is step-size honest where the spring\'s natural peak beats vMax: 60fps and 240fps still trace one trajectory', () => {
+    // The release above (0.5, 0) is the ONE case whose natural peak speed
+    // (5.94) sits just under vMax (6), so the guard never wants to clamp.
+    // A real, mouse-reachable release two hundredths nearer the wall — or
+    // any flick whose grab-EMA carries real speed — pushes the peak past
+    // vMax. vMax is an ENTRY guard applied once at the handoff (Genie.tsx:
+    // commitGrab and the Escape handler), NOT a per-step cap inside this
+    // function: re-clamping s.v each step would distort the analytic
+    // coefficients (B = (vIn + zw * x0) / wd) by the step's dt and make the
+    // crossing momentum — and where the sheet lands — depend on the
+    // display's refresh rate. Each release below peaks past vMax; each
+    // window is a whole multiple of 1/60 so 60fps and 240fps land on the
+    // same wall-clock, and neither reaches the wall (pure spring, where
+    // an Euler integrator would lie and a per-step clamp used to bite).
+    const run = (
+      t0: number,
+      v0: number,
+      target: 0 | 1,
+      window: number,
+      dt: number,
+    ) => {
+      let s = { t: t0, v: v0 }
+      for (let elapsed = 0; elapsed + dt <= window; elapsed += dt) {
+        const next = driveSpringStep(s, target, dt, P)
+        s = { t: next.t, v: next.v }
+      }
+      return s
+    }
+    const cases: Array<[number, number, 0 | 1, number]> = [
+      [0.46, 0, 1, 0.1], // position commit, no flick — the gentle gesture
+      [0.48, 0, 1, 0.1], // position commit, two hundredths nearer the wall
+      [0.2, 2.8, 1, 0.05], // flick commit at the grab-EMA's pinned speed
+      [0.1, 2.8, 1, 1 / 60], // same flick, released further from the wall
+      [0.9, -2.8, 0, 1 / 60], // mirror, toward rest: symmetry of the law
+    ]
+    for (const [t0, v0, target, window] of cases) {
+      const coarse = run(t0, v0, target, window, 1 / 60)
+      const fine = run(t0, v0, target, window, 1 / 240)
+      expect(coarse.t).toBeCloseTo(fine.t, 6)
+      expect(coarse.v).toBeCloseTo(fine.v, 6)
+    }
+  })
 })
 
 describe('grab tracking', () => {
