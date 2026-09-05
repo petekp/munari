@@ -39,7 +39,7 @@ try {
   page.on('pageerror', (error) => errors.push(String(error)))
   await page.setViewport({ width: 1100, height: 800, deviceScaleFactor: 1 })
   await page.goto(
-    `http://localhost:${port}/?scene=genie&probe=genie-film-reorder`,
+    `http://localhost:${port}/?scene=genie&probe=genie-film-reorder&framed`,
     { waitUntil: 'load' },
   )
   await page.waitForFunction(
