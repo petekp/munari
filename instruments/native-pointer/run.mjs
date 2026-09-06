@@ -136,12 +136,12 @@ try {
   }
 
   // ── rest baseline: the page copy hears a direct native click ──────────
-  results.push(await clickAt('rest (page phase)', await rectOf('btn-page')))
+  results.push(await clickAt('rest (page phase)', await rectOf('btn')))
 
   // ── gl + default route: the relay hears, synthetically ────────────────
-  await evalProbe(() => window.__nativePointer.setRenderIn('canvas'))
-  await waitForView('canvas')
-  results.push(await clickAt('gl, relay route', await rectOf('btn-page')))
+  await evalProbe(() => window.__nativePointer.setRenderIn('scene'))
+  await waitForView('scene')
+  results.push(await clickAt('gl, relay route', await rectOf('btn')))
 
   // ── ask for the native route: the rig dresses the parked canvas ───────
   await evalProbe(() => window.__nativePointer.setRoute('auto'))
@@ -155,23 +155,23 @@ try {
   expect(rig.rootVisibility === 'visible', `ride: drawn root visibility is ${rig.rootVisibility}`)
 
   // ── the prize: a trusted click on the real element ────────────────────
-  const flatBtn = await rectOf('btn-source')
+  const flatBtn = await rectOf('btn')
   const flatHit = await evalProbe((p) => window.__nativePointer.hitAt(p.x, p.y), flatBtn)
   results.push(await clickAt('native, flat', flatBtn))
 
   // ── real hover, and the twin that follows it ──────────────────────────
   await page.mouse.move(flatBtn.x, flatBtn.y, { steps: 3 })
   await sleep(150)
-  const hoverOn = await evalProbe(() => window.__nativePointer.hoverOf('btn-source'))
+  const hoverOn = await evalProbe(() => window.__nativePointer.hoverOf('btn'))
   await page.mouse.move(5, await page.evaluate(() => window.innerHeight - 5))
   await sleep(150)
-  const hoverOff = await evalProbe(() => window.__nativePointer.hoverOf('btn-source'))
+  const hoverOff = await evalProbe(() => window.__nativePointer.hoverOf('btn'))
 
   // ── real focus, real keystrokes ───────────────────────────────────────
-  results.push(await clickAt('native, input', await rectOf('field-source')))
+  results.push(await clickAt('native, input', await rectOf('field')))
   await page.keyboard.type('native')
   const typed = await evalProbe(() => ({
-    value: window.__nativePointer.valueOf('field-source'),
+    value: window.__nativePointer.valueOf('field'),
     active: window.__nativePointer.activeId(),
   }))
 
@@ -186,7 +186,7 @@ try {
     { timeout: 10_000 },
     flatTransform,
   )
-  const tiltBtn = await rectOf('btn-source')
+  const tiltBtn = await rectOf('btn')
   const moved = Math.hypot(tiltBtn.x - flatBtn.x, tiltBtn.y - flatBtn.y)
   expect(moved > 5, `tilt: projected button moved ${moved.toFixed(1)}px — pose did not change`)
   results.push(await clickAt('native, tilted', tiltBtn))
@@ -199,19 +199,19 @@ try {
   const parked = await evalProbe(() => window.__nativePointer.rig())
   expect(!parked.transform.startsWith('matrix3d'), `park: canvas still wears ${parked.transform}`)
   expect(parked.zIndex === '-1', `park: canvas z-index is ${parked.zIndex}, not the parked -1`)
-  results.push(await clickAt('gl, relay after park', await rectOf('btn-page')))
+  results.push(await clickAt('gl, relay after park', await rectOf('btn')))
 
   // Shared controlled state must survive both renderer changes. A texture
   // that accepts typing but returns to an empty page input fails this check.
   await evalProbe(() => window.__nativePointer.setRenderIn('page'))
   await waitForView('page')
-  const returnedValue = await evalProbe(() => window.__nativePointer.valueOf('field-page'))
+  const returnedValue = await evalProbe(() => window.__nativePointer.valueOf('field'))
   expect(returnedValue === 'native', `return: page input lost the canvas value (${JSON.stringify(returnedValue)})`)
-  results.push(await clickAt('page, returned input', await rectOf('field-page')))
+  results.push(await clickAt('page, returned input', await rectOf('field')))
   await page.keyboard.type(' page')
-  await evalProbe(() => window.__nativePointer.setRenderIn('canvas'))
-  await waitForView('canvas')
-  const reenteredValue = await evalProbe(() => window.__nativePointer.valueOf('field-source'))
+  await evalProbe(() => window.__nativePointer.setRenderIn('scene'))
+  await waitForView('scene')
+  const reenteredValue = await evalProbe(() => window.__nativePointer.valueOf('field'))
   expect(reenteredValue === 'native page', `reentry: source input lost the page edit (${JSON.stringify(reenteredValue)})`)
 
   // ── report ────────────────────────────────────────────────────────────
@@ -241,27 +241,27 @@ try {
     console.error('\nAPPARATUS FAILURE: a click at rest did not reach the page copy trusted.')
     process.exit(1)
   }
-  if (relay?.heardBy !== 'source' || relay?.trusted !== false) {
+  if (relay?.heardBy !== 'scene' || relay?.trusted !== false) {
     console.error('\nAPPARATUS FAILURE: the gl-phase relay baseline did not hear synthetically.')
     process.exit(1)
   }
 
   const native = [by('native, flat'), by('native, tilted')]
   for (const r of native) {
-    expect(r?.heardBy === 'source', `${r?.label}: heard by ${r?.heardBy}, not the source copy`)
+    expect(r?.heardBy === 'scene', `${r?.label}: heard by ${r?.heardBy}, not the source copy`)
     expect(r?.trusted === true, `${r?.label}: trusted=${r?.trusted} — the browser did not deliver it`)
   }
-  expect(flatHit === 'btn-source', `flat hit-test landed on "${flatHit}", not the button`)
+  expect(flatHit === 'btn', `flat hit-test landed on "${flatHit}", not the button`)
   expect(hoverOn?.realHover === true, 'hover: the real :hover never engaged')
   expect(hoverOn?.dataHover === true, 'hover: the twin attribute was not stamped')
   expect(hoverOff?.realHover === false, 'hover: :hover survived the pointer leaving')
   expect(hoverOff?.dataHover === false, 'hover: the twin attribute survived the pointer leaving')
   expect(by('native, input')?.trusted === true, 'input: the focusing click was not trusted')
   expect(typed.value === 'native', `typing: input value is ${JSON.stringify(typed.value)}`)
-  expect(typed.active === 'field-source', `typing: focus sits on ${typed.active}`)
+  expect(typed.active === 'field', `typing: focus sits on ${typed.active}`)
   const after = by('gl, relay after park')
   expect(
-    after?.heardBy === 'source' && after?.trusted === false,
+    after?.heardBy === 'scene' && after?.trusted === false,
     `after park: heard by ${after?.heardBy} (trusted=${after?.trusted}) — the relay did not resume`,
   )
 

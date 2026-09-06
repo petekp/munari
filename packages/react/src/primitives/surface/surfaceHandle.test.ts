@@ -30,6 +30,7 @@ import {
   type SurfacePresentation,
   type SurfaceDestination,
 } from './surfaceHandle'
+import { mountSurfaceHost, surfaceHost, resetSurfaceHosts } from './surfaceHostRegistry'
 import { SurfaceDOM } from './SurfaceDOM'
 import { SurfaceMesh } from './SurfaceMesh'
 import { SurfaceRoot } from './SurfaceRoot'
@@ -58,6 +59,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  resetSurfaceHosts()
   vi.unstubAllGlobals()
   container.remove()
 })
@@ -131,7 +133,7 @@ describe('presentation declarations', () => {
     )
     await afterDeclarations()
     expect(errors.map((error) => error.message)).toEqual([
-      'Surface requested page but declared no <Surface.DOM>.',
+      'Surface requested page but declared no <Surface.HTML>.',
     ])
     flushSync(() => root.unmount())
   })
@@ -169,7 +171,7 @@ describe('presentation declarations', () => {
     flushSync(() => root.unmount())
   })
 
-  it('reports the missing half of both after declarations commit', async () => {
+  it('reports the missing half of both after the host becomes available', async () => {
     const errors: Error[] = []
     const root = createRoot(container)
     flushSync(() =>
@@ -182,10 +184,16 @@ describe('presentation declarations', () => {
       ),
     )
     await afterDeclarations()
+    expect(errors).toEqual([])
+    const mount = mountSurfaceHost(surfaceHost())
+    mount.host.setRuntime({ invalidate() {}, setBusy() {} })
+    await afterDeclarations()
+    for (const tick of mount.host.ticks()) tick(16)
     expect(errors.map((error) => error.message)).toEqual([
       'Surface requested canvas but declared no <Surface.Mesh> or <Surface.Scene>.',
     ])
     flushSync(() => root.unmount())
+    mount.release()
   })
 
   it('keeps a declared page-to-canvas Surface on the crossing law', () => {
@@ -578,6 +586,11 @@ describe('the two-stage receipt', () => {
     expect(store.getState().presented).toBe('canvas')
     expect(store.canvasHearsPointer()).toBe(true)
     expect(store.hasProtocolWork()).toBe(false)
+    for (let frame = 0; frame < 200; frame++) {
+      store.tick(16); store.present('a', store.epoch())
+      expect(store.getState().presented).toBe('canvas')
+      expect(store.hasProtocolWork()).toBe(false)
+    }
   })
 
   it('both enables canvas pointer input only after it has presented', () => {
@@ -718,7 +731,16 @@ describe('a scene-owned ramp', () => {
     const store = airborne()
     store.drive(() => 0.25)
     store.tick(16)
-    expect(store.handle.progress.get()).toBeCloseTo(crossingProgress(0.25), 6)
+    expect(store.handle.progress.get()).toBe(0.25)
+    expect(store.handle.progress.eased()).toBeCloseTo(crossingProgress(0.25), 6)
+  })
+
+  it('an identity driver preserves its raw input over repeated frames', () => {
+    const store = airborne()
+    store.drive(() => 0.3); store.tick(16)
+    store.drive(frame => frame.progress)
+    for (let frame = 0; frame < 100; frame++) store.tick(16)
+    expect(store.motionProgress()).toBe(0.3)
   })
 
   it('tells the driver where the crossing is and where it is going', () => {
@@ -784,7 +806,7 @@ describe('a scene-owned ramp', () => {
     store.drive(() => 0.3)
     store.tick(16)
     const driven = store.handle.progress.get()
-    expect(driven).toBeCloseTo(crossingProgress(0.3), 6)
+    expect(driven).toBe(0.3)
     store.drive(null)
     store.tick(600)
     expect(store.handle.progress.get()).toBeGreaterThan(driven)
@@ -894,5 +916,32 @@ describe('the part ledger — all of the parts or none (decisions.md #37)', () =
     expect(store.getState().ready).toBe(false)
     store.registerPartPresenter('p')
     expect(store.getState().ready).toBe(true)
+  })
+})
+
+
+describe('dormant preparation and renderer loss', () => {
+  it('sleeps after the settle dwell when no presenter can supply evidence, and wakes on proof', () => {
+    const store = createSurfaceStore()
+    store.acquire(1); store.declarePresentation('page'); store.declarePresentation('canvas')
+    store.request('canvas')
+    for (let frame = 0; frame < 1000; frame++) store.tick(16)
+    expect(store.hasProtocolWork()).toBe(false)
+    expect(store.canvasPresents()).toBe(false)
+    expect(store.getState().presented).toBe('page')
+    expect(store.preparationWait()).toBe('a scene presenter')
+    store.registerPresenter('late')
+    expect(store.preparationWait()).toBe('a usable source frame and preparation draw')
+    store.prove('late', store.readinessLifetime(), store.epoch())
+    expect(store.hasProtocolWork()).toBe(true)
+    store.tick(16); store.present('late', store.epoch())
+    expect(store.getState().presented).toBe('canvas')
+    store.setRendererAvailable(false)
+    expect(store.getState().presented).toBe('page')
+    expect(store.canvasMounted()).toBe(false)
+    expect(store.hasProtocolWork()).toBe(false)
+    store.setRendererAvailable(true)
+    expect(store.getState().ready).toBe(false)
+    expect(store.getState().presented).toBe('page')
   })
 })

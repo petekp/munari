@@ -35,7 +35,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, SurfaceCanvas, useSurfaceHandle } from '@petepetrash/munari'
+import { SceneSurface, SurfaceCanvas, useSurfaceHandle } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { showChrome } from '../../bareMode'
 import { CrystalTweaks } from './CrystalTweaks'
@@ -260,13 +260,7 @@ export function CrystalApp() {
 
   return (
     <div className="crystal-page" data-parked={parked || undefined}>
-      <Surface
-        surface={page}
-        renderIn="canvas"
-        timing={{ settleMs: 0, durationMs: 1 }}
-        size={[box.w, box.h]}
-        source={source}
-      />
+
 
       <SurfaceCanvas
         pointerMode="surfaces"
@@ -280,8 +274,9 @@ export function CrystalApp() {
         }}
       >
         <PixelPerfect />
-        <Surface.Scene surface={page}>
-          <Surface.Mesh
+        <SceneSurface.Root surface={page}>
+          <SceneSurface.HTML size={[box.w, box.h]}>{source}</SceneSurface.HTML>
+          <SceneSurface.Mesh
             surface={page}
             placement="manual"
             alpha="source"
@@ -299,7 +294,7 @@ export function CrystalApp() {
               />
             }
           />
-        </Surface.Scene>
+        </SceneSurface.Root>
       </SurfaceCanvas>
 
       {/* After the canvas, because the sheet is the whole viewport: with

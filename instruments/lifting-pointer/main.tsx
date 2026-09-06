@@ -1,3 +1,4 @@
+import { readSurfaceFrameState } from '@petepetrash/munari/advanced'
 // The page half of the lifting-pointer gate: one exclusive Surface whose
 // two DOM instances (page copy, parked source) count their own clicks, so a
 // real browser click fired during each crossing phase tells us which copy
@@ -17,9 +18,9 @@ import {
   Surface,
   SurfaceCanvas,
   useSurfaceHandle,
-  useSurfaceInstance,
-  useSurfaceState,
-  type SurfacePresentation,
+  useSurfaceStatus,
+  type SurfaceDestination,
+  type SurfaceHandle,
 } from '@petepetrash/munari'
 import { detectHtmlInCanvas } from '@munari/core'
 
@@ -29,7 +30,7 @@ const H = 160
 interface ClickRecord {
   instance: string
   t: number
-  state: { presented: string; isChanging: boolean }
+  state: { presented: string | null; isChanging: boolean }
   canvasSolid: boolean | null
   pageVisible: boolean | null
 }
@@ -37,7 +38,7 @@ interface ClickRecord {
 interface EventRecord {
   t: number
   label?: string
-  presented?: string
+  presented?: string | null
   isChanging?: boolean
   ready?: boolean
 }
@@ -45,39 +46,36 @@ interface EventRecord {
 const clicks: ClickRecord[] = []
 const events: EventRecord[] = []
 
+interface PointerObservation {presented:string|null;isChanging:boolean;ready:boolean}
+function initialState(): PointerObservation { return {presented:null,isChanging:false,ready:false} }
 const probe = {
   capable: detectHtmlInCanvas().drawElementImage,
   ready: false,
   clicks,
   events,
   scene: { active: 0, frames: 0, lastFrameAt: 0 },
-  state: { presented: 'page', isChanging: false, ready: false },
-  setRenderIn: (_: SurfacePresentation) => {},
+  state: initialState(),
+  setRenderIn: (_: SurfaceDestination) => {},
   mark(label: string) {
     probe.events.push({ t: performance.now(), label })
   },
   buttonCenter() {
-    const el = document.getElementById('btn-page')
+    const el = document.getElementById('btn')
     if (!el) return null
     const r = el.getBoundingClientRect()
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
   },
   canvasSolid() {
-    const c = document.querySelector('canvas')
+    const c = [...document.querySelectorAll('canvas')].find(canvas=>!canvas.firstElementChild)
     return c ? getComputedStyle(c).pointerEvents !== 'none' : null
   },
   pageVisible() {
-    const el = document.getElementById('btn-page')
+    const el = document.querySelector('.page-slot')
     return el ? getComputedStyle(el).visibility !== 'hidden' : null
   },
   hoverState() {
-    const page = document.getElementById('btn-page')
-    const source = document.getElementById('btn-source')
-    return {
-      pageRealHover: page ? page.matches(':hover') : null,
-      pageDataHover: page ? page.hasAttribute('data-hover') : null,
-      sourceDataHover: source ? source.hasAttribute('data-hover') : null,
-    }
+    const button = document.getElementById('btn')
+    return {realHover:button?.matches(':hover')??false,dataHover:button?.hasAttribute('data-hover')??false}
   },
 }
 
@@ -88,8 +86,7 @@ declare global {
 }
 window.__probe = probe
 
-function TargetButton() {
-  const instance = useSurfaceInstance()
+function TargetButton({surface}:{surface:SurfaceHandle}) {
   return (
     <div
       style={{
@@ -101,11 +98,11 @@ function TargetButton() {
       }}
     >
       <button
-        id={`btn-${instance}`}
+        id="btn"
         style={{ width: 220, height: 64, fontSize: 18 }}
         onClick={() => {
           probe.clicks.push({
-            instance,
+            instance:readSurfaceFrameState(surface).presentation ?? 'waiting',
             t: performance.now(),
             state: { presented: probe.state.presented, isChanging: probe.state.isChanging },
             canvasSolid: probe.canvasSolid(),
@@ -137,40 +134,38 @@ function TrackedPresenter() {
 
 function App() {
   const surface = useSurfaceHandle('lifting-pointer')
-  const [view, setRenderIn] = useState<SurfacePresentation>(() =>
-    new URLSearchParams(window.location.search).get('initial') === 'canvas' ? 'canvas' : 'page',
+  const [view, setRenderIn] = useState<SurfaceDestination>(() =>
+    new URLSearchParams(window.location.search).get('initial') === 'scene' ? 'scene' : 'page',
   )
-  const st = useSurfaceState(surface)
+  const st = useSurfaceStatus(surface)
   probe.setRenderIn = setRenderIn
-  probe.state = { presented: st.presented, isChanging: st.isChanging, ready: st.ready }
+  probe.state = { presented: st.presentation, isChanging: st.isTransitioning, ready: st.sceneReady }
   useEffect(() => {
     probe.events.push({
       t: performance.now(),
-      presented: st.presented,
-      isChanging: st.isChanging,
-      ready: st.ready,
+      presented: st.presentation,
+      isChanging: st.isTransitioning,
+      ready: st.sceneReady,
     })
   }, [st])
   useEffect(() => {
     probe.ready = true
   }, [])
 
-  const content = <TargetButton />
+  const content = <TargetButton surface={surface} />
   return (
     <>
       <div style={{ position: 'fixed', left: 60, top: 60, width: W, height: H }}>
-        <Surface
+        <Surface.Root
           surface={surface}
-          renderIn={view}
+          inScene={view === 'scene'}
           // A long settle so the lifting window is wide enough to click into
           // at several offsets. Nothing here animates, so the dwell is pure
           // window: proof lands in the first frames, then ~700ms of lifting.
           timing={{ settleMs: 700, durationMs: 500 }}
-          size={[W, H]}
-          source={content}
         >
-          <Surface.DOM />
-        </Surface>
+          <Surface.HTML pageClassName="page-slot" size={[W,H]}>{content}</Surface.HTML>
+        </Surface.Root>
       </div>
       <SurfaceCanvas
         pointerMode="surfaces"

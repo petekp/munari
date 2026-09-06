@@ -15,7 +15,7 @@
 // host. It owns no readiness — the root's ledger does — and no presenter.
 
 import { useEffect } from 'react'
-import type { SurfacePartId } from '@munari/core'
+import type { SurfaceChrome, SurfacePartId } from '@munari/core'
 import { useSurfaceRoot } from './surfaceContext'
 import { SurfaceSourceHost } from './surfaceSourceHost'
 import type { SurfaceResolution, SurfaceSize } from './surfaceSourceRuntime'
@@ -33,6 +33,9 @@ export interface SurfacePartProps {
   mirrorU?: boolean
   paint?: 'auto' | 'always'
   onFocusWithinChange?: (focused: boolean) => void
+  onChrome?: (chrome: SurfaceChrome) => void
+  chromeElement?: () => HTMLElement
+  pageContent?: () => HTMLElement | null
   children?: React.ReactNode
 }
 

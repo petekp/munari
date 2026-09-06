@@ -27,14 +27,15 @@ effect does not need a handoff.
 
 | Task | Start here | Control and completion | Smallest relevant evidence |
 |---|---|---|---|
-| First Surface or separated DOM/R3F trees | [Consumer setup](../README.md#your-first-surface), [public entries](../packages/react/src/index.ts), [compile-only examples](../tests/surfaceTypes.tsx) | A basic Surface needs no identity; use `useSurfaceHandle(name?)` or `createSurface(name?)` for separated trees. `renderIn`, timing and callbacks belong on `Surface` | Typecheck the consumer; check the real gesture and native fallback |
-| Page ↔ canvas handoff | [API naming contract](api-naming-proposal.md), [crossing contracts](../tests/conformance/transfer/crossing.test.ts) | `renderIn="page" | "canvas"` requests; `useSurfaceState().presented` and `onPresentationChange` confirm the hold; `Surface.Scene` retains custom scene children | `gate:dom-surface-demand`; add `gate:lifting-pointer` when input ownership changes |
+| First Surface or separated DOM/R3F trees | [Consumer setup](../README.md#your-first-surface), [public entries](../packages/react/src/index.ts), [compile-only examples](../tests/surfaceTypes.tsx) | A basic Surface needs no identity; use `useSurfaceHandle(name?)` or `createSurface(name?)` for separated trees. `inScene`, timing and callbacks belong on `Surface` | Typecheck the consumer; check the real gesture and native fallback |
+| Page ↔ canvas handoff | [current package API](../README.md), [crossing contracts](../tests/conformance/transfer/crossing.test.ts) | `inScene` requests; `useSurfaceStatus().presentation` and `onPresentationChange` confirm the hold; `Surface.Scene` retains custom scene children | `gate:dom-surface-demand`; add `gate:lifting-pointer` when input ownership changes |
 | Custom material or captured reflection | [Material context](../packages/react/src/primitives/surface/surfaceContext.ts), [Marble Hand](../apps/lab/src/scenes/marble-hand/MarbleHand.tsx) | `useSurfaceTexture()` inside `<Surface.Mesh>`; nullable `useSurfaceTextureOf(handle)` outside it | `gate:shaders`; the scene's visual gate for reflected content or appearance |
 | DOM-aligned controls or responsive layout | [Anchor API](../packages/react/src/primitives/surface/SurfaceAnchor.tsx), [anchor recipe](../registry/surface-anchors/README.md), [Knobs](../apps/lab/src/scenes/knobs/Knobs.tsx) | Named anchors from the painted generation; manual hardware size remains scene-owned | Anchor contracts, then `gate:knobs-resize`; box agreement alone is not pixel proof |
 | Deformation and pointer accuracy | [Deformation API](../packages/react/src/primitives/surface/surfaceDeform.ts), decision #35 | Move geometry through the public seam so raycast and drawn shape agree | The matching pointer gate, such as `gate:fisheye-pointer` or `gate:crystal-pointer` |
 | Pixels from a caller-owned canvas | [FrameSurface](../packages/react/src/primitives/FrameSurface.tsx), [advanced entry](../packages/react/src/advanced.ts) | Publish a complete frame; distinguish frame-draw and presentation receipts | `gate:frame-surface` |
 | Physical controls and focus | [Dial](../packages/react/src/primitives/controls/Dial.tsx), [focus contract](focus.md), [focus policy recipe](../registry/focus-orbit/README.md) | Semantic control/focus state; scene owns camera policy | Local control/focus tests, then the affected native keyboard and pointer paths |
 | Particle or hand tuning | [Plume values](../apps/lab/src/scenes/plume/plumeTuning.ts), [hand values](../apps/lab/src/scenes/marble-hand/marbleHandTuning.ts) | Existing panel and state owner; verify stored units, replay/recapture, copy and reset | `gate:plume` or `gate:marble-hand`, with the real route |
+| Blurry HTML in a scene | [Pixel-grid law](../packages/core/src/mapping/pixelGrid.ts), [raster alignment](../packages/react/src/primitives/surface/surfaceRasterAlignment.ts), decision #44 | Check native DPR, per-axis capture density and pixel phase; compare the same native text at the same size | `probe:sharpness` and `probe:postcard-sharpness`; retain a negative control |
 | Idle cost, release or leaks | [Paint counters](../packages/core/src/paint/htmlInCanvas.ts), [instrument guide](../instruments/README.md) | Compare scoped counters before/after; observe final clearing draw and owned-resource cleanup | `gate:idle-zero`; add the lifecycle gate for the changed source |
 
 The root entry is `@petepetrash/munari`. Use `/advanced` for a deliberate
@@ -77,7 +78,7 @@ do not need this capability; [their contracts](../instruments/README.md) say so.
 | Observation | Next check |
 |---|---|
 | Capability absent | Test the native outcome; label the enhanced path untested |
-| Source-only texture updates but `ready` is false | Confirm that `renderIn="none"` is intended; do not manufacture readiness |
+| Source-only texture updates but `ready` is false | Use the capture handle status; a capture has no Surface presentation to force ready |
 | `ready` is true but a handoff waits | Check writing versus warm-up draws, required parts, source lifetime, and host presentation |
 | Texture changes but the visible result does not | Check the consuming material, drawn generation, target framebuffer and scene pixels |
 | Anchors align after settling but jump during resize | Compare the paint generation and placement in the same frame |

@@ -8,7 +8,7 @@
 //
 // The munari trick is the "matter" switch, and the WebGL half of it —
 // the six-part Surface, the twins, the substance shaders — lives in
-// logoMatter.tsx, shared with the official wordmark component. This
+// logoScene.tsx, shared with the official wordmark component. This
 // module owns what makes the page a PLAYGROUND: the conductor, the
 // seed, the panel, and the probe handles.
 //
@@ -47,14 +47,15 @@ import {
 } from './logoLaw'
 import {
   GRID,
-  MatterWord,
+  LogoScene,
   SEED0,
   WORD,
   ensureLogoFonts,
-  glyphPaint,
+  LogoLetterHTML,
+  SETTLE_MS,
   type LetterBox,
   type WordMetrics,
-} from './logoMatter'
+} from './logoScene'
 import './logo.css'
 
 // ── the tweak panel ─────────────────────────────────────────────────────
@@ -155,13 +156,13 @@ export function LogoApp() {
   // on the `<Surface>` that declares this handle.
   const surface = useSurfaceHandle('logo')
   const request = useCallback((webgl: boolean) => {
-    setView(webgl ? 'canvas' : 'page')
+    setView(webgl ? 'scene' : 'page')
   }, [])
   const inCrossing = view !== presented || view !== settledOn
   // Who shows the letters. The page keeps them until it actually lets
   // go, which is a draw, not a commit — so the phase the word wears is
   // read from the hold rather than from the request.
-  const phase = presented === 'canvas' ? 'gl' : inCrossing ? 'lifting' : 'page'
+  const phase = presented === 'scene' ? 'gl' : inCrossing ? 'lifting' : 'page'
 
   const rRef = useRef(makeRng(SEED0))
   const [poses, setPoses] = useState<LetterPose[]>(() =>
@@ -279,8 +280,8 @@ export function LogoApp() {
     // which left one frame where the canvas had stopped writing but the page
     // letters were still hidden. Put the two CSS ownership flags on their
     // elements synchronously, then let React record the same state.
-    if (wordRef.current) wordRef.current.dataset.phase = next === 'canvas' ? 'gl' : 'page'
-    if (canvasRef.current) canvasRef.current.dataset.holds = String(next === 'canvas')
+    if (wordRef.current) wordRef.current.dataset.phase = next === 'scene' ? 'gl' : 'page'
+    if (canvasRef.current) canvasRef.current.dataset.holds = String(next === 'scene')
     setPresented(next)
   }, [])
   const [metrics, setMetrics] = useState<WordMetrics | null>(null)
@@ -324,8 +325,9 @@ export function LogoApp() {
 
   return (
     <div className="logo-page">
+      <Surface.Root surface={surface} inScene={view === 'scene'} canvas="logo" timing={{ settleMs: SETTLE_MS }} onPresentationChange={syncPresented} onMotionComplete={setSettledOn}>
       <div className="logo-plate">
-        <Surface.DOM surface={surface} className="logo-page-copy">
+        <div className="logo-page-copy">
           <div
           className="logo-word"
           ref={wordRef}
@@ -357,34 +359,32 @@ export function LogoApp() {
               <span
                 className="logo-letter"
                 style={{
-                  ...glyphPaint(poses[i]),
+                  flexShrink: 0,
                   transform: `translate(${poses[i].dx}em, ${poses[i].dy}em) rotate(${poses[i].tilt}deg) scale(${poses[i].scale})`,
                 }}
               >
-                {ch}
+                <LogoLetterHTML index={i} text={ch} pose={poses[i]} box={metrics?.boxes[i]} fontPx={metrics?.fontPx} />
               </span>
             </span>
           ))}
           </div>
-        </Surface.DOM>
+        </div>
       </div>
 
       {supported && metrics && (
-        <MatterWord
+        <LogoScene
           poses={poses}
           metrics={metrics}
           knobs={knobsRef}
           surface={surface}
-          renderIn={view}
           presented={presented}
           canvasRef={canvasRef}
-          onPresentationChange={syncPresented}
-          onMotionComplete={setSettledOn}
           carried={float.sample}
           solid={knobs.extrude > 0}
         />
       )}
 
+      </Surface.Root>
       <div className="logo-panel" data-compact={compact}>
         <button
           className="logo-panel-title"
@@ -421,7 +421,7 @@ export function LogoApp() {
             >
               HTML
             </button>
-            <button data-renderer="gl" data-on={view === 'canvas'} onClick={() => request(true)}>
+            <button data-renderer="gl" data-on={view === 'scene'} onClick={() => request(true)}>
               WebGL
             </button>
           </div>

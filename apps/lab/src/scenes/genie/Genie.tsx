@@ -2253,7 +2253,7 @@ export function GenieApp() {
     handKeyboardOver(id, to)
     setShown((s) => ({ ...s, [id]: false }))
     setFramed((f) => ({ ...f, [id]: false }))
-    setAir((a) => ({ ...a, [id]: { direction: to, renderIn: 'canvas' } }))
+    setAir((a) => ({ ...a, [id]: { direction: to, renderIn: 'scene' } }))
     return true
   }
 
@@ -2358,7 +2358,7 @@ export function GenieApp() {
   // either side of this scene may act on: hiding the page copy early
   // doubles translucent pixels, and revealing it early shows two of them.
   const onPresentedView = (id: WinId, view: SurfacePresentation) => {
-    if (view === 'canvas') {
+    if (view === 'scene') {
       winRefs.current[id]?.setAttribute('data-away', 'true')
       setShown((s) => (s[id] ? s : { ...s, [id]: true }))
       const film = flights.current.get(id)?.f.film
@@ -2370,6 +2370,7 @@ export function GenieApp() {
       }
       return
     }
+    if (view !== 'page') return
     const landing = landings.current.get(id)
     if (!landing) return
     landings.current.delete(id)
@@ -2457,7 +2458,7 @@ export function GenieApp() {
   // `airborne` is the only difference between the two copies of a window,
   // and it is one fact: the desk's copy is already a picture, so nobody
   // is waiting on it to say so.
-  const bodyFor = (scheda: Scheda, airborne?: boolean) => (
+  const bodyFor = (scheda: Scheda) => (
     <WindowBody
       scheda={scheda}
       front={front === scheda.id}
@@ -2467,7 +2468,7 @@ export function GenieApp() {
       setChecked={setChecked}
       onMinimize={(slow) => beginMinimize(scheda.id, slow)}
       attachFilmCanvas={
-        !airborne && scheda.id === FILM_WIN ? attachFilmCanvas : undefined
+        scheda.id === FILM_WIN ? attachFilmCanvas : undefined
       }
     />
   )
@@ -2548,33 +2549,16 @@ export function GenieApp() {
               raise(s.id)
             }}
           >
-            {/* This page instance never moves between React positions. The
-                flight Surface supplies a second capture source only while a
-                window is airborne; its presentation cannot own the decoder
-                canvas that belongs to this native window for its lifetime. */}
-            <Surface.DOM surface={storeOf(s.id).handle} className="gen-page-presentation">
-              {bodyFor(s)}
-            </Surface.DOM>
-            {air[s.id] && (
-              <Surface
-                surface={storeOf(s.id).handle}
-                renderIn={air[s.id]?.renderIn ?? 'canvas'}
-                // No settle and no ramp of its own. The pour driver in
-                // Flight is the whole motion; a second ramp underneath it
-                // would cross-fade a sheet already interpolating.
-                timing={{ settleMs: 0, durationMs: 1 }}
-                onPresentationChange={(view) => onPresentedView(s.id, view)}
-                size={[
-                  flights.current.get(s.id)?.f.w ?? 0,
-                  flights.current.get(s.id)?.f.h ?? 0,
-                ]}
-                // Pinned, not laddered. The sheet is read at a fixed density
-                // for the whole excursion, so a resize mid-flight cannot swap
-                // the texture the drive is interpolating.
-                resolution={2}
-                source={bodyFor(s, true)}
-              />
-            )}
+            <Surface.Root canvas="genie"
+              surface={storeOf(s.id).handle}
+              inScene={Boolean(air[s.id]) && air[s.id]?.renderIn !== 'page'}
+              timing={{ settleMs: 0, durationMs: 1 }}
+              onPresentationChange={view => onPresentedView(s.id, view)}
+            >
+              <Surface.HTML pageClassName="gen-page-presentation" resolution={2}>
+                {bodyFor(s)}
+              </Surface.HTML>
+            </Surface.Root>
           </div>
         ))}
       </div>

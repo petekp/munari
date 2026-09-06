@@ -66,6 +66,7 @@ export interface SurfacePartValue {
   readonly captureRoot: HTMLElement | null
   /** The live page-side element, when a DOM presentation is mounted. */
   readonly pageRoot: HTMLElement | null
+  readonly pageContent?: () => HTMLElement | null
   /** The root source, for Surface.DOM's default page presentation. */
   readonly source: ReactNode | undefined
   setPageRoot(el: HTMLElement | null): void

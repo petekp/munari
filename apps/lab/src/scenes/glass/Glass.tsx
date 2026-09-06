@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { MeshTransmissionMaterial, useFBO } from '@react-three/drei'
-import { Surface, useSurfaceTexture } from '@petepetrash/munari'
+import { SceneSurface, useSurfaceTexture } from '@petepetrash/munari'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -361,8 +361,9 @@ function MtmGlassPanel({
 
   return (
     <group ref={group} position={position} rotation={rotation}>
-      <Surface name={label} renderIn="canvas" size={[width, height]} source={content}>
-        <Surface.Mesh
+      <SceneSurface.Root name={label}>
+<SceneSurface.HTML size={[width, height]}>{content}</SceneSurface.HTML>
+        <SceneSurface.Mesh
           name={label}
           placement="manual"
           geometry={<primitive object={geo} attach="geometry" />}
@@ -389,8 +390,8 @@ function MtmGlassPanel({
           }
         >
           <GlassInk w={width} h={height} depth={depth} />
-        </Surface.Mesh>
-      </Surface>
+        </SceneSurface.Mesh>
+      </SceneSurface.Root>
     </group>
   )
 }
@@ -1130,8 +1131,9 @@ export function Glass() {
       <pointLight position={[-3, 2.5, 3]} intensity={8} color="#f2f0ea" distance={14} />
 
       {/* Layer 0 — the wall, itself live DOM, unlit so the neon lands exact */}
-      <Surface name="glass-wall" renderIn="canvas" size={[WALL_W, WALL_H]} source={<WallArt />}>
-        <Surface.Mesh
+      <SceneSurface.Root name="glass-wall">
+<SceneSurface.HTML size={[WALL_W, WALL_H]}>{<WallArt />}</SceneSurface.HTML>
+        <SceneSurface.Mesh
           name="glass-wall"
           placement="manual"
           position={[0, 0, WALL_Z]}
@@ -1139,8 +1141,8 @@ export function Glass() {
           material={<meshBasicMaterial transparent opacity={0} depthWrite={false} />}
         >
           <WallInk />
-        </Surface.Mesh>
-      </Surface>
+        </SceneSurface.Mesh>
+      </SceneSurface.Root>
 
       {/* Layers 1 and 2 — the form, and the CTA surfacing out of its face.
           The CTA's refraction must show the form's glass AND its ink AND the

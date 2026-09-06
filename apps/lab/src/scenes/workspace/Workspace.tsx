@@ -4,7 +4,7 @@ import { useThree, type ThreeEvent } from '@react-three/fiber'
 import {
   Dial,
   FocusGroup,
-  Surface,
+  SceneSurface,
   type GroupFocusState,
   useFocusScene,
 } from '@petepetrash/munari'
@@ -217,31 +217,24 @@ function WorkPanel({
       }}
     >
       <FocusGroup id={spec.id} order={order} objectRef={group} onStateChange={setFocus}>
-        <Surface
-          name={`workspace-${spec.id}`}
-          renderIn="canvas"
-          source={
-            <WorkspacePanelSource
+        <SceneSurface.Root name={`workspace-${spec.id}`} onReady={() => {
+            const record = window.__domSurfaceDemand
+            if (record) record.ready = true
+          }}>
+<SceneSurface.HTML size={[demandProbe ? probeWidth : PANEL_W, PANEL_H]}>{<WorkspacePanelSource
               spec={spec}
               sourceRoot={sourceRoot}
               demandProbe={demandProbe}
               setProbeWidth={setProbeWidth}
-            />
-          }
-          size={[demandProbe ? probeWidth : PANEL_W, PANEL_H]}
-          onReady={() => {
-            const record = window.__domSurfaceDemand
-            if (record) record.ready = true
-          }}
-          >
-          <Surface.Mesh
+            />}</SceneSurface.HTML>
+          <SceneSurface.Mesh
             name={`workspace-${spec.id}`}
             placement="manual"
             geometry={<planeGeometry args={[demandProbe ? probeWidth / 200 : W3, H3]} />}
             onDoubleClick={approach}
             castShadow
           />
-        </Surface>
+        </SceneSurface.Root>
         {/* Satellite knob: a WebGL leaf in the SAME focus group — Tab flows
             from the panel's last button onto it (the mixed-group
             proof). Its detents paint the panel's readout: physics in the

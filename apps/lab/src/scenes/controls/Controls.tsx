@@ -1,4 +1,4 @@
-// The controls scene — one ordinary HTML form that rises into physical matter.
+// The controls scene — one ordinary HTML form that rises into 3D.
 //
 // The law: the DOM owns value, focus, semantics and input in both renderers;
 // WebGL owns only depth, material and shadow. One Surface carries the complete
@@ -14,6 +14,9 @@
 // physical attachments. Surface owns capture, presentation and pointer relay.
 
 import {
+  lazy,
+  Suspense,
+  useId,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -27,21 +30,26 @@ import { RoundedBox } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
-  Surface,
   SurfaceCanvas,
   useSurfaceSupport,
   useSurfaceAnchorBox,
   useSurfaceHandle,
-  useSurfaceState,
+  useSurfaceStatus,
+  useSurfaceMotion,
+  Surface,
   useSurfaceTexture,
   type SurfacePresentation,
 } from '@petepetrash/munari'
 import {
   CONTROLS_BOARD,
   controlsTuning,
-  type ControlMatter,
+  type ControlStyle,
 } from './controlsTuning'
 import './controls.css'
+
+interface ControlsProof { frames: {t:number;amount:number;presented:SurfacePresentation;requested:boolean}[]; holds: {t:number;presentation:SurfacePresentation;progress:number}[]; actions:{t:number;trusted:boolean;saves:number}[];status:ReturnType<typeof useSurfaceStatus>|null;sceneResolved:boolean;request:(value:boolean)=>void }
+const controlsProof: ControlsProof = { frames: [], holds: [], actions:[], status: null, sceneResolved:false,request:()=>{} }
+Object.assign(window, { __apiControls: controlsProof })
 
 interface ControlValues {
   project: string
@@ -70,24 +78,24 @@ type HardwareKind = 'button' | 'field' | 'select' | 'range' | 'toggle' | 'radio'
 interface HardwareSpec {
   readonly anchor: string
   readonly kind: HardwareKind
-  readonly matter: ControlMatter
+  readonly style: ControlStyle
 }
 
 const HARDWARE: readonly HardwareSpec[] = [
-  { anchor: 'field:project', kind: 'field', matter: 'recessed' },
-  { anchor: 'select:material', kind: 'select', matter: 'brass' },
-  { anchor: 'range:weight', kind: 'range', matter: 'brass' },
-  { anchor: 'field:note', kind: 'field', matter: 'recessed' },
-  { anchor: 'toggle:alerts', kind: 'toggle', matter: 'cobalt' },
-  { anchor: 'radio:quiet', kind: 'radio', matter: 'cobalt' },
-  { anchor: 'radio:exact', kind: 'radio', matter: 'cobalt' },
-  { anchor: 'radio:playful', kind: 'radio', matter: 'cobalt' },
-  { anchor: 'segment:quiet', kind: 'segment', matter: 'porcelain' },
-  { anchor: 'segment:exact', kind: 'segment', matter: 'porcelain' },
-  { anchor: 'segment:playful', kind: 'segment', matter: 'porcelain' },
-  { anchor: 'color:accent', kind: 'color', matter: 'brass' },
-  { anchor: 'button:save', kind: 'button', matter: 'cobalt' },
-  { anchor: 'button:reset', kind: 'button', matter: 'porcelain' },
+  { anchor: 'field:project', kind: 'field', style: 'recessed' },
+  { anchor: 'select:material', kind: 'select', style: 'brass' },
+  { anchor: 'range:weight', kind: 'range', style: 'brass' },
+  { anchor: 'field:note', kind: 'field', style: 'recessed' },
+  { anchor: 'toggle:alerts', kind: 'toggle', style: 'cobalt' },
+  { anchor: 'radio:quiet', kind: 'radio', style: 'cobalt' },
+  { anchor: 'radio:exact', kind: 'radio', style: 'cobalt' },
+  { anchor: 'radio:playful', kind: 'radio', style: 'cobalt' },
+  { anchor: 'segment:quiet', kind: 'segment', style: 'porcelain' },
+  { anchor: 'segment:exact', kind: 'segment', style: 'porcelain' },
+  { anchor: 'segment:playful', kind: 'segment', style: 'porcelain' },
+  { anchor: 'color:accent', kind: 'color', style: 'brass' },
+  { anchor: 'button:save', kind: 'button', style: 'cobalt' },
+  { anchor: 'button:reset', kind: 'button', style: 'porcelain' },
 ]
 
 const noRaycast = () => {}
@@ -95,12 +103,12 @@ const noRaycast = () => {}
 // ── retained HTML ───────────────────────────────────────────────────────
 
 interface ControlBoardProps {
-  copy: 'page' | 'source' | 'fallback'
   values: ControlValues
   setValues: Dispatch<SetStateAction<ControlValues>>
 }
 
-function ControlBoard({ copy, values, setValues }: ControlBoardProps) {
+function ControlBoard({ values, setValues }: ControlBoardProps) {
+  const id = useId()
   const range = useRef<HTMLInputElement>(null)
   const draggingRange = useRef(false)
   const change = useCallback(
@@ -125,10 +133,10 @@ function ControlBoard({ copy, values, setValues }: ControlBoardProps) {
   return (
     <form
       className="controls-board"
-      data-copy={copy}
       style={{ width: CONTROLS_BOARD.width, height: CONTROLS_BOARD.height }}
       onSubmit={(event) => {
         event.preventDefault()
+        controlsProof.actions.push({t:performance.now(),trusted:event.nativeEvent.isTrusted,saves:values.saves+1})
         change({ saves: values.saves + 1 })
       }}
       onPointerMove={(event) => {
@@ -151,9 +159,9 @@ function ControlBoard({ copy, values, setValues }: ControlBoardProps) {
       </header>
 
       <div className="controls-board__grid">
-        <section className="controls-column" aria-labelledby={`controls-content-${copy}`}>
+        <section className="controls-column" aria-labelledby={`controls-content-${id}`}>
           <div className="controls-section-head">
-            <span id={`controls-content-${copy}`}>Content</span>
+            <span id={`controls-content-${id}`}>Content</span>
             <i>native fields</i>
           </div>
 
@@ -211,9 +219,9 @@ function ControlBoard({ copy, values, setValues }: ControlBoardProps) {
           </label>
         </section>
 
-        <section className="controls-column" aria-labelledby={`controls-behavior-${copy}`}>
+        <section className="controls-column" aria-labelledby={`controls-behavior-${id}`}>
           <div className="controls-section-head">
-            <span id={`controls-behavior-${copy}`}>Behavior</span>
+            <span id={`controls-behavior-${id}`}>Behavior</span>
             <i>same state, both renderers</i>
           </div>
 
@@ -237,7 +245,7 @@ function ControlBoard({ copy, values, setValues }: ControlBoardProps) {
                 <input
                   data-munari-anchor={`radio:${mode}`}
                   type="radio"
-                  name={`controls-response-${copy}`}
+                  name={`controls-response-${id}`}
                   value={mode}
                   checked={values.mode === mode}
                   onChange={() => change({ mode })}
@@ -429,7 +437,7 @@ function PhysicalPiece({
   const group = useRef<THREE.Group>(null)
   const width = box?.width ?? 0
   const height = box?.height ?? 0
-  const depth = controlsTuning.depth[spec.matter]
+  const depth = controlsTuning.depth[spec.style]
   const round = spec.kind === 'radio' || spec.kind === 'color'
   const capRadius = Math.min(width, height) * (round ? 0.5 : 0.17)
   const edgeRadius = Math.min(capRadius, depth * 0.44)
@@ -459,7 +467,7 @@ function PhysicalPiece({
         radius={edgeRadius}
         smoothness={5}
         position={[0, 0, depth / 2]}
-        material={materials[spec.matter]}
+        material={materials[spec.style]}
         castShadow
         receiveShadow
         raycast={noRaycast}
@@ -474,36 +482,26 @@ function PhysicalPiece({
   )
 }
 
-function MatterStage({ active, onRetracted }: { active: boolean; onRetracted: () => void }) {
+function ControlsHardware() {
   const texture = useSurfaceTexture()
   const materials = useHardwareMaterials()
   const capMaterial = useCaptureCapMaterial(texture)
   const amount = useRef(0)
   const receiver = useRef<THREE.Mesh>(null)
   const shadow = useRef<THREE.ShadowMaterial>(null)
-  const rose = useRef(false)
-  const announced = useRef(false)
+  const state = useSurfaceStatus()
+  const motion = useSurfaceMotion(({ dtMs, position, target, scenePresented }) => {
+    const goal = scenePresented ? target : 0
+    const next = THREE.MathUtils.damp(position, goal, controlsTuning.riseDamping, dtMs / 1000)
+    return Math.abs(next - goal) < 0.001 ? goal : next
+  })
 
-  useFrame((_, delta) => {
-    const target = active ? 1 : 0
-    const next = THREE.MathUtils.damp(
-      amount.current,
-      target,
-      controlsTuning.riseDamping,
-      Math.min(delta, 1 / 30),
-    )
-    amount.current = Math.abs(next - target) < 0.001 ? target : next
-    if (target === 1) {
-      rose.current = true
-      announced.current = false
-    }
+  useFrame(() => {
+    amount.current = motion.get()
+    controlsProof.frames.push({ t: performance.now(), amount: amount.current, presented: state.presentation, requested: state.requestedInScene })
+    if (controlsProof.frames.length > 10000) controlsProof.frames.splice(0, 5000)
     if (receiver.current) receiver.current.visible = amount.current > 0.003
     if (shadow.current) shadow.current.opacity = controlsTuning.shadowOpacity * amount.current
-    if (target === 0 && amount.current === 0 && rose.current && !announced.current) {
-      announced.current = true
-      rose.current = false
-      onRetracted()
-    }
   })
 
   return (
@@ -563,13 +561,13 @@ function ControlsLights() {
 
 function ModeControl({
   supported,
-  wantsMatter,
+  requestedInScene,
   presented,
   changing,
   onToggle,
 }: {
   supported: boolean
-  wantsMatter: boolean
+  requestedInScene: boolean
   presented: SurfacePresentation
   changing: boolean
   onToggle: () => void
@@ -577,45 +575,57 @@ function ModeControl({
   const status = !supported
     ? 'ordinary DOM fallback'
     : changing
-      ? wantsMatter
+      ? requestedInScene
         ? 'giving the pixels depth'
         : 'returning them to the page'
-      : presented === 'canvas'
-        ? 'live WebGL matter'
+      : presented === 'scene'
+        ? 'shown in 3D'
         : 'ordinary live DOM'
   return (
     <div className="controls-mode">
-      <button type="button" disabled={!supported} aria-pressed={wantsMatter} onClick={onToggle}>
-        <span aria-hidden data-on={wantsMatter || undefined} />
-        {wantsMatter ? 'Return to HTML' : 'Make physical'}
+      <button type="button" disabled={!supported} aria-pressed={requestedInScene} onClick={onToggle}>
+        <span aria-hidden data-on={requestedInScene || undefined} />
+        {requestedInScene ? 'Return to page' : 'Show in 3D'}
       </button>
       <p>
-        <i data-on={presented === 'canvas' || undefined} />
+        <i data-on={presented === 'scene' || undefined} />
         {status}
       </p>
     </div>
   )
 }
 
+function Controls3D() {
+  return <Surface.Mesh name="controls-board-surface" alpha="source" pointerEvents="geometry" pointerRoute="auto" frustumCulled={false}>
+    <ControlsHardware />
+  </Surface.Mesh>
+}
+
+// This timer delays the test input; readiness still requires an actual scene draw.
+const DelayedControls3D = lazy(() => new Promise<{default:typeof Controls3D}>(resolve => {
+  setTimeout(() => { controlsProof.sceneResolved = true; resolve({default:Controls3D}) }, 1500)
+}))
+
 export function ControlsApp() {
   const supported = useSurfaceSupport()
   const surface = useSurfaceHandle('controls-board')
-  const state = useSurfaceState(surface)
+  const status = useSurfaceStatus(surface)
+  const state = { supported: status.supported, presented: status.presentation, isChanging: status.isTransitioning }
+  controlsProof.status = status
   const [values, setValues] = useState<ControlValues>(INITIAL_VALUES)
-  const [wantsMatter, setWantsMatter] = useState(false)
+  const [requestedInScene, setRequestedInScene] = useState(false)
+  controlsProof.request = setRequestedInScene
 
-  const toggleMatter = useCallback(() => {
+  const toggleScene = useCallback(() => {
     if (!state.supported) return
-    if (wantsMatter) {
-      setWantsMatter(false)
+    if (requestedInScene) {
+      setRequestedInScene(false)
     } else {
-      setWantsMatter(true)
+      setRequestedInScene(true)
     }
-  }, [state.supported, wantsMatter])
+  }, [state.supported, requestedInScene])
 
-  const fallbackBoard = <ControlBoard copy="fallback" values={values} setValues={setValues} />
-  const sourceBoard = <ControlBoard copy="source" values={values} setValues={setValues} />
-  const pageBoard = <ControlBoard copy="page" values={values} setValues={setValues} />
+  const pageBoard = <ControlBoard values={values} setValues={setValues} />
 
   return (
     <div className="controls-page">
@@ -648,39 +658,29 @@ export function ControlsApp() {
             light and a shadow cast by the control itself.
           </p>
           <ModeControl
-            supported={supported}
-            wantsMatter={wantsMatter}
+            supported={status.supported}
+            requestedInScene={requestedInScene}
             presented={state.presented}
-            changing={state.isChanging || (state.presented === 'canvas' && !wantsMatter)}
-            onToggle={toggleMatter}
+            changing={state.isChanging || (state.presented === 'scene' && !requestedInScene)}
+            onToggle={toggleScene}
           />
         </aside>
 
         <div className="controls-board-place">
-          {supported ? (
-            <Surface
+            <Surface.Root
               surface={surface}
               canvas="controls"
-              source={sourceBoard}
-              renderIn={wantsMatter ? 'canvas' : 'page'}
+              inScene={requestedInScene}
+              onPresentationChange={presentation => controlsProof.holds.push({t:performance.now(),presentation,progress:surface.progress.get()})}
               timing={{ settleMs: 220, durationMs: 360 }}
             >
-              <Surface.DOM>{pageBoard}</Surface.DOM>
-              <Surface.Mesh
-                  name="controls-board-surface"
-                  alpha="source"
-                  pointerEvents="geometry"
-                  frustumCulled={false}
-                >
-                  <MatterStage
-                    active={wantsMatter && state.presented === 'canvas'}
-                    onRetracted={() => undefined}
-                  />
-                </Surface.Mesh>
-            </Surface>
-          ) : (
-            fallbackBoard
-          )}
+              <Surface.HTML>{pageBoard}</Surface.HTML>
+              <Surface.Scene>
+                {new URLSearchParams(window.location.search).has('delayScene')
+                  ? <Suspense fallback={null}><DelayedControls3D /></Suspense>
+                  : <Controls3D />}
+              </Surface.Scene>
+            </Surface.Root>
         </div>
       </main>
     </div>

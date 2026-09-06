@@ -25,7 +25,6 @@ import {
   Surface,
   SurfaceCanvas,
   type SurfaceHandle,
-  type SurfaceDestination,
   type SurfaceProgress,
   type SurfacePresentation,
   useSurfaceTexture,
@@ -173,8 +172,8 @@ const WORLD_LIGHT = new THREE.Vector3(
   ...lightDir(LOGO_DEFAULTS.lightYaw, LOGO_DEFAULTS.lightPitch)
 )
 
-/** Per-frame uniform feed, written by MatterLetter's frame loop and read
- *  by MatterMaterial's. A mutable ref, not props: these change every
+/** Per-frame uniform feed, written by SceneLetter's frame loop and read
+ *  by LetterMaterial's. A mutable ref, not props: these change every
  *  frame and must never re-render React. */
 interface LetterFx {
   /** The letter's world rotation, for lifting normals into the studio. */
@@ -237,7 +236,7 @@ interface LetterFx {
   stretch: number
 }
 
-/** The latest tap, routed by MatterWord to exactly one letter: seq
+/** The latest tap, routed by LogoScene to exactly one letter: seq
  *  bumps on every hit, and the letter named by `i` consumes it. */
 interface Strike {
   i: number
@@ -388,7 +387,7 @@ interface TraceSchedule {
   tex: THREE.DataTexture | null
 }
 
-function MatterMaterial({
+function LetterMaterial({
   i,
   fontPx,
   boxRef,
@@ -508,7 +507,7 @@ function MatterMaterial({
       // old glyph, and the signature is what says so — a read whose
       // pixels match the last commit is a glyph that has not repainted
       // yet, not a new outline. The letter melts its walls while this
-      // key is untraced (MatterLetter), so the schedule is part of the
+      // key is untraced (SceneLetter), so the schedule is part of the
       // look: the sooner a read lands, the sooner the slab re-forms.
       //
       // The last try commits even on a matching signature. By then the
@@ -675,9 +674,9 @@ interface LetterDriveState {
   strikeSeq: number
 }
 
-interface MatterLetterProps {
-  i: number
+interface SceneLetterProps {
   ch: string
+  i: number
   pose: LetterPose
   box: LetterBox
   fontPx: number
@@ -702,9 +701,9 @@ interface MatterLetterProps {
  *  which would have shown up as a faceted letter. */
 const SHEET_STEP_PX = 4
 
-function MatterLetter({
-  i,
+function SceneLetter({
   ch,
+  i,
   pose,
   box,
   fontPx,
@@ -714,7 +713,7 @@ function MatterLetter({
   progress,
   carried,
   solid,
-}: MatterLetterProps) {
+}: SceneLetterProps) {
   const meshRef = useRef<THREE.Mesh>(null)
 
   // The letter's blur pyramid (logoFields): sized off the capture box —
@@ -820,31 +819,9 @@ function MatterLetter({
     }
   }
 
-  const f = LOGO_FONTS[pose.font]
   return (
-    <Surface.Part
-      name={`letter-${i}`}
-      size={[box.w, box.h]}
-      source={
-        <div className="logo-twin" style={{ width: box.w, height: box.h }}>
-          <span
-            className="logo-twin-glyph"
-            style={{ ...glyphPaint(pose), fontSize: fontPx * f.trim }}
-          >
-            {ch}
-          </span>
-        </div>
-      }
-    >
-      {/* Declared beside the word and drawn inside the Canvas: a page-
-          declared presentation registers inward, so the mesh stands in
-          the scene while the part feeding it stands next to the letter
-          it copies. `manual` because the grid places a letter — the
-          page word is the measuring rig, never a layout box to match.
-          The material slot goes to the matter shader (logoShaders)
-          while the part keeps owning the texture; no lights in this
-          canvas, the shader carries its own analytic key light. */}
       <Surface.Mesh
+        part={`letter-${i}`}
         ref={meshRef}
         placement="manual"
         alpha="source"
@@ -852,7 +829,7 @@ function MatterLetter({
         frustumCulled={false}
         geometry={<primitive object={geometry} attach="geometry" />}
         material={
-          <MatterMaterial
+          <LetterMaterial
             i={i}
             fontPx={fontPx}
             boxRef={boxRef}
@@ -880,7 +857,6 @@ function MatterLetter({
           fresh={fresh}
         />
       </Surface.Mesh>
-    </Surface.Part>
   )
 }
 
@@ -904,7 +880,7 @@ interface LetterDriveProps {
 /**
  * One letter's frame loop, drawn inside the Canvas.
  *
- * Split from <MatterLetter> because the halves live in different trees:
+ * Split from <SceneLetter> because the halves live in different trees:
  * the part and its twin are page DOM, and `useFrame` exists only under
  * the renderer. Everything written here is a ref — the mesh transform
  * and the fx feed — so a beat never re-renders the scene.
@@ -1064,22 +1040,19 @@ function LetterDrive({
   return null
 }
 
-export interface MatterWordProps {
+export interface LogoSceneProps {
   poses: LetterPose[]
   metrics: WordMetrics
   knobs: React.RefObject<LogoKnobs>
   /** The word's identity — one handle for all six letters. */
   surface: SurfaceHandle
   /** What the page is asking for; the root wears it to stay exclusive. */
-  renderIn: SurfacePresentation
   /** Which renderer holds the pixels right now. */
   presented: SurfacePresentation
   /** The canvas wrapper changed synchronously at the handoff edge. */
   canvasRef: React.RefObject<HTMLDivElement | null>
   /** The root's callbacks. The root owns them, so they arrive as props
    *  rather than being written onto the handle from the page above. */
-  onPresentationChange: (presentation: SurfacePresentation) => void
-  onMotionComplete: (destination: SurfaceDestination) => void
   /** The carried float's per-frame sample, shared with the page. */
   carried: () => number[]
   /** The extrude knob is off zero. A boolean rather than the number,
@@ -1098,19 +1071,16 @@ export interface MatterWordProps {
  * WebGL and two still on the page for as long as the slowest one took.
  * One readiness ledger cannot do that.
  */
-export function MatterWord({
+export function LogoScene({
   poses,
   metrics,
   knobs,
   surface,
-  renderIn,
   presented,
   canvasRef,
-  onPresentationChange,
-  onMotionComplete,
   carried,
   solid,
-}: MatterWordProps) {
+}: LogoSceneProps) {
   const pointer = useRef<{ x: number; y: number } | null>(null)
   useEffect(() => {
     const move = (e: PointerEvent) => {
@@ -1172,22 +1142,12 @@ export function MatterWord({
 
   return (
     <>
-      {/* `renderIn` is what keeps this an exclusive handoff rather than a
-          Twin; the handle it presents was declared by the page, which is
-          where the request and the timing live. */}
-      <Surface
-        surface={surface}
-        renderIn={renderIn}
-        canvas="logo"
-        timing={{ settleMs: SETTLE_MS }}
-        onPresentationChange={onPresentationChange}
-        onMotionComplete={onMotionComplete}
-      >
+      <Surface.Scene>
         {WORD.split('').map((ch, i) => (
-          <MatterLetter
+          <SceneLetter
+            ch={ch}
             key={i}
             i={i}
-            ch={ch}
             pose={poses[i]}
             box={metrics.boxes[i]}
             fontPx={metrics.fontPx}
@@ -1199,14 +1159,14 @@ export function MatterWord({
             solid={solid}
           />
         ))}
-      </Surface>
+      </Surface.Scene>
 
       {/* data-holds is the presentation law: until the page lets go it is
           false and logo.css keeps this whole element uncomposited — the
           twins draw warm (a write-free pass still compiles the program
           and samples the texture) but the eye sees only the page until
           the swap. */}
-      <div ref={canvasRef} className="logo-canvas" data-holds={presented === 'canvas'}>
+      <div ref={canvasRef} className="logo-canvas" data-holds={presented === 'scene'}>
         {/* `flat`: the letters are ink, and tone mapping would mute
             exactly the candy this palette is for. */}
         <SurfaceCanvas
@@ -1223,4 +1183,12 @@ export function MatterWord({
       </div>
     </>
   )
+}
+
+export function LogoLetterHTML({ index, text, pose, box, fontPx }: { index: number; text: string; pose: LetterPose; box?: LetterBox; fontPx?: number }) {
+  return <Surface.HTML as="span" part={`letter-${index}`} size={box ? [box.w, box.h] : undefined}>
+    <span className="logo-twin" style={{ width: box?.w, height: box?.h, display: 'inline-flex', fontSize: fontPx }}>
+      <span className="logo-twin-glyph" style={glyphPaint(pose)}>{text}</span>
+    </span>
+  </Surface.HTML>
 }

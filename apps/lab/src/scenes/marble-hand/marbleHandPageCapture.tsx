@@ -11,12 +11,12 @@
 import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
-  Surface,
-  useSurfaceHandle,
-  useSurfacePaintedSize,
-  useSurfaceTextureOf,
+  CaptureContent,
+  useCaptureHandle,
+  useCaptureFrame,
+  useCaptureStatus,
   useSurfaceSupport,
-  type SurfaceHandle,
+  type CaptureHandle,
   type SurfaceSize,
 } from '@petepetrash/munari'
 import type * as THREE from 'three'
@@ -59,7 +59,7 @@ export function MarbleHandPageCapture({ page, target }: {
   target: MarblePageCaptureState
 }) {
   const supported = useSurfaceSupport()
-  const surface = useSurfaceHandle('marble-hand-native-page')
+  const capture = useCaptureHandle()
   const [wrapper] = useState(captureWrapper)
   const [size, setSize] = useState<SurfaceSize | null>(null)
   const reportError = useCallback((error: Error) => {
@@ -139,35 +139,39 @@ export function MarbleHandPageCapture({ page, target }: {
 
   if (!supported || !size) return null
   return (
-    <Surface surface={surface} renderIn="none" adopt={wrapper} size={size} resolution={1} mirrorU={false} onError={reportError}>
-      <PublishPageCapture surface={surface} target={target} />
-    </Surface>
+    <>
+      <CaptureContent capture={capture} element={wrapper} size={size} onError={reportError} />
+      <PublishPageCapture capture={capture} target={target} />
+    </>
   )
 }
 
-function PublishPageCapture({ surface, target }: {
-  surface: SurfaceHandle
+function PublishPageCapture({ capture, target }: {
+  capture: CaptureHandle
   target: MarblePageCaptureState
 }) {
-  const texture = useSurfaceTextureOf(surface)
-  const paintedSize = useSurfacePaintedSize()
-  const last = useRef<{ texture: THREE.Texture | null; version: number }>({ texture: null, version: -1 })
+  const frames = useCaptureFrame(capture)
+  const status = useCaptureStatus(capture)
+  const last = useRef('')
 
   useLayoutEffect(() => () => {
-    last.current.texture = null
-    last.current.version = -1
+    last.current = ''
     target.texture = null
     target.ready = false
   }, [target])
 
   useFrame(() => {
-    const [width, height] = paintedSize()
-    // A CanvasTexture exists before its first successful paint. Surface's
-    // onReady describes presenters, of which this source intentionally has none.
-    if (!texture || width <= 0 || height <= 0) return
-    if (last.current.texture === texture && last.current.version === texture.version) return
-    last.current.texture = texture
-    last.current.version = texture.version
+    const frame = frames.get()
+    if (!frame) {
+      target.ready = false
+      target.texture = null
+      target.status = status.status
+      return
+    }
+    const key = `${frame.sourceId}:${frame.revision}`
+    if (last.current === key) return
+    last.current = key
+    const { texture, width, height } = frame
     texture.name = 'marble-hand-native-page'
     target.texture = texture
     target.width = width

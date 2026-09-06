@@ -5,7 +5,7 @@
 // it renders as ordinary DOM — six letters on the fixed grid, breathing
 // on the carried float — and that is the shipped fallback, not a
 // degraded one. With the capability it lifts once, automatically, into
-// the matter overlay (logoMatter.tsx) and stays there: same pixels,
+// the matter overlay (logoScene.tsx) and stays there: same pixels,
 // plus depth bob, wobble, and the pointer dodge.
 //
 // The conductor still re-rolls letters, at a far slower cadence than
@@ -35,14 +35,15 @@ import {
 } from '../scenes/logo/logoLaw'
 import {
   GRID,
-  MatterWord,
+  LogoScene,
   SEED0,
   WORD,
   ensureLogoFonts,
-  glyphPaint,
+  LogoLetterHTML,
+  SETTLE_MS,
   type LetterBox,
   type WordMetrics,
-} from '../scenes/logo/logoMatter'
+} from '../scenes/logo/logoScene'
 import '../scenes/logo/logo.css'
 import './munariLogo.css'
 
@@ -87,10 +88,10 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
   // lift, and a browser without the trial never mounts a canvas.
   useEffect(() => {
     if (!supported) return
-    setView('canvas')
+    setView('scene')
   }, [supported])
   const inCrossing = view !== presented || view !== settledOn
-  const phase = presented === 'canvas' ? 'gl' : inCrossing ? 'lifting' : 'page'
+  const phase = presented === 'scene' ? 'gl' : inCrossing ? 'lifting' : 'page'
 
   const rRef = useRef(makeRng(SEED0))
   const [poses, setPoses] = useState<LetterPose[]>(() =>
@@ -186,8 +187,8 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
   const wordRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const syncPresented = useCallback((next: SurfacePresentation) => {
-    if (wordRef.current) wordRef.current.dataset.phase = next === 'canvas' ? 'gl' : 'page'
-    if (canvasRef.current) canvasRef.current.dataset.holds = String(next === 'canvas')
+    if (wordRef.current) wordRef.current.dataset.phase = next === 'scene' ? 'gl' : 'page'
+    if (canvasRef.current) canvasRef.current.dataset.holds = String(next === 'scene')
     setPresented(next)
   }, [])
   const [metrics, setMetrics] = useState<WordMetrics | null>(null)
@@ -228,7 +229,8 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
 
   return (
     <div className={className ? `munari-logo ${className}` : 'munari-logo'}>
-      <Surface.DOM surface={surface} className="munari-logo__page">
+      <Surface.Root surface={surface} inScene={view === 'scene'} canvas="logo" timing={{ settleMs: SETTLE_MS }} onPresentationChange={syncPresented} onMotionComplete={setSettledOn}>
+      <div className="munari-logo__page">
         <div
           className="logo-word"
           ref={wordRef}
@@ -250,32 +252,30 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
             <span
               className="logo-letter"
               style={{
-                ...glyphPaint(poses[i]),
+                flexShrink: 0,
                 transform: `translate(${poses[i].dx}em, ${poses[i].dy}em) rotate(${poses[i].tilt}deg) scale(${poses[i].scale})`,
               }}
             >
-              {ch}
+              <LogoLetterHTML index={i} text={ch} pose={poses[i]} box={metrics?.boxes[i]} fontPx={metrics?.fontPx} />
             </span>
           </span>
         ))}
         </div>
-      </Surface.DOM>
+      </div>
 
       {supported && metrics && (
-        <MatterWord
+        <LogoScene
           poses={poses}
           metrics={metrics}
           knobs={knobsRef}
           surface={surface}
-          renderIn={view}
           presented={presented}
           canvasRef={canvasRef}
-          onPresentationChange={syncPresented}
-          onMotionComplete={setSettledOn}
           carried={float.sample}
           solid={false}
         />
       )}
+      </Surface.Root>
     </div>
   )
 }

@@ -24,11 +24,11 @@ import {
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
-  Surface,
+  CaptureContent,
+  useCaptureHandle,
+  useCaptureFrame,
+  type CaptureHandle,
   SurfaceCanvas,
-  useSurfaceHandle,
-  useSurfaceAnchorRects,
-  useSurfaceTexture,
   useSurfaceSupport,
   type SourceUvRect,
 } from '@petepetrash/munari'
@@ -232,6 +232,7 @@ function PlumeFrames({ active }: { readonly active: boolean }) {
 }
 
 interface PlumeMaterialProps {
+  readonly texture: THREE.Texture
   readonly grid: PlumeGrid
   readonly durationMs: number
   readonly reduced: boolean
@@ -240,8 +241,7 @@ interface PlumeMaterialProps {
   readonly draft: React.RefObject<THREE.Vector2>
 }
 
-function PlumeMaterial({ grid, durationMs, reduced, effects, tuning, draft }: PlumeMaterialProps) {
-  const texture = useSurfaceTexture()
+function PlumeMaterial({ texture, grid, durationMs, reduced, effects, tuning, draft }: PlumeMaterialProps) {
   const material = useRef<THREE.ShaderMaterial>(null)
   const invalidate = useThree((state) => state.invalidate)
   const uniforms = useMemo(
@@ -350,25 +350,50 @@ function sameIds(current: ReadonlySet<string>, next: ReadonlySet<string>): boole
   return true
 }
 
-function PlumeReleaseBridge({
-  ids,
-  onAnchors,
-}: {
-  readonly ids: readonly string[]
-  readonly onAnchors: (anchors: Readonly<Record<string, SourceUvRect>>) => void
+function PlumeReleaseBridge({ capture, ids, onAnchors }: {
+  capture: CaptureHandle
+  ids: readonly string[]
+  onAnchors: (anchors: Readonly<Record<string, SourceUvRect>>) => void
 }) {
-  const anchors = useSurfaceAnchorRects(ids)
-  useEffect(() => {
-    if (!anchors) return
+  const frames = useCaptureFrame(capture)
+  const last = useRef('')
+  useFrame(() => {
+    const frame = frames.get()
+    if (!frame || ids.some(id => !frame.anchors[id])) return
+    const key = `${frame.sourceId}:${frame.generation}:${ids.join('|')}`
+    if (last.current === key) return
+    last.current = key
+    const anchors: Record<string, SourceUvRect> = {}
+    for (const id of ids) {
+      const box = frame.anchors[id]
+      anchors[id] = { cssWidth: box.width, cssHeight: box.height, uMin: box.x / frame.width, uMax: (box.x + box.width) / frame.width,
+        vMin: 1 - (box.y + box.height) / frame.height, vMax: 1 - box.y / frame.height }
+    }
     onAnchors(anchors)
-  }, [anchors, onAnchors])
+  })
   return null
+}
+
+function PlumeParticles({ capture, box, ids, onAnchors, ...material }: Omit<PlumeMaterialProps, 'texture'> & {
+  capture: CaptureHandle
+  box: NonNullable<ReturnType<typeof useStageBox>>
+  ids: readonly string[]
+  onAnchors: (anchors: Readonly<Record<string, SourceUvRect>>) => void
+}) {
+  const frames = useCaptureFrame(capture)
+  const frame = frames.get()
+  if (!frame) return null
+  return <mesh frustumCulled={false} position={[box.worldX, box.worldY, 0]} raycast={() => {}}>
+    <primitive object={material.grid.geometry} attach="geometry" />
+    <PlumeMaterial {...material} texture={frame.texture} />
+    <PlumeReleaseBridge capture={capture} ids={ids} onAnchors={onAnchors} />
+  </mesh>
 }
 
 export function PlumeApp() {
   const supported = useSurfaceSupport()
   const reduced = useReducedMotion()
-  const surface = useSurfaceHandle('plume-ink')
+  const inkCapture = useCaptureHandle()
   const sheet = useRef<HTMLDivElement>(null)
   const box = useStageBox(sheet)
   const draft = useRef(new THREE.Vector2())
@@ -535,7 +560,7 @@ export function PlumeApp() {
     '--plume-ghost-blur': `${tuning.ghostBlur}px`,
     backgroundColor: tuning.backgroundColor,
   }
-  const capture = (
+  const captureContent = (
     <PlumeCopy
       value={ledger.value}
       units={ledger.units}
@@ -587,38 +612,10 @@ export function PlumeApp() {
 
       {supported && box && grid ? (
         <>
-          <Surface
-            surface={surface}
-            renderIn="canvas"
-            size={[box.width, box.height]}
-            resolution={Math.min(3.4, Math.max(2, 3600 / box.width))}
-            source={capture}
-          >
-            <Surface.Mesh
-              placement="manual"
-              alpha="source"
-              pointerEvents="none"
-              frustumCulled={false}
-              position={[box.worldX, box.worldY, 0]}
-              geometry={<primitive object={grid.geometry} attach="geometry" />}
-              material={
-                <PlumeMaterial
-                  grid={grid}
-                  durationMs={durationMs}
-                  reduced={reduced}
-                  effects={effects}
-                  tuning={tuning}
-                  draft={draft}
-                />
-              }
-            >
-              <PlumeReleaseBridge
-                key={unitIdSignature}
-                ids={unitIds}
-                onAnchors={noteAnchors}
-              />
-            </Surface.Mesh>
-          </Surface>
+          <CaptureContent capture={inkCapture} size={[box.width, box.height]}
+            resolution={Math.min(3.4, Math.max(2, 3600 / box.width))}>
+            {captureContent}
+          </CaptureContent>
 
           <SurfaceCanvas
             className="plume-canvas"
@@ -633,6 +630,9 @@ export function PlumeApp() {
           >
             <PlumeCamera />
             <PlumeFrames active={animating} />
+            <PlumeParticles capture={inkCapture} box={box} grid={grid} ids={unitIds}
+              onAnchors={noteAnchors} durationMs={durationMs} reduced={reduced}
+              effects={effects} tuning={tuning} draft={draft} />
           </SurfaceCanvas>
         </>
       ) : null}

@@ -11,6 +11,24 @@ each result: a successful capability skip leaves that behavior untested.
 The [common evidence envelope](../docs/agent-system-plan.md#evidence) is a
 proposed addition to these probes, not a format they all produce today.
 
+## Public API, postcard, and text clarity
+
+`npm run probe:postcard` checks the real postcard's handoff timing, companion
+pixels, compositor scrolling, and desktop/mobile form input.
+`npm run probe:api-targets` checks retained state and focus across layout parents.
+The [API instrument guide](api-all-demos/README.md) describes these contracts,
+the full demo sweep, composition fixtures, and their measurement limits.
+These local probes are not added to CI.
+
+`npm run probe:sharpness` compares native HTML with the default stationary mesh,
+including inset/scaled canvases and explicit high-DPR cases. `npm run
+probe:postcard-sharpness` checks the actual Home postcard with a hidden-mesh negative
+control. Visible checks preserve native display density; density emulation is
+explicit. The API instrument guide lists options and the 0.95–1.05 native text
+contrast budget. Motion and handoff budgets remain separate.
+`probe:scene-sharpness` covers scene-only HTML. `probe:display-density` checks an
+existing capture across display-density changes without replacing its content.
+
 ## idle-zero
 
 CI gate: mounted quiescent Surfaces cost **0 paints/s**.
@@ -199,8 +217,12 @@ Checks the real public lab routes through a capability-enabled browser.
 `npm run gate:lab-interactions` tabs into Workspace content, clicks its
 captured checkbox, recovers camera control after a panel drag, and checks
 Glass, Knobs, Optics, and Explode pointer paths. It then deletes two Flight
-cards, checks their column counts and two-layer drag shadow, and samples
-Logo's two renderer handoffs for blank frames. This gate is the
+cards, checks their column counts and two-layer drag shadow, and verifies
+that a held card keeps rendering and lands without further pointer movement.
+It also taps a card to float it, re-grabs it through the canvas, and checks
+that movement and release reach the scene. Rendering must stop after both
+landing cleanups. It also samples Logo's two
+renderer handoffs for blank frames. This gate is the
 regression contract for the lab
 faults found in manual QA on 2026-08-18.
 

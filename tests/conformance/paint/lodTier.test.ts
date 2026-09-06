@@ -83,7 +83,7 @@ describe('seedTier', () => {
   // page→mesh handoff (measured 2026-08-02: born tier 1,
   // ~130ms of 2.2×-undersampled text, then the tier-3 swap).
 
-  it('seeds at the tier nearest the pixel ratio', () => {
+  it('seeds at the first tier covering the pixel ratio', () => {
     expect(seedTier(DEFAULT_TIERS, 1)).toBe(1)
     expect(seedTier(DEFAULT_TIERS, 2)).toBe(2)
     // 1.5 sits exactly on a rung of the default ladder (Windows scaling).
@@ -91,7 +91,7 @@ describe('seedTier', () => {
     expect(seedTier(DEFAULT_TIERS, 3)).toBe(3)
   })
 
-  it('defaults to the old nearest-1× behavior when no target is given', () => {
+  it('defaults to covering 1× when no target is given', () => {
     expect(seedTier(DEFAULT_TIERS)).toBe(1)
     expect(seedTier([2, 4])).toBe(2)
   })
@@ -110,9 +110,10 @@ describe('seedTier', () => {
     expect(seedTier(clampTiers(DEFAULT_TIERS, 3000, 400), 2)).toBe(1)
   })
 
-  it('ties break toward the lower (cheaper) tier', () => {
+  it('fractional pixel ratios never start under-sampled', () => {
     // dpr 1.75 sits exactly between 1.5 and 2 on the default ladder.
-    expect(seedTier(DEFAULT_TIERS, 1.75)).toBe(1.5)
+    expect(seedTier(DEFAULT_TIERS, 1.75)).toBe(2)
+    expect(seedTier(DEFAULT_TIERS, 2.5)).toBe(3)
   })
 })
 

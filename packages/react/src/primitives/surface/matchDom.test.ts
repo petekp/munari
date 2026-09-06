@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import { createMatchDomResult, matchDomTransform } from './matchDom'
 
-const viewport = { width: 801, height: 603 }
+const viewport = { left: 0, top: 0, width: 801, height: 603 }
 const rect = { left: 113.25, top: 79.5, width: 287.75, height: 191.125 }
 
 function screenCorners(camera: THREE.Camera) {
@@ -69,4 +69,39 @@ describe('match-DOM camera projection', () => {
       expectRect(corners)
     }
   })
+})
+
+// Client rectangles include the canvas origin and CSS scale. R3F's logical
+// size alone cannot place a page box inside an inset or scrolling renderer.
+describe('match-DOM canvas client coordinates', () => {
+  for (const orthographic of [false, true]) {
+    for (const canvas of [
+      { left: 23, top: 285.859375, width: 344, height: 272 },
+      { left: -32, top: -420, width: 801, height: 603 },
+      { left: 113.5, top: 81.25, width: 801 * 1.4, height: 603 * 0.8 },
+    ]) {
+      it(`matches four corners in ${orthographic ? 'orthographic' : 'perspective'} canvas at ${canvas.left},${canvas.top}`, () => {
+        const camera = orthographic
+          ? new THREE.OrthographicCamera(-4, 4, 3, -3, 0.1, 100)
+          : new THREE.PerspectiveCamera(47, 801 / 603, 0.1, 100)
+        camera.position.set(1, -2, 6)
+        camera.lookAt(0, 0, 0)
+        const content = {
+          left: canvas.left + canvas.width * 0.2,
+          top: canvas.top + canvas.height * 0.3,
+          width: canvas.width * 0.4,
+          height: canvas.height * 0.25,
+        }
+        const result = matchDomTransform(camera, content, canvas, 2.4, createMatchDomResult())
+        const corners = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]].map(([x, y]) => {
+          const point = new THREE.Vector3(x, y, 0).multiply(result.scale).applyQuaternion(result.quaternion).add(result.position).project(camera)
+          return { x: canvas.left + (point.x + 1) * canvas.width / 2, y: canvas.top + (1 - point.y) * canvas.height / 2 }
+        })
+        expect(Math.min(...corners.map(point => point.x))).toBeCloseTo(content.left, 5)
+        expect(Math.max(...corners.map(point => point.x))).toBeCloseTo(content.left + content.width, 5)
+        expect(Math.min(...corners.map(point => point.y))).toBeCloseTo(content.top, 5)
+        expect(Math.max(...corners.map(point => point.y))).toBeCloseTo(content.top + content.height, 5)
+      })
+    }
+  }
 })

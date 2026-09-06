@@ -28,7 +28,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceHandle, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
+import { SceneSurface, useSurfaceSupport, useSurfaceHandle, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { LIGHT, SUCK_FRAG, SUCK_VERT } from './candidateShaders'
 import { tokenize } from './candidateTokens'
@@ -43,11 +43,10 @@ import {
 import { copyTuning } from './candidateTuning'
 
 
-const SNIPPET = `const surface = useSurfaceHandle('card')
+const SNIPPET = `<SurfaceCanvas />
 
-<Surface surface={surface} renderIn="both" source={card}>
-  <Surface.DOM />
-  <Surface.Mesh />
+<Surface inScene={selected}>
+  <Card />
 </Surface>`
 
 // Each run rolls its own shape — twist handedness and sharpness, arc
@@ -147,6 +146,7 @@ function SuckMaterial({
 }
 
 export function CandidateCopy() {
+  const supported = useSurfaceSupport()
   const surface = useSurfaceHandle('copy-block')
   const holder = useRef<HTMLDivElement>(null)
   const phase = usePhase()
@@ -208,13 +208,14 @@ export function CandidateCopy() {
       track(e.clientX, e.clientY)
       void navigator.clipboard?.writeText(SNIPPET).catch(() => undefined)
       setCopies((n) => n + 1)
+      if (!supported) return
       runId.current += 1
       phase.current.t = 0
       phase.current.running = true
       setFlying(true)
       setGone(true)
     },
-    [phase, track],
+    [phase, track, supported],
   )
 
   const block = (
@@ -244,15 +245,9 @@ export function CandidateCopy() {
           {block}
         </div>
         {size ? (
-          <Surface surface={surface} renderIn={flying ? 'canvas' : 'none'} size={size} resolution={2} source={block}>
-            {/* The capture source, parked off-flow OUTSIDE the fading
-                holder, so no state of the visible copy — the [data-gone]
-                opacity and blur included — can ever reach the texture the
-                sheet is flying. */}
-            <div className="cand-code-park" style={{ width: size[0] }} aria-hidden>
-              <Surface.DOM />
-            </div>
-            <Surface.Mesh
+          <SceneSurface.Root surface={surface}>
+            <SceneSurface.HTML size={size} resolution={2}>{block}</SceneSurface.HTML>
+            <SceneSurface.Mesh
                 key={runId.current}
                 visible={flying && Boolean(box)}
                 placement="manual"
@@ -274,8 +269,8 @@ export function CandidateCopy() {
                     setGone(false)
                   }}
                 />}
-              </Surface.Mesh>
-          </Surface>
+              </SceneSurface.Mesh>
+          </SceneSurface.Root>
         ) : null}
       </div>
       <p className="cand-hint">

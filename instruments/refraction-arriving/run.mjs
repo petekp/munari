@@ -287,7 +287,7 @@ try {
 
   const clocks = () =>
     [...document.querySelectorAll('[data-munari-source-host]')].map((host) => ({
-      surface: host.getAttribute('data-munari-surface'),
+      surface: `${host.getAttribute('data-munari-surface')}/${host.getAttribute('data-munari-part')}`,
       tick: host.querySelector('.refraction-tick')?.textContent ?? null,
     }))
 
@@ -319,7 +319,7 @@ try {
   const sources = await page.evaluate(clocks)
   const named = sources.map((s) => s.surface).sort()
   check(
-    named.includes('refraction-square') && named.includes('refraction-circle'),
+    named.includes('refraction/leaving') && named.includes('refraction/arriving'),
     `both documents are parked sources (${named.join(', ')})`,
   )
   check(
@@ -410,7 +410,7 @@ try {
   const beforeSwitch = await page.evaluate(grab)
   await page.evaluate(() => {
     const host = document.querySelector(
-      '[data-munari-source-host][data-munari-surface="refraction-square"]',
+      '[data-munari-source-host][data-munari-surface="refraction"][data-munari-part="leaving"]',
     )
     host.querySelectorAll('.refraction-formbtn')[2].click()
   })
@@ -441,7 +441,7 @@ try {
   const landedGrid = await page.evaluate(grab)
   await page.evaluate(() => {
     const host = document.querySelector(
-      '[data-munari-source-host][data-munari-surface="refraction-square"]',
+      '[data-munari-source-host][data-munari-surface="refraction"][data-munari-part="leaving"]',
     )
     host.querySelectorAll('.refraction-formbtn')[0].click()
   })

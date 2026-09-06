@@ -25,7 +25,7 @@
 
 import { hostTailPresents } from '@munari/core'
 import type { ReactElement, ReactNode } from 'react'
-import type { Object3D } from 'three'
+import type { Camera, Object3D, WebGLRenderTarget } from 'three'
 
 /** A Canvas host's public name. One unnamed host needs no id. */
 export type SurfaceCanvasId = string
@@ -61,6 +61,9 @@ export interface SurfaceHost {
   setRuntime(runtime: SurfaceHostRuntime | null): void
   subscribeRuntime(listener: () => void): () => void
   mounted(): boolean
+  available(): boolean
+  setContextLost(lost: boolean): void
+  notifyLifecycle(): void
   registerSource(entry: SurfaceSourceEntry): () => void
   sources(): readonly SurfaceSourceEntry[]
   subscribeSources(listener: () => void): () => void
@@ -77,6 +80,12 @@ export interface SurfaceHost {
    */
   registerTick(tick: (dtMs: number) => void): () => void
   ticks(): readonly ((dtMs: number) => void)[]
+  registerBeforeDraw(listener: (scene: Object3D, camera: Camera, target: WebGLRenderTarget | null) => void): () => void
+  registerRaster(listener: (scene:Object3D,camera:Camera,target:WebGLRenderTarget|null)=> (()=>void)|null):()=>void
+  hasRaster():boolean
+  prepareRaster(scene:Object3D,camera:Camera,target:WebGLRenderTarget|null):()=>void
+  hasBeforeDraw(): boolean
+  beforeDraw(scene: Object3D, camera: Camera, target?: WebGLRenderTarget | null): void
   /**
    * Announce a presenter's mesh, for the pointer gate.
    *
@@ -130,6 +139,8 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
   const presenterListeners = new Set<() => void>()
   const runtimeListeners = new Set<() => void>()
   const tickSet = new Set<(dtMs: number) => void>()
+  const beforeDraw = new Set<(scene: Object3D, camera: Camera, target: WebGLRenderTarget | null) => void>()
+  const rasterListeners = new Set<(scene:Object3D,camera:Camera,target:WebGLRenderTarget|null)=>(()=>void)|null>()
   const objectSet = new Set<Object3D>()
   let objectSnapshot: readonly Object3D[] = NO_OBJECTS
   let sourceSnapshot: readonly SurfaceSourceEntry[] = NO_SOURCES
@@ -140,6 +151,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
   // that simply stops capturing.
   let tickSnapshot: readonly ((dtMs: number) => void)[] = []
   let claims = 0
+  let contextLost = false
   // Presenters that wrote color into a render target this frame. A
   // post-processed scene draws every Surface this way, so without a tail
   // nothing ever proves and the crossing hangs in 'lifting' forever.
@@ -158,6 +170,13 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
       return () => runtimeListeners.delete(listener)
     },
     mounted: () => mounts.has(host),
+    available: () => mounts.has(host) && host.runtime !== null && !contextLost,
+    setContextLost(lost) {
+      if (contextLost === lost) return
+      contextLost = lost
+      host.notifyLifecycle()
+    },
+    notifyLifecycle() { for (const listener of runtimeListeners) listener() },
     registerSource(entry) {
       sourceMap.set(entry.key, entry)
       sourceSnapshot = Array.from(sourceMap.values())
@@ -207,6 +226,17 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
       }
     },
     ticks: () => tickSnapshot,
+    registerBeforeDraw(listener) { beforeDraw.add(listener); return () => { beforeDraw.delete(listener) } },
+    registerRaster(listener){rasterListeners.add(listener);return()=>{rasterListeners.delete(listener)}},
+    hasRaster:()=>rasterListeners.size>0,
+    prepareRaster(scene,camera,target){
+      const releases:(()=>void)[]=[]
+      try {for(const listener of [...rasterListeners]){const release=listener(scene,camera,target);if(release)releases.push(release)}}
+      catch(error){for(const release of releases.reverse())release();throw error}
+      return()=>{for(const release of releases.reverse())release()}
+    },
+    hasBeforeDraw: () => beforeDraw.size > 0,
+    beforeDraw(scene, camera, target = null) { for (const listener of [...beforeDraw]) listener(scene, camera, target) },
     registerObject(object) {
       objectSet.add(object)
       objectSnapshot = Array.from(objectSet)
@@ -342,6 +372,7 @@ export function mountSurfaceHost(candidate: SurfaceHost): SurfaceHostMount {
 
   const live = (mounts.get(host) ?? 0) + 1
   mounts.set(host, live)
+  host.notifyLifecycle()
   const distinct = mountedSurfaceHosts().filter((entry) => (entry.id ?? '') === key)
   if (distinct.length > 1 && !faulted.has(key)) {
     queueMicrotask(() => {
@@ -373,6 +404,7 @@ export function mountSurfaceHost(candidate: SurfaceHost): SurfaceHostMount {
       const remainingForId = mountedSurfaceHosts().filter((entry) => (entry.id ?? '') === key)
       if (remainingForId.length < 2) faulted.delete(key)
       host.setRuntime(null)
+      host.notifyLifecycle()
     },
   }
 }

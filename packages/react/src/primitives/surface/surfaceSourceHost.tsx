@@ -25,6 +25,7 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { guardPointerCapture, type SurfaceChrome, type SurfacePartId } from '@munari/core'
+import { useSurfaceDevicePixelRatio } from './surfaceDevicePixelRatio'
 import { useLatest } from '../useLatest'
 import { createSurfaceFocusLedger, transferSurfaceFocus } from './surfaceFocus'
 import {
@@ -72,6 +73,8 @@ export interface SurfaceSourceHostProps {
   paint?: 'auto' | 'always'
   onFocusWithinChange?: (focused: boolean) => void
   onChrome?: (chrome: SurfaceChrome) => void
+  chromeElement?: () => HTMLElement
+  pageContent?: () => HTMLElement | null
   children?: React.ReactNode
 }
 
@@ -86,6 +89,8 @@ export function SurfaceSourceHost({
   paint = 'auto',
   onFocusWithinChange,
   onChrome,
+  chromeElement,
+  pageContent,
   children,
 }: SurfaceSourceHostProps) {
   const [runtime, setRuntime] = useState<SurfaceSourceRuntime | null>(null)
@@ -96,6 +101,7 @@ export function SurfaceSourceHost({
   const [measured, setMeasured] = useState<SurfaceSize | null>(null)
   const onFocusWithinRef = useLatest(onFocusWithinChange)
   const onChromeRef = useLatest(onChrome)
+  const chromeElementRef = useLatest(chromeElement)
 
   // Authored size wins; a DOM presentation measures the rest. The default
   // exists so a resident Surface with neither still has a real box to paint
@@ -142,7 +148,7 @@ export function SurfaceSourceHost({
   // belongs here only if changing it means "this is different content now",
   // which for a source is only the identity of the element being captured.
   useLayoutEffect(() => {
-    if (!captureRoot) return
+    if (!captureRoot || !store.getState().supported) return
     let created: SurfaceSourceRuntime
     try {
       created = createSurfaceSourceRuntime({
@@ -155,12 +161,12 @@ export function SurfaceSourceHost({
         pixelRatio: window.devicePixelRatio,
         onError: (error) => root.store.reportError(error),
         onChrome: (chrome) => onChromeRef.current?.(chrome),
-        chromeElement: () => surfaceChromeElement(captureRoot, adopt !== undefined),
+        chromeElement: () => chromeElementRef.current?.() ?? surfaceChromeElement(captureRoot, adopt !== undefined),
       })
     } catch (error) {
       // A browser without the trial is a first-class answer, not a crash:
       // the DOM presentation stays visible and `presented` never leaves
-      // `dom`. Throwing here would unmount the whole R3F tree instead.
+      // `page`. Throwing here would unmount the whole R3F tree instead.
       root.store.reportError(error instanceof Error ? error : new Error(String(error)))
       return
     }
@@ -204,6 +210,8 @@ export function SurfaceSourceHost({
   // is held awake only while the source actually has work — a settling box,
   // a fresh paint, a trailing upload — which is what keeps thirty-three
   // quiescent panels at zero paints per second.
+  const nativeDpr=useSurfaceDevicePixelRatio()
+  useLayoutEffect(()=>runtime?.setPixelRatio(nativeDpr),[runtime,nativeDpr])
   const host = root.host
   useEffect(() => {
     if (!host || !runtime) return
@@ -236,11 +244,12 @@ export function SurfaceSourceHost({
       size: [sourceWidth, sourceHeight],
       captureRoot,
       pageRoot,
+      pageContent,
       source,
       setPageRoot,
       setMeasuredSize: setMeasured,
     }),
-    [id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot, source],
+    [id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent, source],
   )
 
   // One logical focus over two DOM copies, and a transfer when the hold
@@ -314,9 +323,10 @@ export function SurfaceSourceHost({
       size: [sourceWidth, sourceHeight],
       captureRoot,
       pageRoot,
+      pageContent,
     })
     return () => store.publishPart(id, null)
-  }, [store, id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot])
+  }, [store, id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent])
 
   // Content reaches the container by whichever door this wiring has. Both
   // render the SAME element into the SAME container; only the reconciler

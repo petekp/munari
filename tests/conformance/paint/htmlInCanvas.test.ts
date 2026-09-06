@@ -691,3 +691,32 @@ describe('createDomTextureSource without the origin trial', () => {
     expect(document.body.querySelectorAll('canvas').length).toBe(before)
   })
 })
+
+
+it('rasters each axis independently without changing the retained CSS box',()=>{
+ const restore=stubGetContext({setTransform(){},clearRect(){},drawElementImage(){}})
+ const source=createDomTextureSource('<div>Axis density</div>',200,100,{scale:1})
+ try {
+ source.setRasterScale(2.4,1.7);source.resettle()
+ expect(source.canvas.width).toBe(480);expect(source.canvas.height).toBe(170)
+ expect(source.canvas.style.width).toBe('200px');expect(source.canvas.style.height).toBe('100px')
+ expect(source.rasterScale()).toEqual([2.4,1.7])
+ firePaint(source)
+ expect(source.currentPaint()?.storeSize).toEqual([480,170])
+ source.setScale(2);source.resettle()
+ expect(source.rasterScale()).toEqual([2,2])
+ expect(source.canvas.height).toBe(200)
+ }finally{source.dispose();restore()}
+})
+
+it('supplies a new display density exactly even when the old store is within the resize band',()=>{
+ const restore=stubGetContext({setTransform(){},clearRect(){},drawElementImage(){}})
+ const source=createDomTextureSource('<div>Display density</div>',200,100,{scale:2})
+ try {
+  source.setScale(3)
+  expect([source.canvas.width,source.canvas.height]).toEqual([600,300])
+  source.setRasterScale(2.4,2.5)
+  expect([source.canvas.width,source.canvas.height]).toEqual([480,250])
+  expect([source.canvas.style.width,source.canvas.style.height]).toEqual(['200px','100px'])
+ }finally{source.dispose();restore()}
+})

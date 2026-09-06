@@ -27,15 +27,18 @@ import {
   use,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
 } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree, type ThreeElements, type ThreeEvent } from '@react-three/fiber'
 import {
   bridgeHover,
+  clampScale,
   clearPointerState,
   deepestElementAt,
   forwardPointer,
@@ -64,7 +67,10 @@ import {
 import { SURFACE_RADIUS_GLSL } from '../../lib/surfaceRadiusGlsl'
 import { FocusGroupContext } from '../focusContext'
 import { SurfaceAnchorContext, useSurfaceAnchorScope } from './surfaceAnchorScope'
-import { createSurfaceRoute, type SurfaceRouteRelayDuties } from './surfaceNativeRoute'
+import { createSurfaceRasterAlignment } from './surfaceRasterAlignment'
+import { matchedSurfaceDensity } from './surfacePixelDensity'
+import { watchSurfacePlacement } from './surfacePlacement'
+import { registerSurfacePlane, createSurfaceRoute, type SurfaceRouteRelayDuties } from './surfaceNativeRoute'
 import { useLatest } from '../useLatest'
 import {
   DEFAULT_PART,
@@ -87,6 +93,7 @@ import {
   surfaceTierLadder,
   type SurfaceResolution,
   type SurfacePartPublication,
+  type SurfaceSourceRuntime,
 } from './surfaceSourceRuntime'
 import {
   MATCH_DOM_DISTANCE,
@@ -96,6 +103,7 @@ import {
 } from './matchDom'
 import { surfaceStoreOf, type SurfaceHandle, type SurfaceStore } from './surfaceHandle'
 import { useSurfaceHostContext } from './surfaceHostContext'
+import { createSurfaceFrameChannel, readSurfaceFrameState, SurfaceFrameContext, surfaceBelongsToScene } from './surfaceFrame'
 
 export type SurfaceRadius =
   | 'auto'
@@ -112,7 +120,7 @@ export type SurfacePointerEvents = 'geometry' | 'content' | 'none'
  */
 type SurfacePointerHandler = (event: ThreeEvent<PointerEvent>) => void
 
-export interface SurfaceMeshProps
+interface SurfaceMeshBaseProps
   extends Omit<
     ThreeElements['mesh'],
     | 'children'
@@ -147,8 +155,6 @@ export interface SurfaceMeshProps
   radius?: SurfaceRadius
   /** `'opaque'` is a solid slab; `'source'` honors the capture's alpha. */
   alpha?: 'opaque' | 'source'
-  /** A raycast proxy whose compositor reports the actual presentation draw. */
-  presentation?: 'auto' | 'manual'
   pointerEvents?: SurfacePointerEvents
   /**
    * `'relay'` keeps every pointer event synthetic. `'auto'` lets the browser
@@ -163,11 +169,17 @@ export interface SurfaceMeshProps
   ref?: React.Ref<THREE.Mesh>
 }
 
+export type SurfaceMeshProps = SurfaceMeshBaseProps & (
+  | { presentation?: 'auto'; sampledParts?: readonly SurfacePartId[] }
+  | { presentation: 'manual'; sampledParts?: never }
+)
+
 // LOD evaluations run every Nth frame, phase-offset per presenter so a
 // scene of many panels spreads the projection math and never re-rasters a
 // cohort on the same frame.
 const LOD_EVERY = 10
 const LOD_AGREE = 2
+interface SurfaceLodState { tier:number; proposed:number; agree:number; frame:number; source:SurfaceSourceRuntime|null; aligned:boolean }
 let lodSeq = 0
 let presenterSeq = 0
 
@@ -271,6 +283,7 @@ function readRuntimeFacts(part: SurfacePartPublication | null) {
 function SurfacePresenter({
   store,
   partId,
+  sampledParts = [],
   tunneled,
   placement,
   geometry,
@@ -292,9 +305,10 @@ function SurfacePresenter({
   ...meshProps
 }: PresenterProps) {
   const camera = useThree((s) => s.camera)
+  const frameChannel = useMemo(createSurfaceFrameChannel, [])
+  const hasFrameListeners = useSyncExternalStore(frameChannel.subscribePresence, frameChannel.hasListeners, () => false)
   const events = useThree((s) => s.events)
   const gl = useThree((s) => s.gl)
-  const size = useThree((s) => s.size)
   const invalidate = useThree((s) => s.invalidate)
   // SAFETY: r3f's store types `controls` as a bare event target — whatever
   // the app set, if anything. Every control set this library suspends
@@ -303,21 +317,30 @@ function SurfacePresenter({
   const controls = useThree((s) => s.controls as { enabled?: boolean } | null)
 
   const meshRef = useRef<THREE.Mesh>(null)
+  const [mountedMesh, setMountedMesh] = useState<THREE.Mesh | null>(null)
+  const bindMesh = useCallback((mesh: THREE.Mesh | null) => { meshRef.current = mesh; setMountedMesh(mesh) }, [])
   // SAFETY: the handle is computed after the commit that assigns `ref` on
   // the mesh below, so the current value is the instance. A caller reading
   // it during its own render — before either commit — is the case the cast
   // covers over, and there is no earlier moment a mesh could exist.
-  useImperativeHandle(ref, () => meshRef.current as THREE.Mesh, [])
+  useImperativeHandle(ref, () => mountedMesh as THREE.Mesh, [mountedMesh])
   const materialRef = useRef<THREE.MeshBasicMaterial>(null)
   const pressedRef = useRef<ForwardPointerSample | null>(null)
   const presenterKey = useMemo(() => `presenter-${presenterSeq++}`, [])
+  const sampledKey = JSON.stringify(sampledParts)
+  const additionalParts = useMemo(() => {
+    // SAFETY: sampledKey is serialized directly from the typed part-name array.
+    const names = JSON.parse(sampledKey) as SurfacePartId[]
+    return [...new Set(names.filter(name => name !== partId))]
+  }, [sampledKey, partId])
   const lodPhase = useMemo(() => lodSeq++ % LOD_EVERY, [])
-  const lodRef = useRef({ tier: 1, proposed: 1, agree: 0, frame: 0 })
+  const lodRef = useRef<SurfaceLodState>({ tier:0, proposed:0, agree:0, frame:0, source:null, aligned:false })
   // What the pass in flight is doing, written by the before hook and read
   // once by the after hook. Not a boolean: the after hook has to tell a
   // direct presentation from a deferred one from a warm-up, and three hands
   // it no argument to tell them apart with.
   const passRef = useRef<SurfacePassEvidence | null>(null)
+  const rasterReadyRef = useRef(false)
   // The material's own write flags as the caller left them, captured at the
   // top of each pass and put back at the bottom of it. Three's per-object
   // hooks are the only place a warm-up can be expressed, and they hand out
@@ -330,6 +353,7 @@ function SurfacePresenter({
   // the rider claim inside surfaceNativeRoute is what keeps two of them from
   // trading the one parked canvas back and forth every frame.
   const routeCtl = useMemo(() => createSurfaceRoute(), [])
+  const rasterAlignment = useMemo(createSurfaceRasterAlignment, [])
 
   // The part is read from the STORE, not a context. A presenter standing in
   // a scene tree with only a handle in hand has no ancestor that ever saw
@@ -366,6 +390,14 @@ function SurfacePresenter({
   // anchored matter belongs on the pixels under it.
   const anchors = useSurfaceAnchorScope(runtime, part?.captureRoot ?? null)
 
+  useLayoutEffect(() => {
+    if (geometry === undefined && mountedMesh) registerSurfacePlane(mountedMesh.geometry)
+  }, [mountedMesh, geometry])
+  useLayoutEffect(() => {
+    if (!runtime || pointerEvents === 'none') return
+    return routeCtl.registerSource(runtime.source.canvas)
+  }, [routeCtl, runtime, pointerEvents])
+
   const pointerEventsRef = useLatest(pointerEvents)
   const storeRef = useLatest(store)
   const partRef = useLatest(part)
@@ -387,7 +419,7 @@ function SurfacePresenter({
   useEffect(() => {
     if (presentation === 'manual') return
     return store.registerPresenter(presenterKey)
-  }, [store, presenterKey, presentation])
+  }, [store, presenterKey, presentation, additionalParts])
   // The part ledger covers what presenter registration cannot: a declared
   // part whose presenter never mounts at all. Naming the part here marks it
   // covered; a part no presenter ever names keeps holding the handoff.
@@ -399,18 +431,31 @@ function SurfacePresenter({
     if (presentation !== 'manual') return
     return store.expectManualPresenter(partId)
   }, [store, partId, presentation])
+  useEffect(() => {
+    if (!additionalParts.length) return
+    if (presentation === 'manual') throw new Error('A manual pointer proxy cannot also report sampledParts. Declare them on the mesh that draws their pixels.')
+    const releases = additionalParts.flatMap(id => [store.registerPartPresenter(id), store.registerManualPresenter(id)])
+    return () => { for (const release of releases) release() }
+  }, [store, presentation, additionalParts])
 
   // The Canvas this presenter draws in — the pointer gate registers its
   // mesh here, and a deferred presentation waits on this host's frame tail.
   const presenterHost = useSurfaceHostContext()
+  useEffect(() => {
+    if (!hasFrameListeners) return
+    return presenterHost?.registerBeforeDraw((drawScene, drawCamera, renderTarget) => {
+    const mesh = meshRef.current
+    if (!mesh || !surfaceBelongsToScene(mesh, drawScene) || !frameChannel.hasListeners()) return
+    frameChannel.publish({ ...readSurfaceFrameState(store.handle), mesh, camera: drawCamera, canvas: gl.domElement, renderTarget, part: partId, time: performance.now() })
+    })
+  }, [presenterHost, gl, store, partId, frameChannel, hasFrameListeners])
   // The gate raycasts against exactly the registered meshes, so a full-page
   // Canvas stays clear everywhere no Surface stands. Deferred to an effect
   // because the mesh does not exist until after the commit.
   useEffect(() => {
-    const mesh = meshRef.current
-    if (!presenterHost || !mesh) return
-    return presenterHost.registerObject(mesh)
-  }, [presenterHost])
+    if (!presenterHost || !mountedMesh) return
+    return presenterHost.registerObject(mountedMesh)
+  }, [presenterHost, mountedMesh])
 
   // Document-level pointer machinery, reference-counted across every
   // Surface on the page — one set of listeners however many presenters.
@@ -575,14 +620,15 @@ function SurfacePresenter({
 
   /** Stand the mesh on the page box this Surface is matched to. */
   const placeOnDom = (mesh: THREE.Mesh) => {
-    const pageRoot = part?.pageRoot
+    const pageRoot = part?.pageContent?.() ?? part?.pageRoot
     const rect = pageRoot?.getBoundingClientRect()
     if (pageRoot) reportUnmatchableChain(pageRoot, reportError)
-    if (rect && rectIsMeasurable(rect)) {
+    const canvasRect = gl.domElement.getBoundingClientRect()
+    if (rect && rectIsMeasurable(rect) && rectIsMeasurable(canvasRect)) {
       const match = matchDomTransform(
         camera,
         rect,
-        { width: size.width, height: size.height },
+        canvasRect,
         MATCH_DOM_DISTANCE,
         matchRef.current,
       )
@@ -592,6 +638,22 @@ function SurfacePresenter({
       mesh.updateMatrixWorld()
     }
   }
+
+  useEffect(() => {
+    if (effectivePlacement !== 'match-dom') return
+    let stop: (() => void) | null = null
+    const sync = () => {
+      if (!store.holdsPage()) {
+        stop ??= watchSurfacePlacement([
+          () => part?.pageContent?.() ?? part?.pageRoot,
+          () => gl.domElement,
+        ], invalidate)
+      } else { stop?.(); stop = null }
+    }
+    const unsubscribe = store.subscribeHold(sync)
+    sync()
+    return () => { unsubscribe(); stop?.() }
+  }, [store, part, gl, invalidate, effectivePlacement])
 
   /**
    * Retell the pointer after the world moves. Events raycast the geometry as
@@ -623,6 +685,22 @@ function SurfacePresenter({
   }
   }
 
+  const updateMatchedDensity = (): boolean => {
+    if (!runtime || resolution !== 'auto' || effectivePlacement !== 'match-dom') return false
+    const page = part?.pageContent?.() ?? part?.pageRoot
+    if (!page) return false
+    const density = matchedSurfaceDensity([width,height], page.getBoundingClientRect(), gl.domElement.getBoundingClientRect(), [gl.domElement.width,gl.domElement.height])
+    if (density <= 0) return false
+    const exact = clampScale(density,width,height)
+    const lod = lodRef.current
+    // Sub-texel roundoff must not repaint an otherwise unchanged source.
+    if (Math.abs(exact-lod.tier)*Math.max(width,height) >= 1) {
+      lod.tier = exact
+      runtime.proposeTier(lodKey,exact)
+    }
+    return true
+  }
+
   const stepLod = (mesh: THREE.Mesh) => {
     // Dynamic LOD: compare projected screen density — device px per CSS px
     // — against the current tier every LOD_EVERY-th frame. `proposeTier`
@@ -631,6 +709,13 @@ function SurfacePresenter({
     if (!runtime) return
     if (resolution !== 'auto' && !Array.isArray(resolution)) return
     const lod = lodRef.current
+    if (lod.source !== runtime) {
+      lod.source = runtime
+      lod.tier = runtime.source.scale()
+      lod.proposed = lod.tier
+      runtime.proposeTier(lodKey,lod.tier)
+    }
+    if (lod.aligned || updateMatchedDensity()) return
     if (lod.frame++ % LOD_EVERY !== lodPhase) return
     // SAFETY: three's own brand, tested before any perspective-only field
     // is read; r3f types the store's camera as the base class.
@@ -698,7 +783,7 @@ function SurfacePresenter({
   // 2026-08-20: a pointer sweeping through a landing showed two frames with
   // no hover on either copy. Buttonless only, for the arrival burst's reason.
   const bridgePage = () => {
-    const pageRoot = partRef.current?.pageRoot
+    const pageRoot = partRef.current?.pageContent?.() ?? partRef.current?.pageRoot
     const landingPlace = lastPointerPlace()
     if (pageRoot && landingPlace && landingPlace.sample.buttons === 0) {
       bridgeHover(pageRoot, landingPlace.x, landingPlace.y)
@@ -715,7 +800,7 @@ function SurfacePresenter({
    */
   const arrivalUv = (place: PointerPlace): ArrivalUv | null => {
     if (effectivePlacement === 'match-dom') {
-      const rect = partRef.current?.pageRoot?.getBoundingClientRect()
+      const rect = (partRef.current?.pageContent?.() ?? partRef.current?.pageRoot)?.getBoundingClientRect()
       if (!rect || !rectIsMeasurable(rect)) return null
       if (
         place.x < rect.left ||
@@ -793,6 +878,8 @@ function SurfacePresenter({
         request: pointerRoute,
         capable: store.getState().supported === true,
         hearing: store.canvasHearsPointer(),
+        pointerEvents,
+        renderMatrix:rasterAlignment.renderedMatrix() ?? undefined,
         mirrorU,
         contentWidth: width,
         contentHeight: height,
@@ -803,6 +890,44 @@ function SurfacePresenter({
     )
   }
   const stepRouteRef = useLatest(stepRoute)
+  useLayoutEffect(() => {
+    stepRouteRef.current()
+    invalidate()
+  }, [runtime, pointerEvents, pointerRoute, mountedMesh, geometry, authoredRaycast, stepRouteRef, invalidate])
+
+  const rasterRef=useLatest({runtime,width,height,resolution})
+  useEffect(()=>presenterHost?.registerRaster((drawScene,drawCamera,target)=>{
+    const mesh=meshRef.current,{runtime,width,height,resolution}=rasterRef.current
+    if(!mesh||!runtime||!surfaceBelongsToScene(mesh,drawScene))return null
+    // Align the main image, including equally sized composer targets. A reduced
+    // intermediate target has its own authored sampling policy.
+    const size=gl.getDrawingBufferSize(new THREE.Vector2())
+    lodRef.current.aligned=false
+    if(target&&(target.width!==size.x||target.height!==size.y)){
+      rasterAlignment.rememberPose(mesh)
+      if(drawCamera===camera)stepRouteRef.current()
+      return null
+    }
+    const viewport=gl.getCurrentViewport(new THREE.Vector4())
+    const paint=runtime.currentPaint()
+    const material=mesh.material,texture=runtime.texture()
+    const directMap=texture&&!Array.isArray(material)&&'map' in material&&material.map===texture&&additionalParts.length===0
+    if(!paint||!directMap){rasterAlignment.rememberPose(mesh);if(drawCamera===camera)stepRouteRef.current();return null}
+    lodRef.current.aligned=false
+    const release=rasterAlignment.prepare({mesh,camera:drawCamera,target,viewportWidth:viewport.z,viewportHeight:viewport.w,
+      sourceWidth:width,sourceHeight:height,density:runtime.source.rasterScale()[0],densityY:runtime.source.rasterScale()[1],textureWidth:paint.storeSize[0],textureHeight:paint.storeSize[1],
+      requestDensity(x,y){
+        if(resolution!=='auto')return
+        lodRef.current.aligned=true
+        const current=runtime.source.rasterScale()
+        if(Math.abs(x-current[0])*width<1&&Math.abs(y-current[1])*height<1)return
+        lodRef.current.tier=Math.max(x,y);lodRef.current.proposed=lodRef.current.tier;lodRef.current.agree=0
+        runtime.proposeRaster(lodKey,[x,y])
+      },
+    })
+    if(drawCamera===camera)stepRouteRef.current()
+    return release
+  }),[presenterHost,gl,camera,rasterRef,rasterAlignment,lodKey,stepRouteRef,additionalParts])
 
   useFrame(() => {
     const mesh = meshRef.current
@@ -836,7 +961,11 @@ function SurfacePresenter({
       // frame and the page lets go in the post-draw callback below, so the
       // two happen inside one draw — and a value captured at render would
       // be one commit stale exactly where the protocol is decided.
-      const writing = store.canvasPresents()
+      const paint=runtime?.currentPaint()
+      const density=runtime?.source.rasterScale()??[0,0]
+      const rasterReady=!!paint&&Math.abs(paint.storeSize[0]-Math.round(paint.paintedSize[0]*density[0]))<=1&&Math.abs(paint.storeSize[1]-Math.round(paint.paintedSize[1]*density[1]))<=1
+      rasterReadyRef.current=rasterReady
+      const writing = store.canvasPresents() && (store.canvasHearsPointer() || rasterReady)
       // The write-free warm-up. Color, depth, and stencil are all disabled
       // together: color alone still lets invisible matter write depth, and
       // a depth-writing invisible quad punches a hole through every visible
@@ -852,7 +981,7 @@ function SurfacePresenter({
         stencilWrite: renderedMaterial.stencilWrite,
       }
     },
-    [store],
+    [store,runtime],
   )
 
   // What a completed pass PROVED, in the two stages decisions.md #25 splits
@@ -869,9 +998,13 @@ function SurfacePresenter({
     restoreAuthoredWrites(authoredRef.current)
     const pass = passRef.current
     passRef.current = null
+    if(!rasterReadyRef.current)return
     if (!pass) return
     if (presentation === 'manual') return
     if (!runtime?.uploaded()) return
+    // One shader draw can contain several HTML sources. A proxy with no
+    // color writes supplies input routing; this draw supplies its evidence.
+    if (additionalParts.some(id => !store.part(id)?.runtime?.uploaded())) return
     // The generation on the geometry, which is the one an anchor set has to
     // describe. Read after the draw because that is when it is true.
     if (!passIsWarmUp(pass)) {
@@ -892,7 +1025,7 @@ function SurfacePresenter({
     }
     if (!passNeedsHostTail(pass)) return
     presenterHost?.deferPresentation(() => store.present(presenterKey, epoch))
-  }, [runtime, store, presenterKey, presenterHost, anchors, presentation])
+  }, [runtime, store, presenterKey, presenterHost, anchors, presentation, additionalParts])
 
   // The mask, injected into the default material. Always injected and
   // uniform-driven: radii of zero make it a no-op, so there is one program
@@ -1132,9 +1265,10 @@ function SurfacePresenter({
 
   return (
     <SurfacePartContext value={presenterPart}>
+      <SurfaceFrameContext value={frameChannel}>
       <SurfaceAnchorContext value={anchors}>
       <mesh
-        ref={meshRef}
+        ref={bindMesh}
         raycast={raycast}
         {...meshProps}
         onPointerDown={handleDown}
@@ -1166,6 +1300,7 @@ function SurfacePresenter({
         {children}
       </mesh>
       </SurfaceAnchorContext>
+      </SurfaceFrameContext>
     </SurfacePartContext>
   )
 }

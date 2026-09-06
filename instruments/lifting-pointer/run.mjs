@@ -94,9 +94,9 @@ try {
 
   // An initially selected Surface must tolerate the separate R3F root's
   // first commit; it cannot require the user to mount the canvas earlier.
-  await page.goto(`http://127.0.0.1:${port}/?initial=canvas`, { waitUntil: 'load' })
+  await page.goto(`http://127.0.0.1:${port}/?initial=scene`, { waitUntil: 'load' })
   await page.waitForFunction(
-    () => window.__probe?.state.presented === 'canvas' && !window.__probe.state.isChanging,
+    () => window.__probe?.state.presented === 'scene' && !window.__probe.state.isChanging,
     { timeout: 15_000 },
   )
   await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load' })
@@ -140,13 +140,13 @@ try {
   // runner lands it in the gl phase and fails the gate on timing alone.
   for (const offsetMs of [100, 350, 550]) {
     await page.evaluate(() => window.__probe.mark('request-webgl'))
-    await page.evaluate(() => window.__probe.setRenderIn('canvas'))
+    await page.evaluate(() => window.__probe.setRenderIn('scene'))
     await sleep(offsetMs)
     const st = await stateNow()
     const r = await clickAndRecord(`lifting +${offsetMs}ms`)
     r.phaseAtClick = st
     results.push(r)
-    await waitForView('canvas')
+    await waitForView('scene')
     if (offsetMs === 100) {
       // ── gl-phase baseline, once: the parked copy must hear the relay ──
       results.push(await clickAndRecord('gl phase'))
@@ -159,7 +159,7 @@ try {
   // ── hover during lifting: does the visible copy show feedback? ───────
   await page.mouse.move(center.x - 200, center.y - 120)
   await sleep(100)
-  await page.evaluate(() => window.__probe.setRenderIn('canvas'))
+  await page.evaluate(() => window.__probe.setRenderIn('scene'))
   await sleep(250)
   await page.mouse.move(center.x, center.y, { steps: 4 })
   await sleep(150)
@@ -168,17 +168,17 @@ try {
     state: window.__probe.state,
     canvasSolid: window.__probe.canvasSolid(),
   }))
-  await waitForView('canvas')
+  await waitForView('scene')
   await sleep(100)
   const hoverGl = await page.evaluate(() => window.__probe.hoverState())
 
   // Explicit presentation choices must not strand the managed scene or
   // leave an invisible page copy interactive after its presentation stops.
   const policies = []
-  for (const requested of ['both', 'none', 'page', 'canvas']) {
+  for (const requested of ['page', 'scene']) {
     await page.evaluate((value) => window.__probe.setRenderIn(value), requested)
     await waitForView(requested)
-    if (requested === 'page' || requested === 'none') {
+    if (requested === 'page') {
       await page.waitForFunction(() => window.__probe.scene.active === 0, { timeout: 5_000 })
     } else {
       // A static mounted presenter is not a reason to promote a demand
@@ -228,7 +228,7 @@ try {
     console.error('\nAPPARATUS FAILURE: a click at rest did not reach the page copy.')
     process.exit(1)
   }
-  if (gl?.heardBy !== 'source') {
+  if (gl?.heardBy !== 'scene') {
     console.error('\nAPPARATUS FAILURE: a click in the gl phase did not reach the parked copy.')
     process.exit(1)
   }
@@ -236,8 +236,8 @@ try {
   // ── the contract: input follows the eye (decisions.md #33) ────────────
   const failures = []
   for (const policy of policies) {
-    const needsPage = policy.requested === 'page' || policy.requested === 'both'
-    const needsScene = policy.requested === 'canvas' || policy.requested === 'both'
+    const needsPage = policy.requested === 'page'
+    const needsScene = policy.requested === 'scene'
     if (policy.pageVisible !== needsPage) failures.push(`${policy.requested}: wrong page visibility`)
     if (policy.sceneActive !== Number(needsScene)) failures.push(`${policy.requested}: wrong scene lifetime`)
   }
@@ -248,19 +248,14 @@ try {
     }
   }
   if (hoverLifting.state.presented === 'page' && hoverLifting.state.isChanging) {
-    if (hoverLifting.pageRealHover !== true) {
+    if (hoverLifting.realHover !== true) {
       failures.push('lifting hover: the visible page copy shows no real :hover')
     }
-    if (hoverLifting.sourceDataHover !== false) {
-      // Either the relay ran while the canvas had no pointer ownership, or
-      // the #33 edge burst failed to clear a twin left by an earlier gl
-      // phase when the hold returned to the page.
-      failures.push('lifting hover: the parked copy wears data-hover')
-    }
+
   } else {
     failures.push('lifting hover sample missed the lifting window — timing apparatus problem')
   }
-  if (hoverGl.sourceDataHover !== true) {
+  if (hoverGl.dataHover !== true) {
     failures.push('gl hover: the relay did not stamp data-hover on the source copy')
   }
   if (failures.length) {

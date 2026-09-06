@@ -188,8 +188,7 @@ function PixelPerfect() {
 // ── the page ───────────────────────────────────────────────────────────
 
 export function RefractionApp() {
-  const outgoing = useSurfaceHandle('refraction-square')
-  const incoming = useSurfaceHandle('refraction-circle')
+  const surface = useSurfaceHandle('refraction')
 
   const [t, setT] = useState(0)
   const [running, setRunning] = useState(false)
@@ -352,41 +351,10 @@ export function RefractionApp() {
         </div>
 
         <div ref={holderRef} className="refraction-holder">
-          {/* The two documents trade roles at the ends. Whichever the
-              compositor is holding is exclusive (`view`) and carries a
-              presenter; the other has neither, which makes it a resident
-              source — content and a size, composited nowhere, existing to
-              be sampled. Mid-crossing both are resident and the mesh is the
-              only thing drawing either of them.
-
-              The leaving page goes to no `view` at all on the far side
-              rather than back to `'page'`. `'page'` is a request for the DOM
-              to take the hold, and the store grants it inside a draw while
-              React unmounts the holder in a later commit — so the leaving
-              document was visible for exactly one frame in the middle of
-              landing on the arriving one. Measured 2026-08-22 off a 60fps
-              screencast: frames 407 and 409 read the circle at 227.6 mean
-              luminance and frame 408 read the square at 224.8, which is the
-              square's own resting value. */}
-          <Surface
-            surface={outgoing}
-            renderIn={landed === 'arriving' ? 'none' : lifted ? 'canvas' : 'page'}
-            timing={{ settleMs: 0, durationMs: 1 }}
-            size={[STAGE_W, STAGE_H]}
-            source={leaving}
-          >
-            {landed !== 'arriving' && <Surface.DOM>{leaving}</Surface.DOM>}
-          </Surface>
-
-          <Surface
-            surface={incoming}
-            renderIn={landed === 'arriving' ? 'page' : 'none'}
-            timing={{ settleMs: 0, durationMs: 1 }}
-            size={[STAGE_W, STAGE_H]}
-            source={arriving}
-          >
-            {landed === 'arriving' && <Surface.DOM>{arriving}</Surface.DOM>}
-          </Surface>
+          <Surface.Root surface={surface} inScene={lifted} timing={{ settleMs: 0, durationMs: 1 }}>
+            <Surface.HTML part="leaving" hidden={landed === 'arriving'} size={[STAGE_W, STAGE_H]}>{leaving}</Surface.HTML>
+            <Surface.HTML part="arriving" hidden={landed !== 'arriving'} size={[STAGE_W, STAGE_H]}>{arriving}</Surface.HTML>
+          </Surface.Root>
         </div>
       </div>
 
@@ -406,18 +374,21 @@ export function RefractionApp() {
         {/* The custom scene subtree is active only during the business
             interaction. The declared meshes retain their own handoff
             lifetime, including preparation and return. */}
-        {lifted && pos && (
-          <Surface.Scene surface={outgoing}>
+        {pos && (
+          <Surface.Scene surface={surface}>
           <group position={[pos.wx, pos.wy, 0]}>
             <Surface.Mesh
-              surface={outgoing}
+              surface={surface}
+              part="leaving"
+              sampledParts={['arriving']}
               placement="manual"
               alpha="source"
               frustumCulled={false}
               geometry={<planeGeometry args={[STAGE_W, STAGE_H]} />}
               material={
                 <RefractionMaterial
-                  incoming={incoming}
+                  incoming={surface}
+                  incomingPart="arriving"
                   drive={drive}
                   tune={tune}
                   stageW={STAGE_W}

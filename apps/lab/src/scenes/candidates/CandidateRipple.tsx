@@ -331,21 +331,9 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
   return (
     <div ref={holder} className="cand-target" onPointerDown={onHolderDown} onPointerUp={onHolderUp}>
       {size ? (
-        <Surface
-          surface={surface}
-          renderIn={renderIn}
-          timing={{ settleMs: 0, durationMs: 1 }}
-          size={size}
-          // Resolution stays 'auto', which seeds at the display's own
-          // density — NOT pinned to 2. A pinned tier always carries a
-          // mipmap chain, and trilinear at a nominal 1:1 blends in the
-          // box-filtered half-res mip on any fractional LOD, which reads
-          // as an 11px label going soft while standing still. The auto
-          // tier above 0.5 has no mips: bilinear on a grid-aligned quad
-          // is point sampling.
-          source={content}
-        >
-          <Surface.DOM />
+        <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={renderIn === 'canvas'}>
+<Surface.HTML size={size}>{content}</Surface.HTML>
+
           {box && (
             <Surface.Mesh
               key={runId.current}
@@ -370,7 +358,7 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
               <WaveDrive waves={waves} onDone={() => setRenderIn('page')} />
             </Surface.Mesh>
           )}
-        </Surface>
+        </Surface.Root>
       ) : (
         content
       )}
