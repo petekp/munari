@@ -203,15 +203,9 @@ function AnalyzedBlock({
   return (
     <div ref={holder} className="cand-block-holder" data-active={active || undefined}>
       {size ? (
-        <Surface
-          surface={surface}
-          renderIn={renderIn}
-          timing={{ settleMs: 0, durationMs: 1 }}
-          size={size}
-          resolution={2}
-          source={content}
-        >
-          <Surface.DOM />
+        <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={renderIn === 'canvas'}>
+<Surface.HTML size={size} resolution={2}>{content}</Surface.HTML>
+
           {box && (
             <Surface.Mesh
               placement="manual"
@@ -226,7 +220,7 @@ function AnalyzedBlock({
               material={<PrismMaterial on={active} onFaded={() => setRenderIn('page')} />}
             />
           )}
-        </Surface>
+        </Surface.Root>
       ) : (
         content
       )}

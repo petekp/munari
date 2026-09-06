@@ -18,7 +18,7 @@
 // invisible: the Surface renders, in the wrong place, with no error.
 
 import * as THREE from 'three'
-import { composeMatchableChain, rectToNdc, type RectLike, type ViewportLike } from '@munari/core'
+import { composeMatchableChain, rectToNdc, type RectLike } from '@munari/core'
 
 /** Where the plane sits relative to the camera, in world units. */
 export const MATCH_DOM_DISTANCE = 1
@@ -30,12 +30,15 @@ export interface MatchDomResult {
   scale: THREE.Vector3
 }
 
+// The 2026-09-05 inset counter was offset by its canvas's entire origin.
+// Normalize client coordinates here; the core rect law stays canvas-local.
+const _localRect = { left: 0, top: 0, width: 0, height: 0 }
 const _forward = new THREE.Vector3()
 const _right = new THREE.Vector3()
 const _up = new THREE.Vector3()
 
 /**
- * Place a unit plane over `rect`, expressed in `viewport` (the canvas box).
+ * Place a unit plane over a client rect inside the canvas's current client box.
  *
  * `out` is mutated and returned — this runs per frame for every match-DOM
  * Surface on the page, and allocating three vectors and a quaternion per
@@ -45,11 +48,15 @@ const _up = new THREE.Vector3()
 export function matchDomTransform(
   camera: THREE.Camera,
   rect: RectLike,
-  viewport: ViewportLike,
+  viewport: RectLike,
   distance: number,
   out: MatchDomResult,
 ): MatchDomResult {
-  const ndc = rectToNdc(rect, viewport)
+  _localRect.left = rect.left - viewport.left
+  _localRect.top = rect.top - viewport.top
+  _localRect.width = rect.width
+  _localRect.height = rect.height
+  const ndc = rectToNdc(_localRect, viewport)
 
   camera.updateMatrixWorld()
   out.quaternion.setFromRotationMatrix(camera.matrixWorld)
@@ -110,7 +117,7 @@ export function reportUnmatchableChain(
   if (composeMatchableChain(chain) !== null) return
   report(
     new Error(
-      'munari: a <Surface.DOM> holder sits under a transform this placement ' +
+      'munari: a <Surface.HTML> holder sits under a transform this placement ' +
         'cannot match. Translation and positive scale are matchable; rotation, ' +
         'skew, mirroring, and any 3D transform are not — the Surface will render ' +
         'in the wrong place with nothing else to say so.',

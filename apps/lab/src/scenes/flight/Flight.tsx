@@ -58,7 +58,9 @@ import {
   type SurfaceHandle,
   type SurfaceProgress,
   type SurfacePresentation,
-  useSurfaceHandle,
+  createSurface,
+  createPageTarget,
+  type PageTarget,
   useSurfaceChrome,
   useSurfaceDriver,
   useSurfaceSourceRoot,
@@ -425,9 +427,10 @@ export interface AeroState {
   wad: THREE.Vector3
 }
 
-function CardMaterial({ gloss = 0.5, aero }: { gloss?: number; aero: AeroState }) {
+function CardMaterial({ gloss = 0.5, aero, chromeRef }: { gloss?: number; aero: AeroState; chromeRef: React.RefObject<SurfaceChrome | null> }) {
   const texture = useSurfaceTexture()
   const { chrome, width, height } = useSurfaceChrome()
+  useLayoutEffect(() => { chromeRef.current = chrome }, [chrome, chromeRef])
   const uniforms = useMemo(
     () => ({
       tMap: textureSlot(),
@@ -1162,6 +1165,7 @@ interface FlyingProps {
   onAltitude: (hi: boolean) => void
   /** The wad left the viewport: commit the delete. */
   onCrumpled: () => void
+  onRegrab: (localX: number, localY: number) => void
 }
 
 function Flying({
@@ -1174,6 +1178,7 @@ function Flying({
   onLanded,
   onAltitude,
   onCrumpled,
+  onRegrab,
 }: FlyingProps) {
   const f = flight.current!
   const cardRef = useRef<THREE.Group>(null)
@@ -1297,8 +1302,10 @@ function Flying({
           renderOrder={1}
           frustumCulled={false}
           geometry={<planeGeometry args={[f.w, f.h, 32, 12]} />}
-          material={<CardMaterial aero={aero} />}
-        />
+          material={<CardMaterial aero={aero} chromeRef={chromeRef} />}
+        >
+          <RegrabTarget flight={flight} onRegrab={onRegrab} />
+        </Surface.Mesh>
       </group>
     </>
   )
@@ -1438,11 +1445,24 @@ export function FlightApp() {
   const [presented, setPresented] = useState<SurfacePresentation>('page')
   // Identity only. What the Surface is DOING — its view, its timing, who
   // hears about it — is stated once, on the `<Surface>` below.
-  const surface = useSurfaceHandle('flight-card')
+  const cardSurfaces = useMemo(() => new Map<string, { handle: SurfaceHandle; target: PageTarget; ref: (element: HTMLLIElement | null) => void }>(), [])
+  const cardSurface = (id: string) => {
+    let entry = cardSurfaces.get(id)
+    if (!entry) {
+      const target = createPageTarget()
+      entry = { handle: createSurface(`flight-card-${id}`), target, ref(element) {
+        if (element) slots.current.set(id, element)
+        else slots.current.delete(id)
+        target.ref(element)
+      } }
+      cardSurfaces.set(id, entry)
+    }
+    return entry
+  }
   const requestLift = useCallback((webgl: boolean) => {
-    setView(webgl ? 'canvas' : 'page')
+    setView(webgl ? 'scene' : 'page')
   }, [])
-  const glHolds = presented === 'canvas'
+  const glHolds = presented === 'scene'
   const ending = useRef(false)
   const pendingDelete = useRef<string | null>(null)
   // Radii and box-shadow layers, measured from the card's own paint. A ref,
@@ -2034,7 +2054,6 @@ export function FlightApp() {
     return () => cancelAnimationFrame(raf)
   }, [flyingId, slotRect])
 
-  const flyingCard = flyingId ? cards[flyingId] : null
 
   return (
     <div className="l14" ref={scroller}>
@@ -2050,63 +2069,35 @@ export function FlightApp() {
                 </span>
               </h2>
               <ul>
-                {board[col.id].map((id) => {
-                  const body = (
-                    <CardBody
-                      card={cards[id]}
-                      onChange={(p) => patch(id, p)}
-                      onGrab={(e) => beginDrag(id, e)}
-                      onDelete={(e) => deleteCard(id, e)}
-                    />
-                  )
-                  const f = flyingId === id ? flight.current : null
-                  return (
-                    <li
-                      className="l14-slot"
-                      key={id}
-                      data-empty={flyingId === id && glHolds}
-                      data-away={flyingId === id && glHolds && atAltitude}
-                      data-deleting={pendingDelete.current === id ? '' : undefined}
-                      ref={(el) => {
-                        if (el) slots.current.set(id, el)
-                        else slots.current.delete(id)
-                      }}
-                    >
-                      {/* The source is declared HERE, in the slot the card
-                          came from, and presented by a mesh inside the
-                          Canvas. Nothing moves at handoff: this copy keeps
-                          its layout box and simply stops being the visible
-                          one, which is why the page does not twitch and why
-                          the slot is already the right size to drop into.
-                          `size` is authored rather than measured so the
-                          texture and the plate geometry are the same card to
-                          a sub-pixel. */}
-                      {f ? (
-                        <Surface
-                          surface={surface}
-                          renderIn={view}
-                          timing={{ settleMs: 0, durationMs: 1 }}
-                          size={[f.w, f.h]}
-                          resolution={density}
-                          source={body}
-                          onPresentationChange={onPresentationChange}
-                          onChrome={(c) => {
-                            chromeRef.current = c
-                          }}
-                        >
-                          <Surface.DOM>{body}</Surface.DOM>
-                          <RegrabTarget flight={flight} onRegrab={regrab} />
-                        </Surface>
-                      ) : (
-                        body
-                      )}
-                    </li>
-                  )
-                })}
+                {board[col.id].map(id => (
+                  <li className="l14-slot" key={id} ref={cardSurface(id).ref}
+                    data-empty={flyingId === id && glHolds}
+                    data-away={flyingId === id && glHolds && atAltitude}
+                    data-deleting={pendingDelete.current === id ? '' : undefined} />
+                ))}
               </ul>
             </section>
           ))}
         </div>
+      </div>
+
+      <div style={{display:'contents'}}>
+        {Object.values(cards).map(card => {
+          const { handle, target } = cardSurface(card.id)
+          const f = flyingId === card.id ? flight.current : null
+          return <Surface.Root key={card.id} surface={handle} timing={{ settleMs: 0, durationMs: 1 }}
+            inScene={Boolean(f) && view === 'scene'} onPresentationChange={f ? onPresentationChange : undefined}>
+            <Surface.HTML target={target} size={f ? [f.w,f.h] : undefined} resolution={density} onChrome={chrome => { if (f) chromeRef.current = chrome }}>
+              <CardBody card={card} onChange={change => patch(card.id,change)} onGrab={event => beginDrag(card.id,event)} onDelete={event => deleteCard(card.id,event)} />
+            </Surface.HTML>
+            <Surface.Scene>
+              {f && <>
+                <Flying surface={handle} flight={flight} density={density} chromeRef={chromeRef} slotRect={slotRect} scrollTop={scrollTop} onLanded={onLanded} onAltitude={setAtAltitude} onCrumpled={onCrumpled} onRegrab={regrab} />
+                <ReleaseAfterSceneCleanup onRelease={releaseFlight} />
+              </>}
+            </Surface.Scene>
+          </Surface.Root>
+        })}
       </div>
 
       {/* `position` and `inset` have to be INLINE: r3f writes
@@ -2124,13 +2115,8 @@ export function FlightApp() {
         className="l14-overlay"
         style={{ position: 'fixed', inset: 0 }}
         gl={{ alpha: true, antialias: true }}
-        // An overlay stretched across somebody's document does not get to burn
-        // a GPU frame every 8 ms for the privilege of being empty. There is a
-        // card in flight or there is nothing to draw, and the host promotes
-        // this to `always` for exactly as long as a crossing or a mounted
-        // WebGL side needs it. (Same instinct as the upload-on-paint contract
-        // one layer down: idle costs nothing, and "idle" is the normal case.)
-        frameloop="demand"
+        // Flight needs frames after the handoff settles, until its physics stops.
+        frameloop={flyingId !== null ? 'always' : 'demand'}
         dpr={[1, 2]}
         camera={{ fov: FOV, position: [0, 0, 1000] }}
         onCreated={(state) => {
@@ -2139,23 +2125,7 @@ export function FlightApp() {
         }}
       >
         <PixelPerfect />
-        <Surface.Scene surface={surface}>
-          {flyingCard && flight.current && <>
-          <Flying
-            key={flyingCard.id}
-            surface={surface}
-            flight={flight}
-            density={density}
-            chromeRef={chromeRef}
-            slotRect={slotRect}
-            scrollTop={scrollTop}
-            onLanded={onLanded}
-            onAltitude={setAtAltitude}
-            onCrumpled={onCrumpled}
-          />
-          <ReleaseAfterSceneCleanup onRelease={releaseFlight} />
-          </>}
-        </Surface.Scene>
+
       </SurfaceCanvas>
     </div>
   )

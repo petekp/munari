@@ -450,3 +450,8 @@ body,
 .scene-error-hint {
   color: rgba(242, 240, 234, 0.6);
 }
+
+.scene-error-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; }
+.scene-error-actions button, .scene-error-actions a { min-height: 44px; padding: 10px 14px; border: 1px solid #74747e; border-radius: 6px; background: #232329; color: #f2f0ea; font: 14px/1.5 var(--body); text-decoration: none; cursor: pointer; }
+.scene-error summary { padding: 12px 0; cursor: pointer; }
+.scene-error :is(button, a, summary):focus-visible { outline: 2px solid #e3ec5a; outline-offset: 4px; }

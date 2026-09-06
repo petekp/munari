@@ -2121,11 +2121,11 @@ input at any instant. The *relay* synthesizes the whole interaction and
 serves every pose. The *native route* lifts the parked capture canvas
 above the renderer canvas, puts the presented pose on the canvas itself
 as a CSS `matrix3d`, and lets Chrome hit-test the real child through it.
-The verdict is a function of one request and five observed booleans and
+The verdict is a function of one request and six observed booleans and
 nothing else; routes consult it and never negotiate with each other. A
 change of verdict is a handoff with named duties, in a fixed order.
 
-The native route is opt-in per presenter: `<Surface.WebGL
+The native route is opt-in per presenter: `<Surface.Mesh
 pointerRoute="auto">`. The default stays `"relay"`.
 
 **Why a second route at all.** A synthetic dispatch cannot produce a
@@ -2225,7 +2225,7 @@ route sets those same attributes from the browser's real events, through
 the same module the relay uses. A scene never learns which route it got.
 
 **The contracts.** `tests/conformance/pointer/pointerRoute` (the law,
-enumerated over all 64 condition sets),
+enumerated over all 128 condition sets),
 `tests/conformance/pointer/surfacePose` (agreement: at rest `posePoint`
 IS the relay's own `rect.left + u * rect.width`, and the `matrix3d`
 string parsed and applied lands on the same point),
@@ -2323,3 +2323,270 @@ cross the renderer boundary; custom compositors supply their own evidence;
 and stable scene declarations precede deferred R3F contributions. Initial
 canvas requests wait for renderer bootstrap before declaration validation. No release
 or deployment is part of this verification.
+
+<a id="41"></a>
+
+## #41 — Explicit HTML composition and source coverage (2026-09-05, isolated experiment)
+
+This entry records the implemented API experiment. It does not mark a production
+cutover or supersede the main checkout's public names in #40. The experiment
+uses Proof-suffixed exports while the lab callers alias them to the proposed
+names.
+
+A Surface Root requests a page-to-scene handoff with `inScene`. Its HTML slot
+keeps one React instance and moves its live node with state-preserving DOM
+operations. Inert snapshots cover the page during preparation. Canvas snapshots
+are visual copies; they are not additional live media publishers.
+
+The HTML slot measures its content rather than an otherwise wider wrapper.
+Page-holder styles have explicit `pageClassName` and `pageStyle` names. Inline
+content uses `as="span"`. The default layout preserves the page slot;
+`layout="reflow"` removes it after a proven canvas presentation and restores it
+when a return is requested. A word cannot disappear before its mesh is drawn.
+
+SceneSurface supplies scene-only HTML from either React children or a detached
+`element`, with explicit dimensions. CaptureContent accepts the same two input
+forms for a capture-only effect. The existing-element capture hook observes a
+native target and leaves it in place.
+
+One mesh may display several named HTML parts. `sampledParts` lists the
+additional sources its material samples. All must be usable before that mesh
+can establish readiness. Its qualifying draw supplies evidence for those
+parts. A color-disabled pointer proxy supplies routing, not evidence; it uses
+manual presentation. A late source or mesh must register when its actual
+resource appears, rather than lose its registration during an earlier empty
+commit.
+
+These changes preserve the existing transfer and pointer laws and their pinned
+numbers. Compile-time examples change with the declarations. The composition
+probe pins delayed-source blocking and actual two-source pixels. Gravity's
+browser check pins valid inline markup, layout reflow, original-node identity,
+and return. The maintained pointer, film, shadow, and scene gates retain their
+behavior thresholds. Their source lookups now identify named parts and exclude
+inert snapshots from live media identity counts.
+
+
+Page targets separate a retained content instance from its changing layout slot.
+The target ref moves the retained boundary home before React removes an old
+parent, then attaches to the new slot. A same-commit detach/attach does not hide
+or blur its focused field. The real-browser target contract pins original-node
+identity, local state, focus, missing-target hiding, and exactly one unmount.
+
+Companions subscribe under their Mesh with `useSurfaceFrameProof`. The host
+updates world matrices and publishes the effective controller state before
+rendering. No extra traversal is added when no subscribers exist. A callback's
+`canvasMayDraw` is permission for this draw, not a receipt. Existing receipt
+and hold laws remain unchanged. The frame-order instrument deliberately puts
+a pose writer after an independent follower and the companion before its
+source in draw order; the ordered callback must still agree.
+
+The postcard keeps request/status updates within its own React subtree. CPU
+profiling found that page-wide status subscriptions rerendered the example
+list and tutorial code highlighting during handoff. Its canvas now belongs to
+the scrolling section. The fixed-canvas negative control measured 12 CSS px
+of lag against a native marker during 12 px wheel steps; the section canvas
+measured zero. A page-wide scrolling band is unnecessary for this one-section
+scene. Viewport-attached scenes can still use fixed canvases.
+
+The postcard contract uses six lift/return cycles. With the light fixed, two
+strips outside the card must stay within 0.5 mean absolute error per 8-bit
+channel at each handoff, with no single-frame spike over 0.5. This permits
+rounding below a channel level while rejecting the measured duplicate/missing
+shadow. A motion-signal assertion prevents a background-only comparison.
+The scroll comparison allows 1.5 CSS px for pixel-center rounding, well below
+the measured 12 px failure. The timing run has no screencast or profiler; an
+animation-frame timestamp gap within one second of a handoff must stay within
+two measured frame periods plus 2 ms of clock tolerance. Elapsed observer
+callback gaps are separate diagnostics, not display timestamps. Captures,
+traces, and negative controls are retained with their outcomes.
+
+These budgets describe the measured postcard scenario. They do not prohibit
+live content paints/uploads during motion or intentional layout changes.
+`layout="reflow"`, moving page targets, window resize, video, and typing remain
+valid. ResizeObserver does not detect position-only movement; there is no
+blanket no-movement warning pretending otherwise. The instrument measures the
+known-stable postcard slot directly. Existing conformance numbers were not
+relaxed, and the new contracts ship with this experimental decision.
+
+
+<a id="42"></a>
+
+## #42 — Renderer availability and placement wakeups (2026-09-06, API hardening)
+
+The binding projects HTML client coordinates relative to the actual GL canvas
+client rectangle. Core mapping still consumes viewport-local coordinates. Six
+inset, scrolled, and positively scaled corner regressions failed before the
+binding change and pass with perspective and orthographic cameras.
+
+A settled demand canvas follows position-only changes in its page slot. The
+Chrome api-instance probe first confirms 300 ms without a draw, then changes
+an unchanged-size slot's preceding sibling without a React update or pointer
+event. It failed before placement observation and passes in all six canvas and
+camera configurations afterward. Resize and scroll checks remain separate.
+One shared frame observer reads client boxes, caches shared element reads, and
+invalidates only changed placements. Page-owned preparation uses the same
+observer to align its native rig. It is geometry observation, not protocol work.
+
+Renderer loss or unmount returns a handoff to its native page hold and voids
+preparation evidence. Author intent survives; recovery prepares again. Changing
+the caller's frameloop policy does not replace the renderer runtime. Protocol
+claims stop after the finite settle dwell when a missing presenter, part, or
+usable frame is the only possible progress. Source/presenter/evidence changes
+wake the host. An empty scene cannot pass a zero-of-zero preparation gate.
+
+Amendment to #40: requested-but-undeclared presentations are diagnosed after
+host/runtime startup and the declaration commit. A declared scene that is not
+requested is valid and remains quiet. A supported canvas request without a host
+gets one development warning after ten seconds, canceled on mount, request
+change, or unmount. Preparation waits use the same deadline, keyed by their
+missing evidence. Neither warning calls onError, changes state, grants readiness,
+or keeps a renderer busy. Production and unsupported fallback have no timers.
+
+Amendment to #39: native scene routing requires one interactive pose per capture
+source. Multiple scene presenters all use relay so no transformed source can
+corrupt another presenter's UV-to-DOM mapping. These registrations are separate
+from sampledParts draw coverage. Source replacement reacquires rig ownership;
+page preparation and scene routing park the outgoing rig before transferring
+that ownership. Scene pointerEvents="none" and effective source inertness stop
+scene input, while a page-owned warm rig continues serving its native HTML.
+Geometry provenance follows the actual library-created plane, position and UV
+attribute identities/versions, index, and draw range; unknown, replaced, or modified
+geometry takes the relay. Changing UVs can move visible content without moving the
+plane, so native hit-testing must also decline that case. The pure route
+truth table and binding regressions change with this contract.
+
+The companion hook is useSurfaceBeforeRender: one callback per scene render pass,
+after pose writers and world-matrix updates. It reports the actual camera and
+render target, including offscreen passes. Physics remains a once-per-frame job.
+
+
+Preparation fidelity: the retained Controls field kept activeElement and selection
+indices while its inert DOM placeholder lost the visible focus ring and selected
+text. The capture itself contained both. Page-owned preparation therefore displays
+the source canvas bitmap through its native input rig; the inert clone reserves
+layout only. Scene routing still hides that bitmap. A Chrome compositor recording
+at matched DPR 1 pins the focused-input crop to mean channel error <=0.5; 67 sampled
+frames measured zero. Cropped screenshot capture is kept outside the recording,
+and native/emulated device scales must agree. This does not claim that a screencast
+contains every display refresh. Typing continues to update the original source.
+
+Active copy budgets apply to the retained Controls form (70 source elements),
+Selection prose (5), and the small html/body fixture (33/27). The served-module
+instrument measured Controls p95 0.5ms/max 1.2ms; Selection 2.6/2.7ms; html 3.1/3.1ms;
+body 2.7/2.9ms. Its 24 bursts of twelve hover/mutation events produced 24 copies,
+zero consumer React renders, and zero idle copies. The fixture gate is p95 <=5ms,
+max <=8ms, <=26 copies per 24 bursts, no idle copying or per-paint consumer rendering.
+This is a bounded fixture workload, not a whole-web-page cost promise. Thresholds
+leave room above measured costs while keeping a copy below one 120Hz frame.
+
+The multi-pass companion fixture updates the scene's world matrices twice per
+pass: once before companions read, once inside Three after companions mutate.
+On four nodes, 122 passes had zero companion mismatches, 244 traversals, and a
+0.1ms maximum traversal. Its matrix-work budget is p95 <=1ms and max <=4ms; the
+larger 256-node case uses the same gate. An unsubscribed channel adds no traversal.
+
+
+<a id="43"></a>
+
+## #43 — Retained HTML API adoption (2026-09-06, development checkout)
+
+This supersedes #40's two-instance public binding and #41's temporary Proof
+exports. Surface contains one live HTML component and accepts inScene. Its
+explicit form is Root/HTML/Scene/Mesh/Anchor. SceneSurface owns scene-only HTML;
+useElementCapture observes native HTML in place; CaptureContent owns separately
+authored pixels. The optional Munari wrapper and the old DOM/Part, renderIn,
+SurfaceState/useSurfaceState and useSurfaceInstance exports are removed. There is no legacy shim.
+The internal renderer controller still represents its own pixel-policy states.
+
+The public presentation is page, scene, or null; motion destinations are page
+or scene. Author intent remains requestedInScene during fallback. Handles and
+drivers read the same raw progress. The optional eased() read names its curve;
+between/pulse windows now consume raw progress. Companion callbacks are explicitly
+per-render-pass and include the actual camera/target. Capture inspection belongs
+to the advanced entry; per-window prototype inspection is removed from the package.
+
+SceneSurface's convenience mesh is one world unit high with its authored HTML
+aspect ratio. Its earlier square plane distorted non-square sources. A surrounding
+R3F group owns placement/scale; explicit Root/HTML/Mesh gives full geometry control.
+
+The source and capture bindings are separate modules. Existing website work is
+reconciled into the isolated hardening branch; the active website checkout stays
+intact. Public exports, types, compile-only examples, docs and the tracked skill
+change together. Milestone A passed 1496 tests, type/lint/build, 31 route loads,
+retained-source/capture/host regressions, and the named Chrome gates before these
+names changed. Adoption reruns the affected checks. This is local development,
+not authorization to release, deploy or change CI.
+
+
+The final shared-source negative control also tilts and rotates the first mesh.
+Against the saved pre-hardening source, the first native click succeeds but a
+click through the second relayed pose misses the button. With source-wide relay,
+both poses reach it and return local source coordinates within 2 CSS pixels.
+The comparison fixture asserts which API revision actually loaded before claiming
+baseline evidence. A resolver/cache mix-up is a failed apparatus check, not proof.
+
+
+<a id="44"></a>
+
+## #44 — Native text clarity is the default (2026-09-06, core + binding)
+
+Pete reported fuzzy meshes throughout the visible Chrome tests, including the
+postcard. The tests often emulated DPR 1 on a Retina 2 display; capture hooks also
+started at fixed density 1, and R3F's default renderer density stopped at 2. Those
+are not the default quality policy for HTML. The renderer now follows native DPR
+unless the caller specifies a limit; captures start at native density and update
+when the display or browser zoom changes. Fractional startup density rounds up
+within an authored/texture limit, rather than starting undersupplied.
+
+A native-DPR probe still found softness. Its captured bitmap was sharp, but the
+page origin at 274.375 CSS pixels landed at device-pixel phase 0.75. Linear sampling
+reduced text edge energy to 0.755 of the native image. Applying the existing #20/#22
+pixel-grid law restored 1.000. Flat, stationary, directly mapped surfaces now receive
+that correction automatically. Only render matrices change; physics/local poses
+stay exact, moving or warped geometry stays unsnapped, and companions see the same
+corrected matrix before their pass. The renderer retains the second matrix update
+when companion callbacks mutate transforms, and avoids repeating it otherwise.
+
+Page preparation uses the same native-density/pixel-grid policy. Source captures
+can request separate horizontal and vertical raster densities without changing the layout of
+the retained DOM. This matters for non-uniform CSS scale: over-rastering both axes
+and then shrinking one blurred text again. The canvas also cancels the second CSS
+scale on R3F's already display-sized bitmap. Its camera and drawing buffer use the
+actual displayed size. Explicit density limits remain available. The 4096-pixel
+texture guard remains a real limit for large captures.
+
+At native DPR 2 the fullscreen and inset probes restored 1.000 of native text edge
+energy; the deliberately non-uniform scale recovered 0.986, up from 0.808. The actual
+stationary postcard measured zero pixel difference and 1.000 contrast. Its hidden-mesh
+negative control fell to 0.113, proving the native HTML was not concealing a bad draw.
+The clarity gate requires 0.95–1.05 of native edge energy over the same content/crop.
+These are stationary-text measurements, not a promise to eliminate intentional
+perspective filtering or motion blur.
+
+The rendered corners may differ from ideal fractional layout by less than one
+display pixel. Core projection remains exact; this is the phase correction already
+specified by #22, applied at presentation. Geometry probes read the rendered matrix
+without recomputing it from the untouched physics transform. Density, phase,
+position, and companion/motion budgets are checked independently.
+
+Soft companions can use the continuous parent pose inside the same callback.
+The postcard does this: applying the text's subpixel matrix correction to its
+soft shadow caused a 0.518-channel boundary jump at DPR 1. Its page and scene
+shadows now share the physical resting rectangle; only the text image needs
+the raster correction. The callback still runs after the current pose is applied.
+
+
+Density is now tracked per axis by each source; the existing scalar scale() remains
+its maximum, and rasterScale() reports the requested pair. Uniform setScale retains
+its uniform-axis meaning. Density changes cut the requested backing size exactly;
+the resize band still applies to changing layout dimensions. The paint regression
+found that the band retained a 600px store after a 3-to-2.4 density change asked
+for 480px, with no later layout change to trigger a settle. The paint conformance
+test now pins exact density changes independently of layout resettling.
+A single CSS content box and original element survive every raster
+change. Presenter demands combine by the maximum on each axis; explicit pins and
+texture limits still win. The compositor receives a canvas at its display size,
+with the container's extra scale canceled on the inner canvas. A separate CSS
+translation was tested and rejected: Chrome already snaps the canvas's layout
+origin, and adding a transform reintroduced blur. The pose correction belongs in
+the mesh's rendered matrix.

@@ -2,7 +2,7 @@
 //
 // The hook's contract, which is not the function's.
 //
-// `supportsDOMSurfaces` only renames a core probe, and that probe's honesty
+// `supportsSurfaces` only renames a core probe, and that probe's honesty
 // — booleans in any environment, never a throw — is pinned in
 // `tests/conformance/paint/capabilityProbe.test.ts`. What is pinned HERE is
 // the reason a hook exists beside it: the first client pass must answer

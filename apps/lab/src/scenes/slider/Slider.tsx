@@ -31,7 +31,7 @@ import {
   Surface,
   SurfaceCanvas,
   useSurfaceHandle,
-  useSurfaceState,
+  useSurfaceStatus,
   useSurfaceUniforms,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
@@ -115,7 +115,7 @@ export interface SliderProbeApi {
     ampTarget: number
     locked: boolean
     grabbed: boolean
-    presented: string
+    presented: string | null
   }
   lock(focus: number, amp: number): void
   unlock(): void
@@ -281,7 +281,7 @@ function Track({
 
 export function SliderApp() {
   const surface = useSurfaceHandle('slider-track')
-  const st = useSurfaceState(surface)
+  const st = useSurfaceStatus(surface)
   const [value, setValue] = useState(START_MS)
   const [lensLive, setLensLive] = useState(false)
   const holderRef = useRef<HTMLDivElement>(null)
@@ -373,7 +373,7 @@ export function SliderApp() {
         ampTarget: drive.current.ampTarget,
         locked: drive.current.locked,
         grabbed: drive.current.grabbed,
-        presented: stRef.current.presented,
+        presented: stRef.current.presentation,
       }),
       lock: (focus, amp) => {
         const d = drive.current
@@ -437,18 +437,10 @@ export function SliderApp() {
           </div>
         </div>
         <div ref={holderRef} className="lslider-holder">
-          <Surface
-            surface={surface}
-            renderIn="canvas"
-            timing={{ settleMs: 0, durationMs: 1 }}
-            size={[PANEL_W, PANEL_H]}
-            // dpr ceiling (2) × peak magnification (2), as in the fisheye
-            // scene: fewer texels and the magnified ticks arrive as mush.
-            resolution={2 * FISHEYE_DEFAULTS.amplitude}
-            source={content}
-          >
-            <Surface.DOM>{content}</Surface.DOM>
-          </Surface>
+          <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={true}>
+<Surface.HTML size={[PANEL_W, PANEL_H]} resolution={2 * FISHEYE_DEFAULTS.amplitude}>{content}</Surface.HTML>
+
+          </Surface.Root>
         </div>
       </div>
 

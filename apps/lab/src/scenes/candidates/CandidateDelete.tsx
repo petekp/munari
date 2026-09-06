@@ -34,7 +34,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
+import { Surface, useSurfaceChrome, useSurfaceSupport, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { plainAttribute } from '../../lib/geometry'
 import { buildShards } from './candidateShards'
@@ -342,6 +342,7 @@ function DeleteRow({
   variant: Variant
   onGone: (id: string) => void
 }) {
+  const supported = useSurfaceSupport()
   const surface = useSurfaceHandle(`delete-${id}`)
   const holder = useRef<HTMLLIElement>(null)
   const phase = usePhase()
@@ -375,6 +376,7 @@ function DeleteRow({
     (e: React.MouseEvent) => {
       const el = holder.current
       if (!el || dying) return
+      if (!supported) { onGone(id); return }
       const r = el.getBoundingClientRect()
       // The break starts where the hand was. In local mesh px, which is
       // what the shard shader compares its centres against.
@@ -387,7 +389,7 @@ function DeleteRow({
       phase.current.running = true
       setDying(true)
     },
-    [dying, phase],
+    [dying, phase, supported, onGone, id],
   )
 
   const done = useCallback(() => {
@@ -410,14 +412,9 @@ function DeleteRow({
   return (
     <li ref={holder} className="cand-row-holder" data-dying={dying || undefined}>
       {size ? (
-        <Surface
-          surface={surface}
-          renderIn={dying ? 'canvas' : 'page'}
-          timing={{ settleMs: 0, durationMs: 1 }}
-          size={size}
-          source={row}
-        >
-          <Surface.DOM />
+        <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={dying}>
+<Surface.HTML size={size}>{row}</Surface.HTML>
+
           {box && (
             <Surface.Mesh
               placement="manual"
@@ -457,7 +454,7 @@ function DeleteRow({
               <PhaseDrive phase={phase} durationMs={deleteTuning[DURATION_KEY[variant]]} onDone={done} />
             </Surface.Mesh>
           )}
-        </Surface>
+        </Surface.Root>
       ) : (
         row
       )}

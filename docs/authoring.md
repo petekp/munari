@@ -173,7 +173,7 @@ A responsive hybrid has five distinct states:
 4. Drawn frame is the uploaded generation used by a presenter.
 5. Presented framebuffer is the qualifying color-writing draw accepted at the presentation boundary.
 
-Do not attach WebGL matter measured from live layout to an older texture.
+Do not attach scene objects measured from live layout to an older texture.
 Use `Surface.Anchor`, `useSurfaceAnchorRects()` and `useSurfacePaintedSize()`
 for ordinary Surface content. The binding collects stable
 `data-munari-anchor` keys against a successful paint and commits the anchor
@@ -200,3 +200,25 @@ complete receipt usable.
 - `docs/platform.md` — the measurements these rules come from
 - `docs/focus.md` — focus units, traversal, and directional navigation
 - `docs/decisions.md` — why each rule is shaped the way it is
+
+
+## Retained HTML and capture sources
+
+`Surface.HTML` retains one live instance. Page-owned preparation uses the source
+bitmap and its native input rig so selection, caret, focus, hover and current text
+remain visible. Its inert clone reserves layout. Keep content-root dimensions
+honest; changing page parents uses a page target rather than remounting the content.
+Position-only slot changes are observed separately from capture and handoff work.
+
+`SceneSurface` has no page presentation. `useElementCapture` leaves its original
+element native and copies visual state; `CaptureContent` owns separately authored
+capture content. Captures reject unsupported media/custom elements unless excluded,
+and attached/removed sources clear stale frames. Source textures are borrowed by
+consumers and disposed only by their owner.
+
+Numeric authored dimensions must be positive and finite. An unmeasured native
+element waits for layout rather than being treated as invalid authored data.
+Companions use `useSurfaceBeforeRender` after frame pose writers; the callback may
+run for several cameras/targets in one animation frame. It updates companions,
+not the simulation clock. Canvas-relative placement follows the GL canvas's live
+client rectangle, including inset, scroll and supported positive scale.

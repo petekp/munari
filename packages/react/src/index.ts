@@ -1,6 +1,6 @@
 // @petepetrash/munari — the public surface.
 //
-// Live DOM as physical matter in WebGL (Chrome's HTML-in-canvas trial):
+// Live HTML in Three.js scenes through Chrome's HTML-in-canvas capability:
 // the react/three binding over @munari/core, and the one package that
 // is ever published (decisions.md #1). three + @react-three/fiber are
 // PEER dependencies — we are three-first, and renderer abstraction is
@@ -11,59 +11,29 @@
 // moves it, and the reads a custom material or a DOM-aligned object
 // needs. The kernel's own names and the escape hatches that carry a
 // caller-owned renderer live behind `@petepetrash/munari/advanced`, so
-// the shape a newcomer sees is the shape they should use. A name earns
-// its place here by a scene consuming it; the lab imports these two
+// the shape a newcomer sees is the shape they should use. The lab imports these two
 // entries and nothing else, so a gap shows up as a broken scene rather
 // than a relative path quietly reaching around it.
 
-// ── The atom ─────────────────────────────────────────────────────────────
-// A `Surface` is one piece of content that the page and WebGL both know
-// how to present. `SurfaceCanvas` is the host that arbitrates between
-// them for every Surface inside it.
-export { Surface } from './primitives/surface/Surface'
+// ── HTML, scene, and captured elements ───────────────────────────────────
+export { Surface, SceneSurface, useSurfaceStatus, useSurfaceMotion, useSurfaceDriver } from './primitives/Surface'
+export type { SurfaceProps, SurfaceRootProps, SurfaceHTMLProps, SceneSurfaceHTMLProps, SceneSurfaceRootProps, SceneSurfaceProps, SurfaceSceneProps, SurfaceControls, SurfaceDriverFrame, SurfaceDriverStep, SurfaceMotionFrame } from './primitives/Surface'
+export { useElementCapture, CaptureContent } from './primitives/elementCapture'
+export type { ElementCapture, ElementCaptureOptions } from './primitives/elementCapture'
+export { createCapture, useCaptureHandle, useCaptureFrame, useCaptureStatus } from './primitives/capture'
+export type { CaptureHandle, CaptureFrame, CaptureStatus } from './primitives/capture'
 export { SurfaceCanvas, type SurfaceCanvasProps } from './primitives/surface/SurfaceCanvas'
 export type { SurfaceCanvasId } from './primitives/surface/surfaceHostRegistry'
-export type {
-  SurfaceContentOptions,
-  SurfaceContentProps,
-  SurfaceIdentityProps,
-  SurfaceProps,
-} from './primitives/surface/SurfaceRoot'
-export type { SurfaceDOMProps } from './primitives/surface/SurfaceDOM'
-export type { SurfacePartProps } from './primitives/surface/SurfacePart'
-export type {
-  SurfacePointerEvents,
-  SurfaceRadius,
-  SurfaceMeshProps,
-} from './primitives/surface/SurfaceMesh'
-export type { SurfaceSceneProps } from './primitives/surface/SurfaceScene'
+export type { SurfaceIdentityProps } from './primitives/surface/SurfaceRoot'
+export type { SurfacePointerEvents, SurfaceRadius, SurfaceMeshProps } from './primitives/surface/SurfaceMesh'
 export type { SurfaceResolution, SurfaceSize } from './primitives/surface/surfaceSourceRuntime'
 
-// ── The handle, and the frames that drive it ─────────────────────────────
-// The handle is content identity, independent of the trees presenting it:
-// a scene asks for a view and reads the progress it scales motion by.
-export {
-  createSurface,
-  useSurfaceHandle,
-  useSurfaceProgress,
-  useSurfaceState,
-  type SurfaceHandle,
-  type SurfaceProgress,
-  type SurfaceState,
-  type SurfaceControls,
-  type SurfaceTiming,
-  type SurfaceDestination,
-  type SurfacePresentation,
-} from './primitives/surface/surfaceHandle'
-export { useSurfaceDriver } from './primitives/surface/useSurfaceDriver'
-export type {
-  SurfaceDriverFrame,
-  SurfaceDriverStep,
-} from './primitives/surface/surfaceHandle'
+// ── Identity and frame reads ─────────────────────────────────────────────
+export { createSurface, useSurfaceHandle, useSurfaceProgress, type SurfaceHandle, type SurfaceProgress, type SurfaceTiming } from './primitives/surface/surfaceHandle'
 
 // ── What a Surface hands its children ────────────────────────────────────
-// With `material="none"` a Surface yields its material slot, and these are
-// how the custom material reaches the live texture, the measured chrome,
+// A Surface.Mesh can supply its own material. These hooks read its live texture,
+// measured chrome,
 // and the painted box it gates blending on when its own raster's
 // generation might lag the live DOM.
 //
@@ -72,12 +42,10 @@ export type {
 // so a material can mix a second live capture the page shows nowhere.
 export {
   useSurfaceChrome,
-  useSurfaceInstance,
   useSurfacePaintedSize,
   useSurfaceSourceRoot,
   useSurfaceTexture,
   useSurfaceTextureOf,
-  type SurfaceInstance,
 } from './primitives/surface/surfaceContext'
 export {
   useSurfaceUniforms,
@@ -157,3 +125,7 @@ export type {
 
 // ── Physical controls ────────────────────────────────────────────────────
 export { Dial, type DialProps } from './primitives/controls/Dial'
+
+export { createPageTarget, usePageTarget, type PageTarget } from './primitives/pageTarget'
+export { useSurfaceBeforeRender, type SurfaceRenderFrame } from './primitives/surface/surfaceFrame'
+export type { SurfaceStatus, SurfaceViewPresentation as SurfacePresentation, SurfaceViewDestination as SurfaceDestination } from './primitives/surface/surfaceStatus'

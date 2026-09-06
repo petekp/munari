@@ -39,7 +39,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, SurfaceCanvas } from '@petepetrash/munari'
+import { SceneSurface, SurfaceCanvas } from '@petepetrash/munari'
 import { cameraDistance, paintStats } from '@petepetrash/munari/advanced'
 import {
   apertureOf,
@@ -283,21 +283,16 @@ function SpecimenSurface({
   const raycast = useLensRaycast(block, hand)
   const [cx, cy] = worldCenter(block)
   return (
-    <Surface
-      name={block.id}
-      renderIn="canvas"
-      size={[block.w, block.h]}
-      resolution={resolution}
-      source={CONTENT.get(block.id)}
-    >
-      <Surface.Mesh
+    <SceneSurface.Root name={block.id}>
+<SceneSurface.HTML size={[block.w, block.h]} resolution={resolution}>{CONTENT.get(block.id)}</SceneSurface.HTML>
+      <SceneSurface.Mesh
         placement="manual"
         position={[cx, cy, 0]}
         raycast={raycast}
         geometry={<planeGeometry args={[block.w, block.h]} />}
-        material={<Surface.LitMaterial emissiveIntensity={1} />}
+        material={<SceneSurface.LitMaterial emissiveIntensity={1} />}
       />
-    </Surface>
+    </SceneSurface.Root>
   )
 }
 

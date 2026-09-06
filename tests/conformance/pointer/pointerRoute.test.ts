@@ -1,7 +1,7 @@
 // The arbitration law: which of the two canvas-side routes hears the pointer.
 //
 // Pure — no DOM, no matrices, no clock. Everything here is a function of one
-// request and five observed booleans, and the whole point of writing it that
+// request and six observed booleans, and the whole point of writing it that
 // way is that the
 // truth table can be enumerated rather than sampled. A route decided by flags
 // scattered across a presenter cannot be enumerated, which is how two of them
@@ -30,20 +30,21 @@ const ROUTES: PointerRoute[] = ['page', 'native', 'relay']
 const NATIVE: PointerRouteConditions = {
   request: 'auto',
   capable: true,
+  exclusiveSource: true,
   hearing: true,
   planar: true,
   facing: true,
   onScreen: true,
 }
 
-/** The five booleans, so a case can name the one it turns off. */
-const FLAGS = ['capable', 'hearing', 'planar', 'facing', 'onScreen'] as const
+/** The six booleans, so a case can name the one it turns off. */
+const FLAGS = ['capable', 'hearing', 'planar', 'facing', 'onScreen', 'exclusiveSource'] as const
 
-/** All 2⁵ × 2 condition sets. */
+/** All 2⁶ × 2 condition sets. */
 function everyCondition(): PointerRouteConditions[] {
   const out: PointerRouteConditions[] = []
   for (const request of REQUESTS) {
-    for (let bits = 0; bits < 32; bits++) {
+    for (let bits = 0; bits < 64; bits++) {
       out.push({
         request,
         capable: (bits & 1) !== 0,
@@ -51,6 +52,7 @@ function everyCondition(): PointerRouteConditions[] {
         planar: (bits & 4) !== 0,
         facing: (bits & 8) !== 0,
         onScreen: (bits & 16) !== 0,
+        exclusiveSource: (bits & 32) !== 0,
       })
     }
   }
@@ -69,7 +71,7 @@ describe('the verdict', () => {
   it('takes the native route only when every condition allows it', () => {
     expect(routeFor(NATIVE)).toBe('native')
     // Each condition is individually necessary. Stated as a sweep rather than
-    // five hand-written cases so a sixth condition added to the type cannot be
+    // six hand-written cases so a seventh condition added to the type cannot be
     // added to the law without a case here to match.
     for (const flag of FLAGS) {
       expect(routeFor({ ...NATIVE, [flag]: false })).not.toBe('native')

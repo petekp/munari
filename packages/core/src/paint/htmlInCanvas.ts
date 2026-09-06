@@ -102,6 +102,8 @@ export interface DomTextureSource {
    * request; the canvas carries the drift.
    */
   scale: () => number
+  /** Requested raster density on each axis; scale() is their maximum. */
+  rasterScale: () => readonly [number, number]
   /** Current CSS size of the subtree's layout box. */
   size: () => readonly [number, number]
   /**
@@ -133,6 +135,7 @@ export interface DomTextureSource {
    * plumbing.
    */
   setScale: (k: number) => void
+  setRasterScale: (x: number, y: number) => void
   /**
    * Re-layout the subtree at a new CSS size, moving the canvas's CSS box and
    * its backing store together so the effective raster scale is unchanged.
@@ -146,7 +149,7 @@ export interface DomTextureSource {
   setSize: (w: number, h: number) => void
   /**
    * Re-cut the backing store to EXACTLY the current box and density,
-   * ignoring the band `setSize`/`setScale` are allowed to drift inside.
+   * ignoring the band `setSize` is allowed to drift inside.
    *
    * The band exists to keep a moving Surface's pixels alive across a resize;
    * it has no business surviving into rest, where a Surface can be left up to
@@ -267,6 +270,7 @@ export function createDomTextureSource(
 
   const { label = `source-${sourceSeq++}`, onError } = options
   let scale = clampRawScale(options.scale ?? 1)
+  let scaleX=scale,scaleY=scale
   // SAFETY: the trial members (layoutSubtree, onpaint, requestPaint) are
   // Chrome's HTML-in-canvas additions to a plain canvas element; no
   // TypeScript lib declares them yet. Absence is not a type error but a
@@ -348,9 +352,8 @@ export function createDomTextureSource(
     }
   }
   // The only place the backing store is allowed to move. Everything else —
-  // a resize, a scale change — moves the CSS box and asks for a paint; the
-  // store follows only when the density it supplies has drifted out of the
-  // band (see `storeForBox`).
+  // a layout resize or density change — asks for a paint here. Layout resizes
+  // use the density band; a new requested density supplies an exact store (#44).
   //
   // Writing `canvas.width` CLEARS the store, and the paint that refills it is
   // the compositor's to schedule: it lands after the frame that asked. So a
@@ -362,9 +365,9 @@ export function createDomTextureSource(
   // resize is what destroys the pixels being copied.)
   const recut = (exact = false) => {
     const next = storeForBox(
-      width,
-      height,
-      scale,
+      width*scaleX,
+      height*scaleY,
+      1,
       exact ? null : { width: canvas.width, height: canvas.height },
     )
     if (next.width !== canvas.width || next.height !== canvas.height) {
@@ -393,6 +396,13 @@ export function createDomTextureSource(
     canvas.requestPaint()
   }
 
+  const setRasterScale=(x:number,y:number)=>{
+    const nx=clampRawScale(x),ny=clampRawScale(y)
+    if(nx===scaleX&&ny===scaleY)return
+    scaleX=nx;scaleY=ny;scale=Math.max(nx,ny);stats.scale=scale
+    recut(true)
+  }
+
   canvas.requestPaint()
 
   return {
@@ -401,6 +411,7 @@ export function createDomTextureSource(
     element,
     repaint: () => canvas.requestPaint(),
     scale: () => scale,
+    rasterScale: () => [scaleX,scaleY],
     size: () => [width, height] as const,
     paintedSize: () => currentPaint?.paintedSize ?? ([0, 0] as const),
     currentPaint: () => currentPaint,
@@ -413,13 +424,8 @@ export function createDomTextureSource(
         paintSubscribers.delete(listener)
       }
     },
-    setScale: (k: number) => {
-      const next = clampRawScale(k)
-      if (next === scale) return
-      scale = next
-      stats.scale = next
-      recut()
-    },
+    setScale: (k: number) => setRasterScale(k,k),
+    setRasterScale,
     // Note `width = w` / `height = h`: the parameters are the closed-over
     // source of truth that setScale multiplies, so a resize that fails to
     // move them is silently undone by the very next LOD tier swap (measured

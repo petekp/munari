@@ -30,7 +30,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
+import { Surface, useSurfaceSupport, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { buildCloud, grainSize, type CloudSpec } from './candidateCloud'
 import { CLOUD_FRAG, CLOUD_VERT } from './candidateShaders'
@@ -155,8 +155,9 @@ export function CandidateDissolve() {
   const [slot, setSlot] = useState<Slot>('left')
   const [flying, setFlying] = useState(false)
   const [edits, setEdits] = useState(0)
-  const origin = useSurfaceHandle('dissolve-origin')
-  const arrival = useSurfaceHandle('dissolve-arrival')
+  const supported = useSurfaceSupport()
+  const surface = useSurfaceHandle('dissolve')
+  const transitionFrom = useRef<Slot>('left')
   const phase = usePhase()
   const runId = useRef(0)
   const holders = useRef<Record<Slot, HTMLDivElement | null>>({ left: null, right: null })
@@ -176,11 +177,13 @@ export function CandidateDissolve() {
 
   const send = useCallback(() => {
     if (flying) return
+    if (!supported) { setSlot(current => current === 'left' ? 'right' : 'left'); return }
+    transitionFrom.current = slot
     runId.current += 1
     phase.current.t = 0
     phase.current.running = true
     setFlying(true)
-  }, [flying, phase])
+  }, [flying, phase, slot, supported])
 
   const land = useCallback(() => {
     setSlot((s) => (s === 'left' ? 'right' : 'left'))
@@ -230,20 +233,19 @@ export function CandidateDissolve() {
   // Origin → destination, in world px. Zero until both slots are measured,
   // which is also the condition the meshes are gated on.
   const gap = boxes.left && boxes.right ? boxes.right.x - boxes.left.x : 0
-  const travel = slot === 'left' ? gap : -gap
+  const travel = transitionFrom.current === 'left' ? gap : -gap
 
   return (
     <div className="cand-page cand-page--center">
+      <Surface.Root surface={surface} inScene={flying} timing={{ settleMs: 0, durationMs: 1 }}>
       <div className="cand-slots">
         {(['left', 'right'] as const).map((side) => {
           const holds = slot === side
-          const isOrigin = holds
-          const piece = isOrigin ? origin : arrival
+          const isOrigin = transitionFrom.current === side
           const box = boxes[side]
           const card = cards[side]
           // While a flight is running BOTH slots carry a presenter: the one
           // the figure is leaving and the one it is arriving at.
-          const showSurface = holds || flying
           return (
             <div
               key={side}
@@ -253,15 +255,7 @@ export function CandidateDissolve() {
               className="cand-slot"
               data-empty={(!holds && !flying) || undefined}
             >
-              {showSurface ? (
-                <Surface
-                  surface={piece}
-                  renderIn={flying ? 'canvas' : 'page'}
-                  timing={{ settleMs: 0, durationMs: 1 }}
-                  size={[CARD_W, CARD_H]}
-                  source={card}
-                >
-                  <Surface.DOM>
+              <Surface.HTML part={side} hidden={!holds} size={[CARD_W, CARD_H]}>
                     <div
                       className="cand-slot__hit"
                       onClick={holds && !flying ? send : undefined}
@@ -273,9 +267,9 @@ export function CandidateDissolve() {
                     >
                       {card}
                     </div>
-                  </Surface.DOM>
+              </Surface.HTML>
                   {box && (
-                    <Surface.Mesh
+                    <Surface.Mesh part={side}
                       key={runId.current}
                       placement="manual"
                       alpha="source"
@@ -299,14 +293,12 @@ export function CandidateDissolve() {
                       )}
                     </Surface.Mesh>
                   )}
-                </Surface>
-              ) : (
-                <div className="cand-slot__empty">drop</div>
-              )}
+              {!holds && !flying && <div className="cand-slot__empty">drop</div>}
             </div>
           )
         })}
       </div>
+      </Surface.Root>
       <p className="cand-hint">
         Click the figure. It comes apart into its own pixels, changes colour
         on the way across, and resolves back to full resolution on the other

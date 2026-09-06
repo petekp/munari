@@ -41,7 +41,7 @@ import {
 import { flushSync as flushThree, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
-  Surface,
+  SceneSurface,
   SurfaceCanvas,
   useSurfaceSupport,
   type SourceUvRect,
@@ -629,7 +629,7 @@ const REQUIRED_ANCHORS = [
  * One anchor as a box on the face: center in panel CSS px from the top
  * left, size in the CSS px the DOM painted it at.
  *
- * Only the consumers that cannot be one `<Surface.Anchor>` per box need
+ * Only the consumers that cannot be one `<SceneSurface.Anchor>` per box need
  * this — a single geometry cut around several windows, and the page-side
  * scroller. Everything that stands on exactly one box is placed by the
  * anchor itself.
@@ -672,7 +672,7 @@ function collectLiveKnobsAnchors(root: HTMLElement, base: DOMRect): LiveKnobsAnc
 /**
  * A Knobs-only bridge across the DOM-paint boundary.
  *
- * `<Surface.Anchor>` correctly holds to a completed paint receipt. During a
+ * `<SceneSurface.Anchor>` correctly holds to a completed paint receipt. During a
  * responsive resize, though, Chrome gives us one render where the panel's
  * DOM layout and slab geometry are new but that receipt is old. This small
  * local offset maps the old anchor onto the measured live box for that one
@@ -689,9 +689,9 @@ function KnobsAnchor({
   children: React.ReactNode
 }) {
   return (
-    <Surface.Anchor name={name} offset={offset}>
+    <SceneSurface.Anchor name={name} offset={offset}>
       <KnobsAnchorCorrection name={name}>{children}</KnobsAnchorCorrection>
-    </Surface.Anchor>
+    </SceneSurface.Anchor>
   )
 }
 
@@ -1743,7 +1743,7 @@ function ReadoutLamps() {
         // plate around it catches only grazing incidence (cosine ~0)
         // while knob flanks and bat levers — surfaces facing the
         // window — catch it broadside. The masking is Lambert's law,
-        // not a hack.
+        // not a workaround.
         <KnobsAnchor key={def.key} name={`readout:${def.key}`} offset={1.5}>
           <ReadoutLamp />
         </KnobsAnchor>
@@ -2213,7 +2213,7 @@ function PanelSourceRoot({ onHost }: { onHost: (el: HTMLElement | null) => void 
  * The scroller in `KnobsApp` reveals a control the keyboard moved to, and
  * that is a page-side scroll against a box only the presenter's anchor
  * transaction knows. Everything standing ON a box is placed by its own
- * `<Surface.Anchor>`; this exists for the one consumer that is not in the
+ * `<SceneSurface.Anchor>`; this exists for the one consumer that is not in the
  * scene at all.
  */
 function PanelAnchorReport({
@@ -2314,22 +2314,19 @@ function PanelStage({
           {/* No `view`: the panel is resident matter, not a handoff. The
               DOM is parked and the slab is its only presentation, so there
               is no page copy for it to be exclusive against. */}
-          <Surface
-            name="knobs-panel"
-            renderIn="canvas"
-            source={<KnobsPanel />}
-            size={[rect.w, rect.h]}
-            paint={resizing ? 'always' : 'auto'}
-          >
-            <PanelSourceRoot onHost={onHost} />
-            <Surface.Mesh
+          <SceneSurface.Root name="knobs-panel">
+            <SceneSurface.HTML size={[rect.w, rect.h]} paint={resizing ? 'always' : 'auto'}>
+              <KnobsPanel />
+            </SceneSurface.HTML>
+
+            <SceneSurface.Mesh
               name="knobs-panel-surface"
               placement="manual"
               position={[0, 0, FACE_Z]}
               frustumCulled={false}
               geometry={<planeGeometry args={[rect.w, rect.h]} />}
               material={
-                <Surface.LitMaterial
+                <SceneSurface.LitMaterial
                   roughness={0.5}
                   metalness={0.18}
                   // DOM light, held to a low floor: enough for the lamp
@@ -2341,6 +2338,7 @@ function PanelStage({
                 />
               }
             >
+            <PanelSourceRoot onHost={onHost} />
             <LiveKnobsAnchorContext value={liveAnchors}>
               <PanelAnchorReport onAnchors={onAnchors} />
               <ReadoutWindows />
@@ -2379,8 +2377,8 @@ function PanelStage({
                 </KnobsAnchor>
               ))}
             </LiveKnobsAnchorContext>
-            </Surface.Mesh>
-          </Surface>
+            </SceneSurface.Mesh>
+          </SceneSurface.Root>
         </PanelRig>
       )}
     </>
@@ -2541,7 +2539,7 @@ function useDegradedPanelGestures(host: RefObject<HTMLDivElement | null>) {
 /**
  * The panel with no renderer under it.
  *
- * This scene's panel is a RESIDENT source — no `view`, no `<Surface.DOM>`,
+ * This scene's panel is a RESIDENT source — no `view`, no `<SceneSurface.DOM>`,
  * because the slab is its only presentation — so a browser without the
  * trial got an empty room: 0 characters of reader-visible text and 0
  * focusable elements, measured 2026-08-22 against flight/genie/logo/

@@ -21,7 +21,7 @@
 // ledger, the source host, and the protocol tick. It owns no mesh, no
 // material, and no placement.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { trackPointerPlace, type SurfaceChrome, type SurfacePartId } from '@munari/core'
 import {
   useSurfaceController,
@@ -42,6 +42,7 @@ import {
 } from './surfaceContext'
 import { resolveSurfaceHost, type SurfaceCanvasId, type SurfaceHost } from './surfaceHostRegistry'
 import { useSurfaceHostContext } from './surfaceHostContext'
+import { watchSurfaceValidation } from './surfaceValidation'
 import { SurfaceSourceHost } from './surfaceSourceHost'
 import type { SurfaceResolution, SurfaceSize, SurfaceSourceRuntime } from './surfaceSourceRuntime'
 
@@ -165,59 +166,26 @@ export function SurfaceRoot({
     host?.invalidate()
   }, [host, renderIn])
 
-  useEffect(() => {
-    let releaseTick: (() => void) | null = null
-    let releaseRuntime: (() => void) | null = null
-    let timer: number | null = null
-    const validate = () => store.validatePresentation()
-    const afterRuntime = () => {
-      if (!host?.runtime) return
-      releaseRuntime?.()
-      releaseRuntime = null
-      releaseTick = host.registerTick(() => {
-        releaseTick?.()
-        releaseTick = null
-        validate()
-      })
-      host.invalidate()
-    }
-    const afterCommit = () => {
-      if (!host?.mounted()) {
-        validate()
-        return
-      }
-      if (host.runtime) afterRuntime()
-      else releaseRuntime = host.subscribeRuntime(afterRuntime)
-    }
-    if (host?.mounted()) afterCommit()
-    else timer = window.setTimeout(afterCommit, 0)
-    return () => {
-      if (timer !== null) window.clearTimeout(timer)
-      releaseTick?.()
-      releaseRuntime?.()
-    }
-  }, [host, store, renderIn])
+  useLayoutEffect(() => {
+    const sync = () => store.setRendererAvailable(host?.available() ?? false)
+    const release = host?.subscribeRuntime(sync)
+    sync()
+    return release
+  }, [host, store])
 
-  // The protocol advances from the renderer's frame, and only while there
-  // is something for it to advance — a crossing under way, or a linger
-  // still holding the WebGL side mounted after one landed.
+  useEffect(() => watchSurfaceValidation(store, host), [store, host])
+
   useEffect(() => {
     if (!host) return
     let claim: (() => void) | null = null
-    const release = host.registerTick((dtMs) => {
-      store.tick(dtMs)
-      const working = store.hasProtocolWork()
-      if (working) {
-        if (!claim) claim = host.claimWork()
-      } else if (claim) {
-        claim()
-        claim = null
-      }
-    })
-    return () => {
-      release()
-      claim?.()
+    const reconcile = () => {
+      if (store.hasProtocolWork()) claim ??= host.claimWork()
+      else { claim?.(); claim = null }
     }
+    const releaseWork = store.subscribeWork(() => { reconcile(); host.invalidate() })
+    const releaseTick = host.registerTick((dtMs) => { store.tick(dtMs); reconcile() })
+    reconcile()
+    return () => { releaseWork(); releaseTick(); claim?.() }
   }, [host, store])
 
   // Minted per root instance, never derived from `name`. Two unnamed
@@ -321,8 +289,13 @@ function useResolvedHost(
     () => (wiring === 'page' ? resolveSurfaceHost(canvas) : null),
     [wiring, canvas],
   )
-  const resolved = wiring === 'canvas' ? contextHost : pageHost
+  const conflict = wiring === 'canvas' && canvas !== undefined && canvas !== contextHost?.id
+  const resolved = conflict ? null : wiring === 'canvas' ? contextHost : pageHost
   useEffect(() => {
+    if (conflict) {
+      store.reportError(new Error(`Surface canvas="${canvas}" conflicts with its enclosing <SurfaceCanvas${contextHost?.id ? ` id="${contextHost.id}"` : ''}>. A scene declaration belongs to its enclosing canvas.`))
+      return
+    }
     if (wiring === 'canvas' || resolved) return
     store.reportError(
       new Error(
@@ -331,6 +304,6 @@ function useResolvedHost(
           '`<Surface canvas="…">`.',
       ),
     )
-  }, [wiring, resolved, store])
+  }, [wiring, resolved, store, conflict, canvas, contextHost])
   return resolved
 }

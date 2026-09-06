@@ -1,8 +1,9 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react"],
+  "plugins": ["react", "typescript", "vitest"],
   "jsPlugins": [
-    { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" }
+    { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" },
+    { "name": "no-tautological-absence", "specifier": "./tools/oxlint/no-tautological-absence/index.mjs" }
   ],
   "categories": {
     "correctness": "warn"
@@ -24,8 +25,27 @@
     "anti-slop/no-unknown-type-aliases": "error",
     "anti-slop/no-unsafe-dictionary-type": "error",
     "anti-slop/no-widen-then-assert": "error",
-    "anti-slop/require-safety-comment-for-type-assertion": "error"
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "no-tautological-absence/no-tautological-absence": "error",
+    "eslint/no-warning-comments": ["error", { "terms": ["TODO", "FIXME", "HACK"], "location": "anywhere" }],
+    "eslint/no-unused-vars": ["error", { "args": "after-used", "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "ignoreRestSiblings": true }],
+    "eslint/no-restricted-imports": ["error", { "patterns": [{ "group": ["**/tests/**", "**/__tests__/**/*", "**/*.test.*", "**/*.spec.*"], "message": "Do not import test files in source files" }] }],
+    "typescript/no-explicit-any": "error",
+    "vitest/expect-expect": "off",
+    "vitest/no-conditional-expect": "off",
+    "vitest/no-standalone-expect": "off",
+    "vitest/require-mock-type-parameters": "off",
+    "vitest/valid-expect": "off"
   },
+  "overrides": [
+    {
+      "files": ["**/tests/**", "**/__tests__/**/*", "**/*.test.*", "**/*.spec.*"],
+      "rules": {
+        "eslint/no-restricted-imports": "off",
+        "vitest/no-import-node-test": "error"
+      }
+    }
+  ],
   "ignorePatterns": [
     "**/dist/**",
     "**/coverage/**",
@@ -42,6 +62,7 @@
     ".pi/**",
     ".roo/**",
     ".windsurf/**",
-    "tools/oxlint/anti-slop/**"
+    "tools/oxlint/anti-slop/**",
+    "tools/oxlint/no-tautological-absence/**"
   ]
 }

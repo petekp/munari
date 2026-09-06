@@ -30,6 +30,10 @@ import {
   type SurfaceCanvasId,
   type SurfaceHost,
 } from './surfaceHostRegistry'
+import { useSurfaceDevicePixelRatio } from './surfaceDevicePixelRatio'
+import { watchSurfacePlacement } from './surfacePlacement'
+import { surfaceCanvasPixelRatio, surfaceCanvasDisplayScale, counterSurfaceCanvasScale } from './surfacePixelDensity'
+import { useLatest } from '../useLatest'
 import { SurfaceHostContext } from './surfaceHostContext'
 import { CanvasPointerGate } from '../CanvasPointerGate'
 
@@ -87,11 +91,15 @@ function SurfaceHostBridge({
   frameloop,
   onContextLost,
   onContextRestored,
+  onDisplayScale,
+  displaySized,
 }: {
   host: SurfaceHost
   frameloop: CanvasProps['frameloop']
   onContextLost: () => void
   onContextRestored: () => void
+  onDisplayScale: (scale: number) => void
+  displaySized:boolean
 }) {
   const gl = useThree((s) => s.gl)
   const invalidate = useThree((s) => s.invalidate)
@@ -99,6 +107,15 @@ function SurfaceHostBridge({
   // The caller's idle mode, captured so a promotion can be undone exactly.
   // `undefined` means R3F's own default, which is 'always'.
   const idleMode = frameloop ?? 'always'
+  const idleModeRef = useLatest(idleMode)
+  useEffect(() => {
+    const counter=counterSurfaceCanvasScale(gl.domElement)
+    const update = () => { if(displaySized)counter.update(); onDisplayScale(displaySized?1:surfaceCanvasDisplayScale(gl.domElement)) }
+    update()
+    const stop=watchSurfacePlacement([() => gl.domElement.parentElement], update)
+    return()=>{stop();counter.dispose()}
+  }, [gl, onDisplayScale, displaySized])
+
 
   useEffect(() => {
     const runtime = {
@@ -106,8 +123,7 @@ function SurfaceHostBridge({
       setBusy: (busy: boolean) => {
         // Promoting an 'always' Canvas is a no-op, and demoting one would
         // silently stop a scene the caller asked to run continuously.
-        if (idleMode === 'always') return
-        setFrameloop(busy ? 'always' : idleMode)
+        setFrameloop(busy ? 'always' : idleModeRef.current)
       },
     }
     // First Canvas to arrive keeps the id. A second one under the same id
@@ -130,7 +146,11 @@ function SurfaceHostBridge({
       // no way to be invalidated.
       if (host.runtime === runtime) host.setRuntime(null)
     }
-  }, [host, invalidate, setFrameloop, idleMode])
+  }, [host, invalidate, setFrameloop, idleModeRef])
+
+  useEffect(() => {
+    setFrameloop(host.workClaims() > 0 ? 'always' : idleMode)
+  }, [host, idleMode, setFrameloop])
 
   // One frame callback for every Surface on this host. It runs at the
   // default priority, so capture and protocol both land before the render,
@@ -162,10 +182,30 @@ function SurfaceHostBridge({
   // pass is an ordinary `render` call with the target set back to null.
   useEffect(() => {
     const original = gl.render.bind(gl)
+    let notifying = false
     gl.render = (scene, camera) => {
-      original(scene, camera)
-      host.closeFrameTail(gl.getRenderTarget() === null)
+      const ownsPreparation = !notifying
+      const automatic = scene.matrixWorldAutoUpdate
+      let releaseRaster: (()=>void)|null = null
+      let replacedSceneUpdate=false
+      if(ownsPreparation)notifying=true
+      try {
+        if (ownsPreparation && (host.hasBeforeDraw() || host.hasRaster())) {
+          if (automatic) scene.updateMatrixWorld()
+          if (!camera.parent && camera.matrixWorldAutoUpdate) camera.updateMatrixWorld()
+          releaseRaster=host.prepareRaster(scene,camera,gl.getRenderTarget())
+          if(host.hasBeforeDraw())host.beforeDraw(scene,camera,gl.getRenderTarget())
+          // Without companion mutations, Three's pending traversal would repeat ours.
+          // With them, retain its update so their new transforms reach this draw.
+          else {scene.matrixWorldAutoUpdate=false;replacedSceneUpdate=true}
+        }
+        original(scene,camera)
+        host.closeFrameTail(gl.getRenderTarget()===null)
+      } finally {
+        if(ownsPreparation){if(replacedSceneUpdate)scene.matrixWorldAutoUpdate=automatic;releaseRaster?.();notifying=false}
+      }
     }
+
     return () => {
       gl.render = original
       // A renderer going away ends the frame with nothing on screen, so
@@ -183,12 +223,14 @@ function SurfaceHostBridge({
       // Nothing on this canvas will reach the screen again on the lost
       // context, so the deferrals of the frame that died are void.
       host.discardFrameTail()
+      host.setContextLost(true)
       onContextLost()
     }
     const restored = () => {
       // A demand Canvas asleep when the context died has no frame queued to
       // draw the recovered scene in, and the fallback would stay up over a
       // renderer that works.
+      host.setContextLost(false)
       invalidate()
       onContextRestored()
     }
@@ -258,6 +300,8 @@ export function SurfaceCanvas({
   style,
   fallback,
   frameloop,
+  dpr,
+  resize,
   onCreated,
   pointerMode = 'scene',
   ...canvasProps
@@ -272,6 +316,9 @@ export function SurfaceCanvas({
   const host = mounted.candidate === candidate ? mounted.host : candidate
   const [contextLost, setContextLost] = useState(false)
   const [created, setCreated] = useState(false)
+  const [displayScale, setDisplayScale] = useState(1)
+  const nativeDpr=useSurfaceDevicePixelRatio()
+  const drawingDpr = surfaceCanvasPixelRatio(dpr, nativeDpr, displayScale)
 
   useEffect(() => {
     const mount = mountSurfaceHost(candidate)
@@ -342,6 +389,8 @@ export function SurfaceCanvas({
         <Canvas
           {...canvasProps}
           frameloop={frameloop}
+          dpr={drawingDpr}
+          resize={resize}
           onCreated={handleCreated}
           style={wrapperStyle}
         >
@@ -350,6 +399,8 @@ export function SurfaceCanvas({
             frameloop={frameloop}
             onContextLost={handleContextLost}
             onContextRestored={handleContextRestored}
+            onDisplayScale={setDisplayScale}
+            displaySized={resize?.offsetSize!==true}
           />
           {children}
           <SurfaceInwardPresenters host={host} />

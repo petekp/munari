@@ -16,13 +16,19 @@ import * as root from './index'
 import * as advanced from './advanced'
 
 const ROOT_ENTRY = [
+  'useElementCapture', 'CaptureContent',
+  'Surface',
+  'createPageTarget',
+  'usePageTarget',
+  'useSurfaceBeforeRender', 'SceneSurface', 'useSurfaceStatus',
+  'useSurfaceMotion', 'useCaptureHandle', 'createCapture',
+  'useCaptureFrame', 'useCaptureStatus',
   'Dial',
   'FocusGroup',
   'FocusScene',
   'SURFACE_ANCHOR_ATTRIBUTE',
   'SURFACE_FOCUS_ATTRIBUTE',
   'SURFACE_RADIUS_GLSL',
-  'Surface',
   'SurfaceCanvas',
   'createSurface',
   'deformSurfaceGeometry',
@@ -40,11 +46,9 @@ const ROOT_ENTRY = [
   'useSurfaceAnchorRects',
   'useSurfaceChrome',
   'useSurfaceDriver',
-  'useSurfaceInstance',
   'useSurfacePaintedSize',
   'useSurfaceProgress',
   'useSurfaceSourceRoot',
-  'useSurfaceState',
   'useSurfaceTexture',
   'useSurfaceTextureOf',
   'useSurfaceUniforms',
@@ -53,7 +57,9 @@ const ROOT_ENTRY = [
 // The kernel is re-exported WHOLE, so this list is core's own surface plus
 // the React names the advanced entry adds.
 const ADVANCED_ADDITIONS = [
+  'inspectCapture',
   'FrameSurface',
+  'readSurfaceFrameState',
   'useCarriedMotion',
   'useFrameTexture',
   'surfaceManualPresenter',
@@ -79,6 +85,7 @@ describe('the published entries', () => {
       'useSurfaceControls',
       'surfaceManualPresenter',
       'FrameSurface',
+  'readSurfaceFrameState',
       'useCarriedMotion',
     ]) {
       expect(root).not.toHaveProperty(name)

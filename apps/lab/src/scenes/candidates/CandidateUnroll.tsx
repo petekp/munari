@@ -23,7 +23,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceHandle, useSurfaceState, useSurfaceTexture } from '@petepetrash/munari'
+import { SceneSurface, useSurfaceChrome, useSurfaceSupport, useSurfaceHandle, useSurfaceStatus, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { curlSample, unrolledLength } from './candidateCurlLaw'
 import { LIGHT, SHEET_FRAG, SHEET_VERT } from './candidateShaders'
@@ -175,8 +175,9 @@ function RollSheet({
 }
 
 export function CandidateUnroll() {
+  const supported = useSurfaceSupport()
   const surface = useSurfaceHandle('unroll-menu')
-  const state = useSurfaceState(surface)
+  const state = useSurfaceStatus(surface)
   const [presenting, setPresenting] = useState(false)
   const anchor = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
@@ -191,7 +192,7 @@ export function CandidateUnroll() {
   // the first frame anyone could SEE, t had already reached ~0.7 and the
   // menu appeared mid-unroll. Closing is ungated: the pixels are already
   // in GL.
-  drive.current.target = open && state.presented === 'canvas' ? 1 : 0
+  drive.current.target = open && state.presentation === 'scene' ? 1 : 0
 
   // The menu hangs from the trigger's bottom edge, so the mesh's centre is
   // half a menu below it. Measured on open rather than on mount: the page
@@ -258,34 +259,23 @@ export function CandidateUnroll() {
         </button>
       </div>
 
-      <Surface
-          surface={surface}
-          renderIn={presenting ? 'canvas' : 'none'}
-          timing={{ settleMs: 0, durationMs: 1 }}
-          size={[MENU_W, MENU_H]}
-          source={menu}
-        >
-          {/* The page copy exists to be measured and to hold the rows'
-              identity; it is never the visible one, because a menu is only
-              ever on screen while the sheet is in GL. It is parked out of
-              flow so an unrolling menu does not push the card around. */}
-          <div className="cand-menu-park">
-            <Surface.DOM />
-          </div>
+      {!supported && open && box && <div style={{position:'fixed',left:innerWidth/2+box.x-MENU_W/2,top:innerHeight/2-box.y-MENU_H/2,zIndex:50}}>{menu}</div>}
+      {supported && presenting && <SceneSurface.Root surface={surface}>
+          <SceneSurface.HTML size={[MENU_W, MENU_H]}>{menu}</SceneSurface.HTML>
           {box && (
-            <Surface.Mesh
+            <SceneSurface.Mesh
               placement="manual"
               alpha="source"
               frustumCulled={false}
               position={[box.x, box.y, 0]}
-              pointerEvents="content"
+              pointerEvents="geometry"
               geometry={<planeGeometry ref={geoRef} args={[MENU_W, MENU_H, GRID_X, GRID_Y]} />}
               material={<SheetMaterial opacity={sheetOpacity} />}
             >
               <RollSheet drive={drive} geoRef={geoRef} opacity={sheetOpacity} onClosed={() => setPresenting(false)} />
-            </Surface.Mesh>
+            </SceneSurface.Mesh>
           )}
-        </Surface>
+        </SceneSurface.Root>}
     </div>
   )
 }
