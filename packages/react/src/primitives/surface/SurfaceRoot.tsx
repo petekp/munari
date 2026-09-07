@@ -1,4 +1,8 @@
-// <Surface> — one piece of content, named once, wherever it is declared.
+// Surface controller — the internal controller below the public Surface wrappers.
+//
+// Current public wrappers declare content with Surface.HTML or SceneSurface.HTML.
+// The root-level source/adopt variant below is an older private interface and is
+// not a supported form of the package's public Surface component.
 //
 // The law: the root owns IDENTITY and the SOURCE; it owns no pixels. It
 // decides nothing about where anything is drawn, which is what lets the
@@ -60,7 +64,7 @@ interface SurfaceControlledProps extends SurfaceControls {
   children?: React.ReactNode
 }
 
-/** How a root's own content is captured, for the roots that carry any. */
+/** Legacy root-level capture options. The supported public API declares HTML children. */
 export interface SurfaceContentOptions {
   size?: SurfaceSize
   resolution?: SurfaceResolution
@@ -81,6 +85,10 @@ type WithoutContentOptions = { [K in keyof SurfaceContentOptions]?: never }
  * `<Surface.Part>` children. Exactly one, and the union says so — `source`
  * and `adopt` together is a Surface with two answers to which element is
  * captured, and the one that loses is invisible at runtime.
+ *
+ * This is the legacy controller input, not public SurfaceRootProps. Current
+ * public wrappers declare Surface.HTML or SceneSurface.HTML children. Their
+ * prop forwarding can still admit these options from untyped JavaScript.
  */
 export type SurfaceContentProps =
   | ({

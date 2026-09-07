@@ -27,18 +27,18 @@ bakes it into the texture.
 
 ## Never animate the content root's own opacity or transform
 
-Changing the drawn element's *own* `opacity` or `transform` does not
-invalidate its paint record, so nothing repaints. Keyframes freeze;
-transitions leave a **stale end state** that self-heals on the next
-unrelated repaint — an intermittent bug by construction, invisible in
-review.
+The root's transform does not enter its captured pixels, even though
+restyling that transform can trigger another paint. A compositor-animated
+root opacity can leave a stale captured state until an unrelated repaint;
+a static `opacity: 0` is captured as transparent. Keep both properties stable
+on the root and animate a descendant or the scene mesh instead.
 
 On **descendants** both animate correctly. They cost one paint and one
 upload per frame, which is a real budget (see the mutation economy
 below), so for whole-panel motion prefer moving the mesh.
 
-This is the hinge that has cost the most; `platform.md` item 4 has the
-numbers.
+`platform.md` items 4 and 20 distinguish compositor animation from static
+opacity and transform restyles.
 
 ## Idle motion must be able to ease flat
 
@@ -190,9 +190,10 @@ sources. Ordinary `Surface` has semantic lifecycle callbacks, not an
 evidence. The [system model](system-model.md#keep-the-observable-facts-separate)
 explains what each boundary establishes.
 
-The copyable collector lives in `registry/surface-anchors`. It rejects a
-duplicate or incomplete key set as one transaction and keeps the prior
-complete receipt usable.
+Custom capture pipelines can import `collectSurfaceAnchors` and its receipt
+types from `/advanced`. The same core collector serves the binding; there is
+no separate registry copy to maintain. It rejects duplicate or incomplete key
+sets as one transaction and keeps the prior complete receipt usable.
 
 ## Where the rest lives
 

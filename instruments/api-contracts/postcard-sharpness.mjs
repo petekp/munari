@@ -5,13 +5,15 @@ import path from 'node:path'
 import {tmpdir} from 'node:os'
 import puppeteer from 'puppeteer-core'
 import {textureClarity} from '../textureClarity.mjs'
+const origin=process.env.API_PROOF_URL
+assert.ok(origin,'Set API_PROOF_URL to the URL printed by npm run probe:api-lab.')
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/postcard-sharpness')
 await mkdir(output,{recursive:true})
 const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:false,defaultViewport:null,args:['--enable-features=CanvasDrawElement','--window-size=1280,980','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
 try{
  const page=await browser.newPage();await page.bringToFront()
  await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}])
- await page.goto(`${process.env.API_PROOF_URL??'http://127.0.0.1:5173'}/?scene=home&framed`,{waitUntil:'load'})
+ await page.goto(`${origin}/?scene=home&framed`,{waitUntil:'load'})
  await page.waitForSelector('.home-hero-holder [data-api-live]');await page.evaluate(()=>document.fonts.ready)
  await page.evaluate(()=>{const holder=document.querySelector('.home-hero-holder');document.querySelector('.home-page').scrollTop+=holder.getBoundingClientRect().top-180})
  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))

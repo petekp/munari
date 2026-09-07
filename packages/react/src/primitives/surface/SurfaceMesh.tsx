@@ -1,11 +1,11 @@
-// <Surface.Mesh> — one presentation of a source, as scene matter.
+// <Surface.Mesh> — one scene presentation of an HTML source.
 //
 // The law: a warming presenter DRAWS, it does not hide. Several independent
 // handoffs composite in one Canvas, so the old trick — hide the canvas
 // until the incoming pixels are proven — takes every other Surface off
 // screen with it. Instead this mesh draws with color, depth, and stencil
 // writes disabled while its handoff is still warming: the texture and the
-// shader program are warmed by a real draw, and invisible matter cannot
+// shader program are warmed by a real draw, and invisible geometry cannot
 // punch a hole in the visible scene behind it. The first eligible
 // COLOR-WRITING draw into the default framebuffer is the proof, taken in
 // the post-draw callback, before the browser composites — which is what
@@ -161,7 +161,7 @@ interface SurfaceMeshBaseProps
    * deliver the pointer to the drawn element itself whenever the presented
    * pose is a flat quad the browser can hit-test (decisions.md #39): real
    * caret placement, real drag-selection, clicks that pass `isTrusted`.
-   * While the browser owns the pointer this mesh is not pointer matter, so
+   * While the browser owns the pointer this mesh is not a pointer target, so
    * the scene-level `onPointer*` props below do not fire — a Surface that
    * needs them keeps `'relay'`.
    */
@@ -399,7 +399,7 @@ function SurfacePresenter({
   // Anchors are a transaction against the generation this presenter DRAWS,
   // so the scope lives here and not on the source: two presenters of the
   // same source can be showing different generations, and each one's
-  // anchored matter belongs on the pixels under it.
+  // anchored objects belong on the pixels under them.
   const anchors = useSurfaceAnchorScope(runtime, part?.captureRoot ?? null)
 
   useLayoutEffect(() => {
@@ -542,7 +542,7 @@ function SurfacePresenter({
       function (this: THREE.Mesh, raycaster, intersects) {
         // Input follows the eye (crossingPointer, decisions.md #33). While
         // the canvas is not the presented side this mesh is not pointer
-        // matter: the gate never goes solid, so a lifting-phase click
+        // geometry: the gate never goes solid, so a lifting-phase click
         // reaches the page copy the viewer is actually looking at instead
         // of relaying to the parked one.
         if (!storeRef.current.canvasHearsPointer()) return
@@ -675,7 +675,7 @@ function SurfacePresenter({
     // (deformSurfaceGeometry sets it), and r3f's `events.update` re-raycasts
     // the pointer's last position against the current pose — hover twins and
     // coordinates catch up within a frame, whether the hand moved or only the
-    // matter did.
+    // mesh did.
     const position = mesh.geometry?.getAttribute('position')
     // An interleaved position carries its version on the shared buffer, and
     // no Surface geometry interleaves — the plain-attribute case is the law
@@ -974,7 +974,7 @@ function SurfacePresenter({
       rasterReadyRef.current=rasterReady
       const writing = store.canvasPresents() && (store.canvasHearsPointer() || rasterReady)
       // The write-free warm-up. Color, depth, and stencil are all disabled
-      // together: color alone still lets invisible matter write depth, and
+      // together: color alone still lets invisible geometry write depth, and
       // a depth-writing invisible quad punches a hole through every visible
       // object behind it — which reads as a rectangular window into the
       // clear color, in the exact shape of a Surface nobody can see. The

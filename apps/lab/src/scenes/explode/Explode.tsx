@@ -5,7 +5,7 @@ import { SceneSurface, useSurfaceTexture } from '@petepetrash/munari'
 import { explodePaint, measureBleed, type Plate } from './explodePlates'
 
 // The exploded-paint inspector — a live element taken apart into its OWN
-// paint layers, laid out in CSS paint order, as matter.
+// paint layers arranged as scene objects in CSS paint order.
 //
 // What is on the table: ONE `<div>` with no children at all. It has a
 // shadow, a background, a border, an outline, text and a text-shadow — six

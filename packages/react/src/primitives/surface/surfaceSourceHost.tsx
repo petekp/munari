@@ -9,12 +9,11 @@
 // several composited frames wide: the crossing-flash gate photographed six
 // white cards over the logo, 2026-08-13.
 //
-// Content reaches the container by PORTAL, never by a second React root.
-// A portal keeps the source in one reconciler, so a provider mounted above
-// `SurfaceCanvas` reaches a `<Surface source>` declared deep in an R3F
-// scene. The two wirings differ only in who renders the portal: a page-side
-// root renders it itself, and a Canvas-side root hands it outward to the
-// host, because the R3F reconciler cannot render react-dom nodes. A source
+// Retained Surface.HTML supplies an adopted container; SceneSurface.HTML
+// supplies React content through a portal. That portal keeps the source in
+// one reconciler, so providers above SurfaceCanvas still reach scene content.
+// Canvas-side content is portaled outward through the host because the R3F
+// reconciler cannot render react-dom nodes. A source
 // update registers its replacement before releasing the old entry. The
 // cleanup-first order removed the focused control for one commit on
 // 2026-08-18, so every focus attempt fell back to `<body>`.
@@ -254,11 +253,8 @@ export function SurfaceSourceHost({
     [id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent, source],
   )
 
-  // One logical focus over two DOM copies, and a transfer when the hold
-  // moves. Subscribed from a LAYOUT effect so this listener is registered
-  // before <Surface.DOM>'s passive one: that is the listener that sets
-  // `inert`, and `inert` blurs its subtree, so reading the focused element
-  // after it has run finds `<body>`.
+  // Observe focus in the page and capture containers as one logical part.
+  // The hold subscription below handles transfer before page visibility changes.
   useEffect(() => {
     const ledger = createSurfaceFocusLedger((focused) => onFocusWithinRef.current?.(focused))
     const watch = (element: HTMLElement | null, instance: 'page' | 'source') => {
@@ -390,7 +386,7 @@ function createCaptureContainer(): HTMLElement {
   // and draws an empty rectangle, with clean paints and no error anywhere.
   node.style.width = `${DEFAULT_SIZE[0]}px`
   node.style.height = `${DEFAULT_SIZE[1]}px`
-  // Parked matter must never hold the real pointer. A drag consumer inside
+  // A parked capture must never hold the real pointer. A drag consumer inside
   // (react-resizable-panels calls `setPointerCapture` per move) would
   // otherwise capture the actual mouse, and every trusted pointer event
   // retargets to the parked element: the canvas goes silent mid-gesture.

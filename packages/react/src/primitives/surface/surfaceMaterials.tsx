@@ -46,12 +46,8 @@ vec4 munariStraightSample(vec4 sampleColor) {
 `
 
 /**
- * Splice the corner mask into a fragment shader.
- *
- * `straight` decides where the mask lands: an unlit material multiplies it
- * into the sampled alpha and lets the ordinary blend carry it, while a lit
- * one has to wait for the final fragment — the lighting terms in between
- * would otherwise be computed for a fragment the mask is about to erase.
+ * Install the corner-mask uniforms and GLSL function. The material applies
+ * the resulting mask after lighting, where color and alpha can be scaled together.
  */
 function spliceRadiusMask(shader: ShaderStage, value: SurfaceMaterialUniforms) {
   shader.uniforms.uMunariRadii = value.radii
@@ -119,7 +115,7 @@ export interface SurfaceLitMaterialProps {
   metalness?: number
   /**
    * How much of the capture is emitted rather than lit. `0` is pure lit
-   * matter; raising it lets a source's own bright pixels — an LED readout,
+   * surface; raising it lets a source's own bright pixels — an LED readout,
    * a backlit panel — keep their brightness under a dim scene light.
    */
   emissiveIntensity?: number

@@ -9,18 +9,18 @@ export interface CanvasPointerGateProps {
 }
 
 /**
- * Keep a full-page R3F canvas clear except where selected scene matter exists.
+ * Keep a full-page R3F canvas clear except over selected scene meshes.
  * It also gives a cold touch or pen contact one route into R3F before the
  * browser has had a pointer move with which to arm the canvas.
  *
  * Three guards, each a paid-for interaction contract:
- * - `claims`: from a pointerdown on matter until its release, every event
+ * - `claims`: from a pointerdown on a target mesh until its release, every event
  *   of that pointerId is retargeted through the canvas, so a drag that
  *   leaves the canvas cannot strand the Surface's active pointer
  *   mid-gesture, and the release is delivered even when the browser's
  *   hit target has moved on.
  * - the per-frame target cache: arming events raycast against the scene's
- *   matter, so the traversal is built once per frame, not once per
+ *   target meshes, so the traversal is built once per frame, not once per
  *   pointermove.
  * - `suppressedClick`: a claimed contact was already delivered to the
  *   scene, but the browser still synthesizes a click from the same
@@ -77,7 +77,7 @@ export function CanvasPointerGate({
     // recompute hit the canvas instead of the restored page copy, and a
     // motionless follow-up click died on it (measured 2026-08-20). While
     // solid and unclaimed, re-ask the raycast each frame at the last armed
-    // position. Runs only while the pointer is over Surface matter; one
+    // position. Runs only while the pointer is over a Surface hit region; one
     // quad intersect per frame, no paints, so gate:idle-zero holds.
     const startRecheck = () => {
       if (recheckFrame) return
@@ -195,7 +195,7 @@ export function CanvasPointerGate({
       // a pointerout that stripped the parked copy's twins under a still
       // pointer — the second click of a quick double press lost its hover
       // background until the hand moved (measured 2026-08-20). A release
-      // still over matter keeps the canvas solid and replays one buttonless
+      // still over a target mesh keeps the canvas solid and replays one buttonless
       // move so hover is re-derived at the release point.
       if (sample && hitsTarget(sample)) {
         setSolid(true)

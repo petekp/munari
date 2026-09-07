@@ -323,7 +323,7 @@ export default function App() {
   // What DOESN'T come back is content that lives only in a source with no
   // page-side presenter. Measure that by what a READER can reach — text
   // outside any parked canvas and outside `aria-hidden` — not by
-  // `body.innerText`, which counts a `<Surface.DOM>` park as a second copy
+  // `body.innerText`, which counted a parked capture as a second copy
   // and scored Selection at 67% when it was already whole.
   //
   // By that metric the five nav scenes are all 100%: flight, genie, logo

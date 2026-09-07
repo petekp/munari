@@ -11,7 +11,7 @@
 // from the light and every inset shadow hugs the rim nearest it.
 //
 // Fault: the lamp spike (2026-09-01) hard-coded one standoff for the
-// headline only. The masthead has three kinds of matter (glyphs, raised
+// headline only. The masthead has three kinds of content (glyphs, raised
 // controls, wells), so the projection is one pure function here and the
 // shader mirrors it per kind.
 //

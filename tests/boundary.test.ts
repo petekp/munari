@@ -210,10 +210,6 @@ describe('current documentation uses the public canvasId prop', () => {
     const offenders: string[] = []
     for (const file of files) {
       const text = readFileSync(file, 'utf8')
-      if (relative(ROOT, file) === 'docs/public-api-proposal.md') {
-        expect(text).toContain('HISTORICAL DESIGN RECORD')
-        continue
-      }
       if (hasRemovedCanvasProp(text)) offenders.push(relative(ROOT, file))
     }
     expect(offenders).toEqual([])

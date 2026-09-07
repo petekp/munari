@@ -1,5 +1,5 @@
 // Home light — one fragment shader multiplies the page by a single point
-// light and the shadows the page's own matter casts under it: the headline
+// light and the shadows the page's own content casts under it: the headline
 // glyphs, every raised control and thumbnail, and the rim of every well.
 //
 // The law: the pass only darkens. It writes a multiplier the page is
@@ -53,7 +53,7 @@ const float WELL_DEPTH = ${WELL_DEPTH.toFixed(1)};
 // No light pool: the page's wash is the brightest thing on screen and stays
 // one colour top to bottom (a pool that eased to 0.9 read as a second,
 // duller wash below the fold, 2026-09-05). The light only casts shadows.
-// How dark the deepest shadow gets, per kind of matter.
+// How dark the deepest shadow gets, for each kind of content.
 const float GLYPH_FLOOR = 0.6;
 const float RAISED_FLOOR = 0.6;
 const float WELL_FLOOR = 0.66;
@@ -128,7 +128,7 @@ float glyphInk(vec2 p, float level) {
   return channelAt(sampleRect(uInk, uInkRect, p), level);
 }
 
-// The offset from a fragment back toward the light for matter standing off
+// The offset from a fragment back toward the light for content standing off
 // the page (or sunk into it, via the well form), capped in length.
 vec2 throwOffset(vec2 p, float factor, float maxLen) {
   vec2 off = (p - uLight) * factor;

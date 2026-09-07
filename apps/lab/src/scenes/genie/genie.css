@@ -871,7 +871,7 @@
 }
 
 /* The overlay canvas — same discipline as flight: never able to eat a
- * click unless the scene has switched it solid over matter. */
+ * click unless the scene has switched it solid over a sheet. */
 /* The overlay's input is the host's: SurfaceCanvas keeps its wrapper clear
  * and writes the canvas's own pointer-events per frame, solid only where a
  * Surface mesh is under the hand. A stylesheet rule here would either lose

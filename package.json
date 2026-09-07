@@ -35,6 +35,7 @@
     "gate:native-pointer": "node instruments/native-pointer/run.mjs",
     "gate:chrome-over-canvas": "node instruments/chrome-over-canvas/run.mjs",
     "gate:knobs-resize": "node instruments/knobs-resize/run.mjs",
+    "probe:knobs-hz": "node instruments/knobs-hz/run.mjs",
     "gate:refraction-arriving": "node instruments/refraction-arriving/run.mjs",
     "gate:gallery-pointer": "node instruments/gallery-pointer/run.mjs",
     "gate:crystal-pointer": "node instruments/crystal-pointer/run.mjs",

@@ -44,7 +44,7 @@ import '@petepetrash/munari/style.css'
 function Counter() {
   const [count, setCount] = useState(0)
   return (
-    <button style={{ width: 240, height: 100 }} onClick={() => setCount(count + 1)}>
+    <button type="button" style={{ width: 240, height: 100 }} onClick={() => setCount(count + 1)}>
       Count {count}
     </button>
   )
@@ -63,7 +63,7 @@ export function Example() {
         style={{ position: 'absolute', inset: 0 }}
       />}
       <Surface canvasId={canvasId} inScene={inScene}><Counter /></Surface>
-      <button disabled={!supported} onClick={() => setInScene(value => !value)}>
+      <button type="button" disabled={!supported} onClick={() => setInScene(value => !value)}>
         {inScene ? 'Return to page' : 'Show in scene'}
       </button>
     </main>
@@ -245,7 +245,7 @@ still starts only Vite for a browser that already has the flag enabled.
 
 ## Go further
 
-- [All demo API examples](ALL-DEMO-API.md) show the same API across Flight,
+- [Demo source map](ALL-DEMO-API.md) links the implementations across Flight,
   Controls, Knobs, Selection, Gallery and the other scenes.
 - [Authoring rules](docs/authoring.md) describe the browser capture constraints.
 - [Agent workflow](docs/agent-workflow.md) maps a change to its owner and check.

@@ -273,7 +273,7 @@ try {
   //
   // By rect and not by `elementFromPoint`, which cannot answer this. The
   // canvas runs `pointerMode="surfaces"`: it is `pointer-events: none` and
-  // only goes solid once a raycast has found registered matter under the
+  // only goes solid once a raycast has found a registered Surface under the
   // pointer, so a hit test taken before the mouse has moved there reports
   // whatever is behind the canvas and never the canvas itself.
   const blockers = await page.evaluate(() =>

@@ -179,14 +179,13 @@ sheet and fades only where the funnel has squeezed it past legibility.
 
 ## knobs-hz
 
-Reports whether the knobs scene holds 120 Hz.
-`node instruments/knobs-hz/run.mjs`. A reporter, not a gate: it
-prints per-phase frame statistics against the 8.33 ms budget and a
-verdict line.
+Reports Knobs throughput at a fixed 1440×900 viewport and DPR 2.
+`npm run probe:knobs-hz` prints per-phase frame statistics against an
+8.33 ms reference budget. It is a reporter, not a gate.
 
 The browser runs headed with vsync and the frame-rate limiter off, so
-`requestAnimationFrame` deltas measure the cost of producing a frame,
-not display cadence. Four phases: `idle` (the standing animation),
+`requestAnimationFrame` deltas describe free-running throughput, not display
+cadence or isolated CPU/GPU time. Four phases: `idle` (the standing animation),
 `art-` (idle with the SVG artwork hidden; the difference is the
 artwork's raster share), `drag` (a held dial sweep through the real
 input path), and `off` (POWER off, the demo's floor). Two honesty
@@ -265,7 +264,9 @@ that movement and release reach the scene. Rendering must stop after both
 landing cleanups. It also samples Logo's two
 renderer handoffs for blank frames. This gate is the
 regression contract for the lab
-faults found in manual QA on 2026-08-18.
+faults found in manual QA on 2026-08-18. It uses `&bare`, which can omit scene
+HUD content; its Explode check proves camera movement, not interaction with
+every omitted paint layer.
 
 ## genie-film-reorder
 
@@ -284,7 +285,7 @@ A shader is a JavaScript string until a browser compiles it, so
 nothing else in CI can tell a working one from a broken one:
 typecheck, lint, and the unit suites all see a string. This gate hooks
 `compileShader` and `linkProgram` from inside the page, walks the logo
-scene through the states that build materials (page, matter, extruded,
+scene through the states that build materials (page, scene, extruded,
 bump-only relief, back to page), and prints every info log against its
 own source lines.
 
@@ -301,38 +302,28 @@ gate in the repo and the one the others assume.
 
 ## lifting-pointer
 
-CI gate: input follows the eye (decisions.md #33) — which DOM instance
-hears a real click in each crossing phase. `npm run gate:lifting-pointer`.
+CI gate: input and hover follow the displayed content during handoff
+(decisions.md #33). `npm run gate:lifting-pointer`.
 
-One exclusive Surface whose page copy and parked source each count
-their own clicks; the runner fires trusted clicks at rest, at three
-offsets inside a widened lifting window (`settleMs: 700`), and in the
-gl phase, then samples hover mirroring mid-lift. The rest and gl
-clicks are liveness baselines — if either lands wrong the lifting
-answer is vacuous. The judged clauses: every lifting-window click
-reaches the presented page copy, that copy wears real `:hover`
-mid-lift, and the parked copy wears no `data-hover` — the last clause
-also covers the #33 edge burst, because an earlier gl-phase hover
-leaves a stamped twin that only the burst clears.
+The current fixture keeps one live button and records the accepted presentation
+at each click. It checks page and scene clicks, three offsets within a 700ms
+preparation window, and native hover during preparation. The initial scene
+request must also tolerate asynchronous renderer mounting.
 
-The presenter lives inside `Surface.Scene`. The gate also requests `both`,
-`none`, `page`, and `canvas`, checks the reported presentation against page
-visibility and subtree lifetime, then verifies that the custom child's frame
-subscription stops after return and cleanup. It exercises inherited content
-through an empty `Surface.DOM` declaration. Settled static `canvas` and `both`
-presentations must also let their demand canvas stop rendering while the
-presenter remains mounted.
+Page/scene requests must agree with visible content and `Surface.Scene` lifetime.
+After return and cleanup, the custom child's frame subscription must stop. A
+static scene hold must let the demand renderer become idle while its presenter
+remains mounted. Native-versus-relayed delivery is measured by the separate
+native-pointer gate, not inferred from two supposed React instances.
 
-This began as the probe that found the fault (2026-08-19: 3/3 lifting
-clicks routed to the parked copy while the page copy was presented;
-the pointer gate made the canvas solid at mesh registration, a full
-settle dwell before presentation changed hands) and was promoted when
-`crossingPointer` shipped.
+The original 2026-08-19 failure involved two copies and routed 3/3 preparation
+clicks to the hidden one. That is historical context; this fixture now checks
+the retained-content API.
 
 ## native-pointer
 
 Local gate: the native pointer route (decisions.md #39), driven for the
-first time inside the library. `npm run gate:native-pointer`.
+through the library. `npm run gate:native-pointer`.
 
 One exclusive Surface opts into `pointerRoute="auto"` in the gl phase.
 The gate's discriminator is `isTrusted`: the relay's synthetic dispatch
@@ -355,7 +346,7 @@ under the worn pose the browser's rects ARE the projection (platform.md
 
 The input is controlled above the Surface. After typing through the native
 canvas route, the gate returns to the page, verifies the value, edits it there,
-and re-enters the canvas to check that both instances retain the shared state.
+and re-enters the canvas. The same retained element must contain the edited value.
 
 What it deliberately does not judge: the OS cursor. Whether Chrome
 applies an unpainted canvas child's `cursor` is #39's open question and
@@ -783,7 +774,7 @@ background control.
 
 `npm run gate:chrome-over-canvas` — page UI painted above a
 `pointerMode="surfaces"` canvas must still receive clicks where it
-overlaps Surface matter.
+overlaps Surface content.
 
 The gate parks the refraction crossing at `t = 0.5`, which is the only
 state where the scene holds a mesh, and clicks three headers in the lab's

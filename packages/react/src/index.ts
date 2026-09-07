@@ -32,10 +32,8 @@ export type { SurfaceResolution, SurfaceSize } from './primitives/surface/surfac
 export { createSurface, useSurfaceHandle, useSurfaceProgress, type SurfaceHandle, type SurfaceProgress, type SurfaceTiming } from './primitives/surface/surfaceHandle'
 
 // ── What a Surface hands its children ────────────────────────────────────
-// A Surface.Mesh can supply its own material. These hooks read its live texture,
-// measured chrome,
-// and the painted box it gates blending on when its own raster's
-// generation might lag the live DOM.
+// A Surface.Mesh can supply its own material. These hooks read its texture,
+// measured chrome, and the dimensions of its last completed paint.
 //
 // `useSurfaceTextureOf` is the one that reaches OUTSIDE the slot: a handle
 // names content, and a source paints and uploads with no presenter at all,
@@ -84,8 +82,8 @@ export {
   surfaceFocusTarget,
 } from './primitives/surface/surfaceFocus'
 
-// The receipts a Surface hands its own callbacks. A consumer that stores
-// one — a probe, a HUD, a replay log — needs to be able to name it.
+// Receipt types for capture and advanced drawing. Ordinary Surface callbacks
+// report presentation, readiness, and motion rather than these pixel receipts.
 export type { DomPaintReceipt, PresentationReceipt } from '@munari/core'
 // The capability check every consumer runs before deciding which tree to
 // render. `useSurfaceSupport` is the one to reach for: it is

@@ -67,15 +67,10 @@ export const LOGO_PALETTE = [
   '#f76fa2', // bubblegum
 ]
 
-/** The matter deck — what a lifted letter is MADE of. Index 0 is plain
- *  ink, the page's own look kept as a rest note: a word where one letter
- *  stays mere ink shows what its siblings transmuted from. The rest are
- *  substances only the canvas can render — each one is a MATTER_PARAMS
- *  row in logoShaders, aligned with this list by index (the shader
- *  suite pins the alignment). The conductor deals them exactly like
- *  faces and colors, so in matter mode a beat transmutes a letter, not
- *  just redecorates it. */
-export const LOGO_MATTERS = [
+/** Material choices for scene-rendered letters. Index 0 preserves plain ink.
+ *  Entries align with MATERIAL_PARAMS in logoShaders; its tests pin that
+ *  alignment. A pose chooses one material alongside its font and color. */
+export const LOGO_MATERIALS = [
   'ink',
   'balloon',
   'foil',
@@ -104,81 +99,81 @@ export interface LogoKnobs {
   squish: number
   /** em — idle float amplitude of the DOM letters. */
   float: number
-  /** px — matter mode: z amplitude of the depth bob. */
+  /** px — scene mode: z amplitude of the depth bob. */
   depth: number
-  /** px — matter mode: how far a letter shies away from the pointer. */
+  /** px — scene mode: how far a letter shies away from the pointer. */
   dodge: number
-  /** 0..1 — matter mode: how hard the substances are lit (bevel shade,
-   *  glints, reflections, glow). Zero is flat ink for every matter. */
+  /** 0..1 — scene mode: how hard the substances are lit (bevel shade,
+   *  glints, reflections, glow). Zero is flat ink for every material. */
   gloss: number
-  /** 0..2 — matter mode: walks every matter's roughness matte ↔ mirror
+  /** 0..2 — scene mode: walks every material's roughness matte ↔ mirror
    *  around its deck value. 1 is the deck as tuned. */
   polish: number
-  /** 0..2 — matter mode: trim on the fabric rim (velvet, pearl). A
-   *  matter whose deck row carries no sheen ignores it. */
+  /** 0..2 — scene mode: trim on the fabric rim (velvet, pearl). A
+   *  material whose deck row carries no sheen ignores it. */
   sheen: number
-  /** 0..2 — matter mode: trim on the thin-film tint (holo, pearl). */
+  /** 0..2 — scene mode: trim on the thin-film tint (holo, pearl). */
   irid: number
-  /** 0..2 — matter mode: trim on the emissive matters — the tube and
+  /** 0..2 — scene mode: trim on the emissive materials — the tube and
    *  its halo (neon, plasma). Above 1 overdrives the tube. */
   glow: number
-  /** 0..1 — matter mode: how far the weave rolls the letter — the
-   *  orbit radius every matter shares, scaled by its own softness
+  /** 0..1 — scene mode: how far the weave rolls the letter — the
+   *  orbit radius every material shares, scaled by its own softness
    *  above WEAVE.floor (gummy deepest, enamel least). 0 becalms the
    *  word; 1 is a heavy sea. */
   jelly: number
-  /** 0..1 — matter mode: chromatic fringe on a moving letter. */
+  /** 0..1 — scene mode: chromatic fringe on a moving letter. */
   prism: number
-  /** Relief amount — matter mode: the gain on the height field, NOT a
+  /** Relief amount — scene mode: the gain on the height field, NOT a
    *  peak height in px. It is referenced to RELIEF_REF = 22
    *  (logoShaders), where the multiplier is exactly 1 and the shipped
    *  look sits; the rise at full coverage is `relief / 22 × dome ×
-   *  (shoulder × 9.6 + pillow × 51.2)` px, which is per-matter. So the
+   *  (shoulder × 9.6 + pillow × 51.2)` px, which is per-material. So the
    *  default 22 domes balloon 83 px and neon 12 px, and the ceiling 60
    *  domes balloon 227 (209 of it in the mesh). Shading alone makes a
    *  letter look domed; this makes it one. */
   relief: number
-  /** 0..1 — matter mode: how much of `relief` the MESH carries. The
+  /** 0..1 — scene mode: how much of `relief` the MESH carries. The
    *  rest stays a bump. Lighting is identical at both ends, so this
    *  buys parallax and a real silhouette without restyling the letter:
    *  0 is a flat card lit as a dome, 1 is a dome. */
   body: number
-  /** px — matter mode: how far the letter's traced outline (logoContour)
+  /** px — scene mode: how far the letter's traced outline (logoContour)
    *  extrudes back into real side walls. Zero is a sheet. */
   extrude: number
-  /** deg — matter mode: the key light's swing around the vertical, 0
+  /** deg — scene mode: the key light's swing around the vertical, 0
    *  dead ahead of the letters, negative to their left. One direction
    *  drives the analytic key AND its softbox twin in the studio
    *  (logoShaders), so the glint and the shading always agree. */
   lightYaw: number
-  /** deg — matter mode: the key light's climb above the horizon. */
+  /** deg — scene mode: the key light's climb above the horizon. */
   lightPitch: number
-  /** 0..2 — matter mode: key light brightness. 1 is the shipped rig. */
+  /** 0..2 — scene mode: key light brightness. 1 is the shipped rig. */
   key: number
-  /** 0.2..2 — matter mode: key softbox size — tight glint ↔ broad sheet. */
+  /** 0.2..2 — scene mode: key softbox size — tight glint ↔ broad sheet. */
   keySoft: number
-  /** 0..2 — matter mode: the cool fill and floor bounce together. */
+  /** 0..2 — scene mode: the cool fill and floor bounce together. */
   fill: number
-  /** 0..2 — matter mode: the room grade, the studio's ambient base.
+  /** 0..2 — scene mode: the room grade, the studio's ambient base.
    *  Below 1 this undercuts the perceptual floor the shader suite
    *  pins — a bench excursion, deliberately reachable, never shipped. */
   room: number
-  /** 0..2 — matter mode: the front fill on the view axis — the light
+  /** 0..2 — scene mode: the front fill on the view axis — the light
    *  a flat mirror reflects. Zero returns chrome to a void. */
   front: number
-  /** ×wavelength — matter mode: the gel weave's scale. 1 is the tuned
+  /** ×wavelength — scene mode: the gel weave's scale. 1 is the tuned
    *  weave; below tightens it toward chop, above opens it toward
    *  swell. */
   waveScale: number
-  /** ×speed — matter mode: how fast the weave travels. 0 freezes it
+  /** ×speed — scene mode: how fast the weave travels. 0 freezes it
    *  mid-pose. */
   waveSpeed: number
-  /** deg — matter mode: rotates the weave's two travel axes together. */
+  /** deg — scene mode: rotates the weave's two travel axes together. */
   waveAngle: number
-  /** 0..2 — matter mode: how hard a strike rings the letter. A tap on
+  /** 0..2 — scene mode: how hard a strike rings the letter. A tap on
    *  a letter and a beat re-dealing one both strike; 0 disarms both. */
   ripple: number
-  /** 0..2 — matter mode: how far travel deforms the letter — squash
+  /** 0..2 — scene mode: how far travel deforms the letter — squash
    *  and stretch along the motion, area-conserving, gone at rest. */
   stretch: number
 }
@@ -240,17 +235,16 @@ export interface LetterPose {
   /** em. */
   dy: number
   scale: number
-  /** Index into LOGO_MATTERS — the substance this letter becomes when
-   *  the word lifts. The page ignores it; only matter mode can see it. */
-  matter: number
+  /** Numeric selector into LOGO_MATERIALS, used only by the scene presentation. */
+  materialIndex: number
 }
 
 /** What a re-roll must not land on: the letter's own current face,
- *  color, and matter, plus whatever its neighbors wear right now. */
+ *  color, and material, plus whatever its neighbors wear right now. */
 export interface PoseAvoid {
   fonts: number[]
   colors: number[]
-  matters: number[]
+  materialIndices: number[]
 }
 
 function pickIndex(r: Rand, n: number, avoid: number[]): number {
@@ -265,7 +259,7 @@ function pickIndex(r: Rand, n: number, avoid: number[]): number {
 export function rollPose(r: Rand, avoid: PoseAvoid, k: LogoKnobs): LetterPose {
   const font = pickIndex(r, LOGO_FONTS.length, avoid.fonts)
   const color = pickIndex(r, LOGO_PALETTE.length, avoid.colors)
-  const matter = pickIndex(r, LOGO_MATTERS.length, avoid.matters)
+  const materialIndex = pickIndex(r, LOGO_MATERIALS.length, avoid.materialIndices)
   const weights = LOGO_FONTS[font].weights
   return {
     font,
@@ -275,12 +269,12 @@ export function rollPose(r: Rand, avoid: PoseAvoid, k: LogoKnobs): LetterPose {
     dx: (r() * 2 - 1) * k.drift,
     dy: (r() * 2 - 1) * k.drift,
     scale: 1 + (r() * 2 - 1) * k.squish,
-    matter,
+    materialIndex,
   }
 }
 
 /** Roll a whole word left to right, each letter dodging its left
- *  neighbor's face, color, and matter. */
+ *  neighbor's face, color, and material. */
 export function seedWord(n: number, r: Rand, k: LogoKnobs): LetterPose[] {
   const word: LetterPose[] = []
   for (let i = 0; i < n; i++) {
@@ -289,8 +283,8 @@ export function seedWord(n: number, r: Rand, k: LogoKnobs): LetterPose[] {
       rollPose(
         r,
         left
-          ? { fonts: [left.font], colors: [left.color], matters: [left.matter] }
-          : { fonts: [], colors: [], matters: [] },
+          ? { fonts: [left.font], colors: [left.color], materialIndices: [left.materialIndex] }
+          : { fonts: [], colors: [], materialIndices: [] },
         k,
       ),
     )
@@ -417,9 +411,9 @@ export function lightDir(yawDeg: number, pitchDeg: number): [number, number, num
  *    read as shaking. Strikes answer through the rings alone.
  *  · The PAINT must carry the wave: out-of-plane height reaches a
  *    face-on eye only through lighting, and lighting is invisible on
- *    matte matters. The weave is a Gerstner ORBIT — in-plane surge
+ *    matte materials. The weave is a Gerstner ORBIT — in-plane surge
  *    plus heave — so the ink itself rolls, flag-like, on every
- *    matter. The floor keeps six different matters on ONE sea. */
+ *    material. The floor keeps six different materials on ONE sea. */
 export const WEAVE = {
   /** Wavelengths, em: a word-scale swell (two-plus crests across the
    *  word — the crest clause) and a glyph-scale cross ripple for
@@ -431,7 +425,7 @@ export const WEAVE = {
    *  which is the whole brief. Incommensurate, so the pair never
    *  locks into a standing pattern. */
   w: [3.5, 5.1],
-  /** Orbit radius at rest, em, at knob 1 on the softest matter — and
+  /** Orbit radius at rest, em, at knob 1 on the softest material — and
    *  at rest is where it stays: excitation never scales it. With
    *  lambda[0] this sets both the surge the paint shows and the
    *  steepness the lighting shows (the legibility clause pins the
@@ -440,7 +434,7 @@ export const WEAVE = {
    *  excursion — jelly at max under a hard-tightened waveScale —
    *  can reach the fold. */
   amp: 0.09,
-  /** How much of the sea the HARDEST matter still rides, 0..1 — the
+  /** How much of the sea the HARDEST material still rides, 0..1 — the
    *  same shape as RIPPLE.floor, for the same reason turned outward:
    *  a sea that skips the chrome letter breaks into six private
    *  waters, and the word stops reading as one surface. Softness
@@ -469,9 +463,9 @@ export const RIPPLE = {
   tau: 0.55,
   /** Peak displacement of a full-power strike, em. */
   amp: 0.05,
-  /** The share of a strike the STIFFEST matter keeps. Rings are a
+  /** The share of a strike the STIFFEST material keeps. Rings are a
    *  surface wave, so even chrome carries them — mercury, not stone.
-   *  Ink stays flat through the matter gate, not through this. */
+   *  Ink stays flat through the material gate, not through this. */
   floor: 0.3,
 } as const
 
@@ -492,9 +486,9 @@ export function stretchAmount(speed: number): number {
   return (STRETCH.max * speed) / (speed + STRETCH.ref)
 }
 
-// ── the matter spring ───────────────────────────────────────────────────
+// ── the letter spring ───────────────────────────────────────────────────
 
-/** One integration step of the underdamped spring matter-mode letters
+/** One integration step of the underdamped spring scene-mode letters
  *  ride toward each new pose. Damping sits below critical
  *  (2·√stiffness ≈ 19) on purpose: a letter should overshoot and
  *  settle — arrive like a thing with mass, not fade like a tween. */

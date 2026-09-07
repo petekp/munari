@@ -2735,3 +2735,43 @@ per presenter; one pending style-sampling frame despite transition interrupts;
 owner-specific duplicate-part cleanup with a surviving publication; live tuning
 shared by GPU field passes and CPU pointer reads; authoritative Glass blob
 counts; and one Crystal parking toggle per physical key press.
+
+<a id="49"></a>
+
+## #49 — One current API guide and no duplicate implementations (2026-09-07)
+
+The retained-HTML cutover left multiple guides and completed plans in the working
+root. Some still called themselves the next implementation plan or pointed at a
+local temporary worktree. The README now owns current usage, and the demo map
+links actual source rather than maintaining copied examples. Superseded proposals
+and completed hardening reports remain in Git history; the numbered decisions,
+platform measurements, conformance contracts and runnable instruments remain here.
+
+The private SurfaceDOM module had no runtime importer and appeared in neither
+public exports nor emitted code. Its useful tests now exercise retained HTML or
+the actual protocol declaration. The unused lab/registry anchor collector copied
+functions already maintained in core and exported through `/advanced`; those
+copies and their duplicate pack test are removed. Core anchor contracts remain.
+Unused UI/helpers/styles and an inactive lint rule were removed after reference
+checks. No active lint configuration, kernel law, tuning value, or public export
+changed.
+
+Current focus guidance describes the implemented callbacks, traversal and camera
+fallback. The earlier guide mixed those with unbuilt cancelable callbacks,
+autofocus, announcer, and caching proposals. The historical Chrome 150 measurement
+table remains dated evidence; its removed `focusprobe` URL is not a current command.
+
+Browser instruments must identify their actual source and observed state.
+External-server drivers require the printed URL rather than guessing a port;
+scene-local probes bypass the website shell. Genie's reacquisition probe had
+counted four inert snapshots as extra live windows: Chrome showed a completed
+reacquisition with four original sheets and four snapshots. The corrected check
+retains the original-node and framebuffer obligations. Knobs throughput reporting
+uses live mesh projection and confirms the intended controls were exercised; its
+free-running frame times do not establish display cadence.
+
+Clarification to #43: the supported public types contain no old root `source` or
+`adopt` option, but unknown JavaScript props can still reach the internal root's
+legacy capture branch. That branch and unread private context metadata remain.
+They are not current API examples; removing the branch is a behavioral retirement
+for untyped callers, separate from deleting an unreachable module.

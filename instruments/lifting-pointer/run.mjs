@@ -1,14 +1,10 @@
-// lifting-pointer gate — which DOM instance hears a real click in each
-// crossing phase. The contract is decisions.md #33 (input follows the eye):
-// during 'lifting' the page copy is presented, so it must hear every trusted
-// click and wear real :hover, and the parked copy must wear no relayed
-// twins. This began as the probe that found the fault (2026-08-19: 3/3
-// lifting clicks misrouted to the parked copy) and was promoted when
-// crossingPointer shipped.
+// lifting-pointer gate — retained input, hover, and scene lifetime across
+// presentation changes. Decision #33 requires real clicks and native hover
+// during preparation. The original two-copy regression is historical; the
+// current fixture records one button and its presentation at each event.
 //
-// Baselines double as liveness checks: a click at rest must reach the page
-// copy, and a click in the 'gl' phase must reach the parked copy through
-// the relay. If either fails, the lifting answer would be vacuous.
+// Rest and scene clicks are liveness controls. Native-versus-relayed event
+// delivery is measured separately by the native-pointer gate.
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -96,7 +92,7 @@ try {
   // first commit; it cannot require the user to mount the canvas earlier.
   await page.goto(`http://127.0.0.1:${port}/?initial=scene`, { waitUntil: 'load' })
   await page.waitForFunction(
-    () => window.__probe?.state.presented === 'scene' && !window.__probe.state.isChanging,
+    () => window.__probe?.state.presentation === 'scene' && !window.__probe.state.isTransitioning,
     { timeout: 15_000 },
   )
   await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load' })
@@ -112,7 +108,7 @@ try {
   const stateNow = () => page.evaluate(() => window.__probe.state)
   const waitForView = (view) =>
     page.waitForFunction(
-      (v) => window.__probe.state.presented === v && !window.__probe.state.isChanging,
+      (v) => window.__probe.state.presentation === v && !window.__probe.state.isTransitioning,
       { timeout: 15_000 },
       view,
     )
@@ -123,7 +119,7 @@ try {
     await sleep(120)
     const after = await clickCount()
     const rec = after > before ? await lastClick() : null
-    return { label, heardBy: rec ? rec.instance : 'nobody', record: rec }
+    return { label, heardBy: rec ? rec.presentationAtClick : 'nobody', record: rec }
   }
 
   const results = []
@@ -190,7 +186,7 @@ try {
     }
     policies.push(await page.evaluate((value) => ({
       requested: value,
-      presented: window.__probe.state.presented,
+      presentation: window.__probe.state.presentation,
       pageVisible: window.__probe.pageVisible(),
       sceneActive: window.__probe.scene.active,
     }), requested))
@@ -206,7 +202,7 @@ try {
   console.log('\nlifting-pointer gate — who heard the click:')
   for (const r of results) {
     const extra = r.record
-      ? ` (presented=${r.record.state.presented}, isChanging=${r.record.state.isChanging},` +
+      ? ` (presentation=${r.record.state.presentation}, isTransitioning=${r.record.state.isTransitioning},` +
         ` canvasSolid=${r.record.canvasSolid}, pageVisible=${r.record.pageVisible})`
       : ''
     console.log(`  ${r.label.padEnd(20)} → ${r.heardBy}${extra}`)
@@ -247,7 +243,7 @@ try {
       failures.push(`${r.label}: heard by ${r.heardBy}, the presented page copy must hear it`)
     }
   }
-  if (hoverLifting.state.presented === 'page' && hoverLifting.state.isChanging) {
+  if (hoverLifting.state.presentation === 'page' && hoverLifting.state.isTransitioning) {
     if (hoverLifting.realHover !== true) {
       failures.push('lifting hover: the visible page copy shows no real :hover')
     }

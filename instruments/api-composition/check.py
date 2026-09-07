@@ -5,7 +5,8 @@ import subprocess
 from pathlib import Path
 from png_pixel import pixel_at
 
-url = os.environ.get('API_COMPOSITION_URL', 'http://127.0.0.1:5178')
+url = os.environ.get('API_COMPOSITION_URL')
+if not url: raise SystemExit('Set API_COMPOSITION_URL to the URL printed by npm run probe:api-composition.')
 session = os.environ.get('API_PROOF_SESSION', 'munari-api-v2')
 output = Path(os.environ.get('API_PROOF_OUTPUT', str(Path(tempfile.gettempdir())/'munari-api/evidence')))
 output.mkdir(parents=True, exist_ok=True)

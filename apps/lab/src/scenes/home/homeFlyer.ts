@@ -2,7 +2,7 @@
 // from the hero's frame loop to the light shader so the card keeps casting
 // a shadow after it leaves the page.
 //
-// The law: the shadow shader only knows page matter through masks, and a
+// The law: the shadow shader only knows page content through masks, and a
 // mask is a picture of the DOM. The lifted card is not DOM any more; it is
 // a mesh with a pose. So the pose itself crosses over: four corners in
 // viewport px with a height above the page, republished every frame.

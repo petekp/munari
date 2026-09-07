@@ -80,7 +80,7 @@ function Observations() {
 }
 void Observations
 
-function RevisionTwoExamples() {
+function ContentCompositionExamples() {
   const attached = useElementCapture()
   const authored = useCaptureHandle()
   const hidden = Math.random() > 0.5
@@ -109,7 +109,7 @@ function RevisionTwoExamples() {
     </Surface.Root>
   </>
 }
-void RevisionTwoExamples
+void ContentCompositionExamples
 
 ;<Surface.Root inScene={false}>
   <Surface.HTML as="span" layout="reflow"><span>Inline word</span></Surface.HTML>

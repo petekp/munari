@@ -1,5 +1,5 @@
 import { inspectCapture } from '@petepetrash/munari/advanced'
-// Disposable integration proof: real Controls plus two hosts sharing one Capture.
+// Capture lifetime probe: real Controls plus two hosts sharing one capture.
 import { createRoot } from 'react-dom/client'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'

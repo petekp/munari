@@ -10,14 +10,10 @@
 // each patch is instead — a photo's detailed regions open first and its
 // flat ones last, the way a page's marks open before its margins.
 //
-// Two Surfaces for five items, and this is the part worth reading. A
-// crossing needs exactly two live documents, so the scene keeps two handles
-// and moves items THROUGH them: whichever handle is presented holds the
-// item you are looking at, and the other one — a resident source, drawn by
-// nothing — already holds the item you are about to cross to. Landing
-// leaves the handles where they are and reloads the far one. Nothing is
-// ever normalised, so the scrub never snaps under a finger and neither
-// handle changes role mid-crossing.
+// One Surface keeps two named HTML parts for the outgoing and incoming
+// items. Each crossing fills the hidden part, presents both textures through
+// the refraction material, then reveals the destination's retained HTML.
+// The part identities stay stable while the displayed items change.
 //
 // The fault it presses on: a gallery is the case where "just crossfade two
 // screenshots" is most tempting and most wrong. The arriving item here has
@@ -34,7 +30,7 @@
 // and a grid that followed the viewport would make the same photograph open
 // in a different order in a different window.
 //
-// Ownership: this module owns time, layout and the two handles. The sheet
+// Ownership: this module owns time, layout and the shared handle. The sheet
 // is `refractionMaterial.tsx`, shape is `refractionLaw.ts`, numbers are
 // `galleryTuning.ts`.
 
@@ -80,7 +76,7 @@ const ITEMS: readonly Item[] = [
     eyebrow: 'drag',
     title: 'Flight',
     blurb:
-      'A card is dragged off the page, flies as matter in the scene, and ' +
+      'A card is dragged off the page, flies through the scene, and ' +
       'lands back into layout. The same element the whole way — nothing is ' +
       'cloned and nothing is screenshotted.',
     cta: 'Open the bench',

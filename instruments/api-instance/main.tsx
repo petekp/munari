@@ -1,4 +1,4 @@
-// Disposable browser probe: one portal container moved between page and capture.
+// Browser platform probe: one portal container moved between page and capture.
 import { createPortal, flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'

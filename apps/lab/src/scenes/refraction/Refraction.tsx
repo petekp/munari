@@ -5,12 +5,10 @@
 // and the page you are arriving at is seen through that drop. The leaving
 // page's ink grows a front; the front is the drop's contact line; the
 // arriving page is refracted by the meniscus and reads straight through the
-// flat middle. At most one of the two Surfaces is presented at a time, and
-// while the drop is open NEITHER is: the sheet belongs to the mesh and both
-// documents are RESIDENT SOURCES — declared with content, no view, no
-// `Surface.DOM`, no `Surface.Mesh` — whose pixels reach the shader by handle
-// through `useSurfaceTextureOf` (decisions.md #36). Nothing in the scene
-// graph draws a resident source and nothing in the document shows it.
+// flat middle. One Surface owns two named HTML parts. Its leaving-part mesh
+// also declares the arriving part in sampledParts, so preparation covers both
+// textures. At either endpoint the corresponding HTML part is visible and
+// native; during the crossing the material samples both parts.
 //
 // The two trade roles at the ends. The crossing lifts off the leaving page
 // and LANDS on the arriving one, which becomes ordinary DOM the browser
@@ -35,7 +33,7 @@
 // copy could not produce this picture even in principle, because the
 // arriving page is drawn nowhere to copy from.
 //
-// Ownership: this module owns time, layout and the two handles. The sheet
+// Ownership: this module owns time, layout and the shared handle. The sheet
 // itself is `refractionMaterial.tsx`, which the gallery scene mounts too.
 // Shape belongs to `refractionLaw.ts`, numbers to `refractionTuning.ts`,
 // pixels to `refractionShaders.ts`.
@@ -199,7 +197,7 @@ export function RefractionApp() {
 
   // Which document the compositor is holding, if either. At both ends of
   // the crossing one of them is ordinary DOM — selectable, focusable, and
-  // hit-tested by the browser — and the other is a resident source. In
+  // hit-tested by the browser — and the other is a hidden HTML part. In
   // between the answer is NEITHER: the mesh owns the sheet and both
   // documents feed it by handle.
   //
@@ -285,11 +283,8 @@ export function RefractionApp() {
     [form],
   )
 
-  // No controls, because for most of the crossing nothing can reach this
-  // document: while it is a resident source there is no mesh to point at and
-  // no relay to carry a click into it (docs/spikes/cross-surface-sampling.md,
-  // still unknown #2). It is directly interactive only once the crossing has
-  // landed on it, which is a presented Surface like any other.
+  // The arriving part has no input route during the crossing: it is sampled
+  // by the leaving part's mesh. Landing makes its retained HTML native again.
   const arriving = useMemo(
     () => (
       <Doc

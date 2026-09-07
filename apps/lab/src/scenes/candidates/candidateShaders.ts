@@ -424,7 +424,7 @@ export const CLOUD_FRAG = /* glsl */ `
     c.rgb = mix(c.rgb, uFlare * c.a, vArc * uFlareGain);
     c.rgb += uSpark * vArc * c.a;
 
-    // Square while it is part of the element, round while it is matter in
+    // Square while it is part of the element, round while it is a particle in
     // the air.
     float disc = 1.0 - smoothstep(0.34, 0.5, length(vQuad));
     float m = mix(1.0, disc, smoothstep(0.0, 0.18, vArc));

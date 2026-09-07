@@ -55,7 +55,7 @@ try {
   const pageErrors = []
   page.on('pageerror', (error) => pageErrors.push(String(error)))
   await page.setViewport({ width: 1100, height: 800, deviceScaleFactor: DSF })
-  await page.goto(`http://localhost:${port}/?scene=genie`, { waitUntil: 'load' })
+  await page.goto(`http://localhost:${port}/?scene=genie&framed`, { waitUntil: 'load' })
   await page.waitForFunction(
     () => document.querySelector('.gen-slot[data-win="quadrato"]') && document.fonts.status === 'loaded',
     { timeout: 15_000 },
@@ -207,6 +207,10 @@ try {
   )
   await page.evaluate(() => {
     const slot = document.querySelector('.gen-slot[data-win="quadrato"]')
+    // Retained HTML keeps inert visual snapshots with the same CSS classes.
+    // Only the original live sheets participate in the identity contract.
+    window.__duplicateLiveSheets = [...document.querySelectorAll('.gen-sheet')]
+      .filter(sheet => !sheet.closest('[data-munari-snapshot]'))
     const observer = new MutationObserver(() => {
       if (slot.dataset.away === 'true') return
       document
@@ -226,12 +230,23 @@ try {
     await page.waitForFunction(
       () =>
         document.querySelector('.gen-tile[data-win="quadrato"]').dataset.filled === 'true' &&
-        document.querySelectorAll('.gen-sheet').length === 4,
+        [...document.querySelectorAll('.gen-sheet')]
+          .filter(sheet => !sheet.closest('[data-munari-snapshot]')).length === 4 &&
+        window.__duplicateLiveSheets.length === 4 &&
+        window.__duplicateLiveSheets.every(sheet => sheet.isConnected),
       { timeout: 15_000 },
     )
   } catch {
     reacquired = false
-    problems.push('an immediate same-window reacquisition reused the landed Flight and stalled')
+    const observed = await page.evaluate(() => ({
+      filled: document.querySelector('.gen-tile[data-win="quadrato"]')?.dataset.filled,
+      sheets: [...document.querySelectorAll('.gen-sheet')].map(sheet => ({
+        window: sheet.dataset.win,
+        snapshot: Boolean(sheet.closest('[data-munari-snapshot]')),
+      })),
+      originalsConnected: window.__duplicateLiveSheets.every(sheet => sheet.isConnected),
+    }))
+    problems.push(`immediate reacquisition did not settle with four retained live windows: ${JSON.stringify(observed)}`)
   }
   console.log(`    immediate reacquisition      ${reacquired ? 'landed' : 'stalled'}`)
 

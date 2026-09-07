@@ -75,7 +75,7 @@ export interface SurfacePassEvidence {
  * while another renderer still holds the pixels, and it proves nothing.
  *
  * All three writes must be off. A pass that disabled color but left depth
- * on still occludes visible matter behind it, which is the hole the
+ * on still occludes visible geometry behind it, which is the hole the
  * shared-canvas warm-up exists to avoid.
  */
 export function passIsWarmUp(pass: SurfacePassEvidence): boolean {

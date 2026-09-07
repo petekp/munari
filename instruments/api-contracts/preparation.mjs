@@ -6,6 +6,8 @@ import {mkdir,writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {tmpdir} from 'node:os'
 import puppeteer from 'puppeteer-core'
+const origin=process.env.API_PROOF_URL
+assert.ok(origin,'Set API_PROOF_URL to the URL printed by npm run probe:api-lab.')
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/preparation')
 await mkdir(output,{recursive:true})
 const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:['--enable-features=CanvasDrawElement','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']})
@@ -13,7 +15,7 @@ try{
  const page=await browser.newPage(),errors=[];page.on('pageerror',error=>errors.push(String(error)))
  await setChromeViewport(page,{width:1280,height:900})
  await page.bringToFront()
- await page.goto(`${process.env.API_PROOF_URL??'http://127.0.0.1:5173'}/?scene=controls&framed&delayScene`,{waitUntil:'load'})
+ await page.goto(`${origin}/?scene=controls&framed&delayScene`,{waitUntil:'load'})
  await page.waitForFunction(()=>window.__apiControls?.status?.supported&&document.querySelector('[data-api-live] input'))
  await page.evaluate(()=>document.fonts.ready)
  await page.focus('[data-api-live] input')

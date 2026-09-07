@@ -5,7 +5,7 @@
 // the native subtree while leaving its visible node and input unchanged.
 //
 // Ownership: this component owns a hidden, inert DOM mirror and its change
-// subscriptions. Surface owns the capture texture. The environment borrows
+// subscriptions. CaptureContent owns the capture texture. The environment borrows
 // that texture and owns only its filtered reflection targets.
 
 import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react'

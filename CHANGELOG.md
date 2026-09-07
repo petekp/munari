@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Replace the duplicated-content Surface API with retained HTML: `Surface`
+  accepts `inScene`; explicit composition uses Root/HTML/Scene/Mesh. Add
+  SceneSurface, element capture, page targets, and before-render companions.
+- Name the canvas selector `canvasId`; SurfaceCanvas keeps its `id`.
+- Preserve native text density, state, focus and input through handoffs, and
+  correct texture allocation, alpha filtering, interrupted gestures and demo
+  control behavior.
+- Consolidate the current guides and remove superseded plans, duplicate anchor
+  recipes, unused helpers, and obsolete probe adapters.
+
+Versioned entries below describe their released interfaces, not the current
+development API. Use the README and exported types for this checkout.
+
 ## 0.3.0 — 2026-09-01
 
 - Breaking: replace `SurfaceApp`, the markup-string `Surface`, `useLift`,

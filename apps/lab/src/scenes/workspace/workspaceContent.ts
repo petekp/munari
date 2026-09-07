@@ -11,7 +11,7 @@
 // Surface's onSource — that owns its timers and returns cleanup.
 
 /** A satellite WebGL dial that joins the panel's focus group as a LEAF
- *  member — physical matter in the same Tab traversal as the panel's DOM. */
+ *  member — a 3D control in the same Tab traversal as the panel's DOM. */
 export interface DialSpec {
   label: string
   detents: number
@@ -482,13 +482,13 @@ function kanbanPanel(): PanelSpec {
 const DOCS: Array<[string, string[]]> = [
   ['runbook · paint stalls', ['Check the HUD chips first — a relaunched Chrome without flags looks exactly like a broken build.', 'Then __munari.stats(): a stalled source shows paints frozen while siblings advance.']],
   ['platform contract', ['drawElementImage replays the paint record; whatever the compositor owns never enters it.', 'The record changing IS the change signal. Idle subtrees fire nothing.']],
-  ['authoring dialect', ['If it changes what the surface says, mutate the DOM. If it changes where it is, move the matter.', 'Hover ships as data-hover. Pulses are background, never opacity.']],
+  ['authoring dialect', ['Update content through its state owner. Move the mesh to change its scene position.', 'Hover ships as data-hover. Pulses are background, never opacity.']],
   ['okrs · q3', ['O: the reference implementation for HTML-in-canvas UI.', 'KR1: focus/keyboard complete. KR2: killer demo shipped. KR3: origin-trial feedback filed.']],
   ['retro · sprint 12', ['One integrator, three force fields — new controls are new fields, zero new state machines.', 'Physics deciding a toggle beats animating one.']],
   ['glossary', ['Surface: DOM subtree as the skin of geometry. SurfaceLayer: floating UI anchored to a UV point.', 'Paint record: the display list drawElementImage replays.']],
   ['incident · 007', ['A transition: opacity in a teammate panel shipped a stale texture that healed on unrelated repaints.', 'Root cause: compositor-owned property. Now a hard authoring rule.']],
   ['roadmap', ['v0: floating layers ✓, control kit ✓, focus/keyboard ◐, scale contract ✓.', 'Next: graceful degradation to overlay DOM when the API is absent.']],
-  ['api sketch', ['<Surface source size> names one DOM source.', '<Surface.Mesh geometry> gives it a physical presentation.']],
+  ['api sketch', ['<SceneSurface.HTML size> supplies the panel content.', '<SceneSurface.Mesh geometry> draws it in the scene.']],
   ['perf notes', ['Ceiling is per-source fixed cost, not pixels: 4× texels, same fps.', 'Budget ~64–96 concurrently painting at 120Hz. Idle is free.']],
   ['reading list', ['Data Mountain (Robertson 98) — spatial memory beats lists.', 'Calm technology (Weiser) — the periphery is a feature, not noise.']],
   ['oncall', ['This week: devon. Escalation: #munari-alerts.', 'Known flake: daemon relaunches Chrome without --args when the window closes.']],

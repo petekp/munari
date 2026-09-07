@@ -16,7 +16,7 @@ import { BLIT_FRAGMENT, GLASS_FRAGMENT, QUAD_VERTEX } from './glassSdfShader'
 //
 // Rendering `material.visible = false` costs one skipped draw call
 // (WebGLRenderer checks it in renderObjects) and keeps the object visible to
-// the raycaster, which is exactly the split we want: invisible matter that
+// the raycaster, which is exactly the split we want: invisible geometry that
 // can still be touched.
 
 export interface GlassParams {

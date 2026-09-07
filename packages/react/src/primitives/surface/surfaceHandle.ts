@@ -57,10 +57,10 @@ import { useLatest } from '../useLatest'
 import { SurfaceHandleContext } from './surfaceContext'
 import type { SurfacePartPublication } from './surfaceSourceRuntime'
 
-/** The presentations an application may ask a Surface to keep visible. */
+/** Internal renderer-policy states. Public Surface status maps them to page, scene, or null. */
 export type SurfacePresentation = 'page' | 'canvas' | 'both' | 'none'
 
-/** One endpoint of the Surface motion law. */
+/** Private motion endpoints; the public wrapper calls canvas "scene". */
 export type SurfaceDestination = 'page' | 'canvas'
 
 export interface SurfaceTiming {
@@ -188,7 +188,7 @@ export interface SurfaceStore {
    * warm, but the page copy is the one on screen, so it is the one a click
    * must reach. A presenter reads this in its raycast — an intersection
    * declined there is one r3f never counts, so neither the pointer gate nor
-   * the relay ever hears about matter that is not the presented copy.
+   * the relay ever hears about content that is not the presented copy.
    */
   canvasHearsPointer(): boolean
   /** Does the page copy still hold the pixels? Read from a frame, not a render. */
@@ -935,7 +935,7 @@ export function useSurfaceStore(name?: string): SurfaceStore {
  * advance a frame between a commit and its passive effects, so a passive
  * effect misses exactly the transition the caller just asked for. A layout
  * effect finishes before the renderer can draw and keeps render pure. The
- * view is requested from a passive effect because it starts protocol work.
+ * request is installed in the layout phase for the same reason.
  */
 export function useSurfaceControls(store: SurfaceStore, controls: SurfaceControls): void {
   const {

@@ -1,7 +1,7 @@
 # System model
 
-**Status: current model, 2026-09-04.** The Surface API revision is implemented
-and locally verified; [decision #40](decisions.md) records the evidence.
+**Status: current model, 2026-09-07.** The retained-HTML API is implemented;
+[decision #43](decisions.md#43) records its adoption and superseded interfaces.
 Use the [operating guide](agent-workflow.md) for a task and the
 [delivery plan](agent-system-plan.md) for proposed tools.
 
@@ -59,7 +59,7 @@ recipes stay copyable; the lab consumes public entries. No agent-specific
 renderer, state store, or command bus sits beside these owners.
 
 Source anchors: [handle and state](../packages/react/src/primitives/surface/surfaceHandle.ts),
-[declaration](../packages/react/src/primitives/surface/SurfaceRoot.tsx),
+[public declaration](../packages/react/src/primitives/Surface.tsx),
 [source runtime](../packages/react/src/primitives/surface/surfaceSourceRuntime.ts),
 [presenter](../packages/react/src/primitives/surface/SurfaceMesh.tsx), and
 [host](../packages/react/src/primitives/surface/surfaceHostRegistry.ts).
@@ -112,7 +112,7 @@ WebGL replica. See their contracts in [the lab guide](../apps/lab/README.md).
 `page | scene | null`; motion destinations are `page | scene`. Raw progress is
 shared by handles, drivers, and advanced frame reads; an eased read is named
 explicitly. These observations do not expose the private registration ledgers.
-explanation view in [the plan](agent-system-plan.md#p3-bounded-read-only-explanation)
+The explanation view in [the plan](agent-system-plan.md#p3-bounded-read-only-explanation)
 does not exist yet.
 
 Receipt access depends on the layer. Ordinary `Surface` callbacks report

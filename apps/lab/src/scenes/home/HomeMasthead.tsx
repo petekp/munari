@@ -1,5 +1,5 @@
 // Masthead — the overview's headline, lit by one draggable light whose
-// shadows fall from the page's own matter: the glyphs, every raised
+// shadows fall from the page content: the glyphs, every raised
 // control, and the rim of every well.
 //
 // The law: WebGL owns light and shadow, nothing else. The headline, prose

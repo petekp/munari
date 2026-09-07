@@ -1,13 +1,9 @@
 // The source runtime — one live DOM subtree, its texture, and the pipeline
 // between them, with no React and no mesh in it.
 //
-// The law: this runtime owns one public texture and any number of presenters. That is
-// the whole reason this is a separate object from the mesh it used to live
-// inside. Logo's letters are several presentations of one part; Genie draws
-// a window and its own shadow companion from the same capture; a Twin shows
-// the page and the mesh together. Each of those used to mean a second
-// `createDomTextureSource`, which meant a second parked canvas, a second
-// paint budget, and two rasters that could disagree by a generation.
+// The law: this runtime owns one public texture and any number of presenters.
+// A visible mesh and a shadow or reflection can sample the same captured
+// content without creating independent canvases and paint generations.
 // A lit material's encoded GPU view reads this same capture canvas; it does
 // not create another DOM source or paint stream.
 //
@@ -23,8 +19,8 @@
 //
 // Ownership: this object owns capture, texture format, upload timing, LOD
 // resolution, and chrome measurement. It owns no scene node, no material,
-// and no React state, so a presenter mounting or unmounting costs it
-// nothing.
+// and no React state. Presenters can change the requested raster density
+// without creating another source.
 
 import * as THREE from 'three'
 import {
@@ -85,7 +81,7 @@ export interface SurfaceSourceOptions {
   onError(error: Error): void
   onPainted?(receipt: DomPaintReceipt): void
   onChrome?(chrome: SurfaceChrome): void
-  /** The authored content root whose radius and shadows describe the matter. */
+  /** The authored content root whose radius and shadows describe the surface. */
   chromeElement?(): HTMLElement
 }
 

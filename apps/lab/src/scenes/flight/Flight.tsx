@@ -28,7 +28,7 @@
 //    shared canvas keeps every other pixel it has, and the page copy is
 //    released inside the draw that proves the replacement.
 //
-// 3. THE CANVAS IS ONLY SOLID WHERE THERE IS MATTER. The overlay is
+// 3. THE CANVAS INTERCEPTS INPUT ONLY OVER ITS SURFACES. The overlay is
 //    `pointer-events: none` at rest — a canvas with nothing in it must not be
 //    able to eat a click, a text selection or a scroll — and is switched to
 //    `auto` for exactly as long as the pointer is over an airborne card.
@@ -245,10 +245,10 @@ interface Flight {
   /**
    * `held` — the hand is on it. `float` — it was tapped rather than dragged,
    * and hangs where it was left. `home` — it is flying back into its slot.
-   * `crumple` — it is being deleted, and dies as matter.
+   * `crumple` — it is being deleted, and is removed from the scene.
    *
    * `float` is the state the whole lab is actually about. A card is only
-   * interesting as matter for as long as it is off the page, and a card you
+   * retained in the scene for as long as it is off the page, and a card you
    * have to keep the mouse button down on is a card you cannot click into. So
    * a tap parks it in mid-air, still solid, still a DOM subtree: you can put
    * the caret in its note field and type while it is casting a shadow on the
@@ -660,7 +660,7 @@ function stepCrumple(
       // gesture's clothes. The plate springs gently off the page (the
       // same free solver as a throw home, aimed up instead of down)
       // while the page copy stays visible until presentation proof. The
-      // crush may not begin until the sheet is fully matter. `crumplePhase`
+      // crush may not begin until the sheet is fully in the scene. `crumplePhase`
       // holds it at exactly 0 through this window, so the swap keeps its
       // pixel-copy guarantee. Never for a released press (`tossed`):
       // this solver's damping is sized to STOP a card, and it was
@@ -848,7 +848,7 @@ function writeShadow(
 ) {
   if (!sh) return
   // Unseen until the pixels are the scene's. The card's own mesh warms by
-  // drawing write-free, but this plane is ordinary scene matter: during
+  // drawing write-free, but this plane is ordinary scene geometry: during
   // warm-up it would lay a second copy of the card's box-shadow over the
   // page copy still casting its own. Progress is exactly zero on both
   // handoff frames, which are the two moments the DOM's shadow is the one
@@ -1260,7 +1260,7 @@ function Flying({
       />
 
       {/* renderOrder 2 — AFTER the card, on purpose. The card writes depth
-          (matter occludes its own shadow), so drawing the shadow second lets
+          (the card occludes its own shadow), so drawing the shadow second lets
           the depth test carve the card's silhouette out of it per fragment:
           CSS's outside-the-border-box clip, enforced by geometry. Drawn
           first, the shadow's interior survived under the card and leaked
@@ -1787,7 +1787,7 @@ export function FlightApp() {
   // activation of the button, or the click that trails a press and finds
   // the crumple already running) it is the hands-free delete: rise, crush,
   // drop. A card already in flight crumples from its current pose —
-  // momentum and all; a card at rest on the page becomes matter first, the
+  // momentum and all; a card at rest on the page enters the scene first, the
   // same flight machinery as a grab (page copy releases on presentation
   // proof, plate springs off the page), except the mode is `crumple` from birth.
   // The wad faded out: NOW the board forgets. The FLIP snapshot goes first,
@@ -2109,7 +2109,7 @@ export function FlightApp() {
 
           `pointer-events` is deliberately NOT here. It belongs to the shared
           host, which keeps its wrapper clear and lets the pointer gate make
-          the canvas solid for exactly as long as the ray is over matter. */}
+          the canvas solid for exactly as long as the ray hits a Surface. */}
       <SurfaceCanvas
         pointerMode="surfaces"
         className="l14-overlay"

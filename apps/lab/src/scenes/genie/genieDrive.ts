@@ -78,7 +78,7 @@ export function easeInCubic(p: number): number {
  * The restore's ease: leaves the mouth gently (slope 0), ARRIVES WITH
  * SPEED (slope ~0.8 of linear). The arrival velocity is not a flourish
  * — it is what the settle wobble consumes, so an untouched click-restore
- * lands like matter instead of a tween ending. Half classic in-out,
+ * carries momentum into the landing. Half classic in-out,
  * half p^1.6, which is the cheapest curve with those two slopes.
  */
 export function pourOut(p: number): number {

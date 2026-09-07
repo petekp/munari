@@ -1,29 +1,27 @@
 # registry
 
-Source you copy into your project. Nothing here goes to npm. Each
-entry ships with its tuned constants and the tests that pin them.
+Copyable scene behavior and implementation notes. Nothing here is published
+to npm. Each entry states which files to copy and which tests pin its behavior.
 
-- **glass/**: screen-space liquid-glass panels over live DOM. Two
-  files to copy; its README explains them.
-- **surface-anchors/**: track named DOM regions of a Surface in
-  texture space, so WebGL objects can sit on DOM elements. One file;
-  the knobs and genie scenes use it.
-- **focus-orbit/**: the Workspace camera policy and cylindrical arc layout.
-  Copy the three files together; the package still owns focus semantics.
-- **flight-card/**: documentation only for now. The behavior lives in
-  the flight scene and its laws in `packages/core`; extraction waits
-  for a second consumer (decisions.md #10).
+- **glass/**: a screen-space glass compositor and its shader. Copy the two
+  files listed in its README.
+- **focus-orbit/**: Workspace camera policy and cylindrical layout. Copy all
+  three files; Munari's public focus API still owns focus semantics.
+- **flight-card/**: implementation notes for the Flight scene. A standalone
+  copyable component has not been extracted. Its physics and tests live beside
+  the scene under `apps/lab/src/scenes/flight`.
 
-Registry code imports the library only through its published entries —
-`@petepetrash/munari`, or `@petepetrash/munari/advanced` for the
-renderer-agnostic core — the same rule as any outside project. If you
-can't build a behavior here without patching the library, that is a
-library bug.
+Registry code imports `@petepetrash/munari` or `/advanced`, plus the declared
+React/Three peers. `/advanced` exposes supported lower-level renderer and
+evidence mechanisms; it is not a renderer abstraction.
 
-Focus and spatial navigation still ship as exported API (decisions.md #9).
-The focus-orbit recipe is only a camera and layout policy that consumes that
-API; it does not duplicate focus semantics.
+For DOM-aligned attachments, use `Surface.Anchor` or `useSurfaceAnchorRects`.
+The `/advanced` entry also exports `collectSurfaceAnchors`, `stampSurfaceAnchors`
+and `projectSurfaceAnchor` for manual paint-receipt work. Their canonical
+implementation is in the core mapping layer, covered by its conformance tests.
+The former registry duplicate has been removed.
 
-Each copyable file must stay byte-identical to its reference copy in
-`apps/lab`; `tests/registry/*Pack.test.ts` fails if they differ. Edit
-both copies in the same commit.
+Copyable glass and focus-orbit files stay byte-identical to their lab
+references. `tests/registry/*Pack.test.ts` enforces this; edit both copies in
+the same change. `registry/tsconfig.json` checks the files in the consumer
+compiler configuration.

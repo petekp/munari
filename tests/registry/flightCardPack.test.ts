@@ -63,7 +63,7 @@ describe('the charter names the real scene constants (text weld to the reference
     // timing and callbacks, and `useSurfaceHandle` is identity only.
     expect(scene()).toContain('timing={{ settleMs: 0, durationMs: 1 }}')
     expect(scene()).not.toContain('onFirstUpload=')
-    // The shadow is scene matter, not a presenter: it cannot warm write-free,
+    // The shadow is a scene effect, not a presenter: it cannot warm write-free,
     // so it hides itself for exactly the frames the page still holds.
     expect(scene()).toContain('sh.visible = crossing > 0')
   })

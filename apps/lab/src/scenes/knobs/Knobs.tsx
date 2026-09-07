@@ -10,7 +10,7 @@
 //   lamp glow, wells, ticks         collar bezels, lens domes
 //   the slab's corner radius        the slab's rim, depth and shadow
 //
-// Input goes THROUGH the matter: every hardware mesh declines the ray,
+// Input passes through the hardware: every hardware mesh declines the ray,
 // so a drag on a knob lands on the Surface, is forwarded into the real
 // DOM control underneath, mutates the live bag — and the hardware's
 // springs read that bag next frame. The DOM stays the retained model;
@@ -140,11 +140,11 @@ const RIM_BUILD = { w: RAIL_W, h: 600 }
 /** Where the captured face sits in front of the rim's front bevel. */
 const FACE_Z = 1.4
 /** Where hardware bases stand, just proud of the face. Anchors place
- *  matter ON the presenter, so the constant travels as a lift along its
+ *  hardware ON the presenter, so the constant travels as a lift along its
  *  normal rather than as a z in the rig. */
 const HARDWARE_LIFT = 0.2
 
-/** Hardware is visual matter, not a pointer target: every mesh declines
+/** Hardware is visual only: every mesh declines
  *  the ray so input falls through to the Surface — and from there into
  *  the real DOM control standing under it. */
 const noRaycast = () => {}
@@ -1535,7 +1535,7 @@ function FaceShade({ rect }: { rect: RailRect }) {
 
 /**
  * The LCD windows, re-rendered as pure emitters. The captured face is lit
- * matter — every authored pixel multiplies the room's light — and a
+ * shaded content — every authored pixel multiplies the room's light — and a
  * face-wide emissive term lifts ALL the paint, washing the charcoal body
  * gray and driving the windows past their authored color into clipping.
  * A real backlit window is neither of those things: everything visible in
@@ -1837,7 +1837,7 @@ function SlabRim({ rect }: { rect: RailRect }) {
     assets.material.roughness = knobsTuning.rimRough
     assets.material.envMapIntensity = knobsTuning.rimEnv
   })
-  return <mesh geometry={assets.geometry} material={assets.material} userData={{ matter: true }} />
+  return <mesh geometry={assets.geometry} material={assets.material} userData={{ isKnobHardware: true }} />
 }
 
 /** Where a carry has the slab: sprung x and y, in world units. */
@@ -2307,9 +2307,8 @@ function PanelStage({
         <PanelRig rect={rect} kick={kick} viewport={viewport}>
           <BacklightCorona rect={rect} />
           <SlabRim rect={rect} />
-          {/* No `view`: the panel is resident matter, not a handoff. The
-              DOM is parked and the slab is its only presentation, so there
-              is no page copy for it to be exclusive against. */}
+          {/* The panel belongs to the scene. Its captured HTML supplies the
+              slab; DegradedPanel supplies the native fallback separately. */}
           <SceneSurface.Root name="knobs-panel">
             <SceneSurface.HTML size={[rect.w, rect.h]} paint={resizing ? 'always' : 'auto'}>
               <KnobsPanel />
@@ -2535,8 +2534,8 @@ function useDegradedPanelGestures(host: RefObject<HTMLDivElement | null>) {
 /**
  * The panel with no renderer under it.
  *
- * This scene's panel is a RESIDENT source — no `view`, no `<SceneSurface.DOM>`,
- * because the slab is its only presentation — so a browser without the
+ * SceneSurface gives the panel no native page fallback. Without a separate
+ * fallback, a browser without the
  * trial got an empty room: 0 characters of reader-visible text and 0
  * focusable elements, measured 2026-08-22 against flight/genie/logo/
  * selection, which are identical either way.

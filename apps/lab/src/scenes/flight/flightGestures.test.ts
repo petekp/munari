@@ -214,7 +214,7 @@ describe('the hand is the only pointer that moves a held card', () => {
 })
 
 describe('a crumpling card is beyond rescue', () => {
-  // The delete is the one gesture that ends a card's life as matter, and it
+  // The delete is the one gesture that removes a card from the scene, and it
   // must be irreversible from the moment the crush begins: escape is "put it
   // back", but there is no back — the board is about to forget the slot.
   it('escape does not resurrect it', () => {

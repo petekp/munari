@@ -11,8 +11,8 @@ Munari's tagline is "HTML, 3D, and Shaders, Unified."
 ## Establish the source revision
 
 Read the consumer's installed README/types or this checkout's README and
-`docs/agent-workflow.md`. Historical proposals describe earlier designs; they
-are not the current API. The development checkout may be newer than a released
+`docs/agent-workflow.md`. Superseded proposals remain in Git history; the
+README and exports define current usage. The development checkout may be newer than a released
 package. Read `docs/authoring.md` before writing captured markup.
 
 Import only `@petepetrash/munari`, its `style.css`, and `/advanced`. A missing

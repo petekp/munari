@@ -1,5 +1,5 @@
-// FocusOrbitRig — the library's orbit-controls camera rig for FocusScene,
-// extracted from the workspace scene (docs/focus.md "Camera integration").
+// FocusOrbitRig — Workspace's camera policy for the public FocusScene API,
+// copied into registry/focus-orbit (docs/focus.md "Camera integration").
 // It fulfills the whole
 // camera side of the focus grammar by default:
 //

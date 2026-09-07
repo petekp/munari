@@ -316,23 +316,6 @@ export function loadTautologicalAbsenceCorpus(cwd = processCwd()) {
 	return contents
 }
 
-export function checkTautologicalAbsence(cwd = processCwd()) {
-	const contents = loadTautologicalAbsenceCorpus(cwd)
-	const matches = []
-	for (const [relativePath, content] of contents) {
-		matches.push(
-			...findTautologicalAbsenceMatches({
-				relativePath,
-				content,
-				otherContents: [...contents]
-					.filter(([candidate]) => candidate !== relativePath)
-					.map(([, otherContent]) => otherContent),
-			}),
-		)
-	}
-	return matches
-}
-
 export function otherContentsFromCorpus(corpus, relativePath) {
 	const otherContents = []
 	for (const [candidate, content] of corpus) {

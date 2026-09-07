@@ -1,4 +1,4 @@
-// Home relief — the page's matter, rendered off the page as masks the light
+// Home relief — the page content, rendered off the page as masks the light
 // shader samples: the headline's exact glyphs, and every element that
 // declares itself raised or sunk with `data-relief`.
 //
@@ -164,7 +164,7 @@ export interface ReliefPlan {
 /**
  * Every `[data-relief]` element under `root`, measured as a box. The whole
  * page is measured, not a window around the viewport: a window meant
- * matter scrolling in from beyond it had no shadow until the scroll
+ * content scrolling in from beyond it had no shadow until the scroll
  * settled and the mask was rebuilt (2026-09-05).
  */
 export function measureRelief(anchor: HTMLElement, root: HTMLElement): ReliefPlan | null {

@@ -258,8 +258,7 @@ function WorkPanel({
             castShadow
           />
         )}
-        {/* Grab handle: the one part of a panel that is matter, not screen.
-            Doubles as the focus lamp — unit selection glows it steady,
+        {/* The drag handle also indicates focus: unit selection glows it steady,
             interior engagement brightens it. */}
         <mesh
           position={[0, H3 / 2 + 0.09, 0]}
