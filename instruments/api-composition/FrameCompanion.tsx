@@ -76,7 +76,7 @@ export function FrameCompanion() {
   return <section>
     <h2>Companion frame order</h2>
     <button id="companion-toggle" onClick={() => setInScene(value => !value)}>Toggle moving pair</button>
-    <Surface.Root canvas="composed" inScene={inScene} timing={{settleMs:0,durationMs:1}}>
+    <Surface.Root canvasId="composed" inScene={inScene} timing={{settleMs:0,durationMs:1}}>
       <Surface.HTML><div style={{width:80,height:40,background:'red'}}>Pose</div></Surface.HTML>
       <Surface.Scene><Pair /></Surface.Scene>
     </Surface.Root>

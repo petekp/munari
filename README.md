@@ -51,18 +51,18 @@ function Counter() {
 }
 
 export function Example() {
-  const canvas = useId()
+  const canvasId = useId()
   const supported = useSurfaceSupport()
   const [inScene, setInScene] = useState(false)
   return (
     <main style={{ position: 'relative', minHeight: 400, padding: 32 }}>
       {supported && <SurfaceCanvas
-        id={canvas}
+        id={canvasId}
         pointerMode="surfaces"
         frameloop="demand"
         style={{ position: 'absolute', inset: 0 }}
       />}
-      <Surface canvas={canvas} inScene={inScene}><Counter /></Surface>
+      <Surface canvasId={canvasId} inScene={inScene}><Counter /></Surface>
       <button disabled={!supported} onClick={() => setInScene(value => !value)}>
         {inScene ? 'Return to page' : 'Show in scene'}
       </button>
@@ -76,12 +76,16 @@ mesh matching the HTML's page position. Switching alone preserves its appearance
 flight, deformation, lighting, and shader effects come from your scene code.
 The [running starter](apps/lab/src/scenes/home/HomeStarter.tsx) uses this pattern.
 
+`canvasId` selects the `SurfaceCanvas` with a matching `id`. Omit `canvasId` when
+using the unnamed default canvas. Several Surfaces can share the same canvas
+while their HTML stays in different parts of the page.
+
 ## Add custom scene content
 
 Use the explicit composition form when the effect needs its own meshes or logic:
 
 ```tsx
-<Surface.Root inScene={selected} canvas="controls">
+<Surface.Root inScene={selected} canvasId="controls">
   <Surface.HTML><ControlBoard /></Surface.HTML>
   <Surface.Scene>
     <Surface.Mesh alpha="source" pointerRoute="auto">
@@ -200,7 +204,7 @@ Keyed target lists can be prepended, reordered and removed without moving React'
 own list anchors. Server-rendered targeted HTML hydrates the original node.
 
 One unnamed canvas is the default. Multiple hosts use unique IDs and an explicit
-`canvas` association. Reusable client components can use React `useId`; independent
+`canvasId` association. Reusable client components can use React `useId`; independent
 SSR roots need distinct matching `identifierPrefix` values during server render
 and hydration, or document-unique authored IDs. A scene-side Surface belongs to
 its enclosing canvas and rejects a conflicting association.

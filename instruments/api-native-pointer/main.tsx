@@ -39,7 +39,7 @@ function App() {
         <SceneSurface size={[240,80]}><div data-scene-label style={{width:240,height:80,background:'#cf5f22'}}>Scene label</div></SceneSurface>
       </group>
     </SurfaceCanvas>
-    <Surface.Root surface={handle} canvas="pointer" inScene={inScene} timing={{settleMs:0,durationMs:1}}>
+    <Surface.Root surface={handle} canvasId="pointer" inScene={inScene} timing={{settleMs:0,durationMs:1}}>
       <Surface.HTML key={swapped?'replacement':'original'}><Form swapped={swapped}/></Surface.HTML>
       <Surface.Scene><Presenters second={second} disabled={disabled}/></Surface.Scene>
     </Surface.Root>

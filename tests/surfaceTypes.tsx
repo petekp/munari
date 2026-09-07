@@ -15,7 +15,17 @@ declare const detached: HTMLElement
 const geometry = <planeGeometry args={[1,1]} />
 
 ;<SurfaceCanvas id="example" />
-;<Surface inScene={false} canvas="example" name="card" timing={{settleMs:300}} onPresentationChange={value=>{const hold:SurfacePresentation=value;void hold}} onMotionComplete={value=>{const destination:SurfaceDestination=value;void destination}}><button>One live instance</button></Surface>
+;<Surface inScene={false} canvasId="example" name="card" timing={{settleMs:300}} onPresentationChange={value=>{const hold:SurfacePresentation=value;void hold}} onMotionComplete={value=>{const destination:SurfaceDestination=value;void destination}}><button>One live instance</button></Surface>
+;<Surface.Root inScene={false} canvasId="example"><Surface.HTML><button>Page content</button></Surface.HTML></Surface.Root>
+;<SceneSurface.Root canvasId="example"><SceneSurface.HTML size={[100,80]}><button>Scene content</button></SceneSurface.HTML><SceneSurface.Mesh/></SceneSurface.Root>
+// @ts-expect-error The association is named canvasId; the removed prop is not an alias.
+;<Surface inScene={false} canvas="example"><button>Old spelling</button></Surface>
+// @ts-expect-error The explicit page root uses the same canvasId prop.
+;<Surface.Root inScene={false} canvas="example"><Surface.HTML><button>Old spelling</button></Surface.HTML></Surface.Root>
+// @ts-expect-error A scene-only root also selects its host with canvasId.
+;<SceneSurface.Root canvas="example"><SceneSurface.HTML size={[100,80]}><button>Old spelling</button></SceneSurface.HTML><SceneSurface.Mesh/></SceneSurface.Root>
+// @ts-expect-error canvasId identifies a host; it does not take a canvas element.
+;<Surface inScene={false} canvasId={document.createElement('canvas')}><button>Wrong value</button></Surface>
 ;<FrameSurface frame={frame} width={10} height={10} onFrameDrawn={receipt=>void receipt.frame.generation} presentation={presentation} onPresented={receipt=>void receipt.presentationRevision}>{geometry}</FrameSurface>
 // @ts-expect-error The frame adapter owns its draw fence.
 ;<FrameSurface frame={frame} onBeforeRender={()=>{}}>{geometry}</FrameSurface>

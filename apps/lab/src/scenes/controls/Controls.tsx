@@ -669,7 +669,7 @@ export function ControlsApp() {
         <div className="controls-board-place">
             <Surface.Root
               surface={surface}
-              canvas="controls"
+              canvasId="controls"
               inScene={requestedInScene}
               onPresentationChange={presentation => controlsProof.holds.push({t:performance.now(),presentation,progress:surface.progress.get()})}
               timing={{ settleMs: 220, durationMs: 360 }}

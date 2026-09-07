@@ -53,7 +53,7 @@ export type SurfaceCanvasStyle = Omit<
 
 export interface SurfaceCanvasProps
   extends Omit<CanvasProps, 'children' | 'fallback' | 'style'> {
-  /** Names this host for a page-side `Surface canvas={…}`. */
+  /** Names this host for a page-side `Surface canvasId={…}`. */
   id?: SurfaceCanvasId
   children?: React.ReactNode
   style?: SurfaceCanvasStyle

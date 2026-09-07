@@ -2549,7 +2549,7 @@ export function GenieApp() {
               raise(s.id)
             }}
           >
-            <Surface.Root canvas="genie"
+            <Surface.Root canvasId="genie"
               surface={storeOf(s.id).handle}
               inScene={Boolean(air[s.id]) && air[s.id]?.renderIn !== 'page'}
               timing={{ settleMs: 0, durationMs: 1 }}

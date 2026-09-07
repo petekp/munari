@@ -181,7 +181,7 @@ export function HeroSection({
         <div ref={viewportRef} className="home-hero-viewport">
           <div ref={holderRef} className="home-hero-holder" style={{ transform: `scale(${scale})` }} hidden={preview}>
             {supported ? (
-              <Surface.Root surface={surface} canvas="home" onPresentationChange={presentation => {
+              <Surface.Root surface={surface} canvasId="home" onPresentationChange={presentation => {
                 if (presentation === 'page' && holderRef.current) setHomeFlyer({kind:'page',element:holderRef.current})
               }} timing={{ settleMs: reduced ? 0 : 120, durationMs: reduced ? 0 : 260 }} inScene={inScene}>
                 <Surface.HTML size={[HERO_W, HERO_H]}>{content}</Surface.HTML>

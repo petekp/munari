@@ -229,7 +229,7 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
 
   return (
     <div className={className ? `munari-logo ${className}` : 'munari-logo'}>
-      <Surface.Root surface={surface} inScene={view === 'scene'} canvas="logo" timing={{ settleMs: SETTLE_MS }} onPresentationChange={syncPresented} onMotionComplete={setSettledOn}>
+      <Surface.Root surface={surface} inScene={view === 'scene'} canvasId="logo" timing={{ settleMs: SETTLE_MS }} onPresentationChange={syncPresented} onMotionComplete={setSettledOn}>
       <div className="munari-logo__page">
         <div
           className="logo-word"

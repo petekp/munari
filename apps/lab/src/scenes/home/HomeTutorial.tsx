@@ -29,7 +29,7 @@ export function TutorialSection() {
       <div className="home-development-note">
         <div>
           <b>Development API</b>
-          <p>This example uses the API in <a href={`${SOURCE_ROOT}/pull/32`} target="_blank" rel="noreferrer">PR #32</a>. The current npm release uses an earlier API. Download the matching source, then run these commands from its folder with Node 24+.</p>
+          <p>This example uses the API in <a href={`${SOURCE_ROOT}/pull/83`} target="_blank" rel="noreferrer">PR #83</a>. The current npm release uses an earlier API. Download the matching source, then run these commands from its folder with Node 24+.</p>
           <a className="home-text-link" href={SOURCE_ARCHIVE}>Download the source snapshot <span aria-hidden>↓</span></a>
         </div>
         <CodeBlock code={'npm ci\nnpm run lab'} title="Run locally" />

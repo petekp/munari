@@ -39,8 +39,10 @@ export is a package concern, not a reason to reach into private source files.
   demand rendering when the application has no ongoing animation. Flight must
   keep frames through its own physics even after the handoff settles.
 
-One unnamed canvas is the default. Several hosts need distinct IDs and explicit
-page associations. Reusable client components can use `useId`; independent SSR
+One unnamed canvas is the default. Use `canvasId` on `Surface`, `Surface.Root`, or
+`SceneSurface.Root` to select a named `SurfaceCanvas`; the host keeps its `id` prop.
+Several hosts need distinct IDs and explicit page associations. Reusable client
+components can use `useId`; independent SSR
 roots require distinct matching `identifierPrefix` values or document-unique IDs.
 A scene-side Surface belongs to its enclosing canvas and rejects conflicting IDs.
 

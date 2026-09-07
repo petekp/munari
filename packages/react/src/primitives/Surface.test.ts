@@ -74,7 +74,7 @@ it('keeps independently server-rendered identities unique with matching hydratio
   const id=useId()
   // The createElement overload requires the component's required children prop.
   // eslint-disable-next-line react/no-children-prop
-  return createElement('section',{'data-canvas-id':id},createElement(Surface,{inScene:false,canvas:id,children:createElement('button',null,'Native')}))
+  return createElement('section',{'data-canvas-id':id},createElement(Surface,{inScene:false,canvasId:id,children:createElement('button',null,'Native')}))
  }
  const roots:Root[]=[]
  try {

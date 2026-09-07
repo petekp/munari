@@ -22,7 +22,7 @@ function Counter() {
 }
 
 export function HomeStarter() {
-  const canvas = useId()
+  const canvasId = useId()
   const supported = useSurfaceSupport()
   const [inScene, setInScene] = useState(false)
   const [presentation, setPresentation] = useState<SurfacePresentation>('page')
@@ -31,11 +31,11 @@ export function HomeStarter() {
   return (
     <div style={{ position: 'relative', display: 'grid', justifyItems: 'center', gap: 16, font: '14px/1.5 system-ui, sans-serif' }}>
       {supported && (
-        <SurfaceCanvas id={canvas} flat frameloop="demand" pointerMode="surfaces"
+        <SurfaceCanvas id={canvasId} flat frameloop="demand" pointerMode="surfaces"
           camera={{ position: [0, 0, 6], fov: 45 }}
           style={{ position: 'absolute', inset: 0, zIndex: 20 }} />
       )}
-      <Surface canvas={canvas} onPresentationChange={setPresentation} inScene={inScene}>
+      <Surface canvasId={canvasId} onPresentationChange={setPresentation} inScene={inScene}>
         <Counter />
       </Surface>
       <button type="button" disabled={!supported} data-relief="raised" onClick={() => setInScene((value) => !value)}

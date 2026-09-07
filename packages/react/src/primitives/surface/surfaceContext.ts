@@ -36,7 +36,7 @@ export interface SurfaceRootValue {
   readonly store: SurfaceStore
   readonly handle: SurfaceHandle
   readonly host: SurfaceHost | null
-  readonly canvas: string | undefined
+  readonly canvasId: string | undefined
   readonly name: string | undefined
   /**
    * This root's own identity among every root on the page, minted at mount

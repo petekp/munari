@@ -64,7 +64,7 @@ still applies.
 
 ## Verification
 
-The latest full run passes 1,523 tests across 117 files, all four TypeScript
+The latest full run passes 1,528 tests across 117 files, all four TypeScript
 programs, lint, package build, and lab build. The lab retains its large-chunk build
 warning; changing bundling is outside this task.
 
@@ -161,3 +161,27 @@ cleanup is separate from the seven review fixes; no thresholds were relaxed.
 
 Follow-up evidence is local at
 `/private/tmp/munari-pr83-fable-review-20260906`.
+
+
+## Canvas selector rename
+
+The public selector is now `canvasId` on `Surface`, `Surface.Root`, and
+`SceneSurface.Root`; `SurfaceCanvas` retains `id`. Current callers, diagnostic
+messages, README examples, API guides, and agent instructions use the new name.
+The website displays the actual updated HomeStarter source. Decision #47 records
+the naming contract.
+
+Type contracts reject the old prop on all three public components. A documentation
+check rejects retired selector syntax outside the explicitly historical proposal.
+Injecting an old-prop caller and README example makes the respective checks fail.
+The README's complete starter, HomeStarter, and public type contracts also compile
+against the built package in a separate Vite consumer.
+
+Host tests cover two named hosts, changing the selected host, and the unnamed
+default through each public component. Chrome passes six named-canvas cases across
+fullscreen, inset and scaled layouts with perspective and orthographic cameras.
+Each keeps one mounted counter and field, accepts a click through the scene, and
+returns with state intact. The actual website starter also keeps its count through
+page -> scene -> page.
+
+Evidence: `/private/tmp/munari-canvas-id-20260907`.

@@ -2649,3 +2649,23 @@ The review's proposed focus-loss trigger did not reproduce: changing the handle
 and returning preserved the original input, focus and selection. The destination
 holder was inert before return. That case now has a permanent browser regression;
 the two-instance focus-transfer code was not changed on an unconfirmed inference.
+
+<a id="47"></a>
+
+## #47 — Canvas selection uses canvasId (2026-09-06, public API)
+
+`Surface`, `Surface.Root`, and `SceneSurface.Root` select a named renderer with
+`canvasId`, matching `<SurfaceCanvas id="…">`. The value is a string identity.
+The former spelling was `canvas`; it is removed without a compatibility alias.
+This clarifies what callers supply without changing host resolution, default
+selection, or renderer ownership. Actual canvas elements, capture frames and
+before-render callbacks keep their `canvas` fields.
+
+The public type contracts accept the new spelling on all three components and
+reject the old spelling and an HTMLCanvasElement value. Host tests select between
+two named renderers, change the selection, and resolve an unnamed default through
+each public component. Current documentation is checked for retired selector
+syntax. The explicitly historical public-API proposal retains its original code;
+its historical warning is also checked. Before completion, negative controls put
+the old prop in a current README example and an otherwise-valid typed caller;
+both checks must fail.

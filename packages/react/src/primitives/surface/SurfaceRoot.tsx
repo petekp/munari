@@ -54,8 +54,8 @@ import type { SurfaceResolution, SurfaceSize, SurfaceSourceRuntime } from './sur
  * cannot disagree with the root presenting it.
  */
 interface SurfaceControlledProps extends SurfaceControls {
-  /** Names the Canvas host to present in. Required past the first one. */
-  canvas?: SurfaceCanvasId
+  /** Matches a SurfaceCanvas id; omit it for the unnamed default host. */
+  canvasId?: SurfaceCanvasId
   onFocusWithinChange?: (focused: boolean) => void
   children?: React.ReactNode
 }
@@ -117,7 +117,7 @@ export function SurfaceRoot({
   name,
   source,
   adopt,
-  canvas,
+  canvasId,
   renderIn,
   timing,
   size,
@@ -159,7 +159,7 @@ export function SurfaceRoot({
 
   const contextHost = useSurfaceHostContext()
   const wiring: SurfaceWiring = contextHost ? 'canvas' : 'page'
-  const host = useResolvedHost(store, wiring, contextHost, canvas)
+  const host = useResolvedHost(store, wiring, contextHost, canvasId)
   const exclusive = renderIn === undefined || renderIn === 'page' || renderIn === 'canvas'
 
   useEffect(() => {
@@ -211,7 +211,7 @@ export function SurfaceRoot({
       store,
       handle: store.handle,
       host,
-      canvas,
+      canvasId,
       name: store.name,
       instanceId,
       wiring,
@@ -223,7 +223,7 @@ export function SurfaceRoot({
     [
       store,
       host,
-      canvas,
+      canvasId,
       instanceId,
       wiring,
       exclusive,
@@ -268,7 +268,7 @@ export function SurfaceRoot({
  * The host this root presents in.
  *
  * Inside a Canvas the answer is the one above; outside, it is looked up by
- * name. The ambiguity fault — several mounted Canvases and no `canvas` prop
+ * name. The ambiguity fault — several mounted Canvases and no `canvasId` prop
  * — is reported once per resolution rather than silently resolved, because
  * picking one produces a Surface that renders in the wrong canvas and
  * nothing anywhere says so.
@@ -277,7 +277,7 @@ function useResolvedHost(
   store: SurfaceStore,
   wiring: SurfaceWiring,
   contextHost: SurfaceHost | null,
-  canvas: SurfaceCanvasId | undefined,
+  canvasId: SurfaceCanvasId | undefined,
 ): SurfaceHost | null {
   // Resolve once per authored id. A page declaration that arrives first
   // gets the pending host the first Canvas adopts. If a duplicate Canvas
@@ -286,14 +286,14 @@ function useResolvedHost(
   // ambiguous after the fact. A Surface born while the duplicate stands
   // resolves null and reports the fault below.
   const pageHost = useMemo(
-    () => (wiring === 'page' ? resolveSurfaceHost(canvas) : null),
-    [wiring, canvas],
+    () => (wiring === 'page' ? resolveSurfaceHost(canvasId) : null),
+    [wiring, canvasId],
   )
-  const conflict = wiring === 'canvas' && canvas !== undefined && canvas !== contextHost?.id
+  const conflict = wiring === 'canvas' && canvasId !== undefined && canvasId !== contextHost?.id
   const resolved = conflict ? null : wiring === 'canvas' ? contextHost : pageHost
   useEffect(() => {
     if (conflict) {
-      store.reportError(new Error(`Surface canvas="${canvas}" conflicts with its enclosing <SurfaceCanvas${contextHost?.id ? ` id="${contextHost.id}"` : ''}>. A scene declaration belongs to its enclosing canvas.`))
+      store.reportError(new Error(`Surface canvasId="${canvasId}" conflicts with its enclosing <SurfaceCanvas${contextHost?.id ? ` id="${contextHost.id}"` : ''}>. A scene declaration belongs to its enclosing canvas.`))
       return
     }
     if (wiring === 'canvas' || resolved) return
@@ -301,9 +301,9 @@ function useResolvedHost(
       new Error(
         `Surface${store.name ? ` "${store.name}"` : ''} found several <SurfaceCanvas> ` +
           'hosts and no way to choose. Give each canvas an `id` and name one with ' +
-          '`<Surface canvas="…">`.',
+          '`<Surface canvasId="…">`.',
       ),
     )
-  }, [wiring, resolved, store, conflict, canvas, contextHost])
+  }, [wiring, resolved, store, conflict, canvasId, contextHost])
   return resolved
 }

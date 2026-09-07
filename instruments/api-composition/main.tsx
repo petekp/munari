@@ -74,7 +74,7 @@ function Grouped() {
     <button id="group-toggle" onClick={() => setRequested(value => !value)}>Toggle both</button>
     <button id="group-ready" onClick={() => setSecondReady(true)}>Prepare second mesh</button>
     <Status surface={surface} group="group" />
-    <Surface.Root surface={surface} canvas="composed" inScene={requested}
+    <Surface.Root surface={surface} canvasId="composed" inScene={requested}
       onError={error => records.errors.push(error.message)}
       onPresentationChange={presentation => records.holds.push({group:'group',presentation,t:performance.now()})}>
       <div style={{display:'flex',gap:16,marginTop:12}}>
@@ -145,7 +145,7 @@ function DifferentContent() {
     }}>Switch view</button>
     <button id="transition-cancel" disabled={!requested} onClick={() => setCancelled(value => !value)}>{cancelled ? 'Continue transition' : 'Cancel transition'}</button>
     <Status surface={surface} group="transition" />
-    <Surface.Root surface={surface} canvas="composed" inScene={requested}
+    <Surface.Root surface={surface} canvasId="composed" inScene={requested}
       onError={error => records.errors.push(error.message)}
       onPresentationChange={presentation => records.holds.push({group:'transition',presentation,t:performance.now()})}>
       <div ref={box} style={{display:'grid',width:300,height:180,marginTop:12}}>

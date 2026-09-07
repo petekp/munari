@@ -6,7 +6,7 @@
 // trees that cannot see each other — react-dom's portals do not cross the
 // three.js reconciler, and the R3F scene is not an ancestor of the page —
 // so the only thing both sides can hold is a string. One unnamed host is
-// the default; several hosts without an explicit `canvas` id is a fault
+// the default; several hosts without an explicit `canvasId` prop is a fault
 // reported in development, because silently picking one produces a Surface
 // that renders in the wrong canvas and nothing says so.
 //
@@ -383,7 +383,7 @@ export function mountSurfaceHost(candidate: SurfaceHost): SurfaceHostMount {
         `[munari] two <SurfaceCanvas${host.id ? ` id="${host.id}"` : ''}> hosts are ` +
           'mounted under the same id. Each Canvas keeps its own renderer, but page-side ' +
           'Surfaces cannot choose between them. Give each Canvas its own id and name it ' +
-          'from `<Surface canvas="…">`.',
+          'from `<Surface canvasId="…">`.',
       )
     })
   }

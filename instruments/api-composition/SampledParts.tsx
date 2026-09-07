@@ -31,7 +31,7 @@ export function SampledParts() {
     <h2>One mesh draws two sources</h2>
     <button id="sampled-toggle" onClick={() => setRequested(value => !value)}>Toggle composite</button>
     <button id="sampled-source" onClick={() => setSecond(true)}>Attach second source</button>
-    <Surface.Root surface={surface} canvas="composed" inScene={requested} timing={{ settleMs: 0, durationMs: 1 }}>
+    <Surface.Root surface={surface} canvasId="composed" inScene={requested} timing={{ settleMs: 0, durationMs: 1 }}>
       <Surface.HTML part="first"><div id="sampled-page" style={{ width: 300, height: 180, background: '#ff0000' }}>First source</div></Surface.HTML>
       {second && <Surface.HTML part="second" hidden size={[300, 180]}><div style={{ width: 300, height: 180, background: '#0000ff' }}>Second source</div></Surface.HTML>}
       <Surface.Scene>

@@ -2,6 +2,9 @@
 
 **Status: implemented in the isolated API worktree.** All 24 routes and seven Candidate studies have a concrete implementation. Lamp and Rain retain their existing renderers. The diagrams use the implemented public names. This checkout has not been published.
 
+Named canvas associations use `canvasId` on `Surface`, `Surface.Root`, and
+`SceneSurface.Root`, matching the host's `<SurfaceCanvas id="…">`.
+
 The sketches show ownership and composition. The linked files contain the complete geometry, material, state, and event code. [API details](API-REVISION-2.md) explain the shared contracts.
 
 <a id="home"></a>

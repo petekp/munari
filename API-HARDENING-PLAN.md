@@ -121,7 +121,7 @@ explicit document-unique host IDs; test that setup rather than assuming IDs from
 separate server renders are unique.
 
 Page-side declarations use an explicit association when supplied. Scene-side
-declarations belong to their enclosing canvas; a conflicting explicit `canvas`
+declarations belong to their enclosing canvas; a conflicting explicit `canvasId`
 prop must error instead of being ignored or attempting to move R3F children to
 another renderer. Test matching, conflicting, and ambiguous associations, mount
 order, nested canvases, and multiple React roots.

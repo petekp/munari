@@ -325,7 +325,7 @@ export function LogoApp() {
 
   return (
     <div className="logo-page">
-      <Surface.Root surface={surface} inScene={view === 'scene'} canvas="logo" timing={{ settleMs: SETTLE_MS }} onPresentationChange={syncPresented} onMotionComplete={setSettledOn}>
+      <Surface.Root surface={surface} inScene={view === 'scene'} canvasId="logo" timing={{ settleMs: SETTLE_MS }} onPresentationChange={syncPresented} onMotionComplete={setSettledOn}>
       <div className="logo-plate">
         <div className="logo-page-copy">
           <div

@@ -112,7 +112,7 @@ export interface SurfaceControls {
 
 export type SurfaceRootProps = SurfaceControls & SurfaceIdentityProps & {
   inScene: boolean
-  canvas?: string
+  canvasId?: string
   children: ReactNode
 }
 const SurfaceContentContext = createContext<{
@@ -121,7 +121,7 @@ const SurfaceContentContext = createContext<{
   reportSupport(part: SurfacePartId, reason: string | null | undefined): void
 } | null>(null)
 
-function SurfaceRoot({ inScene, surface, canvas, name, children, ...controls }: SurfaceRootProps) {
+function SurfaceRoot({ inScene, surface, canvasId, name, children, ...controls }: SurfaceRootProps) {
   const own = useSurfaceHandle(name)
   const handle = surface ?? own
   const browserSupported = useSurfaceSupport()
@@ -141,7 +141,7 @@ function SurfaceRoot({ inScene, surface, canvas, name, children, ...controls }: 
   const callbacks = useViewCallbacks(controls)
   const context = useMemo(() => ({ handle, canEnter, reportSupport }), [handle, canEnter, reportSupport])
   return <SurfaceContentContext value={context}>
-    <SurfaceController surface={handle} canvas={canvas} renderIn={canEnter ? 'canvas' : 'page'} {...controls} {...callbacks}>
+    <SurfaceController surface={handle} canvasId={canvasId} renderIn={canEnter ? 'canvas' : 'page'} {...controls} {...callbacks}>
       {children}
     </SurfaceController>
   </SurfaceContentContext>
@@ -387,13 +387,13 @@ function useViewCallbacks(controls: SurfaceControls) {
   }), [latest])
 }
 
-export type SceneSurfaceRootProps = SurfaceControls & SurfaceIdentityProps & { children: ReactNode; canvas?: string }
-function SceneSurfaceRoot({ children, name, surface, canvas, ...controls }: SceneSurfaceRootProps) {
+export type SceneSurfaceRootProps = SurfaceControls & SurfaceIdentityProps & { children: ReactNode; canvasId?: string }
+function SceneSurfaceRoot({ children, name, surface, canvasId, ...controls }: SceneSurfaceRootProps) {
   const own = useSurfaceHandle(name)
   const handle = surface ?? own
   useAuthorIntent(handle, true, null)
   const callbacks = useViewCallbacks(controls)
-  return <SurfaceController surface={handle} canvas={canvas} renderIn="canvas" {...controls} {...callbacks}>{children}</SurfaceController>
+  return <SurfaceController surface={handle} canvasId={canvasId} renderIn="canvas" {...controls} {...callbacks}>{children}</SurfaceController>
 }
 export type SceneSurfaceHTMLProps = {
   part?: SurfacePartId; size: SurfaceSize; resolution?: SurfaceResolution; paint?: 'auto' | 'always'

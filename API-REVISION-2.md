@@ -51,7 +51,7 @@ One unnamed canvas is the default. For several hosts, use distinct IDs and an
 explicit association. Reusable client examples can use React `useId`; independently
 server-rendered roots need unique, matching `identifierPrefix` values during server
 render and hydration, or explicit document-unique IDs. A scene-side Surface belongs
-to its enclosing canvas and rejects a conflicting `canvas` prop.
+to its enclosing canvas and rejects a conflicting `canvasId` prop.
 
 A delayed or lost host keeps the HTML usable. Preparation stops claiming renderer
 frames when missing input is the only possible progress. Development warns once
@@ -61,7 +61,7 @@ or invoking `onError`. Declaring a scene before it is requested is valid and qui
 ## Compose a custom scene
 
 ```tsx
-<Surface.Root inScene={selected} canvas="controls">
+<Surface.Root inScene={selected} canvasId="controls">
   <Surface.HTML>
     <ControlBoard values={values} setValues={setValues} />
   </Surface.HTML>
@@ -199,7 +199,7 @@ Put visual styles on the HTML content. `pageClassName` and `pageStyle` explicitl
 </SceneSurface.Root>
 ```
 
-Scene-only HTML has explicit dimensions because there is no page presentation to measure. The Root can be inside its `SurfaceCanvas`, or declared in the page with a mesh contributed to the selected canvas. Use `canvas="id"` when choosing a named host. `SceneSurface.Scene` groups custom contributions declared in the page.
+Scene-only HTML has explicit dimensions because there is no page presentation to measure. The Root can be inside its `SurfaceCanvas`, or declared in the page with a mesh contributed to the selected canvas. Use `canvasId="id"` when choosing a named host. `SceneSurface.Scene` groups custom contributions declared in the page.
 
 Explode supplies DOM layers it already built:
 

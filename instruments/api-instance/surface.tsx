@@ -48,7 +48,7 @@ function App() {
           onCreated={state=>Object.assign(window,{__statefulRenderer:state})}/>}
         <div style={{height:shifted?110:40}} />
         <div id="slot" style={{marginLeft:24,width:440}}>
-          <Surface surface={handle} canvas="stateful" inScene={selected} onError={error=>proof.errors.push(error.message)}><Content/></Surface>
+          <Surface surface={handle} canvasId="stateful" inScene={selected} onError={error=>proof.errors.push(error.message)}><Content/></Surface>
         </div>
       </div>
       <div style={{height:500}} />
