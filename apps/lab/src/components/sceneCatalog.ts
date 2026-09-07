@@ -2,7 +2,7 @@
 // The source reference matches the development API shown on this site.
 
 export const SOURCE_ROOT = 'https://github.com/petekp/munari'
-export const SOURCE_REF = 'dae999447d0931d35b6490ae4d1ebcdbbf08a15c'
+export const SOURCE_REF = '71478f76ab2857603e69fd8837dfce6e1ddf2dd6'
 export const GUIDE_URL = `${SOURCE_ROOT}/blob/${SOURCE_REF}/README.md#your-first-surface`
 export const SOURCE_ARCHIVE = `${SOURCE_ROOT}/archive/${SOURCE_REF}.zip`
 export const BROWSER_GUIDE = 'https://developer.chrome.com/blog/html-in-canvas-origin-trial'
