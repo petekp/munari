@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
+import { SceneSurface, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
 import { surfaceManualPresenter, type SurfaceManualPresenter } from '@petepetrash/munari/advanced'
 import { BLIT_FRAGMENT, GLASS_FRAGMENT, QUAD_VERTEX } from './glassSdfShader'
 
@@ -500,8 +500,9 @@ export function SdfGlassPanel({
 
   return (
     <group ref={group} position={position} rotation={rotation}>
-      <Surface surface={surface} renderIn="canvas" size={[width, height]} source={content}>
-        <Surface.Mesh
+      <SceneSurface.Root surface={surface}>
+<SceneSurface.HTML size={[width, height]}>{content}</SceneSurface.HTML>
+        <SceneSurface.Mesh
           name={label}
           presentation="manual"
           placement="manual"
@@ -510,8 +511,8 @@ export function SdfGlassPanel({
           pointerEvents={hitTest === 'content' ? 'content' : 'geometry'}
         >
           <InkRegistrar label={label} />
-        </Surface.Mesh>
-      </Surface>
+        </SceneSurface.Mesh>
+      </SceneSurface.Root>
     </group>
   )
 }

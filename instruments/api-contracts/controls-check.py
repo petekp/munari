@@ -1,0 +1,40 @@
+import tempfile
+import subprocess,json,os
+from pathlib import Path
+out=Path(os.environ.get('API_PROOF_OUTPUT',str(Path(tempfile.gettempdir())/'munari-api/evidence')));out.mkdir(exist_ok=True)
+BASE=os.environ.get('API_PROOF_URL','http://127.0.0.1:5178')
+def call(*args):
+ p=subprocess.run(['agent-browser','--session',os.environ.get('API_PROOF_SESSION','munari-api-proof'),'--json',*args],capture_output=True,text=True)
+ data=json.loads(p.stdout)
+ if p.returncode or not data['success']:raise RuntimeError(p.stdout+p.stderr)
+ return data.get('data',{})
+def evaluate(code):return call('eval',code).get('result')
+def wait(code):call('wait','--fn',code)
+def toggle():call('click','.controls-mode button')
+def state():return evaluate('({status:window.__apiControls.status,holds:window.__apiControls.holds,frames:window.__apiControls.frames,last:window.__apiControls.frames.at(-1),value:window.__controlsOriginal?.value,same:window.__controlsOriginal===document.querySelector("[data-api-live] input")})')
+call('set','viewport','1280','900')
+call('open',BASE+'/?scene=controls&framed')
+wait('window.__apiControls?.status?.presentation === "page" && !!document.querySelector("[data-api-live] input")')
+evaluate('window.__controlsOriginal=document.querySelector("[data-api-live] input");window.__controlsOriginal.setAttribute("data-api-project","");window.__apiControls.frames.length=0;window.__apiControls.holds.length=0')
+call('fill','[data-api-live] [data-api-project]','Controls continuity')
+toggle();wait('window.__apiControls.status.presentation === "scene" && !window.__apiControls.status.isTransitioning')
+call('fill','[data-api-live] [data-api-project]','Edited while physical')
+toggle();wait('window.__apiControls.status.presentation === "page" && !window.__apiControls.status.isTransitioning')
+full=state()
+assert full['same'] and full['value']=='Edited while physical'
+assert all(e['progress']==0 for e in full['holds'] if e['presentation']=='page')
+call('screenshot',str(out/'controls-returned.png'))
+evaluate('window.__apiControls.frames.length=0;window.__apiControls.holds.length=0;window.__earlyPeak=null;const watch=()=>{const f=window.__apiControls.frames.at(-1);if(f&&f.amount>0.04&&f.amount<0.95){window.__earlyPeak=f.amount;document.querySelector(".controls-mode button").click()}else requestAnimationFrame(watch)};requestAnimationFrame(watch)')
+toggle();wait('window.__earlyPeak !== null && window.__apiControls.status.presentation === "page" && !window.__apiControls.status.isTransitioning')
+early=state();early['peakAtRequest']=evaluate('window.__earlyPeak')
+assert early['same'] and early['value']=='Edited while physical'
+assert any(e['presentation']=='page' and e['progress']==0 for e in early['holds'])
+toggle();wait('window.__apiControls.status.presentation === "scene" && !window.__apiControls.status.isTransitioning')
+evaluate('window.__reversePeak=null;window.__apiControls.holds.length=0;const watch=()=>{const f=window.__apiControls.frames.at(-1);if(f&&f.amount<0.65&&f.amount>0){window.__reversePeak=f.amount;document.querySelector(".controls-mode button").click()}else requestAnimationFrame(watch)};requestAnimationFrame(watch)')
+toggle();wait('window.__reversePeak !== null && window.__apiControls.status.presentation === "scene" && !window.__apiControls.status.isTransitioning')
+reverse=state();reverse['amountAtReversal']=evaluate('window.__reversePeak')
+assert reverse['same'] and not any(e['presentation']=='page' for e in reverse['holds'])
+toggle();wait('window.__apiControls.status.presentation === "page" && !window.__apiControls.status.isTransitioning')
+result={'fullReturn':full,'earlyReturn':early,'reverseDuringReturn':reverse}
+(out/'controls-transitions.json').write_text(json.dumps(result,indent=2)+'\n')
+print(json.dumps({key:{'status':v['status'],'sameInput':v['same'],'value':v['value'],'holds':v['holds'],'earlyPeak':v.get('peakAtRequest'),'reversalAmount':v.get('amountAtReversal')} for key,v in result.items()},indent=2))

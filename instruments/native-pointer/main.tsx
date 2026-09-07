@@ -1,3 +1,4 @@
+import { readSurfaceFrameState } from '@petepetrash/munari/advanced'
 // The page half of the native-pointer gate: one exclusive Surface whose
 // presenter opts into `pointerRoute="auto"` (decisions.md #39), so a real
 // browser click fired while the rig rides tells us whether the browser
@@ -16,9 +17,9 @@ import {
   Surface,
   SurfaceCanvas,
   useSurfaceHandle,
-  useSurfaceInstance,
-  useSurfaceState,
+  useSurfaceStatus,
   type SurfaceDestination,
+  type SurfaceHandle,
 } from '@petepetrash/munari'
 import { detectHtmlInCanvas, type PointerRouteRequest } from '@munari/core'
 
@@ -34,20 +35,20 @@ interface ClickRecord {
 
 const clicks: ClickRecord[] = []
 
-/** The parked capture canvas is the one document.body holds directly;
- * the renderer canvas lives inside the SurfaceCanvas div. */
+/** The retained source owns its canvas even when it is docked inside the page tree. */
 function parkedCanvas(): HTMLCanvasElement | null {
-  for (const c of document.querySelectorAll('canvas')) {
-    if (c.parentElement === document.body) return c
-  }
-  return null
+  return document.querySelector('[data-api-live]')?.closest('canvas') ?? null
 }
+let rendering: import('@react-three/fiber').RootState | null = null
+let displayed: import('three').Mesh | null = null
 
+interface PointerObservation {presented:string|null;isChanging:boolean;ready:boolean}
+function initialState(): PointerObservation { return {presented:null,isChanging:false,ready:false} }
 const probe = {
   capable: detectHtmlInCanvas().drawElementImage,
   ready: false,
   clicks,
-  state: { presented: 'page', isChanging: false, ready: false },
+  state: initialState(),
   setRenderIn: (_: SurfaceDestination) => {},
   setRoute: (_: PointerRouteRequest) => {},
   setTilt: (_: boolean) => {},
@@ -73,7 +74,13 @@ const probe = {
     const el = document.getElementById(id)
     if (!el) return null
     const r = el.getBoundingClientRect()
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height }
+    if (probe.state.presented !== 'scene' || probe.riding() || !displayed || !rendering) return { x:r.left+r.width/2, y:r.top+r.height/2, w:r.width, h:r.height }
+    const source = parkedCanvas()?.firstElementChild?.getBoundingClientRect()
+    if (!source) return null
+    const point = displayed.position.clone().set((r.left+r.width/2-source.left)/source.width-0.5,0.5-(r.top+r.height/2-source.top)/source.height,0)
+    displayed.updateWorldMatrix(true,false);displayed.localToWorld(point).project(rendering.camera)
+    const canvas=rendering.gl.domElement.getBoundingClientRect()
+    return {x:canvas.left+(point.x+1)*canvas.width/2,y:canvas.top+(1-point.y)*canvas.height/2,w:r.width,h:r.height}
   },
   hoverOf(id: string) {
     const el = document.getElementById(id)
@@ -86,7 +93,8 @@ const probe = {
     return el instanceof HTMLInputElement ? el.value : null
   },
   hitAt(x: number, y: number) {
-    return document.elementFromPoint(x, y)?.id ?? document.elementFromPoint(x, y)?.tagName ?? null
+    const element = document.elementFromPoint(x, y)
+    return element?.id || element?.tagName || null
   },
 }
 
@@ -97,10 +105,9 @@ declare global {
 }
 window.__nativePointer = probe
 
-function Card({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const instance = useSurfaceInstance()
+function Card({ value, onChange, surface }: { value: string; onChange: (value: string) => void; surface:SurfaceHandle }) {
   const record = (id: string) => (e: React.MouseEvent) => {
-    probe.clicks.push({ instance, id, trusted: e.nativeEvent.isTrusted, t: performance.now() })
+    probe.clicks.push({ instance:readSurfaceFrameState(surface).presentation ?? 'waiting', id, trusted: e.nativeEvent.isTrusted, t: performance.now() })
   }
   return (
     <div
@@ -117,21 +124,21 @@ function Card({ value, onChange }: { value: string; onChange: (value: string) =>
     >
       {/* The :hover rule travels with the content so a real browser hover
           self-paints into the capture (matrix3d-hit.md: paints 2→4). */}
-      <style>{`button[id^="btn-"]:hover { background: #2da44e; color: #fff; }`}</style>
+      <style>{`button#btn:hover { background: #2da44e; color: #fff; }`}</style>
       <button
-        id={`btn-${instance}`}
+        id="btn"
         style={{ height: 56, fontSize: 17, cursor: 'pointer' }}
-        onClick={record(`btn-${instance}`)}
+        onClick={record('btn')}
       >
         target
       </button>
       <input
-        id={`field-${instance}`}
+        id="field"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder="type here"
         style={{ height: 36, fontSize: 15, padding: '0 10px' }}
-        onClick={record(`field-${instance}`)}
+        onClick={record('field')}
       />
     </div>
   )
@@ -143,16 +150,16 @@ function App() {
   const [route, setRoute] = useState<PointerRouteRequest>('relay')
   const [tilt, setTilt] = useState(false)
   const [value, setValue] = useState('')
-  const st = useSurfaceState(surface)
+  const st = useSurfaceStatus(surface)
   probe.setRenderIn = setRenderIn
   probe.setRoute = setRoute
   probe.setTilt = setTilt
-  probe.state = { presented: st.presented, isChanging: st.isChanging, ready: st.ready }
+  probe.state = { presented: st.presentation, isChanging: st.isTransitioning, ready: st.sceneReady }
   useEffect(() => {
     probe.ready = true
   }, [])
 
-  const content = <Card value={value} onChange={setValue} />
+  const content = <Card surface={surface} value={value} onChange={setValue} />
   return (
     <>
       <div
@@ -164,15 +171,13 @@ function App() {
           height: H,
         }}
       >
-        <Surface
+        <Surface.Root
           surface={surface}
-          renderIn={view}
+          inScene={view === 'scene'}
           timing={{ settleMs: 120, durationMs: 200 }}
-          size={[W, H]}
-          source={content}
         >
-          <Surface.DOM />
-        </Surface>
+          <Surface.HTML pageClassName="page-slot" size={[W,H]}>{content}</Surface.HTML>
+        </Surface.Root>
       </div>
       <SurfaceCanvas
         pointerMode="surfaces"
@@ -183,9 +188,9 @@ function App() {
         frameloop="always"
         dpr={1}
         camera={{ fov: 42, position: [0, 0, 1000] }}
-        onCreated={(s) => s.gl.setClearAlpha(0)}
+        onCreated={(state) => { rendering=state;state.gl.setClearAlpha(0) }}
       >
-        <Surface.Mesh
+        <Surface.Mesh ref={mesh=>{displayed=mesh}}
           surface={surface}
           pointerRoute={route}
           placement={tilt ? 'manual' : 'match-dom'}

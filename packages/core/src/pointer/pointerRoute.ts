@@ -79,6 +79,8 @@ export interface PointerRouteConditions {
   readonly capable: boolean
   /** The canvas is the side that hears this phase (`crossingPointer`). */
   readonly hearing: boolean
+  /** The source has at most one interactive scene pose. Decision #39. */
+  readonly exclusiveSource: boolean
   /** The presented pose is a planar homography with a pointable hit region. */
   readonly planar: boolean
   /** The sheet faces the camera, or its material takes hits from both sides. */
@@ -144,6 +146,7 @@ export function routeFor(conditions: PointerRouteConditions): PointerRoute {
   if (
     conditions.request === 'auto' &&
     conditions.capable &&
+    conditions.exclusiveSource &&
     conditions.planar &&
     conditions.facing &&
     conditions.onScreen

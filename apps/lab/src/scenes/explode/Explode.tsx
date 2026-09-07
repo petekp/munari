@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceTexture } from '@petepetrash/munari'
+import { SceneSurface, useSurfaceTexture } from '@petepetrash/munari'
 import { explodePaint, measureBleed, type Plate } from './explodePlates'
 
 // The exploded-paint inspector — a live element taken apart into its OWN
@@ -208,31 +208,25 @@ function PlateSheet({ plate, index, count }: { plate: Plate; index: number; coun
 
   return (
     <group ref={group} position={[0, CENTER_Y, rank * GAP]}>
-      <Surface
-        adopt={plate.node}
-        name={`plate-${plate.feature.id}`}
-        renderIn="canvas"
-        size={[plate.width, plate.height]}
-      >
-        <Surface.Mesh
+      <SceneSurface.Root name={`plate-${plate.feature.id}`}>
+        <SceneSurface.HTML element={plate.node} size={[plate.width, plate.height]} />
+        <SceneSurface.Mesh
           placement="manual"
           geometry={<planeGeometry args={[w, h]} />}
           material={<PlateMaterial />}
           alpha="source"
           pointerEvents="content"
         />
-      </Surface>
+      </SceneSurface.Root>
       <PlateFrame w={w} h={h} />
       {/* A placard, at its plate's own depth and offset down the stack so
        * six of them fan out instead of stacking into one illegible pile.
        * The step is in the plate's local frame, so it survives orbiting. */}
-      <Surface
-        source={<div dangerouslySetInnerHTML={{ __html: labelMarkup(plate) }} />}
-        name={`label-${plate.feature.id}`}
-        renderIn="canvas"
-        size={[LABEL_W, LABEL_H]}
-      >
-        <Surface.Mesh
+      <SceneSurface.Root name={`label-${plate.feature.id}`}>
+        <SceneSurface.HTML size={[LABEL_W, LABEL_H]}>
+          <div dangerouslySetInnerHTML={{ __html: labelMarkup(plate) }} />
+        </SceneSurface.HTML>
+        <SceneSurface.Mesh
           placement="manual"
           geometry={<planeGeometry args={[LABEL_W / PX, LABEL_H / PX]} />}
           material={<PlateMaterial />}
@@ -244,7 +238,7 @@ function PlateSheet({ plate, index, count }: { plate: Plate; index: number; coun
             0,
           ]}
         />
-      </Surface>
+      </SceneSurface.Root>
     </group>
   )
 }

@@ -269,7 +269,7 @@ try {
   await page.waitForFunction(
     () => {
       const decoder = document.querySelector('[data-genie-film-role="decoder"]')
-      const canvas = document.querySelector('[data-genie-film-role="canvas"]')
+      const canvas = [...document.querySelectorAll('[data-genie-film-role="canvas"]')].find(node => !node.closest('[data-munari-snapshot]'))
       return (
         document.fonts.status === 'loaded' &&
         decoder instanceof HTMLVideoElement &&
@@ -315,7 +315,7 @@ try {
   // generation states that can begin and end between two animation frames.
   await page.evaluate((win) => {
     const decoder = document.querySelector('[data-genie-film-role="decoder"]')
-    const canvas = document.querySelector('[data-genie-film-role="canvas"]')
+    const canvas = [...document.querySelectorAll('[data-genie-film-role="canvas"]')].find(node => !node.closest('[data-munari-snapshot]'))
     if (!(decoder instanceof HTMLVideoElement) || !(canvas instanceof HTMLCanvasElement)) {
       throw new Error('film-window recorder could not find its decoder and canvas')
     }
@@ -356,7 +356,7 @@ try {
 
     const read = () => {
       const decoders = [...document.querySelectorAll('[data-genie-film-role="decoder"]')]
-      const canvases = [...document.querySelectorAll('[data-genie-film-role="canvas"]')]
+      const canvases = [...document.querySelectorAll('[data-genie-film-role="canvas"]')].filter(node => !node.closest('[data-munari-snapshot]'))
       const slot = document.querySelector(`.gen-slot[data-win="${win}"]`)
       const tile = document.querySelector(`.gen-tile[data-win="${win}"]`)
       const rect = canvas.getBoundingClientRect()
@@ -422,7 +422,7 @@ try {
 
     const roleIdentity = () => {
       const decoders = [...document.querySelectorAll('[data-genie-film-role="decoder"]')]
-      const canvases = [...document.querySelectorAll('[data-genie-film-role="canvas"]')]
+      const canvases = [...document.querySelectorAll('[data-genie-film-role="canvas"]')].filter(node => !node.closest('[data-munari-snapshot]'))
       if (
         decoders.length !== 1 ||
         canvases.length !== 1 ||
@@ -573,7 +573,7 @@ try {
         (win, expectedFilled, expectedAway) => {
           const tile = document.querySelector(`.gen-tile[data-win="${win}"]`)
           const slot = document.querySelector(`.gen-slot[data-win="${win}"]`)
-          const canvas = document.querySelector('[data-genie-film-role="canvas"]')
+          const canvas = [...document.querySelectorAll('[data-genie-film-role="canvas"]')].find(node => !node.closest('[data-munari-snapshot]'))
           return (
             tile?.dataset.filled === expectedFilled &&
             (slot?.dataset.away === 'true') === expectedAway &&
@@ -589,7 +589,7 @@ try {
       const state = await page.evaluate((win) => {
         const tile = document.querySelector(`.gen-tile[data-win="${win}"]`)
         const slot = document.querySelector(`.gen-slot[data-win="${win}"]`)
-        const canvas = document.querySelector('[data-genie-film-role="canvas"]')
+        const canvas = [...document.querySelectorAll('[data-genie-film-role="canvas"]')].find(node => !node.closest('[data-munari-snapshot]'))
         return {
           filled: tile?.dataset.filled,
           away: slot?.dataset.away,
@@ -672,7 +672,7 @@ try {
         const pageRoot = document.querySelector('.gen-page')
         const slot = document.querySelector(`.gen-slot[data-win="${win}"]`)
         const tile = document.querySelector(`.gen-tile[data-win="${win}"]`)
-        const canvas = document.querySelector('[data-genie-film-role="canvas"]')
+        const canvas = [...document.querySelectorAll('[data-genie-film-role="canvas"]')].find(node => !node.closest('[data-munari-snapshot]'))
         return (
           pageRoot?.dataset.genieFilmDirection === undefined &&
           slot?.dataset.away !== 'true' &&

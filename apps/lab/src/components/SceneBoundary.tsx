@@ -49,13 +49,17 @@ export class SceneBoundary extends Component<Props, State> {
     if (!error) return this.props.children
     return (
       <div className="scene-error" role="alert">
-        <h1>The {this.props.scene} scene stopped</h1>
-        <p className="scene-error-message">{error.message}</p>
-        {stack && <pre className="scene-error-stack">{stack.trim()}</pre>}
-        <p className="scene-error-hint">
-          Reload to try again. The other scenes are reachable from{' '}
-          <code>?scene=</code> — the nav is inside the scene that threw.
+        <h1>This example couldn’t load</h1>
+        <p className="scene-error-hint">Reload to try again, or explore another example.</p>
+        <p className="scene-error-actions">
+          <button type="button" onClick={() => window.location.reload()}>Reload example</button>
+          <a href="/?scene=home" target="_top">Back to overview</a>
         </p>
+        <details>
+          <summary>Error details: {this.props.scene}</summary>
+          <p className="scene-error-message">{error.message}</p>
+          {stack && <pre className="scene-error-stack">{stack.trim()}</pre>}
+        </details>
       </div>
     )
   }

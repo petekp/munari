@@ -3,6 +3,17 @@
 The demo and development app. Run it with `npm run lab` from the repo
 root. `npm run dev` starts Vite only.
 
+The default route, `?scene=home`, introduces the library through a live
+postcard, an example gallery, a handoff diagram, and a copyable starter.
+Browsers without HTML-in-canvas keep native controls and can play a recorded
+postcard preview. [Preview provenance](public/previews/README.md) records how
+to replace that clip.
+
+`src/components/sceneCatalog.ts` owns the example descriptions and source
+links. Those links pin the development API revision while npm carries the
+earlier release. The code displayed on the overview is imported directly
+from the running `src/scenes/home/HomeStarter.tsx` component.
+
 The lab imports only from `@petepetrash/munari`, the same way an
 outside project would; `tests/boundary.test.ts` enforces this. If a
 scene needs something the package doesn't export, add the export;
@@ -14,11 +25,9 @@ For a new scene or agent-driven visual change, use the
 the [proposed control descriptor](../../docs/agent-system-plan.md#p4-scene-control-descriptor-pilot)
 is not an additional runtime API.
 
-Each scene exercises a different part of the library. Three unlisted page
-studies are direct links rather than promoted navigation: `?scene=controls`
-turns one live HTML form into physical hardware, `?scene=plume` lets native
-typed words leave as WebGL ink, and `?scene=marble-hand` replaces the pointer
-with a reflected, shadow-casting classical marble hand.
+Each scene exercises a different part of the library. `?scene=controls`
+remains a URL-only study that turns an HTML form into physical hardware.
+Plume and Marble Hand are also available in the example navigation.
 
 Plume places centered serif writing on a plain background, with no paper
 frame or surrounding labels. Tweak Plume opens its closed-by-default panel

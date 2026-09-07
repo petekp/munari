@@ -34,15 +34,16 @@
 // The overlay never takes pointer events. You scroll, select, and
 // click THROUGH the veil, because the thing under it is the page.
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
-  Surface,
+  useElementCapture,
+  useCaptureFrame,
+  useCaptureStatus,
+  type CaptureHandle,
   SurfaceCanvas,
-  useSurfacePaintedSize,
-  useSurfaceTexture,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { VEIL_DEFAULTS, veilReturn, veilStrip } from './veilLaw'
@@ -248,6 +249,7 @@ function WakeOn() {
 // ── the band: copy and horizontal passes offscreen, then the quad ───────
 
 interface BandProps {
+  capture: CaptureHandle
   painted: boolean
   content: { w: number; h: number }
   scroller: React.RefObject<HTMLDivElement | null>
@@ -273,9 +275,10 @@ function makeRt(w: number, h: number) {
 }
 
 
-function VeilBand({ painted, content, scroller, slab, sheet }: BandProps) {
-  const texture = useSurfaceTexture()
-  const paintedSize = useSurfacePaintedSize()
+function VeilBand({ capture, painted, content, scroller, slab, sheet }: BandProps) {
+  const frames = useCaptureFrame(capture)
+  const texture = frames.get()?.texture ?? null
+  const paintedSize = (): readonly [number, number] => { const frame = frames.get(); return frame ? [frame.width, frame.height] : [0, 0] }
   const gl = useThree((s) => s.gl)
   const size = useThree((s) => s.size)
   const invalidate = useThree((s) => s.invalidate)
@@ -493,7 +496,9 @@ export function VeilApp() {
   const pageRef = useRef<HTMLDivElement | null>(null)
   const slabRef = useRef<HTMLDivElement | null>(null)
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null)
-  const [painted, setPainted] = useState(false)
+  const capture = useElementCapture()
+  const attachSheet = useCallback((element: HTMLDivElement | null) => { sheetRef.current = element; capture.ref(element) }, [capture])
+  const painted = useCaptureStatus(capture).status === 'ready'
 
   // The twin must be told its size: the page copy's layout is the truth,
   // and the observer keeps it true through resizes and late font loads.
@@ -510,8 +515,10 @@ export function VeilApp() {
         return
       }
       sheetRef.current = el
-      const measure = () =>
-        setDims({ w: Math.round(el.offsetWidth), h: Math.round(el.offsetHeight) })
+      const measure = () => {
+        const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight)
+        setDims(current => current?.w === w && current.h === h ? current : { w, h })
+      }
       measure()
       observer = new ResizeObserver(measure)
       observer.observe(el)
@@ -525,33 +532,7 @@ export function VeilApp() {
 
   return (
     <div className="veil-page" ref={pageRef}>
-      <Surface
-        name="veil-sheet"
-        canvas="veil"
-        renderIn="both"
-        source={<VeilSheet />}
-        onReady={() => setPainted(true)}
-      >
-        <Surface.DOM ref={sheetRef}>
-          <VeilSheet />
-        </Surface.DOM>
-
-        {dims && (
-          <Surface.Mesh
-            placement="manual"
-            frustumCulled={false}
-            geometry={<planeGeometry args={[dims.w, dims.h]} />}
-            material={<meshBasicMaterial transparent opacity={0} depthWrite={false} />}
-          >
-            <VeilBand
-              painted={painted}
-              content={dims}
-              scroller={pageRef}
-              slab={slabRef}
-              sheet={sheetRef}
-            />
-          </Surface.Mesh>
-        )}
+      <div ref={attachSheet}><VeilSheet /></div>
 
         {/* The slab rides the scroller: the compositor moves it with the
             article around it, which is the whole hold fix. Its frame
@@ -568,9 +549,9 @@ export function VeilApp() {
           >
             <PixelPerfect />
             <WakeOn />
+            {dims && <VeilBand capture={capture} painted={painted} content={dims} scroller={pageRef} slab={slabRef} sheet={sheetRef} />}
           </SurfaceCanvas>
         </div>
-      </Surface>
 
     </div>
   )

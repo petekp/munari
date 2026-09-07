@@ -35,7 +35,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, SurfaceCanvas, useSurfaceHandle, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
+import { SurfaceCanvas, useElementCapture, useCaptureFrame, useCaptureStatus, type CaptureHandle } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { PixelPerfect, useOwnUniforms, worldBoxOf, type WorldBox } from '../candidates/candidateStage'
 import { BUBBLE_FRAG, BUBBLE_VERT, LIGHT } from './selectionShaders'
@@ -62,9 +62,8 @@ export interface BeadState {
   target: number
 }
 
-function BubbleMaterial({ bead }: { bead: React.RefObject<BeadState> }) {
-  const texture = useSurfaceTexture()
-  const { width, height } = useSurfaceChrome()
+function BubbleMaterial({ bead, capture }: { bead: React.RefObject<BeadState>; capture: CaptureHandle }) {
+  const frames = useCaptureFrame(capture)
   const uniforms = useMemo(
     () => ({
       tMap: textureSlot(),
@@ -119,11 +118,14 @@ function BubbleMaterial({ bead }: { bead: React.RefObject<BeadState> }) {
     }),
     [],
   )
-  uniforms.tMap.value = texture
   const material = useOwnUniforms(uniforms)
-  uniforms.uSize.value.set(width, height)
 
   useFrame((_, delta) => {
+    const shader = material.current
+    if (!shader) return
+    const frame = frames.get()
+    shader.uniforms.tMap.value = frame?.texture ?? null
+    if (frame) shader.uniforms.uSize.value.set(frame.width, frame.height)
     const b = bead.current
     // One time constant for growing and shrinking, so a bead that is
     // re-dragged mid-fade never snaps.
@@ -202,7 +204,6 @@ function BubbleMaterial({ bead }: { bead: React.RefObject<BeadState> }) {
   return (
     <shaderMaterial
       ref={material}
-      key={texture.uuid}
       uniforms={uniforms}
       vertexShader={BUBBLE_VERT}
       fragmentShader={BUBBLE_FRAG}
@@ -224,7 +225,8 @@ const PROSE = [
 ]
 
 function SelectionPage() {
-  const surface = useSurfaceHandle('selection-prose')
+  const capture = useElementCapture({ resolution: 6 })
+  const captureStatus = useCaptureStatus(capture)
   const holder = useRef<HTMLDivElement>(null)
   const live = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<[number, number] | null>(null)
@@ -348,57 +350,9 @@ function SelectionPage() {
       <div ref={holder} className="sel-prose-holder">
         {/* The copy the user reads and selects. Plain DOM, outside the
             Surface, so its selection can never reach the capture. */}
-        <div ref={live}>{prose}</div>
-        {size ? (
-          <Surface
-            surface={surface}
-            renderIn="canvas"
-            size={size}
-            // Pinned at the tier ladder's top: always-sharp interior text
-            // up to 300% zoom on a 2x display, no re-rasterize hitch when
-            // the zoom crosses a tier boundary. The 4096px long-edge guard
-            // would allow ~7.9 on this 520px-wide block.
-            resolution={6}
-            source={prose}
-          >
-            {/* The capture source: identical, parked, never selected. The
-                width is pinned to the live copy's measurement so both wrap
-                on the same words. */}
-            <div className="sel-prose-park" style={{ width: size[0] }} aria-hidden>
-              <Surface.DOM>{prose}</Surface.DOM>
-            </div>
-            {box && (
-              <Surface.Mesh
-                placement="manual"
-                alpha="source"
-                frustumCulled={false}
-                position={[box.x, box.y, 0]}
-                // One flat quad. The bump is optics computed in the
-                // fragment, not displaced geometry — a lifted mesh makes the
-                // screen→content mapping piecewise-projective, and the
-                // silhouette steps at every quad seam no matter how fine the
-                // tessellation (3px quads still stepped ~2px, 2026-08-21).
-                geometry={<planeGeometry args={[size[0], size[1]]} />}
-                material={<BubbleMaterial bead={bead} />}
-                pointerEvents="none"
-              />
-            )}
-          </Surface>
-        ) : null}
+        <div ref={element => { live.current = element; capture.ref(element) }}>{prose}</div>
+
       </div>
-    </div>
-  )
-}
-
-// Frameloop is 'always': the bead has its own clock and the scene does not
-// claim demand, so it gives up the zero-paint property the gated scenes
-// hold. A presenter-scoped animation claim is the missing piece
-// (candidates/README.md, gap 9).
-export function SelectionApp() {
-  return (
-    <div className="sel-app">
-      <SelectionPage />
-
       <SurfaceCanvas
         pointerMode="surfaces"
         style={{ position: 'fixed', inset: 0, zIndex: 40 }}
@@ -414,9 +368,20 @@ export function SelectionApp() {
         }}
       >
         <PixelPerfect />
+        {size && box && <mesh visible={captureStatus.status === 'ready'} position={[box.x, box.y, 0]} frustumCulled={false}>
+          <planeGeometry args={[size[0], size[1]]} />
+          <BubbleMaterial bead={bead} capture={capture} />
+        </mesh>}
       </SurfaceCanvas>
-
       <SelectionTweaks />
     </div>
   )
+}
+
+// Frameloop is 'always': the bead has its own clock and the scene does not
+// claim demand, so it gives up the zero-paint property the gated scenes
+// hold. A presenter-scoped animation claim is the missing piece
+// (candidates/README.md, gap 9).
+export function SelectionApp() {
+  return <div className="sel-app"><SelectionPage /></div>
 }

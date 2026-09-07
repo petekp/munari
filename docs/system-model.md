@@ -44,9 +44,9 @@ A later frame cannot repair the evidence for an earlier handoff.
 
 | Owner | Owns | Boundary |
 |---|---|---|
-| Application and recipe | Content state, `renderIn` request, visual treatment, gesture outcome, scene tuning | Does not declare a draw successful or force renderer release |
+| Application and recipe | Content state, `inScene` request, visual treatment, gesture outcome, scene tuning | Does not declare a draw successful or force renderer release |
 | Surface identity | A stable reference across independent trees | Does not own DOM, GPU resources, or public protocol-writing commands |
-| Surface declaration | Controller claim, source and part registration, `renderIn`, timing and callbacks | Does not own a scene's material or artistic policy |
+| Surface declaration | Controller claim, source and part registration, `inScene`, timing and callbacks | Does not own a scene's material or artistic policy |
 | Source runtime | Capture, texture, painted dimensions, density, measured chrome | Does not own application state or a visible presenter |
 | Mesh presenter | Mesh, material, placement, hit region, draw evidence | Does not own the source or decide the crossing law |
 | Canvas host | Shared renderer boundary, registration, pending work and final presentation | Does not replace content state or scene motion policy |
@@ -64,32 +64,27 @@ Source anchors: [handle and state](../packages/react/src/primitives/surface/surf
 [presenter](../packages/react/src/primitives/surface/SurfaceMesh.tsx), and
 [host](../packages/react/src/primitives/surface/surfaceHostRegistry.ts).
 
-`Surface.DOM` renders its part's source when it has no children. It remains a
-separate React instance from the captured source; shared state belongs above
-the Surface. `Surface.Scene` is an always-declared lifecycle boundary for one
-Surface's custom scene subtree under the shared `SurfaceCanvas`. It retains
-that subtree through preparation, reversal and return, then releases it after
-cleanup. The host's lifetime is independent: keep `SurfaceCanvas` mounted for
-as long as its Surfaces or scene resources need the renderer. With multiple
-hosts, give each one a distinct `id` and pass the matching `canvas="…"` to its
-Surface. A Scene cannot retain a caller-owned host.
+`Surface.HTML` retains one React/DOM instance and reserves its page layout while
+its pixels appear in the scene. Page targets move that retained instance between
+layout parents without remounting it. `Surface.Scene` retains custom scene children
+through preparation, reversal, return, and cleanup. It does not own the shared
+`SurfaceCanvas` lifetime. Multiple hosts need distinct IDs and explicit page-side
+associations; scene-side declarations belong to their enclosing host.
 
-In separated wiring, passing a handle to a page presentation and giving it
-explicit children can keep a stable native copy outside the captured source
-tree. The no-handle forms of state, progress, and driver reads use the nearest
-Surface identity across the page and scene trees. A scene presenter with
-`presentation="manual"` keeps the proxy and relay but delegates final draw
-evidence to an advanced manual presenter, which must cover every declared part
-and report each actual final compositor draw.
+State, progress, and driver hooks read the nearest Surface identity or an explicit
+handle. A mesh with `presentation="manual"` supplies input mapping while an advanced
+manual presenter owns its final draw evidence. It must cover every declared part
+and report the actual compositor draw. `sampledParts` is draw coverage, separate
+from the count of interactive scene poses sharing a source.
 
 ## Choose the presentation relationship first
 
 | Intent | Relationship | Main consequence |
 |---|---|---|
-| Move page content into the scene and back | Exclusive | Request `renderIn="page"` or `"canvas"`; keep the outgoing hold until the protocol accepts the incoming evidence |
-| Show the page and a mesh version together | Twin | Set `renderIn="both"`; the page remains the primary keyboard and accessibility presentation |
-| Present content only within the scene | Resident | Set `renderIn="canvas"` with no page presenter; keep a real source for content and input |
-| Sample page content in a reflection or another material | Source-only | Set `renderIn="none"`; a working capture can have no presenter and `ready: false` |
+| Move page content into the scene and back | Exclusive | Request `inScene={false}` or `true`; keep the outgoing hold until the protocol accepts the incoming evidence |
+| Show the page and a mesh version together | Twin | Use `useElementCapture` on the native element and render its captured frames; native HTML keeps keyboard and accessibility ownership |
+| Present content only within the scene | Resident | Use `SceneSurface`; keep a real source for content and input |
+| Sample page content in a reflection or another material | Source-only | Use `useElementCapture` or `CaptureContent`; capture readiness is independent of a Surface handoff |
 | Use pixels produced by a caller-owned canvas | Frame source | Publish complete frames and distinguish upload/draw from presentation |
 
 A resident has no page handoff delay or protocol frame loop. It still needs
@@ -105,19 +100,18 @@ WebGL replica. See their contracts in [the lab guide](../apps/lab/README.md).
 | Question | Current read or signal | What it does not prove |
 |---|---|---|
 | Can this browser capture DOM? | `useSurfaceSupport()`, `supportsSurfaces()` | Permission to act, successful capture, or correct appearance |
-| What did the app request? | `useSurfaceState().requested` / `renderIn` | Current renderer hold |
-| Which declared presentations hold the content? | `useSurfaceState().presented`, `onPresentationChange` | Material quality or correct occlusion |
-| Have required presenters made eligible first draws? | `ready`, `onReady` | That a color-writing frame reached the presentation boundary |
+| What did the app request? | `useSurfaceStatus().requestedInScene` / `inScene` | Current renderer hold |
+| Which declared presentations hold the content? | `useSurfaceStatus().presentation`, `onPresentationChange` | Material quality or correct occlusion |
+| Have required presenters made eligible first draws? | `sceneReady`, `onReady` | That a color-writing frame reached the presentation boundary |
 | How far has motion moved? | `progress`, `onMotionComplete` | Presentation proof or completed teardown |
 | Which pixels and boxes belong together? | Paint, frame and presentation receipts; painted size and anchors | That a live layout measurement matches an older texture |
 | Is capture doing work? | `paintStats()` deltas from `/advanced` | Total GPU cost, visual quality, or input correctness |
 
-`SurfaceState` is a supported semantic read with `requested`, `presented`,
-`ready`, `supported` and `isChanging`. `SurfacePresentation` is
-`'page' | 'canvas' | 'both' | 'none'`; `SurfaceDestination` is
-`'page' | 'canvas'` for motion callbacks and driver targets. It is not a
-joined explanation
-of the private part, presenter, source, and host ledgers. The bounded
+`SurfaceStatus` reports `requestedInScene`, `presentation`, `sceneReady`,
+`supported`, `reason`, and `isTransitioning`. `SurfacePresentation` is
+`page | scene | null`; motion destinations are `page | scene`. Raw progress is
+shared by handles, drivers, and advanced frame reads; an eased read is named
+explicitly. These observations do not expose the private registration ledgers.
 explanation view in [the plan](agent-system-plan.md#p3-bounded-read-only-explanation)
 does not exist yet.
 

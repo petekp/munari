@@ -52,6 +52,7 @@ import {
   type SurfacePresenterKey,
   type SurfaceReadiness,
 } from '@munari/core'
+import { surfaceViewPresentation, type SurfaceStatus } from './surfaceStatus'
 import { useLatest } from '../useLatest'
 import { SurfaceHandleContext } from './surfaceContext'
 import type { SurfacePartPublication } from './surfaceSourceRuntime'
@@ -71,11 +72,14 @@ export interface SurfaceTiming {
 
 /**
  * The excursion, 0 at DOM identity and 1 at the WebGL state. Read inside a
- * frame loop; every window over it is 0 at both handoff edges, so an effect
- * built from one cannot break pixel identity at a swap.
+ * frame loop. Raw progress, an explicit eased read, interval ramps and
+ * interval pulses are separate operations.
  */
 export interface SurfaceProgress {
+  /** Raw 0..1 motion, shared with driver input and frame reads. */
   get(): number
+  /** The built-in eased curve, explicitly separate from the raw motion. */
+  eased(): number
   between(start: number, end: number): number
   pulse(start: number, end: number): number
 }
@@ -206,6 +210,8 @@ export interface SurfaceStore {
    * gives the ramp back to the built-in timed motion.
    */
   drive(step: SurfaceDriverStep | null): void
+  /** The accepted raw motion value for a scene that owns the driver. */
+  motionProgress(): number
   /** Advance the protocol one renderer frame. */
   tick(dtMs: number): void
   /** Is this an exclusive handoff or a shared presentation? */
@@ -214,6 +220,10 @@ export interface SurfaceStore {
   canvasMounted(): boolean
   /** Private frame-work predicate for the shared Canvas scheduler. */
   hasProtocolWork(): boolean
+  subscribeWork(listener: () => void): () => void
+  setRendererAvailable(available: boolean): void
+  canPrepareCanvas(): boolean
+  preparationWait(): string | null
   subscribePresence(listener: () => void): () => void
   /** A direct declaration, separate from a mounted presenter. */
   declarePresentation(presentation: SurfaceDestination): () => void
@@ -222,13 +232,18 @@ export interface SurfaceStore {
   /** The advanced presenter covering a manual mesh part. */
   registerManualPresenter(part: SurfacePartId): () => void
   /** Report a requested presentation that has no matching declaration. */
-  validatePresentation(): void
+  validatePresentation(includeCanvas?: boolean): void
   /** Announce one part's source to every presenter holding this handle. */
   publishPart(id: SurfacePartId, value: SurfacePartPublication | null): void
   part(id: SurfacePartId): SurfacePartPublication | null
   parts(): readonly SurfacePartPublication[]
   subscribeParts(listener: () => void): () => void
   getState(): SurfaceState
+  /** Author intent is separate from a capability-filtered protocol request. */
+  setAuthorIntent(owner: symbol, requestedInScene: boolean, reason: string | null): void
+  clearAuthorIntent(owner: symbol): void
+  authorRequestedInScene(): boolean
+  getStatus(): SurfaceStatus
   subscribe(listener: () => void): () => void
   reportError(error: Error): void
 }
@@ -311,6 +326,11 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     supported: detectHtmlInCanvas().drawElementImage,
   }
   const listeners = new Set<() => void>()
+  let authorIntent: { owner: symbol; requestedInScene: boolean; reason: string | null } | null = null
+  let statusSnapshot: SurfaceStatus | null = null
+  let statusState: SurfaceState | null = null
+  let rendererAvailable = true
+  const workListeners = new Set<() => void>()
   let canvasMounted = false
   const presenceListeners = new Set<() => void>()
 
@@ -325,7 +345,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     requested === 'canvas' && (declared.get('page') ?? 0) === 0
 
   const progressValue = (): number =>
-    isResidentCanvas() ? 1 : crossingProgress(crossing.ramp)
+    isResidentCanvas() ? 1 : crossing.ramp
 
   const nextCanvasPresence = (canCanvas: boolean): boolean =>
     canCanvas &&
@@ -350,7 +370,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   const observation = (): SurfaceState => {
     const pageDeclared = (declared.get('page') ?? 0) > 0
     const canvasDeclared = (declared.get('canvas') ?? 0) > 0
-    const canCanvas = state.supported
+    const canCanvas = state.supported && rendererAvailable
     const pageVisible = pageDeclared && store.pagePresents()
     const canvasVisible = canvasDeclared && canCanvas && requested !== 'none' && canvasHeld
     return {
@@ -365,10 +385,10 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   const advanceCrossing = (before: CrossingState, dtMs: number) => {
     const evidence = {
       presented: readiness.proven.length,
-      required: readiness.registered.length + partSetMissing(parts).length,
+      required: Math.max(1, readiness.registered.length + partSetMissing(parts).length),
     }
     if (!driver) return crossingFrame(before, evidence, dtMs, timing)
-    const answer = driver({ dtMs, progress: progressValue(), target })
+    const answer = driver({ dtMs, progress: before.ramp, target })
     if (!Number.isFinite(answer)) {
       store.reportError(
         new Error(
@@ -381,6 +401,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   }
 
   const settleReturn = (before: CrossingState) => {
+    if (isResidentCanvas() || requested === 'both') return
     const canvasHasAuthority = crossingPresentation(crossing.phase).gl
     if (crossing.phase === 'page' && before.phase === 'landing') {
       lingerUntilMs = elapsedMs + RECLAIM_LINGER_MS
@@ -400,11 +421,12 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     return []
   }
 
-  const reportMissingPresentations = () => {
+  const reportMissingPresentations = (includeCanvas = true) => {
     for (const presentation of requestedPresentations()) {
+      if (presentation === 'canvas' && (!includeCanvas || !state.supported)) continue
       if ((declared.get(presentation) ?? 0) > 0 || reportedMissing.has(presentation)) continue
       reportedMissing.add(presentation)
-      const component = presentation === 'page' ? '<Surface.DOM>' : '<Surface.Mesh> or <Surface.Scene>'
+      const component = presentation === 'page' ? '<Surface.HTML>' : '<Surface.Mesh> or <Surface.Scene>'
       store.reportError(
         new Error(
           `Surface${name ? ` "${name}"` : ''} requested ${presentation} but declared no ${component}.`,
@@ -425,11 +447,17 @@ export function createSurfaceStore(name?: string): SurfaceStore {
 
   const hasProtocolWork = (): boolean => {
     if (elapsedMs < lingerUntilMs) return true
-    if (!state.supported) return false
+    if (!state.supported || !rendererAvailable) return false
     if (isResidentCanvas()) return false
     const canvasDeclared = (declared.get('canvas') ?? 0) > 0
     const seeksCanvas = requested === 'canvas' || requested === 'both'
-    if (seeksCanvas) return canvasDeclared && (!canvasHeld || crossing.ramp < 1)
+    if (seeksCanvas) {
+      if (!canvasDeclared) return false
+      // Waiting for missing inputs cannot produce evidence by drawing again.
+      // The finite settle dwell still runs; source and presenter changes wake us.
+      if (crossing.phase === 'lifting' && crossing.heldMs >= timing.settleMs && !state.ready) return false
+      return !canvasHeld || crossing.ramp < 1
+    }
     return canvasHeld || crossing.ramp > 0
   }
 
@@ -475,7 +503,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     const wantsCanvas = presentation === 'canvas' || presentation === 'both'
     const next = crossingRequest(
       crossing,
-      wantsCanvas && state.supported && !isResidentCanvas(),
+      wantsCanvas && state.supported && rendererAvailable && !isResidentCanvas(),
     )
     if (next !== crossing) crossing = next
   }
@@ -484,9 +512,9 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // `useSyncExternalStore` can compare by reference. Rebuilding
   // unconditionally would re-render every subscriber on every frame the
   // protocol advanced, which is the cost this whole split exists to avoid.
-  const publish = () => {
+  const publish = (wake = true) => {
     const next = observation()
-    const nextMounted = nextCanvasPresence(next.supported)
+    const nextMounted = nextCanvasPresence(next.supported && rendererAvailable)
     if (
       next.requested === state.requested &&
       next.presented === state.presented &&
@@ -494,11 +522,13 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       next.isChanging === state.isChanging
     ) {
       announcePresence(nextMounted)
+      if (wake) for (const listener of workListeners) listener()
       return
     }
     const previous = state
     state = next
     announcePresence(nextMounted)
+    if (wake) for (const listener of workListeners) listener()
     for (const listener of listeners) listener()
     if (next.presented !== previous.presented) {
       callbacks.onPresentationChange?.(next.presented)
@@ -550,6 +580,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
 
   const progress: SurfaceProgress = {
     get: progressValue,
+    eased: () => crossingProgress(progressValue()),
     between: (start, end) =>
       crossingRange(progressValue(), start, end - start),
     pulse: (start, end) => crossingCurve(progressValue(), start, end - start),
@@ -612,7 +643,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     expectPart: counted(expectCounts),
     registerPartPresenter: counted(presenterCounts),
     present(key, epoch) {
-      if (!surfaceEpochCurrent(identity, epoch)) return
+      if (!rendererAvailable || !surfaceEpochCurrent(identity, epoch)) return
       if (requested !== 'canvas' && requested !== 'both') return
       // Only while the canvas has presentation authority. A color-writing
       // draw before the lift gate opens is a resident presentation of a
@@ -649,7 +680,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       publish()
     },
     canvasPresents: () =>
-      state.supported &&
+      rendererAvailable && state.supported &&
       requested !== 'none' &&
       (isResidentCanvas() || requested === 'both' || crossingPresentation(crossing.phase).gl),
     pagePresents: () =>
@@ -664,7 +695,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     // hearing flip at the exact moment subscribeHold fires, which is what
     // lets the edge bursts run at the boundary they describe.
     canvasHearsPointer: () =>
-      state.supported && canvasHeld && (requested === 'both' || !pageHeld),
+      rendererAvailable && state.supported && canvasHeld && (requested === 'both' || !pageHeld),
     holdsPage: () => pageHeld,
     subscribeHold(listener) {
       holdListeners.add(listener)
@@ -692,6 +723,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     drive(step) {
       driver = step
     },
+    motionProgress: () => isResidentCanvas() ? 1 : crossing.ramp,
     tick(dtMs) {
       elapsedMs += dtMs
       const before = crossing
@@ -704,9 +736,36 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       // for both directions, so the two callbacks are reported separately.
       if (before.ramp < 1 && crossing.ramp >= 1) callbacks.onMotionComplete?.('canvas')
       if (before.ramp > 0 && crossing.ramp <= 0) callbacks.onMotionComplete?.('page')
-      publish()
+      publish(false)
     },
     getState: () => state,
+    setAuthorIntent(owner, requestedInScene, reason) {
+      if (authorIntent?.owner === owner && authorIntent.requestedInScene === requestedInScene && authorIntent.reason === reason) return
+      authorIntent = { owner, requestedInScene, reason }
+      statusSnapshot = null
+      for (const listener of listeners) listener()
+    },
+    clearAuthorIntent(owner) {
+      if (authorIntent?.owner !== owner) return
+      authorIntent = null
+      statusSnapshot = null
+      for (const listener of listeners) listener()
+    },
+    authorRequestedInScene: () => authorIntent?.requestedInScene ?? requested === 'canvas',
+    getStatus() {
+      if (statusSnapshot && statusState === state) return statusSnapshot
+      const presentation = surfaceViewPresentation(state.presented)
+      statusState = state
+      statusSnapshot = {
+        requestedInScene: store.authorRequestedInScene(),
+        presentation,
+        sceneReady: rendererAvailable && state.ready && state.supported && !authorIntent?.reason,
+        isTransitioning: state.isChanging,
+        supported: state.supported && !authorIntent?.reason,
+        reason: authorIntent?.reason ?? null,
+      }
+      return statusSnapshot
+    },
     subscribe(listener) {
       listeners.add(listener)
       return () => {
@@ -716,6 +775,35 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     exclusive: () => exclusive,
     canvasMounted: () => canvasMounted,
     hasProtocolWork,
+    subscribeWork(listener) {
+      workListeners.add(listener)
+      return () => { workListeners.delete(listener) }
+    },
+    canPrepareCanvas: () => rendererAvailable && state.supported,
+    preparationWait() {
+      if (!store.canPrepareCanvas() || (requested !== 'canvas' && requested !== 'both')) return null
+      if ((declared.get('canvas') ?? 0) === 0 || state.ready) return null
+      const missing = partSetMissing(parts)
+      if (missing.length > 0) return `presenters for parts: ${missing.join(', ')}`
+      if (readiness.registered.length === 0) return 'a scene presenter'
+      return 'a usable source frame and preparation draw'
+    },
+    setRendererAvailable(available) {
+      if (rendererAvailable === available) return
+      rendererAvailable = available
+      statusSnapshot = null
+      if (!available) {
+        crossing = crossingAtRest()
+        lingerUntilMs = 0
+        readiness = readinessReborn(readiness)
+        presenting.clear()
+        pageHeld = true
+        canvasHeld = false
+        for (const listener of holdListeners) listener()
+      } else requestCrossing(requested)
+      publish()
+      for (const listener of listeners) listener()
+    },
     subscribePresence(listener) {
       presenceListeners.add(listener)
       return () => presenceListeners.delete(listener)

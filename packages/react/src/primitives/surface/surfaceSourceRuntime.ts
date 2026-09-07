@@ -68,6 +68,7 @@ export interface SurfacePartPublication {
   readonly size: SurfaceSize
   readonly captureRoot: HTMLElement | null
   readonly pageRoot: HTMLElement | null
+  readonly pageContent?: () => HTMLElement | null
 }
 
 export interface SurfaceSourceOptions {
@@ -102,10 +103,12 @@ export interface SurfaceSourceRuntime {
   subscribePaint(listener: (receipt: DomPaintReceipt) => void): () => void
   setSize(size: SurfaceSize): void
   setResolution(resolution: SurfaceResolution): void
+  setPixelRatio(ratio:number):void
   setMirrorU(mirrorU: boolean): void
   setPaint(paint: 'auto' | 'always'): void
   /** One presenter's LOD demand. The runtime rasterizes for the greediest. */
   proposeTier(key: number, tier: number | null): void
+  proposeRaster(key:number,scale:SurfaceSize|null):void
   /** Advance capture one renderer frame. Returns true if anything changed. */
   frame(): boolean
   /** Has any paint succeeded and been marked for upload? */
@@ -163,7 +166,8 @@ export function createSurfaceSourceRuntime(
   options: SurfaceSourceOptions,
 ): SurfaceSourceRuntime {
   let { size, resolution, mirrorU, paint } = options
-  const { label, content, pixelRatio, onError, onPainted, onChrome, chromeElement } = options
+  let {pixelRatio}=options
+  const { label, content, onError, onPainted, onChrome, chromeElement } = options
 
   const ladderFor = (r: SurfaceResolution, w: number, h: number) => {
     const ladder = Array.isArray(r) ? tiersInRange(DEFAULT_TIERS, r[0], r[1]) : DEFAULT_TIERS
@@ -224,7 +228,7 @@ export function createSurfaceSourceRuntime(
   let uploadedGeneration = -1
   let anyUpload = false
   const settle = { w: -1, h: -1, quiet: 0, settled: false }
-  const proposals = new Map<number, number>()
+  const proposals = new Map<number, SurfaceSize>()
   let disposed = false
 
   texture.onUpdate = () => {
@@ -266,11 +270,15 @@ export function createSurfaceSourceRuntime(
       source.setScale(pinned)
       return
     }
-    let best: number | null = null
-    for (const tier of proposals.values()) {
-      if (best === null || tier > best) best = tier
+    let x=0,y=0
+    for(const proposal of proposals.values()){x=Math.max(x,proposal[0]);y=Math.max(y,proposal[1])}
+    const ladder=ladderFor(resolution,size[0],size[1])
+    if(!proposals.size)x=y=seedTier(ladder,pixelRatio)
+    if(Array.isArray(resolution)){
+      x=Math.min(ladder[ladder.length-1]!,Math.max(ladder[0]!,x))
+      y=Math.min(ladder[ladder.length-1]!,Math.max(ladder[0]!,y))
     }
-    if (best !== null && best !== source.scale()) source.setScale(best)
+    source.setRasterScale(clampScale(x,size[0],1),clampScale(y,1,size[1]))
   }
 
   return {
@@ -299,6 +307,7 @@ export function createSurfaceSourceRuntime(
         applyTier()
       }
     },
+    setPixelRatio(next){if(next===pixelRatio)return;pixelRatio=next;applyTier()},
     setResolution(next) {
       if (next === resolution) return
       resolution = next
@@ -323,8 +332,12 @@ export function createSurfaceSourceRuntime(
     },
     proposeTier(key, tier) {
       if (tier === null) proposals.delete(key)
-      else proposals.set(key, tier)
+      else proposals.set(key, [tier,tier])
       if (pinned === null) applyTier()
+    },
+    proposeRaster(key,scale){
+      if(scale===null)proposals.delete(key);else proposals.set(key,scale)
+      if(pinned===null)applyTier()
     },
     frame() {
       if (disposed || !texture) return false

@@ -43,11 +43,14 @@ import {
   type SurfacePose,
 } from '@munari/core'
 import { DEFORMED_MARKER } from './surfaceDeform'
+import { canvasSpace } from './surfaceCanvasSpace'
+import { claimSourcePointer, releaseSourcePointer, registerSourcePointerPresenter, sourceHasOnePointerPose } from './surfacePointerOwnership'
 
 /** Everything one frame's verdict is read from. */
 export interface SurfaceRouteStep {
   readonly mesh: THREE.Mesh
   readonly camera: THREE.Camera
+  readonly renderMatrix?: THREE.Matrix4
   /** The renderer canvas — the viewport the projection lands in. */
   readonly glCanvas: HTMLCanvasElement
   /** The parked capture canvas, null before the runtime exists. */
@@ -64,6 +67,7 @@ export interface SurfaceRouteStep {
   readonly authoredGeometry: boolean
   /** True when the scene supplied its own raycast. */
   readonly authoredRaycast: boolean
+  readonly pointerEvents: 'geometry' | 'content' | 'none'
 }
 
 /**
@@ -79,6 +83,7 @@ export interface SurfaceRouteRelayDuties {
 export interface SurfaceRouteController {
   /** Decide and apply this frame's route. Returns the handoff, moved or not. */
   step: (input: SurfaceRouteStep, duties: SurfaceRouteRelayDuties) => PointerRouteHandoff
+  registerSource: (canvas: HTMLCanvasElement) => () => void
   route: () => PointerRoute
   /** True while the parked canvas is lifted over the renderer canvas. */
   riding: () => boolean
@@ -98,6 +103,31 @@ export interface SurfaceRouteController {
  * the browser cannot be told to honor. Every answer is conservative: the
  * cost of a wrong "no" is the relay, which already works.
  */
+interface SurfacePlaneRecord {
+  readonly position: THREE.BufferAttribute | THREE.InterleavedBufferAttribute
+  readonly positionVersion: number
+  readonly uv: THREE.BufferAttribute | THREE.InterleavedBufferAttribute
+  readonly uvVersion: number
+  readonly index: THREE.BufferAttribute | null
+  readonly indexVersion: number | undefined
+  readonly start: number
+  readonly count: number
+}
+const planes = new WeakMap<THREE.BufferGeometry, SurfacePlaneRecord>()
+function positionVersion(position: SurfacePlaneRecord['position']): number {
+  return 'version' in position ? position.version : position.data.version
+}
+export function registerSurfacePlane(geometry: THREE.BufferGeometry): void {
+  const position = geometry.getAttribute('position')
+  const uv = geometry.getAttribute('uv')
+  if (position && uv) planes.set(geometry, {
+    position, positionVersion: positionVersion(position),
+    uv, uvVersion: positionVersion(uv),
+    index: geometry.index, indexVersion: geometry.index?.version,
+    start: geometry.drawRange.start, count: geometry.drawRange.count,
+  })
+}
+
 export function presentsUnitPlane(
   mesh: THREE.Mesh,
   authoredGeometry: boolean,
@@ -106,7 +136,14 @@ export function presentsUnitPlane(
   if (authoredGeometry || authoredRaycast) return false
   const geometry = mesh.geometry
   if (!geometry || !geometry.getAttribute('position')) return false
-  return geometry.userData[DEFORMED_MARKER] !== true
+  const owned = planes.get(geometry)
+  const position = geometry.getAttribute('position')
+  const uv = geometry.getAttribute('uv')
+  return owned?.position === position && owned.positionVersion === positionVersion(position) &&
+    owned.uv === uv && owned.uvVersion === positionVersion(uv) &&
+    owned.index === geometry.index && owned.indexVersion === geometry.index?.version &&
+    owned.start === geometry.drawRange.start && owned.count === geometry.drawRange.count &&
+    geometry.userData[DEFORMED_MARKER] !== true
 }
 
 /** Does the material take hits from both faces? */
@@ -125,13 +162,13 @@ function measurePose(input: SurfaceRouteStep, pose: SurfacePose) {
   const view = input.glCanvas.ownerDocument.defaultView
   const rect = input.glCanvas.getBoundingClientRect()
   input.camera.updateMatrixWorld()
-  input.mesh.updateWorldMatrix(true, false)
+  if(!input.renderMatrix)input.mesh.updateWorldMatrix(true, false)
   surfacePose(
     {
       contentWidth: input.contentWidth,
       contentHeight: input.contentHeight,
       mirrorU: input.mirrorU,
-      model: input.mesh.matrixWorld.elements,
+      model: (input.renderMatrix ?? input.mesh.matrixWorld).elements,
       view: input.camera.matrixWorldInverse.elements,
       projection: input.camera.projectionMatrix.elements,
       viewportLeft: rect.left,
@@ -154,11 +191,21 @@ function measurePose(input: SurfaceRouteStep, pose: SurfacePose) {
  * teleports between the two copies. First to lift holds the canvas until it
  * parks; every other presenter's native request quietly stays on the relay.
  */
-const riders = new WeakMap<HTMLCanvasElement, object>()
+
+
+function transformInCanvasSpace(pose:SurfacePose,space:NonNullable<ReturnType<typeof canvasSpace>>) {
+  const matrix=poseMatrix3d(pose,space.left,space.top)
+  return space.scaleX===1&&space.scaleY===1?matrix:`scale(${1/space.scaleX},${1/space.scaleY}) ${matrix}`
+}
+
+function measureEligiblePose(input: SurfaceRouteStep, pose: SurfacePose, conditions: { hearing: boolean; planar: boolean; exclusiveSource: boolean }, hasRig: boolean) {
+  const eligible = input.request === 'auto' && input.capable && conditions.hearing && conditions.planar && conditions.exclusiveSource && hasRig
+  return eligible ? measurePose(input, pose) : { facing: false, onScreen: false }
+}
 
 export function createSurfaceRoute(): SurfaceRouteController {
   const pose = createSurfacePose()
-  const token = {}
+  const token = Symbol()
   let route: PointerRoute = 'page'
   let rig: NativePointerRig | null = null
   let rigCanvas: HTMLCanvasElement | null = null
@@ -167,9 +214,10 @@ export function createSurfaceRoute(): SurfaceRouteController {
   // Read once per lift, not per frame: it walks the ancestor chain, and the
   // stacking context a renderer canvas sits in does not move mid-flight.
   let zIndex = 1
+  let latest: { input: SurfaceRouteStep; duties: SurfaceRouteRelayDuties } | null = null
 
   const releaseClaim = () => {
-    if (rigCanvas && riders.get(rigCanvas) === token) riders.delete(rigCanvas)
+    releaseSourcePointer(rigCanvas, token)
   }
 
   const rigFor = (
@@ -188,6 +236,7 @@ export function createSurfaceRoute(): SurfaceRouteController {
     // lifted over the scene with nobody holding its restore values.
     rig?.park()
     releaseClaim()
+    zIndex = zIndexAbove(cursor)
     rig = createNativePointerRig(canvas, root, cursor)
     rigCanvas = canvas
     rigRoot = root
@@ -195,37 +244,32 @@ export function createSurfaceRoute(): SurfaceRouteController {
     return rig
   }
 
-  return {
+  const controller: SurfaceRouteController = {
+    registerSource: (canvas) => registerSourcePointerPresenter(canvas, token, () => {
+      if (latest) controller.step(latest.input, latest.duties)
+    }),
     route: () => route,
     riding: () => rig?.riding() === true,
     release: () => {
       rig?.park()
       releaseClaim()
       route = 'page'
+      latest = null
     },
     step: (input, duties) => {
+      latest = { input, duties }
       const live = rigFor(input.parkedCanvas, input.root, input.glCanvas)
       const planar = presentsUnitPlane(input.mesh, input.authoredGeometry, input.authoredRaycast)
-      const holder = input.parkedCanvas ? riders.get(input.parkedCanvas) : undefined
-      const unclaimed = holder === undefined || holder === token
-      // The conditions the law reads are total, but computing the pose is
-      // not free — a rect read forces layout — so the geometric two are only
-      // measured when the cheap ones have already allowed native. Reporting
-      // them as false when unmeasured cannot change the verdict: every one of
-      // them is required for 'native' and none is consulted otherwise.
-      const eligible =
-        input.request === 'auto' &&
-        input.capable &&
-        input.hearing &&
-        planar &&
-        unclaimed &&
-        live !== null
-      const measured = eligible ? measurePose(input, pose) : { facing: false, onScreen: false }
+      const exclusiveSource = sourceHasOnePointerPose(input.parkedCanvas)
+      const hearing = input.hearing && input.pointerEvents !== 'none' && !input.root?.closest('[inert]')
+      const space=canvasSpace(input.parkedCanvas)
+      const measured = measureEligiblePose(input, pose, { hearing, planar, exclusiveSource }, live !== null && space !== null)
 
       const next = routeFor({
         request: input.request,
         capable: input.capable,
-        hearing: input.hearing,
+        hearing,
+        exclusiveSource,
         planar,
         facing: measured.facing,
         onScreen: measured.onScreen,
@@ -244,7 +288,7 @@ export function createSurfaceRoute(): SurfaceRouteController {
         }
         if (handoff.lift) {
           zIndex = zIndexAbove(input.glCanvas)
-          if (rigCanvas) riders.set(rigCanvas, token)
+
         }
         if (handoff.rearmRelay) duties.rearmRelay()
         if (handoff.bridgePage) duties.bridgePage()
@@ -253,10 +297,13 @@ export function createSurfaceRoute(): SurfaceRouteController {
       // installs the twin listeners, and every later one is the frame's pose.
       // The origin is (0, 0): the parked canvas stands at client (0, 0) by
       // the parking law (`position:fixed;left:0;top:0`, paint/htmlInCanvas).
-      if (next === 'native' && live) {
-        live.ride(nativeRideStyle(poseMatrix3d(pose, 0, 0), zIndex))
+      if (next === 'native' && live && space && rigCanvas) {
+        // Source replacement can preserve the route verdict while changing the rig.
+        claimSourcePointer(rigCanvas, token, () => live.park())
+        live.ride(nativeRideStyle(transformInCanvasSpace(pose,space), zIndex))
       }
       return handoff
     },
   }
+  return controller
 }

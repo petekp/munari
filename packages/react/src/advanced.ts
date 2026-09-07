@@ -45,3 +45,6 @@ export {
   surfaceManualPresenter,
   type SurfaceManualPresenter,
 } from './primitives/surface/surfaceManualPresenter'
+export { readSurfaceFrameState, type SurfaceFrameState } from './primitives/surface/surfaceFrame'
+
+export { inspectCapture } from './primitives/capture'

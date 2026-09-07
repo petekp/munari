@@ -77,3 +77,21 @@ describe('a source runtime', () => {
     expect(requests).toBe(beforeDispose)
   })
 })
+
+it('combines raster demands per axis and restores native capture density when consumers leave',()=>{
+ const runtime=createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',mirrorU:false,paint:'auto',pixelRatio:2,onError:error=>{throw error}})
+ runtime.proposeRaster(1,[2.4,1.7]);runtime.proposeRaster(2,[2,3])
+ expect(runtime.source.rasterScale()).toEqual([2.4,3])
+ runtime.proposeRaster(2,null)
+ expect(runtime.source.rasterScale()).toEqual([2.4,1.7])
+ runtime.proposeRaster(1,null)
+ runtime.setPixelRatio(3)
+ expect(runtime.source.rasterScale()).toEqual([3,3])
+ runtime.dispose()
+})
+it('keeps an explicit resolution pin when display density changes',()=>{
+ const runtime=createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:1,mirrorU:false,paint:'auto',pixelRatio:2,onError:error=>{throw error}})
+ runtime.proposeRaster(1,[3,2]);runtime.setPixelRatio(3)
+ expect(runtime.source.rasterScale()).toEqual([1,1])
+ runtime.dispose()
+})

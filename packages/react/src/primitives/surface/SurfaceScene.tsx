@@ -39,7 +39,7 @@ export function SurfaceScene({ surface, children }: SurfaceSceneProps) {
       store,
       handle: store.handle,
       host,
-      canvas: host.id,
+      canvasId: host.id,
       name: store.name,
       instanceId,
       wiring: 'canvas',

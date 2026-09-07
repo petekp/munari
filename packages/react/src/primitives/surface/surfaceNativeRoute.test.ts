@@ -22,6 +22,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { deformSurfaceGeometry } from './surfaceDeform'
 import {
   createSurfaceRoute,
+  registerSurfacePlane,
   materialIsDoubleSided,
   presentsUnitPlane,
   type SurfaceRouteRelayDuties,
@@ -61,6 +62,7 @@ beforeEach(() => {
     new THREE.PlaneGeometry(CONTENT_W, CONTENT_H),
     new THREE.MeshBasicMaterial(),
   )
+  registerSurfacePlane(mesh.geometry)
   mesh.updateWorldMatrix(true, false)
   camera = calibrate(800, 600)
 
@@ -84,6 +86,7 @@ function step(overrides: Partial<SurfaceRouteStep> = {}): SurfaceRouteStep {
     request: 'auto',
     capable: true,
     hearing: true,
+    pointerEvents: 'geometry',
     mirrorU: false,
     contentWidth: CONTENT_W,
     contentHeight: CONTENT_H,
@@ -133,6 +136,18 @@ describe('claiming planarity', () => {
   it('refuses a mesh with no position attribute at all', () => {
     const bare = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial())
     expect(presentsUnitPlane(bare, false, false)).toBe(false)
+  })
+
+  it('refuses changed or replaced texture coordinates, even when the plane stays flat', () => {
+    const uv = mesh.geometry.getAttribute('uv')
+    uv.setX(0, 0.25)
+    uv.needsUpdate = true
+    expect(presentsUnitPlane(mesh, false, false)).toBe(false)
+    registerSurfacePlane(mesh.geometry)
+    mesh.geometry.setAttribute('uv', uv.clone())
+    expect(presentsUnitPlane(mesh, false, false)).toBe(false)
+    mesh.geometry.deleteAttribute('uv')
+    expect(presentsUnitPlane(mesh, false, false)).toBe(false)
   })
 })
 
@@ -294,23 +309,6 @@ describe('applying the verdict', () => {
     expect(parkedCanvas.style.visibility).toBe('')
   })
 
-  it('keeps a second presenter of the same source on the relay while the first rides', () => {
-    // Two presenters of one source share ONE parked element, and each
-    // computes its own pose. Both riding would mean each frame's last writer
-    // wins and the hit region teleports between the two copies. First to lift
-    // holds the canvas until it parks; the other's native request quietly
-    // stays on the relay — and engages once the canvas is free.
-    const first = createSurfaceRoute()
-    const second = createSurfaceRoute()
-    first.step(step(), duties)
-    expect(first.riding()).toBe(true)
-
-    expect(second.step(step(), duties).to).toBe('relay')
-    expect(second.riding()).toBe(false)
-
-    first.step(step({ request: 'relay' }), duties)
-    expect(second.step(step(), duties).to).toBe('native')
-  })
 
   it('parks on release, consulting no law', () => {
     // Teardown is not a route change. An unmounting presenter has no verdict
@@ -324,4 +322,65 @@ describe('applying the verdict', () => {
     expect(controller.route()).toBe('page')
     expect(parkedCanvas.style.visibility).toBe('')
   })
+})
+
+
+describe('live source and geometry ownership', () => {
+  it('refuses a ref-replaced geometry even when the prop is unchanged', () => {
+    mesh.geometry = new THREE.SphereGeometry(40)
+    expect(presentsUnitPlane(mesh, false, false)).toBe(false)
+  })
+  it('refuses a modified position buffer without a deformation helper', () => {
+    mesh.geometry.attributes.position!.needsUpdate = true
+    expect(presentsUnitPlane(mesh, false, false)).toBe(false)
+  })
+  it('parks native input for inert sources and a disabled presenter', () => {
+    const route = createSurfaceRoute()
+    route.step(step(), duties)
+    expect(route.riding()).toBe(true)
+    root.inert = true
+    route.step(step(), duties)
+    expect(route.route()).toBe('page')
+    expect(route.riding()).toBe(false)
+    root.inert = false
+    route.step(step({ pointerEvents: 'none' }), duties)
+    expect(route.route()).toBe('page')
+    route.release()
+  })
+  it('puts all interactive presenters on relay before the second can transform the source', () => {
+    const first = createSurfaceRoute(), second = createSurfaceRoute()
+    const releaseFirst = first.registerSource(parkedCanvas)
+    first.step(step(), duties)
+    expect(first.riding()).toBe(true)
+    const releaseSecond = second.registerSource(parkedCanvas)
+    expect(first.riding()).toBe(false)
+    second.step(step({ request: 'relay' }), duties)
+    expect(first.route()).toBe('relay')
+    expect(second.route()).toBe('relay')
+    expect(parkedCanvas.style.transform).toBe('')
+    releaseSecond()
+    expect(first.riding()).toBe(true)
+    first.release(); second.release(); releaseFirst()
+  })
+  it('claims a replacement source even when its route remains native', () => {
+    const route = createSurfaceRoute()
+    route.step(step(), duties)
+    const replacement = document.createElement('canvas'), content = document.createElement('div')
+    replacement.append(content); document.body.append(replacement)
+    route.step(step({ parkedCanvas: replacement, root: content }), duties)
+    expect(parkedCanvas.style.transform).toBe('')
+    expect(route.riding()).toBe(true)
+    route.release()
+    expect(replacement.style.transform).toBe('')
+  })
+})
+
+it('refuses topology or draw-range changes to the default plane',()=>{
+ const original=mesh.geometry.index
+ mesh.geometry.setIndex([0,1,2])
+ expect(presentsUnitPlane(mesh,false,false)).toBe(false)
+ mesh.geometry.setIndex(original)
+ expect(presentsUnitPlane(mesh,false,false)).toBe(true)
+ mesh.geometry.setDrawRange(0,3)
+ expect(presentsUnitPlane(mesh,false,false)).toBe(false)
 })
