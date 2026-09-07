@@ -54,9 +54,16 @@ function radioTabbable(el: HTMLInputElement, root: ParentNode): boolean {
   return radioIsStop(group, group.indexOf(el))
 }
 
+/** Chrome reports -1 for a native editing host without a tabindex. Nested
+ * editors remain outside the Tab sequence unless they opt in explicitly. */
+export function effectiveTabIndex(el: HTMLElement): number {
+  if (el.tabIndex >= 0 || el.hasAttribute('tabindex')) return el.tabIndex
+  return el.isContentEditable && !el.parentElement?.isContentEditable ? 0 : -1
+}
+
 /**
- * Tabbable elements under `root` in Tab order. Browser-verified (vitest runs
- * without a DOM); the pure pieces above carry the unit tests.
+ * Tabbable elements under `root` in Tab order. Chrome verifies native stops;
+ * the DOM suite pins the filters with supplied visible layout boxes.
  */
 export function tabbables(root: ParentNode): HTMLElement[] {
   const found: { el: HTMLElement; tabIndex: number; seq: number }[] = []
@@ -68,13 +75,12 @@ export function tabbables(root: ParentNode): HTMLElement[] {
     // A <details> with a <summary> yields focus to the summary, not itself.
     if (el instanceof HTMLDetailsElement && el.querySelector(':scope>summary')) continue
     if (isRadio(el) && !radioTabbable(el, root)) continue
-    // el.tabIndex (IDL) resolves defaults per element type; the attribute
-    // check keeps [tabindex="-1"] unit containers out of the walk.
-    if (el.tabIndex < 0) continue
+    const tabIndex = effectiveTabIndex(el)
+    if (tabIndex < 0) continue
     // Zero client rects = display:none somewhere above, closed <details>
     // content, etc. opacity:0 proxies still have rects — stays tabbable.
     if (el.getClientRects().length === 0) continue
-    found.push({ el, tabIndex: el.tabIndex, seq: seq++ })
+    found.push({ el, tabIndex, seq: seq++ })
   }
   return sortByTabOrder(found).map((f) => f.el)
 }

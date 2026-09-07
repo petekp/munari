@@ -82,7 +82,7 @@ import {
   driveCommit,
   driveGrabStep,
   drivePresentationStep,
-  driveSpringStep,
+  driveSpringPresentationStep,
   easeInCubic,
   pourOut,
 } from './genieDrive'
@@ -1115,9 +1115,10 @@ function stepDrive(
     // spring state, but do not spend that momentum while the page copy
     // still owns the pixels.
     if (live) {
-      const next = driveSpringStep({ t: d.t, v: d.v }, d.target, dt, DRIVE_DEFAULTS)
+      const next = driveSpringPresentationStep({ t: d.t, v: d.v }, d.visibleT, d.target, dt, DRIVE_DEFAULTS)
       d.t = next.t
       d.v = next.v
+      d.visibleT = next.visibleT
       if (next.done) {
         if (d.target === 1) {
           // A dock landing's momentum is now the tile's ring — the
@@ -1320,6 +1321,7 @@ function Flight({
     // drawn frame then appears already in hand.
     const live = !store.film.holdsPage()
 
+    const springFrame = d.mode === 'spring'
     const landAt = stepDrive(d, f, live, restoring, clock.elapsedTime, dt, (v) =>
       kickRing(win, v),
     )
@@ -1330,9 +1332,8 @@ function Flight({
     // a pre-acquisition grab changes its hidden target. The first displaced
     // frame then has one owner, not two.
     const wallT = restoring ? 1 : 0
-    d.visibleT = live
-      ? drivePresentationStep(d.visibleT, d.t, dt, DRIVE_DEFAULTS.vMax)
-      : wallT
+    if (!live) d.visibleT = wallT
+    else if (!springFrame) d.visibleT = drivePresentationStep(d.visibleT, d.t, dt, DRIVE_DEFAULTS.vMax)
     const visibleT = d.visibleT
     const wobble =
       d.mode === 'settle' ? genieSettle(d.settleTau, d.settleV, SETTLE_DEFAULTS) : 0
@@ -1778,6 +1779,7 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
       const a = api.current.airOf(win)
       if (!a) return
       a.drive.target = driveCommit(a.drive.t, v, DRIVE_DEFAULTS)
+      a.drive.v = clamp(a.drive.v, -DRIVE_DEFAULTS.vMax, DRIVE_DEFAULTS.vMax)
       a.drive.mode = 'spring'
     }
 
@@ -1848,6 +1850,7 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
         const a = api.current.airOf(g.win)
         if (a) {
           a.drive.target = g.home
+          a.drive.v = clamp(a.drive.v, -DRIVE_DEFAULTS.vMax, DRIVE_DEFAULTS.vMax)
           a.drive.mode = 'spring'
         }
       }
@@ -2184,8 +2187,10 @@ export function GenieApp() {
   // scene could infer.
   const handKeyboardOver = (id: WinId, to: Dir) => {
     const active = document.activeElement
+    // Moving focus clears this pseudo-class on the element being left.
+    const keyboardFocus = active?.matches(':focus-visible') ?? false
     if (to === 'minimizing') {
-      if (active?.matches(':focus-visible') && winRefs.current[id]?.contains(active))
+      if (keyboardFocus && winRefs.current[id]?.contains(active))
         slotRefs.current[id]?.focus()
       return
     }
@@ -2200,7 +2205,7 @@ export function GenieApp() {
     // The keyboard hand-back is claimed only when the keyboard asked. A
     // mouse restore leaves focus on the wrapper, which is where a click on
     // a window puts it anyway — no ring, nothing to read.
-    if (active === slotRefs.current[id]) wantsFocus.current.add(id)
+    if (keyboardFocus && active === slotRefs.current[id]) wantsFocus.current.add(id)
   }
 
   /**

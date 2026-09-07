@@ -59,7 +59,12 @@
     "probe:postcard-sharpness": "node instruments/api-contracts/postcard-sharpness.mjs",
     "probe:scene-sharpness": "node instruments/api-contracts/scene-sharpness.mjs",
     "probe:display-density": "node instruments/api-contracts/display-density.mjs",
-    "probe:api-regressions": "node instruments/api-regressions/run.mjs"
+    "probe:api-regressions": "node instruments/api-regressions/run.mjs",
+    "probe:surface-textures": "node instruments/surface-textures/run.mjs",
+    "probe:surface-parts": "node instruments/surface-parts/run.mjs",
+    "probe:detail-focus": "node instruments/lab-interactions/detail-focus.mjs",
+    "probe:detail-motion": "node instruments/lab-interactions/detail-motion.mjs",
+    "probe:detail-tuning": "node instruments/lab-interactions/detail-tuning.mjs"
   },
   "devDependencies": {
     "@oxlint/plugins": "^1.78.0",

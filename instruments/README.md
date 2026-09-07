@@ -38,6 +38,38 @@ evidence. `API_SOURCE_ROOT` can point at a saved source revision for comparison.
 The [API instrument guide](api-all-demos/README.md) states the pixel/anchor budgets.
 This local command does not change CI membership.
 
+## Detail issue regressions
+
+These local Chrome checks cover the September 2026 issue batch. They require
+HTML-in-canvas and run serially; `HEADED=1` preserves native display density.
+They do not change CI membership.
+
+- `npm run probe:surface-textures`: late capture growth/shrink must draw the
+  current colors with no GL error; pinned resolution is the control. Lit
+  white, color, and emissive samples at full, half, and quarter alpha must
+  retain coverage within two 8-bit channel values, including filtered edges
+  and rounded transparent corners. `API_PROOF_OUTPUT` selects saved evidence.
+- `npm run probe:surface-parts`: recover from duplicate part names after
+  removing either host. Eight cases cover page/scene wiring and normal/Strict
+  Mode mounts, retained input identity/value, and actual red/green pixels.
+  Duplicate diagnostics remain expected; `API_PROOF_OUTPUT` selects output.
+- `npm run probe:detail-focus`: native editor Tab/recall, first camera drag
+  and wheel during a tween, panel pose after hover/focus, and orbit proxy
+  placement after damping. Explicit resynchronization may correct at most
+  1 CSS px. `DETAIL_CASES=35,40,52,55` selects cases; `DETAIL_OUTPUT` selects output.
+- `npm run probe:detail-motion`: early Unroll cancellation, mouse and keyboard
+  Genie restoration, a Copy flight still, and Lamp's first post-release pose.
+  Genie spring composition and Copy's full normal are checked numerically by
+  the scene tests; the stills are visual smoke checks. `DETAIL_MOTION_CASES`
+  selects `unroll,genie,copy,lamp`; `DETAIL_MOTION_OUTPUT` selects output.
+- `npm run probe:detail-tuning`: actual Refraction/Gallery slider changes must
+  reach the same mounted GPU targets and pointer field. Also checks Glass's
+  blob-count override and Crystal's held key. The field observer exists only
+  in the instrument's served copy. `API_PROOF_OUTPUT` selects output.
+
+Decision [#48](../docs/decisions.md#48) records the corrected contracts and
+the distinction between numerical, browser-input, and pixel evidence.
+
 ## idle-zero
 
 CI gate: mounted quiescent Surfaces cost **0 paints/s**.

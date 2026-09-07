@@ -481,14 +481,10 @@ function ArtEnvironment() {
  * move every frame, so a glint they leave travels while the art spins
  * and freezes the instant power drops.
  *
- * They ship at zero candela, and the rig stays anyway. A punctual light
- * behind the slab cannot reach a camera-facing surface, and the one
- * surface that turns away is metal, which has no diffuse term — so the
- * measured contribution is a rounding error (see `lightArt`). The
- * artwork lights the front of the panel through the room's bounce
- * instead. Kept because the dial is how anyone re-tests that claim, and
- * because a rig that is present and honest at zero beats a deleted one
- * whose absence has to be re-derived.
+ * `lightArt` sets their intensity. Behind the slab, these lights mainly
+ * reach its rim and raised hardware; metal still reflects them through
+ * its specular response. The room's bounce carries the artwork's color
+ * onto the flat front of the panel.
  */
 function ArtLightRig() {
   const lights = useRef<(THREE.PointLight | null)[]>([])

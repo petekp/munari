@@ -34,6 +34,7 @@ import { mountSurfaceHost, surfaceHost, resetSurfaceHosts } from './surfaceHostR
 import { SurfaceDOM } from './SurfaceDOM'
 import { SurfaceMesh } from './SurfaceMesh'
 import { SurfaceRoot } from './SurfaceRoot'
+import type { SurfacePartPublication } from './surfaceSourceRuntime'
 
 interface ObservedContext {
   state: ReturnType<typeof useSurfaceState> | null
@@ -916,6 +917,52 @@ describe('the part ledger — all of the parts or none (decisions.md #37)', () =
     expect(store.getState().ready).toBe(false)
     store.registerPartPresenter('p')
     expect(store.getState().ready).toBe(true)
+  })
+})
+
+describe('part publication ownership', () => {
+  const publication = (id: string): SurfacePartPublication => ({
+    id,
+    runtime: null,
+    size: [200, 100],
+    captureRoot: document.createElement('div'),
+    pageRoot: null,
+  })
+
+  it.each(['first', 'last'] as const)('recovers the survivor when the %s duplicate leaves', (removed) => {
+    const store = createSurfaceStore('duplicates')
+    const first = publication('panel')
+    const last = publication('panel')
+    const releaseFirst = store.publishPart('panel', first)
+    const releaseLast = store.publishPart('panel', last)
+    expect(store.parts()).toEqual([last])
+
+    const release = removed === 'first' ? releaseFirst : releaseLast
+    const survivor = removed === 'first' ? last : first
+    release()
+    const snapshot = store.parts()
+    expect(store.part('panel')).toBe(survivor)
+    expect(snapshot).toEqual([survivor])
+    release()
+    expect(store.parts()).toBe(snapshot)
+
+    releaseFirst()
+    releaseLast()
+    expect(store.part('panel')).toBeNull()
+    expect(store.parts()).toEqual([])
+  })
+
+  it('keeps separate cleanup owners when a publication object is reused', () => {
+    const store = createSurfaceStore('shared-publication')
+    const part = publication('panel')
+    const releaseFirst = store.publishPart('panel', part)
+    const releaseLast = store.publishPart('panel', part)
+    const snapshot = store.parts()
+    releaseLast()
+    expect(store.part('panel')).toBe(part)
+    expect(store.parts()).toBe(snapshot)
+    releaseFirst()
+    expect(store.part('panel')).toBeNull()
   })
 })
 

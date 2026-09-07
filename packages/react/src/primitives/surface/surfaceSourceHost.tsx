@@ -58,6 +58,7 @@ export const SURFACE_NAME_ATTRIBUTE = 'data-munari-surface'
 export const SURFACE_PART_ATTRIBUTE = 'data-munari-part'
 
 const DEFAULT_SIZE: SurfaceSize = [640, 480]
+let sourceHostSequence = 0
 
 export interface SurfaceSourceHostProps {
   root: SurfaceRootValue
@@ -93,6 +94,7 @@ export function SurfaceSourceHost({
   pageContent,
   children,
 }: SurfaceSourceHostProps) {
+  const [sourceHostId] = useState(() => `source-${sourceHostSequence++}`)
   const [runtime, setRuntime] = useState<SurfaceSourceRuntime | null>(null)
   const [pageRoot, setPageRoot] = useState<HTMLElement | null>(null)
   const outwardContent = useMemo(createSurfaceOutwardContentStore, [])
@@ -316,27 +318,25 @@ export function SurfaceSourceHost({
   // Published to the STORE as well as the context. A presenter reached
   // through separated wiring holds only the handle — it has no ancestor
   // that ever saw this source, so context alone would leave it blank.
-  useEffect(() => {
-    store.publishPart(id, {
+  useEffect(
+    () => store.publishPart(id, {
       id,
       runtime,
       size: [sourceWidth, sourceHeight],
       captureRoot,
       pageRoot,
       pageContent,
-    })
-    return () => store.publishPart(id, null)
-  }, [store, id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent])
+    }),
+    [store, id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent],
+  )
 
   // Content reaches the container by whichever door this wiring has. Both
   // render the SAME element into the SAME container; only the reconciler
   // that owns the commit differs.
   const outward = root.wiring === 'canvas'
-  // Keyed by the ROOT INSTANCE, not the name. The registry replaces by key,
-  // so two unnamed Surfaces sharing a Canvas would publish their sources
-  // under one entry and the second commit would take the first one's
-  // content away — a panel that mounts, paints once, and goes blank.
-  const contentKey = sourceContentKey(root.instanceId, id)
+  // A part name addresses the selected source, not its host. Duplicate
+  // names must retain separate DOM trees so removing either can recover.
+  const contentKey = sourceContentKey(`${root.instanceId}:${sourceHostId}`, id)
   const wrapped =
     source === undefined ? null : (
       <SurfaceHandleContext value={handleValue}>

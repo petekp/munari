@@ -41,7 +41,8 @@ const WORLD_UP = new THREE.Vector3(0, 1, 0)
  *  because that is what R3F's `state.controls` is typed as and what
  *  OrbitControls actually is — so narrowing to this is one honest downcast,
  *  not a round trip through `unknown`. */
-interface OrbitLike extends OrbitLimits, THREE.EventDispatcher {
+interface OrbitEvents { change: {}; start: {}; end: {} }
+interface OrbitLike extends OrbitLimits, THREE.EventDispatcher<OrbitEvents> {
   enabled: boolean
   target: THREE.Vector3
   update: () => void
@@ -116,6 +117,24 @@ export function FocusOrbitRig({
   } | null>(null)
   const curTarget = useRef(new THREE.Vector3())
   const motion = useRef<MotionMode>('auto')
+  const orbitMotion = useRef({ changed: false, pending: false, interacting: false })
+
+  useEffect(() => {
+    if (!controls) return
+    const state = orbitMotion.current
+    const changed = () => { state.changed = true; state.pending = true }
+    const start = () => { state.interacting = true }
+    const end = () => { state.interacting = false; state.pending = true }
+    controls.addEventListener('change', changed)
+    controls.addEventListener('start', start)
+    controls.addEventListener('end', end)
+    return () => {
+      controls.removeEventListener('change', changed)
+      controls.removeEventListener('start', start)
+      controls.removeEventListener('end', end)
+      state.changed = state.pending = state.interacting = false
+    }
+  }, [controls])
 
   // Browser-only inspection for the workspace acceptance route. It exposes
   // the same control instance this rig gates, so a pointer failure can tell
@@ -345,13 +364,14 @@ export function FocusOrbitRig({
     const release = () => {
       if (controls && tween.current === null) controls.enabled = true
     }
-    el.addEventListener('pointerdown', cancel)
-    el.addEventListener('wheel', cancel)
+    // OrbitControls must see the same press after the tween releases it.
+    el.addEventListener('pointerdown', cancel, { capture: true })
+    el.addEventListener('wheel', cancel, { capture: true })
     el.addEventListener('pointerup', release)
     el.addEventListener('pointercancel', release)
     return () => {
-      el.removeEventListener('pointerdown', cancel)
-      el.removeEventListener('wheel', cancel)
+      el.removeEventListener('pointerdown', cancel, { capture: true })
+      el.removeEventListener('wheel', cancel, { capture: true })
       el.removeEventListener('pointerup', release)
       el.removeEventListener('pointercancel', release)
     }
@@ -359,7 +379,20 @@ export function FocusOrbitRig({
 
   useFrame((_, delta) => {
     const tw = tween.current
-    if (!tw || !controls) return
+    if (!controls) return
+    const orbit = orbitMotion.current
+    if (!tw) {
+      // Drei updates OrbitControls before this callback. Its change event
+      // includes damping, so wait for an update with no reported movement
+      // after drag-end. Do not advance the controls a second time per frame.
+      if (orbit.pending && !orbit.changed && !orbit.interacting) {
+        orbit.pending = false
+        focus?.syncProxyRects()
+      }
+      orbit.changed = false
+      return
+    }
+    orbit.pending = orbit.changed = false
     tw.t = Math.min(1, tw.t + delta / tw.dur)
     const k = tw.t * tw.t * (3 - 2 * tw.t) // smoothstep
     camera.position.lerpVectors(tw.fromPos, tw.toPos, k)
@@ -380,6 +413,7 @@ export function FocusOrbitRig({
       // on demand, never per frame) — AT reads geometry from wherever the
       // camera came to rest.
       focus?.syncProxyRects()
+      orbit.pending = orbit.changed = false
     }
   })
 

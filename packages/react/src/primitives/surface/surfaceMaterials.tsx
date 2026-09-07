@@ -6,8 +6,8 @@
 // half — sample, mask, blend — and `<Surface.LitMaterial>` is the hard one:
 // lighting is a multiply against straight color, so a premultiplied sample
 // fed to it darkens exactly where it is translucent. The fix is to divide
-// alpha out after the map fetch and multiply it back into the final
-// fragment, which is what the two splices below do.
+// alpha out in the source's sRGB space before lighting. Three multiplies
+// the final output by alpha; the corner mask then scales color and alpha.
 //
 // The fault behind the automatic configuration, 2026-08-15: a scene's own
 // material sampled `useSurfaceTexture()` and left `premultipliedAlpha`
@@ -21,16 +21,29 @@
 // Ownership: this module owns material configuration and GLSL splices. It
 // owns no texture, no mesh, and no protocol.
 
-import { use, useMemo, useRef } from 'react'
+import { use, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { SURFACE_RADIUS_GLSL } from '../../lib/surfaceRadiusGlsl'
 import { SurfaceMaterialContext, useSurfaceTexture } from './surfaceContext'
+import { getSurfaceLitTexture } from './surfaceLitTexture'
 
 /** What a three shader looks like at `onBeforeCompile` time. */
 interface ShaderStage {
   uniforms: Record<string, { value: unknown }>
   fragmentShader: string
 }
+
+// Filter premultiplied encoded channels first, then remove coverage and
+// decode for lighting. Hardware sRGB decoding before filtering cannot be
+// inverted afterward at a transparent edge (decision #48).
+const STRAIGHT_SAMPLE_GLSL = `
+uniform sampler2D uMunariEncodedMap;
+vec4 munariStraightSample(vec4 sampleColor) {
+  if (sampleColor.a <= 0.0) return vec4(0.0);
+  sampleColor.rgb /= sampleColor.a;
+  return sRGBTransferEOTF(sampleColor);
+}
+`
 
 /**
  * Splice the corner mask into a fragment shader.
@@ -128,6 +141,8 @@ export function SurfaceLitMaterial({
   side,
 }: SurfaceLitMaterialProps) {
   const texture = useSurfaceTexture()
+  const litTexture = useMemo(() => getSurfaceLitTexture(texture), [texture])
+  useLayoutEffect(() => litTexture.acquire(), [litTexture])
   const slot = use(SurfaceMaterialContext)
   if (!slot) {
     throw new Error(
@@ -143,28 +158,42 @@ export function SurfaceLitMaterial({
   const onBeforeCompile = useMemo(
     () => (shader: ShaderStage) => {
       spliceRadiusMask(shader, slot)
+      shader.uniforms.uMunariEncodedMap = { value: litTexture.texture }
       shader.fragmentShader = shader.fragmentShader
         .replace(
+          '#include <clipping_planes_pars_fragment>',
+          '#include <clipping_planes_pars_fragment>\n' + STRAIGHT_SAMPLE_GLSL,
+        )
+        .replace(
           '#include <map_fragment>',
-          '#include <map_fragment>\n' +
-            // Lighting multiplies against STRAIGHT color. Feeding it a
-            // premultiplied sample scales every translucent fragment twice
-            // — once here and once at the blend — which reads as a dark
-            // fringe around type rather than as an obvious error.
-            '  if ( diffuseColor.a > 0.0 ) diffuseColor.rgb /= diffuseColor.a;\n',
+          THREE.ShaderChunk.map_fragment.replace(
+            'texture2D( map, vMapUv )',
+            'texture2D( uMunariEncodedMap, vMapUv )',
+          ).replace(
+            'diffuseColor *= sampledDiffuseColor;',
+            'diffuseColor *= munariStraightSample(sampledDiffuseColor);',
+          ),
+        )
+        .replace(
+          '#include <emissivemap_fragment>',
+          THREE.ShaderChunk.emissivemap_fragment.replace(
+            'texture2D( emissiveMap, vEmissiveMapUv )',
+            'texture2D( uMunariEncodedMap, vEmissiveMapUv )',
+          ).replace(
+            'totalEmissiveRadiance *= emissiveColor.rgb;',
+            'totalEmissiveRadiance *= munariStraightSample(emissiveColor).rgb;',
+          ),
         )
         .replace(
           '#include <dithering_fragment>',
           '#include <dithering_fragment>\n' +
-            '  gl_FragColor.a *= munariRadiusMask( vUv );\n' +
-            '  if ( gl_FragColor.a < 0.004 ) discard;\n' +
-            // Back to premultiplied, which is what `premultipliedAlpha`
-            // below tells the blender to expect. Three sets the blend
-            // factors; it does not multiply the output.
-            '  gl_FragColor.rgb *= gl_FragColor.a;\n',
+            // Three's premultiplied_alpha_fragment already applied source
+            // coverage. Apply only the additional corner coverage here.
+            '  gl_FragColor *= munariRadiusMask( vUv );\n' +
+            '  if ( gl_FragColor.a < 0.004 ) discard;\n',
         )
     },
-    [slot],
+    [slot, litTexture],
   )
 
   return (
@@ -180,6 +209,7 @@ export function SurfaceLitMaterial({
       premultipliedAlpha
       defines={{ USE_UV: '' }}
       onBeforeCompile={onBeforeCompile}
+      onBeforeRender={litTexture.sync}
     />
   )
 }

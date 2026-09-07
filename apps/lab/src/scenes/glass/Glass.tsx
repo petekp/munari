@@ -1070,6 +1070,8 @@ export function Glass() {
       // the numeric-gradient branch in the shader), which is the A/B.
       setBlobs: (n: number) => {
         const next = Math.max(0, Math.min(MAX_BLOBS, Math.round(n)))
+        if (Number.isNaN(next)) return `${blobs.length} blobs`
+        glassTuning.orbCount = next
         while (blobs.length > next) blobs.pop()
         while (blobs.length < next) blobs.push({ x: 0, y: 0, r: 0 })
         return `${blobs.length} blobs`

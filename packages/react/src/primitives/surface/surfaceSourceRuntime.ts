@@ -1,13 +1,15 @@
 // The source runtime — one live DOM subtree, its texture, and the pipeline
 // between them, with no React and no mesh in it.
 //
-// The law: a source has ONE texture and any number of presenters. That is
+// The law: this runtime owns one public texture and any number of presenters. That is
 // the whole reason this is a separate object from the mesh it used to live
 // inside. Logo's letters are several presentations of one part; Genie draws
 // a window and its own shadow companion from the same capture; a Twin shows
 // the page and the mesh together. Each of those used to mean a second
 // `createDomTextureSource`, which meant a second parked canvas, a second
 // paint budget, and two rasters that could disagree by a generation.
+// A lit material's encoded GPU view reads this same capture canvas; it does
+// not create another DOM source or paint stream.
 //
 // The fault that produced the shared allocation ledger, traced at the GL
 // boundary 2026-08-04: three allocates texture storage IMMUTABLY at first
@@ -33,7 +35,6 @@ import {
   clampScale,
   clampTiers,
   createDomTextureSource,
-  filterPolicy,
   maxTier,
   measureSurfaceChrome,
   seedTier,
@@ -218,7 +219,7 @@ export function createSurfaceSourceRuntime(
   let alloc: { width: number; height: number; mips: boolean } | null = {
     width: source.canvas.width,
     height: source.canvas.height,
-    mips: filterPolicy(pinned !== null).mips,
+    mips: texture.generateMipmaps,
   }
 
   let chrome: SurfaceChrome = EMPTY_CHROME
@@ -245,21 +246,29 @@ export function createSurfaceSourceRuntime(
     onChrome?.(next)
   }
 
-  const upload = () => {
-    if (!source.painted() || !texture) return
-    // Compared HERE, against the canvas this upload is about, rather than
-    // marked at the resize and deferred: a Surface whose size is measured
-    // can resize every frame, and a mark re-armed every commit chases its
-    // own tail — traced as one alloc followed by 120 rejected uploads.
+  const syncStorage = () => {
+    if (!texture) return
+    // LOD and draw-time raster alignment can resize after frame() arms an
+    // upload. Invalidate storage at that mutation too: waiting for the next
+    // frame rejects a growing upload and leaves old pixels on screen (decision #48).
     const store = { width: source.canvas.width, height: source.canvas.height }
-    const mips = filterPolicy(pinned !== null).mips
+    const mips = pinned !== null || source.scale() <= 0.5
     if (!alloc) {
       alloc = { ...store, mips }
     } else if (uploadNeedsRealloc(alloc, store) || alloc.mips !== mips) {
       texture.dispose()
       applyFilterPolicy(texture, source.scale(), pinned !== null)
       alloc = { ...store, mips }
+      // The capture carries its previous complete raster across a resize.
+      // Upload that carried image even if auto paint was otherwise idle.
+      pendingUploadGeneration = source.currentPaint()?.frame.generation ?? -1
+      texture.needsUpdate = true
     }
+  }
+
+  const upload = () => {
+    if (!source.painted() || !texture) return
+    syncStorage()
     pendingUploadGeneration = source.currentPaint()?.frame.generation ?? -1
     texture.needsUpdate = true
     anyUpload = true
@@ -268,6 +277,7 @@ export function createSurfaceSourceRuntime(
   const applyTier = () => {
     if (pinned !== null) {
       source.setScale(pinned)
+      syncStorage()
       return
     }
     let x=0,y=0
@@ -279,6 +289,7 @@ export function createSurfaceSourceRuntime(
       y=Math.min(ladder[ladder.length-1]!,Math.max(ladder[0]!,y))
     }
     source.setRasterScale(clampScale(x,size[0],1),clampScale(y,1,size[1]))
+    syncStorage()
   }
 
   return {
@@ -306,6 +317,7 @@ export function createSurfaceSourceRuntime(
         pinned = nextPinned
         applyTier()
       }
+      syncStorage()
     },
     setPixelRatio(next){if(next===pixelRatio)return;pixelRatio=next;applyTier()},
     setResolution(next) {
@@ -313,11 +325,7 @@ export function createSurfaceSourceRuntime(
       resolution = next
       pinned = pinnedFor(resolution, size[0], size[1])
       applyTier()
-      // Neither branch touches the texture: the upload path reallocates on
-      // any disagreement with what the storage was allocated for, and the
-      // mip decision is half of that pair — so a pin that lands on the SAME
-      // tier still gets fresh storage. The repaint is what carries it
-      // there; an idle Surface has no other reason to upload.
+      // Pinning can change mip allocation even at the same density.
       source.repaint()
     },
     setMirrorU(next) {
@@ -355,6 +363,7 @@ export function createSurfaceSourceRuntime(
       } else if (!settle.settled && ++settle.quiet >= QUIET_FRAMES) {
         settle.settled = true
         source.resettle()
+        syncStorage()
         work = true
       } else if (!settle.settled) {
         work = true

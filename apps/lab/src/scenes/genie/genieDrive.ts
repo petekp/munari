@@ -47,8 +47,8 @@ export interface DriveState {
 }
 
 /**
- * Move the presented progress toward the drive without exceeding the same
- * velocity ceiling used by a released sheet. This only matters when a hand
+ * Move the presented progress toward the drive within the gesture-entry
+ * velocity ceiling. This only matters when a hand
  * has moved while the texture handoff was still hidden: the drive keeps the
  * real pointer target, while presentation catches it over several frames
  * instead of appearing one large step away from the wall.
@@ -118,12 +118,13 @@ export function driveSpringStep(
   dt: number,
   p: DriveParams,
 ): DriveStep {
-  const vIn = Math.max(-p.vMax, Math.min(p.vMax, s.v))
   const x0 = s.t - target
   const zw = p.zeta * p.omega
   const wd = p.omega * Math.sqrt(1 - p.zeta * p.zeta)
   const A = x0
-  const B = (vIn + zw * x0) / wd
+  // Clamp the gesture once on entry. Clamping the spring's own velocity
+  // here changes its path whenever the display changes its frame rate.
+  const B = (s.v + zw * x0) / wd
   const decay = Math.exp(-zw * dt)
   const cos = Math.cos(wd * dt)
   const sin = Math.sin(wd * dt)
@@ -144,6 +145,31 @@ export function driveSpringStep(
     return { t: target, v: 0, arrivalV: 0, done: true }
   }
   return { t, v, arrivalV: 0, done: false }
+}
+
+/**
+ * A hidden grab target must first meet the visible sheet. Preserve its release
+ * velocity during that catch-up, then draw the spring's exact analytic path.
+ * Capping an already aligned spring delays the visible endpoint past its raw
+ * landing, hiding the sheet early or starting its rest wobble away from home.
+ */
+export function driveSpringPresentationStep(
+  state: DriveState,
+  visibleT: number,
+  target: 0 | 1,
+  dt: number,
+  params: DriveParams,
+) {
+  if (visibleT !== state.t) {
+    return {
+      ...state,
+      visibleT: drivePresentationStep(visibleT, state.t, dt, params.vMax),
+      arrivalV: 0,
+      done: false,
+    }
+  }
+  const next = driveSpringStep(state, target, dt, params)
+  return { ...next, visibleT: next.t }
 }
 
 // The velocity estimate's memory. Short enough that five frames of a

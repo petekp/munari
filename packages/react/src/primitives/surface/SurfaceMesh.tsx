@@ -174,14 +174,24 @@ export type SurfaceMeshProps = SurfaceMeshBaseProps & (
   | { presentation: 'manual'; sampledParts?: never }
 )
 
-// LOD evaluations run every Nth frame, phase-offset per presenter so a
-// scene of many panels spreads the projection math and never re-rasters a
-// cohort on the same frame.
+// LOD evaluations run every Nth frame. Committed presenters use all phase
+// slots so a group of panels spreads its projection work across frames.
 const LOD_EVERY = 10
 const LOD_AGREE = 2
 interface SurfaceLodState { tier:number; proposed:number; agree:number; frame:number; source:SurfaceSourceRuntime|null; aligned:boolean }
-let lodSeq = 0
+let lodKeySeq = 0
+let lodPhaseSeq = 0
 let presenterSeq = 0
+
+export function useSurfaceLodPhase() {
+  const phase = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    // Strict Mode can discard a render and replay a committed effect. Only
+    // the first committed setup may consume this presenter's phase slot.
+    if (phase.current === null) phase.current = lodPhaseSeq++ % LOD_EVERY
+  }, [])
+  return phase
+}
 
 const _camPos = new THREE.Vector3()
 const _surfPos = new THREE.Vector3()
@@ -333,7 +343,9 @@ function SurfacePresenter({
     const names = JSON.parse(sampledKey) as SurfacePartId[]
     return [...new Set(names.filter(name => name !== partId))]
   }, [sampledKey, partId])
-  const lodPhase = useMemo(() => lodSeq++ % LOD_EVERY, [])
+  // Each presenter proposes independently; the source takes the maximum.
+  const lodKey = useMemo(() => lodKeySeq++, [])
+  const lodPhase = useSurfaceLodPhase()
   const lodRef = useRef<SurfaceLodState>({ tier:0, proposed:0, agree:0, frame:0, source:null, aligned:false })
   // What the pass in flight is doing, written by the before hook and read
   // once by the after hook. Not a boolean: the after hook has to tell a
@@ -610,11 +622,6 @@ function SurfacePresenter({
     })
   }, [focusGroup, sourceEl, label])
 
-  // The presenter's own name in the source's tier ledger. Every presenter
-  // of one source proposes independently and the source takes the maximum,
-  // so a distant panel cannot downgrade the raster a near one needs.
-  const lodKey = useMemo(() => lodSeq++, [])
-
   /** Position-attribute version as of the last frame; null until seen once. */
   const rerouteRef = useRef<number | null>(null)
 
@@ -716,7 +723,7 @@ function SurfacePresenter({
       runtime.proposeTier(lodKey,lod.tier)
     }
     if (lod.aligned || updateMatchedDensity()) return
-    if (lod.frame++ % LOD_EVERY !== lodPhase) return
+    if (lod.frame++ % LOD_EVERY !== lodPhase.current) return
     // SAFETY: three's own brand, tested before any perspective-only field
     // is read; r3f types the store's camera as the base class.
     const cam = camera as THREE.PerspectiveCamera

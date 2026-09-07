@@ -578,17 +578,18 @@ export const SUCK_VERT = /* glsl */ `
     float sa = sin(ang);
     rel = vec2(rel.x * ca - rel.y * sa, rel.x * sa + rel.y * ca);
 
-    // The arc's slope along the radial direction, for the normal: the
-    // sheet tips as it is drawn through the ring, and the light sliding
-    // across that tip is the material's character — colour stays put.
-    // Height varies across the sheet only because neighbours start at
-    // different times (the lag), so the slope is dz/de times de/ddist. At
-    // either end of the flight t sits on its clamp, 6t(1-t) is zero, and
-    // the still-flat sheet shades exactly like the HTML it replaces.
-    float slope = PI * cos(PI * e) * uArc * 6.0 * t * (1.0 - t)
-                * uLag / (max(uSpan, 1e-4) * max(1.0 - uLag, 1e-3));
+    // The normal includes radial shrink and sway, not just arc height.
+    // Twist's radial derivative is parallel to the angular tangent and
+    // cancels from their cross product; dir still needs the rotated basis.
+    float easeSlope = 6.0 * t * (1.0 - t) * uLag
+                    / (max(uSpan, 1e-4) * max(1.0 - uLag, 1e-3));
+    float bowSlope = PI * cos(PI * e) * easeSlope;
+    float radialScale = 1.0 - e + dist * easeSlope;
     vec2 dir = dist > 1e-3 ? rel / dist : vec2(0.0);
-    vNormal = normalize(vec3(-slope * dir.x, slope * dir.y, 1.0));
+    vec3 deformedNormal = vec3(uArc * bowSlope * dir.x, uArc * bowSlope * dir.y,
+                              radialScale - bowSlope * dot(uSway, dir));
+    // Fully collapsed points have no tangent plane and must not emit NaN.
+    vNormal = dot(deformedNormal, deformedNormal) > 1e-12 ? normalize(deformedNormal) : vec3(0.0, 0.0, 1.0);
 
     // The bow: a per-run sideways drift, zero at both ends of the flight,
     // so the sheet still leaves the block and lands in the cursor — only

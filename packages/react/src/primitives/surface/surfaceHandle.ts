@@ -233,8 +233,8 @@ export interface SurfaceStore {
   registerManualPresenter(part: SurfacePartId): () => void
   /** Report a requested presentation that has no matching declaration. */
   validatePresentation(includeCanvas?: boolean): void
-  /** Announce one part's source to every presenter holding this handle. */
-  publishPart(id: SurfacePartId, value: SurfacePartPublication | null): void
+  /** Publish a source; cleanup releases only this publication. */
+  publishPart(id: SurfacePartId, value: SurfacePartPublication): () => void
   part(id: SurfacePartId): SurfacePartPublication | null
   parts(): readonly SurfacePartPublication[]
   subscribeParts(listener: () => void): () => void
@@ -314,10 +314,17 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   let canvasHeld = false
   const holdListeners = new Set<() => void>()
   const partMap = new Map<SurfacePartId, SurfacePartPublication>()
+  // Duplicate names are diagnosed, but removing one must recover the other
+  // host's publication without a remount. Each publication owns its cleanup.
+  const partPublications = new Map<SurfacePartId, Map<symbol, SurfacePartPublication>>()
   // Snapshotted for `useSyncExternalStore`, which compares by reference —
   // a fresh array per read is an infinite render loop, not a slow one.
   let partSnapshot: readonly SurfacePartPublication[] = []
   const partListeners = new Set<() => void>()
+  const announceParts = () => {
+    partSnapshot = Array.from(partMap.values())
+    for (const listener of partListeners) listener()
+  }
   let state: SurfaceState = {
     requested: 'page',
     presented: 'none',
@@ -826,10 +833,23 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     registerManualPresenter: manualCounted(manualRegistered),
     validatePresentation: reportMissingPresentations,
     publishPart(id, value) {
-      if (value === null) partMap.delete(id)
-      else partMap.set(id, value)
-      partSnapshot = Array.from(partMap.values())
-      for (const listener of partListeners) listener()
+      const owner = Symbol()
+      const publications = partPublications.get(id) ?? new Map<symbol, SurfacePartPublication>()
+      publications.set(owner, value)
+      partPublications.set(id, publications)
+      partMap.set(id, value)
+      announceParts()
+      return () => {
+        if (!publications.delete(owner)) return
+        if (publications.size === 0) partPublications.delete(id)
+        if (partMap.get(id) !== value) return
+        let remaining: SurfacePartPublication | undefined
+        for (const publication of publications.values()) remaining = publication
+        if (remaining === partMap.get(id)) return
+        if (remaining) partMap.set(id, remaining)
+        else partMap.delete(id)
+        announceParts()
+      }
     },
     part: (id) => partMap.get(id) ?? null,
     parts: () => partSnapshot,

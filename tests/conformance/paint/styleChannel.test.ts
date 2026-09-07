@@ -110,6 +110,44 @@ describe('the transition window', () => {
     expect(cb).toHaveBeenCalledWith(1)
   })
 
+  it('keeps one sampling loop through repeated cancel and restart events', async () => {
+    const el = channelEl()
+    const c = channel(el)
+    const reads = vi.mocked(window.getComputedStyle)
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+
+    transition(el, 'transitionrun')
+    // An interrupted transition restarts before the old tick observes zero.
+    // The old implementation added one continuing loop on every iteration.
+    for (let interruption = 0; interruption < 60; interruption++) {
+      transition(el, 'transitioncancel')
+      transition(el, 'transitionrun')
+      await flush()
+      expect(frames).toHaveLength(1)
+      const before = reads.mock.calls.length
+      frames.shift()!(0)
+      expect(reads.mock.calls.length - before).toBe(1)
+      expect(frames).toHaveLength(1)
+    }
+
+    transition(el, 'transitionend')
+    await flush()
+    frames.shift()!(0)
+    expect(frames).toHaveLength(0)
+
+    transition(el, 'transitionrun')
+    expect(frames).toHaveLength(1)
+    c.dispose()
+    const before = reads.mock.calls.length
+    frames.shift()!(0)
+    expect(reads.mock.calls.length).toBe(before)
+    expect(frames).toHaveLength(0)
+  })
+
   it('ignores transitions of other properties', () => {
     const el = channelEl()
     channel(el)

@@ -160,7 +160,7 @@ export function CrystalApp() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'p' && e.key !== 'P') return
-      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return
       setParked((v) => !v)
     }
     window.addEventListener('keydown', key)

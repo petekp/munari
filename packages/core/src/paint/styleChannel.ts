@@ -106,8 +106,14 @@ export function createStyleChannel(
   // restarted) keep one loop.
   let live = 0
   let disposed = false
+  // A cancel/run pair can occur before the pending tick sees live === 0.
+  // The transition count therefore cannot also describe loop ownership.
+  let sampling = false
   const tick = () => {
-    if (disposed || live <= 0) return
+    if (disposed || live <= 0) {
+      sampling = false
+      return
+    }
     emit()
     requestAnimationFrame(tick)
   }
@@ -115,7 +121,10 @@ export function createStyleChannel(
   const onRun = (e: TransitionEvent) => {
     if (!isOurs(e)) return
     live += 1
-    if (live === 1) requestAnimationFrame(tick)
+    if (!sampling) {
+      sampling = true
+      requestAnimationFrame(tick)
+    }
   }
   const onDone = (e: TransitionEvent) => {
     if (!isOurs(e)) return

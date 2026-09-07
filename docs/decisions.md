@@ -2669,3 +2669,69 @@ syntax. The explicitly historical public-API proposal retains its original code;
 its historical warning is also checked. Before completion, negative controls put
 the old prop in a current README example and an otherwise-valid typed caller;
 both checks must fail.
+
+<a id="48"></a>
+
+## #48 — Detail issue regressions preserve live state and coverage (2026-09-07)
+
+The September issue batch was checked against the retained-HTML refactor.
+The corrections below ship with their owning tests and the local browser
+probes listed in `instruments/README.md`; CI membership is unchanged.
+
+A capture resize invalidates immutable GPU storage at the mutation, including
+LOD and draw-time density requests after the frame's upload was armed. Waiting
+until the next frame produced `GL_INVALID_VALUE` on growth and stale colors
+on both growth and shrink in Chrome. The source retains its texture identity
+and carries the last complete raster through the size change. Unchanged
+dimensions/filtering do not invalidate storage or create idle protocol work.
+
+Lit materials filter premultiplied sRGB channels before removing alpha and
+decoding for lighting. Hardware sRGB decoding before this filtering cannot be
+undone afterward at a transparent edge: the first correction yielded RGB 75
+at alpha 64 where the equally lit opaque sample was RGB 137. The expected
+covered value is about 34. A lit-only texture view reads the same capture
+canvas in encoded form; it owns separate GPU storage, shares that view between
+lit presenters, and follows source uploads and disposal. Diffuse and emissive
+samples use the same conversion. Three applies final alpha once; the corner
+mask scales both RGB and alpha. The pixel probe allows two 8-bit channel values
+for capture quantization and filtering across white/color/emissive controls.
+The public texture and flat-mesh raster alignment retain their existing contract.
+
+Pointer release velocity applies the existing 0.35 sampling filter over
+elapsed missing samples, using the preceding event interval as the sample
+period. Each missing sample retains 0.65 of the old estimate. A pause drains
+momentum without a new time cutoff; an immediate flick retains it. Traversal
+and focus recall include native editing hosts despite their IDL tabindex of
+-1, preserve explicit negative tabindex, and follow nested-editor semantics.
+Camera interruption runs before OrbitControls handles that same input. Proxy
+projection follows motion through damping without a second controls update.
+Hover/focus commits preserve a dragged Workspace panel's pose. Chrome reduced
+the observed post-orbit proxy correction from 865 CSS px to below 0.1 CSS px;
+the browser contract allows 1 CSS px for the final controls observation interval.
+
+Genie's input velocity cap applies once on entry to the analytic spring.
+Reapplying it every frame yielded arrival speeds 0.230798 at 60 Hz versus
+0.479080 at 240 Hz for a stationary release at progress 0.46. Equal-elapsed-time
+tests now compose at 30–240 Hz; the existing 400 ms settling budget is unchanged.
+Hidden grab progress first catches up without spending release velocity; then
+visible progress follows the analytic spring exactly. The 60 combined-motion
+cases finish at the drawn endpoint within 334 ms, so completion cannot hide a
+sheet still travelling toward its wall.
+Contact velocity remains sampled at the end of the crossing frame, a separate
+existing discretization limit. Restore captures keyboard focus intent before
+moving focus: mouse restores stay on the window wrapper, keyboard restores
+reach the minimize control after landing.
+
+Unroll cancels a closed request at zero progress even before its first scene
+frame. Copy's normal includes radial shrink, arc height and sway; the twist
+derivative cancels from the tangent cross product. Numerical finite differences
+check the actual shader expressions. Collapsed geometry uses a finite front
+normal, with a squared-length guard of 1e-12 to avoid normalizing zero. Lamp's
+34-by-20px, 22-second idle ellipse starts at zero displacement from release;
+its first 30–240 Hz step stays below 1px and the period boundary is continuous.
+
+The remaining corrections restore existing intent: one LOD phase allocation
+per presenter; one pending style-sampling frame despite transition interrupts;
+owner-specific duplicate-part cleanup with a surviving publication; live tuning
+shared by GPU field passes and CPU pointer reads; authoritative Glass blob
+counts; and one Crystal parking toggle per physical key press.
