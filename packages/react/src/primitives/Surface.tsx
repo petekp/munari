@@ -21,13 +21,14 @@ import { validateSurfaceSize } from './surface/surfaceSize'
 import { watchSurfacePlacement } from './surface/surfacePlacement'
 import { claimSourcePointer, releaseSourcePointer } from './surface/surfacePointerOwnership'
 import { registerCanvasSpace, canvasSpace } from './surface/surfaceCanvasSpace'
+import { createSurfacePageClip } from './surface/surfacePageClip'
 
 function unsupportedSnapshot(root:HTMLElement):string|null {
   for(const element of [root,...root.querySelectorAll('*')]) {
     if(['iframe','video','audio','object','embed'].includes(element.localName)||element.localName.includes('-')||element.hasAttribute('is')||element.shadowRoot) {
       return `The single-instance handoff has not validated <${element.localName}>; keep this content native.`
     }
-    if(element.hasAttribute('form')||element.getAttributeNames().some(name=>name.startsWith('on')))return 'Explicit form associations and inline DOM handlers remain native.'
+    if(element.hasAttribute('form')||element.getAttributeNames().some(name=>name.startsWith('on')&&name in Object.getPrototypeOf(element)))return 'Explicit form associations and inline DOM handlers remain native.'
     const form = element instanceof HTMLInputElement || element instanceof HTMLButtonElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement || element instanceof HTMLFieldSetElement ? element.form : null
     if(form&&!root.contains(form))return 'Keep the form and its controls inside the same Surface.'
     if(element instanceof HTMLInputElement&&element.type==='radio'&&element.name&&!form)return 'Named radio groups without a containing form remain native.'
@@ -208,9 +209,11 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   const [warmOwner] = useState(() => Symbol())
   const warmRig = useRef<NativePointerRig | null>(null)
   const warmCanvas = useRef<HTMLCanvasElement | null>(null)
+  const warmClip = useRef<ReturnType<typeof createSurfacePageClip> | null>(null)
 
   const parkWarmRig = useCallback(() => {
     warmRig.current?.park()
+    warmClip.current?.restore()
     releaseSourcePointer(warmCanvas.current, warmOwner)
   }, [warmOwner])
   const updateWarmRig = (holder:HTMLElement,runtime:SurfaceSourceRuntime|null,captured:boolean,captureElement:HTMLElement) => {
@@ -220,6 +223,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
         parkWarmRig()
         warmRig.current = createNativePointerRig(sourceCanvas, captureElement, holder)
         warmCanvas.current = sourceCanvas
+        warmClip.current = createSurfacePageClip(sourceCanvas, holder)
       }
       const rect = (pageContent() ?? holder).getBoundingClientRect()
       const [w, h] = runtime.size()
@@ -235,12 +239,13 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
       }
       const space=canvasSpace(sourceCanvas)
       if(!space){parkWarmRig();return}
-      claimSourcePointer(sourceCanvas, warmOwner, () => warmRig.current?.park())
+      claimSourcePointer(sourceCanvas, warmOwner, parkWarmRig)
       warmRig.current?.ride({
         ...nativeRideStyle(`matrix(${drawW / w / space.scaleX},0,0,${drawH / h / space.scaleY},${(left-space.left)/space.scaleX},${(top-space.top)/space.scaleY})`, zIndexAbove(holder)),
         // The captured bitmap includes native selection/caret; an inert DOM clone cannot.
         canvasVisibility: 'visible',
       })
+      warmClip.current?.apply()
     } else { parkWarmRig(); runtime?.proposeTier(pageDensityKey,null) }
   }
   const move = () => {
@@ -289,7 +294,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     let stop: (() => void) | null = null
     const sync = () => {
       if (store.holdsPage() && store.canPrepareCanvas()) {
-        stop ??= watchSurfacePlacement([pageContent, () => marker], () => moveRef.current())
+        stop ??= watchSurfacePlacement([pageContent, () => marker], () => moveRef.current(), () => warmClip.current?.read() ?? '')
       } else { stop?.(); stop = null }
     }
     const unsubscribe = store.subscribeWork(sync)
@@ -332,7 +337,11 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
       <PageBinding page={page} marker={marker} pageContent={pageContent} layout={layout} inScene={root.canEnter}/>
     </SurfacePart>}
   </>
-  return target ? <Tag ref={setBoundary} style={{display:'contents'}}>{content}</Tag> : content
+  // React inserts and reorders the outer home. The moving boundary is its only
+  // child, so keyed siblings never use a moved node as their insertBefore anchor.
+  // Both tags change together; attachment cleanup returns the boundary before
+  // React removes that home. Keeping this tree also preserves SSR hydration.
+  return target ? <Tag style={{display:'contents'}}><Tag ref={setBoundary} style={{display:'contents'}}>{content}</Tag></Tag> : content
 }
 
 export interface SurfaceSceneProps { children: ReactNode; surface?: SurfaceHandle }

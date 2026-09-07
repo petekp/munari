@@ -2,10 +2,11 @@
 // The API proof must hydrate its existing content rather than mount a second copy.
 import { act, createElement, useEffect, useId, useState } from 'react'
 import { renderToString } from 'react-dom/server'
-import { hydrateRoot, type Root } from 'react-dom/client'
+import { createRoot, hydrateRoot, type Root } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Surface } from './Surface'
 import { resetSurfaceHosts } from './surface/surfaceHostRegistry'
+import { createSurface, surfaceStoreOf } from './surface/surfaceHandle'
 
 afterEach(()=>{vi.unstubAllGlobals();resetSurfaceHosts();document.body.innerHTML=''})
 
@@ -35,6 +36,33 @@ it('renders native HTML on the server and hydrates one stateful instance',async(
     expect(mounts).toBe(1)
     expect(errors).toEqual([])
   } finally {await act(async()=>root.unmount())}
+})
+
+it('distinguishes ordinary on-prefixed attributes from inline event handlers',async()=>{
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
+ vi.stubGlobal('CanvasRenderingContext2D',undefined)
+ const descriptor=Object.getOwnPropertyDescriptor(Element.prototype,'moveBefore')
+ // Content eligibility is independent of the state-preserving move, checked in Chrome.
+ Object.defineProperty(Element.prototype,'moveBefore',{configurable:true,value(this:Element,node:Node,before:Node|null){this.insertBefore(node,before)}})
+ const handle=createSurface(),container=document.createElement('div');document.body.append(container)
+ const root=createRoot(container)
+ // createElement's overload requires each component's declared children prop.
+ // eslint-disable-next-line react/no-children-prop
+ const render=async(html:string)=>{await act(async()=>root.render(createElement(Surface.Root,{surface:handle,inScene:false,children:createElement(Surface.HTML,{children:createElement('div',{dangerouslySetInnerHTML:{__html:html}})})})))}
+ try {
+  await render('<div onboarding="started" one="1">Native content</div>')
+  expect(surfaceStoreOf(handle).getStatus().reason).toBeNull()
+  await render('<button onclick="void 0">Inline handler</button>')
+  expect(surfaceStoreOf(handle).getStatus().reason).toContain('inline DOM handlers')
+  await render('<svg><rect onload="void 0" width="10" height="10"/></svg>')
+  expect(surfaceStoreOf(handle).getStatus().reason).toContain('inline DOM handlers')
+  await render('<div one="1">Native again</div>')
+  expect(surfaceStoreOf(handle).getStatus().reason).toBeNull()
+ }finally{
+  await act(async()=>root.unmount());container.remove()
+  if(descriptor)Object.defineProperty(Element.prototype,'moveBefore',descriptor)
+  else Reflect.deleteProperty(Element.prototype,'moveBefore')
+ }
 })
 
 

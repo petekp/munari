@@ -913,10 +913,9 @@ function LetterDrive({
     const p = poseRef.current
     const b = boxRef.current
     const t = state.clock.elapsedTime
-    // Everything matter ADDS to the page pose — bob, wobble, dodge —
-    // rides the crossing's smoothstepped progress, so a crossing letter
+    // The letter's bob, wobble and dodge use eased progress, so a crossing letter
     // holds the page's flat geometry at 0 and full depth only at 1.
-    const amp = progress.get()
+    const amp = progress.eased()
 
     // The pointer dodge, in CSS px: inside reach, a letter leans away.
     const [px, py] = dodgeOffset(pointer.current, b, k.dodge, amp, fontPx)

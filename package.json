@@ -58,7 +58,8 @@
     "probe:sharpness": "node instruments/api-contracts/sharpness.mjs",
     "probe:postcard-sharpness": "node instruments/api-contracts/postcard-sharpness.mjs",
     "probe:scene-sharpness": "node instruments/api-contracts/scene-sharpness.mjs",
-    "probe:display-density": "node instruments/api-contracts/display-density.mjs"
+    "probe:display-density": "node instruments/api-contracts/display-density.mjs",
+    "probe:api-regressions": "node instruments/api-regressions/run.mjs"
   },
   "devDependencies": {
     "@oxlint/plugins": "^1.78.0",

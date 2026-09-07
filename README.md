@@ -196,6 +196,8 @@ parents. Render `ref={target.ref}` on the current slot and pass `target` to
 `Surface.HTML`; the content itself stays at one stable React position.
 [Flight](apps/lab/src/scenes/flight/Flight.tsx) uses one target and Root per card.
 Ordinary handoffs in a fixed slot need no target.
+Keyed target lists can be prepended, reordered and removed without moving React's
+own list anchors. Server-rendered targeted HTML hydrates the original node.
 
 One unnamed canvas is the default. Multiple hosts use unique IDs and an explicit
 `canvas` association. Reusable client components can use React `useId`; independent

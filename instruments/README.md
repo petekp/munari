@@ -29,6 +29,15 @@ contrast budget. Motion and handoff budgets remain separate.
 `probe:scene-sharpness` covers scene-only HTML. `probe:display-density` checks an
 existing capture across display-density changes without replacing its content.
 
+`npm run probe:api-regressions` covers PR #83's keyed target lists, same-canvas
+capture-reader removal, continuous resize anchors, handle-swap focus, overflow
+clipping during preparation, and content-attribute eligibility. It runs capable
+Chrome and a separate no-flag profile. Use `HEADED=1` for native-density visual
+checks, `API_CASES` for a comma-separated subset, and `API_PROOF_OUTPUT` for local
+evidence. `API_SOURCE_ROOT` can point at a saved source revision for comparison.
+The [API instrument guide](api-all-demos/README.md) states the pixel/anchor budgets.
+This local command does not change CI membership.
+
 ## idle-zero
 
 CI gate: mounted quiescent Surfaces cost **0 paints/s**.

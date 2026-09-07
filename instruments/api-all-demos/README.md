@@ -161,3 +161,27 @@ asserting backing dimensions and original capture/content identity throughout.
 The viewport also changes by one or two CSS pixels: Chrome 151's CDP override
 changes resolution-query matches without sending their change event. This checks
 the resize notification path; it does not claim a physical multi-monitor test.
+
+## PR #83 follow-up regressions
+
+`npm run probe:api-regressions` runs 15 capability-enabled cases and four cases in
+a separate no-flag Chrome profile. It checks keyed prepend/reorder/removal with
+one mounted counter per item, surviving capture-reader updates in a demand canvas,
+continuous resize anchors, focus across a handle swap and return, and ordinary
+versus inline-handler attributes. Source and DOM identities are part of the checks.
+
+Preparation comparisons cover rectangular, nested, rounded, bordered, transformed
+and changing overflow clips, plus explicit clip margins. The native and preparing
+screenshots use the same source bounding box and viewport; mean channel error
+must stay <=0.5. Visible input must work,
+clipped input must not fire, and the preparation clip must be removed at scene
+handoff. The resize sweep stays inside the backing-store band and allows at most
+1 CSS px of anchor difference from the latest paint while moving, then requires
+exact agreement after settling. Decision [#45](../../docs/decisions.md#45) records
+the failing measurements and these bounds.
+
+Set `HEADED=1` for visible Chrome at native DPR, `API_CASES` for a comma-separated
+subset, and `API_SOURCE_ROOT` for a saved source revision. The runner writes its
+observations and screenshots under `API_PROOF_OUTPUT`. These are minimal API
+regressions; the maintained Flight, Knobs and postcard gates still verify the
+actual demos.

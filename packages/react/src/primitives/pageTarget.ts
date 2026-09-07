@@ -1,5 +1,6 @@
 // A page target keeps a Surface's React content mounted while its layout slot changes.
 // Ref detachment moves the content to its retained home before React removes the old slot.
+// The movable boundary is the sole child of a stationary React-owned home (#45).
 import { useLayoutEffect, useMemo } from 'react'
 import { useLatest } from './useLatest'
 

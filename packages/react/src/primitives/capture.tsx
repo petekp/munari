@@ -41,8 +41,17 @@ export function useCaptureFrame(handle:CaptureHandle) {
   const canvas=useThree(state=>state.gl.domElement)
   useLayoutEffect(()=>{canvas.dataset.apiCaptureConsumer=''},[canvas])
   useCaptureStatus(handle)
-  useLayoutEffect(()=>{model.consumers++;model.frameListeners.add(invalidate);invalidate();return()=>{model.consumers--;model.frameListeners.delete(invalidate)}},[model,invalidate])
+  useLayoutEffect(()=>subscribeCaptureFrames(handle,invalidate),[handle,invalidate])
   return useMemo(()=>({get:()=>model.frame}),[model])
+}
+
+export function subscribeCaptureFrames(handle:CaptureHandle,onFrame:()=>void):()=>void {
+  const model=modelOf(handle)
+  // Readers in one canvas share invalidate, but each owns its subscription.
+  const wake=()=>onFrame()
+  let subscribed=true
+  model.consumers++;model.frameListeners.add(wake);wake()
+  return()=>{if(!subscribed)return;subscribed=false;model.consumers--;model.frameListeners.delete(wake)}
 }
 
 export interface CaptureConnection {

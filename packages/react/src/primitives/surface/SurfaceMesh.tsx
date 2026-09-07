@@ -998,7 +998,6 @@ function SurfacePresenter({
     restoreAuthoredWrites(authoredRef.current)
     const pass = passRef.current
     passRef.current = null
-    if(!rasterReadyRef.current)return
     if (!pass) return
     if (presentation === 'manual') return
     if (!runtime?.uploaded()) return
@@ -1010,6 +1009,9 @@ function SurfacePresenter({
     if (!passIsWarmUp(pass)) {
       anchors.noteDrawn(runtime.source.sourceId, runtime.uploadedGeneration())
     }
+    // Layout resizing can draw a valid new paint inside the density band. Its
+    // anchors must follow that draw even while first-presentation quality waits.
+    if(!rasterReadyRef.current)return
     const lifetime = store.readinessLifetime()
     const epoch = store.epoch()
     // Stage one. A warm-up counts: it compiled the program and sampled the

@@ -2590,3 +2590,62 @@ with the container's extra scale canceled on the inner canvas. A separate CSS
 translation was tested and rejected: Chrome already snaps the canvas's layout
 origin, and adding a transform reintroduced blur. The pose correction belongs in
 the mesh's rendered matrix.
+
+<a id="45"></a>
+
+## #45 — Retained content keeps React ownership and paint progress (2026-09-06, binding)
+
+The PR #83 review exposed five additional failures beyond the earlier sample
+checks. Chrome reproduced a keyed prepend that emptied the React root with
+`NotFoundError`, a reorder that moved content out of its target, a shared capture
+whose surviving reader stopped updating, anchors held through continuous resize,
+and preparation pixels outside an overflow clip. An ordinary `onboarding`
+attribute also triggered the inline-handler restriction.
+
+A targeted Surface now keeps a stationary React-owned home around its moving
+boundary. The boundary is that home's sole child; both use the same tag and are
+replaced together. React inserts or reorders the home, whose parent remains
+correct. Attachment cleanup returns the boundary before React removes or hides
+the home. This preserves native server HTML and hydration. The list test covers
+memoized rows, prepend, reorder and deletion; hydration preserves an input edited
+before client startup. Suspense must return content home while hiding the tree.
+
+Each capture reader owns a distinct frame subscription even when readers share
+one renderer invalidation function. Removing one reader cannot remove another's
+wakeup. The Chrome test verifies a real texture-color change after removing one
+of two readers in a demand canvas, then checks that idle drawing stops.
+
+An in-band backing store can still contain a valid new paint. A color-writing
+pass records that paint for anchors before checking whether raster density is
+exact enough for initial presentation. The initial sharpness gate remains in
+place. A 200-to-240px resize held the anchor near its 201px coordinates before
+this fix; now the observed difference from the latest paint stays below 0.45 CSS
+px and reaches zero after settling. The probe allows 1 CSS px to include the
+capture/draw observation interval; it would reject the prior roughly 6px drift.
+This changes the binding's draw-to-anchor contract, not the core resize band.
+
+Page-owned preparation clips its visible capture to the page's applicable
+overflow ancestors. Rectangular clips intersect by axis. Rounded padding edges
+use a convex polygon with chord error bounded to 0.1 device pixels. A clipping
+ancestor already handled by the fixed containing block stays browser-owned,
+avoiding duplicate edge coverage. Root/body overflow propagated to the viewport
+does not become an extra element-sized clip. Clip changes join the shared
+placement observer even when the content rectangle stays fixed. The page binding
+restores its clip before transferring rig ownership or unmounting.
+
+`probe:api-regressions` checks nested, rounded, bordered, scaled and changing clipping,
+including explicit overflow clip margins,
+visible and clipped input, and restoration when the scene takes over. The pixel
+budget is mean channel error <=0.5 over the source's bounding box against the
+same native page. The source crop includes the area hidden by native clipping.
+This covers overflow geometry, not arbitrary authored mask shapes.
+
+Inline-handler detection uses event properties on the element's prototype, not
+all names beginning with `on`. A subscriber registered from an observer callback
+must not schedule a second frame loop. Logo explicitly reads eased progress to
+preserve its earlier motion while the public progress getter remains raw.
+
+The review's proposed focus-loss trigger did not reproduce: changing the handle
+and returning preserved the original input, focus and selection. The destination
+holder was inert before return. That case now has a permanent browser regression;
+the two-instance focus-transfer code was not changed on an unconfirmed inference.
