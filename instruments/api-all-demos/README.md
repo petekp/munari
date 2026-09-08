@@ -33,6 +33,9 @@ The four checks are separate so their observers do not interfere:
   postcard against a native marker through fifteen browser wheel events.
   Fail above 1.5 CSS pixels of relative drift. `POSTCARD_CANVAS=fixed` on the
   standalone scroll script is a negative control; it reproduced 12 px drift.
+  The holder starts at 240px so neither marker clips during the 180px scroll.
+  Lighting overlays are hidden so their tint and halo cannot alter test colors;
+  this check measures the postcard canvas's anchoring, not its illumination.
 - **Form interaction:** click and type through the scene at 1200 px and 390 px
   widths, add a stamp, return, and assert original-input identity, retained
   value, one stamp, and no horizontal overflow.

@@ -22,17 +22,14 @@
 // boxes into them. HomeMasthead.tsx owns when to rebuild and how the pixels
 // reach the shader. homeLight.ts owns what the channels mean.
 
+import { packShadowDistances, shadowDistances } from './homeShadowField'
+
 const INK_MARGIN = 40
 const RELIEF_MARGIN = 60
 const MAX_PIXEL_RATIO = 2
-// Relief is boxes and a 6px blur: nothing in it needs more than half a
-// pixel per CSS px, and the whole page repaints in a quarter of the time.
+// Rounded boxes need less outline detail than the headline. Half resolution
+// keeps the worker's distance transform small; decision #50 pins the pixels.
 const RELIEF_RATIO = 0.5
-/** Glyph ink: sharp, then three widening pre-blurs, one per channel. */
-export const INK_BLUR_RADII = [0, 4, 12, 28] as const
-/** Relief blurs: the raised foot's soft edge, and the well rim's. */
-export const RAISED_BLUR = 6
-const WELL_BLUR = 3
 /** Which `data-relief` values the mask paints, and into which channel pair. */
 export const RELIEF_KINDS = ['raised', 'well'] as const
 export type ReliefKind = (typeof RELIEF_KINDS)[number]
@@ -45,7 +42,7 @@ export interface AnchoredRect {
 }
 
 export interface Mask {
-  /** RGBA bytes, `width` × `height` device pixels, one coverage per channel. */
+  /** RGBA bytes: a signed distance in RG and a second in BA, each 16 bits. */
   readonly data: Uint8Array
   readonly width: number
   readonly height: number
@@ -59,6 +56,7 @@ interface LineLayout {
   readonly y: number
   readonly font: string
   readonly letterSpacing: string
+  readonly lineHeight: number
 }
 
 function pixelRatio(): number {
@@ -90,22 +88,7 @@ function pass(width: number, height: number, ratio: number, create: PainterFacto
   return context.getImageData(0, 0, pixelWidth, pixelHeight)
 }
 
-// getImageData is unpremultiplied, so each pass's alpha byte is its exact
-// coverage; four passes pack into one RGBA buffer.
-function pack(passes: readonly (ImageData | null)[], rect: AnchoredRect): Mask | null {
-  const [a, b, c, d] = passes
-  if (!a || !b || !c || !d) return null
-  const data = new Uint8Array(a.data.length)
-  for (let i = 0; i < data.length; i += 4) {
-    data[i] = a.data[i + 3]
-    data[i + 1] = b.data[i + 3]
-    data[i + 2] = c.data[i + 3]
-    data[i + 3] = d.data[i + 3]
-  }
-  return { data, width: a.width, height: a.height, rect }
-}
-
-/** The headline's glyphs, one line element each, in four blur levels. */
+/** The headline's glyph outlines as a signed distance field. */
 export function buildInkMask(anchor: HTMLElement, lines: readonly HTMLElement[]): Mask | null {
   if (lines.length === 0) return null
   const base = anchor.getBoundingClientRect()
@@ -117,7 +100,8 @@ export function buildInkMask(anchor: HTMLElement, lines: readonly HTMLElement[])
   if (width <= 0 || height <= 0) return null
 
   const layout: LineLayout[] = lines.map((line, index) => {
-    const rect = rects[index]
+    // rects was measured from this same lines array, in the same order.
+    const rect = rects[index]!
     const style = getComputedStyle(line)
     return {
       text: line.textContent ?? '',
@@ -125,22 +109,28 @@ export function buildInkMask(anchor: HTMLElement, lines: readonly HTMLElement[])
       y: rect.top - top,
       font: `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`,
       letterSpacing: style.letterSpacing,
+      lineHeight: parseFloat(style.lineHeight),
     }
   })
   const ratio = pixelRatio()
-  const paintLines = (blur: number) => (context: Painter) => {
-    context.textBaseline = 'top'
-    context.filter = blur > 0 ? `blur(${blur}px)` : 'none'
+  const paintLines = (context: Painter) => {
+    context.textBaseline = 'alphabetic'
     for (const line of layout) {
       context.font = line.font
       context.letterSpacing = line.letterSpacing
-      context.fillText(line.text, line.x, line.y)
+      const metrics = context.measureText(line.text)
+      const baseline = line.y + (line.lineHeight + metrics.fontBoundingBoxAscent - metrics.fontBoundingBoxDescent) / 2
+      context.fillText(line.text, line.x, baseline)
     }
   }
-  return pack(
-    INK_BLUR_RADII.map((blur) => pass(width, height, ratio, domPainter, paintLines(blur))),
-    { x: left - base.left, y: top - base.top, width, height },
-  )
+  const image = pass(width, height, ratio, domPainter, paintLines)
+  if (!image) return null
+  return {
+    data: packShadowDistances(shadowDistances(image.data, image.width, image.height, ratio)),
+    width: image.width,
+    height: image.height,
+    rect: { x: left - base.left, y: top - base.top, width, height },
+  }
 }
 
 /** One raised or sunk box, in CSS px relative to the mask's origin. */
@@ -194,13 +184,11 @@ export function measureRelief(anchor: HTMLElement, root: HTMLElement): ReliefPla
 }
 
 /**
- * Paints a plan: raised into R/G (sharp, blurred), wells into B/A, at half
- * resolution — boxes need no subpixel ink.
+ * Paint raised and recessed outlines, then pack their signed distances.
+ * This runs in the existing worker; light movement never rebuilds it.
  */
 export function paintRelief(plan: ReliefPlan, create: PainterFactory): Mask | null {
-  // A canvas blur is in device px whatever the transform, so it is scaled here.
-  const paintKind = (kind: ReliefKind, blur: number) => (context: Painter) => {
-    context.filter = blur > 0 ? `blur(${blur * RELIEF_RATIO}px)` : 'none'
+  const paintKind = (kind: ReliefKind) => (context: Painter) => {
     for (const box of plan.boxes) {
       if (box.kind !== kind) continue
       context.beginPath()
@@ -209,13 +197,16 @@ export function paintRelief(plan: ReliefPlan, create: PainterFactory): Mask | nu
     }
   }
   const { width, height } = plan
-  return pack(
-    [
-      pass(width, height, RELIEF_RATIO, create, paintKind('raised', 0)),
-      pass(width, height, RELIEF_RATIO, create, paintKind('raised', RAISED_BLUR)),
-      pass(width, height, RELIEF_RATIO, create, paintKind('well', 0)),
-      pass(width, height, RELIEF_RATIO, create, paintKind('well', WELL_BLUR)),
-    ],
-    plan.rect,
-  )
+  const raised = pass(width, height, RELIEF_RATIO, create, paintKind('raised'))
+  const well = pass(width, height, RELIEF_RATIO, create, paintKind('well'))
+  if (!raised || !well) return null
+  return {
+    data: packShadowDistances(
+      shadowDistances(raised.data, raised.width, raised.height, RELIEF_RATIO),
+      shadowDistances(well.data, well.width, well.height, RELIEF_RATIO),
+    ),
+    width: raised.width,
+    height: raised.height,
+    rect: plan.rect,
+  }
 }

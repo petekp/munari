@@ -26,6 +26,9 @@ probe:postcard-sharpness` checks the actual Home postcard with a hidden-mesh neg
 control. Visible checks preserve native display density; density emulation is
 explicit. The API instrument guide lists options and the 0.95–1.05 native text
 contrast budget. Motion and handoff budgets remain separate.
+The postcard comparison captures only within the current viewport and checks
+that its light stays fixed. Beyond-viewport capture can temporarily resize
+Chrome and move the light, invalidating a contrast comparison.
 `probe:scene-sharpness` covers scene-only HTML. `probe:display-density` checks an
 existing capture across display-density changes without replacing its content.
 
@@ -37,6 +40,117 @@ checks, `API_CASES` for a comma-separated subset, and `API_PROOF_OUTPUT` for loc
 evidence. `API_SOURCE_ROOT` can point at a saved source revision for comparison.
 The [API instrument guide](api-all-demos/README.md) states the pixel/anchor budgets.
 This local command does not change CI membership.
+
+## Home light and shadow
+
+`npm run probe:heading-edges` checks the native heading's shadow-mask fringe
+in a 3x zoomed iframe. It compares the current receiver clearance with a zero-
+clearance control, keeping the cast-shadow field unchanged. A page-only receiver
+provides the reference around the ink. Normal and selected lettering must each
+reproduce the defect in the control, remove at least 99% of conspicuous fringe
+pixels, and preserve the opaque ink core. The selected case positions the light
+over the letter so its shadow actually overlaps that footprint. `HEADED=1` uses
+native display density; `TEST_DPR` can reproduce another density, and
+`LIGHT_PROOF_OUTPUT` chooses the artifact directory. Decision
+[#55](../docs/decisions.md#55) records the clearance and limits.
+
+`npm run probe:home-light` renders the actual landing-page shadow shader against
+known geometry. It checks separated shadows from thin silhouettes, one visibility
+result for coincident casters, raised receivers, a finite-source penumbra, and
+heading shadows staying behind the foreground postcard. A page pixel still
+receives the heading's shadow as a control. Decision [#50](../docs/decisions.md#50)
+records the model and the combined scene.
+The same edge is measured at 6px and 22px above the receiver: its 10–90% softness
+must grow by more than twofold, without intensity reversals or large pixel jumps.
+A point-light control must keep the higher edge sharp. These profiles read the
+shader's visibility before tint and exposure, then the page checks inspect the
+complete composited result.
+At the actual default heights, another pair moves the bulb across the page.
+The rounded bulb must broaden the distant edge beyond a control whose emitter
+is parallel to the page. The gallery check then moves the real light control
+around a real example image and measures its shadow offset and softness from
+the completed lighting draw. It saves both page screenshots and raw light fields;
+the source content and production renderer settings are unchanged by the observer.
+
+The same run drags the real landing-page light, moves it with the keyboard,
+changes its distance, and captures desktop, mobile, and the full website shell.
+It checks the selection shortcut, limits raised geometry to the selected line,
+double-clicks uncovered native heading text, and types into the scene.
+The full website is checked at 390 and 320px, including entry and return after
+resizing. Captures wait for the relief field belonging to the current layout.
+Separate Chrome profiles check lighting without HTML capture and native content
+with WebGL disabled. `HEADED=1` preserves native display density;
+`LIGHT_PROOF_OUTPUT` chooses an output directory and `CHROME_PATH` selects Chrome.
+Evidence stays outside the repo. This local probe does not change CI membership.
+
+GPU timer queries report the complete lighting redraw, including the paper's
+shadow map and native-density receiver draw, when supported and valid. CPU work and the separate
+bulb/card renderers are excluded.
+Frame intervals describe this machine, not a portable performance gate.
+Native silhouettes use 64 deterministic rays toward a spherical light source.
+Curved paper uses filtered depth maps; this is not a path-tracer comparison.
+Postcard handoffs and scrolling remain `probe:postcard`'s contract.
+
+`npm run probe:home-lamp` checks the lamp on the actual landing page. It moves
+the glass over heading ink and compares its pixels with emission disabled,
+an index of refraction of one, and a changed native heading color. These controls
+separate the filament, refraction, and live page capture. It checks that the cord
+bends while keeping both ends attached, then captures a stationary scene postcard,
+scrolling, mobile widths, and the no-capture Chrome fallback. The latter retains
+glass reflections and emission but cannot refract page content.
+
+The probe reports lamp GPU time and frame intervals; these describe the current
+machine. Lamp motion alone must not repeatedly repaint the captured page.
+`HEADED=1` keeps native display density; use `STRICT_CAPABILITY=1` to require
+the enhanced path. `LAMP_OUTPUT` selects an evidence directory outside Git.
+The observer and optical controls are injected into the served copy only.
+Decision [#52](../docs/decisions.md#52) records the optical and cord limits.
+
+`npm run probe:lamp-quality` checks a 3x pinch-zoomed parent containing the real
+home demo in an offset iframe. The lamp must use display density times the parent
+zoom, crop its buffer to the visible area, and keep refraction aligned with live
+heading content. With emission disabled, its edge error must be below 65% of the
+stretched-bitmap control against a supersampled reference. Separate pixel checks
+require light across the glass and outside its silhouette. Both capture-enabled
+and no-flag Chrome run through the same zoom test. `HEADED=1` retains native display
+density, and `LAMP_OUTPUT` chooses an evidence directory outside Git.
+Decision [#54](../docs/decisions.md#54) records the zoom and emission corrections.
+
+## Flexible postcard
+
+`npm run probe:postcard-edges` freezes a curl on the real page and compares its
+composited silhouette with a supersampled lighting draw. A half-density draw
+is the negative control; native edge error must be below 65% of that control.
+The test reads the actual mesh alpha to select boundary pixels, checks that
+the reference buffer was not clamped, and exercises a larger 4x-density window.
+The lighting band must retain native density and cover the viewport when its
+offscreen margin shrinks to fit the browser's buffer limit. `HEADED=1` preserves
+native density for the main comparison; `PAPER_OUTPUT` selects the evidence folder.
+`EDGE_BASELINE_ONLY=1` saves a before image without asserting the new contract.
+All pose and density controls affect only the served copy. Decision
+[#53](../docs/decisions.md#53) records the rendering change and measured result.
+
+`npm run probe:postcard-paper` checks the real paper mesh, its rendered outline,
+corner response, stamp impulse, native field input and exact return. A flat
+geometry control runs with `PAPER_FLAT=1`; it must remain planar and produce
+the corresponding straight-edged outline, including where the postcard covers
+heading ink. Covered letters must not create alpha holes. The probe keeps the display canvas's
+buffer only in its served copy so it can inspect rendered alpha. Its timing is
+diagnostic; `probe:postcard` retains the unrecorded frame-gap contract.
+
+`PAPER_RECORD=1` saves a short Chrome sequence and encodes `postcard.mp4` with
+ffmpeg. `PAPER_OUTPUT` selects the output directory, `CHROME_PATH` selects Chrome,
+and `HEADED=1` uses visible Chrome at native display density. Recordings and
+screenshots stay outside the repository.
+
+`npm run probe:postcard-paper-shadows` checks the actual lighting renderer with
+a known curl. The curved geometry must change the cast shadow and shade visible
+parts of its own surface. Removing only the shadow-depth texture is the control;
+the flat sheet must remain free of self-shadow acne. Adding an elevated heading
+plane must leave the curved paper's pixels unchanged. This check needs WebGL2
+floating-point render targets but does not need HTML capture. These are local
+commands; CI membership is unchanged. Decision [#51](../docs/decisions.md#51)
+records the model and its bounds.
 
 ## Detail issue regressions
 
