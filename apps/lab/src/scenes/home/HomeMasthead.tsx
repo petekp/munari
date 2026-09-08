@@ -2,10 +2,10 @@
 // shadows fall from the page content: the glyphs, every raised
 // control, and the rim of every well.
 //
-// The law: WebGL owns light and shadow, nothing else. The headline, prose
-// and buttons are plain DOM, selectable and clickable. A multiply canvas
-// darkens what is already there, and a fixed normal-blend canvas renders
-// the bulb itself. The light lives in viewport space, so it stays where you
+// The headline retains its native layout and selection. WebGL supplies its
+// 3D and shader word treatments, plus light and shadow. A multiply canvas
+// darkens the page, and a fixed normal-blend canvas renders the bulb.
+// The light lives in viewport space, so it stays where you
 // leave it while the page scrolls under it and every section is lit by the
 // same fixture.
 //
@@ -22,18 +22,19 @@
 // is fixed.
 //
 // Ownership: this component owns the DOM masthead, the light's position,
-// both canvases, and the draw loop. homeRelief.ts owns reading the page
+// the lighting canvases, and the draw loop. homeHeadlineTreatments owns the
+// word renderer. homeRelief.ts owns reading the page
 // into masks; homeLight.ts owns the shadow shader; homeLightBulb.ts owns
 // the bulb model.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { readHomeFlyer, subscribeHomeFlyer } from './homeFlyer'
 import { createHomeLightMaterial, maskTexture, setHomeFlyerUniform, setHomeInkMask, setHomeLightFrame, setHomeReliefMask, type HomeLightMaterial } from './homeLight'
 import { BULB_RADIUS, createLightBulb, type LightBulb } from './homeLightBulb'
 import { LIGHT_HEIGHT, POSTCARD_STANDOFF } from './homeLightLaw'
-import { buildInkMask, domPainter, measureRelief, paintRelief, type Mask } from './homeRelief'
+import { buildInkMask, domPainter, measureRelief, paintRelief, type InkMask, type Mask } from './homeRelief'
 import type { ReliefReply, ReliefRequest } from './homeReliefWorker'
 import { useHomeReducedMotion } from './homeMotion'
 import { HomeMastheadContent } from './HomeMastheadContent'
@@ -43,6 +44,7 @@ import { createPaperLighting } from './homePaperLighting'
 import { createLampBackdrop, type LampBackdrop } from './homeLampBackdrop'
 import { createHomeLightDisplay } from './homeLightDisplay'
 import { createLampViewportUpdater, watchLampViewport } from './homeLampViewport'
+import { createHeadlineTreatments } from './homeHeadlineTreatments'
 
 // Small idle motion stays inside the gap above the headline (decision #50).
 const DRIFT_RADIUS_X = 12
@@ -68,9 +70,10 @@ interface ShadowPass {
   scene: THREE.Scene
   camera: THREE.OrthographicCamera
   mesh: THREE.Mesh<THREE.PlaneGeometry, HomeLightMaterial>
-  ink: { mask: Mask; texture: THREE.DataTexture; scale: number } | null
+  ink: { mask: InkMask; texture: THREE.DataTexture; scale: number } | null
   relief: { mask: Mask; texture: THREE.DataTexture } | null
   paper: ReturnType<typeof createPaperLighting>
+  layoutCurrent: () => boolean
 }
 
 interface BulbPass {
@@ -102,7 +105,7 @@ function createLightState(): LightState {
   return {
     width: 0,
     height: 0,
-    shadow: { scene: shadowScene, camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mesh, ink: null, relief: null, paper: null },
+    shadow: { scene: shadowScene, camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mesh, ink: null, relief: null, paper: null, layoutCurrent: () => false },
     bulb: { renderer: null, scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), bulb: null, lastFrame: 0, backdrop: null, queued: false, updateViewport:null },
     draw: () => {},
     start: () => {},
@@ -152,13 +155,16 @@ function clampToViewport(point: Point): Point {
 
 export interface HomeMastheadProps {
   children: ReactNode
+  effectsEnabled: boolean
+  onReady: (mode: 'enhanced' | 'native') => void
   /** The scrolling page; scroll events re-frame the masks. */
   pageRef: React.RefObject<HTMLDivElement | null>
   /** The page body every `[data-relief]` element lives under, and the masks' anchor. */
   innerRef: React.RefObject<HTMLElement | null>
 }
 
-export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps) {
+export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onReady }: HomeMastheadProps) {
+  const reportReady = useEffectEvent(onReady)
   const host = useRef<HTMLDivElement>(null)
   const bulbHost = useRef<HTMLDivElement>(null)
   const masthead = useRef<HTMLElement>(null)
@@ -171,6 +177,11 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
   const [degraded, setDegraded] = useState(false)
   const [bulbless, setBulbless] = useState(false)
   const [dragged, setDragged] = useState(false)
+  const movedByUser = useRef(false)
+  const markLightMoved = useCallback(() => {
+    movedByUser.current = true
+    setDragged(true)
+  }, [])
   const [lightHeight, setLightHeight] = useState(LIGHT_HEIGHT)
   const lightHeightRef = useRef(lightHeight)
   const reducedMotion = useHomeReducedMotion()
@@ -268,7 +279,7 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
   useEffect(() => {
     const box = host.current
     const page = pageRef.current
-    if (!box || !page) return
+    if (!box || !page || !effectsEnabled) return
     const canvas = document.createElement('canvas')
     canvas.className = 'home-light-canvas'
     box.append(canvas)
@@ -278,19 +289,33 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
     } catch {
       canvas.remove()
       setDegraded(true)
+      reportReady('native')
       return
     }
     const pass = state.shadow
     pass.paper = createPaperLighting(renderer,pass.mesh.material)
     const display = createHomeLightDisplay(renderer,pass.mesh.material)
+    const headline = title.current ? createHeadlineTreatments(title.current,pass.mesh.material,redraw) : null
     state.width = 0
     state.height = 0
     renderer.setClearColor(0xffffff, 1)
 
-    let raf = 0
+    let raf = 0, openingFrame = 0, complete = false, headlineReady = false
+    const ready = () => document.fonts.status === 'loaded' && pass.layoutCurrent() && headlineReady &&
+      !!state.bulb.renderer && !!state.bulb.backdrop?.ready()
+    const checkOpening = () => {
+      if (complete || openingFrame || !ready()) return
+      openingFrame = requestAnimationFrame(() => {
+        openingFrame = 0
+        if (!ready()) return
+        complete = true
+        reportReady('enhanced')
+      })
+    }
     state.draw = () => {
       pass.paper?.update(readHomeFlyer())
       display.render(pass.scene, pass.camera, pass.paper)
+      headlineReady = headline?.render(reducedMotionRef.current) ?? true
       // The postcard's pre-draw callback reaches here before its canvas has
       // drawn. A microtask samples that completed canvas in the same frame.
       if (!state.bulb.queued) {
@@ -301,6 +326,7 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
           state.bulb.updateViewport?.()
           state.bulb.backdrop?.update(canvas)
           state.bulb.renderer.render(state.bulb.scene, state.bulb.camera)
+          checkOpening()
         })
       }
     }
@@ -360,6 +386,7 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
     canvas.addEventListener('webglcontextrestored', restored)
 
     return () => {
+      cancelAnimationFrame(openingFrame)
       state.stop()
       observer.disconnect()
       canvas.removeEventListener('webglcontextlost', lost)
@@ -369,6 +396,7 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
       state.stop = () => {}
       pass.mesh.material.dispose()
       display.dispose()
+      headline?.dispose()
       pass.paper?.dispose()
       pass.paper = null
       pass.ink?.texture.dispose()
@@ -379,14 +407,14 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
       renderer.forceContextLoss()
       canvas.remove()
     }
-  }, [state, pageRef, redraw])
+  }, [state, pageRef, redraw, effectsEnabled])
 
   // Mount: the bulb canvas. Its own context, alpha over the page. Losing it
   // leaves the shadows running and shows the plain ink mark instead.
   useEffect(() => {
     const box = bulbHost.current
     const page = pageRef.current
-    if (!box || !page || degraded) return
+    if (!box || !page || degraded || !effectsEnabled) return
     const canvas = document.createElement('canvas')
     canvas.className = 'home-light-canvas'
     box.append(canvas)
@@ -396,6 +424,7 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
     } catch {
       canvas.remove()
       setBulbless(true)
+      reportReady('native')
       return
     }
     const pass = state.bulb
@@ -445,39 +474,47 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
       renderer.forceContextLoss()
       canvas.remove()
     }
-  }, [state, degraded, pageRef, redraw])
+  }, [state, degraded, pageRef, redraw, effectsEnabled])
 
   // The page tells the depth kit whether the shader owns shadows now.
   useEffect(() => {
     const page = pageRef.current
     if (!page) return
-    if (degraded) delete page.dataset.lit
+    if (degraded || !effectsEnabled) delete page.dataset.lit
     else page.dataset.lit = 'true'
     return () => {
       delete page.dataset.lit
     }
-  }, [pageRef, degraded])
+  }, [pageRef, degraded, effectsEnabled])
 
   useHeadlineSelection(title, innerRef, selection, redraw)
 
   // Read the headline after fonts settle and when its layout changes;
   // the first placement leaves room for the bulb above the type.
   useEffect(() => {
+    if (!effectsEnabled) return
     let alive = true
     const build = () => {
       if (!alive) return
       const inner = innerRef.current
       const lines = [lineOne.current, lineTwo.current, lineThree.current].filter((line) => line !== null)
-      state.shadow.ink?.texture.dispose()
-      state.shadow.ink = null
+      const previous = state.shadow.ink
+      let mask: InkMask | null = null
       if (inner && lines.length === 3) {
-        const mask = buildInkMask(inner, lines)
-        if (mask) state.shadow.ink = { mask, texture: maskTexture(mask), scale: Math.min(1, parseFloat(getComputedStyle(lines[0]).fontSize) / 150) }
+        mask = buildInkMask(inner, lines, previous?.mask)
       }
-      if (!placed.current && lines.length === 3) {
+      if (mask !== previous?.mask) {
+        previous?.texture.dispose()
+        state.shadow.ink = mask ? { mask, texture: maskTexture(mask), scale: Math.min(1, parseFloat(getComputedStyle(lines[0]!).fontSize) / 150) } : null
+      }
+      if ((!placed.current || !movedByUser.current) && lines.length === 3) {
         placed.current = true
         const line = lines[0].getBoundingClientRect()
-        anchor.current = clampToViewport({ x: line.left + line.width * 0.22, y: line.top - 42 })
+        const card = masthead.current?.querySelector('.home-hero-viewport')?.getBoundingClientRect()
+        const right = masthead.current?.getBoundingClientRect().right ?? line.right
+        const desktop = window.innerWidth > 760
+        const x = desktop && card ? card.left + card.width / 2 : right - LIGHT_MARGIN
+        anchor.current = clampToViewport({ x, y: desktop ? line.top - 54 : 68 })
         driftEpoch.current = performance.now()
       }
       redraw()
@@ -490,7 +527,7 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
       alive = false
       observer.disconnect()
     }
-  }, [state, innerRef, redraw])
+  }, [state, innerRef, redraw, effectsEnabled])
 
   // Read the raised and sunk elements into relief: on mount, after fonts,
   // once layout settles, and at once when an element changes its relief or
@@ -499,22 +536,26 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
   useEffect(() => {
     const page = pageRef.current
     const inner = innerRef.current
-    if (!page || !inner) return
+    if (!page || !inner || !effectsEnabled) return
     let alive = true
     let timer = 0
     let requestId = 0
     let previousPlan = ''
     let lastLayout = ''
+    let appliedPlan = ''
     const worker = createReliefWorker()
-    const apply = (mask: Mask | null) => {
+    state.shadow.layoutCurrent = () => appliedPlan !== '' && appliedPlan === JSON.stringify(measureRelief(inner, inner))
+    const apply = (mask: Mask | null, signature = '') => {
       if (!alive) return
+      if (!mask && signature && signature !== 'null') { reportReady('native'); return }
+      appliedPlan = signature
       state.shadow.relief?.texture.dispose()
       state.shadow.relief = mask ? { mask, texture: maskTexture(mask) } : null
       redraw()
     }
     if (worker) {
       worker.onmessage = (event: MessageEvent<ReliefReply>) => {
-        if (event.data.id === requestId) apply(event.data.mask)
+        if (event.data.id === requestId) apply(event.data.mask, previousPlan)
       }
     }
     const build = () => {
@@ -524,7 +565,7 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
         requestId++
         previousPlan = ''
         lastLayout = 'null'
-        apply(null)
+        apply(null, 'null')
         return
       }
       const signature = JSON.stringify(plan)
@@ -536,7 +577,7 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
         const request: ReliefRequest = { id: ++requestId, plan }
         worker.postMessage(request)
       } else {
-        apply(paintRelief(plan, domPainter))
+        apply(paintRelief(plan, domPainter), signature)
       }
     }
     const settle = () => {
@@ -564,8 +605,9 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
       observer.disconnect()
       attributes.disconnect()
       worker?.terminate()
+      state.shadow.layoutCurrent = () => false
     }
-  }, [state, pageRef, innerRef, redraw])
+  }, [state, pageRef, innerRef, redraw, effectsEnabled])
 
   // The flyer publishes from the hero's frame callback; redrawing right
   // there puts the shadow and the card in the same frame whatever order the
@@ -579,7 +621,7 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
   // The drift loop runs while motion is allowed. Under reduced motion the
   // light holds still and the page redraws only on scroll and drag.
   useEffect(() => {
-    if (degraded) return
+    if (degraded || !effectsEnabled) return
     const page = pageRef.current
     if (reducedMotion) {
       state.stop()
@@ -589,9 +631,9 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
     }
     state.start()
     return () => state.stop()
-  }, [state, reducedMotion, degraded, redraw, pageRef])
+  }, [state, reducedMotion, degraded, redraw, pageRef, effectsEnabled])
 
-  useHomeLightDrag({ fixture, dragging, anchor, driftEpoch, reducedMotion: reducedMotionRef, currentLight, redraw, setDragged })
+  useHomeLightDrag({ fixture, dragging, anchor, driftEpoch, reducedMotion: reducedMotionRef, currentLight, redraw, setDragged: markLightMoved })
 
   return (
     <>
@@ -601,6 +643,7 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
         type="button"
         ref={fixture}
         className="home-light"
+        hidden={!effectsEnabled}
         aria-label="Move the light. Use arrow keys to change its position."
         onKeyDown={event => {
           if (event.altKey || event.ctrlKey || event.metaKey) return
@@ -611,7 +654,7 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
           const point = currentLight()
           anchor.current = clampToViewport({ x: point.x + dx, y: point.y + dy })
           driftEpoch.current = performance.now()
-          setDragged(true)
+          markLightMoved()
           redraw()
         }}
         data-dragged={dragged || undefined}
@@ -622,7 +665,7 @@ export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps)
         <span className="home-light-hint" aria-hidden="true">Drag the light</span>
       </button>
       <HomeMastheadContent mastheadRef={masthead} headingRef={title} lineRefs={[lineOne,lineTwo,lineThree]}
-        lightHeight={lightHeight} onLightHeight={setLightHeight} degraded={degraded}>
+        lightHeight={lightHeight} onLightHeight={setLightHeight} degraded={degraded || !effectsEnabled}>
         {children}
       </HomeMastheadContent>
     </>

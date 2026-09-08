@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, OrbitControls } from '@react-three/drei'
 import {
@@ -8,36 +8,42 @@ import {
 } from '@petepetrash/munari'
 import { paintStats } from '@petepetrash/munari/advanced'
 import { showChrome, showShell } from './bareMode'
-import { Workspace, WorkspaceHud } from './scenes/workspace/Workspace'
-import { Glass } from './scenes/glass/Glass'
-import { GlassTweakPanel } from './scenes/glass/GlassTweaks'
-import { FlightApp } from './scenes/flight/Flight'
-import { Explode, ExplodeHud } from './scenes/explode/Explode'
-import { GenieApp } from './scenes/genie/Genie'
-import { FisheyeApp } from './scenes/fisheye/Fisheye'
-import { SliderApp } from './scenes/slider/Slider'
-import { VeilApp } from './scenes/veil/Veil'
-import { KnobsApp } from './scenes/knobs/Knobs'
-import { OpticsApp } from './scenes/optics/Optics'
-import { LogoApp } from './scenes/logo/Logo'
-import { SelectionApp } from './scenes/selection/Selection'
-import { CandidatesApp } from './scenes/candidates/Candidates'
-import { RefractionApp } from './scenes/refraction/Refraction'
-import { GalleryApp } from './scenes/gallery/Gallery'
-import { CrystalApp } from './scenes/crystal/Crystal'
-import { ControlsApp } from './scenes/controls/Controls'
-import { MarbleHandApp } from './scenes/marble-hand/MarbleHand'
-import { PlumeApp } from './scenes/plume/Plume'
-import { GravityApp } from './scenes/gravity/Gravity'
-import { LampApp } from './scenes/lamp/Lamp'
-import { RainApp } from './scenes/rain/Rain'
-import { WordmarkApp } from './scenes/wordmark/Wordmark'
 import { HomeApp } from './scenes/home/Home'
 import { SurfaceProviderProbe } from './lib/surfaceProvider'
 import { SceneNav } from './components/SceneNav'
 import { SceneGuide } from './components/SceneGuide'
 import { BROWSER_GUIDE, exampleFor, washFor } from './components/sceneCatalog'
 import { SceneBoundary } from './components/SceneBoundary'
+import { HOME_READY, revealSite } from './components/siteOpening'
+
+// A home visit must not fetch or evaluate every lab. Keep Home eager; each
+// other scene loads only in its own frame, with the same page and R3F roots.
+const Workspace = lazy(() => import('./scenes/workspace/Workspace').then(m => ({ default: m.Workspace })))
+const WorkspaceHud = lazy(() => import('./scenes/workspace/Workspace').then(m => ({ default: m.WorkspaceHud })))
+const Glass = lazy(() => import('./scenes/glass/Glass').then(m => ({ default: m.Glass })))
+const GlassTweakPanel = lazy(() => import('./scenes/glass/GlassTweaks').then(m => ({ default: m.GlassTweakPanel })))
+const FlightApp = lazy(() => import('./scenes/flight/Flight').then(m => ({ default: m.FlightApp })))
+const Explode = lazy(() => import('./scenes/explode/Explode').then(m => ({ default: m.Explode })))
+const ExplodeHud = lazy(() => import('./scenes/explode/Explode').then(m => ({ default: m.ExplodeHud })))
+const GenieApp = lazy(() => import('./scenes/genie/Genie').then(m => ({ default: m.GenieApp })))
+const FisheyeApp = lazy(() => import('./scenes/fisheye/Fisheye').then(m => ({ default: m.FisheyeApp })))
+const SliderApp = lazy(() => import('./scenes/slider/Slider').then(m => ({ default: m.SliderApp })))
+const VeilApp = lazy(() => import('./scenes/veil/Veil').then(m => ({ default: m.VeilApp })))
+const KnobsApp = lazy(() => import('./scenes/knobs/Knobs').then(m => ({ default: m.KnobsApp })))
+const OpticsApp = lazy(() => import('./scenes/optics/Optics').then(m => ({ default: m.OpticsApp })))
+const LogoApp = lazy(() => import('./scenes/logo/Logo').then(m => ({ default: m.LogoApp })))
+const SelectionApp = lazy(() => import('./scenes/selection/Selection').then(m => ({ default: m.SelectionApp })))
+const CandidatesApp = lazy(() => import('./scenes/candidates/Candidates').then(m => ({ default: m.CandidatesApp })))
+const RefractionApp = lazy(() => import('./scenes/refraction/Refraction').then(m => ({ default: m.RefractionApp })))
+const GalleryApp = lazy(() => import('./scenes/gallery/Gallery').then(m => ({ default: m.GalleryApp })))
+const CrystalApp = lazy(() => import('./scenes/crystal/Crystal').then(m => ({ default: m.CrystalApp })))
+const ControlsApp = lazy(() => import('./scenes/controls/Controls').then(m => ({ default: m.ControlsApp })))
+const MarbleHandApp = lazy(() => import('./scenes/marble-hand/MarbleHand').then(m => ({ default: m.MarbleHandApp })))
+const PlumeApp = lazy(() => import('./scenes/plume/Plume').then(m => ({ default: m.PlumeApp })))
+const GravityApp = lazy(() => import('./scenes/gravity/Gravity').then(m => ({ default: m.GravityApp })))
+const LampApp = lazy(() => import('./scenes/lamp/Lamp').then(m => ({ default: m.LampApp })))
+const RainApp = lazy(() => import('./scenes/rain/Rain').then(m => ({ default: m.RainApp })))
+const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
 
 // The promoted scene roster is decisions.md #3. URL-only studies stay beside
 // it without claiming promotion: the candidates bench, refraction, gallery,
@@ -271,6 +277,27 @@ function SceneHud({ scene }: { scene: SceneId }) {
 export default function App() {
   const unsupported = !useSurfaceSupport()
   const [{ scene, section }, setRoute] = useState(readRoute)
+  const sceneFrame = useRef<HTMLIFrameElement>(null)
+
+  useEffect(() => {
+    if (!showShell) return
+    let alive = true
+    const ready = (event: MessageEvent) => {
+      if (event.origin !== location.origin || event.source !== sceneFrame.current?.contentWindow || event.data !== HOME_READY) return
+      void document.fonts.ready.then(() => { if (alive) revealSite() })
+    }
+    window.addEventListener('message', ready)
+    return () => { alive = false; window.removeEventListener('message', ready) }
+  }, [])
+
+  // index.html paints the landing wash while this document is still empty.
+  // Framed lab scenes retain their bench; the shell follows its active wash.
+  useLayoutEffect(() => {
+    const style = document.documentElement.style
+    const previous = style.getPropertyValue('--document-background')
+    style.setProperty('--document-background', showShell || scene === 'home' ? washFor(scene) : 'var(--bench)')
+    return () => { style.setProperty('--document-background', previous) }
+  }, [scene])
 
   useEffect(() => {
     document.title = scene === 'home' ? 'Munari · Live HTML in 3D' : `${exampleFor(scene)?.title ?? scene} · Munari`
@@ -388,10 +415,12 @@ export default function App() {
         <main className="site-content" id="site-content" tabIndex={-1}>
           {scene !== 'home' && <SceneGuide scene={scene} />}
           <iframe
+            ref={sceneFrame}
             key={`${scene}:${section}`}
             src={`/?scene=${scene}&framed${section ? `#${section}` : ''}`}
             title={scene === 'home' ? 'Munari overview' : `${scene} example`}
             className="site-frame"
+            onLoad={() => { if (scene !== 'home') revealSite() }}
           />
         </main>
       </div>
@@ -408,7 +437,7 @@ export default function App() {
     return (
       <>
         <SceneBoundary key={scene} scene={scene}>
-          {page}
+          <Suspense fallback={null}>{page}</Suspense>
         </SceneBoundary>
         {notice}
       </>
@@ -439,7 +468,7 @@ export default function App() {
 
       {notice}
 
-      {showChrome && <SceneHud scene={scene} />}
+      {showChrome && <Suspense fallback={null}><SceneHud scene={scene} /></Suspense>}
     </div>
   )
 }

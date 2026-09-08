@@ -20,7 +20,7 @@ function KeepDomFocus() {
   return null
 }
 
-export function HomePostcard({ supported, reduced }: { supported: boolean; reduced: boolean }) {
+export function HomePostcard({ supported, reduced, effectsEnabled }: { supported: boolean; reduced: boolean; effectsEnabled: boolean }) {
   const hero = useSurfaceHandle('home-hero')
   const [inScene, setInScene] = useState(false)
   const holderRef = useRef<HTMLDivElement>(null)
@@ -28,15 +28,15 @@ export function HomePostcard({ supported, reduced }: { supported: boolean; reduc
   const paper = useMemo(createPaperInteraction, [])
   return (
     <div className="home-postcard-section">
-      {supported && (
+      {supported && effectsEnabled && (
         <SurfaceCanvas
           id="home"
           flat
           pointerMode="surfaces"
           style={{
-            position: 'absolute', left: '50%', top: -128,
+            position: 'absolute', right: 'calc(-1 * var(--home-side-padding))', top: -128,
             width: 'min(100vw, calc(100% + 256px))', height: 'calc(100% + 256px)',
-            transform: 'translateX(-50%)', zIndex: 10,
+            zIndex: 10,
           }}
           className="home-canvas"
           gl={{ alpha: true }}

@@ -58,7 +58,7 @@ export function createLampBackdrop(page:HTMLElement,wake:()=>void){
   const wrapper=document.createElement('div');wrapper.dataset.lampCapture='';wrapper.inert=true;wrapper.setAttribute('aria-hidden','true')
   wrapper.style.cssText='position:relative;display:block;visibility:visible;margin:0;padding:0;border:0;overflow:hidden;'
   let source:DomTextureSource|null=null,texture:THREE.CanvasTexture|null=null,lightTexture:THREE.CanvasTexture|null=null
-  let alive=true,mirrorFrame=0,paintFrame=0,paintedWidth=0,paintedHeight=0,allocation='',stopPaint=()=>{}
+  let alive=true,mirrorFrame=0,paintFrame=0,paintedWidth=0,paintedHeight=0,allocation='',stopPaint=()=>{},waitingPaint=false
   const layers=new Map<HTMLCanvasElement,THREE.CanvasTexture>()
   const allocations=new WeakMap<THREE.Texture,string>()
   let sampledFlyer:HomeFlyer|null=null
@@ -71,6 +71,7 @@ export function createLampBackdrop(page:HTMLElement,wake:()=>void){
   const schedule=()=>{if(alive&&supported&&!mirrorFrame)mirrorFrame=requestAnimationFrame(mirror)}
   const mirror=()=>{
     mirrorFrame=0;if(!alive)return
+    waitingPaint=true
     const width=Math.max(1,page.clientWidth),height=Math.max(1,page.clientHeight)
     wrapper.style.width=`${width}px`;wrapper.style.height=`${height}px`
     wrapper.replaceChildren(copyViewport(page,width,height))
@@ -90,6 +91,7 @@ export function createLampBackdrop(page:HTMLElement,wake:()=>void){
           texture.needsUpdate=true
           ;[paintedWidth,paintedHeight]=receipt.paintedSize
           uniforms.uPageReady.value=paintedWidth===page.clientWidth&&paintedHeight===page.clientHeight?1:0
+          waitingPaint=false
           wake()
         })
       })
@@ -114,6 +116,7 @@ export function createLampBackdrop(page:HTMLElement,wake:()=>void){
   }
   return {
     uniforms,
+    ready:()=>!supported||(!waitingPaint&&!mirrorFrame&&!paintFrame&&uniforms.uPageReady.value===1),
     update(light:HTMLCanvasElement|null){
       const width=page.clientWidth,height=page.clientHeight;uniforms.uViewport.value.set(width,height)
       if(paintedWidth!==width||paintedHeight!==height)uniforms.uPageReady.value=0

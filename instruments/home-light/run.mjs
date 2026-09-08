@@ -96,10 +96,10 @@ try {
     window.__headlinePointer=[]
     document.addEventListener('pointerdown',event=>window.__headlinePointer.push(Boolean(event.target.closest?.('.home-masthead-title'))),{capture:true})
   })
-  await page.click('.home-masthead-title > span:first-child',{count:2})
+  await page.click('.home-headline-html',{count:2})
   results.nativeSelection=await page.evaluate(()=>({text:getSelection().toString(),targets:window.__headlinePointer}))
   // Native word selection excludes the following punctuation.
-  assert.ok(['HTML','3D'].includes(results.nativeSelection.text))
+  assert.ok(results.nativeSelection.text==='html')
   assert.ok(results.nativeSelection.targets.some(Boolean),'Uncovered heading text must retain native pointer input')
   const selectedLight=await page.$('.home-light'),selectedLightBox=await selectedLight.boundingBox()
   const lightStart={x:selectedLightBox.x+selectedLightBox.width/2,y:selectedLightBox.y+selectedLightBox.height/2}
@@ -158,6 +158,7 @@ try {
   await page.goto(`http://127.0.0.1:${lab.httpServer.address().port}/?scene=home`,{waitUntil:'load'})
   const overview=await page.waitForFrame(frame=>frame.url().includes('&framed'))
   await overview.waitForFunction(()=>window.__homeLightMaterial?.uniforms.uInkReady.value===1&&window.__homeLightMaterial.uniforms.uReliefReady.value===1)
+  await page.waitForFunction(()=>!document.documentElement.hasAttribute('data-opening'))
   await page.screenshot({path:path.join(output,'website.png')})
   for(const width of [390,320]) {
     await setChromeViewport(page,{width,height:844})

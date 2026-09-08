@@ -27,6 +27,23 @@ uses a labelled [postcard recording](public/previews/README.md).
 Use the real scene route for visual work. `?bare` removes the surrounding UI
 and can remove content under test; use it only when an instrument requires it.
 
+## First load
+
+`index.html` supplies the landing background before either React root loads.
+`App` selects other scene backgrounds before paint. Home stays in the entry
+bundle; other demos load only when selected. Keep each scene in its frame:
+its DOM-to-scene coordinates assume that frame is its viewport.
+
+The first document paints an inline wordmark while the page prepares. The
+navigation and homepage appear together after fonts, current shadow masks,
+headline treatments and the lamp backdrop have reached a completed draw. The
+cover stays outside the iframe so preparation can still paint. There is no
+minimum display time. Failed graphics preparation selects native content for
+that visit, rather than adding effects after the page is visible.
+`probe:home-startup` checks the first exposed frames and the resting button
+shadow afterward, including a deliberately early reveal that must fail those
+checks. [Decision #57](../../docs/decisions.md#57) records the opening contract.
+
 ## Code and evidence
 
 - `src/scenes/<scene>/` contains each scene, its styles, tuning and local tests.
@@ -65,6 +82,16 @@ These reference files must stay byte-identical to their registry copies.
   `arcLayout.ts` → `registry/focus-orbit/`.
 
 ## Asset provenance
+
+- `public/fonts/fonts.css` and its WOFF2 files are the Google Fonts faces
+  previously loaded by `index.html`, with the same subsets and variation axes.
+  The document preloads the first screen's Latin faces from this origin;
+  remaining subsets load when used. Each family's OFL is in `public/licenses/`.
+  `font-display: block` remains deliberate for captured text. The wordmark's
+  optional changing typefaces still load separately from `logoScene.tsx`.
+- `homeHeadlineGlyphs.ts` retains only Archivo's `3` and `D` outlines at weight
+  900 and width 100. Its metadata records the source and hash; the SIL Open Font
+  License is included at `public/licenses/archivo.txt`.
 
 - `tools/runLab.mjs` launches Chrome and checks the origin-trial token.
 - `tools/captureThumbs.mjs` captures scene thumbnails used by dynamic gallery URLs.

@@ -3111,3 +3111,155 @@ least 99% removal after the correction, mean excess below 0.2/255, and mean
 core change below 0.5/255. A conspicuous pixel exceeds the page-only reference
 by more than 8/255. This is conservative receiver coverage for this native
 heading, not a claim that the mask reproduces every native antialiasing sample.
+
+<a id="56"></a>
+
+## #56 — The headline demonstrates HTML, 3D and shaders (2026-09-07)
+
+The visible heading uses native monospace `<html>`, beveled Archivo geometry
+for `3D`, and a thin-film fragment shader inside `Shaders`. `Unified.` retains
+its italic serif. The accessible heading keeps the exact tagline, "HTML, 3D,
+and Shaders, Unified." The native text owns layout and selection throughout.
+A transparent canvas beneath that text draws the two enhanced words. It stays
+inside the heading's stacking context, behind the postcard in either presentation.
+
+The existing masthead frame drives one additional renderer. There is no
+per-word canvas or independent animation loop. The shared lamp supplies the
+light position. The 3D outline contains just two glyphs from Archivo at weight
+900 and width 100, with source metadata and its OFL license. Nominal 100-unit
+letters use 24-unit depth and a 1.2-unit bevel. The resting side angle is 0.35
+radians; pointer motion contributes at most 0.18 horizontally and 0.12 vertically.
+These are scene values, not a new library API. The page shadow still uses the
+native front outline; it does not reconstruct the extrusion's volumetric shadow.
+
+The shader computes surface normals, light response and moving thin-film colour.
+Pointer input adds a decaying radial ripple, accepting a new origin at most every
+160ms. Reduced motion freezes the material clock and removes the ripple and
+interactive tilt. It preserves a stationary 3D treatment. Offscreen headings
+skip drawing. Renderer allocation follows the accessible enclosing viewport and
+its zoom, so zoom enlarges detail without allocating a full offscreen page.
+Glyph textures and planes share the display pixel grid.
+
+Mixed typography also changes shadow-mask authoring: each text run supplies its
+own font, spacing and measured baseline. Painting the entire line with its
+parent's font would put the monospace and bold glyph shadows in the wrong place.
+Native text remains visible until the enhanced frame is ready and returns on
+context loss. The word treatments need WebGL but not HTML-in-canvas. The lamp's
+page refraction and postcard still retain their separate capture requirements.
+
+`probe:home-headline` checks geometry depth, shader colour, hover, ripples,
+selection, postcard presentation, mobile, reduced motion, 3x parent zoom and
+both fallbacks. A black-material control isolates glyph coverage from colour:
+the measured edge contrast was 0.994 of the native reference at DPR 2, versus
+0.419 for the half-density control. The 0.95–1.05 native contrast contract stays
+unchanged. Native range backgrounds mark selections in the enhanced words
+without painting flat letters over the geometry. The existing shadow-fringe
+probe disables only the word renderer, isolating the native fallback's receiver.
+
+The masthead uses one introduction column beside one demo column. The headline,
+description and navigation share a left edge; the postcard, primary action and
+lighting controls share the other column. Below 760px those groups stack in
+reading order. The code word uses regular monospace weight, and the status is
+ordinary sentence-case text. The lamp starts above the demo on desktop and in
+the reserved upper-right space on mobile. Until the user moves it, resizing
+updates that placement from the layout viewport rather than the asynchronously
+scaled postcard holder.
+
+The postcard canvas aligns its right edge with the page gutter, retaining room
+for flight without creating horizontal overflow. `probe:home-headline` checks
+column separation, desktop controls within the first screen, and a visible
+postcard action at the tested phone size. The scroll probe preserves its full
+180px travel by adding leading test space when the higher card position would
+otherwise clip either marker.
+
+<a id="57"></a>
+
+## #57 — Reveal the completed homepage together (2026-09-08)
+
+Changing the initial gray background did not solve the opening. The visitor
+still saw an empty viewport, native content, lighting, and finally a corrected
+control shadow. In a cold Chrome trace the first control-shadow mask arrived
+about one second after it was requested. Publishing the native page early made
+that unfinished state visible.
+
+The document now paints a small inline Bodoni wordmark before application code
+loads. A cover outside the iframe keeps the navigation and page together while
+the real DOM and canvases prepare. Fonts settle before graphics initialization.
+Readiness requires a completed shadow draw for the current measured layout,
+the required headline draw, and a lamp draw with no pending backdrop capture.
+Rechecking on the next frame rejects a layout invalidation between those steps.
+The page announces readiness to its owning frame; messages from other windows
+cannot release the cover.
+
+There is no minimum wait. The completed page appears through one 120ms fade;
+reduced motion removes that fade. Four seconds of unsuccessful graphics
+preparation selects a stable native presentation for the visit and disposes
+the incomplete effects. A successful late worker cannot add them afterward.
+The document offers Reload after ten seconds if startup itself is stalled.
+These are failure limits, not scheduled release times.
+
+`probe:home-startup` records the production page with delayed resources. It
+rejects an exposed page before readiness and checks the button's resting shadow
+for later changes (the visible postcard shadow on the phone). The normalized
+mean RGB limit is 0.01; heading and postcard
+boxes may move at most one CSS pixel after reveal. A deliberately early reveal
+with a delayed worker must violate both readiness and pixel checks. The probe
+also covers mobile, reduced motion, the animated entrance, missing capture,
+failed fonts without WebGL, and a stalled worker. These checks concern opening
+the website; the library's DOM-to-scene handoff contract is unchanged.
+
+<a id="58"></a>
+
+## #58 — Reduce opening work while preserving its pixels (2026-09-08)
+
+The coordinated opening exposed repeated mask generation as avoidable work.
+Mount, settled-font and resize notifications rasterized the same headline three
+times. The headline now retains its native alpha bytes and compares those bytes,
+dimensions, density and anchored rectangle before rebuilding the distance field.
+An equal image reuses both the field and its GPU texture. A changed glyph still
+invalidates it even when its text length and layout dimensions stay the same.
+
+The first axis of the distance transform has a narrower input than the second:
+every finite seed weight is in [0, 0.25]. Squared distances between distinct
+integer-pixel offsets differ by at least one. A scan from each direction can
+therefore select the nearest seed on that side exactly. The second axis retains
+the general weighted transform. The independent brute-force test covers thin
+grids and fractional alpha weights; the addition order also preserves rounding.
+
+Relief still rasterizes on the original half-density, full-page grid. For each
+kind, its distance transform reads the bounds of the painted boxes plus the
+256 CSS-pixel saturation distance and one raster pixel for antialiasing. Every
+packed distance outside that region is already saturated. Empty kinds directly
+produce that saturated field. The output dimensions, rounded contours, packed
+bytes and scroll coverage stay the same.
+
+`instruments/home-startup/mask-fidelity.mjs` compares every packed byte with the
+original dense transform on the actual desktop and phone page, using both DOM
+Canvas2D and OffscreenCanvas. Fractional overlapping boxes, long empty gaps,
+empty kinds and clipped edges exercise the crop boundary. It also checks reuse
+and a same-width headline substitution. These are exact comparisons, with no
+pixel tolerance. The frozen transform is a test oracle, never application code.
+
+The enhanced opening already follows a completed draw and a layout recheck.
+It can announce readiness from that commit without two further animation frames.
+Native fallback retains those frames to remove incomplete canvases and commit
+its controls. The cover fade is 120ms, reduced from 220ms; reduced motion still
+removes it. The opening-frame gate in #57 continues to require complete shadows
+before exposure. A shorter fade is measured separately from graphics preparation.
+
+Three alternating, fresh-profile Chrome comparisons at 1280×700 on the local
+production build measured these medians. The baseline already included the
+coordinated opening and local fonts; these numbers isolate this optimization pass.
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| Composition ready, from navigation | 827ms | 670ms |
+| Page fully visible, including fade | 1,083ms | 824ms |
+| Total headline-mask CPU work | 124ms | 53ms |
+| Relief-worker paint CPU work | 149ms | 88ms |
+
+`instruments/home-startup/profile.mjs` records those stages separately, including
+worker-side timings. Cache is disabled; there is no injected network delay or
+screencast. These are local observations, not production latency guarantees.
+Earlier runs during host overload are excluded. Starting the worker effect
+earlier did not improve a separate comparison and was not retained.

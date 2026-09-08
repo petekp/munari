@@ -23,7 +23,7 @@
 
 .home-page { position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--wash); color: var(--ink); font-family: var(--body); color-scheme: light; scrollbar-color: var(--ink) var(--wash); }
 .home-page ::selection { background: var(--ink); color: var(--wash); }
-.home-inner { max-width: 1260px; margin: 0 auto; padding: 44px 64px 40px; }
+.home-inner { --home-side-padding: 64px; max-width: 1260px; margin: 0 auto; padding: 44px var(--home-side-padding) 40px; }
 .home-inner * { box-sizing: border-box; }
 .home-inner :is(a, button, summary, pre):focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
 .home-inner a { color: inherit; text-underline-offset: 4px; }
@@ -39,9 +39,7 @@
 .home-text-link:hover { text-decoration-thickness: 2px; }
 .home-btn { display: inline-flex; align-items: center; justify-content: center; gap: 14px; min-height: 48px; padding: 13px 20px; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.4; text-decoration: none; cursor: pointer; }
 .home-btn:hover { background: #fff; }
-.home-btn--primary { background: var(--ink); border-color: var(--ink); color: var(--wash) !important; }
-.home-btn--primary:hover { background: #000; }
-.home-postcard-status { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-soft); font-family: var(--data); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.home-postcard-status { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-soft); font-family: var(--body); font-size: 12px; white-space: nowrap; }
 .home-postcard-status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); opacity: .35; }
 .home-postcard-status[data-gl='true']::before { opacity: 1; }
 
@@ -49,15 +47,24 @@
 .home-light-host { position: absolute; left: 0; top: 0; width: 100%; z-index: 20; pointer-events: none; mix-blend-mode: multiply; }
 .home-light-canvas { display: block; width: 100%; height: 100%; }
 .home-light-host[data-degraded] { display: none; }
-.home-masthead { --masthead-size: clamp(64px, 9.6vw, 150px); position: relative; min-height: 600px; padding: 64px 0 0; }
+.home-masthead { --masthead-size: clamp(56px, 8.2cqw, 104px); container-type: inline-size; display: grid; grid-template-columns: minmax(0,1.15fr) minmax(280px,.85fr); column-gap: 64px; align-items: start; position: relative; padding-top: 96px; }
+.home-masthead-intro { min-width: 0; }
+.home-masthead-demo { min-width: 0; width: 100%; max-width: 420px; justify-self: end; margin-top: 12px; }
 .home-masthead-title { position: relative; z-index: 1; margin: 0; font-family: var(--display); font-variation-settings: 'opsz' 96; font-weight: 500; font-size: var(--masthead-size); line-height: .9; letter-spacing: -.035em; color: var(--ink); }
-.home-masthead-body { display: grid; grid-template-columns: minmax(0,420px) minmax(240px,1fr); gap: 56px; align-items: start; margin-top: -6px; padding-left: calc(var(--masthead-size) * 1.2); }
-.home-masthead-details { padding-top: 48px; position: relative; z-index: 1; }
-.home-masthead-title span { display: block; width: fit-content; white-space: nowrap; }
+
+.home-masthead-details { margin-top: 36px; position: relative; z-index: 1; }
+.home-masthead-title > span { display: block; width: fit-content; white-space: nowrap; }
+.home-headline-html { font-family: var(--data); font-size: .7em; font-weight: 400; letter-spacing: -.06em; }
+.home-headline-3d { display: inline-block; font-family: var(--body); font-size: .92em; font-weight: 900; line-height: 1; letter-spacing: -.055em; }
+.home-headline-shaders { display: inline-block; line-height: 1; font-optical-sizing: auto; font-variation-settings: normal; }
+.home-masthead-title[data-headline-ready] :is(.home-headline-3d,.home-headline-shaders) { color: transparent; }
+/* Native ranges stay visible without painting flat letters over the geometry. */
+.home-masthead-title[data-headline-ready] :is(.home-headline-3d,.home-headline-shaders)::selection { color: transparent; background: rgba(103,50,155,.24); }
+.home-headline-canvas { position: absolute; z-index: -1; pointer-events: none; }
 .home-masthead-title ::selection { background: transparent; color: #67329b; }
 .home-masthead-em { font-style: italic; font-weight: 400; }
-.home-masthead-copy { position: relative; z-index: 1; max-width: 360px; margin: 0; color: var(--ink); font-size: 16px; line-height: 1.6; }
-.home-masthead-links { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 24px; }
+.home-masthead-copy { position: relative; z-index: 1; max-width: 36ch; margin: 0; color: var(--ink-soft); font-size: 16px; line-height: 1.6; }
+.home-masthead-links { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; margin-top: 16px; }
 .home-light-scene { position: fixed; inset: 0; z-index: 30; pointer-events: none; }
 .home-light-scene[data-degraded] { display: none; }
 /* The drag handle sits over the rendered globe; the bulb itself is WebGL. */
@@ -68,12 +75,13 @@
 .home-light-hint { position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%); font-family: var(--body); font-size: 12px; color: var(--ink); white-space: nowrap; transition: opacity 400ms ease; }
 .home-light[data-dragged] .home-light-hint { opacity: 0; }
 .home-light[data-degraded] { display: none; }
-.home-light-height { display: grid; gap: 9px; width: min(300px, 100%); margin-top: 32px; font-size: 12px; }
+.home-masthead-tools { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 24px; align-items: end; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--rule); }
+.home-light-height { display: grid; gap: 8px; min-width: 0; margin: 0; font-size: 12px; color: var(--ink-soft); }
 .home-light-height-range { display: flex; align-items: center; gap: 12px; }
 .home-light-height input { flex: 1; min-width: 0; height: 2px; margin: 8px 0; appearance: none; background: var(--rule-hard); cursor: pointer; }
 .home-light-height input::-webkit-slider-thumb { width: 12px; height: 12px; appearance: none; border-radius: 50%; background: var(--ink); }
 .home-light-height input::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--ink); }
-.home-select-word { display: inline-flex; align-items: center; gap: 12px; min-height: 44px; margin-top: 14px; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: 13px; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
+.home-select-word { display: inline-flex; align-items: center; gap: 12px; min-height: 44px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: 13px; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
 
 /* The postcard canvas shares its section’s compositor scroll transform. */
 .home-postcard-section { position: relative; z-index: 2; display: flow-root; }
@@ -89,8 +97,9 @@
 .home-hero-preview { display: block; width: 100%; height: 100%; object-fit: contain; background: var(--ink); }
 .home-hero-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px; }
 /* The action label changes at handoff; its relief box must stay the same size. */
-.home-hero-row .home-btn { width: 170px; max-width: 55%; }
-.home-note { min-height: 3.2em; margin: 16px 0 0; color: var(--ink-soft); font-size: 13px; line-height: 1.6; }
+.home-hero-row .home-btn { width: 170px; max-width: 55%; background: var(--ink); color: var(--wash); }
+.home-hero-row .home-btn:hover { background: #000; }
+.home-note { min-height: 3em; margin: 12px 0 0; color: var(--ink-soft); font-size: 12px; line-height: 1.5; }
 
 /* Postcard: these selectors also reach the parked capture. */
 .home-postcard { position: relative; box-sizing: border-box; width: 420px; height: 270px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; padding: 22px; background: var(--paper); color: var(--ground); color-scheme: light; font-family: var(--body); border: 8px solid var(--paper); border-image: repeating-linear-gradient(45deg, var(--coral) 0 12px, var(--paper) 12px 24px, var(--sky) 24px 36px) 8; }
@@ -189,15 +198,14 @@
 .home-footer a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink); font-size: 13px; }
 
 @media (max-width: 1050px) {
-  .home-inner { padding: 36px 32px 32px; }
-  .home-masthead { min-height: 0; }
+  .home-inner { --home-side-padding: 32px; padding: 36px var(--home-side-padding) 32px; }
+  .home-masthead { column-gap: 40px; padding-top: 84px; }
   .home-examples { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-start-grid, .home-support-section { gap: 28px; }
 }
 @media (max-width: 600px) {
-  .home-inner { padding: 28px 22px 28px; }
-  .home-masthead { --masthead-size: clamp(48px, 15vw, 72px); }
-  .home-masthead-copy { margin-top: 0; }
+  .home-inner { --home-side-padding: 22px; padding: 28px var(--home-side-padding) 28px; }
+  .home-masthead { --masthead-size: clamp(48px, 14cqw, 72px); }
   .home-hero-row { margin-top: 18px; gap: 8px; }
   .home-postcard-status { font-size: 11px; gap: 6px; }
   .home-hero-row .home-btn { padding: 10px 13px; font-size: 13px; }
@@ -224,14 +232,12 @@
   .home-example:hover .home-example-image img { transform: none; }
 }
 
-@media (max-width: 1050px) {
-  .home-masthead-body { gap: 36px; padding-left: 0; }
-}
 @media (max-width: 760px) {
-  .home-masthead-body { grid-template-columns: minmax(0,1fr); gap: 24px; margin-top: 6px; }
+  .home-masthead { --masthead-size: clamp(48px, 14cqw, 88px); grid-template-columns: minmax(0,1fr); row-gap: 28px; padding-top: 56px; }
+  .home-masthead-demo { justify-self: start; margin-top: 0; }
+  .home-light-hint { left: auto; right: calc(100% + 12px); }
   .home-postcard-section { max-width: 420px; width: 100%; }
-  .home-masthead-details { padding-top: 0; }
+  .home-masthead-details { margin-top: 20px; }
   .home-masthead-title { pointer-events: none; }
   .home-masthead-title span { pointer-events: auto; }
-  .home-light-height { margin-top: 24px; }
 }

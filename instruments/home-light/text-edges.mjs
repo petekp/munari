@@ -12,6 +12,8 @@ import {setChromeViewport} from '../chromeViewport.mjs'
 const output=process.env.LIGHT_PROOF_OUTPUT??path.join(tmpdir(),'munari-text-edges')
 await mkdir(output,{recursive:true})
 const observer={name:'text-edge-observer',enforce:'pre',transform(code,id){
+  // Isolate the native fallback's receiver edge; shader coverage has its own probe.
+  if(id.endsWith('/homeHeadlineTreatments.ts'))code=replaceSource(code,'  if(!solid||!shaded)return null','  return null')
   if(id.endsWith('/homeLight.ts'))code=replaceSource(code,'  material.uniforms.uLightHeight.value = lightHeight','  window.__typeLight=material;window.__typeFragment??=material.fragmentShader;\n  material.uniforms.uLightHeight.value = lightHeight')
   if(id.endsWith('/HomeMasthead.tsx'))code=replaceSource(code,'    build()\n    void document.fonts.ready.then(build)\n    const observer = new ResizeObserver(build)','    window.__buildTypeMask=build;\n    build()\n    void document.fonts.ready.then(build)\n    const observer = new ResizeObserver(build)')
   return code
@@ -40,7 +42,7 @@ try{
   const client=await page.createCDPSession();await client.send('Emulation.setPageScaleFactor',{pageScaleFactor:3})
   await frames(page,8)
   const metadata=await frame.evaluate(()=>{
-    const line=document.querySelector('.home-masthead-title span:nth-child(2)'),style=getComputedStyle(line),text=line.firstChild,start=text.textContent.indexOf('aders'),range=document.createRange()
+    const line=document.querySelector('.home-headline-shaders'),style=getComputedStyle(line),text=line.firstChild,start=text.textContent.indexOf('aders'),range=document.createRange()
     range.setStart(text,start);range.setEnd(text,start+1);const r=range.getBoundingClientRect(),row=line.getBoundingClientRect()
     return {fontSize:style.fontSize,variation:style.fontVariationSettings,target:{x:r.x+r.width*.75,y:row.y+row.height*.6},clip:{x:r.x-10,y:row.y-4,width:r.width+28,height:row.height+8},background:getComputedStyle(document.querySelector('.home-page')).backgroundColor,ink:style.color,selectedInk:getComputedStyle(line,'::selection').color}
   })
@@ -76,7 +78,7 @@ try{
     }
     await frame.evaluate(selected=>{
       const selection=getSelection();selection.removeAllRanges()
-      if(selected){const node=document.querySelector('.home-masthead-title span:nth-child(2)').firstChild,range=document.createRange();range.setStart(node,4);range.setEnd(node,11);selection.addRange(range)}
+      if(selected){const node=document.querySelector('.home-headline-shaders').firstChild,range=document.createRange();range.selectNodeContents(node);selection.addRange(range)}
     },selected)
     await frame.waitForFunction(selected=>window.__typeLight.uniforms.uSelectionLift.value===(selected?64:0),{},selected)
     await frame.evaluate(()=>document.querySelector('.home-light-host').style.visibility='hidden')

@@ -37,17 +37,32 @@ function transformLine(values: Float64Array, sites: Int32Array, cuts: Float64Arr
   }
 }
 
-function squaredDistance(grid: Float64Array, width: number, height: number) {
-  const length = Math.max(width, height)
-  const line = new Float64Array(length)
-  const sites = new Int32Array(length)
-  const cuts = new Float64Array(length + 1)
-  const result = new Float64Array(length)
+// On the first axis every finite seed is in [0, 0.5²]. Distinct integer-pixel
+// distances differ by at least one, so only the nearest seed on each side can
+// win. The backward pass recognizes original seeds by that same bound (#58).
+function transformSeedColumns(grid: Float64Array, width: number, height: number) {
   for (let x = 0; x < width; x++) {
-    for (let y = 0; y < height; y++) line[y] = grid[y * width + x]!
-    transformLine(line, sites, cuts, result, height)
-    for (let y = 0; y < height; y++) grid[y * width + x] = result[y]!
+    let site = -1, cost = 0
+    for (let y = 0; y < height; y++) {
+      const i = y * width + x, value = grid[i]!
+      if (value < FAR) { site = y; cost = value }
+      else if (site >= 0) grid[i] = (y - site) ** 2 + cost
+    }
+    site = -1
+    for (let y = height - 1; y >= 0; y--) {
+      const i = y * width + x, value = grid[i]!
+      if (value <= 0.25) { site = y; cost = value }
+      else if (site >= 0) grid[i] = Math.min(value, (site - y) ** 2 + cost)
+    }
   }
+}
+
+function squaredDistance(grid: Float64Array, width: number, height: number) {
+  transformSeedColumns(grid, width, height)
+  const line = new Float64Array(width)
+  const sites = new Int32Array(width)
+  const cuts = new Float64Array(width + 1)
+  const result = new Float64Array(width)
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) line[x] = grid[y * width + x]!
     transformLine(line, sites, cuts, result, width)
