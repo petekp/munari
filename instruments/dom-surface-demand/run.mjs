@@ -65,7 +65,7 @@ try {
   const errors = []
   page.on('pageerror', (error) => errors.push(String(error)))
   await page.goto(
-    `http://localhost:${port}/?scene=workspace&probe=dom-surface-demand`,
+    `http://localhost:${port}/?scene=workspace&probe=dom-surface-demand&framed`,
     { waitUntil: 'load' },
   )
   await page.waitForFunction(
