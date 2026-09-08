@@ -2775,3 +2775,339 @@ Clarification to #43: the supported public types contain no old root `source` or
 legacy capture branch. That branch and unread private context metadata remain.
 They are not current API examples; removing the branch is a behavioral retirement
 for untyped callers, separate from deleting an unreachable module.
+
+<a id="50"></a>
+
+## #50 — One light for native type and the retained postcard (2026-09-07)
+
+The original home light shifted and blurred flat masks without accounting for
+the depth of the surface they landed on. An initial solid-caster version made
+the lettering look extruded. Pete clarified that the page should keep its 2D
+appearance, with realism coming from light and separation. Glyphs and raised
+controls therefore cast from thin surfaces at their own elevations. A selected
+glyph moves its caster upward without leaving a duplicate at its original
+height. Recessed wells retain their rim, and the postcard uses its posed sheet.
+One visibility result represents the one light, so coincident casters cannot
+double-darken an already blocked ray.
+A scroll-attached multiply canvas shades the native page and the scene card.
+The postcard sits beneath the headline in the layout and in front of it when
+their pixels overlap. Heading shadows remain behind the postcard.
+
+The headline stands 64 CSS px above the page at its maximum 150px font size;
+that elevation scales with smaller type. Thin controls and gallery images stand
+40px above the page, enough to cast long shadows with visible perspective.
+The resting postcard keeps its separate 12px standoff and wells keep their
+3px depth. Raising native shadow casters must not change the postcard's handoff
+geometry. Native selection
+adds 64px to the selected type to lengthen and soften its shadow on the page.
+The minimum light distance remains above the maximum 128px type height;
+decision #51 raises it to 220px to clear the curled paper too. The source defaults to distance 260px with a 30px emitter radius;
+the control now spans 220–600px and is labelled distance from the page (#51). These are
+scene tuning values, not physical units exposed by the library.
+
+Selection rectangles are clipped to the selected line's layout box. The font's
+native selection box extends beyond the tight line-height: without that clip,
+selecting the last line also raised part of the preceding line. Up to eight
+rectangles support the three-line heading. Height eases at 14 per second, with
+50ms maximum steps and a 0.0001 settling cutoff; reduced motion applies the
+state immediately. A transparent highlight with purple ink keeps the native
+selection visible without covering the postcard. A button creates the same
+native range for keyboard access. The light's 12-by-3px idle drift stays in
+the gap above the heading, and dragging preserves the selected words.
+
+Outline distance fields replace the blur pyramid. RG and BA each pack one
+signed distance over ±256 CSS px, at about 1/128px encoding precision. Linear
+texture sampling preserves the decoded distance; raw bytes must not pass
+through premultiplied canvas storage. Glyph outlines use up to two samples per
+CSS px; simple relief boxes use half resolution in the existing worker. These
+sampling limits affect outline accuracy separately from encoding precision.
+Fields rebuild on layout changes, never merely because the light, selection
+height or card pose changes. Rays intersect each thin surface at its elevation.
+Sixty-four deterministic samples cover the solid angle of the spherical bulb,
+with each ray shared by overlapping casters. Only partial coverage needs these
+samples; fully visible or blocked regions exit early. A bulb projects to an
+ellipse at a grazing angle, so long shadows also soften along their length.
+The earlier emitter was a disk parallel to the page: moving it across the page
+changed shadow length without meaningful blur progression. Testing only changes
+in elevation missed that fault. A fixed outline halo was removed:
+an elevated sheet has no contact rim at its old footprint. Recessed wells keep
+their local rim occlusion. While the shader owns lighting, the depth kit also
+suppresses its static CSS hover shadow; otherwise a hovered button acquires an
+unrelated hard shadow. The no-WebGL fallback retains that native shadow.
+The initial postcard shadow used its posed plane. Decision #51 replaces that
+approximation with lighting maps of the bent grid.
+An outdated relief field and its pending worker replies are invalidated during
+resize; only a field measured for the new layout may become visible. The
+postcard action keeps a fixed width so changing its label cannot rebuild that
+field at a handoff. Focus inside the postcard steadies it as hovering does.
+
+The postcard's section uses z-index 2 above the heading's z-index 1, in both
+native and scene presentation. An earlier glyph-depth cutout revealed selected
+letters through the card; Pete asked for the postcard to remain in front. That
+cutout and its pointer rejection are removed. The lighting field also chooses
+the paper as the visible receiver wherever its sheet is present. Foreground
+order includes shadows: native page casters cannot darken the postcard, whether
+it is on the page or in the scene. The paper keeps its own shading, self-shadow
+and cast shadow. Applying this rule in both presentations preserves the handoff.
+The scene canvas stays below the multiply layer, and the material retains its
+direct capture map for native density and pixel-grid correction. Uncovered
+headline text stays selectable. The postcard retains its original field and
+button through each presentation change.
+
+`probe:home-light` checks lit gaps before a thin silhouette's projected shadow,
+equal coincident shadows, shorter shadows on raised receivers, finite-source
+penumbra, and heading shadows staying behind the foreground postcard. At a 100px
+light height and 30px emitter radius, raising a sheet from 6px to 22px broadens
+the measured 10–90% penumbra from 4px to 20px. The same higher sheet has no
+intermediate pixel with a point light. The ramp must stay monotonic and may not
+jump a quarter of its intensity in one pixel; the discarded cone trace jumped
+129/255 despite passing a width-only check. Raising the heading must leave the
+foreground card unchanged while still changing its shadow on the uncovered page.
+At the normal 260px light height and 40px gallery elevation, moving the light
+across the page widens the measured edge from 8px to 32px. The parallel-emitter
+control stays at 8px and 7px. A separate check uses the real gallery: moving its
+light changed the shadow offset from about 26px to 105px and its soft edge from
+9px to 22px. Both are measured from the completed lighting draw, with screenshots
+of the composited page alongside them.
+It also exercises the real page's selection
+shortcut, native double-click on uncovered heading text, lamp drag and keyboard
+motion, distance control, desktop/mobile layout, no-flag Chrome and disabled
+WebGL. The initial GPU measurement covered the light pass alone; decision #51
+adds the paper maps to that measurement. It remains machine-specific evidence.
+The soft lighting field now renders at one sample per CSS pixel. The bulb,
+native content, capture textures and postcard canvas retain their display
+density. With the longer shadows, this reduced the measured lighting p95 from
+about 13ms to 4ms on the development machine. The sharpness and handoff checks
+remain required; a cheaper shadow field cannot justify a fuzzy content texture.
+`probe:postcard` retains its existing continuity, timing, scrolling and form
+contracts, and `probe:postcard-sharpness` compares the actual card against
+native pixels with a hidden-mesh negative control.
+
+<a id="51"></a>
+
+## #51 — Paper geometry supplies appearance, input and shadow (2026-09-07)
+
+The postcard's small height-only wobble still read as a transformed rectangle.
+It now composes two cylindrical corner curls, a broad bow, torsion and a brief
+stamp impulse. The corner releases before the body completes its lift; curls
+lag behind movement through damped springs. Native form input keeps its original
+instance. Pointer presence steadies the overall pose, while typing also calms
+the deformation. Pointer influence is measured against a stable box, so a curl
+moving away from the pointer cannot cause a hover feedback loop.
+
+The 48-by-32 grid has 1,617 vertices and is changed through the public
+`deformSurfaceGeometry` seam. Raycasts and the picture use those same vertices.
+Curls wrap strips rather than just raising z; an isolated 80px strip retains its
+arc length. Applying the broad bend after the corner curls avoids the 19% local
+compression measured in the reverse order. The composed stress case pins local
+lengths within 4% of the printed sheet. This is a controlled paper model, not a
+general cloth solver or a self-collision simulation.
+
+The top-right curl can reach 2.85 radians to expose the reverse; the opposite
+curl is limited to 1.1. Spring frequency is 18 radians per second with decay 12
+per second. The analytic step composes at 30–240Hz for a fixed target. The
+1.1-second lift and 650ms return retain the existing timing contract; every
+deformation reaches exactly zero before returning presentation to the page.
+Reduced motion remains flat. The light's nearest distance is now 220 CSS px,
+above the tested curl and pose range. A 128px canvas margin accommodates the
+larger silhouette without clipping it during lift.
+
+The reverse is unprinted stock. The material uses a single double-sided pass:
+Three's transparent two-pass path flips winding for its back pass, which made
+`gl_FrontFacing` incorrectly print the front there. A back-facing first hit does
+not relay input to hidden front-side content. The material keeps its direct
+capture map, premultiplied alpha and the library's pixel-grid correction.
+
+The Surface's pre-draw callback publishes the complete bent grid in viewport
+coordinates, with height and projection w. The lighting renderer draws that
+geometry at display density and uses a fitted 1024px floating-point depth map
+for cast and self-shadow. Decision #53 replaces the initial sampled receiver
+map, whose outline could not preserve the mesh's antialiasing. A planar shadow
+remains the fallback when the target capability is absent. Flat page and scene states use
+the same canonical geometry so the handoff does not exchange shadow formulas.
+The shadow filter uses the same spherical-bulb rays as native surfaces, projected
+at the estimated blocker depth. Its map bounds include the wider footprint of
+grazing rays so long soft edges are not clipped.
+
+Depth filtering stores coverage separately from covered depth. Sixty-four
+deterministic area-light samples remove the visible bands from the initial
+16-sample filter. Receiver-plane correction prevents sloping paper from gaining
+false self-shadow. Matte reflectance leaves room for a soft fold highlight;
+the same response shades both native and scene presentations at rest. The depth
+map approximates finite-source visibility; it does not simulate global lighting.
+
+`probe:postcard-paper` checks non-planarity, the rendered alpha outline, visible
+reverse stock, corner response, stamp impulse, typed value and original-node
+return. Its flat-geometry control retains the same movement and input but has
+negligible non-planarity and no departure from a transformed quad. The control
+must overlap actual heading ink without developing alpha holes; heading pixels
+are no longer excluded from the silhouette measurement. The shadow
+probe removes only the depth texture as its control: the curl changes the cast
+shadow and shades its own visible surface, while the flat sheet remains free
+of self-shadow acne. Adding an elevated heading plane must leave every sampled
+paper pixel unchanged, so foreground order also covers shadows. Captured video
+is visual evidence; timing is verified by
+the separate unrecorded postcard contract. Lighting GPU queries now enclose
+the depth map, page field and paper receiver draw, excluding CPU work and the separate
+card/bulb renderers.
+
+<a id="52"></a>
+
+## #52 — The lamp refracts the page through a hollow glass shell (2026-09-07)
+
+The lamp uses a raymarched pear-shaped signed distance field with a 1.15px
+wall, four air/glass interfaces, Fresnel reflection and total internal reflection.
+Its refractive index is 1.5 with a small 0.006 color spread. Static displacement
+of 0.08px gives the glass mild blown-glass variation without animated noise.
+The shader provides silhouette coverage at display density; antialiasing the
+bounding box alone cannot smooth an implicit surface. A tungsten-colored coil,
+support leads and two restrained additive halos make the light visibly emissive.
+
+An inert viewport mirror supplies native text, images and current form values
+through the public advanced capture source. It excludes the lamp and lighting
+canvases. Their own changes therefore cannot trigger a capture feedback loop.
+The lamp combines that paint with the completed page-light canvas and visible
+scene canvases, then refracts the result. The postcard publishes before its draw;
+a microtask copies the completed frame. A stationary postcard retains its last
+uploaded draw while the lamp moves. Capture size changes invalidate readiness
+until a matching paint arrives. Textures follow native display density and use
+premultiplied alpha; encoded page colors are combined before conversion to linear
+light. Without HTML-in-canvas, the lamp keeps reflections and emission while
+the page remains native and interactive.
+
+This is screen-space refraction of the viewport, with a procedural room for
+reflections. It does not reconstruct hidden page content or trace global
+illumination. The lamp does not add caustics to the page. The glass is thin enough
+for the front and back interfaces to give each color a shared geometric trace;
+the refracted directions differ by wavelength. These are visual approximations,
+not an optical simulation of a manufactured bulb.
+
+The cord has 28 constrained points stepped at 120Hz, with gravity 650px/s²,
+velocity decay 3.8/s and 18 constraint iterations. The hidden ceiling feed
+pays out a small amount of slack as reach changes. Both ends stay pinned,
+including the actual moving socket rather than the bulb center. The socket
+follows the cord tangent with angular damping. Reduced motion and jumps over
+100px clear retained velocity. The cord tests pin finite long drags, exact
+endpoints and settling to less than 1% of the drag energy after three seconds.
+
+`probe:home-lamp` uses real Chrome at native density. Its emission, refraction
+and changed-heading controls must each produce a visible pixel difference.
+It also verifies socket attachment, bounded cord motion, capture idleness,
+scrolling, resizing and the no-capture fallback. It saves the actual page and
+control screenshots outside Git. The postcard continuity, sharpness and input
+probes remain required because the lamp samples that renderer's completed draw.
+
+<a id="53"></a>
+
+## #53 — Paper lighting must preserve the mesh's edge coverage (2026-09-07)
+
+The postcard's capture and display both ran at native 2x density with four
+antialiasing samples, but its multiply overlay ran at 1x. A nearest-sampled
+1280-by-1024 height/normal map then chose the receiving surface with a binary
+threshold. Hiding that overlay left a smooth mesh edge; restoring it brought
+back the stairs along the curled paper. Raising capture resolution could not
+repair an outline added by another renderer.
+
+The light display now draws the broad page field to a CSS-density target,
+copies that field to a native-density multisampled canvas, then shades the
+paper's actual triangles over it. The sampled receiver map is removed.
+The separate fitted depth map still supplies soft cast and self-shadows.
+Paper fragments share the page's lighting formula and uniforms. Centroid
+interpolation keeps partially covered fragments inside their triangle, and
+the source camera's projection w preserves perspective and depth ordering.
+Flat native and scene presentations retain the same canonical geometry.
+
+The canvas keeps its scrolling band and native density. Chrome can allocate
+a smaller drawing buffer than the requested canvas dimensions when the band
+gets too large. The renderer checks the actual buffer and shortens the
+offscreen margin if needed. In the 1200-by-900, 4x-density check, the requested
+1800px band became 1727px; the resulting 4800-by-6908 buffer matched the canvas
+and still covered the viewport. No browser-specific pixel-area constant is used.
+
+`probe:postcard-edges` freezes an actual curl and samples its composited boundary
+using the real mesh alpha. On the development display, mean channel error
+against a supersampled reference was 0.95/255 at native density versus 5.01/255
+for the half-density control, across 8,185 boundary pixels. The contract requires
+native error below 65% of that control, matching canvas/buffer dimensions, native
+density and viewport coverage. Controls and screenshots stay outside production
+code and Git respectively. The existing shadow, handoff, scrolling, input,
+sharpness and lamp probes cover the consumers of this completed lighting draw.
+
+The compositor recorder now waits for an image after the final handoff before
+stopping, with a five-second observer timeout. Two animation frames were too
+short when its image stream lagged by 154ms. It also drains frame acknowledgments
+before disconnecting. This changes measurement completion, not the animation's
+existing frame-gap budget, which is checked without recording.
+
+<a id="54"></a>
+
+## #54 — The lamp follows enclosing zoom and draws glare over the glass (2026-09-07)
+
+The reported aliased bulb was inside an iframe whose visual viewport reported
+scale 1, while its parent was pinch-zoomed to 3. The measured canvas density was
+about 1.339 for a device ratio of 1.34; the visible image needed about 4.02. The
+renderer also capped device density at 2. Ordinary native-density screenshots
+did not exercise this condition.
+
+The lamp now follows the accessible enclosing visual viewport and uses device
+density times its zoom. It renders only the visible portion of the iframe,
+with a camera view offset. This keeps the buffer near the visible screen's
+pixel count instead of allocating a zoomed bitmap for the entire layout viewport.
+The glass converts the cropped projection back to full-page coordinates before
+sampling its backdrop. Capture density follows the same zoom; panning alone
+does not recapture the page. Viewport listeners and textures retain their existing
+mount/cleanup ownership. Cross-origin hosts expose only the local viewport.
+
+The previous glow sprites drew behind the glass. The captured backdrop made
+the glass opaque there, covering most of that glow. A compact warm glare and
+a wider white halo now draw over the glass and background. Their 144px/0.4 and
+320px/0.26 size/opacity pairs keep the coil legible while making the spill visible
+against the bright page. Linear filtering prevents the gradient texture from
+showing enlarged texels. Mild scattering also brings filament light into the
+shell and rim. The same emission value controls the coil, scattering and halos;
+these are camera-glare approximations, not a global-illumination solver.
+
+The SDF edge also needs its own coverage; multisampling the bounding box does
+not sample the implicit glass surface. Half-CSS-pixel distance probes estimate
+the signed minimum along grazing rays, and screen derivatives set its pixel
+footprint. Both just-inside and just-outside pixels receive partial coverage.
+The local estimate is used only with positive curvature near grazing incidence;
+ordinary hits and misses keep their conservative classification.
+
+`probe:lamp-quality` exercises the actual demo in a zoomed, offset iframe in
+capture-enabled and no-flag Chrome. It checks native zoom density, unclamped
+buffers, edge quality with emission disabled, and brightness beyond the coil.
+The edge comparison uses a supersampled reference and an unzoomed-density
+negative control; native error must be below 65% of the control. Emission must
+raise mean channels by more than 10/255 across the glass and 5/255 just outside
+it. A changed native heading must also change the refracted image at the zoomed
+offset. These tests keep extra brightness from concealing an undersampled edge.
+
+<a id="55"></a>
+
+## #55 — Glyph receivers stay inside the opaque ink (2026-09-07)
+
+The native letters had bright outlines where the shadow field restored their
+own lighting. A distance-field boundary followed by a CSS-resolution lighting
+filter cannot serve as the native text's antialiased coverage. Its lit cutout
+could reach outside the solid ink and expose a bright strip of page.
+
+The receiver uses a 1.5 CSS-pixel inward clearance. This covers the mask's edge
+and the lighting filter's footprint; boundary pixels receive page lighting and
+the opaque core keeps its raised receiver. The caster continues to use the
+original outline, including the selected-word elevation. Font styling, caster
+geometry, penumbra width and shadow projection are unchanged.
+
+`probe:heading-edges` samples a ring outside the actual native ink in a zoomed
+copy of the real page. It compares with a page-only receiver and requires a
+zero-clearance control to reproduce the fringe. The light is repositioned for
+selected type so its higher caster actually shadows the letter's footprint.
+At the reported 1.34 device ratio and 3x zoom, conspicuous fringe pixels fell
+from 1,373 to zero for ordinary type and from 3,782 to 18 for selected type.
+Mean positive excess was below 0.06/255; opaque-core change was below 0.003/255.
+
+The contract requires more than 100 conspicuous pixels in each control, at
+least 99% removal after the correction, mean excess below 0.2/255, and mean
+core change below 0.5/255. A conspicuous pixel exceeds the page-only reference
+by more than 8/255. This is conservative receiver coverage for this native
+heading, not a claim that the mask reproduces every native antialiasing sample.

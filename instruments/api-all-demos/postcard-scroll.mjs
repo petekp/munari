@@ -24,7 +24,9 @@ try {
  await page.evaluate(()=>document.fonts.ready)
  await page.evaluate(()=>{
   const scroller=document.querySelector('.home-page')
-  scroller.scrollTop+=document.querySelector('.home-hero').getBoundingClientRect().top-80
+  // Keep both complete markers visible through all 180px of wheel travel.
+  // The combined masthead no longer has the old section's heading above it.
+  scroller.scrollTop+=document.querySelector('.home-hero-holder').getBoundingClientRect().top-240
   const holder=document.querySelector('.home-hero-holder'),r=holder.getBoundingClientRect()
   const marker=document.createElement('div');marker.dataset.scrollMarker='native'
   marker.style.cssText=`position:absolute;left:${r.left-12}px;top:${scroller.scrollTop+r.top+12}px;width:6px;height:6px;background:rgb(255,0,255);z-index:100;pointer-events:none`
@@ -34,8 +36,11 @@ try {
   document.querySelector('.home-hero-holder [data-api-live] .home-postcard').append(ink)
  })
  await page.click('.home-hero-row button')
- await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-lamp').dataset.gl==='true')
+ await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='true')
  if(!await page.evaluate(()=>'drawElementImage' in document.createElement('canvas').getContext('2d')))throw new Error('HTML capture is required')
+ // This checks the card's compositor anchoring, independently of illumination.
+ // Hide the lighting overlays so their tint/halo cannot change marker colors.
+ await page.evaluate(()=>document.querySelectorAll('.home-light-host,.home-light-scene,.home-light').forEach(element=>{element.style.visibility='hidden'}))
  const client=await page.createCDPSession(),frames=[]
  client.on('Page.screencastFrame',event=>{frames.push(event.data);void client.send('Page.screencastFrameAck',{sessionId:event.sessionId})})
  await client.send('Page.startScreencast',{format:'png',everyNthFrame:1})

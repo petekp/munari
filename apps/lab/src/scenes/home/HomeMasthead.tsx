@@ -26,24 +26,30 @@
 // into masks; homeLight.ts owns the shadow shader; homeLightBulb.ts owns
 // the bulb model.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { readHomeFlyer, subscribeHomeFlyer } from './homeFlyer'
-import { createHomeLightMaterial, maskTexture, setHomeFlyerUniform, setHomeInkMask, setHomeLightFrame, setHomeReliefMask } from './homeLight'
-import { BULB_RADIUS, createLightBulb, fitBulbCamera, type LightBulb } from './homeLightBulb'
-import { RAISED_STANDOFF } from './homeLightLaw'
+import { createHomeLightMaterial, maskTexture, setHomeFlyerUniform, setHomeInkMask, setHomeLightFrame, setHomeReliefMask, type HomeLightMaterial } from './homeLight'
+import { BULB_RADIUS, createLightBulb, type LightBulb } from './homeLightBulb'
+import { LIGHT_HEIGHT, POSTCARD_STANDOFF } from './homeLightLaw'
 import { buildInkMask, domPainter, measureRelief, paintRelief, type Mask } from './homeRelief'
 import type { ReliefReply, ReliefRequest } from './homeReliefWorker'
 import { useHomeReducedMotion } from './homeMotion'
+import { HomeMastheadContent } from './HomeMastheadContent'
+import { useHomeLightDrag } from './homeLightDrag'
+import { advanceHeadlineSelection, useHeadlineSelection, type HomeSelectionState } from './homeSelection'
+import { createPaperLighting } from './homePaperLighting'
+import { createLampBackdrop, type LampBackdrop } from './homeLampBackdrop'
+import { createHomeLightDisplay } from './homeLightDisplay'
+import { createLampViewportUpdater, watchLampViewport } from './homeLampViewport'
 
-const PIXEL_RATIO_CAP = 2
-// Idle drift: a slow ellipse so the shadows breathe while nobody drags.
-const DRIFT_RADIUS_X = 30
-const DRIFT_RADIUS_Y = 18
+// Small idle motion stays inside the gap above the headline (decision #50).
+const DRIFT_RADIUS_X = 12
+const DRIFT_RADIUS_Y = 3
 const DRIFT_PERIOD_MS = 24000
-// The light's rest position, relative to the second headline line's box.
-const REST_RIGHT_OF_LINE = 96
+// Raising selected type lengthens its shadow on the page (decision #50).
+const SELECTED_TYPE_LIFT = 64
 // Relief is rebuilt this long after the last layout change or interaction.
 const RELIEF_SETTLE_MS = 120
 // The bulb can be dragged this close to the viewport's edge.
@@ -59,12 +65,12 @@ interface Point {
 }
 
 interface ShadowPass {
-  renderer: THREE.WebGLRenderer | null
   scene: THREE.Scene
   camera: THREE.OrthographicCamera
-  mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>
-  ink: { mask: Mask; texture: THREE.DataTexture } | null
+  mesh: THREE.Mesh<THREE.PlaneGeometry, HomeLightMaterial>
+  ink: { mask: Mask; texture: THREE.DataTexture; scale: number } | null
   relief: { mask: Mask; texture: THREE.DataTexture } | null
+  paper: ReturnType<typeof createPaperLighting>
 }
 
 interface BulbPass {
@@ -73,6 +79,9 @@ interface BulbPass {
   camera: THREE.PerspectiveCamera
   bulb: LightBulb | null
   lastFrame: number
+  backdrop: LampBackdrop | null
+  queued: boolean
+  updateViewport: (()=>void) | null
 }
 
 interface LightState {
@@ -93,8 +102,8 @@ function createLightState(): LightState {
   return {
     width: 0,
     height: 0,
-    shadow: { renderer: null, scene: shadowScene, camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mesh, ink: null, relief: null },
-    bulb: { renderer: null, scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), bulb: null, lastFrame: 0 },
+    shadow: { scene: shadowScene, camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mesh, ink: null, relief: null, paper: null },
+    bulb: { renderer: null, scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), bulb: null, lastFrame: 0, backdrop: null, queued: false, updateViewport:null },
     draw: () => {},
     start: () => {},
     stop: () => {},
@@ -103,7 +112,7 @@ function createLightState(): LightState {
 
 function ellipseOffset(elapsedMs: number): Point {
   const angle = (elapsedMs / DRIFT_PERIOD_MS) * Math.PI * 2
-  return { x: Math.cos(angle) * DRIFT_RADIUS_X, y: Math.sin(angle) * DRIFT_RADIUS_Y }
+  return { x: Math.sin(angle) * DRIFT_RADIUS_X, y: (1 - Math.cos(angle)) * DRIFT_RADIUS_Y }
 }
 
 const pageFlyerCorners = new Float32Array(12)
@@ -119,7 +128,7 @@ function pageFlyer(element: HTMLElement): Float32Array | null {
   for (let index = 0; index < 4; index++) {
     pageFlyerCorners[index * 3] = xs[index]
     pageFlyerCorners[index * 3 + 1] = ys[index]
-    pageFlyerCorners[index * 3 + 2] = RAISED_STANDOFF
+    pageFlyerCorners[index * 3 + 2] = POSTCARD_STANDOFF
   }
   return pageFlyerCorners
 }
@@ -142,17 +151,19 @@ function clampToViewport(point: Point): Point {
 }
 
 export interface HomeMastheadProps {
+  children: ReactNode
   /** The scrolling page; scroll events re-frame the masks. */
   pageRef: React.RefObject<HTMLDivElement | null>
   /** The page body every `[data-relief]` element lives under, and the masks' anchor. */
   innerRef: React.RefObject<HTMLElement | null>
 }
 
-export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
+export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps) {
   const host = useRef<HTMLDivElement>(null)
   const bulbHost = useRef<HTMLDivElement>(null)
   const masthead = useRef<HTMLElement>(null)
-  const fixture = useRef<HTMLDivElement>(null)
+  const fixture = useRef<HTMLButtonElement>(null)
+  const title = useRef<HTMLHeadingElement>(null)
   const lineOne = useRef<HTMLSpanElement>(null)
   const lineTwo = useRef<HTMLSpanElement>(null)
   const lineThree = useRef<HTMLSpanElement>(null)
@@ -160,6 +171,8 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
   const [degraded, setDegraded] = useState(false)
   const [bulbless, setBulbless] = useState(false)
   const [dragged, setDragged] = useState(false)
+  const [lightHeight, setLightHeight] = useState(LIGHT_HEIGHT)
+  const lightHeightRef = useRef(lightHeight)
   const reducedMotion = useHomeReducedMotion()
   const reducedMotionRef = useRef(reducedMotion)
   reducedMotionRef.current = reducedMotion
@@ -172,10 +185,15 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
   const dragging = useRef(false)
   const driftEpoch = useRef(performance.now())
 
+  const selection = useMemo<HomeSelectionState>(
+    () => ({ rects: [], target: 0, amount: 0, time: 0 }),
+    [],
+  )
+
   const currentLight = useCallback((): Point => {
     if (dragging.current || reducedMotionRef.current) return anchor.current
     const offset = ellipseOffset(performance.now() - driftEpoch.current)
-    return { x: anchor.current.x + offset.x, y: anchor.current.y + offset.y }
+    return clampToViewport({ x: anchor.current.x + offset.x, y: anchor.current.y + offset.y })
   }, [])
 
   // Keeps the band around the viewport, moving it only when the viewport
@@ -210,25 +228,38 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
     // and the page it scrolls with can never disagree.
     const origin = seatBand(box, page, innerRect)
     const material = state.shadow.mesh.material
-    setHomeLightFrame(material, state.width, state.height, light.x - origin.left, light.y - origin.top)
+    material.uniforms.uFrameOrigin.value.set(origin.left, origin.top)
+    setHomeLightFrame(material, state.width, state.height, light.x - origin.left, light.y - origin.top, lightHeightRef.current)
     const ink = state.shadow.ink
-    setHomeInkMask(material, ink?.texture ?? null, ink ? { x: innerRect.left - origin.left + ink.mask.rect.x, y: innerRect.top - origin.top + ink.mask.rect.y, width: ink.mask.rect.width, height: ink.mask.rect.height } : null)
+    const glyphScale = ink?.scale ?? 1
+    setHomeInkMask(material, ink?.texture ?? null, ink ? { x: innerRect.left - origin.left + ink.mask.rect.x, y: innerRect.top - origin.top + ink.mask.rect.y, width: ink.mask.rect.width, height: ink.mask.rect.height } : null, glyphScale)
+    advanceHeadlineSelection(selection, reducedMotionRef.current, performance.now())
+    material.uniforms.uSelectionLift.value = SELECTED_TYPE_LIFT*selection.amount
+    material.uniforms.uSelectionCount.value = selection.amount ? selection.rects.length : 0
+    selection.rects.forEach((rect,index) => material.uniforms.uSelection.value[index].set(
+      innerRect.left-origin.left+rect.x, innerRect.top-origin.top+rect.y, rect.width, rect.height,
+    ))
     const relief = state.shadow.relief
     setHomeReliefMask(material, relief?.texture ?? null, relief ? { x: innerRect.left - origin.left + relief.mask.rect.x, y: innerRect.top - origin.top + relief.mask.rect.y, width: relief.mask.rect.width, height: relief.mask.rect.height } : null)
     const flyer = readHomeFlyer()
-    if (!flyer) setHomeFlyerUniform(material, null, 0, 0, 0)
-    else if (flyer.kind === 'page') setHomeFlyerUniform(material, pageFlyer(flyer.element), 0, origin.left, origin.top)
-    else setHomeFlyerUniform(material, flyer.corners, flyer.lift, origin.left, origin.top)
+    if (!flyer) setHomeFlyerUniform(material, null, 0, 0)
+    else if (flyer.kind === 'page') setHomeFlyerUniform(material, pageFlyer(flyer.element), origin.left, origin.top)
+    else setHomeFlyerUniform(material, flyer.corners, origin.left, origin.top)
     const bulb = state.bulb.bulb
-    if (bulb) {
+    if (bulb && placed.current) {
       const now = performance.now()
       const dt = state.bulb.lastFrame ? (now - state.bulb.lastFrame) / 1000 : 0
       state.bulb.lastFrame = now
       // World space is CSS px with y up; the shader and DOM use y down.
-      bulb.update(light.x, page.clientHeight - light.y, dt, reducedMotionRef.current && !dragging.current)
+      bulb.update(light.x, page.clientHeight - light.y, dt, reducedMotionRef.current && !dragging.current, page.clientHeight, lightHeightRef.current)
     }
     state.draw()
-  }, [state, innerRef, pageRef, currentLight, seatBand])
+  }, [state, innerRef, pageRef, currentLight, seatBand, selection])
+
+  useEffect(() => {
+    lightHeightRef.current = lightHeight
+    redraw()
+  }, [lightHeight, redraw])
 
   // Mount: the multiply canvas. Created outside React; a lost context
   // degrades to the CSS depth kit rather than an opaque black overlay. A
@@ -243,22 +274,35 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
     box.append(canvas)
     let renderer: THREE.WebGLRenderer
     try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, depth: false })
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, depth: true })
     } catch {
       canvas.remove()
       setDegraded(true)
       return
     }
     const pass = state.shadow
-    pass.renderer = renderer
+    pass.paper = createPaperLighting(renderer,pass.mesh.material)
+    const display = createHomeLightDisplay(renderer,pass.mesh.material)
     state.width = 0
     state.height = 0
     renderer.setClearColor(0xffffff, 1)
 
     let raf = 0
     state.draw = () => {
-      renderer.render(pass.scene, pass.camera)
-      state.bulb.renderer?.render(state.bulb.scene, state.bulb.camera)
+      pass.paper?.update(readHomeFlyer())
+      display.render(pass.scene, pass.camera, pass.paper)
+      // The postcard's pre-draw callback reaches here before its canvas has
+      // drawn. A microtask samples that completed canvas in the same frame.
+      if (!state.bulb.queued) {
+        state.bulb.queued = true
+        queueMicrotask(() => {
+          state.bulb.queued = false
+          if (!state.bulb.renderer) return
+          state.bulb.updateViewport?.()
+          state.bulb.backdrop?.update(canvas)
+          state.bulb.renderer.render(state.bulb.scene, state.bulb.camera)
+        })
+      }
     }
     const frame = () => {
       raf = requestAnimationFrame(frame)
@@ -273,28 +317,33 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
       raf = 0
     }
 
+    let viewportHeight = 0
     const resize = () => {
       const width = Math.max(1, page.clientWidth)
       const viewHeight = Math.max(1, page.clientHeight)
-      const height = Math.ceil(viewHeight * BAND_FACTOR)
-      if (width === state.width && height === state.height) return
+      let height = Math.ceil(viewHeight * BAND_FACTOR)
+      if (width === state.width && viewHeight === viewportHeight && renderer.getPixelRatio() === window.devicePixelRatio) return
+      viewportHeight = viewHeight
+      renderer.setPixelRatio(window.devicePixelRatio)
+      renderer.setSize(width, height, false)
+      const gl = renderer.getContext()
+      // Chrome can clamp a large drawing buffer without changing canvas.width.
+      // Reduce the offscreen band, retaining density and viewport coverage (#53).
+      if (gl.drawingBufferWidth < canvas.width || gl.drawingBufferHeight < canvas.height) {
+        const pixels = gl.drawingBufferWidth * gl.drawingBufferHeight
+        height = Math.max(viewHeight, Math.floor(pixels / (canvas.width * window.devicePixelRatio)))
+        renderer.setSize(width, height, false)
+      }
       state.width = width
       state.height = height
+      pass.paper?.invalidate()
       box.style.height = `${height}px`
-      const ratio = Math.min(window.devicePixelRatio, PIXEL_RATIO_CAP)
-      renderer.setPixelRatio(ratio)
-      renderer.setSize(width, height, false)
-      const bulbRenderer = state.bulb.renderer
-      if (bulbRenderer) {
-        bulbRenderer.setPixelRatio(ratio)
-        bulbRenderer.setSize(width, viewHeight, false)
-        fitBulbCamera(state.bulb.camera, width, viewHeight)
-      }
+      state.bulb.updateViewport?.()
       anchor.current = clampToViewport(anchor.current)
       redraw()
     }
     const observer = new ResizeObserver(resize)
-    observer.observe(page)
+    observer.observe(page,{box:'device-pixel-content-box'})
     resize()
 
     const lost = (event: Event) => {
@@ -319,11 +368,13 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
       state.start = () => {}
       state.stop = () => {}
       pass.mesh.material.dispose()
+      display.dispose()
+      pass.paper?.dispose()
+      pass.paper = null
       pass.ink?.texture.dispose()
       pass.relief?.texture.dispose()
       pass.ink = null
       pass.relief = null
-      pass.renderer = null
       renderer.dispose()
       renderer.forceContextLoss()
       canvas.remove()
@@ -334,7 +385,8 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
   // leaves the shadows running and shows the plain ink mark instead.
   useEffect(() => {
     const box = bulbHost.current
-    if (!box || degraded) return
+    const page = pageRef.current
+    if (!box || !page || degraded) return
     const canvas = document.createElement('canvas')
     canvas.className = 'home-light-canvas'
     box.append(canvas)
@@ -355,24 +407,23 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
     const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
     pmrem.dispose()
     pass.scene.environment = environment
-    const bulb = createLightBulb()
+    const backdrop = createLampBackdrop(page, redraw)
+    pass.backdrop = backdrop
+    const bulb = createLightBulb(backdrop)
     pass.scene.add(bulb.group)
     pass.bulb = bulb
     pass.renderer = renderer
     pass.lastFrame = 0
-    const page = pageRef.current
-    if (state.width && page) {
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, PIXEL_RATIO_CAP))
-      renderer.setSize(state.width, page.clientHeight, false)
-      fitBulbCamera(pass.camera, state.width, page.clientHeight)
-    }
+    pass.updateViewport = createLampViewportUpdater(renderer,pass.camera,page)
+    pass.updateViewport()
+    const stopViewport = watchLampViewport(redraw)
     setBulbless(false)
 
     const lost = (event: Event) => {
       event.preventDefault()
       setBulbless(true)
     }
-    const restored = () => setBulbless(false)
+    const restored = () => { setBulbless(false); redraw() }
     canvas.addEventListener('webglcontextlost', lost)
     canvas.addEventListener('webglcontextrestored', restored)
     redraw()
@@ -384,6 +435,10 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
       pass.scene.environment = null
       environment.dispose()
       bulb.dispose()
+      backdrop.dispose()
+      stopViewport()
+      pass.updateViewport = null
+      pass.backdrop = null
       pass.bulb = null
       pass.renderer = null
       renderer.dispose()
@@ -403,8 +458,10 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
     }
   }, [pageRef, degraded])
 
-  // Read the headline into ink after fonts settle and whenever its layout
-  // changes; place the light beside the second line the first time.
+  useHeadlineSelection(title, innerRef, selection, redraw)
+
+  // Read the headline after fonts settle and when its layout changes;
+  // the first placement leaves room for the bulb above the type.
   useEffect(() => {
     let alive = true
     const build = () => {
@@ -415,12 +472,12 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
       state.shadow.ink = null
       if (inner && lines.length === 3) {
         const mask = buildInkMask(inner, lines)
-        if (mask) state.shadow.ink = { mask, texture: maskTexture(mask) }
+        if (mask) state.shadow.ink = { mask, texture: maskTexture(mask), scale: Math.min(1, parseFloat(getComputedStyle(lines[0]).fontSize) / 150) }
       }
       if (!placed.current && lines.length === 3) {
         placed.current = true
-        const line = lines[1].getBoundingClientRect()
-        anchor.current = clampToViewport({ x: line.right + REST_RIGHT_OF_LINE, y: line.top + line.height * 0.45 })
+        const line = lines[0].getBoundingClientRect()
+        anchor.current = clampToViewport({ x: line.left + line.width * 0.22, y: line.top - 42 })
         driftEpoch.current = performance.now()
       }
       redraw()
@@ -446,6 +503,8 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
     let alive = true
     let timer = 0
     let requestId = 0
+    let previousPlan = ''
+    let lastLayout = ''
     const worker = createReliefWorker()
     const apply = (mask: Mask | null) => {
       if (!alive) return
@@ -462,9 +521,17 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
       if (!alive) return
       const plan = measureRelief(inner, inner)
       if (!plan) {
+        requestId++
+        previousPlan = ''
+        lastLayout = 'null'
         apply(null)
         return
       }
+      const signature = JSON.stringify(plan)
+      if (signature === previousPlan) return
+      previousPlan = signature
+      lastLayout = signature
+      apply(null)
       if (worker) {
         const request: ReliefRequest = { id: ++requestId, plan }
         worker.postMessage(request)
@@ -473,6 +540,14 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
       }
     }
     const settle = () => {
+      const layout = JSON.stringify(measureRelief(inner, inner))
+      if (layout === lastLayout) return
+      lastLayout = layout
+      // Old coordinates are not a valid preview of a new layout. Invalidate
+      // pending worker replies too, so one cannot restore a stale field (#50).
+      requestId++
+      previousPlan = ''
+      apply(null)
       window.clearTimeout(timer)
       timer = window.setTimeout(build, RELIEF_SETTLE_MS)
     }
@@ -480,6 +555,7 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
     void document.fonts.ready.then(build)
     const observer = new ResizeObserver(settle)
     observer.observe(inner)
+    for (const element of inner.querySelectorAll('[data-relief]')) observer.observe(element)
     const attributes = new MutationObserver(build)
     attributes.observe(inner, { attributes: true, subtree: true, attributeFilter: ['data-relief', 'hidden'] })
     return () => {
@@ -515,78 +591,40 @@ export function HomeMasthead({ pageRef, innerRef }: HomeMastheadProps) {
     return () => state.stop()
   }, [state, reducedMotion, degraded, redraw, pageRef])
 
-  // Dragging: pointer-captured, clamped to the viewport. Releasing re-seeds
-  // the drift clock so the ellipse resumes from where the drag let go.
-  useEffect(() => {
-    const element = fixture.current
-    if (!element) return
-    let grip: Point = { x: 0, y: 0 }
-    const move = (event: PointerEvent) => {
-      if (!dragging.current) return
-      anchor.current = clampToViewport({ x: event.clientX - grip.x, y: event.clientY - grip.y })
-      if (reducedMotionRef.current) redraw()
-    }
-    const down = (event: PointerEvent) => {
-      const light = currentLight()
-      grip = { x: event.clientX - light.x, y: event.clientY - light.y }
-      dragging.current = true
-      element.setPointerCapture(event.pointerId)
-      element.classList.add('is-dragging')
-      document.body.style.userSelect = 'none'
-      setDragged(true)
-      move(event)
-    }
-    const up = (event: PointerEvent) => {
-      dragging.current = false
-      element.releasePointerCapture(event.pointerId)
-      element.classList.remove('is-dragging')
-      document.body.style.userSelect = ''
-      driftEpoch.current = performance.now()
-    }
-    element.addEventListener('pointerdown', down)
-    element.addEventListener('pointermove', move)
-    element.addEventListener('pointerup', up)
-    element.addEventListener('pointercancel', up)
-    return () => {
-      element.removeEventListener('pointerdown', down)
-      element.removeEventListener('pointermove', move)
-      element.removeEventListener('pointerup', up)
-      element.removeEventListener('pointercancel', up)
-      document.body.style.userSelect = ''
-    }
-  }, [redraw, currentLight])
+  useHomeLightDrag({ fixture, dragging, anchor, driftEpoch, reducedMotion: reducedMotionRef, currentLight, redraw, setDragged })
 
   return (
     <>
       <div ref={host} className="home-light-host" aria-hidden="true" data-degraded={degraded || undefined} />
       <div ref={bulbHost} className="home-light-scene" aria-hidden="true" data-degraded={degraded || undefined} />
-      <div
+      <button
+        type="button"
         ref={fixture}
         className="home-light"
-        aria-hidden="true"
+        aria-label="Move the light. Use arrow keys to change its position."
+        onKeyDown={event => {
+          if (event.altKey || event.ctrlKey || event.metaKey) return
+          const dx = event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0
+          const dy = event.key === 'ArrowUp' ? -16 : event.key === 'ArrowDown' ? 16 : 0
+          if (dx === 0 && dy === 0) return
+          event.preventDefault()
+          const point = currentLight()
+          anchor.current = clampToViewport({ x: point.x + dx, y: point.y + dy })
+          driftEpoch.current = performance.now()
+          setDragged(true)
+          redraw()
+        }}
         data-dragged={dragged || undefined}
         data-degraded={degraded || undefined}
         data-bulbless={bulbless || undefined}
       >
-        <span className="home-light-mark" />
-        <span className="home-light-hint">Drag the light</span>
-      </div>
-      <header ref={masthead} className="home-masthead">
-        <h1 className="home-masthead-title">
-          <span ref={lineOne}>HTML, 3D and</span>
-          <span ref={lineTwo}>shaders,</span>
-          <span ref={lineThree} className="home-masthead-em">unified.</span>
-        </h1>
-        <p className="home-masthead-copy">
-          For years, putting HTML in a Three.js scene meant floating a div over the canvas.
-          munari puts the page itself into the scene. It can be lit, bent, shaded and refracted
-          like anything else there, and it stays live: buttons click, fields take typing, text stays text.
-        </p>
-        <div className="home-masthead-links">
-          <a className="home-btn home-btn--primary" href="#examples" data-relief="raised">See it work <span aria-hidden>↓</span></a>
-          <a className="home-text-link" href="#how-it-works">How it works</a>
-        </div>
-      </header>
+        <span className="home-light-mark" aria-hidden="true" />
+        <span className="home-light-hint" aria-hidden="true">Drag the light</span>
+      </button>
+      <HomeMastheadContent mastheadRef={masthead} headingRef={title} lineRefs={[lineOne,lineTwo,lineThree]}
+        lightHeight={lightHeight} onLightHeight={setLightHeight} degraded={degraded}>
+        {children}
+      </HomeMastheadContent>
     </>
   )
 }

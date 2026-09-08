@@ -1,9 +1,11 @@
 // The postcard owns its handoff state so it cannot rerender the rest of the site.
 // A section-positioned canvas shares the page's compositor scroll transform.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useThree } from '@react-three/fiber'
 import { Surface, SurfaceCanvas, useSurfaceHandle } from '@petepetrash/munari'
-import { HeroMesh, HeroSection, PixelPerfect } from './HomeHero'
+import { HeroSection } from './HomeHero'
+import { HeroMesh, PixelPerfect } from './HomePostcardMesh'
+import { createPaperInteraction } from './homePaperLaw'
 
 const FOV = 42
 
@@ -23,6 +25,7 @@ export function HomePostcard({ supported, reduced }: { supported: boolean; reduc
   const [inScene, setInScene] = useState(false)
   const holderRef = useRef<HTMLDivElement>(null)
   const landRef = useRef(false)
+  const paper = useMemo(createPaperInteraction, [])
   return (
     <div className="home-postcard-section">
       {supported && (
@@ -31,9 +34,9 @@ export function HomePostcard({ supported, reduced }: { supported: boolean; reduc
           flat
           pointerMode="surfaces"
           style={{
-            position: 'absolute', left: '50%', top: -64,
-            width: 'min(100vw, calc(100% + 128px))', height: 'calc(100% + 128px)',
-            transform: 'translateX(-50%)', zIndex: 30,
+            position: 'absolute', left: '50%', top: -128,
+            width: 'min(100vw, calc(100% + 256px))', height: 'calc(100% + 256px)',
+            transform: 'translateX(-50%)', zIndex: 10,
           }}
           className="home-canvas"
           gl={{ alpha: true }}
@@ -46,6 +49,7 @@ export function HomePostcard({ supported, reduced }: { supported: boolean; reduc
           <Surface.Scene surface={hero}>
             <HeroMesh
               surface={hero}
+              paper={paper}
               holderRef={holderRef}
               reduced={reduced}
               landRef={landRef}
@@ -56,6 +60,7 @@ export function HomePostcard({ supported, reduced }: { supported: boolean; reduc
       )}
       <HeroSection
         surface={hero}
+        paper={paper}
         inScene={inScene}
         setInScene={setInScene}
         holderRef={holderRef}

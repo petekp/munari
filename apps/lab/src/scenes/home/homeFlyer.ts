@@ -1,11 +1,10 @@
-// Home flyer — the postcard's four corners while it is in the scene, handed
-// from the hero's frame loop to the light shader so the card keeps casting
-// a shadow after it leaves the page.
+// Home flyer — the postcard's current page slot or complete bent draw frame.
+// The Surface publishes before drawing so the light sees the same geometry.
 //
 // The law: the shadow shader only knows page content through masks, and a
 // mask is a picture of the DOM. The lifted card is not DOM any more; it is
-// a mesh with a pose. So the pose itself crosses over: four corners in
-// viewport px with a height above the page, republished every frame.
+// a mesh with a pose. Its projected grid crosses over with a height above
+// the page; four corners remain available for the planar lighting fallback.
 //
 // Fault: the holder dropped its raised relief when the card lifted, and
 // nothing replaced it, so the card lost its shadow the moment it moved
@@ -14,19 +13,20 @@
 // showed one frame with both shadows while the mask repainted for 140 ms
 // (probe, 2026-09-05). Now nothing repaints at the handoff.
 //
-// Ownership: HomeHero.tsx writes; HomeMasthead.tsx reads each redraw and
+// Ownership: HomeHero.tsx names the page slot; HomePostcardMesh.tsx writes the grid; HomeMasthead.tsx reads each redraw and
 // subscribes so a change reaches the shader even when its loop is idle.
+
+import type { PaperDrawFrame } from './homePaperFrame'
 
 /**
  * The card on the page is named by its element and measured every frame,
- * exactly as the masks are re-framed; in the scene it is four corners, x/y
- * in viewport px (y down) and z px above the page, with a lift from 0 on
- * its slot to 1 fully afloat. The card never enters the relief mask: it is
- * always drawn from here, so leaving and returning repaints nothing.
+ * exactly as the masks are re-framed; in the scene it is a grid and its corners, x/y
+ * in viewport px (y down) and z px above the page. The card never enters the
+ * relief mask: leaving and returning repaints nothing.
  */
 export type HomeFlyer =
   | { readonly kind: 'page'; readonly element: HTMLElement }
-  | { readonly kind: 'scene'; readonly corners: Float32Array; readonly lift: number }
+  | { readonly kind: 'scene'; readonly corners: Float32Array; readonly paper: PaperDrawFrame }
 
 let current: HomeFlyer | null = null
 const listeners = new Set<() => void>()

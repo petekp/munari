@@ -29,8 +29,9 @@ export function HomeApp() {
   return (
     <div ref={pageRef} className="home-page">
       <main ref={innerRef} className="home-inner">
-        <HomeMasthead pageRef={pageRef} innerRef={innerRef} />
-        <HomePostcard supported={supported} reduced={reduced} />
+        <HomeMasthead pageRef={pageRef} innerRef={innerRef}>
+          <HomePostcard supported={supported} reduced={reduced} />
+        </HomeMasthead>
         <ExamplesSection />
         <HandoffSection />
         <TutorialSection />

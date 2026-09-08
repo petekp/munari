@@ -32,7 +32,7 @@ try {
       return {input:center(window.originalPostcardInput),stamp:center(holder.querySelector('[data-api-live] button'))}
     })
     await page.click('.home-hero-row button')
-    await page.waitForFunction(() => document.querySelector('.home-hero-row .home-lamp').dataset.gl==='true')
+    await page.waitForFunction(() => document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='true')
     await page.mouse.click(points.input.x,points.input.y)
     await page.waitForFunction(() => document.activeElement===window.originalPostcardInput)
     await page.keyboard.type('Still the same field')
@@ -40,7 +40,7 @@ try {
     await page.waitForFunction(() => document.querySelectorAll('[data-api-live] .home-postmark').length===1)
     await page.screenshot({path:path.join(output,`home-form-${width}-scene.png`)})
     await page.click('.home-hero-row button')
-    await page.waitForFunction(() => document.querySelector('.home-hero-row .home-lamp').dataset.gl==='false')
+    await page.waitForFunction(() => document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='false')
     const result = await page.evaluate(() => ({
       sameInput:document.querySelector('.home-hero-holder [data-api-live] input')===window.originalPostcardInput,
       value:window.originalPostcardInput.value,

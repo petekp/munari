@@ -12,8 +12,8 @@
 //
 // Fault: the lamp spike (2026-09-01) hard-coded one standoff for the
 // headline only. The masthead has three kinds of content (glyphs, raised
-// controls, wells), so the projection is one pure function here and the
-// shader mirrors it per kind.
+// controls, wells). These plane intersections are the reference cases for
+// the shader's thin surfaces; curved receivers require tracing the full ray.
 //
 // Ownership: this module owns the projection and the fixed standoffs.
 // homeLight.ts owns the GLSL that applies them per fragment. HomeMasthead.tsx
@@ -24,14 +24,15 @@ export interface Point {
   readonly y: number
 }
 
-/** The light's height above the page, CSS px. Lower throws longer shadows;
- * at 120 a glyph a screen away threw a detached ghost of itself (2026-09-05). */
-export const LIGHT_HEIGHT = 380
-/** Headline glyphs stand this far off the paper. */
-export const GLYPH_STANDOFF = 22
-/** Buttons, cards and media stand this far off. */
-export const RAISED_STANDOFF = 12
-/** Inputs and code wells sink this far in. */
+/** Default height in CSS px; the control spans 220–600. Decisions #50–51. */
+export const LIGHT_HEIGHT = 260
+/** At the largest headline size, CSS px; scales with the type. Decision #50. */
+export const GLYPH_STANDOFF = 64
+/** Thin controls and gallery images cast long projected shadows. Decision #50. */
+export const RAISED_STANDOFF = 40
+/** The live postcard's resting plane stays close to its retained slot. Decision #51. */
+export const POSTCARD_STANDOFF = 12
+/** Inputs and code wells sink this far in, CSS px. Decision #50. */
 export const WELL_DEPTH = 3
 
 /** The page point whose ink occludes `p`, for a plane `standoff` px above the page. */
