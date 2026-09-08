@@ -109,11 +109,11 @@ try{
     await page.screenshot({path:path.join(output,'cord.png')})
     await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}]);await frames(page)
     await page.click('.home-hero-row button')
-    await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-lamp').dataset.gl==='true')
+    await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='true')
     await move(page,340,640);await frames(page,12)
     await page.screenshot({path:path.join(output,'over-postcard.png')})
     await page.click('.home-hero-row button')
-    await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-lamp').dataset.gl==='false')
+    await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='false')
     await page.evaluate(()=>document.querySelector('.home-page').scrollTop=700);await frames(page,30)
     await page.screenshot({path:path.join(output,'scrolled.png')})
     for(const width of [390,320]){

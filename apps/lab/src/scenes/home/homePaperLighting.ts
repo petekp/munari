@@ -12,10 +12,8 @@ import { POSTCARD_STANDOFF } from './homeLightLaw'
 const NEAR=1, FAR=4096
 const VERTEX=/* glsl */`
 varying vec3 vPosition;
-varying vec3 vNormal;
 void main(){
   vPosition=position;
-  vNormal=normal;
   gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
 }`
 const DEPTH=/* glsl */`

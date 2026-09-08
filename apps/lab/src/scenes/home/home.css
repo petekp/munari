@@ -41,9 +41,9 @@
 .home-btn:hover { background: #fff; }
 .home-btn--primary { background: var(--ink); border-color: var(--ink); color: var(--wash) !important; }
 .home-btn--primary:hover { background: #000; }
-.home-lamp { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-soft); font-family: var(--data); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
-.home-lamp::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); opacity: .35; }
-.home-lamp[data-gl='true']::before { opacity: 1; }
+.home-postcard-status { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-soft); font-family: var(--data); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.home-postcard-status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); opacity: .35; }
+.home-postcard-status[data-gl='true']::before { opacity: 1; }
 
 /* Masthead: the headline, lit */
 .home-light-host { position: absolute; left: 0; top: 0; width: 100%; z-index: 20; pointer-events: none; mix-blend-mode: multiply; }
@@ -191,9 +191,6 @@
 @media (max-width: 1050px) {
   .home-inner { padding: 36px 32px 32px; }
   .home-masthead { min-height: 0; }
-  .home-hero { grid-template-columns: 1fr; gap: 52px; }
-  .home-hero-copy { max-width: 660px; }
-  .home-hero-status { max-width: 55ch; }
   .home-examples { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-start-grid, .home-support-section { gap: 28px; }
 }
@@ -201,11 +198,8 @@
   .home-inner { padding: 28px 22px 28px; }
   .home-masthead { --masthead-size: clamp(48px, 15vw, 72px); }
   .home-masthead-copy { margin-top: 0; }
-  .home-hero { gap: 40px; }
-  .home-hero-status { margin-top: 18px; }
-  .home-demo-heading { margin-bottom: 18px; }
   .home-hero-row { margin-top: 18px; gap: 8px; }
-  .home-lamp { font-size: 11px; gap: 6px; }
+  .home-postcard-status { font-size: 11px; gap: 6px; }
   .home-hero-row .home-btn { padding: 10px 13px; font-size: 13px; }
   .home-section { margin-top: 64px; padding-top: 32px; scroll-margin-top: 24px; }
   .home-section h2 { font-size: 32px; }

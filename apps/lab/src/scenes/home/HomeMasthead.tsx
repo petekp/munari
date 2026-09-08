@@ -30,7 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { readHomeFlyer, subscribeHomeFlyer } from './homeFlyer'
-import { maskTexture, setHomeFlyerUniform, setHomeInkMask, setHomeLightFrame, setHomeReliefMask, type HomeLightMaterial } from './homeLight'
+import { createHomeLightMaterial, maskTexture, setHomeFlyerUniform, setHomeInkMask, setHomeLightFrame, setHomeReliefMask, type HomeLightMaterial } from './homeLight'
 import { BULB_RADIUS, createLightBulb, type LightBulb } from './homeLightBulb'
 import { LIGHT_HEIGHT, POSTCARD_STANDOFF } from './homeLightLaw'
 import { buildInkMask, domPainter, measureRelief, paintRelief, type Mask } from './homeRelief'
@@ -65,7 +65,6 @@ interface Point {
 }
 
 interface ShadowPass {
-  renderer: THREE.WebGLRenderer | null
   scene: THREE.Scene
   camera: THREE.OrthographicCamera
   mesh: THREE.Mesh<THREE.PlaneGeometry, HomeLightMaterial>
@@ -95,15 +94,15 @@ interface LightState {
   stop: () => void
 }
 
-function createLightState(lighting: HomeLightMaterial): LightState {
+function createLightState(): LightState {
   const shadowScene = new THREE.Scene()
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), lighting)
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), createHomeLightMaterial())
   mesh.frustumCulled = false
   shadowScene.add(mesh)
   return {
     width: 0,
     height: 0,
-    shadow: { renderer: null, scene: shadowScene, camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mesh, ink: null, relief: null, paper: null },
+    shadow: { scene: shadowScene, camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mesh, ink: null, relief: null, paper: null },
     bulb: { renderer: null, scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), bulb: null, lastFrame: 0, backdrop: null, queued: false, updateViewport:null },
     draw: () => {},
     start: () => {},
@@ -152,7 +151,6 @@ function clampToViewport(point: Point): Point {
 }
 
 export interface HomeMastheadProps {
-  lighting: HomeLightMaterial
   children: ReactNode
   /** The scrolling page; scroll events re-frame the masks. */
   pageRef: React.RefObject<HTMLDivElement | null>
@@ -160,7 +158,7 @@ export interface HomeMastheadProps {
   innerRef: React.RefObject<HTMLElement | null>
 }
 
-export function HomeMasthead({ pageRef, innerRef, lighting, children }: HomeMastheadProps) {
+export function HomeMasthead({ pageRef, innerRef, children }: HomeMastheadProps) {
   const host = useRef<HTMLDivElement>(null)
   const bulbHost = useRef<HTMLDivElement>(null)
   const masthead = useRef<HTMLElement>(null)
@@ -169,7 +167,7 @@ export function HomeMasthead({ pageRef, innerRef, lighting, children }: HomeMast
   const lineOne = useRef<HTMLSpanElement>(null)
   const lineTwo = useRef<HTMLSpanElement>(null)
   const lineThree = useRef<HTMLSpanElement>(null)
-  const state = useMemo(() => createLightState(lighting), [lighting])
+  const state = useMemo(createLightState, [])
   const [degraded, setDegraded] = useState(false)
   const [bulbless, setBulbless] = useState(false)
   const [dragged, setDragged] = useState(false)
@@ -283,7 +281,6 @@ export function HomeMasthead({ pageRef, innerRef, lighting, children }: HomeMast
       return
     }
     const pass = state.shadow
-    pass.renderer = renderer
     pass.paper = createPaperLighting(renderer,pass.mesh.material)
     const display = createHomeLightDisplay(renderer,pass.mesh.material)
     state.width = 0
@@ -378,7 +375,6 @@ export function HomeMasthead({ pageRef, innerRef, lighting, children }: HomeMast
       pass.relief?.texture.dispose()
       pass.ink = null
       pass.relief = null
-      pass.renderer = null
       renderer.dispose()
       renderer.forceContextLoss()
       canvas.remove()

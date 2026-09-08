@@ -1,6 +1,7 @@
 // Compare the real curled postcard at native density with a supersampled draw.
 // The fixed pose and renderer controls exist only in the served instrument copy.
 import assert from 'node:assert/strict'
+import {replaceSource} from '../home-light/replaceSource.mjs'
 import {mkdir,writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {tmpdir} from 'node:os'
@@ -11,14 +12,14 @@ import {setChromeViewport} from '../chromeViewport.mjs'
 const output=process.env.PAPER_OUTPUT??path.join(tmpdir(),'munari-postcard-edges')
 await mkdir(output,{recursive:true})
 const observer={name:'postcard-edge-observer',enforce:'pre',transform(code,id){
-  if(id.endsWith('/HomePostcard.tsx'))code=code.replace('gl={{ alpha: true }}','gl={{ alpha: true, preserveDrawingBuffer: true }}')
+  if(id.endsWith('/HomePostcard.tsx'))code=replaceSource(code,'gl={{ alpha: true }}','gl={{ alpha: true, preserveDrawingBuffer: true }}')
   if(id.endsWith('/HomePostcardMesh.tsx')){
     const marker='    const frameState = readSurfaceFrameState(surface)'
     assert.ok(code.includes(marker))
-    code=code.replace(marker,'    if(window.__freezeEdgePose)return;\n'+marker)
+    code=replaceSource(code,marker,'    if(window.__freezeEdgePose)return;\n'+marker)
     const pose='    const st = f.current\n    const a = aim.current'
     assert.ok(code.includes(pose))
-    code=code.replace(pose,`    window.__setEdgePose=()=>{
+    code=replaceSource(code,pose,`    window.__setEdgePose=()=>{
       f.current.phase='afloat';f.current.t=1;f.current.still=1;
       group.position.set(sx,sy+HOVER_LIFT,0);group.rotation.set(-.22,-.06,-.035);
       deformSurfaceGeometry(mesh.geometry,[HERO_W,HERO_H],(x,y)=>paperPoint(x,y,{amount:1,bow:.6,curlA:2.85,curlB:.7,twist:0,ripple:0,time:0}));
@@ -26,9 +27,9 @@ const observer={name:'postcard-edge-observer',enforce:'pre',transform(code,id){
     };\n`+pose)
   }
   if(id.endsWith('/HomeMasthead.tsx')){
-    const marker='    pass.renderer = renderer'
+    const marker='    pass.paper = createPaperLighting(renderer,pass.mesh.material)'
     assert.ok(code.includes(marker))
-    code=code.replace(marker,marker+'\n    window.__edgeLight={renderer,draw:()=>state.draw()};')
+    code=replaceSource(code,marker,marker+'\n    window.__edgeLight={renderer,draw:()=>state.draw()};')
   }
   return code
 }}
@@ -46,7 +47,7 @@ try{
   await page.evaluate(()=>document.fonts.ready)
   await page.evaluate(()=>{const holder=document.querySelector('.home-hero-holder');document.querySelector('.home-page').scrollTop+=holder.getBoundingClientRect().top-180})
   await page.click('.home-hero-row button')
-  await page.waitForFunction(()=>window.__setEdgePose&&document.querySelector('.home-hero-row .home-lamp').dataset.gl==='true')
+  await page.waitForFunction(()=>window.__setEdgePose&&document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='true')
   const box=await page.$eval('.home-hero-holder',e=>e.getBoundingClientRect().toJSON())
   const light=await page.$eval('.home-light',e=>e.getBoundingClientRect().toJSON())
   await page.mouse.move(light.x+light.width/2,light.y+light.height/2);await page.mouse.down();await page.mouse.move(box.right+110,box.top-130,{steps:15})

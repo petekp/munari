@@ -1,12 +1,13 @@
 // Measure the complete lighting redraw, including shadow depth and paper shading.
 // The separate bulb/card renderers and CPU work are outside this GPU query.
 import assert from 'node:assert/strict'
+import {replaceSource} from './replaceSource.mjs'
 
 export function observeLightingDraw(code,id) {
   if(!id.endsWith('/HomeMasthead.tsx'))return code
   const begin='      pass.paper?.update(readHomeFlyer())',end='      display.render(pass.scene, pass.camera, pass.paper)'
   assert.ok(code.includes(begin)&&code.includes(end),'Lighting draw observation points changed')
-  return code.replace(begin,'      window.__homeGpuStart?.()\n'+begin).replace(end,end+'\n      window.__homeGpuEnd?.()')
+  return replaceSource(replaceSource(code,begin,'      window.__homeGpuStart?.()\n'+begin),end,end+'\n      window.__homeGpuEnd?.()')
 }
 
 export async function measureLightingDraw(page) {

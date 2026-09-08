@@ -2790,7 +2790,8 @@ height. Recessed wells retain their rim, and the postcard uses its posed sheet.
 One visibility result represents the one light, so coincident casters cannot
 double-darken an already blocked ray.
 A scroll-attached multiply canvas shades the native page and the scene card.
-The postcard sits beneath the headline, where they can cast onto each other.
+The postcard sits beneath the headline in the layout and in front of it when
+their pixels overlap. Heading shadows remain behind the postcard.
 
 The headline stands 64 CSS px above the page at its maximum 150px font size;
 that elevation scales with smaller type. Thin controls and gallery images stand

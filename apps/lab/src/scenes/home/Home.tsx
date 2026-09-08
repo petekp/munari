@@ -2,12 +2,11 @@
 // into the API. The shared canvas follows the scrolling page; each demo owns
 // its content. Native fallback renders the same controlled content without
 // capture setup.
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useSurfaceSupport } from '@petepetrash/munari'
 import { HandoffSection } from './HomeHandoff'
 import { HomePostcard } from './HomePostcard'
 import { HomeMasthead } from './HomeMasthead'
-import { createHomeLightMaterial } from './homeLight'
 import { ExamplesSection } from './HomeExamples'
 import { SupportSection } from './HomeSupport'
 import { TutorialSection } from './HomeTutorial'
@@ -21,7 +20,6 @@ export function HomeApp() {
   const reduced = useHomeReducedMotion()
   const pageRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLElement>(null)
-  const lighting = useMemo(createHomeLightMaterial, [])
 
   useEffect(() => {
     const section = window.location.hash.slice(1)
@@ -31,7 +29,7 @@ export function HomeApp() {
   return (
     <div ref={pageRef} className="home-page">
       <main ref={innerRef} className="home-inner">
-        <HomeMasthead pageRef={pageRef} innerRef={innerRef} lighting={lighting}>
+        <HomeMasthead pageRef={pageRef} innerRef={innerRef}>
           <HomePostcard supported={supported} reduced={reduced} />
         </HomeMasthead>
         <ExamplesSection />

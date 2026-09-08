@@ -1,5 +1,6 @@
 // Real paper motion, native controls, and a short recorded Chrome sequence.
 import assert from 'node:assert/strict'
+import {replaceSource} from '../home-light/replaceSource.mjs'
 import {mkdir,writeFile} from 'node:fs/promises'
 import {spawnSync} from 'node:child_process'
 import path from 'node:path'
@@ -15,13 +16,13 @@ await mkdir(output,{recursive:true})
 const flat=process.env.PAPER_FLAT==='1',record=process.env.PAPER_RECORD==='1'
 const observer={name:'paper-observer',enforce:'pre',transform(code,id){
   code=observeLightingDraw(code,id)
-  if(id.endsWith('/HomePostcard.tsx'))code=code.replace('gl={{ alpha: true }}','gl={{ alpha: true, preserveDrawingBuffer: true }}')
-  if(id.endsWith('/homeLight.ts'))code=code.replace('  material.uniforms.uLightHeight.value = lightHeight','  window.__paperLight = material\n  material.uniforms.uLightHeight.value = lightHeight')
+  if(id.endsWith('/HomePostcard.tsx'))code=replaceSource(code,'gl={{ alpha: true }}','gl={{ alpha: true, preserveDrawingBuffer: true }}')
+  if(id.endsWith('/homeLight.ts'))code=replaceSource(code,'  material.uniforms.uLightHeight.value = lightHeight','  window.__paperLight = material\n  material.uniforms.uLightHeight.value = lightHeight')
   if(id.endsWith('/HomePostcardMesh.tsx')){
     const marker='  deformSurfaceGeometry(mesh.geometry,[HERO_W,HERO_H],(x,y)=>paperPoint(x,y,shape))'
     assert.ok(code.includes(marker),'Paper observation point changed')
-    code=code.replace(marker,'  window.__paperShape = shape\n  window.__paperContact = {quiet:modes.quiet,edgeA,edgeB}\n'+marker)
-    if(flat)code=code.replace('paperPoint(x,y,shape)','({x,y,z:0})')
+    code=replaceSource(code,marker,'  window.__paperShape = shape\n  window.__paperContact = {quiet:modes.quiet,edgeA,edgeB}\n'+marker)
+    if(flat)code=replaceSource(code,'paperPoint(x,y,shape)','({x,y,z:0})')
   }
   return code
 }}
@@ -90,7 +91,7 @@ try{
   await page.waitForFunction(()=>window.__paperShape.ripple>.2)
   await page.screenshot({path:path.join(output,'stamp.png')})
   await page.click('.home-hero-row button')
-  await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-lamp').dataset.gl==='false')
+  await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='false')
   await page.screenshot({path:path.join(output,'landed.png')})
   assert.equal(await page.evaluate(()=>document.querySelector('.home-hero-holder [data-api-live] input')===window.__originalPaperInput&&window.__originalPaperInput.value==='Paper still works'),true)
   if(record){

@@ -2,6 +2,9 @@
 // Native page colour is refracted through the shell; a hot coil emits inside it.
 // Reflection-only fallback keeps the lamp usable without HTML capture (#52).
 
+// The capture arrays and shader declarations use the same layer limit.
+export const LAMP_CANVAS_LAYERS=4
+
 export const LAMP_GLASS_VERTEX=/* glsl */`
 varying vec3 vLocal;
 void main(){vLocal=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}
@@ -22,8 +25,8 @@ uniform vec2 uViewport;
 uniform sampler2D uPage;
 uniform sampler2D uPageLight;
 uniform vec4 uPageLightRect;
-uniform sampler2D uLayers[4];
-uniform vec4 uLayerRects[4];
+uniform sampler2D uLayers[${LAMP_CANVAS_LAYERS}];
+uniform vec4 uLayerRects[${LAMP_CANVAS_LAYERS}];
 uniform int uLayerCount;
 varying vec3 vLocal;
 
@@ -63,7 +66,7 @@ vec3 backdrop(vec2 uv){
   if(any(lessThan(uv,vec2(0.0)))||any(greaterThan(uv,vec2(1.0))))return srgbToLinear(vec3(.894,.925,.23));
   vec2 p=uv*uViewport;
   vec3 colour=texture2D(uPage,uv).rgb;
-  ${Array.from({length:4},(_,i)=>`if(uLayerCount>${i}){vec4 layer=layerPixel(uLayers[${i}],uLayerRects[${i}],p);colour=layer.rgb+colour*(1.0-layer.a);}`).join('\n')}
+  ${Array.from({length:LAMP_CANVAS_LAYERS},(_,i)=>`if(uLayerCount>${i}){vec4 layer=layerPixel(uLayers[${i}],uLayerRects[${i}],p);colour=layer.rgb+colour*(1.0-layer.a);}`).join('\n')}
   if(uPageLightRect.z>0.0)colour*=layerPixel(uPageLight,uPageLightRect,p).rgb;
   return srgbToLinear(colour);
 }

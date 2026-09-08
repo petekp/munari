@@ -1,7 +1,7 @@
 // Shadow distance fields — distance to the actual glyph and relief outlines.
 // Two bytes retain subpixel distance without requiring float-texture support.
-// The shadow pass traces these extruded outlines in 3D instead of offsetting
-// blurred silhouettes. Generation happens only when the source layout changes.
+// The shadow pass intersects these outlines as thin sheets at their elevations.
+// Generation happens only when the source layout changes.
 // Decision #50 records the silhouette failure and the pixel checks. This module
 // owns the distance transform; homeRelief reads layout and homeLight traces it.
 

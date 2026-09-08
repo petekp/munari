@@ -1,5 +1,6 @@
 // Pixel proof and real landing-page captures for the depth-aware light demo.
 import assert from 'node:assert/strict'
+import {replaceSource} from './replaceSource.mjs'
 import {mkdir,writeFile} from 'node:fs/promises'
 import {existsSync} from 'node:fs'
 import path from 'node:path'
@@ -20,7 +21,7 @@ const observer={name:'observe-home-light',enforce:'pre',transform(code,id){
   if(!id.endsWith('/homeLight.ts'))return code
   const marker='  material.uniforms.uLightHeight.value = lightHeight'
   assert.ok(code.includes(marker))
-  return code.replace(marker,'  window.__homeLightMaterial = material\n'+marker)
+  return replaceSource(code,marker,'  window.__homeLightMaterial = material\n'+marker)
 }}
 const lab=await createServer({root:path.join(root,'apps/lab'),configFile:path.join(root,'apps/lab/vite.config.ts'),plugins:[observer],cacheDir:path.join(output,'.vite-lab'),server:{host:'127.0.0.1',port:0},logLevel:'warn'})
 await fixture.listen();await lab.listen()
@@ -86,7 +87,7 @@ try {
   assert.ok(results.selection.top>=results.selection.lineTop-.5,'Selecting a line must not raise the preceding line')
   await page.screenshot({path:path.join(output,'selected.png')})
   await page.click('.home-hero-row button')
-  await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-lamp').dataset.gl==='true')
+  await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='true')
   await page.screenshot({path:path.join(output,'selected-scene.png')})
   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'no-preference'}])
   await page.waitForFunction(()=>window.__readPaper()?.kind==='scene'&&window.__readPaper().paper.height===52)
@@ -128,7 +129,7 @@ try {
   assert.equal(await page.evaluate(()=>window.__typingInput.value),'Still live')
   await page.screenshot({path:path.join(output,'typing-scene.png')})
   await page.click('.home-hero-row button')
-  await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-lamp').dataset.gl==='false')
+  await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='false')
   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}])
   await page.click('.home-masthead-copy')
   await page.waitForFunction(()=>window.__homeLightMaterial.uniforms.uSelectionCount.value===0)
@@ -165,10 +166,10 @@ try {
     await page.screenshot({path:path.join(output,`website-${width}.png`)})
     await overview.evaluate(()=>{window.__resizedInput=document.querySelector('.home-hero-holder [data-api-live] input')})
     await overview.click('.home-hero-row button')
-    await overview.waitForFunction(()=>document.querySelector('.home-hero-row .home-lamp').dataset.gl==='true')
+    await overview.waitForFunction(()=>document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='true')
     await page.screenshot({path:path.join(output,`website-${width}-scene.png`)})
     await overview.click('.home-hero-row button')
-    await overview.waitForFunction(()=>document.querySelector('.home-hero-row .home-lamp').dataset.gl==='false')
+    await overview.waitForFunction(()=>document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='false')
     assert.equal(await overview.evaluate(()=>document.querySelector('.home-hero-holder [data-api-live] input')===window.__resizedInput),true)
   }
   assert.deepEqual(errors,[])

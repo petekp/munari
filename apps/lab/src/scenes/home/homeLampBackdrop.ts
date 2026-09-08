@@ -5,8 +5,8 @@ import * as THREE from 'three'
 import {createDomTextureSource,detectHtmlInCanvas,type DomTextureSource} from '@petepetrash/munari/advanced'
 import {readHomeFlyer,type HomeFlyer} from './homeFlyer'
 import {lampPixelRatio,watchLampViewport} from './homeLampViewport'
+import {LAMP_CANVAS_LAYERS} from './homeLampGlassShaders'
 
-export const LAMP_CANVAS_LAYERS=4
 const OMIT='.home-light-host,.home-light-scene,.home-light,[data-lamp-capture],script,style,link,meta'
 const EVENTS=['input','change','focusin','focusout','pointerover','pointerout','pointerdown','pointerup','load','transitionend']
 

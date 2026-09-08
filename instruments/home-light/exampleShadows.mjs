@@ -1,6 +1,7 @@
 // Measure the gallery's actual shadow field while moving its real light control.
 // The instrument copies the completed lighting draw; HTML remains unmodified.
 import assert from 'node:assert/strict'
+import {replaceSource} from './replaceSource.mjs'
 import {writeFile} from 'node:fs/promises'
 import path from 'node:path'
 
@@ -8,7 +9,7 @@ export function observeShadowCapture(code,id) {
   if(!id.endsWith('/HomeMasthead.tsx'))return code
   const marker='      display.render(pass.scene, pass.camera, pass.paper)'
   assert.ok(code.includes(marker),'Lighting capture observation point changed')
-  return code.replace(marker,marker+`\n      if(window.__captureHomeLight){window.__homeLightPng=canvas.toDataURL();window.__captureHomeLight=false;}`)
+  return replaceSource(code,marker,marker+`\n      if(window.__captureHomeLight){window.__homeLightPng=canvas.toDataURL();window.__captureHomeLight=false;}`)
 }
 
 export async function measureExampleShadows(page,output) {

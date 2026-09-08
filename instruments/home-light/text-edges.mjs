@@ -1,6 +1,7 @@
 // Compare the native heading with its lit cutout while keeping cast shadows.
 // Receiver controls affect only the served measurement copy.
 import assert from 'node:assert/strict'
+import {replaceSource} from './replaceSource.mjs'
 import {mkdir,writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {tmpdir} from 'node:os'
@@ -11,8 +12,8 @@ import {setChromeViewport} from '../chromeViewport.mjs'
 const output=process.env.LIGHT_PROOF_OUTPUT??path.join(tmpdir(),'munari-text-edges')
 await mkdir(output,{recursive:true})
 const observer={name:'text-edge-observer',enforce:'pre',transform(code,id){
-  if(id.endsWith('/homeLight.ts'))code=code.replace('  material.uniforms.uLightHeight.value = lightHeight','  window.__typeLight=material;window.__typeFragment??=material.fragmentShader;\n  material.uniforms.uLightHeight.value = lightHeight')
-  if(id.endsWith('/HomeMasthead.tsx'))code=code.replace('    build()\n    void document.fonts.ready.then(build)','    window.__buildTypeMask=build;\n    build()\n    void document.fonts.ready.then(build)')
+  if(id.endsWith('/homeLight.ts'))code=replaceSource(code,'  material.uniforms.uLightHeight.value = lightHeight','  window.__typeLight=material;window.__typeFragment??=material.fragmentShader;\n  material.uniforms.uLightHeight.value = lightHeight')
+  if(id.endsWith('/HomeMasthead.tsx'))code=replaceSource(code,'    build()\n    void document.fonts.ready.then(build)\n    const observer = new ResizeObserver(build)','    window.__buildTypeMask=build;\n    build()\n    void document.fonts.ready.then(build)\n    const observer = new ResizeObserver(build)')
   return code
 }}
 const shell={name:'text-zoom-shell',configureServer(server){server.middlewares.use((req,res,next)=>{

@@ -50,7 +50,7 @@ try {
   const flip = async (scene) => {
     if (pointerInput) await page.click('.home-hero-row button')
     else await page.evaluate(() => document.querySelector('.home-hero-row button').click())
-    await page.waitForFunction(wanted => document.querySelector('.home-hero-row .home-lamp').dataset.gl === String(wanted), {timeout:10000}, scene)
+    await page.waitForFunction(wanted => document.querySelector('.home-hero-row .home-postcard-status').dataset.gl === String(wanted), {timeout:10000}, scene)
   }
   await flip(true)
   await page.waitForFunction(() => {
@@ -100,7 +100,7 @@ try {
   if (process.env.POSTCARD_TRACE === '1') await page.tracing.start({path:path.join(output,'trace.json'),categories:['devtools.timeline','v8.execute','blink.user_timing']})
   if (recordPixels) await client.send('Page.startScreencast',{format:'png',everyNthFrame:1})
   const box = await page.$eval('.home-hero-holder',element=>element.getBoundingClientRect().toJSON())
-  const exclude = await page.$$eval('.home-hero-row,.home-hero-status,.home-hero-copy',elements=>elements.map(element=>element.getBoundingClientRect().toJSON()))
+  const exclude = await page.$$eval('.home-hero-row',elements=>elements.map(element=>element.getBoundingClientRect().toJSON()))
   for(let cycle=0;cycle<cycles;cycle++) {
     await flip(true)
     await new Promise(resolve=>setTimeout(resolve,1250))

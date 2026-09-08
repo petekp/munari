@@ -328,8 +328,6 @@ export function HeroMesh({
     group.rotation.set(st.rx, st.ry, st.rz)
 
     updatePaperGeometry(mesh, st, a, modes, paper, delta)
-    // Only while the scene owns the card. Once landed the page names it
-    // again in its own commit, and a late frame here must not overwrite that.
   })
 
   return (

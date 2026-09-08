@@ -3,6 +3,7 @@
 // is published inside Surface's pre-draw callback, never through React (#51).
 import * as THREE from 'three'
 import { PAPER_COLUMNS, PAPER_ROWS } from './homePaperLaw'
+import { POSTCARD_STANDOFF } from './homeLightLaw'
 
 export interface PaperDrawFrame {
   /** Viewport x/y, height above the page, and projection w, per vertex. */
@@ -13,7 +14,7 @@ export interface PaperDrawFrame {
 }
 
 export function createPaperDrawFrame(): PaperDrawFrame {
-  return { vertices: new Float32Array((PAPER_COLUMNS+1)*(PAPER_ROWS+1)*4), corners: new Float32Array(12), height: 12, anchor: {x:0,y:0,width:0,height:0} }
+  return { vertices: new Float32Array((PAPER_COLUMNS+1)*(PAPER_ROWS+1)*4), corners: new Float32Array(12), height: POSTCARD_STANDOFF, anchor: {x:0,y:0,width:0,height:0} }
 }
 
 const world = new THREE.Vector3(), clip = new THREE.Vector4(), projection = new THREE.Matrix4()

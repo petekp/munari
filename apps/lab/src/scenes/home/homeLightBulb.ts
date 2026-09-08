@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import {CORD_POINTS,createLampCord,stepLampCord} from './homeLampCordLaw'
 import {LAMP_GLASS_VERTEX,LAMP_GLASS_FRAGMENT} from './homeLampGlassShaders'
 import type {LampBackdrop} from './homeLampBackdrop'
+import {LIGHT_HEIGHT} from './homeLightLaw'
 
 export const BULB_RADIUS=30
 const SOCKET_RADIUS=10
@@ -34,7 +35,7 @@ function glowTexture(){
 
 export function createLightBulb(backdrop:LampBackdrop):LightBulb{
   const group=new THREE.Group(),body=new THREE.Group();group.add(body);group.visible=false
-  const uniforms={...backdrop.uniforms,uEye:new THREE.Uniform(new THREE.Vector3()),uMvp:new THREE.Uniform(new THREE.Matrix4()),uLampViewport:new THREE.Uniform(new THREE.Vector4()),uPixelWidth:new THREE.Uniform(.5),uLightDistance:new THREE.Uniform(260),uIor:new THREE.Uniform(1.5),uDispersion:new THREE.Uniform(.006),uDisplacement:new THREE.Uniform(.08),uEmission:new THREE.Uniform(1)}
+  const uniforms={...backdrop.uniforms,uEye:new THREE.Uniform(new THREE.Vector3()),uMvp:new THREE.Uniform(new THREE.Matrix4()),uLampViewport:new THREE.Uniform(new THREE.Vector4()),uPixelWidth:new THREE.Uniform(.5),uLightDistance:new THREE.Uniform(LIGHT_HEIGHT),uIor:new THREE.Uniform(1.5),uDispersion:new THREE.Uniform(.006),uDisplacement:new THREE.Uniform(.08),uEmission:new THREE.Uniform(1)}
   const glass=new THREE.ShaderMaterial({vertexShader:LAMP_GLASS_VERTEX,fragmentShader:LAMP_GLASS_FRAGMENT,uniforms,side:THREE.BackSide,transparent:true,premultipliedAlpha:true,depthWrite:true,toneMapped:false})
   const envelope=new THREE.BoxGeometry(70,102,70);envelope.translate(0,8,0)
   const globe=new THREE.Mesh(envelope,glass);globe.renderOrder=2;body.add(globe)

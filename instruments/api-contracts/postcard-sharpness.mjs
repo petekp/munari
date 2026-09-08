@@ -26,7 +26,7 @@ try{
  const capture=()=>page.screenshot({clip,encoding:'base64',captureBeyondViewport:false})
  const before=await capture();await writeFile(path.join(output,'native.png'),Buffer.from(before,'base64'))
  await page.click('.home-hero-row button')
- await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-lamp').dataset.gl==='true')
+ await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='true')
  const after=await capture();await writeFile(path.join(output,'mesh.png'),Buffer.from(after,'base64'))
  assert.deepEqual(await appearance(),reference,'Native and scene captures must use the same viewport and light position')
  const pixels=await textureClarity(page,before,after)

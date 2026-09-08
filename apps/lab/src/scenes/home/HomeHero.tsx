@@ -104,7 +104,7 @@ function PostcardInstructions({ supported, lifted, reduced }: { supported: boole
 
 function PostcardPresentation({surface,preview}:{surface:SurfaceHandle;preview:boolean}) {
   const state = useSurfaceStatus(surface)
-  return <span className="home-lamp" data-gl={state.presentation === 'scene'} aria-live="polite">
+  return <span className="home-postcard-status" data-gl={state.presentation === 'scene'} aria-live="polite">
     {preview ? 'Recorded in Chrome' : state.presentation === 'scene' ? 'In the scene' : 'On the page'}
   </span>
 }
