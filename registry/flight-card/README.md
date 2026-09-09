@@ -27,11 +27,9 @@ happened; use the lab implementation as the reference.
 
 ## No copyable source yet
 
-The scene-side machinery (aero vertex bow, crumple shader, depth-tested
-shadow quad, density-pin driver) lives inside the flight scene as one
-unit. Extracting a reusable component is design work in its own right,
-and no second consumer exists to shape it. Per decisions.md #7, we add
-API when a real consumer needs it. Until then, read the Flight scene with
+The scene-side machinery (vertex bow, crumple shader, depth-tested shadow,
+density driver) remains in the Flight scene. This entry documents that
+implementation; it does not supply a reusable component. Read the scene with
 `flightPhysicsLaw`, `flightGestures`, `flightDensityLaw`, and their tests.
 
 ## Rules any future extraction must preserve
@@ -54,13 +52,18 @@ Each of these came from a shipped bug:
   gate outside the smoother caused both the flicker and the settle
   hitch.
 - **The handoff is the protocol's and the ramp is the plate's:** one
-  `useSurface` handle, its source declared in the card's own slot and
-  presented by a `manual` `Surface.WebGL` inside the Canvas, with
+  `useSurfaceHandle` handle, its source declared in the card's own slot and
+  presented by a `Surface.Mesh` with `placement="manual"` inside the Canvas, with
   `useSurfaceDriver` answering the crossing from the plate's altitude
   (`Math.max(ADMIT, Math.min(1, f.plate.p.z / LIFT_Z))`, and exact zero
-  the moment the board asks for the page back). Never a frame count and
-  never a second static landing ramp. Keep the presenter mounted for the
-  whole reclaim linger, gate mesh motion with `progress.get()`, and
+  the moment the board asks for the page back). This Flight path uses the
+  default automatic draw evidence. A specialist custom draw can set
+  `presentation="manual"`; that seam keeps the mesh proxy and pointer relay,
+  while advanced `surfaceManualPresenter` must cover every declared part and
+  report the actual final compositor draw. Never a frame count and never a
+  second static landing ramp. When a custom subtree is used, keep its Scene
+  boundary and presenter alive through cleanup, gate mesh motion with
+  `progress.get()`, and
   never hide the canvas to warm one Surface — the mesh warms by drawing
   write-free, and a scene mesh that is not a presenter (the shadow) hides
   itself instead. Do not reorder the board or start FLIP while the page

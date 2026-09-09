@@ -9,12 +9,11 @@
 // several composited frames wide: the crossing-flash gate photographed six
 // white cards over the logo, 2026-08-13.
 //
-// Content reaches the container by PORTAL, never by a second React root.
-// A portal keeps the source in one reconciler, so a provider mounted above
-// `SurfaceCanvas` reaches a `<Surface source>` declared deep in an R3F
-// scene. The two wirings differ only in who renders the portal: a page-side
-// root renders it itself, and a Canvas-side root hands it outward to the
-// host, because the R3F reconciler cannot render react-dom nodes. A source
+// Retained Surface.HTML supplies an adopted container; SceneSurface.HTML
+// supplies React content through a portal. That portal keeps the source in
+// one reconciler, so providers above SurfaceCanvas still reach scene content.
+// Canvas-side content is portaled outward through the host because the R3F
+// reconciler cannot render react-dom nodes. A source
 // update registers its replacement before releasing the old entry. The
 // cleanup-first order removed the focused control for one commit on
 // 2026-08-18, so every focus attempt fell back to `<body>`.
@@ -25,10 +24,12 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { guardPointerCapture, type SurfaceChrome, type SurfacePartId } from '@munari/core'
+import { useSurfaceDevicePixelRatio } from './surfaceDevicePixelRatio'
 import { useLatest } from '../useLatest'
 import { createSurfaceFocusLedger, transferSurfaceFocus } from './surfaceFocus'
 import {
   SurfaceInstanceContext,
+  SurfaceHandleContext,
   SurfacePartContext,
   sourceContentKey,
   type SurfacePartValue,
@@ -56,6 +57,7 @@ export const SURFACE_NAME_ATTRIBUTE = 'data-munari-surface'
 export const SURFACE_PART_ATTRIBUTE = 'data-munari-part'
 
 const DEFAULT_SIZE: SurfaceSize = [640, 480]
+let sourceHostSequence = 0
 
 export interface SurfaceSourceHostProps {
   root: SurfaceRootValue
@@ -71,6 +73,8 @@ export interface SurfaceSourceHostProps {
   paint?: 'auto' | 'always'
   onFocusWithinChange?: (focused: boolean) => void
   onChrome?: (chrome: SurfaceChrome) => void
+  chromeElement?: () => HTMLElement
+  pageContent?: () => HTMLElement | null
   children?: React.ReactNode
 }
 
@@ -85,15 +89,20 @@ export function SurfaceSourceHost({
   paint = 'auto',
   onFocusWithinChange,
   onChrome,
+  chromeElement,
+  pageContent,
   children,
 }: SurfaceSourceHostProps) {
+  const [sourceHostId] = useState(() => `source-${sourceHostSequence++}`)
   const [runtime, setRuntime] = useState<SurfaceSourceRuntime | null>(null)
   const [pageRoot, setPageRoot] = useState<HTMLElement | null>(null)
   const outwardContent = useMemo(createSurfaceOutwardContentStore, [])
   const store = root.store
+  const handleValue = useMemo(() => ({ handle: store.handle, store }), [store])
   const [measured, setMeasured] = useState<SurfaceSize | null>(null)
   const onFocusWithinRef = useLatest(onFocusWithinChange)
   const onChromeRef = useLatest(onChrome)
+  const chromeElementRef = useLatest(chromeElement)
 
   // Authored size wins; a DOM presentation measures the rest. The default
   // exists so a resident Surface with neither still has a real box to paint
@@ -140,7 +149,7 @@ export function SurfaceSourceHost({
   // belongs here only if changing it means "this is different content now",
   // which for a source is only the identity of the element being captured.
   useLayoutEffect(() => {
-    if (!captureRoot) return
+    if (!captureRoot || !store.getState().supported) return
     let created: SurfaceSourceRuntime
     try {
       created = createSurfaceSourceRuntime({
@@ -153,12 +162,12 @@ export function SurfaceSourceHost({
         pixelRatio: window.devicePixelRatio,
         onError: (error) => root.store.reportError(error),
         onChrome: (chrome) => onChromeRef.current?.(chrome),
-        chromeElement: () => surfaceChromeElement(captureRoot, adopt !== undefined),
+        chromeElement: () => chromeElementRef.current?.() ?? surfaceChromeElement(captureRoot, adopt !== undefined),
       })
     } catch (error) {
       // A browser without the trial is a first-class answer, not a crash:
-      // the DOM presentation stays visible and `presentedView` never leaves
-      // `dom`. Throwing here would unmount the whole R3F tree instead.
+      // the DOM presentation stays visible and `presented` never leaves
+      // `page`. Throwing here would unmount the whole R3F tree instead.
       root.store.reportError(error instanceof Error ? error : new Error(String(error)))
       return
     }
@@ -202,6 +211,8 @@ export function SurfaceSourceHost({
   // is held awake only while the source actually has work — a settling box,
   // a fresh paint, a trailing upload — which is what keeps thirty-three
   // quiescent panels at zero paints per second.
+  const nativeDpr=useSurfaceDevicePixelRatio()
+  useLayoutEffect(()=>runtime?.setPixelRatio(nativeDpr),[runtime,nativeDpr])
   const host = root.host
   useEffect(() => {
     if (!host || !runtime) return
@@ -234,17 +245,16 @@ export function SurfaceSourceHost({
       size: [sourceWidth, sourceHeight],
       captureRoot,
       pageRoot,
+      pageContent,
+      source,
       setPageRoot,
       setMeasuredSize: setMeasured,
     }),
-    [id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot],
+    [id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent, source],
   )
 
-  // One logical focus over two DOM copies, and a transfer when the hold
-  // moves. Subscribed from a LAYOUT effect so this listener is registered
-  // before <Surface.DOM>'s passive one: that is the listener that sets
-  // `inert`, and `inert` blurs its subtree, so reading the focused element
-  // after it has run finds `<body>`.
+  // Observe focus in the page and capture containers as one logical part.
+  // The hold subscription below handles transfer before page visibility changes.
   useEffect(() => {
     const ledger = createSurfaceFocusLedger((focused) => onFocusWithinRef.current?.(focused))
     const watch = (element: HTMLElement | null, instance: 'page' | 'source') => {
@@ -304,29 +314,30 @@ export function SurfaceSourceHost({
   // Published to the STORE as well as the context. A presenter reached
   // through separated wiring holds only the handle — it has no ancestor
   // that ever saw this source, so context alone would leave it blank.
-  useEffect(() => {
-    store.publishPart(id, {
+  useEffect(
+    () => store.publishPart(id, {
       id,
       runtime,
       size: [sourceWidth, sourceHeight],
       captureRoot,
       pageRoot,
-    })
-    return () => store.publishPart(id, null)
-  }, [store, id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot])
+      pageContent,
+    }),
+    [store, id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent],
+  )
 
   // Content reaches the container by whichever door this wiring has. Both
   // render the SAME element into the SAME container; only the reconciler
   // that owns the commit differs.
   const outward = root.wiring === 'canvas'
-  // Keyed by the ROOT INSTANCE, not the name. The registry replaces by key,
-  // so two unnamed Surfaces sharing a Canvas would publish their sources
-  // under one entry and the second commit would take the first one's
-  // content away — a panel that mounts, paints once, and goes blank.
-  const contentKey = sourceContentKey(root.instanceId, id)
+  // A part name addresses the selected source, not its host. Duplicate
+  // names must retain separate DOM trees so removing either can recover.
+  const contentKey = sourceContentKey(`${root.instanceId}:${sourceHostId}`, id)
   const wrapped =
     source === undefined ? null : (
-      <SurfaceInstanceContext value="source">{source}</SurfaceInstanceContext>
+      <SurfaceHandleContext value={handleValue}>
+        <SurfaceInstanceContext value="source">{source}</SurfaceInstanceContext>
+      </SurfaceHandleContext>
     )
   const hasOutwardContent = source !== undefined
   const outwardElement = useMemo(
@@ -375,7 +386,7 @@ function createCaptureContainer(): HTMLElement {
   // and draws an empty rectangle, with clean paints and no error anywhere.
   node.style.width = `${DEFAULT_SIZE[0]}px`
   node.style.height = `${DEFAULT_SIZE[1]}px`
-  // Parked matter must never hold the real pointer. A drag consumer inside
+  // A parked capture must never hold the real pointer. A drag consumer inside
   // (react-resizable-panels calls `setPointerCapture` per move) would
   // otherwise capture the actual mouse, and every trusted pointer event
   // retargets to the parked element: the canvas goes silent mid-gesture.

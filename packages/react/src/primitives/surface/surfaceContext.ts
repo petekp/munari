@@ -12,7 +12,7 @@
 // could set it could claim a page slot that does not exist, and the fault
 // would surface as a DOM presentation that silently never appears.
 
-import { createContext, use, useCallback, useMemo, useSyncExternalStore } from 'react'
+import { createContext, use, useCallback, useMemo, useSyncExternalStore, type ReactNode } from 'react'
 import type * as THREE from 'three'
 import type { SurfaceChrome, SurfacePartId } from '@munari/core'
 import { surfaceStoreOf } from './surfaceHandle'
@@ -26,11 +26,17 @@ export type SurfaceWiring = 'page' | 'canvas'
 /** Which copy of a source tree a component instance is rendering in. */
 export type SurfaceInstance = 'page' | 'source'
 
+/** The identity a public context-reading hook may safely inherit. */
+export interface SurfaceHandleValue {
+  readonly handle: SurfaceHandle
+  readonly store: SurfaceStore
+}
+
 export interface SurfaceRootValue {
   readonly store: SurfaceStore
   readonly handle: SurfaceHandle
   readonly host: SurfaceHost | null
-  readonly canvas: string | undefined
+  readonly canvasId: string | undefined
   readonly name: string | undefined
   /**
    * This root's own identity among every root on the page, minted at mount
@@ -43,7 +49,7 @@ export interface SurfaceRootValue {
    */
   readonly instanceId: string
   readonly wiring: SurfaceWiring
-  /** True when the root carries `view` — an exclusive handoff, not a Twin. */
+  /** True for an exclusive private protocol request (page or canvas). */
   readonly exclusive: boolean
   /** The measured page box for a part, from its DOM presentation. */
   reportMeasuredSize(id: SurfacePartId, size: SurfaceSize | null): void
@@ -60,6 +66,9 @@ export interface SurfacePartValue {
   readonly captureRoot: HTMLElement | null
   /** The live page-side element, when a DOM presentation is mounted. */
   readonly pageRoot: HTMLElement | null
+  readonly pageContent?: () => HTMLElement | null
+  /** Authored React content supplied to the internal source host's portal. */
+  readonly source: ReactNode | undefined
   setPageRoot(el: HTMLElement | null): void
   /** The page box a DOM presentation measured, when `size` is unauthored. */
   setMeasuredSize(size: SurfaceSize | null): void
@@ -92,6 +101,7 @@ export interface SurfaceMaterialValue {
 export const SurfaceMaterialContext = createContext<SurfaceMaterialValue | null>(null)
 
 export const SurfaceRootContext = createContext<SurfaceRootValue | null>(null)
+export const SurfaceHandleContext = createContext<SurfaceHandleValue | null>(null)
 export const SurfacePartContext = createContext<SurfacePartValue | null>(null)
 export const SurfaceInstanceContext = createContext<SurfaceInstance>('page')
 
@@ -110,9 +120,7 @@ export function useSurfaceRoot(component: string): SurfaceRootValue {
   const root = use(SurfaceRootContext)
   if (!root) {
     throw new Error(
-      `munari: <${component}> must be rendered inside a <Surface>. It reads the ` +
-        'source and identity its parent declares, so there is nothing for it to ' +
-        'present on its own.',
+      `munari: <${component}> needs an enclosing <Surface.Root> or <SceneSurface.Root>.`,
     )
   }
   return root
@@ -122,8 +130,8 @@ export function useSurfacePart(component: string): SurfacePartValue {
   const part = use(SurfacePartContext)
   if (!part) {
     throw new Error(
-      `munari: <${component}> found no source. A <Surface> without \`source\` or ` +
-        '`adopt` holds its content in <Surface.Part> children — put this inside one.',
+      `munari: <${component}> needs an HTML part. Put it inside the <Surface.Mesh> ` +
+        'that presents a <Surface.HTML> or <SceneSurface.HTML> part.',
     )
   }
   return part
@@ -145,7 +153,7 @@ export function useSurfaceInstance(): SurfaceInstance {
 /**
  * The Surface texture, for a custom material.
  *
- * Never null in that position: `Surface.WebGL` mounts a custom material
+ * Never null in that position: `Surface.Mesh` mounts a custom material
  * only after a configured texture exists, so the material's first render
  * already samples real pixels rather than binding null and waiting for a
  * re-render that a memoized material may never take.
@@ -156,7 +164,7 @@ export function useSurfaceTexture(): THREE.Texture {
   if (!texture) {
     throw new Error(
       'munari: useSurfaceTexture() found no texture. It is only valid inside a ' +
-        'material passed to <Surface.WebGL material={…}>, which Munari mounts ' +
+        'material passed to <Surface.Mesh material={…}>, which Munari mounts ' +
         'after the texture exists.',
     )
   }
@@ -172,11 +180,13 @@ export function useSurfaceTexture(): THREE.Texture {
  * presenters registered: no crossing, no mesh, no DOM presentation, nothing
  * composited anywhere (decisions.md #36). Measured 2026-08-22
  * (docs/spikes/cross-surface-sampling.md):
- * a Surface declared `<Surface surface={h} source={…} />` and presented
- * nowhere held `texture.version` climbing 175 → 318 over 1.2s, under
+ * a source capture with no presenter held `texture.version` climbing
+ * 175 → 318 over 1.2s, under
  * `frameloop="demand"` as well as `"always"`, while a static control held
  * exactly still. That is what lets one material mix two live captures —
- * the second view is matter the page never shows.
+ * the second texture supplies pixels independently of the first presenter.
+ * For a separate capture without a Surface handoff, use useElementCapture
+ * or CaptureContent instead of declaring a Surface without presentations.
  *
  * Null, unlike `useSurfaceTexture`, and the difference is load-bearing. In
  * the material slot the texture is guaranteed because Munari mounts the

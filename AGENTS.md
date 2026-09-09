@@ -1,12 +1,9 @@
 # munari — working rules
 
-munari makes the live DOM available as physical matter in WebGL
-(Chrome HTML-in-canvas). One sentence of theory governs everything:
-**this is a handoff protocol between two renderers that both believe
-they own the pixels.** Idle is the compositor's hold; flight is an
-excursion out of it; the handoff rules are the transfer protocol. When
-a change is hard to place, ask whose hands the pixels are in at that
-moment.
+Munari combines retained HTML, Three.js scenes, and shaders through Chrome's
+HTML-in-canvas capability. The DOM owns content and interaction; the binding
+coordinates which renderer displays it. A handoff must preserve the original
+content, its input state, and the evidence for each displayed frame.
 
 ## Start with the task
 
@@ -16,8 +13,9 @@ canonical example, and smallest decisive check. Read the
 [system model](docs/system-model.md) when ownership or evidence is unclear;
 [CONTEXT.md](CONTEXT.md) is the shared glossary.
 
-Current APIs come from the published entries and their types. Numbered
-decisions explain constraints; historical proposals are not instructions.
+Current APIs come from the published entries and their types. The README is
+the usage guide; numbered decisions explain constraints and dated changes.
+Superseded proposals and completed plans are available in Git history.
 [The agent-system plan](docs/agent-system-plan.md) is unbuilt work except
 where a status and acceptance evidence say otherwise. Do not infer runtime
 features or authority from a plan.
@@ -34,7 +32,7 @@ for working in this repo.
 - `packages/react` (`@petepetrash/munari`) — the thinnest binding, and the one
   package that will ever be published. `three` +
   `@react-three/fiber` are **peer** dependencies. We are three-first;
-  renderer abstraction is banned (decisions.md #1).
+  the binding remains specific to Three.js (decisions.md #1).
 - `registry/` — copyable behaviors (shadcn model, nothing published):
   tuned constants and perceptual-floor tests travel with the code.
 - `apps/lab` — a consumer. Imports **only** the published entries
@@ -110,7 +108,11 @@ by no test runner, wired invisibly through the root tsconfig include.
   inside the folder so every module name is unique repo-wide.
 - "Knobs" is the name of a scene. Tuned value bags are `*Tuning`.
 
-## Standing decisions (do not re-litigate; docs/decisions.md)
+## Current contracts (docs/decisions.md)
+
+Revising a contract requires evidence and matching changes to its owning tests
+and decision entry. The ledger records the current constraints and how they
+changed; it does not replace the public types.
 
 - **Premultiplied alpha, library-wide** (decisions.md #5): every
   DOM-sourced texture uploads premultiplied and every material

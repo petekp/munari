@@ -1,14 +1,10 @@
-// lifting-pointer gate — which DOM instance hears a real click in each
-// crossing phase. The contract is decisions.md #33 (input follows the eye):
-// during 'lifting' the page copy is presented, so it must hear every trusted
-// click and wear real :hover, and the parked copy must wear no relayed
-// twins. This began as the probe that found the fault (2026-08-19: 3/3
-// lifting clicks misrouted to the parked copy) and was promoted when
-// crossingPointer shipped.
+// lifting-pointer gate — retained input, hover, and scene lifetime across
+// presentation changes. Decision #33 requires real clicks and native hover
+// during preparation. The original two-copy regression is historical; the
+// current fixture records one button and its presentation at each event.
 //
-// Baselines double as liveness checks: a click at rest must reach the page
-// copy, and a click in the 'gl' phase must reach the parked copy through
-// the relay. If either fails, the lifting answer would be vacuous.
+// Rest and scene clicks are liveness controls. Native-versus-relayed event
+// delivery is measured separately by the native-pointer gate.
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -92,6 +88,13 @@ try {
       pageProblems.push(m.text())
   })
 
+  // An initially selected Surface must tolerate the separate R3F root's
+  // first commit; it cannot require the user to mount the canvas earlier.
+  await page.goto(`http://127.0.0.1:${port}/?initial=scene`, { waitUntil: 'load' })
+  await page.waitForFunction(
+    () => window.__probe?.state.presentation === 'scene' && !window.__probe.state.isTransitioning,
+    { timeout: 15_000 },
+  )
   await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load' })
   await page.waitForFunction(() => window.__probe?.ready === true, { timeout: 15_000 })
   if (!(await page.evaluate(() => window.__probe.capable)))
@@ -105,7 +108,7 @@ try {
   const stateNow = () => page.evaluate(() => window.__probe.state)
   const waitForView = (view) =>
     page.waitForFunction(
-      (v) => window.__probe.state.presentedView === v && !window.__probe.state.isChanging,
+      (v) => window.__probe.state.presentation === v && !window.__probe.state.isTransitioning,
       { timeout: 15_000 },
       view,
     )
@@ -116,13 +119,16 @@ try {
     await sleep(120)
     const after = await clickCount()
     const rec = after > before ? await lastClick() : null
-    return { label, heardBy: rec ? rec.instance : 'nobody', record: rec }
+    return { label, heardBy: rec ? rec.presentationAtClick : 'nobody', record: rec }
   }
 
   const results = []
 
   // ── baseline: at rest, the page copy must hear a real click ──────────
   results.push(await clickAndRecord('rest (page phase)'))
+  if (await page.evaluate(() => window.__probe.scene.active !== 0)) {
+    throw new Error('the custom scene is mounted before a canvas request')
+  }
 
   // ── lifting: one fresh crossing per offset ────────────────────────────
   // 550, not 600: the settle is 700ms and the click itself costs a mouse
@@ -130,26 +136,26 @@ try {
   // runner lands it in the gl phase and fails the gate on timing alone.
   for (const offsetMs of [100, 350, 550]) {
     await page.evaluate(() => window.__probe.mark('request-webgl'))
-    await page.evaluate(() => window.__probe.setView('webgl'))
+    await page.evaluate(() => window.__probe.setRenderIn('scene'))
     await sleep(offsetMs)
     const st = await stateNow()
     const r = await clickAndRecord(`lifting +${offsetMs}ms`)
     r.phaseAtClick = st
     results.push(r)
-    await waitForView('webgl')
+    await waitForView('scene')
     if (offsetMs === 100) {
       // ── gl-phase baseline, once: the parked copy must hear the relay ──
       results.push(await clickAndRecord('gl phase'))
     }
-    await page.evaluate(() => window.__probe.setView('dom'))
-    await waitForView('dom')
-    await sleep(400) // outlast the reclaim linger before the next trial
+    await page.evaluate(() => window.__probe.setRenderIn('page'))
+    await waitForView('page')
+    await page.waitForFunction(() => window.__probe.scene.active === 0, { timeout: 5_000 })
   }
 
   // ── hover during lifting: does the visible copy show feedback? ───────
   await page.mouse.move(center.x - 200, center.y - 120)
   await sleep(100)
-  await page.evaluate(() => window.__probe.setView('webgl'))
+  await page.evaluate(() => window.__probe.setRenderIn('scene'))
   await sleep(250)
   await page.mouse.move(center.x, center.y, { steps: 4 })
   await sleep(150)
@@ -158,21 +164,53 @@ try {
     state: window.__probe.state,
     canvasSolid: window.__probe.canvasSolid(),
   }))
-  await waitForView('webgl')
+  await waitForView('scene')
   await sleep(100)
   const hoverGl = await page.evaluate(() => window.__probe.hoverState())
+
+  // Explicit presentation choices must not strand the managed scene or
+  // leave an invisible page copy interactive after its presentation stops.
+  const policies = []
+  for (const requested of ['page', 'scene']) {
+    await page.evaluate((value) => window.__probe.setRenderIn(value), requested)
+    await waitForView(requested)
+    if (requested === 'page') {
+      await page.waitForFunction(() => window.__probe.scene.active === 0, { timeout: 5_000 })
+    } else {
+      // A static mounted presenter is not a reason to promote a demand
+      // canvas forever. Observe a quiet interval after its motion settles.
+      await page.waitForFunction(
+        () => performance.now() - window.__probe.scene.lastFrameAt >= 150,
+        { timeout: 5_000 },
+      )
+    }
+    policies.push(await page.evaluate((value) => ({
+      requested: value,
+      presentation: window.__probe.state.presentation,
+      pageVisible: window.__probe.pageVisible(),
+      sceneActive: window.__probe.scene.active,
+    }), requested))
+  }
+  await page.evaluate(() => window.__probe.setRenderIn('page'))
+  await waitForView('page')
+  await page.waitForFunction(() => window.__probe.scene.active === 0, { timeout: 5_000 })
+  const framesAtRelease = await page.evaluate(() => window.__probe.scene.frames)
+  await sleep(150)
+  const framesAfterRelease = await page.evaluate(() => window.__probe.scene.frames)
 
   // ── report ────────────────────────────────────────────────────────────
   console.log('\nlifting-pointer gate — who heard the click:')
   for (const r of results) {
     const extra = r.record
-      ? ` (presentedView=${r.record.state.presentedView}, isChanging=${r.record.state.isChanging},` +
+      ? ` (presentation=${r.record.state.presentation}, isTransitioning=${r.record.state.isTransitioning},` +
         ` canvasSolid=${r.record.canvasSolid}, pageVisible=${r.record.pageVisible})`
       : ''
     console.log(`  ${r.label.padEnd(20)} → ${r.heardBy}${extra}`)
   }
   console.log('\nhover during lifting:', JSON.stringify(hoverLifting))
   console.log('hover during gl:     ', JSON.stringify(hoverGl))
+  console.log('presentation choices:', JSON.stringify(policies))
+  console.log('scene frames after release:', framesAfterRelease - framesAtRelease)
 
   if (pageProblems.length) {
     console.error('\npage errors during the run:')
@@ -186,32 +224,34 @@ try {
     console.error('\nAPPARATUS FAILURE: a click at rest did not reach the page copy.')
     process.exit(1)
   }
-  if (gl?.heardBy !== 'source') {
+  if (gl?.heardBy !== 'scene') {
     console.error('\nAPPARATUS FAILURE: a click in the gl phase did not reach the parked copy.')
     process.exit(1)
   }
 
   // ── the contract: input follows the eye (decisions.md #33) ────────────
   const failures = []
+  for (const policy of policies) {
+    const needsPage = policy.requested === 'page'
+    const needsScene = policy.requested === 'scene'
+    if (policy.pageVisible !== needsPage) failures.push(`${policy.requested}: wrong page visibility`)
+    if (policy.sceneActive !== Number(needsScene)) failures.push(`${policy.requested}: wrong scene lifetime`)
+  }
+  if (framesAfterRelease !== framesAtRelease) failures.push('custom scene kept receiving frames after release')
   for (const r of results.filter((x) => x.label.startsWith('lifting'))) {
     if (r.heardBy !== 'page') {
       failures.push(`${r.label}: heard by ${r.heardBy}, the presented page copy must hear it`)
     }
   }
-  if (hoverLifting.state.presentedView === 'dom' && hoverLifting.state.isChanging) {
-    if (hoverLifting.pageRealHover !== true) {
+  if (hoverLifting.state.presentation === 'page' && hoverLifting.state.isTransitioning) {
+    if (hoverLifting.realHover !== true) {
       failures.push('lifting hover: the visible page copy shows no real :hover')
     }
-    if (hoverLifting.sourceDataHover !== false) {
-      // Either the relay ran while the canvas had no pointer ownership, or
-      // the #33 edge burst failed to clear a twin left by an earlier gl
-      // phase when the hold returned to the page.
-      failures.push('lifting hover: the parked copy wears data-hover')
-    }
+
   } else {
     failures.push('lifting hover sample missed the lifting window — timing apparatus problem')
   }
-  if (hoverGl.sourceDataHover !== true) {
+  if (hoverGl.dataHover !== true) {
     failures.push('gl hover: the relay did not stamp data-hover on the source copy')
   }
   if (failures.length) {

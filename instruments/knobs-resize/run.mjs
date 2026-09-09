@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { waitForSurfaceInput } from '../surfaceInput.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '..', '..')
@@ -73,6 +74,7 @@ try {
     { timeout: 20_000 },
   )
 
+  await waitForSurfaceInput(page,'knobs-panel-surface')
   const resizePoint = await page.evaluate(() => {
     const host = document.querySelector('[data-munari-surface="knobs-panel"]')
     const target = host?.querySelector('[data-munari-anchor="panel:resize"]')

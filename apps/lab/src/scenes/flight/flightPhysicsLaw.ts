@@ -462,7 +462,7 @@ export function aeroFollowStep(
 //
 // Deleting a card is the one gesture that gets to break the "indistinguishable
 // from DOM" contract on purpose — the card stops being a document element and
-// dies as matter. The CRUSH is pure time, so the tests can hold it still: the
+// is removed from the scene. The CRUSH is pure time, so the tests can hold it still: the
 // driver advances one clock (crumpleT, seconds) and the morph is a function of
 // that clock. The EXIT is deliberately not on the clock at all — it is a
 // place. The wad is gone when it has fully left the viewport, and it may not

@@ -50,7 +50,7 @@ import './knobs.css'
  *  dispatches each forwarded move to whatever element is under the
  *  point, so a hand that slides off the 66px dial mid-turn keeps
  *  working through the bubbled listener on the panel root. (Pointer
- *  capture is not available in here: parked matter must never hold the
+ *  capture is not available in here: parked content must never hold the
  *  real pointer, so the relay refuses it — see guardPointerCapture.) */
 interface DialDrag {
   def: KnobDef

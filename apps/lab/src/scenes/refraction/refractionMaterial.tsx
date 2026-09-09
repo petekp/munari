@@ -79,6 +79,7 @@ export interface RefractionDrive {
 
 export function RefractionMaterial({
   incoming,
+  incomingPart,
   drive,
   tune,
   stageW,
@@ -88,6 +89,7 @@ export function RefractionMaterial({
   probe,
 }: {
   incoming: SurfaceHandle
+  incomingPart?: string
   drive: React.RefObject<RefractionDrive>
   tune: DropTuning
   /** The sheet's size in CSS px. May change every frame on a resize. */
@@ -108,7 +110,7 @@ export function RefractionMaterial({
   probe?: React.RefObject<((u: number, v: number) => number) | null>
 }) {
   const surface = useSurfaceUniforms()
-  const arriving = useSurfaceTextureOf(incoming)
+  const arriving = useSurfaceTextureOf(incoming, incomingPart)
   const material = useRef<THREE.ShaderMaterial>(null)
 
   // The frame loop reads these; it cannot read a render closure.
@@ -132,7 +134,9 @@ export function RefractionMaterial({
   // is this frame's and not the one before it.
   const field = useInkField(
     outgoingSlot,
-    useMemo(() => ({ ...tune, stageW: fieldW, stageH: fieldH }), [tune, fieldW, fieldH]),
+    tune,
+    fieldW,
+    fieldH,
   )
 
   // Initial values only. r3f 9.7 copies the `uniforms` prop entry by entry

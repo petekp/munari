@@ -8,7 +8,7 @@
 // itself. This environment reads layout only at DOM change boundaries and
 // captures the full page from the moving hand at a separate update rate. The
 // initial field-only reflection omitted all headings and labels; those now
-// come from the browser's actual paint through a source-only Surface.
+// come from the browser's actual paint through CaptureContent.
 //
 // The second fault, 2026-08-31: the page's colour now comes from a canvas,
 // and cloneNode gives a blank one, so the capture carries transparent pixels

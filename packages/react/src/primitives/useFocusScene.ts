@@ -1,5 +1,4 @@
-// The consumer-facing half of the focus subsystem: four hooks an app reaches
-// for, all of them reads of FocusSceneContext.
+// Focus hooks — context access, event subscriptions, and camera policies.
 //
 // Each one is a no-op outside a FocusScene rather than a throw. A control
 // that wants to nudge a camera it may or may not have is a normal thing to
@@ -7,10 +6,9 @@
 // — most scenes are. Refusing to render in that case would make
 // every one of these hooks a coupling the library doesn't need.
 //
-// All four hold the caller's function in a `useLatest` ref and register a
-// stable trampoline. Registration is a subscription with real teardown —
-// re-running it on every render because a consumer passed an inline arrow
-// would churn the scene's subscriber list once a frame.
+// useFocusScene returns the context. The other three hooks retain callback
+// functions through useLatest and register stable subscriptions, so an inline
+// callback does not replace its registration on every render.
 
 import { use, useEffect } from 'react'
 import { useLatest } from './useLatest'
@@ -51,8 +49,8 @@ export function useFocusReframe(fulfiller: ReframeFulfiller) {
 
 /** Claim the no-candidate ladder's view motion (docs/focus.md "Directional
  *  navigation"): `canMove` is the camera-bounds predicate, `nudge` the one-
- *  increment view move. Rigless scenes get no nudge — arrows still work
- *  between projectable candidates; view motion is rig territory. No-op
+ *  increment view move. This nudge requires a registered policy; separate
+ *  focus reframing can use the built-in bare-camera fallback. No-op
  *  outside a FocusScene. */
 export function useFocusNavPolicy(policy: NavPolicy) {
   const scene = use(FocusSceneContext)

@@ -294,7 +294,7 @@
 }
 
 /* The input's holder fills the field column, and so does everything on
- * the path down to the input — Surface.DOM wraps content in a plain div,
+ * the path down to the input — the Surface presentation adds a wrapper,
  * and an unstretched wrapper would hand `width: 100%` its own
  * shrink-to-fit box. */
 .cand-field .cand-target {
@@ -369,22 +369,7 @@
 
 /* ── unroll ──────────────────────────────────────────────────────────── */
 
-/* The page copy is never the visible menu — the mesh is the only menu
- * anyone sees. It has to exist and have a layout box (it is what the
- * relay routes into and what the roll is measured against), so it is
- * parked off-screen rather than hidden.
- *
- * `z-index: -1` was not enough: on the close, the Surface hands its view
- * back to `dom` a few frames before `onWebGLReleased` unmounts it, and
- * for those frames the page copy painted a whole second menu in the
- * top-left corner. Off-screen has no such window. */
-.cand-menu-park {
-  position: fixed;
-  left: -10000px;
-  top: 0;
-  pointer-events: none;
-}
-
+/* Shared by the captured scene menu and its native fallback. */
 .cand-menu {
   box-sizing: border-box;
   display: flex;
@@ -647,13 +632,6 @@
 .cand-code-holder {
   padding: 0;
   transition: opacity 360ms ease, filter 360ms ease;
-}
-
-.cand-code-park {
-  position: fixed;
-  left: -10000px;
-  top: 0;
-  pointer-events: none;
 }
 
 .cand-code-holder[data-gone] {

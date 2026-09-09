@@ -1,10 +1,9 @@
 // knobs-hz — frame-rate evidence for the knobs scene against a 120 Hz
 // budget (8.33 ms/frame). Not a gate yet: a reporter. The browser runs
 // HEADED with vsync and the frame-rate limiter off, so requestAnimation-
-// Frame free-runs and each delta is the true cost of producing one
-// frame — throughput, not cadence. If p95 sits well under 8.33 ms here,
-// a 120 Hz display has headroom; if it doesn't, no amount of vsync will
-// hide it.
+// Frame free-runs. Deltas describe throughput under this workload, not
+// display cadence or isolated CPU/GPU duration. The 8.33ms reference is
+// one 120Hz frame interval, not a claim about observed display refresh.
 //
 // Four phases, because the scene has four costs:
 //   idle  — the standing animation: art orbits, corona, light rig.
@@ -23,6 +22,7 @@ import { fileURLToPath } from 'node:url'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { waitForSurfaceInput } from '../surfaceInput.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const labRoot = path.resolve(here, '..', '..', 'apps', 'lab')
@@ -102,18 +102,20 @@ try {
   await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 2 })
   const problems = []
   page.on('pageerror', (err) => problems.push(String(err)))
-  await page.goto(`http://localhost:${port}/?scene=knobs`, { waitUntil: 'load' })
+  await page.goto(`http://localhost:${port}/?scene=knobs&framed`, { waitUntil: 'load' })
   await page.waitForFunction(
-    () => document.querySelector('.knb-panel') && document.querySelector('canvas'),
+    () => document.querySelector('[data-munari-surface="knobs-panel"] .knb-panel') &&
+      window.__r3f?.get().scene.getObjectByName('knobs-panel-surface'),
     { timeout: 15_000 },
   )
+  await waitForSurfaceInput(page, 'knobs-panel-surface')
   // Let mounting, first captures, and the art's first bake settle.
   await sleep(3000)
 
   const gpu = await page.evaluate(() => {
-    const gl = document.querySelector('canvas').getContext('webgl2')
-    const ext = gl?.getExtension('WEBGL_debug_renderer_info')
-    return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'unknown'
+    const gl = window.__r3f.get().gl.getContext()
+    const ext = gl.getExtension('WEBGL_debug_renderer_info')
+    return gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER)
   })
 
   await page.evaluate(() => {
@@ -165,22 +167,35 @@ try {
   await sleep(300)
 
   // Phase 3: a held dial sweep, driven through the real input path.
-  // The live panel DOM is parked without layout; the slab draws it at
-  // its berth. A control's screen position is therefore projected: the
-  // berth's top-left (the RAIL_W/INSET math PanelRig uses) plus the
-  // control's offset inside the parked panel. If those constants drift,
-  // the engagement check below calls the miss out loud.
+  // Map the source control's UV through the actual mesh and camera. The
+  // scene owns panel placement, so the probe carries no duplicate layout constants.
   const project = (sel) =>
     page.evaluate((s) => {
-      const root = document.querySelector('.knb-panel')
-      const base = root.getBoundingClientRect()
-      const el = root.querySelector(s)
-      const r = el.getBoundingClientRect()
-      const left = window.innerWidth - 26 - 320
-      const top = window.innerHeight / 2 - base.height / 2
+      const state = window.__r3f.get()
+      const source = document.querySelector('[data-munari-source-host][data-munari-surface="knobs-panel"]')
+      const element = source?.querySelector(s)
+      const mesh = state.scene.getObjectByName('knobs-panel-surface')
+      if (!source || !element || !mesh?.geometry) throw new Error(`Cannot project Knobs control ${s}`)
+      mesh.geometry.computeBoundingBox()
+      const box = mesh.geometry.boundingBox
+      const sourceRect = source.getBoundingClientRect()
+      const rect = element.getBoundingClientRect()
+      if (!box || sourceRect.width <= 0 || sourceRect.height <= 0 || rect.width <= 0 || rect.height <= 0) {
+        throw new Error(`Knobs control ${s} has no measurable source box`)
+      }
+      const u = (rect.left + rect.width / 2 - sourceRect.left) / sourceRect.width
+      const v = (rect.top + rect.height / 2 - sourceRect.top) / sourceRect.height
+      const point = mesh.position.clone().set(
+        box.min.x + (box.max.x - box.min.x) * u,
+        box.max.y - (box.max.y - box.min.y) * v,
+        0,
+      )
+      mesh.updateWorldMatrix(true, false)
+      mesh.localToWorld(point).project(state.camera)
+      const canvas = state.gl.domElement.getBoundingClientRect()
       return {
-        x: left + (r.left + r.width / 2 - base.left),
-        y: top + (r.top + r.height / 2 - base.top),
+        x: canvas.left + (point.x + 1) * canvas.width / 2,
+        y: canvas.top + (1 - point.y) * canvas.height / 2,
       }
     }, sel)
   const readLaw = (key) =>
@@ -190,7 +205,7 @@ try {
     }, key)
 
   const before = await readLaw('hue')
-  const dial = await project('.knb-dial')
+  const dial = await project('[data-munari-anchor="knob:hue"]')
   await page.mouse.move(dial.x, dial.y)
   await page.mouse.down()
   const dragPromise = (async () => {
@@ -206,30 +221,35 @@ try {
     await page.mouse.up()
   })()
   await sleep(150)
-  const dragMoved = readLaw('hue').then((mid) => mid !== before)
+  const duringDrag = readLaw('hue')
   const drag = await measure(2800)
   await dragPromise
-  const engaged = (await dragMoved) || (await readLaw('hue')) !== before
+  const mid = await duringDrag
+  const after = await readLaw('hue')
+  const engaged = mid !== before || after !== before
 
   // Phase 4: POWER off — the demo's own floor. The long settle lets
   // the die-down finish: the art's brightness filter animates while
   // `lit` falls, and a full-viewport filtered re-raster per frame is a
   // transition cost, not the floor this phase exists to measure.
-  const toggle = await project('.knb-toggle-well')
+  const powerBefore = await readLaw('power')
+  const toggle = await project('[data-munari-anchor="toggle:power"]')
   await page.mouse.click(toggle.x, toggle.y)
   await sleep(1600)
   const powered = await readLaw('power')
+  const toggled = powerBefore === true && powered === false
   const off = await measure(3000)
 
   const sIdle = stats(idle.deltas)
   const sDrag = stats(drag.deltas)
   const sArt = stats(artless.deltas)
   const sOff = stats(off.deltas)
+  if (!sIdle || !sDrag || !sArt || !sOff) throw new Error('One or more phases recorded no frame samples')
 
   console.log(`knobs-hz: gpu = ${gpu}`)
-  console.log(`knobs-hz: budget ${BUDGET_MS} ms/frame (120 Hz), vsync off, dpr 2, 1440x900`)
-  console.log(`knobs-hz: drag ${engaged ? 'engaged (hue moved mid-sweep and returned)' : 'DID NOT ENGAGE — the drag row measured nothing'}`)
-  console.log(`knobs-hz: power toggle ${powered === false ? 'engaged (power off)' : 'DID NOT ENGAGE — the off row is idle again'}`)
+  console.log(`knobs-hz: reference ${BUDGET_MS} ms/frame, vsync off, dpr 2, 1440x900`)
+  console.log(`knobs-hz: drag ${engaged ? `engaged (hue ${before} → ${mid} → ${after})` : 'DID NOT ENGAGE — the drag row measured nothing'}`)
+  console.log(`knobs-hz: power toggle ${toggled ? 'engaged (power off)' : `DID NOT ENGAGE — power ${powerBefore} → ${powered}`}`)
   console.log('  phase  frames  mean/ms  p50/ms  p95/ms  p99/ms   max/ms    ~fps   >8.33')
   console.log(row('idle', sIdle))
   console.log(row('drag', sDrag))
@@ -239,11 +259,19 @@ try {
     `  longtasks: idle ${idle.long}, drag ${drag.long}, art- ${artless.long}, off ${off.long}` +
       (problems.length ? `\n  page errors: ${problems.join(' | ')}` : ''),
   )
-  const verdict =
-    engaged && sIdle.p95 <= BUDGET_MS && sDrag.p95 <= BUDGET_MS
-      ? 'HOLDS 120 Hz (idle and drag p95 inside budget)'
-      : 'MISSES 120 Hz — see the phases above'
+  const invalid = []
+  if (!engaged) invalid.push('the hue drag did not engage')
+  if (!toggled) invalid.push('the power toggle did not engage')
+  if (problems.length) invalid.push(`${problems.length} page error(s)`)
+  const within = sIdle.p95 <= BUDGET_MS && sDrag.p95 <= BUDGET_MS
+  const verdict = invalid.length
+    ? `INVALID: ${invalid.join('; ')}`
+    : `idle and drag free-running p95 ${within ? 'within' : 'exceeds'} the ${BUDGET_MS} ms reference`
   console.log(`knobs-hz: ${verdict}`)
+  if (invalid.length) process.exitCode = 1
+} catch (error) {
+  console.error(`knobs-hz: INVALID: ${String(error)}`)
+  process.exitCode = 1
 } finally {
   clearTimeout(deadline)
   await browser?.close()
