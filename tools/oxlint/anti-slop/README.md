@@ -81,13 +81,3 @@ there is no `"off"` entry.
   above a `const x = …` covers assertions anywhere in that
   initializer. State the checked invariant: what is known, and why it
   holds here.
-
-## Disabled: no-shape-in-symbol-names
-
-The rule ships in `rules/` and is registered in `index.ts`, but its
-key is left out of `.oxlintrc.json`. It bans the substring "shape"
-(case-insensitive) in every identifier, including property names, so
-`THREE.Shape` and `THREE.ShapeGeometry` trip it and no alias escapes.
-Replacing those means hand-writing a triangulator and a bevel
-generator. That trade fails here; the rule stays available for repos
-where it holds.

@@ -30,6 +30,7 @@ import { LIGHT, SHEET_FRAG, SHEET_VERT } from './candidateShaders'
 import { plainAttribute } from '../../lib/geometry'
 import { useOwnUniforms, type WorldBox } from './candidateStage'
 import { unrollTuning } from './candidateTuning'
+import { unrollStep, type RollDrive } from './candidateUnrollLaw'
 
 const ITEMS = ['Duplicate', 'Move to…', 'Rename', 'Export PDF', 'Share link', 'Delete'] as const
 const ROW_H = 38
@@ -94,13 +95,6 @@ function SheetMaterial({ opacity }: { opacity: { value: number } }) {
   )
 }
 
-/** What the page half is asking the sheet to do. */
-export interface RollDrive {
-  /** 1 open, 0 closed. */
-  target: number
-  t: number
-}
-
 /**
  * The winding, applied to real vertices every live frame.
  *
@@ -121,19 +115,10 @@ function RollSheet({
   opacity: { value: number }
   onClosed: () => void
 }) {
-  // The rest is an edge, not a state: without this the drop would be
-  // requested on every frame the menu spends closed, and each one is a
-  // fresh view change through the protocol. It starts TRUE because the
-  // menu starts closed — and because the open gate holds target at 0
-  // until the canvas presents, so the first frames after a click look
-  // exactly like rest. 2026-08-20: starting false dropped the lift on
-  // frame one and the menu never appeared at all.
-  const rested = useRef(true)
   useFrame((_, delta) => {
     const d = drive.current
-    const dt = Math.min(delta, 1 / 30)
-    d.t += (d.target - d.t) * (1 - Math.exp(-dt / unrollTuning.tau))
-    if (Math.abs(d.target - d.t) < 0.001) d.t = d.target
+    const next = unrollStep(d, delta, unrollTuning.tau)
+    d.t = next.t
 
     // The last of the close: the wound coil tucks away behind the trigger
     // over the final 8% rather than blinking out on the unmount. Open is
@@ -165,11 +150,7 @@ function RollSheet({
       }
     }
 
-    if (d.target !== 0) rested.current = false
-    else if (d.t === 0 && !rested.current) {
-      rested.current = true
-      onClosed()
-    }
+    if (next.closed) onClosed()
   })
   return null
 }
@@ -184,7 +165,7 @@ export function CandidateUnroll() {
   const [chosen, setChosen] = useState<string | null>(null)
   const [box, setBox] = useState<WorldBox | null>(null)
   const geoRef = useRef<THREE.PlaneGeometry>(null)
-  const drive = useRef<RollDrive>({ target: 0, t: 0 })
+  const drive = useRef<RollDrive>({ open: false, target: 0, t: 0 })
   const sheetOpacity = useRef({ value: 1 }).current
 
   // The unroll may not start until the canvas actually presents. The ease
@@ -192,6 +173,7 @@ export function CandidateUnroll() {
   // the first frame anyone could SEE, t had already reached ~0.7 and the
   // menu appeared mid-unroll. Closing is ungated: the pixels are already
   // in GL.
+  drive.current.open = open
   drive.current.target = open && state.presentation === 'scene' ? 1 : 0
 
   // The menu hangs from the trigger's bottom edge, so the mesh's centre is
@@ -222,6 +204,7 @@ export function CandidateUnroll() {
   // side effect inside one is allowed to be dropped or doubled.
   useLayoutEffect(() => {
     if (open) setPresenting(true)
+    else if (drive.current.t === 0) setPresenting(false)
   }, [open])
 
   const pick = useCallback((item: string) => {

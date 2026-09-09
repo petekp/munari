@@ -27,11 +27,9 @@ happened; use the lab implementation as the reference.
 
 ## No copyable source yet
 
-The scene-side machinery (aero vertex bow, crumple shader, depth-tested
-shadow quad, density-pin driver) lives inside the flight scene as one
-unit. Extracting a reusable component is design work in its own right,
-and no second consumer exists to shape it. Per decisions.md #7, we add
-API when a real consumer needs it. Until then, read the Flight scene with
+The scene-side machinery (vertex bow, crumple shader, depth-tested shadow,
+density driver) remains in the Flight scene. This entry documents that
+implementation; it does not supply a reusable component. Read the scene with
 `flightPhysicsLaw`, `flightGestures`, `flightDensityLaw`, and their tests.
 
 ## Rules any future extraction must preserve

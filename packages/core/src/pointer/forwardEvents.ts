@@ -1056,7 +1056,7 @@ export function lastPointerPlace(): PointerPlace | null {
 }
 
 /**
- * Parked matter must never hold the real pointer. A consumer that calls
+ * Parked capture content must never hold the real pointer. A consumer that calls
  * `setPointerCapture` from a parked subtree (react-resizable-panels does,
  * per forwarded move, on its separator) captures the REAL mouse — synthetic
  * events share pointerId 1 with it — and every trusted event thereafter

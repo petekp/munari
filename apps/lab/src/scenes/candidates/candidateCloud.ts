@@ -1,12 +1,8 @@
 // The grain buffer — one captured element, rebuilt as loose quads.
 //
-// A cloud of billboarded quads rather than `THREE.Points`, for a reason
-// that is about this library and not about taste: `Surface.Mesh` presents
-// a Surface as a mesh, and there is no seam for presenting one as a point
-// cloud. Quads cost four vertices where a point costs one, and they buy
-// back the two things points would have cost — `gl_PointSize` is capped by
-// the driver (63px on some Intel parts), and a point sprite cannot be
-// rotated. Neither limit is one a scene should have to discover.
+// Billboarded quads allow rotation and sizes beyond the driver's point-size
+// limit (63px on some Intel parts). This geometry uses Surface.Mesh's normal
+// presentation path; other scene objects can use the manual presentation API.
 //
 // Ownership: this module owns the buffer's layout. It has no opinion about
 // how the grains move; that is the shader's, and the seeds here are the

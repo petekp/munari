@@ -1,7 +1,5 @@
-// native-pointer gate — the first in-library drive of the native route
-// (decisions.md #39). The route's evidence until now came from spikes on
-// hand-built rigs; #39 keeps `pointerRoute="auto"` opt-in until an
-// instrument drives the real one. This is that instrument.
+// native-pointer gate — compare explicit relay and automatic native input
+// on the same retained content (decisions.md #39).
 //
 // The contract, per clause: the relay stays the working baseline (a gl-phase
 // click with the default route reaches the source, synthetic); asking for
@@ -111,7 +109,7 @@ try {
     evalProbe(() => window.__nativePointer.clicks[window.__nativePointer.clicks.length - 1] ?? null)
   const waitForView = (view) =>
     page.waitForFunction(
-      (v) => window.__nativePointer.state.presented === v && !window.__nativePointer.state.isChanging,
+      (v) => window.__nativePointer.state.presentation === v && !window.__nativePointer.state.isTransitioning,
       { timeout: 15_000 },
       view,
     )
@@ -123,7 +121,7 @@ try {
     const rec = (await clickCount()) > before ? await lastClick() : null
     return {
       label,
-      heardBy: rec ? rec.instance : 'nobody',
+      heardBy: rec ? rec.presentationAtClick : 'nobody',
       id: rec?.id ?? null,
       trusted: rec?.trusted ?? null,
     }

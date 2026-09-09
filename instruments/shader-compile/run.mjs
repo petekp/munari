@@ -175,7 +175,7 @@ try {
 
   const steps = [
     ['the page at rest', async () => {}],
-    ['matter mode', async () => page.click('.logo-matter button[data-renderer="gl"]')],
+    ['scene rendering', async () => page.click('.logo-renderer button[data-renderer="gl"]')],
     // Extrusion is off by default and builds the slab material, so the
     // gate has to ask for it — the default-on states alone would have
     // left the letter's edge shader unproven.
@@ -184,7 +184,7 @@ try {
     // states above are the bump-only relief and the mesh body is the one
     // nothing reaches by default.
     ['mesh body', async () => knob('body', 1)],
-    ['back to the page', async () => page.click('.logo-matter button[data-renderer="html"]')],
+    ['back to the page', async () => page.click('.logo-renderer button[data-renderer="html"]')],
   ]
   const seen = []
   for (const [what, act] of steps) {

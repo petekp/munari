@@ -1,196 +1,113 @@
-// Bulb — the 3D object that is the overview's light: a warm frosted globe
-// hanging from a cord that runs off the top of the viewport, with a dark
-// socket between them and a glow rendered as light, not paint.
-//
-// The law: this module only builds and animates the model. It owns no
-// renderer, camera, scene, or canvas — HomeMasthead.tsx drives all of those
-// and repositions the group to the light's viewport position every frame.
-// The globe's centre IS the light the shadow shader projects from, so the
-// two can never disagree about where the light is.
-//
-// Fault: the first masthead drew the light as a CSS radial gradient. It
-// read as clip art on a page whose whole claim is that HTML and 3D are one
-// thing (Pete, 2026-09-05).
-//
-// Ownership: this module owns geometry, materials, the cord's sway, and the
-// halo. HomeMasthead.tsx owns the scene, camera, environment map, and when
-// update()/dispose() run.
-
+// Lamp — a refracting SDF glass shell, luminous coil, metal socket and live cord.
+// The positioned bulb remains the shadow source. Cord simulation and optics
+// share its frame; HomeMasthead owns rendering and the captured backdrop (#52).
 import * as THREE from 'three'
+import {CORD_POINTS,createLampCord,stepLampCord} from './homeLampCordLaw'
+import {LAMP_GLASS_VERTEX,LAMP_GLASS_FRAGMENT} from './homeLampGlassShaders'
+import type {LampBackdrop} from './homeLampBackdrop'
+import {LIGHT_HEIGHT} from './homeLightLaw'
 
-/** The globe's radius, CSS px — the drag handle in home.css is sized from it. */
-export const BULB_RADIUS = 30
-const SOCKET_RADIUS = 11
-const SOCKET_HEIGHT = 16
-const CORD_RADIUS = 1.1
-// Long enough to leave the top of any viewport from any position.
-const CORD_LENGTH = 4000
-const HALO_SIZE = 420
-
-// The globe is a frosted shell over a bright core: the shell's rim darkens
-// and catches the room, the core is what reads as the filament's glow.
-const GLASS_COLOR = 0xfff1c8
-const GLASS_EMISSIVE = 0xffb040
-const GLASS_EMISSIVE_INTENSITY = 0.32
-const GLASS_OPACITY = 0.72
-const CORE_COLOR = 0xfff6dc
-const CORE_RADIUS = BULB_RADIUS * 0.52
-const SOCKET_COLOR = 0x1a1815
-const CORD_COLOR = 0x14140f
-const HALO_COLOR = 0xfff0b8
-const HALO_OPACITY = 0.42
-
-// The cord sways with the bulb's horizontal speed and settles like a
-// damped pendulum: stiffness and damping per second, angle in radians.
-const SWAY_PER_PX_PER_S = 0.00045
-const SWAY_MAX = 0.35
-const SWAY_STIFFNESS = 14
-const SWAY_DAMPING = 5
+export const BULB_RADIUS=30
+const SOCKET_RADIUS=10
+const SOCKET_HEIGHT=15
+const CORD_RADIUS=1.1
+const CORD_ATTACHMENT=55
+const TUBE_SEGMENTS=120
+const TUBE_SIDES=8
 
 export interface LightBulb {
-  readonly group: THREE.Group
-  /** Moves the bulb to `x, y` (world px, y up) and advances the sway by `dt` seconds. */
-  update(x: number, y: number, dt: number, still: boolean): void
-  dispose(): void
+  readonly group:THREE.Group
+  update(x:number,y:number,dt:number,still:boolean,viewportHeight:number,lightDistance:number):void
+  dispose():void
 }
 
-// The halo is painted per pixel with a dither: an 8-bit canvas gradient
-// bands into visible rings once additive blending lays it over a flat wash.
-function haloTexture(): THREE.DataTexture {
-  const size = 256
-  const data = new Uint8Array(size * size * 4)
-  const half = size / 2
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const dx = (x + 0.5 - half) / half
-      const dy = (y + 0.5 - half) / half
-      const r = Math.min(1, Math.sqrt(dx * dx + dy * dy))
-      const falloff = Math.pow(1 - r, 2.6)
-      const dither = (Math.random() - 0.5) * 1.5
-      const value = Math.max(0, Math.min(255, Math.round(falloff * 255 + dither)))
-      const i = (y * size + x) * 4
-      data[i] = 255
-      data[i + 1] = 255
-      data[i + 2] = 255
-      data[i + 3] = value
-    }
+function glowTexture(){
+  const size=128,data=new Uint8Array(size*size*4)
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+    const radius=Math.hypot((x+.5-size/2)/(size/2),(y+.5-size/2)/(size/2)),i=(y*size+x)*4
+    const glow=Math.exp(-radius*radius*10)*Math.max(0,1-radius)
+    data[i]=255;data[i+1]=255;data[i+2]=255;data[i+3]=Math.round(glow*255)
   }
-  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType)
-  texture.colorSpace = THREE.SRGBColorSpace
-  texture.needsUpdate = true
+  const texture=new THREE.DataTexture(data,size,size);texture.colorSpace=THREE.SRGBColorSpace
+  texture.minFilter=THREE.LinearFilter;texture.magFilter=THREE.LinearFilter;texture.needsUpdate=true
   return texture
 }
 
-export function createLightBulb(): LightBulb {
-  const group = new THREE.Group()
-  // The hanging part pivots at the globe's centre, so the light source
-  // stays put while the cord swings.
-  const hanger = new THREE.Group()
-  group.add(hanger)
-
-  const coreMaterial = new THREE.MeshBasicMaterial({ color: CORE_COLOR })
-  const core = new THREE.Mesh(new THREE.SphereGeometry(CORE_RADIUS, 32, 24), coreMaterial)
-  group.add(core)
-
-  const glass = new THREE.MeshPhysicalMaterial({
-    color: GLASS_COLOR,
-    emissive: GLASS_EMISSIVE,
-    emissiveIntensity: GLASS_EMISSIVE_INTENSITY,
-    roughness: 0.14,
-    metalness: 0,
-    clearcoat: 1,
-    clearcoatRoughness: 0.08,
-    envMapIntensity: 1.6,
-    transparent: true,
-    opacity: GLASS_OPACITY,
+export function createLightBulb(backdrop:LampBackdrop):LightBulb{
+  const group=new THREE.Group(),body=new THREE.Group();group.add(body);group.visible=false
+  const uniforms={...backdrop.uniforms,uEye:new THREE.Uniform(new THREE.Vector3()),uMvp:new THREE.Uniform(new THREE.Matrix4()),uLampViewport:new THREE.Uniform(new THREE.Vector4()),uPixelWidth:new THREE.Uniform(.5),uLightDistance:new THREE.Uniform(LIGHT_HEIGHT),uIor:new THREE.Uniform(1.5),uDispersion:new THREE.Uniform(.006),uDisplacement:new THREE.Uniform(.08),uEmission:new THREE.Uniform(1)}
+  const glass=new THREE.ShaderMaterial({vertexShader:LAMP_GLASS_VERTEX,fragmentShader:LAMP_GLASS_FRAGMENT,uniforms,side:THREE.BackSide,transparent:true,premultipliedAlpha:true,depthWrite:true,toneMapped:false})
+  const envelope=new THREE.BoxGeometry(70,102,70);envelope.translate(0,8,0)
+  const globe=new THREE.Mesh(envelope,glass);globe.renderOrder=2;body.add(globe)
+  const inverse=new THREE.Matrix4(),cameraPosition=new THREE.Vector3()
+  globe.onBeforeRender=(renderer,_scene,camera)=>{
+    inverse.copy(globe.matrixWorld).invert()
+    cameraPosition.setFromMatrixPosition(camera.matrixWorld)
+    uniforms.uEye.value.copy(cameraPosition).applyMatrix4(inverse)
+    uniforms.uMvp.value.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse).multiply(globe.matrixWorld)
+    uniforms.uPixelWidth.value=1/renderer.getPixelRatio()
+    const view=camera instanceof THREE.PerspectiveCamera?camera.view:null,size=backdrop.uniforms.uViewport.value
+    if(view?.enabled)uniforms.uLampViewport.value.set(view.offsetX,view.fullHeight-view.offsetY-view.height,view.width,view.height)
+    else uniforms.uLampViewport.value.set(0,0,size.x,size.y)
+  }
+  const metal=new THREE.MeshPhysicalMaterial({color:0x25231e,roughness:.28,metalness:.85,envMapIntensity:1.7})
+  const socket=new THREE.Mesh(new THREE.CylinderGeometry(SOCKET_RADIUS*.85,SOCKET_RADIUS,SOCKET_HEIGHT,40),metal)
+  socket.position.y=47;body.add(socket)
+  const rings=Array.from({length:4},(_,i)=>{
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(9.6-i*.15,.65,10,48),metal)
+    ring.rotation.x=Math.PI/2;ring.position.y=41+i*3.6;body.add(ring);return ring
   })
-  const globe = new THREE.Mesh(new THREE.SphereGeometry(BULB_RADIUS, 48, 32), glass)
-  globe.renderOrder = 1
-  group.add(globe)
-
-  const metal = new THREE.MeshPhysicalMaterial({
-    color: SOCKET_COLOR,
-    roughness: 0.45,
-    metalness: 0.85,
-    envMapIntensity: 1.4,
+  const cordMaterial=new THREE.MeshStandardMaterial({color:0x181711,roughness:.72,metalness:.05})
+  const cord=createLampCord(),points=Array.from({length:CORD_POINTS},()=>new THREE.Vector3())
+  const curve=new THREE.CatmullRomCurve3(points),tube=new THREE.BufferGeometry()
+  const position=new THREE.BufferAttribute(new Float32Array((TUBE_SEGMENTS+1)*TUBE_SIDES*3),3),normal=new THREE.BufferAttribute(new Float32Array((TUBE_SEGMENTS+1)*TUBE_SIDES*3),3)
+  position.setUsage(THREE.DynamicDrawUsage);normal.setUsage(THREE.DynamicDrawUsage);tube.setAttribute('position',position);tube.setAttribute('normal',normal)
+  const indices=[]
+  for(let i=0;i<TUBE_SEGMENTS;i++)for(let j=0;j<TUBE_SIDES;j++){const a=i*TUBE_SIDES+j,b=i*TUBE_SIDES+(j+1)%TUBE_SIDES,c=a+TUBE_SIDES,d=b+TUBE_SIDES;indices.push(a,c,b,b,c,d)}
+  tube.setIndex(indices)
+  const wire=new THREE.Mesh(tube,cordMaterial);wire.frustumCulled=false;group.add(wire)
+  const centre=new THREE.Vector3(),tangent=new THREE.Vector3(),side=new THREE.Vector3()
+  const haloTexture=glowTexture()
+  const halos=[{size:144,opacity:.4,color:0xfff4d4},{size:320,opacity:.26,color:0xffffff}].map(({size,opacity,color})=>{
+    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:haloTexture,color,blending:THREE.AdditiveBlending,transparent:true,opacity,depthTest:false,depthWrite:false,toneMapped:false}))
+    // Camera glare belongs over the glass and background, rather than behind
+    // the opaque refracted image. Emission controls both the coil and its glare.
+    sprite.onBeforeRender=()=>{sprite.material.opacity=opacity*uniforms.uEmission.value}
+    sprite.position.y=-6;sprite.scale.setScalar(size);sprite.renderOrder=3;body.add(sprite);return sprite
   })
-  const socket = new THREE.Mesh(new THREE.CylinderGeometry(SOCKET_RADIUS * 0.8, SOCKET_RADIUS, SOCKET_HEIGHT, 32), metal)
-  socket.position.y = BULB_RADIUS + SOCKET_HEIGHT / 2 - 5
-  hanger.add(socket)
-  const collar = new THREE.Mesh(new THREE.TorusGeometry(SOCKET_RADIUS * 0.82, 1.4, 12, 40), metal)
-  collar.rotation.x = Math.PI / 2
-  collar.position.y = BULB_RADIUS + SOCKET_HEIGHT - 5
-  hanger.add(collar)
-
-  const cordMaterial = new THREE.MeshStandardMaterial({ color: CORD_COLOR, roughness: 0.8, metalness: 0 })
-  const cord = new THREE.Mesh(new THREE.CylinderGeometry(CORD_RADIUS, CORD_RADIUS, CORD_LENGTH, 10), cordMaterial)
-  cord.position.y = BULB_RADIUS + SOCKET_HEIGHT - 5 + CORD_LENGTH / 2
-  hanger.add(cord)
-
-  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: haloTexture(),
-    color: HALO_COLOR,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    depthTest: false,
-    transparent: true,
-    opacity: HALO_OPACITY,
-    toneMapped: false,
-  }))
-  halo.scale.setScalar(HALO_SIZE)
-  halo.renderOrder = -1
-  group.add(halo)
-
-  // A point light inside the globe so the socket and collar are lit by the
-  // bulb, not only by the room.
-  const inner = new THREE.PointLight(GLASS_EMISSIVE, 2.2, BULB_RADIUS * 8, 1.6)
-  group.add(inner)
-
-  let lastX = Number.NaN
-  let angle = 0
-  let velocity = 0
-
+  group.add(new THREE.PointLight(0xffb756,3,240,1.6))
   return {
     group,
-    update(x, y, dt, still) {
-      const speed = Number.isNaN(lastX) || dt <= 0 ? 0 : (x - lastX) / dt
-      lastX = x
-      group.position.set(x, y, 0)
-      const target = still ? 0 : THREE.MathUtils.clamp(-speed * SWAY_PER_PX_PER_S, -SWAY_MAX, SWAY_MAX)
-      const step = Math.min(dt, 1 / 30)
-      velocity += (SWAY_STIFFNESS * (target - angle) - SWAY_DAMPING * velocity) * step
-      angle += velocity * step
-      hanger.rotation.z = angle
+    update(x,y,dt,still,viewportHeight,lightDistance){
+      group.visible=true;group.position.set(x,y,0);uniforms.uLightDistance.value=lightDistance
+      const screenY=viewportHeight-y,last=CORD_POINTS*2-2
+      const angle=still&&cord.initialized
+        ? Math.atan2(x-cord.anchorX,screenY+100)
+        : cord.initialized ? -Math.atan2(cord.points[last-2]!-cord.points[last]!,cord.points[last+1]!-cord.points[last-1]!) : 0
+      body.rotation.z=still?angle:THREE.MathUtils.damp(body.rotation.z,angle,14,Math.max(0,dt))
+      // Pin the actual socket. Trimming a cord solved to the bulb centre left
+      // a hooked join whenever the socket lagged behind a quick drag.
+      const socketX=x-Math.sin(body.rotation.z)*CORD_ATTACHMENT,socketY=screenY-Math.cos(body.rotation.z)*CORD_ATTACHMENT
+      stepLampCord(cord,socketX,socketY,dt,still)
+      for(let i=0;i<CORD_POINTS;i++)points[i]!.set(cord.points[i*2]!-x,screenY-cord.points[i*2+1]!,0)
+      for(let i=0;i<=TUBE_SEGMENTS;i++){
+        const t=i/TUBE_SEGMENTS
+        curve.getPoint(t,centre);curve.getTangent(t,tangent);side.set(-tangent.y,tangent.x,0).normalize()
+        for(let j=0;j<TUBE_SIDES;j++){
+          const angle=j/TUBE_SIDES*Math.PI*2,c=Math.cos(angle),s=Math.sin(angle),k=i*TUBE_SIDES+j
+          normal.setXYZ(k,side.x*c,side.y*c,s)
+          position.setXYZ(k,centre.x+CORD_RADIUS*side.x*c,centre.y+CORD_RADIUS*side.y*c,CORD_RADIUS*s)
+        }
+      }
+      position.needsUpdate=true;normal.needsUpdate=true
     },
-    dispose() {
-      core.geometry.dispose()
-      coreMaterial.dispose()
-      globe.geometry.dispose()
-      glass.dispose()
-      socket.geometry.dispose()
-      collar.geometry.dispose()
-      metal.dispose()
-      cord.geometry.dispose()
-      cordMaterial.dispose()
-      halo.material.map?.dispose()
-      halo.material.dispose()
-    },
+    dispose(){envelope.dispose();glass.dispose();socket.geometry.dispose();for(const ring of rings)ring.geometry.dispose();metal.dispose();tube.dispose();cordMaterial.dispose();haloTexture.dispose();for(const halo of halos)halo.material.dispose()},
   }
 }
 
-// A perspective camera at (w/2, h/2, D) looking down -Z maps the z=0 plane
-// 1:1 onto CSS px, so the globe renders exactly at the light's position
-// while the socket and cord above it lean with real perspective near the
-// viewport's edges.
-const CAMERA_DISTANCE = 1600
-
-export function fitBulbCamera(camera: THREE.PerspectiveCamera, width: number, height: number) {
-  camera.aspect = width / height
-  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(height / (2 * CAMERA_DISTANCE)))
-  camera.near = 1
-  camera.far = CAMERA_DISTANCE * 3
-  camera.position.set(width / 2, height / 2, CAMERA_DISTANCE)
-  camera.up.set(0, 1, 0)
-  camera.lookAt(width / 2, height / 2, 0)
-  camera.updateProjectionMatrix()
+const CAMERA_DISTANCE=1600
+export function fitBulbCamera(camera:THREE.PerspectiveCamera,width:number,height:number){
+  camera.aspect=width/height;camera.fov=THREE.MathUtils.radToDeg(2*Math.atan(height/(2*CAMERA_DISTANCE)))
+  camera.near=1;camera.far=CAMERA_DISTANCE*3;camera.position.set(width/2,height/2,CAMERA_DISTANCE)
+  camera.up.set(0,1,0);camera.lookAt(width/2,height/2,0);camera.updateProjectionMatrix()
 }

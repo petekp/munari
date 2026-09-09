@@ -134,7 +134,9 @@ export function RefractionMaterial({
   // is this frame's and not the one before it.
   const field = useInkField(
     outgoingSlot,
-    useMemo(() => ({ ...tune, stageW: fieldW, stageH: fieldH }), [tune, fieldW, fieldH]),
+    tune,
+    fieldW,
+    fieldH,
   )
 
   // Initial values only. r3f 9.7 copies the `uniforms` prop entry by entry

@@ -68,7 +68,7 @@ function SceneContribution({ scene }: { scene: ReactNode }) {
   const root = use(SurfaceRootContext)!
   const part = use(SurfacePartContext)
   const mounted = useSyncExternalStore(root.store.subscribePresence, root.store.canvasMounted, () => false)
-  const [key] = useState(() => `api-proof-${Math.random()}`)
+  const [key] = useState(() => `surface-content-${Math.random()}`)
   useLayoutEffect(() => root.store.declarePresentation('canvas'), [root.store])
   const identity = useMemo(() => ({ handle: root.handle, store: root.store }), [root.handle, root.store])
   const element = <SurfaceHandleContext value={identity}><SurfaceRootContext value={root}><SurfacePartContext value={part}><SurfaceTunnelContext value>{scene}</SurfaceTunnelContext></SurfacePartContext></SurfaceRootContext></SurfaceHandleContext>

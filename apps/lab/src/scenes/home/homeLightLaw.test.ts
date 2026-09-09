@@ -23,10 +23,11 @@ describe('occluderPoint', () => {
     expect(q.x).toBeCloseTo((100 * LIGHT_HEIGHT) / (LIGHT_HEIGHT + WELL_DEPTH), 6)
   })
 
-  it('throws longer shadows for taller matter and for lower lights', () => {
+  it('throws longer shadows for taller content and for lower lights', () => {
     const p = { x: 200, y: 150 }
     expect(throwLength(light, p, GLYPH_STANDOFF)).toBeGreaterThan(throwLength(light, p, 4))
-    expect(throwLength(light, p, GLYPH_STANDOFF, 60)).toBeGreaterThan(throwLength(light, p, GLYPH_STANDOFF, 240))
+    // Both point-light heights remain above the 64px plane (decision #50).
+    expect(throwLength(light, p, GLYPH_STANDOFF, 100)).toBeGreaterThan(throwLength(light, p, GLYPH_STANDOFF, 240))
   })
 
   it('casts nothing directly under the light', () => {

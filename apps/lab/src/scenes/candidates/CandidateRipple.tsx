@@ -221,7 +221,7 @@ function WaveDrive({
  */
 export function RippleTarget({ name, content }: { name: string; content: React.ReactNode }) {
   const surface = useSurfaceHandle(name)
-  const [renderIn, setRenderIn] = useState<'page' | 'canvas'>('page')
+  const [inScene, setInScene] = useState(false)
   const holder = useRef<HTMLDivElement>(null)
   const waves = useRef<RippleWave[]>([])
   const down = useRef<{ x: number; y: number } | null>(null)
@@ -283,7 +283,7 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
         waves.current.shift()
       }
       waves.current.push(wave)
-      setRenderIn('canvas')
+      setInScene(true)
     },
     [],
   )
@@ -331,7 +331,7 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
   return (
     <div ref={holder} className="cand-target" onPointerDown={onHolderDown} onPointerUp={onHolderUp}>
       {size ? (
-        <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={renderIn === 'canvas'}>
+        <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={inScene}>
 <Surface.HTML size={size}>{content}</Surface.HTML>
 
           {box && (
@@ -355,7 +355,7 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
               material={<RippleMaterial waves={waves} />}
             >
               <RippleShadow waves={waves} size={size} />
-              <WaveDrive waves={waves} onDone={() => setRenderIn('page')} />
+              <WaveDrive waves={waves} onDone={() => setInScene(false)} />
             </Surface.Mesh>
           )}
         </Surface.Root>

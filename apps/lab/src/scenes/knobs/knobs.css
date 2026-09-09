@@ -727,7 +727,7 @@
   opacity: 0.75;
 }
 
-/* Hover and active TWINS: captured matter never receives the real
+/* Hover and active TWINS: captured HTML never receives the real
  * pointer, so the relay marks it with data attributes instead, and every
  * live state has to be authored twice (docs/authoring.md). */
 .knb-resize:hover .knb-resize-grip,

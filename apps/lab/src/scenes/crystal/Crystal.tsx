@@ -160,7 +160,7 @@ export function CrystalApp() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'p' && e.key !== 'P') return
-      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return
       setParked((v) => !v)
     }
     window.addEventListener('keydown', key)
@@ -183,7 +183,7 @@ export function CrystalApp() {
   policy.current.h = box.h
 
   // Capture phase, and on `window` rather than on the canvas: the sheet
-  // covers the viewport, so the trusted move is consumed over solid matter
+  // covers the viewport, so the trusted move is consumed over the scene geometry
   // before it bubbles anywhere a scene could hear it.
   //
   // `isTrusted` because the relay dispatches synthetic moves INTO the parked
@@ -299,7 +299,7 @@ export function CrystalApp() {
 
       {/* After the canvas, because the sheet is the whole viewport: with
           `pointerMode="surfaces"` the canvas arms itself wherever a raycast
-          finds matter, and here that is everywhere. Chrome painted under it
+          finds scene geometry, and here that is everywhere. Chrome painted under it
           would be unreachable. */}
       <div className="crystal-chrome">
         <h2>crystal</h2>

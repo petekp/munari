@@ -91,7 +91,7 @@ export interface SurfaceHost {
    *
    * The gate raycasts against exactly these objects and nothing else, so a
    * full-page Canvas is clear everywhere a Surface is not. Registered by the
-   * presenter rather than found by traversal because a scene's own matter is
+   * presenter rather than found by traversal because unrelated scene objects are
    * not Munari's to speak for.
    */
   registerObject(object: Object3D): () => void

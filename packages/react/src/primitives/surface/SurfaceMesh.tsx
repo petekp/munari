@@ -1,11 +1,11 @@
-// <Surface.Mesh> — one presentation of a source, as scene matter.
+// <Surface.Mesh> — one scene presentation of an HTML source.
 //
 // The law: a warming presenter DRAWS, it does not hide. Several independent
 // handoffs composite in one Canvas, so the old trick — hide the canvas
 // until the incoming pixels are proven — takes every other Surface off
 // screen with it. Instead this mesh draws with color, depth, and stencil
 // writes disabled while its handoff is still warming: the texture and the
-// shader program are warmed by a real draw, and invisible matter cannot
+// shader program are warmed by a real draw, and invisible geometry cannot
 // punch a hole in the visible scene behind it. The first eligible
 // COLOR-WRITING draw into the default framebuffer is the proof, taken in
 // the post-draw callback, before the browser composites — which is what
@@ -161,7 +161,7 @@ interface SurfaceMeshBaseProps
    * deliver the pointer to the drawn element itself whenever the presented
    * pose is a flat quad the browser can hit-test (decisions.md #39): real
    * caret placement, real drag-selection, clicks that pass `isTrusted`.
-   * While the browser owns the pointer this mesh is not pointer matter, so
+   * While the browser owns the pointer this mesh is not a pointer target, so
    * the scene-level `onPointer*` props below do not fire — a Surface that
    * needs them keeps `'relay'`.
    */
@@ -174,14 +174,24 @@ export type SurfaceMeshProps = SurfaceMeshBaseProps & (
   | { presentation: 'manual'; sampledParts?: never }
 )
 
-// LOD evaluations run every Nth frame, phase-offset per presenter so a
-// scene of many panels spreads the projection math and never re-rasters a
-// cohort on the same frame.
+// LOD evaluations run every Nth frame. Committed presenters use all phase
+// slots so a group of panels spreads its projection work across frames.
 const LOD_EVERY = 10
 const LOD_AGREE = 2
 interface SurfaceLodState { tier:number; proposed:number; agree:number; frame:number; source:SurfaceSourceRuntime|null; aligned:boolean }
-let lodSeq = 0
+let lodKeySeq = 0
+let lodPhaseSeq = 0
 let presenterSeq = 0
+
+export function useSurfaceLodPhase() {
+  const phase = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    // Strict Mode can discard a render and replay a committed effect. Only
+    // the first committed setup may consume this presenter's phase slot.
+    if (phase.current === null) phase.current = lodPhaseSeq++ % LOD_EVERY
+  }, [])
+  return phase
+}
 
 const _camPos = new THREE.Vector3()
 const _surfPos = new THREE.Vector3()
@@ -333,7 +343,9 @@ function SurfacePresenter({
     const names = JSON.parse(sampledKey) as SurfacePartId[]
     return [...new Set(names.filter(name => name !== partId))]
   }, [sampledKey, partId])
-  const lodPhase = useMemo(() => lodSeq++ % LOD_EVERY, [])
+  // Each presenter proposes independently; the source takes the maximum.
+  const lodKey = useMemo(() => lodKeySeq++, [])
+  const lodPhase = useSurfaceLodPhase()
   const lodRef = useRef<SurfaceLodState>({ tier:0, proposed:0, agree:0, frame:0, source:null, aligned:false })
   // What the pass in flight is doing, written by the before hook and read
   // once by the after hook. Not a boolean: the after hook has to tell a
@@ -387,7 +399,7 @@ function SurfacePresenter({
   // Anchors are a transaction against the generation this presenter DRAWS,
   // so the scope lives here and not on the source: two presenters of the
   // same source can be showing different generations, and each one's
-  // anchored matter belongs on the pixels under it.
+  // anchored objects belong on the pixels under them.
   const anchors = useSurfaceAnchorScope(runtime, part?.captureRoot ?? null)
 
   useLayoutEffect(() => {
@@ -530,7 +542,7 @@ function SurfacePresenter({
       function (this: THREE.Mesh, raycaster, intersects) {
         // Input follows the eye (crossingPointer, decisions.md #33). While
         // the canvas is not the presented side this mesh is not pointer
-        // matter: the gate never goes solid, so a lifting-phase click
+        // geometry: the gate never goes solid, so a lifting-phase click
         // reaches the page copy the viewer is actually looking at instead
         // of relaying to the parked one.
         if (!storeRef.current.canvasHearsPointer()) return
@@ -610,11 +622,6 @@ function SurfacePresenter({
     })
   }, [focusGroup, sourceEl, label])
 
-  // The presenter's own name in the source's tier ledger. Every presenter
-  // of one source proposes independently and the source takes the maximum,
-  // so a distant panel cannot downgrade the raster a near one needs.
-  const lodKey = useMemo(() => lodSeq++, [])
-
   /** Position-attribute version as of the last frame; null until seen once. */
   const rerouteRef = useRef<number | null>(null)
 
@@ -668,7 +675,7 @@ function SurfacePresenter({
     // (deformSurfaceGeometry sets it), and r3f's `events.update` re-raycasts
     // the pointer's last position against the current pose — hover twins and
     // coordinates catch up within a frame, whether the hand moved or only the
-    // matter did.
+    // mesh did.
     const position = mesh.geometry?.getAttribute('position')
     // An interleaved position carries its version on the shared buffer, and
     // no Surface geometry interleaves — the plain-attribute case is the law
@@ -716,7 +723,7 @@ function SurfacePresenter({
       runtime.proposeTier(lodKey,lod.tier)
     }
     if (lod.aligned || updateMatchedDensity()) return
-    if (lod.frame++ % LOD_EVERY !== lodPhase) return
+    if (lod.frame++ % LOD_EVERY !== lodPhase.current) return
     // SAFETY: three's own brand, tested before any perspective-only field
     // is read; r3f types the store's camera as the base class.
     const cam = camera as THREE.PerspectiveCamera
@@ -967,7 +974,7 @@ function SurfacePresenter({
       rasterReadyRef.current=rasterReady
       const writing = store.canvasPresents() && (store.canvasHearsPointer() || rasterReady)
       // The write-free warm-up. Color, depth, and stencil are all disabled
-      // together: color alone still lets invisible matter write depth, and
+      // together: color alone still lets invisible geometry write depth, and
       // a depth-writing invisible quad punches a hole through every visible
       // object behind it — which reads as a rectangular window into the
       // clear color, in the exact shape of a Surface nobody can see. The

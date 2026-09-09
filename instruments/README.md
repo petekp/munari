@@ -26,6 +26,9 @@ probe:postcard-sharpness` checks the actual Home postcard with a hidden-mesh neg
 control. Visible checks preserve native display density; density emulation is
 explicit. The API instrument guide lists options and the 0.95–1.05 native text
 contrast budget. Motion and handoff budgets remain separate.
+The postcard comparison captures only within the current viewport and checks
+that its light stays fixed. Beyond-viewport capture can temporarily resize
+Chrome and move the light, invalidating a contrast comparison.
 `probe:scene-sharpness` covers scene-only HTML. `probe:display-density` checks an
 existing capture across display-density changes without replacing its content.
 
@@ -37,6 +40,149 @@ checks, `API_CASES` for a comma-separated subset, and `API_PROOF_OUTPUT` for loc
 evidence. `API_SOURCE_ROOT` can point at a saved source revision for comparison.
 The [API instrument guide](api-all-demos/README.md) states the pixel/anchor budgets.
 This local command does not change CI membership.
+
+## Home light and shadow
+
+`npm run probe:heading-edges` checks the native heading's shadow-mask fringe
+in a 3x zoomed iframe. It compares the current receiver clearance with a zero-
+clearance control, keeping the cast-shadow field unchanged. A page-only receiver
+provides the reference around the ink. Normal and selected lettering must each
+reproduce the defect in the control, remove at least 99% of conspicuous fringe
+pixels, and preserve the opaque ink core. The selected case positions the light
+over the letter so its shadow actually overlaps that footprint. `HEADED=1` uses
+native display density; `TEST_DPR` can reproduce another density, and
+`LIGHT_PROOF_OUTPUT` chooses the artifact directory. Decision
+[#55](../docs/decisions.md#55) records the clearance and limits.
+
+`npm run probe:home-light` renders the actual landing-page shadow shader against
+known geometry. It checks separated shadows from thin silhouettes, one visibility
+result for coincident casters, raised receivers, a finite-source penumbra, and
+heading shadows staying behind the foreground postcard. A page pixel still
+receives the heading's shadow as a control. Decision [#50](../docs/decisions.md#50)
+records the model and the combined scene.
+The same edge is measured at 6px and 22px above the receiver: its 10–90% softness
+must grow by more than twofold, without intensity reversals or large pixel jumps.
+A point-light control must keep the higher edge sharp. These profiles read the
+shader's visibility before tint and exposure, then the page checks inspect the
+complete composited result.
+At the actual default heights, another pair moves the bulb across the page.
+The rounded bulb must broaden the distant edge beyond a control whose emitter
+is parallel to the page. The gallery check then moves the real light control
+around a real example image and measures its shadow offset and softness from
+the completed lighting draw. It saves both page screenshots and raw light fields;
+the source content and production renderer settings are unchanged by the observer.
+
+The same run drags the real landing-page light, moves it with the keyboard,
+changes its distance, and captures desktop, mobile, and the full website shell.
+It checks the selection shortcut, limits raised geometry to the selected line,
+double-clicks uncovered native heading text, and types into the scene.
+The full website is checked at 390 and 320px, including entry and return after
+resizing. Captures wait for the relief field belonging to the current layout.
+Separate Chrome profiles check lighting without HTML capture and native content
+with WebGL disabled. `HEADED=1` preserves native display density;
+`LIGHT_PROOF_OUTPUT` chooses an output directory and `CHROME_PATH` selects Chrome.
+Evidence stays outside the repo. This local probe does not change CI membership.
+
+GPU timer queries report the complete lighting redraw, including the paper's
+shadow map and native-density receiver draw, when supported and valid. CPU work and the separate
+bulb/card renderers are excluded.
+Frame intervals describe this machine, not a portable performance gate.
+Native silhouettes use 64 deterministic rays toward a spherical light source.
+Curved paper uses filtered depth maps; this is not a path-tracer comparison.
+Postcard handoffs and scrolling remain `probe:postcard`'s contract.
+
+`npm run probe:home-lamp` checks the lamp on the actual landing page. It moves
+the glass over heading ink and compares its pixels with emission disabled,
+an index of refraction of one, and a changed native heading color. These controls
+separate the filament, refraction, and live page capture. It checks that the cord
+bends while keeping both ends attached, then captures a stationary scene postcard,
+scrolling, mobile widths, and the no-capture Chrome fallback. The latter retains
+glass reflections and emission but cannot refract page content.
+
+The probe reports lamp GPU time and frame intervals; these describe the current
+machine. Lamp motion alone must not repeatedly repaint the captured page.
+`HEADED=1` keeps native display density; use `STRICT_CAPABILITY=1` to require
+the enhanced path. `LAMP_OUTPUT` selects an evidence directory outside Git.
+The observer and optical controls are injected into the served copy only.
+Decision [#52](../docs/decisions.md#52) records the optical and cord limits.
+
+`npm run probe:lamp-quality` checks a 3x pinch-zoomed parent containing the real
+home demo in an offset iframe. The lamp must use display density times the parent
+zoom, crop its buffer to the visible area, and keep refraction aligned with live
+heading content. With emission disabled, its edge error must be below 65% of the
+stretched-bitmap control against a supersampled reference. Separate pixel checks
+require light across the glass and outside its silhouette. Both capture-enabled
+and no-flag Chrome run through the same zoom test. `HEADED=1` retains native display
+density, and `LAMP_OUTPUT` chooses an evidence directory outside Git.
+Decision [#54](../docs/decisions.md#54) records the zoom and emission corrections.
+
+## Flexible postcard
+
+`npm run probe:postcard-edges` freezes a curl on the real page and compares its
+composited silhouette with a supersampled lighting draw. A half-density draw
+is the negative control; native edge error must be below 65% of that control.
+The test reads the actual mesh alpha to select boundary pixels, checks that
+the reference buffer was not clamped, and exercises a larger 4x-density window.
+The lighting band must retain native density and cover the viewport when its
+offscreen margin shrinks to fit the browser's buffer limit. `HEADED=1` preserves
+native density for the main comparison; `PAPER_OUTPUT` selects the evidence folder.
+`EDGE_BASELINE_ONLY=1` saves a before image without asserting the new contract.
+All pose and density controls affect only the served copy. Decision
+[#53](../docs/decisions.md#53) records the rendering change and measured result.
+
+`npm run probe:postcard-paper` checks the real paper mesh, its rendered outline,
+corner response, stamp impulse, native field input and exact return. A flat
+geometry control runs with `PAPER_FLAT=1`; it must remain planar and produce
+the corresponding straight-edged outline, including where the postcard covers
+heading ink. Covered letters must not create alpha holes. The probe keeps the display canvas's
+buffer only in its served copy so it can inspect rendered alpha. Its timing is
+diagnostic; `probe:postcard` retains the unrecorded frame-gap contract.
+
+`PAPER_RECORD=1` saves a short Chrome sequence and encodes `postcard.mp4` with
+ffmpeg. `PAPER_OUTPUT` selects the output directory, `CHROME_PATH` selects Chrome,
+and `HEADED=1` uses visible Chrome at native display density. Recordings and
+screenshots stay outside the repository.
+
+`npm run probe:postcard-paper-shadows` checks the actual lighting renderer with
+a known curl. The curved geometry must change the cast shadow and shade visible
+parts of its own surface. Removing only the shadow-depth texture is the control;
+the flat sheet must remain free of self-shadow acne. Adding an elevated heading
+plane must leave the curved paper's pixels unchanged. This check needs WebGL2
+floating-point render targets but does not need HTML capture. These are local
+commands; CI membership is unchanged. Decision [#51](../docs/decisions.md#51)
+records the model and its bounds.
+
+## Detail issue regressions
+
+These local Chrome checks cover the September 2026 issue batch. They require
+HTML-in-canvas and run serially; `HEADED=1` preserves native display density.
+They do not change CI membership.
+
+- `npm run probe:surface-textures`: late capture growth/shrink must draw the
+  current colors with no GL error; pinned resolution is the control. Lit
+  white, color, and emissive samples at full, half, and quarter alpha must
+  retain coverage within two 8-bit channel values, including filtered edges
+  and rounded transparent corners. `API_PROOF_OUTPUT` selects saved evidence.
+- `npm run probe:surface-parts`: recover from duplicate part names after
+  removing either host. Eight cases cover page/scene wiring and normal/Strict
+  Mode mounts, retained input identity/value, and actual red/green pixels.
+  Duplicate diagnostics remain expected; `API_PROOF_OUTPUT` selects output.
+- `npm run probe:detail-focus`: native editor Tab/recall, first camera drag
+  and wheel during a tween, panel pose after hover/focus, and orbit proxy
+  placement after damping. Explicit resynchronization may correct at most
+  1 CSS px. `DETAIL_CASES=35,40,52,55` selects cases; `DETAIL_OUTPUT` selects output.
+- `npm run probe:detail-motion`: early Unroll cancellation, mouse and keyboard
+  Genie restoration, a Copy flight still, and Lamp's first post-release pose.
+  Genie spring composition and Copy's full normal are checked numerically by
+  the scene tests; the stills are visual smoke checks. `DETAIL_MOTION_CASES`
+  selects `unroll,genie,copy,lamp`; `DETAIL_MOTION_OUTPUT` selects output.
+- `npm run probe:detail-tuning`: actual Refraction/Gallery slider changes must
+  reach the same mounted GPU targets and pointer field. Also checks Glass's
+  blob-count override and Crystal's held key. The field observer exists only
+  in the instrument's served copy. `API_PROOF_OUTPUT` selects output.
+
+Decision [#48](../docs/decisions.md#48) records the corrected contracts and
+the distinction between numerical, browser-input, and pixel evidence.
 
 ## idle-zero
 
@@ -147,14 +293,13 @@ sheet and fades only where the funnel has squeezed it past legibility.
 
 ## knobs-hz
 
-Reports whether the knobs scene holds 120 Hz.
-`node instruments/knobs-hz/run.mjs`. A reporter, not a gate: it
-prints per-phase frame statistics against the 8.33 ms budget and a
-verdict line.
+Reports Knobs throughput at a fixed 1440×900 viewport and DPR 2.
+`npm run probe:knobs-hz` prints per-phase frame statistics against an
+8.33 ms reference budget. It is a reporter, not a gate.
 
 The browser runs headed with vsync and the frame-rate limiter off, so
-`requestAnimationFrame` deltas measure the cost of producing a frame,
-not display cadence. Four phases: `idle` (the standing animation),
+`requestAnimationFrame` deltas describe free-running throughput, not display
+cadence or isolated CPU/GPU time. Four phases: `idle` (the standing animation),
 `art-` (idle with the SVG artwork hidden; the difference is the
 artwork's raster share), `drag` (a held dial sweep through the real
 input path), and `off` (POWER off, the demo's floor). Two honesty
@@ -233,7 +378,9 @@ that movement and release reach the scene. Rendering must stop after both
 landing cleanups. It also samples Logo's two
 renderer handoffs for blank frames. This gate is the
 regression contract for the lab
-faults found in manual QA on 2026-08-18.
+faults found in manual QA on 2026-08-18. It uses `&bare`, which can omit scene
+HUD content; its Explode check proves camera movement, not interaction with
+every omitted paint layer.
 
 ## genie-film-reorder
 
@@ -252,7 +399,7 @@ A shader is a JavaScript string until a browser compiles it, so
 nothing else in CI can tell a working one from a broken one:
 typecheck, lint, and the unit suites all see a string. This gate hooks
 `compileShader` and `linkProgram` from inside the page, walks the logo
-scene through the states that build materials (page, matter, extruded,
+scene through the states that build materials (page, scene, extruded,
 bump-only relief, back to page), and prints every info log against its
 own source lines.
 
@@ -269,38 +416,28 @@ gate in the repo and the one the others assume.
 
 ## lifting-pointer
 
-CI gate: input follows the eye (decisions.md #33) — which DOM instance
-hears a real click in each crossing phase. `npm run gate:lifting-pointer`.
+CI gate: input and hover follow the displayed content during handoff
+(decisions.md #33). `npm run gate:lifting-pointer`.
 
-One exclusive Surface whose page copy and parked source each count
-their own clicks; the runner fires trusted clicks at rest, at three
-offsets inside a widened lifting window (`settleMs: 700`), and in the
-gl phase, then samples hover mirroring mid-lift. The rest and gl
-clicks are liveness baselines — if either lands wrong the lifting
-answer is vacuous. The judged clauses: every lifting-window click
-reaches the presented page copy, that copy wears real `:hover`
-mid-lift, and the parked copy wears no `data-hover` — the last clause
-also covers the #33 edge burst, because an earlier gl-phase hover
-leaves a stamped twin that only the burst clears.
+The current fixture keeps one live button and records the accepted presentation
+at each click. It checks page and scene clicks, three offsets within a 700ms
+preparation window, and native hover during preparation. The initial scene
+request must also tolerate asynchronous renderer mounting.
 
-The presenter lives inside `Surface.Scene`. The gate also requests `both`,
-`none`, `page`, and `canvas`, checks the reported presentation against page
-visibility and subtree lifetime, then verifies that the custom child's frame
-subscription stops after return and cleanup. It exercises inherited content
-through an empty `Surface.DOM` declaration. Settled static `canvas` and `both`
-presentations must also let their demand canvas stop rendering while the
-presenter remains mounted.
+Page/scene requests must agree with visible content and `Surface.Scene` lifetime.
+After return and cleanup, the custom child's frame subscription must stop. A
+static scene hold must let the demand renderer become idle while its presenter
+remains mounted. Native-versus-relayed delivery is measured by the separate
+native-pointer gate, not inferred from two supposed React instances.
 
-This began as the probe that found the fault (2026-08-19: 3/3 lifting
-clicks routed to the parked copy while the page copy was presented;
-the pointer gate made the canvas solid at mesh registration, a full
-settle dwell before presentation changed hands) and was promoted when
-`crossingPointer` shipped.
+The original 2026-08-19 failure involved two copies and routed 3/3 preparation
+clicks to the hidden one. That is historical context; this fixture now checks
+the retained-content API.
 
 ## native-pointer
 
 Local gate: the native pointer route (decisions.md #39), driven for the
-first time inside the library. `npm run gate:native-pointer`.
+through the library. `npm run gate:native-pointer`.
 
 One exclusive Surface opts into `pointerRoute="auto"` in the gl phase.
 The gate's discriminator is `isTrusted`: the relay's synthetic dispatch
@@ -323,7 +460,7 @@ under the worn pose the browser's rects ARE the projection (platform.md
 
 The input is controlled above the Surface. After typing through the native
 canvas route, the gate returns to the page, verifies the value, edits it there,
-and re-enters the canvas to check that both instances retain the shared state.
+and re-enters the canvas. The same retained element must contain the edited value.
 
 What it deliberately does not judge: the OS cursor. Whether Chrome
 applies an unpainted canvas child's `cursor` is #39's open question and
@@ -751,7 +888,7 @@ background control.
 
 `npm run gate:chrome-over-canvas` — page UI painted above a
 `pointerMode="surfaces"` canvas must still receive clicks where it
-overlaps Surface matter.
+overlaps Surface content.
 
 The gate parks the refraction crossing at `t = 0.5`, which is the only
 state where the scene holds a mesh, and clicks three headers in the lab's

@@ -167,7 +167,7 @@ function AnalyzedBlock({
   active: boolean
 }) {
   const surface = useSurfaceHandle(`analyze-${id}`)
-  const [renderIn, setRenderIn] = useState<'page' | 'canvas'>('page')
+  const [inScene, setInScene] = useState(false)
   const holder = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<[number, number] | null>(null)
   const [box, setBox] = useState<WorldBox | null>(null)
@@ -190,7 +190,7 @@ function AnalyzedBlock({
   }, [])
 
   useEffect(() => {
-    if (active) setRenderIn('canvas')
+    if (active) setInScene(true)
   }, [active])
 
   const content = (
@@ -203,7 +203,7 @@ function AnalyzedBlock({
   return (
     <div ref={holder} className="cand-block-holder" data-active={active || undefined}>
       {size ? (
-        <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={renderIn === 'canvas'}>
+        <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={inScene}>
 <Surface.HTML size={size} resolution={2}>{content}</Surface.HTML>
 
           {box && (
@@ -217,7 +217,7 @@ function AnalyzedBlock({
               // is the effect's resolution: 64×40 puts one every ~7px on a
               // 430px block, comfortably inside the wave's period.
               geometry={<planeGeometry args={[size[0], size[1], 64, 40]} />}
-              material={<PrismMaterial on={active} onFaded={() => setRenderIn('page')} />}
+              material={<PrismMaterial on={active} onFaded={() => setInScene(false)} />}
             />
           )}
         </Surface.Root>

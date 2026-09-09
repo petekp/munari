@@ -12,7 +12,7 @@
 //
 // No JSX here: the runner only discovers `.test.ts`, and widening test
 // discovery across the workspace is not worth one module's contract.
-import { StrictMode, createElement } from 'react'
+import { StrictMode, createElement, useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -31,13 +31,22 @@ import {
   type SurfaceDestination,
 } from './surfaceHandle'
 import { mountSurfaceHost, surfaceHost, resetSurfaceHosts } from './surfaceHostRegistry'
-import { SurfaceDOM } from './SurfaceDOM'
 import { SurfaceMesh } from './SurfaceMesh'
 import { SurfaceRoot } from './SurfaceRoot'
+import type { SurfacePartPublication } from './surfaceSourceRuntime'
+import { useSurfaceRoot } from './surfaceContext'
+import { Surface } from '../Surface'
 
 interface ObservedContext {
   state: ReturnType<typeof useSurfaceState> | null
   progress: ReturnType<typeof useSurfaceProgress> | null
+}
+
+// These tests exercise declaration timing, independent of HTML capture.
+function PageDeclaration() {
+  const { store } = useSurfaceRoot('PageDeclaration')
+  useLayoutEffect(() => store.declarePresentation('page'), [store])
+  return null
 }
 
 // React reads this global to decide whether renders must be wrapped in
@@ -100,7 +109,8 @@ describe('a handle owns no DOM and no renderer resource', () => {
 })
 
 describe('context-reading hooks', () => {
-  it('inherit a separated DOM declaration’s actual handle', () => {
+  it('inherit the retained HTML declaration’s actual handle', () => {
+    vi.stubGlobal('CanvasRenderingContext2D', undefined)
     const handle = createSurface('separated')
     const observed: ObservedContext = { state: null, progress: null }
     const Probe = () => {
@@ -109,11 +119,8 @@ describe('context-reading hooks', () => {
       return null
     }
     const root = createRoot(container)
-    flushSync(() =>
-      root.render(
-        createElement(SurfaceDOM, { surface: handle }, createElement(Probe)),
-      ),
-    )
+    const props = { surface: handle, inScene: false, children: createElement(Probe) }
+    flushSync(() => root.render(createElement(Surface, props)))
     expect(observed.state?.requested).toBe('page')
     expect(observed.progress).toBe(handle.progress)
     flushSync(() => root.unmount())
@@ -154,7 +161,7 @@ describe('presentation declarations', () => {
     releasePage()
   })
 
-  it('accepts a DOM declaration committed in the same tree', async () => {
+  it('accepts a page declaration committed in the same tree', async () => {
     const errors: Error[] = []
     const root = createRoot(container)
     flushSync(() =>
@@ -162,7 +169,7 @@ describe('presentation declarations', () => {
         createElement(
           SurfaceRoot,
           { renderIn: 'page', onError: (error) => errors.push(error) },
-          createElement(SurfaceDOM, null, createElement('span', null, 'page')),
+          createElement(PageDeclaration),
         ),
       ),
     )
@@ -179,7 +186,7 @@ describe('presentation declarations', () => {
         createElement(
           SurfaceRoot,
           { renderIn: 'both', onError: (error) => errors.push(error) },
-          createElement(SurfaceDOM, null, createElement('span', null, 'page')),
+          createElement(PageDeclaration),
         ),
       ),
     )
@@ -204,7 +211,7 @@ describe('presentation declarations', () => {
         createElement(
           SurfaceRoot,
           { surface: handle, renderIn: 'canvas' },
-          createElement(SurfaceDOM, null, createElement('span', null, 'page')),
+          createElement(PageDeclaration),
           createElement(SurfaceMesh),
         ),
       ),
@@ -916,6 +923,52 @@ describe('the part ledger — all of the parts or none (decisions.md #37)', () =
     expect(store.getState().ready).toBe(false)
     store.registerPartPresenter('p')
     expect(store.getState().ready).toBe(true)
+  })
+})
+
+describe('part publication ownership', () => {
+  const publication = (id: string): SurfacePartPublication => ({
+    id,
+    runtime: null,
+    size: [200, 100],
+    captureRoot: document.createElement('div'),
+    pageRoot: null,
+  })
+
+  it.each(['first', 'last'] as const)('recovers the survivor when the %s duplicate leaves', (removed) => {
+    const store = createSurfaceStore('duplicates')
+    const first = publication('panel')
+    const last = publication('panel')
+    const releaseFirst = store.publishPart('panel', first)
+    const releaseLast = store.publishPart('panel', last)
+    expect(store.parts()).toEqual([last])
+
+    const release = removed === 'first' ? releaseFirst : releaseLast
+    const survivor = removed === 'first' ? last : first
+    release()
+    const snapshot = store.parts()
+    expect(store.part('panel')).toBe(survivor)
+    expect(snapshot).toEqual([survivor])
+    release()
+    expect(store.parts()).toBe(snapshot)
+
+    releaseFirst()
+    releaseLast()
+    expect(store.part('panel')).toBeNull()
+    expect(store.parts()).toEqual([])
+  })
+
+  it('keeps separate cleanup owners when a publication object is reused', () => {
+    const store = createSurfaceStore('shared-publication')
+    const part = publication('panel')
+    const releaseFirst = store.publishPart('panel', part)
+    const releaseLast = store.publishPart('panel', part)
+    const snapshot = store.parts()
+    releaseLast()
+    expect(store.part('panel')).toBe(part)
+    expect(store.parts()).toBe(snapshot)
+    releaseFirst()
+    expect(store.part('panel')).toBeNull()
   })
 })
 

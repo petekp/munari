@@ -1,12 +1,10 @@
 import { readSurfaceFrameState } from '@petepetrash/munari/advanced'
-// The page half of the native-pointer gate: one exclusive Surface whose
-// presenter opts into `pointerRoute="auto"` (decisions.md #39), so a real
+// The page half of the native-pointer gate: one retained Surface whose
+// presenter switches between `relay` and `auto` routes (decisions.md #39), so a real
 // browser click fired while the rig rides tells us whether the browser
 // itself delivered it to the parked content. The discriminator is
 // `isTrusted`: the relay's synthetic dispatch can never set it, so a click
-// record with `trusted: true` on the source copy is proof the native route
-// owned the pointer — no in-library code has ever driven the real rig
-// before this gate (the evidence behind #39 came from hand-built spikes).
+// record with `trusted: true` on the retained content proves native delivery.
 //
 // The run.mjs side drives real (trusted) input; nothing here dispatches
 // events. This page only records clicks and answers questions about the
@@ -27,7 +25,7 @@ const W = 320
 const H = 200
 
 interface ClickRecord {
-  instance: string
+  presentationAtClick: string
   id: string
   trusted: boolean
   t: number
@@ -42,8 +40,8 @@ function parkedCanvas(): HTMLCanvasElement | null {
 let rendering: import('@react-three/fiber').RootState | null = null
 let displayed: import('three').Mesh | null = null
 
-interface PointerObservation {presented:string|null;isChanging:boolean;ready:boolean}
-function initialState(): PointerObservation { return {presented:null,isChanging:false,ready:false} }
+type PointerObservation = Pick<ReturnType<typeof useSurfaceStatus>, 'presentation' | 'isTransitioning' | 'sceneReady'>
+function initialState(): PointerObservation { return {presentation:null,isTransitioning:false,sceneReady:false} }
 const probe = {
   capable: detectHtmlInCanvas().drawElementImage,
   ready: false,
@@ -74,7 +72,7 @@ const probe = {
     const el = document.getElementById(id)
     if (!el) return null
     const r = el.getBoundingClientRect()
-    if (probe.state.presented !== 'scene' || probe.riding() || !displayed || !rendering) return { x:r.left+r.width/2, y:r.top+r.height/2, w:r.width, h:r.height }
+    if (probe.state.presentation !== 'scene' || probe.riding() || !displayed || !rendering) return { x:r.left+r.width/2, y:r.top+r.height/2, w:r.width, h:r.height }
     const source = parkedCanvas()?.firstElementChild?.getBoundingClientRect()
     if (!source) return null
     const point = displayed.position.clone().set((r.left+r.width/2-source.left)/source.width-0.5,0.5-(r.top+r.height/2-source.top)/source.height,0)
@@ -107,7 +105,7 @@ window.__nativePointer = probe
 
 function Card({ value, onChange, surface }: { value: string; onChange: (value: string) => void; surface:SurfaceHandle }) {
   const record = (id: string) => (e: React.MouseEvent) => {
-    probe.clicks.push({ instance:readSurfaceFrameState(surface).presentation ?? 'waiting', id, trusted: e.nativeEvent.isTrusted, t: performance.now() })
+    probe.clicks.push({ presentationAtClick:readSurfaceFrameState(surface).presentation ?? 'waiting', id, trusted: e.nativeEvent.isTrusted, t: performance.now() })
   }
   return (
     <div
@@ -154,7 +152,7 @@ function App() {
   probe.setRenderIn = setRenderIn
   probe.setRoute = setRoute
   probe.setTilt = setTilt
-  probe.state = { presented: st.presentation, isChanging: st.isTransitioning, ready: st.sceneReady }
+  probe.state = { presentation: st.presentation, isTransitioning: st.isTransitioning, sceneReady: st.sceneReady }
   useEffect(() => {
     probe.ready = true
   }, [])

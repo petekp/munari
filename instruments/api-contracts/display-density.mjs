@@ -4,13 +4,15 @@ import {mkdir,writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {tmpdir} from 'node:os'
 import puppeteer from 'puppeteer-core'
+const origin=process.env.API_CAPTURE_URL
+assert.ok(origin,'Set API_CAPTURE_URL to the URL printed by npm run probe:api-capture.')
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/display-density')
 await mkdir(output,{recursive:true})
 const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--enable-features=CanvasDrawElement']})
 try{
  const page=await browser.newPage(),records=[]
  await page.setViewport({width:1200,height:900,deviceScaleFactor:2})
- await page.goto(process.env.API_CAPTURE_URL??'http://127.0.0.1:5174')
+ await page.goto(origin)
  await page.waitForFunction(()=>window.__captureProbe?.read().frame)
  assert.ok(await page.evaluate(()=>Object.hasOwn(window.__apiControls.status,'sceneReady')),'The capture fixture must load the current public API')
  await page.evaluate(()=>{window.originalCapture=document.querySelector('[data-api-capture]');window.originalCaptureContent=window.originalCapture.firstElementChild})

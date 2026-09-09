@@ -1,16 +1,13 @@
 import { readSurfaceFrameState } from '@petepetrash/munari/advanced'
-// The page half of the lifting-pointer gate: one exclusive Surface whose
-// two DOM instances (page copy, parked source) count their own clicks, so a
-// real browser click fired during each crossing phase tells us which copy
-// heard it. The contract is decisions.md #33: during 'lifting' the page
-// copy is the presented one, and input follows the eye — the registered
-// mesh must not route the click to the hidden parked copy, which is
-// exactly what it did before the law (measured 2026-08-19, 3/3).
+// The page half of the lifting-pointer gate: one retained button records
+// clicks and the presentation at event time. Decision #33 keeps input on
+// the visible presentation throughout preparation and return. The original
+// two-copy binding misrouted 3/3 preparation clicks (2026-08-19); the current
+// fixture keeps the click, hover, page visibility and scene-lifetime checks.
 //
 // The run.mjs side drives real (trusted) clicks; nothing here dispatches
-// events. This page only records: which instance's onClick ran, what the
-// public SurfaceState said at that moment, whether the shared canvas was
-// solid to input, and whether the page copy was the visible one.
+// events. It records the retained button's event-time presentation, public
+// status, canvas input blocking, and page visibility.
 import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useFrame } from '@react-three/fiber'
@@ -28,9 +25,9 @@ const W = 320
 const H = 160
 
 interface ClickRecord {
-  instance: string
+  presentationAtClick: string
   t: number
-  state: { presented: string | null; isChanging: boolean }
+  state: { presentation: string | null; isTransitioning: boolean }
   canvasSolid: boolean | null
   pageVisible: boolean | null
 }
@@ -38,16 +35,16 @@ interface ClickRecord {
 interface EventRecord {
   t: number
   label?: string
-  presented?: string | null
-  isChanging?: boolean
-  ready?: boolean
+  presentation?: string | null
+  isTransitioning?: boolean
+  sceneReady?: boolean
 }
 
 const clicks: ClickRecord[] = []
 const events: EventRecord[] = []
 
-interface PointerObservation {presented:string|null;isChanging:boolean;ready:boolean}
-function initialState(): PointerObservation { return {presented:null,isChanging:false,ready:false} }
+type PointerObservation = Pick<ReturnType<typeof useSurfaceStatus>, 'presentation' | 'isTransitioning' | 'sceneReady'>
+function initialState(): PointerObservation { return {presentation:null,isTransitioning:false,sceneReady:false} }
 const probe = {
   capable: detectHtmlInCanvas().drawElementImage,
   ready: false,
@@ -102,9 +99,9 @@ function TargetButton({surface}:{surface:SurfaceHandle}) {
         style={{ width: 220, height: 64, fontSize: 18 }}
         onClick={() => {
           probe.clicks.push({
-            instance:readSurfaceFrameState(surface).presentation ?? 'waiting',
+            presentationAtClick:readSurfaceFrameState(surface).presentation ?? 'waiting',
             t: performance.now(),
-            state: { presented: probe.state.presented, isChanging: probe.state.isChanging },
+            state: { presentation: probe.state.presentation, isTransitioning: probe.state.isTransitioning },
             canvasSolid: probe.canvasSolid(),
             pageVisible: probe.pageVisible(),
           })
@@ -139,13 +136,13 @@ function App() {
   )
   const st = useSurfaceStatus(surface)
   probe.setRenderIn = setRenderIn
-  probe.state = { presented: st.presentation, isChanging: st.isTransitioning, ready: st.sceneReady }
+  probe.state = { presentation: st.presentation, isTransitioning: st.isTransitioning, sceneReady: st.sceneReady }
   useEffect(() => {
     probe.events.push({
       t: performance.now(),
-      presented: st.presentation,
-      isChanging: st.isTransitioning,
-      ready: st.sceneReady,
+      presentation: st.presentation,
+      isTransitioning: st.isTransitioning,
+      sceneReady: st.sceneReady,
     })
   }, [st])
   useEffect(() => {

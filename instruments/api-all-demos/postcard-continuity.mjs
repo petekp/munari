@@ -50,7 +50,7 @@ try {
   const flip = async (scene) => {
     if (pointerInput) await page.click('.home-hero-row button')
     else await page.evaluate(() => document.querySelector('.home-hero-row button').click())
-    await page.waitForFunction(wanted => document.querySelector('.home-hero-row .home-lamp').dataset.gl === String(wanted), {timeout:10000}, scene)
+    await page.waitForFunction(wanted => document.querySelector('.home-hero-row .home-postcard-status').dataset.gl === String(wanted), {timeout:10000}, scene)
   }
   await flip(true)
   await page.waitForFunction(() => {
@@ -88,23 +88,38 @@ try {
     window.__stopPostcard=()=>{record.active=false;cancelAnimationFrame(record.raf);observer.disconnect()}
   })
   const client = await page.createCDPSession()
-  const frames = []
-  client.on('Page.screencastFrame', event => {
+  const frames = [],acks=new Set()
+  let recorded=()=>{}
+  const receiveFrame=event=>{
     frames.push({data:event.data,timestamp:event.metadata.timestamp,metadata:event.metadata})
-    void client.send('Page.screencastFrameAck',{sessionId:event.sessionId})
-  })
+    const ack=client.send('Page.screencastFrameAck',{sessionId:event.sessionId}).catch(error=>errors.push(String(error))).finally(()=>acks.delete(ack))
+    acks.add(ack);recorded()
+  }
+  client.on('Page.screencastFrame',receiveFrame)
   if (process.env.POSTCARD_TRACE === '1') { await client.send('Profiler.enable'); await client.send('Profiler.setSamplingInterval',{interval:100}); await client.send('Profiler.start') }
   if (process.env.POSTCARD_TRACE === '1') await page.tracing.start({path:path.join(output,'trace.json'),categories:['devtools.timeline','v8.execute','blink.user_timing']})
   if (recordPixels) await client.send('Page.startScreencast',{format:'png',everyNthFrame:1})
   const box = await page.$eval('.home-hero-holder',element=>element.getBoundingClientRect().toJSON())
-  const exclude = await page.$$eval('.home-hero-row,.home-hero-status,.home-hero-copy',elements=>elements.map(element=>element.getBoundingClientRect().toJSON()))
+  const exclude = await page.$$eval('.home-hero-row',elements=>elements.map(element=>element.getBoundingClientRect().toJSON()))
   for(let cycle=0;cycle<cycles;cycle++) {
     await flip(true)
     await new Promise(resolve=>setTimeout(resolve,1250))
     await flip(false)
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
   }
-  if (recordPixels) await client.send('Page.stopScreencast')
+  if (recordPixels) {
+    // Native-density lighting made the recorder lag the final transfer by
+    // 154ms. Two animation frames did not prove a composited image arrived.
+    const finalHold=await page.evaluate(()=>{const r=window.__postcardContinuity;return (r.origin+r.holds.at(-1).time)/1000})
+    await new Promise((resolve,reject)=>{
+      const timeout=setTimeout(()=>reject(new Error('No composited frame after the final handoff within 5 seconds')),5000)
+      recorded=()=>{if(frames.some(frame=>frame.timestamp>=finalHold)){clearTimeout(timeout);recorded=()=>{};resolve()}}
+      recorded()
+    })
+    await client.send('Page.stopScreencast')
+  }
+  await Promise.all([...acks])
+  client.off('Page.screencastFrame',receiveFrame)
   const record = await page.evaluate(()=>{window.__stopPostcard();return window.__postcardContinuity})
   if (process.env.POSTCARD_TRACE === '1') { await page.tracing.stop(); const {profile}=await client.send('Profiler.stop'); await writeFile(path.join(output,'cpu.json'),JSON.stringify(profile)) }
   await client.detach()

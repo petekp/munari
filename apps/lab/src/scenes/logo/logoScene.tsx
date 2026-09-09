@@ -1,16 +1,11 @@
-// The wordmark's matter overlay — the WebGL half of the candy word,
+// Shared wordmark scene rendering,
 // shared by the logo playground (Logo.tsx) and the official wordmark
 // component (components/MunariLogo.tsx).
 //
-// The law: ONE <Surface> whose six letters are <Surface.Part>s, so the
-// word transfers whole or not at all — a letter whose raster is late
-// holds the whole handoff rather than crossing alone (the fault that
-// made parts exist). Lifting mounts a twin of each letter behind its
-// part, warming unseen and pixel-aligned with the still-visible page
-// word; the page is released only on evidence — every twin's mesh
-// proved a color-writing draw, and any in-flight hop settled — while
-// the idle float, carried on one clock that the page and the meshes
-// both read, keeps breathing straight through the swap.
+// One Surface.Root owns six named Surface.HTML parts. Each part must prove
+// its presentation before the word changes renderers. The page and scene
+// share letter state and an animation clock, so an in-flight letter change
+// or idle movement does not restart at the handoff.
 //
 // Split out of Logo.tsx 2026-09-01 so the official wordmark could
 // reuse the overlay without carrying the playground's panel and
@@ -44,8 +39,8 @@ import {
   type LetterPose,
   type LogoKnobs,
 } from './logoLaw'
-import { LETTER_FRAG, LETTER_VERT, MATTER_GATE, MATTER_PARAMS } from './logoShaders'
-import type { MatterSpec } from './logoShaders'
+import { LETTER_FRAG, LETTER_VERT, MATERIAL_GATE, MATERIAL_PARAMS } from './logoShaders'
+import type { LogoMaterialSpec } from './logoShaders'
 import { FIELD_DS, LetterFields, raster, readAlphaField } from './logoFields'
 import { traceContour, type InkIsland } from './logoContour'
 import { buildLetterMesh } from './logoSlab'
@@ -96,7 +91,7 @@ export function glyphPaint(pose: LetterPose): React.CSSProperties {
   }
 }
 
-// ── the matter overlay ──────────────────────────────────────────────────
+// ── the material overlay ──────────────────────────────────────────────────
 
 export interface LetterBox {
   /** Viewport-px center of the letter's slot (untransformed), exact —
@@ -189,20 +184,21 @@ interface LetterFx {
   /** Relief AMOUNT, not a peak height: the gain on the height field,
    *  referenced to RELIEF_REF = 22 (logoShaders). The px the sheet
    *  actually rises is `relief / 22 × dome × (shoulder × 9.6 + pillow ×
-   *  51.2)` at full coverage, so it is per-matter — balloon at the
+   *  51.2)` at full coverage, so it is per-material — balloon at the
    *  default 22 already domes 83 px. */
   relief: number
   /** 0..1 — the share of `relief` the mesh carries; the rest is bump. */
   body: number
   /** Extrusion depth in CSS px; 0 collapses every wall to a line. */
   slab: number
-  /** Field weights (MATTER_PARAMS): fine-gradient shoulder, coarse-
+  /** Field weights (MATERIAL_PARAMS): fine-gradient shoulder, coarse-
    *  gradient pillow, and the overall height-to-normal gain. The field
    *  SCALES live in the blur pyramid (logoFields), not here. */
   shoulder: number
   pillow: number
   dome: number
-  matter: number
+  /** Numeric selector into LOGO_MATERIALS; the shader receives it as uMaterialIndex. */
+  materialIndex: number
   /** The rest of the deck row — surface response and pop channels —
    *  with the panel's trims already folded in, so the shader stays a
    *  pure consumer of finished numbers. */
@@ -268,39 +264,39 @@ function dodgeOffset(
 }
 
 /** The substance half of the fx buffer: what the letter is MADE of, and
- *  how much of that the matter gate is letting through this frame. Ink
- *  (matter 0) is the page's own look, so every term of it stays zero. */
-function writeMatterFx(
+ *  how much of that the material gate is letting through this frame. Ink
+ *  (material 0) is the page's own look, so every term of it stays zero. */
+function writeMaterialEffects(
   fx: LetterFx,
   p: LetterPose,
   k: LogoKnobs,
-  par: MatterSpec,
+  par: LogoMaterialSpec,
   gs: number,
   amp: number,
   sp: number,
   dt: number,
   fresh: boolean,
 ) {
-  fx.matter = p.matter
-  fx.fx = p.matter === 0 ? 0 : k.gloss * gs
+  fx.materialIndex = p.materialIndex
+  fx.fx = p.materialIndex === 0 ? 0 : k.gloss * gs
   // The weave, in em (the material lands it as px): one STEADY sea.
   // Excitation never scales it — the beat excites some letter every
   // second or two, and a sea that pumps with it reads as erratic
   // shaking, not a wave (2026-08-14). A strike answers through the
   // rings instead, which a hand can aim.
   //
-  // The matter's softness rides a FLOOR, the same shape rings use:
+  // The material's softness rides a FLOOR, the same shape rings use:
   // most of the deck is stiff (chrome 0.12, enamel 0.1), and a sea
   // that skips two thirds of the word is not a sea. Softness scales
   // the remainder, so gummy still rolls deeper than chrome. Ink is
   // the page's own look and never moves at all.
   //
-  // On the MATTER GATE (gs), not raw progress: standing substance
+  // On the MATERIAL GATE (gs), not raw progress: standing substance
   // motion must freeze back to ink before touchdown, the way light
   // and relief do. The surge moves real ink, and riding raw
   // progress broke the crossing gate's 1.5 px budget (2026-08-14).
   fx.jelly =
-    p.matter === 0
+    p.materialIndex === 0
       ? 0
       : k.jelly * gs * (WEAVE.floor + (1 - WEAVE.floor) * par.jelly) * WEAVE.amp
   fx.prism = k.prism * amp * par.prism * Math.min(sp / 300, 1) * 2.6
@@ -309,20 +305,20 @@ function writeMatterFx(
   // substance light does — a sheet pushed toward the camera grows the
   // letter by perspective alone. So the letter lifts flat, inflates
   // once it is clear of the page, and deflates before it lands.
-  // Relief scales by the matter's own dome, so a balloon puffs and a
+  // Relief scales by the material's own dome, so a balloon puffs and a
   // neon tube stays a tube.
   // NOT scaled by par.dome here — the shader's height description owns
   // that (uDome), and folding it in twice is exactly the two-numbers-
   // for-one-surface mistake this refactor removes.
-  fx.relief = p.matter === 0 ? 0 : k.relief * gs
+  fx.relief = p.materialIndex === 0 ? 0 : k.relief * gs
   fx.body = k.body
   // The slab chases its target through an asymmetric ease: melting
-  // (stale outline, or a matter that carries none) is near-immediate,
+  // (stale outline, or a material that carries none) is near-immediate,
   // re-forming takes long enough to read as the letter setting. The
   // snap to exact zero is for the handoff identity — an exponential
   // never arrives on its own, and the swap needs the walls at
   // literally no area.
-  const slabWant = p.matter === 0 || !fresh ? 0 : k.extrude * gs
+  const slabWant = p.materialIndex === 0 || !fresh ? 0 : k.extrude * gs
   const eased =
     fx.slab + (slabWant - fx.slab) * (1 - Math.exp(-dt / (slabWant < fx.slab ? 0.05 : 0.14)))
   fx.slab = eased < 0.01 ? 0 : eased
@@ -332,8 +328,8 @@ function writeMatterFx(
   // The surface, trims folded in HERE so the shader stays a pure
   // consumer. Polish walks roughness matte ↔ mirror around the deck
   // value (1 is identity); the floor matches the shader's numeric
-  // one. The channel trims scale what a matter already has — a
-  // matter whose row carries zero stays zero at any trim.
+  // one. The channel trims scale what a material already has — a
+  // material whose row carries zero stays zero at any trim.
   fx.rough = Math.min(Math.max(par.rough * (2 - k.polish), 0.03), 1)
   fx.metal = par.metal
   fx.sss = par.sss
@@ -464,7 +460,7 @@ function LetterMaterial({
       uSlab: { value: 0 },
       uSolid: { value: 0 },
       uPrism: { value: 0 },
-      uMatter: { value: 0 },
+      uMaterialIndex: { value: 0 },
       uVelDir: { value: new THREE.Vector2(1, 0) },
       uQuat: { value: new THREE.Vector4(0, 0, 0, 1) },
       uLight: { value: WORLD_LIGHT.clone() },
@@ -572,7 +568,7 @@ function LetterMaterial({
     // parked letter runs no extra passes at all. The vertex stage reads
     // them too now, so relief and extrusion join the light in asking.
     const wantsFields = fx.fx > 0.001 || fx.relief > 0.001 || fx.slab > 0.001
-    if (texture && fx.matter > 0.5 && wantsFields) fields.update(state.gl, texture)
+    if (texture && fx.materialIndex > 0.5 && wantsFields) fields.update(state.gl, texture)
     u.tFine.value = fields.fine.texture
     u.tCoarse.value = fields.coarse.texture
     u.tHalo.value = fields.halo.texture
@@ -604,7 +600,7 @@ function LetterMaterial({
     // handoff identity.
     u.uSolid.value = Math.min(1, fx.slab / SOLID_FULL_PX)
     u.uPrism.value = fx.prism * texPerCss
-    u.uMatter.value = fx.matter
+    u.uMaterialIndex.value = fx.materialIndex
     u.uVelDir.value.copy(fx.velDir)
     u.uQuat.value.copy(fx.quat)
     u.uLight.value.copy(fx.light)
@@ -789,7 +785,7 @@ function SceneLetter({
         shoulder: 0,
         pillow: 0,
         dome: 0,
-        matter: pose.matter,
+        materialIndex: pose.materialIndex,
         rough: 0.5,
         metal: 0,
         sss: 0,
@@ -1009,18 +1005,18 @@ function LetterDrive({
     // its own pixels (the identity theorem the crossing-flash gate
     // measured, before it was removed). What makes a letter a SUBSTANCE
     // rides a LATER window of the same progress — progress.between over
-    // MATTER_GATE — so substances freeze back to ink before touchdown,
+    // MATERIAL_GATE — so substances freeze back to ink before touchdown,
     // and the swap-eve frames are ink and nothing else.
-    const gate = MATTER_GATE
+    const gate = MATERIAL_GATE
     const gt = progress.between(gate.from, gate.from + gate.distance)
     const gs = gt * gt * (3 - 2 * gt)
-    const par = MATTER_PARAMS[p.matter]
-    writeMatterFx(fx, p, k, par, gs, amp, sp, dt, fresh)
+    const par = MATERIAL_PARAMS[p.materialIndex]
+    writeMaterialEffects(fx, p, k, par, gs, amp, sp, dt, fresh)
     // The motion rig. The weave's dials pass through (the material
     // folds them with the font size). Rings and stretch fold their
     // gates HERE: × amp so both are zero at every handoff, × the
-    // matter's softness so gummy rings deep and chrome barely — and
-    // ink, matter 0, moves not at all.
+    // material's softness so gummy rings deep and chrome barely — and
+    // ink, material 0, moves not at all.
     fx.waveScale = Math.max(k.waveScale, 0.05)
     fx.waveSpeed = k.waveSpeed
     const wa = (k.waveAngle * Math.PI) / 180
@@ -1030,8 +1026,8 @@ function LetterDrive({
     // field a hair per letter — organic, and well under a wavelength.
     fx.waveOrigin.set(el.position.x, el.position.y)
     fx.ripAmp =
-      p.matter === 0 ? 0 : k.ripple * amp * (RIPPLE.floor + (1 - RIPPLE.floor) * par.jelly)
-    fx.stretch = p.matter === 0 ? 0 : k.stretch * amp * par.jelly * stretchAmount(sp)
+      p.materialIndex === 0 ? 0 : k.ripple * amp * (RIPPLE.floor + (1 - RIPPLE.floor) * par.jelly)
+    fx.stretch = p.materialIndex === 0 ? 0 : k.stretch * amp * par.jelly * stretchAmount(sp)
     const q = el.quaternion
     fx.quat.set(q.x, q.y, q.z, q.w)
   })
@@ -1045,13 +1041,10 @@ export interface LogoSceneProps {
   knobs: React.RefObject<LogoKnobs>
   /** The word's identity — one handle for all six letters. */
   surface: SurfaceHandle
-  /** What the page is asking for; the root wears it to stay exclusive. */
   /** Which renderer holds the pixels right now. */
   presented: SurfacePresentation
   /** The canvas wrapper changed synchronously at the handoff edge. */
   canvasRef: React.RefObject<HTMLDivElement | null>
-  /** The root's callbacks. The root owns them, so they arrive as props
-   *  rather than being written onto the handle from the page above. */
   /** The carried float's per-frame sample, shared with the page. */
   carried: () => number[]
   /** The extrude knob is off zero. A boolean rather than the number,
@@ -1061,14 +1054,10 @@ export interface LogoSceneProps {
 }
 
 /**
- * The word as matter: six parts of ONE Surface, and the Canvas they draw
- * in.
+ * The word's scene renderer and canvas. Six named HTML parts share one Surface.
  *
- * Parts rather than six Surfaces — that is the whole reason this shape
- * exists. Six independent handoffs each crossed the moment their own
- * raster was ready, so the word came apart mid-lift: four letters in
- * WebGL and two still on the page for as long as the slowest one took.
- * One readiness ledger cannot do that.
+ * A shared readiness ledger prevents a partial handoff. With six independent
+ * Surfaces, four letters could enter the scene while two still waited on the page.
  */
 export function LogoScene({
   poses,

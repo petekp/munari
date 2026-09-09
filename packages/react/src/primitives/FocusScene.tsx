@@ -47,7 +47,7 @@ import {
   type OrderRect,
   type Viewport,
 } from '../lib/focusTree'
-import { tabbables } from '../lib/tabbables'
+import { effectiveTabIndex, tabbables } from '../lib/tabbables'
 import {
   createDirectionalHistory,
   directionalPick,
@@ -503,7 +503,7 @@ export function FocusScene({
     // root itself), or a leaf member's proxy.
     const interiorValid = (groupId: string) => (el: HTMLElement) => {
       if (!el.isConnected || el.matches(':disabled')) return false
-      if (el.tabIndex < 0 || el.getClientRects().length === 0) return false
+      if (effectiveTabIndex(el) < 0 || el.getClientRects().length === 0) return false
       return tree
         .members(groupId)
         .some((m) =>

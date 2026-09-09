@@ -43,7 +43,7 @@ export interface SurfaceManualPresenter {
   /** May this presenter's pixels be SEEN this frame? */
   canvasPresents(): boolean
   /**
-   * May this presenter's matter HEAR the pointer this frame? Input follows
+   * May this presenter receive pointer input this frame? Input follows
    * the eye (decisions.md #33): a scene-owned mesh that raycasts while this
    * is false routes clicks to the parked copy the viewer cannot see. Gate
    * the mesh's `raycast` on this, the way `<Surface.Mesh>` gates its own.

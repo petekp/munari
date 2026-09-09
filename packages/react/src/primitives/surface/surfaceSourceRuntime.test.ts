@@ -13,6 +13,12 @@ interface TrialCanvas extends HTMLCanvasElement {
   layoutSubtree: boolean
 }
 
+function completePaint(canvas: HTMLCanvasElement) {
+  // SAFETY: beforeEach installs the trial canvas members used by every source.
+  const trial = canvas as TrialCanvas
+  trial.onpaint?.()
+}
+
 let requests = 0
 let originalGetContext: typeof HTMLCanvasElement.prototype.getContext
 
@@ -94,4 +100,45 @@ it('keeps an explicit resolution pin when display density changes',()=>{
  runtime.proposeRaster(1,[3,2]);runtime.setPixelRatio(3)
  expect(runtime.source.rasterScale()).toEqual([1,1])
  runtime.dispose()
+})
+
+describe('storage changes after an upload has been armed', () => {
+  it.each(['tier', 'raster', 'size', 'resolution', 'display'] as const)(
+    'invalidates %s storage in the same frame without replacing the texture',
+    (change) => {
+      const runtime = createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',mirrorU:false,paint:'auto',pixelRatio:1,onError:error=>{throw error}})
+      completePaint(runtime.source.canvas)
+      runtime.frame()
+      const texture = runtime.texture()!
+      const disposed = vi.fn()
+      texture.addEventListener('dispose', disposed)
+      const version = texture.version
+      if (change === 'tier') runtime.proposeTier(1, 2)
+      if (change === 'raster') runtime.proposeRaster(1, [2, 3])
+      if (change === 'size') runtime.setSize([500, 300])
+      // Same dimensions, different mip allocation.
+      if (change === 'resolution') runtime.setResolution(1)
+      if (change === 'display') runtime.setPixelRatio(2)
+      expect(disposed).toHaveBeenCalledTimes(1)
+      expect(runtime.texture()).toBe(texture)
+      expect(texture.version).toBeGreaterThan(version)
+      texture.onUpdate?.(texture)
+      expect(runtime.uploadedGeneration()).toBe(runtime.currentPaint()?.frame.generation)
+      runtime.frame()
+      expect(disposed).toHaveBeenCalledTimes(1)
+      runtime.dispose()
+    },
+  )
+
+  it('keeps a settled auto source idle after a density change', () => {
+    const runtime = createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',mirrorU:false,paint:'auto',pixelRatio:1,onError:error=>{throw error}})
+    completePaint(runtime.source.canvas)
+    for (let i=0;i<12;i++) runtime.frame()
+    runtime.proposeTier(1,2)
+    completePaint(runtime.source.canvas)
+    runtime.frame()
+    runtime.frame()
+    expect(runtime.frame()).toBe(false)
+    runtime.dispose()
+  })
 })

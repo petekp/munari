@@ -5,7 +5,7 @@
 // it renders as ordinary DOM — six letters on the fixed grid, breathing
 // on the carried float — and that is the shipped fallback, not a
 // degraded one. With the capability it lifts once, automatically, into
-// the matter overlay (logoScene.tsx) and stays there: same pixels,
+// the shared scene renderer (logoScene.tsx) and stays there: same pixels,
 // plus depth bob, wobble, and the pointer dodge.
 //
 // The conductor still re-rolls letters, at a far slower cadence than
@@ -109,7 +109,7 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
         {
           fonts: [prev[i].font, ...near.map((p) => p.font)],
           colors: [prev[i].color, ...near.map((p) => p.color)],
-          matters: [prev[i].matter, ...near.map((p) => p.matter)],
+          materialIndices: [prev[i].materialIndex, ...near.map((p) => p.materialIndex)],
         },
         knobsRef.current,
       )

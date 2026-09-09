@@ -9,6 +9,8 @@
 // carries mips and trilinear; ladder-tracked stays plain linear. The
 // anisotropy knob does nothing without a mip chain to select from —
 // order matters: allocation first, then filtering, then the shader.
+// This helper expresses the resolution-mode baseline. The React source
+// runtime additionally enables mipmaps at its far dynamic tiers.
 
 export interface FilterPolicy {
   /** Allocate mip storage for this tier's texture. */

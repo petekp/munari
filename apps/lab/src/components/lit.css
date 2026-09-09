@@ -33,6 +33,8 @@ button[data-relief='raised']:hover {
   box-shadow: var(--lit-well);
 }
 
-[data-lit] [data-relief] {
+/* Shadow ownership must also beat the native hover selectors above. */
+[data-lit] [data-relief],
+[data-lit] [data-relief]:hover {
   box-shadow: none;
 }

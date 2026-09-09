@@ -1,4 +1,4 @@
-// FrameSurface — a caller-owned canvas worn as scene matter.
+// FrameSurface — a caller-owned canvas presented on a scene mesh.
 //
 // This is the React half of the frame path (decisions.md #24, #25).
 // The kernel names pixels (FrameSource: sourceId + generation) and
@@ -55,12 +55,12 @@ export interface FrameSurfaceProps
     ThreeElements['mesh'],
     'children' | 'material' | 'onAfterRender' | 'onBeforeRender' | 'ref'
   > {
-  /** HTML input is a separate Surface mode; frame and DOM sources cannot mix. */
+  /** Use Surface for retained HTML; FrameSurface accepts caller-owned frames. */
   html?: never
   frame: FrameSource
   /**
-   * The crossing this mesh participates in, when it is crossing matter and
-   * not plain scene furniture. While the page copy is the presented one the
+   * The handoff this mesh participates in, when it represents a Surface.
+   * While the page copy is the presented one the
    * mesh declines every ray — input follows the eye (decisions.md #33) —
    * exactly as `<Surface.Mesh>` does. An authored `raycast` prop wins.
    */
@@ -90,7 +90,7 @@ export interface FrameSurfaceProps
   /**
    * `unlit` (default) preserves source color and bypasses tone mapping.
    * `standard` deliberately applies scene lighting. `none` lets children
-   * supply a custom material through `useSurfaceTexture()`.
+   * supply a custom material through `/advanced`'s `useFrameTexture()`.
    */
   material?: 'unlit' | 'standard' | 'none'
 }
@@ -296,7 +296,7 @@ const warnRejectedPresentation = (message: string) => {
 /**
  * A raycast that exists only while `hears()` answers true. Declining at the
  * raycast rather than in handlers means no raycaster — r3f's or a scene's
- * own — ever counts the mesh as pointer matter while the page copy is the
+ * own — ever counts the mesh as a pointer target while the page copy is the
  * presented one.
  */
 export function hearingGatedRaycast(
@@ -321,8 +321,8 @@ export function assertFrameMaterialSupported(
 /**
  * A caller-owned canvas as a Surface material source.
  *
- * The public `Surface` dispatches frame input here. This implementation owns
- * only the Three texture. It never reparents or disposes the source canvas,
+ * Exported from `/advanced`, separately from the retained-HTML Surface API.
+ * This implementation owns only the Three texture. It never reparents or disposes the source canvas,
  * and it exposes frame receipts rather than renderer hooks.
  */
 export function FrameSurface({
@@ -356,7 +356,7 @@ export function FrameSurface({
   const warnedHearingRef = useRef(false)
 
   // A presentation requirement is the one moment this component KNOWS it is
-  // crossing matter. With neither `surface` nor an authored `raycast`, the
+  // a Surface handoff. With neither `surface` nor an authored `raycast`, the
   // mesh will hear the pointer in every phase — the misroute decisions.md
   // #33 exists to forbid — and nothing else in the system can notice.
   useLayoutEffect(() => {

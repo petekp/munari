@@ -1,11 +1,9 @@
 # The platform, as measured
 
-The library rests on Chrome's HTML-in-canvas APIs (`drawElementImage`,
-`texElementImage2D`), which are an origin trial — moving ground. Every
-claim below is something the library depends on, stated as what the
-platform does, with the measurement that established it. Re-run these
-when Chrome moves; a surprise here invalidates a kernel layer, not
-just a test.
+These are dated measurements of Chrome's HTML-in-canvas capability. The
+library's capture path uses `drawElementImage`; entries for `texElementImage2D`
+describe an evaluated alternative. Recheck the relevant measurements when
+changing browser versions or the mechanism that depends on them.
 
 Baseline measurements **2026-08-04** against **Chrome 150** (items 11–12; item
 9–10 on 2026-08-03; items 1–8 on **150.0.7871.187**), macOS, 120Hz,
@@ -26,7 +24,7 @@ they do not change the recorded samples or claim a new browser run.
 | 1 | The capability APIs are present under the flag | `drawElementImage ✓` / `texElementImage2D ✓` on load |
 | 2 | The compositor self-paints on DOM mutation — no repaint request is needed | one DOM mutation → `selfPaintsOnRed: 1`, `requestPaintCalls: 0` |
 | 3 | A mutation resolves into the captured buffer, one self-paint each | red → blue mutation: buffer reads `[255,0,0,255]` then `[0,0,255,255]` |
-| 4 | **The root-vs-descendant hinge.** Animating the drawn element's OWN opacity/transform does not invalidate its paint record, so nothing repaints. On descendants both animate correctly, at one paint + one upload per frame. | root opacity keyframes: `paintDelta 1`, `distinctColors 1` (frozen); descendant: `paintDelta 133`, 9 distinct colors, landmark ramp 232→206→179→154 |
+| 4 | **Compositor-animated root opacity can leave a stale capture.** The root keyframes in this experiment did not produce updated captured pixels; descendant animation did. Do not generalize this to static opacity or transform restyles: item 20 records those separately. | root opacity keyframes: `paintDelta 1`, `distinctColors 1` (frozen); descendant: `paintDelta 133`, 9 distinct colors, landmark ramp 232→206→179→154 |
 | 5 | Idle sources are free; the recorded throughput includes 96 concurrently painting sources | idle half: `instruments/idle-zero` (CI gate). Throughput half — 128 idle sources at 119.995fps / 0 paints/s, 96 live at 93.4fps with min==mean==max frame time and p95 17.1ms — was measured on a load harness that has **not** been migrated; see below |
 | 6 | Rescaling commits one paint per LOD tier boundary crossed, and a focused field keeps caret and value across its own source's swap | workspace scene `approach('email')`: source 0.5→1.5, 8/11 moved sources paint exactly 1 (2-paint entries crossed two boundaries); glyphs visibly sharpen; focused textarea holds caret `[7,7]` + value |
 | 7 | **A `mask-image` on ANY descendant of a drawn element blacks out the whole capture** — solid black except independently composited descendants, with clean paints and no error. Even a mask computed to a fully opaque no-op gradient. (measured 2026-08-01) | panel wearing a `scroll-fade-*` utility: capture all black, `paintDelta` normal, no console error; removing the mask restores it |
@@ -73,16 +71,17 @@ doubt on the "drawElementImage only succeeds inside onpaint" note in
 `htmlInCanvas.ts` (recorded against Chrome 150) — unverified for
 drawElementImage itself in 151.
 
-**Items 18–21 are the native pointer route** (decisions.md #39): for
-PLANAR poses, the parked canvas — `visibility:hidden`, lifted above the
+**Items 18–21 support the opt-in native pointer route** (decisions.md #39 and
+#42): for eligible planar poses, the parked canvas — `visibility:hidden`, lifted above the
 renderer canvas, wearing the presenter's full matrix3d per item 21 —
 hears trusted input natively on exactly the projected quad: hover,
 focus, caret, selection, while its capture runs untouched and its
 `:hover` self-paint draws the hover twin into the texture with no relay
 code. Measured end-to-end in `docs/spikes/matrix3d-hit.md` and
-`docs/spikes/cover-clip.md`. The remaining boundary is planarity:
-deformed poses — fisheye, slider, crystal — stay on the relay, which
-also remains the no-capability fallback. The three environment kills
+`docs/spikes/cover-clip.md`. Deformed poses — fisheye, slider, crystal — use
+relay, as do multiple interactive poses sharing one source. The binding also
+checks input policy, inertness and geometry provenance. If HTML capture itself
+is unavailable, a handoff Surface keeps its HTML native on the page. The three environment cases
 were probed and cleared the same day (the matrix3d report's addendum):
 the lab's iframe shell, dpr 2, and scrolled/offset canvases all behave;
 only OS-level input needs iframe-offset coords — the kernel's own math

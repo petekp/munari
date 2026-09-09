@@ -1,7 +1,8 @@
 # Agent operating guide
 
-**Status: current workflow, 2026-09-04.** The Surface API revision is implemented
-and locally verified; [decision #40](decisions.md) records the evidence.
+**Status: current workflow, 2026-09-07.** The retained-HTML API is implemented;
+[decision #43](decisions.md#43) records its adoption. Public types and the
+README describe this checkout's API.
 The [agent-system plan](agent-system-plan.md) contains unbuilt work. Read only
 the route that fits the task; the [system model](system-model.md) explains the
 ownership and evidence behind it.
@@ -30,7 +31,7 @@ effect does not need a handoff.
 | First Surface or separated DOM/R3F trees | [Consumer setup](../README.md#your-first-surface), [public entries](../packages/react/src/index.ts), [compile-only examples](../tests/surfaceTypes.tsx) | A basic Surface needs no identity; use `useSurfaceHandle(name?)` or `createSurface(name?)` for separated trees. `inScene`, timing and callbacks belong on `Surface` | Typecheck the consumer; check the real gesture and native fallback |
 | Page ↔ canvas handoff | [current package API](../README.md), [crossing contracts](../tests/conformance/transfer/crossing.test.ts) | `inScene` requests; `useSurfaceStatus().presentation` and `onPresentationChange` confirm the hold; `Surface.Scene` retains custom scene children | `gate:dom-surface-demand`; add `gate:lifting-pointer` when input ownership changes |
 | Custom material or captured reflection | [Material context](../packages/react/src/primitives/surface/surfaceContext.ts), [Marble Hand](../apps/lab/src/scenes/marble-hand/MarbleHand.tsx) | `useSurfaceTexture()` inside `<Surface.Mesh>`; nullable `useSurfaceTextureOf(handle)` outside it | `gate:shaders`; the scene's visual gate for reflected content or appearance |
-| DOM-aligned controls or responsive layout | [Anchor API](../packages/react/src/primitives/surface/SurfaceAnchor.tsx), [anchor recipe](../registry/surface-anchors/README.md), [Knobs](../apps/lab/src/scenes/knobs/Knobs.tsx) | Named anchors from the painted generation; manual hardware size remains scene-owned | Anchor contracts, then `gate:knobs-resize`; box agreement alone is not pixel proof |
+| DOM-aligned controls or responsive layout | [Anchor API](../packages/react/src/primitives/surface/SurfaceAnchor.tsx), [anchor contract](../tests/conformance/mapping/surfaceAnchors.test.ts), [Knobs](../apps/lab/src/scenes/knobs/Knobs.tsx) | Named anchors from the painted generation; manual hardware size remains scene-owned | Anchor contracts, then `gate:knobs-resize`; box agreement alone is not pixel proof |
 | Deformation and pointer accuracy | [Deformation API](../packages/react/src/primitives/surface/surfaceDeform.ts), decision #35 | Move geometry through the public seam so raycast and drawn shape agree | The matching pointer gate, such as `gate:fisheye-pointer` or `gate:crystal-pointer` |
 | Pixels from a caller-owned canvas | [FrameSurface](../packages/react/src/primitives/FrameSurface.tsx), [advanced entry](../packages/react/src/advanced.ts) | Publish a complete frame; distinguish frame-draw and presentation receipts | `gate:frame-surface` |
 | Physical controls and focus | [Dial](../packages/react/src/primitives/controls/Dial.tsx), [focus contract](focus.md), [focus policy recipe](../registry/focus-orbit/README.md) | Semantic control/focus state; scene owns camera policy | Local control/focus tests, then the affected native keyboard and pointer paths |
@@ -42,8 +43,9 @@ The root entry is `@petepetrash/munari`. Use `/advanced` for a deliberate
 lower-level need. Do not reach around either entry from the lab or registry.
 An advanced manual presenter must report actual draw evidence; it is not a
 shortcut for forcing a status. `SurfacePresentation` describes the current
-hold (`page`, `canvas`, `both` or `none`); `SurfaceDestination` describes a
-motion target (`page` or `canvas`).
+hold (`page`, `scene`, or `null`); `SurfaceDestination` describes a motion
+target (`page` or `scene`). The binding's internal pixel-policy states are
+distinct from component status; advanced core crossing phases have their own types.
 
 The handle parameter is optional for state, progress, and driver reads; with
 no handle, they use the nearest Surface identity across page and scene trees.

@@ -9,8 +9,8 @@
 //
 // The loosely typed ones say `unknown` on purpose: their contents are console
 // affordances that get rearranged constantly, and pinning them here would
-// turn every experiment into a two-file edit. The precise ones are the two an
-// instrument actually parses.
+// turn every experiment into a two-file edit. Fields parsed by maintained
+// instruments use the named contracts imported below.
 //
 // `__glassInk` is missing on purpose — it is declared inside `glassSdf.tsx`,
 // which is welded byte-for-byte to its registry twin.

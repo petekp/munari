@@ -3,7 +3,8 @@ import tempfile
 import json,os,subprocess
 from pathlib import Path
 session=os.environ.get('API_PROOF_SESSION','munari-api-all')
-base=os.environ.get('API_LAB_URL','http://127.0.0.1:5173')
+base=os.environ.get('API_LAB_URL')
+if not base: raise SystemExit('Set API_LAB_URL to the URL printed by npm run probe:api-lab.')
 out=Path(os.environ.get('API_PROOF_OUTPUT',str(Path(tempfile.gettempdir())/'munari-api/evidence')))
 out.mkdir(parents=True,exist_ok=True)
 results=[]
@@ -125,10 +126,10 @@ call('scrollintoview','.home-hero-row button')
 ev('window.postcardOriginal=document.querySelector(".home-hero-holder [data-api-live] input")')
 call('fill','.home-hero-holder [data-api-live] input','API review')
 call('click','.home-hero-row button')
-wait('document.querySelector(".home-hero-row .home-lamp").dataset.gl === "true"')
+wait('document.querySelector(".home-hero-row .home-postcard-status").dataset.gl === "true"')
 call('screenshot',out/'home-postcard-scene.png')
 call('click','.home-hero-row button')
-wait('document.querySelector(".home-hero-row .home-lamp").dataset.gl === "false"')
+wait('document.querySelector(".home-hero-row .home-postcard-status").dataset.gl === "false"')
 assert ev('postcardOriginal === document.querySelector(".home-hero-holder [data-api-live] input") && postcardOriginal.value === "API review"')
 call('click','.home-starter-demo > div > button')
 wait('document.querySelector(".home-starter-demo").textContent.includes("Drawn by the scene")')

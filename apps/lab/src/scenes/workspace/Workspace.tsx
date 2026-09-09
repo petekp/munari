@@ -1,4 +1,4 @@
-import { memo, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useThree, type ThreeEvent } from '@react-three/fiber'
 import {
@@ -122,6 +122,14 @@ function WorkPanel({
   // (the dial's readout is real DOM — that's the point).
   const sourceRoot = useRef<HTMLElement | null>(null)
   const [probeWidth, setProbeWidth] = useState(PANEL_W)
+  const setGroup = useCallback((node: THREE.Group | null) => {
+    group.current = node
+    register(spec.id, node)
+  }, [register, spec.id])
+  useLayoutEffect(() => {
+    // Initial room placement; later focus and hover commits preserve the drag pose.
+    group.current?.lookAt(LOOK_TARGET.x, LOOK_TARGET.y, LOOK_TARGET.z)
+  }, [])
 
   const approachNow = () => {
     const g = group.current
@@ -210,11 +218,7 @@ function WorkPanel({
   return (
     <group
       position={slot.position}
-      ref={(g) => {
-        group.current = g
-        register(spec.id, g)
-        if (g) g.lookAt(LOOK_TARGET.x, LOOK_TARGET.y, LOOK_TARGET.z)
-      }}
+      ref={setGroup}
     >
       <FocusGroup id={spec.id} order={order} objectRef={group} onStateChange={setFocus}>
         <SceneSurface.Root name={`workspace-${spec.id}`} onReady={() => {
@@ -254,8 +258,7 @@ function WorkPanel({
             castShadow
           />
         )}
-        {/* Grab handle: the one part of a panel that is matter, not screen.
-            Doubles as the focus lamp — unit selection glows it steady,
+        {/* The drag handle also indicates focus: unit selection glows it steady,
             interior engagement brightens it. */}
         <mesh
           position={[0, H3 / 2 + 0.09, 0]}
@@ -399,10 +402,10 @@ export function Workspace() {
     }
   }, [panels])
 
-  const register = (id: string, g: THREE.Group | null) => {
+  const register = useCallback((id: string, g: THREE.Group | null) => {
     if (g) groups.current.set(id, g)
     else groups.current.delete(id)
-  }
+  }, [])
 
   return (
     <>

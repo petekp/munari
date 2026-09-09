@@ -1,8 +1,9 @@
 import tempfile
 import subprocess,json,os
 from pathlib import Path
-out=Path(os.environ.get('API_PROOF_OUTPUT',str(Path(tempfile.gettempdir())/'munari-api/evidence')));out.mkdir(exist_ok=True)
-BASE=os.environ.get('API_PROOF_URL','http://127.0.0.1:5178')
+BASE=os.environ.get('API_CAPTURE_URL')
+if not BASE: raise SystemExit('Set API_CAPTURE_URL to the URL printed by npm run probe:api-capture.')
+out=Path(os.environ.get('API_PROOF_OUTPUT',str(Path(tempfile.gettempdir())/'munari-api/evidence')));out.mkdir(parents=True,exist_ok=True)
 def call(*args):
  p=subprocess.run(['agent-browser','--session',os.environ.get('API_PROOF_SESSION','munari-api-proof'),'--json',*args],capture_output=True,text=True)
  data=json.loads(p.stdout)
@@ -11,7 +12,7 @@ def call(*args):
 def evaluate(code):return call('eval',code).get('result')
 def wait(code):call('wait','--fn',code)
 def read():return evaluate('window.__captureProbe.read()')
-call('open',os.environ.get('API_CAPTURE_URL',BASE))
+call('open',BASE)
 wait('window.__captureProbe?.read().latest.a?.pixel?.[0] === 36 && window.__captureProbe.read().latest.b?.pixel?.[0] === 36')
 initial=read();results={'initial':initial}
 assert evaluate('Object.hasOwn(window.__apiControls.status,"sceneReady")'), 'The capture fixture must load the current public API'

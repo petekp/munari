@@ -1,8 +1,9 @@
 import tempfile
 import subprocess,json,os
 from pathlib import Path
-out=Path(os.environ.get('API_PROOF_OUTPUT',str(Path(tempfile.gettempdir())/'munari-api/evidence')));out.mkdir(exist_ok=True)
-BASE=os.environ.get('API_PROOF_URL','http://127.0.0.1:5178')
+BASE=os.environ.get('API_PROOF_URL')
+if not BASE: raise SystemExit('Set API_PROOF_URL to the URL printed by npm run probe:api-lab.')
+out=Path(os.environ.get('API_PROOF_OUTPUT',str(Path(tempfile.gettempdir())/'munari-api/evidence')));out.mkdir(parents=True,exist_ok=True)
 def call(*args):
  p=subprocess.run(['agent-browser','--session',os.environ.get('API_PROOF_SESSION','munari-api-proof'),'--json',*args],capture_output=True,text=True)
  data=json.loads(p.stdout)

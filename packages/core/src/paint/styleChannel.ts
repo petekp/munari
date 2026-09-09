@@ -12,7 +12,7 @@
 // That makes the cascade a channel authority for the MESH: Tailwind
 // utilities (`[--depth:0.5]`, `hover:[--depth:1]`, `transition-[--depth]`)
 // or plain CSS declare what a surface's depth/tilt/glow should be and how it
-// should get there; the consumer reads the channel per frame and moves matter.
+// should get there; the consumer reads the channel per frame and moves scene objects.
 // The hover twin (`data-hover`) makes variant-driven channels work
 // through a texture unmodified.
 //
@@ -106,8 +106,14 @@ export function createStyleChannel(
   // restarted) keep one loop.
   let live = 0
   let disposed = false
+  // A cancel/run pair can occur before the pending tick sees live === 0.
+  // The transition count therefore cannot also describe loop ownership.
+  let sampling = false
   const tick = () => {
-    if (disposed || live <= 0) return
+    if (disposed || live <= 0) {
+      sampling = false
+      return
+    }
     emit()
     requestAnimationFrame(tick)
   }
@@ -115,7 +121,10 @@ export function createStyleChannel(
   const onRun = (e: TransitionEvent) => {
     if (!isOurs(e)) return
     live += 1
-    if (live === 1) requestAnimationFrame(tick)
+    if (!sampling) {
+      sampling = true
+      requestAnimationFrame(tick)
+    }
   }
   const onDone = (e: TransitionEvent) => {
     if (!isOurs(e)) return

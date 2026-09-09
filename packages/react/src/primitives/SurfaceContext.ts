@@ -2,22 +2,15 @@ import { createContext, use } from 'react'
 import type * as THREE from 'three'
 import type { SurfaceChrome } from '@munari/core'
 
-// What a Surface exposes to its children (e.g. a custom material): the mesh,
-// its pixel source, logical size, and texture. A DOM Surface supplies its live
-// root; a frame Surface supplies null because its caller owns only a canvas.
-// `source` is React state, not a ref — child effects run BEFORE the parent's,
-// so children must re-render when a DOM texture source actually comes up.
-// `texture` is state for the same reason: a child that owns the material (see
-// Surface's `material="none"`) must re-render when either source arrives, or
-// it samples null forever.
-// `chrome` likewise: it changes only when a paint actually changes the
-// element's measured radii/shadow, and a material that wears them must hear.
-// `paintedSize` is the odd one out: a STABLE GETTER, not state. A frame-loop
-// consumer (the veil's generation gate) samples it inside useFrame and wants
-// the freshest answer at read time, not a re-render on every paint — being
-// state would solve a problem this field doesn't have and create one it
-// would (a render per paint, on every Surface, whether anyone's watching or
-// not).
+// FrameSurface's child context. The retained-HTML Surface API has its own
+// context in surface/surfaceContext.ts. The advanced entry exports this
+// module's texture hook as useFrameTexture.
+//
+// A frame source supplies no DOM root or measured chrome: its caller owns
+// a canvas. The remaining metadata here belongs to that frame source.
+// Texture availability is React state because child layout effects can run
+// before FrameSurface creates its runtime. Size fields describe the caller's
+// logical frame dimensions; they are not DOM paint-generation measurements.
 export interface SurfaceContextValue {
   mesh: React.RefObject<THREE.Mesh | null>
   source: HTMLElement | null
@@ -32,29 +25,23 @@ export interface SurfaceContextValue {
 export const SurfaceContext = createContext<SurfaceContextValue | null>(null)
 
 /**
- * The Surface texture, for a child that supplies its own material
- * (`<Surface material="none">`). Null until a DOM source first paints or a
- * frame runtime is ready. The frame mesh stays suppressed during that setup
+ * The FrameSurface texture, exported as useFrameTexture from `/advanced`.
+ * A child of `<FrameSurface material="none">` reads null until the frame
+ * runtime is ready. The frame mesh stays suppressed during that setup
  * gap, then its child receives the configured texture on a re-render.
  */
 export function useSurfaceTexture(): THREE.CanvasTexture | null {
   const ctx = use(SurfaceContext)
-  if (!ctx) throw new Error('useSurfaceTexture must be used inside a <Surface>')
+  if (!ctx) throw new Error('useFrameTexture must be used inside a <FrameSurface>')
   return ctx.texture
 }
 
 /**
- * The Surface's measured DOM chrome (corner radii, outer box-shadow layers)
- * and logical px size — what a custom material needs to wear the element's own
- * corners (`SURFACE_RADIUS_GLSL`) or render the shadow the rasterizer can't
- * capture. Null until the content's first paint has been measured; a custom
- * material should treat that as "no radii yet" (mask uniforms of zero are a
- * no-op), exactly like the texture being null. A frame source has no DOM
- * chrome and returns null.
+ * Internal frame metadata. FrameSurface supplies logical dimensions and null
+ * chrome; it does not measure DOM borders or shadows. This accessor is not
+ * the useSurfaceChrome hook exported by the package's root entry.
  */
-/** What a child of a Surface can learn about the skin it is drawn on: the
- *  measured chrome, and the CSS box it was measured in. Null chrome means
- *  no measurement has landed yet, not "no chrome". */
+/** Logical frame dimensions; frame sources have no measured DOM chrome. */
 export interface SurfaceChromeState {
   chrome: SurfaceChrome | null
   width: number
@@ -68,17 +55,9 @@ export function useSurfaceChrome(): SurfaceChromeState {
 }
 
 /**
- * A stable GETTER for the Surface's painted box — the CSS size
- * `@munari/core`'s `paintedSize()` reports: the box the last COMPLETED
- * paint actually rasterized, which during a resize can trail the box the
- * Surface currently measures. Returned as a function, not a value, and
- * deliberately NOT React state: a paint landing must not re-render the
- * tree just to report it, and a frame-loop consumer (`useFrame`) wants
- * the freshest answer at the moment it samples, not the one that was
- * true when this component last rendered. A material that blends its own
- * raster against something live (the veil's fade zone) reads this to
- * know whether the two are even the same generation before it blends
- * them.
+ * Internal getter for FrameSurface's logical dimensions. These dimensions
+ * do not certify a DOM paint or upload generation. The root entry's
+ * useSurfacePaintedSize reads the separate DOM source runtime.
  */
 export function useSurfacePaintedSize(): () => readonly [number, number] {
   const ctx = use(SurfaceContext)

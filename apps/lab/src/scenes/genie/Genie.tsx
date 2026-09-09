@@ -2,7 +2,7 @@
 //
 // The original was a movie you triggered: press minimize, watch the
 // compositor play a filmstrip of your window, and the frames were
-// pictures. Here the window is matter the whole way down, and every
+// pictures. Here the window deforms throughout minimization, and every
 // stage of that movie is a place a hand can enter:
 //
 //   drag the titlebar   the drain is yours. The window follows the hand
@@ -82,7 +82,7 @@ import {
   driveCommit,
   driveGrabStep,
   drivePresentationStep,
-  driveSpringStep,
+  driveSpringPresentationStep,
   easeInCubic,
   pourOut,
 } from './genieDrive'
@@ -934,7 +934,7 @@ interface Ring {
 type Dir = 'minimizing' | 'restoring'
 interface AirState {
   direction: Dir
-  renderIn: SurfacePresentation
+  requestedPresentation: SurfacePresentation
 }
 
 function frameCovers(receipt: FrameDrawReceipt, required: FrameId): boolean {
@@ -1115,9 +1115,10 @@ function stepDrive(
     // spring state, but do not spend that momentum while the page copy
     // still owns the pixels.
     if (live) {
-      const next = driveSpringStep({ t: d.t, v: d.v }, d.target, dt, DRIVE_DEFAULTS)
+      const next = driveSpringPresentationStep({ t: d.t, v: d.v }, d.visibleT, d.target, dt, DRIVE_DEFAULTS)
       d.t = next.t
       d.v = next.v
+      d.visibleT = next.visibleT
       if (next.done) {
         if (d.target === 1) {
           // A dock landing's momentum is now the tile's ring — the
@@ -1320,6 +1321,7 @@ function Flight({
     // drawn frame then appears already in hand.
     const live = !store.film.holdsPage()
 
+    const springFrame = d.mode === 'spring'
     const landAt = stepDrive(d, f, live, restoring, clock.elapsedTime, dt, (v) =>
       kickRing(win, v),
     )
@@ -1330,9 +1332,8 @@ function Flight({
     // a pre-acquisition grab changes its hidden target. The first displaced
     // frame then has one owner, not two.
     const wallT = restoring ? 1 : 0
-    d.visibleT = live
-      ? drivePresentationStep(d.visibleT, d.t, dt, DRIVE_DEFAULTS.vMax)
-      : wallT
+    if (!live) d.visibleT = wallT
+    else if (!springFrame) d.visibleT = drivePresentationStep(d.visibleT, d.t, dt, DRIVE_DEFAULTS.vMax)
     const visibleT = d.visibleT
     const wobble =
       d.mode === 'settle' ? genieSettle(d.settleTau, d.settleV, SETTLE_DEFAULTS) : 0
@@ -1407,7 +1408,7 @@ function Flight({
         // `win` and `stack` are how the hand tells four airborne sheets
         // apart: the raycast returns them all at the same distance, and
         // only the paint order can break that tie.
-        userData={{ matter: true, win, stack }}
+        userData={{ isGenieSheet: true, win, stack }}
         geometry={<planeGeometry ref={geoRef} args={[f.w, f.h, GRID_X, GRID_Y]} />}
         material={
           f.film ? (
@@ -1502,7 +1503,7 @@ function Bays({ slotOf, ringOf, ringing, held, docked, stopRing }: BaysProps) {
 //
 // The DOM is asked FIRST, before any question about what is in the air.
 // It can be, because mid-flight the canvas is solid only where there is
-// matter — so a press that reaches a titlebar really is a press on a
+// a sheet — so a press that reaches a titlebar really is a press on a
 // window standing on the desk, even while three others are pouring.
 
 interface GestureApi {
@@ -1577,7 +1578,7 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
       ray.setFromCamera(ndc, camera)
       return ray
         .intersectObjects(scene.children, true)
-        .filter((h) => h.object.userData.matter)
+        .filter((h) => h.object.userData.isGenieSheet)
         .sort((a, b) => (b.object.userData.stack ?? 0) - (a.object.userData.stack ?? 0))[0]
     }
     const hold = () => {
@@ -1661,7 +1662,7 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
       // Nothing in the DOM claimed it, so this is either bare bench or a
       // sheet in the air. The catch: a press on an airborne titlebar
       // takes t from whoever owned it (clock or spring) — mid-movie is
-      // not a protected state, it is just matter in motion.
+      // not a protected state, it is still a movable sheet.
       if (!api.current.anyAir) return
       const hit = topHit(e)
       if (!hit?.uv || 1 - hit.uv.y >= TITLEBAR_V) return
@@ -1778,6 +1779,7 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
       const a = api.current.airOf(win)
       if (!a) return
       a.drive.target = driveCommit(a.drive.t, v, DRIVE_DEFAULTS)
+      a.drive.v = clamp(a.drive.v, -DRIVE_DEFAULTS.vMax, DRIVE_DEFAULTS.vMax)
       a.drive.mode = 'spring'
     }
 
@@ -1848,6 +1850,7 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
         const a = api.current.airOf(g.win)
         if (a) {
           a.drive.target = g.home
+          a.drive.v = clamp(a.drive.v, -DRIVE_DEFAULTS.vMax, DRIVE_DEFAULTS.vMax)
           a.drive.mode = 'spring'
         }
       }
@@ -2017,7 +2020,7 @@ export function GenieApp() {
   //
   // A minimize starts on the desk, so the page copy has to stay visible
   // until the sheet takes the pixels — and that release belongs to
-  // <Surface.DOM>, which hides its holder inside the drawing frame that
+  // Surface's retained HTML, which hides inside the drawing frame that
   // replaces it. This attribute answers the other question: is the window
   // put away? True while it is docked and for the whole of a restore,
   // which starts docked. The two hides compose, and neither has to know
@@ -2184,8 +2187,10 @@ export function GenieApp() {
   // scene could infer.
   const handKeyboardOver = (id: WinId, to: Dir) => {
     const active = document.activeElement
+    // Moving focus clears this pseudo-class on the element being left.
+    const keyboardFocus = active?.matches(':focus-visible') ?? false
     if (to === 'minimizing') {
-      if (active?.matches(':focus-visible') && winRefs.current[id]?.contains(active))
+      if (keyboardFocus && winRefs.current[id]?.contains(active))
         slotRefs.current[id]?.focus()
       return
     }
@@ -2200,7 +2205,7 @@ export function GenieApp() {
     // The keyboard hand-back is claimed only when the keyboard asked. A
     // mouse restore leaves focus on the wrapper, which is where a click on
     // a window puts it anyway — no ring, nothing to read.
-    if (active === slotRefs.current[id]) wantsFocus.current.add(id)
+    if (keyboardFocus && active === slotRefs.current[id]) wantsFocus.current.add(id)
   }
 
   /**
@@ -2253,7 +2258,7 @@ export function GenieApp() {
     handKeyboardOver(id, to)
     setShown((s) => ({ ...s, [id]: false }))
     setFramed((f) => ({ ...f, [id]: false }))
-    setAir((a) => ({ ...a, [id]: { direction: to, renderIn: 'scene' } }))
+    setAir((a) => ({ ...a, [id]: { direction: to, requestedPresentation: 'scene' } }))
     return true
   }
 
@@ -2348,7 +2353,7 @@ export function GenieApp() {
       setAir((current) => {
         const flightState = current[id]
         return flightState
-          ? { ...current, [id]: { ...flightState, renderIn: 'page' } }
+          ? { ...current, [id]: { ...flightState, requestedPresentation: 'page' } }
           : current
       })
     })
@@ -2551,7 +2556,7 @@ export function GenieApp() {
           >
             <Surface.Root canvasId="genie"
               surface={storeOf(s.id).handle}
-              inScene={Boolean(air[s.id]) && air[s.id]?.renderIn !== 'page'}
+              inScene={Boolean(air[s.id]) && air[s.id]?.requestedPresentation !== 'page'}
               timing={{ settleMs: 0, durationMs: 1 }}
               onPresentationChange={view => onPresentedView(s.id, view)}
             >
@@ -2621,7 +2626,7 @@ export function GenieApp() {
         // stated here rather than in a stylesheet because r3f writes this
         // wrapper's inline styles and would win against one.
         // Pointer events are the host's: an airborne sheet is hit-testable
-        // matter, and the reserved `pointerEvents: 'none'` above would have
+        // geometry, and the reserved `pointerEvents: 'none'` above would have
         // made the whole overlay untouchable.
         style={{ position: 'fixed', inset: 0, zIndex: OVERLAY_Z }}
         gl={{ alpha: true, antialias: true }}

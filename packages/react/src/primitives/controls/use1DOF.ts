@@ -37,6 +37,13 @@ export interface Use1DOFOptions {
 // from the pre-repo oracle port; no measurement pins them.
 const SETTLE_V = 1e-3
 const SETTLE_FRAMES = 15
+// The existing sample filter also consumes missing samples as zero movement.
+// Elapsed time uses the pointer's observed cadence (decisions.md #48).
+const VELOCITY_BLEND = 0.35
+
+function velocityAfterPause(velocity: number, elapsedMs: number, sampleMs: number): number {
+  return sampleMs > 0 ? velocity * Math.pow(1 - VELOCITY_BLEND, Math.max(0, elapsedMs) / sampleMs) : 0
+}
 
 export function use1DOF(opts: Use1DOFOptions) {
   // SAFETY: r3f's store types `controls` as a bare event target — whatever
@@ -48,7 +55,7 @@ export function use1DOF(opts: Use1DOFOptions) {
   // Latest options in a ref so handlers/useFrame never see stale closures.
   const optsRef = useLatest(opts)
 
-  const drag = useRef({ active: false, offset: 0, lastT: 0 })
+  const drag = useRef({ active: false, offset: 0, lastT: 0, sampleMs: 0 })
   const rest = useRef({ settled: true, frames: 0 })
   const plane = useRef(new THREE.Plane())
   const hit = useRef(new THREE.Vector3())
@@ -82,6 +89,7 @@ export function use1DOF(opts: Use1DOFOptions) {
         d.active = true
         d.offset = wrap(body.current.q - raw)
         d.lastT = e.timeStamp
+        d.sampleMs = 0
         body.current.v = 0
         disturb()
       },
@@ -96,9 +104,11 @@ export function use1DOF(opts: Use1DOFOptions) {
         const clamp = optsRef.current.clampQ
         if (clamp) delta = clamp(b.q + delta) - b.q
         const dt = Math.max((e.timeStamp - d.lastT) / 1000, 1e-4)
-        b.v = THREE.MathUtils.lerp(b.v, delta / dt, 0.35)
+        const previousVelocity = velocityAfterPause(b.v, e.timeStamp - d.lastT - d.sampleMs, d.sampleMs)
+        b.v = THREE.MathUtils.lerp(previousVelocity, delta / dt, VELOCITY_BLEND)
         b.q += delta
         d.lastT = e.timeStamp
+        d.sampleMs = dt * 1000
       },
       onPointerUp: (e: ThreeEvent<PointerEvent>) => endDrag(e),
       onLostPointerCapture: (e: ThreeEvent<PointerEvent>) => endDrag(e),
@@ -110,6 +120,7 @@ export function use1DOF(opts: Use1DOFOptions) {
   const endDrag = (e: ThreeEvent<PointerEvent>) => {
     const d = drag.current
     if (!d.active) return
+    body.current.v = velocityAfterPause(body.current.v, e.timeStamp - d.lastT, d.sampleMs)
     d.active = false
     if (e.target instanceof Element) e.target.releasePointerCapture?.(e.pointerId)
     if (controls) controls.enabled = true

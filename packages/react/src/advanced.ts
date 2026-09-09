@@ -14,19 +14,15 @@
 
 export * from '@munari/core'
 
-// A caller-owned canvas worn as scene matter, for content another system
-// already renders. Inside a <SurfaceCanvas> its presentation receipts go
+// A caller-owned canvas presented on a mesh. Inside a <SurfaceCanvas> its receipts go
 // through the host's frame tail, so a post-processed frame can present.
 export {
   FrameSurface,
   type FrameDrawReceipt,
   type FrameSurfaceProps,
 } from './primitives/FrameSurface'
-// The canvas texture a FrameSurface owns, for a child material under
-// `material="none"`. A different source from the root's
-// `useSurfaceTexture`, which answers with the DOM capture the enclosing
-// Surface holds — a composite that wears both samples both, and the two
-// must be nameable apart.
+// The canvas texture a FrameSurface owns, for a child under material="none".
+// The root entry's useSurfaceTexture reads a DOM capture instead.
 export { useSurfaceTexture as useFrameTexture } from './primitives/SurfaceContext'
 
 // Idle motion whose source of truth is a JS carrier rather than the

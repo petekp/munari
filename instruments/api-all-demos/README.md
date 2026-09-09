@@ -33,13 +33,15 @@ The four checks are separate so their observers do not interfere:
   postcard against a native marker through fifteen browser wheel events.
   Fail above 1.5 CSS pixels of relative drift. `POSTCARD_CANVAS=fixed` on the
   standalone scroll script is a negative control; it reproduced 12 px drift.
+  The holder starts at 240px so neither marker clips during the 180px scroll.
+  Lighting overlays are hidden so their tint and halo cannot alter test colors;
+  this check measures the postcard canvas's anchoring, not its illumination.
 - **Form interaction:** click and type through the scene at 1200 px and 390 px
   widths, add a stamp, return, and assert original-input identity, retained
   value, one stamp, and no horizontal overflow.
 
-`postcard-continuity.mjs` is the maintained replacement for Claude's scratch
-`probe.js` and `probe2.js`. The latter dispatched synthetic `PointerEvent`s;
-the timing mode here uses browser input. `POSTCARD_TRACE=1` saves a local trace
+`postcard-continuity.mjs` uses browser input in timing mode.
+`POSTCARD_TRACE=1` saves a local trace
 and CPU profile for diagnosis. Profiling changes timing; use an unprofiled run
 for the performance claim. `POSTCARD_CYCLES` changes the standalone cycle count.
 
@@ -49,13 +51,18 @@ the npm command needs no Python packages. Pixel comparisons concern the named
 strips and states, not every pixel in every animation. A screencast can omit
 frames, so its timestamps do not prove a display refresh rate.
 
+Some local aggregate runs have written their measurements and then failed during
+screencast acknowledgement or Chrome teardown. A nonzero exit remains a failed
+run. Inspect the individual result files to distinguish an observer shutdown
+failure from a failed motion or pixel assertion, then rerun the affected command.
+
 Decision [#41](../../docs/decisions.md#41) records these experimental budgets.
 
 ## Every demo
 
 `npm run probe:api-lab` prints a lab URL. Set `API_LAB_URL` to that exact URL.
 The Python drivers use `agent-browser` and accept `API_PROOF_SESSION` and
-`API_PROOF_OUTPUT`:
+`API_PROOF_OUTPUT`. The URL is required; no driver assumes a fixed port:
 
 ```sh
 python3 instruments/api-all-demos/smoke.py
@@ -95,9 +102,17 @@ prints the composition server URL. Use it as `API_COMPOSITION_URL` for:
 - `api-composition/native-check.py`: requested handoff and element capture
   with actual capability absent.
 
-The earlier one-instance and raw-capture fixtures remain available through
-`probe:api-instance` and `probe:api-capture`. Their drivers in `api-contracts`
-accept the printed URLs through `API_PROOF_URL` and `API_CAPTURE_URL`.
+`probe:api-instance` serves a small browser-platform probe at `/`: a portal
+container moves directly between page and capture to isolate Chrome's DOM-state
+preservation. `/surface.html` exercises the public Surface implementation and is
+the fixture used by the automated instance and lifecycle commands below.
+
+`probe:api-capture` serves the shared-capture fixture. Set `API_CAPTURE_URL` to its
+printed URL before running `python3 instruments/api-contracts/capture-check.py`.
+The Controls drivers use the lab server instead: set `API_PROOF_URL` to the URL
+printed by `probe:api-lab` before running `controls-check.py` or `focus-check.py`.
+All composition drivers require `API_COMPOSITION_URL`; `native-check.py` also
+requires the lab URL as `API_PROOF_URL`.
 
 
 ## API hardening
@@ -117,7 +132,9 @@ low-resolution window is not mistaken for the product's default rendering.
 - `npm run probe:api-native-pointer`: two different scene poses share one retained
   HTML source; checks clicked targets and source coordinates, native restoration,
   source swap, disabled/inert input, and ref-replaced geometry. `API_SOURCE_ROOT`
-  allows the same fixture to test a saved source revision for a negative control.
+  allows a saved revision with the same public API to serve as a negative
+  control. To reproduce an older prototype API, use its matching instrument
+  from Git rather than adapting old names into this fixture.
 - `npm run probe:api-render-passes`: two cameras/two targets, a late pose writer,
   an earlier-drawn companion, teardown and active matrix cost. Add `MATRIX_NODES=256`
   for the larger scene. Budget: p95 <=1 ms and max <=4 ms per matrix traversal.
@@ -150,6 +167,7 @@ the fractional-origin fixture to lose contrast; it checks the measuring apparatu
 `npm run probe:postcard-sharpness` compares the real Home postcard at rest, then
 hides the mesh to prove native HTML is not concealing a failed draw. Run
 `probe:postcard` separately to check motion, companion pixels, scrolling, and input.
+Start `probe:api-lab` and set `API_PROOF_URL` to its printed URL first.
 These stationary comparisons do not measure perspective filtering during motion
 or every shader. Decision [#44](../../docs/decisions.md#44) records the default
 density and pixel-grid policy and its measured limits.

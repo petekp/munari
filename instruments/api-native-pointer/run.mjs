@@ -1,7 +1,7 @@
 import { setChromeViewport } from '../chromeViewport.mjs'
 // Native and relayed clicks must agree on the target of one retained source.
 import assert from 'node:assert/strict'
-import {mkdir,writeFile,readFile} from 'node:fs/promises'
+import {mkdir,writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {tmpdir} from 'node:os'
 import puppeteer from 'puppeteer-core'
@@ -9,11 +9,9 @@ import {createServer} from 'vite'
 const repo=process.env.API_SOURCE_ROOT??path.resolve(import.meta.dirname,'../..')
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/native-pointer')
 await mkdir(output,{recursive:true})
-const baseline=(await readFile(path.join(repo,'packages/react/src/index.ts'),'utf8')).includes('SurfaceProof')
 const aliases={'@petepetrash/munari/style.css':path.join(repo,'packages/react/src/style.css'),'@munari/core':path.join(repo,'packages/core/src/index.ts')}
-aliases['@petepetrash/munari']=baseline?'virtual:baseline-munari':path.join(repo,'packages/react/src/index.ts')
-const baselineAdapter={name:'baseline-api-adapter',resolveId(id){if(id==='virtual:baseline-munari')return '\0baseline-munari'},load(id){if(id==='\0baseline-munari')return `export { SurfaceProof as Surface, SceneSurfaceProof as SceneSurface, useSurfaceStatusProof as useSurfaceStatus, SurfaceCanvas, useSurfaceHandle } from ${JSON.stringify(path.join(repo,'packages/react/src/index.ts'))}`}}
-const server=await createServer({configFile:false,cacheDir:path.join(output,'.vite'),plugins:[baselineAdapter],root:import.meta.dirname,esbuild:{jsx:'automatic'},server:{host:'127.0.0.1',port:0,fs:{allow:[repo,path.resolve(import.meta.dirname,'../..')]}},resolve:{alias:aliases},logLevel:'warn'})
+aliases['@petepetrash/munari']=path.join(repo,'packages/react/src/index.ts')
+const server=await createServer({configFile:false,cacheDir:path.join(output,'.vite'),root:import.meta.dirname,esbuild:{jsx:'automatic'},server:{host:'127.0.0.1',port:0,fs:{allow:[repo,path.resolve(import.meta.dirname,'../..')]}},resolve:{alias:aliases},logLevel:'warn'})
 await server.listen()
 const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:['--enable-features=CanvasDrawElement','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']})
 const errors=[],rows=[]
@@ -23,11 +21,10 @@ try {
  await setChromeViewport(page,{width:1100,height:760})
  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`,{waitUntil:'load'})
  await page.waitForFunction(()=>window.__pointerProof?.status?.supported)
- assert.equal(await page.evaluate(()=>Object.hasOwn(window.__pointerProof.status,'prepared')),baseline,'The served API must match the requested source revision')
+ assert.equal(await page.evaluate(()=>Object.hasOwn(window.__pointerProof.status,'sceneReady')),true,'The fixture requires the current public Surface contract')
  assert.equal(await page.evaluate(()=>'drawElementImage' in CanvasRenderingContext2D.prototype),true)
  await page.evaluate(()=>{window.original=document.querySelector('[data-api-live] [data-click="left"]');window.__pointerProof.setInScene(true)})
- // Candidate vocabulary before/after hardening; baseline comparison intentionally accepts both.
- await page.waitForFunction(()=>['scene','canvas'].includes(window.__pointerProof.status.presentation))
+ await page.waitForFunction(()=>window.__pointerProof.status.presentation==='scene')
  const point=async(which,localX=85,localY=44)=>page.evaluate(({which,localX,localY})=>{
    const {renderer,...refs}=window.__pointerMeshes,mesh=refs[which].current,canvas=renderer.gl.domElement.getBoundingClientRect()
    mesh.updateWorldMatrix(true,false)
@@ -52,7 +49,7 @@ try {
    const scale=mesh.scale
    return scale.x/scale.y
  })
- if(!baseline)assert.equal(aspect,3)
+ assert.equal(aspect,3)
  await page.evaluate(()=>window.__pointerProof.setSecond(true))
  await page.waitForFunction(()=>window.__pointerMeshes.other.current)
  await click('other',false)

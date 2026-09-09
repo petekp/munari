@@ -1,22 +1,8 @@
-// The logo playground — a side page, not one of the eight scenes.
-//
-// The wordmark from the sketch: six letters, each in its own face and
-// color, set a little haphazard and never sitting still. A conductor
-// (logoLaw.ts) re-rolls one letter per beat — new face, new color, new
-// tilt — and the CSS spring makes each change land as a hop. All of it
-// is ordinary DOM: the page IS the logo, tweakable from the panel.
-//
-// The munari trick is the "matter" switch, and the WebGL half of it —
-// the six-part Surface, the twins, the substance shaders — lives in
-// logoScene.tsx, shared with the official wordmark component. This
-// module owns what makes the page a PLAYGROUND: the conductor, the
-// seed, the panel, and the probe handles.
-//
-// Landing runs the protocol backwards: progress ramps to zero, the
-// twins glide back onto the grid, and the page takes its letters back
-// in the same commit that drops the canvas. At no frame is a letter in
-// nobody's hands — a sentence that is now a conformance contract
-// rather than a comment.
+// Logo playground — six letters with changing fonts, colors and poses.
+// This module owns the schedule, random seed, tuning panel and inspection API.
+// logoScene.tsx supplies the shared Surface parts, meshes and materials used
+// here and by MunariLogo. Page and scene read the same letter state; the
+// Surface protocol retains their presentation through each handoff.
 
 import {
   useCallback,
@@ -71,32 +57,32 @@ const SLIDERS: {
   min: number
   max: number
   step: number
-  matterOnly?: boolean
+  sceneOnly?: boolean
 }[] = [
   // 0.9, not 1: gloss becomes uFx, the mix weight in
   // `mix(base.rgb, aces(lit) * base.a, uFx)` (logoShaders.ts). At exactly 1
   // the page's own texel leaves the blend and the letters render from
   // lighting alone, which comes up black (2026-08-15). The cap is on what
   // the panel can ask for; LogoKnobs still carries the full range.
-  { key: 'gloss', label: 'gloss', min: 0, max: 0.9, step: 0.05, matterOnly: true },
-  { key: 'polish', label: 'polish', min: 0, max: 2, step: 0.05, matterOnly: true },
-  { key: 'sheen', label: 'sheen', min: 0, max: 2, step: 0.05, matterOnly: true },
-  { key: 'irid', label: 'irid', min: 0, max: 2, step: 0.05, matterOnly: true },
-  { key: 'glow', label: 'glow', min: 0, max: 2, step: 0.05, matterOnly: true },
-  { key: 'jelly', label: 'jelly', min: 0, max: 1, step: 0.05, matterOnly: true },
-  { key: 'prism', label: 'prism', min: 0, max: 1, step: 0.05, matterOnly: true },
+  { key: 'gloss', label: 'gloss', min: 0, max: 0.9, step: 0.05, sceneOnly: true },
+  { key: 'polish', label: 'polish', min: 0, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'sheen', label: 'sheen', min: 0, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'irid', label: 'irid', min: 0, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'glow', label: 'glow', min: 0, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'jelly', label: 'jelly', min: 0, max: 1, step: 0.05, sceneOnly: true },
+  { key: 'prism', label: 'prism', min: 0, max: 1, step: 0.05, sceneOnly: true },
   // Not 'relief px': the number is a gain referenced to 22, and the px
-  // it buys are per-matter (LogoKnobs.relief).
-  { key: 'relief', label: 'relief', min: 0, max: 60, step: 2, matterOnly: true },
-  { key: 'extrude', label: 'extrude px', min: 0, max: 80, step: 2, matterOnly: true },
-  { key: 'lightYaw', label: 'light yaw°', min: -80, max: 80, step: 1, matterOnly: true },
-  { key: 'lightPitch', label: 'light pitch°', min: -45, max: 80, step: 1, matterOnly: true },
-  { key: 'key', label: 'key light', min: 0, max: 2, step: 0.05, matterOnly: true },
-  { key: 'keySoft', label: 'key soft', min: 0.2, max: 2, step: 0.05, matterOnly: true },
-  { key: 'room', label: 'room', min: 0, max: 2, step: 0.05, matterOnly: true },
-  { key: 'waveScale', label: 'wave scale', min: 0.3, max: 3, step: 0.05, matterOnly: true },
-  { key: 'waveSpeed', label: 'wave speed', min: 0, max: 3, step: 0.05, matterOnly: true },
-  { key: 'waveAngle', label: 'wave angle°', min: -90, max: 90, step: 5, matterOnly: true },
+  // it buys are per-material (LogoKnobs.relief).
+  { key: 'relief', label: 'relief', min: 0, max: 60, step: 2, sceneOnly: true },
+  { key: 'extrude', label: 'extrude px', min: 0, max: 80, step: 2, sceneOnly: true },
+  { key: 'lightYaw', label: 'light yaw°', min: -80, max: 80, step: 1, sceneOnly: true },
+  { key: 'lightPitch', label: 'light pitch°', min: -45, max: 80, step: 1, sceneOnly: true },
+  { key: 'key', label: 'key light', min: 0, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'keySoft', label: 'key soft', min: 0.2, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'room', label: 'room', min: 0, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'waveScale', label: 'wave scale', min: 0.3, max: 3, step: 0.05, sceneOnly: true },
+  { key: 'waveSpeed', label: 'wave speed', min: 0, max: 3, step: 0.05, sceneOnly: true },
+  { key: 'waveAngle', label: 'wave angle°', min: -90, max: 90, step: 5, sceneOnly: true },
 ]
 
 /** The logo scene's probe handle: the shader gate walks the material states
@@ -184,7 +170,7 @@ export function LogoApp() {
         {
           fonts: [prev[i].font, ...near.map((p) => p.font)],
           colors: [prev[i].color, ...near.map((p) => p.color)],
-          matters: [prev[i].matter, ...near.map((p) => p.matter)],
+          materialIndices: [prev[i].materialIndex, ...near.map((p) => p.materialIndex)],
         },
         knobsRef.current,
       )
@@ -264,7 +250,7 @@ export function LogoApp() {
     }, []),
   )
 
-  // ── measurement for matter mode ──
+  // ── measurement for scene mode ──
   // The word is measured for exactly two numbers — its viewport origin
   // and its resolved font-size — and every center is COMPUTED from the
   // same grid the page renders (slotLayout, in em). Reading centers
@@ -413,7 +399,7 @@ export function LogoApp() {
             letters are the page's either way, so the scene loses a label
             here and nothing else. */}
         {supported && (
-          <div className="logo-matter">
+          <div className="logo-renderer">
             <button
               data-renderer="html"
               data-on={view === 'page'}
@@ -447,7 +433,7 @@ export function LogoApp() {
           <label
             key={s.key}
             className="logo-panel-slider"
-            data-off={s.matterOnly && phase === 'page'}
+            data-off={s.sceneOnly && phase === 'page'}
           >
             <span>{s.label}</span>
             <input
