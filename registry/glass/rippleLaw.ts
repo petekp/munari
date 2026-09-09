@@ -69,21 +69,6 @@ export function rippleAmplitude(
   )
 }
 
-/** The surface tilt contribution: h = amp·cos(theta) → dh/dr = -amp·k·sin(theta). */
-export function rippleTilt(
-  amp0: number,
-  K: number,
-  r: number,
-  t: number,
-  opts: { nu: number; source: number; decay: number },
-): number {
-  return (
-    -rippleAmplitude(amp0, K, r, t, opts) *
-    rippleWavenumber(K, r, t) *
-    Math.sin(ripplePhase(K, r, t))
-  )
-}
-
 /**
  * Waves break: past a certain steepness a real surface stops being a graph
  * over the plane, so the summed tilt saturates softly instead of folding
