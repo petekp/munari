@@ -35,7 +35,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, SurfaceCanvas, useSurface, useSurfaceState } from '@petepetrash/munari'
+import { SceneSurface, SurfaceCanvas, useSurfaceHandle } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { showChrome } from '../../bareMode'
 import { CrystalTweaks } from './CrystalTweaks'
@@ -136,8 +136,7 @@ function PixelPerfect() {
 // ── the scene ──────────────────────────────────────────────────────────
 
 export function CrystalApp() {
-  const page = useSurface('crystal-page')
-  const st = useSurfaceState(page)
+  const page = useSurfaceHandle('crystal-page')
 
   const [box, setBox] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
   useLayoutEffect(() => {
@@ -161,7 +160,7 @@ export function CrystalApp() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'p' && e.key !== 'P') return
-      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return
       setParked((v) => !v)
     }
     window.addEventListener('keydown', key)
@@ -184,7 +183,7 @@ export function CrystalApp() {
   policy.current.h = box.h
 
   // Capture phase, and on `window` rather than on the canvas: the sheet
-  // covers the viewport, so the trusted move is consumed over solid matter
+  // covers the viewport, so the trusted move is consumed over the scene geometry
   // before it bubbles anywhere a scene could hear it.
   //
   // `isTrusted` because the relay dispatches synthetic moves INTO the parked
@@ -261,13 +260,7 @@ export function CrystalApp() {
 
   return (
     <div className="crystal-page" data-parked={parked || undefined}>
-      <Surface
-        surface={page}
-        view="webgl"
-        timing={{ settleMs: 0, durationMs: 1 }}
-        size={[box.w, box.h]}
-        source={source}
-      />
+
 
       <SurfaceCanvas
         pointerMode="surfaces"
@@ -281,8 +274,9 @@ export function CrystalApp() {
         }}
       >
         <PixelPerfect />
-        {st.isWebGLMounted && (
-          <Surface.WebGL
+        <SceneSurface.Root surface={page}>
+          <SceneSurface.HTML size={[box.w, box.h]}>{source}</SceneSurface.HTML>
+          <SceneSurface.Mesh
             surface={page}
             placement="manual"
             alpha="source"
@@ -300,12 +294,12 @@ export function CrystalApp() {
               />
             }
           />
-        )}
+        </SceneSurface.Root>
       </SurfaceCanvas>
 
       {/* After the canvas, because the sheet is the whole viewport: with
           `pointerMode="surfaces"` the canvas arms itself wherever a raycast
-          finds matter, and here that is everywhere. Chrome painted under it
+          finds scene geometry, and here that is everywhere. Chrome painted under it
           would be unreachable. */}
       <div className="crystal-chrome">
         <h2>crystal</h2>

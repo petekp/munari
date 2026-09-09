@@ -4,9 +4,9 @@
 // nothing at all before it.
 
 import { describe, expect, it } from 'vitest'
-import { LETTER_FRAG, LETTER_VERT, MATTER_PARAMS } from './logoShaders'
+import { LETTER_FRAG, LETTER_VERT, MATERIAL_PARAMS } from './logoShaders'
 import { FIELD_DS } from './logoFields'
-import { LOGO_DEFAULTS, LOGO_MATTERS, RIPPLE, WEAVE, lightDir } from './logoLaw'
+import { LOGO_DEFAULTS, LOGO_MATERIALS, RIPPLE, WEAVE, lightDir } from './logoLaw'
 
 /** GLSL with comments removed — these clauses are about code, and the
  *  comments around it name the same identifiers on purpose. */
@@ -180,7 +180,7 @@ describe('the letter shaders', () => {
     // word however it is tuned. The weave is a trochoid: surge in
     // the plane against heave out of it, a quarter turn apart, at
     // ONE radius. The surge is what moves the ink, which every
-    // matter shows.
+    // material shows.
     //
     // Both halves of the orbit, at the same radius (orb) and a
     // quarter turn apart — sin into the plane, cos out of it.
@@ -199,21 +199,21 @@ describe('the letter shaders', () => {
     expect(code(LETTER_VERT)).not.toContain('uPhase')
   })
 
-  it('floats every matter on one sea', () => {
+  it('floats every material on one sea', () => {
     // Softness runs 0.1 (enamel) to 1 (gummy), so an unfloored sea
     // barely moves two thirds of the deck — six letters on private
     // waters, which is not a wave (2026-08-14). The law's floor lifts
-    // the stiffest matter onto a visible share of the swell while
+    // the stiffest material onto a visible share of the swell while
     // leaving softness room to mean something: gummy must still roll
     // deeper than chrome, or the deck stops saying anything.
-    const soft = MATTER_PARAMS.map((m) => m.jelly).filter((j) => j > 0)
+    const soft = MATERIAL_PARAMS.map((m) => m.jelly).filter((j) => j > 0)
     const ride = (j: number) => WEAVE.floor + (1 - WEAVE.floor) * j
     expect(ride(Math.min(...soft))).toBeGreaterThanOrEqual(0.35)
     expect(ride(Math.min(...soft))).toBeLessThan(ride(Math.max(...soft)) * 0.6)
     // Ink is the page's own look and never rides at all — the feed
     // gates it before the floor can lift it off the paper.
-    expect(MATTER_PARAMS[0].name).toBe('ink')
-    expect(MATTER_PARAMS[0].jelly).toBe(0)
+    expect(MATERIAL_PARAMS[0].name).toBe('ink')
+    expect(MATERIAL_PARAMS[0].jelly).toBe(0)
   })
 
   it('rings a strike outward and retires it', () => {
@@ -221,7 +221,7 @@ describe('the letter shaders', () => {
     // (RIPPLE.slots — Logo.tsx recycles by the same constant), a
     // causality gate so a slot cannot ring before its birth, and a
     // ring-down on uRipK.w so a dead slot costs an exp and nothing
-    // else. uRipAmp carries knob × progress × matter softness, which
+    // else. uRipAmp carries knob × progress × material softness, which
     // is what keeps a handoff's geometry exactly flat.
     const motion = code(LETTER_FRAG)
     expect(motion).toContain(`uniform vec4 uRipples[${RIPPLE.slots}];`)
@@ -324,7 +324,7 @@ describe('the letter shaders', () => {
   })
 
   it('asks the deck row, never the index, what a surface is', () => {
-    // The per-matter constants used to live in here as a branch
+    // The per-material constants used to live in here as a branch
     // ladder, which made a substance a code path: growing the deck
     // meant editing the shader, and the panel's trims could never
     // reach a hardcoded number. The one test left on the index is
@@ -332,8 +332,8 @@ describe('the letter shaders', () => {
     // subsurface, crinkle, sheen, iridescence, glow — arrives as the
     // deck row's uniforms, with the trims folded in by Logo.tsx.
     const main = code(LETTER_FRAG).split('void main()')[1]
-    expect(main.match(/uMatter/g)).toHaveLength(1)
-    expect(main).toContain('uMatter > 0.5')
+    expect(main.match(/uMaterialIndex/g)).toHaveLength(1)
+    expect(main).toContain('uMaterialIndex > 0.5')
   })
 
   it('gives the glow a two-lobe halo that dies before its fields do', () => {
@@ -411,7 +411,7 @@ describe('the letter shaders', () => {
     // 0.4505 at the shipped rig.
     const { studio } = buildStudio()
     const mirrorRough = Math.min(
-      ...MATTER_PARAMS.filter((m) => m.metal > 0.5).map((m) => m.rough),
+      ...MATERIAL_PARAMS.filter((m) => m.metal > 0.5).map((m) => m.rough),
     )
     expect(luma(studio([0, 0, 1], mirrorRough))).toBeGreaterThanOrEqual(0.4)
   })
@@ -428,21 +428,21 @@ describe('the letter shaders', () => {
   })
 })
 
-describe('the matter deck', () => {
+describe('the material deck', () => {
   it('aligns one row with each name the law deals', () => {
-    // The conductor deals indices into LOGO_MATTERS (logoLaw) and the
-    // letter feeds MATTER_PARAMS[index] to the shader. Nothing at
+    // The conductor deals indices into LOGO_MATERIALS (logoLaw) and the
+    // letter feeds MATERIAL_PARAMS[index] to the shader. Nothing at
     // runtime checks that the two lists agree — a grown law with an
     // ungrown deck is an index out of range on the first re-deal. The
     // rows carry their names for exactly this clause.
-    expect(MATTER_PARAMS.map((m) => m.name)).toEqual([...LOGO_MATTERS])
+    expect(MATERIAL_PARAMS.map((m) => m.name)).toEqual([...LOGO_MATERIALS])
   })
 
   it('keeps ink an absence, not a substance', () => {
     // Index 0 is the page's own look and the lit branch never opens
     // on it, so every number must be zero: a nonzero here is a look
     // nobody can see — until some refactor makes it one, loudly.
-    const ink = MATTER_PARAMS[0]
+    const ink = MATERIAL_PARAMS[0]
     for (const [key, value] of Object.entries(ink)) {
       if (key === 'name') continue
       expect(value, `ink.${key}`).toBe(0)
@@ -453,7 +453,7 @@ describe('the matter deck', () => {
     // The surface channels are mix weights and the shape weights are
     // gains the height description was tuned around. A row outside
     // these boxes doesn't fail — it extrapolates, which is worse.
-    for (const m of MATTER_PARAMS) {
+    for (const m of MATERIAL_PARAMS) {
       for (const key of ['rough', 'metal', 'sss', 'crinkle', 'sheen', 'irid', 'glow'] as const) {
         expect(m[key], `${m.name}.${key}`).toBeGreaterThanOrEqual(0)
         expect(m[key], `${m.name}.${key}`).toBeLessThanOrEqual(1)
@@ -466,11 +466,11 @@ describe('the matter deck', () => {
   })
 
   it('uses glow as a dial, not a neon flag', () => {
-    // At least one matter glows fully and one glows PARTIALLY, so the
+    // At least one material glows fully and one glows PARTIALLY, so the
     // emissive path can never quietly regress to an is-neon branch —
     // the partial glower would go dark or go full tube, and this
     // clause names which.
-    const glows = MATTER_PARAMS.map((m) => m.glow)
+    const glows = MATERIAL_PARAMS.map((m) => m.glow)
     expect(glows).toContain(1)
     expect(glows.some((g) => g > 0 && g < 1)).toBe(true)
   })

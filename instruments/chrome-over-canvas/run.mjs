@@ -1,8 +1,8 @@
 // chrome-over-canvas gate — page UI painted above a `pointerMode="surfaces"`
-// canvas must still receive clicks where it overlaps Surface matter.
+// canvas must still receive clicks where it overlaps a Surface mesh.
 //
 // CanvasPointerGate decides who owns a press by raycasting the pointer's
-// screen coordinates against the scene's matter. A raycast answers in scene
+// screen coordinates against scene objects. A raycast answers in scene
 // coordinates and knows nothing about what the browser paints on top at the
 // same point, so a press on a toolbar, a menu, or a tuning panel over the
 // mesh was claimed by the gate, stopped in the document capture phase, and
@@ -86,7 +86,7 @@ try {
 
   const page = await browser.newPage()
   await page.setViewport(VIEWPORT)
-  await page.goto(`http://localhost:${port}/?scene=refraction`, { waitUntil: 'load' })
+  await page.goto(`http://localhost:${port}/?scene=refraction&framed`, { waitUntil: 'load' })
   await sleep(2500)
 
   // Park the crossing mid-flight. React owns the input, so the value goes in

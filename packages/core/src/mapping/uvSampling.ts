@@ -1,10 +1,10 @@
 // UV sampling — where a texture coordinate lands on the geometry carrying
 // that texture.
 //
-// The law: an anchor names a box in the SOURCE, and matter parked on it
+// The law: an anchor names a box in the SOURCE, and an object placed on it
 // stands wherever the geometry put those texels. On a flat plane that is a
 // linear remap and nobody needs this module. On a deformed sheet the same
-// UV is somewhere the plane math cannot name, and matter placed by the
+// UV is somewhere the plane math cannot name, and an object placed by the
 // plane math floats off the sheet it is supposed to be resting on.
 //
 // The fault, 2026-08-17: anchors were placed by treating the UV square as
@@ -39,7 +39,7 @@ const at = (source: ArrayLike<number>, i: number): number => source[i] ?? 0
  *
  * `index` is the element index, or null for a non-indexed geometry. Null
  * comes back only when there is no triangle at all — a caller that gets it
- * has nothing to place matter on, and withholding is the honest answer.
+ * has no defined position for an attached object, so the sample is withheld.
  *
  * The nearest triangle is used when none contains the point. UV layouts
  * have seams and gutters, and an anchor half a texel outside every triangle

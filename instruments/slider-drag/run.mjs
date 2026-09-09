@@ -107,7 +107,7 @@ try {
   await page.goto(`http://localhost:${port}/?scene=slider&bare`, { waitUntil: 'load' })
   await page.waitForFunction(() => window.__slider?.ready === true, { timeout: 20_000 })
   await page.waitForFunction(
-    () => window.__slider.state().presentedView === 'webgl',
+    () => window.__slider.state().presented === 'canvas',
     { timeout: 20_000 },
   )
 

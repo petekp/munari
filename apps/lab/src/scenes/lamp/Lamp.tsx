@@ -19,13 +19,11 @@ import { buildHeadlineMask, type HeadlineMask } from './lampMask'
 import { createLampLightMaterial, setLampLightFrame, setLampMaskFrame, setLampTuningUniforms } from './lampShaders'
 import { createLampLantern, LANTERN_TOTAL_HEIGHT, type LampLantern } from './lampLantern'
 import { lampTuning, type LampTuning } from './lampTuning'
+import { lampDriftOffset } from './lampDriftLaw'
 import { LampTweaks } from './lampTweaks'
 import './lamp.css'
 
 const PIXEL_RATIO_CAP = 2
-const DRIFT_RADIUS_X = 34
-const DRIFT_RADIUS_Y = 20
-const DRIFT_PERIOD_MS = 22000
 // Camera-to-page-plane distance for the lantern's perspective camera, CSS
 // px. A camera bore-sighted straight down the lantern's own height axis
 // (which any position on this z=0-mapped plane necessarily is) shows no
@@ -185,11 +183,6 @@ function useReducedMotion(): boolean {
   return reduced
 }
 
-function ellipseOffset(elapsedMs: number): Point {
-  const angle = (elapsedMs / DRIFT_PERIOD_MS) * Math.PI * 2
-  return { x: Math.cos(angle) * DRIFT_RADIUS_X, y: Math.sin(angle) * DRIFT_RADIUS_Y }
-}
-
 function clampToViewport(point: Point, margins: LanternMargins): Point {
   const maxX = Math.max(margins.side, window.innerWidth - margins.side)
   const maxY = Math.max(margins.top, window.innerHeight - margins.side)
@@ -242,7 +235,7 @@ export function LampApp() {
   // effect that lists one as a dependency still runs only when it means to.
   const currentLamp = useCallback((): Point => {
     if (dragging.current || reducedMotionRef.current) return anchor.current
-    const offset = ellipseOffset(performance.now() - driftEpoch.current)
+    const offset = lampDriftOffset(performance.now() - driftEpoch.current)
     return { x: anchor.current.x + offset.x, y: anchor.current.y + offset.y }
   }, [])
 

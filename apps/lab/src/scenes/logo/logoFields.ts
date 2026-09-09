@@ -1,4 +1,4 @@
-// The blur pyramid behind the matter shader (logoShaders): each lifted
+// The blur pyramid behind the material shader (logoShaders): each lifted
 // letter carries three PRE-BLURRED copies of its own live texture — a
 // fine field at 1/4 of the CSS box, a coarse field at 1/16, and a halo
 // field at 1/32 — and the shader reads geometry (shoulder, pillow,
@@ -27,7 +27,7 @@ import { textureSlot } from '../../lib/uniforms'
 /** Downsample factors of the fields, relative to the CSS box. Fine
  *  sets the edge-shoulder scale (~4px blur, gradients spanning ~8px);
  *  coarse the pillow scale (~16px footprint, gradients spanning ~32px)
- *  — the pair the MATTER_PARAMS weights blend between. Halo is the
+ *  — the pair the MATERIAL_PARAMS weights blend between. Halo is the
  *  glow's skirt (~64px of falloff): height and slope never read it,
  *  only the emissive halo does, because a glow that ends at the coarse
  *  field's ~32px support edge ends visibly — light has no edges. */
@@ -94,9 +94,9 @@ export function raster(src: THREE.Texture | null | undefined): Raster | null {
   return image && image.width > 0 && image.height > 0 ? image : null
 }
 
-/** The blur pyramid of one letter. Owned by MatterLetter (sized off
+/** The blur pyramid of one letter. Owned by SceneLetter (sized off
  *  the capture box, remade only when the box itself reallocates) and
- *  refreshed by MatterMaterial on lit frames. */
+ *  refreshed by LetterMaterial on lit frames. */
 export class LetterFields {
   readonly fine: THREE.WebGLRenderTarget
   readonly coarse: THREE.WebGLRenderTarget

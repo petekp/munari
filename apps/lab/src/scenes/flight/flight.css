@@ -2,7 +2,7 @@
  *
  * Everything here styles ORDINARY DOM. There is no Surface-specific rule in
  * this file and there deliberately can't be: the whole premise is that the
- * cards are page elements first, and become matter only for as long as
+ * cards are page elements first, and enter the scene only for as long as
  * someone is holding one. The one thing that IS unusual is the pair of
  * custom properties near the bottom — `--l14-lift` and `--l14-near` are
  * written by the WebGL layer every frame, so a rigid-body simulation is
@@ -463,7 +463,7 @@
  * `pointer-events: none` is the default state and the honest one: a canvas
  * with nothing in it must not be able to intercept a click, a text
  * selection, or a scroll. The canvas inside is switched to `auto` for
- * exactly as long as the pointer is over a piece of matter, by the Surface
+ * exactly as long as the pointer is over a Surface, by the Surface
  * host's pointer gate.
  *
  * This element wraps the canvas rather than being it. R3F writes

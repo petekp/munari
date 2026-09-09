@@ -3,8 +3,8 @@
 // This context reaches two places, and they are on opposite sides of the
 // R3F reconciler: the page tree between `<SurfaceCanvas>` and the Canvas,
 // and — because R3F bridges parent context into its own root — the scene
-// tree inside it. A Canvas-side `<Surface>` reads its host here rather than
-// by name, which is why resident scene matter never needs a `canvas` prop.
+// tree inside it. A scene-side Surface reads its host here, so `canvasId`
+// is optional when the enclosing SurfaceCanvas already determines its host.
 // A page-side `<Surface>` is usually NOT under a Canvas at all and resolves
 // by name instead (`resolveSurfaceHost`).
 

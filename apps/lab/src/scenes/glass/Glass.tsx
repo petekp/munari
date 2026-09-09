@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { MeshTransmissionMaterial, useFBO } from '@react-three/drei'
-import { Surface, useSurfaceTexture } from '@petepetrash/munari'
+import { SceneSurface, useSurfaceTexture } from '@petepetrash/munari'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -40,7 +40,7 @@ import { animate, motionValue } from 'motion'
 // switch exists so the comparison is a console call, not a git checkout.
 //
 // Architecture per MTM glass panel, all through the material-slot seam:
-//   - Surface.WebGL wearing drei's MeshTransmissionMaterial on
+//   - Surface.Mesh wearing drei's MeshTransmissionMaterial on
 //     an extruded rounded-rect (flat faces, rounded corner EDGES — a card,
 //     not a soap bar). The glass body never samples the DOM.
 //   - The DOM rides a hair-lifted transparent quad reading
@@ -361,9 +361,11 @@ function MtmGlassPanel({
 
   return (
     <group ref={group} position={position} rotation={rotation}>
-      <Surface name={label} size={[width, height]} source={content}>
-        <Surface.WebGL
+      <SceneSurface.Root name={label}>
+<SceneSurface.HTML size={[width, height]}>{content}</SceneSurface.HTML>
+        <SceneSurface.Mesh
           name={label}
+          placement="manual"
           geometry={<primitive object={geo} attach="geometry" />}
           material={
             <MeshTransmissionMaterial
@@ -388,8 +390,8 @@ function MtmGlassPanel({
           }
         >
           <GlassInk w={width} h={height} depth={depth} />
-        </Surface.WebGL>
-      </Surface>
+        </SceneSurface.Mesh>
+      </SceneSurface.Root>
     </group>
   )
 }
@@ -1068,6 +1070,8 @@ export function Glass() {
       // the numeric-gradient branch in the shader), which is the A/B.
       setBlobs: (n: number) => {
         const next = Math.max(0, Math.min(MAX_BLOBS, Math.round(n)))
+        if (Number.isNaN(next)) return `${blobs.length} blobs`
+        glassTuning.orbCount = next
         while (blobs.length > next) blobs.pop()
         while (blobs.length < next) blobs.push({ x: 0, y: 0, r: 0 })
         return `${blobs.length} blobs`
@@ -1129,16 +1133,18 @@ export function Glass() {
       <pointLight position={[-3, 2.5, 3]} intensity={8} color="#f2f0ea" distance={14} />
 
       {/* Layer 0 — the wall, itself live DOM, unlit so the neon lands exact */}
-      <Surface name="glass-wall" size={[WALL_W, WALL_H]} source={<WallArt />}>
-        <Surface.WebGL
+      <SceneSurface.Root name="glass-wall">
+<SceneSurface.HTML size={[WALL_W, WALL_H]}>{<WallArt />}</SceneSurface.HTML>
+        <SceneSurface.Mesh
           name="glass-wall"
+          placement="manual"
           position={[0, 0, WALL_Z]}
           geometry={<planeGeometry args={[WALL_W / PX, WALL_H / PX]} />}
           material={<meshBasicMaterial transparent opacity={0} depthWrite={false} />}
         >
           <WallInk />
-        </Surface.WebGL>
-      </Surface>
+        </SceneSurface.Mesh>
+      </SceneSurface.Root>
 
       {/* Layers 1 and 2 — the form, and the CTA surfacing out of its face.
           The CTA's refraction must show the form's glass AND its ink AND the

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>native-pointer — the browser hit-tests the real page</title>
+    <style>
+      body { margin: 0; background: #0b0d10; color: #cbd2d9;
+             font: 13px/1.5 system-ui, sans-serif; }
+      #hud { position: fixed; top: 12px; left: 12px; z-index: 100; }
+      #hud b { color: #7ee787; }
+      #hud .bad { color: #ff7b72; }
+    </style>
+  </head>
+  <body>
+    <div id="hud">native-pointer: booting…</div>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

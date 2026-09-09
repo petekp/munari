@@ -10,7 +10,7 @@
 //   lamp glow, wells, ticks         collar bezels, lens domes
 //   the slab's corner radius        the slab's rim, depth and shadow
 //
-// Input goes THROUGH the matter: every hardware mesh declines the ray,
+// Input passes through the hardware: every hardware mesh declines the ray,
 // so a drag on a knob lands on the Surface, is forwarded into the real
 // DOM control underneath, mutates the live bag — and the hardware's
 // springs read that bag next frame. The DOM stays the retained model;
@@ -41,9 +41,9 @@ import {
 import { flushSync as flushThree, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
-  Surface,
+  SceneSurface,
   SurfaceCanvas,
-  useSupportsDOMSurfaces,
+  useSurfaceSupport,
   type SourceUvRect,
   useSurfaceAnchorBox,
   useSurfaceAnchorRects,
@@ -140,11 +140,11 @@ const RIM_BUILD = { w: RAIL_W, h: 600 }
 /** Where the captured face sits in front of the rim's front bevel. */
 const FACE_Z = 1.4
 /** Where hardware bases stand, just proud of the face. Anchors place
- *  matter ON the presenter, so the constant travels as a lift along its
+ *  hardware ON the presenter, so the constant travels as a lift along its
  *  normal rather than as a z in the rig. */
 const HARDWARE_LIFT = 0.2
 
-/** Hardware is visual matter, not a pointer target: every mesh declines
+/** Hardware is visual only: every mesh declines
  *  the ray so input falls through to the Surface — and from there into
  *  the real DOM control standing under it. */
 const noRaycast = () => {}
@@ -481,14 +481,10 @@ function ArtEnvironment() {
  * move every frame, so a glint they leave travels while the art spins
  * and freezes the instant power drops.
  *
- * They ship at zero candela, and the rig stays anyway. A punctual light
- * behind the slab cannot reach a camera-facing surface, and the one
- * surface that turns away is metal, which has no diffuse term — so the
- * measured contribution is a rounding error (see `lightArt`). The
- * artwork lights the front of the panel through the room's bounce
- * instead. Kept because the dial is how anyone re-tests that claim, and
- * because a rig that is present and honest at zero beats a deleted one
- * whose absence has to be re-derived.
+ * `lightArt` sets their intensity. Behind the slab, these lights mainly
+ * reach its rim and raised hardware; metal still reflects them through
+ * its specular response. The room's bounce carries the artwork's color
+ * onto the flat front of the panel.
  */
 function ArtLightRig() {
   const lights = useRef<(THREE.PointLight | null)[]>([])
@@ -629,7 +625,7 @@ const REQUIRED_ANCHORS = [
  * One anchor as a box on the face: center in panel CSS px from the top
  * left, size in the CSS px the DOM painted it at.
  *
- * Only the consumers that cannot be one `<Surface.Anchor>` per box need
+ * Only the consumers that cannot be one `<SceneSurface.Anchor>` per box need
  * this — a single geometry cut around several windows, and the page-side
  * scroller. Everything that stands on exactly one box is placed by the
  * anchor itself.
@@ -672,7 +668,7 @@ function collectLiveKnobsAnchors(root: HTMLElement, base: DOMRect): LiveKnobsAnc
 /**
  * A Knobs-only bridge across the DOM-paint boundary.
  *
- * `<Surface.Anchor>` correctly holds to a completed paint receipt. During a
+ * `<SceneSurface.Anchor>` correctly holds to a completed paint receipt. During a
  * responsive resize, though, Chrome gives us one render where the panel's
  * DOM layout and slab geometry are new but that receipt is old. This small
  * local offset maps the old anchor onto the measured live box for that one
@@ -689,9 +685,9 @@ function KnobsAnchor({
   children: React.ReactNode
 }) {
   return (
-    <Surface.Anchor name={name} offset={offset}>
+    <SceneSurface.Anchor name={name} offset={offset}>
       <KnobsAnchorCorrection name={name}>{children}</KnobsAnchorCorrection>
-    </Surface.Anchor>
+    </SceneSurface.Anchor>
   )
 }
 
@@ -1539,7 +1535,7 @@ function FaceShade({ rect }: { rect: RailRect }) {
 
 /**
  * The LCD windows, re-rendered as pure emitters. The captured face is lit
- * matter — every authored pixel multiplies the room's light — and a
+ * shaded content — every authored pixel multiplies the room's light — and a
  * face-wide emissive term lifts ALL the paint, washing the charcoal body
  * gray and driving the windows past their authored color into clipping.
  * A real backlit window is neither of those things: everything visible in
@@ -1743,7 +1739,7 @@ function ReadoutLamps() {
         // plate around it catches only grazing incidence (cosine ~0)
         // while knob flanks and bat levers — surfaces facing the
         // window — catch it broadside. The masking is Lambert's law,
-        // not a hack.
+        // not a workaround.
         <KnobsAnchor key={def.key} name={`readout:${def.key}`} offset={1.5}>
           <ReadoutLamp />
         </KnobsAnchor>
@@ -1841,7 +1837,7 @@ function SlabRim({ rect }: { rect: RailRect }) {
     assets.material.roughness = knobsTuning.rimRough
     assets.material.envMapIntensity = knobsTuning.rimEnv
   })
-  return <mesh geometry={assets.geometry} material={assets.material} userData={{ matter: true }} />
+  return <mesh geometry={assets.geometry} material={assets.material} userData={{ isKnobHardware: true }} />
 }
 
 /** Where a carry has the slab: sprung x and y, in world units. */
@@ -2213,7 +2209,7 @@ function PanelSourceRoot({ onHost }: { onHost: (el: HTMLElement | null) => void 
  * The scroller in `KnobsApp` reveals a control the keyboard moved to, and
  * that is a page-side scroll against a box only the presenter's anchor
  * transaction knows. Everything standing ON a box is placed by its own
- * `<Surface.Anchor>`; this exists for the one consumer that is not in the
+ * `<SceneSurface.Anchor>`; this exists for the one consumer that is not in the
  * scene at all.
  */
 function PanelAnchorReport({
@@ -2311,24 +2307,21 @@ function PanelStage({
         <PanelRig rect={rect} kick={kick} viewport={viewport}>
           <BacklightCorona rect={rect} />
           <SlabRim rect={rect} />
-          {/* No `view`: the panel is resident matter, not a handoff. The
-              DOM is parked and the slab is its only presentation, so there
-              is no page copy for it to be exclusive against. */}
-          <Surface
-            name="knobs-panel"
-            source={<KnobsPanel />}
-            size={[rect.w, rect.h]}
-            paint={resizing ? 'always' : 'auto'}
-          >
-            <PanelSourceRoot onHost={onHost} />
-            <Surface.WebGL
+          {/* The panel belongs to the scene. Its captured HTML supplies the
+              slab; DegradedPanel supplies the native fallback separately. */}
+          <SceneSurface.Root name="knobs-panel">
+            <SceneSurface.HTML size={[rect.w, rect.h]} paint={resizing ? 'always' : 'auto'}>
+              <KnobsPanel />
+            </SceneSurface.HTML>
+
+            <SceneSurface.Mesh
               name="knobs-panel-surface"
               placement="manual"
               position={[0, 0, FACE_Z]}
               frustumCulled={false}
               geometry={<planeGeometry args={[rect.w, rect.h]} />}
               material={
-                <Surface.LitMaterial
+                <SceneSurface.LitMaterial
                   roughness={0.5}
                   metalness={0.18}
                   // DOM light, held to a low floor: enough for the lamp
@@ -2340,6 +2333,7 @@ function PanelStage({
                 />
               }
             >
+            <PanelSourceRoot onHost={onHost} />
             <LiveKnobsAnchorContext value={liveAnchors}>
               <PanelAnchorReport onAnchors={onAnchors} />
               <ReadoutWindows />
@@ -2378,8 +2372,8 @@ function PanelStage({
                 </KnobsAnchor>
               ))}
             </LiveKnobsAnchorContext>
-            </Surface.WebGL>
-          </Surface>
+            </SceneSurface.Mesh>
+          </SceneSurface.Root>
         </PanelRig>
       )}
     </>
@@ -2540,8 +2534,8 @@ function useDegradedPanelGestures(host: RefObject<HTMLDivElement | null>) {
 /**
  * The panel with no renderer under it.
  *
- * This scene's panel is a RESIDENT source — no `view`, no `<Surface.DOM>`,
- * because the slab is its only presentation — so a browser without the
+ * SceneSurface gives the panel no native page fallback. Without a separate
+ * fallback, a browser without the
  * trial got an empty room: 0 characters of reader-visible text and 0
  * focusable elements, measured 2026-08-22 against flight/genie/logo/
  * selection, which are identical either way.
@@ -2572,7 +2566,7 @@ function DegradedKnobs() {
 }
 
 export function KnobsApp() {
-  const supported = useSupportsDOMSurfaces()
+  const supported = useSurfaceSupport()
   const hostCleanup = useRef<(() => void) | null>(null)
   const kick = useRef<((dir: number) => void) | null>(null)
   const assets = useHardwareAssets()

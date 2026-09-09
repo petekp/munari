@@ -11,7 +11,7 @@
 //
 // Ownership: this file owns the exposed keys, ranges, and normalization.
 // The panel shell is components/tweakPanel.tsx; the mark itself is
-// components/MunariLogo.tsx; the deep matter/light knobs stay on the
+// components/MunariLogo.tsx; the material and lighting controls stay on the
 // logo playground's panel — this bench tunes how the mark behaves, not
 // how its substances are lit.
 
@@ -70,7 +70,7 @@ export interface WordmarkControl {
 }
 
 export interface WordmarkControlGroup {
-  readonly key: 'frame' | 'cadence' | 'pose' | 'matter'
+  readonly key: 'frame' | 'cadence' | 'pose' | 'materials'
   readonly title: string
   readonly description: string
   readonly controls: readonly WordmarkControl[]
@@ -105,8 +105,8 @@ export const WORDMARK_GROUPS: readonly WordmarkControlGroup[] = [
     ],
   },
   {
-    key: 'matter',
-    title: 'Matter',
+    key: 'materials',
+    title: 'Materials',
     description: 'Only visible once the mark has lifted to WebGL.',
     controls: [
       { key: 'depth', label: 'Depth bob', min: 0, max: 160, step: 2, unit: 'px' },

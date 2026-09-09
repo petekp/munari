@@ -27,18 +27,18 @@ bakes it into the texture.
 
 ## Never animate the content root's own opacity or transform
 
-Changing the drawn element's *own* `opacity` or `transform` does not
-invalidate its paint record, so nothing repaints. Keyframes freeze;
-transitions leave a **stale end state** that self-heals on the next
-unrelated repaint — an intermittent bug by construction, invisible in
-review.
+The root's transform does not enter its captured pixels, even though
+restyling that transform can trigger another paint. A compositor-animated
+root opacity can leave a stale captured state until an unrelated repaint;
+a static `opacity: 0` is captured as transparent. Keep both properties stable
+on the root and animate a descendant or the scene mesh instead.
 
 On **descendants** both animate correctly. They cost one paint and one
 upload per frame, which is a real budget (see the mutation economy
 below), so for whole-panel motion prefer moving the mesh.
 
-This is the hinge that has cost the most; `platform.md` item 4 has the
-numbers.
+`platform.md` items 4 and 20 distinguish compositor animation from static
+opacity and transform restyles.
 
 ## Idle motion must be able to ease flat
 
@@ -173,7 +173,7 @@ A responsive hybrid has five distinct states:
 4. Drawn frame is the uploaded generation used by a presenter.
 5. Presented framebuffer is the qualifying color-writing draw accepted at the presentation boundary.
 
-Do not attach WebGL matter measured from live layout to an older texture.
+Do not attach scene objects measured from live layout to an older texture.
 Use `Surface.Anchor`, `useSurfaceAnchorRects()` and `useSurfacePaintedSize()`
 for ordinary Surface content. The binding collects stable
 `data-munari-anchor` keys against a successful paint and commits the anchor
@@ -190,9 +190,10 @@ sources. Ordinary `Surface` has semantic lifecycle callbacks, not an
 evidence. The [system model](system-model.md#keep-the-observable-facts-separate)
 explains what each boundary establishes.
 
-The copyable collector lives in `registry/surface-anchors`. It rejects a
-duplicate or incomplete key set as one transaction and keeps the prior
-complete receipt usable.
+Custom capture pipelines can import `collectSurfaceAnchors` and its receipt
+types from `/advanced`. The same core collector serves the binding; there is
+no separate registry copy to maintain. It rejects duplicate or incomplete key
+sets as one transaction and keeps the prior complete receipt usable.
 
 ## Where the rest lives
 
@@ -200,3 +201,25 @@ complete receipt usable.
 - `docs/platform.md` — the measurements these rules come from
 - `docs/focus.md` — focus units, traversal, and directional navigation
 - `docs/decisions.md` — why each rule is shaped the way it is
+
+
+## Retained HTML and capture sources
+
+`Surface.HTML` retains one live instance. Page-owned preparation uses the source
+bitmap and its native input rig so selection, caret, focus, hover and current text
+remain visible. Its inert clone reserves layout. Keep content-root dimensions
+honest; changing page parents uses a page target rather than remounting the content.
+Position-only slot changes are observed separately from capture and handoff work.
+
+`SceneSurface` has no page presentation. `useElementCapture` leaves its original
+element native and copies visual state; `CaptureContent` owns separately authored
+capture content. Captures reject unsupported media/custom elements unless excluded,
+and attached/removed sources clear stale frames. Source textures are borrowed by
+consumers and disposed only by their owner.
+
+Numeric authored dimensions must be positive and finite. An unmeasured native
+element waits for layout rather than being treated as invalid authored data.
+Companions use `useSurfaceBeforeRender` after frame pose writers; the callback may
+run for several cameras/targets in one animation frame. It updates companions,
+not the simulation clock. Canvas-relative placement follows the GL canvas's live
+client rectangle, including inset, scroll and supported positive scale.

@@ -23,7 +23,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceTexture, useSurfaceView } from '@petepetrash/munari'
+import { Surface, useSurfaceChrome, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import {
   LIGHT,
@@ -220,7 +220,8 @@ function WaveDrive({
  * that hears the click be either one without the handler caring.
  */
 export function RippleTarget({ name, content }: { name: string; content: React.ReactNode }) {
-  const piece = useSurfaceView(name)
+  const surface = useSurfaceHandle(name)
+  const [inScene, setInScene] = useState(false)
   const holder = useRef<HTMLDivElement>(null)
   const waves = useRef<RippleWave[]>([])
   const down = useRef<{ x: number; y: number } | null>(null)
@@ -282,9 +283,9 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
         waves.current.shift()
       }
       waves.current.push(wave)
-      piece.show('webgl')
+      setInScene(true)
     },
-    [piece],
+    [],
   )
 
   // The lift fires on RELEASE, never on the down edge. A press that begins
@@ -330,23 +331,11 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
   return (
     <div ref={holder} className="cand-target" onPointerDown={onHolderDown} onPointerUp={onHolderUp}>
       {size ? (
-        <Surface
-          surface={piece.surface}
-          view={piece.view}
-          timing={{ settleMs: 0, durationMs: 1 }}
-          size={size}
-          // Resolution stays 'auto', which seeds at the display's own
-          // density — NOT pinned to 2. A pinned tier always carries a
-          // mipmap chain, and trilinear at a nominal 1:1 blends in the
-          // box-filtered half-res mip on any fractional LOD, which reads
-          // as an 11px label going soft while standing still. The auto
-          // tier above 0.5 has no mips: bilinear on a grid-aligned quad
-          // is point sampling.
-          source={content}
-        >
-          <Surface.DOM>{content}</Surface.DOM>
-          {piece.mounted && box && (
-            <Surface.WebGL
+        <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={inScene}>
+<Surface.HTML size={size}>{content}</Surface.HTML>
+
+          {box && (
+            <Surface.Mesh
               key={runId.current}
               placement="manual"
               alpha="source"
@@ -366,10 +355,10 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
               material={<RippleMaterial waves={waves} />}
             >
               <RippleShadow waves={waves} size={size} />
-              <WaveDrive waves={waves} onDone={() => piece.show('dom')} />
-            </Surface.WebGL>
+              <WaveDrive waves={waves} onDone={() => setInScene(false)} />
+            </Surface.Mesh>
           )}
-        </Surface>
+        </Surface.Root>
       ) : (
         content
       )}

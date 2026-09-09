@@ -3,13 +3,13 @@
 // The law: DOM state stays exact while scene-local depth and light may change.
 // The fault this candidate targets, 2026-08-30: a flat HTML control has 0px
 // geometric depth and can cast no renderer-owned shadow, so a CSS-only sample
-// cannot prove that the same live control became matter.
+// cannot prove that the same live control was presented in 3D.
 //
 // Ownership: this file owns only perceptual choices. Surface identity, anchor
 // receipts and input routing stay in the public Munari primitives (decisions.md
 // #32: a tested demo law remains a demo law).
 
-export type ControlMatter = 'porcelain' | 'cobalt' | 'brass' | 'recessed'
+export type ControlStyle = 'porcelain' | 'cobalt' | 'brass' | 'recessed'
 
 export const CONTROLS_BOARD = Object.freeze({ width: 760, height: 540 })
 
@@ -22,7 +22,7 @@ export const controlsTuning = Object.freeze({
     cobalt: 0.024,
     brass: 0.021,
     recessed: 0.011,
-  } satisfies Readonly<Record<ControlMatter, number>>),
+  } satisfies Readonly<Record<ControlStyle, number>>),
   // A 14/s exponential approach reaches 99% in 330ms. This is slower than a
   // click but faster than the 450ms default handoff settle, so the change reads
   // as a material rising rather than as another page transition.
