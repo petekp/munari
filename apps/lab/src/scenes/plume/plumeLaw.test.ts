@@ -130,3 +130,27 @@ describe('plume release grid', () => {
     grid.geometry.dispose()
   })
 })
+
+describe('plume restore while flying', () => {
+  it('flips every flying unit back to held and pushes the next boundary to the new release', () => {
+    const heldMs = 1500
+    const durationMs = 300
+    const releaseAt = 1000
+    const timelineNow = releaseAt
+    const wallNow = releaseAt + 200
+    const flying = reconcileUnits([], 'weather', 'word', releaseAt - heldMs, heldMs, 0)
+    const unit = flying.units[0]
+    if (!unit) throw new Error('expected one flying unit')
+    expect(unit.releaseAt).toBe(releaseAt)
+    expect(unitPhase(unit, timelineNow, durationMs)).toBe('pluming')
+
+    const restored = rearmUnits(flying.units, wallNow, heldMs)
+    const restoredUnit = restored[0]
+    if (!restoredUnit) throw new Error('expected one restored unit')
+    expect(restoredUnit.id).toBe(unit.id)
+    expect(restoredUnit.releaseAt).toBe(wallNow + heldMs)
+    expect(restored.map((restoredUnit) => unitPhase(restoredUnit, timelineNow, durationMs))).toEqual(['held'])
+    expect(restored.some((restoredUnit) => unitPhase(restoredUnit, timelineNow, durationMs) === 'pluming')).toBe(false)
+    expect(nextTimelineBoundary(restored, timelineNow, durationMs)).toBe(wallNow + heldMs)
+  })
+})

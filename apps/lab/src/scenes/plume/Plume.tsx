@@ -223,7 +223,9 @@ function PlumeCamera() {
 function PlumeFrames({ active }: { readonly active: boolean }) {
   const invalidate = useThree((state) => state.invalidate)
   useEffect(() => {
-    if (active) invalidate()
+    // Restore updates the particle buffer while stopping the animation.
+    // Draw that final buffer even when no successor frame is scheduled.
+    invalidate()
   }, [active, invalidate])
   useFrame(() => {
     if (active) invalidate()
