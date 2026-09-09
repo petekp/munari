@@ -4,17 +4,14 @@
  * primitives actually require (framework-agnostic, all mechanism); this
  * file is one consumer's answer to what that stylesheet asks for in return
  * — the theme, the typography, and the deviations from shadcn's generated
- * globals.css that a port to matter turns out to need.
+ * globals.css needed by captured HTML.
  *
  * Components in src/components/ui/ are byte-verbatim from the shadcn
  * registry (new-york-v4). The deviations:
  *
  *  1. shadcn's `body { bg-background text-foreground }` base rule is
  *     scoped to `.ui-root` instead: the host page owns <body>; every
- *     Surface-mounted React tree gets a .ui-root container. `.ui-layer`
- *     is its transparent twin — the portal container for a floating
- *     Surface, which inherits the typography but paints no background,
- *     so everything the popover does not cover stays clear glass.
+ *     Surface-mounted React tree gets a .ui-root container.
  *  2. `hover`/`active` variants also match `[data-hover]`/`[data-active]`:
  *     real hit-testing never reaches a parked subtree, so Surface's
  *     forwardEvents mirrors pointer state as data attributes. This one
@@ -113,13 +110,6 @@
   .ui-root {
     @apply bg-background font-sans text-foreground antialiased;
   }
-  /* `.ui-layer`'s transparency is the whole point of it — background-less,
-   * so everything the popover does not cover stays clear glass and the panel
-   * behind is seen through it. The `pointer-events` half of the contract is
-   * mechanism and lives in @petepetrash/munari/style.css. */
-  .ui-layer {
-    @apply font-sans text-foreground antialiased;
-  }
   /* Glass panels (the glass scene): the DOM rides a transparent overlay above a
    * refracting mesh, so the drawn root must rasterize with real alpha —
    * bg-background would paint the whole slab opaque. The content root
@@ -139,8 +129,7 @@
  * component one, and a future vendored component must not resurrect it
  * silently. Unlayered, so it outranks any @utility layer without
  * !important. */
-.ui-root [class*='scroll-fade'],
-.ui-layer [class*='scroll-fade'] {
+.ui-root [class*='scroll-fade'] {
   -webkit-mask-image: none;
   mask-image: none;
 }

@@ -93,8 +93,8 @@ export interface NavPolicy {
 
 // Leaf members (docs/focus.md "Proxy contract"): a WebGL-only control backed
 // by a visually-hidden proxy element carrying real focus + ARIA semantics.
-// 'switch'/'button' land when Toggle/pushbutton wiring does — no untested
-// role paths shipped ahead of a control that exercises them.
+// Slider is the only implemented role. Other roles need matching controls
+// and conformance coverage before they can be added here.
 export type LeafRole = 'slider'
 
 export type LeafKeyAction =
@@ -125,7 +125,7 @@ export interface LeafEntry {
 }
 
 export interface LeafHandle {
-  /** Update the announced value at settle — never per physics frame. */
+  /** Update the announced value at a meaningful change, such as a detent or settle. */
   setAria(patch: Partial<Pick<LeafAria, 'now' | 'valuetext'>>): void
   dispose(): void
 }

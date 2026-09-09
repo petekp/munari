@@ -1,4 +1,4 @@
-// The candidates' shared rig — one camera, one lift, one clock.
+// Shared candidate camera, page measurements, uniforms, and animation clocks.
 //
 // Seven prototypes share this file so that what differs between them is
 // only the deformation, never the plumbing. Each candidate is a page with
@@ -12,9 +12,8 @@
 // carries a conversion function. Every displacement below is therefore
 // written in pixels and means pixels.
 //
-// Ownership: this module owns the camera fit, the page→world reading, the
-// lift handle's view state, and the 0→1 clock. It owns no geometry, no
-// material, and no opinion about what an effect looks like.
+// Each candidate owns its Surface intent and scene lifetime. This module
+// supplies camera fitting, page-to-world measurements, and 0-to-1 clocks.
 
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
@@ -78,11 +77,6 @@ export function worldBoxOf(el: HTMLElement | null): WorldBox | null {
     w: r.width,
     h: r.height,
   }
-}
-
-/** A viewport point (a click, the cursor) in the same coordinates. */
-export function worldPoint(clientX: number, clientY: number): [number, number] {
-  return [clientX - window.innerWidth / 2, window.innerHeight / 2 - clientY]
 }
 
 // ── uniforms the material actually reads ────────────────────────────────
@@ -174,9 +168,4 @@ export function easeOutCubic(t: number): number {
 
 export function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
-}
-
-export function easeOutBack(t: number): number {
-  const c = 1.70158
-  return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2)
 }

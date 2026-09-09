@@ -66,12 +66,3 @@
   background: transparent;
   color: inherit;
 }
-
-/* The Surface's page copy. It exists to be captured, and it must never be
- * the copy the user can select, because a captured selection arrives as a
- * black bar. */
-.sel-prose-park {
-  position: absolute;
-  left: -10000px;
-  top: 0;
-}

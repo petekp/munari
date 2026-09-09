@@ -2,11 +2,11 @@
 // page tree and a scene tree.
 //
 // The law: registration is by NAME, never by React context. A page-side
-// `<Surface.WebGL>` and a Canvas-side `<Surface source>` are declared in
+// `<Surface.Mesh>` and a Canvas-side `<Surface source>` are declared in
 // trees that cannot see each other — react-dom's portals do not cross the
 // three.js reconciler, and the R3F scene is not an ancestor of the page —
 // so the only thing both sides can hold is a string. One unnamed host is
-// the default; several hosts without an explicit `canvas` id is a fault
+// the default; several hosts without an explicit `canvasId` prop is a fault
 // reported in development, because silently picking one produces a Surface
 // that renders in the wrong canvas and nothing says so.
 //
@@ -25,7 +25,7 @@
 
 import { hostTailPresents } from '@munari/core'
 import type { ReactElement, ReactNode } from 'react'
-import type { Object3D } from 'three'
+import type { Camera, Object3D, WebGLRenderTarget } from 'three'
 
 /** A Canvas host's public name. One unnamed host needs no id. */
 export type SurfaceCanvasId = string
@@ -58,6 +58,12 @@ export interface SurfaceHostRuntime {
 export interface SurfaceHost {
   readonly id: SurfaceCanvasId | undefined
   runtime: SurfaceHostRuntime | null
+  setRuntime(runtime: SurfaceHostRuntime | null): void
+  subscribeRuntime(listener: () => void): () => void
+  mounted(): boolean
+  available(): boolean
+  setContextLost(lost: boolean): void
+  notifyLifecycle(): void
   registerSource(entry: SurfaceSourceEntry): () => void
   sources(): readonly SurfaceSourceEntry[]
   subscribeSources(listener: () => void): () => void
@@ -74,12 +80,18 @@ export interface SurfaceHost {
    */
   registerTick(tick: (dtMs: number) => void): () => void
   ticks(): readonly ((dtMs: number) => void)[]
+  registerBeforeDraw(listener: (scene: Object3D, camera: Camera, target: WebGLRenderTarget | null) => void): () => void
+  registerRaster(listener: (scene:Object3D,camera:Camera,target:WebGLRenderTarget|null)=> (()=>void)|null):()=>void
+  hasRaster():boolean
+  prepareRaster(scene:Object3D,camera:Camera,target:WebGLRenderTarget|null):()=>void
+  hasBeforeDraw(): boolean
+  beforeDraw(scene: Object3D, camera: Camera, target?: WebGLRenderTarget | null): void
   /**
    * Announce a presenter's mesh, for the pointer gate.
    *
    * The gate raycasts against exactly these objects and nothing else, so a
    * full-page Canvas is clear everywhere a Surface is not. Registered by the
-   * presenter rather than found by traversal because a scene's own matter is
+   * presenter rather than found by traversal because unrelated scene objects are
    * not Munari's to speak for.
    */
   registerObject(object: Object3D): () => void
@@ -125,7 +137,10 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
   const presenterMap = new Map<string, SurfacePresenterEntry>()
   const sourceListeners = new Set<() => void>()
   const presenterListeners = new Set<() => void>()
+  const runtimeListeners = new Set<() => void>()
   const tickSet = new Set<(dtMs: number) => void>()
+  const beforeDraw = new Set<(scene: Object3D, camera: Camera, target: WebGLRenderTarget | null) => void>()
+  const rasterListeners = new Set<(scene:Object3D,camera:Camera,target:WebGLRenderTarget|null)=>(()=>void)|null>()
   const objectSet = new Set<Object3D>()
   let objectSnapshot: readonly Object3D[] = NO_OBJECTS
   let sourceSnapshot: readonly SurfaceSourceEntry[] = NO_SOURCES
@@ -136,6 +151,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
   // that simply stops capturing.
   let tickSnapshot: readonly ((dtMs: number) => void)[] = []
   let claims = 0
+  let contextLost = false
   // Presenters that wrote color into a render target this frame. A
   // post-processed scene draws every Surface this way, so without a tail
   // nothing ever proves and the crossing hangs in 'lifting' forever.
@@ -144,6 +160,23 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
   const host: SurfaceHost = {
     id,
     runtime: null,
+    setRuntime(runtime) {
+      if (host.runtime === runtime) return
+      host.runtime = runtime
+      for (const listener of runtimeListeners) listener()
+    },
+    subscribeRuntime(listener) {
+      runtimeListeners.add(listener)
+      return () => runtimeListeners.delete(listener)
+    },
+    mounted: () => mounts.has(host),
+    available: () => mounts.has(host) && host.runtime !== null && !contextLost,
+    setContextLost(lost) {
+      if (contextLost === lost) return
+      contextLost = lost
+      host.notifyLifecycle()
+    },
+    notifyLifecycle() { for (const listener of runtimeListeners) listener() },
     registerSource(entry) {
       sourceMap.set(entry.key, entry)
       sourceSnapshot = Array.from(sourceMap.values())
@@ -193,6 +226,17 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
       }
     },
     ticks: () => tickSnapshot,
+    registerBeforeDraw(listener) { beforeDraw.add(listener); return () => { beforeDraw.delete(listener) } },
+    registerRaster(listener){rasterListeners.add(listener);return()=>{rasterListeners.delete(listener)}},
+    hasRaster:()=>rasterListeners.size>0,
+    prepareRaster(scene,camera,target){
+      const releases:(()=>void)[]=[]
+      try {for(const listener of [...rasterListeners]){const release=listener(scene,camera,target);if(release)releases.push(release)}}
+      catch(error){for(const release of releases.reverse())release();throw error}
+      return()=>{for(const release of releases.reverse())release()}
+    },
+    hasBeforeDraw: () => beforeDraw.size > 0,
+    beforeDraw(scene, camera, target = null) { for (const listener of [...beforeDraw]) listener(scene, camera, target) },
     registerObject(object) {
       objectSet.add(object)
       objectSnapshot = Array.from(objectSet)
@@ -328,6 +372,7 @@ export function mountSurfaceHost(candidate: SurfaceHost): SurfaceHostMount {
 
   const live = (mounts.get(host) ?? 0) + 1
   mounts.set(host, live)
+  host.notifyLifecycle()
   const distinct = mountedSurfaceHosts().filter((entry) => (entry.id ?? '') === key)
   if (distinct.length > 1 && !faulted.has(key)) {
     queueMicrotask(() => {
@@ -338,7 +383,7 @@ export function mountSurfaceHost(candidate: SurfaceHost): SurfaceHostMount {
         `[munari] two <SurfaceCanvas${host.id ? ` id="${host.id}"` : ''}> hosts are ` +
           'mounted under the same id. Each Canvas keeps its own renderer, but page-side ' +
           'Surfaces cannot choose between them. Give each Canvas its own id and name it ' +
-          'from `<Surface canvas="…">`.',
+          'from `<Surface canvasId="…">`.',
       )
     })
   }
@@ -358,7 +403,8 @@ export function mountSurfaceHost(candidate: SurfaceHost): SurfaceHostMount {
       mounts.delete(host)
       const remainingForId = mountedSurfaceHosts().filter((entry) => (entry.id ?? '') === key)
       if (remainingForId.length < 2) faulted.delete(key)
-      host.runtime = null
+      host.setRuntime(null)
+      host.notifyLifecycle()
     },
   }
 }

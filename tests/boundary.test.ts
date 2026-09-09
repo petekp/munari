@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-function sourceFiles(dir: string): string[] {
+function sourceFiles(dir: string, pattern = /\.tsx?$/): string[] {
   const out: string[] = []
   let entries: string[]
   try {
@@ -26,8 +26,8 @@ function sourceFiles(dir: string): string[] {
   for (const entry of entries) {
     if (entry === 'node_modules' || entry === 'dist') continue
     const full = join(dir, entry)
-    if (statSync(full).isDirectory()) out.push(...sourceFiles(full))
-    else if (/\.tsx?$/.test(entry)) out.push(full)
+    if (statSync(full).isDirectory()) out.push(...sourceFiles(full, pattern))
+    else if (pattern.test(entry)) out.push(full)
   }
   return out
 }
@@ -163,6 +163,54 @@ describe('tests use real seams', () => {
           offenders.push(`${relative(ROOT, file)}: ${m[0]}`)
         }
       }
+    }
+    expect(offenders).toEqual([])
+  })
+})
+
+// Documentation is outside TypeScript's file graph. Check Surface attributes
+// here too, so an old example cannot silently restore the removed ID prop.
+function hasRemovedCanvasProp(text: string): boolean {
+  for (const match of text.matchAll(/<(?:Surface|SceneSurface)(?:\.Root)?\b/g)) {
+    let attributes = '', depth = 0, quote = ''
+    for (let i = match.index + match[0].length; i < text.length; i++) {
+      const char = text[i]
+      if (quote) {
+        if (char === '\\') i++
+        else if (char === quote) quote = ''
+        continue
+      }
+      if (char === '"' || char === "'" || char === '`') { quote = char; continue }
+      if (char === '{') { depth++; continue }
+      if (char === '}') { depth--; continue }
+      if (depth > 0) continue
+      if (char === '>') break
+      attributes += char
+    }
+    if (/\bcanvas\s*=/.test(attributes)) return true
+  }
+  return /`canvas`\s+(?:prop|association)\b|\bcanvas\?\s*:\s*(?:string|SurfaceCanvasId)\b/.test(text)
+}
+
+describe('current documentation uses the public canvasId prop', () => {
+  it('detects retired Surface attributes without rejecting native canvas values', () => {
+    expect(hasRemovedCanvasProp('<Surface canvas="one"><Card /></Surface>')).toBe(true)
+    expect(hasRemovedCanvasProp('<Surface.Root\n inScene={selected > 0}\n canvas = "one" />')).toBe(true)
+    expect(hasRemovedCanvasProp('<SceneSurface.Root canvas="one" />')).toBe(true)
+    expect(hasRemovedCanvasProp('Choose the `canvas` prop.')).toBe(true)
+    expect(hasRemovedCanvasProp('<Surface canvasId="one" onReady={() => { const canvas = document.createElement("canvas"); canvas.width = 100 }} />')).toBe(false)
+    expect(hasRemovedCanvasProp('const canvas = document.createElement("canvas"); frame.canvas')).toBe(false)
+  })
+
+  it('keeps removed selector syntax out of maintained guides and agent instructions', () => {
+    const files = [
+      ...readdirSync(ROOT).filter(name => name.endsWith('.md')).map(name => join(ROOT, name)),
+      ...['docs', 'packages', 'apps', 'registry', '.agents', 'instruments'].flatMap(dir => sourceFiles(join(ROOT, dir), /\.md$/)),
+    ]
+    const offenders: string[] = []
+    for (const file of files) {
+      const text = readFileSync(file, 'utf8')
+      if (hasRemovedCanvasProp(text)) offenders.push(relative(ROOT, file))
     }
     expect(offenders).toEqual([])
   })

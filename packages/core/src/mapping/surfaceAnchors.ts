@@ -143,7 +143,7 @@ export function projectSurfaceAnchor(
 /**
  * Is a receipt still true of the generation currently drawn on the
  * geometry? An anchor set collected from a newer paint than the texture
- * carries places matter where the content is ABOUT to be — which during a
+ * carries places objects where the content is ABOUT to be — which during a
  * resize is a step ahead of the pixels underneath it.
  */
 export function anchorReceiptMatchesDrawn(

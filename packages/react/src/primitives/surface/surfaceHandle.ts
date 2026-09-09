@@ -18,14 +18,13 @@
 // the identity ledger. This module owns React's commit order, the latest-
 // callback rule, and the development diagnostics.
 
-import { useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { use, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import {
   CROSSING_DEFAULTS,
   crossingAtRest,
   crossingCurve,
   crossingDrive,
   crossingFrame,
-  type CrossingPhase,
   crossingPresentation,
   crossingProgress,
   crossingRange,
@@ -53,11 +52,16 @@ import {
   type SurfacePresenterKey,
   type SurfaceReadiness,
 } from '@munari/core'
+import { surfaceViewPresentation, type SurfaceStatus } from './surfaceStatus'
 import { useLatest } from '../useLatest'
+import { SurfaceHandleContext } from './surfaceContext'
 import type { SurfacePartPublication } from './surfaceSourceRuntime'
 
-/** Which renderer the application wants holding the pixels. */
-export type SurfaceView = 'dom' | 'webgl'
+/** Internal renderer-policy states. Public Surface status maps them to page, scene, or null. */
+export type SurfacePresentation = 'page' | 'canvas' | 'both' | 'none'
+
+/** Private motion endpoints; the public wrapper calls canvas "scene". */
+export type SurfaceDestination = 'page' | 'canvas'
 
 export interface SurfaceTiming {
   /** Time for the caller's DOM-side motion to stop. Default: 450. */
@@ -68,11 +72,14 @@ export interface SurfaceTiming {
 
 /**
  * The excursion, 0 at DOM identity and 1 at the WebGL state. Read inside a
- * frame loop; every window over it is 0 at both handoff edges, so an effect
- * built from one cannot break pixel identity at a swap.
+ * frame loop. Raw progress, an explicit eased read, interval ramps and
+ * interval pulses are separate operations.
  */
 export interface SurfaceProgress {
+  /** Raw 0..1 motion, shared with driver input and frame reads. */
   get(): number
+  /** The built-in eased curve, explicitly separate from the raw motion. */
+  eased(): number
   between(start: number, end: number): number
   pulse(start: number, end: number): number
 }
@@ -80,16 +87,14 @@ export interface SurfaceProgress {
 /** What an application can observe without subscribing to frames. */
 export interface SurfaceState {
   /** What the application asked for. */
-  readonly targetView: SurfaceView
-  /** Which renderer holds the pixels right now. */
-  readonly presentedView: SurfaceView
+  readonly requested: SurfacePresentation
+  /** Which declared presentations currently hold the content. */
+  readonly presented: SurfacePresentation
   /** Every declared part has a presenter, and every registered presenter
    *  has completed its first eligible draw. */
   readonly ready: boolean
   /** A handoff is under way in either direction. */
   readonly isChanging: boolean
-  /** The WebGL side should be mounted — including the linger after landing. */
-  readonly isWebGLMounted: boolean
   /** This browser can capture DOM into a texture at all. */
   readonly supported: boolean
 }
@@ -111,10 +116,9 @@ const RECLAIM_LINGER_MS = 300
 // assignment — the latest-callback rule is that the newest set runs without
 // resetting anything else about the handle.
 interface SurfaceCallbacks {
-  onPresentedViewChange?: (view: SurfaceView) => void
-  onMotionComplete?: (view: SurfaceView) => void
+  onPresentationChange?: (presentation: SurfacePresentation) => void
+  onMotionComplete?: (destination: SurfaceDestination) => void
   onReady?: () => void
-  onWebGLReleased?: () => void
   onError?: (error: Error) => void
 }
 
@@ -123,8 +127,8 @@ interface SurfaceCallbacks {
  * handle deliberately does not. One declaration writes all of it.
  */
 export interface SurfaceControls extends SurfaceCallbacks {
-  /** Present: an exclusive handoff. Absent: a Twin that never releases. */
-  view?: SurfaceView
+  /** Where this Surface's declared presentations should render. */
+  renderIn?: SurfacePresentation
   timing?: SurfaceTiming
 }
 
@@ -145,7 +149,7 @@ export interface SurfaceStore {
   hasController(): boolean
   setCallbacks(next: SurfaceCallbacks): void
   setTiming(next: CrossingTiming): void
-  request(view: SurfaceView): void
+  request(presentation: SurfacePresentation): void
   registerPresenter(key: SurfacePresenterKey): () => void
   /**
    * Declare a part id in the expected set; the return forgets it. The
@@ -176,13 +180,15 @@ export interface SurfaceStore {
    * own draw has to cause.
    */
   canvasPresents(): boolean
+  /** Is the page copy currently the policy-visible presentation? */
+  pagePresents(): boolean
   /**
    * May the canvas HEAR the pointer this frame? Input follows the eye
    * (crossingPointer): during 'lifting' the mesh is registered and drawing
    * warm, but the page copy is the one on screen, so it is the one a click
    * must reach. A presenter reads this in its raycast — an intersection
    * declined there is one r3f never counts, so neither the pointer gate nor
-   * the relay ever hears about matter that is not the presented copy.
+   * the relay ever hears about content that is not the presented copy.
    */
   canvasHearsPointer(): boolean
   /** Does the page copy still hold the pixels? Read from a frame, not a render. */
@@ -204,17 +210,40 @@ export interface SurfaceStore {
    * gives the ramp back to the built-in timed motion.
    */
   drive(step: SurfaceDriverStep | null): void
+  /** The accepted raw motion value for a scene that owns the driver. */
+  motionProgress(): number
   /** Advance the protocol one renderer frame. */
   tick(dtMs: number): void
-  /** Is this an exclusive handoff (the root carries `view`) or a Twin? */
+  /** Is this an exclusive handoff or a shared presentation? */
   exclusive(): boolean
-  setExclusive(value: boolean): void
-  /** Announce one part's source to every presenter holding this handle. */
-  publishPart(id: SurfacePartId, value: SurfacePartPublication | null): void
+  /** Private canvas presence, including the return linger. */
+  canvasMounted(): boolean
+  /** Private frame-work predicate for the shared Canvas scheduler. */
+  hasProtocolWork(): boolean
+  subscribeWork(listener: () => void): () => void
+  setRendererAvailable(available: boolean): void
+  canPrepareCanvas(): boolean
+  preparationWait(): string | null
+  subscribePresence(listener: () => void): () => void
+  /** A direct declaration, separate from a mounted presenter. */
+  declarePresentation(presentation: SurfaceDestination): () => void
+  /** A manual mesh requires an advanced presenter for this part. */
+  expectManualPresenter(part: SurfacePartId): () => void
+  /** The advanced presenter covering a manual mesh part. */
+  registerManualPresenter(part: SurfacePartId): () => void
+  /** Report a requested presentation that has no matching declaration. */
+  validatePresentation(includeCanvas?: boolean): void
+  /** Publish a source; cleanup releases only this publication. */
+  publishPart(id: SurfacePartId, value: SurfacePartPublication): () => void
   part(id: SurfacePartId): SurfacePartPublication | null
   parts(): readonly SurfacePartPublication[]
   subscribeParts(listener: () => void): () => void
   getState(): SurfaceState
+  /** Author intent is separate from a capability-filtered protocol request. */
+  setAuthorIntent(owner: symbol, requestedInScene: boolean, reason: string | null): void
+  clearAuthorIntent(owner: symbol): void
+  authorRequestedInScene(): boolean
+  getStatus(): SurfaceStatus
   subscribe(listener: () => void): () => void
   reportError(error: Error): void
 }
@@ -225,9 +254,8 @@ export interface SurfaceDriverFrame {
   readonly dtMs: number
   /** The ramp as the protocol currently holds it, 0 at the page, 1 airborne. */
   readonly progress: number
-  readonly phase: CrossingPhase
   /** Where the crossing is trying to get to. */
-  readonly target: SurfaceView
+  readonly target: SurfaceDestination
 }
 
 /** A scene's answer for one frame: the ramp it wants, 0..1. */
@@ -245,9 +273,6 @@ export function mintControllerToken(): number {
  * hold to move, so it reads as the page throughout — the WebGL side is an
  * additional presentation of the content, never a replacement for it.
  */
-const viewOf = (state: CrossingState): SurfaceView =>
-  crossingPresentation(state.phase).gl ? 'webgl' : 'dom'
-
 /**
  * The private store behind one handle.
  *
@@ -263,10 +288,16 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   let driver: SurfaceDriverStep | null = null
   let timing: CrossingTiming = { settleMs: CROSSING_DEFAULTS.settleMs, rampMs: CROSSING_DEFAULTS.rampMs }
   let callbacks: SurfaceCallbacks = {}
-  let target: SurfaceView = 'dom'
+  let requested: SurfacePresentation = 'page'
+  let target: SurfaceDestination = 'page'
   let lingerUntilMs = 0
   let elapsedMs = 0
-  let exclusive = false
+  let exclusive = true
+  const declared = new Map<SurfaceDestination, number>()
+  const reportedMissing = new Set<SurfaceDestination>()
+  const manualExpected = new Map<SurfacePartId, number>()
+  const manualRegistered = new Map<SurfacePartId, number>()
+  const reportedManual = new Set<SurfacePartId>()
   // Stage two's ledger: presenters that have written color since the canvas
   // took presentation authority. Cleared whenever it gives that authority
   // back, so a return and a second lift do not inherit the first one's proof.
@@ -280,58 +311,239 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   const expectCounts = new Map<SurfacePartId, number>()
   const presenterCounts = new Map<SurfacePartId, number>()
   let pageHeld = true
+  let canvasHeld = false
   const holdListeners = new Set<() => void>()
   const partMap = new Map<SurfacePartId, SurfacePartPublication>()
+  // Duplicate names are diagnosed, but removing one must recover the other
+  // host's publication without a remount. Each publication owns its cleanup.
+  const partPublications = new Map<SurfacePartId, Map<symbol, SurfacePartPublication>>()
   // Snapshotted for `useSyncExternalStore`, which compares by reference —
   // a fresh array per read is an infinite render loop, not a slow one.
   let partSnapshot: readonly SurfacePartPublication[] = []
   const partListeners = new Set<() => void>()
+  const announceParts = () => {
+    partSnapshot = Array.from(partMap.values())
+    for (const listener of partListeners) listener()
+  }
   let state: SurfaceState = {
-    targetView: 'dom',
-    presentedView: 'dom',
+    requested: 'page',
+    presented: 'none',
     ready: false,
     isChanging: false,
-    isWebGLMounted: false,
     supported: detectHtmlInCanvas().drawElementImage,
   }
   const listeners = new Set<() => void>()
+  let authorIntent: { owner: symbol; requestedInScene: boolean; reason: string | null } | null = null
+  let statusSnapshot: SurfaceStatus | null = null
+  let statusState: SurfaceState | null = null
+  let rendererAvailable = true
+  const workListeners = new Set<() => void>()
+  let canvasMounted = false
+  const presenceListeners = new Set<() => void>()
+
+  const presentedFrom = (pageVisible: boolean, canvasVisible: boolean): SurfacePresentation => {
+    if (pageVisible && canvasVisible) return 'both'
+    if (pageVisible) return 'page'
+    if (canvasVisible) return 'canvas'
+    return 'none'
+  }
+
+  const isResidentCanvas = (): boolean =>
+    requested === 'canvas' && (declared.get('page') ?? 0) === 0
+
+  const progressValue = (): number =>
+    isResidentCanvas() ? 1 : crossing.ramp
+
+  const nextCanvasPresence = (canCanvas: boolean): boolean =>
+    canCanvas &&
+    (requested === 'canvas' ||
+      requested === 'both' ||
+      crossing.phase !== 'page' ||
+      elapsedMs < lingerUntilMs)
+
+  const changing = (canCanvas: boolean): boolean => {
+    if (!canCanvas) return false
+    if (isResidentCanvas()) return false
+    const seeksCanvas = requested === 'canvas' || requested === 'both'
+    return seeksCanvas ? crossing.ramp < 1 || !canvasHeld : crossing.ramp > 0 || canvasHeld
+  }
+
+  const announcePresence = (next: boolean) => {
+    if (next === canvasMounted) return
+    canvasMounted = next
+    for (const listener of presenceListeners) listener()
+  }
+
+  const observation = (): SurfaceState => {
+    const pageDeclared = (declared.get('page') ?? 0) > 0
+    const canvasDeclared = (declared.get('canvas') ?? 0) > 0
+    const canCanvas = state.supported && rendererAvailable
+    const pageVisible = pageDeclared && store.pagePresents()
+    const canvasVisible = canvasDeclared && canCanvas && requested !== 'none' && canvasHeld
+    return {
+      requested,
+      presented: presentedFrom(pageVisible, canvasVisible),
+      ready: readinessSettled(readiness) && partSetMissing(parts).length === 0,
+      isChanging: changing(canCanvas),
+      supported: state.supported,
+    }
+  }
+
+  const advanceCrossing = (before: CrossingState, dtMs: number) => {
+    const evidence = {
+      presented: readiness.proven.length,
+      required: Math.max(1, readiness.registered.length + partSetMissing(parts).length),
+    }
+    if (!driver) return crossingFrame(before, evidence, dtMs, timing)
+    const answer = driver({ dtMs, progress: before.ramp, target })
+    if (!Number.isFinite(answer)) {
+      store.reportError(
+        new Error(
+          `Surface${name ? ` "${name}"` : ''} driver answered ${String(answer)}. ` +
+            'A driver returns the ramp it wants for this frame, 0..1.',
+        ),
+      )
+    }
+    return crossingDrive(before, evidence, dtMs, answer, timing)
+  }
+
+  const settleReturn = (before: CrossingState) => {
+    if (isResidentCanvas() || requested === 'both') return
+    const canvasHasAuthority = crossingPresentation(crossing.phase).gl
+    if (crossing.phase === 'page' && before.phase === 'landing') {
+      lingerUntilMs = elapsedMs + RECLAIM_LINGER_MS
+    }
+    if (canvasHasAuthority) return
+    presenting.clear()
+    const changed = !pageHeld || canvasHeld
+    pageHeld = true
+    canvasHeld = false
+    if (changed) for (const listener of holdListeners) listener()
+  }
+
+  const requestedPresentations = (): readonly SurfaceDestination[] => {
+    if (requested === 'page') return ['page']
+    if (requested === 'canvas') return ['canvas']
+    if (requested === 'both') return ['page', 'canvas']
+    return []
+  }
+
+  const reportMissingPresentations = (includeCanvas = true) => {
+    for (const presentation of requestedPresentations()) {
+      if (presentation === 'canvas' && (!includeCanvas || !state.supported)) continue
+      if ((declared.get(presentation) ?? 0) > 0 || reportedMissing.has(presentation)) continue
+      reportedMissing.add(presentation)
+      const component = presentation === 'page' ? '<Surface.HTML>' : '<Surface.Mesh> or <Surface.Scene>'
+      store.reportError(
+        new Error(
+          `Surface${name ? ` "${name}"` : ''} requested ${presentation} but declared no ${component}.`,
+        ),
+      )
+    }
+    for (const [part, expected] of manualExpected) {
+      if (expected === 0 || (manualRegistered.get(part) ?? 0) > 0 || reportedManual.has(part)) continue
+      reportedManual.add(part)
+      store.reportError(
+        new Error(
+          `Surface${name ? ` "${name}"` : ''} has a manual <Surface.Mesh> for part ` +
+            `"${String(part)}" without a registered surfaceManualPresenter().`,
+        ),
+      )
+    }
+  }
+
+  const hasProtocolWork = (): boolean => {
+    if (elapsedMs < lingerUntilMs) return true
+    if (!state.supported || !rendererAvailable) return false
+    if (isResidentCanvas()) return false
+    const canvasDeclared = (declared.get('canvas') ?? 0) > 0
+    const seeksCanvas = requested === 'canvas' || requested === 'both'
+    if (seeksCanvas) {
+      if (!canvasDeclared) return false
+      // Waiting for missing inputs cannot produce evidence by drawing again.
+      // The finite settle dwell still runs; source and presenter changes wake us.
+      if (crossing.phase === 'lifting' && crossing.heldMs >= timing.settleMs && !state.ready) return false
+      return !canvasHeld || crossing.ramp < 1
+    }
+    return canvasHeld || crossing.ramp > 0
+  }
+
+  const destinationFor = (presentation: SurfacePresentation): SurfaceDestination =>
+    presentation === 'canvas' || presentation === 'both' ? 'canvas' : 'page'
+
+  const appliesExclusivePolicy = (presentation: SurfacePresentation): boolean =>
+    presentation === 'page' || presentation === 'canvas'
+
+  const applyPresentationPolicy = (presentation: SurfacePresentation): boolean => {
+    if (presentation === 'both' && !pageHeld) {
+      pageHeld = true
+      return true
+    }
+    if (presentation === 'none') {
+      const changed = !pageHeld || canvasHeld
+      pageHeld = true
+      canvasHeld = false
+      presenting.clear()
+      return changed
+    }
+    if (presentation === 'canvas' && canvasHeld && pageHeld) {
+      pageHeld = false
+      return true
+    }
+    return false
+  }
+
+  const notifyPolicyChange = (
+    presentation: SurfacePresentation,
+    holdChanged: boolean,
+    wasPagePresented: boolean,
+    wasCanvasHearing: boolean,
+  ) => {
+    const policyRequest = presentation === 'both' || presentation === 'none'
+    const presentationChanged = wasPagePresented !== store.pagePresents()
+    const pointerChanged = wasCanvasHearing !== store.canvasHearsPointer()
+    if (!policyRequest && !holdChanged && !presentationChanged && !pointerChanged) return
+    for (const listener of holdListeners) listener()
+  }
+
+  const requestCrossing = (presentation: SurfacePresentation) => {
+    const wantsCanvas = presentation === 'canvas' || presentation === 'both'
+    const next = crossingRequest(
+      crossing,
+      wantsCanvas && state.supported && rendererAvailable && !isResidentCanvas(),
+    )
+    if (next !== crossing) crossing = next
+  }
 
   // The snapshot is rebuilt only when a semantic field actually changes, so
   // `useSyncExternalStore` can compare by reference. Rebuilding
   // unconditionally would re-render every subscriber on every frame the
   // protocol advanced, which is the cost this whole split exists to avoid.
-  const publish = () => {
-    const next: SurfaceState = {
-      targetView: target,
-      // The hold, not the phase. The phase turns at the top of a frame and
-      // the pixels turn in that frame's draw, so a consumer reading the
-      // phase would see the canvas holding content it had not drawn yet.
-      presentedView: exclusive ? (pageHeld ? 'dom' : 'webgl') : viewOf(crossing),
-      ready: readinessSettled(readiness) && partSetMissing(parts).length === 0,
-      isChanging: crossing.phase === 'lifting' || crossing.phase === 'landing',
-      isWebGLMounted: crossing.phase !== 'page' || elapsedMs < lingerUntilMs,
-      supported: state.supported,
-    }
+  const publish = (wake = true) => {
+    const next = observation()
+    const nextMounted = nextCanvasPresence(next.supported && rendererAvailable)
     if (
-      next.targetView === state.targetView &&
-      next.presentedView === state.presentedView &&
+      next.requested === state.requested &&
+      next.presented === state.presented &&
       next.ready === state.ready &&
-      next.isChanging === state.isChanging &&
-      next.isWebGLMounted === state.isWebGLMounted
+      next.isChanging === state.isChanging
     ) {
+      announcePresence(nextMounted)
+      if (wake) for (const listener of workListeners) listener()
       return
     }
     const previous = state
     state = next
+    announcePresence(nextMounted)
+    if (wake) for (const listener of workListeners) listener()
     for (const listener of listeners) listener()
-    if (next.presentedView !== previous.presentedView) {
-      callbacks.onPresentedViewChange?.(next.presentedView)
+    if (next.presented !== previous.presented) {
+      callbacks.onPresentationChange?.(next.presented)
     }
     // The rising edge only. A source replacement voids every proof, so
     // readiness falls and rises again — and a consumer that arms something
     // once per set of proven pixels wants to hear both times.
     if (next.ready && !previous.ready) callbacks.onReady?.()
-    if (previous.isWebGLMounted && !next.isWebGLMounted) callbacks.onWebGLReleased?.()
   }
 
   // Rebuilt from the counts through the law's own transitions, expecting
@@ -360,11 +572,25 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     }
   }
 
+  const manualCounted = (counts: Map<SurfacePartId, number>) => (id: SurfacePartId) => {
+    counts.set(id, (counts.get(id) ?? 0) + 1)
+    reportedManual.delete(id)
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      const count = counts.get(id) ?? 0
+      if (count <= 1) counts.delete(id)
+      else counts.set(id, count - 1)
+    }
+  }
+
   const progress: SurfaceProgress = {
-    get: () => crossingProgress(crossing.ramp),
+    get: progressValue,
+    eased: () => crossingProgress(progressValue()),
     between: (start, end) =>
-      crossingRange(crossingProgress(crossing.ramp), start, end - start),
-    pulse: (start, end) => crossingCurve(crossingProgress(crossing.ramp), start, end - start),
+      crossingRange(progressValue(), start, end - start),
+    pulse: (start, end) => crossingCurve(progressValue(), start, end - start),
   }
 
   const handle: SurfaceHandle = { progress }
@@ -392,11 +618,16 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     setTiming(next) {
       timing = next
     },
-    request(view) {
-      if (view === target) return
-      target = view
-      const next = crossingRequest(crossing, view === 'webgl')
-      if (next !== crossing) crossing = next
+    request(presentation) {
+      if (presentation === requested) return
+      const wasPagePresented = store.pagePresents()
+      const wasCanvasHearing = store.canvasHearsPointer()
+      requested = presentation
+      target = destinationFor(presentation)
+      exclusive = appliesExclusivePolicy(presentation)
+      const holdChanged = applyPresentationPolicy(presentation)
+      notifyPolicyChange(presentation, holdChanged, wasPagePresented, wasCanvasHearing)
+      requestCrossing(presentation)
       publish()
     },
     registerPresenter(key) {
@@ -419,12 +650,18 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     expectPart: counted(expectCounts),
     registerPartPresenter: counted(presenterCounts),
     present(key, epoch) {
-      if (!exclusive) return
-      if (!surfaceEpochCurrent(identity, epoch)) return
+      if (!rendererAvailable || !surfaceEpochCurrent(identity, epoch)) return
+      if (requested !== 'canvas' && requested !== 'both') return
       // Only while the canvas has presentation authority. A color-writing
       // draw before the lift gate opens is a resident presentation of a
       // Surface that is still the page's, and it releases nothing.
-      if (!crossingPresentation(crossing.phase).gl) return
+      if (
+        requested !== 'both' &&
+        !isResidentCanvas() &&
+        !crossingPresentation(crossing.phase).gl
+      ) {
+        return
+      }
       // A presenter that is not in the ledger cannot enter it. Strict Mode
       // remounts every presenter on a development mount, and one declared
       // in the same commit that starts a crossing can have a draw in flight
@@ -435,7 +672,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       if (!readiness.registered.includes(key)) return
       if (presenting.has(key)) return
       presenting.add(key)
-      if (!pageHeld) return
+      if (canvasHeld) return
       // Every registered presenter, not just this one. A multi-part Surface
       // releases all of its parts or none: a page copy hidden while one
       // letter is still warming is a word with a hole in it.
@@ -444,11 +681,18 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       // even warming it.
       if (partSetMissing(parts).length > 0) return
       for (const registered of readiness.registered) if (!presenting.has(registered)) return
-      pageHeld = false
+      canvasHeld = true
+      if (requested === 'canvas') pageHeld = false
       for (const listener of holdListeners) listener()
       publish()
     },
-    canvasPresents: () => !exclusive || crossingPresentation(crossing.phase).gl,
+    canvasPresents: () =>
+      rendererAvailable && state.supported &&
+      requested !== 'none' &&
+      (isResidentCanvas() || requested === 'both' || crossingPresentation(crossing.phase).gl),
+    pagePresents: () =>
+      requested !== 'none' &&
+      (requested === 'both' || requested === 'page' ? pageHeld : !state.supported || pageHeld),
     // crossingPointer says hearing equals presentation, and presentation is
     // refined by the HOLD, not the phase: the phase turns at the top of a
     // frame, the pixels turn in that frame's draw. Reading the phase here
@@ -457,7 +701,8 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     // clicks the page copy is still showing. Reading the hold also puts the
     // hearing flip at the exact moment subscribeHold fires, which is what
     // lets the edge bursts run at the boundary they describe.
-    canvasHearsPointer: () => !exclusive || !pageHeld,
+    canvasHearsPointer: () =>
+      rendererAvailable && state.supported && canvasHeld && (requested === 'both' || !pageHeld),
     holdsPage: () => pageHeld,
     subscribeHold(listener) {
       holdListeners.add(listener)
@@ -485,64 +730,49 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     drive(step) {
       driver = step
     },
+    motionProgress: () => isResidentCanvas() ? 1 : crossing.ramp,
     tick(dtMs) {
       elapsedMs += dtMs
       const before = crossing
-      const evidence = {
-        presented: readiness.proven.length,
-        // Each declared part with no presenter is a requirement nothing can
-        // prove, so the lift gate holds while one exists (decisions.md #37).
-        required: readiness.registered.length + partSetMissing(parts).length,
-      }
-      if (driver) {
-        const answer = driver({
-          dtMs,
-          progress: before.ramp,
-          phase: before.phase,
-          target,
-        })
-        // Reported here rather than swallowed by the law: a driver that
-        // divides by a zero timestep produces NaN on its first frame and
-        // then every frame after, and a Surface that simply stops moving
-        // is the hardest possible way to notice that.
-        if (!Number.isFinite(answer)) {
-          store.reportError(
-            new Error(
-              `Surface${name ? ` "${name}"` : ''} driver answered ${String(answer)}. ` +
-                'A driver returns the ramp it wants for this frame, 0..1.',
-            ),
-          )
-        }
-        crossing = crossingDrive(before, evidence, dtMs, answer, timing)
-      } else {
-        crossing = crossingFrame(before, evidence, dtMs, timing)
-      }
-      if (crossing.phase === 'page' && before.phase === 'landing') {
-        lingerUntilMs = elapsedMs + RECLAIM_LINGER_MS
-      }
-      // The return edge, and it is deliberately not symmetric with the lift.
-      // Going out, the page waits for proof; coming home there is nothing to
-      // prove — the page IS the content — so it takes the hold back here, at
-      // the top of the frame, and the meshes below draw write-free in the
-      // same frame because they read the hold rather than the phase. One
-      // frame, one presenter, no proof to wait for.
-      if (!crossingPresentation(crossing.phase).gl && presenting.size > 0) {
-        presenting.clear()
-      }
-      if (!crossingPresentation(crossing.phase).gl && !pageHeld) {
-        pageHeld = true
-        for (const listener of holdListeners) listener()
-      }
+      crossing = advanceCrossing(before, dtMs)
+      settleReturn(before)
       // Motion completes when the ramp reaches an endpoint, which is a
       // different moment from the hold changing hands: entering, WebGL
       // takes the hold before the ramp leaves zero; returning, the ramp
       // reaches zero before DOM takes it. Consumers cannot assume one order
       // for both directions, so the two callbacks are reported separately.
-      if (before.ramp < 1 && crossing.ramp >= 1) callbacks.onMotionComplete?.('webgl')
-      if (before.ramp > 0 && crossing.ramp <= 0) callbacks.onMotionComplete?.('dom')
-      publish()
+      if (before.ramp < 1 && crossing.ramp >= 1) callbacks.onMotionComplete?.('canvas')
+      if (before.ramp > 0 && crossing.ramp <= 0) callbacks.onMotionComplete?.('page')
+      publish(false)
     },
     getState: () => state,
+    setAuthorIntent(owner, requestedInScene, reason) {
+      if (authorIntent?.owner === owner && authorIntent.requestedInScene === requestedInScene && authorIntent.reason === reason) return
+      authorIntent = { owner, requestedInScene, reason }
+      statusSnapshot = null
+      for (const listener of listeners) listener()
+    },
+    clearAuthorIntent(owner) {
+      if (authorIntent?.owner !== owner) return
+      authorIntent = null
+      statusSnapshot = null
+      for (const listener of listeners) listener()
+    },
+    authorRequestedInScene: () => authorIntent?.requestedInScene ?? requested === 'canvas',
+    getStatus() {
+      if (statusSnapshot && statusState === state) return statusSnapshot
+      const presentation = surfaceViewPresentation(state.presented)
+      statusState = state
+      statusSnapshot = {
+        requestedInScene: store.authorRequestedInScene(),
+        presentation,
+        sceneReady: rendererAvailable && state.ready && state.supported && !authorIntent?.reason,
+        isTransitioning: state.isChanging,
+        supported: state.supported && !authorIntent?.reason,
+        reason: authorIntent?.reason ?? null,
+      }
+      return statusSnapshot
+    },
     subscribe(listener) {
       listeners.add(listener)
       return () => {
@@ -550,20 +780,76 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       }
     },
     exclusive: () => exclusive,
-    setExclusive(value) {
-      if (value === exclusive) return
-      exclusive = value
-      // A Twin gaining or losing `view` flips who hears the pointer without
-      // the hold moving. The edge bursts listen on the hold, so this edge
-      // notifies them too — otherwise a press relayed as a Twin survives
-      // into a phase where the canvas no longer hears.
-      for (const listener of holdListeners) listener()
+    canvasMounted: () => canvasMounted,
+    hasProtocolWork,
+    subscribeWork(listener) {
+      workListeners.add(listener)
+      return () => { workListeners.delete(listener) }
     },
+    canPrepareCanvas: () => rendererAvailable && state.supported,
+    preparationWait() {
+      if (!store.canPrepareCanvas() || (requested !== 'canvas' && requested !== 'both')) return null
+      if ((declared.get('canvas') ?? 0) === 0 || state.ready) return null
+      const missing = partSetMissing(parts)
+      if (missing.length > 0) return `presenters for parts: ${missing.join(', ')}`
+      if (readiness.registered.length === 0) return 'a scene presenter'
+      return 'a usable source frame and preparation draw'
+    },
+    setRendererAvailable(available) {
+      if (rendererAvailable === available) return
+      rendererAvailable = available
+      statusSnapshot = null
+      if (!available) {
+        crossing = crossingAtRest()
+        lingerUntilMs = 0
+        readiness = readinessReborn(readiness)
+        presenting.clear()
+        pageHeld = true
+        canvasHeld = false
+        for (const listener of holdListeners) listener()
+      } else requestCrossing(requested)
+      publish()
+      for (const listener of listeners) listener()
+    },
+    subscribePresence(listener) {
+      presenceListeners.add(listener)
+      return () => presenceListeners.delete(listener)
+    },
+    declarePresentation(presentation) {
+      declared.set(presentation, (declared.get(presentation) ?? 0) + 1)
+      reportedMissing.delete(presentation)
+      publish()
+      let released = false
+      return () => {
+        if (released) return
+        released = true
+        const count = declared.get(presentation) ?? 0
+        if (count <= 1) declared.delete(presentation)
+        else declared.set(presentation, count - 1)
+        publish()
+      }
+    },
+    expectManualPresenter: manualCounted(manualExpected),
+    registerManualPresenter: manualCounted(manualRegistered),
+    validatePresentation: reportMissingPresentations,
     publishPart(id, value) {
-      if (value === null) partMap.delete(id)
-      else partMap.set(id, value)
-      partSnapshot = Array.from(partMap.values())
-      for (const listener of partListeners) listener()
+      const owner = Symbol()
+      const publications = partPublications.get(id) ?? new Map<symbol, SurfacePartPublication>()
+      publications.set(owner, value)
+      partPublications.set(id, publications)
+      partMap.set(id, value)
+      announceParts()
+      return () => {
+        if (!publications.delete(owner)) return
+        if (publications.size === 0) partPublications.delete(id)
+        if (partMap.get(id) !== value) return
+        let remaining: SurfacePartPublication | undefined
+        for (const publication of publications.values()) remaining = publication
+        if (remaining === partMap.get(id)) return
+        if (remaining) partMap.set(id, remaining)
+        else partMap.delete(id)
+        announceParts()
+      }
     },
     part: (id) => partMap.get(id) ?? null,
     parts: () => partSnapshot,
@@ -598,7 +884,7 @@ export function surfaceStoreOf(handle: SurfaceHandle): SurfaceStore {
   const store = storeByHandle.get(handle)
   if (!store) {
     throw new Error(
-      'munari: this is not a Surface handle. Handles come from useSurface() or ' +
+      'munari: this is not a Surface handle. Handles come from useSurfaceHandle() or ' +
         'from a <Surface> root; an object shaped like one carries no identity.',
     )
   }
@@ -625,12 +911,12 @@ export function createSurface(name?: string): SurfaceHandle {
  * read once at creation: it names the handle rather than describing its
  * state. Pass the handle to the `<Surface>` that owns its view and timing.
  */
-export function useSurface(name?: string): SurfaceHandle {
+export function useSurfaceHandle(name?: string): SurfaceHandle {
   return useSurfaceStore(name).handle
 }
 
 /**
- * `useSurface`, keeping the private store. The compound components use this;
+ * `useSurfaceHandle`, keeping the private store. The compound components use this;
  * consumers get the handle.
  */
 export function useSurfaceStore(name?: string): SurfaceStore {
@@ -643,30 +929,28 @@ export function useSurfaceStore(name?: string): SurfaceStore {
 }
 
 /**
- * Install the controlled half of a Surface: view, timing, and callbacks.
+ * Install the controlled half of a Surface: presentation, timing, and callbacks.
  *
  * Callbacks and timing are installed in the layout phase. A handle can
  * advance a frame between a commit and its passive effects, so a passive
  * effect misses exactly the transition the caller just asked for. A layout
  * effect finishes before the renderer can draw and keeps render pure. The
- * view is requested from a passive effect because it starts protocol work.
+ * request is installed in the layout phase for the same reason.
  */
 export function useSurfaceControls(store: SurfaceStore, controls: SurfaceControls): void {
   const {
-    view,
+    renderIn = 'page',
     timing,
-    onPresentedViewChange,
+    onPresentationChange,
     onMotionComplete,
     onReady,
-    onWebGLReleased,
     onError,
   } = controls
   useLayoutEffect(() => {
     store.setCallbacks({
-      onPresentedViewChange,
+      onPresentationChange,
       onMotionComplete,
       onReady,
-      onWebGLReleased,
       onError,
     })
     store.setTiming({
@@ -678,21 +962,25 @@ export function useSurfaceControls(store: SurfaceStore, controls: SurfaceControl
     store,
     timing?.settleMs,
     timing?.durationMs,
-    onPresentedViewChange,
+    onPresentationChange,
     onMotionComplete,
     onReady,
-    onWebGLReleased,
     onError,
   ])
 
   useLayoutEffect(() => {
-    if (view !== undefined) store.request(view)
-  }, [store, view])
+    store.request(renderIn)
+  }, [store, renderIn])
 }
 
 /** The excursion, for a presenter or a custom material. */
-export function useSurfaceProgress(handle: SurfaceHandle): SurfaceProgress {
-  return handle.progress
+export function useSurfaceProgress(handle?: SurfaceHandle): SurfaceProgress {
+  const context = use(SurfaceHandleContext)
+  const selected = handle ?? context?.handle
+  if (!selected) {
+    throw new Error('munari: useSurfaceProgress() needs a handle or an enclosing <Surface>.')
+  }
+  return selected.progress
 }
 
 /**
@@ -700,8 +988,12 @@ export function useSurfaceProgress(handle: SurfaceHandle): SurfaceProgress {
  * snapshot, which changes only when a named field does — a component using
  * this does not re-render per frame.
  */
-export function useSurfaceState(handle: SurfaceHandle): SurfaceState {
-  const store = surfaceStoreOf(handle)
+export function useSurfaceState(handle?: SurfaceHandle): SurfaceState {
+  const context = use(SurfaceHandleContext)
+  const store = handle ? surfaceStoreOf(handle) : context?.store
+  if (!store) {
+    throw new Error('munari: useSurfaceState() needs a handle or an enclosing <Surface>.')
+  }
   const subscribe = useMemo(() => store.subscribe.bind(store), [store])
   const snapshot = useMemo(() => store.getState.bind(store), [store])
   return useSyncExternalStore(subscribe, snapshot, snapshot)
@@ -724,7 +1016,7 @@ export function useSurfaceController(store: SurfaceStore): void {
         new Error(
           `Surface${store.name ? ` "${store.name}"` : ''} already has a controller. ` +
             'One handle is declared by exactly one <Surface>; pass the handle to ' +
-            '<Surface.WebGL surface={…}> for the other tree instead.',
+            '<Surface.Mesh surface={…}> for the other tree instead.',
         ),
       )
       return

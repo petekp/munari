@@ -1,13 +1,11 @@
 // The source runtime — one live DOM subtree, its texture, and the pipeline
 // between them, with no React and no mesh in it.
 //
-// The law: a source has ONE texture and any number of presenters. That is
-// the whole reason this is a separate object from the mesh it used to live
-// inside. Logo's letters are several presentations of one part; Genie draws
-// a window and its own shadow companion from the same capture; a Twin shows
-// the page and the mesh together. Each of those used to mean a second
-// `createDomTextureSource`, which meant a second parked canvas, a second
-// paint budget, and two rasters that could disagree by a generation.
+// The law: this runtime owns one public texture and any number of presenters.
+// A visible mesh and a shadow or reflection can sample the same captured
+// content without creating independent canvases and paint generations.
+// A lit material's encoded GPU view reads this same capture canvas; it does
+// not create another DOM source or paint stream.
 //
 // The fault that produced the shared allocation ledger, traced at the GL
 // boundary 2026-08-04: three allocates texture storage IMMUTABLY at first
@@ -21,8 +19,8 @@
 //
 // Ownership: this object owns capture, texture format, upload timing, LOD
 // resolution, and chrome measurement. It owns no scene node, no material,
-// and no React state, so a presenter mounting or unmounting costs it
-// nothing.
+// and no React state. Presenters can change the requested raster density
+// without creating another source.
 
 import * as THREE from 'three'
 import {
@@ -33,7 +31,6 @@ import {
   clampScale,
   clampTiers,
   createDomTextureSource,
-  filterPolicy,
   maxTier,
   measureSurfaceChrome,
   seedTier,
@@ -68,6 +65,7 @@ export interface SurfacePartPublication {
   readonly size: SurfaceSize
   readonly captureRoot: HTMLElement | null
   readonly pageRoot: HTMLElement | null
+  readonly pageContent?: () => HTMLElement | null
 }
 
 export interface SurfaceSourceOptions {
@@ -83,7 +81,7 @@ export interface SurfaceSourceOptions {
   onError(error: Error): void
   onPainted?(receipt: DomPaintReceipt): void
   onChrome?(chrome: SurfaceChrome): void
-  /** The authored content root whose radius and shadows describe the matter. */
+  /** The authored content root whose radius and shadows describe the surface. */
   chromeElement?(): HTMLElement
 }
 
@@ -102,10 +100,12 @@ export interface SurfaceSourceRuntime {
   subscribePaint(listener: (receipt: DomPaintReceipt) => void): () => void
   setSize(size: SurfaceSize): void
   setResolution(resolution: SurfaceResolution): void
+  setPixelRatio(ratio:number):void
   setMirrorU(mirrorU: boolean): void
   setPaint(paint: 'auto' | 'always'): void
   /** One presenter's LOD demand. The runtime rasterizes for the greediest. */
   proposeTier(key: number, tier: number | null): void
+  proposeRaster(key:number,scale:SurfaceSize|null):void
   /** Advance capture one renderer frame. Returns true if anything changed. */
   frame(): boolean
   /** Has any paint succeeded and been marked for upload? */
@@ -163,7 +163,8 @@ export function createSurfaceSourceRuntime(
   options: SurfaceSourceOptions,
 ): SurfaceSourceRuntime {
   let { size, resolution, mirrorU, paint } = options
-  const { label, content, pixelRatio, onError, onPainted, onChrome, chromeElement } = options
+  let {pixelRatio}=options
+  const { label, content, onError, onPainted, onChrome, chromeElement } = options
 
   const ladderFor = (r: SurfaceResolution, w: number, h: number) => {
     const ladder = Array.isArray(r) ? tiersInRange(DEFAULT_TIERS, r[0], r[1]) : DEFAULT_TIERS
@@ -214,7 +215,7 @@ export function createSurfaceSourceRuntime(
   let alloc: { width: number; height: number; mips: boolean } | null = {
     width: source.canvas.width,
     height: source.canvas.height,
-    mips: filterPolicy(pinned !== null).mips,
+    mips: texture.generateMipmaps,
   }
 
   let chrome: SurfaceChrome = EMPTY_CHROME
@@ -224,7 +225,7 @@ export function createSurfaceSourceRuntime(
   let uploadedGeneration = -1
   let anyUpload = false
   const settle = { w: -1, h: -1, quiet: 0, settled: false }
-  const proposals = new Map<number, number>()
+  const proposals = new Map<number, SurfaceSize>()
   let disposed = false
 
   texture.onUpdate = () => {
@@ -241,21 +242,29 @@ export function createSurfaceSourceRuntime(
     onChrome?.(next)
   }
 
-  const upload = () => {
-    if (!source.painted() || !texture) return
-    // Compared HERE, against the canvas this upload is about, rather than
-    // marked at the resize and deferred: a Surface whose size is measured
-    // can resize every frame, and a mark re-armed every commit chases its
-    // own tail — traced as one alloc followed by 120 rejected uploads.
+  const syncStorage = () => {
+    if (!texture) return
+    // LOD and draw-time raster alignment can resize after frame() arms an
+    // upload. Invalidate storage at that mutation too: waiting for the next
+    // frame rejects a growing upload and leaves old pixels on screen (decision #48).
     const store = { width: source.canvas.width, height: source.canvas.height }
-    const mips = filterPolicy(pinned !== null).mips
+    const mips = pinned !== null || source.scale() <= 0.5
     if (!alloc) {
       alloc = { ...store, mips }
     } else if (uploadNeedsRealloc(alloc, store) || alloc.mips !== mips) {
       texture.dispose()
       applyFilterPolicy(texture, source.scale(), pinned !== null)
       alloc = { ...store, mips }
+      // The capture carries its previous complete raster across a resize.
+      // Upload that carried image even if auto paint was otherwise idle.
+      pendingUploadGeneration = source.currentPaint()?.frame.generation ?? -1
+      texture.needsUpdate = true
     }
+  }
+
+  const upload = () => {
+    if (!source.painted() || !texture) return
+    syncStorage()
     pendingUploadGeneration = source.currentPaint()?.frame.generation ?? -1
     texture.needsUpdate = true
     anyUpload = true
@@ -264,13 +273,19 @@ export function createSurfaceSourceRuntime(
   const applyTier = () => {
     if (pinned !== null) {
       source.setScale(pinned)
+      syncStorage()
       return
     }
-    let best: number | null = null
-    for (const tier of proposals.values()) {
-      if (best === null || tier > best) best = tier
+    let x=0,y=0
+    for(const proposal of proposals.values()){x=Math.max(x,proposal[0]);y=Math.max(y,proposal[1])}
+    const ladder=ladderFor(resolution,size[0],size[1])
+    if(!proposals.size)x=y=seedTier(ladder,pixelRatio)
+    if(Array.isArray(resolution)){
+      x=Math.min(ladder[ladder.length-1]!,Math.max(ladder[0]!,x))
+      y=Math.min(ladder[ladder.length-1]!,Math.max(ladder[0]!,y))
     }
-    if (best !== null && best !== source.scale()) source.setScale(best)
+    source.setRasterScale(clampScale(x,size[0],1),clampScale(y,1,size[1]))
+    syncStorage()
   }
 
   return {
@@ -298,17 +313,15 @@ export function createSurfaceSourceRuntime(
         pinned = nextPinned
         applyTier()
       }
+      syncStorage()
     },
+    setPixelRatio(next){if(next===pixelRatio)return;pixelRatio=next;applyTier()},
     setResolution(next) {
       if (next === resolution) return
       resolution = next
       pinned = pinnedFor(resolution, size[0], size[1])
       applyTier()
-      // Neither branch touches the texture: the upload path reallocates on
-      // any disagreement with what the storage was allocated for, and the
-      // mip decision is half of that pair — so a pin that lands on the SAME
-      // tier still gets fresh storage. The repaint is what carries it
-      // there; an idle Surface has no other reason to upload.
+      // Pinning can change mip allocation even at the same density.
       source.repaint()
     },
     setMirrorU(next) {
@@ -323,8 +336,12 @@ export function createSurfaceSourceRuntime(
     },
     proposeTier(key, tier) {
       if (tier === null) proposals.delete(key)
-      else proposals.set(key, tier)
+      else proposals.set(key, [tier,tier])
       if (pinned === null) applyTier()
+    },
+    proposeRaster(key,scale){
+      if(scale===null)proposals.delete(key);else proposals.set(key,scale)
+      if(pinned===null)applyTier()
     },
     frame() {
       if (disposed || !texture) return false
@@ -342,6 +359,7 @@ export function createSurfaceSourceRuntime(
       } else if (!settle.settled && ++settle.quiet >= QUIET_FRAMES) {
         settle.settled = true
         source.resettle()
+        syncStorage()
         work = true
       } else if (!settle.settled) {
         work = true

@@ -34,7 +34,7 @@ describe('where a texture coordinate lands on the geometry', () => {
   })
 
   // The fault this module exists for: a deformed sheet's UVs are no longer a
-  // linear remap of its box, so plane math places matter off the surface.
+  // linear remap of its box, so plane math places objects off the surface.
   it('follows a deformed sheet instead of its flat box', () => {
     // The same plane with its right edge folded a quarter turn toward the
     // camera. Plane math would still answer z = 0 at u = 1.

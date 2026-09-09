@@ -6,8 +6,8 @@
  *
  * Motion rules: the letters animate transform and color ONLY — both
  * paint-cheap, neither ever on a Surface capture root. The `.logo-twin`
- * root that matter mode captures is a plain sized box: no transform, no
- * opacity, no mask (docs/authoring.md); every moving part of matter
+ * root that the scene captures is a plain sized box: no transform, no
+ * opacity, no mask (docs/authoring.md); every moving scene object
  * mode lives on the MESH, not in the captured DOM.
  */
 
@@ -40,7 +40,7 @@
 }
 
 /* Glyphs center in their slot on both axes (the twin does the same, so
- * matter mode lands on identical geometry). Wide faces and swashes
+ * the scene lands on identical geometry). Wide faces and swashes
  * overflow the slot freely — the slot is an address, not a clip.
  *
  * The idle float is a per-frame transform WRITE from the motion
@@ -70,15 +70,9 @@
   will-change: transform;
 }
 
-/* Who shows the letters, keyed to the lift's phase (the word wears it
- * as data-phase): the page presents through 'page' and 'lifting', the
- * canvas through 'gl' and 'landing'. Hidden page letters keep their
- * layout — they are the measuring rig — but the twins carry the
- * pixels; showing both would double every glyph. The carried float
- * never pauses: the carrier keeps writing the slots (hidden is not
- * stopped) while the meshes read the same sample. */
-.logo-word[data-phase='gl'] .logo-letter,
-.logo-word[data-phase='landing'] .logo-letter {
+/* The lab's data-phase='gl' means the scene has accepted presentation.
+ * Hidden page letters retain layout and the carried motion keeps running. */
+.logo-word[data-phase='gl'] .logo-letter {
   visibility: hidden;
 }
 
@@ -212,7 +206,7 @@
 /* The renderer switch. Both names carry weight against an inset track,
  * so the panel reads as a two-state control at a glance instead of a
  * checkbox to decode. */
-.logo-matter {
+.logo-renderer {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 3px;
@@ -223,7 +217,7 @@
   border-radius: 5px;
 }
 
-.logo-matter button {
+.logo-renderer button {
   padding: 9px 0 8px;
   font: 700 10px/1 var(--label);
   letter-spacing: 0.12em;
@@ -238,11 +232,11 @@
     color 140ms ease;
 }
 
-.logo-matter button:hover {
+.logo-renderer button:hover {
   color: var(--ink);
 }
 
-.logo-matter button[data-on='true'] {
+.logo-renderer button[data-on='true'] {
   background: var(--ink);
   color: var(--bench-hi);
 }

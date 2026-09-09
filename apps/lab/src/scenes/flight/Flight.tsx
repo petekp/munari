@@ -28,7 +28,7 @@
 //    shared canvas keeps every other pixel it has, and the page copy is
 //    released inside the draw that proves the replacement.
 //
-// 3. THE CANVAS IS ONLY SOLID WHERE THERE IS MATTER. The overlay is
+// 3. THE CANVAS INTERCEPTS INPUT ONLY OVER ITS SURFACES. The overlay is
 //    `pointer-events: none` at rest — a canvas with nothing in it must not be
 //    able to eat a click, a text selection or a scroll — and is switched to
 //    `auto` for exactly as long as the pointer is over an airborne card.
@@ -57,13 +57,15 @@ import {
   type SurfaceChrome,
   type SurfaceHandle,
   type SurfaceProgress,
-  type SurfaceView,
-  useSurface,
+  type SurfacePresentation,
+  createSurface,
+  createPageTarget,
+  type PageTarget,
   useSurfaceChrome,
   useSurfaceDriver,
   useSurfaceSourceRoot,
   useSurfaceTexture,
-  useSupportsDOMSurfaces,
+  useSurfaceSupport,
 } from '@petepetrash/munari'
 import {
   cameraDistance,
@@ -243,10 +245,10 @@ interface Flight {
   /**
    * `held` — the hand is on it. `float` — it was tapped rather than dragged,
    * and hangs where it was left. `home` — it is flying back into its slot.
-   * `crumple` — it is being deleted, and dies as matter.
+   * `crumple` — it is being deleted, and is removed from the scene.
    *
    * `float` is the state the whole lab is actually about. A card is only
-   * interesting as matter for as long as it is off the page, and a card you
+   * retained in the scene for as long as it is off the page, and a card you
    * have to keep the mouse button down on is a card you cannot click into. So
    * a tap parks it in mid-air, still solid, still a DOM subtree: you can put
    * the caret in its note field and type while it is casting a shadow on the
@@ -425,9 +427,10 @@ export interface AeroState {
   wad: THREE.Vector3
 }
 
-function CardMaterial({ gloss = 0.5, aero }: { gloss?: number; aero: AeroState }) {
+function CardMaterial({ gloss = 0.5, aero, chromeRef }: { gloss?: number; aero: AeroState; chromeRef: React.RefObject<SurfaceChrome | null> }) {
   const texture = useSurfaceTexture()
   const { chrome, width, height } = useSurfaceChrome()
+  useLayoutEffect(() => { chromeRef.current = chrome }, [chrome, chromeRef])
   const uniforms = useMemo(
     () => ({
       tMap: textureSlot(),
@@ -501,7 +504,7 @@ interface DriverProps {
   /**
    * The card's pose is carried by a GROUP wrapping the Surface, not by the
    * Surface's own mesh. `Surface` spreads the caller's mesh props BEFORE
-   * installing its own `ref`, so a `ref` passed down through `Surface.WebGL`
+   * installing its own `ref`, so a `ref` passed down through `Surface.Mesh`
    * would overwrite the one Surface uses internally to drive its texture.
    * A wrapper group costs a matrix and cannot collide with anything.
    */
@@ -657,7 +660,7 @@ function stepCrumple(
       // gesture's clothes. The plate springs gently off the page (the
       // same free solver as a throw home, aimed up instead of down)
       // while the page copy stays visible until presentation proof. The
-      // crush may not begin until the sheet is fully matter. `crumplePhase`
+      // crush may not begin until the sheet is fully in the scene. `crumplePhase`
       // holds it at exactly 0 through this window, so the swap keeps its
       // pixel-copy guarantee. Never for a released press (`tossed`):
       // this solver's damping is sized to STOP a card, and it was
@@ -845,7 +848,7 @@ function writeShadow(
 ) {
   if (!sh) return
   // Unseen until the pixels are the scene's. The card's own mesh warms by
-  // drawing write-free, but this plane is ordinary scene matter: during
+  // drawing write-free, but this plane is ordinary scene geometry: during
   // warm-up it would lay a second copy of the card's box-shadow over the
   // page copy still casting its own. Progress is exactly zero on both
   // handoff frames, which are the two moments the DOM's shadow is the one
@@ -1162,6 +1165,7 @@ interface FlyingProps {
   onAltitude: (hi: boolean) => void
   /** The wad left the viewport: commit the delete. */
   onCrumpled: () => void
+  onRegrab: (localX: number, localY: number) => void
 }
 
 function Flying({
@@ -1174,6 +1178,7 @@ function Flying({
   onLanded,
   onAltitude,
   onCrumpled,
+  onRegrab,
 }: FlyingProps) {
   const f = flight.current!
   const cardRef = useRef<THREE.Group>(null)
@@ -1226,15 +1231,15 @@ function Flying({
   // exact-zero landing. What the ramp DOES between them is this scene's, and
   // this scene already has a continuous excursion — the plate's altitude. So
   // the crossing is not a duration anyone chose; it is where the card is.
-  useSurfaceDriver(surface, ({ target }) => {
+  useSurfaceDriver(({ target }) => {
     const f = flight.current
     // Landing is a fact, not a motion. By the time the board asks for the
     // page back the plate is already home — or the wad is off screen, at an
     // altitude that will never come down — so the ramp answers exact zero
     // and the pixels change hands on the next frame.
-    if (target === 'dom' || !f) return 0
+    if (target === 'page' || !f) return 0
     return Math.max(ADMIT, Math.min(1, f.plate.p.z / LIFT_Z))
-  })
+  }, surface)
 
   return (
     <>
@@ -1255,7 +1260,7 @@ function Flying({
       />
 
       {/* renderOrder 2 — AFTER the card, on purpose. The card writes depth
-          (matter occludes its own shadow), so drawing the shadow second lets
+          (the card occludes its own shadow), so drawing the shadow second lets
           the depth test carve the card's silhouette out of it per fragment:
           CSS's outside-the-border-box clip, enforced by geometry. Drawn
           first, the shadow's interior survived under the card and leaked
@@ -1290,15 +1295,17 @@ function Flying({
           a curve rather than a crease. A flat card renders identically at
           any tessellation. */}
       <group ref={cardRef}>
-        <Surface.WebGL
+        <Surface.Mesh
           surface={surface}
           placement="manual"
           alpha="source"
           renderOrder={1}
           frustumCulled={false}
           geometry={<planeGeometry args={[f.w, f.h, 32, 12]} />}
-          material={<CardMaterial aero={aero} />}
-        />
+          material={<CardMaterial aero={aero} chromeRef={chromeRef} />}
+        >
+          <RegrabTarget flight={flight} onRegrab={onRegrab} />
+        </Surface.Mesh>
       </group>
     </>
   )
@@ -1308,7 +1315,7 @@ function Flying({
  * The airborne card's re-grab, taken from the DOM rather than from an r3f
  * handler.
  *
- * `Surface.WebGL` installs its own `onPointerDown` over the caller's, so a
+ * `Surface.Mesh` installs its own `onPointerDown` over the caller's, so a
  * handler passed to the mesh would simply be discarded — and the DOM is the
  * better route anyway: the `[data-nodrag]` test that protects the note field
  * is then the same one the page copy uses, resolved against the real subtree
@@ -1409,6 +1416,12 @@ function playFlip(root: HTMLElement, before: Map<Element, DOMRect>) {
 /** What the overlay Canvas below resolves `dpr={[1, 2]}` to. */
 const canvasDpr = () => Math.min(2, Math.max(1, window.devicePixelRatio))
 
+function ReleaseAfterSceneCleanup({ onRelease }: { onRelease: () => void }) {
+  const release = useEffectEvent(onRelease)
+  useEffect(() => () => release(), [])
+  return null
+}
+
 // ── the lab ──────────────────────────────────────────────────────────────
 
 export function FlightApp() {
@@ -1419,7 +1432,7 @@ export function FlightApp() {
   })
   const [board, setBoard] = useState<Record<ColId, string[]>>(() => ({ ...START }))
   // No trial, no flight — see `carryPlainly`.
-  const supported = useSupportsDOMSurfaces()
+  const supported = useSurfaceSupport()
   const [flyingId, setFlyingId] = useState<string | null>(null)
   // The card's identity, declared here because the board is what asks for a
   // handoff and what has to know when one has happened. The excursion's
@@ -1428,21 +1441,28 @@ export function FlightApp() {
   // either: the page has no autonomous motion, and a drop reflow is barred
   // until GL holds. `durationMs` is only what the frames before the driver
   // is installed fall back to.
-  const [view, setView] = useState<SurfaceView>('dom')
-  const [presented, setPresented] = useState<SurfaceView>('dom')
-  // The card stays mounted, unseen, through the protocol's reclaim linger.
-  // That keeps the source teardown out of the commit that gives the pixels
-  // back to the page, and keeps the finished flight's presentation proof
-  // from counting for the next card.
-  const [glMounted, setGlMounted] = useState(false)
+  const [view, setView] = useState<SurfacePresentation>('page')
+  const [presented, setPresented] = useState<SurfacePresentation>('page')
   // Identity only. What the Surface is DOING — its view, its timing, who
   // hears about it — is stated once, on the `<Surface>` below.
-  const surface = useSurface('flight-card')
+  const cardSurfaces = useMemo(() => new Map<string, { handle: SurfaceHandle; target: PageTarget; ref: (element: HTMLLIElement | null) => void }>(), [])
+  const cardSurface = (id: string) => {
+    let entry = cardSurfaces.get(id)
+    if (!entry) {
+      const target = createPageTarget()
+      entry = { handle: createSurface(`flight-card-${id}`), target, ref(element) {
+        if (element) slots.current.set(id, element)
+        else slots.current.delete(id)
+        target.ref(element)
+      } }
+      cardSurfaces.set(id, entry)
+    }
+    return entry
+  }
   const requestLift = useCallback((webgl: boolean) => {
-    if (webgl) setGlMounted(true)
-    setView(webgl ? 'webgl' : 'dom')
+    setView(webgl ? 'scene' : 'page')
   }, [])
-  const glHolds = presented === 'webgl'
+  const glHolds = presented === 'scene'
   const ending = useRef(false)
   const pendingDelete = useRef<string | null>(null)
   // Radii and box-shadow layers, measured from the card's own paint. A ref,
@@ -1767,7 +1787,7 @@ export function FlightApp() {
   // activation of the button, or the click that trails a press and finds
   // the crumple already running) it is the hands-free delete: rise, crush,
   // drop. A card already in flight crumples from its current pose —
-  // momentum and all; a card at rest on the page becomes matter first, the
+  // momentum and all; a card at rest on the page enters the scene first, the
   // same flight machinery as a grab (page copy releases on presentation
   // proof, plate springs off the page), except the mode is `crumple` from birth.
   // The wad faded out: NOW the board forgets. The FLIP snapshot goes first,
@@ -1788,9 +1808,8 @@ export function FlightApp() {
     ending.current = false
     setFlyingId(null)
     setAtAltitude(false)
-    setGlMounted(false)
-    setView('dom')
-    setPresented('dom')
+    setView('page')
+    setPresented('page')
     document.querySelectorAll<HTMLElement>('.l14-slot').forEach((el) => {
       el.style.removeProperty('--l14-near')
     })
@@ -1979,28 +1998,30 @@ export function FlightApp() {
     requestLift(false)
   }, [requestLift, snapshot])
 
-  const onPresentedViewChange = useCallback(
-    (next: SurfaceView) => {
+  const onPresentationChange = useCallback(
+    (next: SurfacePresentation) => {
       setPresented(next)
-      const id = pendingDelete.current
-      if (next === 'dom' && id) commitDelete(id)
     },
-    [commitDelete],
+    [],
   )
 
-  // The page already holds when this runs. Waiting for `glMounted` to fall
-  // keeps the source teardown in the protocol's later reclaim commit and
-  // clears its keyed receipt before another card can start a flight.
-  useEffect(() => {
-    if (!ending.current || glMounted) return
+  const releaseFlight = useCallback(() => {
+    if (!ending.current) return
+    const id = pendingDelete.current
+    if (id) {
+      commitDelete(id)
+      return
+    }
     ending.current = false
     flight.current = null
     setFlyingId(null)
     setAtAltitude(false)
+    setView('page')
+    setPresented('page')
     document.querySelectorAll<HTMLElement>('.l14-slot').forEach((el) => {
       el.style.removeProperty('--l14-near')
     })
-  }, [glMounted])
+  }, [commitDelete])
 
   // The loop closing: the physics writes a CSS custom property onto the slot
   // it is aimed at, every frame, and ordinary CSS does the rest.
@@ -2033,7 +2054,6 @@ export function FlightApp() {
     return () => cancelAnimationFrame(raf)
   }, [flyingId, slotRect])
 
-  const flyingCard = flyingId ? cards[flyingId] : null
 
   return (
     <div className="l14" ref={scroller}>
@@ -2049,64 +2069,35 @@ export function FlightApp() {
                 </span>
               </h2>
               <ul>
-                {board[col.id].map((id) => {
-                  const body = (
-                    <CardBody
-                      card={cards[id]}
-                      onChange={(p) => patch(id, p)}
-                      onGrab={(e) => beginDrag(id, e)}
-                      onDelete={(e) => deleteCard(id, e)}
-                    />
-                  )
-                  const f = flyingId === id ? flight.current : null
-                  return (
-                    <li
-                      className="l14-slot"
-                      key={id}
-                      data-empty={flyingId === id && glHolds}
-                      data-away={flyingId === id && glHolds && atAltitude}
-                      data-deleting={pendingDelete.current === id ? '' : undefined}
-                      ref={(el) => {
-                        if (el) slots.current.set(id, el)
-                        else slots.current.delete(id)
-                      }}
-                    >
-                      {/* The source is declared HERE, in the slot the card
-                          came from, and presented by a mesh inside the
-                          Canvas. Nothing moves at handoff: this copy keeps
-                          its layout box and simply stops being the visible
-                          one, which is why the page does not twitch and why
-                          the slot is already the right size to drop into.
-                          `size` is authored rather than measured so the
-                          texture and the plate geometry are the same card to
-                          a sub-pixel. */}
-                      {f ? (
-                        <Surface
-                          surface={surface}
-                          view={view}
-                          timing={{ settleMs: 0, durationMs: 1 }}
-                          size={[f.w, f.h]}
-                          resolution={density}
-                          source={body}
-                          onPresentedViewChange={onPresentedViewChange}
-                          onWebGLReleased={() => setGlMounted(false)}
-                          onChrome={(c) => {
-                            chromeRef.current = c
-                          }}
-                        >
-                          <Surface.DOM>{body}</Surface.DOM>
-                          <RegrabTarget flight={flight} onRegrab={regrab} />
-                        </Surface>
-                      ) : (
-                        body
-                      )}
-                    </li>
-                  )
-                })}
+                {board[col.id].map(id => (
+                  <li className="l14-slot" key={id} ref={cardSurface(id).ref}
+                    data-empty={flyingId === id && glHolds}
+                    data-away={flyingId === id && glHolds && atAltitude}
+                    data-deleting={pendingDelete.current === id ? '' : undefined} />
+                ))}
               </ul>
             </section>
           ))}
         </div>
+      </div>
+
+      <div style={{display:'contents'}}>
+        {Object.values(cards).map(card => {
+          const { handle, target } = cardSurface(card.id)
+          const f = flyingId === card.id ? flight.current : null
+          return <Surface.Root key={card.id} surface={handle} timing={{ settleMs: 0, durationMs: 1 }}
+            inScene={Boolean(f) && view === 'scene'} onPresentationChange={f ? onPresentationChange : undefined}>
+            <Surface.HTML target={target} size={f ? [f.w,f.h] : undefined} resolution={density} onChrome={chrome => { if (f) chromeRef.current = chrome }}>
+              <CardBody card={card} onChange={change => patch(card.id,change)} onGrab={event => beginDrag(card.id,event)} onDelete={event => deleteCard(card.id,event)} />
+            </Surface.HTML>
+            <Surface.Scene>
+              {f && <>
+                <Flying surface={handle} flight={flight} density={density} chromeRef={chromeRef} slotRect={slotRect} scrollTop={scrollTop} onLanded={onLanded} onAltitude={setAtAltitude} onCrumpled={onCrumpled} onRegrab={regrab} />
+                <ReleaseAfterSceneCleanup onRelease={releaseFlight} />
+              </>}
+            </Surface.Scene>
+          </Surface.Root>
+        })}
       </div>
 
       {/* `position` and `inset` have to be INLINE: r3f writes
@@ -2118,19 +2109,14 @@ export function FlightApp() {
 
           `pointer-events` is deliberately NOT here. It belongs to the shared
           host, which keeps its wrapper clear and lets the pointer gate make
-          the canvas solid for exactly as long as the ray is over matter. */}
+          the canvas solid for exactly as long as the ray hits a Surface. */}
       <SurfaceCanvas
         pointerMode="surfaces"
         className="l14-overlay"
         style={{ position: 'fixed', inset: 0 }}
         gl={{ alpha: true, antialias: true }}
-        // An overlay stretched across somebody's document does not get to burn
-        // a GPU frame every 8 ms for the privilege of being empty. There is a
-        // card in flight or there is nothing to draw, and the host promotes
-        // this to `always` for exactly as long as a crossing or a mounted
-        // WebGL side needs it. (Same instinct as the upload-on-paint contract
-        // one layer down: idle costs nothing, and "idle" is the normal case.)
-        frameloop="demand"
+        // Flight needs frames after the handoff settles, until its physics stops.
+        frameloop={flyingId !== null ? 'always' : 'demand'}
         dpr={[1, 2]}
         camera={{ fov: FOV, position: [0, 0, 1000] }}
         onCreated={(state) => {
@@ -2139,20 +2125,7 @@ export function FlightApp() {
         }}
       >
         <PixelPerfect />
-        {flyingCard && flight.current && glMounted && (
-          <Flying
-            key={flyingCard.id}
-            surface={surface}
-            flight={flight}
-            density={density}
-            chromeRef={chromeRef}
-            slotRect={slotRect}
-            scrollTop={scrollTop}
-            onLanded={onLanded}
-            onAltitude={setAtAltitude}
-            onCrumpled={onCrumpled}
-          />
-        )}
+
       </SurfaceCanvas>
     </div>
   )

@@ -1,6 +1,6 @@
 // The outline law: where does a letter END?
 //
-// The matter shader treats a lifted letter's alpha as a HEIGHT field and
+// The material shader treats a lifted letter's alpha as a HEIGHT field and
 // lights it (logoShaders). That buys shading, not shape — the mesh is
 // still a flat rectangle, and a rectangle has no edges to catch a light.
 // To give a letter real thickness something has to know its OUTLINE, and

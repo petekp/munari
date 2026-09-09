@@ -2111,3 +2111,1003 @@ savings. Each pilot must measure correct task outcomes and work cost against
 the corrected manual workflow. A smaller result with equal correctness is
 preferred. Remove a pilot that adds state, idle work or required reading without
 an observed benefit, following #37.
+
+## #39 — The pointer has two routes, and one law picks between them (2026-09-02, core + react binding)
+
+**Decision.** A Surface whose canvas hears the pointer (#33) has TWO
+routes into its parked content, and `routeFor` — pure, in
+`packages/core/src/pointer/pointerRoute.ts` — decides which one owns
+input at any instant. The *relay* synthesizes the whole interaction and
+serves every pose. The *native route* lifts the parked capture canvas
+above the renderer canvas, puts the presented pose on the canvas itself
+as a CSS `matrix3d`, and lets Chrome hit-test the real child through it.
+The verdict is a function of one request and six observed booleans and
+nothing else; routes consult it and never negotiate with each other. A
+change of verdict is a handoff with named duties, in a fixed order.
+
+The native route is opt-in per presenter: `<Surface.Mesh
+pointerRoute="auto">`. The default stays `"relay"`.
+
+**Why a second route at all.** A synthetic dispatch cannot produce a
+trusted event, and four things follow only from trusted events: caret
+placement, drag selection, the browser's own `:focus-visible` verdict,
+and any consumer that checks `isTrusted`. Real `:hover` is a fifth, and
+it is better than a twin because it self-paints into the capture with no
+relay code at all (measured 2026-09-02: the hover state change alone
+took the source from 2 paints to 4). None of that is reachable by
+improving the relay; it is a property of who dispatched.
+
+**Why one pose, not two.** The `matrix3d` string the browser hit-tests
+through and the point the relay walks to come from one function,
+`surfacePose`. A projection computed twice is a projection that drifts:
+the copies agree in the case the author tried and part company under a
+mirrored source, a non-square viewport, or a scrolled page, and the
+symptom is a click a few pixels off with no error anywhere. The chain is
+three's own (`viewport · P · V · M · pixelToLocal`, three.js PR #31233),
+which predicts Chrome's own transformed rects to 0.01px, with the
+browser's hit region agreeing with GL rasterization to ≤1.25px (median
+0.75px), unchanged at dpr 2 (measured 2026-09-02, Chrome 151).
+
+**The fault the single verdict prevents.** #33 was written because one
+press was heard by two live copies and the visible copy was not the one
+that changed (3/3 clicks to the hidden copy through a whole 450ms
+dwell). Two routes into ONE copy is the same fault at a smaller scale
+and it is harder to see: the press lands on the right element twice, so
+a counter counts two, a toggle returns to where it started, and a form
+submits twice — all of which read as consumer bugs. Making the route a
+single derived value rather than two enable flags that happen to
+disagree is what makes that state unrepresentable, and
+`pointerRouteDuties` is where "exactly one owner" is checkable rather
+than asserted.
+
+**The rig, and its three hard rules** (all measured 2026-09-02, Chrome
+151; platform.md #20–#21). Invisibility is `visibility: hidden` on the
+canvas with `visibility: visible` on the child, NEVER `opacity` — a
+static `opacity: 0` root bakes blank into the paint record and the
+capture reads `[0,0,0,0]`, while the visibility rig keeps paints firing
+and the capture fully alive. The pose goes on the CANVAS, never the
+child: a transform restyle on the drawn child costs one paint per
+restyle — a paint every frame of a flight — while transform restyles on
+the canvas are paint-free after the first, and the capture never sees
+them. And hit-testing is CLIPPED to the canvas's box — the TRANSFORMED
+box, so a canvas wearing the full pose is hit-testable on exactly the
+projected quad (0.25px agreement at a perspective edge) and nowhere
+else, with the CSS box, and therefore the replay density (platform.md
+#8), never changing size.
+
+**Coverage is not a condition, and tilts ride.** An earlier draft of
+this route kept the pose on the child and moved a content-sized canvas
+box under the projected quad, which made "does the box cover the quad"
+a per-frame judgement — and under a pixel-calibrated perspective camera
+it refused every tilt, because a rotation swings one edge toward the
+eye and magnifies it (a 40° tilt of a 320×200 panel projects 215.5px
+tall; the number is pinned in the surfacePose contract). The
+canvas-wears-pose rig removed the judgement: the clip follows the worn
+transform, so coverage is exact by construction for every planar pose.
+A grown box was rejected because the replay ratio is the backing/CSS
+ratio (platform.md #8) — a box wider than the content rasterizes the
+content into a corner of its own texture — and a second hit-only canvas
+holding a copy of the content was rejected outright: two live copies is
+#33's own fault, restored.
+
+**Facing is a condition, computed rather than bet.** three's default
+raycast refuses a back-facing hit under `FrontSide`, and the browser
+knows nothing of material sides — so without a facing law the same
+Surface turned past 90° takes clicks natively and refuses them on the
+relay. The pose reports `frontFacing` from the projected quad's winding
+(mirrorU flips the expectation with the map), and a double-sided
+material rides either face. CSS `backface-visibility` on the canvas was
+rejected as the mechanism: whether it governs hit-testing of an
+unpainted canvas child is unmeasured, and the winding is arithmetic
+already in hand.
+
+**The shape.** `surfacePose` (arithmetic, no DOM), `pointerRoute` (the
+verdict, no DOM and no arithmetic), `nativeRoute` (the DOM rig and the
+twins the browser's own events drive), `twins.ts` (the attribute names
+and the chain walk, now shared by both routes rather than owned by the
+relay), and `surfaceNativeRoute.ts` in the binding, which observes and
+applies but decides nothing. Planarity is the one judgement the binding
+makes, because only the binding can see the geometry: this library
+claims it for a plane it built, nobody deformed
+(`deformSurfaceGeometry` stamps its marker on the geometry instance —
+the receipt survives a presenter swap and catches a deform through a
+mesh ref), and no scene raycast reshapes — an authored raycast is a hit
+policy the browser cannot be told to honor. Never a tolerance on the
+vertices: a Surface bent by less than a tolerance is still one whose
+pointer lands in the wrong row (#35's 60px at 44px rows). Two
+presenters of one source share one parked canvas; the first to lift
+holds it until it parks, and the other's native request quietly stays
+on the relay.
+
+**The authoring contract does not move.** Scenes keep writing
+`[data-hover]`/`[data-active]` twins (docs/authoring.md); the native
+route sets those same attributes from the browser's real events, through
+the same module the relay uses. A scene never learns which route it got.
+
+**The contracts.** `tests/conformance/pointer/pointerRoute` (the law,
+enumerated over all 128 condition sets),
+`tests/conformance/pointer/surfacePose` (agreement: at rest `posePoint`
+IS the relay's own `rect.left + u * rect.width`, and the `matrix3d`
+string parsed and applied lands on the same point),
+`tests/conformance/pointer/routeParity` (one behavioural spec run
+against both routes, plus route-scoped contracts for what only the
+native route can express), and `surfaceNativeRoute.test.ts` beside the
+binding module (planarity receipts, duty order, style-write economy).
+
+**Known, accepted, open.** The z-index the rig takes is the tallest
+explicit one between the renderer canvas and the document, plus one;
+page chrome above the renderer canvas with a TALLER z-index than
+anything on that chain keeps its hits inside the projected quad. While
+the rig rides, the library writes no cursor: the relay's mirrored
+cursor on the renderer canvas is cleared at lift, and the cursor is the
+browser's — whether Chrome applies an unpainted canvas child's `cursor`
+property is unmeasured, and the answer is a probe, not a write the rig
+cannot verify. And capability is taken as an input rather than probed.
+The library's own rig is driven by `instruments/native-pointer`
+(2026-09-02): trusted clicks land flat and tilted, real `:hover` and
+the twin follow the pointer, a real input takes focus and keystrokes,
+and the park restores every written style. The route stays opt-in
+while the cursor question above is open and no scene has shipped on it.
+
+## #40 — The public Surface contract names intent, hold, and motion separately (2026-09-04, documentation + react binding)
+
+**Status: implemented and locally verified, 2026-09-04.** The public
+Surface API uses `renderIn`, defaulting to `page`, with four explicit request
+values: `page`, `canvas`, `both`, and `none`. `page` and `canvas` require their
+corresponding declared presentations; `both` keeps page and mesh presentations
+visible with page primary for keyboard and accessibility; `none` keeps a
+source available to another material without registering a visible presenter.
+These values describe the request, not a proof that a missing presenter or an
+unsupported capture path will arrive.
+
+The tradeoff is one explicit presentation choice at the declaration boundary
+instead of a binary toggle helper whose omission could mean different things.
+That small request surface covers exclusive handoff, a Twin, and source-only
+capture without making `undefined` carry a hidden relationship between the
+renderers.
+
+`Surface.DOM` renders its part source when no children are provided. The
+captured source and page presentation are separate React instances, so shared
+state belongs above the Surface. `Surface.Mesh` is the public scene presenter
+name. `Surface.Scene` is an always-declared lifecycle boundary under the
+shared `SurfaceCanvas`; it retains one Surface's custom scene subtree through
+preparation, reversal, return and cleanup. The shared host remains mounted
+for the capability and scene lifetime. A Scene cannot retain a caller-owned
+host.
+
+Separated wiring passes the same handle to `<Surface.DOM surface={handle}>`;
+that form requires explicit children and can keep a stable native page copy
+outside the captured source tree. A canvas-only resident has no page handoff
+delay and does not claim a protocol frame loop. It still distinguishes
+presenter readiness from actual presentation evidence. `useSurfaceState()`,
+`useSurfaceProgress()`, and `useSurfaceDriver(step)` read the
+nearest Surface identity, including across page and scene renderer trees.
+
+The default `<Surface.Mesh presentation="auto">` owns its draw evidence. The
+specialist `presentation="manual"` seam retains the mesh proxy and pointer
+relay while delegating final compositor evidence to the advanced
+`surfaceManualPresenter`. A manual presenter must cover every declared part
+and call `present()` only for that part's actual final compositor draw.
+
+`useSurfaceHandle(name?)` replaces `useSurface` as the identity hook for
+separate trees and external observers; `createSurface` remains available. A
+name is a diagnostic label, not a global lookup key. `useSurfaceState(handle?)`
+reports `requested`, `presented`, `ready`, `supported`, and `isChanging` from
+the nearest context or explicit handle. `SurfacePresentation` has the four
+hold values above; `SurfaceDestination` has `page` and `canvas` for motion
+callbacks and driver targets. `onPresentationChange` reports the hold and
+`onMotionComplete` reports the motion endpoint. They are distinct. The public
+API does not add a phase enum that conflates preparation with completion.
+
+`useSurfaceSupport()` is hydration-safe and returns a boolean;
+`supportsSurfaces()` is the imperative capability check. The revision removes
+`useSurfaceView`, `mounted`, `useSurfaceView().mounted`, and
+`onWebGLReleased` from the public contract. This naming choice does not claim
+WebGPU support; current renderer requirements remain documented by the
+implementation and measured platform behavior.
+
+Validation in this checkout: 1,457 tests, all four TypeScript programs,
+`npm run lint`, and the package build passed. Strict-capability Chrome runs
+passed the handoff/input and custom-scene lifetime gate, native pointer and
+controlled-input round trip, idle capture, demand DOM mutation/resize, the
+broad scene interaction sweep, custom shader compilation, the 14-step Knobs
+resize sweep, deformed Fisheye and Slider input, and Genie film-reorder and
+shadow checks. The five-scene
+`gate:degraded` passed without the capture flag. The browser probes use the
+real scene window (`framed`) when they need scene-local state.
+
+Review fixes are pinned at their owners: actual presentation and request
+state stay separate; returning from `none` wakes DOM visibility; residents do
+not run a page handoff or retain frame work for offscreen draws; context reads
+cross the renderer boundary; custom compositors supply their own evidence;
+and stable scene declarations precede deferred R3F contributions. Initial
+canvas requests wait for renderer bootstrap before declaration validation. No release
+or deployment is part of this verification.
+
+<a id="41"></a>
+
+## #41 — Explicit HTML composition and source coverage (2026-09-05, isolated experiment)
+
+This entry records the implemented API experiment. It does not mark a production
+cutover or supersede the main checkout's public names in #40. The experiment
+uses Proof-suffixed exports while the lab callers alias them to the proposed
+names.
+
+A Surface Root requests a page-to-scene handoff with `inScene`. Its HTML slot
+keeps one React instance and moves its live node with state-preserving DOM
+operations. Inert snapshots cover the page during preparation. Canvas snapshots
+are visual copies; they are not additional live media publishers.
+
+The HTML slot measures its content rather than an otherwise wider wrapper.
+Page-holder styles have explicit `pageClassName` and `pageStyle` names. Inline
+content uses `as="span"`. The default layout preserves the page slot;
+`layout="reflow"` removes it after a proven canvas presentation and restores it
+when a return is requested. A word cannot disappear before its mesh is drawn.
+
+SceneSurface supplies scene-only HTML from either React children or a detached
+`element`, with explicit dimensions. CaptureContent accepts the same two input
+forms for a capture-only effect. The existing-element capture hook observes a
+native target and leaves it in place.
+
+One mesh may display several named HTML parts. `sampledParts` lists the
+additional sources its material samples. All must be usable before that mesh
+can establish readiness. Its qualifying draw supplies evidence for those
+parts. A color-disabled pointer proxy supplies routing, not evidence; it uses
+manual presentation. A late source or mesh must register when its actual
+resource appears, rather than lose its registration during an earlier empty
+commit.
+
+These changes preserve the existing transfer and pointer laws and their pinned
+numbers. Compile-time examples change with the declarations. The composition
+probe pins delayed-source blocking and actual two-source pixels. Gravity's
+browser check pins valid inline markup, layout reflow, original-node identity,
+and return. The maintained pointer, film, shadow, and scene gates retain their
+behavior thresholds. Their source lookups now identify named parts and exclude
+inert snapshots from live media identity counts.
+
+
+Page targets separate a retained content instance from its changing layout slot.
+The target ref moves the retained boundary home before React removes an old
+parent, then attaches to the new slot. A same-commit detach/attach does not hide
+or blur its focused field. The real-browser target contract pins original-node
+identity, local state, focus, missing-target hiding, and exactly one unmount.
+
+Companions subscribe under their Mesh with `useSurfaceFrameProof`. The host
+updates world matrices and publishes the effective controller state before
+rendering. No extra traversal is added when no subscribers exist. A callback's
+`canvasMayDraw` is permission for this draw, not a receipt. Existing receipt
+and hold laws remain unchanged. The frame-order instrument deliberately puts
+a pose writer after an independent follower and the companion before its
+source in draw order; the ordered callback must still agree.
+
+The postcard keeps request/status updates within its own React subtree. CPU
+profiling found that page-wide status subscriptions rerendered the example
+list and tutorial code highlighting during handoff. Its canvas now belongs to
+the scrolling section. The fixed-canvas negative control measured 12 CSS px
+of lag against a native marker during 12 px wheel steps; the section canvas
+measured zero. A page-wide scrolling band is unnecessary for this one-section
+scene. Viewport-attached scenes can still use fixed canvases.
+
+The postcard contract uses six lift/return cycles. With the light fixed, two
+strips outside the card must stay within 0.5 mean absolute error per 8-bit
+channel at each handoff, with no single-frame spike over 0.5. This permits
+rounding below a channel level while rejecting the measured duplicate/missing
+shadow. A motion-signal assertion prevents a background-only comparison.
+The scroll comparison allows 1.5 CSS px for pixel-center rounding, well below
+the measured 12 px failure. The timing run has no screencast or profiler; an
+animation-frame timestamp gap within one second of a handoff must stay within
+two measured frame periods plus 2 ms of clock tolerance. Elapsed observer
+callback gaps are separate diagnostics, not display timestamps. Captures,
+traces, and negative controls are retained with their outcomes.
+
+These budgets describe the measured postcard scenario. They do not prohibit
+live content paints/uploads during motion or intentional layout changes.
+`layout="reflow"`, moving page targets, window resize, video, and typing remain
+valid. ResizeObserver does not detect position-only movement; there is no
+blanket no-movement warning pretending otherwise. The instrument measures the
+known-stable postcard slot directly. Existing conformance numbers were not
+relaxed, and the new contracts ship with this experimental decision.
+
+
+<a id="42"></a>
+
+## #42 — Renderer availability and placement wakeups (2026-09-06, API hardening)
+
+The binding projects HTML client coordinates relative to the actual GL canvas
+client rectangle. Core mapping still consumes viewport-local coordinates. Six
+inset, scrolled, and positively scaled corner regressions failed before the
+binding change and pass with perspective and orthographic cameras.
+
+A settled demand canvas follows position-only changes in its page slot. The
+Chrome api-instance probe first confirms 300 ms without a draw, then changes
+an unchanged-size slot's preceding sibling without a React update or pointer
+event. It failed before placement observation and passes in all six canvas and
+camera configurations afterward. Resize and scroll checks remain separate.
+One shared frame observer reads client boxes, caches shared element reads, and
+invalidates only changed placements. Page-owned preparation uses the same
+observer to align its native rig. It is geometry observation, not protocol work.
+
+Renderer loss or unmount returns a handoff to its native page hold and voids
+preparation evidence. Author intent survives; recovery prepares again. Changing
+the caller's frameloop policy does not replace the renderer runtime. Protocol
+claims stop after the finite settle dwell when a missing presenter, part, or
+usable frame is the only possible progress. Source/presenter/evidence changes
+wake the host. An empty scene cannot pass a zero-of-zero preparation gate.
+
+Amendment to #40: requested-but-undeclared presentations are diagnosed after
+host/runtime startup and the declaration commit. A declared scene that is not
+requested is valid and remains quiet. A supported canvas request without a host
+gets one development warning after ten seconds, canceled on mount, request
+change, or unmount. Preparation waits use the same deadline, keyed by their
+missing evidence. Neither warning calls onError, changes state, grants readiness,
+or keeps a renderer busy. Production and unsupported fallback have no timers.
+
+Amendment to #39: native scene routing requires one interactive pose per capture
+source. Multiple scene presenters all use relay so no transformed source can
+corrupt another presenter's UV-to-DOM mapping. These registrations are separate
+from sampledParts draw coverage. Source replacement reacquires rig ownership;
+page preparation and scene routing park the outgoing rig before transferring
+that ownership. Scene pointerEvents="none" and effective source inertness stop
+scene input, while a page-owned warm rig continues serving its native HTML.
+Geometry provenance follows the actual library-created plane, position and UV
+attribute identities/versions, index, and draw range; unknown, replaced, or modified
+geometry takes the relay. Changing UVs can move visible content without moving the
+plane, so native hit-testing must also decline that case. The pure route
+truth table and binding regressions change with this contract.
+
+The companion hook is useSurfaceBeforeRender: one callback per scene render pass,
+after pose writers and world-matrix updates. It reports the actual camera and
+render target, including offscreen passes. Physics remains a once-per-frame job.
+
+
+Preparation fidelity: the retained Controls field kept activeElement and selection
+indices while its inert DOM placeholder lost the visible focus ring and selected
+text. The capture itself contained both. Page-owned preparation therefore displays
+the source canvas bitmap through its native input rig; the inert clone reserves
+layout only. Scene routing still hides that bitmap. A Chrome compositor recording
+at matched DPR 1 pins the focused-input crop to mean channel error <=0.5; 67 sampled
+frames measured zero. Cropped screenshot capture is kept outside the recording,
+and native/emulated device scales must agree. This does not claim that a screencast
+contains every display refresh. Typing continues to update the original source.
+
+Active copy budgets apply to the retained Controls form (70 source elements),
+Selection prose (5), and the small html/body fixture (33/27). The served-module
+instrument measured Controls p95 0.5ms/max 1.2ms; Selection 2.6/2.7ms; html 3.1/3.1ms;
+body 2.7/2.9ms. Its 24 bursts of twelve hover/mutation events produced 24 copies,
+zero consumer React renders, and zero idle copies. The fixture gate is p95 <=5ms,
+max <=8ms, <=26 copies per 24 bursts, no idle copying or per-paint consumer rendering.
+This is a bounded fixture workload, not a whole-web-page cost promise. Thresholds
+leave room above measured costs while keeping a copy below one 120Hz frame.
+
+The multi-pass companion fixture updates the scene's world matrices twice per
+pass: once before companions read, once inside Three after companions mutate.
+On four nodes, 122 passes had zero companion mismatches, 244 traversals, and a
+0.1ms maximum traversal. Its matrix-work budget is p95 <=1ms and max <=4ms; the
+larger 256-node case uses the same gate. An unsubscribed channel adds no traversal.
+
+
+<a id="43"></a>
+
+## #43 — Retained HTML API adoption (2026-09-06, development checkout)
+
+This supersedes #40's two-instance public binding and #41's temporary Proof
+exports. Surface contains one live HTML component and accepts inScene. Its
+explicit form is Root/HTML/Scene/Mesh/Anchor. SceneSurface owns scene-only HTML;
+useElementCapture observes native HTML in place; CaptureContent owns separately
+authored pixels. The optional Munari wrapper and the old DOM/Part, renderIn,
+SurfaceState/useSurfaceState and useSurfaceInstance exports are removed. There is no legacy shim.
+The internal renderer controller still represents its own pixel-policy states.
+
+The public presentation is page, scene, or null; motion destinations are page
+or scene. Author intent remains requestedInScene during fallback. Handles and
+drivers read the same raw progress. The optional eased() read names its curve;
+between/pulse windows now consume raw progress. Companion callbacks are explicitly
+per-render-pass and include the actual camera/target. Capture inspection belongs
+to the advanced entry; per-window prototype inspection is removed from the package.
+
+SceneSurface's convenience mesh is one world unit high with its authored HTML
+aspect ratio. Its earlier square plane distorted non-square sources. A surrounding
+R3F group owns placement/scale; explicit Root/HTML/Mesh gives full geometry control.
+
+The source and capture bindings are separate modules. Existing website work is
+reconciled into the isolated hardening branch; the active website checkout stays
+intact. Public exports, types, compile-only examples, docs and the tracked skill
+change together. Milestone A passed 1496 tests, type/lint/build, 31 route loads,
+retained-source/capture/host regressions, and the named Chrome gates before these
+names changed. Adoption reruns the affected checks. This is local development,
+not authorization to release, deploy or change CI.
+
+
+The final shared-source negative control also tilts and rotates the first mesh.
+Against the saved pre-hardening source, the first native click succeeds but a
+click through the second relayed pose misses the button. With source-wide relay,
+both poses reach it and return local source coordinates within 2 CSS pixels.
+The comparison fixture asserts which API revision actually loaded before claiming
+baseline evidence. A resolver/cache mix-up is a failed apparatus check, not proof.
+
+
+<a id="44"></a>
+
+## #44 — Native text clarity is the default (2026-09-06, core + binding)
+
+Pete reported fuzzy meshes throughout the visible Chrome tests, including the
+postcard. The tests often emulated DPR 1 on a Retina 2 display; capture hooks also
+started at fixed density 1, and R3F's default renderer density stopped at 2. Those
+are not the default quality policy for HTML. The renderer now follows native DPR
+unless the caller specifies a limit; captures start at native density and update
+when the display or browser zoom changes. Fractional startup density rounds up
+within an authored/texture limit, rather than starting undersupplied.
+
+A native-DPR probe still found softness. Its captured bitmap was sharp, but the
+page origin at 274.375 CSS pixels landed at device-pixel phase 0.75. Linear sampling
+reduced text edge energy to 0.755 of the native image. Applying the existing #20/#22
+pixel-grid law restored 1.000. Flat, stationary, directly mapped surfaces now receive
+that correction automatically. Only render matrices change; physics/local poses
+stay exact, moving or warped geometry stays unsnapped, and companions see the same
+corrected matrix before their pass. The renderer retains the second matrix update
+when companion callbacks mutate transforms, and avoids repeating it otherwise.
+
+Page preparation uses the same native-density/pixel-grid policy. Source captures
+can request separate horizontal and vertical raster densities without changing the layout of
+the retained DOM. This matters for non-uniform CSS scale: over-rastering both axes
+and then shrinking one blurred text again. The canvas also cancels the second CSS
+scale on R3F's already display-sized bitmap. Its camera and drawing buffer use the
+actual displayed size. Explicit density limits remain available. The 4096-pixel
+texture guard remains a real limit for large captures.
+
+At native DPR 2 the fullscreen and inset probes restored 1.000 of native text edge
+energy; the deliberately non-uniform scale recovered 0.986, up from 0.808. The actual
+stationary postcard measured zero pixel difference and 1.000 contrast. Its hidden-mesh
+negative control fell to 0.113, proving the native HTML was not concealing a bad draw.
+The clarity gate requires 0.95–1.05 of native edge energy over the same content/crop.
+These are stationary-text measurements, not a promise to eliminate intentional
+perspective filtering or motion blur.
+
+The rendered corners may differ from ideal fractional layout by less than one
+display pixel. Core projection remains exact; this is the phase correction already
+specified by #22, applied at presentation. Geometry probes read the rendered matrix
+without recomputing it from the untouched physics transform. Density, phase,
+position, and companion/motion budgets are checked independently.
+
+Soft companions can use the continuous parent pose inside the same callback.
+The postcard does this: applying the text's subpixel matrix correction to its
+soft shadow caused a 0.518-channel boundary jump at DPR 1. Its page and scene
+shadows now share the physical resting rectangle; only the text image needs
+the raster correction. The callback still runs after the current pose is applied.
+
+
+Density is now tracked per axis by each source; the existing scalar scale() remains
+its maximum, and rasterScale() reports the requested pair. Uniform setScale retains
+its uniform-axis meaning. Density changes cut the requested backing size exactly;
+the resize band still applies to changing layout dimensions. The paint regression
+found that the band retained a 600px store after a 3-to-2.4 density change asked
+for 480px, with no later layout change to trigger a settle. The paint conformance
+test now pins exact density changes independently of layout resettling.
+A single CSS content box and original element survive every raster
+change. Presenter demands combine by the maximum on each axis; explicit pins and
+texture limits still win. The compositor receives a canvas at its display size,
+with the container's extra scale canceled on the inner canvas. A separate CSS
+translation was tested and rejected: Chrome already snaps the canvas's layout
+origin, and adding a transform reintroduced blur. The pose correction belongs in
+the mesh's rendered matrix.
+
+<a id="45"></a>
+
+## #45 — Retained content keeps React ownership and paint progress (2026-09-06, binding)
+
+The PR #83 review exposed five additional failures beyond the earlier sample
+checks. Chrome reproduced a keyed prepend that emptied the React root with
+`NotFoundError`, a reorder that moved content out of its target, a shared capture
+whose surviving reader stopped updating, anchors held through continuous resize,
+and preparation pixels outside an overflow clip. An ordinary `onboarding`
+attribute also triggered the inline-handler restriction.
+
+A targeted Surface now keeps a stationary React-owned home around its moving
+boundary. The boundary is that home's sole child; both use the same tag and are
+replaced together. React inserts or reorders the home, whose parent remains
+correct. Attachment cleanup returns the boundary before React removes or hides
+the home. This preserves native server HTML and hydration. The list test covers
+memoized rows, prepend, reorder and deletion; hydration preserves an input edited
+before client startup. Suspense must return content home while hiding the tree.
+
+Each capture reader owns a distinct frame subscription even when readers share
+one renderer invalidation function. Removing one reader cannot remove another's
+wakeup. The Chrome test verifies a real texture-color change after removing one
+of two readers in a demand canvas, then checks that idle drawing stops.
+
+An in-band backing store can still contain a valid new paint. A color-writing
+pass records that paint for anchors before checking whether raster density is
+exact enough for initial presentation. The initial sharpness gate remains in
+place. A 200-to-240px resize held the anchor near its 201px coordinates before
+this fix; now the observed difference from the latest paint stays below 0.45 CSS
+px and reaches zero after settling. The probe allows 1 CSS px to include the
+capture/draw observation interval; it would reject the prior roughly 6px drift.
+This changes the binding's draw-to-anchor contract, not the core resize band.
+
+Page-owned preparation clips its visible capture to the page's applicable
+overflow ancestors. Rectangular clips intersect by axis. Rounded padding edges
+use a convex polygon with chord error bounded to 0.1 device pixels. A clipping
+ancestor already handled by the fixed containing block stays browser-owned,
+avoiding duplicate edge coverage. Root/body overflow propagated to the viewport
+does not become an extra element-sized clip. Clip changes join the shared
+placement observer even when the content rectangle stays fixed. The page binding
+restores its clip before transferring rig ownership or unmounting.
+
+`probe:api-regressions` checks nested, rounded, bordered, scaled and changing clipping,
+including explicit overflow clip margins,
+visible and clipped input, and restoration when the scene takes over. The pixel
+budget is mean channel error <=0.5 over the source's bounding box against the
+same native page. The source crop includes the area hidden by native clipping.
+This covers overflow geometry, not arbitrary authored mask shapes.
+
+Inline-handler detection uses event properties on the element's prototype, not
+all names beginning with `on`. A subscriber registered from an observer callback
+must not schedule a second frame loop. Logo explicitly reads eased progress to
+preserve its earlier motion while the public progress getter remains raw.
+
+The review's proposed focus-loss trigger did not reproduce: changing the handle
+and returning preserved the original input, focus and selection. The destination
+holder was inert before return. That case now has a permanent browser regression;
+the two-instance focus-transfer code was not changed on an unconfirmed inference.
+
+<a id="47"></a>
+
+## #47 — Canvas selection uses canvasId (2026-09-06, public API)
+
+`Surface`, `Surface.Root`, and `SceneSurface.Root` select a named renderer with
+`canvasId`, matching `<SurfaceCanvas id="…">`. The value is a string identity.
+The former spelling was `canvas`; it is removed without a compatibility alias.
+This clarifies what callers supply without changing host resolution, default
+selection, or renderer ownership. Actual canvas elements, capture frames and
+before-render callbacks keep their `canvas` fields.
+
+The public type contracts accept the new spelling on all three components and
+reject the old spelling and an HTMLCanvasElement value. Host tests select between
+two named renderers, change the selection, and resolve an unnamed default through
+each public component. Current documentation is checked for retired selector
+syntax. The explicitly historical public-API proposal retains its original code;
+its historical warning is also checked. Before completion, negative controls put
+the old prop in a current README example and an otherwise-valid typed caller;
+both checks must fail.
+
+<a id="48"></a>
+
+## #48 — Detail issue regressions preserve live state and coverage (2026-09-07)
+
+The September issue batch was checked against the retained-HTML refactor.
+The corrections below ship with their owning tests and the local browser
+probes listed in `instruments/README.md`; CI membership is unchanged.
+
+A capture resize invalidates immutable GPU storage at the mutation, including
+LOD and draw-time density requests after the frame's upload was armed. Waiting
+until the next frame produced `GL_INVALID_VALUE` on growth and stale colors
+on both growth and shrink in Chrome. The source retains its texture identity
+and carries the last complete raster through the size change. Unchanged
+dimensions/filtering do not invalidate storage or create idle protocol work.
+
+Lit materials filter premultiplied sRGB channels before removing alpha and
+decoding for lighting. Hardware sRGB decoding before this filtering cannot be
+undone afterward at a transparent edge: the first correction yielded RGB 75
+at alpha 64 where the equally lit opaque sample was RGB 137. The expected
+covered value is about 34. A lit-only texture view reads the same capture
+canvas in encoded form; it owns separate GPU storage, shares that view between
+lit presenters, and follows source uploads and disposal. Diffuse and emissive
+samples use the same conversion. Three applies final alpha once; the corner
+mask scales both RGB and alpha. The pixel probe allows two 8-bit channel values
+for capture quantization and filtering across white/color/emissive controls.
+The public texture and flat-mesh raster alignment retain their existing contract.
+
+Pointer release velocity applies the existing 0.35 sampling filter over
+elapsed missing samples, using the preceding event interval as the sample
+period. Each missing sample retains 0.65 of the old estimate. A pause drains
+momentum without a new time cutoff; an immediate flick retains it. Traversal
+and focus recall include native editing hosts despite their IDL tabindex of
+-1, preserve explicit negative tabindex, and follow nested-editor semantics.
+Camera interruption runs before OrbitControls handles that same input. Proxy
+projection follows motion through damping without a second controls update.
+Hover/focus commits preserve a dragged Workspace panel's pose. Chrome reduced
+the observed post-orbit proxy correction from 865 CSS px to below 0.1 CSS px;
+the browser contract allows 1 CSS px for the final controls observation interval.
+
+Genie's input velocity cap applies once on entry to the analytic spring.
+Reapplying it every frame yielded arrival speeds 0.230798 at 60 Hz versus
+0.479080 at 240 Hz for a stationary release at progress 0.46. Equal-elapsed-time
+tests now compose at 30–240 Hz; the existing 400 ms settling budget is unchanged.
+Hidden grab progress first catches up without spending release velocity; then
+visible progress follows the analytic spring exactly. The 60 combined-motion
+cases finish at the drawn endpoint within 334 ms, so completion cannot hide a
+sheet still travelling toward its wall.
+Contact velocity remains sampled at the end of the crossing frame, a separate
+existing discretization limit. Restore captures keyboard focus intent before
+moving focus: mouse restores stay on the window wrapper, keyboard restores
+reach the minimize control after landing.
+
+Unroll cancels a closed request at zero progress even before its first scene
+frame. Copy's normal includes radial shrink, arc height and sway; the twist
+derivative cancels from the tangent cross product. Numerical finite differences
+check the actual shader expressions. Collapsed geometry uses a finite front
+normal, with a squared-length guard of 1e-12 to avoid normalizing zero. Lamp's
+34-by-20px, 22-second idle ellipse starts at zero displacement from release;
+its first 30–240 Hz step stays below 1px and the period boundary is continuous.
+
+The remaining corrections restore existing intent: one LOD phase allocation
+per presenter; one pending style-sampling frame despite transition interrupts;
+owner-specific duplicate-part cleanup with a surviving publication; live tuning
+shared by GPU field passes and CPU pointer reads; authoritative Glass blob
+counts; and one Crystal parking toggle per physical key press.
+
+<a id="49"></a>
+
+## #49 — One current API guide and no duplicate implementations (2026-09-07)
+
+The retained-HTML cutover left multiple guides and completed plans in the working
+root. Some still called themselves the next implementation plan or pointed at a
+local temporary worktree. The README now owns current usage, and the demo map
+links actual source rather than maintaining copied examples. Superseded proposals
+and completed hardening reports remain in Git history; the numbered decisions,
+platform measurements, conformance contracts and runnable instruments remain here.
+
+The private SurfaceDOM module had no runtime importer and appeared in neither
+public exports nor emitted code. Its useful tests now exercise retained HTML or
+the actual protocol declaration. The unused lab/registry anchor collector copied
+functions already maintained in core and exported through `/advanced`; those
+copies and their duplicate pack test are removed. Core anchor contracts remain.
+Unused UI/helpers/styles and an inactive lint rule were removed after reference
+checks. No active lint configuration, kernel law, tuning value, or public export
+changed.
+
+Current focus guidance describes the implemented callbacks, traversal and camera
+fallback. The earlier guide mixed those with unbuilt cancelable callbacks,
+autofocus, announcer, and caching proposals. The historical Chrome 150 measurement
+table remains dated evidence; its removed `focusprobe` URL is not a current command.
+
+Browser instruments must identify their actual source and observed state.
+External-server drivers require the printed URL rather than guessing a port;
+scene-local probes bypass the website shell. Genie's reacquisition probe had
+counted four inert snapshots as extra live windows: Chrome showed a completed
+reacquisition with four original sheets and four snapshots. The corrected check
+retains the original-node and framebuffer obligations. Knobs throughput reporting
+uses live mesh projection and confirms the intended controls were exercised; its
+free-running frame times do not establish display cadence.
+
+Clarification to #43: the supported public types contain no old root `source` or
+`adopt` option, but unknown JavaScript props can still reach the internal root's
+legacy capture branch. That branch and unread private context metadata remain.
+They are not current API examples; removing the branch is a behavioral retirement
+for untyped callers, separate from deleting an unreachable module.
+
+<a id="50"></a>
+
+## #50 — One light for native type and the retained postcard (2026-09-07)
+
+The original home light shifted and blurred flat masks without accounting for
+the depth of the surface they landed on. An initial solid-caster version made
+the lettering look extruded. Pete clarified that the page should keep its 2D
+appearance, with realism coming from light and separation. Glyphs and raised
+controls therefore cast from thin surfaces at their own elevations. A selected
+glyph moves its caster upward without leaving a duplicate at its original
+height. Recessed wells retain their rim, and the postcard uses its posed sheet.
+One visibility result represents the one light, so coincident casters cannot
+double-darken an already blocked ray.
+A scroll-attached multiply canvas shades the native page and the scene card.
+The postcard sits beneath the headline in the layout and in front of it when
+their pixels overlap. Heading shadows remain behind the postcard.
+
+The headline stands 64 CSS px above the page at its maximum 150px font size;
+that elevation scales with smaller type. Thin controls and gallery images stand
+40px above the page, enough to cast long shadows with visible perspective.
+The resting postcard keeps its separate 12px standoff and wells keep their
+3px depth. Raising native shadow casters must not change the postcard's handoff
+geometry. Native selection
+adds 64px to the selected type to lengthen and soften its shadow on the page.
+The minimum light distance remains above the maximum 128px type height;
+decision #51 raises it to 220px to clear the curled paper too. The source defaults to distance 260px with a 30px emitter radius;
+the control now spans 220–600px and is labelled distance from the page (#51). These are
+scene tuning values, not physical units exposed by the library.
+
+Selection rectangles are clipped to the selected line's layout box. The font's
+native selection box extends beyond the tight line-height: without that clip,
+selecting the last line also raised part of the preceding line. Up to eight
+rectangles support the three-line heading. Height eases at 14 per second, with
+50ms maximum steps and a 0.0001 settling cutoff; reduced motion applies the
+state immediately. A transparent highlight with purple ink keeps the native
+selection visible without covering the postcard. A button creates the same
+native range for keyboard access. The light's 12-by-3px idle drift stays in
+the gap above the heading, and dragging preserves the selected words.
+
+Outline distance fields replace the blur pyramid. RG and BA each pack one
+signed distance over ±256 CSS px, at about 1/128px encoding precision. Linear
+texture sampling preserves the decoded distance; raw bytes must not pass
+through premultiplied canvas storage. Glyph outlines use up to two samples per
+CSS px; simple relief boxes use half resolution in the existing worker. These
+sampling limits affect outline accuracy separately from encoding precision.
+Fields rebuild on layout changes, never merely because the light, selection
+height or card pose changes. Rays intersect each thin surface at its elevation.
+Sixty-four deterministic samples cover the solid angle of the spherical bulb,
+with each ray shared by overlapping casters. Only partial coverage needs these
+samples; fully visible or blocked regions exit early. A bulb projects to an
+ellipse at a grazing angle, so long shadows also soften along their length.
+The earlier emitter was a disk parallel to the page: moving it across the page
+changed shadow length without meaningful blur progression. Testing only changes
+in elevation missed that fault. A fixed outline halo was removed:
+an elevated sheet has no contact rim at its old footprint. Recessed wells keep
+their local rim occlusion. While the shader owns lighting, the depth kit also
+suppresses its static CSS hover shadow; otherwise a hovered button acquires an
+unrelated hard shadow. The no-WebGL fallback retains that native shadow.
+The initial postcard shadow used its posed plane. Decision #51 replaces that
+approximation with lighting maps of the bent grid.
+An outdated relief field and its pending worker replies are invalidated during
+resize; only a field measured for the new layout may become visible. The
+postcard action keeps a fixed width so changing its label cannot rebuild that
+field at a handoff. Focus inside the postcard steadies it as hovering does.
+
+The postcard's section uses z-index 2 above the heading's z-index 1, in both
+native and scene presentation. An earlier glyph-depth cutout revealed selected
+letters through the card; Pete asked for the postcard to remain in front. That
+cutout and its pointer rejection are removed. The lighting field also chooses
+the paper as the visible receiver wherever its sheet is present. Foreground
+order includes shadows: native page casters cannot darken the postcard, whether
+it is on the page or in the scene. The paper keeps its own shading, self-shadow
+and cast shadow. Applying this rule in both presentations preserves the handoff.
+The scene canvas stays below the multiply layer, and the material retains its
+direct capture map for native density and pixel-grid correction. Uncovered
+headline text stays selectable. The postcard retains its original field and
+button through each presentation change.
+
+`probe:home-light` checks lit gaps before a thin silhouette's projected shadow,
+equal coincident shadows, shorter shadows on raised receivers, finite-source
+penumbra, and heading shadows staying behind the foreground postcard. At a 100px
+light height and 30px emitter radius, raising a sheet from 6px to 22px broadens
+the measured 10–90% penumbra from 4px to 20px. The same higher sheet has no
+intermediate pixel with a point light. The ramp must stay monotonic and may not
+jump a quarter of its intensity in one pixel; the discarded cone trace jumped
+129/255 despite passing a width-only check. Raising the heading must leave the
+foreground card unchanged while still changing its shadow on the uncovered page.
+At the normal 260px light height and 40px gallery elevation, moving the light
+across the page widens the measured edge from 8px to 32px. The parallel-emitter
+control stays at 8px and 7px. A separate check uses the real gallery: moving its
+light changed the shadow offset from about 26px to 105px and its soft edge from
+9px to 22px. Both are measured from the completed lighting draw, with screenshots
+of the composited page alongside them.
+It also exercises the real page's selection
+shortcut, native double-click on uncovered heading text, lamp drag and keyboard
+motion, distance control, desktop/mobile layout, no-flag Chrome and disabled
+WebGL. The initial GPU measurement covered the light pass alone; decision #51
+adds the paper maps to that measurement. It remains machine-specific evidence.
+The soft lighting field now renders at one sample per CSS pixel. The bulb,
+native content, capture textures and postcard canvas retain their display
+density. With the longer shadows, this reduced the measured lighting p95 from
+about 13ms to 4ms on the development machine. The sharpness and handoff checks
+remain required; a cheaper shadow field cannot justify a fuzzy content texture.
+`probe:postcard` retains its existing continuity, timing, scrolling and form
+contracts, and `probe:postcard-sharpness` compares the actual card against
+native pixels with a hidden-mesh negative control.
+
+<a id="51"></a>
+
+## #51 — Paper geometry supplies appearance, input and shadow (2026-09-07)
+
+The postcard's small height-only wobble still read as a transformed rectangle.
+It now composes two cylindrical corner curls, a broad bow, torsion and a brief
+stamp impulse. The corner releases before the body completes its lift; curls
+lag behind movement through damped springs. Native form input keeps its original
+instance. Pointer presence steadies the overall pose, while typing also calms
+the deformation. Pointer influence is measured against a stable box, so a curl
+moving away from the pointer cannot cause a hover feedback loop.
+
+The 48-by-32 grid has 1,617 vertices and is changed through the public
+`deformSurfaceGeometry` seam. Raycasts and the picture use those same vertices.
+Curls wrap strips rather than just raising z; an isolated 80px strip retains its
+arc length. Applying the broad bend after the corner curls avoids the 19% local
+compression measured in the reverse order. The composed stress case pins local
+lengths within 4% of the printed sheet. This is a controlled paper model, not a
+general cloth solver or a self-collision simulation.
+
+The top-right curl can reach 2.85 radians to expose the reverse; the opposite
+curl is limited to 1.1. Spring frequency is 18 radians per second with decay 12
+per second. The analytic step composes at 30–240Hz for a fixed target. The
+1.1-second lift and 650ms return retain the existing timing contract; every
+deformation reaches exactly zero before returning presentation to the page.
+Reduced motion remains flat. The light's nearest distance is now 220 CSS px,
+above the tested curl and pose range. A 128px canvas margin accommodates the
+larger silhouette without clipping it during lift.
+
+The reverse is unprinted stock. The material uses a single double-sided pass:
+Three's transparent two-pass path flips winding for its back pass, which made
+`gl_FrontFacing` incorrectly print the front there. A back-facing first hit does
+not relay input to hidden front-side content. The material keeps its direct
+capture map, premultiplied alpha and the library's pixel-grid correction.
+
+The Surface's pre-draw callback publishes the complete bent grid in viewport
+coordinates, with height and projection w. The lighting renderer draws that
+geometry at display density and uses a fitted 1024px floating-point depth map
+for cast and self-shadow. Decision #53 replaces the initial sampled receiver
+map, whose outline could not preserve the mesh's antialiasing. A planar shadow
+remains the fallback when the target capability is absent. Flat page and scene states use
+the same canonical geometry so the handoff does not exchange shadow formulas.
+The shadow filter uses the same spherical-bulb rays as native surfaces, projected
+at the estimated blocker depth. Its map bounds include the wider footprint of
+grazing rays so long soft edges are not clipped.
+
+Depth filtering stores coverage separately from covered depth. Sixty-four
+deterministic area-light samples remove the visible bands from the initial
+16-sample filter. Receiver-plane correction prevents sloping paper from gaining
+false self-shadow. Matte reflectance leaves room for a soft fold highlight;
+the same response shades both native and scene presentations at rest. The depth
+map approximates finite-source visibility; it does not simulate global lighting.
+
+`probe:postcard-paper` checks non-planarity, the rendered alpha outline, visible
+reverse stock, corner response, stamp impulse, typed value and original-node
+return. Its flat-geometry control retains the same movement and input but has
+negligible non-planarity and no departure from a transformed quad. The control
+must overlap actual heading ink without developing alpha holes; heading pixels
+are no longer excluded from the silhouette measurement. The shadow
+probe removes only the depth texture as its control: the curl changes the cast
+shadow and shades its own visible surface, while the flat sheet remains free
+of self-shadow acne. Adding an elevated heading plane must leave every sampled
+paper pixel unchanged, so foreground order also covers shadows. Captured video
+is visual evidence; timing is verified by
+the separate unrecorded postcard contract. Lighting GPU queries now enclose
+the depth map, page field and paper receiver draw, excluding CPU work and the separate
+card/bulb renderers.
+
+<a id="52"></a>
+
+## #52 — The lamp refracts the page through a hollow glass shell (2026-09-07)
+
+The lamp uses a raymarched pear-shaped signed distance field with a 1.15px
+wall, four air/glass interfaces, Fresnel reflection and total internal reflection.
+Its refractive index is 1.5 with a small 0.006 color spread. Static displacement
+of 0.08px gives the glass mild blown-glass variation without animated noise.
+The shader provides silhouette coverage at display density; antialiasing the
+bounding box alone cannot smooth an implicit surface. A tungsten-colored coil,
+support leads and two restrained additive halos make the light visibly emissive.
+
+An inert viewport mirror supplies native text, images and current form values
+through the public advanced capture source. It excludes the lamp and lighting
+canvases. Their own changes therefore cannot trigger a capture feedback loop.
+The lamp combines that paint with the completed page-light canvas and visible
+scene canvases, then refracts the result. The postcard publishes before its draw;
+a microtask copies the completed frame. A stationary postcard retains its last
+uploaded draw while the lamp moves. Capture size changes invalidate readiness
+until a matching paint arrives. Textures follow native display density and use
+premultiplied alpha; encoded page colors are combined before conversion to linear
+light. Without HTML-in-canvas, the lamp keeps reflections and emission while
+the page remains native and interactive.
+
+This is screen-space refraction of the viewport, with a procedural room for
+reflections. It does not reconstruct hidden page content or trace global
+illumination. The lamp does not add caustics to the page. The glass is thin enough
+for the front and back interfaces to give each color a shared geometric trace;
+the refracted directions differ by wavelength. These are visual approximations,
+not an optical simulation of a manufactured bulb.
+
+The cord has 28 constrained points stepped at 120Hz, with gravity 650px/s²,
+velocity decay 3.8/s and 18 constraint iterations. The hidden ceiling feed
+pays out a small amount of slack as reach changes. Both ends stay pinned,
+including the actual moving socket rather than the bulb center. The socket
+follows the cord tangent with angular damping. Reduced motion and jumps over
+100px clear retained velocity. The cord tests pin finite long drags, exact
+endpoints and settling to less than 1% of the drag energy after three seconds.
+
+`probe:home-lamp` uses real Chrome at native density. Its emission, refraction
+and changed-heading controls must each produce a visible pixel difference.
+It also verifies socket attachment, bounded cord motion, capture idleness,
+scrolling, resizing and the no-capture fallback. It saves the actual page and
+control screenshots outside Git. The postcard continuity, sharpness and input
+probes remain required because the lamp samples that renderer's completed draw.
+
+<a id="53"></a>
+
+## #53 — Paper lighting must preserve the mesh's edge coverage (2026-09-07)
+
+The postcard's capture and display both ran at native 2x density with four
+antialiasing samples, but its multiply overlay ran at 1x. A nearest-sampled
+1280-by-1024 height/normal map then chose the receiving surface with a binary
+threshold. Hiding that overlay left a smooth mesh edge; restoring it brought
+back the stairs along the curled paper. Raising capture resolution could not
+repair an outline added by another renderer.
+
+The light display now draws the broad page field to a CSS-density target,
+copies that field to a native-density multisampled canvas, then shades the
+paper's actual triangles over it. The sampled receiver map is removed.
+The separate fitted depth map still supplies soft cast and self-shadows.
+Paper fragments share the page's lighting formula and uniforms. Centroid
+interpolation keeps partially covered fragments inside their triangle, and
+the source camera's projection w preserves perspective and depth ordering.
+Flat native and scene presentations retain the same canonical geometry.
+
+The canvas keeps its scrolling band and native density. Chrome can allocate
+a smaller drawing buffer than the requested canvas dimensions when the band
+gets too large. The renderer checks the actual buffer and shortens the
+offscreen margin if needed. In the 1200-by-900, 4x-density check, the requested
+1800px band became 1727px; the resulting 4800-by-6908 buffer matched the canvas
+and still covered the viewport. No browser-specific pixel-area constant is used.
+
+`probe:postcard-edges` freezes an actual curl and samples its composited boundary
+using the real mesh alpha. On the development display, mean channel error
+against a supersampled reference was 0.95/255 at native density versus 5.01/255
+for the half-density control, across 8,185 boundary pixels. The contract requires
+native error below 65% of that control, matching canvas/buffer dimensions, native
+density and viewport coverage. Controls and screenshots stay outside production
+code and Git respectively. The existing shadow, handoff, scrolling, input,
+sharpness and lamp probes cover the consumers of this completed lighting draw.
+
+The compositor recorder now waits for an image after the final handoff before
+stopping, with a five-second observer timeout. Two animation frames were too
+short when its image stream lagged by 154ms. It also drains frame acknowledgments
+before disconnecting. This changes measurement completion, not the animation's
+existing frame-gap budget, which is checked without recording.
+
+<a id="54"></a>
+
+## #54 — The lamp follows enclosing zoom and draws glare over the glass (2026-09-07)
+
+The reported aliased bulb was inside an iframe whose visual viewport reported
+scale 1, while its parent was pinch-zoomed to 3. The measured canvas density was
+about 1.339 for a device ratio of 1.34; the visible image needed about 4.02. The
+renderer also capped device density at 2. Ordinary native-density screenshots
+did not exercise this condition.
+
+The lamp now follows the accessible enclosing visual viewport and uses device
+density times its zoom. It renders only the visible portion of the iframe,
+with a camera view offset. This keeps the buffer near the visible screen's
+pixel count instead of allocating a zoomed bitmap for the entire layout viewport.
+The glass converts the cropped projection back to full-page coordinates before
+sampling its backdrop. Capture density follows the same zoom; panning alone
+does not recapture the page. Viewport listeners and textures retain their existing
+mount/cleanup ownership. Cross-origin hosts expose only the local viewport.
+
+The previous glow sprites drew behind the glass. The captured backdrop made
+the glass opaque there, covering most of that glow. A compact warm glare and
+a wider white halo now draw over the glass and background. Their 144px/0.4 and
+320px/0.26 size/opacity pairs keep the coil legible while making the spill visible
+against the bright page. Linear filtering prevents the gradient texture from
+showing enlarged texels. Mild scattering also brings filament light into the
+shell and rim. The same emission value controls the coil, scattering and halos;
+these are camera-glare approximations, not a global-illumination solver.
+
+The SDF edge also needs its own coverage; multisampling the bounding box does
+not sample the implicit glass surface. Half-CSS-pixel distance probes estimate
+the signed minimum along grazing rays, and screen derivatives set its pixel
+footprint. Both just-inside and just-outside pixels receive partial coverage.
+The local estimate is used only with positive curvature near grazing incidence;
+ordinary hits and misses keep their conservative classification.
+
+`probe:lamp-quality` exercises the actual demo in a zoomed, offset iframe in
+capture-enabled and no-flag Chrome. It checks native zoom density, unclamped
+buffers, edge quality with emission disabled, and brightness beyond the coil.
+The edge comparison uses a supersampled reference and an unzoomed-density
+negative control; native error must be below 65% of the control. Emission must
+raise mean channels by more than 10/255 across the glass and 5/255 just outside
+it. A changed native heading must also change the refracted image at the zoomed
+offset. These tests keep extra brightness from concealing an undersampled edge.
+
+<a id="55"></a>
+
+## #55 — Glyph receivers stay inside the opaque ink (2026-09-07)
+
+The native letters had bright outlines where the shadow field restored their
+own lighting. A distance-field boundary followed by a CSS-resolution lighting
+filter cannot serve as the native text's antialiased coverage. Its lit cutout
+could reach outside the solid ink and expose a bright strip of page.
+
+The receiver uses a 1.5 CSS-pixel inward clearance. This covers the mask's edge
+and the lighting filter's footprint; boundary pixels receive page lighting and
+the opaque core keeps its raised receiver. The caster continues to use the
+original outline, including the selected-word elevation. Font styling, caster
+geometry, penumbra width and shadow projection are unchanged.
+
+`probe:heading-edges` samples a ring outside the actual native ink in a zoomed
+copy of the real page. It compares with a page-only receiver and requires a
+zero-clearance control to reproduce the fringe. The light is repositioned for
+selected type so its higher caster actually shadows the letter's footprint.
+At the reported 1.34 device ratio and 3x zoom, conspicuous fringe pixels fell
+from 1,373 to zero for ordinary type and from 3,782 to 18 for selected type.
+Mean positive excess was below 0.06/255; opaque-core change was below 0.003/255.
+
+The contract requires more than 100 conspicuous pixels in each control, at
+least 99% removal after the correction, mean excess below 0.2/255, and mean
+core change below 0.5/255. A conspicuous pixel exceeds the page-only reference
+by more than 8/255. This is conservative receiver coverage for this native
+heading, not a claim that the mask reproduces every native antialiasing sample.
