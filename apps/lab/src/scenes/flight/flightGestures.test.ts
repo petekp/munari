@@ -87,6 +87,50 @@ function attach(flight: { current: GestureFlight | null }) {
 }
 
 describe('the hand is the only pointer that moves a held card', () => {
+  it.each(['pointerup', 'pointercancel'] as const)(
+    'a re-grab observes movement and %s before canvas routing consumes the original events',
+    (releaseType) => {
+      const flight = { current: makeFlight({ floated: true }) }
+      attach(flight)
+      let claimed = 0
+      const route = (event: PointerEvent) => {
+        if (!event.isTrusted) return
+        claimed++
+        event.stopImmediatePropagation()
+        // CanvasPointerGate consumes the trusted event at document capture.
+        // Its parked-source relay must not overwrite the real hand sample.
+        document.body.dispatchEvent(pointer(event.type, -16, -16, false))
+      }
+      document.addEventListener('pointermove', route, true)
+      document.addEventListener(releaseType, route, true)
+      try {
+        document.body.dispatchEvent(pointer('pointermove', 700, 400, true))
+        document.body.dispatchEvent(pointer(releaseType, 700, 400, true))
+        expect(claimed).toBe(2)
+        expect(flight.current.px).toBe(700)
+        expect(flight.current.py).toBe(400)
+        expect(flight.current.mode).toBe('home')
+        expect(flight.current.plate.v.x).toBe(120)
+        expect(flight.current.plate.v.y).toBe(-60)
+      } finally {
+        document.removeEventListener('pointermove', route, true)
+        document.removeEventListener(releaseType, route, true)
+      }
+    },
+  )
+
+  it('detaching stops observing the hand', () => {
+    const flight = { current: makeFlight({ floated: true }) }
+    attach(flight)
+    detach?.()
+    detach = null
+    document.body.dispatchEvent(pointer('pointermove', 700, 400, true))
+    document.body.dispatchEvent(pointer('pointerup', 700, 400, true))
+    expect(flight.current.px).toBe(369)
+    expect(flight.current.py).toBe(284)
+    expect(flight.current.mode).toBe('held')
+  })
+
   it('a trusted move updates the flight (the harness can speak as the hand)', () => {
     const flight = { current: makeFlight() }
     attach(flight)

@@ -199,8 +199,12 @@ Checks the real public lab routes through a capability-enabled browser.
 `npm run gate:lab-interactions` tabs into Workspace content, clicks its
 captured checkbox, recovers camera control after a panel drag, and checks
 Glass, Knobs, Optics, and Explode pointer paths. It then deletes two Flight
-cards, checks their column counts and two-layer drag shadow, and samples
-Logo's two renderer handoffs for blank frames. This gate is the
+cards, checks their column counts and two-layer drag shadow, and verifies
+that a held card keeps rendering and lands without further pointer movement.
+It also taps a card to float it, re-grabs it through the canvas, and checks
+that movement and release reach the scene. Rendering must stop after both
+landing cleanups. It also samples Logo's two
+renderer handoffs for blank frames. This gate is the
 regression contract for the lab
 faults found in manual QA on 2026-08-18.
 

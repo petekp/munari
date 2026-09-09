@@ -2124,13 +2124,10 @@ export function FlightApp() {
         className="l14-overlay"
         style={{ position: 'fixed', inset: 0 }}
         gl={{ alpha: true, antialias: true }}
-        // An overlay stretched across somebody's document does not get to burn
-        // a GPU frame every 8 ms for the privilege of being empty. There is a
-        // card in flight or there is nothing to draw, and the host promotes
-        // this to `always` for exactly as long as a crossing or a mounted
-        // WebGL side needs it. (Same instinct as the upload-on-paint contract
-        // one layer down: idle costs nothing, and "idle" is the normal case.)
-        frameloop="demand"
+        // The handoff can finish while a card is still moving. Flight owns
+        // the physics frames through dragging, floating, and landing cleanup;
+        // the empty overlay returns to demand rendering after release.
+        frameloop={flyingId !== null ? 'always' : 'demand'}
         dpr={[1, 2]}
         camera={{ fov: FOV, position: [0, 0, 1000] }}
         onCreated={(state) => {

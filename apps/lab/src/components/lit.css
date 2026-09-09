@@ -1,0 +1,38 @@
+/* The depth kit — how a control declares what it is made of.
+ *
+ * `data-relief="raised"` stands off the page: buttons, cards, media.
+ * `data-relief="well"` sinks into it: inputs, code blocks.
+ *
+ * On a page with the light running (`[data-lit]` on the page root, see
+ * HomeMasthead.tsx) the shader draws every shadow from where the light
+ * actually is, so these rules hand over and draw nothing. Everywhere else
+ * — the shell, an unlit page, a browser without WebGL — the same elements
+ * carry a static shadow from a light fixed at the upper left, so the depth
+ * is the same idea in both places and only the light differs.
+ *
+ * Content that gets captured into a scene must not declare relief: the
+ * capture sees only what CSS painted, so a shader-drawn shadow inside it
+ * would vanish at the handoff. */
+
+:root {
+  --lit-raised: 4px 5px 0 var(--ink);
+  --lit-raised-hover: 6px 7px 0 var(--ink);
+  --lit-well: inset 2px 3px 0 rgba(20, 20, 15, 0.26), inset -1px -1px 0 rgba(255, 255, 255, 0.35);
+}
+
+[data-relief='raised'] {
+  box-shadow: var(--lit-raised);
+}
+
+a[data-relief='raised']:hover,
+button[data-relief='raised']:hover {
+  box-shadow: var(--lit-raised-hover);
+}
+
+[data-relief='well'] {
+  box-shadow: var(--lit-well);
+}
+
+[data-lit] [data-relief] {
+  box-shadow: none;
+}

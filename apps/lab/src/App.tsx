@@ -1,8 +1,7 @@
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, OrbitControls } from '@react-three/drei'
 import {
-  detectHtmlInCanvas,
   FocusScene,
   SurfaceCanvas,
   useSurfaceSupport,
@@ -33,8 +32,11 @@ import { GravityApp } from './scenes/gravity/Gravity'
 import { LampApp } from './scenes/lamp/Lamp'
 import { RainApp } from './scenes/rain/Rain'
 import { WordmarkApp } from './scenes/wordmark/Wordmark'
+import { HomeApp } from './scenes/home/Home'
 import { SurfaceProviderProbe } from './lib/surfaceProvider'
 import { SceneNav } from './components/SceneNav'
+import { SceneGuide } from './components/SceneGuide'
+import { BROWSER_GUIDE, exampleFor, washFor } from './components/sceneCatalog'
 import { SceneBoundary } from './components/SceneBoundary'
 
 // The promoted scene roster is decisions.md #3. URL-only studies stay beside
@@ -44,6 +46,7 @@ import { SceneBoundary } from './components/SceneBoundary'
 // that the public surface is sufficient.
 
 type SceneId =
+  | 'home'
   | 'workspace'
   | 'glass'
   | 'flight'
@@ -68,6 +71,7 @@ type SceneId =
   | 'rain'
   | 'wordmark'
 const SCENES = [
+  'home',
   'workspace',
   'glass',
   'flight',
@@ -95,7 +99,7 @@ const SCENES = [
 
 // The nav shows only the advertised scenes; the rest stay routable by URL so
 // the browser gates and old links keep working, they just aren't advertised.
-const NAV_SCENES = ['flight', 'genie', 'knobs', 'selection', 'logo', 'marble-hand', 'plume'] as const satisfies readonly SceneId[]
+const NAV_SCENES = ['home', 'flight', 'genie', 'knobs', 'selection', 'logo', 'marble-hand', 'plume'] as const satisfies readonly SceneId[]
 
 // Clicking a canvas normally moves focus to <body>, which would blur
 // whatever hidden form field a Surface has focused — killing native typing.
@@ -127,9 +131,18 @@ function readScene(): SceneId {
   const q = new URLSearchParams(window.location.search).get('scene')
   if (isSceneId(q)) return q
   const h = window.location.hash.slice(1)
-  // Flight is the landing scene: what a cold visitor should see first. Every
-  // browser gate names its scene in the URL, so none of them ride this default.
-  return isSceneId(h) ? h : 'flight'
+  // Home is the landing scene: the overview and tutorial a cold visitor
+  // should see first. Every browser gate names its scene in the URL, so
+  // none of them ride this default.
+  return isSceneId(h) ? h : 'home'
+}
+
+function readRoute() {
+  const section = window.location.hash.slice(1)
+  return {
+    scene: readScene(),
+    section: ['examples', 'how-it-works', 'get-started', 'support'].includes(section) ? section : '',
+  }
 }
 
 /**
@@ -139,6 +152,8 @@ function readScene(): SceneId {
  */
 function pageSceneFor(scene: SceneId) {
   switch (scene) {
+    case 'home':
+      return <HomeApp />
     case 'flight':
       return <FlightApp />
     case 'genie':
@@ -196,6 +211,14 @@ function spikeSceneFor(scene: SceneId) {
   }
 }
 
+// The shell's wash rides a custom property so siteShell.css can paint every
+// surface from one value; the type names the property so no assertion is
+// needed to hand it to React.
+type ShellStyle = React.CSSProperties & { '--wash': string }
+function shellStyle(scene: SceneId): ShellStyle {
+  return { '--wash': washFor(scene) }
+}
+
 /** Everything inside the shared 3D room: the mounted scene, and the
  *  furniture that scene wants standing in it. */
 function Room({ scene }: { scene: SceneId }) {
@@ -247,11 +270,11 @@ function SceneHud({ scene }: { scene: SceneId }) {
 
 export default function App() {
   const unsupported = !useSurfaceSupport()
-  // Both trial entry points, for the capability chips only. The branch
-  // above is the hook's job — a Surface needs `drawElementImage`, and
-  // `texElementImage2D` is reported here as diagnostics.
-  const support = useMemo(detectHtmlInCanvas, [])
-  const [scene, setScene] = useState<SceneId>(readScene)
+  const [{ scene, section }, setRoute] = useState(readRoute)
+
+  useEffect(() => {
+    document.title = scene === 'home' ? 'Munari · Live HTML in 3D' : `${exampleFor(scene)?.title ?? scene} · Munari`
+  }, [scene])
 
   // …and the URL stays authoritative afterwards. Without this, navigating
   // by URL only works on a cold load: back/forward alone does not reload,
@@ -259,15 +282,19 @@ export default function App() {
   // put — the same screenshot twice, which is a very quiet way to draw the
   // wrong conclusion about a change you just made.
   useEffect(() => {
-    const onPop = () => setScene(readScene())
+    const onPop = () => setRoute(readRoute())
     window.addEventListener('popstate', onPop)
+    window.addEventListener('hashchange', onPop)
     // An arrival on the legacy hash form normalizes to the param form once,
     // so the address bar shows the link worth copying.
     const h = window.location.hash.slice(1)
     if (!window.location.search.includes('scene=') && isSceneId(h)) {
       window.history.replaceState(null, '', `?scene=${h}`)
     }
-    return () => window.removeEventListener('popstate', onPop)
+    return () => {
+      window.removeEventListener('popstate', onPop)
+      window.removeEventListener('hashchange', onPop)
+    }
   }, [])
 
   // Console story: the kernel stamps nothing on `window`, so the app hangs
@@ -317,23 +344,15 @@ export default function App() {
   // handling and the ARIA are the browser's, and this is the one piece of
   // lab furniture that shows up on a page whose whole subject is that the
   // browser's own machinery still works.
-  // Marble Hand and Plume keep native pages and put their capability
-  // notices in their own tweak panels, leaving the artwork clear.
+  // Home, Marble Hand, and Plume explain capability in their own UI.
   const notice =
-    showChrome && unsupported && scene !== 'marble-hand' && scene !== 'plume' ? (
+    showChrome && unsupported && scene !== 'home' && scene !== 'marble-hand' && scene !== 'plume' ? (
       <details className="trial-notice">
-        <summary>HTML-in-canvas unavailable</summary>
-        <ul className="features">
-          <li data-ok={false}>drawElementImage</li>
-          <li data-ok={support.texElementImage2D}>texElementImage2D</li>
-        </ul>
+        <summary>Standard HTML mode</summary>
         <p className="hint">
-          This page is its plain DOM — selectable, focusable, and navigable, with no
-          Surface lifted into WebGL. On the public demo, current <strong>Chrome</strong>{' '}
-          gets the capability from the page's origin-trial token just by visiting.
-          Anywhere else — localhost, another Chromium browser — enable{' '}
-          <code>chrome://flags/#canvas-draw-element</code> and relaunch; a browser that is
-          already running ignores the flag, so quit it fully first.
+          This browser doesn’t have HTML-in-canvas available. The page content
+          still works, but this example’s 3D interaction needs the experimental API.{' '}
+          <a href={BROWSER_GUIDE} target="_blank" rel="noreferrer">See Chrome’s setup guide.</a>
         </p>
       </details>
     ) : null
@@ -352,27 +371,29 @@ export default function App() {
   // and Back would then step the frame instead of the shell.
   if (showShell) {
     return (
-      <div className="flex h-full">
+      <div className="site-shell" style={shellStyle(scene)}>
+        <a className="site-skip" href="#site-content" onClick={(event) => {
+          event.preventDefault()
+          document.getElementById('site-content')?.focus()
+        }}>Skip to example</a>
         <SceneNav
           scenes={NAV_SCENES}
           active={scene}
           onSelect={(id) => {
             window.history.pushState(null, '', `?scene=${id}`)
-            setScene(id)
+            setRoute({ scene: id, section: '' })
           }}
-          footer={
-            <ul className="features flex-wrap">
-              <li data-ok={support.drawElementImage}>drawElementImage</li>
-              <li data-ok={support.texElementImage2D}>texElementImage2D</li>
-            </ul>
-          }
+          supported={!unsupported}
         />
-        <iframe
-          key={scene}
-          src={`/?scene=${scene}&framed`}
-          title={`${scene} scene`}
-          className="h-full min-w-0 flex-1 border-0"
-        />
+        <main className="site-content" id="site-content" tabIndex={-1}>
+          {scene !== 'home' && <SceneGuide scene={scene} />}
+          <iframe
+            key={`${scene}:${section}`}
+            src={`/?scene=${scene}&framed${section ? `#${section}` : ''}`}
+            title={scene === 'home' ? 'Munari overview' : `${scene} example`}
+            className="site-frame"
+          />
+        </main>
       </div>
     )
   }

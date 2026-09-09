@@ -1,33 +1,30 @@
 # munari
 
-### Munari seamlessly bridges HTML with WebGL, unlocking a new frontier of visual expression on the web.
+Munari is an experimental React library for rendering live HTML in a
+Three.js scene. Bend a card, give a control depth, or use rendered text in
+a particle effect while React continues to handle the content and behavior.
 
-Munari enables you to seamlessly 'lift' any single or group of HTML elements, including whole pages, into a WebGL context, and back, on demand. Seamlessness is the key and focus of Munari. Here's what happens when an element is lifted into WebGL and returned back to the DOM.
+[Explore the examples](https://munari.vercel.app) or
+[build your first Surface](#your-first-surface).
 
-The hard part is the swap. Hide the page and show the scene on different frames and you get a flash, a jump, or a frame of nothing at all. So the scene draws its copy underneath first, same size, same place, invisible, and the page keeps holding until that copy proves it has painted. When the two trade places they are identical, so there is nothing to see.
+Chrome's [HTML-in-Canvas API](https://developer.chrome.com/blog/html-in-canvas-origin-trial)
+supplies a live texture of the HTML. Three.js draws it in the scene.
+Munari keeps the texture current, routes input to the captured content, and
+coordinates the switch between page and canvas. The page stays visible
+until the scene has drawn the content needed for the handoff.
 
-In the air it is still the same element. You can type in it, select its text, click things inside it. The page holds its old spot open the whole time, so sending it back drops it where it started and it goes on being ordinary DOM.
+One `<Surface>` declares the content and its presentations. Its `renderIn`
+prop chooses where it appears. The page and captured content are separate
+React instances: shared state belongs above the Surface, and inputs should
+be controlled. The transfer protocol is in [packages/core](packages/core/README.md).
 
-One `<Surface>` declares its source and any presentations, and its
-`renderIn` prop says where the content should be held. The protocol underneath is in
-[packages/core](packages/core/README.md).
+HTML-in-Canvas is experimental. Availability depends on the browser and
+origin-trial configuration, and there is no confirmed cross-browser release
+date. Keep a usable page presentation and provide a fallback for interactions
+that require the scene.
 
-I'm continually surprised at what this simple technique can unlock, and I'm often adding new examples in the labs.
-
-The [Flight demo](https://munari.vercel.app) is a good example. It's an ordinary drag and drop card stack. But what if the cards really behaved like actual paper? Not a lot of options there. You could build your app in WebGL, add a landing loading bar, and have max flexibility. But then you lose all the benefits of the DOM. There are some hacks that might work like [the `<foreignObject>` trick](https://surma.dev/things/dom2texture/), but it's limited and brittle.
-
-Munari lets a live piece of your page behave like an object in a ThreeJS scene. The element keeps its state and focus while it tilts, bends, or sits at depth among 3D objects, and you can still click it and select its text. At rest the mesh is pixel-identical to the page element it came from. Chrome's [HTML-in-Canvas API](https://developer.chrome.com/blog/html-in-canvas-origin-trial) supplies the raw pixels and ThreeJS draws them; Munari does the work in between: it keeps the texture sharp and current, carries your input to the real element wherever its picture stands, and trades the pixels between page and scene without a flash.
-
-The HTML-in-Canvas API is experimental. Today, this means Munari is only visible to an infinitesimally small number of design engineering nerds, like myself, who happen to have this Chrome flag enabled.
-
-Munari is a bet on the future of web UI. The HTML-in-Canvas API is a big deal. It's like Core Animation for the web. Coveted effects like liquid glass, depth of field, real progressive blur, and other shader-driven effects are all unlocked. Because of this, I believe HTML-in-Canvas will get the momentum it needs to become a standard. When that day arrives, I want Munari to be one of the first things you reach for when building a new UI.
-
-While we all wait, I intend to make Munari easy to use as a progressive enhancement with a clear fallback path. Apparently, you can also register a token with Google that enables the experimental API for your users automatically! That's over a billion people to treat to the impossible, with an easy fallback.
-
-### Why 'Munari'
-
-Bruno Munari was a playful Italian designer, artist, and inventor. Sometimes he'd mount gauze, torn film, and scraps of plastic in slide frames and throw them across a wall. He called them *proiezioni dirette*, direct projections: the material itself, making them larger and immersive with light. This library brings the same energy to the web. The real DOM (layout, focus, accessibility, scrolling, selectable text) is the source of truth, and can now project into WebGL, coming alive, while still the DOM.
-
+The project is named for the Italian designer and artist Bruno Munari and
+his experiments with form and materials.
 
 ## Requirements
 

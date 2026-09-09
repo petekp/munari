@@ -1743,7 +1743,7 @@ function ReadoutLamps() {
         // plate around it catches only grazing incidence (cosine ~0)
         // while knob flanks and bat levers — surfaces facing the
         // window — catch it broadside. The masking is Lambert's law,
-        // not a hack.
+        // not a workaround.
         <KnobsAnchor key={def.key} name={`readout:${def.key}`} offset={1.5}>
           <ReadoutLamp />
         </KnobsAnchor>
