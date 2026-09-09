@@ -58,7 +58,7 @@ export function WordmarkTweaks({ tuning, onTuningChange, onReset, lifted }: Word
       footerHint={
         lifted
           ? 'Copy values, then paste over WORDMARK_KNOBS in MunariLogo.tsx (drop `base`).'
-          : 'HTML-in-canvas is off here — the matter group has nothing to show.'
+          : '3D controls require HTML-in-canvas support.'
       }
     />
   )

@@ -1,6 +1,6 @@
 // The anchor transaction, on the presenter's side.
 //
-// The law: an anchor set is ONE transaction against ONE paint, and matter
+// The law: an anchor set is ONE transaction against ONE paint, and objects
 // placed from it is withheld until a COMPLETE set exists for the generation
 // currently drawn on this geometry (docs/decisions.md #29). Children
 // declare which keys they need; this scope collects all of them at once or
@@ -121,7 +121,7 @@ export function useSurfaceAnchorContext(component: string): SurfaceAnchorScope {
   const scope = use(SurfaceAnchorContext)
   if (!scope) {
     throw new Error(
-      `munari: <${component}> must be rendered inside a <Surface.WebGL>. An anchor ` +
+      `munari: <${component}> must be rendered inside a <Surface.Mesh>. An anchor ` +
         'is a place on a presenter’s geometry, and outside one there is no ' +
         'geometry to stand on.',
     )

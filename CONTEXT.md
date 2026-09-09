@@ -1,7 +1,8 @@
 # Munari
 
-Munari keeps live DOM content available as physical matter in WebGL. This
-glossary names the content, its renderer holds, and the evidence for a handoff.
+Munari unifies retained HTML, Three.js scenes, and shaders.
+This glossary names the content, its renderer holds, and the evidence for a
+handoff.
 
 ## Language
 
@@ -10,7 +11,7 @@ glossary names the content, its renderer holds, and the evidence for a handoff.
 **Retained content**:
 The live content, state, and interaction that remain meaningful while its
 pixels change renderer. A captured image is one rendering of that content.
-_Avoid_: Rebuilt WebGL UI.
+_Avoid_: Rebuilt renderer UI.
 
 **Surface**:
 One logical piece of retained content, with a stable identity and optional
@@ -32,14 +33,32 @@ that the user can see it.
 **Presenter**:
 A participant that draws a Surface's content and supplies draw evidence.
 
+**Page presentation**:
+The native DOM representation of retained content. It owns layout,
+accessibility, focus, and the browser's ordinary input path.
+
+**Scene presentation**:
+A scene representation of retained content. It owns scene geometry, material,
+placement, and its draw evidence; it does not own the source.
+
+**Scene boundary**:
+The lifecycle boundary for one Surface's custom scene contribution. It keeps
+that contribution alive through preparation, reversal, return, and cleanup.
+The boundary cannot retain the caller-owned scene host.
+
+**Scene host**:
+The shared renderer boundary used by Surface presentations. Its lifetime is
+independent of any one Surface or scene contribution, and its owner keeps it
+alive while those resources need it.
+
 **Renderer hold**:
 The authority to show and receive input for an exclusive Surface at a given
 point in its handoff.
-_Avoid_: Requested view, progress, readiness as substitutes for the hold.
+_Avoid_: Request, progress, or readiness as substitutes for the hold.
 
-**Target view**:
-The renderer the application requests. It can differ from the current hold
-while the handoff waits for evidence or motion.
+**Destination**:
+The renderer endpoint the application requests. It can differ from the
+current hold while the handoff waits for evidence or motion.
 
 **Handoff**:
 The guarded transfer of a renderer hold. The outgoing renderer retains its
@@ -49,27 +68,33 @@ duty until the incoming path meets the transfer contract.
 The end of a presenter's duty to show or receive input for content. Resource
 removal and the final clearing draw can finish after that boundary.
 
-### Presentation modes
+### Public relationships
 
 **Exclusive Surface**:
-A Surface whose page and WebGL presentations exchange one renderer hold.
+A Surface whose page and scene presentations exchange one renderer hold.
 
-**Twin Surface**:
-A Surface with concurrent page and WebGL presentations, without an exclusive
-handoff between them.
+**SceneSurface**:
+HTML authored for a scene, with no native page destination. Its captures still
+need preparation and actual draw evidence, but it has no page handoff delay.
 
-**Resident Surface**:
-A Surface with a WebGL presentation and no page presentation.
+**Element capture**:
+A native element remains in place while its visual state supplies a texture to
+scene code. It is also the way to show native HTML and a scene version together.
 
-**Source-only Surface**:
-A Surface that supplies a capture without registering its own presenter.
-The absence of presenter readiness is valid in this mode.
+**Capture content**:
+Separately authored React content or a detached element owned by a capture
+identity. A capture has frames and readiness, without a Surface renderer hold.
+
+**Page target**:
+The changing layout slot for a retained HTML component. The component stays at
+one React position; the target ref names where its page content belongs.
 
 ### Evidence and motion
 
 **Progress**:
-The amount of a Surface's excursion from its DOM identity toward its WebGL
-state. Progress describes motion, not proof of a renderer hold.
+The amount of a Surface's motion between its page and scene destinations.
+The public raw value is 0..1, shared by handles and drivers. An eased value is
+explicitly named. Neither establishes a renderer hold.
 
 **Paint generation**:
 One successful captured version of a source. A generation has meaning with

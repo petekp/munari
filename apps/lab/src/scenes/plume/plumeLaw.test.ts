@@ -132,16 +132,6 @@ describe('plume release grid', () => {
 })
 
 describe('plume restore while flying', () => {
-  // A mid-flight Restore is the path the demand-canvas invalidation contract
-  // in PlumeFrames must cover. The timeline `now` only advances when a boundary
-  // setTimeout fires, so while ink is flying it stays pinned at the last
-  // boundary (the unit's releaseAt). Restore re-arms with live wall time, which
-  // has already moved past releaseAt. Against the stale `now`, every unit reads
-  // 'held' again — flipping `animating` false in the same commit that stamps
-  // the future-dated `aRelease` buffer — and the next boundary jumps to the
-  // new releaseAt, ~holdMs away. That is the window a final invalidate must
-  // paint, or the demand canvas freezes on its last flying-particle framebuffer
-  // until the boundary timer finally fires (the freeze-and-pop in #2b4410f).
   it('flips every flying unit back to held and pushes the next boundary to the new release', () => {
     const heldMs = 1500
     const durationMs = 300
@@ -159,12 +149,8 @@ describe('plume restore while flying', () => {
     if (!restoredUnit) throw new Error('expected one restored unit')
     expect(restoredUnit.id).toBe(unit.id)
     expect(restoredUnit.releaseAt).toBe(wallNow + heldMs)
-    // Against the stale timeline `now`, every unit reads held, so the derived
-    // animating flag (units.some(phaseOf === 'pluming')) flips false.
     expect(restored.map((restoredUnit) => unitPhase(restoredUnit, timelineNow, durationMs))).toEqual(['held'])
     expect(restored.some((restoredUnit) => unitPhase(restoredUnit, timelineNow, durationMs) === 'pluming')).toBe(false)
-    // The next boundary is the new releaseAt — holdMs ahead of the wall time
-    // Restore used — the freeze window the final invalidate must cover.
     expect(nextTimelineBoundary(restored, timelineNow, durationMs)).toBe(wallNow + heldMs)
   })
 })

@@ -76,7 +76,7 @@ export function selectLodTier(
 }
 
 /**
- * Mount seed for dynamic LOD: the ladder tier nearest `target`, where
+ * Mount seed for dynamic LOD: the first ladder tier covering `target`, where
  * `target` is the renderer's device-pixel ratio. A Surface's first raster
  * happens before its mesh has ever been projected, so its true density is
  * unknowable at birth — but almost every consumer calibrates (or
@@ -95,9 +95,8 @@ export function selectLodTier(
  * the transient, not the first impression.
  */
 export function seedTier(ladder: readonly number[], target = 1): number {
-  let best = ladder[0]!
-  for (const t of ladder) if (Math.abs(t - target) < Math.abs(best - target)) best = t
-  return best
+  for (const tier of ladder) if (tier >= target) return tier
+  return ladder[ladder.length - 1]!
 }
 
 /**

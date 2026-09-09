@@ -1,4 +1,8 @@
-// <Surface> — one piece of content, named once, wherever it is declared.
+// Surface controller — the internal controller below the public Surface wrappers.
+//
+// Current public wrappers declare content with Surface.HTML or SceneSurface.HTML.
+// The root-level source/adopt variant below is an older private interface and is
+// not a supported form of the package's public Surface component.
 //
 // The law: the root owns IDENTITY and the SOURCE; it owns no pixels. It
 // decides nothing about where anything is drawn, which is what lets the
@@ -34,6 +38,7 @@ import {
 } from './surfaceHandle'
 import {
   DEFAULT_PART,
+  SurfaceHandleContext,
   SurfaceRootContext,
   nextSurfaceInstanceId,
   type SurfaceRootValue,
@@ -41,24 +46,25 @@ import {
 } from './surfaceContext'
 import { resolveSurfaceHost, type SurfaceCanvasId, type SurfaceHost } from './surfaceHostRegistry'
 import { useSurfaceHostContext } from './surfaceHostContext'
+import { watchSurfaceValidation } from './surfaceValidation'
 import { SurfaceSourceHost } from './surfaceSourceHost'
 import type { SurfaceResolution, SurfaceSize, SurfaceSourceRuntime } from './surfaceSourceRuntime'
 
 /**
  * Everything true of a Surface however its content arrives.
  *
- * `view`, `timing`, and the callbacks are HERE and nowhere else: one
+ * `renderIn`, `timing`, and the callbacks are HERE and nowhere else: one
  * declaration writes what the Surface is doing, so a handle created above
  * cannot disagree with the root presenting it.
  */
 interface SurfaceControlledProps extends SurfaceControls {
-  /** Names the Canvas host to present in. Required past the first one. */
-  canvas?: SurfaceCanvasId
+  /** Matches a SurfaceCanvas id; omit it for the unnamed default host. */
+  canvasId?: SurfaceCanvasId
   onFocusWithinChange?: (focused: boolean) => void
   children?: React.ReactNode
 }
 
-/** How a root's own content is captured, for the roots that carry any. */
+/** Legacy root-level capture options. The supported public API declares HTML children. */
 export interface SurfaceContentOptions {
   size?: SurfaceSize
   resolution?: SurfaceResolution
@@ -79,6 +85,10 @@ type WithoutContentOptions = { [K in keyof SurfaceContentOptions]?: never }
  * `<Surface.Part>` children. Exactly one, and the union says so — `source`
  * and `adopt` together is a Surface with two answers to which element is
  * captured, and the one that loses is invisible at runtime.
+ *
+ * This is the legacy controller input, not public SurfaceRootProps. Current
+ * public wrappers declare Surface.HTML or SceneSurface.HTML children. Their
+ * prop forwarding can still admit these options from untyped JavaScript.
  */
 export type SurfaceContentProps =
   | ({
@@ -115,17 +125,16 @@ export function SurfaceRoot({
   name,
   source,
   adopt,
-  canvas,
-  view,
+  canvasId,
+  renderIn,
   timing,
   size,
   resolution,
   mirrorU,
   paint,
-  onPresentedViewChange,
+  onPresentationChange,
   onMotionComplete,
   onReady,
-  onWebGLReleased,
   onFocusWithinChange,
   onChrome,
   onError,
@@ -141,20 +150,13 @@ export function SurfaceRoot({
   // The controlled half, written by THIS declaration whether the handle is
   // this root's or one it was handed.
   useSurfaceControls(store, {
-    view,
+    renderIn,
     timing,
-    onPresentedViewChange,
+    onPresentationChange,
     onMotionComplete,
     onReady,
-    onWebGLReleased,
     onError,
   })
-
-  // `view` is what makes this an exclusive handoff. Without it the Surface
-  // is a Twin: the DOM keeps the hold forever and the WebGL side is an
-  // additional presentation of it, never a replacement.
-  const exclusive = view !== undefined
-  useLayoutEffect(() => store.setExclusive(exclusive), [store, exclusive])
 
   // Tracked from the ROOT, not only the presenter: a presenter mounted at
   // press time (flight-only meshes) installs its tracker after the last
@@ -165,29 +167,33 @@ export function SurfaceRoot({
 
   const contextHost = useSurfaceHostContext()
   const wiring: SurfaceWiring = contextHost ? 'canvas' : 'page'
-  const host = useResolvedHost(store, wiring, contextHost, canvas)
+  const host = useResolvedHost(store, wiring, contextHost, canvasId)
+  const exclusive = renderIn === undefined || renderIn === 'page' || renderIn === 'canvas'
 
-  // The protocol advances from the renderer's frame, and only while there
-  // is something for it to advance — a crossing under way, or a linger
-  // still holding the WebGL side mounted after one landed.
+  useEffect(() => {
+    host?.invalidate()
+  }, [host, renderIn])
+
+  useLayoutEffect(() => {
+    const sync = () => store.setRendererAvailable(host?.available() ?? false)
+    const release = host?.subscribeRuntime(sync)
+    sync()
+    return release
+  }, [host, store])
+
+  useEffect(() => watchSurfaceValidation(store, host), [store, host])
+
   useEffect(() => {
     if (!host) return
     let claim: (() => void) | null = null
-    const release = host.registerTick((dtMs) => {
-      store.tick(dtMs)
-      const state = store.getState()
-      const working = state.isChanging || state.isWebGLMounted
-      if (working) {
-        if (!claim) claim = host.claimWork()
-      } else if (claim) {
-        claim()
-        claim = null
-      }
-    })
-    return () => {
-      release()
-      claim?.()
+    const reconcile = () => {
+      if (store.hasProtocolWork()) claim ??= host.claimWork()
+      else { claim?.(); claim = null }
     }
+    const releaseWork = store.subscribeWork(() => { reconcile(); host.invalidate() })
+    const releaseTick = host.registerTick((dtMs) => { store.tick(dtMs); reconcile() })
+    reconcile()
+    return () => { releaseWork(); releaseTick(); claim?.() }
   }, [host, store])
 
   // Minted per root instance, never derived from `name`. Two unnamed
@@ -213,7 +219,7 @@ export function SurfaceRoot({
       store,
       handle: store.handle,
       host,
-      canvas,
+      canvasId,
       name: store.name,
       instanceId,
       wiring,
@@ -225,7 +231,7 @@ export function SurfaceRoot({
     [
       store,
       host,
-      canvas,
+      canvasId,
       instanceId,
       wiring,
       exclusive,
@@ -233,6 +239,7 @@ export function SurfaceRoot({
       measured,
     ],
   )
+  const handleValue = useMemo(() => ({ handle: store.handle, store }), [store])
 
   // A root carrying its own content IS a part — the single-source case is
   // the one-part case with the name filled in, so anchors, readiness, and
@@ -240,26 +247,28 @@ export function SurfaceRoot({
   const single = source !== undefined || adopt !== undefined
 
   return (
-    <SurfaceRootContext value={root}>
-      {single ? (
-        <SurfaceSourceHost
-          root={root}
-          id={DEFAULT_PART}
-          source={source}
-          adopt={adopt}
-          size={size}
-          resolution={resolution}
-          mirrorU={mirrorU}
-          paint={paint}
-          onFocusWithinChange={onFocusWithinChange}
-          onChrome={onChrome}
-        >
-          {children}
-        </SurfaceSourceHost>
-      ) : (
-        children
-      )}
-    </SurfaceRootContext>
+    <SurfaceHandleContext value={handleValue}>
+      <SurfaceRootContext value={root}>
+        {single ? (
+          <SurfaceSourceHost
+            root={root}
+            id={DEFAULT_PART}
+            source={source}
+            adopt={adopt}
+            size={size}
+            resolution={resolution}
+            mirrorU={mirrorU}
+            paint={paint}
+            onFocusWithinChange={onFocusWithinChange}
+            onChrome={onChrome}
+          >
+            {children}
+          </SurfaceSourceHost>
+        ) : (
+          children
+        )}
+      </SurfaceRootContext>
+    </SurfaceHandleContext>
   )
 }
 
@@ -267,7 +276,7 @@ export function SurfaceRoot({
  * The host this root presents in.
  *
  * Inside a Canvas the answer is the one above; outside, it is looked up by
- * name. The ambiguity fault — several mounted Canvases and no `canvas` prop
+ * name. The ambiguity fault — several mounted Canvases and no `canvasId` prop
  * — is reported once per resolution rather than silently resolved, because
  * picking one produces a Surface that renders in the wrong canvas and
  * nothing anywhere says so.
@@ -276,7 +285,7 @@ function useResolvedHost(
   store: SurfaceStore,
   wiring: SurfaceWiring,
   contextHost: SurfaceHost | null,
-  canvas: SurfaceCanvasId | undefined,
+  canvasId: SurfaceCanvasId | undefined,
 ): SurfaceHost | null {
   // Resolve once per authored id. A page declaration that arrives first
   // gets the pending host the first Canvas adopts. If a duplicate Canvas
@@ -285,19 +294,24 @@ function useResolvedHost(
   // ambiguous after the fact. A Surface born while the duplicate stands
   // resolves null and reports the fault below.
   const pageHost = useMemo(
-    () => (wiring === 'page' ? resolveSurfaceHost(canvas) : null),
-    [wiring, canvas],
+    () => (wiring === 'page' ? resolveSurfaceHost(canvasId) : null),
+    [wiring, canvasId],
   )
-  const resolved = wiring === 'canvas' ? contextHost : pageHost
+  const conflict = wiring === 'canvas' && canvasId !== undefined && canvasId !== contextHost?.id
+  const resolved = conflict ? null : wiring === 'canvas' ? contextHost : pageHost
   useEffect(() => {
+    if (conflict) {
+      store.reportError(new Error(`Surface canvasId="${canvasId}" conflicts with its enclosing <SurfaceCanvas${contextHost?.id ? ` id="${contextHost.id}"` : ''}>. A scene declaration belongs to its enclosing canvas.`))
+      return
+    }
     if (wiring === 'canvas' || resolved) return
     store.reportError(
       new Error(
         `Surface${store.name ? ` "${store.name}"` : ''} found several <SurfaceCanvas> ` +
           'hosts and no way to choose. Give each canvas an `id` and name one with ' +
-          '`<Surface canvas="…">`.',
+          '`<Surface canvasId="…">`.',
       ),
     )
-  }, [wiring, resolved, store])
+  }, [wiring, resolved, store, conflict, canvasId, contextHost])
   return resolved
 }

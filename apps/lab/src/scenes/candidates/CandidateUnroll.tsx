@@ -23,13 +23,14 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceTexture, useSurfaceView } from '@petepetrash/munari'
+import { SceneSurface, useSurfaceChrome, useSurfaceSupport, useSurfaceHandle, useSurfaceStatus, useSurfaceTexture } from '@petepetrash/munari'
 import { textureSlot } from '../../lib/uniforms'
 import { curlSample, unrolledLength } from './candidateCurlLaw'
 import { LIGHT, SHEET_FRAG, SHEET_VERT } from './candidateShaders'
 import { plainAttribute } from '../../lib/geometry'
 import { useOwnUniforms, type WorldBox } from './candidateStage'
 import { unrollTuning } from './candidateTuning'
+import { unrollStep, type RollDrive } from './candidateUnrollLaw'
 
 const ITEMS = ['Duplicate', 'Move to…', 'Rename', 'Export PDF', 'Share link', 'Delete'] as const
 const ROW_H = 38
@@ -94,13 +95,6 @@ function SheetMaterial({ opacity }: { opacity: { value: number } }) {
   )
 }
 
-/** What the page half is asking the sheet to do. */
-export interface RollDrive {
-  /** 1 open, 0 closed. */
-  target: number
-  t: number
-}
-
 /**
  * The winding, applied to real vertices every live frame.
  *
@@ -121,19 +115,10 @@ function RollSheet({
   opacity: { value: number }
   onClosed: () => void
 }) {
-  // The rest is an edge, not a state: without this the drop would be
-  // requested on every frame the menu spends closed, and each one is a
-  // fresh view change through the protocol. It starts TRUE because the
-  // menu starts closed — and because the open gate holds target at 0
-  // until the canvas presents, so the first frames after a click look
-  // exactly like rest. 2026-08-20: starting false dropped the lift on
-  // frame one and the menu never appeared at all.
-  const rested = useRef(true)
   useFrame((_, delta) => {
     const d = drive.current
-    const dt = Math.min(delta, 1 / 30)
-    d.t += (d.target - d.t) * (1 - Math.exp(-dt / unrollTuning.tau))
-    if (Math.abs(d.target - d.t) < 0.001) d.t = d.target
+    const next = unrollStep(d, delta, unrollTuning.tau)
+    d.t = next.t
 
     // The last of the close: the wound coil tucks away behind the trigger
     // over the final 8% rather than blinking out on the unmount. Open is
@@ -165,23 +150,22 @@ function RollSheet({
       }
     }
 
-    if (d.target !== 0) rested.current = false
-    else if (d.t === 0 && !rested.current) {
-      rested.current = true
-      onClosed()
-    }
+    if (next.closed) onClosed()
   })
   return null
 }
 
 export function CandidateUnroll() {
-  const piece = useSurfaceView('unroll-menu')
+  const supported = useSurfaceSupport()
+  const surface = useSurfaceHandle('unroll-menu')
+  const state = useSurfaceStatus(surface)
+  const [presenting, setPresenting] = useState(false)
   const anchor = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
   const [chosen, setChosen] = useState<string | null>(null)
   const [box, setBox] = useState<WorldBox | null>(null)
   const geoRef = useRef<THREE.PlaneGeometry>(null)
-  const drive = useRef<RollDrive>({ target: 0, t: 0 })
+  const drive = useRef<RollDrive>({ open: false, target: 0, t: 0 })
   const sheetOpacity = useRef({ value: 1 }).current
 
   // The unroll may not start until the canvas actually presents. The ease
@@ -189,7 +173,8 @@ export function CandidateUnroll() {
   // the first frame anyone could SEE, t had already reached ~0.7 and the
   // menu appeared mid-unroll. Closing is ungated: the pixels are already
   // in GL.
-  drive.current.target = open && piece.state.presentedView === 'webgl' ? 1 : 0
+  drive.current.open = open
+  drive.current.target = open && state.presentation === 'scene' ? 1 : 0
 
   // The menu hangs from the trigger's bottom edge, so the mesh's centre is
   // half a menu below it. Measured on open rather than on mount: the page
@@ -218,8 +203,9 @@ export function CandidateUnroll() {
   // Outside the updater: an updater runs under React's replay rules, and a
   // side effect inside one is allowed to be dropped or doubled.
   useLayoutEffect(() => {
-    if (open) piece.show('webgl')
-  }, [open, piece])
+    if (open) setPresenting(true)
+    else if (drive.current.t === 0) setPresenting(false)
+  }, [open])
 
   const pick = useCallback((item: string) => {
     setChosen(item)
@@ -256,36 +242,23 @@ export function CandidateUnroll() {
         </button>
       </div>
 
-      {(open || piece.mounted) && (
-        <Surface
-          surface={piece.surface}
-          view={piece.view}
-          timing={{ settleMs: 0, durationMs: 1 }}
-          size={[MENU_W, MENU_H]}
-          source={menu}
-        >
-          {/* The page copy exists to be measured and to hold the rows'
-              identity; it is never the visible one, because a menu is only
-              ever on screen while the sheet is in GL. It is parked out of
-              flow so an unrolling menu does not push the card around. */}
-          <div className="cand-menu-park">
-            <Surface.DOM>{menu}</Surface.DOM>
-          </div>
-          {piece.mounted && box && (
-            <Surface.WebGL
+      {!supported && open && box && <div style={{position:'fixed',left:innerWidth/2+box.x-MENU_W/2,top:innerHeight/2-box.y-MENU_H/2,zIndex:50}}>{menu}</div>}
+      {supported && presenting && <SceneSurface.Root surface={surface}>
+          <SceneSurface.HTML size={[MENU_W, MENU_H]}>{menu}</SceneSurface.HTML>
+          {box && (
+            <SceneSurface.Mesh
               placement="manual"
               alpha="source"
               frustumCulled={false}
               position={[box.x, box.y, 0]}
-              pointerEvents="content"
+              pointerEvents="geometry"
               geometry={<planeGeometry ref={geoRef} args={[MENU_W, MENU_H, GRID_X, GRID_Y]} />}
               material={<SheetMaterial opacity={sheetOpacity} />}
             >
-              <RollSheet drive={drive} geoRef={geoRef} opacity={sheetOpacity} onClosed={() => piece.show('dom')} />
-            </Surface.WebGL>
+              <RollSheet drive={drive} geoRef={geoRef} opacity={sheetOpacity} onClosed={() => setPresenting(false)} />
+            </SceneSurface.Mesh>
           )}
-        </Surface>
-      )}
+        </SceneSurface.Root>}
     </div>
   )
 }

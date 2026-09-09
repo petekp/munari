@@ -6,7 +6,7 @@
 // geometry built from these numbers: knurled skirt cylinders, lathed
 // caps, bat levers, collar bezels, lamp domes. That split is the scene's
 // claim: the DOM owns the truth (state, text, glow, input), the mesh
-// owns the matter, and neither is a painting of the other.
+// owns the geometry; both use the same layout.
 //
 // Pure functions and constants only — no THREE import — so a test can
 // pin the machining without constructing a scene.

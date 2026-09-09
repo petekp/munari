@@ -8,9 +8,9 @@
 //
 // The one structural rule the shell exists to enforce: exactly one
 // <SurfaceCanvas> is mounted, and every candidate declares its
-// <Surface.WebGL> beside the DOM it presents. A page-declared presenter
+// <Surface.Mesh> beside the DOM it presents. A page-declared presenter
 // renders nothing where it is written and registers inward to the single
-// mounted host (SurfaceWebGL.tsx), which is what lets each candidate be a
+// mounted host (SurfaceMesh.tsx), which is what lets each candidate be a
 // self-contained file with no store, no portal, and no canvas of its own.
 //
 // Frameloop is 'always' here, unlike the scenes that earn their zero-paint

@@ -30,10 +30,9 @@ import {
   deformSurfaceGeometry,
   Surface,
   SurfaceCanvas,
-  useSurface,
-  useSurfaceState,
+  useSurfaceHandle,
+  useSurfaceStatus,
   useSurfaceUniforms,
-  type SurfaceView,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { plainAttribute } from '../../lib/geometry'
@@ -116,7 +115,7 @@ export interface SliderProbeApi {
     ampTarget: number
     locked: boolean
     grabbed: boolean
-    presentedView: string
+    presented: string | null
   }
   lock(focus: number, amp: number): void
   unlock(): void
@@ -281,9 +280,8 @@ function Track({
 // ── the page ─────────────────────────────────────────────────────────────
 
 export function SliderApp() {
-  const surface = useSurface('slider-track')
-  const st = useSurfaceState(surface)
-  const [view, setView] = useState<SurfaceView>('dom')
+  const surface = useSurfaceHandle('slider-track')
+  const st = useSurfaceStatus(surface)
   const [value, setValue] = useState(START_MS)
   const [lensLive, setLensLive] = useState(false)
   const holderRef = useRef<HTMLDivElement>(null)
@@ -300,13 +298,6 @@ export function SliderApp() {
   valueRef.current = value
   const stRef = useRef(st)
   stRef.current = st
-
-  // Lifted on mount and stays lifted — no page phase. Not gated on
-  // `st.ready` for the fisheye scene's reason: the presenter this view
-  // change mounts is the thing readiness waits for.
-  useEffect(() => {
-    setView('webgl')
-  }, [])
 
   const [pos, setPos] = useState<{ wx: number; wy: number } | null>(null)
   useLayoutEffect(() => {
@@ -382,7 +373,7 @@ export function SliderApp() {
         ampTarget: drive.current.ampTarget,
         locked: drive.current.locked,
         grabbed: drive.current.grabbed,
-        presentedView: stRef.current.presentedView,
+        presented: stRef.current.presentation,
       }),
       lock: (focus, amp) => {
         const d = drive.current
@@ -446,18 +437,10 @@ export function SliderApp() {
           </div>
         </div>
         <div ref={holderRef} className="lslider-holder">
-          <Surface
-            surface={surface}
-            view={view}
-            timing={{ settleMs: 0, durationMs: 1 }}
-            size={[PANEL_W, PANEL_H]}
-            // dpr ceiling (2) × peak magnification (2), as in the fisheye
-            // scene: fewer texels and the magnified ticks arrive as mush.
-            resolution={2 * FISHEYE_DEFAULTS.amplitude}
-            source={content}
-          >
-            <Surface.DOM>{content}</Surface.DOM>
-          </Surface>
+          <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={true}>
+<Surface.HTML size={[PANEL_W, PANEL_H]} resolution={2 * FISHEYE_DEFAULTS.amplitude}>{content}</Surface.HTML>
+
+          </Surface.Root>
         </div>
       </div>
 
@@ -474,9 +457,10 @@ export function SliderApp() {
         }}
       >
         <PixelPerfect />
-        {st.isWebGLMounted && pos && (
+        {pos && (
+          <Surface.Scene surface={surface}>
           <group position={[pos.wx, pos.wy, 0]}>
-            <Surface.WebGL
+            <Surface.Mesh
               surface={surface}
               placement="manual"
               alpha="source"
@@ -487,8 +471,9 @@ export function SliderApp() {
               material={<LensMaterial />}
             >
               <WarpDrive drive={drive} geoRef={geoRef} onRest={() => setLensLive(false)} />
-            </Surface.WebGL>
+            </Surface.Mesh>
           </group>
+          </Surface.Scene>
         )}
       </SurfaceCanvas>
 

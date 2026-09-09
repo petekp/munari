@@ -64,8 +64,10 @@ try {
   await page.setViewport({ width: 1200, height: 820, deviceScaleFactor: 1 })
   const errors = []
   page.on('pageerror', (error) => errors.push(String(error)))
+  // The shell's iframe forwards only the scene name. Open the scene window
+  // directly so the probe param reaches the component being measured.
   await page.goto(
-    `http://localhost:${port}/?scene=workspace&probe=dom-surface-demand`,
+    `http://localhost:${port}/?scene=workspace&probe=dom-surface-demand&framed`,
     { waitUntil: 'load' },
   )
   await page.waitForFunction(
