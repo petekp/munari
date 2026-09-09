@@ -1,6 +1,11 @@
 # Munari
 
-> Munari renders live, interactive DOM as physical matter in Three.js. It uses Chrome's experimental HTML-in-Canvas API and keeps the DOM as the source of truth.
+> HTML, 3D, and Shaders, Unified. Munari renders retained HTML in Three.js scenes through Chrome's HTML-in-canvas capability, preserving the original DOM and state.
+
+The current public API is documented in the README and published types.
+[Decision #43](docs/decisions.md#43) records the retained-HTML API adoption.
+Earlier decisions describe historical interfaces and must be read with their
+later amendments.
 
 ## Start in the version you are using
 
@@ -21,6 +26,7 @@ release revision; do not substitute mutable main as version-local truth.
 - [DOM authoring rules](docs/authoring.md)
 - [Current public React exports](packages/react/src/index.ts)
 - [Current advanced exports](packages/react/src/advanced.ts)
+- [Demo source map](ALL-DEMO-API.md)
 - [Copyable recipes](registry/README.md)
 - [Lab scene contracts](apps/lab/README.md)
 - [Browser gates and limits](instruments/README.md)
@@ -33,5 +39,6 @@ release revision; do not substitute mutable main as version-local truth.
 - [Conformance specification](tests/conformance/README.md)
 - [Agent system delivery plan: proposed, not shipped](docs/agent-system-plan.md)
 
-The Revision 3 proposal and compound sketches are design history. Use current
-exported types for signatures. Treat a capability skip as untested behavior.
+Superseded proposals and completed implementation plans remain in Git history.
+Use the README and exported types for current usage and signatures. Treat a
+capability skip as untested behavior.

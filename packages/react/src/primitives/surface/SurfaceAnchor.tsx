@@ -1,4 +1,4 @@
-// <Surface.Anchor> — matter standing on a named box in the source.
+// <Surface.Anchor> — a scene object placed at a named box in the source.
 //
 // The law: an anchor's children exist only while a COMPLETE anchor set is
 // true of the generation drawn on this geometry. Nothing renders from a
@@ -8,7 +8,7 @@
 //
 // Position comes from the geometry, not from the plane the geometry
 // usually is: the same UV on a deformed sheet is somewhere plane math
-// cannot name, and matter placed by plane math floats off a sheet the
+// cannot name, and an object placed by plane math floats off a sheet the
 // moment it bends.
 //
 // Ownership: this component owns its key's subscription and the transform
@@ -204,7 +204,7 @@ export function useSurfaceAnchorRects(
   // Keyed by content, not identity: a caller building the list inline hands
   // a new array every render, and requiring on identity would drop and
   // re-declare every key in the set on each one — which invalidates the
-  // committed transaction and blanks the matter standing on it.
+  // committed transaction and withholds the objects placed from it.
   const key = names.join('\u0000')
   const keys = useMemo(() => (key === '' ? [] : key.split('\u0000')), [key])
 

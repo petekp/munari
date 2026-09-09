@@ -15,7 +15,8 @@ output. Preserve both distinctions when resolving a conflict.
 | Write captured HTML | [Authoring](authoring.md) | Current rules derived from measurements |
 | Implement focus and spatial navigation | [Focus](focus.md) | Contract, implemented in the binding |
 | Check a kernel law | [Conformance suites](../tests/conformance/README.md) | Executable specification |
-| Recover the API design process | [Revision 3 proposal](public-api-proposal.md), [compound sketches](compound-api-sketches.md) | Historical, not implementation instructions |
+| Find an implemented example | [Demo source map](../ALL-DEMO-API.md) | Current source links; verification belongs to each instrument |
+| Understand the retained-HTML cutover | [Decision #43](decisions.md#43), with #42–45 and #47–48 | Adoption, behavior, sharpness and naming contracts |
 
 Code comments cite `decisions.md #N` and `platform.md #N`; numbering never
 changes. Decision entries retain their original text, with dated amendments
@@ -28,6 +29,11 @@ in the plan. Link these homes rather than maintaining several versions of the
 same rule. Package-local availability remains a separate concern; the
 [packaging stage](agent-system-plan.md#p1-version-local-package-guidance) is not
 implemented by adding repository documents.
+
+Superseded API proposals and completed hardening plans were removed from the
+working tree after their decisions and executable checks were retained. Git
+history contains those records when the design process itself is the subject.
+They are not additional API guides.
 
 ## spikes/
 

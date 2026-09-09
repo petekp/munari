@@ -169,13 +169,13 @@ try {
   // ── which item is which ──────────────────────────────────────────────
   const parked = await page.evaluate(() =>
     [...document.querySelectorAll('[data-munari-source-host]')].map((host) => ({
-      surface: host.getAttribute('data-munari-surface'),
+      surface: host.getAttribute('data-munari-part'),
       item: host.querySelector('.gallery-card')?.getAttribute('data-item') ?? null,
     })).sort((a, b) => a.surface.localeCompare(b.surface)),
   )
   check(
     parked.length === 2 && parked[0].item === LEAVING && parked[1].item === ARRIVING,
-    `the two handles hold the expected pair ` +
+    `the two parts hold the expected pair ` +
       `(${parked.map((p) => `${p.surface}=${p.item}`).join(', ')})`,
   )
 
@@ -273,7 +273,7 @@ try {
   //
   // By rect and not by `elementFromPoint`, which cannot answer this. The
   // canvas runs `pointerMode="surfaces"`: it is `pointer-events: none` and
-  // only goes solid once a raycast has found registered matter under the
+  // only goes solid once a raycast has found a registered Surface under the
   // pointer, so a hit test taken before the mouse has moved there reports
   // whatever is behind the canvas and never the canvas itself.
   const blockers = await page.evaluate(() =>

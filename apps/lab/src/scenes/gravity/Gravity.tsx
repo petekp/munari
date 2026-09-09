@@ -13,6 +13,8 @@
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { useSurfaceSupport } from '@petepetrash/munari'
+import { GravitySurfaces } from './gravitySurfaces'
 import {
   boundsFromViewport,
   clampToBounds,
@@ -152,6 +154,11 @@ function useReducedMotion(): boolean {
 }
 
 export function GravityApp() {
+  const supported = useSurfaceSupport()
+  return supported ? <GravitySurfaces words={WORDS} /> : <GravityNativeApp />
+}
+
+function GravityNativeApp() {
   const hostRef = useRef<HTMLDivElement>(null)
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([])
   const state = useMemo(createGravityState, [])

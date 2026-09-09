@@ -26,12 +26,6 @@
 
 /* ── the sheet's own paper ─────────────────────────────────────────── */
 
-.opt-paper {
-  font: 12px/1.4 var(--opt-ui);
-  color: #16171a;
-  background: #f4f2ee;
-}
-
 /* ── shared tokens ─────────────────────────────────────────────────── */
 
 .opt-page {
@@ -584,10 +578,6 @@
 .opt-hud .sub {
   margin: 3px 0 12px;
   color: #7e828b;
-}
-
-.opt-hud .tabs {
-  pointer-events: auto;
 }
 
 .opt-readout {

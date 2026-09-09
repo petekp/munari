@@ -33,11 +33,9 @@ import {
   deformSurfaceGeometry,
   Surface,
   SurfaceCanvas,
-  useSurface,
-  useSurfaceInstance,
-  useSurfaceState,
+  useSurfaceHandle,
+  useSurfaceStatus,
   useSurfaceUniforms,
-  type SurfaceView,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { plainAttribute } from '../../lib/geometry'
@@ -157,7 +155,7 @@ export interface FisheyeProbeApi {
     amp: number
     ampTarget: number
     locked: boolean
-    presentedView: string
+    presented: string | null
   }
   lock(focus: number, amp: number): void
   unlock(): void
@@ -289,7 +287,6 @@ function Queue({
   onRow: (row: number, instance: string) => void
   onDone: (row: number, instance: string) => void
 }) {
-  const instance = useSurfaceInstance()
   return (
     <div className="fisheye-panel" style={{ width: PANEL_W, height: PANEL_H }}>
       <div className="fisheye-head" style={{ height: HEADER_H }}>
@@ -313,7 +310,7 @@ function Queue({
           data-selected={selected === i || undefined}
           data-done={done.has(i) || undefined}
           style={{ height: ROW_H }}
-          onClick={() => onRow(i, instance)}
+          onClick={event => onRow(i, event.currentTarget.closest('canvas') ? 'source' : 'page')}
         >
           <span className="fisheye-num">{entry.id}</span>
           <span className="fisheye-title">{entry.title}</span>
@@ -327,7 +324,7 @@ function Queue({
             aria-label={`mark ${entry.id} done`}
             onClick={(e) => {
               e.stopPropagation()
-              onDone(i, instance)
+              onDone(i, e.currentTarget.closest('canvas') ? 'source' : 'page')
             }}
           >
             ✓
@@ -341,9 +338,8 @@ function Queue({
 // ── the page ─────────────────────────────────────────────────────────────
 
 export function FisheyeApp() {
-  const surface = useSurface('fisheye-list')
-  const st = useSurfaceState(surface)
-  const [view, setView] = useState<SurfaceView>('dom')
+  const surface = useSurfaceHandle('fisheye-list')
+  const st = useSurfaceStatus(surface)
   const [query, setQuery] = useState('')
   const [done, setDone] = useState<ReadonlySet<number>>(new Set())
   const [selected, setSelected] = useState<number | null>(null)
@@ -364,16 +360,6 @@ export function FisheyeApp() {
   // the gate polls between React commits.
   const stRef = useRef(st)
   stRef.current = st
-
-  // The list is matter from the start: request the lift on mount and stay
-  // lifted — this scene has no page phase to return to. Not gated on
-  // `st.ready`: readiness is a statement about registered WebGL presenters,
-  // and the mesh only mounts once the crossing this view change starts has
-  // flipped `isWebGLMounted`. The protocol's own warm-up holds the page
-  // visible until that mesh proves its first draw.
-  useEffect(() => {
-    setView('webgl')
-  }, [])
 
   // The mesh stands where the page copy's layout box is. Measured, not
   // authored: the panel is centered by CSS and the center moves with the
@@ -458,7 +444,7 @@ export function FisheyeApp() {
         amp: drive.current.amp,
         ampTarget: drive.current.ampTarget,
         locked: drive.current.locked,
-        presentedView: stRef.current.presentedView,
+        presented: stRef.current.presentation,
       }),
       lock: (focus, amp) => {
         const d = drive.current
@@ -552,20 +538,10 @@ export function FisheyeApp() {
           </p>
         </div>
         <div ref={holderRef} className="fisheye-holder">
-          <Surface
-            surface={surface}
-            view={view}
-            timing={{ settleMs: 0, durationMs: 1 }}
-            size={[PANEL_W, PANEL_H]}
-            // The lens shows rows at up to amplitude× their CSS size; the
-            // texture needs that many more texels or the magnified rows
-            // arrive as mush. 4 = the canvas's dpr ceiling (2) × the peak
-            // magnification (2).
-            resolution={2 * FISHEYE_DEFAULTS.amplitude}
-            source={content}
-          >
-            <Surface.DOM>{content}</Surface.DOM>
-          </Surface>
+          <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={true}>
+<Surface.HTML size={[PANEL_W, PANEL_H]} resolution={2 * FISHEYE_DEFAULTS.amplitude}>{content}</Surface.HTML>
+
+          </Surface.Root>
         </div>
       </div>
 
@@ -582,9 +558,10 @@ export function FisheyeApp() {
         }}
       >
         <PixelPerfect />
-        {st.isWebGLMounted && pos && (
+        {pos && (
+          <Surface.Scene surface={surface}>
           <group position={[pos.wx, pos.wy, 0]}>
-            <Surface.WebGL
+            <Surface.Mesh
               surface={surface}
               placement="manual"
               alpha="source"
@@ -595,8 +572,9 @@ export function FisheyeApp() {
               material={<LensMaterial />}
             >
               <WarpDrive drive={drive} geoRef={geoRef} onRest={() => setLensLive(false)} />
-            </Surface.WebGL>
+            </Surface.Mesh>
           </group>
+          </Surface.Scene>
         )}
       </SurfaceCanvas>
 

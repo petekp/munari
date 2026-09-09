@@ -4,6 +4,7 @@ import {
   driveCommit,
   driveGrabStep,
   drivePresentationStep,
+  driveSpringPresentationStep,
   driveSpringStep,
   easeInCubic,
   easeInOutCubic,
@@ -160,6 +161,27 @@ describe('release spring', () => {
     expect(coarse.t).toBeCloseTo(fine.t, 3)
     expect(coarse.v).toBeCloseTo(fine.v, 2)
   })
+
+  it('preserves the analytic path when the spring accelerates beyond the entry velocity limit', () => {
+    // Detail #36: t=0.46 and v=0 was a stationary release, yet repeated
+    // clamping halved its landing impulse on a 60Hz display. Compare equal
+    // elapsed time before contact, where the analytic solution composes.
+    for (const t of [0.1, 0.46, 0.54, 0.9]) {
+      for (const target of [0, 1] as const) {
+        const initial = { t, v: 0 }
+        const expected = driveSpringStep(initial, target, 0.1, P)
+        for (const hz of [30, 60, 120, 240]) {
+          let state = initial
+          for (let frame = 0; frame < hz / 10; frame++) {
+            state = driveSpringStep(state, target, 1 / hz, P)
+          }
+          expect(state.t).toBeCloseTo(expected.t, 11)
+          expect(state.v).toBeCloseTo(expected.v, 11)
+        }
+      }
+    }
+    expect(driveSpringStep({ t: 0.46, v: 0 }, 1, 0.04, P).v).toBeGreaterThan(P.vMax)
+  })
 })
 
 describe('grab tracking', () => {
@@ -190,5 +212,66 @@ describe('presentation handoff', () => {
       shown = next
     }
     expect(shown).toBe(0.7)
+  })
+
+  it('keeps fast acquired springs visually aligned through either landing', () => {
+    // The raw spring can exceed the input limit under its own acceleration.
+    // A second presentation clamp used to hide a dock-bound sheet at 95%
+    // progress, or start the rest wobble before the visible sheet was home.
+    for (const initial of [{ t: 0.1, v: 1.2 }, { t: 0.1, v: 6 }, { t: 0.9, v: -1.2 }, { t: 0.9, v: -6 }]) {
+      const target = driveCommit(initial.t, initial.v, P)
+      const expected = driveSpringStep(initial, target, 0.1, P)
+      for (const hz of [30, 60, 120, 240]) {
+        let state = { ...initial, visibleT: initial.t, arrivalV: 0, done: false }
+        for (let frame = 0; frame < hz / 10; frame++) {
+          state = driveSpringPresentationStep(state, state.visibleT, target, 1 / hz, P)
+          expect(state.visibleT).toBe(state.t)
+        }
+        expect(state.visibleT).toBeCloseTo(expected.t, 11)
+        expect(state.v).toBeCloseTo(expected.v, 11)
+        for (let frame = 0; frame < hz * 0.3 && !state.done; frame++) {
+          state = driveSpringPresentationStep(state, state.visibleT, target, 1 / hz, P)
+          expect(state.visibleT).toBe(state.t)
+        }
+        expect(state.done).toBe(true)
+        expect(state.visibleT).toBe(target)
+      }
+    }
+  })
+
+  it('preserves release momentum while an acquired sheet catches its hidden pointer target', () => {
+    const releases = [
+      { t: 0.7, v: 3, visibleT: 0, target: 1 },
+      { t: 0.3, v: -3, visibleT: 1, target: 0 },
+      // Escape can restore the prior destination against the current velocity.
+      { t: 0.99, v: -6, visibleT: 1, target: 1 },
+      { t: 0.01, v: 6, visibleT: 0, target: 0 },
+      { t: 0.99, v: -6, visibleT: 0, target: 1 },
+      { t: 0.01, v: 6, visibleT: 1, target: 0 },
+    ] as const
+    for (const { target, ...initial } of releases) {
+      for (const hz of [30, 60, 120, 240]) {
+        let state: ReturnType<typeof driveSpringPresentationStep> = { ...initial, arrivalV: 0, done: false }
+        let elapsed = 0
+        while (state.visibleT !== state.t && elapsed < 0.2) {
+          const before = state.visibleT
+          state = driveSpringPresentationStep(state, state.visibleT, target, 1 / hz, P)
+          elapsed += 1 / hz
+          expect(Math.abs(state.visibleT - before)).toBeLessThanOrEqual(P.vMax / hz + 1e-12)
+          expect(state.t).toBe(initial.t)
+          expect(state.v).toBe(initial.v)
+          expect(state.done).toBe(false)
+          expect(state.arrivalV).toBe(0)
+        }
+        expect(state.visibleT).toBe(initial.t)
+        while (!state.done && elapsed < 0.4) {
+          state = driveSpringPresentationStep(state, state.visibleT, target, 1 / hz, P)
+          elapsed += 1 / hz
+        }
+        expect(state.done).toBe(true)
+        expect(state.visibleT).toBe(target)
+        expect(elapsed).toBeLessThanOrEqual(0.4)
+      }
+    }
   })
 })

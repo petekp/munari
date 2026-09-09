@@ -99,8 +99,14 @@ try {
   const port = server.config.server.port ?? server.httpServer.address().port
 
   const page = await browser.newPage()
+  page.on('pageerror', (error) => problems.push(String(error)))
+  page.on('console', (message) => {
+    if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) {
+      problems.push(message.text())
+    }
+  })
   await page.setViewport({ width: 1100, height: 800, deviceScaleFactor: 1 })
-  await page.goto(`http://localhost:${port}/?scene=genie`, { waitUntil: 'load' })
+  await page.goto(`http://localhost:${port}/?scene=genie&framed`, { waitUntil: 'load' })
   await page.waitForFunction(
     () =>
       document.querySelector('.gen-sheet[data-win="scheda"] .gen-window') &&

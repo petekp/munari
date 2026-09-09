@@ -1,10 +1,10 @@
-import { memo, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useThree, type ThreeEvent } from '@react-three/fiber'
 import {
   Dial,
   FocusGroup,
-  Surface,
+  SceneSurface,
   type GroupFocusState,
   useFocusScene,
 } from '@petepetrash/munari'
@@ -122,6 +122,14 @@ function WorkPanel({
   // (the dial's readout is real DOM — that's the point).
   const sourceRoot = useRef<HTMLElement | null>(null)
   const [probeWidth, setProbeWidth] = useState(PANEL_W)
+  const setGroup = useCallback((node: THREE.Group | null) => {
+    group.current = node
+    register(spec.id, node)
+  }, [register, spec.id])
+  useLayoutEffect(() => {
+    // Initial room placement; later focus and hover commits preserve the drag pose.
+    group.current?.lookAt(LOOK_TARGET.x, LOOK_TARGET.y, LOOK_TARGET.z)
+  }, [])
 
   const approachNow = () => {
     const g = group.current
@@ -210,36 +218,27 @@ function WorkPanel({
   return (
     <group
       position={slot.position}
-      ref={(g) => {
-        group.current = g
-        register(spec.id, g)
-        if (g) g.lookAt(LOOK_TARGET.x, LOOK_TARGET.y, LOOK_TARGET.z)
-      }}
+      ref={setGroup}
     >
       <FocusGroup id={spec.id} order={order} objectRef={group} onStateChange={setFocus}>
-        <Surface
-          name={`workspace-${spec.id}`}
-          source={
-            <WorkspacePanelSource
+        <SceneSurface.Root name={`workspace-${spec.id}`} onReady={() => {
+            const record = window.__domSurfaceDemand
+            if (record) record.ready = true
+          }}>
+<SceneSurface.HTML size={[demandProbe ? probeWidth : PANEL_W, PANEL_H]}>{<WorkspacePanelSource
               spec={spec}
               sourceRoot={sourceRoot}
               demandProbe={demandProbe}
               setProbeWidth={setProbeWidth}
-            />
-          }
-          size={[demandProbe ? probeWidth : PANEL_W, PANEL_H]}
-          onReady={() => {
-            const record = window.__domSurfaceDemand
-            if (record) record.ready = true
-          }}
-          >
-          <Surface.WebGL
+            />}</SceneSurface.HTML>
+          <SceneSurface.Mesh
             name={`workspace-${spec.id}`}
+            placement="manual"
             geometry={<planeGeometry args={[demandProbe ? probeWidth / 200 : W3, H3]} />}
             onDoubleClick={approach}
             castShadow
           />
-        </Surface>
+        </SceneSurface.Root>
         {/* Satellite knob: a WebGL leaf in the SAME focus group — Tab flows
             from the panel's last button onto it (the mixed-group
             proof). Its detents paint the panel's readout: physics in the
@@ -259,8 +258,7 @@ function WorkPanel({
             castShadow
           />
         )}
-        {/* Grab handle: the one part of a panel that is matter, not screen.
-            Doubles as the focus lamp — unit selection glows it steady,
+        {/* The drag handle also indicates focus: unit selection glows it steady,
             interior engagement brightens it. */}
         <mesh
           position={[0, H3 / 2 + 0.09, 0]}
@@ -404,10 +402,10 @@ export function Workspace() {
     }
   }, [panels])
 
-  const register = (id: string, g: THREE.Group | null) => {
+  const register = useCallback((id: string, g: THREE.Group | null) => {
     if (g) groups.current.set(id, g)
     else groups.current.delete(id)
-  }
+  }, [])
 
   return (
     <>

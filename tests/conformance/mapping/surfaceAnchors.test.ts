@@ -80,7 +80,7 @@ describe('one complete painted anchor transaction', () => {
 describe('an incomplete set is refused whole', () => {
   it('rejects a duplicate key', () => {
     // Two boxes claiming one name: whichever the selector reaches second
-    // would silently win, and the matter parked on the first would move to
+    // would silently win, and the object on the first would move to
     // the second's place with nothing reporting a change.
     expect(
       collectSurfaceAnchors(
@@ -102,7 +102,7 @@ describe('an incomplete set is refused whole', () => {
   })
 
   it('rejects a live root whose box no longer matches the paint', () => {
-    // The root relaid out after the paint. Half the matter placed from this
+    // The root relaid out after the paint. Half the objects placed from this
     // measurement and half from the last one is a picture nobody reads as
     // wrong — every piece is plausibly placed.
     expect(
@@ -170,7 +170,7 @@ describe('a receipt speaks for one generation', () => {
       uMin: 0, uMax: 1, vMin: 0, vMax: 1, cssWidth: 1, cssHeight: 1,
     } })
     expect(anchorReceiptMatchesDrawn(receipt, 7, 4)).toBe(true)
-    // A newer collection than the texture carries places matter where the
+    // A newer collection than the texture carries places objects where the
     // content is ABOUT to be — during a resize, one step ahead of the pixels.
     expect(anchorReceiptMatchesDrawn(receipt, 7, 3)).toBe(false)
     expect(anchorReceiptMatchesDrawn(receipt, 7, 5)).toBe(false)

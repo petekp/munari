@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { waitForSurfaceInput } from '../surfaceInput.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '..', '..')
@@ -251,6 +252,7 @@ try {
   // controls prove SurfaceCanvas keeps normal R3F input when it is not in
   // `surfaces` pointer mode.
   await go('knobs')
+  await waitForSurfaceInput(page,'knobs-panel-surface')
   const knob = await sourcePoint(
     'knobs-panel',
     'knobs-panel-surface',
@@ -288,8 +290,9 @@ try {
   const explodeB = await page.evaluate(() => window.__r3f.camera.position.toArray())
   if (!changed(explodeA, explodeB)) problems.push('explode camera did not move on mouse drag')
 
-  // Flight: a delete keeps the Surface alive until it hands back, so this
-  // checks two full delete cycles as well as the measured two-layer shadow.
+  // Flight: a delete keeps the Surface alive until it hands back. Physics
+  // also needs frames after the lift completes: on 2026-09-05, relying on
+  // protocol work alone left a held card frozen with nonzero velocity.
   await go('flight')
   const erase = async (nextCount) => {
     const button = await page.$('[data-card] .l14-del')
@@ -310,8 +313,68 @@ try {
     const mesh = window.__r3f.scene.getObjectByName('flight-card-shadow')
     return mesh ? { visible: mesh.visible, count: mesh.material.uniforms.uCount.value } : null
   })
+  // Observe a quiet interval after setup and hover paints have had time to
+  // finish. The pointer stays still so its events cannot wake a stalled loop.
+  const renderActivity = () => page.evaluate(() => new Promise((resolve) => {
+    const started = performance.now()
+    let first = null
+    const sample = () => {
+      const elapsed = performance.now() - started
+      const frame = window.__r3f.gl.info.render.frame
+      if (elapsed >= 1_000 && first === null) first = frame
+      if (elapsed >= 1_500) resolve(frame - first)
+      else requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+  }))
+  const heldFrames = await renderActivity()
+  if (heldFrames === 0) problems.push('flight stopped rendering while a card was held')
   await page.mouse.up()
   if (!shadow?.visible || shadow.count !== 2) problems.push(`flight shadow was ${JSON.stringify(shadow)}`)
+  const landed = await settle(() => !window.__flight, 10_000)
+  if (!landed) problems.push('flight did not land after release without further pointer movement')
+  else if (await renderActivity() !== 0) problems.push('flight kept rendering after landing cleanup')
+
+  // A re-grab begins on the canvas, so its router claims the pointer. The
+  // scene must still observe the trusted move and release before routing.
+  if (landed) {
+    const heading = await page.$('[data-card] h3')
+    const box = await heading.boundingBox()
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    const floating = await settle(() => {
+      const f = window.__flight?.flight.current
+      return f?.mode === 'float' && f.plate.p.z > 90 && f.plate.v.length() < 1
+    }, 10_000)
+    if (!floating) problems.push('flight tap did not leave a floating card')
+    else {
+      const grab = await page.evaluate(() => {
+        const group = window.__flight.cardRef.current
+        const point = group.getWorldPosition(group.position.clone()).project(window.__r3f.camera)
+        const canvas = window.__r3f.gl.domElement.getBoundingClientRect()
+        return { x: canvas.left + (point.x + 1) * canvas.width / 2, y: canvas.top + (1 - point.y) * canvas.height / 2 }
+      })
+      await page.mouse.move(grab.x, grab.y)
+      await page.mouse.down()
+      if (!await settle(() => window.__flight?.flight.current?.mode === 'held', 3_000)) {
+        problems.push('flight could not re-grab the floating card')
+      }
+      const target = { x: grab.x + 70, y: grab.y + 30 }
+      await page.mouse.move(target.x, target.y, { steps: 8 })
+      const hand = await page.evaluate(() => {
+        const f = window.__flight?.flight.current
+        return f ? { x: f.px, y: f.py } : null
+      })
+      if (!hand || Math.hypot(hand.x - target.x, hand.y - target.y) > 1) {
+        problems.push(`flight re-grab lost the hand: ${JSON.stringify(hand)}, expected ${JSON.stringify(target)}`)
+      }
+      await page.mouse.up()
+      if (!await settle(() => !window.__flight, 10_000)) {
+        problems.push('flight re-grab did not land after release')
+      } else if (await renderActivity() !== 0) {
+        problems.push('flight kept rendering after re-grab cleanup')
+      }
+    }
+  }
 
   // Logo: no compositor frame may hide both the HTML letters and WebGL copy.
   await go('logo')

@@ -1,15 +1,11 @@
-// The matter palette: what a lifted letter is MADE of. Logo.tsx owns the
-// springs and the crossing; logoLaw deals the substances; logoFields owns
-// the blur pyramid; this file owns the GLSL (the flightShaders convention
-// — a shader is data, and inlining it buries both files).
+// Logo materials — parameter rows and shaders for scene-rendered letters.
+// logoLaw selects each material; logoScene supplies motion and uniforms;
+// logoFields supplies the blur pyramid used for relief and lighting.
 //
-// The idea in one line: on the page every letter is INK; lifted, each
-// letter becomes a different substance — balloon, foil, gummy, neon,
-// chrome, pearl, velvet, holo, plasma, enamel — and the conductor
-// re-deals substances the way it re-deals faces and colors, so in
-// matter mode a beat TRANSMUTES a letter. A substance is a DECK ROW
-// (MATTER_PARAMS), not a code path: every number that makes chrome
-// chrome arrives as a uniform, and growing the set is adding a row.
+// Page presentation keeps the source's ink. Scene presentation can use
+// balloon, foil, gummy, neon, chrome, pearl, velvet, holo, plasma or enamel.
+// MATERIAL_PARAMS carries their values; adding a material adds a row rather
+// than a shader branch.
 //
 //   · the surface — the glyph's own alpha is a height field, read from
 //     TWO PRE-BLURRED COPIES of the letter's texture (logoFields: a
@@ -52,11 +48,11 @@
 //     every glint into terraces). Three motions live there: the gel
 //     WEAVE (two crossed traveling waves, on scale/speed/angle dials),
 //     strike RINGS that radiate from a tap or a re-deal and ring down
-//     per matter, and a travel STRETCH — area-conserving squash-and-
+//     per material, and a travel STRETCH — area-conserving squash-and-
 //     stretch along the velocity the prism already disperses on.
 //   · prism fringe — the three channels sample at offsets along the
 //     letter's velocity: dispersion belongs to motion.
-//   · glow — an emissive channel, not a matter: the ink becomes the
+//   · glow — an emissive channel shared by materials: the ink becomes the
 //     tube (neon fully, plasma halfway), plus a halo of its own light
 //     OUTSIDE the glyph. The halo is a two-lobe bloom — the coarse
 //     field's excess coverage over the sharp alpha, under a skirt from
@@ -85,16 +81,14 @@
 
 import { RIPPLE } from './logoLaw'
 
-/** The cooling law: everything that makes a letter a SUBSTANCE — its
- *  light, its relief, its extruded thickness — rides one choreography
- *  window on the lift's progress. `lift.range(from, distance)` is zero
- *  before `from` and full past `from + distance`, while the motions a
- *  letter shares with the page (depth, jelly, prism) ride plain
- *  progress. So a letter lifts as ink, becomes matter in flight, and
+/** Scene lighting, relief and extrusion share this progress window.
+ *  The normalized range `(progress - from) / distance` is clamped to zero
+ *  before `from` and full past `from + distance`. A letter starts with
+ *  its page appearance, takes on its scene material in flight, and
  *  freezes back to ink before touchdown: the last stretch on either
  *  side of a swap is literally the page's own pixels.
  *
- *  That is first a perceptual choice (matter cooling as it lands) and
+ *  That is first a perceptual choice (material cooling as it lands) and
  *  second what kept the crossing-flash carry clause honest. That
  *  clause's ink-mask centroid is only a POSITION while the mask is ink, and
  *  anything that swells the mask near a swap moves it without moving a
@@ -108,15 +102,13 @@ import { RIPPLE } from './logoLaw'
  *  handoff is also what the identity theorem asks for on its own — a
  *  lifted letter must ADD nothing at progress 0. The gate has not been
  *  measured to be NECESSARY for either; it is the cheap way to make
- *  both unable to matter. */
-export const MATTER_GATE = { from: 0.25, distance: 0.35 }
+ *  both preserve the page geometry at the handoff. */
+export const MATERIAL_GATE = { from: 0.25, distance: 0.35 }
 
-/** One substance, whole: everything the shader needs to render it,
- *  shape and surface together, so a matter is a row of data rather
- *  than a branch of code. Rows align 1:1 with LOGO_MATTERS (logoLaw)
- *  — logoShaders.test.ts pins the alignment. */
-export interface MatterSpec {
-  /** LOGO_MATTERS name, repeated here so the alignment is checkable. */
+/** Shape and surface parameters for one material. Rows align with
+ *  LOGO_MATERIALS; logoShaders.test.ts pins their order and values. */
+export interface LogoMaterialSpec {
+  /** LOGO_MATERIALS name, repeated here so the alignment is checkable. */
   name: string
   /** Weight of the fine field's gradient — the edge bevel. */
   shoulder: number
@@ -150,7 +142,7 @@ export interface MatterSpec {
   glow: number
 }
 
-export const MATTER_PARAMS: MatterSpec[] = [
+export const MATERIAL_PARAMS: LogoMaterialSpec[] = [
   // ink — the page's own look; the lit branch never opens on it.
   { name: 'ink', shoulder: 0, pillow: 0, dome: 0, jelly: 0, prism: 0,
     rough: 0, metal: 0, sss: 0, crinkle: 0, sheen: 0, irid: 0, glow: 0 },
@@ -268,7 +260,7 @@ const HEIGHT_GLSL = /* glsl */ `
   // rather than repeated: a slope is px of rise per px of run, and the
   // two fields measure their run in differently sized texels.
   uniform vec2 uFieldPx;
-  // The matter's own shape (MATTER_PARAMS): how much of the height comes
+  // The material's own shape (MATERIAL_PARAMS): how much of the height comes
   // from the fine shoulder and how much from the coarse pillow, and the
   // overall gain. A balloon inflates from the pillow, an enamel gummy
   // from the shoulder.
@@ -331,7 +323,7 @@ const HEIGHT_GLSL = /* glsl */ `
  *     alone reaches it only through lighting, and two thirds of the
  *     deck is too matte to carry lighting, so the sea was invisible
  *     on most of the word. The surge rolls the INK itself, which
- *     every matter shows. Steady: excitation never pumps it. uJelly
+ *     every material shows. Steady: excitation never pumps it. uJelly
  *     is the orbit radius in px; 0 pins the flat plane.
  *   · the RINGS — a strike (a tap on the letter) drops a wave packet
  *     into the slot buffer: a ring expanding at fixed front speed,
@@ -356,7 +348,7 @@ const MOTION_GLSL = /* glsl */ `
   // independently — erratic shaking, never a wave (2026-08-14).
   uniform vec2 uWaveOrigin;
   // The weave's orbit radius in px — surge and heave both — as knob ×
-  // matter gate × the matter's floored softness.
+  // material gate × the material's floored softness.
   uniform float uJelly;
   // The weave's wave numbers (rad/px, wavelengths set from the font
   // size), its angular speeds (rad/s — WEAVE.w × the speed dial), and
@@ -372,7 +364,7 @@ const MOTION_GLSL = /* glsl */ `
   // y = front speed (px/s), z = packet half-width (px), w = ring-down
   // time (s). The RIPPLE constants (logoLaw) × the letter's font px.
   uniform vec4 uRipK;
-  // px a full-power strike displaces: knob × progress × the matter's
+  // px a full-power strike displaces: knob × progress × the material's
   // softness blend. Zero at every handoff.
   uniform float uRipAmp;
   // Travel: the unit direction of screen motion (the prism disperses
@@ -565,7 +557,7 @@ export const LETTER_FRAG = /* glsl */ `
   // gloss knob × cooling-gated amplitude (zero for ink): the mix weight
   // between the page's exact pixels and the shaded substance.
   uniform float uFx;
-  // prism offset in texels (knob × amplitude × speed × matter factor);
+  // prism offset in texels (knob × amplitude × speed × material factor);
   // it disperses along uVelDir, which lives with the motion above.
   uniform float uPrism;
   // 0..1 — how open the slab is, on the same footing as uSlab in the
@@ -574,10 +566,10 @@ export const LETTER_FRAG = /* glsl */ `
   // with a geometric one.
   uniform float uSolid;
   // 0 is ink, anything above is a substance — and WHICH one no longer
-  // matters in here: the deck row itself arrives in the uniforms
+  // materials in here: the deck row itself arrives in the uniforms
   // below (Logo.tsx folds the panel's trims in on the way). One
   // program, six letters, no recompiles when the conductor re-deals.
-  uniform float uMatter;
+  uniform float uMaterialIndex;
   // The surface response — what the branch ladder used to hardcode.
   uniform float uRough;
   uniform float uMetal;
@@ -759,7 +751,7 @@ export const LETTER_FRAG = /* glsl */ `
     // uSolid opens the branch too: a solid letter needs its geometric
     // silhouette cut even at zero gloss, and the cut needs the albedo
     // computed in here to color the edge skirt.
-    if (uMatter > 0.5 && (uFx > 0.001 || wall > 0.5 || uSolid > 0.001)) {
+    if (uMaterialIndex > 0.5 && (uFx > 0.001 || wall > 0.5 || uSolid > 0.001)) {
       // ── the surface: gradients of two smooth height fields ──
       // Central differences at one field texel, on hardware bilinear —
       // band-limited data, so the slopes are smooth by construction.
@@ -816,7 +808,7 @@ export const LETTER_FRAG = /* glsl */ `
       float hardA = clamp((cov - 0.5) / cw + 0.5, 0.0, 1.0);
       outC = mix(outC, vec4(alb * hardA, hardA), uSolid);
 
-      // ── the matter's surface, read off its deck row ──
+      // ── the material's surface, read off its deck row ──
       // The roughness floor is numeric, not aesthetic: at exactly zero
       // the GGX numerator is zero and the specular VANISHES instead of
       // sharpening — polish at full mirror must land here, not there.
@@ -912,7 +904,7 @@ export const LETTER_FRAG = /* glsl */ `
       vec3 F = F0 + (1.0 - F0) * pow(1.0 - VdH, 5.0);
       vec3 KEY = vec3(2.6, 2.5, 2.3) * uKey;
       // Wrap lighting stands in for subsurface scattering on the
-      // diffuse term: light bleeds past the terminator on soft matter.
+      // diffuse term: light bleeds past the terminator on soft material.
       float wrap = sss * 0.5;
       float NdLw = clamp((dot(n, L) + wrap) / (1.0 + wrap), 0.0, 1.0);
       vec3 lit = (1.0 - metal) * (1.0 - F) * alb / PI * KEY * NdLw;
@@ -953,7 +945,7 @@ export const LETTER_FRAG = /* glsl */ `
       // in for at zero gloss: the face has the page's own texel to be
       // identical to, and a wall has no page pixels at all — the slab
       // is shut at both handoffs. So it stands in its own material,
-      // opaque, because it IS matter rather than a picture of matter.
+      // opaque, because it IS material rather than a picture of material.
       // Past this line the two are one surface.
       vec4 base = mix(outC, vec4(albIn, 1.0), wall);
       // Exposure, premultiply, and the identity mix: uFx is the cooled

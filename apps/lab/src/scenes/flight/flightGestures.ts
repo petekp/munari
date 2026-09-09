@@ -1,14 +1,8 @@
-// Flight's window-level gesture: the three listeners that read the
-// REAL pointer while a card is in flight.
-//
-// Extracted so this seam can be tested as DOM: these handlers live on
-// `window`, and `window` is a busy place in this codebase — the surface
-// pointer protocol retells events into parked subtrees, and those
-// subtrees bubble to the same window. What arrives here is therefore
-// a MIXTURE of the user's hand and the library's relays, and which
-// one a listener wants depends on which side of the glass it lives
-// on. This one lives on the page side: it is the hand, and only the
-// hand.
+// Flight gestures — trusted pointer input for an airborne card.
+// Read at window capture so canvas routing cannot hide moves or releases.
+// A re-grabbed card stayed held after release when the document router
+// consumed the events first (2026-09-05). This module owns the gesture;
+// CanvasPointerGate owns forwarding to the captured content.
 
 import * as THREE from 'three'
 import { tossSpin, type Plate } from './flightPhysicsLaw'
@@ -175,14 +169,14 @@ export function attachFlightGestures<Col>({
     f.mode = 'home'
   }
 
-  window.addEventListener('pointermove', onMove)
-  window.addEventListener('pointerup', onUp)
-  window.addEventListener('pointercancel', onUp)
+  window.addEventListener('pointermove', onMove, true)
+  window.addEventListener('pointerup', onUp, true)
+  window.addEventListener('pointercancel', onUp, true)
   window.addEventListener('keydown', onKey)
   return () => {
-    window.removeEventListener('pointermove', onMove)
-    window.removeEventListener('pointerup', onUp)
-    window.removeEventListener('pointercancel', onUp)
+    window.removeEventListener('pointermove', onMove, true)
+    window.removeEventListener('pointerup', onUp, true)
+    window.removeEventListener('pointercancel', onUp, true)
     window.removeEventListener('keydown', onKey)
   }
 }

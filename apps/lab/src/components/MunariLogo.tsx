@@ -5,7 +5,7 @@
 // it renders as ordinary DOM — six letters on the fixed grid, breathing
 // on the carried float — and that is the shipped fallback, not a
 // degraded one. With the capability it lifts once, automatically, into
-// the matter overlay (logoMatter.tsx) and stays there: same pixels,
+// the shared scene renderer (logoScene.tsx) and stays there: same pixels,
 // plus depth bob, wobble, and the pointer dodge.
 //
 // The conductor still re-rolls letters, at a far slower cadence than
@@ -16,9 +16,10 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
-  type SurfaceView,
-  useSupportsDOMSurfaces,
-  useSurface,
+  Surface,
+  type SurfacePresentation,
+  useSurfaceSupport,
+  useSurfaceHandle,
 } from '@petepetrash/munari'
 import { useCarriedMotion } from '@petepetrash/munari/advanced'
 import {
@@ -34,14 +35,15 @@ import {
 } from '../scenes/logo/logoLaw'
 import {
   GRID,
-  MatterWord,
+  LogoScene,
   SEED0,
   WORD,
   ensureLogoFonts,
-  glyphPaint,
+  LogoLetterHTML,
+  SETTLE_MS,
   type LetterBox,
   type WordMetrics,
-} from '../scenes/logo/logoMatter'
+} from '../scenes/logo/logoScene'
 import '../scenes/logo/logo.css'
 import './munariLogo.css'
 
@@ -75,23 +77,21 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
   const knobsRef = useRef(knobs ?? WORDMARK_KNOBS)
   knobsRef.current = knobs ?? WORDMARK_KNOBS
 
-  const supported = useSupportsDOMSurfaces()
-  const [view, setView] = useState<SurfaceView>('dom')
-  const [presented, setPresented] = useState<SurfaceView>('dom')
-  const [settledOn, setSettledOn] = useState<SurfaceView>('dom')
-  const [glMounted, setGlMounted] = useState(false)
-  const surface = useSurface('logo')
+  const supported = useSurfaceSupport()
+  const [view, setView] = useState<SurfacePresentation>('page')
+  const [presented, setPresented] = useState<SurfacePresentation>('page')
+  const [settledOn, setSettledOn] = useState<SurfacePresentation>('page')
+  const surface = useSurfaceHandle('logo')
   // The one behavioral difference from the playground: no renderer
   // switch. The capability answer IS the request — the hook reports
   // false through hydration and flips once, so this fires at most one
   // lift, and a browser without the trial never mounts a canvas.
   useEffect(() => {
     if (!supported) return
-    setGlMounted(true)
-    setView('webgl')
+    setView('scene')
   }, [supported])
   const inCrossing = view !== presented || view !== settledOn
-  const phase = presented === 'webgl' ? 'gl' : inCrossing ? 'lifting' : 'page'
+  const phase = presented === 'scene' ? 'gl' : inCrossing ? 'lifting' : 'page'
 
   const rRef = useRef(makeRng(SEED0))
   const [poses, setPoses] = useState<LetterPose[]>(() =>
@@ -109,7 +109,7 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
         {
           fonts: [prev[i].font, ...near.map((p) => p.font)],
           colors: [prev[i].color, ...near.map((p) => p.color)],
-          matters: [prev[i].matter, ...near.map((p) => p.matter)],
+          materialIndices: [prev[i].materialIndex, ...near.map((p) => p.materialIndex)],
         },
         knobsRef.current,
       )
@@ -186,9 +186,9 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
   // host moves the grid without firing resize.
   const wordRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
-  const syncPresented = useCallback((next: SurfaceView) => {
-    if (wordRef.current) wordRef.current.dataset.phase = next === 'webgl' ? 'gl' : 'page'
-    if (canvasRef.current) canvasRef.current.dataset.holds = String(next === 'webgl')
+  const syncPresented = useCallback((next: SurfacePresentation) => {
+    if (wordRef.current) wordRef.current.dataset.phase = next === 'scene' ? 'gl' : 'page'
+    if (canvasRef.current) canvasRef.current.dataset.holds = String(next === 'scene')
     setPresented(next)
   }, [])
   const [metrics, setMetrics] = useState<WordMetrics | null>(null)
@@ -213,10 +213,10 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
     setMetrics({ fontPx, boxes })
   }, [])
   useLayoutEffect(() => {
-    if (glMounted) measure()
+    if (supported) measure()
   })
   useEffect(() => {
-    if (!glMounted) return
+    if (!supported) return
     window.addEventListener('resize', measure)
     // Capture: the host's scroller is usually an inner div, and scroll
     // does not bubble.
@@ -225,16 +225,18 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
       window.removeEventListener('resize', measure)
       window.removeEventListener('scroll', measure, true)
     }
-  }, [glMounted, measure])
+  }, [supported, measure])
 
   return (
     <div className={className ? `munari-logo ${className}` : 'munari-logo'}>
-      <div
-        className="logo-word"
-        ref={wordRef}
-        data-phase={phase}
-        style={{ width: `${GRID.width}em` }}
-      >
+      <Surface.Root surface={surface} inScene={view === 'scene'} canvasId="logo" timing={{ settleMs: SETTLE_MS }} onPresentationChange={syncPresented} onMotionComplete={setSettledOn}>
+      <div className="munari-logo__page">
+        <div
+          className="logo-word"
+          ref={wordRef}
+          data-phase={phase}
+          style={{ width: `${GRID.width}em` }}
+        >
         {WORD.split('').map((ch, i) => (
           <span
             key={i}
@@ -250,32 +252,30 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
             <span
               className="logo-letter"
               style={{
-                ...glyphPaint(poses[i]),
+                flexShrink: 0,
                 transform: `translate(${poses[i].dx}em, ${poses[i].dy}em) rotate(${poses[i].tilt}deg) scale(${poses[i].scale})`,
               }}
             >
-              {ch}
+              <LogoLetterHTML index={i} text={ch} pose={poses[i]} box={metrics?.boxes[i]} fontPx={metrics?.fontPx} />
             </span>
           </span>
         ))}
+        </div>
       </div>
 
-      {glMounted && metrics && (
-        <MatterWord
+      {supported && metrics && (
+        <LogoScene
           poses={poses}
           metrics={metrics}
           knobs={knobsRef}
           surface={surface}
-          view={view}
           presented={presented}
           canvasRef={canvasRef}
-          onPresentedViewChange={syncPresented}
-          onMotionComplete={setSettledOn}
-          onWebGLReleased={() => setGlMounted(false)}
           carried={float.sample}
           solid={false}
         />
       )}
+      </Surface.Root>
     </div>
   )
 }

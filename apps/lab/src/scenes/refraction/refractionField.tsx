@@ -35,11 +35,10 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { roundedCoord, spreadDecay, spreadPasses } from './refractionLaw'
 import { FIELD_FRAG, FIELD_VERT, SPREAD_FRAG } from './refractionShaders'
-import { refractionTuning, STAGE_H, STAGE_W } from './refractionTuning'
 
 /**
- * What the two fields need from a scene's tuning bag, and the stage they
- * cover. Named as its own shape so a second scene can drive these passes
+ * What the two fields need from a scene's live tuning bag.
+ * Named as its own shape so a second scene can drive these passes
  * from its own bag — the gallery's content is photographs, which want a
  * different `apertureDetail` and a different stage box, and nothing else
  * about the passes changes.
@@ -51,8 +50,6 @@ export interface FieldConfig {
   apertureFloor: number
   apertureCeil: number
   apertureDetail: number
-  stageW: number
-  stageH: number
   // These three the PASSES do not use — the material does. They are here
   // because `apertureAt` is here, and it is the shader's own expression:
   // ink mixed with spread, eased across texel boundaries, gamma'd. A field
@@ -61,12 +58,6 @@ export interface FieldConfig {
   apertureInk: number
   apertureGamma: number
   frontRounding: number
-}
-
-const REFRACTION_FIELD: FieldConfig = {
-  ...refractionTuning,
-  stageW: STAGE_W,
-  stageH: STAGE_H,
 }
 
 /** A field's own size in texels, for a given CSS px per texel. */
@@ -137,14 +128,19 @@ const smallTarget = (w: number, h: number) =>
  */
 export function useInkField(
   source: { value: THREE.Texture | null },
-  config: FieldConfig = REFRACTION_FIELD,
+  config: FieldConfig,
+  stageW: number,
+  stageH: number,
 ): InkField {
   // Read through a ref, not captured: the panel writes the bag in place and
   // nothing tells this hook, so every frame has to re-read whatever the
   // caller is holding.
   const cfg = useRef(config)
   cfg.current = config
-  const texels = (px: number) => sizeInTexels(px, cfg.current.stageW, cfg.current.stageH)
+  const stage = useRef({ w: stageW, h: stageH })
+  stage.current.w = stageW
+  stage.current.h = stageH
+  const texels = (px: number) => sizeInTexels(px, stage.current.w, stage.current.h)
   const gl = useThree((state) => state.gl)
 
   const rig = useMemo(() => {

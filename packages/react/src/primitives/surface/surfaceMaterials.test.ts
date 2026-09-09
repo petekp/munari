@@ -81,6 +81,7 @@ describe('useSurfaceUniforms', () => {
       size: [200, 100],
       captureRoot: null,
       pageRoot: null,
+      source: undefined,
       setPageRoot: () => {},
       setMeasuredSize: () => {},
     }
