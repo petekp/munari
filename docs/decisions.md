@@ -2650,6 +2650,64 @@ and returning preserved the original input, focus and selection. The destination
 holder was inert before return. That case now has a permanent browser regression;
 the two-instance focus-transfer code was not changed on an unconfirmed inference.
 
+<a id="46"></a>
+
+## #46 — Page handoff versus persistent texture presentation (2026-09-06, open design question)
+
+**Status: tradeoffs recorded; no API, rendering default, or conformance contract
+change decided.** The question is whether content that regularly uses 3D or
+shaders should remain a texture between effects instead of returning to normal
+page rendering. The comparison assumes usable native HTML when HTML-in-canvas
+is unavailable in either design, so browser-support fallback alone does not
+justify the handoff.
+
+Current implementation: [#43](#43) provides `Surface` for page/scene handoffs and
+`SceneSurface` for HTML presented only in the scene. A `SceneSurface` consumer
+must provide its own native fallback when the scene is essential. Keeping the
+shared `SurfaceCanvas` mounted is compatible with both approaches. The handoff
+chooses who supplies the visible pixels; canvas lifetime and the DOM parent's
+identity are separate implementation questions.
+
+| Concern | Return to normal HTML between effects | Keep the content presented as a texture |
+|---|---|---|
+| Starting an effect | Prepare the texture and scene, then transfer presentation without a gap. | An already prepared scene can start moving without another page-to-scene transfer. Initial capture and shader preparation still exist. |
+| Ending an effect | Match the page and scene at the switch, including shadows and other companions. | Continue through the same material and rendering path. |
+| Content and layout changes | The browser can display changes directly, without waiting for a texture update and scene draw. | Changes also need to reach the capture, texture and scene. Their cost depends on the workload. |
+| Scrolling, clipping and stacking | Ordinary page rules determine visibility and placement. | A shared overlay needs synchronization with the page. A canvas positioned in document flow can inherit more of the browser's scrolling and clipping behavior. |
+| Text clarity | The browser manages rasterization for the visible HTML. | Native clarity is possible, but depends on capture density, pixel alignment and filtering; texture size limits still apply. |
+| Persistent visual effects | The native resting appearance needs to match any effect that remains visible. | Lighting and shader effects can remain part of the same presentation. |
+| Implementation complexity | Requires preparation, transfer, reversal and restoration logic. | Avoids repeated transfers while retaining capture, placement, input and resource-lifetime management. |
+
+DOM/React state and accessibility are not exclusive benefits of handoff.
+Permanent texture presentation can retain the real DOM too; interaction geometry
+must still agree with the drawn content. Neither approach implies a continuous
+render loop: an unchanged scene can render on demand. Returning to the page does
+not automatically release textures or the renderer. Resource savings depend on
+what is actually paused or disposed, rather than the presentation label.
+
+[Chrome's limitations](https://developer.chrome.com/blog/html-in-canvas-origin-trial#limitations)
+distinguish JavaScript-driven scrolling inside a canvas from scrolling the whole
+canvas. Canvas placement must therefore be part of the comparison. Existing
+[#44](#44) measurements show that stationary textures can match native clarity;
+[#45](#45) records preparation-clipping and ownership failures. Neither establishes
+that one presentation strategy is generally faster or simpler. This discussion
+adds no new browser measurements.
+
+The working assessment is workload-dependent: handoff is useful for temporary
+effects on ordinary page content, such as a Flight card during a drag. Persistent
+texture presentation is a reasonable alternative for an interface that keeps its
+3D or shader appearance, such as a continuously physical control panel. This is
+guidance for comparison, not a decision to change either public API's defaults.
+
+Before choosing a new default, compare both strategies on the same content,
+display density, canvas placement and frame policy. Include idle content, typing,
+responsive layout, rapid scrolling and repeated effect activation. Measure input
+to visible-update latency, capture/upload/draw work, frame gaps, retained resources,
+pixel fidelity and interaction correctness. Compare overlay and document-flow
+canvases separately. Any resulting measurements belong in runnable
+[instruments](../instruments/README.md); a later implementation decision must name
+the observed benefit and preserve the existing clarity and interaction contracts.
+
 <a id="47"></a>
 
 ## #47 — Canvas selection uses canvasId (2026-09-06, public API)
