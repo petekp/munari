@@ -3,6 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The shell and its frame share this wash before scripts or fonts arrive.
+         App selects other scenes' backgrounds before their first React paint. -->
+    <style>
+      :root { --document-background: #e3ec5a; background: var(--document-background); }
+      #site-opening { display: none; position: fixed; inset: 0; z-index: 2147483647; place-items: center; align-content: center; gap: 22px; padding: 24px; background: #e3ec5a; color: #14140f; text-align: center; transition: opacity 120ms ease-out; }
+      #site-opening svg { width: min(200px, 50vw); height: auto; fill: currentColor; }
+      #site-opening p { margin: 0; font: 12px/1.5 system-ui, sans-serif; }
+      #site-opening a { color: inherit; text-underline-offset: 3px; }
+      #site-opening .site-opening-recovery { display: none; }
+      html[data-opening] #site-opening { display: grid; }
+      html[data-opening='slow'] #site-opening .site-opening-recovery { display: block; }
+      html[data-opening='revealing'] #site-opening { opacity: 0; pointer-events: none; }
+      @media (prefers-reduced-motion: reduce) { #site-opening { transition: none; } }
+    </style>
+    <script>
+      {
+        const params = new URLSearchParams(location.search)
+        if (!params.has('framed') && !params.has('bare')) {
+          document.documentElement.dataset.opening = 'preparing'
+          setTimeout(() => {
+            if (document.documentElement.dataset.opening === 'preparing') document.documentElement.dataset.opening = 'slow'
+          }, 10000)
+        }
+      }
+    </script>
     <title>Munari · Live HTML in 3D</title>
     <meta name="description" content="Explore live HTML in a Three.js scene. Munari is an experimental React library for physical interfaces, materials, and motion." />
     <!-- The demo's own permission. An origin-trial token is a signed claim —
@@ -18,53 +43,28 @@
       http-equiv="origin-trial"
       content="AuNAQ7es2QAvKBMeNd2IBnkxhUnp2zo/W9qfBRZMhKsUKQT4plJxWErGWEk0yKjlo+kmTs4AZDZlV12dRtA59QkAAABXeyJvcmlnaW4iOiJodHRwczovL211bmFyaS52ZXJjZWwuYXBwOjQ0MyIsImZlYXR1cmUiOiJIVE1MSW5DYW52YXMiLCJleHBpcnkiOjE3OTI0NTQ0MDB9"
     />
-    <!-- The bench type. These load into the DOCUMENT, and a card that lifts
-         off the page is rasterized from a parked subtree of that same
-         document — so the faces have to be resident before the first
-         capture or the texture bakes a fallback. A stylesheet in <head>
-         blocks first paint, which is the gate we want; the lab's first grab
-         is thousands of frames later.
-
-         Three voices out of Munari's own working life, one per role:
-
-           Bodoni Moda   Parma, 1790, and then the face of Italian book
-                         publishing for two centuries — the Einaudi and
-                         Bompiani covers Munari was setting while he was also
-                         building the machines. Display only.
-           Archivo       the neutral grotesque. Body and UI: the voice that
-                         is not supposed to have one.
-           Courier Prime the Olivetti Lettera 22 (Nizzoli, 1950). Olivetti
-                         sponsored Arte Programmata in 1962, and a typed
-                         reference number is what a card in a Munari system
-                         actually wore. Codes, notes, identifiers.
-
-         Bodoni is also a deliberate stress test, and one this bench does
-         not yet measure. Its hairlines are the thinnest strokes in the
-         Italian canon, and a Flight card's title is set in it and then
-         rasterized into a texture — so the lab's claim that a page keeps
-         its density after that trip is now being made about the hardest
-         type in the building. But `gate:sharpness` photographs the
-         PASSAGE card, which is Archivo top to bottom, so the gate is
-         silent about the case most likely to fail. Nobody should read a
-         green sharpness run as evidence about Bodoni until the
-         instrument has a Flight subject.
-
-         `display=block` is deliberate: a card that lifts off is
-         rasterized from this document, so a fallback face resident at
-         capture time bakes a fallback into the texture. The cost is an
-         invisible-text window at boot, which is long enough with this
-         payload to outlast an instrument's first screenshot — which is
-         why instruments/sharpness waits on document.fonts.ready before
-         it photographs anything. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400..900&family=Archivo:wdth,wght@62..125,400..900&family=Archivo+Narrow:wght@500;600;700&family=Courier+Prime:wght@400;700&family=Playfair+Display:ital,wght@1,900&display=block"
-      rel="stylesheet"
-    />
+    <!-- Fetch the first screen's faces with the document, before React mounts
+         either viewport. They are the same fonts used by captured HTML; block
+         avoids baking a temporary fallback face into its first texture. -->
+    <link rel="preload" href="/fonts/archivo-400-900-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/bodoni-moda-400-900-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/courier-prime-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/archivo-narrow-500-700-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/playfair-display-900-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/fonts/fonts.css" />
   </head>
   <body>
+    <!-- Bodoni Moda 500 / opsz 96 outlines; license: /licenses/bodoni-moda.txt.
+         Inline paths keep the first visible mark independent of font and JS downloads. -->
+    <div id="site-opening" role="status" aria-label="Opening Munari">
+      <svg viewBox="0 -1520 6612 1540" aria-hidden="true"><g transform="scale(1 -1)"><path transform="translate(0 0)" d="M388.64 920V4H501.64V0H57.84V4H181.5V916H57.84V920ZM959.5 638V4H1072.5V0H638.5V4H751.5V621.6Q751.5 705.6 746.3 773.12Q741.1 840.64 718.72 880.16Q696.34 919.68 645.66 919.68Q562.62 919.68 511.74 872.2Q460.86 824.72 434.11 751.16Q407.36 677.6 398 596.21Q388.64 514.82 388.64 446L384.64 437.4Q384.64 509.24 393.21 595.67Q401.78 682.1 431.35 760.54Q460.92 838.98 521.7 889.49Q582.48 940 686.04 940Q789.92 940 849.64 901Q909.36 862 934.43 793.5Q959.5 725 959.5 638ZM1529.5 638V4H1651.44V0H1207.64V4H1320.64V621.6Q1320.64 705.6 1315.44 773.12Q1310.24 840.64 1288.29 880.16Q1266.34 919.68 1215.66 919.68Q1132.62 919.68 1081.74 872.2Q1030.86 824.72 1004.54 751.16Q978.22 677.6 968.86 596.21Q959.5 514.82 959.5 446L955.5 437.4Q955.5 509.24 964.07 595.67Q972.64 682.1 1001.78 760.54Q1030.92 838.98 1091.7 889.49Q1152.48 940 1256.04 940Q1359.92 940 1419.64 901Q1479.36 862 1504.43 793.5Q1529.5 725 1529.5 638Z"/><path transform="translate(1709 0)" d="M465.5 -20Q349.9 -20 288.76 19.5Q227.62 59 204.56 127Q181.5 195 181.5 282V916H57.84V920H388.64V298.4Q388.64 214.4 395.57 146.88Q402.5 79.36 427.03 39.84Q451.56 0.32 503.64 0.32Q601.54 0.32 659.49 48.36Q717.44 96.4 745.47 170.45Q773.5 244.5 782.07 325.68Q790.64 406.86 790.64 474L795.5 482.6Q795.5 410.76 786.94 324.33Q778.38 237.9 747.39 159.46Q716.4 81.02 649.61 30.51Q582.82 -20 465.5 -20ZM790.64 0V916H653.44V920H999.5V4H1122.3V0Z"/><path transform="translate(2888 0)" d="M388.64 920V4H503.04V0H57.84V4H181.5V916H57.84V920ZM999.5 638V4H1122.3V0H677.1V4H790.64V621.6Q790.64 705.6 783.71 773.12Q776.78 840.64 752.68 880.16Q728.58 919.68 676.5 919.68Q578.6 919.68 520.65 871.64Q462.7 823.6 434.24 749.55Q405.78 675.5 397.21 594.32Q388.64 513.14 388.64 446L384.64 437.4Q384.64 509.24 393.2 595.67Q401.76 682.1 432.75 760.54Q463.74 838.98 530.96 889.49Q598.18 940 714.64 940Q830.24 940 891.81 901Q953.38 862 976.44 793.5Q999.5 725 999.5 638Z"/><path transform="translate(4067 0)" d="M851.72 -20Q799.82 -20 755.09 -6.38Q710.36 7.24 682.74 44.66Q655.12 82.08 655.12 151.4V609Q655.12 681 643.92 754.5Q632.72 828 594.52 877.07Q556.32 926.14 476.32 926.14Q422.28 926.14 367.07 912.7Q311.86 899.26 265.24 873.97Q218.62 848.68 190.07 812.34Q161.52 776 161.52 729.2H159.52Q159.52 783.42 196.87 815.51Q234.22 847.6 280.52 847.6Q329.82 847.6 369.17 818Q408.52 788.4 408.52 733.2Q408.52 670.12 368.17 640.46Q327.82 610.8 280.52 610.8Q228.22 610.8 192.87 641.46Q157.52 672.12 157.52 729.2Q157.52 778.72 187.86 817.06Q218.2 855.4 269.82 881.76Q321.44 908.12 386.28 922.06Q451.12 936 519.12 936Q661.32 936 735.47 889.47Q809.62 842.94 836.37 768.22Q863.12 693.5 863.12 609V91.14Q863.12 55.98 878.25 30.39Q893.38 4.8 935.4 4.8Q968.72 4.8 1011.43 36.98Q1054.14 69.16 1079.98 126.86L1083.12 125.14Q1056 59.46 993.87 19.73Q931.74 -20 851.72 -20ZM372.52 -20Q242.52 -20 165.02 46.5Q87.52 113 87.52 227Q87.52 361 200.72 432.5Q313.92 504 526.92 504H748.12V500H546.1Q461.6 500 412.57 456.99Q363.54 413.98 342.39 353.89Q321.24 293.8 321.24 240.2Q321.24 190.9 332.75 139.2Q344.26 87.5 372.86 52.45Q401.46 17.4 450.66 17.4Q506.6 17.4 553.03 52.78Q599.46 88.16 627.29 163.87Q655.12 239.58 655.12 361H659.12Q659.12 245.6 629.72 159.74Q600.32 73.88 537.42 26.94Q474.52 -20 372.52 -20Z"/><path transform="translate(5145 0)" d="M384.64 444.6Q384.64 541.26 396.06 629.89Q407.48 718.52 436.11 788.46Q464.74 858.4 516.37 899.2Q568 940 647.7 940Q707.2 940 749.8 915.19Q792.4 890.38 815.38 850.16Q838.36 809.94 838.36 763.14Q838.36 706.96 803.66 667.48Q768.96 628 708.36 628Q646.18 628 610.48 663.27Q574.78 698.54 574.78 748.72Q574.78 811.92 615.51 846.61Q656.24 881.3 706.94 881.3Q744.28 881.3 773.93 864.77Q803.58 848.24 820.4 821.66Q837.22 795.08 837.22 763.14H834.36Q834.36 808.8 811.88 848.09Q789.4 887.38 747.8 911.69Q706.2 936 647.7 936Q568.14 936 517.44 894.77Q466.74 853.54 438.61 783.53Q410.48 713.52 399.56 625.46Q388.64 537.4 388.64 444.6ZM388.64 920V4H516.2V0H57.84V4H181.5V916H57.84V920Z"/><path transform="translate(6027 0)" d="M295.44 1252Q240.2 1252 200.85 1291.52Q161.5 1331.05 161.5 1385.93Q161.5 1442.3 200.85 1481.15Q240.2 1520 295.44 1520Q351.8 1520 390.65 1481.15Q429.5 1442.3 429.5 1385.93Q429.5 1330.7 390.65 1291.35Q351.8 1252 295.44 1252ZM398.64 920V4H521.44V0H67.84V4H190.64V916H67.84V920Z"/></g></svg>
+      <p>HTML, 3D, and Shaders, Unified.</p>
+      <p class="site-opening-recovery">The page is taking longer than usual. <a href="">Reload</a></p>
+    </div>
     <div id="root"></div>
+    <script>
+      if (document.documentElement.hasAttribute('data-opening')) document.getElementById('root').inert = true
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

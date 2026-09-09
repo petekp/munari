@@ -119,7 +119,7 @@ body,
    * BETTER falling on plain paper than on a 3px stripe that competes with
    * it. The 3D scenes' canvas is transparent, so this is also the room they
    * sit in. */
-  background: var(--bench);
+  background: var(--document-background, var(--bench));
   color: var(--ink);
 }
 

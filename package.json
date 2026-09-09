@@ -46,6 +46,8 @@
     "deploy:demo": "npm run build -w @munari/lab && VERCEL_ORG_ID=team_d8NmNbma8pPIVCBkDXUnfpMa VERCEL_PROJECT_ID=prj_pe759NtaVMScHyupOSFSJ41NQiz7 vercel deploy --prod --yes --cwd apps/lab/dist",
     "probe:postcard": "node instruments/api-all-demos/run.mjs",
     "probe:home-light": "node instruments/home-light/run.mjs",
+    "probe:home-headline": "node instruments/home-headline/run.mjs",
+    "probe:home-startup": "node instruments/home-startup/run.mjs",
     "probe:heading-edges": "node instruments/home-light/text-edges.mjs",
     "probe:home-lamp": "node instruments/home-lamp/run.mjs",
     "probe:lamp-quality": "node instruments/home-lamp/quality.mjs",

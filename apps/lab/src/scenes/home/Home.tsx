@@ -11,6 +11,7 @@ import { ExamplesSection } from './HomeExamples'
 import { SupportSection } from './HomeSupport'
 import { TutorialSection } from './HomeTutorial'
 import { useHomeReducedMotion } from './homeMotion'
+import { useHomeOpening } from './homeOpening'
 import { GUIDE_URL, SOURCE_ROOT } from '../../components/sceneCatalog'
 import '../../components/lit.css'
 import './home.css'
@@ -20,6 +21,7 @@ export function HomeApp() {
   const reduced = useHomeReducedMotion()
   const pageRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLElement>(null)
+  const opening = useHomeOpening()
 
   useEffect(() => {
     const section = window.location.hash.slice(1)
@@ -29,8 +31,8 @@ export function HomeApp() {
   return (
     <div ref={pageRef} className="home-page">
       <main ref={innerRef} className="home-inner">
-        <HomeMasthead pageRef={pageRef} innerRef={innerRef}>
-          <HomePostcard supported={supported} reduced={reduced} />
+        <HomeMasthead pageRef={pageRef} innerRef={innerRef} effectsEnabled={opening.effectsEnabled} onReady={opening.onReady}>
+          <HomePostcard supported={supported && !opening.native} reduced={reduced} effectsEnabled={opening.effectsEnabled} />
         </HomeMasthead>
         <ExamplesSection />
         <HandoffSection />

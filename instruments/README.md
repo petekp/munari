@@ -43,6 +43,56 @@ This local command does not change CI membership.
 
 ## Home light and shadow
 
+`npm run probe:home-startup` builds and records the production landing route in
+Chrome with an empty cache and a delayed entry script. No part of the page may
+be exposed before its completed composition. The heading and postcard must
+then stay within one CSS pixel, and the stationary button-shadow region must
+stay within 0.01 normalized mean RGB error of the final recorded frame. On a
+phone it samples the visible postcard shadow; the desktop check covers the
+button shadow. A one-pixel clock outside the scene makes Chrome record static
+fallback pages throughout the observation window. A
+native-first reveal with a delayed shadow worker must fail both the readiness
+and pixel checks. Mobile delayed fonts, no capture, no WebGL with failed fonts,
+and a nonresponsive shadow worker exercise the fallbacks. The regular animated
+entrance is also recorded. Home must not request other demo chunks. This checks
+recorded compositor frames and visible ordering, not a network-independent
+speed budget or flight continuity. Use `HEADED=1` for visible Chrome and
+`STARTUP_OUTPUT` for artifacts, and `STARTUP_CASES` for a comma-separated subset.
+See [decision #57](../docs/decisions.md#57).
+
+`node instruments/home-startup/profile.mjs` measures production startup without
+network delays or a screencast. It runs one fresh Chrome session by default.
+`PROFILE_BASELINE` adds an alternating comparison against a directory containing
+a saved `home/` scene folder and `index.html`. The rest of the application stays
+current; this comparison isolates changes in the home scene and opening cover.
+Timings cover both document entries, fonts, mask generation, renderer setup,
+backdrop capture, composition readiness and the reveal. Worker timings come from
+the worker itself. `PROFILE_OUTPUT` chooses the local build and result directory.
+`PROFILE_PAIRS=2` or `3` explicitly repeats the comparison. Each browser closes
+within 15 seconds even if a protocol call stalls; Puppeteer also cleans up its
+own process group on interruption. The profiler refuses another build or launch
+when the one-minute host load reaches 75% of the logical CPU count. Run it alone,
+keep GPU checks serial, and do not treat overloaded-host timings as evidence.
+This is a local diagnostic, not a portable speed budget or a visual gate.
+
+`node instruments/home-startup/mask-fidelity.mjs` compares every shadow-mask byte
+with the original dense transform on the actual desktop and phone layouts.
+It covers DOM Canvas2D, OffscreenCanvas, fractional overlapping boxes, clipped
+edges, empty kinds and saturated gaps. It also checks identical-headline reuse
+and invalidation by a same-width text change. `MASK_OUTPUT` chooses the evidence
+directory. The frozen `maskReference.mjs` is an independent test oracle. The
+startup and mask checks bound each browser to 30 seconds and close it afterward.
+See [decision #58](../docs/decisions.md#58) for the exactness requirements.
+
+`npm run probe:home-headline` checks the real landing page's monospace HTML,
+extruded 3D geometry, shader colour, pointer response and native selection.
+Its black shader control compares glyph contrast with the same native text;
+the 0.95–1.05 contrast range matches the existing sharpness checks. A half-density
+render must lose contrast. It also checks mobile layout, reduced motion,
+3x parent zoom, no-capture rendering and the native no-WebGL fallback.
+Use `HEADED=1` for visible Chrome and `HEADLINE_OUTPUT` for its evidence directory.
+Decision [#56](../docs/decisions.md#56) records scope and limits.
+
 `npm run probe:heading-edges` checks the native heading's shadow-mask fringe
 in a 3x zoomed iframe. It compares the current receiver clearance with a zero-
 clearance control, keeping the cast-shadow field unchanged. A page-only receiver

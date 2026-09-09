@@ -4,7 +4,7 @@
 import * as THREE from 'three'
 import {fitBulbCamera} from './homeLightBulb'
 
-function enclosingViewport(){
+export function readEnclosingViewport(){
   let owner:Window=window,left=0,top=0
   const viewports:VisualViewport[]=[]
   if(owner.visualViewport)viewports.push(owner.visualViewport)
@@ -20,10 +20,10 @@ function enclosingViewport(){
   return {viewport:owner.visualViewport,left,top,viewports}
 }
 
-export function lampPixelRatio(){return window.devicePixelRatio*(enclosingViewport().viewport?.scale??1)}
+export function lampPixelRatio(){return window.devicePixelRatio*(readEnclosingViewport().viewport?.scale??1)}
 
 export function watchLampViewport(changed:()=>void){
-  const {viewports}=enclosingViewport()
+  const {viewports}=readEnclosingViewport()
   for(const viewport of viewports){viewport.addEventListener('resize',changed);viewport.addEventListener('scroll',changed)}
   return()=>{for(const viewport of viewports){viewport.removeEventListener('resize',changed);viewport.removeEventListener('scroll',changed)}}
 }
@@ -31,7 +31,7 @@ export function watchLampViewport(changed:()=>void){
 export function createLampViewportUpdater(renderer:THREE.WebGLRenderer,camera:THREE.PerspectiveCamera,page:HTMLElement){
   let previous=''
   return()=>{
-    const width=page.clientWidth,height=page.clientHeight,{viewport,left,top}=enclosingViewport(),ratio=lampPixelRatio()
+    const width=page.clientWidth,height=page.clientHeight,{viewport,left,top}=readEnclosingViewport(),ratio=lampPixelRatio()
     const x=Math.max(0,(viewport?.offsetLeft??0)-left),y=Math.max(0,(viewport?.offsetTop??0)-top)
     const right=Math.min(width,(viewport?.offsetLeft??0)+(viewport?.width??width)-left)
     const bottom=Math.min(height,(viewport?.offsetTop??0)+(viewport?.height??height)-top)

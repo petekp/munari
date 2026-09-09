@@ -95,10 +95,10 @@ function Postcard({
 }
 
 function PostcardInstructions({ supported, lifted, reduced }: { supported: boolean; lifted: boolean; reduced: boolean }) {
-  let text = 'Add your name. Lift the card through the shadows and keep typing.'
-  if (!supported) text = 'The postcard works as regular HTML here. Play the recording to see the 3D interaction in a supported browser.'
-  else if (reduced) text = 'Motion is reduced. You can switch the postcard between page and scene without animating it.'
-  else if (lifted) text = 'Brush a corner or add a stamp. The card steadies while you type.'
+  let text = 'Add your name, then lift the postcard.'
+  if (!supported) text = 'The form works here. Play the 3D preview.'
+  else if (reduced) text = 'Motion is reduced. Switch between page and scene.'
+  else if (lifted) text = 'Brush a corner or add a stamp. Keep typing.'
   return <p className="home-note">{text}</p>
 }
 

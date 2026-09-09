@@ -22,7 +22,7 @@
 // boxes into them. HomeMasthead.tsx owns when to rebuild and how the pixels
 // reach the shader. homeLight.ts owns what the channels mean.
 
-import { packShadowDistances, shadowDistances } from './homeShadowField'
+import { packShadowDistances, shadowDistances, SHADOW_DISTANCE_RANGE } from './homeShadowField'
 
 const INK_MARGIN = 40
 const RELIEF_MARGIN = 60
@@ -48,6 +48,11 @@ export interface Mask {
   readonly height: number
   /** The area the pixels cover, in CSS px relative to the anchor's box. */
   readonly rect: AnchoredRect
+}
+
+export interface InkMask extends Mask {
+  readonly alpha: Uint8Array
+  readonly ratio: number
 }
 
 interface LineLayout {
@@ -88,8 +93,16 @@ function pass(width: number, height: number, ratio: number, create: PainterFacto
   return context.getImageData(0, 0, pixelWidth, pixelHeight)
 }
 
+function matchesInkPixels(previous: InkMask, image: ImageData, rect: AnchoredRect, ratio: number): boolean {
+  if (previous.ratio !== ratio || previous.width !== image.width || previous.height !== image.height ||
+    previous.rect.x !== rect.x || previous.rect.y !== rect.y || previous.rect.width !== rect.width || previous.rect.height !== rect.height) return false
+  const alpha = previous.alpha
+  for (let i = 0; i < alpha.length; i++) if (alpha[i] !== image.data[i * 4 + 3]) return false
+  return true
+}
+
 /** The headline's glyph outlines as a signed distance field. */
-export function buildInkMask(anchor: HTMLElement, lines: readonly HTMLElement[]): Mask | null {
+export function buildInkMask(anchor: HTMLElement, lines: readonly HTMLElement[], previous?: InkMask): InkMask | null {
   if (lines.length === 0) return null
   const base = anchor.getBoundingClientRect()
   const rects = lines.map((line) => line.getBoundingClientRect())
@@ -99,19 +112,28 @@ export function buildInkMask(anchor: HTMLElement, lines: readonly HTMLElement[])
   const height = Math.max(...rects.map((rect) => rect.bottom)) + INK_MARGIN - top
   if (width <= 0 || height <= 0) return null
 
-  const layout: LineLayout[] = lines.map((line, index) => {
-    // rects was measured from this same lines array, in the same order.
-    const rect = rects[index]!
-    const style = getComputedStyle(line)
-    return {
-      text: line.textContent ?? '',
-      x: rect.left - left,
-      y: rect.top - top,
-      font: `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`,
-      letterSpacing: style.letterSpacing,
-      lineHeight: parseFloat(style.lineHeight),
+  const layout: LineLayout[] = []
+  // Each styled text run owns its font and baseline. Painting a whole mixed
+  // line with its parent's font puts the monospace and 3D words in wrong shadows.
+  for (const line of lines) {
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT)
+    let node: Node | null
+    while ((node = walker.nextNode())) {
+      if (!node.textContent?.trim() || !node.parentElement) continue
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      const rect = range.getBoundingClientRect()
+      const style = getComputedStyle(node.parentElement)
+      layout.push({
+        text: node.textContent,
+        x: rect.left - left,
+        y: rect.top - top,
+        font: `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`,
+        letterSpacing: style.letterSpacing,
+        lineHeight: rect.height,
+      })
     }
-  })
+  }
   const ratio = pixelRatio()
   const paintLines = (context: Painter) => {
     context.textBaseline = 'alphabetic'
@@ -125,11 +147,18 @@ export function buildInkMask(anchor: HTMLElement, lines: readonly HTMLElement[])
   }
   const image = pass(width, height, ratio, domPainter, paintLines)
   if (!image) return null
+  const rect = { x: left - base.left, y: top - base.top, width, height }
+  // Compare the browser's actual coverage, rather than guessing which font or
+  // layout changes affect it. Repeated startup/resize notifications then reuse
+  // the distance field and its GPU texture without losing subtle glyph changes.
+  if (previous && matchesInkPixels(previous, image, rect, ratio)) return previous
+  const alpha = new Uint8Array(image.width * image.height)
+  for (let i = 0; i < alpha.length; i++) alpha[i] = image.data[i * 4 + 3]!
   return {
     data: packShadowDistances(shadowDistances(image.data, image.width, image.height, ratio)),
     width: image.width,
     height: image.height,
-    rect: { x: left - base.left, y: top - base.top, width, height },
+    rect, alpha, ratio,
   }
 }
 
@@ -188,25 +217,44 @@ export function measureRelief(anchor: HTMLElement, root: HTMLElement): ReliefPla
  * This runs in the existing worker; light movement never rebuilds it.
  */
 export function paintRelief(plan: ReliefPlan, create: PainterFactory): Mask | null {
-  const paintKind = (kind: ReliefKind) => (context: Painter) => {
-    for (const box of plan.boxes) {
-      if (box.kind !== kind) continue
+  const pixelWidth = Math.ceil(plan.width * RELIEF_RATIO)
+  const pixelHeight = Math.ceil(plan.height * RELIEF_RATIO)
+  const distances = (kind: ReliefKind) => {
+    const field = new Float32Array(pixelWidth * pixelHeight).fill(SHADOW_DISTANCE_RANGE)
+    const boxes = plan.boxes.filter(box => box.kind === kind)
+    if (!boxes.length) return field
+    const context = create(pixelWidth, pixelHeight)
+    if (!context) return null
+    context.save()
+    context.scale(RELIEF_RATIO, RELIEF_RATIO)
+    context.fillStyle = '#fff'
+    for (const box of boxes) {
       context.beginPath()
       context.roundRect(box.x, box.y, box.width, box.height, box.radius)
       context.fill()
     }
+    context.restore()
+    // Keep the original raster grid. Beyond this padded bound the packed field
+    // saturates to +256 CSS px, so an exact transform there cannot change a byte.
+    // One extra pixel includes the antialiased contour (decision #58).
+    const padding = Math.ceil(SHADOW_DISTANCE_RANGE * RELIEF_RATIO) + 1
+    const left = Math.max(0, Math.floor(Math.min(...boxes.map(box => box.x)) * RELIEF_RATIO) - padding)
+    const top = Math.max(0, Math.floor(Math.min(...boxes.map(box => box.y)) * RELIEF_RATIO) - padding)
+    const right = Math.min(pixelWidth, Math.ceil(Math.max(...boxes.map(box => box.x + box.width)) * RELIEF_RATIO) + padding)
+    const bottom = Math.min(pixelHeight, Math.ceil(Math.max(...boxes.map(box => box.y + box.height)) * RELIEF_RATIO) + padding)
+    if (right <= left || bottom <= top) return field
+    const image = context.getImageData(left, top, right - left, bottom - top)
+    const cropped = shadowDistances(image.data, image.width, image.height, RELIEF_RATIO)
+    for (let row = 0; row < image.height; row++) field.set(cropped.subarray(row * image.width, (row + 1) * image.width), (top + row) * pixelWidth + left)
+    return field
   }
-  const { width, height } = plan
-  const raised = pass(width, height, RELIEF_RATIO, create, paintKind('raised'))
-  const well = pass(width, height, RELIEF_RATIO, create, paintKind('well'))
+  const raised = distances('raised')
+  const well = distances('well')
   if (!raised || !well) return null
   return {
-    data: packShadowDistances(
-      shadowDistances(raised.data, raised.width, raised.height, RELIEF_RATIO),
-      shadowDistances(well.data, well.width, well.height, RELIEF_RATIO),
-    ),
-    width: raised.width,
-    height: raised.height,
+    data: packShadowDistances(raised, well),
+    width: pixelWidth,
+    height: pixelHeight,
     rect: plan.rect,
   }
 }

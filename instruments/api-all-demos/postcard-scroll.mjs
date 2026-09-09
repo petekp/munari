@@ -24,10 +24,14 @@ try {
  await page.evaluate(()=>document.fonts.ready)
  await page.evaluate(()=>{
   const scroller=document.querySelector('.home-page')
+  const holder=document.querySelector('.home-hero-holder')
   // Keep both complete markers visible through all 180px of wheel travel.
-  // The combined masthead no longer has the old section's heading above it.
-  scroller.scrollTop+=document.querySelector('.home-hero-holder').getBoundingClientRect().top-240
-  const holder=document.querySelector('.home-hero-holder'),r=holder.getBoundingClientRect()
+  // A first-screen card can start too high to reach 240px by scrolling alone.
+  const missingRoom=240-holder.getBoundingClientRect().top
+  if(missingRoom>0){const space=document.createElement('div');space.style.height=`${missingRoom}px`;scroller.prepend(space)}
+  scroller.scrollTop+=holder.getBoundingClientRect().top-240
+  const r=holder.getBoundingClientRect()
+  if(Math.abs(r.top-240)>1)throw new Error('Both markers need room for the full scroll')
   const marker=document.createElement('div');marker.dataset.scrollMarker='native'
   marker.style.cssText=`position:absolute;left:${r.left-12}px;top:${scroller.scrollTop+r.top+12}px;width:6px;height:6px;background:rgb(255,0,255);z-index:100;pointer-events:none`
   scroller.append(marker)
