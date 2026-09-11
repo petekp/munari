@@ -27,22 +27,50 @@ uses a labelled [postcard recording](public/previews/README.md).
 Use the real scene route for visual work. `?bare` removes the surrounding UI
 and can remove content under test; use it only when an instrument requires it.
 
+`?capture=snapdom` runs every Surface through the snapDOM engine instead of
+HTML-in-canvas, and `?capture=auto` installs snapDOM as a fallback while
+keeping HTML-in-canvas where the browser has it — the way a real app would
+call `enableSnapdomCapture()`. Without the parameter the lab never imports
+the snapDOM entry at all. The parameter rides navigation, so a scene opened
+under one engine stays on it. `window.__munari.engine()` reports which one
+answered.
+
 ## First load
 
-`index.html` supplies the landing background before either React root loads.
+`index.html` supplies the landing background before the app loads.
 `App` selects other scene backgrounds before paint. Home stays in the entry
-bundle; other demos load only when selected. Keep each scene in its frame:
-its DOM-to-scene coordinates assume that frame is its viewport.
+bundle; other demos load only when selected. Home renders directly in the shell
+inside `DemoHost`; the other scenes keep their frames and existing viewport assumptions.
 
 The first document paints an inline wordmark while the page prepares. The
 navigation and homepage appear together after fonts, current shadow masks,
 headline treatments and the lamp backdrop have reached a completed draw. The
-cover stays outside the iframe so preparation can still paint. There is no
+cover stays outside the content being captured so preparation can still paint. There is no
 minimum display time. Failed graphics preparation selects native content for
 that visit, rather than adding effects after the page is visible.
 `probe:home-startup` checks the first exposed frames and the resting button
 shadow afterward, including a deliberately early reveal that must fail those
 checks. [Decision #57](../../docs/decisions.md#57) records the opening contract.
+
+## Inline Home
+
+`components/DemoHost.tsx` owns a measured, clipped viewport and a separate local
+overlay layer. It exposes container dimensions to CSS and the viewport ref to
+Home. The page scrolls inside that viewport; the lamp stays in its overlay.
+The postcard retains its enlarged section-relative canvas so compositor scrolling
+moves the card and its canvas together.
+
+Home uses Tailwind for ordinary layout and controls. Its custom lighting, paper,
+and typography rules remain in `home.css`; theme values live on `.home-demo`,
+not `:root`. The lamp's separate capture carries those resolved values. This is
+local ownership within a shared stylesheet, not Shadow DOM isolation.
+
+Canvas identities and the flyer publication store belong to each Home instance.
+Home section links update the shell route without recreating the page. Other
+scenes still mount fresh iframes. `node instruments/home-inline/run.mjs` checks
+container movement, native and captured input, theme boundaries, route cleanup,
+and two independently mounted Homes. Decision [#59](../../docs/decisions.md#59)
+records the scope.
 
 ## Code and evidence
 

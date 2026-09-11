@@ -2,7 +2,7 @@
 // Callback refs report attachment and removal; capture frames retain their painted dimensions.
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { detectHtmlInCanvas } from '@munari/core'
+import { captureAvailable, PARKED_HOST_ATTRIBUTE } from '@munari/core'
 import {
   CaptureSource, connectCapture, setCaptureUnavailable, useCaptureHandle,
   type CaptureConnection, type CaptureHandle,
@@ -27,7 +27,11 @@ export interface ElementCapture extends CaptureHandle {
 }
 
 let snapshotSequence = 0
-const OMIT = 'head,script,style,link,meta,title,[data-api-capture],[data-api-capture-consumer]'
+// The last entry is every engine's parked host: a full-page capture would
+// otherwise copy a Surface's own live content back into itself.
+const OMIT =
+  `head,script,style,link,meta,title,[data-api-capture],[data-api-capture-consumer],` +
+  `[${PARKED_HOST_ATTRIBUTE}]`
 const EVENTS = ['input', 'change', 'pointerover', 'pointerout', 'pointerdown', 'pointerup', 'focusin', 'focusout', 'scroll', 'load', 'transitionend', 'animationend', 'animationstart', 'transitionrun']
 
 function excluded(element: Element, selector: string | undefined): boolean {
@@ -144,7 +148,7 @@ export function useElementCapture(options: ElementCaptureOptions = {}): ElementC
 
   useLayoutEffect(() => {
     if (!element) { setCaptureUnavailable(capture, 'waiting'); return }
-    if (!detectHtmlInCanvas().drawElementImage) {
+    if (!captureAvailable()) {
       setCaptureUnavailable(capture, 'unsupported')
       return () => setCaptureUnavailable(capture, 'waiting')
     }
@@ -187,7 +191,7 @@ export function useElementCapture(options: ElementCaptureOptions = {}): ElementC
     const schedule = () => { if (alive && !frame) frame = requestAnimationFrame(update) }
     const onEvent = (event: Event) => {
       const target = event.target
-      if (target instanceof Element && target.closest('[data-api-capture],[data-api-capture-consumer]')) return
+      if (target instanceof Element && target.closest(`[data-api-capture],[data-api-capture-consumer],[${PARKED_HOST_ATTRIBUTE}]`)) return
       schedule()
     }
     refresh.current = schedule
@@ -197,7 +201,7 @@ export function useElementCapture(options: ElementCaptureOptions = {}): ElementC
     const mutations = new MutationObserver(records => {
       if (records.some(record => {
         const target = record.target instanceof Element ? record.target : record.target.parentElement
-        return !target?.closest('[data-api-capture],[data-api-capture-consumer]')
+        return !target?.closest(`[data-api-capture],[data-api-capture-consumer],[${PARKED_HOST_ATTRIBUTE}]`)
       })) schedule()
     })
     mutations.observe(element, { subtree: true, childList: true, attributes: true, characterData: true })

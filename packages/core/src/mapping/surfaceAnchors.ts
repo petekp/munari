@@ -22,7 +22,7 @@
 // paint is currently drawn, and withholds an anchor's child until a
 // complete set exists for that generation.
 
-import type { DomPaintReceipt } from '../paint/htmlInCanvas'
+import type { DomPaintReceipt } from '../paint/domTextureSource'
 
 /**
  * One anchor's box in normalized, unmirrored source-texture space, origin

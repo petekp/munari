@@ -35,7 +35,7 @@ const CONTENT_H = 200
 let mesh: THREE.Mesh
 let camera: THREE.PerspectiveCamera
 let glCanvas: HTMLCanvasElement
-let parkedCanvas: HTMLCanvasElement
+let host: HTMLCanvasElement
 let root: HTMLElement
 let called: string[]
 let duties: SurfaceRouteRelayDuties
@@ -68,12 +68,12 @@ beforeEach(() => {
 
   glCanvas = document.createElement('canvas')
   glCanvas.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600)
-  parkedCanvas = document.createElement('canvas')
-  parkedCanvas.style.cssText = 'position:fixed;left:0;top:0;z-index:-1;pointer-events:none;'
+  host = document.createElement('canvas')
+  host.style.cssText = 'position:fixed;left:0;top:0;z-index:-1;pointer-events:none;'
   root = document.createElement('div')
   root.style.pointerEvents = 'auto'
-  parkedCanvas.append(root)
-  document.body.append(parkedCanvas, glCanvas)
+  host.append(root)
+  document.body.append(host, glCanvas)
 })
 
 function step(overrides: Partial<SurfaceRouteStep> = {}): SurfaceRouteStep {
@@ -81,7 +81,7 @@ function step(overrides: Partial<SurfaceRouteStep> = {}): SurfaceRouteStep {
     mesh,
     camera,
     glCanvas,
-    parkedCanvas,
+    host,
     root,
     request: 'auto',
     capable: true,
@@ -179,15 +179,14 @@ describe('applying the verdict', () => {
 
     expect(handoff.to).toBe('native')
     expect(controller.riding()).toBe(true)
-    expect(parkedCanvas.style.visibility).toBe('hidden')
     expect(root.style.visibility).toBe('visible')
-    // The pose goes on the CANVAS — its transformed box is the native hit
+    // The pose goes on the HOST — its transformed box is the native hit
     // clip (platform.md #21) — and the drawn child stays identity.
-    expect(parkedCanvas.style.transform.startsWith('matrix3d(')).toBe(true)
+    expect(host.style.transform.startsWith('matrix3d(')).toBe(true)
     expect(root.style.transform).toBe('')
     // Above the renderer canvas, and the cascade the relay depends on intact.
-    expect(Number(parkedCanvas.style.zIndex)).toBeGreaterThan(0)
-    expect(parkedCanvas.style.pointerEvents).toBe('none')
+    expect(Number(host.style.zIndex)).toBeGreaterThan(0)
+    expect(host.style.pointerEvents).toBe('none')
   })
 
   it('takes the relay when the caller did not ask for the other one', () => {
@@ -195,7 +194,7 @@ describe('applying the verdict', () => {
 
     expect(controller.step(step({ request: 'relay' }), duties).to).toBe('relay')
     expect(controller.riding()).toBe(false)
-    expect(parkedCanvas.style.transform).toBe('')
+    expect(host.style.transform).toBe('')
   })
 
   it('takes the relay for a deformed Surface, and leaves nothing behind', () => {
@@ -208,8 +207,8 @@ describe('applying the verdict', () => {
 
     expect(handoff.to).toBe('relay')
     expect(controller.riding()).toBe(false)
-    expect(parkedCanvas.style.transform).toBe('')
-    expect(parkedCanvas.style.visibility).toBe('')
+    expect(host.style.transform).toBe('')
+    expect(host.style.visibility).toBe('')
   })
 
   it('parks before it re-arms the relay', () => {
@@ -226,7 +225,7 @@ describe('applying the verdict', () => {
     controller.step(step({ request: 'relay' }), {
       ...duties,
       rearmRelay: () => {
-        transformWhenRearmed = parkedCanvas.style.transform
+        transformWhenRearmed = host.style.transform
         called.push('rearmRelay')
       },
     })
@@ -263,7 +262,7 @@ describe('applying the verdict', () => {
     expect(handoff.to).toBe('page')
     expect(called).toEqual(['bridgePage'])
     expect(controller.riding()).toBe(false)
-    expect(parkedCanvas.style.transform).toBe('')
+    expect(host.style.transform).toBe('')
   })
 
   it('runs no duty on a frame that changed nothing', () => {
@@ -285,28 +284,28 @@ describe('applying the verdict', () => {
     // content nobody changed, which is the idle-zero gate's whole subject.
     const controller = createSurfaceRoute()
     controller.step(step(), duties)
-    const settled = parkedCanvas.style.transform
+    const settled = host.style.transform
 
     let writes = 0
     const watch = new MutationObserver(() => {})
-    watch.observe(parkedCanvas, { attributes: true, subtree: true, attributeFilter: ['style'] })
+    watch.observe(host, { attributes: true, subtree: true, attributeFilter: ['style'] })
     for (let i = 0; i < 4; i++) controller.step(step(), duties)
     writes = watch.takeRecords().length
     watch.disconnect()
 
     expect(writes).toBe(0)
-    expect(parkedCanvas.style.transform).toBe(settled)
+    expect(host.style.transform).toBe(settled)
   })
 
   it('parks when its source goes away', () => {
     const controller = createSurfaceRoute()
     controller.step(step(), duties)
 
-    controller.step(step({ parkedCanvas: null, root: null }), duties)
+    controller.step(step({ host: null, root: null }), duties)
 
     expect(controller.riding()).toBe(false)
-    expect(parkedCanvas.style.transform).toBe('')
-    expect(parkedCanvas.style.visibility).toBe('')
+    expect(host.style.transform).toBe('')
+    expect(host.style.visibility).toBe('')
   })
 
 
@@ -320,7 +319,7 @@ describe('applying the verdict', () => {
 
     expect(controller.riding()).toBe(false)
     expect(controller.route()).toBe('page')
-    expect(parkedCanvas.style.visibility).toBe('')
+    expect(host.style.visibility).toBe('')
   })
 })
 
@@ -349,15 +348,15 @@ describe('live source and geometry ownership', () => {
   })
   it('puts all interactive presenters on relay before the second can transform the source', () => {
     const first = createSurfaceRoute(), second = createSurfaceRoute()
-    const releaseFirst = first.registerSource(parkedCanvas)
+    const releaseFirst = first.registerSource(host)
     first.step(step(), duties)
     expect(first.riding()).toBe(true)
-    const releaseSecond = second.registerSource(parkedCanvas)
+    const releaseSecond = second.registerSource(host)
     expect(first.riding()).toBe(false)
     second.step(step({ request: 'relay' }), duties)
     expect(first.route()).toBe('relay')
     expect(second.route()).toBe('relay')
-    expect(parkedCanvas.style.transform).toBe('')
+    expect(host.style.transform).toBe('')
     releaseSecond()
     expect(first.riding()).toBe(true)
     first.release(); second.release(); releaseFirst()
@@ -367,8 +366,8 @@ describe('live source and geometry ownership', () => {
     route.step(step(), duties)
     const replacement = document.createElement('canvas'), content = document.createElement('div')
     replacement.append(content); document.body.append(replacement)
-    route.step(step({ parkedCanvas: replacement, root: content }), duties)
-    expect(parkedCanvas.style.transform).toBe('')
+    route.step(step({ host: replacement, root: content }), duties)
+    expect(host.style.transform).toBe('')
     expect(route.riding()).toBe(true)
     route.release()
     expect(replacement.style.transform).toBe('')

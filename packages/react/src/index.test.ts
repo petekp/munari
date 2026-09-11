@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest'
 import * as core from '@munari/core'
 import * as root from './index'
 import * as advanced from './advanced'
+import * as snapdomEntry from './snapdom'
 
 const ROOT_ENTRY = [
   'useElementCapture', 'CaptureContent',
@@ -53,6 +54,12 @@ const ROOT_ENTRY = [
   'useSurfaceTextureOf',
   'useSurfaceUniforms',
 ]
+
+// The third entry exists to carry ONE optional peer dependency, so its list
+// is the shape of that promise: install the engine, read back which engine
+// answered, nothing else. A name added here is a name every consumer of the
+// second capture engine now has to install `@zumer/snapdom` to reach.
+const SNAPDOM_ENTRY = ['enableSnapdomCapture', 'snapdomCaptureEngine']
 
 // The kernel is re-exported WHOLE, so this list is core's own surface plus
 // the React names the advanced entry adds.
@@ -96,6 +103,10 @@ describe('the published entries', () => {
     const kernel = new Set(Object.keys(core))
     const added = Object.keys(advanced).filter((name) => !kernel.has(name))
     expect(added.sort()).toEqual([...ADVANCED_ADDITIONS].sort())
+  })
+
+  it('the snapdom entry is exactly the engine and its installer', () => {
+    expect(Object.keys(snapdomEntry).sort()).toEqual([...SNAPDOM_ENTRY].sort())
   })
 
   it('advanced carries no store verb', () => {

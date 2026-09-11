@@ -38,6 +38,7 @@ import * as THREE from 'three'
 import { useFrame, useThree, type ThreeElements, type ThreeEvent } from '@react-three/fiber'
 import {
   bridgeHover,
+  captureEngine,
   clampScale,
   clearPointerState,
   deepestElementAt,
@@ -407,7 +408,7 @@ function SurfacePresenter({
   }, [mountedMesh, geometry])
   useLayoutEffect(() => {
     if (!runtime || pointerEvents === 'none') return
-    return routeCtl.registerSource(runtime.source.canvas)
+    return routeCtl.registerSource(runtime.source.host)
   }, [routeCtl, runtime, pointerEvents])
 
   const pointerEventsRef = useLatest(pointerEvents)
@@ -880,10 +881,17 @@ function SurfacePresenter({
         mesh,
         camera,
         glCanvas: gl.domElement,
-        parkedCanvas: runtime?.source.canvas ?? null,
+        host: runtime?.source.host ?? null,
         root: runtime?.element ?? null,
         request: pointerRoute,
-        capable: store.getState().supported === true,
+        // The engine's own claim, not the store's capability. `supported`
+        // answers "can this browser capture at all"; the native route needs
+        // the stronger property that the parked host hit-tests through its
+        // transform and paints nothing (platform.md #18, #21), which a
+        // rasterizing engine does not have. Reading `supported` here would
+        // lift a host the browser is not hit-testing: the panel still draws
+        // from the texture and takes no input.
+        capable: captureEngine().native,
         hearing: store.canvasHearsPointer(),
         pointerEvents,
         renderMatrix:rasterAlignment.renderedMatrix() ?? undefined,

@@ -55,15 +55,14 @@ afterEach(() => {
 })
 
 describe('a source runtime', () => {
-  it('keeps one texture through resize and stops paint-always on teardown', () => {
+  it('keeps one texture through resize, and stops working on teardown', () => {
     const adopted = document.createElement('section')
     const runtime = createSurfaceSourceRuntime({
-      label: 'always',
+      label: 'resize-and-teardown',
       content: adopted,
       size: [200, 100],
       resolution: 1,
       mirrorU: false,
-      paint: 'always',
       pixelRatio: 1,
       onError: (error) => {
         throw error
@@ -85,7 +84,7 @@ describe('a source runtime', () => {
 })
 
 it('combines raster demands per axis and restores native capture density when consumers leave',()=>{
- const runtime=createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',mirrorU:false,paint:'auto',pixelRatio:2,onError:error=>{throw error}})
+ const runtime=createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',mirrorU:false,pixelRatio:2,onError:error=>{throw error}})
  runtime.proposeRaster(1,[2.4,1.7]);runtime.proposeRaster(2,[2,3])
  expect(runtime.source.rasterScale()).toEqual([2.4,3])
  runtime.proposeRaster(2,null)
@@ -96,7 +95,7 @@ it('combines raster demands per axis and restores native capture density when co
  runtime.dispose()
 })
 it('keeps an explicit resolution pin when display density changes',()=>{
- const runtime=createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:1,mirrorU:false,paint:'auto',pixelRatio:2,onError:error=>{throw error}})
+ const runtime=createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:1,mirrorU:false,pixelRatio:2,onError:error=>{throw error}})
  runtime.proposeRaster(1,[3,2]);runtime.setPixelRatio(3)
  expect(runtime.source.rasterScale()).toEqual([1,1])
  runtime.dispose()
@@ -106,7 +105,7 @@ describe('storage changes after an upload has been armed', () => {
   it.each(['tier', 'raster', 'size', 'resolution', 'display'] as const)(
     'invalidates %s storage in the same frame without replacing the texture',
     (change) => {
-      const runtime = createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',mirrorU:false,paint:'auto',pixelRatio:1,onError:error=>{throw error}})
+      const runtime = createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',mirrorU:false,pixelRatio:1,onError:error=>{throw error}})
       completePaint(runtime.source.canvas)
       runtime.frame()
       const texture = runtime.texture()!
@@ -130,15 +129,27 @@ describe('storage changes after an upload has been armed', () => {
     },
   )
 
-  it('keeps a settled auto source idle after a density change', () => {
-    const runtime = createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',mirrorU:false,paint:'auto',pixelRatio:1,onError:error=>{throw error}})
+  // A density change re-arms the settle exactly as a resize does, and for the
+  // same reason: an engine is allowed to decline to rasterize while the
+  // density moves (`PaintReason`), so the settle is the only thing that ever
+  // asks it for a sharp one. A Surface that moves only in depth never changes
+  // size, so watching the box alone would settle once and never again.
+  it('asks for a paint again once a density change goes quiet', () => {
+    const runtime = createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',mirrorU:false,pixelRatio:1,onError:error=>{throw error}})
     completePaint(runtime.source.canvas)
     for (let i=0;i<12;i++) runtime.frame()
-    runtime.proposeTier(1,2)
-    completePaint(runtime.source.canvas)
-    runtime.frame()
-    runtime.frame()
     expect(runtime.frame()).toBe(false)
+
+    runtime.proposeTier(1, 2)
+    completePaint(runtime.source.canvas)
+    const asked = requests
+    // Quiet for longer than the settle, with the density held where it
+    // landed: the settle fires once and asks for one more paint.
+    for (let i=0;i<12;i++) runtime.frame()
+    expect(requests).toBeGreaterThan(asked)
+    const settled = requests
+    for (let i=0;i<12;i++) runtime.frame()
+    expect(requests).toBe(settled)
     runtime.dispose()
   })
 })

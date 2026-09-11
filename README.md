@@ -14,9 +14,47 @@ No package release is implied by these local changes.
 ## Requirements
 
 React, Three.js, and React Three Fiber are peer dependencies. Enhanced rendering
-uses Chrome's experimental HTML-in-canvas capability. Without it, handoff content
-stays native and usable. `useSurfaceSupport()` reports capability after hydration;
-`supportsSurfaces()` is the imperative check for an event handler.
+needs a capture engine. Without one, handoff content stays native and usable.
+`useSurfaceSupport()` reports capability after hydration; `supportsSurfaces()` is
+the imperative check for an event handler.
+
+## Capture engines
+
+Munari ships two ways to turn your HTML into pixels. Both feed the same
+textures, pointer routing and handoff; they differ in what they need from the
+browser and what they can draw.
+
+| | HTML-in-canvas (default) | snapDOM |
+|---|---|---|
+| Needs | Chrome with `--enable-features=CanvasDrawElement` | any browser with a document |
+| Draws | the live element | a rasterized copy of the subtree |
+| Caret and selection | real, painted by the browser | not painted |
+| Everything else on the page | pixel-exact | pixel-exact, within glyph antialiasing |
+| Input to texture, Knobs panel at dpr 2 | 12 ms | 37 ms |
+| Pointer route `"auto"` | native — the browser hit-tests the real element | relay |
+| Page-to-scene handoff | yes | yes, in every browser — a running CSS animation restarts where `Element.moveBefore` is missing (Safari) |
+| Sub-pixel CSS lengths | exact | a fractional `border-width`, padding or offset rounds to whole pixels; type and SVG strokes keep their fractions |
+
+HTML-in-canvas is the default and needs no setup. To add snapDOM, install it and
+enable it once, before you render:
+
+```sh
+npm install @zumer/snapdom
+```
+
+```ts
+import { enableSnapdomCapture } from '@petepetrash/munari/snapdom'
+
+enableSnapdomCapture()
+```
+
+That call keeps HTML-in-canvas when the browser has it and falls back to snapDOM
+when it does not. Pass `{ always: true }` to force snapDOM everywhere, which is
+what a cross-engine test run wants. Call it before the first `Surface` mounts —
+a Surface that is already mounted keeps the engine it was built with.
+
+`useSurfaceStatus().engine` reports which engine a Surface is using.
+[Authoring](docs/authoring.md) lists the content rules each engine adds.
 
 ## Install
 

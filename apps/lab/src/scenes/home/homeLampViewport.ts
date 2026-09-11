@@ -31,10 +31,11 @@ export function watchLampViewport(changed:()=>void){
 export function createLampViewportUpdater(renderer:THREE.WebGLRenderer,camera:THREE.PerspectiveCamera,page:HTMLElement){
   let previous=''
   return()=>{
+    const box=page.getBoundingClientRect()
     const width=page.clientWidth,height=page.clientHeight,{viewport,left,top}=readEnclosingViewport(),ratio=lampPixelRatio()
-    const x=Math.max(0,(viewport?.offsetLeft??0)-left),y=Math.max(0,(viewport?.offsetTop??0)-top)
-    const right=Math.min(width,(viewport?.offsetLeft??0)+(viewport?.width??width)-left)
-    const bottom=Math.min(height,(viewport?.offsetTop??0)+(viewport?.height??height)-top)
+    const x=Math.max(0,(viewport?.offsetLeft??0)-left-box.left),y=Math.max(0,(viewport?.offsetTop??0)-top-box.top)
+    const right=Math.min(width,(viewport?.offsetLeft??0)+(viewport?.width??width)-left-box.left)
+    const bottom=Math.min(height,(viewport?.offsetTop??0)+(viewport?.height??height)-top-box.top)
     const visible=right>x&&bottom>y
     renderer.domElement.style.visibility=visible?'visible':'hidden'
     if(!visible)return

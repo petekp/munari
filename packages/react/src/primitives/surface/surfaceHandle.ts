@@ -29,7 +29,8 @@ import {
   crossingProgress,
   crossingRange,
   crossingRequest,
-  detectHtmlInCanvas,
+  captureAvailable,
+  captureEngine,
   partSetEmpty,
   partSetExpect,
   partSetMissing,
@@ -325,12 +326,23 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     partSnapshot = Array.from(partMap.values())
     for (const listener of partListeners) listener()
   }
+  // Resolved on first observation, not at creation. A handle made at module
+  // scope (`createSurface()`) runs before the app entry's
+  // `setCaptureEngine()`, and a store that answered at birth would answer
+  // for the engine the import order happened to produce. Latched after the
+  // first read because a capability cannot change under a mounted page, and
+  // a store whose answer moved mid-life would have presenters proving
+  // against one capability and gates reading another.
+  let resolvedSupport: boolean | null = null
+  const supported = () => (resolvedSupport ??= captureAvailable())
   let state: SurfaceState = {
     requested: 'page',
     presented: 'none',
     ready: false,
     isChanging: false,
-    supported: detectHtmlInCanvas().drawElementImage,
+    get supported() {
+      return supported()
+    },
   }
   const listeners = new Set<() => void>()
   let authorIntent: { owner: symbol; requestedInScene: boolean; reason: string | null } | null = null
@@ -377,7 +389,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   const observation = (): SurfaceState => {
     const pageDeclared = (declared.get('page') ?? 0) > 0
     const canvasDeclared = (declared.get('canvas') ?? 0) > 0
-    const canCanvas = state.supported && rendererAvailable
+    const canCanvas = supported() && rendererAvailable
     const pageVisible = pageDeclared && store.pagePresents()
     const canvasVisible = canvasDeclared && canCanvas && requested !== 'none' && canvasHeld
     return {
@@ -385,7 +397,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       presented: presentedFrom(pageVisible, canvasVisible),
       ready: readinessSettled(readiness) && partSetMissing(parts).length === 0,
       isChanging: changing(canCanvas),
-      supported: state.supported,
+      supported: supported(),
     }
   }
 
@@ -430,7 +442,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
 
   const reportMissingPresentations = (includeCanvas = true) => {
     for (const presentation of requestedPresentations()) {
-      if (presentation === 'canvas' && (!includeCanvas || !state.supported)) continue
+      if (presentation === 'canvas' && (!includeCanvas || !supported())) continue
       if ((declared.get(presentation) ?? 0) > 0 || reportedMissing.has(presentation)) continue
       reportedMissing.add(presentation)
       const component = presentation === 'page' ? '<Surface.HTML>' : '<Surface.Mesh> or <Surface.Scene>'
@@ -454,7 +466,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
 
   const hasProtocolWork = (): boolean => {
     if (elapsedMs < lingerUntilMs) return true
-    if (!state.supported || !rendererAvailable) return false
+    if (!supported() || !rendererAvailable) return false
     if (isResidentCanvas()) return false
     const canvasDeclared = (declared.get('canvas') ?? 0) > 0
     const seeksCanvas = requested === 'canvas' || requested === 'both'
@@ -510,7 +522,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     const wantsCanvas = presentation === 'canvas' || presentation === 'both'
     const next = crossingRequest(
       crossing,
-      wantsCanvas && state.supported && rendererAvailable && !isResidentCanvas(),
+      wantsCanvas && supported() && rendererAvailable && !isResidentCanvas(),
     )
     if (next !== crossing) crossing = next
   }
@@ -687,12 +699,12 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       publish()
     },
     canvasPresents: () =>
-      rendererAvailable && state.supported &&
+      rendererAvailable && supported() &&
       requested !== 'none' &&
       (isResidentCanvas() || requested === 'both' || crossingPresentation(crossing.phase).gl),
     pagePresents: () =>
       requested !== 'none' &&
-      (requested === 'both' || requested === 'page' ? pageHeld : !state.supported || pageHeld),
+      (requested === 'both' || requested === 'page' ? pageHeld : !supported() || pageHeld),
     // crossingPointer says hearing equals presentation, and presentation is
     // refined by the HOLD, not the phase: the phase turns at the top of a
     // frame, the pixels turn in that frame's draw. Reading the phase here
@@ -702,7 +714,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     // hearing flip at the exact moment subscribeHold fires, which is what
     // lets the edge bursts run at the boundary they describe.
     canvasHearsPointer: () =>
-      rendererAvailable && state.supported && canvasHeld && (requested === 'both' || !pageHeld),
+      rendererAvailable && supported() && canvasHeld && (requested === 'both' || !pageHeld),
     holdsPage: () => pageHeld,
     subscribeHold(listener) {
       holdListeners.add(listener)
@@ -766,10 +778,11 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       statusSnapshot = {
         requestedInScene: store.authorRequestedInScene(),
         presentation,
-        sceneReady: rendererAvailable && state.ready && state.supported && !authorIntent?.reason,
+        sceneReady: rendererAvailable && state.ready && supported() && !authorIntent?.reason,
         isTransitioning: state.isChanging,
-        supported: state.supported && !authorIntent?.reason,
+        supported: supported() && !authorIntent?.reason,
         reason: authorIntent?.reason ?? null,
+        engine: captureEngine().name,
       }
       return statusSnapshot
     },
@@ -786,7 +799,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       workListeners.add(listener)
       return () => { workListeners.delete(listener) }
     },
-    canPrepareCanvas: () => rendererAvailable && state.supported,
+    canPrepareCanvas: () => rendererAvailable && supported(),
     preparationWait() {
       if (!store.canPrepareCanvas() || (requested !== 'canvas' && requested !== 'both')) return null
       if ((declared.get('canvas') ?? 0) === 0 || state.ready) return null

@@ -64,7 +64,7 @@ try {
   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}])
   await page.goto(`http://127.0.0.1:${lab.httpServer.address().port}/?scene=home&framed`,{waitUntil:'load'})
   await page.evaluate(()=>document.fonts.ready)
-  await page.evaluate(async()=>{const a=await import('/src/scenes/home/homeFlyer.ts'),b=await import('/src/scenes/home/homePaperFrame.ts');window.__readPaper=a.readHomeFlyer;window.__paperPoint=b.paperFramePoint})
+  await page.evaluate(async()=>{if(!window.__readPaper)throw new Error('Missing postcard observer');const b=await import('/src/scenes/home/homePaperFrame.ts');window.__paperPoint=b.paperFramePoint})
   await page.waitForSelector('[data-lit] .home-hero-holder')
   // A real redraw after worker completion, not a screenshot of initial fallback.
   await page.waitForFunction(()=>window.__homeLightMaterial?.uniforms.uInkReady.value===1&&window.__homeLightMaterial.uniforms.uReliefReady.value===1)

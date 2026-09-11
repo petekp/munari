@@ -21,7 +21,11 @@ const VW = 1280
 const FOV = 42
 const CAM = cameraDistance(VH, FOV)
 
-/** The measured Surface at rest. */
+/**
+ * The measured Surface at rest. Its box is integral, so the store its
+ * capture cut is exactly `box x density` and the texel count is not in
+ * question — every law below except `the footprint` is about the corner.
+ */
 const RESTING = {
   x: -326,
   y: 50.15625,
@@ -32,6 +36,8 @@ const RESTING = {
   viewH: VH,
   dpr: 2,
   density: 2,
+  texelsX: 616,
+  texelsY: 648,
 }
 
 /** Where the Surface's top-left corner actually lands, in device px. */
@@ -91,14 +97,16 @@ describe('the pixel-grid snap', () => {
       height: 157.484375,
       mag,
       density: 2 * mag,
+      // What the capture cut for that box: `setSize` rounds the box, THEN
+      // the store rounds the product. See the law below.
+      texelsX: Math.round(Math.round(514) * 2 * mag),
+      texelsY: Math.round(Math.round(157.484375) * 2 * mag),
     }
 
     it('covers exactly as many device pixels as the texture has texels', () => {
       const s = pixelGridSnap(lifted)
-      const tw = Math.round(lifted.width * lifted.density)
-      const th = Math.round(lifted.height * lifted.density)
-      expect(lifted.width * mag * lifted.dpr * s.sx).toBeCloseTo(tw, 9)
-      expect(lifted.height * mag * lifted.dpr * s.sy).toBeCloseTo(th, 9)
+      expect(lifted.width * mag * lifted.dpr * s.sx).toBeCloseTo(lifted.texelsX, 9)
+      expect(lifted.height * mag * lifted.dpr * s.sy).toBeCloseTo(lifted.texelsY, 9)
     })
 
     it('lies about the size by at most half a texel, over the whole Surface', () => {
@@ -109,18 +117,56 @@ describe('the pixel-grid snap', () => {
       // larger than this means the density it was handed is not the one
       // the capture happened at.
       const s = pixelGridSnap(lifted)
-      const tw = Math.round(lifted.width * lifted.density)
-      const th = Math.round(lifted.height * lifted.density)
-      expect(Math.abs(s.sx - 1)).toBeLessThanOrEqual(0.5 / tw + 1e-12)
-      expect(Math.abs(s.sy - 1)).toBeLessThanOrEqual(0.5 / th + 1e-12)
+      const demandX = lifted.width * lifted.density
+      const demandY = lifted.height * lifted.density
+      expect(Math.abs(s.sx - 1)).toBeLessThanOrEqual(
+        (0.5 + Math.abs(lifted.texelsX - demandX)) / lifted.texelsX + 1e-12,
+      )
+      expect(Math.abs(s.sy - 1)).toBeLessThanOrEqual(
+        (0.5 + Math.abs(lifted.texelsY - demandY)) / lifted.texelsY + 1e-12,
+      )
     })
 
     it('is the identity when the capture is already whole', () => {
       // dpr density on an integral Surface: the demand is already a texel
       // count and there is nothing to correct.
-      const s = pixelGridSnap({ ...RESTING, width: 308, height: 324, density: 2, mag: 1 })
+      const s = pixelGridSnap({
+        ...RESTING, width: 308, height: 324, density: 2, mag: 1, texelsX: 616, texelsY: 648,
+      })
       expect(s.sx).toBe(1)
       expect(s.sy).toBe(1)
+    })
+
+    /**
+     * The count comes from the STORE, and nothing may re-derive it.
+     *
+     * The capture rounds twice and the obvious guess rounds once:
+     * `setSize` rounds the box to an integer before `storeForBox` rounds
+     * `box x density`, so the store is `round(round(size) x density)` while
+     * `round(size x density)` is what a caller reaching for the nearest
+     * formula writes. At density 2 those differ by a whole texel whenever
+     * the size's fraction lands in [0.25, 0.75) — half of all fractional
+     * sizes — and the density band can hold an older store forward, where
+     * no formula recovers the count at all.
+     *
+     * The failure is not blur. The corner still lands on the grid, so the
+     * Surface looks right where anyone checks it, and the phase then ramps
+     * to a full device pixel at the far edge. Measured 2026-09-11 on a card
+     * 515 x 157.6172 CSS px at density 2, store 316 against a guess of 315:
+     * its rules landed one device row low at the divider and two at the
+     * footer while its frame stayed put, reading as text that moved and a
+     * checkbox stroke that changed weight.
+     */
+    it('takes the texel count from the store, never from the box', () => {
+      const box = 157.6172
+      const guess = Math.round(box * 2)
+      const store = Math.round(Math.round(box) * 2)
+      expect(store - guess).toBe(1)
+
+      const s = pixelGridSnap({ ...RESTING, height: box, density: 2, mag: 1, texelsY: store })
+      expect(box * s.sy * 2).toBeCloseTo(store, 9)
+      // And the guess would have been a whole texel short over the card.
+      expect(box * s.sy * 2 - guess).toBeCloseTo(1, 9)
     })
   })
 

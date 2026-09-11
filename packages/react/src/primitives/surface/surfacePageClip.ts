@@ -41,7 +41,11 @@ function borderInsets(style:CSSStyleDeclaration,sx:number,sy:number):Insets {
   return [pixels(style.borderTopWidth)*sy,pixels(style.borderRightWidth)*sx,pixels(style.borderBottomWidth)*sy,pixels(style.borderLeftWidth)*sx]
 }
 function overflowClipInsets(style:CSSStyleDeclaration,sx:number,sy:number):Insets {
-  const value=style.overflowClipMargin,margin=Math.max(0,...value.split(/\s+/).map(pixels))
+  // `getPropertyValue`, not the camelCase property: an engine that does not
+  // implement `overflow-clip-margin` returns UNDEFINED from the property and
+  // an empty string from here. WebKit is that engine, and the property form
+  // threw on the first Surface that reached this.
+  const value=style.getPropertyValue('overflow-clip-margin'),margin=Math.max(0,...value.split(/\s+/).map(pixels))
   const border=value.includes('border-box')?[0,0,0,0] as const:borderInsets(style,sx,sy)
   const content=value.includes('content-box')
   return [border[0]+(content?pixels(style.paddingTop)*sy:0)-margin*sy,border[1]+(content?pixels(style.paddingRight)*sx:0)-margin*sx,border[2]+(content?pixels(style.paddingBottom)*sy:0)-margin*sy,border[3]+(content?pixels(style.paddingLeft)*sx:0)-margin*sx]
@@ -99,14 +103,14 @@ function polygonPath(points:Point[],box:Box,width:number,height:number):string {
   const local=points.map(([x,y])=>`${Number(((x-box.left)*width/box.width).toFixed(5))}px ${Number(((y-box.top)*height/box.height).toFixed(5))}px`)
   return `polygon(${local.join(', ')})`
 }
-export function surfacePageClipPath(canvas:HTMLCanvasElement,holder:HTMLElement):string {
+export function surfacePageClipPath(host:HTMLElement,holder:HTMLElement):string {
   const view=holder.ownerDocument.defaultView
   if(!view)return ''
   const styles=new Map<Element,CSSStyleDeclaration>()
   const styleOf=(element:Element)=>{let style=styles.get(element);if(!style){style=view.getComputedStyle(element);styles.set(element,style)}return style}
   let containingBlock:Element|null=null
-  for(let node=canvas.parentElement;node;node=node.parentElement)if(fixedContainer(styleOf(node))){containingBlock=node;break}
-  const box=canvas.getBoundingClientRect(),width=pixels(canvas.style.width),height=pixels(canvas.style.height)
+  for(let node=host.parentElement;node;node=node.parentElement)if(fixedContainer(styleOf(node))){containingBlock=node;break}
+  const box=host.getBoundingClientRect(),width=pixels(host.style.width),height=pixels(host.style.height)
   if(box.width<=0||box.height<=0||width<=0||height<=0)return polygonPath([],box,width,height)
   let points=rectangle(box)
   const root=holder.ownerDocument.documentElement,rootStyle=styleOf(root)
@@ -119,12 +123,12 @@ export function surfacePageClipPath(canvas:HTMLCanvasElement,holder:HTMLElement)
   return polygonPath(points,box,width,height)
 }
 
-export function createSurfacePageClip(canvas:HTMLCanvasElement,holder:HTMLElement) {
+export function createSurfacePageClip(host:HTMLElement,holder:HTMLElement) {
   let original:string|null=null,written:string|null=null
-  const read=()=>surfacePageClipPath(canvas,holder)
+  const read=()=>surfacePageClipPath(host,holder)
   return {
     read,
-    apply(){original??=canvas.style.clipPath;const value=read()||original;if(value!==written){canvas.style.clipPath=value;written=value}},
-    restore(){if(original!==null)canvas.style.clipPath=original;original=null;written=null},
+    apply(){original??=host.style.clipPath;const value=read()||original;if(value!==written){host.style.clipPath=value;written=value}},
+    restore(){if(original!==null)host.style.clipPath=original;original=null;written=null},
   }
 }

@@ -10,6 +10,98 @@ Every rule here is a *measured* platform property, not a style
 preference. `docs/platform.md` holds the measurements; this page holds
 what to do about them.
 
+## Which engine, and what it adds
+
+Munari has two capture engines. Most of this page applies to both — a
+content root still sizes itself, twins still carry hover and active state,
+the mutation economy is still the mutation economy, and the rules below on
+the content root's own opacity and transform hold either way. What differs:
+
+| | HTML-in-canvas | snapDOM |
+|---|---|---|
+| Decorative motion inside the subtree | captured live | **frozen** at the first capture, unless it is a transition ([platform #22](platform.md)) |
+| Caret and text selection | painted by the browser | not painted — the texture shows neither |
+| `pointerRoute="auto"` | native: the browser hit-tests the real element through the pose | relay: pointer state arrives as twins |
+| `mask-image` in the subtree ([below](#no-mask-image-anywhere-in-a-drawn-subtree)) | blacks out the capture | not measured — write as if the same rule applies |
+| Block placement | exact | within ~2px on a rare subtree ([platform #26](platform.md)) |
+| Pixel match with the same DOM | byte-identical | close, not exact: laid-out lengths snap to whole CSS pixels, so a fractional border loses weight and a rule on a half pixel lands one off ([platform #28](platform.md)) |
+| Sharpness while a Surface moves | re-captured every frame | the last capture, resampled, until the box settles ([platform #27](platform.md)) |
+| Handing off where `Element.moveBefore` is missing (Safari) | n/a — Chrome has it | works; a running CSS animation restarts at the crossing ([platform #29](platform.md)) |
+
+Everything else matches. A form field's `::after` and `::placeholder` are
+absent from a snapDOM clone upstream ([platform #24](platform.md)) and Munari
+puts them back, so an `appearance: none` checkbox keeps its tick and a
+placeholder keeps its `text-transform` and tracking. The one rule that shim
+cannot follow: **a field's `::before`/`::after` has to be absolutely
+positioned.** A pseudo-element cannot be measured, so its box is only
+recoverable from `left`/`top` against the field's padding box; a statically
+positioned one is skipped and the library says so once in the console.
+
+The frozen-motion row is the one that will surprise you. An infinite keyframe
+animation inside a snapDOM Surface signals `animationstart` once and nothing
+after, so the capture holds one frame of it forever. A CSS *transition*
+signals at both ends and lands its end state, which is why the ease-flat
+recipe below works on both engines. Anything else that has to keep moving
+needs `repaint()` on your own schedule, and each one costs a full raster.
+
+The pixel-match row is the one to weigh before choosing snapDOM for content
+that sits beside its own DOM, and it is the one row you can author around.
+
+snapDOM gets your DOM into a canvas by serializing it to an SVG and loading
+that SVG as an image — the only route a library has. Chrome lays out an SVG
+image in an isolated document pinned to dpr 1, so at dpr 2 every half pixel
+the page resolves is quantized away before anything is drawn. Raising the
+output resolution does not help: the snap has already happened. Glyph runs
+still land on the same texels and text is the right size and shape; what
+moves is anything whose own box falls on a half pixel. **A `1.5px` border
+draws at `1px`** — a third of its weight gone. Beside the same DOM that reads
+as a stroke thinning as a Surface crosses.
+
+Only **laid-out** lengths are affected, and the split is worth knowing,
+because most fractional CSS is fine. Measured at dpr 2 through the image path:
+
+| you wrote | Chromium | Firefox | WebKit |
+|---|---|---|---|
+| `font-size`, `letter-spacing`, `line-height` — any fraction | exact | exact | exact |
+| SVG `stroke-width` — any fraction | exact | exact | exact |
+| `opacity`, and colors with alpha | exact | exact | exact |
+| `border-width: 1.5px` | **1px** | **1px** | **1px** |
+| `padding`, `height`, `top` at `.5` | **rounds up** | exact | **rounds up** |
+| `height: 0.25px` | **1px** | 0.5px | **drawn as nothing** |
+
+Type keeps its fractions everywhere, so a `12.5px` font size or a `0.16em`
+tracking needs no thought. What rounds is geometry: a border, a padding, a
+box's own size or offset.
+
+So the rule is not "avoid half pixels" — it is:
+
+- **Express sub-pixel WEIGHT as alpha on a whole-pixel box, never as a
+  fractional length.** `height: 1px; opacity: 0.25` deposits exactly the ink
+  `height: 0.25px` does and every engine agrees, where the fractional height
+  rounds up in two engines and vanishes in the third. The same trick covers
+  borders: `2px` at 75% alpha is the ink of `1.5px`, portably.
+- **Draw a fractional stroke in SVG if you want it as geometry.** `stroke-width`
+  is resolution-independent and survives untouched.
+- Otherwise **give laid-out lengths whole pixels.**
+
+A fractional POSITION that falls out of layout on its own — a row that lands on
+a half pixel because of what is above it — has no lever, and does not need one:
+it moves a hairline by a single device pixel and is not visible beside the page.
+
+None of this constrains HTML-in-canvas, which never goes through an image and
+reproduces fractional lengths exactly. It is the primary engine, and on it half
+pixels need no thought at all. Content that crosses in motion, or is never
+shown beside the original, will not show any of this either.
+
+The sharpness row costs you nothing to author for. A moving Surface's
+texture drifts out of density inside the band `storeForBox` already allows,
+and the frame it stops on is captured exactly. The reason is cost: a snapDOM
+capture is tens of milliseconds of main thread, and re-capturing on every
+density step of the LOD ladder drops frames on a card being dragged.
+
+`useSurfaceStatus().engine` names the engine a Surface is using, so a
+component that must adapt can ask rather than guess.
+
 ## The content root declares its own pixel size
 
 An element is rasterized at its **own layout box**. A container whose

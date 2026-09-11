@@ -1,34 +1,34 @@
-// The native route — the parked canvas lifted over the renderer canvas,
+// The native route — the parked host lifted over the renderer canvas,
 // wearing the presented pose, so the browser hit-tests the real child itself.
 //
-// The rig, in full: the canvas goes `visibility: hidden`, takes a z-index
-// above the renderer canvas, and wears the pose as a `matrix3d` from
-// `transform-origin: 0 0`; the drawn child goes `visibility: visible` and is
-// otherwise untouched — identity transform, its own layout box. The canvas
-// keeps `pointer-events: none` while the child keeps `auto`. What comes back
-// is a trusted click, a real `:hover` that self-paints into the capture, real
-// focus, a real caret and real selection — none of which a synthetic dispatch
-// can produce.
+// The rig, in full: the host takes a z-index above the renderer canvas and
+// wears the pose as a `matrix3d` from `transform-origin: 0 0`; the drawn
+// child goes `visibility: visible` and is otherwise untouched — identity
+// transform, its own layout box. The host keeps `pointer-events: none`
+// while the child keeps `auto`. What comes back is a trusted click, a real
+// `:hover` that self-paints into the capture, real focus, a real caret and
+// real selection — none of which a synthetic dispatch can produce.
 //
-// Two laws, both measured 2026-09-02 on Chrome 151 (platform.md #20–#21).
-// Invisibility is `visibility`, never `opacity`: an `opacity: 0` canvas
-// captures blank and a static drawn root at `opacity: 0` bakes the blank into
-// the paint record, while the visibility pair leaves the capture running and
-// the child hit-testable without painting it (canvas children are fallback
-// content and are never painted). And the POSE GOES ON THE CANVAS, never the
-// child: a transform restyle on the drawn child costs one paint per restyle —
-// a paint every frame the pose moves — while transform restyles on the canvas are
-// paint-free after the first, and the capture and its replay scale never
-// notice them.
+// The host's own pixels stay hidden throughout, and the rig does not write
+// that: only the engine knows which CSS property hides a host without
+// killing its capture, and `DomTextureSource.setHostPainted` is where that
+// lives. A source is born hidden, so a rig that never mentions visibility
+// can also never leave it wrong on park.
+//
+// The law this rig does own, measured 2026-09-02 on Chrome 151 (platform.md
+// #21): the POSE GOES ON THE HOST, never the child. A transform restyle on
+// the drawn child costs one paint per restyle — a paint every frame the
+// pose moves — while transform restyles on the host are paint-free after
+// the first, and the capture and its replay scale never notice them.
 //
 // The same run measured the fault the whole shape answers: native
-// hit-testing is CLIPPED to the canvas's box — the TRANSFORMED box. A canvas
+// hit-testing is CLIPPED to the host's box — the TRANSFORMED box. A host
 // wearing the full pose therefore clips to exactly the projected quad
 // (0.25px at a perspective edge), with the CSS box, and so the capture
 // density, never changing size. Ink outside a mis-sized box is simply not
 // hittable — no error, no warning, and the content still looks right because
 // the pixels come from the texture — which is why the box is never grown and
-// the pose is never split between canvas and child.
+// the pose is never split between host and child.
 //
 // Ownership: this module owns the DOM rig and the twins the browser's own
 // events drive. It never decides whether to ride — `pointerRoute.ts` does —
@@ -45,19 +45,17 @@ import { ACTIVE_ATTR, HOVER_ATTR, swapChainAttr } from './twins'
  * writes a different set on some path is a rig whose park cannot restore it.
  */
 export interface SurfaceRideStyle {
-  readonly canvasVisibility: string
-  readonly canvasZIndex: string
-  readonly canvasTransform: string
-  readonly canvasTransformOrigin: string
+  readonly hostZIndex: string
+  readonly hostTransform: string
+  readonly hostTransformOrigin: string
   readonly rootVisibility: string
 }
 
 /** What the rig found before it rode, so park puts back exactly that. */
 interface RideRestore {
-  canvasVisibility: string
-  canvasZIndex: string
-  canvasTransform: string
-  canvasTransformOrigin: string
+  hostZIndex: string
+  hostTransform: string
+  hostTransformOrigin: string
   rootVisibility: string
 }
 
@@ -73,10 +71,9 @@ export interface NativePointerRig {
 /** The style patch for one frame of riding. */
 export function nativeRideStyle(matrix3d: string, zIndex: number): SurfaceRideStyle {
   return {
-    canvasVisibility: 'hidden',
-    canvasZIndex: String(zIndex),
-    canvasTransform: matrix3d,
-    canvasTransformOrigin: '0 0',
+    hostZIndex: String(zIndex),
+    hostTransform: matrix3d,
+    hostTransformOrigin: '0 0',
     rootVisibility: 'visible',
   }
 }
@@ -84,7 +81,7 @@ export function nativeRideStyle(matrix3d: string, zIndex: number): SurfaceRideSt
 /**
  * One stacking step above everything between `el` and the document.
  *
- * The parked canvas is a `position: fixed` child of `document.body`, so it
+ * The parked host is a `position: fixed` child of `document.body`, so it
  * competes in the root stacking context; the renderer canvas competes inside
  * whatever ancestor established one for it. Taking the tallest explicit
  * z-index on the chain is what makes the two comparable. The limit is real
@@ -105,7 +102,7 @@ export function zIndexAbove(el: Element): number {
 }
 
 /**
- * Build the rig for one source's parked canvas and drawn root.
+ * Build the rig for one source's parked host and drawn root.
  *
  * `cursorTarget` is the renderer canvas. The rig CLEARS its cursor when the
  * ride begins — a mirrored cursor the relay left there would otherwise stand
@@ -117,7 +114,7 @@ export function zIndexAbove(el: Element): number {
  * carries the open question); if it does not, the fix is a probe first.
  */
 export function createNativePointerRig(
-  canvas: HTMLCanvasElement,
+  host: HTMLElement,
   root: HTMLElement,
   cursorTarget: HTMLElement,
 ): NativePointerRig {
@@ -197,10 +194,9 @@ export function createNativePointerRig(
     ride: (style) => {
       if (!restore) {
         restore = {
-          canvasVisibility: canvas.style.visibility,
-          canvasZIndex: canvas.style.zIndex,
-          canvasTransform: canvas.style.transform,
-          canvasTransformOrigin: canvas.style.transformOrigin,
+          hostZIndex: host.style.zIndex,
+          hostTransform: host.style.transform,
+          hostTransformOrigin: host.style.transformOrigin,
           rootVisibility: root.style.visibility,
         }
         listen(true)
@@ -211,14 +207,12 @@ export function createNativePointerRig(
       // sets a property to what it already says still invalidates style on
       // the parked subtree — a recalc, per frame, on content nothing changed.
       const last = written
-      if (!last || last.canvasVisibility !== style.canvasVisibility)
-        canvas.style.visibility = style.canvasVisibility
-      if (!last || last.canvasZIndex !== style.canvasZIndex)
-        canvas.style.zIndex = style.canvasZIndex
-      if (!last || last.canvasTransform !== style.canvasTransform)
-        canvas.style.transform = style.canvasTransform
-      if (!last || last.canvasTransformOrigin !== style.canvasTransformOrigin)
-        canvas.style.transformOrigin = style.canvasTransformOrigin
+      if (!last || last.hostZIndex !== style.hostZIndex)
+        host.style.zIndex = style.hostZIndex
+      if (!last || last.hostTransform !== style.hostTransform)
+        host.style.transform = style.hostTransform
+      if (!last || last.hostTransformOrigin !== style.hostTransformOrigin)
+        host.style.transformOrigin = style.hostTransformOrigin
       if (!last || last.rootVisibility !== style.rootVisibility)
         root.style.visibility = style.rootVisibility
       written = style
@@ -232,10 +226,9 @@ export function createNativePointerRig(
       // at rest still wearing its hover.
       clearTwins()
       listen(false)
-      canvas.style.visibility = restore.canvasVisibility
-      canvas.style.zIndex = restore.canvasZIndex
-      canvas.style.transform = restore.canvasTransform
-      canvas.style.transformOrigin = restore.canvasTransformOrigin
+      host.style.zIndex = restore.hostZIndex
+      host.style.transform = restore.hostTransform
+      host.style.transformOrigin = restore.hostTransformOrigin
       root.style.visibility = restore.rootVisibility
       restore = null
       written = null

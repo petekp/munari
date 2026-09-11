@@ -9,7 +9,7 @@ import {
   useSurfaceStatus,
 } from '@petepetrash/munari'
 import { readSurfaceFrameState } from '@petepetrash/munari/advanced'
-import { setHomeFlyer } from './homeFlyer'
+import type { HomeFlyerStore } from './homeFlyer'
 
 import { PAPER_WIDTH, PAPER_HEIGHT, type PaperInteraction } from './homePaperLaw'
 
@@ -64,12 +64,12 @@ function Postcard({
   }
   return (
     <div className="home-postcard">
-      <div className="home-postcard-msg">
+      <div className="home-postcard-msg grid min-w-0 content-start gap-2 text-left">
         <h3>Ciao.</h3>
         <p>
           A little HTML, away from the page. Add your name and a stamp.
         </p>
-        <button type="button" onClick={onStamp}>
+        <button type="button" className="mt-[6px] min-h-11 cursor-pointer justify-self-start border-0 bg-[var(--ground)] px-[14px] py-0 font-[550] text-[14px] text-[var(--paper)] hover:bg-[#38383f] active:bg-black active:text-[var(--chartreuse)] focus-visible:outline-[3px] focus-visible:outline-[#ba3829] focus-visible:outline-offset-3" onClick={onStamp}>
           Add a stamp
         </button>
       </div>
@@ -110,6 +110,8 @@ function PostcardPresentation({surface,preview}:{surface:SurfaceHandle;preview:b
 }
 
 export function HeroSection({
+  flyer,
+  canvasId,
   surface,
   paper,
   inScene,
@@ -119,6 +121,8 @@ export function HeroSection({
   supported,
   reduced,
 }: {
+  flyer: HomeFlyerStore
+  canvasId: string
   surface: SurfaceHandle
   paper: PaperInteraction
   inScene: boolean
@@ -140,9 +144,9 @@ export function HeroSection({
   useLayoutEffect(() => {
     const holder = holderRef.current
     if (!holder) return
-    setHomeFlyer({ kind: 'page', element: holder })
-  }, [holderRef])
-  useEffect(() => () => setHomeFlyer(null), [])
+    flyer.set({ kind: 'page', element: holder })
+  }, [holderRef, flyer])
+  useEffect(() => () => flyer.set(null), [flyer])
   useLayoutEffect(() => {
     const viewport = viewportRef.current
     if (!viewport) return
@@ -164,13 +168,13 @@ export function HeroSection({
     />
   )
   return (
-    <section className="home-hero" id="try" aria-label="A live postcard under the light">
-      <div className="home-hero-stage" data-live={supported}>
-        <div ref={viewportRef} className="home-hero-viewport">
+    <section className="home-hero min-w-0" id="try" aria-label="A live postcard under the light">
+      <div className="home-hero-stage w-full min-w-0 max-w-[420px]" data-live={supported}>
+        <div ref={viewportRef} className="home-hero-viewport relative aspect-[420/270] w-full">
           <div ref={holderRef} className="home-hero-holder" style={{ transform: `scale(${scale})` }} hidden={preview}>
             {supported ? (
-              <Surface.Root surface={surface} canvasId="home" onPresentationChange={presentation => {
-                if (presentation === 'page' && holderRef.current) setHomeFlyer({kind:'page',element:holderRef.current})
+              <Surface.Root surface={surface} canvasId={canvasId} onPresentationChange={presentation => {
+                if (presentation === 'page' && holderRef.current) flyer.set({kind:'page',element:holderRef.current})
               }} timing={{ settleMs: reduced ? 0 : 120, durationMs: reduced ? 0 : 260 }} inScene={inScene}>
                 <Surface.HTML size={[HERO_W, HERO_H]}>{content}</Surface.HTML>
               </Surface.Root>
@@ -189,7 +193,7 @@ export function HeroSection({
             />
           )}
         </div>
-        <div className="home-hero-row">
+        <div className="home-hero-row mt-6 flex items-center justify-between gap-3 @max-[600px]/demo:mt-[18px] @max-[600px]/demo:gap-2">
           {supported ? (
             <button
               type="button"

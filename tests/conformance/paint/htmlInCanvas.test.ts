@@ -345,6 +345,9 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
       frame: { sourceId: s.sourceId, generation: 1 },
       paintedSize: [360, 460],
       storeSize: [540, 690],
+      // Zero on this engine by construction: the compositor rasterizes inside
+      // the frame that asked, so nothing can change while it does.
+      changesDuringPaint: 0,
     })
     expect(Object.isFrozen(first)).toBe(true)
     expect(Object.isFrozen(first?.frame)).toBe(true)

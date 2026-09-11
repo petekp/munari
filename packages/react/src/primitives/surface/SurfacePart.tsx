@@ -31,7 +31,6 @@ export interface SurfacePartProps {
   size?: SurfaceSize
   resolution?: SurfaceResolution
   mirrorU?: boolean
-  paint?: 'auto' | 'always'
   onFocusWithinChange?: (focused: boolean) => void
   onChrome?: (chrome: SurfaceChrome) => void
   chromeElement?: () => HTMLElement

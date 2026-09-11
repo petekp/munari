@@ -84,7 +84,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
     }
     function sample() {
       paintClock()
-      const doc = document.querySelector('iframe')?.contentDocument
+      const doc = document
       const heading = doc?.querySelector('#root h1')
       if (early && heading && !forced) {
         forced = true
@@ -98,7 +98,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
       const state = {
         home: !!heading, exposed: !cover || opacity < 1, covered: !!cover,
         opening: document.documentElement.dataset.opening,
-        ready: doc?.documentElement?.dataset.homeReady === 'true',
+        ready: doc?.querySelector('.home-page')?.dataset.homeReady === 'true',
         lit: doc?.querySelector('.home-page')?.dataset.lit === 'true',
         headline: !!doc?.querySelector('[data-headline-ready]'),
         fonts: doc?.fonts.status, heading: rect('h1'), card: rect('.home-hero-holder'),
@@ -116,8 +116,10 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
   })
   await client.send('Page.startScreencast', {format: 'jpeg', quality: 95, maxWidth: width, maxHeight: height, everyNthFrame: 1})
   await page.goto(url + '/?scene=home', {waitUntil: 'load'})
-  const frame = await (await page.waitForSelector('iframe')).contentFrame()
-  await frame.waitForFunction(() => document.documentElement.dataset.homeReady === 'true')
+  await page.waitForSelector('.home-page')
+  assert.equal(await page.$('iframe.site-frame'), null, 'Home must render in the site document')
+  const frame = page
+  await frame.waitForFunction(() => document.querySelector('.home-page')?.dataset.homeReady === 'true')
   await page.waitForFunction(() => !document.documentElement.hasAttribute('data-opening'))
   // Observe after completion: a late worker result must not change visible shadows.
   await delay(1200)
@@ -126,13 +128,13 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
   const [timing, content] = await Promise.all([
     page.evaluate(() => {
       window.__stopStartup = true
-      const frame = document.querySelector('iframe').getBoundingClientRect()
-      return {origin: performance.timeOrigin, paint: performance.getEntriesByName('first-paint')[0].startTime, states: window.__startup, frame: frame.toJSON(), width: innerWidth}
+      const frame = { x: 0, y: 0 }
+      return {origin: performance.timeOrigin, paint: performance.getEntriesByName('first-paint')[0].startTime, states: window.__startup, frame, width: innerWidth}
     }),
     frame.evaluate(() => ({
       capture: 'drawElementImage' in CanvasRenderingContext2D.prototype,
       colour: getComputedStyle(document.querySelector('#root .home-headline-shaders')).color,
-      overflow: document.querySelector('.home-page').scrollWidth > innerWidth,
+      overflow: document.querySelector('.home-page').scrollWidth > document.querySelector('.home-page').clientWidth,
       button: document.querySelector('.home-hero-row button').getBoundingClientRect().toJSON(),
       lit: document.querySelector('.home-page').dataset.lit === 'true',
     })),

@@ -28,21 +28,20 @@ export type HomeFlyer =
   | { readonly kind: 'page'; readonly element: HTMLElement }
   | { readonly kind: 'scene'; readonly corners: Float32Array; readonly paper: PaperDrawFrame }
 
-let current: HomeFlyer | null = null
-const listeners = new Set<() => void>()
-
-export function setHomeFlyer(flyer: HomeFlyer | null) {
-  current = flyer
-  for (const listener of listeners) listener()
-}
-
-export function readHomeFlyer(): HomeFlyer | null {
-  return current
-}
-
-export function subscribeHomeFlyer(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
+export function createHomeFlyerStore() {
+  let current: HomeFlyer | null = null
+  const listeners = new Set<() => void>()
+  return {
+    read: () => current,
+    set(flyer: HomeFlyer | null) {
+      current = flyer
+      for (const listener of listeners) listener()
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
   }
 }
+
+export type HomeFlyerStore = ReturnType<typeof createHomeFlyerStore>

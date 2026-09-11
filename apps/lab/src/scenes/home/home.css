@@ -1,9 +1,16 @@
 /* Overview — one wash over the whole page, near-black UI on top of it.
- * Capture tokens live on :root because parked content leaves .home-page.
+ * Home owns its theme; the lamp capture receives the same theme root.
  * Captured roots size themselves; only their outer holders are transformed.
  * Depth comes from the light (HomeMasthead.tsx) where WebGL runs, and from
  * the static depth kit (components/lit.css) where it does not. */
-:root {
+.home-demo {
+  --ink: #14140f;
+  --display: 'Bodoni Moda', Didot, 'Times New Roman', serif;
+  --body: 'Archivo', system-ui, sans-serif;
+  --label: 'Archivo Narrow', 'Archivo', system-ui, sans-serif;
+  --data: 'Courier Prime', ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink);
+  font-family: var(--body);
   --coral: #f2695c;
   --chartreuse: #e3ec5a;
   --orchid: #f07ff0;
@@ -21,9 +28,9 @@
   --rule-hard: rgba(20, 20, 15, 0.85);
 }
 
-.home-page { position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--wash); color: var(--ink); font-family: var(--body); color-scheme: light; scrollbar-color: var(--ink) var(--wash); }
+.home-page { background: var(--wash); color: var(--ink); font-family: var(--body); color-scheme: light; scrollbar-color: var(--ink) var(--wash); }
 .home-page ::selection { background: var(--ink); color: var(--wash); }
-.home-inner { --home-side-padding: 64px; max-width: 1260px; margin: 0 auto; padding: 44px var(--home-side-padding) 40px; }
+.home-inner { --home-side-padding: 64px; padding: 44px var(--home-side-padding) 40px; }
 .home-inner * { box-sizing: border-box; }
 .home-inner :is(a, button, summary, pre):focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
 .home-inner a { color: inherit; text-underline-offset: 4px; }
@@ -31,7 +38,7 @@
 .home-inner p { text-wrap: pretty; }
 .home-section { margin-top: 96px; padding-top: 40px; border-top: 1px solid var(--rule-hard); scroll-margin-top: 36px; }
 .home-eyebrow { margin: 0 0 18px; font-family: var(--data); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
-.home-section h2 { margin: 0; font-family: var(--display); font-variation-settings: 'opsz' 96; font-size: clamp(34px, 3.6vw, 48px); line-height: 1.02; font-weight: 500; letter-spacing: -.025em; text-wrap: balance; }
+.home-section h2 { margin: 0; font-family: var(--display); font-variation-settings: 'opsz' 96; font-size: clamp(34px, 3.6cqw, 48px); line-height: 1.02; font-weight: 500; letter-spacing: -.025em; text-wrap: balance; }
 .home-section h3 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 24px; line-height: 1.2; letter-spacing: -.01em; }
 .home-section-heading > p:last-child, .home-start-copy p, .home-support-section p:not(.home-eyebrow, .home-support-result) { max-width: 62ch; margin: 20px 0 0; color: var(--ink-soft); font-size: 16px; line-height: 1.6; }
 .home-inner :not(pre) > code { font-family: var(--data); font-size: .94em; color: var(--ink); }
@@ -47,9 +54,8 @@
 .home-light-host { position: absolute; left: 0; top: 0; width: 100%; z-index: 20; pointer-events: none; mix-blend-mode: multiply; }
 .home-light-canvas { display: block; width: 100%; height: 100%; }
 .home-light-host[data-degraded] { display: none; }
-.home-masthead { --masthead-size: clamp(56px, 8.2cqw, 104px); container-type: inline-size; display: grid; grid-template-columns: minmax(0,1.15fr) minmax(280px,.85fr); column-gap: 64px; align-items: start; position: relative; padding-top: 96px; }
-.home-masthead-intro { min-width: 0; }
-.home-masthead-demo { min-width: 0; width: 100%; max-width: 420px; justify-self: end; margin-top: 12px; }
+.home-masthead { --masthead-size: clamp(56px, 8.2cqw, 104px); container-type: inline-size; }
+
 .home-masthead-title { position: relative; z-index: 1; margin: 0; font-family: var(--display); font-variation-settings: 'opsz' 96; font-weight: 500; font-size: var(--masthead-size); line-height: .9; letter-spacing: -.035em; color: var(--ink); }
 
 .home-masthead-details { margin-top: 36px; position: relative; z-index: 1; }
@@ -64,11 +70,11 @@
 .home-masthead-title ::selection { background: transparent; color: #67329b; }
 .home-masthead-em { font-style: italic; font-weight: 400; }
 .home-masthead-copy { position: relative; z-index: 1; max-width: 36ch; margin: 0; color: var(--ink-soft); font-size: 16px; line-height: 1.6; }
-.home-masthead-links { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; margin-top: 16px; }
-.home-light-scene { position: fixed; inset: 0; z-index: 30; pointer-events: none; }
+
+.home-light-scene { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
 .home-light-scene[data-degraded] { display: none; }
 /* The drag handle sits over the rendered globe; the bulb itself is WebGL. */
-.home-light { position: fixed; left: 0; top: 0; z-index: 40; width: 76px; height: 76px; margin: -38px 0 0 -38px; padding: 0; border: 0; background: transparent; border-radius: 50%; cursor: grab; touch-action: none; user-select: none; }
+.home-light { pointer-events: auto; position: absolute; left: 0; top: 0; z-index: 40; width: 76px; height: 76px; margin: -38px 0 0 -38px; padding: 0; border: 0; background: transparent; border-radius: 50%; cursor: grab; touch-action: none; user-select: none; }
 .home-light.is-dragging { cursor: grabbing; }
 .home-light-mark { display: none; position: absolute; inset: 20px; border: 2px solid var(--ink); border-radius: 50%; background: var(--paper); }
 .home-light[data-bulbless] .home-light-mark { display: block; }
@@ -77,7 +83,7 @@
 .home-light[data-degraded] { display: none; }
 .home-masthead-tools { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 24px; align-items: end; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--rule); }
 .home-light-height { display: grid; gap: 8px; min-width: 0; margin: 0; font-size: 12px; color: var(--ink-soft); }
-.home-light-height-range { display: flex; align-items: center; gap: 12px; }
+
 .home-light-height input { flex: 1; min-width: 0; height: 2px; margin: 8px 0; appearance: none; background: var(--rule-hard); cursor: pointer; }
 .home-light-height input::-webkit-slider-thumb { width: 12px; height: 12px; appearance: none; border-radius: 50%; background: var(--ink); }
 .home-light-height input::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--ink); }
@@ -87,15 +93,13 @@
 .home-postcard-section { position: relative; z-index: 2; display: flow-root; }
 
 /* Try it: the postcard */
-.home-hero { min-width: 0; }
-.home-hero-stage { width: 100%; max-width: 420px; min-width: 0; }
-.home-hero-viewport { position: relative; width: 100%; aspect-ratio: 420 / 270; }
+
 /* A scaled child in normal flow still reserves 270px. Absolute placement
  * lets the viewport reserve the visible height (220px at 342px wide). */
 .home-hero-holder { position: absolute; top: 0; left: 0; isolation: isolate; width: 420px; height: 270px; transform-origin: top left; }
 .home-hero-holder::after { content: ''; position: absolute; inset: 0; z-index: -1; border: 1px dashed var(--rule-hard); }
 .home-hero-preview { display: block; width: 100%; height: 100%; object-fit: contain; background: var(--ink); }
-.home-hero-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px; }
+
 /* The action label changes at handoff; its relief box must stay the same size. */
 .home-hero-row .home-btn { width: 170px; max-width: 55%; background: var(--ink); color: var(--wash); }
 .home-hero-row .home-btn:hover { background: #000; }
@@ -103,13 +107,10 @@
 
 /* Postcard: these selectors also reach the parked capture. */
 .home-postcard { position: relative; box-sizing: border-box; width: 420px; height: 270px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; padding: 22px; background: var(--paper); color: var(--ground); color-scheme: light; font-family: var(--body); border: 8px solid var(--paper); border-image: repeating-linear-gradient(45deg, var(--coral) 0 12px, var(--paper) 12px 24px, var(--sky) 24px 36px) 8; }
-.home-postcard-msg { display: grid; align-content: start; gap: 8px; min-width: 0; text-align: left; }
+
 .home-postcard-msg h3 { margin: 0; font-family: var(--display); font-style: italic; font-size: 36px; font-weight: 700; line-height: 1.2; color: var(--ground); }
 .home-postcard-msg p { margin: 0; font-size: 15px; line-height: 1.4; color: #4d4c4b; }
-.home-postcard-msg button { justify-self: start; margin-top: 6px; min-height: 44px; border: 0; padding: 0 14px; background: var(--ground); color: var(--paper); font-family: var(--body); font-size: 14px; font-weight: 550; cursor: pointer; }
-.home-postcard-msg button:hover, .home-postcard-msg button[data-hover] { background: #38383f; }
-.home-postcard-msg button:active, .home-postcard-msg button[data-active] { background: #000; color: var(--chartreuse); }
-.home-postcard-msg button:focus-visible { outline: 3px solid #ba3829; outline-offset: 3px; }
+
 .home-postcard-addr { display: grid; align-content: start; gap: 9px; min-width: 0; padding-left: 16px; border-left: 1px dashed #9f9d99; text-align: left; }
 .home-postcard-stamp { justify-self: end; display: grid; place-items: center; width: 44px; height: 52px; background: var(--chartreuse); color: var(--ground); font-size: 20px; outline: 3px dashed var(--paper); outline-offset: -6px; rotate: 3deg; }
 .home-postcard-addr label { margin-top: 6px; font-size: 14px; color: #686562; }
@@ -197,16 +198,16 @@
 .home-footer > div:last-child { display: flex; flex-wrap: wrap; align-items: start; gap: 24px; }
 .home-footer a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink); font-size: 13px; }
 
-@media (max-width: 1050px) {
+@container demo (max-width: 1050px) {
   .home-inner { --home-side-padding: 32px; padding: 36px var(--home-side-padding) 32px; }
-  .home-masthead { column-gap: 40px; padding-top: 84px; }
+
   .home-examples { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-start-grid, .home-support-section { gap: 28px; }
 }
-@media (max-width: 600px) {
+@container demo (max-width: 600px) {
   .home-inner { --home-side-padding: 22px; padding: 28px var(--home-side-padding) 28px; }
   .home-masthead { --masthead-size: clamp(48px, 14cqw, 72px); }
-  .home-hero-row { margin-top: 18px; gap: 8px; }
+
   .home-postcard-status { font-size: 11px; gap: 6px; }
   .home-hero-row .home-btn { padding: 10px 13px; font-size: 13px; }
   .home-section { margin-top: 64px; padding-top: 32px; scroll-margin-top: 24px; }
@@ -232,9 +233,9 @@
   .home-example:hover .home-example-image img { transform: none; }
 }
 
-@media (max-width: 760px) {
-  .home-masthead { --masthead-size: clamp(48px, 14cqw, 88px); grid-template-columns: minmax(0,1fr); row-gap: 28px; padding-top: 56px; }
-  .home-masthead-demo { justify-self: start; margin-top: 0; }
+@container demo (max-width: 760px) {
+  .home-masthead { --masthead-size: clamp(48px, 14cqw, 88px);  }
+
   .home-light-hint { left: auto; right: calc(100% + 12px); }
   .home-postcard-section { max-width: 420px; width: 100%; }
   .home-masthead-details { margin-top: 20px; }

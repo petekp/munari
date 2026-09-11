@@ -9,7 +9,7 @@ import { cameraDistance, readSurfaceFrameState } from '@petepetrash/munari/advan
 import type { HolderRef, LandRef } from './HomeHero'
 import { PAPER_WIDTH as HERO_W, PAPER_HEIGHT as HERO_H, PAPER_COLUMNS, PAPER_ROWS, paperPoint, stepPaperSpring, type PaperInteraction, type PaperShape } from './homePaperLaw'
 import { createPaperDrawFrame, writePaperDrawFrame } from './homePaperFrame'
-import { setHomeFlyer } from './homeFlyer'
+import type { HomeFlyerStore } from './homeFlyer'
 import { POSTCARD_STANDOFF } from './homeLightLaw'
 import { HomePostcardMaterial } from './HomePostcardMaterial'
 
@@ -175,17 +175,19 @@ function flightPose(st: FlightState, sx: number, sy: number, delta: number, trav
   return { X: sx, Y: sy, RX: 0, RY: 0, RZ: 0 }
 }
 
-function FlyerFrame({ group, mesh, holder, flight, reduced }: { group: React.RefObject<THREE.Group | null>; mesh: React.RefObject<THREE.Mesh | null>; holder: HolderRef; flight: React.RefObject<FlightState>; reduced:boolean }) {
+function FlyerFrame({ group, mesh, holder, flight, reduced, flyer }: { flyer: HomeFlyerStore; group: React.RefObject<THREE.Group | null>; mesh: React.RefObject<THREE.Mesh | null>; holder: HolderRef; flight: React.RefObject<FlightState>; reduced:boolean }) {
   const paper=useMemo(createPaperDrawFrame,[])
   useSurfaceBeforeRender(frame => {
     if (!frame.canvasMayDraw || !group.current || !mesh.current || !holder.current) return
     writePaperDrawFrame(paper,mesh.current,group.current,frame.camera,frame.canvas,holder.current,POSTCARD_STANDOFF+(reduced ? 0 : liftProgress(flight.current)*FLY_HEIGHT))
-    setHomeFlyer({kind:'scene',corners:paper.corners,paper})
+    flyer.set({kind:'scene',corners:paper.corners,paper})
   })
   return null
 }
 
 export function HeroMesh({
+  flyer,
+  viewportRef,
   surface,
   paper,
   holderRef,
@@ -193,6 +195,8 @@ export function HeroMesh({
   landRef,
   onLanded,
 }: {
+  flyer: HomeFlyerStore
+  viewportRef: React.RefObject<HTMLDivElement | null>
   surface: SurfaceHandle
   paper: PaperInteraction
   holderRef: HolderRef
@@ -241,6 +245,8 @@ export function HeroMesh({
   useEffect(() => {
     const move=(event:PointerEvent)=>{
       if (!event.isTrusted || f.current.phase!=='afloat' || !holderRef.current) return
+      const viewport=viewportRef.current?.getBoundingClientRect()
+      if (!viewport || event.clientX<viewport.left || event.clientX>viewport.right || event.clientY<viewport.top || event.clientY>viewport.bottom) { aim.current.target=0; return }
       const r=holderRef.current.getBoundingClientRect(),scale=r.width/HERO_W
       const x=(event.clientX-r.left)/scale,y=(event.clientY-r.top+HOVER_LIFT)/scale,pad=24/scale
       aim.current.x=THREE.MathUtils.clamp(x,0,HERO_W)
@@ -266,7 +272,7 @@ export function HeroMesh({
       window.removeEventListener('pointerup',up,true)
       window.removeEventListener('pointerout',leave,true)
     }
-  },[holderRef,paper])
+  },[holderRef,paper,viewportRef])
 
   useFrame((_, delta) => {
     const group = groupRef.current
@@ -308,7 +314,8 @@ export function HeroMesh({
 
     advancePhase(st, landRef, frameState.presentation === 'scene' && frameState.targetInScene, onLanded, sx, sy)
 
-    const travel = Math.max(0, Math.min(32, r.left - 12, window.innerWidth - r.right - 12))
+    const viewport = viewportRef.current?.getBoundingClientRect()
+    const travel = viewport ? Math.max(0, Math.min(32, r.left - viewport.left - 12, viewport.right - r.right - 12)) : 0
     const { X, Y, RX, RY, RZ } = flightPose(st, sx, sy, delta, travel)
     if (st.phase === 'landing' && st.t >= 1 && !st.landed) {
       st.landed = true
@@ -342,7 +349,7 @@ export function HeroMesh({
         material={<HomePostcardMaterial />}
         raycast={raycast}
       >
-        <FlyerFrame group={groupRef} mesh={meshRef} holder={holderRef} flight={f} reduced={reduced} />
+        <FlyerFrame flyer={flyer} group={groupRef} mesh={meshRef} holder={holderRef} flight={f} reduced={reduced} />
       </Surface.Mesh>
     </group>
   )

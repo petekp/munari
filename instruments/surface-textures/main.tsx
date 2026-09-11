@@ -5,7 +5,7 @@ import {createSurfaceSourceRuntime} from '../../packages/react/src/primitives/su
 const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 const content = document.createElement('div')
 content.style.cssText = 'width:128px;height:64px;background:linear-gradient(to right,rgb(255,0,0) 50%,rgb(0,255,0) 50%)'
-const runtime = createSurfaceSourceRuntime({content,size:[128,64],resolution:new URLSearchParams(location.search).has('pinned')?1:'auto',mirrorU:false,paint:'always',pixelRatio:1,onError:error=>{throw error}})
+const runtime = createSurfaceSourceRuntime({content,size:[128,64],resolution:new URLSearchParams(location.search).has('pinned')?1:'auto',mirrorU:false,pixelRatio:1,onError:error=>{throw error}})
 const renderer = new THREE.WebGLRenderer({alpha:true,antialias:false})
 renderer.setPixelRatio(devicePixelRatio)
 renderer.setSize(512,256)

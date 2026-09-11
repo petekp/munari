@@ -10,6 +10,7 @@ output. Preserve both distinctions when resolving a conflict.
 | Find the owner, control and relevant check | [Agent operating guide](agent-workflow.md) | Current workflow |
 | Understand how the abstractions fit | [System model](system-model.md), [glossary](../CONTEXT.md) | Current model and constraints |
 | Build the next agent-facing capability | [Agent system plan](agent-system-plan.md) | Work in progress; unbuilt stages are explicit |
+| Add snapDOM as a second capture engine | [Decision #60](decisions.md#60); [plan](capture-engines-plan.md) | Built 2026-09-10; the plan is kept for its reasoning, not maintained |
 | Understand an architectural choice | [Decisions](decisions.md) | Numbered decisions with dated amendments |
 | Check a browser-specific claim | [Platform](platform.md), [instruments](../instruments/README.md) | Measurements under the recorded conditions |
 | Write captured HTML | [Authoring](authoring.md) | Current rules derived from measurements |

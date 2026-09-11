@@ -20,8 +20,9 @@ import { surfaceChromeElement } from './surface/surfaceChromeElement'
 import { validateSurfaceSize } from './surface/surfaceSize'
 import { watchSurfacePlacement } from './surface/surfacePlacement'
 import { claimSourcePointer, releaseSourcePointer } from './surface/surfacePointerOwnership'
-import { registerCanvasSpace, canvasSpace } from './surface/surfaceCanvasSpace'
+import { registerHostSpace, hostSpace } from './surface/surfaceHostSpace'
 import { createSurfacePageClip } from './surface/surfacePageClip'
+import { moveRetained } from './retainedMove'
 
 function unsupportedSnapshot(root:HTMLElement):string|null {
   for(const element of [root,...root.querySelectorAll('*')]) {
@@ -36,14 +37,34 @@ function unsupportedSnapshot(root:HTMLElement):string|null {
   return null
 }
 
-function snapshot(root: HTMLElement): HTMLElement {
+/**
+ * A copy of the live content, and a key naming everything in that copy.
+ *
+ * The key exists because a capture is not free. A source re-rasterizes on
+ * any mutation of what it holds, so replacing the copy is what keeps the
+ * texture current — and most replacements change nothing. Measured
+ * 2026-09-11 over one card drag on a nine-card board: 40 of 41 rebuilt
+ * copies were byte-for-byte the copy already in place, and dropping them —
+ * with the density rule in `PaintReason` — took the drag from 65 captures to
+ * 40 and its blocking time from ~140 ms to ~115 ms under a main-thread
+ * rasterizer. Comparing the key first costs one string per mutation burst.
+ *
+ * It covers what `outerHTML` cannot: a field's value, a checkbox's state
+ * and a scroll offset are properties, not attributes, and each of them is
+ * carried across by this function. A `<canvas>`'s pixels are not in it —
+ * nothing mutates for a canvas redraw, so this path never runs for one.
+ */
+interface PageSnapshot { node: HTMLElement; key: string }
+
+function snapshot(root: HTMLElement): PageSnapshot {
   // Do not instantiate another iframe, media player, or custom element as a placeholder.
-  if(unsupportedSnapshot(root))return document.createElement('div')
+  if(unsupportedSnapshot(root))return { node: document.createElement('div'), key: '' }
   // SAFETY: cloning an HTMLElement preserves its element type.
   const copy = root.cloneNode(true) as HTMLElement
   copy.dataset.munariSnapshot = ''
   const originals = [root, ...root.querySelectorAll('*')]
   const copies = [copy, ...copy.querySelectorAll('*')]
+  const state: string[] = []
   originals.forEach((original, index) => {
     const target = copies[index]
     if (!target) return
@@ -54,14 +75,18 @@ function snapshot(root: HTMLElement): HTMLElement {
     target.toggleAttribute('data-focus-visible', original.matches(':focus-visible'))
     if (original instanceof HTMLInputElement && target instanceof HTMLInputElement) {
       target.value = original.value; target.checked = original.checked; target.indeterminate = original.indeterminate
-    } else if (original instanceof HTMLTextAreaElement && target instanceof HTMLTextAreaElement) target.value = original.value
-    else if (original instanceof HTMLSelectElement && target instanceof HTMLSelectElement) target.selectedIndex = original.selectedIndex
-    else if (original instanceof HTMLCanvasElement && target instanceof HTMLCanvasElement) {
+      state.push(`${index}v${original.value}|${original.checked}|${original.indeterminate}`)
+    } else if (original instanceof HTMLTextAreaElement && target instanceof HTMLTextAreaElement) {
+      target.value = original.value; state.push(`${index}v${original.value}`)
+    } else if (original instanceof HTMLSelectElement && target instanceof HTMLSelectElement) {
+      target.selectedIndex = original.selectedIndex; state.push(`${index}s${original.selectedIndex}`)
+    } else if (original instanceof HTMLCanvasElement && target instanceof HTMLCanvasElement) {
       target.getContext('2d')?.drawImage(original, 0, 0)
     }
     target.scrollTop = original.scrollTop; target.scrollLeft = original.scrollLeft
+    if (original.scrollTop || original.scrollLeft) state.push(`${index}o${original.scrollTop},${original.scrollLeft}`)
   })
-  return copy
+  return { node: copy, key: `${copy.outerHTML}\u0000${state.join('\u0000')}` }
 }
 
 function SceneContribution({ scene }: { scene: ReactNode }) {
@@ -151,7 +176,6 @@ export type SurfaceHTMLProps = {
   children: ReactNode
   part?: SurfacePartId
   resolution?: SurfaceResolution
-  paint?: 'auto' | 'always'
   onChrome?: (chrome: SurfaceChrome) => void
   target?: PageTarget
   pageClassName?: string
@@ -165,13 +189,12 @@ export type SurfaceHTMLProps = {
 function matchingRuntime(publication: SurfacePartPublication | null, element: HTMLElement | null): SurfaceSourceRuntime | null {
   return publication?.captureRoot === element ? publication?.runtime ?? null : null
 }
-function attachCaptureCanvas(canvas: HTMLCanvasElement, dock: HTMLElement) {
-  if (canvas.parentElement === dock) return
-  if ('moveBefore' in Element.prototype && canvas.isConnected && dock.isConnected) dock.moveBefore(canvas, null)
-  else dock.append(canvas)
+function dockCaptureHost(host: HTMLElement, dock: HTMLElement) {
+  if (host.parentElement === dock) return
+  moveRetained(host, dock)
 }
 
-function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, paint, onChrome, hidden, pageClassName, pageStyle, target, as: Tag = 'div', layout = 'preserve' }: SurfaceHTMLProps) {
+function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, onChrome, hidden, pageClassName, pageStyle, target, as: Tag = 'div', layout = 'preserve' }: SurfaceHTMLProps) {
   if (size) validateSurfaceSize(size)
   const root = use(SurfaceContentContext)
   const renderingRoot = use(SurfaceRootContext)
@@ -199,31 +222,39 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   const [dock,setDock]=useState<HTMLElement|null>(null)
   const [marker,setMarker]=useState<HTMLElement|null>(null)
   const publication = useSyncExternalStore(store.subscribeParts, () => store.part(partId) ?? null, () => null)
-  const desired = root.canEnter && !reason && 'moveBefore' in Element.prototype
+  const desired = root.canEnter && !reason
   const desiredRef = useLatest(desired)
   const pageRef = useLatest(page)
   const ownRuntime = matchingRuntime(publication, captureRoot)
   const runtimeRef = useLatest(ownRuntime)
   const placeholder = useRef<HTMLElement | null>(null)
+  // What the capture root already holds, so an unchanged rebuild is dropped
+  // before it reaches the source (`snapshot`).
+  const heldKey = useRef<string | null>(null)
   const pageDensityKey = -1 // Scene LOD keys are nonnegative; the retained page has one owner.
   const [warmOwner] = useState(() => Symbol())
   const warmRig = useRef<NativePointerRig | null>(null)
-  const warmCanvas = useRef<HTMLCanvasElement | null>(null)
+  // Keyed on the SOURCE, which owns the host: a new source means a new host,
+  // and the rig, the clip and the pointer claim are all built on that host.
+  const warmSource = useRef<SurfaceSourceRuntime['source'] | null>(null)
   const warmClip = useRef<ReturnType<typeof createSurfacePageClip> | null>(null)
 
   const parkWarmRig = useCallback(() => {
     warmRig.current?.park()
     warmClip.current?.restore()
-    releaseSourcePointer(warmCanvas.current, warmOwner)
+    // Pair for the `setHostPainted(true)` the ride writes. The rig restores
+    // only what it wrote, and visibility is no longer one of those.
+    warmSource.current?.setHostPainted(false)
+    releaseSourcePointer(warmSource.current?.host ?? null, warmOwner)
   }, [warmOwner])
   const updateWarmRig = (holder:HTMLElement,runtime:SurfaceSourceRuntime|null,captured:boolean,captureElement:HTMLElement) => {
     if (captured && !holder.hidden && store.holdsPage() && runtime) {
-      const sourceCanvas = runtime.source.canvas
-      if (warmCanvas.current !== sourceCanvas) {
+      const sourceHost = runtime.source.host
+      if (warmSource.current !== runtime.source) {
         parkWarmRig()
-        warmRig.current = createNativePointerRig(sourceCanvas, captureElement, holder)
-        warmCanvas.current = sourceCanvas
-        warmClip.current = createSurfacePageClip(sourceCanvas, holder)
+        warmRig.current = createNativePointerRig(sourceHost, captureElement, holder)
+        warmSource.current = runtime.source
+        warmClip.current = createSurfacePageClip(sourceHost, holder)
       }
       const rect = (pageContent() ?? holder).getBoundingClientRect()
       const [w, h] = runtime.size()
@@ -231,20 +262,24 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
       if(resolution===undefined||resolution==='auto')runtime.proposeRaster(pageDensityKey,[clampScale(dpr*mx,w,1),clampScale(dpr*my,1,h)])
       let left=rect.left,top=rect.top,drawW=rect.width,drawH=rect.height
       const [density,densityY]=runtime.source.rasterScale()
+      // The store's own count, never `w * density`: the two differ by a
+      // whole texel whenever the box carries a fraction (`PixelGridInput`).
+      const texelsX=runtime.source.canvas.width,texelsY=runtime.source.canvas.height
       if(Math.abs(w*density-rect.width*dpr)<=1&&Math.abs(h*densityY-rect.height*dpr)<=1){
-        const a=pixelGridSnap({x:(rect.left+rect.width/2-innerWidth/2)/mx,y:0,width:w,height:h,mag:mx,viewW:innerWidth,viewH:innerHeight,dpr,density})
-        const b=pixelGridSnap({x:0,y:(innerHeight/2-rect.top-rect.height/2)/my,width:w,height:h,mag:my,viewW:innerWidth,viewH:innerHeight,dpr,density:densityY})
+        const a=pixelGridSnap({x:(rect.left+rect.width/2-innerWidth/2)/mx,y:0,width:w,height:h,mag:mx,viewW:innerWidth,viewH:innerHeight,dpr,density,texelsX,texelsY})
+        const b=pixelGridSnap({x:0,y:(innerHeight/2-rect.top-rect.height/2)/my,width:w,height:h,mag:my,viewW:innerWidth,viewH:innerHeight,dpr,density:densityY,texelsX,texelsY})
         drawW*=a.sx;drawH*=b.sy
         left+=rect.width/2+a.dx*mx-drawW/2;top+=rect.height/2-b.dy*my-drawH/2
       }
-      const space=canvasSpace(sourceCanvas)
+      const space=hostSpace(sourceHost)
       if(!space){parkWarmRig();return}
-      claimSourcePointer(sourceCanvas, warmOwner, parkWarmRig)
-      warmRig.current?.ride({
-        ...nativeRideStyle(`matrix(${drawW / w / space.scaleX},0,0,${drawH / h / space.scaleY},${(left-space.left)/space.scaleX},${(top-space.top)/space.scaleY})`, zIndexAbove(holder)),
-        // The captured bitmap includes native selection/caret; an inert DOM clone cannot.
-        canvasVisibility: 'visible',
-      })
+      claimSourcePointer(sourceHost, warmOwner, parkWarmRig)
+      warmRig.current?.ride(nativeRideStyle(`matrix(${drawW / w / space.scaleX},0,0,${drawH / h / space.scaleY},${(left-space.left)/space.scaleX},${(top-space.top)/space.scaleY})`, zIndexAbove(holder)))
+      // The host shows its own pixels only while it rides: the captured
+      // bitmap carries native selection and caret, which an inert DOM clone
+      // cannot. Which property hides a host without killing its capture is
+      // the engine's to know, so it is asked rather than written here.
+      runtime.source.setHostPainted(true)
       warmClip.current?.apply()
     } else { parkWarmRig(); runtime?.proposeTier(pageDensityKey,null) }
   }
@@ -257,35 +292,32 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     if (captured) captureRoot.removeAttribute('aria-hidden')
     else captureRoot.setAttribute('aria-hidden', 'true')
     if (captured && liveRoot.parentElement !== captureRoot && captureRoot.isConnected) {
-      const copy = snapshot(liveRoot)
+      const { node: copy } = snapshot(liveRoot)
       copy.inert = true; copy.setAttribute('aria-hidden', 'true'); copy.style.visibility = 'hidden'
       holder.append(copy); placeholder.current = copy
       for (const node of [...captureRoot.children]) if (node !== liveRoot) node.remove()
-      captureRoot.moveBefore(liveRoot, null)
+      moveRetained(liveRoot, captureRoot)
       runtime?.source.repaint()
     } else if (!captured && liveRoot.parentElement !== holder) {
       parkWarmRig()
       // Ownership has returned before this move; the destination must already accept focus.
       holder.inert=false;holder.style.visibility='';holder.removeAttribute('aria-hidden')
-      if (liveRoot.isConnected) holder.moveBefore(liveRoot, null)
-      else holder.append(liveRoot)
+      moveRetained(liveRoot, holder)
       placeholder.current?.remove(); placeholder.current = null
-      captureRoot.replaceChildren(snapshot(liveRoot))
+      const held = snapshot(liveRoot)
+      captureRoot.replaceChildren(held.node); heldKey.current = held.key
       runtime?.source.repaint()
     }
     updateWarmRig(holder,runtime,captured,captureRoot)
   }
   const moveRef = useLatest(move)
-  const sourceCanvas=ownRuntime?.source.canvas ?? null
+  const sourceHost=ownRuntime?.source.host ?? null
   useLayoutEffect(()=>{
-    if(!sourceCanvas||!dock||!marker)return
-    // The capture supplies pixels, not another page image (platform.md #20).
-    sourceCanvas.style.visibility = 'hidden'
-    if (captureRoot) captureRoot.style.visibility = 'visible'
+    if(!sourceHost||!dock||!marker)return
     // Native events must still reach React's root listener after moving the content.
-    attachCaptureCanvas(sourceCanvas, dock)
-    return registerCanvasSpace(sourceCanvas,marker)
-  },[sourceCanvas,dock,marker,captureRoot])
+    dockCaptureHost(sourceHost, dock)
+    return registerHostSpace(sourceHost,marker)
+  },[sourceHost,dock,marker])
 
   useLayoutEffect(() => { moveRef.current() }, [page, desired, publication, moveRef,liveRoot,captureRoot])
   useLayoutEffect(() => store.subscribeHold(() => moveRef.current()), [store, moveRef])
@@ -304,12 +336,15 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   useLayoutEffect(() => {
     if (!page || !liveRoot || !captureRoot) return
     const sync = () => {
-      setReason('moveBefore' in Element.prototype ? unsupportedSnapshot(liveRoot) : 'This browser cannot preserve DOM state while moving the content.')
+      setReason(unsupportedSnapshot(liveRoot))
       if (liveRoot.parentElement === page) {
-        captureRoot.replaceChildren(snapshot(liveRoot))
+        const held = snapshot(liveRoot)
+        if (held.key === heldKey.current) return
+        heldKey.current = held.key
+        captureRoot.replaceChildren(held.node)
         runtimeRef.current?.source.repaint()
       } else if (store.holdsPage() && placeholder.current) {
-        const copy = snapshot(liveRoot)
+        const { node: copy } = snapshot(liveRoot)
         copy.inert = true; copy.setAttribute('aria-hidden', 'true'); copy.style.visibility = 'hidden'
         placeholder.current.replaceWith(copy); placeholder.current = copy
       }
@@ -324,7 +359,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   useLayoutEffect(() => () => {
     parkWarmRig()
     const holder = pageRef.current
-    if (holder && liveRoot?.isConnected && liveRoot.parentElement !== holder) holder.moveBefore(liveRoot, null)
+    if (holder && liveRoot?.isConnected && liveRoot.parentElement !== holder) moveRetained(liveRoot, holder)
   }, [liveRoot, pageRef, parkWarmRig])
 
 
@@ -333,7 +368,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     <Tag ref={setDock} style={{display:'contents',pointerEvents:'none'}}>
       <Tag ref={setMarker} style={{all:'initial',position:'fixed',left:0,top:0,width:100,height:100,visibility:'hidden',pointerEvents:'none'}}/>
     </Tag>
-    {page && liveRoot && captureRoot && marker && <SurfacePart name={partId} adopt={captureRoot} size={size} resolution={resolution} paint={paint} onChrome={onChrome} pageContent={pageContent} chromeElement={() => surfaceChromeElement(liveRoot, false)}>
+    {page && liveRoot && captureRoot && marker && <SurfacePart name={partId} adopt={captureRoot} size={size} resolution={resolution} onChrome={onChrome} pageContent={pageContent} chromeElement={() => surfaceChromeElement(liveRoot, false)}>
       <PageBinding page={page} marker={marker} pageContent={pageContent} layout={layout} inScene={root.canEnter}/>
     </SurfacePart>}
   </>
@@ -396,30 +431,16 @@ function SceneSurfaceRoot({ children, name, surface, canvasId, ...controls }: Sc
   return <SurfaceController surface={handle} canvasId={canvasId} renderIn="canvas" {...controls} {...callbacks}>{children}</SurfaceController>
 }
 export type SceneSurfaceHTMLProps = {
-  part?: SurfacePartId; size: SurfaceSize; resolution?: SurfaceResolution; paint?: 'auto' | 'always'
+  part?: SurfacePartId; size: SurfaceSize; resolution?: SurfaceResolution
 } & ({ children: ReactNode; element?: never } | { element: HTMLElement; children?: never })
 function SceneSurfaceHTML({ children, element, part = DEFAULT_PART, ...props }: SceneSurfaceHTMLProps) {
   validateSurfaceSize(props.size)
-  return <SurfacePart name={part} source={children} adopt={element} {...props}><CaptureBitmapHidden/></SurfacePart>
+  return <SurfacePart name={part} source={children} adopt={element} {...props}/>
 }
-function CaptureBitmapHidden() {
-  const part = use(SurfacePartContext)
-  const canvas = part?.runtime?.source.canvas
-  const root = part?.captureRoot
-  useLayoutEffect(() => {
-    if (!canvas || !root) return
-    const canvasVisibility = canvas.style.visibility
-    const rootVisibility = root.style.visibility
-    canvas.style.visibility = 'hidden'
-    root.style.visibility = 'visible'
-    return () => { canvas.style.visibility = canvasVisibility; root.style.visibility = rootVisibility }
-  }, [canvas, root])
-  return null
-}
-export interface SceneSurfaceProps { children: ReactNode; size: SurfaceSize; name?: string; paint?: 'auto' | 'always' }
-function BasicSceneSurface({ children, size, name, paint }: SceneSurfaceProps) {
+export interface SceneSurfaceProps { children: ReactNode; size: SurfaceSize; name?: string }
+function BasicSceneSurface({ children, size, name }: SceneSurfaceProps) {
   return <SceneSurfaceRoot name={name}>
-    <SceneSurfaceHTML size={size} paint={paint}>{children}</SceneSurfaceHTML>
+    <SceneSurfaceHTML size={size}>{children}</SceneSurfaceHTML>
     <SurfaceMesh scale={[size[0] / size[1], 1, 1]}/>
   </SceneSurfaceRoot>
 }

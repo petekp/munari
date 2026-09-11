@@ -18,10 +18,12 @@ try {
  await setChromeViewport(page,{width:1200,height:900})
  await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}])
  const errors=[];page.on('pageerror',error=>errors.push(String(error)))
- await page.goto(url+'/?scene=home&framed',{waitUntil:'load'})
+ await page.goto(url+'/?scene=home',{waitUntil:'load'})
  await page.waitForFunction(()=>document.querySelector('.home-hero-holder [data-api-live]'))
   if (process.env.POSTCARD_CANVAS === 'fixed') await page.$eval('.home-canvas', element => Object.assign(element.style,{position:'fixed',inset:'0',width:'100%',height:'100%',transform:'none'}))
  await page.evaluate(()=>document.fonts.ready)
+ await page.waitForFunction(()=>document.querySelector('.home-page')?.dataset.homeReady==='true'&&!document.documentElement.hasAttribute('data-opening'))
+ if(await page.$('iframe.site-frame'))throw new Error('Scroll proof must use inline Home')
  await page.evaluate(()=>{
   const scroller=document.querySelector('.home-page')
   const holder=document.querySelector('.home-hero-holder')
@@ -30,10 +32,10 @@ try {
   const missingRoom=240-holder.getBoundingClientRect().top
   if(missingRoom>0){const space=document.createElement('div');space.style.height=`${missingRoom}px`;scroller.prepend(space)}
   scroller.scrollTop+=holder.getBoundingClientRect().top-240
-  const r=holder.getBoundingClientRect()
+  const r=holder.getBoundingClientRect(),viewport=scroller.getBoundingClientRect()
   if(Math.abs(r.top-240)>1)throw new Error('Both markers need room for the full scroll')
   const marker=document.createElement('div');marker.dataset.scrollMarker='native'
-  marker.style.cssText=`position:absolute;left:${r.left-12}px;top:${scroller.scrollTop+r.top+12}px;width:6px;height:6px;background:rgb(255,0,255);z-index:100;pointer-events:none`
+  marker.style.cssText=`position:absolute;left:${r.left-viewport.left-12}px;top:${scroller.scrollTop+r.top-viewport.top+12}px;width:6px;height:6px;background:rgb(255,0,255);z-index:100;pointer-events:none`
   scroller.append(marker)
   const ink=document.createElement('div');ink.dataset.scrollMarker='captured'
   ink.style.cssText='position:absolute;left:12px;top:12px;width:6px;height:6px;background:rgb(0,0,255);pointer-events:none'

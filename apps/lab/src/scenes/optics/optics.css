@@ -484,10 +484,16 @@
   background: #1a1b1e;
 }
 
+/* Sub-pixel weight as alpha on a whole-pixel rule, not as a fractional
+ * height. A laid-out fraction does not survive a snapDOM capture — Chrome and
+ * WebKit round it up to 1px, and WebKit drops the 0.25 rule entirely, so the
+ * specimen captured as four identical lines (platform.md #28). Alpha is
+ * painted, so `1px` at 25% deposits exactly the ink `0.25px` does and every
+ * engine agrees. */
 .opt-type-rule[data-w='1'] i { height: 1px; }
-.opt-type-rule[data-w='0.75'] i { height: 0.75px; }
-.opt-type-rule[data-w='0.5'] i { height: 0.5px; }
-.opt-type-rule[data-w='0.25'] i { height: 0.25px; }
+.opt-type-rule[data-w='0.75'] i { height: 1px; opacity: 0.75; }
+.opt-type-rule[data-w='0.5'] i { height: 1px; opacity: 0.5; }
+.opt-type-rule[data-w='0.25'] i { height: 1px; opacity: 0.25; }
 
 /* ── fine print ────────────────────────────────────────────────────── */
 
@@ -526,7 +532,7 @@
   text-align: right;
   text-transform: uppercase;
   color: #97918a;
-  border-bottom: 0.5px solid #1a1b1e;
+  border-bottom: 1px solid rgb(26 27 30 / 50%);
 }
 
 .opt-ledger th:first-child,
@@ -535,15 +541,15 @@
 }
 
 .opt-ledger td {
-  padding: 1.5px 0;
+  padding: 2px 0;
   text-align: right;
-  border-bottom: 0.25px solid #d8d3ca;
+  border-bottom: 1px solid rgb(216 211 202 / 25%);
 }
 
 .opt-ledger tr:last-child td {
   font-weight: 600;
   border-bottom: 0;
-  border-top: 0.5px solid #1a1b1e;
+  border-top: 1px solid rgb(26 27 30 / 50%);
 }
 
 .opt-ledger-note {

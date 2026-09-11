@@ -69,8 +69,6 @@ export interface SurfaceContentOptions {
   size?: SurfaceSize
   resolution?: SurfaceResolution
   mirrorU?: boolean
-  /** `'always'` re-rasterizes every frame; `'auto'` follows the DOM. */
-  paint?: 'auto' | 'always'
   onChrome?: (chrome: SurfaceChrome) => void
 }
 
@@ -131,7 +129,6 @@ export function SurfaceRoot({
   size,
   resolution,
   mirrorU,
-  paint,
   onPresentationChange,
   onMotionComplete,
   onReady,
@@ -258,7 +255,6 @@ export function SurfaceRoot({
             size={size}
             resolution={resolution}
             mirrorU={mirrorU}
-            paint={paint}
             onFocusWithinChange={onFocusWithinChange}
             onChrome={onChrome}
           >

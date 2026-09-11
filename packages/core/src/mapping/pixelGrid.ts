@@ -61,6 +61,29 @@ export interface PixelGridInput {
    * density the capture happened at, not the one it ideally wants.
    */
   density: number
+  /**
+   * The texture's real texel count, both axes — the backing store's own
+   * `width`/`height`, not a number computed from `width * density`.
+   *
+   * They are not the same number and the difference is a whole texel. The
+   * capture rounds its BOX to an integer before it cuts the store, so the
+   * store is `round(round(size) * density)` while the obvious guess is
+   * `round(size * density)` — and at density 2 those differ whenever the
+   * size's fraction falls in [0.25, 0.75), which is half of all fractional
+   * sizes. The band in `storeForBox` can also hold an older store forward,
+   * and then no formula recovers the count at all.
+   *
+   * Getting it wrong is invisible in the obvious place and visible in the
+   * worst one: the corner still lands on the grid, and the phase then ramps
+   * to a full device pixel at the far edge. Measured 2026-09-11 on a card
+   * 515 x 157.617 CSS px at density 2 — store 316 texels, guess 315 — the
+   * capture's own rules land one device row low by the divider and two by
+   * the footer, while the card's frame stays put. Width was integral, so
+   * only the vertical drifted, which is what made it read as "the text
+   * moved and the checkbox stroke changed weight" rather than as blur.
+   */
+  texelsX: number
+  texelsY: number
 }
 
 /** The correction, in the two units the caller applies it in. */
@@ -90,15 +113,15 @@ function noNegZero(v: number): number {
  * on and gets an identity correction rather than a NaN.
  */
 export function pixelGridSnap(input: PixelGridInput): PixelGridSnap {
-  const { x, y, width, height, viewW, viewH, density } = input
+  const { x, y, width, height, viewW, viewH } = input
   const dpr = Math.max(1e-6, input.dpr)
   const mag = Math.max(1e-6, input.mag)
 
-  // The texture's actual texel count — the capture rounds, so the
-  // footprint has to be matched to the rounded number and not to the
-  // real-valued demand that produced it.
-  const tw = Math.round(width * density)
-  const th = Math.round(height * density)
+  // The store's own count, as given. Rounded only to absorb a caller that
+  // hands over a float; never recomputed from the box, for the reason on
+  // `texelsX`.
+  const tw = Math.round(input.texelsX)
+  const th = Math.round(input.texelsY)
 
   // Pitch: cover exactly tw × th device pixels with tw × th texels.
   const sx = width > 0 && tw > 0 ? tw / (width * mag * dpr) : 1

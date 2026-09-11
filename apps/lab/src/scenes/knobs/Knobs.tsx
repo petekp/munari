@@ -2183,7 +2183,6 @@ function PanelRig({
 
 interface StageHandle {
   setRect: Dispatch<SetStateAction<RailRect | null>>
-  setResizing: Dispatch<SetStateAction<boolean>>
 }
 
 /**
@@ -2276,11 +2275,10 @@ function PanelStage({
   liveAnchors: LiveKnobsAnchorLayout
 }) {
   const [rect, setRect] = useState<RailRect | null>(null)
-  const [resizing, setResizing] = useState(false)
   // Published during render, not from an effect: the drag's very first
   // measurement can arrive before any effect in this tree has run, and a
   // setter's identity never changes, so there is nothing to keep in sync.
-  handle.current = { setRect, setResizing }
+  handle.current = { setRect }
 
   // Seed the box, and follow the window. A DRAG does not come through
   // here — it measures the arrangement it produced and sets the whole
@@ -2310,7 +2308,7 @@ function PanelStage({
           {/* The panel belongs to the scene. Its captured HTML supplies the
               slab; DegradedPanel supplies the native fallback separately. */}
           <SceneSurface.Root name="knobs-panel">
-            <SceneSurface.HTML size={[rect.w, rect.h]} paint={resizing ? 'always' : 'auto'}>
+            <SceneSurface.HTML size={[rect.w, rect.h]}>
               <KnobsPanel />
             </SceneSurface.HTML>
 
@@ -2931,13 +2929,6 @@ export function KnobsApp() {
     // One class, on the capture root, for the length of one gesture.
     const setResizing = (on: boolean) => {
       el.classList.toggle('knb-resizing', on)
-      // The source root lives in React DOM, while the paint policy belongs to
-      // PanelStage's R3F root. Flush that one state change at gesture edges:
-      // every intermediate pointer move paints through the already-live
-      // runtime, and idle mode returns as soon as the hand releases.
-      flushThree(() => {
-        stage.current?.setResizing((current) => (current === on ? current : on))
-      })
     }
     resizingNow.current = setResizing
 

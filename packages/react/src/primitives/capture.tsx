@@ -2,7 +2,7 @@
 // Source disposal clears the frame before any consumer can reuse its texture.
 import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useThree } from '@react-three/fiber'
-import { detectHtmlInCanvas } from '@munari/core'
+import { captureAvailable } from '@munari/core'
 import type { Texture } from 'three'
 import { createSurfaceSourceRuntime, type SurfaceSize, type SurfaceResolution, type SurfaceSourceRuntime } from './surface/surfaceSourceRuntime'
 import { validateSurfaceSize } from './surface/surfaceSize'
@@ -89,7 +89,6 @@ export function connectCapture(handle: CaptureHandle, element: HTMLElement, size
   let stopDensity = () => {}
   const previousInert = element.inert
   const previousHidden = element.getAttribute('aria-hidden')
-  const previousVisibility = element.style.visibility
   const notify = () => { for (const listener of model.frameListeners) listener() }
   const report = (error: Error) => {
     setCaptureUnavailable(handle, 'error', error.message)
@@ -132,7 +131,6 @@ export function connectCapture(handle: CaptureHandle, element: HTMLElement, size
       if (source) {
         source.dispose()
         element.inert = previousInert
-        element.style.visibility = previousVisibility
         if (previousHidden === null) element.removeAttribute('aria-hidden')
         else element.setAttribute('aria-hidden', previousHidden)
       }
@@ -143,22 +141,20 @@ export function connectCapture(handle: CaptureHandle, element: HTMLElement, size
     },
   }
   setCaptureUnavailable(handle, 'waiting')
-  if (!detectHtmlInCanvas().drawElementImage) {
+  if (!captureAvailable()) {
     setCaptureUnavailable(handle, 'unsupported')
     return connection
   }
   try {
     source = createSurfaceSourceRuntime({
       content: element, size, resolution: options.resolution ?? 'auto',
-      mirrorU: false, paint: 'auto', pixelRatio: window.devicePixelRatio, onError: report,
+      mirrorU: false, pixelRatio: window.devicePixelRatio, onError: report,
     })
   } catch (cause) {
     report(cause instanceof Error ? cause : new Error(String(cause)))
     return connection
   }
   source.source.canvas.dataset.apiCapture = ''
-  source.source.canvas.style.visibility = 'hidden'
-  element.style.visibility = 'visible'
   element.inert = true
   element.setAttribute('aria-hidden', 'true')
   stopPaint = source.subscribePaint(receipt => {

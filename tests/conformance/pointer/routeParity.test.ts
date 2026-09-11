@@ -510,18 +510,18 @@ describe('the native route alone', () => {
     expect(root.style.userSelect).toBe('')
   })
 
-  it('hides the canvas without hiding the child, and never with opacity', () => {
-    // Measured 2026-09-02 on Chrome 151: an `opacity: 0` canvas captures
-    // blank, and a static drawn root at `opacity: 0` bakes the blank into the
-    // paint record — the capture would go black the instant the route
-    // engaged. `visibility: hidden` on the canvas leaves the capture running,
-    // and the child's own `visibility: visible` restores its hit-testing
-    // without painting it, because canvas children are fallback content and
-    // are never painted.
-    expect(canvas.style.visibility).toBe('hidden')
-    expect(canvas.style.opacity).toBe('')
+  it('restores the child\'s own visibility, and never reaches for opacity', () => {
+    // The parked host is hidden for the source's whole life — which property
+    // hides it is the engine's, and `paint/captureEngines` pins that. What
+    // the rig owns is the other half: the drawn child opts back in, because a
+    // hidden host's subtree is neither painted (wanted) nor hit-testable (the
+    // whole point of riding). Never `opacity` on either: measured 2026-09-02
+    // on Chrome 151, a static drawn root at `opacity: 0` bakes the blank into
+    // the paint record, so the capture goes black the instant the route
+    // engages (platform.md #20).
     expect(root.style.visibility).toBe('visible')
     expect(root.style.opacity).toBe('')
+    expect(canvas.style.opacity).toBe('')
   })
 
   it('lifts the parked canvas above the renderer canvas, and keeps the cascade', () => {
@@ -615,6 +615,6 @@ describe('changing route mid-gesture', () => {
 
     rig = ride()
     expect(rig.riding()).toBe(true)
-    expect(canvas.style.visibility).toBe('hidden')
+    expect(root.style.visibility).toBe('visible')
   })
 })

@@ -374,7 +374,10 @@
   margin: 0;
   width: 15px;
   height: 15px;
-  border: 1.5px solid var(--ink-mute);
+  /* 2px at 75% deposits the same ink as the 1.5px this used to be, and
+   * survives a snapDOM capture, which rounds a fractional border to 1px and
+   * cost this switch a third of its weight (platform.md #28). */
+  border: 2px solid color-mix(in oklab, var(--ink-mute) 75%, transparent);
   border-radius: 2px;
   background: transparent;
   cursor: pointer;
@@ -393,7 +396,9 @@
   content: '';
   position: absolute;
   left: 4px;
-  top: 0.5px;
+  /* Zero, not the half pixel this was: the border above grew from 1.5px to
+   * 2px, so the padding box already starts where 0.5px used to put the tick. */
+  top: 0;
   width: 4px;
   height: 8px;
   border: solid var(--ink);

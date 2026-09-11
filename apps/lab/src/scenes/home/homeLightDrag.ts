@@ -6,6 +6,7 @@ import { BULB_RADIUS } from './homeLightBulb'
 import type { Point } from './homeLightLaw'
 
 interface Options {
+  viewport: RefObject<HTMLElement | null>
   fixture: RefObject<HTMLButtonElement | null>
   dragging: RefObject<boolean>
   anchor: RefObject<Point>
@@ -16,7 +17,7 @@ interface Options {
   setDragged: (dragged: boolean) => void
 }
 
-export function useHomeLightDrag({ fixture, dragging, anchor, driftEpoch, reducedMotion, currentLight, redraw, setDragged }: Options) {
+export function useHomeLightDrag({ viewport, fixture, dragging, anchor, driftEpoch, reducedMotion, currentLight, redraw, setDragged }: Options) {
   useEffect(() => {
     const element = fixture.current
     if (!element) return
@@ -25,18 +26,22 @@ export function useHomeLightDrag({ fixture, dragging, anchor, driftEpoch, reduce
     let previousUserSelect = ''
     const move = (event: PointerEvent) => {
       if (event.pointerId!==pointer) return
+      const box = viewport.current?.getBoundingClientRect()
+      if (!box) return
       const margin = BULB_RADIUS+8
       anchor.current = {
-        x: Math.max(margin,Math.min(window.innerWidth-margin,event.clientX-grip.x)),
-        y: Math.max(margin,Math.min(window.innerHeight-margin,event.clientY-grip.y)),
+        x: Math.max(margin,Math.min(Math.max(margin,box.width-margin),event.clientX-box.left-grip.x)),
+        y: Math.max(margin,Math.min(Math.max(margin,box.height-margin),event.clientY-box.top-grip.y)),
       }
       if (reducedMotion.current) redraw()
     }
     const down = (event: PointerEvent) => {
       if (event.button!==0 || pointer!==null) return
       event.preventDefault()
+      const box = viewport.current?.getBoundingClientRect()
+      if (!box) return
       const light = currentLight()
-      grip = { x: event.clientX-light.x, y: event.clientY-light.y }
+      grip = { x: event.clientX-box.left-light.x, y: event.clientY-box.top-light.y }
       pointer = event.pointerId
       dragging.current = true
       previousUserSelect = document.body.style.userSelect
@@ -69,5 +74,5 @@ export function useHomeLightDrag({ fixture, dragging, anchor, driftEpoch, reduce
       if (pointer!==null) document.body.style.userSelect = previousUserSelect
       dragging.current = false
     }
-  }, [fixture,dragging,anchor,driftEpoch,reducedMotion,currentLight,redraw,setDragged])
+  }, [viewport,fixture,dragging,anchor,driftEpoch,reducedMotion,currentLight,redraw,setDragged])
 }

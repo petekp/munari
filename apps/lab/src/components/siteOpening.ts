@@ -1,6 +1,6 @@
-// Site opening — one reveal after the framed page has drawn its composition.
-// The native cover lives in index.html so it precedes the app bundle. It stays
-// separate from captured content: hiding the iframe can suppress its paint.
+// Site opening — one reveal after Home has drawn its composition.
+// The native cover precedes the app bundle and stays outside the captured
+// content. Inline Home calls revealSite; embedded standalone pages can notify a host.
 
 export const HOME_READY = 'munari:home-ready'
 

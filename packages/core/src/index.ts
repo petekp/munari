@@ -64,16 +64,31 @@ export {
   resolveFixedScale,
 } from './paint/lodTier'
 export {
-  createDomTextureSource,
-  detectHtmlInCanvas,
-  UnsupportedPlatformError,
   paintStats,
+  PARKED_HOST_ATTRIBUTE,
+  UnsupportedPlatformError,
   type DomPaintReceipt,
   type DomTextureSource,
   type DomTextureSourceOptions,
-  type HtmlInCanvasSupport,
   type PaintStats,
+} from './paint/domTextureSource'
+export {
+  captureAvailable,
+  captureEngine,
+  createDomTextureSource,
+  setCaptureEngine,
+  type CaptureEngine,
+} from './paint/captureEngine'
+export {
+  detectHtmlInCanvas,
+  htmlInCanvasEngine,
+  type HtmlInCanvasSupport,
 } from './paint/htmlInCanvas'
+export {
+  createRasterizedSource,
+  type ElementRasterizer,
+  type RasterImage,
+} from './paint/rasterizedSource'
 export {
   ensureChannelRegistered,
   createStyleChannel,

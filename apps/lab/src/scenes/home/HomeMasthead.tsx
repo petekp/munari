@@ -30,7 +30,8 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
-import { readHomeFlyer, subscribeHomeFlyer } from './homeFlyer'
+import type { HomeFlyerStore } from './homeFlyer'
+import { DemoOverlay } from '../../components/DemoHost'
 import { createHomeLightMaterial, maskTexture, setHomeFlyerUniform, setHomeInkMask, setHomeLightFrame, setHomeReliefMask, type HomeLightMaterial } from './homeLight'
 import { BULB_RADIUS, createLightBulb, type LightBulb } from './homeLightBulb'
 import { LIGHT_HEIGHT, POSTCARD_STANDOFF } from './homeLightLaw'
@@ -146,14 +147,26 @@ function createReliefWorker(): Worker | null {
   }
 }
 
-function clampToViewport(point: Point): Point {
+function clampToViewport(point: Point, page: HTMLElement | null): Point {
   return {
-    x: Math.min(Math.max(point.x, LIGHT_MARGIN), Math.max(LIGHT_MARGIN, window.innerWidth - LIGHT_MARGIN)),
-    y: Math.min(Math.max(point.y, LIGHT_MARGIN), Math.max(LIGHT_MARGIN, window.innerHeight - LIGHT_MARGIN)),
+    x: Math.min(Math.max(point.x, LIGHT_MARGIN), Math.max(LIGHT_MARGIN, (page?.clientWidth ?? 0) - LIGHT_MARGIN)),
+    y: Math.min(Math.max(point.y, LIGHT_MARGIN), Math.max(LIGHT_MARGIN, (page?.clientHeight ?? 0) - LIGHT_MARGIN)),
   }
 }
 
+function initialLightPosition(line: HTMLElement, masthead: HTMLElement | null, page: HTMLElement | null): Point {
+  if (!page) return { x: LIGHT_MARGIN, y: LIGHT_MARGIN }
+  const viewport = page.getBoundingClientRect()
+  const heading = line.getBoundingClientRect()
+  const card = masthead?.querySelector('.home-hero-viewport')?.getBoundingClientRect()
+  const right = masthead?.getBoundingClientRect().right ?? heading.right
+  const desktop = viewport.width > 760
+  const x = desktop && card ? card.left + card.width / 2 : right - LIGHT_MARGIN
+  return clampToViewport({ x: x - viewport.left, y: desktop ? heading.top - viewport.top - 54 : 68 }, page)
+}
+
 export interface HomeMastheadProps {
+  flyer: HomeFlyerStore
   children: ReactNode
   effectsEnabled: boolean
   onReady: (mode: 'enhanced' | 'native') => void
@@ -163,7 +176,7 @@ export interface HomeMastheadProps {
   innerRef: React.RefObject<HTMLElement | null>
 }
 
-export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onReady }: HomeMastheadProps) {
+export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onReady, flyer }: HomeMastheadProps) {
   const reportReady = useEffectEvent(onReady)
   const host = useRef<HTMLDivElement>(null)
   const bulbHost = useRef<HTMLDivElement>(null)
@@ -204,20 +217,21 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
   const currentLight = useCallback((): Point => {
     if (dragging.current || reducedMotionRef.current) return anchor.current
     const offset = ellipseOffset(performance.now() - driftEpoch.current)
-    return clampToViewport({ x: anchor.current.x + offset.x, y: anchor.current.y + offset.y })
-  }, [])
+    return clampToViewport({ x: anchor.current.x + offset.x, y: anchor.current.y + offset.y }, pageRef.current)
+  }, [pageRef])
 
   // Keeps the band around the viewport, moving it only when the viewport
   // nears an edge; returns the band's viewport rect.
   const seatBand = useCallback((box: HTMLDivElement, page: HTMLDivElement, innerRect: DOMRect): DOMRect => {
     let rect = box.getBoundingClientRect()
     const viewHeight = page.clientHeight
+    const viewport = page.getBoundingClientRect()
     const margin = Math.max(0, (state.height - viewHeight) / 2)
     const slack = margin * (1 - BAND_SLACK)
-    if (rect.top > -slack || rect.bottom < viewHeight + slack) {
+    if (rect.top > viewport.top - slack || rect.bottom < viewport.bottom + slack) {
       const currentTop = parseFloat(box.style.top) || 0
       const contentBottom = innerRect.bottom - rect.top + currentTop
-      const top = Math.max(0, Math.min(currentTop + (-margin - rect.top), Math.ceil(contentBottom) - state.height))
+      const top = Math.max(0, Math.min(currentTop + (viewport.top - margin - rect.top), Math.ceil(contentBottom) - state.height))
       if (top !== currentTop) {
         box.style.top = `${top}px`
         rect = box.getBoundingClientRect()
@@ -233,6 +247,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     const element = fixture.current
     if (!inner || !page || !box) return
     const light = currentLight()
+    const viewport = page.getBoundingClientRect()
     if (element) element.style.transform = `translate(${light.x}px, ${light.y}px)`
     const innerRect = inner.getBoundingClientRect()
     // Everything the shader sees is in the band's own pixels, so the band
@@ -240,7 +255,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     const origin = seatBand(box, page, innerRect)
     const material = state.shadow.mesh.material
     material.uniforms.uFrameOrigin.value.set(origin.left, origin.top)
-    setHomeLightFrame(material, state.width, state.height, light.x - origin.left, light.y - origin.top, lightHeightRef.current)
+    setHomeLightFrame(material, state.width, state.height, light.x + viewport.left - origin.left, light.y + viewport.top - origin.top, lightHeightRef.current)
     const ink = state.shadow.ink
     const glyphScale = ink?.scale ?? 1
     setHomeInkMask(material, ink?.texture ?? null, ink ? { x: innerRect.left - origin.left + ink.mask.rect.x, y: innerRect.top - origin.top + ink.mask.rect.y, width: ink.mask.rect.width, height: ink.mask.rect.height } : null, glyphScale)
@@ -252,10 +267,10 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     ))
     const relief = state.shadow.relief
     setHomeReliefMask(material, relief?.texture ?? null, relief ? { x: innerRect.left - origin.left + relief.mask.rect.x, y: innerRect.top - origin.top + relief.mask.rect.y, width: relief.mask.rect.width, height: relief.mask.rect.height } : null)
-    const flyer = readHomeFlyer()
-    if (!flyer) setHomeFlyerUniform(material, null, 0, 0)
-    else if (flyer.kind === 'page') setHomeFlyerUniform(material, pageFlyer(flyer.element), origin.left, origin.top)
-    else setHomeFlyerUniform(material, flyer.corners, origin.left, origin.top)
+    const drawnFlyer = flyer.read()
+    if (!drawnFlyer) setHomeFlyerUniform(material, null, 0, 0)
+    else if (drawnFlyer.kind === 'page') setHomeFlyerUniform(material, pageFlyer(drawnFlyer.element), origin.left, origin.top)
+    else setHomeFlyerUniform(material, drawnFlyer.corners, origin.left, origin.top)
     const bulb = state.bulb.bulb
     if (bulb && placed.current) {
       const now = performance.now()
@@ -265,7 +280,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
       bulb.update(light.x, page.clientHeight - light.y, dt, reducedMotionRef.current && !dragging.current, page.clientHeight, lightHeightRef.current)
     }
     state.draw()
-  }, [state, innerRef, pageRef, currentLight, seatBand, selection])
+  }, [state, innerRef, pageRef, currentLight, seatBand, selection, flyer])
 
   useEffect(() => {
     lightHeightRef.current = lightHeight
@@ -295,7 +310,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     const pass = state.shadow
     pass.paper = createPaperLighting(renderer,pass.mesh.material)
     const display = createHomeLightDisplay(renderer,pass.mesh.material)
-    const headline = title.current ? createHeadlineTreatments(title.current,pass.mesh.material,redraw) : null
+    const headline = title.current ? createHeadlineTreatments(title.current,pass.mesh.material,redraw,page) : null
     state.width = 0
     state.height = 0
     renderer.setClearColor(0xffffff, 1)
@@ -313,7 +328,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
       })
     }
     state.draw = () => {
-      pass.paper?.update(readHomeFlyer())
+      pass.paper?.update(flyer.read())
       display.render(pass.scene, pass.camera, pass.paper)
       headlineReady = headline?.render(reducedMotionRef.current) ?? true
       // The postcard's pre-draw callback reaches here before its canvas has
@@ -332,7 +347,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     }
     const frame = () => {
       raf = requestAnimationFrame(frame)
-      if (readHomeFlyer()?.kind !== 'scene') redraw()
+      if (flyer.read()?.kind !== 'scene') redraw()
     }
     state.start = () => {
       if (raf) return
@@ -365,11 +380,17 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
       pass.paper?.invalidate()
       box.style.height = `${height}px`
       state.bulb.updateViewport?.()
-      anchor.current = clampToViewport(anchor.current)
+      anchor.current = clampToViewport(anchor.current, page)
       redraw()
     }
     const observer = new ResizeObserver(resize)
-    observer.observe(page,{box:'device-pixel-content-box'})
+    // `device-pixel-content-box` reports the exact backing-store size, which is
+    // what keeps the masthead's buffer off a fractional DPR. WebKit has not
+    // implemented that box and THROWS from `observe` rather than ignoring the
+    // option, which took the whole scene down. The callback reads the page's
+    // own geometry, not the entry, so the content box observes the same events.
+    try { observer.observe(page,{box:'device-pixel-content-box'}) }
+    catch { observer.observe(page) }
     resize()
 
     const lost = (event: Event) => {
@@ -384,8 +405,14 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     }
     canvas.addEventListener('webglcontextlost', lost)
     canvas.addEventListener('webglcontextrestored', restored)
+    // Other components can start a font load after our mask is complete.
+    // A reduced-motion page needs that completion to wake its readiness check.
+    document.fonts.addEventListener('loadingdone', redraw)
+    document.fonts.addEventListener('loadingerror', redraw)
 
     return () => {
+      document.fonts.removeEventListener('loadingdone', redraw)
+      document.fonts.removeEventListener('loadingerror', redraw)
       cancelAnimationFrame(openingFrame)
       state.stop()
       observer.disconnect()
@@ -407,7 +434,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
       renderer.forceContextLoss()
       canvas.remove()
     }
-  }, [state, pageRef, redraw, effectsEnabled])
+  }, [state, pageRef, redraw, effectsEnabled, flyer])
 
   // Mount: the bulb canvas. Its own context, alpha over the page. Losing it
   // leaves the shadows running and shows the plain ink mark instead.
@@ -436,7 +463,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
     pmrem.dispose()
     pass.scene.environment = environment
-    const backdrop = createLampBackdrop(page, redraw)
+    const backdrop = createLampBackdrop(page, redraw, flyer)
     pass.backdrop = backdrop
     const bulb = createLightBulb(backdrop)
     pass.scene.add(bulb.group)
@@ -474,7 +501,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
       renderer.forceContextLoss()
       canvas.remove()
     }
-  }, [state, degraded, pageRef, redraw, effectsEnabled])
+  }, [state, degraded, pageRef, redraw, effectsEnabled, flyer])
 
   // The page tells the depth kit whether the shader owns shadows now.
   useEffect(() => {
@@ -509,12 +536,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
       }
       if ((!placed.current || !movedByUser.current) && lines.length === 3) {
         placed.current = true
-        const line = lines[0].getBoundingClientRect()
-        const card = masthead.current?.querySelector('.home-hero-viewport')?.getBoundingClientRect()
-        const right = masthead.current?.getBoundingClientRect().right ?? line.right
-        const desktop = window.innerWidth > 760
-        const x = desktop && card ? card.left + card.width / 2 : right - LIGHT_MARGIN
-        anchor.current = clampToViewport({ x, y: desktop ? line.top - 54 : 68 })
+        anchor.current = initialLightPosition(lines[0], masthead.current, pageRef.current)
         driftEpoch.current = performance.now()
       }
       redraw()
@@ -527,7 +549,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
       alive = false
       observer.disconnect()
     }
-  }, [state, innerRef, redraw, effectsEnabled])
+  }, [state, innerRef, pageRef, redraw, effectsEnabled])
 
   // Read the raised and sunk elements into relief: on mount, after fonts,
   // once layout settles, and at once when an element changes its relief or
@@ -614,9 +636,8 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
   // two animation-frame callbacks run in (the shadow trailed the card by a
   // frame through the launch wiggle, Pete, 2026-09-05). The independent
   // loop yields while the Surface supplies the frames.
-  useEffect(() => subscribeHomeFlyer(() => {
-    if (!degraded) redraw()
-  }), [degraded, redraw])
+  const redrawFlyer = useEffectEvent(() => { if (!degraded) redraw() })
+  useEffect(() => flyer.subscribe(() => redrawFlyer()), [flyer])
 
   // The drift loop runs while motion is allowed. Under reduced motion the
   // light holds still and the page redraws only on scroll and drag.
@@ -633,11 +654,12 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     return () => state.stop()
   }, [state, reducedMotion, degraded, redraw, pageRef, effectsEnabled])
 
-  useHomeLightDrag({ fixture, dragging, anchor, driftEpoch, reducedMotion: reducedMotionRef, currentLight, redraw, setDragged: markLightMoved })
+  useHomeLightDrag({ viewport: pageRef, fixture, dragging, anchor, driftEpoch, reducedMotion: reducedMotionRef, currentLight, redraw, setDragged: markLightMoved })
 
   return (
     <>
       <div ref={host} className="home-light-host" aria-hidden="true" data-degraded={degraded || undefined} />
+      <DemoOverlay>
       <div ref={bulbHost} className="home-light-scene" aria-hidden="true" data-degraded={degraded || undefined} />
       <button
         type="button"
@@ -652,7 +674,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
           if (dx === 0 && dy === 0) return
           event.preventDefault()
           const point = currentLight()
-          anchor.current = clampToViewport({ x: point.x + dx, y: point.y + dy })
+          anchor.current = clampToViewport({ x: point.x + dx, y: point.y + dy }, pageRef.current)
           driftEpoch.current = performance.now()
           markLightMoved()
           redraw()
@@ -664,6 +686,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
         <span className="home-light-mark" aria-hidden="true" />
         <span className="home-light-hint" aria-hidden="true">Drag the light</span>
       </button>
+      </DemoOverlay>
       <HomeMastheadContent mastheadRef={masthead} headingRef={title} lineRefs={[lineOne,lineTwo,lineThree]}
         lightHeight={lightHeight} onLightHeight={setLightHeight} degraded={degraded || !effectsEnabled}>
         {children}

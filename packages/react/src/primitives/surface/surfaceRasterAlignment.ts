@@ -73,8 +73,11 @@ export function createSurfaceRasterAlignment() {
    // Do not resize the object to make that texture pretend to be a 1:1 image.
    if(Math.abs(input.textureWidth-box.width)>1||Math.abs(input.textureHeight-box.height)>1)return null
    const x=(box.left+box.width/2-vw/2)/mx,y=(vh/2-box.top-box.height/2)/my
-   const horizontal=pixelGridSnap({x,y:0,width:sw,height:sh,mag:mx,viewW:vw,viewH:vh,dpr:1,density:input.density})
-   const vertical=pixelGridSnap({x:0,y,width:sw,height:sh,mag:my,viewW:vw,viewH:vh,dpr:1,density:input.densityY})
+   // `textureWidth`/`textureHeight` ARE the store's texel count, and the
+   // pitch is theirs to set — the guard above only decides whether this
+   // texture is close enough to 1:1 to be snapped at all.
+   const horizontal=pixelGridSnap({x,y:0,width:sw,height:sh,mag:mx,viewW:vw,viewH:vh,dpr:1,density:input.density,texelsX:input.textureWidth,texelsY:input.textureHeight})
+   const vertical=pixelGridSnap({x:0,y,width:sw,height:sh,mag:my,viewW:vw,viewH:vh,dpr:1,density:input.densityY,texelsX:input.textureWidth,texelsY:input.textureHeight})
    bounds.getCenter(centre)
    destination.copy(centre).applyMatrix4(mesh.matrixWorld)
    const worldCentre=destination.clone()

@@ -34,7 +34,9 @@ try{
   await setChromeViewport(page,{width:1440,height:1000})
   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}])
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=home`,{waitUntil:'load'})
-  const frame=await(await page.waitForSelector('iframe')).contentFrame()
+  await page.waitForSelector('.home-page')
+  assert.equal(await page.$('iframe.site-frame'),null,'Home must render in the site document')
+  const frame=page
   await frame.waitForSelector('[data-headline-ready]');await frames(frame)
   await page.waitForFunction(()=>!document.documentElement.hasAttribute('data-opening'))
   results.content=await frame.evaluate(()=>{
@@ -55,7 +57,7 @@ try{
   assert.ok(results.layout.tools.bottom<results.layout.height,'Desktop demo controls must fit on the first screen')
   await page.screenshot({path:path.join(output,'desktop.png')})
 
-  const parent=await page.$eval('iframe',element=>element.getBoundingClientRect().toJSON())
+  const parent={x:0,y:0}
   const word=await frame.$eval('.home-headline-shaders',element=>element.getBoundingClientRect().toJSON())
   const clip={x:Math.floor(parent.x+word.x-6),y:Math.floor(parent.y+word.y-6),width:Math.ceil(word.width+12),height:Math.ceil(word.height+12)}
   const shot=()=>page.screenshot({clip,encoding:'base64'})
@@ -118,10 +120,10 @@ try{
   await client.send('Emulation.setPageScaleFactor',{pageScaleFactor:1});await client.detach()
   await setChromeViewport(page,{width:390,height:844})
   await page.reload({waitUntil:'load'})
-  const mobile=await(await page.waitForSelector('iframe')).contentFrame()
+  const mobile=page
   await mobile.waitForSelector('[data-headline-ready]');await frames(mobile)
   await page.waitForFunction(()=>!document.documentElement.hasAttribute('data-opening'))
-  results.mobile=await mobile.evaluate(()=>({overflow:document.querySelector('.home-page').scrollWidth>innerWidth,ratio:window.__headline.renderer.getPixelRatio(),time:window.__headline.uniforms.uTime.value,ripple:window.__headline.uniforms.uRippleAge.value,actionBottom:document.querySelector('#root .home-hero-row button').getBoundingClientRect().bottom,height:innerHeight,lightTop:document.querySelector('#root .home-light').getBoundingClientRect().top}))
+  results.mobile=await mobile.evaluate(()=>({overflow:document.querySelector('.home-page').scrollWidth>document.querySelector('.home-page').clientWidth,ratio:window.__headline.renderer.getPixelRatio(),time:window.__headline.uniforms.uTime.value,ripple:window.__headline.uniforms.uRippleAge.value,actionBottom:document.querySelector('#root .home-hero-row button').getBoundingClientRect().bottom,height:innerHeight,lightTop:document.querySelector('#root .home-light').getBoundingClientRect().top}))
   assert.equal(results.mobile.overflow,false);assert.equal(results.mobile.time,0);assert.equal(results.mobile.ripple,1000)
   assert.ok(results.mobile.actionBottom<results.mobile.height,'The phone layout must expose the postcard action without scrolling')
   assert.ok(results.mobile.lightTop>=16,'The mobile lamp needs room below the navigation')
@@ -133,7 +135,7 @@ try{
     const fallback=await browser.newPage();fallback.on('pageerror',error=>errors.push(String(error)))
     await setChromeViewport(fallback,{width:1200,height:900})
     await fallback.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=home`,{waitUntil:'load'})
-    const content=await(await fallback.waitForSelector('iframe')).contentFrame()
+    const content=fallback
     await content.waitForSelector('.home-headline-shaders');await content.evaluate(()=>document.fonts.ready)
     if(disabled)await content.waitForSelector('.home-light-host[data-degraded]')
     else await content.waitForSelector('[data-headline-ready]')

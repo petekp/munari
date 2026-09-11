@@ -29,7 +29,7 @@ const pkgDir = resolve(here, '..')
 const repoRoot = resolve(pkgDir, '..', '..')
 const dist = join(pkgDir, 'dist')
 
-for (const entry of ['index.js', 'advanced.js']) {
+for (const entry of ['index.js', 'advanced.js', 'snapdom.js']) {
   if (existsSync(join(dist, entry))) continue
   console.error(`stage-manifest: dist/${entry} is missing — run the build first.`)
   process.exit(1)
@@ -53,10 +53,18 @@ const staged = {
   exports: {
     '.': { types: './index.d.ts', default: './index.js' },
     './advanced': { types: './advanced.d.ts', default: './advanced.js' },
+    './snapdom': { types: './snapdom.d.ts', default: './snapdom.js' },
     './style.css': './style.css',
   },
   types: './index.d.ts',
   peerDependencies: src.peerDependencies,
+  // `@zumer/snapdom` is declared a peer so a consumer who wants the second
+  // capture engine controls its version, and OPTIONAL so npm does not
+  // install a beta rasterizer for everyone who only ever imports the root.
+  // Both halves have to be staged: the workspace manifest carries them, and
+  // without the meta half every install of this package warns about a
+  // missing peer nobody asked for.
+  peerDependenciesMeta: src.peerDependenciesMeta,
   engines: src.engines,
   // A SCOPED package publishes `restricted` unless told otherwise, so
   // without this the first publish either fails (free org) or ships

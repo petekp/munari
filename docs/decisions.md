@@ -3321,3 +3321,288 @@ worker-side timings. Cache is disabled; there is no injected network delay or
 screencast. These are local observations, not production latency guarantees.
 Earlier runs during host overload are excluded. Starting the worker effect
 earlier did not improve a separate comparison and was not retained.
+
+
+<a id="59"></a>
+
+## #59 — Home owns its viewport inside the site document (2026-09-08)
+
+Home renders inline while the remaining lab scenes retain their iframe viewports.
+`DemoHost` owns the visible rectangle, container dimensions and local overlay
+layer. The scrolling page, viewport-fixed lamp and section-relative postcard
+canvas remain separate. Lighting uses client-space frame receipts and converts
+the lamp's viewport-local position at the boundary; it does not assume a zero
+canvas origin. The existing paper motion, raster and handoff contracts remain.
+
+Home's ordinary layout and native stamp control use Tailwind. Its palette and
+font values are local to `.home-demo`; the out-of-tree lamp capture receives
+those resolved custom properties and container dimensions. Shared app tokens
+retain the effective values previously supplied by Home's global stylesheet.
+This does not promise protection from arbitrary global selectors: no Shadow DOM
+or library-wide styling abstraction is introduced.
+
+A Home instance owns its canvas identity and flyer publication store. The shell
+receives readiness directly, and section navigation retains the mounted page.
+In a shared document another component may start a font load after the shadow
+mask completes. Font completion and failure therefore wake the lighting pass;
+without that wake, reduced-motion/no-capture Home waited until its existing
+four-second failure limit despite having a valid mask. The limit is unchanged.
+
+`instruments/home-inline/run.mjs` checks a real shell offset change from (256, 0)
+to (360, 72), pointer clamping, preserved input through a page/scene round trip,
+local theme values, navigation cleanup and two independent Home instances.
+The headline and startup probes now require the inline route. Existing text
+contrast, startup stability, paper motion and native fallback checks remain the
+acceptance criteria. No CI workflow or deployment policy changes are included.
+
+## #60 — Capture is an engine, and the binding never asks which one (2026-09-10)
+
+Munari now has two capture engines behind one contract. HTML-in-canvas stays
+the default and needs no setup. snapDOM is opt-in through a third published
+entry, `@petepetrash/munari/snapdom`, whose `enableSnapdomCapture()` installs
+snapDOM only where the trial is absent — `{ always: true }` forces it, which is
+what a cross-engine run wants. `@zumer/snapdom` is an optional peer dependency;
+a consumer that never imports the entry never installs it.
+
+`DomTextureSource` gained two members and the engine seam is those two.
+`host` is the node the engine parks the subtree in: HTML-in-canvas parks it
+inside its canvas, so `host === canvas`; snapDOM parks it in a plain container
+and its canvas is pixel storage alone. Every place that docks, rides, clips or
+claims a parked node addresses `host`. `setHostPainted(painted)` shows or hides
+the host's own pixels, and which CSS property does that is the engine's
+business: a canvas must use `visibility`, because an `opacity: 0` canvas
+captures blank (platform #20), while a container holding live DOM must use
+`opacity`, because `visibility: hidden` would hide the subtree it is parking.
+
+A source is now born hidden. Three call sites previously hid a freshly built
+canvas after the fact, and a fourth — a React component that existed only to
+write `visibility: hidden` — has been deleted along with the `paint` prop. The
+native pointer rig no longer writes host visibility at all, so a rig that never
+mentions it can never leave it wrong on park.
+
+Everything the engines share is one module, `paint/domTextureSource.ts`:
+adoption, the paint ledger, the receipt, the backing-store arithmetic, the
+size and scale API. The disposable snapDOM rig had duplicated all of it, and
+each copy drifted — one carried the old raster forward across a resize and one
+did not, with nothing in either file to say which was the law.
+
+`DomPaintReceipt` gained `changesDuringPaint`. It is 0 on a synchronous engine.
+On an asynchronous one it counts the change signals that landed while the raster
+was being made, so a consumer blending a capture against live DOM can read how
+stale the capture already was rather than inferring it from wall-clock time.
+For the same reason the receipt names the box that was live when the rasterizer
+STARTED, not when it finished.
+
+`paint: 'always'` is deleted. It existed for Knobs resize, and `gate:knobs-resize`
+passes identically without it (12.6px vs 12.7px maximum marker drift) because the
+compositor self-paints on layout change (platform #2). `SurfaceStatus` gained
+`engine`, the name of the engine a Surface's source was built from — engines are
+not supersets of each other and a consumer comparing them needs to know which
+answered.
+
+`tests/conformance/paint/captureEngines.test.ts` runs the shared laws over both
+engines, the asynchronous one against a fake rasterizer.
+`npm run gate:capture-engines` runs them in a browser against each engine's real
+rasterizer — the fidelity, idle and coalescing numbers a fake cannot produce.
+Both engines score 0/255 against the authored colors. CI membership is unchanged.
+
+What the engines do not share is recorded, not papered over: snapDOM paints no
+caret, freezes a compositor-only animation at its first capture (platform #22),
+and answers `pointerRoute="auto"` with the relay because it is not native.
+[Authoring](authoring.md) carries the per-engine table.
+
+**Amendment, 2026-09-11 — pixel parity.** Measured against a browser
+screenshot of the same element, HTML-in-canvas is byte-identical (MAE 0.000,
+max 0) and snapDOM was not: it drops BOTH of a form field's pseudo-elements,
+an `<input>`'s `::after` and its `::placeholder`, and reports neither
+(platform #24). In Flight that captured every done-switch as a filled square
+with no tick in it and every note field as `Add note` where the page reads
+`ADD NOTE`. Pseudo-elements elsewhere are fine, which is what made it
+invisible in review: a reviewer sees a checkbox and a label in both.
+
+`packages/react/src/snapdomFieldPseudoElements.ts` puts them back, on the
+clone only, in the one stage where both trees exist. The placeholder is
+written as a real scoped `::placeholder` rule rather than as properties on the
+field: a placeholder restyles glyphs inside the field's own line box, and
+moving its `font-size` onto the field moves the field's baseline with it —
+measured as the whole placeholder row sitting 2px high. Fields are paired by
+ordinal because snapDOM materializes ordinary pseudo-elements as real nodes,
+so the two trees are not structurally parallel, but neither pass invents a
+form field. A field's own `::before`/`::after` is only recoverable when it is
+absolutely positioned, because a pseudo-element cannot be measured; anything
+else is skipped and announced. The shim is deletable in one piece when
+upstream closes the gap.
+
+Two things landed with it. `reconcile: true` is now set — snapDOM warns
+`reconcile-risk` without it on any subtree holding inline or table-cell text
+and it costs nothing measurable (8–21 ms per capture either way over Flight's
+nine cards) — though it is not a guarantee (platform #25). And
+`result.warnings`, which the engine had been discarding, is now announced once
+per distinct code: snapDOM throws nothing when it degrades, so a capture that
+lost a webfont or clamped a raster looked exactly like a good one.
+
+A second fault surfaced the same day, and it was the larger one. The
+rasterizer's contract took a DENSITY, so the engine answered at a size of its
+own choosing and the source stretched that into the backing store. Any time
+the two axes carried different densities, or `storeForBox` held a store
+forward across a resize, the whole capture was resampled by a different
+non-integer factor per axis — text a few pixels low, noticeably heavier, and
+a shade off. `ElementRasterizer` now takes a PER-AXIS SCALE and the image is
+blitted at its natural size, which is the law the native engine already kept
+(platform #8). snapDOM's `width`/`height` stretch the element to fill them
+rather than setting a ratio (platform #25), so the target is computed from
+the element's own measured box, never from the store.
+
+`gate:capture-engines` gained the law: the two engines must draw the same
+pixels for the same subtree, judged on 4×-downsampled blocks so a subpixel
+glyph edge cannot be confused with a structural fault. Two stages, two
+floors. At rest the density is whole and there is no floor: 0 of 1200 blocks
+differ, against 7 (worst 156) with the field shim removed. With a carried
+store at 2.4×/0.957× every glyph edge falls between samples, so the law is on
+the block mean: 2.00 today, against 37.59 when the rasterizer answered at its
+own size.
+
+**Amendment, 2026-09-11 — motion is approximate, rest is exact, for captures
+too.** A dragged Surface was re-capturing for two reasons that are not
+content, and a main-thread rasterizer pays a whole panel for each
+(platform #27).
+
+The body now says WHY it wants a paint. `CaptureCanvasOptions.requestPaint`
+takes a `PaintReason` — `'box'` for a layout resize, `'lod'` for a ladder
+step, `'density'` for a density the caller NAMED through `setScale`, `'rest'`
+for the settle — because the four cost the same on the native engine and do
+not cost the same here. A named density keeps decisions.md #44's rule and
+rasterizes: a scene that names one at a phase boundary (Flight names page
+density on the way home) is asking to arrive at that density, not to arrive
+at the last one resampled. The rasterized source rasterizes on `box`,
+`density` and `rest`, and never on `lod`: `recut` has already carried the
+old raster into the new store, both stores hold the same element box, and the
+band in `storeForBox` exists to spend exactly that error. It still publishes a
+receipt naming the new store, or a consumer checking the store against the box
+it was painted for reads a mismatch that is not there and stops drawing the
+Surface for as long as the box keeps moving.
+
+`Surface.HTML`'s page-side copy is now compared before it is installed.
+`snapshot()` returns the copy and a key covering everything in it — including
+the field values, checkbox state and scroll offsets that are properties rather
+than attributes, and so absent from `outerHTML` — and an unchanged key drops
+the rebuild before it reaches the source. Over one drag, 40 of 41 rebuilds
+were byte-identical to the copy already in place.
+
+The settle pays the band back, and it now watches the DENSITY as well as the
+box. A Surface that moves only in depth never changes size, so the old key
+settled once at birth and never again — harmless while every density change
+repainted, and a Surface frozen at its birth density once they stop. Because
+the settle then re-arms on every density step, a `rest` whose store is
+already the one the last raster was made for is skipped; without that the
+same drag costs 58 captures instead of 40.
+
+Together: 65 captures to 40 over a 40-step drag, blocking time ~140 ms to
+~115 ms, against the native engine's 0 ms. With the named-density split in
+place Flight, which pins its density, settles at 22-24 captures and 54-124 ms
+— fewer than before the change, because a named density rasterizes at once
+and the settle then finds the store already sharp. The gap that remains is the
+engine's own per-capture cost and is not closable from this side. A global
+capture queue WAS tried — one rasterization at a time across all sources, a
+macrotask apart — and it reports beautifully (0 long tasks, 1 frame over
+33 ms) while starving the source being dragged: 26 of 33 screenshots through
+the drag were byte-identical, i.e. the card did not move. It is not in the
+tree.
+
+**Amendment, 2026-09-11 — what the engines cannot be made to agree on.**
+The pixel difference a snapDOM Surface shows against its own DOM is the
+rasterizer's, not the pipeline's, and it is not closable from this side.
+Measured end to end (platform #28): the HTML-in-canvas raster of a Flight
+card is byte-identical to a browser screenshot of that card; snapDOM's is
+MAE 2.8, with horizontal geometry exact, vertical geometry drifting down by
+up to two device pixels, and every 1px horizontal rule on a different device
+row than the browser draws it. Requested size, natural size, `reconcile` on
+and off, and no options at all produce byte-identical snapDOM output, so
+none of the knobs this library holds move it.
+
+Two things follow. The parity leg of `gate:capture-engines` scores 0/1200
+blocks at rest on a fixture with no hairline at a fractional offset, so it
+does not see this — the fixture, not the law, is what needs extending.
+And [authoring](authoring.md) now says plainly what a snapDOM Surface will
+and will not match, because a consumer choosing the engine is choosing this
+with it.
+
+**Amendment, 2026-09-11 — the phase law is TOLD the texel count.**
+`pixelGridSnap` pins two things: where a Surface's texel grid starts, and
+its pitch. It had the start right and the pitch wrong, because it computed
+the texel count instead of being handed it — `round(size x density)`, where
+the capture cuts `round(round(size) x density)`. `setSize` rounds the box to
+an integer before `storeForBox` rounds the product, so at density 2 the two
+disagree by a whole texel whenever the size's fraction lands in
+[0.25, 0.75); the density band can also hold an older store forward, and
+then no formula recovers the count at all.
+
+The failure hid where nobody looks for it. The corner still landed on the
+grid, so a Surface checked at its top-left looked correct, and the phase
+then ramped to a full device pixel at the far edge. Measured 2026-09-11 on
+a Flight card 515 x 157.6172 CSS px at density 2 — store 316 texels against
+a guess of 315 — its rules landed one device row low at the divider and two
+at the footer while the card's frame stayed put. The width was integral, so
+only the vertical drifted, which is what made it read as text that moved and
+a checkbox stroke that changed weight rather than as blur.
+
+`PixelGridInput` now carries `texelsX`/`texelsY` and every caller passes the
+store's own dimensions: `surfaceRasterAlignment` the `textureWidth`/
+`textureHeight` it already receives, the warm page rig `source.canvas`, and
+Flight's settle the Surface texture it now takes as a prop. On the card
+above this cut the on-screen difference against the same DOM from MAE 3.75
+to 2.96, 36% fewer differing pixels, under the native engine.
+
+It is engine-neutral. What remains under snapDOM is the rasterizer's own
+difference, recorded in the amendment above.
+
+## #61 — A handoff no longer requires `moveBefore` (2026-09-11)
+
+Safari ran no Munari scene in WebGL, and the reason was one DOM method.
+
+A handoff moves the SAME node between the page and the capture host, which is
+the whole premise: the content keeps its identity, so it keeps its state.
+`Element.moveBefore` relocates a node without taking it out of the tree, and
+`Surface` required it — `desired` was gated on `'moveBefore' in
+Element.prototype`, and a browser without it got the refusal "This browser
+cannot preserve DOM state while moving the content." WebKit has not shipped
+`moveBefore` (measured 2026-09-11), so every Surface in Safari stayed on the
+page. Firefox HAS since shipped it, which narrowed the cost to one engine and
+made the gate worth re-examining rather than living with.
+
+What the gate was protecting turned out to be four things, not the whole
+premise. Measured 2026-09-11 across Chromium, Firefox and WebKit, reparenting
+with `insertBefore` instead loses exactly: focus, every scroll offset in the
+subtree, an iframe's document, and the progress of a running CSS animation.
+Input values, canvas pixels, `<details>` state and event listeners survive
+either way — they live on the elements, and the elements are the same objects.
+
+Three of the four are recoverable by hand, and `retainedMove` recovers them:
+it holds focus, the text selection and every scroll offset, reparents, and
+puts them back. The fourth never arrives, because `unsupportedSnapshot`
+already refuses content holding an `iframe`, `video`, `audio`, `object` or
+`embed` before a Surface will hand it off at all. That leaves a running CSS
+animation as the one thing a browser without `moveBefore` cannot keep — and
+a compositor-only animation is already a still frame under snapDOM
+(platform.md #22), which is the engine such a browser is on. The content that
+loses motion here had already lost it.
+
+So the gate bought one property of one kind of content, and cost Safari every
+scene. It is gone. Where `moveBefore` exists this is still `moveBefore` and
+costs nothing; where it does not, the subtree is walked once per handoff for
+scroll offsets, which is a phase boundary and not a frame.
+
+Two WebKit faults surfaced the moment Surfaces were allowed to run there, both
+recorded in platform.md #29: `getComputedStyle().overflowClipMargin` is
+`undefined` rather than an empty string, and `ResizeObserver.observe` THROWS on
+`box: 'device-pixel-content-box'` instead of ignoring it. Both are now read
+through forms that every engine answers.
+
+Evidence: all 24 lab scenes load clean in WebKit on the snapDOM engine with
+zero page errors, against 23 before the ResizeObserver fix and none before
+this change. Flight's full round trip in WebKit lifts the live card off the
+page, parks it in the capture host, and lands it home with its typed value,
+its focus and its selection intact.
+
+Safari still cannot use HTML-in-canvas, which is Chrome-only, so it is on
+snapDOM with that engine's fidelity ceiling (platform.md #28).

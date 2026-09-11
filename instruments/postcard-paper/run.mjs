@@ -21,7 +21,7 @@ const observer={name:'paper-observer',enforce:'pre',transform(code,id){
   if(id.endsWith('/HomePostcardMesh.tsx')){
     const marker='  deformSurfaceGeometry(mesh.geometry,[HERO_W,HERO_H],(x,y)=>paperPoint(x,y,shape))'
     assert.ok(code.includes(marker),'Paper observation point changed')
-    code=replaceSource(code,marker,'  window.__paperShape = shape\n  window.__paperContact = {quiet:modes.quiet,edgeA,edgeB}\n'+marker)
+    code=replaceSource(code,marker,'  window.__paperShape = shape\n  window.__paperRipplePeak = Math.max(window.__paperRipplePeak ?? 0, shape.ripple)\n  window.__paperContact = {quiet:modes.quiet,edgeA,edgeB}\n'+marker)
     if(flat)code=replaceSource(code,'paperPoint(x,y,shape)','({x,y,z:0})')
   }
   return code
@@ -34,8 +34,10 @@ try{
   const page=await browser.newPage();page.on('pageerror',error=>errors.push(String(error)))
   await setChromeViewport(page,{width:Number(process.env.PAPER_VIEWPORT_WIDTH??1200),height:900})
   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'no-preference'}])
-  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=home&framed`,{waitUntil:'load'})
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=home`,{waitUntil:'load'})
   await page.waitForSelector('.home-hero-holder [data-api-live] input')
+  assert.equal(await page.$('iframe.site-frame'),null,'Paper must run in the inline site')
+  await page.waitForFunction(()=>document.querySelector('.home-page')?.dataset.homeReady==='true'&&!document.documentElement.hasAttribute('data-opening'))
   await page.evaluate(()=>document.fonts.ready)
   await installPaperReader(page)
   await page.waitForFunction(()=>window.__paperLight?.uniforms.uPaperReady.value===1)
@@ -86,9 +88,12 @@ try{
   await page.waitForFunction(()=>window.__paperShape.curlA<.5&&window.__paperShape.curlB<.5)
   await page.screenshot({path:path.join(output,'typing.png')})
   const stamp=await controlPoint(page,'button')
+  // Observe the short pulse in the frame callback, even if CDP resumes after its peak.
+  await page.evaluate(()=>{window.__paperRipplePeak=0})
   await page.mouse.click(stamp.x,stamp.y)
   await page.waitForFunction(()=>document.querySelectorAll('[data-api-live] .home-postmark').length===1)
-  await page.waitForFunction(()=>window.__paperShape.ripple>.2)
+  await page.waitForFunction(()=>window.__paperRipplePeak>.2)
+  results.stampRipple=await page.evaluate(()=>window.__paperRipplePeak)
   await page.screenshot({path:path.join(output,'stamp.png')})
   await page.click('.home-hero-row button')
   await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='false')

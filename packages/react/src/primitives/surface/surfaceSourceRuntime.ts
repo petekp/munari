@@ -76,7 +76,6 @@ export interface SurfaceSourceOptions {
   size: SurfaceSize
   resolution: SurfaceResolution
   mirrorU: boolean
-  paint: 'auto' | 'always'
   pixelRatio: number
   onError(error: Error): void
   onPainted?(receipt: DomPaintReceipt): void
@@ -102,7 +101,6 @@ export interface SurfaceSourceRuntime {
   setResolution(resolution: SurfaceResolution): void
   setPixelRatio(ratio:number):void
   setMirrorU(mirrorU: boolean): void
-  setPaint(paint: 'auto' | 'always'): void
   /** One presenter's LOD demand. The runtime rasterizes for the greediest. */
   proposeTier(key: number, tier: number | null): void
   proposeRaster(key:number,scale:SurfaceSize|null):void
@@ -162,7 +160,7 @@ const QUIET_FRAMES = 8
 export function createSurfaceSourceRuntime(
   options: SurfaceSourceOptions,
 ): SurfaceSourceRuntime {
-  let { size, resolution, mirrorU, paint } = options
+  let { size, resolution, mirrorU } = options
   let {pixelRatio}=options
   const { label, content, onError, onPainted, onChrome, chromeElement } = options
 
@@ -224,7 +222,7 @@ export function createSurfaceSourceRuntime(
   let pendingUploadGeneration = -1
   let uploadedGeneration = -1
   let anyUpload = false
-  const settle = { w: -1, h: -1, quiet: 0, settled: false }
+  const settle = { w: -1, h: -1, sx: -1, sy: -1, quiet: 0, settled: false }
   const proposals = new Map<number, SurfaceSize>()
   let disposed = false
 
@@ -331,9 +329,6 @@ export function createSurfaceSourceRuntime(
       applyMirror(texture, mirrorU)
       texture.needsUpdate = true
     },
-    setPaint(next) {
-      paint = next
-    },
     proposeTier(key, tier) {
       if (tier === null) proposals.delete(key)
       else proposals.set(key, [tier,tier])
@@ -346,13 +341,23 @@ export function createSurfaceSourceRuntime(
     frame() {
       if (disposed || !texture) return false
       let work = false
-      // The settle. While the box moves, the store is allowed to drift
-      // inside the density band so the canvas keeps its pixels across every
-      // resize; the moment it stops, that tolerance has served its purpose
-      // and the store is cut exact. Motion is approximate, rest is exact.
-      if (settle.w !== size[0] || settle.h !== size[1]) {
+      // The settle. While the box or the density moves, the store is allowed
+      // to drift inside the density band so the canvas keeps its pixels
+      // across every resize; the moment both stop, that tolerance has served
+      // its purpose and the store is cut exact. Motion is approximate, rest
+      // is exact.
+      //
+      // The DENSITY belongs in the key, not just the box. A Surface that
+      // only moves in depth never changes size, so watching the box alone
+      // settles once at birth and never again — and an engine that declines
+      // to rasterize on a density change (`PaintReason`) would then hold its
+      // birth density for the life of the Surface, however close it came.
+      const [rx, ry] = source.rasterScale()
+      if (settle.w !== size[0] || settle.h !== size[1] || settle.sx !== rx || settle.sy !== ry) {
         settle.w = size[0]
         settle.h = size[1]
+        settle.sx = rx
+        settle.sy = ry
         settle.quiet = 0
         settle.settled = false
         work = true
@@ -365,18 +370,19 @@ export function createSurfaceSourceRuntime(
         work = true
       }
 
-      const count = source.paintCount()
-      if (paint === 'always') {
-        source.repaint()
-        upload()
-        if (count !== lastPaintCount) measureChrome()
-        lastPaintCount = count
-        return true
-      }
-      // Upload-on-paint: the compositor already reports exactly when the
+      // Upload-on-paint: the engine already reports exactly when the
       // subtree's pixels changed, so idle sources cost nothing. One extra
-      // upload after the counter stops covers the draw's deferred resolve
-      // trailing the paint by up to a frame.
+      // upload after the counter stops covers a draw whose deferred resolve
+      // trails the paint by up to a frame.
+      //
+      // There is no upload-every-frame mode, and the measurement is why: the
+      // one consumer set it during a continuous resize, and the compositor
+      // already self-paints on every layout change (platform.md #2), so the
+      // counter moves every frame anyway. `gate:knobs-resize` passes
+      // identically either way (12.6px against 12.7px marker drift,
+      // 2026-09-10). A mode that costs a whole capture per frame on an
+      // asynchronous engine has to buy more than nothing.
+      const count = source.paintCount()
       if (count !== lastPaintCount) {
         lastPaintCount = count
         extraUploads = 1

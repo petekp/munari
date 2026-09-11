@@ -12,17 +12,17 @@ import type {HomeLightMaterial} from './homeLight'
 // Room for the bevel and tilted side faces at the largest heading size (#56).
 const PADDING=24
 
-function visibleHeading(heading:HTMLElement,solid:HTMLElement,shaded:HTMLElement){
+function visibleHeading(heading:HTMLElement,solid:HTMLElement,shaded:HTMLElement,page:HTMLElement){
   const box=heading.getBoundingClientRect(),{viewport,left,top}=readEnclosingViewport()
-  const solidBox=solid.getBoundingClientRect(),word=shaded.getBoundingClientRect()
-  const x=Math.max(Math.min(solidBox.left,word.left)-PADDING,(viewport?.offsetLeft??0)-left)
-  const y=Math.max(Math.min(solidBox.top,word.top)-PADDING,(viewport?.offsetTop??0)-top)
-  const right=Math.min(Math.max(solidBox.right,word.right)+PADDING,(viewport?.offsetLeft??0)+(viewport?.width??innerWidth)-left)
-  const bottom=Math.min(Math.max(solidBox.bottom,word.bottom)+PADDING,(viewport?.offsetTop??0)+(viewport?.height??innerHeight)-top)
+  const solidBox=solid.getBoundingClientRect(),word=shaded.getBoundingClientRect(),bounds=page.getBoundingClientRect()
+  const x=Math.max(Math.min(solidBox.left,word.left)-PADDING,(viewport?.offsetLeft??0)-left,bounds.left)
+  const y=Math.max(Math.min(solidBox.top,word.top)-PADDING,(viewport?.offsetTop??0)-top,bounds.top)
+  const right=Math.min(Math.max(solidBox.right,word.right)+PADDING,(viewport?.offsetLeft??0)+(viewport?.width??innerWidth)-left,bounds.right)
+  const bottom=Math.min(Math.max(solidBox.bottom,word.bottom)+PADDING,(viewport?.offsetTop??0)+(viewport?.height??innerHeight)-top,bounds.bottom)
   return {box,solidBox,word,x,y,right,bottom}
 }
 
-export function createHeadlineTreatments(heading:HTMLElement,lighting:HomeLightMaterial,wake:()=>void){
+export function createHeadlineTreatments(heading:HTMLElement,lighting:HomeLightMaterial,wake:()=>void,page:HTMLElement){
   const solid=heading.querySelector<HTMLElement>('.home-headline-3d')
   const shaded=heading.querySelector<HTMLElement>('.home-headline-shaders')
   if(!solid||!shaded)return null
@@ -81,7 +81,7 @@ export function createHeadlineTreatments(heading:HTMLElement,lighting:HomeLightM
   return {
     render(reduced:boolean){
       if(!fontsReady||renderer.getContext().isContextLost())return false
-      const {box,solidBox,word,...visible}=visibleHeading(heading,solid,shaded),ratio=lampPixelRatio()
+      const {box,solidBox,word,...visible}=visibleHeading(heading,solid,shaded,page),ratio=lampPixelRatio()
       const x=Math.floor(visible.x*ratio)/ratio,y=Math.floor(visible.y*ratio)/ratio
       const right=Math.ceil(visible.right*ratio)/ratio,bottom=Math.ceil(visible.bottom*ratio)/ratio
       if(right<=x||bottom<=y)return true

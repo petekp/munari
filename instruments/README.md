@@ -43,6 +43,15 @@ This local command does not change CI membership.
 
 ## Home light and shadow
 
+`node instruments/home-inline/run.mjs` checks Home in the actual site shell.
+It moves the demo from (256, 0) to (360, 72) without resizing the browser, checks
+lamp clamping and overlay placement, edits the same input through a postcard
+round trip, and navigates away during a lamp drag. It verifies cleanup and Back
+navigation in both capture-enabled and no-capture Chrome. An injected test-only
+composition mounts two actual Homes with independent themes and postcard state.
+`HEADED=1` uses the display's native density; `INLINE_OUTPUT` selects artifacts.
+This is a local acceptance check; CI membership is unchanged.
+
 `npm run probe:home-startup` builds and records the production landing route in
 Chrome with an empty cache and a delayed entry script. No part of the page may
 be exposed before its completed composition. The heading and postcard must
@@ -86,7 +95,7 @@ See [decision #58](../docs/decisions.md#58) for the exactness requirements.
 
 `npm run probe:home-headline` checks the real landing page's monospace HTML,
 extruded 3D geometry, shader colour, pointer response and native selection.
-Its black shader control compares glyph contrast with the same native text;
+The inline route must contain no scene iframe. Its black shader control compares glyph contrast with the same native text;
 the 0.95–1.05 contrast range matches the existing sharpness checks. A half-density
 render must lose contrast. It also checks mobile layout, reduced motion,
 3x parent zoom, no-capture rendering and the native no-WebGL fallback.
@@ -233,6 +242,49 @@ They do not change CI membership.
 
 Decision [#48](../docs/decisions.md#48) records the corrected contracts and
 the distinction between numerical, browser-input, and pixel evidence.
+
+## capture-engines
+
+Every capture engine holds the same source laws, against its REAL
+rasterizer. `npm run gate:capture-engines`. Local; CI membership is
+unchanged.
+
+The paint conformance suite runs these laws against a fake rasterizer,
+which proves the shared helper's arithmetic and nothing about pixels.
+This gate runs them once per engine in a browser and judges:
+
+- the capture holds the DOM's colors (worst channel within 4/255 of the
+  CSS values on both flat halves — 0/255 measured on both engines),
+- a still subtree paints 0 times in a 2s window,
+- eight mutations in one task produce one paint, not eight,
+- the host is born painting nothing and `setHostPainted` round-trips,
+- the parked host is `position: fixed` at the viewport origin, at the
+  asked-for box, taking no pointer events,
+- the receipt after a resize names the new box, and `resettle()` cuts
+  the backing store to exactly that box,
+- **both engines draw the same pixels for the same subtree**, in two
+  states. The fixture is a form field with a `::placeholder` and an
+  `appearance: none` checkbox wearing a `:checked::after` tick — the two
+  things snapDOM drops upstream ([platform #24](../docs/platform.md)).
+  Judged on 4×-downsampled blocks: SVG rasterization and direct compositing
+  disagree on glyph and hairline EDGES by a subpixel, while a structural
+  fault is wrong across whole blocks, so averaging first separates them.
+  - `rest` — whole-number density, no floor. 0 of 1200 blocks differ;
+    7 differ (worst 156) with the field shim removed.
+  - `carried` — 2.4× across and 0.957× down after a resize the density band
+    absorbs, so every glyph edge falls between samples and the law is on
+    the block mean: 2.00 today, 37.59 when the rasterizer answered at its
+    own size and the source stretched it.
+
+  On a failure all four PNGs are written to a temp directory the run names.
+
+`main.ts` measures; `run.mjs` drives the page once per engine and
+judges. The capability policy is asymmetric on purpose: HTML-in-canvas
+rests on an origin trial, so its absence warns and the run continues on
+snapDOM alone (`STRICT_CAPABILITY=1` makes the absence a failure).
+snapDOM needs only a document, so a snapDOM failure is always real —
+which is what makes this gate runnable on a machine that cannot run
+`idle-zero` at all.
 
 ## idle-zero
 

@@ -43,7 +43,7 @@ import {
   type SurfacePose,
 } from '@munari/core'
 import { DEFORMED_MARKER } from './surfaceDeform'
-import { canvasSpace } from './surfaceCanvasSpace'
+import { hostSpace } from './surfaceHostSpace'
 import { claimSourcePointer, releaseSourcePointer, registerSourcePointerPresenter, sourceHasOnePointerPose } from './surfacePointerOwnership'
 
 /** Everything one frame's verdict is read from. */
@@ -53,8 +53,8 @@ export interface SurfaceRouteStep {
   readonly renderMatrix?: THREE.Matrix4
   /** The renderer canvas — the viewport the projection lands in. */
   readonly glCanvas: HTMLCanvasElement
-  /** The parked capture canvas, null before the runtime exists. */
-  readonly parkedCanvas: HTMLCanvasElement | null
+  /** The node the engine parks the content in, null before the runtime exists. */
+  readonly host: HTMLElement | null
   /** The drawn root inside it. */
   readonly root: HTMLElement | null
   readonly request: PointerRouteRequest
@@ -83,9 +83,9 @@ export interface SurfaceRouteRelayDuties {
 export interface SurfaceRouteController {
   /** Decide and apply this frame's route. Returns the handoff, moved or not. */
   step: (input: SurfaceRouteStep, duties: SurfaceRouteRelayDuties) => PointerRouteHandoff
-  registerSource: (canvas: HTMLCanvasElement) => () => void
+  registerSource: (host: HTMLElement) => () => void
   route: () => PointerRoute
-  /** True while the parked canvas is lifted over the renderer canvas. */
+  /** True while the parked host is lifted over the renderer canvas. */
   riding: () => boolean
   /** Bring everything down, for teardown. Consults no law. */
   release: () => void
@@ -185,15 +185,15 @@ function measurePose(input: SurfaceRouteStep, pose: SurfacePose) {
 }
 
 /**
- * Which controller is riding each parked canvas. Two presenters of one
+ * Which controller is riding each parked host. Two presenters of one
  * source share one parked element, and each computes its own pose — both
  * riding would mean each frame's last writer wins and the hit region
- * teleports between the two copies. First to lift holds the canvas until it
+ * teleports between the two copies. First to lift holds the host until it
  * parks; every other presenter's native request quietly stays on the relay.
  */
 
 
-function transformInCanvasSpace(pose:SurfacePose,space:NonNullable<ReturnType<typeof canvasSpace>>) {
+function transformInHostSpace(pose:SurfacePose,space:NonNullable<ReturnType<typeof hostSpace>>) {
   const matrix=poseMatrix3d(pose,space.left,space.top)
   return space.scaleX===1&&space.scaleY===1?matrix:`scale(${1/space.scaleX},${1/space.scaleY}) ${matrix}`
 }
@@ -208,7 +208,7 @@ export function createSurfaceRoute(): SurfaceRouteController {
   const token = Symbol()
   let route: PointerRoute = 'page'
   let rig: NativePointerRig | null = null
-  let rigCanvas: HTMLCanvasElement | null = null
+  let rigHost: HTMLElement | null = null
   let rigRoot: HTMLElement | null = null
   let rigCursor: HTMLElement | null = null
   // Read once per lift, not per frame: it walks the ancestor chain, and the
@@ -217,35 +217,35 @@ export function createSurfaceRoute(): SurfaceRouteController {
   let latest: { input: SurfaceRouteStep; duties: SurfaceRouteRelayDuties } | null = null
 
   const releaseClaim = () => {
-    releaseSourcePointer(rigCanvas, token)
+    releaseSourcePointer(rigHost, token)
   }
 
   const rigFor = (
-    canvas: HTMLCanvasElement | null,
+    host: HTMLElement | null,
     root: HTMLElement | null,
     cursor: HTMLElement,
   ): NativePointerRig | null => {
-    if (!canvas || !root) {
+    if (!host || !root) {
       rig?.park()
       releaseClaim()
       rig = null
       return null
     }
-    if (rig && canvas === rigCanvas && root === rigRoot && cursor === rigCursor) return rig
-    // A source swap while riding would otherwise leave the previous canvas
+    if (rig && host === rigHost && root === rigRoot && cursor === rigCursor) return rig
+    // A source swap while riding would otherwise leave the previous host
     // lifted over the scene with nobody holding its restore values.
     rig?.park()
     releaseClaim()
     zIndex = zIndexAbove(cursor)
-    rig = createNativePointerRig(canvas, root, cursor)
-    rigCanvas = canvas
+    rig = createNativePointerRig(host, root, cursor)
+    rigHost = host
     rigRoot = root
     rigCursor = cursor
     return rig
   }
 
   const controller: SurfaceRouteController = {
-    registerSource: (canvas) => registerSourcePointerPresenter(canvas, token, () => {
+    registerSource: (host) => registerSourcePointerPresenter(host, token, () => {
       if (latest) controller.step(latest.input, latest.duties)
     }),
     route: () => route,
@@ -258,11 +258,11 @@ export function createSurfaceRoute(): SurfaceRouteController {
     },
     step: (input, duties) => {
       latest = { input, duties }
-      const live = rigFor(input.parkedCanvas, input.root, input.glCanvas)
+      const live = rigFor(input.host, input.root, input.glCanvas)
       const planar = presentsUnitPlane(input.mesh, input.authoredGeometry, input.authoredRaycast)
-      const exclusiveSource = sourceHasOnePointerPose(input.parkedCanvas)
+      const exclusiveSource = sourceHasOnePointerPose(input.host)
       const hearing = input.hearing && input.pointerEvents !== 'none' && !input.root?.closest('[inert]')
-      const space=canvasSpace(input.parkedCanvas)
+      const space=hostSpace(input.host)
       const measured = measureEligiblePose(input, pose, { hearing, planar, exclusiveSource }, live !== null && space !== null)
 
       const next = routeFor({
@@ -295,12 +295,12 @@ export function createSurfaceRoute(): SurfaceRouteController {
       }
       // Riding IS the lift — the first ride captures what it replaces and
       // installs the twin listeners, and every later one is the frame's pose.
-      // The origin is (0, 0): the parked canvas stands at client (0, 0) by
-      // the parking law (`position:fixed;left:0;top:0`, paint/htmlInCanvas).
-      if (next === 'native' && live && space && rigCanvas) {
+      // The origin is (0, 0): the parked host stands at client (0, 0) by
+      // the parking law (`position:fixed;left:0;top:0`, paint/domTextureSource).
+      if (next === 'native' && live && space && rigHost) {
         // Source replacement can preserve the route verdict while changing the rig.
-        claimSourcePointer(rigCanvas, token, () => live.park())
-        live.ride(nativeRideStyle(transformInCanvasSpace(pose,space), zIndex))
+        claimSourcePointer(rigHost, token, () => live.park())
+        live.ride(nativeRideStyle(transformInHostSpace(pose,space), zIndex))
       }
       return handoff
     },

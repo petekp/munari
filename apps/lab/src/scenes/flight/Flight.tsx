@@ -65,6 +65,7 @@ import {
   useSurfaceDriver,
   useSurfaceSourceRoot,
   useSurfaceTexture,
+  useSurfaceTextureOf,
   useSurfaceSupport,
 } from '@petepetrash/munari'
 import {
@@ -522,6 +523,13 @@ interface DriverProps {
   aero: AeroState
   /** The crumple finished: commit the delete and tear the flight down. */
   onCrumpled: () => void
+  /**
+   * The Surface's texture, for its store dimensions alone. The settle's
+   * pitch is the store's own texel count and nothing else recovers it: the
+   * card's box carries a fraction, and `round(box x density)` is a whole
+   * texel away from what the capture cut (`PixelGridInput.texelsX`).
+   */
+  texture: THREE.Texture | null
 }
 
 const FLAT = new THREE.Quaternion()
@@ -979,6 +987,7 @@ function Driver({
   chromeRef,
   aero,
   onCrumpled,
+  texture,
 }: DriverProps) {
   const size = useThree((s) => s.size)
   const camera = useThree((s) => s.camera)
@@ -1081,6 +1090,11 @@ function Driver({
       const speed = crossing <= 0 ? 0 : f.plate.v.length() + f.plate.w.length() * edge
       const settle = 1 - Math.min(1, Math.max(0, (speed - 2) / 28))
       if (settle > 0) {
+        // SAFETY: a DOM Surface's texture is backed by the source's own
+        // canvas, so `image` is an HTMLCanvasElement and carries the two
+        // numbers. Optional on the type because nothing stops a consumer
+        // pointing a texture at something else; the fallback covers that.
+        const store = texture?.image as { width?: number; height?: number } | undefined
         const snap = pixelGridSnap({
           x: f.plate.p.x,
           y: f.plate.p.y,
@@ -1091,6 +1105,8 @@ function Driver({
           viewH: vh,
           dpr,
           density,
+          texelsX: store?.width ?? Math.round(f.w * density),
+          texelsY: store?.height ?? Math.round(f.h * density),
         })
         group.position.x += settle * snap.dx
         group.position.y += settle * snap.dy
@@ -1231,6 +1247,7 @@ function Flying({
   // exact-zero landing. What the ramp DOES between them is this scene's, and
   // this scene already has a continuous excursion — the plate's altitude. So
   // the crossing is not a duration anyone chose; it is where the card is.
+  const cardTexture = useSurfaceTextureOf(surface)
   useSurfaceDriver(({ target }) => {
     const f = flight.current
     // Landing is a fact, not a motion. By the time the board asks for the
@@ -1257,6 +1274,7 @@ function Flying({
         chromeRef={chromeRef}
         aero={aero}
         onCrumpled={onCrumpled}
+        texture={cardTexture}
       />
 
       {/* renderOrder 2 — AFTER the card, on purpose. The card writes depth

@@ -51,9 +51,9 @@
   /* ── ink ── */
   --ink: #14140f;
   --ink-mute: #45443a;
-  --ink-faint: #7a7869;
-  --rule: rgba(20, 20, 15, 0.28);
-  --rule-hard: rgba(20, 20, 15, 0.72);
+  --ink-faint: #6d6b5c;
+  --rule: rgba(20, 20, 15, 0.3);
+  --rule-hard: rgba(20, 20, 15, 0.85);
 
   /* ── coded colour ── one hue, one meaning. Never decoration.
    *    signal  the one lit position: selected scene, aimed-at slot, checked

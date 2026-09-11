@@ -3,6 +3,7 @@
 // The movable boundary is the sole child of a stationary React-owned home (#45).
 import { useLayoutEffect, useMemo } from 'react'
 import { useLatest } from './useLatest'
+import { moveRetained } from './retainedMove'
 
 export interface PageTarget {
   readonly ref: (element: HTMLElement | null) => void
@@ -28,10 +29,7 @@ export function usePageTarget(): PageTarget {
   return useMemo(createPageTarget, [])
 }
 
-function move(element: HTMLElement, parent: HTMLElement, before: ChildNode | null) {
-  if ('moveBefore' in parent && element.isConnected && parent.isConnected) parent.moveBefore(element, before)
-  else parent.insertBefore(element, before)
-}
+const move = moveRetained
 
 export function usePageTargetAttachment(
   target: PageTarget | undefined,

@@ -14,8 +14,12 @@ import { defineConfig } from 'tsdown'
 //    peers. three does internal `instanceof` checks, so a second copy in
 //    the graph fails silently and confusingly — the consumer owns the one
 //    instance, and bundling ours would manufacture the second.
+// 4. `./snapdom` is the third entry, and `@zumer/snapdom` is external for a
+//    different reason: it is an OPTIONAL peer. Bundling it would put a beta
+//    rasterizer in the graph of every consumer, including the ones on a
+//    browser that never needs a second capture engine.
 export default defineConfig({
-  entry: ['src/index.ts', 'src/advanced.ts'],
+  entry: ['src/index.ts', 'src/advanced.ts', 'src/snapdom.ts'],
   outDir: 'dist',
   format: ['esm'],
   dts: true,
@@ -25,7 +29,7 @@ export default defineConfig({
   target: 'es2022',
   deps: {
     alwaysBundle: ['@munari/core'],
-    neverBundle: ['react', 'react-dom', 'three', '@react-three/fiber'],
+    neverBundle: ['react', 'react-dom', 'three', '@react-three/fiber', '@zumer/snapdom'],
   },
   // The stylesheet is public surface (`@petepetrash/munari/style.css`) but is not
   // reachable from the entry graph, so it is not bundled — the staging

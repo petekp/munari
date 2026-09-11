@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, OrbitControls } from '@react-three/drei'
 import {
@@ -6,7 +6,7 @@ import {
   SurfaceCanvas,
   useSurfaceSupport,
 } from '@petepetrash/munari'
-import { paintStats } from '@petepetrash/munari/advanced'
+import { captureEngine, paintStats } from '@petepetrash/munari/advanced'
 import { showChrome, showShell } from './bareMode'
 import { HomeApp } from './scenes/home/Home'
 import { SurfaceProviderProbe } from './lib/surfaceProvider'
@@ -14,7 +14,8 @@ import { SceneNav } from './components/SceneNav'
 import { SceneGuide } from './components/SceneGuide'
 import { BROWSER_GUIDE, exampleFor, washFor } from './components/sceneCatalog'
 import { SceneBoundary } from './components/SceneBoundary'
-import { HOME_READY, revealSite } from './components/siteOpening'
+import { revealSite } from './components/siteOpening'
+import { captureParam } from './captureMode'
 
 // A home visit must not fetch or evaluate every lab. Keep Home eager; each
 // other scene loads only in its own frame, with the same page and R3F roots.
@@ -156,10 +157,10 @@ function readRoute() {
  * than content inside the one shared 3D room. They take the whole route;
  * `null` means the room renders it.
  */
-function pageSceneFor(scene: SceneId) {
+function pageSceneFor(scene: SceneId, section: string) {
   switch (scene) {
     case 'home':
-      return <HomeApp />
+      return <HomeApp section={section} />
     case 'flight':
       return <FlightApp />
     case 'genie':
@@ -277,18 +278,6 @@ function SceneHud({ scene }: { scene: SceneId }) {
 export default function App() {
   const unsupported = !useSurfaceSupport()
   const [{ scene, section }, setRoute] = useState(readRoute)
-  const sceneFrame = useRef<HTMLIFrameElement>(null)
-
-  useEffect(() => {
-    if (!showShell) return
-    let alive = true
-    const ready = (event: MessageEvent) => {
-      if (event.origin !== location.origin || event.source !== sceneFrame.current?.contentWindow || event.data !== HOME_READY) return
-      void document.fonts.ready.then(() => { if (alive) revealSite() })
-    }
-    window.addEventListener('message', ready)
-    return () => { alive = false; window.removeEventListener('message', ready) }
-  }, [])
 
   // index.html paints the landing wash while this document is still empty.
   // Framed lab scenes retain their bench; the shell follows its active wash.
@@ -316,7 +305,7 @@ export default function App() {
     // so the address bar shows the link worth copying.
     const h = window.location.hash.slice(1)
     if (!window.location.search.includes('scene=') && isSceneId(h)) {
-      window.history.replaceState(null, '', `?scene=${h}`)
+      window.history.replaceState(null, '', `?scene=${h}${captureParam}`)
     }
     return () => {
       window.removeEventListener('popstate', onPop)
@@ -331,6 +320,9 @@ export default function App() {
   useEffect(() => {
     window.__munari = {
       stats: paintStats,
+      // Which engine actually answered, for the per-engine browser gates.
+      // The URL says what was asked for; this says what was installed.
+      engine: () => captureEngine().name,
     }
   }, [])
 
@@ -384,18 +376,9 @@ export default function App() {
       </details>
     ) : null
 
-  // The shell: nav console on the left, the scene in its own frame on the
-  // right. The frame is not decoration — every scene maps DOM rects to
-  // world space assuming its canvas IS its window (`rect center −
-  // innerWidth/2`, in fourteen modules), so a shell that shrank the
-  // scene's box in this window would silently skew every handoff. Inside
-  // a same-origin frame, `innerWidth` is the frame's own width and the
-  // registration holds; drawElementImage and the plume cloud were both
-  // measured live inside one (2026-08-31).
-  //
-  // `key={scene}` mounts a fresh frame instead of mutating `src`:
-  // navigating an existing frame pushes a joint session-history entry,
-  // and Back would then step the frame instead of the shell.
+  // Home owns a measured DemoHost and can share this document with navigation.
+  // Other scenes still assume a window-sized canvas, so they keep their frames.
+  // Replacing a frame on navigation avoids an extra joint-history entry.
   if (showShell) {
     return (
       <div className="site-shell" style={shellStyle(scene)}>
@@ -407,21 +390,24 @@ export default function App() {
           scenes={NAV_SCENES}
           active={scene}
           onSelect={(id) => {
-            window.history.pushState(null, '', `?scene=${id}`)
+            window.history.pushState(null, '', `?scene=${id}${captureParam}`)
             setRoute({ scene: id, section: '' })
           }}
           supported={!unsupported}
         />
         <main className="site-content" id="site-content" tabIndex={-1}>
           {scene !== 'home' && <SceneGuide scene={scene} />}
-          <iframe
-            ref={sceneFrame}
-            key={`${scene}:${section}`}
-            src={`/?scene=${scene}&framed${section ? `#${section}` : ''}`}
-            title={scene === 'home' ? 'Munari overview' : `${scene} example`}
-            className="site-frame"
-            onLoad={() => { if (scene !== 'home') revealSite() }}
-          />
+          {scene === 'home' ? (
+            <SceneBoundary scene={scene}><HomeApp section={section} onReady={revealSite} /></SceneBoundary>
+          ) : (
+            <iframe
+              key={`${scene}:${section}`}
+              src={`/?scene=${scene}&framed${captureParam}${section ? `#${section}` : ''}`}
+              title={`${scene} example`}
+              className="site-frame"
+              onLoad={revealSite}
+            />
+          )}
         </main>
       </div>
     )
@@ -432,7 +418,7 @@ export default function App() {
     new URLSearchParams(window.location.search).get('probe') === 'dom-surface-demand'
 
   // The notice rides along rather than replacing the scene — see `unsupported`.
-  const page = pageSceneFor(scene)
+  const page = pageSceneFor(scene, section)
   if (page !== null) {
     return (
       <>

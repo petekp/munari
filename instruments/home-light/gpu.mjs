@@ -5,9 +5,9 @@ import {replaceSource} from './replaceSource.mjs'
 
 export function observeLightingDraw(code,id) {
   if(!id.endsWith('/HomeMasthead.tsx'))return code
-  const begin='      pass.paper?.update(readHomeFlyer())',end='      display.render(pass.scene, pass.camera, pass.paper)'
+  const begin='      pass.paper?.update(flyer.read())',end='      display.render(pass.scene, pass.camera, pass.paper)'
   assert.ok(code.includes(begin)&&code.includes(end),'Lighting draw observation points changed')
-  return replaceSource(replaceSource(code,begin,'      window.__homeGpuStart?.()\n'+begin),end,end+'\n      window.__homeGpuEnd?.()')
+  return replaceSource(replaceSource(code,begin,'      window.__readPaper = flyer.read\n      window.__homeGpuStart?.()\n'+begin),end,end+'\n      window.__homeGpuEnd?.()')
 }
 
 export async function measureLightingDraw(page) {

@@ -1,10 +1,10 @@
 // Support — the one question a consumer asks before deciding which tree to
 // render at all.
 //
-// Without HTML-in-canvas, a declared page presentation stays visible.
-// A scene can still arm a gesture that the canvas cannot finish, because the
-// transition it armed can only be finished by a renderer that will never
-// arrive, and no further input can leave that state.
+// Without a capture engine that can run here, a declared page presentation
+// stays visible. A scene can still arm a gesture that the canvas cannot
+// finish, because the transition it armed can only be finished by a renderer
+// that will never arrive, and no further input can leave that state.
 //
 // The fault, 2026-08-23: three lab scenes each hit that in a different
 // shape — the knobs panel's carry and resize had no consumer, genie's
@@ -16,24 +16,26 @@
 // Surface and reading it through a handle's state did not look like where
 // that answer lived. Three scenes, three misses.
 //
-// The split: `detectHtmlInCanvas()` in core stays the measurement and
-// reports both trial entry points. This names the one that a Surface
-// actually needs, and adds the render-safe reading of it.
+// The split: `detectHtmlInCanvas()` in core stays the raw platform
+// measurement and reports both trial entry points. This asks the INSTALLED
+// CAPTURE ENGINE, which is the question a Surface actually has — a browser
+// with no trial and snapDOM installed answers `false` to the probe and
+// `true` here, and the Surface works.
 
 import { useSyncExternalStore } from 'react'
-import { detectHtmlInCanvas } from '@munari/core'
+import { captureAvailable } from '@munari/core'
 
 /**
  * Can a Surface hand its DOM to WebGL in this browser?
  *
- * Safe anywhere, including Node — it reads two prototypes and never
- * throws, so it answers `false` on a server rather than crashing.
+ * Safe anywhere, including Node — every engine's `available()` answers
+ * `false` rather than throwing when there is no DOM at all.
  *
  * For events, effects and diagnostics. Branching a RENDER on this is a
  * hydration mismatch on any server-rendered page; use the hook.
  */
 export function supportsSurfaces(): boolean {
-  return detectHtmlInCanvas().drawElementImage
+  return captureAvailable()
 }
 
 // The server and the first client render must agree, and the server's
@@ -48,8 +50,9 @@ const unsupported = () => false
  * The render-safe reading: `false` on the server and through hydration,
  * then the real answer.
  *
- * A capability cannot change under a mounted page, so this never updates
- * more than once.
+ * A capability cannot change under a mounted page — an engine installed
+ * after a Surface mounts does not reach it (`setCaptureEngine`) — so this
+ * never updates more than once.
  */
 export function useSurfaceSupport(): boolean {
   return useSyncExternalStore(subscribe, supportsSurfaces, unsupported)

@@ -2,8 +2,9 @@
 //
 // The hook's contract, which is not the function's.
 //
-// `supportsSurfaces` only renames a core probe, and that probe's honesty
-// — booleans in any environment, never a throw — is pinned in
+// `supportsSurfaces` asks the INSTALLED CAPTURE ENGINE, not the trial probe
+// — the two disagree on any browser where a second engine is installed, and
+// the probe's own honesty is pinned in
 // `tests/conformance/paint/capabilityProbe.test.ts`. What is pinned HERE is
 // the reason a hook exists beside it: the first client pass must answer
 // `false` even when the browser CAN present, because React compares that
@@ -19,13 +20,14 @@ import { createElement } from 'react'
 import { flushSync } from 'react-dom'
 import { hydrateRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { detectHtmlInCanvas } from '@munari/core'
+import { setCaptureEngine, type CaptureEngine } from '@munari/core'
 import { supportsSurfaces, useSurfaceSupport } from './surfaceSupport'
 
 const containers: HTMLElement[] = []
 
 afterEach(() => {
   for (const container of containers.splice(0)) container.remove()
+  setCaptureEngine(null)
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -58,8 +60,25 @@ function hydrate() {
 }
 
 describe('supportsSurfaces', () => {
-  it('names the one trial entry point a Surface needs, of the two core reports', () => {
-    expect(supportsSurfaces()).toBe(detectHtmlInCanvas().drawElementImage)
+  it('follows the installed engine, not the trial — a browser without the trial can still present', () => {
+    // No trial stub: the default engine cannot run here.
+    expect(supportsSurfaces()).toBe(false)
+    // An engine that needs nothing from the platform makes the same browser
+    // capable, and this is the answer a Surface acts on — the three lab
+    // scenes that read the raw probe instead would still refuse to cross.
+    const anywhere: CaptureEngine = {
+      name: 'anywhere',
+      native: false,
+      available: () => true,
+      createSource: () => {
+        throw new Error('this test never builds a source')
+      },
+      refusal: 'unreachable',
+    }
+    setCaptureEngine(anywhere)
+    expect(supportsSurfaces()).toBe(true)
+
+    setCaptureEngine(null)
     stubTrial()
     expect(supportsSurfaces()).toBe(true)
   })

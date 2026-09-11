@@ -70,7 +70,6 @@ export interface SurfaceSourceHostProps {
   size?: SurfaceSize
   resolution?: SurfaceResolution
   mirrorU?: boolean
-  paint?: 'auto' | 'always'
   onFocusWithinChange?: (focused: boolean) => void
   onChrome?: (chrome: SurfaceChrome) => void
   chromeElement?: () => HTMLElement
@@ -86,7 +85,6 @@ export function SurfaceSourceHost({
   size,
   resolution = 'auto',
   mirrorU = false,
-  paint = 'auto',
   onFocusWithinChange,
   onChrome,
   chromeElement,
@@ -140,12 +138,11 @@ export function SurfaceSourceHost({
   const sizeRef = useLatest(effectiveSize)
   const resolutionRef = useLatest(resolution)
   const mirrorURef = useLatest(mirrorU)
-  const paintRef = useLatest(paint)
 
   // Creating the source is a TEARDOWN: it destroys the live DOM subtree and
   // everything alive in it — focus, form values, selection, scroll. So the
   // dependency list is one entry wide on purpose. Size, resolution,
-  // mirroring, and paint policy are all handled in place below; a prop
+  // and mirroring are all handled in place below; a prop
   // belongs here only if changing it means "this is different content now",
   // which for a source is only the identity of the element being captured.
   useLayoutEffect(() => {
@@ -158,7 +155,6 @@ export function SurfaceSourceHost({
         size: sizeRef.current,
         resolution: resolutionRef.current,
         mirrorU: mirrorURef.current,
-        paint: paintRef.current,
         pixelRatio: window.devicePixelRatio,
         onError: (error) => root.store.reportError(error),
         onChrome: (chrome) => onChromeRef.current?.(chrome),
@@ -203,9 +199,6 @@ export function SurfaceSourceHost({
   useEffect(() => {
     runtime?.setMirrorU(mirrorU)
   }, [runtime, mirrorU])
-  useEffect(() => {
-    runtime?.setPaint(paint)
-  }, [runtime, paint])
 
   // Capture advances from the host's single frame callback. A demand Canvas
   // is held awake only while the source actually has work — a settling box,

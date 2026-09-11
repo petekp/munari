@@ -152,7 +152,9 @@
   font: 600 7.5px/1 var(--label);
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  padding: 2.5px 5px;
+  /* Whole pixels, not the 2.5px this was: a laid-out fraction does not
+   * survive a snapDOM capture (platform.md #28, authoring.md). */
+  padding: 3px 5px;
   border-radius: 999px;
   background: var(--bench);
   opacity: 0.75;

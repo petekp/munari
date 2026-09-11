@@ -5,9 +5,9 @@
 //   2. packages/react reaches core only through the @munari/core
 //      specifier (plus its declared peers), never a relative path.
 //   3. Consumers (apps/, registry/) reach the library only through its
-//      published entries — `@petepetrash/munari` and
-//      `@petepetrash/munari/advanced`. @munari/core and relative
-//      reach-arounds are both violations.
+//      published entries — `@petepetrash/munari`, `/advanced` and
+//      `/snapdom`. @munari/core and relative reach-arounds are both
+//      violations.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -86,6 +86,11 @@ describe('the hourglass', () => {
       'react-dom',
       'three',
       '@react-three/fiber',
+      // The OPTIONAL peer behind the `./snapdom` entry. Allowed for the same
+      // reason the others are — it is declared in the manifest and resolved
+      // by the consumer — and reachable from exactly one module, which is
+      // what keeps a consumer who never imports that entry from needing it.
+      '@zumer/snapdom',
     ])
     expect(
       violations('packages/react/src', (spec, file) => {

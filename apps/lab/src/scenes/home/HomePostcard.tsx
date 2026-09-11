@@ -1,11 +1,12 @@
 // The postcard owns its handoff state so it cannot rerender the rest of the site.
 // A section-positioned canvas shares the page's compositor scroll transform.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useThree } from '@react-three/fiber'
 import { Surface, SurfaceCanvas, useSurfaceHandle } from '@petepetrash/munari'
 import { HeroSection } from './HomeHero'
 import { HeroMesh, PixelPerfect } from './HomePostcardMesh'
 import { createPaperInteraction } from './homePaperLaw'
+import type { HomeFlyerStore } from './homeFlyer'
 
 const FOV = 42
 
@@ -20,7 +21,8 @@ function KeepDomFocus() {
   return null
 }
 
-export function HomePostcard({ supported, reduced, effectsEnabled }: { supported: boolean; reduced: boolean; effectsEnabled: boolean }) {
+export function HomePostcard({ supported, reduced, effectsEnabled, flyer, viewportRef }: { supported: boolean; reduced: boolean; effectsEnabled: boolean; flyer: HomeFlyerStore; viewportRef: React.RefObject<HTMLDivElement | null> }) {
+  const canvasId = useId()
   const hero = useSurfaceHandle('home-hero')
   const [inScene, setInScene] = useState(false)
   const holderRef = useRef<HTMLDivElement>(null)
@@ -30,12 +32,12 @@ export function HomePostcard({ supported, reduced, effectsEnabled }: { supported
     <div className="home-postcard-section">
       {supported && effectsEnabled && (
         <SurfaceCanvas
-          id="home"
+          id={canvasId}
           flat
           pointerMode="surfaces"
           style={{
             position: 'absolute', right: 'calc(-1 * var(--home-side-padding))', top: -128,
-            width: 'min(100vw, calc(100% + 256px))', height: 'calc(100% + 256px)',
+            width: 'min(var(--demo-width), calc(100% + 256px))', height: 'calc(100% + 256px)',
             zIndex: 10,
           }}
           className="home-canvas"
@@ -48,6 +50,8 @@ export function HomePostcard({ supported, reduced, effectsEnabled }: { supported
           <PixelPerfect fov={FOV} />
           <Surface.Scene surface={hero}>
             <HeroMesh
+              flyer={flyer}
+              viewportRef={viewportRef}
               surface={hero}
               paper={paper}
               holderRef={holderRef}
@@ -59,6 +63,8 @@ export function HomePostcard({ supported, reduced, effectsEnabled }: { supported
         </SurfaceCanvas>
       )}
       <HeroSection
+        flyer={flyer}
+        canvasId={canvasId}
         surface={hero}
         paper={paper}
         inScene={inScene}

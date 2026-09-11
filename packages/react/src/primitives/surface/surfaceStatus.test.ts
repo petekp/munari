@@ -14,7 +14,7 @@ describe('retained Surface observations', () => {
     store.setAuthorIntent(Symbol(),true,'Unsupported content')
     store.request('page')
     const status=store.getStatus(),frame=readSurfaceFrameState(store.handle)
-    expect(status).toEqual({requestedInScene:true,presentation:'page',sceneReady:false,isTransitioning:false,supported:false,reason:'Unsupported content'})
+    expect(status).toEqual({requestedInScene:true,presentation:'page',sceneReady:false,isTransitioning:false,supported:false,reason:'Unsupported content',engine:'html-in-canvas'})
     expect(frame.requestedInScene).toBe(true)
     expect(frame.targetInScene).toBe(false)
     expect(frame.presentation).toBe('page')

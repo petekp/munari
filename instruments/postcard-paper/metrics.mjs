@@ -1,9 +1,8 @@
 // Geometry and framebuffer evidence for the actual drawn postcard.
 export async function installPaperReader(page) {
+  await page.waitForFunction(() => Boolean(window.__readPaper?.()))
   await page.evaluate(async()=>{
-    const flyer=await import('/src/scenes/home/homeFlyer.ts')
     const frame=await import('/src/scenes/home/homePaperFrame.ts')
-    window.__readPaper=()=>flyer.readHomeFlyer()
     window.__paperPoint=frame.paperFramePoint
   })
 }
