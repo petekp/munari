@@ -27,6 +27,7 @@ import {
   htmlInCanvasEngine,
   PARKED_HOST_ATTRIBUTE,
   setCaptureEngine,
+  type CaptureClock,
   type RasterImage,
   UnsupportedPlatformError,
   type CaptureEngine,
@@ -102,8 +103,53 @@ function nativeHarness(): EngineHarness {
   }
 }
 
+/**
+ * A clock the test turns by hand.
+ *
+ * The rasterized source leaves a gap between captures, so "let the engine
+ * finish" now means draining the microtask queue AND letting that gap pass.
+ * Real timers would make every assertion below a race; this makes the pause
+ * a value the test sets. `pending` is what the source asked to wait, which is
+ * how the gap's length is pinned without the constant leaving the module.
+ */
+function handCranked() {
+  let now = 0
+  const waits: { at: number; ms: number; run: () => void }[] = []
+  const clock: CaptureClock = {
+    now: () => now,
+    wait: (run, ms) => {
+      const entry = { at: now + ms, ms, run }
+      waits.push(entry)
+      return () => {
+        const at = waits.indexOf(entry)
+        if (at >= 0) waits.splice(at, 1)
+      }
+    },
+  }
+  return {
+    clock,
+    /** What the source last asked to wait, in ms. */
+    pending: () => waits.at(-1)?.ms,
+    armed: () => waits.length,
+    /** Pass `ms` of wall clock and run whatever came due. */
+    pass(ms: number) {
+      now += ms
+      for (const entry of [...waits]) {
+        if (entry.at > now) continue
+        waits.splice(waits.indexOf(entry), 1)
+        entry.run()
+      }
+    },
+  }
+}
+
+// Longer than the gap the source leaves between captures, so passing it
+// releases a waiting capture whatever the gap is set to.
+const PAST_THE_GAP_MS = 1000
+
 function rasterizedHarness(): EngineHarness {
   let asked = 0
+  const time = handCranked()
   const engine: CaptureEngine = {
     name: 'fake-raster',
     native: false,
@@ -119,18 +165,23 @@ function rasterizedHarness(): EngineHarness {
         width,
         height,
         options,
+        time.clock,
       ),
     refusal: 'fake-raster needs a document',
   }
   return {
     engine,
     asked: () => asked,
-    // The source batches requests to a microtask and answers from a resolved
-    // promise, so draining the microtask queue twice is the whole of "let the
-    // engine finish". Three drains covers a follow-up run queued by the one
-    // that just landed.
+    // The source batches requests to a microtask, answers from a resolved
+    // promise, and leaves a gap before the next capture. So "let the engine
+    // finish" is: drain, pass the gap, drain again — twice over, because a
+    // capture released by the gap can itself owe a follow-up.
     deliver: async () => {
-      for (let i = 0; i < 4; i++) await Promise.resolve()
+      for (let round = 0; round < 2; round++) {
+        for (let i = 0; i < 4; i++) await Promise.resolve()
+        time.pass(PAST_THE_GAP_MS)
+        for (let i = 0; i < 4; i++) await Promise.resolve()
+      }
     },
     install() {
       asked = 0
@@ -391,8 +442,21 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
 // ── what only the rasterized engine can express ──────────────────────────
 
 describe('the rasterized engine', () => {
+  let time = handCranked()
+  beforeEach(() => {
+    time = handCranked()
+  })
+
+  /** Microtasks only: the source is left waiting out its gap. */
   const drain = async () => {
     for (let i = 0; i < 6; i++) await Promise.resolve()
+  }
+
+  /** Microtasks, then the gap, then microtasks — a capture actually starts. */
+  const settle = async () => {
+    await drain()
+    time.pass(PAST_THE_GAP_MS)
+    await drain()
   }
 
   /** A rasterizer whose answers the test hands over one at a time. */
@@ -414,9 +478,12 @@ describe('the rasterized engine', () => {
   // what the coalescing is here to prevent: at tens of milliseconds a raster,
   // a drag that queued one capture per move would still be drawing the start
   // of the gesture when the hand stopped.
+  //
+  // Coalescing alone bounds how many captures are OWED, never how often they
+  // run, which is why the gap below is a separate law and not this one.
   it('keeps one capture running and coalesces every request behind it', async () => {
     const { calls, rasterize } = deferred()
-    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50)
+    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
     await drain()
     expect(calls).toHaveLength(1)
 
@@ -427,15 +494,95 @@ describe('the rasterized engine', () => {
     expect(calls).toHaveLength(1)
 
     calls[0]!.resolve()
-    await drain()
+    await settle()
     // Exactly one follow-up for the three requests that arrived during it.
     expect(calls).toHaveLength(2)
     expect(source.paintCount()).toBe(1)
 
     calls[1]!.resolve()
-    await drain()
+    await settle()
     expect(calls).toHaveLength(2)
     expect(source.paintCount()).toBe(2)
+    source.dispose()
+  })
+
+  // The pacing law. A subtree that mutates on every animation frame asks for
+  // a capture on every animation frame, through BOTH doors — the microtask a
+  // change signal schedules and the re-entry a finished capture makes. An
+  // ungoverned source therefore rasterizes continuously and the scene renders
+  // in whatever main thread is left: measured 2026-09-11 in WebKit on a
+  // four-window scene, 51.4 fps through a hand drag with 40% of frames over
+  // 20 ms, against 60.1 fps and 15% with the gap in place (decisions.md #60).
+  //
+  // The gap is 150 ms and it is measured from the END of a capture, so a
+  // subtree that has been quiet captures at once and only a subtree mutating
+  // faster than it can be rastered is held back.
+  it('leaves a 150ms gap between captures, whichever door asked', async () => {
+    const { calls, rasterize } = deferred()
+    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
+
+    // Birth. Nothing has been captured, so nothing is owed any quiet.
+    await drain()
+    expect(calls).toHaveLength(1)
+    expect(time.armed()).toBe(0)
+
+    // The re-entry door: the follow-up a finished capture owes for a change
+    // that landed under it. The raster takes 80 ms of clock here, and the
+    // gap that follows is still the full 150 — measured from the capture's
+    // END, not its start, which is what keeps the main thread quiet for the
+    // whole gap rather than for whatever is left of it.
+    source.repaint()
+    time.pass(80)
+    calls[0]!.resolve()
+    await drain()
+    expect(calls).toHaveLength(1)
+    expect(time.pending()).toBe(150)
+
+    time.pass(150)
+    await drain()
+    expect(calls).toHaveLength(2)
+    calls[1]!.resolve()
+    await drain()
+
+    // The signal door: the microtask a change signal schedules, with no
+    // capture running to re-enter from.
+    source.repaint()
+    await drain()
+    expect(calls).toHaveLength(2)
+    expect(time.pending()).toBe(150)
+
+    // Most of the gap is not enough, and a request inside the gap does not
+    // re-arm it — a second wait would restart the countdown from wherever
+    // the request landed, so a subtree mutating every frame would never
+    // capture again at all.
+    time.pass(149)
+    source.repaint()
+    await drain()
+    expect(calls).toHaveLength(2)
+    expect(time.armed()).toBe(1)
+
+    time.pass(1)
+    await drain()
+    expect(calls).toHaveLength(3)
+    source.dispose()
+  })
+
+  // The gap holds a subtree that mutates faster than it can be rastered. It
+  // does not hold a subtree that has been quiet: the first request after any
+  // pause longer than the gap starts its capture in the same microtask, with
+  // no timer armed at all.
+  it('captures at once when the subtree has been quiet longer than the gap', async () => {
+    const { calls, rasterize } = deferred()
+    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
+    await drain()
+    calls[0]!.resolve()
+    await drain()
+
+    time.pass(5000)
+    source.repaint()
+    await drain()
+    expect(calls).toHaveLength(2)
+    expect(time.armed()).toBe(0)
     source.dispose()
   })
 
@@ -443,7 +590,7 @@ describe('the rasterized engine', () => {
   // it is late — and the receipt is how a consumer tells the difference.
   it('reports how many change signals landed while the raster was being made', async () => {
     const { calls, rasterize } = deferred()
-    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50)
+    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
     await drain()
 
     source.repaint()
@@ -453,6 +600,7 @@ describe('the rasterized engine', () => {
 
     expect(source.currentPaint()?.changesDuringPaint).toBe(2)
     // The follow-up ran with nothing changing under it.
+    await settle()
     calls[1]!.resolve()
     await drain()
     expect(source.currentPaint()?.changesDuringPaint).toBe(0)
@@ -464,7 +612,7 @@ describe('the rasterized engine', () => {
   // claim pixels that do not exist.
   it('names the box the raster started at, not the one it landed in', async () => {
     const { calls, rasterize } = deferred()
-    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50)
+    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
     await drain()
 
     source.setSize(300, 150)
@@ -482,9 +630,15 @@ describe('the rasterized engine', () => {
   it('keeps the last receipt on a failure and reports each distinct message once', async () => {
     const { calls, rasterize } = deferred()
     const errors: string[] = []
-    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {
-      onError: (error) => errors.push(error.message),
-    })
+    const source = createRasterizedSource(
+      rasterize,
+      'test',
+      '<div></div>',
+      100,
+      50,
+      { onError: (error) => errors.push(error.message) },
+      time.clock,
+    )
     await drain()
     calls[0]!.resolve()
     await drain()
@@ -492,7 +646,7 @@ describe('the rasterized engine', () => {
 
     for (let i = 0; i < 3; i++) {
       source.repaint()
-      await drain()
+      await settle()
       calls.at(-1)!.reject(new Error('CORS'))
       await drain()
     }
@@ -503,11 +657,11 @@ describe('the rasterized engine', () => {
 
     // A success ends the run the message was suppressed over.
     source.repaint()
-    await drain()
+    await settle()
     calls.at(-1)!.resolve()
     await drain()
     source.repaint()
-    await drain()
+    await settle()
     calls.at(-1)!.reject(new Error('CORS'))
     await drain()
     expect(errors).toEqual(['CORS', 'CORS'])
@@ -516,18 +670,29 @@ describe('the rasterized engine', () => {
 
   it('observes its own subtree, and stops when disposed', async () => {
     const { calls, rasterize } = deferred()
-    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50)
+    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
     await drain()
     calls[0]!.resolve()
     await drain()
 
     source.element.append(document.createElement('span'))
-    await drain()
+    await settle()
     expect(calls).toHaveLength(2)
-
-    source.dispose()
-    source.element.append(document.createElement('b'))
+    calls[1]!.resolve()
     await drain()
+
+    // Dispose with a capture already waiting out the gap. Both halves have
+    // to hold: the armed wait is released, so nothing hands the rasterizer a
+    // detached element after teardown, and the observer is disconnected, so
+    // a later mutation asks for nothing.
+    source.element.append(document.createElement('i'))
+    await drain()
+    expect(time.armed()).toBe(1)
+    source.dispose()
+    expect(time.armed()).toBe(0)
+
+    source.element.append(document.createElement('b'))
+    await settle()
     expect(calls).toHaveLength(2)
   })
 })

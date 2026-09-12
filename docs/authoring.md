@@ -250,6 +250,24 @@ Write feeds that mutate in bursts — one coalesced write per tick — and
 then go quiet. A panel that updates twice a second is free between
 updates; a panel that animates a descendant every frame is not.
 
+On snapDOM the budget is enforced rather than advisory. A rasterized source
+leaves 150 ms of quiet after each capture before it starts another
+([decisions #60](decisions.md)), because a whole-panel raster is tens of
+milliseconds of main thread and a subtree mutating every frame would otherwise
+take all of it — measured 51.4 fps through a drag against 60.1 fps with the
+gap. The gap runs from the END of a capture, so a subtree quiet for longer than
+the gap captures at once and only continuous mutation is held back: DOM motion
+inside a Surface steps about four times a second rather than the eleven the
+raster cost alone allowed. The settle is the one exception and is never held.
+
+Two consequences worth authoring around. A CSS transition signals at its two
+ends rather than every frame, so it costs a couple of captures instead of a
+steady stream — but this engine captures neither the frames between
+([platform #22](platform.md)), so use one where only the end state has to be
+right, and move motion that must be seen outside the drawn subtree. And the
+gap paces input echo too: a keystroke or hover inside a Surface can take up to
+~240 ms to appear in the texture, against ~90 ms before.
+
 One honest exception: **a focused field is never idle-zero.** Caret
 blink self-paints its source about twice a second. That is correct
 behavior, not a leak — but a probe page that holds focus inside a

@@ -3556,6 +3556,102 @@ to 2.96, 36% fewer differing pixels, under the native engine.
 It is engine-neutral. What remains under snapDOM is the rasterizer's own
 difference, recorded in the amendment above.
 
+**Amendment, 2026-09-11 — the capture loop has a pace.** Coalescing bounds how
+many captures are OWED, never how often they run, and the rasterized source had
+no other limit: `request()` scheduled through a microtask, and a finished
+capture re-entered `run()` immediately whenever anything had changed under it.
+A subtree that mutates on every animation frame rings both doors, so two such
+sources in one scene demanded a capture forever and the scene rendered in the
+gaps between whole-panel rasters.
+
+Measured in WebKit at dpr 2 on the genie desk, three conditions — idle, a hand
+drag on a window's titlebar, and the untouched drain the minimize lamp starts —
+as interleaved blocks inside one page load, medians of three. Interleaving is
+the whole method: between-run variance here is large enough to fabricate a
+result in either direction.
+
+| | ungoverned | 100 ms gap | **150 ms gap** |
+|---|---|---|---|
+| idle | 56.0 fps, 36% of frames over 20 ms | 59.2 fps, 17% | **59.3 fps, 15%** |
+| drag | 51.4 fps, 40%, p99 44 ms | 59.0 fps, 17% | **60.1 fps, 15%, p99 31 ms** |
+| drain | 52.6 fps, 38% | 59.8 fps, 18% | **60.0 fps, 13%** |
+| captures/s | 22.6 | 10.5 | **8.4** |
+
+The shipped code, re-measured in a fresh page load with the same harness, holds
+57.6-59.8 fps and 12-22% over 20 ms across four conditions, the fourth being a
+dock-tile drag that pours a window back out — the only block that still shows a
+long-frame tail. Eighteen screenshots through a governed drain came back
+eighteen distinct, no identical pair.
+
+The sweep is not re-runnable from this tree: `CAPTURE_GAP_MS` is module-private
+and `packages/react/src/snapdom.ts` passes no clock, so the ungoverned arm no
+longer exists in the source. The harness that produced it is kept outside the
+repo at `~/Code/munari-capture-wip/` (`safari.py` drives an isolated
+safaridriver window with trusted W3C input, `sweep.py` runs the interleaved
+blocks). An occluded Safari window services no `requestAnimationFrame` at all
+and fires no `visibilitychange` to say so, which is why raising the window and
+refusing to measure below 50 fps is part of the harness rather than an
+afterthought.
+
+`CAPTURE_GAP_MS` is 150 and it is measured from the END of a capture. A subtree
+quiet for longer than the gap captures at once; a request that lands inside the
+gap waits out its remainder. Both doors go through one `start()`: an earlier
+attempt governed only the re-entry and moved no measured number at all, because
+the microtask door still admitted a capture per frame. The clock and the delay
+are injected the way the rasterizer already is, so
+`tests/conformance/paint/captureEngines.test.ts` turns them by hand and pins
+the 150, the END-measurement and the immediate start without the constant
+leaving the module.
+
+Nothing is exempt, including the settle. "Rest is exact" is a claim about the
+pixels, not about latency: a held `rest` still lands the sharp capture, up to a
+gap later, inside the error `storeForBox`'s band already tolerates. Exempting
+it was built and A/B'd against holding it — interleaved, three conditions plus
+a dock-tile drag — and it is a wash on frame time (long-frame percentages
+summed across the four blocks: 61 exempt, 56 held), so the simpler code wins.
+The same delay reaches `density`: a named density now arrives up to a gap after
+it is named, where the amendment above says it "rasterizes at once".
+
+**This is not the global capture queue rejected above.** That one serialized
+rasterization ACROSS sources a macrotask apart, so the source under the hand
+queued behind every other source's capture and stopped moving — 26 of 33
+screenshots through a drag byte-identical. This paces each source against its
+own last capture and never against another's, and the drag is the block that
+gained most. Checked in the same currency: 18 screenshots through a governed
+drain animation, 18 distinct, no identical pair.
+
+The cost is freshness. A Surface keeps moving under the hand; what ages is the
+picture inside it. A source whose subtree animates by mutation re-captures
+about 4 times a second instead of about 11, so DOM motion INSIDE a Surface
+steps visibly on this engine — the same budget [authoring](authoring.md)'s
+mutation economy already asks authors to spend deliberately, now enforced
+rather than advisory.
+
+The gap paces the input reasons too, and that part is not measured. `input`,
+`focusin`, `pointerover` and `scroll` all reach `request()`, so a keystroke or
+a hover that lands just after a capture waits the gap plus the raster before
+its echo appears in the texture — up to ~240 ms here against ~90 ms
+ungoverned. Interactive content inside a Surface on this engine is the case to
+sweep next; nothing in this amendment measured it.
+
+**Rejected here: making the capture cheaper instead.** snapDOM's WebKit font
+probe runs twice per capture and costs four frame waits; replacing its
+per-capture font embedding with a once-per-document encoded `@font-face` block
+cuts a capture from ~88 ms to ~35 ms of wall clock. Measured, it is a
+regression on every condition: 27.6 fps with 98% of frames over 20 ms
+ungoverned, and 52.8 fps against 59.8 on the governed arm it was paired with
+(a 50% duty pace, swept alongside). The saving is the probe's
+`requestAnimationFrame` waits, which were handing the main thread back to the
+frame loop mid-capture — so the cheaper capture is a tighter block, run twice
+as often.
+
+Pacing by a SHARE of each capture's own wall clock was swept too (25%, 33%,
+40%, 50%, 65%). At matched throughput it scores the same as a flat gap and it
+meters the wrong quantity: a capture that yields to the frame loop between its
+stages looks expensive and one that blocks straight through looks cheap, which
+is exactly backwards.
+
+
 ## #61 — A handoff no longer requires `moveBefore` (2026-09-11)
 
 Safari ran no Munari scene in WebGL, and the reason was one DOM method.

@@ -86,6 +86,7 @@ export {
 } from './paint/htmlInCanvas'
 export {
   createRasterizedSource,
+  type CaptureClock,
   type ElementRasterizer,
   type RasterImage,
 } from './paint/rasterizedSource'

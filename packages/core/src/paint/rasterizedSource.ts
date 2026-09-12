@@ -18,13 +18,22 @@
 // holds is what makes a late answer merely late rather than wrong — the
 // consumer compares `paintedSize()` to `size()` and knows.
 //
-// Zero dependencies, including on the rasterizer: it arrives as a function,
-// so this file runs under vitest against a fake one and the beta library
-// that implements it for real sits at the package edge, behind its own
-// published entry.
+// The second fault, and the reason the loop has a pace: coalescing bounds
+// how many captures are OWED, not how often they run. Measured 2026-09-11 in
+// a WebKit build with no HTML-in-canvas, on a four-window scene where two
+// subtrees mutate on every animation frame — every saving went into another
+// capture instead of into the frame rate, and the scene rendered in the gaps
+// between whole-panel rasters: 51.4 fps through a hand drag, 40% of frames
+// over 20 ms, p99 44 ms. `CAPTURE_GAP_MS` of quiet after each capture is
+// 60.1 fps, 15% over 20 ms, p99 31 ms, at a third of the captures.
 //
-// Ownership: this module owns change detection, coalescing, and the parked
-// container. `domTextureSource.ts` owns the canvas and the ledger. The
+// Zero dependencies, including on the rasterizer and the clock: both arrive
+// as functions, so this file runs under vitest against a fake rasterizer and
+// a hand-cranked clock, and the beta library that implements the rasterizer
+// for real sits at the package edge, behind its own published entry.
+//
+// Ownership: this module owns change detection, coalescing, pacing, and the
+// parked container. `domTextureSource.ts` owns the canvas and the ledger. The
 // rasterizer owns pixels and nothing else.
 
 import {
@@ -36,6 +45,53 @@ import {
   type DomTextureSourceOptions,
   type PaintReason,
 } from './domTextureSource'
+
+/**
+ * The quiet a source leaves the main thread between captures.
+ *
+ * Why this number (decisions.md #60, amended 2026-09-11): a whole-panel
+ * raster costs ~88 ms of wall clock in WebKit at dpr 2, so an ungoverned
+ * source captures continuously and the scene gets whatever is left. Swept
+ * against scene frame rate over three conditions — idle, a hand drag, and an
+ * untouched animation — as interleaved blocks in one page load: no gap
+ * 51-56 fps with 36-40% of frames over 20 ms; 100 ms 59-60 fps at 17-18%;
+ * 150 ms 59-60 fps at 13-15%. Pacing by a SHARE of each capture's own wall
+ * clock instead scored the same at matched throughput and meters the wrong
+ * quantity — a capture that yields to the frame loop between its stages
+ * looks expensive, and one that blocks it straight through looks cheap.
+ *
+ * Measured from a capture's END: a subtree quiet for longer than the gap
+ * captures at once, and a request landing inside the gap waits out its
+ * remainder. So what it holds back is continuous mutation — and, for as long
+ * as the gap lasts, an input echo too.
+ */
+const CAPTURE_GAP_MS = 150
+
+/**
+ * The wall clock and the delay, injected.
+ *
+ * The module's other impurity arrives the same way (`ElementRasterizer`), and
+ * for the same reason: a suite that drives pacing has to advance time rather
+ * than wait for it, and a parameter keeps the pause a value the test sets
+ * instead of a race it hopes to win. `wait` answers with its own cancel so
+ * `dispose()` leaves no armed timer behind — the callback checks `disposed`
+ * before it captures, so a stray firing does no harm, but until it fires it
+ * holds this source's element and host alive.
+ */
+export interface CaptureClock {
+  now: () => number
+  wait: (run: () => void, ms: number) => () => void
+}
+
+const systemClock: CaptureClock = {
+  now: () => performance.now(),
+  wait: (run, ms) => {
+    const id = setTimeout(run, ms)
+    return () => {
+      clearTimeout(id)
+    }
+  },
+}
 
 /**
  * Render a laid-out element at a given per-axis scale.
@@ -116,6 +172,7 @@ export function createRasterizedSource(
   width: number,
   height: number,
   options: DomTextureSourceOptions = {},
+  clock: CaptureClock = systemClock,
 ): DomTextureSource {
   // Before anything is built, for the reason in `adoptContent`: a refused
   // source owns no DOM (decisions.md #12, #13).
@@ -128,12 +185,17 @@ export function createRasterizedSource(
   let capturing = false
   let owed = false
   let scheduled = false
-  // Change signals since the running capture started. Reported on the
-  // receipt so a consumer can see how stale the picture was on arrival.
+  // Change signals since the running capture started. A signal that lands
+  // while a capture is WAITING out the gap is not one of these: the raster
+  // reads the DOM after the wait, so that change is in the pixels. Reported
+  // on the receipt so a consumer can see how stale the picture was on arrival.
   let changesDuringPaint = 0
   // The store the last completed raster was actually made for. `rest` asks
   // for a sharp capture; this is how it knows one is already there.
   let rasteredStore: readonly [number, number] = [0, 0]
+  // Non-null exactly while a capture is owed and waiting out the gap.
+  let cancelWait: (() => void) | null = null
+  let lastFinishedAt = -Infinity
 
   const host = document.createElement('div')
   // The parking law, shared with the native engine and pinned by
@@ -181,6 +243,35 @@ export function createRasterizedSource(
     ctx.drawImage(image, 0, 0, image.width * kx, image.height * ky)
   }
 
+  /**
+   * The one door to a capture, and the reason there is only one.
+   *
+   * A subtree that mutates every animation frame rings both doors — the
+   * microtask a change signal schedules, and the re-entry a finished capture
+   * makes for a change that landed under it — so pacing either one alone
+   * moves nothing. An earlier attempt paced only the re-entry.
+   */
+  const start = () => {
+    if (disposed || capturing || !owed) return
+    if (cancelWait) return
+    const quietOwed = lastFinishedAt + CAPTURE_GAP_MS - clock.now()
+    if (quietOwed <= 0) {
+      void run()
+      return
+    }
+    // Assigned before the call and cleared by the callback, in that order,
+    // because a `wait` that runs its callback INLINE would otherwise clear
+    // the field first and then have the stale cancel written over the top —
+    // leaving `cancelWait` non-null forever and every later request refused.
+    let waiting = true
+    const cancel = clock.wait(() => {
+      waiting = false
+      cancelWait = null
+      if (!disposed && !capturing && owed) void run()
+    }, quietOwed)
+    if (waiting) cancelWait = cancel
+  }
+
   const run = async () => {
     capturing = true
     owed = false
@@ -208,11 +299,11 @@ export function createRasterizedSource(
       if (!disposed) body.failPaint(cause)
     } finally {
       capturing = false
-      // Anything that changed while the raster was being made is not in
-      // these pixels. Going again immediately is what keeps the last picture
-      // the current one, and having waited a whole raster already, this one
-      // does not wait for the batch.
-      if (!disposed && owed) void run()
+      lastFinishedAt = clock.now()
+      // Anything that changed while the raster was being made is not in these
+      // pixels, so a follow-up is owed — through `start()` rather than back
+      // into `run()`, so it waits out the gap like any other request.
+      if (!disposed && owed) start()
     }
   }
 
@@ -276,7 +367,7 @@ export function createRasterizedSource(
     scheduled = true
     queueMicrotask(() => {
       scheduled = false
-      if (!disposed && !capturing && owed) void run()
+      start()
     })
   }
 
@@ -337,6 +428,8 @@ export function createRasterizedSource(
     dispose: () => {
       if (disposed) return
       disposed = true
+      cancelWait?.()
+      cancelWait = null
       observer.disconnect()
       listeners.abort()
       host.remove()
