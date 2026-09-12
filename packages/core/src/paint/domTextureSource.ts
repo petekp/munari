@@ -88,6 +88,25 @@ export interface DomTextureSource {
   /** Force a repaint request (rarely needed — see paintCount). */
   repaint: () => void
   /**
+   * Change whether the source follows what the content does on its own —
+   * see `DomTextureSourceOptions.live`. Switching it on captures the state
+   * the source stopped following at, so the picture is current from the
+   * moment the flag is. An engine that follows everything for free ignores
+   * it.
+   */
+  setLive: (live: boolean) => void
+  /**
+   * Treat the user's input on `root` as input on the content.
+   *
+   * A consumer that mirrors a page element into this source by hand — the
+   * retained Surface keeps a copy of its page content current while the
+   * page holds — has the user acting on a node the source's own element
+   * never hears. Naming that node keeps the mirror's answer to the input
+   * followed, exactly as a change on the element itself would be. Returns
+   * the unlisten. An engine that follows everything for free ignores it.
+   */
+  hearInput: (root: HTMLElement) => () => void
+  /**
    * The texture scale that was ASKED for, in backing-store px per CSS px.
    * The density actually delivered is `canvas.width / size()[0]`, which is
    * allowed to drift inside a band while the box is moving (`storeForBox`)
@@ -177,6 +196,21 @@ export interface DomTextureSourceOptions {
   label?: string
   /** Initial texture scale (backing-store px per CSS px). Default 1. */
   scale?: number
+  /**
+   * Does the texture follow what the content does ON ITS OWN — a subtree
+   * that animates, a ticker, a canvas redrawn from a clock?
+   *
+   * Every engine follows the user's input on the content, a layout resize,
+   * a webfont or image landing, a transition or animation reaching its
+   * ends, and an explicit `repaint()`. Whether it also follows a change
+   * nobody asked for is the one thing an engine that pays tens of
+   * milliseconds per capture cannot afford by default (decisions.md #60):
+   * two self-animating subtrees took a scene from 60 fps to 51. Such an
+   * engine leaves the picture as it was until told the content is `live`,
+   * and then follows it at its own pace. The HTML-in-canvas engine follows
+   * everything for free and ignores the flag. Default `false`.
+   */
+  live?: boolean
   /** Paint failures, normalized to an Error at the catch that produced
    *  them — so a consumer always has a message and a stack, whatever the
    *  platform threw. */

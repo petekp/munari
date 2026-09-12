@@ -3652,6 +3652,122 @@ stages looks expensive and one that blocks straight through looks cheap, which
 is exactly backwards.
 
 
+**Amendment, 2026-09-12 — a rasterizing engine follows the user, not the
+clock; `live` opts a Surface back in.** The gap above bought 60 fps at the
+cost of freshness, and it was still spending a capture on every mutation a
+subtree made on its own. Measured the same way — Safari 18.6, the genie desk,
+dpr 2, interleaved blocks in one page load, medians of three — the gap's arm
+reproduced the shipped numbers, and every remaining long frame was the
+captures themselves:
+
+| | gap, following everything | following the user only | following nothing |
+|---|---|---|---|
+| idle | 59.3 fps, 15% of frames over 20 ms, 8.3 captures/s | **60.0 fps, 1%, 0.0** | 60.0 fps, 2%, 0.0 |
+| titlebar drag | 60.0 fps, 14%, 8.3 | **59.9 fps, 5%, 2.4** | 60.0 fps, 0%, 0.0 |
+| lamp drain | 59.6 fps, 11%, 8.1 | **59.1 fps, 1%, 0.0** | 60.0 fps, 0%, 0.0 |
+| dock-tile drag | 57.0 fps, 24%, 10.0 | **59.1 fps, 6%, 1.6** | 59.2 fps, 3%, 0.9 |
+
+The middle column is the default now, and it is indistinguishable from
+following nothing on the felt metric. What it keeps that "nothing" loses is
+the part of the relay's job a texture can show: a field re-rendering as it is
+typed in, a menu opening on a click, a thumb following a drag, hover and focus
+twins, a scroll. What it gives up is a subtree that changes on its own — a
+bouncing element, a clock, a feed, a canvas redrawn from a video — whose
+picture stays as it was at the last capture; and, indistinguishable from it,
+a change the app makes from outside the Surface: new props, data arriving
+after mount, a control elsewhere on the page writing into the content. A
+Surface whose content does that and must be seen doing it declares `live` on `Surface`, `Surface.HTML`,
+`SceneSurface` or `SceneSurface.HTML` (also `CaptureContent`), and gets the
+gap's column. The flag reaches the kernel as `DomTextureSourceOptions.live`
+and `DomTextureSource.setLive()`; switching it on captures the state the
+source stopped following at. The HTML-in-canvas engine follows everything at
+no cost and ignores it, which is the point: an author writes for
+HTML-in-canvas semantics and adds `live` where motion inside a Surface is the
+claim. An engine that could follow changes cheaply — an incremental one —
+would ignore it the same way, with no API change.
+
+A source cannot tell the user's mutation from an animation's by looking at
+it. It tells them apart by WHEN they land: an input event on the subtree
+(`INPUT_EVENTS` in `inputWindow.ts` — pointer, key, input, change, focus,
+scroll) opens `INPUT_WINDOW_MS` = 150 ms in which mutations are followed. A
+discrete React commit lands inside the event's own task and a passive effect
+a frame or two later, so the window covers both with room; it equals the gap
+so a mutation the pacer would have coalesced into the input's own capture is
+never the one refused. The key events open the window and ask for
+nothing themselves. A bare `pointermove` opens nothing: hovering is not acting,
+and the relay forwards a move on every frame the pointer rests on a Surface,
+which would keep a self-animating subtree followed for as long as it sat
+under the pointer.
+A gesture begun on the content is the user acting on it until it ends,
+wherever its moves land: a press on the subtree adds document-level
+`pointermove` listeners for that pointer that keep the window open until its
+`pointerup` or `pointercancel`, a native drag taking over (`dragstart`), or
+the window losing focus. A slider, a resize handle and a pointer-driven
+drag-and-drop library listen for moves on `window`, so nothing between the
+press and the release touches the subtree, and without this the thumb would
+freeze under the hand 150 ms into the drag. A native HTML5 drag has no
+pointer stream at all — measured 2026-09-12 with a real mouse on a
+`draggable`: Chrome fires `pointercancel` at `dragstart` and no `pointerup`;
+Safari 18.6 fires no `pointercancel` and no `pointermove` from `dragstart`
+until a `pointerup` at the drop — so `dragstart`, `dragenter`, `dragleave`,
+`drop` and `dragend` are input events in their own right: a drop target
+lighting up and the reorder a drop makes both land inside their window. What a source that is not live still captures, because
+its picture would be WRONG rather than old without it: a layout resize
+(`box`), a named density, the settle, a webfont or image landing, a
+transition or animation reaching its ends, and an explicit `repaint()`.
+
+Checked end to end in Safari on the home starter's counter, lifted, with a
+trusted click on the content: under the default the DOM read 1, the source
+captured twice (the press, then the commit the window admitted) and the
+digit's pixels changed on the mesh; under a full freeze the DOM read 2, no
+capture ran and the mesh did not change; under the default again, 3, two
+captures, changed. The echo is the window's doing and not the click's.
+
+Two things in the binding changed with it. While the page holds, the user
+acts on the live node and the source sees only the copy `Surface.HTML` keeps
+current, so the source is told where the user is: `DomTextureSource.hearInput(
+root)` treats input on the live node as input on the content, and the copy's
+answer is followed. And the three explicit `repaint()` calls in `Surface.HTML`
+became one: installing a copy and moving the live node are both mutations of
+the source's own element, and the source decides for itself whether to
+capture them — the compositor always, a rasterizing engine by the policy
+above. The one that stays is the lift, because the request that lifts a
+Surface usually comes from outside it and the content about to be shown is
+the live node that just moved in.
+
+`useElementCapture` judges by the same law, from `inputWindow.ts`, which
+both it and the rasterized source use so the two cannot drift. Its cost is
+not the capture but the copy: every rebuild walks the native subtree and
+serializes each element's computed style, and it used to do that on every
+mutation and on every frame of a running animation, whichever engine was
+drawing. Now the native element's mutations are followed as the answer to
+the user's input on it, or when `live`; running animations are followed
+frame by frame only when `live`; and what it observes outside the element —
+stylesheets, ancestors' attributes, size, fonts — is followed regardless,
+because a stale copy of those is wrong rather than old. A whole-page root
+contains other captures' parked copies and canvases, and input there is the
+user acting on a different Surface, so the hook disowns it (`hear`'s
+`ignore`), as it already disowned their mutations. `refresh()` is the
+hand-driven update: called from whatever changes the element without the
+user acting on it, and usable directly as an event handler.
+
+The last amendment's open question — the ~240 ms input echo the gap
+introduced — is answered by the same default: a quiet Surface captures an
+input at once (~90 ms to texture), and only a Surface already re-capturing
+waits out its gap.
+
+`tests/conformance/paint/captureEngines.test.ts` pins the five laws: a
+mutation nobody asked for is not followed until `live`; one inside the input
+window is, and a bare move opens no window; a drag begun on the content is
+followed until its own pointer lifts; input heard on a named node counts; the
+correctness reasons capture on a source that is not live. Layout resizes,
+fonts and images were already covered by the earlier laws; `load` is now
+pinned explicitly, because an image that resolves after the first capture
+has no other signal. A drop opening the window and an unlisten mid-drag ride
+those laws; `the input window` pins, on the window itself, what a hearing
+disowns and the two gesture ends the pointer stream never reports.
+
+
 ## #61 — A handoff no longer requires `moveBefore` (2026-09-11)
 
 Safari ran no Munari scene in WebGL, and the reason was one DOM method.
@@ -3702,3 +3818,78 @@ its focus and its selection intact.
 
 Safari still cannot use HTML-in-canvas, which is Chrome-only, so it is on
 snapDOM with that engine's fidelity ceiling (platform.md #28).
+
+## #62 — A capture is paid for once, and a live one is paced by a period (2026-09-12)
+
+Safari on snapDOM felt like half the frame rate of Chrome, and hitched. Most
+of that was the browser: in macOS Low Power Mode Safari 18.6 runs
+`requestAnimationFrame` at 30 fps, and on a ProMotion display it prefers 60
+where Chrome runs 120 (platform.md #31). The hitches were ours. Every capture
+paid snapDOM's font pass again — the same five faces re-derived and re-encoded
+per capture, 317 KB of payload — and on WebKit waited out a font probe of four
+animation frames, 33 ms each at 30 fps. A capture of Genie's bounce window
+cost 137 ms of wall time in Safari against 41 in Chrome.
+
+The obvious fix had been measured on 2026-09-11 and set aside as a regression,
+and the reason it regressed is the shape of this entry. Supplying the faces
+from a cache, encoded once per document (`snapdomFonts.ts`, `embedFonts:
+false`), took the capture from 137 ms to 14 with the same faces, the same
+payload and the same pixels. It also made the scene worse, twice over. The gap
+(#60) is measured from a capture's END, so it paces by cost: a live window
+went from 13 captures per 4 s to 23, and the frames each capture gave back
+were spent on more captures. And the probe's four frames had been the only
+yield inside a capture, so without them the clone and the serialize ran as one
+17 ms block where before they were two of 11.
+
+So three things ship together, and each was measured against the others in
+interleaved blocks inside one page load, medians of three, on Genie's live
+window with the frame recorder and a `MessageChannel` block meter:
+
+| Safari 18.6, Low Power Mode, 30 fps | captures / 4 s | p99 frame | typical block | blocked ms |
+|---|---|---|---|---|
+| before | 13 | 34 | 11 | 163 |
+| fonts once | 23 | 48 | 17 | 396 |
+| fonts once + frame split | 20 | 41 | 11 | 162 |
+| fonts once + frame split + live period | 16 | 35 | 11 | 115 |
+
+| Chrome, 120 Hz | captures / 4 s | p99 frame | frames over 20 ms | blocked ms |
+|---|---|---|---|---|
+| before | 23 | 21.4 | 9 | 345 |
+| fonts once | 23 | 22.4 | 10 | 360 |
+| fonts once + frame split | 23 | 13.8 | 0 | 103 |
+| fonts once + frame split + live period | 16 | 12.8 | 0 | 45 |
+
+The three:
+
+- **Fonts once.** `snapdom.ts` turns snapDOM's font pass off and supplies the
+  faces through a plugin that chooses them by the families and codepoints the
+  subtree uses, from `@font-face` text encoded once per document. The saving
+  is real only with the other two.
+- **The frame split.** A plugin hands the frame loop one animation frame
+  between the clone and the serialize. Where the probe yielded four times by
+  accident, this yields once on purpose, and it is what puts Chrome at zero
+  frames over 20 ms.
+- **The live period.** A live source starts a capture at most every
+  `LIVE_PERIOD_MS = 250`, measured from the START of the last one, and the
+  longer of the period and the gap holds. Four pictures a second of content
+  that moves on its own is what the gap already gave a slow engine; the period
+  keeps it there when the engine is fast. A source that is not live is paced
+  by the user's input and owes only the gap.
+
+One more, from the same session: a hover is captured once the pointer has
+settled on it for `HOVER_SETTLE_MS = 100`, and only if the hover chain then
+differs from the one the last raster holds. `pointerover` and `pointerout`
+no longer request a capture directly, and a `data-hover` twin's attribute
+change is judged the same way. Crossing a Surface used to cost a capture on
+the way in and one on the way out; it now costs nothing, and Glass went from
+10 captures to 8 across the same hover path.
+
+None of this is an option. The point of the request that produced it was that
+performance should not be something an author manages, and every number above
+came from a policy with nothing to set.
+
+The measurement caveat travels with the numbers: Low Power Mode holds Safari at
+30 fps, which makes every frame 33 ms and every rAF wait twice as long. The
+Safari table compares Safari against Safari inside one page load, which is the
+only comparison that survives it. Do not read its frame counts against
+Chrome's.

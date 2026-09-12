@@ -1,6 +1,6 @@
 # Munari
 
-> HTML, 3D, and Shaders, Unified. Munari renders retained HTML in Three.js scenes through Chrome's HTML-in-canvas capability, preserving the original DOM and state.
+> HTML, 3D, and Shaders, Unified. Munari renders retained HTML in Three.js scenes, preserving the original DOM and state. It captures through Chrome's HTML-in-canvas capability where the browser has it and through snapDOM everywhere else; the README's engine table says what each one follows and what it draws.
 
 The current public API is documented in the README and published types.
 [Decision #43](docs/decisions.md#43) records the retained-HTML API adoption.

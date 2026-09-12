@@ -75,6 +75,8 @@ export interface SurfaceSourceOptions {
   content: HTMLElement
   size: SurfaceSize
   resolution: SurfaceResolution
+  /** See `DomTextureSourceOptions.live`. Default false. */
+  live?: boolean
   mirrorU: boolean
   pixelRatio: number
   onError(error: Error): void
@@ -99,6 +101,7 @@ export interface SurfaceSourceRuntime {
   subscribePaint(listener: (receipt: DomPaintReceipt) => void): () => void
   setSize(size: SurfaceSize): void
   setResolution(resolution: SurfaceResolution): void
+  setLive(live: boolean): void
   setPixelRatio(ratio:number):void
   setMirrorU(mirrorU: boolean): void
   /** One presenter's LOD demand. The runtime rasterizes for the greediest. */
@@ -162,7 +165,7 @@ export function createSurfaceSourceRuntime(
 ): SurfaceSourceRuntime {
   let { size, resolution, mirrorU } = options
   let {pixelRatio}=options
-  const { label, content, onError, onPainted, onChrome, chromeElement } = options
+  const { label, content, live = false, onError, onPainted, onChrome, chromeElement } = options
 
   const ladderFor = (r: SurfaceResolution, w: number, h: number) => {
     const ladder = Array.isArray(r) ? tiersInRange(DEFAULT_TIERS, r[0], r[1]) : DEFAULT_TIERS
@@ -198,6 +201,7 @@ export function createSurfaceSourceRuntime(
     // the ladder tier nearest the renderer's pixel ratio — density ≈ dpr is
     // the right prior for a mesh that has never been projected.
     scale: pinned ?? seedTier(ladderFor(resolution, size[0], size[1]), pixelRatio),
+    live,
     onError,
   })
 
@@ -321,6 +325,9 @@ export function createSurfaceSourceRuntime(
       applyTier()
       // Pinning can change mip allocation even at the same density.
       source.repaint()
+    },
+    setLive(next) {
+      source.setLive(next)
     },
     setMirrorU(next) {
       if (next === mirrorU) return

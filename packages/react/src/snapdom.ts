@@ -32,8 +32,9 @@
 // Ownership: this module owns the snapDOM call and the fallback rule.
 // `@munari/core` owns the source, the ledger and the parking.
 
-import { snapdom } from '@zumer/snapdom'
+import { snapdom, type SnapdomPlugin } from '@zumer/snapdom'
 import { fieldPseudoElementPlugin } from './snapdomFieldPseudoElements'
+import { fontEmbedPlugin, warmCaptureFonts } from './snapdomFonts'
 import {
   createRasterizedSource,
   htmlInCanvasEngine,
@@ -83,10 +84,38 @@ function announce(code: string, message: string): void {
  * capture is an SVG, so drawing it at the asked-for size is a true render at
  * that size and not an upscale of a smaller one.
  *
- * `embedFonts: 'auto'` skips the font pass entirely on system-font pages and
- * runs it where the document declares webfonts. Without it, text rasterizes
- * with fallback metrics and reflows inside the capture.
  */
+const fieldPlugin = fieldPseudoElementPlugin((fields) => {
+  announce(
+    'munari-field-pseudo-unplaced',
+    `${fields.length} form field pseudo-element(s) are not absolutely ` +
+      'positioned, so their boxes cannot be recovered and they are absent ' +
+      'from the capture. Position them absolutely to have them drawn.',
+  )
+})
+/**
+ * Hand the frame loop a turn between the clone and the serialize.
+ *
+ * Those are the two synchronous halves of a capture, and run back to back
+ * they are one block of main thread. Measured 2026-09-12 on a live window
+ * (decisions.md #62): split, the typical block fell from 17 to 11 ms and
+ * the scene's p99 frame from 48 to 41 ms in Safari at 30 fps, and from 22
+ * to 14 ms in Chrome at 120 Hz with no frame over 20 ms, at the price of
+ * one frame of capture latency. snapDOM's own WebKit font probe used to
+ * yield here by accident, four frames per capture; this is the one turn
+ * that was doing the good.
+ */
+const frameSplitPlugin: SnapdomPlugin = {
+  name: 'munari-frame-split',
+  pure: true,
+  // A hidden tab fires no frame, so a capture begun there finishes when the
+  // tab is shown again; the requests meanwhile coalesce behind it.
+  afterClone: () => new Promise((resolve) => requestAnimationFrame(() => resolve())),
+}
+// Module constants so the same identities reach snapDOM on every call: a
+// fresh options object per capture changes the signature its repeat-capture
+// memo is keyed on.
+const capturePlugins = [fontEmbedPlugin(), frameSplitPlugin, fieldPlugin]
 const rasterize = async (
   element: HTMLElement,
   scaleX: number,
@@ -105,7 +134,15 @@ const rasterize = async (
   // along the far edge (measured 2026-09-11).
   const box = { width: element.offsetWidth, height: element.offsetHeight }
   const capture = await snapdom(element, {
-    embedFonts: 'auto',
+    // `snapdomFonts` supplies the faces instead. snapDOM's own pass re-derives
+    // and re-embeds them on every capture, and on WebKit it also waits out a
+    // font probe of four animation frames per capture — 137 ms of wall time
+    // at 30 fps against 14 ms with the faces supplied, same five faces and
+    // the same 317 KB payload (2026-09-12, decisions.md #62). Setting this
+    // false WITHOUT supplying the faces is a fidelity regression that reads
+    // as a larger win: the payload collapses to 41 KB and text rasterizes
+    // with fallback metrics.
+    embedFonts: false,
     // The capture is the element's own box. Root shadows and outlines are
     // stripped by default, which is what keeps the raster the same size as
     // the box the texture is stretched over; a Surface's chrome is measured
@@ -118,16 +155,7 @@ const rasterize = async (
     // is a visible difference between the two. Measured 2026-09-11 on
     // Flight's nine cards: 8-21 ms per capture either way, no separable cost.
     reconcile: true,
-    plugins: [
-      fieldPseudoElementPlugin((fields) => {
-        announce(
-          'munari-field-pseudo-unplaced',
-          `${fields.length} form field pseudo-element(s) are not absolutely ` +
-            'positioned, so their boxes cannot be recovered and they are absent ' +
-            'from the capture. Position them absolutely to have them drawn.',
-        )
-      }),
-    ],
+    plugins: capturePlugins,
   })
   for (const warning of capture.warnings ?? []) announce(warning.code, warning.message)
 
@@ -195,4 +223,8 @@ export function enableSnapdomCapture(options: SnapdomCaptureOptions = {}): void 
   const engine =
     !options.always && htmlInCanvasEngine.available() ? htmlInCanvasEngine : snapdomCaptureEngine
   setCaptureEngine(engine)
+  // Fetch and encode the document's faces now rather than inside the first
+  // capture. A capture that beats the fetch embeds nothing and rasterizes that
+  // one frame with fallback metrics.
+  if (engine === snapdomCaptureEngine && 'document' in globalThis) warmCaptureFonts()
 }

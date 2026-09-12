@@ -1174,7 +1174,9 @@ export function LogoScene({
 }
 
 export function LogoLetterHTML({ index, text, pose, box, fontPx }: { index: number; text: string; pose: LetterPose; box?: LetterBox; fontPx?: number }) {
-  return <Surface.HTML as="span" part={`letter-${index}`} size={box ? [box.w, box.h] : undefined}>
+  // Live: the conductor re-poses letters on a timer and the carried motion
+  // writes a transform every frame, neither prompted by the user.
+  return <Surface.HTML as="span" part={`letter-${index}`} size={box ? [box.w, box.h] : undefined} live>
     <span className="logo-twin" style={{ width: box?.w, height: box?.h, display: 'inline-flex', fontSize: fontPx }}>
       <span className="logo-twin-glyph" style={glyphPaint(pose)}>{text}</span>
     </span>

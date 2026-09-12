@@ -3,9 +3,9 @@
 **HTML, 3D, and Shaders, Unified.**
 
 Munari lets React content appear in a Three.js scene while keeping its original
-DOM and state. It captures the HTML, keeps its texture current, routes input,
-and coordinates the handoff between page and scene. The project is named for the
-Italian designer and artist Bruno Munari.
+DOM and state. It captures the HTML, keeps its texture current as the user works
+with it, routes input, and coordinates the handoff between page and scene. The
+project is named for the Italian designer and artist Bruno Munari.
 
 This README describes the development checkout. Build this checkout to use the
 API below; check the guide included with an installed release for its API.
@@ -28,9 +28,10 @@ browser and what they can draw.
 |---|---|---|
 | Needs | Chrome with `--enable-features=CanvasDrawElement` | any browser with a document |
 | Draws | the live element | a rasterized copy of the subtree |
+| What the texture follows | everything, for free | what the user does to the content; a resize, a font or image landing, a transition's ends. Content that changes on its own needs `live` |
 | Caret and selection | real, painted by the browser | not painted |
-| Everything else on the page | pixel-exact | pixel-exact, within glyph antialiasing |
-| Input to texture, Knobs panel at dpr 2 | 12 ms | 37 ms |
+| Everything else on the page | pixel-exact | close: laid-out lengths snap to whole CSS pixels, and vertical geometry can sit up to two device pixels off |
+| Input to texture, Knobs panel at dpr 2 | 12 ms | 37 ms for a change that lands on a quiet Surface; up to 150 ms more on one that is already re-capturing |
 | Pointer route `"auto"` | native — the browser hit-tests the real element | relay |
 | Page-to-scene handoff | yes | yes, in every browser — a running CSS animation restarts where `Element.moveBefore` is missing (Safari) |
 | Sub-pixel CSS lengths | exact | a fractional `border-width`, padding or offset rounds to whole pixels; type and SVG strokes keep their fractions |
@@ -52,6 +53,24 @@ That call keeps HTML-in-canvas when the browser has it and falls back to snapDOM
 when it does not. Pass `{ always: true }` to force snapDOM everywhere, which is
 what a cross-engine test run wants. Call it before the first `Surface` mounts —
 a Surface that is already mounted keeps the engine it was built with.
+
+Write for HTML-in-canvas and the same code runs on snapDOM. The one difference
+you have to declare: a Surface whose content moves on its own — an animation, a
+clock, a ticker, a video — needs `live` for snapDOM to keep re-capturing it,
+and it then re-captures at most about four times a second. Without `live`,
+snapDOM shows the content as the user last left it: typing, hover, focus, a
+click that re-renders the component, a drag, a scroll, and the layout, fonts and
+images are all followed; a change nobody asked for is not. That includes a
+change made from outside the Surface — new props, data that arrives after
+mount, a control elsewhere on the page — so a component that loads its content
+needs `live` too. HTML-in-canvas ignores the flag because it follows
+everything at no cost. `useElementCapture` takes the same `live` option, and
+there it applies to both engines, because rebuilding the copy of a native
+element is the cost, not the capture.
+
+```tsx
+<Surface inScene={inScene} live><Clock /></Surface>
+```
 
 `useSurfaceStatus().engine` reports which engine a Surface is using.
 [Authoring](docs/authoring.md) lists the content rules each engine adds.
@@ -192,7 +211,12 @@ not dispose it.
 
 The native element remains in place. Attach the ref to an element, `document.body`,
 or `document.documentElement`; exclude unsupported content and the capture's own
-preview when capturing a document. `CaptureContent` instead supplies separately
+preview when capturing a document. The copy is rebuilt when the user acts on the
+element, when its layout, stylesheets, fonts or images change, and when a
+transition ends. A change nobody made on it — data arriving, a store update, a
+control elsewhere on the page — is not followed: call `capture.refresh()` from
+whatever makes it, or pass `useElementCapture({ live: true })` to follow every
+mutation and every running animation. `CaptureContent` instead supplies separately
 authored React children or a detached element to a `useCaptureHandle()` identity.
 `CaptureContent` requires explicit dimensions for either input. [Selection](apps/lab/src/scenes/selection/Selection.tsx)
 and [Veil](apps/lab/src/scenes/veil/Veil.tsx) are complete element-capture callers.

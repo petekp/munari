@@ -148,7 +148,13 @@ function hostPaintsNothing(host: HTMLElement): boolean {
 }
 
 async function run(): Promise<EngineReport> {
-  const source = createDomTextureSource(cardMarkup(), BOX[0], BOX[1], { label: 'engine-card' })
+  // Live, because the burst below is a mutation nobody's input caused, and
+  // the law under test is how many rasters answer it — a source that is not
+  // live answers with none, by design (decisions.md #60).
+  const source = createDomTextureSource(cardMarkup(), BOX[0], BOX[1], {
+    label: 'engine-card',
+    live: true,
+  })
   try {
     const host = source.host
     const hiddenAtBirth = hostPaintsNothing(host)

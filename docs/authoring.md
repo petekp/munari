@@ -19,6 +19,7 @@ the content root's own opacity and transform hold either way. What differs:
 
 | | HTML-in-canvas | snapDOM |
 |---|---|---|
+| Content that changes on its own — an animation loop, a ticker, a clock, video frames | captured live | **not followed** unless the Surface says `live`, and then re-captured at most about four times a second ([decisions #62](decisions.md)) |
 | Decorative motion inside the subtree | captured live | **frozen** at the first capture, unless it is a transition ([platform #22](platform.md)) |
 | Caret and text selection | painted by the browser | not painted — the texture shows neither |
 | `pointerRoute="auto"` | native: the browser hit-tests the real element through the pose | relay: pointer state arrives as twins |
@@ -37,12 +38,31 @@ positioned.** A pseudo-element cannot be measured, so its box is only
 recoverable from `left`/`top` against the field's padding box; a statically
 positioned one is skipped and the library says so once in the console.
 
+The first row is the one to decide per Surface. snapDOM pays tens of
+milliseconds of main thread for every capture, so it follows only what it can
+afford by default: the user's own input on the content and the DOM changes that
+answer it within 150 ms (a field re-rendering as it is typed in, a menu opening
+on a click, a thumb following a drag), a layout resize, a webfont or image
+landing, a transition or animation reaching its ends, and an explicit
+`repaint()`. A change the content makes on its own — a bouncing element, a
+clock, a feed, a canvas redrawn from a video — is not followed, and the texture
+shows it as it was at the last capture. So is a change the app makes from
+outside the Surface, which the source cannot tell from an animation: new props,
+a store update, data that arrives after mount, a tweak panel or keyboard
+shortcut elsewhere on the page writing into the content. Declare `live` on the `Surface`,
+`Surface.HTML`, `SceneSurface` or `SceneSurface.HTML` whose content does that
+and the scene must show it moving; snapDOM then re-captures it at most about
+four times a second, and HTML-in-canvas — which follows everything for free —
+ignores the flag. Write for HTML-in-canvas and add `live` where the survey of your own
+scene says motion inside a Surface is the point.
+
 The frozen-motion row is the one that will surprise you. An infinite keyframe
 animation inside a snapDOM Surface signals `animationstart` once and nothing
-after, so the capture holds one frame of it forever. A CSS *transition*
-signals at both ends and lands its end state, which is why the ease-flat
-recipe below works on both engines. Anything else that has to keep moving
-needs `repaint()` on your own schedule, and each one costs a full raster.
+after, so the capture holds one frame of it forever, `live` or not. A CSS
+*transition* signals at both ends and lands its end state, which is why the
+ease-flat recipe below works on both engines. Anything else that has to keep
+moving needs `live`, or `repaint()` on your own schedule, and each capture
+costs a full raster.
 
 The pixel-match row is the one to weigh before choosing snapDOM for content
 that sits beside its own DOM, and it is the one row you can author around.
@@ -250,23 +270,29 @@ Write feeds that mutate in bursts — one coalesced write per tick — and
 then go quiet. A panel that updates twice a second is free between
 updates; a panel that animates a descendant every frame is not.
 
-On snapDOM the budget is enforced rather than advisory. A rasterized source
-leaves 150 ms of quiet after each capture before it starts another
+On snapDOM the budget is enforced rather than advisory, in two steps. A
+Surface that is not `live` spends nothing on a subtree that changes on its
+own: the change is not followed, and only the user's input, a resize, fonts,
+images, a transition's ends and `repaint()` reach the rasterizer. A `live`
+Surface follows every change, and a rasterized source then leaves 150 ms of
+quiet after each capture before it starts another
 ([decisions #60](decisions.md)), because a whole-panel raster is tens of
 milliseconds of main thread and a subtree mutating every frame would otherwise
 take all of it — measured 51.4 fps through a drag against 60.1 fps with the
 gap. The gap runs from the END of a capture, so a subtree quiet for longer than
 the gap captures at once and only continuous mutation is held back: DOM motion
-inside a Surface steps about four times a second rather than the eleven the
-raster cost alone allowed. The settle is the one exception and is never held.
+inside a live Surface steps about four times a second rather than the eleven
+the raster cost alone allowed. Nothing is exempt from the gap, the settle
+included.
 
 Two consequences worth authoring around. A CSS transition signals at its two
 ends rather than every frame, so it costs a couple of captures instead of a
 steady stream — but this engine captures neither the frames between
 ([platform #22](platform.md)), so use one where only the end state has to be
 right, and move motion that must be seen outside the drawn subtree. And the
-gap paces input echo too: a keystroke or hover inside a Surface can take up to
-~240 ms to appear in the texture, against ~90 ms before.
+gap paces input echo too: a keystroke or hover inside a Surface that is already
+re-capturing can take up to ~240 ms to appear in the texture, against ~90 ms on
+a quiet one.
 
 One honest exception: **a focused field is never idle-zero.** Caret
 blink self-paints its source about twice a second. That is correct
@@ -322,8 +348,10 @@ honest; changing page parents uses a page target rather than remounting the cont
 Position-only slot changes are observed separately from capture and handoff work.
 
 `SceneSurface` has no page presentation. `useElementCapture` leaves its original
-element native and copies visual state; `CaptureContent` owns separately authored
-capture content. Captures reject unsupported media/custom elements unless excluded,
+element native and copies visual state, rebuilding the copy by the same rule a
+snapDOM Surface captures by: the user's input on the element and its answer,
+layout, stylesheets, fonts and transition ends, `refresh()`, and every mutation
+only when `live`. `CaptureContent` owns separately authored capture content. Captures reject unsupported media/custom elements unless excluded,
 and attached/removed sources clear stale frames. Source textures are borrowed by
 consumers and disposed only by their owner.
 

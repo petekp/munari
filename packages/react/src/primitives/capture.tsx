@@ -57,6 +57,7 @@ export function subscribeCaptureFrames(handle:CaptureHandle,onFrame:()=>void):()
 export interface CaptureConnection {
   setSize(size: SurfaceSize): void
   setResolution(resolution: SurfaceResolution): void
+  setLive(live: boolean): void
   repaint(): void
   dispose(): void
 }
@@ -71,6 +72,8 @@ export function setCaptureUnavailable(handle: CaptureHandle, status: 'waiting' |
 // Both attached-element capture and authored React content publish through this owner.
 export function connectCapture(handle: CaptureHandle, element: HTMLElement, size: SurfaceSize, options: {
   resolution?: SurfaceResolution
+  /** See `SurfaceHTMLProps.live`. */
+  live?: boolean
   onError?: (error: Error) => void
 } = {}): CaptureConnection {
   validateSurfaceSize(size)
@@ -121,6 +124,7 @@ export function connectCapture(handle: CaptureHandle, element: HTMLElement, size
   const connection: CaptureConnection = {
     setSize(next) { validateSurfaceSize(next); source?.setSize(next); wake() },
     setResolution(next) { source?.setResolution(next); wake() },
+    setLive(next) { source?.setLive(next); wake() },
     repaint() { source?.source.repaint(); wake() },
     dispose() {
       if (!alive) return
@@ -147,7 +151,7 @@ export function connectCapture(handle: CaptureHandle, element: HTMLElement, size
   }
   try {
     source = createSurfaceSourceRuntime({
-      content: element, size, resolution: options.resolution ?? 'auto',
+      content: element, size, resolution: options.resolution ?? 'auto', live: options.live ?? false,
       mirrorU: false, pixelRatio: window.devicePixelRatio, onError: report,
     })
   } catch (cause) {
@@ -174,26 +178,28 @@ export function connectCapture(handle: CaptureHandle, element: HTMLElement, size
   return connection
 }
 
-export function CaptureSource({ capture, adopt, size, resolution = 'auto', onError }: {
+export function CaptureSource({ capture, adopt, size, resolution = 'auto', live = false, onError }: {
   capture: CaptureHandle; adopt: HTMLElement | null; size: SurfaceSize
-  resolution?: SurfaceResolution; onError?: (error: Error) => void
+  resolution?: SurfaceResolution; live?: boolean; onError?: (error: Error) => void
 }) {
   const connection = useRef<CaptureConnection | null>(null)
   const sizeRef = useLatest(size)
   const resolutionRef = useLatest(resolution)
+  const liveRef = useLatest(live)
   const errorRef = useLatest(onError)
   const resolutionKey = Array.isArray(resolution) ? resolution.join(':') : resolution
   const [width, height] = size
   useLayoutEffect(() => {
     if (!adopt) return
     const current = connectCapture(capture, adopt, sizeRef.current, {
-      resolution: resolutionRef.current, onError: error => errorRef.current?.(error),
+      resolution: resolutionRef.current, live: liveRef.current, onError: error => errorRef.current?.(error),
     })
     connection.current = current
     return () => { current.dispose(); if (connection.current === current) connection.current = null }
-  }, [capture, adopt, sizeRef, errorRef, resolutionRef])
+  }, [capture, adopt, sizeRef, errorRef, resolutionRef, liveRef])
   useLayoutEffect(() => connection.current?.setSize([width, height]), [width, height])
   useLayoutEffect(() => connection.current?.setResolution(resolutionRef.current), [resolutionKey, resolutionRef])
+  useLayoutEffect(() => connection.current?.setLive(live), [live])
   return null
 }
 

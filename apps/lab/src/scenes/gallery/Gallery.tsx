@@ -509,7 +509,8 @@ export function GalleryApp() {
 
       <div ref={holderRef} className="gallery-holder">
         <Surface.Root surface={surface} inScene={lifted} timing={{ settleMs: 0, durationMs: 1 }}>
-          {([0, 1] as const).map(i => <Surface.HTML key={i} part={`item-${i}`} hidden={landedAt !== i && !(lifted && origin === i)} size={[stage.w, stage.h]}>{cards[i]}</Surface.HTML>)}
+          {/* Each card carries the tenth-second clock: content that moves on its own. */}
+          {([0, 1] as const).map(i => <Surface.HTML key={i} part={`item-${i}`} hidden={landedAt !== i && !(lifted && origin === i)} size={[stage.w, stage.h]} live>{cards[i]}</Surface.HTML>)}
         </Surface.Root>
       </div>
 

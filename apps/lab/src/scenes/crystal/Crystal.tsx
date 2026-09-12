@@ -275,7 +275,8 @@ export function CrystalApp() {
       >
         <PixelPerfect />
         <SceneSurface.Root surface={page}>
-          <SceneSurface.HTML size={[box.w, box.h]}>{source}</SceneSurface.HTML>
+          {/* The pad's clock ticks on a timer, not on the user's input. */}
+          <SceneSurface.HTML size={[box.w, box.h]} live>{source}</SceneSurface.HTML>
           <SceneSurface.Mesh
             surface={page}
             placement="manual"

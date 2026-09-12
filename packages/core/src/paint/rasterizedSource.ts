@@ -10,6 +10,14 @@
 // sees mutations and by input events that change paint without mutating
 // anything (`:focus`, `:hover`, a scroll, a running transition).
 //
+// What it is NOT told about, unless the consumer says the content is
+// `live`, is a change the content made on its own. A capture here costs
+// tens of milliseconds and a subtree that animates itself asks for one
+// every frame, so its picture is left as it was. What is always followed:
+// the user's input on the content and the mutations that answer it, a
+// layout resize, a webfont or image landing, a transition or animation
+// reaching its ends, and an explicit `repaint()`.
+//
 // The fault this shape answers, measured across the 2026-09 spikes: a
 // whole-panel raster costs tens of milliseconds, so two can be running at
 // once and they can land out of order. A source that published every answer
@@ -25,7 +33,9 @@
 // capture instead of into the frame rate, and the scene rendered in the gaps
 // between whole-panel rasters: 51.4 fps through a hand drag, 40% of frames
 // over 20 ms, p99 44 ms. `CAPTURE_GAP_MS` of quiet after each capture is
-// 60.1 fps, 15% over 20 ms, p99 31 ms, at a third of the captures.
+// 60.1 fps, 15% over 20 ms, p99 31 ms, at a third of the captures. The pace
+// is what a `live` source pays; a source that is not live pays nothing for
+// motion it does not follow.
 //
 // Zero dependencies, including on the rasterizer and the clock: both arrive
 // as functions, so this file runs under vitest against a fake rasterizer and
@@ -36,6 +46,8 @@
 // parked container. `domTextureSource.ts` owns the canvas and the ledger. The
 // rasterizer owns pixels and nothing else.
 
+import { createInputWindow } from './inputWindow'
+import { HOVER_ATTR } from '../pointer/twins'
 import {
   adoptContent,
   createCaptureCanvas,
@@ -66,6 +78,23 @@ import {
  * as the gap lasts, an input echo too.
  */
 const CAPTURE_GAP_MS = 150
+
+/**
+ * The least time between the starts of two captures of a live source.
+ *
+ * The gap alone paces by cost: make a capture cheaper and a live source
+ * simply captures more often, and the frames it costs come back. Measured
+ * 2026-09-12 on a live window in Safari at 30 fps (decisions.md #62):
+ * supplying fonts once took a capture from 137 to 14 ms of wall time, and
+ * gap-only pacing turned that into 23 captures per 4 s instead of 13, with
+ * the scene's p99 frame going from 34 to 48 ms. With this period it is 16
+ * captures and a p99 of 35 — the same feel as before, with a third of the
+ * main thread the captures used to take. Why this number: four pictures a
+ * second of content that moves on its own, which is what the gap already
+ * gave a slow engine. A source that is not live is paced by the user's
+ * input, not by this.
+ */
+const LIVE_PERIOD_MS = 250
 
 /**
  * The wall clock and the delay, injected.
@@ -141,8 +170,6 @@ const PAINT_EVENTS = [
   'change',
   'focusin',
   'focusout',
-  'pointerover',
-  'pointerout',
   'pointerdown',
   'pointerup',
   'scroll',
@@ -152,6 +179,23 @@ const PAINT_EVENTS = [
   'animationend',
   'load',
 ] as const
+
+/**
+ * How long a hover change waits before it is captured.
+ *
+ * A pointer sweeping across content crosses each element twice, in and
+ * out, and the browser (or the relay's twin) flips hover state on both
+ * crossings. Captured at once, a sweep over a sign-in form cost eleven
+ * rasters in three seconds and the wall art beside it seven, all showing
+ * the same pixels (2026-09-12, Safari 18.6, decisions.md #62). So a hover
+ * change is captured only once it has settled: if the hover chain is back
+ * where the last raster saw it when the wait ends, there is nothing to
+ * capture. Why this number: a hand crossing a 40 px field takes 40-80 ms,
+ * so both crossings land inside one wait; a pointer that rests is captured
+ * within 100 ms, under the 150 ms the pacing gap already puts between
+ * captures, so a hover reveal is never slower than pacing made it.
+ */
+const HOVER_SETTLE_MS = 100
 
 /**
  * Build a source that rasterizes its parked subtree through `rasterize`.
@@ -196,6 +240,12 @@ export function createRasterizedSource(
   // Non-null exactly while a capture is owed and waiting out the gap.
   let cancelWait: (() => void) | null = null
   let lastFinishedAt = -Infinity
+  let lastStartedAt = -Infinity
+  let live = options.live === true
+  const input = createInputWindow(() => clock.now())
+  // The hover chain the last raster read, and the wait a hover change arms.
+  let rasteredHover: readonly Element[] = []
+  let cancelHoverWait: (() => void) | null = null
 
   const host = document.createElement('div')
   // The parking law, shared with the native engine and pinned by
@@ -254,7 +304,8 @@ export function createRasterizedSource(
   const start = () => {
     if (disposed || capturing || !owed) return
     if (cancelWait) return
-    const quietOwed = lastFinishedAt + CAPTURE_GAP_MS - clock.now()
+    const periodOwed = live ? lastStartedAt + LIVE_PERIOD_MS - clock.now() : 0
+    const quietOwed = Math.max(lastFinishedAt + CAPTURE_GAP_MS - clock.now(), periodOwed)
     if (quietOwed <= 0) {
       void run()
       return
@@ -276,11 +327,13 @@ export function createRasterizedSource(
     capturing = true
     owed = false
     changesDuringPaint = 0
+    lastStartedAt = clock.now()
     // Read the box HERE. It is the box this raster holds, however far it has
     // moved by the time the answer lands, and the receipt has to say so —
     // a capture stretched over the box it no longer matches reads as doubled
     // content rather than as a soft mismatch.
     const box = body.size()
+    rasteredHover = hoverChain()
     // The store's own ratio to the box, per axis. Reading it off the canvas
     // rather than from `rasterScale()` is the point: the density that was
     // ASKED for and the density the store actually carries are different
@@ -371,7 +424,38 @@ export function createRasterizedSource(
     })
   }
 
-  const observer = new MutationObserver(request)
+  /** Every element under the pointer's hover chain, in document order. */
+  const hoverChain = (): readonly Element[] => {
+    const under = Array.from(element.querySelectorAll(`[${HOVER_ATTR}]`))
+    return element.hasAttribute(HOVER_ATTR) ? [element, ...under] : under
+  }
+  const sameChain = (a: readonly Element[], b: readonly Element[]) =>
+    a.length === b.length && a.every((el, i) => el === b[i])
+  // Re-armed on every hover change, so only the state the pointer settles
+  // on is captured; a crossing whose chain is back where the last raster
+  // saw it captures nothing.
+  const hoverChanged = () => {
+    if (disposed) return
+    cancelHoverWait?.()
+    cancelHoverWait = clock.wait(() => {
+      cancelHoverWait = null
+      if (!sameChain(hoverChain(), rasteredHover)) request()
+    }, HOVER_SETTLE_MS)
+  }
+  const isHoverSwap = (record: MutationRecord) =>
+    record.type === 'attributes' && record.attributeName === HOVER_ATTR
+
+  // A mutation is followed when the content is live, or when the user just
+  // acted on it and this is the answer. Anything else is the content moving
+  // on its own, which this engine leaves as it was. The hover twin moving
+  // is the hover path's business, whichever route stamped it.
+  const observer = new MutationObserver((records) => {
+    if (records.every(isHoverSwap)) {
+      hoverChanged()
+      return
+    }
+    if (live || input.isOpen()) request()
+  })
   observer.observe(element, {
     subtree: true,
     childList: true,
@@ -382,6 +466,10 @@ export function createRasterizedSource(
   for (const event of PAINT_EVENTS) {
     element.addEventListener(event, request, { capture: true, signal: listeners.signal })
   }
+  for (const event of ['pointerover', 'pointerout'] as const) {
+    element.addEventListener(event, hoverChanged, { capture: true, signal: listeners.signal })
+  }
+  const stopHearingElement = input.hear(element)
   // A webfont that lands after the first capture restyles every glyph under
   // it, and nothing in the subtree mutates to say so.
   document.fonts?.addEventListener('loadingdone', request, { signal: listeners.signal })
@@ -401,6 +489,14 @@ export function createRasterizedSource(
     // rather than to an element. Coalesces with the running capture and
     // never queues more than one.
     repaint: request,
+    setLive: (next) => {
+      if (next === live) return
+      live = next
+      // The picture stopped following at some point; make it current from
+      // the moment the flag is, rather than at the next change.
+      if (live) request()
+    },
+    hearInput: input.hear,
     scale: body.scale,
     rasterScale: body.rasterScale,
     size: body.size,
@@ -430,8 +526,11 @@ export function createRasterizedSource(
       disposed = true
       cancelWait?.()
       cancelWait = null
+      cancelHoverWait?.()
+      cancelHoverWait = null
       observer.disconnect()
       listeners.abort()
+      stopHearingElement()
       host.remove()
       // Release the subtree unparented, exactly as it arrived — the same
       // adopt/dispose invertibility the native engine keeps (decisions.md #13).

@@ -140,7 +140,8 @@ export function MarbleHandPageCapture({ page, target }: {
   if (!supported || !size) return null
   return (
     <>
-      <CaptureContent capture={capture} element={wrapper} size={size} onError={reportError} />
+      {/* The mirror is rebuilt from page events the captured copy never hears. */}
+      <CaptureContent capture={capture} element={wrapper} size={size} live onError={reportError} />
       <PublishPageCapture capture={capture} target={target} />
     </>
   )

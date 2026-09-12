@@ -191,6 +191,11 @@ function createHtmlInCanvasSource(
       canvas.style.visibility = painted ? 'visible' : 'hidden'
     },
     repaint: requestPaint,
+    // The compositor already paints for every change that enters a paint
+    // record, at no cost this side of the seam, so there is nothing to
+    // switch on or off.
+    setLive: () => {},
+    hearInput: () => () => {},
     scale: body.scale,
     rasterScale: body.rasterScale,
     size: body.size,

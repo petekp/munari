@@ -2308,7 +2308,8 @@ function PanelStage({
           {/* The panel belongs to the scene. Its captured HTML supplies the
               slab; DegradedPanel supplies the native fallback separately. */}
           <SceneSurface.Root name="knobs-panel">
-            <SceneSurface.HTML size={[rect.w, rect.h]}>
+            {/* A flicked dial keeps spinning after the hand has let go. */}
+            <SceneSurface.HTML size={[rect.w, rect.h]} live>
               <KnobsPanel />
             </SceneSurface.HTML>
 

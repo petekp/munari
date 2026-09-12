@@ -614,7 +614,9 @@ export function PlumeApp() {
 
       {supported && box && grid ? (
         <>
-          <CaptureContent capture={inkCapture} size={[box.width, box.height]}
+          {/* The copy is written from the page's own field and cleared from the
+              tweak panel — input that never lands on the captured content. */}
+          <CaptureContent capture={inkCapture} size={[box.width, box.height]} live
             resolution={Math.min(3.4, Math.max(2, 3600 / box.width))}>
             {captureContent}
           </CaptureContent>

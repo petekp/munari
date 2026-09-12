@@ -90,6 +90,7 @@ export {
   type ElementRasterizer,
   type RasterImage,
 } from './paint/rasterizedSource'
+export { createInputWindow, INPUT_EVENTS, INPUT_WINDOW_MS, type HearOptions, type InputWindow } from './paint/inputWindow'
 export {
   ensureChannelRegistered,
   createStyleChannel,

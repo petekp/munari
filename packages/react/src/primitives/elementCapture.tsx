@@ -2,7 +2,7 @@
 // Callback refs report attachment and removal; capture frames retain their painted dimensions.
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { captureAvailable, PARKED_HOST_ATTRIBUTE } from '@munari/core'
+import { captureAvailable, createInputWindow, PARKED_HOST_ATTRIBUTE } from '@munari/core'
 import {
   CaptureSource, connectCapture, setCaptureUnavailable, useCaptureHandle,
   type CaptureConnection, type CaptureHandle,
@@ -14,13 +14,26 @@ export interface ElementCaptureOptions {
   resolution?: SurfaceResolution
   /** Subtrees deliberately omitted from the captured image. */
   exclude?: string
+  /**
+   * Follow what the element does on its own — see `SurfaceHTMLProps.live`.
+   * Off (the default), the copy is rebuilt when the user acts on the element
+   * and its DOM answers, when its layout, stylesheets, fonts or images
+   * change, when a transition or animation ends, and on `refresh()`. On,
+   * every mutation and every running animation is followed, frame by frame.
+   */
+  live?: boolean
   onError?: (error: Error) => void
 }
 
 export interface ElementCapture extends CaptureHandle {
   /** Attach to the native element. Passing null releases its captured source. */
   ref(element: HTMLElement | null): void
-  /** Request a new image after a change outside the observed DOM. */
+  /**
+   * Rebuild the copy now. Unless `live`, a change nobody made on the
+   * element — new props, data arriving, a control elsewhere on the page —
+   * looks like an animation and is not followed; call this from whatever
+   * makes that change. Usable directly as an event handler.
+   */
   refresh(): void
   /** Current viewport position, independent of the last painted frame's dimensions. */
   getBounds(): DOMRect | null
@@ -29,9 +42,15 @@ export interface ElementCapture extends CaptureHandle {
 let snapshotSequence = 0
 // The last entry is every engine's parked host: a full-page capture would
 // otherwise copy a Surface's own live content back into itself.
-const OMIT =
-  `head,script,style,link,meta,title,[data-api-capture],[data-api-capture-consumer],` +
-  `[${PARKED_HOST_ATTRIBUTE}]`
+// Another capture's canvas, a consumer's canvas, or an engine's parked
+// host: a whole-page root contains them, but input and mutation there are
+// another Surface's business, not this element's.
+const FOREIGN = `[data-api-capture],[data-api-capture-consumer],[${PARKED_HOST_ATTRIBUTE}]`
+const foreign = (target: EventTarget | Node | null) =>
+  target instanceof Element ? target.closest(FOREIGN) !== null : false
+const OMIT = `head,script,style,link,meta,title,${FOREIGN}`
+// What changes the element's picture without mutating it: the user's own
+// state on it (hover, focus, a value, a scroll) and the ends of motion.
 const EVENTS = ['input', 'change', 'pointerover', 'pointerout', 'pointerdown', 'pointerup', 'focusin', 'focusout', 'scroll', 'load', 'transitionend', 'animationend', 'animationstart', 'transitionrun']
 
 function excluded(element: Element, selector: string | undefined): boolean {
@@ -134,8 +153,9 @@ export function useElementCapture(options: ElementCaptureOptions = {}): ElementC
   const attached = useRef<HTMLElement | null>(null)
   const refresh = useRef<() => void>(() => {})
   const errorRef = useLatest(options.onError)
-  const { resolution = 'auto', exclude } = options
+  const { resolution = 'auto', exclude, live = false } = options
   const resolutionRef = useLatest(resolution)
+  const liveRef = useLatest(live)
   const resolutionKey = Array.isArray(resolution) ? resolution.join(':') : resolution
   const activeConnection = useRef<CaptureConnection | null>(null)
   const ref = useCallback((next: HTMLElement | null) => {
@@ -175,7 +195,9 @@ export function useElementCapture(options: ElementCaptureOptions = {}): ElementC
         activeConnection.current = connection
         connection.repaint()
         lastReportedError = ''
-        if (element.getAnimations?.({ subtree: true }).some(animation => animation.playState === 'running')) schedule()
+        // A running animation is the element moving on its own: followed
+        // frame by frame only when live; its end is an event either way.
+        if (liveRef.current && element.getAnimations?.({ subtree: true }).some(animation => animation.playState === 'running')) schedule()
       } catch (cause) {
         connection?.dispose()
         connection = null
@@ -190,18 +212,23 @@ export function useElementCapture(options: ElementCaptureOptions = {}): ElementC
     }
     const schedule = () => { if (alive && !frame) frame = requestAnimationFrame(update) }
     const onEvent = (event: Event) => {
-      const target = event.target
-      if (target instanceof Element && target.closest(`[data-api-capture],[data-api-capture-consumer],[${PARKED_HOST_ATTRIBUTE}]`)) return
-      schedule()
+      if (!foreign(event.target)) schedule()
     }
     refresh.current = schedule
     const resize = new ResizeObserver(schedule)
     const subscriptions = new AbortController()
     resize.observe(element)
+    // The element's own mutations are followed by the same law as a
+    // Surface's content: when live, or as the answer to the user's input.
+    // Everything observed OUTSIDE it below (stylesheets, ancestors, size,
+    // fonts) is followed regardless, because it leaves the copy wrong.
+    const input = createInputWindow(() => performance.now())
+    const stopHearing = input.hear(element, { ignore: foreign })
     const mutations = new MutationObserver(records => {
+      if (!liveRef.current && !input.isOpen()) return
       if (records.some(record => {
         const target = record.target instanceof Element ? record.target : record.target.parentElement
-        return !target?.closest(`[data-api-capture],[data-api-capture-consumer],[${PARKED_HOST_ATTRIBUTE}]`)
+        return !foreign(target)
       })) schedule()
     })
     mutations.observe(element, { subtree: true, childList: true, attributes: true, characterData: true })
@@ -219,22 +246,33 @@ export function useElementCapture(options: ElementCaptureOptions = {}): ElementC
       mutations.disconnect()
       styles.disconnect()
       subscriptions.abort()
+      stopHearing()
       refresh.current = () => {}
       connection?.dispose()
       activeConnection.current = null
       if (!connection) setCaptureUnavailable(capture, 'waiting')
     }
-  }, [capture, element, exclude, errorRef, resolutionRef])
+  }, [capture, element, exclude, errorRef, resolutionRef, liveRef])
   useLayoutEffect(() => activeConnection.current?.setResolution(resolutionRef.current), [resolutionKey, resolutionRef])
+  // Switching live on rebuilds the state the copy stopped following at, so
+  // the picture is current from the moment the flag is.
+  const wasLive = useRef(live)
+  useLayoutEffect(() => {
+    if (live && !wasLive.current) refresh.current()
+    wasLive.current = live
+  }, [live])
   return result
 }
 
 type CaptureContentProps = {
-  capture: CaptureHandle; size: SurfaceSize; resolution?: SurfaceResolution; onError?: (error: Error) => void
+  capture: CaptureHandle; size: SurfaceSize; resolution?: SurfaceResolution
+  /** See `SurfaceHTMLProps.live`. */
+  live?: boolean
+  onError?: (error: Error) => void
 } & ({ children: ReactNode; element?: never } | { element: HTMLElement | null; children?: never })
 
 /** Authored capture content can be React markup or an already-built detached element. */
-export function CaptureContent({ children, element, capture, size, resolution = 'auto', onError }: CaptureContentProps) {
+export function CaptureContent({ children, element, capture, size, resolution = 'auto', live = false, onError }: CaptureContentProps) {
   const [ownedRoot, setOwnedRoot] = useState<HTMLElement | null>(null)
   useLayoutEffect(() => { if (element === undefined) setOwnedRoot(document.createElement('div')) }, [element])
   const root = element === undefined ? ownedRoot : element
@@ -246,6 +284,6 @@ export function CaptureContent({ children, element, capture, size, resolution = 
   if (!root) return null
   return <>
     {element === undefined && createPortal(children, root)}
-    <CaptureSource capture={capture} adopt={root} size={size} resolution={resolution} onError={onError} />
+    <CaptureSource capture={capture} adopt={root} size={size} resolution={resolution} live={live} onError={onError} />
   </>
 }

@@ -30,6 +30,8 @@ export interface SurfacePartProps {
   /** Authored source size. Without one the DOM presentation measures it. */
   size?: SurfaceSize
   resolution?: SurfaceResolution
+  /** See `SurfaceHTMLProps.live`. */
+  live?: boolean
   mirrorU?: boolean
   onFocusWithinChange?: (focused: boolean) => void
   onChrome?: (chrome: SurfaceChrome) => void

@@ -242,6 +242,10 @@ interface Scheda {
   /** The bay's drawing: a pane that fills when occupied, then the mark
    *  stroked over it, so the drawing itself never goes anywhere. */
   mark: React.ReactNode
+  /** The body moves on its own and the flight must show it moving. The
+   *  film window is not: its frames reach the scene through a FrameSurface,
+   *  not through the capture. */
+  live?: boolean
 }
 
 // Dock order, left to right. The three figures, then the window that
@@ -293,6 +297,7 @@ const SCHEDE: Scheda[] = [
   {
     id: 'scheda',
     title: 'scheda',
+    live: true,
     mark: (
       <>
         <rect className="gen-icon-base" x="0.9" y="2.2" width="18.2" height="15.6" rx="0.9" />
@@ -2560,7 +2565,7 @@ export function GenieApp() {
               timing={{ settleMs: 0, durationMs: 1 }}
               onPresentationChange={view => onPresentedView(s.id, view)}
             >
-              <Surface.HTML pageClassName="gen-page-presentation" resolution={2}>
+              <Surface.HTML pageClassName="gen-page-presentation" resolution={2} live={s.live}>
                 {bodyFor(s)}
               </Surface.HTML>
             </Surface.Root>

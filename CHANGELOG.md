@@ -11,6 +11,19 @@
   control behavior.
 - Consolidate the current guides and remove superseded plans, duplicate anchor
   recipes, unused helpers, and obsolete probe adapters.
+- Add snapDOM as a second capture engine behind `@petepetrash/munari/snapdom`,
+  and a `live` prop on `Surface`, `Surface.HTML`, `SceneSurface`,
+  `SceneSurface.HTML` and `CaptureContent`: on snapDOM a Surface follows the
+  user's input on its content by default and follows content that changes on
+  its own only when `live`; HTML-in-canvas follows everything and ignores it.
+  `useElementCapture` rebuilds its copy by the same rule on either engine, with
+  `live` and `refresh()` as the ways back in.
+- Make a snapDOM capture cost a third of the main thread it did, with no
+  option to set: the faces a capture needs are encoded once per document and
+  supplied to every clone, the clone and the serialize are split across a
+  frame, and a `live` Surface re-captures at most about four times a second
+  so the cheaper capture is not spent on more captures. A hover is captured
+  once the pointer settles on it, so crossing a Surface no longer captures.
 - Stop restarting the scene clock on every capture: `SurfaceCanvas` asks R3F
   for a frameloop mode only when the mode changes, so a scene posed from
   `clock.elapsedTime` no longer snaps back while the user types in a Surface.

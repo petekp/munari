@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   captureEngine,
   createDomTextureSource,
+  createInputWindow,
   createRasterizedSource,
   htmlInCanvasEngine,
   PARKED_HOST_ATTRIBUTE,
@@ -586,6 +587,67 @@ describe('the rasterized engine', () => {
     source.dispose()
   })
 
+  // The gap paces by cost. It is measured from a capture's END, so a cheaper
+  // capture is a more frequent one, and the frames a cheaper capture gives
+  // back are spent on more captures. Supplying fonts once took a snapDOM
+  // capture from 137 to 14 ms of wall time in Safari at 30 fps, and gap-only
+  // pacing turned that into 23 captures per 4 s of a live window instead of
+  // 13, with the scene's p99 frame going from 34 to 48 ms; held to this
+  // period it was 16 captures and 35 ms (measured 2026-09-12, decisions.md
+  // #62). So a live source is paced by a period too, measured from a
+  // capture's START, and the longer of the two holds. Content that is not
+  // live is paced by the user's input and owes only the gap: a field the
+  // user is typing in follows the keystroke.
+  it('starts a live capture at most every 250ms, however cheap the raster', async () => {
+    const { calls, rasterize } = deferred()
+    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
+    await drain()
+    calls[0]!.resolve()
+    await drain()
+    time.pass(PAST_THE_GAP_MS)
+
+    source.setLive(true)
+    await drain()
+    expect(calls).toHaveLength(2)
+
+    // An instant raster owes a gap of 150 and a period of 250; the period holds.
+    calls[1]!.resolve()
+    await drain()
+    source.element.setAttribute('data-tick', '1')
+    await drain()
+    expect(calls).toHaveLength(2)
+    expect(time.pending()).toBe(250)
+    time.pass(250)
+    await drain()
+    expect(calls).toHaveLength(3)
+
+    // A raster slower than the period owes only its gap: the period is a
+    // floor under the pace, not an addition to it.
+    time.pass(300)
+    calls[2]!.resolve()
+    await drain()
+    source.element.setAttribute('data-tick', '2')
+    await drain()
+    expect(calls).toHaveLength(3)
+    expect(time.pending()).toBe(150)
+    time.pass(150)
+    await drain()
+    expect(calls).toHaveLength(4)
+    calls[3]!.resolve()
+    await drain()
+
+    // Not live, the user's input owes the gap alone.
+    source.setLive(false)
+    source.element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }))
+    await drain()
+    expect(calls).toHaveLength(4)
+    expect(time.pending()).toBe(150)
+    time.pass(150)
+    await drain()
+    expect(calls).toHaveLength(5)
+    source.dispose()
+  })
+
   // A capture that took long enough for the subtree to move is not wrong,
   // it is late — and the receipt is how a consumer tells the difference.
   it('reports how many change signals landed while the raster was being made', async () => {
@@ -668,9 +730,300 @@ describe('the rasterized engine', () => {
     source.dispose()
   })
 
-  it('observes its own subtree, and stops when disposed', async () => {
+  // The freshness law, and the default. A subtree that animates itself
+  // asks for a capture every frame, and at tens of milliseconds a capture
+  // that is the scene's whole frame budget (decisions.md #60). So a source
+  // that was not told its content is live leaves the picture as it was:
+  // a mutation nobody asked for is not a change signal here.
+  it('leaves a mutation the content made on its own uncaptured, unless live', async () => {
     const { calls, rasterize } = deferred()
     const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
+    await drain()
+    calls[0]!.resolve()
+    await drain()
+
+    source.element.append(document.createElement('span'))
+    source.element.setAttribute('data-tick', '1')
+    await settle()
+    expect(calls).toHaveLength(1)
+
+    // Told the content is live, the source first captures the state it
+    // stopped following at — the picture is current from the moment the
+    // flag is — and then follows every change at its pace.
+    source.setLive(true)
+    await settle()
+    expect(calls).toHaveLength(2)
+    calls[1]!.resolve()
+    await drain()
+
+    source.element.setAttribute('data-tick', '2')
+    await settle()
+    expect(calls).toHaveLength(3)
+    calls[2]!.resolve()
+    await drain()
+
+    // And back: the last picture stays, and the next tick is not followed.
+    source.setLive(false)
+    source.element.setAttribute('data-tick', '3')
+    await settle()
+    expect(calls).toHaveLength(3)
+    source.dispose()
+  })
+
+  // The user's input is always followed, and so is the content's answer to
+  // it. A mutation cannot be told apart from an animation's by looking at
+  // it; it is told apart by landing inside `INPUT_WINDOW_MS` of an input
+  // event on the subtree. `keydown` opens the window and asks for nothing
+  // by itself — a key that changes nothing costs nothing.
+  it('captures a mutation that answers the user\'s input, for 150ms after it', async () => {
+    const { calls, rasterize } = deferred()
+    const source = createRasterizedSource(rasterize, 'test', '<div><input></div>', 100, 50, {}, time.clock)
+    await drain()
+    calls[0]!.resolve()
+    await drain()
+    const field = source.element.querySelector('input')!
+    // Quiet for longer than the gap, so what follows captures at once and
+    // the only question left is whether a mutation is followed at all.
+    time.pass(PAST_THE_GAP_MS)
+
+    field.dispatchEvent(new Event('keydown', { bubbles: true }))
+    await drain()
+    expect(calls).toHaveLength(1)
+    expect(time.armed()).toBe(0)
+
+    time.pass(149)
+    source.element.append(document.createElement('span'))
+    await drain()
+    expect(calls).toHaveLength(2)
+    calls[1]!.resolve()
+    await drain()
+
+    // The window is measured from the input, not from the capture it led
+    // to, so a mutation landing after it is the content's own again.
+    time.pass(PAST_THE_GAP_MS)
+    source.element.append(document.createElement('span'))
+    await settle()
+    expect(calls).toHaveLength(2)
+
+    // Hovering is not acting. The relay forwards a move on every frame the
+    // pointer rests on a Surface, so a bare move must open nothing, or a
+    // self-animating subtree would be followed for as long as it is under
+    // the pointer.
+    field.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }))
+    source.element.append(document.createElement('span'))
+    await settle()
+    expect(calls).toHaveLength(2)
+
+    // An input event that changes paint by itself — a field's value, a
+    // scroll offset — asks for a capture on its own, as it always did.
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+    await settle()
+    expect(calls).toHaveLength(3)
+    calls[2]!.resolve()
+    await drain()
+
+    // A native drag has no pointer stream: the reorder a drop makes lands
+    // with `drop` as the only input near it, so `drop` opens the window.
+    time.pass(PAST_THE_GAP_MS)
+    field.dispatchEvent(new Event('drop', { bubbles: true }))
+    source.element.append(document.createElement('span'))
+    await drain()
+    expect(calls).toHaveLength(4)
+    source.dispose()
+  })
+
+  // A gesture begun on the content is the user acting on it until it ends,
+  // wherever its moves land. A slider or a resize handle listens for moves on
+  // `window`, so nothing between the press and the release touches the
+  // subtree — and a window that closed 150 ms into the drag would freeze the
+  // thumb under the hand.
+  it('keeps following a drag that began on the content until the pointer is released', async () => {
+    const { calls, rasterize } = deferred()
+    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
+    await drain()
+    calls[0]!.resolve()
+    await drain()
+    time.pass(PAST_THE_GAP_MS)
+
+    source.element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 7 }))
+    await drain()
+    calls[1]!.resolve()
+    await drain()
+
+    // Well past the window the press opened; the moves land on the document.
+    time.pass(PAST_THE_GAP_MS)
+    document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 7 }))
+    source.element.setAttribute('data-value', '40')
+    await settle()
+    expect(calls).toHaveLength(3)
+    calls[2]!.resolve()
+    await drain()
+
+    // Another pointer lifting is not this gesture ending.
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 8 }))
+    time.pass(PAST_THE_GAP_MS)
+    document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 7 }))
+    source.element.setAttribute('data-value', '41')
+    await settle()
+    expect(calls).toHaveLength(4)
+    calls[3]!.resolve()
+    await drain()
+
+    // Released: the last window closes and the content is its own again.
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 7 }))
+    time.pass(PAST_THE_GAP_MS)
+    document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 7 }))
+    source.element.setAttribute('data-value', '42')
+    await settle()
+    expect(calls).toHaveLength(4)
+    source.dispose()
+  })
+
+  // The retained Surface mirrors its page content into the source by hand
+  // while the page holds, so the user acts on a node the source's element
+  // never hears. `hearInput` names that node; the mirror's answer is then
+  // followed exactly as a change on the element would be.
+  it('hears input on a node it was told about, until told to stop', async () => {
+    const { calls, rasterize } = deferred()
+    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
+    await drain()
+    calls[0]!.resolve()
+    await drain()
+    time.pass(PAST_THE_GAP_MS)
+    const page = document.createElement('section')
+    document.body.append(page)
+    const stop = source.hearInput(page)
+
+    page.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    source.element.append(document.createElement('span'))
+    await drain()
+    expect(calls).toHaveLength(2)
+    calls[1]!.resolve()
+    await drain()
+
+    stop()
+    time.pass(PAST_THE_GAP_MS)
+    page.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    source.element.append(document.createElement('span'))
+    await settle()
+    expect(calls).toHaveLength(2)
+
+    // Told to stop mid-drag: the gesture's document listeners go with the
+    // hearing, or a Surface unmounted under the hand would keep following
+    // the pointer for the rest of the page's life.
+    const hear = source.hearInput(page)
+    page.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 3 }))
+    source.element.append(document.createElement('span'))
+    await drain()
+    expect(calls).toHaveLength(3)
+    calls[2]!.resolve()
+    await drain()
+    hear()
+    time.pass(PAST_THE_GAP_MS)
+    document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 3 }))
+    source.element.append(document.createElement('span'))
+    await settle()
+    expect(calls).toHaveLength(3)
+    source.dispose()
+  })
+
+  // A pointer sweeping across content crosses every element twice, and the
+  // relay flips the hover twin on each crossing. Captured at once, a sweep
+  // over a sign-in form cost eleven rasters showing the same pixels
+  // (2026-09-12, decisions.md #62). A hover change is captured only once it
+  // has settled, and a crossing that leaves the chain where the last raster
+  // saw it captures nothing.
+  it('captures a hover only once it settles, and a crossing not at all', async () => {
+    const { calls, rasterize } = deferred()
+    const source = createRasterizedSource(rasterize, 'test', '<div><button></button></div>', 100, 50, {}, time.clock)
+    await drain()
+    calls[0]!.resolve()
+    await drain()
+    time.pass(PAST_THE_GAP_MS)
+    const button = source.element.querySelector('button')!
+
+    // In and out within the settle: the chain is back where it was.
+    button.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }))
+    button.setAttribute('data-hover', '')
+    time.pass(60)
+    button.dispatchEvent(new PointerEvent('pointerout', { bubbles: true }))
+    button.removeAttribute('data-hover')
+    await settle()
+    expect(calls).toHaveLength(1)
+
+    // Resting on it: one capture, within the settle time.
+    button.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }))
+    button.setAttribute('data-hover', '')
+    await drain()
+    time.pass(99)
+    await drain()
+    expect(calls).toHaveLength(1)
+    time.pass(1)
+    await drain()
+    expect(calls).toHaveLength(2)
+    calls[1]!.resolve()
+    await drain()
+
+    // A press while a hover change is still settling captures at once.
+    time.pass(PAST_THE_GAP_MS)
+    button.dispatchEvent(new PointerEvent('pointerout', { bubbles: true }))
+    button.removeAttribute('data-hover')
+    button.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    await drain()
+    expect(calls).toHaveLength(3)
+    source.dispose()
+  })
+
+  // What a source that is not live still follows: the box, the density,
+  // the settle, a transition or animation reaching its ends, an image or a
+  // webfont landing, and an explicit `repaint()`. Each of these leaves the
+  // held picture WRONG rather than merely old — a resize relays the subtree
+  // out under it, an image that arrived is a blank where the page has a
+  // picture — which is the line between freshness and correctness.
+  it('still captures the correctness reasons when it is not live', async () => {
+    const { calls, rasterize } = deferred()
+    const source = createRasterizedSource(rasterize, 'test', '<div><img></div>', 100, 50, {}, time.clock)
+    await drain()
+    calls[0]!.resolve()
+    await drain()
+    const image = source.element.querySelector('img')!
+
+    // `load` does not bubble; the source listens in the capture phase.
+    image.dispatchEvent(new Event('load'))
+    await settle()
+    expect(calls).toHaveLength(2)
+    calls[1]!.resolve()
+    await drain()
+
+    source.element.dispatchEvent(new Event('transitionend', { bubbles: true }))
+    await settle()
+    expect(calls).toHaveLength(3)
+    calls[2]!.resolve()
+    await drain()
+
+    source.setSize(120, 60)
+    await settle()
+    expect(calls).toHaveLength(4)
+    calls[3]!.resolve()
+    await drain()
+
+    source.repaint()
+    await settle()
+    expect(calls).toHaveLength(5)
+    source.dispose()
+  })
+
+  it('observes its own subtree, and stops when disposed', async () => {
+    const { calls, rasterize } = deferred()
+    const source = createRasterizedSource(
+      rasterize,
+      'test',
+      '<div></div>',
+      100,
+      50,
+      { live: true },
+      time.clock,
+    )
     await drain()
     calls[0]!.resolve()
     await drain()
@@ -694,5 +1047,64 @@ describe('the rasterized engine', () => {
     source.element.append(document.createElement('b'))
     await settle()
     expect(calls).toHaveLength(2)
+  })
+})
+
+// ── the input window ─────────────────────────────────────────────────────
+//
+// The law the rasterized engine and element capture both judge by, pinned
+// where the engine's laws cannot reach it: what a hearing disowns, and the
+// two gesture ends the pointer stream never reports.
+describe('the input window', () => {
+  it('disowns input a consumer says is another Surface\'s', () => {
+    let now = 0
+    const window = createInputWindow(() => now)
+    const page = document.createElement('div')
+    const parked = document.createElement('div')
+    parked.setAttribute(PARKED_HOST_ATTRIBUTE, '')
+    page.append(parked)
+    document.body.append(page)
+    const stop = window.hear(page, {
+      ignore: (target) => target instanceof Element && target.closest(`[${PARKED_HOST_ATTRIBUTE}]`) !== null,
+    })
+
+    parked.dispatchEvent(new Event('focusin', { bubbles: true }))
+    expect(window.isOpen()).toBe(false)
+    // A press on a disowned node begins no gesture, so its moves count for nothing.
+    parked.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }))
+    document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1 }))
+    expect(window.isOpen()).toBe(false)
+
+    page.dispatchEvent(new Event('focusin', { bubbles: true }))
+    expect(window.isOpen()).toBe(true)
+    now += 151
+    expect(window.isOpen()).toBe(false)
+    stop()
+    page.remove()
+  })
+
+  it('ends a gesture when a native drag takes over or the window loses focus', () => {
+    let now = 0
+    const window = createInputWindow(() => now)
+    const page = document.createElement('div')
+    document.body.append(page)
+    const stop = window.hear(page)
+    const drags = (pointerId: number) => {
+      now += 151
+      document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId }))
+      return window.isOpen()
+    }
+
+    page.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }))
+    expect(drags(1)).toBe(true)
+    document.dispatchEvent(new Event('dragstart', { bubbles: true }))
+    expect(drags(1)).toBe(false)
+
+    page.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 2 }))
+    expect(drags(2)).toBe(true)
+    globalThis.window.dispatchEvent(new Event('blur'))
+    expect(drags(2)).toBe(false)
+    stop()
+    page.remove()
   })
 })

@@ -40,9 +40,10 @@ function unsupportedSnapshot(root:HTMLElement):string|null {
 /**
  * A copy of the live content, and a key naming everything in that copy.
  *
- * The key exists because a capture is not free. A source re-rasterizes on
- * any mutation of what it holds, so replacing the copy is what keeps the
- * texture current — and most replacements change nothing. Measured
+ * The key exists because a capture is not free. Replacing the copy is a
+ * mutation of what the source holds, which is what keeps the texture
+ * current on an engine that follows it — and most replacements change
+ * nothing. Measured
  * 2026-09-11 over one card drag on a nine-card board: 40 of 41 rebuilt
  * copies were byte-for-byte the copy already in place, and dropping them —
  * with the density rule in `PaintReason` — took the drag from 65 captures to
@@ -176,6 +177,17 @@ export type SurfaceHTMLProps = {
   children: ReactNode
   part?: SurfacePartId
   resolution?: SurfaceResolution
+  /**
+   * The content changes on its own — an animation, a ticker, a clock, a
+   * video — and the scene must show it moving.
+   *
+   * HTML-in-canvas shows every change for free, so there it changes
+   * nothing. A capture engine that rasterizes a copy pays tens of
+   * milliseconds per change, so it follows only what the user does to the
+   * content unless told the content is live, and then follows it at a paced
+   * rate. Default `false`.
+   */
+  live?: boolean
   onChrome?: (chrome: SurfaceChrome) => void
   target?: PageTarget
   pageClassName?: string
@@ -194,7 +206,7 @@ function dockCaptureHost(host: HTMLElement, dock: HTMLElement) {
   moveRetained(host, dock)
 }
 
-function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, onChrome, hidden, pageClassName, pageStyle, target, as: Tag = 'div', layout = 'preserve' }: SurfaceHTMLProps) {
+function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, live, onChrome, hidden, pageClassName, pageStyle, target, as: Tag = 'div', layout = 'preserve' }: SurfaceHTMLProps) {
   if (size) validateSurfaceSize(size)
   const root = use(SurfaceContentContext)
   const renderingRoot = use(SurfaceRootContext)
@@ -297,6 +309,10 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
       holder.append(copy); placeholder.current = copy
       for (const node of [...captureRoot.children]) if (node !== liveRoot) node.remove()
       moveRetained(liveRoot, captureRoot)
+      // Explicit, not left to the source's own observer: a source that is
+      // not live follows only what the user did to the content, and the
+      // request that lifts a Surface usually comes from outside it. The
+      // content it is about to show is the live node that just moved in.
       runtime?.source.repaint()
     } else if (!captured && liveRoot.parentElement !== holder) {
       parkWarmRig()
@@ -306,7 +322,6 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
       placeholder.current?.remove(); placeholder.current = null
       const held = snapshot(liveRoot)
       captureRoot.replaceChildren(held.node); heldKey.current = held.key
-      runtime?.source.repaint()
     }
     updateWarmRig(holder,runtime,captured,captureRoot)
   }
@@ -319,6 +334,13 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     return registerHostSpace(sourceHost,marker)
   },[sourceHost,dock,marker])
 
+  // While the page holds, the user acts on the live node and the source
+  // sees only the copy. Naming the live node keeps the copy's answer to that
+  // input followed on an engine that does not follow changes for free.
+  useLayoutEffect(() => {
+    if (!ownRuntime || !liveRoot) return
+    return ownRuntime.source.hearInput(liveRoot)
+  }, [ownRuntime, liveRoot])
   useLayoutEffect(() => { moveRef.current() }, [page, desired, publication, moveRef,liveRoot,captureRoot])
   useLayoutEffect(() => store.subscribeHold(() => moveRef.current()), [store, moveRef])
   useEffect(() => {
@@ -341,8 +363,11 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
         const held = snapshot(liveRoot)
         if (held.key === heldKey.current) return
         heldKey.current = held.key
+        // Installing the copy is a mutation of the source's own element, so
+        // the source hears it and decides for itself whether to capture:
+        // the compositor always does, a rasterizing engine only when the
+        // content is live or the user just acted on it.
         captureRoot.replaceChildren(held.node)
-        runtimeRef.current?.source.repaint()
       } else if (store.holdsPage() && placeholder.current) {
         const { node: copy } = snapshot(liveRoot)
         copy.inert = true; copy.setAttribute('aria-hidden', 'true'); copy.style.visibility = 'hidden'
@@ -368,7 +393,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     <Tag ref={setDock} style={{display:'contents',pointerEvents:'none'}}>
       <Tag ref={setMarker} style={{all:'initial',position:'fixed',left:0,top:0,width:100,height:100,visibility:'hidden',pointerEvents:'none'}}/>
     </Tag>
-    {page && liveRoot && captureRoot && marker && <SurfacePart name={partId} adopt={captureRoot} size={size} resolution={resolution} onChrome={onChrome} pageContent={pageContent} chromeElement={() => surfaceChromeElement(liveRoot, false)}>
+    {page && liveRoot && captureRoot && marker && <SurfacePart name={partId} adopt={captureRoot} size={size} resolution={resolution} live={live} onChrome={onChrome} pageContent={pageContent} chromeElement={() => surfaceChromeElement(liveRoot, false)}>
       <PageBinding page={page} marker={marker} pageContent={pageContent} layout={layout} inScene={root.canEnter}/>
     </SurfacePart>}
   </>
@@ -389,11 +414,16 @@ function SurfaceScene({ children, surface }: SurfaceSceneProps) {
     : <SceneContribution scene={children}/>
 }
 
-export type SurfaceProps = SurfaceRootProps & { size?: SurfaceSize; resolution?: SurfaceResolution }
+export type SurfaceProps = SurfaceRootProps & {
+  size?: SurfaceSize
+  resolution?: SurfaceResolution
+  /** See `SurfaceHTMLProps.live`. */
+  live?: boolean
+}
 
-function BasicSurface({ children, size, resolution, ...props }: SurfaceProps) {
+function BasicSurface({ children, size, resolution, live, ...props }: SurfaceProps) {
   return <SurfaceRoot {...props}>
-    <SurfaceHTML size={size} resolution={resolution}>{children}</SurfaceHTML>
+    <SurfaceHTML size={size} resolution={resolution} live={live}>{children}</SurfaceHTML>
     <SurfaceMesh />
   </SurfaceRoot>
 }
@@ -432,15 +462,17 @@ function SceneSurfaceRoot({ children, name, surface, canvasId, ...controls }: Sc
 }
 export type SceneSurfaceHTMLProps = {
   part?: SurfacePartId; size: SurfaceSize; resolution?: SurfaceResolution
+  /** See `SurfaceHTMLProps.live`. */
+  live?: boolean
 } & ({ children: ReactNode; element?: never } | { element: HTMLElement; children?: never })
 function SceneSurfaceHTML({ children, element, part = DEFAULT_PART, ...props }: SceneSurfaceHTMLProps) {
   validateSurfaceSize(props.size)
   return <SurfacePart name={part} source={children} adopt={element} {...props}/>
 }
-export interface SceneSurfaceProps { children: ReactNode; size: SurfaceSize; name?: string }
-function BasicSceneSurface({ children, size, name }: SceneSurfaceProps) {
+export interface SceneSurfaceProps { children: ReactNode; size: SurfaceSize; name?: string; live?: boolean }
+function BasicSceneSurface({ children, size, name, live }: SceneSurfaceProps) {
   return <SceneSurfaceRoot name={name}>
-    <SceneSurfaceHTML size={size}>{children}</SceneSurfaceHTML>
+    <SceneSurfaceHTML size={size} live={live}>{children}</SceneSurfaceHTML>
     <SurfaceMesh scale={[size[0] / size[1], 1, 1]}/>
   </SceneSurfaceRoot>
 }

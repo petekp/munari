@@ -32,7 +32,8 @@ export is a package concern, not a reason to reach into private source files.
   ratio. Use its `.Root`, `.HTML`, and `.Mesh` form for custom scene geometry.
 - `useElementCapture()` returns a callback ref and frame identity for native HTML
   that stays in place. It can capture an element, body, or html with appropriate
-  exclusions. `CaptureContent` supplies separate React children or a detached
+  exclusions. Its copy follows the user's input, layout, fonts and `refresh()`;
+  pass `live` to follow every mutation and running animation. `CaptureContent` supplies separate React children or a detached
   element to a capture handle. It requires explicit dimensions.
 - `SurfaceCanvas` owns the renderer, camera, lights and surrounding R3F scene.
   Keep it mounted while needed. Use `pointerMode="surfaces"` for overlays and

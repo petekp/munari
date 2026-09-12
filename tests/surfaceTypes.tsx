@@ -82,6 +82,8 @@ void Observations
 
 function ContentCompositionExamples() {
   const attached = useElementCapture()
+  const following = useElementCapture({ live: true, exclude: '.preview' })
+  void following
   const authored = useCaptureHandle()
   const hidden = Math.random() > 0.5
   // @ts-expect-error A callback ref is returned by this hook; a plain ref object is not an options object.

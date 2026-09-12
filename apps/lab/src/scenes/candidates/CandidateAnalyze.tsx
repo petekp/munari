@@ -204,7 +204,8 @@ function AnalyzedBlock({
     <div ref={holder} className="cand-block-holder" data-active={active || undefined}>
       {size ? (
         <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={inScene}>
-<Surface.HTML size={size} resolution={2}>{content}</Surface.HTML>
+{/* One click starts several seconds of findings arriving on a timer. */}
+<Surface.HTML size={size} resolution={2} live>{content}</Surface.HTML>
 
           {box && (
             <Surface.Mesh

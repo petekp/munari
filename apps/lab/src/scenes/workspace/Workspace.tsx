@@ -225,7 +225,9 @@ function WorkPanel({
             const record = window.__domSurfaceDemand
             if (record) record.ready = true
           }}>
-<SceneSurface.HTML size={[demandProbe ? probeWidth : PANEL_W, PANEL_H]}>{<WorkspacePanelSource
+{/* A feed writes on its own clock, and the satellite dial writes the readout
+    from outside the panel; neither is the user acting on the panel itself. */}
+<SceneSurface.HTML size={[demandProbe ? probeWidth : PANEL_W, PANEL_H]} live={Boolean(spec.feed || spec.dial)}>{<WorkspacePanelSource
               spec={spec}
               sourceRoot={sourceRoot}
               demandProbe={demandProbe}

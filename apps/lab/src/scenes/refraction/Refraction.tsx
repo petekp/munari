@@ -347,8 +347,9 @@ export function RefractionApp() {
 
         <div ref={holderRef} className="refraction-holder">
           <Surface.Root surface={surface} inScene={lifted} timing={{ settleMs: 0, durationMs: 1 }}>
-            <Surface.HTML part="leaving" hidden={landed === 'arriving'} size={[STAGE_W, STAGE_H]}>{leaving}</Surface.HTML>
-            <Surface.HTML part="arriving" hidden={landed !== 'arriving'} size={[STAGE_W, STAGE_H]}>{arriving}</Surface.HTML>
+            {/* Both documents carry the tenth-second clock: content that moves on its own. */}
+            <Surface.HTML part="leaving" hidden={landed === 'arriving'} size={[STAGE_W, STAGE_H]} live>{leaving}</Surface.HTML>
+            <Surface.HTML part="arriving" hidden={landed !== 'arriving'} size={[STAGE_W, STAGE_H]} live>{arriving}</Surface.HTML>
           </Surface.Root>
         </div>
       </div>

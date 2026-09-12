@@ -284,7 +284,7 @@ function SpecimenSurface({
   const [cx, cy] = worldCenter(block)
   return (
     <SceneSurface.Root name={block.id}>
-<SceneSurface.HTML size={[block.w, block.h]} resolution={resolution}>{CONTENT.get(block.id)}</SceneSurface.HTML>
+<SceneSurface.HTML size={[block.w, block.h]} resolution={resolution} live={block.live}>{CONTENT.get(block.id)}</SceneSurface.HTML>
       <SceneSurface.Mesh
         placement="manual"
         position={[cx, cy, 0]}

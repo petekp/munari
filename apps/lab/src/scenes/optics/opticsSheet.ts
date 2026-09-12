@@ -52,6 +52,8 @@ export interface Specimen extends Block {
   title: string
   /** Why it is on the bench — the reason it rewards a loupe. */
   note: string
+  /** The specimen repaints on its own clock, so its capture must follow. */
+  live?: boolean
 }
 
 export const SPECIMENS: readonly Specimen[] = [
@@ -72,6 +74,7 @@ export const SPECIMENS: readonly Specimen[] = [
     h: 152,
     title: 'monochrome LCD',
     note: 'a pixel grid, and a clock that repaints once a second',
+    live: true,
   },
   {
     id: 'luna',

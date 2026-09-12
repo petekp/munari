@@ -69,6 +69,7 @@ export interface SurfaceSourceHostProps {
   /** Authored source size. Without one the DOM presentation measures it. */
   size?: SurfaceSize
   resolution?: SurfaceResolution
+  live?: boolean
   mirrorU?: boolean
   onFocusWithinChange?: (focused: boolean) => void
   onChrome?: (chrome: SurfaceChrome) => void
@@ -84,6 +85,7 @@ export function SurfaceSourceHost({
   adopt,
   size,
   resolution = 'auto',
+  live = false,
   mirrorU = false,
   onFocusWithinChange,
   onChrome,
@@ -137,6 +139,7 @@ export function SurfaceSourceHost({
   // Everything the creation effect reads but must not re-run for.
   const sizeRef = useLatest(effectiveSize)
   const resolutionRef = useLatest(resolution)
+  const liveRef = useLatest(live)
   const mirrorURef = useLatest(mirrorU)
 
   // Creating the source is a TEARDOWN: it destroys the live DOM subtree and
@@ -154,6 +157,7 @@ export function SurfaceSourceHost({
         content: captureRoot,
         size: sizeRef.current,
         resolution: resolutionRef.current,
+        live: liveRef.current,
         mirrorU: mirrorURef.current,
         pixelRatio: window.devicePixelRatio,
         onError: (error) => root.store.reportError(error),
@@ -196,6 +200,9 @@ export function SurfaceSourceHost({
   useEffect(() => {
     runtime?.setResolution(resolution)
   }, [runtime, resolution])
+  useEffect(() => {
+    runtime?.setLive(live)
+  }, [runtime, live])
   useEffect(() => {
     runtime?.setMirrorU(mirrorU)
   }, [runtime, mirrorU])
