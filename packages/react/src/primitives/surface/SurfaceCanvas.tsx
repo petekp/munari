@@ -23,7 +23,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import { Canvas, useFrame, useThree, type CanvasProps } from '@react-three/fiber'
+import { Canvas, useFrame, useThree, type CanvasProps, type RootState } from '@react-three/fiber'
 import {
   createSurfaceHost,
   mountSurfaceHost,
@@ -78,6 +78,23 @@ const isDevelopment = (): boolean =>
   (import.meta as ImportMeta & { readonly env?: { readonly DEV?: boolean } }).env?.DEV === true
 
 /**
+ * Ask R3F for a frameloop mode only when it is not already the mode.
+ *
+ * `setFrameloop` in @react-three/fiber 9.7.0 restarts the shared clock
+ * (`clock.elapsedTime = 0`) on every call, changed mode or not. The host
+ * asks for a mode on every work-claim edge, twice per capture, so a scene
+ * that poses itself as a function of `clock.elapsedTime` would snap to its
+ * first frame at each one (measured 2026-09-11: 20 restarts in a 24-step
+ * mouse sweep, none while idle). R3F's own prop re-apply has the same guard.
+ */
+export function settleFrameloop(
+  state: Pick<RootState, 'frameloop' | 'setFrameloop'>,
+  mode: NonNullable<CanvasProps['frameloop']>,
+) {
+  if (state.frameloop !== mode) state.setFrameloop(mode)
+}
+
+/**
  * The renderer half of the host, mounted inside the Canvas.
  *
  * Everything that needs `gl`, `invalidate`, or `setFrameloop` lives here
@@ -103,7 +120,7 @@ function SurfaceHostBridge({
 }) {
   const gl = useThree((s) => s.gl)
   const invalidate = useThree((s) => s.invalidate)
-  const setFrameloop = useThree((s) => s.setFrameloop)
+  const get = useThree((s) => s.get)
   // The caller's idle mode, captured so a promotion can be undone exactly.
   // `undefined` means R3F's own default, which is 'always'.
   const idleMode = frameloop ?? 'always'
@@ -121,9 +138,9 @@ function SurfaceHostBridge({
     const runtime = {
       invalidate: () => invalidate(),
       setBusy: (busy: boolean) => {
-        // Promoting an 'always' Canvas is a no-op, and demoting one would
-        // silently stop a scene the caller asked to run continuously.
-        setFrameloop(busy ? 'always' : idleModeRef.current)
+        // Demoting an 'always' Canvas would silently stop a scene the
+        // caller asked to run continuously, so idle returns the caller's mode.
+        settleFrameloop(get(), busy ? 'always' : idleModeRef.current)
       },
     }
     // First Canvas to arrive keeps the id. A second one under the same id
@@ -146,11 +163,11 @@ function SurfaceHostBridge({
       // no way to be invalidated.
       if (host.runtime === runtime) host.setRuntime(null)
     }
-  }, [host, invalidate, setFrameloop, idleModeRef])
+  }, [host, invalidate, get, idleModeRef])
 
   useEffect(() => {
-    setFrameloop(host.workClaims() > 0 ? 'always' : idleMode)
-  }, [host, idleMode, setFrameloop])
+    settleFrameloop(get(), host.workClaims() > 0 ? 'always' : idleMode)
+  }, [host, idleMode, get])
 
   // One frame callback for every Surface on this host. It runs at the
   // default priority, so capture and protocol both land before the render,

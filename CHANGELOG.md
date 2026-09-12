@@ -11,6 +11,9 @@
   control behavior.
 - Consolidate the current guides and remove superseded plans, duplicate anchor
   recipes, unused helpers, and obsolete probe adapters.
+- Stop restarting the scene clock on every capture: `SurfaceCanvas` asks R3F
+  for a frameloop mode only when the mode changes, so a scene posed from
+  `clock.elapsedTime` no longer snaps back while the user types in a Surface.
 
 Versioned entries below describe their released interfaces, not the current
 development API. Use the README and exported types for this checkout.
