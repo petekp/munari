@@ -25,6 +25,14 @@
   re-captures at most about four times a second, so the cheaper capture is not
   spent on more captures. A hover is captured
   once the pointer settles on it, so crossing a Surface no longer captures.
+- Place a Surface correctly when it sits inside a rotated or skewed element.
+  Both rigs write their placement as a transform on the parked host, and that
+  transform composes with the block the host stands in, which was measured by
+  a bounding rect — and a rect cannot report a turn. Content in a turned
+  element was drawn off its page position, upright and stretched, for the
+  length of a crossing, then snapped back when the renderer took over. The
+  block and the page slot are both measured in the block's own coordinates
+  now, so a turned Surface crosses with nothing moving.
 - Stop restarting the scene clock on every capture: `SurfaceCanvas` asks R3F
   for a frameloop mode only when the mode changes, so a scene posed from
   `clock.elapsedTime` no longer snaps back while the user types in a Surface.

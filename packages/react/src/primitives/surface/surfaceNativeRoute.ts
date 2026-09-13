@@ -31,7 +31,6 @@ import {
   createSurfacePose,
   nativeRideStyle,
   pointerRouteHandoff,
-  poseMatrix3d,
   poseOnScreen,
   routeFor,
   surfacePose,
@@ -43,7 +42,7 @@ import {
   type SurfacePose,
 } from '@munari/core'
 import { DEFORMED_MARKER } from './surfaceDeform'
-import { hostSpace } from './surfaceHostSpace'
+import { hostSpace, inHostSpace } from './surfaceHostSpace'
 import { claimSourcePointer, releaseSourcePointer, registerSourcePointerPresenter, sourceHasOnePointerPose } from './surfacePointerOwnership'
 
 /** Everything one frame's verdict is read from. */
@@ -184,20 +183,6 @@ function measurePose(input: SurfaceRouteStep, pose: SurfacePose) {
   }
 }
 
-/**
- * Which controller is riding each parked host. Two presenters of one
- * source share one parked element, and each computes its own pose — both
- * riding would mean each frame's last writer wins and the hit region
- * teleports between the two copies. First to lift holds the host until it
- * parks; every other presenter's native request quietly stays on the relay.
- */
-
-
-function transformInHostSpace(pose:SurfacePose,space:NonNullable<ReturnType<typeof hostSpace>>) {
-  const matrix=poseMatrix3d(pose,space.left,space.top)
-  return space.scaleX===1&&space.scaleY===1?matrix:`scale(${1/space.scaleX},${1/space.scaleY}) ${matrix}`
-}
-
 function measureEligiblePose(input: SurfaceRouteStep, pose: SurfacePose, conditions: { hearing: boolean; planar: boolean; exclusiveSource: boolean }, hasRig: boolean) {
   const eligible = input.request === 'auto' && input.capable && conditions.hearing && conditions.planar && conditions.exclusiveSource && hasRig
   return eligible ? measurePose(input, pose) : { facing: false, onScreen: false }
@@ -295,12 +280,17 @@ export function createSurfaceRoute(): SurfaceRouteController {
       }
       // Riding IS the lift — the first ride captures what it replaces and
       // installs the twin listeners, and every later one is the frame's pose.
-      // The origin is (0, 0): the parked host stands at client (0, 0) by
-      // the parking law (`position:fixed;left:0;top:0`, paint/domTextureSource).
+      // The pose is client-space and the host is fixed to whatever block it
+      // was docked in, so it is written in that block's coordinates.
       if (next === 'native' && live && space && rigHost) {
+        // One rider per parked host. Two presenters of one source share one
+        // parked element and each computes its own pose — both riding would
+        // mean each frame's last writer wins and the hit region teleports
+        // between the two copies. First to lift holds the host until it
+        // parks; every other presenter's native request stays on the relay.
         // Source replacement can preserve the route verdict while changing the rig.
         claimSourcePointer(rigHost, token, () => live.park())
-        live.ride(nativeRideStyle(transformInHostSpace(pose,space), zIndex))
+        live.ride(nativeRideStyle(inHostSpace(space, pose.matrix), zIndex))
       }
       return handoff
     },

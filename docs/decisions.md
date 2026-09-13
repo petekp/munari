@@ -2455,6 +2455,49 @@ geometry takes the relay. Changing UVs can move visible content without moving t
 plane, so native hit-testing must also decline that case. The pure route
 truth table and binding regressions change with this contract.
 
+Amendment to #39, 2026-09-13 — a placement is stated in the block the host
+stands in. The rig writes the pose as a transform on the parked host, and
+that transform composes with whatever block the host was docked in. That
+block used to be measured by one bounding rect, which reports an offset and
+an axis scale but never a turn: the rect of a turned box is a bigger upright
+box. Measured in the lab's logo scene, where every letter wears its own
+`rotate()` — while a crossing ran, the page letters were hidden and the real
+ones shown in their place, each standing up to 12.5 CSS px off its page
+position, upright, and stretched to its own bounding box, then snapping back
+to the page's tilt when the renderer took over. On both capture engines,
+because the rig is engine-independent.
+
+The block is now measured from three zero-size probes docked in the space
+marker — its origin, and 100 px along each of its axes. That is what an
+affine map costs: six numbers, where a rect carries four, and a point's rect
+survives a turn where a box's does not. The page slot is read in the block's
+own coordinates too, and the host is stood on that box, so the block itself
+supplies the turn. While the block is square to the screen the slot's rect is
+the whole measurement, unchanged; while it is turned, the size comes from the
+box's own CSS (both engines resolve `width` to the box `box-sizing` names,
+measured 2026-09-13 on Chrome 151 and Safari 18.6; an inline box answers
+`auto` and `offsetWidth` reports it to the whole px) and the rect says only
+where a box that size is standing. The pixel grid snap is skipped for a
+turned block: the grid is the screen's, and content crossing it at an angle
+has no texel to land on.
+
+The crossing's own frames against the page at rest, the paused logo at dpr 2
+in Chrome, sampled at 80, 250 and 480 ms after the request — nothing in the
+scene moves before 690 ms, so a difference is the handoff's:
+
+| how the host was placed | pixels over 24 | ink centroid |
+|---|---|---|
+| snapDOM, one rect for the block | 6.57% | 13.6 |
+| snapDOM, the block's own coordinates | 0.00% | 0.0 |
+| HTML-in-canvas, one rect for the block | 6.56% | 16.3 |
+| HTML-in-canvas, the block's own coordinates | 0.02% | 0.4 |
+
+Device px at dpr 2, so the word's own left edge stood 25 device px — 12.5 CSS
+px — inside where the page had it. After, every crossing frame is the page's
+own frame. Safari 18.6 was measured after only, on snapDOM: the word's ink
+moved 0.3 device px with every edge unchanged, and 0.18% of the pixels around
+it differ, which is glyph antialiasing landing on a different half-pixel.
+
 The companion hook is useSurfaceBeforeRender: one callback per scene render pass,
 after pose writers and world-matrix updates. It reports the actual camera and
 render target, including offscreen passes. Physics remains a once-per-frame job.

@@ -20,7 +20,7 @@ import { surfaceChromeElement } from './surface/surfaceChromeElement'
 import { validateSurfaceSize } from './surface/surfaceSize'
 import { watchSurfacePlacement } from './surface/surfacePlacement'
 import { claimSourcePointer, releaseSourcePointer } from './surface/surfacePointerOwnership'
-import { registerHostSpace, hostSpace } from './surface/surfaceHostSpace'
+import { registerHostSpace, hostSpace, markerSpace, boxInHostSpace, hostSpaceScale, hostSpaceUpright } from './surface/surfaceHostSpace'
 import { createSurfacePageClip } from './surface/surfacePageClip'
 import { moveRetained } from './retainedMove'
 
@@ -112,7 +112,10 @@ function PageBinding({page,marker,layout,inScene,pageContent}:{page:HTMLElement;
   const setPageRoot=part.setPageRoot,setMeasuredSize=part.setMeasuredSize
   useLayoutEffect(()=>{setPageRoot(page);return()=>setPageRoot(null)},[page,setPageRoot])
   useLayoutEffect(()=>{
-    const read=()=>{const rect=(pageContent() ?? page).getBoundingClientRect(),space=marker.getBoundingClientRect();if(rect.width<=0||rect.height<=0||space.width<=0||space.height<=0)return;const w=rect.width/(space.width/100),h=rect.height/(space.height/100);if(last.current?.[0]!==w||last.current[1]!==h){last.current=[w,h];setMeasuredSize([w,h])}root.host?.invalidate()}
+    // The slot's size in the block's own px, never its rect: a turned block
+    // inflates every rect it reports, and a Surface sized from one would ask
+    // for a texture bigger than the content it is drawing.
+    const read=()=>{const space=markerSpace(marker);const box=space&&boxInHostSpace(pageContent() ?? page, space);if(!box)return;const w=box.width,h=box.height;if(last.current?.[0]!==w||last.current[1]!==h){last.current=[w,h];setMeasuredSize([w,h])}root.host?.invalidate()}
     read();const observer=new ResizeObserver(read);observer.observe(page)
     let measured:HTMLElement|null=null
     const watch=()=>{const next=pageContent();if(next!==measured){if(measured)observer.unobserve(measured);measured=next;if(measured)observer.observe(measured)}read()}
@@ -268,25 +271,34 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
         warmSource.current = runtime.source
         warmClip.current = createSurfacePageClip(sourceHost, holder)
       }
-      const rect = (pageContent() ?? holder).getBoundingClientRect()
+      const space=hostSpace(sourceHost)
+      const slot=space&&boxInHostSpace(pageContent() ?? holder, space)
+      if(!space||!slot){parkWarmRig();return}
       const [w, h] = runtime.size()
-      const mx=rect.width/w,my=rect.height/h,dpr=window.devicePixelRatio
+      // The block's own px magnified onto the screen. A turned block changes
+      // where its content is drawn, never how big — so the texture is asked
+      // for a size along the block's axes, and the host is stood on a box
+      // stated in the block's coordinates, which the block then turns.
+      const [spaceX,spaceY]=hostSpaceScale(space)
+      const mx=slot.width*spaceX/w,my=slot.height*spaceY/h,dpr=window.devicePixelRatio
       if(resolution===undefined||resolution==='auto')runtime.proposeRaster(pageDensityKey,[clampScale(dpr*mx,w,1),clampScale(dpr*my,1,h)])
-      let left=rect.left,top=rect.top,drawW=rect.width,drawH=rect.height
+      let left=slot.x,top=slot.y,drawW=slot.width,drawH=slot.height
       const [density,densityY]=runtime.source.rasterScale()
       // The store's own count, never `w * density`: the two differ by a
       // whole texel whenever the box carries a fraction (`PixelGridInput`).
       const texelsX=runtime.source.canvas.width,texelsY=runtime.source.canvas.height
-      if(Math.abs(w*density-rect.width*dpr)<=1&&Math.abs(h*densityY-rect.height*dpr)<=1){
-        const a=pixelGridSnap({x:(rect.left+rect.width/2-innerWidth/2)/mx,y:0,width:w,height:h,mag:mx,viewW:innerWidth,viewH:innerHeight,dpr,density,texelsX,texelsY})
-        const b=pixelGridSnap({x:0,y:(innerHeight/2-rect.top-rect.height/2)/my,width:w,height:h,mag:my,viewW:innerWidth,viewH:innerHeight,dpr,density:densityY,texelsX,texelsY})
-        drawW*=a.sx;drawH*=b.sy
-        left+=rect.width/2+a.dx*mx-drawW/2;top+=rect.height/2-b.dy*my-drawH/2
+      // The grid belongs to the screen, so only a block square to it has
+      // texels to land on; content a block turns crosses them at an angle.
+      if(hostSpaceUpright(space)&&Math.abs(w*density-drawW*spaceX*dpr)<=1&&Math.abs(h*densityY-drawH*spaceY*dpr)<=1){
+        const cx=space.e+space.a*(left+drawW/2),cy=space.f+space.d*(top+drawH/2)
+        const a=pixelGridSnap({x:(cx-innerWidth/2)/mx,y:0,width:w,height:h,mag:mx,viewW:innerWidth,viewH:innerHeight,dpr,density,texelsX,texelsY})
+        const b=pixelGridSnap({x:0,y:(innerHeight/2-cy)/my,width:w,height:h,mag:my,viewW:innerWidth,viewH:innerHeight,dpr,density:densityY,texelsX,texelsY})
+        const snappedW=drawW*a.sx,snappedH=drawH*b.sy
+        left+=drawW/2+a.dx*mx/spaceX-snappedW/2;top+=drawH/2-b.dy*my/spaceY-snappedH/2
+        drawW=snappedW;drawH=snappedH
       }
-      const space=hostSpace(sourceHost)
-      if(!space){parkWarmRig();return}
       claimSourcePointer(sourceHost, warmOwner, parkWarmRig)
-      warmRig.current?.ride(nativeRideStyle(`matrix(${drawW / w / space.scaleX},0,0,${drawH / h / space.scaleY},${(left-space.left)/space.scaleX},${(top-space.top)/space.scaleY})`, zIndexAbove(holder)))
+      warmRig.current?.ride(nativeRideStyle(`matrix(${drawW / w},0,0,${drawH / h},${left},${top})`, zIndexAbove(holder)))
       // The host shows its own pixels only while it rides: the captured
       // bitmap carries native selection and caret, which an inert DOM clone
       // cannot. Which property hides a host without killing its capture is
