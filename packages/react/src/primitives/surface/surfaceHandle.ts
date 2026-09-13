@@ -114,6 +114,14 @@ export interface SurfaceHandle {
 // handoff it was promised to cross.
 const RECLAIM_LINGER_MS = 300
 
+// The longest a lift waits for a capture newer than itself. Measured
+// 2026-09-13 on snapDOM in genie: the demanded capture was uploaded about
+// 30 ms after the lift, and a 1 ms bound released onto a capture ~10% of the
+// figure's pixels away from the frozen pose, for one to two frames. 500 ms is
+// an order of magnitude past that and still short of reading as a hang
+// (decisions.md #65).
+const CURRENT_CAPTURE_WAIT_MS = 500
+
 // Callbacks are `SurfaceCallbacks` rather than a bag of optional functions
 // so the store has one named type to hold, and so replacing them is one
 // assignment — the latest-callback rule is that the newest set runs without
@@ -121,6 +129,7 @@ const RECLAIM_LINGER_MS = 300
 interface SurfaceCallbacks {
   onPresentationChange?: (presentation: SurfacePresentation) => void
   onMotionComplete?: (destination: SurfaceDestination) => void
+  onFreezeChange?: (frozen: boolean) => void
   onReady?: () => void
   onError?: (error: Error) => void
 }
@@ -203,6 +212,13 @@ export interface SurfaceStore {
    * in nobody's hands.
    */
   subscribeHold(listener: () => void): () => void
+  /**
+   * Is non-live content frozen for a canvas? True on exactly the frames the
+   * library holds its CSS animations, so a consumer clock stopped on this
+   * edge agrees with them (decisions.md #67).
+   */
+  isFrozen(): boolean
+  subscribeFreeze(listener: () => void): () => void
   /** The source was replaced: every proof is void, the presenters remain. */
   replaceSource(): void
   readinessLifetime(): number
@@ -329,6 +345,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   const partListeners = new Set<() => void>()
   const announceParts = () => {
     partSnapshot = Array.from(partMap.values())
+    announceFreeze()
     for (const listener of partListeners) listener()
   }
   // Resolved on first observation, not at creation. A handle made at module
@@ -408,25 +425,39 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     const next = exclusive && (crossing.phase !== 'page' || !pageHeld)
     if (next === motionHeld) return
     motionHeld = next
-    if (!next) {
+    if (next) for (const publication of partMap.values()) holdPart(publication)
+    else {
       for (const held of motionHolds.values()) releaseMotion(held)
       motionHolds.clear()
-      return
     }
-    for (const publication of partMap.values()) holdPart(publication)
+    announceFreeze()
+  }
+
+  // The same edge as the motion hold, told to the consumer's own clocks —
+  // a rAF loop or a <video> the hold cannot pause. Stopping one on the
+  // presentation edge instead lets it run through the capture, which is the
+  // backwards step the hold removed for CSS (decisions.md #67). A Surface
+  // whose every part is `live` never freezes.
+  let frozen = false
+  const freezeListeners = new Set<() => void>()
+  const announceFreeze = () => {
+    const next = motionHeld && [...partMap.values()].some((publication) => !publication.live)
+    if (next === frozen) return
+    frozen = next
+    for (const listener of freezeListeners) listener()
+    callbacks.onFreezeChange?.(next)
   }
 
   // Is every part showing content the lift would accept? Read off the
   // UPLOADED generation, not the painted one — a paint the texture has not
   // taken yet is not something a draw can show.
   const contentCurrent = (): boolean => {
-    // Bounded, because every other condition in the lift gate is. The dwell
-    // is finite and readiness is bounded by presenters that do draw, but a
-    // source that stops answering would hold a lift open forever — and a
-    // crossing that never completes is a worse failure than one that shows a
-    // capture a beat old. One ramp past the dwell is longer than the whole
-    // transition would have taken, so nothing that is still coming is lost.
-    if (crossing.heldMs >= timing.settleMs + timing.rampMs) return true
+    // Bounded, because every other condition in the lift gate is: a source
+    // that stops answering would hold a lift open forever. The bound is the
+    // capture's latency, never the author's timing — a transition timed
+    // `{settleMs: 0, durationMs: 1}` had a 1 ms bound and released onto the
+    // previous capture every time (decisions.md #65).
+    if (crossing.heldMs >= CURRENT_CAPTURE_WAIT_MS) return true
     for (const [id, generation] of contentFloor) {
       const runtime = partMap.get(id)?.runtime
       if (runtime && runtime.uploadedGeneration() < generation) return false
@@ -817,6 +848,13 @@ export function createSurfaceStore(name?: string): SurfaceStore {
         holdListeners.delete(listener)
       }
     },
+    isFrozen: () => frozen,
+    subscribeFreeze(listener) {
+      freezeListeners.add(listener)
+      return () => {
+        freezeListeners.delete(listener)
+      }
+    },
     prove(key, lifetime, epoch) {
       // A receipt is refused unless it was earned in the LIVE lifetime and
       // under the LIVE controller. The epoch check is what a deferred
@@ -1065,6 +1103,7 @@ export function useSurfaceControls(store: SurfaceStore, controls: SurfaceControl
     timing,
     onPresentationChange,
     onMotionComplete,
+    onFreezeChange,
     onReady,
     onError,
   } = controls
@@ -1072,6 +1111,7 @@ export function useSurfaceControls(store: SurfaceStore, controls: SurfaceControl
     store.setCallbacks({
       onPresentationChange,
       onMotionComplete,
+      onFreezeChange,
       onReady,
       onError,
     })
@@ -1086,6 +1126,7 @@ export function useSurfaceControls(store: SurfaceStore, controls: SurfaceControl
     timing?.durationMs,
     onPresentationChange,
     onMotionComplete,
+    onFreezeChange,
     onReady,
     onError,
   ])

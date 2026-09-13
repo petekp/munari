@@ -169,9 +169,12 @@ and the canvas follows it.
 **What the library cannot hold is a clock it does not own** — a
 `requestAnimationFrame` loop writing styles, or a playing `<video>`. Neither
 has a timeline the platform exposes. If your content runs its own clock, stop
-it while the canvas has the content and start it again when the page takes it
-back; `onPresentationChange` is the signal. Genie's `scheda` window is the
-worked example: it freezes its bounce simulation for the flight.
+it on `onFreezeChange(frozen)`, or read `useFreezeSurface()` as React state.
+Both turn on the same frames the library pauses its CSS, starting before the
+capture. `onPresentationChange` is too late for this: it turns after the
+capture, so a clock stopped there runs into the picture. Genie's `scheda`
+window is the worked example: its bounce simulation stops on
+`useFreezeSurface`.
 
 Easing flat is still the better look, and it is still what keeps the ROOT's
 geometry honest — the canvas twin is placed at the page's resting box, so a

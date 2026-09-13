@@ -4169,10 +4169,20 @@ The wait is bounded, in the binding rather than the law. Every other condition
 in the lift gate is finite — the dwell by the clock, readiness by presenters
 that do draw — and an unbounded one lets a source that stops answering hold a
 crossing open forever, which is a worse failure than showing a capture a beat
-old. One ramp past the dwell is longer than the whole transition would have
-taken, so the bound cannot discard a capture that was still coming. The kernel
+old. The kernel
 law is unchanged: it is handed `contentCurrent` and does not decide when the
 binding stops claiming staleness.
+
+Amended 2026-09-13 — THE BOUND IS THE CAPTURE'S LATENCY, NOT THE AUTHOR'S
+TIMING. It was first set to one ramp past the dwell, on the argument that no
+capture still coming would outlast the transition. Genie times its windows
+`{settleMs: 0, durationMs: 1}`, so the bound was 1 ms and the floor never
+held: measured on snapDOM, the page released 77 ms after a real mouse click
+onto the previous capture, about 10% of cerchio's figure pixels away from the
+frozen pose, and the demanded capture replaced it 20-30 ms later — a pose
+flash on every minimize. With a 2 s bound the same four minimizes showed no
+flash. The bound is now a fixed 500 ms (`CURRENT_CAPTURE_WAIT_MS`), an order
+of magnitude past the measured ~30 ms capture.
 
 ## #66 — Content stands still while a canvas has it (2026-09-13)
 
@@ -4249,3 +4259,40 @@ someone's playback is not a capture engine's business. An app that runs its
 own clock holds its own clock — `docs/authoring.md` says so, and genie's
 `scheda` window is the worked example, freezing its bounce simulation for the
 flight while the library freezes everything declarative around it.
+
+Amended 2026-09-13 — A COPY MADE MID-HOLD JOINS THE HOLD. `matchMotion`
+paused a copy whose original was held, but no release was owed to the copy.
+On a return the page takes the hold back and `Surface.HTML` snapshots the
+content into the capture root before the store releases the hold, so that
+copy stayed paused. Measured on genie's `quadrato` and `cerchio` over four
+minimize cycles on both engines, identically on `main`: after the first
+restore the capture root's copy read `paused` while the page ran, and the
+second minimize's lift captured it about 1.5 s behind the live node — a
+third of the 4.8 s period — before the next capture snapped back. The
+earlier "0 ms apart at every lift" sampled at rest after the lift, and missed
+the two frames that matter. `holdMotion` now records what it keeps still,
+and a copy `matchMotion` pauses to match a held animation resumes when that
+animation does.
+
+## #67 — Consumer clocks freeze on the library's edge (2026-09-13)
+
+#66 freezes declarative motion and leaves a consumer's own clock — a
+`requestAnimationFrame` loop, a timer, a `<video>` — to the consumer. The only
+signal it offered was `onPresentationChange`, and that turns on the wrong
+frame. It fires when the canvas has presented, which is after the capture. A
+clock stopped there runs into the picture, and the lift steps backwards by the
+capture's latency: the fault #66 removed for CSS, left in place for everything
+else. Genie's `scheda` did not use it; it held its bounce simulation off the
+scene's own flight state instead, which is the workaround a consumer without
+that state cannot write.
+
+The law: `onFreezeChange(frozen)` and `useFreezeSurface()` report the motion
+hold itself. They turn in `syncMotionHold`, on the lift's first frame, before
+the demanded capture, and turn back when the page holds the content again —
+abandoned lifts included. A Surface whose every part is `live` never freezes,
+because nothing in it is held.
+
+"Freeze", not "hold": the store's hold is the page hold, a different fact, and
+the consumer's question is whether their content should stand still.
+
+`scheda` now stops its simulation on `useFreezeSurface`.

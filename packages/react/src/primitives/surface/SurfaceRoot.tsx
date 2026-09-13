@@ -131,6 +131,7 @@ export function SurfaceRoot({
   mirrorU,
   onPresentationChange,
   onMotionComplete,
+  onFreezeChange,
   onReady,
   onFocusWithinChange,
   onChrome,
@@ -151,6 +152,7 @@ export function SurfaceRoot({
     timing,
     onPresentationChange,
     onMotionComplete,
+    onFreezeChange,
     onReady,
     onError,
   })

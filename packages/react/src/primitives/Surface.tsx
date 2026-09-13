@@ -164,6 +164,14 @@ export interface SurfaceControls {
   timing?: SurfaceTiming
   onPresentationChange?: (presentation: SurfaceViewPresentation) => void
   onMotionComplete?: (destination: SurfaceViewDestination) => void
+  /**
+   * The content froze for the scene, or thawed when the page took it back.
+   * CSS animations, transitions and Web Animations are frozen for you on
+   * this edge; stop your own clocks here — a rAF loop, a timer, a video.
+   * Never fires for content declared `live`. `useFreezeSurface` is the same
+   * signal as React state.
+   */
+  onFreezeChange?: (frozen: boolean) => void
   onReady?: () => void
   onError?: (error: Error) => void
 }
@@ -218,6 +226,10 @@ export type SurfaceHTMLProps = {
    * milliseconds per change, so it follows only what the user does to the
    * content unless told the content is live, and then follows it at a paced
    * rate. Default `false`.
+   *
+   * Content that is not live freezes while the scene has it: its CSS
+   * animations, transitions and Web Animations pause and resume where they
+   * stopped. See `onFreezeChange` for motion the library cannot pause.
    */
   live?: boolean
   onChrome?: (chrome: SurfaceChrome) => void
@@ -579,6 +591,16 @@ export function useSurfaceStatus(surface?: SurfaceHandle) {
     useMemo(() => store.getStatus.bind(store), [store]),
   )
   return useMemo(() => ({ ...snapshot, supported: browserSupported && snapshot.supported }), [snapshot, browserSupported])
+}
+
+/** Is the Surface's content frozen for the scene? The `onFreezeChange` signal, as React state. */
+export function useFreezeSurface(surface?: SurfaceHandle): boolean {
+  const context = use(SurfaceHandleContext)
+  const store = surface ? surfaceStoreOf(surface) : context?.store
+  if (!store) throw new Error('useFreezeSurface needs a Surface handle or an enclosing Surface.')
+  const subscribe = useMemo(() => store.subscribeFreeze.bind(store), [store])
+  const read = useMemo(() => store.isFrozen.bind(store), [store])
+  return useSyncExternalStore(subscribe, read, read)
 }
 
 export interface SurfaceDriverFrame { readonly dtMs: number; readonly progress: number; readonly target: SurfaceViewDestination }
