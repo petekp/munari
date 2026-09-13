@@ -1,6 +1,7 @@
 // capture-engines gate runner — the same laws judged once per installed
-// engine. See main.ts for what is measured; this file is transport: find
-// Chrome, drive the page once per engine, judge the numbers.
+// engine. See main.ts for what is measured; this file is transport and one
+// fixture dependency: find Chrome, serve the guest font origin the parity
+// fixture is set in, drive the page once per engine, judge the numbers.
 //
 // Capability policy differs per engine, and that difference is the point.
 // HTML-in-canvas rests on an origin trial, so its absence is environmental
@@ -8,7 +9,8 @@
 // snapDOM needs nothing but a document, so a snapDOM failure is always a
 // real failure — which is what makes this gate runnable on a machine that
 // cannot run `idle-zero` at all.
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { createServer as createHttpServer } from 'node:http'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -74,12 +76,43 @@ const FIDELITY_TOLERANCE = 4
 //             Block mean 2.00 (worst 48); with the rasterizer answering at
 //             its own size and the source stretching it, 37.59 (worst 255).
 //             The budget sits between, nearer the floor.
+// The parity fixture is set in a face declared on ANOTHER ORIGIN, which is
+// what a hosted font sheet is. A second port is the whole trick: a different
+// port is a different origin, so the sheet is opaque to `cssRules` exactly as
+// a hosted one is, while both servers stay on the loopback name the page
+// already uses. A second HOSTNAME does not work here — `localhost` resolves
+// to ::1 on macOS and a server bound to it refuses 127.0.0.1 outright.
+//
+// The CORS header is what leaves the sheet's text readable, the way a font
+// host's does. Without it no engine could embed the face at all, and the
+// fixture would be measuring a face nothing can draw.
+const GUEST_SHEET = `@font-face{font-family:'Gate Guest';font-style:normal;` +
+  `font-weight:900;font-display:block;src:url(/guest.woff2) format('woff2')}\n`
+const GUEST_WOFF2 = path.join(repoRoot, 'apps', 'lab', 'public', 'fonts', 'playfair-display-900-latin.woff2')
+
+async function serveGuestOrigin() {
+  const guest = readFileSync(GUEST_WOFF2)
+  const server = createHttpServer((req, res) => {
+    const asset = req.url === '/guest.woff2'
+      ? ['font/woff2', guest]
+      : req.url === '/guest.css' ? ['text/css', GUEST_SHEET] : null
+    if (!asset) { res.statusCode = 404; res.end('not here'); return }
+    res.setHeader('Content-Type', asset[0])
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Cache-Control', 'no-store')
+    res.end(asset[1])
+  })
+  await new Promise((resolve) => server.listen(0, 'localhost', resolve))
+  return { server, port: server.address().port }
+}
+
 const PARITY_BLOCK = 4
 const PARITY_SLACK = 24
 const CARRIED_MEAN_BUDGET = 6
 
 let server
 let browser
+let guestOrigin
 const deadline = setTimeout(() => {
   console.error('capture-engines gate: hard 180s deadline hit')
   process.exit(1)
@@ -90,7 +123,7 @@ const expect = (cond, message) => {
   if (!cond) failures.push(message)
 }
 
-async function measure(port, engine, reference) {
+async function measure(port, engine, reference, guestPort) {
   const page = await browser.newPage()
   await page.evaluateOnNewDocument((block, slack) => {
     window.PARITY_BLOCK = block
@@ -103,7 +136,7 @@ async function measure(port, engine, reference) {
       pageProblems.push(m.text())
   })
 
-  await page.goto(`http://localhost:${port}/?engine=${engine}`, { waitUntil: 'load' })
+  await page.goto(`http://localhost:${port}/?engine=${engine}&guest=${guestPort}`, { waitUntil: 'load' })
   await page.waitForFunction(() => window.__captureEngines?.ready === true, { timeout: 20_000 })
   const available = await page.evaluate(() => window.__captureEngines.available)
   if (!available) {
@@ -233,10 +266,12 @@ try {
   await server.listen()
   const port = server.config.server.port ?? server.httpServer.address().port
 
+  guestOrigin = await serveGuestOrigin()
+
   const results = []
   let reference = null
   for (const engine of ['html-in-canvas', 'snapdom']) {
-    const { available, report, fields, parity, pageProblems } = await measure(port, engine, reference)
+    const { available, report, fields, parity, pageProblems } = await measure(port, engine, reference, guestOrigin.port)
     if (pageProblems.length) {
       console.error(`page errors under ${engine}:`)
       for (const p of pageProblems) console.error(`  ${p}`)
@@ -253,6 +288,14 @@ try {
       continue
     }
     judge(engine, report)
+    // What the fixture was covering, per engine. Two engines agreeing on a
+    // fallback face, or on a missing image, is a pass that proves nothing.
+    expect(fields.sheetOpaque, `${engine}: the guest stylesheet handed over its rules, ` +
+      'so the fixture no longer covers a face the clone has to read from text')
+    expect(fields.guestFace, `${engine}: the guest face never resolved, so the fixture drew ` +
+      'a fallback on both engines and the parity result is vacuous')
+    expect(fields.markDrawn, `${engine}: the fixture's image never decoded, so nothing ` +
+      'in it needed the clone to inline an image')
     for (const [stage, result] of Object.entries(parity ?? {})) {
       if (result.sizeMismatch) {
         failures.push(`${engine}: ${stage} fixture rastered ${result.sizeMismatch.slice(2)}, ` +
@@ -277,8 +320,10 @@ try {
           result.over === 0,
           `${engine}: the rest fixture does not match ${reference.engine} — ${result.over} of ` +
             `${result.pixels} ${PARITY_BLOCK}x${PARITY_BLOCK} blocks differ by more than ` +
-            `${PARITY_SLACK} (worst ${result.worst}). A form field's ::after or ::placeholder ` +
-            `is the usual cause.`,
+            `${PARITY_SLACK} (worst ${result.worst}). The cause is one of the four things a ` +
+            `structural clone cannot inherit: a form field's ::after or ::placeholder, the ` +
+            `guest face its stylesheet declares on another origin, or the image it has to ` +
+            `inline. The written PNGs say which.`,
         )
     }
     // A parity failure is a picture, not a number. Write both so the next
@@ -319,4 +364,5 @@ try {
   clearTimeout(deadline)
   await browser?.close()
   await server?.close()
+  guestOrigin?.server.close()
 }

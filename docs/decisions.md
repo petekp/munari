@@ -3863,8 +3863,8 @@ The three:
 
 - **Fonts once.** `snapdom.ts` turns snapDOM's font pass off and supplies the
   faces through a plugin that chooses them by the families and codepoints the
-  subtree uses, from `@font-face` text encoded once per document. The saving
-  is real only with the other two.
+  subtree uses, from `@font-face` text encoded once per face. The saving is
+  real only with the other two.
 - **The frame split.** A plugin hands the frame loop one animation frame
   between the clone and the serialize. Where the probe yielded four times by
   accident, this yields once on purpose, and it is what puts Chrome at zero
@@ -3887,6 +3887,47 @@ the way in and one on the way out; it now costs nothing, and Glass went from
 None of this is an option. The point of the request that produced it was that
 performance should not be something an author manages, and every number above
 came from a policy with nothing to set.
+
+**Amendment, 2026-09-12 — the faces are read per stylesheet, from any
+origin.** The first version read the document's stylesheets once, at install,
+and skipped any sheet that refused `cssRules`. Genie's faces are same-origin
+and linked in `<head>`, so every measurement above held. The logo scene links
+a Google Fonts sheet when it mounts, and that sheet refuses `cssRules` to
+script, so its six guest families were never read. Their letters rasterized
+in fallback faces, and switching the scene to WebGL swapped the typography
+under the user. That is the one transition this library exists to make
+seamless. snapDOM's own font pass had embedded those faces, which is why the
+regression arrived with this entry.
+
+Now the faces are read per stylesheet object, re-read when a readable sheet's
+rule count changes, and `@import` is followed. A sheet that refuses its rules
+is fetched and parsed from its text, the way snapDOM's pass reads it. A sheet
+that refuses the fetch too cannot be embedded by any engine, and
+`munari-font-sheet-unreadable` warns once. Measured in Chrome on the paused
+logo, with the scene's WebGL view compared against HTML-in-canvas at dpr 2:
+
+| snapDOM WebGL view vs HTML-in-canvas | mean abs error | pixels over 24 |
+|---|---|---|
+| read once, same-origin only | 10.15 | 8.35% |
+| read per sheet, any origin | 1.15 | 1.30% |
+
+The page views of the two runs are identical, at 0.00. What remains is a
+one-pixel outline around every glyph, which is the image path's layout
+quantization (platform.md #28), not a face. In Safari 18.6 the plugin embeds
+the same six faces from the same five families as snapDOM's own pass,
+including the Google-hosted ones, and its raster differs from that pass by
+1.28% of pixels. Two back-to-back captures by snapDOM's pass differ by 2.60%.
+
+What let this ship is that the gate written to catch exactly this kind of
+drift could not see it: `capture-engines` diffs the two engines pixel for
+pixel, and its fixture was set in `system-ui` and `monospace`, both
+installed locally, so nothing in it ever needed a face to be rebuilt. The
+fixture now holds one of everything a structural clone cannot inherit — the
+field pseudo-elements it already had, a headline in a face declared on
+another origin, and an image whose bytes have to be inlined — and reports
+whether each was actually covered, because two engines agreeing on a
+fallback is a pass that proves nothing. With the faces read once per
+document again, the rest stage fails at 88 of 3000 blocks (worst 222).
 
 The measurement caveat travels with the numbers: Low Power Mode holds Safari at
 30 fps, which makes every frame 33 ms and every rAF wait twice as long. The

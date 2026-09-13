@@ -1,4 +1,4 @@
-// Webfont embedding for snapDOM captures — built once per document, spliced
+// Webfont embedding for snapDOM captures — read once per stylesheet, spliced
 // into every clone.
 //
 // The law: a capture carries the same font bytes the page rendered with, and
@@ -72,43 +72,110 @@ const CARRIED_DESCRIPTORS = [
 ] as const
 
 /**
- * Read every `@font-face` the document declares.
+ * Faces read per stylesheet, keyed by the sheet object and its rule count.
  *
- * Cross-origin sheets throw on `cssRules` rather than returning an empty list,
- * and a page that links one would otherwise lose every face behind it — so the
- * throw is caught per sheet and the rest are still read.
+ * Per sheet rather than once per document, because a document gains
+ * stylesheets after the engine installs: a scene that links its own fonts
+ * when it mounts adds a sheet the install-time read never saw, and every
+ * letter set in those faces rasterized in a fallback face (the logo scene's
+ * guest families, 2026-09-12). The rule count catches a readable sheet that
+ * gains a face through `insertRule`; a sheet read once is not read again.
  */
-function readDeclaredFaces(doc: Document): DeclaredFace[] {
-  const faces: DeclaredFace[] = []
+const facesBySheet = new WeakMap<CSSStyleSheet, { rules: number; faces: Promise<DeclaredFace[]> }>()
+
+/** Every `@font-face` the document declares, across every stylesheet it has now. */
+async function declaredFaces(doc: Document, onUnreadable?: (href: string) => void): Promise<DeclaredFace[]> {
   // `styleSheets` already includes anything adopted in engines that support
   // it, but reading `adoptedStyleSheets` as well costs nothing and covers the
-  // ones where it does not; the duplicate pass is harmless because a face read
-  // twice produces the same entry.
+  // ones where it does not; a sheet listed twice is read once.
   const adopted = 'adoptedStyleSheets' in doc ? doc.adoptedStyleSheets : []
-  const sheets: CSSStyleSheet[] = [
+  const sheets = new Set<CSSStyleSheet>([
     ...Array.from(doc.styleSheets).filter((s): s is CSSStyleSheet => s instanceof CSSStyleSheet),
     ...adopted,
-  ]
-  for (const sheet of sheets) {
-    let rules: CSSRuleList
-    try {
-      rules = sheet.cssRules
-    } catch {
+  ])
+  const lists = await Promise.all(Array.from(sheets, (sheet) => sheetFaces(sheet, doc, onUnreadable)))
+  return lists.flat()
+}
+
+function sheetFaces(
+  sheet: CSSStyleSheet,
+  doc: Document,
+  onUnreadable?: (href: string) => void,
+): Promise<DeclaredFace[]> {
+  let rules: CSSRuleList | null = null
+  try {
+    rules = sheet.cssRules
+  } catch {
+    // A stylesheet from another origin, linked without CORS, throws here.
+  }
+  const count = rules ? rules.length : -1
+  const cached = facesBySheet.get(sheet)
+  if (cached?.rules === count) return cached.faces
+  const faces = rules
+    ? readRules(rules, sheet.href ?? doc.baseURI, doc, onUnreadable)
+    : fetchSheetFaces(sheet.href, doc, onUnreadable)
+  facesBySheet.set(sheet, { rules: count, faces })
+  return faces
+}
+
+/**
+ * Read the faces a stylesheet's CSSOM cannot hand over, from its text.
+ *
+ * A Google Fonts `<link>` is the common case: the page renders its faces,
+ * but the browser refuses `cssRules` to script because the link carries no
+ * `crossorigin`. The same URL answers a CORS fetch, and so do the font files
+ * it names, which is how snapDOM's own font pass reads it too. A sheet that
+ * refuses the fetch as well cannot be embedded by anyone, and says so.
+ */
+async function fetchSheetFaces(
+  href: string | null,
+  doc: Document,
+  onUnreadable?: (href: string) => void,
+): Promise<DeclaredFace[]> {
+  if (!href) return []
+  try {
+    const response = await fetch(href)
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const parsed = new CSSStyleSheet()
+    // `replaceSync` drops `@import` rules rather than following them; a
+    // font stylesheet that imports another loses that one's faces.
+    parsed.replaceSync(await response.text())
+    return await readRules(parsed.cssRules, href, doc, onUnreadable)
+  } catch {
+    onUnreadable?.(href)
+    return []
+  }
+}
+
+/** An `@import` is the one rule that carries a `styleSheet`; happy-dom has no `CSSImportRule`. */
+function isImport(rule: CSSRule): rule is CSSImportRule {
+  return 'styleSheet' in rule
+}
+
+/** The faces in one rule list, following `@import` into the sheets it loaded. */
+async function readRules(
+  rules: CSSRuleList,
+  base: string,
+  doc: Document,
+  onUnreadable?: (href: string) => void,
+): Promise<DeclaredFace[]> {
+  const faces: DeclaredFace[] = []
+  for (const rule of Array.from(rules)) {
+    if (isImport(rule)) {
+      if (rule.styleSheet) faces.push(...(await sheetFaces(rule.styleSheet, doc, onUnreadable)))
       continue
     }
-    for (const rule of Array.from(rules)) {
-      if (!(rule instanceof CSSFontFaceRule)) continue
-      const style = rule.style
-      const family = unquote(style.getPropertyValue('font-family').trim())
-      const url = firstUrl(style.getPropertyValue('src'), doc)
-      if (!family || !url) continue
-      const descriptors = CARRIED_DESCRIPTORS.map((name) => {
-        const value = style.getPropertyValue(name)
-        return value ? `${name}:${value};` : ''
-      }).join('')
-      const rangeText = style.getPropertyValue('unicode-range')
-      faces.push({ family, descriptors, url, ranges: rangeText ? parseRanges(rangeText) : null })
-    }
+    if (!(rule instanceof CSSFontFaceRule)) continue
+    const style = rule.style
+    const family = unquote(style.getPropertyValue('font-family').trim())
+    const url = firstUrl(style.getPropertyValue('src'), base)
+    if (!family || !url) continue
+    const descriptors = CARRIED_DESCRIPTORS.map((name) => {
+      const value = style.getPropertyValue(name)
+      return value ? `${name}:${value};` : ''
+    }).join('')
+    const rangeText = style.getPropertyValue('unicode-range')
+    faces.push({ family, descriptors, url, ranges: rangeText ? parseRanges(rangeText) : null })
   }
   return faces
 }
@@ -118,16 +185,18 @@ function unquote(value: string): string {
 }
 
 /**
- * The first fetchable URL in a `src` list.
+ * The first fetchable URL in a `src` list, resolved against its stylesheet.
  *
  * `local()` entries are skipped rather than resolved: a local face cannot be
- * embedded, and picking it would leave the capture with no bytes at all.
+ * embedded, and picking it would leave the capture with no bytes at all. The
+ * base is the sheet's own URL, as CSS resolves it, not the document's: a
+ * relative `url()` in a sheet under `/fonts/` names a file under `/fonts/`.
  */
-function firstUrl(src: string, doc: Document): string | null {
+function firstUrl(src: string, base: string): string | null {
   const match = /url\(\s*(['"]?)([^'")]+)\1\s*\)/.exec(src)
   if (!match?.[2]) return null
   try {
-    return new URL(match[2], doc.baseURI).href
+    return new URL(match[2], base).href
   } catch {
     return null
   }
@@ -189,22 +258,17 @@ function encodeFace(url: string): Promise<string | null> {
   return pending
 }
 
-let declared: DeclaredFace[] | null = null
-
-function faces(doc: Document): DeclaredFace[] {
-  return (declared ??= readDeclaredFaces(doc))
-}
-
 /**
- * Start fetching every declared face.
+ * Start fetching every face the document declares now.
  *
  * Called at install so the first capture finds the cache warm. A capture that
- * beats it embeds nothing and rasterizes that one frame with fallback metrics,
- * which is the same failure `embedFonts` had while its own fetch was in
- * flight — so this is a head start, not a new requirement.
+ * beats it waits on the same fetch rather than starting its own; a sheet
+ * added later is read by the first capture after it lands.
  */
 export function warmCaptureFonts(doc: Document = document): void {
-  for (const face of faces(doc)) void encodeFace(face.url)
+  void declaredFaces(doc).then((faces) => {
+    for (const face of faces) void encodeFace(face.url)
+  })
 }
 
 /** Every codepoint in the subtree's text, including attribute-driven content. */
@@ -282,8 +346,13 @@ export function chooseFaces<T extends { family: string; ranges: Ranges }>(
  * Returns an empty string when nothing matches, which is the correct answer
  * for a subtree drawn entirely in system fonts.
  */
-async function fontCssFor(live: Element, clone: Element, doc: Document): Promise<string> {
-  const all = faces(doc)
+async function fontCssFor(
+  live: Element,
+  clone: Element,
+  doc: Document,
+  onUnreadable?: (href: string) => void,
+): Promise<string> {
+  const all = await declaredFaces(doc, onUnreadable)
   if (all.length === 0) return ''
   // Families off the LIVE tree (the clone carries classes, not inline styles);
   // codepoints off the CLONE, because a plugin earlier in the chain may have
@@ -315,7 +384,7 @@ async function fontCssFor(live: Element, clone: Element, doc: Document): Promise
  * keeps snapDOM's repeat-capture memoization alive — a capture per frame
  * cannot afford to lose it.
  */
-export function fontEmbedPlugin(): SnapdomPlugin {
+export function fontEmbedPlugin(onUnreadable?: (href: string) => void): SnapdomPlugin {
   return {
     name: 'munari-font-embed',
     pure: true,
@@ -324,7 +393,7 @@ export function fontEmbedPlugin(): SnapdomPlugin {
       const live = context.element
       if (!(clone instanceof Element) || !(live instanceof Element)) return
       const doc = live.ownerDocument
-      const css = await fontCssFor(live, clone, doc)
+      const css = await fontCssFor(live, clone, doc, onUnreadable)
       if (!css) return
       const style = doc.createElement('style')
       style.textContent = css

@@ -27,6 +27,46 @@ const params = new URLSearchParams(location.search)
 const requested = params.get('engine') === 'snapdom' ? 'snapdom' : 'html-in-canvas'
 if (requested === 'snapdom') setCaptureEngine(snapdomCaptureEngine)
 
+/**
+ * The face the parity fixture is set in, declared by a stylesheet on ANOTHER
+ * ORIGIN: a second port the runner serves, named in the query string. A
+ * different port is a different origin, so the sheet refuses its `cssRules`
+ * to script exactly as a hosted font sheet does and only its text can be
+ * read. The runner sends the CORS header that allows that, as a font host
+ * does; `run.mjs` holds the rest of the arrangement.
+ *
+ * That refusal is the fault this covers. Read once and same-origin only, the
+ * faces a capture needs never reached the clone: snapDOM drew every glyph in
+ * a fallback face while HTML-in-canvas, which draws the live DOM and needs
+ * no faces of its own, drew them right (decisions.md #62, 2026-09-12
+ * amendment). Both engines passed this gate throughout, because nothing in
+ * the fixture had a face to rebuild.
+ */
+const GUEST_FAMILY = 'Gate Guest'
+function linkGuestSheet(): void {
+  const guestPort = params.get('guest')
+  if (!guestPort) return
+  const link = document.createElement('link')
+  link.rel = 'stylesheet'
+  link.href = `${location.protocol}//${location.hostname}:${guestPort}/guest.css`
+  document.head.appendChild(link)
+}
+linkGuestSheet()
+
+/** Whether that sheet is still opaque to script. A browser that started
+ *  handing over its rules would make the fixture cover nothing, quietly. */
+function guestSheetOpaque(): boolean {
+  for (const sheet of document.styleSheets) {
+    if (!sheet.href?.includes('/guest.css')) continue
+    try {
+      return sheet.cssRules.length === 0
+    } catch {
+      return true
+    }
+  }
+  return false
+}
+
 const BOX: readonly [number, number] = [240, 140]
 const LEFT = [255, 0, 0] as const
 const RIGHT = [0, 255, 0] as const
@@ -43,15 +83,23 @@ function cardMarkup(): string {
 }
 
 /**
- * The two things the browser paints that a structural clone does not own:
- * a form field's `::after` and its `::placeholder`. Both are drawn here at
- * sizes a glyph-level difference cannot hide in.
+ * One of everything a structural clone cannot inherit, because a subtree
+ * that needs nothing rebuilt proves nothing about the engine that rebuilds.
+ *
+ * The browser paints two things the clone does not own — a form field's
+ * `::after` and its `::placeholder` — and two more it cannot reach at all:
+ * a face declared on another origin, and an image's bytes. HTML-in-canvas
+ * draws the live DOM and inherits all four. snapDOM rasterizes a detached
+ * clone through an SVG image, which reaches none of them, so each one is
+ * its own code and its own way to drift. All four are drawn at sizes a
+ * glyph-level difference cannot hide in.
  */
-const FIELD_BOX: readonly [number, number] = [240, 80]
+const FIELD_BOX: readonly [number, number] = [240, 200]
 function fieldMarkup(): string {
   return `<div style="box-sizing:border-box;width:${FIELD_BOX[0]}px;height:${FIELD_BOX[1]}px;
     background:#101014;padding:12px;font:14px/1.4 monospace;color:#e8e8e8">
     <style>
+      .gate-guest{margin:0 0 10px;font:900 34px/1.05 '${GUEST_FAMILY}',monospace;color:#f2e8d5}
       .gate-box{appearance:none;margin:0;width:22px;height:22px;border:2px solid #888;
         background:#e0452a;position:relative}
       .gate-box:checked::after{content:'';position:absolute;left:6px;top:1px;width:6px;height:12px;
@@ -59,9 +107,12 @@ function fieldMarkup(): string {
       .gate-note{display:block;margin-top:12px;width:200px;background:transparent;border:0;
         border-bottom:1px solid #555;color:#e8e8e8;font:14px monospace}
       .gate-note::placeholder{color:#6ad6a0;letter-spacing:.34em;text-transform:uppercase;font-size:9px}
+      .gate-mark{display:block;margin-top:14px;width:48px;height:48px}
     </style>
+    <p class="gate-guest">Rag</p>
     <input class="gate-box" type="checkbox" checked>
     <input class="gate-note" placeholder="add note">
+    <img class="gate-mark" src="/mark.png" alt="">
   </div>`
 }
 
@@ -250,13 +301,27 @@ async function run(): Promise<EngineReport> {
  * (2026-09-11, Flight card at dpr 2, MAE 0.000), so agreeing with it is
  * agreeing with the DOM.
  */
-async function fieldPixels(): Promise<{ url: string; size: number[]; carried: string; carriedSize: number[] }> {
+async function fieldPixels(): Promise<FieldPixels> {
+  // Both before the source exists. A source that is not live captures on
+  // input and structure, not on a face or an image arriving, so a first
+  // capture taken before either landed would be the one that stands.
+  //
+  // The returned faces, never `fonts.check()`: check answers true for a
+  // family the document has never heard of, because the fallback it would
+  // use IS available. It said the guest face had resolved while both engines
+  // were drawing a fallback, which is the vacuous pass this guards.
+  const matched = await document.fonts.load(`900 34px '${GUEST_FAMILY}'`)
+  const guestFace = matched.length > 0 && matched.every((face) => face.status === 'loaded')
+  await document.fonts.ready
+  const mark = new Image()
+  mark.src = '/mark.png'
+  await mark.decode().catch(() => undefined)
+
   const source = createDomTextureSource(fieldMarkup(), FIELD_BOX[0], FIELD_BOX[1], {
     label: 'engine-fields',
   })
   try {
     await waitFor(() => source.painted(), 15_000, 'first paint of the field fixture')
-    await document.fonts.ready
     await settle(source)
     const url = source.canvas.toDataURL('image/png')
     const size = [source.canvas.width, source.canvas.height]
@@ -275,10 +340,28 @@ async function fieldPixels(): Promise<{ url: string; size: number[]; carried: st
       size,
       carried: source.canvas.toDataURL('image/png'),
       carriedSize: [source.canvas.width, source.canvas.height],
+      // Both engines agreeing on a fallback face is a pass that proves
+      // nothing, so the fixture says whether it was covering anything.
+      guestFace,
+      sheetOpaque: guestSheetOpaque(),
+      markDrawn: mark.naturalWidth > 0,
     }
   } finally {
     source.dispose()
   }
+}
+
+interface FieldPixels {
+  url: string
+  size: number[]
+  carried: string
+  carriedSize: number[]
+  /** The guest face resolved, so the fixture drew what it set out to. */
+  guestFace: boolean
+  /** Its stylesheet still refuses its rules to script. */
+  sheetOpaque: boolean
+  /** The image the clone has to inline actually decoded. */
+  markDrawn: boolean
 }
 
 interface CaptureEngines {
@@ -286,7 +369,7 @@ interface CaptureEngines {
   requested: string
   available: boolean
   run: () => Promise<EngineReport>
-  fields: () => Promise<{ url: string; size: number[]; carried: string; carriedSize: number[] }>
+  fields: () => Promise<FieldPixels>
 }
 
 declare global {

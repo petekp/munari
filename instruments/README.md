@@ -263,18 +263,46 @@ This gate runs them once per engine in a browser and judges:
 - the receipt after a resize names the new box, and `resettle()` cuts
   the backing store to exactly that box,
 - **both engines draw the same pixels for the same subtree**, in two
-  states. The fixture is a form field with a `::placeholder` and an
-  `appearance: none` checkbox wearing a `:checked::after` tick — the two
-  things snapDOM drops upstream ([platform #24](../docs/platform.md)).
+  states. The fixture holds one of everything a structural clone cannot
+  inherit, because a subtree that needs nothing rebuilt proves nothing about
+  the engine that rebuilds it:
+  - a `::placeholder` and an `appearance: none` checkbox wearing a
+    `:checked::after` tick, the two things snapDOM drops upstream
+    ([platform #24](../docs/platform.md)),
+  - a headline set in a face declared by a stylesheet on **another origin**,
+  - an image whose bytes have to be inlined (`mark.png`, 48×48, four flat
+    quadrants behind a disc — any stable image would do; flat color keeps
+    the resampled stage from turning every tolerance into a judgment call).
+
+  The guest origin is a second port `run.mjs` serves, sending the CORS
+  header a font host sends. A different port is a different origin, so the
+  sheet is opaque to `cssRules` exactly as a hosted one is. A different
+  hostname is not an option: `localhost` resolves to ::1 on macOS and a
+  server bound to it refuses `127.0.0.1` outright.
+
+  The fixture also reports whether it covered anything — the sheet still
+  opaque, the guest face resolved, the image decoded — and the run fails if
+  any is false. Two engines agreeing on a fallback face is a pass that
+  proves nothing, and `document.fonts.check()` reports exactly that pass: it
+  answers true for a family the document has never heard of, because the
+  fallback it would use is available. The array `fonts.load()` hands back is
+  the honest probe.
+
   Judged on 4×-downsampled blocks: SVG rasterization and direct compositing
   disagree on glyph and hairline EDGES by a subpixel, while a structural
   fault is wrong across whole blocks, so averaging first separates them.
-  - `rest` — whole-number density, no floor. 0 of 1200 blocks differ;
-    7 differ (worst 156) with the field shim removed.
+  - `rest` — whole-number density, no floor. 0 of 3000 blocks differ; 88
+    differ (worst 222) when the faces are read once per document and a
+    cross-origin sheet is skipped, which is the regression that shipped
+    ([decisions #62](../docs/decisions.md)).
   - `carried` — 2.4× across and 0.957× down after a resize the density band
     absorbs, so every glyph edge falls between samples and the law is on
-    the block mean: 2.00 today, 37.59 when the rasterizer answered at its
-    own size and the source stretched it.
+    the block mean: 0.19 today.
+
+  Two provocations measured on the smaller fixture this replaced: 7 blocks
+  (worst 156) at rest with the field shim removed, and a carried mean of
+  37.59 when the rasterizer answered at its own size and the source
+  stretched it.
 
   On a failure all four PNGs are written to a temp directory the run names.
 

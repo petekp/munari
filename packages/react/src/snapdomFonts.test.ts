@@ -1,10 +1,11 @@
+// @vitest-environment happy-dom
 // The selection seam. A wrong answer here is silent: the capture gets FASTER,
 // the payload SHRINKS, and the text rasterizes in a fallback face — which is
 // exactly how the first version of this module passed every other check while
 // embedding nothing (2026-09-11).
 
-import { describe, expect, it } from 'vitest'
-import { chooseFaces, parseRanges } from './snapdomFonts'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { chooseFaces, fontEmbedPlugin, parseRanges, warmCaptureFonts } from './snapdomFonts'
 
 /** A face as `chooseFaces` sees it: a family and a parsed range. */
 const face = (family: string, range: string | null) => ({
@@ -62,5 +63,84 @@ describe('chooseFaces', () => {
 
   it('chooses nothing when the subtree has no text, so a glyphless panel pays no payload', () => {
     expect(chooseFaces([latin], new Set(['archivo']), new Set())).toEqual([])
+  })
+})
+
+// Where the faces come from. A face the plugin never reads is the same silent
+// fallback as one it reads and fails to choose: the logo scene's letters lost
+// every face its Google Fonts sheet declared, because that sheet was linked
+// after install and refuses `cssRules` to script (2026-09-12).
+describe('fontEmbedPlugin', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    // Drops the own property a test defined, uncovering the prototype getter.
+    Reflect.deleteProperty(document, 'styleSheets')
+    document.head.replaceChildren()
+    document.body.replaceChildren()
+  })
+
+  /** Serve each URL's text; any other URL is a network failure. */
+  const serve = (routes: Record<string, string>) =>
+    vi.stubGlobal('fetch', async (url: string) => {
+      const body = routes[url]
+      if (body === undefined) throw new TypeError('Failed to fetch')
+      return new Response(body)
+    })
+
+  /** The `@font-face` block the plugin appends to a clone of `live`. */
+  const carried = async (live: HTMLElement, onUnreadable?: (href: string) => void) => {
+    // SAFETY: cloning an element yields an element.
+    const clone = live.cloneNode(true) as Element
+    // SAFETY: the plugin's afterClone reads only `element` and `clone`.
+    await fontEmbedPlugin(onUnreadable).afterClone?.({ element: live, clone } as never)
+    return clone.querySelector('style')?.textContent ?? ''
+  }
+
+  const letter = (family: string) => {
+    const live = document.createElement('span')
+    live.style.fontFamily = `'${family}', serif`
+    live.textContent = 'u'
+    document.body.append(live)
+    return live
+  }
+
+  it('reads a stylesheet the document gained after the fonts were warmed', async () => {
+    serve({ 'https://lab.test/late.woff2': 'bytes' })
+    warmCaptureFonts(document)
+    const style = document.createElement('style')
+    style.textContent = "@font-face{font-family:'Late';src:url(https://lab.test/late.woff2)}"
+    document.head.append(style)
+
+    expect(await carried(letter('Late'))).toContain("font-family:'Late'")
+  })
+
+  it('reads a cross-origin stylesheet from its text, and names one it cannot fetch', async () => {
+    const guest = 'https://fonts.test/css2?family=Guest'
+    const locked = 'https://locked.test/fonts.css'
+    serve({
+      [guest]: "@font-face{font-family:'Guest';src:url(guest.woff2)}",
+      'https://fonts.test/guest.woff2': 'bytes',
+    })
+    // Listed on `document.styleSheets` only, so the DOM's own style
+    // resolution never meets a sheet that throws.
+    const refusing = (href: string): CSSStyleSheet =>
+      Object.create(CSSStyleSheet.prototype, {
+        href: { value: href },
+        cssRules: {
+          get: () => {
+            throw new DOMException('Cannot access rules', 'SecurityError')
+          },
+        },
+      })
+    Object.defineProperty(document, 'styleSheets', {
+      configurable: true,
+      value: [refusing(guest), refusing(locked)],
+    })
+    const unreadable: string[] = []
+
+    const css = await carried(letter('Guest'), (href) => unreadable.push(href))
+    // The face's `url()` resolves against the sheet, not the document.
+    expect(css).toContain("font-family:'Guest'")
+    expect(unreadable).toEqual([locked])
   })
 })

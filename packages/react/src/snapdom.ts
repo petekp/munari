@@ -115,7 +115,15 @@ const frameSplitPlugin: SnapdomPlugin = {
 // Module constants so the same identities reach snapDOM on every call: a
 // fresh options object per capture changes the signature its repeat-capture
 // memo is keyed on.
-const capturePlugins = [fontEmbedPlugin(), frameSplitPlugin, fieldPlugin]
+const fontPlugin = fontEmbedPlugin((href) => {
+  announce(
+    'munari-font-sheet-unreadable',
+    `the stylesheet ${href} could not be read, so the fonts it declares are ` +
+      'missing from captures and text set in them draws in a fallback face. ' +
+      'Serve it with an Access-Control-Allow-Origin header to have them drawn.',
+  )
+})
+const capturePlugins = [fontPlugin, frameSplitPlugin, fieldPlugin]
 const rasterize = async (
   element: HTMLElement,
   scaleX: number,

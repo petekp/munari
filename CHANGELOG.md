@@ -19,10 +19,11 @@
   `useElementCapture` rebuilds its copy by the same rule on either engine, with
   `live` and `refresh()` as the ways back in.
 - Make a snapDOM capture cost a third of the main thread it did, with no
-  option to set: the faces a capture needs are encoded once per document and
-  supplied to every clone, the clone and the serialize are split across a
-  frame, and a `live` Surface re-captures at most about four times a second
-  so the cheaper capture is not spent on more captures. A hover is captured
+  option to set: the faces a capture needs are read from every stylesheet the
+  document has, from any origin, encoded once and supplied to every clone; the
+  clone and the serialize are split across a frame; and a `live` Surface
+  re-captures at most about four times a second, so the cheaper capture is not
+  spent on more captures. A hover is captured
   once the pointer settles on it, so crossing a Surface no longer captures.
 - Stop restarting the scene clock on every capture: `SurfaceCanvas` asks R3F
   for a frameloop mode only when the mode changes, so a scene posed from
