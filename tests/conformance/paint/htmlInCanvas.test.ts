@@ -348,6 +348,9 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
       // Zero on this engine by construction: the compositor rasterizes inside
       // the frame that asked, so nothing can change while it does.
       changesDuringPaint: 0,
+      // The first read of the DOM. This engine reads inside the paint, so a
+      // read and a generation advance together here; a re-report does not.
+      read: 1,
     })
     expect(Object.isFrozen(first)).toBe(true)
     expect(Object.isFrozen(first?.frame)).toBe(true)

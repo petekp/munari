@@ -40,6 +40,18 @@ export interface DomPaintReceipt {
    * wall-clock time that says nothing about whether anything moved.
    */
   readonly changesDuringPaint: number
+  /**
+   * Which read of the DOM these pixels hold, counted per source from 1.
+   *
+   * Not the generation. A generation is assigned when a paint COMPLETES, and
+   * a re-report of carried pixels at a new store size is a generation too, so
+   * a higher generation does not mean newer content. On an asynchronous
+   * engine a capture reads the DOM when it starts and publishes tens of
+   * milliseconds later: measured 2026-09-13, a capture started 23-46 ms
+   * before a Surface froze its content published after the freeze, with the
+   * generation the lift was waiting for (decisions.md #65).
+   */
+  readonly read: number
 }
 
 /**
@@ -85,8 +97,15 @@ export interface DomTextureSource {
    * for landing at the viewport origin is a fault with no error attached.
    */
   setHostPainted: (painted: boolean) => void
-  /** Force a repaint request (rarely needed — see paintCount). */
-  repaint: () => void
+  /**
+   * Force a repaint request (rarely needed — see paintCount).
+   *
+   * `immediate` is for a caller waiting on the answer: an engine that paces
+   * its captures starts this one as soon as nothing else is running, rather
+   * than after its gap. Measured 2026-09-13 on snapDOM, the gap alone held a
+   * Surface's lift for about 150 ms of a 185 ms drag start (decisions.md #65).
+   */
+  repaint: (options?: { immediate?: boolean }) => void
   /**
    * Change whether the source follows what the content does on its own —
    * see `DomTextureSourceOptions.live`. Switching it on captures the state
@@ -135,6 +154,12 @@ export interface DomTextureSource {
   paintedSize: () => readonly [number, number]
   /** The last successful immutable paint receipt, or null before success. */
   currentPaint: () => DomPaintReceipt | null
+  /**
+   * The `read` of the first capture that has not started reading the DOM.
+   * A receipt whose `read` is at least this holds the DOM as it is now or
+   * later; a capture already running when this was taken never does.
+   */
+  nextRead: () => number
   /** Subscribe to successful paints. Failed paints do not notify. */
   subscribePaint: (listener: (receipt: DomPaintReceipt) => void) => () => void
   /**
@@ -362,6 +387,9 @@ export interface CaptureCanvas {
   rasterScale: () => readonly [number, number]
   paintedSize: () => readonly [number, number]
   currentPaint: () => DomPaintReceipt | null
+  /** An engine calls this at the instant it reads the DOM; pass the result to `completePaint`. */
+  beginRead: () => number
+  nextRead: () => number
   subscribePaint: (listener: (receipt: DomPaintReceipt) => void) => () => void
   painted: () => boolean
   paintCount: () => number
@@ -384,10 +412,14 @@ export interface CaptureCanvas {
    * synchronous engine those are the same instant; on an asynchronous one
    * the box can have moved twice in between, and a receipt naming the
    * current box would claim pixels that do not exist.
+   *
+   * `read` is the `beginRead()` this raster started with. Omit it for a
+   * re-report of pixels already painted, which keeps the read they hold.
    */
   completePaint: (
     paintedSize: readonly [number, number],
     changesDuringPaint: number,
+    read?: number,
   ) => DomPaintReceipt
   /** Record a failed paint: count it and report through `onError`, once. */
   failPaint: (cause: unknown) => void
@@ -445,6 +477,7 @@ export function createCaptureCanvas(
 
   let ok = false
   let currentPaint: DomPaintReceipt | null = null
+  let reads = 0
   const paintSubscribers = new Set<(receipt: DomPaintReceipt) => void>()
   const stats: PaintStats = { label, paints: 0, errors: 0, scale, engine }
   registry.add(stats)
@@ -516,6 +549,8 @@ export function createCaptureCanvas(
     rasterScale: () => [scaleX, scaleY] as const,
     paintedSize: () => currentPaint?.paintedSize ?? ([0, 0] as const),
     currentPaint: () => currentPaint,
+    beginRead: () => ++reads,
+    nextRead: () => reads + 1,
     painted: () => ok,
     paintCount: () => stats.paints,
     subscribePaint: (listener) => {
@@ -544,7 +579,7 @@ export function createCaptureCanvas(
     setRasterScale: (x, y) => setDensity(x, y, 'lod'),
     setScale: (k) => setDensity(k, k, 'density'),
     resettle: () => recut(true, 'rest'),
-    completePaint: (paintedSize, changesDuringPaint) => {
+    completePaint: (paintedSize, changesDuringPaint, read) => {
       ok = true
       stats.paints++
       // A success ends the run this message was suppressed over, so the same
@@ -556,6 +591,7 @@ export function createCaptureCanvas(
         paintedSize: Object.freeze([paintedSize[0], paintedSize[1]] as const),
         storeSize: Object.freeze([canvas.width, canvas.height] as const),
         changesDuringPaint,
+        read: read ?? currentPaint?.read ?? 0,
       })
       currentPaint = receipt
       for (const listener of paintSubscribers) listener(receipt)

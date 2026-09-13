@@ -695,6 +695,68 @@ describe('the rasterized engine', () => {
     source.dispose()
   })
 
+  // "Newer than now" is a READ, not a generation. A capture already running
+  // when content is demanded publishes the next generation with pixels read
+  // before the demand; only a capture that starts after it holds the content
+  // as demanded (decisions.md #65: a lift released onto a capture started
+  // 23-46 ms before its content froze).
+  it('counts a capture by when it read the DOM, not by when it published', async () => {
+    const { calls, rasterize } = deferred()
+    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
+    await drain()
+
+    source.repaint()
+    await settle()
+    expect(calls).toHaveLength(1)
+    // The demand lands while that capture is running.
+    const demanded = source.nextRead()
+    source.repaint()
+    calls[0]!.resolve()
+    await drain()
+    expect(source.currentPaint()?.frame.generation).toBe(1)
+    expect(source.currentPaint()!.read).toBeLessThan(demanded)
+
+    await settle()
+    calls[1]!.resolve()
+    await drain()
+    expect(source.currentPaint()!.read).toBeGreaterThanOrEqual(demanded)
+    source.dispose()
+  })
+
+  // The gap paces captures nobody is waiting for. A caller waiting on the
+  // answer — a lift holding the page until its content is captured — owes
+  // only the capture already running, never the gap (decisions.md #65: the
+  // gap held a drag's lift for ~150 of 194 ms).
+  it('starts an immediate capture as soon as nothing else is running', async () => {
+    const { calls, rasterize } = deferred()
+    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
+    await drain()
+    source.repaint()
+    await settle()
+    expect(calls).toHaveLength(1)
+    calls[0]!.resolve()
+    await drain()
+
+    source.repaint()
+    await drain()
+    expect(calls).toHaveLength(1)
+    expect(time.pending()).toBe(150)
+    source.repaint({ immediate: true })
+    await drain()
+    expect(calls).toHaveLength(2)
+
+    // Still one at a time: it waits for the running capture, then no longer.
+    source.repaint({ immediate: true })
+    await drain()
+    expect(calls).toHaveLength(2)
+    calls[1]!.resolve()
+    await drain()
+    expect(calls).toHaveLength(3)
+    calls[2]!.resolve()
+    await drain()
+    source.dispose()
+  })
+
   // The box the raster holds is the box that was live when the rasterizer
   // STARTED, not when it answered. A receipt naming the current box would
   // claim pixels that do not exist.

@@ -333,8 +333,10 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   let canvasHeld = false
   const holdListeners = new Set<() => void>()
   const partMap = new Map<SurfacePartId, SurfacePartPublication>()
-  // The paint generation each part owes this lift: the one its content did
-  // not yet have when the lift was asked for. Empty except while lifting.
+  // The DOM read each part owes this lift: the first capture to START after
+  // the lift was asked for. A generation cannot say this — a capture already
+  // running at the ask publishes the next one with pixels from before it
+  // (decisions.md #65). Empty except while lifting.
   const contentFloor = new Map<SurfacePartId, number>()
   // Duplicate names are diagnosed, but removing one must recover the other
   // host's publication without a remount. Each publication owns its cleanup.
@@ -386,8 +388,10 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     for (const [id, publication] of partMap) {
       const runtime = publication.runtime
       if (!runtime) continue
-      contentFloor.set(id, (runtime.currentPaint()?.frame.generation ?? 0) + 1)
-      runtime.repaint()
+      contentFloor.set(id, runtime.nextRead())
+      // Immediate: the content is frozen, so a capture's pacing gap buys no
+      // correctness here and every millisecond of it is the lift waiting.
+      runtime.repaint({ immediate: true })
     }
   }
 
@@ -458,9 +462,9 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     // `{settleMs: 0, durationMs: 1}` had a 1 ms bound and released onto the
     // previous capture every time (decisions.md #65).
     if (crossing.heldMs >= CURRENT_CAPTURE_WAIT_MS) return true
-    for (const [id, generation] of contentFloor) {
+    for (const [id, read] of contentFloor) {
       const runtime = partMap.get(id)?.runtime
-      if (runtime && runtime.uploadedGeneration() < generation) return false
+      if (runtime && runtime.uploadedRead() < read) return false
     }
     return true
   }

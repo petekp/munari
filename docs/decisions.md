@@ -4184,6 +4184,36 @@ flash on every minimize. With a 2 s bound the same four minimizes showed no
 flash. The bound is now a fixed 500 ms (`CURRENT_CAPTURE_WAIT_MS`), an order
 of magnitude past the measured ~30 ms capture.
 
+Amended 2026-09-13 — THE FLOOR IS A READ, NOT A GENERATION. The floor was
+"one generation past the current paint", and a generation is assigned when a
+capture completes. A snapDOM capture reads the DOM when it starts and
+publishes tens of milliseconds later, so a capture already running at the
+lift published the floor's generation with pixels from before the freeze.
+Traced in genie: a titlebar drag lifted 23-27 ms after a capture had started,
+and one double-click 46 ms after, with the bouncing marks still moving in
+between; each released onto that capture and the next one snapped back. A
+click on the minimize lamp rarely had a capture running, which is why it
+passed while the other two triggers did not. A re-report of carried pixels
+at a new store size was also a generation with no new read. Every paint
+receipt now carries `read`, the order in which its raster read the DOM, and
+the lift waits for an uploaded `read` at or past the source's `nextRead()`
+at the ask. The rule is the same for every trigger, because every trigger
+reaches the crossing the same way.
+
+Amended 2026-09-13 — THE DEMANDED CAPTURE SKIPS THE GAP. Waiting for a read
+after the ask put the lift behind snapDOM's 150 ms capture gap: a drag's
+freeze-to-release went from ~25 ms (onto stale pixels) to 194 ms, which is
+visible. The gap paces captures of content that keeps changing; frozen
+content does not change, so a capture that starts at once is as correct as
+one that waits. The lift now asks `repaint({ immediate: true })`, which
+starts as soon as no capture is running and still never runs two at once.
+Interleaved in one page load, three of each: cerchio drag 43 ms (was 194),
+button 39 (49), double-click 37 (43); scheda drag 74 (164), button 50 (160),
+double-click 62 (173). Every release was onto a read at or past the floor.
+The cost is on the window whose content is heaviest to capture: scheda's
+drag showed 1-2 frames over 25 ms (worst 42) against 0-1 with the gap;
+cerchio showed none.
+
 ## #66 — Content stands still while a canvas has it (2026-09-13)
 
 A capture is one instant; the content it was taken from is not. A source that

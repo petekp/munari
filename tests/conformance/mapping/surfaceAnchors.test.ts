@@ -20,6 +20,7 @@ const paint = (generation: number, width = 200, height = 100): DomPaintReceipt =
     paintedSize: Object.freeze([width, height] as const),
     storeSize: Object.freeze([width * 2, height * 2] as const),
     changesDuringPaint: 0,
+    read: generation,
   })
 
 const box = (left: number, top: number, width: number, height: number): DOMRect => ({

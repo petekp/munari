@@ -99,10 +99,14 @@ export interface SurfaceSourceRuntime {
   paintedSize(): readonly [number, number]
   /** The generation of the paint currently uploaded, or -1. */
   uploadedGeneration(): number
+  /** The DOM read the uploaded pixels hold, or -1. See `DomPaintReceipt.read`. */
+  uploadedRead(): number
+  /** The read of the first capture that has not started. See `DomTextureSource.nextRead`. */
+  nextRead(): number
   /** Every completed paint, for anchor transactions. */
   currentPaint(): DomPaintReceipt | null
-  /** Ask for one capture of the content as it stands now. */
-  repaint(): void
+  /** Ask for one capture of the content as it stands now. See `DomTextureSource.repaint`. */
+  repaint(options?: { immediate?: boolean }): void
   subscribePaint(listener: (receipt: DomPaintReceipt) => void): () => void
   setSize(size: SurfaceSize): void
   setResolution(resolution: SurfaceResolution): void
@@ -230,6 +234,8 @@ export function createSurfaceSourceRuntime(
   let extraUploads = 0
   let pendingUploadGeneration = -1
   let uploadedGeneration = -1
+  let pendingUploadRead = -1
+  let uploadedRead = -1
   let anyUpload = false
   const settle = { w: -1, h: -1, sx: -1, sy: -1, quiet: 0, settled: false }
   const proposals = new Map<number, SurfaceSize>()
@@ -237,6 +243,7 @@ export function createSurfaceSourceRuntime(
 
   texture.onUpdate = () => {
     uploadedGeneration = pendingUploadGeneration
+    uploadedRead = pendingUploadRead
   }
 
   const unsubscribePaint = source.subscribePaint((receipt) => onPainted?.(receipt))
@@ -265,6 +272,7 @@ export function createSurfaceSourceRuntime(
       // The capture carries its previous complete raster across a resize.
       // Upload that carried image even if auto paint was otherwise idle.
       pendingUploadGeneration = source.currentPaint()?.frame.generation ?? -1
+      pendingUploadRead = source.currentPaint()?.read ?? -1
       texture.needsUpdate = true
     }
   }
@@ -273,6 +281,7 @@ export function createSurfaceSourceRuntime(
     if (!source.painted() || !texture) return
     syncStorage()
     pendingUploadGeneration = source.currentPaint()?.frame.generation ?? -1
+    pendingUploadRead = source.currentPaint()?.read ?? -1
     texture.needsUpdate = true
     anyUpload = true
   }
@@ -304,8 +313,10 @@ export function createSurfaceSourceRuntime(
     mirrorU: () => mirrorU,
     paintedSize: () => source.paintedSize(),
     uploadedGeneration: () => uploadedGeneration,
+    uploadedRead: () => uploadedRead,
+    nextRead: () => source.nextRead(),
     currentPaint: () => source.currentPaint(),
-    repaint: () => source.repaint(),
+    repaint: (options) => source.repaint(options),
     subscribePaint: (listener) => source.subscribePaint(listener),
     setSize(next) {
       if (next[0] === size[0] && next[1] === size[1]) return

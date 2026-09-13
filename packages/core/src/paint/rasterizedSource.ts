@@ -212,6 +212,10 @@ export function createRasterizedSource(
   // unnecessary.
   let capturing = false
   let owed = false
+  // The owed capture was asked for by someone waiting on it, so it skips the
+  // gap and the live period. Still one capture at a time: it starts the
+  // moment a running one finishes, never beside it.
+  let immediate = false
   let scheduled = false
   // Change signals since the running capture started. A signal that lands
   // while a capture is WAITING out the gap is not one of these: the raster
@@ -287,9 +291,13 @@ export function createRasterizedSource(
    */
   const start = () => {
     if (disposed || capturing || !owed) return
-    if (cancelWait) return
+    if (cancelWait) {
+      if (!immediate) return
+      cancelWait()
+      cancelWait = null
+    }
     const periodOwed = live ? lastStartedAt + LIVE_PERIOD_MS - clock.now() : 0
-    const quietOwed = Math.max(lastFinishedAt + CAPTURE_GAP_MS - clock.now(), periodOwed)
+    const quietOwed = immediate ? 0 : Math.max(lastFinishedAt + CAPTURE_GAP_MS - clock.now(), periodOwed)
     if (quietOwed <= 0) {
       void run()
       return
@@ -310,8 +318,10 @@ export function createRasterizedSource(
   const run = async () => {
     capturing = true
     owed = false
+    immediate = false
     changesDuringPaint = 0
     lastStartedAt = clock.now()
+    const read = body.beginRead()
     // Read the box HERE. It is the box this raster holds, however far it has
     // moved by the time the answer lands, and the receipt has to say so —
     // a capture stretched over the box it no longer matches reads as doubled
@@ -331,7 +341,7 @@ export function createRasterizedSource(
       if (disposed) return
       draw(image, askedFor)
       rasteredStore = [canvas.width, canvas.height]
-      body.completePaint(box, changesDuringPaint)
+      body.completePaint(box, changesDuringPaint, read)
     } catch (cause) {
       if (!disposed) body.failPaint(cause)
     } finally {
@@ -472,7 +482,10 @@ export function createRasterizedSource(
     // canvas redraw, a video frame, a theme flip written to a stylesheet
     // rather than to an element. Coalesces with the running capture and
     // never queues more than one.
-    repaint: request,
+    repaint: (options) => {
+      if (options?.immediate) immediate = true
+      request()
+    },
     setLive: (next) => {
       if (next === live) return
       live = next
@@ -486,6 +499,7 @@ export function createRasterizedSource(
     size: body.size,
     paintedSize: body.paintedSize,
     currentPaint: body.currentPaint,
+    nextRead: body.nextRead,
     subscribePaint: body.subscribePaint,
     setScale: (k) => {
       body.setScale(k)
