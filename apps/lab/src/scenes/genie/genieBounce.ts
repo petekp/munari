@@ -16,10 +16,9 @@
 //   allowed to disagree in both sharpness and TIME — the measured
 //   fat-vs-crisp stroke jump and ~60ms ring displacement at the
 //   handoff. A style write has one clock and one raster path, so
-//   the page and the texture cannot diverge. And because every mounted
-//   copy of the window subscribes to the SAME simulation, the page
-//   copy and the airborne copy draw identical numbers on every frame —
-//   twin agreement is by construction, not by phase-pinning.
+//   the page and the texture cannot diverge. And because the numbers
+//   are inline styles, the snapshot of the window the capture reads
+//   carries exactly what the live marks show.
 
 import { genieTuning } from './genieTuning'
 

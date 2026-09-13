@@ -17,8 +17,8 @@
 //                       it, rings with the landing's own momentum, and
 //                       dragging it upward pours the window back out.
 //
-// None of it stops being DOM. The airborne copy is a second React root
-// rendering the SAME component from the SAME state as the page copy;
+// None of it stops being DOM. The sheet draws a capture of the one
+// window the page renders, retained across the handoff;
 // the warp bends geometry on the CPU so raycasts hit the funnel the eye
 // sees; and both handoffs happen at exact identities. The law
 // (genieLaw.ts) owns shape, the drive (genieDrive.ts) owns time, and a
@@ -375,34 +375,19 @@ const OVERLAY_Z = 100
 // one shows the man who drew them turning one by hand.
 type StudyId = 'quadrato' | 'cerchio'
 
-// ── the window (rendered twice: on the page, and on the sheet) ──────────
+// ── the window ───────────────────────────────────────────────────────────
 
 type GenieMotionStyle = React.CSSProperties & {
-  '--gen-phase'?: string
   '--line-delay'?: string
   '--line-opacity'?: number
 }
 
-// Each live copy joins the document clock at the same phase. A newly mounted
-// airborne tree therefore matches the DOM tree on its first visible frame.
-function useDocumentPhase(): GenieMotionStyle {
-  // CSS animations run on the document timeline, which shares its origin
-  // with performance.now() — so "minus the time already elapsed" places a
-  // freshly mounted copy exactly where a copy mounted at load would be.
-  const [shift] = useState<GenieMotionStyle>(() => ({
-    '--gen-phase': `-${(performance.now() / 1000).toFixed(3)}s`,
-  }))
-  return shift
-}
-
 function StudyPattern({ kind }: { kind: StudyId }) {
-  const phase = useDocumentPhase()
   const lines = Array.from({ length: kind === 'quadrato' ? 7 : 9 })
   return (
     <svg
       className="gen-math-pattern"
       data-pattern={kind}
-      style={phase}
       viewBox="0 0 120 120"
       aria-hidden
     >
@@ -474,8 +459,8 @@ function BounceMark({ index }: { index: number }) {
   )
 }
 
-// The marks' layer, its own component because registering with the
-// simulation is per-INSTANCE work and every window exists twice.
+// The marks' layer, its own component so its court registers with the
+// simulation when it mounts.
 function PlayLayer() {
   // Live content, not decoration — while the window is on the desk. The
   // marks are HELD for the whole of a flight (`holdBounceMarks`), so the
@@ -483,12 +468,9 @@ function PlayLayer() {
   // picture; see that function for why the engines would otherwise
   // disagree.
   //
-  // Joining the ONE simulation is what keeps the two copies honest:
-  // the page copy and the airborne copy draw the same bodies at the
-  // same instant, so the handoff has nothing to jump. The old
-  // phase-pinning dance (startTime = 0 on every animation) is gone
-  // with the compositor animations that needed it. Layout effect, so
-  // the copy is in position before its first paint.
+  // The simulation writes inline transforms, so the snapshot of this window
+  // that the capture reads carries the same numbers as the live marks.
+  // Layout effect, so the marks are in position before their first paint.
   const root = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => registerBounceCourt(root.current!), [])
   return (
@@ -535,9 +517,9 @@ function FilmLayer({ attach }: { attach?: React.RefCallback<HTMLCanvasElement> }
 interface WindowBodyProps {
   scheda: Scheda
   /** Frontmost on the desk. Carried as an attribute on the CAPTURE ROOT
-   *  so the airborne copy dims and undims with the page copy — a focus
-   *  ring that only one of the two trees knew about would be a visible
-   *  change at the swap frame. */
+   *  so the captured window dims and undims with the page's — a focus
+   *  ring that only one of them showed would be a visible change at the
+   *  swap frame. */
   front: boolean
   note: string
   setNote: (v: string) => void
@@ -1961,9 +1943,6 @@ export function GenieApp() {
   // outlives its landing, so "something is moving" is wider than
   // "something is in the air". The numbers themselves live in refs.
   const [ringing, setRinging] = useState<WinId[]>([])
-  // The window's content state lives HERE, above both copies, which is
-  // what makes them pixel-identical at the swap frames: page copy and
-  // airborne copy render the same component from the same values.
   const [note, setNote] = useState('')
   const [checked, setChecked] = useState(true)
 
@@ -2475,9 +2454,6 @@ export function GenieApp() {
     if (filmController.frozen) filmController.resume()
   }, [filmController])
 
-  // `airborne` is the only difference between the two copies of a window,
-  // and it is one fact: the desk's copy is already a picture, so nobody
-  // is waiting on it to say so.
   const bodyFor = (scheda: Scheda) => (
     <WindowBody
       scheda={scheda}
