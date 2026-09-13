@@ -974,6 +974,38 @@ describe('part publication ownership', () => {
 })
 
 
+describe('the freeze signal', () => {
+  // A consumer clock stopped on this signal has to agree with the CSS the
+  // library pauses itself, so it turns on the lift's first frame — before
+  // any capture — and not on the presentation edge (decisions.md #67).
+  const lifting = (live: boolean) => {
+    const store = createSurfaceStore()
+    const seen: boolean[] = []
+    store.acquire(1); store.declarePresentation('page'); store.declarePresentation('canvas')
+    store.setCallbacks({ onFreezeChange: (frozen) => seen.push(frozen) })
+    store.publishPart('panel', { id: 'panel', runtime: null, live, size: [200, 100], captureRoot: document.createElement('div'), pageRoot: null })
+    return { store, seen }
+  }
+
+  it('freezes when a lift is asked for and thaws when the page has the content again', () => {
+    const { store, seen } = lifting(false)
+    store.request('canvas')
+    expect(store.getState().presented).toBe('page')
+    expect(store.isFrozen()).toBe(true)
+    store.request('page')
+    for (let frame = 0; frame < 100; frame++) store.tick(16)
+    expect(store.isFrozen()).toBe(false)
+    expect(seen).toEqual([true, false])
+  })
+
+  it('never freezes content declared live', () => {
+    const { store, seen } = lifting(true)
+    store.request('canvas')
+    expect(store.isFrozen()).toBe(false)
+    expect(seen).toEqual([])
+  })
+})
+
 describe('dormant preparation and renderer loss', () => {
   it('sleeps after the settle dwell when no presenter can supply evidence, and wakes on proof', () => {
     const store = createSurfaceStore()

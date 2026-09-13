@@ -239,6 +239,7 @@ remain available when you choose a rendering budget; large textures still obey t
 | `sceneReady` | Required sources and preparation draws are ready |
 | `isTransitioning` | The handoff is progressing or awaiting preparation |
 | `supported`, `reason` | Capability/content support and an unavailable reason |
+| `useFreezeSurface()` | Non-live content is frozen for the scene; stop your own clocks |
 | `useSurfaceProgress().get()` | Raw 0..1 motion, identical to driver input |
 | `useSurfaceProgress().eased()` | The explicitly eased version of that motion |
 

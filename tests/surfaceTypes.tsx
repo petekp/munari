@@ -2,7 +2,7 @@
 import type { ComponentProps } from 'react'
 import {
   Surface, SceneSurface, SurfaceCanvas, createSurface, useSurfaceHandle,
-  useSurfaceStatus, useSurfaceDriver, useSurfaceProgress, useSurfaceSupport, supportsSurfaces,
+  useSurfaceStatus, useSurfaceDriver, useFreezeSurface, useSurfaceProgress, useSurfaceSupport, supportsSurfaces,
   useElementCapture, CaptureContent, useCaptureHandle, usePageTarget, useSurfaceBeforeRender,
   type SurfaceHandle, type SurfacePresentation, type SurfaceDestination, type SurfaceProps,
 } from '@petepetrash/munari'
@@ -15,7 +15,7 @@ declare const detached: HTMLElement
 const geometry = <planeGeometry args={[1,1]} />
 
 ;<SurfaceCanvas id="example" />
-;<Surface inScene={false} canvasId="example" name="card" timing={{settleMs:300}} onPresentationChange={value=>{const hold:SurfacePresentation=value;void hold}} onMotionComplete={value=>{const destination:SurfaceDestination=value;void destination}}><button>One live instance</button></Surface>
+;<Surface inScene={false} canvasId="example" name="card" timing={{settleMs:300}} onPresentationChange={value=>{const hold:SurfacePresentation=value;void hold}} onMotionComplete={value=>{const destination:SurfaceDestination=value;void destination}} onFreezeChange={frozen=>{const flag:boolean=frozen;void flag}}><button>One live instance</button></Surface>
 ;<Surface.Root inScene={false} canvasId="example"><Surface.HTML><button>Page content</button></Surface.HTML></Surface.Root>
 ;<SceneSurface.Root canvasId="example"><SceneSurface.HTML size={[100,80]}><button>Scene content</button></SceneSurface.HTML><SceneSurface.Mesh/></SceneSurface.Root>
 // @ts-expect-error The association is named canvasId; the removed prop is not an alias.
@@ -65,6 +65,7 @@ void inferredProps
 function Observations() {
   const own=useSurfaceHandle('explicit')
   const state=useSurfaceStatus(own)
+  const frozen:boolean=useFreezeSurface(own);void frozen
   const hold: SurfacePresentation=state.presentation
   const raw:number=useSurfaceProgress(own).get()
   const eased:number=useSurfaceProgress(own).eased()

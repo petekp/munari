@@ -47,6 +47,7 @@ import {
   type SurfacePresentation,
   useSurfaceAnchorRects,
   useSurfaceChrome,
+  useFreezeSurface,
   useSurfaceDriver,
   useSurfacePaintedSize,
   useSurfaceSourceRoot,
@@ -2019,12 +2020,13 @@ export function GenieApp() {
     }
   }, [docked, air])
 
-  // Held from takeoff to landing, and not from the presentation edge: a grab
-  // scrubs the drain while the window is still on the page, and marks that
-  // moved during it would already be inside the picture the flight carries.
+  // The marks run on their own rAF clock, which the library cannot pause, so
+  // they stop on its freeze signal — the edge its CSS pauses on, before the
+  // capture the flight carries.
+  const playFrozen = useFreezeSurface(storeOf(PLAY_WIN).handle)
   useEffect(() => {
-    holdBounceMarks(Boolean(air[PLAY_WIN]))
-  }, [air])
+    holdBounceMarks(playFrozen)
+  }, [playFrozen])
 
   const airborne = WIN_IDS.filter((w) => air[w])
   const anyAir = airborne.length > 0

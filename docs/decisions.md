@@ -4273,3 +4273,26 @@ earlier "0 ms apart at every lift" sampled at rest after the lift, and missed
 the two frames that matter. `holdMotion` now records what it keeps still,
 and a copy `matchMotion` pauses to match a held animation resumes when that
 animation does.
+
+## #67 — Consumer clocks freeze on the library's edge (2026-09-13)
+
+#66 freezes declarative motion and leaves a consumer's own clock — a
+`requestAnimationFrame` loop, a timer, a `<video>` — to the consumer. The only
+signal it offered was `onPresentationChange`, and that turns on the wrong
+frame. It fires when the canvas has presented, which is after the capture. A
+clock stopped there runs into the picture, and the lift steps backwards by the
+capture's latency: the fault #66 removed for CSS, left in place for everything
+else. Genie's `scheda` did not use it; it held its bounce simulation off the
+scene's own flight state instead, which is the workaround a consumer without
+that state cannot write.
+
+The law: `onFreezeChange(frozen)` and `useFreezeSurface()` report the motion
+hold itself. They turn in `syncMotionHold`, on the lift's first frame, before
+the demanded capture, and turn back when the page holds the content again —
+abandoned lifts included. A Surface whose every part is `live` never freezes,
+because nothing in it is held.
+
+"Freeze", not "hold": the store's hold is the page hold, a different fact, and
+the consumer's question is whether their content should stand still.
+
+`scheda` now stops its simulation on `useFreezeSurface`.
