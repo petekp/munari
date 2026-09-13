@@ -420,6 +420,13 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // UPLOADED generation, not the painted one — a paint the texture has not
   // taken yet is not something a draw can show.
   const contentCurrent = (): boolean => {
+    // Bounded, because every other condition in the lift gate is. The dwell
+    // is finite and readiness is bounded by presenters that do draw, but a
+    // source that stops answering would hold a lift open forever — and a
+    // crossing that never completes is a worse failure than one that shows a
+    // capture a beat old. One ramp past the dwell is longer than the whole
+    // transition would have taken, so nothing that is still coming is lost.
+    if (crossing.heldMs >= timing.settleMs + timing.rampMs) return true
     for (const [id, generation] of contentFloor) {
       const runtime = partMap.get(id)?.runtime
       if (runtime && runtime.uploadedGeneration() < generation) return false

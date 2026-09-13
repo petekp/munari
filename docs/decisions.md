@@ -4165,10 +4165,14 @@ release at 28 ms. On both engines the mark centroid moves one way through the
 swap and then holds — 209.9 → 208.55 and 210.24 → 209.14, and every later frame
 identical. No rightward step remains at any sample.
 
-The cost: a source that can no longer paint holds its lift open rather than
-releasing onto a stale picture. That is the same shape as a presenter that never
-draws, and it gets the same answer — the page releases on evidence, never on
-hope (#28).
+The wait is bounded, in the binding rather than the law. Every other condition
+in the lift gate is finite — the dwell by the clock, readiness by presenters
+that do draw — and an unbounded one lets a source that stops answering hold a
+crossing open forever, which is a worse failure than showing a capture a beat
+old. One ramp past the dwell is longer than the whole transition would have
+taken, so the bound cannot discard a capture that was still coming. The kernel
+law is unchanged: it is handed `contentCurrent` and does not decide when the
+binding stops claiming staleness.
 
 ## #66 — Content stands still while a canvas has it (2026-09-13)
 
