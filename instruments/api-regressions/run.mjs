@@ -23,20 +23,51 @@ const server=await createServer({configFile:false,root:import.meta.dirname,cache
 await server.listen()
 const url=`http://127.0.0.1:${server.httpServer.address().port}`
 const results=[]
+// Measured 2026-09-13, Chrome 151. A correctly placed ride reads at most 0.434
+// (clip-scaled, clip-longhand): under scale(1.2, 0.85) the capture ends the red
+// fill one device column wider than the compositor, across its 59 rows. Every
+// other case reads 0.019 or less. A ride misplaced by one pixel in any direction
+// exposes a line of at least 0.89. The budget splits that gap.
+const PLACEMENT_BUDGET=0.65
+// Summed |ΔRGB| above which a pixel counts as different, and the fewest
+// counted pixels a row or column needs before its fraction is read.
+const STRONG_DIFFERENCE=64
+const MIN_LINE_PIXELS=8
 const frameWait=page=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
 const pause=(page,ms)=>page.evaluate(ms=>new Promise(resolve=>setTimeout(resolve,ms)),ms)
 const read=page=>page.evaluate(()=>{
   const p=window.__apiRegression
   return {frames:p.frames,revisions:p.revisions,pixels:p.pixels,capture:p.capture(),status:p.status,errors:p.errors,mounts:p.mounts}
 })
-async function pixels(page,native,preparing){
-  return page.evaluate(async({native,preparing})=>{
-    const decode=async data=>{const bitmap=await createImageBitmap(new Blob([Uint8Array.from(atob(data),c=>c.charCodeAt(0))],{type:'image/png'})),canvas=new OffscreenCanvas(bitmap.width,bitmap.height),ctx=canvas.getContext('2d');ctx.drawImage(bitmap,0,0);bitmap.close();return ctx.getImageData(0,0,canvas.width,canvas.height).data}
+// Two readings of a native shot against a preparation shot of the same box.
+// `mean` is the mean absolute channel difference, 0-255, over every pixel.
+// `worstLine` is the largest fraction of any row or column whose pixels differ
+// strongly, with `exclude` (CSS-px rects relative to the shot) left out.
+//
+// The worst line is what catches a misplaced ride. A host one device pixel off
+// exposes a whole row or column along an edge, and a mean dilutes that one line
+// across the box: a 1 px sideways shift of the plain `clip` case read 0.000 as
+// a masked mean. Raster differences are scattered and never fill a line.
+async function pixels(page,native,preparing,exclude=[],cssWidth=0){
+  return page.evaluate(async({native,preparing,exclude,cssWidth,strong,minLine})=>{
+    const decode=async data=>{const bitmap=await createImageBitmap(new Blob([Uint8Array.from(atob(data),c=>c.charCodeAt(0))],{type:'image/png'})),canvas=new OffscreenCanvas(bitmap.width,bitmap.height),ctx=canvas.getContext('2d');ctx.drawImage(bitmap,0,0);const size=[bitmap.width,bitmap.height];bitmap.close();return {data:ctx.getImageData(0,0,canvas.width,canvas.height).data,size}}
     const a=await decode(native),b=await decode(preparing)
-    if(a.length!==b.length)throw new Error('The comparison viewport changed')
-    let error=0;for(let i=0;i<a.length;i++)error+=Math.abs(a[i]-b[i])
-    return error/a.length
-  },{native,preparing})
+    if(a.data.length!==b.data.length)throw new Error('The comparison viewport changed')
+    const [width,height]=a.size,k=cssWidth?width/cssWidth:1
+    const skip=exclude.map(r=>[Math.floor(r.x*k),Math.floor(r.y*k),Math.ceil((r.x+r.width)*k),Math.ceil((r.y+r.height)*k)])
+    const rows=Array.from({length:height},()=>[0,0]),cols=Array.from({length:width},()=>[0,0])
+    let error=0
+    for(let i=0;i<a.data.length;i+=4){
+      let d=0;for(let c=0;c<4;c++)error+=Math.abs(a.data[i+c]-b.data[i+c])
+      const x=(i/4)%width,y=Math.floor(i/4/width)
+      if(skip.some(([x0,y0,x1,y1])=>x>=x0&&x<x1&&y>=y0&&y<y1))continue
+      for(let c=0;c<3;c++)d+=Math.abs(a.data[i+c]-b.data[i+c])
+      const hit=d>strong?1:0
+      rows[y][0]+=hit;rows[y][1]++;cols[x][0]+=hit;cols[x][1]++
+    }
+    const worst=lines=>lines.reduce((m,[hits,n])=>n>=minLine?Math.max(m,hits/n):m,0)
+    return {mean:error/a.data.length,worstLine:Math.max(worst(rows),worst(cols))}
+  },{native,preparing,exclude,cssWidth,strong:STRONG_DIFFERENCE,minLine:MIN_LINE_PIXELS})
 }
 async function check(page,kind,enhanced){
   const pageErrors=[];page.on('pageerror',error=>pageErrors.push(String(error)))
@@ -140,6 +171,15 @@ async function check(page,kind,enhanced){
     await page.$eval('#clip-inside',node=>node.focus())
     await frameWait(page)
     const clip=await page.$eval('#clipped-source',node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})
+    // The case proves the RIDE: where the capture is placed and where it is
+    // clipped. A form control's interior is the one thing it cannot compare,
+    // because the compositor and drawElementImage raster a control's border
+    // and glyphs differently under a non-uniform scale — measured on
+    // clip-scaled, scale(1.2, 0.85): the button's outer box and the clip edges
+    // matched row for row while its top border drew as 1 row plus a blend
+    // natively and 2 full rows in the capture. Controls are left out,
+    // with their focus ring; the source's fill, edges and clip still count.
+    const controls=await page.$eval('#clipped-source',(node,clip)=>[...node.querySelectorAll('button,input,select,textarea')].map(el=>{const r=el.getBoundingClientRect(),ring=4;return {x:r.x-clip.x-ring,y:r.y-clip.y-ring,width:r.width+ring*2,height:r.height+ring*2}}),clip)
     const native=await page.screenshot({clip,encoding:'base64'})
     if(kind==='clip-dynamic'){await page.evaluate(()=>window.__apiRegression.setClipHeight(180));await frameWait(page)}
     await page.evaluate(()=>window.__apiRegression.request(true))
@@ -147,10 +187,10 @@ async function check(page,kind,enhanced){
     if(kind==='clip-dynamic'){await page.evaluate(()=>window.__apiRegression.setClipHeight(150));await frameWait(page)}
     const preparing=await page.screenshot({clip,encoding:'base64'})
     assert.equal((await read(page)).status.presentation,'page')
-    const error=await pixels(page,native,preparing)
+    const {mean:imageError,worstLine:error}=await pixels(page,native,preparing,controls,clip.width)
     await writeFile(path.join(output,`${kind}-native.png`),Buffer.from(native,'base64'))
     await writeFile(path.join(output,`${kind}-preparing.png`),Buffer.from(preparing,'base64'))
-    assert.ok(error<=0.5,`${kind}: preparation image error ${error}`)
+    assert.ok(error<=PLACEMENT_BUDGET,`${kind}: preparation placement error ${error} (whole image ${imageError})`)
     const inside=await page.$eval('#clip-inside',node=>{const r=node.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})
     const outside=await page.$eval('#clip-outside',node=>{const r=node.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})
     await page.mouse.click(inside.x,inside.y);await page.mouse.click(outside.x,outside.y)
@@ -159,7 +199,7 @@ async function check(page,kind,enhanced){
     await page.waitForFunction(()=>window.__apiRegression.status?.presentation==='scene')
     const after=await page.$eval('#clipped-source',node=>node.closest('canvas').style.clipPath)
     assert.equal(after,'','Preparation must release its clip before native scene input')
-    result={imageError:error,insideClicks:1,outsideClicks:0,clipAfterHandoff:after}
+    result={placementError:error,imageError,insideClicks:1,outsideClicks:0,clipAfterHandoff:after}
   }else if(kind==='attribute'){
     await page.waitForFunction(enhanced=>window.__apiRegression.status?.presentation===(enhanced?'scene':'page'),{},enhanced)
     assert.equal((await read(page)).status.reason,null)

@@ -34,7 +34,12 @@ existing capture across display-density changes without replacing its content.
 
 `npm run probe:api-regressions` covers PR #83's keyed target lists, same-canvas
 capture-reader removal, continuous resize anchors, handle-swap focus, overflow
-clipping during preparation, and content-attribute eligibility. It runs capable
+clipping during preparation, and content-attribute eligibility. The clipping
+cases gate on the worst row or column of strongly differing pixels against a
+native shot, with form controls left out: a misplaced ride exposes a whole line
+along an edge, while the compositor and `drawElementImage` raster a control's
+border and glyphs differently under a non-uniform scale. Each result also
+reports the whole-image mean. It runs capable
 Chrome and a separate no-flag profile. Use `HEADED=1` for native-density visual
 checks, `API_CASES` for a comma-separated subset, and `API_PROOF_OUTPUT` for local
 evidence. `API_SOURCE_ROOT` can point at a saved source revision for comparison.
