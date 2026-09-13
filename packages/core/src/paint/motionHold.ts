@@ -31,8 +31,26 @@ export function holdMotion(root: HTMLElement): Animation[] {
   // checked the same way the raster carry checks for a blitter.
   if (!('getAnimations' in root)) return []
   const held = root.getAnimations({ subtree: true }).filter((a) => a.playState === 'running')
-  for (const animation of held) animation.pause()
+  for (const animation of held) {
+    animation.pause()
+    copiesOf.set(animation, [])
+  }
   return held
+}
+
+// Every animation a hold is keeping still, with the copies `matchMotion`
+// paused to match it — so a copy made mid-hold resumes when its original
+// does. Without this the copy is paused with no release owed to it: measured
+// 2026-09-13 on a 4.8 s CSS animation, the capture root's copy made on a
+// return stayed paused ~1.5 s behind the live node, and the next lift
+// captured it — every second lift, on both engines (decisions.md #66).
+const copiesOf = new WeakMap<Animation, Animation[]>()
+
+function resume(animation: Animation): void {
+  const copies = copiesOf.get(animation)
+  copiesOf.delete(animation)
+  if (animation.playState === 'paused') animation.play()
+  for (const copy of copies ?? []) resume(copy)
 }
 
 /**
@@ -41,7 +59,7 @@ export function holdMotion(root: HTMLElement): Animation[] {
  * jump this whole module exists to prevent.
  */
 export function releaseMotion(held: readonly Animation[]): void {
-  for (const animation of held) if (animation.playState === 'paused') animation.play()
+  for (const animation of held) resume(animation)
 }
 
 /**
@@ -71,7 +89,13 @@ export function matchMotion(from: HTMLElement, to: HTMLElement): void {
       const target = targets[slot]
       if (!target) continue
       target.currentTime = source.currentTime
-      if (source.playState === 'paused') target.pause()
+      if (source.playState !== 'paused') continue
+      target.pause()
+      const copies = copiesOf.get(source)
+      if (copies && !copiesOf.has(target)) {
+        copies.push(target)
+        copiesOf.set(target, [])
+      }
     }
   }
 }

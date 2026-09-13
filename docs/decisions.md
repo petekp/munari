@@ -4259,3 +4259,17 @@ someone's playback is not a capture engine's business. An app that runs its
 own clock holds its own clock — `docs/authoring.md` says so, and genie's
 `scheda` window is the worked example, freezing its bounce simulation for the
 flight while the library freezes everything declarative around it.
+
+Amended 2026-09-13 — A COPY MADE MID-HOLD JOINS THE HOLD. `matchMotion`
+paused a copy whose original was held, but no release was owed to the copy.
+On a return the page takes the hold back and `Surface.HTML` snapshots the
+content into the capture root before the store releases the hold, so that
+copy stayed paused. Measured on genie's `quadrato` and `cerchio` over four
+minimize cycles on both engines, identically on `main`: after the first
+restore the capture root's copy read `paused` while the page ran, and the
+second minimize's lift captured it about 1.5 s behind the live node — a
+third of the 4.8 s period — before the next capture snapped back. The
+earlier "0 ms apart at every lift" sampled at rest after the lift, and missed
+the two frames that matter. `holdMotion` now records what it keeps still,
+and a copy `matchMotion` pauses to match a held animation resumes when that
+animation does.
