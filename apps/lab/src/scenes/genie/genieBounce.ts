@@ -248,6 +248,7 @@ let courtW = 0
 let courtH = 0
 let raf = 0
 let last = 0
+let held = false
 
 function seed(): BounceBody[] {
   return BOUNCE_MARKS.map((m, i) => ({
@@ -290,6 +291,34 @@ function tick(now: number): void {
   raf = requestAnimationFrame(tick)
 }
 
+/**
+ * Hold the marks where they are, for the whole of a flight.
+ *
+ * A window in flight is drawn from a capture, and how closely that capture
+ * follows content moving on its own is the engine's decision, not the
+ * scene's: the compositor follows every frame for nothing, while a
+ * rasterizing engine follows only what the user did (`live` on
+ * Surface.HTML, which this window does not ask for). Marks that keep
+ * bouncing therefore travel at one speed on one engine and another speed
+ * on the other. Held, they are the same picture everywhere, and the drain
+ * is the only thing moving — which is what the flight is about.
+ *
+ * The loop stops rather than idling, and the clock restarts on release so
+ * the held time is not integrated as one enormous step.
+ */
+export function holdBounceMarks(hold: boolean): void {
+  if (hold === held) return
+  held = hold
+  if (held) {
+    if (raf) cancelAnimationFrame(raf)
+    raf = 0
+    return
+  }
+  if (courts.size === 0 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  last = performance.now()
+  raf = requestAnimationFrame(tick)
+}
+
 /** Subscribe a mounted window copy. The first live-sized court fixes
  *  the box and seeds the bodies; every copy after that only draws.
  *  Returns the unsubscribe. */
@@ -308,7 +337,7 @@ export function registerBounceCourt(root: HTMLElement): () => void {
   }
   write(court) // in place before the copy's first paint
   const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  if (!raf && !still) {
+  if (!raf && !still && !held) {
     last = performance.now()
     raf = requestAnimationFrame(tick)
   }

@@ -1,7 +1,7 @@
 // Surface — one retained HTML instance handed between page and scene.
 // Renderer holds and before-render reads own synchronization; React supplies intent.
 import { createContext, use, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type CSSProperties } from 'react'
-import { createNativePointerRig, nativeRideStyle, pixelGridSnap, clampScale, zIndexAbove, type NativePointerRig, type SurfaceChrome, type SurfacePartId } from '@munari/core'
+import { createNativePointerRig, matchMotion, nativeRideStyle, pixelGridSnap, clampScale, zIndexAbove, type NativePointerRig, type SurfaceChrome, type SurfacePartId } from '@munari/core'
 import { SurfaceRoot as SurfaceController, type SurfaceIdentityProps } from './surface/SurfaceRoot'
 import { SurfaceMesh } from './surface/SurfaceMesh'
 import { SurfacePart } from './surface/SurfacePart'
@@ -57,6 +57,15 @@ function unsupportedSnapshot(root:HTMLElement):string|null {
  */
 interface PageSnapshot { node: HTMLElement; key: string }
 
+// A copy stands in for the original's PIXELS, so it has to be at the
+// original's pose — `matchMotion` after every insertion, never inside
+// `snapshot`, because a disconnected element has no animations to place.
+// A clone's CSS animations otherwise start over from zero and then run on
+// their own, so the standing copy in the capture root drifts away from the
+// live node and the capture rasterizes whatever phase the drift reached.
+// Seen as a figure jumping to a different pose for the swap frame and back
+// on the next capture, on every other minimize (decisions.md #66).
+
 function snapshot(root: HTMLElement): PageSnapshot {
   // Do not instantiate another iframe, media player, or custom element as a placeholder.
   if(unsupportedSnapshot(root))return { node: document.createElement('div'), key: '' }
@@ -88,6 +97,26 @@ function snapshot(root: HTMLElement): PageSnapshot {
     if (original.scrollTop || original.scrollLeft) state.push(`${index}o${original.scrollTop},${original.scrollLeft}`)
   })
   return { node: copy, key: `${copy.outerHTML}\u0000${state.join('\u0000')}` }
+}
+
+/**
+ * Does this content have something the page-side copy cannot carry?
+ *
+ * A `snapshot` copy reproduces markup, field values, checked state, scroll
+ * offsets and the hover/active/focus-visible twins — everything the eye can
+ * check. What it cannot reproduce is the browser's own furniture: a blinking
+ * caret and a selection highlight belong to the node that owns them, and a
+ * clone of that node has neither. So the live node is worth moving into the
+ * capture ahead of the crossing exactly when one of those is present, and
+ * not otherwise.
+ */
+function sourceNeedsLiveNode(root: HTMLElement): boolean {
+  const doc = root.ownerDocument
+  if (root.contains(doc.activeElement)) return true
+  const selection = doc.getSelection()
+  // `containsNode` walks the range; asking only when something is selected
+  // keeps that off the per-frame path a drag runs down.
+  return Boolean(selection && !selection.isCollapsed && selection.containsNode(root, true))
 }
 
 function SceneContribution({ scene }: { scene: ReactNode }) {
@@ -263,7 +292,10 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     releaseSourcePointer(warmSource.current?.host ?? null, warmOwner)
   }, [warmOwner])
   const updateWarmRig = (holder:HTMLElement,runtime:SurfaceSourceRuntime|null,captured:boolean,captureElement:HTMLElement) => {
-    if (captured && !holder.hidden && store.holdsPage() && runtime) {
+    // The ride stands in for the page copy, so it rides only while that copy is
+    // painted. An app that hides the copy itself (Genie's docked windows) would
+    // otherwise see the live content flash at the copy's box until the scene draws.
+    if (captured && holder.checkVisibility({ visibilityProperty: true, opacityProperty: true }) && store.holdsPage() && runtime) {
       const sourceHost = runtime.source.host
       if (warmSource.current !== runtime.source) {
         parkWarmRig()
@@ -311,14 +343,24 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     const holder = pageRef.current
     const runtime = runtimeRef.current
     if (!holder || !captureRoot || !liveRoot) return
-    const captured = store.canPrepareCanvas() && (!store.holdsPage() || (desiredRef.current && !unsupportedSnapshot(liveRoot))) && runtime !== null
+    // Two different moments ask for the live node. The crossing itself takes
+    // it unconditionally — the page is releasing, so nothing is left to stand
+    // in for it. Ahead of the crossing, while the page is still the one
+    // showing, it is taken only for what a copy cannot carry
+    // (`sourceNeedsLiveNode`): standing the real node over the page copy is a
+    // substitution, and a substitution the user has no reason to want is one
+    // more thing that can be wrong.
+    const warm = store.holdsPage()
+    const captured = store.canPrepareCanvas() &&
+      (!warm || (desiredRef.current && !unsupportedSnapshot(liveRoot) && sourceNeedsLiveNode(liveRoot))) &&
+      runtime !== null
     captureRoot.inert = !captured
     if (captured) captureRoot.removeAttribute('aria-hidden')
     else captureRoot.setAttribute('aria-hidden', 'true')
     if (captured && liveRoot.parentElement !== captureRoot && captureRoot.isConnected) {
       const { node: copy } = snapshot(liveRoot)
       copy.inert = true; copy.setAttribute('aria-hidden', 'true'); copy.style.visibility = 'hidden'
-      holder.append(copy); placeholder.current = copy
+      holder.append(copy); matchMotion(liveRoot, copy); placeholder.current = copy
       for (const node of [...captureRoot.children]) if (node !== liveRoot) node.remove()
       moveRetained(liveRoot, captureRoot)
       // Explicit, not left to the source's own observer: a source that is
@@ -333,7 +375,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
       moveRetained(liveRoot, holder)
       placeholder.current?.remove(); placeholder.current = null
       const held = snapshot(liveRoot)
-      captureRoot.replaceChildren(held.node); heldKey.current = held.key
+      captureRoot.replaceChildren(held.node); matchMotion(liveRoot, held.node); heldKey.current = held.key
     }
     updateWarmRig(holder,runtime,captured,captureRoot)
   }
@@ -355,6 +397,34 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   }, [ownRuntime, liveRoot])
   useLayoutEffect(() => { moveRef.current() }, [page, desired, publication, moveRef,liveRoot,captureRoot])
   useLayoutEffect(() => store.subscribeHold(() => moveRef.current()), [store, moveRef])
+  // What `sourceNeedsLiveNode` reads changes without mutating the content, so
+  // nothing already watching the subtree hears it.
+  //
+  // Coalesced to a frame, deliberately. `focusout` fires while the document
+  // still answers `<body>`, so an immediate answer would park the swap
+  // between two controls of the same source and move the node twice for one
+  // keystroke — with the caret it exists to protect riding along. A frame
+  // later the focus has landed, and a caret reaching the texture one frame
+  // after it reaches the page is a frame nobody can see.
+  useEffect(() => {
+    if (!page) return
+    const doc = page.ownerDocument
+    const subscriptions = new AbortController()
+    let queued = 0
+    const recheck = () => {
+      if (queued) return
+      queued = requestAnimationFrame(() => {
+        queued = 0
+        moveRef.current()
+      })
+    }
+    for (const event of ['focusin', 'focusout', 'selectionchange'] as const)
+      doc.addEventListener(event, recheck, { capture: true, signal: subscriptions.signal })
+    return () => {
+      if (queued) cancelAnimationFrame(queued)
+      subscriptions.abort()
+    }
+  }, [page, moveRef])
   useEffect(() => {
     if (!page || !desired) return
     let stop: (() => void) | null = null
@@ -380,10 +450,11 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
         // the compositor always does, a rasterizing engine only when the
         // content is live or the user just acted on it.
         captureRoot.replaceChildren(held.node)
+        matchMotion(liveRoot, held.node)
       } else if (store.holdsPage() && placeholder.current) {
         const { node: copy } = snapshot(liveRoot)
         copy.inert = true; copy.setAttribute('aria-hidden', 'true'); copy.style.visibility = 'hidden'
-        placeholder.current.replaceWith(copy); placeholder.current = copy
+        placeholder.current.replaceWith(copy); matchMotion(liveRoot, copy); placeholder.current = copy
       }
     }
     sync()

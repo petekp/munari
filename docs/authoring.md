@@ -155,12 +155,28 @@ opacity and transform restyles.
 ## Idle motion must be able to ease flat
 
 If page content moves on its own — a float, a shimmer, anything
-decorative that runs while the user does nothing — a crossing
-needs that motion GONE before the swap: the canvas twin holds the page's
-resting geometry, and any offset still live at the swap frame is a
-visible jump.
+decorative that runs while the user does nothing — the two sides of a
+crossing have to agree about where it is at the swap frame.
 
-So drive the motion's *amplitude* through a registered custom property
+**The library holds declarative motion for you** (decisions.md #66). While a
+canvas has the content, every CSS animation, CSS transition and Web Animation
+in the subtree is paused, and on the return it resumes where it stopped, not
+where it would have got to. So a self-animating subtree neither steps
+backwards at the lift nor jumps forward at the return, and you do not have to
+think about it. A source declared `live` is exempt: it asked for the motion,
+and the canvas follows it.
+
+**What the library cannot hold is a clock it does not own** — a
+`requestAnimationFrame` loop writing styles, or a playing `<video>`. Neither
+has a timeline the platform exposes. If your content runs its own clock, stop
+it while the canvas has the content and start it again when the page takes it
+back; `onPresentationChange` is the signal. Genie's `scheda` window is the
+worked example: it freezes its bounce simulation for the flight.
+
+Easing flat is still the better look, and it is still what keeps the ROOT's
+geometry honest — the canvas twin is placed at the page's resting box, so a
+root still drifting when the swap lands is a real jump, which no pause can
+fix. So drive the motion's *amplitude* through a registered custom property
 and let the keyframes read it:
 
 ```css
@@ -341,9 +357,12 @@ sets as one transaction and keeps the prior complete receipt usable.
 
 ## Retained HTML and capture sources
 
-`Surface.HTML` retains one live instance. Page-owned preparation uses the source
-bitmap and its native input rig so selection, caret, focus, hover and current text
-remain visible. Its inert clone reserves layout. Keep content-root dimensions
+`Surface.HTML` retains one live instance. Page-owned preparation leaves that
+instance on the page and captures a copy of it, so what you see during a lift is
+your own element. It borrows the instance only when a copy would lose something
+the eye can check — a caret inside the content, or a selection across it. Then it
+shows the source bitmap through the native input rig, and an inert clone reserves
+layout (decisions.md #42, #63). Keep content-root dimensions
 honest; changing page parents uses a page target rather than remounting the content.
 Position-only slot changes are observed separately from capture and handoff work.
 

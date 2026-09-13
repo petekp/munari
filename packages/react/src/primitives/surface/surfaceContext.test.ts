@@ -92,6 +92,7 @@ describe('useSurfaceTextureOf', () => {
     store.publishPart(DEFAULT_PART, {
       id: DEFAULT_PART,
       runtime: runtimeWith(texture),
+      live: false,
       size: [300, 180],
       captureRoot: null,
       pageRoot: null,
@@ -116,6 +117,7 @@ describe('useSurfaceTextureOf', () => {
       store.publishPart(DEFAULT_PART, {
         id: DEFAULT_PART,
         runtime: runtimeWith(texture),
+        live: false,
         size: [300, 180],
         captureRoot: null,
         pageRoot: null,
@@ -131,6 +133,7 @@ describe('useSurfaceTextureOf', () => {
     store.publishPart(DEFAULT_PART, {
       id: DEFAULT_PART,
       runtime: runtimeWith(texture),
+      live: false,
       size: [300, 180],
       captureRoot: null,
       pageRoot: null,
@@ -151,6 +154,7 @@ describe('useSurfaceTextureOf', () => {
     store.publishPart('m', {
       id: 'm',
       runtime: runtimeWith(stubTexture()),
+      live: false,
       size: [40, 60],
       captureRoot: null,
       pageRoot: null,
@@ -158,6 +162,7 @@ describe('useSurfaceTextureOf', () => {
     store.publishPart('u', {
       id: 'u',
       runtime: runtimeWith(second),
+      live: false,
       size: [40, 60],
       captureRoot: null,
       pageRoot: null,

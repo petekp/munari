@@ -318,12 +318,13 @@ export function SurfaceSourceHost({
     () => store.publishPart(id, {
       id,
       runtime,
+      live,
       size: [sourceWidth, sourceHeight],
       captureRoot,
       pageRoot,
       pageContent,
     }),
-    [store, id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent],
+    [store, id, runtime, live, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent],
   )
 
   // Content reaches the container by whichever door this wiring has. Both

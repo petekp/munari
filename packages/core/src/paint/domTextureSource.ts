@@ -203,12 +203,17 @@ export interface DomTextureSourceOptions {
    * Every engine follows the user's input on the content, a layout resize,
    * a webfont or image landing, a transition or animation reaching its
    * ends, and an explicit `repaint()`. Whether it also follows a change
-   * nobody asked for is the one thing an engine that pays tens of
-   * milliseconds per capture cannot afford by default (decisions.md #60):
-   * two self-animating subtrees took a scene from 60 fps to 51. Such an
-   * engine leaves the picture as it was until told the content is `live`,
-   * and then follows it at its own pace. The HTML-in-canvas engine follows
-   * everything for free and ignores the flag. Default `false`.
+   * nobody asked for is what this flag answers, and every engine answers it
+   * the same way (decisions.md #64): without it the picture stays as it was
+   * until one of those reasons arrives. Default `false`.
+   *
+   * The engines differ in what it COSTS them, not in what it means. A
+   * rasterizing engine pays tens of milliseconds per capture — two
+   * self-animating subtrees took a scene from 60 fps to 51 (decisions.md
+   * #60) — and paces a live source accordingly (#62). The HTML-in-canvas
+   * engine is handed its paints by the compositor and declines the ones it
+   * was not asked for, which costs it nothing either way. Turn it on for
+   * content that moves on its own and must be seen moving.
    */
   live?: boolean
   /** Paint failures, normalized to an Error at the catch that produced

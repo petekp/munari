@@ -87,7 +87,7 @@ import {
   pourOut,
 } from './genieDrive'
 import { dockFill, dockPose, dockRingDone, dockSwell } from './genieDock'
-import { BOUNCE_MARKS, registerBounceCourt } from './genieBounce'
+import { BOUNCE_MARKS, holdBounceMarks, registerBounceCourt } from './genieBounce'
 import { genieTuning } from './genieTuning'
 import { GenieTweakPanel } from './GenieTweaks'
 import { showChrome } from '../../bareMode'
@@ -242,10 +242,6 @@ interface Scheda {
   /** The bay's drawing: a pane that fills when occupied, then the mark
    *  stroked over it, so the drawing itself never goes anywhere. */
   mark: React.ReactNode
-  /** The body moves on its own and the flight must show it moving. The
-   *  film window is not: its frames reach the scene through a FrameSurface,
-   *  not through the capture. */
-  live?: boolean
 }
 
 // Dock order, left to right. The three figures, then the window that
@@ -297,7 +293,6 @@ const SCHEDE: Scheda[] = [
   {
     id: 'scheda',
     title: 'scheda',
-    live: true,
     mark: (
       <>
         <rect className="gen-icon-base" x="0.9" y="2.2" width="18.2" height="15.6" rx="0.9" />
@@ -481,10 +476,11 @@ function BounceMark({ index }: { index: number }) {
 // The marks' layer, its own component because registering with the
 // simulation is per-INSTANCE work and every window exists twice.
 function PlayLayer() {
-  // Live content, not decoration. These keep bouncing while the sheet is
-  // being warped, which is the claim the whole scene exists to make: what
-  // flies is a running page sampled every frame, not a photograph of one
-  // taken at press time.
+  // Live content, not decoration — while the window is on the desk. The
+  // marks are HELD for the whole of a flight (`holdBounceMarks`), so the
+  // drain is the only thing moving in it and both engines draw the same
+  // picture; see that function for why the engines would otherwise
+  // disagree.
   //
   // Joining the ONE simulation is what keeps the two copies honest:
   // the page copy and the airborne copy draw the same bodies at the
@@ -516,6 +512,11 @@ function PlayLayer() {
  *  gate exist from the moment of takeoff rather than being discovered
  *  from inside the capture root a frame or two late. */
 const FILM_WIN: WinId = 'triangolo'
+
+/** The one window whose body moves on its own. Named here because the
+ *  marks are held for the whole of its flight, which is a fact about this
+ *  window and not about whichever copy happens to be mounted. */
+const PLAY_WIN: WinId = 'scheda'
 
 function FilmLayer({ attach }: { attach?: React.RefCallback<HTMLCanvasElement> }) {
   return (
@@ -2018,6 +2019,13 @@ export function GenieApp() {
     }
   }, [docked, air])
 
+  // Held from takeoff to landing, and not from the presentation edge: a grab
+  // scrubs the drain while the window is still on the page, and marks that
+  // moved during it would already be inside the picture the flight carries.
+  useEffect(() => {
+    holdBounceMarks(Boolean(air[PLAY_WIN]))
+  }, [air])
+
   const airborne = WIN_IDS.filter((w) => air[w])
   const anyAir = airborne.length > 0
   const dockedSet = useMemo(() => new Set(docked), [docked])
@@ -2565,7 +2573,7 @@ export function GenieApp() {
               timing={{ settleMs: 0, durationMs: 1 }}
               onPresentationChange={view => onPresentedView(s.id, view)}
             >
-              <Surface.HTML pageClassName="gen-page-presentation" resolution={2} live={s.live}>
+              <Surface.HTML pageClassName="gen-page-presentation" resolution={2}>
                 {bodyFor(s)}
               </Surface.HTML>
             </Surface.Root>

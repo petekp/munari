@@ -9,9 +9,11 @@
 // existing engines and guessing which of their behaviors were deliberate.
 //
 // The engines are NOT supersets of each other and this suite does not
-// pretend otherwise: what differs — which changes signal a paint, whether
-// the host can be hit-tested through a transform — is pinned per engine
-// below the shared block, each against its own measurement.
+// pretend otherwise: what differs — how a change is noticed, what a capture
+// costs and therefore how it is paced, whether the host can be hit-tested
+// through a transform — is pinned per engine below the shared block, each
+// against its own measurement. WHICH changes are followed is not on that
+// list: that is one law over both engines (Law 4).
 //
 // happy-dom has no compositor and no rasterizer, so both engines are driven
 // by hand: the trial surface is stubbed and `onpaint` is fired, and the
@@ -325,6 +327,30 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
     await harness.deliver(source)
     await harness.deliver(source)
     expect(harness.asked()).toBe(quiet)
+    source.dispose()
+  })
+
+  // Law 4. A change the content made on its OWN is followed only when the
+  // consumer says the content is live. This is one law over both engines and
+  // not a cost control on the expensive one (decisions.md #64): an engine
+  // that followed everything for free would still be a different product on
+  // its browser, and the flag would mean nothing where it is cheapest to
+  // honour. What each engine follows regardless — the user's input, a
+  // resize, a font or image landing, a transition or animation reaching its
+  // ends, an explicit `repaint()` — is `PAINT_EVENTS` and is shared too.
+  it('follows a change the content made on its own only when told it is live', async () => {
+    const source = await born()
+    const quiet = source.paintCount()
+
+    source.element.setAttribute('data-tick', '1')
+    await harness.deliver(source)
+    expect(source.paintCount()).toBe(quiet)
+
+    // Switched on, the picture is made current from the moment the flag is,
+    // rather than at the next change.
+    source.setLive(true)
+    await harness.deliver(source)
+    expect(source.paintCount()).toBe(quiet + 1)
     source.dispose()
   })
 

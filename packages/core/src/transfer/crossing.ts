@@ -27,10 +27,12 @@
 // - The page releases on EVIDENCE, never on hope: every incoming
 //   presenter has fired its post-draw presentation boundary
 //   (a color-writing draw completed — Surface.onFirstPresented — not
-//   merely an upload queued), AND the settle dwell has elapsed, so the
-//   page's autonomous idle motion has eased flat and the overlap is
-//   pixel-identical (docs/authoring.md: idle motion rides a registered
-//   custom property exactly so it CAN ease to zero before a crossing).
+//   merely an upload queued), the pixels it will show carry content no
+//   older than the lift itself (decisions.md #65), AND the settle dwell
+//   has elapsed, so the page's autonomous idle motion has eased flat and
+//   the overlap is pixel-identical (docs/authoring.md: idle motion rides a
+//   registered custom property exactly so it CAN ease to zero before a
+//   crossing).
 // - A request that arrives mid-crossing REVERSES the crossing; it never
 //   skips to the far side. Skipping forward past the lift gate would
 //   release the page without evidence; skipping back past the landing
@@ -72,6 +74,12 @@ export const CROSSING_DEFAULTS: CrossingTiming = {
 export interface CrossingEvidence {
   presented: number
   required: number
+  /**
+   * Do the pixels those presenters will show carry the content the page
+   * copy was showing when the lift was asked for? A presenter proves it
+   * can draw; this says WHAT it draws is not older than the ask.
+   */
+  contentCurrent: boolean
 }
 
 export interface CrossingState {
@@ -118,9 +126,9 @@ export function crossingRequest(state: CrossingState, wantGl: boolean): Crossing
  * teleport the ramp), the law just integrates what it is given.
  *
  * 'lifting' accumulates the dwell and releases the page only when the
- * evidence is whole: every required presenter proven AND the settle
- * dwell served. 'gl' raises the ramp to 1; 'landing' lowers it,
- * and at exactly zero hands the pixels back to the page — the one frame
+ * evidence is whole: every required presenter proven, the content they
+ * will show current, AND the settle dwell served. 'gl' raises the ramp to
+ * 1; 'landing' lowers it, and at exactly zero hands the pixels back to the page — the one frame
  * where the reverse handoff happens, and it happens at zero progress so
  * the mesh being replaced is geometrically the page it reveals.
  */
@@ -134,7 +142,7 @@ export function crossingFrame(
   if (phase === 'page') return state
   if (phase === 'lifting') {
     const heldMs = state.heldMs + dtMs
-    const proven = evidence.presented >= evidence.required
+    const proven = evidence.presented >= evidence.required && evidence.contentCurrent
     if (proven && heldMs >= timing.settleMs) return { phase: 'gl', ramp: 0, heldMs }
     return { ...state, heldMs }
   }

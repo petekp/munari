@@ -68,8 +68,13 @@ afterEach(() => {
   expect(paintStats()).toEqual([])
 })
 
+// `live`, because this file counts paints. Every engine now takes a paint it
+// was handed only for a reason (captureEngines.test.ts), and a compositor
+// callback fired by hand carries none — so an unlived source here would count
+// its birth paint and nothing after it, and the ledger would be untestable.
 function make(label?: string) {
-  return createDomTextureSource('<div></div>', 100, 50, label ? { label } : {})
+  if (label) return createDomTextureSource('<div></div>', 100, 50, { live: true, label })
+  return createDomTextureSource('<div></div>', 100, 50, { live: true })
 }
 
 /** The single live entry — asserting there IS exactly one while narrowing. */

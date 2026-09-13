@@ -68,6 +68,34 @@ export const INPUT_EVENTS = [
   'dragend',
 ] as const
 
+/**
+ * Events that change what an element paints without mutating its DOM.
+ *
+ * Every engine captures on these whatever `live` says, because each one
+ * leaves the picture WRONG rather than merely old: a field's own repaint, a
+ * scroll, an image arriving, a transition or animation reaching an end it
+ * will now hold. The middle of an animation is deliberately absent — that is
+ * the change nobody asked for, and it is what `live` buys.
+ *
+ * Here rather than in either engine for the same reason `INPUT_EVENTS` is:
+ * two engines judging by one list cannot drift apart, and an engine that
+ * captured on a different set would be a different product on that browser.
+ */
+export const PAINT_EVENTS = [
+  'input',
+  'change',
+  'focusin',
+  'focusout',
+  'pointerdown',
+  'pointerup',
+  'scroll',
+  'transitionrun',
+  'transitionend',
+  'animationstart',
+  'animationend',
+  'load',
+] as const
+
 export interface HearOptions {
   /**
    * Input to disown: a whole-page root contains other captures' parked

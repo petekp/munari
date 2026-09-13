@@ -7,8 +7,8 @@ import {
   type CrossingState,
 } from '../../../packages/core/src/transfer/crossing'
 
-const WHOLE = { presented: 1, required: 1 }
-const NONE = { presented: 0, required: 1 }
+const WHOLE = { presented: 1, required: 1, contentCurrent: true }
+const NONE = { presented: 0, required: 1, contentCurrent: true }
 
 /** A crossing already past the lift gate, at the given ramp. */
 const airborne = (ramp: number): CrossingState => ({ phase: 'gl', ramp, heldMs: 500 })

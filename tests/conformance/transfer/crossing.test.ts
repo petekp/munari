@@ -24,8 +24,10 @@ import {
 
 const T = CROSSING_DEFAULTS
 const PHASES: CrossingPhase[] = ['page', 'lifting', 'gl', 'landing']
-const ALL: CrossingEvidence = { presented: 6, required: 6 }
-const NONE: CrossingEvidence = { presented: 0, required: 6 }
+const ALL: CrossingEvidence = { presented: 6, required: 6, contentCurrent: true }
+const NONE: CrossingEvidence = { presented: 0, required: 6, contentCurrent: true }
+/** Every presenter has drawn, but what they drew is older than the lift. */
+const STALE: CrossingEvidence = { presented: 6, required: 6, contentCurrent: false }
 
 /** Tick the reducer at a fixed frame rate until a predicate holds. */
 function tickUntil(
@@ -173,7 +175,7 @@ describe('requests', () => {
 describe('the lift gate', () => {
   it('holds while any presenter is unproven, however long the dwell', () => {
     let s = crossingRequest(crossingAtRest(), true)
-    s = tickUntil(s, { presented: 5, required: 6 }, (x) => x.heldMs > T.settleMs * 4)
+    s = tickUntil(s, { presented: 5, required: 6, contentCurrent: true }, (x) => x.heldMs > T.settleMs * 4)
     expect(s.phase).toBe('lifting')
   })
 
@@ -194,6 +196,19 @@ describe('the lift gate', () => {
     }
     expect(s.phase).toBe('gl')
     expect(s.ramp).toBe(0)
+  })
+
+  // Proving a presenter can draw says nothing about WHAT it drew. A texture
+  // holding an older capture releases the page onto pixels the viewer
+  // already moved past, which reads as the content stepping backwards for
+  // the frames before the fresh capture lands (decisions.md #65).
+  it('holds while the proven pixels carry content older than the lift', () => {
+    let s = crossingRequest(crossingAtRest(), true)
+    s = tickUntil(s, STALE, (x) => x.heldMs > T.settleMs * 4)
+    expect(s.phase).toBe('lifting')
+    // The capture lands, and the very next frame releases.
+    s = crossingFrame(s, ALL, 16, T)
+    expect(s.phase).toBe('gl')
   })
 
   it('measures the dwell from the moment lifting began, not from the last receipt', () => {
