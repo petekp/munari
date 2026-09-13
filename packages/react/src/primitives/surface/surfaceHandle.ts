@@ -114,6 +114,14 @@ export interface SurfaceHandle {
 // handoff it was promised to cross.
 const RECLAIM_LINGER_MS = 300
 
+// The longest a lift waits for a capture newer than itself. Measured
+// 2026-09-13 on snapDOM in genie: the demanded capture was uploaded about
+// 30 ms after the lift, and a 1 ms bound released onto a capture ~10% of the
+// figure's pixels away from the frozen pose, for one to two frames. 500 ms is
+// an order of magnitude past that and still short of reading as a hang
+// (decisions.md #65).
+const CURRENT_CAPTURE_WAIT_MS = 500
+
 // Callbacks are `SurfaceCallbacks` rather than a bag of optional functions
 // so the store has one named type to hold, and so replacing them is one
 // assignment — the latest-callback rule is that the newest set runs without
@@ -420,13 +428,12 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // UPLOADED generation, not the painted one — a paint the texture has not
   // taken yet is not something a draw can show.
   const contentCurrent = (): boolean => {
-    // Bounded, because every other condition in the lift gate is. The dwell
-    // is finite and readiness is bounded by presenters that do draw, but a
-    // source that stops answering would hold a lift open forever — and a
-    // crossing that never completes is a worse failure than one that shows a
-    // capture a beat old. One ramp past the dwell is longer than the whole
-    // transition would have taken, so nothing that is still coming is lost.
-    if (crossing.heldMs >= timing.settleMs + timing.rampMs) return true
+    // Bounded, because every other condition in the lift gate is: a source
+    // that stops answering would hold a lift open forever. The bound is the
+    // capture's latency, never the author's timing — a transition timed
+    // `{settleMs: 0, durationMs: 1}` had a 1 ms bound and released onto the
+    // previous capture every time (decisions.md #65).
+    if (crossing.heldMs >= CURRENT_CAPTURE_WAIT_MS) return true
     for (const [id, generation] of contentFloor) {
       const runtime = partMap.get(id)?.runtime
       if (runtime && runtime.uploadedGeneration() < generation) return false

@@ -4169,10 +4169,20 @@ The wait is bounded, in the binding rather than the law. Every other condition
 in the lift gate is finite — the dwell by the clock, readiness by presenters
 that do draw — and an unbounded one lets a source that stops answering hold a
 crossing open forever, which is a worse failure than showing a capture a beat
-old. One ramp past the dwell is longer than the whole transition would have
-taken, so the bound cannot discard a capture that was still coming. The kernel
+old. The kernel
 law is unchanged: it is handed `contentCurrent` and does not decide when the
 binding stops claiming staleness.
+
+Amended 2026-09-13 — THE BOUND IS THE CAPTURE'S LATENCY, NOT THE AUTHOR'S
+TIMING. It was first set to one ramp past the dwell, on the argument that no
+capture still coming would outlast the transition. Genie times its windows
+`{settleMs: 0, durationMs: 1}`, so the bound was 1 ms and the floor never
+held: measured on snapDOM, the page released 77 ms after a real mouse click
+onto the previous capture, about 10% of cerchio's figure pixels away from the
+frozen pose, and the demanded capture replaced it 20-30 ms later — a pose
+flash on every minimize. With a 2 s bound the same four minimizes showed no
+flash. The bound is now a fixed 500 ms (`CURRENT_CAPTURE_WAIT_MS`), an order
+of magnitude past the measured ~30 ms capture.
 
 ## #66 — Content stands still while a canvas has it (2026-09-13)
 
