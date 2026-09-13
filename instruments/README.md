@@ -426,6 +426,19 @@ measures the fixed shadow strip in every compositor frame around both
 handoff directions. It also checks that the shadow travels with the
 sheet and fades only where the funnel has squeezed it past legibility.
 
+## genie pose flash
+
+Checks that minimizing a window whose figure animates shows the frozen pose
+and hands it over once. `npm run gate:genie-pose-flash` presses the minimize
+lamp of cerchio and quadrato with a real mouse, three times each per engine,
+and reads a DevTools screencast of the figure for 80 ms after the page lets
+go. A correct handover changes the picture once, by 2.03-5.50% measured.
+Releasing onto a capture older than the lift changes it twice, by 6.61-14.44%
+each time. That fault showed on snapDOM only; HTML-in-canvas did not flash even
+with the fault restored. The DOM cannot see this fault: the page's animations are paused
+and agree with each other on every frame of it. A scripted `click()` misses
+it too, so the press has to be a real one.
+
 ## genie restore flash
 
 Checks that pressing a dock tile shows nothing at the window's desk position
