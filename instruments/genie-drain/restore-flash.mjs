@@ -35,9 +35,12 @@ const labRoot = path.join(repoRoot, 'apps', 'lab')
 const CHROME = [
   process.env.CHROME_PATH,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium',
 ]
   .filter(Boolean)
   .find((candidate) => existsSync(candidate))
+if (!CHROME) throw new Error('restore-flash: Chrome was not found; set CHROME_PATH')
 const HEADED = process.env.HEADED === '1'
 const SLOWCPU = Number(process.env.SLOWCPU ?? 1)
 // The window under test is a study pattern: no video, no bouncing marks, so
