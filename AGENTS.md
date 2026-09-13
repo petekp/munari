@@ -44,8 +44,8 @@ for working in this repo.
   reviewed like kernel code. A measurement that exists only as prose
   has to be re-derived by whoever needs it next, so every probe is a
   runnable script.
-- `tools/oxlint/anti-slop/` — the local lint rules `npm run lint`
-  enforces as hard errors.
+- `tools/oxlint/` — the local lint rules `npm run lint` enforces as hard
+  errors.
 
 `tests/boundary.test.ts` enforces every seam above. Each area's README
 carries its local rules; `docs/README.md` indexes what is canon.
