@@ -69,8 +69,11 @@ function Capture(){
   const capture=useCaptureHandle(),[first,setFirst]=useState(true)
   probe.remove=()=>setFirst(false)
   probe.capture=()=>{const value=inspectCapture(capture);return {consumers:value.consumers,revision:value.frame?.revision??null}}
+  // `live` on the CaptureContent below: this case provokes its change from a
+  // probe rather than from the user, and a change nobody asked for is followed
+  // only when the content is declared live, on every engine (decisions.md #64).
   probe.paint=()=>{const element=document.getElementById('reader-source')!;element.style.background='rgb(20,70,230)';element.textContent='Updated capture'}
-  return <><CaptureContent capture={capture} size={[200,100]}><div id="reader-source" style={{width:200,height:100,background:'rgb(230,20,20)'}}>Shared capture</div></CaptureContent><SurfaceCanvas orthographic camera={{position:[0,0,1000],zoom:1}} frameloop="demand" flat style={{height:400}}>{first&&<CaptureReader id="a" capture={capture}/>}<CaptureReader id="b" capture={capture}/></SurfaceCanvas></>
+  return <><CaptureContent capture={capture} size={[200,100]} live><div id="reader-source" style={{width:200,height:100,background:'rgb(230,20,20)'}}>Shared capture</div></CaptureContent><SurfaceCanvas orthographic camera={{position:[0,0,1000],zoom:1}} frameloop="demand" flat style={{height:400}}>{first&&<CaptureReader id="a" capture={capture}/>}<CaptureReader id="b" capture={capture}/></SurfaceCanvas></>
 }
 
 const ANCHORS=['edge'] as const
@@ -111,7 +114,7 @@ function Fixture(){
     case 'capture':return <Capture/>
     case 'resize':return <Resize/>
     case 'focus':return <Focus/>
-    case 'clip':case 'clip-dynamic':return <Clipping/>
+    case 'clip':case 'clip-dynamic':case 'prepare-unfocused':return <Clipping/>
     case 'clip-nested':return <Clipping nested/>
     case 'clip-rounded':return <Clipping rounded/>
     case 'clip-scaled':return <Clipping nested rounded scaled/>

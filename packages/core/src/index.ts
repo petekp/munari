@@ -91,6 +91,7 @@ export {
   type RasterImage,
 } from './paint/rasterizedSource'
 export { createInputWindow, INPUT_EVENTS, INPUT_WINDOW_MS, type HearOptions, type InputWindow } from './paint/inputWindow'
+export { holdMotion, matchMotion, releaseMotion } from './paint/motionHold'
 export {
   ensureChannelRegistered,
   createStyleChannel,

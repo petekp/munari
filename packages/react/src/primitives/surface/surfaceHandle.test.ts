@@ -929,7 +929,8 @@ describe('the part ledger — all of the parts or none (decisions.md #37)', () =
 describe('part publication ownership', () => {
   const publication = (id: string): SurfacePartPublication => ({
     id,
-    runtime: null,
+    runtime: null,    live: false,
+
     size: [200, 100],
     captureRoot: document.createElement('div'),
     pageRoot: null,

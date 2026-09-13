@@ -663,9 +663,18 @@
   font-size: 14px;
 }
 
-/* Small SVG paint animations are deliberate here. A compositor transform
- * would move the DOM copy without advancing the HTML capture. Dash motion
- * repaints this isolated 132px drawing, so the airborne copy stays live. */
+/* The dash motion below belongs to the DESK, not to the flight.
+ *
+ * It used to be claimed the other way round: a paint animation, unlike a
+ * compositor transform, repaints the drawing and so was said to keep the
+ * airborne copy live. That was only ever true on one engine. A CSS animation
+ * mutates nothing, so a rasterizing engine never saw it at all, and no engine
+ * follows a change nobody asked for unless the content is declared `live`
+ * (decisions.md #64) — an infinite animation is captured at its start and
+ * then held (platform.md #22). These windows do not ask, so what flies is a
+ * still figure on every engine, which is at least the same still figure.
+ * The scene's live-content claim rests on the film window, whose frames
+ * reach the mesh through a FrameSurface rather than through the capture. */
 .gen-figure {
   display: grid;
   place-items: center;

@@ -46,7 +46,7 @@
 // parked container. `domTextureSource.ts` owns the canvas and the ledger. The
 // rasterizer owns pixels and nothing else.
 
-import { createInputWindow } from './inputWindow'
+import { createInputWindow, PAINT_EVENTS } from './inputWindow'
 import { HOVER_ATTR } from '../pointer/twins'
 import {
   adoptContent,
@@ -163,22 +163,6 @@ export type ElementRasterizer = (
  * rasterizer answers with something it can simply measure.
  */
 export type RasterImage = Exclude<CanvasImageSource, VideoFrame | SVGImageElement>
-
-/** Events that change what an element paints without mutating its DOM. */
-const PAINT_EVENTS = [
-  'input',
-  'change',
-  'focusin',
-  'focusout',
-  'pointerdown',
-  'pointerup',
-  'scroll',
-  'transitionrun',
-  'transitionend',
-  'animationstart',
-  'animationend',
-  'load',
-] as const
 
 /**
  * How long a hover change waits before it is captured.

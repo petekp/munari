@@ -33,6 +33,7 @@ import {
   type DomTextureSource,
   type DomTextureSourceOptions,
 } from './domTextureSource'
+import { createInputWindow, PAINT_EVENTS } from './inputWindow'
 import type { CaptureEngine } from './captureEngine'
 
 export interface HtmlInCanvasSupport {
@@ -105,7 +106,26 @@ function createHtmlInCanvasSource(
   // takes the paint request as a constructor argument — the first re-cut it
   // could run happens long after this line.
   let trial: TrialCanvas | null = null
-  const requestPaint = () => trial?.requestPaint()
+  let live = options.live === true
+  // The compositor decides WHEN to paint; `live` decides whether this engine
+  // takes the paint it is handed. `owed` is how the two meet: everything that
+  // must be captured whatever `live` says sets it before asking, and the paint
+  // that follows spends it.
+  let owed = true
+  // A bitmap the user is looking at is never allowed to be stale, so a painted
+  // host outranks `live` — page-owned preparation shows this bitmap through
+  // the native input rig (decisions.md #42, #63).
+  let hostPainted = false
+  // Has a paint been declined since the last one taken? Only then is the
+  // bitmap behind the live DOM, and only then is showing the host worth a
+  // refresh. Without this, a source that never declines anything still buys a
+  // paint every time it is shown.
+  let missed = false
+  const input = createInputWindow(() => performance.now())
+  const requestPaint = () => {
+    owed = true
+    trial?.requestPaint()
+  }
   const body: CaptureCanvas = createCaptureCanvas(element, width, height, {
     ...options,
     engine: 'html-in-canvas',
@@ -151,6 +171,16 @@ function createHtmlInCanvasSource(
   const ctx = canvas.getContext('2d') as TrialContext2D
 
   canvas.onpaint = () => {
+    // The one place this engine spends a paint. Declining leaves the canvas
+    // holding the bitmap it already had, so nothing is re-uploaded and the
+    // picture stays as it was — which is what `live: false` means on every
+    // engine (decisions.md #64).
+    if (!(live || owed || hostPainted || input.isOpen())) {
+      missed = true
+      return
+    }
+    owed = false
+    missed = false
     try {
       // The replay is auto-scaled by the canvas's backing/CSS ratio, and any
       // CTM multiplies ON TOP of that (measured with position-marker dots:
@@ -180,6 +210,18 @@ function createHtmlInCanvasSource(
     canvas.style.width = `${w}px`
     canvas.style.height = `${h}px`
   }
+  // What must be captured whatever `live` says. The list is the other
+  // engine's, imported rather than restated, so the two cannot answer a
+  // scroll or an arriving image differently (inputWindow.ts).
+  const listeners = new AbortController()
+  for (const event of PAINT_EVENTS) {
+    element.addEventListener(event, requestPaint, { capture: true, signal: listeners.signal })
+  }
+  // A webfont that lands after the first paint restyles every glyph under it,
+  // and nothing in the subtree mutates to say so.
+  document.fonts?.addEventListener('loadingdone', requestPaint, { signal: listeners.signal })
+  const stopHearingElement = input.hear(element)
+
   requestPaint()
 
   return {
@@ -188,14 +230,22 @@ function createHtmlInCanvasSource(
     host: canvas,
     element,
     setHostPainted: (painted) => {
+      hostPainted = painted
+      // Refresh before it is looked at, not after: a host that begins riding on
+      // a bitmap taken before the last quiet spell would stand that spell's
+      // content over the page copy it is covering. Only if a spell happened.
+      if (painted && missed) requestPaint()
       canvas.style.visibility = painted ? 'visible' : 'hidden'
     },
     repaint: requestPaint,
-    // The compositor already paints for every change that enters a paint
-    // record, at no cost this side of the seam, so there is nothing to
-    // switch on or off.
-    setLive: () => {},
-    hearInput: () => () => {},
+    setLive: (next) => {
+      if (next === live) return
+      live = next
+      // The picture stopped following at some point; make it current from the
+      // moment the flag is, rather than at the next change.
+      if (live) requestPaint()
+    },
+    hearInput: input.hear,
     scale: body.scale,
     rasterScale: body.rasterScale,
     size: body.size,
@@ -214,6 +264,8 @@ function createHtmlInCanvasSource(
     paintCount: body.paintCount,
     dispose: () => {
       canvas.onpaint = null
+      listeners.abort()
+      stopHearingElement()
       canvas.remove()
       // Release the subtree. The hold was for the source's lifetime, and
       // adoption required the node to arrive unparented — so it leaves that

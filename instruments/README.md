@@ -421,6 +421,19 @@ measures the fixed shadow strip in every compositor frame around both
 handoff directions. It also checks that the shadow travels with the
 sheet and fades only where the funnel has squeezed it past legibility.
 
+## genie restore flash
+
+Checks that pressing a dock tile shows nothing at the window's desk position
+until the sheet arrives there. `npm run gate:genie-restore-flash` runs three
+restores per engine and reads a DevTools screencast, because the DOM cannot
+see this fault: the slot keeps `data-away="true"` and its page copy keeps
+`visibility: hidden` for every frame of the flash.
+
+The gate also requires the warm native ride to still happen on a minimize.
+Riding over a page copy that is showing is what keeps a caret and a selection
+real, so a fix that simply stops riding would pass the first check and cost
+every Surface its native input.
+
 ## knobs-hz
 
 Reports Knobs throughput at a fixed 1440×900 viewport and DPR 2.

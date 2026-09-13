@@ -2513,6 +2513,11 @@ frames measured zero. Cropped screenshot capture is kept outside the recording,
 and native/emulated device scales must agree. This does not claim that a screencast
 contains every display refresh. Typing continues to update the original source.
 
+Narrowed by #63, 2026-09-12: the substitution described here is now made only
+when a caret or a selection is present, which is exactly what this paragraph
+measured the inert clone losing. With neither, the live node stays on the page
+and the capture reads the clone.
+
 Active copy budgets apply to the retained Controls form (70 source elements),
 Selection prose (5), and the small html/body fixture (33/27). The served-module
 instrument measured Controls p95 0.5ms/max 1.2ms; Selection 2.6/2.7ms; html 3.1/3.1ms;
@@ -3977,3 +3982,266 @@ The measurement caveat travels with the numbers: Low Power Mode holds Safari at
 Safari table compares Safari against Safari inside one page load, which is the
 only comparison that survives it. Do not read its frame counts against
 Chrome's.
+
+<a id="63"></a>
+## #63 — Preparation borrows the live node only for a caret (2026-09-12)
+
+A docked window in the genie demo flashed at its desk position before the drain
+that was supposed to carry it there. It flashed on both engines, it lasted two
+to three compositor frames, and nothing in the DOM could see it: the slot kept
+`data-away="true"` and its page copy kept `visibility: hidden` for every frame
+of the flash. Only a screencast showed it — 98.8% of the pixels in the window's
+desk rect, changed and then gone.
+
+The cause was preparation doing two things on the strength of one assumption.
+On `inScene`, while the page was still the side presenting, `Surface.HTML` moved
+the live node into the parked capture host, left an inert copy in the page to
+hold layout, and then stood the host back over that copy — transformed onto its
+box, lifted above it, and painted — so that what the user saw was the capture's
+own bitmap. #42 chose that shape for a good reason, quoted there: the inert copy
+lost the visible focus ring and the selected text, and the capture had both.
+
+The assumption is that the page copy is showing. The guard for it was
+`holder.hidden` — the `hidden` property, which CSS never touches. A scene that
+hides its own page copy, as the genie desk does for a docked window, is invisible
+to that test, so the host rode over a hidden copy and painted a window at a
+position it had not travelled to yet.
+
+Widening the guard to the computed answer (`checkVisibility`, visibility and
+opacity) fixes the flash and is kept as a backstop. It is not the law, because
+it still leaves preparation standing the real node over a copy in every case,
+when the two differ in exactly the ways #42 measured and no others: a caret and
+a selection. Everything else a copy carries — markup, field values, checked
+state, scroll offsets, the hover, active and focus-visible twins — is copied by
+`snapshot`, and #42's own evidence is that the copy is otherwise equal.
+
+So preparation now borrows the live node only when the copy would lose something:
+focus inside it, or a selection intersecting it. Otherwise the node stays where
+the author put it, the page shows the author's own element rather than a stand-in,
+and the capture reads a copy. The crossing itself is unchanged and takes the node
+unconditionally — the page is releasing, so there is nothing left to stand in for.
+
+Why not the smaller change of riding without painting: on HTML-in-canvas that is
+not available. Hit-testing the real child requires the child at `visibility:
+visible`, and a visible child paints; the alternative hide, `opacity: 0`, blanks
+the capture (platform.md #20). An invisible-but-hittable host exists on neither
+engine, so the choice is to substitute fully or not at all.
+
+Evidence. `probe:api-preparation`, the fidelity proof behind #42, is unchanged
+with a caret present: focus retained, selection `[0,4]`, 59 preparation frames
+at mean channel error 0 both before and after. The clip cases, whose rig only
+exists while the host rides, pass with the caret their precondition now requires:
+image error 0 (clip), 0 (nested), 0.012 (rounded), with the inside button taking
+its click through the clip and the outside button taking none. A new
+`prepare-unfocused` case reads both halves of the law directly against a fixture
+that settles for two seconds: with nothing focused the live node is still on the
+page two seconds into preparation, and one `.focus()` later it is in the capture
+host, with the page presenting throughout. It fails against the old behaviour.
+`gate:genie-restore-flash` records the fault itself: 6 of 6 restores flashed
+before, 0 of 6 after, across both engines, and the same gate refuses a build
+whose sheet never arrives.
+
+Borrowing late does not cost the crossing. Six restores per engine per build,
+back to back on one machine: the sheet reached the desk at a median 342 ms
+borrowing late against 345 ms borrowing early on HTML-in-canvas, and 360 ms
+against 358 ms on snapDOM (means 341/346 and 358/362, spreads 327-348, 343-353,
+351-367 and 352-374). This is a comparison BETWEEN runs, not interleaved blocks
+inside one page load, so it can only say that no large difference exists — and
+none does. The reason it does not is that the capture the crossing needs is taken
+at the crossing either way. Preparation was buying it a few frames early, and a
+few frames is not what this flight is made of.
+
+Known and open: the two non-uniformly scaled clip cases, `clip-scaled` and
+`clip-longhand`, were already failing this suite before any of this — both at
+preparation image error 0.630 against a 0.5 gate, measured 2026-09-12 at an
+untouched HEAD — and both still fail. The caret these cases now need carries a
+focus ring, and the ring resamples differently between the page's own render
+and the replayed host under a non-uniform scale, which moves both numbers to
+0.889. The verdict does not change and the cause is not this law: a scaled
+surface's fidelity is its own question, and the ring is simply fine detail that
+makes the existing disagreement easier to see.
+`gate:native-pointer` is intermittent on its flat hit-test, 2 passes in 3 at an
+untouched HEAD.
+
+<a id="64"></a>
+## #64 — `live` is one law, and every engine keeps it (2026-09-12)
+
+`live` asks whether the texture follows what the content does ON ITS OWN. Until
+now only one engine answered. The rasterizing engine, which pays tens of
+milliseconds per capture, followed a self-made change only when told to; the
+HTML-in-canvas engine ignored the flag, because the compositor hands it a paint
+record for every change and taking one costs nothing at that seam.
+
+That is a defensible cost argument and a bad contract. The same page behaved two
+ways, and the difference only appeared on the engine the author was not using: a
+spinner, a ticker or a keyframe inside a Surface is smooth in flagged Chrome and
+a still frame in Safari, from one build, with nothing in the source to say so.
+An author tuning on Chrome cannot see it; an author tuning on Safari is told the
+flag is the fix, sets it, and gets the Chrome behaviour they already had.
+
+So the flag now means the same thing everywhere: without it the picture holds
+until a reason arrives. The engines still differ in what a capture COSTS them,
+and therefore in how a live one is paced (#60, #62) — they no longer differ in
+what is followed.
+
+The reasons that arrive whatever `live` says are now one list, `PAINT_EVENTS` in
+`inputWindow.ts`, imported by both engines rather than written out twice: the
+user's input on the content, a scroll, a font or an image landing, a transition
+or animation reaching an END, an explicit `repaint()`, and a resize. The middle
+of an animation is deliberately not among them — that is precisely the change
+nobody asked for, and it is what `live` buys. A painted host outranks the flag:
+a bitmap the user is looking at is never allowed to be stale, which is what page
+-owned preparation shows through the native input rig (#42, #63).
+
+It was also not free. Measured 2026-09-12 in Chrome 151, the genie desk sitting
+completely untouched: ONE study window's dash keyframe cost 361 captures in
+three idle seconds — 120 a second, every second the page was open — because the
+engine followed everything it was handed. The same three seconds now cost 1. In
+flight the same window went from 328 captures to 1. snapDOM measured 1 in every
+one of those cases, before and after, which is the agreement this entry is for.
+
+Evidence beyond those numbers: the shared suite gained Law 4, run over both
+engines — a change the content makes on its own is followed only when the
+consumer says the content is live — and it fails for HTML-in-canvas without this
+change while passing for the rasterized engine untouched. An idle sweep of all
+24 lab scenes is identical before and after: the only sources painting while
+nobody touches them are the ones that already declare `live`.
+
+The cost is paid in one place. Genie's `quadrato` and `cerchio` windows draw a
+figure whose SVG dashes crawl on an `infinite` CSS animation, and `genie.css`
+says in a comment that the dash motion is what keeps the airborne copy live.
+That was true on HTML-in-canvas only. A CSS animation mutates no DOM, so snapDOM
+never followed it even when told the content was live, and `animationiteration`
+is not a paint reason — an infinite animation is captured at its start and then
+held (platform.md #22). After this entry both engines hold it. Whether those two
+windows should ask for `live` is a scene decision, not a kernel one, and is left
+to the scene.
+
+## #65 — The page releases onto pixels no older than the lift (2026-09-13)
+
+Content that moves stepped BACKWARDS for the first few frames of a crossing,
+then jumped forward to the pose it should have frozen at. Reported on genie's
+`scheda` window, whose bouncing marks make the step easy to see, in Chrome and
+in Safari, on both engines.
+
+Measured 2026-09-12 on the genie desk, snapDOM, as the centroid of the mark ink
+inside the window's rect per compositor frame. The page released 26 ms after the
+click; the capture that matched what the page copy had been showing landed at
+240 ms. For those 214 ms — 40 distinct DOM poses — the canvas showed an older
+capture. The centroid drifted left to 209.6, jumped RIGHT to 213.3 for three
+compositor frames, then settled at 208.6. The rightward jump is the rewind: a
+sign flip in content that only ever travels one way.
+
+The cause is what readiness asks. `surfaceReadiness` asks whether every
+registered presenter has drawn once, which is the right question for "are there
+pixels at all" and the wrong one for "are they the pixels the page is showing".
+A texture holds whatever capture it last took, so a presenter proves itself with
+whatever it has, and the lift gate opens onto it.
+
+A lift now carries a CONTENT FLOOR. On the page → lifting edge the store asks
+every part's source for one capture of the content as it stands and records the
+generation that capture will have. `CrossingEvidence` gains `contentCurrent`,
+and the lift gate holds — dwell served, every presenter proven — until every
+part has UPLOADED a paint at least that new. Readiness keeps its own meaning:
+`onReady` is a statement about pixels existing, not about which pixels, and
+folding freshness into it would have moved a callback consumers already arm on.
+
+The ask is part of the law, not a convenience. Since #64 a source that is not
+`live` holds the picture it last had a reason to take, so without the explicit
+`repaint()` there is no newer capture for the gate to wait for: it would either
+pass stale or never open. And the floor is read off the UPLOADED generation, not
+the painted one — a completed paint the texture has not taken yet is not
+something a draw can show.
+
+One binding rule moved with it. The idle-parking test in `surfaceHandle` already
+stopped claiming renderer work once lifting had served its dwell with readiness
+unmet; it now also parks on an unmet floor, because a Surface waiting on a
+capture cannot produce that capture by drawing again. The source host's paint
+subscription is what wakes it, as it already did for the readiness case.
+
+After the change, same probe, same desk. snapDOM: the demanded capture completes
+at 30 ms and the page releases at 47 ms. HTML-in-canvas: capture at 28 ms,
+release at 28 ms. On both engines the mark centroid moves one way through the
+swap and then holds — 209.9 → 208.55 and 210.24 → 209.14, and every later frame
+identical. No rightward step remains at any sample.
+
+The cost: a source that can no longer paint holds its lift open rather than
+releasing onto a stale picture. That is the same shape as a presenter that never
+draws, and it gets the same answer — the page releases on evidence, never on
+hope (#28).
+
+## #66 — Content stands still while a canvas has it (2026-09-13)
+
+A capture is one instant; the content it was taken from is not. A source that
+is not `live` shows that instant for as long as the canvas holds the content,
+while the content keeps moving underneath — so the lift steps BACKWARDS by
+however long the capture took, and the return jumps FORWARD by however long
+the canvas held it. #65 closed the first gap down to the capture's own
+latency. This closes both, by stopping the clock.
+
+Measured 2026-09-13 on the two genie study windows, whose figures run
+`gen-math-flow 4.8s linear infinite` — a CSS animation over a 100-unit
+`stroke-dashoffset` period, read per frame off the live node rather than off
+pixels, because the window is moving and scaling through the same frames.
+
+Before: the animation never stopped. dashoffset ran -44.47 to -50.03 across
+the 260 ms after a click and was still going. On snapDOM the demanded capture
+completed at dt 43 while the page released at dt 64 showing -45.85, so the
+canvas took over at least 1.3 units — about 65 ms, four frames at 60 Hz —
+behind, backwards. The return was worse because it is unbounded: a window
+docked for 1.3 s came back 27.6 units on, a quarter of the period, and a
+window docked for a minute comes back wherever a minute of animation lands.
+
+The law: while a canvas holds a Surface's content, that content's declarative
+motion stands still, and it resumes where it stopped. `live` now means the
+whole thing — a live source keeps running and the canvas follows it; a source
+that is not live holds its content still and shows exactly the pose the page
+last had. Nothing is asked of the consumer.
+
+`holdMotion`/`releaseMotion` (core) pause every animation running in a root's
+subtree and resume exactly those. CSS animations, CSS transitions and Web
+Animations are the motion the platform can hold and resume EXACTLY — `pause()`
+keeps the timeline where it is, `play()` takes it from there, which is the
+difference between continuing and jumping. The store holds on the page →
+lifting edge, before it asks for the capture, so the capture holds the pose
+the hold stopped at.
+
+Two things the first attempt got wrong, both found by measurement:
+
+BOTH ROOTS, not the capture root. `Surface.HTML` keeps the live node in the
+page and a snapshot in the capture root (#63 narrowed when that swaps), and
+the two subtrees carry separate `Animation` objects even though a
+delay-driven keyframe puts them at the same phase. Holding only the capture
+root froze the picture and left the viewer watching the content walk away from
+it — 7 animations paused, the visible ones untouched.
+
+THE HOLD, not the request. A return is asked for a whole landing ramp before
+the page actually shows the content again. Released at the ask, the content
+animated on unseen for 600 ms and the forward jump simply moved to the other
+edge. The predicate reads `crossing.phase !== 'page' || !pageHeld`.
+
+A COPY IS AT THE ORIGINAL'S POSE, not at its own. `Surface.HTML` keeps a
+standing snapshot of the content in the capture root, and a clone's CSS
+animations start over from zero and then run on their own clock. So the clone
+drifts away from the live node, and the capture rasterizes the drift.
+Measured over six minimize cycles on `cerchio`, comparing the two subtrees'
+animation times at rest: mostly 8-18 ms apart, but 617 ms apart on one cycle
+of six — a ninth of the 5.6 s period, which is a visibly different figure.
+That is the reported "every other time": the swap frame showed the clone's
+pose and the next capture snapped back to the live one. `matchMotion` puts
+every copy at the pose of what it copies, after insertion rather than inside
+`snapshot`, because a disconnected element has no animations to place. The
+same six cycles now read 0 ms apart at every lift, on both engines.
+
+After, both engines: the live node freezes at -45.3896 at dt 14, holds that
+exact value through the capture at dt 32, through the release at dt 52, and
+through the DOM move the crossing performs at dt 52 — `moveBefore` carries a
+paused animation across without replacing it. On the return it resumes at
+-44.9313 from -44.7562, one frame's worth. No step at either edge.
+
+What this cannot reach: a consumer's own `requestAnimationFrame` loop, and a
+playing `<video>`. Neither has a timeline the platform exposes, and stopping
+someone's playback is not a capture engine's business. An app that runs its
+own clock holds its own clock — `docs/authoring.md` says so, and genie's
+`scheda` window is the worked example, freezing its bounce simulation for the
+flight while the library freezes everything declarative around it.

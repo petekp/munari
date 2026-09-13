@@ -26,6 +26,7 @@
     "probe:genie-film-soak": "node instruments/genie-drain/film-window-soak.mjs",
     "gate:genie-film-reorder": "node instruments/genie-drain/film-anchor-reorder.mjs",
     "gate:genie-shadow": "node instruments/genie-drain/shadow-travels.mjs",
+    "gate:genie-restore-flash": "node instruments/genie-drain/restore-flash.mjs",
     "gate:capture-engines": "node instruments/capture-engines/run.mjs",
     "gate:idle-zero": "node instruments/idle-zero/run.mjs",
     "gate:shaders": "node instruments/shader-compile/run.mjs",

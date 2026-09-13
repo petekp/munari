@@ -62,6 +62,9 @@ export type SurfaceSize = readonly [width: number, height: number]
 export interface SurfacePartPublication {
   readonly id: import('@munari/core').SurfacePartId
   readonly runtime: SurfaceSourceRuntime | null
+  /** Does this part follow what its content does on its own? A crossing
+   *  holds the motion of every part that does not. */
+  readonly live: boolean
   readonly size: SurfaceSize
   readonly captureRoot: HTMLElement | null
   readonly pageRoot: HTMLElement | null
@@ -98,6 +101,8 @@ export interface SurfaceSourceRuntime {
   uploadedGeneration(): number
   /** Every completed paint, for anchor transactions. */
   currentPaint(): DomPaintReceipt | null
+  /** Ask for one capture of the content as it stands now. */
+  repaint(): void
   subscribePaint(listener: (receipt: DomPaintReceipt) => void): () => void
   setSize(size: SurfaceSize): void
   setResolution(resolution: SurfaceResolution): void
@@ -300,6 +305,7 @@ export function createSurfaceSourceRuntime(
     paintedSize: () => source.paintedSize(),
     uploadedGeneration: () => uploadedGeneration,
     currentPaint: () => source.currentPaint(),
+    repaint: () => source.repaint(),
     subscribePaint: (listener) => source.subscribePaint(listener),
     setSize(next) {
       if (next[0] === size[0] && next[1] === size[1]) return

@@ -104,10 +104,41 @@ async function check(page,kind,enhanced){
     await page.waitForFunction(()=>window.__apiRegression.status?.presentation==='page'&&!window.__apiRegression.status.isTransitioning)
     result=await page.evaluate(node=>({same:document.getElementById('focus-input')===node,focused:document.activeElement===node,selection:[node.selectionStart,node.selectionEnd]}),original)
     assert.deepEqual(result,{same:true,focused:true,selection:[2,7]})
+  }else if(kind==='prepare-unfocused'){
+    // While the page is still the one showing, the live node is taken into the
+    // capture host only for what a page-side copy cannot carry: a caret or a
+    // selection (decisions.md #42, as narrowed). This fixture prepares for two
+    // seconds, which is long enough to read both halves of that.
+    await page.waitForFunction(()=>window.__apiRegression.status?.supported)
+    await pause(page,150)
+    await page.evaluate(()=>document.activeElement instanceof HTMLElement&&document.activeElement.blur())
+    await page.evaluate(()=>window.__apiRegression.request(true))
+    await page.waitForFunction(()=>window.__apiRegression.status?.isTransitioning)
+    await frameWait(page);await frameWait(page)
+    const unfocused=await page.evaluate(()=>({presentation:window.__apiRegression.status.presentation,inHost:Boolean(document.getElementById('clipped-source').closest('canvas')),parked:Boolean(document.getElementById('clipped-source').closest('[data-munari-parked]'))}))
+    assert.equal(unfocused.presentation,'page','the page must still be presenting two seconds into a settle')
+    assert.equal(unfocused.parked,false,'an unfocused source keeps its live node on the page during preparation')
+    // Give it a caret and the same preparation takes the node, because now a
+    // copy would lose something.
+    await page.$eval('#clip-inside',node=>node.focus())
+    await frameWait(page);await frameWait(page)
+    const focused=await page.evaluate(()=>({presentation:window.__apiRegression.status.presentation,parked:Boolean(document.getElementById('clipped-source').closest('[data-munari-parked]')),focused:document.activeElement?.id}))
+    assert.equal(focused.presentation,'page','the settle must still be running when the caret arrives')
+    assert.equal(focused.focused,'clip-inside')
+    assert.equal(focused.parked,true,'a caret inside the source takes the live node into the capture host')
+    result={unfocused,focused}
   }else if(kind.startsWith('clip')){
     await page.waitForFunction(()=>window.__apiRegression.status?.supported)
     await pause(page,150)
     if(kind==='clip-dynamic'){await page.evaluate(()=>window.__apiRegression.setClipHeight(150));await frameWait(page)}
+    // The clip belongs to the RIDING host, and preparation rides only for a
+    // caret or a selection (decisions.md #42, as narrowed): a source nobody is
+    // in keeps its live node on the page, where the page's own overflow already
+    // clips it and there is no second box to get wrong. Focus is therefore this
+    // case's precondition, and it is taken before the native shot so both
+    // images carry the same focus ring.
+    await page.$eval('#clip-inside',node=>node.focus())
+    await frameWait(page)
     const clip=await page.$eval('#clipped-source',node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})
     const native=await page.screenshot({clip,encoding:'base64'})
     if(kind==='clip-dynamic'){await page.evaluate(()=>window.__apiRegression.setClipHeight(180));await frameWait(page)}
@@ -147,7 +178,7 @@ try{
   for(const enhanced of [true,false]){
     const browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',defaultViewport:null,args:[...(enhanced?['--enable-features=CanvasDrawElement']:[]),'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
     try{
-      const defaults=enhanced?['targets','reorder','capture','resize','focus','clip','clip-nested','clip-rounded','clip-scaled','clip-dynamic','clip-border','clip-margin','clip-longhand','clip-preserve','attribute']:['targets','reorder','focus','attribute']
+      const defaults=enhanced?['targets','reorder','capture','resize','focus','prepare-unfocused','clip','clip-nested','clip-rounded','clip-scaled','clip-dynamic','clip-border','clip-margin','clip-longhand','clip-preserve','attribute']:['targets','reorder','focus','attribute']
       const cases=process.env.API_CASES?defaults.filter(name=>process.env.API_CASES.split(',').includes(name)):defaults
       for(const kind of cases){
         const page=await browser.newPage();await setChromeViewport(page,{width:960,height:700});await page.bringToFront()

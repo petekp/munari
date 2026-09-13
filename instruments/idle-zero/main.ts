@@ -107,9 +107,15 @@ window.__idleZero = {
     await sleep(windowMs)
     const idleDeltas = sources.map((s, i) => s.paintCount() - before[i]!)
 
-    // The liveness leg, AFTER the idle window so the window stays pure:
-    // mutate one subtree, the compositor must tell us.
+    // The liveness leg, AFTER the idle window so the window stays pure: tell
+    // one source its content is live, mutate that subtree, and the engine must
+    // follow it. Live is what makes this a proof rather than a coincidence —
+    // a change nobody's input asked for is followed only when declared, on
+    // every engine now (decisions.md #64). Without the flag a zero here would
+    // mean the law is being kept, and the leg would prove nothing about
+    // whether the source is still awake.
     const zero = sources[0]!
+    zero.setLive(true)
     const provokedBase = zero.paintCount()
     zero.element.querySelector('[data-stamp]')!.textContent = 'provoked'
     await waitFor(() => zero.paintCount() > provokedBase, 5_000, 'provoked repaint on source 0')

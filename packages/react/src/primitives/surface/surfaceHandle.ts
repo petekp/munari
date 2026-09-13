@@ -29,6 +29,7 @@ import {
   crossingProgress,
   crossingRange,
   crossingRequest,
+  holdMotion,
   captureAvailable,
   captureEngine,
   partSetEmpty,
@@ -36,6 +37,7 @@ import {
   partSetMissing,
   partSetRegister,
   readinessAtBirth,
+  releaseMotion,
   readinessProve,
   readinessReborn,
   readinessRegister,
@@ -315,6 +317,9 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   let canvasHeld = false
   const holdListeners = new Set<() => void>()
   const partMap = new Map<SurfacePartId, SurfacePartPublication>()
+  // The paint generation each part owes this lift: the one its content did
+  // not yet have when the lift was asked for. Empty except while lifting.
+  const contentFloor = new Map<SurfacePartId, number>()
   // Duplicate names are diagnosed, but removing one must recover the other
   // host's publication without a remount. Each publication owns its cleanup.
   const partPublications = new Map<SurfacePartId, Map<symbol, SurfacePartPublication>>()
@@ -352,6 +357,75 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   const workListeners = new Set<() => void>()
   let canvasMounted = false
   const presenceListeners = new Set<() => void>()
+
+  // A lift begins. Every source is asked for one capture of the content as
+  // it stands, and owes the crossing that capture before the page releases.
+  // Without the ask there may be no such capture to wait for: a source that
+  // is not `live` holds the picture it last had a reason to take.
+  const demandCurrentContent = () => {
+    contentFloor.clear()
+    // Before the ask, so the capture holds the pose the hold stopped at.
+    syncMotionHold()
+    for (const [id, publication] of partMap) {
+      const runtime = publication.runtime
+      if (!runtime) continue
+      contentFloor.set(id, (runtime.currentPaint()?.frame.generation ?? 0) + 1)
+      runtime.repaint()
+    }
+  }
+
+  // The animations a crossing stopped, per part. Present exactly while the
+  // content is held, which is what lets a part published mid-flight join a
+  // hold already in force.
+  const motionHolds = new Map<SurfacePartId, Animation[]>()
+  let motionHeld = false
+
+  // BOTH incarnations of the content, because they animate independently of
+  // each other: the capture root is what the texture is taken from, the page
+  // root is what the viewer is looking at until the page lets go. Holding
+  // only the capture root freezes the picture and leaves the viewer watching
+  // the content walk away from it, which is the fault this exists for.
+  const holdPart = (publication: SurfacePartPublication) => {
+    if (publication.live || motionHolds.has(publication.id)) return
+    const held: Animation[] = []
+    for (const root of [publication.captureRoot, publication.pageRoot]) {
+      if (root) held.push(...holdMotion(root))
+    }
+    motionHolds.set(publication.id, held)
+  }
+
+  // The content stands still for exactly as long as a canvas has it: from the
+  // lift's first frame to the frame the page takes it back, abandoned
+  // warm-ups included. Anything shorter hands one side a pose the other never
+  // had (decisions.md #66).
+  const syncMotionHold = () => {
+    // Read off the HOLD, not the request. A return is asked for a whole
+    // landing ramp before the page actually shows the content again, and a
+    // hold released at the ask lets the content animate on unseen for that
+    // ramp — which is the forward jump, just moved to the other edge.
+    // Not for 'both', where the page copy is a presentation in its own right
+    // and the viewer is meant to see it move.
+    const next = exclusive && (crossing.phase !== 'page' || !pageHeld)
+    if (next === motionHeld) return
+    motionHeld = next
+    if (!next) {
+      for (const held of motionHolds.values()) releaseMotion(held)
+      motionHolds.clear()
+      return
+    }
+    for (const publication of partMap.values()) holdPart(publication)
+  }
+
+  // Is every part showing content the lift would accept? Read off the
+  // UPLOADED generation, not the painted one — a paint the texture has not
+  // taken yet is not something a draw can show.
+  const contentCurrent = (): boolean => {
+    for (const [id, generation] of contentFloor) {
+      const runtime = partMap.get(id)?.runtime
+      if (runtime && runtime.uploadedGeneration() < generation) return false
+    }
+    return true
+  }
 
   const presentedFrom = (pageVisible: boolean, canvasVisible: boolean): SurfacePresentation => {
     if (pageVisible && canvasVisible) return 'both'
@@ -405,6 +479,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     const evidence = {
       presented: readiness.proven.length,
       required: Math.max(1, readiness.registered.length + partSetMissing(parts).length),
+      contentCurrent: contentCurrent(),
     }
     if (!driver) return crossingFrame(before, evidence, dtMs, timing)
     const answer = driver({ dtMs, progress: before.ramp, target })
@@ -474,7 +549,13 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       if (!canvasDeclared) return false
       // Waiting for missing inputs cannot produce evidence by drawing again.
       // The finite settle dwell still runs; source and presenter changes wake us.
-      if (crossing.phase === 'lifting' && crossing.heldMs >= timing.settleMs && !state.ready) return false
+      if (
+        crossing.phase === 'lifting' &&
+        crossing.heldMs >= timing.settleMs &&
+        (!state.ready || !contentCurrent())
+      ) {
+        return false
+      }
       return !canvasHeld || crossing.ramp < 1
     }
     return canvasHeld || crossing.ramp > 0
@@ -524,7 +605,11 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       crossing,
       wantsCanvas && supported() && rendererAvailable && !isResidentCanvas(),
     )
-    if (next !== crossing) crossing = next
+    if (next === crossing) return
+    const lifting = crossing.phase === 'page' && next.phase === 'lifting'
+    crossing = next
+    if (lifting) demandCurrentContent()
+    else syncMotionHold()
   }
 
   // The snapshot is rebuilt only when a semantic field actually changes, so
@@ -640,6 +725,9 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       const holdChanged = applyPresentationPolicy(presentation)
       notifyPolicyChange(presentation, holdChanged, wasPagePresented, wasCanvasHearing)
       requestCrossing(presentation)
+      // A request that starts no crossing can still end one — 'none' takes
+      // the page hold back without ever touching the phase.
+      syncMotionHold()
       publish()
     },
     registerPresenter(key) {
@@ -736,6 +824,11 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     },
     replaceSource() {
       readiness = readinessReborn(readiness)
+      // Generations restart with the source, so a floor counted against the
+      // old one means nothing against the new. There is nothing to re-ask
+      // either: every proof is void, so the lift already waits for the new
+      // source's own first upload, which cannot be stale.
+      contentFloor.clear()
       publish()
     },
     readinessLifetime: () => readiness.lifetime,
@@ -747,7 +840,12 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       elapsedMs += dtMs
       const before = crossing
       crossing = advanceCrossing(before, dtMs)
+      // The floor belongs to the lift that set it. Reaching 'gl' spends it;
+      // abandoning back to 'page' drops it.
+      if (crossing.phase !== 'lifting') contentFloor.clear()
       settleReturn(before)
+      // After the return, which is where the page takes the hold back.
+      syncMotionHold()
       // Motion completes when the ramp reaches an endpoint, which is a
       // different moment from the hold changing hands: entering, WebGL
       // takes the hold before the ramp leaves zero; returning, the ramp
@@ -819,6 +917,8 @@ export function createSurfaceStore(name?: string): SurfaceStore {
         presenting.clear()
         pageHeld = true
         canvasHeld = false
+        contentFloor.clear()
+        syncMotionHold()
         for (const listener of holdListeners) listener()
       } else requestCrossing(requested)
       publish()
@@ -851,6 +951,8 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       publications.set(owner, value)
       partPublications.set(id, publications)
       partMap.set(id, value)
+      // A part that arrives mid-flight joins the hold already in force.
+      if (motionHeld) holdPart(value)
       announceParts()
       return () => {
         if (!publications.delete(owner)) return
