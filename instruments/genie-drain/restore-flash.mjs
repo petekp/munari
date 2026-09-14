@@ -79,6 +79,7 @@ try {
     executablePath: CHROME,
     headless: !HEADED,
     args: [
+      '--enable-unsafe-swiftshader',
       '--enable-features=CanvasDrawElement',
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',

@@ -141,6 +141,7 @@ try {
     executablePath: CHROME,
     headless: true,
     args: [
+      '--enable-unsafe-swiftshader',
       '--enable-features=CanvasDrawElement',
       '--disable-renderer-backgrounding',
       ...(process.env.CI ? ['--no-sandbox'] : []),

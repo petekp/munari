@@ -25,6 +25,7 @@ try {
     executablePath: chromePath,
     headless: true,
     args: [
+      '--enable-unsafe-swiftshader',
       '--enable-features=CanvasDrawElement',
       '--disable-renderer-backgrounding',
       '--autoplay-policy=no-user-gesture-required',
