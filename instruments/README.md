@@ -500,6 +500,17 @@ activate a warm native ride. Focused preparation and selection are checked by
 the API preparation fixtures. The recorder uses the same outside marker and
 20 ms coverage requirement as the pose check, over its first 150 ms.
 
+The default recording uses quality-100 JPEG to reduce encoding overhead.
+`RESTORE_CAPTURE_FORMAT=png` retains the PNG comparison path. A run still needs
+three fully recorded restores per engine, within at most nine attempts. Each
+incomplete recording is reported. Only incomplete coverage is retried; an
+observed flash, missing arrival, native ride, or page error fails immediately.
+This is a bounded sample of verified trials, not a claim about discarded trials.
+
+`RESTORE_FLASH_CONTROL=1 ROUNDS=1 npm run gate:genie-restore-flash` must fail.
+It briefly displays an actual window image at the desk before the sheet arrives,
+using the ordinary pixel assertions and the same recorder.
+
 ## knobs-hz
 
 Reports Knobs throughput at a fixed 1440×900 viewport and DPR 2.

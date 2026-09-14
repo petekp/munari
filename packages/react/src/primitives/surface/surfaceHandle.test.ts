@@ -450,7 +450,7 @@ describe('semantic publication', () => {
     const first = store.readinessLifetime()
     store.prove('a', first, store.epoch())
     expect(store.getState().ready).toBe(true)
-    store.replaceSource()
+    store.replaceSource('panel')
     expect(store.getState().ready).toBe(false)
     // The old lifetime's receipt cannot prove the new source.
     store.prove('a', first, store.epoch())
@@ -971,7 +971,7 @@ describe('the freeze signal', () => {
     presentBoth()
     expect(store.getState().presented).toBe('page')
     releaseRight()
-    store.replaceSource()
+    store.replaceSource('right')
     uploads.set('right', 1)
     publishSource('right')
     for (const id of uploads.keys()) store.prove(id, store.readinessLifetime(), store.epoch())

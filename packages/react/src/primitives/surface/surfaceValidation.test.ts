@@ -50,7 +50,7 @@ describe('waiting diagnostics', () => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const stop = watchSurfaceValidation(store, mount.host)
     await vi.advanceTimersByTimeAsync(9000)
-    store.replaceSource()
+    store.replaceSource('panel')
     await vi.advanceTimersByTimeAsync(1000)
     expect(warning).toHaveBeenCalledTimes(1)
     expect(warning.mock.calls[0]?.[0]).toContain('a scene presenter')

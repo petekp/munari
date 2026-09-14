@@ -208,8 +208,8 @@ export interface SurfaceStore {
    */
   isFrozen(): boolean
   subscribeFreeze(listener: () => void): () => void
-  /** The source was replaced: every proof is void, the presenters remain. */
-  replaceSource(): void
+  /** Replacing this part resets readiness; other parts keep their capture requirements. */
+  replaceSource(id: SurfacePartId): void
   readinessLifetime(): number
   /**
    * Hand the ramp to a scene. The driver answers a ramp per frame; the
@@ -386,7 +386,11 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // The animations a crossing stopped, per part. Present exactly while the
   // content is held, which is what lets a part published mid-flight join a
   // hold already in force.
-  const motionHolds = new Map<SurfacePartId, Animation[]>()
+  const motionHolds = new Map<SurfacePartId, {
+    captureRoot: HTMLElement | null
+    pageRoot: HTMLElement | null
+    animations: Animation[]
+  }>()
   let motionHeld = false
 
   // BOTH incarnations of the content, because they animate independently of
@@ -395,12 +399,18 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // only the capture root freezes the picture and leaves the viewer watching
   // the content walk away from it, which is the fault this exists for.
   const holdPart = (publication: SurfacePartPublication) => {
-    if (publication.live || motionHolds.has(publication.id)) return
+    const previous = motionHolds.get(publication.id)
+    if (previous && !publication.live && previous.captureRoot === publication.captureRoot && previous.pageRoot === publication.pageRoot) return
+    if (previous) {
+      releaseMotion(previous.animations)
+      motionHolds.delete(publication.id)
+    }
+    if (publication.live) return
     const held: Animation[] = []
     for (const root of [publication.captureRoot, publication.pageRoot]) {
       if (root) held.push(...holdMotion(root))
     }
-    motionHolds.set(publication.id, held)
+    motionHolds.set(publication.id, { captureRoot: publication.captureRoot, pageRoot: publication.pageRoot, animations: held })
   }
 
   // The content stands still for exactly as long as a canvas has it: from the
@@ -419,7 +429,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     motionHeld = next
     if (next) for (const publication of partMap.values()) holdPart(publication)
     else {
-      for (const held of motionHolds.values()) releaseMotion(held)
+      for (const held of motionHolds.values()) releaseMotion(held.animations)
       motionHolds.clear()
     }
     announceFreeze()
@@ -851,13 +861,10 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       readiness = next
       publish()
     },
-    replaceSource() {
+    replaceSource(id) {
       readiness = readinessReborn(readiness)
-      // Generations restart with the source, so a floor counted against the
-      // old one means nothing against the new. There is nothing to re-ask
-      // either: every proof is void, so the lift already waits for the new
-      // source's own first upload, which cannot be stale.
-      contentFloor.clear()
+      // A new source restarts its reads. Other parts still owe their lift capture.
+      contentFloor.delete(id)
       publish()
     },
     readinessLifetime: () => readiness.lifetime,
@@ -990,8 +997,15 @@ export function createSurfaceStore(name?: string): SurfaceStore {
         let remaining: SurfacePartPublication | undefined
         for (const publication of publications.values()) remaining = publication
         if (remaining === partMap.get(id)) return
-        if (remaining) partMap.set(id, remaining)
-        else partMap.delete(id)
+        if (remaining) {
+          partMap.set(id, remaining)
+          if (motionHeld) holdPart(remaining)
+        } else {
+          partMap.delete(id)
+          const held = motionHolds.get(id)
+          if (held) releaseMotion(held.animations)
+          motionHolds.delete(id)
+        }
         announceParts()
       }
     },

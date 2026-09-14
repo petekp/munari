@@ -174,7 +174,7 @@ export function SurfaceSourceHost({
     setRuntime(created)
     // The source was replaced: every presenter's proof is void and readiness
     // starts a new lifetime, but the presenters themselves remain.
-    root.store.replaceSource()
+    root.store.replaceSource(id)
 
     return () => {
       setRuntime((current) => (current === created ? null : current))
