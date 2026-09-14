@@ -898,6 +898,14 @@ function GateScene() {
   const scene = useThree((state) => state.scene)
   const [activeSource, setActiveSource] = useState(first.source)
   const [mounted, setMounted] = useState(true)
+  const acquisitionToMount = useRef<number | null>(null)
+
+  useLayoutEffect(() => {
+    if (!mounted || acquisitionToMount.current === null) return
+    // Frames before this commit still belong to the deliberately released scene.
+    activeAcquisitionCycle = acquisitionToMount.current
+    acquisitionToMount.current = null
+  }, [mounted])
 
   const onReleased = useCallback(() => {
     const cycle = pendingReleaseCycle
@@ -924,7 +932,7 @@ function GateScene() {
             `cycle ${cycle} published generation ${final.generation}; expected ${acquisition.expectedGeneration}`,
           )
         }
-        activeAcquisitionCycle = cycle
+        acquisitionToMount.current = cycle
         setMounted(true)
       } catch (error) {
         fail(asError(error))

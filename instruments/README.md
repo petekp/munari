@@ -395,7 +395,9 @@ frames before reacquisition. The gate requires receipts
 `[A0, A2, B0, B2, B4, B6, B8]`, a fresh surface epoch for each hold period,
 no stale receipt, no clear or wrong-color acquisition render, and sampled RGB
 within one channel value. It also checks that live replacement preserves the
-mesh, geometry, and material. Rendered colors must remain unchanged under red
+mesh, geometry, and material. Acquisition sampling starts at the React mount
+commit; renders while the surface is still deliberately absent are excluded.
+Rendered colors must remain unchanged under red
 lighting and a non-identity tone mapper. A deliberately tone-mapped control must
 fail the byte-color oracle. The gate reads the public frame texture rather than
 requiring a material constructor. A separate
