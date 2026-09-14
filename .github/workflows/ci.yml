@@ -25,7 +25,7 @@ jobs:
   # parallel jobs exhausted the hosted runner and closed targets mid-probe.
   # Every focused law and the broad consumer walk still runs on every push.
   browser-gates:
-    runs-on: ubuntu-latest
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
