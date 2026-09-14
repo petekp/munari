@@ -76,6 +76,7 @@ const deadline = setTimeout(() => {
 
 try {
   browser = await puppeteer.launch({
+    dumpio: true,
     executablePath: CHROME,
     headless: !HEADED,
     args: [
@@ -90,12 +91,14 @@ try {
   const port = server.config.server.port ?? server.httpServer.address().port
 
   for (const mode of ['auto', 'snapdom']) {
+    console.log('restore diagnostic: opening', mode)
     const page = await browser.newPage()
     const pageErrors = []
     page.on('pageerror', (error) => pageErrors.push(String(error)))
     await page.setViewport({ width: 1100, height: 800, deviceScaleFactor: 1 })
     const forced = mode === 'snapdom' ? '&capture=snapdom' : ''
     await page.goto(`http://localhost:${port}/?scene=genie&framed${forced}`, { waitUntil: 'load' })
+    console.log('restore diagnostic: loaded', mode)
     await page.waitForFunction(
       (win) =>
         document.querySelector(`.gen-slot[data-win="${win}"]`) &&
@@ -190,6 +193,7 @@ try {
     const rounds = []
     let attempts = 0
     for (let attempt = 0; rounds.length < ROUNDS && attempt < MAX_ATTEMPTS; attempt++) {
+      console.log('restore diagnostic: minimize', mode, attempt + 1)
       attempts++
       // Minimize first, so the window is in its bay to be restored from.
       const minimizeWatch = page.evaluate(() => window.__flash.watch(20))
@@ -205,11 +209,13 @@ try {
 
       frames.length = 0
       await client.send('Page.startScreencast', captureOptions)
+      console.log('restore diagnostic: recording', mode, attempt + 1)
       // Docked frames first: the last one before the press is the reference
       // every later frame is differenced against.
       await sleep(250)
       const restoreWatch = page.evaluate(() => window.__flash.watch(45))
       const pressedAt = await press(`.gen-tile[data-win="${WIN}"]`, FLASH_CONTROL)
+      console.log('restore diagnostic: pressed', mode, attempt + 1)
       await restoreWatch
       await page.waitForFunction(
         (win) => document.querySelector(`.gen-slot[data-win="${win}"]`).dataset.away !== 'true',
