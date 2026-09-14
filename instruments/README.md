@@ -473,7 +473,8 @@ neighborhood: at most 1% may differ by more than 40 summed RGB levels. The five
 projected figure points must stay within 0.25 CSS pixels of the native rectangle.
 
 The first actual scene draw must be recorded. Its framebuffer is held for 40 ms
-to make it observable; blocked later draw attempts prove this control engaged.
+to make it observable. A slow renderer may need no intercepted draw; the captured
+first draw ID remains the required evidence.
 The following 80 ms must have no recording gap over 20 ms. An outside marker
 identifies submitted draws, and a separate pixel clock keeps static frames
 observable. Missing coverage fails as unverified.
