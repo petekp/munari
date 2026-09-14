@@ -478,6 +478,9 @@ first draw ID remains the required evidence.
 The following 80 ms must have no recording gap over 20 ms. An outside marker
 identifies submitted draws, and a separate pixel clock keeps static frames
 observable. Missing coverage fails as unverified.
+Each case allows at most three recording attempts. Pixel, geometry, control and
+page-error assertions run before the coverage check. Only inadequate recording
+coverage is retried, and every retry is reported.
 
 An independently stored earlier dash pose and a blank texture must fail from
 the first scene frame onward. A later suppressed color write must also fail

@@ -29,7 +29,7 @@ import path from 'node:path'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
-import { installScreencastClock, requireScreencastCoverage } from '../screencastCoverage.ts'
+import { IncompleteScreencastError, installScreencastClock, requireScreencastCoverage } from '../screencastCoverage.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const labRoot = path.join(repoRoot, 'apps', 'lab')
@@ -224,6 +224,7 @@ try {
       try {
         requireScreencastCoverage(frames, pressedAt, pressedAt + FLASH_WINDOW_MS, MAX_FRAME_GAP_MS)
       } catch (error) {
+        if (!(error instanceof IncompleteScreencastError)) throw error
         coverageError = error.message
       }
 

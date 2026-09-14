@@ -12,7 +12,7 @@ import {tmpdir} from 'node:os'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import {createServer} from 'vite'
-import {installScreencastClock,requireScreencastCoverage} from '../screencastCoverage.ts'
+import {IncompleteScreencastError,installScreencastClock,requireScreencastCoverage} from '../screencastCoverage.ts'
 const root=path.resolve(import.meta.dirname,'../..')
 const output=process.env.POSE_OUTPUT??path.join(tmpdir(),'munari-genie-pose')
 const rounds=Number(process.env.ROUNDS??1)
@@ -40,8 +40,9 @@ try{
  await server.listen()
  browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',args:['--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding',...(process.env.CI?['--no-sandbox']:[])]})
  for(let round=0;round<rounds;round++)for(const mode of modes)for(const win of windows)for(const control of ['current','stale','blank','late-blank']){
-  const name=`${mode}-${win}-${control}${rounds>1?`-${round+1}`:''}`,directory=path.join(output,name),page=await browser.newPage(),errors=[]
-  let observation=null
+  for(let attempt=0;attempt<3;attempt++){
+  const name=`${mode}-${win}-${control}${rounds>1?`-${round+1}`:''}`,directory=path.join(output,name,`recording-${attempt+1}`),page=await browser.newPage(),errors=[]
+  let observation=null,retry=false
   await mkdir(directory,{recursive:true})
   page.on('pageerror',error=>errors.push(String(error)))
   page.on('console',message=>{if(message.type()==='error'&&!message.text().startsWith('Failed to load resource:'))errors.push(message.text())})
@@ -169,7 +170,6 @@ try{
    assert.ok(scored.rows.length,'No scene compositor frame was captured')
    // Slow renderers may need no interception; the first recorded image is the proof.
    assert.equal(scored.rows[0].draw.id,firstDraw.id,'The first direct scene draw must be captured and judged')
-   requireScreencastCoverage(frames,start,start+80,20)
    assert.equal(observed.length,frames.filter(frame=>frame.t>=start&&frame.t<=start+80).length,'Every recorded image in the interval must be scored')
    assert.ok(observed.every(row=>row.draw.posePinned),'The native pose must remain pinned')
    assert.ok(observed.every(row=>Number.isFinite(row.draw.placement)&&row.draw.placement<=.25),'Actual figure geometry must match its native rectangle within 0.25 CSS px')
@@ -182,9 +182,17 @@ try{
    }
    else{assert.ok(observed.every(row=>row.draw.forced),'The fault must reach every judged draw');assert.ok(rejected.every(Boolean),'The first and every stable wrong-pose/blank frame must fail')}
    assert.deepEqual(errors,[])
-   results.push({name,passed:true,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.nativeInk,frames:observed,controlRejected:control==='current'?null:true})
+   requireScreencastCoverage(frames,start,start+80,20)
+   results.push({name,passed:true,recordings:attempt+1,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.nativeInk,frames:observed,controlRejected:control==='current'?null:true})
    await client.detach()
-  }catch(error){results.push({name,passed:false,error:String(error),errors,observation});process.exitCode=1}
-  finally{await page.close();await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results.at(-1)))}
+  }catch(error){
+   // Pixel and control assertions run first. Only missing recording coverage retries.
+   retry=attempt<2&&error instanceof IncompleteScreencastError
+   if(retry)console.warn(`${name}: recording ${attempt+1}/3 unverified: ${error.message}`)
+   else{results.push({name,passed:false,recordings:attempt+1,error:String(error),errors,observation});process.exitCode=1}
+  }
+  finally{await page.close();await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2));if(!retry)console.log(JSON.stringify(results.at(-1)))}
+  if(!retry)break
+  }
  }
 }finally{clearTimeout(deadline);await browser?.close();await server?.close()}
