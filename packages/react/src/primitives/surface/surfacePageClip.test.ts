@@ -33,7 +33,6 @@ it('keeps rounded overflow corners and cancels the current canvas display scale'
  inner.style.overflowX=inner.style.overflowY='hidden';inner.style.borderRadius='20px'
  canvas.style.width='480px';canvas.style.height='360px'
  const clipped=points(surfacePageClipPath(canvas,holder))
- expect(clipped.length).toBeGreaterThan(8)
  expect(clipped.some(([x,y])=>x===100&&y===100)).toBe(false)
  expect(Math.min(...clipped.map(p=>p[0]!))).toBe(100)
  expect(Math.max(...clipped.map(p=>p[0]!))).toBe(300)
@@ -43,7 +42,9 @@ it('leaves clipping already applied by a fixed containing block to the browser',
  outer.style.overflowX=outer.style.overflowY='hidden';inner.style.transform='translateX(0px)'
  expect(surfacePageClipPath(canvas,holder)).toBe('')
  holder.style.overflowX='hidden';box(holder,80,60,40,30)
- expect(points(surfacePageClipPath(canvas,holder))).toHaveLength(4)
+ const clipped=points(surfacePageClipPath(canvas,holder))
+ expect(Math.min(...clipped.map(p=>p[0]!))).toBe(80)
+ expect(Math.max(...clipped.map(p=>p[0]!))).toBe(120)
 })
 it('does not mistake body overflow propagated to the viewport for a zero-height clip',()=>{
  const {holder,canvas}=fixture();document.body.style.overflowX=document.body.style.overflowY='hidden'

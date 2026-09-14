@@ -7,6 +7,7 @@
 // rendered controls (see AGENTS.md's four test homes).
 
 import { describe, expect, it } from 'vitest'
+import { runInNewContext } from 'node:vm'
 import {
   clearStoredTuning,
   readStoredTuning,
@@ -47,18 +48,20 @@ function normalize(raw: FixtureTuning): FixtureTuning {
 
 describe('serializeTweakValues', () => {
   it('produces a TypeScript object literal keyed exactly like the tuning bag', () => {
-    expect(serializeTweakValues({ flameSize: 1.35, flickerRate: 1.2 })).toBe(
-      '{\n  flameSize: 1.35,\n  flickerRate: 1.2,\n}',
-    )
+    const values = { flameSize: 1.35, flickerRate: 1.2 }
+    expect(runInNewContext(`(${serializeTweakValues(values)})`)).toEqual(values)
   })
 
   it('quotes strings, leaves numbers and booleans bare, and preserves key order', () => {
     const snippet = serializeTweakValues({ fontFamily: 'sans', motionEnabled: true, scale: 0.69 })
-    expect(snippet).toBe('{\n  fontFamily: "sans",\n  motionEnabled: true,\n  scale: 0.69,\n}')
+    const copied = runInNewContext(`(${snippet})`)
+    expect(copied).toEqual({ fontFamily: 'sans', motionEnabled: true, scale: 0.69 })
+    expect(Object.keys(copied)).toEqual(['fontFamily', 'motionEnabled', 'scale'])
   })
 
   it('escapes an embedded double quote so the literal stays valid', () => {
-    expect(serializeTweakValues({ note: 'say "hi"' })).toContain('note: "say \\"hi\\""')
+    const values = { note: 'say "hi"\npath \\file' }
+    expect(runInNewContext(`(${serializeTweakValues(values)})`)).toEqual(values)
   })
 })
 

@@ -1,8 +1,8 @@
 # instruments
 
-Browser probes and CI gates. Each section below says what one
-instrument checks and how to run it. The bar for a file here: an npm
-script, a section in this file, and no absolute paths.
+Browser acceptance checks, measurement tools, and their fixtures. Each runnable
+entry states its purpose and how to run it; shared helpers do not need a separate
+command. The [test retention rules](../AGENTS.md#conformance) apply here too.
 
 Use the [task-to-owner guide](../docs/agent-workflow.md#route-the-task-to-its-owner)
 to choose the smallest decisive check. `package.json` owns available commands;
@@ -35,16 +35,42 @@ existing capture across display-density changes without replacing its content.
 `npm run probe:api-regressions` covers PR #83's keyed target lists, same-canvas
 capture-reader removal, continuous resize anchors, handle-swap focus, overflow
 clipping during preparation, and content-attribute eligibility. The clipping
-cases gate on the worst row or column of strongly differing pixels against a
-native shot, with form controls left out: a misplaced ride exposes a whole line
-along an edge, while the compositor and `drawElementImage` raster a control's
-border and glyphs differently under a non-uniform scale. Each result also
-reports the whole-image mean. It runs capable
+cases compare the riding box with the nearest device-pixel rectangle around
+the native content, and compare rendered clipping against a native shot.
+Form controls and a narrow native-edge band are excluded from pixel equality
+because their rasterization differs. Four one-pixel displacement controls and
+a rectangular replacement of a rounded clip must fail the appropriate oracle.
+Whole-image mean and changed-line fraction remain diagnostics. It runs capable
 Chrome and a separate no-flag profile. Use `HEADED=1` for native-density visual
 checks, `API_CASES` for a comma-separated subset, and `API_PROOF_OUTPUT` for local
 evidence. `API_SOURCE_ROOT` can point at a saved source revision for comparison.
 The [API instrument guide](api-all-demos/README.md) states the pixel/anchor budgets.
 This local command does not change CI membership.
+
+## Glass effects
+
+`npm run gate:glass-effects` measures the real Glass SDF renderer with a fixed
+camera, clock, and checkerboard. Repeated and reset images must match exactly.
+A fixed-age ripple must change at least 1% of the sampled field by more than
+12/255 in a color channel. A nearer green panel must own the overlap with a red
+panel; deliberately sorting by radial distance must turn that overlap red.
+
+The controls operate on the served scene, without forcing presentation receipts.
+`GLASS_EFFECTS_OUTPUT` selects artifacts. This checks visible ripple contribution
+and panel ordering. It does not establish every ripple parameter, retirement,
+glow, or input behavior. CI membership is unchanged.
+
+## Test result validity
+
+An acceptance result needs the requested scenario, a healthy observer, and
+actual assertions about the claimed behavior. Shared scorer tests exercise
+known good and faulty input. Browser controls must also demonstrate that the
+fault reached the rendered output. Missing samples, invalid framebuffers, or
+an unavailable required capability leave the result unverified.
+
+The source-revision, browser, viewport/density, and selected cases bound a
+measurement. A local timing report is not a portable performance guarantee.
+The current command and case map is in the [API guide](api-all-demos/README.md).
 
 ## Home light and shadow
 
@@ -260,6 +286,9 @@ This gate runs them once per engine in a browser and judges:
 
 - the capture holds the DOM's colors (worst channel within 4/255 of the
   CSS values on both flat halves — 0/255 measured on both engines),
+- the native raster preserves four colored quadrants at double density and
+  clears the complete backing store; separate X/Y scaling and partial-clear
+  controls must produce wrong pixels,
 - a still subtree paints 0 times in a 2s window,
 - eight mutations in one task produce one paint, not eight,
 - the host is born painting nothing and `setHostPainted` round-trips,
@@ -267,6 +296,8 @@ This gate runs them once per engine in a browser and judges:
   asked-for box, taking no pointer events,
 - the receipt after a resize names the new box, and `resettle()` cuts
   the backing store to exactly that box,
+- the shared motion matcher preserves a named CSS keyframe's clock when its
+  original has a transition that the clone lacks; this browser case runs once,
 - **both engines draw the same pixels for the same subtree**, in two
   states. The fixture holds one of everything a structural clone cannot
   inherit, because a subtree that needs nothing rebuilt proves nothing about
@@ -321,7 +352,8 @@ which is what makes this gate runnable on a machine that cannot run
 
 ## idle-zero
 
-CI gate: mounted quiescent Surfaces cost **0 paints/s**.
+CI gate: mounted quiescent captured sources produce **0 paints/s**. This does
+not measure all renderer frames or GPU cost.
 `npm run gate:idle-zero`.
 
 - `main.ts`: the page under test and the assertion. It mounts N
@@ -363,8 +395,10 @@ frames before reacquisition. The gate requires receipts
 `[A0, A2, B0, B2, B4, B6, B8]`, a fresh surface epoch for each hold period,
 no stale receipt, no clear or wrong-color acquisition render, and sampled RGB
 within one channel value. It also checks that live replacement preserves the
-mesh, geometry, and material, and that the public default unlit material is a
-non-tone-mapped `MeshBasicMaterial` with an sRGB canvas texture. A separate
+mesh, geometry, and material. Rendered colors must remain unchanged under red
+lighting and a non-identity tone mapper. A deliberately tone-mapped control must
+fail the byte-color oracle. The gate reads the public frame texture rather than
+requiring a material constructor. A separate
 pass draws with color writes disabled, then through an off-screen target, and
 finally through the default framebuffer without a new source publication. It
 requires one unchanged frame receipt and one presentation receipt from only
@@ -387,8 +421,7 @@ The required gate runs two minimize and restore cycles with maximum-quality
 compositor frames. It requires
 stable decoder, canvas, and source identities; monotonic frame generations;
 exact pixel and presentation receipt tuples; ordered native reveal before
-renderer release; complete landings; and no black or uncovered compositor
-frame. It then loses the WebGL context while WebGL has presentation authority
+renderer release; complete landings; and no black or uncovered sampled boundary region. It then loses the WebGL context while WebGL has presentation authority
 and requires immediate native state and receipt fallback. Native video loop
 events are reported separately from handoff-induced media events.
 The Genie route uses HTML capture for its window chrome, so this gate launches
@@ -396,8 +429,11 @@ Chrome with `CanvasDrawElement` enabled.
 
 `npm run gate:genie-film-context` is the focused stressed compositor check.
 It runs one cycle at 6x CPU throttle, then loses the context and requires that,
-after the first matching native frame, no later frame regresses to stale WebGL
-pixels.
+after the first matching native frame, no later recorded sample exceeds the
+source-picture error limit. Frames use compositor timestamps and timestamped
+phase boundaries. Missing source observations fail the measurement. These
+checks sample 45 interior points and use a bounded source-time window; they do
+not establish the identity of every displayed video pixel.
 
 The 24-cycle, 6x CPU version is a deliberate soak, not a normal completion
 gate: `npm run probe:genie-film-soak`. It keeps the original 240-second
@@ -412,8 +448,9 @@ behind when the live DOM window moves. `npm run gate:genie-duplicate`.
 
 The gate restores the square window at Retina density and 6x CPU throttle,
 then starts a real title-bar drag as soon as the DOM copy becomes observable.
-A DevTools screencast checks the old and new rectangles in every compositor
-frame and requires zero frames with both copies. It then starts a new minimize
+A DevTools screencast checks the old and new rectangles in every recorded
+frame and requires zero frames with both copies, with the moved window still
+visible in the final frame. It then starts a new minimize
 in the reveal commit. The second flight must get a fresh component lifetime
 and reach the dock instead of inheriting the prior flight's landed state. Use
 `HEADED=1` to exercise the real GPU compositor path.
@@ -422,22 +459,33 @@ and reach the dock instead of inheriting the prior flight's landed state. Use
 
 Checks that translucent window shadows keep the same opacity while
 presentation moves between DOM and WebGL. `npm run gate:genie-shadow`
-measures the fixed shadow strip in every compositor frame around both
+measures the fixed shadow strip in recorded compositor frames around both
 handoff directions. It also checks that the shadow travels with the
 sheet and fades only where the funnel has squeezed it past legibility.
 
 ## genie pose flash
 
-Checks that minimizing a window whose figure animates shows the frozen pose
-and hands it over once. `npm run gate:genie-pose-flash` presses the minimize
-lamp of cerchio and quadrato with a real mouse, three times each per engine,
-and reads a DevTools screencast of the figure for 80 ms after the page lets
-go. A correct handover changes the picture once, by 2.03-5.50% measured.
-Releasing onto a capture older than the lift changes it twice, by 6.61-14.44%
-each time. That fault showed on snapDOM only; HTML-in-canvas did not flash even
-with the fault restored. The DOM cannot see this fault: the page's animations are paused
-and agree with each other on every frame of it. A scripted `click()` misses
-it too, so the press has to be a real one.
+`npm run gate:genie-pose-flash` compares a stationary circle and square with
+their native HTML reference through a real mouse handoff on both engines.
+CSS pose and scene geometry are fixed to isolate capture correctness. Every
+recorded scene image must match in both directions within a one-device-pixel
+neighborhood: at most 1% may differ by more than 40 summed RGB levels. The five
+projected figure points must stay within 0.25 CSS pixels of the native rectangle.
+
+The first actual scene draw must be recorded. Its framebuffer is held for 40 ms
+to make it observable; blocked later draw attempts prove this control engaged.
+The following 80 ms must have no recording gap over 20 ms. An outside marker
+identifies submitted draws, and a separate pixel clock keeps static frames
+observable. Missing coverage fails as unverified.
+
+An independently stored earlier dash pose and a blank texture must fail from
+the first scene frame onward. A later suppressed color write must also fail
+after a correct first frame. Every recorded image after the first presentation
+is scored. These controls detect a consistently wrong image or a later loss,
+which counting or filtering picture changes could miss. `POSE_MODES`, `POSE_WINDOWS`, and
+`ROUNDS` select or repeat cases; `POSE_OUTPUT` chooses artifacts. The default
+runs all sixteen cases once. This check does not measure natural motion, dynamic
+freeze timing, or performance.
 
 ## genie restore flash
 
@@ -447,15 +495,15 @@ restores per engine and reads a DevTools screencast, because the DOM cannot
 see this fault: the slot keeps `data-away="true"` and its page copy keeps
 `visibility: hidden` for every frame of the flash.
 
-The gate also requires the warm native ride to still happen on a minimize.
-Riding over a page copy that is showing is what keeps a caret and a selection
-real, so a fix that simply stops riding would pass the first check and cost
-every Surface its native input.
+The sampled window must arrive later, and this unfocused fixture must not
+activate a warm native ride. Focused preparation and selection are checked by
+the API preparation fixtures. The recorder uses the same outside marker and
+20 ms coverage requirement as the pose check, over its first 150 ms.
 
 ## knobs-hz
 
 Reports Knobs throughput at a fixed 1440×900 viewport and DPR 2.
-`npm run probe:knobs-hz` prints per-phase frame statistics against an
+`npm run probe:knobs-hz` prints per-phase callback statistics against an
 8.33 ms reference budget. It is a reporter, not a gate.
 
 The browser runs headed with vsync and the frame-rate limiter off, so
@@ -470,6 +518,10 @@ module. A phase that failed to engage would measure idle twice. The
 GPU string prints first because SwiftShader numbers describe
 SwiftShader, not your GPU.
 
+Repeated timestamps can occur in this unlimited mode. Zero intervals remain in
+the statistics and are counted in each row. Missing, nonfinite, negative, or
+wholly nonadvancing observations fail. The reported rate is callbacks per second.
+
 ## knobs-resize
 
 Checks that physical Knobs hardware stays on the live DOM layout through
@@ -481,14 +533,18 @@ large jump and fails the gate.
 
 ## dom-surface-demand
 
-Checks that a successful DOM paint wakes an idle demand renderer and
-keeps its paint, draw, and presentation identities consistent.
-`npm run gate:dom-surface-demand`. The gate uses the real Workspace
-route in a probe-only demand mode. It mutates and resizes one static
-product panel without calling `invalidate`, then requires a newer
-presented generation and changed framebuffer data. It also checks
-that draw and presentation receipts name the same source generation.
-The gate has the standard `drawElementImage` capability policy.
+`npm run gate:dom-surface-demand` changes and resizes a real Workspace panel
+on a demand renderer. It locates an opaque patch in that panel's captured
+source and projects it through the actual mesh to the screenshot. The displayed
+pixel must match the changed source. Target paints must then settle in two
+600 ms observation windows.
+
+`DOM_DEMAND_STALE_UPLOAD=1` holds only that source's uploads after a verified
+baseline. The source repaints while the display retains its old pixel; the
+ordinary pixel assertions must fail. `DOM_DEMAND_OUTPUT` selects artifacts.
+Other Workspace feeds can wake the shared renderer. This check proves the
+target's displayed update, not that its paint is the only cause of a wakeup.
+HTML-in-canvas capability is required for this evidence.
 
 ## degraded
 

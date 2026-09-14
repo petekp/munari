@@ -46,6 +46,7 @@ import path from 'node:path'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { installScreencastClock } from '../screencastCoverage.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const labRoot = path.join(repoRoot, 'apps', 'lab')
@@ -55,6 +56,7 @@ const CHROME = [
 ]
   .filter(Boolean)
   .find((p) => existsSync(p))
+if (!CHROME) throw new Error('shadow-travels: Chrome was not found; set CHROME_PATH')
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -114,6 +116,9 @@ try {
     { timeout: 15_000 },
   )
   await sleep(1500)
+  if (!await page.evaluate(() => 'drawElementImage' in CanvasRenderingContext2D.prototype && window.__munari?.engine() === 'html-in-canvas'))
+    throw new Error('The shadow check requires the enhanced renderer')
+  await page.evaluate(installScreencastClock)
 
   // The strip, and its control, both derived from the live boxes: the
   // drop is however much wider the capture root is than the window it
@@ -148,6 +153,7 @@ try {
   console.log(
     `  drop ${GEO.drop}px   strip x ${GEO.strip.x0}..${GEO.strip.x1}   control x ${GEO.control.x0}..${GEO.control.x1}   y ${GEO.strip.y0}..${GEO.strip.y1}`,
   )
+  if (!(GEO.drop>0 && GEO.strip.y1>GEO.strip.y0)) throw new Error('The shadow strip has no measurable area')
   for (const c of GEO.clear) problems.push(c)
 
   const client = await page.createCDPSession()
@@ -163,7 +169,12 @@ try {
 
   await client.send('Page.startScreencast', { format: 'jpeg', quality: 90, everyNthFrame: 1 })
   await sleep(300)
-  const t0 = frames.length ? frames[frames.length - 1].ts : 0
+  await page.evaluate(() => {
+    window.__shadowPressedAt = null
+    document.querySelector('.gen-sheet[data-win="scheda"] .gen-lamp[data-role="minimize"]').addEventListener('click',()=>{
+      window.__shadowPressedAt = (performance.timeOrigin + performance.now()) / 1000
+    },{once:true})
+  })
 
   // Shift-click: the 6x slow flight, so the stretch judged below is a
   // long way from the landing and the sheet in it is still square.
@@ -176,6 +187,8 @@ try {
   await page.keyboard.down('Shift')
   await page.mouse.click(lamp.x, lamp.y)
   await page.keyboard.up('Shift')
+  const t0 = await page.evaluate(() => window.__shadowPressedAt)
+  if (!Number.isFinite(t0)) throw new Error('The minimize click was not observed')
 
   // The guard that keeps this from passing on a scene that never took
   // off: if the page copy is still on the desk, the strip below is the
@@ -226,6 +239,8 @@ try {
     )
 
   const read = await readStrips(frames)
+  if (!read.length || read.some(row=>!Number.isFinite(row.strip)||!Number.isFinite(row.control)))
+    throw new Error('The shadow recording has missing or invalid pixels')
 
   const rest = []
   const boundary = []
@@ -238,6 +253,7 @@ try {
   }
   const med = (xs) => [...xs].sort((a, b) => a - b)[xs.length >> 1] ?? 0
   const restStrip = med(rest.map((r) => r.strip))
+  if (!rest.length) throw new Error('No native shadow frame preceded the minimize click')
   const restControl = med(rest.map((r) => r.control))
   const line = restStrip + (restControl - restStrip) * MIDPOINT
   const darkestBoundary = boundary.reduce(
@@ -615,6 +631,8 @@ try {
       : null
   const crestShade = shade(crest)
   const flankShade = shade(flank)
+  if (!Number.isFinite(crestShade) || !Number.isFinite(flankShade))
+    problems.push('The held funnel did not produce finite shade measurements in both bands')
 
   console.log('\n  the funnel held open by a hand, one frame')
   console.log(`    rows read                    ${profile.rows.length} (widest ${profile.widest.w}px)`)
@@ -656,10 +674,10 @@ try {
   }
 
   console.log(
-    `\nshadow-travels: ${problems.length === 0 ? 'PASS — the handoff keeps one shadow, which travels with the sheet and leaves when squeezed' : 'FAIL'}`,
+    `\nshadow-travels: ${problems.length === 0 ? 'PASS — recorded handoff frames preserve the shadow; the held sheet fades it under compression' : 'FAIL'}`,
   )
   for (const p of problems) console.log(`  ${p}`)
-  process.exit(problems.length === 0 ? 0 : 1)
+  process.exitCode = problems.length === 0 ? 0 : 1
 } finally {
   clearTimeout(deadline)
   await browser?.close()

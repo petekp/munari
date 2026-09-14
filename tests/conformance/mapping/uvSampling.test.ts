@@ -71,6 +71,8 @@ describe('where a texture coordinate lands on the geometry', () => {
     const uv = [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0.5, 0]
     const sample = sampleUvPosition(position, uv, null, 0.5, 0.5)
     expect(sample).not.toBeNull()
-    expect(Number.isFinite(sample!.x)).toBe(true)
+    expect([sample!.x, sample!.y, sample!.z]).toEqual([0, 0, 0])
+    expect(sample!.inside).toBe(true)
+    expect(sample!.nz).toBe(-1)
   })
 })

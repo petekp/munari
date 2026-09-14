@@ -8,6 +8,7 @@ import { createServer } from 'vite'
 import puppeteer from 'puppeteer-core'
 import { setChromeViewport } from '../chromeViewport.mjs'
 import { observeLightingDraw } from '../home-light/gpu.mjs'
+import { replaceSource } from '../home-light/replaceSource.mjs'
 import { installPaperReader, controlPoint } from '../postcard-paper/metrics.mjs'
 
 const output = process.env.INLINE_OUTPUT ?? path.join(tmpdir(), 'munari-home-inline')
@@ -20,8 +21,7 @@ const observer = {
     if (!id.endsWith('/src/App.tsx')) return code
     // Two actual Home instances share one document only in the served test copy.
     const marker = 'export default function App() {'
-    assert.ok(code.includes(marker))
-    return code.replace(marker, 'function LabApp() {') + `
+    return replaceSource(code, marker, 'function LabApp() {') + `
 export default function App() {
   if (!new URLSearchParams(location.search).has('hostPair')) return <LabApp />
   return <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',height:'100%',gap:24,padding:32}}>
@@ -166,6 +166,11 @@ try {
   assert.deepEqual(pair.map(entry => entry.name), ['First', ''])
   assert.deepEqual(pair.map(entry => entry.inScene), ['true', 'false'])
   assert.notEqual(pair[0].paper, pair[1].paper)
+  await page.waitForFunction(expected => {
+    const captures = [...document.querySelectorAll('[data-lamp-capture]')]
+      .map(element => getComputedStyle(element).getPropertyValue('--paper').trim()).sort()
+    return captures.length === expected.length && captures.every((value, index) => value === expected[index])
+  }, {}, pair.map(entry => entry.paper.trim()).sort())
   assert.ok(!diagnostics.some(message => message.text.includes('two <SurfaceCanvas')))
   assert.deepEqual(errors, [])
   results.push({ pair, diagnostics }); console.log(JSON.stringify(results.at(-1)))

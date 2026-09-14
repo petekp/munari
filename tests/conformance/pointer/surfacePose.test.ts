@@ -21,6 +21,7 @@
 // `matrix3d`'s argument order (that agreement is why nothing transposes).
 
 import { describe, expect, it } from 'vitest'
+import { Matrix4, Vector4 } from 'three'
 import {
   createSurfacePose,
   poseMatrix3d,
@@ -110,10 +111,8 @@ function applyMatrix3d(css: string, originX: number, originY: number, x: number,
   const body = css.slice(css.indexOf('(') + 1, css.lastIndexOf(')'))
   const m = body.split(',').map((part) => Number(part))
   expect(m).toHaveLength(16)
-  const px = (m[0] ?? 0) * x + (m[4] ?? 0) * y + (m[12] ?? 0)
-  const py = (m[1] ?? 0) * x + (m[5] ?? 0) * y + (m[13] ?? 0)
-  const pw = (m[3] ?? 0) * x + (m[7] ?? 0) * y + (m[15] ?? 0)
-  return { x: originX + px / pw, y: originY + py / pw }
+  const point = new Vector4(x, y, 0, 1).applyMatrix4(new Matrix4().fromArray(m))
+  return { x: originX + point.x / point.w, y: originY + point.y / point.w }
 }
 
 // ── at rest: the relay's own arithmetic ───────────────────────────────────
@@ -197,11 +196,19 @@ describe('the pose under perspective', () => {
     for (const [u, v] of [
       [0, 1], [1, 1], [1, 0], [0, 0], [0.5, 0.5], [0.18, 0.71],
     ] as const) {
-      const expected = at(pose, u, v)
+      const projected = new Vector4(u - 0.5, v - 0.5, 0, 1)
+        .applyMatrix4(new Matrix4().fromArray(TILTED.model))
+        .applyMatrix4(new Matrix4().fromArray(TILTED.view))
+        .applyMatrix4(new Matrix4().fromArray(TILTED.projection))
+      const expected = {
+        x: VIEW_LEFT + (projected.x / projected.w + 1) * VIEW_W / 2,
+        y: VIEW_TOP + (1 - projected.y / projected.w) * VIEW_H / 2,
+      }
+      const point = at(pose, u, v)
+      expect(point.x).toBeCloseTo(expected.x, 6)
+      expect(point.y).toBeCloseTo(expected.y, 6)
       const applied = applyMatrix3d(css, 0, 0, u * CONTENT_W, (1 - v) * CONTENT_H)
-      // 1e-4 px, which is the `toFixed(8)` formatting and nothing else. CSS
-      // parses no exponent notation, so the string is fixed-point by
-      // necessity; the tolerance is what that costs.
+      // The serialized matrix rounds coefficients to eight decimal places.
       expect(applied.x).toBeCloseTo(expected.x, 4)
       expect(applied.y).toBeCloseTo(expected.y, 4)
     }

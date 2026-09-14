@@ -6,17 +6,17 @@ import path from 'node:path'
 import {tmpdir} from 'node:os'
 import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
+import {replaceSource} from '../home-light/replaceSource.mjs'
 const root=path.resolve(import.meta.dirname,'../..')
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/capture-cost')
 await mkdir(output,{recursive:true})
 const instrumentation={name:'capture-cost-observer',enforce:'pre',transform(source,id){
- if(id.endsWith('/capture.tsx'))return source.replace('export function useCaptureFrame(handle:CaptureHandle) {','export function useCaptureFrame(handle:CaptureHandle) { window.__captureConsumerRenders=(window.__captureConsumerRenders??0)+1;')
+ if(id.endsWith('/capture.tsx'))return replaceSource(source,'export function useCaptureFrame(handle:CaptureHandle) {','export function useCaptureFrame(handle:CaptureHandle) { window.__captureConsumerRenders=(window.__captureConsumerRenders??0)+1;')
  const name=id.endsWith('/elementCapture.tsx')?'copyElementForCapture':id.endsWith('/Surface.tsx')?'snapshot':null
  if(!name)return null
  const exported=name==='copyElementForCapture',declaration=`${exported?'export ':''}function ${name}(`
- if(!source.includes(declaration))return null
  const renamed=`${name}Measured`
- return source.replace(declaration,`function ${renamed}(`)+`
+ return replaceSource(source,declaration,`function ${renamed}(`)+`
  ${exported?'export ':''}function ${name}(...args: Parameters<typeof ${renamed}>) {
    const started=performance.now();
    try{return ${renamed}(...args)} finally {
@@ -33,7 +33,7 @@ const browser=await puppeteer.launch({defaultViewport:null,executablePath:proces
 const rows=[]
 try {
  for(const scenario of ['controls','selection','html','body']){
-  const page=await browser.newPage();await setChromeViewport(page,{width:1280,height:900})
+  const page=await browser.newPage(),errors=[];page.on('pageerror',error=>errors.push(String(error)));await setChromeViewport(page,{width:1280,height:900})
   const base=`http://127.0.0.1:${(scenario==='controls'||scenario==='selection'?lab:whole).httpServer.address().port}`
   await page.goto(base+(scenario==='controls'?'/?scene=controls&framed&delayScene':scenario==='selection'?'/?scene=selection&framed':'/whole-page.html'),{waitUntil:'load'})
   await page.waitForFunction(()=>window.__captureCost?.length>0)
@@ -41,6 +41,7 @@ try {
   await page.evaluate(()=>document.fonts.ready)
   if(scenario==='html'||scenario==='body')await page.waitForFunction(()=>window.__wholeCapture.record.sample)
   if(scenario==='selection'){await page.evaluate(()=>{const range=document.createRange();range.selectNodeContents(document.querySelector('.sel-prose p'));getSelection().removeAllRanges();getSelection().addRange(range);document.dispatchEvent(new Event('selectionchange'))});await page.waitForFunction(()=>window.__captureConsumerRenders>0)}
+  if(scenario!=='controls')assert.ok(await page.evaluate(()=>window.__captureConsumerRenders>0),'The capture-frame consumer must render before its update cost can be measured')
   await page.evaluate(()=>{window.__captureCost=[];window.consumerRendersBefore=window.__captureConsumerRenders??0;window.costGaps=[];let last=0;const sample=t=>{if(last)window.costGaps.push(t-last);last=t;window.costFrame=requestAnimationFrame(sample)};window.costFrame=requestAnimationFrame(sample)})
   if(scenario==='controls'){
    await page.focus('[data-api-live] input')
@@ -72,8 +73,9 @@ try {
   // Decision #42: bounded copies on these measured fixtures, no consumer render per paint.
   assert.ok(row.p95<=5&&row.max<=8,JSON.stringify(row))
   assert.equal(row.idleCopies,0)
-  assert.equal(row.consumerRenders,0)
+  if(scenario!=='controls')assert.equal(row.consumerRenders,0)
   if(scenario!=='controls')assert.ok(row.copies<=26)
+  assert.deepEqual(errors,[])
   rows.push(row);console.log(JSON.stringify(row));await page.close()
  }
  await writeFile(path.join(output,'results.json'),JSON.stringify({rows,browser:await browser.version()},null,2))

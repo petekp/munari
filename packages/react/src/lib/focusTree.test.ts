@@ -90,6 +90,7 @@ describe('focusTree memory stack', () => {
     t.remember('g', 'a')
     // a is top; popping it must land on b (not a second stale a)
     expect(t.recall('g', (m) => m.id !== 'a')?.id).toBe('b')
+    expect(t.recall('g', (m) => m.id !== 'b')).toBeNull()
   })
 
   it('lazily pops invalid entries and lands on next-most-recent (Flutter cleanout)', () => {
@@ -142,14 +143,7 @@ describe('createMemoryStack — the shared discipline', () => {
     s.remember(twin)
     s.remember(a) // a moves to top; twin must remain beneath it
     expect(s.recall((x) => x !== a)).toBe(twin)
-  })
-
-  it('recall pops rejects destructively', () => {
-    const s = createMemoryStack<string>()
-    s.remember('x')
-    s.remember('y')
-    expect(s.recall((v) => v === 'x')).toBe('x') // y popped on the way down
-    expect(s.recall(() => true)).toBe('x')
+    expect(s.recall((x) => x !== twin)).toBeNull()
   })
 
   it('forget removes mid-stack entries', () => {
@@ -161,12 +155,6 @@ describe('createMemoryStack — the shared discipline', () => {
     expect(s.recall((v) => v !== 'c')).toBe('a')
   })
 
-  it('clear empties, recall returns null', () => {
-    const s = createMemoryStack<string>()
-    s.remember('a')
-    s.clear()
-    expect(s.recall(() => true)).toBeNull()
-  })
 })
 
 describe('readingOrder — Flutter band algorithm', () => {
@@ -407,39 +395,17 @@ describe('focus-visibility geometry (the ported scroll-into-view obligation)', (
 })
 
 describe('focusTree member ids', () => {
-  it('separates two unnamed composites in the same group', () => {
-    // The shipped bug: no sequence and no label collapsed both to
-    // 'g:composite'. FocusScene mints these from a scene-lifetime counter
-    // per kind, so the sequence is the only thing keeping them apart.
-    expect(memberId('g', 'composite', 0)).not.toBe(memberId('g', 'composite', 1))
-  })
-
-  it('separates two members that share a label', () => {
-    // A Surface `name` is not unique, so the label alone can never be the id.
-    expect(memberId('g', 'composite', 0, 'panel')).not.toBe(
-      memberId('g', 'composite', 1, 'panel'),
-    )
-  })
-
-  it('keeps the label on the id, because debugMembers prints these', () => {
-    expect(memberId('g', 'leaf', 3, 'Volume')).toBe('g:leaf:3:Volume')
-    expect(memberId('g', 'composite', 0)).toBe('g:composite:0')
-  })
-
-  it('separates the two kinds, which count independently', () => {
-    expect(memberId('g', 'leaf', 0, 'x')).not.toBe(memberId('g', 'composite', 0, 'x'))
-  })
-
-  it('collapses two members when their ids do collide', () => {
-    // Why the sequence is load-bearing: the members map is keyed by id, so a
-    // duplicate replaces rather than joins — and the first member's
-    // unregister then takes the survivor's entry with it.
+  it('keeps independent members registered when unnamed or equal-label neighbors leave', () => {
     const t = createFocusTree<string>()
-    t.registerGroup('g')
-    t.registerMember('g', { id: 'g:composite', kind: 'composite', data: 'first' })
-    t.registerMember('g', { id: 'g:composite', kind: 'composite', data: 'second' })
-    expect(t.members('g').map((m) => m.data)).toEqual(['second'])
-    t.unregisterMember('g', 'g:composite')
-    expect(t.members('g')).toEqual([])
+    const ids = [
+      memberId('g', 'composite', 0), memberId('g', 'composite', 1),
+      memberId('g', 'composite', 2, 'panel'), memberId('g', 'composite', 3, 'panel'),
+      memberId('g', 'leaf', 2, 'panel'),
+    ]
+    ids.forEach((id, i) => t.registerMember('g', { id, kind: i === 4 ? 'leaf' : 'composite', data: String(i) }))
+    expect(t.members('g').map(m => m.data)).toEqual(['0', '1', '2', '3', '4'])
+    t.unregisterMember('g', ids[0]!)
+    t.unregisterMember('g', ids[2]!)
+    expect(t.members('g').map(m => m.data)).toEqual(['1', '3', '4'])
   })
 })

@@ -15,7 +15,7 @@ output. Preserve both distinctions when resolving a conflict.
 | Check a browser-specific claim | [Platform](platform.md), [instruments](../instruments/README.md) | Measurements under the recorded conditions |
 | Write captured HTML | [Authoring](authoring.md) | Current rules derived from measurements |
 | Implement focus and spatial navigation | [Focus](focus.md) | Contract, implemented in the binding |
-| Check a kernel law | [Conformance suites](../tests/conformance/README.md) | Executable specification |
+| Check a kernel law | [Conformance suites](../tests/conformance/README.md) | Intended behavior with scoped evidence |
 | Find an implemented example | [Demo source map](../ALL-DEMO-API.md) | Current source links; verification belongs to each instrument |
 | Understand the retained-HTML cutover | [Decision #43](decisions.md#43), with #42–45 and #47–48 | Adoption, behavior, sharpness and naming contracts |
 

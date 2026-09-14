@@ -15,6 +15,7 @@ import {
   crossingDraws,
   crossingFrame,
   crossingPresentation,
+  crossingPointer,
   crossingProgress,
   crossingRequest,
   type CrossingEvidence,
@@ -44,81 +45,16 @@ function tickUntil(
   throw new Error(`protocol never reached the expected state: ${JSON.stringify(state)}`)
 }
 
-describe('drawing accounting', () => {
-  it('someone draws in every phase — the guarantee in law form', () => {
-    for (const phase of PHASES) {
-      const { page, gl } = crossingDraws(phase)
-      expect(page || gl).toBe(true)
-    }
-  })
-
-  it('both draw only during lifting: the warm-up is an overlap, not a swap', () => {
-    for (const phase of PHASES) {
-      const { page, gl } = crossingDraws(phase)
-      expect(page && gl).toBe(phase === 'lifting')
-    }
-  })
-
-  it('the page holds until evidence releases it, and not one phase longer', () => {
-    expect(crossingDraws('page').page).toBe(true)
-    expect(crossingDraws('lifting').page).toBe(true)
-    expect(crossingDraws('gl').page).toBe(false)
-    expect(crossingDraws('landing').page).toBe(false)
-  })
-})
-
-describe('presentation accounting', () => {
-  // Drawing says who must DRAW; presentation says who may be SEEN.
-  // Drawing is inclusive (the lifting overlap), presentation exclusive:
-  // two composited copies of the same content read as a ghost around
-  // every animated element the moment the page's motion displaces one
-  // off the other (decisions.md #29).
-  it('exactly one side is composited in every phase — never zero, never both', () => {
-    for (const phase of PHASES) {
-      const { page, gl } = crossingPresentation(phase)
-      expect(page !== gl).toBe(true)
-    }
-  })
-
-  it('a composited side is always a drawing side: presentation implies drawing', () => {
-    for (const phase of PHASES) {
-      const shown = crossingPresentation(phase)
-      const drawn = crossingDraws(phase)
-      if (shown.page) expect(drawn.page).toBe(true)
-      if (shown.gl) expect(drawn.gl).toBe(true)
-    }
-  })
-
-  it('the canvas draws unseen during lifting and only then — the warm-up is invisible', () => {
-    for (const phase of PHASES) {
-      const warmingUnseen = crossingDraws(phase).gl && !crossingPresentation(phase).gl
-      expect(warmingUnseen).toBe(phase === 'lifting')
-    }
-  })
-
-  it('visibility changes hands exactly twice per round trip: at the two handoff edges', () => {
-    let s = crossingAtRest()
-    let presenter = 'page'
-    const handoffs: string[] = []
-    const note = (phase: CrossingPhase) => {
-      const now = crossingPresentation(phase).page ? 'page' : 'gl'
-      if (now !== presenter) handoffs.push(`${presenter}→${now}`)
-      presenter = now
-    }
-    s = crossingRequest(s, true)
-    note(s.phase)
-    for (let i = 0; i < 500 && !(s.phase === 'gl' && s.ramp >= 1); i++) {
-      s = crossingFrame(s, ALL, 16, T)
-      note(s.phase)
-    }
-    s = crossingRequest(s, false)
-    note(s.phase)
-    for (let i = 0; i < 500 && s.phase !== 'page'; i++) {
-      s = crossingFrame(s, ALL, 16, T)
-      note(s.phase)
-    }
-    expect(s.phase).toBe('page')
-    expect(handoffs).toEqual(['page→gl', 'gl→page'])
+describe('ownership in each phase', () => {
+  it.each([
+    ['page', { page: true, gl: false }, { page: true, gl: false }],
+    ['lifting', { page: true, gl: true }, { page: true, gl: false }],
+    ['gl', { page: false, gl: true }, { page: false, gl: true }],
+    ['landing', { page: false, gl: true }, { page: false, gl: true }],
+  ] as const)('%s keeps drawing, presentation, and input with their owners', (phase, draws, presents) => {
+    expect(crossingDraws(phase)).toEqual(draws)
+    expect(crossingPresentation(phase)).toEqual(presents)
+    expect(crossingPointer(phase)).toEqual(presents)
   })
 })
 
@@ -190,7 +126,7 @@ describe('the lift gate', () => {
 
   it('keeps the ramp at exactly zero until the page has released', () => {
     let s = crossingRequest(crossingAtRest(), true)
-    while (s.phase === 'lifting') {
+    for (let frame = 0; frame < 500 && s.phase === 'lifting'; frame++) {
       expect(s.ramp).toBe(0)
       s = crossingFrame(s, ALL, 16, T)
     }
@@ -226,7 +162,7 @@ describe('the ramp', () => {
   it('rises to exactly 1 over rampMs and stops', () => {
     let s: CrossingState = { phase: 'gl', ramp: 0, heldMs: 0 }
     let elapsed = 0
-    while (s.ramp < 1) {
+    for (let frame = 0; frame < 500 && s.ramp < 1; frame++) {
       s = crossingFrame(s, ALL, 16, T)
       elapsed += 16
       expect(s.ramp).toBeLessThanOrEqual(1)
@@ -238,7 +174,7 @@ describe('the ramp', () => {
 
   it('lands only at zero: the reverse handoff happens at the one progress where mesh and page agree', () => {
     let s: CrossingState = { phase: 'landing', ramp: 1, heldMs: 0 }
-    while (s.phase === 'landing') {
+    for (let frame = 0; frame < 500 && s.phase === 'landing'; frame++) {
       expect(s.ramp).toBeGreaterThan(0)
       s = crossingFrame(s, ALL, 16, T)
     }
@@ -259,9 +195,17 @@ describe('a whole crossing, both directions', () => {
   it('round-trips page → gl → page with the drawing law honored on every frame', () => {
     let s = crossingAtRest()
     const observed = new Set<CrossingPhase>([s.phase])
+    const handoffs: string[] = []
+    let holder = 'page'
+    const noteHolder = () => {
+      const next = crossingPresentation(s.phase).page ? 'page' : 'gl'
+      if (next !== holder) handoffs.push(`${holder}→${next}`)
+      holder = next
+    }
     s = crossingRequest(s, true)
     for (let i = 0; i < 500 && !(s.phase === 'gl' && s.ramp >= 1); i++) {
       observed.add(s.phase)
+      noteHolder()
       const { page, gl } = crossingDraws(s.phase)
       expect(page || gl).toBe(true)
       // The forward handoff frame: the page releases only after evidence + dwell.
@@ -272,12 +216,15 @@ describe('a whole crossing, both directions', () => {
     s = crossingRequest(s, false)
     for (let i = 0; i < 500 && s.phase !== 'page'; i++) {
       observed.add(s.phase)
+      noteHolder()
       const { page, gl } = crossingDraws(s.phase)
       expect(page || gl).toBe(true)
       s = crossingFrame(s, ALL, 16, T)
     }
     expect(s).toEqual(crossingAtRest())
     expect(observed).toEqual(new Set(['page', 'lifting', 'gl', 'landing']))
+    noteHolder()
+    expect(handoffs).toEqual(['page→gl', 'gl→page'])
   })
 
   it('survives an indecisive user: rapid reversals stay inside the four phases and re-arrive cleanly', () => {

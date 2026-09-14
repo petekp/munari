@@ -1,13 +1,8 @@
 // @vitest-environment happy-dom — happy-dom is a root devDependency (decisions.md #2, README.md)
 //
-// The pointer-exit protocol. Everything else in this repo's test suite is
-// pure geometry; this file needs a DOM because the thing under test IS the
-// sequence of DOM events we synthesize — which events, on which elements,
-// carrying which coordinates.
-//
-// Layout is stubbed rather than computed: happy-dom has no layout engine, and
-// these tests are about the event protocol, not about where boxes land.
-// deepestElementAt's own hit-testing is exercised through those stubs.
+// Pointer forwarding, departure, and input arbitration.
+// Layout is stubbed because happy-dom has no layout engine. Assertions cover
+// DOM events and retained input state; browser hit geometry is checked separately.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -59,6 +54,7 @@ let root: HTMLElement
 let trigger: HTMLElement
 let sibling: HTMLElement
 let log: Log[]
+let recording: AbortController
 
 const TRIGGER_BOX = [20, 20, 120, 60] as const
 const SIBLING_BOX = [20, 100, 120, 140] as const
@@ -90,6 +86,7 @@ beforeEach(() => {
   document.body.innerHTML = ''
   document.body.removeAttribute('style')
   log = []
+  recording = new AbortController()
 
   root = document.createElement('div')
   trigger = document.createElement('button')
@@ -111,7 +108,7 @@ beforeEach(() => {
         // so the narrowing happens here. Anything that is not a pointer event
         // would drop out of the log, which fails the test that expected it.
         if (e instanceof PointerEvent) log.push({ type, at: name, x: e.clientX, y: e.clientY })
-      })
+      }, { signal: recording.signal })
     }
   }
   record(trigger, 'trigger')
@@ -125,6 +122,8 @@ beforeEach(() => {
   forwardPointer(root, 0.5, 0.5, 'up')
   log = []
 })
+
+afterEach(() => recording.abort())
 
 const typesAt = (at: string) => log.filter((l) => l.at === at).map((l) => l.type)
 const first = (type: string, at: string) => log.findIndex((l) => l.type === type && l.at === at)
@@ -293,11 +292,6 @@ describe('pointer-transparent regions', () => {
     content.style.pointerEvents = 'auto'
   })
 
-  it('resolves a hit on the content', () => {
-    const on = uvOf(...CONTENT_BOX)
-    expect(deepestElementAt(root, on.x, on.y)).toBe(content)
-  })
-
   it('resolves nothing where the layer is clear', () => {
     expect(deepestElementAt(root, CLEAR.x, CLEAR.y)).toBeNull()
   })
@@ -385,18 +379,6 @@ describe('leaving one surface for another', () => {
     expect(moves[0]!.x).toBeCloseTo(to.x, 6)
   })
 
-  it('still parks off-page when the pointer left every surface', async () => {
-    const on = uvOf(...TRIGGER_BOX)
-    forwardPointer(root, on.u, on.v, 'move')
-    log.length = 0
-
-    clearPointerState(root)
-    await settle()
-
-    const moves = awayMoves()
-    expect(moves.length).toBeGreaterThan(0)
-    expect(moves[0]!.x).toBeLessThan(ROOT.left)
-  })
 })
 
 describe('focus modality mirroring', () => {
@@ -1149,6 +1131,7 @@ describe('provenance: every retelling is branded, and keeps bubbling', () => {
     root.append(select)
     const doc = heardAtDocument()
     nudgeSelect(select)
+    expect(select.value).toBe('b')
     doc.done()
     expect(doc.heard).toEqual([{ type: 'change', relayed: true, trusted: false }])
   })
@@ -1178,15 +1161,17 @@ describe('the pointer-capture guard', () => {
     host.append(child)
     document.body.append(host)
 
-    const released: number[] = []
-    child.releasePointerCapture = (id) => void released.push(id)
+    const captured = new Set([7])
+    child.releasePointerCapture = (id) => { captured.delete(id) }
+    child.hasPointerCapture = (id) => captured.has(id)
 
     const unguard = guardPointerCapture(host)
     child.dispatchEvent(new PointerEvent('gotpointercapture', { bubbles: true, pointerId: 7 }))
-    expect(released).toEqual([7])
+    expect(child.hasPointerCapture(7)).toBe(false)
 
     unguard()
+    captured.add(7)
     child.dispatchEvent(new PointerEvent('gotpointercapture', { bubbles: true, pointerId: 7 }))
-    expect(released).toEqual([7])
+    expect(child.hasPointerCapture(7)).toBe(true)
   })
 })

@@ -18,8 +18,6 @@
 // `useSyncExternalStore` compares by reference; the symptom is a scene that
 // runs hot with nothing moving, never an error.
 //
-// No JSX here: the runner only discovers `.test.ts` (surfaceHandle.test.ts
-// carries the same note).
 import { createElement } from 'react'
 import * as THREE from 'three'
 import { createRoot } from 'react-dom/client'
@@ -79,13 +77,6 @@ function renderReads(handle: SurfaceHandle) {
 }
 
 describe('useSurfaceTextureOf', () => {
-  it('answers null before the named source has published', () => {
-    const store = createSurfaceStore('unmounted')
-    const probe = renderReads(store.handle)
-    expect(probe.reads).toEqual([null])
-    probe.unmount()
-  })
-
   it('answers the texture of a source with zero presenters registered', () => {
     const store = createSurfaceStore('resident')
     const texture = stubTexture()
@@ -104,6 +95,9 @@ describe('useSurfaceTextureOf', () => {
     // the readiness ledger is empty, yet its pixels are nameable.
     expect(store.canvasMounted()).toBe(false)
     expect(store.getState().presented).toBe('none')
+    probe.rerender()
+    probe.rerender()
+    expect(new Set(probe.reads)).toEqual(new Set([texture]))
     probe.unmount()
   })
 
@@ -124,27 +118,6 @@ describe('useSurfaceTextureOf', () => {
       })
     })
     expect(probe.reads.at(-1)).toBe(texture)
-    probe.unmount()
-  })
-
-  it('holds one reference across re-renders, so a subscriber never churns', () => {
-    const store = createSurfaceStore('stable')
-    const texture = stubTexture()
-    store.publishPart(DEFAULT_PART, {
-      id: DEFAULT_PART,
-      runtime: runtimeWith(texture),
-      live: false,
-      size: [300, 180],
-      captureRoot: null,
-      pageRoot: null,
-    })
-    const probe = renderReads(store.handle)
-    const before = probe.reads.length
-    probe.rerender()
-    probe.rerender()
-
-    expect(probe.reads.length).toBeGreaterThan(before)
-    expect(new Set(probe.reads)).toEqual(new Set([texture]))
     probe.unmount()
   })
 

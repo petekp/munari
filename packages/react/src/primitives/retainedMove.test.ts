@@ -35,16 +35,27 @@ describe('a retained move', () => {
     const scroller = content.querySelector('.scroller')!
     field.value = 'typed here'
     field.focus()
-    field.setSelectionRange(2, 6)
+    field.setSelectionRange(2, 6, 'backward')
     scroller.scrollTop = 120
+    content.scrollLeft = 40
+    // Model selection and scroll loss that happy-dom does not reproduce.
+    Object.defineProperty(away, 'insertBefore', { value(this: Element, node: Node, before: Node | null) {
+      const moved = Node.prototype.insertBefore.call(this, node, before)
+      field.blur()
+      field.setSelectionRange(0, 0)
+      scroller.scrollTop = 0
+      content.scrollLeft = 0
+      return moved
+    } })
 
     moveRetained(content, away)
 
     expect(content.parentElement).toBe(away)
     expect(field.value).toBe('typed here')
     expect(document.activeElement).toBe(field)
-    expect([field.selectionStart, field.selectionEnd]).toEqual([2, 6])
+    expect([field.selectionStart, field.selectionEnd, field.selectionDirection]).toEqual([2, 6, 'backward'])
     expect(scroller.scrollTop).toBe(120)
+    expect(content.scrollLeft).toBe(40)
   })
 
   it('leaves focus alone when nothing inside the moved content held it', () => {

@@ -162,5 +162,13 @@ describe('chromeEquals', () => {
     expect(chromeEquals(a, b)).toBe(true)
     b.radii[2] = 12
     expect(chromeEquals(a, b)).toBe(false)
+    b.radii[2] = 14
+    b.shadow[0]!.spread = -10
+    expect(chromeEquals(a, b)).toBe(false)
+    b.shadow[0]!.spread = -12
+    b.shadow[0]!.color[3] = 0.4
+    expect(chromeEquals(a, b)).toBe(false)
+    b.shadow = []
+    expect(chromeEquals(a, b)).toBe(false)
   })
 })

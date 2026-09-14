@@ -73,12 +73,7 @@ describe('surface identity', () => {
     expect(surfaceEpochCurrent(next, 2)).toBe(true)
   })
 
-  it("Strict Mode's mount → unmount → mount leaves the second mount holding", () => {
-    // React invokes effects twice in development. The cleanup of the FIRST
-    // mount runs after the SECOND mount's setup, so a ledger that released
-    // unconditionally would end up free while a live component believed it
-    // held the identity — and every registration made after that point is
-    // attributed to nobody.
+  it('a stale cleanup cannot release the replacement controller', () => {
     const first = surfaceAcquire(surfaceUnclaimed(), 1)
     const second = surfaceAcquire(first, 2) // refused; token 1 still holds
     const afterFirstCleanup = surfaceRelease(second, 1)

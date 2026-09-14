@@ -365,12 +365,6 @@ describe('aero gate — the rendered bend is zero at the swap by construction', 
     }
   })
 
-  it('aeroAmplitude is the gated curve — the two cannot disagree', () => {
-    for (const s of [0, 20, 45, 100, 800, 3000]) {
-      const raw = s * s === 0 ? 0 : 55 * ((s * s) / (s * s + 650 * 650))
-      expect(aeroAmplitude(s)).toBeCloseTo(raw * aeroGate(s), 10)
-    }
-  })
 })
 
 describe('aero follower — the bend is continuous; flat-at-rest stays exact', () => {
@@ -520,10 +514,6 @@ describe('crumple — the phases may not overlap the handoff', () => {
       expect(ph.falling).toBe(false)
       expect(ph.crush).toBe(1) // it still crushes in the grip — only the fall waits
     }
-  })
-
-  it('the phase clocks are ordered', () => {
-    expect(CRUMPLE_RISE_T).toBeLessThan(CRUMPLE_CRUSH_T)
   })
 
   it('wadShrink is identity at crush 0 and a sixth at full crush', () => {

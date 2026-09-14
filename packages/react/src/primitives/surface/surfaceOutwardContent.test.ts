@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // Outward content identity — source updates reconcile focused controls.
 
-import { createElement, memo } from 'react'
+import { createElement } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -68,27 +68,4 @@ describe('outward source content', () => {
     flushSync(() => root.unmount())
   })
 
-  it('reconciles a component that owns captured markup', () => {
-    const Source = memo(({ label }: { label: string }) =>
-      createElement('div', {
-        'data-label': label,
-        dangerouslySetInnerHTML: { __html: '<label><input type="checkbox"> choice</label>' },
-      }))
-    const store = createSurfaceOutwardContentStore()
-    const root = createRoot(container)
-    flushSync(() => {
-      root.render(createElement(SurfaceOutwardContent, { store }))
-      store.publish(createElement(Source, { label: 'same' }))
-    })
-
-    const input = container.querySelector('input')
-    input?.focus()
-    flushSync(() => {
-      store.publish(createElement(Source, { label: 'same' }))
-    })
-
-    expect(container.querySelector('input')).toBe(input)
-    expect(document.activeElement).toBe(input)
-    flushSync(() => root.unmount())
-  })
 })

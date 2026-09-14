@@ -63,7 +63,7 @@ try {
     window.__filmAnchorEvents = []
     window.__genieFilmProbe = (event) => {
       const slot = document.querySelector('.gen-slot[data-win="triangolo"]')
-      const row = { type: event.type, away: slot?.dataset.away === 'true' }
+      const row = { type: event.type, token: event.token, away: slot?.dataset.away === 'true' }
       if (event.type === 'outer-anchor') {
         row.stage = event.stage
         row.generation = event.generation
@@ -98,6 +98,12 @@ try {
   if (!before || !accepted || !presented || !shown) {
     throw new Error(`missing handoff evidence: ${events.map((event) => event.type).join(', ')}`)
   }
+  if (![before,accepted,presented,shown].every(event=>event.token===before.token))
+    throw new Error('anchor and presentation evidence belong to different transfers')
+  if (!(events.indexOf(before)<events.indexOf(accepted)&&events.indexOf(accepted)<events.indexOf(presented)&&events.indexOf(presented)<events.indexOf(shown)))
+    throw new Error('the page released before the reordered anchor and presentation were accepted')
+  if (![before,accepted].every(event=>Number.isFinite(event.generation)&&event.generation>0&&event.paintedSize.length===2&&event.paintedSize.every(value=>Number.isFinite(value)&&value>0)&&Object.values(event.anchor).every(Number.isFinite)))
+    throw new Error('anchor evidence must contain a painted size and finite coordinates')
   if (before.paintedSize.join() !== accepted.paintedSize.join())
     throw new Error(`outer size changed: ${before.paintedSize} -> ${accepted.paintedSize}`)
   if (accepted.generation <= before.generation)

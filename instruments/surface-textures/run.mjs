@@ -23,6 +23,7 @@ try {
       assert.equal(await page.evaluate(()=>'drawElementImage' in CanvasRenderingContext2D.prototype),true)
       await page.waitForFunction(()=>window.__textureProof)
       const rows=await page.evaluate(()=>window.__textureProof)
+      assert.deepEqual(rows.map(row=>row.name),['initial','late-2','following-2','late-0.5','following-0.5','late-3','following-3','late-1','following-1'],'Every allocation and following draw must be observed')
       await page.screenshot({path:path.join(output,`${pinned?'pinned':'auto'}.png`)})
       const result={pinned,rows,errors,dpr:await page.evaluate(()=>devicePixelRatio)}
       results.push(result)
@@ -38,11 +39,16 @@ try {
     } finally {await page.close()}
   }
   const page=await browser.newPage()
+  const litErrors=[]
+  page.on('pageerror',error=>litErrors.push(String(error)))
   try {
     await setChromeViewport(page,{width:900,height:650})
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/lit.html`,{waitUntil:'load'})
     await page.waitForFunction(()=>Object.values(window.__litProof?.statuses??{}).length===12&&Object.values(window.__litProof.statuses).every(value=>value==='scene'))
     const pixels=await page.evaluate(()=>window.__litProof.read())
+    assert.deepEqual(litErrors,[])
+    assert.deepEqual(pixels.rows.map(row=>row.id),['white','color','glow'])
+    assert.deepEqual(pixels.edges.map(row=>row.id),['white','color','glow'])
     results.push({lit:pixels});console.log(JSON.stringify({lit:pixels}))
     await page.screenshot({path:path.join(output,'lit.png')})
     await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))
@@ -64,6 +70,7 @@ try {
       await page.evaluate(()=>window.__litProof.update())
       await page.waitForFunction(()=>window.__litProof.read().sharedUnlit[0]===80)
       const updated=await page.evaluate(()=>window.__litProof.read())
+      assert.deepEqual(litErrors,[])
       assert.equal(updated.error,0)
       assert.deepEqual(updated.sharedUnlit,[80,190,120,255])
       assert.deepEqual(updated.sharedLit,updated.rows[0].opaque)
@@ -72,4 +79,5 @@ try {
       await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))
     }
   } finally {await page.close()}
+  console.log(process.env.OBSERVE_ONLY==='1'?'DIAGNOSTIC: pixel acceptance checks were disabled':'Surface texture allocation and alpha checks passed')
 } finally {await browser.close();await server.close()}

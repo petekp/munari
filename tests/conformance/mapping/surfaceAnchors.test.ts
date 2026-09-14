@@ -74,7 +74,9 @@ describe('one complete painted anchor transaction', () => {
       paint(1),
       ['meter'] as const,
     )
+    expect(receipt).not.toBeNull()
     expect(Object.isFrozen(receipt)).toBe(true)
+    expect(Object.isFrozen(receipt?.anchors.meter)).toBe(true)
     expect(Object.isFrozen(receipt?.anchors)).toBe(true)
   })
 })

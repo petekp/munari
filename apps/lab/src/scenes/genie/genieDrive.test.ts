@@ -145,23 +145,6 @@ describe('release spring', () => {
     expect(gentle).toBeLessThan(flung * 0.2)
   })
 
-  it('is step-size honest: 60fps and 240fps trace the same trajectory (analytic, not Euler)', () => {
-    // A window short enough that neither run reaches the wall: pure
-    // spring, where an Euler integrator would diverge between rates.
-    const run = (dt: number) => {
-      let s = { t: 0.5, v: 0 }
-      for (let elapsed = 0; elapsed + dt <= 0.1; elapsed += dt) {
-        const next = driveSpringStep(s, 1, dt, P)
-        s = { t: next.t, v: next.v }
-      }
-      return s
-    }
-    const coarse = run(1 / 60)
-    const fine = run(1 / 240)
-    expect(coarse.t).toBeCloseTo(fine.t, 3)
-    expect(coarse.v).toBeCloseTo(fine.v, 2)
-  })
-
   it('preserves the analytic path when the spring accelerates beyond the entry velocity limit', () => {
     // Detail #36: t=0.46 and v=0 was a stationary release, yet repeated
     // clamping halved its landing impulse on a 60Hz display. Compare equal

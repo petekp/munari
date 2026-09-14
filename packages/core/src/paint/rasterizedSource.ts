@@ -236,10 +236,8 @@ export function createRasterizedSource(
   let cancelHoverWait: (() => void) | null = null
 
   const host = document.createElement('div')
-  // The parking law, shared with the native engine and pinned by
-  // `tests/conformance/mapping/parkingCoincidence`: viewport origin, exact
-  // CSS size, in-document and on-screen, with the pointer-events cascade
-  // re-rooted at the element rather than the container.
+  // The relay needs the source at the viewport origin and at its CSS size.
+  // Re-root pointer events at the element so the inert host does not hide targets.
   host.style.cssText =
     `position:fixed;left:0;top:0;z-index:-1;pointer-events:none;opacity:0;` +
     `width:${width}px;height:${height}px;`

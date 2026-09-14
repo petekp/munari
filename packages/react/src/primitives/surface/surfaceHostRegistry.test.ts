@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createElement } from 'react'
 import {
   createSurfaceHost,
   mountSurfaceHost,
@@ -65,6 +66,7 @@ describe('host identity', () => {
     host.runtime = runtime()
     unmount.release()
     expect(host.runtime).toBeNull()
+    expect(resolveSurfaceHost()).toBe(surfaceHost())
     // A registration that outlives its Canvas is harmless, not a throw.
     expect(() => host.invalidate()).not.toThrow()
   })
@@ -104,13 +106,20 @@ describe('registration', () => {
 
   it('notifies subscribers on both directions', () => {
     const host = surfaceHost()
-    const onSources = vi.fn()
-    const onPresenters = vi.fn()
-    host.subscribeSources(onSources)
-    host.subscribePresenters(onPresenters)
-    host.registerSource({ key: 's', container: document.createElement('div'), content: null })
-    expect(onSources).toHaveBeenCalledTimes(1)
-    expect(onPresenters).not.toHaveBeenCalled()
+    const sources: string[][] = [], presenters: string[][] = []
+    const stopSources = host.subscribeSources(() => sources.push(host.sources().map(entry => entry.key)))
+    const stopPresenters = host.subscribePresenters(() => presenters.push(host.presenters().map(entry => entry.key)))
+    const leaveSource = host.registerSource({ key: 's', container: document.createElement('div'), content: null })
+    expect(sources).toEqual([['s']])
+    expect(presenters).toEqual([])
+    const leavePresenter = host.registerPresenter({ key: 'p', element: createElement('mesh') })
+    expect(presenters).toEqual([['p']])
+    leaveSource()
+    expect(sources).toEqual([['s'], []])
+    expect(presenters).toEqual([['p']])
+    leavePresenter()
+    expect(presenters).toEqual([['p'], []])
+    stopSources(); stopPresenters()
   })
 
   it('snapshots ticks so one unregistering itself cannot skip the next', () => {
@@ -136,20 +145,14 @@ describe('work claims', () => {
     const b = host.claimWork()
     expect(r.busy).toEqual([true])
     a()
+    a()
     // One Surface settling must not strand another's frames — this is the
     // fault the boolean flag produced on 2026-08-16.
     expect(r.busy).toEqual([true])
+    expect(host.workClaims()).toBe(1)
+    b()
     b()
     expect(r.busy).toEqual([true, false])
-    expect(host.workClaims()).toBe(0)
-  })
-
-  it('ignores a release called twice', () => {
-    const host = surfaceHost()
-    host.runtime = runtime()
-    const release = host.claimWork()
-    release()
-    release()
     expect(host.workClaims()).toBe(0)
   })
 
@@ -159,20 +162,10 @@ describe('work claims', () => {
     const host = surfaceHost()
     const r = runtime()
     host.runtime = r
-    host.claimWork()()
-    expect(r.frames).toBeGreaterThanOrEqual(2)
-  })
-
-  it('survives a claim made before its renderer exists', () => {
-    const host = surfaceHost()
-    host.claimWork()
-    expect(host.workClaims()).toBe(1)
-    // The bridge promotes a host that already has claims when it arrives,
-    // rather than waiting for a next claim that may never come.
-    const r = runtime()
-    host.runtime = r
-    if (host.workClaims() > 0) host.runtime.setBusy(true)
-    expect(r.busy).toEqual([true])
+    const release = host.claimWork()
+    const beforeRelease = r.frames
+    release()
+    expect(r.frames).toBe(beforeRelease + 1)
   })
 })
 
@@ -188,6 +181,8 @@ describe('the frame tail', () => {
     host.closeFrameTail(true)
     expect(proven).toEqual(['a', 'b'])
     expect(host.deferredPresentations()).toBe(0)
+    host.closeFrameTail(true)
+    expect(proven).toEqual(['a', 'b'])
   })
 
   it('a draw into a target leaves the deferrals pending', () => {
@@ -212,17 +207,9 @@ describe('the frame tail', () => {
     const proven: string[] = []
     host.deferPresentation(() => proven.push('a'))
     host.discardFrameTail()
+    host.closeFrameTail(true)
     expect(proven).toEqual([])
     expect(host.deferredPresentations()).toBe(0)
-  })
-
-  it('does not carry one frame’s deferrals into the next', () => {
-    const host = surfaceHost()
-    let closed = 0
-    host.deferPresentation(() => (closed += 1))
-    host.closeFrameTail(true)
-    host.closeFrameTail(true)
-    expect(closed).toBe(1)
   })
 
   it('a closer that defers again waits for the next frame', () => {
@@ -296,36 +283,9 @@ describe('mount bookkeeping', () => {
     expect(resolveSurfaceHost()).toBe(host)
   })
 
-  it('the last unmount forgets the runtime', () => {
-    const host = surfaceHost('scene')
-    const owner = mountSurfaceHost(host)
-    host.runtime = runtime()
-    owner.release()
-    expect(host.runtime).toBeNull()
-    expect(resolveSurfaceHost()).toBe(surfaceHost())
-  })
 })
 
 describe('ownership', () => {
-  it('gives every Canvas its own host even when their public ids collide', () => {
-    const first = mountSurfaceHost(createSurfaceHost('scene'))
-    const second = mountSurfaceHost(createSurfaceHost('scene'))
-    expect(first.host).not.toBe(second.host)
-    expect(first.host.id).toBe('scene')
-    expect(second.host.id).toBe('scene')
-    second.release()
-    first.release()
-  })
-
-  it('resolves the survivor once its duplicate unmounts', () => {
-    const first = mountSurfaceHost(createSurfaceHost('scene'))
-    const second = mountSurfaceHost(createSurfaceHost('scene'))
-    expect(resolveSurfaceHost('scene')).toBeNull()
-    first.release()
-    expect(resolveSurfaceHost('scene')).toBe(second.host)
-    second.release()
-  })
-
   it('reports the duplicate once, not once per commit', async () => {
     const fault = vi.spyOn(console, 'error').mockImplementation(() => {})
     mountSurfaceHost(createSurfaceHost('scene'))

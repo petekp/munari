@@ -101,8 +101,9 @@ scene declared before its first request is valid and stays quiet.
 
 ## Verify the behavior
 
-Run tests in their four homes, four typechecks, lint and package build. Browser
-checks are serial. Use the relevant maintained gate plus the new API fixtures;
+In a source checkout, follow `AGENTS.md` for test layout and retention rules.
+Run the relevant behavioral tests, four typechecks, lint and package build.
+Browser checks are serial. Select the gate that measures the affected behavior;
 require actual enhanced capability and test a separate no-flag profile.
 A zero-exit skip is not a pass. Inspect real pixels and input alongside status.
 Use native display density in visible Chrome checks. Run explicit lower/higher DPR

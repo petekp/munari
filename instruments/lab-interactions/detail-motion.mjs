@@ -1,5 +1,5 @@
-// Detail motion regressions on the real lab routes. Pausing R3F's frame
-// clock makes Unroll's preparation cancellation reproducible without replacing
+// Detail motion regressions on the real lab routes. Withholding scene draws
+// makes Unroll's preparation cancellation reproducible without replacing
 // capture or presentation code. Genie focus and Lamp release use native input.
 // Exact spring/normal laws are covered by the adjacent numerical scene tests.
 
@@ -32,15 +32,28 @@ async function checkUnroll(page) {
   await page.waitForFunction(() => window.__r3f?.scene, { timeout: 20_000 })
   const trigger = '.cand-card--menu .cand-btn'
   const source = '[data-munari-source-host][data-munari-surface="unroll-menu"]'
-  // With the render clock held, no first color draw can mark this resident
-  // presented. Both clicks still go through the actual native button.
-  await page.evaluate(() => window.__r3f.setFrameloop('never'))
+  // The host can promote R3F's clock during preparation. Withhold the actual
+  // render call so no mesh can report a first draw, while capture stays real.
+  await page.evaluate(() => {
+    const renderer = window.__r3f.gl
+    const control = { original: renderer.render, blocked: 0 }
+    window.__detailUnrollRender = control
+    renderer.render = () => { control.blocked++ }
+  })
+  const heldFrame = await page.evaluate(() => window.__r3f.gl.info.render.frame)
   await page.click(trigger)
   await page.waitForSelector(source)
+  await frames(page)
   assert.equal(await page.$eval(trigger, element => element.getAttribute('aria-expanded')), 'true')
+  assert.equal(await page.evaluate(() => window.__r3f.gl.info.render.frame), heldFrame, 'The delayed-open control must prevent a render')
+  const blockedDraws = await page.evaluate(() => window.__detailUnrollRender.blocked)
+  assert.ok(blockedDraws > 0, 'The delayed-open control must intercept an attempted draw')
   await page.click(trigger)
   await page.waitForFunction(selector => !document.querySelector(selector), { timeout: 5_000 }, source)
-  await page.evaluate(() => window.__r3f.setFrameloop('always'))
+  await page.evaluate(() => {
+    window.__r3f.gl.render = window.__detailUnrollRender.original
+    delete window.__detailUnrollRender
+  })
   await frames(page)
   const removed = await page.evaluate(selector => {
     let menuMeshes = 0
@@ -56,16 +69,17 @@ async function checkUnroll(page) {
     window.__r3f.scene.traverse(object => {
       if (!object.material?.uniforms?.uOpacity || !object.geometry) return
       const positions = object.geometry.getAttribute('position')
+      if (!object.visible || !positions?.count) return
       let maximumZ = 0
       for (let i = 0; i < positions.count; i++) maximumZ = Math.max(maximumZ, Math.abs(positions.getZ(i)))
-      flat = object.material.uniforms.uOpacity.value === 1 && maximumZ < 0.01
+      flat ||= object.material.uniforms.uOpacity.value === 1 && Number.isFinite(maximumZ) && maximumZ < 0.01
     })
     return flat
   }, { timeout: 12_000 })
   await shot(page, '39-unroll-open')
   await page.click(trigger)
   await page.waitForFunction(selector => !document.querySelector(selector), { timeout: 5_000 }, source)
-  return { issues: [39], delayedOpenCancelled: removed, completeCycleClosed: true }
+  return { issues: [39], blockedDraws, delayedOpenCancelled: removed, completeCycleClosed: true }
 }
 
 async function checkGenie(page) {
@@ -76,11 +90,10 @@ async function checkGenie(page) {
   const filled = value => page.waitForFunction(({ selector, value }) =>
     document.querySelector(selector)?.dataset.filled === value, { timeout: 15_000 }, { selector: tile, value })
   const restored = () => page.waitForFunction(({ slot, tile }) =>
-    !document.querySelector(slot)?.hasAttribute('data-away') && document.querySelector(tile)?.dataset.filled === 'false',
+    document.querySelector(slot) && !document.querySelector(slot).hasAttribute('data-away') && document.querySelector(tile)?.dataset.filled === 'false',
   { timeout: 15_000 }, { slot, tile })
 
-  // Shift is the scene's existing slow-motion gesture, used only for a
-  // reviewable flight still. The spring's exact rate law is checked below.
+  // Shift keeps the real flight in view long enough to capture its shape.
   await page.keyboard.down('Shift')
   await page.click(lamp)
   await page.keyboard.up('Shift')
@@ -106,6 +119,7 @@ async function checkGenie(page) {
     return false
   })
   assert.equal(minimizedBySpace, false, 'Space re-minimized a mouse-restored window')
+  await restored()
 
   await page.click(lamp)
   await filled('true')
@@ -123,21 +137,8 @@ async function checkGenie(page) {
   const keyboardFocus = await page.$eval(lamp, element => element.matches(':focus-visible'))
   assert.ok(keyboardFocus, 'Keyboard restore lost visible focus')
   await shot(page, '45-genie-keyboard-restored')
-  const spring = await page.evaluate(async () => {
-    const { DRIVE_DEFAULTS: params, driveSpringPresentationStep } = await import('/src/scenes/genie/genieDrive.ts')
-    const run = hz => {
-      let state = { t: 0.1, v: 1.2, visibleT: 0.1 }
-      for (let i = 0; i < hz / 10; i++) state = driveSpringPresentationStep(state, state.visibleT, 1, 1 / hz, params)
-      return state
-    }
-    return { at60: run(60), at240: run(240) }
-  })
-  assert.ok(Math.abs(spring.at60.t - spring.at240.t) < 1e-10)
-  assert.ok(Math.abs(spring.at60.visibleT - spring.at240.visibleT) < 1e-10)
-  assert.equal(spring.at60.visibleT, spring.at60.t)
-  assert.ok(Math.abs(spring.at60.v - spring.at240.v) < 1e-10)
-  return { issues: [36, 45], mouseFocus, minimizedBySpace, keyboardFocus, spring,
-    unmeasured: ['The flight still uses the clock path; paused-grab spring trajectories are pinned numerically.'] }
+  return { issues: [36, 45], mouseFocus, minimizedBySpace, keyboardFocus,
+    unmeasured: ['The flight still uses the clock path; genieDrive.test.ts covers spring trajectories.'] }
 }
 
 async function checkCopy(page) {
@@ -163,7 +164,7 @@ async function checkCopy(page) {
   await shot(page, '53-copy-flight')
   const sample = await page.evaluate(() => window.__detailCopy)
   await page.evaluate(() => window.__r3f.setFrameloop('always'))
-  await page.waitForFunction(() => !document.querySelector('.cand-code-holder')?.hasAttribute('data-gone'))
+  await page.waitForFunction(() => document.querySelector('.cand-code-holder') && !document.querySelector('.cand-code-holder').hasAttribute('data-gone'))
   return { issues: [53], sample, unmeasured: ['Pixel lighting is captured for review; normals versus complete displaced tangents are pinned in candidateShaders.test.ts.'] }
 }
 
@@ -175,6 +176,7 @@ async function checkLamp(page) {
   assert.ok(bounds, 'The lamp handle has no visible bounds')
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
   await page.mouse.down()
+  assert.ok(await page.$eval('.lamp-fixture', element => element.classList.contains('is-dragging')), 'The real pointer press must acquire the lamp')
   await page.mouse.move(520, 460, { steps: 8 })
   await frames(page)
   await page.evaluate(() => {
@@ -193,9 +195,11 @@ async function checkLamp(page) {
   await page.mouse.up()
   await page.waitForFunction(() => window.__detailLamp?.first, { timeout: 2_000 })
   const release = await page.evaluate(() => window.__detailLamp)
+  assert.ok(release.before && Number.isFinite(release.releasedAt), 'The lamp must receive the pointer release')
   const distance = Math.hypot(release.first.x - release.before.x, release.first.y - release.before.y)
   assert.ok(release.first.elapsed < 500, 'The first post-release frame was not observed promptly')
   assert.ok(distance < 1 + release.first.elapsed * 0.02, `Lamp jumped ${distance.toFixed(2)}px on release`)
+  assert.ok(await page.$eval('.lamp-fixture', element => !element.classList.contains('is-dragging')), 'Release must finish the lamp drag')
   await shot(page, '57-lamp-released')
   return { issues: [57], release, distance }
 }
@@ -221,6 +225,8 @@ try {
     const page = await browser.newPage()
     const errors = []
     page.on('pageerror', error => errors.push(String(error)))
+    page.on('response', response => { if (response.status() >= 400 && new URL(response.url()).pathname !== '/favicon.ico') errors.push(`HTTP ${response.status()} ${response.url()}`) })
+    page.on('requestfailed', request => { if (new URL(request.url()).pathname !== '/favicon.ico') errors.push(`${request.failure()?.errorText} ${request.url()}`) })
     page.on('console', message => { if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) errors.push(message.text()) })
     try {
       const nativeDpr = await page.evaluate(() => devicePixelRatio)

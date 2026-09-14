@@ -106,11 +106,4 @@ describe('composition with the eased progress', () => {
     expect(slope).toBeLessThan(0.01)
   })
 
-  it('reversal is free: the same progress always yields the same window value', () => {
-    // Rising through 0.4 and falling back through 0.4 read identically —
-    // choreography holds no state to unwind.
-    const rising = crossingRange(crossingProgress(0.4), 0.2, 0.6)
-    const falling = crossingRange(crossingProgress(0.4), 0.2, 0.6)
-    expect(rising).toBe(falling)
-  })
 })

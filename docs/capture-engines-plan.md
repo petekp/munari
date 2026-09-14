@@ -206,14 +206,15 @@ idle-zero gate depends on exactly that. What differs is the cost of a change
 and which changes signal: a compositor-only animation on a descendant never
 paints natively and captures continuously under snapDOM.
 
-**Parking geometry is two laws.** The relay's law is shared and already
-pinned by `tests/conformance/mapping/parkingCoincidence.test.ts`: viewport
+**Parking geometry is two laws.** The relay's law is shared: viewport
 origin, exact CSS size, in-document and on-screen, pointer-events cascade
 rooted at the element. The native ride's law is separate: the host hit-tests
 its children through its own transform, clips hits to its own box, and
 paints nothing of its own. A canvas gives that by platform #18 and #21. A div
 at `opacity: 0` gives the first and third; the second is unmeasured. An
-engine claims the law with `native: true`.
+engine claims the law with `native: true`. The former
+`parkingCoincidence.test.ts` was removed because its DOM stub did not compute
+layout. Current browser pointer and capture checks provide the relevant evidence.
 
 **Support stays two facts, and one of them already exists.** Status
 `supported` already folds in `reason`, and `Surface.HTML` already sets the

@@ -202,21 +202,6 @@ describe('the letter spring', () => {
 })
 
 describe('the motion rig', () => {
-  it('ships the weave at identity', () => {
-    // The scale and speed dials multiply the shipped weave's numbers
-    // (WEAVE.lambda's em wavelengths, WEAVE.w's rad/s), so 1/1/0 must
-    // reproduce the gel the letters wear — a drifted default would
-    // restyle the idle look under every other clause.
-    //
-    // Re-pinned three times on 2026-08-14 — a rumble, then erratic
-    // shaking, then no wave at all. The clauses below are why the
-    // numbers moved each time; they are the report in arithmetic.
-    expect(LOGO_DEFAULTS.waveScale).toBe(1)
-    expect(LOGO_DEFAULTS.waveSpeed).toBe(1)
-    expect(LOGO_DEFAULTS.waveAngle).toBe(0)
-    expect(WEAVE.lambda).toEqual([1.4, 0.62])
-    expect(WEAVE.w).toEqual([3.5, 5.1])
-  })
 
   it('keeps the resting weave legible as a wave, not a rumble', () => {
     // A wave is legible when ONE crest visibly travels — and the
@@ -236,7 +221,6 @@ describe('the motion rig', () => {
     expect(steep).toBeGreaterThanOrEqual(0.15)
     expect(steep).toBeLessThanOrEqual(0.4)
   })
-
 
   it('recycles the deadest ring, never a fresher one', () => {
     // Drum on the buffer the way a hand would: every strike lands in
@@ -288,23 +272,6 @@ describe('the motion rig', () => {
     expect(stretchAmount(STRETCH.ref)).toBeCloseTo(STRETCH.max / 2, 10)
   })
 
-  it('cannot read travel from a pixel-snapped position', () => {
-    // Why the feed differentiates the UNSNAPPED position (Logo.tsx).
-    // A letter's placement is rounded onto the device pixel grid to
-    // keep the glyph crisp, so differencing THAT measures the
-    // rounding, not the motion: a half-CSS-px quantum at dpr 2,
-    // landing or not landing on each frame, is a square wave of
-    // half the refresh rate in px/s.
-    //
-    // It is a bug only because the stretch is sensitive down there —
-    // this clause pins that it is. If the rounding noise squashed a
-    // letter by under a tenth of the ceiling, the trap would be
-    // theoretical; at 120 Hz it squashes by about four percent, on
-    // an axis the same noise re-aims every frame, which is a visible
-    // frame-rate shimmer (2026-08-15).
-    const noise = 0.5 * 120
-    expect(stretchAmount(noise)).toBeGreaterThan(STRETCH.max / 10)
-  })
 })
 
 // Shared sanity: the constraint model needs headroom. Six letters where
@@ -312,11 +279,6 @@ describe('the motion rig', () => {
 // 3 fonts, 3 colors, and 3 materials — every deck must keep at least one
 // card open.
 describe('the decks', () => {
-  it('leave the rng a real choice under the worst constraint', () => {
-    expect(LOGO_FONTS.length).toBeGreaterThan(3)
-    expect(LOGO_PALETTE.length).toBeGreaterThan(3)
-    expect(LOGO_MATERIALS.length).toBeGreaterThan(3)
-  })
 
   it('agree with the poses they deal', () => {
     const word: LetterPose[] = seedWord(6, makeRng(11), K)

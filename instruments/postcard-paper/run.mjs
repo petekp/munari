@@ -20,7 +20,6 @@ const observer={name:'paper-observer',enforce:'pre',transform(code,id){
   if(id.endsWith('/homeLight.ts'))code=replaceSource(code,'  material.uniforms.uLightHeight.value = lightHeight','  window.__paperLight = material\n  material.uniforms.uLightHeight.value = lightHeight')
   if(id.endsWith('/HomePostcardMesh.tsx')){
     const marker='  deformSurfaceGeometry(mesh.geometry,[HERO_W,HERO_H],(x,y)=>paperPoint(x,y,shape))'
-    assert.ok(code.includes(marker),'Paper observation point changed')
     code=replaceSource(code,marker,'  window.__paperShape = shape\n  window.__paperRipplePeak = Math.max(window.__paperRipplePeak ?? 0, shape.ripple)\n  window.__paperContact = {quiet:modes.quiet,edgeA,edgeB}\n'+marker)
     if(flat)code=replaceSource(code,'paperPoint(x,y,shape)','({x,y,z:0})')
   }
@@ -46,6 +45,17 @@ try{
     document.querySelector('.home-page').scrollTop+=holder.getBoundingClientRect().top-220
     window.__originalPaperInput=holder.querySelector('[data-api-live] input')
   })
+  if(flat)await page.evaluate(()=>{
+    const card=document.querySelector('.home-hero-holder').getBoundingClientRect()
+    const heading=document.querySelector('.home-masthead-title'),ink=heading.querySelector('.home-headline-html').getBoundingClientRect()
+    heading.style.transform=`translate(${card.x+card.width/2-ink.x-ink.width/2}px,${card.y+card.height/2-ink.y-ink.height/2}px)`
+    // The actual mask producer observes masthead size. Reflow the fixture so
+    // its moved native ink is captured before judging foreground coverage.
+    const masthead=document.querySelector('.home-masthead')
+    window.__paperPreviousInkRect=window.__paperLight.uniforms.uInkRect.value.toArray()
+    masthead.style.width=`${masthead.getBoundingClientRect().width-1}px`
+  })
+  if(flat)await page.waitForFunction(()=>window.__paperLight.uniforms.uInkRect.value.toArray().some((value,index)=>value!==window.__paperPreviousInkRect[index]))
   await page.screenshot({path:path.join(output,'native.png')})
   const client=await page.createCDPSession(),frames=[],acks=new Set()
   let recording=record
@@ -101,6 +111,7 @@ try{
   assert.equal(await page.evaluate(()=>document.querySelector('.home-hero-holder [data-api-live] input')===window.__originalPaperInput&&window.__originalPaperInput.value==='Paper still works'),true)
   if(record){
     await client.send('Page.stopScreencast');recording=false;await Promise.all([...acks]);client.off('Page.screencastFrame',onFrame)
+    assert.ok(frames.length>1&&frames.every((frame,index)=>Number.isFinite(frame.time)&&(index===0||frame.time>frames[index-1].time)),'A recording needs a nonempty sequence of advancing compositor frames')
     const lines=['ffconcat version 1.0']
     for(let i=0;i<frames.length;i++){
       const name=`frame-${String(i).padStart(4,'0')}.png`

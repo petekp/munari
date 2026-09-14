@@ -27,10 +27,6 @@ describe('the width a corner drag may ask for', () => {
     expect(resizeWidth(320, 9999)).toBe(PANEL_MAX_W)
   })
 
-  it('does not change when the viewport becomes smaller', () => {
-    expect(resizeWidth(PANEL_MAX_W, 0)).toBe(PANEL_MAX_W)
-  })
-
   it('never moves backwards as the hand moves forwards', () => {
     let last = 0
     for (let dx = -400; dx <= 400; dx += 3) {
@@ -203,10 +199,13 @@ describe('re-fitting a built extrusion — the rim follows without re-machining'
 
   it('does not compound: remapping always starts from the machined buffer', () => {
     const base = build(W0, H0)
+    const original = new Float32Array(base)
     const once = new Float32Array(base.length)
     const twice = new Float32Array(base.length)
     nineSlice(base, once, W0, H0, 400, 500)
+    nineSlice(base, twice, W0, H0, 500, 700)
     nineSlice(base, twice, W0, H0, 400, 500)
+    expect(base).toEqual(original)
     for (let i = 0; i < base.length; i++) expect(twice[i]).toBe(once[i])
   })
 

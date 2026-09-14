@@ -1,9 +1,7 @@
-// knobs-hz — frame-rate evidence for the knobs scene against a 120 Hz
-// budget (8.33 ms/frame). Not a gate yet: a reporter. The browser runs
-// HEADED with vsync and the frame-rate limiter off, so requestAnimation-
-// Frame free-runs. Deltas describe throughput under this workload, not
-// display cadence or isolated CPU/GPU duration. The 8.33ms reference is
-// one 120Hz frame interval, not a claim about observed display refresh.
+// knobs-hz — free-running RAF callback throughput for the Knobs workload.
+// The headed browser disables vsync and the frame-rate limit. Display FPS
+// and isolated CPU/GPU durations remain unmeasured. The 8.33ms reference
+// comes from one 120Hz display interval.
 //
 // Four phases, because the scene has four costs:
 //   idle  — the standing animation: art orbits, corona, light rig.
@@ -51,16 +49,22 @@ function stats(deltas) {
   const d = deltas.slice(5).sort((a, b) => a - b)
   const n = d.length
   if (!n) return null
+  // Unlimited RAF callbacks can share a timestamp. Keep zero intervals,
+  // but require the clock to advance across the sample.
+  if (d.some(value => !Number.isFinite(value) || value < 0))
+    throw new Error('frame observer returned a negative or non-finite delta')
   const q = (p) => d[Math.min(n - 1, Math.round(p * (n - 1)))]
   const mean = d.reduce((s, v) => s + v, 0) / n
+  if (!Number.isFinite(mean) || mean <= 0) throw new Error('frame observer clock did not advance')
   return {
-    frames: n,
+    samples: n,
     mean,
     p50: q(0.5),
     p95: q(0.95),
     p99: q(0.99),
     max: d[n - 1],
-    fps: 1000 / mean,
+    callbacksPerSecond: 1000 / mean,
+    zeroDeltas: d.filter(value => value === 0).length,
     over: (100 * d.filter((v) => v > BUDGET_MS).length) / n,
   }
 }
@@ -68,15 +72,16 @@ function stats(deltas) {
 function row(label, s) {
   const f = (v, w) => v.toFixed(2).padStart(w)
   return (
-    `  ${label.padEnd(6)} ${String(s.frames).padStart(6)}  ` +
+    `  ${label.padEnd(6)} ${String(s.samples).padStart(7)}  ` +
     `${f(s.mean, 7)} ${f(s.p50, 7)} ${f(s.p95, 7)} ${f(s.p99, 7)} ${f(s.max, 8)}  ` +
-    `${f(s.fps, 7)}  ${f(s.over, 6)}%`
+    `${f(s.callbacksPerSecond, 11)} ${String(s.zeroDeltas).padStart(5)}  ${f(s.over, 6)}%`
   )
 }
 
 let server, browser
 const deadline = setTimeout(() => {
   console.error('knobs-hz: hard 120s deadline hit')
+  browser?.process()?.kill('SIGKILL')
   process.exit(1)
 }, 120_000)
 
@@ -119,8 +124,9 @@ try {
   })
 
   await page.evaluate(() => {
-    const S = (window.__hz = { deltas: [], running: false, long: 0 })
+    const S = (window.__hz = { deltas: [], running: false, long: 0, raf: 0 })
     S.begin = () => {
+      if (S.running || S.raf) throw new Error('a timing phase is already running')
       S.deltas.length = 0
       S.long = 0
       S.running = true
@@ -133,12 +139,15 @@ try {
         if (!S.running) return
         if (prev) S.deltas.push(t - prev)
         prev = t
-        requestAnimationFrame(tick)
+        S.raf = requestAnimationFrame(tick)
       }
-      requestAnimationFrame(tick)
+      S.raf = requestAnimationFrame(tick)
     }
     S.end = () => {
       S.running = false
+      cancelAnimationFrame(S.raf)
+      S.raf = 0
+      S.long += S.obs?.takeRecords().length ?? 0
       S.obs?.disconnect()
       return { deltas: S.deltas.slice(), long: S.long }
     }
@@ -157,12 +166,17 @@ try {
   // Measured BEFORE the drag so the attribution is of the berth state,
   // not of whatever the drag left warm.
   await page.evaluate(() => {
-    document.querySelector('.knb-art').style.visibility = 'hidden'
+    const art = document.querySelector('.knb-page > .knb-art')
+    if (!art) throw new Error('the native Knobs artwork is missing')
+    window.__hz.art = art
+    window.__hz.artVisibility = art.style.visibility
+    art.style.visibility = 'hidden'
+    if (getComputedStyle(art).visibility !== 'hidden') throw new Error('artwork did not become hidden')
   })
   await sleep(300)
   const artless = await measure(3000)
   await page.evaluate(() => {
-    document.querySelector('.knb-art').style.visibility = ''
+    window.__hz.art.style.visibility = window.__hz.artVisibility
   })
   await sleep(300)
 
@@ -247,10 +261,10 @@ try {
   if (!sIdle || !sDrag || !sArt || !sOff) throw new Error('One or more phases recorded no frame samples')
 
   console.log(`knobs-hz: gpu = ${gpu}`)
-  console.log(`knobs-hz: reference ${BUDGET_MS} ms/frame, vsync off, dpr 2, 1440x900`)
+  console.log(`knobs-hz: RAF callback throughput; reference ${BUDGET_MS} ms, vsync off, dpr 2, 1440x900`)
   console.log(`knobs-hz: drag ${engaged ? `engaged (hue ${before} → ${mid} → ${after})` : 'DID NOT ENGAGE — the drag row measured nothing'}`)
   console.log(`knobs-hz: power toggle ${toggled ? 'engaged (power off)' : `DID NOT ENGAGE — power ${powerBefore} → ${powered}`}`)
-  console.log('  phase  frames  mean/ms  p50/ms  p95/ms  p99/ms   max/ms    ~fps   >8.33')
+  console.log('  phase  samples  mean/ms  p50/ms  p95/ms  p99/ms   max/ms  callbacks/s zeros   >8.33')
   console.log(row('idle', sIdle))
   console.log(row('drag', sDrag))
   console.log(row('art-', sArt))

@@ -109,6 +109,7 @@ const AGREE_FLOOR = 0.9
 let browser, server
 const deadline = setTimeout(() => {
   console.error('gallery-pointer: hard 150s deadline hit')
+  browser?.process()?.kill('SIGKILL')
   process.exit(1)
 }, 150_000)
 
@@ -135,7 +136,11 @@ try {
     () => 'drawElementImage' in document.createElement('canvas').getContext('2d'),
   )
   await probe.close()
-  if (!capable) skip(`Chrome at ${CHROME} has no drawElementImage`)
+  if (!capable) {
+    await browser.close()
+    browser = null
+    skip(`Chrome at ${CHROME} has no drawElementImage`)
+  }
 
   server = await createServer({ root: labRoot, logLevel: 'warn', server: { port: 0 } })
   await server.listen()
@@ -155,6 +160,11 @@ try {
   // The cards carry photographs. A crossing read before they decode shows a
   // blank card, and every clause below would agree about nothing.
   await sleep(2500)
+  const imagesReady = await page.evaluate(() => {
+    const images = [...document.querySelectorAll('.gallery-card img')]
+    return images.length > 0 && images.every(image => image.complete && image.naturalWidth > 0)
+  })
+  if (!imagesReady) throw new Error('gallery reference images did not decode')
 
   const scrub = async (v, settle = 500) => {
     await page.evaluate((value) => {
@@ -164,6 +174,8 @@ try {
       input.dispatchEvent(new Event('input', { bubbles: true }))
     }, v)
     await sleep(settle)
+    const actual = await page.$eval('.gallery-scrub', input => Number(input.value))
+    if (actual !== v) throw new Error(`scrub did not reach ${v}; it reports ${actual}`)
   }
 
   // ── which item is which ──────────────────────────────────────────────
@@ -312,6 +324,7 @@ try {
   await scrub(MID)
   const sheet = await page.evaluate(grab, G, H)
   const zoom = await page.evaluate(zoomNow)
+  if (!Number.isFinite(zoom) || zoom <= 0) throw new Error(`invalid arriving-page zoom: ${zoom}`)
   const atMid = await walk()
   const midItems = new Set([...atMid.values()].filter(Boolean))
   check(

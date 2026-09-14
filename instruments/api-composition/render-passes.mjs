@@ -24,7 +24,7 @@ try {
  assert.equal(result.mismatches,0);assert.ok(result.naiveMismatches>20)
  assert.equal(result.cameras.length,2);assert.equal(result.targets.length,2);assert.ok(result.targets.includes(null))
  await page.click('#companion-toggle')
- await page.waitForFunction(()=>window.__composition?.holds?.some(hold=>hold.presentation==='page')||window.__frameCompanion.frames>0)
+ await page.waitForFunction(()=>window.__frameCompanion.presentation==='page')
  await page.evaluate(()=>new Promise(resolve=>setTimeout(resolve,600)))
  const before=await page.evaluate(()=>window.__frameCompanion.callbacks)
  await page.evaluate(()=>new Promise(resolve=>setTimeout(resolve,200)))

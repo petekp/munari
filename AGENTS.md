@@ -52,16 +52,27 @@ carries its local rules; `docs/README.md` indexes what is canon.
 
 ## Conformance
 
-The kernel's behavior is defined by `tests/conformance/`, one
-directory per layer: **mapping → paint (pixels) → pointer (relay) →
-transfer (handoff) → chrome (measurement) → physics**. The suites are
-the specification — describe/it names, comments, and pinned numbers
-are all load-bearing. A law ships with the contract that pins it, and
-changing a law means changing its contract in the same commit. Some
-suites are named for the law they pin, not for a module — the
-conformance README maps each to its module.
+The retention rules here apply to unit tests, compile-only examples, and browser
+checks. Test count and coverage percentage are not retention goals.
 
-## Where tests live (four homes, only four)
+`tests/conformance/` checks the kernel's supported behavior, grouped by
+**mapping → paint → pointer → transfer → chrome → physics**. Each retained
+case must name a material behavior and detect a credible failure of it.
+Read the implementation and its consumers before accepting the test's claim.
+Existing assertions, comments, and historical numbers do not justify themselves.
+
+Keep fast tests for pure laws and tests that exercise real integration boundaries.
+Expected results must follow from the intended behavior or an independent
+measurement, rather than a second copy of the implementation. A public contract
+change updates its owning checks and decision entry. Removing redundant or
+vacuous assertions does not change that contract. See the conformance README
+for the layer map and decision #2 for the authority of these checks.
+
+Remove checks of retired behavior, self-comparisons, incidental source spellings,
+and unused reference implementations. Test static ownership boundaries and actual
+vendored-file identity directly, because their structure is the contract.
+
+## Where tests live
 
 - **core** → `tests/conformance/<layer>/`. Never beside the module — a
   test placed in `packages/core/src` fails the boundary test, and the
@@ -72,6 +83,9 @@ conformance README maps each to its module.
 - **registry** → `tests/registry/`, the byte-welds that keep vendorable
   copies identical to the lab reference. A welded file changes in both
   places in the same commit, or the weld test fails.
+- **instruments** → beside a shared measurement helper. These tests verify
+  the measurement itself with known good and deliberately faulty input;
+  browser runners verify the library and the real capture path.
 
 `tests/surfaceTypes.tsx` is the odd one: a compile-only API check, run
 by no test runner, wired invisibly through the root tsconfig include.
@@ -92,9 +106,9 @@ by no test runner, wired invisibly through the root tsconfig include.
 - Long files use `// ── section name ─────` rules.
 - Any non-const `as` assertion needs a `SAFETY:` comment saying why it
   holds (lint-enforced).
-- In conformance suites the comments ARE the contract (decisions.md
-  #2): adjusting a pinned number to make a test pass is a decision and
-  needs a ledger entry.
+- Test comments state the behavior and the limits of the evidence. A changed
+  browser tolerance needs new measurement and a decision entry; an existing
+  comment is not permission to weaken an assertion until it passes.
 
 ## Naming
 
@@ -138,6 +152,13 @@ each browser check's purpose and limits. Use the operating guide to select
 the relevant gate, then run the required broader checks. Keep GPU gates
 serial. Use `STRICT_CAPABILITY=1` when claiming the enhanced path passed,
 and verify the no-flag native path separately. A zero-exit skip is not a pass.
+
+Check that the runner discovered the intended cases. A passing measurement
+needs valid setup, actual observations, and an assertion that detects the
+claimed failure. Use deliberate faults for visual thresholds and capture
+coverage. Missing frames or unavailable capability leave a path unverified.
+State measurements do not prove pixels, and pixels do not prove input delivery.
+Treat local diagnostic probes separately from automated acceptance checks.
 
 For documentation-only changes, validate links, exported names, status
 labels, and affected examples; unrelated GPU runs add no evidence. Keep

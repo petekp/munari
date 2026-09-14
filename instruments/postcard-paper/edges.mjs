@@ -15,10 +15,8 @@ const observer={name:'postcard-edge-observer',enforce:'pre',transform(code,id){
   if(id.endsWith('/HomePostcard.tsx'))code=replaceSource(code,'gl={{ alpha: true }}','gl={{ alpha: true, preserveDrawingBuffer: true }}')
   if(id.endsWith('/HomePostcardMesh.tsx')){
     const marker='    const frameState = readSurfaceFrameState(surface)'
-    assert.ok(code.includes(marker))
     code=replaceSource(code,marker,'    if(window.__freezeEdgePose)return;\n'+marker)
     const pose='    const st = f.current\n    const a = aim.current'
-    assert.ok(code.includes(pose))
     code=replaceSource(code,pose,`    window.__setEdgePose=()=>{
       f.current.phase='afloat';f.current.t=1;f.current.still=1;
       group.position.set(sx,sy+HOVER_LIFT,0);group.rotation.set(-.22,-.06,-.035);
@@ -28,7 +26,6 @@ const observer={name:'postcard-edge-observer',enforce:'pre',transform(code,id){
   }
   if(id.endsWith('/HomeMasthead.tsx')){
     const marker='    pass.paper = createPaperLighting(renderer,pass.mesh.material)'
-    assert.ok(code.includes(marker))
     code=replaceSource(code,marker,marker+'\n    window.__edgeLight={renderer,draw:()=>state.draw()};')
   }
   return code
@@ -56,19 +53,23 @@ try{
   const capture=async(name)=>{const png=await page.screenshot({clip,encoding:'base64',captureBeyondViewport:false});await writeFile(path.join(output,`${name}.png`),Buffer.from(png,'base64'));return png}
   const native=await capture('native')
   const display=await page.evaluate(()=>({dpr:devicePixelRatio,lighting:window.__edgeLight.renderer.getPixelRatio(),antialias:window.__edgeLight.renderer.getContext().getContextAttributes().antialias}))
-  if(process.env.EDGE_BASELINE_ONLY==='1'){console.log(JSON.stringify({display,errors}));await writeFile(path.join(output,'results.json'),JSON.stringify({display,errors},null,2))}
+  if(process.env.EDGE_BASELINE_ONLY==='1'){console.log(JSON.stringify({mode:'baseline-capture',display,errors}));await writeFile(path.join(output,'results.json'),JSON.stringify({mode:'baseline-capture',display,errors},null,2));assert.deepEqual(errors,[])}
   else{
     assert.equal(display.lighting,display.dpr,'Paper lighting must retain native display density')
     assert.equal(display.antialias,true,'Geometry edges must have sample coverage')
     await page.evaluate(()=>{window.__edgeLight.renderer.setPixelRatio(devicePixelRatio*2);window.__edgeLight.draw()});await frames(page)
-    const allocation=await page.evaluate(()=>{const renderer=window.__edgeLight.renderer,gl=renderer.getContext();return {canvas:[renderer.domElement.width,renderer.domElement.height],buffer:[gl.drawingBufferWidth,gl.drawingBufferHeight]}})
+    const allocation=await page.evaluate(()=>{const renderer=window.__edgeLight.renderer,gl=renderer.getContext();return {ratio:renderer.getPixelRatio(),canvas:[renderer.domElement.width,renderer.domElement.height],buffer:[gl.drawingBufferWidth,gl.drawingBufferHeight]}})
+    assert.equal(allocation.ratio,display.dpr*2,'The supersampled density control must reach the actual draw')
+    assert.ok(allocation.buffer.every(value=>Number.isInteger(value)&&value>0),'The supersampled buffer must contain pixels')
     assert.deepEqual(allocation.canvas,allocation.buffer,'The supersampled drawing buffer must not be clamped')
     const reference=await capture('reference')
     await page.evaluate(()=>{window.__edgeLight.renderer.setPixelRatio(devicePixelRatio/2);window.__edgeLight.draw()});await frames(page)
+    assert.equal(await page.evaluate(()=>window.__edgeLight.renderer.getPixelRatio()),display.dpr/2,'The coarse density control must reach the actual draw')
     const coarse=await capture('coarse-control')
     const result=await page.evaluate(async({native,reference,coarse,clip})=>{
       const decode=async data=>{const bitmap=await createImageBitmap(new Blob([Uint8Array.from(atob(data),c=>c.charCodeAt(0))],{type:'image/png'}));const canvas=new OffscreenCanvas(bitmap.width,bitmap.height),ctx=canvas.getContext('2d');ctx.drawImage(bitmap,0,0);bitmap.close();return {data:ctx.getImageData(0,0,canvas.width,canvas.height).data,width:canvas.width,height:canvas.height}}
       const a=await decode(native),b=await decode(reference),c=await decode(coarse)
+      if(a.width!==b.width||a.height!==b.height||a.width!==c.width||a.height!==c.height)throw new Error('The edge comparison viewport changed')
       const source=document.querySelector('.home-canvas canvas'),rect=source.getBoundingClientRect(),mask=await decode(source.toDataURL().split(',')[1]),density=a.width/clip.width
       const alpha=(x,y)=>{const mx=Math.floor((clip.x+(x+.5)/density-rect.x)*mask.width/rect.width),my=Math.floor((clip.y+(y+.5)/density-rect.y)*mask.height/rect.height);return mx<0||my<0||mx>=mask.width||my>=mask.height?0:mask.data[(my*mask.width+mx)*4+3]}
       let samples=0,nativeError=0,coarseError=0

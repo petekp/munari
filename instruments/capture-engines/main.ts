@@ -17,7 +17,10 @@
 import {
   captureEngine,
   createDomTextureSource,
+  holdMotion,
+  matchMotion,
   paintStats,
+  releaseMotion,
   setCaptureEngine,
   type DomTextureSource,
 } from '@munari/core'
@@ -292,6 +295,86 @@ async function run(): Promise<EngineReport> {
   }
 }
 
+async function nativeRaster(fault: 'none' | 'transform-x' | 'transform-y' | 'clear') {
+  const source = createDomTextureSource(
+    '<div style="width:80px;height:40px"><div data-block style="width:80px;height:40px;display:grid;grid-template-columns:40px 40px;grid-template-rows:20px 20px"><div style="background:red"></div><div style="background:lime"></div><div style="background:blue"></div><div style="background:yellow"></div></div></div>',
+    80, 40, { scale: 2 },
+  )
+  const context = source.canvas.getContext('2d')!
+  const setTransform = context.setTransform.bind(context)
+  const clearRect = context.clearRect.bind(context)
+  try {
+    // Force the two former failure modes through the real native raster.
+    if (fault === 'transform-x') context.setTransform = () => setTransform(2, 0, 0, 1, 0, 0)
+    if (fault === 'transform-y') context.setTransform = () => setTransform(1, 0, 0, 2, 0, 0)
+    if (fault === 'clear') context.clearRect = () => clearRect(0, 0, 80, 40)
+    await waitFor(() => source.painted(), 10_000, 'native raster at double density')
+    const fidelity = Math.max(
+      channelError(samplePixel(source, 0.25, 0.25), [255, 0, 0, 255]),
+      channelError(samplePixel(source, 0.75, 0.25), [0, 255, 0, 255]),
+      channelError(samplePixel(source, 0.25, 0.75), [0, 0, 255, 255]),
+      channelError(samplePixel(source, 0.75, 0.75), [255, 255, 0, 255]),
+    )
+    const before = source.paintCount()
+    source.element.querySelector('[data-block]')!.remove()
+    source.repaint()
+    await waitFor(() => source.paintCount() > before, 10_000, 'transparent native repaint')
+    const unclearedAlpha = samplePixel(source, 0.75, 0.75)[3]
+    return { fault, fidelity, unclearedAlpha }
+  } finally {
+    context.setTransform = setTransform
+    context.clearRect = clearRect
+    source.dispose()
+  }
+}
+
+async function mixedMotion() {
+  const style = document.createElement('style')
+  style.textContent = '.gate-motion-pair{width:80px;height:20px;animation:gate-pair-travel 4s linear infinite;transition:opacity 2s linear}@keyframes gate-pair-travel{from{transform:translateX(0)}to{transform:translateX(120px)}}'
+  const original = document.createElement('div')
+  original.className = 'gate-motion-pair'
+  let copy: HTMLElement | null = null
+  let held: Animation[] = []
+  const describe = (animation: Animation) => ({
+    kind: animation instanceof CSSAnimation ? 'keyframe' : animation instanceof CSSTransition ? 'transition' : 'other',
+    name: animation instanceof CSSAnimation ? animation.animationName : animation instanceof CSSTransition ? animation.transitionProperty : null,
+    state: animation.playState,
+    time: animation.currentTime,
+  })
+  document.head.append(style)
+  document.body.append(original)
+  try {
+    await waitFor(() => original.getAnimations().some(animation => animation instanceof CSSAnimation), 2000, 'the original keyframe animation')
+    await new Promise(requestAnimationFrame)
+    original.style.opacity = '0.2'
+    await waitFor(() => original.getAnimations().some(animation => animation instanceof CSSTransition), 2000, 'the original opacity transition')
+    const effects = original.getAnimations()
+    const keyframe = effects.find(animation => animation instanceof CSSAnimation)
+    const transition = effects.find(animation => animation instanceof CSSTransition)
+    if (!keyframe || !transition) throw new Error('The mixed-motion fixture requires both real CSS effects')
+    held = holdMotion(original)
+    await Promise.all(held.map(animation => animation.ready))
+    keyframe.currentTime = 683
+    transition.currentTime = 284
+    const clone = original.cloneNode(true)
+    if (!(clone instanceof HTMLElement)) throw new Error('Cloning the motion element must preserve its element type')
+    copy = clone
+    document.body.append(copy)
+    const before = { original: original.getAnimations().map(describe), copy: copy.getAnimations().map(describe) }
+    matchMotion(original, copy)
+    const matched = copy.getAnimations().map(describe)
+    releaseMotion(held)
+    held = []
+    await Promise.all([...original.getAnimations(), ...copy.getAnimations()].map(animation => animation.ready))
+    return { before, matched, released: { original: original.getAnimations().map(describe), copy: copy.getAnimations().map(describe) } }
+  } finally {
+    releaseMotion(held)
+    original.remove()
+    copy?.remove()
+    style.remove()
+  }
+}
+
 /**
  * Capture the field fixture and hand back its pixels.
  *
@@ -370,6 +453,8 @@ interface CaptureEngines {
   available: boolean
   run: () => Promise<EngineReport>
   fields: () => Promise<FieldPixels>
+  nativeRaster: typeof nativeRaster
+  mixedMotion: typeof mixedMotion
 }
 
 declare global {
@@ -379,7 +464,7 @@ declare global {
 }
 
 const available = captureEngine().available()
-window.__captureEngines = { ready: true, requested, available, run, fields: fieldPixels }
+window.__captureEngines = { ready: true, requested, available, run, fields: fieldPixels, nativeRaster, mixedMotion }
 
 const hud = document.getElementById('hud')!
 hud.innerHTML = available

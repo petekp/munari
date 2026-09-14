@@ -277,7 +277,8 @@ async function requirePlainLayout(page, label, captured = true) {
     layout.x + layout.workWidth <= layout.width + 1 &&
     layout.y + layout.workHeight <= layout.height + 1 && !layout.pageOverflow,
   `${label}: text area is not centered within the viewport: ${JSON.stringify(layout)}`)
-  requireThat(layout.background === 'rgb(229, 221, 234)' && layout.backgroundImage === 'none' &&
+  const authoredBackground = `rgb(${hexRgb(plumeTuning.backgroundColor).join(', ')})`
+  requireThat(layout.background === authoredBackground && layout.backgroundImage === 'none' &&
     layout.sheetBackground === 'rgba(0, 0, 0, 0)' && layout.sheetImage === 'none' &&
     layout.border.every((width) => width === '0px') && layout.shadow === 'none' &&
     layout.oldChrome === 0 && !layout.open && layout.measureHidden,
@@ -400,6 +401,7 @@ async function sampleFlight(page, age, name, isolate = false) {
     for (let index = 0; index < releases.length; index += 4) {
       if (releases[index] < 1e8) release = Math.max(release, releases[index])
     }
+    if (!Number.isFinite(release)) throw new Error('no released ink to sample')
     await new Promise((resolve, reject) => {
       const deadline = performance.now() + 12_000
       const tick = () => {
@@ -414,6 +416,7 @@ async function sampleFlight(page, age, name, isolate = false) {
     const context = renderer.getContext()
     const width = context.drawingBufferWidth
     const height = context.drawingBufferHeight
+    if (context.isContextLost() || width <= 0 || height <= 0) throw new Error('unreadable plume framebuffer')
     const pixels = new Uint8Array(width * height * 4)
     const read = () => {
       // Read only a finished, real default-framebuffer draw. A deferred
@@ -421,6 +424,9 @@ async function sampleFlight(page, age, name, isolate = false) {
       renderer.setRenderTarget(null)
       renderer.render(state.scene, state.camera)
       context.readPixels(0, 0, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
+      if (context.isContextLost() || context.getError() !== context.NO_ERROR) {
+        throw new Error('plume framebuffer read failed')
+      }
       let visible = 0
       let totalAlpha = 0
       let alphaViolations = 0
@@ -491,8 +497,9 @@ async function sampleFlight(page, age, name, isolate = false) {
       }
       const original = { ...cloud.geometry.drawRange }
       try {
-        for (let index = 0; index < Math.min(16, candidates.length); index++) {
-          const cell = candidates[Math.floor(index * candidates.length / 16)]
+        const sampleCount = Math.min(16, candidates.length)
+        for (let index = 0; index < sampleCount; index++) {
+          const cell = candidates[Math.floor(index * candidates.length / sampleCount)]
           cloud.geometry.setDrawRange(cell * 6, 6)
           const sprite = read()
           if (sprite.visible >= 2) sprites.push({ ...sprite, cell })
@@ -814,7 +821,8 @@ async function verifyShortTimingAndReset(page) {
   await requireNativeText(page, text, false)
   await requirePlainLayout(page, 'reset tuning')
   const restoredEffects = await page.$$eval('.plume-effect input', (inputs) => inputs.map((input) => input.checked))
-  requireThat(restoredEffects.every((value, index) => value === Object.values(defaultPlumeEffects)[index]),
+  requireThat(restoredEffects.length === Object.keys(defaultPlumeEffects).length &&
+    restoredEffects.every((value, index) => value === Object.values(defaultPlumeEffects)[index]),
     'Reset all did not restore the effect switches')
 }
 
@@ -872,7 +880,7 @@ async function verifyColorRetention(page) {
   requireThat(tinted.chroma > 0.12 && hueGap(tinted.hue, swatchHue) <= 20,
     `full tint did not reach the particle swatch: ${JSON.stringify(measured)}`)
   await setNumber(page, 'tint', 0)
-  await replaceField(page, '[data-plume-color-hex="backgroundColor"]', '#e5ddea')
+  await replaceField(page, '[data-plume-color-hex="backgroundColor"]', plumeTuning.backgroundColor)
   await setPanelOpen(page, false)
   return { kept: kept.hue, tinted: tinted.hue, ink: inkHue, swatch: swatchHue }
 }
@@ -993,6 +1001,7 @@ async function verifyMobile(instance, url) {
 async function verifyFallback(url, headless) {
   fallbackBrowser = await launch(headless, false)
   if (await capable(fallbackBrowser)) {
+    if (strict) throw new Error('no-flag fallback is untested: Chrome exposes HTML-in-canvas without the flag')
     console.warn('plume no-flag clause SKIPPED: Chrome already has HTML-in-canvas without the flag')
     return false
   }
@@ -1006,8 +1015,11 @@ async function verifyFallback(url, headless) {
   await putCaretAtEnd(page)
   await requireNativeText(page, text)
   requireThat(await page.$('.plume-canvas') === null, 'no-flag route mounted a WebGL overlay')
-  await page.waitForFunction(() => [...document.querySelectorAll('.plume-mirror .plume-word')]
-    .every((word) => word.dataset.phase !== 'held' && Number(getComputedStyle(word).opacity) < 0.001),
+  await page.waitForFunction(() => {
+    const words = [...document.querySelectorAll('.plume-mirror .plume-word')]
+    return words.length > 0 && words.every((word) =>
+      word.dataset.phase !== 'held' && Number(getComputedStyle(word).opacity) < 0.001)
+  },
   { timeout: plumeTuning.holdMs + 3000 })
   await requireNativeText(page, text)
   await act(page, restoreSelector)
@@ -1098,7 +1110,7 @@ async function run() {
   const mobile = await verifyMobile(browser, url)
   const fallback = await verifyFallback(url, headless)
   requireThat(errors.length === 0, `browser errors: ${errors.join('\n')}`)
-  console.log(`plume gate PASSED: ${frames.map((frame) => `${frame.age.toFixed(2)}s ${frame.visible}px`).join(', ')}; ` +
+  console.log(`plume gate ${fallback ? 'PASSED' : 'PARTIAL'}: ${frames.map((frame) => `${frame.age.toFixed(2)}s ${frame.visible}px`).join(', ')}; ` +
     `${sprites.length} isolated round sprites, longest edge ${Math.max(...sprites.map((sprite) => Math.max(sprite.width, sprite.height)))}px, valid premultiplied alpha; ` +
     `native value and caret retained; same-buffer Restore ${before.last.toFixed(2)} → ${replay.last.toFixed(2)}s; ` +
     `${labels.join(', ')} controls; reduced-motion dissolve ${reducedPixels}px; Clear; ` +

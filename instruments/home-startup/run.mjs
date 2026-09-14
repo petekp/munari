@@ -12,28 +12,48 @@ import {setChromeViewport} from '../chromeViewport.mjs'
 
 const root = path.resolve(import.meta.dirname, '../../apps/lab')
 const output = process.env.STARTUP_OUTPUT ?? path.join(tmpdir(), 'munari-home-startup')
+const cases = [
+  {name: 'desktop'},
+  {name: 'mobile-slow-fonts', width: 390, height: 844, fontDelay: 700},
+  {name: 'native-capture-fallback', capture: false},
+  {name: 'no-webgl-font-failure', capture: false, webgl: false, brokenFonts: true},
+  {name: 'stalled-shadow-worker', stalledWorker: true},
+  {name: 'early-reveal-control', early: true},
+  {name: 'animated-entrance', reduced: false},
+]
+const selected = process.env.STARTUP_CASES?.split(',').map(name=>name.trim())
+if(selected)assert.ok(selected.length>0&&selected.every(name=>cases.some(scenario=>scenario.name===name)),'STARTUP_CASES must name existing cases')
+
 await mkdir(output, {recursive: true})
 await build({root, logLevel: 'warn'})
 const server = await preview({root, logLevel: 'warn', preview: {host: '127.0.0.1', port: 0}})
 const url = `http://127.0.0.1:${server.httpServer.address().port}`
+const appSource=await readFile(path.join(root,'src/App.tsx'),'utf8')
+const otherDemoChunks=[...new Set([...appSource.matchAll(/import\(['"]\.\/scenes\/([^'"]+)['"]\)/g)].map(match=>path.basename(match[1])))]
+assert.ok(otherDemoChunks.length>0,'The probe must discover the other scene entries before checking their requests')
 const results = []
 let browser
 
-function assertOpening(result, {early, reduced, capture, webgl, stalledWorker}) {
-  const {content, states, pixels, maximumShadowChange, scripts, errors} = result
+function assertOpening(result, {early, reduced, capture, webgl, stalledWorker, fontDelay, brokenFonts}) {
+  const {content, states, pixels, maximumShadowChange, scripts, errors, controls} = result
   const exposed = states.filter(state => state.home && state.exposed)
   const complete = states.findLast(state => state.home)
   assert.ok(exposed.length && pixels.length > 1, 'The opening and its visible aftermath must be observed')
   assert.ok(pixels.every(frame => Number.isFinite(frame.error)), 'Every sampled shadow region must contain valid pixels')
   assert.equal(exposed.some(state => !state.ready), early, 'Only the control may expose an unfinished page')
   if (reduced) assert.equal(maximumShadowChange > .01, early, 'Only the control may change its resting button shadow after reveal')
-  if (!early) for (const name of ['heading', 'card']) for (const key of ['x', 'y', 'width', 'height']) {
-    assert.ok(Math.abs(exposed[0][name][key] - complete[name][key]) <= 1, `${name}.${key} moved after reveal`)
+  if (!early) for (const state of exposed) for (const name of ['heading', 'card']) for (const key of ['x', 'y', 'width', 'height']) {
+    assert.ok(Math.abs(state[name][key] - complete[name][key]) <= 1, `${name}.${key} moved after reveal`)
   }
   assert.equal(content.capture, capture)
   assert.equal(content.lit, webgl && !stalledWorker)
   assert.equal(content.overflow, false)
-  assert.ok(!scripts.some(script => /\/assets\/(Flight|Genie|Knobs|MarbleHand|Plume)-/.test(script)), 'Home must not fetch other demos')
+  assert.ok(!scripts.some(script => otherDemoChunks.some(name=>script.startsWith(`/assets/${name}-`))), 'Home must not fetch other demos')
+  assert.ok(controls.entryDelayed>0,'The delayed entry control must intercept the actual entry script')
+  if(early)assert.ok(controls.workerDelayed>0&&controls.forcedReveal,'The early-reveal control must remove a cover while delaying the actual worker')
+  if(stalledWorker)assert.ok(controls.workerStalled>0,'The stalled-worker control must intercept the actual worker')
+  if(fontDelay)assert.ok(controls.fontsDelayed>0,'The font-delay control must intercept a requested font')
+  if(brokenFonts)assert.ok(controls.fontsFailed>0,'The font-failure control must abort a requested font')
   if (!webgl || stalledWorker) assert.notEqual(content.colour, 'rgba(0, 0, 0, 0)')
   assert.deepEqual(errors, [])
 }
@@ -49,6 +69,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
       '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(!webgl ? ['--disable-webgl'] : [])],
   })
   const page = await browser.newPage(), errors = [], requests = [], frames = []
+  const controls={entryDelayed:0,workerDelayed:0,workerStalled:0,fontsDelayed:0,fontsFailed:0}
   await setChromeViewport(page, {width, height})
   await page.emulateMediaFeatures([{name: 'prefers-reduced-motion', value: reduced ? 'reduce' : 'no-preference'}])
   await page.setCacheEnabled(false)
@@ -58,14 +79,14 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
     const requested = new URL(request.url())
     requests.push(requested.pathname)
     if (requested.pathname.includes('/homeReliefWorker-')) {
-      if (stalledWorker) { await request.respond({status: 200, contentType: 'application/javascript', body: "addEventListener('message',()=>{})"}); return }
-      if (early) await delay(1000)
+      if (stalledWorker) { controls.workerStalled++;await request.respond({status: 200, contentType: 'application/javascript', body: "addEventListener('message',()=>{})"}); return }
+      if (early) { controls.workerDelayed++;await delay(1000) }
     }
     if (requested.pathname.endsWith('.woff2') && requested.origin === url) {
-      if (brokenFonts) { await request.abort(); return }
-      if (fontDelay) await delay(fontDelay)
+      if (brokenFonts) { controls.fontsFailed++;await request.abort(); return }
+      if (fontDelay) { controls.fontsDelayed++;await delay(fontDelay) }
     }
-    if (/\/assets\/index-[^/]+\.js$/.test(requested.pathname)) await delay(180)
+    if (/\/assets\/index-[^/]+\.js$/.test(requested.pathname)) { controls.entryDelayed++;await delay(180) }
     await request.continue()
   })
   await page.evaluateOnNewDocument(early => {
@@ -88,6 +109,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
       const heading = doc?.querySelector('#root h1')
       if (early && heading && !forced) {
         forced = true
+        window.__forcedStartupReveal=Boolean(document.getElementById('site-opening'))
         document.getElementById('site-opening')?.remove()
         delete document.documentElement.dataset.opening
         document.getElementById('root')?.removeAttribute('inert')
@@ -129,7 +151,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
     page.evaluate(() => {
       window.__stopStartup = true
       const frame = { x: 0, y: 0 }
-      return {origin: performance.timeOrigin, paint: performance.getEntriesByName('first-paint')[0].startTime, states: window.__startup, frame, width: innerWidth}
+      return {origin: performance.timeOrigin, paint: performance.getEntriesByName('first-paint')[0].startTime, states: window.__startup, forcedReveal:window.__forcedStartupReveal===true, frame, width: innerWidth}
     }),
     frame.evaluate(() => ({
       capture: 'drawElementImage' in CanvasRenderingContext2D.prototype,
@@ -142,6 +164,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
   const scripts = [...new Set(requests.filter(request => request.startsWith('/assets/') && request.endsWith('.js')))]
   const scriptBytes = (await Promise.all(scripts.map(script => readFile(path.join(root, 'dist', script))))).reduce((sum, file) => sum + file.length, 0)
   const visible = frames.filter(frame => frame.time >= timing.origin + timing.paint)
+  assert.ok(visible.length>1&&visible.every(frame=>Number.isFinite(frame.time)),'The recorder must deliver timestamped compositor frames')
   await Promise.all(visible.map((frame, index) => writeFile(path.join(directory, `frame-${String(index).padStart(3, '0')}.jpg`), Buffer.from(frame.data, 'base64'))))
   const exposed = timing.states.filter(state => state.home && state.exposed)
   const pixels = await page.evaluate(async ({frames, timing, button, mobile}) => {
@@ -185,26 +208,17 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
     return metrics
   }, {frames: visible, timing, button: content.button, mobile: width < 800})
   const maximumShadowChange = Math.max(...pixels.map(frame => frame.error))
-  const result = {name, content, scripts, scriptBytes, states: timing.states, pixels, maximumShadowChange, imageViewport: visible.at(-1)?.width, errors}
+  const result = {name, content, scripts, scriptBytes, states: timing.states, pixels, maximumShadowChange, controls:{...controls,forcedReveal:timing.forcedReveal}, imageViewport: visible.at(-1)?.width, errors}
   await writeFile(path.join(directory, 'results.json'), JSON.stringify(result, null, 2))
-  assertOpening(result, {early, reduced, capture, webgl, stalledWorker})
+  assertOpening(result, {early, reduced, capture, webgl, stalledWorker, fontDelay, brokenFonts})
   console.log(JSON.stringify({name, firstVisibleMs: exposed[0].time, maximumShadowChange, frames: pixels.length, scriptBytes}))
   results.push(result)
   await client.detach(); await browser.close(); browser = null
 }
 
 try {
-  const cases = [
-    {name: 'desktop'},
-    {name: 'mobile-slow-fonts', width: 390, height: 844, fontDelay: 700},
-    {name: 'native-capture-fallback', capture: false},
-    {name: 'no-webgl-font-failure', capture: false, webgl: false, brokenFonts: true},
-    {name: 'stalled-shadow-worker', stalledWorker: true},
-    {name: 'early-reveal-control', early: true},
-    {name: 'animated-entrance', reduced: false},
-  ]
-  const selected = process.env.STARTUP_CASES?.split(',')
   for (const scenario of cases) if (!selected || selected.includes(scenario.name)) await measure(scenario)
+  assert.ok(results.length>0,'At least one startup case must produce evidence')
   await writeFile(path.join(output, 'results.json'), JSON.stringify(results, null, 2))
 } finally {
   await browser?.close()

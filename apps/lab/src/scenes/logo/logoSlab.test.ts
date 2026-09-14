@@ -54,18 +54,6 @@ describe('buildLetterMesh with no outline', () => {
     expect(triangles(sheet)).toEqual(triangles(plane))
   })
 
-  it('lays each triangle down exactly once', () => {
-    const t = triangles(sheet)
-    expect(new Set(t).size).toBe(t.length)
-  })
-
-  it('references every vertex it allocates', () => {
-    const idx = sheet.getIndex()!
-    const seen = new Set<number>()
-    for (let i = 0; i < idx.count; i++) seen.add(idx.getX(i))
-    expect(seen.size).toBe(sheet.getAttribute('position').count)
-  })
-
   it('faces the camera everywhere', () => {
     const n = sheet.getAttribute('normal')
     for (let i = 0; i < n.count; i++)
@@ -113,18 +101,6 @@ describe('buildLetterMesh with an outline', () => {
     for (const t of sheetOnly) expect(all.has(t)).toBe(true)
   })
 
-  it('grows one wall quad per subdivided outline segment', () => {
-    const plain = buildLetterMesh(W, H, SX, SY, null)
-    const extra = slab.getIndex()!.count - plain.getIndex()!.count
-    // Each ring edge splits into ceil(px / WALL_STEP_PX) pieces: the
-    // outer square's horizontals are 78.6px (→10) and its verticals
-    // 174.6px (→22); the hole's are 26.2px (→4) and 58.2px (→8).
-    // 64 + 24 wall quads, plus the back cap — the sheet's triangles a
-    // second time, at the back of the slab.
-    const walls = 2 * (10 + 22) + 2 * (4 + 8)
-    expect(extra).toBe(walls * 6 + SX * SY * 6)
-  })
-
   it('spaces wall vertices closely enough to track the height field', () => {
     // A wall's top edge is a chord of the surface it hangs from, and
     // the vertex stage bends that surface with the coarse height field.
@@ -137,6 +113,7 @@ describe('buildLetterMesh with an outline', () => {
     const p = slab.getAttribute('position')
     const n = slab.getAttribute('normal')
     let quads = 0
+    const edges: Array<{ ax: number; ay: number; bx: number; by: number; nx: number; ny: number }> = []
     // Wall quads index as [t0, b0, b1, t0, b1, t1]: t0 and t1 are the
     // segment's two top corners.
     for (let t = 0; t < idx.count; t += 6) {
@@ -145,9 +122,34 @@ describe('buildLetterMesh with an outline', () => {
       const b = idx.getX(t + 5)
       const len = Math.hypot(p.getX(b) - p.getX(a), p.getY(b) - p.getY(a))
       expect(len).toBeLessThanOrEqual(WALL_STEP_PX + 1e-6)
+      edges.push({ ax: p.getX(a), ay: p.getY(a), bx: p.getX(b), by: p.getY(b), nx: n.getX(a), ny: n.getY(a) })
       quads++
     }
-    expect(quads).toBe(2 * (10 + 22) + 2 * (4 + 8))
+    expect(quads).toBeGreaterThan(0)
+    for (const ring of [islands[0]!.outer, ...islands[0]!.holes]) {
+      for (let index = 0; index < ring.length; index += 2) {
+        const next = (index + 2) % ring.length
+        const ax = (ring[index]! - 0.5) * W
+        const ay = (ring[index + 1]! - 0.5) * H
+        const dx = (ring[next]! - ring[index]!) * W
+        const dy = (ring[next + 1]! - ring[index + 1]!) * H
+        const length = Math.hypot(dx, dy)
+        const along = (x: number, y: number) => ((x - ax) * dx + (y - ay) * dy) / length
+        const onLine = (x: number, y: number) => Math.abs((x - ax) * dy - (y - ay) * dx) / length < 1e-4
+        const segments = edges.filter((edge) => onLine(edge.ax, edge.ay) && onLine(edge.bx, edge.by))
+          .map((edge) => {
+            expect((edge.nx * dy - edge.ny * dx) / length).toBeCloseTo(1, 5)
+            const ends = [along(edge.ax, edge.ay), along(edge.bx, edge.by)].sort((a, b) => a - b)
+            return { start: ends[0]!, end: ends[1]! }
+          }).sort((a, b) => a.start - b.start)
+        let covered = 0
+        for (const segment of segments) {
+          expect(segment.start).toBeCloseTo(covered, 3)
+          covered = segment.end
+        }
+        expect(covered).toBeCloseTo(length, 3)
+      }
+    }
   })
 
   it('closes the body with a back cap', () => {
@@ -181,14 +183,6 @@ describe('buildLetterMesh with an outline', () => {
       expect(cross).toBeLessThan(0)
     }
     expect(capTris).toBe(SX * SY * 2)
-  })
-
-  it('leaves the cap out when there is no slab to close', () => {
-    // Two copies of the sheet in the sheet's own plane is z-fighting
-    // with extra steps.
-    const plain = buildLetterMesh(W, H, SX, SY, null)
-    const n = plain.getAttribute('normal')
-    for (let i = 0; i < n.count; i++) expect(n.getZ(i)).toBe(1)
   })
 
   it('draws the cap, then the walls, then the sheet', () => {

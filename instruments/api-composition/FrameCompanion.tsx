@@ -5,8 +5,8 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { WebGLRenderTarget, type Mesh } from 'three'
 import { Surface, useSurfaceBeforeRender } from '@petepetrash/munari'
 
-interface CompanionRecord {frames:number;mismatches:number;naiveMismatches:number;expected:number;naive:number;callbacks:number;drawX:number;maxPoseShiftPixels:number;passes:{camera:string;target:string|null}[];matrixSamples:number[];nodeCount:number}
-const record: CompanionRecord = { frames: 0, mismatches: 0, naiveMismatches: 0, expected: 0, naive: 0, callbacks: 0, drawX:0, maxPoseShiftPixels:0, passes: [], matrixSamples: [], nodeCount:0 }
+interface CompanionRecord {presentation:'page'|'scene'|null;frames:number;mismatches:number;naiveMismatches:number;expected:number;naive:number;callbacks:number;drawX:number;maxPoseShiftPixels:number;passes:{camera:string;target:string|null}[];matrixSamples:number[];nodeCount:number}
+const record: CompanionRecord = { presentation: null, frames: 0, mismatches: 0, naiveMismatches: 0, expected: 0, naive: 0, callbacks: 0, drawX:0, maxPoseShiftPixels:0, passes: [], matrixSamples: [], nodeCount:0 }
 function Follow({ companion }: { companion: React.RefObject<Mesh | null> }) {
   useFrame(() => { record.naive = record.expected })
   useSurfaceBeforeRender(frame => {
@@ -76,7 +76,7 @@ export function FrameCompanion() {
   return <section>
     <h2>Companion frame order</h2>
     <button id="companion-toggle" onClick={() => setInScene(value => !value)}>Toggle moving pair</button>
-    <Surface.Root canvasId="composed" inScene={inScene} timing={{settleMs:0,durationMs:1}}>
+    <Surface.Root canvasId="composed" inScene={inScene} timing={{settleMs:0,durationMs:1}} onPresentationChange={value=>{record.presentation=value}}>
       <Surface.HTML><div style={{width:80,height:40,background:'red'}}>Pose</div></Surface.HTML>
       <Surface.Scene><Pair /></Surface.Scene>
     </Surface.Root>

@@ -37,6 +37,7 @@ try {
    if(expectedTrusted)await page.waitForFunction(({x,y})=>document.elementFromPoint(x,y)?.closest('[data-api-live]'),{},p)
    await page.mouse.click(p.x,p.y)
    await page.waitForFunction(count=>window.__pointerProof.events.length>count,{},before)
+   assert.equal(await page.evaluate(()=>window.__pointerProof.events.length),before+1,'A click must be delivered exactly once')
    const event=await page.evaluate(()=>window.__pointerProof.events.at(-1))
    rows.push({which,event,point:p})
    assert.equal(event.target,'left');assert.equal(event.trusted,expectedTrusted)

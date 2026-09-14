@@ -63,6 +63,17 @@ if (!CHROME) skip('no Chrome executable found (set CHROME_PATH)')
 // handle, which is what turns "ERROR: 0:144" into a readable line.
 const INSTALL = () => {
   window.__glslFails = []
+  const state = { compiled: 0, linked: 0, programs: [] }
+  window.__glslState = () => ({
+    compiled: state.compiled,
+    linked: state.linked,
+    holds: document.querySelector('.logo-canvas')?.getAttribute('data-holds') === 'true',
+    letters: state.programs.filter(({ gl, program }) => gl.isProgram(program)).flatMap(({ gl, program }) => {
+      const slab = gl.getUniformLocation(program, 'uSlab')
+      const body = gl.getUniformLocation(program, 'uMeshFrac')
+      return slab && body ? [{ slab: gl.getUniform(program, slab), body: gl.getUniform(program, body) }] : []
+    }),
+  })
   const classes = [
     'WebGLRenderingContext' in globalThis ? WebGLRenderingContext : null,
     'WebGL2RenderingContext' in globalThis ? WebGL2RenderingContext : null,
@@ -76,6 +87,7 @@ const INSTALL = () => {
     const compileShader = C.prototype.compileShader
     C.prototype.compileShader = function (sh) {
       compileShader.call(this, sh)
+      state.compiled++
       if (!this.getShaderParameter(sh, this.COMPILE_STATUS)) {
         window.__glslFails.push({
           what: 'compile',
@@ -87,6 +99,8 @@ const INSTALL = () => {
     const linkProgram = C.prototype.linkProgram
     C.prototype.linkProgram = function (pr) {
       linkProgram.call(this, pr)
+      state.linked++
+      if (this.getProgramParameter(pr, this.LINK_STATUS)) state.programs.push({ gl: this, program: pr })
       // A link failure with both stages compiled is the OTHER half of
       // this class of bug: a varying written by one stage and read by
       // the other under a different type, or one too many of them.
@@ -118,6 +132,7 @@ function render(fail) {
 let server, browser
 const deadline = setTimeout(() => {
   console.error('shader-compile: hard 120s deadline hit')
+  browser?.process()?.kill('SIGKILL')
   process.exit(1)
 }, 120_000)
 
@@ -136,6 +151,20 @@ try {
   const port = server.config.server.port ?? server.httpServer.address().port
 
   const page = await browser.newPage()
+  const errors = []
+  page.on('pageerror', error => errors.push(String(error)))
+  page.on('console', message => {
+    if (message.type() === 'error' && !message.text().startsWith('Failed to load resource'))
+      errors.push(message.text())
+  })
+  const capable = await page.evaluate(() => 'drawElementImage' in document.createElement('canvas').getContext('2d'))
+  if (!capable) {
+    await browser.close()
+    browser = null
+    await server.close()
+    server = null
+    skip(`Chrome at ${CHROME} has no drawElementImage`)
+  }
   await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 })
   await page.evaluateOnNewDocument(INSTALL)
 
@@ -174,31 +203,37 @@ try {
   }
 
   const steps = [
-    ['the page at rest', async () => {}],
-    ['scene rendering', async () => page.click('.logo-renderer button[data-renderer="gl"]')],
+    ['the page at rest', async () => {}, state => !state.holds],
+    ['scene rendering', async () => page.click('.logo-renderer button[data-renderer="gl"]'), state => state.holds && state.letters.length > 0],
     // Extrusion is off by default and builds the slab material, so the
     // gate has to ask for it — the default-on states alone would have
     // left the letter's edge shader unproven.
-    ['extruded', async () => knob('extrude', 60)],
+    ['extruded', async () => knob('extrude', 60), state => state.holds && state.letters.some(letter => letter.slab > 0)],
     // Same reasoning, other direction: `body` now defaults to 0, so the
     // states above are the bump-only relief and the mesh body is the one
     // nothing reaches by default.
-    ['mesh body', async () => knob('body', 1)],
-    ['back to the page', async () => page.click('.logo-renderer button[data-renderer="html"]')],
+    ['mesh body', async () => knob('body', 1), state => state.holds && state.letters.some(letter => letter.body > 0)],
+    ['back to the page', async () => page.click('.logo-renderer button[data-renderer="html"]'), state => !state.holds],
   ]
   const seen = []
-  for (const [what, act] of steps) {
+  let compiled = 0
+  let linked = 0
+  for (const [what, act, reached] of steps) {
     await act()
     await sleep(1200)
+    const observed = await page.evaluate(() => window.__glslState())
     const fails = await page.evaluate(() => window.__glslFails.splice(0))
     for (const f of fails) seen.push({ what, f })
+    if (!reached(observed)) {
+      for (const { what: state, f } of seen) console.error(`[${state}]\n${render(f)}`)
+      throw new Error(`${what}: the shader walk did not reach its state: ${JSON.stringify(observed)}`)
+    }
+    compiled = observed.compiled
+    linked = observed.linked
     console.log(`  ${what.padEnd(22)} ${fails.length ? `${fails.length} FAILED` : 'ok'}`)
   }
 
-  clearTimeout(deadline)
-  await browser.close()
-  await server.close()
-
+  if (compiled === 0 || linked === 0) throw new Error('shader observer saw no compile/link activity')
   if (seen.length) {
     console.error('')
     for (const { what, f } of seen) {
@@ -207,13 +242,15 @@ try {
       console.error('')
     }
     console.error(`shader-compile gate FAILED: ${seen.length} shader(s) never became a program`)
-    process.exit(1)
+    throw new Error(`${seen.length} shader compilation or link failure(s)`)
   }
-  console.log('shader-compile gate PASSED: every shader the walk builds compiled and linked')
+  if (errors.length) throw new Error(`page errors: ${errors.join(' | ')}`)
+  console.log(`shader-compile gate PASSED: ${compiled} compile calls, ${linked} link calls; every requested state reached`)
 } catch (err) {
+  console.error('shader-compile gate FAILED:', err)
+  process.exitCode = 1
+} finally {
   clearTimeout(deadline)
   await browser?.close()
   await server?.close()
-  console.error('shader-compile gate FAILED:', err)
-  process.exit(1)
 }
