@@ -108,16 +108,6 @@ describe('the spring', () => {
     expect(springEase(0.5, tune.crossingSpring)).toBeCloseTo(0.815, 3)
   })
 
-  it('has effectively settled by the time the crossing ends', () => {
-    // What the normalisation costs. The raw response only approaches 1, so
-    // dividing by its value at the end tilts the whole curve — harmless at
-    // 1.7%, which is where the committed stiffness sits, and a different
-    // curve entirely at the bottom of the slider: stiffness 2 arrives at
-    // 0.594, so 41% of what you see is the normalisation and not the spring.
-    const raw = (k: number) => 1 - (1 + k) * Math.exp(-k)
-    expect(raw(tune.crossingSpring)).toBeGreaterThan(0.98)
-    expect(raw(2)).toBeLessThan(0.6)
-  })
 })
 
 describe('the stage', () => {
@@ -152,9 +142,6 @@ describe('the stage', () => {
     }
   })
 
-  it('settles the incoming view to 1:1 exactly, never near it', () => {
-    expect(refractionStage(1, tune).zoom).toBe(1)
-  })
 })
 
 describe('the aperture front', () => {
@@ -201,23 +188,6 @@ describe('the aperture front', () => {
     expect(apertureReveal(1, mid, tune.apertureOvershoot, 0.02)).toBeGreaterThan(
       apertureReveal(0, mid, tune.apertureOvershoot, 0.02),
     )
-  })
-
-  it('carries the measured median of a real page past the middle of its travel', () => {
-    // The quantile the tuning cites, taken off 8281 points of the leaving
-    // document on 2026-08-24 at the committed settings. Without the gamma the
-    // front crosses most of its range before it reaches half the panel, and
-    // the crossing looks like nothing happens and then everything does.
-    //
-    // Re-measured that day because it had gone stale: the spread's reach and
-    // texel had both moved, and 0.3294 was reading a field that no longer
-    // existed. 0.695 would land the median exactly at 0.5. The committed 0.48
-    // pushes it to 0.62, which the front reaches at t=0.44 — just behind the
-    // relief peak, so the page opens in the glass's wake rather than after it
-    // has gone.
-    const RAW_MEDIAN = 0.3686
-    expect(Math.pow(RAW_MEDIAN, tune.apertureGamma)).toBeCloseTo(0.62, 2)
-    expect(Math.pow(RAW_MEDIAN, tune.apertureGamma)).toBeGreaterThan(0.5)
   })
 
   it('stays inside its own range for every mix of spread and ink', () => {

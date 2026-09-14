@@ -1,12 +1,10 @@
 // Measure the complete lighting redraw, including shadow depth and paper shading.
 // The separate bulb/card renderers and CPU work are outside this GPU query.
-import assert from 'node:assert/strict'
 import {replaceSource} from './replaceSource.mjs'
 
 export function observeLightingDraw(code,id) {
   if(!id.endsWith('/HomeMasthead.tsx'))return code
   const begin='      pass.paper?.update(flyer.read())',end='      display.render(pass.scene, pass.camera, pass.paper)'
-  assert.ok(code.includes(begin)&&code.includes(end),'Lighting draw observation points changed')
   return replaceSource(replaceSource(code,begin,'      window.__readPaper = flyer.read\n      window.__homeGpuStart?.()\n'+begin),end,end+'\n      window.__homeGpuEnd?.()')
 }
 
@@ -25,7 +23,8 @@ export async function measureLightingDraw(page) {
       const gpu=extension&&!disjoint?queries.filter(query=>gl.getQueryParameter(query,gl.QUERY_RESULT_AVAILABLE)).map(query=>gl.getQueryParameter(query,gl.QUERY_RESULT)/1e6):[]
       queries.forEach(query=>gl.deleteQuery(query))
       const stats=values=>{const sorted=values.slice(8).sort((a,b)=>a-b);return {samples:sorted.length,p95:sorted[Math.floor(sorted.length*.95)]??null,max:sorted.at(-1)??null}}
-      resolve({frameMs:stats(times),gpuMs:stats(gpu),gpuTimer:Boolean(extension),disjoint:Boolean(disjoint)})
+      const gpuMs=stats(gpu)
+      resolve({frameMs:stats(times),gpuMs,gpuTimer:Boolean(extension),disjoint:Boolean(disjoint),gpuStatus:!extension?'unsupported':disjoint?'disjoint':gpuMs.samples?'measured':'unobserved'})
     }
     const tick=time=>{if(previous)times.push(time-previous);previous=time;if(++count<150)requestAnimationFrame(tick);else finish()}
     requestAnimationFrame(tick)

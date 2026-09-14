@@ -24,9 +24,9 @@
 // start of the crossing the sheet must change. At the end it must not,
 // because by then nothing of the leaving page is being drawn.
 //
-// The teeth for (1): both documents print the same shared clock, so a
-// full-resolution luminance sum over the sheet must move while the crossing
-// is parked at its end and nothing is touched.
+// For (1), both the arriving clock text and its footer pixels must change
+// while the crossing is parked near its end. Other moving pixels cannot
+// establish that the clock reached the texture.
 //
 // The teeth for (3), from Pete's report on 2026-08-22: count the meshes,
 // read the GL rect over the sheet, and ask the browser for a caret at thirty
@@ -119,6 +119,7 @@ const END = 0.999
 let browser, server
 const deadline = setTimeout(() => {
   console.error('refraction-arriving: hard 120s deadline hit')
+  browser?.process()?.kill('SIGKILL')
   process.exit(1)
 }, 120_000)
 
@@ -145,7 +146,11 @@ try {
     () => 'drawElementImage' in document.createElement('canvas').getContext('2d'),
   )
   await probe.close()
-  if (!capable) skip(`Chrome at ${CHROME} has no drawElementImage`)
+  if (!capable) {
+    await browser.close()
+    browser = null
+    skip(`Chrome at ${CHROME} has no drawElementImage`)
+  }
 
   server = await createServer({ root: labRoot, logLevel: 'warn', server: { port: 0 } })
   await server.listen()
@@ -173,6 +178,8 @@ try {
   const scrub = async (v, settle = 500) => {
     await page.evaluate(setScrub, v)
     await sleep(settle)
+    const actual = await page.$eval('.refraction-scrub', input => Number(input.value))
+    if (actual !== v) throw new Error(`scrub did not reach ${v}; it reports ${actual}`)
   }
 
   // Render once and read the sheet's own rect back in the SAME task: the
@@ -190,6 +197,21 @@ try {
     const y = Math.round((canvas.clientHeight - r.bottom) * dpr)
     const px = new Uint8Array(w * h * 4)
     gl.getContext().readPixels(x, y, w, h, 0x1908, 0x1401, px)
+    const clockHost = document.querySelector('[data-munari-source-host][data-munari-surface="refraction"][data-munari-part="arriving"]')
+    const clock = clockHost?.querySelector('.refraction-tick')
+    if (!clock) throw new Error('arriving clock is missing from the capture source')
+    const hostRect = clockHost.getBoundingClientRect()
+    // Footer bounds stay fixed when the digits change width.
+    const clockRect = clock.closest('.refraction-foot').getBoundingClientRect()
+    const clockBox = {
+      left: Math.max(0, Math.floor((clockRect.left - hostRect.left) * dpr)),
+      right: Math.min(w, Math.ceil((clockRect.right - hostRect.left) * dpr)),
+      top: Math.max(0, Math.floor((clockRect.top - hostRect.top) * dpr)),
+      bottom: Math.min(h, Math.ceil((clockRect.bottom - hostRect.top) * dpr)),
+    }
+    if (clockBox.right <= clockBox.left || clockBox.bottom <= clockBox.top)
+      throw new Error('arriving clock has no measurable pixel region')
+    const clockPixels = []
     const N = 12
     const cell = new Array(N * N).fill(0)
     const count = new Array(N * N).fill(0)
@@ -201,11 +223,14 @@ try {
     const fine = new Array(F * G).fill(0)
     const fineCount = new Array(F * G).fill(0)
     let opaque = 0
-    let sum = 0
     for (let i = 0; i < w * h; i++) {
       if (px[i * 4 + 3] > 200) opaque++
       const lum = px[i * 4] * 0.2126 + px[i * 4 + 1] * 0.7152 + px[i * 4 + 2] * 0.0722
-      sum += lum
+      const col = i % w
+      const row = h - 1 - Math.floor(i / w)
+      if (col >= clockBox.left && col < clockBox.right && row >= clockBox.top && row < clockBox.bottom) {
+        clockPixels.push(px[i * 4], px[i * 4 + 1], px[i * 4 + 2])
+      }
       const k = Math.floor((Math.floor(i / w) / h) * N) * N + Math.floor(((i % w) / w) * N)
       cell[k] += lum
       count[k]++
@@ -218,7 +243,7 @@ try {
       w,
       h,
       opaque,
-      sum,
+      clock: { text: clock.textContent, pixels: clockPixels },
       sig: cell.map((v, i) => v / (count[i] || 1)),
       fine: fine.map((v, i) => v / (fineCount[i] || 1)),
     }
@@ -376,10 +401,13 @@ try {
   const first = await page.evaluate(grab)
   await sleep(600)
   const second = await page.evaluate(grab)
+  const clockChanges = first.clock.pixels.filter((value, index) => value !== second.clock.pixels[index]).length
   check(
-    first.sum !== second.sum,
+    first.clock.text !== second.clock.text &&
+      first.clock.pixels.length === second.clock.pixels.length &&
+      clockChanges > 0,
     `the arriving document keeps painting while it is only being sampled ` +
-      `(luminance sum ${first.sum} → ${second.sum})`,
+      `(clock ${first.clock.text} → ${second.clock.text}; ${clockChanges} changed footer color values)`,
   )
 
   // ── the crossing lands back in the compositor's hold ──────────────────

@@ -15,17 +15,18 @@
 //
 // The trial is stubbed the same way core stubs it — no runner has it.
 //
-// No JSX: the runner only discovers `.test.ts`.
 import { createElement } from 'react'
 import { flushSync } from 'react-dom'
-import { hydrateRoot } from 'react-dom/client'
+import { hydrateRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setCaptureEngine, type CaptureEngine } from '@munari/core'
 import { supportsSurfaces, useSurfaceSupport } from './surfaceSupport'
 
 const containers: HTMLElement[] = []
+const roots: Root[] = []
 
 afterEach(() => {
+  flushSync(() => { for (const root of roots.splice(0)) root.unmount() })
   for (const container of containers.splice(0)) container.remove()
   setCaptureEngine(null)
   vi.unstubAllGlobals()
@@ -52,9 +53,9 @@ function hydrate() {
     seen.push(answer)
     return createElement('p', null, answer)
   }
-  const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const errors: unknown[] = []
   flushSync(() => {
-    hydrateRoot(container, createElement(Probe))
+    roots.push(hydrateRoot(container, createElement(Probe), { onRecoverableError: error => errors.push(error) }))
   })
   return { seen, errors, text: () => container.textContent }
 }
@@ -90,20 +91,13 @@ describe('useSurfaceSupport', () => {
     const { seen, errors, text } = hydrate()
     expect(seen[0]).toBe('no')
     expect(text()).toBe('yes')
-    expect(errors).not.toHaveBeenCalled()
-  })
-
-  it('settles once — a capability cannot change under a mounted page', () => {
-    stubTrial()
-    const { seen } = hydrate()
-    expect(seen.slice(1).every((answer) => answer === 'yes')).toBe(true)
-    expect(seen.length).toBeLessThanOrEqual(3)
+    expect(errors).toEqual([])
   })
 
   it('stays no throughout when the browser cannot present', () => {
     const { seen, errors, text } = hydrate()
     expect(new Set(seen)).toEqual(new Set(['no']))
     expect(text()).toBe('no')
-    expect(errors).not.toHaveBeenCalled()
+    expect(errors).toEqual([])
   })
 })

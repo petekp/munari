@@ -24,11 +24,9 @@ describe('plume word identity', () => {
   it('retains exact words and refreshes only the word being edited', () => {
     const first = reconcileUnits([], 'one quiet thought', 'word', 100, 900, 0)
     const second = reconcileUnits(first.units, 'one quieter thought', 'word', 500, 900, first.nextId)
-    expect(second.units.map((unit) => unit.id)).toEqual([
-      first.units[0]?.id,
-      'plume-unit-3',
-      first.units[2]?.id,
-    ])
+    expect(second.units[0]?.id).toBe(first.units[0]?.id)
+    expect(second.units[2]?.id).toBe(first.units[2]?.id)
+    expect(first.units.map((unit) => unit.id)).not.toContain(second.units[1]?.id)
     expect(second.units.map((unit) => unit.releaseAt)).toEqual([1000, 1400, 1000])
   })
 
@@ -125,8 +123,10 @@ describe('plume release grid', () => {
       },
     })
     const values = Array.from(grid.geometry.getAttribute('aRelease').array)
-    const cells = Array.from({ length: 8 }, (_, cell) => values[cell * 4])
-    expect(cells).toEqual([1e9, 1, 1, 1e9, 1e9, 1e9, 1e9, 1e9])
+    for (let cell = 0; cell < 8; cell++) {
+      const expected = cell === 1 || cell === 2 ? unit.releaseAt / 1000 : 1e9
+      expect(values.slice(cell * 4, cell * 4 + 4)).toEqual(Array(4).fill(expected))
+    }
     grid.geometry.dispose()
   })
 })

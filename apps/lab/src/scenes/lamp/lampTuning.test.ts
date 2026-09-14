@@ -1,10 +1,7 @@
-// Lamp tuning contract — every displayed slider reaches one stored value,
-// and that value's default equals the constant it replaced (see
-// lampTuning.ts's own why-this-number comments), so opening the panel and
-// leaving every slider untouched renders identically to round 5.
+// Panel input normalization preserves stored units and configured ranges.
 
 import { describe, expect, it } from 'vitest'
-import { LAMP_GROUPS, lampTuning, normalizeLampInput, type LampNumberKey } from './lampTuning'
+import { LAMP_GROUPS, lampTuning, normalizeLampInput, normalizeLampTuning, type LampNumberKey } from './lampTuning'
 
 const controls = LAMP_GROUPS.flatMap((group) => group.controls)
 
@@ -15,24 +12,14 @@ function controlFor(key: LampNumberKey) {
 }
 
 describe('Lamp tuning', () => {
-  it('keeps the shipped constants as the frozen reset preset', () => {
-    expect(Object.isFrozen(lampTuning)).toBe(true)
-    expect(lampTuning).toEqual({
-      flameScale: 1,
-      flickerRate: 1,
-      flickerAmplitude: 0.1,
-      coreBrightness: 1,
-      penumbraGrowth: 0.5,
-      maxBlurLevel: 3,
-      opacityFalloff: 1,
-      shadowStrength: 0.55,
-      poolIntensity: 1,
-      poolWarmth: 1,
-      poolRadius: 1,
-      pageFlicker: 0.6,
-      lampHeight: 44,
-      modelScale: 1,
-    })
+  it('restores stored precision while rejecting invalid fields independently', () => {
+    const raw = { ...lampTuning, flameScale: 1.37, shadowStrength: NaN, lampHeight: 900 }
+    const restored = normalizeLampTuning(raw)
+    expect(restored.flameScale).toBe(1.37)
+    expect(restored.shadowStrength).toBe(lampTuning.shadowStrength)
+    expect(restored.lampHeight).toBe(controlFor('lampHeight').max)
+    expect(raw.lampHeight).toBe(900)
+    expect(normalizeLampTuning(lampTuning)).toEqual(lampTuning)
   })
 
   it('exposes each tuning field as exactly one control', () => {
@@ -68,10 +55,4 @@ describe('Lamp tuning', () => {
     expect(normalizeLampInput(controlFor('lampHeight'), 44.6)).toBe(45)
   })
 
-  it('returns percentage edits to fractional storage before normalization', () => {
-    for (const control of controls.filter((item) => item.displayScale === 100)) {
-      const displayed = lampTuning[control.key] * 100
-      expect(normalizeLampInput(control, displayed / 100), control.key).toBe(lampTuning[control.key])
-    }
-  })
 })

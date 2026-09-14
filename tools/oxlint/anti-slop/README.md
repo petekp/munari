@@ -39,7 +39,7 @@ there is no `"off"` entry.
   Carve-out: `{}` initializing a dictionary-typed accumulator.
 - **`no-module-mocking`**: `vi.mock` / `vi.doMock` /
   `jest.mock` / `unstable_mockModule`, anywhere, test files included
-  (`tests/boundary.test.ts` greps for the same thing). Use dependency
+  through this lint rule. Use dependency
   injection through a real interface or a faithful test
   implementation.
 - **`no-object-parameters`**: a parameter typed bare `object`

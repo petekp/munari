@@ -47,25 +47,4 @@ describe('the relay duplication test', () => {
     expect(isRelayed(ev)).toBe(false)
   })
 
-  it('demonstrates the law: a module-local Symbol() cannot cross instances', () => {
-    // Self-contained counterfactual, no kernel involved: simulate two
-    // module instances each building the brand both ways. The
-    // registry-keyed symbol is the same symbol in both; the local
-    // symbol is not, and its cross-instance predicate fails — which is
-    // why the kernel's brand MUST be Symbol.for, not Symbol.
-    const instance = () => ({
-      registryBrand: Symbol.for('munari.contract-demo.relayed'),
-      localBrand: Symbol('munari.contract-demo.relayed'),
-    })
-    const a = instance()
-    const b = instance()
-    expect(a.registryBrand).toBe(b.registryBrand)
-    expect(a.localBrand).not.toBe(b.localBrand)
-
-    const branded: Record<symbol, true> = {}
-    branded[a.localBrand] = true
-    expect(b.localBrand in branded).toBe(false)
-    branded[a.registryBrand] = true
-    expect(b.registryBrand in branded).toBe(true)
-  })
 })

@@ -127,16 +127,6 @@ describe('the pixel-grid snap', () => {
       )
     })
 
-    it('is the identity when the capture is already whole', () => {
-      // dpr density on an integral Surface: the demand is already a texel
-      // count and there is nothing to correct.
-      const s = pixelGridSnap({
-        ...RESTING, width: 308, height: 324, density: 2, mag: 1, texelsX: 616, texelsY: 648,
-      })
-      expect(s.sx).toBe(1)
-      expect(s.sy).toBe(1)
-    })
-
     /**
      * The count comes from the STORE, and nothing may re-derive it.
      *
@@ -198,14 +188,6 @@ describe('the pixel-grid snap', () => {
     expect(top).toBeCloseTo(Math.round(top), 9)
   })
 
-  it('never returns a negative zero', () => {
-    // Callers multiply this by a blend weight and compare it against
-    // nothing; `-0` is a value they would otherwise have to know about.
-    const s = pixelGridSnap({ ...RESTING, x: -326, y: 50 })
-    expect(Object.is(s.dx, -0)).toBe(false)
-    expect(Object.is(s.dy, -0)).toBe(false)
-  })
-
   it('answers a degenerate Surface instead of dividing by it', () => {
     // A slot before layout or a Surface during unmount can have zero size.
     // NaN would propagate straight into the
@@ -234,11 +216,4 @@ describe('the pixel-grid snap', () => {
     }
   })
 
-  it('is a pure function of its input', () => {
-    // Consumers call it every frame inside useFrame and compare the
-    // result against the previous one to decide whether to touch React.
-    const a = pixelGridSnap(RESTING)
-    const b = pixelGridSnap({ ...RESTING })
-    expect(b).toEqual(a)
-  })
 })

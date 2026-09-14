@@ -45,9 +45,7 @@ The four checks are separate so their observers do not interfere:
 and CPU profile for diagnosis. Profiling changes timing; use an unprofiled run
 for the performance claim. `POSTCARD_CYCLES` changes the standalone cycle count.
 
-`pixels.mjs` decodes PNGs after recording, using the browser's decoder. The
-Python pixel scripts are independent cross-checks requiring Pillow and NumPy;
-the npm command needs no Python packages. Pixel comparisons concern the named
+`pixels.mjs` decodes PNGs after recording, using the browser's decoder. Pixel comparisons concern the named
 strips and states, not every pixel in every animation. A screencast can omit
 frames, so its timestamps do not prove a display refresh rate.
 
@@ -58,62 +56,41 @@ failure from a failed motion or pixel assertion, then rerun the affected command
 
 Decision [#41](../../docs/decisions.md#41) records these experimental budgets.
 
-## Every demo
+## Routes and gestures
 
-`npm run probe:api-lab` prints a lab URL. Set `API_LAB_URL` to that exact URL.
-The Python drivers use `agent-browser` and accept `API_PROOF_SESSION` and
-`API_PROOF_OUTPUT`. The URL is required; no driver assumes a fixed port:
+`npm run probe:api-routes` loads every current lab route and Candidate study.
+It requires the selected route's identity and content, actual capture support,
+and no browser errors. This is a load check, not a pixel-quality verdict.
+`API_CASES=logo ROUTE_FORCE_HOME=1` must fail the route check.
 
-```sh
-python3 instruments/api-all-demos/smoke.py
-python3 instruments/api-all-demos/gestures.py
-python3 instruments/api-all-demos/native.py
-```
+`npm run probe:api-gestures` checks Gravity, Explode, Selection, Candidates,
+and the independent Home starter. It preserves the unique interaction cases
+from the earlier drivers. Native Candidate, Selection, and Gravity outcomes
+run without capture capability. The postcard's input and visual contracts
+remain in `probe:postcard`.
 
-`smoke.py` loads all 24 routes and seven Candidate studies, checks capability
-and page errors, and saves screenshots. It is a load check. `gestures.py`
-exercises Gravity, Explode, Selection, all seven Candidates, and Home. The
-maintained scene gates cover the other custom rendering/input paths;
-[the demo map](../../ALL-DEMO-API.md) names the evidence per route.
+## Composition, controls, and capture
 
-Use a separate browser without the capture feature for `native.py`; do not
-infer native fallback from a successful enhanced run. `gestures.py` restarts
-its own browser between routes to avoid accumulating GPU contexts.
+- `npm run probe:api-targets`: native cross-parent focus, input identity,
+  local state, missing targets, and unmount.
+- `npm run probe:api-composition-check`: grouped parts, different content,
+  cancellation, capture attach/resize/replacement, sampled-source pixels,
+  and whole-document/native capture. `API_CASES=sampled-parts
+  API_INVERT_SAMPLES=1` must reject the deliberately wrong pixel reading.
+- `npm run probe:api-contracts`: Controls motion and delayed-preparation
+  focus, native Controls, and shared-capture lifecycle.
 
-## Composition, identity, and capture
+These runners start and close their own servers and Chrome instances. `API_CASES`
+selects documented case IDs; unknown or empty selections fail. Output records
+list the selected and completed cases. `API_PROOF_OUTPUT` chooses the evidence
+directory. `API_LAB_URL`, `API_COMPOSITION_URL`, or `API_CAPTURE_URL` can
+explicitly select an existing server; record its source revision when doing so.
 
-```sh
-npm run probe:api-targets
-npm run probe:api-composition
-```
-
-The first command independently checks six cross-parent moves with a focused
-input and child-local state, missing-target hiding, and one unmount. The second
-prints the composition server URL. Use it as `API_COMPOSITION_URL` for:
-
-- `api-composition/check.py`: coordinated parts, original-instance counts,
-  both-direction landing, cancellation, and capture attach/resize/replacement.
-- `api-composition/sampled-check.py`: a missing second source must block;
-  the completed draw must contain the expected red and blue pixels.
-- `api-composition/frame-check.py`: a later pose writer defeats an independent
-  frame follower; the post-pose callback must match before the companion draws.
-- `api-composition/whole-page-check.py`: `html`/`body` pixels above and below
-  the viewport, original controls, and idle capture revisions.
-- `api-composition/native-check.py`: requested handoff and element capture
-  with actual capability absent.
-
-`probe:api-instance` serves a small browser-platform probe at `/`: a portal
-container moves directly between page and capture to isolate Chrome's DOM-state
-preservation. `/surface.html` exercises the public Surface implementation and is
-the fixture used by the automated instance and lifecycle commands below.
-
-`probe:api-capture` serves the shared-capture fixture. Set `API_CAPTURE_URL` to its
-printed URL before running `python3 instruments/api-contracts/capture-check.py`.
-The Controls drivers use the lab server instead: set `API_PROOF_URL` to the URL
-printed by `probe:api-lab` before running `controls-check.py` or `focus-check.py`.
-All composition drivers require `API_COMPOSITION_URL`; `native-check.py` also
-requires the lab URL as `API_PROOF_URL`.
-
+The interactive servers remain available: `probe:api-composition`,
+`probe:api-instance`, and `probe:api-capture`. The instance server's `/`
+is a browser-platform experiment; `/surface.html` uses the public Surface API.
+Automated checks use the latter. `probe:api-lab` serves the real lab for the
+standalone preparation and postcard-sharpness checks.
 
 ## API hardening
 
@@ -182,7 +159,7 @@ the resize notification path; it does not claim a physical multi-monitor test.
 
 ## PR #83 follow-up regressions
 
-`npm run probe:api-regressions` runs 15 capability-enabled cases and four cases in
+`npm run probe:api-regressions` runs 16 capability-enabled cases and four cases in
 a separate no-flag Chrome profile. It checks keyed prepend/reorder/removal with
 one mounted counter per item, surviving capture-reader updates in a demand canvas,
 continuous resize anchors, focus across a handle swap and return, and ordinary
@@ -190,8 +167,11 @@ versus inline-handler attributes. Source and DOM identities are part of the chec
 
 Preparation comparisons cover rectangular, nested, rounded, bordered, transformed
 and changing overflow clips, plus explicit clip margins. The native and preparing
-screenshots use the same source bounding box and viewport; mean channel error
-must stay <=0.5. Visible input must work,
+screenshots use the same source bounding box and viewport. Box placement follows
+the documented device-pixel alignment; displacement controls must be rejected.
+Clipping pixels must agree away from native raster edges and excluded form
+controls, and a rectangular-clip control must expose missing rounded corners.
+Whole-image mean is diagnostic. Visible input must work,
 clipped input must not fire, and the preparation clip must be removed at scene
 handoff. The resize sweep stays inside the backing-store band and allows at most
 1 CSS px of anchor difference from the latest paint while moving, then requires

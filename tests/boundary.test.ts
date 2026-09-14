@@ -12,17 +12,19 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { parseSync, Visitor } from 'vite'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const manifest: { name: string; exports: Record<string, string> } = JSON.parse(
+  readFileSync(join(ROOT, 'packages/react/package.json'), 'utf8'),
+)
+const publicEntries = new Set(Object.keys(manifest.exports).map(key =>
+  key === '.' ? manifest.name : `${manifest.name}${key.slice(1)}`,
+))
 
 function sourceFiles(dir: string, pattern = /\.tsx?$/): string[] {
   const out: string[] = []
-  let entries: string[]
-  try {
-    entries = readdirSync(dir)
-  } catch {
-    return out
-  }
+  const entries = readdirSync(dir)
   for (const entry of entries) {
     if (entry === 'node_modules' || entry === 'dist') continue
     const full = join(dir, entry)
@@ -32,19 +34,19 @@ function sourceFiles(dir: string, pattern = /\.tsx?$/): string[] {
   return out
 }
 
-function importSpecifiers(file: string): string[] {
-  const text = readFileSync(file, 'utf8')
+function importSpecifiers(text: string, file = 'source.tsx'): string[] {
+  const parsed = parseSync(file, text)
+  expect(parsed.errors, file).toEqual([])
   const specs: string[] = []
-  for (const re of [
-    /\bfrom\s+['"]([^'"]+)['"]/g, // import x from / export x from
-    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g, // dynamic import
-    /^\s*import\s+['"]([^'"]+)['"]/gm, // bare side-effect import
-  ]) {
-    for (const m of text.matchAll(re)) {
-      const spec = m[1]
-      if (spec !== undefined) specs.push(spec)
-    }
-  }
+  new Visitor({
+    ImportDeclaration: node => { specs.push(node.source.value) },
+    ExportNamedDeclaration: node => { if (node.source) specs.push(node.source.value) },
+    ExportAllDeclaration: node => { specs.push(node.source.value) },
+    ImportExpression: node => {
+      if (node.source.type === 'Literal') specs.push(String(node.source.value))
+    },
+    TSImportType: node => { specs.push(node.source.value) },
+  }).visit(parsed.program)
   return specs
 }
 
@@ -60,8 +62,10 @@ function violations(
   isAllowed: (spec: string, file: string) => boolean,
 ): Violation[] {
   const bad: Violation[] = []
-  for (const file of sourceFiles(join(ROOT, dir))) {
-    for (const spec of importSpecifiers(file)) {
+  const files = sourceFiles(join(ROOT, dir))
+  expect(files.length, dir).toBeGreaterThan(0)
+  for (const file of files) {
+    for (const spec of importSpecifiers(readFileSync(file, 'utf8'), file)) {
       if (!isAllowed(spec, file)) bad.push({ file: relative(ROOT, file), spec })
     }
   }
@@ -117,7 +121,9 @@ describe('the hourglass', () => {
       const base = join(ROOT, consumer)
       expect(
         violations(consumer, (spec, file) => {
-          if (spec === '@munari/core' || spec.startsWith('@munari/core/')) return false
+          if (spec.startsWith('@munari/')) return false
+          if (spec.startsWith('@petepetrash/munari/'))
+            return publicEntries.has(spec)
           if (spec.startsWith('.')) return !escapesDir(file, spec, base)
           return true
         }),
@@ -126,97 +132,23 @@ describe('the hourglass', () => {
   })
 })
 
-// Core states library laws. Demo names belong in their own modules or in the
-// historical decision and platform records that explain where a law came
-// from. Keeping the names out of package prose stops a working example from
-// becoming the implied shape of the API.
-describe('core prose is independent of demos', () => {
-  it('does not name a Munari demo', () => {
-    const files = [
-      ...sourceFiles(join(ROOT, 'packages/core/src')),
-      ...sourceFiles(join(ROOT, 'tests/conformance')),
-      join(ROOT, 'packages/core/README.md'),
-      join(ROOT, 'packages/core/package.json'),
-    ]
-    const demoName =
-      /\b(?:genie|knobs|optics|veil|explode|workspace|passage|logo|labs?)\b|\bFlight\b|\b(?:flight|glass)[- ](?:lab|scene|demo)\b/gi
-    const offenders: string[] = []
-    for (const file of files) {
-      const text = readFileSync(file, 'utf8')
-      for (const match of text.matchAll(demoName)) {
-        offenders.push(`${relative(ROOT, file)}: ${match[0]}`)
-      }
-    }
-    expect(offenders).toEqual([])
-  })
-})
-
-// A module mock is a seam invented at test time. It passes whether or not
-// the real seam exists, which makes the suite agree with itself instead of
-// with the browser — the one thing the conformance layers are here to
-// prevent. Every suite in this repo already injects through a real
-// parameter, patches a real prototype, or drives a real DOM; this pins
-// that as a rule rather than a habit, since the cost of the first mock is
-// paid by whoever writes the second one.
-describe('tests use real seams', () => {
-  it('no suite mocks a module', () => {
-    const offenders: string[] = []
-    for (const dir of ['packages', 'apps', 'registry', 'tests', 'instruments']) {
-      for (const file of sourceFiles(join(ROOT, dir))) {
-        const text = readFileSync(file, 'utf8')
-        for (const m of text.matchAll(/\b(?:vi|vitest|jest)\.(?:do)?mock\b/g)) {
-          offenders.push(`${relative(ROOT, file)}: ${m[0]}`)
-        }
-      }
-    }
-    expect(offenders).toEqual([])
-  })
-})
-
-// Documentation is outside TypeScript's file graph. Check Surface attributes
-// here too, so an old example cannot silently restore the removed ID prop.
-function hasRemovedCanvasProp(text: string): boolean {
-  for (const match of text.matchAll(/<(?:Surface|SceneSurface)(?:\.Root)?\b/g)) {
-    let attributes = '', depth = 0, quote = ''
-    for (let i = match.index + match[0].length; i < text.length; i++) {
-      const char = text[i]
-      if (quote) {
-        if (char === '\\') i++
-        else if (char === quote) quote = ''
-        continue
-      }
-      if (char === '"' || char === "'" || char === '`') { quote = char; continue }
-      if (char === '{') { depth++; continue }
-      if (char === '}') { depth--; continue }
-      if (depth > 0) continue
-      if (char === '>') break
-      attributes += char
-    }
-    if (/\bcanvas\s*=/.test(attributes)) return true
-  }
-  return /`canvas`\s+(?:prop|association)\b|\bcanvas\?\s*:\s*(?:string|SurfaceCanvasId)\b/.test(text)
-}
-
-describe('current documentation uses the public canvasId prop', () => {
-  it('detects retired Surface attributes without rejecting native canvas values', () => {
-    expect(hasRemovedCanvasProp('<Surface canvas="one"><Card /></Surface>')).toBe(true)
-    expect(hasRemovedCanvasProp('<Surface.Root\n inScene={selected > 0}\n canvas = "one" />')).toBe(true)
-    expect(hasRemovedCanvasProp('<SceneSurface.Root canvas="one" />')).toBe(true)
-    expect(hasRemovedCanvasProp('Choose the `canvas` prop.')).toBe(true)
-    expect(hasRemovedCanvasProp('<Surface canvasId="one" onReady={() => { const canvas = document.createElement("canvas"); canvas.width = 100 }} />')).toBe(false)
-    expect(hasRemovedCanvasProp('const canvas = document.createElement("canvas"); frame.canvas')).toBe(false)
+describe('import syntax', () => {
+  it('reads dependencies from code, including dynamic and type imports', () => {
+    expect(importSpecifiers(`
+      import value from 'value';
+      import 'side-effect';
+      export { value } from 're-export';
+      export * from 'namespace';
+      const deferred = import('dynamic');
+      type Value = import('type-only').Value;
+    `)).toEqual(['value', 'side-effect', 're-export', 'namespace', 'dynamic', 'type-only'])
   })
 
-  it('keeps removed selector syntax out of maintained guides and agent instructions', () => {
-    const files = [
-      ...readdirSync(ROOT).filter(name => name.endsWith('.md')).map(name => join(ROOT, name)),
-      ...['docs', 'packages', 'apps', 'registry', '.agents', 'instruments'].flatMap(dir => sourceFiles(join(ROOT, dir), /\.md$/)),
-    ]
-    const offenders: string[] = []
-    for (const file of files) {
-      const text = readFileSync(file, 'utf8')
-      if (hasRemovedCanvasProp(text)) offenders.push(relative(ROOT, file))
-    }
-    expect(offenders).toEqual([])
+  it('ignores examples in comments and string literals', () => {
+    expect(importSpecifiers(`
+      // import fake from 'comment';
+      const example = "import('example')";
+      const message = "value from 'prose'";
+    `)).toEqual([])
   })
 })

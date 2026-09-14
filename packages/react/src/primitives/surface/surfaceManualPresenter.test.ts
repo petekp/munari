@@ -53,20 +53,12 @@ describe('the manual presenter seam', () => {
     store.tick(500)
     expect(presenter.canvasPresents()).toBe(true)
     expect(presenter.holdsPage()).toBe(true)
+    store.tick(500)
+    expect(presenter.holdsPage()).toBe(true)
     presenter.present()
     expect(presenter.holdsPage()).toBe(false)
     expect(store.getState().presented).toBe('canvas')
     leave()
-  })
-
-  it('a presenter that never presents never releases the page', () => {
-    const { store, presenter } = airborne()
-    presenter.register()
-    store.request('canvas')
-    presenter.prove()
-    store.tick(500)
-    store.tick(500)
-    expect(presenter.holdsPage()).toBe(true)
   })
 
   it('leaving the ledger takes stage two with it', () => {

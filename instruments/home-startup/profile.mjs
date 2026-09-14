@@ -44,7 +44,9 @@ function observer(useBaseline = false) {
       for (const [label, expression] of [
         ['shadow-context', 'new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, depth: true })'],
         ['bulb-context', 'new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, depth: true })'],
-        ['headline-setup', 'createHeadlineTreatments(title.current,pass.mesh.material,redraw)'],
+        ['headline-setup', code.includes('createHeadlineTreatments(title.current,pass.mesh.material,redraw,page)')
+          ? 'createHeadlineTreatments(title.current,pass.mesh.material,redraw,page)'
+          : 'createHeadlineTreatments(title.current,pass.mesh.material,redraw)'],
         ['environment', 'pmrem.fromScene(new RoomEnvironment(), 0.04).texture'],
         ['shadow-first-draw', 'display.render(pass.scene, pass.camera, pass.paper)'],
         ['bulb-first-draw', 'state.bulb.renderer.render(state.bulb.scene, state.bulb.camera)'],
@@ -105,6 +107,9 @@ try {
     await writeFile(path.join(output, `run-${run}.json`), JSON.stringify({documents, errors, consoleErrors}, null, 2))
     assert.deepEqual(errors, [])
     assert.ok(documents.some(document => document.enhanced), 'Profile must reach enhanced rendering')
+    const events=documents.flatMap(document=>document.events)
+    for(const name of ['entry-evaluated','fonts-ready','composition-ready','fully-visible'])assert.ok(events.some(event=>event.name===name&&Number.isFinite(event.time)),`Profile observation did not reach ${name}`)
+    for(const event of events.filter(event=>event.name==='worker-received'))assert.ok(Number.isFinite(event.worker?.start)&&Number.isFinite(event.worker?.duration)&&event.worker.duration>=0,'A worker response must carry the worker timing observation')
     const result = {run, variant, hostLoad, documents}
     results.push(result)
     const origin = documents[0].origin

@@ -42,6 +42,7 @@
       "files": ["**/tests/**", "**/__tests__/**/*", "**/*.test.*", "**/*.spec.*"],
       "rules": {
         "eslint/no-restricted-imports": "off",
+        "vitest/valid-expect": ["error", { "maxArgs": 2 }],
         "vitest/no-import-node-test": "error"
       }
     }

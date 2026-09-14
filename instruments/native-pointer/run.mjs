@@ -12,10 +12,8 @@
 // still takes the trusted click; and asking for 'relay' parks — styles
 // restored, the synthetic relay hearing again.
 //
-// The cursor is NOT judged here: whether Chrome applies an unpainted canvas
-// child's `cursor` is unmeasured (#39's open question), and no API reads
-// the OS cursor. Run HEADED=1 and hover the target to answer it by eye;
-// the gate prints where the hit-test landed so the aim is known good.
+// OS cursor appearance is not measured here. Use HEADED=1 to inspect it.
+// Click receipts establish which control received input.
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -49,6 +47,7 @@ let browser
 let server
 const deadline = setTimeout(() => {
   console.error('native-pointer gate: hard 90s deadline hit')
+  browser?.process()?.kill('SIGKILL')
   process.exit(1)
 }, 90_000)
 
@@ -71,7 +70,11 @@ try {
     () => 'drawElementImage' in document.createElement('canvas').getContext('2d'),
   )
   await cap.close()
-  if (!capable) skip(`Chrome at ${chromePath} has no drawElementImage`)
+  if (!capable) {
+    await browser.close()
+    browser = null
+    skip(`Chrome at ${chromePath} has no drawElementImage`)
+  }
 
   server = await createServer({
     configFile: false,
@@ -114,11 +117,16 @@ try {
       view,
     )
 
-  const clickAt = async (label, point) => {
+  const clickAt = async (label, point, expectedId = 'btn') => {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y))
+      throw new Error(`${label}: target has no finite screen point`)
     const before = await clickCount()
     await page.mouse.click(point.x, point.y)
     await sleep(120)
-    const rec = (await clickCount()) > before ? await lastClick() : null
+    const count = await clickCount() - before
+    const rec = count > 0 ? await lastClick() : null
+    if (count !== 1 || rec?.id !== expectedId)
+      throw new Error(`${label}: expected one click on ${expectedId}, received ${count} with last target ${rec?.id}`)
     return {
       label,
       heardBy: rec ? rec.presentationAtClick : 'nobody',
@@ -154,7 +162,6 @@ try {
 
   // ── the prize: a trusted click on the real element ────────────────────
   const flatBtn = await rectOf('btn')
-  const flatHit = await evalProbe((p) => window.__nativePointer.hitAt(p.x, p.y), flatBtn)
   results.push(await clickAt('native, flat', flatBtn))
 
   // ── real hover, and the twin that follows it ──────────────────────────
@@ -166,7 +173,7 @@ try {
   const hoverOff = await evalProbe(() => window.__nativePointer.hoverOf('btn'))
 
   // ── real focus, real keystrokes ───────────────────────────────────────
-  results.push(await clickAt('native, input', await rectOf('field')))
+  results.push(await clickAt('native, input', await rectOf('field'), 'field'))
   await page.keyboard.type('native')
   const typed = await evalProbe(() => ({
     value: window.__nativePointer.valueOf('field'),
@@ -205,7 +212,7 @@ try {
   await waitForView('page')
   const returnedValue = await evalProbe(() => window.__nativePointer.valueOf('field'))
   expect(returnedValue === 'native', `return: page input lost the canvas value (${JSON.stringify(returnedValue)})`)
-  results.push(await clickAt('page, returned input', await rectOf('field')))
+  results.push(await clickAt('page, returned input', await rectOf('field'), 'field'))
   await page.keyboard.type(' page')
   await evalProbe(() => window.__nativePointer.setRenderIn('scene'))
   await waitForView('scene')
@@ -221,15 +228,14 @@ try {
   console.log(`typed:     ${JSON.stringify(typed)}`)
   console.log(`round trip: ${JSON.stringify({ returnedValue, reenteredValue })}`)
   console.log(
-    `\ncursor: hit-test at the flat button landed on "${flatHit}". The OS cursor ` +
-      `itself is unmeasured (decisions.md #39) — run HEADED=1 and hover the ` +
-      `target to answer it by eye.`,
+    `\nThe OS cursor is unmeasured (decisions.md #39). ` +
+      `Run HEADED=1 and hover the target to inspect it.`,
   )
 
   if (pageProblems.length) {
     console.error('\npage errors during the run:')
     for (const p of pageProblems) console.error(`  ${p}`)
-    process.exit(1)
+    throw new Error('native-pointer gate failed; see the recorded errors above')
   }
 
   const by = (label) => results.find((r) => r.label === label)
@@ -237,11 +243,11 @@ try {
   const relay = by('gl, relay route')
   if (rest?.heardBy !== 'page' || rest?.trusted !== true) {
     console.error('\nAPPARATUS FAILURE: a click at rest did not reach the page copy trusted.')
-    process.exit(1)
+    throw new Error('native-pointer gate failed; see the recorded errors above')
   }
   if (relay?.heardBy !== 'scene' || relay?.trusted !== false) {
     console.error('\nAPPARATUS FAILURE: the gl-phase relay baseline did not hear synthetically.')
-    process.exit(1)
+    throw new Error('native-pointer gate failed; see the recorded errors above')
   }
 
   const native = [by('native, flat'), by('native, tilted')]
@@ -249,7 +255,6 @@ try {
     expect(r?.heardBy === 'scene', `${r?.label}: heard by ${r?.heardBy}, not the source copy`)
     expect(r?.trusted === true, `${r?.label}: trusted=${r?.trusted} — the browser did not deliver it`)
   }
-  expect(flatHit === 'btn', `flat hit-test landed on "${flatHit}", not the button`)
   expect(hoverOn?.realHover === true, 'hover: the real :hover never engaged')
   expect(hoverOn?.dataHover === true, 'hover: the twin attribute was not stamped')
   expect(hoverOff?.realHover === false, 'hover: :hover survived the pointer leaving')
@@ -266,7 +271,7 @@ try {
   if (failures.length) {
     console.error('\nnative-pointer gate FAILED:')
     for (const f of failures) console.error(`  ${f}`)
-    process.exit(1)
+    throw new Error('native-pointer gate failed; see the recorded errors above')
   }
   console.log('\nnative-pointer gate PASSED')
 } finally {

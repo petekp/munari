@@ -3,7 +3,9 @@ export async function installPaperReader(page) {
   await page.waitForFunction(() => Boolean(window.__readPaper?.()))
   await page.evaluate(async()=>{
     const frame=await import('/src/scenes/home/homePaperFrame.ts')
+    const grid=await import('/src/scenes/home/homePaperLaw.ts')
     window.__paperPoint=frame.paperFramePoint
+    window.__paperGrid={columns:grid.PAPER_COLUMNS,rows:grid.PAPER_ROWS}
   })
 }
 
@@ -12,15 +14,20 @@ export async function paperMetrics(page) {
     const flyer=window.__readPaper()
     if(flyer?.kind!=='scene')throw new Error('The scene must own the postcard')
     const frame=flyer.paper,vertices=frame.vertices,canvas=document.querySelector('.home-canvas canvas'),box=canvas.getBoundingClientRect()
+    const {columns,rows}=window.__paperGrid,stride=columns+1
+    if(vertices.length!==stride*(rows+1)*4||!vertices.every(Number.isFinite)||box.width<=0||box.height<=0)throw new Error('Paper geometry observation is incomplete')
+    for(let i=3;i<vertices.length;i+=4)if(vertices[i]<=0)throw new Error('Paper vertices must be in front of the measurement camera')
     const distance=vertices[3]+vertices[2]-frame.height
     const world=index=>{const i=index*4,w=vertices[i+3];return [(vertices[i]-box.x-box.width/2)*w/distance,(box.y+box.height/2-vertices[i+1])*w/distance,vertices[i+2]-frame.height]}
-    const a=world(16*49+24),b=world(16*49+32),c=world(24*49+24)
+    const row=Math.floor(rows/2),col=Math.floor(columns/2)
+    const a=world(row*stride+col),b=world(row*stride+Math.min(columns,col+Math.max(1,Math.floor(columns/6)))),c=world(Math.min(rows,row+Math.max(1,Math.floor(rows/4)))*stride+col)
     const ab=b.map((v,i)=>v-a[i]),ac=c.map((v,i)=>v-a[i])
     const n=[ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0]],length=Math.hypot(...n)
+    if(!Number.isFinite(length)||length===0)throw new Error('Paper reference plane is degenerate')
     let maxBend=0,backArea=0
     for(let i=0;i<vertices.length/4;i++){const p=world(i);maxBend=Math.max(maxBend,Math.abs(p.reduce((sum,v,j)=>sum+(v-a[j])*n[j],0)/length))}
     const area=(a,b,c)=>((vertices[b*4]-vertices[a*4])*(vertices[c*4+1]-vertices[a*4+1])-(vertices[b*4+1]-vertices[a*4+1])*(vertices[c*4]-vertices[a*4]))/2
-    for(let row=0;row<32;row++)for(let col=0;col<48;col++){const a=row*49+col,b=a+49;backArea+=Math.max(0,area(a,b,a+1))+Math.max(0,area(b,b+1,a+1))}
+    for(let row=0;row<rows;row++)for(let col=0;col<columns;col++){const a=row*stride+col,b=a+stride;backArea+=Math.max(0,area(a,b,a+1))+Math.max(0,area(b,b+1,a+1))}
     return {maxBend,backArea,height:frame.height,mapsReady:window.__paperLight.uniforms.uPaperReady.value,vertices:vertices.length/4}
   })
 }
@@ -35,8 +42,10 @@ export async function controlPoint(page,selector) {
 }
 
 export async function silhouetteMetrics(page) {
-  return page.evaluate(async()=>{
+  const result=await page.evaluate(async()=>{
     const flyer=window.__readPaper(),canvas=document.querySelector('.home-canvas canvas'),rect=canvas.getBoundingClientRect()
+    const requireFrame=()=>{if(flyer?.kind!=='scene'||flyer.corners.length!==12||!flyer.corners.every(Number.isFinite)||rect.width<=0||rect.height<=0)throw new Error('The silhouette needs a complete displayed paper frame')}
+    requireFrame()
     const corners=Array.from({length:4},(_,i)=>({x:flyer.corners[i*3]-rect.x,y:flyer.corners[i*3+1]-rect.y}))
     const png=await fetch(canvas.toDataURL()).then(response=>response.blob()),bitmap=await createImageBitmap(png)
     const scratch=new OffscreenCanvas(bitmap.width,bitmap.height),ctx=scratch.getContext('2d')
@@ -63,4 +72,6 @@ export async function silhouetteMetrics(page) {
     }
     return {opaqueArea:opaque/(sx*sy),nonQuadArea:difference/(sx*sy),backStockArea:backStock/(sx*sy),headingOverlapArea:headingOverlap/(sx*sy),headingHoleArea:headingHoles/(sx*sy)}
   })
+  if(result.opaqueArea===0)throw new Error('The completed postcard buffer contains no opaque paper')
+  return result
 }

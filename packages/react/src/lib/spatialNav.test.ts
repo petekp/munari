@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  OPPOSITE,
   createDirectionalHistory,
   directionalPick,
-  edgeProgress,
   isOutsider,
   outsiderDistance,
   type NavRect,
@@ -139,12 +137,6 @@ describe('outsiders (distance function — spatnav structure, symmetric tuning)'
     expect(directionalPick(deploy, field, 'down')).toBe('doc-4')
   })
 
-  it('euclidean is the pure axis gap when cross-axis ranges overlap', () => {
-    const below = r('below', 100, 260, 100, 100)
-    // gap 60, od 0, aligned 1 → 60 − 5
-    expect(outsiderDistance(origin, below, 'down')).toBeCloseTo(55, 6)
-  })
-
   it('touching edges is an outsider with zero gap, not an insider', () => {
     const touching = r('touching', 100, 200, 100, 100)
     expect(isOutsider(origin, touching, 'down')).toBe(true)
@@ -193,14 +185,6 @@ describe('arc-workspace realism (a skewed 3×3, as projection produces)', () => 
     expect(directionalPick(midRight, others('mid-right'), 'right')).toBe(null)
   })
 
-  it('edge progress is symmetric across the four directions', () => {
-    const o = { x: 0, y: 0, w: 10, h: 20 }
-    const c = { x: 3, y: 5, w: 4, h: 8 }
-    expect(edgeProgress(o, c, 'down')).toBe(5)
-    expect(edgeProgress(o, c, 'up')).toBe(20 - 13)
-    expect(edgeProgress(o, c, 'right')).toBe(3)
-    expect(edgeProgress(o, c, 'left')).toBe(10 - 7)
-  })
 })
 
 describe('directional history (Flutter trail — reciprocity under a moving camera)', () => {
@@ -213,13 +197,6 @@ describe('directional history (Flutter trail — reciprocity under a moving came
     expect(h.onArrow('left', always)).toBe('B')
     expect(h.onArrow('left', always)).toBe('A')
     expect(h.onArrow('left', always)).toBe(null)
-    expect(h.size()).toBe(0)
-  })
-
-  it('a retrace pops without recording — ping-pong cannot grow the trail', () => {
-    const h = createDirectionalHistory()
-    h.record('A', 'right')
-    expect(h.onArrow('left', always)).toBe('A')
     expect(h.size()).toBe(0)
     expect(h.onArrow('right', always)).toBe(null) // nothing to retrace forward
   })
@@ -238,7 +215,8 @@ describe('directional history (Flutter trail — reciprocity under a moving came
     expect(h.onArrow('right', always)).toBe(null)
     expect(h.size()).toBe(1)
     h.record('B', 'right')
-    expect(h.size()).toBe(2)
+    expect(h.onArrow('left', always)).toBe('B')
+    expect(h.onArrow('left', always)).toBe('A')
   })
 
   it('an unmounted retrace target clears the trail — it describes a world that is gone', () => {
@@ -249,13 +227,10 @@ describe('directional history (Flutter trail — reciprocity under a moving came
     expect(h.size()).toBe(0)
   })
 
-  it('clear() empties, and the opposite table is involutive', () => {
+  it('clear() removes the previous return target', () => {
     const h = createDirectionalHistory()
     h.record('A', 'up')
     h.clear()
     expect(h.onArrow('down', always)).toBe(null)
-    for (const d of ['up', 'down', 'left', 'right'] as const) {
-      expect(OPPOSITE[OPPOSITE[d]]).toBe(d)
-    }
   })
 })

@@ -190,11 +190,14 @@ const orderHolds = (p, wall) => {
         revealed.seq < released?.seq
   return (
     p.shows.length === 1 &&
+    p.required.seq < p.accepts[0].seq &&
     p.accepts[0].seq < presented.seq &&
     presented.seq < p.shows[0].seq &&
     p.lands.length === 1 &&
+    p.shows[0].seq < landed.seq &&
     landed.wall === wall &&
     p.releases.length === 1 &&
+    landed.seq < released.seq &&
     released.wall === wall &&
     reverseOrder &&
     p.revokes.length === 0
@@ -532,17 +535,14 @@ try {
   const client = await page.createCDPSession()
   if (SLOWCPU > 1) await client.send('Emulation.setCPUThrottlingRate', { rate: SLOWCPU })
   const screenshots = []
-  let capturePhase = 'idle'
+  const phaseEdges = []
   let castRunning = true
   client.on('Page.screencastFrame', async (frame) => {
-    if (capturePhase !== 'idle') {
-      screenshots.push({
-        data: frame.data,
-        t: Date.now(),
-        mediaTimestamp: frame.metadata.timestamp,
-        phase: capturePhase,
-      })
-    }
+    screenshots.push({
+      data: frame.data,
+      t: frame.metadata.timestamp * 1000,
+      phase: 'idle',
+    })
     try {
       await client.send('Page.screencastFrameAck', { sessionId: frame.sessionId })
     } catch {
@@ -552,10 +552,11 @@ try {
   await client.send('Page.startScreencast', { everyNthFrame: 1, ...CAPTURE })
 
   const setPhase = async (phase) => {
-    capturePhase = phase
-    await page.evaluate((next) => {
+    const t = await page.evaluate((next) => {
       window.__filmWindowGate.phase = next
+      return Date.now()
     }, phase)
+    phaseEdges.push({ phase, t })
   }
   const pressKey = async (selector, where) => {
     const focused = await page.evaluate((value) => {
@@ -770,6 +771,14 @@ try {
     }
     return distance <= SOURCE_WINDOW_MS ? nearest : null
   }
+  // Delivery can cross a phase boundary; classify by the recorded display time.
+  screenshots.sort((left, right) => left.t - right.t)
+  for (const [index, shot] of screenshots.entries()) {
+    if (!Number.isFinite(shot.t) || (index > 0 && shot.t <= screenshots[index - 1].t)) {
+      throw new Error('film-window: invalid compositor timestamps; visual result is unverified')
+    }
+    shot.phase = phaseEdges.findLast(edge => edge.t <= shot.t)?.phase ?? 'idle'
+  }
   const screenInputs = screenshots
     .map((shot, id) => ({ ...shot, id, state: nearestTrace(shot) }))
     .filter((shot) => shot.state)
@@ -809,6 +818,11 @@ try {
     const sourceError = Math.min(...sources.map((row) => mae(pixels, row.sourcePixels)))
     return [{ ...shot, id, state, sourceError, dark: darkShare(pixels) }]
   })
+  const measuredIds = new Set(measuredScreens.map(frame => frame.id))
+  const unpairedFrames = screenshots.filter((shot, id) => shot.phase !== 'idle' && !measuredIds.has(id))
+  if (unpairedFrames.length) {
+    problems.push(`${unpairedFrames.length} compositor frames had no source observation; visual result is unverified`)
+  }
   const percentile = (values, p) => {
     if (!values.length) return NaN
     const ordered = [...values].sort((a, b) => a - b)
@@ -850,7 +864,7 @@ try {
     )
     const boundaryFrames = [...downFrames, ...upAirFrames, ...upDomFrames]
     const badVisual = boundaryFrames.filter(
-      (frame) => frame.sourceError > visualErrorMax || frame.dark > SCREEN_DARK_MAX,
+      (frame) => !Number.isFinite(frame.sourceError) || !Number.isFinite(frame.dark) || frame.sourceError > visualErrorMax || frame.dark > SCREEN_DARK_MAX,
     )
     const phaseChanges = evidence.changes.filter(
       (change) => change.phase === cycle.downPhase || change.phase === cycle.upPhase,
@@ -913,6 +927,9 @@ try {
     if (upDomFrames.length < MIN_BOUNDARY_FRAMES) {
       problems.push(`cycle ${cycle.cycle + 1}: no compositor frame covered the restored DOM canvas`)
     }
+    if (upAirFrames.length < MIN_BOUNDARY_FRAMES) {
+      problems.push(`cycle ${cycle.cycle + 1}: no compositor frame covered the restoring scene`)
+    }
     if (!frozeDown || !resumedDown || !frozeUp || !resumedUp) {
       problems.push(
         `cycle ${cycle.cycle + 1}: freeze/resume trace was incomplete ` +
@@ -972,7 +989,7 @@ try {
       !frame.state.away,
   )
   const badContextFrames = contextNativeFrames.filter(
-    (frame) => frame.sourceError > visualErrorMax || frame.dark > SCREEN_DARK_MAX,
+    (frame) => !Number.isFinite(frame.sourceError) || !Number.isFinite(frame.dark) || frame.sourceError > visualErrorMax || frame.dark > SCREEN_DARK_MAX,
   )
   const firstMatchingNativeFrame = contextNativeFrames.findIndex(
     (frame) => frame.sourceError <= visualErrorMax && frame.dark <= SCREEN_DARK_MAX,
@@ -1051,7 +1068,7 @@ try {
     let previous = -Infinity
     return frameRows.filter((row) => {
       const value = row[key]
-      const bad = Number.isFinite(value) && value < previous
+      const bad = !Number.isFinite(value) || value < previous
       if (Number.isFinite(value)) previous = Math.max(previous, value)
       return bad
     })

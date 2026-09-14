@@ -37,6 +37,7 @@ let browser
 let server
 const deadline = setTimeout(() => {
   console.error('knobs-resize gate: hard 300s deadline hit')
+  browser?.process()?.kill('SIGKILL')
   process.exit(1)
 }, 300_000)
 
@@ -56,7 +57,11 @@ try {
     () => 'drawElementImage' in document.createElement('canvas').getContext('2d'),
   )
   await capability.close()
-  if (!capable) skip(`Chrome at ${chromePath} has no drawElementImage`)
+  if (!capable) {
+    await browser.close()
+    browser = null
+    skip(`Chrome at ${chromePath} has no drawElementImage`)
+  }
 
   server = await createServer({ root: labRoot, logLevel: 'warn', server: { port: 0 } })
   await server.listen()
@@ -65,6 +70,10 @@ try {
   await page.setViewport({ width: 1200, height: 820, deviceScaleFactor: 1 })
   const errors = []
   page.on('pageerror', (error) => errors.push(String(error)))
+  page.on('console', message => {
+    if (message.type() === 'error' && !message.text().startsWith('Failed to load resource'))
+      errors.push(message.text())
+  })
 
   await page.goto(`http://localhost:${port}/?scene=knobs&probe=knobs-resize&bare`, {
     waitUntil: 'load',
@@ -163,7 +172,11 @@ try {
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     )
     const next = await sample()
-    if (next) samples.push(next)
+    if (!next) throw new Error(`knobs-resize: missing geometry or anchor observation at drag offset ${dx}`)
+    const values = [next.width, next.height, next.geometry.width, next.geometry.height, next.markerError, next.readoutError]
+    if (!values.every(Number.isFinite) || values.slice(0, 4).some(value => value <= 0))
+      throw new Error(`knobs-resize: invalid sample at drag offset ${dx}: ${JSON.stringify(next)}`)
+    samples.push(next)
   }
   await page.mouse.up()
   await page.waitForFunction(
@@ -172,6 +185,10 @@ try {
   )
 
   const problems = []
+  if (new Set(samples.map(entry => entry.width)).size < 2)
+    problems.push('the drag never changed the panel width')
+  if (!samples.some(entry => entry.height > 500))
+    problems.push('the probe never observed the one-column layout')
   if (!samples.some((entry) => entry.height < 500)) {
     problems.push(
       `the probe never crossed into the two-column layout (${samples.map((entry) => `${entry.width}×${entry.height}`).join(', ') || 'no samples'})`,

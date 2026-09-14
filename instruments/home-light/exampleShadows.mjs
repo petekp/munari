@@ -8,7 +8,6 @@ import path from 'node:path'
 export function observeShadowCapture(code,id) {
   if(!id.endsWith('/HomeMasthead.tsx'))return code
   const marker='      display.render(pass.scene, pass.camera, pass.paper)'
-  assert.ok(code.includes(marker),'Lighting capture observation point changed')
   return replaceSource(code,marker,marker+`\n      if(window.__captureHomeLight){window.__homeLightPng=canvas.toDataURL();window.__captureHomeLight=false;}`)
 }
 

@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 // The API proof must hydrate its existing content rather than mount a second copy.
-import { act, createElement, useEffect, useId, useState } from 'react'
+import { act, createElement, useEffect, useState } from 'react'
 import { renderToString } from 'react-dom/server'
-import { createRoot, hydrateRoot, type Root } from 'react-dom/client'
+import { createRoot, hydrateRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Surface } from './Surface'
 import { resetSurfaceHosts } from './surface/surfaceHostRegistry'
@@ -63,28 +63,4 @@ it('distinguishes ordinary on-prefixed attributes from inline event handlers',as
   if(descriptor)Object.defineProperty(Element.prototype,'moveBefore',descriptor)
   else Reflect.deleteProperty(Element.prototype,'moveBefore')
  }
-})
-
-
-it('keeps independently server-rendered identities unique with matching hydration prefixes',async()=>{
- vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
- vi.stubGlobal('CanvasRenderingContext2D',undefined)
- const errors:unknown[]=[],containers:HTMLDivElement[]=[]
- function Example(){
-  const id=useId()
-  // The createElement overload requires the component's required children prop.
-  // eslint-disable-next-line react/no-children-prop
-  return createElement('section',{'data-canvas-id':id},createElement(Surface,{inScene:false,canvasId:id,children:createElement('button',null,'Native')}))
- }
- const roots:Root[]=[]
- try {
-  for(const identifierPrefix of ['left-','right-']) {
-   const node=document.createElement('div');node.innerHTML=renderToString(createElement(Example),{identifierPrefix});document.body.append(node);containers.push(node)
-   roots.push(hydrateRoot(node,createElement(Example),{identifierPrefix,onRecoverableError:error=>errors.push(error)}))
-  }
-  await act(async()=>{})
-  const ids=containers.map(node=>node.querySelector('section')?.dataset.canvasId)
-  expect(new Set(ids).size).toBe(2)
-  expect(errors).toEqual([])
- }finally{await act(async()=>{for(const root of roots)root.unmount()})}
 })

@@ -11,37 +11,24 @@ import { DEFAULT_PART, nextSurfaceInstanceId, sourceContentKey } from './surface
 import { resetSurfaceHosts, surfaceHost } from './surfaceHostRegistry'
 
 describe('source identity', () => {
-  it('mints a new instance id for every root', () => {
-    const minted = Array.from({ length: 4 }, nextSurfaceInstanceId)
-    expect(new Set(minted).size).toBe(4)
-  })
-
-  it('separates two unnamed Surfaces, and their parts', () => {
-    const first = nextSurfaceInstanceId()
-    const second = nextSurfaceInstanceId()
-    expect(sourceContentKey(first, DEFAULT_PART)).not.toBe(
-      sourceContentKey(second, DEFAULT_PART),
-    )
-    expect(sourceContentKey(first, DEFAULT_PART)).not.toBe(sourceContentKey(first, 'film'))
-  })
-
-  it('is stable for one instance, so a re-render replaces rather than piles up', () => {
-    const instance = nextSurfaceInstanceId()
-    expect(sourceContentKey(instance, 'film')).toBe(sourceContentKey(instance, 'film'))
-  })
-
-  it('keeps two unnamed sources in the registry at once', () => {
+  it('keeps unnamed sources and their parts independent through replacement and cleanup', () => {
     resetSurfaceHosts()
     const host = surfaceHost('scene')
     // SAFETY: the registry stores containers and hands them back untouched;
     // nothing on this path reads a DOM property off one.
     const container = () => ({}) as HTMLElement
-    const a = { key: sourceContentKey(nextSurfaceInstanceId(), DEFAULT_PART), container: container(), content: 'a' }
+    const first = nextSurfaceInstanceId()
+    const a = { key: sourceContentKey(first, DEFAULT_PART), container: container(), content: 'a' }
     const b = { key: sourceContentKey(nextSurfaceInstanceId(), DEFAULT_PART), container: container(), content: 'b' }
     const leaveA = host.registerSource(a)
     const leaveB = host.registerSource(b)
-    expect(host.sources().map((entry) => entry.content)).toEqual(['a', 'b'])
+    const leaveFilm = host.registerSource({ key: sourceContentKey(first, 'film'), container: container(), content: 'film' })
+    expect(host.sources().map((entry) => entry.content)).toEqual(['a', 'b', 'film'])
+    const leaveReplacement = host.registerSource({ ...a, key: sourceContentKey(first, DEFAULT_PART), content: 'updated a' })
     leaveA()
+    expect(host.sources().map((entry) => entry.content)).toEqual(['updated a', 'b', 'film'])
+    leaveFilm()
+    leaveReplacement()
     expect(host.sources().map((entry) => entry.content)).toEqual(['b'])
     leaveB()
     expect(host.sources()).toEqual([])

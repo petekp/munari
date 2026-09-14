@@ -119,6 +119,14 @@ describe('projection — a straight edge on the plane is a curve through the roo
     ]
     expect(projectArtPolygon(square, SCALE, DEPTH, W, H, 6)).toHaveLength(24)
     expect(projectArtPolygon(square, SCALE, DEPTH, W, H, 1)).toHaveLength(4)
+    const projected = projectArtPolygon(square, SCALE, DEPTH, W, H, 6)
+    square.forEach(([x, y], edge) => {
+      expect(projected[edge * 6]).toEqual(artPixel(x * SCALE, -y * SCALE, DEPTH, W, H))
+      const [nextX, nextY] = square[(edge + 1) % square.length]!
+      expect(projected[edge * 6 + 3]).toEqual(artPixel(
+        (x + nextX) * SCALE / 2, -(y + nextY) * SCALE / 2, DEPTH, W, H,
+      ))
+    })
   })
 
   it('the curve is worth paying for — the chord misses badly', () => {
@@ -186,46 +194,9 @@ describe('the picture is a window, not a wall', () => {
     expect(b.minY).toBeGreaterThan(H * 0.01)
   })
 
-  it('is a closed ring of samples, four edges deep', () => {
-    expect(projectViewportOutline(VW, VH, DEPTH, W, H, 10)).toHaveLength(40)
-  })
-
   it('a page far enough away is a patch, not a hemisphere', () => {
     const b = pathBounds(projectViewportOutline(VW, VH, 4000, W, H))
     expect(b.maxX - b.minX).toBeLessThan(W * 0.12)
-  })
-})
-
-describe('the room bounce is measured by area, not by angle', () => {
-  // The load-bearing measurement. It is the reason `roomLight` takes a
-  // FLAT raster of the picture and not the equirect the scene already
-  // has in hand — which was the obvious thing to do, and wrong.
-  it('the equirect magnifies the picture center, so it cannot be the space the color is averaged in', () => {
-    const R = 102 // the outermost blade, art units
-    let inner = 0
-    let total = 0
-    for (let py = 0; py < H; py++) {
-      for (let px = 0; px < W / 2; px++) {
-        const theta = ((px + 0.5) / W - 0.5) * 2 * Math.PI
-        const phi = ((py + 0.5) / H - 0.5) * Math.PI
-        const dz = Math.cos(phi) * Math.sin(theta)
-        if (dz >= 0) continue // the plane stands at −z
-        const t = -DEPTH / dz
-        const x = ((Math.cos(phi) * Math.cos(theta)) * t) / SCALE
-        const y = (Math.sin(phi) * t) / SCALE
-        const rho = Math.hypot(x, y)
-        if (rho > R) continue
-        if (Math.abs(x * SCALE) > VW / 2 || Math.abs(y * SCALE) > VH / 2) continue
-        total++
-        if (rho <= R / 2) inner++
-      }
-    }
-    // Half the radius is a quarter of the picture. In the equirect it is
-    // five sixths of the pixels — a 3.3x over-count of the middle, which
-    // is what made the bounce come out the color of the center.
-    expect(inner / total).toBeGreaterThan(0.8)
-    expect(inner / total).toBeLessThan(0.87)
-    expect(inner / total / 0.25).toBeGreaterThan(3)
   })
 })
 

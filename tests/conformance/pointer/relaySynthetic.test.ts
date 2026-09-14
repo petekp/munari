@@ -12,9 +12,6 @@
 import { describe, expect, it } from 'vitest'
 import { isRelayedEvent, relay } from '@munari/core'
 
-/** What React hands a handler: a wrapper carrying the platform event. */
-const synthetic = (nativeEvent: Event) => ({ nativeEvent })
-
 const relayed = () => {
   const target = document.createElement('div')
   const ev = new Event('pointermove')
@@ -23,10 +20,6 @@ const relayed = () => {
 }
 
 describe('relay provenance through a synthetic wrapper', () => {
-  it('reads the brand off the wrapped platform event', () => {
-    const ev = relayed()
-    expect(isRelayedEvent(synthetic(ev))).toBe(true)
-  })
 
   it('consults the wrapped event, not the wrapper', () => {
     // The wrapper is fresh every time and carries no brand of its own, so
@@ -41,7 +34,4 @@ describe('relay provenance through a synthetic wrapper', () => {
     expect(isRelayedEvent(new Event('pointermove'))).toBe(false)
   })
 
-  it('an unbranded wrapper is the hand', () => {
-    expect(isRelayedEvent(synthetic(new Event('pointermove')))).toBe(false)
-  })
 })

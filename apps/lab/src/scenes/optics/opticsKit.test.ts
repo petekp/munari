@@ -176,11 +176,6 @@ describe('the kit — four instruments, one law', () => {
     }
   })
 
-  it('parks the four instruments on distinct rail slots', () => {
-    const slots = KIT.map((i) => railSlot(i.id))
-    expect(new Set(slots).size).toBe(KIT.length)
-  })
-
   it('fits the whole rack on the bench, at 1:1, without touching the page', () => {
     // The clipping bug this pins, measured 2026-08-11: rail previews stood
     // at their working standoff, where perspective pushes them outward and

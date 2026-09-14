@@ -43,6 +43,7 @@ import {
   createSurfacePose,
   forwardPointer,
   isRelayed,
+  relay,
   nativeRideStyle,
   poseMatrix3d,
   surfaceCursorAt,
@@ -56,7 +57,7 @@ import {
 const CONTENT_W = 320
 const CONTENT_H = 200
 
-/** Every parked source stands at the viewport origin (mapping/parkingCoincidence). */
+/** The fixture supplies a parked source at the viewport origin. */
 const ROOT_BOX = [0, 0, CONTENT_W, CONTENT_H] as const
 const CARD_BOX = [20, 20, 300, 130] as const
 const BUTTON_BOX = [40, 40, 160, 70] as const
@@ -110,9 +111,8 @@ function stamped(attr: string): Element[] {
 // ── the two drivers ───────────────────────────────────────────────────────
 //
 // Each one plays the same gesture through the route that owns it. Nothing
-// below reaches past what the presenter itself does: the relay driver's cursor
-// write is `SurfaceMesh`'s own line, and the native driver dispatches only
-// events a browser dispatches.
+// below invokes the relay or delivers native input events to the rig. Native
+// default actions are supplied only as the setup for tests of their preservation.
 
 interface RouteDriver {
   readonly route: 'relay' | 'native'
@@ -131,8 +131,7 @@ interface RouteDriver {
 function relayDriver(): RouteDriver {
   const move = (el: HTMLElement, kind: 'move' | 'down' | 'up') => {
     const at = uvOf(el)
-    const hit = forwardPointer(root, at.u, at.v, kind)
-    glCanvas.style.cursor = hit ? surfaceCursorAt(hit.target) : ''
+    forwardPointer(root, at.u, at.v, kind)
   }
   return {
     route: 'relay',
@@ -140,13 +139,11 @@ function relayDriver(): RouteDriver {
     moveTo: (el) => move(el, 'move'),
     leave: () => {
       clearPointerState(root)
-      glCanvas.style.cursor = ''
     },
     press: (el) => move(el, 'down'),
     release: (el) => move(el, 'up'),
     releaseAway: () => {
       forwardPointer(root, 0, 0, 'cancel')
-      glCanvas.style.cursor = ''
     },
   }
 }
@@ -351,40 +348,6 @@ describe.each(drivers)('the $route route', (driver) => {
     expect(stamped(ACTIVE_ATTR)).toEqual([])
   })
 
-  it('delivers exactly one click for one press', () => {
-    // The whole reason the route is a single verdict rather than two enable
-    // flags. Two live paths into one copy land the press on the right element
-    // twice: a counter counts two, a toggle returns to where it started, a
-    // form submits twice — and every one of those looks like a consumer bug.
-    let clicks = 0
-    button.addEventListener('click', () => clicks++)
-
-    driver.enter(button)
-    driver.press(button)
-    driver.release(button)
-
-    expect(clicks).toBe(1)
-  })
-
-  it('leaves the pressed control holding focus', () => {
-    driver.enter(button)
-    driver.press(button)
-    driver.release(button)
-
-    expect(document.activeElement).toBe(button)
-  })
-
-  it('releases focus when the press lands on nothing focusable', () => {
-    driver.enter(button)
-    driver.press(button)
-    driver.release(button)
-    driver.moveTo(card)
-    driver.press(card)
-    driver.release(card)
-
-    expect(document.activeElement).not.toBe(button)
-  })
-
   it('reports the pointer modality, so the focus ring stays suppressed', () => {
     // `:focus-visible` is a verdict the browser reaches from TRUSTED events.
     // The relay's are synthetic, so the browser never hears its pointer story;
@@ -405,6 +368,25 @@ describe.each(drivers)('the $route route', (driver) => {
   })
 })
 
+describe('relay activation', () => {
+  it('delivers one click for a complete press and release', () => {
+    const driver = relayDriver()
+    let clicks = 0
+    button.addEventListener('click', () => clicks++)
+    driver.press(button)
+    driver.release(button)
+    expect(clicks).toBe(1)
+  })
+
+  it('blurs the focused control when a release targets non-focusable content', () => {
+    button.focus()
+    const driver = relayDriver()
+    driver.press(card)
+    driver.release(card)
+    expect(document.activeElement).not.toBe(button)
+  })
+})
+
 // ── the cursor ────────────────────────────────────────────────────────────
 //
 // The one place the two routes are allowed to differ, and the difference is
@@ -416,16 +398,13 @@ describe.each(drivers)('the $route route', (driver) => {
 // write the rig cannot verify.
 
 describe('the cursor', () => {
-  it('is mirrored onto the renderer canvas by the relay, and cleared on the way out', () => {
-    const driver = relayDriver()
-    driver.enter(button)
-    expect(glCanvas.style.cursor).toBe('pointer')
-
-    driver.moveTo(field)
-    expect(glCanvas.style.cursor).toBe('text')
-
-    driver.leave()
-    expect(glCanvas.style.cursor).toBe('')
+  it('resolves the content cursor from authored style and text entry', () => {
+    expect(surfaceCursorAt(button)).toBe('pointer')
+    expect(surfaceCursorAt(field)).toBe('text')
+    root.style.cursor = 'auto'
+    expect(surfaceCursorAt(root)).toBe('default')
+    field.style.cursor = 'crosshair'
+    expect(surfaceCursorAt(field)).toBe('crosshair')
   })
 
   it('is surrendered to the browser while the rig rides', () => {
@@ -483,16 +462,13 @@ describe('the native route alone', () => {
     // through the same subtree, and the pointer gate's own clones are relayed
     // too — a rig that stamped from those would hold a hover the browser has
     // already dropped.
-    const relay = relayDriver()
-    relay.enter(button)
-    relay.leave()
-
-    // The relay stamped and cleared its own twins; the rig never joined in,
-    // so nothing is left holding a hover the browser is not backing.
+    relay(button, new PointerEvent('pointerover', pointerInit(button)))
     expect(stamped(HOVER_ATTR)).toEqual([])
+    relay(button, new PointerEvent('pointerdown', pointerInit(button, { buttons: 1 })))
+    expect(stamped(ACTIVE_ATTR)).toEqual([])
   })
 
-  it('leaves the caret and the selection to the browser', () => {
+  it('preserves native pointer defaults and the field selection', () => {
     // The route's whole point, and the thing the relay provably cannot do: a
     // caret is placed by a TRUSTED press inside a text node, and a selection
     // is dragged by the browser's own selection machinery. A synthetic
@@ -500,13 +476,17 @@ describe('the native route alone', () => {
     // — there is no API that asks for one. So the library's contribution here
     // is to write nothing that would stop the browser: no preventDefault, no
     // synthetic press, no `user-select` of its own.
-    const driver = nativeDriver()
-    driver.enter(field)
-    driver.press(field)
-    driver.release(field)
-
+    field.value = 'selected text'
+    field.focus()
+    field.setSelectionRange(2, 7)
+    for (const type of ['pointerdown', 'pointerup']) {
+      const event = new PointerEvent(type, pointerInit(field))
+      field.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+    }
     expect(dispatched.some((one) => one.endsWith('(relayed)'))).toBe(false)
     expect(document.activeElement).toBe(field)
+    expect([field.selectionStart, field.selectionEnd]).toEqual([2, 7])
     expect(root.style.userSelect).toBe('')
   })
 
@@ -609,12 +589,16 @@ describe('changing route mid-gesture', () => {
 
   it('survives being parked twice, and ridden again', () => {
     const live = ride()
+    const transform = canvas.style.transform
     live.park()
     live.park()
     expect(live.riding()).toBe(false)
 
-    rig = ride()
+    live.ride(nativeRideStyle(transform, 7))
+    rig = live
     expect(rig.riding()).toBe(true)
     expect(root.style.visibility).toBe('visible')
+    nativeDriver().enter(button)
+    expect(stamped(HOVER_ATTR)).toEqual([root, card, button])
   })
 })

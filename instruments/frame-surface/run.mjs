@@ -133,8 +133,6 @@ try {
   console.log(
     `frame-surface: live replacement identity ` +
       `${result.liveReplacementIdentityPreserved ? 'preserved' : 'changed'}, ` +
-      `reacquisition objects ${result.reacquisitionObjectsFresh ? 'fresh' : 'reused'}, ` +
-      `default unlit ${result.defaultUnlitVerified ? 'verified' : 'FAILED'}, ` +
       `worst RGB error ${result.worstRgbError}`,
   )
   console.log(
@@ -153,6 +151,25 @@ try {
       `same texture ${result.backingStoreResize.sameTexture ? 'yes' : 'NO'}, RGB errors ` +
       `[${result.backingStoreResize.rgbErrors.join(', ')}]`,
   )
+
+  if (result.passed && pageProblems.length === 0) {
+    await page.close()
+    const control = await browser.newPage()
+    await control.setViewport({ width: 512, height: 256, deviceScaleFactor: 1 })
+    control.on('pageerror', error => pageProblems.push(String(error)))
+    control.on('console', message => {
+      if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:'))
+        pageProblems.push(message.text())
+    })
+    await control.goto(`${url}?toneMapped`, { waitUntil: 'load' })
+    await control.waitForFunction(() => window.__frameSurfaceGate?.ready === true)
+    const wrongTone = await control.evaluate(() => window.__frameSurfaceGate.run())
+    if (wrongTone.passed || !Number.isFinite(wrongTone.worstRgbError) || wrongTone.worstRgbError <= 1) {
+      throw new Error('frame-surface: color oracle did not reject tone mapping of captured colors')
+    }
+    console.log(`frame-surface: tone-mapping fault rejected, RGB error ${wrongTone.worstRgbError}`)
+    await control.close()
+  }
 
   if (pageProblems.length) {
     console.error('frame-surface gate: page errors during the run:')

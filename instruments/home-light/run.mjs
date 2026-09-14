@@ -20,7 +20,6 @@ const observer={name:'observe-home-light',enforce:'pre',transform(code,id){
   code=observeShadowCapture(code,id)
   if(!id.endsWith('/homeLight.ts'))return code
   const marker='  material.uniforms.uLightHeight.value = lightHeight'
-  assert.ok(code.includes(marker))
   return replaceSource(code,marker,'  window.__homeLightMaterial = material\n'+marker)
 }}
 const lab=await createServer({root:path.join(root,'apps/lab'),configFile:path.join(root,'apps/lab/vite.config.ts'),plugins:[observer],cacheDir:path.join(output,'.vite-lab'),server:{host:'127.0.0.1',port:0},logLevel:'warn'})
@@ -40,12 +39,16 @@ try {
   console.log(JSON.stringify(results.geometry))
   const g=results.geometry
   assert.equal(g.error,0)
+  for(const [name,sample] of Object.entries(g))if(Array.isArray(sample))assert.ok(sample.length>0&&sample.every(Number.isFinite),`${name}: the fixture must return measured pixels`)
   assert.ok(g.gap[0]>220&&g.projected[0]<150,'An elevated thin stem must leave light between its outline and its projected shadow')
   assert.deepEqual(g.single,g.duplicate,'One light must not darken a shadow twice')
   assert.ok(Math.min(...g.single)<150,'The overlap comparison must include a cast shadow')
   assert.ok(g.raised[30]-g.page[30]>30,'The raised receiver must shorten the cast shadow')
   assert.ok(g.soft.some((value,i)=>value<g.hard[i]-10),'The area emitter must produce a penumbra')
-  const partial=profile=>profile.slice(profile.findLastIndex(value=>value<=25)).filter(value=>value>25&&value<230).length
+  const partial=profile=>{
+    assert.ok(profile.some(value=>value<=25)&&profile.some(value=>value>=230),'A penumbra profile must contain both the dark and lit side')
+    return profile.slice(profile.findLastIndex(value=>value<=25)).filter(value=>value>25&&value<230).length
+  }
   results.penumbra={close:partial(g.closeSoft),far:partial(g.farSoft),pointLight:partial(g.farHard)}
   assert.ok(results.penumbra.close>=1&&results.penumbra.far>results.penumbra.close*2,'Increasing the sheet-to-page gap must visibly broaden the penumbra')
   assert.ok(results.penumbra.pointLight<=1,'A point light must keep a sharp edge even at the larger gap')
@@ -156,13 +159,14 @@ try {
 
   await setChromeViewport(page,{width:1440,height:1000})
   await page.goto(`http://127.0.0.1:${lab.httpServer.address().port}/?scene=home`,{waitUntil:'load'})
-  const overview=await page.waitForFrame(frame=>frame.url().includes('&framed'))
+  assert.equal(await page.$('iframe.site-frame'),null,'Home must render in the site document')
+  const overview=page
   await overview.waitForFunction(()=>window.__homeLightMaterial?.uniforms.uInkReady.value===1&&window.__homeLightMaterial.uniforms.uReliefReady.value===1)
   await page.waitForFunction(()=>!document.documentElement.hasAttribute('data-opening'))
   await page.screenshot({path:path.join(output,'website.png')})
   for(const width of [390,320]) {
     await setChromeViewport(page,{width,height:844})
-    await overview.waitForFunction(()=>window.__homeLightMaterial?.uniforms.uResolution.value.x===innerWidth&&window.__homeLightMaterial.uniforms.uInkRect.value.z<innerWidth+100&&window.__homeLightMaterial.uniforms.uReliefReady.value===1)
+    await overview.waitForFunction(()=>window.__homeLightMaterial?.uniforms.uResolution.value.x===document.querySelector('.home-page').clientWidth&&window.__homeLightMaterial.uniforms.uInkRect.value.z<innerWidth+100&&window.__homeLightMaterial.uniforms.uReliefReady.value===1)
     assert.equal(await overview.evaluate(()=>document.querySelector('.home-page').scrollWidth>innerWidth),false)
     await page.screenshot({path:path.join(output,`website-${width}.png`)})
     await overview.evaluate(()=>{window.__resizedInput=document.querySelector('.home-hero-holder [data-api-live] input')})
@@ -196,6 +200,7 @@ try {
       assert.notEqual(await fallback.$eval('.home-hero-row button',button=>getComputedStyle(button).boxShadow),'none','The native shadow must remain when WebGL is unavailable')
     }
     results.fallbacks[name]=await fallback.evaluate(()=>({captureAvailable:'drawElementImage' in CanvasRenderingContext2D.prototype,lightVisible:!!document.querySelector('.home-light')?.getClientRects().length,overflow:document.querySelector('.home-page').scrollWidth>innerWidth}))
+    assert.equal(results.fallbacks[name].captureAvailable,false,'The fallback profile must actually disable HTML capture')
     assert.equal(results.fallbacks[name].overflow,false)
     assert.equal(results.fallbacks[name].lightVisible,name==='native')
     assert.deepEqual(faults,[])

@@ -52,18 +52,11 @@ describe('chooseFaces', () => {
     expect(chooseFaces([face('ARCHIVO', 'U+0000-00FF')], new Set(['archivo']), points('a'))).toHaveLength(1)
   })
 
-  it('skips a declared family the subtree never asks for', () => {
-    expect(chooseFaces([other], new Set(['archivo']), points('a'))).toEqual([])
-  })
-
   it('keeps a face that declares no range at all', () => {
     const unranged = face('Archivo', null)
     expect(chooseFaces([unranged], new Set(['archivo']), points('a'))).toEqual([unranged])
   })
 
-  it('chooses nothing when the subtree has no text, so a glyphless panel pays no payload', () => {
-    expect(chooseFaces([latin], new Set(['archivo']), new Set())).toEqual([])
-  })
 })
 
 // Where the faces come from. A face the plugin never reads is the same silent
@@ -104,6 +97,16 @@ describe('fontEmbedPlugin', () => {
     return live
   }
 
+  it('embeds no font payload for a subtree with no text, including unrestricted faces', async () => {
+    const style = document.createElement('style')
+    style.textContent = "@font-face{font-family:'Empty';src:url(https://lab.test/empty.woff2)}"
+    document.head.append(style)
+    serve({ 'https://lab.test/empty.woff2': 'bytes' })
+    const live = letter('Empty')
+    live.textContent = ''
+    expect(await carried(live)).toBe('')
+  })
+
   it('reads a stylesheet the document gained after the fonts were warmed', async () => {
     serve({ 'https://lab.test/late.woff2': 'bytes' })
     warmCaptureFonts(document)
@@ -111,7 +114,9 @@ describe('fontEmbedPlugin', () => {
     style.textContent = "@font-face{font-family:'Late';src:url(https://lab.test/late.woff2)}"
     document.head.append(style)
 
-    expect(await carried(letter('Late'))).toContain("font-family:'Late'")
+    const css = await carried(letter('Late'))
+    expect(css).toContain("font-family:'Late'")
+    expect(css).toContain('data:font/woff2;base64,Ynl0ZXM=')
   })
 
   it('reads a cross-origin stylesheet from its text, and names one it cannot fetch', async () => {
@@ -141,6 +146,7 @@ describe('fontEmbedPlugin', () => {
     const css = await carried(letter('Guest'), (href) => unreadable.push(href))
     // The face's `url()` resolves against the sheet, not the document.
     expect(css).toContain("font-family:'Guest'")
+    expect(css).toContain('data:font/woff2;base64,Ynl0ZXM=')
     expect(unreadable).toEqual([locked])
   })
 })

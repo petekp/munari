@@ -149,6 +149,7 @@ describe('merging', () => {
     const result = stepRainWorld(world, ledges, VIEWPORT, makeRainRng(3))
     expect(result.drops).toHaveLength(1)
     const bead = result.drops[0]
+    expect(bead?.kind).toBe('sitting')
     if (bead?.kind === 'sitting') expect(bead.r).toBe(RAIN_MERGE_RADIUS_CAP)
   })
 })
@@ -210,5 +211,12 @@ describe('determinism', () => {
     const seqA = Array.from({ length: 8 }, () => a())
     const seqB = Array.from({ length: 8 }, () => b())
     expect(seqA).toEqual(seqB)
+    const other = makeRainRng(100)
+    expect(seqA).not.toEqual(Array.from({ length: 8 }, () => other()))
+    expect(new Set(seqA).size).toBeGreaterThan(1)
+    for (const value of seqA) {
+      expect(value).toBeGreaterThanOrEqual(0)
+      expect(value).toBeLessThan(1)
+    }
   })
 })

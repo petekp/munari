@@ -10,7 +10,7 @@
  *
  * The article carries its own `font` with a size in every shorthand —
  * the type tokens are family lists, and a bare `font: var(--body)` is
- * invalid and silently inherits (fontCarry.test.ts).
+ * invalid and silently inherits.
  */
 
 /* The lab pins html/body/#root to height:100% overflow:hidden — every

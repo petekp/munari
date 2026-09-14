@@ -31,7 +31,6 @@ describe('the hysteresis on plate z', () => {
 
   it('flips high only past 0.65 × liftZ — the approach is not altitude', () => {
     const rise = LIFT_Z * DENSITY_RISE_FACTOR // 62.4
-    expect(DENSITY_RISE_FACTOR).toBe(0.65)
     expect(densityScheduleStep(false, { z: rise, liftZ: LIFT_Z })).toBe(false) // strict >
     expect(densityScheduleStep(false, { z: rise + 0.1, liftZ: LIFT_Z })).toBe(true)
   })
@@ -40,9 +39,10 @@ describe('the hysteresis on plate z', () => {
     // THE hysteresis assertion: at z = 50 (inside the band), a pin that
     // is high stays high and a pin that is low stays low. A spring bob
     // crossing one threshold cannot re-cross the other.
-    expect(DENSITY_FALL_FACTOR).toBe(0.5)
-    expect(densityScheduleStep(true, { z: 50, liftZ: LIFT_Z })).toBe(true)
-    expect(densityScheduleStep(false, { z: 50, liftZ: LIFT_Z })).toBe(false)
+    expect(DENSITY_FALL_FACTOR).toBeLessThan(DENSITY_RISE_FACTOR)
+    const middle = LIFT_Z * (DENSITY_FALL_FACTOR + DENSITY_RISE_FACTOR) / 2
+    expect(densityScheduleStep(true, { z: middle, liftZ: LIFT_Z })).toBe(true)
+    expect(densityScheduleStep(false, { z: middle, liftZ: LIFT_Z })).toBe(false)
   })
 
   it('drops at exactly 0.5 × liftZ', () => {

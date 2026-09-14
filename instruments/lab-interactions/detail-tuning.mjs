@@ -14,19 +14,24 @@ const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/detail
 await mkdir(output,{recursive:true})
 const observer={name:'observe-ink-field',enforce:'pre',transform(code,id){
   if(!id.endsWith('/refractionField.tsx'))return
-  assert.ok(code.includes('  return rig\n'))
+  assert.equal(code.split('  return rig\n').length,2,'The field observer insertion must be unique')
   return code.replace('  return rig\n',`  window.__inkFieldProof = {rig,config:cfg,stage:()=>[stageW,stageH]}
   return rig
 `)
 }}
-const server=await createServer({root:path.join(root,'apps/lab'),configFile:path.join(root,'apps/lab/vite.config.ts'),plugins:[observer],cacheDir:path.join(output,'.vite'),server:{host:'127.0.0.1',port:0},logLevel:'warn'})
-await server.listen()
-const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:['--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
+let server,browser
 const results=[]
 const frames=page=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
 const read=page=>page.evaluate(()=>{
   const {rig,config,stage}=window.__inkFieldProof
-  return {identity:rig.target.texture.uuid,size:[rig.target.width,rig.target.height],spread:[rig.spreadPair[0].width,rig.spreadPair[0].height],stage:stage(),config:{...config.current},detail:rig.material.uniforms.uDetail.value,decay:rig.spreadMaterial.uniforms.uDecay.value,samples:[[.13,.37],[.32,.47],[.67,.21],[.73,.67]].map(([u,v])=>rig.apertureAt(u,v))}
+  const materials=[]
+  window.__r3f.scene.traverse(object=>{
+    const uniforms=object.material?.uniforms
+    if(uniforms?.uApertureGamma)materials.push({gamma:uniforms.uApertureGamma.value,rounding:uniforms.uRounding.value,floor:uniforms.uApertureFloor.value,ceil:uniforms.uApertureCeil.value})
+  })
+  const samples=[]
+  for(let y=1;y<=8;y++)for(let x=1;x<=8;x++)samples.push(rig.apertureAt(x/9,y/9))
+  return {identity:rig.target.texture.uuid,size:[rig.target.width,rig.target.height],spread:[rig.spreadPair[0].width,rig.spreadPair[0].height],stage:stage(),config:{...config.current},detail:rig.material.uniforms.uDetail.value,decay:rig.spreadMaterial.uniforms.uDecay.value,samples,materials}
 })
 async function setRange(page,selector,value) {
   await page.$eval(selector,(node,value)=>{
@@ -35,10 +40,17 @@ async function setRange(page,selector,value) {
   },value)
   await frames(page)
 }
+const deadline=setTimeout(()=>{console.error('Detail tuning exceeded 180 seconds');process.exit(1)},180000)
 try {
+  server=await createServer({root:path.join(root,'apps/lab'),configFile:path.join(root,'apps/lab/vite.config.ts'),plugins:[observer],cacheDir:path.join(output,'.vite'),server:{host:'127.0.0.1',port:0},logLevel:'warn'})
+  await server.listen()
+  browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:['--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding',...(process.env.CI?['--no-sandbox']:[])]})
   for(const scene of ['refraction','gallery','glass','crystal']) {
     const page=await browser.newPage(),errors=[]
     page.on('pageerror',error=>errors.push(String(error)))
+    page.on('response', response => { if (response.status() >= 400 && new URL(response.url()).pathname !== '/favicon.ico') errors.push(`HTTP ${response.status()} ${response.url()}`) })
+    page.on('requestfailed', request => { if (new URL(request.url()).pathname !== '/favicon.ico') errors.push(`${request.failure()?.errorText} ${request.url()}`) })
+    page.on('console', message => { if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) errors.push(message.text()) })
     await setChromeViewport(page,{width:1200,height:900})
     try {
       await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=${scene}&framed&glass=sdf`,{waitUntil:'load'})
@@ -86,9 +98,11 @@ try {
         for(const key of ['fieldPx','spreadPx','spreadReachPx','apertureDetail','apertureFloor','apertureCeil','apertureGamma','frontRounding']) {
           const knob=definitions.find(knob=>knob.key===key)
           assert.ok(knob,key)
-          const old=(await read(page)).config[key]
-          const proposed=old===knob.max?old-knob.step*3:old+knob.step*3
+          const baseline=await read(page)
+          const old=baseline.config[key]
+          const proposed=key==='apertureFloor'?Math.min(knob.max,(old+baseline.config.apertureCeil)/2):old===knob.max?knob.min:knob.max
           const next=Math.min(knob.max,Math.max(knob.min,knob.min+Math.round((proposed-knob.min)/knob.step)*knob.step))
+          assert.notEqual(next,old,`${key}: the control must request a different value`)
           await page.evaluate(label=>{
             const row=[...document.querySelectorAll('label')].find(el=>el.firstElementChild?.textContent===label)
             if(!row)throw new Error(`Missing tuning control: ${label}`)
@@ -101,7 +115,14 @@ try {
           assert.deepEqual(after.size,after.stage.map(n=>Math.max(4,Math.round(n/after.config.fieldPx))))
           assert.deepEqual(after.spread,after.stage.map(n=>Math.max(4,Math.round(n/after.config.spreadPx))))
           assert.equal(after.detail,after.config.apertureDetail)
-          rows.push({key,old,next,size:after.size,spread:after.spread,detail:after.detail})
+          assert.ok(after.materials.length>0,'The rendered crossing material must be observed')
+          for(const material of after.materials)assert.deepEqual(material,{gamma:after.config.apertureGamma,rounding:after.config.frontRounding,floor:after.config.apertureFloor,ceil:after.config.apertureCeil})
+          assert.ok(after.samples.length===64&&after.samples.every(value=>Number.isFinite(value)&&value>=0&&value<=1),'The GPU-backed pointer field must produce finite samples')
+          if(key==='fieldPx')assert.notDeepEqual(after.size,baseline.size,'Field density must resize the mounted target')
+          else if(key==='spreadPx')assert.notDeepEqual(after.spread,baseline.spread,'Spread density must resize the mounted targets')
+          else assert.notDeepEqual(after.samples,baseline.samples,`${key}: the pointer field must change, not only the stored setting`)
+          rows.push({key,old,next,size:after.size,spread:after.spread,detail:after.detail,beforeSamples:baseline.samples,afterSamples:after.samples,materials:after.materials})
+          await setRange(page,'#detail-tuning-input',old)
           await page.$eval('#detail-tuning-input',el=>el.removeAttribute('id'))
         }
         // Gamma must change the CPU pointer field by the same power law as
@@ -125,4 +146,4 @@ try {
       throw error
     } finally {await page.close()}
   }
-} finally {await browser.close();await server.close()}
+} finally {clearTimeout(deadline);await browser?.close();await server?.close()}

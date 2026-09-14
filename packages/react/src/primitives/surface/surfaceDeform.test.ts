@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { DEFORMED_MARKER, deformSurfaceGeometry } from './surfaceDeform'
+import { deformSurfaceGeometry } from './surfaceDeform'
+import { presentsUnitPlane, registerSurfacePlane } from './surfaceNativeRoute'
 
 const W = 300
 const H = 352
@@ -41,14 +42,13 @@ describe('the callback speaks content coordinates', () => {
 
   it('a displaced content point lands at the mirrored local position', () => {
     const geometry = new THREE.PlaneGeometry(W, H, 1, 1)
+    const original = geometry.getAttribute('position').clone()
     // Every point stands 10px further DOWN the content…
     deformSurfaceGeometry(geometry, [W, H], (x, y) => ({ x, y: y + 10 }))
     const pos = geometry.getAttribute('position')
-    const uv = geometry.getAttribute('uv')
     for (let i = 0; i < pos.count; i++) {
-      const flatLocalY = H / 2 - (1 - uv.getY(i)) * H
       // …which is 10 world units further down in three's y-up space.
-      expect(pos.getY(i)).toBeCloseTo(flatLocalY - 10, 10)
+      expect(pos.getY(i)).toBeCloseTo(original.getY(i) - 10, 10)
     }
   })
 
@@ -62,12 +62,19 @@ describe('the callback speaks content coordinates', () => {
 })
 
 describe('the mechanism owns the raycast footguns', () => {
-  it('drops the cached bounding sphere so the next raycast measures current vertices', () => {
+  it('keeps a displaced surface hittable outside its previous bounds', () => {
     const geometry = new THREE.PlaneGeometry(W, H, 1, 1)
+    const material = new THREE.MeshBasicMaterial()
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.updateMatrixWorld()
     geometry.computeBoundingSphere()
-    expect(geometry.boundingSphere).not.toBeNull()
-    deformSurfaceGeometry(geometry, [W, H], (x, y) => ({ x, y }))
-    expect(geometry.boundingSphere).toBeNull()
+    deformSurfaceGeometry(geometry, [W, H], (x, y) => ({ x: x + W * 2, y }))
+    const ray = new THREE.Raycaster(new THREE.Vector3(W * 2 + 1, 2, 10), new THREE.Vector3(0, 0, -1))
+    const hits = ray.intersectObject(mesh)
+    expect(hits).toHaveLength(1)
+    expect(hits[0]?.object).toBe(mesh)
+    geometry.dispose()
+    material.dispose()
   })
 
   it('marks the position attribute for upload', () => {
@@ -99,15 +106,14 @@ describe('the mechanism owns the raycast footguns', () => {
     )
   })
 
-  it('stamps the deformed marker on the geometry instance, identity place included', () => {
-    // The receipt the pointer route law reads (surfaceNativeRoute.ts): a
-    // deformed Surface has no matrix3d to wear. On the instance because a
-    // scene deforms through a mesh ref, not always a geometry prop — and
-    // stamped even for an identity place, because "was this ever deformed"
-    // is the honest answer a frame-loop deformation can give.
+  it('retains relay routing when a deformed geometry is registered by a new presenter', () => {
     const geometry = new THREE.PlaneGeometry(W, H, 1, 1)
-    expect(geometry.userData[DEFORMED_MARKER]).toBeUndefined()
+    const mesh = new THREE.Mesh(geometry)
+    registerSurfacePlane(geometry)
+    expect(presentsUnitPlane(mesh, false, false)).toBe(true)
     deformSurfaceGeometry(geometry, [W, H], (x, y) => ({ x, y }))
-    expect(geometry.userData[DEFORMED_MARKER]).toBe(true)
+    registerSurfacePlane(geometry)
+    expect(presentsUnitPlane(mesh, false, false)).toBe(false)
+    geometry.dispose()
   })
 })

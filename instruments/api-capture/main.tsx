@@ -62,7 +62,7 @@ function App() {
   useLayoutEffect(()=>{capture=handle;source=root;setSecond=changeSecond;setSource=changeMounted;setDimensions=changeDimensions;replaceSource=()=>{changeRoot(makeSource);changeDimensions([200,120])};invalidSource=()=>{const node=makeSource();node.id='parented-source';document.body.append(node);changeRoot(node)}},[handle,root])
   return <>
     <ControlsApp/>
-    {mounted&&<CaptureContent capture={handle} element={root} size={dimensions}/>}
+    {mounted&&<CaptureContent capture={handle} element={root} size={dimensions} live/>}
     <div style={{position:'fixed',left:16,bottom:12,zIndex:20000,display:'flex',gap:12,pointerEvents:'none'}}>
       <div style={{width:160,height:100,background:'#ddd'}}><SurfaceCanvas id="proof-a" frameloop="demand" camera={{position:[0,0,2]}}><Reader name="a" capture={handle}/></SurfaceCanvas></div>
       {second&&<div style={{width:160,height:100,background:'#ddd'}}><SurfaceCanvas id="proof-b" frameloop="demand" camera={{position:[0,0,2]}}><Reader name="b" capture={handle}/></SurfaceCanvas></div>}

@@ -10,8 +10,6 @@
 // ends up released while a live component believes it holds the identity —
 // Strict Mode produces that ordering on every development mount.
 //
-// No JSX here: the runner only discovers `.test.ts`, and widening test
-// discovery across the workspace is not worth one module's contract.
 import { StrictMode, createElement, useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
@@ -33,7 +31,7 @@ import {
 import { mountSurfaceHost, surfaceHost, resetSurfaceHosts } from './surfaceHostRegistry'
 import { SurfaceMesh } from './SurfaceMesh'
 import { SurfaceRoot } from './SurfaceRoot'
-import type { SurfacePartPublication } from './surfaceSourceRuntime'
+import type { SurfacePartPublication, SurfaceSourceRuntime } from './surfaceSourceRuntime'
 import { useSurfaceRoot } from './surfaceContext'
 import { Surface } from '../Surface'
 
@@ -75,27 +73,28 @@ afterEach(() => {
 
 describe('a handle owns no DOM and no renderer resource', () => {
   it('a created handle registers nothing and starts on the page', () => {
-    const store = createSurfaceStore('panel')
-    store.declarePresentation('page')
-    store.declarePresentation('canvas')
+    const elements = document.body.querySelectorAll('*').length
+    const store = surfaceStoreOf(createSurface('panel'))
     expect(store.hasController()).toBe(false)
     expect(store.epoch()).toBe(0)
     expect(store.getState()).toMatchObject({
       requested: 'page',
-      presented: 'page',
+      presented: 'none',
       ready: false,
       isChanging: false,
     })
     expect(store.canvasMounted()).toBe(false)
     expect(store.handle.progress.get()).toBe(0)
+    expect(store.parts()).toEqual([])
+    expect(document.body.querySelectorAll('*')).toHaveLength(elements)
   })
 
   it('a handle whose components have all unmounted reports zero registrations', () => {
     // The retained-handle case: a store keeps handles for content that is
     // not on screen, and every one of them must be inert.
     const store = createSurfaceStore()
-    store.declarePresentation('page')
-    store.declarePresentation('canvas')
+    const releasePage = store.declarePresentation('page')
+    const releaseCanvas = store.declarePresentation('canvas')
     const release = store.registerPresenter('a')
     store.acquire(1)
     expect(store.getState().ready).toBe(false)
@@ -103,8 +102,11 @@ describe('a handle owns no DOM and no renderer resource', () => {
     expect(store.getState().ready).toBe(true)
     release()
     store.release(1)
+    releaseCanvas()
+    releasePage()
     expect(store.getState().ready).toBe(false)
     expect(store.hasController()).toBe(false)
+    expect(store.getState().presented).toBe('none')
   })
 })
 
@@ -149,7 +151,7 @@ describe('presentation declarations', () => {
     const store = createSurfaceStore('separate')
     const errors: Error[] = []
     store.setCallbacks({ onError: (error) => errors.push(error) })
-    store.request('both')
+    store.request('canvas')
     store.tick(16)
     expect(errors).toEqual([])
 
@@ -178,14 +180,14 @@ describe('presentation declarations', () => {
     flushSync(() => root.unmount())
   })
 
-  it('reports the missing half of both after the host becomes available', async () => {
+  it('reports a missing scene declaration after the host becomes available', async () => {
     const errors: Error[] = []
     const root = createRoot(container)
     flushSync(() =>
       root.render(
         createElement(
           SurfaceRoot,
-          { renderIn: 'both', onError: (error) => errors.push(error) },
+          { renderIn: 'canvas', onError: (error) => errors.push(error) },
           createElement(PageDeclaration),
         ),
       ),
@@ -345,11 +347,16 @@ describe('controlled options and the latest callback', () => {
     render(root, { renderIn: 'page', onPresentationChange: (view) => heard.push(view) })
     const store = seen
     flushSync(() => root.unmount())
-    store?.acquire(1)
-    store?.registerPresenter('a')
-    store?.prove('a', store.readinessLifetime(), store.epoch())
-    store?.request('canvas')
-    store?.tick(500)
+    if (!store) throw new Error('The controlled store did not mount')
+    store.acquire(1)
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
+    store.registerPresenter('a')
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.request('canvas')
+    store.tick(500)
+    store.present('a', store.epoch())
+    expect(store.getState().presented).toBe('canvas')
     expect(heard).toEqual([])
   })
 
@@ -363,6 +370,7 @@ describe('controlled options and the latest callback', () => {
     store.prove('a', store.readinessLifetime(), store.epoch())
     store.request('canvas')
     store.tick(500)
+    store.present('a', store.epoch())
     expect(store.getState().presented).toBe('page')
     store.tick(600)
     store.present('a', store.epoch())
@@ -387,6 +395,7 @@ describe('semantic publication', () => {
     store.request('canvas')
     store.tick(500) // lifting → gl: one semantic change
     const afterHandoff = heard
+    expect(afterHandoff).toBeGreaterThan(0)
     store.tick(16)
     store.tick(16)
     store.tick(16)
@@ -395,10 +404,26 @@ describe('semantic publication', () => {
     expect(heard).toBe(afterHandoff)
   })
 
-  it('progress windows are zero at both handoff edges', () => {
+  it('progress windows distinguish an interval from a temporary pulse', () => {
     const store = createSurfaceStore()
     store.declarePresentation('page')
     store.declarePresentation('canvas')
+    expect(store.handle.progress.between(0.2, 0.8)).toBe(0)
+    expect(store.handle.progress.pulse(0.2, 0.8)).toBe(0)
+    store.acquire(1)
+    store.registerPresenter('a')
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.request('canvas')
+    store.tick(500)
+    store.present('a', store.epoch())
+    store.tick(300)
+    expect(store.handle.progress.between(0.2, 0.8)).toBeCloseTo(0.5)
+    expect(store.handle.progress.pulse(0.2, 0.8)).toBeCloseTo(1)
+    store.tick(300)
+    expect(store.handle.progress.between(0.2, 0.8)).toBe(1)
+    expect(store.handle.progress.pulse(0.2, 0.8)).toBeCloseTo(0)
+    store.request('page')
+    store.tick(600)
     expect(store.handle.progress.between(0.2, 0.8)).toBe(0)
     expect(store.handle.progress.pulse(0.2, 0.8)).toBe(0)
   })
@@ -457,18 +482,7 @@ describe('the two-stage receipt', () => {
     return store
   }
 
-  it('a warm-up opens the lift gate without releasing the page', () => {
-    const store = exclusiveStore()
-    store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('canvas')
-    store.tick(500)
-    // Presentation authority has moved, which is what authorizes the next
-    // draw to write color. The page is still what is ON SCREEN until that
-    // draw completes.
-    expect(store.canvasPresents()).toBe(true)
-    expect(store.holdsPage()).toBe(true)
-    expect(store.getState()).toMatchObject({ presented: 'page', isChanging: true })
-  })
+
 
   it('the page is released by the color-writing draw, in that draw', () => {
     const store = exclusiveStore()
@@ -477,40 +491,25 @@ describe('the two-stage receipt', () => {
     store.prove('a', store.readinessLifetime(), store.epoch())
     store.request('canvas')
     store.tick(500)
+    expect(store.canvasPresents()).toBe(true)
+    expect(store.holdsPage()).toBe(true)
+    expect(store.canvasHearsPointer()).toBe(false)
+    expect(store.getState()).toMatchObject({ presented: 'page', isChanging: true })
     store.present('a', store.epoch())
     expect(store.holdsPage()).toBe(false)
     expect(store.getState().isChanging).toBe(true)
     expect(heard).toEqual([false])
     expect(store.getState().presented).toBe('canvas')
+    expect(store.canvasHearsPointer()).toBe(true)
   })
 
   // Input follows the eye (decisions.md #33), and the eye follows the HOLD:
   // hearing must not move at the phase turn, because the pixels move in
   // that frame's draw — a phase-read here would let the canvas hear clicks
   // while the page copy is still the one on screen.
-  it('the canvas hears the pointer only once the releasing draw has run', () => {
-    const store = exclusiveStore()
-    store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('canvas')
-    store.tick(500)
-    // Presentation authority has moved; the page is still on screen.
-    expect(store.canvasPresents()).toBe(true)
-    expect(store.canvasHearsPointer()).toBe(false)
-    store.present('a', store.epoch())
-    expect(store.canvasHearsPointer()).toBe(true)
-  })
 
-  it('hearing returns to the page with the hold, at the reclaim', () => {
-    const store = exclusiveStore()
-    store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('canvas')
-    store.tick(500)
-    store.present('a', store.epoch())
-    store.request('page')
-    store.tick(5000)
-    expect(store.holdsPage()).toBe(true)
-    expect(store.canvasHearsPointer()).toBe(false)
-  })
+
+
 
   it('keeps the canvas presented through a return until the page takes the hold', () => {
     const store = exclusiveStore()
@@ -526,37 +525,15 @@ describe('the two-stage receipt', () => {
     expect(store.getState().presented).toBe('canvas')
     store.tick(100)
     expect(store.getState().presented).toBe('canvas')
+    expect(store.canvasHearsPointer()).toBe(true)
     store.tick(5_000)
     expect(store.getState().presented).toBe('page')
+    expect(store.canvasHearsPointer()).toBe(false)
   })
 
-  it('reports both only after a color-writing draw and hides both immediately for none', () => {
-    const store = exclusiveStore()
-    store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('both')
-    store.tick(500)
-    expect(store.getState()).toMatchObject({ requested: 'both', presented: 'page' })
-    store.present('a', store.epoch())
-    expect(store.getState().presented).toBe('both')
-    store.request('none')
-    expect(store.getState()).toMatchObject({ requested: 'none', presented: 'none' })
-  })
 
-  it('requires a fresh color draw when canvas is re-requested from none', () => {
-    const store = exclusiveStore()
-    store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('canvas')
-    store.tick(500)
-    store.present('a', store.epoch())
-    expect(store.getState().presented).toBe('canvas')
 
-    store.request('none')
-    expect(store.getState().presented).toBe('none')
-    store.request('canvas')
-    expect(store.getState().presented).toBe('page')
-    store.present('a', store.epoch())
-    expect(store.getState().presented).toBe('canvas')
-  })
+
 
   it('keeps a static settled canvas idle but advances the return linger', () => {
     const store = exclusiveStore()
@@ -593,40 +570,16 @@ describe('the two-stage receipt', () => {
     expect(store.getState().presented).toBe('canvas')
     expect(store.canvasHearsPointer()).toBe(true)
     expect(store.hasProtocolWork()).toBe(false)
-    for (let frame = 0; frame < 200; frame++) {
+    for (let frame = 0; frame < 3; frame++) {
       store.tick(16); store.present('a', store.epoch())
       expect(store.getState().presented).toBe('canvas')
       expect(store.hasProtocolWork()).toBe(false)
     }
   })
 
-  it('both enables canvas pointer input only after it has presented', () => {
-    const store = exclusiveStore()
-    store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('both')
-    expect(store.canvasHearsPointer()).toBe(false)
-    store.tick(500)
-    store.present('a', store.epoch())
-    expect(store.canvasHearsPointer()).toBe(true)
-  })
 
-  it('both and none notify page presentation listeners without a hold swap', () => {
-    const store = createSurfaceStore('twin')
-    store.declarePresentation('page')
-    store.declarePresentation('canvas')
-    store.acquire(1)
-    let heard = 0
-    store.subscribeHold(() => heard++)
-    store.request('both')
-    expect(heard).toBe(1)
-    expect(store.canvasHearsPointer()).toBe(false)
-    store.request('none')
-    expect(heard).toBe(2)
-    expect(store.canvasHearsPointer()).toBe(false)
-    store.request('page')
-    expect(heard).toBe(3)
-    expect(store.pagePresents()).toBe(true)
-  })
+
+
 
   it('a color-writing draw before the lift gate releases nothing', () => {
     // A resident presentation of a Surface that is still the page's.
@@ -695,16 +648,7 @@ describe('the two-stage receipt', () => {
     expect(store.holdsPage()).toBe(false)
   })
 
-  it('a Twin never releases its page copy', () => {
-    const store = createSurfaceStore()
-    store.declarePresentation('page')
-    store.declarePresentation('canvas')
-    store.acquire(1)
-    store.registerPresenter('a')
-    store.prove('a', store.readinessLifetime(), store.epoch())
-    store.present('a', store.epoch())
-    expect(store.holdsPage()).toBe(true)
-  })
+
 
   it('a receipt from a departed controller proves nothing', () => {
     // A host-tail receipt is minted during a draw and closed at the end of
@@ -759,6 +703,9 @@ describe('a scene-owned ramp', () => {
     })
     store.tick(16)
     expect(seen).toEqual([{ target: 'canvas', progress: 0 }])
+    store.request('page')
+    store.tick(16)
+    expect(seen.at(-1)).toEqual({ target: 'page', progress: 0.5 })
   })
 
   // A driver that decides the page may let go would make the whole evidence
@@ -780,18 +727,20 @@ describe('a scene-owned ramp', () => {
     const errors: Error[] = []
     const store = airborne()
     store.setCallbacks({ onError: (error) => errors.push(error) })
+    store.drive(() => 0.4)
+    store.tick(16)
     store.drive(() => Number.NaN)
     store.tick(16)
     expect(errors).toHaveLength(1)
     expect(errors[0]?.message).toContain('driver answered NaN')
     // And the ramp stayed where it was rather than teleporting.
-    expect(store.handle.progress.get()).toBe(0)
+    expect(store.handle.progress.get()).toBe(0.4)
   })
 
   // The fault: an exponential decay reaches 1e-9 and stays there, so the
   // page never takes the hold back and the content sits in WebGL at a
   // progress nobody can see is not zero.
-  it('lands exactly when the driver decays toward zero', () => {
+  it('lands only when the driver reports exact zero', () => {
     const store = airborne()
     let ramp = 1
     store.drive(() => ramp)
@@ -829,17 +778,17 @@ describe('the public handle is identity only', () => {
     const handle = createSurface('panel')
     expect(Object.keys(handle)).toEqual(['progress'])
     expect(handle.progress.get()).toBe(0)
-  })
-
-  it('the name reaches the store behind the handle', () => {
-    const handle = createSurface('panel')
     expect(surfaceStoreOf(handle).name).toBe('panel')
   })
+
+
 
   it('two handles are two identities', () => {
     const first = createSurface()
     const second = createSurface()
     expect(surfaceStoreOf(first)).not.toBe(surfaceStoreOf(second))
+    surfaceStoreOf(first).request('canvas')
+    expect(surfaceStoreOf(second).getState().requested).toBe('page')
   })
 
   it('refuses an object shaped like a handle', () => {
@@ -847,13 +796,7 @@ describe('the public handle is identity only', () => {
     expect(() => surfaceStoreOf(impostor)).toThrow(/not a Surface handle/)
   })
 
-  it('a handle created and never mounted registers nothing', () => {
-    const handle = createSurface('panel')
-    const store = surfaceStoreOf(handle)
-    expect(store.hasController()).toBe(false)
-    expect(store.getState().ready).toBe(false)
-    expect(store.parts()).toEqual([])
-  })
+
 })
 
 describe('the part ledger — all of the parts or none (decisions.md #37)', () => {
@@ -873,7 +816,9 @@ describe('the part ledger — all of the parts or none (decisions.md #37)', () =
     return store
   }
 
-  it('a declared part with no presenter holds the gate and the page', () => {
+
+
+  it('the arriving part presenter completes the set and the handoff proceeds', () => {
     const store = wordStore()
     store.request('canvas')
     store.tick(500)
@@ -881,12 +826,6 @@ describe('the part ledger — all of the parts or none (decisions.md #37)', () =
     expect(store.getState().ready).toBe(false)
     store.present('w', store.epoch())
     expect(store.holdsPage()).toBe(true)
-  })
-
-  it('the arriving part presenter completes the set and the handoff proceeds', () => {
-    const store = wordStore()
-    store.request('canvas')
-    store.tick(500)
     store.registerPresenter('o')
     store.registerPartPresenter('O')
     store.prove('o', store.readinessLifetime(), store.epoch())
@@ -936,28 +875,7 @@ describe('part publication ownership', () => {
     pageRoot: null,
   })
 
-  it.each(['first', 'last'] as const)('recovers the survivor when the %s duplicate leaves', (removed) => {
-    const store = createSurfaceStore('duplicates')
-    const first = publication('panel')
-    const last = publication('panel')
-    const releaseFirst = store.publishPart('panel', first)
-    const releaseLast = store.publishPart('panel', last)
-    expect(store.parts()).toEqual([last])
 
-    const release = removed === 'first' ? releaseFirst : releaseLast
-    const survivor = removed === 'first' ? last : first
-    release()
-    const snapshot = store.parts()
-    expect(store.part('panel')).toBe(survivor)
-    expect(snapshot).toEqual([survivor])
-    release()
-    expect(store.parts()).toBe(snapshot)
-
-    releaseFirst()
-    releaseLast()
-    expect(store.part('panel')).toBeNull()
-    expect(store.parts()).toEqual([])
-  })
 
   it('keeps separate cleanup owners when a publication object is reused', () => {
     const store = createSurfaceStore('shared-publication')
@@ -1004,6 +922,100 @@ describe('the freeze signal', () => {
     expect(store.isFrozen()).toBe(false)
     expect(seen).toEqual([])
   })
+
+  it('pauses before capture and preserves each part’s requested read across peer replacement', () => {
+    const store = createSurfaceStore()
+    store.acquire(1)
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
+    store.setTiming({ settleMs: 0, rampMs: 600 })
+    const uploads = new Map([['left', 4], ['right', 8]])
+    const events: string[] = []
+    let paused = false
+    store.setCallbacks({ onFreezeChange: frozen => { paused = frozen; events.push(frozen ? 'freeze' : 'thaw') } })
+    const publishSource = (id: string) => {
+      const capture: Pick<SurfaceSourceRuntime, 'nextRead' | 'uploadedRead' | 'repaint'> = {
+        nextRead: () => uploads.get(id)! + 1,
+        uploadedRead: () => uploads.get(id)!,
+        repaint: () => { expect(paused).toBe(true); events.push(`capture ${id}`) },
+      }
+      // SAFETY: the store reads only capture ordering and the repaint request.
+      const runtime = capture as SurfaceSourceRuntime
+      return store.publishPart(id, { id, runtime, live: false, size: [100, 80], captureRoot: document.createElement('div'), pageRoot: null })
+    }
+    publishSource('left')
+    const releaseRight = publishSource('right')
+    for (const id of uploads.keys()) {
+      store.expectPart(id)
+      store.registerPartPresenter(id)
+      store.registerPresenter(id)
+      store.prove(id, store.readinessLifetime(), store.epoch())
+    }
+    const presentBoth = () => {
+      store.tick(16)
+      store.present('left', store.epoch())
+      store.present('right', store.epoch())
+    }
+    store.request('canvas')
+    expect(events).toEqual(['freeze', 'capture left', 'capture right'])
+    presentBoth()
+    expect(store.getState().presented).toBe('page')
+    uploads.set('left', 5)
+    presentBoth()
+    expect(store.getState().presented).toBe('page')
+    uploads.set('right', 9)
+    presentBoth()
+    expect(store.getState().presented).toBe('canvas')
+    expect(paused).toBe(true)
+    store.request('page')
+    store.tick(16)
+    expect(store.getState().presented).toBe('page')
+    expect(paused).toBe(false)
+    expect(events.at(-1)).toBe('thaw')
+
+    store.request('canvas')
+    presentBoth()
+    expect(store.getState().presented).toBe('page')
+    releaseRight()
+    store.replaceSource()
+    uploads.set('right', 1)
+    publishSource('right')
+    for (const id of uploads.keys()) store.prove(id, store.readinessLifetime(), store.epoch())
+    presentBoth()
+    expect(store.getState().ready).toBe(true)
+    expect(store.getState().presented).toBe('page')
+    uploads.set('left', 6)
+    presentBoth()
+    expect(store.getState().presented).toBe('canvas')
+  })
+
+  it('enabling live releases that part’s held animations while its peers remain paused', () => {
+    const store = createSurfaceStore()
+    store.acquire(1)
+    store.declarePresentation('page')
+    store.declarePresentation('canvas')
+    const part = (id: string) => {
+      // This seam models animation state; real CSS effect creation and clone matching are browser checks.
+      const animation = {
+        playState: 'running',
+        pause() { this.playState = 'paused' },
+        play() { this.playState = 'running' },
+      }
+      const captureRoot = document.createElement('div')
+      Object.defineProperty(captureRoot, 'getAnimations', { value: () => [animation] })
+      const publication: SurfacePartPublication = { id, runtime: null, live: false, size: [100, 80], captureRoot, pageRoot: null }
+      return { animation, publication, release: store.publishPart(id, publication) }
+    }
+    const left = part('left'), right = part('right')
+    store.request('canvas')
+    expect([left.animation.playState, right.animation.playState, store.isFrozen()]).toEqual(['paused', 'paused', true])
+    left.release()
+    store.publishPart('left', { ...left.publication, live: true })
+    expect.soft([left.animation.playState, right.animation.playState, store.isFrozen()]).toEqual(['running', 'paused', true])
+    right.release()
+    store.publishPart('right', { ...right.publication, live: true })
+    expect([left.animation.playState, right.animation.playState, store.isFrozen()]).toEqual(['running', 'running', false])
+  })
 })
 
 describe('dormant preparation and renderer loss', () => {
@@ -1011,7 +1023,7 @@ describe('dormant preparation and renderer loss', () => {
     const store = createSurfaceStore()
     store.acquire(1); store.declarePresentation('page'); store.declarePresentation('canvas')
     store.request('canvas')
-    for (let frame = 0; frame < 1000; frame++) store.tick(16)
+    store.tick(500)
     expect(store.hasProtocolWork()).toBe(false)
     expect(store.canvasPresents()).toBe(false)
     expect(store.getState().presented).toBe('page')

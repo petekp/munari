@@ -21,20 +21,17 @@ import {
 import type { SurfaceSourceRuntime } from './surfaceSourceRuntime'
 
 describe('a DOM Surface texture', () => {
-  it('is born sRGB, premultiplied, mirrored on request, and keeps its identity', () => {
+  it('is born sRGB, premultiplied, and mirrored on request', () => {
     const canvas = document.createElement('canvas')
     canvas.width = 200
     canvas.height = 100
     const texture = createDomSurfaceTexture(canvas, 1, false, true)
-    const uuid = texture.uuid
-    canvas.width = 420
-    canvas.height = 210
-    texture.needsUpdate = true
-    expect(texture.uuid).toBe(uuid)
+    expect(texture.image).toBe(canvas)
     expect(texture.colorSpace).toBe(THREE.SRGBColorSpace)
     expect(texture.premultiplyAlpha).toBe(true)
     expect(texture.wrapS).toBe(THREE.RepeatWrapping)
     expect(texture.repeat.x).toBe(-1)
+    texture.dispose()
   })
 })
 

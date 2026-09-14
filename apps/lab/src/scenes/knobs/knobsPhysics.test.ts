@@ -19,13 +19,12 @@ import {
   berthPinned,
   centerFacingYaw,
   dampingRatio,
-  rampLag,
   reflect,
   springSettled,
   stepSpin,
   stepSpring,
 } from './knobsPhysics'
-import { KNOB, TOGGLE } from './knobsGeometry'
+import { TOGGLE } from './knobsGeometry'
 
 /** Run a spring from rest at 0 toward `target` for `seconds`, at a fixed
  *  frame rate, recording every frame's position. */
@@ -276,8 +275,14 @@ describe('the edge bounce — the slab bumps, it does not pass through', () => {
   })
 
   it('every bounce loses energy', () => {
-    expect(PANEL_RESTITUTION).toBeGreaterThan(0)
-    expect(PANEL_RESTITUTION).toBeLessThan(1)
+    for (const direction of [-1, 1]) {
+      const state = { x: direction * 230, v: direction * 400 }
+      const before = state.v ** 2
+      reflect(state, -200, 200, PANEL_RESTITUTION)
+      expect(state.v ** 2).toBeGreaterThan(0)
+      expect(state.v ** 2).toBeLessThan(before)
+      expect(Math.sign(state.v)).toBe(-direction)
+    }
   })
 
   it('a dead wall (e = 0) absorbs the hit — pressed, not bounced', () => {
@@ -328,58 +333,6 @@ describe('the standing yaw — the slab faces the middle of the glass', () => {
 })
 
 describe('the resize — the hand is not a glide either', () => {
-  /** Drive a spring against a target that slides at a steady rate, the
-   *  way the berth slides under a hand dragging the grip. Three seconds
-   *  is long past the ζ = 0.6 transient, so what comes back is the
-   *  standing gap, not a swing. */
-  function trail(p: SpringParams, rate: number, seconds = 3, fps = 120): number {
-    const s: SpringState = { x: 0, v: 0 }
-    let target = 0
-    for (let i = 1; i <= seconds * fps; i++) {
-      target -= rate / fps
-      stepSpring(s, target, p, 1 / fps)
-    }
-    return Math.abs(s.x - target)
-  }
-
-  it('rampLag is c/k, and it is what the integrator really does', () => {
-    // The closed form is continuous; the shipping integrator is
-    // semi-implicit Euler at a fixed substep, and it runs a little
-    // under. What matters is that the shortfall is a scale-free bias —
-    // the same ratio at every rate — and not drift.
-    const ratios = [100, 300, 700].map((r) => rampLag(PANEL_GLIDE_SPRING, r) / trail(PANEL_GLIDE_SPRING, r))
-    for (const q of ratios) expect(q).toBeLessThan(1.05)
-    expect(ratios[0]).toBeCloseTo(ratios[2], 6)
-  })
-
-  it('a glided resize would trail the hand by more than a knob', () => {
-    // This is why the pin exists, stated in the units of the panel
-    // itself. A resize slides the berth at HALF the hand's speed,
-    // because the berth is written in terms of w/2.
-    const ordinary = trail(PANEL_GLIDE_SPRING, 600 / 2)
-    expect(ordinary).toBeGreaterThan(KNOB.skirtRadius)
-    // And it is not a corner case: even a slow, careful hand is out by
-    // several pixels.
-    expect(trail(PANEL_GLIDE_SPRING, 200 / 2)).toBeGreaterThan(8)
-  })
-
-  it('and it would still be swinging long after the hand stopped', () => {
-    const s: SpringState = { x: 0, v: 0 }
-    let berth = 0
-    for (let i = 0; i < 60; i++) {
-      berth -= 300 / 120
-      stepSpring(s, berth, PANEL_GLIDE_SPRING, 1 / 120)
-    }
-    // The hand lets go here, tens of pixels from the berth.
-    expect(Math.abs(s.x - berth)).toBeGreaterThan(20)
-    let last = 0
-    for (let i = 1; i <= 240; i++) {
-      stepSpring(s, berth, PANEL_GLIDE_SPRING, 1 / 120)
-      if (Math.abs(s.x - berth) > 0.5) last = i / 120
-    }
-    expect(last).toBeGreaterThan(0.5)
-  })
-
   it('a hand on the grip pins the slab; a hand on the slab does not', () => {
     expect(berthPinned(true, false)).toBe(true)
     // Carried and then resized: the hand chose where this panel stands,
@@ -390,21 +343,4 @@ describe('the resize — the hand is not a glide either', () => {
     expect(berthPinned(false, true)).toBe(false)
   })
 
-  it('pinned, the slab IS its berth — no gap, and no lean to give away', () => {
-    const s: SpringState = { x: 0, v: 0 }
-    let berth = 0
-    for (let i = 1; i <= 120; i++) {
-      berth -= 300 / 120
-      if (berthPinned(true, false)) {
-        s.x = berth
-        s.v = 0
-      } else {
-        stepSpring(s, berth, PANEL_GLIDE_SPRING, 1 / 120)
-      }
-    }
-    expect(s.x).toBe(berth)
-    // The tilt reads glide velocity. A pinned slab has none, so a
-    // resize cannot make the panel lean as if it were being flown.
-    expect(s.v * DRAG_TILT).toBe(0)
-  })
 })

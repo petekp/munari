@@ -61,7 +61,8 @@ export async function scrollPixels(page, before, frames, viewportWidth) {
   },{png:data,viewportWidth}))
   const base=positions.shift()
   if(base===null)throw new Error('Both markers must be visible before scrolling')
-  const samples=positions.flatMap((offset,frame)=>offset===null?[]:[{frame,offset:offset-base}])
+  if(positions.some(offset=>offset===null))throw new Error('A recorded scroll frame lost a marker that should remain visible')
+  const samples=positions.map((offset,frame)=>({frame,offset:offset-base}))
   if(samples.length<=10)throw new Error('Insufficient composited marker frames')
   return {framesMeasured:samples.length,maxRelativeDrift:Math.max(...samples.map(x=>Math.abs(x.offset))),samples}
 }

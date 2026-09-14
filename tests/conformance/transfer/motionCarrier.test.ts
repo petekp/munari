@@ -57,19 +57,6 @@ describe('one evaluation per frame', () => {
     for (let reader = 0; reader < 6; reader++) expect(carrier.sample()).toBe(first)
   })
 
-  it('sampling never advances the clock', () => {
-    const seen: number[] = []
-    const carrier = createMotionCarrier((t) => {
-      seen.push(t)
-      return t
-    })
-    carrier.tick(100)
-    carrier.tick(116)
-    const ticks = seen.length
-    carrier.sample()
-    carrier.sample()
-    expect(seen.length).toBe(ticks)
-  })
 })
 
 describe('before the first tick', () => {

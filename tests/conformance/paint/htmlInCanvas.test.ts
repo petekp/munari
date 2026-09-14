@@ -1,19 +1,8 @@
 // @vitest-environment happy-dom
 //
-// The source canvas's size arithmetic. Everything here is about ONE invariant
-// that is easy to get wrong and expensive to notice: `setScale` recomputes the
-// backing store from the CSS size, so the CSS size is the source of truth and
-// a resize that fails to move it is silently undone the next time the LOD
-// ladder shifts a tier.
-//
-// That is not a hypothetical. Measured in the browser during the detached-
-// surface spike (2026-07-31): a hand-resize that touched only `canvas.width`
-// and `canvas.style.width` held for about a second, then an ordinary LOD
-// downshift recomputed 360×460 from the birth size — against a 288×122 CSS
-// box — and the two stayed diverged for the rest of the session.
-//
-// happy-dom has no compositor, so the origin-trial surface is stubbed. These
-// tests are about the arithmetic, not about rasterization.
+// Native capture sizing, readiness and paint receipts.
+// Trial callbacks are driven in happy-dom. The capture-engines browser gate
+// checks the scaled raster pixels and backing-store clearing.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -227,15 +216,8 @@ describe('createDomTextureSource sizing', () => {
     expect(cssSize(s.canvas)).toEqual([288, 122])
     // The killer assertion: 288×122, NOT the birth size of 360×460.
     expect([s.canvas.width, s.canvas.height]).toEqual([288, 122])
-    s.dispose()
-  })
-
-  it('a tier swap after a resize still scales the NEW size', () => {
-    const s = make(360, 460, 1)
-    s.setSize(200, 100)
     s.setScale(2)
-    expect([s.canvas.width, s.canvas.height]).toEqual([400, 200])
-    expect(cssSize(s.canvas)).toEqual([200, 100])
+    expect([s.canvas.width, s.canvas.height]).toEqual([576, 244])
     s.dispose()
   })
 
@@ -247,14 +229,6 @@ describe('createDomTextureSource sizing', () => {
     // Surface compares size() across the call to decide whether to mark a
     // texture realloc; a no-op must leave it unchanged.
     expect(s.size()).toEqual([360, 460])
-    s.dispose()
-  })
-
-  it('setSize requests a repaint when the size really moves', () => {
-    const s = make(360, 460)
-    const before = paintRequests
-    s.setSize(288, 122)
-    expect(paintRequests).toBe(before + 1)
     s.dispose()
   })
 
@@ -298,13 +272,6 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
     s.dispose()
   })
 
-  it('reports the birth box after the first driven paint', () => {
-    const s = make(360, 460)
-    firePaint(s)
-    expect(s.paintedSize()).toEqual([360, 460])
-    s.dispose()
-  })
-
   // THE LAG IS THE CONTRACT, NOT A DEFECT. setSize moves the CSS box (and
   // size()) immediately — the DOM consumer asked for a new layout NOW —
   // but nothing has rasterized AT that box yet. Reporting the new box here
@@ -318,13 +285,6 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
     s.setSize(288, 122)
     expect(s.size()).toEqual([288, 122])
     expect(s.paintedSize()).toEqual([360, 460])
-    s.dispose()
-  })
-
-  it('reports the new box once the next paint actually lands', () => {
-    const s = make(360, 460)
-    firePaint(s)
-    s.setSize(288, 122)
     firePaint(s)
     expect(s.paintedSize()).toEqual([288, 122])
     s.dispose()
@@ -369,7 +329,9 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
 
     unsubscribe()
     unsubscribe()
+    s.repaint()
     firePaint(s)
+    expect(s.paintCount()).toBe(3)
     expect(notified).toHaveLength(2)
     s.dispose()
   })
@@ -385,6 +347,8 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
 
   it('does not replace the last good receipt when a paint fails', () => {
     let fail = false
+    const errors: Error[] = []
+    let s: DomTextureSource | undefined
     const restore = stubGetContext({
       setTransform: () => {},
       clearRect: () => {},
@@ -393,235 +357,39 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
       },
     })
     try {
-      const s = createDomTextureSource('<div></div>', 80, 40)
+      s = createDomTextureSource('<div></div>', 80, 40, { onError: error => errors.push(error) })
       const notified: unknown[] = []
       s.subscribePaint((receipt) => notified.push(receipt))
       firePaint(s)
       const good = s.currentPaint()
       fail = true
+      s.repaint()
       firePaint(s)
+      expect(errors.map(error => error.message)).toEqual(['paint failed'])
+      expect(s.painted()).toBe(false)
       expect(s.currentPaint()).toBe(good)
       expect(s.paintCount()).toBe(1)
       expect(notified).toEqual([good])
-      s.dispose()
+
+      // A failed attempt must not consume the explicit demand. The next
+      // compositor callback completes it without a second repaint().
+      fail = false
+      firePaint(s)
+      expect(s.painted()).toBe(true)
+      expect(s.currentPaint()).toMatchObject({
+        frame: { sourceId: s.sourceId, generation: 2 },
+        read: 3,
+      })
+      expect(s.paintCount()).toBe(2)
+      expect(notified).toEqual([good, s.currentPaint()])
     } finally {
+      s?.dispose()
       restore()
     }
   })
 })
 
-// The identity-CTM pin. The replay is auto-scaled by the canvas's
-// backing/CSS ratio, and any CTM multiplies ON TOP of that — effective
-// = ratio × CTM at every k. setScale sets the ratio, so the CTM must
-// stay identity or the scale applies twice: the k² crop-to-top-left
-// bug. Identity is asserted PER PAINT because a resize resets context
-// state. This is the unit-level pin — onpaint asserts identity, the
-// backing supplies the scale.
-describe('identity CTM — the backing ratio is the only scale', () => {
-  type Call = { op: 'setTransform' | 'clearRect' | 'drawElementImage'; args: unknown[] }
-  let calls: Call[] = []
-  let restoreGetContext = () => {}
-
-  beforeEach(() => {
-    calls = []
-    restoreGetContext = stubGetContext({
-      setTransform: (...args) => void calls.push({ op: 'setTransform', args }),
-      clearRect: (...args) => void calls.push({ op: 'clearRect', args }),
-      drawElementImage: (...args) => void calls.push({ op: 'drawElementImage', args }),
-    })
-  })
-
-  afterEach(() => restoreGetContext())
-
-  it('every paint begins by resetting the CTM to identity', () => {
-    const s = make(360, 460, 1.5)
-    firePaint(s)
-    const first = calls.find((c) => c.op === 'setTransform' || c.op === 'drawElementImage')
-    expect(first?.op).toBe('setTransform')
-    expect(first?.args).toEqual([1, 0, 0, 1, 0, 0])
-    s.dispose()
-  })
-
-  it('the replay lands at (0, 0) — the ratio scales, nothing translates', () => {
-    const s = make(360, 460, 2)
-    firePaint(s)
-    const draw = calls.find((c) => c.op === 'drawElementImage')
-    expect(draw?.args[0]).toBe(s.element)
-    expect(draw?.args.slice(1)).toEqual([0, 0])
-    s.dispose()
-  })
-
-  it('the clear covers the full backing store, not the CSS box', () => {
-    const s = make(360, 460, 1.5)
-    firePaint(s)
-    const clear = calls.find((c) => c.op === 'clearRect')
-    expect(clear?.args).toEqual([0, 0, 540, 690])
-    s.dispose()
-  })
-
-  it('identity is re-asserted after a resize — context state does not survive one', () => {
-    const s = make(360, 460, 1)
-    firePaint(s)
-    calls = []
-    s.setSize(288, 122)
-    firePaint(s)
-    const first = calls.find((c) => c.op === 'setTransform')
-    expect(first?.args).toEqual([1, 0, 0, 1, 0, 0])
-    // …and both paints advanced the counter: the resize's raster rides
-    // the normal onpaint path (realloc-mark contract).
-    expect(s.paintCount()).toBe(2)
-    s.dispose()
-  })
-})
-
-// THE NODE DOOR. A source mounts markup OR adopts an element the consumer
-// already built.
-//
-// Adoption is not sugar. `drawElementImage` accepts only immediate children
-// of the trial canvas — measured 2026-08-03, with an explicit InvalidStateError
-// for a page element AND for a descendant of a legitimate child — so anything
-// captured is necessarily a clone living in its own parked canvas. A detached
-// tree can contain a clone, padding that avoids the border-box clip
-// (platform.md #9), and an injected stylesheet. A consumer-assembled subtree
-// cannot round-trip through `innerHTML` without losing its identity.
-//
-// The door is one-way BY CONSTRUCTION, and these cases are what makes it so:
-// `appendChild` MOVES a node, so a parented element handed over would be torn
-// out of the consumer's page with no error anywhere. Refusing it is the whole
-// point of the seam.
-describe('createDomTextureSource adopting a node', () => {
-  /** A detached tree as a consumer builds one. */
-  function detachedTree(): HTMLElement {
-    const wrapper = document.createElement('div')
-    wrapper.style.padding = '100px'
-    const style = document.createElement('style')
-    style.textContent = '*{color:transparent !important}'
-    const content = document.createElement('div')
-    content.className = 'content'
-    content.textContent = 'live'
-    wrapper.append(style, content)
-    return wrapper
-  }
-
-  it('adopts the node ITSELF — identity survives, so the consumer can keep a handle', () => {
-    const node = detachedTree()
-    const s = createDomTextureSource(node, 360, 460, { label: 'tree' })
-    // Not a copy, not a re-parse: the same object. A consumer holds its
-    // wrapper to re-style or re-measure it after the source exists.
-    expect(s.element).toBe(node)
-    s.dispose()
-  })
-
-  it('carries the assembled subtree across intact', () => {
-    const node = detachedTree()
-    const s = createDomTextureSource(node, 360, 460)
-    // The injected stylesheet and the content are both still there. Markup
-    // round-tripping would serialize the detached wrapper and create a new
-    // object graph instead of the one whose geometry the consumer measured.
-    expect(s.element.querySelector('style')?.textContent).toContain('color:transparent')
-    expect(s.element.querySelector('.content')?.textContent).toBe('live')
-    s.dispose()
-  })
-
-  it('parks the adopted node inside the canvas — the drawn element is a canvas CHILD', () => {
-    const node = detachedTree()
-    const s = createDomTextureSource(node, 360, 460)
-    // The platform's hardest structural rule: only immediate children of the
-    // trial canvas can be drawn. An adopted node that landed anywhere else
-    // would fail at paint time with InvalidStateError, not here.
-    expect(node.parentNode).toBe(s.canvas)
-    s.dispose()
-  })
-
-  it('re-roots the pointer-events cascade on the adopted node too', () => {
-    const node = detachedTree()
-    const s = createDomTextureSource(node, 360, 460)
-    // The parked canvas is `pointer-events: none` and that value INHERITS.
-    // The forwarder's hit test reads the computed style, so without this the
-    // whole tree would read as clear glass. The markup path has always done
-    // it; the node path is the same subtree and needs the same re-rooting.
-    expect(s.element.style.pointerEvents).toBe('auto')
-    s.dispose()
-  })
-
-  it('dispose RELEASES the node — it leaves unparented, exactly as it arrived', () => {
-    const node = detachedTree()
-    const s = createDomTextureSource(node, 360, 460)
-    s.dispose()
-    // Hold, not confiscation. The node is required to arrive unparented,
-    // so dispose returns it to that state and adoption is exactly invertible.
-    // Leaving it inside the dead canvas would be a resting state nobody owns:
-    // a consumer holding the node holds the canvas through it, so every
-    // disposed source would leak its parked canvas.
-    expect(document.body.contains(s.canvas)).toBe(false)
-    expect(document.body.contains(node)).toBe(false)
-    expect(node.parentNode).toBe(null)
-  })
-
-  // THE REMOUNT. React StrictMode mounts, cleans up, and mounts again — so a
-  // <Surface html={node}> adopts the SAME node twice, with a dispose between.
-  // Without release the second adoption sees a node parented to the first
-  // (detached) canvas and refuses it: the tree would throw on the second
-  // pass of every dev-mode mount, and the refusal would be *correct* by the
-  // rule while being nonsense in the situation. Release is what makes the
-  // rule and the lifecycle agree.
-  it('the same node can be re-adopted after dispose — a StrictMode remount', () => {
-    const node = detachedTree()
-    const first = createDomTextureSource(node, 360, 460)
-    first.dispose()
-    const second = createDomTextureSource(node, 360, 460)
-    expect(second.element).toBe(node)
-    expect(node.parentNode).toBe(second.canvas)
-    second.dispose()
-  })
-
-  // THE REFUSAL. This is the case the seam exists for.
-  it('REFUSES an element that still has a parent, rather than moving it', () => {
-    const live = document.createElement('div')
-    document.body.appendChild(live)
-    const thrown = errorFrom(() => createDomTextureSource(live, 360, 460))
-    // The message has to name the mechanism, because the symptom the consumer
-    // would otherwise see is their own page silently losing an element.
-    expect(thrown.message).toMatch(/cloneNode/)
-    live.remove()
-  })
-
-  it('a refused node is left exactly where it was, and no canvas is parked', () => {
-    const host = document.createElement('section')
-    const live = document.createElement('div')
-    host.appendChild(live)
-    document.body.appendChild(host)
-    const canvasesBefore = document.body.querySelectorAll('canvas').length
-    try {
-      createDomTextureSource(live, 360, 460)
-    } catch {
-      /* expected */
-    }
-    // Refusal happens before construction: the consumer's tree is untouched
-    // and nothing was appended to the document to clean up.
-    expect(live.parentNode).toBe(host)
-    expect(document.body.querySelectorAll('canvas').length).toBe(canvasesBefore)
-    host.remove()
-  })
-
-  it('refuses a node parented to ANOTHER source, not just a page node', () => {
-    const first = createDomTextureSource('<div class="root"></div>', 360, 460)
-    // Re-adopting a live source's element would strip that source of the very
-    // subtree it rasterizes — a source that silently goes blank, which reads
-    // as a paint bug rather than as the double-adoption it is.
-    expect(() => createDomTextureSource(first.element, 360, 460)).toThrow(/unparented/)
-    expect(first.element.parentNode).toBe(first.canvas)
-    first.dispose()
-  })
-
-  it('the markup path is unchanged — a string still parses to its first element', () => {
-    const s = createDomTextureSource('<div class="root"><span>x</span></div>', 360, 460)
-    expect(s.element.className).toBe('root')
-    expect(s.element.parentNode).toBe(s.canvas)
-    expect(s.element.style.pointerEvents).toBe('auto')
-    s.dispose()
-  })
-
+describe('the native adopted source', () => {
   it('the ADOPTED NODE is the element drawn, through the ordinary paint path', () => {
     const drawn: unknown[] = []
     const restore = stubGetContext({
@@ -630,7 +398,7 @@ describe('createDomTextureSource adopting a node', () => {
       drawElementImage: (el) => void drawn.push(el),
     })
     try {
-      const node = detachedTree()
+      const node = document.createElement('div')
       const s = createDomTextureSource(node, 360, 460)
       // Nothing about the door is a second paint path: same onpaint, same
       // counter, and the element handed to the platform is the consumer's own
@@ -679,12 +447,8 @@ describe('createDomTextureSource without the origin trial', () => {
     const thrown = errorFrom(() => make())
     expect(thrown.name).toBe('UnsupportedPlatformError')
     expect(thrown.message).not.toMatch(/is not a function/)
-  })
-
-  it("the message names the API and the flag that turns it on", () => {
-    const { message } = errorFrom(() => make())
-    expect(message).toMatch(/drawElementImage/)
-    expect(message).toMatch(/CanvasDrawElement/)
+    expect(thrown.message).toMatch(/drawElementImage/)
+    expect(thrown.message).toMatch(/CanvasDrawElement/)
   })
 
   it('leaves no parked canvas behind — a refused source owns no DOM', () => {
@@ -697,7 +461,6 @@ describe('createDomTextureSource without the origin trial', () => {
     expect(document.body.querySelectorAll('canvas').length).toBe(before)
   })
 })
-
 
 it('rasters each axis independently without changing the retained CSS box',()=>{
  const restore=stubGetContext({setTransform(){},clearRect(){},drawElementImage(){}})

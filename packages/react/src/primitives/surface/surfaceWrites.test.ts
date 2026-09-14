@@ -22,34 +22,18 @@ const twoPasses = (material: SurfaceMaterialWrites) => {
 }
 
 describe('pass writes', () => {
-  it('a warm-up disables all three writes', () => {
-    const material = new THREE.MeshBasicMaterial()
-    const { warmUp } = twoPasses(material)
-    expect(warmUp.colorWrite).toBe(false)
-    expect(warmUp.depthWrite).toBe(false)
-    expect(warmUp.stencilWrite).toBe(false)
-  })
-
-  it('restores a default material exactly', () => {
+  it('a warm-up silences writes and restores the authored flags for presentation', () => {
     const material = new THREE.MeshBasicMaterial()
     const authored = {
       colorWrite: material.colorWrite,
       depthWrite: material.depthWrite,
       stencilWrite: material.stencilWrite,
     }
-    const { betweenPasses, after } = twoPasses(material)
+    const { warmUp, betweenPasses, presenting, after } = twoPasses(material)
+    expect(warmUp).toMatchObject({ colorWrite: false, depthWrite: false, stencilWrite: false })
     expect(betweenPasses).toMatchObject(authored)
+    expect(presenting).toMatchObject(authored)
     expect(after).toMatchObject(authored)
-  })
-
-  // The fault this module exists for: the old warm-up wrote `false` onto
-  // the material and read the next pass's value back out of it, so depth
-  // never came back and the Surface stopped sorting against the scene.
-  it('a presenting pass writes depth again after a warm-up', () => {
-    const material = new THREE.MeshBasicMaterial()
-    const { presenting, after } = twoPasses(material)
-    expect(presenting.depthWrite).toBe(true)
-    expect(after.depthWrite).toBe(true)
   })
 
   it('a stencil-writing material keeps its stencil across a warm-up', () => {
@@ -85,7 +69,7 @@ describe('pass writes', () => {
   // Two meshes drawn in one frame share one material instance in three's
   // own render loop; the second borrow must not capture the first's
   // borrowed values as if they were authored.
-  it('overlapping presenters restore the same material once each', () => {
+  it('sequential presenters restore the shared material after each pass', () => {
     const material = new THREE.MeshBasicMaterial()
     const first = authoredWrites()
     const second = authoredWrites()

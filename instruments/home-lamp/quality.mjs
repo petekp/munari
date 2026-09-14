@@ -17,11 +17,19 @@ const shell={name:'lamp-zoom-frame',configureServer(server){server.middlewares.u
 const server=await createServer({root:path.resolve(import.meta.dirname,'../../apps/lab'),plugins:[lampObserver,shell],cacheDir:path.join(output,'.vite'),logLevel:'warn',server:{host:'127.0.0.1',port:0}})
 await server.listen()
 const frames=(page,count=4)=>page.evaluate(count=>new Promise(resolve=>{const next=()=>--count?requestAnimationFrame(next):resolve();requestAnimationFrame(next)}),count)
-const draw=frame=>frame.evaluate(()=>new Promise((resolve,reject)=>{
-  const timeout=setTimeout(()=>reject(new Error('Lamp draw did not complete')),5000)
-  window.__lampRendered=canvas=>{clearTimeout(timeout);delete window.__lampRendered;resolve(canvas.toDataURL().split(',')[1])}
+const draw=(frame,ratio)=>frame.evaluate(ratio=>new Promise((resolve,reject)=>{
+  const timeout=setTimeout(()=>{delete window.__lampRendered;reject(new Error('Lamp draw did not complete'))},5000)
+  window.__lampRendered=canvas=>{
+    clearTimeout(timeout);delete window.__lampRendered
+    try{
+      const gl=canvas.getContext('webgl2')
+      if(!gl||gl.isContextLost()||canvas.width<=0||canvas.height<=0||gl.drawingBufferWidth!==canvas.width||gl.drawingBufferHeight!==canvas.height||gl.getError()!==gl.NO_ERROR)throw new Error('Lamp sample needs an unclamped readable framebuffer')
+      if(ratio!=null&&Math.abs(window.__lampRenderer.getPixelRatio()-ratio)>.01)throw new Error('Lamp density control was overwritten before its draw')
+      resolve(canvas.toDataURL().split(',')[1])
+    }catch(error){reject(error)}
+  }
   window.__lampRedraw()
-}))
+}),ratio)
 let browser
 const results={}
 try{
@@ -39,10 +47,12 @@ try{
     if(enhanced)await frame.waitForFunction(()=>window.__lamp.uniforms.uPageReady.value===1)
     const frameBox=await page.$eval('iframe',e=>e.getBoundingClientRect().toJSON())
     const box=await frame.$eval('.home-light',e=>e.getBoundingClientRect().toJSON())
-    await page.mouse.move(frameBox.x+box.x+box.width/2,frameBox.y+box.y+box.height/2);await page.mouse.down();await page.mouse.move(170,130,{steps:16});await page.mouse.up()
+    const ink=await frame.$eval('.home-headline-html',element=>{const r=element.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})
+    await page.mouse.move(frameBox.x+box.x+box.width/2,frameBox.y+box.y+box.height/2);await page.mouse.down();await page.mouse.move(frameBox.x+ink.x,frameBox.y+ink.y,{steps:16});await page.mouse.up()
     await frame.evaluate(()=>{window.__freezeLamp=true;window.__lamp.group.rotation.z=.7})
     const client=await page.createCDPSession();await client.send('Emulation.setPageScaleFactor',{pageScaleFactor:3})
     const meta=await page.evaluate(()=>({dpr:devicePixelRatio,scale:visualViewport.scale,width:visualViewport.width,height:visualViewport.height,left:visualViewport.offsetLeft,top:visualViewport.offsetTop}))
+    assert.equal(meta.scale,3,'The comparison must engage parent zoom')
     await frame.waitForFunction(ratio=>Math.abs(window.__lampRenderer.getPixelRatio()-ratio)<.01,{},meta.dpr*meta.scale)
     await frames(page,8)
     if(enhanced)await frame.waitForFunction(()=>window.__lamp.uniforms.uPageReady.value===1)
@@ -54,20 +64,22 @@ try{
     assert.deepEqual([allocation.width,allocation.height],allocation.buffer)
     assert.equal(allocation.innerZoom,1,'This must exercise a zoomed parent with an unzoomed iframe')
     await frame.evaluate(ratio=>window.__lampRenderer.setPixelRatio(ratio),meta.dpr*meta.scale*2)
-    await draw(frame);const reference=await capture('reference')
+    await draw(frame,meta.dpr*meta.scale*2);const reference=await capture('reference')
     await frame.evaluate(ratio=>window.__lampRenderer.setPixelRatio(ratio),meta.dpr)
-    await draw(frame);const coarse=await capture('coarse-control')
+    await draw(frame,meta.dpr);const coarse=await capture('coarse-control')
     let recoloured=null
     if(enhanced){
       await frame.evaluate(ratio=>window.__lampRenderer.setPixelRatio(ratio),meta.dpr*meta.scale)
-      const previous=await frame.evaluate(()=>{const count=window.__lampPaintCount();document.querySelector('.home-masthead-title span').style.color='#e32516';return count})
+      const previous=await frame.evaluate(()=>{const count=window.__lampPaintCount();document.querySelector('.home-headline-html').style.color='#e32516';return count})
       await frame.waitForFunction(previous=>window.__lampPaintCount()>previous,{},previous)
-      await frames(page);await draw(frame);recoloured=await capture('live-colour-control')
+      await frames(page);await draw(frame,meta.dpr*meta.scale);recoloured=await capture('live-colour-control')
     }
     const quality=await page.evaluate(async({on,off,alpha,reference,coarse,recoloured,meta,allocation,frameBox})=>{
       const decode=async data=>{const image=await createImageBitmap(new Blob([Uint8Array.from(atob(data),c=>c.charCodeAt(0))],{type:'image/png'})),canvas=new OffscreenCanvas(image.width,image.height),ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);image.close();return {data:ctx.getImageData(0,0,canvas.width,canvas.height).data,canvas,ctx}}
       const lit=await decode(on),dark=await decode(off),mask=await decode(alpha),fine=await decode(reference),low=await decode(coarse)
       const colour=recoloured?await decode(recoloured):null
+      const requireMatchingImage=image=>{if(image.canvas.width!==lit.canvas.width||image.canvas.height!==lit.canvas.height)throw new Error('Lamp comparison viewport changed')}
+      ;[dark,fine,low,colour].filter(Boolean).forEach(requireMatchingImage)
       const scale=lit.canvas.width/meta.width,cx=(frameBox.x+allocation.point[0]-meta.left)*scale,cy=(frameBox.y+allocation.point[1]-meta.top)*scale
       const a=(x,y)=>{const px=Math.floor((x/scale+meta.left-frameBox.x-allocation.css[0])*allocation.ratio),py=Math.floor((y/scale+meta.top-frameBox.y-allocation.css[1])*allocation.ratio);return px<0||py<0||px>=mask.canvas.width||py>=mask.canvas.height?0:mask.data[(py*mask.canvas.width+px)*4+3]}
       let edgeCount=0,nativeError=0,coarseError=0,inside=0,insideGain=0,outside=0,outsideGain=0,colourCount=0,colourDifference=0

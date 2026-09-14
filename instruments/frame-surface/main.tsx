@@ -16,9 +16,9 @@
 // each hold period under a fresh surface epoch, with no stale receipt and
 // no clear or wrong-color frame in between (instruments/README.md has the
 // full claim list).
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Canvas, useThree } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { PresentationReceipt } from '@petepetrash/munari'
 import {
@@ -188,11 +188,6 @@ export interface FrameSurfaceGateReceipt {
   meshId: number
   geometryId: number
   materialId: number
-  materialType: string
-  toneMapped: boolean
-  canvasTexture: boolean
-  textureColorSpace: string | null
-  textureCanvasMatchesSource: boolean
 }
 
 export interface RenderSample {
@@ -245,8 +240,6 @@ export interface FrameSurfaceGateResult {
   acquisitionClearFrames: number
   acquisitionMismatchedFrames: number
   liveReplacementIdentityPreserved: boolean
-  reacquisitionObjectsFresh: boolean
-  defaultUnlitVerified: boolean
   freshSurfaceEpochPerHandoff: boolean
   presentationFence: PresentationFenceEvidence
   backingStoreResize: BackingStoreResizeEvidence
@@ -287,7 +280,7 @@ const acquisitionRenderSamples: AcquisitionRenderSample[] = []
 const releasePublications: ReleasePublication[] = []
 /** Anything in the render graph the gate wants a stable id for, so two
  *  receipts can be compared for "same object" without holding references. */
-type RenderNode = THREE.Object3D | THREE.BufferGeometry | THREE.Material
+type RenderNode = THREE.Object3D | THREE.BufferGeometry | THREE.Material | THREE.Material[]
 
 const objectIds = new WeakMap<RenderNode, number>()
 let nextObjectId = 1
@@ -377,34 +370,17 @@ function isClearOnly(sampled: readonly RGB[]): boolean {
   return sampled.every((rgb) => rgb.every((channel) => channel <= 1))
 }
 
-function expectedSourceCanvas(sourceId: number): HTMLCanvasElement {
-  if (sourceId === firstSourceId) return first.source.canvas
-  if (sourceId === secondSourceId) return second.source.canvas
-  throw new Error(`unknown source ${sourceId}`)
-}
-
 function inspectSurface(
   scene: THREE.Scene,
-  sourceId: number,
 ): Omit<FrameSurfaceGateReceipt, 'receipt' | 'sampledRgb' | 'maxChannelError'> {
   const object = scene.getObjectByName(SURFACE_NAME)
   if (!(object instanceof THREE.Mesh)) {
     throw new Error(`FrameSurface mesh ${SURFACE_NAME} was not in the rendered scene`)
   }
-  if (Array.isArray(object.material)) {
-    throw new Error('FrameSurface unexpectedly used a material array')
-  }
-  const material = object.material
-  const map = material instanceof THREE.MeshBasicMaterial ? material.map : null
   return {
     meshId: objectId(object),
     geometryId: objectId(object.geometry),
-    materialId: objectId(material),
-    materialType: material.type,
-    toneMapped: material.toneMapped,
-    canvasTexture: map instanceof THREE.CanvasTexture,
-    textureColorSpace: map?.colorSpace ?? null,
-    textureCanvasMatchesSource: map?.image === expectedSourceCanvas(sourceId),
+    materialId: objectId(object.material),
   }
 }
 
@@ -509,7 +485,6 @@ function gatePassed(
     e.acquisitionClearFrames === 0 &&
     e.acquisitionMismatchedFrames === 0 &&
     e.liveReplacementIdentityPreserved &&
-    e.defaultUnlitVerified &&
     e.freshSurfaceEpochPerHandoff &&
     e.presentationFence.passed &&
     e.backingStoreResize.passed &&
@@ -556,26 +531,6 @@ function scheduleResult(): void {
         allSame(liveReplacementReceipts.map((entry) => entry.meshId)) &&
         allSame(liveReplacementReceipts.map((entry) => entry.geometryId)) &&
         allSame(liveReplacementReceipts.map((entry) => entry.materialId))
-      const handoffReceipts = [receipts[3], receipts[4], receipts[5], receipts[6]]
-      const reacquisitionObjectsFresh = handoffReceipts.every((entry, index) => {
-        if (index === 0) return entry !== undefined
-        const previous = handoffReceipts[index - 1]
-        return (
-          entry !== undefined &&
-          previous !== undefined &&
-          entry.meshId !== previous.meshId &&
-          entry.geometryId !== previous.geometryId &&
-          entry.materialId !== previous.materialId
-        )
-      })
-      const defaultUnlitVerified = receipts.every(
-        (entry) =>
-          entry.materialType === 'MeshBasicMaterial' &&
-          entry.toneMapped === false &&
-          entry.canvasTexture &&
-          entry.textureColorSpace === THREE.SRGBColorSpace &&
-          entry.textureCanvasMatchesSource,
-      )
       const freshSurfaceEpochPerHandoff = epochsFreshPerHandoff(receiptSurfaceEpochs)
       const worstRgbError = Math.max(...receipts.map((entry) => entry.maxChannelError))
       const acquisitionEvidence = ACQUISITIONS.map((acquisition) => {
@@ -650,8 +605,6 @@ function scheduleResult(): void {
         acquisitionClearFrames,
         acquisitionMismatchedFrames,
         liveReplacementIdentityPreserved,
-        reacquisitionObjectsFresh,
-        defaultUnlitVerified,
         freshSurfaceEpochPerHandoff,
         presentationFence: fenceEvidence,
         backingStoreResize: resizeEvidence,
@@ -853,25 +806,27 @@ function PresentationFenceScene() {
   )
 }
 
+function ResizeTexture({ observed }: { observed: RefObject<THREE.Texture | null> }) {
+  const texture = useFrameTexture()
+  useLayoutEffect(() => {
+    observed.current = texture
+    return () => { observed.current = null }
+  }, [observed, texture])
+  return null
+}
+
 function BackingStoreResizeScene() {
   const renderer = useThree((state) => state.gl)
-  const scene = useThree((state) => state.scene)
   const generations = useRef<number[]>([])
   const rgbErrors = useRef<number[]>([])
   const firstTexture = useRef<THREE.Texture | null>(null)
+  const observedTexture = useRef<THREE.Texture | null>(null)
 
   const onFrameDrawn = useCallback(
     (receipt: FrameDrawReceipt) => {
       try {
-        const object = scene.getObjectByName('frame-resize-gate')
-        if (!(object instanceof THREE.Mesh) || Array.isArray(object.material)) {
-          throw new Error('resize gate FrameSurface mesh was not ready')
-        }
-        const texture =
-          object.material instanceof THREE.MeshBasicMaterial
-            ? object.material.map
-            : null
-        if (!texture) throw new Error('resize gate had no CanvasTexture')
+        const texture = observedTexture.current
+        if (!texture) throw new Error('resize gate has no public frame texture')
 
         const index = generations.current.length
         const expected = index === 0 ? FIRST_0 : FIRST_2
@@ -908,7 +863,7 @@ function BackingStoreResizeScene() {
         fail(asError(error))
       }
     },
-    [renderer, scene],
+    [renderer],
   )
 
   return (
@@ -920,8 +875,22 @@ function BackingStoreResizeScene() {
       onFrameDrawn={onFrameDrawn}
     >
       <planeGeometry args={[4, 1]} />
+      <ResizeTexture observed={observedTexture} />
     </FrameSurface>
   )
+}
+
+function ToneMappingFault() {
+  useFrame(({ scene }) => {
+    const mesh = scene.getObjectByName(SURFACE_NAME)
+    if (!(mesh instanceof THREE.Mesh)) return
+    for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      if (material.toneMapped) continue
+      material.toneMapped = true
+      material.needsUpdate = true
+    }
+  })
+  return null
 }
 
 function GateScene() {
@@ -988,7 +957,7 @@ function GateScene() {
           receipt,
           sampledRgb,
           maxChannelError: maxError(sampledRgb, expected.colors),
-          ...inspectSurface(scene, receipt.frame.sourceId),
+          ...inspectSurface(scene),
         })
 
         if (receiptIndex >= 4) {
@@ -1059,6 +1028,8 @@ function GateScene() {
 
   return (
     <>
+      <ambientLight color="#ff0000" intensity={4} />
+      {new URLSearchParams(location.search).has('toneMapped') && <ToneMappingFault />}
       <RenderMonitor />
       {mounted && (
         <FrameSurface
@@ -1165,7 +1136,7 @@ createRoot(document.getElementById('root')!).render(
         gl={{ alpha: false, antialias: false, preserveDrawingBuffer: true }}
         onCreated={({ gl }) => {
           gl.outputColorSpace = THREE.SRGBColorSpace
-          gl.toneMapping = THREE.NoToneMapping
+          gl.toneMapping = THREE.ACESFilmicToneMapping
           gl.setClearColor(0x000000, 1)
         }}
       >

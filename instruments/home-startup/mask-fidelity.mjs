@@ -42,7 +42,9 @@ try {
           {kind: 'raised', x: 750.5, y: 1000.75, width: 130.25, height: 125.5, radius: 0},
         ]},
       ]
+      if(plans[0].width<=0||plans[0].height<=0||plans[0].boxes.length===0)throw Error('The real page must contribute measured relief geometry')
       const exact = (a, b, label) => {
+        if(a.length===0)throw Error(`${label}: no reference bytes were measured`)
         if (a.length !== b.length) throw Error(`${label}: length differs`)
         for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) throw Error(`${label}: byte ${i}: ${a[i]} != ${b[i]}`)
       }
@@ -79,9 +81,12 @@ try {
       const same = buildInkMask(inner, lines, first)
       if (first !== same) throw Error('Unchanged native coverage did not reuse the mask')
       const word = document.querySelector('#root .home-headline-html'), original = word.textContent
+      const originalWidth=word.getBoundingClientRect().width
       word.textContent = '<form>'
+      if(word.getBoundingClientRect().width!==originalWidth)throw Error('The glyph-change control did not retain the original width')
       const changed = buildInkMask(inner, lines, first)
       if (changed === first) throw Error('Changed glyphs reused stale distances')
+      if(changed.data.length!==first.data.length||!changed.data.some((value,index)=>value!==first.data[index]))throw Error('The same-size glyph edit must change actual mask bytes')
       word.textContent = original
       const restored = buildInkMask(inner, lines, changed)
       exact(first.data, restored.data, 'restored headline')
