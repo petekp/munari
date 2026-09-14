@@ -72,10 +72,64 @@ try {
   })
 
   const page = await browser.newPage()
+  console.log('graphics diagnostic: Chrome', await browser.version())
+  const diagnosticClient = await browser.target().createCDPSession()
+  console.log('graphics diagnostic: system', JSON.stringify(await diagnosticClient.send('SystemInfo.getInfo')))
+  await diagnosticClient.detach()
+  console.log('graphics diagnostic: independent pixels', JSON.stringify(await page.evaluate(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 8
+    const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true })
+    if (!gl) return { context: false }
+    const extension = gl.getExtension('WEBGL_debug_renderer_info')
+    const read = () => {
+      const bytes = new Uint8Array(4)
+      gl.readPixels(4, 4, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, bytes)
+      return { rgba: Array.from(bytes), error: gl.getError() }
+    }
+    gl.clearColor(1, 0, 0, 1)
+    gl.clear(gl.COLOR_BUFFER_BIT)
+    const cleared = read()
+    const compile = (type, source) => {
+      const shader = gl.createShader(type)
+      gl.shaderSource(shader, source)
+      gl.compileShader(shader)
+      return shader
+    }
+    const vertex = compile(gl.VERTEX_SHADER, '#version 300 es\nvoid main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);gl_Position=vec4(p*2.0-1.0,0,1);}')
+    const fragment = compile(gl.FRAGMENT_SHADER, '#version 300 es\nprecision highp float;uniform sampler2D image;uniform bool textured;out vec4 color;void main(){color=textured?texture(image,vec2(0.5)):vec4(0,1,0,1);}')
+    const program = gl.createProgram()
+    gl.attachShader(program, vertex)
+    gl.attachShader(program, fragment)
+    gl.linkProgram(program)
+    gl.useProgram(program)
+    gl.drawArrays(gl.TRIANGLES, 0, 3)
+    const triangle = read()
+    const source = document.createElement('canvas')
+    source.width = source.height = 2
+    const context = source.getContext('2d')
+    context.fillStyle = '#0000ff'
+    context.fillRect(0, 0, 2, 2)
+    const texture = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source)
+    gl.uniform1i(gl.getUniformLocation(program, 'textured'), 1)
+    gl.drawArrays(gl.TRIANGLES, 0, 3)
+    const canvasTexture = read()
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 255, 255, 255]))
+    gl.drawArrays(gl.TRIANGLES, 0, 3)
+    const byteTexture = read()
+    const result = { renderer: extension && gl.getParameter(extension.UNMASKED_RENDERER_WEBGL), cleared, triangle, canvasTexture, byteTexture, shaderErrors: [gl.getShaderInfoLog(vertex), gl.getShaderInfoLog(fragment), gl.getProgramInfoLog(program)] }
+    gl.getExtension('WEBGL_lose_context')?.loseContext()
+    return result
+  })))
   await page.setViewport({ width: 512, height: 256, deviceScaleFactor: 1 })
   const pageProblems = []
   page.on('pageerror', (error) => pageProblems.push(String(error)))
   page.on('console', (message) => {
+    if (message.type() === 'warn') console.log('graphics diagnostic: warning', message.text())
     if (message.type() === 'error' && !/Failed to load resource/.test(message.text())) {
       pageProblems.push(message.text())
     }
