@@ -48,7 +48,8 @@ try {
   await mkdir(output, { recursive: true })
   browser = await puppeteer.launch({
     executablePath: chromePath, headless: true, protocolTimeout: 30_000,
-    args: ['--enable-features=CanvasDrawElement', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(process.env.CI ? ['--no-sandbox'] : [])],
+    args: [
+      '--enable-unsafe-swiftshader','--enable-features=CanvasDrawElement', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(process.env.CI ? ['--no-sandbox'] : [])],
   })
   const probe = await browser.newPage()
   const capable = await probe.evaluate(() => 'drawElementImage' in document.createElement('canvas').getContext('2d'))

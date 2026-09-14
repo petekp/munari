@@ -79,6 +79,7 @@ try {
     executablePath: CHROME,
     headless: !HEADED,
     args: [
+      '--enable-unsafe-swiftshader',
       '--enable-features=CanvasDrawElement',
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
@@ -228,57 +229,67 @@ try {
         coverageError = error.message
       }
 
-      const scored = await page.evaluate(
-        async (shot, desk, clickAt, flashWindow, shownPct, format) => {
-          const read = async (data) => {
-            const image = new Image()
-            image.src = `data:image/${format};base64,${data}`
-            await image.decode()
-            const canvas = document.createElement('canvas')
-            canvas.width = image.width
-            canvas.height = image.height
-            const context = canvas.getContext('2d', { willReadFrequently: true })
-            context.drawImage(image, 0, 0)
-            const sx = image.width / window.innerWidth
-            const sy = image.height / window.innerHeight
-            return context.getImageData(
-              Math.round(desk.left * sx),
-              Math.round(desk.top * sy),
-              Math.round(desk.width * sx),
-              Math.round(desk.height * sy),
-            ).data
-          }
-          const before = shot.filter((frame) => frame.t < clickAt)
-          if (!before.length) return null
-          const reference = await read(before.at(-1).data)
-          let flash = 0
-          let sheetAt = null
-          for (const frame of shot) {
-            const dt = Math.round(frame.t - clickAt)
-            if (dt < 0) continue
-            const pixels = await read(frame.data)
-            let changed = 0
-            for (let i = 0; i < pixels.length; i += 4) {
-              const delta =
-                Math.abs(pixels[i] - reference[i]) +
-                Math.abs(pixels[i + 1] - reference[i + 1]) +
-                Math.abs(pixels[i + 2] - reference[i + 2])
-              if (delta > 30) changed++
+      const referenceFrame = frames.findLast(frame => frame.t < pressedAt)
+      const afterPress = frames.filter(frame => frame.t >= pressedAt)
+      const scored = referenceFrame ? { flash: 0, sheetAt: null, frames: frames.length } : null
+      // Eight full-size frames stay below DevTools' 100 MB message limit.
+      // Each batch uses the same reference and every recorded frame is judged.
+      for (let offset = 0; scored && offset < afterPress.length; offset += 8) {
+        const batch = await page.evaluate(
+          async (shot, desk, clickAt, flashWindow, shownPct, format) => {
+            const read = async (data) => {
+              const image = new Image()
+              image.src = `data:image/${format};base64,${data}`
+              await image.decode()
+              const canvas = document.createElement('canvas')
+              canvas.width = image.width
+              canvas.height = image.height
+              const context = canvas.getContext('2d', { willReadFrequently: true })
+              context.drawImage(image, 0, 0)
+              const sx = image.width / window.innerWidth
+              const sy = image.height / window.innerHeight
+              return context.getImageData(
+                Math.round(desk.left * sx),
+                Math.round(desk.top * sy),
+                Math.round(desk.width * sx),
+                Math.round(desk.height * sy),
+              ).data
             }
-            const pct = (100 * changed) / (pixels.length / 4)
-            if (pct <= shownPct) continue
-            if (dt <= flashWindow) flash++
-            else sheetAt ??= dt
-          }
-          return { flash, sheetAt, frames: shot.length }
-        },
-        frames.map((frame) => ({ t: frame.t, data: frame.data })),
-        setup.desk,
-        pressedAt,
-        FLASH_WINDOW_MS,
-        SHOWN_PCT,
-        CAPTURE_FORMAT,
-      )
+            const before = shot.filter((frame) => frame.t < clickAt)
+            if (!before.length) return null
+            const reference = await read(before.at(-1).data)
+            let flash = 0
+            let sheetAt = null
+            for (const frame of shot) {
+              const dt = Math.round(frame.t - clickAt)
+              if (dt < 0) continue
+              const pixels = await read(frame.data)
+              let changed = 0
+              for (let i = 0; i < pixels.length; i += 4) {
+                const delta =
+                  Math.abs(pixels[i] - reference[i]) +
+                  Math.abs(pixels[i + 1] - reference[i + 1]) +
+                  Math.abs(pixels[i + 2] - reference[i + 2])
+                if (delta > 30) changed++
+              }
+              const pct = (100 * changed) / (pixels.length / 4)
+              if (pct <= shownPct) continue
+              if (dt <= flashWindow) flash++
+              else sheetAt ??= dt
+            }
+            return { flash, sheetAt, frames: shot.length }
+          },
+          [referenceFrame, ...afterPress.slice(offset, offset + 8)],
+          setup.desk,
+          pressedAt,
+          FLASH_WINDOW_MS,
+          SHOWN_PCT,
+          CAPTURE_FORMAT,
+        )
+
+        scored.flash += batch.flash
+        scored.sheetAt ??= batch.sheetAt
+      }
 
       const rides = [...minimizeSamples, ...restoreSamples].filter((sample) => sample.riding).length
       // Observed faults fail even in an incomplete recording. Only missing

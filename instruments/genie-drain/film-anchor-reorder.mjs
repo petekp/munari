@@ -25,6 +25,7 @@ try {
     executablePath: chromePath,
     headless: true,
     args: [
+      '--enable-unsafe-swiftshader',
       '--enable-features=CanvasDrawElement',
       '--disable-renderer-backgrounding',
       '--autoplay-policy=no-user-gesture-required',
@@ -83,7 +84,13 @@ try {
   await page.waitForFunction(
     () => window.__filmAnchorEvents.some((event) => event.type === 'show'),
     { timeout: 20_000 },
-  )
+  ).catch(async (error) => {
+    console.error('film-anchor-reorder: handoff did not finish', {
+      errors,
+      events: await page.evaluate(() => window.__filmAnchorEvents),
+    })
+    throw error
+  })
   const events = await page.evaluate(() => window.__filmAnchorEvents)
   if (errors.length) throw new Error(errors.join('\n'))
 

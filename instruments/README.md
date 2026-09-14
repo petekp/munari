@@ -395,7 +395,9 @@ frames before reacquisition. The gate requires receipts
 `[A0, A2, B0, B2, B4, B6, B8]`, a fresh surface epoch for each hold period,
 no stale receipt, no clear or wrong-color acquisition render, and sampled RGB
 within one channel value. It also checks that live replacement preserves the
-mesh, geometry, and material. Rendered colors must remain unchanged under red
+mesh, geometry, and material. Acquisition sampling starts at the React mount
+commit; renders while the surface is still deliberately absent are excluded.
+Rendered colors must remain unchanged under red
 lighting and a non-identity tone mapper. A deliberately tone-mapped control must
 fail the byte-color oracle. The gate reads the public frame texture rather than
 requiring a material constructor. A separate
@@ -505,6 +507,8 @@ the API preparation fixtures. The recorder uses the same outside marker and
 20 ms coverage requirement as the pose check, over its first 150 ms.
 
 The default recording uses quality-100 JPEG to reduce encoding overhead.
+Pixel analysis sends eight frames at a time against the same reference image,
+so long recordings do not exceed DevTools' message limit. Every frame is scored.
 `RESTORE_CAPTURE_FORMAT=png` retains the PNG comparison path. A run still needs
 three fully recorded restores per engine, within at most nine attempts. Each
 incomplete recording is reported. Only incomplete coverage is retried; an

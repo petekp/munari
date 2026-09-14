@@ -57,10 +57,9 @@ try {
     executablePath: chromePath,
     headless: true,
     args: [
-      // Headless has no GPU here; SwiftShader supplies a real WebGL
-      // context so the render path under test exists at all.
+      // Honor the GPU blocklist: Apple Software Renderer loses canvas-to-sRGB
+      // uploads. Permit SwiftShader when Chrome rejects the native backend.
       '--enable-webgl',
-      '--ignore-gpu-blocklist',
       '--enable-unsafe-swiftshader',
       // The idle-zero pair: a backgrounded renderer stops compositing,
       // and a receipt that never arrives must mean the library failed,
