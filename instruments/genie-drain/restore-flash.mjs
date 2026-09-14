@@ -76,7 +76,6 @@ const deadline = setTimeout(() => {
 
 try {
   browser = await puppeteer.launch({
-    dumpio: true,
     executablePath: CHROME,
     headless: !HEADED,
     args: [
@@ -91,14 +90,12 @@ try {
   const port = server.config.server.port ?? server.httpServer.address().port
 
   for (const mode of ['auto', 'snapdom']) {
-    console.log('restore diagnostic: opening', mode)
     const page = await browser.newPage()
     const pageErrors = []
     page.on('pageerror', (error) => pageErrors.push(String(error)))
     await page.setViewport({ width: 1100, height: 800, deviceScaleFactor: 1 })
     const forced = mode === 'snapdom' ? '&capture=snapdom' : ''
     await page.goto(`http://localhost:${port}/?scene=genie&framed${forced}`, { waitUntil: 'load' })
-    console.log('restore diagnostic: loaded', mode)
     await page.waitForFunction(
       (win) =>
         document.querySelector(`.gen-slot[data-win="${win}"]`) &&
@@ -193,7 +190,6 @@ try {
     const rounds = []
     let attempts = 0
     for (let attempt = 0; rounds.length < ROUNDS && attempt < MAX_ATTEMPTS; attempt++) {
-      console.log('restore diagnostic: minimize', mode, attempt + 1)
       attempts++
       // Minimize first, so the window is in its bay to be restored from.
       const minimizeWatch = page.evaluate(() => window.__flash.watch(20))
@@ -209,13 +205,11 @@ try {
 
       frames.length = 0
       await client.send('Page.startScreencast', captureOptions)
-      console.log('restore diagnostic: recording', mode, attempt + 1)
       // Docked frames first: the last one before the press is the reference
       // every later frame is differenced against.
       await sleep(250)
       const restoreWatch = page.evaluate(() => window.__flash.watch(45))
       const pressedAt = await press(`.gen-tile[data-win="${WIN}"]`, FLASH_CONTROL)
-      console.log('restore diagnostic: pressed', mode, attempt + 1)
       await restoreWatch
       await page.waitForFunction(
         (win) => document.querySelector(`.gen-slot[data-win="${win}"]`).dataset.away !== 'true',
@@ -235,57 +229,67 @@ try {
         coverageError = error.message
       }
 
-      const scored = await page.evaluate(
-        async (shot, desk, clickAt, flashWindow, shownPct, format) => {
-          const read = async (data) => {
-            const image = new Image()
-            image.src = `data:image/${format};base64,${data}`
-            await image.decode()
-            const canvas = document.createElement('canvas')
-            canvas.width = image.width
-            canvas.height = image.height
-            const context = canvas.getContext('2d', { willReadFrequently: true })
-            context.drawImage(image, 0, 0)
-            const sx = image.width / window.innerWidth
-            const sy = image.height / window.innerHeight
-            return context.getImageData(
-              Math.round(desk.left * sx),
-              Math.round(desk.top * sy),
-              Math.round(desk.width * sx),
-              Math.round(desk.height * sy),
-            ).data
-          }
-          const before = shot.filter((frame) => frame.t < clickAt)
-          if (!before.length) return null
-          const reference = await read(before.at(-1).data)
-          let flash = 0
-          let sheetAt = null
-          for (const frame of shot) {
-            const dt = Math.round(frame.t - clickAt)
-            if (dt < 0) continue
-            const pixels = await read(frame.data)
-            let changed = 0
-            for (let i = 0; i < pixels.length; i += 4) {
-              const delta =
-                Math.abs(pixels[i] - reference[i]) +
-                Math.abs(pixels[i + 1] - reference[i + 1]) +
-                Math.abs(pixels[i + 2] - reference[i + 2])
-              if (delta > 30) changed++
+      const referenceFrame = frames.findLast(frame => frame.t < pressedAt)
+      const afterPress = frames.filter(frame => frame.t >= pressedAt)
+      const scored = referenceFrame ? { flash: 0, sheetAt: null, frames: frames.length } : null
+      // Eight full-size frames stay below DevTools' 100 MB message limit.
+      // Each batch uses the same reference and every recorded frame is judged.
+      for (let offset = 0; scored && offset < afterPress.length; offset += 8) {
+        const batch = await page.evaluate(
+          async (shot, desk, clickAt, flashWindow, shownPct, format) => {
+            const read = async (data) => {
+              const image = new Image()
+              image.src = `data:image/${format};base64,${data}`
+              await image.decode()
+              const canvas = document.createElement('canvas')
+              canvas.width = image.width
+              canvas.height = image.height
+              const context = canvas.getContext('2d', { willReadFrequently: true })
+              context.drawImage(image, 0, 0)
+              const sx = image.width / window.innerWidth
+              const sy = image.height / window.innerHeight
+              return context.getImageData(
+                Math.round(desk.left * sx),
+                Math.round(desk.top * sy),
+                Math.round(desk.width * sx),
+                Math.round(desk.height * sy),
+              ).data
             }
-            const pct = (100 * changed) / (pixels.length / 4)
-            if (pct <= shownPct) continue
-            if (dt <= flashWindow) flash++
-            else sheetAt ??= dt
-          }
-          return { flash, sheetAt, frames: shot.length }
-        },
-        frames.map((frame) => ({ t: frame.t, data: frame.data })),
-        setup.desk,
-        pressedAt,
-        FLASH_WINDOW_MS,
-        SHOWN_PCT,
-        CAPTURE_FORMAT,
-      )
+            const before = shot.filter((frame) => frame.t < clickAt)
+            if (!before.length) return null
+            const reference = await read(before.at(-1).data)
+            let flash = 0
+            let sheetAt = null
+            for (const frame of shot) {
+              const dt = Math.round(frame.t - clickAt)
+              if (dt < 0) continue
+              const pixels = await read(frame.data)
+              let changed = 0
+              for (let i = 0; i < pixels.length; i += 4) {
+                const delta =
+                  Math.abs(pixels[i] - reference[i]) +
+                  Math.abs(pixels[i + 1] - reference[i + 1]) +
+                  Math.abs(pixels[i + 2] - reference[i + 2])
+                if (delta > 30) changed++
+              }
+              const pct = (100 * changed) / (pixels.length / 4)
+              if (pct <= shownPct) continue
+              if (dt <= flashWindow) flash++
+              else sheetAt ??= dt
+            }
+            return { flash, sheetAt, frames: shot.length }
+          },
+          [referenceFrame, ...afterPress.slice(offset, offset + 8)],
+          setup.desk,
+          pressedAt,
+          FLASH_WINDOW_MS,
+          SHOWN_PCT,
+          CAPTURE_FORMAT,
+        )
+
+        scored.flash += batch.flash
+        scored.sheetAt ??= batch.sheetAt
+      }
 
       const rides = [...minimizeSamples, ...restoreSamples].filter((sample) => sample.riding).length
       // Observed faults fail even in an incomplete recording. Only missing

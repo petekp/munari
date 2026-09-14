@@ -507,6 +507,8 @@ the API preparation fixtures. The recorder uses the same outside marker and
 20 ms coverage requirement as the pose check, over its first 150 ms.
 
 The default recording uses quality-100 JPEG to reduce encoding overhead.
+Pixel analysis sends eight frames at a time against the same reference image,
+so long recordings do not exceed DevTools' message limit. Every frame is scored.
 `RESTORE_CAPTURE_FORMAT=png` retains the PNG comparison path. A run still needs
 three fully recorded restores per engine, within at most nine attempts. Each
 incomplete recording is reported. Only incomplete coverage is retried; an
