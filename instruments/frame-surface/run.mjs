@@ -121,7 +121,13 @@ try {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 255, 255, 255]))
     gl.drawArrays(gl.TRIANGLES, 0, 3)
     const byteTexture = read()
-    const result = { renderer: extension && gl.getParameter(extension.UNMASKED_RENDERER_WEBGL), cleared, triangle, canvasTexture, byteTexture, shaderErrors: [gl.getShaderInfoLog(vertex), gl.getShaderInfoLog(fragment), gl.getProgramInfoLog(program)] }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.SRGB8_ALPHA8, gl.RGBA, gl.UNSIGNED_BYTE, source)
+    gl.drawArrays(gl.TRIANGLES, 0, 3)
+    const srgbCanvasTexture = read()
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.SRGB8_ALPHA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 255, 255, 255]))
+    gl.drawArrays(gl.TRIANGLES, 0, 3)
+    const srgbByteTexture = read()
+    const result = { renderer: extension && gl.getParameter(extension.UNMASKED_RENDERER_WEBGL), cleared, triangle, canvasTexture, byteTexture, srgbCanvasTexture, srgbByteTexture, shaderErrors: [gl.getShaderInfoLog(vertex), gl.getShaderInfoLog(fragment), gl.getProgramInfoLog(program)] }
     gl.getExtension('WEBGL_lose_context')?.loseContext()
     return result
   })))
