@@ -2548,7 +2548,6 @@ export function GenieApp() {
             <Surface.Root canvasId="genie"
               surface={storeOf(s.id).handle}
               inScene={Boolean(air[s.id]) && air[s.id]?.requestedPresentation !== 'page'}
-              timing={{ settleMs: 0, durationMs: 1 }}
               onPresentationChange={view => onPresentedView(s.id, view)}
             >
               <Surface.HTML pageClassName="gen-page-presentation" resolution={2}>

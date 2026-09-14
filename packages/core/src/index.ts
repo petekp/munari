@@ -201,7 +201,6 @@ export {
   type SurfaceReadiness,
 } from './transfer/surfaceReadiness'
 export {
-  CROSSING_DEFAULTS,
   crossingAtRest,
   crossingRequest,
   crossingDrive,
@@ -213,7 +212,6 @@ export {
   crossingRange,
   crossingCurve,
   type CrossingPhase,
-  type CrossingTiming,
   type CrossingEvidence,
   type CrossingState,
 } from './transfer/crossing'

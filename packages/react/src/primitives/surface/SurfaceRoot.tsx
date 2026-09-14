@@ -53,7 +53,7 @@ import type { SurfaceResolution, SurfaceSize, SurfaceSourceRuntime } from './sur
 /**
  * Everything true of a Surface however its content arrives.
  *
- * `renderIn`, `timing`, and the callbacks are HERE and nowhere else: one
+ * `renderIn` and the callbacks are HERE and nowhere else: one
  * declaration writes what the Surface is doing, so a handle created above
  * cannot disagree with the root presenting it.
  */
@@ -125,7 +125,6 @@ export function SurfaceRoot({
   adopt,
   canvasId,
   renderIn,
-  timing,
   size,
   resolution,
   mirrorU,
@@ -149,7 +148,6 @@ export function SurfaceRoot({
   // this root's or one it was handed.
   useSurfaceControls(store, {
     renderIn,
-    timing,
     onPresentationChange,
     onMotionComplete,
     onFreezeChange,

@@ -59,8 +59,8 @@ scene says motion inside a Surface is the point.
 The frozen-motion row is the one that will surprise you. An infinite keyframe
 animation inside a snapDOM Surface signals `animationstart` once and nothing
 after, so the capture holds one frame of it forever, `live` or not. A CSS
-*transition* signals at both ends and lands its end state, which is why the
-ease-flat recipe below works on both engines. Anything else that has to keep
+*transition* signals at both ends and lands its end state, which is why a
+transition lands its end state on both engines. Anything else that has to keep
 moving needs `live`, or `repaint()` on your own schedule, and each capture
 costs a full raster.
 
@@ -152,7 +152,7 @@ below), so for whole-panel motion prefer moving the mesh.
 `platform.md` items 4 and 20 distinguish compositor animation from static
 opacity and transform restyles.
 
-## Idle motion must be able to ease flat
+## Motion in the content is frozen for you
 
 If page content moves on its own — a float, a shimmer, anything
 decorative that runs while the user does nothing — the two sides of a
@@ -176,50 +176,25 @@ capture, so a clock stopped there runs into the picture. Genie's `scheda`
 window is the worked example: its bounce simulation stops on
 `useFreezeSurface`.
 
-Easing flat is still the better look, and it is still what keeps the ROOT's
-geometry honest — the canvas twin is placed at the page's resting box, so a
-root still drifting when the swap lands is a real jump, which no pause can
-fix. So drive the motion's *amplitude* through a registered custom property
-and let the keyframes read it:
-
-```css
-@property --float {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-.word { transition: --float 400ms ease; }
-.letter { animation: float 3s infinite; }
-@keyframes float {
-  50% { transform: translateY(var(--float)); }
-}
-```
-
-Registration is what makes this work. An unregistered custom property is
-an untyped string — a transition on it flips discretely — while a
-registered `<length>` interpolates, so setting `--float: 0` eases every
-moving element to rest along its own path. (The keyframes animate a
-descendant's transform, which is fine; the prohibition above is the
-root's own.)
-
-The crossing side of the contract: a Surface's `timing.settleMs`
-must outlast the **slowest compositor-clocked transition the content
-runs on its presented pixels** — not only the idle amplitude, but any
-transform hop or color fade a state change can start just before the
-lift (the default 450ms covers a 400ms ease plus a frame of slack).
-Zero the amplitude when the crossing leaves rest, and the settle dwell
-guarantees the page is done moving before the DOM releases.
+Nothing waits for motion to finish, and there is no dwell to size
+(decisions.md #68). The page lets go as soon as the scene has drawn a capture
+taken after the lift, and that capture shows the frozen pose. So do not start
+motion because a crossing began, such as easing an amplitude to zero on
+`onFreezeChange`: the hold has already paused what was running, and a
+transition started after it is not held, so the page and the capture can
+disagree about its pose.
 
 There is a second way, for motion that should never stop: **carry it**
 (`useCarriedMotion`, decisions.md #30). A carried motion's clock lives
 in JS instead of the compositor — the page writes the carrier's
 per-frame sample to a style, the mesh reads the same sample, and the
-two sides agree in every frame by construction. Carried motion is
-exempt from `settleMs` and crosses the threshold mid-flight, position
-and velocity intact. The trade is honest: the motion rides the main
-thread, giving up the compositor's immunity to jank, so carrying is a
-per-motion declaration — the ease-flat pattern above remains the right
-shape for anything you leave on the compositor's clock.
+two sides agree in every frame by construction. A carried motion is not
+frozen, and it crosses the threshold mid-flight with position and velocity
+intact. Carry any motion the scene draws for itself instead of reading it
+from the capture: the logo's letters hop on a carrier because each mesh
+places itself from its letter's pose. The trade is honest: the motion rides
+the main thread, giving up the compositor's immunity to jank, so carrying is
+a per-motion declaration.
 
 ## No `mask-image` anywhere in a drawn subtree
 
@@ -301,8 +276,8 @@ take all of it — measured 51.4 fps through a drag against 60.1 fps with the
 gap. The gap runs from the END of a capture, so a subtree quiet for longer than
 the gap captures at once and only continuous mutation is held back: DOM motion
 inside a live Surface steps about four times a second rather than the eleven
-the raster cost alone allowed. Nothing is exempt from the gap, the settle
-included.
+the raster cost alone allowed. Only the capture a lift asks for skips
+it ([decisions #65](decisions.md)).
 
 Two consequences worth authoring around. A CSS transition signals at its two
 ends rather than every frame, so it costs a couple of captures instead of a

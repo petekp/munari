@@ -538,7 +538,7 @@ export function FisheyeApp() {
           </p>
         </div>
         <div ref={holderRef} className="fisheye-holder">
-          <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={true}>
+          <Surface.Root surface={surface} inScene={true}>
 <Surface.HTML size={[PANEL_W, PANEL_H]} resolution={2 * FISHEYE_DEFAULTS.amplitude}>{content}</Surface.HTML>
 
           </Surface.Root>

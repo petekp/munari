@@ -40,10 +40,10 @@ import {
   WORD,
   ensureLogoFonts,
   LogoLetterHTML,
-  SETTLE_MS,
   type LetterBox,
   type WordMetrics,
 } from '../scenes/logo/logoScene'
+import { letterTransform, logoMotionProgram, type LogoMotionSample } from '../scenes/logo/logoMotion'
 import '../scenes/logo/logo.css'
 import './munariLogo.css'
 
@@ -160,21 +160,21 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
   }, [])
 
   const slotRefs = useRef<(HTMLElement | null)[]>([])
-  const float = useCarriedMotion(
-    useMemo(() => {
-      let amp = 0
-      let lastT = 0
-      return (t: number) => {
-        const dt = Math.min(t - lastT, 100)
-        lastT = t
-        const target = reduced.matches ? 0 : knobsRef.current.float
-        amp += (target - amp) * (1 - Math.exp(-dt / 150))
-        return floats.map((f) => -Math.cos(((t - f.delay) / f.dur) * Math.PI * 2) * amp)
-      }
-    }, [floats, reduced]),
-    useCallback((v: number[]) => {
+  const letterRefs = useRef<(HTMLElement | null)[]>([])
+  const posesRef = useRef(poses)
+  posesRef.current = poses
+  const motion = useCarriedMotion(
+    useMemo(
+      () => logoMotionProgram({ floats, poses: posesRef, floatAmplitude: () => knobsRef.current.float, reduced }),
+      [floats, reduced],
+    ),
+    useCallback((sample: LogoMotionSample) => {
       slotRefs.current.forEach((el, i) => {
-        if (el) el.style.transform = `translateY(${v[i]}em)`
+        if (el) el.style.transform = `translateY(${sample.float[i]}em)`
+      })
+      letterRefs.current.forEach((el, i) => {
+        const hop = sample.hops[i]
+        if (el && hop) el.style.transform = letterTransform(hop)
       })
     }, []),
   )
@@ -229,7 +229,7 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
 
   return (
     <div className={className ? `munari-logo ${className}` : 'munari-logo'}>
-      <Surface.Root surface={surface} inScene={view === 'scene'} canvasId="logo" timing={{ settleMs: SETTLE_MS }} onPresentationChange={syncPresented} onMotionComplete={setSettledOn}>
+      <Surface.Root surface={surface} inScene={view === 'scene'} canvasId="logo" onPresentationChange={syncPresented} onMotionComplete={setSettledOn}>
       <div className="munari-logo__page">
         <div
           className="logo-word"
@@ -251,10 +251,13 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
           >
             <span
               className="logo-letter"
-              style={{
-                flexShrink: 0,
-                transform: `translate(${poses[i].dx}em, ${poses[i].dy}em) rotate(${poses[i].tilt}deg) scale(${poses[i].scale})`,
+              // The carrier writes this transform every frame. Seeded once
+              // here so the first paint does not wait a frame for it.
+              ref={(el) => {
+                letterRefs.current[i] = el
+                if (el && !el.style.transform) el.style.transform = letterTransform(motion.sample().hops[i] ?? poses[i])
               }}
+              style={{ flexShrink: 0 }}
             >
               <LogoLetterHTML index={i} text={ch} pose={poses[i]} box={metrics?.boxes[i]} fontPx={metrics?.fontPx} />
             </span>
@@ -271,7 +274,7 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
           surface={surface}
           presented={presented}
           canvasRef={canvasRef}
-          carried={float.sample}
+          carried={motion.sample}
           solid={false}
         />
       )}

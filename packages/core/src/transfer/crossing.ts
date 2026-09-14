@@ -27,12 +27,11 @@
 // - The page releases on EVIDENCE, never on hope: every incoming
 //   presenter has fired its post-draw presentation boundary
 //   (a color-writing draw completed — Surface.onFirstPresented — not
-//   merely an upload queued), the pixels it will show carry content no
-//   older than the lift itself (decisions.md #65), AND the settle dwell
-//   has elapsed, so the page's autonomous idle motion has eased flat and
-//   the overlap is pixel-identical (docs/authoring.md: idle motion rides a
-//   registered custom property exactly so it CAN ease to zero before a
-//   crossing).
+//   merely an upload queued), and the pixels it will show carry content no
+//   older than the lift itself (decisions.md #65). Nothing waits for the
+//   content's own motion: it is frozen from the lift's first frame
+//   (decisions.md #66), so the capture and the page already agree
+//   (decisions.md #68).
 // - A request that arrives mid-crossing REVERSES the crossing; it never
 //   skips to the far side. Skipping forward past the lift gate would
 //   release the page without evidence; skipping back past the landing
@@ -45,28 +44,6 @@
 // (commit order, microtasks, r3f frames) and reports evidence in.
 
 export type CrossingPhase = 'page' | 'lifting' | 'gl' | 'landing'
-
-export interface CrossingTiming {
-  /**
-   * ms the page gets to ease its autonomous motion flat before it may
-   * release, counted from the moment lifting begins (which is when
-   * a consumer zeroes its motion amplitude). Evidence cannot shorten
-   * this: six presenters proving in 80ms must still wait for the ease.
-   */
-  settleMs: number
-  /** ms the transition ramp takes to traverse 0..1, either direction. */
-  rampMs: number
-}
-
-/**
- * settleMs covers the ~400ms ease a registered custom property needs to
- * reach zero plus a compositor frame of slack; rampMs is the excursion
- * ramp the eye reads as "the page grew depth" rather than "it cut".
- */
-export const CROSSING_DEFAULTS: CrossingTiming = {
-  settleMs: 450,
-  rampMs: 600,
-}
 
 /** What the canvas has proven so far. `required` is the number of
  *  incoming presenters this crossing waits on; `presented` counts those
@@ -87,11 +64,13 @@ export interface CrossingState {
   /**
    * The transition ramp, 0..1 linear. Zero in 'page' and 'lifting' — the
    * canvas must overlap the page pixel-identically until the page has
-   * released — rising only in 'gl', falling through 'landing'.
+   * released — rising only in 'gl', falling through 'landing'. A scene's
+   * driver shapes it (crossingDrive); without one it steps.
    * Consumers read it through crossingProgress, not raw.
    */
   ramp: number
-  /** ms spent in 'lifting' so far — the settle-dwell clock. */
+  /** ms spent in 'lifting' so far. The binding bounds its wait for a
+   *  current capture by this clock. */
   heldMs: number
 }
 
@@ -125,34 +104,28 @@ export function crossingRequest(state: CrossingState, wantGl: boolean): Crossing
  * the binding clamps pathological deltas (a background tab must not
  * teleport the ramp), the law just integrates what it is given.
  *
- * 'lifting' accumulates the dwell and releases the page only when the
- * evidence is whole: every required presenter proven, the content they
- * will show current, AND the settle dwell served. 'gl' raises the ramp to
- * 1; 'landing' lowers it, and at exactly zero hands the pixels back to the page — the one frame
- * where the reverse handoff happens, and it happens at zero progress so
- * the mesh being replaced is geometrically the page it reveals.
+ * 'lifting' counts held time and releases the page on the frame the
+ * evidence is whole: every required presenter proven and the content they
+ * will show current. With no driver the ramp is a step, because nothing is
+ * reading it: 'gl' stands at 1 the frame after release, and 'landing' hands
+ * the pixels back to the page on its first frame — at zero progress, so the
+ * mesh being replaced is geometrically the page it reveals.
  */
 export function crossingFrame(
   state: CrossingState,
   evidence: CrossingEvidence,
   dtMs: number,
-  timing: CrossingTiming = CROSSING_DEFAULTS,
 ): CrossingState {
   const { phase } = state
   if (phase === 'page') return state
   if (phase === 'lifting') {
     const heldMs = state.heldMs + dtMs
     const proven = evidence.presented >= evidence.required && evidence.contentCurrent
-    if (proven && heldMs >= timing.settleMs) return { phase: 'gl', ramp: 0, heldMs }
+    if (proven) return { phase: 'gl', ramp: 0, heldMs }
     return { ...state, heldMs }
   }
-  if (phase === 'gl') {
-    if (state.ramp >= 1) return state
-    return { ...state, ramp: Math.min(1, state.ramp + dtMs / timing.rampMs) }
-  }
-  const ramp = Math.max(0, state.ramp - dtMs / timing.rampMs)
-  if (ramp <= 0) return { phase: 'page', ramp: 0, heldMs: 0 }
-  return { ...state, ramp }
+  if (phase === 'gl') return state.ramp >= 1 ? state : { ...state, ramp: 1 }
+  return { phase: 'page', ramp: 0, heldMs: 0 }
 }
 
 /**
@@ -174,10 +147,9 @@ export function crossingDrive(
   evidence: CrossingEvidence,
   dtMs: number,
   ramp: number,
-  timing: CrossingTiming = CROSSING_DEFAULTS,
 ): CrossingState {
   const { phase } = state
-  if (phase === 'page' || phase === 'lifting') return crossingFrame(state, evidence, dtMs, timing)
+  if (phase === 'page' || phase === 'lifting') return crossingFrame(state, evidence, dtMs)
   if (!Number.isFinite(ramp)) return state
   const next = Math.min(1, Math.max(0, ramp))
   if (phase === 'landing' && next <= 0) return { phase: 'page', ramp: 0, heldMs: 0 }
@@ -212,7 +184,7 @@ export function crossingDraws(phase: CrossingPhase): SideFlags {
  * copies of the same content on screen at once, and the moment the
  * page's motion displaces it off its twin the viewer sees both — a
  * ghost trailing or leading every animated element through the whole
- * settle dwell (decisions.md #29). So the theorem here is exclusive
+ * warm-up (decisions.md #29). So the theorem here is exclusive
  * where the drawing one is inclusive: EXACTLY ONE side presents in every
  * phase, and visibility changes hands only at the two handoff edges. A
  * consumer wires this to the canvas's own visibility, never to mount —

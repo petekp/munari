@@ -155,7 +155,7 @@ export function GravitySurfaces({ words }: { words: readonly string[] }) {
     <p className="gv-poem">
       {words.map((word, id) => <Fragment key={id}>
         {id > 0 ? ' ' : null}
-        <Surface.Root name={`gravity-word-${id}`} inScene={requested.has(id)} timing={{ settleMs: 0, durationMs: 1 }} onPresentationChange={hold => presented(id, hold)}>
+        <Surface.Root name={`gravity-word-${id}`} inScene={requested.has(id)} onPresentationChange={hold => presented(id, hold)}>
           <Surface.HTML as="span" layout="reflow">
             <span ref={element => { if (element) elements.current.set(id, element); else elements.current.delete(id) }} className="gv-word" onMouseDown={event => pull(id, event)}>{word}</span>
           </Surface.HTML>

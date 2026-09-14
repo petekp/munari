@@ -16,7 +16,7 @@ declare const canvas: HTMLCanvasElement
 const geometry = <planeGeometry args={[1,1]} />
 
 ;<SurfaceCanvas id="example" />
-;<Surface inScene={false} canvasId="example" name="card" timing={{settleMs:300}} onPresentationChange={value=>{const hold:SurfacePresentation=value;void hold}} onMotionComplete={value=>{const destination:SurfaceDestination=value;void destination}} onFreezeChange={frozen=>{const flag:boolean=frozen;void flag}}><button>One live instance</button></Surface>
+;<Surface inScene={false} canvasId="example" name="card" onPresentationChange={value=>{const hold:SurfacePresentation=value;void hold}} onMotionComplete={value=>{const destination:SurfaceDestination=value;void destination}} onFreezeChange={frozen=>{const flag:boolean=frozen;void flag}}><button>One live instance</button></Surface>
 ;<Surface.Root inScene={false} canvasId="example"><Surface.HTML><button>Page content</button></Surface.HTML></Surface.Root>
 ;<SceneSurface.Root canvasId="example"><SceneSurface.HTML size={[100,80]}><button>Scene content</button></SceneSurface.HTML><SceneSurface.Mesh/></SceneSurface.Root>
 // @ts-expect-error canvasId identifies a host; it does not take a canvas element.

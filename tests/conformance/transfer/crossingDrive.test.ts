@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CROSSING_DEFAULTS,
   crossingAtRest,
   crossingDrive,
   crossingRequest,
@@ -23,14 +22,14 @@ describe('a crossing whose ramp a scene owns', () => {
   // Skipping the gate is the one thing a scene must not be able to buy.
   it('cannot buy its way past the lift gate', () => {
     const lifting = crossingRequest(crossingAtRest(), true)
-    const next = crossingDrive(lifting, NONE, CROSSING_DEFAULTS.settleMs + 100, 1)
+    const next = crossingDrive(lifting, NONE, 2000, 1)
     expect(next.phase).toBe('lifting')
     expect(next.ramp).toBe(0)
   })
 
-  it('opens the gate on the same evidence the timed motion needs', () => {
+  it('opens the gate on the same evidence the built-in step needs', () => {
     const lifting = crossingRequest(crossingAtRest(), true)
-    const next = crossingDrive(lifting, WHOLE, CROSSING_DEFAULTS.settleMs, 1)
+    const next = crossingDrive(lifting, WHOLE, 16, 1)
     expect(next.phase).toBe('gl')
     expect(next.ramp).toBe(0)
   })

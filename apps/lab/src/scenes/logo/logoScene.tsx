@@ -9,7 +9,7 @@
 //
 // Split out of Logo.tsx 2026-09-01 so the official wordmark could
 // reuse the overlay without carrying the playground's panel and
-// probes. The word, the grid, the seed, and the settle dwell live here
+// probes. The word, the grid, the seed, and the excursion ramp live here
 // because both consumers must agree on them exactly: a wordmark that
 // re-derived its own grid would stand its twins on a different rig.
 
@@ -22,8 +22,10 @@ import {
   type SurfaceHandle,
   type SurfaceProgress,
   type SurfacePresentation,
+  useSurfaceDriver,
   useSurfaceTexture,
 } from '@petepetrash/munari'
+import type { LogoMotionSample } from './logoMotion'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import {
   LOGO_DEFAULTS,
@@ -52,15 +54,12 @@ export const FOV = 40
 // The fixed grid: computed once, so a font swap can only ever repaint
 // a slot — never move one (logoLaw, "the word's fixed grid").
 export const GRID = slotLayout(WORD)
-// The compositor-clocked eases the crossing's settle dwell must
-// outlast — each number must match its logo.css declaration. A swap
-// while one still runs trades a mid-flight letter for its settled
-// twin. The idle float is NOT on this list: it rides a motion carrier
-// (one clock, read by both renderers), so it crosses mid-flight and
-// owes the dwell nothing.
-const LETTER_EASE_MS = 620 // .logo-letter transform
-const COLOR_EASE_MS = 480 // .logo-letter and .logo-twin-glyph color
-export const SETTLE_MS = Math.max(LETTER_EASE_MS, COLOR_EASE_MS) + 50
+// The excursion's length, either way. The bob, wobble, dodge and substances
+// all scale by eased progress, so this is how long the word takes to grow its
+// depth, and to give it back before the page takes the letters. 600 ms is the
+// ramp the word was tuned under when it was the library's default
+// (decisions.md #68).
+const EXCURSION_MS = 600
 
 // The six guest faces load only when a wordmark mounts, and stay for
 // the session — the bench's own <head> payload (index.html) is
@@ -684,9 +683,9 @@ interface SceneLetterProps {
   /** The Surface's excursion: `get()` is 0 at the page grid and 1
    *  airborne, `between` is the window a choreography gate reads. */
   progress: SurfaceProgress
-  /** The carried idle float, em per letter — the SAME sample the page
-   *  is writing to its slots this frame. */
-  carried: () => number[]
+  /** The carried float and hop — the SAME sample the page is writing to
+   *  its slots and letters this frame. */
+  carried: () => LogoMotionSample
   /** Extrusion is switched on, so this letter carries walls and sorts
    *  them with depth. */
   solid: boolean
@@ -752,20 +751,9 @@ function SceneLetter({
   const boxRef = useRef(box)
   boxRef.current = box
 
-  // Seeded AT the current pose, not at rest: the twin's first presented
-  // frame must sit exactly where the page letter is standing, or the
-  // handoff itself would be the visible event it exists to prevent.
-  // (The DOM letter's offsets are em OF THE GLYPH — trim included.)
-  const springs = useRef<{ dx: Spring; dy: Spring; tilt: Spring; scale: Spring } | null>(null)
-  if (!springs.current) {
-    const em = fontPx * LOGO_FONTS[pose.font].trim
-    springs.current = {
-      dx: { x: pose.dx * em, v: 0 },
-      dy: { x: pose.dy * em, v: 0 },
-      tilt: { x: (-pose.tilt * Math.PI) / 180, v: 0 },
-      scale: { x: pose.scale, v: 0 },
-    }
-  }
+  // The pointer dodge, in CSS px, sprung on this frame loop. The page never
+  // dodges, so this is the one offset the carried hop does not hold.
+  const dodge = useRef<{ x: Spring; y: Spring }>({ x: { x: 0, v: 0 }, y: { x: 0, v: 0 } })
 
   // The substance's scratch state: the fx feed the material reads, plus
   // last position (screen velocity feeds the prism and the travel
@@ -848,7 +836,7 @@ function SceneLetter({
           carried={carried}
           poseRef={poseRef}
           boxRef={boxRef}
-          springs={springs.current}
+          dodge={dodge.current}
           drive={drive.current}
           fresh={fresh}
         />
@@ -864,10 +852,10 @@ interface LetterDriveProps {
   pointer: React.RefObject<{ x: number; y: number } | null>
   strike: React.RefObject<Strike>
   progress: SurfaceProgress
-  carried: () => number[]
+  carried: () => LogoMotionSample
   poseRef: React.RefObject<LetterPose>
   boxRef: React.RefObject<LetterBox>
-  springs: { dx: Spring; dy: Spring; tilt: Spring; scale: Spring }
+  dodge: { x: Spring; y: Spring }
   drive: LetterDriveState
   /** The committed outline belongs to THIS glyph, so walls may stand. */
   fresh: boolean
@@ -892,7 +880,7 @@ function LetterDrive({
   carried,
   poseRef,
   boxRef,
-  springs,
+  dodge,
   drive,
   fresh,
 }: LetterDriveProps) {
@@ -916,12 +904,17 @@ function LetterDrive({
     // The pointer dodge, in CSS px: inside reach, a letter leans away.
     const [px, py] = dodgeOffset(pointer.current, b, k.dodge, amp, fontPx)
 
+    // The hop is the page's own sample (logoMotion.ts), so the swap frame
+    // finds the mesh where the letter is even mid-hop. The DOM letter's
+    // offsets are em OF THE GLYPH — trim included.
     const em = fontPx * LOGO_FONTS[p.font].trim
-    const s = springs
-    step(s.dx, p.dx * em + px, dt)
-    step(s.dy, p.dy * em + py, dt)
-    step(s.tilt, (-p.tilt * Math.PI) / 180, dt)
-    step(s.scale, p.scale, dt)
+    const sample = carried()
+    const hop = sample.hops[i] ?? p
+    step(dodge.x, px, dt)
+    step(dodge.y, py, dt)
+    const hopX = hop.dx * em + dodge.x.x
+    const hopY = hop.dy * em + dodge.y.x
+    const tilt = (-hop.tilt * Math.PI) / 180
 
     // DOM y grows down, world y grows up — dy and cy both flip sign.
     // The summed position snaps to the DEVICE pixel grid (the parts
@@ -939,15 +932,15 @@ function LetterDrive({
     // The continuous screen position, kept BEFORE the snap: the feed
     // differentiates these for velocity, and a rounded position
     // cannot be differentiated (see the velocity block below).
-    const rawX = b.cx - size.width / 2 + s.dx.x
-    const rawY = size.height / 2 - b.cy - s.dy.x - carried()[i] * fontPx
+    const rawX = b.cx - size.width / 2 + hopX
+    const rawY = size.height / 2 - b.cy - hopY - sample.float[i] * fontPx
     el.position.set(snap(rawX), snap(rawY), Math.sin(t * 1.1 + i * 1.9) * k.depth * amp)
     el.rotation.set(
       Math.sin(t * 0.8 + i * 2.3) * 0.1 * amp - (py / fontPx) * 0.5,
       Math.sin(t * 0.6 + i * 1.4) * 0.14 * amp + (px / fontPx) * 0.5,
-      s.tilt.x,
+      tilt,
     )
-    el.scale.setScalar(s.scale.x)
+    el.scale.setScalar(hop.scale)
 
     // ── feed the substance ──
     const d = drive
@@ -986,7 +979,7 @@ function LetterDrive({
         // origin mid-screen, the mesh's center is el.position, the
         // plane 1:1 CSS px at scale 1. Tilt is ignored — a ring
         // center a few px off at ±8° is below what a ring shows.
-        const sc = Math.max(s.scale.x, 0.2)
+        const sc = Math.max(hop.scale, 0.2)
         strikeRing(
           fx,
           (st.x - size.width / 2 - el.position.x) / sc,
@@ -1045,8 +1038,8 @@ export interface LogoSceneProps {
   presented: SurfacePresentation
   /** The canvas wrapper changed synchronously at the handoff edge. */
   canvasRef: React.RefObject<HTMLDivElement | null>
-  /** The carried float's per-frame sample, shared with the page. */
-  carried: () => number[]
+  /** The carried float and hop, shared with the page. */
+  carried: () => LogoMotionSample
   /** The extrude knob is off zero. A boolean rather than the number,
    *  so sliding thickness stays a uniform write and only switching the
    *  form on or off re-renders. */
@@ -1069,6 +1062,11 @@ export function LogoScene({
   carried,
   solid,
 }: LogoSceneProps) {
+  useSurfaceDriver(
+    ({ dtMs, progress, target }) =>
+      target === 'scene' ? Math.min(1, progress + dtMs / EXCURSION_MS) : Math.max(0, progress - dtMs / EXCURSION_MS),
+    surface,
+  )
   const pointer = useRef<{ x: number; y: number } | null>(null)
   useEffect(() => {
     const move = (e: PointerEvent) => {

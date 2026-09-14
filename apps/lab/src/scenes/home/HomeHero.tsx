@@ -175,7 +175,7 @@ export function HeroSection({
             {supported ? (
               <Surface.Root surface={surface} canvasId={canvasId} onPresentationChange={presentation => {
                 if (presentation === 'page' && holderRef.current) flyer.set({kind:'page',element:holderRef.current})
-              }} timing={{ settleMs: reduced ? 0 : 120, durationMs: reduced ? 0 : 260 }} inScene={inScene}>
+              }} inScene={inScene}>
                 <Surface.HTML size={[HERO_W, HERO_H]}>{content}</Surface.HTML>
               </Surface.Root>
             ) : content}

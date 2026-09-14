@@ -412,7 +412,7 @@ function DeleteRow({
   return (
     <li ref={holder} className="cand-row-holder" data-dying={dying || undefined}>
       {size ? (
-        <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={dying}>
+        <Surface.Root surface={surface} inScene={dying}>
 <Surface.HTML size={size}>{row}</Surface.HTML>
 
           {box && (

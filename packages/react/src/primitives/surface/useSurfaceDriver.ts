@@ -1,8 +1,8 @@
 // useSurfaceDriver — hand a Surface's excursion ramp to a scene.
 //
 // The law: a driver decides HOW the crossing moves, never whether the page
-// may let go. The lift gate, the settle dwell, and the exact-zero landing
-// are the protocol's; the shape of the motion between them is the scene's,
+// may let go. The lift gate and the exact-zero landing are the protocol's;
+// the shape of the motion between them is the scene's,
 // which is what lets a card fly on real physics instead of a duration
 // somebody guessed.
 //
@@ -22,7 +22,7 @@ import {
 
 /**
  * Drive the enclosing Surface's ramp, or pass an explicit handle second.
- * Passing `null` gives the ramp back to the built-in timed motion.
+ * Passing `null` gives the ramp back to the built-in step.
  */
 export function useSurfaceDriver(
   step: SurfaceDriverStep | null,

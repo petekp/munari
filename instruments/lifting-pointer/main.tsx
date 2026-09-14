@@ -129,6 +129,21 @@ function TrackedPresenter() {
   return <Surface.Mesh placement="match-dom" />
 }
 
+// How long each lift stays in preparation. The runner clicks into it at
+// 100, 350 and 550 ms, and hovers at about 400 ms.
+const HOLD_MS = 700
+
+// Mounts with the scene, so every lift waits HOLD_MS for this part's
+// presenter while the page's own presenter is registered and drawing.
+function HoldPresenter() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setReady(true), HOLD_MS)
+    return () => clearTimeout(timer)
+  }, [])
+  return ready ? <Surface.Mesh part="hold" placement="match-dom" /> : null
+}
+
 function App() {
   const surface = useSurfaceHandle('lifting-pointer')
   const [view, setRenderIn] = useState<SurfaceDestination>(() =>
@@ -153,15 +168,11 @@ function App() {
   return (
     <>
       <div style={{ position: 'fixed', left: 60, top: 60, width: W, height: H }}>
-        <Surface.Root
-          surface={surface}
-          inScene={view === 'scene'}
-          // A long settle so the lifting window is wide enough to click into
-          // at several offsets. Nothing here animates, so the dwell is pure
-          // window: proof lands in the first frames, then ~700ms of lifting.
-          timing={{ settleMs: 700, durationMs: 500 }}
-        >
+        <Surface.Root surface={surface} inScene={view === 'scene'}>
           <Surface.HTML pageClassName="page-slot" size={[W,H]}>{content}</Surface.HTML>
+          {/* The lifting window: a declared part with no presenter holds the
+              lift (decisions.md #37), and HoldPresenter arrives HOLD_MS in. */}
+          <Surface.HTML part="hold" size={[1,1]}><div style={{ width: 1, height: 1 }} /></Surface.HTML>
         </Surface.Root>
       </div>
       <SurfaceCanvas
@@ -175,6 +186,7 @@ function App() {
       >
         <Surface.Scene surface={surface}>
           <TrackedPresenter />
+          <HoldPresenter />
         </Surface.Scene>
       </SurfaceCanvas>
     </>

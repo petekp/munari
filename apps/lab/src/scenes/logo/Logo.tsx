@@ -38,10 +38,10 @@ import {
   WORD,
   ensureLogoFonts,
   LogoLetterHTML,
-  SETTLE_MS,
   type LetterBox,
   type WordMetrics,
 } from './logoScene'
+import { letterTransform, logoMotionProgram, type LogoMotionSample } from './logoMotion'
 import './logo.css'
 
 // ── the tweak panel ─────────────────────────────────────────────────────
@@ -129,16 +129,15 @@ export function LogoApp() {
 
   // The handoff is the library's now (this page is where it bled
   // first): six parts must each prove a post-draw color write, and the
-  // settle dwell outlasts the compositor-clocked eases — hop and color;
-  // the carried float is exempt — the facts that make the swap frame
-  // pixel-identical even mid-breath. The handle holds the phases, the
-  // evidence gate, and the reversal rule; this page states its timing
-  // and reads back what it needs to dress the DOM.
+  // float and the hop are carried (logoMotion.ts), which is what makes the
+  // swap frame pixel-identical even mid-breath. The handle holds the phases,
+  // the evidence gate, and the reversal rule; this page reads back what it
+  // needs to dress the DOM.
   const supported = useSurfaceSupport()
   const [view, setView] = useState<SurfacePresentation>('page')
   const [presented, setPresented] = useState<SurfacePresentation>('page')
   const [settledOn, setSettledOn] = useState<SurfacePresentation>('page')
-  // Identity only. The view, the timing, and the callbacks are stated once,
+  // Identity only. The view and the callbacks are stated once,
   // on the `<Surface>` that declares this handle.
   const surface = useSurfaceHandle('logo')
   const request = useCallback((webgl: boolean) => {
@@ -221,31 +220,28 @@ export function LogoApp() {
     }))
   }, [seed])
 
-  // The float is CARRIED (useCarriedMotion): one clock owns it, the
-  // page writes its per-frame sample to the slots and the meshes read
-  // the same sample, so a crossing never parks it — the letters keep
-  // breathing straight through the swap in both directions
-  // (decisions.md #30). The amplitude smooths toward the knob (and
-  // toward zero under prefers-reduced-motion) inside the program,
-  // replacing the registered-property ease this page used when the
-  // float lived on the compositor's clock.
+  // The float and the hop are CARRIED (useCarriedMotion): one clock owns
+  // them, the page writes each sample to the slots and letters and the
+  // meshes read the same sample, so a crossing never waits for them — the
+  // letters keep breathing and hopping straight through the swap in both
+  // directions (decisions.md #30).
   const slotRefs = useRef<(HTMLElement | null)[]>([])
+  const letterRefs = useRef<(HTMLElement | null)[]>([])
+  const posesRef = useRef(poses)
+  posesRef.current = poses
   const reduced = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)'), [])
-  const float = useCarriedMotion(
-    useMemo(() => {
-      let amp = 0
-      let lastT = 0
-      return (t: number) => {
-        const dt = Math.min(t - lastT, 100)
-        lastT = t
-        const target = reduced.matches ? 0 : knobsRef.current.float
-        amp += (target - amp) * (1 - Math.exp(-dt / 150))
-        return floats.map((f) => -Math.cos(((t - f.delay) / f.dur) * Math.PI * 2) * amp)
-      }
-    }, [floats, reduced]),
-    useCallback((v: number[]) => {
+  const motion = useCarriedMotion(
+    useMemo(
+      () => logoMotionProgram({ floats, poses: posesRef, floatAmplitude: () => knobsRef.current.float, reduced }),
+      [floats, reduced],
+    ),
+    useCallback((sample: LogoMotionSample) => {
       slotRefs.current.forEach((el, i) => {
-        if (el) el.style.transform = `translateY(${v[i]}em)`
+        if (el) el.style.transform = `translateY(${sample.float[i]}em)`
+      })
+      letterRefs.current.forEach((el, i) => {
+        const hop = sample.hops[i]
+        if (el && hop) el.style.transform = letterTransform(hop)
       })
     }, []),
   )
@@ -311,7 +307,7 @@ export function LogoApp() {
 
   return (
     <div className="logo-page">
-      <Surface.Root surface={surface} inScene={view === 'scene'} canvasId="logo" timing={{ settleMs: SETTLE_MS }} onPresentationChange={syncPresented} onMotionComplete={setSettledOn}>
+      <Surface.Root surface={surface} inScene={view === 'scene'} canvasId="logo" onPresentationChange={syncPresented} onMotionComplete={setSettledOn}>
       <div className="logo-plate">
         <div className="logo-page-copy">
           <div
@@ -344,10 +340,13 @@ export function LogoApp() {
             >
               <span
                 className="logo-letter"
-                style={{
-                  flexShrink: 0,
-                  transform: `translate(${poses[i].dx}em, ${poses[i].dy}em) rotate(${poses[i].tilt}deg) scale(${poses[i].scale})`,
+                // The carrier writes this transform every frame. Seeded once
+                // here so the first paint does not wait a frame for it.
+                ref={(el) => {
+                  letterRefs.current[i] = el
+                  if (el && !el.style.transform) el.style.transform = letterTransform(motion.sample().hops[i] ?? poses[i])
                 }}
+                style={{ flexShrink: 0 }}
               >
                 <LogoLetterHTML index={i} text={ch} pose={poses[i]} box={metrics?.boxes[i]} fontPx={metrics?.fontPx} />
               </span>
@@ -365,7 +364,7 @@ export function LogoApp() {
           surface={surface}
           presented={presented}
           canvasRef={canvasRef}
-          carried={float.sample}
+          carried={motion.sample}
           solid={knobs.extrude > 0}
         />
       )}
