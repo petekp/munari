@@ -198,6 +198,7 @@ const CAUSTIC_WIN = 150
 let browser, server
 const deadline = setTimeout(() => {
   console.error('crystal-pointer: hard 150s deadline hit')
+  browser?.process()?.kill('SIGKILL')
   process.exit(1)
 }, 150_000)
 
@@ -224,7 +225,11 @@ try {
     () => 'drawElementImage' in document.createElement('canvas').getContext('2d'),
   )
   await probe.close()
-  if (!capable) skip(`Chrome at ${CHROME} has no drawElementImage`)
+  if (!capable) {
+    await browser.close()
+    browser = null
+    skip(`Chrome at ${CHROME} has no drawElementImage`)
+  }
 
   server = await createServer({ root: labRoot, logLevel: 'warn', server: { port: 0 } })
   await server.listen()
@@ -351,11 +356,20 @@ try {
     if (!b) throw new Error(`no key "${label}" on the pad`)
     return b
   }
-  const typedLast = async () => {
-    const s = await page.evaluate(() => window.__typed())
-    return s.slice(-1)
+  const typed = () => page.evaluate(() => {
+    const text = window.__typed()
+    return text === '\u00a0' ? '' : text
+  })
+  const addedKey = async (before) => {
+    const after = await typed()
+    if (!after.startsWith(before) || after.length !== before.length + 1)
+      throw new Error(`one click must append one key: ${JSON.stringify(before)} → ${JSON.stringify(after)}`)
+    return after.slice(-1)
   }
-  const setCorrect = async (on) => page.evaluate((v) => window.__correct(v), on)
+  const setCorrect = async (on) => {
+    const actual = await page.evaluate((v) => window.__correct(v), on)
+    if (actual !== on) throw new Error(`correction control did not become ${on}`)
+  }
 
   const aim = await box(AIM)
 
@@ -372,17 +386,19 @@ try {
   await setCorrect(false)
   await page.mouse.move(aim.x, aim.y)
   await sleep(120)
+  const beforeHand = await typed()
   await page.mouse.click(aim.x, aim.y)
   await sleep(250)
-  const hand = await typedLast()
+  const hand = await addedKey(beforeHand)
   check(hand === AIM, `uncorrected, the click is the hand: aimed at ${AIM}, typed "${hand}"`)
 
   await setCorrect(true)
   await page.mouse.move(aim.x, aim.y)
   await sleep(120)
+  const beforeEye = await typed()
   await page.mouse.click(aim.x, aim.y)
   await sleep(250)
-  const eye = await typedLast()
+  const eye = await addedKey(beforeEye)
   check(
     eye !== '' && eye !== AIM,
     `corrected, the click is the eye and lands a whole key away: ` +
@@ -482,11 +498,10 @@ try {
     `moving, the hand keeps a key lit (${litSamples}/${sweep.length} samples)`,
   )
   check(
-    offsets.length > 0 && worstOffset <= SWEEP_OFFSET,
+    offsets.length >= sweep.length / 2 && offsets.every(Number.isFinite) && worstOffset <= SWEEP_OFFSET,
     `moving, the relayed point stays under the tip ` +
       `(median ${medOffset}px from the hand, worst ${worstOffset}px, ceiling ${SWEEP_OFFSET}px)`,
   )
-
 
   // 6 — the caustic reaches the page.
   //

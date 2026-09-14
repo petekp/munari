@@ -299,17 +299,6 @@ describe('generateArt', () => {
     }
   })
 
-  it('registers every KnobsValues numeric field as a rotary knob, and every boolean as a toggle', () => {
-    expect(KNOBS_ROTARY.map((k) => k.key).sort()).toEqual(
-      ['chroma', 'complexity', 'hue', 'layers', 'palette', 'speed'].sort(),
-    )
-    expect(KNOBS_TOGGLES.map((k) => k.key).sort()).toEqual(['mirror', 'power'].sort())
-    for (const k of KNOBS_ROTARY) {
-      expect(k.min).toBeLessThan(k.max)
-      expect(k.step).toBeGreaterThan(0)
-    }
-  })
-
   // A field with no dial and no entry here is a parameter nobody can
   // reach and nobody declared — the exact thing the test above was
   // written to catch. Hiding `spread` must stay a DECISION, not a
@@ -323,6 +312,15 @@ describe('generateArt', () => {
     }
     // …and nothing is declared fixed while still wearing a dial.
     for (const key of KNOBS_FIXED) expect(dialed.has(key)).toBe(false)
+    expect([...dialed, ...switched, ...fixed].sort()).toEqual(Object.keys(DEFAULTS).sort())
+    expect(dialed.size).toBe(KNOBS_ROTARY.length)
+    expect(switched.size).toBe(KNOBS_TOGGLES.length)
+    for (const def of KNOBS_ROTARY) {
+      expect(Number.isFinite(DEFAULTS[def.key])).toBe(true)
+      expect(def.min).toBeLessThan(def.max)
+      expect(def.step).toBeGreaterThan(0)
+    }
+    for (const def of KNOBS_TOGGLES) expect([true, false]).toContain(DEFAULTS[def.key])
   })
 })
 

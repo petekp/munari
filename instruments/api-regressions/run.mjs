@@ -23,12 +23,9 @@ const server=await createServer({configFile:false,root:import.meta.dirname,cache
 await server.listen()
 const url=`http://127.0.0.1:${server.httpServer.address().port}`
 const results=[]
-// Measured 2026-09-13, Chrome 151. A correctly placed ride reads at most 0.434
-// (clip-scaled, clip-longhand): under scale(1.2, 0.85) the capture ends the red
-// fill one device column wider than the compositor, across its 59 rows. Every
-// other case reads 0.019 or less. A ride misplaced by one pixel in any direction
-// exposes a line of at least 0.89. The budget splits that gap.
-const PLACEMENT_BUDGET=0.65
+// Chrome's native and captured raster edges differ under nonuniform scale.
+// Pixels check clipping; a separate box comparison checks placement.
+const POSITION_BUDGET_PX=0.25
 // Summed |ΔRGB| above which a pixel counts as different, and the fewest
 // counted pixels a row or column needs before its fraction is read.
 const STRONG_DIFFERENCE=64
@@ -44,10 +41,8 @@ const read=page=>page.evaluate(()=>{
 // `worstLine` is the largest fraction of any row or column whose pixels differ
 // strongly, with `exclude` (CSS-px rects relative to the shot) left out.
 //
-// The worst line is what catches a misplaced ride. A host one device pixel off
-// exposes a whole row or column along an edge, and a mean dilutes that one line
-// across the box: a 1 px sideways shift of the plain `clip` case read 0.000 as
-// a masked mean. Raster differences are scattered and never fill a line.
+// Background outside a clip dilutes a line's score, so this metric alone
+// cannot establish placement. The native and riding boxes are compared too.
 async function pixels(page,native,preparing,exclude=[],cssWidth=0){
   return page.evaluate(async({native,preparing,exclude,cssWidth,strong,minLine})=>{
     const decode=async data=>{const bitmap=await createImageBitmap(new Blob([Uint8Array.from(atob(data),c=>c.charCodeAt(0))],{type:'image/png'})),canvas=new OffscreenCanvas(bitmap.width,bitmap.height),ctx=canvas.getContext('2d');ctx.drawImage(bitmap,0,0);const size=[bitmap.width,bitmap.height];bitmap.close();return {data:ctx.getImageData(0,0,canvas.width,canvas.height).data,size}}
@@ -56,17 +51,31 @@ async function pixels(page,native,preparing,exclude=[],cssWidth=0){
     const [width,height]=a.size,k=cssWidth?width/cssWidth:1
     const skip=exclude.map(r=>[Math.floor(r.x*k),Math.floor(r.y*k),Math.ceil((r.x+r.width)*k),Math.ceil((r.y+r.height)*k)])
     const rows=Array.from({length:height},()=>[0,0]),cols=Array.from({length:width},()=>[0,0])
-    let error=0
+    const edge=new Uint8Array(width*height)
+    const contrast=(i,j)=>Math.abs(a.data[i]-a.data[j])+Math.abs(a.data[i+1]-a.data[j+1])+Math.abs(a.data[i+2]-a.data[j+2])
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+      const at=y*width+x,i=at*4
+      if(x>0&&contrast(i,i-4)>strong){edge[at]=1;edge[at-1]=1}
+      if(y>0&&contrast(i,i-width*4)>strong){edge[at]=1;edge[at-width]=1}
+    }
+    const nearEdge=(x,y)=>{
+      if(x<1||y<1||x>=width-1||y>=height-1)return true
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)if(edge[(y+dy)*width+x+dx])return true
+      return false
+    }
+    let error=0,unexpectedPixels=0,referenceFillPixels=0
     for(let i=0;i<a.data.length;i+=4){
       let d=0;for(let c=0;c<4;c++)error+=Math.abs(a.data[i+c]-b.data[i+c])
       const x=(i/4)%width,y=Math.floor(i/4/width)
       if(skip.some(([x0,y0,x1,y1])=>x>=x0&&x<x1&&y>=y0&&y<y1))continue
       for(let c=0;c<3;c++)d+=Math.abs(a.data[i+c]-b.data[i+c])
       const hit=d>strong?1:0
+      if(Math.abs(a.data[i]-230)+Math.abs(a.data[i+1]-20)+Math.abs(a.data[i+2]-20)<strong)referenceFillPixels++
+      if(hit&&!nearEdge(x,y))unexpectedPixels++
       rows[y][0]+=hit;rows[y][1]++;cols[x][0]+=hit;cols[x][1]++
     }
     const worst=lines=>lines.reduce((m,[hits,n])=>n>=minLine?Math.max(m,hits/n):m,0)
-    return {mean:error/a.data.length,worstLine:Math.max(worst(rows),worst(cols))}
+    return {mean:error/a.data.length,worstLine:Math.max(worst(rows),worst(cols)),unexpectedPixels,referenceFillPixels}
   },{native,preparing,exclude,cssWidth,strong:STRONG_DIFFERENCE,minLine:MIN_LINE_PIXELS})
 }
 async function check(page,kind,enhanced){
@@ -138,8 +147,8 @@ async function check(page,kind,enhanced){
   }else if(kind==='prepare-unfocused'){
     // While the page is still the one showing, the live node is taken into the
     // capture host only for what a page-side copy cannot carry: a caret or a
-    // selection (decisions.md #42, as narrowed). This fixture prepares for two
-    // seconds, which is long enough to read both halves of that.
+    // selection (decisions.md #42, as narrowed). A declared part with no presenter holds preparation open
+    // until the runner has checked both states.
     await page.waitForFunction(()=>window.__apiRegression.status?.supported)
     await pause(page,150)
     await page.evaluate(()=>document.activeElement instanceof HTMLElement&&document.activeElement.blur())
@@ -147,14 +156,14 @@ async function check(page,kind,enhanced){
     await page.waitForFunction(()=>window.__apiRegression.status?.isTransitioning)
     await frameWait(page);await frameWait(page)
     const unfocused=await page.evaluate(()=>({presentation:window.__apiRegression.status.presentation,inHost:Boolean(document.getElementById('clipped-source').closest('canvas')),parked:Boolean(document.getElementById('clipped-source').closest('[data-munari-parked]'))}))
-    assert.equal(unfocused.presentation,'page','the page must still be presenting two seconds into a settle')
+    assert.equal(unfocused.presentation,'page','the page must still present while the required presenter is missing')
     assert.equal(unfocused.parked,false,'an unfocused source keeps its live node on the page during preparation')
     // Give it a caret and the same preparation takes the node, because now a
     // copy would lose something.
     await page.$eval('#clip-inside',node=>node.focus())
     await frameWait(page);await frameWait(page)
     const focused=await page.evaluate(()=>({presentation:window.__apiRegression.status.presentation,parked:Boolean(document.getElementById('clipped-source').closest('[data-munari-parked]')),focused:document.activeElement?.id}))
-    assert.equal(focused.presentation,'page','the settle must still be running when the caret arrives')
+    assert.equal(focused.presentation,'page','preparation must remain open when the caret arrives')
     assert.equal(focused.focused,'clip-inside')
     assert.equal(focused.parked,true,'a caret inside the source takes the live node into the capture host')
     result={unfocused,focused}
@@ -186,23 +195,61 @@ async function check(page,kind,enhanced){
     await page.waitForFunction(()=>window.__apiRegression.status?.isTransitioning&&document.getElementById('clipped-source').closest('canvas'))
     if(kind==='clip-dynamic'){await page.evaluate(()=>window.__apiRegression.setClipHeight(150));await frameWait(page)}
     const preparing=await page.screenshot({clip,encoding:'base64'})
+    // Preparation aligns its texel footprint to the device grid (decision #44).
+    // The native box supplies the independent center and requested size.
+    const expectedBox=await page.evaluate(native=>{
+      const dpr=devicePixelRatio,width=Math.round(native.width*dpr)/dpr,height=Math.round(native.height*dpr)/dpr
+      return {x:Math.round((native.x+(native.width-width)/2)*dpr)/dpr,y:Math.round((native.y+(native.height-height)/2)*dpr)/dpr,width,height}
+    },clip)
+    const displacement=()=>page.$eval('#clipped-source',(node,expected)=>{
+      const r=node.getBoundingClientRect()
+      return Math.max(Math.abs(r.x-expected.x),Math.abs(r.y-expected.y),Math.abs(r.width-expected.width),Math.abs(r.height-expected.height))
+    },expectedBox)
+    const placementError=await displacement()
+    assert.ok(placementError<=POSITION_BUDGET_PX,`${kind}: preparation moved ${placementError}px`)
     assert.equal((await read(page)).status.presentation,'page')
-    const {mean:imageError,worstLine:error}=await pixels(page,native,preparing,controls,clip.width)
+    const {mean:imageError,worstLine:error,unexpectedPixels,referenceFillPixels}=await pixels(page,native,preparing,controls,clip.width)
     await writeFile(path.join(output,`${kind}-native.png`),Buffer.from(native,'base64'))
     await writeFile(path.join(output,`${kind}-preparing.png`),Buffer.from(preparing,'base64'))
-    assert.ok(error<=PLACEMENT_BUDGET,`${kind}: preparation placement error ${error} (whole image ${imageError})`)
+    assert.ok(referenceFillPixels>=1000,`${kind}: reference contains too little of the visible source`)
+    assert.equal(unexpectedPixels,0,`${kind}: ${unexpectedPixels} pixels differ away from native raster edges`)
+    let squareClipControl=null
+    if(kind==='clip-rounded'){
+      const previous=await page.$eval('#clipped-source',node=>{
+        const host=node.closest('canvas'),outer=document.querySelector('#clip-outer'),r=node.getBoundingClientRect(),c=outer.getBoundingClientRect()
+        const previous={clip:host.style.clipPath,radius:outer.style.borderRadius}
+        host.style.clipPath=`inset(${Math.max(0,c.top-r.top)}px ${Math.max(0,r.right-c.right)}px ${Math.max(0,r.bottom-c.bottom)}px ${Math.max(0,c.left-r.left)}px)`
+        outer.style.borderRadius='0'
+        return previous
+      })
+      try{
+        const faulty=await page.screenshot({clip,encoding:'base64'})
+        squareClipControl=await pixels(page,native,faulty,controls,clip.width)
+        assert.ok(squareClipControl.unexpectedPixels>0,'Rounded clipping check accepted a rectangular clip')
+        await writeFile(path.join(output,`${kind}-square-control.png`),Buffer.from(faulty,'base64'))
+      }finally{
+        await page.$eval('#clipped-source',(node,previous)=>{node.closest('canvas').style.clipPath=previous.clip;document.querySelector('#clip-outer').style.borderRadius=previous.radius},previous)
+      }
+    }
+    const negativeControls=[]
+    for(const [x,y] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const previous=await page.$eval('#clipped-source',(node,[x,y])=>{const host=node.closest('canvas'),previous=host.style.translate;host.style.translate=`${x}px ${y}px`;return previous},[x,y])
+      try{
+        const error=await displacement()
+        negativeControls.push({x,y,error})
+        assert.ok(error>POSITION_BUDGET_PX,`${kind}: the placement check accepted a ${x},${y}px displacement`)
+      }finally{await page.$eval('#clipped-source',(node,value)=>{node.closest('canvas').style.translate=value},previous)}
+    }
     const inside=await page.$eval('#clip-inside',node=>{const r=node.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})
     const outside=await page.$eval('#clip-outside',node=>{const r=node.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})
     await page.mouse.click(inside.x,inside.y);await page.mouse.click(outside.x,outside.y)
     assert.equal(await page.evaluate(()=>window.__apiRegression.insideClicks),1)
     assert.equal(await page.evaluate(()=>window.__apiRegression.outsideClicks),0)
-    // The fixture holds preparation open with a part whose presenter waits for
-    // this call, so the shot and the clicks above land before the handoff.
     await page.evaluate(()=>window.__apiRegression.releaseHold())
     await page.waitForFunction(()=>window.__apiRegression.status?.presentation==='scene')
     const after=await page.$eval('#clipped-source',node=>node.closest('canvas').style.clipPath)
     assert.equal(after,'','Preparation must release its clip before native scene input')
-    result={placementError:error,imageError,insideClicks:1,outsideClicks:0,clipAfterHandoff:after}
+    result={placementError,pixelDifference:error,imageError,unexpectedPixels,referenceFillPixels,squareClipControl,negativeControls,insideClicks:1,outsideClicks:0,clipAfterHandoff:after}
   }else if(kind==='attribute'){
     await page.waitForFunction(enhanced=>window.__apiRegression.status?.presentation===(enhanced?'scene':'page'),{},enhanced)
     assert.equal((await read(page)).status.reason,null)
@@ -217,12 +264,17 @@ async function check(page,kind,enhanced){
   assert.deepEqual(pageErrors,[])
   return {case:kind,enhanced,dpr:await page.evaluate(()=>devicePixelRatio),...result}
 }
+const enhancedCases=['targets','reorder','capture','resize','focus','prepare-unfocused','clip','clip-nested','clip-rounded','clip-scaled','clip-dynamic','clip-border','clip-margin','clip-longhand','clip-preserve','attribute']
+const nativeCases=['targets','reorder','focus','attribute']
+const requestedCases=process.env.API_CASES?.split(',').map(name=>name.trim()).filter(Boolean)
+if(requestedCases&&(!requestedCases.length||requestedCases.some(name=>!enhancedCases.includes(name))))throw new Error('API_CASES contains no cases or an unknown case')
 try{
   for(const enhanced of [true,false]){
+    const defaults=enhanced?enhancedCases:nativeCases
+    const cases=requestedCases?defaults.filter(name=>requestedCases.includes(name)):defaults
+    if(!cases.length)continue
     const browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',defaultViewport:null,args:[...(enhanced?['--enable-features=CanvasDrawElement']:[]),'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
     try{
-      const defaults=enhanced?['targets','reorder','capture','resize','focus','prepare-unfocused','clip','clip-nested','clip-rounded','clip-scaled','clip-dynamic','clip-border','clip-margin','clip-longhand','clip-preserve','attribute']:['targets','reorder','focus','attribute']
-      const cases=process.env.API_CASES?defaults.filter(name=>process.env.API_CASES.split(',').includes(name)):defaults
       for(const kind of cases){
         const page=await browser.newPage();await setChromeViewport(page,{width:960,height:700});await page.bringToFront()
         try{const result=await check(page,kind,enhanced);results.push(result);console.log(JSON.stringify(result));await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))}

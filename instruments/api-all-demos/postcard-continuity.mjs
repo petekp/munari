@@ -12,6 +12,7 @@ const output = process.env.API_PROOF_OUTPUT ?? path.join(tmpdir(),'munari-api/ev
 const pointerInput = process.env.POSTCARD_INPUT === 'pointer'
 const recordPixels = process.env.POSTCARD_RECORD ? process.env.POSTCARD_RECORD === '1' : !pointerInput
 const cycles = Number(process.env.POSTCARD_CYCLES ?? (pointerInput ? 3 : 6))
+if (!Number.isInteger(cycles) || cycles < 1) throw new Error('POSTCARD_CYCLES must be a positive integer')
 let url = process.env.API_LAB_URL
 let server
 if (!url) {
@@ -55,7 +56,7 @@ try {
   await flip(true)
   await page.waitForFunction(() => {
     const original = document.querySelector('.home-hero-holder [data-api-live]')
-    return original?.closest('canvas') !== null
+    return Boolean(original?.closest('canvas'))
   })
   // One full launch establishes the initial material and capture setup.
   await new Promise(resolve => setTimeout(resolve,1300))

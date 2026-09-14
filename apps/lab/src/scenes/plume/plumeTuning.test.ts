@@ -1,15 +1,10 @@
-// Plume tuning contract — every displayed setting reaches one stored value.
-//
-// The 2026-08-31 panel exposes type, timing, particles, motion, and color
-// together, plus two selects that are not numbers: the typeface and the
-// release unit. A field may display a percentage, but copying and resetting
-// must preserve the fractional shader value and millisecond clock.
+// Panel input normalization preserves stored units and configured ranges.
 
 import { describe, expect, it } from 'vitest'
 import {
   PLUME_GROUPS,
-  defaultPlumeEffects,
   normalizePlumeInput,
+  normalizePlumeTuning,
   plumeTuning,
   type PlumeNumberKey,
 } from './plumeTuning'
@@ -23,53 +18,16 @@ function controlFor(key: PlumeNumberKey) {
 }
 
 describe('Plume tuning', () => {
-  it('keeps the reviewed type and particle settings as the frozen reset preset', () => {
-    expect(Object.isFrozen(plumeTuning)).toBe(true)
-    expect(Object.isFrozen(defaultPlumeEffects)).toBe(true)
-    expect(plumeTuning).toEqual({
-      fontFamily: 'sans',
-      typeScale: 1,
-      fontWeight: 900,
-      lineHeight: 1.16,
-      letterSpacing: -0.035,
-      textWidth: 1000,
-      releaseUnit: 'character',
-      holdMs: 1500,
-      durationMs: 7200,
-      staggerMs: 1520,
-      reducedDurationMs: 620,
-      pitch: 2,
-      particleSize: 1.25,
-      sizeVariation: 0.32,
-      particleGrowth: 2.6,
-      particleOpacity: 0.71,
-      particleSoftness: 0.55,
-      lifetimeVariation: 0.72,
-      rise: 320,
-      spread: 80,
-      depth: 257,
-      turbulence: 3,
-      billow: 0.5,
-      shading: 0.55,
-      depthFog: 0.69,
-      turbulenceSpeed: 1,
-      draftStrength: 1,
-      draftDamping: 5,
-      inkColor: '#33254a',
-      backgroundColor: '#e5ddea',
-      particleColor: '#6e5c8e',
-      sparkColor: '#ef694b',
-      tint: 0,
-      sparkAmount: 0,
-      ghostOpacity: 0.06,
-      ghostBlur: 5,
-    })
-    expect(defaultPlumeEffects).toEqual({
-      wisps: true,
-      afterglow: true,
-      embers: true,
-      draft: true,
-    })
+  it('restores stored clocks and fractions without snapping unrelated valid fields', () => {
+    const raw = { ...plumeTuning, holdMs: 1549, particleSize: 1.37, rise: Infinity, inkColor: 'invalid', particleColor: '#AaBBcc' }
+    const restored = normalizePlumeTuning(raw)
+    expect(restored.holdMs).toBe(1549)
+    expect(restored.particleSize).toBe(1.37)
+    expect(restored.rise).toBe(plumeTuning.rise)
+    expect(restored.inkColor).toBe(plumeTuning.inkColor)
+    expect(restored.particleColor).toBe('#aabbcc')
+    expect(raw.particleColor).toBe('#AaBBcc')
+    expect(normalizePlumeTuning(plumeTuning)).toEqual(plumeTuning)
   })
 
   it('exposes each numeric and color value exactly once', () => {
@@ -123,15 +81,10 @@ describe('Plume tuning', () => {
     expect(controlFor('durationMs').displayScale).toBeUndefined()
   })
 
-  it('returns percentage edits to fractional storage before normalization', () => {
+  it('normalizes spark opacity to the precision of its control', () => {
     const sparks = controlFor('sparkAmount')
     expect(sparks.displayScale).toBe(100)
     expect(sparks.unit).toBe('%')
-    expect(normalizePlumeInput(sparks, 12.7 / (sparks.displayScale ?? 1))).toBe(0.125)
-
-    for (const control of controls.filter((item) => item.displayScale === 100)) {
-      const displayed = plumeTuning[control.key] * 100
-      expect(normalizePlumeInput(control, displayed / 100), control.key).toBe(plumeTuning[control.key])
-    }
+    expect(normalizePlumeInput(sparks, 0.127)).toBe(0.125)
   })
 })

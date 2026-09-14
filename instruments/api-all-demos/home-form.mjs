@@ -23,20 +23,28 @@ try {
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=home&framed`,{waitUntil:'load'})
     await page.waitForSelector('.home-hero-holder [data-api-live] input')
     await page.evaluate(() => document.fonts.ready)
-    const points = await page.evaluate(() => {
+    await page.evaluate(() => {
       const holder=document.querySelector('.home-hero-holder')
       const scroller=document.querySelector('.home-page')
       scroller.scrollTop += holder.getBoundingClientRect().top-180
       window.originalPostcardInput=holder.querySelector('[data-api-live] input')
-      const center=element=>{const r=element.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}}
-      return {input:center(window.originalPostcardInput),stamp:center(holder.querySelector('[data-api-live] button'))}
     })
     await page.click('.home-hero-row button')
     await page.waitForFunction(() => document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='true')
-    await page.mouse.click(points.input.x,points.input.y)
+    // Clicking the toggle can scroll it into view on mobile. Read the retained
+    // layout copy after that scroll instead of clicking an earlier screen point.
+    const point = selector => page.evaluate(selector => {
+      const element=document.querySelector(`.home-hero-holder [data-munari-snapshot] ${selector}`)
+      if(!element)throw new Error(`Missing retained layout control: ${selector}`)
+      const r=element.getBoundingClientRect()
+      return {x:r.x+r.width/2,y:r.y+r.height/2}
+    },selector)
+    const inputPoint=await point('input')
+    await page.mouse.click(inputPoint.x,inputPoint.y)
     await page.waitForFunction(() => document.activeElement===window.originalPostcardInput)
     await page.keyboard.type('Still the same field')
-    await page.mouse.click(points.stamp.x,points.stamp.y)
+    const stampPoint=await point('button')
+    await page.mouse.click(stampPoint.x,stampPoint.y)
     await page.waitForFunction(() => document.querySelectorAll('[data-api-live] .home-postmark').length===1)
     await page.screenshot({path:path.join(output,`home-form-${width}-scene.png`)})
     await page.click('.home-hero-row button')
@@ -50,6 +58,7 @@ try {
     assert.deepEqual(result,{sameInput:true,value:'Still the same field',stamps:1,horizontalOverflow:0})
     assert.deepEqual(errors,[])
     results.push({width,...result,errors})
+    await writeFile(path.join(output,'home-form.json'),JSON.stringify(results,null,2))
     await page.close()
   }
   await writeFile(path.join(output,'home-form.json'),JSON.stringify(results,null,2))

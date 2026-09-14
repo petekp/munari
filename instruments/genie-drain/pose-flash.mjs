@@ -1,259 +1,188 @@
-// pose-flash — does a minimize show one pose of the window's animation, or two?
-//
-// The fault, measured 2026-09-13 in Chrome 151 on snapDOM: pressing a study
-// window's minimize lamp with a real mouse, the page released onto the
-// capture from before the lift. The first scene frame showed a dash pattern
-// about 10% of the figure's pixels away from the frozen pose, and the demanded
-// capture replaced it 20-30 ms later with a second change of about 8%. Every
-// minimize did it. The cause was the lift's wait for a current capture being
-// bounded by the author's transition timing, which genie sets to 1 ms
-// (decisions.md #65, amended).
-//
-// Only the compositor's frames show this. The page's animations are paused
-// and agree with each other throughout; the wrong pose exists only in the
-// texture. So this gate reads a screencast of the window's content box and
-// counts how many times the picture changes once the page lets go. A correct
-// handover changes it once — the page's raster becomes the texture's, 2.03-5.50%
-// across 12 minimizes on both engines — and then it holds still until the drain
-// moves the window. With the 1 ms wait restored, every snapDOM minimize changed
-// it twice (8.76-14.44%, then 6.61-14.16%). HTML-in-canvas did not flash either
-// way, so this gate's teeth are on snapDOM.
-//
-// The press is a real mouse press over a hovered lamp. A scripted `click()`
-// skips the hover and the pointerdown that raises the window, and the probes
-// that used one missed this fault entirely.
-import { existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+// Stationary Genie pose across the real handoff (decision #65).
+// Fixed CSS and geometry isolate capture pixels from animation and drain motion.
+// Compare every image after the first scene draw with the native figure.
+// The two-way 1px neighborhood allows raster edges without discarding ink;
+// the existing 40-RGB / 1% budgets must reject stale and blank texture controls.
+// The first framebuffer is held for 40ms so two 20ms recorder intervals can see it.
+// This gate does not measure natural motion, freeze timing or performance.
+import assert from 'node:assert/strict'
+import {existsSync} from 'node:fs'
+import {mkdir,writeFile} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
 import path from 'node:path'
-
 import puppeteer from 'puppeteer-core'
-import { createServer } from 'vite'
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
-const labRoot = path.join(repoRoot, 'apps', 'lab')
-const CHROME = [
-  process.env.CHROME_PATH,
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  '/usr/bin/google-chrome',
-  '/usr/bin/chromium',
-]
-  .filter(Boolean)
-  .find((candidate) => existsSync(candidate))
-if (!CHROME) throw new Error('pose-flash: Chrome was not found; set CHROME_PATH')
-const HEADED = process.env.HEADED === '1'
-const ROUNDS = Number(process.env.ROUNDS ?? 3)
-// The two windows whose bodies are CSS animations: their dash patterns move
-// every frame on the desk, so a stale capture is a visibly different figure.
-const WINDOWS = ['cerchio', 'quadrato']
-// How long after the page releases the picture is read. The drain first moves
-// the window about 110 ms after the release on the measured runs; the flash's
-// second change lands within 40 ms of it.
-const READ_MS = 80
-// Percent of the content box that must change for a frame to count as a
-// change. The frozen picture reads 0.00 frame to frame; a correct handover's
-// trailing settle reads at most 0.31; the smallest flash change was 6.61.
-const CHANGE_PCT = 1
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
-let server
-let browser
-const problems = []
-const deadline = setTimeout(() => {
-  console.error('pose-flash: hard 300s deadline hit')
-  process.exit(1)
-}, 300_000)
-
-try {
-  browser = await puppeteer.launch({
-    executablePath: CHROME,
-    headless: !HEADED,
-    args: [
-      '--enable-features=CanvasDrawElement',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-renderer-backgrounding',
-      ...(process.env.CI ? ['--no-sandbox'] : []),
-    ],
-  })
-  server = await createServer({ root: labRoot, logLevel: 'warn', server: { port: 0 } })
-  await server.listen()
-  const port = server.config.server.port ?? server.httpServer.address().port
-
-  for (const mode of ['auto', 'snapdom']) {
-    const page = await browser.newPage()
-    const pageErrors = []
-    page.on('pageerror', (error) => pageErrors.push(String(error)))
-    await page.setViewport({ width: 1100, height: 800, deviceScaleFactor: 1 })
-    const forced = mode === 'snapdom' ? '&capture=snapdom' : ''
-    await page.goto(`http://localhost:${port}/?scene=genie&framed${forced}`, { waitUntil: 'load' })
-    await page.waitForFunction(
-      () =>
-        document.querySelector('.gen-slot[data-win="cerchio"] .gen-math-pattern') &&
-        document.fonts.status === 'loaded' &&
-        window.__munari,
-      { timeout: 20_000 },
-    )
-    await sleep(1000)
-    const engine = await page.evaluate(() => window.__munari.engine())
-    if (engine !== (mode === 'snapdom' ? 'snapdom' : 'html-in-canvas'))
-      problems.push(`${mode}: asked for ${mode} and got the ${engine} engine`)
-
-    const client = await page.createCDPSession()
-    const frames = []
-    client.on('Page.screencastFrame', async (frame) => {
-      frames.push({ t: frame.metadata.timestamp * 1000, data: frame.data })
-      try {
-        await client.send('Page.screencastFrameAck', { sessionId: frame.sessionId })
-      } catch {
-        // The cast can stop between delivery and acknowledgement.
-      }
-    })
-
-    for (const win of WINDOWS) {
-      const rounds = []
-      for (let round = 0; round < ROUNDS; round++) {
-        const geometry = await page.evaluate((win) => {
-          // Only the window under test is visible, so its box can only ever
-          // show that window, the desk, or the sheet carrying it.
-          for (const slot of document.querySelectorAll('.gen-slot'))
-            slot.style.visibility = slot.dataset.win === win ? '' : 'hidden'
-          const slot = document.querySelector(`.gen-slot[data-win="${win}"]`)
-          const lamp = slot.querySelector('.gen-lamp[data-role="minimize"]').getBoundingClientRect()
-          const figure = slot.querySelector('.gen-math-pattern').getBoundingClientRect()
-          const presentation = slot.querySelector('.gen-page-presentation')
-          window.__releasedAt = null
-          const observer = new MutationObserver(() => {
-            if (window.__releasedAt === null && getComputedStyle(presentation).visibility === 'hidden') {
-              window.__releasedAt = performance.timeOrigin + performance.now()
-              observer.disconnect()
-            }
-          })
-          observer.observe(presentation, { attributes: true, attributeFilter: ['style'] })
-          return {
-            lamp: { x: lamp.x + lamp.width / 2, y: lamp.y + lamp.height / 2 },
-            figure: { x: figure.x, y: figure.y, width: figure.width, height: figure.height },
-          }
-        }, win)
-
-        await page.mouse.move(geometry.lamp.x + 60, geometry.lamp.y + 80)
-        await sleep(150)
-        await page.mouse.move(geometry.lamp.x, geometry.lamp.y, { steps: 6 })
-        await sleep(500)
-
-        frames.length = 0
-        await client.send('Page.startScreencast', {
-          format: 'png',
-          everyNthFrame: 1,
-          maxWidth: 1100,
-          maxHeight: 800,
-        })
-        await sleep(250)
-        await page.mouse.down()
-        await sleep(50)
-        await page.mouse.up()
-        await sleep(500)
-        await client.send('Page.stopScreencast')
-        await sleep(100)
-        const releasedAt = await page.evaluate(() => window.__releasedAt)
-
-        const scored =
-          releasedAt === null
-            ? null
-            : await page.evaluate(
-                async (shot, box, releasedAt, readMs, changePct) => {
-                  const read = async (data) => {
-                    const image = new Image()
-                    image.src = `data:image/png;base64,${data}`
-                    await image.decode()
-                    const canvas = document.createElement('canvas')
-                    canvas.width = image.width
-                    canvas.height = image.height
-                    const context = canvas.getContext('2d', { willReadFrequently: true })
-                    context.drawImage(image, 0, 0)
-                    const sx = image.width / window.innerWidth
-                    const sy = image.height / window.innerHeight
-                    return context.getImageData(
-                      Math.round(box.x * sx),
-                      Math.round(box.y * sy),
-                      Math.round(box.width * sx),
-                      Math.round(box.height * sy),
-                    ).data
-                  }
-                  const before = shot.filter((frame) => frame.t < releasedAt)
-                  const after = shot.filter((frame) => frame.t >= releasedAt && frame.t <= releasedAt + readMs)
-                  if (!before.length || !after.length) return null
-                  let previous = await read(before.at(-1).data)
-                  const changes = []
-                  for (const frame of after) {
-                    const pixels = await read(frame.data)
-                    let changed = 0
-                    for (let i = 0; i < pixels.length; i += 4) {
-                      const delta =
-                        Math.abs(pixels[i] - previous[i]) +
-                        Math.abs(pixels[i + 1] - previous[i + 1]) +
-                        Math.abs(pixels[i + 2] - previous[i + 2])
-                      if (delta > 40) changed++
-                    }
-                    const pct = (100 * changed) / (pixels.length / 4)
-                    if (pct > changePct) changes.push(Number(pct.toFixed(2)))
-                    previous = pixels
-                  }
-                  return { changes, frames: after.length }
-                },
-                frames.map((frame) => ({ t: frame.t, data: frame.data })),
-                geometry.figure,
-                releasedAt,
-                READ_MS,
-                CHANGE_PCT,
-              )
-
-        if (!scored) {
-          problems.push(`${engine} ${win}: round ${round} had no release or no frames around it`)
-        } else {
-          rounds.push(scored)
-        }
-
-        // The minimize has to finish, or a build that never lifted would pass.
-        await page.waitForFunction(
-          (win) => document.querySelector(`.gen-tile[data-win="${win}"]`)?.dataset.filled === 'true',
-          { timeout: 20_000 },
-          win,
-        )
-        await sleep(600)
-        await page.evaluate((win) => {
-          document
-            .querySelector(`.gen-tile[data-win="${win}"]`)
-            .dispatchEvent(new MouseEvent('click', { bubbles: true }))
-        }, win)
-        await page.waitForFunction(
-          (win) => document.querySelector(`.gen-slot[data-win="${win}"]`).dataset.away !== 'true',
-          { timeout: 20_000 },
-          win,
-        )
-        await sleep(1000)
-      }
-
-      console.log(`\n  ${engine} · ${win} · ${rounds.length} minimizes`)
-      for (const round of rounds)
-        console.log(`    changes after release ${JSON.stringify(round.changes)}  (${round.frames} frames)`)
-      const flashed = rounds.filter((round) => round.changes.length > 1)
-      if (flashed.length)
-        problems.push(
-          `${engine} ${win}: ${flashed.length}/${rounds.length} minimizes changed the figure more than once within ${READ_MS}ms of the release`,
-        )
+import {createServer} from 'vite'
+import {installScreencastClock,requireScreencastCoverage} from '../screencastCoverage.ts'
+const root=path.resolve(import.meta.dirname,'../..')
+const output=process.env.POSE_OUTPUT??path.join(tmpdir(),'munari-genie-pose')
+const rounds=Number(process.env.ROUNDS??1)
+assert.ok(Number.isInteger(rounds)&&rounds>0,'ROUNDS must be a positive integer')
+const modes=(process.env.POSE_MODES??'auto,snapdom').split(','),windows=(process.env.POSE_WINDOWS??'cerchio,quadrato').split(',')
+assert.ok(modes.length&&modes.every(mode=>['auto','snapdom'].includes(mode)))
+assert.ok(windows.length&&windows.every(win=>['cerchio','quadrato'].includes(win)))
+const chrome=[process.env.CHROME_PATH,'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/usr/bin/google-chrome','/usr/bin/chromium'].filter(Boolean).find(existsSync)
+assert.ok(chrome,'Chrome is required')
+const getter='  const api: GestureApi = {',frame='  useFrame(({ clock }, rawDt) => {',deform='deformSheets([geo, filmGeoRef.current], f, params, visibleT, wobble)'
+const inspect={name:'stationary-genie-pose',enforce:'pre',transform(code,id){
+ if(!id.endsWith('/scenes/genie/Genie.tsx'))return
+ for(const marker of [getter,frame,deform])assert.equal(code.split(marker).length,2,`Unique observation point: ${marker}`)
+ return `import {surfaceStoreOf as __poseStoreOf} from ${JSON.stringify('/@fs'+path.join(root,'packages/react/src/primitives/surface/surfaceHandle.ts'))};\n`+code
+  .replace(getter,'  window.__poseStore=(win:WinId)=>__poseStoreOf(storeOf(win).handle);\n'+getter)
+  .replace(frame,'  useFrame(({ clock, scene, camera, gl }, rawDt) => {')
+  .replace(deform,'deformSheets([geo, filmGeoRef.current], f, params, window.__fixedPose?.win===win ? 0 : visibleT, wobble); window.__fixedPose?.observe({scene,camera,gl,win})')
+}}
+let server,browser
+const results=[],deadline=setTimeout(()=>{console.error('Stationary pose exceeded 300s');process.exit(1)},300000)
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+try{
+ await mkdir(output,{recursive:true})
+ server=await createServer({root:path.join(root,'apps/lab'),plugins:[inspect],cacheDir:path.join(output,'.vite'),server:{host:'127.0.0.1',port:0,fs:{allow:[root]}},logLevel:'warn'})
+ await server.listen()
+ browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',args:['--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding',...(process.env.CI?['--no-sandbox']:[])]})
+ for(let round=0;round<rounds;round++)for(const mode of modes)for(const win of windows)for(const control of ['current','stale','blank','late-blank']){
+  const name=`${mode}-${win}-${control}${rounds>1?`-${round+1}`:''}`,directory=path.join(output,name),page=await browser.newPage(),errors=[]
+  await mkdir(directory,{recursive:true})
+  page.on('pageerror',error=>errors.push(String(error)))
+  page.on('console',message=>{if(message.type()==='error'&&!message.text().startsWith('Failed to load resource:'))errors.push(message.text())})
+  try{
+   await page.setViewport({width:1100,height:800,deviceScaleFactor:1})
+   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'no-preference'}])
+   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=genie&framed${mode==='snapdom'?'&capture=snapdom':''}`,{waitUntil:'load'})
+   await page.waitForFunction(win=>window.__poseStore?.(win).parts().some(part=>part.runtime?.currentPaint())&&document.fonts.status==='loaded',{timeout:20000},win)
+   assert.equal(await page.evaluate(()=>window.__munari.engine()),mode==='snapdom'?'snapdom':'html-in-canvas')
+   await page.evaluate(installScreencastClock)
+   const box=await page.evaluate(async({win,control})=>{
+    for(const slot of document.querySelectorAll('.gen-slot'))slot.style.visibility=slot.dataset.win===win?'':'hidden'
+    const store=window.__poseStore(win),part=store.parts().find(part=>part.runtime),runtime=part.runtime
+    const native=document.querySelector(`.gen-slot[data-win="${win}"] .gen-math-pattern`)
+    const tick=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
+    const pin=time=>{
+     for(const pattern of document.querySelectorAll(`.gen-math-pattern[data-pattern="${win}"]`))for(const animation of pattern.getAnimations({subtree:true})){animation.pause();animation.currentTime=time}
     }
-    if (pageErrors.length) problems.push(`${engine}: ${pageErrors[0]}`)
-    await page.close()
-  }
-} finally {
-  clearTimeout(deadline)
-  await browser?.close()
-  await server?.close()
-}
-
-if (problems.length) {
-  console.error('\npose-flash: FAIL')
-  for (const problem of problems) console.error(`  - ${problem}`)
-  process.exit(1)
-}
-console.log('\npose-flash: PASS — a minimize shows the frozen pose, handed over once')
+    // The dash repeat is shorter than the animation; use half its visual period.
+    const firstAnimation=native.getAnimations({subtree:true})[0],keyframes=firstAnimation.effect.getKeyframes()
+    const offsets=keyframes.map(frame=>Number.parseFloat(frame.strokeDashoffset)).filter(Number.isFinite)
+    const travel=Math.abs(offsets.at(-1)-offsets[0]),dash=getComputedStyle(native.querySelector('.gen-math-line')).strokeDasharray.split(/[ ,]+/).map(Number.parseFloat).reduce((sum,value)=>sum+value,0)
+    const seedTime=2400-firstAnimation.effect.getComputedTiming().duration*dash/(2*travel)
+    if(!Number.isFinite(seedTime)||seedTime===2400)throw Error('Cannot choose a distinct half-period dash pose')
+    pin(seedTime);await tick()
+    const floor=runtime.nextRead();runtime.repaint({immediate:true})
+    const start=performance.now()
+    while((runtime.currentPaint()?.read??-1)<floor){if(performance.now()-start>5000)throw Error('The stale-pose seed was not captured');await tick()}
+    const image=document.createElement('canvas');image.width=runtime.source.canvas.width;image.height=runtime.source.canvas.height
+    if(control==='stale')image.getContext('2d').drawImage(runtime.source.canvas,0,0)
+    // Texture.clone shares Source. Fault pixels need their own Source object.
+    const healthyTexture=runtime.texture(),healthyImage=healthyTexture.image
+    const fault=healthyTexture.clone();fault.source=new healthyTexture.source.constructor(image);fault.needsUpdate=true
+    if(fault.source===healthyTexture.source||healthyTexture.image!==healthyImage)throw Error('The fault texture changed the healthy source')
+    pin(2400);await tick()
+    const animations=native.getAnimations({subtree:true})
+    if(animations.length!==(win==='cerchio'?9:7)||animations.some(a=>a.pending||a.playState!=='paused'||a.currentTime!==2400))throw Error('The native reference pose did not pin')
+    const r=native.getBoundingClientRect(),box={x:r.x,y:r.y,width:r.width,height:r.height}
+    const marker=document.createElement('canvas');marker.width=80;marker.height=4;marker.style.cssText='position:fixed;left:2px;top:2px;width:80px;height:4px;z-index:2147483647;pointer-events:none';document.body.append(marker)
+    const ink=marker.getContext('2d'),draws=[],watched=new WeakMap()
+    const mark=id=>{const bits=[1,0,1,0,1,1,0,0];for(let i=0;i<24;i++)bits.push((id>>>i)&1);const check=(id^(id>>>8)^(id>>>16)^165)&255;for(let i=0;i<8;i++)bits.push((check>>>i)&1);bits.forEach((bit,i)=>{ink.fillStyle=bit?'#fff':'#000';ink.fillRect(i*2,0,2,4)})};mark(0)
+    function placement(mesh,camera,gl){
+     const root=store.parts().find(part=>part.runtime)?.captureRoot,figure=root?.querySelector('.gen-math-pattern')
+     if(!root||!figure)throw Error('Capture figure disappeared')
+     const a=root.getBoundingClientRect(),b=figure.getBoundingClientRect(),viewport=gl.domElement.getBoundingClientRect(),pos=mesh.geometry.getAttribute('position')
+     const {widthSegments:cols,heightSegments:rows}=mesh.geometry.parameters
+     if(!cols||!rows||pos.count!==(cols+1)*(rows+1))throw Error('Unexpected Genie plane geometry')
+     const point=(u,v)=>{
+      const col=Math.min(cols-1,Math.floor(u*cols)),row=Math.min(rows-1,Math.floor(v*rows)),x=u*cols-col,y=v*rows-row,index=row*(cols+1)+col,below=index+cols+1
+      const samples=x+y<=1?[[index,1-x-y],[below,y],[index+1,x]]:[[below,1-x],[below+1,x+y-1],[index+1,1-y]],p=mesh.position.clone().set(0,0,0)
+      for(const [i,k]of samples){p.x+=pos.getX(i)*k;p.y+=pos.getY(i)*k;p.z+=pos.getZ(i)*k}p.applyMatrix4(mesh.matrixWorld).project(camera)
+      return {x:viewport.x+(p.x+1)*viewport.width/2,y:viewport.y+(1-p.y)*viewport.height/2}
+     }
+     const u0=(b.x-a.x)/a.width,v0=(b.y-a.y)/a.height,u1=(b.right-a.x)/a.width,v1=(b.bottom-a.y)/a.height
+     const points=[point(u0,v0),point(u1,v0),point(u1,v1),point(u0,v1),point((u0+u1)/2,(v0+v1)/2)]
+     const expected=[[box.x,box.y],[box.x+box.width,box.y],[box.x+box.width,box.y+box.height],[box.x,box.y+box.height],[box.x+box.width/2,box.y+box.height/2]]
+     return Math.max(...points.map((point,i)=>Math.hypot(point.x-expected[i][0],point.y-expected[i][1])))
+    }
+    const cadence={firstAt:null,blocked:0,renderer:null}
+    window.__fixedPose={win,seedTime,draws,cadence,observe({scene,camera,gl,win:drawWin}){
+     if(drawWin!==win)return
+     // Keep the first actual framebuffer available for two recorder intervals.
+     if(cadence.renderer!==gl){cadence.renderer=gl;const original=gl.render;gl.render=function(...args){if(cadence.firstAt!==null&&performance.timeOrigin+performance.now()-cadence.firstAt<40){cadence.blocked++;return}return original.apply(this,args)}}
+     scene.traverse(mesh=>{
+      if(!mesh.userData?.isGenieSheet||mesh.userData.win!==win)return
+      const old=watched.get(mesh);if(old?.before===mesh.onBeforeRender&&old?.after===mesh.onAfterRender)return
+      const originalBefore=mesh.onBeforeRender,originalAfter=mesh.onAfterRender;let pass=null
+      const before=function(...args){
+       originalBefore.apply(this,args)
+       const eligible=mesh.material.colorWrite&&gl.getRenderTarget()===null
+       const textureForced=(control==='stale'||control==='blank')&&eligible
+       const droppedWrite=control==='late-blank'&&eligible&&cadence.firstAt!==null&&performance.timeOrigin+performance.now()-cadence.firstAt>=40
+       if(droppedWrite)mesh.material.colorWrite=false
+       pass={writing:mesh.material.colorWrite&&gl.getRenderTarget()===null,sampler:mesh.material.uniforms.tMap.value,textureForced,droppedWrite,forced:textureForced||droppedWrite,placement:placement(mesh,camera,gl)}
+       if(textureForced)mesh.material.uniforms.tMap.value=fault
+      }
+      const after=function(...args){const submitted=pass;originalAfter.apply(this,args);if(submitted.textureForced)mesh.material.uniforms.tMap.value=submitted.sampler;const captured=store.parts().find(part=>part.runtime)?.captureRoot?.querySelector('.gen-math-pattern')?.getAnimations({subtree:true})??[];const row={id:draws.length+1,t:performance.timeOrigin+performance.now(),writing:submitted.writing,pageHeld:store.holdsPage(),forced:submitted.forced,droppedWrite:submitted.droppedWrite,placement:submitted.placement,posePinned:native.getAnimations({subtree:true}).length===animations.length&&native.getAnimations({subtree:true}).every(a=>a.playState==='paused'&&a.currentTime===2400),captureTimes:[...new Set(captured.map(a=>a.currentTime))],capturePaused:captured.length===animations.length&&captured.every(a=>a.playState==='paused'),read:runtime.currentPaint()?.read,uploadedRead:runtime.uploadedRead()};if(row.writing&&!row.pageHeld&&cadence.firstAt===null)cadence.firstAt=row.t;draws.push(row);mark(row.id)}
+      mesh.onBeforeRender=before;mesh.onAfterRender=after;watched.set(mesh,{before,after})
+     })
+    }}
+    return box
+   },{win,control})
+   assert.ok(box.width>0&&box.height>0)
+   const reference=await page.screenshot({encoding:'base64'})
+   await writeFile(path.join(directory,'native.png'),Buffer.from(reference,'base64'))
+   const client=await page.createCDPSession(),frames=[]
+   client.on('Page.screencastFrame',frame=>{frames.push({t:frame.metadata.timestamp*1000,data:frame.data});void client.send('Page.screencastFrameAck',{sessionId:frame.sessionId}).catch(()=>{})})
+   const lamp=await page.$eval(`.gen-slot[data-win="${win}"] .gen-lamp[data-role="minimize"]`,element=>{const r=element.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})
+   await page.mouse.move(lamp.x,lamp.y,{steps:6});await sleep(300)
+   await client.send('Page.startScreencast',{format:'png',everyNthFrame:1,maxWidth:1100,maxHeight:800});await sleep(100)
+   await page.mouse.down();await sleep(50);await page.mouse.up();await sleep(450)
+   await client.send('Page.stopScreencast');await sleep(60)
+   const state=await page.evaluate(()=>({draws:window.__fixedPose.draws,seedTime:window.__fixedPose.seedTime,blockedDraws:window.__fixedPose.cadence.blocked})),draws=state.draws,firstDraw=draws.find(draw=>draw.writing&&!draw.pageHeld)
+   frames.sort((a,b)=>a.t-b.t)
+   const scored=await page.evaluate(async({reference,frames,draws,box})=>{
+    const decode=async data=>{const image=new Image();image.src='data:image/png;base64,'+data;await image.decode();const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0);return{ctx,width:image.width,height:image.height}}
+    const referenceImage=await decode(reference),width=Math.round(box.width),height=Math.round(box.height),crop=image=>image.ctx.getImageData(Math.round(box.x),Math.round(box.y),width,height).data
+    if(referenceImage.width!==1100||referenceImage.height!==800)throw Error('Reference viewport changed')
+    const native=crop(referenceImage),total=width*height,background=[native[0],native[1],native[2]],delta=(a,i,b,j)=>Math.abs(a[i]-b[j])+Math.abs(a[i+1]-b[j+1])+Math.abs(a[i+2]-b[j+2])
+    let nativeInk=0;for(let i=0;i<native.length;i+=4)if(Math.abs(native[i]-background[0])+Math.abs(native[i+1]-background[1])+Math.abs(native[i+2]-background[2])>40)nativeInk++
+    // Both directions retain missing ink as evidence, unlike an excluded edge band.
+    const mismatch=(a,b)=>{let count=0;for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4;let best=Infinity;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=Math.max(0,Math.min(width-1,x+dx)),ny=Math.max(0,Math.min(height-1,y+dy));best=Math.min(best,delta(a,i,b,(ny*width+nx)*4))}if(best>40)count++}return 100*count/total}
+    const byId=new Map(draws.map(draw=>[draw.id,draw])),rows=[]
+    let presented=false
+    for(let index=0;index<frames.length;index++){
+     const image=await decode(frames[index].data);if(image.width!==1100||image.height!==800)throw Error('Compositor viewport changed')
+     const bits=[];for(let i=0;i<40;i++)bits.push(image.ctx.getImageData(3+i*2,3,1,1).data[0]>127?1:0)
+     let id=0;for(let i=0;i<24;i++)id|=bits[i+8]<<i;let checksum=0;for(let i=0;i<8;i++)checksum|=bits[i+32]<<i
+     const markerValid=bits.slice(0,8).join('')==='10101100'&&checksum===((id^(id>>>8)^(id>>>16)^165)&255)
+     if(!markerValid)throw Error('Unreadable draw marker')
+     const draw=byId.get(id)
+     if(!presented){if(!draw?.writing||draw.pageHeld)continue;presented=true}
+     // Once presentation starts, a blank or page-held image is still evidence.
+     if(!draw)throw Error('A frame after presentation has no known draw marker')
+     const pixels=crop(image);rows.push({index,t:frames[index].t,draw,nativeToScene:mismatch(native,pixels),sceneToNative:mismatch(pixels,native)})
+    }
+    return{nativeInk,total,rows}
+   },{reference,frames,draws,box})
+   const start=scored.rows[0]?.t,observed=scored.rows.filter(row=>row.t<=start+80)
+   await writeFile(path.join(directory,'measurement.json'),JSON.stringify({box,nativeInk:scored.nativeInk,total:scored.total,firstDraw,seedTime:state.seedTime,blockedDraws:state.blockedDraws,draws,frames:observed},null,2))
+   if(observed.length){await writeFile(path.join(directory,'first-scene.png'),Buffer.from(frames[observed[0].index].data,'base64'));await writeFile(path.join(directory,'last-scene.png'),Buffer.from(frames[observed.at(-1).index].data,'base64'))}
+   assert.ok(firstDraw,'A direct scene presentation must be observed')
+   assert.ok(scored.nativeInk>scored.total*.01,'Reference ink must exceed the failure budget so a blank figure cannot pass')
+   assert.ok(scored.rows.length,'No scene compositor frame was captured')
+   assert.ok(state.blockedDraws>0,'The first-frame observation hold must intercept later draws')
+   assert.equal(scored.rows[0].draw.id,firstDraw.id,'The first direct scene draw must be captured and judged')
+   requireScreencastCoverage(frames,start,start+80,20)
+   assert.equal(observed.length,frames.filter(frame=>frame.t>=start&&frame.t<=start+80).length,'Every recorded image in the interval must be scored')
+   assert.ok(observed.every(row=>row.draw.posePinned),'The native pose must remain pinned')
+   assert.ok(observed.every(row=>Number.isFinite(row.draw.placement)&&row.draw.placement<=.25),'Actual figure geometry must match its native rectangle within 0.25 CSS px')
+   const rejected=observed.map(row=>row.nativeToScene>1||row.sceneToNative>1)
+   if(control==='current')assert.ok(rejected.every(value=>!value),'A displayed scene frame differs from the fixed native pose')
+   else if(control==='late-blank'){
+    assert.ok(!observed[0].draw.forced&&!rejected[0],'The late-loss control must begin with a correct scene frame')
+    assert.ok(observed.some(row=>row.draw.droppedWrite&&!row.draw.writing),'A later suppressed-write image must be recorded and scored')
+    assert.ok(observed.every((row,index)=>rejected[index]===row.draw.droppedWrite),'Judge both the initial correct images and every later blank image')
+   }
+   else{assert.ok(observed.every(row=>row.draw.forced),'The fault must reach every judged draw');assert.ok(rejected.every(Boolean),'The first and every stable wrong-pose/blank frame must fail')}
+   assert.deepEqual(errors,[])
+   results.push({name,passed:true,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.nativeInk,frames:observed,controlRejected:control==='current'?null:true})
+   await client.detach()
+  }catch(error){results.push({name,passed:false,error:String(error),errors});process.exitCode=1}
+  finally{await page.close();await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results.at(-1)))}
+ }
+}finally{clearTimeout(deadline);await browser?.close();await server?.close()}

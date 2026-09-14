@@ -144,6 +144,13 @@ async function measure(port, engine, reference, guestPort) {
     return { available: false, pageProblems }
   }
   const report = await page.evaluate(() => window.__captureEngines.run())
+  const motion = reference === null ? await page.evaluate(() => window.__captureEngines.mixedMotion()) : null
+  const rasterControls = []
+  if (engine === 'html-in-canvas') {
+    for (const fault of ['none', 'transform-x', 'transform-y', 'clear']) {
+      rasterControls.push(await page.evaluate(fault => window.__captureEngines.nativeRaster(fault), fault))
+    }
+  }
   const fields = await page.evaluate(async () => {
     const f = await window.__captureEngines.fields()
     window.__lastFieldUrl = f.url
@@ -203,7 +210,7 @@ async function measure(port, engine, reference, guestPort) {
     }, reference)
   }
   await page.close()
-  return { available: true, report, fields, parity, pageProblems }
+  return { available: true, report, fields, parity, rasterControls, motion, pageProblems }
 }
 
 function judge(name, r) {
@@ -271,7 +278,7 @@ try {
   const results = []
   let reference = null
   for (const engine of ['html-in-canvas', 'snapdom']) {
-    const { available, report, fields, parity, pageProblems } = await measure(port, engine, reference, guestOrigin.port)
+    const { available, report, fields, parity, rasterControls, motion, pageProblems } = await measure(port, engine, reference, guestOrigin.port)
     if (pageProblems.length) {
       console.error(`page errors under ${engine}:`)
       for (const p of pageProblems) console.error(`  ${p}`)
@@ -288,6 +295,31 @@ try {
       continue
     }
     judge(engine, report)
+    if (motion) {
+      const sourceKeyframe = motion.before.original.find(effect => effect.kind === 'keyframe')
+      const sourceTransition = motion.before.original.find(effect => effect.kind === 'transition')
+      const copiedKeyframe = motion.matched.find(effect => effect.kind === 'keyframe' && effect.name === sourceKeyframe?.name)
+      expect(motion.before.original.length === 2 && sourceKeyframe && sourceTransition && motion.before.copy.length === 1 && motion.before.copy[0].kind === 'keyframe',
+        `mixed motion: the original must have both effects and its clone only the keyframe: ${JSON.stringify(motion.before)}`)
+      expect(motion.before.original.findIndex(effect => effect.kind === 'keyframe') !== motion.before.copy.findIndex(effect => effect.kind === 'keyframe'),
+        'mixed motion: the fixture no longer covers different effect slots')
+      expect(sourceKeyframe?.state === 'paused' && sourceTransition?.state === 'paused' && Number.isFinite(sourceKeyframe.time) && Number.isFinite(sourceTransition.time) && Math.abs(sourceKeyframe.time - sourceTransition.time) > 300,
+        'mixed motion: the source effects must be paused at distinct poses')
+      expect(copiedKeyframe?.state === 'paused' && Number.isFinite(copiedKeyframe.time) && Math.abs(copiedKeyframe.time - sourceKeyframe?.time) < 0.01,
+        `mixed motion: the cloned keyframe must keep its original clock: ${JSON.stringify(motion)}`)
+      expect(motion.released.original.length === 2 && motion.released.copy.length === 1 && [...motion.released.original, ...motion.released.copy].every(effect => effect.state === 'running'),
+        `mixed motion: releasing the hold must resume its original effects and matched clone: ${JSON.stringify(motion.released)}`)
+      console.log(`  mixed motion: ${JSON.stringify(motion)}`)
+    }
+    if (engine === 'html-in-canvas') {
+      const [healthy, transformX, transformY, clear] = rasterControls
+      expect(healthy.fidelity <= FIDELITY_TOLERANCE && healthy.unclearedAlpha === 0,
+        `native raster: wrong scaled pixels or uncleared backing store: ${JSON.stringify(healthy)}`)
+      expect(transformX.fidelity > FIDELITY_TOLERANCE, 'native raster control: doubled X scale was not detected')
+      expect(transformY.fidelity > FIDELITY_TOLERANCE, 'native raster control: doubled Y scale was not detected')
+      expect(clear.unclearedAlpha > 0, 'native raster control: a CSS-size-only clear was not detected')
+      console.log(`  native raster controls: ${JSON.stringify(rasterControls)}`)
+    }
     // What the fixture was covering, per engine. Two engines agreeing on a
     // fallback face, or on a missing image, is a pass that proves nothing.
     expect(fields.sheetOpaque, `${engine}: the guest stylesheet handed over its rules, ` +

@@ -58,17 +58,6 @@ describe('match-DOM camera projection', () => {
     expectRect(screenCorners(camera))
   })
 
-  it('uses CSS viewport units at DPR 1 and 3', () => {
-    const camera = new THREE.PerspectiveCamera(50, viewport.width / viewport.height, 0.1, 100)
-    camera.position.z = 5
-    for (const dpr of [1, 3]) {
-      const corners = screenCorners(camera).map((corner) => ({
-        x: (corner.x * dpr) / dpr,
-        y: (corner.y * dpr) / dpr,
-      }))
-      expectRect(corners)
-    }
-  })
 })
 
 // Client rectangles include the canvas origin and CSS scale. R3F's logical

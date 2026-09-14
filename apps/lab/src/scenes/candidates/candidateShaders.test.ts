@@ -34,6 +34,39 @@ function expression(name: string): Script {
   return new Script(match[1]!)
 }
 
+const phase = expression('t')
+const eased = expression('e')
+const angle = expression('ang')
+const cosine = expression('ca')
+const sine = expression('sa')
+const rotation = SUCK_VERT.match(/rel = vec2\(([^;]+)\);/)
+const position = SUCK_VERT.match(/vec3 p = vec3\(([^;]+)\);/)
+if (!rotation || !position) throw new Error('Missing shader displacement')
+
+function components(source: string): string[] {
+  let depth = 0
+  let start = 0
+  const result: string[] = []
+  for (let index = 0; index < source.length; index++) {
+    if (source[index] === '(') depth++
+    if (source[index] === ')') depth--
+    if (source[index] !== ',' || depth !== 0) continue
+    result.push(source.slice(start, index))
+    start = index + 1
+  }
+  return [...result, source.slice(start)]
+}
+
+const rotationComponents = components(rotation[1]!).map((value) => new Script(value))
+const [positionXY, positionZ] = components(position[1]!)
+if (!positionXY || !positionZ) throw new Error('Missing shader position components')
+// Expand GLSL's component-wise vector arithmetic; the expressions still come
+// from the vertex shader, so changing its displacement changes the oracle.
+const positionComponents = [
+  ...['x', 'y'].map((axis) => new Script(positionXY.replace(/\b(uCursor|rel|uSway)\b/g, `$1.${axis}`))),
+  new Script(positionZ),
+]
+
 const easeSlope = expression('easeSlope')
 const bowSlope = expression('bowSlope')
 const radialScale = expression('radialScale')
@@ -46,15 +79,24 @@ const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(ma
 function displaced(x: number, y: number, u: SuckUniforms) {
   const rel = new Vector2(x, y).sub(u.cursor)
   const dist = rel.length()
-  const t = clamp((u.phase - u.lag * dist / Math.max(u.span, 1e-4)) / (1 - u.lag), 0, 1)
-  const e = t * t * (3 - 2 * t)
-  const angle = e * u.twist * (1 - clamp(dist / Math.max(u.span, 1e-4), 0, 1))
-  rel.rotateAround(new Vector2(), angle)
-  const bow = Math.sin(Math.PI * e)
+  const scope = {
+    rel, dist, t: 0, e: 0, ang: 0, ca: 0, sa: 0,
+    uT: u.phase, uLag: u.lag, uSpan: u.span, uTwist: u.twist,
+    uCursor: u.cursor, uSway: u.sway, uArc: u.arc,
+    clamp, max: Math.max, cos: Math.cos, sin: Math.sin, PI: Math.PI,
+  }
+  const context = createContext(scope)
+  scope.t = phase.runInContext(context)
+  scope.e = eased.runInContext(context)
+  scope.ang = angle.runInContext(context)
+  scope.ca = cosine.runInContext(context)
+  scope.sa = sine.runInContext(context)
+  const rotated = rotationComponents.map((component) => component.runInContext(context))
+  rel.set(rotated[0], rotated[1])
+  const coordinates = positionComponents.map((component) => component.runInContext(context))
   return {
-    position: new Vector3(u.cursor.x + rel.x * (1 - e) + u.sway.x * bow,
-      u.cursor.y + rel.y * (1 - e) + u.sway.y * bow, bow * u.arc),
-    dist, t, e,
+    position: new Vector3(coordinates[0], coordinates[1], coordinates[2]),
+    dist, t: scope.t, e: scope.e,
     dir: dist > 1e-3 ? rel.divideScalar(dist) : new Vector2(),
   }
 }
@@ -89,14 +131,6 @@ function differenceNormal(x: number, y: number, u: SuckUniforms): Vector3 | null
 }
 
 describe('Copy deformation normals', () => {
-  it('keeps the independent displacement sample tied to the shader being checked', () => {
-    expect(SUCK_VERT).toContain('float t = clamp((uT - uLag * (dist / max(uSpan, 1e-4))) / (1.0 - uLag), 0.0, 1.0);')
-    expect(SUCK_VERT).toContain('float e = t * t * (3.0 - 2.0 * t);')
-    expect(SUCK_VERT).toContain('float ang = e * uTwist * (1.0 - clamp(dist / max(uSpan, 1e-4), 0.0, 1.0));')
-    expect(SUCK_VERT).toContain('rel = vec2(rel.x * ca - rel.y * sa, rel.x * sa + rel.y * ca);')
-    expect(SUCK_VERT).toContain('vec3 p = vec3(uCursor + rel * (1.0 - e) + uSway * sin(PI * e), sin(PI * e) * uArc);')
-  })
-
   it('matches the displaced tangents through shrink, both twist directions, and sideways sway', () => {
     let compared = 0
     for (const phase of [0, 0.4, 0.65, 0.8]) {

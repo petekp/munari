@@ -19,8 +19,8 @@
 // The gate also requires the sheet to still arrive, because "no flash" alone
 // would be true of a build that never lifts at all. The law that replaced the
 // guard — an unfocused source keeps its live node on the page while the page is
-// the one showing — is pinned by `probe:api-regressions`, whose fixture settles
-// for two seconds and can therefore be read without racing a crossing. This
+// the one showing — is checked by `probe:api-regressions`, whose fixture withholds
+// a required presenter so preparation can be observed without racing a crossing. This
 // scene crosses in about three frames, which is too fast to tell "never
 // swapped" from "swapped once the scene took over".
 import { existsSync } from 'node:fs'
@@ -29,6 +29,7 @@ import path from 'node:path'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { installScreencastClock, requireScreencastCoverage } from '../screencastCoverage.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const labRoot = path.join(repoRoot, 'apps', 'lab')
@@ -47,9 +48,11 @@ const SLOWCPU = Number(process.env.SLOWCPU ?? 1)
 // every pixel that changes in its rect is the handoff and not its content.
 const WIN = 'quadrato'
 const ROUNDS = Number(process.env.ROUNDS ?? 3)
+if (!Number.isInteger(ROUNDS) || ROUNDS < 1) throw new Error('ROUNDS must be a positive integer')
 // The flash lands within ~50ms of the press; the sheet does not reach the
 // desk until ~340ms. A window this wide separates the two with room to spare.
 const FLASH_WINDOW_MS = 150
+const MAX_FRAME_GAP_MS = 20
 // Percent of the desk rect that has to change before a frame counts as
 // showing the window. The measured flash changes 98.8%; a frame the sheet has
 // not reached yet changes 0.0%. Nothing lands in between.
@@ -95,6 +98,7 @@ try {
       WIN,
     )
     await sleep(1000)
+    await page.evaluate(installScreencastClock)
 
     const client = await page.createCDPSession()
     if (SLOWCPU > 1) await client.send('Emulation.setCPUThrottlingRate', { rate: SLOWCPU })
@@ -195,6 +199,12 @@ try {
       await client.send('Page.stopScreencast')
       await sleep(100)
       const restoreSamples = await page.evaluate(() => window.__flash.samples)
+      frames.sort((left, right) => left.t - right.t)
+      try {
+        requireScreencastCoverage(frames, pressedAt, pressedAt + FLASH_WINDOW_MS, MAX_FRAME_GAP_MS)
+      } catch (error) {
+        problems.push(`${setup.engine}: round ${round}: ${error.message}`)
+      }
 
       const scored = await page.evaluate(
         async (shot, desk, clickAt, flashWindow, shownPct) => {

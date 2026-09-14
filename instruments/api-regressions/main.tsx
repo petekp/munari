@@ -10,7 +10,6 @@ import '@petepetrash/munari/style.css'
 
 type RowId='a'|'b'
 interface RegressionProbe {
-  releaseHold:()=>void
   errors:string[]
   frames:{a:number;b:number}
   revisions:{a:number|null;b:number|null}
@@ -27,6 +26,7 @@ interface RegressionProbe {
   request:(value:boolean)=>void
   swap:()=>void
   setWidth:(value:number)=>void
+  releaseHold:()=>void
   setClipHeight:(value:number)=>void
   setAttribute:(value:string)=>void
   paint:()=>void

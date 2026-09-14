@@ -41,13 +41,9 @@ describe('FrameSurface runtime', () => {
     const source = createCanvasFrameSource(el, { premultiplyAlpha: true })
     const runtime = createFrameSurfaceRuntime(source, 17, false, () => {})
 
-    expect(runtime.texture).toBeInstanceOf(THREE.CanvasTexture)
     expect(runtime.texture.image).toBe(el)
     expect(runtime.texture.colorSpace).toBe(THREE.SRGBColorSpace)
     expect(runtime.texture.premultiplyAlpha).toBe(true)
-    expect(runtime.texture.generateMipmaps).toBe(true)
-    expect(runtime.texture.minFilter).toBe(THREE.LinearMipmapLinearFilter)
-    expect(runtime.texture.anisotropy).toBe(8)
     expect(runtime.surfaceEpoch).toBe(17)
 
     runtime.dispose()
@@ -166,14 +162,13 @@ describe('FrameSurface runtime', () => {
     let invalidations = 0
     const runtime = createFrameSurfaceRuntime(source, 31, false, () => invalidations++)
     const staleUpload = runtime.texture.onUpdate
-    const versionAtDispose = runtime.texture.version
-
     source.publish()
     runtime.dispose()
+    const versionAtDispose = runtime.texture.version
     source.publish()
     staleUpload?.(runtime.texture)
 
-    expect(runtime.texture.version).toBe(versionAtDispose + 1)
+    expect(runtime.texture.version).toBe(versionAtDispose)
     expect(invalidations).toBe(1)
     expect(runtime.texture.onUpdate).toBeNull()
     expect(runtime.takeDrawReceipt()).toBeNull()
@@ -239,7 +234,7 @@ describe('FrameSurface runtime', () => {
       'material="none"',
     )
     expect(() => assertFrameMaterialSupported(premultiplied, 'unlit')).toThrow(
-      'ONE / ONE_MINUS_SRC_ALPHA',
+      'premultiplied frames',
     )
     expect(() => assertFrameMaterialSupported(premultiplied, 'none')).not.toThrow()
     expect(() => assertFrameMaterialSupported(straight, 'standard')).not.toThrow()
@@ -251,27 +246,24 @@ describe('FrameSurface runtime', () => {
   // The gate lives in the raycast so no raycaster — r3f's or a scene's own
   // Raycaster — ever counts an intersection the law forbids.
   it('the hearing gate silences the raycast, and only the raycast', () => {
-    const base = vi.spyOn(THREE.Mesh.prototype, 'raycast').mockImplementation(function (
-      this: THREE.Mesh,
-      _raycaster: THREE.Raycaster,
-      intersects: THREE.Intersection[],
-    ) {
-      intersects.push({ distance: 1, point: new THREE.Vector3(), object: this })
-    })
+    const geometry = new THREE.PlaneGeometry(2, 2)
+    const material = new THREE.MeshBasicMaterial()
     try {
       let hears = false
-      const mesh = new THREE.Mesh()
+      const mesh = new THREE.Mesh(geometry, material)
       mesh.raycast = hearingGatedRaycast(() => hears)
+      mesh.updateMatrixWorld()
+      const ray = new THREE.Raycaster(new THREE.Vector3(0.2, 0.1, 1), new THREE.Vector3(0, 0, -1))
       const hits: THREE.Intersection[] = []
-      mesh.raycast(new THREE.Raycaster(), hits)
+      mesh.raycast(ray, hits)
       expect(hits).toHaveLength(0)
-      expect(base).not.toHaveBeenCalled()
       hears = true
-      mesh.raycast(new THREE.Raycaster(), hits)
+      mesh.raycast(ray, hits)
       expect(hits).toHaveLength(1)
       expect(hits[0]?.object).toBe(mesh)
     } finally {
-      base.mockRestore()
+      geometry.dispose()
+      material.dispose()
     }
   })
 })

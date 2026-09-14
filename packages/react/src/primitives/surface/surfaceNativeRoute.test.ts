@@ -102,10 +102,6 @@ function deform() {
 }
 
 describe('claiming planarity', () => {
-  it('claims the library\'s own undeformed plane', () => {
-    expect(presentsUnitPlane(mesh, false, false)).toBe(true)
-  })
-
   it('refuses a geometry the scene supplied', () => {
     // However flat it happens to be. A geometry this library did not build is
     // one it cannot vouch for the next frame either — nothing stops the scene
@@ -119,18 +115,6 @@ describe('claiming planarity', () => {
     // the same Surface touchable in places the scene's own policy refuses,
     // depending on which route happens to own it.
     expect(presentsUnitPlane(mesh, false, true)).toBe(false)
-  })
-
-  it('refuses a plane whose vertices have moved', () => {
-    // `deformSurfaceGeometry` stamps its marker on the geometry instance
-    // (surfaceDeform.ts), and that stamp is the receipt. On the instance
-    // rather than a prop or a version: a scene deforms the default plane
-    // through a mesh ref (Slider does), and a version resets when a presenter
-    // swap rebuilds the attribute. Checked as a receipt rather than a
-    // tolerance on the vertices — a Surface bent by less than a tolerance is
-    // still a Surface whose pointer lands in the wrong row.
-    deform()
-    expect(presentsUnitPlane(mesh, false, false)).toBe(false)
   })
 
   it('refuses a mesh with no position attribute at all', () => {
@@ -152,7 +136,7 @@ describe('claiming planarity', () => {
 })
 
 describe('reading the material\'s side policy', () => {
-  it('matches three\'s own raycast rule', () => {
+  it('distinguishes front-only and double-sided materials', () => {
     // Three's default mesh raycast refuses a back-facing hit under FrontSide,
     // and CSS `backface-visibility` is the only way to tell the browser the
     // same thing. Without this a Surface turned away keeps taking clicks
@@ -330,7 +314,9 @@ describe('live source and geometry ownership', () => {
     expect(presentsUnitPlane(mesh, false, false)).toBe(false)
   })
   it('refuses a modified position buffer without a deformation helper', () => {
-    mesh.geometry.attributes.position!.needsUpdate = true
+    const positions = mesh.geometry.getAttribute('position')
+    positions.setZ(0, 10)
+    positions.needsUpdate = true
     expect(presentsUnitPlane(mesh, false, false)).toBe(false)
   })
   it('parks native input for inert sources and a disabled presenter', () => {

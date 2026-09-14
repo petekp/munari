@@ -2,7 +2,7 @@
 import type { ComponentProps } from 'react'
 import {
   Surface, SceneSurface, SurfaceCanvas, createSurface, useSurfaceHandle,
-  useSurfaceStatus, useSurfaceDriver, useFreezeSurface, useSurfaceProgress, useSurfaceSupport, supportsSurfaces,
+  useSurfaceStatus, useSurfaceDriver, useSurfaceMotion, useFreezeSurface, useSurfaceProgress, useSurfaceSupport, supportsSurfaces,
   useElementCapture, CaptureContent, useCaptureHandle, usePageTarget, useSurfaceBeforeRender,
   type SurfaceHandle, type SurfacePresentation, type SurfaceDestination, type SurfaceProps,
 } from '@petepetrash/munari'
@@ -12,18 +12,13 @@ declare const frame: FrameSource
 declare const presentation: PresentationRequirement
 declare const handle: SurfaceHandle
 declare const detached: HTMLElement
+declare const canvas: HTMLCanvasElement
 const geometry = <planeGeometry args={[1,1]} />
 
 ;<SurfaceCanvas id="example" />
 ;<Surface inScene={false} canvasId="example" name="card" onPresentationChange={value=>{const hold:SurfacePresentation=value;void hold}} onMotionComplete={value=>{const destination:SurfaceDestination=value;void destination}} onFreezeChange={frozen=>{const flag:boolean=frozen;void flag}}><button>One live instance</button></Surface>
 ;<Surface.Root inScene={false} canvasId="example"><Surface.HTML><button>Page content</button></Surface.HTML></Surface.Root>
 ;<SceneSurface.Root canvasId="example"><SceneSurface.HTML size={[100,80]}><button>Scene content</button></SceneSurface.HTML><SceneSurface.Mesh/></SceneSurface.Root>
-// @ts-expect-error The association is named canvasId; the removed prop is not an alias.
-;<Surface inScene={false} canvas="example"><button>Old spelling</button></Surface>
-// @ts-expect-error The explicit page root uses the same canvasId prop.
-;<Surface.Root inScene={false} canvas="example"><Surface.HTML><button>Old spelling</button></Surface.HTML></Surface.Root>
-// @ts-expect-error A scene-only root also selects its host with canvasId.
-;<SceneSurface.Root canvas="example"><SceneSurface.HTML size={[100,80]}><button>Old spelling</button></SceneSurface.HTML><SceneSurface.Mesh/></SceneSurface.Root>
 // @ts-expect-error canvasId identifies a host; it does not take a canvas element.
 ;<Surface inScene={false} canvasId={document.createElement('canvas')}><button>Wrong value</button></Surface>
 ;<FrameSurface frame={frame} width={10} height={10} onFrameDrawn={receipt=>void receipt.frame.generation} presentation={presentation} onPresented={receipt=>void receipt.presentationRevision}>{geometry}</FrameSurface>
@@ -31,28 +26,20 @@ const geometry = <planeGeometry args={[1,1]} />
 ;<FrameSurface frame={frame} onBeforeRender={()=>{}}>{geometry}</FrameSurface>
 // @ts-expect-error A basic Surface contains HTML, rather than a separate source prop.
 ;<Surface inScene={false} source={<div/>}><div/></Surface>
-// @ts-expect-error Renderer requests are a boolean on Surface.
-;<Surface renderIn="both"><div/></Surface>
-// @ts-expect-error The old duplicated DOM presentation is removed.
-;<Surface.DOM surface={handle}/>
-// @ts-expect-error Named HTML parts replace the old source-bearing Part component.
-;<Surface.Part name="old" source={<div/>}/>
+// @ts-expect-error Renderer intent is a boolean, not a destination string.
+;<Surface inScene="scene"><div/></Surface>
 // @ts-expect-error Custom materials belong on the scene mesh.
 ;<Surface inScene material="none"><div/></Surface>
 // @ts-expect-error The high-level Surface requires its boolean intent.
 ;<Surface><div/></Surface>
 // @ts-expect-error One owner supplies the identity.
 ;<Surface inScene surface={handle} name="duplicate"><div/></Surface>
-// @ts-expect-error A Surface does not accept raw markup strings as an HTML prop.
-;<Surface inScene html="<b>text</b>"/>
 // @ts-expect-error A SceneSurface needs explicit dimensions.
 ;<SceneSurface><div/></SceneSurface>
 // @ts-expect-error Size has two dimensions.
 ;<SceneSurface size={[10,20,30]}><div/></SceneSurface>
 // @ts-expect-error Frame input has its own adapter.
 ;<Surface inScene frame={frame}><div/></Surface>
-// @ts-expect-error Cleanup is owned by Surface.Scene.
-;<Surface inScene onWebGLReleased={()=>{}}><div/></Surface>
 
 void createSurface();void createSurface('card')
 // @ts-expect-error A handle owns identity, not renderer intent.
@@ -71,7 +58,9 @@ function Observations() {
   const eased:number=useSurfaceProgress(own).eased()
   useSurfaceDriver(({target,progress})=>target==='scene'?progress:0,own)
   useSurfaceDriver(null,own)
-  void useSurfaceSupport();void supportsSurfaces();void [hold,raw,eased]
+  const motion=useSurfaceMotion(({position,target,scenePresented,dtMs})=>scenePresented?Math.min(target,position+dtMs/1000):0,own)
+  const position:number=motion.get()
+  void useSurfaceSupport();void supportsSurfaces();void [hold,raw,eased,position]
   // @ts-expect-error Renderer mount duty is private.
   void state.isWebGLMounted
   // @ts-expect-error Canvas is not a public destination.
@@ -89,15 +78,11 @@ function ContentCompositionExamples() {
   const hidden = Math.random() > 0.5
   // @ts-expect-error A callback ref is returned by this hook; a plain ref object is not an options object.
   useElementCapture({ current: null })
-  // @ts-expect-error The opaque scene prop is no longer part of the simple wrapper.
-  const oldScene = <Surface inScene scene={<mesh/>}><p>One component</p></Surface>
-  // @ts-expect-error Custom meshes use explicit JSX rather than a callback receiving an element.
-  const oldCallback = <Surface inScene render3D={() => null}><p>One component</p></Surface>
   // @ts-expect-error Hidden sources cannot obtain a size from their page layout.
   const unmeasured = <Surface.HTML hidden={hidden}><p>Measured elsewhere</p></Surface.HTML>
   // @ts-expect-error Scene-only content needs an authored size.
   const sceneSize = <SceneSurface.HTML><p>Panel</p></SceneSurface.HTML>
-  void [oldScene, oldCallback, unmeasured, sceneSize]
+  void [unmeasured, sceneSize]
   return <>
     <article ref={attached.ref}>Native article</article>
     <CaptureContent capture={authored} size={[320,180]}><p>Authored source</p></CaptureContent>
@@ -156,3 +141,34 @@ void PageTargetExample
 
 // @ts-expect-error A supplied handle already owns its diagnostic name.
 ;<Surface.Root surface={handle} name="duplicate-name" inScene={false}><Surface.HTML><div/></Surface.HTML></Surface.Root>
+
+const customProducer = {
+  canvas,
+  format: { colorSpace: 'srgb', premultiplyAlpha: false },
+  currentFrame: () => ({ sourceId: 1, generation: 0 }),
+  subscribe: () => () => {},
+} satisfies FrameSource
+;<FrameSurface frame={customProducer}>{geometry}</FrameSurface>
+
+// @ts-expect-error FrameSurface owns the callback that issues draw receipts.
+;<FrameSurface frame={frame} onAfterRender={()=>{}}>{geometry}</FrameSurface>
+// @ts-expect-error Surface.Mesh owns preparation before a draw.
+;<Surface.Mesh onBeforeRender={()=>{}} />
+// @ts-expect-error Surface.Mesh owns evidence after a draw.
+;<Surface.Mesh onAfterRender={()=>{}} />
+// @ts-expect-error A shared canvas cannot hide all Surfaces through caller opacity.
+;<SurfaceCanvas style={{ opacity: 0 }} />
+// @ts-expect-error A shared canvas owns visibility.
+;<SurfaceCanvas style={{ visibility: 'hidden' }} />
+// @ts-expect-error A shared canvas owns pointer routing.
+;<SurfaceCanvas style={{ pointerEvents: 'none' }} />
+;<SurfaceCanvas style={{ width: '100%', height: 300 }} />
+// @ts-expect-error Native visibility follows the accepted renderer hold.
+;<Surface.HTML pageStyle={{ visibility: 'hidden' }}><div /></Surface.HTML>
+// @ts-expect-error Native input follows the accepted renderer hold.
+;<Surface.HTML pageStyle={{ pointerEvents: 'none' }}><div /></Surface.HTML>
+// @ts-expect-error Page layout is controlled through layout and hidden.
+;<Surface.HTML pageStyle={{ display: 'none' }}><div /></Surface.HTML>
+;<Surface.HTML pageStyle={{ margin: 12 }}><div /></Surface.HTML>
+// @ts-expect-error The handle cannot write renderer intent.
+handle.request('scene')

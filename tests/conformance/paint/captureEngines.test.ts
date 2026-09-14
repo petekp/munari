@@ -29,6 +29,7 @@ import {
   createRasterizedSource,
   htmlInCanvasEngine,
   PARKED_HOST_ATTRIBUTE,
+  paintStats,
   setCaptureEngine,
   type CaptureClock,
   type RasterImage,
@@ -220,9 +221,14 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
     return source
   }
 
-  it('is the engine the next source is built from', () => {
+  it('is the engine the next source is built from', async () => {
+    const source = createDomTextureSource('<section><span>content</span></section>', 200, 100, { label: 'chosen-engine' })
+    await harness.deliver(source)
     expect(captureEngine()).toBe(harness.engine)
-    expect(captureEngine().name).toBe(harness.engine.name)
+    expect(paintStats().find(entry => entry.label === 'chosen-engine')?.engine).toBe(harness.engine.name)
+    expect(source.element.tagName).toBe('SECTION')
+    expect(source.element.textContent).toBe('content')
+    source.dispose()
   })
 
   // Law 1 (decisions.md #12). The gate is ordered ahead of construction, so
@@ -252,9 +258,16 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
 
   it('releases the adopted node on dispose, so adopt and dispose are invertible', async () => {
     const node = document.createElement('div')
+    const field = document.createElement('input')
+    field.value = 'retained input'
+    node.append(field)
     const source = createDomTextureSource(node, 40, 20)
     await harness.deliver(source)
     expect(source.element).toBe(node)
+    expect(node.parentElement).toBe(source.host)
+    expect(source.element.firstElementChild).toBe(field)
+    expect(field.value).toBe('retained input')
+    expect(() => createDomTextureSource(node, 40, 20)).toThrow(/unparented/)
     expect(node.parentElement).toBe(source.host)
 
     source.dispose()
@@ -267,13 +280,13 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
     const again = createDomTextureSource(node, 40, 20)
     await harness.deliver(again)
     expect(again.element).toBe(node)
+    expect(again.element.firstElementChild).toBe(field)
+    expect(field.value).toBe('retained input')
     again.dispose()
   })
 
-  // Law 7, the relay's half. Shared by every engine and pinned in the
-  // arithmetic by `mapping/parkingCoincidence`: the relay walks the parked
-  // subtree's untransformed layout box, so the host has to stand at the
-  // viewport origin at exactly the CSS size, in-document and on-screen.
+  // These host styles support the relay's supplied layout coordinates.
+  // Browser capture and pointer checks verify the resulting rendered geometry.
   it('parks at the viewport origin, at the exact CSS size, in the document', async () => {
     const source = await born('<div></div>', 320, 180)
     const style = source.host.style
@@ -306,12 +319,16 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
   // at the top-left corner, in a page that never asked for them.
   it('is born with its host unpainted, and shows it only when asked', async () => {
     const source = await born()
-    const hidden = source.host.getAttribute('style') ?? ''
-
+    const visibility = () => harness.engine.native
+      ? getComputedStyle(source.host).visibility
+      : getComputedStyle(source.host).opacity
+    const hidden = harness.engine.native ? 'hidden' : '0'
+    const shown = harness.engine.native ? 'visible' : '1'
+    expect(visibility()).toBe(hidden)
     source.setHostPainted(true)
-    expect(source.host.getAttribute('style')).not.toBe(hidden)
+    expect(visibility()).toBe(shown)
     source.setHostPainted(false)
-    expect(source.host.getAttribute('style')).toBe(hidden)
+    expect(visibility()).toBe(hidden)
     source.dispose()
   })
 
@@ -351,6 +368,13 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
     source.setLive(true)
     await harness.deliver(source)
     expect(source.paintCount()).toBe(quiet + 1)
+    source.element.setAttribute('data-tick', '2')
+    await harness.deliver(source)
+    expect(source.paintCount()).toBe(quiet + 2)
+    source.setLive(false)
+    source.element.setAttribute('data-tick', '3')
+    await harness.deliver(source)
+    expect(source.paintCount()).toBe(quiet + 2)
     source.dispose()
   })
 
@@ -715,6 +739,9 @@ describe('the rasterized engine', () => {
     await drain()
     expect(source.currentPaint()?.frame.generation).toBe(1)
     expect(source.currentPaint()!.read).toBeLessThan(demanded)
+    source.setRasterScale(2, 2)
+    expect(source.currentPaint()?.frame.generation).toBe(2)
+    expect(source.currentPaint()!.read).toBeLessThan(demanded)
 
     await settle()
     calls[1]!.resolve()
@@ -805,56 +832,18 @@ describe('the rasterized engine', () => {
     expect(source.currentPaint()).toBe(good)
     expect(source.paintCount()).toBe(1)
 
-    // A success ends the run the message was suppressed over.
+    // Failed reads advance read order without publishing a generation.
+    const recoveryRead = source.nextRead()
     source.repaint()
     await settle()
     calls.at(-1)!.resolve()
     await drain()
+    expect(source.currentPaint()?.read).toBe(recoveryRead)
     source.repaint()
     await settle()
     calls.at(-1)!.reject(new Error('CORS'))
     await drain()
     expect(errors).toEqual(['CORS', 'CORS'])
-    source.dispose()
-  })
-
-  // The freshness law, and the default. A subtree that animates itself
-  // asks for a capture every frame, and at tens of milliseconds a capture
-  // that is the scene's whole frame budget (decisions.md #60). So a source
-  // that was not told its content is live leaves the picture as it was:
-  // a mutation nobody asked for is not a change signal here.
-  it('leaves a mutation the content made on its own uncaptured, unless live', async () => {
-    const { calls, rasterize } = deferred()
-    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
-    await drain()
-    calls[0]!.resolve()
-    await drain()
-
-    source.element.append(document.createElement('span'))
-    source.element.setAttribute('data-tick', '1')
-    await settle()
-    expect(calls).toHaveLength(1)
-
-    // Told the content is live, the source first captures the state it
-    // stopped following at — the picture is current from the moment the
-    // flag is — and then follows every change at its pace.
-    source.setLive(true)
-    await settle()
-    expect(calls).toHaveLength(2)
-    calls[1]!.resolve()
-    await drain()
-
-    source.element.setAttribute('data-tick', '2')
-    await settle()
-    expect(calls).toHaveLength(3)
-    calls[2]!.resolve()
-    await drain()
-
-    // And back: the last picture stays, and the next tick is not followed.
-    source.setLive(false)
-    source.element.setAttribute('data-tick', '3')
-    await settle()
-    expect(calls).toHaveLength(3)
     source.dispose()
   })
 

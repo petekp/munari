@@ -13,6 +13,7 @@ import { setChromeViewport } from '../chromeViewport.mjs'
 const sourceRoot = path.resolve(process.env.DETAIL_SOURCE_ROOT ?? path.join(path.dirname(fileURLToPath(import.meta.url)), '../..'))
 const output = process.env.DETAIL_OUTPUT ?? path.join(tmpdir(), 'munari-detail-focus')
 const selected = new Set((process.env.DETAIL_CASES ?? '35,40,52,55').split(','))
+assert.ok(selected.size > 0 && [...selected].every(number => ['35', '40', '52', '55'].includes(number)), 'DETAIL_CASES must select known cases')
 const chrome = [process.env.CHROME_PATH, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find(candidate => candidate && existsSync(candidate))
 assert.ok(chrome, 'Chrome is required; set CHROME_PATH')
 await mkdir(output, { recursive: true })
@@ -88,12 +89,15 @@ async function notesFocus(page, base) {
   })
   await page.keyboard.press('Enter')
   await page.waitForFunction(() => document.activeElement === window.__detailEditor, { timeout: 3000 })
-  await page.keyboard.type(' retained note')
+  await page.keyboard.type('retained note')
+  const edited = await page.evaluate(() => window.__detailEditor.textContent)
+  assert.ok(edited.includes('retained note'), 'Typing must reach the native editor')
   await page.keyboard.press('Escape')
   await page.waitForFunction(() => document.activeElement === window.__detailUnit, { timeout: 3000 })
   await page.keyboard.press('Enter')
   const recall = await page.evaluate(() => ({ same: document.activeElement === window.__detailEditor, tabIndex: window.__detailEditor.tabIndex, text: window.__detailEditor.textContent }))
   assert.ok(recall.same, 'Enter must recall the native editor')
+  assert.equal(recall.text, edited, 'Editor text must survive leaving and recalling focus')
   await page.evaluate(() => { window.__detailEditor.tabIndex = -1; window.__detailUnit.focus() })
   await page.keyboard.press('Enter')
   assert.ok(await page.evaluate(() => document.activeElement === window.__detailUnit), 'Explicit negative tabindex must stay excluded from recall')
@@ -110,6 +114,8 @@ async function firstOrbit(page, base) {
   })
   assert.ok(armed.tweening && !armed.enabled, 'The first press must interrupt an active tween')
   await page.mouse.down()
+  const interrupted = await page.evaluate(() => window.__workspaceRig())
+  assert.ok(!interrupted.tweening && interrupted.enabled, 'The press must stop the tween before camera movement is measured')
   const grabbed = await camera(page)
   await page.mouse.move(190, 700, { steps: 10 })
   await page.mouse.up()
@@ -123,10 +129,12 @@ async function firstOrbit(page, base) {
   })
   assert.ok(wheel.tweening && !wheel.enabled)
   await page.mouse.wheel({ deltaY: 100 })
+  const wheelInterrupted = await page.evaluate(() => window.__workspaceRig())
+  assert.ok(!wheelInterrupted.tweening && wheelInterrupted.enabled, 'The wheel must stop the tween before distance is measured')
   await twoFrames(page)
   const wheelDistance = await page.evaluate(() => window.__r3f.get().controls.getDistance())
   assert.notEqual(wheelDistance, wheel.distance, 'The first wheel event must reach OrbitControls')
-  return { armed, grabbed, moved, wheel, wheelDistance }
+  return { armed, interrupted, grabbed, moved, wheel, wheelInterrupted, wheelDistance }
 }
 
 async function panelPose(page, base) {
@@ -175,14 +183,19 @@ async function orbitProxies(page, base) {
     const panel = state.scene.getObjectByName('workspace-synth').parent
     const dial = panel.children.find(child => child.isGroup && child.children.some(nested => nested.isGroup))
     const anchor = dial.getWorldPosition(state.camera.position.clone()).project(state.camera)
-    return { camera: state.camera.matrixWorld.toArray(), anchor: anchor.toArray(), proxies: window.__focusScene.proxies() }
+    const canvas = state.gl.domElement.getBoundingClientRect()
+    return { camera: state.camera.matrixWorld.toArray(), anchor: anchor.toArray(), screenAnchor: { x: canvas.left + (anchor.x + 1) * canvas.width / 2, y: canvas.top + (1 - anchor.y) * canvas.height / 2 }, proxies: window.__focusScene.proxies() }
   })
   assert.notDeepEqual(after.camera, before.camera, 'The probe must orbit the camera')
   assert.ok(after.anchor[2] > -1 && after.anchor[2] < 1 && Math.abs(after.anchor[0]) < 1 && Math.abs(after.anchor[1]) < 1, 'The Dial projection must remain visible; behind-camera last-rect retention is intentional')
   const synced = await page.evaluate(() => { window.__focusScene.syncProxies(); return window.__focusScene.proxies() })
   const automatic = after.proxies.find(proxy => proxy.label === 'Cutoff')
   const explicit = synced.find(proxy => proxy.label === 'Cutoff')
+  const initial = before.proxies.find(proxy => proxy.label === 'Cutoff')
+  assert.ok(initial && automatic && explicit, 'All three samples need the same Dial proxy')
   assert.ok(automatic.focused && explicit.focused, 'Focus must stay on the Dial through the orbit')
+  assert.notDeepEqual(automatic.rect, initial.rect, 'Orbit must move the automatic proxy before explicit synchronization')
+  assert.ok(automatic.rect.width > 0 && automatic.rect.height > 0 && after.screenAnchor.x >= automatic.rect.left - 1 && after.screenAnchor.x <= automatic.rect.right + 1 && after.screenAnchor.y >= automatic.rect.top - 1 && after.screenAnchor.y <= automatic.rect.bottom + 1, 'The automatic proxy must contain its independently projected Dial origin')
   const correction = Math.max(...['x', 'y', 'width', 'height'].map(key => Math.abs(automatic.rect[key] - explicit.rect[key])))
   assert.ok(correction <= 1, `Settled proxy required ${correction} CSS px of manual correction`)
   return { before, after, synced, correction }
@@ -200,6 +213,9 @@ try {
     const page = await browser.newPage()
     const errors = []
     page.on('pageerror', error => errors.push(String(error)))
+    page.on('response', response => { if (response.status() >= 400 && new URL(response.url()).pathname !== '/favicon.ico') errors.push(`HTTP ${response.status()} ${response.url()}`) })
+    page.on('requestfailed', request => { if (new URL(request.url()).pathname !== '/favicon.ico') errors.push(`${request.failure()?.errorText} ${request.url()}`) })
+    page.on('console', message => { if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) errors.push(message.text()) })
     try {
       const dpr = await setChromeViewport(page, { width: 1200, height: 900 })
       assert.ok(await page.evaluate(() => 'drawElementImage' in CanvasRenderingContext2D.prototype), 'CanvasDrawElement capability is required')

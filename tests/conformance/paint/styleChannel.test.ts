@@ -206,11 +206,22 @@ describe('teardown', () => {
 })
 
 describe('registration', () => {
-  it('is idempotent and survives a missing CSS.registerProperty', () => {
-    // happy-dom has no CSS.registerProperty — must not throw.
-    expect(() => {
-      ensureChannelRegistered('--depth')
-      ensureChannelRegistered('--depth')
-    }).not.toThrow()
+  it('registers once, accepts an existing declaration, and tolerates absent support', () => {
+    const registrations: PropertyDefinition[] = []
+    vi.stubGlobal('CSS', { registerProperty(definition: PropertyDefinition) {
+      registrations.push(definition)
+      throw new DOMException('already registered', 'InvalidModificationError')
+    } })
+    try {
+      ensureChannelRegistered('--registration-check', { initialValue: '0.5' })
+      ensureChannelRegistered('--registration-check', { initialValue: '0.5' })
+      expect(registrations).toEqual([
+        { name: '--registration-check', syntax: '<number>', initialValue: '0.5', inherits: false },
+      ])
+      vi.stubGlobal('CSS', {})
+      expect(() => ensureChannelRegistered('--unsupported-registration-check')).not.toThrow()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

@@ -36,24 +36,22 @@ describe('curlSample', () => {
   })
 
   it('nests successive turns instead of stacking them on one ring', () => {
-    // The 2026-08-20 fault: on a circle, material one full turn apart
-    // lands on the same point and the roll draws as a tube of mush. On
-    // the spiral the two layers sit about `thickness` apart.
-    const samples: Array<{ along: number; lift: number }> = []
-    for (let s = 0; s <= 280; s += 0.5) {
-      const c = curlSample(s, 0, 280, R, H)
-      if (c.wind > 0.3) samples.push({ along: c.along, lift: c.lift })
-    }
-    let min = Infinity
-    for (let i = 0; i < samples.length; i++) {
-      for (let j = i + 1; j < samples.length; j++) {
-        const d = Math.hypot(samples[i].along - samples[j].along, samples[i].lift - samples[j].lift)
-        if (d < min && d > 0) min = d
+    const atWind = (wind: number) => {
+      let low = 0
+      let high = 280
+      for (let step = 0; step < 50; step++) {
+        const middle = (low + high) / 2
+        if (curlSample(middle, 0, 280, R, H).wind < wind) low = middle
+        else high = middle
       }
+      return curlSample((low + high) / 2, 0, 280, R, H)
     }
-    // Distinct arc positions never coincide; the closest approach between
-    // layers is on the order of the thickness, not zero.
-    expect(min).toBeGreaterThan(0.4)
+    for (const angle of [0.5, 1.5, 3]) {
+      const outer = atWind(angle)
+      const inner = atWind(angle + 2 * Math.PI)
+      expect(inner.wind - outer.wind).toBeCloseTo(2 * Math.PI, 10)
+      expect(Math.hypot(inner.along - outer.along, inner.lift - outer.lift)).toBeCloseTo(H, 9)
+    }
   })
 
   it('keeps the free end at the core, inside the outer turn', () => {

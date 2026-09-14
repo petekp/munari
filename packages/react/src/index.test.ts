@@ -77,41 +77,12 @@ describe('the published entries', () => {
     expect(Object.keys(root).sort()).toEqual([...ROOT_ENTRY].sort())
   })
 
-  it('the root publishes no scene recipe', () => {
-    // Copyable behaviors live in `registry/`, welded to the lab reference.
-    // A published component makes one scene's tuning the library's answer.
-    expect(root).not.toHaveProperty('FocusOrbitRig')
-    expect(root).not.toHaveProperty('arcLayout')
-  })
-
-  it('the root keeps the store and the escape hatches out of reach', () => {
-    for (const name of [
-      'createSurfaceStore',
-      'surfaceStoreOf',
-      'useSurfaceStore',
-      'useSurfaceControls',
-      'surfaceManualPresenter',
-      'FrameSurface',
-  'readSurfaceFrameState',
-      'useCarriedMotion',
-    ]) {
-      expect(root).not.toHaveProperty(name)
-    }
-  })
-
   it('advanced adds exactly the escape hatches on top of the kernel', () => {
-    const kernel = new Set(Object.keys(core))
-    const added = Object.keys(advanced).filter((name) => !kernel.has(name))
-    expect(added.sort()).toEqual([...ADVANCED_ADDITIONS].sort())
+    expect(Object.keys(advanced).sort()).toEqual([...Object.keys(core), ...ADVANCED_ADDITIONS].sort())
   })
 
   it('the snapdom entry is exactly the engine and its installer', () => {
     expect(Object.keys(snapdomEntry).sort()).toEqual([...SNAPDOM_ENTRY].sort())
   })
 
-  it('advanced carries no store verb', () => {
-    for (const name of ['createSurfaceStore', 'surfaceStoreOf', 'useSurfaceStore']) {
-      expect(advanced).not.toHaveProperty(name)
-    }
-  })
 })

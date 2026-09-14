@@ -63,39 +63,6 @@ describe('screenToPlane', () => {
     }
   })
 
-  it('quantifies what the z = 0 mapping got wrong on a raised plane', () => {
-    // The regression this test exists to prevent, stated as a number.
-    const wrong = _v.set(900 - VW / 2, VH / 2 - 405, RAISED_Z)
-    const s = planeToScreen(wrong, VW, VH, CAM)
-    expect(s.x - 900).toBeCloseTo(7.96, 2)
-    expect(s.y - 405).toBeCloseTo(-7.56, 2)
-
-    // …and at the edge of the screen it is an order of magnitude worse, which
-    // is why it read as the object sliding around rather than as a fixed offset.
-    // Note the signs: the object is pushed AWAY from the screen centre in both
-    // axes, so the direction of the error reverses as you cross the middle.
-    const edge = _v.set(1500 - VW / 2, VH / 2 - 800, RAISED_Z)
-    const se = planeToScreen(edge, VW, VH, CAM)
-    expect(se.x - 1500).toBeCloseTo(55.7, 1)
-    expect(se.y - 800).toBeCloseTo(23.9, 1)
-  })
-
-  it('the error is a pure gain about the screen centre, not a translation', () => {
-    // Two cursor positions 100 px apart map to points 107.96 px apart under
-    // the wrong mapping — the object outruns the pointer by 8% forever, which is
-    // the part that feels like fighting rather than like a bad offset.
-    const a = _v.set(900 - VW / 2, 0, RAISED_Z).clone()
-    const b = _v.set(1000 - VW / 2, 0, RAISED_Z).clone()
-    const sa = planeToScreen(a, VW, VH, CAM)
-    const sb = planeToScreen(b, VW, VH, CAM)
-    expect(sb.x - sa.x).toBeCloseTo(107.96, 2)
-
-    // Corrected, the pointer and the object move together exactly.
-    const ca = screenToPlane(900, 0, VW, VH, CAM, RAISED_Z, _v).clone()
-    const cb = screenToPlane(1000, 0, VW, VH, CAM, RAISED_Z, _v).clone()
-    expect(planeToScreen(cb, VW, VH, CAM).x - planeToScreen(ca, VW, VH, CAM).x).toBeCloseTo(100, 9)
-  })
-
   it('carryToPlane climbs a point without moving it on screen', () => {
     // Moving an anchor between planes must preserve its screen position. The
     // destination plane is also the plane used for texture-density demand.

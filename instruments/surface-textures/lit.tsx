@@ -15,13 +15,15 @@ interface LitPixels {
   error:number
 }
 const cases=[{id:'white',rgb:'255,255,255',emissive:0},{id:'color',rgb:'100,150,220',emissive:0},{id:'glow',rgb:'100,150,220',emissive:0.4}]
+// Half-density edge sources force interpolation between opaque and clear texels.
+// A 1:1 aligned source can make the same sample fully clear, testing no blend.
 function Swatch({id,x,y,alpha,rgb,emissive=0,edge=false,changed=false}:{id:string;x:number;y:number;alpha:number;rgb:string;emissive?:number;edge?:boolean;changed?:boolean}) {
   const surface=useSurfaceHandle(id)
   statuses[id]=useSurfaceStatus(surface).presentation
   const shared=id==='white-1'
   const width=shared&&changed?176:128
   return <SceneSurface.Root surface={surface}>
-    <SceneSurface.HTML size={[width,64]} resolution={edge?1:undefined}><div style={{width,height:64,borderRadius:16,background:edge?`linear-gradient(to right,rgba(${rgb},${alpha}) 50%,transparent 50%)`:`rgba(${rgb},${alpha})`}}/></SceneSurface.HTML>
+    <SceneSurface.HTML size={[width,64]} resolution={edge?0.5:undefined}><div style={{width,height:64,borderRadius:16,background:edge?`linear-gradient(to right,rgba(${rgb},${alpha}) 50%,transparent 50%)`:`rgba(${rgb},${alpha})`}}/></SceneSurface.HTML>
     <SceneSurface.Mesh name={id} placement="manual" position={[x,y,0]} alpha="source" geometry={<planeGeometry args={[128,64]}/>} material={<SceneSurface.LitMaterial emissiveIntensity={emissive}/>}/>
     {shared&&<>
       <SceneSurface.Mesh placement="manual" position={[-150,170,0]} renderOrder={changed?4:-4} alpha="source" geometry={<planeGeometry args={[128,64]}/>}/>

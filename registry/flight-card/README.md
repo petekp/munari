@@ -72,8 +72,9 @@ Each of these came from a shipped bug:
 
 ## Tuned constants
 
-`tests/registry/flightCardPack.test.ts` checks these against the
-scene:
+These values describe the lab reference. The Flight physics and density tests
+check behavior; the real drag gates check that a carried card follows the hand.
+There is no separate vendorable implementation here to compare byte for byte.
 
 | constant | value | where |
 | --- | --- | --- |

@@ -27,6 +27,7 @@ const SLOWCPU = Number(process.env.SLOWCPU ?? 6)
 const DSF = Number(process.env.DSF ?? 2)
 const MOVE_X = 400
 const BLUE_FLOOR = 80
+if (!CHROME) throw new Error('no-duplicate-drag: Chrome was not found; set CHROME_PATH')
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 let server
@@ -61,6 +62,8 @@ try {
     { timeout: 15_000 },
   )
   await sleep(700)
+  if (!await page.evaluate(() => 'drawElementImage' in CanvasRenderingContext2D.prototype && window.__munari?.engine() === 'html-in-canvas'))
+    throw new Error('The enhanced renderer must be active to test a released WebGL image')
 
   const client = await page.createCDPSession()
   if (SLOWCPU > 1) await client.send('Emulation.setCPUThrottlingRate', { rate: SLOWCPU })
@@ -186,6 +189,8 @@ try {
     problems.push(`${duplicateFrames.length} compositor frame(s) showed both window copies`)
   if (finalScore.old >= BLUE_FLOOR)
     problems.push('the released WebGL window remained in the final compositor frame')
+  if (finalScore.moved < BLUE_FLOOR)
+    problems.push('the moved native window was missing from the final compositor frame')
 
   // A second transfer can begin before r3f has processed the first Flight's
   // unmount. Its key and callbacks must carry the transfer lifetime, not only

@@ -20,6 +20,7 @@
     "gate:fisheye-pointer": "node instruments/fisheye-pointer/run.mjs",
     "gate:slider-drag": "node instruments/slider-drag/run.mjs",
     "gate:frame-surface": "node instruments/frame-surface/run.mjs",
+    "gate:glass-effects": "node instruments/glass-effects/run.mjs",
     "gate:genie-duplicate": "node instruments/genie-drain/no-duplicate-drag.mjs",
     "gate:genie-film": "node instruments/genie-drain/film-window.mjs",
     "gate:genie-film-context": "node instruments/genie-drain/film-window-context.mjs",
@@ -77,7 +78,11 @@
     "probe:surface-parts": "node instruments/surface-parts/run.mjs",
     "probe:detail-focus": "node instruments/lab-interactions/detail-focus.mjs",
     "probe:detail-motion": "node instruments/lab-interactions/detail-motion.mjs",
-    "probe:detail-tuning": "node instruments/lab-interactions/detail-tuning.mjs"
+    "probe:detail-tuning": "node instruments/lab-interactions/detail-tuning.mjs",
+    "probe:api-routes": "node instruments/api-all-demos/route-smoke.mjs",
+    "probe:api-gestures": "node instruments/api-all-demos/gestures.mjs",
+    "probe:api-composition-check": "node instruments/api-composition/lifecycle.mjs",
+    "probe:api-contracts": "node instruments/api-contracts/lifecycle.mjs"
   },
   "devDependencies": {
     "@oxlint/plugins": "^1.78.0",

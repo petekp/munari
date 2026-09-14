@@ -80,7 +80,6 @@ records the scope.
 - `src/lib/` contains shared lab helpers. `devGlobals.ts` declares inspection
   hooks used by instruments; it is not a public application API.
 - `src/components/ui/` contains the shadcn primitives still used by the app.
-- `src/scenes/fontCarry.test.ts` checks the shared font requirement across scenes.
 - [The instrument guide](../../instruments/README.md) identifies browser checks
   and their limits. Run GPU checks serially and distinguish a capability skip
   from a pass. Check native fallback separately.

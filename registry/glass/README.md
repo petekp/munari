@@ -28,18 +28,14 @@ this copy too.
 
 ## What the tests check
 
-- **Capillary ripple:** `theta = K·r³/t²`, `k = dθ/dr = 3K·r²/t²`,
-  amplitude = 1/√r spreading × viscosity × finite source × bulk loss,
-  soft tilt saturation. `rippleLaw.ts` is the TS twin; the pack test
-  pins the twin against the law's mathematical properties (derivative
-  consistency, r ~ t^(2/3) self-similarity, spreading, saturation
-  bound) and pins the shader text to contain the same formulas. Change
-  either half alone and the test fails.
-- **Compositing order is view-space z, never distance-to-eye.** The
-  pack test constructs the off-center counterexample (a side panel
-  that is farther by Pythagoras while no deeper at all) and pins the
-  view-z verdict. A sort validated on a centered scene carries this
-  bug unseen: the two orders agree everywhere on the view axis.
+The pack test checks the two actual copied files for byte identity.
+`npm run gate:glass-effects` measures the lab renderer's ripple contribution
+and draw order using independent pixel controls. A nearer panel must remain
+in front even when it is farther from the camera by radial distance.
+
+The old `rippleLaw.ts` math twin and shader-text assertions did not execute the
+renderer. They do not establish its behavior. The browser check also does not
+cover every ripple parameter, retirement, glow, or layered input behavior.
 
 ## Tuned constants
 

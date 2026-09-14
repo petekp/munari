@@ -118,6 +118,7 @@ try {
     await page.mouse.click(center.x, center.y)
     await sleep(120)
     const after = await clickCount()
+    if (after - before > 1) throw new Error(`${label}: one click was delivered ${after - before} times`)
     const rec = after > before ? await lastClick() : null
     return { label, heardBy: rec ? rec.presentationAtClick : 'nobody', record: rec }
   }

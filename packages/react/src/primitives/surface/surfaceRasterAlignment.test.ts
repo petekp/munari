@@ -1,6 +1,6 @@
 // A render correction sharpens the image without changing a scene's trajectory.
 import { expect, it } from 'vitest'
-import { Group, Mesh, OrthographicCamera, PlaneGeometry, Scene } from 'three'
+import { Group, Mesh, OrthographicCamera, PlaneGeometry, Scene, Vector3 } from 'three'
 import { createSurfaceRasterAlignment } from './surfaceRasterAlignment'
 function fixture(){
  const scene=new Scene(),mesh=new Mesh(new PlaneGeometry(100,50)),child=new Group()
@@ -49,5 +49,12 @@ it('matches both axes when a source is stretched non-uniformly',()=>{
  const restore=createSurfaceRasterAlignment().prepare({...input,density:1.2,densityY:.85,textureWidth:120,textureHeight:43})
  expect(restore).not.toBeNull()
  expect(mesh.scale.toArray()).toEqual([1.2,.85,1])
+ const corners=[[-50,-25],[50,25]].map(([x,y])=>new Vector3(x,y,0).applyMatrix4(mesh.matrixWorld).project(input.camera))
+ const left=(corners[0]!.x+1)*500,right=(corners[1]!.x+1)*500
+ const top=(1-corners[1]!.y)*500,bottom=(1-corners[0]!.y)*500
+ expect(left).toBeCloseTo(Math.round(left),8)
+ expect(top).toBeCloseTo(Math.round(top),8)
+ expect(right-left).toBeCloseTo(120,8)
+ expect(bottom-top).toBeCloseTo(43,8)
  restore?.()
 })

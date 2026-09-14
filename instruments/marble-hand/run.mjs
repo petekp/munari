@@ -247,8 +247,7 @@ async function sampleColorMotion(page, durationMs = 400) {
 }
 
 function requireMoving(sample, label) {
-  // Twenty frames in 400 ms is a third of a 60 Hz page; anything slower is
-  // the gate watching a stopped loop, not the loop running slowly.
+  // This fixed 400 ms sample requires more than twenty animation frames.
   requireThat(sample.first.theme && sample.first.theme === sample.last.theme &&
     sample.first.running && sample.last.running && sample.last.contextLost === false &&
     sample.last.frames > sample.first.frames + 20 && sample.first.hash !== sample.last.hash,
@@ -290,7 +289,7 @@ async function verifyPausedField(page, id) {
   requireThat(paused.first.running === false && paused.first.frames === paused.last.frames &&
     paused.first.time === paused.last.time && paused.first.hash === paused.last.hash &&
     paused.last.backgroundTime === paused.last.time && paused.last.backgroundTheme === id &&
-    paused.first.generation === paused.last.generation && paused.maxClockError === 0,
+    paused.first.generation === paused.last.generation && paused.maxClockError === 0 && paused.unreflected === 0,
   `${id}: Pause color did not hold the page and its reflection: ${JSON.stringify(paused)}`)
   // Wall time keeps running while the page does not. A clock that resumed
   // from performance.now() would owe this whole second back in one frame.
@@ -324,7 +323,7 @@ async function verifyReducedField(page, id) {
     reduced.last.time === MARBLE_BACKGROUND_REDUCED_TIME &&
     reduced.first.hash === reduced.last.hash &&
     reduced.last.backgroundTime === MARBLE_BACKGROUND_REDUCED_TIME &&
-    reduced.first.generation === reduced.last.generation,
+    reduced.first.generation === reduced.last.generation && reduced.maxClockError === 0 && reduced.unreflected === 0,
   `${id}: reduced motion still moved the field or its reflection: ${JSON.stringify(reduced)}`)
   return reduced
 }
@@ -964,7 +963,7 @@ async function verifyPageReflections(page) {
       renderer.render = function (world, camera) {
         try {
           original.call(this, world, camera)
-          if (this.getRenderTarget() !== null) return
+          if (this.getRenderTarget() !== null || world !== scene) return
           const context = this.getContext()
           const width = context.drawingBufferWidth
           const height = context.drawingBufferHeight
@@ -972,6 +971,9 @@ async function verifyPageReflections(page) {
           // House rule: only a completed default-framebuffer render makes
           // readPixels a sample of the picture the browser can present.
           context.readPixels(0, 0, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
+          if (context.isContextLost() || width <= 0 || height <= 0 || context.getError() !== context.NO_ERROR) {
+            throw new Error('unreadable reflection framebuffer')
+          }
           renderer.render = original
           clearTimeout(timer)
           resolve({ width, height, pixels })
@@ -1106,7 +1108,7 @@ function captureMaterialFrame(page) {
     renderer.render = function (scene, camera) {
       try {
         original.call(this, scene, camera)
-        if (this.getRenderTarget() !== null) return
+        if (this.getRenderTarget() !== null || scene !== window.__r3f.scene) return
         const context = this.getContext()
         const width = context.drawingBufferWidth
         const height = context.drawingBufferHeight
@@ -1114,6 +1116,9 @@ function captureMaterialFrame(page) {
         // The native page is absent from this framebuffer. Read only here,
         // after its renderer draw, so the comparison measures the hand.
         context.readPixels(0, 0, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
+        if (context.isContextLost() || width <= 0 || height <= 0 || context.getError() !== context.NO_ERROR) {
+          throw new Error('unreadable material framebuffer')
+        }
         renderer.render = original
         clearTimeout(timer)
         resolve({ width, height, pixels })
@@ -1223,7 +1228,7 @@ function tapFrame(page) {
     renderer.render = function (scene, camera) {
       try {
         original.call(this, scene, camera)
-        if (this.getRenderTarget() !== null) return
+        if (this.getRenderTarget() !== null || scene !== window.__r3f.scene) return
         renderer.render = original
         clearTimeout(timer)
         const context = this.getContext()
@@ -1231,23 +1236,30 @@ function tapFrame(page) {
         const height = context.drawingBufferHeight
         const pixels = new Uint8Array(width * height * 4)
         context.readPixels(0, 0, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
+        if (context.isContextLost() || width <= 0 || height <= 0 || context.getError() !== context.NO_ERROR) {
+          throw new Error('unreadable tap framebuffer')
+        }
         const previous = window.__marbleTapFrame
+        if (previous && (previous.width !== width || previous.height !== height)) {
+          throw new Error('tap sample resized')
+        }
         let hash = 2166136261
-        let changed = null
-        if (previous?.length === pixels.length) changed = 0
+        let changed = previous ? 0 : null
+        let opaquePixels = 0
         for (let offset = 0; offset < pixels.length; offset += 4) {
-          hash = Math.imul(hash ^ pixels[offset], 16777619)
-          hash = Math.imul(hash ^ pixels[offset + 3], 16777619)
+          for (let channel = 0; channel < 4; channel++) hash = Math.imul(hash ^ pixels[offset + channel], 16777619)
+          if (pixels[offset + 3] >= 250) opaquePixels++
           if (changed === null) continue
           const delta = Math.max(
-            Math.abs(previous[offset] - pixels[offset]),
-            Math.abs(previous[offset + 1] - pixels[offset + 1]),
-            Math.abs(previous[offset + 2] - pixels[offset + 2]),
-            Math.abs(previous[offset + 3] - pixels[offset + 3]),
+            Math.abs(previous.pixels[offset] - pixels[offset]),
+            Math.abs(previous.pixels[offset + 1] - pixels[offset + 1]),
+            Math.abs(previous.pixels[offset + 2] - pixels[offset + 2]),
+            Math.abs(previous.pixels[offset + 3] - pixels[offset + 3]),
           )
           if (delta >= 8) changed++
         }
-        window.__marbleTapFrame = pixels
+        if (opaquePixels === 0) throw new Error('tap sample contained no opaque hand pixels')
+        window.__marbleTapFrame = { width, height, pixels }
         const hand = window.__r3f.scene.getObjectByName('marble-hand-sculpture')
         const tip = hand.position.clone().set(0, 0, 0)
           .applyMatrix4(hand.matrixWorld).project(window.__r3f.camera)
@@ -1276,9 +1288,10 @@ function readTapBend(page) {
 }
 
 function waitForTapRest(page, timeout) {
-  return page.waitForFunction(() => window.__r3f.scene
-    .getObjectByName('marble-hand-sculpture').userData.marbleHandTap.uTapBend.value
-    .every((bend) => bend < 0.01), { timeout })
+  return page.waitForFunction(() => {
+    const bends = window.__r3f.scene.getObjectByName('marble-hand-sculpture').userData.marbleHandTap.uTapBend.value
+    return bends.length === 5 && bends.every((bend) => bend >= 0 && bend < 0.01)
+  }, { timeout })
 }
 
 // Re-sending the pointer to the same screen point is still a pointer move:
@@ -1343,9 +1356,8 @@ async function verifyIdleTap(page) {
   const movedAt = Date.now()
   await waitForTapRest(page, 2_000)
   const stoppedAfter = Date.now() - movedAt
-  // The 120ms fade drains the drum's amplitude, and the joint springs then
-  // ride a sub-degree tail down to their clamped zero. The tail is beneath
-  // a pixel almost immediately; this bound is on mathematical rest.
+  // This deadline measures every joint below 0.01 radians. The later
+  // still-frame comparison requires exact zero as well.
   requireThat(stoppedAfter <= 500, `tap: the fingers took ${stoppedAfter}ms to flatten after a 40px move`)
   const held = { x: at.x + 40, y: at.y }
   await holdPointerStill(page, held, 1_400)
@@ -1354,7 +1366,8 @@ async function verifyIdleTap(page) {
   const rest = await tapFrame(page)
   // Measures 0. The small allowance is for the rocking's own damping tail,
   // which can still flip an antialiased edge pixel long after it is invisible.
-  requireThat(rest.bend.every((bend) => bend === 0) && rest.changed <= 20,
+  requireThat(rest.bend.length === 5 && rest.bend.every((bend) => bend === 0) &&
+    Number.isFinite(rest.changed) && rest.changed <= 20,
     `tap: the overlay kept moving with the pointer awake: ${JSON.stringify(rest)}`)
 
   // Opening the panel parks the hand, so un-park it again before the wait:
@@ -1367,7 +1380,7 @@ async function verifyIdleTap(page) {
   await page.mouse.move(clear.x, clear.y)
   await new Promise((resolve) => setTimeout(resolve, authoredTuning.tapIdleDelayMs + 400))
   const switched = await readTapBend(page)
-  requireThat(switched.every((bend) => bend === 0),
+  requireThat(switched.length === 5 && switched.every((bend) => bend === 0),
     `tap: the panel switch did not stop the drum: ${JSON.stringify(switched)}`)
   await setPanelCheckbox(page, 'Idle tapping', true)
   await setPanelOpen(page, false)
@@ -1377,7 +1390,7 @@ async function verifyIdleTap(page) {
     await page.mouse.move(at.x, at.y)
     await new Promise((resolve) => setTimeout(resolve, authoredTuning.tapIdleDelayMs + 400))
     const reduced = await readTapBend(page)
-    requireThat(reduced.every((bend) => bend === 0),
+    requireThat(reduced.length === 5 && reduced.every((bend) => bend === 0),
       `tap: reduced motion still drummed: ${JSON.stringify(reduced)}`)
   } finally {
     await page.emulateMediaFeatures([])
@@ -2235,8 +2248,13 @@ async function verifyReflectionUnavailable(port, headless) {
     const errors = []
     page.on('pageerror', (error) => errors.push(String(error)))
     await page.goto(`http://127.0.0.1:${port}/?scene=marble-hand&framed`, { waitUntil: 'domcontentloaded' })
-    const available = await page.evaluate(() => 'drawElementImage' in document.createElement('canvas').getContext('2d'))
+    const available = await page.evaluate(() => {
+      const canvas = document.createElement('canvas')
+      const context = canvas.getContext('2d')
+      return context !== null && 'drawElementImage' in context && 'requestPaint' in canvas
+    })
     if (available) {
+      if (strict) throw new Error('no-flag fallback is untested: Chrome exposes HTML-in-canvas without the flag')
       console.warn('marble-hand no-flag clause SKIPPED: this browser exposes HTML-in-canvas without the flag')
       return false
     }
@@ -2420,11 +2438,11 @@ async function run() {
   const panel = await verifyPanel(port)
   const unavailable = await verifyReflectionUnavailable(port, headless)
   requireThat(hdrRequests.length === 0, `page-derived room requested HDR assets: ${hdrRequests.join(', ')}`)
-  console.log(`marble-hand gate PASSED: native full-page capture; cold cursor ${cold.pageCursor}; ` +
+  console.log(`marble-hand gate ${unavailable ? 'PASSED' : 'PARTIAL'}: native full-page capture; cold cursor ${cold.pageCursor}; ` +
     `one native sheet; ${selectedCharacters} selected characters; no HDR requests; ` +
     `field ${colorMotion.map((result) => `${result.id} ${result.moving.fps}fps ±${result.moving.maxClockError.toFixed(2)}ms`).join(', ')}; ` +
     `all themes support native click, keyboard, pause/resume, reduced motion; ` +
-    `all six theme pairs change page and hand pixels (${panel.themeReflections.map((pair) => `${pair.from}/${pair.to}: ${pair.hand.changedPixels}`).join(', ')}); ` +
+    `${panel.themeReflections.length} theme pairs change page and hand pixels (${panel.themeReflections.map((pair) => `${pair.from}/${pair.to}: ${pair.hand.changedPixels}`).join(', ')}); ` +
     `${mobile[0].viewport}px mobile without overflow in all themes; ` +
     `tip error ${worstTipError.toFixed(3)}px; height ${authoredTuning.heightPx} → ${pressed.height.toFixed(2)} → ${released.height.toFixed(2)}; ` +
     `lowest stone ${lowestStone.toFixed(2)}px; one trusted Waves click with native focus; ` +

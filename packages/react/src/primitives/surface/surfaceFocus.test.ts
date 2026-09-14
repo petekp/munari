@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createSurfaceFocusLedger,
   surfaceFocusKey,
   surfaceFocusTarget,
   transferSurfaceFocus,
 } from './surfaceFocus'
+
+afterEach(() => document.body.replaceChildren())
 
 /** Two copies of the same markup, as a Surface renders them. */
 function copy(html: string): HTMLElement {
@@ -20,7 +22,6 @@ describe('naming an element across two copies', () => {
     const page = copy('<p>a</p><div><button>go</button></div>')
     const source = copy('<p>a</p><div><button>go</button></div>')
     const key = surfaceFocusKey(page, page.querySelector('button')!)
-    expect(key).toBe('1.0')
     expect(surfaceFocusTarget(source, key!)).toBe(source.querySelector('button'))
   })
 
@@ -30,7 +31,6 @@ describe('naming an element across two copies', () => {
     // differs, the authored key does not.
     const source = copy('<div><div><span data-munari-focus="dial"><i>x</i></span></div></div>')
     const key = surfaceFocusKey(page, page.querySelector('i')!)
-    expect(key).toBe('@dial/0')
     expect(surfaceFocusTarget(source, key!)).toBe(source.querySelector('i'))
   })
 

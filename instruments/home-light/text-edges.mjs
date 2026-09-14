@@ -46,8 +46,13 @@ try{
     range.setStart(text,start);range.setEnd(text,start+1);const r=range.getBoundingClientRect(),row=line.getBoundingClientRect()
     return {fontSize:style.fontSize,variation:style.fontVariationSettings,target:{x:r.x+r.width*.75,y:row.y+row.height*.6},clip:{x:r.x-10,y:row.y-4,width:r.width+28,height:row.height+8},background:getComputedStyle(document.querySelector('.home-page')).backgroundColor,ink:style.color,selectedInk:getComputedStyle(line,'::selection').color}
   })
-  const parent=await page.evaluate(()=>({left:visualViewport.offsetLeft,top:visualViewport.offsetTop,width:visualViewport.width,frame:document.querySelector('iframe').getBoundingClientRect().toJSON()}))
+  const parent=await page.evaluate(()=>({left:visualViewport.offsetLeft,top:visualViewport.offsetTop,width:visualViewport.width,scale:visualViewport.scale,frame:document.querySelector('iframe').getBoundingClientRect().toJSON()}))
+  assert.equal(parent.scale,3,'The fringe comparison must engage parent zoom')
   const capture=async(name)=>{
+    await frame.evaluate(()=>{
+      const canvas=document.querySelector('.home-light-host canvas'),gl=canvas?.getContext('webgl2')
+      if(!gl||gl.isContextLost()||gl.drawingBufferWidth<=0||gl.drawingBufferHeight<=0||gl.getError()!==gl.NO_ERROR)throw new Error('The fringe comparison needs a readable lighting framebuffer')
+    })
     const png=await page.screenshot({encoding:'base64'})
     const crop=await page.evaluate(async({png,metadata,parent})=>{
       const image=await createImageBitmap(new Blob([Uint8Array.from(atob(png),c=>c.charCodeAt(0))],{type:'image/png'})),scale=image.width/parent.width
@@ -62,6 +67,7 @@ try{
   const receiver=async inset=>{await frame.evaluate(inset=>{
     const marker='const float GLYPH_RECEIVER_INSET = 1.5;'
     if(!window.__typeFragment.includes(marker))throw new Error('Glyph receiver observation point changed')
+    if(window.__typeFragment.indexOf(marker,window.__typeFragment.indexOf(marker)+marker.length)!==-1)throw new Error('Glyph receiver observation point is ambiguous')
     window.__typeLight.fragmentShader=inset===null?window.__typeFragment:window.__typeFragment.replace(marker,`const float GLYPH_RECEIVER_INSET = ${inset.toFixed(1)};`)
     window.__typeLight.needsUpdate=true;window.__buildTypeMask()
   },inset);await frames(page)}
@@ -88,6 +94,8 @@ try{
     await receiver(0);const original=await capture(`${name}-original`)
     await receiver(null);const fixed=await capture(`${name}-fixed`)
     const values=await page.evaluate(({bare,reference,original,fixed,metadata,selected})=>{
+        const requireMatchingImage=image=>{if(image.width!==bare.width||image.height!==bare.height)throw new Error('The fringe comparison viewport changed')}
+        ;[reference,original,fixed].forEach(requireMatchingImage)
         const bg=metadata.background.match(/[\d.]+/g).slice(0,3).map(Number),ink=(selected?metadata.selectedInk:metadata.ink).match(/[\d.]+/g).slice(0,3).map(Number)
         const coverage=Array.from({length:bare.width*bare.height},(_,i)=>Math.max(0,Math.min(1,(bg[0]-bare.pixels[i*4])/(bg[0]-ink[0]))))
         const ring=new Uint8Array(coverage.length),radius=Math.ceil(bare.scale*1.5)

@@ -4,7 +4,8 @@
 // actually receives a mouse stream, that a parked form keeps its focused DOM
 // node, or that an airborne card carries its measured shadow. This gate uses
 // the public lab routes as a consumer would: one capability-enabled browser,
-// real coordinates, and only visible state as its verdict.
+// real coordinates, DOM outcomes and rendered scene state. Logo visibility
+// samples check CSS ownership; they do not read compositor pixels.
 
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -60,7 +61,7 @@ try {
 
   server = await createServer({ root: labRoot, logLevel: 'warn', server: { port: 0 } })
   await server.listen()
-  const port = server.config.server.port ?? server.httpServer.address().port
+  const port = server.httpServer.address().port
   const errors = []
   let page
 
@@ -104,6 +105,8 @@ try {
     page = await browser.newPage()
     await page.setViewport({ width: 1200, height: 820, deviceScaleFactor: 1 })
     page.on('pageerror', (error) => errors.push(String(error)))
+    page.on('response', response => { if (response.status() >= 400 && new URL(response.url()).pathname !== '/favicon.ico') errors.push(`HTTP ${response.status()} ${response.url()}`) })
+    page.on('requestfailed', request => { if (new URL(request.url()).pathname !== '/favicon.ico') errors.push(`${request.failure()?.errorText} ${request.url()}`) })
     page.on('console', (message) => {
       if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) {
         errors.push(message.text())
@@ -128,6 +131,7 @@ try {
       5_000,
       { sourceName, objectName, selector },
     )
+    await waitForSurfaceInput(page, objectName)
     return page.evaluate(
       ({ sourceName, objectName, selector }) => {
         const host = document.querySelector(
@@ -141,6 +145,7 @@ try {
         if (!box) return null
         const hostRect = host.getBoundingClientRect()
         const targetRect = target.getBoundingClientRect()
+        if (hostRect.width <= 0 || hostRect.height <= 0 || targetRect.width <= 0 || targetRect.height <= 0) return null
         const u = (targetRect.left + targetRect.width / 2 - hostRect.left) / hostRect.width
         const v = (targetRect.top + targetRect.height / 2 - hostRect.top) / hostRect.height
         const point = object.position.clone().set(
@@ -202,7 +207,26 @@ try {
     const after = await page.$eval('[data-munari-surface="workspace-pr"] input', (el) => el.checked)
     if (before === after) problems.push('workspace Surface click did not reach its checkbox')
   }
-  await drag([600, 400], [490, 470])
+  await page.evaluate(() => { window.__workspace.setMotion('instant'); window.__workspace.approach('pr') })
+  await settle(() => !window.__workspaceRig().tweening && window.__workspaceRig().enabled)
+  const panel = await page.evaluate(() => {
+    const group = window.__r3f.scene.getObjectByName('workspace-pr')?.parent
+    const handle = group?.children.find(child => child.geometry?.type === 'BoxGeometry')
+    if (!handle) return null
+    const point = handle.getWorldPosition(handle.position.clone()).project(window.__r3f.camera)
+    const canvas = window.__r3f.gl.domElement.getBoundingClientRect()
+    return { position: group.position.toArray(), x: canvas.left + (point.x + 1) * canvas.width / 2, y: canvas.top + (1 - point.y) * canvas.height / 2 }
+  })
+  if (!panel) problems.push('workspace did not expose its panel drag handle')
+  else {
+    await page.mouse.move(panel.x, panel.y)
+    await page.mouse.down()
+    if (await page.evaluate(() => window.__workspaceRig?.().enabled) !== false) problems.push('workspace panel press did not acquire the drag')
+    await page.mouse.move(panel.x - 110, panel.y + 70, { steps: 8 })
+    await page.mouse.up()
+    const after = await page.evaluate(() => window.__r3f.scene.getObjectByName('workspace-pr').parent.position.toArray())
+    if (!changed(panel.position, after)) problems.push('workspace panel handle did not move its panel')
+  }
   const recovered = await page.evaluate(() => window.__workspaceRig?.().enabled)
   if (recovered !== true) problems.push('workspace panel drag left OrbitControls disabled')
   const workspaceCamera = await page.evaluate(() => window.__r3f.camera.position.toArray())
@@ -214,29 +238,13 @@ try {
   // nested DOM button through the transparent material.
   await go('glass')
   await page.mouse.move(100, 100)
-  // The parallax camera is damped, so it keeps moving for a while after the
-  // pointer stops. Take the baseline once it has come to rest, then wait for
-  // the second pointer position to move it off that rest.
-  const cameraAtRest = async () => {
-    await settle(() => {
-      const now = window.__r3f.camera.position.toArray().join()
-      const still = now === window.__labCam
-      window.__labCam = now
-      return still
-    }, 3_000)
-    return page.evaluate(() => window.__r3f.camera.position.toArray())
-  }
-  const glassA = await cameraAtRest()
+  // Opposite pointer positions must move the camera to opposite sides.
+  // Damping toward one stale target cannot satisfy the return trip.
+  if (!await settle(() => window.__r3f.camera.position.x < -1e-3, 3_000)) problems.push('glass camera did not follow the pointer left')
   await page.mouse.move(1100, 700)
-  const moved = await settle(
-    (from) =>
-      window.__r3f.camera.position
-        .toArray()
-        .some((value, index) => Math.abs(value - from[index]) > 1e-3),
-    3_000,
-    glassA,
-  )
-  if (!moved) problems.push('glass pointer movement did not move the parallax camera')
+  if (!await settle(() => window.__r3f.camera.position.x > 1e-3, 3_000)) problems.push('glass camera did not follow the pointer right')
+  await page.mouse.move(100, 100)
+  if (!await settle(() => window.__r3f.camera.position.x < -1e-3, 3_000)) problems.push('glass camera did not follow the pointer back left')
   const glass = await sourcePoint('glass-pill', 'glass-pill', 'button')
   if (!glass) problems.push('glass did not expose the CTA hit point')
   else {
@@ -252,7 +260,6 @@ try {
   // controls prove SurfaceCanvas keeps normal R3F input when it is not in
   // `surfaces` pointer mode.
   await go('knobs')
-  await waitForSurfaceInput(page,'knobs-panel-surface')
   const knob = await sourcePoint(
     'knobs-panel',
     'knobs-panel-surface',
@@ -280,8 +287,10 @@ try {
   })
   if (!loupe) problems.push('optics did not expose the loupe rail')
   else {
+    const before = await page.$eval('.opt-readout h2', element => element.textContent)
+    if (before !== 'nothing in hand') problems.push('optics did not begin with an empty hand')
     await page.mouse.click(loupe.x, loupe.y)
-    await page.waitForFunction(() => document.querySelector('.opt-readout h2')?.textContent !== 'nothing in hand')
+    await page.waitForFunction(() => document.querySelector('.opt-readout h2')?.textContent === "printer's loupe")
   }
 
   await go('explode')
@@ -302,7 +311,7 @@ try {
   await erase(8)
   await erase(7)
   const flightCounts = await page.evaluate(() => [...document.querySelectorAll('.l14-count')].map((el) => el.textContent))
-  if (flightCounts.join(',') !== '03,04') problems.push(`flight counts were ${flightCounts.join(',')} after two deletes`)
+  if (flightCounts.map(Number).join(',') !== '3,4') problems.push(`flight counts were ${flightCounts.join(',')} after two deletes`)
   const flightCard = await page.$('[data-card]')
   const flightBox = await flightCard.boundingBox()
   await page.mouse.move(flightBox.x + flightBox.width / 2, flightBox.y + flightBox.height / 2)
@@ -328,7 +337,7 @@ try {
     requestAnimationFrame(sample)
   }))
   const heldFrames = await renderActivity()
-  if (heldFrames === 0) problems.push('flight stopped rendering while a card was held')
+  if (!Number.isInteger(heldFrames) || heldFrames <= 0) problems.push(`flight rendered ${heldFrames} frames while a card was held`)
   await page.mouse.up()
   if (!shadow?.visible || shadow.count !== 2) problems.push(`flight shadow was ${JSON.stringify(shadow)}`)
   const landed = await settle(() => !window.__flight, 10_000)
@@ -376,20 +385,24 @@ try {
     }
   }
 
-  // Logo: no compositor frame may hide both the HTML letters and WebGL copy.
+  // Logo: each sampled CSS state must offer a visible presentation.
   await go('logo')
   const logoSamples = page.evaluate(() => new Promise((resolve) => {
     let gaps = 0
     let total = 0
+    let missingLetters = 0
+    const phases = new Set()
     const until = performance.now() + 4_000
     const frame = () => {
-      const letter = document.querySelector('.logo-letter')
+      const letters = [...document.querySelectorAll('.logo-letter')]
       const canvas = document.querySelector('.logo-canvas')
-      if (letter && canvas) {
+      phases.add(document.querySelector('.logo-word')?.dataset.phase)
+      if (letters.length) {
         total++
-        if (getComputedStyle(letter).visibility === 'hidden' && Number(getComputedStyle(canvas).opacity) < 0.01) gaps++
-      }
-      if (performance.now() >= until) resolve({ gaps, total })
+        const pageHidden = letters.every(letter => getComputedStyle(letter).visibility === 'hidden')
+        if (pageHidden && (!canvas || getComputedStyle(canvas).display === 'none' || getComputedStyle(canvas).visibility === 'hidden' || Number(getComputedStyle(canvas).opacity) < 0.01)) gaps++
+      } else missingLetters++
+      if (performance.now() >= until) resolve({ gaps, total, missingLetters, phases: [...phases] })
       else requestAnimationFrame(frame)
     }
     requestAnimationFrame(frame)
@@ -399,6 +412,7 @@ try {
   await page.click('button[data-renderer="html"]')
   await page.waitForFunction(() => document.querySelector('.logo-word')?.getAttribute('data-phase') === 'page', { timeout: 3_000 })
   const logo = await logoSamples
+  if (!logo.total || logo.missingLetters || !logo.phases.includes('gl') || !logo.phases.includes('page')) problems.push(`logo visibility observer missed its required states: ${JSON.stringify(logo)}`)
   if (logo.gaps !== 0) problems.push(`logo had ${logo.gaps}/${logo.total} invisible handoff frames`)
 
   if (errors.length) problems.push(...errors.map((error) => `page error: ${error}`))

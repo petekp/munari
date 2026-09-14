@@ -1,4 +1,4 @@
-// The degraded gate — every lab gesture, in a browser with no origin trial.
+// Native fallback gestures in Flight, Genie, Knobs, Selection and Logo.
 //
 // Why this exists. A Surface without the trial keeps its DOM and reports the
 // reason, so nothing throws and nothing looks broken from the outside. What
@@ -7,10 +7,6 @@
 // shipped three times before anyone noticed — the knobs panel carry and
 // resize had no consumer, genie's minimize waited on a flight that could not
 // take off, flight's drag waited on the same thing (2026-08-23).
-//
-// None of the six capability-enabled gates can see it. They all launch with
-// `--enable-features=CanvasDrawElement`, which is also every machine anyone
-// develops on, so the degraded path is the one path nothing exercised.
 //
 // The verdict is only ever visible state — the board's order, the dock's
 // contents, a panel's box — read the same way a person would judge it. Each
@@ -65,12 +61,9 @@ try {
       ...(process.env.CI ? ['--no-sandbox'] : []),
     ],
   })
-  // Silent because vite mirrors every page console.error into this
-  // terminal, and the library's own "no trial here" report fires per
-  // Surface per scene — the one message this gate expects to see.
   server = await createServer({ root: labRoot, logLevel: 'silent', server: { port: 0 } })
   await server.listen()
-  const port = server.config.server.port ?? server.httpServer.address().port
+  const port = server.httpServer.address().port
 
   let page
   let errors = []
@@ -80,18 +73,19 @@ try {
     page = await browser.newPage()
     await page.setViewport({ width: 1200, height: 820, deviceScaleFactor: 1 })
     page.on('pageerror', (error) => errors.push(String(error)))
+    page.on('response', response => { if (response.status() >= 400 && new URL(response.url()).pathname !== '/favicon.ico') errors.push(`HTTP ${response.status()} ${response.url()}`) })
+    page.on('requestfailed', request => { if (new URL(request.url()).pathname !== '/favicon.ico') errors.push(`${request.failure()?.errorText} ${request.url()}`) })
     page.on('console', (message) => {
       const text = message.text()
       if (message.type() !== 'error') return
       if (text.startsWith('Failed to load resource')) return
-      // The library's own report that the trial is absent. Expected here,
-      // and its presence is what proves the scene really is degraded.
-      if (text.includes('[munari]')) return
       errors.push(text)
     })
     await page.goto(`http://localhost:${port}/?scene=${scene}&bare`, { waitUntil: 'load' })
     await page.waitForSelector(ready, { timeout: 20_000 })
     await sleep(500)
+    const capability = await page.evaluate(() => 'drawElementImage' in CanvasRenderingContext2D.prototype)
+    if (capability) note(`${scene}: the served page enabled capture, so this is not a native fallback run`)
   }
   const settle = async (scene) => {
     if (errors.length) note(`${scene}: console/page errors — ${errors.join(' | ')}`)
@@ -187,6 +181,10 @@ try {
     if (i < 10) midOrders.push(JSON.stringify(await order()))
   })
   const flightAfter = await order()
+  const cardIds = board => Object.values(board).flat().sort()
+  if (JSON.stringify(cardIds(flightAfter)) !== JSON.stringify(cardIds(flightBefore))) {
+    note('flight: carrying a card lost or duplicated a board item')
+  }
   const start = JSON.stringify(flightBefore)
   if (start === JSON.stringify(flightAfter)) {
     note(`flight: a cross-column carry committed no reorder (${JSON.stringify(flightAfter)})`)
@@ -228,6 +226,9 @@ try {
   const minimizeAt = await centre('[aria-label^="minimize "]')
   if (!minimizeAt) note('genie: no minimize control found')
   else {
+    const win = await page.$eval('[aria-label^="minimize "]', element => element.closest('[data-win]').dataset.win)
+    const visible = () => page.$eval(`.gen-slot[data-win="${win}"] .gen-sheet`, element => element.checkVisibility({ checkVisibilityCSS: true, checkOpacity: true }))
+    if (!await visible()) note(`genie: ${win} was not visible before minimize`)
     const before = (await docked()).length
     await page.mouse.click(minimizeAt.x, minimizeAt.y)
     await sleep(900)
@@ -235,6 +236,7 @@ try {
     if (after !== before - 1) {
       note(`genie: minimize left ${after} windows on the desk, expected ${before - 1}`)
     }
+    if (await visible()) note(`genie: ${win} still paints its native sheet after minimize`)
     const restoreAt = await centre('[aria-label^="restore "]')
     if (!restoreAt) note('genie: minimizing produced no restorable bay')
     else {
@@ -243,6 +245,7 @@ try {
       if ((await docked()).length !== before) {
         note('genie: restore did not bring the window back to the desk')
       }
+      if (!await visible()) note(`genie: ${win} stayed hidden after restore`)
     }
   }
   // A sideways titlebar drag repositions rather than pours. Plain DOM either
@@ -354,7 +357,7 @@ try {
     for (const problem of problems) console.error(`  - ${problem}`)
     process.exit(1)
   }
-  console.log('degraded gate PASSED — five scenes, every gesture, no trial')
+  console.log('degraded gate PASSED — native fallback gestures in five scenes')
 } finally {
   clearTimeout(deadline)
   await browser?.close()

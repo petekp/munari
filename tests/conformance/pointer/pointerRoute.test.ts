@@ -18,13 +18,11 @@ import {
   pointerRouteDuties,
   pointerRouteHandoff,
   routeFor,
-  type PointerRoute,
   type PointerRouteConditions,
   type PointerRouteRequest,
 } from '@munari/core'
 
 const REQUESTS: PointerRouteRequest[] = ['auto', 'relay']
-const ROUTES: PointerRoute[] = ['page', 'native', 'relay']
 
 /** Every condition true — the one combination that yields the native route. */
 const NATIVE: PointerRouteConditions = {
@@ -60,168 +58,41 @@ function everyCondition(): PointerRouteConditions[] {
 }
 
 describe('the verdict', () => {
-  it('is total — every combination of conditions names a route', () => {
-    // A law with a hole in it is a frame with no pointer owner at all, and
-    // nothing downstream can tell that apart from "the content ignored you".
+  it('selects the exact route for all 128 condition sets', () => {
     for (const conditions of everyCondition()) {
-      expect(ROUTES).toContain(routeFor(conditions))
-    }
-  })
-
-  it('takes the native route only when every condition allows it', () => {
-    expect(routeFor(NATIVE)).toBe('native')
-    // Each condition is individually necessary. Stated as a sweep rather than
-    // six hand-written cases so a seventh condition added to the type cannot be
-    // added to the law without a case here to match.
-    for (const flag of FLAGS) {
-      expect(routeFor({ ...NATIVE, [flag]: false })).not.toBe('native')
-    }
-    expect(routeFor({ ...NATIVE, request: 'relay' })).toBe('relay')
-  })
-
-  it('leaves the pointer with the page whenever the canvas is not hearing', () => {
-    // `crossingPointer` (decisions.md #33) already settled page-or-canvas per
-    // phase. This law refines the canvas side and never overrules it: a
-    // Surface drawn by the page hears nothing on either canvas route, however
-    // capable and however planar.
-    for (const conditions of everyCondition()) {
-      if (conditions.hearing) continue
-      expect(routeFor(conditions)).toBe('page')
-    }
-  })
-
-  it('falls back to the relay for every canvas case the native route declines', () => {
-    // The relay has no preconditions of its own on purpose. A fallback that
-    // could also decline would leave combinations where the canvas hears the
-    // pointer and neither route delivers it.
-    for (const conditions of everyCondition()) {
-      if (!conditions.hearing) continue
-      const route = routeFor(conditions)
-      expect(route === 'native' || route === 'relay').toBe(true)
-    }
-  })
-
-  it('is a pure function of the conditions', () => {
-    // No memo, no last-frame state, no hysteresis. A route that remembered
-    // would answer differently for the same pose depending on how it arrived,
-    // and the handoff duties would then run against the wrong "before".
-    for (const conditions of everyCondition()) {
-      expect(routeFor(conditions)).toBe(routeFor({ ...conditions }))
+      const native = conditions.request === NATIVE.request && FLAGS.every(flag => conditions[flag])
+      const expected = !conditions.hearing ? 'page' : native ? 'native' : 'relay'
+      expect(routeFor(conditions), JSON.stringify(conditions)).toBe(expected)
     }
   })
 })
 
 describe('the duties', () => {
-  it('never gives one route both duties', () => {
-    // This is "exactly one route owns input", written where it can fail. The
-    // fault it guards is decision #33's at a smaller scale: one press heard
-    // twice by the same copy, so a counter counts two and a toggle returns to
-    // where it started (measured 2026-08-19, gate:lifting-pointer — 3/3 clicks
-    // to the wrong copy when two paths were live at once).
-    for (const route of ROUTES) {
-      const duties = pointerRouteDuties(route)
-      expect(duties.relays && duties.rides).toBe(false)
-    }
-  })
-
-  it('gives the page route no duties at all', () => {
+  it('gives each route only the input duty it owns', () => {
     expect(pointerRouteDuties('page')).toEqual({ relays: false, rides: false })
-  })
-
-  it('gives exactly one route each duty', () => {
-    expect(ROUTES.filter((r) => pointerRouteDuties(r).relays)).toEqual(['relay'])
-    expect(ROUTES.filter((r) => pointerRouteDuties(r).rides)).toEqual(['native'])
+    expect(pointerRouteDuties('relay')).toEqual({ relays: true, rides: false })
+    expect(pointerRouteDuties('native')).toEqual({ relays: false, rides: true })
   })
 })
 
 describe('the handoff', () => {
-  it('is empty when the route did not move', () => {
-    for (const route of ROUTES) {
-      const handoff = pointerRouteHandoff(route, route)
-      expect(handoff.moved).toBe(false)
-      expect(handoff.closeRelay).toBe(false)
-      expect(handoff.park).toBe(false)
-      expect(handoff.lift).toBe(false)
-      expect(handoff.rearmRelay).toBe(false)
-      expect(handoff.bridgePage).toBe(false)
-    }
-  })
-
-  it('never pairs a route\'s outgoing duty with its own incoming one', () => {
-    // The ordering law, as a shape rather than a convention. Both routes speak
-    // through the same DOM and the relay reads the drawn root's UNTRANSFORMED
-    // layout box, so a handoff that re-armed the relay while the rig still
-    // held its transform would read the transformed AABB and land the arrival
-    // hover somewhere else entirely — which looks exactly like a rounding bug
-    // and is not one.
-    for (const from of ROUTES) {
-      for (const to of ROUTES) {
-        const handoff = pointerRouteHandoff(from, to)
-        expect(handoff.closeRelay && handoff.rearmRelay).toBe(false)
-        expect(handoff.park && handoff.lift).toBe(false)
-      }
-    }
-  })
-
-  it('hands the relay off to the rig, and back', () => {
-    expect(pointerRouteHandoff('relay', 'native')).toEqual({
-      from: 'relay',
-      to: 'native',
-      closeRelay: true,
-      park: false,
-      lift: true,
-      rearmRelay: false,
-      bridgePage: false,
-      moved: true,
-    })
-    expect(pointerRouteHandoff('native', 'relay')).toEqual({
-      from: 'native',
-      to: 'relay',
-      closeRelay: false,
-      park: true,
-      lift: false,
-      rearmRelay: true,
-      bridgePage: false,
-      moved: true,
-    })
-  })
-
-  it('bridges the hover to the page copy from either canvas route', () => {
-    // A landing hands the pixels back to the page, and the page copy has no
-    // :hover until the user moves again — so both canvas routes owe the same
-    // arrival stamp. Missing it on one route is a panel that lands unhovered
-    // only under the origin trial.
-    expect(pointerRouteHandoff('relay', 'page').bridgePage).toBe(true)
-    expect(pointerRouteHandoff('native', 'page').bridgePage).toBe(true)
-    expect(pointerRouteHandoff('page', 'page').bridgePage).toBe(false)
-  })
-
-  it('parks the rig on the way to the page, and lifts it on the way back', () => {
-    expect(pointerRouteHandoff('native', 'page').park).toBe(true)
-    expect(pointerRouteHandoff('page', 'native').lift).toBe(true)
-    expect(pointerRouteHandoff('page', 'native').closeRelay).toBe(false)
-  })
-
-  it('closes the relay on the way to the page, and re-arms it on the way back', () => {
-    expect(pointerRouteHandoff('relay', 'page').closeRelay).toBe(true)
-    expect(pointerRouteHandoff('page', 'relay').rearmRelay).toBe(true)
-    expect(pointerRouteHandoff('page', 'relay').park).toBe(false)
-  })
-
-  it('leaves no duty owned by nobody', () => {
-    // Every duty a departing route was performing is cancelled, and every duty
-    // the arriving route needs is started. Derived from the two duty sets so a
-    // new duty cannot be added to the handoff without a rule that assigns it.
-    for (const from of ROUTES) {
-      for (const to of ROUTES) {
-        const before = pointerRouteDuties(from)
-        const after = pointerRouteDuties(to)
-        const handoff = pointerRouteHandoff(from, to)
-        expect(handoff.closeRelay).toBe(before.relays && !after.relays)
-        expect(handoff.rearmRelay).toBe(!before.relays && after.relays)
-        expect(handoff.park).toBe(before.rides && !after.rides)
-        expect(handoff.lift).toBe(!before.rides && after.rides)
-      }
-    }
+  it.each([
+    ['page', 'page', []],
+    ['native', 'native', []],
+    ['relay', 'relay', []],
+    ['page', 'native', ['lift']],
+    ['page', 'relay', ['rearmRelay']],
+    ['native', 'page', ['park', 'bridgePage']],
+    ['relay', 'page', ['closeRelay', 'bridgePage']],
+    ['native', 'relay', ['park', 'rearmRelay']],
+    ['relay', 'native', ['closeRelay', 'lift']],
+  ] as const)('%s → %s performs only the required handoff duties', (from, to, duties) => {
+    const handoff = pointerRouteHandoff(from, to)
+    expect(handoff.from).toBe(from)
+    expect(handoff.to).toBe(to)
+    expect(handoff.moved).toBe(from !== to)
+    const active = (['closeRelay', 'park', 'lift', 'rearmRelay', 'bridgePage'] as const)
+      .filter(duty => handoff[duty])
+    expect(active).toEqual(duties)
   })
 })

@@ -9,14 +9,14 @@
 // first upload), the generation incremented before subscribers are
 // notified (a subscriber sampling inside the notification must see the
 // published frame, or a merged upload gets misattributed), cleanup
-// idempotent, and the contract structural so a custom producer needs no
-// factory.
+// idempotent. Structural custom-producer acceptance is checked by the
+// compile-only API suite.
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import {
   createCanvasFrameSource,
-  type FrameSource,
+  type FrameId,
 } from '@munari/core'
 
 describe('createCanvasFrameSource', () => {
@@ -63,46 +63,30 @@ describe('createCanvasFrameSource', () => {
     const source = createCanvasFrameSource(document.createElement('canvas'), {
       premultiplyAlpha: true,
     })
-    const seen = vi.fn(() => source.currentFrame())
-    source.subscribe(seen)
+    const seen: FrameId[] = []
+    source.subscribe(() => seen.push(source.currentFrame()))
 
     const first = source.publish()
     const second = source.publish()
 
     expect(first).toEqual({ sourceId: second.sourceId, generation: 1 })
     expect(second).toEqual({ sourceId: first.sourceId, generation: 2 })
-    expect(seen.mock.results.map((result) => result.value)).toEqual([first, second])
-    expect(seen).toHaveBeenNthCalledWith(1)
-    expect(seen).toHaveBeenNthCalledWith(2)
+    expect(seen).toEqual([first, second])
   })
 
   it('stops notifying after cleanup, including repeated cleanup', () => {
     const source = createCanvasFrameSource(document.createElement('canvas'), {
       premultiplyAlpha: true,
     })
-    const notify = vi.fn()
-    const unsubscribe = source.subscribe(notify)
+    const seen: FrameId[] = []
+    const unsubscribe = source.subscribe(() => seen.push(source.currentFrame()))
 
     source.publish()
     unsubscribe()
     unsubscribe()
     source.publish()
 
-    expect(notify).toHaveBeenCalledTimes(1)
+    expect(seen.map(frame => frame.generation)).toEqual([1])
     expect(source.currentFrame().generation).toBe(2)
-  })
-})
-
-describe('FrameSource', () => {
-  it('is structural so a custom producer does not need the factory', () => {
-    const frame = { sourceId: 84, generation: 12 }
-    const custom = {
-      canvas: document.createElement('canvas'),
-      format: { colorSpace: 'srgb', premultiplyAlpha: false },
-      currentFrame: () => frame,
-      subscribe: (_notify: () => void) => () => {},
-    } satisfies FrameSource
-
-    expect(custom.currentFrame()).toBe(frame)
   })
 })

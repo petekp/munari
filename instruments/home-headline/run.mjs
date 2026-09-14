@@ -47,7 +47,7 @@ try{
   })
   assert.equal(results.content.html,'<html>');assert.match(results.content.font,/Courier Prime/)
   assert.equal(results.content.label,'HTML, 3D, and Shaders, Unified.')
-  assert.equal(results.content.geometry,'ExtrudeGeometry');assert.ok(results.content.depth>20)
+  assert.ok(Number.isFinite(results.content.depth)&&results.content.depth>20,'The headline must have real finite depth')
   assert.equal(results.content.rendererDpr,results.content.dpr)
   results.layout=await frame.evaluate(()=>{
     const rect=selector=>document.querySelector('#root '+selector).getBoundingClientRect().toJSON()
@@ -115,6 +115,7 @@ try{
   await frames(frame,8)
   results.zoom=await frame.evaluate(()=>{const h=window.__headline,c=h.renderer.domElement,r=c.getBoundingClientRect(),gl=h.renderer.getContext();return {ratio:h.renderer.getPixelRatio(),buffer:[gl.drawingBufferWidth,gl.drawingBufferHeight],canvas:[c.width,c.height],css:[r.width,r.height]}})
   assert.equal(results.zoom.ratio,results.content.dpr*zoomScale)
+  assert.ok(results.zoom.buffer.every(value=>Number.isInteger(value)&&value>0),'Zoom must retain a readable drawing buffer')
   assert.deepEqual(results.zoom.buffer,results.zoom.canvas)
   await page.screenshot({path:path.join(output,'zoom.png')})
   await client.send('Emulation.setPageScaleFactor',{pageScaleFactor:1});await client.detach()

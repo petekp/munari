@@ -121,6 +121,28 @@ standard — several suites assert that a mechanism is visible or felt
 at real hand speeds, because a mechanism that is live but
 imperceptible is not shipped.
 
+Amended 2026-09-13 — TESTS MUST ESTABLISH THEIR CLAIMS. The earlier wording
+made every existing comment and number authoritative. The test audit found
+cases that passed without reaching their claimed failure, copied calculations
+with no runtime consumer, and a placement scorer that accepted a deliberate
+one-pixel displacement (0.4375 against its 0.65 limit). A test description is
+therefore a claim to verify, not a reason to retain the case.
+
+The intended public behavior and measured platform limits remain the contract.
+The [repository test rules](../AGENTS.md#conformance) now require a material
+behavior, a credible failure, and a suitable oracle for each retained case.
+Removing duplicate or vacuous assertions preserves that contract. Changing
+supported behavior or a measured tolerance still requires corresponding evidence.
+Measurement helpers have their own tests under `instruments/`, because a scorer
+that accepts missing observations cannot establish browser correctness.
+
+Amended 2026-09-14 — the Genie pose check uses a fixed native reference and
+independently checked geometry. The earlier change counter included a final
+native animation frame in some runs and could accept a persistently wrong pose.
+The replacement preserves the first actual scene framebuffer for observation
+and requires both stale-pose and blank-texture controls to fail. Its bounded
+pixel and recording claims are in the [instrument guide](../instruments/README.md#genie-pose-flash).
+
 ## #3 — The lab preserves six scenes (2026-08-02)
 
 **Decision.** `apps/lab` carries three scenes — **workspace**,

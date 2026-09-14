@@ -1,66 +1,40 @@
-# The conformance suite
+# Kernel tests
 
-This is the kernel's specification. Each directory is one hold
-layer, and each suite defines what that layer's laws mean — not by
-describing them, but by pinning them: describe/it names, the comments
-explaining what failure a case catches, and every measured number are
-all load-bearing. When a law and its contract disagree, the contract
-is right until a browser measurement says otherwise.
+These suites check the kernel's intended behavior. The [retention and evidence
+rules](../../AGENTS.md#conformance) apply to every case. A passing stub-based
+suite does not establish browser rendering or native input behavior.
 
-Layers, in the order they build on each other:
-
-| layer | what it owns | suites |
+| Layer | Behavior | Suites |
 |---|---|---|
-| mapping | coordinate hold — the pixel-calibrated camera, UV anchoring | `camera`, `parkingCoincidence`, `densityIdentity`, `pixelGrid`, `domRect`, `surfaceAnchors`, `uvSampling` |
-| paint | DOM → texture, and what a paint costs | `lodTier`, `htmlInCanvas`, `paintStats`, `styleChannel`, `filterPolicy`, `capabilityProbe`, `frameSource`, `textureStorage` |
-| pointer | provenance and the pointer protocol | `forwardEvents`, `relayDuplication`, `relayTripwire`, `relaySynthetic`, `pointerRoute`, `surfacePose`, `routeParity` |
-| transfer | the handoff between page and mesh | `crossing`, `crossingDrive`, `presentation`, `pointer`, `motionCarrier`, `choreography`, `surfaceIdentity`, `surfaceReadiness` |
-| chrome | measuring what the DOM won't hand over in pixels | `surfaceChrome` |
-| physics | physical controls | `physics1D` |
+| mapping | Coordinates, camera projection, pixel alignment, and anchors | `camera`, `densityIdentity`, `domRect`, `pixelGrid`, `surfaceAnchors`, `uvSampling` |
+| paint | Capture scheduling, frame identity, storage, and filtering | `capabilityProbe`, `captureEngines`, `filterPolicy`, `frameSource`, `htmlInCanvas`, `lodTier`, `paintStats`, `styleChannel`, `textureStorage` |
+| pointer | Input targets, provenance, routing, and native policy | `forwardEvents`, `pointerRoute`, `relayDuplication`, `relaySynthetic`, `relayTripwire`, `routeParity`, `surfacePose` |
+| transfer | Renderer holds, presentation evidence, and motion | `choreography`, `crossing`, `crossingDrive`, `motionCarrier`, `presentation`, `surfaceIdentity`, `surfaceReadiness` |
+| chrome | Borders, radii, and shadows measured from HTML | `surfaceChrome` |
+| physics | Physical control behavior | `physics1D` |
 
-These suites are named for the law they pin, not for a module, so a
-search by module name will miss them:
+Some suites test a contract shared by several modules:
 
-| suite | pins |
+| Suite | Contract owner |
 |---|---|
-| `mapping/densityIdentity` | `mapping/camera.ts` — `texelDemand` and `planeScale` agree |
-| `mapping/parkingCoincidence` | the parked identity across `paint/htmlInCanvas.ts` — a client point IS a page point |
-| `paint/capabilityProbe` | `paint/htmlInCanvas.ts` — `detectHtmlInCanvas` |
-| `paint/paintStats` | `paint/htmlInCanvas.ts` — the paint ledger |
-| `pointer/relayDuplication` | `pointer/relay.ts` — one door, one dispatch |
-| `pointer/relayTripwire` | `pointer/relay.ts` — a source scan, not a behavior test |
-| `pointer/relaySynthetic` | `pointer/relay.ts` — `isRelayedEvent` through React's wrapper |
-| `pointer/routeParity` | `pointer/nativeRoute.ts` + `pointer/forwardEvents.ts` — either route, one observable story (decisions.md #39) |
-| `transfer/choreography` | `transfer/crossing.ts` — `crossingRange`, `crossingCurve` |
-| `transfer/pointer` | `transfer/crossing.ts` — `crossingPointer`, input follows the eye (decisions.md #33) |
+| `mapping/densityIdentity` | `mapping/camera.ts`: pixel demand and plane size agree |
+| `paint/capabilityProbe` | `paint/htmlInCanvas.ts`: capture capability detection |
+| `paint/captureEngines` | `paint/rasterizedSource.ts` and the shared capture ledger |
+| `paint/paintStats` | Capture counts, errors, and source disposal |
+| `pointer/relayDuplication` | `pointer/relay.ts`: independent event streams do not interfere |
+| `pointer/relayTripwire` | Static dispatch sites remain in the relay module; actual delivery is tested separately |
+| `pointer/relaySynthetic` | Event provenance survives React's event wrapper |
+| `pointer/routeParity` | Route policy and relay behavior; native caret placement needs a browser |
+| `transfer/choreography` | `transfer/crossing.ts`: interval and pulse curves |
 
-`packages/core/src/math/` is substrate, not a layer. The Vec3 types are
-covered with the core modules that use them.
+Files needing a document declare `// @vitest-environment happy-dom`.
+Use controlled doubles for ordering and failures at real interfaces. Capture
+pixels, native selection, and compositor timing require the corresponding
+[browser instrument](../../instruments/README.md). `gate:idle-zero` measures
+idle source paints; it does not measure all renderer or GPU work.
 
-## Rules
-
-- **A law lands with its contract, in the same commit.** A behavior
-  change that no suite notices is indistinguishable from a regression.
-- **Numbers are the contract.** Pinned constants, tolerances, and
-  captured fixtures (the spatial-nav field rects, the pose numbers)
-  are evidence from real browser measurement. Adjusting one to make a
-  test pass is a decision, and needs an entry in `docs/decisions.md`.
-- **Perceptual floors count as correctness.** Several suites assert
-  that a mechanism is *visible or felt* at real hand speeds — that a
-  bend clears a swell threshold, that a settle actually settles. A
-  mechanism that is live but imperceptible is not shipped.
-- **DOM suites carry their environment.** Files needing a document
-  declare `// @vitest-environment happy-dom` at the top.
-- **The idle-zero gate is part of this contract**, even though it
-  can't run here: mounted quiescent Surfaces cost 0 paints/s, enforced
-  in CI by `npm run gate:idle-zero` against a real browser.
-
-Where tests live, by area — there are four homes, and only these four:
-kernel law lands here, one directory per layer. The binding's suites
-sit beside the modules they test, under `packages/react/src/`. Lab
-scene tests sit beside their scene modules, under
-`apps/lab/src/scenes/`. `tests/registry/` holds the welds that keep
-copyable registry code identical to the reference scene that proves it.
-A core test placed anywhere but here will fail `tests/boundary.test.ts`
-(the `vitest` import escapes core's allowlist) — that failure means
-"move the test", not "widen the allowlist".
+Kernel tests live here. Binding and lab tests live beside their modules.
+Registry tests verify actual copyable files. Measurement-helper tests live
+beside those helpers under `instruments/`. The [repository guide](../../AGENTS.md#where-tests-live)
+owns this layout. [Decision #2](../../docs/decisions.md#2--the-conformance-suite-is-the-specification-2026-08-02)
+records the test policy.

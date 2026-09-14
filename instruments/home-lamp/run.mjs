@@ -25,13 +25,19 @@ const pixels=page=>page.evaluate(()=>new Promise((resolve,reject)=>{
   window.__lampRendered=canvas=>{
     clearTimeout(timeout)
     delete window.__lampRendered
-    const gl=canvas.getContext('webgl2'),dpr=canvas.width/innerWidth,centre=window.__lamp.group.position,size=Math.round(86*dpr),data=new Uint8Array(size*size*4)
-    gl.readPixels(Math.round((centre.x-43)*dpr),Math.round((centre.y-43)*dpr),size,size,gl.RGBA,gl.UNSIGNED_BYTE,data)
-    resolve([...data])
+    try{
+      const gl=canvas.getContext('webgl2'),dpr=canvas.width/innerWidth,centre=window.__lamp.group.position,size=Math.round(86*dpr),data=new Uint8Array(size*size*4)
+      const x=Math.round((centre.x-43)*dpr),y=Math.round((centre.y-43)*dpr)
+      if(!gl||gl.isContextLost()||size<=0||x<0||y<0||x+size>gl.drawingBufferWidth||y+size>gl.drawingBufferHeight)throw new Error('Lamp sample is outside a readable framebuffer')
+      gl.readPixels(x,y,size,size,gl.RGBA,gl.UNSIGNED_BYTE,data)
+      if(gl.getError()!==gl.NO_ERROR)throw new Error('Lamp pixel read failed')
+      resolve([...data])
+    }catch(error){reject(error)}
   }
   window.__lampRedraw()
 }))
 const difference=(a,b)=>{
+  assert.ok(a.length>0&&a.length===b.length,'Optical comparisons need matching nonempty pixel buffers')
   let total=0,changed=0
   for(let i=0;i<a.length;i+=4){const d=Math.max(...[0,1,2].map(c=>Math.abs(a[i+c]-b[i+c])));total+=d;if(d>12)changed++}
   return {mean:total/(a.length/4),changed:changed/(a.length/4)}
@@ -52,7 +58,8 @@ const performanceProof=page=>page.evaluate(()=>new Promise(resolve=>{
     const gpu=extension&&!disjoint?queries.filter(q=>gl.getQueryParameter(q,gl.QUERY_RESULT_AVAILABLE)).map(q=>gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6):[]
     queries.forEach(q=>gl.deleteQuery(q))
     const stats=values=>{const sorted=values.slice(8).sort((a,b)=>a-b);return {samples:sorted.length,p95:sorted[Math.floor(sorted.length*.95)]??null,max:sorted.at(-1)??null}}
-    resolve({frames:stats(times),lampGpu:stats(gpu),capturePaints:window.__lampPaintCount()-paints,disjoint:Boolean(disjoint)})
+    const lampGpu=stats(gpu)
+    resolve({frames:stats(times),lampGpu,capturePaints:window.__lampPaintCount()-paints,disjoint:Boolean(disjoint),gpuStatus:!extension?'unsupported':disjoint?'disjoint':lampGpu.samples?'measured':'unobserved'})
   }
   requestAnimationFrame(tick)
 }))
@@ -95,7 +102,7 @@ try{
     await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'no-preference'}])
     await frames(page,30)
     results.performance=await performanceProof(page)
-    assert.ok(Number.isFinite(results.performance.capturePaints)&&results.performance.capturePaints<=2,'Moving only the lamp must not repeatedly capture the page')
+    assert.ok(Number.isFinite(results.performance.capturePaints)&&results.performance.capturePaints>=0&&results.performance.capturePaints<=2,'Moving only the lamp must not repeatedly capture or reset the page source')
     await move(page,700,330);await frames(page,4)
     results.cord=await page.evaluate(()=>{
       const c=window.__lamp.cord,p=c.points,dx=c.endX-c.anchorX,dy=c.endY+100,length=Math.hypot(dx,dy)
