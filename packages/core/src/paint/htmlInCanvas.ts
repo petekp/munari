@@ -179,6 +179,7 @@ function createHtmlInCanvasSource(
       missed = true
       return
     }
+    const requested = owed
     owed = false
     missed = false
     try {
@@ -202,6 +203,9 @@ function createHtmlInCanvasSource(
       // the subtree to move in — `size()` at this instant IS what replayed.
       body.completePaint(body.size(), 0, read)
     } catch (cause) {
+      // Keep failed demand without overwriting a request raised during the draw.
+      owed ||= requested
+      missed = true
       body.failPaint(cause)
     }
   }

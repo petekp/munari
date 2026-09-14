@@ -4139,6 +4139,11 @@ held (platform.md #22). After this entry both engines hold it. Whether those two
 windows should ask for `live` is a scene decision, not a kernel one, and is left
 to the scene.
 
+Amended 2026-09-14: a failed native paint retains any outstanding explicit
+request for the next compositor callback. Requests made during the failed draw
+also survive. Failure marks the bitmap stale; it does not start an unbounded
+retry loop. The native error-and-recovery test checks this sequence.
+
 ## #65 — The page releases onto pixels no older than the lift (2026-09-13)
 
 Content that moves stepped BACKWARDS for the first few frames of a crossing,
@@ -4236,6 +4241,11 @@ The cost is on the window whose content is heaviest to capture: scheda's
 drag showed 1-2 frames over 25 ms (worst 42) against 0-1 with the gap;
 cerchio showed none.
 
+Amended 2026-09-14: source replacement identifies the affected part. Its old
+read floor is discarded, while peer parts retain their outstanding reads.
+Readiness still requires new presentation proofs. The multipart freshness
+test checks replacement while a peer upload remains behind its required read.
+
 ## #66 — Content stands still while a canvas has it (2026-09-13)
 
 A capture is one instant; the content it was taken from is not. A source that
@@ -4325,6 +4335,12 @@ earlier "0 ms apart at every lift" sampled at rest after the lift, and missed
 the two frames that matter. `holdMotion` now records what it keeps still,
 and a copy `matchMotion` pauses to match a held animation resumes when that
 animation does.
+
+Amended 2026-09-14: each active part owns its animation hold. Changing its live
+policy or roots reconciles that hold; removing its last publication releases
+it. Other parts remain held. The binding lifecycle check covers independent
+live changes, and a browser check verified advancing live clocks beside a
+still-paused peer on both capture engines.
 
 ## #67 — Consumer clocks freeze on the library's edge (2026-09-13)
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { requireScreencastCoverage } from './screencastCoverage'
+import { IncompleteScreencastError, requireScreencastCoverage } from './screencastCoverage'
 
 const frames = (times: number[]) => times.map(t => ({ t }))
 
@@ -10,7 +10,7 @@ describe('the recorded interval needed for a visual verdict', () => {
   })
 
   it('refuses a stream that misses the flash interval but records eventual arrival', () => {
-    expect(() => requireScreencastCoverage(frames([-1, 400]), 0, 150, 20)).toThrow('gap')
+    expect(() => requireScreencastCoverage(frames([-1, 400]), 0, 150, 20)).toThrow(IncompleteScreencastError)
   })
 
   it('refuses a missing middle frame even when both interval ends were recorded', () => {

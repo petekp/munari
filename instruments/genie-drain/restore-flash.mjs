@@ -29,7 +29,7 @@ import path from 'node:path'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
-import { installScreencastClock, requireScreencastCoverage } from '../screencastCoverage.ts'
+import { IncompleteScreencastError, installScreencastClock, requireScreencastCoverage } from '../screencastCoverage.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const labRoot = path.join(repoRoot, 'apps', 'lab')
@@ -49,6 +49,12 @@ const SLOWCPU = Number(process.env.SLOWCPU ?? 1)
 const WIN = 'quadrato'
 const ROUNDS = Number(process.env.ROUNDS ?? 3)
 if (!Number.isInteger(ROUNDS) || ROUNDS < 1) throw new Error('ROUNDS must be a positive integer')
+const CAPTURE_FORMAT = process.env.RESTORE_CAPTURE_FORMAT ?? 'jpeg'
+if (!['jpeg', 'png'].includes(CAPTURE_FORMAT)) throw new Error('RESTORE_CAPTURE_FORMAT must be jpeg or png')
+const FLASH_CONTROL = process.env.RESTORE_FLASH_CONTROL === '1'
+const MAX_ATTEMPTS = ROUNDS * 3
+const captureOptions = { format: CAPTURE_FORMAT, everyNthFrame: 1, maxWidth: 1100, maxHeight: 800 }
+if (CAPTURE_FORMAT === 'jpeg') captureOptions.quality = 100
 // The flash lands within ~50ms of the press; the sheet does not reach the
 // desk until ~340ms. A window this wide separates the two with room to spare.
 const FLASH_WINDOW_MS = 150
@@ -146,6 +152,19 @@ try {
     if (setup.engine !== (mode === 'snapdom' ? 'snapdom' : 'html-in-canvas'))
       problems.push(`${mode}: asked for ${mode} and got the ${setup.engine} engine`)
 
+    if (FLASH_CONTROL) {
+      const { x, y, width, height } = setup.desk
+      const picture = await page.screenshot({ clip: { x, y, width, height }, encoding: 'base64' })
+      await page.evaluate(async ({ picture, desk }) => {
+        const image = new Image()
+        image.src = `data:image/png;base64,${picture}`
+        await image.decode()
+        image.style.cssText = `position:fixed;left:${desk.x}px;top:${desk.y}px;width:${desk.width}px;height:${desk.height}px;z-index:2147483646;pointer-events:none;display:none`
+        document.body.append(image)
+        window.__restoreFlashControl = image
+      }, { picture, desk: setup.desk })
+    }
+
     const frames = []
     client.on('Page.screencastFrame', async (frame) => {
       frames.push({ t: frame.metadata.timestamp * 1000, data: frame.data })
@@ -156,15 +175,21 @@ try {
       }
     })
 
-    const press = (selector) =>
-      page.evaluate((sel) => {
+    const press = (selector, flash = false) =>
+      page.evaluate(({ sel, flash }) => {
         const at = performance.timeOrigin + performance.now()
+        if (flash) {
+          window.__restoreFlashControl.style.display = 'block'
+          setTimeout(() => { window.__restoreFlashControl.style.display = 'none' }, 40)
+        }
         document.querySelector(sel).dispatchEvent(new MouseEvent('click', { bubbles: true }))
         return at
-      }, selector)
+      }, { sel: selector, flash })
 
     const rounds = []
-    for (let round = 0; round < ROUNDS; round++) {
+    let attempts = 0
+    for (let attempt = 0; rounds.length < ROUNDS && attempt < MAX_ATTEMPTS; attempt++) {
+      attempts++
       // Minimize first, so the window is in its bay to be restored from.
       const minimizeWatch = page.evaluate(() => window.__flash.watch(20))
       await press(`.gen-slot[data-win="${WIN}"] .gen-lamp[data-role="minimize"]`)
@@ -178,17 +203,12 @@ try {
       await sleep(600)
 
       frames.length = 0
-      await client.send('Page.startScreencast', {
-        format: 'png',
-        everyNthFrame: 1,
-        maxWidth: 1100,
-        maxHeight: 800,
-      })
+      await client.send('Page.startScreencast', captureOptions)
       // Docked frames first: the last one before the press is the reference
       // every later frame is differenced against.
       await sleep(250)
       const restoreWatch = page.evaluate(() => window.__flash.watch(45))
-      const pressedAt = await press(`.gen-tile[data-win="${WIN}"]`)
+      const pressedAt = await press(`.gen-tile[data-win="${WIN}"]`, FLASH_CONTROL)
       await restoreWatch
       await page.waitForFunction(
         (win) => document.querySelector(`.gen-slot[data-win="${win}"]`).dataset.away !== 'true',
@@ -200,17 +220,19 @@ try {
       await sleep(100)
       const restoreSamples = await page.evaluate(() => window.__flash.samples)
       frames.sort((left, right) => left.t - right.t)
+      let coverageError = null
       try {
         requireScreencastCoverage(frames, pressedAt, pressedAt + FLASH_WINDOW_MS, MAX_FRAME_GAP_MS)
       } catch (error) {
-        problems.push(`${setup.engine}: round ${round}: ${error.message}`)
+        if (!(error instanceof IncompleteScreencastError)) throw error
+        coverageError = error.message
       }
 
       const scored = await page.evaluate(
-        async (shot, desk, clickAt, flashWindow, shownPct) => {
+        async (shot, desk, clickAt, flashWindow, shownPct, format) => {
           const read = async (data) => {
             const image = new Image()
-            image.src = `data:image/png;base64,${data}`
+            image.src = `data:image/${format};base64,${data}`
             await image.decode()
             const canvas = document.createElement('canvas')
             canvas.width = image.width
@@ -255,42 +277,38 @@ try {
         pressedAt,
         FLASH_WINDOW_MS,
         SHOWN_PCT,
+        CAPTURE_FORMAT,
       )
 
-      if (!scored) {
-        problems.push(`${mode}: the screencast delivered no frame before the press`)
+      const rides = [...minimizeSamples, ...restoreSamples].filter((sample) => sample.riding).length
+      // Observed faults fail even in an incomplete recording. Only missing
+      // evidence is retried, and every required round still needs full coverage.
+      const failed = scored && (scored.flash > 0 || scored.sheetAt === null || rides > 0)
+      if (failed || pageErrors.length) {
+        problems.push(`${setup.engine}: attempt ${attempt + 1}: observed restore failure ${JSON.stringify({ ...scored, rides, pageErrors })}`)
+        break
+      }
+      if (!scored || coverageError) {
+        console.warn(`${setup.engine}: recording ${attempt + 1}/${MAX_ATTEMPTS} unverified: ${coverageError ?? 'no reference frame'}`)
         continue
       }
       rounds.push({
         ...scored,
         minimizeSwaps: minimizeSamples.filter((sample) => sample.swapped).length,
         restoreSwaps: restoreSamples.filter((sample) => sample.swapped).length,
-        rides: [...minimizeSamples, ...restoreSamples].filter((sample) => sample.riding).length,
+        rides,
       })
     }
 
-    const flashed = rounds.filter((round) => round.flash > 0)
-    const rode = rounds.filter((round) => round.rides > 0)
-    const arrived = rounds.filter((round) => round.sheetAt !== null)
+    if (rounds.length !== ROUNDS)
+      problems.push(`${setup.engine}: completed ${rounds.length}/${ROUNDS} verified restores within ${MAX_ATTEMPTS} recording attempts`)
 
-    console.log(`\n  ${setup.engine} · ${rounds.length} restores · cpu /${SLOWCPU}`)
+    console.log(`\n  ${setup.engine} · ${rounds.length} verified restores / ${attempts} attempts · ${CAPTURE_FORMAT} · cpu /${SLOWCPU}`)
     for (const round of rounds)
       console.log(
         `    flash frames ${round.flash}  swapped samples minimize ${round.minimizeSwaps} / restore ${round.restoreSwaps}  rides ${round.rides}  sheet at desk ${round.sheetAt ?? 'never'}ms  (${round.frames} compositor frames)`,
       )
 
-    if (flashed.length)
-      problems.push(
-        `${setup.engine}: ${flashed.length}/${rounds.length} restores painted the window at its desk rect within ${FLASH_WINDOW_MS}ms of the press`,
-      )
-    if (rode.length)
-      problems.push(
-        `${setup.engine}: the parked host rode over an unfocused window in ${rode.length}/${rounds.length} flights`,
-      )
-    if (arrived.length !== rounds.length)
-      problems.push(
-        `${setup.engine}: ${rounds.length - arrived.length}/${rounds.length} restores never reached the desk`,
-      )
     if (pageErrors.length) problems.push(`${setup.engine}: ${pageErrors[0]}`)
     await page.close()
   }

@@ -4,6 +4,10 @@ export interface TimedFrame {
   t: number
 }
 
+export class IncompleteScreencastError extends Error {
+  override name = 'IncompleteScreencastError'
+}
+
 // Chrome need not send unchanged frames. A marker outside the sampled region
 // makes quiet intervals observable without changing the content under test.
 export function installScreencastClock(): void {
@@ -32,12 +36,12 @@ export function requireScreencastCoverage(
     if (time <= start) first = i
     if (time >= end && last < 0) last = i
   }
-  if (first < 0 || last < 0) throw new Error('Screencast does not cover both ends of the observation')
+  if (first < 0 || last < 0) throw new IncompleteScreencastError('Screencast does not cover both ends of the observation')
   let largestGap = 0
   for (let i = first + 1; i <= last; i++) {
     largestGap = Math.max(largestGap, frames[i]!.t - frames[i - 1]!.t)
   }
   if (largestGap > maximumGap) {
-    throw new Error(`Screencast gap ${largestGap.toFixed(1)}ms exceeds ${maximumGap}ms; visual result is unverified`)
+    throw new IncompleteScreencastError(`Screencast gap ${largestGap.toFixed(1)}ms exceeds ${maximumGap}ms; visual result is unverified`)
   }
 }
