@@ -11,7 +11,7 @@
 // and epoch a receipt has to carry are read here, at the moment of the
 // report, rather than handed out: a caller holding them can report a draw
 // under stamps it did not earn, which is a page released over pixels that
-// were never on screen. `acquire`, `tick`, `setTiming`, and `setCallbacks`
+// were never on screen. `acquire`, `tick`, and `setCallbacks`
 // are not here at all — those are `<Surface>`'s, and a second writer for
 // any of them is two callers arguing over one protocol.
 //

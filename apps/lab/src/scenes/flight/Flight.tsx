@@ -1243,8 +1243,8 @@ function Flying({
 
   // ── the crossing, driven by the plate ──
   //
-  // The protocol keeps what is its: the lift gate, the settle dwell, and the
-  // exact-zero landing. What the ramp DOES between them is this scene's, and
+  // The protocol keeps what is its: the lift gate and the exact-zero
+  // landing. What the ramp DOES between them is this scene's, and
   // this scene already has a continuous excursion — the plate's altitude. So
   // the crossing is not a duration anyone chose; it is where the card is.
   const cardTexture = useSurfaceTextureOf(surface)
@@ -1455,13 +1455,11 @@ export function FlightApp() {
   // The card's identity, declared here because the board is what asks for a
   // handoff and what has to know when one has happened. The excursion's
   // SHAPE belongs to the plate — `Flying` installs the driver that answers
-  // it — so no ramp duration is chosen here. There is no settle dwell to owe
-  // either: the page has no autonomous motion, and a drop reflow is barred
-  // until GL holds. `durationMs` is only what the frames before the driver
-  // is installed fall back to.
+  // it — so no ramp duration is chosen here. A drop reflow is barred until
+  // GL holds.
   const [view, setView] = useState<SurfacePresentation>('page')
   const [presented, setPresented] = useState<SurfacePresentation>('page')
-  // Identity only. What the Surface is DOING — its view, its timing, who
+  // Identity only. What the Surface is DOING — its view, who
   // hears about it — is stated once, on the `<Surface>` below.
   const cardSurfaces = useMemo(() => new Map<string, { handle: SurfaceHandle; target: PageTarget; ref: (element: HTMLLIElement | null) => void }>(), [])
   const cardSurface = (id: string) => {
@@ -1579,7 +1577,7 @@ export function FlightApp() {
 
   // A board reorder starts FLIP transforms on the page. While the page owns
   // the pixels, that would move the source underneath the still-identity
-  // hidden twin and make a zero settle dwell false. Pointer coordinates keep
+  // hidden twin, and the swap would show the twin somewhere the card is not. Pointer coordinates keep
   // updating during warm-up, but a slot may move only after GL owns pixels.
   const ownedDropTarget = useCallback(
     (x: number, y: number, id: string) => {
@@ -2103,7 +2101,7 @@ export function FlightApp() {
         {Object.values(cards).map(card => {
           const { handle, target } = cardSurface(card.id)
           const f = flyingId === card.id ? flight.current : null
-          return <Surface.Root key={card.id} surface={handle} timing={{ settleMs: 0, durationMs: 1 }}
+          return <Surface.Root key={card.id} surface={handle}
             inScene={Boolean(f) && view === 'scene'} onPresentationChange={f ? onPresentationChange : undefined}>
             <Surface.HTML target={target} size={f ? [f.w,f.h] : undefined} resolution={density} onChrome={chrome => { if (f) chromeRef.current = chrome }}>
               <CardBody card={card} onChange={change => patch(card.id,change)} onGrab={event => beginDrag(card.id,event)} onDelete={event => deleteCard(card.id,event)} />

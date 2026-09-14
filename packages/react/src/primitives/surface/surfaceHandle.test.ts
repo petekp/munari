@@ -325,7 +325,7 @@ describe('controlled options and the latest callback', () => {
     render(root, { renderIn: 'page', onPresentationChange: () => heard.push('second') })
     expect(seen).toBe(store)
     // Drive a full forward crossing: a controller (receipts are refused
-    // without one), one presenter, proven, then the settle dwell and the ramp.
+    // without one), one presenter, proven, then the lift gate and the ramp.
     store?.acquire(1)
     store?.declarePresentation('page')
     store?.declarePresentation('canvas')
@@ -353,20 +353,28 @@ describe('controlled options and the latest callback', () => {
     expect(heard).toEqual([])
   })
 
-  it('timing is controlled: a longer settle holds the page longer', () => {
+  // The wait for a current capture ends on the lift's own clock, which only
+  // advances while the Surface claims frames. Parking during that wait left a
+  // lift whose capture never uploads waiting forever (decisions.md #68).
+  it('keeps claiming frames while a capture is owed, until the wait for it expires', () => {
     const store = createSurfaceStore()
     store.declarePresentation('page')
     store.declarePresentation('canvas')
     store.acquire(1)
-    store.setTiming({ settleMs: 1000, rampMs: 600 })
+    const runtime = { nextRead: () => 1, uploadedRead: () => 0, repaint: () => {} }
+    // SAFETY: the lift reads only these three members of a source runtime.
+    store.publishPart('panel', { id: 'panel', runtime: runtime as never, live: false, size: [200, 100], captureRoot: null, pageRoot: null })
     store.registerPresenter('a')
     store.prove('a', store.readinessLifetime(), store.epoch())
     store.request('canvas')
-    store.tick(500)
-    expect(store.getState().presented).toBe('page')
-    store.tick(600)
-    store.present('a', store.epoch())
+    let frames = 0
+    while (store.hasProtocolWork() && store.getState().presented === 'page' && frames < 100) {
+      store.tick(16)
+      store.present('a', store.epoch())
+      frames++
+    }
     expect(store.getState().presented).toBe('canvas')
+    expect(frames * 16).toBeGreaterThanOrEqual(500)
   })
 })
 
@@ -432,13 +440,15 @@ describe('semantic publication', () => {
     store.tick(500)
     store.present('a', store.epoch())
     expect(store.getState().presented).toBe('canvas')
-    store.tick(300) // ramp half way
+    store.drive(() => 0.5)
+    store.tick(16)
     const midway = store.handle.progress.get()
     expect(midway).toBeGreaterThan(0)
     expect(midway).toBeLessThan(1)
     const back: SurfaceDestination = 'page'
     store.request(back)
-    store.tick(300)
+    store.drive(null)
+    store.tick(16)
     expect(store.handle.progress.get()).toBe(0)
     expect(store.getState().presented).toBe('page')
   })
@@ -519,14 +529,16 @@ describe('the two-stage receipt', () => {
     store.tick(500)
     store.present('a', store.epoch())
     expect(store.getState().presented).toBe('canvas')
-    store.tick(300)
+    store.drive(({ target }) => (target === 'page' ? 0.5 : 1))
+    store.tick(16)
 
     store.request('page')
     expect(store.getState().requested).toBe('page')
     expect(store.getState().presented).toBe('canvas')
-    store.tick(100)
+    store.tick(16)
     expect(store.getState().presented).toBe('canvas')
-    store.tick(5_000)
+    store.drive(null)
+    store.tick(16)
     expect(store.getState().presented).toBe('page')
   })
 
@@ -808,15 +820,14 @@ describe('a scene-owned ramp', () => {
     expect(store.holdsPage()).toBe(true)
   })
 
-  it('gives the ramp back to the timed motion when the driver is removed', () => {
+  it('gives the ramp back to the step when the driver is removed', () => {
     const store = airborne()
     store.drive(() => 0.3)
     store.tick(16)
-    const driven = store.handle.progress.get()
-    expect(driven).toBe(0.3)
+    expect(store.handle.progress.get()).toBe(0.3)
     store.drive(null)
-    store.tick(600)
-    expect(store.handle.progress.get()).toBeGreaterThan(driven)
+    store.tick(16)
+    expect(store.handle.progress.get()).toBe(1)
   })
 })
 
@@ -1007,7 +1018,7 @@ describe('the freeze signal', () => {
 })
 
 describe('dormant preparation and renderer loss', () => {
-  it('sleeps after the settle dwell when no presenter can supply evidence, and wakes on proof', () => {
+  it('sleeps while no presenter can supply evidence, and wakes on proof', () => {
     const store = createSurfaceStore()
     store.acquire(1); store.declarePresentation('page'); store.declarePresentation('canvas')
     store.request('canvas')

@@ -29,7 +29,7 @@ export type { SurfacePointerEvents, SurfaceRadius, SurfaceMeshProps } from './pr
 export type { SurfaceResolution, SurfaceSize } from './primitives/surface/surfaceSourceRuntime'
 
 // ── Identity and frame reads ─────────────────────────────────────────────
-export { createSurface, useSurfaceHandle, useSurfaceProgress, type SurfaceHandle, type SurfaceProgress, type SurfaceTiming } from './primitives/surface/surfaceHandle'
+export { createSurface, useSurfaceHandle, useSurfaceProgress, type SurfaceHandle, type SurfaceProgress } from './primitives/surface/surfaceHandle'
 
 // ── What a Surface hands its children ────────────────────────────────────
 // A Surface.Mesh can supply its own material. These hooks read its texture,

@@ -9,11 +9,9 @@
 // because sampling never re-evaluates.
 //
 // The loop runs from mount to unmount, across every crossing phase —
-// that is the point. A carried motion never eases flat and is EXEMPT
-// from the crossing's settle dwell: both presenters output one source
-// of truth, so the swap lands mid-flight with position and velocity
-// intact. Size `settleMs` to the compositor-clocked transitions that
-// remain (hops, color fades), not to this.
+// that is the point. A carried motion is not frozen by a crossing: both
+// presenters output one source of truth, so the swap lands mid-flight
+// with position and velocity intact.
 //
 // Two honest notes. First, ordering: this loop and r3f's are separate
 // rAF callbacks in the same frame; if the renderer's runs first, the
@@ -24,8 +22,7 @@
 // main thread. A page under heavy script load will stutter a carried
 // motion where a CSS animation would have glided — which is why
 // carrying is a per-motion declaration and not what Surfaces do to
-// your animations by default (docs/authoring.md keeps the ease-flat
-// pattern for everything compositor-clocked).
+// your animations by default (docs/authoring.md).
 
 import { useEffect, useMemo } from 'react'
 import { createMotionCarrier } from '@munari/core'

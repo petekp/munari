@@ -9,7 +9,7 @@ import { SurfaceScene as SurfaceSceneBoundary } from './surface/SurfaceScene'
 import { SurfaceAnchor } from './surface/SurfaceAnchor'
 import { SurfaceLitMaterial } from './surface/surfaceMaterials'
 import { SurfaceRootContext, SurfacePartContext, SurfaceTunnelContext, SurfaceHandleContext, DEFAULT_PART } from './surface/surfaceContext'
-import { surfaceStoreOf, useSurfaceHandle, type SurfaceHandle, type SurfaceTiming } from './surface/surfaceHandle'
+import { surfaceStoreOf, useSurfaceHandle, type SurfaceHandle } from './surface/surfaceHandle'
 import { surfaceViewPresentation, type SurfaceViewPresentation, type SurfaceViewDestination } from './surface/surfaceStatus'
 import { useSurfaceDriver as useSurfaceDriverBinding } from './surface/useSurfaceDriver'
 import { type SurfaceSize, type SurfaceSourceRuntime, type SurfaceResolution, type SurfacePartPublication } from './surface/surfaceSourceRuntime'
@@ -161,7 +161,6 @@ function PageBinding({page,marker,layout,inScene,pageContent}:{page:HTMLElement;
 }
 
 export interface SurfaceControls {
-  timing?: SurfaceTiming
   onPresentationChange?: (presentation: SurfaceViewPresentation) => void
   onMotionComplete?: (destination: SurfaceViewDestination) => void
   /**

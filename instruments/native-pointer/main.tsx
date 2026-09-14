@@ -172,7 +172,6 @@ function App() {
         <Surface.Root
           surface={surface}
           inScene={view === 'scene'}
-          timing={{ settleMs: 120, durationMs: 200 }}
         >
           <Surface.HTML pageClassName="page-slot" size={[W,H]}>{content}</Surface.HTML>
         </Surface.Root>

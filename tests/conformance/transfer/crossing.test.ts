@@ -10,7 +10,6 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  CROSSING_DEFAULTS,
   crossingAtRest,
   crossingDraws,
   crossingFrame,
@@ -22,12 +21,13 @@ import {
   type CrossingState,
 } from '@munari/core'
 
-const T = CROSSING_DEFAULTS
 const PHASES: CrossingPhase[] = ['page', 'lifting', 'gl', 'landing']
 const ALL: CrossingEvidence = { presented: 6, required: 6, contentCurrent: true }
 const NONE: CrossingEvidence = { presented: 0, required: 6, contentCurrent: true }
 /** Every presenter has drawn, but what they drew is older than the lift. */
 const STALE: CrossingEvidence = { presented: 6, required: 6, contentCurrent: false }
+/** Longer than any wait a crossing has ever been given. */
+const LONG_MS = 2000
 
 /** Tick the reducer at a fixed frame rate until a predicate holds. */
 function tickUntil(
@@ -39,7 +39,7 @@ function tickUntil(
 ): CrossingState {
   for (let i = 0; i < maxFrames; i++) {
     if (done(state)) return state
-    state = crossingFrame(state, evidence, dtMs, T)
+    state = crossingFrame(state, evidence, dtMs)
   }
   throw new Error(`protocol never reached the expected state: ${JSON.stringify(state)}`)
 }
@@ -108,13 +108,13 @@ describe('presentation accounting', () => {
     s = crossingRequest(s, true)
     note(s.phase)
     for (let i = 0; i < 500 && !(s.phase === 'gl' && s.ramp >= 1); i++) {
-      s = crossingFrame(s, ALL, 16, T)
+      s = crossingFrame(s, ALL, 16)
       note(s.phase)
     }
     s = crossingRequest(s, false)
     note(s.phase)
     for (let i = 0; i < 500 && s.phase !== 'page'; i++) {
-      s = crossingFrame(s, ALL, 16, T)
+      s = crossingFrame(s, ALL, 16)
       note(s.phase)
     }
     expect(s.phase).toBe('page')
@@ -127,31 +127,27 @@ describe('requests', () => {
     let s = crossingRequest(crossingAtRest(), true)
     expect(s.phase).toBe('lifting')
     // A request alone moves nothing further: frames without evidence hold.
-    s = tickUntil(s, NONE, (x) => x.heldMs > T.settleMs * 3)
+    s = tickUntil(s, NONE, (x) => x.heldMs > LONG_MS)
     expect(s.phase).toBe('lifting')
   })
 
   it('reverses from lifting back to page — abandoning a warm-up is free because the page never released', () => {
     let s = crossingRequest(crossingAtRest(), true)
-    s = crossingFrame(s, NONE, 100, T)
+    s = crossingFrame(s, NONE, 100)
     s = crossingRequest(s, false)
     expect(s).toEqual(crossingAtRest())
   })
 
   it('reverses from landing back to gl without re-proving — the canvas never released', () => {
     let s = crossingRequest(crossingAtRest(), true)
-    s = tickUntil(s, ALL, (x) => x.phase === 'gl')
-    s = tickUntil(s, ALL, (x) => x.ramp >= 1)
+    s = tickUntil(s, ALL, (x) => x.phase === 'gl' && x.ramp >= 1)
     s = crossingRequest(s, false)
-    // Part-way down, the user changes their mind.
-    s = crossingFrame(s, ALL, T.rampMs / 3, T)
-    const midRamp = s.ramp
-    expect(midRamp).toBeGreaterThan(0)
-    expect(midRamp).toBeLessThan(1)
+    expect(s.phase).toBe('landing')
+    // The user changes their mind before the landing frame runs…
     s = crossingRequest(s, true)
     expect(s.phase).toBe('gl')
-    // …and climbs again from where it was, never from a re-proven zero.
-    expect(s.ramp).toBe(midRamp)
+    // …and the ramp is where it was, never a re-proven zero.
+    expect(s.ramp).toBe(1)
   })
 
   it('never skips: no single request crosses the whole threshold', () => {
@@ -173,26 +169,27 @@ describe('requests', () => {
 })
 
 describe('the lift gate', () => {
-  it('holds while any presenter is unproven, however long the dwell', () => {
+  it('holds while any presenter is unproven, however long the lift has waited', () => {
     let s = crossingRequest(crossingAtRest(), true)
-    s = tickUntil(s, { presented: 5, required: 6, contentCurrent: true }, (x) => x.heldMs > T.settleMs * 4)
+    s = tickUntil(s, { presented: 5, required: 6, contentCurrent: true }, (x) => x.heldMs > LONG_MS)
     expect(s.phase).toBe('lifting')
   })
 
-  it('holds through the settle dwell even with all presenters proven — the page must ease flat', () => {
+  // Nothing waits for the content's own motion. The content is frozen from
+  // the lift's first frame (decisions.md #66), so a dwell would only hold
+  // still pixels still for longer (decisions.md #68).
+  it('releases on the first frame the evidence is whole', () => {
     let s = crossingRequest(crossingAtRest(), true)
-    // Evidence complete almost immediately; the dwell still governs.
-    s = crossingFrame(s, ALL, T.settleMs - 20, T)
-    expect(s.phase).toBe('lifting')
-    s = crossingFrame(s, ALL, 20, T)
+    s = crossingFrame(s, ALL, 16)
     expect(s.phase).toBe('gl')
+    expect(s.heldMs).toBe(16)
   })
 
   it('keeps the ramp at exactly zero until the page has released', () => {
     let s = crossingRequest(crossingAtRest(), true)
     while (s.phase === 'lifting') {
       expect(s.ramp).toBe(0)
-      s = crossingFrame(s, ALL, 16, T)
+      s = crossingFrame(s, ALL, 16)
     }
     expect(s.phase).toBe('gl')
     expect(s.ramp).toBe(0)
@@ -204,44 +201,38 @@ describe('the lift gate', () => {
   // the frames before the fresh capture lands (decisions.md #65).
   it('holds while the proven pixels carry content older than the lift', () => {
     let s = crossingRequest(crossingAtRest(), true)
-    s = tickUntil(s, STALE, (x) => x.heldMs > T.settleMs * 4)
+    s = tickUntil(s, STALE, (x) => x.heldMs > LONG_MS)
     expect(s.phase).toBe('lifting')
     // The capture lands, and the very next frame releases.
-    s = crossingFrame(s, ALL, 16, T)
+    s = crossingFrame(s, ALL, 16)
     expect(s.phase).toBe('gl')
   })
 
-  it('measures the dwell from the moment lifting began, not from the last receipt', () => {
+  // The binding bounds its wait for a current capture by this clock, so it
+  // has to count the whole lift, not restart at each receipt.
+  it('counts held time from the moment lifting began, not from the last receipt', () => {
     let s = crossingRequest(crossingAtRest(), true)
-    // Dwell served with no evidence…
-    s = tickUntil(s, NONE, (x) => x.heldMs >= T.settleMs)
+    s = tickUntil(s, NONE, (x) => x.heldMs >= 480)
     expect(s.phase).toBe('lifting')
-    // …then the final receipt lands and the very next frame releases.
-    s = crossingFrame(s, ALL, 16, T)
+    s = crossingFrame(s, ALL, 16)
     expect(s.phase).toBe('gl')
+    expect(s.heldMs).toBe(496)
   })
 })
 
 describe('the ramp', () => {
-  it('rises to exactly 1 over rampMs and stops', () => {
+  // Without a driver nothing reads the ramp, so any duration would only
+  // delay the return and `onMotionComplete`. A scene that wants an eased
+  // excursion drives it (crossingDrive).
+  it('steps to 1 on the first frame after release, and stops there', () => {
     let s: CrossingState = { phase: 'gl', ramp: 0, heldMs: 0 }
-    let elapsed = 0
-    while (s.ramp < 1) {
-      s = crossingFrame(s, ALL, 16, T)
-      elapsed += 16
-      expect(s.ramp).toBeLessThanOrEqual(1)
-    }
-    expect(elapsed).toBeGreaterThanOrEqual(T.rampMs)
-    expect(elapsed).toBeLessThanOrEqual(T.rampMs + 32)
-    expect(crossingFrame(s, ALL, 16, T).ramp).toBe(1)
+    s = crossingFrame(s, ALL, 16)
+    expect(s.ramp).toBe(1)
+    expect(crossingFrame(s, ALL, 16)).toBe(s)
   })
 
   it('lands only at zero: the reverse handoff happens at the one progress where mesh and page agree', () => {
-    let s: CrossingState = { phase: 'landing', ramp: 1, heldMs: 0 }
-    while (s.phase === 'landing') {
-      expect(s.ramp).toBeGreaterThan(0)
-      s = crossingFrame(s, ALL, 16, T)
-    }
+    const s = crossingFrame({ phase: 'landing', ramp: 1, heldMs: 0 }, ALL, 16)
     expect(s).toEqual(crossingAtRest())
   })
 
@@ -264,9 +255,7 @@ describe('a whole crossing, both directions', () => {
       observed.add(s.phase)
       const { page, gl } = crossingDraws(s.phase)
       expect(page || gl).toBe(true)
-      // The forward handoff frame: the page releases only after evidence + dwell.
-      if (!page) expect(s.heldMs).toBeGreaterThanOrEqual(T.settleMs)
-      s = crossingFrame(s, ALL, 16, T)
+      s = crossingFrame(s, ALL, 16)
     }
     expect(s.phase).toBe('gl')
     s = crossingRequest(s, false)
@@ -274,7 +263,7 @@ describe('a whole crossing, both directions', () => {
       observed.add(s.phase)
       const { page, gl } = crossingDraws(s.phase)
       expect(page || gl).toBe(true)
-      s = crossingFrame(s, ALL, 16, T)
+      s = crossingFrame(s, ALL, 16)
     }
     expect(s).toEqual(crossingAtRest())
     expect(observed).toEqual(new Set(['page', 'lifting', 'gl', 'landing']))
@@ -286,7 +275,7 @@ describe('a whole crossing, both directions', () => {
     // contract should not): flip every 5 frames for 60 frames, then commit.
     for (let i = 0; i < 60; i++) {
       if (i % 5 === 0) s = crossingRequest(s, (i / 5) % 2 === 0)
-      s = crossingFrame(s, ALL, 16, T)
+      s = crossingFrame(s, ALL, 16)
       expect(PHASES).toContain(s.phase)
       expect(s.ramp).toBeGreaterThanOrEqual(0)
       expect(s.ramp).toBeLessThanOrEqual(1)

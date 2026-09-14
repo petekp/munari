@@ -78,7 +78,7 @@ function Fixture() {
       </SceneSurface.Root>}
     </SurfaceCanvas>
     {wiring === 'page' && <div style={{ position:'absolute', left:24, top:180, width:220 }}>
-      <Surface.Root surface={surface} canvasId="parts" inScene timing={{ settleMs:0, durationMs:1 }} onError={onError}>
+      <Surface.Root surface={surface} canvasId="parts" inScene onError={onError}>
         {owners.map(owner => <Surface.HTML key={owner} part="panel" size={[200,120]} resolution={1}><Content owner={owner}/></Surface.HTML>)}
         {mesh}
       </Surface.Root>

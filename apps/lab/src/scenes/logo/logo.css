@@ -58,15 +58,12 @@
   will-change: transform;
 }
 
-/* Durations must match LETTER_EASE_MS / COLOR_EASE_MS in Logo.tsx: the
- * crossing's settle dwell is sized to outlast the slowest of them, so a
- * swap can never trade a mid-hop letter for its already-settled twin. */
+/* The hop between poses is a per-frame transform WRITE from the same
+ * carrier as the float (logoMotion.ts). A CSS transition here would put
+ * the page letter on a clock its mesh cannot read. */
 .logo-letter {
   display: inline-block;
   line-height: 1;
-  transition:
-    transform 620ms cubic-bezier(0.3, 1.6, 0.4, 1),
-    color 480ms ease;
   will-change: transform;
 }
 
@@ -97,8 +94,9 @@
 
 /* The parked twin a Surface captures: a sized flex box, glyph centered.
  * Fonts and colors arrive inline from the pose (a parked root inherits
- * nothing from the page); the color transition matches the page letter
- * so a swap fades identically in both custodies. */
+ * nothing from the page). The color eases on this element, which is the
+ * one the page shows and the one a live capture follows, so a swap finds
+ * a single fade. */
 .logo-twin {
   display: flex;
   align-items: center;
@@ -268,10 +266,9 @@
   pointer-events: none;
 }
 
-/* The carrier reads this media query itself and eases its amplitude to
- * zero (Logo.tsx), so only the compositor-clocked eases need CSS. */
+/* The carrier reads this media query itself: the float eases to zero and
+ * the hop snaps (logoMotion.ts), so only the color ease needs CSS. */
 @media (prefers-reduced-motion: reduce) {
-  .logo-letter,
   .logo-twin-glyph {
     transition: none;
   }

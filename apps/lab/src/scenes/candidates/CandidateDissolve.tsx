@@ -237,7 +237,7 @@ export function CandidateDissolve() {
 
   return (
     <div className="cand-page cand-page--center">
-      <Surface.Root surface={surface} inScene={flying} timing={{ settleMs: 0, durationMs: 1 }}>
+      <Surface.Root surface={surface} inScene={flying}>
       <div className="cand-slots">
         {(['left', 'right'] as const).map((side) => {
           const holds = slot === side

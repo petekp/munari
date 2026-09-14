@@ -10,6 +10,7 @@ import '@petepetrash/munari/style.css'
 
 type RowId='a'|'b'
 interface RegressionProbe {
+  releaseHold:()=>void
   errors:string[]
   frames:{a:number;b:number}
   revisions:{a:number|null;b:number|null}
@@ -34,7 +35,7 @@ interface RegressionProbe {
   outsideClicks:number
   activeHandle:RowId
 }
-const probe:RegressionProbe={errors:[],frames:{a:0,b:0},revisions:{a:null,b:null},pixels:{a:[],b:[]},mounts:{a:0,b:0},status:null,width:200,anchor:null,painted:()=>[0,0],capture:()=>({consumers:0,revision:null}),prepend:()=>{},reorder:()=>{},remove:()=>{},request:()=>{},swap:()=>{},setWidth:()=>{},setClipHeight:()=>{},setAttribute:()=>{},paint:()=>{},wake:()=>{},insideClicks:0,outsideClicks:0,activeHandle:'a'}
+const probe:RegressionProbe={releaseHold:()=>{},errors:[],frames:{a:0,b:0},revisions:{a:null,b:null},pixels:{a:[],b:[]},mounts:{a:0,b:0},status:null,width:200,anchor:null,painted:()=>[0,0],capture:()=>({consumers:0,revision:null}),prepend:()=>{},reorder:()=>{},remove:()=>{},request:()=>{},swap:()=>{},setWidth:()=>{},setClipHeight:()=>{},setAttribute:()=>{},paint:()=>{},wake:()=>{},insideClicks:0,outsideClicks:0,activeHandle:'a'}
 declare global {interface Window {__apiRegression:RegressionProbe}}
 window.__apiRegression=probe
 
@@ -91,20 +92,20 @@ function Resize(){
 function Focus(){
   const a=useSurfaceHandle('focus-a'),b=useSurfaceHandle('focus-b'),[changed,setChanged]=useState(false),[inScene,setInScene]=useState(false),surface=changed?b:a
   probe.status=useSurfaceStatus(surface);probe.request=setInScene;probe.swap=()=>setChanged(true);probe.activeHandle=changed?'b':'a'
-  return <><SurfaceCanvas id="focus" pointerMode="surfaces" frameloop="demand" flat style={{position:'fixed',inset:0}}/><Surface.Root surface={surface} canvasId="focus" inScene={inScene} timing={{settleMs:0,durationMs:1}}><Surface.HTML><form style={{margin:40,width:300,height:150,background:'white'}}><label>Retained field <input id="focus-input" defaultValue="preserved focus"/></label></form></Surface.HTML><Surface.Mesh/></Surface.Root></>
+  return <><SurfaceCanvas id="focus" pointerMode="surfaces" frameloop="demand" flat style={{position:'fixed',inset:0}}/><Surface.Root surface={surface} canvasId="focus" inScene={inScene}><Surface.HTML><form style={{margin:40,width:300,height:150,background:'white'}}><label>Retained field <input id="focus-input" defaultValue="preserved focus"/></label></form></Surface.HTML><Surface.Mesh/></Surface.Root></>
 }
 
 function Clipping({nested,rounded,scaled,margin,border,longhand,preserve}:{nested?:boolean;rounded?:boolean;scaled?:boolean;margin?:boolean;border?:boolean;longhand?:boolean;preserve?:boolean}){
-  const surface=useSurfaceHandle('clipping-regression'),[inScene,setInScene]=useState(false),[height,setHeight]=useState(180)
-  probe.status=useSurfaceStatus(surface);probe.request=setInScene;probe.setClipHeight=setHeight
-  return <><SurfaceCanvas id="clip-canvas" frameloop="demand" pointerMode="surfaces" flat style={{position:'fixed',inset:0}}/><div id="clip-outer" style={{position:'relative',overflow:margin?'clip':'hidden',overflowClipMargin:margin?'20px':undefined,margin:40,width:320,height,background:'white',border:border?'8px solid black':undefined,padding:border?8:0,borderRadius:rounded?28:0,transform:scaled?'scale(1.2,0.85)':undefined,scale:longhand?'1.2 0.85':undefined,transformStyle:preserve?'preserve-3d':undefined,transformOrigin:'top left'}}><div id="clip-inner" style={{position:'relative',marginLeft:nested?30:0,width:nested?210:320,height:300,overflow:nested?'hidden':'visible',borderRadius:rounded&&nested?18:0}}><div style={{height:110}}/><Surface.Root surface={surface} canvasId="clip-canvas" inScene={inScene} timing={{settleMs:2000,durationMs:1}}><Surface.HTML><div id="clipped-source" style={{position:'relative',width:300,height:160,background:'rgb(230,20,20)'}}><button id="clip-inside" type="button" style={{position:'absolute',left:40,top:12}} onClick={()=>probe.insideClicks++}>Inside</button><button id="clip-outside" type="button" style={{position:'absolute',left:30,top:120}} onClick={()=>probe.outsideClicks++}>Outside</button></div></Surface.HTML><Surface.Mesh pointerRoute="auto"/></Surface.Root></div></div></>
+  const surface=useSurfaceHandle('clipping-regression'),[inScene,setInScene]=useState(false),[height,setHeight]=useState(180),[held,setHeld]=useState(true)
+  probe.status=useSurfaceStatus(surface);probe.request=setInScene;probe.setClipHeight=setHeight;probe.releaseHold=()=>setHeld(false)
+  return <><SurfaceCanvas id="clip-canvas" frameloop="demand" pointerMode="surfaces" flat style={{position:'fixed',inset:0}}/><div id="clip-outer" style={{position:'relative',overflow:margin?'clip':'hidden',overflowClipMargin:margin?'20px':undefined,margin:40,width:320,height,background:'white',border:border?'8px solid black':undefined,padding:border?8:0,borderRadius:rounded?28:0,transform:scaled?'scale(1.2,0.85)':undefined,scale:longhand?'1.2 0.85':undefined,transformStyle:preserve?'preserve-3d':undefined,transformOrigin:'top left'}}><div id="clip-inner" style={{position:'relative',marginLeft:nested?30:0,width:nested?210:320,height:300,overflow:nested?'hidden':'visible',borderRadius:rounded&&nested?18:0}}><div style={{height:110}}/><Surface.Root surface={surface} canvasId="clip-canvas" inScene={inScene}><Surface.HTML><div id="clipped-source" style={{position:'relative',width:300,height:160,background:'rgb(230,20,20)'}}><button id="clip-inside" type="button" style={{position:'absolute',left:40,top:12}} onClick={()=>probe.insideClicks++}>Inside</button><button id="clip-outside" type="button" style={{position:'absolute',left:30,top:120}} onClick={()=>probe.outsideClicks++}>Outside</button></div></Surface.HTML><Surface.Mesh pointerRoute="auto"/><Surface.HTML part="hold" size={[1,1]}><div style={{width:1,height:1}}/></Surface.HTML>{held?null:<Surface.Mesh part="hold"/>}</Surface.Root></div></div></>
 }
 
 function Attribute(){
   const surface=useSurfaceHandle(),[name,setName]=useState('onboarding')
   probe.status=useSurfaceStatus(surface);probe.setAttribute=setName
   const html=name==='onclick'?'<button onclick="void 0">Inline handler</button>':`<div ${name}="hello">Ordinary attribute</div>`
-  return <><SurfaceCanvas id="attributes" pointerMode="surfaces" frameloop="demand" flat style={{position:'fixed',inset:0}}/><Surface.Root surface={surface} canvasId="attributes" inScene={true} timing={{settleMs:0,durationMs:1}}><Surface.HTML><div style={{width:240,height:100}} dangerouslySetInnerHTML={{__html:html}}/></Surface.HTML><Surface.Mesh/></Surface.Root></>
+  return <><SurfaceCanvas id="attributes" pointerMode="surfaces" frameloop="demand" flat style={{position:'fixed',inset:0}}/><Surface.Root surface={surface} canvasId="attributes" inScene={true}><Surface.HTML><div style={{width:240,height:100}} dangerouslySetInnerHTML={{__html:html}}/></Surface.HTML><Surface.Mesh/></Surface.Root></>
 }
 const scenario=new URLSearchParams(location.search).get('case')
 function Fixture(){

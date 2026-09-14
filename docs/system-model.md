@@ -46,7 +46,7 @@ A later frame cannot repair the evidence for an earlier handoff.
 |---|---|---|
 | Application and recipe | Content state, `inScene` request, visual treatment, gesture outcome, scene tuning | Does not declare a draw successful or force renderer release |
 | Surface identity | A stable reference across independent trees | Does not own DOM, GPU resources, or public protocol-writing commands |
-| Surface declaration | Controller claim, source and part registration, `inScene`, timing and callbacks | Does not own a scene's material or artistic policy |
+| Surface declaration | Controller claim, source and part registration, `inScene` and callbacks | Does not own a scene's material or artistic policy |
 | Source runtime | Capture, texture, painted dimensions, density, measured chrome | Does not own application state or a visible presenter |
 | Mesh presenter | Mesh, material, placement, hit region, draw evidence | Does not own the source or decide the crossing law |
 | Canvas host | Shared renderer boundary, registration, pending work and final presentation | Does not replace content state or scene motion policy |

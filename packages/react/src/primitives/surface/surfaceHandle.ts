@@ -20,7 +20,6 @@
 
 import { use, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import {
-  CROSSING_DEFAULTS,
   crossingAtRest,
   crossingCurve,
   crossingDrive,
@@ -49,7 +48,6 @@ import {
   surfaceRelease,
   surfaceUnclaimed,
   type CrossingState,
-  type CrossingTiming,
   type SurfaceIdentity,
   type SurfacePartId,
   type SurfacePresenterKey,
@@ -65,13 +63,6 @@ export type SurfacePresentation = 'page' | 'canvas' | 'both' | 'none'
 
 /** Private motion endpoints; the public wrapper calls canvas "scene". */
 export type SurfaceDestination = 'page' | 'canvas'
-
-export interface SurfaceTiming {
-  /** Time for the caller's DOM-side motion to stop. Default: 450. */
-  settleMs?: number
-  /** Time for the built-in progress driver to move between 0 and 1. Default: 600. */
-  durationMs?: number
-}
 
 /**
  * The excursion, 0 at DOM identity and 1 at the WebGL state. Read inside a
@@ -141,7 +132,6 @@ interface SurfaceCallbacks {
 export interface SurfaceControls extends SurfaceCallbacks {
   /** Where this Surface's declared presentations should render. */
   renderIn?: SurfacePresentation
-  timing?: SurfaceTiming
 }
 
 /**
@@ -160,7 +150,6 @@ export interface SurfaceStore {
   epoch(): number
   hasController(): boolean
   setCallbacks(next: SurfaceCallbacks): void
-  setTiming(next: CrossingTiming): void
   request(presentation: SurfacePresentation): void
   registerPresenter(key: SurfacePresenterKey): () => void
   /**
@@ -226,7 +215,7 @@ export interface SurfaceStore {
    * Hand the ramp to a scene. The driver answers a ramp per frame; the
    * phase machine and the lift gate are unchanged, so a driver decides how
    * the excursion moves and never whether the page may let go. `null`
-   * gives the ramp back to the built-in timed motion.
+   * gives the ramp back to the built-in step.
    */
   drive(step: SurfaceDriverStep | null): void
   /** The accepted raw motion value for a scene that owns the driver. */
@@ -305,7 +294,6 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   let readiness: SurfaceReadiness = readinessAtBirth()
   let crossing: CrossingState = crossingAtRest()
   let driver: SurfaceDriverStep | null = null
-  let timing: CrossingTiming = { settleMs: CROSSING_DEFAULTS.settleMs, rampMs: CROSSING_DEFAULTS.rampMs }
   let callbacks: SurfaceCallbacks = {}
   let requested: SurfacePresentation = 'page'
   let target: SurfaceDestination = 'page'
@@ -456,11 +444,9 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // UPLOADED generation, not the painted one — a paint the texture has not
   // taken yet is not something a draw can show.
   const contentCurrent = (): boolean => {
-    // Bounded, because every other condition in the lift gate is: a source
-    // that stops answering would hold a lift open forever. The bound is the
-    // capture's latency, never the author's timing — a transition timed
-    // `{settleMs: 0, durationMs: 1}` had a 1 ms bound and released onto the
-    // previous capture every time (decisions.md #65).
+    // Bounded, so a source that stops answering cannot hold a lift open
+    // forever. The bound is the capture's latency: a bound of 1 ms released
+    // onto the previous capture every time (decisions.md #65).
     if (crossing.heldMs >= CURRENT_CAPTURE_WAIT_MS) return true
     for (const [id, read] of contentFloor) {
       const runtime = partMap.get(id)?.runtime
@@ -523,7 +509,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       required: Math.max(1, readiness.registered.length + partSetMissing(parts).length),
       contentCurrent: contentCurrent(),
     }
-    if (!driver) return crossingFrame(before, evidence, dtMs, timing)
+    if (!driver) return crossingFrame(before, evidence, dtMs)
     const answer = driver({ dtMs, progress: before.ramp, target })
     if (!Number.isFinite(answer)) {
       store.reportError(
@@ -533,7 +519,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
         ),
       )
     }
-    return crossingDrive(before, evidence, dtMs, answer, timing)
+    return crossingDrive(before, evidence, dtMs, answer)
   }
 
   const settleReturn = (before: CrossingState) => {
@@ -589,15 +575,12 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     const seeksCanvas = requested === 'canvas' || requested === 'both'
     if (seeksCanvas) {
       if (!canvasDeclared) return false
-      // Waiting for missing inputs cannot produce evidence by drawing again.
-      // The finite settle dwell still runs; source and presenter changes wake us.
-      if (
-        crossing.phase === 'lifting' &&
-        crossing.heldMs >= timing.settleMs &&
-        (!state.ready || !contentCurrent())
-      ) {
-        return false
-      }
+      // A presenter that has not proven cannot prove by drawing again; source
+      // and presenter changes wake us. A capture still owed is different: its
+      // wait ends on `heldMs`, which only advances while frames are claimed,
+      // so parking there left a lift that never uploads waiting forever
+      // (decisions.md #68).
+      if (crossing.phase === 'lifting' && !state.ready) return false
       return !canvasHeld || crossing.ramp < 1
     }
     return canvasHeld || crossing.ramp > 0
@@ -753,9 +736,6 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     hasController: () => identity.controller !== null,
     setCallbacks(next) {
       callbacks = next
-    },
-    setTiming(next) {
-      timing = next
     },
     request(presentation) {
       if (presentation === requested) return
@@ -1073,7 +1053,7 @@ export function createSurface(name?: string): SurfaceHandle {
  *
  * The returned handle is stable for the component's lifetime, and `name` is
  * read once at creation: it names the handle rather than describing its
- * state. Pass the handle to the `<Surface>` that owns its view and timing.
+ * state. Pass the handle to the `<Surface>` that owns its view and callbacks.
  */
 export function useSurfaceHandle(name?: string): SurfaceHandle {
   return useSurfaceStore(name).handle
@@ -1093,9 +1073,9 @@ export function useSurfaceStore(name?: string): SurfaceStore {
 }
 
 /**
- * Install the controlled half of a Surface: presentation, timing, and callbacks.
+ * Install the controlled half of a Surface: presentation and callbacks.
  *
- * Callbacks and timing are installed in the layout phase. A handle can
+ * Callbacks are installed in the layout phase. A handle can
  * advance a frame between a commit and its passive effects, so a passive
  * effect misses exactly the transition the caller just asked for. A layout
  * effect finishes before the renderer can draw and keeps render pure. The
@@ -1104,7 +1084,6 @@ export function useSurfaceStore(name?: string): SurfaceStore {
 export function useSurfaceControls(store: SurfaceStore, controls: SurfaceControls): void {
   const {
     renderIn = 'page',
-    timing,
     onPresentationChange,
     onMotionComplete,
     onFreezeChange,
@@ -1119,15 +1098,9 @@ export function useSurfaceControls(store: SurfaceStore, controls: SurfaceControl
       onReady,
       onError,
     })
-    store.setTiming({
-      settleMs: timing?.settleMs ?? CROSSING_DEFAULTS.settleMs,
-      rampMs: timing?.durationMs ?? CROSSING_DEFAULTS.rampMs,
-    })
     return () => store.setCallbacks({})
   }, [
     store,
-    timing?.settleMs,
-    timing?.durationMs,
     onPresentationChange,
     onMotionComplete,
     onFreezeChange,

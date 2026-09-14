@@ -672,7 +672,6 @@ export function ControlsApp() {
               canvasId="controls"
               inScene={requestedInScene}
               onPresentationChange={presentation => controlsProof.holds.push({t:performance.now(),presentation,progress:surface.progress.get()})}
-              timing={{ settleMs: 220, durationMs: 360 }}
             >
               <Surface.HTML>{pageBoard}</Surface.HTML>
               <Surface.Scene>

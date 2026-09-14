@@ -4326,3 +4326,59 @@ because nothing in it is held.
 the consumer's question is whether their content should stand still.
 
 `scheda` now stops its simulation on `useFreezeSurface`.
+
+## #68 — A crossing waits for evidence, not for time (2026-09-13)
+
+`Surface`, `Surface.Root` and `SceneSurface.Root` no longer take `timing`.
+The page lets go on the frame the scene has drawn a capture taken after the
+lift. Without a driver the progress ramp is a step. This removes the settle
+part of #28 and #29, and the dwell #30 exempted carried motion from.
+
+`settleMs` was a minimum wait in `lifting`, so the page's own motion could ease
+flat before the swap. Since #66 that motion is paused on the lift's first
+frame, before the wait starts, so the wait held still content still for longer.
+Measured 2026-09-13 in headless Chrome on HTML-in-canvas, 3-4 lifts per case,
+with the running animations under the content root read at the press and the
+change of the picture read across the release:
+
+- controls, `settleMs: 220`: released 405-424 ms after the press; with 0,
+  203-239 ms. The release frame changed 3.13% of the board both ways, and
+  nothing was running at the press.
+- home, `settleMs: 120`: released 172-174 ms after the press; with 0, 72-73 ms.
+  The release frames changed at most 0.19% both ways.
+
+Logo was the one real dependency, and it was outside the content. Each letter
+hopped between poses on a 620 ms CSS transition on `.logo-letter`, which no
+captured part contains, while its mesh chased the same pose on a spring. With
+the 670 ms wait set to 0, the page released 55-75 ms after a press with a hop
+300-408 ms into its ease, and the release frame changed 1.93-3.86% of the word
+against 1.99-2.81% for a lift at rest. The hop now rides the float's carrier
+(`logoMotion.ts`), so page and mesh read one sample. Same probe, six presses
+each, reading the largest move of any letter's ink centroid across the release:
+before, up to 6.22 px; carried, at most 1.12 px, with letters still 0.05-0.36 em
+from their pose when the page let go.
+
+`durationMs` set the built-in ramp. Without a driver, only logo read it. For
+every other Surface it only delayed the return and `onMotionComplete`: home's
+page came back 272 ms after its postcard had landed. Logo now drives its own
+600 ms ramp.
+
+The wait for a current capture (#65) could not expire on a `demand` canvas.
+The store stopped claiming frames once the dwell was served with the capture
+still owed, and the lift's clock only advances on claimed frames. A store test
+with a source that never uploads parked at 464 ms with the page still held. It
+now stops claiming frames only while a presenter has not proven, which drawing
+cannot fix, and a pending capture keeps frames coming until its 500 ms bound.
+
+Two instruments used the dwell as a window to act inside `lifting`.
+`lifting-pointer` and the `api-regressions` clipping cases now hold the lift
+with a declared part whose presenter arrives late (#37): after 700 ms, and
+when the runner asks.
+
+Rejected: waiting automatically for finite CSS transitions and animations to
+end before the capture. It undoes #66 for exactly that motion, adds their
+length to every lift, and would not have seen logo's letters. It would also
+lean on `matchMotion`, which pairs a copy's animations with the original's by
+index. A clone carries no CSS transitions, so the pairing slips: measured in
+Chrome, a copy's keyframe animation took a running transition's 284 ms instead
+of its own 683 ms. That defect is open.

@@ -196,6 +196,9 @@ async function check(page,kind,enhanced){
     await page.mouse.click(inside.x,inside.y);await page.mouse.click(outside.x,outside.y)
     assert.equal(await page.evaluate(()=>window.__apiRegression.insideClicks),1)
     assert.equal(await page.evaluate(()=>window.__apiRegression.outsideClicks),0)
+    // The fixture holds preparation open with a part whose presenter waits for
+    // this call, so the shot and the clicks above land before the handoff.
+    await page.evaluate(()=>window.__apiRegression.releaseHold())
     await page.waitForFunction(()=>window.__apiRegression.status?.presentation==='scene')
     const after=await page.$eval('#clipped-source',node=>node.closest('canvas').style.clipPath)
     assert.equal(after,'','Preparation must release its clip before native scene input')

@@ -131,7 +131,7 @@ try {
   }
 
   // ── lifting: one fresh crossing per offset ────────────────────────────
-  // 550, not 600: the settle is 700ms and the click itself costs a mouse
+  // 550, not 600: the fixture holds each lift 700ms and the click itself costs a mouse
   // move plus dispatch, so the last trial needs real margin or a slow CI
   // runner lands it in the gl phase and fails the gate on timing alone.
   for (const offsetMs of [100, 350, 550]) {

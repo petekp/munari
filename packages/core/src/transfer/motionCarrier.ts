@@ -1,10 +1,9 @@
 // The motion carrier — the source of truth that lets motion cross.
 //
-// The crossing law parks compositor-clocked motion: a CSS animation's
+// A crossing freezes compositor-clocked motion: a CSS animation's
 // clock lives inside the compositor, neither renderer can sample it at
-// the swap frame, and the only state both sides can agree on
-// indefinitely is zero. So the authoring contract asks idle motion to
-// ease flat, and the settle dwell waits for it.
+// the swap frame, so the binding pauses it at the lift and the capture
+// holds that pose (decisions.md #66).
 //
 // A carried motion escapes that rule the way a pointer drag always has:
 // its source of truth lives OUTSIDE both renderers. One carrier owns

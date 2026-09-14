@@ -331,7 +331,7 @@ export function RippleTarget({ name, content }: { name: string; content: React.R
   return (
     <div ref={holder} className="cand-target" onPointerDown={onHolderDown} onPointerUp={onHolderUp}>
       {size ? (
-        <Surface.Root surface={surface} timing={{ settleMs: 0, durationMs: 1 }} inScene={inScene}>
+        <Surface.Root surface={surface} inScene={inScene}>
 <Surface.HTML size={size}>{content}</Surface.HTML>
 
           {box && (
