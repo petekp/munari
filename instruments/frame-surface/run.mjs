@@ -160,6 +160,48 @@ try {
     clearTimeout(gateTimeout)
   }
 
+  console.log('graphics diagnostic: Three pixels', JSON.stringify(await page.evaluate(async (moduleUrl) => {
+    const THREE = await import(moduleUrl)
+    const renderer = new THREE.WebGLRenderer({ alpha: false, antialias: false, preserveDrawingBuffer: true })
+    renderer.setSize(64, 16)
+    renderer.setClearColor(0xff0000)
+    const scene = new THREE.Scene()
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10)
+    camera.position.z = 1
+    const geometry = new THREE.PlaneGeometry(2, 2)
+    const canvas = document.createElement('canvas')
+    canvas.width = 64
+    canvas.height = 16
+    const context = canvas.getContext('2d', { alpha: false })
+    context.fillStyle = '#149632'
+    context.fillRect(0, 0, 64, 16)
+    const mesh = new THREE.Mesh(geometry)
+    scene.add(mesh)
+    const results = []
+    for (const mode of ['solid', 'default', 'srgb', 'srgb-mipmaps', 'srgb-anisotropy']) {
+      const texture = mode === 'solid' ? null : new THREE.CanvasTexture(canvas)
+      if (texture) {
+        texture.colorSpace = mode.startsWith('srgb') ? THREE.SRGBColorSpace : THREE.NoColorSpace
+        texture.generateMipmaps = mode.includes('mipmaps') || mode.includes('anisotropy')
+        texture.minFilter = texture.generateMipmaps ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter
+        texture.anisotropy = mode.includes('anisotropy') ? 8 : 1
+        texture.needsUpdate = true
+      }
+      const material = new THREE.MeshBasicMaterial({ map: texture, color: mode === 'solid' ? 0x149632 : 0xffffff, toneMapped: false })
+      mesh.material = material
+      renderer.render(scene, camera)
+      const bytes = new Uint8Array(4)
+      const gl = renderer.getContext()
+      gl.readPixels(32, 8, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, bytes)
+      results.push({ mode, rgba: Array.from(bytes), error: gl.getError() })
+      material.dispose()
+      texture?.dispose()
+    }
+    geometry.dispose()
+    renderer.dispose()
+    renderer.forceContextLoss()
+    return results
+  }, `/@fs/${repoRoot}/node_modules/three/build/three.module.js`)))
   const receiptTrace = result.receipts
     .map(
       ({ receipt }) =>
