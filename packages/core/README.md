@@ -94,8 +94,8 @@ match the current transfer, pixel source, and presenter version.
 
 A CSS animation can run on Chrome's compositor, which places page layers on the
 screen. JavaScript cannot read the same animation state from both renderers on
-the handoff frame. Munari lets idle CSS motion settle to zero before it changes
-the visible renderer.
+the handoff frame. Munari freezes idle CSS motion at the lift, and changes the
+visible renderer once the scene has drawn a capture taken after the lift.
 
 `motionCarrier` supports motion that must continue through the handoff. It
 keeps the animation clock in JavaScript. The page and the mesh read the same
