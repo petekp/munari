@@ -60,17 +60,6 @@ export function stepSpring(
   return s
 }
 
-/** True once the spring has visibly stopped — position and velocity both
- *  inside epsilon. The scene may then stop writing the mesh transform. */
-export function springSettled(
-  s: SpringState,
-  target: number,
-  eps = 0.001,
-  vEps = 0.01,
-): boolean {
-  return Math.abs(s.x - target) < eps && Math.abs(s.v) < vEps
-}
-
 /** ζ for a params pair — the number the tuning vocabulary above pins. */
 export function dampingRatio(p: SpringParams): number {
   return p.damping / (2 * Math.sqrt(p.stiffness))
@@ -121,24 +110,13 @@ export const PANEL_KICK = 0.045
  *  drop point, and swings once before it rests — momentum you can see. */
 export const PANEL_GLIDE_SPRING: SpringParams = { stiffness: 70, damping: 10 }
 
-/** How far a spring settles BEHIND a target that keeps moving at a
- *  steady rate. A step response ends on its target; a ramp never does,
- *  and the standing gap is what a hand reads as lag.
- *
- *  The constant is 2ζ/ωn, which reduces to plain c/k — the trailing
- *  distance does not care how the damping was split into a ratio. For
- *  the glide spring that is 10/70 = 0.143 s of hand travel. */
-export function rampLag(p: SpringParams, rate: number): number {
-  return (p.damping / p.stiffness) * rate
-}
-
 /** Does the slab glide, or is it pinned to its berth?
  *
  *  A carry is a journey, and the glide spring is what a journey feels
  *  like. A resize is not a journey: the panel stands still and changes
  *  size, and its berth shifts only because the berth is written in
  *  terms of w/2. Gliding to a berth that is itself being dragged makes
- *  the slab trail the hand by `rampLag` — tens of pixels at ordinary
+ *  the slab trail the hand by tens of pixels at ordinary
  *  hand speeds — and then swing for the best part of a second after the
  *  hand stops. So a hand on the grip pins the slab to its berth, the
  *  same way a hand on the slab kills the wall bounce. */
