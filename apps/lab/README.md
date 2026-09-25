@@ -2,6 +2,8 @@
 
 The demo and development app. Run `npm run lab` from the repository root
 for Chrome with HTML-in-canvas enabled, or `npm run dev` for Vite alone.
+`npm run deploy:demo` uploads a local build to production; the root
+`vercel.json` describes the same build for a deployment made from a Git commit.
 
 The lab consumes `@petepetrash/munari` and its `/advanced` entry through
 the same exports as an outside application. Do not import package internals.
