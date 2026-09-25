@@ -4474,3 +4474,34 @@ ignores `mix-blend-mode` on composited layers: a multiply over mid-gray measured
 128/255 on a composited layer, where ordinary content measured the expected
 114. Its pictures of the lit page are therefore not evidence of iOS appearance;
 the script, DOM and opening sequence above are.
+
+<a id="70"></a>
+
+## #70 — The lamp mirrors the page only under a native engine (2026-09-25)
+
+With `?capture=auto`, Chrome on iOS showed the home page's native fallback while
+Safari on the same phone opened the lit page. Both run WebKit, and snapDOM was
+installed in both. The difference was a race. The lamp refracts a mirror of the
+viewport (#52), and #60 let that mirror use any installed engine. The mirror is
+a full-page capture requested on every scroll and relevant mutation, and the
+opening waits for its first paint (#57).
+
+Under HTML-in-canvas that capture follows the page's own paint. Under snapDOM
+each one clones, inlines and rasterizes the whole page. Measured 2026-09-25 in
+WebKitGTK 2.52.6 with iPhone user agents on the production bundle: the first
+mirror paint arrived 2.6s after its source was created, and three of five fresh
+loads missed the four-second limit and opened native at 7.4s or later. Once
+open, the lamp repainted the mirror one or two times in five idle seconds and
+24 times in five seconds of scrolling.
+
+The lamp now mirrors the page only when the installed engine is native. Under
+snapDOM it keeps the reflections and emission it already shows in every
+browser without a capture engine; the glass no longer bends page text there.
+After the change, four of four fresh loads opened lit with a live postcard in
+3.2–4.5s, with no mirror paints at reveal, while idle or while scrolling. The
+postcard lifted into the scene through snapDOM in 1.4s and returned.
+
+`probe:home-startup` adds `snapdom-engine`: `?capture=auto` without the trial
+must install snapDOM, open without a lamp mirror source at any sampled frame,
+and reach the lit page. The lit assertion needs a real GPU, as the other lit
+cases do.

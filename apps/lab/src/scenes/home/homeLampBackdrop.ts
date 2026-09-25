@@ -2,7 +2,7 @@
 // Glass must bend actual text and images. The mirror never owns native input;
 // live canvases are sampled after their frame, and the lamp excludes itself (#52).
 import * as THREE from 'three'
-import {captureAvailable,createDomTextureSource,type DomTextureSource} from '@petepetrash/munari/advanced'
+import {captureAvailable,captureEngine,createDomTextureSource,type DomTextureSource} from '@petepetrash/munari/advanced'
 import {type HomeFlyerStore,type HomeFlyer} from './homeFlyer'
 import {lampPixelRatio,watchLampViewport} from './homeLampViewport'
 import {LAMP_CANVAS_LAYERS} from './homeLampGlassShaders'
@@ -67,10 +67,14 @@ export function createLampBackdrop(page:HTMLElement,wake:()=>void,flyer:HomeFlye
     if(allocations.get(texture)!==size){texture.dispose();allocations.set(texture,size)}
     texture.needsUpdate=true
   }
-  // The installed engine, not the raw trial probe: this backdrop works under
-  // any engine that can make a source, and asking the platform directly would
-  // leave it blank in every browser the second engine exists for.
-  const supported=captureAvailable()
+  // The installed engine, not the raw trial probe, and only one that paints the
+  // live element. The mirror is a full-page capture requested on every scroll
+  // and mutation, and the opening waits for its first paint. snapDOM clones,
+  // inlines and rasterizes the whole page for each one: in WebKit its first
+  // capture landed 2.6s after the source, racing the opening's four-second
+  // limit, and 5s of scrolling made 24 more (2026-09-25, decision #70). The
+  // glass keeps its reflections and emission without it.
+  const supported=captureAvailable()&&captureEngine().native
   const schedule=()=>{if(alive&&supported&&!mirrorFrame)mirrorFrame=requestAnimationFrame(mirror)}
   const mirror=()=>{
     mirrorFrame=0;if(!alive)return

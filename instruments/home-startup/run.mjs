@@ -26,6 +26,8 @@ const cases = [
   {name: 'webkit-observer-fault', capture: false, webkitObserver: true},
   {name: 'graphics-setup-throws', capture: false, graphicsThrows: true},
   {name: 'stalled-font', capture: false, stalledFont: true},
+  // The fallback engine those browsers can opt into (decision #70).
+  {name: 'snapdom-engine', capture: false, snapdom: true},
 ]
 const selected = process.env.STARTUP_CASES?.split(',').map(name=>name.trim())
 if(selected)assert.ok(selected.length>0&&selected.every(name=>cases.some(scenario=>scenario.name===name)),'STARTUP_CASES must name existing cases')
@@ -40,14 +42,22 @@ assert.ok(otherDemoChunks.length>0,'The probe must discover the other scene entr
 const results = []
 let browser
 
+// The page a case opens, and which event counts as its navigation completing.
+function openingRequest({snapdom, stalledFont}) {
+  // A pending preloaded font holds the load event itself.
+  return {path: '/?scene=home' + (snapdom ? '&capture=auto' : ''), waitUntil: stalledFont ? 'domcontentloaded' : 'load'}
+}
+
 // Decision #69: each fault must reach the page, and the page must still open.
-function assertFaultReached({controls, states}, {webkitObserver, graphicsThrows, stalledFont}) {
+function assertFaultReached({controls, states, content}, {webkitObserver, graphicsThrows, stalledFont, snapdom}) {
   if(webkitObserver||graphicsThrows)assert.ok(controls.observerFaults>0,'The observer fault must reach the lighting setup')
   const firstExposed = states.find(state => state.home && state.exposed)
   if(stalledFont)assert.ok(controls.fontsStalled>0&&firstExposed.fonts==='loading','The page must open while a held font is still loading')
+  // Decision #70: a full-page snapDOM mirror raced the opening's limit.
+  if(snapdom)assert.ok(content.engine==='snapdom'&&!states.some(state=>state.lampMirror),'Under snapDOM the lamp must not mirror the page')
 }
 
-function assertOpening(result, {early, reduced, capture, webgl, stalledWorker, fontDelay, brokenFonts, webkitObserver, graphicsThrows, stalledFont}) {
+function assertOpening(result, {early, reduced, capture, webgl, stalledWorker, fontDelay, brokenFonts, webkitObserver, graphicsThrows, stalledFont, snapdom}) {
   const {content, states, pixels, maximumShadowChange, scripts, errors, controls} = result
   const native = !webgl || stalledWorker || graphicsThrows || stalledFont
   const exposed = states.filter(state => state.home && state.exposed)
@@ -69,12 +79,12 @@ function assertOpening(result, {early, reduced, capture, webgl, stalledWorker, f
   if(stalledWorker)assert.ok(controls.workerStalled>0,'The stalled-worker control must intercept the actual worker')
   if(fontDelay)assert.ok(controls.fontsDelayed>0,'The font-delay control must intercept a requested font')
   if(brokenFonts)assert.ok(controls.fontsFailed>0,'The font-failure control must abort a requested font')
-  assertFaultReached(result, {webkitObserver, graphicsThrows, stalledFont})
+  assertFaultReached(result, {webkitObserver, graphicsThrows, stalledFont, snapdom})
   if (native) assert.notEqual(content.colour, 'rgba(0, 0, 0, 0)')
   assert.deepEqual(errors, [])
 }
 
-async function measure({name, width = 1440, height = 1000, capture = true, webgl = true, early = false, fontDelay = 0, brokenFonts = false, stalledWorker = false, reduced = true, webkitObserver = false, graphicsThrows = false, stalledFont = false}) {
+async function measure({name, width = 1440, height = 1000, capture = true, webgl = true, early = false, fontDelay = 0, brokenFonts = false, stalledWorker = false, reduced = true, webkitObserver = false, graphicsThrows = false, stalledFont = false, snapdom = false}) {
   const directory = path.join(output, name)
   await mkdir(directory, {recursive: true})
   browser = await puppeteer.launch({
@@ -142,6 +152,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
         lit: doc?.querySelector('.home-page')?.dataset.lit === 'true',
         headline: !!doc?.querySelector('[data-headline-ready]'),
         fonts: doc?.fonts.status, heading: rect('h1'), card: rect('.home-hero-holder'),
+        lampMirror: !!window.__munari?.stats?.().some(source => source.label === 'home-lamp-backdrop'),
       }
       const value = JSON.stringify(state)
       if (value !== previous) { window.__startup.push({time: performance.now(), ...state}); previous = value }
@@ -171,8 +182,8 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
     void client.send('Page.screencastFrameAck', {sessionId: event.sessionId}).catch(() => {})
   })
   await client.send('Page.startScreencast', {format: 'jpeg', quality: 95, maxWidth: width, maxHeight: height, everyNthFrame: 1})
-  // A pending preloaded font holds the load event itself.
-  await page.goto(url + '/?scene=home', {waitUntil: stalledFont ? 'domcontentloaded' : 'load'})
+  const opening = openingRequest({snapdom, stalledFont})
+  await page.goto(url + opening.path, {waitUntil: opening.waitUntil})
   await page.waitForSelector('.home-page')
   assert.equal(await page.$('iframe.site-frame'), null, 'Home must render in the site document')
   const frame = page
@@ -195,6 +206,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
       button: document.querySelector('.home-hero-row button').getBoundingClientRect().toJSON(),
       lit: document.querySelector('.home-page').dataset.lit === 'true',
       sceneError: document.querySelector('.scene-error') !== null,
+      engine: window.__munari?.engine?.() ?? null,
     })),
   ])
   const scripts = [...new Set(requests.filter(request => request.startsWith('/assets/') && request.endsWith('.js')))]
@@ -246,7 +258,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
   const maximumShadowChange = Math.max(...pixels.map(frame => frame.error))
   const result = {name, content, scripts, scriptBytes, states: timing.states, pixels, maximumShadowChange, controls:{...controls,forcedReveal:timing.forcedReveal,observerFaults:timing.observerFaults}, imageViewport: visible.at(-1)?.width, errors}
   await writeFile(path.join(directory, 'results.json'), JSON.stringify(result, null, 2))
-  assertOpening(result, {early, reduced, capture, webgl, stalledWorker, fontDelay, brokenFonts, webkitObserver, graphicsThrows, stalledFont})
+  assertOpening(result, {early, reduced, capture, webgl, stalledWorker, fontDelay, brokenFonts, webkitObserver, graphicsThrows, stalledFont, snapdom})
   console.log(JSON.stringify({name, firstVisibleMs: exposed[0].time, maximumShadowChange, frames: pixels.length, scriptBytes}))
   results.push(result)
   await client.detach(); await browser.close(); browser = null

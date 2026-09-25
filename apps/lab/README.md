@@ -47,6 +47,7 @@ inside `DemoHost`; the other scenes keep their frames and existing viewport assu
 The first document paints an inline wordmark while the page prepares. The
 navigation and homepage appear together after fonts, current shadow masks,
 headline treatments and the lamp backdrop have reached a completed draw. The
+backdrop mirrors the page only under the native engine ([#70](../../docs/decisions.md#70)). The
 cover stays outside the content being captured so preparation can still paint. There is no
 minimum display time. Failed graphics preparation selects native content for
 that visit, rather than adding effects after the page is visible: a stall, a
