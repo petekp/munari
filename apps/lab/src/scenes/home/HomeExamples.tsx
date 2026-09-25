@@ -1,6 +1,7 @@
 // Example gallery — familiar interactions first, implementation links second.
 // Top-level links leave the scene iframe so navigation never nests the shell.
 import { FEATURED_EXAMPLES } from '../../components/sceneCatalog'
+import { captureParam } from '../../captureMode'
 
 export function ExamplesSection() {
   return (
@@ -11,7 +12,7 @@ export function ExamplesSection() {
       </div>
       <div className="home-examples">
         {FEATURED_EXAMPLES.map((example) => (
-          <a key={example.id} className="home-example" href={`/?scene=${example.id}`} target="_top">
+          <a key={example.id} className="home-example" href={`/?scene=${example.id}${captureParam}`} target="_top">
             <div className="home-example-image" data-relief="raised">
               <img src={`/thumbs/${example.id}.jpg`} alt="" loading="lazy" width={640} height={360} />
               <span>Open example <span aria-hidden>↗</span></span>
@@ -22,7 +23,7 @@ export function ExamplesSection() {
           </a>
         ))}
       </div>
-      <p className="home-more-examples">More to explore: <a className="home-text-link" href="/?scene=logo" target="_top">the Munari wordmark <span aria-hidden>↗</span></a></p>
+      <p className="home-more-examples">More to explore: <a className="home-text-link" href={`/?scene=logo${captureParam}`} target="_top">the Munari wordmark <span aria-hidden>↗</span></a></p>
     </section>
   )
 }

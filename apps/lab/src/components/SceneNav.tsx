@@ -3,6 +3,7 @@
 
 import { MunariLogo } from './MunariLogo'
 import { exampleFor, GUIDE_URL, SOURCE_ROOT } from './sceneCatalog'
+import { captureParam } from '../captureMode'
 import './lit.css'
 import './siteShell.css'
 
@@ -22,7 +23,7 @@ export function SceneNav<T extends string>({ scenes, active, onSelect, supported
     <>
       <nav className="site-sidebar" aria-label="Example sidebar">
         <div className="site-brand">
-          <a href="/?scene=home" className="site-brand-link" aria-label="Munari overview">
+          <a href={`/?scene=home${captureParam}`} className="site-brand-link" aria-label="Munari overview">
             <div aria-hidden className="site-wordmark"><MunariLogo /></div>
           </a>
           <p>HTML, 3D and shaders, unified.<br />An experimental React library.</p>
@@ -52,13 +53,13 @@ export function SceneNav<T extends string>({ scenes, active, onSelect, supported
         <div className="site-nav-footer">
           <a href={GUIDE_URL} target="_blank" rel="noreferrer">Developer guide</a>
           <a href={SOURCE_ROOT} target="_blank" rel="noreferrer">GitHub</a>
-          <a href="/?scene=home#support" className="site-support" data-supported={supported}>
+          <a href={`/?scene=home${captureParam}#support`} className="site-support" data-supported={supported}>
             {supported ? 'Capture available' : 'Standard rendering'}
           </a>
         </div>
       </nav>
       <nav className="site-mobile-nav" aria-label="Example picker">
-        <a className="site-mobile-brand" href="/?scene=home">munari</a>
+        <a className="site-mobile-brand" href={`/?scene=home${captureParam}`}>munari</a>
         <label className="sr-only" htmlFor="site-example">Choose an example</label>
         <select
           id="site-example"
