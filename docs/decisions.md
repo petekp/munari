@@ -3324,7 +3324,8 @@ reduced motion removes that fade. Four seconds of unsuccessful graphics
 preparation selects a stable native presentation for the visit and disposes
 the incomplete effects. A successful late worker cannot add them afterward.
 The document offers Reload after ten seconds if startup itself is stalled.
-These are failure limits, not scheduled release times.
+These are failure limits, not scheduled release times. Decision #69 adds
+the same exit for a thrown graphics setup and for fonts that never settle.
 
 `probe:home-startup` records the production page with delayed resources. It
 rejects an exposed page before readiness and checks the button's resting shadow
@@ -4420,3 +4421,56 @@ lean on `matchMotion`, which pairs a copy's animations with the original's by
 index. A clone carries no CSS transitions, so the pairing slips: measured in
 Chrome, a copy's keyframe animation took a running transition's 284 ms instead
 of its own 683 ms. That defect is open.
+
+<a id="69"></a>
+
+## #69 — The opening always ends (2026-09-25)
+
+The public site never opened in Safari or Chrome on iOS; both run WebKit.
+WebKit's `ResizeObserver.observe` throws a TypeError for
+`box: 'device-pixel-content-box'` instead of ignoring the option (platform.md
+#29), and the deployed build (`cd87c95`, 2026-09-09) called it unguarded in the
+masthead's lighting setup. The throw reached `SceneBoundary` outside Home. That
+unmounted Home together with its four-second deadline (#57), and nothing else
+lifts the cover: the visitor saw the wordmark and, after ten seconds, a Reload
+link that repeated the failure. The error box rendered behind the cover.
+
+Measured 2026-09-25 in WebKitGTK 2.52.6 (MiniBrowser through WebKitWebDriver)
+with an iPhone user agent and a phone-sized window: the deployed commit threw
+"Type error" at 3.6s and its cover was still up at 90s. Chromium with WebKit's
+observer behaviour injected reproduced the same stuck cover; the same build
+without the injection revealed. Main has guarded that call since the snapDOM
+and Safari work, and revealed there with its lighting.
+
+A guard fixes one call. The opening now has an exit from every wait:
+
+- A throw from the masthead subtree (lighting, lamp, headline treatments and
+  the postcard's renderer) is a failed graphics preparation, like the stall in
+  #57. `HomeGraphicsBoundary` selects native content for the visit and mounts
+  the masthead once more without those effects; the native opening reveals.
+  With the guard deliberately removed, WebKit revealed native content at 1.8s.
+- Fonts that have not settled within the same four seconds select native
+  content. `document.fonts.ready` has no deadline of its own, so one stalled
+  font request held the cover for as long as the connection stalled.
+- `SceneBoundary` lifts the cover when it catches, so an error outside the
+  masthead shows its message instead of an endless opening.
+
+The fixed production bundle opened lit in WebKit with Safari's and Chrome's
+iOS user agents (4.1s and 3.6s) and at device pixel ratio 3 (7.9s), all on
+software GL.
+
+`probe:home-startup` adds three no-capture cases, the configuration of every
+iOS browser. `webkit-observer-fault` injects WebKit's rejection and still
+requires the lit page. `graphics-setup-throws` makes the lighting setup's page
+observation throw on either box and requires a native reveal with no scene
+error; `stalled-font` never answers the font requests and requires a native
+reveal while `document.fonts.status` is still `loading`. Unmodified main fails
+both: the first never renders `.home-page`, the second never becomes ready.
+Under SwiftShader the lighting takes longer than the four-second limit, so the
+lit cases, `webkit-observer-fault` among them, need a real GPU.
+
+WebKitGTK is the WebKit available on Linux, not iOS Safari. Its compositor
+ignores `mix-blend-mode` on composited layers: a multiply over mid-gray measured
+128/255 on a composited layer, where ordinary content measured the expected
+114. Its pictures of the lit page are therefore not evidence of iOS appearance;
+the script, DOM and opening sequence above are.

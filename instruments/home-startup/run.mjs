@@ -1,6 +1,8 @@
 // Opening frames — show the prepared composition once, then keep its shadows stable.
 // An early-reveal control exposes native HTML while the shadow worker is delayed;
 // both the readiness check and the button-shadow pixels must catch that failure.
+// Every wait must end: WebKit's observer rejection, a thrown graphics setup and a
+// font that never arrives each still open the page (decision #69).
 import assert from 'node:assert/strict'
 import {mkdir, readFile, writeFile} from 'node:fs/promises'
 import path from 'node:path'
@@ -20,6 +22,10 @@ const cases = [
   {name: 'stalled-shadow-worker', stalledWorker: true},
   {name: 'early-reveal-control', early: true},
   {name: 'animated-entrance', reduced: false},
+  // Every iOS browser runs WebKit with no capture engine.
+  {name: 'webkit-observer-fault', capture: false, webkitObserver: true},
+  {name: 'graphics-setup-throws', capture: false, graphicsThrows: true},
+  {name: 'stalled-font', capture: false, stalledFont: true},
 ]
 const selected = process.env.STARTUP_CASES?.split(',').map(name=>name.trim())
 if(selected)assert.ok(selected.length>0&&selected.every(name=>cases.some(scenario=>scenario.name===name)),'STARTUP_CASES must name existing cases')
@@ -34,8 +40,16 @@ assert.ok(otherDemoChunks.length>0,'The probe must discover the other scene entr
 const results = []
 let browser
 
-function assertOpening(result, {early, reduced, capture, webgl, stalledWorker, fontDelay, brokenFonts}) {
+// Decision #69: each fault must reach the page, and the page must still open.
+function assertFaultReached({controls, states}, {webkitObserver, graphicsThrows, stalledFont}) {
+  if(webkitObserver||graphicsThrows)assert.ok(controls.observerFaults>0,'The observer fault must reach the lighting setup')
+  const firstExposed = states.find(state => state.home && state.exposed)
+  if(stalledFont)assert.ok(controls.fontsStalled>0&&firstExposed.fonts==='loading','The page must open while a held font is still loading')
+}
+
+function assertOpening(result, {early, reduced, capture, webgl, stalledWorker, fontDelay, brokenFonts, webkitObserver, graphicsThrows, stalledFont}) {
   const {content, states, pixels, maximumShadowChange, scripts, errors, controls} = result
+  const native = !webgl || stalledWorker || graphicsThrows || stalledFont
   const exposed = states.filter(state => state.home && state.exposed)
   const complete = states.findLast(state => state.home)
   assert.ok(exposed.length && pixels.length > 1, 'The opening and its visible aftermath must be observed')
@@ -46,7 +60,8 @@ function assertOpening(result, {early, reduced, capture, webgl, stalledWorker, f
     assert.ok(Math.abs(state[name][key] - complete[name][key]) <= 1, `${name}.${key} moved after reveal`)
   }
   assert.equal(content.capture, capture)
-  assert.equal(content.lit, webgl && !stalledWorker)
+  assert.equal(content.lit, !native)
+  assert.equal(content.sceneError, false, 'A thrown setup must select native content, not the scene error')
   assert.equal(content.overflow, false)
   assert.ok(!scripts.some(script => otherDemoChunks.some(name=>script.startsWith(`/assets/${name}-`))), 'Home must not fetch other demos')
   assert.ok(controls.entryDelayed>0,'The delayed entry control must intercept the actual entry script')
@@ -54,11 +69,12 @@ function assertOpening(result, {early, reduced, capture, webgl, stalledWorker, f
   if(stalledWorker)assert.ok(controls.workerStalled>0,'The stalled-worker control must intercept the actual worker')
   if(fontDelay)assert.ok(controls.fontsDelayed>0,'The font-delay control must intercept a requested font')
   if(brokenFonts)assert.ok(controls.fontsFailed>0,'The font-failure control must abort a requested font')
-  if (!webgl || stalledWorker) assert.notEqual(content.colour, 'rgba(0, 0, 0, 0)')
+  assertFaultReached(result, {webkitObserver, graphicsThrows, stalledFont})
+  if (native) assert.notEqual(content.colour, 'rgba(0, 0, 0, 0)')
   assert.deepEqual(errors, [])
 }
 
-async function measure({name, width = 1440, height = 1000, capture = true, webgl = true, early = false, fontDelay = 0, brokenFonts = false, stalledWorker = false, reduced = true}) {
+async function measure({name, width = 1440, height = 1000, capture = true, webgl = true, early = false, fontDelay = 0, brokenFonts = false, stalledWorker = false, reduced = true, webkitObserver = false, graphicsThrows = false, stalledFont = false}) {
   const directory = path.join(output, name)
   await mkdir(directory, {recursive: true})
   browser = await puppeteer.launch({
@@ -69,7 +85,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
       '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(!webgl ? ['--disable-webgl'] : [])],
   })
   const page = await browser.newPage(), errors = [], requests = [], frames = []
-  const controls={entryDelayed:0,workerDelayed:0,workerStalled:0,fontsDelayed:0,fontsFailed:0}
+  const controls={entryDelayed:0,workerDelayed:0,workerStalled:0,fontsDelayed:0,fontsFailed:0,fontsStalled:0}
   await setChromeViewport(page, {width, height})
   await page.emulateMediaFeatures([{name: 'prefers-reduced-motion', value: reduced ? 'reduce' : 'no-preference'}])
   await page.setCacheEnabled(false)
@@ -83,6 +99,8 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
       if (early) { controls.workerDelayed++;await delay(1000) }
     }
     if (requested.pathname.endsWith('.woff2') && requested.origin === url) {
+      // Never answered: the request stays pending, as on a stalled connection.
+      if (stalledFont) { controls.fontsStalled++; return }
       if (brokenFonts) { controls.fontsFailed++;await request.abort(); return }
       if (fontDelay) { controls.fontsDelayed++;await delay(fontDelay) }
     }
@@ -131,13 +149,30 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
     }
     requestAnimationFrame(sample)
   }, early)
+  // WebKit rejects the device-pixel box instead of ignoring it (platform.md #29).
+  // The graphics fault throws from the lighting setup's page observation on any
+  // box, past the guard that answers WebKit.
+  await page.evaluateOnNewDocument(({webkitObserver, graphicsThrows}) => {
+    window.__observerFaults = 0
+    if (!webkitObserver && !graphicsThrows) return
+    const observe = ResizeObserver.prototype.observe
+    ResizeObserver.prototype.observe = function (target, options) {
+      const lightingPage = target instanceof Element && target.classList.contains('home-page')
+      if ((webkitObserver && options?.box === 'device-pixel-content-box') || (graphicsThrows && lightingPage)) {
+        window.__observerFaults++
+        throw new TypeError('Type error')
+      }
+      return observe.call(this, target, options)
+    }
+  }, {webkitObserver, graphicsThrows})
   const client = await page.createCDPSession()
   client.on('Page.screencastFrame', event => {
     frames.push({time: event.metadata.timestamp * 1000, data: event.data, width: event.metadata.deviceWidth, height: event.metadata.deviceHeight})
     void client.send('Page.screencastFrameAck', {sessionId: event.sessionId}).catch(() => {})
   })
   await client.send('Page.startScreencast', {format: 'jpeg', quality: 95, maxWidth: width, maxHeight: height, everyNthFrame: 1})
-  await page.goto(url + '/?scene=home', {waitUntil: 'load'})
+  // A pending preloaded font holds the load event itself.
+  await page.goto(url + '/?scene=home', {waitUntil: stalledFont ? 'domcontentloaded' : 'load'})
   await page.waitForSelector('.home-page')
   assert.equal(await page.$('iframe.site-frame'), null, 'Home must render in the site document')
   const frame = page
@@ -151,7 +186,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
     page.evaluate(() => {
       window.__stopStartup = true
       const frame = { x: 0, y: 0 }
-      return {origin: performance.timeOrigin, paint: performance.getEntriesByName('first-paint')[0].startTime, states: window.__startup, forcedReveal:window.__forcedStartupReveal===true, frame, width: innerWidth}
+      return {origin: performance.timeOrigin, paint: performance.getEntriesByName('first-paint')[0].startTime, states: window.__startup, forcedReveal:window.__forcedStartupReveal===true, observerFaults: window.__observerFaults, frame, width: innerWidth}
     }),
     frame.evaluate(() => ({
       capture: 'drawElementImage' in CanvasRenderingContext2D.prototype,
@@ -159,6 +194,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
       overflow: document.querySelector('.home-page').scrollWidth > document.querySelector('.home-page').clientWidth,
       button: document.querySelector('.home-hero-row button').getBoundingClientRect().toJSON(),
       lit: document.querySelector('.home-page').dataset.lit === 'true',
+      sceneError: document.querySelector('.scene-error') !== null,
     })),
   ])
   const scripts = [...new Set(requests.filter(request => request.startsWith('/assets/') && request.endsWith('.js')))]
@@ -208,9 +244,9 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
     return metrics
   }, {frames: visible, timing, button: content.button, mobile: width < 800})
   const maximumShadowChange = Math.max(...pixels.map(frame => frame.error))
-  const result = {name, content, scripts, scriptBytes, states: timing.states, pixels, maximumShadowChange, controls:{...controls,forcedReveal:timing.forcedReveal}, imageViewport: visible.at(-1)?.width, errors}
+  const result = {name, content, scripts, scriptBytes, states: timing.states, pixels, maximumShadowChange, controls:{...controls,forcedReveal:timing.forcedReveal,observerFaults:timing.observerFaults}, imageViewport: visible.at(-1)?.width, errors}
   await writeFile(path.join(directory, 'results.json'), JSON.stringify(result, null, 2))
-  assertOpening(result, {early, reduced, capture, webgl, stalledWorker, fontDelay, brokenFonts})
+  assertOpening(result, {early, reduced, capture, webgl, stalledWorker, fontDelay, brokenFonts, webkitObserver, graphicsThrows, stalledFont})
   console.log(JSON.stringify({name, firstVisibleMs: exposed[0].time, maximumShadowChange, frames: pixels.length, scriptBytes}))
   results.push(result)
   await client.detach(); await browser.close(); browser = null

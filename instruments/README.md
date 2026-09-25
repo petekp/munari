@@ -93,12 +93,17 @@ button shadow. A one-pixel clock outside the scene makes Chrome record static
 fallback pages throughout the observation window. A
 native-first reveal with a delayed shadow worker must fail both the readiness
 and pixel checks. Mobile delayed fonts, no capture, no WebGL with failed fonts,
-and a nonresponsive shadow worker exercise the fallbacks. The regular animated
+and a nonresponsive shadow worker exercise the fallbacks. Three no-capture
+cases stand in for iOS: WebKit's `device-pixel-content-box` rejection must
+still reach the lit page, a thrown lighting setup and never-answered font
+requests must each open native content, and the last must open while fonts are
+still loading. The lit cases need a real GPU: under SwiftShader the lighting
+misses its four-second limit and the page opens native. The regular animated
 entrance is also recorded. Home must not request other demo chunks. This checks
 recorded compositor frames and visible ordering, not a network-independent
 speed budget or flight continuity. Use `HEADED=1` for visible Chrome and
 `STARTUP_OUTPUT` for artifacts, and `STARTUP_CASES` for a comma-separated subset.
-See [decision #57](../docs/decisions.md#57).
+See [decision #57](../docs/decisions.md#57) and [#69](../docs/decisions.md#69).
 
 `node instruments/home-startup/profile.mjs` measures production startup without
 network delays or a screencast. It runs one fresh Chrome session by default.

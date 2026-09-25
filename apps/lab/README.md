@@ -47,10 +47,12 @@ navigation and homepage appear together after fonts, current shadow masks,
 headline treatments and the lamp backdrop have reached a completed draw. The
 cover stays outside the content being captured so preparation can still paint. There is no
 minimum display time. Failed graphics preparation selects native content for
-that visit, rather than adding effects after the page is visible.
+that visit, rather than adding effects after the page is visible: a stall, a
+thrown masthead setup, or fonts that do not settle within the same limit.
 `probe:home-startup` checks the first exposed frames and the resting button
 shadow afterward, including a deliberately early reveal that must fail those
-checks. [Decision #57](../../docs/decisions.md#57) records the opening contract.
+checks. [Decision #57](../../docs/decisions.md#57) records the opening contract;
+[#69](../../docs/decisions.md#69) records why every wait has an exit.
 
 ## Inline Home
 

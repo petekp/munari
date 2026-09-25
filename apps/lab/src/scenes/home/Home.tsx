@@ -1,11 +1,13 @@
 // Overview — the lit masthead, a live example, a gallery, and a short path
 // into the API. The postcard and its canvas scroll together; the lamp stays
-// in the demo viewport. Native fallback keeps the same controlled content.
+// in the demo viewport. Native fallback keeps the same controlled content, and
+// a thrown masthead setup selects it rather than stranding the cover (#69).
 import { useEffect, useMemo, useRef } from 'react'
 import { useSurfaceSupport } from '@petepetrash/munari'
 import { HandoffSection } from './HomeHandoff'
 import { HomePostcard } from './HomePostcard'
 import { HomeMasthead } from './HomeMasthead'
+import { HomeGraphicsBoundary } from './HomeGraphicsBoundary'
 import { ExamplesSection } from './HomeExamples'
 import { SupportSection } from './HomeSupport'
 import { TutorialSection } from './HomeTutorial'
@@ -41,9 +43,11 @@ function HomePage({ section = '', onReady }: HomeProps) {
   return (
     <div ref={pageRef} data-home-ready={opening.ready || undefined} className="home-page absolute inset-0 overflow-y-auto overscroll-contain">
       <main ref={innerRef} className="home-inner mx-auto max-w-[1260px]">
-        <HomeMasthead flyer={flyer} pageRef={pageRef} innerRef={innerRef} effectsEnabled={opening.effectsEnabled} onReady={opening.onReady}>
-          <HomePostcard flyer={flyer} viewportRef={viewportRef} supported={supported && !opening.native} reduced={reduced} effectsEnabled={opening.effectsEnabled} />
-        </HomeMasthead>
+        <HomeGraphicsBoundary native={opening.native} onFailure={opening.fail}>
+          <HomeMasthead flyer={flyer} pageRef={pageRef} innerRef={innerRef} effectsEnabled={opening.effectsEnabled} onReady={opening.onReady}>
+            <HomePostcard flyer={flyer} viewportRef={viewportRef} supported={supported && !opening.native} reduced={reduced} effectsEnabled={opening.effectsEnabled} />
+          </HomeMasthead>
+        </HomeGraphicsBoundary>
         <ExamplesSection />
         <HandoffSection />
         <TutorialSection />

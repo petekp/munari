@@ -14,6 +14,7 @@
 // stack, in the page, where they are looking.
 
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { revealSite } from './siteOpening'
 
 interface Props {
   /**
@@ -41,6 +42,9 @@ export class SceneBoundary extends Component<Props, State> {
     // Still console.error it: the boundary is for the reader, and the
     // console is where a debugger's breakpoints and source maps live.
     console.error('[lab] scene threw:', error)
+    // The opening cover waits for readiness a thrown scene never reports, and
+    // it would hide this message indefinitely (decision #69).
+    revealSite()
     this.setState({ stack: info.componentStack ?? null })
   }
 
