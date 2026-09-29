@@ -479,6 +479,52 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
     source.dispose()
   })
 
+  // Law 7 (decisions.md #21). No edge of a store passes 4096 texels. The
+  // limit is applied where the store is cut, so it holds for a caller that
+  // reaches the kernel directly and for a box that grows after birth. A
+  // 390x844 source at density 3 grown to 3000 px tall once cut 1170x9000.
+  it('keeps a growing box within the texture limit, and returns the density when it shrinks', async () => {
+    const source = createDomTextureSource('<div></div>', 390, 844, { scale: 3 })
+    await harness.deliver(source)
+    expect([source.canvas.width, source.canvas.height]).toEqual([1170, 2532])
+
+    source.setSize(390, 3000)
+    await harness.deliver(source)
+    expect([source.canvas.width, source.canvas.height]).toEqual([532, 4096])
+    expect(source.scale()).toBeCloseTo(4096 / 3000, 10)
+    expect(source.currentPaint()?.storeSize).toEqual([532, 4096])
+
+    source.setSize(390, 844)
+    source.resettle()
+    await harness.deliver(source)
+    expect([source.canvas.width, source.canvas.height]).toEqual([1170, 2532])
+    expect(source.scale()).toBe(3)
+    source.dispose()
+  })
+
+  it('is born within the texture limit, below the floor on a raw density', async () => {
+    // 4096 / 50000 is 0.082, under the 0.1 floor a raw density is held to.
+    const source = createDomTextureSource('<div></div>', 500, 50000, { scale: 3 })
+    await harness.deliver(source)
+    expect([source.canvas.width, source.canvas.height]).toEqual([41, 4096])
+    source.dispose()
+  })
+
+  it('grants a named density only as far as the texture limit allows', async () => {
+    const source = await born('<div></div>', 880, 560)
+    source.setScale(6)
+    await harness.deliver(source)
+    expect([source.canvas.width, source.canvas.height]).toEqual([4096, 2607])
+    expect(source.rasterScale()).toEqual([4096 / 880, 4096 / 880])
+
+    // A per-axis request is cut back on the axis that exceeds the limit only.
+    source.setRasterScale(6, 6)
+    await harness.deliver(source)
+    expect([source.canvas.width, source.canvas.height]).toEqual([4096, 3360])
+    expect(source.rasterScale()).toEqual([4096 / 880, 6])
+    source.dispose()
+  })
+
   it('is a no-op at the same size, so a caller can set it every render', async () => {
     const source = await born('<div></div>', 200, 100)
     const quiet = harness.asked()

@@ -19,6 +19,7 @@
 // Ownership: this module owns the canvas, the ledger and the arithmetic.
 // An engine owns how pixels arrive and where the subtree is parked.
 
+import { MAX_TEXTURE_EDGE } from './lodTier'
 import { storeForBox } from './textureStorage'
 import { allocateSourceId } from './sourceIdentity'
 import type { FrameId } from './frameSource'
@@ -466,12 +467,40 @@ export function createCaptureCanvas(
 ): CaptureCanvas {
   const sourceId = allocateSourceId()
   const { label = `source-${sourceSeq++}`, engine, onError, requestPaint } = options
-  let scale = clampRawScale(options.scale ?? 1)
-  let scaleX = scale
-  let scaleY = scale
+  // What the caller asked for, before the box had a say.
+  let askedX = clampRawScale(options.scale ?? 1)
+  let askedY = askedX
+  // A request made as one number is granted as one number, against the long
+  // edge, so content is not cut back on one axis only.
+  let uniform = true
+
+  // The density a request is granted: the request, cut back until the store
+  // fits MAX_TEXTURE_EDGE. It is granted again whenever the box or the
+  // request moves, because the fault was a bound applied once.
+  // Measured 2026-09-26: a 390x844 source at density 3 grown to 3000 px tall
+  // cut a 1170x9000 store, and a 50,000 px document clamped to 4096 px was
+  // raised back to 5000 by `clampRawScale`'s floor (decisions.md #21).
+  const granted = (): readonly [number, number] => {
+    const fit = (asked: number, edge: number) => Math.min(asked, MAX_TEXTURE_EDGE / Math.max(1, edge))
+    if (!uniform) return [fit(askedX, width), fit(askedY, height)]
+    const k = fit(askedX, Math.max(width, height))
+    return [k, k]
+  }
+  let [scaleX, scaleY] = granted()
+  let scale = Math.max(scaleX, scaleY)
+
+  // Rounding a granted edge can land one texel past the limit.
+  const cut = (current: { width: number; height: number } | null) => {
+    const store = storeForBox(width * scaleX, height * scaleY, 1, current)
+    if (store === current) return store
+    return {
+      width: Math.min(MAX_TEXTURE_EDGE, store.width),
+      height: Math.min(MAX_TEXTURE_EDGE, store.height),
+    }
+  }
 
   const canvas = document.createElement('canvas')
-  const born = storeForBox(width, height, scale, null)
+  const born = cut(null)
   canvas.width = born.width
   canvas.height = born.height
 
@@ -495,12 +524,7 @@ export function createCaptureCanvas(
   // canvas because a canvas cannot be drawn into itself across a resize: the
   // resize is what destroys the pixels being copied.)
   const recut = (exact: boolean, reason: PaintReason) => {
-    const next = storeForBox(
-      width * scaleX,
-      height * scaleY,
-      1,
-      exact ? null : { width: canvas.width, height: canvas.height },
-    )
+    const next = cut(exact ? null : { width: canvas.width, height: canvas.height })
     if (next.width !== canvas.width || next.height !== canvas.height) {
       let keep: HTMLCanvasElement | null = null
       // Carrying the raster forward is a picture, not a contract: under a DOM
@@ -528,14 +552,22 @@ export function createCaptureCanvas(
     requestPaint(reason)
   }
 
-  const setDensity = (x: number, y: number, reason: PaintReason) => {
-    const nx = clampRawScale(x)
-    const ny = clampRawScale(y)
+  // Returns false when the granted density did not move.
+  const grant = () => {
+    const [nx, ny] = granted()
     if (nx === scaleX && ny === scaleY) return false
     scaleX = nx
     scaleY = ny
     scale = Math.max(nx, ny)
     stats.scale = scale
+    return true
+  }
+
+  const setDensity = (x: number, y: number, asOne: boolean, reason: PaintReason) => {
+    askedX = clampRawScale(x)
+    askedY = clampRawScale(y)
+    uniform = asOne
+    if (!grant()) return false
     recut(true, reason)
     return true
   }
@@ -573,11 +605,12 @@ export function createCaptureCanvas(
       if (nw === width && nh === height) return false
       width = nw
       height = nh
+      grant()
       recut(false, 'box')
       return true
     },
-    setRasterScale: (x, y) => setDensity(x, y, 'lod'),
-    setScale: (k) => setDensity(k, k, 'density'),
+    setRasterScale: (x, y) => setDensity(x, y, false, 'lod'),
+    setScale: (k) => setDensity(k, k, true, 'density'),
     resettle: () => recut(true, 'rest'),
     completePaint: (paintedSize, changesDuringPaint, read) => {
       ok = true

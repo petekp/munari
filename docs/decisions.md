@@ -1353,6 +1353,7 @@ from React state one commit later, so the first frame that qualifies has
 a destination-sized card at a not-yet-destination pose. Reading a value
 that is written on two different clocks means waiting for both.
 
+<a id="21"></a>
 ## #21 — A law with no callers is a rumour (2026-08-04, kernel + lab)
 
 Pete, after the sharpness arc closed: *"let's take stock of what we've
@@ -1418,6 +1419,29 @@ z = 68.0 against a 62.4 threshold, fall `true → false` on the frame the
 mode became `home` at z = 94.7 — forced low from full altitude, because
 the descent is the motion mask. Identical to the law it replaced, which
 is the whole claim.
+
+Amended 2026-09-29 — THE STORE ENFORCES THE LIMIT. The limit was applied by
+callers, once, when they chose a density. The [performance audit](performance-audit.md)
+found three ways past it. A 390×844 source at density 3 kept that density when
+its box grew to 3000 px tall and cut a 1170×9000 store. A 50,000 px document
+clamped to 4096 px was raised to 5000 by `clampRawScale`'s 0.1 floor. A caller
+that reached `createDomTextureSource` directly, as Home does, had no limit on
+the store edge at all.
+
+`createCaptureCanvas` now grants each density request against the current box,
+and grants it again when the box or the request changes. No store edge exceeds
+`MAX_TEXTURE_EDGE`. `scale()` and `rasterScale()` report the granted density,
+so they agree with the store a consumer samples. A request made as one number
+is granted as one number against the long edge. A per-axis request is cut back
+only on the axis that exceeds the limit. When the box shrinks, the source
+returns to the density that was asked for.
+
+`clampScale` and `clampTiers` are unchanged. They still describe what a caller
+may ask for, and `clampTiers` still keeps its lowest tier on a box too long for
+any tier. That tier is a request like any other, so the store stays within the
+limit. The capture-engine conformance suite checks birth, growth, shrinkage,
+and named densities on both engines. These are allocation sizes under a DOM
+stub. No GPU allocation failure was reproduced.
 
 ## #22 — The phase law crosses, and the probe that found it becomes a gate (2026-08-04, kernel + instruments)
 

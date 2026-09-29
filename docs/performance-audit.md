@@ -208,6 +208,11 @@ changes on physical devices.
 
 **1. Growing captures can bypass the texture-size guard. Both engines.**
 
+Status: fixed 2026-09-29. The kernel now grants each density against the
+current box, as [decision #21](decisions.md#21) records. The reproduction below
+cuts 532×4096 after growth, and 80×4096 and 41×4096 at birth. The
+missing-context finding in this section remains open.
+
 High severity, confirmed bug, high confidence. In
 [`setSize`](../packages/react/src/primitives/surface/surfaceSourceRuntime.ts#L321),
 automatic resolution does not reapply its density limit because its pinned
