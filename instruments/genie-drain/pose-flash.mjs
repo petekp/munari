@@ -4,6 +4,9 @@
 // The two-way 1px neighborhood allows raster edges without discarding ink;
 // the existing 40-RGB / 1% budgets must reject stale and blank texture controls.
 // The first framebuffer is held for 40ms so later page frames still show it.
+// Observation lasts 80ms, or until the second scene draw is recorded if that
+// is later. Hosted runners drew the scene every 88-106ms (2026-09-29), so 80ms
+// alone held one draw in 4 of 16 cases and the late-blank control judged nothing.
 // This gate does not measure natural motion, freeze timing or performance.
 import assert from 'node:assert/strict'
 import {existsSync} from 'node:fs'
@@ -162,7 +165,8 @@ try{
     }
     return{nativeInk,total,rows,clock}
    },{reference,frames,draws,box})
-   const start=scored.rows[0]?.t,observed=scored.rows.filter(row=>row.t<=start+80)
+   const start=scored.rows[0]?.t,second=scored.rows.find(row=>row.draw.id!==scored.rows[0].draw.id)?.t
+   const end=Math.max(start+80,second??0),observed=scored.rows.filter(row=>row.t<=end)
    observation={firstDraw:firstDraw?.id,firstRecorded:observed[0]?.draw.id,frames:observed.length,blockedDraws:state.blockedDraws,maximumPixelError:Math.max(...observed.map(row=>Math.max(row.nativeToScene,row.sceneToNative)))}
    await writeFile(path.join(directory,'measurement.json'),JSON.stringify({box,nativeInk:scored.nativeInk,total:scored.total,firstDraw,seedTime:state.seedTime,blockedDraws:state.blockedDraws,draws,frames:observed},null,2))
    if(observed.length){await writeFile(path.join(directory,'first-scene.png'),Buffer.from(frames[observed[0].index].data,'base64'));await writeFile(path.join(directory,'last-scene.png'),Buffer.from(frames[observed.at(-1).index].data,'base64'))}
@@ -171,7 +175,7 @@ try{
    assert.ok(scored.rows.length,'No scene compositor frame was captured')
    // Slow renderers may need no interception; the first recorded image is the proof.
    assert.equal(scored.rows[0].draw.id,firstDraw.id,'The first direct scene draw must be captured and judged')
-   assert.equal(observed.length,frames.filter(frame=>frame.t>=start&&frame.t<=start+80).length,'Every recorded image in the interval must be scored')
+   assert.equal(observed.length,frames.filter(frame=>frame.t>=start&&frame.t<=end).length,'Every recorded image in the interval must be scored')
    assert.ok(observed.every(row=>row.draw.posePinned),'The native pose must remain pinned')
    assert.ok(observed.every(row=>Number.isFinite(row.draw.placement)&&row.draw.placement<=.25),'Actual figure geometry must match its native rectangle within 0.25 CSS px')
    const rejected=observed.map(row=>row.nativeToScene>1||row.sceneToNative>1)
@@ -183,7 +187,7 @@ try{
    }
    else{assert.ok(observed.every(row=>row.draw.forced),'The fault must reach every judged draw');assert.ok(rejected.every(Boolean),'The first and every stable wrong-pose/blank frame must fail')}
    assert.deepEqual(errors,[])
-   requirePageFrameCoverage(scored.clock,start,start+80)
+   requirePageFrameCoverage(scored.clock,start,end)
    results.push({name,passed:true,recordings:attempt+1,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.nativeInk,frames:observed,controlRejected:control==='current'?null:true})
    await client.detach()
   }catch(error){
