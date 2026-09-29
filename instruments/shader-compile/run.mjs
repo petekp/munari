@@ -45,10 +45,10 @@ const CHROME = [
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // How long a step may take to reach its state. This gate checks that shaders
-// compile and that each state is reached, not how fast. A hosted runner still
-// held the scene 1200 ms after the click back to the page (2026-09-29), and one
-// sample at that instant failed a walk whose shaders had all compiled.
-const STATE_DEADLINE_MS = 10_000
+// compile and that each state is reached, not how fast. A hosted runner took
+// 7650 ms to return to the page (2026-09-29, one run), where a Mac takes about
+// 1200 ms. One sample at 1200 ms failed a walk whose shaders had all compiled.
+const STATE_DEADLINE_MS = 30_000
 
 // Same convention as the other browser gates: an environmental gap is a
 // loud annotation, not a red build, unless STRICT_CAPABILITY says so.

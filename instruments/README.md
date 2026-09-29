@@ -659,8 +659,9 @@ own source lines.
 The walk covers only the programs its states construct. A new material
 needs a new state here.
 
-Each step waits up to 10 seconds for its state and prints how long it took.
-The check does not judge that time.
+Each step waits up to 30 seconds for its state and prints how long it took.
+The check does not judge that time. A hosted runner took 7.65 seconds to
+return to the page, in one run on 2026-09-29.
 
 It exists because a shared GLSL block once dropped two sampler
 declarations: used in both stages, declared in neither. The unit suite
