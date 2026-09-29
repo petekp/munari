@@ -210,8 +210,7 @@ changes on physical devices.
 
 Status: fixed 2026-09-29. The kernel now grants each density against the
 current box, as [decision #21](decisions.md#21) records. The reproduction below
-cuts 532×4096 after growth, and 80×4096 and 41×4096 at birth. The
-missing-context finding in this section remains open.
+cuts 532×4096 after growth, and 80×4096 and 41×4096 at birth.
 
 High severity, confirmed bug, high confidence. In
 [`setSize`](../packages/react/src/primitives/surface/surfaceSourceRuntime.ts#L321),
@@ -244,6 +243,9 @@ once zoom exceeds about 1.91×. At the raw scale cap of 8, the dimensions are
 reproduced phone allocation failure.
 
 **An unavailable retained 2D context is reported as a successful paint.**
+Status: fixed 2026-09-29. The draw now fails the capture, as
+[decision #60](decisions.md#60) records.
+
 High severity, confirmed conditional failure, high confidence. The rasterized
 source's [`draw`](../packages/core/src/paint/rasterizedSource.ts#L272) returns
 without drawing when its retained canvas has no context; its caller still

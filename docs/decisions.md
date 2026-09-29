@@ -3482,6 +3482,7 @@ The headline and startup probes now require the inline route. Existing text
 contrast, startup stability, paper motion and native fallback checks remain the
 acceptance criteria. No CI workflow or deployment policy changes are included.
 
+<a id="60"></a>
 ## #60 — Capture is an engine, and the binding never asks which one (2026-09-10)
 
 Munari now has two capture engines behind one contract. HTML-in-canvas stays
@@ -3893,6 +3894,16 @@ pinned explicitly, because an image that resolves after the first capture
 has no other signal. A drop opening the window and an unlisten mid-drag ride
 those laws; `the input window` pins, on the window itself, what a hearing
 disowns and the two gesture ends the pointer stream never reports.
+
+Amended 2026-09-29 — A RASTER THAT WAS NOT DRAWN IS A FAILED CAPTURE. When the
+rasterized source's canvas had no 2D context, its draw returned without
+drawing and the source still published a completed paint. A fault-injection
+check on 2026-09-27 returned `painted: true` and one receipt with a null
+context. The draw now throws, so the capture fails through `onError`, the
+error count advances, and the last good receipt stays current. What makes a
+browser withhold the context was not reproduced. The conformance suite gives
+the rasterized engine a drawing stub, because happy-dom has no 2D context, and
+checks the failure with the stub removed.
 
 
 ## #61 — A handoff no longer requires `moveBefore` (2026-09-11)
