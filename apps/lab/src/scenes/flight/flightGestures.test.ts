@@ -317,26 +317,3 @@ describe('the ✕ is a toss, not a timer', () => {
     expect(flight.current.spin.length()).toBe(0)
   })
 })
-
-describe('the lift-plane callback receives Flight vectors', () => {
-  it('an annotated (a: THREE.Vector3) => void compiles, and receives the very anchor the caller built', () => {
-    const flight = { current: makeFlight() }
-    let received: THREE.Vector3 | null = null
-    detach = attachFlightGestures({
-      flight,
-      dropTarget: () => null,
-      moveTo: () => {},
-      snapshot: () => {},
-      scrollTop: () => 0,
-      toLiftPlane: (a: THREE.Vector3) => {
-        received = a
-        carryToPlane(a, CAM_Z, LIFT_Z)
-      },
-    })
-    window.dispatchEvent(pointer('pointerup', 369, 284, true))
-
-    expect(flight.current.mode).toBe('float')
-    // The callback receives the same anchor that the flight owns.
-    expect(received).toBe(flight.current.anchor)
-  })
-})

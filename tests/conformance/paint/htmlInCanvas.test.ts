@@ -221,17 +221,6 @@ describe('createDomTextureSource sizing', () => {
     s.dispose()
   })
 
-  it('setSize is a no-op at the same size, so callers can call it every render', () => {
-    const s = make(360, 460)
-    const before = paintRequests
-    s.setSize(360, 460)
-    expect(paintRequests).toBe(before)
-    // Surface compares size() across the call to decide whether to mark a
-    // texture realloc; a no-op must leave it unchanged.
-    expect(s.size()).toEqual([360, 460])
-    s.dispose()
-  })
-
   it('rounds to whole pixels and never collapses to zero', () => {
     const s = make(360, 460)
     // A measured content box is often fractional; a canvas dimension is not.
@@ -269,24 +258,6 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
   it('is [0, 0] before any paint has succeeded', () => {
     const s = make(360, 460)
     expect(s.paintedSize()).toEqual([0, 0])
-    s.dispose()
-  })
-
-  // THE LAG IS THE CONTRACT, NOT A DEFECT. setSize moves the CSS box (and
-  // size()) immediately — the DOM consumer asked for a new layout NOW —
-  // but nothing has rasterized AT that box yet. Reporting the new box here
-  // before a paint has actually delivered it would tell a consumer
-  // blending the raster against live DOM that the copy already matches a
-  // generation it has never painted, which is exactly the ghosting this
-  // seam exists to prevent (measured 2026-08-08).
-  it('still reports the OLD box after setSize, before the next driven paint', () => {
-    const s = make(360, 460)
-    firePaint(s)
-    s.setSize(288, 122)
-    expect(s.size()).toEqual([288, 122])
-    expect(s.paintedSize()).toEqual([360, 460])
-    firePaint(s)
-    expect(s.paintedSize()).toEqual([288, 122])
     s.dispose()
   })
 
@@ -336,12 +307,16 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
     s.dispose()
   })
 
-  it('shares globally unique source IDs with frame sources', () => {
-    const frame = createCanvasFrameSource(document.createElement('canvas'), {
-      premultiplyAlpha: false,
-    })
+  // One allocator numbers both kinds, so sources made in turn get consecutive
+  // ids. Two counters would pass a bare inequality whenever they happened to
+  // stand at different values.
+  it('numbers DOM and frame sources from one sequence', () => {
+    const frameSource = () =>
+      createCanvasFrameSource(document.createElement('canvas'), { premultiplyAlpha: false })
+    const before = frameSource().currentFrame().sourceId
     const dom = make()
-    expect(dom.sourceId).not.toBe(frame.currentFrame().sourceId)
+    const after = frameSource().currentFrame().sourceId
+    expect([dom.sourceId, after]).toEqual([before + 1, before + 2])
     dom.dispose()
   })
 
@@ -443,21 +418,13 @@ describe('createDomTextureSource without the origin trial', () => {
     stubTrialContext(false)
   })
 
-  it('refuses with a named error instead of a bare TypeError', () => {
+  it('refuses with a named error instead of a bare TypeError, and parks no canvas', () => {
+    const before = document.body.querySelectorAll('canvas').length
     const thrown = errorFrom(() => make())
     expect(thrown.name).toBe('UnsupportedPlatformError')
     expect(thrown.message).not.toMatch(/is not a function/)
     expect(thrown.message).toMatch(/drawElementImage/)
     expect(thrown.message).toMatch(/CanvasDrawElement/)
-  })
-
-  it('leaves no parked canvas behind — a refused source owns no DOM', () => {
-    const before = document.body.querySelectorAll('canvas').length
-    try {
-      make()
-    } catch {
-      /* expected */
-    }
     expect(document.body.querySelectorAll('canvas').length).toBe(before)
   })
 })

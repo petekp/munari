@@ -111,9 +111,9 @@ describe('spill at a rim', () => {
     const initial = 45 * 3
     const { field, spilled } = settle({ terrain, depth: [0, 45, 45, 45, 0, 0] }, 600)
     expect(spilled).toBeGreaterThan(0)
-    // Leveling only ever redistributes; the open ends are the only volume
-    // sink, so nothing manufactures water beyond what was deposited.
-    expect(sumDepth(field) + spilled).toBeLessThanOrEqual(initial + 1e-6)
+    // Leveling only redistributes, and every spill reports the volume it
+    // took, so what stands plus what spilled is what was there at the start.
+    expect(sumDepth(field) + spilled).toBeCloseTo(initial, 6)
   })
 
   it('a column open to the terrain edge never holds more than a thin film', () => {

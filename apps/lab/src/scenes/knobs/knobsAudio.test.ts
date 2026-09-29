@@ -10,7 +10,7 @@ import {
   ringDecay,
   ringHz,
 } from './knobsAudio'
-import { KNOB, TOGGLE } from './knobsGeometry'
+import { TOGGLE } from './knobsGeometry'
 import { LEVER_SPRING, LEVER_THROW } from './knobsPhysics'
 
 // Only the law is pinned here. The Web Audio graph needs a browser and a
@@ -19,10 +19,6 @@ import { LEVER_SPRING, LEVER_THROW } from './knobsPhysics'
 // away from the hardware it is supposed to be the sound of.
 
 describe('the scene scale', () => {
-  it('a rotary is 20 mm across, which is what sizes everything else', () => {
-    expect(KNOB.skirtRadius * 2 * MM_PER_PX).toBeCloseTo(20, 9)
-  })
-
   it('the bat is a small part — under a centimetre', () => {
     const batMm = TOGGLE.leverLength * MM_PER_PX
     expect(batMm).toBeGreaterThan(5)

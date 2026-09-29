@@ -393,7 +393,22 @@ describe('whether the pose still reaches the screen', () => {
     expect(poseOnScreen(pose, VIEW_W, VIEW_H)).toBe(false)
   })
 
-  it('refuses a pose that refused', () => {
-    expect(poseOnScreen(posed({ contentWidth: 0 }), VIEW_W, VIEW_H)).toBe(false)
+  // The binding keeps one pose per presenter and writes every frame into it.
+  // A refusal returns early, so the bounds of the frame before are still in
+  // the object, and only the two flags say they are stale.
+  it('refuses a pose that refused, in an object that held a good pose', () => {
+    const pose = surfacePose(input(), createSurfacePose())
+    expect(pose.frontFacing).toBe(true)
+    expect(poseOnScreen(pose, VIEW_W, VIEW_H)).toBe(true)
+
+    surfacePose(input({ contentWidth: 0 }), pose)
+    expect(pose.planar).toBe(false)
+    expect(pose.frontFacing).toBe(false)
+    expect(poseOnScreen(pose, VIEW_W, VIEW_H)).toBe(false)
+
+    surfacePose(input(), pose)
+    surfacePose(input({ projection: [...ORTHO.slice(0, 5), Number.NaN, ...ORTHO.slice(6)] }), pose)
+    expect(pose.planar).toBe(false)
+    expect(poseOnScreen(pose, VIEW_W, VIEW_H)).toBe(false)
   })
 })

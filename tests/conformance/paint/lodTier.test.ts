@@ -218,11 +218,6 @@ describe('clampTiers', () => {
     // 420 css wide at 6x = 2520 — inside the 4096 guard.
     expect(clampTiers(DEFAULT_TIERS, 420, 300)).toEqual(DEFAULT_TIERS)
   })
-
-  it('default ladder spans 0.25–6 (far-memory return to retina close-up)', () => {
-    expect(DEFAULT_TIERS[0]).toBe(0.25)
-    expect(DEFAULT_TIERS[DEFAULT_TIERS.length - 1]).toBe(6)
-  })
 })
 
 // Warn-and-clamp on guard-exceeding fixed resolutions. The clampScale

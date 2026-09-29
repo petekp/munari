@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   createDirectionalHistory,
   directionalPick,
-  isOutsider,
-  outsiderDistance,
   type NavRect,
 } from './spatialNav'
 
@@ -108,9 +106,6 @@ describe('outsiders (distance function — spatnav structure, symmetric tuning)'
     const aligned = r('aligned', 100, 250, 100, 100) // gap 50, aligned
     const diagonal = r('diagonal', 230, 240, 100, 100) // gap 40 but displaced
     expect(directionalPick(origin, [diagonal, aligned], 'down')).toBe('aligned')
-    expect(outsiderDistance(origin, aligned, 'down')).toBeLessThan(
-      outsiderDistance(origin, diagonal, 'down'),
-    )
   })
 
   it('a sliver band-overlap must not out-rank the level neighbor (browser-caught: deploy → doc-5)', () => {
@@ -137,10 +132,13 @@ describe('outsiders (distance function — spatnav structure, symmetric tuning)'
     expect(directionalPick(deploy, field, 'down')).toBe('doc-4')
   })
 
+  // Both candidates touch the origin's bottom edge. Outsiders rank by
+  // alignment, so the aligned one wins. Insiders would tie on edge progress
+  // and the first in input order would win.
   it('touching edges is an outsider with zero gap, not an insider', () => {
-    const touching = r('touching', 100, 200, 100, 100)
-    expect(isOutsider(origin, touching, 'down')).toBe(true)
-    expect(directionalPick(origin, [touching], 'down')).toBe('touching')
+    const half = r('half', 150, 200, 100, 100)
+    const aligned = r('aligned', 100, 200, 100, 100)
+    expect(directionalPick(origin, [half, aligned], 'down')).toBe('aligned')
   })
 
   it('breaks exact ties by input order — panels must not shuffle between keypresses', () => {

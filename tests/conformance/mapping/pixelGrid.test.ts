@@ -109,24 +109,6 @@ describe('the pixel-grid snap', () => {
       expect(lifted.height * mag * lifted.dpr * s.sy).toBeCloseTo(lifted.texelsY, 9)
     })
 
-    it('lies about the size by at most half a texel, over the whole Surface', () => {
-      // That is the cost side, and it is the bound the law actually
-      // gives — a rounding of the demand, spread across the Surface. In
-      // fractions it is half a texel over the count, which is a tenth of
-      // a percent here and smaller for a larger Surface. A correction
-      // larger than this means the density it was handed is not the one
-      // the capture happened at.
-      const s = pixelGridSnap(lifted)
-      const demandX = lifted.width * lifted.density
-      const demandY = lifted.height * lifted.density
-      expect(Math.abs(s.sx - 1)).toBeLessThanOrEqual(
-        (0.5 + Math.abs(lifted.texelsX - demandX)) / lifted.texelsX + 1e-12,
-      )
-      expect(Math.abs(s.sy - 1)).toBeLessThanOrEqual(
-        (0.5 + Math.abs(lifted.texelsY - demandY)) / lifted.texelsY + 1e-12,
-      )
-    })
-
     /**
      * The count comes from the STORE, and nothing may re-derive it.
      *

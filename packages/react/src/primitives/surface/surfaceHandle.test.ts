@@ -586,10 +586,14 @@ describe('the two-stage receipt', () => {
   })
 
   it('a color-writing draw before the lift gate releases nothing', () => {
-    // A resident presentation of a Surface that is still the page's.
+    // The canvas is asked for and its presenter has proven nothing, so the
+    // crossing is still lifting and the Surface is still the page's.
     const store = exclusiveStore()
+    store.request('canvas')
+    store.tick(16)
     store.present('a', store.epoch())
     expect(store.holdsPage()).toBe(true)
+    expect(store.getState().presented).toBe('page')
   })
 
   it('one presenter of two cannot release the page on its own', () => {
