@@ -652,6 +652,9 @@ own source lines.
 The walk covers only the programs its states construct. A new material
 needs a new state here.
 
+Each step waits up to 10 seconds for its state and prints how long it took.
+The check does not judge that time.
+
 It exists because a shared GLSL block once dropped two sampler
 declarations: used in both stages, declared in neither. The unit suite
 guarding that block passed, because it checked that no uniform was

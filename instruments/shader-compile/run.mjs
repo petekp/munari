@@ -44,6 +44,11 @@ const CHROME = [
   .find((p) => existsSync(p))
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+// How long a step may take to reach its state. This gate checks that shaders
+// compile and that each state is reached, not how fast. A hosted runner still
+// held the scene 1200 ms after the click back to the page (2026-09-29), and one
+// sample at that instant failed a walk whose shaders had all compiled.
+const STATE_DEADLINE_MS = 10_000
 
 // Same convention as the other browser gates: an environmental gap is a
 // loud annotation, not a red build, unless STRICT_CAPABILITY says so.
@@ -220,9 +225,15 @@ try {
   let compiled = 0
   let linked = 0
   for (const [what, act, reached] of steps) {
+    const began = Date.now()
     await act()
     await sleep(1200)
-    const observed = await page.evaluate(() => window.__glslState())
+    let observed = await page.evaluate(() => window.__glslState())
+    while (!reached(observed) && Date.now() - began < STATE_DEADLINE_MS) {
+      await sleep(100)
+      observed = await page.evaluate(() => window.__glslState())
+    }
+    const took = Date.now() - began
     const fails = await page.evaluate(() => window.__glslFails.splice(0))
     for (const f of fails) seen.push({ what, f })
     if (!reached(observed)) {
@@ -231,7 +242,7 @@ try {
     }
     compiled = observed.compiled
     linked = observed.linked
-    console.log(`  ${what.padEnd(22)} ${fails.length ? `${fails.length} FAILED` : 'ok'}`)
+    console.log(`  ${what.padEnd(22)} ${fails.length ? `${fails.length} FAILED` : 'ok'}  ${took}ms`)
   }
 
   if (compiled === 0 || linked === 0) throw new Error('shader observer saw no compile/link activity')
