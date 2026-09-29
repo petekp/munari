@@ -5,6 +5,7 @@
 // tree. A texture replaced during resize gives every material a stale map.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import * as THREE from 'three'
 import { createRasterizedSource, setCaptureEngine, type CaptureEngine } from '@munari/core'
 import { createSurfaceSourceRuntime } from './surfaceSourceRuntime'
 
@@ -95,6 +96,26 @@ it('combines raster demands per axis and restores native capture density when co
  runtime.setPixelRatio(3)
  expect(runtime.source.rasterScale()).toEqual([3,3])
  runtime.dispose()
+})
+// Trilinear filtering blends in a half-resolution mip once the footprint
+// passes 1:1, which blurs text at reading range. Near tiers sample without
+// mipmaps. Far tiers and pinned resolutions keep them.
+it('allocates mipmaps only for a far tier or a pinned resolution', () => {
+  const options = { content: document.createElement('div'), size: [200, 100] as const, mirrorU: false, pixelRatio: 1, onError: (error: Error) => { throw error } }
+  const runtime = createSurfaceSourceRuntime({ ...options, resolution: 'auto' })
+  const texture = runtime.texture()
+  if (!texture) throw new Error('The runtime made no texture')
+  const filter = () => [texture.generateMipmaps, texture.minFilter]
+  expect(filter()).toEqual([false, THREE.LinearFilter])
+  runtime.proposeRaster(1, [0.5, 0.5])
+  expect(filter()).toEqual([true, THREE.LinearMipmapLinearFilter])
+  runtime.proposeRaster(1, [2, 2])
+  expect(filter()).toEqual([false, THREE.LinearFilter])
+  runtime.dispose()
+
+  const pinned = createSurfaceSourceRuntime({ ...options, resolution: 2 })
+  expect(pinned.texture()?.generateMipmaps).toBe(true)
+  pinned.dispose()
 })
 it('keeps an explicit resolution pin when display density changes',()=>{
  const runtime=createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:1,mirrorU:false,pixelRatio:2,onError:error=>{throw error}})

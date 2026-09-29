@@ -4,12 +4,12 @@
 // without rebuilding the survivor. The 2026-09-07 regression covered both
 // removal orders, including Strict Mode's setup/cleanup cycle.
 
-import { Fragment, StrictMode, createElement, useLayoutEffect, useSyncExternalStore } from 'react'
+import { Fragment, StrictMode, createElement, useLayoutEffect, useSyncExternalStore, type ReactElement } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { surfaceChromeElement } from './surfaceChromeElement'
-import { createSurfaceStore } from './surfaceHandle'
+import { createSurfaceStore, useSurfaceState } from './surfaceHandle'
 import { SurfacePart } from './SurfacePart'
 import { SurfaceRootContext, useSurfacePart, type SurfacePartValue, type SurfaceRootValue } from './surfaceContext'
 import { resetSurfaceHosts, surfaceHost, type SurfaceHost } from './surfaceHostRegistry'
@@ -73,7 +73,12 @@ describe('duplicate source host recovery', () => {
     document.body.replaceChildren()
   })
 
-  function fixture(wiring: 'page' | 'canvas', strict: boolean, duplicate: boolean) {
+  function fixture(
+    wiring: 'page' | 'canvas',
+    strict: boolean,
+    duplicate: boolean,
+    source?: (name: string) => ReactElement,
+  ) {
     const store = createSurfaceStore('recovery')
     const host = surfaceHost('recovery')
     const errors: Error[] = []
@@ -111,7 +116,7 @@ describe('duplicate source host recovery', () => {
             name: duplicate ? 'panel' : name,
             size: [200, 100],
             resolution: 1,
-            source: createElement(Content, { name }),
+            source: source ? source(name) : createElement(Content, { name }),
           }, createElement(ReadPart, { name }))),
         ),
       ),
@@ -170,5 +175,20 @@ describe('duplicate source host recovery', () => {
     expect(test.store.part('first')).toBeNull()
     expect(test.store.part('last')?.runtime).toBe(last.runtime)
     expect(test.store.part('last')?.captureRoot).toBe(last.captureRoot)
+  })
+
+  // Source content renders into its capture container, outside the Surface's
+  // React tree, so it reaches its Surface only through the context the host
+  // wraps around it.
+  it.each(['page', 'canvas'] as const)('gives %s-wired source content its own Surface', (wiring) => {
+    const seen: ReturnType<typeof useSurfaceState>[] = []
+    function ReadSurface() {
+      seen.push(useSurfaceState())
+      return null
+    }
+    const test = fixture(wiring, false, false, () => createElement(ReadSurface))
+    test.render(['panel'])
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen.at(-1)).toBe(test.store.getState())
   })
 })
