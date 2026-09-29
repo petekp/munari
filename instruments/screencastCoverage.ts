@@ -10,11 +10,61 @@ export class IncompleteScreencastError extends Error {
 
 // Chrome need not send unchanged frames. A marker outside the sampled region
 // makes quiet intervals observable without changing the content under test.
+//
+// A second strip writes the page's animation-frame number into pixels, so each
+// recorded image names the page frame it shows. Both run inside the page:
+// this function is serialized, and must not read module scope.
 export function installScreencastClock(): void {
   const marker = document.createElement('div')
   marker.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;background:#000;z-index:2147483647;pointer-events:none'
   document.body.append(marker)
   marker.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 80, iterations: Infinity })
+
+  const cell = 4
+  const left = 2
+  const top = 10
+  const preamble = [1, 0, 1, 0, 1, 1, 0, 0]
+  const checksum = (frame: number) => (frame ^ (frame >>> 8) ^ (frame >>> 16) ^ 165) & 255
+  const strip = document.createElement('canvas')
+  strip.width = 40 * cell
+  strip.height = cell
+  strip.style.cssText = `position:fixed;left:${left}px;top:${top}px;width:${strip.width}px;height:${cell}px;z-index:2147483647;pointer-events:none`
+  document.body.append(strip)
+  const ink = strip.getContext('2d')
+  if (!ink) throw new Error('The screencast clock needs a 2D context')
+  const times: number[] = []
+  let frame = 0
+  const tick = () => {
+    frame = (frame + 1) & 0xffffff
+    times[frame] = performance.timeOrigin + performance.now()
+    const bits = [...preamble]
+    for (let i = 0; i < 24; i++) bits.push((frame >>> i) & 1)
+    const check = checksum(frame)
+    for (let i = 0; i < 8; i++) bits.push((check >>> i) & 1)
+    bits.forEach((bit, i) => {
+      ink.fillStyle = bit ? '#fff' : '#000'
+      ink.fillRect(i * cell, 0, cell, cell)
+    })
+    requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+
+  // Returns null for an image recorded before the strip's first frame.
+  const read = (context: CanvasRenderingContext2D, scaleX: number, scaleY: number): number | null => {
+    const bits: number[] = []
+    for (let i = 0; i < 40; i++) {
+      const x = Math.round((left + i * cell + cell / 2) * scaleX)
+      const y = Math.round((top + cell / 2) * scaleY)
+      bits.push(context.getImageData(x, y, 1, 1).data[0]! > 127 ? 1 : 0)
+    }
+    if (preamble.some((bit, i) => bits[i] !== bit)) return null
+    let value = 0
+    for (let i = 0; i < 24; i++) value |= bits[i + 8]! << i
+    let check = 0
+    for (let i = 0; i < 8; i++) check |= bits[i + 32]! << i
+    return check === checksum(value) ? value : null
+  }
+  Object.defineProperty(window, '__screencastClock', { value: { times, read } })
 }
 
 export function requireScreencastCoverage(

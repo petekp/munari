@@ -232,6 +232,7 @@ try {
       const referenceFrame = frames.findLast(frame => frame.t < pressedAt)
       const afterPress = frames.filter(frame => frame.t >= pressedAt)
       const scored = referenceFrame ? { flash: 0, sheetAt: null, frames: frames.length } : null
+      const recorded = []
       // Eight full-size frames stay below DevTools' 100 MB message limit.
       // Each batch uses the same reference and every recorded frame is judged.
       for (let offset = 0; scored && offset < afterPress.length; offset += 8) {
@@ -248,22 +249,28 @@ try {
               context.drawImage(image, 0, 0)
               const sx = image.width / window.innerWidth
               const sy = image.height / window.innerHeight
-              return context.getImageData(
-                Math.round(desk.left * sx),
-                Math.round(desk.top * sy),
-                Math.round(desk.width * sx),
-                Math.round(desk.height * sy),
-              ).data
+              return {
+                pageFrame: window.__screencastClock.read(context, sx, sy),
+                pixels: context.getImageData(
+                  Math.round(desk.left * sx),
+                  Math.round(desk.top * sy),
+                  Math.round(desk.width * sx),
+                  Math.round(desk.height * sy),
+                ).data,
+              }
             }
             const before = shot.filter((frame) => frame.t < clickAt)
             if (!before.length) return null
-            const reference = await read(before.at(-1).data)
+            const first = await read(before.at(-1).data)
+            const reference = first.pixels
+            const clock = [{ t: before.at(-1).t, pageFrame: first.pageFrame }]
             let flash = 0
             let sheetAt = null
             for (const frame of shot) {
               const dt = Math.round(frame.t - clickAt)
               if (dt < 0) continue
-              const pixels = await read(frame.data)
+              const { pixels, pageFrame } = await read(frame.data)
+              clock.push({ t: frame.t, pageFrame })
               let changed = 0
               for (let i = 0; i < pixels.length; i += 4) {
                 const delta =
@@ -277,7 +284,7 @@ try {
               if (dt <= flashWindow) flash++
               else sheetAt ??= dt
             }
-            return { flash, sheetAt, frames: shot.length }
+            return { flash, sheetAt, frames: shot.length, clock }
           },
           [referenceFrame, ...afterPress.slice(offset, offset + 8)],
           setup.desk,
@@ -289,7 +296,15 @@ try {
 
         scored.flash += batch.flash
         scored.sheetAt ??= batch.sheetAt
+        recorded.push(...batch.clock.slice(offset === 0 ? 0 : 1))
       }
+      const pageTimes = await page.evaluate(() => window.__screencastClock.times)
+      const windowEnd = recorded.findIndex(frame => frame.t >= pressedAt + FLASH_WINDOW_MS)
+      const inWindow = recorded.slice(0, windowEnd < 0 ? recorded.length : windowEnd + 1)
+      const base = inWindow[0]?.pageFrame ?? 0
+      const last = inWindow.at(-1)?.pageFrame ?? base
+      console.log(`${setup.engine}: recording ${attempt + 1} recorded ms:page-frame ${inWindow.map(frame => `${Math.round(frame.t - pressedAt)}:${frame.pageFrame === null ? '?' : frame.pageFrame - base}`).join(' ')}`)
+      console.log(`${setup.engine}: recording ${attempt + 1} page frames began ms ${pageTimes.slice(base, last + 1).map(time => Math.round(time - pressedAt)).join(' ')}`)
 
       const rides = [...minimizeSamples, ...restoreSamples].filter((sample) => sample.riding).length
       // Observed faults fail even in an incomplete recording. Only missing
