@@ -3,7 +3,10 @@
 // Compare every image after the first scene draw with the native figure.
 // The two-way 1px neighborhood allows raster edges without discarding ink;
 // the existing 40-RGB / 1% budgets must reject stale and blank texture controls.
-// The first framebuffer is held for 40ms so two 20ms recorder intervals can see it.
+// The first framebuffer is held for 40ms so later page frames still show it.
+// Observation lasts 80ms, or until the second scene draw is recorded if that
+// is later. Hosted runners drew the scene every 88-106ms (2026-09-29), so 80ms
+// alone held one draw in 4 of 16 cases and the late-blank control judged nothing.
 // This gate does not measure natural motion, freeze timing or performance.
 import assert from 'node:assert/strict'
 import {existsSync} from 'node:fs'
@@ -12,7 +15,7 @@ import {tmpdir} from 'node:os'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import {createServer} from 'vite'
-import {IncompleteScreencastError,installScreencastClock,requireScreencastCoverage} from '../screencastCoverage.ts'
+import {IncompleteScreencastError,installScreencastClock,requirePageFrameCoverage} from '../screencastCoverage.ts'
 const root=path.resolve(import.meta.dirname,'../..')
 const output=process.env.POSE_OUTPUT??path.join(tmpdir(),'munari-genie-pose')
 const rounds=Number(process.env.ROUNDS??1)
@@ -38,7 +41,7 @@ try{
  await mkdir(output,{recursive:true})
  server=await createServer({root:path.join(root,'apps/lab'),plugins:[inspect],cacheDir:path.join(output,'.vite'),server:{host:'127.0.0.1',port:0,fs:{allow:[root]}},logLevel:'warn'})
  await server.listen()
- browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',args:['--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding',...(process.env.CI?['--no-sandbox']:[])]})
+ browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',args:['--enable-unsafe-swiftshader','--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding',...(process.env.CI?['--no-sandbox']:[])]})
  for(let round=0;round<rounds;round++)for(const mode of modes)for(const win of windows)for(const control of ['current','stale','blank','late-blank']){
   for(let attempt=0;attempt<3;attempt++){
   const name=`${mode}-${win}-${control}${rounds>1?`-${round+1}`:''}`,directory=path.join(output,name,`recording-${attempt+1}`),page=await browser.newPage(),errors=[]
@@ -145,10 +148,11 @@ try{
     let nativeInk=0;for(let i=0;i<native.length;i+=4)if(Math.abs(native[i]-background[0])+Math.abs(native[i+1]-background[1])+Math.abs(native[i+2]-background[2])>40)nativeInk++
     // Both directions retain missing ink as evidence, unlike an excluded edge band.
     const mismatch=(a,b)=>{let count=0;for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4;let best=Infinity;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=Math.max(0,Math.min(width-1,x+dx)),ny=Math.max(0,Math.min(height-1,y+dy));best=Math.min(best,delta(a,i,b,(ny*width+nx)*4))}if(best>40)count++}return 100*count/total}
-    const byId=new Map(draws.map(draw=>[draw.id,draw])),rows=[]
+    const byId=new Map(draws.map(draw=>[draw.id,draw])),rows=[],clock=[]
     let presented=false
     for(let index=0;index<frames.length;index++){
      const image=await decode(frames[index].data);if(image.width!==1100||image.height!==800)throw Error('Compositor viewport changed')
+     clock.push({t:frames[index].t,pageFrame:window.__screencastClock.read(image.ctx,1,1)})
      const bits=[];for(let i=0;i<40;i++)bits.push(image.ctx.getImageData(3+i*2,3,1,1).data[0]>127?1:0)
      let id=0;for(let i=0;i<24;i++)id|=bits[i+8]<<i;let checksum=0;for(let i=0;i<8;i++)checksum|=bits[i+32]<<i
      const markerValid=bits.slice(0,8).join('')==='10101100'&&checksum===((id^(id>>>8)^(id>>>16)^165)&255)
@@ -159,9 +163,10 @@ try{
      if(!draw)throw Error('A frame after presentation has no known draw marker')
      const pixels=crop(image);rows.push({index,t:frames[index].t,draw,nativeToScene:mismatch(native,pixels),sceneToNative:mismatch(pixels,native)})
     }
-    return{nativeInk,total,rows}
+    return{nativeInk,total,rows,clock}
    },{reference,frames,draws,box})
-   const start=scored.rows[0]?.t,observed=scored.rows.filter(row=>row.t<=start+80)
+   const start=scored.rows[0]?.t,second=scored.rows.find(row=>row.draw.id!==scored.rows[0].draw.id)?.t
+   const end=Math.max(start+80,second??0),observed=scored.rows.filter(row=>row.t<=end)
    observation={firstDraw:firstDraw?.id,firstRecorded:observed[0]?.draw.id,frames:observed.length,blockedDraws:state.blockedDraws,maximumPixelError:Math.max(...observed.map(row=>Math.max(row.nativeToScene,row.sceneToNative)))}
    await writeFile(path.join(directory,'measurement.json'),JSON.stringify({box,nativeInk:scored.nativeInk,total:scored.total,firstDraw,seedTime:state.seedTime,blockedDraws:state.blockedDraws,draws,frames:observed},null,2))
    if(observed.length){await writeFile(path.join(directory,'first-scene.png'),Buffer.from(frames[observed[0].index].data,'base64'));await writeFile(path.join(directory,'last-scene.png'),Buffer.from(frames[observed.at(-1).index].data,'base64'))}
@@ -170,7 +175,7 @@ try{
    assert.ok(scored.rows.length,'No scene compositor frame was captured')
    // Slow renderers may need no interception; the first recorded image is the proof.
    assert.equal(scored.rows[0].draw.id,firstDraw.id,'The first direct scene draw must be captured and judged')
-   assert.equal(observed.length,frames.filter(frame=>frame.t>=start&&frame.t<=start+80).length,'Every recorded image in the interval must be scored')
+   assert.equal(observed.length,frames.filter(frame=>frame.t>=start&&frame.t<=end).length,'Every recorded image in the interval must be scored')
    assert.ok(observed.every(row=>row.draw.posePinned),'The native pose must remain pinned')
    assert.ok(observed.every(row=>Number.isFinite(row.draw.placement)&&row.draw.placement<=.25),'Actual figure geometry must match its native rectangle within 0.25 CSS px')
    const rejected=observed.map(row=>row.nativeToScene>1||row.sceneToNative>1)
@@ -182,7 +187,7 @@ try{
    }
    else{assert.ok(observed.every(row=>row.draw.forced),'The fault must reach every judged draw');assert.ok(rejected.every(Boolean),'The first and every stable wrong-pose/blank frame must fail')}
    assert.deepEqual(errors,[])
-   requireScreencastCoverage(frames,start,start+80,20)
+   requirePageFrameCoverage(scored.clock,start,end)
    results.push({name,passed:true,recordings:attempt+1,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.nativeInk,frames:observed,controlRejected:control==='current'?null:true})
    await client.detach()
   }catch(error){

@@ -395,7 +395,9 @@ frames before reacquisition. The gate requires receipts
 `[A0, A2, B0, B2, B4, B6, B8]`, a fresh surface epoch for each hold period,
 no stale receipt, no clear or wrong-color acquisition render, and sampled RGB
 within one channel value. It also checks that live replacement preserves the
-mesh, geometry, and material. Rendered colors must remain unchanged under red
+mesh, geometry, and material. Acquisition sampling starts at the React mount
+commit; renders while the surface is still deliberately absent are excluded.
+Rendered colors must remain unchanged under red
 lighting and a non-identity tone mapper. A deliberately tone-mapped control must
 fail the byte-color oracle. The gate reads the public frame texture rather than
 requiring a material constructor. A separate
@@ -475,9 +477,17 @@ projected figure points must stay within 0.25 CSS pixels of the native rectangle
 The first actual scene draw must be recorded. Its framebuffer is held for 40 ms
 to make it observable. A slow renderer may need no intercepted draw; the captured
 first draw ID remains the required evidence.
-The following 80 ms must have no recording gap over 20 ms. An outside marker
-identifies submitted draws, and a separate pixel clock keeps static frames
-observable. Missing coverage fails as unverified.
+Observation lasts 80 ms from the first recorded scene image, or until the
+second scene draw is recorded if that is later. Hosted runners drew the scene
+every 88–106 ms, so 80 ms alone can hold a single draw.
+
+The recording must show every page frame in that interval. A strip outside the
+sampled region writes the page's animation-frame number into pixels, so each
+recorded image names the page frame it shows. A second marker identifies
+submitted draws, and a one-pixel animation keeps static frames observable. A
+recording that skips a page frame fails as unverified. The time between
+recorded images is not limited. A change the compositor makes between page
+frames is judged only in the images that show it.
 Each case allows at most three recording attempts. Pixel, geometry, control and
 page-error assertions run before the coverage check. Only inadequate recording
 coverage is retried, and every retry is reported.
@@ -501,19 +511,30 @@ see this fault: the slot keeps `data-away="true"` and its page copy keeps
 
 The sampled window must arrive later, and this unfocused fixture must not
 activate a warm native ride. Focused preparation and selection are checked by
-the API preparation fixtures. The recorder uses the same outside marker and
-20 ms coverage requirement as the pose check, over its first 150 ms.
+the API preparation fixtures.
+
+A flash is a recorded image that shows the window at the desk and is followed
+by one that does not. The arrival is where the last run of images showing the
+window begins. The recording must show every page frame from the press to the
+arrival, read from the same strip as the pose check. The check once called
+anything shown within 150 ms of the press a flash. A hosted runner presents its
+first frame after the press at about 150 ms, so a flash there was read as the
+arrival.
 
 The default recording uses quality-100 JPEG to reduce encoding overhead.
+Pixel analysis sends eight frames at a time against the same reference image,
+so long recordings do not exceed DevTools' message limit. Every frame is scored.
 `RESTORE_CAPTURE_FORMAT=png` retains the PNG comparison path. A run still needs
 three fully recorded restores per engine, within at most nine attempts. Each
-incomplete recording is reported. Only incomplete coverage is retried; an
-observed flash, missing arrival, native ride, or page error fails immediately.
+incomplete recording is reported with the page frames it showed. Only
+incomplete coverage is retried; an observed flash, missing arrival, native
+ride, or page error fails immediately.
 This is a bounded sample of verified trials, not a claim about discarded trials.
 
-`RESTORE_FLASH_CONTROL=1 ROUNDS=1 npm run gate:genie-restore-flash` must fail.
-It briefly displays an actual window image at the desk before the sheet arrives,
-using the ordinary pixel assertions and the same recorder.
+Each engine starts with a control. It shows a picture of the window at the
+desk for one page frame at the press, then restores as usual. The ordinary
+pixel scoring must count that frame as a flash within three recordings. A
+recording that showed every page frame and missed the control fails the check.
 
 ## knobs-hz
 
@@ -637,6 +658,10 @@ own source lines.
 
 The walk covers only the programs its states construct. A new material
 needs a new state here.
+
+Each step waits up to 30 seconds for its state and prints how long it took.
+The check does not judge that time. A hosted runner took 7.65 seconds to
+return to the page, in one run on 2026-09-29.
 
 It exists because a shared GLSL block once dropped two sampler
 declarations: used in both stages, declared in neither. The unit suite

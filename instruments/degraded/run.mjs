@@ -56,6 +56,7 @@ try {
     executablePath: chromePath,
     headless: true,
     args: [
+      '--enable-unsafe-swiftshader',
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
       ...(process.env.CI ? ['--no-sandbox'] : []),

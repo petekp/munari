@@ -143,6 +143,39 @@ The replacement preserves the first actual scene framebuffer for observation
 and requires both stale-pose and blank-texture controls to fail. Its bounded
 pixel and recording claims are in the [instrument guide](../instruments/README.md#genie-pose-flash).
 
+Amended 2026-09-29 — RECORDING COVERAGE COUNTS PAGE FRAMES. The pose and restore
+checks required recorded images no more than 20 ms apart. No measurement
+supported that limit, and it measured the recorder's timing instead of the
+evidence. On hosted Ubuntu runners the restore check showed every page frame in
+all 18 recordings, and the limit refused 14 of them for gaps of 20.0–35.8 ms.
+The page produced 5–7 frames in the 150 ms interval while the recorder sent an
+image about every 17 ms. On a Mac in Low Power Mode, 4 of 9 snapDOM recordings
+showed every page frame and failed on gaps of 25.4–39.7 ms. Both checks had
+failed on every hosted run since the limit was added on 2026-09-14.
+
+Coverage now requires every page frame in the observed interval to appear in a
+recorded image. A strip outside the sampled region writes the page's
+animation-frame number into pixels, so each image names the frame it shows. A
+recording that skips a page frame is unverified and is retried within the
+existing attempt limits. The rule does not cover a change the compositor makes
+between page frames. Those are judged only in the images that show them.
+
+The restore check starts each engine with a deliberate flash lasting one page
+frame, which its ordinary scoring must detect. The earlier control lasted 40 ms
+and ran only on request. On its third hosted run the new control failed on
+snapDOM: a recording that showed every page frame did not report the flash.
+The check called anything shown within 150 ms of the press a flash, and the
+runner presented its first frame after the press at about 150 ms, so the flash
+was read as the sheet arriving. A real flash of one frame at that moment would
+have passed.
+A flash is now an image that shows the window and is followed by one that does
+not, and coverage runs from the press to the arrival.
+
+The pose check observes for 80 ms or until the second
+scene draw is recorded, whichever is later. Hosted runners drew the scene every
+88–106 ms, so the 80 ms interval held a single draw in 4 of 16 cases and the
+late-loss control had nothing to judge in one of them.
+
 ## #3 — The lab preserves six scenes (2026-08-02)
 
 **Decision.** `apps/lab` carries three scenes — **workspace**,
