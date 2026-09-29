@@ -341,6 +341,11 @@ background paused before claiming a twofold saving.
 
 **5. Native pointer preparation runs even when it cannot be used. Both engines.**
 
+Status: fixed 2026-09-29 for the host-space read. The route checks the
+request, capability, hearing, planarity, and source ownership before it
+measures host space. The route's verdicts are unchanged. The saved frame time
+is unmeasured.
+
 Medium severity, code-confirmed work, high confidence. The native route
 [`step`](../packages/react/src/primitives/surface/surfaceNativeRoute.ts#L244)
 prepares its rig and measures host space before checking native capability and
