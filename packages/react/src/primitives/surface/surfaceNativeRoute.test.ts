@@ -20,6 +20,7 @@
 import * as THREE from 'three'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { deformSurfaceGeometry } from './surfaceDeform'
+import { registerHostSpace } from './surfaceHostSpace'
 import {
   createSurfaceRoute,
   registerSurfacePlane,
@@ -279,6 +280,25 @@ describe('applying the verdict', () => {
 
     expect(writes).toBe(0)
     expect(host.style.transform).toBe(settled)
+  })
+
+  it('measures host space only for a presenter that could ride', () => {
+    // Measuring docks three probes in the marker and reads a rect from each.
+    // Done before the capability check, that was three layout reads a frame
+    // for every presenter on an engine with no native route.
+    const marker = document.createElement('div')
+    document.body.append(marker)
+    const unregister = registerHostSpace(host, marker)
+    const controller = createSurfaceRoute()
+
+    controller.step(step({ capable: false }), duties)
+    controller.step(step({ request: 'relay' }), duties)
+    expect(marker.childElementCount).toBe(0)
+
+    controller.step(step(), duties)
+    expect(marker.childElementCount).toBe(3)
+    unregister()
+    controller.release()
   })
 
   it('parks when its source goes away', () => {
