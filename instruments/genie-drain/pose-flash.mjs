@@ -3,7 +3,7 @@
 // Compare every image after the first scene draw with the native figure.
 // The two-way 1px neighborhood allows raster edges without discarding ink;
 // the existing 40-RGB / 1% budgets must reject stale and blank texture controls.
-// The first framebuffer is held for 40ms so two 20ms recorder intervals can see it.
+// The first framebuffer is held for 40ms so later page frames still show it.
 // This gate does not measure natural motion, freeze timing or performance.
 import assert from 'node:assert/strict'
 import {existsSync} from 'node:fs'
@@ -12,7 +12,7 @@ import {tmpdir} from 'node:os'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import {createServer} from 'vite'
-import {IncompleteScreencastError,installScreencastClock,requireScreencastCoverage} from '../screencastCoverage.ts'
+import {IncompleteScreencastError,installScreencastClock,requirePageFrameCoverage} from '../screencastCoverage.ts'
 const root=path.resolve(import.meta.dirname,'../..')
 const output=process.env.POSE_OUTPUT??path.join(tmpdir(),'munari-genie-pose')
 const rounds=Number(process.env.ROUNDS??1)
@@ -145,10 +145,11 @@ try{
     let nativeInk=0;for(let i=0;i<native.length;i+=4)if(Math.abs(native[i]-background[0])+Math.abs(native[i+1]-background[1])+Math.abs(native[i+2]-background[2])>40)nativeInk++
     // Both directions retain missing ink as evidence, unlike an excluded edge band.
     const mismatch=(a,b)=>{let count=0;for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4;let best=Infinity;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=Math.max(0,Math.min(width-1,x+dx)),ny=Math.max(0,Math.min(height-1,y+dy));best=Math.min(best,delta(a,i,b,(ny*width+nx)*4))}if(best>40)count++}return 100*count/total}
-    const byId=new Map(draws.map(draw=>[draw.id,draw])),rows=[]
+    const byId=new Map(draws.map(draw=>[draw.id,draw])),rows=[],clock=[]
     let presented=false
     for(let index=0;index<frames.length;index++){
      const image=await decode(frames[index].data);if(image.width!==1100||image.height!==800)throw Error('Compositor viewport changed')
+     clock.push({t:frames[index].t,pageFrame:window.__screencastClock.read(image.ctx,1,1)})
      const bits=[];for(let i=0;i<40;i++)bits.push(image.ctx.getImageData(3+i*2,3,1,1).data[0]>127?1:0)
      let id=0;for(let i=0;i<24;i++)id|=bits[i+8]<<i;let checksum=0;for(let i=0;i<8;i++)checksum|=bits[i+32]<<i
      const markerValid=bits.slice(0,8).join('')==='10101100'&&checksum===((id^(id>>>8)^(id>>>16)^165)&255)
@@ -159,7 +160,7 @@ try{
      if(!draw)throw Error('A frame after presentation has no known draw marker')
      const pixels=crop(image);rows.push({index,t:frames[index].t,draw,nativeToScene:mismatch(native,pixels),sceneToNative:mismatch(pixels,native)})
     }
-    return{nativeInk,total,rows}
+    return{nativeInk,total,rows,clock}
    },{reference,frames,draws,box})
    const start=scored.rows[0]?.t,observed=scored.rows.filter(row=>row.t<=start+80)
    observation={firstDraw:firstDraw?.id,firstRecorded:observed[0]?.draw.id,frames:observed.length,blockedDraws:state.blockedDraws,maximumPixelError:Math.max(...observed.map(row=>Math.max(row.nativeToScene,row.sceneToNative)))}
@@ -182,7 +183,7 @@ try{
    }
    else{assert.ok(observed.every(row=>row.draw.forced),'The fault must reach every judged draw');assert.ok(rejected.every(Boolean),'The first and every stable wrong-pose/blank frame must fail')}
    assert.deepEqual(errors,[])
-   requireScreencastCoverage(frames,start,start+80,20)
+   requirePageFrameCoverage(scored.clock,start,start+80)
    results.push({name,passed:true,recordings:attempt+1,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.nativeInk,frames:observed,controlRejected:control==='current'?null:true})
    await client.detach()
   }catch(error){

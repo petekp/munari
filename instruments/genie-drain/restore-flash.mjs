@@ -29,7 +29,7 @@ import path from 'node:path'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
-import { IncompleteScreencastError, installScreencastClock, requireScreencastCoverage } from '../screencastCoverage.ts'
+import { IncompleteScreencastError, installScreencastClock, requirePageFrameCoverage } from '../screencastCoverage.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const labRoot = path.join(repoRoot, 'apps', 'lab')
@@ -51,14 +51,13 @@ const ROUNDS = Number(process.env.ROUNDS ?? 3)
 if (!Number.isInteger(ROUNDS) || ROUNDS < 1) throw new Error('ROUNDS must be a positive integer')
 const CAPTURE_FORMAT = process.env.RESTORE_CAPTURE_FORMAT ?? 'jpeg'
 if (!['jpeg', 'png'].includes(CAPTURE_FORMAT)) throw new Error('RESTORE_CAPTURE_FORMAT must be jpeg or png')
-const FLASH_CONTROL = process.env.RESTORE_FLASH_CONTROL === '1'
 const MAX_ATTEMPTS = ROUNDS * 3
+const MAX_CONTROL_ATTEMPTS = 3
 const captureOptions = { format: CAPTURE_FORMAT, everyNthFrame: 1, maxWidth: 1100, maxHeight: 800 }
 if (CAPTURE_FORMAT === 'jpeg') captureOptions.quality = 100
 // The flash lands within ~50ms of the press; the sheet does not reach the
 // desk until ~340ms. A window this wide separates the two with room to spare.
 const FLASH_WINDOW_MS = 150
-const MAX_FRAME_GAP_MS = 20
 // Percent of the desk rect that has to change before a frame counts as
 // showing the window. The measured flash changes 98.8%; a frame the sheet has
 // not reached yet changes 0.0%. Nothing lands in between.
@@ -153,18 +152,19 @@ try {
     if (setup.engine !== (mode === 'snapdom' ? 'snapdom' : 'html-in-canvas'))
       problems.push(`${mode}: asked for ${mode} and got the ${setup.engine} engine`)
 
-    if (FLASH_CONTROL) {
-      const { x, y, width, height } = setup.desk
-      const picture = await page.screenshot({ clip: { x, y, width, height }, encoding: 'base64' })
-      await page.evaluate(async ({ picture, desk }) => {
-        const image = new Image()
-        image.src = `data:image/png;base64,${picture}`
-        await image.decode()
-        image.style.cssText = `position:fixed;left:${desk.x}px;top:${desk.y}px;width:${desk.width}px;height:${desk.height}px;z-index:2147483646;pointer-events:none;display:none`
-        document.body.append(image)
-        window.__restoreFlashControl = image
-      }, { picture, desk: setup.desk })
-    }
+    // The control is a picture of the window at its desk. Shown for one page
+    // frame at the press, it is the shortest fault the coverage rule claims
+    // to catch, so each run proves its own recorder before judging a restore.
+    const { x, y, width, height } = setup.desk
+    const picture = await page.screenshot({ clip: { x, y, width, height }, encoding: 'base64' })
+    await page.evaluate(async ({ picture, desk }) => {
+      const image = new Image()
+      image.src = `data:image/png;base64,${picture}`
+      await image.decode()
+      image.style.cssText = `position:fixed;left:${desk.x}px;top:${desk.y}px;width:${desk.width}px;height:${desk.height}px;z-index:2147483646;pointer-events:none;display:none`
+      document.body.append(image)
+      window.__restoreFlashControl = image
+    }, { picture, desk: setup.desk })
 
     const frames = []
     client.on('Page.screencastFrame', async (frame) => {
@@ -180,17 +180,20 @@ try {
       page.evaluate(({ sel, flash }) => {
         const at = performance.timeOrigin + performance.now()
         if (flash) {
+          // The first callback runs in the frame that shows the picture; the
+          // second runs in the next frame and hides it.
           window.__restoreFlashControl.style.display = 'block'
-          setTimeout(() => { window.__restoreFlashControl.style.display = 'none' }, 40)
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            window.__restoreFlashControl.style.display = 'none'
+          }))
         }
         document.querySelector(sel).dispatchEvent(new MouseEvent('click', { bubbles: true }))
         return at
       }, { sel: selector, flash })
 
-    const rounds = []
-    let attempts = 0
-    for (let attempt = 0; rounds.length < ROUNDS && attempt < MAX_ATTEMPTS; attempt++) {
-      attempts++
+    // One minimize and one recorded restore. `control` shows the picture at
+    // the press; the pixel scoring is the same either way.
+    const restore = async (control) => {
       // Minimize first, so the window is in its bay to be restored from.
       const minimizeWatch = page.evaluate(() => window.__flash.watch(20))
       await press(`.gen-slot[data-win="${WIN}"] .gen-lamp[data-role="minimize"]`)
@@ -209,7 +212,7 @@ try {
       // every later frame is differenced against.
       await sleep(250)
       const restoreWatch = page.evaluate(() => window.__flash.watch(45))
-      const pressedAt = await press(`.gen-tile[data-win="${WIN}"]`, FLASH_CONTROL)
+      const pressedAt = await press(`.gen-tile[data-win="${WIN}"]`, control)
       await restoreWatch
       await page.waitForFunction(
         (win) => document.querySelector(`.gen-slot[data-win="${win}"]`).dataset.away !== 'true',
@@ -221,13 +224,6 @@ try {
       await sleep(100)
       const restoreSamples = await page.evaluate(() => window.__flash.samples)
       frames.sort((left, right) => left.t - right.t)
-      let coverageError = null
-      try {
-        requireScreencastCoverage(frames, pressedAt, pressedAt + FLASH_WINDOW_MS, MAX_FRAME_GAP_MS)
-      } catch (error) {
-        if (!(error instanceof IncompleteScreencastError)) throw error
-        coverageError = error.message
-      }
 
       const referenceFrame = frames.findLast(frame => frame.t < pressedAt)
       const afterPress = frames.filter(frame => frame.t >= pressedAt)
@@ -298,41 +294,77 @@ try {
         scored.sheetAt ??= batch.sheetAt
         recorded.push(...batch.clock.slice(offset === 0 ? 0 : 1))
       }
-      const pageTimes = await page.evaluate(() => window.__screencastClock.times)
-      const windowEnd = recorded.findIndex(frame => frame.t >= pressedAt + FLASH_WINDOW_MS)
-      const inWindow = recorded.slice(0, windowEnd < 0 ? recorded.length : windowEnd + 1)
-      const base = inWindow[0]?.pageFrame ?? 0
-      const last = inWindow.at(-1)?.pageFrame ?? base
-      console.log(`${setup.engine}: recording ${attempt + 1} recorded ms:page-frame ${inWindow.map(frame => `${Math.round(frame.t - pressedAt)}:${frame.pageFrame === null ? '?' : frame.pageFrame - base}`).join(' ')}`)
-      console.log(`${setup.engine}: recording ${attempt + 1} page frames began ms ${pageTimes.slice(base, last + 1).map(time => Math.round(time - pressedAt)).join(' ')}`)
 
-      const rides = [...minimizeSamples, ...restoreSamples].filter((sample) => sample.riding).length
-      // Observed faults fail even in an incomplete recording. Only missing
-      // evidence is retried, and every required round still needs full coverage.
-      const failed = scored && (scored.flash > 0 || scored.sheetAt === null || rides > 0)
-      if (failed || pageErrors.length) {
-        problems.push(`${setup.engine}: attempt ${attempt + 1}: observed restore failure ${JSON.stringify({ ...scored, rides, pageErrors })}`)
-        break
+      let unverified = scored ? null : 'no reference frame'
+      let pageFrames = 0
+      if (scored) {
+        const end = recorded.findIndex(frame => frame.t >= pressedAt + FLASH_WINDOW_MS)
+        const observed = recorded.slice(0, end < 0 ? recorded.length : end + 1)
+        const base = observed[0].pageFrame ?? 0
+        pageFrames = new Set(observed.map(frame => frame.pageFrame)).size
+        try {
+          requirePageFrameCoverage(recorded, pressedAt, pressedAt + FLASH_WINDOW_MS)
+        } catch (error) {
+          if (!(error instanceof IncompleteScreencastError)) throw error
+          // Each entry is the image's time after the press and the page frame it shows.
+          const shown = observed.map(frame => `${Math.round(frame.t - pressedAt)}ms:${frame.pageFrame === null ? '?' : frame.pageFrame - base}`)
+          unverified = `${error.message} [${shown.join(' ')}]`
+        }
       }
-      if (!scored || coverageError) {
-        console.warn(`${setup.engine}: recording ${attempt + 1}/${MAX_ATTEMPTS} unverified: ${coverageError ?? 'no reference frame'}`)
-        continue
-      }
-      rounds.push({
-        ...scored,
+      return {
+        scored,
+        unverified,
+        pageFrames,
+        rides: [...minimizeSamples, ...restoreSamples].filter((sample) => sample.riding).length,
         minimizeSwaps: minimizeSamples.filter((sample) => sample.swapped).length,
         restoreSwaps: restoreSamples.filter((sample) => sample.swapped).length,
-        rides,
-      })
+      }
     }
 
-    if (rounds.length !== ROUNDS)
+    const earlierProblems = problems.length
+    let controlSeen = false
+    for (let attempt = 0; attempt < MAX_CONTROL_ATTEMPTS && !pageErrors.length; attempt++) {
+      const trial = await restore(true)
+      if (trial.scored?.flash > 0) {
+        controlSeen = true
+        console.log(`\n  ${setup.engine} · one-frame control flash recorded in ${trial.scored.flash} image${trial.scored.flash === 1 ? '' : 's'} · attempt ${attempt + 1}`)
+        break
+      }
+      if (!trial.unverified) {
+        problems.push(`${setup.engine}: a recording that showed every page frame missed the one-frame control flash`)
+        break
+      }
+      console.warn(`${setup.engine}: control recording ${attempt + 1}/${MAX_CONTROL_ATTEMPTS} unverified: ${trial.unverified}`)
+    }
+    if (!controlSeen && problems.length === earlierProblems && !pageErrors.length)
+      problems.push(`${setup.engine}: no control recording showed every page frame within ${MAX_CONTROL_ATTEMPTS} attempts`)
+
+    const rounds = []
+    let attempts = 0
+    for (let attempt = 0; controlSeen && rounds.length < ROUNDS && attempt < MAX_ATTEMPTS; attempt++) {
+      attempts++
+      const { scored, unverified, ...observed } = await restore(false)
+      // Observed faults fail even in an incomplete recording. Only missing
+      // evidence is retried, and every required round still needs full coverage.
+      const failed = scored && (scored.flash > 0 || scored.sheetAt === null || observed.rides > 0)
+      if (failed || pageErrors.length) {
+        problems.push(`${setup.engine}: attempt ${attempt + 1}: observed restore failure ${JSON.stringify({ ...scored, rides: observed.rides, pageErrors })}`)
+        break
+      }
+      if (unverified) {
+        console.warn(`${setup.engine}: recording ${attempt + 1}/${MAX_ATTEMPTS} unverified: ${unverified}`)
+        continue
+      }
+      rounds.push({ ...scored, ...observed })
+    }
+
+    if (controlSeen && rounds.length !== ROUNDS && problems.length === earlierProblems)
       problems.push(`${setup.engine}: completed ${rounds.length}/${ROUNDS} verified restores within ${MAX_ATTEMPTS} recording attempts`)
 
     console.log(`\n  ${setup.engine} · ${rounds.length} verified restores / ${attempts} attempts · ${CAPTURE_FORMAT} · cpu /${SLOWCPU}`)
     for (const round of rounds)
       console.log(
-        `    flash frames ${round.flash}  swapped samples minimize ${round.minimizeSwaps} / restore ${round.restoreSwaps}  rides ${round.rides}  sheet at desk ${round.sheetAt ?? 'never'}ms  (${round.frames} compositor frames)`,
+        `    flash frames ${round.flash}  swapped samples minimize ${round.minimizeSwaps} / restore ${round.restoreSwaps}  rides ${round.rides}  sheet at desk ${round.sheetAt ?? 'never'}ms  (${round.pageFrames} page frames in the first ${FLASH_WINDOW_MS}ms, ${round.frames} recorded images)`,
       )
 
     if (pageErrors.length) problems.push(`${setup.engine}: ${pageErrors[0]}`)

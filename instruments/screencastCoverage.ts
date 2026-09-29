@@ -1,7 +1,21 @@
-// Screencast coverage bounds the interval a visual assertion can describe.
-// A missing frame is missing evidence, even when the recorded pictures agree.
-export interface TimedFrame {
+// Screencast coverage — which page frames a recording shows.
+//
+// The law: a visual verdict covers an interval only when every frame the page
+// produced in it appears in at least one recorded image. A page frame nobody
+// recorded is missing evidence, even when the recorded pictures agree.
+//
+// The fault, measured 2026-09-28: coverage was a 20 ms limit on the time
+// between recorded images. On hosted Ubuntu runners all 18 restore recordings
+// showed every page frame, and the limit refused 14 of them for gaps of
+// 20.0-35.8 ms. The page made 5-7 frames in 150 ms while the recorder sent an
+// image about every 17 ms, so the gaps were recorder jitter (decisions.md #2).
+//
+// Limit: a change the compositor makes between page frames, such as an
+// animated transform, is judged only in the images that happen to show it.
+export interface RecordedFrame {
   t: number
+  /** The page frame this image shows, or null when the strip was unreadable. */
+  pageFrame: number | null
 }
 
 export class IncompleteScreencastError extends Error {
@@ -32,11 +46,9 @@ export function installScreencastClock(): void {
   document.body.append(strip)
   const ink = strip.getContext('2d')
   if (!ink) throw new Error('The screencast clock needs a 2D context')
-  const times: number[] = []
   let frame = 0
   const tick = () => {
     frame = (frame + 1) & 0xffffff
-    times[frame] = performance.timeOrigin + performance.now()
     const bits = [...preamble]
     for (let i = 0; i < 24; i++) bits.push((frame >>> i) & 1)
     const check = checksum(frame)
@@ -64,16 +76,17 @@ export function installScreencastClock(): void {
     for (let i = 0; i < 8; i++) check |= bits[i + 32]! << i
     return check === checksum(value) ? value : null
   }
-  Object.defineProperty(window, '__screencastClock', { value: { times, read } })
+  Object.defineProperty(window, '__screencastClock', { value: { read } })
 }
 
-export function requireScreencastCoverage(
-  frames: readonly TimedFrame[],
+// Missing evidence throws IncompleteScreencastError, which a caller may retry.
+// An unreadable or backward page frame is a broken instrument and throws Error.
+export function requirePageFrameCoverage(
+  frames: readonly RecordedFrame[],
   start: number,
   end: number,
-  maximumGap: number,
 ): void {
-  if (![start, end, maximumGap].every(Number.isFinite) || end <= start || maximumGap <= 0) {
+  if (![start, end].every(Number.isFinite) || end <= start) {
     throw new Error('Invalid screencast observation interval')
   }
   let first = -1
@@ -87,11 +100,17 @@ export function requireScreencastCoverage(
     if (time >= end && last < 0) last = i
   }
   if (first < 0 || last < 0) throw new IncompleteScreencastError('Screencast does not cover both ends of the observation')
-  let largestGap = 0
-  for (let i = first + 1; i <= last; i++) {
-    largestGap = Math.max(largestGap, frames[i]!.t - frames[i - 1]!.t)
-  }
-  if (largestGap > maximumGap) {
-    throw new IncompleteScreencastError(`Screencast gap ${largestGap.toFixed(1)}ms exceeds ${maximumGap}ms; visual result is unverified`)
+  let before: number | null = null
+  for (let i = first; i <= last; i++) {
+    const shown = frames[i]!.pageFrame
+    if (shown === null || !Number.isInteger(shown)) throw new Error('A recorded image has no readable page frame')
+    if (before !== null) {
+      if (shown < before) throw new Error('Recorded page frames must not go backward')
+      const skipped = shown - before - 1
+      if (skipped > 0) {
+        throw new IncompleteScreencastError(`Screencast skipped ${skipped} page frame${skipped === 1 ? '' : 's'} after frame ${before}; visual result is unverified`)
+      }
+    }
+    before = shown
   }
 }
