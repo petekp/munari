@@ -234,6 +234,7 @@ function createHtmlInCanvasSource(
     canvas,
     host: canvas,
     element,
+    drawTrailsPaint: true,
     setHostPainted: (painted) => {
       hostPainted = painted
       // Refresh before it is looked at, not after: a host that begins riding on

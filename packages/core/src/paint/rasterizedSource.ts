@@ -480,6 +480,8 @@ export function createRasterizedSource(
     canvas,
     host,
     element,
+    // `run` draws the finished image and counts the paint in one task.
+    drawTrailsPaint: false,
     setHostPainted: (painted) => {
       host.style.opacity = painted ? '1' : '0'
     },

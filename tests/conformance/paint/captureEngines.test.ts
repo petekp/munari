@@ -156,9 +156,9 @@ const PAST_THE_GAP_MS = 1000
  * hand back the undo. happy-dom has none, and the rasterized source fails a
  * capture it cannot draw.
  */
-function installRasterContext(): () => void {
+function installRasterContext(onDraw: () => void = () => {}): () => void {
   const real = HTMLCanvasElement.prototype.getContext
-  const context = { drawImage() {}, setTransform() {}, clearRect() {} }
+  const context = { drawImage: onDraw, setTransform() {}, clearRect() {} }
   // SAFETY: the real `getContext` is overloaded across every context id and
   // answers each with a different class. This one answers '2d' with the three
   // members the raster draw calls, and every other id with null.
@@ -952,6 +952,29 @@ describe('the rasterized engine', () => {
     expect(source.currentPaint()).toBe(good)
     expect(source.paintCount()).toBe(1)
     expect(paintStats().find((entry) => entry.engine === 'test')?.errors).toBe(1)
+    source.dispose()
+  })
+
+  // The image is in the store when the paint is counted, which is what
+  // `drawTrailsPaint: false` tells a consumer: the upload made on the count
+  // holds these pixels, and a second one copies them again (decisions.md #60).
+  it('has drawn the image by the time it counts the paint', async () => {
+    let draws = 0
+    restoreContext()
+    restoreContext = installRasterContext(() => {
+      draws += 1
+    })
+    const { calls, rasterize } = deferred()
+    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
+    const drawnWhenCounted: number[] = []
+    source.subscribePaint(() => drawnWhenCounted.push(draws))
+    await drain()
+    expect(draws).toBe(0)
+    calls[0]!.resolve()
+    await drain()
+
+    expect(drawnWhenCounted).toEqual([1])
+    expect(source.drawTrailsPaint).toBe(false)
     source.dispose()
   })
 

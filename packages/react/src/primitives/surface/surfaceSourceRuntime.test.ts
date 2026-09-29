@@ -5,6 +5,7 @@
 // tree. A texture replaced during resize gives every material a stale map.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createRasterizedSource, setCaptureEngine, type CaptureEngine } from '@munari/core'
 import { createSurfaceSourceRuntime } from './surfaceSourceRuntime'
 
 interface TrialCanvas extends HTMLCanvasElement {
@@ -41,8 +42,9 @@ beforeEach(() => {
     setTransform() {},
     clearRect() {},
     drawElementImage() {},
+    drawImage() {},
   }
-  // SAFETY: the runtime asks only for a 2D context and only calls the three
+  // SAFETY: the runtime asks only for a 2D context and only calls the four
   // methods above. Other context IDs return null, as a browser may.
   HTMLCanvasElement.prototype.getContext = ((id: string) =>
     id === '2d' ? context : null) as typeof HTMLCanvasElement.prototype.getContext
@@ -99,6 +101,91 @@ it('keeps an explicit resolution pin when display density changes',()=>{
  runtime.proposeRaster(1,[3,2]);runtime.setPixelRatio(3)
  expect(runtime.source.rasterScale()).toEqual([1,1])
  runtime.dispose()
+})
+
+// A texture's version moves once per upload the runtime arms. No other check
+// counts them: an upload too many costs a copy nobody sees, and an upload too
+// few leaves a late draw out of the texture.
+describe('uploads after one paint', () => {
+  const options = {
+    content: document.createElement('div'),
+    size: [200, 100],
+    resolution: 1,
+    mirrorU: false,
+    pixelRatio: 1,
+    onError: (error: Error) => {
+      throw error
+    },
+  } as const
+
+  /** Frames until the settle has run and nothing is owed. */
+  const rest = (runtime: ReturnType<typeof createSurfaceSourceRuntime>) => {
+    for (let i = 0; i < 12; i++) runtime.frame()
+  }
+
+  it('uploads again on the next frame when the draw can trail the paint', () => {
+    const runtime = createSurfaceSourceRuntime({ ...options, content: document.createElement('div') })
+    completePaint(runtime.source.canvas)
+    rest(runtime)
+    const texture = runtime.texture()!
+    const version = texture.version
+
+    runtime.repaint()
+    completePaint(runtime.source.canvas)
+    runtime.frame()
+    expect(texture.version).toBe(version + 1)
+    runtime.frame()
+    expect(texture.version).toBe(version + 2)
+    expect(runtime.frame()).toBe(false)
+    expect(texture.version).toBe(version + 2)
+    runtime.dispose()
+  })
+
+  it('uploads once when the image was drawn before the paint was counted', async () => {
+    // Every reading is later than the gap the engine leaves between captures.
+    let now = 0
+    const engine: CaptureEngine = {
+      name: 'fake-raster',
+      native: false,
+      available: () => true,
+      createSource: (content, width, height, sourceOptions) =>
+        createRasterizedSource(
+          () => Promise.resolve(document.createElement('canvas')),
+          'fake-raster',
+          content,
+          width,
+          height,
+          sourceOptions,
+          { now: () => (now += 1000), wait: () => () => {} },
+        ),
+      refusal: 'fake-raster needs a document',
+    }
+    const drain = async () => {
+      for (let i = 0; i < 6; i++) await Promise.resolve()
+    }
+    setCaptureEngine(engine)
+    const runtime = createSurfaceSourceRuntime({ ...options, content: document.createElement('div') })
+    try {
+      await drain()
+      rest(runtime)
+      await drain()
+      rest(runtime)
+      const texture = runtime.texture()!
+      const version = texture.version
+      const painted = runtime.source.paintCount()
+
+      runtime.repaint()
+      await drain()
+      expect(runtime.source.paintCount()).toBe(painted + 1)
+      runtime.frame()
+      expect(texture.version).toBe(version + 1)
+      expect(runtime.frame()).toBe(false)
+      expect(texture.version).toBe(version + 1)
+    } finally {
+      runtime.dispose()
+      setCaptureEngine(null)
+    }
+  })
 })
 
 describe('storage changes after an upload has been armed', () => {

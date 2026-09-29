@@ -99,6 +99,17 @@ export interface DomTextureSource {
    */
   setHostPainted: (painted: boolean) => void
   /**
+   * True when a draw can reach `canvas` after its paint is counted.
+   *
+   * The HTML-in-canvas engine counts a paint inside `onpaint`, and the draw
+   * it made there can resolve up to a frame later. A consumer that uploads
+   * when the count moves has to upload once more after it stops. An engine
+   * that draws a finished image and then counts the paint answers false: its
+   * first upload holds the pixels, and a second one copies the same image
+   * again (measured 2026-09-29, decisions.md #60).
+   */
+  readonly drawTrailsPaint: boolean
+  /**
    * Force a repaint request (rarely needed — see paintCount).
    *
    * `immediate` is for a caller waiting on the answer: an engine that paces
