@@ -511,8 +511,15 @@ see this fault: the slot keeps `data-away="true"` and its page copy keeps
 
 The sampled window must arrive later, and this unfocused fixture must not
 activate a warm native ride. Focused preparation and selection are checked by
-the API preparation fixtures. The recording must show every page frame of the
-first 150 ms after the press, read from the same strip as the pose check.
+the API preparation fixtures.
+
+A flash is a recorded image that shows the window at the desk and is followed
+by one that does not. The arrival is where the last run of images showing the
+window begins. The recording must show every page frame from the press to the
+arrival, read from the same strip as the pose check. The check once called
+anything shown within 150 ms of the press a flash. A hosted runner presents its
+first frame after the press at about 150 ms, so a flash there was read as the
+arrival.
 
 The default recording uses quality-100 JPEG to reduce encoding overhead.
 Pixel analysis sends eight frames at a time against the same reference image,

@@ -162,7 +162,16 @@ between page frames. Those are judged only in the images that show them.
 
 The restore check starts each engine with a deliberate flash lasting one page
 frame, which its ordinary scoring must detect. The earlier control lasted 40 ms
-and ran only on request. The pose check observes for 80 ms or until the second
+and ran only on request. On its third hosted run the new control failed on
+snapDOM: a recording that showed every page frame did not report the flash.
+The check called anything shown within 150 ms of the press a flash, and the
+runner presented its first frame after the press at about 150 ms, so the flash
+was read as the sheet arriving. A real flash of one frame at that moment would
+have passed.
+A flash is now an image that shows the window and is followed by one that does
+not, and coverage runs from the press to the arrival.
+
+The pose check observes for 80 ms or until the second
 scene draw is recorded, whichever is later. Hosted runners drew the scene every
 88–106 ms, so the 80 ms interval held a single draw in 4 of 16 cases and the
 late-loss control had nothing to judge in one of them.

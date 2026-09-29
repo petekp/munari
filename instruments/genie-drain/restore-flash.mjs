@@ -55,12 +55,15 @@ const MAX_ATTEMPTS = ROUNDS * 3
 const MAX_CONTROL_ATTEMPTS = 3
 const captureOptions = { format: CAPTURE_FORMAT, everyNthFrame: 1, maxWidth: 1100, maxHeight: 800 }
 if (CAPTURE_FORMAT === 'jpeg') captureOptions.quality = 100
-// The flash lands within ~50ms of the press; the sheet does not reach the
-// desk until ~340ms. A window this wide separates the two with room to spare.
-const FLASH_WINDOW_MS = 150
 // Percent of the desk rect that has to change before a frame counts as
 // showing the window. The measured flash changes 98.8%; a frame the sheet has
 // not reached yet changes 0.0%. Nothing lands in between.
+//
+// A flash is a frame that shows the window and is followed by one that does
+// not. The arrival is where the last run of showing frames begins. The two
+// were once told apart by time, a flash being anything shown within 150ms of
+// the press. A hosted runner presents its first frame after the press at about
+// 150ms, so its one-frame control flash was read as the arrival (2026-09-29).
 const SHOWN_PCT = 50
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -227,13 +230,14 @@ try {
 
       const referenceFrame = frames.findLast(frame => frame.t < pressedAt)
       const afterPress = frames.filter(frame => frame.t >= pressedAt)
-      const scored = referenceFrame ? { flash: 0, sheetAt: null, frames: frames.length } : null
+      // One entry per recorded image: its time, the page frame it shows, and
+      // the percent of the desk rect that differs from the reference.
       const recorded = []
       // Eight full-size frames stay below DevTools' 100 MB message limit.
       // Each batch uses the same reference and every recorded frame is judged.
-      for (let offset = 0; scored && offset < afterPress.length; offset += 8) {
+      for (let offset = 0; referenceFrame && offset < afterPress.length; offset += 8) {
         const batch = await page.evaluate(
-          async (shot, desk, clickAt, flashWindow, shownPct, format) => {
+          async (shot, desk, format) => {
             const read = async (data) => {
               const image = new Image()
               image.src = `data:image/${format};base64,${data}`
@@ -255,18 +259,10 @@ try {
                 ).data,
               }
             }
-            const before = shot.filter((frame) => frame.t < clickAt)
-            if (!before.length) return null
-            const first = await read(before.at(-1).data)
-            const reference = first.pixels
-            const clock = [{ t: before.at(-1).t, pageFrame: first.pageFrame }]
-            let flash = 0
-            let sheetAt = null
+            const reference = (await read(shot[0].data)).pixels
+            const judged = []
             for (const frame of shot) {
-              const dt = Math.round(frame.t - clickAt)
-              if (dt < 0) continue
               const { pixels, pageFrame } = await read(frame.data)
-              clock.push({ t: frame.t, pageFrame })
               let changed = 0
               for (let i = 0; i < pixels.length; i += 4) {
                 const delta =
@@ -275,40 +271,45 @@ try {
                   Math.abs(pixels[i + 2] - reference[i + 2])
                 if (delta > 30) changed++
               }
-              const pct = (100 * changed) / (pixels.length / 4)
-              if (pct <= shownPct) continue
-              if (dt <= flashWindow) flash++
-              else sheetAt ??= dt
+              judged.push({ t: frame.t, pageFrame, pct: (100 * changed) / (pixels.length / 4) })
             }
-            return { flash, sheetAt, frames: shot.length, clock }
+            return judged
           },
           [referenceFrame, ...afterPress.slice(offset, offset + 8)],
           setup.desk,
-          pressedAt,
-          FLASH_WINDOW_MS,
-          SHOWN_PCT,
           CAPTURE_FORMAT,
         )
-
-        scored.flash += batch.flash
-        scored.sheetAt ??= batch.sheetAt
-        recorded.push(...batch.clock.slice(offset === 0 ? 0 : 1))
+        recorded.push(...batch.slice(offset === 0 ? 0 : 1))
       }
 
-      let unverified = scored ? null : 'no reference frame'
+      let scored = null
+      let unverified = 'no reference frame'
       let pageFrames = 0
-      if (scored) {
-        const end = recorded.findIndex(frame => frame.t >= pressedAt + FLASH_WINDOW_MS)
-        const observed = recorded.slice(0, end < 0 ? recorded.length : end + 1)
-        const base = observed[0].pageFrame ?? 0
-        pageFrames = new Set(observed.map(frame => frame.pageFrame)).size
-        try {
-          requirePageFrameCoverage(recorded, pressedAt, pressedAt + FLASH_WINDOW_MS)
-        } catch (error) {
-          if (!(error instanceof IncompleteScreencastError)) throw error
-          // Each entry is the image's time after the press and the page frame it shows.
-          const shown = observed.map(frame => `${Math.round(frame.t - pressedAt)}ms:${frame.pageFrame === null ? '?' : frame.pageFrame - base}`)
-          unverified = `${error.message} [${shown.join(' ')}]`
+      if (recorded.length) {
+        const judged = recorded.slice(1)
+        const shows = (frame) => frame.pct > SHOWN_PCT
+        const lastHidden = judged.findLastIndex((frame) => !shows(frame))
+        // No arrival when the last image lacks the window, or when every image
+        // after the press shows it: the window was at the desk with no sheet.
+        const arrival = lastHidden < 0 ? null : (judged[lastHidden + 1] ?? null)
+        scored = {
+          flash: judged.slice(0, lastHidden < 0 ? judged.length : lastHidden + 1).filter(shows).length,
+          sheetAt: arrival ? Math.round(arrival.t - pressedAt) : null,
+          frames: frames.length,
+        }
+        unverified = null
+        if (arrival) {
+          const observed = recorded.slice(0, recorded.indexOf(arrival) + 1)
+          const base = observed[0].pageFrame ?? 0
+          pageFrames = new Set(observed.map((frame) => frame.pageFrame)).size
+          try {
+            requirePageFrameCoverage(recorded, pressedAt, arrival.t)
+          } catch (error) {
+            if (!(error instanceof IncompleteScreencastError)) throw error
+            // Each entry is the image's time after the press and the page frame it shows.
+            const shown = observed.map((frame) => `${Math.round(frame.t - pressedAt)}ms:${frame.pageFrame === null ? '?' : frame.pageFrame - base}`)
+            unverified = `${error.message} [${shown.join(' ')}]`
+          }
         }
       }
       return {
@@ -364,7 +365,7 @@ try {
     console.log(`\n  ${setup.engine} · ${rounds.length} verified restores / ${attempts} attempts · ${CAPTURE_FORMAT} · cpu /${SLOWCPU}`)
     for (const round of rounds)
       console.log(
-        `    flash frames ${round.flash}  swapped samples minimize ${round.minimizeSwaps} / restore ${round.restoreSwaps}  rides ${round.rides}  sheet at desk ${round.sheetAt ?? 'never'}ms  (${round.pageFrames} page frames in the first ${FLASH_WINDOW_MS}ms, ${round.frames} recorded images)`,
+        `    flash frames ${round.flash}  swapped samples minimize ${round.minimizeSwaps} / restore ${round.restoreSwaps}  rides ${round.rides}  sheet at desk ${round.sheetAt ?? 'never'}ms  (${round.pageFrames} page frames before arrival, ${round.frames} recorded images)`,
       )
 
     if (pageErrors.length) problems.push(`${setup.engine}: ${pageErrors[0]}`)
