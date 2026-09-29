@@ -151,8 +151,27 @@ function handCranked() {
 // releases a waiting capture whatever the gap is set to.
 const PAST_THE_GAP_MS = 1000
 
+/**
+ * Put a 2D context that accepts a raster behind every `getContext('2d')`, and
+ * hand back the undo. happy-dom has none, and the rasterized source fails a
+ * capture it cannot draw.
+ */
+function installRasterContext(): () => void {
+  const real = HTMLCanvasElement.prototype.getContext
+  const context = { drawImage() {}, setTransform() {}, clearRect() {} }
+  // SAFETY: the real `getContext` is overloaded across every context id and
+  // answers each with a different class. This one answers '2d' with the three
+  // members the raster draw calls, and every other id with null.
+  HTMLCanvasElement.prototype.getContext = ((id: string) =>
+    id === '2d' ? context : null) as typeof real
+  return () => {
+    HTMLCanvasElement.prototype.getContext = real
+  }
+}
+
 function rasterizedHarness(): EngineHarness {
   let asked = 0
+  let restoreContext = () => {}
   const time = handCranked()
   const engine: CaptureEngine = {
     name: 'fake-raster',
@@ -189,8 +208,11 @@ function rasterizedHarness(): EngineHarness {
     },
     install() {
       asked = 0
+      restoreContext = installRasterContext()
     },
-    uninstall() {},
+    uninstall() {
+      restoreContext()
+    },
   }
 }
 
@@ -540,8 +562,10 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
 
 describe('the rasterized engine', () => {
   let time = handCranked()
+  let restoreContext = () => {}
   beforeEach(() => {
     time = handCranked()
+    restoreContext = installRasterContext()
   })
 
   /** Microtasks only: the source is left waiting out its gap. */
@@ -569,7 +593,10 @@ describe('the rasterized engine', () => {
     return { calls, rasterize }
   }
 
-  afterEach(() => document.body.replaceChildren())
+  afterEach(() => {
+    restoreContext()
+    document.body.replaceChildren()
+  })
 
   // One capture running, one owed behind it. A queue of stale pictures is
   // what the coalescing is here to prevent: at tens of milliseconds a raster,
@@ -890,6 +917,41 @@ describe('the rasterized engine', () => {
     calls.at(-1)!.reject(new Error('CORS'))
     await drain()
     expect(errors).toEqual(['CORS', 'CORS'])
+    source.dispose()
+  })
+
+  // A raster that was never drawn is a failed capture. With no 2D context the
+  // draw once returned quietly and the source published a receipt for pixels
+  // the store did not hold (reproduced 2026-09-27 by fault injection).
+  it('fails a capture its store cannot draw, and publishes no receipt for it', async () => {
+    const { calls, rasterize } = deferred()
+    const errors: string[] = []
+    const source = createRasterizedSource(
+      rasterize,
+      'test',
+      '<div></div>',
+      100,
+      50,
+      { onError: (error) => errors.push(error.message) },
+      time.clock,
+    )
+    await drain()
+    calls[0]!.resolve()
+    await drain()
+    const good = source.currentPaint()
+    expect(good?.frame.generation).toBe(1)
+
+    // Without the stub, happy-dom answers `getContext('2d')` with no context.
+    restoreContext()
+    source.repaint()
+    await settle()
+    calls[1]!.resolve()
+    await drain()
+
+    expect(errors).toEqual([expect.stringContaining('no 2D context')])
+    expect(source.currentPaint()).toBe(good)
+    expect(source.paintCount()).toBe(1)
+    expect(paintStats().find((entry) => entry.engine === 'test')?.errors).toBe(1)
     source.dispose()
   })
 
