@@ -3905,6 +3905,26 @@ browser withhold the context was not reproduced. The conformance suite gives
 the rasterized engine a drawing stub, because happy-dom has no 2D context, and
 checks the failure with the stub removed.
 
+Amended 2026-09-29 — A SOURCE SAYS WHETHER ITS DRAW TRAILS ITS PAINT. The
+source runtime uploads when the paint count moves and once more on the next
+frame. The second upload covers the HTML-in-canvas engine, whose draw can
+resolve up to a frame after the paint is counted. The rasterized engine draws
+the finished image and counts the paint in one task, so its second upload
+sent the same image again. `npm run probe:texture-uploads` counted WebGL
+uploads of the capture canvas on one 240×120 Surface: 2 per changed image and
+5 per resize on both engines.
+
+A source now carries `drawTrailsPaint`. The runtime reads it and makes the
+second upload only when it is true. The binding still does not ask which
+engine made the source. After the change snapDOM makes 1 upload per changed
+image and 3 per resize, and HTML-in-canvas is unchanged at 2 and 5. The
+Surface showed the current color after every change at resolutions 1, 0.5 and
+`auto`, which covers textures with and without mipmaps. The probe's control
+drops the uploads for one change, and the pixel check reported the old color
+each time. The fixture is flat color on one renderer. The saved upload time is
+unmeasured, and so is the effect on a consumer that keys work to the texture
+version.
+
 
 ## #61 — A handoff no longer requires `moveBefore` (2026-09-11)
 

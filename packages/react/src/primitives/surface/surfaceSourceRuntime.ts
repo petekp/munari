@@ -397,7 +397,9 @@ export function createSurfaceSourceRuntime(
       // Upload-on-paint: the engine already reports exactly when the
       // subtree's pixels changed, so idle sources cost nothing. One extra
       // upload after the counter stops covers a draw whose deferred resolve
-      // trails the paint by up to a frame.
+      // trails the paint by up to a frame. A source whose draw does not trail
+      // gets none: measured 2026-09-29, the extra upload copied the same
+      // image a second time for every change (decisions.md #60).
       //
       // There is no upload-every-frame mode, and the measurement is why: the
       // one consumer set it during a continuous resize, and the compositor
@@ -409,7 +411,7 @@ export function createSurfaceSourceRuntime(
       const count = source.paintCount()
       if (count !== lastPaintCount) {
         lastPaintCount = count
-        extraUploads = 1
+        extraUploads = source.drawTrailsPaint ? 1 : 0
         upload()
         measureChrome()
         work = true

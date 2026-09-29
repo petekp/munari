@@ -582,6 +582,33 @@ Other Workspace feeds can wake the shared renderer. This check proves the
 target's displayed update, not that its paint is the only cause of a wakeup.
 HTML-in-canvas capability is required for this evidence.
 
+## texture-uploads
+
+`npm run probe:texture-uploads` counts the WebGL uploads each changed image
+costs and checks the pixels the Surface then shows. It is a local command; CI
+membership is unchanged.
+
+The runner counts every `texImage2D` and `texSubImage2D` call that sends a
+canvas. It changes one 240×120 Surface six times per run, on each
+engine, at resolutions 1, 0.5 and `auto`. The pinned resolutions use mipmaps
+and `auto` does not. It judges three things:
+
+- The Surface shows the new color after every change, with and without a
+  resize.
+- A dropped upload is caught. The last change of each `dropped-upload` run
+  drops its uploads, and the pixel check must report the old color.
+- On snapDOM, a change that keeps its size makes one upload per paint.
+
+It prints the HTML-in-canvas counts and the resize counts without judging
+them. Measured 2026-09-29: snapDOM 1 upload per change and 3 per resize,
+HTML-in-canvas 2 and 5.
+
+The fixture is flat color on one renderer with a demand frameloop. A flat
+color cannot show a partly drawn image. The probe does not measure upload
+time, memory, or a lit material's encoded view. Without HTML-in-canvas it
+measures snapDOM only and warns; `STRICT_CAPABILITY=1` makes that a failure.
+`TEXTURE_UPLOADS_OUTPUT` selects where results are saved.
+
 ## degraded
 
 CI gate: every lab gesture in a browser with no origin trial.

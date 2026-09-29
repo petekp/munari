@@ -311,6 +311,12 @@ energy before claiming a battery saving.
 
 **4. snapDOM retains an unnecessary trailing-upload policy.**
 
+Status: fixed 2026-09-29. A source states whether its draw can trail its
+paint, and the runtime makes the second upload only for one that does, as
+[decision #60](decisions.md#60) records. `npm run probe:texture-uploads`
+measures 1 upload per changed image on snapDOM and 2 on HTML-in-canvas. The
+environment-bake cost described below is unmeasured.
+
 Medium severity, confirmed duplicate uploads, high confidence. The shared
 [`source runtime`](../packages/react/src/primitives/surface/surfaceSourceRuntime.ts#L395)
 adds one trailing upload to cover deferred HTML-in-canvas rendering. snapDOM
