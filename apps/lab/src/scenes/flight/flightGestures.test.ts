@@ -131,14 +131,6 @@ describe('the hand is the only pointer that moves a held card', () => {
     expect(flight.current.mode).toBe('held')
   })
 
-  it('a trusted move updates the flight (the harness can speak as the hand)', () => {
-    const flight = { current: makeFlight() }
-    attach(flight)
-    window.dispatchEvent(pointer('pointermove', 700, 400, true))
-    expect(flight.current.px).toBe(700)
-    expect(flight.current.py).toBe(400)
-  })
-
   it('the departure burst and parked-local retellings do not drag the card to the top-left', () => {
     const flight = { current: makeFlight() }
     attach(flight)

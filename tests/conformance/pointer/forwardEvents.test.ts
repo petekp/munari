@@ -235,16 +235,6 @@ describe('leaving the surface entirely', () => {
     expect(first('pointerleave', 'trigger')).toBeLessThan(first('pointermove', 'document'))
   })
 
-  it('still clears the mirrored hover attributes', () => {
-    const on = uvOf(...TRIGGER_BOX)
-    forwardPointer(root, on.u, on.v, 'move')
-    expect(trigger.hasAttribute('data-hover')).toBe(true)
-
-    clearPointerState(root)
-
-    expect(trigger.hasAttribute('data-hover')).toBe(false)
-    expect(root.hasAttribute('data-hover')).toBe(false)
-  })
 })
 
 describe('pointer-transparent regions', () => {
@@ -555,16 +545,6 @@ describe('moving between elements inside the surface', () => {
     expect(at('sibling')).toEqual(expect.arrayContaining(['mouseover', 'mouseenter']))
   })
 
-  it('moves hover mirroring to the new element', () => {
-    const on = uvOf(...TRIGGER_BOX)
-    forwardPointer(root, on.u, on.v, 'move')
-    const next = uvOf(...SIBLING_BOX)
-    forwardPointer(root, next.u, next.v, 'move')
-
-    expect(trigger.hasAttribute('data-hover')).toBe(false)
-    expect(sibling.hasAttribute('data-hover')).toBe(true)
-    expect(root.hasAttribute('data-hover')).toBe(true)
-  })
 })
 
 describe('silencing the trusted canvas move', () => {

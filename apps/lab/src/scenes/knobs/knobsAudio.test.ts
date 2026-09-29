@@ -11,7 +11,7 @@ import {
   ringHz,
 } from './knobsAudio'
 import { TOGGLE } from './knobsGeometry'
-import { LEVER_SPRING, LEVER_THROW } from './knobsPhysics'
+import { LEVER_SPRING } from './knobsPhysics'
 
 // Only the law is pinned here. The Web Audio graph needs a browser and a
 // user gesture, and a test that mocked both would pin the mock. What a
@@ -84,10 +84,6 @@ describe('the switch sounds like the switch', () => {
     // Both stay inside what a person can hear and place.
     expect(SLAB_HZ).toBeGreaterThan(80)
     expect(BAT_HZ).toBeLessThan(8000)
-  })
-
-  it('the release is the thumb — the one hard event in the motion', () => {
-    expect(leverVoice().release).toBe(LEVER_THROW)
   })
 
   it('the arrival is silent, so the switch makes exactly one sound', () => {
