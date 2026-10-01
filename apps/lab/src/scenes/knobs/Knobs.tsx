@@ -1189,12 +1189,14 @@ const LEAK_H = 144
  * The dark face is what retires the falloff problem: additive light
  * fading into black has no visible endpoint left to crop.
  *
- * The falloffs are compact-support and C1 at their ends (`veilProfile`,
- * pinned in knobsLaw) — the session's lesson, learned three ways: an
- * exponential never reaches zero, and whatever is nonzero where the
- * support ends becomes a hard edge. The spill is tone-mapped
- * (1 - exp(-x)), never squared-and-gained into channel clipping — the
- * clipped rim is what turned dusty pink art into a neon tube.
+ * The falloffs are compact-support and C1 at their ends: (1-t)^2
+ * reaches zero in value and slope together. The session's lesson,
+ * learned three ways: an exponential never reaches zero, whatever is
+ * nonzero where the support ends becomes a hard edge, and a falloff that
+ * reaches zero with a nonzero slope still shows a Mach band. The spill
+ * is tone-mapped (1 - exp(-x)), never squared-and-gained into channel
+ * clipping — the clipped rim is what turned dusty pink art into a neon
+ * tube.
  */
 /**
  * The corona's uniforms. A type alias, not an interface: three's `uniforms`
@@ -1336,7 +1338,7 @@ function BacklightCorona({ rect }: { rect: RailRect }) {
           float L = dot(spill, vec3(0.2126, 0.7152, 0.0722));
 
           // The hot line on the boundary. Outward it is compact-support
-          // and C1 at uOutReach (veilProfile's shape — an exponential
+          // and C1 at uOutReach ((1-t)^2 — an exponential
           // alone never reaches zero, and its leftover becomes an edge);
           // inward it relaxes over uCoreTauIn px onto the face.
           float t0 = clamp(d / uOutReach, 0.0, 1.0);

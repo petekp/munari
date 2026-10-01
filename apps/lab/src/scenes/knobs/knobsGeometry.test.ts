@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  BEZEL_LIP,
   KNOB,
   LAMP,
-  PANEL_RADIUS,
   SCREW,
-  SLAB_DEPTH,
   TOGGLE,
   capProfile,
   knurlRadius,
@@ -102,11 +99,8 @@ describe('the machining agrees with itself', () => {
   it('the lamp rim overlaps the glass foot — no gap ring between metal and dome', () => {
     expect(LAMP.rimRadius - LAMP.rimTube).toBeLessThan(LAMP.domeRadius)
     expect(LAMP.rimRadius + LAMP.rimTube).toBeGreaterThan(LAMP.domeRadius)
-  })
-
-  it('the emissive die sits inside its glass', () => {
-    expect(LAMP.coreScale).toBeGreaterThan(0)
-    expect(LAMP.coreScale).toBeLessThan(1)
+    // A dome taller than its radius is no longer a cap on the rim.
+    expect(LAMP.domeHeight).toBeLessThanOrEqual(LAMP.domeRadius)
   })
 
   it('the cap seats inside the skirt', () => {
@@ -116,13 +110,5 @@ describe('the machining agrees with itself', () => {
   it('the lever tip clears its own collar', () => {
     expect(TOGGLE.leverLength).toBeGreaterThan(TOGGLE.collarRadius)
     expect(TOGGLE.tipRadius).toBeGreaterThan(TOGGLE.leverRadius)
-  })
-
-  it('the slab is a slab: positive depth, lip, corner, dome', () => {
-    expect(SLAB_DEPTH).toBeGreaterThan(0)
-    expect(BEZEL_LIP).toBeGreaterThan(0)
-    expect(PANEL_RADIUS).toBeGreaterThan(0)
-    expect(LAMP.domeHeight).toBeGreaterThan(0)
-    expect(LAMP.domeHeight).toBeLessThanOrEqual(LAMP.domeRadius)
   })
 })

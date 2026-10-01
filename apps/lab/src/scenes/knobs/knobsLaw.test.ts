@@ -24,7 +24,6 @@ import {
   litGate,
   slabOcclusion,
   stepFade,
-  veilProfile,
 } from './knobsLaw'
 import { knobsTuning } from './knobsTuning'
 
@@ -644,30 +643,6 @@ describe('artGlow — the picture and its light share one phase', () => {
           expect(src.weight).toBeLessThanOrEqual(1)
         }
       }
-    }
-  })
-})
-
-describe('veilProfile — a falloff that can actually end', () => {
-  it('starts at full strength and dies exactly at the end of its reach', () => {
-    expect(veilProfile(0)).toBe(1)
-    expect(veilProfile(1)).toBe(0)
-    expect(veilProfile(1.5)).toBe(0)
-    expect(veilProfile(-0.5)).toBe(1)
-  })
-
-  it('ends with zero slope — no Mach band where the support runs out', () => {
-    const h = 1e-4
-    const slopeAtEnd = (veilProfile(1) - veilProfile(1 - h)) / h
-    expect(Math.abs(slopeAtEnd)).toBeLessThan(1e-3)
-  })
-
-  it('only ever falls', () => {
-    let prev = veilProfile(0)
-    for (let t = 0.05; t <= 1.001; t += 0.05) {
-      const v = veilProfile(t)
-      expect(v).toBeLessThanOrEqual(prev)
-      prev = v
     }
   })
 })
