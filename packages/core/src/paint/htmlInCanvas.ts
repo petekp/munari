@@ -70,6 +70,8 @@ interface TrialCanvas extends HTMLCanvasElement {
   layoutSubtree: boolean
   onpaint: (() => void) | null
   requestPaint: () => void
+  /** Absent in Chrome 153; platform.md #33. */
+  updateElementGeometry?: (element: Element) => void
 }
 
 interface TrialContext2D extends CanvasRenderingContext2D {
@@ -202,6 +204,9 @@ function createHtmlInCanvasSource(
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       const read = body.beginRead()
       ctx.drawElementImage(element, 0, 0)
+      // Chrome 154–156 hit-test a canvas child only after this call, so
+      // without it the parked copy hears no clicks (platform.md #33).
+      canvas.updateElementGeometry?.(element)
       // The current box, and zero changes during paint: the compositor
       // rasterizes inside the frame that asked, so there is no window for
       // the subtree to move in — `size()` at this instant IS what replayed.
