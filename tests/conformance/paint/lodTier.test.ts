@@ -17,7 +17,6 @@ import {
   clampScale,
   clampTiers,
   maxTier,
-  resolveFixedScale,
   seedTier,
   selectLodTier,
   tiersInRange,
@@ -217,40 +216,5 @@ describe('clampTiers', () => {
   it('defaults leave typical panel sizes untouched', () => {
     // 420 css wide at 6x = 2520 — inside the 4096 guard.
     expect(clampTiers(DEFAULT_TIERS, 420, 300)).toEqual(DEFAULT_TIERS)
-  })
-})
-
-// Warn-and-clamp on guard-exceeding fixed resolutions. The clampScale
-// suite above pins WHERE the clamp lands; this pins that the kernel
-// also SAYS it clamped. 'max'
-// resolves inside the library because measured Surfaces can't ask in
-// time — and a caller-fixed density that silently shrinks reads as a
-// texture-quality bug, not a guard. The binding warns; the kernel
-// supplies the verdict.
-describe('warn-and-clamp — a guard-exceeding fixed resolution reports itself', () => {
-  it('admits legal scales verbatim, verdict false', () => {
-    expect(resolveFixedScale(2, 880, 560)).toEqual({ scale: 2, clamped: false })
-    expect(resolveFixedScale(6, 360, 440)).toEqual({ scale: 6, clamped: false })
-  })
-
-  it('clamps to the guard boundary with verdict true — and agrees with clampScale exactly', () => {
-    const r = resolveFixedScale(6, 880, 560)
-    expect(r.clamped).toBe(true)
-    expect(r.scale).toBeCloseTo(4096 / 880, 10)
-    expect(r.scale).toBe(clampScale(6, 880, 560))
-  })
-
-  it('degenerate sizes pass through without a verdict', () => {
-    // Same passthrough contract as clampScale: no measurable long edge
-    // means no guard, and NaN is the caller's bug to see un-mangled.
-    expect(resolveFixedScale(3, 0, 0)).toEqual({ scale: 3, clamped: false })
-    expect(resolveFixedScale(Number.NaN, 400, 300).clamped).toBe(false)
-  })
-
-  it('Infinity is the loudest possible ask — clamped to the boundary, verdict true', () => {
-    expect(resolveFixedScale(Number.POSITIVE_INFINITY, 400, 300)).toEqual({
-      scale: 4096 / 400,
-      clamped: true,
-    })
   })
 })

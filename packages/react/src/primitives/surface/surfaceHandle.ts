@@ -22,6 +22,7 @@ import { use, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStor
 import {
   crossingAtRest,
   crossingCurve,
+  crossingDraws,
   crossingDrive,
   crossingFrame,
   crossingPresentation,
@@ -482,7 +483,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     canCanvas &&
     (requested === 'canvas' ||
       requested === 'both' ||
-      crossing.phase !== 'page' ||
+      crossingDraws(crossing.phase).gl ||
       elapsedMs < lingerUntilMs)
 
   const changing = (canCanvas: boolean): boolean => {

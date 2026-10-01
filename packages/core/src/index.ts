@@ -21,7 +21,6 @@ export {
   affineIsMatchable,
   composeMatchableChain,
   parseTransformMatrix,
-  rectEquals,
   rectIsMeasurable,
   rectToNdc,
   type Affine2D,
@@ -61,7 +60,6 @@ export {
   maxTier,
   clampScale,
   clampTiers,
-  resolveFixedScale,
 } from './paint/lodTier'
 export {
   paintStats,
@@ -166,13 +164,10 @@ export {
   type SurfacePassEvidence,
 } from './transfer/presentation'
 export {
-  partSetComplete,
   partSetEmpty,
   partSetExpect,
-  partSetForget,
   partSetMissing,
   partSetRegister,
-  partSetUnregister,
   surfaceAcquire,
   surfaceEpochCurrent,
   surfaceHolds,
