@@ -7,7 +7,7 @@ suite does not establish browser rendering or native input behavior.
 | Layer | Behavior | Suites |
 |---|---|---|
 | mapping | Coordinates, camera projection, pixel alignment, and anchors | `camera`, `densityIdentity`, `domRect`, `pixelGrid`, `surfaceAnchors`, `uvSampling` |
-| paint | Capture scheduling, frame identity, storage, and filtering | `capabilityProbe`, `captureEngines`, `filterPolicy`, `frameSource`, `htmlInCanvas`, `lodTier`, `paintStats`, `styleChannel`, `textureStorage` |
+| paint | Capture scheduling, frame identity, and storage | `capabilityProbe`, `captureEngines`, `frameSource`, `htmlInCanvas`, `lodTier`, `paintStats`, `textureStorage` |
 | pointer | Input targets, provenance, routing, and native policy | `forwardEvents`, `pointerRoute`, `relayDuplication`, `relaySynthetic`, `relayTripwire`, `routeParity`, `surfacePose` |
 | transfer | Renderer holds, presentation evidence, and motion | `choreography`, `crossing`, `crossingDrive`, `motionCarrier`, `presentation`, `surfaceIdentity`, `surfaceReadiness` |
 | chrome | Borders, radii, and shadows measured from HTML | `surfaceChrome` |

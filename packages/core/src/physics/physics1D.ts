@@ -1,9 +1,7 @@
 // The physics core of the control kit: one 1-DOF body, one
 // integrator, and control "feel" expressed as composable force fields. A
-// dial IS detentField + damping; a toggle IS overCenterField + damping; a
-// slider IS stopsField + endStops + damping. No easing curves, no
-// durations — release velocity flows into the field and the field decides
-// where things land.
+// dial IS detentField + damping. No easing curves, no durations — release
+// velocity flows into the field and the field decides where things land.
 //
 // q is the generalized coordinate (an angle for rotary controls, travel for
 // linear ones); fields return acceleration for a unit mass. Semi-implicit
@@ -42,44 +40,6 @@ export const detentField = (n: number, k: number): Field => {
 }
 
 /**
- * Detents at arbitrary positions (a slider's named stops): a spring toward
- * the NEAREST stop. Piecewise linear force with well boundaries at the
- * midpoints between stops — how a physical detent strip behaves.
- */
-export const stopsField = (stops: number[], k: number): Field => {
-  return (q) => {
-    let nearest = stops[0]!
-    let best = Math.abs(q - nearest)
-    for (let i = 1; i < stops.length; i++) {
-      const d = Math.abs(q - stops[i]!)
-      if (d < best) {
-        best = d
-        nearest = stops[i]!
-      }
-    }
-    return -k * (q - nearest)
-  }
-}
-
-/**
- * Bistable double-well (the toggle): stable poles at q = ±span, unstable
- * equilibrium at q = 0. Crossing center hands you to the far pole — the
- * over-center snap IS this instability. Beyond the poles the force is
- * restoring, so the field self-limits overtravel.
- */
-export const overCenterField = (k: number, span: number): Field => {
-  return (q) => {
-    const x = q / span
-    return k * x * (1 - x * x)
-  }
-}
-
-/** Stiff one-sided springs bounding travel to [min, max] (slider ends). */
-export const endStops = (min: number, max: number, k: number): Field => {
-  return (q) => (q < min ? -k * (q - min) : q > max ? -k * (q - max) : 0)
-}
-
-/**
  * Advance the body by dt. Substeps split dt for stability — a field with
  * effective stiffness K needs h well under 2/√K; substeps=2 at 30fps holds
  * for everything in the kit's tuning range.
@@ -92,8 +52,8 @@ export function step(body: Body1D, field: Field, dt: number, substeps = 2): void
   }
 }
 
-// The bisection harness both impulse solvers share: double to bound the
-// threshold, then close in. The predicate runs the actual integrator.
+// The bisection harness: double to bound the threshold, then close in. The
+// predicate runs the actual integrator.
 function minImpulse(margin: number, succeeds: (v0: number) => boolean): number {
   let lo = 0
   let hi = 1
@@ -107,24 +67,10 @@ function minImpulse(margin: number, succeeds: (v0: number) => boolean): number {
 }
 
 /**
- * The minimum impulse that flips a bistable field from the pole at -span to
- * the pole at +span, found by bisection against the actual integrator. A
- * toggle uses this at mount so its tap strength adapts to ANY tuning instead
- * of hardcoding a magic number. ~30 short simulations; sub-millisecond.
- */
-export function flipImpulse(field: Field, span: number, margin = 1.5): number {
-  return minImpulse(margin, (v0) => {
-    const body: Body1D = { q: -span, v: v0 }
-    for (let i = 0; i < 4 * 120; i++) step(body, field, 1 / 120, 2)
-    return body.q > 0
-  })
-}
-
-/**
- * flipImpulse's sibling for periodic fields: the minimum impulse that carries
- * a body from one well center past the barrier into the next well (the
- * dial's keyboard ratchet — one arrow press, one detent). Same bisection
- * against the actual integrator; returns a positive speed, caller signs it.
+ * The minimum impulse that carries a body from one well center past the
+ * barrier into the next well (the dial's keyboard ratchet — one arrow press,
+ * one detent), found by bisection against the actual integrator so the
+ * strength adapts to any tuning. Returns a positive speed; the caller signs it.
  * margin keeps single presses decisive; key-repeat compounds impulses into
  * momentum by design, so margin stays small enough not to skip a second
  * well from rest (pinned by test).

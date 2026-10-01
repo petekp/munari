@@ -2158,6 +2158,15 @@ Surface with a declared part and no presenter passed the readiness gate,
 the exact fault `partSetComplete` exists to refuse. That one is wired
 into the store's gates, not culled.
 
+Amended 2026-09-30 — THE RUNTIME STOPPED READING `filterPolicy`. A test audit
+found kernel exports that only tests called. The source runtime now chooses
+mipmaps itself: pinned resolutions and textures captured at half scale or
+less get them. `filterPolicy` gave them only to pinned resolutions, so the
+kernel law disagreed with the code that ran. It is removed, and the runtime's
+rule has its own test in the binding. `styleChannel` never had a consumer.
+`overCenterField`, `flipImpulse`, `stopsField` and `endStops` served a toggle
+and a slider the binding no longer has. Each goes with its conformance tests.
+
 ## #38 — Agent control uses existing owners; observations carry their limits (2026-08-31, documentation + tooling design)
 
 **Decision.** Agent-facing work follows the same content, control and evidence

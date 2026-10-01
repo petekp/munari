@@ -40,8 +40,7 @@ generation number. The renderer records which generation it uploaded and drew.
 ## Keeping a Surface sharp
 
 Modules: [`camera`](./src/mapping/camera.ts),
-[`lodTier`](./src/paint/lodTier.ts), [`pixelGrid`](./src/mapping/pixelGrid.ts),
-[`filterPolicy`](./src/paint/filterPolicy.ts).
+[`lodTier`](./src/paint/lodTier.ts), and [`pixelGrid`](./src/mapping/pixelGrid.ts).
 
 A Surface stays sharp when three conditions hold:
 
@@ -61,9 +60,10 @@ pixels because WebGL still blends each texel across its neighbors.
 
 WebGL minifies a texture when it covers fewer screen pixels than its source
 image contains. Mipmaps are smaller copies that reduce jagged text and grid
-patterns during this shrink. `filterPolicy` gives pinned high-resolution
-textures mipmaps and blends between them with trilinear filtering. Textures
-that track screen density use linear filtering.
+patterns during this shrink. They also blur text at reading range, because
+trilinear filtering blends in a half-resolution copy. The binding's source
+runtime gives mipmaps to pinned resolutions and to textures captured at half
+scale or less. Other textures use linear filtering.
 
 ## Moving pixels between the page and WebGL
 
@@ -100,19 +100,6 @@ the visible renderer.
 `motionCarrier` supports motion that must continue through the handoff. It
 keeps the animation clock in JavaScript. The page and the mesh read the same
 sample, so their position and velocity match.
-
-## Sending CSS values to a mesh
-
-Module: [`styleChannel`](./src/paint/styleChannel.ts).
-
-`CSS.registerProperty` gives a custom property a type that Chrome can
-interpolate. For example, `transition: --depth 300ms ease` changes `--depth`
-over 300 milliseconds. If no paint rule reads that property, the transition
-does not repaint the DOM. A 600 millisecond test produced zero paints.
-
-`getComputedStyle` returns the current value during the transition. A consumer
-can read that value each frame and apply it to depth, tilt, or another mesh value.
-CSS and Tailwind can define the target value and transition.
 
 ## Forwarding clicks, hover, and typing
 
@@ -181,8 +168,7 @@ into the correct shape and can draw the measured shadows outside it.
 Module: [`physics1D`](./src/physics/physics1D.ts).
 
 `physics1D` models a control with a position, velocity, and forces. A detent is
-a spring that pulls the control toward a stop. Damping slows the control. A
-toggle uses two stable positions with an unstable point between them. The
+a spring that pulls the control toward a stop. Damping slows the control. The
 release velocity carries into the simulation, so the control settles from the
 gesture instead of following a fixed duration.
 
