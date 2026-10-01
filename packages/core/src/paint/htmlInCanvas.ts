@@ -1,10 +1,10 @@
 // The HTML-in-canvas engine — THE platform file: Chrome's "HTML in
-// Canvas" origin trial (Chrome 148–151) turned into a capture engine.
+// Canvas" origin trial (Chrome 148–160) turned into a capture engine.
 // https://developer.chrome.com/blog/html-in-canvas-origin-trial
 //
 // Empirically discovered contract (Chrome 150, --enable-features=CanvasDrawElement):
 //   1. The source element must be a CHILD of the canvas you draw into, and the
-//      canvas needs `canvas.layoutSubtree = true` so the child gets layout.
+//      canvas must opt in to laying it out (platform.md #32 for the two names).
 //   2. drawElementImage() only succeeds inside the canvas's `onpaint` callback,
 //      scheduled via `canvas.requestPaint()`. Outside it you get
 //      "No cached paint record for element".
@@ -138,6 +138,10 @@ function createHtmlInCanvasSource(
   // ahead of construction.
   const canvas = body.canvas as TrialCanvas
   trial = canvas
+  // Chrome 156 renamed the opt-in to `content="drawable"`; 155 and earlier
+  // know only `layoutSubtree`. Setting both covers every trial build, and
+  // whichever name a build lacks is inert there (platform.md #32).
+  canvas.setAttribute('content', 'drawable')
   canvas.layoutSubtree = true
   // Must stay in-document AND on-screen to get paint records — off-screen
   // (left:-10000px) canvases are skipped by the compositor and never paint.

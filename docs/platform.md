@@ -1,10 +1,10 @@
 # The platform, as measured
 
 These are dated measurements of the platform under each capture engine.
-Items 1–21 measure Chrome's HTML-in-canvas capability: the library's default
-capture path uses `drawElementImage`, and entries for `texElementImage2D`
-describe an evaluated alternative. Item 22 onward measures snapDOM, the
-optional second engine. Recheck the relevant measurements when changing
+Items 1–21 and 32 measure Chrome's HTML-in-canvas capability: the library's
+default capture path uses `drawElementImage`, and entries for
+`texElementImage2D` describe an evaluated alternative. Items 22–31 measure
+snapDOM, the optional second engine. Recheck the relevant measurements when changing
 browser versions or the mechanism that depends on them.
 
 Baseline measurements **2026-08-04** against **Chrome 150** (items 11–12; item
@@ -155,3 +155,4 @@ Item 4 is the one that has cost the most: it is invisible in review
 (clean paints, no error) and self-heals on the next unrelated repaint,
 so a transition on a content root leaves a *stale* end state that
 looks intermittent. Animate descendants, or move the mesh.
+| 32 | **Chrome 156 renamed the canvas opt-in from `layoutSubtree` to `content="drawable"`, and Chrome 157 made `drawElementImage` return `undefined` instead of a `DOMMatrix`. Through 157 the old opt-in still works, and nothing else the engine calls has changed.** 155 knows only `layoutSubtree`; an unknown `content` attribute is inert there. From 156, both names opt the canvas in, and with neither the error names `content=drawable`. `onpaint`, `requestPaint`, the `paint` event and `updateElementGeometry` exist in every build tested, and so do `texElementImage2D` and `texElementSubImage2D`. The engine sets both opt-in names and never reads the draw's return value. (measured 2026-09-30, Chrome 154.0.8037.92 stable and Chrome for Testing 155.0.8059.12, 156.0.8078.5, 157.0.8080.0, each with `--enable-features=CanvasDrawElement`) | a 32px red child drawn in a paint callback: `[255,0,0,255]` under `layoutSubtree` on 154–157 and under `content="drawable"` on 156–157; `content="drawable"` alone on 154/155 throws `requires the canvas to have the layoutsubtree attribute`; draw returns `DOMMatrix` on 154–156, `undefined` on 157. Without the flag, 157 exposes none of the API on a local page, and the live demo's token enables it on 154–157. On 157, `gate:lifting-pointer` passes with `content="drawable"` alone and fails with neither name, logging that error |
