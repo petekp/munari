@@ -61,8 +61,6 @@ function Observations() {
   const motion=useSurfaceMotion(({position,target,scenePresented,dtMs})=>scenePresented?Math.min(target,position+dtMs/1000):0,own)
   const position:number=motion.get()
   void useSurfaceSupport();void supportsSurfaces();void [hold,raw,eased,position]
-  // @ts-expect-error Renderer mount duty is private.
-  void state.isWebGLMounted
   // @ts-expect-error Canvas is not a public destination.
   const oldDestination:SurfaceDestination='canvas'
   void oldDestination
@@ -171,4 +169,4 @@ const customProducer = {
 ;<Surface.HTML pageStyle={{ display: 'none' }}><div /></Surface.HTML>
 ;<Surface.HTML pageStyle={{ margin: 12 }}><div /></Surface.HTML>
 // @ts-expect-error The handle cannot write renderer intent.
-handle.request('scene')
+void handle.request

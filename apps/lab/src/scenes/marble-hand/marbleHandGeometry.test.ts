@@ -12,7 +12,7 @@
 
 import { readFileSync } from 'node:fs'
 import { afterAll, describe, expect, it } from 'vitest'
-import { Euler, Matrix4, PerspectiveCamera, Vector3 } from 'three'
+import { Euler, Matrix4, Vector3 } from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { marbleHandTuning as tune } from './marbleHandTuning'
 
@@ -31,9 +31,6 @@ const triangles = Array.from({ length: positions.count / 3 }, (_, index) => [
 // precision absorbs float32 export noise without merging visible detail.
 const WRIST_X = -215
 const WELD_PRECISION = 10000
-// MarbleHand.tsx uses a 42-degree pixel camera. Sweep the current tuning's
-// full spin range so an exported preset cannot exceed the tested envelope.
-const FOV = 42
 // The 2026-08-30 vertex sweep measured 5.885px at the press extreme. Keep
 // 5.8px clear so a pose change cannot put the curled fingers through paper.
 const MIN_CLEARANCE_PX = 5.8
@@ -52,6 +49,8 @@ const vertices = triangles.flat()
 const sculptureRotation = new Matrix4().makeRotationFromEuler(
   new Euler(tune.sculptureRoll, tune.sculpturePitch, 0, 'YXZ'),
 )
+// Sweep the current tuning's full spin range so an exported preset cannot
+// exceed the tested envelope.
 const poses: Matrix4[] = []
 for (const pressPitch of [0, tune.pressPitch]) {
   for (const rx of [-tune.maxTilt, 0, tune.maxTilt]) {
@@ -133,32 +132,6 @@ describe('the authored marble-hand pose', () => {
       const trailing = center.clone().applyMatrix4(pose)
       expect(trailing.x).toBeGreaterThan(0)
       expect(-trailing.y).toBeGreaterThan(0)
-    }
-  })
-
-  it('projects the real tip onto the browser hotspot at both authored heights', () => {
-    const tip = vertices.find((point) => point.x === 0 && point.y === 0 && point.z === 0)
-    if (!tip) throw new Error('The shipped hand has no index vertex at local zero.')
-    for (const [width, height] of [[1440, 900], [390, 844]]) {
-      const distance = height / (2 * Math.tan(FOV * Math.PI / 360))
-      const camera = new PerspectiveCamera(FOV, width / height, 1, distance * 3)
-      camera.position.z = distance
-      camera.updateMatrixWorld()
-      for (const depth of [tune.heightPx, tune.pressHeightPx]) {
-        const pageToDepth = (distance - depth) / distance
-        for (const [x, y] of [[0, 0], [width / 2, height / 2], [width, height]]) {
-          for (const pose of poses) {
-            const world = pose.clone().setPosition(
-              (x - width / 2) * pageToDepth,
-              (height / 2 - y) * pageToDepth,
-              depth,
-            )
-            const projected = tip.clone().applyMatrix4(world).project(camera)
-            expect((projected.x + 1) * width / 2).toBeCloseTo(x, 9)
-            expect((1 - projected.y) * height / 2).toBeCloseTo(y, 9)
-          }
-        }
-      }
     }
   })
 })

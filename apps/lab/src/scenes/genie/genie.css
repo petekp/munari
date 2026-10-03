@@ -851,7 +851,7 @@
  * of its own to say. */
 .gen-tile[data-role='window'][data-filled='true'] {
   cursor: pointer;
-  /* A swollen bay clears the 14px gap at rest, but a landing ring
+  /* A swollen bay clears the 16px gap at rest, but a landing ring
    * overshoots past it — and only a bay that is holding something ever
    * rings, so raising exactly those is enough for the overshoot to pass
    * IN FRONT of its neighbours instead of tangling edges with them. */

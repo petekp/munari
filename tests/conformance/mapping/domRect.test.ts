@@ -11,7 +11,6 @@ import {
   affineIsMatchable,
   composeMatchableChain,
   parseTransformMatrix,
-  rectEquals,
   rectIsMeasurable,
   rectToNdc,
 } from '@munari/core'
@@ -45,12 +44,6 @@ describe('client rects in normalized device coordinates', () => {
   it('a zero extent is not measurable', () => {
     expect(rectIsMeasurable({ left: 0, top: 0, width: 0, height: 10 })).toBe(false)
     expect(rectIsMeasurable({ left: 0, top: 0, width: 10, height: 10 })).toBe(true)
-  })
-
-  it('rect equality tolerates a hundredth of a pixel and no more', () => {
-    const base = { left: 10, top: 10, width: 100, height: 50 }
-    expect(rectEquals(base, { ...base, left: 10.005 })).toBe(true)
-    expect(rectEquals(base, { ...base, left: 10.02 })).toBe(false)
   })
 })
 

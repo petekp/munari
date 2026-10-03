@@ -35,12 +35,12 @@ describe('dock swell', () => {
   // and for a size change on a small box that budget is in PIXELS at
   // the size the box is actually drawn.
   it('perceptual floor: on the lab tile, docking grows the container by at least 12px — plainly bigger than the bays beside it', () => {
-    const TILE = 52 // .gen-tile, genie.css — load-bearing: measure() reads this box
+    const TILE = 58 // .gen-tile, genie.css — load-bearing: measure() reads this box
     const grown = TILE * dockSwell(1)
     expect(grown - TILE).toBeGreaterThanOrEqual(12)
-    // And not so far that it swallows the dock: the tray's gap is 14px,
+    // And not so far that it swallows the dock: the row's gap is 16px,
     // so a bay may lean into the gap but must not reach its neighbour.
-    expect((grown - TILE) / 2).toBeLessThan(14)
+    expect((grown - TILE) / 2).toBeLessThan(16)
   })
 
   it('is monotone nondecreasing across the whole journey — the container never shrinks while absorbing', () => {

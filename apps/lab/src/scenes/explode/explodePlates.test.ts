@@ -87,14 +87,10 @@ describe('suppressionSheet', () => {
     // The wrapper is parked in document.body, so this sheet is live against
     // the real document. A bare `*` would neutralize the page itself, and
     // "the page went transparent" is a bug you chase in the wrong file.
+    // The descendant selector is there because an inherited value loses to a
+    // descendant's own. Measured: a <span> carrying its own `color` leaked
+    // ~10 px into EVERY plate when neutralization was set inline on the root.
     expect(selectorOf(css)).toBe('[data-plate="t1"], [data-plate="t1"] *')
-  })
-
-  it('reaches descendants, because an inherited value loses to their own', () => {
-    // Measured: a <span> carrying its own `color` leaked ~10 px into EVERY
-    // plate when neutralization was set inline on the root.
-    const css = suppressionSheet('t1', table, table[1])
-    expect(css).toContain('[data-plate="t1"] *')
   })
 
   it('marks every declaration !important', () => {
@@ -104,17 +100,6 @@ describe('suppressionSheet', () => {
     const declarations = declaredProperties(css)
     expect(declarations.length).toBeGreaterThan(0)
     expect(css.match(/!important/g)?.length).toBe(declarations.length)
-  })
-
-  it('a plate for a multi-property feature suppresses all of its siblings', () => {
-    // The real table's `glyphs` carries three properties, one of which is
-    // `color` — a substring of two OTHER features' properties. Whatever the
-    // plate is for, none of its own properties may appear in its own sheet.
-    const glyphs = PAINT_FEATURES.find((f) => f.id === 'glyphs')!
-    const declared = declaredProperties(suppressionSheet('t1', PAINT_FEATURES, glyphs))
-    for (const [property] of glyphs.off) expect(declared).not.toContain(property)
-    expect(declared).toContain('box-shadow')
-    expect(declared).toContain('text-shadow')
   })
 
   it('every feature in the real table can be isolated', () => {

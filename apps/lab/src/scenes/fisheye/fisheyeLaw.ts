@@ -92,22 +92,6 @@ export function fisheyeDisplaceX(
 }
 
 /**
- * The content x that lands at displaced `targetX`, given the SOURCE y
- * (recover it with fisheyeSource first — the scale is read at the
- * content row, not the screen row). Closed form: the x map is linear.
- */
-export function fisheyeSourceX(
-  targetX: number,
-  sourceY: number,
-  center: number,
-  focus: number,
-  amplitude: number,
-  p: FisheyeParams,
-): number {
-  return center + (targetX - center) / fisheyeScale(sourceY, focus, amplitude, p)
-}
-
-/**
  * The content position that lands at displaced position `target` —
  * the inverse of fisheyeDisplace, by bisection (monotone, no closed
  * form: the forward map mixes y with sin(y)).

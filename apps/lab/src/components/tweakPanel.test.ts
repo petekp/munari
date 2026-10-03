@@ -78,21 +78,13 @@ describe('tuning storage round trip', () => {
     expect(readStoredTuning(storage, 'lamp-tuning', normalize)).toEqual(live)
   })
 
-  it('clamps a stale value outside the current range instead of trusting it', () => {
+  // The scene's own normalizer repairs the entry. Each scene tests its
+  // normalizer; this checks that a stored entry cannot bypass it.
+  it('passes a stale, partial entry through normalize instead of trusting it', () => {
     const storage = fakeStorage()
-    storage.setItem('lamp-tuning', JSON.stringify({ flameSize: 99, label: 'old build', enabled: true }))
+    storage.setItem('lamp-tuning', JSON.stringify({ flameSize: 99 }))
     expect(readStoredTuning(storage, 'lamp-tuning', normalize)).toEqual({
       flameSize: 2,
-      label: 'old build',
-      enabled: true,
-    })
-  })
-
-  it('falls back to defaults field by field when a stored field is missing', () => {
-    const storage = fakeStorage()
-    storage.setItem('lamp-tuning', JSON.stringify({ flameSize: 1.2 }))
-    expect(readStoredTuning(storage, 'lamp-tuning', normalize)).toEqual({
-      flameSize: 1.2,
       label: defaults.label,
       enabled: defaults.enabled,
     })

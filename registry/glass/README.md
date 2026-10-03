@@ -33,9 +33,8 @@ The pack test checks the two actual copied files for byte identity.
 and draw order using independent pixel controls. A nearer panel must remain
 in front even when it is farther from the camera by radial distance.
 
-The old `rippleLaw.ts` math twin and shader-text assertions did not execute the
-renderer. They do not establish its behavior. The browser check also does not
-cover every ripple parameter, retirement, glow, or layered input behavior.
+No unit test runs the renderer's ripple math. The browser check does not cover
+every ripple parameter, retirement, glow, or layered input behavior.
 
 ## Tuned constants
 
