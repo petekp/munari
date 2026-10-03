@@ -31,7 +31,7 @@ describe('the page frames a recording needs for a visual verdict', () => {
     { rows: [[-10, 0], [10, 1], [20, 2]] },
   ]
   it.each(unrecordedEnds)('refuses an interval with an unrecorded end: $rows', ({ rows }) => {
-    expect(() => requirePageFrameCoverage(frames(rows), 0, 30)).toThrow('both ends')
+    expect(() => requirePageFrameCoverage(frames(rows), 0, 30)).toThrow(IncompleteScreencastError)
   })
 
   const disordered: { rows: [number, number][] }[] = [
@@ -50,6 +50,8 @@ describe('the page frames a recording needs for a visual verdict', () => {
   })
 
   it('treats a page frame that goes backward as a broken instrument', () => {
-    expect(() => requirePageFrameCoverage(frames([[0, 3], [10, 2], [20, 3]]), 0, 20)).toThrow('backward')
+    const backward = () => requirePageFrameCoverage(frames([[0, 3], [10, 2], [20, 3]]), 0, 20)
+    expect(backward).toThrow(Error)
+    expect(backward).not.toThrow(IncompleteScreencastError)
   })
 })

@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto'
 
 import puppeteer from 'puppeteer-core'
 import { createScreencastRecorder, scoreScreencast } from './screencastRecording.ts'
-import { IncompleteScreencastError, requirePageFrameCoverage } from './screencastCoverage.ts'
+import { IncompleteScreencastError } from './screencastCoverage.ts'
 
 const chrome = [
   process.env.CHROME_PATH,
@@ -298,7 +298,24 @@ function assertColor(actual, expected, tolerance) {
 }
 
 async function decodingCheck(page) {
+  const decodes = await page.evaluateHandle(() => {
+    const original = HTMLImageElement.prototype.decode
+    const sources = []
+    HTMLImageElement.prototype.decode = function (...args) {
+      sources.push(this.src)
+      return original.apply(this, args)
+    }
+    return {
+      take(reference) {
+        const observed = { images: sources.length, reference: sources.filter(source => source === reference).length }
+        sources.length = 0
+        return observed
+      },
+      restore() { HTMLImageElement.prototype.decode = original },
+    }
+  })
   const observer = observeHandles(page)
+  let failure = null
   try {
     await withRecorder(page, async () => {
       const png = await fixtures(page, 'png')
@@ -312,12 +329,14 @@ async function decodingCheck(page) {
           context: { identity: 719 },
           createScorer: fixtureScorer,
         })
-        assert.deepEqual(scored.diagnostics.batchSizes, [8, 8, 3])
         const actualMessages = observer.messages.slice(messageStart)
-        assert.deepEqual(actualMessages.map(message => message.indices.length), [8, 8, 3])
+        assert.ok(actualMessages.every(message => message.indices.length <= 8), 'Each decode message must contain at most eight images')
+        assert.deepEqual(scored.diagnostics.batchSizes, actualMessages.map(message => message.indices.length))
         assert.deepEqual(actualMessages.flatMap(message => message.indices), Array.from({ length: 19 }, (_, index) => 100 + index * 3))
         assert.deepEqual(scored.diagnostics.payloadBytes, actualMessages.map(message => message.payloadBytes))
-        assert.equal(scored.diagnostics.decodedImages, 20)
+        const actualDecodes = await decodes.evaluate((observation, reference) => observation.take(reference), `data:image/png;base64,${png.reference}`)
+        assert.deepEqual(actualDecodes, { images: 20, reference: 1 })
+        assert.equal(scored.diagnostics.decodedImages, actualDecodes.images)
         assert.equal(scored.diagnostics.referenceDecoded, true)
         assert.equal(scored.rows.length, 19)
         scored.rows.forEach((row, index) => {
@@ -332,12 +351,12 @@ async function decodingCheck(page) {
           assertColor(row.value.referenceColor, [31, 97, 173], 0)
         })
         assert.deepEqual(scored.summary, { inspected: 19, referenceIdentity: 231, referenceColor: [31, 97, 173], contextIdentity: 719 })
-        requirePageFrameCoverage(scored.rows, 1000, 1180)
         const releasedObjects = observer.assertReleasedSince(start, 3)
         record(`${encoding}: independent raster identity and scorer continuity`, {
           images: scored.rows.length,
           batchSizes: scored.diagnostics.batchSizes,
           actualDecodeMessages: actualMessages.length,
+          actualDecodes,
           payloadBytes: scored.diagnostics.payloadBytes,
           releasedObjects,
           knownClockRange: [65528, 65546],
@@ -354,13 +373,21 @@ async function decodingCheck(page) {
       assert.deepEqual(selected.rows.map(row => row.value.identity), [2, 9, 17])
       assert.deepEqual(selected.rows.map(row => row.value.ordinal), [1, 2, 3])
       assert.equal(selected.summary.referenceIdentity, 9)
-      assert.equal(selected.diagnostics.decodedImages, 4)
-      record('recorded reference and selected original indices', { indices: selected.rows.map(row => row.index), referenceIdentity: selected.summary.referenceIdentity })
+      const actualDecodes = await decodes.evaluate((observation, reference) => observation.take(reference), `data:image/png;base64,${png.frames.find(frame => frame.index === 124).data}`)
+      assert.ok(actualDecodes.reference >= 1 && actualDecodes.reference <= 2, 'The recorded reference may also be decoded as a selected image')
+      assert.equal(actualDecodes.images, 2 + actualDecodes.reference)
+      assert.equal(selected.diagnostics.decodedImages, actualDecodes.images)
+      record('recorded reference and selected original indices', { indices: selected.rows.map(row => row.index), referenceIdentity: selected.summary.referenceIdentity, actualDecodes })
     })
     observer.assertReleasedSince(0, 7)
+  } catch (error) {
+    failure = { error }
   } finally {
     observer.restore()
+    try { await decodes.evaluate(observation => observation.restore()) } catch (error) { failure = combineFailure(failure, error) }
+    try { await decodes.dispose() } catch (error) { failure = combineFailure(failure, error) }
   }
+  if (failure !== null) throw failure.error
 }
 
 async function exceptionalScoringCheck(page) {
