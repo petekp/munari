@@ -1,8 +1,8 @@
 # Browser gate recording implementation plan
 
-Status: implemented locally. The scoped changes and local behavior checks pass.
-The unchanged origin-trial renewal preflight fails. Hosted acceptance remains
-pending publication and that separate renewal blocker.
+Status: implemented and locally verified against current `main`. The origin-trial
+preflight passes with its expiry warning. Publication is authorized; hosted
+acceptance remains pending the resulting GitHub Actions run.
 
 Build one recording module for the Genie restore and pose flash gates. It will
 own Chrome recording, acknowledgement draining, image decoding, page-frame
@@ -565,10 +565,10 @@ clock errors ahead of missing-second retry classification.
 | Native fallback | Gestures in five scenes passed without the trial flag |
 | Existing direct clock-installer call | Real Chrome call and read hook remained compatible |
 | Disposable actual-assessment checks | Sixty-two metadata/error cases passed; this is not pixel proof |
-| Fast suite | 1,448 tests in 126 files passed |
+| Fast suite on integrated main | 1,399 tests in 123 files passed |
 | Typecheck, lint, package build | Passed |
-| Origin-trial renewal preflight | Failed on the unchanged demo token's existing 30-day renewal guard |
-| Hosted execution | Not run; publication remains separate |
+| Origin-trial preflight on integrated main | Passed with an expiry warning |
+| Hosted execution | Pending the GitHub Actions run after the main push |
 
 Active disposal collects acknowledgement failures reported while the stopped
 stream drains. The real-Chrome check verifies that rejection is terminal and
@@ -576,10 +576,10 @@ reported once, both before disposal and after Chrome confirms stop. Session,
 listener, pending-work, and clock cleanup pass in both cases. The added check
 failed before the correction and passed afterward.
 
-The signed token expires October 19, 2026 at 5:00 p.m. Pacific. The token and its
-renewal check were not changed. This blocker is outside the recorder extraction;
-it prevents claiming a green overall checks job. Local flag-backed results remain
-separate from the public demo's origin-trial status.
+The signed token expires October 19, 2026 at 5:00 p.m. Pacific. Current `main`
+warns while the token remains valid and fails once it expires. Integration with
+that change removes the earlier preflight blocker. Local flag-backed results
+remain separate from the public demo's origin-trial status.
 
 No late recording images appeared in the recorder check. Fresh-session isolation
 and immutable captures passed, but late-delivery behavior remains unverified.
