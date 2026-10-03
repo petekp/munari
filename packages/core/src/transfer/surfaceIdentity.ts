@@ -117,15 +117,6 @@ export function partSetExpect(set: SurfacePartSet, id: SurfacePartId): SurfacePa
   return { expected: [...set.expected, id], registered: set.registered }
 }
 
-/** Withdraw a declared part. Unknown ids are a no-op. */
-export function partSetForget(set: SurfacePartSet, id: SurfacePartId): SurfacePartSet {
-  if (!set.expected.includes(id)) return set
-  return {
-    expected: set.expected.filter((part) => part !== id),
-    registered: set.registered.filter((part) => part !== id),
-  }
-}
-
 /**
  * A presenter reports that it covers `id`. Registering a part nobody
  * declared is a no-op — a presenter naming a part that does not exist must
@@ -137,25 +128,7 @@ export function partSetRegister(set: SurfacePartSet, id: SurfacePartId): Surface
   return { expected: set.expected, registered: [...set.registered, id] }
 }
 
-/** A presenter goes away. The part stays expected; the set is incomplete again. */
-export function partSetUnregister(set: SurfacePartSet, id: SurfacePartId): SurfacePartSet {
-  if (!set.registered.includes(id)) return set
-  return {
-    expected: set.expected,
-    registered: set.registered.filter((part) => part !== id),
-  }
-}
-
 /** The declared parts with no presenter — what keeps DOM visible. */
 export function partSetMissing(set: SurfacePartSet): readonly SurfacePartId[] {
   return set.expected.filter((id) => !set.registered.includes(id))
-}
-
-/**
- * May this Surface attempt a handoff? An EMPTY set is not complete: a
- * source-free root with no parts has declared no content, and treating it
- * as ready would release the page for a Surface with nothing to present.
- */
-export function partSetComplete(set: SurfacePartSet): boolean {
-  return set.expected.length > 0 && partSetMissing(set).length === 0
 }

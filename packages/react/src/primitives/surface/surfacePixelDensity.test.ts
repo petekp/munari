@@ -9,5 +9,9 @@ it('uses native DPR without the inherited two-times ceiling and preserves explic
 })
 it('measures each axis instead of exaggerating the diagonal of a wide quad',()=>{
  expect(matchedSurfaceDensity([440,280],{left:20,top:30,width:440,height:280},{left:0,top:0,width:1100,height:900},[2200,1800])).toBe(2)
- expect(matchedSurfaceDensity([440,280],{left:20,top:30,width:528,height:238},{left:0,top:0,width:816,height:391},[1632,1104])).toBeCloseTo(2.4)
+})
+// The axes disagree, 2.4 against 1.7, first across and then down. Reading one axis fails one of the two.
+it('takes the denser axis when a non-uniform scale makes the two disagree',()=>{
+ expect(matchedSurfaceDensity([440,280],{left:20,top:30,width:528,height:238},{left:0,top:0,width:816,height:391},[1632,782])).toBeCloseTo(2.4)
+ expect(matchedSurfaceDensity([280,440],{left:20,top:30,width:238,height:528},{left:0,top:0,width:391,height:816},[782,1632])).toBeCloseTo(2.4)
 })

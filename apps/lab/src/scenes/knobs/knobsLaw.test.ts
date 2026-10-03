@@ -8,6 +8,7 @@ import {
   KNOBS_LAMPS,
   KNOBS_ROTARY,
   KNOBS_TOGGLES,
+  knobsValues,
   KNOB_ANGLE_MIN,
   KNOB_ANGLE_SWEEP,
   PALETTE_SCHEMES,
@@ -23,7 +24,6 @@ import {
   litGate,
   slabOcclusion,
   stepFade,
-  veilProfile,
 } from './knobsLaw'
 import { knobsTuning } from './knobsTuning'
 
@@ -299,28 +299,25 @@ describe('generateArt', () => {
     }
   })
 
-  // A field with no dial and no entry here is a parameter nobody can
-  // reach and nobody declared — the exact thing the test above was
-  // written to catch. Hiding `spread` must stay a DECISION, not a
-  // silent omission.
+  // A field with no dial, no switch, and no KNOBS_FIXED entry is a
+  // parameter nobody can reach and nobody declared. Hiding `spread` must
+  // stay a decision, not a silent omission.
   it('accounts for every field in the bag: a dial, a switch, or a declared fixed value', () => {
+    const fields = Object.keys(knobsValues).sort()
     const dialed = new Set<string>(KNOBS_ROTARY.map((k) => k.key))
     const switched = new Set<string>(KNOBS_TOGGLES.map((t) => t.key))
     const fixed = new Set<string>(KNOBS_FIXED)
-    for (const key of Object.keys(DEFAULTS)) {
-      expect(dialed.has(key) || switched.has(key) || fixed.has(key)).toBe(true)
-    }
-    // …and nothing is declared fixed while still wearing a dial.
-    for (const key of KNOBS_FIXED) expect(dialed.has(key)).toBe(false)
-    expect([...dialed, ...switched, ...fixed].sort()).toEqual(Object.keys(DEFAULTS).sort())
+    // Every field is reached exactly once, and nothing outside the bag is.
+    expect([...dialed, ...switched, ...fixed].sort()).toEqual(fields)
+    expect(dialed.size + switched.size + fixed.size).toBe(fields.length)
     expect(dialed.size).toBe(KNOBS_ROTARY.length)
     expect(switched.size).toBe(KNOBS_TOGGLES.length)
     for (const def of KNOBS_ROTARY) {
-      expect(Number.isFinite(DEFAULTS[def.key])).toBe(true)
+      expect(Number.isFinite(knobsValues[def.key])).toBe(true)
       expect(def.min).toBeLessThan(def.max)
       expect(def.step).toBeGreaterThan(0)
     }
-    for (const def of KNOBS_TOGGLES) expect([true, false]).toContain(DEFAULTS[def.key])
+    for (const def of KNOBS_TOGGLES) expect([true, false]).toContain(knobsValues[def.key])
   })
 })
 
@@ -646,30 +643,6 @@ describe('artGlow — the picture and its light share one phase', () => {
           expect(src.weight).toBeLessThanOrEqual(1)
         }
       }
-    }
-  })
-})
-
-describe('veilProfile — a falloff that can actually end', () => {
-  it('starts at full strength and dies exactly at the end of its reach', () => {
-    expect(veilProfile(0)).toBe(1)
-    expect(veilProfile(1)).toBe(0)
-    expect(veilProfile(1.5)).toBe(0)
-    expect(veilProfile(-0.5)).toBe(1)
-  })
-
-  it('ends with zero slope — no Mach band where the support runs out', () => {
-    const h = 1e-4
-    const slopeAtEnd = (veilProfile(1) - veilProfile(1 - h)) / h
-    expect(Math.abs(slopeAtEnd)).toBeLessThan(1e-3)
-  })
-
-  it('only ever falls', () => {
-    let prev = veilProfile(0)
-    for (let t = 0.05; t <= 1.001; t += 0.05) {
-      const v = veilProfile(t)
-      expect(v).toBeLessThanOrEqual(prev)
-      prev = v
     }
   })
 })

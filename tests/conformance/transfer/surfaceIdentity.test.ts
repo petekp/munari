@@ -7,13 +7,10 @@
 // while a part has no presenter.
 import { describe, expect, it } from 'vitest'
 import {
-  partSetComplete,
   partSetEmpty,
   partSetExpect,
-  partSetForget,
   partSetMissing,
   partSetRegister,
-  partSetUnregister,
   surfaceAcquire,
   surfaceEpochCurrent,
   surfaceHolds,
@@ -86,13 +83,6 @@ describe('surface identity', () => {
 })
 
 describe('part sets', () => {
-  it('an empty set is not complete', () => {
-    // A source-free root with no parts has declared no content. Reporting
-    // it complete would release the page for a Surface with nothing to
-    // present.
-    expect(partSetComplete(partSetEmpty())).toBe(false)
-  })
-
   it('a duplicate part id is refused by identity', () => {
     // Reorderable parts that fall back to array index produce two parts
     // claiming one id. The set would then look whole while one part has no
@@ -101,44 +91,25 @@ describe('part sets', () => {
     expect(partSetExpect(one, 'a')).toBe(one)
   })
 
-  it('completes only when every declared part has a presenter', () => {
+  it('misses a declared part until a presenter covers it', () => {
     let set = partSetExpect(partSetExpect(partSetEmpty(), 'a'), 'b')
     expect(partSetMissing(set)).toEqual(['a', 'b'])
     set = partSetRegister(set, 'a')
-    expect(partSetComplete(set)).toBe(false)
+    expect(partSetMissing(set)).toEqual(['b'])
     set = partSetRegister(set, 'b')
-    expect(partSetComplete(set)).toBe(true)
     expect(partSetMissing(set)).toEqual([])
   })
 
   it('several presenters may share one part', () => {
     // The API allows more than one WebGL presentation per part, so
     // registration is a set membership and never a tally.
-    let set = partSetRegister(partSetExpect(partSetEmpty(), 'a'), 'a')
-    const again = partSetRegister(set, 'a')
-    expect(again).toBe(set)
-    set = partSetUnregister(set, 'a')
-    expect(partSetComplete(set)).toBe(false)
+    const set = partSetRegister(partSetExpect(partSetEmpty(), 'a'), 'a')
+    expect(partSetRegister(set, 'a')).toBe(set)
   })
 
-  it('a presenter for an undeclared part cannot complete a set', () => {
+  it('a presenter for an undeclared part covers nothing', () => {
     const set = partSetExpect(partSetEmpty(), 'a')
     expect(partSetRegister(set, 'ghost')).toBe(set)
-    expect(partSetComplete(partSetRegister(set, 'ghost'))).toBe(false)
-  })
-
-  it('forgetting a part takes its registration with it', () => {
-    let set = partSetExpect(partSetExpect(partSetEmpty(), 'a'), 'b')
-    set = partSetRegister(partSetRegister(set, 'a'), 'b')
-    set = partSetForget(set, 'b')
-    expect(set.expected).toEqual(['a'])
-    expect(set.registered).toEqual(['a'])
-    expect(partSetComplete(set)).toBe(true)
-  })
-
-  it('a part removed and re-added keeps declaration order', () => {
-    let set = partSetExpect(partSetExpect(partSetEmpty(), 'a'), 'b')
-    set = partSetExpect(partSetForget(set, 'a'), 'a')
-    expect(set.expected).toEqual(['b', 'a'])
+    expect(partSetMissing(set)).toEqual(['a'])
   })
 })

@@ -5,7 +5,6 @@ import {
   fisheyeDisplaceX,
   fisheyeScale,
   fisheyeSource,
-  fisheyeSourceX,
 } from './fisheyeLaw'
 
 const P = FISHEYE_DEFAULTS
@@ -114,15 +113,6 @@ describe('the x spread keeps magnification uniform', () => {
   it('beyond the rim, x is untouched', () => {
     for (const y of [focus - R - 1, focus + R + 1, focus + 400]) {
       expect(fisheyeDisplaceX(300, y, center, focus, A, P)).toBe(300)
-    }
-  })
-
-  it('round-trips through fisheyeSourceX at the source row', () => {
-    for (const y of [focus, focus + 30, focus + 110]) {
-      for (const x of [0, 40, center, 290, 340]) {
-        const dx = fisheyeDisplaceX(x, y, center, focus, A, P)
-        expect(fisheyeSourceX(dx, y, center, focus, A, P)).toBeCloseTo(x, 8)
-      }
     }
   })
 })

@@ -565,20 +565,6 @@ export function backlightAmount(
 }
 
 /**
- * The corona's falloff profile — the shape the backlight shader uses
- * for every support it must END: (1-t)^2 over t in 0..1 of the reach.
- * Pinned here because GLSL cannot carry a test, and this session paid
- * three times for falloffs that could not reach zero: an exponential's
- * leftover at the quad edge crops into a hard rectangle, and a window
- * that only reaches zero in VALUE still kinks in slope (a Mach band).
- * This profile dies at t=1 with zero value AND zero slope.
- */
-export function veilProfile(t: number): number {
-  const c = clamp(t, 0, 1)
-  return (1 - c) * (1 - c)
-}
-
-/**
  * How much of the surround at one point is an EMITTER, 0..1 — the gate
  * that keeps the corona inside the picture's positive space.
  *
@@ -607,8 +593,7 @@ export function veilProfile(t: number): number {
  * brightening the backdrop or dimming the palette fails with a number
  * rather than quietly putting the edge glow back.
  *
- * Mirrored in the corona's GLSL, like `veilProfile`, because a shader
- * cannot carry a test. Smoothstep, so the gate opens with zero slope at
+ * Mirrored in the corona's GLSL because a shader cannot carry a test. Smoothstep, so the gate opens with zero slope at
  * both ends: a linear ramp would seam where a blade's blur crosses the
  * floor.
  */

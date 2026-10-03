@@ -101,7 +101,6 @@ export function paintMarbleEnvironment(
   roomBounce: number,
   rays: Float32Array,
   target: Uint8ClampedArray,
-  includePage = true,
 ): void {
   let pageArea = 0
   let rearArea = 0
@@ -114,25 +113,15 @@ export function paintMarbleEnvironment(
   const spill = pageBounce(field.pixels)
   const gain = Math.max(0, roomBounce) * (rearArea > 0 ? pageArea / rearArea : 0)
   for (let index = 0; index < rays.length; index += 4) {
-    const source = marblePageSample(rays[index], rays[index + 1], rays[index + 2], origin, field)
-    const alpha = includePage && source >= 0 ? field.pixels[source + 3] / 255 : 0
-    // Knobs keeps a dim room floor and a broad neutral ceiling. The page
-    // occludes this room where the ray reaches an opaque native field.
+    // Knobs keeps a dim room floor and a broad neutral ceiling. The page's
+    // own pixels come from the full captured texture, never from this map.
     const overhead = Math.pow(Math.max(0, (rays[index + 1] - 0.55) / 0.45), 2) * 0.9
     for (let channel = 0; channel < 3; channel++) {
-      if (alpha === 1) {
-        target[index + channel] = field.pixels[source + channel]
-        continue
-      }
       // The CanvasTexture decodes sRGB on upload. Multiplying encoded bytes
       // by bounce first applied a second darkening curve: half white became
-      // 128 instead of 188. Average, gain and mix radiance before encoding.
+      // 128 instead of 188. Average and gain radiance before encoding.
       const room = Math.min(1, ROOM_FLOOR + spill[channel] * gain)
-      const studio = room + (1 - room) * overhead
-      const radiance = source >= 0
-        ? LINEAR_FROM_BYTE[field.pixels[source + channel]] * alpha + studio * (1 - alpha)
-        : studio
-      target[index + channel] = encodedByte(radiance)
+      target[index + channel] = encodedByte(room + (1 - room) * overhead)
     }
     target[index + 3] = 255
   }

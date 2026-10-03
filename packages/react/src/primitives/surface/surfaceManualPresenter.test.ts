@@ -62,25 +62,24 @@ describe('the manual presenter seam', () => {
   })
 
   it('leaving the ledger takes stage two with it', () => {
-    const { store, presenter } = airborne()
+    const { handle, store, presenter } = airborne()
+    const second = surfaceManualPresenter(handle, 'second')
     const leave = presenter.register()
+    second.register()
     store.request('canvas')
     presenter.prove()
+    second.prove()
     store.tick(500)
     presenter.present()
-    expect(presenter.holdsPage()).toBe(false)
-    leave()
-
-    // Home, then out a second time. The departed entry must not stand in
-    // for the new registration's own draw, or the page lets go of the
-    // second crossing before anything has been drawn for it.
-    store.request('page')
-    store.tick(2_000)
     expect(presenter.holdsPage()).toBe(true)
+
+    // One presenter remounts inside the crossing. Its old draw must not stand
+    // in for the new instance, or the other presenter's draw releases the
+    // page before the new instance has drawn anything.
+    leave()
     presenter.register()
-    store.request('canvas')
     presenter.prove()
-    store.tick(500)
+    second.present()
     expect(presenter.holdsPage()).toBe(true)
     presenter.present()
     expect(presenter.holdsPage()).toBe(false)

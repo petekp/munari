@@ -21,7 +21,6 @@ import {
   strikeSlot,
   stretchAmount,
   waveSteps,
-  type LetterPose,
 } from './logoLaw'
 
 const K = LOGO_DEFAULTS
@@ -94,6 +93,8 @@ describe('logo choreography (logoLaw)', () => {
       expect(Math.abs(p.dy)).toBeLessThanOrEqual(K.drift)
       expect(p.scale).toBeGreaterThanOrEqual(1 - K.squish)
       expect(p.scale).toBeLessThanOrEqual(1 + K.squish)
+      expect(LOGO_PALETTE[p.color]).toBeDefined()
+      expect(LOGO_MATERIALS[p.materialIndex]).toBeDefined()
     }
   })
 
@@ -272,20 +273,4 @@ describe('the motion rig', () => {
     expect(stretchAmount(STRETCH.ref)).toBeCloseTo(STRETCH.max / 2, 10)
   })
 
-})
-
-// Shared sanity: the constraint model needs headroom. Six letters where
-// each dodges its own current value plus two neighbors consumes at most
-// 3 fonts, 3 colors, and 3 materials — every deck must keep at least one
-// card open.
-describe('the decks', () => {
-
-  it('agree with the poses they deal', () => {
-    const word: LetterPose[] = seedWord(6, makeRng(11), K)
-    for (const p of word) {
-      expect(LOGO_FONTS[p.font]).toBeDefined()
-      expect(LOGO_PALETTE[p.color]).toBeDefined()
-      expect(LOGO_MATERIALS[p.materialIndex]).toBeDefined()
-    }
-  })
 })

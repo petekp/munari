@@ -143,6 +143,73 @@ The replacement preserves the first actual scene framebuffer for observation
 and requires both stale-pose and blank-texture controls to fail. Its bounded
 pixel and recording claims are in the [instrument guide](../instruments/README.md#genie-pose-flash).
 
+Amended 2026-09-29 — RECORDING COVERAGE COUNTS PAGE FRAMES. The pose and restore
+checks required recorded images no more than 20 ms apart. No measurement
+supported that limit, and it measured the recorder's timing instead of the
+evidence. On hosted Ubuntu runners the restore check showed every page frame in
+all 18 recordings, and the limit refused 14 of them for gaps of 20.0–35.8 ms.
+The page produced 5–7 frames in the 150 ms interval while the recorder sent an
+image about every 17 ms. On a Mac in Low Power Mode, 4 of 9 snapDOM recordings
+showed every page frame and failed on gaps of 25.4–39.7 ms. Both checks had
+failed on every hosted run since the limit was added on 2026-09-14.
+
+Coverage now requires every page frame in the observed interval to appear in a
+recorded image. A strip outside the sampled region writes the page's
+animation-frame number into pixels, so each image names the frame it shows. A
+recording that skips a page frame is unverified and is retried within the
+existing attempt limits. The rule does not cover a change the compositor makes
+between page frames. Those are judged only in the images that show them.
+
+The restore check starts each engine with a deliberate flash lasting one page
+frame, which its ordinary scoring must detect. The earlier control lasted 40 ms
+and ran only on request. On its third hosted run the new control failed on
+snapDOM: a recording that showed every page frame did not report the flash.
+The check called anything shown within 150 ms of the press a flash, and the
+runner presented its first frame after the press at about 150 ms, so the flash
+was read as the sheet arriving. A real flash of one frame at that moment would
+have passed.
+A flash is now an image that shows the window and is followed by one that does
+not, and coverage runs from the press to the arrival.
+
+The pose check observes for 80 ms or until the second
+scene draw is recorded, whichever is later. Hosted runners drew the scene every
+88–106 ms, so the 80 ms interval held a single draw in 4 of 16 cases and the
+late-loss control had nothing to judge in one of them.
+
+Amended 2026-10-02 — RECORDING HAS ONE OWNER. The Genie pose and restore checks
+use `instruments/screencastRecording.ts` for capture, acknowledgement draining,
+bounded decoding, and resource lifetime. Each recording uses a fresh Chrome
+session. The browser keeps the reference and scene scorer across batches of at
+most eight images; the gates retain their visual judgments and retry policies.
+
+`node instruments/screencastRecordingCheck.mjs` checks the measurement with known
+PNG/JPEG images, actual session listeners, and actual remote object IDs. It also
+forces a construction failure after clock resources exist and sends an invalid
+object ID to Chrome to verify that remote release rejection is terminal while
+native disposal still releases the valid object. Puppeteer's ordinary handle
+disposal suppresses that protocol rejection, so the recorder checks Chrome's
+release response explicitly.
+
+The pose interval requires a later recorded image with a second distinct known
+draw marker. A marker from a suppressed color write counts for the later-blank
+control. Correct first-draw images alone leave the observation unverified.
+Observed case mismatches and errors in the known minimum 80 ms keep their existing
+priority over missing-second classification. A collection-tail timeout is
+separate from the required observation interval.
+
+Cleanup retains the primary failure and ordered secondary errors across recorder,
+page, and browser teardown. A cleanup error is terminal even alongside an
+incomplete observation. The pure page-frame coverage law, pixel budgets, geometry
+limit, and attempt counts are unchanged.
+
+Measured locally in Chrome 154.0.8037.97, macOS, 1100×800 DPR 1: all sixteen pose
+cases passed on their first attempt. The largest encoded pose batch was 904,516
+bytes. The recorder's ordinary-DOM check passed seventeen measurements, including
+real release rejection and post-allocation rollback. Disposable checks of the
+actual gate assessment code passed sixty-two metadata/error cases. Those checks
+establish verdict behavior, not pixels. Hosted results and renewal of the public
+demo's origin-trial token remain separate acceptance evidence.
+
 ## #3 — The lab preserves six scenes (2026-08-02)
 
 **Decision.** `apps/lab` carries three scenes — **workspace**,
@@ -1320,6 +1387,7 @@ from React state one commit later, so the first frame that qualifies has
 a destination-sized card at a not-yet-destination pose. Reading a value
 that is written on two different clocks means waiting for both.
 
+<a id="21"></a>
 ## #21 — A law with no callers is a rumour (2026-08-04, kernel + lab)
 
 Pete, after the sharpness arc closed: *"let's take stock of what we've
@@ -1385,6 +1453,29 @@ z = 68.0 against a 62.4 threshold, fall `true → false` on the frame the
 mode became `home` at z = 94.7 — forced low from full altitude, because
 the descent is the motion mask. Identical to the law it replaced, which
 is the whole claim.
+
+Amended 2026-09-29 — THE STORE ENFORCES THE LIMIT. The limit was applied by
+callers, once, when they chose a density. The [performance audit](performance-audit.md)
+found three ways past it. A 390×844 source at density 3 kept that density when
+its box grew to 3000 px tall and cut a 1170×9000 store. A 50,000 px document
+clamped to 4096 px was raised to 5000 by `clampRawScale`'s 0.1 floor. A caller
+that reached `createDomTextureSource` directly, as Home does, had no limit on
+the store edge at all.
+
+`createCaptureCanvas` now grants each density request against the current box,
+and grants it again when the box or the request changes. No store edge exceeds
+`MAX_TEXTURE_EDGE`. `scale()` and `rasterScale()` report the granted density,
+so they agree with the store a consumer samples. A request made as one number
+is granted as one number against the long edge. A per-axis request is cut back
+only on the axis that exceeds the limit. When the box shrinks, the source
+returns to the density that was asked for.
+
+`clampScale` and `clampTiers` are unchanged. They still describe what a caller
+may ask for, and `clampTiers` still keeps its lowest tier on a box too long for
+any tier. That tier is a request like any other, so the store stays within the
+limit. The capture-engine conformance suite checks birth, growth, shrinkage,
+and named densities on both engines. These are allocation sizes under a DOM
+stub. No GPU allocation failure was reproduced.
 
 ## #22 — The phase law crosses, and the probe that found it becomes a gate (2026-08-04, kernel + instruments)
 
@@ -2100,6 +2191,15 @@ but its absence was a live enforcement gap — the react binding declared
 Surface with a declared part and no presenter passed the readiness gate,
 the exact fault `partSetComplete` exists to refuse. That one is wired
 into the store's gates, not culled.
+
+Amended 2026-09-30 — THE RUNTIME STOPPED READING `filterPolicy`. A test audit
+found kernel exports that only tests called. The source runtime now chooses
+mipmaps itself: pinned resolutions and textures captured at half scale or
+less get them. `filterPolicy` gave them only to pinned resolutions, so the
+kernel law disagreed with the code that ran. It is removed, and the runtime's
+rule has its own test in the binding. `styleChannel` never had a consumer.
+`overCenterField`, `flipImpulse`, `stopsField` and `endStops` served a toggle
+and a slider the binding no longer has. Each goes with its conformance tests.
 
 ## #38 — Agent control uses existing owners; observations carry their limits (2026-08-31, documentation + tooling design)
 
@@ -3425,6 +3525,7 @@ The headline and startup probes now require the inline route. Existing text
 contrast, startup stability, paper motion and native fallback checks remain the
 acceptance criteria. No CI workflow or deployment policy changes are included.
 
+<a id="60"></a>
 ## #60 — Capture is an engine, and the binding never asks which one (2026-09-10)
 
 Munari now has two capture engines behind one contract. HTML-in-canvas stays
@@ -3836,6 +3937,36 @@ pinned explicitly, because an image that resolves after the first capture
 has no other signal. A drop opening the window and an unlisten mid-drag ride
 those laws; `the input window` pins, on the window itself, what a hearing
 disowns and the two gesture ends the pointer stream never reports.
+
+Amended 2026-09-29 — A RASTER THAT WAS NOT DRAWN IS A FAILED CAPTURE. When the
+rasterized source's canvas had no 2D context, its draw returned without
+drawing and the source still published a completed paint. A fault-injection
+check on 2026-09-27 returned `painted: true` and one receipt with a null
+context. The draw now throws, so the capture fails through `onError`, the
+error count advances, and the last good receipt stays current. What makes a
+browser withhold the context was not reproduced. The conformance suite gives
+the rasterized engine a drawing stub, because happy-dom has no 2D context, and
+checks the failure with the stub removed.
+
+Amended 2026-09-29 — A SOURCE SAYS WHETHER ITS DRAW TRAILS ITS PAINT. The
+source runtime uploads when the paint count moves and once more on the next
+frame. The second upload covers the HTML-in-canvas engine, whose draw can
+resolve up to a frame after the paint is counted. The rasterized engine draws
+the finished image and counts the paint in one task, so its second upload
+sent the same image again. `npm run probe:texture-uploads` counted WebGL
+uploads of the capture canvas on one 240×120 Surface: 2 per changed image and
+5 per resize on both engines.
+
+A source now carries `drawTrailsPaint`. The runtime reads it and makes the
+second upload only when it is true. The binding still does not ask which
+engine made the source. After the change snapDOM makes 1 upload per changed
+image and 3 per resize, and HTML-in-canvas is unchanged at 2 and 5. The
+Surface showed the current color after every change at resolutions 1, 0.5 and
+`auto`, which covers textures with and without mipmaps. The probe's control
+drops the uploads for one change, and the pixel check reported the old color
+each time. The fixture is flat color on one renderer. The saved upload time is
+unmeasured, and so is the effect on a consumer that keys work to the texture
+version.
 
 
 ## #61 — A handoff no longer requires `moveBefore` (2026-09-11)

@@ -151,8 +151,27 @@ function handCranked() {
 // releases a waiting capture whatever the gap is set to.
 const PAST_THE_GAP_MS = 1000
 
+/**
+ * Put a 2D context that accepts a raster behind every `getContext('2d')`, and
+ * hand back the undo. happy-dom has none, and the rasterized source fails a
+ * capture it cannot draw.
+ */
+function installRasterContext(onDraw: () => void = () => {}): () => void {
+  const real = HTMLCanvasElement.prototype.getContext
+  const context = { drawImage: onDraw, setTransform() {}, clearRect() {} }
+  // SAFETY: the real `getContext` is overloaded across every context id and
+  // answers each with a different class. This one answers '2d' with the three
+  // members the raster draw calls, and every other id with null.
+  HTMLCanvasElement.prototype.getContext = ((id: string) =>
+    id === '2d' ? context : null) as typeof real
+  return () => {
+    HTMLCanvasElement.prototype.getContext = real
+  }
+}
+
 function rasterizedHarness(): EngineHarness {
   let asked = 0
+  let restoreContext = () => {}
   const time = handCranked()
   const engine: CaptureEngine = {
     name: 'fake-raster',
@@ -189,8 +208,11 @@ function rasterizedHarness(): EngineHarness {
     },
     install() {
       asked = 0
+      restoreContext = installRasterContext()
     },
-    uninstall() {},
+    uninstall() {
+      restoreContext()
+    },
   }
 }
 
@@ -479,6 +501,52 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
     source.dispose()
   })
 
+  // Law 7 (decisions.md #21). No edge of a store passes 4096 texels. The
+  // limit is applied where the store is cut, so it holds for a caller that
+  // reaches the kernel directly and for a box that grows after birth. A
+  // 390x844 source at density 3 grown to 3000 px tall once cut 1170x9000.
+  it('keeps a growing box within the texture limit, and returns the density when it shrinks', async () => {
+    const source = createDomTextureSource('<div></div>', 390, 844, { scale: 3 })
+    await harness.deliver(source)
+    expect([source.canvas.width, source.canvas.height]).toEqual([1170, 2532])
+
+    source.setSize(390, 3000)
+    await harness.deliver(source)
+    expect([source.canvas.width, source.canvas.height]).toEqual([532, 4096])
+    expect(source.scale()).toBeCloseTo(4096 / 3000, 10)
+    expect(source.currentPaint()?.storeSize).toEqual([532, 4096])
+
+    source.setSize(390, 844)
+    source.resettle()
+    await harness.deliver(source)
+    expect([source.canvas.width, source.canvas.height]).toEqual([1170, 2532])
+    expect(source.scale()).toBe(3)
+    source.dispose()
+  })
+
+  it('is born within the texture limit, below the floor on a raw density', async () => {
+    // 4096 / 50000 is 0.082, under the 0.1 floor a raw density is held to.
+    const source = createDomTextureSource('<div></div>', 500, 50000, { scale: 3 })
+    await harness.deliver(source)
+    expect([source.canvas.width, source.canvas.height]).toEqual([41, 4096])
+    source.dispose()
+  })
+
+  it('grants a named density only as far as the texture limit allows', async () => {
+    const source = await born('<div></div>', 880, 560)
+    source.setScale(6)
+    await harness.deliver(source)
+    expect([source.canvas.width, source.canvas.height]).toEqual([4096, 2607])
+    expect(source.rasterScale()).toEqual([4096 / 880, 4096 / 880])
+
+    // A per-axis request is cut back on the axis that exceeds the limit only.
+    source.setRasterScale(6, 6)
+    await harness.deliver(source)
+    expect([source.canvas.width, source.canvas.height]).toEqual([4096, 3360])
+    expect(source.rasterScale()).toEqual([4096 / 880, 6])
+    source.dispose()
+  })
+
   it('is a no-op at the same size, so a caller can set it every render', async () => {
     const source = await born('<div></div>', 200, 100)
     const quiet = harness.asked()
@@ -494,8 +562,10 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
 
 describe('the rasterized engine', () => {
   let time = handCranked()
+  let restoreContext = () => {}
   beforeEach(() => {
     time = handCranked()
+    restoreContext = installRasterContext()
   })
 
   /** Microtasks only: the source is left waiting out its gap. */
@@ -523,7 +593,10 @@ describe('the rasterized engine', () => {
     return { calls, rasterize }
   }
 
-  afterEach(() => document.body.replaceChildren())
+  afterEach(() => {
+    restoreContext()
+    document.body.replaceChildren()
+  })
 
   // One capture running, one owed behind it. A queue of stale pictures is
   // what the coalescing is here to prevent: at tens of milliseconds a raster,
@@ -844,6 +917,64 @@ describe('the rasterized engine', () => {
     calls.at(-1)!.reject(new Error('CORS'))
     await drain()
     expect(errors).toEqual(['CORS', 'CORS'])
+    source.dispose()
+  })
+
+  // A raster that was never drawn is a failed capture. With no 2D context the
+  // draw once returned quietly and the source published a receipt for pixels
+  // the store did not hold (reproduced 2026-09-27 by fault injection).
+  it('fails a capture its store cannot draw, and publishes no receipt for it', async () => {
+    const { calls, rasterize } = deferred()
+    const errors: string[] = []
+    const source = createRasterizedSource(
+      rasterize,
+      'test',
+      '<div></div>',
+      100,
+      50,
+      { onError: (error) => errors.push(error.message) },
+      time.clock,
+    )
+    await drain()
+    calls[0]!.resolve()
+    await drain()
+    const good = source.currentPaint()
+    expect(good?.frame.generation).toBe(1)
+
+    // Without the stub, happy-dom answers `getContext('2d')` with no context.
+    restoreContext()
+    source.repaint()
+    await settle()
+    calls[1]!.resolve()
+    await drain()
+
+    expect(errors).toEqual([expect.stringContaining('no 2D context')])
+    expect(source.currentPaint()).toBe(good)
+    expect(source.paintCount()).toBe(1)
+    expect(paintStats().find((entry) => entry.engine === 'test')?.errors).toBe(1)
+    source.dispose()
+  })
+
+  // The image is in the store when the paint is counted, which is what
+  // `drawTrailsPaint: false` tells a consumer: the upload made on the count
+  // holds these pixels, and a second one copies them again (decisions.md #60).
+  it('has drawn the image by the time it counts the paint', async () => {
+    let draws = 0
+    restoreContext()
+    restoreContext = installRasterContext(() => {
+      draws += 1
+    })
+    const { calls, rasterize } = deferred()
+    const source = createRasterizedSource(rasterize, 'test', '<div></div>', 100, 50, {}, time.clock)
+    const drawnWhenCounted: number[] = []
+    source.subscribePaint(() => drawnWhenCounted.push(draws))
+    await drain()
+    expect(draws).toBe(0)
+    calls[0]!.resolve()
+    await drain()
+
+    expect(drawnWhenCounted).toEqual([1])
+    expect(source.drawTrailsPaint).toBe(false)
     source.dispose()
   })
 

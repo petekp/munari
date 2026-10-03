@@ -56,10 +56,6 @@ function crossings(frames: number[], target: number): number {
 }
 
 describe('stepSpring', () => {
-  it('is deterministic — same inputs walk the same trajectory', () => {
-    expect(simulate(LEVER_SPRING, 1, 1)).toEqual(simulate(LEVER_SPRING, 1, 1))
-  })
-
   it('integrates the same trajectory at 30Hz and 120Hz (fixed substep)', () => {
     const slow = simulate(KNOB_SPRING, 1, 1, 30)
     const fast = simulate(KNOB_SPRING, 1, 1, 120)

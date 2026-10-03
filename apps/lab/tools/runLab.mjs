@@ -3,9 +3,11 @@
 // Localhost cannot use the public demo's origin token, so this process owns
 // an isolated Chrome with CanvasDrawElement enabled. The 2026-08-16 launch
 // audit also found that flag-backed gates could stay green after the public
-// token expired; check mode reads the token's signed payload and fails before
-// its renewal window. Vite owns the server, Puppeteer owns the browser, and
-// apps/lab/index.html owns the token and its expiry.
+// token expired; check mode reads the token's signed payload, warns inside its
+// renewal window and fails once it has expired. A renewal can only extend a
+// token to the trial's own end date, so a window failure would sit red until
+// Chrome extends the trial. Vite owns the server, Puppeteer owns the browser,
+// and apps/lab/index.html owns the token and its expiry.
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -42,11 +44,11 @@ function checkOriginTrial() {
   const expiry = new Date(expiresAt).toISOString().slice(0, 10)
   const message = `origin trial: ${payload.origin} expires ${expiry} (${daysLeft} days left)`
 
+  if (daysLeft <= 0 && checkOnly) throw new Error(`${message}; the token has expired`)
   if (daysLeft <= renewalWindowDays) {
-    if (checkOnly) {
-      throw new Error(`${message}; renew it before the ${renewalWindowDays}-day window`)
-    }
-    console.warn(message)
+    const warning = `${message}; renew it before it expires`
+    // GitHub Actions turns this line into an annotation on the run.
+    console.warn(process.env.GITHUB_ACTIONS ? `::warning::${warning}` : warning)
   } else {
     console.log(message)
   }

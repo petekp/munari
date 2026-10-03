@@ -14,10 +14,9 @@
 // Two copies of one function is the exact shape of bug this repo is worst
 // at noticing. The PICTURE comes from the shader, so it stays perfect while
 // they drift; only the click goes somewhere nobody looked. No screenshot
-// shows it and no diff reads wrong. `crystalLaw.test.ts` pins the two by
-// transcription, which catches an edit to one and not the other. It cannot
-// catch a disagreement about what the numbers MEAN, and this can, because
-// the two only ever actually meet in a browser.
+// shows it and no diff reads wrong. `crystalLaw.test.ts` checks the CPU copy
+// alone and never reads the shader. This gate compares the two, because they
+// only ever meet in a browser.
 //
 // The measurement leans on the hover twin rather than on template matching.
 // Munari mirrors pointer state onto `data-hover`, and a hovered key deepens

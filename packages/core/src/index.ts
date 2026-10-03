@@ -21,7 +21,6 @@ export {
   affineIsMatchable,
   composeMatchableChain,
   parseTransformMatrix,
-  rectEquals,
   rectIsMeasurable,
   rectToNdc,
   type Affine2D,
@@ -61,7 +60,6 @@ export {
   maxTier,
   clampScale,
   clampTiers,
-  resolveFixedScale,
 } from './paint/lodTier'
 export {
   paintStats,
@@ -92,13 +90,6 @@ export {
 } from './paint/rasterizedSource'
 export { createInputWindow, INPUT_EVENTS, INPUT_WINDOW_MS, type HearOptions, type InputWindow } from './paint/inputWindow'
 export { holdMotion, matchMotion, releaseMotion } from './paint/motionHold'
-export {
-  ensureChannelRegistered,
-  createStyleChannel,
-  type StyleChannel,
-  type StyleChannelOptions,
-} from './paint/styleChannel'
-export { filterPolicy, type FilterPolicy } from './paint/filterPolicy'
 export {
   DENSITY_BAND,
   storeForBox,
@@ -173,13 +164,10 @@ export {
   type SurfacePassEvidence,
 } from './transfer/presentation'
 export {
-  partSetComplete,
   partSetEmpty,
   partSetExpect,
-  partSetForget,
   partSetMissing,
   partSetRegister,
-  partSetUnregister,
   surfaceAcquire,
   surfaceEpochCurrent,
   surfaceHolds,
@@ -235,10 +223,6 @@ export {
   composeFields,
   damping,
   detentField,
-  stopsField,
-  overCenterField,
-  endStops,
   step,
-  flipImpulse,
   hopImpulse,
 } from './physics/physics1D'

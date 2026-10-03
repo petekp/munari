@@ -66,21 +66,6 @@ export function rectIsMeasurable(rect: RectLike): boolean {
   return rect.width > 0 && rect.height > 0
 }
 
-/**
- * Do two rects describe the same box within `epsilon` CSS pixels? The
- * binding compares a fresh measurement against the one the current
- * placement was computed from, and re-places only on a real difference —
- * `getBoundingClientRect` is a layout read, and scroll fires far more often
- * than a box actually moves.
- */
-export function rectEquals(a: RectLike, b: RectLike, epsilon = 0.01): boolean {
-  return (
-    Math.abs(a.left - b.left) <= epsilon &&
-    Math.abs(a.top - b.top) <= epsilon &&
-    Math.abs(a.width - b.width) <= epsilon &&
-    Math.abs(a.height - b.height) <= epsilon
-  )
-}
 
 // ── admissible transforms ────────────────────────────────────────────────
 

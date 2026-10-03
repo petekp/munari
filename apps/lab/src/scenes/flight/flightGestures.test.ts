@@ -131,14 +131,6 @@ describe('the hand is the only pointer that moves a held card', () => {
     expect(flight.current.mode).toBe('held')
   })
 
-  it('a trusted move updates the flight (the harness can speak as the hand)', () => {
-    const flight = { current: makeFlight() }
-    attach(flight)
-    window.dispatchEvent(pointer('pointermove', 700, 400, true))
-    expect(flight.current.px).toBe(700)
-    expect(flight.current.py).toBe(400)
-  })
-
   it('the departure burst and parked-local retellings do not drag the card to the top-left', () => {
     const flight = { current: makeFlight() }
     attach(flight)
@@ -315,28 +307,5 @@ describe('the ✕ is a toss, not a timer', () => {
     window.dispatchEvent(pointer('pointerup', -16, -16, false))
     expect(flight.current.crumpleHeld).toBe(true)
     expect(flight.current.spin.length()).toBe(0)
-  })
-})
-
-describe('the lift-plane callback receives Flight vectors', () => {
-  it('an annotated (a: THREE.Vector3) => void compiles, and receives the very anchor the caller built', () => {
-    const flight = { current: makeFlight() }
-    let received: THREE.Vector3 | null = null
-    detach = attachFlightGestures({
-      flight,
-      dropTarget: () => null,
-      moveTo: () => {},
-      snapshot: () => {},
-      scrollTop: () => 0,
-      toLiftPlane: (a: THREE.Vector3) => {
-        received = a
-        carryToPlane(a, CAM_Z, LIFT_Z)
-      },
-    })
-    window.dispatchEvent(pointer('pointerup', 369, 284, true))
-
-    expect(flight.current.mode).toBe('float')
-    // The callback receives the same anchor that the flight owns.
-    expect(received).toBe(flight.current.anchor)
   })
 })

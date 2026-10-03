@@ -394,7 +394,7 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture, theme }: 
     if (key === state.bakeKey) return
     // Only the room is approximated. The page's headings, glyphs, images,
     // backgrounds and borders come from the full captured texture below.
-    paintMarbleEnvironment(state.field, origin, tuning.roomBounce, state.rays, state.image.data, false)
+    paintMarbleEnvironment(state.field, origin, tuning.roomBounce, state.rays, state.image.data)
     state.env.putImageData(state.image, 0, 0)
     state.texture.needsUpdate = true
     const fullPage = capture.ready && capture.texture !== null

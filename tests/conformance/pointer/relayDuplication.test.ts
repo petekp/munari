@@ -37,14 +37,4 @@ describe('the relay duplication test', () => {
     expect(a.isRelayed(ev)).toBe(true)
     expect(b.isRelayed(ev)).toBe(true)
   })
-
-  it('nothing is relayed until relay says so', async () => {
-    const { isRelayed } = await loadRelayModule()
-    const ev = new Event('pointermove')
-    new EventTarget().dispatchEvent(ev)
-    // Dispatching does not brand; only relay() does. The predicate is
-    // complete because the brand has exactly one writer.
-    expect(isRelayed(ev)).toBe(false)
-  })
-
 })

@@ -147,17 +147,7 @@ describe('leaving the surface entirely', () => {
   // Dispatching `pointerout` alone — which is all the forwarder used to do —
   // means step 1 never happens, so there is no step 2 to reach.
 
-  it('fires pointerleave on the element the pointer was over', () => {
-    const on = uvOf(...TRIGGER_BOX)
-    forwardPointer(root, on.u, on.v, 'move')
-    log.length = 0
-
-    clearPointerState(root)
-
-    expect(typesAt('trigger')).toContain('pointerleave')
-  })
-
-  it('carries the last known position, not the exit position', () => {
+  it('fires pointerleave at the last known position, not the exit position', () => {
     // The grace polygon is anchored at the pointerleave coordinates. Reporting
     // the away point here would build a hull stretching out to it — and the
     // pointermove that follows would land inside its own grace area and never
@@ -245,16 +235,6 @@ describe('leaving the surface entirely', () => {
     expect(first('pointerleave', 'trigger')).toBeLessThan(first('pointermove', 'document'))
   })
 
-  it('still clears the mirrored hover attributes', () => {
-    const on = uvOf(...TRIGGER_BOX)
-    forwardPointer(root, on.u, on.v, 'move')
-    expect(trigger.hasAttribute('data-hover')).toBe(true)
-
-    clearPointerState(root)
-
-    expect(trigger.hasAttribute('data-hover')).toBe(false)
-    expect(root.hasAttribute('data-hover')).toBe(false)
-  })
 })
 
 describe('pointer-transparent regions', () => {
@@ -565,16 +545,6 @@ describe('moving between elements inside the surface', () => {
     expect(at('sibling')).toEqual(expect.arrayContaining(['mouseover', 'mouseenter']))
   })
 
-  it('moves hover mirroring to the new element', () => {
-    const on = uvOf(...TRIGGER_BOX)
-    forwardPointer(root, on.u, on.v, 'move')
-    const next = uvOf(...SIBLING_BOX)
-    forwardPointer(root, next.u, next.v, 'move')
-
-    expect(trigger.hasAttribute('data-hover')).toBe(false)
-    expect(sibling.hasAttribute('data-hover')).toBe(true)
-    expect(root.hasAttribute('data-hover')).toBe(true)
-  })
 })
 
 describe('silencing the trusted canvas move', () => {

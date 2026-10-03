@@ -183,9 +183,14 @@ function measurePose(input: SurfaceRouteStep, pose: SurfacePose) {
   }
 }
 
-function measureEligiblePose(input: SurfaceRouteStep, pose: SurfacePose, conditions: { hearing: boolean; planar: boolean; exclusiveSource: boolean }, hasRig: boolean) {
-  const eligible = input.request === 'auto' && input.capable && conditions.hearing && conditions.planar && conditions.exclusiveSource && hasRig
-  return eligible ? measurePose(input, pose) : { facing: false, onScreen: false }
+/** The native route's conditions that read no layout. */
+function couldRide(
+  input: SurfaceRouteStep,
+  conditions: { hearing: boolean; planar: boolean; exclusiveSource: boolean },
+  hasRig: boolean,
+): boolean {
+  return input.request === 'auto' && input.capable && conditions.hearing &&
+    conditions.planar && conditions.exclusiveSource && hasRig
 }
 
 export function createSurfaceRoute(): SurfaceRouteController {
@@ -247,8 +252,13 @@ export function createSurfaceRoute(): SurfaceRouteController {
       const planar = presentsUnitPlane(input.mesh, input.authoredGeometry, input.authoredRaycast)
       const exclusiveSource = sourceHasOnePointerPose(input.host)
       const hearing = input.hearing && input.pointerEvents !== 'none' && !input.root?.closest('[inert]')
-      const space=hostSpace(input.host)
-      const measured = measureEligiblePose(input, pose, { hearing, planar, exclusiveSource }, live !== null && space !== null)
+      // The free conditions first. Host space reads three rects and builds a
+      // matrix, and until 2026-09-29 it did so every frame for presenters that
+      // could never ride: any on an engine with no native route, and any
+      // asked to relay.
+      const eligible = couldRide(input, { hearing, planar, exclusiveSource }, live !== null)
+      const space = eligible ? hostSpace(input.host) : null
+      const measured = space ? measurePose(input, pose) : { facing: false, onScreen: false }
 
       const next = routeFor({
         request: input.request,
