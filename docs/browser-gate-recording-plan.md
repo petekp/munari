@@ -558,7 +558,7 @@ clock errors ahead of missing-second retry classification.
 | Original full pose baseline | Sixteen cases passed |
 | Original JPEG restore baseline | Both controls and three verified rounds per engine passed |
 | Original PNG restore baseline | Both controls and one verified round per engine passed |
-| Shared real-Chrome recorder check | Seventeen measurements passed; actual remote release rejection and post-allocation rollback included |
+| Shared real-Chrome recorder check | Nineteen measurements passed; late acknowledgement failures, actual remote release rejection, and post-allocation rollback included |
 | Migrated full pose | Sixteen cases passed on the first attempt |
 | Migrated JPEG restore | Both controls and three verified rounds per engine passed |
 | Migrated PNG restore | Both controls and one verified round per engine passed |
@@ -569,6 +569,12 @@ clock errors ahead of missing-second retry classification.
 | Typecheck, lint, package build | Passed |
 | Origin-trial renewal preflight | Failed on the unchanged demo token's existing 30-day renewal guard |
 | Hosted execution | Not run; publication remains separate |
+
+Active disposal collects acknowledgement failures reported while the stopped
+stream drains. The real-Chrome check verifies that rejection is terminal and
+reported once, both before disposal and after Chrome confirms stop. Session,
+listener, pending-work, and clock cleanup pass in both cases. The added check
+failed before the correction and passed afterward.
 
 The signed token expires October 19, 2026 at 5:00 p.m. Pacific. The token and its
 renewal check were not changed. This blocker is outside the recorder extraction;

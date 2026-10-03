@@ -789,12 +789,112 @@ async function stoppingDisposalCheck(page) {
   }
 }
 
+async function acknowledgementDisposalCheck(page) {
+  await observeClock(page)
+  for (const timing of ['after stop', 'before disposal']) {
+    const createSession = page.createCDPSession.bind(page)
+    const acknowledgementGate = Promise.withResolvers()
+    const acknowledgementRejected = Promise.withResolvers()
+    let intercepted = false
+    let stopSucceeded = false
+    let acknowledgementFailure = null
+    let acknowledgementFailedAfterStop = null
+    page.createCDPSession = async () => {
+      const session = await createSession()
+      const send = session.send.bind(session)
+      session.send = async (method, parameters) => {
+        if (method === 'Page.screencastFrameAck' && !intercepted) {
+          intercepted = true
+          // The ACK belongs to a real frame; malformed parameters make Chrome reject it.
+          await acknowledgementGate.promise
+          try {
+            return await send(method, { ...parameters, sessionId: 'invalid-acknowledgement-id' })
+          } catch (error) {
+            acknowledgementFailure = error
+            acknowledgementFailedAfterStop = stopSucceeded
+            acknowledgementRejected.resolve()
+            throw error
+          }
+        }
+        const response = await send(method, parameters)
+        if (method === 'Page.stopScreencast') {
+          stopSucceeded = true
+          acknowledgementGate.resolve()
+        }
+        return response
+      }
+      return session
+    }
+    const observer = observeSessions(page)
+    let recorder = null
+    let disposalSettled = false
+    let failure = null
+    try {
+      recorder = await createScreencastRecorder(page, captureOptions)
+      await recorder.start()
+      const observation = observer.sessions.at(-1)
+      await waitForImages(observation, 1)
+      assert.equal(intercepted, true, 'The held ACK must belong to an actual Chrome frame')
+      assert.ok(observation.pending >= 1)
+      assert.equal(acknowledgementFailure, null)
+      if (timing === 'before disposal') {
+        acknowledgementGate.resolve()
+        await acknowledgementRejected.promise
+        await page.evaluate(() => document.body.isConnected)
+        assert.equal(stopSucceeded, false)
+        assert.deepEqual(observation.acknowledgementFailures, [String(acknowledgementFailure)])
+      }
+      let disposalFailure = null
+      try {
+        await recorder.dispose()
+      } catch (error) {
+        disposalFailure = error
+      } finally {
+        disposalSettled = true
+      }
+      assert.equal(stopSucceeded, true, 'Disposal must complete the actual stop command')
+      assert.equal(acknowledgementFailedAfterStop, timing === 'after stop')
+      assert.match(String(acknowledgementFailure), /Protocol error \(Page\.screencastFrameAck\).*Invalid parameters/)
+      assert.deepEqual(observation.acknowledgementFailures, [String(acknowledgementFailure)])
+      observer.assertClosed(observation)
+      const clock = await page.evaluate(() => ({
+        markers: document.querySelectorAll('[data-screencast-clock]').length,
+        pending: window.__recordingClockObservation.pending.size,
+        animations: document.getAnimations().length,
+        hook: Object.hasOwn(window, '__screencastClock'),
+      }))
+      assert.deepEqual(clock, { markers: 0, pending: 0, animations: 0, hook: false })
+      assert.ok(disposalFailure instanceof AggregateError, 'Active disposal must report the actual ACK rejection as a terminal cleanup failure')
+      assert.deepEqual(disposalFailure.errors, [acknowledgementFailure], 'Disposal must retain the actual ACK rejection exactly once')
+      assert.equal(disposalFailure.errors[0], acknowledgementFailure)
+      assert.equal(disposalFailure.cause, acknowledgementFailure)
+      record(`active disposal retains ACK rejection ${timing}`, {
+        error: String(disposalFailure),
+        imagesDelivered: observation.received,
+        pendingAcknowledgements: observation.pending,
+        stopSucceeded,
+        clock,
+      })
+    } catch (error) {
+      failure = { error }
+    } finally {
+      acknowledgementGate.resolve()
+      if (recorder !== null && !disposalSettled) {
+        try { await recorder.dispose() } catch (error) { failure = combineFailure(failure, error) }
+      }
+      observer.restore()
+      page.createCDPSession = createSession
+    }
+    if (failure !== null) throw failure.error
+  }
+}
+
 let browser
 let failure = null
 try {
   browser = await puppeteer.launch({ executablePath: chrome, headless: process.env.HEADED !== '1', args: ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'] })
   console.log(`screencast-recording: ${await browser.version()} · ordinary DOM · PNG/JPEG · ${viewport.width}×${viewport.height} DPR 1`)
-  for (const check of [decodingCheck, exceptionalScoringCheck, acquisitionCheck, clockCheck, constructionCollisionCheck, constructionRollbackCheck, startFailureCheck, interruptionCheck, stoppingDisposalCheck]) {
+  for (const check of [decodingCheck, exceptionalScoringCheck, acquisitionCheck, clockCheck, constructionCollisionCheck, constructionRollbackCheck, startFailureCheck, interruptionCheck, stoppingDisposalCheck, acknowledgementDisposalCheck]) {
     await withPage(browser, check)
   }
   await checkedReleaseFailureCheck(browser)

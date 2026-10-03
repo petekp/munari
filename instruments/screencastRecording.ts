@@ -325,9 +325,12 @@ export async function createScreencastRecorder(page: Page, captureOptions: Scree
       try { await stopPromise } catch (error) { cleanupErrors.push(error) }
     } else if (cycle !== null) {
       const current = cycle
-      if (current.failure !== null) cleanupErrors.push(current.failure.cause)
+      const failureBeforeStop = current.failure
+      if (failureBeforeStop !== null) cleanupErrors.push(failureBeforeStop.cause)
       try { await current.client.send('Page.stopScreencast') } catch (error) { cleanupErrors.push(error) }
       cleanupErrors.push(...await releaseCycle(current))
+      // An acknowledgement can reject while the stopped stream is being drained.
+      if (current.failure !== null && current.failure !== failureBeforeStop) cleanupErrors.push(current.failure.cause)
       cycle = null
     }
     try { await clock.evaluate(scope => scope.dispose()) } catch (error) { cleanupErrors.push(error) }
