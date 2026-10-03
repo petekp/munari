@@ -81,8 +81,9 @@ scene declared before its first request is valid and stays quiet.
 - Ordinary handoff HTML stays native when capture is unavailable. Branch inside
   scene-dependent actions with `supportsSurfaces()` so their native outcomes
   still finish. A SceneSurface needs its own native fallback when necessary.
-- Page-owned preparation displays the current capture bitmap and serves the
-  original HTML through a native rig; its inert clone reserves layout only.
+- Page-owned preparation leaves the live instance on the page and captures a copy.
+  It borrows the instance through a native rig only when focus is inside the
+  content or a selection intersects it. An inert clone then reserves layout.
 - Native scene input is opt-in with `pointerRoute="auto"`. Multiple interactive
   poses of one source all use relay. Unknown/replaced/deformed geometry and
   authored raycasts use relay. Disabled or inert scene sources take no input.
