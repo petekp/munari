@@ -34,10 +34,10 @@ documentation of the shader's intent.
 - `rejectedPresentationDraws`, `deferredPresentations`, `hasController`: each
   is a one-line accessor on an internal interface. Tests use it to observe
   real behavior.
-- `litGate`, `dampingRatio`, `springSettled`, `maxBlobBendPx`, `blobBendPx`,
-  `blobSlope`, `bendTaper`, `channelSeparationPx`, `veilRadius`: each is how a
-  test measures a tuned production constant or function. Tuning comments cite
-  those tests.
+- `litGate`, `dampingRatio`, `maxBlobBendPx`, `blobBendPx`, `blobSlope`,
+  `bendTaper`, `channelSeparationPx`, `veilRadius`: each is how a test measures
+  a tuned production constant or function. Tuning comments cite those tests.
+  Spring settling tests assert position and velocity limits directly.
 - `topAt`, `bottomAt`: tests use them to build points for `sdCrystal` and
   `normalAt`, which production calls.
 - `ART_MAX_RADIUS`, `ART_U`, `CAMERA_U`: each names a bound or layout that a
