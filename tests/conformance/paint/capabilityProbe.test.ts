@@ -8,8 +8,8 @@
 // runners; a probe that guesses `true` would let a UI advertise a capability
 // the first Surface then fails to deliver.
 //
-// happy-dom has the 2D context type but not the trial members, which makes
-// it exactly the "browser without the trial" case the chips exist to catch.
+// happy-dom declares neither context type, so each case stubs the globals it
+// needs. A browser without the trial has both types and neither member.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -20,20 +20,26 @@ afterEach(() => {
 })
 
 describe('detectHtmlInCanvas', () => {
-  it('reports the trial absent in a browser without it, as two booleans', () => {
-    const support = detectHtmlInCanvas()
-    expect(Object.keys(support).sort()).toEqual(['drawElementImage', 'texElementImage2D'])
-    // happy-dom defines CanvasRenderingContext2D without drawElementImage —
-    // the probe must read that as absence, not existence of the context type.
-    expect(support.drawElementImage).toBe(false)
+  it('reports the trial absent when the context types exist without its members', () => {
+    // The probe must read the member, not the existence of the context type.
+    vi.stubGlobal('CanvasRenderingContext2D', class {})
+    vi.stubGlobal('WebGL2RenderingContext', class {})
+    expect(detectHtmlInCanvas()).toEqual({
+      drawElementImage: false,
+      texElementImage2D: false,
+    })
   })
 
-  it('reports the trial present when the prototype carries the member', () => {
+  it('reports each entry point present when its prototype carries the member', () => {
     class WithTrial {
       drawElementImage() {}
     }
     vi.stubGlobal('CanvasRenderingContext2D', WithTrial)
-    expect(detectHtmlInCanvas().drawElementImage).toBe(true)
+    vi.stubGlobal('WebGL2RenderingContext', class {})
+    expect(detectHtmlInCanvas()).toEqual({
+      drawElementImage: true,
+      texElementImage2D: false,
+    })
   })
 
   it('never throws without DOM globals — absence is an answer, not an error', () => {

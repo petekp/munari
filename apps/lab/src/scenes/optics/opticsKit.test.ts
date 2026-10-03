@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CHIP, KIT, collarRange, railSlot, specFor, tierOf } from './opticsKit'
-import { CAP_MARGIN, apertureOf, capIsValid, footprint, landOffset, magnification } from './opticsLaw'
+import { CAP_MARGIN, apertureOf, footprint, landOffset, magnification } from './opticsLaw'
 import { BENCH_H, RAIL_ROOM, RAIL_Y, SHEET } from './opticsSheet'
 
 /**
@@ -78,7 +78,6 @@ describe('the kit — four instruments, one law', () => {
         for (let i = 0; i <= 40; i++) {
           const v = range.min + ((range.max - range.min) * i) / 40
           const spec = specFor(inst, v, half)
-          expect(capIsValid(spec)).toBe(true)
           expect(Math.abs(spec.curvature)).toBeGreaterThanOrEqual(CAP_MARGIN * spec.aperture)
         }
       }

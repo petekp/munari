@@ -28,11 +28,12 @@
 // the cut is a knob — at a real brilliant's 34/41 it takes over, where 2,890
 // of the same rays find no exit at all and a quarter of the rest bounce.
 //
-// The fault this file exists to guard, and the reason `crystalLaw.test.ts`
-// pins every function below against the GLSL: the two copies can drift
+// The fault this file exists to guard: this copy and the GLSL can drift
 // while the PICTURE stays correct, because the shader is the one drawing.
 // Only the click goes wrong. It is invisible in review, invisible in a
 // screenshot, and arrives as "this demo feels broken" with nothing to see.
+// `crystalLaw.test.ts` checks this copy alone; `gate:crystal-pointer` is
+// what compares it with the shader.
 //
 // Ownership: shape, optics and physics as pure functions. Pixels are
 // `crystalShaders.ts`, numbers are `crystalTuning.ts`, the mount is

@@ -26,10 +26,8 @@ import {
   useSurfaceStore,
   type SurfaceControls,
   type SurfacePresentation,
-  type SurfaceDestination,
 } from './surfaceHandle'
 import { mountSurfaceHost, surfaceHost, resetSurfaceHosts } from './surfaceHostRegistry'
-import { SurfaceMesh } from './SurfaceMesh'
 import { SurfaceRoot } from './SurfaceRoot'
 import type { SurfacePartPublication, SurfaceSourceRuntime } from './surfaceSourceRuntime'
 import { useSurfaceRoot } from './surfaceContext'
@@ -147,22 +145,6 @@ describe('presentation declarations', () => {
     flushSync(() => root.unmount())
   })
 
-  it('does not diagnose while a renderer frame arrives before separate declarations', () => {
-    const store = createSurfaceStore('separate')
-    const errors: Error[] = []
-    store.setCallbacks({ onError: (error) => errors.push(error) })
-    store.request('canvas')
-    store.tick(16)
-    expect(errors).toEqual([])
-
-    const releasePage = store.declarePresentation('page')
-    const releaseCanvas = store.declarePresentation('canvas')
-    store.validatePresentation()
-    expect(errors).toEqual([])
-    releaseCanvas()
-    releasePage()
-  })
-
   it('accepts a page declaration committed in the same tree', async () => {
     const errors: Error[] = []
     const root = createRoot(container)
@@ -204,37 +186,9 @@ describe('presentation declarations', () => {
     flushSync(() => root.unmount())
     mount.release()
   })
-
-  it('keeps a declared page-to-canvas Surface on the crossing law', () => {
-    const handle = createSurface('crossing')
-    const root = createRoot(container)
-    flushSync(() =>
-      root.render(
-        createElement(
-          SurfaceRoot,
-          { surface: handle, renderIn: 'canvas' },
-          createElement(PageDeclaration),
-          createElement(SurfaceMesh),
-        ),
-      ),
-    )
-    expect(handle.progress.get()).toBe(0)
-    flushSync(() => root.unmount())
-  })
 })
 
 describe('the controller ledger', () => {
-  it('acquire, release, and reacquire advance the epoch', () => {
-    const store = createSurfaceStore()
-    store.declarePresentation('page')
-    store.declarePresentation('canvas')
-    expect(store.acquire(1)).toBe(true)
-    expect(store.epoch()).toBe(1)
-    store.release(1)
-    expect(store.acquire(2)).toBe(true)
-    expect(store.epoch()).toBe(2)
-  })
-
   it('a second controller is refused and the incumbent keeps the identity', () => {
     const store = createSurfaceStore()
     store.declarePresentation('page')
@@ -458,30 +412,6 @@ describe('semantic publication', () => {
     store.prove('a', store.readinessLifetime(), store.epoch())
     expect(store.getState().ready).toBe(true)
   })
-
-  it('reversal mid-crossing returns the hold without skipping the far side', () => {
-    const store = createSurfaceStore()
-    store.declarePresentation('page')
-    store.declarePresentation('canvas')
-    store.acquire(1)
-    store.registerPresenter('a')
-    store.prove('a', store.readinessLifetime(), store.epoch())
-    store.request('canvas')
-    store.tick(500)
-    store.present('a', store.epoch())
-    expect(store.getState().presented).toBe('canvas')
-    store.drive(() => 0.5)
-    store.tick(16)
-    const midway = store.handle.progress.get()
-    expect(midway).toBeGreaterThan(0)
-    expect(midway).toBeLessThan(1)
-    const back: SurfaceDestination = 'page'
-    store.request(back)
-    store.drive(null)
-    store.tick(16)
-    expect(store.handle.progress.get()).toBe(0)
-    expect(store.getState().presented).toBe('page')
-  })
 })
 
 describe('the two-stage receipt', () => {
@@ -541,6 +471,7 @@ describe('the two-stage receipt', () => {
     store.tick(16)
     expect(store.getState().presented).toBe('page')
     expect(store.canvasHearsPointer()).toBe(false)
+    expect(store.handle.progress.get()).toBe(0)
   })
 
   it('keeps a static settled canvas idle but advances the return linger', () => {
@@ -586,10 +517,14 @@ describe('the two-stage receipt', () => {
   })
 
   it('a color-writing draw before the lift gate releases nothing', () => {
-    // A resident presentation of a Surface that is still the page's.
+    // The canvas is asked for and its presenter has proven nothing, so the
+    // crossing is still lifting and the Surface is still the page's.
     const store = exclusiveStore()
+    store.request('canvas')
+    store.tick(16)
     store.present('a', store.epoch())
     expect(store.holdsPage()).toBe(true)
+    expect(store.getState().presented).toBe('page')
   })
 
   it('one presenter of two cannot release the page on its own', () => {

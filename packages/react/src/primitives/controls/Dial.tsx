@@ -53,8 +53,8 @@ export function Dial({
     () => composeFields(detentField(detents, stiffness), damping(friction)),
     [detents, stiffness, friction],
   )
-  // Keyboard ratchet strength, bisected from the actual field (Toggle's
-  // flipImpulse idiom): one press from rest = exactly one detent, any tuning.
+  // Keyboard ratchet strength, bisected from the actual field: one press
+  // from rest = exactly one detent, any tuning.
   const kick = useMemo(() => hopImpulse(field, stepAngle), [field, stepAngle])
 
   const { bind, body, impulse } = use1DOF({

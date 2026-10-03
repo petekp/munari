@@ -55,11 +55,15 @@ describe('curlSample', () => {
   })
 
   it('keeps the free end at the core, inside the outer turn', () => {
-    const end = curlSample(280, 0, 280, R, H)
-    const hingeSide = curlSample(1, 0, 280, R, H)
-    expect(end.wind).toBeGreaterThan(hingeSide.wind)
-    // The core sits within one diameter of the spiral centre.
-    expect(Math.abs(end.lift)).toBeLessThan(2 * (R + (H * end.wind) / (2 * Math.PI)))
+    // Two full turns: the radius runs 10 to 12.5, then 12.5 to 15. Their
+    // mean radii, 11.25 and 13.75, make the wound length 2π·25.
+    const total = 50 * Math.PI
+    const end = curlSample(total, 0, total, R, H)
+    expect(end.wind).toBeCloseTo(4 * Math.PI, 9)
+    // The spiral's centre sits one outer radius, 15, above the hinge. After
+    // whole turns the free end hangs straight below it, one core radius away.
+    expect(end.along).toBeCloseTo(0, 9)
+    expect(end.lift).toBeCloseTo(15 - R, 9)
   })
 
   it('collapses to the single-turn circle when thickness is zero', () => {

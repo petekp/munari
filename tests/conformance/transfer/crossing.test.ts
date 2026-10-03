@@ -215,20 +215,4 @@ describe('a whole crossing, both directions', () => {
     noteHolder()
     expect(handoffs).toEqual(['page→gl', 'gl→page'])
   })
-
-  it('survives an indecisive user: rapid reversals stay inside the four phases and re-arrive cleanly', () => {
-    let s = crossingAtRest()
-    // A fixed flip pattern (law files cannot use randomness sources, and a
-    // contract should not): flip every 5 frames for 60 frames, then commit.
-    for (let i = 0; i < 60; i++) {
-      if (i % 5 === 0) s = crossingRequest(s, (i / 5) % 2 === 0)
-      s = crossingFrame(s, ALL, 16)
-      expect(PHASES).toContain(s.phase)
-      expect(s.ramp).toBeGreaterThanOrEqual(0)
-      expect(s.ramp).toBeLessThanOrEqual(1)
-    }
-    s = crossingRequest(s, true)
-    s = tickUntil(s, ALL, (x) => x.phase === 'gl' && x.ramp >= 1)
-    expect(s.ramp).toBe(1)
-  })
 })

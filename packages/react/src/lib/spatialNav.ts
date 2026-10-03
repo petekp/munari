@@ -13,7 +13,7 @@
 
 export type Dir = 'up' | 'down' | 'left' | 'right'
 
-export const OPPOSITE = {
+const OPPOSITE = {
   up: 'down',
   down: 'up',
   left: 'right',
@@ -64,7 +64,7 @@ interface Rect {
  *  in the stack, not the farthest). ≥ 0 is the insider filter — the FPWD
  *  reachability fix means equality counts, so a fully-overlapped or even
  *  coincident candidate stays reachable (depth breaks the tie). */
-export function edgeProgress(origin: Rect, c: Rect, dir: Dir): number {
+function edgeProgress(origin: Rect, c: Rect, dir: Dir): number {
   const v = isVertical(dir)
   return dir === 'down' || dir === 'right'
     ? mainStart(c, v) - mainStart(origin, v)
@@ -118,7 +118,7 @@ function centroidOd(origin: Rect, c: Rect, v: boolean): number {
 }
 
 /** Strictly past the origin's trailing edge (touching counts — gap 0). */
-export function isOutsider(origin: Rect, c: Rect, dir: Dir): boolean {
+function isOutsider(origin: Rect, c: Rect, dir: Dir): boolean {
   const v = isVertical(dir)
   return dir === 'down' || dir === 'right'
     ? mainStart(c, v) >= mainStart(origin, v) + mainSize(origin, v)
@@ -143,7 +143,7 @@ export function isOutsider(origin: Rect, c: Rect, dir: Dir): boolean {
  * omitted: the regime split guarantees outsiders share zero area with the
  * origin, so the term is structurally 0 here.
  */
-export function outsiderDistance(
+function outsiderDistance(
   origin: Rect,
   c: Rect,
   dir: Dir,

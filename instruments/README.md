@@ -395,7 +395,9 @@ frames before reacquisition. The gate requires receipts
 `[A0, A2, B0, B2, B4, B6, B8]`, a fresh surface epoch for each hold period,
 no stale receipt, no clear or wrong-color acquisition render, and sampled RGB
 within one channel value. It also checks that live replacement preserves the
-mesh, geometry, and material. Rendered colors must remain unchanged under red
+mesh, geometry, and material. Acquisition sampling starts at the React mount
+commit; renders while the surface is still deliberately absent are excluded.
+Rendered colors must remain unchanged under red
 lighting and a non-identity tone mapper. A deliberately tone-mapped control must
 fail the byte-color oracle. The gate reads the public frame texture rather than
 requiring a material constructor. A separate
@@ -463,6 +465,31 @@ measures the fixed shadow strip in recorded compositor frames around both
 handoff directions. It also checks that the shadow travels with the
 sheet and fades only where the funnel has squeezed it past legibility.
 
+## Screencast recording
+
+`node instruments/screencastRecordingCheck.mjs` checks the shared measurement
+module used by the pose and restore gates. It runs ordinary DOM in real Chrome,
+with PNG and JPEG images whose colors, identities, and page-frame numbers are
+known independently of the decoder.
+
+The recorder owns one page clock and a fresh DevTools session for each recording.
+Stop drains acknowledgements, removes its listener, and detaches that session.
+Scoring decodes the reference once and keeps scorer state in Chrome across
+batches of at most eight images. Original image indices remain stable for saved
+artifacts. Gates own their scene metrics, observation intervals, and retry limits.
+
+A collection-tail timeout returns partial images and diagnostics. Acceptance
+still depends on the gate's required interval. Known case failures and instrument
+errors remain terminal; a tail timeout cannot erase them or invalidate an already
+complete interval. Cleanup failures retain the primary cause and are terminal.
+
+The check queries actual listeners and remote object IDs while the page remains
+alive. It covers ordinary and exceptional handle release, real release rejection,
+clock disposal and construction rollback, repeated recordings, and protocol
+interruption. It observes late delivery separately: a run with no late images
+leaves that path unverified. These checks establish measurement behavior, not
+Genie's scene pixels or hosted reliability. Existing CI membership is unchanged.
+
 ## genie pose flash
 
 `npm run gate:genie-pose-flash` compares a stationary circle and square with
@@ -475,12 +502,26 @@ projected figure points must stay within 0.25 CSS pixels of the native rectangle
 The first actual scene draw must be recorded. Its framebuffer is held for 40 ms
 to make it observable. A slow renderer may need no intercepted draw; the captured
 first draw ID remains the required evidence.
-The following 80 ms must have no recording gap over 20 ms. An outside marker
-identifies submitted draws, and a separate pixel clock keeps static frames
-observable. Missing coverage fails as unverified.
-Each case allows at most three recording attempts. Pixel, geometry, control and
-page-error assertions run before the coverage check. Only inadequate recording
-coverage is retried, and every retry is reported.
+Observation lasts at least 80 ms from the first recorded scene image and through
+a later image naming a second distinct known draw marker. A suppressed color
+write still counts as a draw marker for the later-blank control. If no second
+marker is recorded, correct first-draw images alone remain unverified. Hosted
+runners drew the scene every 88–106 ms, so 80 ms alone can hold a single draw.
+
+The recording must show every page frame in that interval. A strip outside the
+sampled region writes the page's animation-frame number into pixels, so each
+recorded image names the page frame it shows. A second marker identifies
+submitted draws, and a one-pixel animation keeps static frames observable. A
+recording that skips a page frame fails as unverified. The time between
+recorded images is not limited. A change the compositor makes between page
+frames is judged only in the images that show it.
+Each case allows at most three recording attempts. Observed pixel, geometry,
+control and page errors are judged before missing evidence. The known first
+80 ms still passes through the coverage law before a missing second marker can
+trigger a retry. For the later-blank control, only the required later
+suppressed-write observation is deferred when its second marker is absent.
+Cleanup finishes before retry eligibility is decided. Only inadequate recording
+evidence is retried, and every retry is reported.
 
 An independently stored earlier dash pose and a blank texture must fail from
 the first scene frame onward. A later suppressed color write must also fail
@@ -501,19 +542,32 @@ see this fault: the slot keeps `data-away="true"` and its page copy keeps
 
 The sampled window must arrive later, and this unfocused fixture must not
 activate a warm native ride. Focused preparation and selection are checked by
-the API preparation fixtures. The recorder uses the same outside marker and
-20 ms coverage requirement as the pose check, over its first 150 ms.
+the API preparation fixtures.
+
+A flash is a recorded image that shows the window at the desk and is followed
+by one that does not. The arrival is where the last run of images showing the
+window begins. The recording must show every page frame from the press to the
+arrival, read from the same strip as the pose check. The check once called
+anything shown within 150 ms of the press a flash. A hosted runner presents its
+first frame after the press at about 150 ms, so a flash there was read as the
+arrival.
 
 The default recording uses quality-100 JPEG to reduce encoding overhead.
+The shared scorer retains the reference and sends at most eight images per decode
+message at the existing viewport. Every selected image after the final pre-press
+reference is scored. Received, acknowledged, and decoded image counts, batch
+sizes, encoded bytes, and collection-tail status appear in the gate output.
 `RESTORE_CAPTURE_FORMAT=png` retains the PNG comparison path. A run still needs
 three fully recorded restores per engine, within at most nine attempts. Each
-incomplete recording is reported. Only incomplete coverage is retried; an
-observed flash, missing arrival, native ride, or page error fails immediately.
+incomplete recording is reported with the page frames it showed. Only
+incomplete coverage is retried; an observed flash, missing arrival, native
+ride, or page error fails immediately.
 This is a bounded sample of verified trials, not a claim about discarded trials.
 
-`RESTORE_FLASH_CONTROL=1 ROUNDS=1 npm run gate:genie-restore-flash` must fail.
-It briefly displays an actual window image at the desk before the sheet arrives,
-using the ordinary pixel assertions and the same recorder.
+Each engine starts with a control. It shows a picture of the window at the
+desk for one page frame at the press, then restores as usual. The ordinary
+pixel scoring must count that frame as a flash within three recordings. A
+recording that showed every page frame and missed the control fails the check.
 
 ## knobs-hz
 
@@ -560,6 +614,33 @@ ordinary pixel assertions must fail. `DOM_DEMAND_OUTPUT` selects artifacts.
 Other Workspace feeds can wake the shared renderer. This check proves the
 target's displayed update, not that its paint is the only cause of a wakeup.
 HTML-in-canvas capability is required for this evidence.
+
+## texture-uploads
+
+`npm run probe:texture-uploads` counts the WebGL uploads each changed image
+costs and checks the pixels the Surface then shows. It is a local command; CI
+membership is unchanged.
+
+The runner counts every `texImage2D` and `texSubImage2D` call that sends a
+canvas. It changes one 240×120 Surface six times per run, on each
+engine, at resolutions 1, 0.5 and `auto`. The pinned resolutions use mipmaps
+and `auto` does not. It judges three things:
+
+- The Surface shows the new color after every change, with and without a
+  resize.
+- A dropped upload is caught. The last change of each `dropped-upload` run
+  drops its uploads, and the pixel check must report the old color.
+- On snapDOM, a change that keeps its size makes one upload per paint.
+
+It prints the HTML-in-canvas counts and the resize counts without judging
+them. Measured 2026-09-29: snapDOM 1 upload per change and 3 per resize,
+HTML-in-canvas 2 and 5.
+
+The fixture is flat color on one renderer with a demand frameloop. A flat
+color cannot show a partly drawn image. The probe does not measure upload
+time, memory, or a lit material's encoded view. Without HTML-in-canvas it
+measures snapDOM only and warns; `STRICT_CAPABILITY=1` makes that a failure.
+`TEXTURE_UPLOADS_OUTPUT` selects where results are saved.
 
 ## degraded
 
@@ -637,6 +718,10 @@ own source lines.
 
 The walk covers only the programs its states construct. A new material
 needs a new state here.
+
+Each step waits up to 30 seconds for its state and prints how long it took.
+The check does not judge that time. A hosted runner took 7.65 seconds to
+return to the page, in one run on 2026-09-29.
 
 It exists because a shared GLSL block once dropped two sampler
 declarations: used in both stages, declared in neither. The unit suite

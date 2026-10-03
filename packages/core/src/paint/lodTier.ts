@@ -24,8 +24,8 @@
  *
  * Exported because it is not private arithmetic — it is the number a
  * consumer's own density law has to end in. Consumers once guessed at this
- * limit. The exact form is `clampScale`, which lands here and therefore reads
- * to `resolveFixedScale` as "nothing was changed" (decisions.md #21).
+ * limit. The exact form is `clampScale`, which lands exactly here, so a
+ * scale it returns passes the guard unchanged (decisions.md #21).
  */
 export const MAX_TEXTURE_EDGE = 4096
 
@@ -183,33 +183,4 @@ export function clampTiers(
   const longEdge = Math.max(cssWidth, cssHeight)
   const kept = tiers.filter((t) => t * longEdge <= maxDim)
   return kept.length > 0 ? kept : [tiers[0]!]
-}
-
-/** The scale a caller may actually use, and the verdict on whether the
- *  kernel had to reduce the one it was handed. Warn-and-clamp needs both
- *  halves, so they travel together. */
-export interface FixedScale {
-  scale: number
-  clamped: boolean
-}
-
-/**
- * `clampScale` with a verdict. The kernel owns the long-edge guard;
- * the binding owns the console — so when a caller-fixed `resolution`
- * gets reduced, the kernel has to SAY so, or the "warn" half of
- * warn-and-clamp has nothing to key on. The number
- * itself is delegated to `clampScale` so the two can never disagree; the
- * verdict is just "did that change anything". NaN is deliberately excluded
- * from ever reading as clamped — it is the caller's bug to see un-mangled,
- * not a guard event.
- */
-export function resolveFixedScale(
-  scale: number,
-  cssWidth: number,
-  cssHeight: number,
-  maxDim = MAX_TEXTURE_EDGE,
-): FixedScale {
-  if (Number.isNaN(scale)) return { scale, clamped: false }
-  const clamped = clampScale(scale, cssWidth, cssHeight, maxDim)
-  return { scale: clamped, clamped: clamped !== scale }
 }

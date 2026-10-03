@@ -268,10 +268,17 @@ export function createRasterizedSource(
    * arrives one frame late must still cover the store: drawn at its natural
    * size into a store that grew, it would leave the rest cleared, and the
    * texture would flicker between a full frame and a partial one.
+   *
+   * Throws when the store cannot be drawn into, so the capture fails instead
+   * of publishing a receipt for pixels that never arrived. With a null
+   * context this once returned quietly and the caller reported a completed
+   * paint (reproduced 2026-09-27 by fault injection, decisions.md #60).
    */
   const draw = (image: RasterImage, askedFor: readonly [number, number]) => {
     const ctx = canvas.getContext('2d')
-    if (!ctx || !('drawImage' in ctx)) return
+    if (!ctx || !('drawImage' in ctx)) {
+      throw new Error('munari: the capture canvas has no 2D context, so the raster was not drawn')
+    }
     const kx = canvas.width / Math.max(1, askedFor[0])
     const ky = canvas.height / Math.max(1, askedFor[1])
     ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -473,6 +480,8 @@ export function createRasterizedSource(
     canvas,
     host,
     element,
+    // `run` draws the finished image and counts the paint in one task.
+    drawTrailsPaint: false,
     setHostPainted: (painted) => {
       host.style.opacity = painted ? '1' : '0'
     },

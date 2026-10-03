@@ -33,7 +33,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { roundedCoord, spreadDecay, spreadPasses } from './refractionLaw'
+import { apertureField, roundedCoord, signedSpread, spreadDecay, spreadPasses } from './refractionLaw'
 import { FIELD_FRAG, FIELD_VERT, SPREAD_FRAG } from './refractionShaders'
 
 /**
@@ -287,21 +287,14 @@ export function useInkField(
     const t = cfg.current
     const su = roundedCoord(u, 1 / Math.max(1, mirror.w), t.frontRounding)
     const sv = roundedCoord(v, 1 / Math.max(1, mirror.h), t.frontRounding)
-    const spread =
-      0.5 +
-      0.5 *
-        (tap(mirror.spread, mirror.w, mirror.h, su, sv) -
-          tap(mirror.hollow, mirror.w, mirror.h, su, sv))
-    let field = spread
-    if (t.apertureInk > 0) {
-      const raw = tap(mirror.ink, mirror.iw, mirror.ih, u, v)
-      const ink = Math.min(
-        1,
-        Math.max(0, (raw - t.apertureFloor) / Math.max(1e-4, t.apertureCeil - t.apertureFloor)),
-      )
-      field = spread + (ink - spread) * t.apertureInk
-    }
-    return Math.pow(Math.max(0, field), t.apertureGamma)
+    const spread = signedSpread(
+      tap(mirror.spread, mirror.w, mirror.h, su, sv),
+      tap(mirror.hollow, mirror.w, mirror.h, su, sv),
+    )
+    const ink =
+      (tap(mirror.ink, mirror.iw, mirror.ih, u, v) - t.apertureFloor) /
+      Math.max(1e-4, t.apertureCeil - t.apertureFloor)
+    return apertureField(spread, ink, t.apertureInk, t.apertureGamma)
   }
 
   // Restores whatever target was bound rather than assuming null: this runs

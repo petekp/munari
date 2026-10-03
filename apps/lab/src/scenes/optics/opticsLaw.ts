@@ -22,7 +22,7 @@ export interface LensSpec {
    *
    * For a rectangular face this is the CORNER distance — the radius of the
    * smallest disc containing the face. Everything downstream that reasons
-   * about how far from the axis the glass reaches (`capIsValid`,
+   * about how far from the axis the glass reaches (`CAP_MARGIN`,
    * `powerLimit`) wants that number and no other, because the corner is
    * where a rectangle strains its cap hardest.
    */
@@ -177,12 +177,6 @@ export function magnification(spec: LensSpec): number {
  * reducing glass loses nothing by clearing a bar it was already over.
  */
 export const CAP_MARGIN = 2
-
-/** Is this a cap the law can describe? */
-export function capIsValid(spec: LensSpec): boolean {
-  if (!Number.isFinite(spec.curvature)) return true
-  return Math.abs(spec.curvature) >= CAP_MARGIN * spec.aperture
-}
 
 /**
  * The powers an aperture, standoff and index can actually hold, given

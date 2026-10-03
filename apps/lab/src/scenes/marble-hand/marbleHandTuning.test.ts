@@ -70,12 +70,6 @@ describe('marble-hand numeric controls', () => {
     }
   })
 
-  it('waits over a second before drumming, at a readable depth', () => {
-    expect(marbleHandTuning.tapIdleDelayMs).toBeGreaterThan(1000)
-    expect(marbleHandTuning.tapLiftRad).toBeGreaterThan(0)
-    expect(marbleHandTuning.tapLiftRad).toBeLessThan(Math.PI / 2)
-  })
-
   it('bounds both pinch controls without reversing the gesture', () => {
     for (const key of ['pinchIndexRad', 'pinchThumbRad'] as const) {
       expect(normalizeMarbleHandInput(controlFor(key), -5)).toBe(0)

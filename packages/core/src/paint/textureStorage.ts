@@ -3,7 +3,7 @@
 // texStorage2D is immutable: three allocates once at first-upload
 // size and texSubImage2Ds every upload after, forever, without ever
 // re-reading the source's dimensions. (The mip count bakes at that
-// same allocation — that half is `filterPolicy`.)
+// same allocation. The binding's source runtime chooses it.)
 //
 // So a source canvas that changes size silently desynchronizes from
 // its own texture. A grow is rejected by the driver

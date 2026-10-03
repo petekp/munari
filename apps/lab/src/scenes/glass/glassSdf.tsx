@@ -190,9 +190,8 @@ export const MAX_RECTS = 12
 export const MAX_RIPPLES = 10
 
 /**
- * Fraction of a ripple's budgeted life spent easing out — the TS twin's
- * RETIRE_FRACTION, kept as a literal here because this file is vendored
- * standalone. tests/registry/glassPack.test.ts pins the two together.
+ * Fraction of a ripple's budgeted life spent easing out. The window is
+ * inert before this, so the wave's own physics owns the early life.
  */
 const RETIRE_FRACTION = 0.45
 
@@ -302,10 +301,10 @@ export const GLASS_DEFAULTS: GlassParams = {
   rippleSource: 0.04,
   // A long time constant against a short window. The sheet loses its motion
   // slowly — exp(-t/3.4) is still at 66% when the 1.4s budget runs out — so
-  // almost the whole fade is the retire taper in rippleLaw.ts rather than the
-  // bulk loss. That is the taper working as designed (it reaches exactly zero
-  // at the horizon for ANY pairing), and it is what buys a calm sheet that
-  // keeps moving instead of a lively one that stops.
+  // almost the whole fade is the retire taper in `rippleRetirement` rather
+  // than the bulk loss. That is the taper working as designed (it reaches
+  // exactly zero at the horizon for ANY pairing), and it is what buys a calm
+  // sheet that keeps moving instead of a lively one that stops.
   rippleDecay: 3.4,
   rippleLife: 1.4,
   // Measured against the train it has to be commensurate with, not guessed:

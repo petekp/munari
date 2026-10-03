@@ -75,26 +75,12 @@ describe('approachUv', () => {
 
 describe('routing against the aperture', () => {
   // The routing predicate is `field > apertureEdge(...)`, the same
-  // comparison the shader makes before its seam is smoothed. The ends are
-  // what matter: at both of them exactly one document owns the whole sheet,
-  // so a pointer at a landing can never be handed to the copy nobody sees.
-  const OVERSHOOT = 0.23
-
-  it('gives the whole sheet to the outgoing document at t = 0', () => {
-    const edge = apertureEdge(0, OVERSHOOT)
-    // The field is a normalised 0..1, so nothing can be above this.
-    expect(edge).toBeGreaterThan(1)
-  })
-
-  it('gives the whole sheet to the incoming document at t = 1', () => {
-    const edge = apertureEdge(1, OVERSHOOT)
-    expect(edge).toBeLessThan(0)
-  })
-
-  // Mid-crossing both documents own part of the sheet, which is the only
-  // state where routing has any work to do.
+  // comparison the shader makes before its seam is smoothed. The field is a
+  // normalised 0..1. Mid-crossing the edge sits inside that range, so both
+  // documents own part of the sheet, which is the only state where routing
+  // has any work to do. refractionLaw.test.ts pins the two ends.
   it('splits the sheet in between', () => {
-    const edge = apertureEdge(0.5, OVERSHOOT)
+    const edge = apertureEdge(0.5, 0.23)
     expect(edge).toBeGreaterThan(0)
     expect(edge).toBeLessThan(1)
   })
