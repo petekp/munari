@@ -22,17 +22,31 @@ export class IncompleteScreencastError extends Error {
   override name = 'IncompleteScreencastError'
 }
 
+export interface ScreencastClockScope {
+  read(context: CanvasRenderingContext2D, scaleX: number, scaleY: number): number | null
+  dispose(): void
+}
+
+declare global {
+  interface Window {
+    __screencastClock?: ScreencastClockScope
+  }
+}
+
 // Chrome need not send unchanged frames. A marker outside the sampled region
 // makes quiet intervals observable without changing the content under test.
 //
 // A second strip writes the page's animation-frame number into pixels, so each
 // recorded image names the page frame it shows. Both run inside the page:
 // this function is serialized, and must not read module scope.
-export function installScreencastClock(): void {
+export function installScreencastClock(): ScreencastClockScope {
+  if (Object.hasOwn(window, '__screencastClock')) throw new Error('A screencast clock already owns this page')
   const marker = document.createElement('div')
   marker.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;background:#000;z-index:2147483647;pointer-events:none'
-  document.body.append(marker)
-  marker.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 80, iterations: Infinity })
+  marker.dataset.screencastClock = 'marker'
+  let animation: Animation | null = null
+  let callback = 0
+  let disposed = false
 
   const cell = 4
   const left = 2
@@ -43,11 +57,12 @@ export function installScreencastClock(): void {
   strip.width = 40 * cell
   strip.height = cell
   strip.style.cssText = `position:fixed;left:${left}px;top:${top}px;width:${strip.width}px;height:${cell}px;z-index:2147483647;pointer-events:none`
-  document.body.append(strip)
+  strip.dataset.screencastClock = 'strip'
   const ink = strip.getContext('2d')
   if (!ink) throw new Error('The screencast clock needs a 2D context')
   let frame = 0
   const tick = () => {
+    if (disposed) return
     frame = (frame + 1) & 0xffffff
     const bits = [...preamble]
     for (let i = 0; i < 24; i++) bits.push((frame >>> i) & 1)
@@ -57,9 +72,8 @@ export function installScreencastClock(): void {
       ink.fillStyle = bit ? '#fff' : '#000'
       ink.fillRect(i * cell, 0, cell, cell)
     })
-    requestAnimationFrame(tick)
+    callback = requestAnimationFrame(tick)
   }
-  requestAnimationFrame(tick)
 
   // Returns null for an image recorded before the strip's first frame.
   const read = (context: CanvasRenderingContext2D, scaleX: number, scaleY: number): number | null => {
@@ -76,7 +90,38 @@ export function installScreencastClock(): void {
     for (let i = 0; i < 8; i++) check |= bits[i + 32]! << i
     return check === checksum(value) ? value : null
   }
-  Object.defineProperty(window, '__screencastClock', { value: { read } })
+  const scope: ScreencastClockScope = {
+    read,
+    dispose() {
+      if (disposed) return
+      disposed = true
+      const cleanupErrors: unknown[] = []
+      try { cancelAnimationFrame(callback) } catch (error) { cleanupErrors.push(error) }
+      try { animation?.cancel() } catch (error) { cleanupErrors.push(error) }
+      try { marker.remove() } catch (error) { cleanupErrors.push(error) }
+      try { strip.remove() } catch (error) { cleanupErrors.push(error) }
+      try {
+        if (window.__screencastClock === scope) delete window.__screencastClock
+      } catch (error) { cleanupErrors.push(error) }
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(cleanupErrors, `Clock cleanup failed: ${cleanupErrors.map(error => String(error)).join('; ')}`, { cause: cleanupErrors[0] })
+      }
+    },
+  }
+  try {
+    document.body.append(marker, strip)
+    animation = marker.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 80, iterations: Infinity })
+    Object.defineProperty(window, '__screencastClock', { value: scope, configurable: true })
+    callback = requestAnimationFrame(tick)
+    return scope
+  } catch (cause) {
+    try {
+      scope.dispose()
+    } catch (cleanupError) {
+      throw new AggregateError([cause, cleanupError], `${String(cause)}; cleanup failed: ${String(cleanupError)}`, { cause })
+    }
+    throw cause
+  }
 }
 
 // Missing evidence throws IncompleteScreencastError, which a caller may retry.

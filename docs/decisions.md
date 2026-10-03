@@ -176,6 +176,40 @@ scene draw is recorded, whichever is later. Hosted runners drew the scene every
 88–106 ms, so the 80 ms interval held a single draw in 4 of 16 cases and the
 late-loss control had nothing to judge in one of them.
 
+Amended 2026-10-02 — RECORDING HAS ONE OWNER. The Genie pose and restore checks
+use `instruments/screencastRecording.ts` for capture, acknowledgement draining,
+bounded decoding, and resource lifetime. Each recording uses a fresh Chrome
+session. The browser keeps the reference and scene scorer across batches of at
+most eight images; the gates retain their visual judgments and retry policies.
+
+`node instruments/screencastRecordingCheck.mjs` checks the measurement with known
+PNG/JPEG images, actual session listeners, and actual remote object IDs. It also
+forces a construction failure after clock resources exist and sends an invalid
+object ID to Chrome to verify that remote release rejection is terminal while
+native disposal still releases the valid object. Puppeteer's ordinary handle
+disposal suppresses that protocol rejection, so the recorder checks Chrome's
+release response explicitly.
+
+The pose interval requires a later recorded image with a second distinct known
+draw marker. A marker from a suppressed color write counts for the later-blank
+control. Correct first-draw images alone leave the observation unverified.
+Observed case mismatches and errors in the known minimum 80 ms keep their existing
+priority over missing-second classification. A collection-tail timeout is
+separate from the required observation interval.
+
+Cleanup retains the primary failure and ordered secondary errors across recorder,
+page, and browser teardown. A cleanup error is terminal even alongside an
+incomplete observation. The pure page-frame coverage law, pixel budgets, geometry
+limit, and attempt counts are unchanged.
+
+Measured locally in Chrome 154.0.8037.97, macOS, 1100×800 DPR 1: all sixteen pose
+cases passed on their first attempt. The largest encoded pose batch was 904,516
+bytes. The recorder's ordinary-DOM check passed seventeen measurements, including
+real release rejection and post-allocation rollback. Disposable checks of the
+actual gate assessment code passed sixty-two metadata/error cases. Those checks
+establish verdict behavior, not pixels. Hosted results and renewal of the public
+demo's origin-trial token remain separate acceptance evidence.
+
 ## #3 — The lab preserves six scenes (2026-08-02)
 
 **Decision.** `apps/lab` carries three scenes — **workspace**,

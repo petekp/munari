@@ -465,6 +465,31 @@ measures the fixed shadow strip in recorded compositor frames around both
 handoff directions. It also checks that the shadow travels with the
 sheet and fades only where the funnel has squeezed it past legibility.
 
+## Screencast recording
+
+`node instruments/screencastRecordingCheck.mjs` checks the shared measurement
+module used by the pose and restore gates. It runs ordinary DOM in real Chrome,
+with PNG and JPEG images whose colors, identities, and page-frame numbers are
+known independently of the decoder.
+
+The recorder owns one page clock and a fresh DevTools session for each recording.
+Stop drains acknowledgements, removes its listener, and detaches that session.
+Scoring decodes the reference once and keeps scorer state in Chrome across
+batches of at most eight images. Original image indices remain stable for saved
+artifacts. Gates own their scene metrics, observation intervals, and retry limits.
+
+A collection-tail timeout returns partial images and diagnostics. Acceptance
+still depends on the gate's required interval. Known case failures and instrument
+errors remain terminal; a tail timeout cannot erase them or invalidate an already
+complete interval. Cleanup failures retain the primary cause and are terminal.
+
+The check queries actual listeners and remote object IDs while the page remains
+alive. It covers ordinary and exceptional handle release, real release rejection,
+clock disposal and construction rollback, repeated recordings, and protocol
+interruption. It observes late delivery separately: a run with no late images
+leaves that path unverified. These checks establish measurement behavior, not
+Genie's scene pixels or hosted reliability. Existing CI membership is unchanged.
+
 ## genie pose flash
 
 `npm run gate:genie-pose-flash` compares a stationary circle and square with
@@ -477,9 +502,11 @@ projected figure points must stay within 0.25 CSS pixels of the native rectangle
 The first actual scene draw must be recorded. Its framebuffer is held for 40 ms
 to make it observable. A slow renderer may need no intercepted draw; the captured
 first draw ID remains the required evidence.
-Observation lasts 80 ms from the first recorded scene image, or until the
-second scene draw is recorded if that is later. Hosted runners drew the scene
-every 88–106 ms, so 80 ms alone can hold a single draw.
+Observation lasts at least 80 ms from the first recorded scene image and through
+a later image naming a second distinct known draw marker. A suppressed color
+write still counts as a draw marker for the later-blank control. If no second
+marker is recorded, correct first-draw images alone remain unverified. Hosted
+runners drew the scene every 88–106 ms, so 80 ms alone can hold a single draw.
 
 The recording must show every page frame in that interval. A strip outside the
 sampled region writes the page's animation-frame number into pixels, so each
@@ -488,9 +515,13 @@ submitted draws, and a one-pixel animation keeps static frames observable. A
 recording that skips a page frame fails as unverified. The time between
 recorded images is not limited. A change the compositor makes between page
 frames is judged only in the images that show it.
-Each case allows at most three recording attempts. Pixel, geometry, control and
-page-error assertions run before the coverage check. Only inadequate recording
-coverage is retried, and every retry is reported.
+Each case allows at most three recording attempts. Observed pixel, geometry,
+control and page errors are judged before missing evidence. The known first
+80 ms still passes through the coverage law before a missing second marker can
+trigger a retry. For the later-blank control, only the required later
+suppressed-write observation is deferred when its second marker is absent.
+Cleanup finishes before retry eligibility is decided. Only inadequate recording
+evidence is retried, and every retry is reported.
 
 An independently stored earlier dash pose and a blank texture must fail from
 the first scene frame onward. A later suppressed color write must also fail
@@ -522,8 +553,10 @@ first frame after the press at about 150 ms, so a flash there was read as the
 arrival.
 
 The default recording uses quality-100 JPEG to reduce encoding overhead.
-Pixel analysis sends eight frames at a time against the same reference image,
-so long recordings do not exceed DevTools' message limit. Every frame is scored.
+The shared scorer retains the reference and sends at most eight images per decode
+message at the existing viewport. Every selected image after the final pre-press
+reference is scored. Received, acknowledged, and decoded image counts, batch
+sizes, encoded bytes, and collection-tail status appear in the gate output.
 `RESTORE_CAPTURE_FORMAT=png` retains the PNG comparison path. A run still needs
 three fully recorded restores per engine, within at most nine attempts. Each
 incomplete recording is reported with the page frames it showed. Only

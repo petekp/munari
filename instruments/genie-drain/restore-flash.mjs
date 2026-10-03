@@ -29,7 +29,8 @@ import path from 'node:path'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
-import { IncompleteScreencastError, installScreencastClock, requirePageFrameCoverage } from '../screencastCoverage.ts'
+import { IncompleteScreencastError, requirePageFrameCoverage } from '../screencastCoverage.ts'
+import { createScreencastRecorder, scoreScreencast } from '../screencastRecording.ts'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const labRoot = path.join(repoRoot, 'apps', 'lab')
@@ -67,9 +68,25 @@ if (CAPTURE_FORMAT === 'jpeg') captureOptions.quality = 100
 const SHOWN_PCT = 50
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const includeCleanupFailure = (failure, cleanupError) => {
+  const errors = failure?.cleanupErrors === undefined
+    ? (failure === null ? [cleanupError] : [failure.error, cleanupError])
+    : [...failure.cleanupErrors, cleanupError]
+  const cleanupOnly = failure === null || failure.cleanupOnly === true
+  return {
+    error: new AggregateError(
+      errors,
+      cleanupOnly ? `Cleanup failed: ${errors.map(String).join('; ')}` : `${String(errors[0])}; cleanup failed: ${errors.slice(1).map(String).join('; ')}`,
+      { cause: errors[0] },
+    ),
+    cleanupErrors: errors,
+    cleanupOnly,
+  }
+}
 
 let server
 let browser
+let failure = null
 const problems = []
 const deadline = setTimeout(() => {
   console.error('restore-flash: hard 300s deadline hit')
@@ -94,6 +111,11 @@ try {
   for (const mode of ['auto', 'snapdom']) {
     const page = await browser.newPage()
     const pageErrors = []
+    const modeProblemStart = problems.length
+    let recorder
+    let emulationClient
+    let modeFailure = null
+    try {
     page.on('pageerror', (error) => pageErrors.push(String(error)))
     await page.setViewport({ width: 1100, height: 800, deviceScaleFactor: 1 })
     const forced = mode === 'snapdom' ? '&capture=snapdom' : ''
@@ -107,10 +129,11 @@ try {
       WIN,
     )
     await sleep(1000)
-    await page.evaluate(installScreencastClock)
-
-    const client = await page.createCDPSession()
-    if (SLOWCPU > 1) await client.send('Emulation.setCPUThrottlingRate', { rate: SLOWCPU })
+    if (SLOWCPU > 1) {
+      emulationClient = await page.createCDPSession()
+      await emulationClient.send('Emulation.setCPUThrottlingRate', { rate: SLOWCPU })
+    }
+    recorder = await createScreencastRecorder(page, captureOptions)
 
     const setup = await page.evaluate((win) => {
       // The other windows are hidden so the desk rect can only ever show the
@@ -169,16 +192,6 @@ try {
       window.__restoreFlashControl = image
     }, { picture, desk: setup.desk })
 
-    const frames = []
-    client.on('Page.screencastFrame', async (frame) => {
-      frames.push({ t: frame.metadata.timestamp * 1000, data: frame.data })
-      try {
-        await client.send('Page.screencastFrameAck', { sessionId: frame.sessionId })
-      } catch {
-        // The cast can stop between delivery and acknowledgement.
-      }
-    })
-
     const press = (selector, flash = false) =>
       page.evaluate(({ sel, flash }) => {
         const at = performance.timeOrigin + performance.now()
@@ -209,8 +222,7 @@ try {
       )
       await sleep(600)
 
-      frames.length = 0
-      await client.send('Page.startScreencast', captureOptions)
+      await recorder.start()
       // Docked frames first: the last one before the press is the reference
       // every later frame is differenced against.
       await sleep(250)
@@ -223,64 +235,53 @@ try {
         WIN,
       )
       await sleep(300)
-      await client.send('Page.stopScreencast')
-      await sleep(100)
+      const collectionEnd = await page.evaluate(() => performance.timeOrigin + performance.now())
+      const capture = await recorder.stop({ through: collectionEnd, timeoutMs: 5000 })
       const restoreSamples = await page.evaluate(() => window.__flash.samples)
-      frames.sort((left, right) => left.t - right.t)
+      const frames = capture.frames
 
       const referenceFrame = frames.findLast(frame => frame.t < pressedAt)
       const afterPress = frames.filter(frame => frame.t >= pressedAt)
-      // One entry per recorded image: its time, the page frame it shows, and
-      // the percent of the desk rect that differs from the reference.
-      const recorded = []
-      // Eight full-size frames stay below DevTools' 100 MB message limit.
-      // Each batch uses the same reference and every recorded frame is judged.
-      for (let offset = 0; referenceFrame && offset < afterPress.length; offset += 8) {
-        const batch = await page.evaluate(
-          async (shot, desk, format) => {
-            const read = async (data) => {
-              const image = new Image()
-              image.src = `data:image/${format};base64,${data}`
-              await image.decode()
-              const canvas = document.createElement('canvas')
-              canvas.width = image.width
-              canvas.height = image.height
-              const context = canvas.getContext('2d', { willReadFrequently: true })
-              context.drawImage(image, 0, 0)
+      let recordingScore = null
+      if (referenceFrame) {
+        recordingScore = await scoreScreencast(page, capture, {
+          reference: { kind: 'recorded', index: referenceFrame.index },
+          selectedIndices: [referenceFrame.index, ...afterPress.map(frame => frame.index)],
+          context: setup.desk,
+          createScorer(referenceImage, desk) {
+            const crop = (image) => {
               const sx = image.width / window.innerWidth
               const sy = image.height / window.innerHeight
-              return {
-                pageFrame: window.__screencastClock.read(context, sx, sy),
-                pixels: context.getImageData(
-                  Math.round(desk.left * sx),
-                  Math.round(desk.top * sy),
-                  Math.round(desk.width * sx),
-                  Math.round(desk.height * sy),
-                ).data,
-              }
+              return image.ctx.getImageData(
+                Math.round(desk.left * sx),
+                Math.round(desk.top * sy),
+                Math.round(desk.width * sx),
+                Math.round(desk.height * sy),
+              ).data
             }
-            const reference = (await read(shot[0].data)).pixels
-            const judged = []
-            for (const frame of shot) {
-              const { pixels, pageFrame } = await read(frame.data)
-              let changed = 0
-              for (let i = 0; i < pixels.length; i += 4) {
-                const delta =
-                  Math.abs(pixels[i] - reference[i]) +
-                  Math.abs(pixels[i + 1] - reference[i + 1]) +
-                  Math.abs(pixels[i + 2] - reference[i + 2])
-                if (delta > 30) changed++
-              }
-              judged.push({ t: frame.t, pageFrame, pct: (100 * changed) / (pixels.length / 4) })
+            const reference = crop(referenceImage)
+            return {
+              inspect(image) {
+                const pixels = crop(image)
+                let changed = 0
+                for (let i = 0; i < pixels.length; i += 4) {
+                  const delta =
+                    Math.abs(pixels[i] - reference[i]) +
+                    Math.abs(pixels[i + 1] - reference[i + 1]) +
+                    Math.abs(pixels[i + 2] - reference[i + 2])
+                  if (delta > 30) changed++
+                }
+                return { pct: (100 * changed) / (pixels.length / 4) }
+              },
+              summarize: () => null,
             }
-            return judged
           },
-          [referenceFrame, ...afterPress.slice(offset, offset + 8)],
-          setup.desk,
-          CAPTURE_FORMAT,
-        )
-        recorded.push(...batch.slice(offset === 0 ? 0 : 1))
+        })
       }
+      const recorded = recordingScore?.rows.map(row => ({
+        index: row.index, t: row.t, pageFrame: row.pageFrame, pct: row.value.pct,
+      })) ?? []
+      const rides = [...minimizeSamples, ...restoreSamples].filter((sample) => sample.riding).length
 
       let scored = null
       let unverified = 'no reference frame'
@@ -298,7 +299,7 @@ try {
           frames: frames.length,
         }
         unverified = null
-        if (arrival) {
+        if (arrival && (control || (scored.flash === 0 && rides === 0 && pageErrors.length === 0))) {
           const observed = recorded.slice(0, recorded.indexOf(arrival) + 1)
           const base = observed[0].pageFrame ?? 0
           pageFrames = new Set(observed.map((frame) => frame.pageFrame)).size
@@ -316,7 +317,12 @@ try {
         scored,
         unverified,
         pageFrames,
-        rides: [...minimizeSamples, ...restoreSamples].filter((sample) => sample.riding).length,
+        rides,
+        recording: {
+          collectionEnd: capture.collectionEnd,
+          ...capture.diagnostics,
+          scoring: recordingScore?.diagnostics ?? null,
+        },
         minimizeSwaps: minimizeSamples.filter((sample) => sample.swapped).length,
         restoreSwaps: restoreSamples.filter((sample) => sample.swapped).length,
       }
@@ -329,6 +335,7 @@ try {
       if (trial.scored?.flash > 0) {
         controlSeen = true
         console.log(`\n  ${setup.engine} · one-frame control flash recorded in ${trial.scored.flash} image${trial.scored.flash === 1 ? '' : 's'} · attempt ${attempt + 1}`)
+        console.log(`    recording ${JSON.stringify(trial.recording)}`)
         break
       }
       if (!trial.unverified) {
@@ -347,7 +354,7 @@ try {
       const { scored, unverified, ...observed } = await restore(false)
       // Observed faults fail even in an incomplete recording. Only missing
       // evidence is retried, and every required round still needs full coverage.
-      const failed = scored && (scored.flash > 0 || scored.sheetAt === null || observed.rides > 0)
+      const failed = observed.rides > 0 || (scored && (scored.flash > 0 || scored.sheetAt === null))
       if (failed || pageErrors.length) {
         problems.push(`${setup.engine}: attempt ${attempt + 1}: observed restore failure ${JSON.stringify({ ...scored, rides: observed.rides, pageErrors })}`)
         break
@@ -366,16 +373,43 @@ try {
     for (const round of rounds)
       console.log(
         `    flash frames ${round.flash}  swapped samples minimize ${round.minimizeSwaps} / restore ${round.restoreSwaps}  rides ${round.rides}  sheet at desk ${round.sheetAt ?? 'never'}ms  (${round.pageFrames} page frames before arrival, ${round.frames} recorded images)`,
+        `recording ${JSON.stringify(round.recording)}`,
       )
 
     if (pageErrors.length) problems.push(`${setup.engine}: ${pageErrors[0]}`)
-    await page.close()
+    } catch (error) {
+      modeFailure = { error }
+    } finally {
+      for (const close of [() => recorder?.dispose(), () => emulationClient?.detach(), () => page.close()]) {
+        try {
+          await close()
+        } catch (cleanupError) {
+          if (modeFailure === null && problems.length > modeProblemStart)
+            modeFailure = { error: new Error(problems.slice(modeProblemStart).join('; ')) }
+          modeFailure = includeCleanupFailure(modeFailure, cleanupError)
+        }
+      }
+    }
+    if (modeFailure !== null) {
+      failure = modeFailure
+      throw modeFailure.error
+    }
   }
+} catch (error) {
+  if (failure === null) failure = { error }
 } finally {
+  for (const close of [() => browser?.close(), () => server?.close()]) {
+    try {
+      await close()
+    } catch (cleanupError) {
+      if (failure === null && problems.length)
+        failure = { error: new Error(problems.join('; ')) }
+      failure = includeCleanupFailure(failure, cleanupError)
+    }
+  }
   clearTimeout(deadline)
-  await browser?.close()
-  await server?.close()
 }
+if (failure !== null) throw failure.error
 
 if (problems.length) {
   console.error('\nrestore-flash: FAIL')

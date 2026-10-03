@@ -15,7 +15,8 @@ import {tmpdir} from 'node:os'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import {createServer} from 'vite'
-import {IncompleteScreencastError,installScreencastClock,requirePageFrameCoverage} from '../screencastCoverage.ts'
+import {IncompleteScreencastError,requirePageFrameCoverage} from '../screencastCoverage.ts'
+import {createScreencastRecorder,scoreScreencast} from '../screencastRecording.ts'
 const root=path.resolve(import.meta.dirname,'../..')
 const output=process.env.POSE_OUTPUT??path.join(tmpdir(),'munari-genie-pose')
 const rounds=Number(process.env.ROUNDS??1)
@@ -34,7 +35,12 @@ const inspect={name:'stationary-genie-pose',enforce:'pre',transform(code,id){
   .replace(frame,'  useFrame(({ clock, scene, camera, gl }, rawDt) => {')
   .replace(deform,'deformSheets([geo, filmGeoRef.current], f, params, window.__fixedPose?.win===win ? 0 : visibleT, wobble); window.__fixedPose?.observe({scene,camera,gl,win})')
 }}
-let server,browser
+let server,browser,failure=null,caseFailure=null
+const includeCleanupFailure=(failure,cleanupError)=>{
+ const errors=failure?.cleanupErrors===undefined?(failure===null?[cleanupError]:[failure.error,cleanupError]):[...failure.cleanupErrors,cleanupError]
+ const cleanupOnly=failure===null||failure.cleanupOnly===true
+ return{error:new AggregateError(errors,cleanupOnly?`Cleanup failed: ${errors.map(String).join('; ')}`:`${String(errors[0])}; cleanup failed: ${errors.slice(1).map(String).join('; ')}`,{cause:errors[0]}),cleanupErrors:errors,cleanupOnly}
+}
 const results=[],deadline=setTimeout(()=>{console.error('Stationary pose exceeded 300s');process.exit(1)},300000)
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 try{
@@ -45,17 +51,17 @@ try{
  for(let round=0;round<rounds;round++)for(const mode of modes)for(const win of windows)for(const control of ['current','stale','blank','late-blank']){
   for(let attempt=0;attempt<3;attempt++){
   const name=`${mode}-${win}-${control}${rounds>1?`-${round+1}`:''}`,directory=path.join(output,name,`recording-${attempt+1}`),page=await browser.newPage(),errors=[]
-  let observation=null,retry=false
-  await mkdir(directory,{recursive:true})
+  let observation=null,retry=false,recorder,attemptFailure=null,result
   page.on('pageerror',error=>errors.push(String(error)))
   page.on('console',message=>{if(message.type()==='error'&&!message.text().startsWith('Failed to load resource:'))errors.push(message.text())})
   try{
+   await mkdir(directory,{recursive:true})
    await page.setViewport({width:1100,height:800,deviceScaleFactor:1})
    await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'no-preference'}])
    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=genie&framed${mode==='snapdom'?'&capture=snapdom':''}`,{waitUntil:'load'})
    await page.waitForFunction(win=>window.__poseStore?.(win).parts().some(part=>part.runtime?.currentPaint())&&document.fonts.status==='loaded',{timeout:20000},win)
    assert.equal(await page.evaluate(()=>window.__munari.engine()),mode==='snapdom'?'snapdom':'html-in-canvas')
-   await page.evaluate(installScreencastClock)
+   recorder=await createScreencastRecorder(page,{format:'png',everyNthFrame:1,maxWidth:1100,maxHeight:800})
    const box=await page.evaluate(async({win,control})=>{
     for(const slot of document.querySelectorAll('.gen-slot'))slot.style.visibility=slot.dataset.win===win?'':'hidden'
     const store=window.__poseStore(win),part=store.parts().find(part=>part.runtime),runtime=part.runtime
@@ -131,50 +137,56 @@ try{
    assert.ok(box.width>0&&box.height>0)
    const reference=await page.screenshot({encoding:'base64'})
    await writeFile(path.join(directory,'native.png'),Buffer.from(reference,'base64'))
-   const client=await page.createCDPSession(),frames=[]
-   client.on('Page.screencastFrame',frame=>{frames.push({t:frame.metadata.timestamp*1000,data:frame.data});void client.send('Page.screencastFrameAck',{sessionId:frame.sessionId}).catch(()=>{})})
    const lamp=await page.$eval(`.gen-slot[data-win="${win}"] .gen-lamp[data-role="minimize"]`,element=>{const r=element.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})
    await page.mouse.move(lamp.x,lamp.y,{steps:6});await sleep(300)
-   await client.send('Page.startScreencast',{format:'png',everyNthFrame:1,maxWidth:1100,maxHeight:800});await sleep(100)
+   await recorder.start();await sleep(100)
    await page.mouse.down();await sleep(50);await page.mouse.up();await sleep(450)
-   await client.send('Page.stopScreencast');await sleep(60)
+   const collectionEnd=await page.evaluate(()=>performance.timeOrigin+performance.now())
+   const capture=await recorder.stop({through:collectionEnd,timeoutMs:5000}),frames=capture.frames
    const state=await page.evaluate(()=>({draws:window.__fixedPose.draws,seedTime:window.__fixedPose.seedTime,blockedDraws:window.__fixedPose.cadence.blocked})),draws=state.draws,firstDraw=draws.find(draw=>draw.writing&&!draw.pageHeld)
-   frames.sort((a,b)=>a.t-b.t)
-   const scored=await page.evaluate(async({reference,frames,draws,box})=>{
-    const decode=async data=>{const image=new Image();image.src='data:image/png;base64,'+data;await image.decode();const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0);return{ctx,width:image.width,height:image.height}}
-    const referenceImage=await decode(reference),width=Math.round(box.width),height=Math.round(box.height),crop=image=>image.ctx.getImageData(Math.round(box.x),Math.round(box.y),width,height).data
-    if(referenceImage.width!==1100||referenceImage.height!==800)throw Error('Reference viewport changed')
-    const native=crop(referenceImage),total=width*height,background=[native[0],native[1],native[2]],delta=(a,i,b,j)=>Math.abs(a[i]-b[j])+Math.abs(a[i+1]-b[j+1])+Math.abs(a[i+2]-b[j+2])
-    let nativeInk=0;for(let i=0;i<native.length;i+=4)if(Math.abs(native[i]-background[0])+Math.abs(native[i+1]-background[1])+Math.abs(native[i+2]-background[2])>40)nativeInk++
-    // Both directions retain missing ink as evidence, unlike an excluded edge band.
-    const mismatch=(a,b)=>{let count=0;for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4;let best=Infinity;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=Math.max(0,Math.min(width-1,x+dx)),ny=Math.max(0,Math.min(height-1,y+dy));best=Math.min(best,delta(a,i,b,(ny*width+nx)*4))}if(best>40)count++}return 100*count/total}
-    const byId=new Map(draws.map(draw=>[draw.id,draw])),rows=[],clock=[]
-    let presented=false
-    for(let index=0;index<frames.length;index++){
-     const image=await decode(frames[index].data);if(image.width!==1100||image.height!==800)throw Error('Compositor viewport changed')
-     clock.push({t:frames[index].t,pageFrame:window.__screencastClock.read(image.ctx,1,1)})
-     const bits=[];for(let i=0;i<40;i++)bits.push(image.ctx.getImageData(3+i*2,3,1,1).data[0]>127?1:0)
-     let id=0;for(let i=0;i<24;i++)id|=bits[i+8]<<i;let checksum=0;for(let i=0;i<8;i++)checksum|=bits[i+32]<<i
-     const markerValid=bits.slice(0,8).join('')==='10101100'&&checksum===((id^(id>>>8)^(id>>>16)^165)&255)
-     if(!markerValid)throw Error('Unreadable draw marker')
-     const draw=byId.get(id)
-     if(!presented){if(!draw?.writing||draw.pageHeld)continue;presented=true}
-     // Once presentation starts, a blank or page-held image is still evidence.
-     if(!draw)throw Error('A frame after presentation has no known draw marker')
-     const pixels=crop(image);rows.push({index,t:frames[index].t,draw,nativeToScene:mismatch(native,pixels),sceneToNative:mismatch(pixels,native)})
-    }
-    return{nativeInk,total,rows,clock}
-   },{reference,frames,draws,box})
-   const start=scored.rows[0]?.t,second=scored.rows.find(row=>row.draw.id!==scored.rows[0].draw.id)?.t
-   const end=Math.max(start+80,second??0),observed=scored.rows.filter(row=>row.t<=end)
-   observation={firstDraw:firstDraw?.id,firstRecorded:observed[0]?.draw.id,frames:observed.length,blockedDraws:state.blockedDraws,maximumPixelError:Math.max(...observed.map(row=>Math.max(row.nativeToScene,row.sceneToNative)))}
-   await writeFile(path.join(directory,'measurement.json'),JSON.stringify({box,nativeInk:scored.nativeInk,total:scored.total,firstDraw,seedTime:state.seedTime,blockedDraws:state.blockedDraws,draws,frames:observed},null,2))
-   if(observed.length){await writeFile(path.join(directory,'first-scene.png'),Buffer.from(frames[observed[0].index].data,'base64'));await writeFile(path.join(directory,'last-scene.png'),Buffer.from(frames[observed.at(-1).index].data,'base64'))}
+   const scored=await scoreScreencast(page,capture,{
+    reference:{kind:'image',encoding:'png',data:reference},
+    context:{draws,box},
+    createScorer(referenceImage,{draws,box}){
+     const width=Math.round(box.width),height=Math.round(box.height),crop=image=>image.ctx.getImageData(Math.round(box.x),Math.round(box.y),width,height).data
+     if(referenceImage.width!==1100||referenceImage.height!==800)throw Error('Reference viewport changed')
+     const native=crop(referenceImage),total=width*height,background=[native[0],native[1],native[2]],delta=(a,i,b,j)=>Math.abs(a[i]-b[j])+Math.abs(a[i+1]-b[j+1])+Math.abs(a[i+2]-b[j+2])
+     let nativeInk=0;for(let i=0;i<native.length;i+=4)if(Math.abs(native[i]-background[0])+Math.abs(native[i+1]-background[1])+Math.abs(native[i+2]-background[2])>40)nativeInk++
+     // Both directions retain missing ink as evidence, unlike an excluded edge band.
+     const mismatch=(a,b)=>{let count=0;for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4;let best=Infinity;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=Math.max(0,Math.min(width-1,x+dx)),ny=Math.max(0,Math.min(height-1,y+dy));best=Math.min(best,delta(a,i,b,(ny*width+nx)*4))}if(best>40)count++}return 100*count/total}
+     const byId=new Map(draws.map(draw=>[draw.id,draw]))
+     let presented=false
+     return{
+      inspect(image){
+       if(image.width!==1100||image.height!==800)throw Error('Compositor viewport changed')
+       const bits=[];for(let i=0;i<40;i++)bits.push(image.ctx.getImageData(3+i*2,3,1,1).data[0]>127?1:0)
+       let id=0;for(let i=0;i<24;i++)id|=bits[i+8]<<i;let checksum=0;for(let i=0;i<8;i++)checksum|=bits[i+32]<<i
+       const markerValid=bits.slice(0,8).join('')==='10101100'&&checksum===((id^(id>>>8)^(id>>>16)^165)&255)
+       if(!markerValid)throw Error('Unreadable draw marker')
+       const draw=byId.get(id)
+       if(!presented){if(!draw?.writing||draw.pageHeld)return null;presented=true}
+       // Once presentation starts, a blank or page-held image is still evidence.
+       if(!draw)throw Error('A frame after presentation has no known draw marker')
+       const pixels=crop(image)
+       return{draw,nativeToScene:mismatch(native,pixels),sceneToNative:mismatch(pixels,native)}
+      },
+      summarize:()=>({nativeInk,total}),
+     }
+    },
+   })
+   const sceneRows=scored.rows.filter(row=>row.value!==null).map(row=>({index:row.index,t:row.t,draw:row.value.draw,nativeToScene:row.value.nativeToScene,sceneToNative:row.value.sceneToNative}))
+   const clock=scored.rows.map(row=>({t:row.t,pageFrame:row.pageFrame}))
+   const start=sceneRows[0]?.t,second=sceneRows.find(row=>row.draw.id!==sceneRows[0].draw.id)
+   const end=second===undefined?start+80:Math.max(start+80,second.t),observed=sceneRows.filter(row=>row.t<=end)
+   observation={firstDraw:firstDraw?.id,firstRecorded:observed[0]?.draw.id,secondRecorded:second?.draw.id,frames:observed.length,blockedDraws:state.blockedDraws,maximumPixelError:Math.max(...observed.map(row=>Math.max(row.nativeToScene,row.sceneToNative)))}
+   await writeFile(path.join(directory,'measurement.json'),JSON.stringify({box,...scored.summary,firstDraw,seedTime:state.seedTime,blockedDraws:state.blockedDraws,draws,frames:observed,recording:{collectionEnd:capture.collectionEnd,...capture.diagnostics,scoring:scored.diagnostics}},null,2))
+   const frameByIndex=new Map(frames.map(frame=>[frame.index,frame]))
+   if(observed.length){await writeFile(path.join(directory,'first-scene.png'),Buffer.from(frameByIndex.get(observed[0].index).data,'base64'));await writeFile(path.join(directory,'last-scene.png'),Buffer.from(frameByIndex.get(observed.at(-1).index).data,'base64'))}
    assert.ok(firstDraw,'A direct scene presentation must be observed')
-   assert.ok(scored.nativeInk>scored.total*.01,'Reference ink must exceed the failure budget so a blank figure cannot pass')
-   assert.ok(scored.rows.length,'No scene compositor frame was captured')
+   assert.ok(scored.summary.nativeInk>scored.summary.total*.01,'Reference ink must exceed the failure budget so a blank figure cannot pass')
+   assert.ok(sceneRows.length,'No scene compositor frame was captured')
    // Slow renderers may need no interception; the first recorded image is the proof.
-   assert.equal(scored.rows[0].draw.id,firstDraw.id,'The first direct scene draw must be captured and judged')
+   assert.equal(sceneRows[0].draw.id,firstDraw.id,'The first direct scene draw must be captured and judged')
    assert.equal(observed.length,frames.filter(frame=>frame.t>=start&&frame.t<=end).length,'Every recorded image in the interval must be scored')
    assert.ok(observed.every(row=>row.draw.posePinned),'The native pose must remain pinned')
    assert.ok(observed.every(row=>Number.isFinite(row.draw.placement)&&row.draw.placement<=.25),'Actual figure geometry must match its native rectangle within 0.25 CSS px')
@@ -182,22 +194,41 @@ try{
    if(control==='current')assert.ok(rejected.every(value=>!value),'A displayed scene frame differs from the fixed native pose')
    else if(control==='late-blank'){
     assert.ok(!observed[0].draw.forced&&!rejected[0],'The late-loss control must begin with a correct scene frame')
-    assert.ok(observed.some(row=>row.draw.droppedWrite&&!row.draw.writing),'A later suppressed-write image must be recorded and scored')
+    if(second!==undefined)assert.ok(observed.some(row=>row.draw.droppedWrite&&!row.draw.writing),'A later suppressed-write image must be recorded and scored')
     assert.ok(observed.every((row,index)=>rejected[index]===row.draw.droppedWrite),'Judge both the initial correct images and every later blank image')
    }
    else{assert.ok(observed.every(row=>row.draw.forced),'The fault must reach every judged draw');assert.ok(rejected.every(Boolean),'The first and every stable wrong-pose/blank frame must fail')}
    assert.deepEqual(errors,[])
-   requirePageFrameCoverage(scored.clock,start,end)
-   results.push({name,passed:true,recordings:attempt+1,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.nativeInk,frames:observed,controlRejected:control==='current'?null:true})
-   await client.detach()
+   requirePageFrameCoverage(clock,start,start+80)
+   if(second===undefined)throw new IncompleteScreencastError('No second distinct known draw marker was recorded after the first presentation')
+   if(end>start+80)requirePageFrameCoverage(clock,start,end)
+   result={name,passed:true,recordings:attempt+1,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.summary.nativeInk,frames:observed,controlRejected:control==='current'?null:true,recording:{collectionEnd:capture.collectionEnd,...capture.diagnostics,scoring:scored.diagnostics}}
   }catch(error){
-   // Pixel and control assertions run first. Only missing recording coverage retries.
+   attemptFailure={error}
+  }finally{
+   for(const close of [()=>recorder?.dispose(),()=>page.close()]){
+    try{await close()}catch(cleanupError){attemptFailure=includeCleanupFailure(attemptFailure,cleanupError)}
+   }
+  }
+  if(attemptFailure!==null){
+   const error=attemptFailure.error
+   // Cleanup failures are aggregates, so an incomplete observation cannot retry them.
    retry=attempt<2&&error instanceof IncompleteScreencastError
    if(retry)console.warn(`${name}: recording ${attempt+1}/3 unverified: ${error.message}`)
-   else{results.push({name,passed:false,recordings:attempt+1,error:String(error),errors,observation});process.exitCode=1}
-  }
-  finally{await page.close();await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2));if(!retry)console.log(JSON.stringify(results.at(-1)))}
+   else{if(caseFailure===null)caseFailure=attemptFailure;results.push({name,passed:false,recordings:attempt+1,error:String(error),errors,observation});process.exitCode=1}
+  }else results.push(result)
+  await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))
+  if(!retry)console.log(JSON.stringify(results.at(-1)))
   if(!retry)break
   }
  }
-}finally{clearTimeout(deadline);await browser?.close();await server?.close()}
+}catch(error){failure={error}}finally{
+ for(const close of [()=>browser?.close(),()=>server?.close()]){
+  try{await close()}catch(cleanupError){
+   if(failure===null&&caseFailure!==null)failure=caseFailure
+   failure=includeCleanupFailure(failure,cleanupError)
+  }
+ }
+ clearTimeout(deadline)
+}
+if(failure!==null)throw failure.error
