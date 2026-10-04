@@ -11,7 +11,9 @@ records commands, measured limits, and what each check can establish.
 
 | Route | Source | What it demonstrates |
 | --- | --- | --- |
-| `home` | [Home](apps/lab/src/scenes/home/Home.tsx), [postcard](apps/lab/src/scenes/home/HomePostcard.tsx), [starter](apps/lab/src/scenes/home/HomeStarter.tsx) | A basic Surface, a custom handoff, and a post-pose shadow companion |
+| `home` | [Home](apps/lab/src/scenes/home/Home.tsx), [verbs](apps/lab/src/scenes/home/homeVerbs.ts) | The landing page: an agent prompt per demo and a live demo frame; no Surface of its own |
+| `light` | [Light](apps/lab/src/scenes/light/Light.tsx), [lamp](apps/lab/src/scenes/light/LightLamp.tsx) | Native HTML lit by one draggable lamp whose glass refracts a capture of the page; no Surface handoff |
+| `postcard` | [Postcard](apps/lab/src/scenes/postcard/Postcard.tsx), [stage](apps/lab/src/scenes/postcard/PostcardStage.tsx), [mesh](apps/lab/src/scenes/postcard/PostcardMesh.tsx) | A retained form lifted into a paper mesh, a custom handoff, and a post-pose shadow companion |
 | `workspace` | [Workspace](apps/lab/src/scenes/workspace/Workspace.tsx) | SceneSurface panels, keyboard focus, camera navigation, and a physical Dial |
 | `glass` | [Glass](apps/lab/src/scenes/glass/Glass.tsx), [SDF compositor](apps/lab/src/scenes/glass/glassSdf.tsx) | SceneSurface content sampled by custom render passes and manual presentation receipts |
 | `flight` | [Flight](apps/lab/src/scenes/flight/Flight.tsx) | One retained card moving between page targets, drag/reversal, and scene cleanup |
@@ -52,10 +54,11 @@ Use `?scene=candidates&candidate=<study>`; add `&framed` for a direct browser pr
 
 ## Choosing an example
 
-Start with HomeStarter for setup, Flight for changing page parents, Controls for
-DOM-aligned hardware, Selection for native element capture, and Plume for authored
-capture content. Genie and Glass exercise advanced frame/presentation ownership.
-Lamp and Rain show cases where ordinary HTML and canvas rendering are sufficient.
+Start with the [first Surface example](README.md#your-first-surface) for setup,
+Flight for changing page parents, Controls for DOM-aligned hardware, Selection for
+native element capture, and Plume for authored capture content. Genie and Glass
+exercise advanced frame/presentation ownership. Lamp and Rain show cases where
+ordinary HTML and canvas rendering are sufficient.
 
 The [API/browser checks](instruments/api-all-demos/README.md) cover composition,
 identity, capture, native fallback, and the full route-load sweep. A route loading

@@ -2,7 +2,7 @@
 // Served modules carry the observations; package sources remain unchanged.
 // Controls exceeded a 50 ms frame-p95 diagnostic threshold at 6× on
 // 2026-10-14 (docs/performance-diagnosis.md). The observer owns collection.
-import { replaceSource } from '../home-light/replaceSource.mjs'
+import { replaceSource } from '../light/replaceSource.mjs'
 
 export function observeCaptureDiagnostics(source, file) {
   if (file === 'packages/react/src/snapdomInputSvg.ts') return observeSvgReuseDecisions(source)

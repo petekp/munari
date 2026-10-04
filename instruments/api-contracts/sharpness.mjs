@@ -5,7 +5,7 @@ import path from 'node:path'
 import {tmpdir} from 'node:os'
 import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
-import {replaceSource} from '../home-light/replaceSource.mjs'
+import {replaceSource} from '../light/replaceSource.mjs'
 import {textureClarity} from '../textureClarity.mjs'
 import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/sharpness')

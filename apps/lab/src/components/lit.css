@@ -4,7 +4,7 @@
  * `data-relief="well"` sinks into it: inputs, code blocks.
  *
  * On a page with the light running (`[data-lit]` on the page root, see
- * HomeMasthead.tsx) the shader draws every shadow from where the light
+ * LightLamp.tsx) the shader draws every shadow from where the light
  * actually is, so these rules hand over and draw nothing. Everywhere else
  * — the shell, an unlit page, a browser whose renderer cannot start or has
  * lost its device — the same elements carry a static shadow from a light

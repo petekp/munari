@@ -4,7 +4,7 @@ import {mkdir,writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
-import {replaceSource} from '../home-light/replaceSource.mjs'
+import {replaceSource} from '../light/replaceSource.mjs'
 const root=path.resolve(import.meta.dirname,'../..')
 const output=path.resolve(process.env.REGION_OUTPUT??'/tmp/munari-input-regions')
 assert.ok(!process.env.REGION_STORAGE||['cpu','gpu'].includes(process.env.REGION_STORAGE),'REGION_STORAGE must be cpu or gpu')

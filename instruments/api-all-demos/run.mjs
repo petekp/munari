@@ -10,7 +10,7 @@ for(const [file,name,extra] of [
   ['postcard-continuity.mjs','postcard-timing',{POSTCARD_INPUT:'pointer',POSTCARD_RECORD:'0',POSTCARD_CYCLES:'6'}],
   ['postcard-continuity.mjs','postcard-pixels',{POSTCARD_INPUT:'fixed-light',POSTCARD_RECORD:'1',POSTCARD_CYCLES:'6'}],
   ['postcard-scroll.mjs','postcard-scroll',{}],
-  ['home-form.mjs','home-form',{}],
+  ['postcard-form.mjs','postcard-form',{}],
 ]){
   const code=await new Promise((resolve,reject)=>{
     const child=spawn(process.execPath,[path.join(import.meta.dirname,file)],{

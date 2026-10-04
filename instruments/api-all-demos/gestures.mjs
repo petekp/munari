@@ -196,15 +196,6 @@ for (const variant of ['melt', 'shatter', 'peel']) sceneCase(`candidate-delete-$
   return { variant, removedAfterExit: true, restored: true, input: 'browser clicks' }
 }, { candidate: 'delete' })
 
-sceneCase('home-starter', 'home', async page => {
-  await page.waitForSelector('.home-starter-demo > div > button')
-  await page.click('.home-starter-demo > div > button')
-  await page.waitForFunction(() => document.querySelector('.home-starter-demo').textContent.includes('Drawn by the scene'))
-  await page.click('.home-starter-demo > div > button')
-  await page.waitForFunction(() => document.querySelector('.home-starter-demo').textContent.includes('Drawn by the page'))
-  return { independentStarterReturned: true, input: 'browser clicks' }
-})
-
 sceneCase('native-unroll', 'candidates', async page => {
   await page.click('button[aria-expanded]'); await page.click('.cand-menu__item:first-child')
   await page.waitForFunction(() => document.querySelector('.cand-card--menu p').textContent.includes('Last action: Duplicate'))

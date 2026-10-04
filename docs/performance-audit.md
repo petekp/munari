@@ -86,9 +86,9 @@ another device or implement a shipping quality policy.
 
 Home has five canvas elements in this configuration. Its shadow band
 alone is 1206×4284 at native density, versus 402×1428 in the diagnostic.
-[`HomeMasthead`](../apps/lab/src/scenes/home/HomeMasthead.tsx) keeps drawing
+[`LightLamp`](../apps/lab/src/scenes/light/LightLamp.tsx) keeps drawing
 the shadow, headline and bulb. The bulb
-[`backdrop`](../apps/lab/src/scenes/home/homeLampBackdrop.ts) uploads
+[`backdrop`](../apps/lab/src/scenes/light/lightLampBackdrop.ts) uploads
 already-rendered canvases into its own context. Crop the required regions,
 reuse unchanged images, and separate effect resolution from text resolution.
 These changes can benefit both capture engines. No GPU-duration measurement
@@ -234,7 +234,7 @@ The reproduced dimensions use the real runtime with stubbed 2D methods. A GPU
 allocation failure or device crash was not reproduced.
 
 The final bound belongs in the kernel, not only the binding. Home calls
-[`createDomTextureSource`](../apps/lab/src/scenes/home/homeLampBackdrop.ts)
+[`createDomTextureSource`](../apps/lab/src/scenes/light/lightLampBackdrop.ts)
 directly. The shared [allocation point](../packages/core/src/paint/domTextureSource.ts)
 limits the scale multiplier, but not the texture edge. For its observed
 402×714 box, DPR 3 and pinch scaling can request a long edge above 4096
@@ -464,7 +464,7 @@ and Chrome measurements together. Removing pacing would undo that protection.
 
 The lab has substantial costs outside either capture renderer:
 
-- **Home:** [`homeLampBackdrop`](../apps/lab/src/scenes/home/homeLampBackdrop.ts)
+- **Light:** [`lightLampBackdrop`](../apps/lab/src/scenes/light/lightLampBackdrop.ts)
   rebuilds a whole-page copy on scrolling and interaction, outside the capture
   governor. It uploads the lighting canvas into the bulb's separate renderer
   and scans visible canvases each frame. The shadow buffer spans two viewport
@@ -474,7 +474,7 @@ The lab has substantial costs outside either capture renderer:
   the headline has its own time-varying shader, ripple and tilt; the cord also
   moves independently. Gate or quantize individual passes by their dependencies.
   Do not stop the entire redraw solely because rounded light position is unchanged.
-- **Pinch zoom:** [`lampPixelRatio`](../apps/lab/src/scenes/home/homeLampViewport.ts)
+- **Pinch zoom:** [`lampPixelRatio`](../apps/lab/src/scenes/light/lightLampViewport.ts)
   multiplies DPR by visual-viewport scale while its DOM backdrop still covers the
   layout viewport. Requested area grows quadratically before clamps. Crop to the
   required visible region; measure actual backing sizes during zoom.

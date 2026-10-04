@@ -193,7 +193,7 @@ effects need the new renderer's target, depth, and output conventions.
 
 | Scene group | Concrete migration work |
 | --- | --- |
-| Default postcard and lit controls | [Home postcard shader patch](../apps/lab/src/scenes/home/HomePostcardMaterial.tsx), Surface materials, masks, light and emission |
+| Default postcard and lit controls | [Home postcard shader patch](../apps/lab/src/scenes/postcard/PostcardMaterial.tsx), Surface materials, masks, light and emission |
 | Glass | [SDF compositor](../apps/lab/src/scenes/glass/glassSdf.tsx), depth sampling, final blit, manual receipts, and the [Drei transmission material](../apps/lab/src/scenes/glass/Glass.tsx) that patches GLSL |
 | Logo and Refraction | [Logo field passes](../apps/lab/src/scenes/logo/logoFields.ts) and [Refraction field passes](../apps/lab/src/scenes/refraction/refractionField.tsx), target formats, sampling, and custom output |
 | Home, Lamp, Rain, Gravity, and Marble Hand backgrounds | Standalone `WebGLRenderer` creation, material compatibility, resize, loss handling, and renderer-specific environment generation |

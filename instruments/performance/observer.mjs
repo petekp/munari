@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { replaceSource } from '../home-light/replaceSource.mjs'
+import { replaceSource } from '../light/replaceSource.mjs'
 import { observeCaptureDiagnostics } from './capture-diagnostics.mjs'
 
 export function performanceObserver(root, commit, loadedSources, routeTiming = true, baselineDirectory = null, captureStages = false, captureStorage = null, captureDiagnostics = false) {

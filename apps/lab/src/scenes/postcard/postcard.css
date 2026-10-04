@@ -1,0 +1,46 @@
+/* Postcard — the card centred on its own lit page. The shared theme and the
+ * lamp come from light/light.css; these rules own the card, its holder, and
+ * the controls under it. Postcard selectors also reach the parked capture. */
+.light-theme:has(.postcard-page) { --wash: #8f9cf5; }
+
+.postcard-page { display: grid; justify-items: center; padding-top: 140px; }
+@container demo (max-width: 760px) { .postcard-page { padding-top: 120px; } }
+
+.postcard-btn { display: inline-flex; align-items: center; justify-content: center; gap: 14px; min-height: 48px; padding: 13px 20px; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.4; text-decoration: none; cursor: pointer; }
+.postcard-btn:hover { background: #fff; }
+.postcard-status { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-soft); font-family: var(--body); font-size: 12px; white-space: nowrap; }
+.postcard-status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); opacity: .35; }
+.postcard-status[data-gl='true']::before { opacity: 1; }
+
+/* The postcard canvas shares its section's compositor scroll transform. It
+ * spans the whole page width so a lifted card never leaves it. */
+.postcard-section { position: relative; z-index: 2; display: flow-root; width: 100%; }
+.postcard-hero-stage { margin-inline: auto; }
+
+/* A scaled child in normal flow still reserves 270px. Absolute placement
+ * lets the viewport reserve the visible height (220px at 342px wide). */
+.postcard-hero-holder { position: absolute; top: 0; left: 0; isolation: isolate; width: 420px; height: 270px; transform-origin: top left; }
+.postcard-hero-holder::after { content: ''; position: absolute; inset: 0; z-index: -1; border: 1px dashed var(--rule-hard); }
+.postcard-hero-preview { display: block; width: 100%; height: 100%; object-fit: contain; background: var(--ink); }
+
+/* The action label changes at handoff; its relief box must stay the same size. */
+.postcard-hero-row .postcard-btn { width: 170px; max-width: 55%; background: var(--ink); color: var(--paper); }
+.postcard-hero-row .postcard-btn:hover { background: #000; }
+.postcard-note { min-height: 3em; margin: 12px 0 0; color: var(--ink-soft); font-size: 13px; line-height: 1.5; }
+
+.postcard-card { position: relative; box-sizing: border-box; width: 420px; height: 270px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; padding: 22px; background: var(--paper); color: var(--ground); color-scheme: light; font-family: var(--body); border: 8px solid var(--paper); border-image: repeating-linear-gradient(45deg, var(--coral) 0 12px, var(--paper) 12px 24px, var(--sky) 24px 36px) 8; }
+.postcard-msg h3 { margin: 0; font-family: var(--display); font-style: italic; font-size: 36px; font-weight: 700; line-height: 1.2; color: var(--ground); }
+.postcard-msg p { margin: 0; font-size: 15px; line-height: 1.4; color: #4d4c4b; }
+.postcard-addr { display: grid; align-content: start; gap: 9px; min-width: 0; padding-left: 16px; border-left: 1px dashed #9f9d99; text-align: left; }
+.postcard-stamp { justify-self: end; display: grid; place-items: center; width: 44px; height: 52px; background: var(--chartreuse); color: var(--ground); font-size: 20px; outline: 3px dashed var(--paper); outline-offset: -6px; rotate: 3deg; }
+.postcard-addr label { margin-top: 6px; font-size: 14px; color: #686562; }
+.postcard-addr input { width: 100%; min-width: 0; box-sizing: border-box; border: 0; border-bottom: 2px dotted #8a8680; border-radius: 0; padding: 4px 0 6px; background: transparent; color: var(--ground); font-family: var(--data); font-size: 17px; box-shadow: none; }
+.postcard-addr input:focus { outline: 2px solid #ba3829; outline-offset: 3px; border-bottom-color: transparent; }
+.postcard-addr input::placeholder { color: #726e68; }
+.postcard-line { margin: 0; overflow-wrap: anywhere; font-family: var(--data); font-size: 12px; line-height: 1.4; color: #726e68; }
+.postcard-postmark { position: absolute; display: grid; place-items: center; width: 78px; height: 78px; padding: 8px; box-sizing: border-box; border: 2px solid #ba3829; border-radius: 50%; color: #ba3829; font-family: var(--label); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-align: center; text-transform: uppercase; opacity: .75; pointer-events: none; }
+
+@container demo (max-width: 600px) {
+  .postcard-status { font-size: 11px; gap: 6px; }
+  .postcard-hero-row .postcard-btn { padding: 10px 13px; font-size: 13px; }
+}

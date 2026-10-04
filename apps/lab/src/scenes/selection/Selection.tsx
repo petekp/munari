@@ -34,6 +34,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SurfaceCanvas, useElementCapture, useCaptureFrame, useCaptureStatus, type CaptureHandle } from '@petepetrash/munari'
+import { showChrome } from '../../bareMode'
 import { texture, uniform, uniformArray } from 'three/tsl'
 import { FOV, PixelPerfect, worldBoxOf, type WorldBox } from '../candidates/candidateStage'
 import { LIGHT, createBubbleMaterial, createGleamMaterial, type BubbleValues } from './selectionNodes'
@@ -396,7 +397,7 @@ function SelectionPage() {
           />
         )}
       </SurfaceCanvas>
-      <SelectionTweaks />
+      {showChrome && <SelectionTweaks />}
     </div>
   )
 }

@@ -15,12 +15,14 @@ const candidateSource = await readFile(path.join(repo, 'apps/lab/src/scenes/cand
 const studies = [...candidateSource.matchAll(/\{ id: '([^']+)', label:/g)].map(match => match[1])
 assert.ok(studies.length > 0, 'No Candidate studies were discovered')
 const markers = {
-  home: '.home-page[data-home-ready="true"]', workspace: '[data-munari-surface^="workspace-"]', glass: '[data-glass-root]',
+  home: '.home-page[data-page-ready="true"]', workspace: '[data-munari-surface^="workspace-"]', glass: '[data-glass-root]',
   flight: '.l14-board', explode: '.specimen-stage', genie: '.gen-desk', fisheye: '.fisheye-page', slider: '.lslider-page',
   veil: '.veil-page', knobs: '.knb-page', optics: '.opt-page', logo: '.logo-page .logo-word', selection: '.sel-prose',
   candidates: '.cand-rail', refraction: '.refraction-page', gallery: '.gallery-page', crystal: '.crystal-page',
   controls: '.controls-page', 'marble-hand': '.mh-app', plume: '.plume-page', gravity: '.gv-poem', lamp: '.lamp-page',
   rain: '.rain-page', wordmark: '.wordmark-page',
+  light: '.light-page[data-page-ready="true"] .light-masthead-title',
+  postcard: '.light-page[data-page-ready="true"] .postcard-hero-holder',
 }
 for (const scene of routes) assert.ok(markers[scene], `Add an actual-content marker for new route ${scene}`)
 const server = await fixtureServer('apps/lab', 'API_LAB_URL', output)

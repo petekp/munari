@@ -211,7 +211,6 @@ export function Example() {
 give the parent a size; an auto-height parent leaves a 150 px canvas. `Surface`
 supplies a flat mesh matching the HTML's page position. Switching alone preserves its appearance;
 flight, deformation, lighting, and shader effects come from your scene code.
-The [running starter](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/home/HomeStarter.tsx) uses this pattern.
 
 ### If "Show in scene" stays disabled
 

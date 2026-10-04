@@ -1,0 +1,91 @@
+/* Lit page — one wash over the whole page, near-black UI on top of it.
+ * The Light and Postcard demos share this theme; the lamp capture receives
+ * the same theme root. Captured roots size themselves; only their outer
+ * holders are transformed. Depth comes from the light (LightLamp.tsx) where
+ * WebGL runs, and from the static depth kit (components/lit.css) where it
+ * does not. */
+.light-theme {
+  --ink: #14140f;
+  --display: 'Bodoni Moda', Didot, 'Times New Roman', serif;
+  --body: 'Archivo', system-ui, sans-serif;
+  --label: 'Archivo Narrow', 'Archivo', system-ui, sans-serif;
+  --data: 'Courier Prime', ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink);
+  font-family: var(--body);
+  --coral: #f2695c;
+  --chartreuse: #e3ec5a;
+  --sky: #52c7f2;
+  --wash: var(--chartreuse);
+  --ground: #14140f;
+  --paper: #f4f2e7;
+  --ink-soft: #45443a;
+  --rule: rgba(20, 20, 15, 0.3);
+  --rule-hard: rgba(20, 20, 15, 0.85);
+}
+
+.light-page { background: var(--wash); color: var(--ink); font-family: var(--body); color-scheme: light; scrollbar-color: var(--ink) var(--wash); }
+.light-page ::selection { background: var(--ink); color: var(--wash); }
+.light-inner { --light-side-padding: 64px; padding: 44px var(--light-side-padding) 40px; }
+.light-inner * { box-sizing: border-box; }
+.light-inner :is(a, button, summary, pre):focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+.light-inner a { color: inherit; text-underline-offset: 4px; }
+.light-inner button { font-family: inherit; }
+.light-inner p { text-wrap: pretty; }
+
+/* The shadow canvas: multiplied over the page, scrolling with it. */
+.light-host { position: absolute; left: 0; top: 0; width: 100%; z-index: 20; pointer-events: none; mix-blend-mode: multiply; }
+.light-canvas { display: block; width: 100%; height: 100%; }
+.light-host[data-degraded] { display: none; }
+
+/* The headline */
+.light-masthead { --masthead-size: clamp(56px, 9.5cqw, 128px); container-type: inline-size; }
+.light-masthead-title { position: relative; z-index: 1; margin: 0; font-family: var(--display); font-variation-settings: 'opsz' 96; font-weight: 500; font-size: var(--masthead-size); line-height: .9; letter-spacing: -.035em; color: var(--ink); }
+.light-masthead-title > span { display: block; width: fit-content; white-space: nowrap; }
+.light-headline-html { font-family: var(--data); font-size: .7em; font-weight: 400; letter-spacing: -.06em; }
+.light-headline-3d { display: inline-block; font-family: var(--body); font-size: .92em; font-weight: 900; line-height: 1; letter-spacing: -.055em; }
+.light-headline-shaders { display: inline-block; line-height: 1; font-optical-sizing: auto; font-variation-settings: normal; }
+.light-masthead-title[data-headline-ready] :is(.light-headline-3d,.light-headline-shaders) { color: transparent; }
+/* Native ranges stay visible without painting flat letters over the geometry. */
+.light-masthead-title[data-headline-ready] :is(.light-headline-3d,.light-headline-shaders)::selection { color: transparent; background: rgba(103,50,155,.24); }
+.light-headline-canvas { position: absolute; z-index: -1; pointer-events: none; }
+.light-masthead-title ::selection { background: transparent; color: #67329b; }
+.light-masthead-em { font-style: italic; font-weight: 400; }
+.light-masthead-details { position: relative; z-index: 1; max-width: 520px; margin-top: 40px; }
+.light-masthead-copy { position: relative; z-index: 1; max-width: 44ch; margin: 0; color: var(--ink-soft); font-size: 16px; line-height: 1.6; }
+
+/* The bulb and its drag handle. The bulb itself is WebGL. */
+.light-scene { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+.light-scene[data-degraded] { display: none; }
+.light-handle { pointer-events: auto; position: absolute; left: 0; top: 0; z-index: 40; width: 76px; height: 76px; margin: -38px 0 0 -38px; padding: 0; border: 0; background: transparent; border-radius: 50%; cursor: grab; touch-action: none; user-select: none; }
+.light-handle.is-dragging { cursor: grabbing; }
+.light-handle-mark { display: none; position: absolute; inset: 20px; border: 2px solid var(--ink); border-radius: 50%; background: var(--paper); }
+.light-handle[data-bulbless] .light-handle-mark { display: block; }
+.light-handle-hint { position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%); font-family: var(--body); font-size: 12px; color: var(--ink); white-space: nowrap; transition: opacity 400ms ease; }
+.light-handle[data-dragged] .light-handle-hint { opacity: 0; }
+.light-handle[data-degraded] { display: none; }
+
+/* The light's controls */
+.light-masthead-tools { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 24px; align-items: end; margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--rule); }
+.light-height { display: grid; gap: 8px; min-width: 0; margin: 0; font-size: 12px; color: var(--ink-soft); }
+.light-height input { flex: 1; min-width: 0; height: 2px; margin: 8px 0; appearance: none; background: var(--rule-hard); cursor: pointer; }
+.light-height input::-webkit-slider-thumb { width: 12px; height: 12px; appearance: none; border-radius: 50%; background: var(--ink); }
+.light-height input::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--ink); }
+.light-select-word { display: inline-flex; align-items: center; gap: 12px; min-height: 44px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: 13px; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
+
+@container demo (max-width: 1050px) {
+  .light-inner { --light-side-padding: 32px; padding: 36px var(--light-side-padding) 32px; }
+}
+@container demo (max-width: 760px) {
+  .light-masthead { --masthead-size: clamp(48px, 14cqw, 88px); }
+  .light-handle-hint { left: auto; right: calc(100% + 12px); }
+  .light-masthead-details { margin-top: 24px; }
+  .light-masthead-title { pointer-events: none; }
+  .light-masthead-title span { pointer-events: auto; }
+}
+@container demo (max-width: 600px) {
+  .light-inner { --light-side-padding: 22px; padding: 28px var(--light-side-padding) 28px; }
+  .light-masthead { --masthead-size: clamp(44px, 14cqw, 72px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .light-inner *, .light-inner *::before, .light-inner *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
