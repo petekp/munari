@@ -1,0 +1,32 @@
+// Measure the complete lighting redraw, including shadow depth and paper shading.
+// The separate bulb/card renderers and CPU work are outside this GPU query.
+import {replaceSource} from './replaceSource.mjs'
+
+export function observeLightingDraw(code,id) {
+  if(!id.endsWith('/LightLamp.tsx'))return code
+  const begin='      pass.paper?.update(flyer.read())',end='      display.render(pass.scene, pass.camera, pass.paper)'
+  return replaceSource(replaceSource(code,begin,'      window.__readPaper = flyer.read\n      window.__lightGpuStart?.()\n'+begin),end,end+'\n      window.__lightGpuEnd?.()')
+}
+
+export async function measureLightingDraw(page) {
+  return page.evaluate(()=>new Promise(resolve=>{
+    const gl=document.querySelector('.light-host canvas').getContext('webgl2')
+    const extension=gl.getExtension('EXT_disjoint_timer_query_webgl2'),queries=[],times=[]
+    let current=null,count=0,previous=0
+    if(extension){
+      window.__lightGpuStart=()=>{if(queries.length<90){current=gl.createQuery();gl.beginQuery(extension.TIME_ELAPSED_EXT,current)}}
+      window.__lightGpuEnd=()=>{if(current){gl.endQuery(extension.TIME_ELAPSED_EXT);queries.push(current);current=null}}
+    }
+    const finish=()=>{
+      delete window.__lightGpuStart;delete window.__lightGpuEnd
+      const disjoint=extension&&gl.getParameter(extension.GPU_DISJOINT_EXT)
+      const gpu=extension&&!disjoint?queries.filter(query=>gl.getQueryParameter(query,gl.QUERY_RESULT_AVAILABLE)).map(query=>gl.getQueryParameter(query,gl.QUERY_RESULT)/1e6):[]
+      queries.forEach(query=>gl.deleteQuery(query))
+      const stats=values=>{const sorted=values.slice(8).sort((a,b)=>a-b);return {samples:sorted.length,p95:sorted[Math.floor(sorted.length*.95)]??null,max:sorted.at(-1)??null}}
+      const gpuMs=stats(gpu)
+      resolve({frameMs:stats(times),gpuMs,gpuTimer:Boolean(extension),disjoint:Boolean(disjoint),gpuStatus:!extension?'unsupported':disjoint?'disjoint':gpuMs.samples?'measured':'unobserved'})
+    }
+    const tick=time=>{if(previous)times.push(time-previous);previous=time;if(++count<150)requestAnimationFrame(tick);else finish()}
+    requestAnimationFrame(tick)
+  }))
+}

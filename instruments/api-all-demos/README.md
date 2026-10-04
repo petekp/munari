@@ -34,6 +34,8 @@ The four checks are separate so their observers do not interfere:
   Fail above 1.5 CSS pixels of relative drift. `POSTCARD_CANVAS=fixed` on the
   standalone scroll script is a negative control; it reproduced 12 px drift.
   The holder starts at 240px so neither marker clips during the 180px scroll.
+  A spacer below the page gives the wheel room, and the page must move at
+  least 150px.
   Lighting overlays are hidden so their tint and halo cannot alter test colors;
   this check measures the postcard canvas's anchoring, not its illumination.
 - **Form interaction:** click and type through the scene at 1200 px and 390 px
@@ -63,8 +65,8 @@ It requires the selected route's identity and content, actual capture support,
 and no browser errors. This is a load check, not a pixel-quality verdict.
 `API_CASES=logo ROUTE_FORCE_HOME=1` must fail the route check.
 
-`npm run probe:api-gestures` checks Gravity, Explode, Selection, Candidates,
-and the independent Home starter. It preserves the unique interaction cases
+`npm run probe:api-gestures` checks Gravity, Explode, Selection, and
+Candidates. It preserves the unique interaction cases
 from the earlier drivers. Native Candidate, Selection, and Gravity outcomes
 run without capture capability. The postcard's input and visual contracts
 remain in `probe:postcard`.
@@ -141,7 +143,7 @@ canvas containers, and `QUALITY_CAMERA=orthographic` for the second camera model
 `QUALITY_NEGATIVE=1` disables raster alignment in the served source and requires
 the fractional-origin fixture to lose contrast; it checks the measuring apparatus.
 
-`npm run probe:postcard-sharpness` compares the real Home postcard at rest, then
+`npm run probe:postcard-sharpness` compares the Postcard demo at rest, then
 hides the mesh to prove native HTML is not concealing a failed draw. Run
 `probe:postcard` separately to check motion, companion pixels, scrolling, and input.
 Start `probe:api-lab` and set `API_PROOF_URL` to its printed URL first.

@@ -33,6 +33,7 @@ import {
   type SourceUvRect,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
+import { showChrome } from '../../bareMode'
 import { textureSlot } from '../../lib/uniforms'
 import { buildPlumeGrid, stampPlumeReleases, type PlumeGrid } from './plumeCloud'
 import {
@@ -608,9 +609,9 @@ export function PlumeApp() {
         </div>
       </section>
 
-      <PlumeTweaks effects={effects} onToggle={toggle} onRestore={restore} onClear={clear}
+      {showChrome && <PlumeTweaks effects={effects} onToggle={toggle} onRestore={restore} onClear={clear}
         tuning={tuning} onTuningChange={changeTuning} onReset={reset}
-        supported={supported} reduced={reduced} animating={animating} />
+        supported={supported} reduced={reduced} animating={animating} />}
 
       {supported && box && grid ? (
         <>

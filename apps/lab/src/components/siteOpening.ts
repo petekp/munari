@@ -1,8 +1,7 @@
-// Site opening — one reveal after Home has drawn its composition.
+// Site opening — one reveal after the first page has drawn its composition.
 // The native cover precedes the app bundle and stays outside the captured
-// content. Inline Home calls revealSite; embedded standalone pages can notify a host.
-
-export const HOME_READY = 'munari:home-ready'
+// content. A page in the top window reveals the site itself; a framed demo
+// only marks its document ready, and the shell reveals on the frame's load.
 
 export function revealSite() {
   const root = document.documentElement
@@ -16,8 +15,7 @@ export function revealSite() {
   root.dataset.opening = 'revealing'
 }
 
-export function announceHomeReady() {
-  document.documentElement.dataset.homeReady = 'true'
+export function announcePageReady() {
+  document.documentElement.dataset.pageReady = 'true'
   if (window.parent === window) revealSite()
-  else window.parent.postMessage(HOME_READY, window.location.origin)
 }

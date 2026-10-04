@@ -36,6 +36,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SurfaceCanvas, useElementCapture, useCaptureFrame, useCaptureStatus, type CaptureHandle } from '@petepetrash/munari'
+import { showChrome } from '../../bareMode'
 import { textureSlot } from '../../lib/uniforms'
 import { PixelPerfect, useOwnUniforms, worldBoxOf, type WorldBox } from '../candidates/candidateStage'
 import { BUBBLE_FRAG, BUBBLE_VERT, LIGHT } from './selectionShaders'
@@ -373,7 +374,7 @@ function SelectionPage() {
           <BubbleMaterial bead={bead} capture={capture} />
         </mesh>}
       </SurfaceCanvas>
-      <SelectionTweaks />
+      {showChrome && <SelectionTweaks />}
     </div>
   )
 }

@@ -18,19 +18,20 @@ try {
  await setChromeViewport(page,{width:1200,height:900})
  await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}])
  const errors=[];page.on('pageerror',error=>errors.push(String(error)))
- await page.goto(url+'/?scene=home',{waitUntil:'load'})
- await page.waitForFunction(()=>document.querySelector('.home-hero-holder [data-api-live]'))
-  if (process.env.POSTCARD_CANVAS === 'fixed') await page.$eval('.home-canvas', element => Object.assign(element.style,{position:'fixed',inset:'0',width:'100%',height:'100%',transform:'none'}))
+ await page.goto(url+'/?scene=postcard&framed',{waitUntil:'load'})
+ await page.waitForFunction(()=>document.querySelector('.postcard-hero-holder [data-api-live]'))
+  if (process.env.POSTCARD_CANVAS === 'fixed') await page.$eval('.postcard-canvas', element => Object.assign(element.style,{position:'fixed',inset:'0',width:'100%',height:'100%',transform:'none'}))
  await page.evaluate(()=>document.fonts.ready)
- await page.waitForFunction(()=>document.querySelector('.home-page')?.dataset.homeReady==='true'&&!document.documentElement.hasAttribute('data-opening'))
- if(await page.$('iframe.site-frame'))throw new Error('Scroll proof must use inline Home')
+ await page.waitForFunction(()=>document.querySelector('.light-page')?.dataset.pageReady==='true')
  await page.evaluate(()=>{
-  const scroller=document.querySelector('.home-page')
-  const holder=document.querySelector('.home-hero-holder')
+  const scroller=document.querySelector('.light-page')
+  const holder=document.querySelector('.postcard-hero-holder')
   // Keep both complete markers visible through all 180px of wheel travel.
   // A first-screen card can start too high to reach 240px by scrolling alone.
   const missingRoom=240-holder.getBoundingClientRect().top
   if(missingRoom>0){const space=document.createElement('div');space.style.height=`${missingRoom}px`;scroller.prepend(space)}
+  // A page no taller than its viewport cannot scroll; give the wheel room below.
+  const tail=document.createElement('div');tail.style.height=`${innerHeight}px`;scroller.append(tail)
   scroller.scrollTop+=holder.getBoundingClientRect().top-240
   const r=holder.getBoundingClientRect(),viewport=scroller.getBoundingClientRect()
   if(Math.abs(r.top-240)>1)throw new Error('Both markers need room for the full scroll')
@@ -39,21 +40,25 @@ try {
   scroller.append(marker)
   const ink=document.createElement('div');ink.dataset.scrollMarker='captured'
   ink.style.cssText='position:absolute;left:12px;top:12px;width:6px;height:6px;background:rgb(0,0,255);pointer-events:none'
-  document.querySelector('.home-hero-holder [data-api-live] .home-postcard').append(ink)
+  document.querySelector('.postcard-hero-holder [data-api-live] .postcard-card').append(ink)
  })
- await page.click('.home-hero-row button')
- await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='true')
+ await page.click('.postcard-hero-row button')
+ await page.waitForFunction(()=>document.querySelector('.postcard-hero-row .postcard-status').dataset.gl==='true')
  if(!await page.evaluate(()=>'drawElementImage' in document.createElement('canvas').getContext('2d')))throw new Error('HTML capture is required')
  // This checks the card's compositor anchoring, independently of illumination.
  // Hide the lighting overlays so their tint/halo cannot change marker colors.
- await page.evaluate(()=>document.querySelectorAll('.home-light-host,.home-light-scene,.home-light').forEach(element=>{element.style.visibility='hidden'}))
+ await page.evaluate(()=>document.querySelectorAll('.light-host,.light-scene,.light-handle').forEach(element=>{element.style.visibility='hidden'}))
+ // The recorder's first image can be the last composited frame; let the hidden overlays reach it.
+ await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
  const client=await page.createCDPSession(),frames=[]
  client.on('Page.screencastFrame',event=>{frames.push(event.data);void client.send('Page.screencastFrameAck',{sessionId:event.sessionId})})
  await client.send('Page.startScreencast',{format:'png',everyNthFrame:1})
  const before=await page.screenshot({path:path.join(output,'before.png'),encoding:'base64'})
+ const startTop=await page.evaluate(()=>document.querySelector('.light-page').scrollTop)
  await page.mouse.move(350,600)
  for(let i=0;i<15;i++){await page.mouse.wheel({deltaY:12});await new Promise(resolve=>setTimeout(resolve,8))}
  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
+ const scrolled=await page.evaluate(start=>document.querySelector('.light-page').scrollTop-start,startTop)
  await client.send('Page.stopScreencast')
  await client.detach()
  for(let i=0;i<frames.length;i++)await writeFile(path.join(output,`frame-${i}.png`),Buffer.from(frames[i],'base64'))
@@ -61,6 +66,7 @@ try {
  console.log(JSON.stringify({frames:frames.length,errors}))
  const pixels=await scrollPixels(page,before,frames,await page.evaluate(()=>innerWidth))
  await writeFile(path.join(output,'pixels.json'),JSON.stringify(pixels,null,2))
- console.log(JSON.stringify({framesMeasured:pixels.framesMeasured,maxRelativeDrift:pixels.maxRelativeDrift}))
- if(errors.length || pixels.maxRelativeDrift>1.5)process.exitCode=1
+ console.log(JSON.stringify({scrolled,framesMeasured:pixels.framesMeasured,maxRelativeDrift:pixels.maxRelativeDrift}))
+ if(scrolled<150)console.error('The wheel must actually scroll the page; drift without travel proves nothing')
+ if(errors.length || scrolled<150 || pixels.maxRelativeDrift>1.5)process.exitCode=1
 }finally{await browser.close();await server?.close()}

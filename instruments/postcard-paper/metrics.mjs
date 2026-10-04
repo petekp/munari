@@ -2,8 +2,8 @@
 export async function installPaperReader(page) {
   await page.waitForFunction(() => Boolean(window.__readPaper?.()))
   await page.evaluate(async()=>{
-    const frame=await import('/src/scenes/home/homePaperFrame.ts')
-    const grid=await import('/src/scenes/home/homePaperLaw.ts')
+    const frame=await import('/src/scenes/light/lightPaperFrame.ts')
+    const grid=await import('/src/scenes/light/lightPaperLaw.ts')
     window.__paperPoint=frame.paperFramePoint
     window.__paperGrid={columns:grid.PAPER_COLUMNS,rows:grid.PAPER_ROWS}
   })
@@ -13,7 +13,7 @@ export async function paperMetrics(page) {
   return page.evaluate(()=>{
     const flyer=window.__readPaper()
     if(flyer?.kind!=='scene')throw new Error('The scene must own the postcard')
-    const frame=flyer.paper,vertices=frame.vertices,canvas=document.querySelector('.home-canvas canvas'),box=canvas.getBoundingClientRect()
+    const frame=flyer.paper,vertices=frame.vertices,canvas=document.querySelector('.postcard-canvas canvas'),box=canvas.getBoundingClientRect()
     const {columns,rows}=window.__paperGrid,stride=columns+1
     if(vertices.length!==stride*(rows+1)*4||!vertices.every(Number.isFinite)||box.width<=0||box.height<=0)throw new Error('Paper geometry observation is incomplete')
     for(let i=3;i<vertices.length;i+=4)if(vertices[i]<=0)throw new Error('Paper vertices must be in front of the measurement camera')
@@ -34,7 +34,7 @@ export async function paperMetrics(page) {
 
 export async function controlPoint(page,selector) {
   return page.evaluate(selector=>{
-    const source=document.querySelector('.home-hero-holder [data-api-live] .home-postcard'),control=source.querySelector(selector)
+    const source=document.querySelector('.postcard-hero-holder [data-api-live] .postcard-card'),control=source.querySelector(selector)
     const a=source.getBoundingClientRect(),b=control.getBoundingClientRect(),flyer=window.__readPaper()
     if(flyer?.kind!=='scene')throw new Error('Control must be in the scene')
     return window.__paperPoint(flyer.paper,(b.x+b.width/2-a.x)/a.width,(b.y+b.height/2-a.y)/a.height)
@@ -43,7 +43,7 @@ export async function controlPoint(page,selector) {
 
 export async function silhouetteMetrics(page) {
   const result=await page.evaluate(async()=>{
-    const flyer=window.__readPaper(),canvas=document.querySelector('.home-canvas canvas'),rect=canvas.getBoundingClientRect()
+    const flyer=window.__readPaper(),canvas=document.querySelector('.postcard-canvas canvas'),rect=canvas.getBoundingClientRect()
     const requireFrame=()=>{if(flyer?.kind!=='scene'||flyer.corners.length!==12||!flyer.corners.every(Number.isFinite)||rect.width<=0||rect.height<=0)throw new Error('The silhouette needs a complete displayed paper frame')}
     requireFrame()
     const corners=Array.from({length:4},(_,i)=>({x:flyer.corners[i*3]-rect.x,y:flyer.corners[i*3+1]-rect.y}))
@@ -51,8 +51,7 @@ export async function silhouetteMetrics(page) {
     const scratch=new OffscreenCanvas(bitmap.width,bitmap.height),ctx=scratch.getContext('2d')
     ctx.drawImage(bitmap,0,0);bitmap.close()
     const data=ctx.getImageData(0,0,scratch.width,scratch.height).data,sx=scratch.width/rect.width,sy=scratch.height/rect.height
-    const u=window.__paperLight.uniforms,ink=u.uInk.value.image,inkRect=u.uInkRect.value,origin=u.uFrameOrigin.value
-    let opaque=0,difference=0,backStock=0,headingOverlap=0,headingHoles=0
+    let opaque=0,difference=0,backStock=0
     for(let y=0;y<scratch.height;y++)for(let x=0;x<scratch.width;x++){
       const px=(x+.5)/sx,py=(y+.5)/sy,i=(y*scratch.width+x)*4
       const alpha=data[i+3]
@@ -63,14 +62,9 @@ export async function silhouetteMetrics(page) {
         inside=Math.min(inside,((b.x-a.x)*(py-a.y)-(b.y-a.y)*(px-a.x))/Math.hypot(b.x-a.x,b.y-a.y))
       }
       if((inside>2&&alpha<20)||(inside< -2&&alpha>200))difference++
-      const ix=Math.floor((px+rect.x-origin.x-inkRect.x)/inkRect.z*ink.width),iy=Math.floor((py+rect.y-origin.y-inkRect.y)/inkRect.w*ink.height)
-      if(inside>2&&ix>=0&&ix<ink.width&&iy>=0&&iy<ink.height){
-        const offset=(iy*ink.width+ix)*4,distance=((ink.data[offset]*256+ink.data[offset+1])/65535-.5)*512
-        if(distance< -1){headingOverlap++;if(alpha<250)headingHoles++}
-      }
       if(alpha>250&&Math.abs(data[i]-236)<3&&Math.abs(data[i+1]-232)<3&&Math.abs(data[i+2]-223)<3)backStock++
     }
-    return {opaqueArea:opaque/(sx*sy),nonQuadArea:difference/(sx*sy),backStockArea:backStock/(sx*sy),headingOverlapArea:headingOverlap/(sx*sy),headingHoleArea:headingHoles/(sx*sy)}
+    return {opaqueArea:opaque/(sx*sy),nonQuadArea:difference/(sx*sy),backStockArea:backStock/(sx*sy)}
   })
   if(result.opaqueArea===0)throw new Error('The completed postcard buffer contains no opaque paper')
   return result

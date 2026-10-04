@@ -1,6 +1,6 @@
 // Real paper motion, native controls, and a short recorded Chrome sequence.
 import assert from 'node:assert/strict'
-import {replaceSource} from '../home-light/replaceSource.mjs'
+import {replaceSource} from '../light/replaceSource.mjs'
 import {mkdir,writeFile} from 'node:fs/promises'
 import {spawnSync} from 'node:child_process'
 import path from 'node:path'
@@ -8,7 +8,7 @@ import {tmpdir} from 'node:os'
 import puppeteer from 'puppeteer-core'
 import {createServer} from 'vite'
 import {setChromeViewport} from '../chromeViewport.mjs'
-import {observeLightingDraw,measureLightingDraw} from '../home-light/gpu.mjs'
+import {observeLightingDraw,measureLightingDraw} from '../light/gpu.mjs'
 import {installPaperReader,paperMetrics,controlPoint,silhouetteMetrics} from './metrics.mjs'
 
 const output=process.env.PAPER_OUTPUT??path.join(tmpdir(),'munari-paper')
@@ -16,9 +16,9 @@ await mkdir(output,{recursive:true})
 const flat=process.env.PAPER_FLAT==='1',record=process.env.PAPER_RECORD==='1'
 const observer={name:'paper-observer',enforce:'pre',transform(code,id){
   code=observeLightingDraw(code,id)
-  if(id.endsWith('/HomePostcard.tsx'))code=replaceSource(code,'gl={{ alpha: true }}','gl={{ alpha: true, preserveDrawingBuffer: true }}')
-  if(id.endsWith('/homeLight.ts'))code=replaceSource(code,'  material.uniforms.uLightHeight.value = lightHeight','  window.__paperLight = material\n  material.uniforms.uLightHeight.value = lightHeight')
-  if(id.endsWith('/HomePostcardMesh.tsx')){
+  if(id.endsWith('/PostcardStage.tsx'))code=replaceSource(code,'gl={{ alpha: true }}','gl={{ alpha: true, preserveDrawingBuffer: true }}')
+  if(id.endsWith('/lightShadowMaterial.ts'))code=replaceSource(code,'  material.uniforms.uLightHeight.value = lightHeight','  window.__paperLight = material\n  material.uniforms.uLightHeight.value = lightHeight')
+  if(id.endsWith('/PostcardMesh.tsx')){
     const marker='  deformSurfaceGeometry(mesh.geometry,[HERO_W,HERO_H],(x,y)=>paperPoint(x,y,shape))'
     code=replaceSource(code,marker,'  window.__paperShape = shape\n  window.__paperRipplePeak = Math.max(window.__paperRipplePeak ?? 0, shape.ripple)\n  window.__paperContact = {quiet:modes.quiet,edgeA,edgeB}\n'+marker)
     if(flat)code=replaceSource(code,'paperPoint(x,y,shape)','({x,y,z:0})')
@@ -33,29 +33,17 @@ try{
   const page=await browser.newPage();page.on('pageerror',error=>errors.push(String(error)))
   await setChromeViewport(page,{width:Number(process.env.PAPER_VIEWPORT_WIDTH??1200),height:900})
   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'no-preference'}])
-  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=home`,{waitUntil:'load'})
-  await page.waitForSelector('.home-hero-holder [data-api-live] input')
-  assert.equal(await page.$('iframe.site-frame'),null,'Paper must run in the inline site')
-  await page.waitForFunction(()=>document.querySelector('.home-page')?.dataset.homeReady==='true'&&!document.documentElement.hasAttribute('data-opening'))
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=postcard&framed`,{waitUntil:'load'})
+  await page.waitForSelector('.postcard-hero-holder [data-api-live] input')
+  await page.waitForFunction(()=>document.querySelector('.light-page')?.dataset.pageReady==='true')
   await page.evaluate(()=>document.fonts.ready)
   await installPaperReader(page)
   await page.waitForFunction(()=>window.__paperLight?.uniforms.uPaperReady.value===1)
   await page.evaluate(()=>{
-    const holder=document.querySelector('.home-hero-holder')
-    document.querySelector('.home-page').scrollTop+=holder.getBoundingClientRect().top-220
+    const holder=document.querySelector('.postcard-hero-holder')
+    document.querySelector('.light-page').scrollTop+=holder.getBoundingClientRect().top-220
     window.__originalPaperInput=holder.querySelector('[data-api-live] input')
   })
-  if(flat)await page.evaluate(()=>{
-    const card=document.querySelector('.home-hero-holder').getBoundingClientRect()
-    const heading=document.querySelector('.home-masthead-title'),ink=heading.querySelector('.home-headline-html').getBoundingClientRect()
-    heading.style.transform=`translate(${card.x+card.width/2-ink.x-ink.width/2}px,${card.y+card.height/2-ink.y-ink.height/2}px)`
-    // The actual mask producer observes masthead size. Reflow the fixture so
-    // its moved native ink is captured before judging foreground coverage.
-    const masthead=document.querySelector('.home-masthead')
-    window.__paperPreviousInkRect=window.__paperLight.uniforms.uInkRect.value.toArray()
-    masthead.style.width=`${masthead.getBoundingClientRect().width-1}px`
-  })
-  if(flat)await page.waitForFunction(()=>window.__paperLight.uniforms.uInkRect.value.toArray().some((value,index)=>value!==window.__paperPreviousInkRect[index]))
   await page.screenshot({path:path.join(output,'native.png')})
   const client=await page.createCDPSession(),frames=[],acks=new Set()
   let recording=record
@@ -65,7 +53,7 @@ try{
     acks.add(ack)
   }
   if(record){client.on('Page.screencastFrame',onFrame);await client.send('Page.startScreencast',{format:'png',everyNthFrame:1})}
-  await page.click('.home-hero-row button')
+  await page.click('.postcard-hero-row button')
   await page.waitForFunction(()=>window.__readPaper()?.kind==='scene'&&window.__readPaper().paper.height>18&&window.__readPaper().paper.height<48)
   await page.screenshot({path:path.join(output,'peel.png')})
   await page.waitForFunction(()=>window.__readPaper()?.kind==='scene'&&window.__readPaper().paper.height===52)
@@ -73,17 +61,8 @@ try{
   results.geometry=await paperMetrics(page)
   results.silhouette=await silhouetteMetrics(page)
   await page.screenshot({path:path.join(output,'floating.png')})
-  const overlapClip=await page.$eval('.home-hero-holder',element=>{
-    const r=element.getBoundingClientRect(),x=Math.max(0,r.x-20),y=Math.max(0,r.y-100)
-    return {x,y,width:Math.min(innerWidth-x,r.width+40),height:Math.min(innerHeight-y,r.bottom+12-y)}
-  })
-  await page.screenshot({path:path.join(output,'heading-overlap.png'),clip:overlapClip,captureBeyondViewport:false})
   assert.equal(results.geometry.mapsReady,1)
-  if(flat){
-    assert.ok(results.geometry.maxBend<.1);assert.ok(results.silhouette.nonQuadArea<100)
-    assert.ok(results.silhouette.headingOverlapArea>50,'The foreground check must actually overlap heading ink')
-    assert.ok(results.silhouette.headingHoleArea<1,'Heading ink must not punch holes through the foreground postcard')
-  }
+  if(flat){assert.ok(results.geometry.maxBend<.1);assert.ok(results.silhouette.nonQuadArea<100)}
   else{assert.ok(results.geometry.maxBend>25,'The paper must visibly bend beyond a rigid plane');assert.ok(results.silhouette.nonQuadArea>100,'The rendered outline must depart from a transformed quad');assert.ok(results.geometry.backArea>100,'The rolled corner must reveal its reverse side');assert.ok(results.silhouette.backStockArea/results.silhouette.opaqueArea>.003,'The visible reverse must show unprinted stock')}
   const corner=await page.evaluate(()=>window.__paperPoint(window.__readPaper().paper,.98,.02))
   await page.mouse.move(corner.x,corner.y,{steps:12})
@@ -101,14 +80,14 @@ try{
   // Observe the short pulse in the frame callback, even if CDP resumes after its peak.
   await page.evaluate(()=>{window.__paperRipplePeak=0})
   await page.mouse.click(stamp.x,stamp.y)
-  await page.waitForFunction(()=>document.querySelectorAll('[data-api-live] .home-postmark').length===1)
+  await page.waitForFunction(()=>document.querySelectorAll('[data-api-live] .postcard-postmark').length===1)
   await page.waitForFunction(()=>window.__paperRipplePeak>.2)
   results.stampRipple=await page.evaluate(()=>window.__paperRipplePeak)
   await page.screenshot({path:path.join(output,'stamp.png')})
-  await page.click('.home-hero-row button')
-  await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='false')
+  await page.click('.postcard-hero-row button')
+  await page.waitForFunction(()=>document.querySelector('.postcard-hero-row .postcard-status').dataset.gl==='false')
   await page.screenshot({path:path.join(output,'landed.png')})
-  assert.equal(await page.evaluate(()=>document.querySelector('.home-hero-holder [data-api-live] input')===window.__originalPaperInput&&window.__originalPaperInput.value==='Paper still works'),true)
+  assert.equal(await page.evaluate(()=>document.querySelector('.postcard-hero-holder [data-api-live] input')===window.__originalPaperInput&&window.__originalPaperInput.value==='Paper still works'),true)
   if(record){
     await client.send('Page.stopScreencast');recording=false;await Promise.all([...acks]);client.off('Page.screencastFrame',onFrame)
     assert.ok(frames.length>1&&frames.every((frame,index)=>Number.isFinite(frame.time)&&(index===0||frame.time>frames[index-1].time)),'A recording needs a nonempty sequence of advancing compositor frames')

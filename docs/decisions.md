@@ -4551,3 +4551,52 @@ lean on `matchMotion`, which pairs a copy's animations with the original's by
 index. A clone carries no CSS transitions, so the pairing slips: measured in
 Chrome, a copy's keyframe animation took a running transition's 284 ms instead
 of its own 683 ms. That defect is open.
+
+<a id="69"></a>
+
+## #69 — The landing page leads with an agent prompt, and the lamp and postcard are demos (2026-10-04)
+
+The landing page at `?scene=home` holds no Munari demo. It shows one sentence a
+visitor can copy to a coding agent, such as "Use Munari to bend my settings
+window into the dock when it minimizes." Each verb selects a demo, and the
+visitor can replace the named component with their own. The copied prompt
+lists the packages to install and tells the agent to read the skill file that
+ships in the package before writing Munari code. `homeVerbs.ts` owns the verbs,
+their demos and the prompt text.
+
+Beside the prompt, the chosen demo runs in an iframe loaded with
+`&framed&bare&capture=auto`. Chrome with HTML-in-canvas captures through it.
+Other browsers capture through snapDOM, so every visitor can try the demo. A
+recorded clip was rejected because the visitor could not interact with it.
+Plume and Selection now drop their tuning panels under `?bare`, as Knobs and
+Marble hand already did.
+
+The lamp-lit headline became the Light demo and the liftable form became the
+Postcard demo. Both use `LightLamp`, which takes the page content as a render
+prop. Both render in the shell's iframe like every other scene.
+
+This replaces #59: no demo renders inside the site document now. It narrows
+#57: the cover lifts once Home's fonts are ready, or when a scene's iframe
+loads. Light and Postcard still set `data-page-ready` after a completed draw
+or the four-second native fallback, but inside a frame the visitor sees them
+prepare, as with every other scene. #58's mask reuse is unchanged.
+
+Measured 2026-10-04 in headless Chrome at 1440×1000 against the dev server:
+each of the eight verbs loaded its demo, which reported `html-in-canvas` with
+`CanvasDrawElement` enabled and `snapdom` without it. Neither run logged a page
+error.
+
+The probes that covered the old page now load the framed Light or Postcard
+document. `probe:home-*` became `probe:light`, `probe:light-headline`,
+`probe:light-lamp` and `probe:light-opening`. The opening probe checks
+`data-page-ready` instead of the cover. Once the mark is set, shadows and boxes
+must stay still, and a page marked ready too early must fail. The inline-home probe
+and the gallery shadow measurement were removed with the behavior they
+checked.
+
+Two checks fail the same way at `b3a53ca` as on this change:
+
+| Check | Measured | Budget |
+| --- | ---: | ---: |
+| `probe:light-headline` text contrast, edge energy ratio | 1.46–1.53 | 0.95–1.05 |
+| `probe:postcard` return-to-page pixels, boundary error | 2.6–2.9 | 0.5 |

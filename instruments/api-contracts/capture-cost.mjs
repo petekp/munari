@@ -6,7 +6,7 @@ import path from 'node:path'
 import {tmpdir} from 'node:os'
 import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
-import {replaceSource} from '../home-light/replaceSource.mjs'
+import {replaceSource} from '../light/replaceSource.mjs'
 const root=path.resolve(import.meta.dirname,'../..')
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/capture-cost')
 await mkdir(output,{recursive:true})

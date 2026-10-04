@@ -131,7 +131,6 @@ export function Example() {
 `SurfaceCanvas` owns the R3F renderer, camera, and scene. `Surface` supplies a flat
 mesh matching the HTML's page position. Switching alone preserves its appearance;
 flight, deformation, lighting, and shader effects come from your scene code.
-The [running starter](apps/lab/src/scenes/home/HomeStarter.tsx) uses this pattern.
 
 `canvasId` selects the `SurfaceCanvas` with a matching `id`. Omit `canvasId` when
 using the unnamed default canvas. Several Surfaces can share the same canvas
@@ -254,7 +253,7 @@ and world-matrix updates, before each render pass, with the actual camera and re
 target. It may run several times per animation frame. Advance physics in the frame
 step; update shadows or other companions here. `canvasMayDraw` permits the upcoming
 draw and is separate from an accepted presentation receipt. The
-[postcard](apps/lab/src/scenes/home/HomePostcard.tsx) demonstrates this boundary.
+[postcard mesh](apps/lab/src/scenes/postcard/PostcardMesh.tsx) demonstrates this boundary.
 
 ## Changing page layouts and renderer availability
 

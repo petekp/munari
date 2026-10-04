@@ -24,5 +24,4 @@ try{
   assert.ok(result.changedCast>500,'The bent mesh must change the shadow beyond a flat card')
   assert.ok(result.selfShadow>5,'A rolled edge must shade visible parts of its own paper')
   assert.equal(result.flatSelfShadow,0,'A flat sheet must not acquire self-shadow acne')
-  assert.equal(result.maxHeadingDifference,0,'Native heading shadows must not alter the foreground curved paper')
 }finally{await browser.close();await server.close()}

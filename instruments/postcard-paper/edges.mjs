@@ -1,7 +1,7 @@
 // Compare the real curled postcard at native density with a supersampled draw.
 // The fixed pose and renderer controls exist only in the served instrument copy.
 import assert from 'node:assert/strict'
-import {replaceSource} from '../home-light/replaceSource.mjs'
+import {replaceSource} from '../light/replaceSource.mjs'
 import {mkdir,writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {tmpdir} from 'node:os'
@@ -12,8 +12,8 @@ import {setChromeViewport} from '../chromeViewport.mjs'
 const output=process.env.PAPER_OUTPUT??path.join(tmpdir(),'munari-postcard-edges')
 await mkdir(output,{recursive:true})
 const observer={name:'postcard-edge-observer',enforce:'pre',transform(code,id){
-  if(id.endsWith('/HomePostcard.tsx'))code=replaceSource(code,'gl={{ alpha: true }}','gl={{ alpha: true, preserveDrawingBuffer: true }}')
-  if(id.endsWith('/HomePostcardMesh.tsx')){
+  if(id.endsWith('/PostcardStage.tsx'))code=replaceSource(code,'gl={{ alpha: true }}','gl={{ alpha: true, preserveDrawingBuffer: true }}')
+  if(id.endsWith('/PostcardMesh.tsx')){
     const marker='    const frameState = readSurfaceFrameState(surface)'
     code=replaceSource(code,marker,'    if(window.__freezeEdgePose)return;\n'+marker)
     const pose='    const st = f.current\n    const a = aim.current'
@@ -24,7 +24,7 @@ const observer={name:'postcard-edge-observer',enforce:'pre',transform(code,id){
       window.__freezeEdgePose=true;
     };\n`+pose)
   }
-  if(id.endsWith('/HomeMasthead.tsx')){
+  if(id.endsWith('/LightLamp.tsx')){
     const marker='    pass.paper = createPaperLighting(renderer,pass.mesh.material)'
     code=replaceSource(code,marker,marker+'\n    window.__edgeLight={renderer,draw:()=>state.draw()};')
   }
@@ -39,14 +39,15 @@ try{
   // The 2x reference needs a drawing buffer below Chrome's pixel-area limit.
   // A taller page can silently clamp the buffer and invalidate the comparison.
   await setChromeViewport(page,{width:1000,height:500})
-  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=home&framed`,{waitUntil:'load'})
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=postcard&framed`,{waitUntil:'load'})
   assert.equal(await page.evaluate(()=>'drawElementImage' in CanvasRenderingContext2D.prototype),true,'The enhanced postcard is required')
   await page.evaluate(()=>document.fonts.ready)
-  await page.evaluate(()=>{const holder=document.querySelector('.home-hero-holder');document.querySelector('.home-page').scrollTop+=holder.getBoundingClientRect().top-180})
-  await page.click('.home-hero-row button')
-  await page.waitForFunction(()=>window.__setEdgePose&&document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='true')
-  const box=await page.$eval('.home-hero-holder',e=>e.getBoundingClientRect().toJSON())
-  const light=await page.$eval('.home-light',e=>e.getBoundingClientRect().toJSON())
+  await page.waitForFunction(()=>document.querySelector('.light-page')?.dataset.pageReady==='true')
+  await page.evaluate(()=>{const holder=document.querySelector('.postcard-hero-holder');document.querySelector('.light-page').scrollTop+=holder.getBoundingClientRect().top-180})
+  await page.click('.postcard-hero-row button')
+  await page.waitForFunction(()=>window.__setEdgePose&&document.querySelector('.postcard-hero-row .postcard-status').dataset.gl==='true')
+  const box=await page.$eval('.postcard-hero-holder',e=>e.getBoundingClientRect().toJSON())
+  const light=await page.$eval('.light-handle',e=>e.getBoundingClientRect().toJSON())
   await page.mouse.move(light.x+light.width/2,light.y+light.height/2);await page.mouse.down();await page.mouse.move(box.right+110,box.top-130,{steps:15})
   await page.evaluate(()=>window.__setEdgePose());await frames(page,12)
   const clip={x:Math.max(0,Math.floor(box.x-30)),y:Math.max(0,Math.floor(box.y-110)),width:Math.ceil(box.width+60),height:Math.ceil(box.height+145)}
@@ -70,7 +71,7 @@ try{
       const decode=async data=>{const bitmap=await createImageBitmap(new Blob([Uint8Array.from(atob(data),c=>c.charCodeAt(0))],{type:'image/png'}));const canvas=new OffscreenCanvas(bitmap.width,bitmap.height),ctx=canvas.getContext('2d');ctx.drawImage(bitmap,0,0);bitmap.close();return {data:ctx.getImageData(0,0,canvas.width,canvas.height).data,width:canvas.width,height:canvas.height}}
       const a=await decode(native),b=await decode(reference),c=await decode(coarse)
       if(a.width!==b.width||a.height!==b.height||a.width!==c.width||a.height!==c.height)throw new Error('The edge comparison viewport changed')
-      const source=document.querySelector('.home-canvas canvas'),rect=source.getBoundingClientRect(),mask=await decode(source.toDataURL().split(',')[1]),density=a.width/clip.width
+      const source=document.querySelector('.postcard-canvas canvas'),rect=source.getBoundingClientRect(),mask=await decode(source.toDataURL().split(',')[1]),density=a.width/clip.width
       const alpha=(x,y)=>{const mx=Math.floor((clip.x+(x+.5)/density-rect.x)*mask.width/rect.width),my=Math.floor((clip.y+(y+.5)/density-rect.y)*mask.height/rect.height);return mx<0||my<0||mx>=mask.width||my>=mask.height?0:mask.data[(my*mask.width+mx)*4+3]}
       let samples=0,nativeError=0,coarseError=0
       for(let y=2;y<a.height-2;y++)for(let x=2;x<a.width-2;x++){

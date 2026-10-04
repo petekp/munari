@@ -52,7 +52,7 @@ export function SceneNav<T extends string>({ scenes, active, onSelect, supported
         <div className="site-nav-footer">
           <a href={GUIDE_URL} target="_blank" rel="noreferrer">Developer guide</a>
           <a href={SOURCE_ROOT} target="_blank" rel="noreferrer">GitHub</a>
-          <a href="/?scene=home#support" className="site-support" data-supported={supported}>
+          <a href="/?scene=home#setup" className="site-support" data-supported={supported}>
             {supported ? 'Capture available' : 'Standard rendering'}
           </a>
         </div>

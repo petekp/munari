@@ -28,20 +28,20 @@ try {
   const viewport=await page.evaluate(()=>({width:innerWidth,height:innerHeight,dpr:devicePixelRatio}))
   const errors = []
   page.on('pageerror', error => errors.push(String(error)))
-  await page.goto(url + '/?scene=home&framed', {waitUntil:'load'})
-  await page.waitForFunction(() => document.querySelector('.home-hero-holder [data-api-live]'))
-  if (process.env.POSTCARD_CANVAS === 'fixed') await page.$eval('.home-canvas', element => Object.assign(element.style,{position:'fixed',inset:'0',width:'100%',height:'100%',transform:'none'}))
+  await page.goto(url + '/?scene=postcard&framed', {waitUntil:'load'})
+  await page.waitForFunction(() => document.querySelector('.postcard-hero-holder [data-api-live]'))
+  if (process.env.POSTCARD_CANVAS === 'fixed') await page.$eval('.postcard-canvas', element => Object.assign(element.style,{position:'fixed',inset:'0',width:'100%',height:'100%',transform:'none'}))
   await page.evaluate(() => document.fonts.ready)
   await page.evaluate(() => {
-    const scroller = document.querySelector('.home-page')
-    scroller.scrollTop += document.querySelector('.home-hero').getBoundingClientRect().top - 80
+    const scroller = document.querySelector('.light-page')
+    scroller.scrollTop += document.querySelector('.postcard-hero').getBoundingClientRect().top - 80
   })
   await page.waitForFunction(() => {
-    const r = document.querySelector('.home-hero-holder').getBoundingClientRect()
+    const r = document.querySelector('.postcard-hero-holder').getBoundingClientRect()
     return r.top > 0 && r.bottom < innerHeight
   })
   if (!await page.evaluate(() => 'drawElementImage' in document.createElement('canvas').getContext('2d'))) throw new Error('HTML capture is required')
-  const light = await page.$('.home-light')
+  const light = await page.$('.light-handle')
   const lightBox = await light.boundingBox()
   if (!pointerInput) {
     await page.mouse.move(lightBox.x+lightBox.width/2,lightBox.y+lightBox.height/2)
@@ -49,13 +49,13 @@ try {
     await page.mouse.move(550,100,{steps:5})
   }
   const flip = async (scene) => {
-    if (pointerInput) await page.click('.home-hero-row button')
-    else await page.evaluate(() => document.querySelector('.home-hero-row button').click())
-    await page.waitForFunction(wanted => document.querySelector('.home-hero-row .home-postcard-status').dataset.gl === String(wanted), {timeout:10000}, scene)
+    if (pointerInput) await page.click('.postcard-hero-row button')
+    else await page.evaluate(() => document.querySelector('.postcard-hero-row button').click())
+    await page.waitForFunction(wanted => document.querySelector('.postcard-hero-row .postcard-status').dataset.gl === String(wanted), {timeout:10000}, scene)
   }
   await flip(true)
   await page.waitForFunction(() => {
-    const original = document.querySelector('.home-hero-holder [data-api-live]')
+    const original = document.querySelector('.postcard-hero-holder [data-api-live]')
     return Boolean(original?.closest('canvas'))
   })
   // One full launch establishes the initial material and capture setup.
@@ -63,9 +63,9 @@ try {
   await flip(false)
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
   await page.evaluate(() => {
-    const holder = document.querySelector('.home-hero-holder')
+    const holder = document.querySelector('.postcard-hero-holder')
     const page = holder.querySelector('[data-api-live]').parentElement
-    const scroller = document.querySelector('.home-page')
+    const scroller = document.querySelector('.light-page')
     const record = {frames:[],holds:[],active:true,raf:0,origin:performance.timeOrigin}
     let previous = 0
     let previousWall = 0
@@ -79,7 +79,7 @@ try {
       const r = holder.getBoundingClientRect()
       const wall = performance.now()
       if (previousWall && wall-previousWall>18) performance.mark('postcard-frame-gap')
-      record.frames.push({time,gap:previous ? time-previous : 0,wall,wallGap:previousWall ? wall-previousWall : 0,x:r.x,y:r.y+scroller.scrollTop,w:r.width,h:r.height,innerHeight:document.querySelector('.home-inner').getBoundingClientRect().height,noteHeight:document.querySelector('.home-note').getBoundingClientRect().height,scene})
+      record.frames.push({time,gap:previous ? time-previous : 0,wall,wallGap:previousWall ? wall-previousWall : 0,x:r.x,y:r.y+scroller.scrollTop,w:r.width,h:r.height,innerHeight:document.querySelector('.light-inner').getBoundingClientRect().height,noteHeight:document.querySelector('.postcard-note').getBoundingClientRect().height,scene})
       previous=time
       previousWall=wall
       if(record.active)record.raf=requestAnimationFrame(tick)
@@ -100,8 +100,8 @@ try {
   if (process.env.POSTCARD_TRACE === '1') { await client.send('Profiler.enable'); await client.send('Profiler.setSamplingInterval',{interval:100}); await client.send('Profiler.start') }
   if (process.env.POSTCARD_TRACE === '1') await page.tracing.start({path:path.join(output,'trace.json'),categories:['devtools.timeline','v8.execute','blink.user_timing']})
   if (recordPixels) await client.send('Page.startScreencast',{format:'png',everyNthFrame:1})
-  const box = await page.$eval('.home-hero-holder',element=>element.getBoundingClientRect().toJSON())
-  const exclude = await page.$$eval('.home-hero-row',elements=>elements.map(element=>element.getBoundingClientRect().toJSON()))
+  const box = await page.$eval('.postcard-hero-holder',element=>element.getBoundingClientRect().toJSON())
+  const exclude = await page.$$eval('.postcard-hero-row',elements=>elements.map(element=>element.getBoundingClientRect().toJSON()))
   for(let cycle=0;cycle<cycles;cycle++) {
     await flip(true)
     await new Promise(resolve=>setTimeout(resolve,1250))

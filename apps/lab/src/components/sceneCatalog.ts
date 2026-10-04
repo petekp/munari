@@ -7,8 +7,8 @@ export const GUIDE_URL = `${SOURCE_ROOT}/blob/${SOURCE_REF}/README.md#your-first
 export const SOURCE_ARCHIVE = `${SOURCE_ROOT}/archive/${SOURCE_REF}.zip`
 export const BROWSER_GUIDE = 'https://developer.chrome.com/blog/html-in-canvas-origin-trial'
 
-/** The wash the shell wears for the overview. Each example names its own. */
-export const HOME_WASH = '#e3ec5a'
+/** The overview's background. Each example names its own wash. */
+export const HOME_WASH = '#ffffff'
 
 export const EXAMPLES = [
   {
@@ -54,6 +54,20 @@ export const EXAMPLES = [
     takeaway: 'Native text editing can supply the shapes and colors for a particle effect.',
   },
   {
+    id: 'light', title: 'Light', category: 'Lighting', wash: '#e3ec5a',
+    headline: 'A lamp over live HTML',
+    description: 'Drag a bulb across a selectable headline. The letters cast shadows, and the glass bends the page behind it.',
+    instruction: 'Drag the bulb. Change its distance from the page, then select a word to raise its shadow.',
+    takeaway: 'The scene supplies light and shadow; the headline stays native, selectable text.',
+  },
+  {
+    id: 'postcard', title: 'Postcard', category: 'Forms', wash: '#8f9cf5',
+    headline: 'A form printed on paper',
+    description: 'A live HTML form lifts off the page as a sheet of paper that bends and casts a shadow.',
+    instruction: 'Type your name, then lift the postcard. Add a stamp or brush a corner while it floats.',
+    takeaway: 'The form keeps its state and focus while the scene draws it.',
+  },
+  {
     id: 'logo', title: 'Logo', category: 'Typography', wash: '#b47deb',
     headline: 'Typography with another dimension',
     description: 'The same letterforms appear as page typography and animated 3D objects.',
@@ -61,8 +75,6 @@ export const EXAMPLES = [
     takeaway: 'Materials and geometry can change the appearance of text drawn from the DOM.',
   },
 ] as const
-
-export const FEATURED_EXAMPLES = EXAMPLES.filter((example) => example.id !== 'logo')
 
 export function exampleFor(id: string) {
   return EXAMPLES.find((example) => example.id === id)

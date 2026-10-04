@@ -1,6 +1,5 @@
 // Demo host — a bounded viewport with a separate layer for local overlays.
 // The scroller and its overlays share theme values without sharing scroll motion.
-// The inset Home checks pin their agreement after a (104, 72)px move (#59).
 import { createContext, use, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 

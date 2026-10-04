@@ -15,14 +15,14 @@ contains unbuilt work; it is not an API reference.
 ## Routes and examples
 
 `src/App.tsx` owns routes and the full scene inventory. `?scene=home` is
-the overview. Scenes omitted from navigation remain available by URL;
+the landing page. Scenes omitted from navigation remain available by URL;
 `?scene=controls` and `?scene=candidates` are maintained examples too.
 Candidates select a study with `&candidate=<id>`.
 
 `src/components/sceneCatalog.ts` supplies navigation descriptions and source
-links pinned to a verified development revision. The overview displays the
-actual [HomeStarter source](src/scenes/home/HomeStarter.tsx). Browser fallback
-uses a labelled [postcard recording](public/previews/README.md).
+links pinned to a verified development revision. The Postcard demo falls back
+to a labelled [recording](public/previews/README.md) in browsers without a
+renderer.
 
 Use the real scene route for visual work. `?bare` removes the surrounding UI
 and can remove content under test; use it only when an instrument requires it.
@@ -35,42 +35,41 @@ the snapDOM entry at all. The parameter rides navigation, so a scene opened
 under one engine stays on it. `window.__munari.engine()` reports which one
 answered.
 
+## Landing page
+
+`?scene=home` is the landing page in `src/scenes/home/`. It renders directly in
+the shell and holds no Munari demo itself. Its hero offers a prompt for a coding
+agent. Choosing a verb such as "bend" or "write on" selects a demo, and the
+visitor can name their own component in the sentence. `homeVerbs.ts` owns each
+verb's demo, sentence and the copied prompt text.
+
+The hero shows the chosen demo in an iframe loaded with `&framed&bare&capture=auto`,
+scaled down from a 1000px-wide layout, or 720px on narrow screens. `capture=auto`
+keeps HTML-in-canvas where Chrome has it and uses snapDOM elsewhere, so the hero
+runs live in every browser the demos support. A thumbnail sits under each frame
+until it loads.
+
 ## First load
 
-`index.html` supplies the landing background before the app loads.
-`App` selects other scene backgrounds before paint. Home stays in the entry
-bundle; other demos load only when selected. Home renders directly in the shell
-inside `DemoHost`; the other scenes keep their frames and existing viewport assumptions.
+`index.html` paints the landing background and an inline wordmark before the
+app loads. The shell removes that cover once Home's fonts are ready, or when a
+scene's iframe loads. Home stays in the entry bundle; every other scene loads
+only in its own frame. A framed or `&bare` document never shows the cover.
 
-The first document paints an inline wordmark while the page prepares. The
-navigation and homepage appear together after fonts, current shadow masks,
-headline treatments and the lamp backdrop have reached a completed draw. The
-cover stays outside the content being captured so preparation can still paint. There is no
-minimum display time. Failed graphics preparation selects native content for
-that visit, rather than adding effects after the page is visible.
-`probe:home-startup` checks the first exposed frames and the resting button
-shadow afterward, including a deliberately early reveal that must fail those
-checks. [Decision #57](../../docs/decisions.md#57) records the opening contract.
+## Light and Postcard
 
-## Inline Home
+The Light and Postcard demos, at `?scene=light` and `?scene=postcard`, share
+one lamp in `src/scenes/light/`. `LightLamp` draws the shadow canvas and the
+glass bulb, and takes the page content as a render prop. Light passes the
+headline and Postcard passes the form. `components/DemoHost.tsx` gives each
+page a measured, clipped viewport and a separate overlay layer for the lamp,
+so the page scrolls while the lamp stays in place.
 
-`components/DemoHost.tsx` owns a measured, clipped viewport and a separate local
-overlay layer. It exposes container dimensions to CSS and the viewport ref to
-Home. The page scrolls inside that viewport; the lamp stays in its overlay.
-The postcard retains its enlarged section-relative canvas so compositor scrolling
-moves the card and its canvas together.
-
-Home uses Tailwind for ordinary layout and controls. Its custom lighting, paper,
-and typography rules remain in `home.css`; theme values live on `.home-demo`,
-not `:root`. The lamp's separate capture carries those resolved values. This is
-local ownership within a shared stylesheet, not Shadow DOM isolation.
-
-Canvas identities and the flyer publication store belong to each Home instance.
-Home section links update the shell route without recreating the page. Other
-scenes still mount fresh iframes. `node instruments/home-inline/run.mjs` checks
-container movement, native and captured input, theme boundaries, route cleanup,
-and two independently mounted Homes. Decision [#59](../../docs/decisions.md#59)
-records the scope.
+Each page sets `.light-page[data-page-ready]` once its shadows, any headline
+treatment and the lamp backdrop have drawn. If graphics are not ready within
+four seconds, the page shows native content instead and sets the mark then.
+[Decision #57](../../docs/decisions.md#57) sets that limit. Inside a frame the
+page is visible while it prepares, like every other scene.
 
 ## Code and evidence
 
@@ -116,7 +115,7 @@ These reference files must stay byte-identical to their registry copies.
   remaining subsets load when used. Each family's OFL is in `public/licenses/`.
   `font-display: block` remains deliberate for captured text. The wordmark's
   optional changing typefaces still load separately from `logoScene.tsx`.
-- `homeHeadlineGlyphs.ts` retains only Archivo's `3` and `D` outlines at weight
+- `light/lightHeadlineGlyphs.ts` retains only Archivo's `3` and `D` outlines at weight
   900 and width 100. Its metadata records the source and hash; the SIL Open Font
   License is included at `public/licenses/archivo.txt`.
 

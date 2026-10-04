@@ -45,6 +45,8 @@ const GravityApp = lazy(() => import('./scenes/gravity/Gravity').then(m => ({ de
 const LampApp = lazy(() => import('./scenes/lamp/Lamp').then(m => ({ default: m.LampApp })))
 const RainApp = lazy(() => import('./scenes/rain/Rain').then(m => ({ default: m.RainApp })))
 const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
+const LightApp = lazy(() => import('./scenes/light/Light').then(m => ({ default: m.LightApp })))
+const PostcardApp = lazy(() => import('./scenes/postcard/Postcard').then(m => ({ default: m.PostcardApp })))
 
 // The promoted scene roster is decisions.md #3. URL-only studies stay beside
 // it without claiming promotion: the candidates bench, refraction, gallery,
@@ -77,6 +79,8 @@ type SceneId =
   | 'lamp'
   | 'rain'
   | 'wordmark'
+  | 'light'
+  | 'postcard'
 const SCENES = [
   'home',
   'workspace',
@@ -102,11 +106,13 @@ const SCENES = [
   'lamp',
   'rain',
   'wordmark',
+  'light',
+  'postcard',
 ] as const
 
 // The nav shows only the advertised scenes; the rest stay routable by URL so
 // the browser gates and old links keep working, they just aren't advertised.
-const NAV_SCENES = ['home', 'flight', 'genie', 'knobs', 'selection', 'logo', 'marble-hand', 'plume'] as const satisfies readonly SceneId[]
+const NAV_SCENES = ['home', 'genie', 'flight', 'light', 'plume', 'selection', 'marble-hand', 'knobs', 'postcard', 'logo'] as const satisfies readonly SceneId[]
 
 // Clicking a canvas normally moves focus to <body>, which would blur
 // whatever hidden form field a Surface has focused — killing native typing.
@@ -138,8 +144,7 @@ function readScene(): SceneId {
   const q = new URLSearchParams(window.location.search).get('scene')
   if (isSceneId(q)) return q
   const h = window.location.hash.slice(1)
-  // Home is the landing scene: the overview and tutorial a cold visitor
-  // should see first. Every browser gate names its scene in the URL, so
+  // Home is the landing page a cold visitor should see first. Every browser gate names its scene in the URL, so
   // none of them ride this default.
   return isSceneId(h) ? h : 'home'
 }
@@ -148,7 +153,7 @@ function readRoute() {
   const section = window.location.hash.slice(1)
   return {
     scene: readScene(),
-    section: ['examples', 'how-it-works', 'get-started', 'support'].includes(section) ? section : '',
+    section: ['demos', 'setup'].includes(section) ? section : '',
   }
 }
 
@@ -193,20 +198,23 @@ function pageSceneFor(scene: SceneId, section: string) {
       return <MarbleHandApp />
     case 'plume':
       return <PlumeApp />
-    // Private dial-in bench for the official mark: URL-only, never in the nav.
-    case 'wordmark':
-      return <WordmarkApp />
-
-    case 'candidates':
-      return <CandidatesApp />
+    case 'light':
+      return <LightApp />
+    case 'postcard':
+      return <PostcardApp />
     default:
-      return spikeSceneFor(scene)
+      return studySceneFor(scene)
   }
 }
 
-/** The 2026-09-01 spikes: page studies under review, URL-only. */
-function spikeSceneFor(scene: SceneId) {
+/** URL-only page studies: two benches and the 2026-09-01 spikes under review. */
+function studySceneFor(scene: SceneId) {
   switch (scene) {
+    // Private dial-in bench for the official mark: URL-only, never in the nav.
+    case 'wordmark':
+      return <WordmarkApp />
+    case 'candidates':
+      return <CandidatesApp />
     case 'gravity':
       return <GravityApp />
     case 'lamp':
@@ -363,9 +371,9 @@ export default function App() {
   // handling and the ARIA are the browser's, and this is the one piece of
   // lab furniture that shows up on a page whose whole subject is that the
   // browser's own machinery still works.
-  // Home, Marble Hand, and Plume explain capability in their own UI.
+  // Home, Marble Hand, Plume, and Postcard explain capability in their own UI.
   const notice =
-    showChrome && unsupported && scene !== 'home' && scene !== 'marble-hand' && scene !== 'plume' ? (
+    showChrome && unsupported && scene !== 'home' && scene !== 'marble-hand' && scene !== 'plume' && scene !== 'postcard' ? (
       <details className="trial-notice">
         <summary>Standard HTML mode</summary>
         <p className="hint">
@@ -376,9 +384,13 @@ export default function App() {
       </details>
     ) : null
 
-  // Home owns a measured DemoHost and can share this document with navigation.
-  // Other scenes still assume a window-sized canvas, so they keep their frames.
-  // Replacing a frame on navigation avoids an extra joint-history entry.
+  // The overview is its own full-width page with no sidebar. Every demo
+  // assumes a window-sized canvas, so each keeps its own frame beside the
+  // navigation. Replacing a frame on navigation avoids an extra joint-history
+  // entry.
+  if (showShell && scene === 'home') {
+    return <SceneBoundary scene={scene}><HomeApp section={section} onReady={revealSite} /></SceneBoundary>
+  }
   if (showShell) {
     return (
       <div className="site-shell" style={shellStyle(scene)}>
@@ -396,18 +408,14 @@ export default function App() {
           supported={!unsupported}
         />
         <main className="site-content" id="site-content" tabIndex={-1}>
-          {scene !== 'home' && <SceneGuide scene={scene} />}
-          {scene === 'home' ? (
-            <SceneBoundary scene={scene}><HomeApp section={section} onReady={revealSite} /></SceneBoundary>
-          ) : (
-            <iframe
-              key={`${scene}:${section}`}
-              src={`/?scene=${scene}&framed${captureParam}${section ? `#${section}` : ''}`}
-              title={`${scene} example`}
-              className="site-frame"
-              onLoad={revealSite}
-            />
-          )}
+          <SceneGuide scene={scene} />
+          <iframe
+            key={scene}
+            src={`/?scene=${scene}&framed${captureParam}`}
+            title={`${exampleFor(scene)?.title ?? scene} example`}
+            className="site-frame"
+            onLoad={revealSite}
+          />
         </main>
       </div>
     )
