@@ -20,7 +20,6 @@ import {
   centerFacingYaw,
   dampingRatio,
   reflect,
-  springSettled,
   stepSpin,
   stepSpring,
 } from './knobsPhysics'
@@ -77,7 +76,8 @@ describe('stepSpring', () => {
     for (const p of [LEVER_SPRING, KNOB_SPRING, PANEL_SPRING]) {
       const s: SpringState = { x: 0, v: 0 }
       for (let i = 0; i < 240; i++) stepSpring(s, 1, p, 1 / 120)
-      expect(springSettled(s, 1)).toBe(true)
+      expect(Math.abs(s.x - 1)).toBeLessThan(0.001)
+      expect(Math.abs(s.v)).toBeLessThan(0.01)
     }
   })
 })
@@ -195,7 +195,8 @@ describe('the carry — momentum you can see', () => {
   it('settles a 400px carry within two and a half seconds', () => {
     const s: SpringState = { x: 0, v: 0 }
     for (let i = 0; i < 300; i++) stepSpring(s, 400, PANEL_GLIDE_SPRING, 1 / 120)
-    expect(springSettled(s, 400, 0.5, 1)).toBe(true)
+    expect(Math.abs(s.x - 400)).toBeLessThan(0.5)
+    expect(Math.abs(s.v)).toBeLessThan(1)
   })
 
   it('leans visibly at hand speed, and the clamp stays under a fold-over', () => {

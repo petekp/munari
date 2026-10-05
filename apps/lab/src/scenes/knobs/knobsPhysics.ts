@@ -60,17 +60,6 @@ export function stepSpring(
   return s
 }
 
-/** True once the spring has visibly stopped — position and velocity both
- *  inside epsilon. The scene may then stop writing the mesh transform. */
-export function springSettled(
-  s: SpringState,
-  target: number,
-  eps = 0.001,
-  vEps = 0.01,
-): boolean {
-  return Math.abs(s.x - target) < eps && Math.abs(s.v) < vEps
-}
-
 /** ζ for a params pair — the number the tuning vocabulary above pins. */
 export function dampingRatio(p: SpringParams): number {
   return p.damping / (2 * Math.sqrt(p.stiffness))
