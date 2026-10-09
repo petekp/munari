@@ -6,10 +6,10 @@
 // native cursor before the asset loaded. A settled centre-only check missed
 // the depth parallax, so this gate also moves to off-centre points.
 //
-// The 2026-08-31 change moved the poster's colour into a second WebGL canvas
-// inside the page. cloneNode gives a blank canvas, so the reflection draws
-// the same GLSL for itself; this gate's colour section now measures that the
-// two renderers share one published second rather than two CSS clocks.
+// The 2026-08-31 change moved the poster's colour into a second renderer's
+// canvas inside the page. cloneNode gives a blank canvas, so the reflection
+// draws the same shader for itself; this gate's colour section now measures
+// that the two renderers share one published second rather than two CSS clocks.
 //
 // The same day added the idle tap. Its section is the only one that reads the
 // overlay's pixels twice with nothing touched in between: three curled fingers
@@ -17,6 +17,11 @@
 // every projected vertex correct while the drawn stone does not move at all.
 // It also pins the fingertip across the drum, because a hinge whose capsule
 // caught the index would move the hotspot without moving the group.
+//
+// Overlay pixels are read from the canvas after a frame's outermost render
+// returns. SurfaceCanvas's render pipeline calls `render` again from inside
+// its own call, so a reader that counted every call would see each frame
+// twice (WebGPURenderer port, 2026-10-09).
 //
 // Ownership: the lab owns its model and renderer. This runner owns an
 // isolated Vite server and Chrome, then reads the existing scene and DOM.
@@ -54,6 +59,7 @@ const problems = []
 const hdrRequests = []
 const nativeThemeClicks = new WeakMap()
 const artifactDirectory = process.env.MARBLE_HAND_ARTIFACT_DIR
+const canvasPixelsUrl = '/@fs' + path.join(repoRoot, 'instruments', 'canvasPixels.ts')
 const themes = [
   { id: 'waves', name: 'Waves' },
   { id: 'tide', name: 'Tide' },
@@ -111,6 +117,150 @@ const nextPaint = (page) => page.evaluate(() => new Promise((resolve) => {
   requestAnimationFrame(() => requestAnimationFrame(resolve))
 }))
 
+// Runs before any page script. Shader failures are counted for every renderer
+// in the page, which is stricter than the hand renderer's program list this
+// replaced: WebGPU compile errors, the validation scopes Three opens around
+// pipeline creation, rejected async pipelines, and WebGL 2 link failures.
+// A node graph that throws while building raises none of those: Three draws a
+// plain NodeMaterial in its place and only logs. So the hand renderer's
+// `debug.onNodeBuilderCreated` records which material each build really used.
+function installShaderProbes() {
+  let failures = 0
+  const builds = []
+  const materials = new WeakMap()
+  // A build's material and shader exist only once it finishes, so entries
+  // are settled when read, then dropped.
+  const settle = () => {
+    for (let index = builds.length - 1; index >= 0; index--) {
+      const { builder, material, hand } = builds[index]
+      // NodeBuilder starts with a null shader and assigns it when built.
+      if (builder.fragmentShader === null) continue
+      builds.splice(index, 1)
+      const substituted = builder.material !== material
+      if (substituted) failures++
+      if (!hand) continue
+      const record = materials.get(material) ?? { built: 0, substituted: 0 }
+      if (substituted) record.substituted++
+      else if (builder.fragmentShader.length > 0) record.built++
+      materials.set(material, record)
+    }
+  }
+  window.__marbleShaderFailures = () => {
+    settle()
+    return failures
+  }
+  window.__marbleHandBuild = (material) => {
+    settle()
+    return materials.get(material) ?? { built: 0, substituted: 0 }
+  }
+  let state
+  Object.defineProperty(window, '__r3f', {
+    configurable: true,
+    get: () => state,
+    set(value) {
+      state = value
+      value.gl.debug.onNodeBuilderCreated = (builder, renderObject) => {
+        builds.push({
+          builder,
+          material: renderObject.material,
+          hand: renderObject.object.name === 'marble-hand-sculpture',
+        })
+      }
+    },
+  })
+  if ('GPUDevice' in globalThis) {
+    const createShaderModule = GPUDevice.prototype.createShaderModule
+    GPUDevice.prototype.createShaderModule = function (descriptor) {
+      const module = createShaderModule.call(this, descriptor)
+      void module.getCompilationInfo().then((info) => {
+        if (info.messages.some((message) => message.type === 'error')) failures++
+      })
+      return module
+    }
+    const popErrorScope = GPUDevice.prototype.popErrorScope
+    GPUDevice.prototype.popErrorScope = function () {
+      return popErrorScope.call(this).then((error) => {
+        if (error) failures++
+        return error
+      })
+    }
+    const createRenderPipelineAsync = GPUDevice.prototype.createRenderPipelineAsync
+    GPUDevice.prototype.createRenderPipelineAsync = function (descriptor) {
+      return createRenderPipelineAsync.call(this, descriptor).catch((error) => {
+        failures++
+        throw error
+      })
+    }
+  }
+  const failedPrograms = new WeakSet()
+  const getProgramParameter = WebGL2RenderingContext.prototype.getProgramParameter
+  WebGL2RenderingContext.prototype.getProgramParameter = function (program, name) {
+    const value = getProgramParameter.call(this, program, name)
+    if (name === this.LINK_STATUS && value === false && !failedPrograms.has(program)) {
+      failedPrograms.add(program)
+      failures++
+    }
+    return value
+  }
+}
+
+// One permanent wrapper on the overlay renderer. A listener runs once per
+// frame, when the outermost render of the main scene to the canvas returns:
+// SurfaceCanvas has then drawn through its pipeline and closed its frame
+// tail, and the canvas is readable in this task on both backends.
+function installFrameReader(page) {
+  return page.evaluate(async (url) => {
+    if (window.__marbleFrames) return
+    const { readCanvasRect, gpuErrors } = await import(url)
+    const renderer = window.__r3f.gl
+    const errors = gpuErrors(renderer)
+    const listeners = new Set()
+    const render = renderer.render
+    let depth = 0
+    renderer.render = function (world, camera) {
+      depth++
+      try {
+        render.call(this, world, camera)
+      } finally {
+        depth--
+      }
+      if (depth > 0 || this.getRenderTarget() !== null || world !== window.__r3f.scene) return
+      for (const listener of [...listeners]) listener()
+    }
+    window.__marbleFrames = {
+      listen(listener) {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+      // Premultiplied RGBA, rows from the bottom, as readPixels returned it.
+      read() {
+        const canvas = renderer.domElement
+        const { width, height } = canvas
+        if (width <= 0 || height <= 0 || errors() !== 0) throw new Error('unreadable overlay canvas')
+        return { width, height, pixels: readCanvasRect(canvas, 0, 0, width, height) }
+      },
+      // The next completed frame's pixels, read in the task that drew them.
+      next(label) {
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            stop()
+            reject(new Error(`no default-framebuffer draw for ${label}`))
+          }, 5_000)
+          const stop = this.listen(() => {
+            stop()
+            clearTimeout(timer)
+            try {
+              resolve(this.read())
+            } catch (error) {
+              reject(error)
+            }
+          })
+        })
+      },
+    }
+  }, canvasPixelsUrl)
+}
+
 function readColorMotion(page) {
   return page.evaluate(() => {
     // Small readers, not one guarded expression: this runs on a cold page
@@ -147,7 +297,7 @@ function readColorMotion(page) {
   })
 }
 
-// The field canvas is a second WebGL context inside the page. A cloned
+// The field canvas is a second renderer's context inside the page. A cloned
 // canvas is blank, which is why the reflection draws the shader itself; if
 // this one is missing or lost, the page falls back to a CSS gradient.
 function readFieldCanvas(page) {
@@ -155,15 +305,20 @@ function readFieldCanvas(page) {
     const background = document.querySelector('.mh-app > .mh-sheet .mh-atmosphere .mh-background')
     const canvas = background ? background.querySelector('canvas.mh-field') : null
     if (!canvas) return { background: Boolean(background), canvas: false }
-    const context = canvas.getContext('webgl2') || canvas.getContext('webgl')
+    // getContext returns the canvas's existing context only for its own
+    // type, so exactly one of these is non-null on a live field.
+    const gpu = canvas.getContext('webgpu')
+    const gl = gpu ? null : canvas.getContext('webgl2')
+    // A WebGPU canvas has no lost flag; the field records its device loss.
+    const lost = gl ? gl.isContextLost() : gpu ? window.__marbleBackground?.contextLost ?? null : null
     return {
       background: true,
       canvas: true,
       fallback: background.hasAttribute('data-fallback'),
       width: canvas.width,
       cssWidth: Math.round(canvas.getBoundingClientRect().width),
-      context: Boolean(context),
-      lost: context ? context.isContextLost() : null,
+      context: Boolean(gpu || gl),
+      lost,
       copies: document.querySelectorAll('[data-marble-page-capture] canvas.mh-field').length,
     }
   })
@@ -483,8 +638,7 @@ function readHand(page) {
       cursor: getComputedStyle(sheet).cursor,
       pointerAttribute: sheet.hasAttribute('data-marble-hand-pointer'),
       canvasPointerEvents: getComputedStyle(state.gl.domElement).pointerEvents,
-      shaderFailures: state.gl.info.programs
-        .filter((program) => program.diagnostics?.runnable === false).length,
+      shaderFailures: window.__marbleShaderFailures(),
     }
   })
 }
@@ -500,11 +654,11 @@ function checkHand(sample, point, label) {
   requireThat(sample.pointerAttribute, `${label}: loaded native sheet did not own cursor suppression`)
   requireThat(sample.canvasPointerEvents === 'none',
     `${label}: decorative canvas intercepted the page with pointer-events:${sample.canvasPointerEvents}`)
-  requireThat(sample.shaderFailures === 0, `${label}: a WebGL program failed to link`)
+  requireThat(sample.shaderFailures === 0, `${label}: ${sample.shaderFailures} shaders failed to build, compile or link`)
   return error
 }
 
-// The panel is page chrome above a decorative WebGL canvas. A control that
+// The panel is page chrome above a decorative canvas. A control that
 // changes its displayed number but not the named scene object is a broken
 // control; a control that also presses the sheet is broken in a second way.
 // These keys cross both boundaries, including degrees in the UI and radians
@@ -923,10 +1077,9 @@ async function verifyPageReflections(page) {
       lights.every((light) => light && light.intensity === 0)
   }, { timeout: 5_000 })
 
+  await installFrameReader(page)
   const result = await page.evaluate(async () => {
-    const state = window.__r3f
-    const renderer = state.gl
-    const scene = state.scene
+    const scene = window.__r3f.scene
     // The field moved into a canvas the copy cannot carry, so the native
     // edit this clause needs is ordinary DOM: the heading's own ink.
     const heading = document.querySelector('.mh-app > .mh-sheet .mh-intro h1')
@@ -956,36 +1109,9 @@ async function verifyPageReflections(page) {
       }
       tick()
     })
-    const capture = () => new Promise((resolve, reject) => {
-      const original = renderer.render
-      const timer = setTimeout(() => {
-        renderer.render = original
-        reject(new Error('no default-framebuffer draw for reflection sample'))
-      }, 5_000)
-      renderer.render = function (world, camera) {
-        try {
-          original.call(this, world, camera)
-          if (this.getRenderTarget() !== null || world !== scene) return
-          const context = this.getContext()
-          const width = context.drawingBufferWidth
-          const height = context.drawingBufferHeight
-          const pixels = new Uint8Array(width * height * 4)
-          // House rule: only a completed default-framebuffer render makes
-          // readPixels a sample of the picture the browser can present.
-          context.readPixels(0, 0, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
-          if (context.isContextLost() || width <= 0 || height <= 0 || context.getError() !== context.NO_ERROR) {
-            throw new Error('unreadable reflection framebuffer')
-          }
-          renderer.render = original
-          clearTimeout(timer)
-          resolve({ width, height, pixels })
-        } catch (error) {
-          renderer.render = original
-          clearTimeout(timer)
-          reject(error)
-        }
-      }
-    })
+    // House rule: only a completed default-framebuffer render makes a
+    // canvas read a sample of the picture the browser can present.
+    const capture = () => window.__marbleFrames.next('reflection sample')
 
     let stableFrames = 0
     let lastGeneration = -1
@@ -1062,10 +1188,12 @@ function readHandMaterial(page) {
     const group = state.scene.getObjectByName('marble-hand-pointer')
     const material = hand?.material
     if (!material || !group) return null
-    const program = state.gl.properties.get(material).currentProgram
-    const shader = program?.fragmentShader
-      ? state.gl.getContext().getShaderSource(program.fragmentShader) ?? ''
-      : ''
+    // Compiled: the renderer built this material's own node graph into a
+    // shader, with no plain NodeMaterial drawn in its place. Carrara's veins
+    // are its colorNode, so a compiled material with one draws them; the
+    // node uniforms carry no names a shader-text search could find.
+    const build = window.__marbleHandBuild(material)
+    const compiled = build.built > 0 && build.substituted === 0
     return {
       mesh: hand.uuid,
       geometry: hand.geometry.uuid,
@@ -1082,8 +1210,8 @@ function readHandMaterial(page) {
       color: `#${material.color.getHexString()}`,
       ior: material.ior,
       specularIntensity: material.specularIntensity,
-      compiled: shader.length > 0,
-      carrara: shader.includes('uMarbleHandVeinStrength') || shader.includes('vMarbleHandPosition'),
+      compiled,
+      carrara: compiled && material.colorNode !== null,
     }
   })
 }
@@ -1099,38 +1227,11 @@ async function selectHandMaterial(page, mode) {
   await nextPaint(page)
 }
 
-function captureMaterialFrame(page) {
-  return page.evaluateHandle(() => new Promise((resolve, reject) => {
-    const renderer = window.__r3f.gl
-    const original = renderer.render
-    const timer = setTimeout(() => {
-      renderer.render = original
-      reject(new Error('no default-framebuffer draw for material sample'))
-    }, 5_000)
-    renderer.render = function (scene, camera) {
-      try {
-        original.call(this, scene, camera)
-        if (this.getRenderTarget() !== null || scene !== window.__r3f.scene) return
-        const context = this.getContext()
-        const width = context.drawingBufferWidth
-        const height = context.drawingBufferHeight
-        const pixels = new Uint8Array(width * height * 4)
-        // The native page is absent from this framebuffer. Read only here,
-        // after its renderer draw, so the comparison measures the hand.
-        context.readPixels(0, 0, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
-        if (context.isContextLost() || width <= 0 || height <= 0 || context.getError() !== context.NO_ERROR) {
-          throw new Error('unreadable material framebuffer')
-        }
-        renderer.render = original
-        clearTimeout(timer)
-        resolve({ width, height, pixels })
-      } catch (error) {
-        renderer.render = original
-        clearTimeout(timer)
-        reject(error)
-      }
-    }
-  }))
+// The native page is absent from this canvas. Reading it right after the
+// overlay's draw makes the comparison measure the hand.
+async function captureMaterialFrame(page) {
+  await installFrameReader(page)
+  return page.evaluateHandle(() => window.__marbleFrames.next('material sample'))
 }
 
 async function verifyThemeReflections(page) {
@@ -1219,28 +1320,21 @@ async function verifyThemeReflections(page) {
  * changed count compares against the previous call, so two calls with an
  * interval between them measure exactly what moved in that interval.
  */
-function tapFrame(page) {
+async function tapFrame(page) {
+  await installFrameReader(page)
   return page.evaluate(() => new Promise((resolve, reject) => {
     const renderer = window.__r3f.gl
-    const original = renderer.render
     const timer = setTimeout(() => {
-      renderer.render = original
+      stop()
       reject(new Error('no default-framebuffer draw for tap sample'))
     }, 5_000)
-    renderer.render = function (scene, camera) {
+    // The bend and the projected tip are read in the same task as the pixels,
+    // so all three describe one drawn frame.
+    const stop = window.__marbleFrames.listen(() => {
+      stop()
+      clearTimeout(timer)
       try {
-        original.call(this, scene, camera)
-        if (this.getRenderTarget() !== null || scene !== window.__r3f.scene) return
-        renderer.render = original
-        clearTimeout(timer)
-        const context = this.getContext()
-        const width = context.drawingBufferWidth
-        const height = context.drawingBufferHeight
-        const pixels = new Uint8Array(width * height * 4)
-        context.readPixels(0, 0, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
-        if (context.isContextLost() || width <= 0 || height <= 0 || context.getError() !== context.NO_ERROR) {
-          throw new Error('unreadable tap framebuffer')
-        }
+        const { width, height, pixels } = window.__marbleFrames.read()
         const previous = window.__marbleTapFrame
         if (previous && (previous.width !== width || previous.height !== height)) {
           throw new Error('tap sample resized')
@@ -1276,11 +1370,9 @@ function tapFrame(page) {
           },
         })
       } catch (error) {
-        renderer.render = original
-        clearTimeout(timer)
         reject(error)
       }
-    }
+    })
   }))
 }
 
@@ -1852,13 +1944,12 @@ async function verifyChromeMode(page, savedSettings) {
 async function measureReflectionRate(page, fps) {
   await setPanelNumber(page, 'reflectionFps', fps)
   const durationMs = 2200
+  await installFrameReader(page)
   const measuring = page.evaluate((durationMs) => new Promise((resolve, reject) => {
     const state = window.__r3f
-    const renderer = state.gl
     const group = state.scene.getObjectByName('marble-hand-pointer')
     const heading = document.querySelector('.mh-app > .mh-sheet h1')
     const previousColor = heading.style.color
-    const original = renderer.render
     const started = performance.now()
     const firstGeneration = state.scene.environment.userData.generation
     const firstSource = state.scene.environment.userData.sourceRevision
@@ -1867,7 +1958,7 @@ async function measureReflectionRate(page, fps) {
     let frames = 0
     let movingBetweenReflections = 0
     const restore = () => {
-      renderer.render = original
+      stop()
       heading.style.color = previousColor
       clearTimeout(timer)
     }
@@ -1875,10 +1966,8 @@ async function measureReflectionRate(page, fps) {
       restore()
       reject(new Error('reflection-rate measurement stopped drawing'))
     }, durationMs + 5000)
-    renderer.render = function (world, camera) {
+    const stop = window.__marbleFrames.listen(() => {
       try {
-        original.call(this, world, camera)
-        if (this.getRenderTarget() !== null || world !== state.scene) return
         const data = state.scene.environment.userData
         frames++
         if (data.generation === previousGeneration && group.position.distanceTo(previousPosition) > 0.01) {
@@ -1904,7 +1993,7 @@ async function measureReflectionRate(page, fps) {
         restore()
         reject(error)
       }
-    }
+    })
   }), durationMs)
   const moving = (async () => {
     const started = Date.now()
@@ -1961,6 +2050,7 @@ async function verifyPanel(port) {
     const origin = `http://127.0.0.1:${port}`
     await browser.defaultBrowserContext().overridePermissions(origin,
       ['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write'])
+    await page.evaluateOnNewDocument(installShaderProbes)
     await page.goto(`${origin}/?scene=marble-hand&framed`, { waitUntil: 'domcontentloaded' })
     await page.waitForSelector(panelSelector, { visible: true, timeout: 30_000 })
     await page.waitForSelector('.mh-app[data-live]', { timeout: 30_000 })
@@ -2334,6 +2424,7 @@ async function run() {
     else void request.continue().catch((error) => problems.push(String(error)))
   })
   const requested = page.waitForRequest((request) => new URL(request.url()).pathname === assetPath)
+  await page.evaluateOnNewDocument(installShaderProbes)
   await page.goto(`http://127.0.0.1:${port}/?scene=marble-hand&framed`, { waitUntil: 'domcontentloaded' })
   await requested
   await page.waitForSelector('.mh-app > .mh-sheet', { visible: true, timeout: 30_000 })

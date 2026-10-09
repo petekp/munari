@@ -1,4 +1,4 @@
-// The poster background — a second WebGL canvas living inside the page.
+// The poster background — a second renderer's canvas living inside the page.
 //
 // The law: the field is drawn, not animated. Nothing here writes to the DOM
 // per frame, so a quiescent page still costs the reflection capture zero
@@ -16,13 +16,15 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { DirectRenderPipeline, WebGPURenderer } from 'three/webgpu'
 import {
   MARBLE_BACKGROUND_REDUCED_TIME,
   marbleBackgroundClock,
 } from './marbleHandBackgroundClock'
-import { createMarbleBackgroundMaterial, setMarbleBackgroundFrame } from './marbleHandBackgroundShaders'
+import { createMarbleBackgroundMaterial, setMarbleBackgroundFrame, type MarbleBackgroundMaterial } from './marbleHandBackgroundNodes'
 import type { MarbleHandThemeId } from './marbleHandThemes'
 import type { MarbleHandTuning } from './marbleHandTuning'
+import { useRendererReplacement } from '../../lib/rendererReplacement'
 import './marbleHandBackground.css'
 
 /** The gate's read-only view of the field: what is drawn, and from when. */
@@ -47,16 +49,16 @@ export interface MarbleBackgroundProbe {
 const FIELD_PIXEL_RATIO = 2
 // A 64px square read back from the middle of the canvas. Wide enough that
 // every theme moves something inside it within one frame, small enough that
-// the pipeline flush it forces stays under a millisecond.
+// the copy it forces stays cheap.
 const HASH_SPAN = 64
 
 interface FieldState {
-  renderer: THREE.WebGLRenderer | null
+  /** Set only once the renderer's init has resolved. */
+  renderer: WebGPURenderer | null
   scene: THREE.Scene
   camera: THREE.OrthographicCamera
-  mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>
-  materials: Map<MarbleHandThemeId, THREE.ShaderMaterial>
-  pixels: Uint8Array
+  mesh: THREE.Mesh<THREE.PlaneGeometry, MarbleBackgroundMaterial>
+  materials: Map<MarbleHandThemeId, MarbleBackgroundMaterial>
   width: number
   height: number
   handle: MarbleBackgroundProbe
@@ -68,7 +70,7 @@ interface FieldState {
 function createFieldState(): FieldState {
   const scene = new THREE.Scene()
   // The quad spans the whole clip volume, so this camera never moves and one
-  // vertex program also serves the page-sized plane in the reflection scene.
+  // material also serves the page-sized plane in the reflection scene.
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), createMarbleBackgroundMaterial('waves'))
   mesh.frustumCulled = false
@@ -79,7 +81,6 @@ function createFieldState(): FieldState {
     camera,
     mesh,
     materials: new Map([['waves', mesh.material]]),
-    pixels: new Uint8Array(HASH_SPAN * HASH_SPAN * 4),
     width: 0,
     height: 0,
     handle: {
@@ -97,7 +98,7 @@ function createFieldState(): FieldState {
   }
 }
 
-function materialFor(state: FieldState, theme: MarbleHandThemeId): THREE.ShaderMaterial {
+function materialFor(state: FieldState, theme: MarbleHandThemeId): MarbleBackgroundMaterial {
   const existing = state.materials.get(theme)
   if (existing) return existing
   const created = createMarbleBackgroundMaterial(theme)
@@ -105,18 +106,50 @@ function materialFor(state: FieldState, theme: MarbleHandThemeId): THREE.ShaderM
   return created
 }
 
-function hashFrame(renderer: THREE.WebGLRenderer, pixels: Uint8Array): number {
-  const context = renderer.getContext()
-  const span = Math.min(HASH_SPAN, context.drawingBufferWidth, context.drawingBufferHeight)
+// A 2D canvas copy of the field's centre. drawImage reads the frame a draw
+// just submitted only within the same task, on WebGPU and WebGL 2 alike,
+// so the hash must follow its draw directly.
+let hashCanvas: CanvasRenderingContext2D | null = null
+
+function hashFrame(canvas: HTMLCanvasElement): number {
+  const span = Math.min(HASH_SPAN, canvas.width, canvas.height)
   if (span <= 0) return 0
-  const x = Math.floor((context.drawingBufferWidth - span) / 2)
-  const y = Math.floor((context.drawingBufferHeight - span) / 2)
-  context.readPixels(x, y, span, span, context.RGBA, context.UNSIGNED_BYTE, pixels)
+  if (!hashCanvas) {
+    const copy = document.createElement('canvas')
+    copy.width = HASH_SPAN
+    copy.height = HASH_SPAN
+    hashCanvas = copy.getContext('2d', { willReadFrequently: true })
+    if (!hashCanvas) throw new Error('The marble field hash needs a 2D canvas.')
+  }
+  const x = Math.floor((canvas.width - span) / 2)
+  const y = Math.floor((canvas.height - span) / 2)
+  hashCanvas.clearRect(0, 0, HASH_SPAN, HASH_SPAN)
+  hashCanvas.drawImage(canvas, x, y, span, span, 0, 0, span, span)
+  const pixels = hashCanvas.getImageData(0, 0, span, span).data
   let hash = 2166136261
   for (let index = 0; index < span * span * 4; index += 3) {
     hash = Math.imul(hash ^ pixels[index], 16777619)
   }
   return hash >>> 0
+}
+
+function applyMotion(state: FieldState, motion: boolean, reducedMotion: boolean): (() => void) | undefined {
+  if (reducedMotion) {
+    // One still, at a second where no field sits on its t = 0 symmetry.
+    marbleBackgroundClock.freezeAt(MARBLE_BACKGROUND_REDUCED_TIME)
+    state.stop()
+    state.draw()
+    return
+  }
+  if (!motion) {
+    marbleBackgroundClock.pause()
+    state.stop()
+    state.draw()
+    return
+  }
+  marbleBackgroundClock.resume()
+  state.start()
+  return () => state.stop()
 }
 
 export function MarbleHandBackground({ theme, motion, reducedMotion, tuning }: {
@@ -128,14 +161,20 @@ export function MarbleHandBackground({ theme, motion, reducedMotion, tuning }: {
   const host = useRef<HTMLDivElement>(null)
   const state = useMemo(createFieldState, [])
   const [degraded, setDegraded] = useState(false)
-  // The mount effect must compile the selected theme's program, not the
-  // default one, or an arrival on any other theme pays for two.
+  const { generation, lost } = useRendererReplacement()
+  // The renderer starts asynchronously and must compile the theme selected
+  // when it is ready, not the default one, or an arrival on any other theme
+  // pays for two.
   const selected = useRef(theme)
   selected.current = theme
   // The draw closure lives inside the mount effect; the ref keeps it on
   // the latest panel values without re-mounting the renderer.
   const tuningRef = useRef(tuning)
   tuningRef.current = tuning
+  // The motion effect runs at mount, before the renderer is ready, so the
+  // ready handler applies whatever motion holds by then.
+  const motionRef = useRef({ motion, reducedMotion })
+  motionRef.current = { motion, reducedMotion }
 
   useLayoutEffect(() => {
     const box = host.current
@@ -146,29 +185,17 @@ export function MarbleHandBackground({ theme, motion, reducedMotion, tuning }: {
     const canvas = document.createElement('canvas')
     canvas.className = 'mh-field'
     box.append(canvas)
-    let renderer: THREE.WebGLRenderer
-    try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, depth: false })
-    } catch {
-      // No WebGL in the page at all. The CSS gradient below is the poster.
-      canvas.remove()
-      setDegraded(true)
-      return
-    }
-    state.renderer = renderer
-    // A fresh canvas is 300×150 whatever the last one measured, so the size
-    // this state remembers cannot be allowed to skip the first resize.
-    state.width = 0
-    state.height = 0
-    state.handle.theme = selected.current
-    state.mesh.material = materialFor(state, selected.current)
-    renderer.setClearColor(0x000000, 1)
+    const renderer = new WebGPURenderer({ canvas, antialias: false, alpha: false, depth: false })
+    // Converts each fragment as it lands on the canvas, the conversion the
+    // field's output assumes (decisions.md #72).
+    const pipeline = new DirectRenderPipeline(renderer)
+    let cancelled = false
 
     let raf = 0
     const draw = () => {
       const time = marbleBackgroundClock.now()
       setMarbleBackgroundFrame(state.mesh.material, time, state.width, state.height, tuningRef.current)
-      renderer.render(state.scene, state.camera)
+      pipeline.render(state.scene, state.camera)
       state.handle.time = time
       state.handle.draws += 1
     }
@@ -178,22 +205,15 @@ export function MarbleHandBackground({ theme, motion, reducedMotion, tuning }: {
       draw()
       state.handle.frames += 1
     }
-    state.draw = draw
-    state.start = () => {
+    const start = () => {
       if (raf || state.handle.contextLost) return
       state.handle.running = true
       frame()
     }
-    state.stop = () => {
+    const stop = () => {
       cancelAnimationFrame(raf)
       raf = 0
       state.handle.running = false
-    }
-    // A composited frame's buffer is gone by the time an instrument can ask
-    // for it. Redraw, then read back the buffer that draw just made.
-    state.handle.sampleHash = () => {
-      draw()
-      return hashFrame(renderer, state.pixels)
     }
 
     const resize = () => {
@@ -208,32 +228,62 @@ export function MarbleHandBackground({ theme, motion, reducedMotion, tuning }: {
       draw()
     }
     const observer = new ResizeObserver(resize)
-    observer.observe(box)
-    resize()
 
-    // A lost context must leave the page intact: the loop stops and the CSS
-    // gradient takes the poster back until the browser restores the context.
-    const lost = (event: Event) => {
-      event.preventDefault()
-      state.handle.contextLost = true
-      setDegraded(true)
-      state.stop()
-    }
-    const restored = () => {
-      state.handle.contextLost = false
-      setDegraded(false)
-      state.width = 0
-      resize()
-    }
-    canvas.addEventListener('webglcontextlost', lost)
-    canvas.addEventListener('webglcontextrestored', restored)
-    window.__marbleBackground = state.handle
+    // render() throws until init resolves, so nothing that draws is
+    // reachable before then.
+    const started = renderer.init()
+    void started.then(
+      () => {
+        if (cancelled) return
+        state.renderer = renderer
+        state.handle.contextLost = false
+        setDegraded(false)
+        // A fresh canvas is 300×150 whatever the last one measured, so the
+        // size this state remembers cannot be allowed to skip the first resize.
+        state.width = 0
+        state.height = 0
+        state.handle.theme = selected.current
+        state.mesh.material = materialFor(state, selected.current)
+        renderer.setClearColor(0x000000, 1)
+        state.draw = draw
+        state.start = start
+        state.stop = stop
+        // A composited frame's buffer is gone by the time an instrument can
+        // ask for it. Redraw, then read back the buffer that draw just made.
+        state.handle.sampleHash = () => {
+          draw()
+          return hashFrame(canvas)
+        }
+        // A lost device must leave the page intact: the loop stops and the
+        // CSS gradient takes the poster back until a replacement starts
+        // (rendererReplacement.ts).
+        const report = renderer.onDeviceLost
+        renderer.onDeviceLost = (info) => {
+          report.call(renderer, info)
+          if (cancelled) return
+          state.handle.contextLost = true
+          setDegraded(true)
+          state.stop()
+          lost(generation)
+        }
+        observer.observe(box)
+        resize()
+        window.__marbleBackground = state.handle
+        applyMotion(state, motionRef.current.motion, motionRef.current.reducedMotion)
+      },
+      () => {
+        // Neither WebGPU nor WebGL 2 in the page. The CSS gradient below is
+        // the poster.
+        if (cancelled) return
+        canvas.remove()
+        setDegraded(true)
+      },
+    )
 
     return () => {
+      cancelled = true
       state.stop()
       observer.disconnect()
-      canvas.removeEventListener('webglcontextlost', lost)
-      canvas.removeEventListener('webglcontextrestored', restored)
       if (window.__marbleBackground === state.handle) window.__marbleBackground = undefined
       state.draw = () => {}
       state.start = () => {}
@@ -242,11 +292,16 @@ export function MarbleHandBackground({ theme, motion, reducedMotion, tuning }: {
       for (const material of state.materials.values()) material.dispose()
       state.materials.clear()
       state.renderer = null
-      renderer.dispose()
-      renderer.forceContextLoss()
+      pipeline.dispose()
+      // dispose() skips the backend while init is pending, so a renderer
+      // unmounted mid-init would keep its device or context. After a failed
+      // init, Three 0.186's dispose() leaves an unhandled rejection, so that
+      // renderer is left as it is.
+      const dispose = () => renderer.dispose()
+      void started.then(dispose, () => {})
       canvas.remove()
     }
-  }, [state])
+  }, [state, generation, lost])
 
   // A paused or reduced-motion field still has to show a slider's change.
   useEffect(() => {
@@ -262,22 +317,7 @@ export function MarbleHandBackground({ theme, motion, reducedMotion, tuning }: {
 
   useEffect(() => {
     if (!state.renderer) return
-    if (reducedMotion) {
-      // One still, at a second where no field sits on its t = 0 symmetry.
-      marbleBackgroundClock.freezeAt(MARBLE_BACKGROUND_REDUCED_TIME)
-      state.stop()
-      state.draw()
-      return
-    }
-    if (!motion) {
-      marbleBackgroundClock.pause()
-      state.stop()
-      state.draw()
-      return
-    }
-    marbleBackgroundClock.resume()
-    state.start()
-    return () => state.stop()
+    return applyMotion(state, motion, reducedMotion)
   }, [state, motion, reducedMotion])
 
   return <div ref={host} className="mh-background" data-visualization={theme} data-fallback={degraded || undefined} />

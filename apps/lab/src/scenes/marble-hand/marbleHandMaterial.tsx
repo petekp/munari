@@ -7,97 +7,92 @@
 //
 // The fault this prevents, 2026-08-30: an early shader-only sketch had a
 // stronger vein pattern and no contact with the page. The silhouette read
-// as an illustration. MeshPhysicalMaterial keeps the sculpture in the room;
-// the small compile patch only supplies continuous object-space veining.
+// as an illustration. MeshPhysicalNodeMaterial keeps the sculpture in the
+// room; its colour node only supplies continuous object-space veining.
 //
-// Ownership: this module owns stone appearance. Geometry and pointer pose
-// stay with their own modules. Both finishes and the shadow pass carry the
-// idle tap's vertex patch, which marbleHandTapShaders.ts owns.
+// Ownership: this module owns stone appearance and the hand's tone map.
+// Geometry and pointer pose stay with their own modules. Both finishes and
+// the shadow pass carry the idle tap's bend, which marbleHandTapNodes.ts
+// owns.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useMemo } from 'react'
 import * as THREE from 'three'
-import type { MarbleHandTuning } from './marbleHandTuning'
+import { MeshPhysicalNodeMaterial } from 'three/webgpu'
 import {
-  MARBLE_HAND_TAP_PROGRAM_KEY,
-  addMarbleHandTap,
-  type MarbleHandTapUniforms,
-} from './marbleHandTapShaders'
-
-const CARRARA_KEY = () => `munari-marble-hand-carrara-v2-${MARBLE_HAND_TAP_PROGRAM_KEY}`
-const CHROME_KEY = () => `munari-marble-hand-chrome-${MARBLE_HAND_TAP_PROGRAM_KEY}`
-const DEPTH_KEY = () => `munari-marble-hand-depth-${MARBLE_HAND_TAP_PROGRAM_KEY}`
-
-function addCarraraVeins(shader: THREE.WebGLProgramParametersWithUniforms) {
-  shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', '#include <common>\nvarying vec3 vMarbleHandPosition;')
-    .replace(
-      '#include <begin_vertex>',
-      '#include <begin_vertex>\n  vMarbleHandPosition = position;',
-    )
-
-  shader.fragmentShader = shader.fragmentShader
-    .replace('#include <common>', `#include <common>
-varying vec3 vMarbleHandPosition;
-uniform vec3 uMarbleHandVeinColor;
-uniform float uMarbleHandVeinStrength;
-uniform float uMarbleHandVeinScale;`)
-    .replace(
-      '#include <map_fragment>',
-      `#include <map_fragment>
-  vec3 mhp = vMarbleHandPosition * uMarbleHandVeinScale;
-  float mhWarp = sin(mhp.x * 0.031) * 1.65 + sin((mhp.x + mhp.z * 2.0) * 0.013) * 2.2;
-  float mhWide = sin(mhp.y * 0.092 + mhWarp);
-  float mhFine = sin(mhp.y * 0.19 + mhp.x * 0.027 + sin(mhp.z * 0.23));
-  float mhVein = pow(max(0.0, 1.0 - abs(mhWide)), 10.0) * 0.48;
-  mhVein += pow(max(0.0, 1.0 - abs(mhFine)), 22.0) * 0.22;
-  float mhCloud = 0.965 + 0.035 * sin(mhp.x * 0.018) * sin(mhp.y * 0.027 + mhp.z * 0.11);
-  diffuseColor.rgb *= mhCloud;
-  diffuseColor.rgb = mix(diffuseColor.rgb, uMarbleHandVeinColor, clamp(mhVein * uMarbleHandVeinStrength, 0.0, 0.54));`,
-    )
-}
+  Fn,
+  clamp,
+  float,
+  materialColor,
+  mix,
+  output,
+  positionGeometry,
+  sin,
+  toneMapping,
+  toneMappingExposure,
+  transformNormalToView,
+  uniform,
+  varying,
+  vec4,
+} from 'three/tsl'
+import type { MarbleHandTuning } from './marbleHandTuning'
+import { createMarbleHandTapNodes, type MarbleHandTapUniforms } from './marbleHandTapNodes'
 
 /**
- * The hand's shadow caster. Three's default depth material has no idea the
- * fingers move, so a tapping hand would drop a still shadow without this.
+ * A physical hand material carrying the tap bend and the scene's tone map.
+ * SurfaceCanvas renders with NoToneMapping so HTML keeps its colours; the
+ * hand applies the ACES curve the renderer applied on WebGL, at the
+ * renderer's `toneMappingExposure`, which MarbleLighting writes.
  */
-export function useMarbleHandDepthMaterial(tap: MarbleHandTapUniforms): THREE.MeshDepthMaterial {
-  const material = useMemo(() => {
-    const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking })
-    depth.name = 'marble-hand-tap-depth'
-    depth.onBeforeCompile = (shader) => addMarbleHandTap(shader, tap)
-    depth.customProgramCacheKey = DEPTH_KEY
-    return depth
-  }, [tap])
+function createHandMaterial(name: string, tap: MarbleHandTapUniforms): MeshPhysicalNodeMaterial {
+  const material = new MeshPhysicalNodeMaterial({ name })
+  const bent = createMarbleHandTapNodes(tap)
+  material.positionNode = bent.position
+  material.normalNode = varying(transformNormalToView(bent.normal)).normalize()
+  material.outputNode = toneMapping(THREE.ACESFilmicToneMapping, toneMappingExposure, output)
+  return material
+}
+
+function useDisposed<T extends THREE.Material>(material: T): T {
   useEffect(() => () => material.dispose(), [material])
   return material
 }
 
 function CarraraMaterial({ tuning, tap }: { tuning: MarbleHandTuning; tap: MarbleHandTapUniforms }) {
-  // The compiled shader owns these same uniform cells. Passing a fresh
-  // uniforms bag through JSX can leave the live program reading old cells.
-  const uniforms = useMemo(() => ({
-    uMarbleHandVeinColor: { value: new THREE.Color() },
-    uMarbleHandVeinStrength: { value: 1 },
-    uMarbleHandVeinScale: { value: 1 },
+  const veins = useMemo(() => ({
+    color: uniform(new THREE.Color()),
+    strength: uniform(1),
+    scale: uniform(1),
   }), [])
+  const material = useDisposed(useMemo(() => {
+    const stone = createHandMaterial('marble-hand-carrara', tap)
+    // Veins read the rest position, so the stone's pattern stays welded to
+    // the rest pose and a tapping finger does not drag its marking along.
+    const rest = varying(positionGeometry)
+    stone.colorNode = Fn(() => {
+      const p = rest.mul(veins.scale)
+      const warp = sin(p.x.mul(0.031)).mul(1.65).add(sin(p.x.add(p.z.mul(2)).mul(0.013)).mul(2.2))
+      const wide = sin(p.y.mul(0.092).add(warp))
+      const fine = sin(p.y.mul(0.19).add(p.x.mul(0.027)).add(sin(p.z.mul(0.23))))
+      const vein = float(1).sub(wide.abs()).max(0).pow(10).mul(0.48)
+        .add(float(1).sub(fine.abs()).max(0).pow(22).mul(0.22))
+      const cloud = sin(p.x.mul(0.018)).mul(sin(p.y.mul(0.027).add(p.z.mul(0.11)))).mul(0.035).add(0.965)
+      const stoneColor = materialColor.mul(cloud)
+      return vec4(mix(stoneColor, veins.color, clamp(vein.mul(veins.strength), 0, 0.54)), 1)
+    })()
+    return stone
+  }, [tap, veins]))
   useLayoutEffect(() => {
     // The original shader used raw RGB literals. Keep that colour space so
     // the new default picker value preserves the reviewed stone treatment.
-    uniforms.uMarbleHandVeinColor.value.set(tuning.veinColor).convertLinearToSRGB()
-    uniforms.uMarbleHandVeinStrength.value = tuning.veinStrength
-    uniforms.uMarbleHandVeinScale.value = tuning.veinScale
-  }, [tuning.veinColor, tuning.veinStrength, tuning.veinScale, uniforms])
-  const compile = useCallback((shader: THREE.WebGLProgramParametersWithUniforms) => {
-    Object.assign(shader.uniforms, uniforms)
-    // Veins first: it reads `position`, so the stone's pattern stays welded
-    // to the rest pose and a tapping finger does not drag its marking along.
-    addCarraraVeins(shader)
-    addMarbleHandTap(shader, tap)
-  }, [tap, uniforms])
+    veins.color.value.set(tuning.veinColor).convertLinearToSRGB()
+    veins.strength.value = tuning.veinStrength
+    veins.scale.value = tuning.veinScale
+  }, [tuning.veinColor, tuning.veinStrength, tuning.veinScale, veins])
 
   return (
-    <meshPhysicalMaterial
-      name="marble-hand-carrara"
+    <primitive
+      object={material}
+      attach="material"
       color={tuning.stoneColor}
       roughness={tuning.roughness}
       metalness={0}
@@ -106,26 +101,21 @@ function CarraraMaterial({ tuning, tap }: { tuning: MarbleHandTuning; tap: Marbl
       envMapIntensity={tuning.envMapIntensity}
       ior={tuning.ior}
       specularIntensity={tuning.specularIntensity}
-      onBeforeCompile={compile}
-      customProgramCacheKey={CARRARA_KEY}
     />
   )
 }
 
 function ChromeMaterial({ tuning, tap }: { tuning: MarbleHandTuning; tap: MarbleHandTapUniforms }) {
-  const compile = useCallback((shader: THREE.WebGLProgramParametersWithUniforms) => {
-    addMarbleHandTap(shader, tap)
-  }, [tap])
+  const material = useDisposed(useMemo(() => createHandMaterial('marble-hand-mirrored-chrome', tap), [tap]))
   return (
-    <meshPhysicalMaterial
-      name="marble-hand-mirrored-chrome"
+    <primitive
+      object={material}
+      attach="material"
       color={tuning.chromeTint}
       metalness={1}
       roughness={tuning.chromeRoughness}
       clearcoat={0}
       envMapIntensity={tuning.chromeReflectionIntensity}
-      onBeforeCompile={compile}
-      customProgramCacheKey={CHROME_KEY}
     />
   )
 }
@@ -134,9 +124,9 @@ export function MarbleHandMaterial({ tuning, tap }: {
   tuning: MarbleHandTuning
   tap: MarbleHandTapUniforms
 }) {
-  // Distinct material components remove the Carrara compile patch entirely.
-  // Merely changing metalness would leave the stone's veins and cloudy tint
-  // in the chrome program. The hand mesh, geometry and pointer pose persist.
+  // Distinct material components keep the Carrara colour node out of the
+  // chrome material. Merely changing metalness would leave the stone's veins
+  // and cloudy tint on chrome. The hand mesh, geometry and pointer pose persist.
   return tuning.materialMode === 'chrome'
     ? <ChromeMaterial tuning={tuning} tap={tap} />
     : <CarraraMaterial tuning={tuning} tap={tap} />
