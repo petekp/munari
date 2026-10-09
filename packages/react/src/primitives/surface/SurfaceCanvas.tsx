@@ -146,7 +146,13 @@ function createSurfaceRenderer(
     const limit = parameters?.forceWebGL ? null : await adapterTextureLimit(powerPreference)
     const requiredLimits = limit === null ? parameters?.requiredLimits : { maxTextureDimension2D: limit, ...parameters?.requiredLimits }
     const renderer = new WebGPURenderer({ antialias, alpha, ...parameters, powerPreference, requiredLimits, canvas })
-    await renderer.init()
+    try {
+      await renderer.init()
+    } catch (cause) {
+      // Three reaches its WebGL 2 fallback before rejecting, and a missing
+      // context surfaces there as a null dereference.
+      throw new Error('[munari] SurfaceCanvas could not start WebGPU or its WebGL 2 fallback', { cause })
+    }
     const context = renderer.getContext()
     textureLimits.set(
       renderer,
