@@ -136,32 +136,52 @@ async function adapterTextureLimit(powerPreference: GPUPowerPreference | undefin
   return adapter?.limits.maxTextureDimension2D ?? null
 }
 
+// Fiber 9.7.0 calls the `gl` factory on every `configure()` until its first
+// call resolves, and the Canvas configures on each render. Two renderers on
+// one canvas each size it, and the one Fiber keeps can miss its setSize: Genie
+// then drew 300×150 buffers into a 1200×820 canvas (gate:degraded, 2026-10-09;
+// two devices configured that canvas). Keyed by canvas, not by factory,
+// because a new `gl` prop object makes a new factory.
+const renderers = new WeakMap<HTMLCanvasElement, Promise<WebGPURenderer>>()
+
 function createSurfaceRenderer(
   parameters: Omit<WebGPURendererParameters, 'canvas'> | undefined,
 ): (defaults: FiberRendererDefaults) => Promise<WebGPURenderer> {
-  return async ({ canvas, antialias, alpha }) => {
+  return (defaults) => {
     // Fiber types its canvas with its own OffscreenCanvas stand-in.
-    if (!(canvas instanceof HTMLCanvasElement)) throw new Error('[munari] SurfaceCanvas needs a DOM canvas')
-    const powerPreference = parameters?.powerPreference ?? 'high-performance'
-    const limit = parameters?.forceWebGL ? null : await adapterTextureLimit(powerPreference)
-    const requiredLimits = limit === null ? parameters?.requiredLimits : { maxTextureDimension2D: limit, ...parameters?.requiredLimits }
-    const renderer = new WebGPURenderer({ antialias, alpha, ...parameters, powerPreference, requiredLimits, canvas })
-    try {
-      await renderer.init()
-    } catch (cause) {
-      // Three reaches its WebGL 2 fallback before rejecting, and a missing
-      // context surfaces there as a null dereference.
-      throw new Error('[munari] SurfaceCanvas could not start WebGPU or its WebGL 2 fallback', { cause })
-    }
-    const context = renderer.getContext()
-    textureLimits.set(
-      renderer,
-      context instanceof WebGL2RenderingContext
-        ? context.getParameter(context.MAX_TEXTURE_SIZE)
-        : requiredLimits?.maxTextureDimension2D ?? WEBGPU_DEFAULT_TEXTURE_LIMIT,
-    )
-    return renderer
+    if (!(defaults.canvas instanceof HTMLCanvasElement)) return Promise.reject(new Error('[munari] SurfaceCanvas needs a DOM canvas'))
+    const existing = renderers.get(defaults.canvas)
+    if (existing) return existing
+    const created = startSurfaceRenderer(parameters, defaults.canvas, defaults)
+    renderers.set(defaults.canvas, created)
+    return created
   }
+}
+
+async function startSurfaceRenderer(
+  parameters: Omit<WebGPURendererParameters, 'canvas'> | undefined,
+  canvas: HTMLCanvasElement,
+  { antialias, alpha }: FiberRendererDefaults,
+): Promise<WebGPURenderer> {
+  const powerPreference = parameters?.powerPreference ?? 'high-performance'
+  const limit = parameters?.forceWebGL ? null : await adapterTextureLimit(powerPreference)
+  const requiredLimits = limit === null ? parameters?.requiredLimits : { maxTextureDimension2D: limit, ...parameters?.requiredLimits }
+  const renderer = new WebGPURenderer({ antialias, alpha, ...parameters, powerPreference, requiredLimits, canvas })
+  try {
+    await renderer.init()
+  } catch (cause) {
+    // Three reaches its WebGL 2 fallback before rejecting, and a missing
+    // context surfaces there as a null dereference.
+    throw new Error('[munari] SurfaceCanvas could not start WebGPU or its WebGL 2 fallback', { cause })
+  }
+  const context = renderer.getContext()
+  textureLimits.set(
+    renderer,
+    context instanceof WebGL2RenderingContext
+      ? context.getParameter(context.MAX_TEXTURE_SIZE)
+      : requiredLimits?.maxTextureDimension2D ?? WEBGPU_DEFAULT_TEXTURE_LIMIT,
+  )
+  return renderer
 }
 
 // The WebGPU spec's default maxTextureDimension2D, granted when none is requested.
@@ -446,7 +466,7 @@ export function SurfaceCanvas({
   const [displayScale, setDisplayScale] = useState(1)
   const nativeDpr=useSurfaceDevicePixelRatio()
   const drawingDpr = surfaceCanvasPixelRatio(dpr, nativeDpr, displayScale)
-  // Fiber calls this factory once per Canvas mount and ignores a later
+  // A Canvas mount keeps the first renderer it resolves and ignores a later
   // `gl`, so a new renderer after a loss is a new Canvas mount.
   const renderer = useMemo(() => createSurfaceRenderer(gl), [gl])
   const [rendererMount, setRendererMount] = useState(0)
