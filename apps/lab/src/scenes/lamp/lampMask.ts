@@ -10,7 +10,7 @@
 //
 // Ownership: this module owns the offscreen canvas and reading the
 // headline's rendered metrics into it. Lamp.tsx owns when to rebuild it and
-// how its pixels reach the shader. lampShaders.ts owns mapping a shadow's
+// how its pixels reach the shader. lampNodes.ts owns mapping a shadow's
 // throw distance onto these four levels and mixing between them.
 
 // Room past each line's own box for a descender or diacritic, and for the
@@ -19,7 +19,7 @@ const MASK_MARGIN = 40
 const MAX_PIXEL_RATIO = 2
 // Canvas-space blur radii for the four packed channels (R, G, B, A —
 // sharp, then three widening pre-blurs), sized to span the shader's own
-// disc-tap radius range (MIN_PENUMBRA..MAX_PENUMBRA in lampShaders.ts) so
+// disc-tap radius range (MIN_PENUMBRA..MAX_PENUMBRA in lampNodes.ts) so
 // a fragment sampling any one of these channels sees softness consistent
 // with the taps scattering around it at that same throw. Four levels (not
 // two) is what turns the shadow's penumbra from a single visible step

@@ -7,20 +7,24 @@
 // renderer, camera, scene, or canvas — Lamp.tsx drives all of those and
 // repositions this group's root to the lamp's anchor point every frame. It
 // also owns no environment map or tone mapping — Lamp.tsx's PMREMGenerator
-// output is what makes the MeshPhysicalMaterials below read as metal and
-// glass rather than flat color; this module only sets envMapIntensity.
+// output is what makes the MeshPhysicalNodeMaterials below read as metal and
+// glass rather than flat color, and lampNodes.ts applies their tone mapping;
+// this module only sets envMapIntensity.
 //
 // Ownership: this module owns the lantern's geometry, materials, flame
 // light, and flicker animation. Lamp.tsx owns the scene, camera, environment
-// map, and when update()/dispose() run. lampShaders.ts imports
-// LANTERN_FLAME_HEIGHT so the 2D shadow shader's light height can never
-// disagree with where the flame actually sits in this model.
+// map, and when update()/dispose() run. lampNodes.ts owns the flame's
+// material. lampNodes.ts imports LANTERN_FLAME_HEIGHT so the 2D shadow
+// shader's light height can never disagree with where the flame actually
+// sits in this model.
 
 import * as THREE from 'three'
+import { MeshPhysicalNodeMaterial } from 'three/webgpu'
+import { applyLanternToneMapping, createLampFlameMaterial } from './lampNodes'
 
 // The flame's local height once the model is stood upright (see
 // createLampLantern's rotation below) — also the "H" the 2D shadow shader
-// projects shadows with. lampShaders.ts imports this rather than
+// projects shadows with. lampNodes.ts imports this rather than
 // duplicating the number, so the projected shadow and the rendered flame
 // can't drift apart. Mid-globe: the globe spans CHAMBER_BASE_Y to
 // CHAMBER_BASE_Y + GLOBE_HEIGHT, and the flame sits at its vertical center
@@ -244,105 +248,6 @@ function buildHandleCurve(domeBaseY: number): THREE.CatmullRomCurve3 {
   return new THREE.CatmullRomCurve3(points)
 }
 
-// The flame quad ignores its own object's rotation and instead rebuilds
-// itself in the camera's own right/up basis every vertex, extracted from
-// the standard view-matrix rows — the textbook camera-facing billboard.
-// Without this the quad inherits the model's 68deg tilt like any other
-// mesh and foreshortens into a flat ellipse, which is why the previous
-// (unbillboarded) flame read as a dead decal rather than fire (round 4,
-// Pete, 2026-09-01).
-const FLAME_VERTEX = /* glsl */`
-varying vec2 vUv;
-
-void main() {
-  vUv = uv;
-  vec3 cameraRight = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
-  vec3 cameraUp = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
-  vec4 worldAnchor = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-  vec3 worldPos = worldAnchor.xyz + cameraRight * position.x + cameraUp * position.y;
-  gl_Position = projectionMatrix * viewMatrix * vec4(worldPos, 1.0);
-}
-`
-
-// Light, not paint: additive blending (see the material below) means every
-// pixel this shader writes only adds brightness over the glass and page
-// behind it, so a soft, low-alpha edge reads as a glow's own falloff
-// instead of an anti-aliased sticker outline (round 6: "a real flame is
-// light, not paint" — the previous opaque hard-edge teardrop is what Pete's
-// screenshot called "bad clipart").
-const FLAME_FRAGMENT = /* glsl */`
-uniform float uTime;
-uniform float uFlicker;
-uniform float uCoreBrightness;
-varying vec2 vUv;
-
-// Same three-frequency mix as flickerSignal() in lampLantern.ts, at two
-// more phases, so the tip's lean and its height stretch don't pulse in
-// lockstep with each other or with the brightness wobble driving uFlicker.
-float flicker(float phase) {
-  float t = uTime + phase;
-  return sin(t * 6.2831853 * 1.7) * 0.5
-       + sin(t * 6.2831853 * 2.9) * 0.3
-       + sin(t * 6.2831853 * 0.4) * 0.2;
-}
-
-// Cheap value noise (no texture fetch) used only to perturb the envelope's
-// own edge — a hand-width hash is enough to break the silhouette's
-// perfect symmetry without a gradient-noise library.
-float hash(float n) {
-  return fract(sin(n * 127.1) * 43758.5453);
-}
-
-void main() {
-  float stretch = 1.0 + flicker(0.37) * 0.12;
-  float y = clamp(vUv.y / stretch, 0.0, 1.0);
-  float lean = flicker(0.0) * 0.16;
-  float x = (vUv.x - 0.5) - lean * y * y;
-
-  // Wide near the wick, tapering to a point at the tip — a teardrop that
-  // wraps the wick region instead of pinching to a point at both ends the
-  // way a symmetric sin(y*pi) curve does. Compressing y before the sin
-  // pulls the belly down near the base, so the envelope opens up fast
-  // right where it meets the burner cone (round 6). A slow, low-amplitude
-  // wobble riding on the envelope (not on the hard edge test below) keeps
-  // the outline visibly alive rather than a fixed geometric curve.
-  float wobble = (hash(floor(y * 9.0) + floor(uTime * 3.0)) - 0.5) * 0.05;
-  float shaped = pow(y, 0.4);
-  float envelope = pow(sin(clamp(shaped, 0.0, 1.0) * 3.14159265), 0.6) * (1.0 + wobble);
-  float halfWidth = 0.24 * envelope + 0.015;
-  float edge = abs(x) / max(halfWidth, 0.001);
-  // A wide smoothstep span (not a near-binary one) is the feathered edge
-  // itself — several px of falloff at this quad's own size, replacing the
-  // previous 0.6-1.05 near-hard cutoff.
-  float body = 1.0 - smoothstep(0.25, 1.15, edge);
-  // Base and tip both fade rather than clip: the wick end blends into the
-  // burner instead of the quad's bottom edge showing as a straight line
-  // (the "visible gap above the cone" Pete's screenshot showed came from
-  // the old body*tipFade cutting sharply right at the quad's own edges).
-  float baseFade = smoothstep(0.0, 0.06, y);
-  float tipFade = 1.0 - smoothstep(0.85, 1.05, y);
-  float alpha = body * baseFade * tipFade;
-  if (alpha <= 0.003) discard;
-
-  // Bottom to top: a dim, blue-tinged base at the wick, a small bright
-  // white-yellow core just above center, yellow through the body, and a
-  // thin deep-orange rim/tip — most of the envelope is soft gradient, not
-  // core (round 6: "the core should be small relative to the envelope").
-  float heat = clamp(1.0 - y * 0.9 - edge * 0.55, 0.0, 1.0);
-  vec3 baseColor = vec3(0.22, 0.32, 0.55);
-  vec3 rimColor = vec3(0.80, 0.29, 0.07);
-  vec3 midColor = vec3(1.0, 0.74, 0.24);
-  vec3 coreColor = vec3(1.0, 0.97, 0.86);
-  vec3 color = mix(rimColor, midColor, smoothstep(0.0, 0.55, heat));
-  color = mix(color, coreColor, smoothstep(0.72, 0.97, heat));
-  // The base tint only matters right at the wick, where y and heat are
-  // both still low — elsewhere this mix collapses to color unchanged.
-  color = mix(baseColor, color, smoothstep(0.0, 0.18, y));
-
-  gl_FragColor = vec4(color * uFlicker * alpha * uCoreBrightness, alpha * uFlicker);
-}
-`
-
 // The tuning fields this module actually reads, picked out of the full
 // LampTuning bag by Lamp.tsx each frame (lampTuning.ts owns the values and
 // their ranges; this module only owns what each does to the model).
@@ -371,28 +276,28 @@ export function createLampLantern(): LampLantern {
   const geometries: THREE.BufferGeometry[] = []
   const materials: THREE.Material[] = []
 
-  const capMaterial = new THREE.MeshPhysicalMaterial({
+  const capMaterial = new MeshPhysicalNodeMaterial({
     color: CAP_METAL_COLOR,
     metalness: METAL_METALNESS,
     roughness: METAL_ROUGHNESS,
   })
-  const footMaterial = new THREE.MeshPhysicalMaterial({
+  const footMaterial = new MeshPhysicalNodeMaterial({
     color: FOOT_METAL_COLOR,
     metalness: METAL_METALNESS - 0.03,
     roughness: METAL_ROUGHNESS + 0.08,
   })
-  const mullionMaterial = new THREE.MeshPhysicalMaterial({
+  const mullionMaterial = new MeshPhysicalNodeMaterial({
     color: MULLION_METAL_COLOR,
     metalness: METAL_METALNESS + 0.02,
     roughness: METAL_ROUGHNESS - 0.1,
   })
-  const handleMaterial = new THREE.MeshPhysicalMaterial({
+  const handleMaterial = new MeshPhysicalNodeMaterial({
     color: HANDLE_METAL_COLOR,
     metalness: METAL_METALNESS,
     roughness: METAL_ROUGHNESS - 0.15,
   })
-  const ventMaterial = new THREE.MeshPhysicalMaterial({ color: VENT_COLOR, metalness: 0.4, roughness: 0.75 })
-  const glass = new THREE.MeshPhysicalMaterial({
+  const ventMaterial = new MeshPhysicalNodeMaterial({ color: VENT_COLOR, metalness: 0.4, roughness: 0.75 })
+  const glass = new MeshPhysicalNodeMaterial({
     color: GLASS_COLOR,
     transparent: true,
     opacity: GLASS_OPACITY,
@@ -405,6 +310,9 @@ export function createLampLantern(): LampLantern {
     emissiveIntensity: 0,
   })
   materials.push(capMaterial, footMaterial, mullionMaterial, handleMaterial, ventMaterial, glass)
+  for (const material of [capMaterial, footMaterial, mullionMaterial, handleMaterial, ventMaterial, glass]) {
+    applyLanternToneMapping(material)
+  }
 
   // Built Y-up, three.js's natural primitive orientation; the whole thing
   // is stood upright at the end by rotating the model group.
@@ -508,18 +416,11 @@ export function createLampLantern(): LampLantern {
   // wick (the quad's bottom edge), not its vertical center.
   flameGeo.translate(0, FLAME_QUAD_HEIGHT / 2, 0)
   geometries.push(flameGeo)
-  const flameMaterial = new THREE.ShaderMaterial({
-    vertexShader: FLAME_VERTEX,
-    fragmentShader: FLAME_FRAGMENT,
-    uniforms: { uTime: { value: 0 }, uFlicker: { value: 1 }, uCoreBrightness: { value: 1 } },
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  })
-  materials.push(flameMaterial)
-  const flameMesh = new THREE.Mesh(flameGeo, flameMaterial)
+  const flame = createLampFlameMaterial()
+  materials.push(flame.material)
+  const flameMesh = new THREE.Mesh(flameGeo, flame.material)
   flameMesh.position.y = LANTERN_FLAME_HEIGHT
-  // The vertex shader rebuilds this quad in the camera's own basis every
+  // The flame's vertex stage rebuilds this quad in the camera's own basis every
   // frame, so its object-space bounding volume (what frustumCulled tests
   // against) doesn't describe where it actually draws.
   flameMesh.frustumCulled = false
@@ -562,16 +463,16 @@ export function createLampLantern(): LampLantern {
   function update(elapsedMs: number, reducedMotion: boolean, tuning: LanternTuning) {
     // flickerRate scales the clock itself (not just the signal it drives),
     // so the flame shader's own sway/stretch — which runs the same
-    // three-frequency mix off uTime — speeds up and slows down together
+    // three-frequency mix off its time value — speeds up and slows down together
     // with this brightness wobble instead of drifting out of phase with it.
     const timeSec = reducedMotion ? FROZEN_TIME_SEC : (elapsedMs / 1000) * tuning.flickerRate
     flickerIntensity = reducedMotion
       ? 1
       : 1 + flickerSignal(timeSec, FLICKER_BRIGHTNESS_PHASE_SEC) * tuning.flickerAmplitude
 
-    flameMaterial.uniforms.uTime.value = timeSec
-    flameMaterial.uniforms.uFlicker.value = flickerIntensity
-    flameMaterial.uniforms.uCoreBrightness.value = tuning.coreBrightness
+    flame.time.value = timeSec
+    flame.flicker.value = flickerIntensity
+    flame.coreBrightness.value = tuning.coreBrightness
     flameMesh.scale.setScalar(tuning.flameScale)
     // Anchored at the wick (see the geometry translate above), so scaling
     // and repositioning both leave the flame's base sitting wherever the

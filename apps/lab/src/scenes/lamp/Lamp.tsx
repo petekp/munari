@@ -8,19 +8,27 @@
 // so it lives in a second, separate canvas layered above the multiply one.
 //
 // Ownership: this component owns the DOM article, the lamp's anchor point,
-// both canvases' renderers, and the shared draw loop. lampShaders.ts owns
-// the 2D light/shadow math; lampMask.ts owns reading the headline into ink;
+// both canvases' renderers, and the shared draw loop. lampNodes.ts owns
+// the 2D light/shadow math and the materials' shading; lampMask.ts owns reading the headline into ink;
 // lampLantern.ts owns the 3D lantern model and its flicker.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { DirectRenderPipeline, PMREMGenerator, WebGPURenderer } from 'three/webgpu'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { buildHeadlineMask, type HeadlineMask } from './lampMask'
-import { createLampLightMaterial, setLampLightFrame, setLampMaskFrame, setLampTuningUniforms } from './lampShaders'
+import {
+  createLampLightMaterial,
+  setLampLightFrame,
+  setLampMaskFrame,
+  setLampTuningUniforms,
+  type LampLight,
+} from './lampNodes'
 import { createLampLantern, LANTERN_TOTAL_HEIGHT, type LampLantern } from './lampLantern'
 import { lampTuning, type LampTuning } from './lampTuning'
 import { lampDriftOffset } from './lampDriftLaw'
 import { LampTweaks } from './lampTweaks'
+import { useRendererReplacement } from '../../lib/rendererReplacement'
 import './lamp.css'
 
 const PIXEL_RATIO_CAP = 2
@@ -53,10 +61,11 @@ interface Point {
 }
 
 interface LampState {
-  renderer: THREE.WebGLRenderer | null
+  renderer: WebGPURenderer | null
   scene: THREE.Scene
   camera: THREE.OrthographicCamera
-  mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>
+  light: LampLight
+  mesh: THREE.Mesh<THREE.PlaneGeometry, LampLight['material']>
   width: number
   height: number
   maskTexture: THREE.CanvasTexture | null
@@ -70,13 +79,15 @@ function createLampState(): LampState {
   const scene = new THREE.Scene()
   // The quad spans the whole clip volume; this camera never moves.
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), createLampLightMaterial())
+  const light = createLampLightMaterial()
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), light.material)
   mesh.frustumCulled = false
   scene.add(mesh)
   return {
     renderer: null,
     scene,
     camera,
+    light,
     mesh,
     width: 0,
     height: 0,
@@ -88,13 +99,13 @@ function createLampState(): LampState {
 }
 
 interface LanternState {
-  renderer: THREE.WebGLRenderer | null
+  renderer: WebGPURenderer | null
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   lantern: LampLantern
   width: number
   height: number
-  /** Renders the frame and returns the flame's own projected screen position, for the shadow shader's uLampPos. */
+  /** Renders the frame and returns the flame's own projected screen position, for the shadow shader's lampPos. */
   draw: (lamp: Point, tuning: LampTuning) => Point
 }
 
@@ -104,7 +115,7 @@ function createLanternState(): LanternState {
   const lantern = createLampLantern()
   scene.add(lantern.group)
   // The PMREMGenerator/RoomEnvironment map (set on scene.environment once
-  // the renderer exists, see the mount effect below) is what now gives the
+  // the renderer has started, see the mount effect below) is what now gives the
   // blackened-steel MeshPhysicalMaterials their directional highlights and
   // makes them read as metal rather than flat color — this hemisphere is
   // only a very dim, cool fill so the underside of the model (which the
@@ -203,6 +214,8 @@ export function LampApp() {
   const state2 = useMemo(createLanternState, [])
   const [degraded, setDegraded] = useState(false)
   const [lanternDegraded, setLanternDegraded] = useState(false)
+  // A GPU process crash loses both canvases at once, so they restart together.
+  const { generation, lost } = useRendererReplacement()
   const reducedMotion = useReducedMotion()
   const reducedMotionRef = useRef(reducedMotion)
   reducedMotionRef.current = reducedMotion
@@ -220,6 +233,10 @@ export function LampApp() {
   // render to reach the shaders or the fixture's own transform.
   const anchor = useRef<Point>({ x: 160, y: 160 })
   const placed = useRef(false)
+  // Where the headline puts the lamp, kept until the first drag. The lantern
+  // renderer starts asynchronously, so the first placement clamps against
+  // the fallback margins; its first measurement places the lamp again.
+  const start = useRef<Point | null>(null)
   const dragging = useRef(false)
   const driftEpoch = useRef(performance.now())
   // Replaced by a real projection on the lantern canvas's first resize (see
@@ -264,57 +281,26 @@ export function LampApp() {
 
   // Mount: the multiply shadow canvas, built with the same discipline as
   // the marble-hand background field — the canvas is created outside
-  // React, and a lost context degrades to plain paper rather than an
-  // unlit black overlay.
+  // React, and a renderer that cannot start or is lost degrades to plain
+  // paper rather than an unlit black overlay. The renderer starts
+  // asynchronously, so drawing, the loop, and the resize observer are
+  // installed only once init resolves.
   useLayoutEffect(() => {
     const box = host.current
     if (!box) return
     const canvas = document.createElement('canvas')
     canvas.className = 'lamp-canvas'
     box.append(canvas)
-    let renderer: THREE.WebGLRenderer
-    try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, depth: false })
-    } catch {
-      canvas.remove()
-      setDegraded(true)
-      return
-    }
-    // The shader writes calibrated multiplier values and includes no
-    // colorspace_fragment chunk, so they reach the canvas unencoded; setting
-    // outputColorSpace to NoColorSpace throws in three r180.
-    state.renderer = renderer
-    // A fresh canvas measures 300x150 until the first resize; skip past it.
-    state.width = 0
-    state.height = 0
+    const renderer = new WebGPURenderer({ canvas, antialias: false, alpha: false, depth: false })
+    // Converts each fragment as it lands on the canvas, so the calibrated
+    // multipliers reach it exactly as written (decisions.md #72).
+    const pipeline = new DirectRenderPipeline(renderer)
     renderer.setClearColor(0x000000, 1)
 
     let raf = 0
-    state.draw = (lampPos, basePos, flicker, tuning) => {
-      setLampLightFrame(
-        state.mesh.material,
-        state.width,
-        state.height,
-        lampPos.x,
-        lampPos.y,
-        basePos.x,
-        basePos.y,
-        flicker,
-      )
-      setLampTuningUniforms(state.mesh.material, tuning)
-      renderer.render(state.scene, state.camera)
-    }
     const frame = () => {
       raf = requestAnimationFrame(frame)
       redraw()
-    }
-    state.start = () => {
-      if (raf) return
-      frame()
-    }
-    state.stop = () => {
-      cancelAnimationFrame(raf)
-      raf = 0
     }
 
     const resize = () => {
@@ -329,82 +315,104 @@ export function LampApp() {
       redraw()
     }
     const observer = new ResizeObserver(resize)
-    observer.observe(box)
-    resize()
 
-    // A lost context leaves the page intact: the loop stops and CSS hides
-    // the canvas until the browser restores it.
-    const lost = (event: Event) => {
-      event.preventDefault()
+    // A lost GPU leaves the page intact: the loop stops and CSS hides the
+    // canvas until a replacement starts (rendererReplacement.ts).
+    const reportLoss = renderer.onDeviceLost
+    renderer.onDeviceLost = (info) => {
+      reportLoss.call(renderer, info)
+      if (cancelled) return
       setDegraded(true)
       state.stop()
+      lost(generation)
     }
-    const restored = () => {
-      setDegraded(false)
-      state.width = 0
-      resize()
-    }
-    canvas.addEventListener('webglcontextlost', lost)
-    canvas.addEventListener('webglcontextrestored', restored)
+
+    let cancelled = false
+    // render() throws until init resolves, so nothing that draws is
+    // reachable before then.
+    const started = renderer.init()
+    void started.then(
+      () => {
+        if (cancelled) return
+        setDegraded(false)
+        state.renderer = renderer
+        // A fresh canvas measures 300x150 until the first resize; skip past it.
+        state.width = 0
+        state.height = 0
+        state.draw = (lampPos, basePos, flicker, tuning) => {
+          setLampLightFrame(
+            state.light,
+            state.width,
+            state.height,
+            lampPos.x,
+            lampPos.y,
+            basePos.x,
+            basePos.y,
+            flicker,
+          )
+          setLampTuningUniforms(state.light, tuning)
+          pipeline.render(state.scene, state.camera)
+        }
+        state.start = () => {
+          if (raf) return
+          frame()
+        }
+        state.stop = () => {
+          cancelAnimationFrame(raf)
+          raf = 0
+        }
+        observer.observe(box)
+        resize()
+        // The drift effect already ran at mount, while nothing could start.
+        if (!reducedMotionRef.current) state.start()
+      },
+      () => {
+        if (cancelled) return
+        canvas.remove()
+        setDegraded(true)
+      },
+    )
 
     return () => {
+      cancelled = true
       state.stop()
       observer.disconnect()
-      canvas.removeEventListener('webglcontextlost', lost)
-      canvas.removeEventListener('webglcontextrestored', restored)
+      renderer.onDeviceLost = reportLoss
       state.draw = () => {}
       state.start = () => {}
       state.stop = () => {}
-      state.mesh.material.dispose()
+      state.light.dispose()
       state.maskTexture?.dispose()
       state.renderer = null
-      renderer.dispose()
-      renderer.forceContextLoss()
+      pipeline.dispose()
+      // dispose() skips the backend while init is pending, so a renderer
+      // unmounted mid-init would keep its device or context. After a failed
+      // init, Three 0.186's dispose() leaves an unhandled rejection, so that
+      // renderer is left as it is.
+      const dispose = () => renderer.dispose()
+      void started.then(dispose, () => {})
       canvas.remove()
     }
-  }, [state, redraw])
+  }, [state, redraw, generation, lost])
 
   // Mount: the lantern's own normal-blend canvas, same lifecycle
-  // discipline as the multiply one above. A lost or unavailable context
-  // here only drops the 3D model — the shadow canvas and the drag handle
-  // keep working, so the fixture falls back to a small CSS marker instead
-  // of going fully invisible.
+  // discipline as the multiply one above. A renderer that cannot start or
+  // is lost here only drops the 3D model — the shadow canvas and the drag
+  // handle keep working, so the fixture falls back to a small CSS marker
+  // instead of going fully invisible.
   useLayoutEffect(() => {
     const box = lanternHost.current
     if (!box) return
     const canvas = document.createElement('canvas')
     canvas.className = 'lamp-lantern-canvas'
     box.append(canvas)
-    let renderer: THREE.WebGLRenderer
-    try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, depth: true })
-    } catch {
-      canvas.remove()
-      setLanternDegraded(true)
-      return
-    }
-    state2.renderer = renderer
-    state2.width = 0
-    state2.height = 0
+    const renderer = new WebGPURenderer({ canvas, antialias: true, alpha: true, depth: true })
+    // Converts each fragment as it lands on the canvas, so the additive
+    // flame and the translucent glass blend in the sRGB canvas as they did
+    // on WebGL (decisions.md #72). The renderer stays at NoToneMapping and
+    // sRGB output; the lit materials apply ACES themselves (lampNodes.ts).
+    const pipeline = new DirectRenderPipeline(renderer)
     renderer.setClearColor(0x000000, 0)
-    // ACES + sRGB output is what makes the flame's high-intensity emissive
-    // core roll off toward white instead of clipping to flat orange, and
-    // is the conventional pairing with a PMREM-generated environment map
-    // (round 5: "actual PBR level graphics").
-    renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.outputColorSpace = THREE.SRGBColorSpace
-
-    // RoomEnvironment is a small synthetic room (no external asset) baked
-    // once into a PMREM map and left on scene.environment for the model's
-    // lifetime — this, not any direct light, is what gives the blackened
-    // steel a specular highlight and lets it read as metal rather than
-    // flat color (round 5). Generated after the renderer exists (PMREM
-    // needs a live GL context) and disposed once baked; only the resulting
-    // texture needs to live on past this effect's setup.
-    const pmremGenerator = new THREE.PMREMGenerator(renderer)
-    const environmentTexture = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture
-    state2.scene.environment = environmentTexture
-    pmremGenerator.dispose()
 
     // Reused across frames rather than allocated per call.
     const flameWorld = new THREE.Vector3()
@@ -424,10 +432,9 @@ export function LampApp() {
         x: (flameWorld.x * 0.5 + 0.5) * state2.width,
         y: (1 - (flameWorld.y * 0.5 + 0.5)) * state2.height,
       }
-      renderer.render(state2.scene, state2.camera)
+      pipeline.render(state2.scene, state2.camera)
       return flameScreen
     }
-    state2.draw = draw
 
     const resize = () => {
       const rect = box.getBoundingClientRect()
@@ -440,40 +447,72 @@ export function LampApp() {
       renderer.setSize(width, height, false)
       fitLanternCamera(state2.camera, width, height)
       margins.current = measureLanternMargins(state2.lantern, state2.camera, width, height)
+      if (start.current) anchor.current = clampToViewport(start.current, margins.current)
       redraw()
     }
     const observer = new ResizeObserver(resize)
-    observer.observe(box)
-    resize()
 
-    const lost = (event: Event) => {
-      event.preventDefault()
+    let environment: THREE.RenderTarget | null = null
+    let cancelled = false
+    const reportLoss = renderer.onDeviceLost
+    renderer.onDeviceLost = (info) => {
+      reportLoss.call(renderer, info)
+      if (cancelled) return
       setLanternDegraded(true)
       state2.draw = () => ({ x: 0, y: 0 })
+      lost(generation)
     }
-    const restored = () => {
-      setLanternDegraded(false)
-      state2.draw = draw
-      state2.width = 0
-      resize()
-    }
-    canvas.addEventListener('webglcontextlost', lost)
-    canvas.addEventListener('webglcontextrestored', restored)
+    const started = renderer.init()
+    void started.then(
+      () => {
+        if (cancelled) return
+        setLanternDegraded(false)
+        state2.renderer = renderer
+        state2.width = 0
+        state2.height = 0
+
+        // RoomEnvironment is a small synthetic room (no external asset) baked
+        // once into a PMREM map and left on scene.environment for the model's
+        // lifetime — this, not any direct light, is what gives the blackened
+        // steel a specular highlight and lets it read as metal rather than
+        // flat color (round 5). Generated after init (PMREM needs a started
+        // renderer) and disposed once baked; only the resulting target needs
+        // to live on past this setup.
+        const pmremGenerator = new PMREMGenerator(renderer)
+        environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04)
+        state2.scene.environment = environment.texture
+        pmremGenerator.dispose()
+
+        state2.draw = draw
+        observer.observe(box)
+        resize()
+      },
+      () => {
+        if (cancelled) return
+        canvas.remove()
+        setLanternDegraded(true)
+      },
+    )
 
     return () => {
+      cancelled = true
       observer.disconnect()
-      canvas.removeEventListener('webglcontextlost', lost)
-      canvas.removeEventListener('webglcontextrestored', restored)
+      renderer.onDeviceLost = reportLoss
       state2.draw = () => ({ x: 0, y: 0 })
       state2.renderer = null
       state2.scene.environment = null
-      environmentTexture.dispose()
+      environment?.dispose()
       state2.lantern.dispose()
-      renderer.dispose()
-      renderer.forceContextLoss()
+      pipeline.dispose()
+      // dispose() skips the backend while init is pending, so a renderer
+      // unmounted mid-init would keep its device or context. After a failed
+      // init, Three 0.186's dispose() leaves an unhandled rejection, so that
+      // renderer is left as it is.
+      const dispose = () => renderer.dispose()
+      void started.then(dispose, () => {})
       canvas.remove()
     }
-  }, [state2, redraw])
+  }, [state2, redraw, generation, lost])
 
   // Read the headline into ink after fonts settle, and again whenever its
   // layout changes. The lab loads Bodoni Moda with display=block, so an
@@ -499,14 +538,15 @@ export function LampApp() {
         texture.wrapT = THREE.ClampToEdgeWrapping
         texture.needsUpdate = true
         state.maskTexture = texture
-        setLampMaskFrame(state.mesh.material, texture, mask.rect)
+        setLampMaskFrame(state.light, texture, mask.rect)
         if (!placed.current) {
           placed.current = true
-          anchor.current = clampToViewport({ x: mask.rect.x - 44, y: mask.rect.y - 40 }, margins.current)
+          start.current = { x: mask.rect.x - 44, y: mask.rect.y - 40 }
+          anchor.current = clampToViewport(start.current, margins.current)
           driftEpoch.current = performance.now()
         }
       } else {
-        setLampMaskFrame(state.mesh.material, null, null)
+        setLampMaskFrame(state.light, null, null)
       }
       redraw()
     }
@@ -551,6 +591,7 @@ export function LampApp() {
     }
     const down = (event: PointerEvent) => {
       dragging.current = true
+      start.current = null
       element.setPointerCapture(event.pointerId)
       element.classList.add('is-dragging')
       // Without this a fast drag selects the headline and body text under
