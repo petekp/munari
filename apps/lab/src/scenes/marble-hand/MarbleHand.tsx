@@ -420,8 +420,9 @@ function MarbleLighting({ tuning, width, height }: {
     <>
       <ambientLight intensity={tuning.ambientIntensity} />
       {/* Always casting: renderer.shadowMap.enabled turns shadows off. A light
-          that stops casting disposes its shadow node, which render objects
-          cached while it cast still draw, so Reset threw on the null map. */}
+          that stops casting disposes its shadow node, but the receiver, hidden
+          while shadows were off, keeps a render object that still draws it.
+          Turning shadows back on then threw on the null map. */}
       <directionalLight
         ref={light}
         name="marble-hand-key-light"
