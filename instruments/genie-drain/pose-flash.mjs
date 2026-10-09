@@ -56,6 +56,7 @@ try{
   page.on('console',message=>{if(message.type()==='error'&&!message.text().startsWith('Failed to load resource:'))errors.push(message.text())})
   try{
    await mkdir(directory,{recursive:true})
+   await page.evaluateOnNewDocument(()=>{window.__longTasks=[];new PerformanceObserver(list=>{for(const e of list.getEntries())window.__longTasks.push([performance.timeOrigin+e.startTime,e.duration])}).observe({type:'longtask',buffered:true})})
    await page.setViewport({width:1100,height:800,deviceScaleFactor:1})
    await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'no-preference'}])
    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=genie&framed${mode==='snapdom'?'&capture=snapdom':''}`,{waitUntil:'load'})
@@ -140,10 +141,11 @@ try{
    const lamp=await page.$eval(`.gen-slot[data-win="${win}"] .gen-lamp[data-role="minimize"]`,element=>{const r=element.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})
    await page.mouse.move(lamp.x,lamp.y,{steps:6});await sleep(300)
    await recorder.start();await sleep(100)
+   const pressAt=await page.evaluate(()=>performance.timeOrigin+performance.now())
    await page.mouse.down();await sleep(50);await page.mouse.up();await sleep(450)
    const collectionEnd=await page.evaluate(()=>performance.timeOrigin+performance.now())
    const capture=await recorder.stop({through:collectionEnd,timeoutMs:5000}),frames=capture.frames
-   const state=await page.evaluate(()=>({draws:window.__fixedPose.draws,seedTime:window.__fixedPose.seedTime,blockedDraws:window.__fixedPose.cadence.blocked})),draws=state.draws,firstDraw=draws.find(draw=>draw.writing&&!draw.pageHeld)
+   const state=await page.evaluate(()=>({draws:window.__fixedPose.draws,seedTime:window.__fixedPose.seedTime,blockedDraws:window.__fixedPose.cadence.blocked,longTasks:window.__longTasks})),draws=state.draws,firstDraw=draws.find(draw=>draw.writing&&!draw.pageHeld)
    const scored=await scoreScreencast(page,capture,{
     reference:{kind:'image',encoding:'png',data:reference},
     context:{draws,box},
@@ -178,7 +180,7 @@ try{
    const clock=scored.rows.map(row=>({t:row.t,pageFrame:row.pageFrame}))
    const start=sceneRows[0]?.t,second=sceneRows.find(row=>row.draw.id!==sceneRows[0].draw.id)
    const end=second===undefined?start+80:Math.max(start+80,second.t),observed=sceneRows.filter(row=>row.t<=end)
-   observation={firstDraw:firstDraw?.id,firstRecorded:observed[0]?.draw.id,secondRecorded:second?.draw.id,frames:observed.length,blockedDraws:state.blockedDraws,maximumPixelError:Math.max(...observed.map(row=>Math.max(row.nativeToScene,row.sceneToNative)))}
+   observation={firstDraw:firstDraw?.id,firstRecorded:observed[0]?.draw.id,secondRecorded:second?.draw.id,frames:observed.length,blockedDraws:state.blockedDraws,maximumPixelError:Math.max(...observed.map(row=>Math.max(row.nativeToScene,row.sceneToNative))),timing:{firstDraw:firstDraw&&Math.round(firstDraw.t-pressAt),collectionEnd:Math.round(collectionEnd-pressAt),draws:draws.map(d=>[Math.round(d.t-pressAt),d.writing?1:0,d.pageHeld?1:0,d.read,d.uploadedRead]),longTasks:state.longTasks.map(([t,d])=>[Math.round(t-pressAt),Math.round(d)]).filter(([t])=>t>-200)}}
    await writeFile(path.join(directory,'measurement.json'),JSON.stringify({box,...scored.summary,firstDraw,seedTime:state.seedTime,blockedDraws:state.blockedDraws,draws,frames:observed,recording:{collectionEnd:capture.collectionEnd,...capture.diagnostics,scoring:scored.diagnostics}},null,2))
    const frameByIndex=new Map(frames.map(frame=>[frame.index,frame]))
    if(observed.length){await writeFile(path.join(directory,'first-scene.png'),Buffer.from(frameByIndex.get(observed[0].index).data,'base64'));await writeFile(path.join(directory,'last-scene.png'),Buffer.from(frameByIndex.get(observed.at(-1).index).data,'base64'))}
@@ -202,7 +204,7 @@ try{
    requirePageFrameCoverage(clock,start,start+80)
    if(second===undefined)throw new IncompleteScreencastError('No second distinct known draw marker was recorded after the first presentation')
    if(end>start+80)requirePageFrameCoverage(clock,start,end)
-   result={name,passed:true,recordings:attempt+1,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.summary.nativeInk,frames:observed,controlRejected:control==='current'?null:true,recording:{collectionEnd:capture.collectionEnd,...capture.diagnostics,scoring:scored.diagnostics}}
+   result={name,passed:true,recordings:attempt+1,timing:observation.timing,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.summary.nativeInk,frames:observed,controlRejected:control==='current'?null:true,recording:{collectionEnd:capture.collectionEnd,...capture.diagnostics,scoring:scored.diagnostics}}
   }catch(error){
    attemptFailure={error}
   }finally{
