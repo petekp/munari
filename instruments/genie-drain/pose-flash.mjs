@@ -144,6 +144,7 @@ try{
    const lamp=await page.$eval(`.gen-slot[data-win="${win}"] .gen-lamp[data-role="minimize"]`,element=>{const r=element.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})
    await page.mouse.move(lamp.x,lamp.y,{steps:6});await sleep(300)
    await recorder.start();await sleep(100)
+   const pressAt=await page.evaluate(()=>performance.timeOrigin+performance.now())
    await page.mouse.down();await sleep(50);await page.mouse.up();await sleep(450)
    const collectionEnd=await page.evaluate(()=>performance.timeOrigin+performance.now())
    const capture=await recorder.stop({through:collectionEnd,timeoutMs:5000}),frames=capture.frames
@@ -182,7 +183,9 @@ try{
    const clock=scored.rows.map(row=>({t:row.t,pageFrame:row.pageFrame}))
    const start=sceneRows[0]?.t,second=sceneRows.find(row=>row.draw.id!==sceneRows[0].draw.id)
    const end=second===undefined?start+80:Math.max(start+80,second.t),observed=sceneRows.filter(row=>row.t<=end)
-   observation={firstDraw:firstDraw?.id,firstRecorded:observed[0]?.draw.id,secondRecorded:second?.draw.id,frames:observed.length,blockedDraws:state.blockedDraws,maximumPixelError:Math.max(...observed.map(row=>Math.max(row.nativeToScene,row.sceneToNative)))}
+   observation={firstDraw:firstDraw?.id,firstRecorded:observed[0]?.draw.id,secondRecorded:second?.draw.id,frames:observed.length,blockedDraws:state.blockedDraws,maximumPixelError:Math.max(...observed.map(row=>Math.max(row.nativeToScene,row.sceneToNative))),
+    // Milliseconds after the press, so a failed run shows which wait ran out.
+    timing:{firstDraw:firstDraw&&Math.round(firstDraw.t-pressAt),firstImage:start&&Math.round(start-pressAt),secondImage:second&&Math.round(second.t-pressAt),lastImage:frames.length?Math.round(frames.at(-1).t-pressAt):null,collectionEnd:Math.round(collectionEnd-pressAt),drawGaps:draws.slice(1).map((draw,i)=>Math.round(draw.t-draws[i].t))}}
    await writeFile(path.join(directory,'measurement.json'),JSON.stringify({box,...scored.summary,firstDraw,seedTime:state.seedTime,blockedDraws:state.blockedDraws,draws,frames:observed,recording:{collectionEnd:capture.collectionEnd,...capture.diagnostics,scoring:scored.diagnostics}},null,2))
    const frameByIndex=new Map(frames.map(frame=>[frame.index,frame]))
    if(observed.length){await writeFile(path.join(directory,'first-scene.png'),Buffer.from(frameByIndex.get(observed[0].index).data,'base64'));await writeFile(path.join(directory,'last-scene.png'),Buffer.from(frameByIndex.get(observed.at(-1).index).data,'base64'))}
@@ -206,7 +209,7 @@ try{
    requirePageFrameCoverage(clock,start,start+80)
    if(second===undefined)throw new IncompleteScreencastError('No second distinct known draw marker was recorded after the first presentation')
    if(end>start+80)requirePageFrameCoverage(clock,start,end)
-   result={name,passed:true,recordings:attempt+1,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.summary.nativeInk,frames:observed,controlRejected:control==='current'?null:true,recording:{collectionEnd:capture.collectionEnd,...capture.diagnostics,scoring:scored.diagnostics}}
+   result={name,passed:true,recordings:attempt+1,timing:observation.timing,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.summary.nativeInk,frames:observed,controlRejected:control==='current'?null:true,recording:{collectionEnd:capture.collectionEnd,...capture.diagnostics,scoring:scored.diagnostics}}
   }catch(error){
    attemptFailure={error}
   }finally{
