@@ -9,9 +9,9 @@
 //
 // So these two materials only rasterize: keep the deformed position, mask
 // the element's corners, and fade the shadow where the funnel has squeezed
-// it past legibility. Both return the premultiplied composite as their
-// output node, so Three applies no second premultiplication, and the
-// renderer converts it to the canvas's sRGB once (decisions.md #71).
+// it past legibility. Both return the premultiplied composite through
+// premultipliedOutput, so a translucent shade texel lands on the canvas at
+// its page value (decisions.md #72).
 //
 // ── why the shadow needs a shader at all ────────────────────────────────
 //
@@ -42,7 +42,7 @@
 import * as THREE from 'three'
 import { MeshBasicNodeMaterial, type Node, type TextureNode, type UniformNode } from 'three/webgpu'
 import { Discard, Fn, attribute, float, mix, smoothstep, step, texture, uniform, uv, varying, vec2, vec4 } from 'three/tsl'
-import { surfaceRadiusMask, type SurfaceNodes } from '@petepetrash/munari'
+import { premultipliedOutput, surfaceRadiusMask, type SurfaceNodes } from '@petepetrash/munari'
 
 /** The values both sheets read, written in place each render. */
 export interface GenieShade {
@@ -132,7 +132,7 @@ function finish(color: Node<'vec4'>, mask: Node<'float'>): Node<'vec4'> {
   return Fn(() => {
     const covered = color.mul(mask)
     Discard(covered.a.lessThan(0.004))
-    return covered
+    return premultipliedOutput(covered)
   })()
 }
 

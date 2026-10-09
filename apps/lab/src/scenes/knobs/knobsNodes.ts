@@ -3,10 +3,9 @@
 //
 // The bake is a plain 2D canvas with no color space, so samples are the
 // page's sRGB values and the corona is computed in them, as it was tuned.
-// The renderer encodes every output to sRGB once, so the result is decoded
-// first: a corona drawn over the transparent canvas lands on its tuned
-// value. Over the face, the additive blend now sums in the renderer's linear
-// target rather than in the sRGB canvas, which darkens dim overlaps.
+// The pipeline encodes each fragment to sRGB, so the opaque result is
+// decoded first and lands on its tuned value; the additive blend then sums
+// in the sRGB canvas, as it did on WebGL (decisions.md #72).
 //
 // Ownership: this module owns the shading. Knobs.tsx owns the bake, the
 // uniform writes, and the mesh.

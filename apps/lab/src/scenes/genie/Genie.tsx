@@ -911,47 +911,12 @@ export type GenieFilmProbeEvent =
   | { type: 'land'; token: number; wall: 0 | 1; frame?: FrameId }
   | { type: 'reveal'; token: number; frame: FrameId }
   | { type: 'release'; token: number; wall: 0 | 1 }
-  | { type: 'revoke'; token: number; reason: 'context-lost' }
+  | { type: 'revoke'; token: number; reason: 'renderer-lost' }
 
 /** Hand one step of the film's handoff to whoever is watching. Nothing in
  *  the scene reads this; the hook is installed by a probe or by hand. */
 function probeFilm(event: GenieFilmProbeEvent): void {
   window.__genieFilmProbe?.(event)
-}
-
-function WebGLContextGuard({ onLost }: { onLost: () => void }) {
-  const renderer = useThree((state) => state.gl)
-  const onLostRef = useRef(onLost)
-
-  useLayoutEffect(() => {
-    onLostRef.current = onLost
-  }, [onLost])
-
-  // The browser canvas is an external event source. Keep its subscription
-  // paired with this renderer lifetime so a replaced Canvas cannot revoke a
-  // newer scene.
-  useEffect(() => {
-    const canvas = renderer.domElement
-    const handleLost = (event: Event) => {
-      event.preventDefault()
-      // A lost context can leave its last backing store composited above the
-      // native fallback. Remove that invalid presenter in the same event.
-      canvas.style.visibility = 'hidden'
-      onLostRef.current()
-    }
-    const handleRestored = () => {
-      canvas.style.visibility = ''
-    }
-    canvas.addEventListener('webglcontextlost', handleLost)
-    canvas.addEventListener('webglcontextrestored', handleRestored)
-    return () => {
-      canvas.removeEventListener('webglcontextlost', handleLost)
-      canvas.removeEventListener('webglcontextrestored', handleRestored)
-      canvas.style.visibility = ''
-    }
-  }, [renderer])
-
-  return null
 }
 
 interface FlightProps {
@@ -2385,7 +2350,7 @@ export function GenieApp() {
         slot.style.setProperty('--pour', '0')
       }
       const film = flight.f.film
-      if (film) probeFilm({ type: 'revoke', token: film.token, reason: 'context-lost' })
+      if (film) probeFilm({ type: 'revoke', token: film.token, reason: 'renderer-lost' })
     }
 
     const ids = new Set(revoked.map(([id]) => id))
@@ -2578,9 +2543,9 @@ export function GenieApp() {
         dpr={[1, 2]}
         camera={{ fov: FOV, position: [0, 0, 1000] }}
         onCreated={(state) => state.gl.setClearAlpha(0)}
+        onRendererLost={revokeRendererHold}
       >
         <PixelPerfect />
-        <WebGLContextGuard onLost={revokeRendererHold} />
         <GestureRig api={apiRef} />
         <Bays
           slotOf={slotOf}

@@ -45,7 +45,7 @@ try {
   try {
     await setChromeViewport(page,{width:900,height:650})
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/lit.html`,{waitUntil:'load'})
-    await page.waitForFunction(()=>Object.values(window.__litProof?.statuses??{}).length===12&&Object.values(window.__litProof.statuses).every(value=>value==='scene'))
+    await page.waitForFunction(()=>Object.values(window.__litProof?.statuses??{}).length===14&&Object.values(window.__litProof.statuses).every(value=>value==='scene'))
     const pixels=await page.evaluate(()=>window.__litProof.read())
     assert.deepEqual(litErrors,[])
     assert.deepEqual(pixels.rows.map(row=>row.id),['white','color','glow'])
@@ -68,6 +68,9 @@ try {
       assert.deepEqual(pixels.corner,[0,0,0,0])
       assert.deepEqual(pixels.sharedLit,pixels.rows[0].opaque)
       assert.deepEqual(pixels.sharedUnlit,[255,255,255,255])
+      // Expected values are the page's own source-over of rgba(0,0,255,.5) and rgba(255,0,0,.5), premultiplied.
+      pixels.unlitHalf.forEach((channel,index)=>assert.ok(Math.abs(channel-[0,0,128,128][index])<=2,`default material at half alpha: ${JSON.stringify(pixels.unlitHalf)}`))
+      pixels.unlitOverlap.forEach((channel,index)=>assert.ok(Math.abs(channel-[128,0,64,191][index])<=2,`red over blue at half alpha: ${JSON.stringify(pixels.unlitOverlap)}`))
       await page.evaluate(()=>window.__litProof.update())
       await page.waitForFunction(()=>window.__litProof.read().sharedUnlit[0]===80)
       const updated=await page.evaluate(()=>window.__litProof.read())

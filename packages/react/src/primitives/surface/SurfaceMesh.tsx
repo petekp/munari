@@ -66,7 +66,8 @@ import {
   type SurfacePassEvidence,
 } from '@munari/core'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { Discard, Fn, diffuseColor, uniform, uv } from 'three/tsl'
+import { Discard, Fn, diffuseColor, uniform, uv, vec4 } from 'three/tsl'
+import { premultipliedOutput } from '../../lib/surfaceOutput'
 import { surfaceRadiusMask } from '../../lib/surfaceRadius'
 import { FocusGroupContext } from '../focusContext'
 import { SurfaceAnchorContext, useSurfaceAnchorScope } from './surfaceAnchorScope'
@@ -1081,6 +1082,11 @@ function SurfacePresenter({
   // place. The discard keeps clear corner fragments out of the depth buffer.
   // It is not `alphaTest`, which makes a node material reshape alpha under
   // the alpha-to-coverage this mesh turns on for rounded opaque corners.
+  // The capture is already premultiplied, so the output scales it by the
+  // mask only: Three's own premultiply would multiply it by alpha a second
+  // time, and a half-transparent white pixel would land at 64 where the
+  // page shows 128 (measured 2026-10-08, on main's WebGLRenderer too).
+  // `premultipliedAlpha` stays on for the premultiplied blend.
   const defaultMaterial = useMemo(() => {
     const created = new MeshBasicNodeMaterial({ color: '#ffffff', premultipliedAlpha: true })
     const mask = surfaceRadiusMask(
@@ -1092,6 +1098,7 @@ function SurfacePresenter({
       Discard(diffuseColor.a.mul(mask).lessThan(0.004))
       return mask
     })()
+    created.outputNode = premultipliedOutput(vec4(diffuseColor.rgb.mul(mask), diffuseColor.a))
     return created
   }, [])
   useEffect(() => () => defaultMaterial.dispose(), [defaultMaterial])

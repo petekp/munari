@@ -52,6 +52,7 @@ export {
 // The shader half of the corner mask (the JS half lives in the kernel), for a
 // node material that samples a second capture with its own size and radii.
 export { surfaceRadiusMask } from './lib/surfaceRadius'
+export { encodedOutput, premultipliedOutput } from './lib/surfaceOutput'
 // The one sanctioned way to bend a presented Surface. Vertices move, so the
 // raycast hits the shape the eye sees and relayed input stays correct on any
 // deformation; a vertex-shader warp bends only pixels and silently gets

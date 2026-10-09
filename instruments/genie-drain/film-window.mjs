@@ -64,6 +64,7 @@ if (!Number.isInteger(ROUNDS) || ROUNDS < 1) {
 }
 
 let browser
+let lossCaused = false
 let server
 let exitCode = 0
 const problems = []
@@ -266,8 +267,32 @@ try {
   page.on('console', (message) => {
     // A bare Vite root has no favicon. Resource 404s are browser noise; a
     // broken module still reports a page error or a Vite overlay error.
-    if (message.type() === 'error' && !/Failed to load resource/.test(message.text())) {
+    // Three reports the loss this probe causes as a console error.
+    if (
+      message.type() === 'error' &&
+      !/Failed to load resource/.test(message.text()) &&
+      !(lossCaused && /Device Lost:/.test(message.text()))
+    ) {
       pageErrors.push(`console: ${message.text()}`)
+    }
+  })
+  // WebGPU can lose a device only by crashing the GPU process, which also
+  // stops the film's video decoder, or by destroy(), which Three ignores as
+  // its own dispose. So each device's `lost` promise is replaced with one
+  // this probe resolves, which runs Three's own loss handler.
+  await page.evaluateOnNewDocument(() => {
+    window.__losableDevices = []
+    if (!('GPUAdapter' in globalThis)) return
+    const requestDevice = GPUAdapter.prototype.requestDevice
+    GPUAdapter.prototype.requestDevice = async function (...args) {
+      const device = await requestDevice.apply(this, args)
+      let lose
+      const lost = new Promise((resolve) => {
+        lose = resolve
+      })
+      Object.defineProperty(device, 'lost', { value: lost })
+      window.__losableDevices.push({ device, lose })
+      return device
     }
   })
   await page.goto(`http://localhost:${port}/?scene=genie&framed`, { waitUntil: 'load' })
@@ -658,17 +683,25 @@ try {
     WIN,
   )
   const contextLossStart = Date.now()
+  lossCaused = true
   const contextLossSupported = await page.evaluate(() => {
+    const devices = window.__losableDevices
+    if (devices.length) {
+      for (const { device, lose } of devices) {
+        lose({ reason: 'unknown', message: 'film-window probe' })
+        queueMicrotask(() => device.destroy())
+      }
+      return true
+    }
     const canvas = document.querySelector('.gen-overlay canvas')
     if (!(canvas instanceof HTMLCanvasElement)) return false
-    const context = canvas.getContext('webgl2') || canvas.getContext('webgl')
-    const extension = context?.getExtension('WEBGL_lose_context')
+    const extension = canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')
     if (!extension) return false
     extension.loseContext()
     return true
   })
   if (!contextLossSupported) {
-    problems.push('WEBGL_lose_context is not available for the Genie renderer')
+    problems.push('the Genie renderer has no device or WebGL context to lose')
   } else {
     await page.waitForFunction(
       (win) => {
@@ -1016,7 +1049,7 @@ try {
     contextShown &&
     contextRevoked &&
     contextShown.seq < contextRevoked.seq &&
-    contextRevoked.reason === 'context-lost' &&
+    contextRevoked.reason === 'renderer-lost' &&
     contextLoss.end - contextLoss.start < 1000 &&
     contextTraceAfterRevoke.length > 0 &&
     contextTraceAfterRevoke.every((row) => !row.away && !row.filled && !row.frozen) &&

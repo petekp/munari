@@ -4744,3 +4744,109 @@ recorded values match `main`'s except where noted:
 
 The fixtures read pixels after `render()` returns instead of with
 `gl.readPixels`, which WebGPU does not have (instruments/README.md).
+
+## #72 — SurfaceCanvas draws through DirectRenderPipeline (2026-10-08, react binding)
+
+**Status: implemented on `pkp/webgpu-restart`.**
+
+`WebGPURenderer` draws a frame for the canvas into a linear half-float
+target, then converts it in one full-screen pass that unpremultiplies,
+encodes sRGB, and premultiplies again. Three things differ from WebGL as a
+result:
+
+- Light a material adds without alpha disappears over transparent canvas
+  pixels. The conversion drops color where alpha is 0, where WebGL's canvas
+  kept it and the page composited it as added light. Knobs' outer corona and
+  Selection's exterior gleam are drawn this way.
+- Overlapping translucent draws blend in linear space instead of in the sRGB
+  canvas.
+- A material that returns premultiplied color lands too dark wherever alpha
+  is below 1.
+
+**Decision: `SurfaceCanvas` draws every canvas frame through Three's
+`DirectRenderPipeline`.** It renders straight to the canvas and converts each
+fragment, so blending happens in the sRGB canvas, as on WebGL. Draws into a
+render target are unchanged. The rejected alternative kept Three's output pass
+and accepted the lost light and the linear blending.
+
+**Custom materials return their color through `premultipliedOutput` or
+`encodedOutput`.** The per-fragment conversion still unpremultiplies first, so
+a material returning premultiplied color directly still lands too dark. These
+helpers return the value whose conversion equals WebGL's encode:
+`premultipliedOutput` for premultiplied linear color, `encodedOutput` for
+premultiplied color already in sRGB. A fragment whose own alpha is 0 still
+contributes nothing; added light has to come from blend factors.
+
+Measured 2026-10-08, headless Chrome 155, Three 0.186.1, a 4×4 2D-canvas
+capture texture (`SRGBColorSpace`, premultiplied) drawn full-screen. Values
+are premultiplied canvas bytes at alpha 1, 0.5 and 0.25:
+
+| Case | `WebGLRenderer` | Default output pass | `DirectRenderPipeline` |
+| --- | --- | --- | --- |
+| Default `MeshBasic` material with `map` | 255, 64, 16 | 255, 64, 16 | 255, 64, 16 |
+| `outputNode` returns the premultiplied sample | 255, 128, 64 | 255, 88, 31 | 255, 88, 31 |
+| The same through `premultipliedOutput` | — | 255, 128, 64 | 255, 128, 64 |
+| Additive `(0.5, 0.25, 0)`, alpha untouched, over black page | 128, 64, 0 | 0, 0, 0 | 128, 64, 0 |
+
+WebGPU and the WebGL 2 fallback gave identical values in every cell. The
+default material's 64 at alpha 0.5 is main's behavior too: it multiplies an
+already-premultiplied map by alpha again.
+
+**The default Surface material returns its capture through
+`premultipliedOutput`.** A half-transparent page pixel now lands at its page
+value instead of half of it, which changes translucent HTML from main.
+`probe:surface-textures` checks two default-material planes against the page's
+own compositing. Expected values are premultiplied canvas bytes:
+
+| Sample | Page | Both backends |
+| --- | --- | --- |
+| `rgba(0,0,255,0.5)` | 0, 0, 128, 128 | 0, 0, 128, 128 |
+| `rgba(255,0,0,0.5)` over it | 128, 0, 64, 191 | 128, 0, 64, 192 |
+
+Two planted faults fail the probe. Without the output helper, half-white
+landed at 64, 64, 64, 128. Through Three's output pass, red over blue landed
+at 160, 0, 117, 192. Two layers of one color composite the same in any space,
+which is why the planes differ in color.
+
+With the pipeline, `getRenderTarget()` returns `null` during a canvas draw
+again, so a presenter's canvas draws present directly instead of deferring to
+the frame tail (#69, #70).
+
+## #73 — SurfaceCanvas replaces a lost renderer (2026-10-08, react binding + instruments)
+
+**Status: implemented on `pkp/webgpu-restart`.**
+
+A `WebGPURenderer` that loses its GPU never draws again. This holds on WebGPU
+and on the WebGL 2 fallback: Three reports the loss through
+`renderer.onDeviceLost`, stops drawing, and has no restore path. Main's
+`WebGLRenderer` restored its context after `webglcontextrestored`, and
+`probe:api-lifecycle` asserted that the scene came back.
+
+**Decision: after a loss, `SurfaceCanvas` remounts its Canvas with a new
+renderer.** On the loss, every Surface on the Canvas returns to the page, the
+dead canvas is hidden, the fallback shows, and `onRendererLost` runs. The
+remount resets React state inside the Canvas; the page HTML is untouched.
+
+**A replacement lost within 10 seconds of its creation is not replaced.** The
+page HTML stays until the `SurfaceCanvas` remounts or the page reloads. This
+stops a GPU that fails on every frame after one retry. Ten seconds is a
+judgment, not a measurement. The rejected alternatives were one replacement
+per mount, which leaves a second loss hours later unrecovered, and no
+recovery.
+
+`onRendererLost` is the scene's signal, because `SurfaceCanvas` owns
+`onDeviceLost`. Genie revokes its airborne windows there; its
+`webglcontextlost` listener never fired on WebGPU.
+
+Measured 2026-10-08, headless Chrome 155 on macOS, both backends:
+
+| Check | Trigger | Result |
+| --- | --- | --- |
+| `probe:api-lifecycle` | `Browser.crashGpuProcess` twice | page HTML on each loss; a new renderer drew the scene after the first; none after the second |
+| `gate:genie-film` | Genie's device only (see below) | page HTML in 10 ms on WebGPU and 18 ms on WebGL 2, with no stale frame |
+
+`gate:genie-film` replaces each WebGPU device's `lost` promise before the page
+loads and resolves it, which runs Three's own loss handler. A GPU process
+crash also stops the film's video decoder, and `destroy()` reports reason
+`destroyed`, which Three treats as its own dispose. On the fallback it uses
+`WEBGL_lose_context`.

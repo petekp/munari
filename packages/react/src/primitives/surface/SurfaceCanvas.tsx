@@ -20,17 +20,24 @@
 // what is drawn — camera, lights, controls, post-processing, and every scene
 // child stay the caller's.
 //
-// The renderer is Three's WebGPURenderer, which falls back to WebGL 2. It
-// tone-maps the whole frame in a final pass and ignores a material's
-// `toneMapped: false`, so renderer tone mapping stays off here and HTML keeps
-// its source colors. A scene that wants tone mapping applies it in its own
-// materials (decisions.md #69).
+// The renderer is Three's WebGPURenderer, which falls back to WebGL 2. Its
+// default draws the frame into a linear target and converts it in a final
+// pass that unpremultiplies, so light added over transparent pixels is lost
+// and overlaps blend in linear space. Frames for the canvas therefore go
+// through Three's DirectRenderPipeline, which draws to the canvas and
+// converts each fragment, as WebGL did (decisions.md #72). Renderer tone
+// mapping stays off so HTML keeps its source colors; a scene that wants tone
+// mapping applies it in its own materials (decisions.md #69).
+//
+// A lost GPU ends the renderer for good on both backends, so the host
+// remounts the Canvas with a new one, unless the replacement is lost too
+// soon after it was created (decisions.md #73).
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { Canvas, useFrame, useThree, type CanvasProps, type RootState } from '@react-three/fiber'
 import { NoToneMapping } from 'three'
-import { WebGPURenderer, type WebGPURendererParameters } from 'three/webgpu'
+import { DirectRenderPipeline, WebGPURenderer, type WebGPURendererParameters } from 'three/webgpu'
 import {
   createSurfaceHost,
   mountSurfaceHost,
@@ -83,6 +90,13 @@ export interface SurfaceCanvasProps
   pointerMode?: 'scene' | 'surfaces'
   /** Shown instead of the scene when the renderer cannot be created or is lost. */
   fallback?: React.ReactNode
+  /**
+   * Called when the GPU is lost, after every Surface on this Canvas has
+   * returned to the page. Scene state tied to the lost renderer ends here:
+   * the Canvas then remounts its children on a new renderer, unless the
+   * lost one was itself a replacement created under 10 s earlier.
+   */
+  onRendererLost?: () => void
 }
 
 // The reserved style fields, as a runtime list for the development check.
@@ -147,6 +161,11 @@ function createSurfaceRenderer(
 // The WebGPU spec's default maxTextureDimension2D, granted when none is requested.
 const WEBGPU_DEFAULT_TEXTURE_LIMIT = 8192
 
+// A replacement renderer lost sooner than this after it was created is not
+// replaced again, so a GPU that fails on every frame stops after one retry
+// (decisions.md #73).
+const REPEATED_LOSS_MS = 10_000
+
 /**
  * Ask R3F for a frameloop mode only when it is not already the mode.
  *
@@ -177,14 +196,12 @@ function SurfaceHostBridge({
   host,
   frameloop,
   onContextLost,
-  onContextRestored,
   onDisplayScale,
   displaySized,
 }: {
   host: SurfaceHost
   frameloop: CanvasProps['frameloop']
   onContextLost: () => void
-  onContextRestored: () => void
   onDisplayScale: (scale: number) => void
   displaySized:boolean
 }) {
@@ -268,10 +285,15 @@ function SurfaceHostBridge({
   // emits nothing at the end of a frame, and an effect composer's final
   // pass is an ordinary `render` call with the target set back to null.
   useEffect(() => {
+    if (!(gl instanceof WebGPURenderer)) throw new Error('[munari] SurfaceCanvas needs its own WebGPURenderer')
     const original = gl.render.bind(gl)
+    const pipeline = new DirectRenderPipeline(gl)
+    // The pipeline's own render() calls gl.render; that inner call draws.
+    let piping = false
     let notifying = false
     let warnedToneMapping = false
     gl.render = (scene, camera) => {
+      if (piping) return original(scene, camera)
       if (gl.toneMapping !== NoToneMapping && !warnedToneMapping && isDevelopment()) {
         warnedToneMapping = true
         console.error(
@@ -295,7 +317,10 @@ function SurfaceHostBridge({
           // With them, retain its update so their new transforms reach this draw.
           else {scene.matrixWorldAutoUpdate=false;replacedSceneUpdate=true}
         }
-        original(scene,camera)
+        if (gl.getRenderTarget() === null) {
+          piping = true
+          try { pipeline.render(scene, camera) } finally { piping = false }
+        } else original(scene, camera)
         host.closeFrameTail(gl.getRenderTarget()===null)
       } finally {
         if(ownsPreparation){if(replacedSceneUpdate)scene.matrixWorldAutoUpdate=automatic;releaseRaster?.();notifying=false}
@@ -304,39 +329,37 @@ function SurfaceHostBridge({
 
     return () => {
       gl.render = original
+      pipeline.dispose()
       // A renderer going away ends the frame with nothing on screen, so
       // whatever deferred to this tail is discarded rather than proven.
       host.discardFrameTail()
     }
   }, [gl, host])
 
+  // Three reports a lost WebGPU device and a lost WebGL 2 context through
+  // `onDeviceLost`, and that renderer draws nothing again: it has no restore
+  // path on either backend. Reason "destroyed" is the renderer's own
+  // dispose, which Three does not report.
   useEffect(() => {
-    const canvas = gl.domElement
-    const lost = (event: Event) => {
-      // Preventing the default is what lets the browser restore the
-      // context at all; without it the canvas is dead for good.
-      event.preventDefault()
-      // Nothing on this canvas will reach the screen again on the lost
-      // context, so the deferrals of the frame that died are void.
+    if (!(gl instanceof WebGPURenderer)) return
+    // This bridge mounts only once its renderer exists, so a replacement's
+    // mount is the end of the previous renderer's loss.
+    host.setContextLost(false)
+    const report = gl.onDeviceLost
+    gl.onDeviceLost = (info) => {
+      report.call(gl, info)
+      // Nothing on this canvas will reach the screen again, so the
+      // deferrals of the frame that died are void.
       host.discardFrameTail()
       host.setContextLost(true)
+      // The canvas can keep compositing its last frame over the page HTML.
+      gl.domElement.style.visibility = 'hidden'
       onContextLost()
     }
-    const restored = () => {
-      // A demand Canvas asleep when the context died has no frame queued to
-      // draw the recovered scene in, and the fallback would stay up over a
-      // renderer that works.
-      host.setContextLost(false)
-      invalidate()
-      onContextRestored()
-    }
-    canvas.addEventListener('webglcontextlost', lost)
-    canvas.addEventListener('webglcontextrestored', restored)
     return () => {
-      canvas.removeEventListener('webglcontextlost', lost)
-      canvas.removeEventListener('webglcontextrestored', restored)
+      gl.onDeviceLost = report
     }
-  }, [gl, host, invalidate, onContextLost, onContextRestored])
+  }, [gl, host, onContextLost])
 
   return null
 }
@@ -401,6 +424,7 @@ export function SurfaceCanvas({
   onCreated,
   gl,
   pointerMode = 'scene',
+  onRendererLost,
   ...canvasProps
 }: SurfaceCanvasProps) {
   const candidate = useMemo(() => createSurfaceHost(id), [id])
@@ -416,8 +440,11 @@ export function SurfaceCanvas({
   const [displayScale, setDisplayScale] = useState(1)
   const nativeDpr=useSurfaceDevicePixelRatio()
   const drawingDpr = surfaceCanvasPixelRatio(dpr, nativeDpr, displayScale)
-  // Fiber creates its renderer once and ignores a later `gl`.
+  // Fiber calls this factory once per Canvas mount and ignores a later
+  // `gl`, so a new renderer after a loss is a new Canvas mount.
   const renderer = useMemo(() => createSurfaceRenderer(gl), [gl])
+  const [rendererMount, setRendererMount] = useState(0)
+  const replacement = useRef<{ readonly createdAt: number } | null>(null)
 
   useEffect(() => {
     const mount = mountSurfaceHost(candidate)
@@ -453,6 +480,7 @@ export function SurfaceCanvas({
     (state) => {
       setCreated(true)
       setContextLost(false)
+      if (replacement.current) replacement.current = { createdAt: performance.now() }
       onCreated?.(state)
     },
     [onCreated],
@@ -461,8 +489,15 @@ export function SurfaceCanvas({
   // Stable, so the bridge's listener effect is not torn down and rebuilt on
   // every parent render — a context loss arriving in that gap is a canvas
   // that never says it died.
-  const handleContextLost = useCallback(() => setContextLost(true), [])
-  const handleContextRestored = useCallback(() => setContextLost(false), [])
+  const onRendererLostRef = useLatest(onRendererLost)
+  const handleContextLost = useCallback(() => {
+    setContextLost(true)
+    onRendererLostRef.current?.()
+    const previous = replacement.current
+    if (previous && performance.now() - previous.createdAt < REPEATED_LOSS_MS) return
+    replacement.current = { createdAt: Number.POSITIVE_INFINITY }
+    setRendererMount((mount) => mount + 1)
+  }, [onRendererLostRef])
 
   const showFallback = fallback !== undefined && (contextLost || !created)
 
@@ -486,6 +521,7 @@ export function SurfaceCanvas({
       <SurfaceOutwardSources host={host} />
       <SurfaceHostContext value={host}>
         <Canvas
+          key={rendererMount}
           {...canvasProps}
           gl={renderer}
           flat
@@ -499,7 +535,6 @@ export function SurfaceCanvas({
             host={host}
             frameloop={frameloop}
             onContextLost={handleContextLost}
-            onContextRestored={handleContextRestored}
             onDisplayScale={setDisplayScale}
             displaySized={resize?.offsetSize!==true}
           />

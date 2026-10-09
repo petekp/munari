@@ -1,4 +1,4 @@
-// Late hosts, context loss, unmount, and native fallback preserve the same editable HTML.
+// Late hosts, GPU loss, unmount, and native fallback preserve the same editable HTML.
 import assert from 'node:assert/strict'
 import {mkdir,writeFile} from 'node:fs/promises'
 import path from 'node:path'
@@ -34,16 +34,28 @@ try{
    }else await page.waitForFunction(()=>window.__statefulRenderer?.gl)
    if(capable&&!noWebGL){
     await page.waitForFunction(()=>window.__stateful.state.presentation==='scene')
-    await page.evaluate(()=>{window.loss=window.__statefulRenderer.gl.getContext().getExtension('WEBGL_lose_context');window.loss.loseContext()})
-    await page.waitForFunction(()=>window.__stateful.state.presentation==='page')
-    await page.click('[data-api-live] #counter')
-    await page.evaluate(()=>window.loss.restoreContext())
-    await page.waitForFunction(()=>window.__stateful.state.presentation==='scene')
     await page.evaluate(()=>window.__stateful.host(false))
     await page.waitForFunction(()=>window.__stateful.state.presentation==='page')
     await page.click('[data-api-live] #counter')
     await page.evaluate(()=>window.__stateful.host(true))
     await page.waitForFunction(()=>window.__stateful.state.presentation==='scene')
+    // Crashing the GPU process is how a real loss arrives, and it reaches both
+    // backends: WebGPU has no call that loses one device the way Three reports it.
+    // Chrome turns the GPU off after the second crash, so the losses come last.
+    const loseGpu=async()=>{const cdp=await browser.target().createCDPSession();await cdp.send('Browser.crashGpuProcess');await cdp.detach()}
+    await page.evaluate(()=>{window.lostRenderer=window.__statefulRenderer.gl})
+    await loseGpu()
+    await page.waitForFunction(()=>window.__stateful.state.presentation==='page')
+    await page.click('[data-api-live] #counter')
+    // Three's renderer never draws after a loss, so the scene returns on a new one.
+    await page.waitForFunction(()=>window.__stateful.state.presentation==='scene'&&window.__statefulRenderer.gl!==window.lostRenderer,{timeout:15_000})
+    // A replacement lost within 10 s of its creation is not replaced again.
+    await page.evaluate(()=>{window.lostRenderer=window.__statefulRenderer.gl})
+    await loseGpu()
+    await page.waitForFunction(()=>window.__stateful.state.presentation==='page')
+    await new Promise(resolve=>setTimeout(resolve,3000))
+    assert.equal(await page.evaluate(()=>window.__stateful.state.presentation),'page','a repeated loss must leave the page HTML in place')
+    assert.equal(await page.evaluate(()=>window.__statefulRenderer.gl===window.lostRenderer),true,'a repeated loss must not create another renderer')
    }else{
     assert.equal(await page.evaluate(()=>window.__stateful.state.supported),capable)
     await page.click('[data-api-live] #counter')

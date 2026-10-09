@@ -33,6 +33,8 @@ const ROOT_ENTRY = [
   'createSurface',
   'deformSurfaceGeometry',
   'detectHtmlInCanvas',
+  'encodedOutput',
+  'premultipliedOutput',
   'supportsSurfaces',
   'surfaceFocusKey',
   'surfaceFocusTarget',
