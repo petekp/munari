@@ -4850,3 +4850,43 @@ loads and resolves it, which runs Three's own loss handler. A GPU process
 crash also stops the film's video decoder, and `destroy()` reports reason
 `destroyed`, which Three treats as its own dispose. On the fallback it uses
 `WEBGL_lose_context`.
+
+## #74 — Capture canvases use CPU storage on a software GPU (2026-10-09, kernel + react binding)
+
+**Status: implemented on `pkp/webgpu-restart`.**
+
+On a software WebGPU adapter, uploading a capture canvas blocks the page.
+Chrome copies a GPU-backed 2D canvas into a WebGPU texture by reading it back
+in the GPU process, and the page waits for every frame still queued there.
+WebGL's `texImage2D` of the same canvas did not wait. On a GPU with shared
+memory the copy stays on the GPU and costs nothing.
+
+**Decision: when `SurfaceCanvas` finds a fallback adapter
+(`adapter.info.isFallbackAdapter`), capture canvases take CPU storage**
+(`willReadFrequently`). The kernel's `setCaptureCanvasMemory` holds the
+choice, and `captureContext` applies it when a canvas first draws, since a
+context's storage is fixed at creation. A canvas that drew before the adapter
+answered keeps GPU storage. Real GPUs are unchanged.
+
+The rejected alternatives were CPU storage everywhere, which costs about 3 ms
+per large upload on every machine, and Chrome's direct element upload
+(`GPUQueue.copyElementImageToTexture`), which waited exactly as long.
+
+Measured 2026-10-09, Chrome 155:
+
+| Where | Upload path | Page blocked per upload |
+| --- | --- | --- |
+| Hosted Linux runner, SwiftShader, Genie lift | GPU-backed canvas | 299–564 ms |
+| Hosted Linux runner, SwiftShader, Genie lift | CPU-backed canvas | 0–6 ms |
+| Linux container, SwiftShader, 1200×800, 40 ms of GPU work queued | GPU canvas / direct element upload / ImageBitmap | 38–40 ms each |
+| Linux container, same | CPU-backed canvas | 7 ms |
+| M4 Max, Metal, 1200×800, 180 ms of GPU work queued | GPU-backed canvas | 0.1 ms |
+| M4 Max, Metal, same | CPU-backed canvas | 3 ms |
+
+With CPU storage on the hosted runner, Genie's first scene draw in `auto`
+capture came 237–357 ms after the minimize press instead of 545–757 ms, and `gate:genie-pose-flash`
+passed all 16 cases. With GPU storage it failed all 16, because its
+recording ended 450 ms after release, before the first draw plus 80 ms.
+
+A SwiftShader adapter reports `isFallbackAdapter: true`; Metal on an M4 Max
+reports `false`. Other software rasterizers were not checked.

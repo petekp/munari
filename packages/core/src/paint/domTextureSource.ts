@@ -387,6 +387,38 @@ export function clampRawScale(k: number): number {
   return Number.isFinite(k) ? Math.min(8, Math.max(0.1, k)) : 1
 }
 
+// ── capture canvas memory ────────────────────────────────────────────────
+
+/**
+ * Where a capture canvas keeps its pixels. `'cpu'` is the 2D context's
+ * `willReadFrequently` storage.
+ *
+ * On a software WebGPU adapter, Chrome uploads a GPU-backed canvas by
+ * reading it back through the GPU process, behind every frame still queued
+ * there. One Genie upload blocked the page for 299–564 ms on a hosted Linux
+ * runner, and the same upload from CPU storage took 0–6 ms (measured
+ * 2026-10-09, Chrome 155, SwiftShader). On a GPU with shared memory the
+ * GPU-backed upload is the cheap one: 0.1 ms against 3 ms for a 1200×800
+ * canvas on an M4 Max. A context's storage is fixed when it is created, so
+ * a canvas follows the setting in force at its first draw.
+ */
+export type CaptureCanvasMemory = 'gpu' | 'cpu'
+
+let captureMemory: CaptureCanvasMemory = 'gpu'
+
+/** Choose the storage for capture canvases whose first draw is still to come. */
+export function setCaptureCanvasMemory(memory: CaptureCanvasMemory): void {
+  captureMemory = memory
+}
+
+/**
+ * The capture canvas's 2D context. Every engine reaches its canvas through
+ * this, so the first call is the one that fixes the storage.
+ */
+export function captureContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D | null {
+  return canvas.getContext('2d', captureMemory === 'cpu' ? { willReadFrequently: true } : undefined)
+}
+
 // ── the shared source body ───────────────────────────────────────────────
 
 /** The canvas, the ledger and the arithmetic every engine's source shares. */
@@ -542,8 +574,10 @@ export function createCaptureCanvas(
       // stub with no rasterizer (happy-dom, where the conformance suite runs)
       // there are no pixels to save and no blitter to save them with. Skip it
       // there rather than make every caller carry a mock.
-      const ctx = canvas.getContext('2d')
-      if (ok && ctx && 'drawImage' in ctx) {
+      // Only a painted canvas has a raster to carry; asking an unpainted one
+      // for its context would fix its storage before the first draw.
+      const ctx = ok ? captureContext(canvas) : null
+      if (ctx && 'drawImage' in ctx) {
         const scratch = document.createElement('canvas')
         scratch.width = canvas.width
         scratch.height = canvas.height

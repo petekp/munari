@@ -50,6 +50,7 @@ import { createInputWindow, PAINT_EVENTS } from './inputWindow'
 import { HOVER_ATTR } from '../pointer/twins'
 import {
   adoptContent,
+  captureContext,
   createCaptureCanvas,
   PARKED_HOST_ATTRIBUTE,
   type CaptureCanvas,
@@ -275,7 +276,7 @@ export function createRasterizedSource(
    * paint (reproduced 2026-09-27 by fault injection, decisions.md #60).
    */
   const draw = (image: RasterImage, askedFor: readonly [number, number]) => {
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    const ctx = captureContext(canvas)
     if (!ctx || !('drawImage' in ctx)) {
       throw new Error('munari: the capture canvas has no 2D context, so the raster was not drawn')
     }
