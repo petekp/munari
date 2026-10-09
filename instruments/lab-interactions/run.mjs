@@ -322,7 +322,7 @@ try {
   await page.waitForFunction(() => Boolean(window.__flight), { timeout: 3_000 })
   const shadow = await page.evaluate(() => {
     const mesh = window.__r3f.scene.getObjectByName('flight-card-shadow')
-    return mesh ? { visible: mesh.visible, count: mesh.material.uniforms.uCount.value } : null
+    return mesh ? { visible: mesh.visible, count: mesh.material.userData.shadow.count.value } : null
   })
   // Observe a quiet interval after setup and hover paints have had time to
   // finish. The pointer stays still so its events cannot wake a stalled loop.
@@ -331,7 +331,7 @@ try {
     let first = null
     const sample = () => {
       const elapsed = performance.now() - started
-      const frame = window.__r3f.gl.info.render.frame
+      const frame = window.__r3f.gl.info.render.calls
       if (elapsed >= 1_000 && first === null) first = frame
       if (elapsed >= 1_500) resolve(frame - first)
       else requestAnimationFrame(sample)

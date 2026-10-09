@@ -577,6 +577,9 @@ export function createBubbleMaterial(map: TextureNode, v: BubbleValues): MeshBas
     })
     return result
   })()
+  // Browser probes read the live uniform values and the capture from the mesh.
+  material.userData.bubble = v
+  material.userData.bubbleMap = map
   return material
 }
 

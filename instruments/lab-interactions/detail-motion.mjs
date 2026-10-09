@@ -41,12 +41,12 @@ async function checkUnroll(page) {
     window.__detailUnrollRender = control
     renderer.render = () => { control.blocked++ }
   })
-  const heldFrame = await page.evaluate(() => window.__r3f.gl.info.render.frame)
+  const heldFrame = await page.evaluate(() => window.__r3f.gl.info.render.calls)
   await page.click(trigger)
   await page.waitForSelector(source)
   await frames(page)
   assert.equal(await page.$eval(trigger, element => element.getAttribute('aria-expanded')), 'true')
-  assert.equal(await page.evaluate(() => window.__r3f.gl.info.render.frame), heldFrame, 'The delayed-open control must prevent a render')
+  assert.equal(await page.evaluate(() => window.__r3f.gl.info.render.calls), heldFrame, 'The delayed-open control must prevent a render')
   const blockedDraws = await page.evaluate(() => window.__detailUnrollRender.blocked)
   assert.ok(blockedDraws > 0, 'The delayed-open control must intercept an attempted draw')
   await page.click(trigger)
@@ -58,7 +58,7 @@ async function checkUnroll(page) {
   await frames(page)
   const removed = await page.evaluate(selector => {
     let menuMeshes = 0
-    window.__r3f.scene.traverse(object => { if (object.material?.uniforms?.uOpacity) menuMeshes++ })
+    window.__r3f.scene.traverse(object => { if (object.material?.userData.sheet) menuMeshes++ })
     return { sourceRemoved: !document.querySelector(selector), menuMeshes }
   }, source)
   assert.deepEqual(removed, { sourceRemoved: true, menuMeshes: 0 })
@@ -68,12 +68,12 @@ async function checkUnroll(page) {
   await page.waitForFunction(() => {
     let flat = false
     window.__r3f.scene.traverse(object => {
-      if (!object.material?.uniforms?.uOpacity || !object.geometry) return
+      if (!object.material?.userData.sheet || !object.geometry) return
       const positions = object.geometry.getAttribute('position')
       if (!object.visible || !positions?.count) return
       let maximumZ = 0
       for (let i = 0; i < positions.count; i++) maximumZ = Math.max(maximumZ, Math.abs(positions.getZ(i)))
-      flat ||= object.material.uniforms.uOpacity.value === 1 && Number.isFinite(maximumZ) && maximumZ < 0.01
+      flat ||= object.material.userData.sheet.opacity.value === 1 && Number.isFinite(maximumZ) && maximumZ < 0.01
     })
     return flat
   }, { timeout: 12_000 })
@@ -145,17 +145,17 @@ async function checkGenie(page) {
 async function checkCopy(page) {
   await page.waitForFunction(() => {
     let ready = false
-    window.__r3f?.scene.traverse(object => { if (object.material?.uniforms?.uLag) ready = true })
+    window.__r3f?.scene.traverse(object => { if (object.material?.userData.suck) ready = true })
     return ready
   }, { timeout: 20_000 })
   await page.click('.cand-code-bar .cand-btn')
   await page.waitForFunction(() => {
     let sample = null
     window.__r3f.scene.traverse(object => {
-      const uniforms = object.material?.uniforms
-      if (!uniforms?.uLag || !object.visible || uniforms.uT.value < 0.4 || uniforms.uT.value > 0.7) return
-      sample = { phase: uniforms.uT.value, arc: uniforms.uArc.value, lag: uniforms.uLag.value,
-        twist: uniforms.uTwist.value, sway: uniforms.uSway.value.toArray() }
+      const values = object.material?.userData.suck
+      if (!values || !object.visible || values.t.value < 0.4 || values.t.value > 0.7) return
+      sample = { phase: values.t.value, arc: values.arc.value, lag: values.lag.value,
+        twist: values.twist.value, sway: values.sway.value.toArray() }
     })
     if (!sample) return false
     window.__detailCopy = sample

@@ -69,7 +69,7 @@ sceneCase('explode', 'explode', async page => {
   await page.waitForFunction(() => {
     const depths = []
     window.__r3f.scene.traverse(object => {
-      if (object.material?.map?.image?.querySelector?.('[data-munari-surface^="plate-"]')) depths.push(object.matrixWorld.elements[14])
+      if (object.material?.userData.plateMap?.value.image?.querySelector?.('[data-munari-surface^="plate-"]')) depths.push(object.matrixWorld.elements[14])
     })
     return depths.length === window.__explode.plates().length && Math.max(...depths) - Math.min(...depths) < 1e-6
   })
@@ -80,7 +80,7 @@ sceneCase('explode', 'explode', async page => {
   await page.waitForFunction(() => {
     const depths = []
     window.__r3f.scene.traverse(object => {
-      if (object.material?.map?.image?.querySelector?.('[data-munari-surface^="plate-"]')) depths.push(object.matrixWorld.elements[14])
+      if (object.material?.userData.plateMap?.value.image?.querySelector?.('[data-munari-surface^="plate-"]')) depths.push(object.matrixWorld.elements[14])
     })
     return Math.max(...depths) - Math.min(...depths) > 0.5
   })
@@ -94,7 +94,7 @@ sceneCase('selection', 'selection', async page => {
   await page.waitForFunction(() => getSelection().toString().length > 20)
   await page.waitForFunction(() => {
     let drawn = false
-    window.__r3f.scene.traverse(object => { const u = object.material?.uniforms; if (u?.uRectCount?.value > 0 && u.uT.value > 0.9 && u.tMap.value) drawn = true })
+    window.__r3f.scene.traverse(object => { const data = object.material?.userData; if (data?.bubble?.rectCount.value > 0 && data.bubble.t.value > 0.9 && data.bubbleMap.value) drawn = true })
     return drawn
   })
   return { selectedCharacters: await page.evaluate(() => getSelection().toString().length), captureFeedsGlass: true, input: 'browser mouse selection' }
@@ -122,10 +122,10 @@ sceneCase('candidate-unroll', 'candidates', async page => {
   await page.click('button[aria-expanded]')
   await page.waitForFunction(() => {
     const sheets = []
-    window.__r3f.scene.traverse(object => { if (object.isMesh && object.material?.uniforms?.uOpacity) sheets.push(object) })
+    window.__r3f.scene.traverse(object => { if (object.isMesh && object.material?.userData.sheet) sheets.push(object) })
     const mesh = sheets.length === 1 ? sheets[0] : null
     const position = mesh?.geometry.getAttribute('position')
-    let flat = Boolean(position?.count && mesh.material.uniforms.tMap.value && mesh.material.uniforms.uOpacity.value > 0.99 && document.querySelector('.cand-menu__item'))
+    let flat = Boolean(position?.count && mesh.material.userData.sheetMap.value && mesh.material.userData.sheet.opacity.value > 0.99 && document.querySelector('.cand-menu__item'))
     if (flat) for (let index = 0; index < position.count; index++) if (Math.abs(position.getZ(index)) > 1e-4) flat = false
     // Opacity is already one during opening. Several flat frames exclude the initial, undeformed plane.
     window.unrollFlatFrames = flat ? (window.unrollFlatFrames ?? 0) + 1 : 0
@@ -134,7 +134,7 @@ sceneCase('candidate-unroll', 'candidates', async page => {
   const at = await page.evaluate(() => {
     const source = document.querySelector('[data-munari-surface="unroll-menu"]'), item = source.querySelector('.cand-menu__item')
     const sourceBox = source.getBoundingClientRect(), row = item.getBoundingClientRect(), meshes = []
-    window.__r3f.scene.traverse(object => { if (object.isMesh && object.material?.uniforms?.uOpacity) meshes.push(object) })
+    window.__r3f.scene.traverse(object => { if (object.isMesh && object.material?.userData.sheet) meshes.push(object) })
     if (meshes.length !== 1) throw new Error('Expected one menu sheet to project its row through')
     const mesh = meshes[0]; mesh.geometry.computeBoundingBox()
     const bounds = mesh.geometry.boundingBox

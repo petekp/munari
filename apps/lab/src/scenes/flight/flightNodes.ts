@@ -318,6 +318,8 @@ export function createShadowMaterial(u: ShadowUniforms): MeshBasicNodeMaterial {
     depthWrite: false,
     toneMapped: false,
   })
+  // Browser gates read the live layer count from the mesh.
+  material.userData.shadow = u
   const off = uniformArray<'vec2'>(u.off, 'vec2')
   const sigma = uniformArray<'float'>(u.sigma, 'float')
   const spread = uniformArray<'float'>(u.spread, 'float')

@@ -397,6 +397,9 @@ export function createSheetMaterial(
     // behind the trigger instead of flashing white.
     return fadedAfterEncode(frontFacing.select(front, back), values.opacity)
   })()
+  // Browser probes read the live uniform values and the capture from the mesh.
+  material.userData.sheet = values
+  material.userData.sheetMap = surface.map
   return { material, values }
 }
 
@@ -774,6 +777,8 @@ export function createSuckMaterial(surface: SurfaceNodes) {
     // its way into the cursor (2026-08-20).
     return fadedAfterEncode(vec4(rgb, c.a).mul(surface.radiusMask()), exit)
   })()
+  // Browser probes read the live uniform values from the mesh.
+  material.userData.suck = values
   return { material, values }
 }
 

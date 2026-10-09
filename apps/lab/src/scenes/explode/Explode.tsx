@@ -184,6 +184,8 @@ function PlateMaterial() {
     })
     // SAFETY: a texture sample is a vec4; Three's types return a bare Node.
     created.outputNode = premultipliedOutput(surface.map.sample(uv()) as Node<'vec4'>)
+    // Browser probes find a plate's mesh by the capture it samples.
+    created.userData.plateMap = surface.map
     return created
   }, [surface])
   useEffect(() => () => material.dispose(), [material])

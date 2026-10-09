@@ -158,7 +158,7 @@ try {
       state.raycaster.setFromCamera({ x: (x - canvas.left) / canvas.width * 2 - 1, y: 1 - (y - canvas.top) / canvas.height * 2 }, state.camera)
       const candidates = []
       state.scene.traverse(object => {
-        if (object.isMesh && object.material?.uniforms?.uTransmission) candidates.push(object)
+        if (object.isMesh && object.material?.userData.refractionValues) candidates.push(object)
       })
       return {
         chrome: Boolean(header && top && header.contains(top)),

@@ -54,7 +54,7 @@ try {
     await page.$eval('#scroller',element=>{element.scrollTop=35});await checkCorners()
     if(process.env.LAYOUT_MOVE==='1'){
       await page.waitForFunction(()=>{
-        const frame=window.__statefulRenderer.gl.info.render.frame, now=performance.now()
+        const frame=window.__statefulRenderer.gl.info.render.calls, now=performance.now()
         if(window.quietFrame?.frame!==frame)window.quietFrame={frame,since:now}
         return now-window.quietFrame.since>300
       },{timeout:4000})
