@@ -14,7 +14,7 @@ No patched dependency, fork, or installed-source edit is allowed.
 | Base commit | `origin/main` at `70fd423` |
 | Worktree | `~/Code/worktrees/munari/webgpu-restart` |
 | Three | `0.186.1`; `main` has `0.185.1` (decisions.md #71) |
-| Fiber | `9.7.0`, unchanged from `main` |
+| Fiber | `9.8.1`; `main` has `9.7.0` (decisions.md #69) |
 
 The three local commits on `pkp/browser-gate-recording` are not in this base.
 

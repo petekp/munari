@@ -4564,6 +4564,21 @@ renderer uses WebGPU when the browser offers it and falls back to WebGL 2.
 `gl` takes `WebGPURendererParameters`, such as `forceWebGL`. The migration uses
 stock Three and Fiber through public APIs (docs/webgpu-migration-plan.md).
 
+**Fiber `9.8.1` is the minimum.** `SurfaceCanvas` passes Fiber an async
+renderer factory, and Fiber's Canvas calls `configure()` on every render. In
+`9.7.0`, `configure()` read the store before awaiting the factory and set up
+the camera and scene from that read. Veil's band drew nothing in 15 of 48
+loads; in the two failing loads checked, its camera had aspect 0. In `9.8.1`,
+`configure()` queues behind the pending factory and reads the store after it
+resolves, and Veil drew in 12 of 12 loads. Measured 2026-10-09, headless
+Chrome 155. `@petepetrash/munari` therefore requires
+`@react-three/fiber >= 9.8.1`.
+
+`9.8.1` also throws a factory's rejection while rendering the Canvas, which
+unmounted the whole page in a browser with no GPU (`probe:api-lifecycle`).
+`SurfaceCanvas` catches that one error at its Canvas, reports it to the
+window's error handlers, and shows `fallback`; the page HTML stays.
+
 `WebGPURenderer` draws each frame into an internal target, then tone-maps and
 color-converts the whole frame in a final pass. Two contracts follow from that.
 

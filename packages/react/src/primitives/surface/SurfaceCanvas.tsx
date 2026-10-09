@@ -33,7 +33,7 @@
 // remounts the Canvas with a new one, unless the replacement is lost too
 // soon after it was created (decisions.md #73).
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Component, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Canvas, useFrame, useThree, type CanvasProps, type RootState } from '@react-three/fiber'
 import { NoToneMapping } from 'three'
@@ -136,25 +136,49 @@ async function adapterTextureLimit(powerPreference: GPUPowerPreference | undefin
   return adapter?.limits.maxTextureDimension2D ?? null
 }
 
-// Fiber 9.7.0 calls the `gl` factory on every `configure()` until its first
-// call resolves, and the Canvas configures on each render. Two renderers on
-// one canvas each size it, and the one Fiber keeps can miss its setSize: Genie
-// then drew 300×150 buffers into a 1200×820 canvas (gate:degraded, 2026-10-09;
-// two devices configured that canvas). Keyed by canvas, not by factory,
-// because a new `gl` prop object makes a new factory.
-const renderers = new WeakMap<HTMLCanvasElement, Promise<WebGPURenderer>>()
-
+// Fiber 9.8.1 calls this factory once per root and queues the Canvas's
+// `configure()` calls until it resolves (decisions.md #69).
 function createSurfaceRenderer(
   parameters: Omit<WebGPURendererParameters, 'canvas'> | undefined,
 ): (defaults: FiberRendererDefaults) => Promise<WebGPURenderer> {
   return (defaults) => {
     // Fiber types its canvas with its own OffscreenCanvas stand-in.
     if (!(defaults.canvas instanceof HTMLCanvasElement)) return Promise.reject(new Error('[munari] SurfaceCanvas needs a DOM canvas'))
-    const existing = renderers.get(defaults.canvas)
-    if (existing) return existing
-    const created = startSurfaceRenderer(parameters, defaults.canvas, defaults)
-    renderers.set(defaults.canvas, created)
-    return created
+    return startSurfaceRenderer(parameters, defaults.canvas, defaults)
+  }
+}
+
+class RendererStartError extends Error {}
+
+/**
+ * Keeps a renderer that could not start at the Canvas.
+ *
+ * Fiber 9.8.1 throws the factory's rejection while rendering the Canvas, so
+ * without this a browser with no GPU unmounts the caller's whole tree, page
+ * HTML included. A start failure is reported to the window's error handlers
+ * and the Canvas renders nothing, which leaves `fallback` showing; any other
+ * error goes on to the caller's boundaries.
+ */
+interface RendererStartState {
+  readonly error: Error | null
+}
+
+class RendererStartBoundary extends Component<{ children: ReactNode }, RendererStartState> {
+  state: RendererStartState = { error: null }
+
+  static getDerivedStateFromError(error: Error): RendererStartState {
+    return { error }
+  }
+
+  componentDidCatch(error: Error) {
+    if (error instanceof RendererStartError) reportError(error)
+  }
+
+  render() {
+    const { error } = this.state
+    if (error === null) return this.props.children
+    if (error instanceof RendererStartError) return null
+    throw error
   }
 }
 
@@ -172,7 +196,7 @@ async function startSurfaceRenderer(
   } catch (cause) {
     // Three reaches its WebGL 2 fallback before rejecting, and a missing
     // context surfaces there as a null dereference.
-    throw new Error('[munari] SurfaceCanvas could not start WebGPU or its WebGL 2 fallback', { cause })
+    throw new RendererStartError('[munari] SurfaceCanvas could not start WebGPU or its WebGL 2 fallback', { cause })
   }
   const context = renderer.getContext()
   textureLimits.set(
@@ -195,7 +219,7 @@ const REPEATED_LOSS_MS = 10_000
 /**
  * Ask R3F for a frameloop mode only when it is not already the mode.
  *
- * `setFrameloop` in @react-three/fiber 9.7.0 restarts the shared clock
+ * `setFrameloop` in @react-three/fiber 9.8.1 restarts the shared clock
  * (`clock.elapsedTime = 0`) on every call, changed mode or not. The host
  * asks for a mode on every work-claim edge, twice per capture, so a scene
  * that poses itself as a function of `clock.elapsedTime` would snap to its
@@ -546,28 +570,29 @@ export function SurfaceCanvas({
     <>
       <SurfaceOutwardSources host={host} />
       <SurfaceHostContext value={host}>
-        <Canvas
-          key={rendererMount}
-          {...canvasProps}
-          gl={renderer}
-          flat
-          frameloop={frameloop}
-          dpr={drawingDpr}
-          resize={resize}
-          onCreated={handleCreated}
-          style={wrapperStyle}
-        >
-          <SurfaceHostBridge
-            host={host}
+        <RendererStartBoundary key={rendererMount}>
+          <Canvas
+            {...canvasProps}
+            gl={renderer}
+            flat
             frameloop={frameloop}
-            onContextLost={handleContextLost}
-            onDisplayScale={setDisplayScale}
-            displaySized={resize?.offsetSize!==true}
-          />
-          {children}
-          <SurfaceInwardPresenters host={host} />
-          {pointerMode === 'surfaces' ? <SurfacePointerBridge host={host} /> : null}
-        </Canvas>
+            dpr={drawingDpr}
+            resize={resize}
+            onCreated={handleCreated}
+            style={wrapperStyle}
+          >
+            <SurfaceHostBridge
+              host={host}
+              frameloop={frameloop}
+              onContextLost={handleContextLost}
+              onDisplayScale={setDisplayScale}
+              displaySized={resize?.offsetSize!==true}
+            />
+            {children}
+            <SurfaceInwardPresenters host={host} />
+            {pointerMode === 'surfaces' ? <SurfacePointerBridge host={host} /> : null}
+          </Canvas>
+        </RendererStartBoundary>
       </SurfaceHostContext>
       {showFallback ? fallback : null}
     </>
