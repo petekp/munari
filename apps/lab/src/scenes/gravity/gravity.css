@@ -2,7 +2,7 @@
  *
  * The lab pins html/body/#root to a fixed viewport (veil.css explains the
  * rule); this page fills that box and centers the poem inside it. The
- * overlay canvas is the only WebGL surface, laid straight over the page
+ * overlay canvas is the only GPU canvas, laid straight over the page
  * with pointer-events disabled — every click and mousedown lands on the
  * real DOM underneath it.
  */

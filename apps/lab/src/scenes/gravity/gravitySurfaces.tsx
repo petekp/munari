@@ -1,9 +1,10 @@
 // Gravity's Surface presentation keeps each word's React instance while the
 // paragraph reflows. Physics and hit testing use the existing gravity law.
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { DoubleSide, type Group } from 'three'
-import { Surface, SurfaceCanvas, useSurfaceDriver, useSurfaceTexture, type SurfacePresentation } from '@petepetrash/munari'
+import type { Group } from 'three'
+import { Surface, SurfaceCanvas, useSurfaceDriver, useSurfaceNodes, type SurfacePresentation } from '@petepetrash/munari'
+import { createSurfaceWordMaterial } from './gravityNodes'
 import { boundsFromViewport, clampToBounds, hitTestBody, settleInstant, spawnBody, stepWorld, type GravityBody } from './gravityLaw'
 
 interface WordFlight {
@@ -45,8 +46,10 @@ function GravityWorld({ state }: { state: GravitySceneState }) {
 }
 
 function WordMaterial() {
-  const texture = useSurfaceTexture()
-  return <meshBasicMaterial map={texture} side={DoubleSide} transparent premultipliedAlpha depthTest={false} depthWrite={false} toneMapped={false} />
+  const surface = useSurfaceNodes()
+  const material = useMemo(() => createSurfaceWordMaterial(surface), [surface])
+  useLayoutEffect(() => () => material.dispose(), [material])
+  return <primitive object={material} attach="material" />
 }
 
 function FallingWord({ flight }: { flight: WordFlight }) {
