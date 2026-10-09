@@ -275,7 +275,7 @@ export function createRasterizedSource(
    * paint (reproduced 2026-09-27 by fault injection, decisions.md #60).
    */
   const draw = (image: RasterImage, askedFor: readonly [number, number]) => {
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx || !('drawImage' in ctx)) {
       throw new Error('munari: the capture canvas has no 2D context, so the raster was not drawn')
     }

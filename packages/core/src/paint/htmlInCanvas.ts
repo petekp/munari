@@ -174,7 +174,7 @@ function createHtmlInCanvasSource(
   // Chrome's addition to the 2d context. The '2d' context id cannot return
   // null for a canvas this function just created and has not asked for
   // another context on.
-  const ctx = canvas.getContext('2d') as TrialContext2D
+  const ctx = canvas.getContext('2d', { willReadFrequently: true }) as TrialContext2D
 
   canvas.onpaint = () => {
     // The one place this engine spends a paint. Declining leaves the canvas
