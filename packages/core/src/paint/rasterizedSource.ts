@@ -51,6 +51,7 @@ import { HOVER_ATTR } from '../pointer/twins'
 import {
   adoptContent,
   captureContext,
+  captureMemoryChosen,
   createCaptureCanvas,
   PARKED_HOST_ATTRIBUTE,
   type CaptureCanvas,
@@ -344,6 +345,8 @@ export function createRasterizedSource(
     const scaleY = askedFor[1] / Math.max(1, box[1])
     try {
       const image = await rasterize(element, scaleX, scaleY)
+      // The store's storage is fixed by its first draw (domTextureSource.ts).
+      await captureMemoryChosen()
       if (disposed) return
       draw(image, askedFor)
       rasteredStore = [canvas.width, canvas.height]

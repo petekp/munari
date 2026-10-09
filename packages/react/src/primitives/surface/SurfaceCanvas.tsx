@@ -38,7 +38,6 @@ import { createPortal } from 'react-dom'
 import { Canvas, useFrame, useThree, type CanvasProps, type RootState } from '@react-three/fiber'
 import { NoToneMapping } from 'three'
 import { DirectRenderPipeline, WebGPURenderer, type WebGPURendererParameters } from 'three/webgpu'
-import { setCaptureCanvasMemory } from '@munari/core'
 import {
   createSurfaceHost,
   mountSurfaceHost,
@@ -124,19 +123,16 @@ export function surfaceTextureLimit(renderer: RootState['gl'] | WebGPURenderer):
 }
 
 /**
- * Read the adapter Three will use, before it does. Returns its own texture
- * limit: a WebGPU device otherwise gets the spec default of 8192, below the
- * 16384 WebGL used on the same hardware. A software adapter also moves
- * capture canvases to CPU storage, the cheap upload there (decisions.md #74).
+ * The adapter's own texture limit. A WebGPU device otherwise gets the spec
+ * default of 8192, below the 16384 WebGL used on the same hardware.
  */
-async function inspectAdapter(powerPreference: GPUPowerPreference | undefined): Promise<number | null> {
+async function adapterTextureLimit(powerPreference: GPUPowerPreference | undefined): Promise<number | null> {
   const gpu = globalThis.navigator?.gpu
   if (!gpu) return null
   // Three requests its adapter with these options; matching them asks the
   // same adapter. TypeScript's DOM types do not list `featureLevel` yet.
   const options: GPURequestAdapterOptions & { readonly featureLevel: 'compatibility' } = { powerPreference, featureLevel: 'compatibility' }
   const adapter = await gpu.requestAdapter(options)
-  if (adapter?.info.isFallbackAdapter) setCaptureCanvasMemory('cpu')
   return adapter?.limits.maxTextureDimension2D ?? null
 }
 
@@ -168,7 +164,7 @@ async function startSurfaceRenderer(
   { antialias, alpha }: FiberRendererDefaults,
 ): Promise<WebGPURenderer> {
   const powerPreference = parameters?.powerPreference ?? 'high-performance'
-  const limit = parameters?.forceWebGL ? null : await inspectAdapter(powerPreference)
+  const limit = parameters?.forceWebGL ? null : await adapterTextureLimit(powerPreference)
   const requiredLimits = limit === null ? parameters?.requiredLimits : { maxTextureDimension2D: limit, ...parameters?.requiredLimits }
   const renderer = new WebGPURenderer({ antialias, alpha, ...parameters, powerPreference, requiredLimits, canvas })
   try {

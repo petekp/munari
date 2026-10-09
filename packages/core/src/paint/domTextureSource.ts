@@ -400,22 +400,50 @@ export function clampRawScale(k: number): number {
  * 2026-10-09, Chrome 155, SwiftShader). On a GPU with shared memory the
  * GPU-backed upload is the cheap one: 0.1 ms against 3 ms for a 1200×800
  * canvas on an M4 Max. A context's storage is fixed when it is created, so
- * a canvas follows the setting in force at its first draw.
+ * the choice has to be made before any capture canvas first draws.
+ *
+ * The kernel asks the adapter itself, at the first capture. A capture starts
+ * before the renderer that would otherwise ask: in a Linux container, Genie's
+ * four capture canvases took their contexts 120 ms before SurfaceCanvas
+ * requested its adapter, and all four kept GPU storage (2026-10-09).
  */
-export type CaptureCanvasMemory = 'gpu' | 'cpu'
+type CaptureCanvasMemory = 'gpu' | 'cpu'
 
-let captureMemory: CaptureCanvasMemory = 'gpu'
+let captureMemory: CaptureCanvasMemory | null = null
+let choosing: Promise<void> | null = null
 
-/** Choose the storage for capture canvases whose first draw is still to come. */
-export function setCaptureCanvasMemory(memory: CaptureCanvasMemory): void {
-  captureMemory = memory
+// A request that never settles would hold every capture back. Past this,
+// captures take GPU storage, as they did before decisions.md #74. The
+// container's adapter answered 1.1 s after it was asked, under emulation.
+const ADAPTER_WAIT_MS = 3000
+
+async function chooseCaptureMemory(): Promise<void> {
+  const gpu = globalThis.navigator?.gpu
+  if (!gpu) {
+    captureMemory = 'gpu'
+    return
+  }
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), ADAPTER_WAIT_MS))
+  const adapter = await Promise.race([gpu.requestAdapter().catch(() => null), timeout])
+  captureMemory = adapter?.info.isFallbackAdapter ? 'cpu' : 'gpu'
+}
+
+/**
+ * Settles once capture storage is chosen, starting the choice if nothing has
+ * asked yet. Null when the choice is already made.
+ */
+export function captureMemoryChosen(): Promise<void> | null {
+  choosing ??= chooseCaptureMemory()
+  return captureMemory ? null : choosing
 }
 
 /**
  * The capture canvas's 2D context. Every engine reaches its canvas through
- * this, so the first call is the one that fixes the storage.
+ * this, so the first call is the one that fixes the storage. Null until
+ * `captureMemoryChosen()` has settled.
  */
 export function captureContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D | null {
+  if (captureMemoryChosen()) return null
   return canvas.getContext('2d', captureMemory === 'cpu' ? { willReadFrequently: true } : undefined)
 }
 

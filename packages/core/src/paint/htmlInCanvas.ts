@@ -28,6 +28,7 @@
 import {
   adoptContent,
   captureContext,
+  captureMemoryChosen,
   createCaptureCanvas,
   PARKED_HOST_ATTRIBUTE,
   type CaptureCanvas,
@@ -171,8 +172,8 @@ function createHtmlInCanvasSource(
   canvas.appendChild(element)
   document.body.appendChild(canvas)
 
-  // Taken at the first paint, not here, so the storage follows the capture
-  // memory setting in force once the renderer has seen its adapter.
+  // Taken at the first paint, once capture storage is chosen, because a
+  // context's storage is fixed when it is created (domTextureSource.ts).
   let ctx: TrialContext2D | null = null
 
   canvas.onpaint = () => {
@@ -182,6 +183,12 @@ function createHtmlInCanvasSource(
     // engine (decisions.md #64).
     if (!(live || owed || hostPainted || input.isOpen())) {
       missed = true
+      return
+    }
+    const chosen = captureMemoryChosen()
+    if (chosen) {
+      missed = true
+      void chosen.then(requestPaint)
       return
     }
     const requested = owed

@@ -64,9 +64,7 @@ export {
 export {
   paintStats,
   PARKED_HOST_ATTRIBUTE,
-  setCaptureCanvasMemory,
   UnsupportedPlatformError,
-  type CaptureCanvasMemory,
   type DomPaintReceipt,
   type DomTextureSource,
   type DomTextureSourceOptions,

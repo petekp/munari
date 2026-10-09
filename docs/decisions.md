@@ -4861,12 +4861,19 @@ in the GPU process, and the page waits for every frame still queued there.
 WebGL's `texImage2D` of the same canvas did not wait. On a GPU with shared
 memory the copy stays on the GPU and costs nothing.
 
-**Decision: when `SurfaceCanvas` finds a fallback adapter
-(`adapter.info.isFallbackAdapter`), capture canvases take CPU storage**
-(`willReadFrequently`). The kernel's `setCaptureCanvasMemory` holds the
-choice, and `captureContext` applies it when a canvas first draws, since a
-context's storage is fixed at creation. A canvas that drew before the adapter
-answered keeps GPU storage. Real GPUs are unchanged.
+**Decision: on a fallback adapter (`adapter.info.isFallbackAdapter`),
+capture canvases take CPU storage** (`willReadFrequently`). Real GPUs are
+unchanged. A context's storage is fixed at creation, so the kernel asks for
+the adapter itself at the first capture, and no capture canvas takes its
+context before the answer. An HTML-in-canvas paint that comes first is
+skipped and repainted; a snapDOM raster waits before it draws. Past 3 s
+without an answer, captures take GPU storage.
+
+The first version let `SurfaceCanvas` choose once it had seen its adapter. It
+never took effect in Genie. In a Linux container, the four capture canvases
+took their contexts at 4.31 s, and `SurfaceCanvas` asked for its adapter at
+4.43 s, so all four kept GPU storage. With the kernel asking, all five capture
+canvases in that run took CPU storage.
 
 The rejected alternatives were CPU storage everywhere, which costs about 3 ms
 per large upload on every machine, and Chrome's direct element upload
