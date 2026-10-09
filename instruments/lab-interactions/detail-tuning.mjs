@@ -54,11 +54,11 @@ try {
     page.on('console', message => { if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) errors.push(message.text()) })
     await setChromeViewport(page,{width:1200,height:900})
     try {
-      await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=${scene}&framed&glass=sdf`,{waitUntil:'load'})
+      await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=${scene}&framed`,{waitUntil:'load'})
       assert.equal(await page.evaluate(()=>'drawElementImage' in CanvasRenderingContext2D.prototype),true)
       let result
       if(scene==='glass') {
-        await page.waitForFunction(()=>window.__glass?.mode()==='sdf'&&window.__glass.blobs().length>0)
+        await page.waitForFunction(()=>window.__glass?.blobs().length>0)
         const before=await page.evaluate(()=>window.__glass.blobs().length)
         const set=await page.evaluate(()=>window.__glass.setBlobs(0))
         await frames(page);await frames(page)

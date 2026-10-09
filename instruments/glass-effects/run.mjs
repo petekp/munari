@@ -1,6 +1,8 @@
 // Actual Glass SDF pixels under fixed scene inputs.
 // Repeated/reset frames exclude unrelated motion; opaque tint makes depth
 // ordering independent of the backdrop, with a wrong-sort counterexample.
+// Pixels are read with canvasPixels.ts right after the screen blit returns,
+// in the same task: a WebGPU canvas is unreadable once the browser presents.
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
@@ -16,7 +18,9 @@ const chrome = [process.env.CHROME_PATH, '/Applications/Google Chrome.app/Conten
 assert.ok(chrome, 'Chrome is required')
 await mkdir(output, { recursive: true })
 const owner = path.join(repo, 'apps/lab/src/scenes/glass/glassSdf.tsx')
+const blitOwner = path.join(repo, 'apps/lab/src/scenes/glass/glassSdfNodes.ts')
 let transformed = false
+let blitTransformed = false
 const once = (source, marker, replacement) => {
   assert.equal(source.split(marker).length - 1, 1, `Glass observer marker must occur once: ${marker}`)
   return source.replace(marker, replacement)
@@ -26,6 +30,14 @@ const observer = {
   name: 'glass-effects-observer',
   enforce: 'pre',
   transform(source, id) {
+    // The blit owns tone mapping, so renderer.toneMapping no longer reaches
+    // it. The fixture's exact tint and ripple contrast are measured without
+    // tone mapping, as they were when the blit read the renderer's setting.
+    if (id.split('?')[0] === blitOwner) {
+      blitTransformed = true
+      return once(source, 'toneMapping(THREE.NeutralToneMapping, 1,',
+        'toneMapping(globalThis.__glassEffects ? THREE.NoToneMapping : THREE.NeutralToneMapping, 1,')
+    }
     if (id.split('?')[0] !== owner) return null
     transformed = true
     source = once(source, '    const now = clock.elapsedTime', `    globalThis.__glassEffects?.beforeFrame({gl, scene, camera, THREE, panels: ${panelView}})
@@ -54,8 +66,29 @@ const install = () => {
     probe.result = null
     return probe.version
   }
+  const addBackdrop = (scene, THREE) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 512
+    const context = canvas.getContext('2d')
+    for (let y = 0; y < 512; y += 4) for (let x = 0; x < 512; x += 4) {
+      context.fillStyle = ((x + y) / 4) % 2 ? '#dedede' : '#242424'
+      context.fillRect(x, y, 4, 4)
+    }
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.magFilter = texture.minFilter = THREE.NearestFilter
+    texture.generateMipmaps = false
+    const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), new THREE.MeshBasicMaterial({map: texture, toneMapped: false}))
+    backdrop.name = 'glass-effects-static-backdrop'
+    backdrop.position.z = -0.5
+    scene.add(backdrop)
+    return backdrop
+  }
   probe.beforeFrame = ({gl, scene, camera, THREE, panels}) => {
     if (!probe.active) return
+    // Created before the first measured frame, so every upload and draw of
+    // the fixture is counted.
+    probe.gpuErrors ??= window.__canvasPixels.gpuErrors(gl)
     if (panels.length !== 2) throw new Error(`Expected two real SDF panels, got ${panels.length}`)
     const config = probe.configuration
     camera.position.set(0, 0, 10)
@@ -65,24 +98,7 @@ const install = () => {
     camera.updateMatrixWorld(true)
     gl.toneMapping = THREE.NoToneMapping
     gl.outputColorSpace = THREE.SRGBColorSpace
-    if (!probe.backdrop) {
-      const canvas = document.createElement('canvas')
-      canvas.width = canvas.height = 512
-      const context = canvas.getContext('2d')
-      for (let y = 0; y < 512; y += 4) for (let x = 0; x < 512; x += 4) {
-        context.fillStyle = ((x + y) / 4) % 2 ? '#dedede' : '#242424'
-        context.fillRect(x, y, 4, 4)
-      }
-      const texture = new THREE.CanvasTexture(canvas)
-      texture.colorSpace = THREE.SRGBColorSpace
-      texture.magFilter = texture.minFilter = THREE.NearestFilter
-      texture.generateMipmaps = false
-      const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), new THREE.MeshBasicMaterial({map: texture, toneMapped: false}))
-      backdrop.name = 'glass-effects-static-backdrop'
-      backdrop.position.z = -0.5
-      scene.add(backdrop)
-      probe.backdrop = backdrop
-    }
+    probe.backdrop ??= addBackdrop(scene, THREE)
     window.__glass.setBlobs(0)
     for (const panel of panels) {
       const card = panel.label === 'glass-card'
@@ -114,7 +130,6 @@ const install = () => {
     probe.frames++
     if (probe.frames < probe.captureAt || probe.result) return
     const canvas = gl.domElement
-    const context = gl.getContext()
     const pixel = world => {
       const p = new THREE.Vector3(...world).project(camera)
       return {x: Math.floor((p.x + 1) * canvas.width / 2), y: Math.floor((p.y + 1) * canvas.height / 2)}
@@ -124,13 +139,11 @@ const install = () => {
     const bounds = {x: left.x, y: left.y, width: right.x - left.x, height: right.y - left.y}
     if (bounds.x < 0 || bounds.y < 0 || bounds.width <= 0 || bounds.height <= 0 || bounds.x + bounds.width > canvas.width || bounds.y + bounds.height > canvas.height)
       throw new Error(`Invalid framebuffer observation bounds ${JSON.stringify(bounds)}`)
-    const data = new Uint8Array(bounds.width * bounds.height * 4)
-    context.readPixels(bounds.x, bounds.y, bounds.width, bounds.height, context.RGBA, context.UNSIGNED_BYTE, data)
+    const data = window.__canvasPixels.readCanvasRect(canvas, bounds.x, bounds.y, bounds.width, bounds.height)
     const point = pixel([1, 0, 0.1])
-    const center = new Uint8Array(4)
-    context.readPixels(point.x, point.y, 1, 1, context.RGBA, context.UNSIGNED_BYTE, center)
-    const glError = context.getError()
-    if (glError !== context.NO_ERROR) throw new Error(`Framebuffer observation GL error ${glError}`)
+    const center = window.__canvasPixels.readCanvasRect(canvas, point.x, point.y, 1, 1)
+    const gpuErrors = probe.gpuErrors()
+    if (gpuErrors !== 0) throw new Error(`Framebuffer observation saw ${gpuErrors} GPU errors`)
     probe.result = {
       version: probe.version, frames: probe.frames, configuration: probe.configuration,
       bounds, center: [...center], point, pixels: [...data],
@@ -184,10 +197,13 @@ try {
   assert.ok(capable, 'glass-effects requires HTML-in-canvas support')
   await page.setViewport({width: 900, height: 700, deviceScaleFactor: 1})
   await page.evaluateOnNewDocument(install)
-  const url = `http://127.0.0.1:${server.httpServer.address().port}/?scene=glass&framed&glass=sdf`
+  const url = `http://127.0.0.1:${server.httpServer.address().port}/?scene=glass&framed`
   await page.goto(url, {waitUntil: 'load'})
-  await page.waitForFunction(() => window.__glass?.mode() === 'sdf' && window.__glass.labels().length === 2 && window.__glassInk?.has('glass-card') && window.__glassInk?.has('glass-pill'), {timeout: 20_000})
-  assert.ok(transformed, 'The guarded real-compositor observer was not installed')
+  await page.evaluate(async pixelsUrl => {
+    window.__canvasPixels = await import(pixelsUrl)
+  }, '/@fs' + path.join(repo, 'instruments', 'canvasPixels.ts'))
+  await page.waitForFunction(() => window.__glass?.labels().length === 2 && window.__glassInk?.has('glass-card') && window.__glassInk?.has('glass-pill'), {timeout: 20_000})
+  assert.ok(transformed && blitTransformed, 'The guarded real-compositor observer was not installed')
   const capture = async (label, configuration) => {
     const version = await page.evaluate(configuration => window.__glassEffects.configure(configuration), configuration)
     await page.waitForFunction(version => window.__glassEffects.result?.version === version, {timeout: 10_000}, version)
@@ -203,14 +219,19 @@ try {
   const zeroC = await capture('ripple-zero-c', {kind: 'ripple', amplitude: 0})
   const depth = await capture('view-depth-order', {kind: 'order', wrongSort: false})
   const radial = await capture('wrong-radial-order', {kind: 'order', wrongSort: true})
+  // WebGPU reports validation errors asynchronously, after the frame that
+  // caused them, so the count is read again once the captures are done.
+  const lateGpuErrors = await page.evaluate(() => new Promise(resolve =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.__glassEffects.gpuErrors())))))
   summary = {
     output, thresholds: { channelDelta: PIXEL_DELTA, changedShare: MIN_CHANGED_SHARE }, region: zeroA.bounds,
     url, browser: await browser.version(), staticControl: difference(zeroA, zeroB),
     rippleDifference: difference(zeroB, ripple), resetControl: difference(zeroB, zeroC),
     correctOrder: {center: depth.center, point: depth.point, panels: depth.panels},
-    wrongOrder: {center: radial.center, point: radial.point, panels: radial.panels}, errors,
+    wrongOrder: {center: radial.center, point: radial.point, panels: radial.panels}, lateGpuErrors, errors,
   }
   assert.deepEqual(errors, [])
+  assert.equal(lateGpuErrors, 0, 'The fixture frames must raise no GPU errors')
   assert.equal(summary.staticControl.maximum, 0, 'Repeated zero-amplitude frames must be identical')
   assert.equal(summary.resetControl.maximum, 0, 'Removing the ripple must return to the same pixels')
   assert.ok(summary.rippleDifference.changedShare >= MIN_CHANGED_SHARE,

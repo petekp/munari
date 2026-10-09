@@ -1,5 +1,5 @@
 // The flight card's two node materials. The scene next door owns the physics
-// and the React; this file owns the shading, the same way glassSdfShader.ts
+// and the React; this file owns the shading, the same way glassSdfNodes.ts
 // sits beside glassSdf.tsx — a shader is data, and 300 lines of it wedged
 // between components is 300 lines you scroll past to read either one.
 //

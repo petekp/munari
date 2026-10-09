@@ -15,10 +15,13 @@ Both files; they travel together:
   SDFs (smooth-min union), ink clipped to the rect rather than the
   coverage, per-panel ping-pong passes, capillary ripples driven by
   pointer impulses.
-- **`glassSdfShader.ts`**: the GLSL. Unioned field, merged-gradient
-  bezel normal (the normal is the gradient of the unioned field; a
-  merged shape needs a merged gradient), dispersion taps, the ripple
-  train.
+- **`glassSdfNodes.ts`**: the node materials, in Three Shading
+  Language (TSL). Unioned field, merged-gradient bezel normal (the
+  normal is the gradient of the unioned field; a merged shape needs a
+  merged gradient), dispersion taps, the ripple train, and the blit
+  that applies Neutral tone mapping once on the way to the screen.
+
+Both need Three's `WebGPURenderer`, which `SurfaceCanvas` supplies.
 
 Imports are `@petepetrash/munari` + peers only (enforced by
 `tests/boundary.test.ts`). Both files must stay byte-identical to the
