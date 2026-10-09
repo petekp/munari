@@ -36,6 +36,7 @@ if (!chromePath) skip('no Chrome executable found (set CHROME_PATH)')
 
 let browser
 let server
+const errors = []
 const deadline = setTimeout(() => {
   console.error('knobs-resize gate: hard 300s deadline hit')
   browser?.process()?.kill('SIGKILL')
@@ -70,7 +71,6 @@ try {
   const port = server.config.server.port ?? server.httpServer.address().port
   const page = await browser.newPage()
   await page.setViewport({ width: 1200, height: 820, deviceScaleFactor: 1 })
-  const errors = []
   page.on('pageerror', (error) => errors.push(String(error)))
   page.on('console', message => {
     if (message.type() === 'error' && !message.text().startsWith('Failed to load resource'))
@@ -224,6 +224,10 @@ try {
       `knobs-resize gate PASSED: ${samples.length} steps, max marker drift ${maxError.toFixed(1)}px`,
     )
   }
+} catch (error) {
+  // A wait that times out ends the run before the page errors are listed.
+  for (const pageError of errors) console.error(`page error: ${pageError}`)
+  throw error
 } finally {
   clearTimeout(deadline)
   await browser?.close()
