@@ -9,6 +9,7 @@ import puppeteer from 'puppeteer-core'
 import {replaceSource} from '../home-light/replaceSource.mjs'
 import {setChromeViewport} from '../chromeViewport.mjs'
 import {textureClarity} from '../textureClarity.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output=process.env.HEADLINE_OUTPUT??path.join(tmpdir(),'munari-headline')
 await mkdir(output,{recursive:true})
@@ -26,7 +27,7 @@ const observer={name:'headline-observer',enforce:'pre',transform(code,id){
 }}
 const server=await createServer({root:path.resolve(import.meta.dirname,'../../apps/lab'),plugins:[observer],cacheDir:path.join(output,'.vite'),logLevel:'warn',server:{host:'127.0.0.1',port:0}})
 await server.listen()
-let browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,signal:AbortSignal.timeout(30_000),args:['--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
+let browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,signal:AbortSignal.timeout(30_000),args:[...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
 const frames=(frame,count=4)=>frame.evaluate(count=>new Promise(resolve=>{const next=()=>--count?requestAnimationFrame(next):resolve();requestAnimationFrame(next)}),count)
 const results={}
 try{
@@ -132,7 +133,7 @@ try{
   await browser.close();browser=null
   results.fallbacks=[]
   for(const disabled of [false,true]){
-    browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,signal:AbortSignal.timeout(30_000),args:['--disable-features=CanvasDrawElement',...(disabled?['--disable-webgl']:[])]})
+    browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,signal:AbortSignal.timeout(30_000),args:[...WEBGPU_CHROME_ARGS,'--disable-features=CanvasDrawElement',...(disabled?['--disable-webgl']:[])]})
     const fallback=await browser.newPage();fallback.on('pageerror',error=>errors.push(String(error)))
     await setChromeViewport(fallback,{width:1200,height:900})
     await fallback.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=home`,{waitUntil:'load'})

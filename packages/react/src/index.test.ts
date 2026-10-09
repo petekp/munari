@@ -29,7 +29,6 @@ const ROOT_ENTRY = [
   'FocusScene',
   'SURFACE_ANCHOR_ATTRIBUTE',
   'SURFACE_FOCUS_ATTRIBUTE',
-  'SURFACE_RADIUS_GLSL',
   'SurfaceCanvas',
   'createSurface',
   'deformSurfaceGeometry',
@@ -37,6 +36,7 @@ const ROOT_ENTRY = [
   'supportsSurfaces',
   'surfaceFocusKey',
   'surfaceFocusTarget',
+  'surfaceRadiusMask',
   'useFocusNavPolicy',
   'useFocusReframe',
   'useFocusScene',
@@ -47,12 +47,12 @@ const ROOT_ENTRY = [
   'useSurfaceAnchorRects',
   'useSurfaceChrome',
   'useSurfaceDriver',
+  'useSurfaceNodes',
   'useSurfacePaintedSize',
   'useSurfaceProgress',
   'useSurfaceSourceRoot',
   'useSurfaceTexture',
   'useSurfaceTextureOf',
-  'useSurfaceUniforms',
 ]
 
 // The third entry exists to carry ONE optional peer dependency, so its list

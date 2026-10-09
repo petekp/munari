@@ -10,6 +10,7 @@ import { setChromeViewport } from '../chromeViewport.mjs'
 import { observeLightingDraw } from '../home-light/gpu.mjs'
 import { replaceSource } from '../home-light/replaceSource.mjs'
 import { installPaperReader, controlPoint } from '../postcard-paper/metrics.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output = process.env.INLINE_OUTPUT ?? path.join(tmpdir(), 'munari-home-inline')
 await mkdir(output, { recursive: true })
@@ -49,7 +50,7 @@ try {
     browser = await puppeteer.launch({
       executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
       headless: process.env.HEADED !== '1', defaultViewport: null,
-      args: [enhanced ? '--enable-features=CanvasDrawElement' : '--disable-features=CanvasDrawElement', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'],
+      args: [...WEBGPU_CHROME_ARGS,enhanced ? '--enable-features=CanvasDrawElement' : '--disable-features=CanvasDrawElement', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'],
     })
     const page = await browser.newPage(), errors = []
     page.on('pageerror', error => errors.push(String(error)))
@@ -148,7 +149,7 @@ try {
   }
 
   // Instance identity and styles are local even when two real Homes coexist.
-  browser = await puppeteer.launch({ executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: process.env.HEADED !== '1', defaultViewport: null, args: ['--enable-features=CanvasDrawElement'] })
+  browser = await puppeteer.launch({ executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: process.env.HEADED !== '1', defaultViewport: null, args: [...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement'] })
   const page = await browser.newPage(), errors = [], diagnostics = []
   page.on('pageerror', error => errors.push(String(error)))
   page.on('console', message => { if (message.type() === 'error') diagnostics.push({text:message.text(),url:message.location().url}) })

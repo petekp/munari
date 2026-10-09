@@ -8,6 +8,7 @@ import {tmpdir} from 'node:os'
 import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
 import {setChromeViewport} from '../chromeViewport.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const root=path.resolve(import.meta.dirname,'../..')
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/detail-tuning')
@@ -44,7 +45,7 @@ const deadline=setTimeout(()=>{console.error('Detail tuning exceeded 180 seconds
 try {
   server=await createServer({root:path.join(root,'apps/lab'),configFile:path.join(root,'apps/lab/vite.config.ts'),plugins:[observer],cacheDir:path.join(output,'.vite'),server:{host:'127.0.0.1',port:0},logLevel:'warn'})
   await server.listen()
-  browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:['--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding',...(process.env.CI?['--no-sandbox']:[])]})
+  browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:[...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding',...(process.env.CI?['--no-sandbox']:[])]})
   for(const scene of ['refraction','gallery','glass','crystal']) {
     const page=await browser.newPage(),errors=[]
     page.on('pageerror',error=>errors.push(String(error)))

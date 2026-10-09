@@ -10,6 +10,7 @@ import {createServer} from 'vite'
 import {setChromeViewport} from '../chromeViewport.mjs'
 import {observeLightingDraw,measureLightingDraw} from '../home-light/gpu.mjs'
 import {installPaperReader,paperMetrics,controlPoint,silhouetteMetrics} from './metrics.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output=process.env.PAPER_OUTPUT??path.join(tmpdir(),'munari-paper')
 await mkdir(output,{recursive:true})
@@ -27,7 +28,7 @@ const observer={name:'paper-observer',enforce:'pre',transform(code,id){
 }}
 const server=await createServer({root:path.resolve(import.meta.dirname,'../../apps/lab'),plugins:[observer],cacheDir:path.join(output,'.vite'),logLevel:'warn',server:{host:'127.0.0.1',port:0}})
 await server.listen()
-const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:['--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
+const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:[...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
 const errors=[],results={flat}
 try{
   const page=await browser.newPage();page.on('pageerror',error=>errors.push(String(error)))

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
 import { setChromeViewport } from '../chromeViewport.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const sourceRoot = path.resolve(process.env.DETAIL_SOURCE_ROOT ?? path.join(path.dirname(fileURLToPath(import.meta.url)), '../..'))
 const output = process.env.DETAIL_OUTPUT ?? path.join(tmpdir(), 'munari-detail-focus')
@@ -204,7 +205,7 @@ async function orbitProxies(page, base) {
 try {
   await server.listen()
   const base = `http://127.0.0.1:${server.httpServer.address().port}`
-  browser = await puppeteer.launch({ executablePath: chrome, headless: process.env.HEADED !== '1', defaultViewport: null, args: ['--enable-features=CanvasDrawElement', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(process.env.CI ? ['--no-sandbox'] : [])] })
+  browser = await puppeteer.launch({ executablePath: chrome, headless: process.env.HEADED !== '1', defaultViewport: null, args: [...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(process.env.CI ? ['--no-sandbox'] : [])] })
   for (const [number, check] of [
     ['35', async (page, origin) => ({ native: await nativeEditors(page, origin), workspace: await notesFocus(page, origin) })],
     ['40', firstOrbit], ['52', panelPose], ['55', orbitProxies],

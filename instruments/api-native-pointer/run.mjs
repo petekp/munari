@@ -6,6 +6,7 @@ import path from 'node:path'
 import {tmpdir} from 'node:os'
 import puppeteer from 'puppeteer-core'
 import {createServer} from 'vite'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 const repo=process.env.API_SOURCE_ROOT??path.resolve(import.meta.dirname,'../..')
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/native-pointer')
 await mkdir(output,{recursive:true})
@@ -13,7 +14,7 @@ const aliases={'@petepetrash/munari/style.css':path.join(repo,'packages/react/sr
 aliases['@petepetrash/munari']=path.join(repo,'packages/react/src/index.ts')
 const server=await createServer({configFile:false,cacheDir:path.join(output,'.vite'),root:import.meta.dirname,esbuild:{jsx:'automatic'},server:{host:'127.0.0.1',port:0,fs:{allow:[repo,path.resolve(import.meta.dirname,'../..')]}},resolve:{alias:aliases},logLevel:'warn'})
 await server.listen()
-const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:['--enable-features=CanvasDrawElement','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']})
+const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:[...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']})
 const errors=[],rows=[]
 let page
 try {

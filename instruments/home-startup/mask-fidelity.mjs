@@ -7,12 +7,13 @@ import {tmpdir} from 'node:os'
 import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
 import {setChromeViewport} from '../chromeViewport.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output = process.env.MASK_OUTPUT ?? path.join(tmpdir(), 'munari-mask-fidelity')
 await mkdir(output, {recursive: true})
 const server = await createServer({root: path.resolve(import.meta.dirname, '../../apps/lab'), logLevel: 'warn', server: {host: '127.0.0.1', port: 0}})
 await server.listen()
-const browser = await puppeteer.launch({executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: process.env.HEADED !== '1', defaultViewport: null, signal: AbortSignal.timeout(30_000), args: ['--enable-features=CanvasDrawElement']})
+const browser = await puppeteer.launch({executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: process.env.HEADED !== '1', defaultViewport: null, signal: AbortSignal.timeout(30_000), args: [...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement']})
 try {
   const page = await browser.newPage(), results = []
   await setChromeViewport(page, {width: 1280, height: 700})

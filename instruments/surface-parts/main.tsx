@@ -5,6 +5,7 @@ import { Fragment, StrictMode, useCallback, useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { useThree } from '@react-three/fiber'
+import { gpuErrors, snapshotCanvas } from '../canvasPixels'
 import { SceneSurface, Surface, SurfaceCanvas, useSurfaceHandle, useSurfaceStatus, type SurfaceHandle } from '@petepetrash/munari'
 import '@petepetrash/munari/style.css'
 
@@ -42,16 +43,16 @@ function Status({ surface }: { surface: SurfaceHandle }) {
 
 function Observe() {
   const state = useThree()
+  const [errors] = useState(() => gpuErrors(state.gl))
   useEffect(() => {
     readDraw = () => {
       state.gl.render(state.scene, state.camera)
-      const gl = state.gl.getContext()
-      const pixel = new Uint8Array(4)
-      gl.readPixels(Math.floor(gl.drawingBufferWidth / 2), Math.floor(gl.drawingBufferHeight / 2), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
-      return { pixel: [...pixel], error: gl.getError(), dpr: state.gl.getPixelRatio() }
+      const canvas = state.gl.domElement
+      const pixel = snapshotCanvas(canvas)(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2))
+      return { pixel, error: errors(), dpr: state.gl.getPixelRatio() }
     }
     return () => { readDraw = () => ({ pixel: null, error: null, dpr: null }) }
-  }, [state])
+  }, [state, errors])
   return null
 }
 

@@ -2,6 +2,7 @@
 import { existsSync } from 'node:fs'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const chromePath = [
   process.env.CHROME_PATH,
@@ -25,6 +26,7 @@ try {
     executablePath: chromePath,
     headless: true,
     args: [
+      ...WEBGPU_CHROME_ARGS,
       '--enable-unsafe-swiftshader',
       '--enable-features=CanvasDrawElement',
       '--disable-renderer-backgrounding',

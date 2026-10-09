@@ -72,6 +72,25 @@ The source-revision, browser, viewport/density, and selected cases bound a
 measurement. A local timing report is not a portable performance guarantee.
 The current command and case map is in the [API guide](api-all-demos/README.md).
 
+## WebGPU and the WebGL 2 fallback
+
+`SurfaceCanvas` renders with Three's `WebGPURenderer`, which uses WebGPU when
+the browser offers an adapter and WebGL 2 otherwise. Every runner launches
+Chrome with the flags in `webgpuChrome.mjs`. On Linux those flags render in
+software through SwiftShader, because Linux Chrome without them loses the
+WebGPU device on the first canvas frame.
+
+Run any runner with `MUNARI_BACKEND=webgl2` to check the fallback. Chrome
+then offers no adapter, so Three starts WebGL 2, as it does for a browser
+without WebGPU. Only `frame-surface` reports which backend started; the other
+runners do not check it. `frame-surface` already runs both backends, so it
+fails under `MUNARI_BACKEND=webgl2`: its WebGPU run gets no adapter.
+
+WebGPU cannot read the canvas during a draw. Fixtures read pixels with
+`canvasPixels.ts` after `render()` returns, in the same task. Its values are
+premultiplied and its y runs from the bottom, as `gl.readPixels` returned
+them, and `gpuErrors()` stands in for `gl.getError()` on both backends.
+
 ## Home light and shadow
 
 `node instruments/home-inline/run.mjs` checks Home in the actual site shell.
@@ -389,13 +408,10 @@ and that its optional presentation fence rejects non-writing and
 off-screen passes. `npm run gate:frame-surface`.
 
 The gate loads the page twice, first on WebGPU and then with `forceWebGL`, and
-requires the backend Three actually started. Headless Chrome exposes WebGPU only
-with `--enable-unsafe-webgpu`, so the gate fails on a host without WebGPU. On
-Linux the runner also renders both backends in software through SwiftShader,
-because Linux Chrome without it loses the WebGPU device on the first canvas
-frame. Each stage runs in a `SurfaceCanvas` with a demand frameloop. The page reads the
-canvas after `render()` returns, in the same task; WebGPU cannot read it inside
-a draw callback.
+requires the backend Three actually started, so it fails on a host without
+WebGPU. Each stage runs in a `SurfaceCanvas` with a demand frameloop. The page
+reads the canvas after `render()` returns, in the same task; WebGPU cannot read
+it inside a draw callback.
 
 The first stage replaces one live source with another. It then releases and
 reacquires the same persistent source three times. Each release publishes two

@@ -7,6 +7,7 @@ import path from 'node:path'
 import { createServer } from 'vite'
 import puppeteer from 'puppeteer-core'
 import { setChromeViewport } from './chromeViewport.mjs'
+import { WEBGPU_CHROME_ARGS } from './webgpuChrome.mjs'
 
 const repo = path.resolve(import.meta.dirname, '..')
 
@@ -58,7 +59,7 @@ export async function runBrowserCases(cases, output) {
     try {
       browser = await puppeteer.launch({
         defaultViewport: null, executablePath: chrome, headless: process.env.HEADED !== '1', protocolTimeout: 30_000,
-        args: [...(entry.native ? [] : ['--enable-features=CanvasDrawElement']), '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(process.env.CI ? ['--no-sandbox'] : [])],
+        args: [...WEBGPU_CHROME_ARGS,...(entry.native ? [] : ['--enable-features=CanvasDrawElement']), '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(process.env.CI ? ['--no-sandbox'] : [])],
       })
       const page = await browser.newPage()
       page.setDefaultTimeout(15_000)

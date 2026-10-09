@@ -6,6 +6,7 @@ import {useFrame,useThree} from '@react-three/fiber'
 import {Vector2,type MeshBasicMaterial} from 'three'
 import {Surface,SceneSurface,SurfaceCanvas,CaptureContent,createPageTarget,useCaptureHandle,useCaptureFrame,useSurfaceHandle,useSurfaceStatus,useSurfaceAnchorRects,useSurfacePaintedSize,type CaptureHandle,type PageTarget,type SourceUvRect,type SurfaceStatus} from '@petepetrash/munari'
 import {inspectCapture} from '@petepetrash/munari/advanced'
+import {afterEachRender,snapshotCanvas} from '../canvasPixels'
 import '@petepetrash/munari/style.css'
 
 type RowId='a'|'b'
@@ -53,18 +54,19 @@ function Targets({reordered=false}:{reordered?:boolean}){
 
 function CaptureReader({capture,id}:{capture:CaptureHandle;id:RowId}){
   const read=useCaptureFrame(capture),renderer=useThree(state=>state.gl),invalidate=useThree(state=>state.invalidate)
-  const material=useRef<MeshBasicMaterial>(null),[size]=useState(()=>new Vector2()),[pixel]=useState(()=>new Uint8Array(4))
+  const material=useRef<MeshBasicMaterial>(null),[size]=useState(()=>new Vector2())
   probe.wake=invalidate
+  // Read once render() returns: WebGPU cannot read the canvas mid-draw.
+  useLayoutEffect(()=>afterEachRender(renderer,()=>{
+    renderer.getDrawingBufferSize(size)
+    const x=size.x/2+(id==='a'?-110:110)*renderer.getPixelRatio()
+    probe.pixels[id]=snapshotCanvas(renderer.domElement)(Math.round(x),Math.round(size.y/2))
+  }),[renderer,size,id])
   useFrame(()=>{
     probe.frames[id]++;const frame=read.get();probe.revisions[id]=frame?.revision??null
     if(material.current&&material.current.map!==(frame?.texture??null)){material.current.map=frame?.texture??null;material.current.needsUpdate=true}
   })
-  return <mesh position={[id==='a'?-110:110,0,0]} onAfterRender={()=>{
-    renderer.getDrawingBufferSize(size)
-    const context=renderer.getContext(),x=size.x/2+(id==='a'?-110:110)*renderer.getPixelRatio()
-    context.readPixels(Math.round(x),Math.round(size.y/2),1,1,context.RGBA,context.UNSIGNED_BYTE,pixel)
-    probe.pixels[id]=[...pixel]
-  }}><planeGeometry args={[200,100]}/><meshBasicMaterial ref={material} toneMapped={false} premultipliedAlpha/></mesh>
+  return <mesh position={[id==='a'?-110:110,0,0]}><planeGeometry args={[200,100]}/><meshBasicMaterial ref={material} toneMapped={false} premultipliedAlpha/></mesh>
 }
 function Capture(){
   const capture=useCaptureHandle(),[first,setFirst]=useState(true)

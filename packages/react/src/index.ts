@@ -46,13 +46,12 @@ export {
   useSurfaceTextureOf,
 } from './primitives/surface/surfaceContext'
 export {
-  useSurfaceUniforms,
-  type SurfaceUniforms,
+  useSurfaceNodes,
+  type SurfaceNodes,
 } from './primitives/surface/surfaceMaterials'
-// The GLSL half of the corner mask (the JS half lives in the kernel). A
-// custom material splices this and applies `munariRadiusMask(vUv)` to alpha
-// for straight output, or to the full vec4 for premultiplied output.
-export { SURFACE_RADIUS_GLSL } from './lib/surfaceRadiusGlsl'
+// The shader half of the corner mask (the JS half lives in the kernel), for a
+// node material that samples a second capture with its own size and radii.
+export { surfaceRadiusMask } from './lib/surfaceRadius'
 // The one sanctioned way to bend a presented Surface. Vertices move, so the
 // raycast hits the shape the eye sees and relayed input stays correct on any
 // deformation; a vertex-shader warp bends only pixels and silently gets

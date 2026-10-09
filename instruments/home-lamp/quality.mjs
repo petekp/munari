@@ -7,6 +7,7 @@ import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
 import {setChromeViewport} from '../chromeViewport.mjs'
 import {lampObserver} from './observer.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output=process.env.LAMP_OUTPUT??path.join(tmpdir(),'munari-lamp-quality')
 await mkdir(output,{recursive:true})
@@ -34,7 +35,7 @@ let browser
 const results={}
 try{
   for(const enhanced of [true,false]){
-    browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:[...(enhanced?['--enable-features=CanvasDrawElement']:[]),'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
+    browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:[...WEBGPU_CHROME_ARGS,...(enhanced?['--enable-features=CanvasDrawElement']:[]),'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
     const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(String(e)))
     const name=enhanced?'captured':'native'
     await setChromeViewport(page,{width:1000,height:600})

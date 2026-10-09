@@ -6,6 +6,7 @@ import path from 'node:path'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '..', '..')
@@ -74,21 +75,11 @@ try {
     executablePath: chromePath,
     headless: true,
     args: [
+      ...WEBGPU_CHROME_ARGS,
       // Honor the GPU blocklist: Apple Software Renderer loses canvas-to-sRGB
       // uploads. Permit SwiftShader when Chrome rejects the native backend.
       '--enable-webgl',
       '--enable-unsafe-swiftshader',
-      // Headless Chrome exposes WebGPU only with this flag. The page reports
-      // the backend Three started, and the gate requires the requested one.
-      '--enable-unsafe-webgpu',
-      // Linux Chrome without these cannot allocate a WebGPU canvas's texture:
-      // the GPU process logs "Could not find SharedImageBackingFactory" and the
-      // device is lost on the first frame. Removing any one of the three still
-      // fails. Measured 2026-10-08, Chrome 155 on Debian amd64 with no GPU, as
-      // on a hosted runner. They force software rendering on any Linux machine.
-      ...(process.platform === 'linux'
-        ? ['--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-angle=swiftshader']
-        : []),
       // The idle-zero pair: a backgrounded renderer stops compositing,
       // and a receipt that never arrives must mean the library failed,
       // not that throttling starved the frameloop.

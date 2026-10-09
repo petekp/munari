@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
 import { defaultPlumeEffects, PLUME_GROUPS, plumeTuning } from '../../apps/lab/src/scenes/plume/plumeTuning.ts'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const chromePath = [
@@ -81,6 +82,7 @@ function launch(headless, capture = true) {
     executablePath: chromePath,
     headless,
     args: [
+      ...WEBGPU_CHROME_ARGS,
       ...(capture ? ['--enable-features=CanvasDrawElement'] : []),
       '--enable-webgl',
       '--ignore-gpu-blocklist',

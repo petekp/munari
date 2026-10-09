@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '..', '..')
@@ -56,6 +57,7 @@ try {
     executablePath: chromePath,
     headless: true,
     args: [
+      ...WEBGPU_CHROME_ARGS,
       '--enable-unsafe-swiftshader',
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',

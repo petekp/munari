@@ -17,6 +17,7 @@ import puppeteer from 'puppeteer-core'
 import {createServer} from 'vite'
 import {IncompleteScreencastError,requirePageFrameCoverage} from '../screencastCoverage.ts'
 import {createScreencastRecorder,scoreScreencast} from '../screencastRecording.ts'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 const root=path.resolve(import.meta.dirname,'../..')
 const output=process.env.POSE_OUTPUT??path.join(tmpdir(),'munari-genie-pose')
 const rounds=Number(process.env.ROUNDS??1)
@@ -47,7 +48,7 @@ try{
  await mkdir(output,{recursive:true})
  server=await createServer({root:path.join(root,'apps/lab'),plugins:[inspect],cacheDir:path.join(output,'.vite'),server:{host:'127.0.0.1',port:0,fs:{allow:[root]}},logLevel:'warn'})
  await server.listen()
- browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',args:['--enable-unsafe-swiftshader','--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding',...(process.env.CI?['--no-sandbox']:[])]})
+ browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',args:[...WEBGPU_CHROME_ARGS,'--enable-unsafe-swiftshader','--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding',...(process.env.CI?['--no-sandbox']:[])]})
  for(let round=0;round<rounds;round++)for(const mode of modes)for(const win of windows)for(const control of ['current','stale','blank','late-blank']){
   for(let attempt=0;attempt<3;attempt++){
   const name=`${mode}-${win}-${control}${rounds>1?`-${round+1}`:''}`,directory=path.join(output,name,`recording-${attempt+1}`),page=await browser.newPage(),errors=[]

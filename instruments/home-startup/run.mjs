@@ -9,6 +9,7 @@ import {setTimeout as delay} from 'node:timers/promises'
 import {build, preview} from 'vite'
 import puppeteer from 'puppeteer-core'
 import {setChromeViewport} from '../chromeViewport.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const root = path.resolve(import.meta.dirname, '../../apps/lab')
 const output = process.env.STARTUP_OUTPUT ?? path.join(tmpdir(), 'munari-home-startup')
@@ -65,7 +66,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
     executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     headless: process.env.HEADED !== '1', defaultViewport: null,
     signal: AbortSignal.timeout(30_000),
-    args: [capture ? '--enable-features=CanvasDrawElement' : '--disable-features=CanvasDrawElement',
+    args: [...WEBGPU_CHROME_ARGS,capture ? '--enable-features=CanvasDrawElement' : '--disable-features=CanvasDrawElement',
       '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(!webgl ? ['--disable-webgl'] : [])],
   })
   const page = await browser.newPage(), errors = [], requests = [], frames = []

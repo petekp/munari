@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const repo = path.resolve(process.env.MUNARI_SOURCE_ROOT ?? path.join(import.meta.dirname, '../..'))
 const output = process.env.GLASS_EFFECTS_OUTPUT ?? await mkdtemp(path.join(tmpdir(), 'munari-glass-effects-'))
@@ -172,7 +173,7 @@ const deadline = setTimeout(() => {
 try {
   server = await createServer({root: path.join(repo, 'apps/lab'), cacheDir: path.join(output, '.vite'), plugins: [observer], logLevel: 'warn', server: {host: '127.0.0.1', port: 0}})
   await server.listen()
-  browser = await puppeteer.launch({executablePath: chrome, headless: process.env.HEADED !== '1', args: ['--enable-features=CanvasDrawElement', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(process.env.CI ? ['--no-sandbox'] : [])]})
+  browser = await puppeteer.launch({executablePath: chrome, headless: process.env.HEADED !== '1', args: [...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(process.env.CI ? ['--no-sandbox'] : [])]})
   const page = await browser.newPage()
   page.on('pageerror', error => errors.push(String(error)))
   page.on('console', message => { if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(message.text()) })

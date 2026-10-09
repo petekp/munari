@@ -31,6 +31,7 @@ import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
 import { MARBLE_HAND_GROUPS, marbleHandTuning as authoredTuning } from '../../apps/lab/src/scenes/marble-hand/marbleHandTuning.ts'
 import { MARBLE_BACKGROUND_REDUCED_TIME } from '../../apps/lab/src/scenes/marble-hand/marbleHandBackgroundClock.ts'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 // Node 24 strips this module's type-only declarations. Heights come from the
 // authored settings, never from the object the gate is judging: sampling its
@@ -87,6 +88,7 @@ async function launch(headless, fullCapture = true) {
     executablePath: chromePath,
     headless,
     args: [
+      ...WEBGPU_CHROME_ARGS,
       ...(fullCapture ? ['--enable-features=CanvasDrawElement'] : []),
       '--enable-webgl',
       '--ignore-gpu-blocklist',

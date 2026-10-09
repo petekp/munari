@@ -10,6 +10,7 @@ import {build, preview} from 'vite'
 import puppeteer from 'puppeteer-core'
 import {replaceSource} from '../home-light/replaceSource.mjs'
 import {setChromeViewport} from '../chromeViewport.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const root = path.resolve(import.meta.dirname, '../../apps/lab')
 const output = process.env.PROFILE_OUTPUT ?? path.join(tmpdir(), 'munari-opening-profile')
@@ -94,7 +95,7 @@ try {
     const index = run % variants.length, variant = variants[index], server = servers[index]
     // Puppeteer already closes its own process group on interruption. Its
     // launch signal also bounds a stalled run, including protocol calls/close.
-    browser = await puppeteer.launch({executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: false, defaultViewport: null, signal: AbortSignal.timeout(15_000), args: ['--enable-features=CanvasDrawElement']})
+    browser = await puppeteer.launch({executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: false, defaultViewport: null, signal: AbortSignal.timeout(15_000), args: [...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement']})
     const page = await browser.newPage(), errors = [], consoleErrors = []
     page.setDefaultTimeout(10_000)
     page.on('pageerror', error => errors.push(String(error)))

@@ -2,6 +2,7 @@
 import {createRoot} from 'react-dom/client'
 import {useState} from 'react'
 import {useThree} from '@react-three/fiber'
+import {gpuErrors,snapshotCanvas} from '../canvasPixels'
 import {SceneSurface,SurfaceCanvas,useSurfaceHandle,useSurfaceStatus} from '@petepetrash/munari'
 import '@petepetrash/munari/style.css'
 
@@ -33,15 +34,12 @@ function Swatch({id,x,y,alpha,rgb,emissive=0,edge=false,changed=false}:{id:strin
 }
 function Observe({update}:{update:()=>void}) {
   const state=useThree()
+  const [errors]=useState(()=>gpuErrors(state.gl))
   window.__litProof={statuses,update,read:()=>{
     state.gl.render(state.scene,state.camera)
-    const gl=state.gl.getContext(),dpr=state.gl.getPixelRatio()
-    const pixel=(x:number,y=0)=>{
-      const p=new Uint8Array(4)
-      gl.readPixels(Math.round(gl.drawingBufferWidth/2+x*dpr),Math.round(gl.drawingBufferHeight/2+y*dpr),1,1,gl.RGBA,gl.UNSIGNED_BYTE,p)
-      return [...p]
-    }
-    return {rows:cases.map((entry,index)=>({id:entry.id,opaque:pixel(-150,90-index*90),half:pixel(0,90-index*90),quarter:pixel(150,90-index*90)})),edges:cases.map((entry,index)=>({id:entry.id,solid:pixel(-150+index*150-20,-180),edge:pixel(-150+index*150,-180)})),corner:pixel(-63,121),sharedLit:pixel(150,170),sharedUnlit:pixel(-150,170),error:gl.getError()}
+    const canvas=state.gl.domElement,dpr=state.gl.getPixelRatio(),snapshot=snapshotCanvas(canvas)
+    const pixel=(x:number,y=0)=>snapshot(Math.round(canvas.width/2+x*dpr),Math.round(canvas.height/2+y*dpr))
+    return {rows:cases.map((entry,index)=>({id:entry.id,opaque:pixel(-150,90-index*90),half:pixel(0,90-index*90),quarter:pixel(150,90-index*90)})),edges:cases.map((entry,index)=>({id:entry.id,solid:pixel(-150+index*150-20,-180),edge:pixel(-150+index*150,-180)})),corner:pixel(-63,121),sharedLit:pixel(150,170),sharedUnlit:pixel(-150,170),error:errors()}
   }}
   return null
 }

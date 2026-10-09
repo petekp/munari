@@ -1,6 +1,6 @@
 # WebGPU migration plan
 
-**Status: `SurfaceCanvas` and `FrameSurface` ported and verified with `gate:frame-surface`. `Surface` and the lab scenes are not ported.**
+**Status: `SurfaceCanvas`, `FrameSurface` and `Surface` ported and verified on both backends. The lab scenes and the registry are not ported.**
 
 Munari will move from Three's `WebGLRenderer` to its `WebGPURenderer`. Shaders
 will be written once in Three Shading Language (TSL). TSL compiles to WGSL for
@@ -13,7 +13,7 @@ No patched dependency, fork, or installed-source edit is allowed.
 | --- | --- |
 | Base commit | `origin/main` at `70fd423` |
 | Worktree | `~/Code/worktrees/munari/webgpu-restart` |
-| Three | `0.185.1`, unchanged from `main` |
+| Three | `0.186.1`; `main` has `0.185.1` (decisions.md #71) |
 | Fiber | `9.7.0`, unchanged from `main` |
 
 The three local commits on `pkp/browser-gate-recording` are not in this base.
@@ -217,21 +217,57 @@ allocate a WebGPU canvas texture and loses the device on the first frame. The
 runner passes those flags on Linux. With them the gate passes on both backends
 on a hosted runner (PR #112). `ci.yml` is unchanged.
 
-## Known gaps on stock WebGPU
-
-These affect the `Surface` path, not the spike. Each has a public replacement.
-
-| `main` uses | WebGPU status | Replacement |
-| --- | --- | --- |
-| `gl.getCurrentViewport()` in `SurfaceMesh` raster alignment | absent | `renderer.getViewport()` scaled by pixel ratio, or the target's own viewport |
-| material `onBeforeRender` for `litTexture.sync` | never called | the mesh's `onBeforeRender`, or a TSL uniform update callback |
-| `onBeforeCompile` GLSL injection in `surfaceMaterials` | not supported by node materials | a TSL node graph |
-| `SurfaceMesh` presents directly on a draw with a null render target | every draw shows the internal target | defer to the `SurfaceCanvas` frame tail, as `FrameSurface` does |
-| the hardware texture size limit | device default 8192 | done in `SurfaceCanvas` (decisions.md #70); DOM Surfaces cap their texture size to it when ported |
+## DOM capture uploads
 
 DOM capture already draws into a 2D canvas that a `CanvasTexture` uploads. The
 investigation confirmed that path works on WebGPU. Three's `ExternalTexture`
 can wrap a native GPU texture later if a direct HTML upload is wanted.
+
+## Porting Surface
+
+**Status: `Surface.Mesh` and its materials ported 2026-10-08 (decisions.md
+#71).** CI's browser gates stay red until the gated lab scenes are ported,
+because the first Genie gate loads GLSL scene shaders. The branch stays off
+`main` until they pass.
+
+What changed:
+
+- `Surface.Mesh` draws with a `MeshBasicNodeMaterial`, and
+  `Surface.LitMaterial` with a `MeshStandardNodeMaterial`.
+- `useSurfaceNodes()` and `surfaceRadiusMask()` replace `useSurfaceUniforms()`
+  and `SURFACE_RADIUS_GLSL`. A GLSL material in a `Surface.Mesh` reports once
+  in development.
+- Raster alignment reads the target's viewport, or `getViewport()` times the
+  pixel ratio, floored, where it called `getCurrentViewport()`.
+- A `Surface.Mesh` outside a `SurfaceCanvas` reports that it cannot release
+  its page.
+- Empty geometry gives no presentation evidence.
+- Every browser runner launches Chrome with `instruments/webgpuChrome.mjs`,
+  and `MUNARI_BACKEND=webgl2` runs any of them on the fallback.
+- Fixtures read pixels through `instruments/canvasPixels.ts`.
+- Three is `0.186.1`, the minimum. `0.185.1` deletes a live geometry's
+  buffers when Fiber disposes the geometry it replaced, and the fallback then
+  draws nothing.
+
+What did not need to change:
+
+- The warm-up's write masks. Three's WebGPU backend compares them before
+  every draw.
+- A texture-size check. DOM captures stop at 4096 px.
+
+Verified on macOS on both backends: `gate:dom-surface-demand`,
+`gate:lifting-pointer`, `probe:surface-textures`, `probe:surface-parts`,
+`probe:api-regressions`, `probe:api-instance-check` and
+`probe:api-native-pointer`. Their values match `main`'s except as decision #71
+lists.
+
+Still open:
+
+1. Run the same gates with `STRICT_CAPABILITY=1`, and in the Linux container.
+2. Decide whether `Surface` needs an origin check. Whether
+   `drawElementImage` can taint a capture canvas is unverified.
+3. Port the lab scenes, starting with those CI gates load: Genie, Logo and
+   Knobs, then the scenes `gate:degraded` walks.
 
 ## After a go
 

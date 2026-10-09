@@ -11,6 +11,7 @@ import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
 import { setChromeViewport } from '../chromeViewport.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const repoRoot = path.resolve(import.meta.dirname, '../..')
 const labRoot = path.join(repoRoot, 'apps/lab')
@@ -219,7 +220,7 @@ try {
   await server.listen()
   const url = `http://127.0.0.1:${server.httpServer.address().port}`
   browser = await puppeteer.launch({ executablePath: chrome, headless: !headed, defaultViewport: null,
-    args: ['--enable-features=CanvasDrawElement', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
+    args: [...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
       ...(process.env.CI ? ['--no-sandbox'] : [])] })
   for (const { name, route, check } of checks.filter(check => selected.has(check.name))) {
     const page = await browser.newPage()

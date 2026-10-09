@@ -4654,3 +4654,93 @@ again with exact pixels. On
 WebGPU the 20000 px source still produced 88 GPU validation errors over the
 run of about ten frames. The texture's first upload is still attempted, and
 what repeats the errors after it was not traced.
+
+
+## #71 — Surface draws with node materials (2026-10-08, react binding + instruments)
+
+**Status: implemented for `Surface.Mesh` and its materials on
+`pkp/webgpu-restart`. The lab scenes and the registry still use GLSL.**
+
+`WebGPURenderer` runs no GLSL, on WebGPU or on its WebGL 2 fallback. A
+`ShaderMaterial` or an `onBeforeCompile` splice compiles nowhere and draws
+nothing. `Surface` therefore draws with node materials written in Three
+Shading Language (TSL).
+
+**The custom-material API is node-based.** `SURFACE_RADIUS_GLSL` and
+`useSurfaceUniforms()` are removed. `useSurfaceNodes()` returns the capture as
+a texture node and the presenter's radii and size as uniform nodes, with
+`radiusMask()` built from them. `surfaceRadiusMask()` is the exported TSL
+twin of the corner SDF, for a material that samples a second capture. The
+nodes keep their identity when a resize replaces the capture texture, so a
+material built once keeps sampling the current capture. A GLSL material that
+reaches a `Surface.Mesh` reports once in development.
+
+**The default material** is a `MeshBasicNodeMaterial` with the capture as
+`map` and the corner mask as its opacity. The capture keeps its sRGB color
+space and premultiplied upload (#5). The `< 0.004` discard runs inside the
+opacity node rather than through `alphaTest`, because a node material with
+`alphaTest` reshapes alpha with a smoothstep once `alphaToCoverage` is on, and
+`Surface.Mesh` turns that on for rounded opaque corners.
+
+**`Surface.LitMaterial`** divides alpha out of the raw encoded sample before
+decoding for light (#48), and applies the corner mask to the premultiplied
+output. Its raw view used to synchronize in the material's `onBeforeRender`,
+which `WebGPURenderer` never calls. The material now registers that step with
+its `Surface.Mesh`, which runs it in the mesh's `onBeforeRender`.
+
+**Presentation needs a `SurfaceCanvas`, as for `FrameSurface` (#69).** During
+a draw `getRenderTarget()` is never `null`, so every color-writing pass defers
+to the frame tail. A `Surface.Mesh` outside a `SurfaceCanvas` cannot release
+its page, and reports that once in development.
+
+**The warm-up's write masks work unchanged.** The mesh still turns color,
+depth and stencil writes off for one pass and restores them after it (#25).
+`WebGPUBackend.needsRenderUpdate` compares a material's write flags before
+every draw and switches pipelines when they change, and the WebGL 2 backend
+reads them per draw. A disposable probe drew a quad through `applyPassWrites`
+between a far red quad and a nearer green one drawn after it. Warm-up frames
+left the pixel green and writing frames showed the quad, on both backends. A
+deliberate fault that kept depth writes on during warm-up showed red, the
+hole the warm-up exists to prevent.
+
+**Frames that never drew (#70).** A `Surface.Mesh` takes no presentation
+evidence from a draw whose geometry has nothing to draw. DOM captures already
+stop at `MAX_TEXTURE_EDGE`, 4096 px, below WebGPU's default device limit of
+8192. Whether `drawElementImage` can taint a capture canvas is unverified, so
+`Surface` has no origin check yet.
+
+**Three `0.186.1` is the minimum.** In `0.185.1`, disposing a geometry after
+its mesh has drawn a replacement deletes the replacement's GPU buffers.
+`Geometries` deletes the attributes of the render object that first drew the
+old geometry, and by then that render object holds the new one. Fiber
+disposes a replaced geometry at idle priority, so a frame often draws the new
+geometry first. WebGPU recreates the buffers on the next draw. The WebGL 2
+fallback keeps a vertex array that points at the deleted buffers, logs
+`drawElements: no buffer is bound to enabled attribute`, and draws nothing. A
+plain-Three probe lost the live buffers on 10 of 10 deferred disposals on
+`0.185.1` and on none on `0.186.1`, whose dispose handler reads the disposed
+geometry's own attributes. Before the upgrade, `gate:dom-surface-demand`
+failed its resize step on the fallback in 2 of 6 macOS runs and 3 of 3 Linux
+runs; its panel's geometry changes size there. After it, 10 of 10 macOS runs
+passed. `@petepetrash/munari` therefore requires `three >= 0.186.1`.
+
+Measured 2026-10-08, headless Chrome 155, Apple Metal, Three `0.185.1`,
+against `main` at `70fd423` on `WebGLRenderer`. The fallback's
+`gate:dom-surface-demand` numbers are from Three `0.186.1`. `gate:dom-surface-demand`,
+`gate:lifting-pointer`, `probe:surface-textures`, `probe:surface-parts`,
+`probe:api-regressions`, `probe:api-instance-check` and
+`probe:api-native-pointer` pass on WebGPU and on the WebGL 2 fallback. Their
+recorded values match `main`'s except where noted:
+
+- `probe:surface-textures` matches exactly on both backends, including the
+  lit half- and quarter-alpha swatches and the 34/64 edge (#48).
+- On WebGPU, `probe:api-regressions` renders one fewer frame in its capture
+  case, whose assertions are relative. On the fallback one clip case's image
+  error was 0.00046 against `main`'s 0.00025.
+- One of four fallback runs of `gate:dom-surface-demand` on Three `0.185.1`
+  captured its Surface at 840×600 in five paints instead of 420×300 in three,
+  and still passed. The raster viewport was identical on both backends; the
+  cause is open.
+
+The fixtures read pixels after `render()` returns instead of with
+`gl.readPixels`, which WebGPU does not have (instruments/README.md).

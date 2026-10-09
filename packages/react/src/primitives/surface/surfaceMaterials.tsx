@@ -18,95 +18,85 @@
 // alpha convention, so the presenter writes the flag onto whatever material
 // it is handed.
 //
-// Ownership: this module owns material configuration and GLSL splices. It
-// owns no texture, no mesh, and no protocol.
+// WebGPURenderer runs no GLSL, so these are node materials and custom
+// materials are built from `useSurfaceNodes()` (decisions.md #71).
+//
+// Ownership: this module owns material configuration and the node graphs.
+// It owns no texture, no mesh, and no protocol.
 
-import { use, useLayoutEffect, useMemo, useRef } from 'react'
+import { use, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { SURFACE_RADIUS_GLSL } from '../../lib/surfaceRadiusGlsl'
-import { SurfaceMaterialContext, useSurfaceTexture } from './surfaceContext'
+import { MeshStandardNodeMaterial, type Node, type TextureNode, type UniformNode } from 'three/webgpu'
+import { Discard, Fn, output, sRGBTransferEOTF, texture as textureNode, uniform, uv, vec3, vec4 } from 'three/tsl'
+import { surfaceRadiusMask } from '../../lib/surfaceRadius'
+import { SurfaceMaterialContext, useSurfaceTexture, type SurfaceMaterialValue } from './surfaceContext'
 import { getSurfaceLitTexture } from './surfaceLitTexture'
+import { isDevelopmentRuntime } from '../FrameSurface'
 
-/** What a three shader looks like at `onBeforeCompile` time. */
-interface ShaderStage {
-  uniforms: Record<string, { value: unknown }>
-  fragmentShader: string
-}
-
-// Filter premultiplied encoded channels first, then remove coverage and
-// decode for lighting. Hardware sRGB decoding before filtering cannot be
-// inverted afterward at a transparent edge (decision #48).
-const STRAIGHT_SAMPLE_GLSL = `
-uniform sampler2D uMunariEncodedMap;
-vec4 munariStraightSample(vec4 sampleColor) {
-  if (sampleColor.a <= 0.0) return vec4(0.0);
-  sampleColor.rgb /= sampleColor.a;
-  return sRGBTransferEOTF(sampleColor);
-}
-`
-
-/**
- * Install the corner-mask uniforms and GLSL function. The material applies
- * the resulting mask after lighting, where color and alpha can be scaled together.
- */
-function spliceRadiusMask(shader: ShaderStage, value: SurfaceMaterialUniforms) {
-  shader.uniforms.uMunariRadii = value.radii
-  shader.uniforms.uMunariSize = value.size
-  shader.fragmentShader = shader.fragmentShader.replace(
-    '#include <clipping_planes_pars_fragment>',
-    '#include <clipping_planes_pars_fragment>\n' + SURFACE_RADIUS_GLSL,
-  )
-}
-
-interface SurfaceMaterialUniforms {
-  radii: { value: THREE.Vector4 }
-  size: { value: THREE.Vector2 }
-}
-
-/**
- * The three uniforms every custom Surface shader needs, under the names
- * `SURFACE_RADIUS_GLSL` declares (`tMap` is this hook's naming for the
- * capture — the GLSL mask reads only the other two).
- */
-export interface SurfaceUniforms {
-  /** The live capture, premultiplied (decisions.md #5). */
-  tMap: { value: THREE.Texture }
-  uMunariRadii: { value: THREE.Vector4 }
-  uMunariSize: { value: THREE.Vector2 }
-}
-
-/**
- * The uniform set a custom `<Surface.Mesh material={…}>` shader wires.
- *
- * The radii and size slots are the PRESENTER's own uniform objects, shared
- * by reference — a chrome change is a value write into them, so a material
- * wired here tracks it with no re-render. A material that allocates its own
- * copies instead compiles fine and then never moves (the fault this hook
- * exists to make unwritable). Extra uniforms merge by spread:
- *
- *   const surface = useSurfaceUniforms()
- *   const uniforms = useMemo(() => ({ ...surface, uTime: { value: 0 } }), [surface])
- */
-export function useSurfaceUniforms(): SurfaceUniforms {
-  const texture = useSurfaceTexture()
+function useMaterialSlot(caller: string): SurfaceMaterialValue {
   const slot = use(SurfaceMaterialContext)
   if (!slot) {
     throw new Error(
-      'munari: useSurfaceUniforms() must be called from the `material` of a ' +
-        '<Surface.Mesh>. It wires that presenter’s corner mask, so there is ' +
-        'nothing for it to wire anywhere else.',
+      `munari: ${caller} must be used in the \`material\` of a <Surface.Mesh>. ` +
+        'It reads that presenter’s corner mask and alpha policy, so there is ' +
+        'nothing for it to describe on its own.',
     )
   }
-  // The slots live for the component's whole life and take new textures as
-  // value writes: the objects' identity is what a mounted shaderMaterial
-  // holds, and replacing them mid-life would leave the compiled program
-  // reading the abandoned copies.
-  const tMap = useRef({ value: texture }).current
-  tMap.value = texture
-  return useMemo<SurfaceUniforms>(
-    () => ({ tMap, uMunariRadii: slot.radii, uMunariSize: slot.size }),
-    [slot, tMap],
-  )
+  return slot
+}
+
+/** What a custom `<Surface.Mesh material={…}>` node material builds from. */
+export interface SurfaceNodes {
+  /**
+   * The live capture, premultiplied (decisions.md #5). The node keeps its
+   * identity when a resize replaces the texture, so a material built once
+   * keeps sampling the current capture.
+   */
+  readonly map: TextureNode
+  /** The presenter's corner radii in source CSS px: tl, tr, br, bl. */
+  readonly radii: UniformNode<'vec4', THREE.Vector4>
+  /** The source's CSS size. */
+  readonly size: UniformNode<'vec2', THREE.Vector2>
+  /**
+   * Corner coverage, 1 inside and 0 outside, at `coordinates`: the unmirrored
+   * mesh UV by default. Multiply the whole premultiplied vec4 by it.
+   */
+  radiusMask(coordinates?: Node<'vec2'>): Node<'float'>
+}
+
+/**
+ * The nodes a custom `<Surface.Mesh material={…}>` builds from.
+ *
+ * The radii and size are the PRESENTER's own uniform nodes, so a chrome
+ * change is a value write the material sees with no re-render. The returned
+ * object keeps its identity for the component's life, so a material can be
+ * built from it once:
+ *
+ *   const surface = useSurfaceNodes()
+ *   const material = useMemo(() => {
+ *     const m = new MeshBasicNodeMaterial({ transparent: true })
+ *     m.colorNode = surface.map
+ *     m.opacityNode = surface.radiusMask()
+ *     return m
+ *   }, [surface])
+ */
+export function useSurfaceNodes(): SurfaceNodes {
+  const capture = useSurfaceTexture()
+  const slot = useMaterialSlot('useSurfaceNodes()')
+  const nodes = useRef<SurfaceNodes | null>(null)
+  let current = nodes.current
+  if (!current || current.radii !== slot.radii) {
+    const { radii, size } = slot
+    current = {
+      map: textureNode(capture),
+      radii,
+      size,
+      radiusMask: (coordinates = uv()) => surfaceRadiusMask(coordinates, size, radii),
+    }
+    nodes.current = current
+  }
+  current.map.value = capture
+  return current
 }
 
 export interface SurfaceLitMaterialProps {
@@ -126,9 +116,9 @@ export interface SurfaceLitMaterialProps {
  * A lit slab wearing the Surface's capture.
  *
  * Mounted in `<Surface.Mesh material={…}>`, where a configured texture is
- * guaranteed to already exist. The emissive slot always carries the capture
- * so sliding `emissiveIntensity` is a uniform write rather than a program
- * change — at the default `0` the term contributes nothing.
+ * guaranteed to already exist. The emissive term always carries the capture
+ * so sliding `emissiveIntensity` is a uniform write rather than a rebuild —
+ * at the default `0` it contributes nothing.
  */
 export function SurfaceLitMaterial({
   roughness = 0.55,
@@ -136,77 +126,68 @@ export function SurfaceLitMaterial({
   emissiveIntensity = 0,
   side,
 }: SurfaceLitMaterialProps) {
-  const texture = useSurfaceTexture()
-  const litTexture = useMemo(() => getSurfaceLitTexture(texture), [texture])
+  const capture = useSurfaceTexture()
+  const litTexture = useMemo(() => getSurfaceLitTexture(capture), [capture])
   useLayoutEffect(() => litTexture.acquire(), [litTexture])
-  const slot = use(SurfaceMaterialContext)
-  if (!slot) {
-    throw new Error(
-      'munari: <Surface.LitMaterial> must be the `material` of a <Surface.Mesh>. ' +
-        'It reads that presenter’s corner mask and alpha policy, so there is ' +
-        'nothing for it to describe on its own.',
-    )
+  const slot = useMaterialSlot('<Surface.LitMaterial>')
+  // Before each draw, after raster sizing: the raw view follows the capture.
+  useLayoutEffect(() => slot.beforeDraw(litTexture.sync), [slot, litTexture])
+
+  const emission = useMemo(() => uniform(0), [])
+  // One node for the material's life: a resize replaces the raw view, and a
+  // value write keeps the built material instead of rebuilding its shader.
+  const [encoded] = useState(() => textureNode(litTexture.texture))
+  encoded.value = litTexture.texture
+  const material = useMemo(() => {
+    const created = new MeshStandardNodeMaterial({ color: '#ffffff', premultipliedAlpha: true })
+    // Filter premultiplied encoded channels first, then remove coverage and
+    // decode for lighting. Hardware sRGB decoding before filtering cannot be
+    // inverted afterward at a transparent edge (decisions.md #48).
+    // SAFETY: a texture sample is a vec4; Three's types return a bare Node.
+    const sample = encoded.sample(uv()) as Node<'vec4'>
+    const straight = sample.a.greaterThan(0).select(sample.rgb.div(sample.a), vec3(0))
+    // SAFETY: Three declares this TSL function's layout as vec3 to vec3; its
+    // published types leave the result untyped.
+    const linear = sRGBTransferEOTF(straight) as Node<'vec3'>
+    created.colorNode = vec4(linear, sample.a)
+    created.emissiveNode = linear.mul(emission)
+    const mask = surfaceRadiusMask(uv(), slot.size, slot.radii)
+    // Three's premultiplication already applied source coverage; this adds
+    // only the corner coverage.
+    created.outputNode = Fn(() => {
+      const covered = output.mul(mask)
+      Discard(covered.a.lessThan(0.004))
+      return covered
+    })()
+    return created
+  }, [encoded, emission, slot.size, slot.radii])
+  useLayoutEffect(() => () => material.dispose(), [material])
+
+  emission.value = emissiveIntensity
+  material.roughness = roughness
+  material.metalness = metalness
+  const nextSide = side ?? THREE.FrontSide
+  if (material.side !== nextSide || material.transparent !== slot.transparent) {
+    material.side = nextSide
+    material.transparent = slot.transparent
+    material.needsUpdate = true
   }
+  return <primitive object={material} attach="material" />
+}
 
-  // Identical source text across every instance on purpose: three keys its
-  // program cache on this function's `toString`, so all lit Surfaces share
-  // one compiled program while each wires its own uniform objects.
-  const onBeforeCompile = useMemo(
-    () => (shader: ShaderStage) => {
-      spliceRadiusMask(shader, slot)
-      shader.uniforms.uMunariEncodedMap = { value: litTexture.texture }
-      shader.fragmentShader = shader.fragmentShader
-        .replace(
-          '#include <clipping_planes_pars_fragment>',
-          '#include <clipping_planes_pars_fragment>\n' + STRAIGHT_SAMPLE_GLSL,
-        )
-        .replace(
-          '#include <map_fragment>',
-          THREE.ShaderChunk.map_fragment.replace(
-            'texture2D( map, vMapUv )',
-            'texture2D( uMunariEncodedMap, vMapUv )',
-          ).replace(
-            'diffuseColor *= sampledDiffuseColor;',
-            'diffuseColor *= munariStraightSample(sampledDiffuseColor);',
-          ),
-        )
-        .replace(
-          '#include <emissivemap_fragment>',
-          THREE.ShaderChunk.emissivemap_fragment.replace(
-            'texture2D( emissiveMap, vEmissiveMapUv )',
-            'texture2D( uMunariEncodedMap, vEmissiveMapUv )',
-          ).replace(
-            'totalEmissiveRadiance *= emissiveColor.rgb;',
-            'totalEmissiveRadiance *= munariStraightSample(emissiveColor).rgb;',
-          ),
-        )
-        .replace(
-          '#include <dithering_fragment>',
-          '#include <dithering_fragment>\n' +
-            // Three's premultiplied_alpha_fragment already applied source
-            // coverage. Apply only the additional corner coverage here.
-            '  gl_FragColor *= munariRadiusMask( vUv );\n' +
-            '  if ( gl_FragColor.a < 0.004 ) discard;\n',
-        )
-    },
-    [slot, litTexture],
-  )
-
-  return (
-    <meshStandardMaterial
-      map={texture}
-      emissiveMap={texture}
-      emissive="#ffffff"
-      emissiveIntensity={emissiveIntensity}
-      roughness={roughness}
-      metalness={metalness}
-      side={side}
-      transparent={slot.transparent}
-      premultipliedAlpha
-      defines={{ USE_UV: '' }}
-      onBeforeCompile={onBeforeCompile}
-      onBeforeRender={litTexture.sync}
-    />
+// A GLSL material compiles nowhere on WebGPURenderer: Three draws nothing
+// and logs once per program, far from the Surface that caused it.
+let reportedGlsl = false
+function reportGlslMaterial(material: THREE.Material): void {
+  if (reportedGlsl || !isDevelopmentRuntime()) return
+  const glsl =
+    material instanceof THREE.ShaderMaterial ||
+    material.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile
+  if (!glsl) return
+  reportedGlsl = true
+  console.error(
+    'munari: a <Surface.Mesh> material uses GLSL (a ShaderMaterial or onBeforeCompile), which ' +
+      'WebGPURenderer cannot run. Build a node material from useSurfaceNodes() instead.',
   )
 }
 
@@ -222,6 +203,7 @@ export function SurfaceLitMaterial({
 export function configureSurfaceMaterial(material: THREE.Material | THREE.Material[]): void {
   const list = Array.isArray(material) ? material : [material]
   for (const entry of list) {
+    reportGlslMaterial(entry)
     if (entry.premultipliedAlpha) continue
     entry.premultipliedAlpha = true
     entry.needsUpdate = true

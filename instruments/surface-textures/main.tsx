@@ -1,12 +1,15 @@
-// Texture resize and alpha proof — read actual WebGL pixels after source updates.
+// Texture resize and alpha proof — read actual canvas pixels after source updates.
 import * as THREE from 'three'
+import {WebGPURenderer} from 'three/webgpu'
+import {gpuErrors,snapshotCanvas} from '../canvasPixels'
 import {createSurfaceSourceRuntime} from '../../packages/react/src/primitives/surface/surfaceSourceRuntime'
 
 const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 const content = document.createElement('div')
 content.style.cssText = 'width:128px;height:64px;background:linear-gradient(to right,rgb(255,0,0) 50%,rgb(0,255,0) 50%)'
 const runtime = createSurfaceSourceRuntime({content,size:[128,64],resolution:new URLSearchParams(location.search).has('pinned')?1:'auto',mirrorU:false,pixelRatio:1,onError:error=>{throw error}})
-const renderer = new THREE.WebGLRenderer({alpha:true,antialias:false})
+const renderer = new WebGPURenderer({alpha:true,antialias:false})
+await renderer.init()
 renderer.setPixelRatio(devicePixelRatio)
 renderer.setSize(512,256)
 document.body.append(renderer.domElement)
@@ -16,16 +19,16 @@ camera.position.z = 2
 const texture = runtime.texture()!
 const material = new THREE.MeshBasicMaterial({map:texture,toneMapped:false,premultipliedAlpha:true})
 scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,1),material))
-const gl = renderer.getContext()
+const errors = gpuErrors(renderer)
 const rows:unknown[] = []
 let disposals = 0
 texture.addEventListener('dispose',()=>{disposals++})
 const sample = (name:string) => {
   renderer.render(scene,camera)
-  const left = new Uint8Array(4),right = new Uint8Array(4)
-  gl.readPixels(Math.round(gl.drawingBufferWidth*.25),Math.round(gl.drawingBufferHeight*.5),1,1,gl.RGBA,gl.UNSIGNED_BYTE,left)
-  gl.readPixels(Math.round(gl.drawingBufferWidth*.75),Math.round(gl.drawingBufferHeight*.5),1,1,gl.RGBA,gl.UNSIGNED_BYTE,right)
-  const row = {name,left:[...left],right:[...right],error:gl.getError(),disposals,store:[runtime.source.canvas.width,runtime.source.canvas.height],generation:runtime.uploadedGeneration()}
+  const canvas = renderer.domElement,pixel = snapshotCanvas(canvas)
+  const left = pixel(Math.round(canvas.width*.25),Math.round(canvas.height*.5))
+  const right = pixel(Math.round(canvas.width*.75),Math.round(canvas.height*.5))
+  const row = {name,left,right,error:errors(),disposals,store:[runtime.source.canvas.width,runtime.source.canvas.height],generation:runtime.uploadedGeneration()}
   rows.push(row)
   return row
 }

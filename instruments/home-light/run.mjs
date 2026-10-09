@@ -10,6 +10,7 @@ import puppeteer from 'puppeteer-core'
 import {setChromeViewport} from '../chromeViewport.mjs'
 import {observeLightingDraw,measureLightingDraw} from './gpu.mjs'
 import {observeShadowCapture,measureExampleShadows} from './exampleShadows.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output=process.env.LIGHT_PROOF_OUTPUT??path.join(tmpdir(),'munari-home-light')
 await mkdir(output,{recursive:true})
@@ -26,7 +27,7 @@ const lab=await createServer({root:path.join(root,'apps/lab'),configFile:path.jo
 await fixture.listen();await lab.listen()
 const executablePath=[process.env.CHROME_PATH,'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium'].filter(Boolean).find(existsSync)
 assert.ok(executablePath,'Set CHROME_PATH to a Chrome executable')
-const launch=flags=>puppeteer.launch({executablePath,headless:process.env.HEADED!=='1',defaultViewport:null,args:[...flags,'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
+const launch=flags=>puppeteer.launch({executablePath,headless:process.env.HEADED!=='1',defaultViewport:null,args:[...WEBGPU_CHROME_ARGS,...flags,'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
 let browser
 const errors=[],results={}
 try {

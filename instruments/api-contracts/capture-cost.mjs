@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os'
 import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
 import {replaceSource} from '../home-light/replaceSource.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 const root=path.resolve(import.meta.dirname,'../..')
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/capture-cost')
 await mkdir(output,{recursive:true})
@@ -29,7 +30,7 @@ const instrumentation={name:'capture-cost-observer',enforce:'pre',transform(sour
 const lab=await createServer({root:path.join(root,'apps/lab'),cacheDir:path.join(output,'.vite-lab'),server:{host:'127.0.0.1',port:0},plugins:[instrumentation],logLevel:'warn'})
 const whole=await createServer({configFile:false,root:path.join(root,'instruments/api-composition'),cacheDir:path.join(output,'.vite-whole'),server:{host:'127.0.0.1',port:0},esbuild:{jsx:'automatic'},plugins:[instrumentation],logLevel:'warn'})
 await lab.listen();await whole.listen()
-const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:['--enable-features=CanvasDrawElement','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']})
+const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:[...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']})
 const rows=[]
 try {
  for(const scenario of ['controls','selection','html','body']){

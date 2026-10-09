@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os'
 import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
 import {setChromeViewport} from '../chromeViewport.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/regressions')
 await mkdir(output,{recursive:true})
@@ -273,7 +274,7 @@ try{
     const defaults=enhanced?enhancedCases:nativeCases
     const cases=requestedCases?defaults.filter(name=>requestedCases.includes(name)):defaults
     if(!cases.length)continue
-    const browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',defaultViewport:null,args:[...(enhanced?['--enable-features=CanvasDrawElement']:[]),'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
+    const browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',defaultViewport:null,args:[...WEBGPU_CHROME_ARGS,...(enhanced?['--enable-features=CanvasDrawElement']:[]),'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
     try{
       for(const kind of cases){
         const page=await browser.newPage();await setChromeViewport(page,{width:960,height:700});await page.bringToFront()

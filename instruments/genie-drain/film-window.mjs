@@ -11,6 +11,7 @@ import path from 'node:path'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const labRoot = path.join(here, '..', '..', 'apps', 'lab')
@@ -248,6 +249,7 @@ try {
     executablePath: CHROME,
     headless: true,
     args: [
+      ...WEBGPU_CHROME_ARGS,
       '--enable-features=CanvasDrawElement',
       '--disable-renderer-backgrounding',
       '--autoplay-policy=no-user-gesture-required',

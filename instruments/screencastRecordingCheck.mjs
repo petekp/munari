@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto'
 import puppeteer from 'puppeteer-core'
 import { createScreencastRecorder, scoreScreencast } from './screencastRecording.ts'
 import { IncompleteScreencastError } from './screencastCoverage.ts'
+import { WEBGPU_CHROME_ARGS } from './webgpuChrome.mjs'
 
 const chrome = [
   process.env.CHROME_PATH,
@@ -919,7 +920,7 @@ async function acknowledgementDisposalCheck(page) {
 let browser
 let failure = null
 try {
-  browser = await puppeteer.launch({ executablePath: chrome, headless: process.env.HEADED !== '1', args: ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'] })
+  browser = await puppeteer.launch({ executablePath: chrome, headless: process.env.HEADED !== '1', args: [...WEBGPU_CHROME_ARGS,'--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'] })
   console.log(`screencast-recording: ${await browser.version()} · ordinary DOM · PNG/JPEG · ${viewport.width}×${viewport.height} DPR 1`)
   for (const check of [decodingCheck, exceptionalScoringCheck, acquisitionCheck, clockCheck, constructionCollisionCheck, constructionRollbackCheck, startFailureCheck, interruptionCheck, stoppingDisposalCheck, acknowledgementDisposalCheck]) {
     await withPage(browser, check)

@@ -393,7 +393,7 @@ export function resolveFrameSurfaceDevelopment(
   return nodeEnvironment === 'development' || nodeEnvironment === 'test'
 }
 
-function isDevelopmentRuntime(): boolean {
+export function isDevelopmentRuntime(): boolean {
   // SAFETY: both of these are the HOST's, not the language's. `import.meta
   // .env` exists under Vite and nowhere else; `process` exists under Node
   // and nowhere else. The library has to build and run under every host, so

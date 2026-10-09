@@ -31,6 +31,7 @@ import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
 import { IncompleteScreencastError, requirePageFrameCoverage } from '../screencastCoverage.ts'
 import { createScreencastRecorder, scoreScreencast } from '../screencastRecording.ts'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const labRoot = path.join(repoRoot, 'apps', 'lab')
@@ -98,6 +99,7 @@ try {
     executablePath: CHROME,
     headless: !HEADED,
     args: [
+      ...WEBGPU_CHROME_ARGS,
       '--enable-unsafe-swiftshader',
       '--enable-features=CanvasDrawElement',
       '--disable-backgrounding-occluded-windows',
