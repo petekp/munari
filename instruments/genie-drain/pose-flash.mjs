@@ -59,6 +59,7 @@ try{
   page.on('console',message=>{if(message.type()==='error'&&!message.text().startsWith('Failed to load resource:'))errors.push(message.text())})
   try{
    await mkdir(directory,{recursive:true})
+   await page.evaluateOnNewDocument(()=>{window.__longTasks=[];new PerformanceObserver(list=>{for(const e of list.getEntries())window.__longTasks.push([performance.timeOrigin+e.startTime,e.duration])}).observe({type:'longtask',buffered:true})})
    await page.setViewport({width:1100,height:800,deviceScaleFactor:1})
    await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'no-preference'}])
    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=genie&framed${mode==='snapdom'?'&capture=snapdom':''}`,{waitUntil:'load'})
@@ -148,7 +149,7 @@ try{
    await page.mouse.down();await sleep(50);await page.mouse.up();await sleep(450)
    const collectionEnd=await page.evaluate(()=>performance.timeOrigin+performance.now())
    const capture=await recorder.stop({through:collectionEnd,timeoutMs:5000}),frames=capture.frames
-   const state=await page.evaluate(()=>({draws:window.__fixedPose.draws,seedTime:window.__fixedPose.seedTime,blockedDraws:window.__fixedPose.cadence.blocked})),draws=state.draws,firstDraw=draws.find(draw=>draw.writing&&!draw.pageHeld)
+   const state=await page.evaluate(()=>({draws:window.__fixedPose.draws,seedTime:window.__fixedPose.seedTime,blockedDraws:window.__fixedPose.cadence.blocked,longTasks:window.__longTasks})),draws=state.draws,firstDraw=draws.find(draw=>draw.writing&&!draw.pageHeld)
    const scored=await scoreScreencast(page,capture,{
     reference:{kind:'image',encoding:'png',data:reference},
     context:{draws,box},
@@ -185,7 +186,7 @@ try{
    const end=second===undefined?start+80:Math.max(start+80,second.t),observed=sceneRows.filter(row=>row.t<=end)
    observation={firstDraw:firstDraw?.id,firstRecorded:observed[0]?.draw.id,secondRecorded:second?.draw.id,frames:observed.length,blockedDraws:state.blockedDraws,maximumPixelError:Math.max(...observed.map(row=>Math.max(row.nativeToScene,row.sceneToNative))),
     // Milliseconds after the press, so a failed run shows which wait ran out.
-    timing:{firstDraw:firstDraw&&Math.round(firstDraw.t-pressAt),firstImage:start&&Math.round(start-pressAt),secondImage:second&&Math.round(second.t-pressAt),lastImage:frames.length?Math.round(frames.at(-1).t-pressAt):null,collectionEnd:Math.round(collectionEnd-pressAt),drawGaps:draws.slice(1).map((draw,i)=>Math.round(draw.t-draws[i].t))}}
+    timing:{firstDraw:firstDraw&&Math.round(firstDraw.t-pressAt),firstImage:start&&Math.round(start-pressAt),secondImage:second&&Math.round(second.t-pressAt),lastImage:frames.length?Math.round(frames.at(-1).t-pressAt):null,collectionEnd:Math.round(collectionEnd-pressAt),draws:draws.map(d=>[Math.round(d.t-pressAt),d.writing?1:0,d.pageHeld?1:0,d.read,d.uploadedRead]),longTasks:state.longTasks.map(([t,d])=>[Math.round(t-pressAt),Math.round(d)]).filter(([t])=>t>-200),drawGaps:draws.slice(1).map((draw,i)=>Math.round(draw.t-draws[i].t))}}
    await writeFile(path.join(directory,'measurement.json'),JSON.stringify({box,...scored.summary,firstDraw,seedTime:state.seedTime,blockedDraws:state.blockedDraws,draws,frames:observed,recording:{collectionEnd:capture.collectionEnd,...capture.diagnostics,scoring:scored.diagnostics}},null,2))
    const frameByIndex=new Map(frames.map(frame=>[frame.index,frame]))
    if(observed.length){await writeFile(path.join(directory,'first-scene.png'),Buffer.from(frameByIndex.get(observed[0].index).data,'base64'));await writeFile(path.join(directory,'last-scene.png'),Buffer.from(frameByIndex.get(observed.at(-1).index).data,'base64'))}
