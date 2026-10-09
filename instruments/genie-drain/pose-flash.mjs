@@ -9,7 +9,7 @@
 // alone held one draw in 4 of 16 cases and the late-blank control judged nothing.
 // Recording runs until the page has made its first scene draw and the next
 // one, plus time for the screencast to deliver them. On hosted WebGPU runners
-// the first scene image arrived 274-422ms after its draw (3 runs, 2026-10-09),
+// the first scene image arrived 274-565ms after its draw (4 runs, 2026-10-09),
 // so a fixed 450ms after the press recorded only that image. The judged
 // interval comes from the recorded images, so a longer recording judges no more.
 // This gate does not measure natural motion, freeze timing or performance.
@@ -53,7 +53,7 @@ const results=[],deadline=setTimeout(()=>{console.error('Stationary pose exceede
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 // Bounds a page that never draws; the assertions below then name what is missing.
 const DRAW_DEADLINE_MS=20000
-// More than twice the slowest measured delivery of a drawn frame (see above).
+// 435ms more than the slowest measured delivery of a drawn frame (see above).
 const SCREENCAST_DELIVERY_MS=1000
 try{
  await mkdir(output,{recursive:true})
