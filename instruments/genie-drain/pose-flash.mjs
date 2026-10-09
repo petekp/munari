@@ -7,6 +7,11 @@
 // Observation lasts 80ms, or until the second scene draw is recorded if that
 // is later. Hosted runners drew the scene every 88-106ms (2026-09-29), so 80ms
 // alone held one draw in 4 of 16 cases and the late-blank control judged nothing.
+// Recording runs until the page has made its first scene draw and the next
+// one, plus time for the screencast to deliver them. On hosted WebGPU runners
+// the first scene image arrived 274-422ms after its draw (3 runs, 2026-10-09),
+// so a fixed 450ms after the press recorded only that image. The judged
+// interval comes from the recorded images, so a longer recording judges no more.
 // This gate does not measure natural motion, freeze timing or performance.
 import assert from 'node:assert/strict'
 import {existsSync} from 'node:fs'
@@ -46,6 +51,10 @@ const includeCleanupFailure=(failure,cleanupError)=>{
 }
 const results=[],deadline=setTimeout(()=>{console.error('Stationary pose exceeded 300s');process.exit(1)},300000)
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+// Bounds a page that never draws; the assertions below then name what is missing.
+const DRAW_DEADLINE_MS=20000
+// More than twice the slowest measured delivery of a drawn frame (see above).
+const SCREENCAST_DELIVERY_MS=1000
 try{
  await mkdir(output,{recursive:true})
  server=await createServer({root:path.join(root,'apps/lab'),plugins:[inspect],cacheDir:path.join(output,'.vite'),server:{host:'127.0.0.1',port:0,fs:{allow:[root]}},logLevel:'warn'})
@@ -145,7 +154,9 @@ try{
    await page.mouse.move(lamp.x,lamp.y,{steps:6});await sleep(300)
    await recorder.start();await sleep(100)
    const pressAt=await page.evaluate(()=>performance.timeOrigin+performance.now())
-   await page.mouse.down();await sleep(50);await page.mouse.up();await sleep(450)
+   await page.mouse.down();await sleep(50);await page.mouse.up()
+   await page.waitForFunction(()=>{const draws=window.__fixedPose.draws,first=draws.findIndex(draw=>draw.writing&&!draw.pageHeld);return first>=0&&draws.length>first+1},{timeout:DRAW_DEADLINE_MS}).catch(error=>{if(error.name!=='TimeoutError')throw error})
+   await sleep(SCREENCAST_DELIVERY_MS)
    const collectionEnd=await page.evaluate(()=>performance.timeOrigin+performance.now())
    const capture=await recorder.stop({through:collectionEnd,timeoutMs:5000}),frames=capture.frames
    const state=await page.evaluate(()=>({draws:window.__fixedPose.draws,seedTime:window.__fixedPose.seedTime,blockedDraws:window.__fixedPose.cadence.blocked})),draws=state.draws,firstDraw=draws.find(draw=>draw.writing&&!draw.pageHeld)
