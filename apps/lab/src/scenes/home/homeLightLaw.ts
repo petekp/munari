@@ -16,7 +16,7 @@
 // the shader's thin surfaces; curved receivers require tracing the full ray.
 //
 // Ownership: this module owns the projection and the fixed standoffs.
-// homeLight.ts owns the GLSL that applies them per fragment. HomeMasthead.tsx
+// homeLight.ts owns the node graph that applies them per fragment. HomeMasthead.tsx
 // owns where the light is.
 
 export interface Point {

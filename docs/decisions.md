@@ -4866,6 +4866,23 @@ crash also stops the film's video decoder, and `destroy()` reports reason
 `destroyed`, which Three treats as its own dispose. On the fallback it uses
 `WEBGL_lose_context`.
 
+**The lab's standalone renderers follow the same rule** (2026-10-09). Home's
+shadow, bulb and headline canvases, Lamp's two canvases, Marble hand's
+background and Gravity's fallback overlay run their own `WebGPURenderer`
+outside `SurfaceCanvas`. Main restored each after `webglcontextrestored`.
+After a loss, each now shows its degraded fallback, then restarts its effect
+on a new canvas through `useRendererReplacement`
+(`apps/lab/src/lib/rendererReplacement.ts`). Renderers that one scene
+restarts together share one counter, so a GPU process crash that loses all of
+them restarts the scene once. Gravity returns pulled words to the poem,
+because their bodies and meshes die with the renderer.
+
+A temporary probe lost every device or context at once, on both backends.
+After the first loss, each of the seven canvases drew again from a new
+renderer, and Gravity drew a newly pulled word. After a second loss within
+10 s, each scene stayed on its fallback. With replacement disabled, all four
+scenes failed the probe.
+
 ## #74 — Capture canvases use CPU storage on a software GPU (2026-10-09, kernel + react binding)
 
 **Status: implemented on `pkp/webgpu-restart`.**

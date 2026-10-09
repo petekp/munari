@@ -2,7 +2,7 @@
 // shadows fall from the page content: the glyphs, every raised
 // control, and the rim of every well.
 //
-// The headline retains its native layout and selection. WebGL supplies its
+// The headline retains its native layout and selection. The GPU supplies its
 // 3D and shader word treatments, plus light and shadow. A multiply canvas
 // darkens the page, and a fixed normal-blend canvas renders the bulb.
 // The light lives in viewport space, so it stays where you
@@ -29,6 +29,7 @@
 
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
+import { DirectRenderPipeline, PMREMGenerator, WebGPURenderer } from 'three/webgpu'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import type { HomeFlyerStore } from './homeFlyer'
 import { DemoOverlay } from '../../components/DemoHost'
@@ -46,6 +47,7 @@ import { createLampBackdrop, type LampBackdrop } from './homeLampBackdrop'
 import { createHomeLightDisplay } from './homeLightDisplay'
 import { createLampViewportUpdater, watchLampViewport } from './homeLampViewport'
 import { createHeadlineTreatments } from './homeHeadlineTreatments'
+import { useRendererReplacement } from '../../lib/rendererReplacement'
 
 // Small idle motion stays inside the gap above the headline (decision #50).
 const DRIFT_RADIUS_X = 12
@@ -78,7 +80,8 @@ interface ShadowPass {
 }
 
 interface BulbPass {
-  renderer: THREE.WebGLRenderer | null
+  renderer: WebGPURenderer | null
+  pipeline: DirectRenderPipeline | null
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   bulb: LightBulb | null
@@ -107,7 +110,7 @@ function createLightState(): LightState {
     width: 0,
     height: 0,
     shadow: { scene: shadowScene, camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mesh, ink: null, relief: null, paper: null, layoutCurrent: () => false },
-    bulb: { renderer: null, scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), bulb: null, lastFrame: 0, backdrop: null, queued: false, updateViewport:null },
+    bulb: { renderer: null, pipeline: null, scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), bulb: null, lastFrame: 0, backdrop: null, queued: false, updateViewport:null },
     draw: () => {},
     start: () => {},
     stop: () => {},
@@ -189,6 +192,9 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
   const state = useMemo(createLightState, [])
   const [degraded, setDegraded] = useState(false)
   const [bulbless, setBulbless] = useState(false)
+  // The shadow, bulb and headline renderers restart together: a GPU process
+  // crash loses all three, and the shadow effect creates the headline.
+  const { generation, lost } = useRendererReplacement()
   const [dragged, setDragged] = useState(false)
   const movedByUser = useRef(false)
   const markLightMoved = useCallback(() => {
@@ -254,15 +260,15 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     // and the page it scrolls with can never disagree.
     const origin = seatBand(box, page, innerRect)
     const material = state.shadow.mesh.material
-    material.uniforms.uFrameOrigin.value.set(origin.left, origin.top)
+    material.values.frameOrigin.value.set(origin.left, origin.top)
     setHomeLightFrame(material, state.width, state.height, light.x + viewport.left - origin.left, light.y + viewport.top - origin.top, lightHeightRef.current)
     const ink = state.shadow.ink
     const glyphScale = ink?.scale ?? 1
     setHomeInkMask(material, ink?.texture ?? null, ink ? { x: innerRect.left - origin.left + ink.mask.rect.x, y: innerRect.top - origin.top + ink.mask.rect.y, width: ink.mask.rect.width, height: ink.mask.rect.height } : null, glyphScale)
     advanceHeadlineSelection(selection, reducedMotionRef.current, performance.now())
-    material.uniforms.uSelectionLift.value = SELECTED_TYPE_LIFT*selection.amount
-    material.uniforms.uSelectionCount.value = selection.amount ? selection.rects.length : 0
-    selection.rects.forEach((rect,index) => material.uniforms.uSelection.value[index].set(
+    material.values.selectionLift.value = SELECTED_TYPE_LIFT*selection.amount
+    material.values.selectionCount.value = selection.amount ? selection.rects.length : 0
+    selection.rects.forEach((rect,index) => material.values.selection[index]!.set(
       innerRect.left-origin.left+rect.x, innerRect.top-origin.top+rect.y, rect.width, rect.height,
     ))
     const relief = state.shadow.relief
@@ -290,7 +296,8 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
   // Mount: the multiply canvas. Created outside React; a lost context
   // degrades to the CSS depth kit rather than an opaque black overlay. A
   // passive effect: the page ref belongs to a parent, and parent refs are
-  // not attached yet when a child's layout effect runs.
+  // not attached yet when a child's layout effect runs. The renderer starts
+  // asynchronously, so the loop, listeners and first draw wait for init.
   useEffect(() => {
     const box = host.current
     const page = pageRef.current
@@ -298,19 +305,20 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     const canvas = document.createElement('canvas')
     canvas.className = 'home-light-canvas'
     box.append(canvas)
-    let renderer: THREE.WebGLRenderer
+    let renderer: WebGPURenderer
     try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, depth: true })
+      renderer = new WebGPURenderer({ canvas, antialias: true, alpha: false, depth: true })
     } catch {
       canvas.remove()
       setDegraded(true)
       reportReady('native')
       return
     }
+    // Converts each fragment as it lands on the canvas, as WebGL did (decisions.md #72).
+    const pipeline = new DirectRenderPipeline(renderer)
     const pass = state.shadow
-    pass.paper = createPaperLighting(renderer,pass.mesh.material)
-    const display = createHomeLightDisplay(renderer,pass.mesh.material)
-    const headline = title.current ? createHeadlineTreatments(title.current,pass.mesh.material,redraw,page) : null
+    let display: ReturnType<typeof createHomeLightDisplay> | null = null
+    let headline: ReturnType<typeof createHeadlineTreatments> = null
     state.width = 0
     state.height = 0
     renderer.setClearColor(0xffffff, 1)
@@ -327,7 +335,8 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
         reportReady('enhanced')
       })
     }
-    state.draw = () => {
+    const draw = () => {
+      if (!display) return
       pass.paper?.update(flyer.read())
       display.render(pass.scene, pass.camera, pass.paper)
       headlineReady = headline?.render(reducedMotionRef.current) ?? true
@@ -337,10 +346,10 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
         state.bulb.queued = true
         queueMicrotask(() => {
           state.bulb.queued = false
-          if (!state.bulb.renderer) return
+          if (!state.bulb.pipeline) return
           state.bulb.updateViewport?.()
           state.bulb.backdrop?.update(canvas)
-          state.bulb.renderer.render(state.bulb.scene, state.bulb.camera)
+          state.bulb.pipeline.render(state.bulb.scene, state.bulb.camera)
           checkOpening()
         })
       }
@@ -349,11 +358,11 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
       raf = requestAnimationFrame(frame)
       if (flyer.read()?.kind !== 'scene') redraw()
     }
-    state.start = () => {
+    const start = () => {
       if (raf) return
       frame()
     }
-    state.stop = () => {
+    const stop = () => {
       cancelAnimationFrame(raf)
       raf = 0
     }
@@ -370,7 +379,8 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
       const gl = renderer.getContext()
       // Chrome can clamp a large drawing buffer without changing canvas.width.
       // Reduce the offscreen band, retaining density and viewport coverage (#53).
-      if (gl.drawingBufferWidth < canvas.width || gl.drawingBufferHeight < canvas.height) {
+      // Only the WebGL 2 fallback has a drawing buffer to read.
+      if (gl instanceof WebGL2RenderingContext && (gl.drawingBufferWidth < canvas.width || gl.drawingBufferHeight < canvas.height)) {
         const pixels = gl.drawingBufferWidth * gl.drawingBufferHeight
         height = Math.max(viewHeight, Math.floor(pixels / (canvas.width * window.devicePixelRatio)))
         renderer.setSize(width, height, false)
@@ -384,45 +394,67 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
       redraw()
     }
     const observer = new ResizeObserver(resize)
-    // `device-pixel-content-box` reports the exact backing-store size, which is
-    // what keeps the masthead's buffer off a fractional DPR. WebKit has not
-    // implemented that box and THROWS from `observe` rather than ignoring the
-    // option, which took the whole scene down. The callback reads the page's
-    // own geometry, not the entry, so the content box observes the same events.
-    try { observer.observe(page,{box:'device-pixel-content-box'}) }
-    catch { observer.observe(page) }
-    resize()
-
-    const lost = (event: Event) => {
-      event.preventDefault()
+    // A lost device or context never draws again on either backend. The CSS
+    // depth kit holds the page until a replacement starts (rendererReplacement.ts).
+    let cancelled = false
+    const report = renderer.onDeviceLost
+    renderer.onDeviceLost = (info) => {
+      report.call(renderer, info)
+      if (cancelled) return
       setDegraded(true)
       state.stop()
+      lost(generation)
     }
-    const restored = () => {
-      setDegraded(false)
-      state.width = 0
-      resize()
+    const headlineLost = () => {
+      if (!cancelled) lost(generation)
     }
-    canvas.addEventListener('webglcontextlost', lost)
-    canvas.addEventListener('webglcontextrestored', restored)
-    // Other components can start a font load after our mask is complete.
-    // A reduced-motion page needs that completion to wake its readiness check.
-    document.fonts.addEventListener('loadingdone', redraw)
-    document.fonts.addEventListener('loadingerror', redraw)
+    const init = renderer.init()
+    void init.then(
+      () => {
+        if (cancelled) return
+        setDegraded(false)
+        pass.paper = createPaperLighting(renderer, pipeline, pass.mesh.material)
+        display = createHomeLightDisplay(renderer, pipeline, pass.mesh.material)
+        headline = title.current ? createHeadlineTreatments(title.current,pass.mesh.material,redraw,page,headlineLost) : null
+        state.draw = draw
+        state.start = start
+        state.stop = stop
+        // `device-pixel-content-box` reports the exact backing-store size, which is
+        // what keeps the masthead's buffer off a fractional DPR. WebKit has not
+        // implemented that box and THROWS from `observe` rather than ignoring the
+        // option, which took the whole scene down. The callback reads the page's
+        // own geometry, not the entry, so the content box observes the same events.
+        try { observer.observe(page,{box:'device-pixel-content-box'}) }
+        catch { observer.observe(page) }
+        resize()
+        // Other components can start a font load after our mask is complete.
+        // A reduced-motion page needs that completion to wake its readiness check.
+        document.fonts.addEventListener('loadingdone', redraw)
+        document.fonts.addEventListener('loadingerror', redraw)
+        // The drift effect already ran at mount, while nothing could draw.
+        if (!reducedMotionRef.current) state.start()
+      },
+      () => {
+        if (cancelled) return
+        canvas.remove()
+        setDegraded(true)
+        reportReady('native')
+      },
+    )
 
     return () => {
+      cancelled = true
       document.fonts.removeEventListener('loadingdone', redraw)
       document.fonts.removeEventListener('loadingerror', redraw)
       cancelAnimationFrame(openingFrame)
       state.stop()
       observer.disconnect()
-      canvas.removeEventListener('webglcontextlost', lost)
-      canvas.removeEventListener('webglcontextrestored', restored)
+      renderer.onDeviceLost = report
       state.draw = () => {}
       state.start = () => {}
       state.stop = () => {}
       pass.mesh.material.dispose()
-      display.dispose()
+      display?.dispose()
       headline?.dispose()
       pass.paper?.dispose()
       pass.paper = null
@@ -430,11 +462,14 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
       pass.relief?.texture.dispose()
       pass.ink = null
       pass.relief = null
-      renderer.dispose()
-      renderer.forceContextLoss()
+      pipeline.dispose()
+      // dispose() skips the backend while init is pending, so wait for it. After
+      // a failed init, dispose() re-awaits the rejected init without handling it,
+      // so a renderer that never started is left alone.
+      void init.then(() => { void renderer.dispose() }, () => {})
       canvas.remove()
     }
-  }, [state, pageRef, redraw, effectsEnabled, flyer])
+  }, [state, pageRef, redraw, effectsEnabled, flyer, generation, lost])
 
   // Mount: the bulb canvas. Its own context, alpha over the page. Losing it
   // leaves the shadows running and shows the plain ink mark instead.
@@ -445,9 +480,9 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     const canvas = document.createElement('canvas')
     canvas.className = 'home-light-canvas'
     box.append(canvas)
-    let renderer: THREE.WebGLRenderer
+    let renderer: WebGPURenderer
     try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, depth: true })
+      renderer = new WebGPURenderer({ canvas, antialias: true, alpha: true, depth: true })
     } catch {
       canvas.remove()
       setBulbless(true)
@@ -456,52 +491,76 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     }
     const pass = state.bulb
     renderer.setClearColor(0x000000, 0)
-    renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.1
+    // Renderer tone mapping stays off; the socket and cord apply their own
+    // ACES (homeLightBulb.ts, decisions.md #69).
     renderer.outputColorSpace = THREE.SRGBColorSpace
-    const pmrem = new THREE.PMREMGenerator(renderer)
-    const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
-    pmrem.dispose()
-    pass.scene.environment = environment
-    const backdrop = createLampBackdrop(page, redraw, flyer)
-    pass.backdrop = backdrop
-    const bulb = createLightBulb(backdrop)
-    pass.scene.add(bulb.group)
-    pass.bulb = bulb
-    pass.renderer = renderer
-    pass.lastFrame = 0
-    pass.updateViewport = createLampViewportUpdater(renderer,pass.camera,page)
-    pass.updateViewport()
-    const stopViewport = watchLampViewport(redraw)
-    setBulbless(false)
-
-    const lost = (event: Event) => {
-      event.preventDefault()
+    // Converts each fragment as it lands on the canvas, as WebGL did (decisions.md #72).
+    const pipeline = new DirectRenderPipeline(renderer)
+    let environment: THREE.Texture | null = null
+    let backdrop: LampBackdrop | null = null
+    let bulb: LightBulb | null = null
+    let stopViewport = () => {}
+    // A lost device or context never draws again on either backend.
+    let cancelled = false
+    const report = renderer.onDeviceLost
+    renderer.onDeviceLost = (info) => {
+      report.call(renderer, info)
+      if (cancelled) return
       setBulbless(true)
+      lost(generation)
     }
-    const restored = () => { setBulbless(false); redraw() }
-    canvas.addEventListener('webglcontextlost', lost)
-    canvas.addEventListener('webglcontextrestored', restored)
-    redraw()
+    const init = renderer.init()
+    void init.then(
+      () => {
+        if (cancelled) return
+        const pmrem = new PMREMGenerator(renderer)
+        environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+        pmrem.dispose()
+        pass.scene.environment = environment
+        backdrop = createLampBackdrop(page, redraw, flyer)
+        pass.backdrop = backdrop
+        bulb = createLightBulb(backdrop, renderer.coordinateSystem)
+        pass.scene.add(bulb.group)
+        pass.bulb = bulb
+        pass.renderer = renderer
+        pass.pipeline = pipeline
+        pass.lastFrame = 0
+        pass.updateViewport = createLampViewportUpdater(renderer,pass.camera,page)
+        pass.updateViewport()
+        stopViewport = watchLampViewport(redraw)
+        setBulbless(false)
+        redraw()
+      },
+      () => {
+        if (cancelled) return
+        canvas.remove()
+        setBulbless(true)
+        reportReady('native')
+      },
+    )
 
     return () => {
-      canvas.removeEventListener('webglcontextlost', lost)
-      canvas.removeEventListener('webglcontextrestored', restored)
-      pass.scene.remove(bulb.group)
+      cancelled = true
+      renderer.onDeviceLost = report
+      if (bulb) pass.scene.remove(bulb.group)
       pass.scene.environment = null
-      environment.dispose()
-      bulb.dispose()
-      backdrop.dispose()
+      environment?.dispose()
+      bulb?.dispose()
+      backdrop?.dispose()
       stopViewport()
       pass.updateViewport = null
       pass.backdrop = null
       pass.bulb = null
       pass.renderer = null
-      renderer.dispose()
-      renderer.forceContextLoss()
+      pass.pipeline = null
+      pipeline.dispose()
+      // dispose() skips the backend while init is pending, so wait for it. After
+      // a failed init, dispose() re-awaits the rejected init without handling it,
+      // so a renderer that never started is left alone.
+      void init.then(() => { void renderer.dispose() }, () => {})
       canvas.remove()
     }
-  }, [state, degraded, pageRef, redraw, effectsEnabled, flyer])
+  }, [state, degraded, pageRef, redraw, effectsEnabled, flyer, generation, lost])
 
   // The page tells the depth kit whether the shader owns shadows now.
   useEffect(() => {
@@ -517,7 +576,9 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
   useHeadlineSelection(title, innerRef, selection, redraw)
 
   // Read the headline after fonts settle and when its layout changes;
-  // the first placement leaves room for the bulb above the type.
+  // the first placement leaves room for the bulb above the type. A renderer
+  // restart (`generation`) rebuilds it: the shadow effect's cleanup releases
+  // the ink and relief masks.
   useEffect(() => {
     if (!effectsEnabled) return
     let alive = true
@@ -549,7 +610,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
       alive = false
       observer.disconnect()
     }
-  }, [state, innerRef, pageRef, redraw, effectsEnabled])
+  }, [state, innerRef, pageRef, redraw, effectsEnabled, generation])
 
   // Read the raised and sunk elements into relief: on mount, after fonts,
   // once layout settles, and at once when an element changes its relief or
@@ -629,7 +690,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
       worker?.terminate()
       state.shadow.layoutCurrent = () => false
     }
-  }, [state, pageRef, innerRef, redraw, effectsEnabled])
+  }, [state, pageRef, innerRef, redraw, effectsEnabled, generation])
 
   // The flyer publishes from the hero's frame callback; redrawing right
   // there puts the shadow and the card in the same frame whatever order the

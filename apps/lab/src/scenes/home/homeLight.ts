@@ -17,242 +17,352 @@
 // position, and when the masks are rebuilt.
 
 import * as THREE from 'three'
+import { MeshBasicNodeMaterial, type Node, type TextureNode, type UniformArrayNode, type UniformNode } from 'three/webgpu'
+import {
+  Break,
+  Fn,
+  If,
+  Loop,
+  abs,
+  attribute,
+  bool,
+  cameraProjectionMatrix,
+  clamp,
+  cross,
+  dot,
+  exp,
+  float,
+  length,
+  max,
+  min,
+  mix,
+  modelViewMatrix,
+  normalGeometry,
+  normalize,
+  positionGeometry,
+  pow,
+  smoothstep,
+  sqrt,
+  texture,
+  uniform,
+  uniformArray,
+  uv,
+  varying,
+  vec2,
+  vec3,
+  vec4,
+} from 'three/tsl'
+import { encodedOutput } from '@petepetrash/munari'
+import { passMaterial } from '@petepetrash/munari/advanced'
 import { GLYPH_STANDOFF, LIGHT_HEIGHT, RAISED_STANDOFF, WELL_DEPTH } from './homeLightLaw'
 import type { Mask } from './homeRelief'
 import { SHADOW_DISTANCE_RANGE } from './homeShadowField'
-import { PAPER_LIGHT_GLSL } from './homePaperShaders'
+import { LIGHT_TAPS, bulbBasis, bulbCosine, paperVisibility, sampleBulbRay, type PaperLightValues } from './homePaperNodes'
+
+type Float = Node<'float'>
+type Vec2 = Node<'vec2'>
+type Vec3 = Node<'vec3'>
+type Vec4 = Node<'vec4'>
 
 // Keep the lit receiver inside opaque ink. The native text edge and the
 // CSS-resolution lighting filter otherwise expose a bright cutout fringe (#55).
 const GLYPH_RECEIVER_INSET = 1.5
 
-const VERTEX = /* glsl */`
-varying vec2 vUv;
-void main() {
-  vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+const GLYPH_HEIGHT = GLYPH_STANDOFF
+const FIELD_RANGE = SHADOW_DISTANCE_RANGE
+const RAISED_HEIGHT = RAISED_STANDOFF
+const LIGHT_POWER = LIGHT_HEIGHT * LIGHT_HEIGHT
+const SELECTION_SLOTS = 8
+
+// Bound while a mask or the paper map is absent; its `ready` flag keeps it unread.
+const EMPTY = new THREE.DataTexture(new Uint8Array(4), 1, 1)
+EMPTY.needsUpdate = true
+
+/** Every value the light reads, written in place by the masthead and the paper pass. */
+export interface HomeLightValues extends PaperLightValues {
+  readonly resolution: UniformNode<'vec2', THREE.Vector2>
+  readonly light: UniformNode<'vec2', THREE.Vector2>
+  readonly lightHeight: UniformNode<'float', number>
+  readonly inkRect: UniformNode<'vec4', THREE.Vector4>
+  readonly ink: TextureNode
+  readonly inkReady: UniformNode<'float', number>
+  readonly glyphScale: UniformNode<'float', number>
+  readonly reliefRect: UniformNode<'vec4', THREE.Vector4>
+  readonly relief: TextureNode
+  readonly reliefReady: UniformNode<'float', number>
+  /** The flyer's four corners, in canvas px. */
+  readonly flyer: readonly [UniformNode<'vec3', THREE.Vector3>, UniformNode<'vec3', THREE.Vector3>, UniformNode<'vec3', THREE.Vector3>, UniformNode<'vec3', THREE.Vector3>]
+  readonly flyerReady: UniformNode<'float', number>
+  /** Selected-type rects (x, y, width, height), uploaded through `selectionNode`. */
+  readonly selection: readonly THREE.Vector4[]
+  readonly selectionNode: UniformArrayNode<'vec4'>
+  readonly selectionCount: UniformNode<'int', number>
+  readonly selectionLift: UniformNode<'float', number>
 }
-`
+
+function createHomeLightValues(): HomeLightValues {
+  const selection = Array.from({ length: SELECTION_SLOTS }, () => new THREE.Vector4())
+  return {
+    resolution: uniform(new THREE.Vector2(1, 1)),
+    light: uniform(new THREE.Vector2(0, 0)),
+    lightHeight: uniform(LIGHT_HEIGHT),
+    // A broad source softens separated shadows without blurring contact (#50).
+    lightRadius: uniform(30),
+    inkRect: uniform(new THREE.Vector4(0, 0, 1, 1)),
+    ink: texture(EMPTY),
+    inkReady: uniform(0),
+    glyphScale: uniform(1),
+    reliefRect: uniform(new THREE.Vector4(0, 0, 1, 1)),
+    relief: texture(EMPTY),
+    reliefReady: uniform(0),
+    flyer: [uniform(new THREE.Vector3()), uniform(new THREE.Vector3()), uniform(new THREE.Vector3()), uniform(new THREE.Vector3())],
+    flyerReady: uniform(0),
+    paperShadow: texture(EMPTY),
+    paperShadowMatrix: uniform(new THREE.Matrix4()),
+    paperShadowRange: uniform(new THREE.Vector2(1, 1)),
+    paperReady: uniform(0),
+    frameOrigin: uniform(new THREE.Vector2()),
+    selection,
+    selectionNode: uniformArray<'vec4'>(selection, 'vec4'),
+    selectionCount: uniform(0, 'int'),
+    selectionLift: uniform(0),
+  }
+}
+
+// ── glyphs and fields ───────────────────────────────────────────────────
 
 // Native outlines and selected height supply shadow casters and receivers (#50).
-const HOME_GLYPH_GLSL = /* glsl */`
-uniform vec4 uInkRect;
-uniform sampler2D uInk;
-uniform float uInkReady;
-uniform float uGlyphScale;
-uniform vec4 uSelection[8];
-uniform int uSelectionCount;
-uniform float uSelectionLift;
-const float GLYPH_HEIGHT = ${GLYPH_STANDOFF.toFixed(1)};
-const float FIELD_RANGE = ${SHADOW_DISTANCE_RANGE.toFixed(1)};
-float unpackDistance(vec2 bytes) {
-  return (dot(bytes,vec2(65280.0,255.0))/65535.0-0.5)*(2.0*FIELD_RANGE);
+function unpackDistance(bytes: Vec2): Float {
+  return dot(bytes, vec2(65280, 255)).div(65535).sub(.5).mul(2 * FIELD_RANGE)
 }
-float outsideRect(vec2 p, vec4 rect) {
-  return length(max(abs(p-rect.xy-rect.zw*0.5)-rect.zw*0.5,0.0));
+function outsideRect(p: Vec2, rect: Vec4): Float {
+  return length(max(abs(p.sub(rect.xy).sub(rect.zw.mul(.5))).sub(rect.zw.mul(.5)), 0))
 }
-float inkDistance(vec2 p) {
-  vec2 uv=clamp((p-uInkRect.xy)/uInkRect.zw,0.0,1.0);
-  return unpackDistance(texture2D(uInk,vec2(uv.x,1.0-uv.y)).rg)+outsideRect(p,uInkRect);
+function inkDistance(v: HomeLightValues, p: Vec2): Float {
+  const at = clamp(p.sub(v.inkRect.xy).div(v.inkRect.zw), 0, 1).toVar()
+  // SAFETY: a texture sample is a vec4; Three's types return a bare Node.
+  const sample = v.ink.sample(vec2(at.x, float(1).sub(at.y))) as Vec4
+  return unpackDistance(sample.rg).add(outsideRect(p, v.inkRect))
 }
-float selectionDistance(vec2 p) {
-  float distance=FIELD_RANGE;
-  for (int i=0;i<8;i++) {
-    if (i>=uSelectionCount) break;
-    vec2 d=abs(p-uSelection[i].xy-uSelection[i].zw*0.5)-uSelection[i].zw*0.5;
-    distance=min(distance,min(max(d.x,d.y),0.0)+length(max(d,0.0)));
-  }
-  return distance;
+function selectionDistance(v: HomeLightValues, p: Vec2): Float {
+  const distance = float(FIELD_RANGE).toVar()
+  Loop(SELECTION_SLOTS, ({ i }) => {
+    If(i.greaterThanEqual(v.selectionCount), () => { Break() })
+    const rect = v.selectionNode.element(i).toVar()
+    const d = abs(p.sub(rect.xy).sub(rect.zw.mul(.5))).sub(rect.zw.mul(.5)).toVar()
+    distance.assign(min(distance, min(max(d.x, d.y), 0).add(length(max(d, 0)))))
+  })
+  return distance
 }
-float glyphHeight(vec2 p) {
-  return GLYPH_HEIGHT*uGlyphScale + (selectionDistance(p)<0.0 ? uSelectionLift : 0.0);
-}
-`
-
-const FRAGMENT = /* glsl */`
-uniform vec2 uResolution;
-uniform vec2 uLight;
-uniform float uLightHeight;
-uniform float uLightRadius;
-${HOME_GLYPH_GLSL}
-uniform vec4 uReliefRect;
-uniform sampler2D uRelief;
-uniform float uReliefReady;
-uniform vec3 uFlyer[4];
-uniform float uFlyerReady;
-${PAPER_LIGHT_GLSL}
-#ifdef PAPER_RECEIVER
-centroid varying vec4 vPaperPosition;
-centroid varying vec3 vPaperNormal;
-#endif
-varying vec2 vUv;
-
-const float RAISED_HEIGHT = ${RAISED_STANDOFF.toFixed(1)};
-const float WELL_DEPTH = ${WELL_DEPTH.toFixed(1)};
-const float LIGHT_POWER = ${LIGHT_HEIGHT.toFixed(1)} * ${LIGHT_HEIGHT.toFixed(1)};
-const float GLYPH_RECEIVER_INSET = ${GLYPH_RECEIVER_INSET.toFixed(1)};
-
-vec2 fieldDistances(sampler2D field, vec4 rect, vec2 p) {
-  vec2 uv = (p - rect.xy) / rect.zw;
-  vec2 bounded = clamp(uv,0.0,1.0);
-  vec4 value = texture2D(field, vec2(bounded.x, 1.0 - bounded.y));
-  return vec2(unpackDistance(value.rg), unpackDistance(value.ba)) + outsideRect(p,rect);
+function glyphHeight(v: HomeLightValues, p: Vec2): Float {
+  const height = float(GLYPH_HEIGHT).mul(v.glyphScale).toVar()
+  If(selectionDistance(v, p).lessThan(0), () => { height.addAssign(v.selectionLift) })
+  return height
 }
 
-vec3 flyerNormal() {
-  return normalize(cross(uFlyer[1] - uFlyer[0], uFlyer[3] - uFlyer[0]));
+function fieldDistances(field: TextureNode, rect: Vec4, p: Vec2): Vec2 {
+  const bounded = clamp(p.sub(rect.xy).div(rect.zw), 0, 1).toVar()
+  // SAFETY: a texture sample is a vec4; Three's types return a bare Node.
+  const value = field.sample(vec2(bounded.x, float(1).sub(bounded.y))).toVar() as Vec4
+  return vec2(unpackDistance(value.rg), unpackDistance(value.ba)).add(outsideRect(p, rect))
+}
+
+// ── the flyer ───────────────────────────────────────────────────────────
+
+function flyerNormal(v: HomeLightValues): Vec3 {
+  return normalize(cross(v.flyer[1].sub(v.flyer[0]), v.flyer[3].sub(v.flyer[0])))
 }
 
 // Coordinates in the projected card footprint, and its height at that pixel.
-vec3 flyerSurface(vec2 p) {
-  vec3 a = uFlyer[0];
-  vec3 u = uFlyer[1] - a;
-  vec3 v = uFlyer[3] - a;
-  float det = u.x * v.y - u.y * v.x;
-  if (abs(det) < 0.001) return vec3(-1.0);
-  vec2 w = p - a.xy;
-  vec2 uv = vec2(w.x * v.y - w.y * v.x, u.x * w.y - u.y * w.x) / det;
-  return vec3(uv, a.z + uv.x * u.z + uv.y * v.z);
+function flyerSurface(v: HomeLightValues, p: Vec2): Vec3 {
+  const a = v.flyer[0]
+  const u = v.flyer[1].sub(a).toVar()
+  const w = v.flyer[3].sub(a).toVar()
+  const det = u.x.mul(w.y).sub(u.y.mul(w.x)).toVar()
+  const offset = p.sub(a.xy).toVar()
+  const at = vec2(offset.x.mul(w.y).sub(offset.y.mul(w.x)), u.x.mul(offset.y).sub(u.y.mul(offset.x))).div(det).toVar()
+  return abs(det).lessThan(.001).select(vec3(-1), vec3(at, a.z.add(at.x.mul(u.z)).add(at.y.mul(w.z))))
 }
 
 // Each native silhouette occupies one horizontal plane. Selected ink moves
 // to its own plane rather than leaving a second caster underneath it.
-float sheetOutline(vec2 p, int layer) {
+function sheetOutline(v: HomeLightValues, p: Vec2, layer: number): Float {
   if (layer < 2) {
-    float outline = inkDistance(p);
-    if (uSelectionLift <= 0.01) return outline;
-    float selected = selectionDistance(p);
-    return max(outline, layer == 0 ? -selected : selected);
+    const outline = inkDistance(v, p).toVar()
+    If(v.selectionLift.greaterThan(.01), () => {
+      const selected = selectionDistance(v, p)
+      outline.assign(max(outline, layer === 0 ? selected.negate() : selected))
+    })
+    return outline
   }
-  vec2 relief = fieldDistances(uRelief,uReliefRect,p);
-  return layer == 2 ? relief.x : -relief.y;
+  const relief = fieldDistances(v.relief, v.reliefRect, p)
+  return layer === 2 ? relief.x : relief.y.negate()
 }
 
-float flyerRayVisibility(vec3 receiver, vec3 light) {
-  vec3 normal = flyerNormal();
-  vec3 ray = light-receiver;
-  float denominator = dot(normal,ray);
-  if (abs(denominator) < 0.001) return 1.0;
-  float t = dot(normal,uFlyer[0]-receiver)/denominator;
-  if (t <= 0.00001 || t >= 1.0) return 1.0;
-  vec3 point = receiver+ray*t;
-  vec2 uv = flyerSurface(point.xy).xy;
-  vec2 edge = min(uv,1.0-uv)*vec2(length(uFlyer[1]-uFlyer[0]),length(uFlyer[3]-uFlyer[0]));
-  return 1.0-smoothstep(-0.5,0.5,min(edge.x,edge.y));
+function flyerRayVisibility(v: HomeLightValues, receiver: Vec3, light: Vec3): Float {
+  const result = float(1).toVar()
+  const normal = flyerNormal(v).toVar()
+  const ray = light.sub(receiver).toVar()
+  const denominator = dot(normal, ray).toVar()
+  If(abs(denominator).greaterThanEqual(.001), () => {
+    const t = dot(normal, v.flyer[0].sub(receiver)).div(denominator).toVar()
+    If(t.greaterThan(.00001).and(t.lessThan(1)), () => {
+      const point = receiver.add(ray.mul(t))
+      const at = flyerSurface(v, point.xy).xy.toVar()
+      const edge = min(at, float(1).sub(at)).mul(vec2(length(v.flyer[1].sub(v.flyer[0])), length(v.flyer[3].sub(v.flyer[0])))).toVar()
+      result.assign(float(1).sub(smoothstep(-.5, .5, min(edge.x, edge.y))))
+    })
+  })
+  return result
 }
 
-float lightVisibility(vec3 receiver, vec3 light) {
-  vec3 delta = light-receiver;
-  float lightGap = delta.z;
-  if (lightGap <= 0.0) return 1.0;
-  mat3 basis = bulbBasis(delta);
-  float cosineLimit = bulbCosine(delta);
-  float radiusSquared = uLightRadius*uLightRadius;
-  float projection = max(.001,lightGap*lightGap-radiusSquared);
-  // Each footprint stores its height above the receiver and pixel coverage.
-  // The spherical emitter projects to an ellipse, longer at grazing angles.
-  vec2 footprint[4];
-  bool partial[4];
-  bool anyPartial = false;
-  for (int layer=0;layer<4;layer++) {
-    partial[layer] = false;
-    footprint[layer] = vec2(0.0);
-    bool enabled = layer < 2 ? uInkReady > 0.5 : uReliefReady > 0.5;
-    if (layer == 1) enabled = enabled && uSelectionLift > 0.01;
-    float elevation = layer < 2 ? GLYPH_HEIGHT*uGlyphScale : RAISED_HEIGHT;
-    if (layer == 1) elevation += uSelectionLift;
-    if (layer == 3) elevation = 0.0;
-    float gap = elevation-receiver.z;
-    if (!enabled || gap <= 0.01 || gap >= lightGap) continue;
-    float t = gap/lightGap;
-    vec2 point = receiver.xy+delta.xy*(gap*lightGap/projection);
-    float radius = gap*uLightRadius*sqrt(max(.001,dot(delta,delta)-radiusSquared))/projection;
-    float aa = max(0.05,0.5*(1.0-t));
-    float outline = sheetOutline(point,layer);
-    if (outline < -radius-aa) return 0.0;
-    partial[layer] = outline < radius+aa;
-    anyPartial = anyPartial || partial[layer];
-    footprint[layer] = vec2(gap,aa);
-  }
-  bool flyer = uFlyerReady > 0.5 && uPaperReady < 0.5;
-  if (!anyPartial && !flyer) return 1.0;
-  float visible = 0.0;
-  // Each sampled bulb ray tests every caster once. Elevation and the light's
-  // angle both widen the footprint, without double-darkening overlaps (#50).
-  for (int sampleIndex=0;sampleIndex<64;sampleIndex++) {
-    vec3 ray = sampleBulbRay(basis,cosineLimit,LIGHT_TAPS[sampleIndex]);
-    float rayVisibility = 1.0;
-    for (int layer=0;layer<4;layer++) {
-      if (!partial[layer]) continue;
-      vec2 f = footprint[layer];
-      vec2 point = receiver.xy+ray.xy*(f.x/max(ray.z,.0001));
-      float outline = sheetOutline(point,layer);
-      rayVisibility = min(rayVisibility,smoothstep(-f.y,f.y,outline));
+// ── visibility ──────────────────────────────────────────────────────────
+
+function lightVisibility(v: HomeLightValues, receiver: Vec3, light: Vec3): Float {
+  const result = float(1).toVar()
+  const delta = light.sub(receiver).toVar()
+  const lightGap = delta.z
+  If(lightGap.greaterThan(0), () => {
+    const basis = bulbBasis(delta)
+    const cosineLimit = bulbCosine(delta, v.lightRadius).toVar()
+    const radiusSquared = v.lightRadius.mul(v.lightRadius).toVar()
+    const projection = max(.001, lightGap.mul(lightGap).sub(radiusSquared)).toVar()
+    // Each footprint stores its height above the receiver and pixel coverage.
+    // The spherical emitter projects to an ellipse, longer at grazing angles.
+    const footprint: Node<'vec2'>[] = []
+    const partial: Node<'bool'>[] = []
+    const anyPartial = bool(false).toVar()
+    const blocked = bool(false).toVar()
+    for (let layer = 0; layer < 4; layer++) {
+      const layerPartial = bool(false).toVar()
+      const layerFootprint = vec2(0).toVar()
+      partial.push(layerPartial)
+      footprint.push(layerFootprint)
+      let enabled = layer < 2 ? v.inkReady.greaterThan(.5) : v.reliefReady.greaterThan(.5)
+      if (layer === 1) enabled = enabled.and(v.selectionLift.greaterThan(.01))
+      let elevation: Float = layer < 2 ? float(GLYPH_HEIGHT).mul(v.glyphScale) : float(RAISED_HEIGHT)
+      if (layer === 1) elevation = elevation.add(v.selectionLift)
+      if (layer === 3) elevation = float(0)
+      const gap = elevation.sub(receiver.z).toVar()
+      If(blocked.not().and(enabled).and(gap.greaterThan(.01)).and(gap.lessThan(lightGap)), () => {
+        const t = gap.div(lightGap)
+        const point = receiver.xy.add(delta.xy.mul(gap.mul(lightGap).div(projection))).toVar()
+        const radius = gap.mul(v.lightRadius).mul(sqrt(max(.001, dot(delta, delta).sub(radiusSquared)))).div(projection).toVar()
+        const aa = max(.05, float(.5).mul(float(1).sub(t))).toVar()
+        const outline = sheetOutline(v, point, layer).toVar()
+        If(outline.lessThan(radius.negate().sub(aa)), () => { blocked.assign(true) }).Else(() => {
+          layerPartial.assign(outline.lessThan(radius.add(aa)))
+          anyPartial.assign(anyPartial.or(layerPartial))
+          layerFootprint.assign(vec2(gap, aa))
+        })
+      })
     }
-    if (flyer) rayVisibility = min(rayVisibility,flyerRayVisibility(receiver,receiver+ray*length(delta)));
-    visible += rayVisibility;
-  }
-  return visible/64.0;
+    If(blocked, () => { result.assign(0) }).Else(() => {
+      const flyer = v.flyerReady.greaterThan(.5).and(v.paperReady.lessThan(.5)).toVar()
+      If(anyPartial.or(flyer), () => {
+        const visible = float(0).toVar()
+        // Each sampled bulb ray tests every caster once. Elevation and the light's
+        // angle both widen the footprint, without double-darkening overlaps (#50).
+        Loop(64, ({ i }) => {
+          const ray = sampleBulbRay(basis, cosineLimit, LIGHT_TAPS.element(i)).toVar()
+          const rayVisibility = float(1).toVar()
+          for (let layer = 0; layer < 4; layer++) {
+            If(partial[layer]!, () => {
+              const f = footprint[layer]!
+              const point = receiver.xy.add(ray.xy.mul(f.x.div(max(ray.z, .0001))))
+              const outline = sheetOutline(v, point, layer)
+              rayVisibility.assign(min(rayVisibility, smoothstep(f.y.negate(), f.y, outline)))
+            })
+          }
+          If(flyer, () => { rayVisibility.assign(min(rayVisibility, flyerRayVisibility(v, receiver, receiver.add(ray.mul(length(delta)))))) })
+          visible.addAssign(rayVisibility)
+        })
+        result.assign(visible.div(64))
+      })
+    })
+  })
+  return result
 }
 
-void main() {
-#ifdef PAPER_RECEIVER
-  vec2 p=vPaperPosition.xy/vPaperPosition.w-uFrameOrigin;
-  vec3 normal=normalize(vPaperNormal);
-  if(normal.z<0.0)normal=-normal;
-  float height=vPaperPosition.z+.35;
-  vec2 relief=vec2(FIELD_RANGE);
-  bool onPaper=true;
-#else
-  vec2 p = vec2(vUv.x,1.0-vUv.y) * uResolution;
-  float ink = uInkReady > 0.5 ? fieldDistances(uInk,uInkRect,p).x : FIELD_RANGE;
-  vec2 relief = uReliefReady > 0.5 ? fieldDistances(uRelief,uReliefRect,p) : vec2(FIELD_RANGE);
-  float height = relief.y < 0.0 ? -WELL_DEPTH : 0.0;
-  if (relief.x < 0.0) height = max(height,RAISED_HEIGHT);
-  if (ink < -GLYPH_RECEIVER_INSET) height = max(height,glyphHeight(p));
-  vec3 normal = vec3(0.0,0.0,1.0);
-  bool onPaper=false;
-  // The curved receiver is drawn separately with geometry coverage at native
-  // density. This analytic plane remains the no-float-target fallback (#53).
-  if (uPaperReady < 0.5 && uFlyerReady > 0.5) {
-    vec3 card = flyerSurface(p);
-    if (all(greaterThanEqual(card.xy,vec2(0.0))) && all(lessThanEqual(card.xy,vec2(1.0)))) {
-      height = card.z + 0.35;
-      normal = flyerNormal();
-      if (normal.z < 0.0) normal = -normal;
-      onPaper=true;
-    }
-  }
-#endif
-  vec3 receiver = vec3(p,height);
-  vec3 light = vec3(uLight,uLightHeight);
-  // Page content sits behind the postcard in both presentations. Its shadows
-  // must stay behind too; the paper's own occlusion is applied separately (#50).
-  float visibility = onPaper ? 1.0 : lightVisibility(receiver,light);
-  if(uPaperReady>.5)visibility=min(visibility,paperVisibility(receiver,normal,light));
-  vec3 direction = normalize(light-receiver);
-  float facing = clamp(dot(normal,direction)/max(direction.z,0.12),0.0,1.15);
-  // Normalize unoccluded horizontal surfaces to the existing page wash.
-  // The ambient/direct ratio still reduces shadow contrast far from the bulb.
-  float direct = LIGHT_POWER / max(dot(light-receiver,light-receiver),1.0);
-  float shade = (0.75 + direct*visibility*facing)/(0.75+direct);
-  if(onPaper){
-    // Matte stock leaves headroom for the soft sheen on a turning fold.
-    // The same response shades native and scene presentations at rest (#51).
-    float sheen=.06*pow(max(dot(normal,normalize(direction+vec3(0.0,0.0,1.0))),0.0),18.0)*visibility;
-    shade=shade*.86+sheen;
-  }
-  // Only recessed wells touch a surrounding rim. Elevated sheets must not
-  // leave a fixed dark outline behind when their cast shadow moves away.
-  float contact = height < 0.0 ? 0.10*exp(min(0.0,relief.y)/3.0) : 0.0;
-  // The page keeps a readable ambient floor while the lamp's pool moves.
-  // Cool blocked light stays subtle on the chartreuse wash (decision #50).
-  vec2 away = p-light.xy;
-  float pool = 0.88 + 0.12*exp(-dot(away,away)/(4.0*uLightHeight*uLightHeight));
-  vec3 tint = mix(vec3(0.96,0.985,1.0),vec3(1.0),visibility);
-  gl_FragColor = vec4(clamp(vec3(shade*(1.0-contact)*pool)*tint,0.0,1.0),1.0);
+// ── the receiver ────────────────────────────────────────────────────────
+
+interface PaperVaryings {
+  readonly position: Vec4
+  readonly normal: Vec3
 }
-`
+
+// The multiplier, before any canvas output step: raw values, alpha 1.
+function lightMultiplier(v: HomeLightValues, paper: PaperVaryings | null): Vec4 {
+  return Fn(() => {
+    let p: Vec2
+    let normal: Vec3
+    let height: Float
+    let relief: Vec2
+    let onPaper: Node<'bool'>
+    if (paper) {
+      p = paper.position.xy.div(paper.position.w).sub(v.frameOrigin).toVar()
+      const n = normalize(paper.normal).toVar()
+      normal = n.z.lessThan(0).select(n.negate(), n).toVar()
+      height = paper.position.z.add(.35).toVar()
+      relief = vec2(FIELD_RANGE)
+      onPaper = bool(true)
+    } else {
+      p = vec2(uv().x, float(1).sub(uv().y)).mul(v.resolution).toVar()
+      const ink = v.inkReady.greaterThan(.5).select(fieldDistances(v.ink, v.inkRect, p).x, float(FIELD_RANGE)).toVar()
+      relief = v.reliefReady.greaterThan(.5).select(fieldDistances(v.relief, v.reliefRect, p), vec2(FIELD_RANGE)).toVar()
+      const h = relief.y.lessThan(0).select(float(-WELL_DEPTH), float(0)).toVar()
+      If(relief.x.lessThan(0), () => { h.assign(max(h, RAISED_HEIGHT)) })
+      If(ink.lessThan(-GLYPH_RECEIVER_INSET), () => { h.assign(max(h, glyphHeight(v, p))) })
+      const n = vec3(0, 0, 1).toVar()
+      const paperHit = bool(false).toVar()
+      // The curved receiver is drawn separately with geometry coverage at native
+      // density. This analytic plane remains the no-float-target fallback (#53).
+      If(v.paperReady.lessThan(.5).and(v.flyerReady.greaterThan(.5)), () => {
+        const card = flyerSurface(v, p).toVar()
+        If(card.x.greaterThanEqual(0).and(card.y.greaterThanEqual(0)).and(card.x.lessThanEqual(1)).and(card.y.lessThanEqual(1)), () => {
+          h.assign(card.z.add(.35))
+          const flat = flyerNormal(v).toVar()
+          n.assign(flat.z.lessThan(0).select(flat.negate(), flat))
+          paperHit.assign(true)
+        })
+      })
+      height = h
+      normal = n
+      onPaper = paperHit
+    }
+    const receiver = vec3(p, height).toVar()
+    const light = vec3(v.light, v.lightHeight).toVar()
+    // Page content sits behind the postcard in both presentations. Its shadows
+    // must stay behind too; the paper's own occlusion is applied separately (#50).
+    const visibility = float(1).toVar()
+    if (!paper) If(onPaper.not(), () => { visibility.assign(lightVisibility(v, receiver, light)) })
+    If(v.paperReady.greaterThan(.5), () => { visibility.assign(min(visibility, paperVisibility(v, receiver, normal, light))) })
+    const direction = normalize(light.sub(receiver)).toVar()
+    const facing = clamp(dot(normal, direction).div(max(direction.z, .12)), 0, 1.15)
+    // Normalize unoccluded horizontal surfaces to the existing page wash.
+    // The ambient/direct ratio still reduces shadow contrast far from the bulb.
+    const toLight = light.sub(receiver)
+    const direct = float(LIGHT_POWER).div(max(dot(toLight, toLight), 1)).toVar()
+    const shade = float(.75).add(direct.mul(visibility).mul(facing)).div(float(.75).add(direct)).toVar()
+    const sheen = (): void => {
+      // Matte stock leaves headroom for the soft sheen on a turning fold.
+      // The same response shades native and scene presentations at rest (#51).
+      const glint = float(.06).mul(pow(max(dot(normal, normalize(direction.add(vec3(0, 0, 1)))), 0), 18)).mul(visibility)
+      shade.assign(shade.mul(.86).add(glint))
+    }
+    if (paper) sheen()
+    else If(onPaper, sheen)
+    // Only recessed wells touch a surrounding rim. Elevated sheets must not
+    // leave a fixed dark outline behind when their cast shadow moves away.
+    const contact = height.lessThan(0).select(float(.10).mul(exp(min(0, relief.y).div(3))), float(0))
+    // The page keeps a readable ambient floor while the lamp's pool moves.
+    // Cool blocked light stays subtle on the chartreuse wash (decision #50).
+    const away = p.sub(light.xy).toVar()
+    const pool = float(.88).add(float(.12).mul(exp(dot(away, away).negate().div(float(4).mul(v.lightHeight).mul(v.lightHeight)))))
+    const tint = mix(vec3(.96, .985, 1), vec3(1), visibility)
+    return vec4(clamp(vec3(shade.mul(float(1).sub(contact)).mul(pool)).mul(tint), 0, 1), 1)
+  })()
+}
 
 export interface MaskFrame {
   readonly x: number
@@ -261,94 +371,67 @@ export interface MaskFrame {
   readonly height: number
 }
 
+/** The page pass. It draws into a render target sampled later (passMaterial). */
 export function createHomeLightMaterial() {
-  const uniforms = {
-    uResolution: new THREE.Uniform(new THREE.Vector2(1, 1)),
-    uLight: new THREE.Uniform(new THREE.Vector2(0, 0)),
-    uLightHeight: new THREE.Uniform(LIGHT_HEIGHT),
-    // A broad source softens separated shadows without blurring contact (#50).
-    uLightRadius: new THREE.Uniform(30),
-    uInkRect: new THREE.Uniform(new THREE.Vector4(0, 0, 1, 1)),
-    uInk: new THREE.Uniform<THREE.Texture | null>(null),
-    uInkReady: new THREE.Uniform(0),
-    uGlyphScale: new THREE.Uniform(1),
-    uReliefRect: new THREE.Uniform(new THREE.Vector4(0, 0, 1, 1)),
-    uRelief: new THREE.Uniform<THREE.Texture | null>(null),
-    uReliefReady: new THREE.Uniform(0),
-    uFlyer: new THREE.Uniform([new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()]),
-    uFlyerReady: new THREE.Uniform(0),
-    uPaperShadow: new THREE.Uniform<THREE.Texture | null>(null),
-    uPaperShadowMatrix: new THREE.Uniform(new THREE.Matrix4()),
-    uPaperShadowRange: new THREE.Uniform(new THREE.Vector2(1,1)),
-    uPaperReady: new THREE.Uniform(0),
-    uFrameOrigin: new THREE.Uniform(new THREE.Vector2()),
-    uSelection: new THREE.Uniform(Array.from({ length: 8 }, () => new THREE.Vector4())),
-    uSelectionCount: new THREE.Uniform(0),
-    uSelectionLift: new THREE.Uniform(0),
-  }
-  const material = new THREE.ShaderMaterial({
-    name: 'home-light',
-    vertexShader: VERTEX,
-    fragmentShader: FRAGMENT,
-    uniforms,
-    depthTest: false,
-    depthWrite: false,
-  })
-  return Object.assign(material, { uniforms })
+  const values = createHomeLightValues()
+  const material = passMaterial({ name: 'home-light', depthTest: false, depthWrite: false })
+  // A render-target pass: no canvas conversion follows, so the raw multiplier lands.
+  material.outputNode = lightMultiplier(values, null)
+  return Object.assign(material, { values })
 }
 
 export type HomeLightMaterial = ReturnType<typeof createHomeLightMaterial>
 
 /** Shade the paper's actual triangles, sharing the page's light and depth map. */
-export function createHomePaperMaterial(material:HomeLightMaterial){
-  return new THREE.ShaderMaterial({
-    name:'home-paper-light',defines:{PAPER_RECEIVER:1},uniforms:material.uniforms,
-    vertexShader:/* glsl */`
-      varying vec2 vUv;
-      attribute float projectionW;
-      centroid varying vec4 vPaperPosition;
-      centroid varying vec3 vPaperNormal;
-      void main(){
-        vUv=uv;vPaperPosition=vec4(position.xy*projectionW,position.z,projectionW);vPaperNormal=normal;
-        vec4 projected=projectionMatrix*modelViewMatrix*vec4(position,1.0);
-        // Keep the card camera's perspective interpolation and depth order;
-        // the receiver's x/y coordinates have already been projected to pixels.
-        gl_Position=vec4(projected.xy*projectionW,projectionW-2.0,projectionW);
-      }
-    `,
-    fragmentShader:FRAGMENT,side:THREE.DoubleSide,toneMapped:false,
-  })
+export function createHomePaperMaterial(material: HomeLightMaterial) {
+  const paper = new MeshBasicNodeMaterial({ name: 'home-paper-light', side: THREE.DoubleSide, toneMapped: false })
+  const projectionW = attribute<'float'>('projectionW', 'float')
+  const position = varying(vec4(positionGeometry.xy.mul(projectionW), positionGeometry.z, projectionW))
+    .setInterpolation(THREE.InterpolationSamplingType.PERSPECTIVE, THREE.InterpolationSamplingMode.CENTROID)
+  const normal = varying(normalGeometry).setInterpolation(THREE.InterpolationSamplingType.PERSPECTIVE, THREE.InterpolationSamplingMode.CENTROID)
+  const projected = cameraProjectionMatrix.mul(modelViewMatrix).mul(vec4(positionGeometry, 1))
+  // Keep the card camera's perspective interpolation and depth order;
+  // the receiver's x/y coordinates have already been projected to pixels.
+  paper.vertexNode = vec4(projected.xy.mul(projectionW), projectionW.sub(2), projectionW)
+  // Drawn onto the canvas with alpha 1, so decoding the raw multiplier lands it unchanged.
+  paper.outputNode = encodedOutput(lightMultiplier(material.values, { position, normal }))
+  return paper
 }
 
 export function setHomeLightFrame(material: HomeLightMaterial, width: number, height: number, lightX: number, lightY: number, lightHeight = LIGHT_HEIGHT) {
-  material.uniforms.uLightHeight.value = lightHeight
-  material.uniforms.uResolution.value.set(width, height)
-  material.uniforms.uLight.value.set(lightX, lightY)
+  material.values.lightHeight.value = lightHeight
+  material.values.resolution.value.set(width, height)
+  material.values.light.value.set(lightX, lightY)
 }
 
 export function setHomeInkMask(material: HomeLightMaterial, texture: THREE.Texture | null, frame: MaskFrame | null, scale = 1) {
-  material.uniforms.uGlyphScale.value = scale
-  material.uniforms.uInk.value = texture
-  material.uniforms.uInkReady.value = texture && frame ? 1 : 0
+  material.values.glyphScale.value = scale
+  material.values.ink.value = texture ?? EMPTY
+  material.values.inkReady.value = texture && frame ? 1 : 0
   if (!frame) return
-  material.uniforms.uInkRect.value.set(frame.x, frame.y, frame.width, frame.height)
+  material.values.inkRect.value.set(frame.x, frame.y, frame.width, frame.height)
 }
 
 /** The flyer's corners (see homeFlyer.ts) moved into canvas px, or none. */
 export function setHomeFlyerUniform(material: HomeLightMaterial, corners: Float32Array | null, originX: number, originY: number) {
-  material.uniforms.uFlyerReady.value = corners ? 1 : 0
+  material.values.flyerReady.value = corners ? 1 : 0
   if (!corners) return
   // Both publishers supply four xyz corners; each target consumes one triple.
-  material.uniforms.uFlyer.value.forEach((target, index) => {
-    target.set(corners[index * 3]! - originX, corners[index * 3 + 1]! - originY, corners[index * 3 + 2]!)
+  material.values.flyer.forEach((target, index) => {
+    target.value.set(corners[index * 3]! - originX, corners[index * 3 + 1]! - originY, corners[index * 3 + 2]!)
   })
 }
 
 export function setHomeReliefMask(material: HomeLightMaterial, texture: THREE.Texture | null, frame: MaskFrame | null) {
-  material.uniforms.uRelief.value = texture
-  material.uniforms.uReliefReady.value = texture && frame ? 1 : 0
+  material.values.relief.value = texture ?? EMPTY
+  material.values.reliefReady.value = texture && frame ? 1 : 0
   if (!frame) return
-  material.uniforms.uReliefRect.value.set(frame.x, frame.y, frame.width, frame.height)
+  material.values.reliefRect.value.set(frame.x, frame.y, frame.width, frame.height)
+}
+
+/** Points the paper-shadow sample at `texture`, or at nothing. */
+export function setHomePaperShadow(material: HomeLightMaterial, texture: THREE.Texture | null) {
+  material.values.paperShadow.value = texture ?? EMPTY
 }
 
 /** Uploads a mask's packed bytes as-is; no colour space, no premultiplying. */

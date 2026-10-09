@@ -18,18 +18,11 @@ const shell={name:'lamp-zoom-frame',configureServer(server){server.middlewares.u
 const server=await createServer({root:path.resolve(import.meta.dirname,'../../apps/lab'),plugins:[lampObserver,shell],cacheDir:path.join(output,'.vite'),logLevel:'warn',server:{host:'127.0.0.1',port:0}})
 await server.listen()
 const frames=(page,count=4)=>page.evaluate(count=>new Promise(resolve=>{const next=()=>--count?requestAnimationFrame(next):resolve();requestAnimationFrame(next)}),count)
-const draw=(frame,ratio)=>frame.evaluate(ratio=>new Promise((resolve,reject)=>{
-  const timeout=setTimeout(()=>{delete window.__lampRendered;reject(new Error('Lamp draw did not complete'))},5000)
-  window.__lampRendered=canvas=>{
-    clearTimeout(timeout);delete window.__lampRendered
-    try{
-      const gl=canvas.getContext('webgl2')
-      if(!gl||gl.isContextLost()||canvas.width<=0||canvas.height<=0||gl.drawingBufferWidth!==canvas.width||gl.drawingBufferHeight!==canvas.height||gl.getError()!==gl.NO_ERROR)throw new Error('Lamp sample needs an unclamped readable framebuffer')
-      if(ratio!=null&&Math.abs(window.__lampRenderer.getPixelRatio()-ratio)>.01)throw new Error('Lamp density control was overwritten before its draw')
-      resolve(canvas.toDataURL().split(',')[1])
-    }catch(error){reject(error)}
-  }
-  window.__lampRedraw()
+const draw=(frame,ratio)=>frame.evaluate(ratio=>window.__lampFrame.drawLamp(canvas=>{
+  const [width,height]=window.__lampFrame.canvasBuffer(window.__lampRenderer)
+  if(canvas.width<=0||canvas.height<=0||width!==canvas.width||height!==canvas.height)throw new Error('Lamp sample needs an unclamped readable framebuffer')
+  if(ratio!=null&&Math.abs(window.__lampRenderer.getPixelRatio()-ratio)>.01)throw new Error('Lamp density control was overwritten before its draw')
+  return canvas.toDataURL().split(',')[1]
 }),ratio)
 let browser
 const results={}
@@ -45,7 +38,8 @@ try{
     await frame.waitForFunction(()=>window.__lamp?.group.visible)
     await frame.evaluate(()=>document.fonts.ready);await frames(page,8)
     assert.equal(await frame.evaluate(()=>'drawElementImage' in CanvasRenderingContext2D.prototype),enhanced)
-    if(enhanced)await frame.waitForFunction(()=>window.__lamp.uniforms.uPageReady.value===1)
+    if(enhanced)await frame.waitForFunction(()=>window.__lamp.backdrop.pageReady.value===1)
+    await frame.evaluate(async url=>{window.__lampFrame=await import(url)},'/@fs'+path.join(import.meta.dirname,'lampFrame.mjs'))
     const frameBox=await page.$eval('iframe',e=>e.getBoundingClientRect().toJSON())
     const box=await frame.$eval('.home-light',e=>e.getBoundingClientRect().toJSON())
     const ink=await frame.$eval('.home-headline-html',element=>{const r=element.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})
@@ -56,12 +50,12 @@ try{
     assert.equal(meta.scale,3,'The comparison must engage parent zoom')
     await frame.waitForFunction(ratio=>Math.abs(window.__lampRenderer.getPixelRatio()-ratio)<.01,{},meta.dpr*meta.scale)
     await frames(page,8)
-    if(enhanced)await frame.waitForFunction(()=>window.__lamp.uniforms.uPageReady.value===1)
+    if(enhanced)await frame.waitForFunction(()=>window.__lamp.backdrop.pageReady.value===1)
     const capture=async(label)=>{const png=await page.screenshot({encoding:'base64'});await writeFile(path.join(output,`${name}-${label}.png`),Buffer.from(png,'base64'));return png}
     const on=await capture('lit')
-    await frame.evaluate(()=>window.__lamp.uniforms.uEmission.value=0)
+    await frame.evaluate(()=>window.__lamp.values.emission.value=0)
     const alpha=await draw(frame),off=await capture('unlit')
-    const allocation=await frame.evaluate(()=>{const renderer=window.__lampRenderer,c=renderer.domElement,r=c.getBoundingClientRect(),gl=renderer.getContext();return {ratio:renderer.getPixelRatio(),width:c.width,height:c.height,buffer:[gl.drawingBufferWidth,gl.drawingBufferHeight],css:[r.x,r.y,r.width,r.height],innerZoom:visualViewport.scale,point:[window.__lamp.group.position.x,innerHeight-window.__lamp.group.position.y]}})
+    const allocation=await frame.evaluate(()=>{const renderer=window.__lampRenderer,c=renderer.domElement,r=c.getBoundingClientRect();return {ratio:renderer.getPixelRatio(),width:c.width,height:c.height,buffer:window.__lampFrame.canvasBuffer(renderer),css:[r.x,r.y,r.width,r.height],innerZoom:visualViewport.scale,point:[window.__lamp.group.position.x,innerHeight-window.__lamp.group.position.y]}})
     assert.deepEqual([allocation.width,allocation.height],allocation.buffer)
     assert.equal(allocation.innerZoom,1,'This must exercise a zoomed parent with an unzoomed iframe')
     await frame.evaluate(ratio=>window.__lampRenderer.setPixelRatio(ratio),meta.dpr*meta.scale*2)

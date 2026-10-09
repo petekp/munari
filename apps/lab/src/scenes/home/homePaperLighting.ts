@@ -4,29 +4,33 @@
 // The masthead owns this renderer; the Surface publishes geometry before drawing.
 
 import * as THREE from 'three'
+import { MeshBasicNodeMaterial, type DirectRenderPipeline, type WebGPURenderer } from 'three/webgpu'
+import { cameraProjectionMatrix, modelViewMatrix, positionGeometry, vec4 } from 'three/tsl'
 import type { HomeFlyer } from './homeFlyer'
-import { createHomePaperMaterial,type HomeLightMaterial } from './homeLight'
+import { createHomePaperMaterial,setHomePaperShadow,type HomeLightMaterial } from './homeLight'
 import { PAPER_COLUMNS, PAPER_ROWS } from './homePaperLaw'
 import { POSTCARD_STANDOFF } from './homeLightLaw'
 
 const NEAR=1, FAR=4096
-const VERTEX=/* glsl */`
-varying vec3 vPosition;
-void main(){
-  vPosition=position;
-  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
-}`
-const DEPTH=/* glsl */`
-uniform float uLightZ;
-varying vec3 vPosition;
-void main(){gl_FragColor=vec4(uLightZ-vPosition.z,1.0,0.0,1.0);}
-`
 
-export function createPaperLighting(renderer: THREE.WebGLRenderer, material: HomeLightMaterial) {
-  if(!renderer.extensions.has('EXT_color_buffer_float')) return null
+// The light's view of the sheet, sampled later at uv = ndc * .5 + .5. Clip y
+// is negated so that sample reads what this pass drew there (passMaterial).
+function createDepthMaterial(material: HomeLightMaterial){
+  const depth=new MeshBasicNodeMaterial({side:THREE.DoubleSide,toneMapped:false})
+  const clip=cameraProjectionMatrix.mul(modelViewMatrix).mul(vec4(positionGeometry,1))
+  depth.vertexNode=vec4(clip.x,clip.y.negate(),clip.z,clip.w)
+  // A render-target pass: no canvas conversion follows, so these raw values land.
+  depth.outputNode=vec4(material.values.lightHeight.sub(positionGeometry.z),1,0,1)
+  return depth
+}
+
+export function createPaperLighting(renderer: WebGPURenderer, pipeline: DirectRenderPipeline, material: HomeLightMaterial) {
+  const context=renderer.getContext()
+  // WebGPU always renders half floats; the WebGL 2 fallback needs the extension.
+  if(context instanceof WebGL2RenderingContext&&!context.getExtension('EXT_color_buffer_float')) return null
   // Only cast shadows use a sampled map; the visible receiver stays geometry.
   // The fitted 1024px shadow map is filtered in light space (decision #51).
-  const shadow=new THREE.WebGLRenderTarget(1024,1024,{type:THREE.HalfFloatType,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter})
+  const shadow=new THREE.RenderTarget(1024,1024,{type:THREE.HalfFloatType,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter})
   shadow.texture.colorSpace=THREE.NoColorSpace
   const geometry=new THREE.PlaneGeometry(1,1,PAPER_COLUMNS,PAPER_ROWS)
   const position=geometry.getAttribute('position')
@@ -35,21 +39,24 @@ export function createPaperLighting(renderer: THREE.WebGLRenderer, material: Hom
   const projectionW=new THREE.BufferAttribute(new Float32Array(position.count),1)
   projectionW.setUsage(THREE.DynamicDrawUsage);geometry.setAttribute('projectionW',projectionW)
   const surfaceMaterial=createHomePaperMaterial(material)
-  const depthMaterial=new THREE.ShaderMaterial({vertexShader:VERTEX,fragmentShader:DEPTH,uniforms:{uLightZ:material.uniforms.uLightHeight},side:THREE.DoubleSide,toneMapped:false})
+  const depthMaterial=createDepthMaterial(material)
   const mesh=new THREE.Mesh(geometry,surfaceMaterial)
   mesh.frustumCulled=false
   const scene=new THREE.Scene();scene.add(mesh)
   const view=new THREE.OrthographicCamera(0,1,0,1,NEAR,FAR)
   view.position.z=1000;view.updateMatrixWorld(true)
   const lightCamera=new THREE.PerspectiveCamera(90,1,NEAR,FAR)
+  // Three re-derives a camera's projection from its fov on the first render in
+  // another coordinate system, which would replace the fitted frustum below.
+  lightCamera.coordinateSystem=renderer.coordinateSystem
   const savedColor=new THREE.Color(), previousLight=new THREE.Vector3(Infinity,Infinity,Infinity)
   let lastFlat='', dirty=true
-  const u=material.uniforms
-  u.uPaperShadow.value=shadow.texture
+  const u=material.values
+  setHomePaperShadow(material,shadow.texture)
 
   return {
     update(flyer: HomeFlyer | null) {
-      if(!flyer){u.uPaperReady.value=0;lastFlat='';return}
+      if(!flyer){u.paperReady.value=0;lastFlat='';return}
       const anchor=flyer.kind==='page' ? flyer.element.getBoundingClientRect() : flyer.paper.anchor
       const flat=flyer.kind==='page'||flyer.paper.height===POSTCARD_STANDOFF
       const key=flat ? `${anchor.x},${anchor.y},${anchor.width},${anchor.height}` : ''
@@ -66,9 +73,9 @@ export function createPaperLighting(renderer: THREE.WebGLRenderer, material: Hom
         position.needsUpdate=true;projectionW.needsUpdate=true
         geometry.computeVertexNormals()
       }
-      const lx=u.uLight.value.x+u.uFrameOrigin.value.x,ly=u.uLight.value.y+u.uFrameOrigin.value.y,lz=u.uLightHeight.value
+      const lx=u.light.value.x+u.frameOrigin.value.x,ly=u.light.value.y+u.frameOrigin.value.y,lz=u.lightHeight.value
       const lightChanged=lx!==previousLight.x||ly!==previousLight.y||lz!==previousLight.z
-      if(!dirty&&!lightChanged&&u.uPaperReady.value)return
+      if(!dirty&&!lightChanged&&u.paperReady.value)return
       const target=renderer.getRenderTarget(),alpha=renderer.getClearAlpha()
       renderer.getClearColor(savedColor)
       renderer.setClearColor(0,0)
@@ -80,32 +87,34 @@ export function createPaperLighting(renderer: THREE.WebGLRenderer, material: Hom
         }
         // Grazing rays spread the bulb's footprint along the shadow. Leave
         // that ellipse room outside the caster bounds instead of clipping it.
-        const radius=u.uLightRadius.value/minDepth
+        const radius=u.lightRadius.value/minDepth
         const padX=radius*Math.hypot(1,Math.max(Math.abs(minX),Math.abs(maxX)))+.02
         const padY=radius*Math.hypot(1,Math.max(Math.abs(minY),Math.abs(maxY)))+.02
         minX-=padX;maxX+=padX;minY-=padY;maxY+=padY
         lightCamera.position.set(lx,ly,lz);lightCamera.updateMatrixWorld(true)
-        lightCamera.projectionMatrix.makePerspective(minX*NEAR,maxX*NEAR,maxY*NEAR,minY*NEAR,NEAR,FAR)
+        lightCamera.projectionMatrix.makePerspective(minX*NEAR,maxX*NEAR,maxY*NEAR,minY*NEAR,NEAR,FAR,renderer.coordinateSystem)
         lightCamera.projectionMatrixInverse.copy(lightCamera.projectionMatrix).invert()
-        u.uPaperShadowMatrix.value.multiplyMatrices(lightCamera.projectionMatrix,lightCamera.matrixWorldInverse)
-        u.uPaperShadowRange.value.set(maxX-minX,maxY-minY)
+        u.paperShadowMatrix.value.multiplyMatrices(lightCamera.projectionMatrix,lightCamera.matrixWorldInverse)
+        u.paperShadowRange.value.set(maxX-minX,maxY-minY)
         mesh.material=depthMaterial;renderer.setRenderTarget(shadow);renderer.render(scene,lightCamera)
         previousLight.set(lx,ly,lz)
-        u.uPaperReady.value=1
+        u.paperReady.value=1
       }finally{renderer.setRenderTarget(target);renderer.setClearColor(savedColor,alpha)}
     },
     render(){
-      if(!u.uPaperReady.value)return
-      const origin=u.uFrameOrigin.value,size=u.uResolution.value
+      if(!u.paperReady.value)return
+      const origin=u.frameOrigin.value,size=u.resolution.value
       view.left=origin.x;view.right=origin.x+size.x;view.top=origin.y;view.bottom=origin.y+size.y;view.updateProjectionMatrix()
-      const clear=renderer.autoClear
-      renderer.autoClear=false
-      try{renderer.clearDepth();mesh.material=surfaceMaterial;renderer.render(scene,view)}
-      finally{renderer.autoClear=clear}
+      // Keep the composite and clear only depth. A bare clearDepth() would run
+      // outside the pipeline, through Three's frame target and output pass.
+      const clearColor=renderer.autoClearColor,clearDepth=renderer.autoClearDepth,clearStencil=renderer.autoClearStencil
+      renderer.autoClearColor=false;renderer.autoClearDepth=true;renderer.autoClearStencil=false
+      try{mesh.material=surfaceMaterial;pipeline.render(scene,view)}
+      finally{renderer.autoClearColor=clearColor;renderer.autoClearDepth=clearDepth;renderer.autoClearStencil=clearStencil}
     },
-    invalidate(){lastFlat='';previousLight.set(Infinity,Infinity,Infinity);u.uPaperReady.value=0},
+    invalidate(){lastFlat='';previousLight.set(Infinity,Infinity,Infinity);u.paperReady.value=0},
     dispose(){
-      u.uPaperReady.value=0;u.uPaperShadow.value=null
+      u.paperReady.value=0;setHomePaperShadow(material,null)
       geometry.dispose();surfaceMaterial.dispose();depthMaterial.dispose();shadow.dispose()
     },
   }

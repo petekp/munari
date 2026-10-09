@@ -5,7 +5,10 @@
 // the same task, which is when Three has submitted the frame. Coordinates are
 // drawing-buffer pixels with y from the bottom, and values are premultiplied,
 // as `gl.readPixels` returned them. `getImageData` un-premultiplies, so a
-// translucent pixel is multiplied back, within 1 per channel of the stored value.
+// translucent pixel is multiplied back, within 1 per channel of a valid
+// stored value. A channel above its alpha comes back clamped to alpha (204
+// over alpha 102 read as 102, measured 2026-10-09), so these reads cannot
+// detect invalid premultiplied output.
 
 const readback = document.createElement('canvas')
 const readbackContext = readback.getContext('2d', { willReadFrequently: true })!

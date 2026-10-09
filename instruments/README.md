@@ -111,7 +111,7 @@ phone it samples the visible postcard shadow; the desktop check covers the
 button shadow. A one-pixel clock outside the scene makes Chrome record static
 fallback pages throughout the observation window. A
 native-first reveal with a delayed shadow worker must fail both the readiness
-and pixel checks. Mobile delayed fonts, no capture, no WebGL with failed fonts,
+and pixel checks. Mobile delayed fonts, no capture, no GPU renderer with failed fonts,
 and a nonresponsive shadow worker exercise the fallbacks. The regular animated
 entrance is also recorded. Home must not request other demo chunks. This checks
 recorded compositor frames and visible ordering, not a network-independent
@@ -124,7 +124,7 @@ network delays or a screencast. It runs one fresh Chrome session by default.
 `PROFILE_BASELINE` adds an alternating comparison against a directory containing
 a saved `home/` scene folder and `index.html`. The rest of the application stays
 current; this comparison isolates changes in the home scene and opening cover.
-Timings cover both document entries, fonts, mask generation, renderer setup,
+Timings cover both document entries, fonts, mask generation, each renderer's `init()`,
 backdrop capture, composition readiness and the reveal. Worker timings come from
 the worker itself. `PROFILE_OUTPUT` chooses the local build and result directory.
 `PROFILE_PAIRS=2` or `3` explicitly repeats the comparison. Each browser closes
@@ -148,7 +148,7 @@ extruded 3D geometry, shader colour, pointer response and native selection.
 The inline route must contain no scene iframe. Its black shader control compares glyph contrast with the same native text;
 the 0.95–1.05 contrast range matches the existing sharpness checks. A half-density
 render must lose contrast. It also checks mobile layout, reduced motion,
-3x parent zoom, no-capture rendering and the native no-WebGL fallback.
+3x parent zoom, no-capture rendering and the native fallback without a GPU renderer.
 Use `HEADED=1` for visible Chrome and `HEADLINE_OUTPUT` for its evidence directory.
 Decision [#56](../docs/decisions.md#56) records scope and limits.
 
@@ -188,12 +188,13 @@ double-clicks uncovered native heading text, and types into the scene.
 The full website is checked at 390 and 320px, including entry and return after
 resizing. Captures wait for the relief field belonging to the current layout.
 Separate Chrome profiles check lighting without HTML capture and native content
-with WebGL disabled. `HEADED=1` preserves native display density;
+with WebGPU and WebGL disabled. `HEADED=1` preserves native display density;
 `LIGHT_PROOF_OUTPUT` chooses an output directory and `CHROME_PATH` selects Chrome.
 Evidence stays outside the repo. This local probe does not change CI membership.
 
-GPU timer queries report the complete lighting redraw, including the paper's
-shadow map and native-density receiver draw, when supported and valid. CPU work and the separate
+GPU time is the sum of the lighting redraw's render passes, including the paper's
+shadow map and native-density receiver draw: WebGPU timestamp queries, or WebGL 2
+timer queries on the fallback. Idle time between passes, CPU work and the separate
 bulb/card renderers are excluded.
 Frame intervals describe this machine, not a portable performance gate.
 Native silhouettes use 64 deterministic rays toward a spherical light source.
@@ -208,8 +209,9 @@ bends while keeping both ends attached, then captures a stationary scene postcar
 scrolling, mobile widths, and the no-capture Chrome fallback. The latter retains
 glass reflections and emission but cannot refract page content.
 
-The probe reports lamp GPU time and frame intervals; these describe the current
-machine. Lamp motion alone must not repeatedly repaint the captured page.
+The probe reports frame intervals and, on the WebGL 2 fallback, lamp GPU time;
+these describe the current machine. WebGPU timestamps miss the canvas copies
+before the lamp's passes, so that backend reports GPU time as unmeasured. Lamp motion alone must not repeatedly repaint the captured page.
 `HEADED=1` keeps native display density; use `STRICT_CAPABILITY=1` to require
 the enhanced path. `LAMP_OUTPUT` selects an evidence directory outside Git.
 The observer and optical controls are injected into the served copy only.
@@ -1230,7 +1232,7 @@ Stroke checks compare the actual hand and outline at two heights and DPR 1/2.
 The body must grow while a 6px outline keeps its CSS-pixel width. Width,
 color, opacity, toggle, material switch, copy and reset are also checked.
 Reflection pixel checks disable the stroke so it cannot supply false evidence.
-The moving poster is a second WebGL canvas inside the page, so the checks
+The moving poster is a second renderer's canvas inside the page, so the checks
 are about two renderers agreeing rather than about CSS animations. The
 canvas must exist in the native sheet with a live context (never the CSS
 gradient fallback), and the capture must hold exactly one blank clone of it.

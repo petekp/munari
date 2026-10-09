@@ -17,7 +17,7 @@ const cases = [
   {name: 'desktop'},
   {name: 'mobile-slow-fonts', width: 390, height: 844, fontDelay: 700},
   {name: 'native-capture-fallback', capture: false},
-  {name: 'no-webgl-font-failure', capture: false, webgl: false, brokenFonts: true},
+  {name: 'no-gpu-font-failure', capture: false, gpu: false, brokenFonts: true},
   {name: 'stalled-shadow-worker', stalledWorker: true},
   {name: 'early-reveal-control', early: true},
   {name: 'animated-entrance', reduced: false},
@@ -35,7 +35,7 @@ assert.ok(otherDemoChunks.length>0,'The probe must discover the other scene entr
 const results = []
 let browser
 
-function assertOpening(result, {early, reduced, capture, webgl, stalledWorker, fontDelay, brokenFonts}) {
+function assertOpening(result, {early, reduced, capture, gpu, stalledWorker, fontDelay, brokenFonts}) {
   const {content, states, pixels, maximumShadowChange, scripts, errors, controls} = result
   const exposed = states.filter(state => state.home && state.exposed)
   const complete = states.findLast(state => state.home)
@@ -47,7 +47,7 @@ function assertOpening(result, {early, reduced, capture, webgl, stalledWorker, f
     assert.ok(Math.abs(state[name][key] - complete[name][key]) <= 1, `${name}.${key} moved after reveal`)
   }
   assert.equal(content.capture, capture)
-  assert.equal(content.lit, webgl && !stalledWorker)
+  assert.equal(content.lit, gpu && !stalledWorker)
   assert.equal(content.overflow, false)
   assert.ok(!scripts.some(script => otherDemoChunks.some(name=>script.startsWith(`/assets/${name}-`))), 'Home must not fetch other demos')
   assert.ok(controls.entryDelayed>0,'The delayed entry control must intercept the actual entry script')
@@ -55,11 +55,11 @@ function assertOpening(result, {early, reduced, capture, webgl, stalledWorker, f
   if(stalledWorker)assert.ok(controls.workerStalled>0,'The stalled-worker control must intercept the actual worker')
   if(fontDelay)assert.ok(controls.fontsDelayed>0,'The font-delay control must intercept a requested font')
   if(brokenFonts)assert.ok(controls.fontsFailed>0,'The font-failure control must abort a requested font')
-  if (!webgl || stalledWorker) assert.notEqual(content.colour, 'rgba(0, 0, 0, 0)')
+  if (!gpu || stalledWorker) assert.notEqual(content.colour, 'rgba(0, 0, 0, 0)')
   assert.deepEqual(errors, [])
 }
 
-async function measure({name, width = 1440, height = 1000, capture = true, webgl = true, early = false, fontDelay = 0, brokenFonts = false, stalledWorker = false, reduced = true}) {
+async function measure({name, width = 1440, height = 1000, capture = true, gpu = true, early = false, fontDelay = 0, brokenFonts = false, stalledWorker = false, reduced = true}) {
   const directory = path.join(output, name)
   await mkdir(directory, {recursive: true})
   browser = await puppeteer.launch({
@@ -67,7 +67,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
     headless: process.env.HEADED !== '1', defaultViewport: null,
     signal: AbortSignal.timeout(30_000),
     args: [...WEBGPU_CHROME_ARGS,capture ? '--enable-features=CanvasDrawElement' : '--disable-features=CanvasDrawElement',
-      '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(!webgl ? ['--disable-webgl'] : [])],
+      '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(!gpu ? ['--disable-webgl', '--disable-webgl2'] : [])],
   })
   const page = await browser.newPage(), errors = [], requests = [], frames = []
   const controls={entryDelayed:0,workerDelayed:0,workerStalled:0,fontsDelayed:0,fontsFailed:0}
@@ -76,6 +76,8 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
   await page.setCacheEnabled(false)
   await page.setRequestInterception(true)
   page.on('pageerror', error => errors.push(String(error)))
+  // Hiding navigator.gpu is a browser without WebGPU; Three then tries the disabled WebGL 2.
+  if (!gpu) await page.evaluateOnNewDocument(() => Object.defineProperty(Navigator.prototype, 'gpu', {get: () => undefined}))
   page.on('request', async request => {
     const requested = new URL(request.url())
     requests.push(requested.pathname)
@@ -211,7 +213,7 @@ async function measure({name, width = 1440, height = 1000, capture = true, webgl
   const maximumShadowChange = Math.max(...pixels.map(frame => frame.error))
   const result = {name, content, scripts, scriptBytes, states: timing.states, pixels, maximumShadowChange, controls:{...controls,forcedReveal:timing.forcedReveal}, imageViewport: visible.at(-1)?.width, errors}
   await writeFile(path.join(directory, 'results.json'), JSON.stringify(result, null, 2))
-  assertOpening(result, {early, reduced, capture, webgl, stalledWorker, fontDelay, brokenFonts})
+  assertOpening(result, {early, reduced, capture, gpu, stalledWorker, fontDelay, brokenFonts})
   console.log(JSON.stringify({name, firstVisibleMs: exposed[0].time, maximumShadowChange, frames: pixels.length, scriptBytes}))
   results.push(result)
   await client.detach(); await browser.close(); browser = null

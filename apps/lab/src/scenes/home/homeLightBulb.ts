@@ -2,8 +2,11 @@
 // The positioned bulb remains the shadow source. Cord simulation and optics
 // share its frame; HomeMasthead owns rendering and the captured backdrop (#52).
 import * as THREE from 'three'
+import {MeshPhysicalNodeMaterial,MeshStandardNodeMaterial,SpriteNodeMaterial,type Node} from 'three/webgpu'
+import {output,sRGBTransferOETF,toneMapping,vec4} from 'three/tsl'
+import {encodedOutput} from '@petepetrash/munari'
 import {CORD_POINTS,createLampCord,stepLampCord} from './homeLampCordLaw'
-import {LAMP_GLASS_VERTEX,LAMP_GLASS_FRAGMENT} from './homeLampGlassShaders'
+import {createLampGlassMaterial,createLampGlassValues} from './homeLampGlassNodes'
 import type {LampBackdrop} from './homeLampBackdrop'
 import {LIGHT_HEIGHT} from './homeLightLaw'
 
@@ -33,31 +36,39 @@ function glowTexture(){
   return texture
 }
 
-export function createLightBulb(backdrop:LampBackdrop):LightBulb{
+// ACESFilmic at exposure 1.1, the tone mapping the socket and cord are tuned
+// under. Renderer tone mapping stays off, or the pipeline would also apply it
+// to the glass and halos, which are not tone-mapped (decisions.md #69).
+const toned=()=>toneMapping(THREE.ACESFilmicToneMapping,1.1,output)
+
+/** `coordinateSystem` is the renderer's, for the glass's written depth. */
+export function createLightBulb(backdrop:LampBackdrop,coordinateSystem:THREE.CoordinateSystem):LightBulb{
   const group=new THREE.Group(),body=new THREE.Group();group.add(body);group.visible=false
-  const uniforms={...backdrop.uniforms,uEye:new THREE.Uniform(new THREE.Vector3()),uMvp:new THREE.Uniform(new THREE.Matrix4()),uLampViewport:new THREE.Uniform(new THREE.Vector4()),uPixelWidth:new THREE.Uniform(.5),uLightDistance:new THREE.Uniform(LIGHT_HEIGHT),uIor:new THREE.Uniform(1.5),uDispersion:new THREE.Uniform(.006),uDisplacement:new THREE.Uniform(.08),uEmission:new THREE.Uniform(1)}
-  const glass=new THREE.ShaderMaterial({vertexShader:LAMP_GLASS_VERTEX,fragmentShader:LAMP_GLASS_FRAGMENT,uniforms,side:THREE.BackSide,transparent:true,premultipliedAlpha:true,depthWrite:true,toneMapped:false})
+  const values=createLampGlassValues(LIGHT_HEIGHT)
+  const glass=createLampGlassMaterial(values,backdrop.values,coordinateSystem)
   const envelope=new THREE.BoxGeometry(70,102,70);envelope.translate(0,8,0)
   const globe=new THREE.Mesh(envelope,glass);globe.renderOrder=2;body.add(globe)
   const inverse=new THREE.Matrix4(),cameraPosition=new THREE.Vector3()
   globe.onBeforeRender=(renderer,_scene,camera)=>{
     inverse.copy(globe.matrixWorld).invert()
     cameraPosition.setFromMatrixPosition(camera.matrixWorld)
-    uniforms.uEye.value.copy(cameraPosition).applyMatrix4(inverse)
-    uniforms.uMvp.value.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse).multiply(globe.matrixWorld)
-    uniforms.uPixelWidth.value=1/renderer.getPixelRatio()
-    const view=camera instanceof THREE.PerspectiveCamera?camera.view:null,size=backdrop.uniforms.uViewport.value
-    if(view?.enabled)uniforms.uLampViewport.value.set(view.offsetX,view.fullHeight-view.offsetY-view.height,view.width,view.height)
-    else uniforms.uLampViewport.value.set(0,0,size.x,size.y)
+    values.eye.value.copy(cameraPosition).applyMatrix4(inverse)
+    values.mvp.value.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse).multiply(globe.matrixWorld)
+    values.pixelWidth.value=1/renderer.getPixelRatio()
+    const view=camera instanceof THREE.PerspectiveCamera?camera.view:null,size=backdrop.values.viewport.value
+    if(view?.enabled)values.lampViewport.value.set(view.offsetX,view.fullHeight-view.offsetY-view.height,view.width,view.height)
+    else values.lampViewport.value.set(0,0,size.x,size.y)
   }
-  const metal=new THREE.MeshPhysicalMaterial({color:0x25231e,roughness:.28,metalness:.85,envMapIntensity:1.7})
+  const metal=new MeshPhysicalNodeMaterial({color:0x25231e,roughness:.28,metalness:.85,envMapIntensity:1.7})
+  metal.outputNode=toned()
   const socket=new THREE.Mesh(new THREE.CylinderGeometry(SOCKET_RADIUS*.85,SOCKET_RADIUS,SOCKET_HEIGHT,40),metal)
   socket.position.y=47;body.add(socket)
   const rings=Array.from({length:4},(_,i)=>{
     const ring=new THREE.Mesh(new THREE.TorusGeometry(9.6-i*.15,.65,10,48),metal)
     ring.rotation.x=Math.PI/2;ring.position.y=41+i*3.6;body.add(ring);return ring
   })
-  const cordMaterial=new THREE.MeshStandardMaterial({color:0x181711,roughness:.72,metalness:.05})
+  const cordMaterial=new MeshStandardNodeMaterial({color:0x181711,roughness:.72,metalness:.05})
+  cordMaterial.outputNode=toned()
   const cord=createLampCord(),points=Array.from({length:CORD_POINTS},()=>new THREE.Vector3())
   const curve=new THREE.CatmullRomCurve3(points),tube=new THREE.BufferGeometry()
   const position=new THREE.BufferAttribute(new Float32Array((TUBE_SEGMENTS+1)*TUBE_SIDES*3),3),normal=new THREE.BufferAttribute(new Float32Array((TUBE_SEGMENTS+1)*TUBE_SIDES*3),3)
@@ -69,17 +80,23 @@ export function createLightBulb(backdrop:LampBackdrop):LightBulb{
   const centre=new THREE.Vector3(),tangent=new THREE.Vector3(),side=new THREE.Vector3()
   const haloTexture=glowTexture()
   const halos=[{size:144,opacity:.4,color:0xfff4d4},{size:320,opacity:.26,color:0xffffff}].map(({size,opacity,color})=>{
-    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:haloTexture,color,blending:THREE.AdditiveBlending,transparent:true,opacity,depthTest:false,depthWrite:false,toneMapped:false}))
+    const material=new SpriteNodeMaterial({map:haloTexture,color,blending:THREE.AdditiveBlending,transparent:true,opacity,depthTest:false,depthWrite:false,toneMapped:false})
+    // Straight alpha: land the encoded colour with its alpha, so the additive
+    // blend scales it by alpha once, as WebGL's did (decisions.md #72).
+    // SAFETY: Three declares this TSL function's layout as vec3 to vec3; its
+    // published types leave the result untyped.
+    material.outputNode=encodedOutput(vec4(sRGBTransferOETF(output.rgb) as Node<'vec3'>,output.a))
+    const sprite=new THREE.Sprite(material)
     // Camera glare belongs over the glass and background, rather than behind
     // the opaque refracted image. Emission controls both the coil and its glare.
-    sprite.onBeforeRender=()=>{sprite.material.opacity=opacity*uniforms.uEmission.value}
+    sprite.onBeforeRender=()=>{material.opacity=opacity*values.emission.value}
     sprite.position.y=-6;sprite.scale.setScalar(size);sprite.renderOrder=3;body.add(sprite);return sprite
   })
   group.add(new THREE.PointLight(0xffb756,3,240,1.6))
   return {
     group,
     update(x,y,dt,still,viewportHeight,lightDistance){
-      group.visible=true;group.position.set(x,y,0);uniforms.uLightDistance.value=lightDistance
+      group.visible=true;group.position.set(x,y,0);values.lightDistance.value=lightDistance
       const screenY=viewportHeight-y,last=CORD_POINTS*2-2
       const angle=still&&cord.initialized
         ? Math.atan2(x-cord.anchorX,screenY+100)

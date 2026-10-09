@@ -1,4 +1,32 @@
 // Geometry and framebuffer evidence for the actual drawn postcard.
+import path from 'node:path'
+import {replaceSource} from '../home-light/replaceSource.mjs'
+
+// Exposes the postcard's Fiber state in the served copy, for postcardPng below.
+export function observePostcardRenderer(code,id) {
+  if(!id.endsWith('/HomePostcard.tsx'))return code
+  return replaceSource(code,'onCreated={(state) => state.gl.setClearAlpha(0)}','onCreated={(state) => { state.gl.setClearAlpha(0); window.__postcardState = state }}')
+}
+
+// A WebGPU canvas is readable only in the task that drew it (canvasPixels.ts).
+// window.__postcardPng(read) requests a frame and, as that draw returns, copies
+// the canvas and calls `read`, so both describe the same frame.
+export async function installPostcardCapture(page) {
+  await page.waitForFunction(()=>Boolean(window.__postcardState))
+  await page.evaluate(async url=>{
+    const {afterEachRender}=await import(url)
+    const state=window.__postcardState
+    window.__postcardPng=(read=()=>null)=>new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{undo();reject(new Error('The postcard canvas did not draw'))},5000)
+      const undo=afterEachRender(state.gl,()=>{
+        if(state.gl.getRenderTarget()!==null)return
+        clearTimeout(timer);undo();resolve({png:state.gl.domElement.toDataURL(),read:read()})
+      })
+      state.invalidate()
+    })
+  },'/@fs'+path.resolve(import.meta.dirname,'../canvasPixels.ts'))
+}
+
 export async function installPaperReader(page) {
   await page.waitForFunction(() => Boolean(window.__readPaper?.()))
   await page.evaluate(async()=>{
@@ -28,7 +56,7 @@ export async function paperMetrics(page) {
     for(let i=0;i<vertices.length/4;i++){const p=world(i);maxBend=Math.max(maxBend,Math.abs(p.reduce((sum,v,j)=>sum+(v-a[j])*n[j],0)/length))}
     const area=(a,b,c)=>((vertices[b*4]-vertices[a*4])*(vertices[c*4+1]-vertices[a*4+1])-(vertices[b*4+1]-vertices[a*4+1])*(vertices[c*4]-vertices[a*4]))/2
     for(let row=0;row<rows;row++)for(let col=0;col<columns;col++){const a=row*stride+col,b=a+stride;backArea+=Math.max(0,area(a,b,a+1))+Math.max(0,area(b,b+1,a+1))}
-    return {maxBend,backArea,height:frame.height,mapsReady:window.__paperLight.uniforms.uPaperReady.value,vertices:vertices.length/4}
+    return {maxBend,backArea,height:frame.height,mapsReady:window.__paperLight.values.paperReady.value,vertices:vertices.length/4}
   })
 }
 
@@ -43,15 +71,18 @@ export async function controlPoint(page,selector) {
 
 export async function silhouetteMetrics(page) {
   const result=await page.evaluate(async()=>{
-    const flyer=window.__readPaper(),canvas=document.querySelector('.home-canvas canvas'),rect=canvas.getBoundingClientRect()
-    const requireFrame=()=>{if(flyer?.kind!=='scene'||flyer.corners.length!==12||!flyer.corners.every(Number.isFinite)||rect.width<=0||rect.height<=0)throw new Error('The silhouette needs a complete displayed paper frame')}
+    const canvas=document.querySelector('.home-canvas canvas'),rect=canvas.getBoundingClientRect()
+    // The corners are copied in the task that drew the captured frame.
+    const capture=await window.__postcardPng(()=>{const flyer=window.__readPaper();return flyer?.kind==='scene'?Array.from(flyer.corners):null})
+    const drawn=capture.read
+    const requireFrame=()=>{if(drawn?.length!==12||!drawn.every(Number.isFinite)||rect.width<=0||rect.height<=0)throw new Error('The silhouette needs a complete displayed paper frame')}
     requireFrame()
-    const corners=Array.from({length:4},(_,i)=>({x:flyer.corners[i*3]-rect.x,y:flyer.corners[i*3+1]-rect.y}))
-    const png=await fetch(canvas.toDataURL()).then(response=>response.blob()),bitmap=await createImageBitmap(png)
+    const corners=Array.from({length:4},(_,i)=>({x:drawn[i*3]-rect.x,y:drawn[i*3+1]-rect.y}))
+    const png=await fetch(capture.png).then(response=>response.blob()),bitmap=await createImageBitmap(png)
     const scratch=new OffscreenCanvas(bitmap.width,bitmap.height),ctx=scratch.getContext('2d')
     ctx.drawImage(bitmap,0,0);bitmap.close()
     const data=ctx.getImageData(0,0,scratch.width,scratch.height).data,sx=scratch.width/rect.width,sy=scratch.height/rect.height
-    const u=window.__paperLight.uniforms,ink=u.uInk.value.image,inkRect=u.uInkRect.value,origin=u.uFrameOrigin.value
+    const u=window.__paperLight.values,ink=u.ink.value.image,inkRect=u.inkRect.value,origin=u.frameOrigin.value
     let opaque=0,difference=0,backStock=0,headingOverlap=0,headingHoles=0
     for(let y=0;y<scratch.height;y++)for(let x=0;x<scratch.width;x++){
       const px=(x+.5)/sx,py=(y+.5)/sy,i=(y*scratch.width+x)*4
