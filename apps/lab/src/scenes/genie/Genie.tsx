@@ -36,6 +36,7 @@ import {
 import { useFrame, useThree } from '@react-three/fiber'
 import { flushSync } from 'react-dom'
 import * as THREE from 'three'
+import type { MeshBasicNodeMaterial } from 'three/webgpu'
 import {
   createSurface,
   deformSurfaceGeometry,
@@ -52,7 +53,7 @@ import {
   useSurfacePaintedSize,
   useSurfaceSourceRoot,
   useSurfaceTexture,
-  useSurfaceUniforms,
+  useSurfaceNodes,
   useSurfaceSupport,
 } from '@petepetrash/munari'
 import {
@@ -93,10 +94,11 @@ import { genieTuning } from './genieTuning'
 import { GenieTweakPanel } from './GenieTweaks'
 import { showChrome } from '../../bareMode'
 import {
-  GENIE_FILM_FRAG,
-  GENIE_FRAG,
-  GENIE_VERT,
-} from './genieShaders'
+  createGenieFilmMaterial,
+  createGenieFilmPlacement,
+  createGenieMaterial,
+  createGenieShade,
+} from './genieNodes'
 import {
   GENIE_FILM_HEIGHT,
   GENIE_FILM_WIDTH,
@@ -675,42 +677,14 @@ function PixelPerfect() {
 const SHADE_FADE: [number, number] = [0.55, 0.95]
 
 function GenieMaterial({ shade }: { shade: [number, number] }) {
-  const surface = useSurfaceUniforms()
-  const uniforms = useMemo(
-    () => ({
-      ...surface,
-      uShadeEdge: { value: new THREE.Vector2(1, 1) },
-      uShadeFade: { value: new THREE.Vector2(SHADE_FADE[0], SHADE_FADE[1]) },
-    }),
-    [surface],
-  )
-  uniforms.uShadeEdge.value.set(shade[0], shade[1])
+  const surface = useSurfaceNodes()
+  const [values] = useState(() => createGenieShade(SHADE_FADE))
+  values.edge.value.set(shade[0], shade[1])
   // Surface creates every DOM texture premultiplied (decisions.md #5).
-  // This material only owns the matching blend rule below.
-  return (
-    <shaderMaterial
-      uniforms={uniforms}
-      vertexShader={GENIE_VERT}
-      fragmentShader={GENIE_FRAG}
-      transparent
-      // decisions.md #5: a 2D canvas's backing store is already
-      // premultiplied, so a material consuming one has to blend that way.
-      // The sheet was fully opaque until it grew a translucent shadow,
-      // which is why this could be missing and look correct — with the
-      // default blend the shade gets multiplied by its alpha a second
-      // time and lands a few luma dark of the page copy it has to be
-      // identical to at the swap.
-      premultipliedAlpha
-      // Four sheets can be in the air at once and every one of them sits
-      // at z = 0, so the depth buffer has no opinion worth having about
-      // which is in front — and with writes on, whichever drew first
-      // would silently reject the rest. The group's renderOrder decides
-      // instead (see Flight), which is the desk's own paint order.
-      depthWrite={false}
-      toneMapped={false}
-      side={THREE.DoubleSide}
-    />
-  )
+  // This material only owns the matching blend rule (genieNodes.ts).
+  const material = useMemo(() => createGenieMaterial(surface, values), [surface, values])
+  useLayoutEffect(() => () => material.dispose(), [material])
+  return <primitive object={material} attach="material" />
 }
 
 /** The film's own box inside the window capture, named on the canvas that
@@ -727,7 +701,7 @@ interface FilmCompositeMaterialProps {
   shade: [number, number]
   width: number
   height: number
-  ref: React.RefObject<THREE.ShaderMaterial | null>
+  ref: React.RefObject<MeshBasicNodeMaterial | null>
 }
 
 function FilmCompositeMaterial({
@@ -740,52 +714,29 @@ function FilmCompositeMaterial({
   ref,
 }: FilmCompositeMaterialProps) {
   const filmTexture = useFrameTexture()
-  const uniforms = useMemo(
-    () => ({
-      tMap: { value: chromeTexture },
-      tFilm: { value: filmTexture },
-      uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uMunariSize: { value: new THREE.Vector2(1, 1) },
-      uShadeEdge: { value: new THREE.Vector2(1, 1) },
-      uShadeFade: { value: new THREE.Vector2(SHADE_FADE[0], SHADE_FADE[1]) },
-      uFilmRect: { value: new THREE.Vector4(0, 0, 1, 1) },
-      uFilmRadius: { value: 0 },
-    }),
-    [chromeTexture, filmTexture],
-  )
-  uniforms.tMap.value = chromeTexture
-  uniforms.tFilm.value = filmTexture
-  uniforms.uMunariSize.value.set(width, height)
-  uniforms.uShadeEdge.value.set(shade[0], shade[1])
+  const [values] = useState(() => ({ shade: createGenieShade(SHADE_FADE), placement: createGenieFilmPlacement() }))
+  values.placement.size.value.set(width, height)
+  values.shade.edge.value.set(shade[0], shade[1])
   if (uv) {
-    uniforms.uFilmRect.value.set(uv.uMin, 1 - uv.vMax, uv.uMax - uv.uMin, uv.vMax - uv.vMin)
+    values.placement.rect.value.set(uv.uMin, 1 - uv.vMax, uv.uMax - uv.uMin, uv.vMax - uv.vMin)
   }
-  uniforms.uFilmRadius.value = film.radius
-
-  return (
-    <shaderMaterial
-      ref={ref}
-      // The first child render has no FrameSurface texture. Rebuild the
-      // material when either sampler appears; reusing the first uniforms
-      // object leaves Three bound to that initial null value.
-      key={`${chromeTexture.uuid}:${filmTexture?.uuid ?? 'none'}`}
-      uniforms={uniforms}
-      vertexShader={GENIE_VERT}
-      fragmentShader={GENIE_FILM_FRAG}
-      transparent
-      premultipliedAlpha
-      depthWrite={false}
-      toneMapped={false}
-      side={THREE.DoubleSide}
-      // Off at birth and written from the frame loop (Flight below). Two
-      // facts have to be true before this composite may be SEEN and both
-      // turn inside a frame rather than in a commit: the crossing has given
-      // the canvas presentation authority, and the frozen film generation
-      // is the one on this geometry. Declared here as well so a re-render
-      // between those frames cannot show the film early.
-      colorWrite={false}
-    />
+  values.placement.radius.value = film.radius
+  // The first child render has no FrameSurface texture, and a node material
+  // cannot be built around a missing sampler. FrameSurface suppresses the
+  // mesh until the texture exists; the material is built then.
+  const material = useMemo(
+    () => (filmTexture ? createGenieFilmMaterial(chromeTexture, filmTexture, values.placement, values.shade) : null),
+    [chromeTexture, filmTexture, values],
   )
+  useLayoutEffect(() => {
+    ref.current = material
+    return () => {
+      ref.current = null
+      material?.dispose()
+    }
+  }, [ref, material])
+  if (!material) return null
+  return <primitive object={material} attach="material" />
 }
 
 interface FilmCompositeProps {
@@ -794,7 +745,7 @@ interface FilmCompositeProps {
   paintName: string
   token: number
   geometry: React.RefObject<THREE.PlaneGeometry | null>
-  material: React.RefObject<THREE.ShaderMaterial | null>
+  material: React.RefObject<MeshBasicNodeMaterial | null>
   onFrameDrawn: (receipt: FrameDrawReceipt) => void
   onPresented: (receipt: PresentationReceipt) => void
   onAnchor: (uv: SourceUvRect | null) => void
@@ -1214,7 +1165,7 @@ function Flight({
 }: FlightProps) {
   const geoRef = useRef<THREE.PlaneGeometry | null>(null)
   const filmGeoRef = useRef<THREE.PlaneGeometry | null>(null)
-  const filmMatRef = useRef<THREE.ShaderMaterial | null>(null)
+  const filmMatRef = useRef<MeshBasicNodeMaterial | null>(null)
   const groupRef = useRef<THREE.Group | null>(null)
   const filmFramed = useRef(false)
   const filmPresented = useRef(false)

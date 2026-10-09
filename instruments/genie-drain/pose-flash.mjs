@@ -27,13 +27,15 @@ assert.ok(modes.length&&modes.every(mode=>['auto','snapdom'].includes(mode)))
 assert.ok(windows.length&&windows.every(win=>['cerchio','quadrato'].includes(win)))
 const chrome=[process.env.CHROME_PATH,'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/usr/bin/google-chrome','/usr/bin/chromium'].filter(Boolean).find(existsSync)
 assert.ok(chrome,'Chrome is required')
-const getter='  const api: GestureApi = {',frame='  useFrame(({ clock }, rawDt) => {',deform='deformSheets([geo, filmGeoRef.current], f, params, visibleT, wobble)'
+const getter='  const api: GestureApi = {',frame='  useFrame(({ clock }, rawDt) => {',deform='deformSheets([geo, filmGeoRef.current], f, params, visibleT, wobble)',sheet='createGenieMaterial(surface, values)'
 const inspect={name:'stationary-genie-pose',enforce:'pre',transform(code,id){
  if(!id.endsWith('/scenes/genie/Genie.tsx'))return
- for(const marker of [getter,frame,deform])assert.equal(code.split(marker).length,2,`Unique observation point: ${marker}`)
+ for(const marker of [getter,frame,deform,sheet])assert.equal(code.split(marker).length,2,`Unique observation point: ${marker}`)
  return `import {surfaceStoreOf as __poseStoreOf} from ${JSON.stringify('/@fs'+path.join(root,'packages/react/src/primitives/surface/surfaceHandle.ts'))};\n`+code
   .replace(getter,'  window.__poseStore=(win:WinId)=>__poseStoreOf(storeOf(win).handle);\n'+getter)
   .replace(frame,'  useFrame(({ clock, scene, camera, gl }, rawDt) => {')
+  // The texture controls replace what the sheet samples, which on a node material is its capture node's value.
+  .replace(sheet,'Object.assign(createGenieMaterial(surface, values), {userData: {captureNode: surface.map}})')
   .replace(deform,'deformSheets([geo, filmGeoRef.current], f, params, window.__fixedPose?.win===win ? 0 : visibleT, wobble); window.__fixedPose?.observe({scene,camera,gl,win})')
 }}
 let server,browser,failure=null,caseFailure=null
@@ -111,25 +113,26 @@ try{
      const expected=[[box.x,box.y],[box.x+box.width,box.y],[box.x+box.width,box.y+box.height],[box.x,box.y+box.height],[box.x+box.width/2,box.y+box.height/2]]
      return Math.max(...points.map((point,i)=>Math.hypot(point.x-expected[i][0],point.y-expected[i][1])))
     }
-    const cadence={firstAt:null,blocked:0,renderer:null}
+    const cadence={firstAt:null,blocked:0,renderer:null,canvasPass:false}
     window.__fixedPose={win,seedTime,draws,cadence,observe({scene,camera,gl,win:drawWin}){
      if(drawWin!==win)return
      // Keep the first actual framebuffer available for two recorder intervals.
-     if(cadence.renderer!==gl){cadence.renderer=gl;const original=gl.render;gl.render=function(...args){if(cadence.firstAt!==null&&performance.timeOrigin+performance.now()-cadence.firstAt<40){cadence.blocked++;return}return original.apply(this,args)}}
+     if(cadence.renderer!==gl){cadence.renderer=gl;const original=gl.render;gl.render=function(...args){if(cadence.firstAt!==null&&performance.timeOrigin+performance.now()-cadence.firstAt<40){cadence.blocked++;return}const outer=cadence.canvasPass;cadence.canvasPass=gl.getRenderTarget()===null;try{return original.apply(this,args)}finally{cadence.canvasPass=outer}}}
      scene.traverse(mesh=>{
       if(!mesh.userData?.isGenieSheet||mesh.userData.win!==win)return
       const old=watched.get(mesh);if(old?.before===mesh.onBeforeRender&&old?.after===mesh.onAfterRender)return
       const originalBefore=mesh.onBeforeRender,originalAfter=mesh.onAfterRender;let pass=null
       const before=function(...args){
        originalBefore.apply(this,args)
-       const eligible=mesh.material.colorWrite&&gl.getRenderTarget()===null
+       const eligible=mesh.material.colorWrite&&cadence.canvasPass===true
        const textureForced=(control==='stale'||control==='blank')&&eligible
        const droppedWrite=control==='late-blank'&&eligible&&cadence.firstAt!==null&&performance.timeOrigin+performance.now()-cadence.firstAt>=40
        if(droppedWrite)mesh.material.colorWrite=false
-       pass={writing:mesh.material.colorWrite&&gl.getRenderTarget()===null,sampler:mesh.material.uniforms.tMap.value,textureForced,droppedWrite,forced:textureForced||droppedWrite,placement:placement(mesh,camera,gl)}
-       if(textureForced)mesh.material.uniforms.tMap.value=fault
+       const capture=mesh.material.userData.captureNode
+       pass={writing:mesh.material.colorWrite&&cadence.canvasPass===true,sampler:capture.value,textureForced,droppedWrite,forced:textureForced||droppedWrite,placement:placement(mesh,camera,gl)}
+       if(textureForced)capture.value=fault
       }
-      const after=function(...args){const submitted=pass;originalAfter.apply(this,args);if(submitted.textureForced)mesh.material.uniforms.tMap.value=submitted.sampler;const captured=store.parts().find(part=>part.runtime)?.captureRoot?.querySelector('.gen-math-pattern')?.getAnimations({subtree:true})??[];const row={id:draws.length+1,t:performance.timeOrigin+performance.now(),writing:submitted.writing,pageHeld:store.holdsPage(),forced:submitted.forced,droppedWrite:submitted.droppedWrite,placement:submitted.placement,posePinned:native.getAnimations({subtree:true}).length===animations.length&&native.getAnimations({subtree:true}).every(a=>a.playState==='paused'&&a.currentTime===2400),captureTimes:[...new Set(captured.map(a=>a.currentTime))],capturePaused:captured.length===animations.length&&captured.every(a=>a.playState==='paused'),read:runtime.currentPaint()?.read,uploadedRead:runtime.uploadedRead()};if(row.writing&&!row.pageHeld&&cadence.firstAt===null)cadence.firstAt=row.t;draws.push(row);mark(row.id)}
+      const after=function(...args){const submitted=pass;originalAfter.apply(this,args);if(submitted.textureForced)mesh.material.userData.captureNode.value=submitted.sampler;const captured=store.parts().find(part=>part.runtime)?.captureRoot?.querySelector('.gen-math-pattern')?.getAnimations({subtree:true})??[];const row={id:draws.length+1,t:performance.timeOrigin+performance.now(),writing:submitted.writing,pageHeld:store.holdsPage(),forced:submitted.forced,droppedWrite:submitted.droppedWrite,placement:submitted.placement,posePinned:native.getAnimations({subtree:true}).length===animations.length&&native.getAnimations({subtree:true}).every(a=>a.playState==='paused'&&a.currentTime===2400),captureTimes:[...new Set(captured.map(a=>a.currentTime))],capturePaused:captured.length===animations.length&&captured.every(a=>a.playState==='paused'),read:runtime.currentPaint()?.read,uploadedRead:runtime.uploadedRead()};if(row.writing&&!row.pageHeld&&cadence.firstAt===null)cadence.firstAt=row.t;draws.push(row);mark(row.id)}
       mesh.onBeforeRender=before;mesh.onAfterRender=after;watched.set(mesh,{before,after})
      })
     }}
