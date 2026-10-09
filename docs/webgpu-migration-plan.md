@@ -1,6 +1,6 @@
 # WebGPU migration plan
 
-**Status: `SurfaceCanvas`, `FrameSurface`, `Surface`, every lab scene and the registry copies are ported. The gates pass on both backends locally, except checks that fail the same way on `main`.**
+**Status: `SurfaceCanvas`, `FrameSurface`, `Surface`, every lab scene and the registry copies are ported. Every gate and scene probe passes on both backends locally with `STRICT_CAPABILITY=1`, and CI passes, except checks that fail the same way on `main` (2026-10-09).**
 
 Munari will move from Three's `WebGLRenderer` to its `WebGPURenderer`. Shaders
 will be written once in Three Shading Language (TSL). TSL compiles to WGSL for
@@ -271,11 +271,9 @@ Also done on 2026-10-08:
 
 Still open:
 
-1. Run every CI gate on both backends with `STRICT_CAPABILITY=1`, and in the
-   Linux container.
-2. Decide whether `Surface` needs an origin check. Whether
+1. Decide whether `Surface` needs an origin check. Whether
    `drawElementImage` can taint a capture canvas is unverified.
-3. Checks that fail on `main` too, with the same numbers or assertion:
+2. Checks that fail on `main` too, with the same numbers or assertion:
    `probe:home-headline` (edge contrast 1.53), `probe:postcard` (boundary
    error 2.6), `gate:capture-engines` (a cloned keyframe's clock) and
    `probe:api-gestures` case `candidate-ripple` (the click never fires).
