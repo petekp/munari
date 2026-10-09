@@ -1,7 +1,7 @@
 // The veil — the laws behind the progressive blur.
 //
 // Pure profiles: distance into the band in, blur radius / opacity /
-// sampling level out. The scene samples them per fragment (as GLSL
+// sampling level out. The scene samples them per fragment (as TSL
 // twins fed the same constants through uniforms) and per test point
 // here; nothing in this file knows about textures or scrolling.
 //
@@ -93,7 +93,7 @@ export function veilSeamAlpha(d: number, p: VeilParams): number {
  * mismatch is not a ramp, it is absence.
  *
  * The odd one out in this file: `d` above is a distance the shader also
- * walks, fed by a GLSL twin; `msSinceMatch` is a clock only the scene
+ * walks, fed by a TSL twin; `msSinceMatch` is a clock only the scene
  * can read (the raster's paintedSize versus the live DOM's own box), so
  * this ramp is evaluated JS-side once per frame and its result crosses
  * into the shader as a single uniform, not as a per-fragment function.
