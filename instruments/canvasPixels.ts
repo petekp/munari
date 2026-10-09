@@ -23,6 +23,32 @@ export function snapshotCanvas(canvas: HTMLCanvasElement): (x: number, yFromBott
   }
 }
 
+/**
+ * A rectangle of the canvas, as `gl.readPixels` returned it: premultiplied
+ * RGBA, rows from the bottom up. One read, for probes that scan a region.
+ */
+export function readCanvasRect(canvas: HTMLCanvasElement, x: number, yFromBottom: number, w: number, h: number): Uint8Array {
+  readback.width = canvas.width
+  readback.height = canvas.height
+  readbackContext.clearRect(0, 0, readback.width, readback.height)
+  readbackContext.drawImage(canvas, 0, 0)
+  const top = canvas.height - yFromBottom - h
+  const rows = readbackContext.getImageData(x, top, w, h).data
+  const out = new Uint8Array(w * h * 4)
+  for (let row = 0; row < h; row++) {
+    const from = (h - 1 - row) * w * 4
+    for (let i = 0; i < w * 4; i += 4) {
+      const a = rows[from + i + 3] ?? 0
+      const to = row * w * 4 + i
+      out[to] = Math.round(((rows[from + i] ?? 0) * a) / 255)
+      out[to + 1] = Math.round(((rows[from + i + 1] ?? 0) * a) / 255)
+      out[to + 2] = Math.round(((rows[from + i + 2] ?? 0) * a) / 255)
+      out[to + 3] = a
+    }
+  }
+  return out
+}
+
 interface Renders {
   render(...args: never[]): void
 }
@@ -56,17 +82,17 @@ interface GpuBackend {
   readonly gl?: WebGL2RenderingContext
 }
 
-/**
- * GPU errors since the last call: WebGPU validation errors, or the WebGL 2
- * fallback's `getError()`. Zero means the device accepted every upload and
- * draw, which is what the probes' `gl.getError() === 0` asserted on WebGL.
- */
 /** A WebGPURenderer, or the WebGLRenderer Fiber types it as. */
 interface CanvasRenderer {
   readonly domElement: HTMLCanvasElement
   readonly backend?: object
 }
 
+/**
+ * GPU errors since the last call: WebGPU validation errors, or the WebGL 2
+ * fallback's `getError()`. Zero means the device accepted every upload and
+ * draw, which is what the probes' `gl.getError() === 0` asserted on WebGL.
+ */
 export function gpuErrors(renderer: CanvasRenderer): () => number {
   // SAFETY: WebGPUBackend has `device` and WebGLBackend has `gl`; Three's
   // types declare neither on the Backend base, and a GL renderer has none.

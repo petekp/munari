@@ -25,16 +25,15 @@
 // came from somewhere. The fade is on the visible copy's holder, and the
 // parked capture sits outside that holder, where no fade can reach it.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { SceneSurface, useSurfaceSupport, useSurfaceHandle, useSurfaceChrome, useSurfaceTexture } from '@petepetrash/munari'
-import { textureSlot } from '../../lib/uniforms'
-import { LIGHT, SUCK_FRAG, SUCK_VERT } from './candidateShaders'
+import { SceneSurface, useSurfaceSupport, useSurfaceHandle, useSurfaceChrome, useSurfaceNodes } from '@petepetrash/munari'
+import { createSuckMaterial } from './candidateNodes'
 import { tokenize } from './candidateTokens'
 import {
   PhaseDrive,
-  useOwnUniforms,
+  useNodeMaterial,
   usePhase,
   worldBoxOf,
   type Phase,
@@ -77,72 +76,24 @@ function SuckMaterial({
   cursor: React.RefObject<THREE.Vector2>
   shape: React.RefObject<FlightShape>
 }) {
-  const texture = useSurfaceTexture()
-  const { chrome, width, height } = useSurfaceChrome()
-  const uniforms = useMemo(
-    () => ({
-      tMap: textureSlot(),
-      uCursor: { value: new THREE.Vector2() },
-      uT: { value: 0 },
-      uSpan: { value: 1 },
-      // A little over half a turn. Past ~4 radians the sheet passes edge-on
-      // twice and flickers; below ~1.5 it reads as a slide, not a draw-in.
-      uTwist: { value: copyTuning.twist },
-      // Peak height off the page, mid-flight. The sheet has to pass OVER
-      // the block it came from, or the copy looks like it is being filed
-      // behind the original rather than taken away from it.
-      uArc: { value: copyTuning.arc },
-      // Fraction of the flight spent handing out per-vertex start times by
-      // distance from the cursor. This is the whole gesture: at 0 the block
-      // scales toward a point, which is a transform, not a suction.
-      uLag: { value: copyTuning.lag },
-      uSway: { value: new THREE.Vector2() },
-      // A GLSL uniform left out of this bag reads vec3(0), and
-      // normalize(0) is NaN: Metal's clamp resolved the NaN diffuse to its
-      // floor, darkening every pixel of the sheet for the whole flight
-      // (2026-08-20).
-      uLightDir: { value: new THREE.Vector3(...LIGHT) },
-      uDiffuse: { value: copyTuning.diffuse },
-      uSpecPow: { value: copyTuning.specPow },
-      uSpecGain: { value: copyTuning.specGain },
-      uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uMunariSize: { value: new THREE.Vector2(1, 1) },
-    }),
-    [],
-  )
-  uniforms.tMap.value = texture
-  const material = useOwnUniforms(uniforms)
-  const radii = chrome?.radii ?? [0, 0, 0, 0]
-  uniforms.uMunariRadii.value.set(radii[0], radii[1], radii[2], radii[3])
-  uniforms.uMunariSize.value.set(width, height)
-  uniforms.uSpan.value = Math.hypot(width, height)
+  const surface = useSurfaceNodes()
+  const { width, height } = useSurfaceChrome()
+  const { material, values } = useNodeMaterial(() => createSuckMaterial(surface), [surface])
+  values.span.value = Math.hypot(width, height)
 
   useFrame(() => {
-    uniforms.uT.value = phase.current.t
-    uniforms.uCursor.value.copy(cursor.current)
-    uniforms.uTwist.value = copyTuning.twist * shape.current.twist
-    uniforms.uArc.value = copyTuning.arc * shape.current.arc
-    uniforms.uLag.value = copyTuning.lag
-    uniforms.uSway.value.copy(shape.current.sway).multiplyScalar(copyTuning.sway)
-    uniforms.uDiffuse.value = copyTuning.diffuse
-    uniforms.uSpecPow.value = copyTuning.specPow
-    uniforms.uSpecGain.value = copyTuning.specGain
+    values.t.value = phase.current.t
+    values.cursor.value.copy(cursor.current)
+    values.twist.value = copyTuning.twist * shape.current.twist
+    values.arc.value = copyTuning.arc * shape.current.arc
+    values.lag.value = copyTuning.lag
+    values.sway.value.copy(shape.current.sway).multiplyScalar(copyTuning.sway)
+    values.diffuse.value = copyTuning.diffuse
+    values.specPow.value = copyTuning.specPow
+    values.specGain.value = copyTuning.specGain
   })
 
-  return (
-    <shaderMaterial
-      ref={material}
-      key={texture.uuid}
-      uniforms={uniforms}
-      vertexShader={SUCK_VERT}
-      fragmentShader={SUCK_FRAG}
-      transparent
-      premultipliedAlpha
-      depthWrite={false}
-      toneMapped={false}
-      side={THREE.DoubleSide}
-    />
-  )
+  return <primitive object={material} attach="material" />
 }
 
 export function CandidateCopy() {

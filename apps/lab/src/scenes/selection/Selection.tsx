@@ -25,20 +25,20 @@
 //
 // (The black strikethrough this arrangement was first blamed for —
 // 2026-08-20 — turned out to be shader NaN, not the capture: see the
-// pow() rule in selectionShaders.ts. The texture was clean all along.)
+// pow() rule in selectionNodes.ts. The texture was clean all along.)
 //
 // This scene grew up on the candidates bench and graduated off it. The
-// stage helpers still come from there: PixelPerfect, worldBoxOf and
-// useOwnUniforms are the bench's, not this scene's, and duplicating them
+// stage helpers still come from there: PixelPerfect and worldBoxOf are
+// the bench's, not this scene's, and duplicating them
 // would be the fourth copy in the lab (candidates/README.md, gaps 6 and 7).
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SurfaceCanvas, useElementCapture, useCaptureFrame, useCaptureStatus, type CaptureHandle } from '@petepetrash/munari'
-import { textureSlot } from '../../lib/uniforms'
-import { PixelPerfect, useOwnUniforms, worldBoxOf, type WorldBox } from '../candidates/candidateStage'
-import { BUBBLE_FRAG, BUBBLE_VERT, LIGHT } from './selectionShaders'
+import { texture, uniform, uniformArray } from 'three/tsl'
+import { PixelPerfect, worldBoxOf, type WorldBox } from '../candidates/candidateStage'
+import { LIGHT, createBubbleMaterial, createGleamMaterial, type BubbleValues } from './selectionNodes'
 import { selectionTuning } from './selectionTuning'
 import { SelectionTweaks } from './selectionTweaks'
 import './selection.css'
@@ -62,85 +62,106 @@ export interface BeadState {
   target: number
 }
 
-function BubbleMaterial({ bead, capture }: { bead: React.RefObject<BeadState>; capture: CaptureHandle }) {
+interface BeadProps {
+  bead: React.RefObject<BeadState>
+  capture: CaptureHandle
+  size: readonly [number, number]
+  position: readonly [number, number, number]
+  visible: boolean
+}
+
+// The bead, then its gleam over it: selectionNodes.ts says why they are two draws.
+function Bead({ bead, capture, size, position, visible }: BeadProps) {
   const frames = useCaptureFrame(capture)
-  const uniforms = useMemo(
+  // An empty sRGB texture stands in until the first frame. The node's
+  // colour space decides the sampler at compile, so it must match the
+  // capture's.
+  const [blank] = useState(() => {
+    const texture = new THREE.Texture()
+    texture.colorSpace = THREE.SRGBColorSpace
+    return texture
+  })
+  const [map] = useState(() => texture(blank))
+  const values = useMemo<BubbleValues>(
     () => ({
-      tMap: textureSlot(),
-      uSize: { value: new THREE.Vector2(1, 1) },
-      uT: { value: 0 },
-      uRects: { value: Array.from({ length: MAX_RECTS }, () => new THREE.Vector4()) },
-      uRectCount: { value: 0 },
+      size: uniform(new THREE.Vector2(1, 1)),
+      t: uniform(0),
+      rects: uniformArray(Array.from({ length: MAX_RECTS }, () => new THREE.Vector4()), 'vec4'),
+      rectCount: uniform(0, 'int'),
       // Line boxes are square; the bead is not. The corner radius is half a
       // line height, which is what turns a run of rectangles into something
       // that could hold a liquid.
-      uCorner: { value: selectionTuning.corner },
-      uEdge: { value: selectionTuning.edge },
-      uHeight: { value: selectionTuning.height },
-      uWeld: { value: selectionTuning.weld },
-      uCaustic: { value: selectionTuning.caustic },
+      corner: uniform(selectionTuning.corner),
+      edge: uniform(selectionTuning.edge),
+      height: uniform(selectionTuning.height),
+      weld: uniform(selectionTuning.weld),
+      caustic: uniform(selectionTuning.caustic),
       // 0.06 = the words under a strip sit ~6% closer to its centre than
       // the page put them. Past ~0.12 the strip stops agreeing with the
       // line it came from and the eye reads two texts.
-      uMagnify: { value: selectionTuning.magnify },
-      uRefract: { value: selectionTuning.refract },
-      uIor: { value: selectionTuning.ior },
+      magnify: uniform(selectionTuning.magnify),
+      refract: uniform(selectionTuning.refract),
+      ior: uniform(selectionTuning.ior),
       // How far apart red and blue leave the rim, as a fraction of the
       // bend. 0.16 of a 6.5px bend is about a pixel of fringe — the width
       // at which the eye calls it glass rather than a printing error.
-      uDisperse: { value: selectionTuning.disperse },
-      uFrost: { value: selectionTuning.frost },
-      uShadowOffset: { value: new THREE.Vector2(selectionTuning.shadowX, selectionTuning.shadowY) },
-      uShadowSoft: { value: selectionTuning.shadowSoft },
-      uShadowAlpha: { value: selectionTuning.shadowAlpha },
-      uLightDir: { value: new THREE.Vector3(...LIGHT) },
-      uLightPos: { value: new THREE.Vector3() },
-      uFollow: { value: selectionTuning.follow },
+      disperse: uniform(selectionTuning.disperse),
+      frost: uniform(selectionTuning.frost),
+      shadowOffset: uniform(new THREE.Vector2(selectionTuning.shadowX, selectionTuning.shadowY)),
+      shadowSoft: uniform(selectionTuning.shadowSoft),
+      shadowAlpha: uniform(selectionTuning.shadowAlpha),
+      lightDir: uniform(new THREE.Vector3(...LIGHT)),
+      lightPos: uniform(new THREE.Vector3()),
+      follow: uniform(selectionTuning.follow),
       // A cold body, because the paper is warm. Tinting toward the page's
       // own hue would make the glass disappear into it.
-      uTint: { value: new THREE.Color('#7cc0ff') },
-      uTintGain: { value: selectionTuning.tintGain },
-      uReflect: { value: selectionTuning.reflect },
+      tint: uniform(new THREE.Color('#7cc0ff')),
+      tintGain: uniform(selectionTuning.tintGain),
+      reflect: uniform(selectionTuning.reflect),
       // Top-of-strip brightening and bottom-of-strip shading, as a
       // fraction. This is the term that gives a strip thickness — without
       // it the body is evenly tinted and reads as a coloured highlighter.
-      uDepth: { value: selectionTuning.depth },
-      uSpec: { value: selectionTuning.spec },
-      uSpecPow: { value: selectionTuning.specPow },
-      uSpecOp: { value: selectionTuning.specOpacity },
-      uSheenPow: { value: selectionTuning.sheenPow },
-      uSheenOp: { value: selectionTuning.sheenOpacity },
-      uRimPow: { value: selectionTuning.rimPow },
+      depth: uniform(selectionTuning.depth),
+      spec: uniform(selectionTuning.spec),
+      specPow: uniform(selectionTuning.specPow),
+      specOp: uniform(selectionTuning.specOpacity),
+      sheenPow: uniform(selectionTuning.sheenPow),
+      sheenOp: uniform(selectionTuning.sheenOpacity),
+      rimPow: uniform(selectionTuning.rimPow),
       // The broad sheen across the whole top. Kept well under the tight
       // specular: raise it and the glass turns to frosted plastic.
-      uSheen: { value: selectionTuning.sheen },
-      uRim: { value: selectionTuning.rim },
+      sheen: uniform(selectionTuning.sheen),
+      rim: uniform(selectionTuning.rim),
     }),
     [],
   )
-  const material = useOwnUniforms(uniforms)
+  const material = useMemo(() => createBubbleMaterial(map, values), [map, values])
+  useEffect(() => () => material.dispose(), [material])
+  const gleam = useMemo(() => createGleamMaterial(values), [values])
+  useEffect(() => () => gleam.dispose(), [gleam])
+  useEffect(() => () => blank.dispose(), [blank])
 
   useFrame((_, delta) => {
-    const shader = material.current
-    if (!shader) return
     const frame = frames.get()
-    shader.uniforms.tMap.value = frame?.texture ?? null
-    if (frame) shader.uniforms.uSize.value.set(frame.width, frame.height)
+    map.value = frame?.texture ?? blank
+    if (frame) values.size.value.set(frame.width, frame.height)
     const b = bead.current
     // One time constant for growing and shrinking, so a bead that is
     // re-dragged mid-fade never snaps.
     const k = 1 - Math.exp(-Math.min(delta, 1 / 30) / 0.055)
     b.on += (b.target - b.on) * k
-    uniforms.uT.value = b.on
-    uniforms.uRectCount.value = b.count
-    for (let i = 0; i < MAX_RECTS; i++) uniforms.uRects.value[i].copy(b.rects[i])
+    values.t.value = b.on
+    values.rectCount.value = b.count
+    // SAFETY: the array was built above from MAX_RECTS Vector4s.
+    const rects = values.rects.array as THREE.Vector4[]
+    for (let i = 0; i < MAX_RECTS; i++) rects[i].copy(b.rects[i])
     const k2 = selectionTuning
-    uniforms.uCorner.value = k2.corner
-    uniforms.uEdge.value = k2.edge
-    uniforms.uHeight.value = k2.height
-    uniforms.uWeld.value = k2.weld
-    uniforms.uCaustic.value = k2.caustic
-    uniforms.uMagnify.value = k2.magnify
+    values.corner.value = k2.corner
+    values.edge.value = k2.edge
+    values.height.value = k2.height
+    values.weld.value = k2.weld
+    values.caustic.value = k2.caustic
+    values.magnify.value = k2.magnify
     // Bend follows body size: a bend that reads as glass on a
     // paragraph-sized body folds a single thin line into ringing, because
     // a thin strip is all rim. Saturates at the tuned value once the body
@@ -156,10 +177,10 @@ function BubbleMaterial({ bead, capture }: { bead: React.RefObject<BeadState>; c
     const weldK = Math.min(k2.weld / Math.max(k2.weldFull, 1e-3), 1)
     const areaK = Math.min(b.len / Math.max(k2.bodyPx, 1), 1)
     const bodyK = 1 - weldK * (1 - areaK)
-    uniforms.uRefract.value = k2.refract * bodyK
-    uniforms.uIor.value = k2.ior
-    uniforms.uDisperse.value = k2.disperse
-    uniforms.uFrost.value = k2.frost
+    values.refract.value = k2.refract * bodyK
+    values.ior.value = k2.ior
+    values.disperse.value = k2.disperse
+    values.frost.value = k2.frost
     // The shadow's throw is similar triangles from the point light: a body
     // of height H under a light lightZ above the page lands its rim
     // H·d/lightZ away, so the shadow tucks under the glass when the cursor
@@ -173,28 +194,28 @@ function BubbleMaterial({ bead, capture }: { bead: React.RefObject<BeadState>; c
     const dy = b.cy - b.light.y
     const dl = Math.hypot(dx, dy) || 1
     const mag = Math.min((dl / Math.max(k2.lightZ, 1)) * k2.height, 3 * k2.height)
-    uniforms.uShadowOffset.value.set(
+    values.shadowOffset.value.set(
       (k2.shadowX * (1 - k2.follow) + (dx / dl) * mag * k2.follow) * bodyK,
       (k2.shadowY * (1 - k2.follow) + (dy / dl) * mag * k2.follow) * bodyK,
     )
-    uniforms.uShadowSoft.value = k2.shadowSoft
-    uniforms.uShadowAlpha.value = k2.shadowAlpha
-    uniforms.uTintGain.value = k2.tintGain
-    uniforms.uReflect.value = k2.reflect
-    uniforms.uDepth.value = k2.depth
-    uniforms.uSpec.value = k2.spec
-    uniforms.uSpecPow.value = k2.specPow
-    uniforms.uSpecOp.value = k2.specOpacity
-    uniforms.uSheen.value = k2.sheen
-    uniforms.uSheenPow.value = k2.sheenPow
-    uniforms.uSheenOp.value = k2.sheenOpacity
-    uniforms.uRim.value = k2.rim
-    uniforms.uRimPow.value = k2.rimPow
-    uniforms.uLightPos.value.set(b.light.x, b.light.y, k2.lightZ)
-    uniforms.uFollow.value = k2.follow
+    values.shadowSoft.value = k2.shadowSoft
+    values.shadowAlpha.value = k2.shadowAlpha
+    values.tintGain.value = k2.tintGain
+    values.reflect.value = k2.reflect
+    values.depth.value = k2.depth
+    values.spec.value = k2.spec
+    values.specPow.value = k2.specPow
+    values.specOp.value = k2.specOpacity
+    values.sheen.value = k2.sheen
+    values.sheenPow.value = k2.sheenPow
+    values.sheenOp.value = k2.sheenOpacity
+    values.rim.value = k2.rim
+    values.rimPow.value = k2.rimPow
+    values.lightPos.value.set(b.light.x, b.light.y, k2.lightZ)
+    values.follow.value = k2.follow
     const az = (k2.lightAz * Math.PI) / 180
     const el = (k2.lightEl * Math.PI) / 180
-    uniforms.uLightDir.value.set(
+    values.lightDir.value.set(
       Math.cos(el) * Math.cos(az),
       Math.cos(el) * Math.sin(az),
       Math.sin(el),
@@ -202,16 +223,16 @@ function BubbleMaterial({ bead, capture }: { bead: React.RefObject<BeadState>; c
   })
 
   return (
-    <shaderMaterial
-      ref={material}
-      uniforms={uniforms}
-      vertexShader={BUBBLE_VERT}
-      fragmentShader={BUBBLE_FRAG}
-      transparent
-      premultipliedAlpha
-      depthWrite={false}
-      toneMapped={false}
-    />
+    <>
+      <mesh visible={visible} position={position} frustumCulled={false}>
+        <planeGeometry args={size} />
+        <primitive object={material} attach="material" />
+      </mesh>
+      <mesh visible={visible} position={position} frustumCulled={false} renderOrder={1}>
+        <planeGeometry args={size} />
+        <primitive object={gleam} attach="material" />
+      </mesh>
+    </>
   )
 }
 
@@ -368,10 +389,15 @@ function SelectionPage() {
         }}
       >
         <PixelPerfect />
-        {size && box && <mesh visible={captureStatus.status === 'ready'} position={[box.x, box.y, 0]} frustumCulled={false}>
-          <planeGeometry args={[size[0], size[1]]} />
-          <BubbleMaterial bead={bead} capture={capture} />
-        </mesh>}
+        {size && box && (
+          <Bead
+            bead={bead}
+            capture={capture}
+            size={[size[0], size[1]]}
+            position={[box.x, box.y, 0]}
+            visible={captureStatus.status === 'ready'}
+          />
+        )}
       </SurfaceCanvas>
       <SelectionTweaks />
     </div>

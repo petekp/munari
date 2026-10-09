@@ -38,20 +38,20 @@ the driver's point-size ceiling.
 ## Shader and geometry rules
 
 - Use premultiplied alpha (decision #5): scale added light by source alpha
-  and fade the whole premultiplied color. Include the output color-space
-  conversion required by a custom `ShaderMaterial`.
-- Preserve the source's corner mask with `SURFACE_RADIUS_GLSL`,
-  `uMunariRadii` and `uMunariSize`.
-- R3F 9.7 copies uniform entries into the material's own container.
-  `useOwnUniforms` keeps per-frame scalar writes attached to the actual material.
-  See the measured failure in `candidateStage.tsx`.
+  and fade the whole premultiplied color. Materials are node materials in
+  `candidateNodes.ts`; they return through `premultipliedOutput` or, for a
+  fade applied after the encode, `encodedOutput`.
+- Preserve the source's corner mask with `useSurfaceNodes().radiusMask()`.
+- Uniforms are nodes created with the material. `useNodeMaterial` in
+  `candidateStage.tsx` builds a material and disposes it; frame loops write
+  `.value` on the returned nodes.
 - CPU-deformed geometry must update its bounds for raycasting. Unroll and
   Peel clear the bounding sphere after modifying vertices.
 
 `candidateCurlLaw.test.ts` pins arc length, hinge continuity and nested turns.
 `candidateUnrollLaw.test.ts` covers early cancellation and close/reopen timing.
-`candidateShaders.test.ts` compares Copy normals with numerical derivatives
-of the complete deformation. `candidateTokens.test.ts` covers the displayed
+Copy's analytic normal has no unit test; `lab-interactions/detail-motion.mjs`
+captures its lighting for review. `candidateTokens.test.ts` covers the displayed
 code tokenizer. Tuned values remain in `candidateTuning.ts`; tessellation
 comments record the geometric scale each scene needs.
 

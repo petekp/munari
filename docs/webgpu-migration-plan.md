@@ -1,6 +1,6 @@
 # WebGPU migration plan
 
-**Status: `SurfaceCanvas`, `FrameSurface` and `Surface` ported and verified on both backends. The lab scenes and the registry are not ported.**
+**Status: `SurfaceCanvas`, `FrameSurface` and `Surface` ported and verified on both backends. Ten lab scenes are ported: Genie, Knobs, Logo, Flight, Selection, Candidates, Crystal, Fisheye, Slider and Refraction. The other lab scenes and the registry are not.**
 
 Munari will move from Three's `WebGLRenderer` to its `WebGPURenderer`. Shaders
 will be written once in Three Shading Language (TSL). TSL compiles to WGSL for
@@ -170,12 +170,10 @@ Next:
 
 1. Run a disposable check that a lit material applying its own ACES matches
    the same material under renderer ACES, beside exact HTML.
-2. Handle WebGPU device loss in `SurfaceCanvas`. It listens only for WebGL
-   context loss, which covers the fallback.
-3. Apply the empty-geometry, texture-limit, and origin checks to `Surface`
+2. Apply the empty-geometry, texture-limit, and origin checks to `Surface`
    when it is ported.
 
-The lab will not render on this branch until its GLSL materials are ported.
+Scenes still written in GLSL draw nothing on this branch.
 
 ### Receipts for frames that never drew
 
@@ -261,13 +259,25 @@ Verified on macOS on both backends: `gate:dom-surface-demand`,
 `probe:api-native-pointer`. Their values match `main`'s except as decision #71
 lists.
 
+Also done on 2026-10-08:
+
+- `SurfaceCanvas` draws canvas frames through `DirectRenderPipeline`, and
+  custom materials return color through `premultipliedOutput` or
+  `encodedOutput` (decisions.md #72). The default Surface material does too.
+- After a GPU loss, `SurfaceCanvas` remounts its Canvas with a new renderer
+  and calls `onRendererLost` (decisions.md #73).
+- `gate:shaders` counts WebGPU shader modules and pipelines, and still hooks
+  WebGL on the fallback.
+
 Still open:
 
-1. Run the same gates with `STRICT_CAPABILITY=1`, and in the Linux container.
+1. Run every CI gate on both backends with `STRICT_CAPABILITY=1`, and in the
+   Linux container.
 2. Decide whether `Surface` needs an origin check. Whether
    `drawElementImage` can taint a capture canvas is unverified.
-3. Port the lab scenes, starting with those CI gates load: Genie, Logo and
-   Knobs, then the scenes `gate:degraded` walks.
+3. Port the remaining lab scenes: Veil, Rain, Plume, Optics, Marble hand,
+   Lamp, Home and Glass. `probe:api-all-demos` covers them and waits on them.
+4. Port the registry copies.
 
 ## After a go
 

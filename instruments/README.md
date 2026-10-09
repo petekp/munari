@@ -751,13 +751,23 @@ Checks that the lab's shaders compile and link. `npm run gate:shaders`.
 A shader is a JavaScript string until a browser compiles it, so
 nothing else in CI can tell a working one from a broken one:
 typecheck, lint, and the unit suites all see a string. This gate hooks
-`compileShader` and `linkProgram` from inside the page, walks the logo
+shader compiles and program links from inside the page, walks the logo
 scene through the states that build materials (page, scene, extruded,
-bump-only relief, back to page), and prints every info log against its
-own source lines.
+mesh body, back to page), and prints every error against its own source
+lines.
+
+On WebGPU, each `createShaderModule` call counts as a compile and each
+render pipeline as a link. Errors come from each module's
+`getCompilationInfo()` and from the device's uncaptured errors. On the
+WebGL 2 fallback (`MUNARI_BACKEND=webgl2`), the gate hooks
+`compileShader` and `linkProgram`. Either way it fails on any error, or
+when it sees no compile or link at all. A planted WGSL error failed it on
+both backends (2026-10-08).
 
 The walk covers only the programs its states construct. A new material
-needs a new state here.
+needs a new state here. The states read the letter material's uniforms
+through a wrapper the gate adds around `createLetterMaterial` when it
+serves the lab.
 
 Each step waits up to 30 seconds for its state and prints how long it took.
 The check does not judge that time. A hosted runner took 7.65 seconds to

@@ -30,14 +30,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceSupport, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
-import { textureSlot } from '../../lib/uniforms'
+import { Surface, useSurfaceSupport, useSurfaceHandle, useSurfaceNodes } from '@petepetrash/munari'
 import { buildCloud, grainSize, type CloudSpec } from './candidateCloud'
-import { CLOUD_FRAG, CLOUD_VERT } from './candidateShaders'
+import { createCloudMaterial } from './candidateNodes'
 import {
   PhaseDrive,
   easeInOutCubic,
-  useOwnUniforms,
+  useNodeMaterial,
   usePhase,
   worldBoxOf,
   type Phase,
@@ -70,77 +69,33 @@ function CloudMaterial({
   /** The colour this cloud's grains pass through mid-flight. */
   flare: string
 }) {
-  const texture = useSurfaceTexture()
-  const uniforms = useMemo(
-    () => ({
-      tMap: textureSlot(),
-      uT: { value: 0 },
-      uTravel: { value: new THREE.Vector3(travel, 0, 0) },
-      // Lateral wander. At 34px the cloud is visibly a cloud without any
-      // grain travelling far enough to be read as a separate object.
-      uSwirl: { value: dissolveTuning.swirl },
-      uBulge: { value: dissolveTuning.bulge },
-      uTwist: { value: dissolveTuning.twist },
-      // Fraction of the flight spent handing out start times. Without the
-      // stagger every grain arrives on the same frame and the landing is a
-      // shutter rather than a settling.
-      uStagger: { value: dissolveTuning.stagger },
-      // Exactly one texel-block. The grains are square at rest, so at this
-      // size they tile the tile with no gap — see the shader's note.
-      uGrain: { value: grainSize(SPEC) },
-      // The grain's footprint in uv, for the shader's landing resolve.
-      uPitchUv: { value: new THREE.Vector2(1 / SPEC.cols, 1 / SPEC.rows) },
-      uReverse: { value: reverse ? 1 : 0 },
-      uFade: { value: 1 },
-      // Near zero. The figures are mostly pale field, and at the old 0.22
-      // the two overlapping clouds saturated to a white blob mid-crossing
-      // (2026-08-20) — the flare colour, not added light, carries the
-      // flight now.
-      uSpark: { value: dissolveTuning.spark },
-      uFlare: { value: new THREE.Color(flare) },
-      // How far toward the other figure's colour a grain gets at the top of
-      // its arc. High on purpose: the tiles carry almost no ink, so the
-      // flare hue is the only thing that keeps the mid-crossing cloud from
-      // reading as white. The outline still survives — 0.85 leaves 15% of
-      // the grain's own colour, and the stroke is 3px against a pale field.
-      uFlareGain: { value: dissolveTuning.flareGain },
-    }),
-    [travel, reverse, flare],
+  const surface = useSurfaceNodes()
+  const { material, values } = useNodeMaterial(
+    () => createCloudMaterial(surface, grainSize(SPEC), new THREE.Vector2(1 / SPEC.cols, 1 / SPEC.rows)),
+    [surface],
   )
-  uniforms.tMap.value = texture
-  const material = useOwnUniforms(uniforms)
+  values.travel.value.set(travel, 0, 0)
+  values.reverse.value = reverse ? 1 : 0
+  values.flare.value.set(flare)
 
   useFrame(() => {
     const t = phase.current.t
-    uniforms.uT.value = t
-    uniforms.uSwirl.value = dissolveTuning.swirl
-    uniforms.uBulge.value = dissolveTuning.bulge
-    uniforms.uTwist.value = dissolveTuning.twist
-    uniforms.uStagger.value = dissolveTuning.stagger
-    uniforms.uSpark.value = dissolveTuning.spark
-    uniforms.uFlareGain.value = dissolveTuning.flareGain
+    values.t.value = t
+    values.swirl.value = dissolveTuning.swirl
+    values.bulge.value = dissolveTuning.bulge
+    values.twist.value = dissolveTuning.twist
+    values.stagger.value = dissolveTuning.stagger
+    values.spark.value = dissolveTuning.spark
+    values.flareGain.value = dissolveTuning.flareGain
     // Exact complements. The earlier pair overlapped by eyeball and left a
     // window near t = 0.5 where both clouds were near-opaque, which is what
     // made the landing look like a cut. One weight, used both ways, cannot
     // have that window.
     const w = easeInOutCubic(Math.min(1, Math.max(0, (t - 0.26) / 0.48)))
-    uniforms.uFade.value = reverse ? w : 1 - w
+    values.fade.value = reverse ? w : 1 - w
   })
 
-  return (
-    <shaderMaterial
-      ref={material}
-      key={texture.uuid}
-      uniforms={uniforms}
-      vertexShader={CLOUD_VERT}
-      fragmentShader={CLOUD_FRAG}
-      transparent
-      premultipliedAlpha
-      depthWrite={false}
-      toneMapped={false}
-      side={THREE.DoubleSide}
-    />
-  )
+  return <primitive object={material} attach="material" />
 }
 
 function CloudGeometry() {

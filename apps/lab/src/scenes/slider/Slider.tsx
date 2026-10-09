@@ -31,8 +31,8 @@ import {
   Surface,
   SurfaceCanvas,
   useSurfaceHandle,
+  useSurfaceNodes,
   useSurfaceStatus,
-  useSurfaceUniforms,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { plainAttribute } from '../../lib/geometry'
@@ -42,7 +42,7 @@ import {
   fisheyeDisplaceX,
   fisheyeScale,
 } from '../fisheye/fisheyeLaw'
-import { LENS_FRAG, LENS_LIGHT, LENS_VERT } from './sliderShaders'
+import { createLensLight, createLensMaterial } from './sliderNodes'
 import './slider.css'
 
 const FOV = 42
@@ -71,7 +71,7 @@ const GRID_X = 280
 const GRID_Y = 2
 const GRACE = 32
 const TAU_MS = 90
-// The shading's fake bulge height (sliderShaders.ts; the geometry
+// The shading's fake bulge height (sliderNodes.ts; the geometry
 // never leaves z = 0). Same number as the fisheye scene's glass.
 const LENS_HEIGHT = 40
 
@@ -145,22 +145,11 @@ function PixelPerfect() {
 // ── the glass ────────────────────────────────────────────────────────────
 
 function LensMaterial() {
-  const surface = useSurfaceUniforms()
-  const uniforms = useMemo(
-    () => ({ ...surface, uLightDir: { value: new THREE.Vector3(...LENS_LIGHT) } }),
-    [surface],
-  )
-  return (
-    <shaderMaterial
-      uniforms={uniforms}
-      vertexShader={LENS_VERT}
-      fragmentShader={LENS_FRAG}
-      transparent
-      premultipliedAlpha
-      depthWrite={false}
-      toneMapped={false}
-    />
-  )
+  const surface = useSurfaceNodes()
+  const [light] = useState(createLensLight)
+  const material = useMemo(() => createLensMaterial(surface, light), [surface, light])
+  useLayoutEffect(() => () => material.dispose(), [material])
+  return <primitive object={material} attach="material" />
 }
 
 // ── the warp ─────────────────────────────────────────────────────────────

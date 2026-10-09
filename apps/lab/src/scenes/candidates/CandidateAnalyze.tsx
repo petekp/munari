@@ -18,13 +18,11 @@
 // canvas holds that block. It goes back afterwards, and the article's
 // layout never moves, because the page copy keeps its box the whole time.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
-import { textureSlot } from '../../lib/uniforms'
-import { LIGHT, PRISM_FRAG, PRISM_VERT } from './candidateShaders'
-import { useOwnUniforms, worldBoxOf, type WorldBox } from './candidateStage'
+import { Surface, useSurfaceChrome, useSurfaceHandle, useSurfaceNodes } from '@petepetrash/munari'
+import { createPrismMaterial } from './candidateNodes'
+import { useNodeMaterial, worldBoxOf, type WorldBox } from './candidateStage'
 import { analyzeTuning } from './candidateTuning'
 
 const BLOCKS = [
@@ -60,99 +58,45 @@ const BLOCKS = [
 /** How long the reader spends on one block. */
 
 function PrismMaterial({ on, onFaded }: { on: boolean; onFaded: () => void }) {
-  const texture = useSurfaceTexture()
-  const { chrome, width, height } = useSurfaceChrome()
-  const uniforms = useMemo(
-    () => ({
-      tMap: textureSlot(),
-      uTexel: { value: new THREE.Vector2(1 / 512, 1 / 512) },
-      uTime: { value: 0 },
-      uOn: { value: 0 },
-      // 6px of lift. Enough that the shadowless sheet still reads as being
-      // off the page through parallax alone when the reader scrolls.
-      uLift: { value: analyzeTuning.lift },
-      // 1.6px of ripple. The dispersion below is proportional to the
-      // sheet's slope, so this number sets the rainbow's strength as much
-      // as uPrism does — they are one knob wearing two names, and the
-      // wave is the one to reach for first because it is also the shape.
-      uWave: { value: analyzeTuning.wave },
-      uScan: { value: 1 },
-      uScanWidth: { value: analyzeTuning.scanWidth },
-      uDisperse: { value: analyzeTuning.disperse },
-      // Raised, because the colour is now gated by the scan band and only
-      // reaches full strength on the few glyph rows under it.
-      uPrism: { value: analyzeTuning.prism },
-      uGlow: { value: analyzeTuning.glow },
-      uEdgeGain: { value: analyzeTuning.edgeGain },
-      // The two ends of the split. A cold blue and a soft amber, both well
-      // off saturation — a duotone at full chroma is a rainbow with two
-      // colours in it.
-      uCool: { value: new THREE.Color('#5fa8e8') },
-      uWarm: { value: new THREE.Color('#e8a55f') },
-      // Warm, and about a fifth the strength of the specular. This is the
-      // "something is lit behind the page" term; past ~0.2 it stops being
-      // backlight and starts being a highlighter.
-      uBacklight: { value: new THREE.Color('#ffcf8a') },
-      uBackGain: { value: analyzeTuning.backGain },
-      uLightDir: { value: new THREE.Vector3(...LIGHT) },
-      uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uMunariSize: { value: new THREE.Vector2(1, 1) },
-    }),
-    [],
-  )
-  uniforms.tMap.value = texture
-  const material = useOwnUniforms(uniforms)
-  const radii = chrome?.radii ?? [0, 0, 0, 0]
-  uniforms.uMunariRadii.value.set(radii[0], radii[1], radii[2], radii[3])
-  uniforms.uMunariSize.value.set(width, height)
-  uniforms.uTexel.value.set(1 / Math.max(width, 1), 1 / Math.max(height, 1))
+  const surface = useSurfaceNodes()
+  const { width, height } = useSurfaceChrome()
+  const { material, values } = useNodeMaterial(() => createPrismMaterial(surface), [surface])
+  values.texel.value.set(1 / Math.max(width, 1), 1 / Math.max(height, 1))
 
   const faded = useRef(false)
   useFrame((_, delta) => {
     const dt = Math.min(delta, 1 / 30)
-    uniforms.uTime.value += dt
-    uniforms.uLift.value = analyzeTuning.lift
-    uniforms.uWave.value = analyzeTuning.wave
-    uniforms.uScanWidth.value = analyzeTuning.scanWidth
-    uniforms.uDisperse.value = analyzeTuning.disperse
-    uniforms.uPrism.value = analyzeTuning.prism
-    uniforms.uGlow.value = analyzeTuning.glow
-    uniforms.uEdgeGain.value = analyzeTuning.edgeGain
-    uniforms.uBackGain.value = analyzeTuning.backGain
+    values.time.value += dt
+    values.lift.value = analyzeTuning.lift
+    values.wave.value = analyzeTuning.wave
+    values.scanWidth.value = analyzeTuning.scanWidth
+    values.disperse.value = analyzeTuning.disperse
+    values.prism.value = analyzeTuning.prism
+    values.glow.value = analyzeTuning.glow
+    values.edgeGain.value = analyzeTuning.edgeGain
+    values.backGain.value = analyzeTuning.backGain
     const target = on ? 1 : 0
-    uniforms.uOn.value += (target - uniforms.uOn.value) * (1 - Math.exp(-dt / 0.13))
+    values.on.value += (target - values.on.value) * (1 - Math.exp(-dt / 0.13))
     // uv.y = 1 is the top of the block, so the read head starts at 1 and
     // runs down. It resets on arrival rather than on departure, which is
     // why a re-analysed block starts from its top again.
     if (on) {
-      uniforms.uScan.value -= dt / (analyzeTuning.dwellMs / 1000)
-      if (uniforms.uScan.value < -0.2) uniforms.uScan.value = 1.2
+      values.scan.value -= dt / (analyzeTuning.dwellMs / 1000)
+      if (values.scan.value < -0.2) values.scan.value = 1.2
       faded.current = false
     } else {
-      uniforms.uScan.value = 1.2
+      values.scan.value = 1.2
       // The pixels go back to the page only after the glass has actually
       // cleared. Dropping on the state change instead would swap a sheet
       // that is still visibly bent for a flat paragraph, in one frame.
-      if (!faded.current && uniforms.uOn.value < 0.01) {
+      if (!faded.current && values.on.value < 0.01) {
         faded.current = true
         onFaded()
       }
     }
   })
 
-  return (
-    <shaderMaterial
-      ref={material}
-      key={texture.uuid}
-      uniforms={uniforms}
-      vertexShader={PRISM_VERT}
-      fragmentShader={PRISM_FRAG}
-      transparent
-      premultipliedAlpha
-      depthWrite={false}
-      toneMapped={false}
-    />
-  )
+  return <primitive object={material} attach="material" />
 }
 
 function AnalyzedBlock({

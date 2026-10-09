@@ -8,9 +8,9 @@
 // document. Nothing on screen reports it.
 //
 // What is pinned here is the PURE half. `roundedCoord` is transcribed from
-// `roundedUv` in refractionShaders.ts and the numbers below were computed
-// from that GLSL by hand, so a transcription error fails here rather than in
-// a browser. The half that needs a GPU — that the CPU mirror of the spread
+// `roundedUv` in refractionNodes.ts and the numbers below were computed
+// from that node graph by hand, so a transcription error fails here rather
+// than in a browser. The half that needs a GPU — that the CPU mirror of the spread
 // field agrees with the field the shader samples — is
 // `gate:gallery-pointer`, because only a browser can fill those targets.
 

@@ -194,8 +194,12 @@ try {
   )
 
   // ── the reference frames and the sheet, as luminance grids ───────────
-  // Read back in the same task as the render: the canvas keeps no drawing
-  // buffer, and a read from a later task returns a cleared frame.
+  // Read back in the same task as the render: a WebGPU canvas texture is
+  // replaced once the browser presents, so a read is only valid right after
+  // `render()` returns.
+  await page.evaluate(async (pixelsUrl) => {
+    window.__canvasPixels = await import(pixelsUrl)
+  }, '/@fs' + path.join(ROOT, 'instruments', 'canvasPixels.ts'))
   const G = 128
   const H = 84
   const grab = (gw, gh) => {
@@ -208,14 +212,13 @@ try {
     const w = Math.round(r.width * dpr)
     const h = Math.round(r.height * dpr)
     const y = Math.round((canvas.clientHeight - r.bottom) * dpr)
-    const px = new Uint8Array(w * h * 4)
-    gl.getContext().readPixels(x, y, w, h, 0x1908, 0x1401, px)
+    const px = window.__canvasPixels.readCanvasRect(canvas, x, y, w, h)
     const sum = new Float64Array(gw * gh)
     const count = new Uint32Array(gw * gh)
     for (let i = 0; i < w * h; i++) {
       const row = Math.floor(i / w)
-      // readPixels hands back rows bottom-up; the grid is indexed the way a
-      // screen fraction is, from the top.
+      // The helper's rows count up from the bottom; the grid is indexed the
+      // way a screen fraction is, from the top.
       const gy = Math.min(gh - 1, Math.floor(((h - 1 - row) / h) * gh))
       const gx = Math.min(gw - 1, Math.floor(((i % w) / w) * gw))
       const k = gy * gw + gx
@@ -228,8 +231,8 @@ try {
   const zoomNow = () => {
     let z = null
     window.__r3f?.scene?.traverse((o) => {
-      const u = o.isMesh ? o.material?.uniforms : null
-      if (u?.uTransmission) z = u.uZoom.value
+      const v = o.isMesh ? o.material?.userData?.refractionValues : null
+      if (v) z = v.zoom.value
     })
     return z
   }

@@ -9,7 +9,7 @@
 // delivered at the hand's own coordinates lands on whatever the glass slid
 // out of the way. The scene closes that gap by handing Munari's pointer
 // relay the same trace the fragment shader drew with — `traceCrystal` in
-// crystalLaw.ts, mirrored into crystalShaders.ts.
+// crystalLaw.ts, mirrored into crystalNodes.ts.
 //
 // Two copies of one function is the exact shape of bug this repo is worst
 // at noticing. The PICTURE comes from the shader, so it stays perfect while
@@ -257,7 +257,8 @@ try {
   // wherever Munari put the capture container. Subtracting the container's
   // own rect turns them back into sheet coordinates, and the sheet is the
   // viewport — so these are screen px, which clause 1 then proves.
-  await page.evaluate(() => {
+  await page.evaluate(async (pixelsUrl) => {
+    const { snapshotCanvas } = await import(pixelsUrl)
     const host = document.querySelector('[data-munari-source-host][data-munari-instance="source"]')
     window.__box = (label) => {
       const el = host.querySelector(`.crystal-key[data-key="${label}"]`)
@@ -275,21 +276,34 @@ try {
       return cb.checked
     }
     window.__frames = {}
-    window.__grab = (tag) => {
+    // Only the window around (hx, hy) is kept: the helper reads one pixel per
+    // call, and both measurements below look nowhere else. `at` clamps to the
+    // canvas first, so the stored span is the clamped span of the same reads.
+    window.__grab = (tag, hx, hy, win) => {
       const { gl, scene, camera } = window.__r3f
       gl.render(scene, camera)
       const c = gl.domElement
+      // Read in the same task as the render: a WebGPU canvas texture is
+      // replaced once the browser presents.
+      const pixel = snapshotCanvas(c)
       const w = c.width
       const h = c.height
-      const px = new Uint8Array(w * h * 4)
-      // Read in the same task as the render: the canvas keeps no drawing
-      // buffer, and a read from a later task returns a cleared frame.
-      gl.getContext().readPixels(0, 0, w, h, 0x1908, 0x1401, px)
-      const lum = new Float32Array(w * h)
-      for (let i = 0; i < w * h; i++) {
-        lum[i] = 0.2126 * px[i * 4] + 0.7152 * px[i * 4 + 1] + 0.0722 * px[i * 4 + 2]
+      const dpr = w / c.clientWidth
+      const ch = c.clientHeight
+      const clamp = (v, max) => Math.min(max - 1, Math.max(0, v))
+      const x0 = clamp(Math.round((hx - win) * dpr), w)
+      const x1 = clamp(Math.round((hx + win) * dpr), w)
+      const y0 = clamp(Math.round((ch - (hy + win)) * dpr), h)
+      const y1 = clamp(Math.round((ch - (hy - win)) * dpr), h)
+      const rw = x1 - x0 + 1
+      const lum = new Float32Array(rw * (y1 - y0 + 1))
+      for (let gy = y0; gy <= y1; gy++) {
+        for (let gx = x0; gx <= x1; gx++) {
+          const [r, g, b] = pixel(gx, gy)
+          lum[(gy - y0) * rw + (gx - x0)] = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        }
       }
-      window.__frames[tag] = { lum, w, h, ch: c.clientHeight, dpr: w / c.clientWidth }
+      window.__frames[tag] = { lum, x0, x1, y0, y1, rw, w, h, ch, dpr }
     }
     // How much brighter and darker one frame is than another over a window,
     // in luminance. Used against a knob that changes ONE term, so the
@@ -300,7 +314,7 @@ try {
       const at = (f, x, y) => {
         const gx = Math.min(f.w - 1, Math.max(0, Math.round(x * f.dpr)))
         const gy = Math.min(f.h - 1, Math.max(0, Math.round((f.ch - y) * f.dpr)))
-        return f.lum[gy * f.w + gx]
+        return f.lum[(gy - f.y0) * f.rw + (gx - f.x0)]
       }
       let up = 0
       let down = 0
@@ -315,7 +329,7 @@ try {
       }
       return { up, down, peak: Math.round(peak) }
     }
-    // GL row 0 is the BOTTOM of the canvas; every read below is in CSS px
+    // Pixel row 0 is the BOTTOM of the canvas; every read below is in CSS px
     // from the top, so the flip happens once, here.
     window.__diff = (hx, hy, win, step, tipR) => {
       const A = window.__frames.on
@@ -323,7 +337,7 @@ try {
       const at = (f, x, y) => {
         const gx = Math.min(f.w - 1, Math.max(0, Math.round(x * f.dpr)))
         const gy = Math.min(f.h - 1, Math.max(0, Math.round((f.ch - y) * f.dpr)))
-        return f.lum[gy * f.w + gx]
+        return f.lum[(gy - f.y0) * f.rw + (gx - f.x0)]
       }
       // The highlighted key is DARKER than its neighbours: the pad is lit
       // paper and the aimed-at key fills near-black. So a pixel that darkens
@@ -350,7 +364,7 @@ try {
       }
       return { on, off, tipOn, tipOff }
     }
-  })
+  }, '/@fs' + path.join(ROOT, 'instruments', 'canvasPixels.ts'))
 
   const box = async (label) => {
     const b = await page.evaluate((l) => window.__box(l), label)
@@ -415,7 +429,7 @@ try {
   await setCorrect(true)
   await page.mouse.move(aim.x, aim.y)
   await sleep(400)
-  await page.evaluate(() => window.__grab('on'))
+  await page.evaluate(([x, y, win]) => window.__grab('on', Math.round(x), Math.round(y), win), [aim.x, aim.y, WINDOW])
 
   await setCorrect(false)
   // A move to the same place: it re-raycasts, which is what re-relays the
@@ -423,7 +437,7 @@ try {
   // key keeps whatever state it last heard.
   await page.mouse.move(aim.x, aim.y)
   await sleep(400)
-  await page.evaluate(() => window.__grab('off'))
+  await page.evaluate(([x, y, win]) => window.__grab('off', Math.round(x), Math.round(y), win), [aim.x, aim.y, WINDOW])
 
   const d = await page.evaluate(
     ([x, y, win, step, tipR]) => window.__diff(Math.round(x), Math.round(y), win, step, tipR),
@@ -524,10 +538,10 @@ try {
     return m.crystalTuning.caustic
   })
   await sleep(200)
-  await page.evaluate(() => window.__grab('on'))
+  await page.evaluate(([x, y, win]) => window.__grab('on', Math.round(x), Math.round(y), win), [aim.x, aim.y, CAUSTIC_WIN])
   await setCaustic(0)
   await sleep(200)
-  await page.evaluate(() => window.__grab('off'))
+  await page.evaluate(([x, y, win]) => window.__grab('off', Math.round(x), Math.round(y), win), [aim.x, aim.y, CAUSTIC_WIN])
   await setCaustic(causticWas)
   const g = await page.evaluate(
     ([x, y, win]) => window.__gain(Math.round(x), Math.round(y), win),

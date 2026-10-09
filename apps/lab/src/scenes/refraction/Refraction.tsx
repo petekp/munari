@@ -36,7 +36,7 @@
 // Ownership: this module owns time, layout and the shared handle. The sheet
 // itself is `refractionMaterial.tsx`, which the gallery scene mounts too.
 // Shape belongs to `refractionLaw.ts`, numbers to `refractionTuning.ts`,
-// pixels to `refractionShaders.ts`.
+// pixels to `refractionNodes.ts`.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useThree } from '@react-three/fiber'

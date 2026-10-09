@@ -166,7 +166,7 @@ async function checkCopy(page) {
   const sample = await page.evaluate(() => window.__detailCopy)
   await page.evaluate(() => window.__r3f.setFrameloop('always'))
   await page.waitForFunction(() => document.querySelector('.cand-code-holder') && !document.querySelector('.cand-code-holder').hasAttribute('data-gone'))
-  return { issues: [53], sample, unmeasured: ['Pixel lighting is captured for review; normals versus complete displaced tangents are pinned in candidateShaders.test.ts.'] }
+  return { issues: [53], sample, unmeasured: ['Pixel lighting is captured for review; no unit test pins the normals against the displaced tangents.'] }
 }
 
 async function checkLamp(page) {

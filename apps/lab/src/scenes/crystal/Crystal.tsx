@@ -30,7 +30,7 @@
 // Ownership: this module owns the page, the hand and the pointer
 // correction. The pose is decided in `crystalMaterial.tsx` — one copy, so
 // the eye and the hand cannot disagree. Shape and physics are
-// `crystalLaw.ts`, pixels `crystalShaders.ts`, numbers `crystalTuning.ts`.
+// `crystalLaw.ts`, pixels `crystalNodes.ts`, numbers `crystalTuning.ts`.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useThree } from '@react-three/fiber'

@@ -206,7 +206,7 @@ describe('the motion rig', () => {
 
   it('keeps the resting weave legible as a wave, not a rumble', () => {
     // A wave is legible when ONE crest visibly travels — and the
-    // weave is a single field the whole word shares (uWaveOrigin), so
+    // weave is a single field the whole word shares (waveOrigin), so
     // the unit that must hold the crests is the WORD, not the glyph.
     // Every floor here is font-free: WEAVE is em-scaled and
     // slotLayout speaks em.

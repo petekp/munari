@@ -1,10 +1,10 @@
-// The sheet's material — one shader material holding two live documents,
+// The sheet's material — one node material holding two live documents,
 // the arriving one sampled through a drop of glass grown out of the
 // leaving one.
 //
 // The law: the drop is a function of CSS px, never of texels. Every
 // distance a caller tunes — the meniscus, the height, the bend — is stated
-// in CSS px and `uTexel` converts, so changing a stage's size or the
+// in CSS px and `texel` converts, so changing a stage's size or the
 // device's pixel ratio does not silently change the shape of the glass.
 //
 // It lives apart from `Refraction.tsx` because two scenes now mount it: the
@@ -24,20 +24,20 @@
 // photograph open in a different order in a different window.
 //
 // Ownership: this module owns the uniform bag and the frame write. Shape
-// belongs to `refractionLaw.ts`, pixels to `refractionShaders.ts`, numbers
+// belongs to `refractionLaw.ts`, pixels to `refractionNodes.ts`, numbers
 // to whichever tuning bag the caller passes.
 
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
+  useSurfaceNodes,
   useSurfaceTextureOf,
-  useSurfaceUniforms,
   type SurfaceHandle,
 } from '@petepetrash/munari'
 import { useInkField } from './refractionField'
 import { refractionStage, type RefractionShape } from './refractionLaw'
-import { REFRACTION_FRAG, REFRACTION_VERT } from './refractionShaders'
+import { createRefractionMaterial, createRefractionValues } from './refractionNodes'
 
 /**
  * Every number the sheet reads, as a shape rather than a specific bag.
@@ -109,14 +109,12 @@ export function RefractionMaterial({
    */
   probe?: React.RefObject<((u: number, v: number) => number) | null>
 }) {
-  const surface = useSurfaceUniforms()
+  const surface = useSurfaceNodes()
   const arriving = useSurfaceTextureOf(incoming, incomingPart)
-  const material = useRef<THREE.ShaderMaterial>(null)
 
   // The frame loop reads these; it cannot read a render closure.
   const arrivingRef = useRef(arriving)
   arrivingRef.current = arriving
-  const outgoingSlot = surface.tMap
 
   // The panel mutates the bag in place, so the frame loop has to re-read
   // whatever the caller is holding rather than the render's capture.
@@ -133,63 +131,39 @@ export function RefractionMaterial({
   // Registered before the frame write below, so the field the bend samples
   // is this frame's and not the one before it.
   const field = useInkField(
-    outgoingSlot,
+    surface.map,
     tune,
     fieldW,
     fieldH,
   )
 
-  // Initial values only. r3f 9.7 copies the `uniforms` prop entry by entry
-  // into slots the material owns and re-runs only when the prop's identity
-  // changes, so a per-frame write to this bag lands in an object nothing
-  // samples (candidates/README.md gap 1). The frame writes below go through
-  // the material's own slots, which is the channel that reaches the GPU.
-  const uniforms = useMemo(
-    () => ({
-      ...surface,
-      // Sampling the leaving page as its own stand-in keeps a valid texture
-      // bound before the resident source publishes. `uHasIncoming` is 0 on
-      // exactly those frames, so nothing of it survives the mix.
-      tIncoming: { value: surface.tMap.value },
-      uHasIncoming: { value: 0 },
-      // One CSS PIXEL, not one texel of anything. Every px constant in the
-      // tuning — the drop's height, its meniscus, its bend — is stated in CSS
-      // px, and a unit that followed the texture's resolution would change
-      // what all of them meant every time `resolution` moved.
-      uTexel: { value: new THREE.Vector2(1 / stageW, 1 / stageH) },  // rewritten per frame
-      uRelief: { value: 0 },
-      uTransmission: { value: 0 },
-      uZoom: { value: tune.approachZoom },
-      tField: { value: field.target.texture },
-      uSpreadTexel: { value: field.spreadTexel },
-      uRounding: { value: tune.frontRounding },
-      tSpread: { value: field.spread.value },
-      tHollow: { value: field.hollow.value },
-      uDispersion: { value: tune.dispersion },
-      uApertureFloor: { value: tune.apertureFloor },
-      uApertureCeil: { value: tune.apertureCeil },
-      uApertureInk: { value: tune.apertureInk },
-      uApertureGamma: { value: tune.apertureGamma },
-      uApertureOvershoot: { value: tune.apertureOvershoot },
-      uApertureEdge: { value: tune.apertureEdgePx },
-      uBendTaper: { value: tune.bendTaperPx },
-      uRimPx: { value: tune.rimPx },
-      uHeightPx: { value: tune.heightPx },
-      uIor: { value: tune.ior },
-      uRefractPx: { value: tune.refractPx },
-      uReflect: { value: tune.reflect },
-      uRoomBand: { value: tune.roomBand },
-      uRoomWidth: { value: tune.roomWidth },
-      uRim: { value: tune.rim },
-      uRimPow: { value: tune.rimPow },
-      uFresPow: { value: tune.mirrorFalloff },
-    }),
-    // Reads the bag once for its starting values; the frame loop owns it
-    // from there. Re-running on a bag mutation is impossible anyway — the
-    // panel writes in place and the identity never changes.
+  // Built once per field. The nodes keep their identity, so the frame loop
+  // below writes `.value` on them and the material never rebuilds.
+  const values = useMemo(
+    () =>
+      createRefractionValues(
+        {
+          // Sampling the leaving page as its own stand-in keeps a valid texture
+          // bound before the resident source publishes. `hasIncoming` is 0 on
+          // exactly those frames, so nothing of it survives the mix.
+          incoming: surface.map.value,
+          ink: field.target.texture,
+          spread: field.spread.value,
+          hollow: field.hollow.value,
+        },
+        // One CSS PIXEL, not one texel of anything. Every px constant in the
+        // tuning — the drop's height, its meniscus, its bend — is stated in CSS
+        // px, and a unit that followed the texture's resolution would change
+        // what all of them meant every time `resolution` moved.
+        new THREE.Vector2(1 / stageW, 1 / stageH), // rewritten per frame
+        field.spreadTexel,
+      ),
+    // Initial textures only; the frame loop owns them from there.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [surface, field],
   )
+  const material = useMemo(() => createRefractionMaterial(surface, values), [surface, values])
+  useEffect(() => () => material.dispose(), [material])
 
   // Indirect rather than assigning `field.apertureAt` itself: the field
   // reassigns that slot every render, and a captured copy would go stale.
@@ -203,62 +177,46 @@ export function RefractionMaterial({
   }, [probe, field])
 
   useFrame(() => {
-    const u = material.current?.uniforms
-    if (!u) return
+    const v = values
     const t = cfg.current
     const stage = refractionStage(drive.current.t, t)
-    u.uRelief.value = stage.relief
-    u.uTransmission.value = stage.transmission
-    u.uZoom.value = stage.zoom
+    v.relief.value = stage.relief
+    v.transmission.value = stage.transmission
+    v.zoom.value = stage.zoom
     // A resize moves this and nothing else: every tuned length is CSS px,
     // and this is the only uniform that says how big a CSS px is.
-    u.uTexel.value.set(1 / box.current.w, 1 / box.current.h)
+    v.texel.value.set(1 / box.current.w, 1 / box.current.h)
 
     // Every tuned uniform, every frame. The panel writes into the bag and
     // nothing tells the material about it, so re-reading is the whole
     // subscription — and it costs a handful of assignments.
-    u.uRimPx.value = t.rimPx
-    u.uHeightPx.value = t.heightPx
-    u.uIor.value = t.ior
-    u.uRefractPx.value = t.refractPx
-    u.uBendTaper.value = t.bendTaperPx
-    u.uDispersion.value = t.dispersion
+    v.rimPx.value = t.rimPx
+    v.heightPx.value = t.heightPx
+    v.ior.value = t.ior
+    v.refractPx.value = t.refractPx
+    v.bendTaper.value = t.bendTaperPx
+    v.dispersion.value = t.dispersion
     // Each chain alternates between two targets, so the answer is different
     // every frame even though nothing about the material changed.
-    u.tSpread.value = field.spread.value
-    u.tHollow.value = field.hollow.value
-    u.uApertureFloor.value = t.apertureFloor
-    u.uApertureCeil.value = t.apertureCeil
-    u.uApertureInk.value = t.apertureInk
-    u.uApertureGamma.value = t.apertureGamma
-    u.uApertureOvershoot.value = t.apertureOvershoot
-    u.uApertureEdge.value = t.apertureEdgePx
-    u.uRounding.value = t.frontRounding
-    u.uReflect.value = t.reflect
-    u.uRoomBand.value = t.roomBand
-    u.uRoomWidth.value = t.roomWidth
-    u.uRim.value = t.rim
-    u.uRimPow.value = t.rimPow
-    u.uFresPow.value = t.mirrorFalloff
+    v.spread.value = field.spread.value
+    v.hollow.value = field.hollow.value
+    v.apertureFloor.value = t.apertureFloor
+    v.apertureCeil.value = t.apertureCeil
+    v.apertureInk.value = t.apertureInk
+    v.apertureGamma.value = t.apertureGamma
+    v.apertureOvershoot.value = t.apertureOvershoot
+    v.apertureEdge.value = t.apertureEdgePx
+    v.rounding.value = t.frontRounding
+    v.reflect.value = t.reflect
+    v.roomBand.value = t.roomBand
+    v.roomWidth.value = t.roomWidth
+    v.rim.value = t.rim
+    v.rimPow.value = t.rimPow
+    v.fresPow.value = t.mirrorFalloff
     const texture = arrivingRef.current
-    u.tIncoming.value = texture ?? outgoingSlot.value
-    u.uHasIncoming.value = texture ? 1 : 0
-    // `useSurfaceUniforms` refreshes its own `tMap` slot every render, but
-    // the material holds a copy of that slot — so a source replaced mid-life
-    // would leave the sheet drawing the disposed texture.
-    u.tMap.value = outgoingSlot.value
+    v.incoming.value = texture ?? surface.map.value
+    v.hasIncoming.value = texture ? 1 : 0
   })
 
-  return (
-    <shaderMaterial
-      ref={material}
-      uniforms={uniforms}
-      vertexShader={REFRACTION_VERT}
-      fragmentShader={REFRACTION_FRAG}
-      transparent
-      premultipliedAlpha
-      depthWrite={false}
-      toneMapped={false}
-    />
-  )
+  return <primitive object={material} attach="material" />
 }

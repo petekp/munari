@@ -68,7 +68,7 @@ export const LOGO_PALETTE = [
 ]
 
 /** Material choices for scene-rendered letters. Index 0 preserves plain ink.
- *  Entries align with MATERIAL_PARAMS in logoShaders; its tests pin that
+ *  Entries align with MATERIAL_PARAMS in logoNodes; its tests pin that
  *  alignment. A pose chooses one material alongside its font and color. */
 export const LOGO_MATERIALS = [
   'ink',
@@ -126,7 +126,7 @@ export interface LogoKnobs {
   prism: number
   /** Relief amount — scene mode: the gain on the height field, NOT a
    *  peak height in px. It is referenced to RELIEF_REF = 22
-   *  (logoShaders), where the multiplier is exactly 1 and the shipped
+   *  (logoNodes), where the multiplier is exactly 1 and the shipped
    *  look sits; the rise at full coverage is `relief / 22 × dome ×
    *  (shoulder × 9.6 + pillow × 51.2)` px, which is per-material. So the
    *  default 22 domes balloon 83 px and neon 12 px, and the ceiling 60
@@ -144,7 +144,7 @@ export interface LogoKnobs {
   /** deg — scene mode: the key light's swing around the vertical, 0
    *  dead ahead of the letters, negative to their left. One direction
    *  drives the analytic key AND its softbox twin in the studio
-   *  (logoShaders), so the glint and the shading always agree. */
+   *  (logoNodes), so the glint and the shading always agree. */
   lightYaw: number
   /** deg — scene mode: the key light's climb above the horizon. */
   lightPitch: number
@@ -383,7 +383,7 @@ export function nextBeat(r: Rand, k: LogoKnobs): number {
  *  yaw swings around the vertical (0 is dead ahead of the letters,
  *  negative left), pitch climbs from the horizon — in degrees because
  *  the panel speaks degrees. Pure math, shared by the uniform feed
- *  (Logo.tsx) and the studio's conformance sweep (logoShaders.test),
+ *  (Logo.tsx) and the studio's conformance sweep (logoNodes.test),
  *  so the two can never disagree about where the key stands. */
 export function lightDir(yawDeg: number, pitchDeg: number): [number, number, number] {
   const yaw = (yawDeg * Math.PI) / 180
@@ -405,7 +405,7 @@ export function lightDir(yawDeg: number, pitchDeg: number): [number, number, num
  *  rumble", "erratic shaking", "no wave at all". The lessons, each
  *  now load-bearing:
  *  · The WORD is the unit, not the glyph: the field is continuous
- *    across the word (uWaveOrigin) and the dominant wavelength is
+ *    across the word (waveOrigin) and the dominant wavelength is
  *    word-scale, so a crest marches out of one letter into the next.
  *  · The sea is STEADY: excitation pumping the height on every beat
  *    read as shaking. Strikes answer through the rings alone.

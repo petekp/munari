@@ -23,12 +23,13 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { SceneSurface, useSurfaceChrome, useSurfaceSupport, useSurfaceHandle, useSurfaceStatus, useSurfaceTexture } from '@petepetrash/munari'
-import { textureSlot } from '../../lib/uniforms'
+import { uniform } from 'three/tsl'
+import type { UniformNode } from 'three/webgpu'
+import { SceneSurface, useSurfaceSupport, useSurfaceHandle, useSurfaceNodes, useSurfaceStatus } from '@petepetrash/munari'
 import { curlSample, unrolledLength } from './candidateCurlLaw'
-import { LIGHT, SHEET_FRAG, SHEET_VERT } from './candidateShaders'
+import { createSheetMaterial } from './candidateNodes'
 import { plainAttribute } from '../../lib/geometry'
-import { useOwnUniforms, type WorldBox } from './candidateStage'
+import { useNodeMaterial, type WorldBox } from './candidateStage'
 import { unrollTuning } from './candidateTuning'
 import { unrollStep, type RollDrive } from './candidateUnrollLaw'
 
@@ -49,50 +50,16 @@ const MENU_H = ITEMS.length * ROW_H + MENU_PAD * 2
 const GRID_Y = Math.round(MENU_H / 2)
 const GRID_X = 2
 
-function SheetMaterial({ opacity }: { opacity: { value: number } }) {
-  const texture = useSurfaceTexture()
-  const { chrome, width, height } = useSurfaceChrome()
-  const uniforms = useMemo(
-    () => ({
-      tMap: textureSlot(),
-      uLightDir: { value: new THREE.Vector3(...LIGHT) },
-      // The back of the sheet, in the lab's own paper stock. Anything
-      // darker reads as a shadow rather than as the other side of a page.
-      uBackColor: { value: new THREE.Color('#e6e3d4') },
-      uShade: { value: unrollTuning.shade },
-      uOpacity: opacity,
-      uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uMunariSize: { value: new THREE.Vector2(1, 1) },
-    }),
-    [opacity],
+function SheetMaterial({ opacity }: { opacity: UniformNode<'float', number> }) {
+  const surface = useSurfaceNodes()
+  const { material, values } = useNodeMaterial(
+    () => createSheetMaterial(surface, unrollTuning.shade, opacity),
+    [surface, opacity],
   )
-  uniforms.tMap.value = texture
-  const material = useOwnUniforms(uniforms)
-  const radii = chrome?.radii ?? [0, 0, 0, 0]
-  uniforms.uMunariRadii.value.set(radii[0], radii[1], radii[2], radii[3])
-  uniforms.uMunariSize.value.set(width, height)
   useFrame(() => {
-    uniforms.uShade.value = unrollTuning.shade
+    values.shade.value = unrollTuning.shade
   })
-  return (
-    <shaderMaterial
-      ref={material}
-      key={texture.uuid}
-      uniforms={uniforms}
-      vertexShader={SHEET_VERT}
-      fragmentShader={SHEET_FRAG}
-      transparent
-      premultipliedAlpha
-      // Depth is the only occlusion between the turns of the roll: the
-      // sheet overlaps itself three layers deep when wound, and without
-      // the depth buffer every wound row's text blends into one garble on
-      // the coil's face (2026-08-20). The cost is the usual transparent-
-      // writer artifact, confined to the corner-radius pixels.
-      depthWrite
-      toneMapped={false}
-      side={THREE.DoubleSide}
-    />
-  )
+  return <primitive object={material} attach="material" />
 }
 
 /**
@@ -111,8 +78,8 @@ function RollSheet({
 }: {
   drive: React.RefObject<RollDrive>
   geoRef: React.RefObject<THREE.PlaneGeometry | null>
-  /** The sheet material's uOpacity slot, written here so one loop owns t. */
-  opacity: { value: number }
+  /** The sheet material's opacity, written here so one loop owns t. */
+  opacity: UniformNode<'float', number>
   onClosed: () => void
 }) {
   useFrame((_, delta) => {
@@ -166,7 +133,7 @@ export function CandidateUnroll() {
   const [box, setBox] = useState<WorldBox | null>(null)
   const geoRef = useRef<THREE.PlaneGeometry>(null)
   const drive = useRef<RollDrive>({ open: false, target: 0, t: 0 })
-  const sheetOpacity = useRef({ value: 1 }).current
+  const sheetOpacity = useMemo(() => uniform(1), [])
 
   // The unroll may not start until the canvas actually presents. The ease
   // used to start at the click, while the capture was still lifting — by

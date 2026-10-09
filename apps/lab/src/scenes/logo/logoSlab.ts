@@ -3,7 +3,7 @@
 //
 // RELIEF: the sheet — the flat rectangle every lifted letter has always
 // been — is subdivided finely enough that the height field can actually
-// PUSH it (logoShaders' vertex stage). Until now that field only tilted
+// PUSH it (logoNodes' vertex stage). Until now that field only tilted
 // normals: the letter was lit like a dome and shaped like a decal, which
 // is exactly the tell that a surface is painted on. Displacing the same
 // field costs a denser grid and nothing else, and it buys parallax —
