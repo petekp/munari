@@ -4579,6 +4579,12 @@ unmounted the whole page in a browser with no GPU (`probe:api-lifecycle`).
 `SurfaceCanvas` catches that one error at its Canvas, reports it to the
 window's error handlers, and shows `fallback`; the page HTML stays.
 
+**`shadows` has no `'soft'`.** Three 0.186 removed `PCFSoftShadowMap`, and
+Fiber still sets it for any boolean `shadows`, `false` included. Three then
+warned on every canvas's first render and drew `PCFShadowMap`. `SurfaceCanvas`
+passes a boolean to Fiber as `{ enabled, type: PCFShadowMap }`, and its type
+drops `'soft'`, which drew the same thing.
+
 `WebGPURenderer` draws each frame into an internal target, then tone-maps and
 color-converts the whole frame in a final pass. Two contracts follow from that.
 

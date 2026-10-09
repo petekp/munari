@@ -36,7 +36,7 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Canvas, useFrame, useThree, type CanvasProps, type RootState } from '@react-three/fiber'
-import { NoToneMapping } from 'three'
+import { NoToneMapping, PCFShadowMap } from 'three'
 import { DirectRenderPipeline, WebGPURenderer, type WebGPURendererParameters } from 'three/webgpu'
 import {
   createSurfaceHost,
@@ -73,7 +73,7 @@ interface FiberRendererDefaults {
 }
 
 export interface SurfaceCanvasProps
-  extends Omit<CanvasProps, 'children' | 'fallback' | 'style' | 'gl' | 'flat'> {
+  extends Omit<CanvasProps, 'children' | 'fallback' | 'style' | 'gl' | 'flat' | 'shadows'> {
   /** Names this host for a page-side `Surface canvasId={…}`. */
   id?: SurfaceCanvasId
   /**
@@ -88,6 +88,11 @@ export interface SurfaceCanvasProps
    * an overlay canvas transparent except over registered Surface meshes.
    */
   pointerMode?: 'scene' | 'surfaces'
+  /**
+   * Fiber's shadow setting, without `'soft'`: Three 0.186 removed
+   * `PCFSoftShadowMap`, so `true` means `PCFShadowMap`.
+   */
+  shadows?: Exclude<CanvasProps['shadows'], 'soft'>
   /** Shown instead of the scene when the renderer cannot be created or is lost. */
   fallback?: React.ReactNode
   /**
@@ -475,6 +480,7 @@ export function SurfaceCanvas({
   gl,
   pointerMode = 'scene',
   onRendererLost,
+  shadows,
   ...canvasProps
 }: SurfaceCanvasProps) {
   const candidate = useMemo(() => createSurfaceHost(id), [id])
@@ -493,6 +499,15 @@ export function SurfaceCanvas({
   // A Canvas mount keeps the first renderer it resolves and ignores a later
   // `gl`, so a new renderer after a loss is a new Canvas mount.
   const renderer = useMemo(() => createSurfaceRenderer(gl), [gl])
+  // Fiber sets PCFSoftShadowMap for any boolean, false included. Three then
+  // warns on the first render and draws PCFShadowMap.
+  const fiberShadows = useMemo(
+    () =>
+      shadows === undefined || shadows === true || shadows === false
+        ? { enabled: shadows === true, type: PCFShadowMap }
+        : shadows,
+    [shadows],
+  )
   const [rendererMount, setRendererMount] = useState(0)
   const replacement = useRef<{ readonly createdAt: number } | null>(null)
 
@@ -574,6 +589,7 @@ export function SurfaceCanvas({
           <Canvas
             {...canvasProps}
             gl={renderer}
+            shadows={fiberShadows}
             flat
             frameloop={frameloop}
             dpr={drawingDpr}
