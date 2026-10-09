@@ -59,7 +59,6 @@ try{
   page.on('console',message=>{if(message.type()==='error'&&!message.text().startsWith('Failed to load resource:'))errors.push(message.text())})
   try{
    await mkdir(directory,{recursive:true})
-   await page.evaluateOnNewDocument(()=>{window.__longTasks=[];new PerformanceObserver(list=>{for(const e of list.getEntries())window.__longTasks.push([performance.timeOrigin+e.startTime,e.duration])}).observe({type:'longtask',buffered:true})})
    await page.setViewport({width:1100,height:800,deviceScaleFactor:1})
    await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'no-preference'}])
    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=genie&framed${mode==='snapdom'?'&capture=snapdom':''}`,{waitUntil:'load'})
@@ -145,16 +144,11 @@ try{
    const lamp=await page.$eval(`.gen-slot[data-win="${win}"] .gen-lamp[data-role="minimize"]`,element=>{const r=element.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})
    await page.mouse.move(lamp.x,lamp.y,{steps:6});await sleep(300)
    await recorder.start();await sleep(100)
-   const cdp=await page.createCDPSession();await cdp.send('Profiler.enable');await cdp.send('Profiler.setSamplingInterval',{interval:500});await cdp.send('Profiler.start')
-   await page.tracing.start({categories:['devtools.timeline','toplevel','blink','gpu','cc','viz','disabled-by-default-devtools.timeline']})
    const pressAt=await page.evaluate(()=>performance.timeOrigin+performance.now())
    await page.mouse.down();await sleep(50);await page.mouse.up();await sleep(450)
    const collectionEnd=await page.evaluate(()=>performance.timeOrigin+performance.now())
-   const {profile}=await cdp.send('Profiler.stop');await cdp.detach()
-   const traceTop=(events=>{const names=new Map(events.filter(e=>e.ph==='M'&&e.name==='thread_name').map(e=>[`${e.pid}:${e.tid}`,e.args?.name]));const byThread=new Map();for(const e of events){if(e.ph!=='X'||!(e.dur>0))continue;const k=`${e.pid}:${e.tid}`;if(!byThread.has(k))byThread.set(k,[]);byThread.get(k).push(e)}const out={};for(const [k,list] of byThread){const name=names.get(k)??k;if(!/CrRendererMain|CrGpuMain|VizCompositor|Compositor/.test(name))continue;list.sort((a,b)=>a.ts-b.ts||b.dur-a.dur);const self=new Map(),stack=[];for(const e of list){while(stack.length&&stack.at(-1).ts+stack.at(-1).dur<=e.ts)stack.pop();const top=stack.at(-1);if(top)self.set(top,(self.get(top)??top.dur)-e.dur);self.set(e,e.dur);stack.push(e)}const total=new Map();for(const [e,v] of self)total.set(e.name,(total.get(e.name)??0)+v);out[name+' '+k]=[...total].sort((a,b)=>b[1]-a[1]).slice(0,12).map(([n,v])=>`${Math.round(v/1000)} ${n}`)}return out})(JSON.parse(Buffer.from(await page.tracing.stop()).toString()).traceEvents)
-   const profileTop=(()=>{const byId=new Map(profile.nodes.map(n=>[n.id,n])),parent=new Map();for(const n of profile.nodes)for(const c of n.children??[])parent.set(c,n.id);const self=new Map(),incl=new Map(),name=n=>`${n.callFrame.functionName}@${n.callFrame.url.split('/').pop().split('?')[0]}:${n.callFrame.lineNumber}`;profile.samples.forEach((id,i)=>{const d=profile.timeDeltas[i]??0,n=byId.get(id);self.set(name(n),(self.get(name(n))??0)+d);const seen=new Set();for(let c=id;c!==undefined;c=parent.get(c)){const k=name(byId.get(c));if(seen.has(k))continue;seen.add(k);incl.set(k,(incl.get(k)??0)+d)}});const top=(m,k)=>[...m].sort((a,b)=>b[1]-a[1]).slice(0,k).map(([f,v])=>`${Math.round(v/1000)} ${f}`);return{self:top(self,15),incl:top(incl,40)}})()
    const capture=await recorder.stop({through:collectionEnd,timeoutMs:5000}),frames=capture.frames
-   const state=await page.evaluate(()=>({draws:window.__fixedPose.draws,seedTime:window.__fixedPose.seedTime,blockedDraws:window.__fixedPose.cadence.blocked,longTasks:window.__longTasks})),draws=state.draws,firstDraw=draws.find(draw=>draw.writing&&!draw.pageHeld)
+   const state=await page.evaluate(()=>({draws:window.__fixedPose.draws,seedTime:window.__fixedPose.seedTime,blockedDraws:window.__fixedPose.cadence.blocked})),draws=state.draws,firstDraw=draws.find(draw=>draw.writing&&!draw.pageHeld)
    const scored=await scoreScreencast(page,capture,{
     reference:{kind:'image',encoding:'png',data:reference},
     context:{draws,box},
@@ -191,7 +185,7 @@ try{
    const end=second===undefined?start+80:Math.max(start+80,second.t),observed=sceneRows.filter(row=>row.t<=end)
    observation={firstDraw:firstDraw?.id,firstRecorded:observed[0]?.draw.id,secondRecorded:second?.draw.id,frames:observed.length,blockedDraws:state.blockedDraws,maximumPixelError:Math.max(...observed.map(row=>Math.max(row.nativeToScene,row.sceneToNative))),
     // Milliseconds after the press, so a failed run shows which wait ran out.
-    timing:{firstDraw:firstDraw&&Math.round(firstDraw.t-pressAt),firstImage:start&&Math.round(start-pressAt),secondImage:second&&Math.round(second.t-pressAt),lastImage:frames.length?Math.round(frames.at(-1).t-pressAt):null,collectionEnd:Math.round(collectionEnd-pressAt),draws:draws.map(d=>[Math.round(d.t-pressAt),d.writing?1:0,d.pageHeld?1:0,d.read,d.uploadedRead]),profile:profileTop,trace:traceTop,longTasks:state.longTasks.map(([t,d])=>[Math.round(t-pressAt),Math.round(d)]).filter(([t])=>t>-200),drawGaps:draws.slice(1).map((draw,i)=>Math.round(draw.t-draws[i].t))}}
+    timing:{firstDraw:firstDraw&&Math.round(firstDraw.t-pressAt),firstImage:start&&Math.round(start-pressAt),secondImage:second&&Math.round(second.t-pressAt),lastImage:frames.length?Math.round(frames.at(-1).t-pressAt):null,collectionEnd:Math.round(collectionEnd-pressAt),drawGaps:draws.slice(1).map((draw,i)=>Math.round(draw.t-draws[i].t))}}
    await writeFile(path.join(directory,'measurement.json'),JSON.stringify({box,...scored.summary,firstDraw,seedTime:state.seedTime,blockedDraws:state.blockedDraws,draws,frames:observed,recording:{collectionEnd:capture.collectionEnd,...capture.diagnostics,scoring:scored.diagnostics}},null,2))
    const frameByIndex=new Map(frames.map(frame=>[frame.index,frame]))
    if(observed.length){await writeFile(path.join(directory,'first-scene.png'),Buffer.from(frameByIndex.get(observed[0].index).data,'base64'));await writeFile(path.join(directory,'last-scene.png'),Buffer.from(frameByIndex.get(observed.at(-1).index).data,'base64'))}
