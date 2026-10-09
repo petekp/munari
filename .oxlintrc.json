@@ -62,6 +62,7 @@
     ".opencode/**",
     ".pi/**",
     ".roo/**",
+    ".scratch/**",
     ".windsurf/**",
     "tools/oxlint/anti-slop/**",
     "tools/oxlint/no-tautological-absence/**"
