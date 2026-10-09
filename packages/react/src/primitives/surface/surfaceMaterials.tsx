@@ -75,10 +75,14 @@ export interface SurfaceNodes {
  *   const surface = useSurfaceNodes()
  *   const material = useMemo(() => {
  *     const m = new MeshBasicNodeMaterial({ transparent: true })
- *     m.colorNode = surface.map
- *     m.opacityNode = surface.radiusMask()
+ *     const sample = surface.map.sample(uv()).mul(surface.radiusMask())
+ *     m.outputNode = premultipliedOutput(sample)
  *     return m
  *   }, [surface])
+ *
+ * Return the color through `premultipliedOutput`. A material that sets
+ * `colorNode` instead multiplies the premultiplied capture by alpha again,
+ * so translucent pixels land darker than the page (decisions.md #72).
  */
 export function useSurfaceNodes(): SurfaceNodes {
   const capture = useSurfaceTexture()

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { SceneSurface, useSurfaceTexture } from '@petepetrash/munari'
+import { MeshBasicNodeMaterial, type Node } from 'three/webgpu'
+import { uv } from 'three/tsl'
+import { premultipliedOutput, SceneSurface, useSurfaceNodes } from '@petepetrash/munari'
 import { explodePaint, measureBleed, type Plate } from './explodePlates'
 
 // The exploded-paint inspector — a live element taken apart into its OWN
@@ -165,22 +167,27 @@ export function ExplodeHud() {
  * what the browser painted, and a light rig editorializes. It is also the
  * only correct option — decisions.md #5 puts lit standard materials on
  * partially-transparent Surfaces explicitly out of contract, and a plate is
- * mostly transparent by construction. `premultipliedAlpha` is the other half
- * of that contract: the texture arrives premultiplied because a 2D canvas's
- * backing store already is.
+ * mostly transparent by construction. `premultipliedOutput` is the other
+ * half of that contract: the capture arrives premultiplied, and a stock
+ * material's own premultiply would land a half-transparent pixel at half its
+ * page value (decisions.md #72).
  */
 function PlateMaterial() {
-  const texture = useSurfaceTexture()
-  return (
-    <meshBasicMaterial
-      map={texture ?? undefined}
-      transparent
-      premultipliedAlpha
-      toneMapped={false}
-      depthWrite={false}
-      side={THREE.DoubleSide}
-    />
-  )
+  const surface = useSurfaceNodes()
+  const material = useMemo(() => {
+    const created = new MeshBasicNodeMaterial({
+      transparent: true,
+      premultipliedAlpha: true,
+      toneMapped: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
+    // SAFETY: a texture sample is a vec4; Three's types return a bare Node.
+    created.outputNode = premultipliedOutput(surface.map.sample(uv()) as Node<'vec4'>)
+    return created
+  }, [surface])
+  useEffect(() => () => material.dispose(), [material])
+  return <primitive object={material} attach="material" />
 }
 
 /** The faint frame that says "there is a sheet here" when the ink is sparse. */

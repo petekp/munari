@@ -165,6 +165,11 @@ export function useSurfaceInstance(): SurfaceInstance {
  * only after a configured texture exists, so the material's first render
  * already samples real pixels rather than binding null and waiting for a
  * re-render that a memoized material may never take.
+ *
+ * The texture is premultiplied (decisions.md #5). A stock Three material
+ * multiplies it by alpha again, so a half-transparent page pixel lands at
+ * half its value. Sample it in a node material that returns its color
+ * through `premultipliedOutput`.
  */
 export function useSurfaceTexture(): THREE.Texture {
   const part = useSurfacePart('useSurfaceTexture')

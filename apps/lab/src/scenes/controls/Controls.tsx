@@ -29,7 +29,10 @@ import {
 import { RoundedBox } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { MeshBasicNodeMaterial, type Node } from 'three/webgpu'
+import { Discard, Fn, texture as textureNode, uv } from 'three/tsl'
 import {
+  premultipliedOutput,
   SurfaceCanvas,
   useSurfaceSupport,
   useSurfaceAnchorBox,
@@ -368,22 +371,29 @@ function useHardwareMaterials(): HardwareMaterials {
   return materials
 }
 
-function useCaptureCapMaterial(texture: THREE.Texture | null) {
-  const material = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        transparent: true,
-        premultipliedAlpha: true,
-        toneMapped: false,
-        alphaTest: 0.003,
-      }),
-    [],
-  )
+// The capture is premultiplied, so the cap returns it through
+// premultipliedOutput. A stock material with `premultipliedAlpha` multiplies
+// it by alpha again: half-transparent white lands at 64, not the page's 128
+// (decisions.md #72).
+function useCaptureCapMaterial(texture: THREE.Texture) {
+  const [map] = useState(() => textureNode(texture))
+  const material = useMemo(() => {
+    const created = new MeshBasicNodeMaterial({
+      transparent: true,
+      premultipliedAlpha: true,
+      toneMapped: false,
+    })
+    created.outputNode = Fn(() => {
+      // SAFETY: a texture sample is a vec4; Three's types return a bare Node.
+      const sample = map.sample(uv()) as Node<'vec4'>
+      Discard(sample.a.lessThan(0.003))
+      return premultipliedOutput(sample)
+    })()
+    return created
+  }, [map])
   useLayoutEffect(() => {
-    const hadMap = material.map !== null
-    material.map = texture
-    if (hadMap !== (texture !== null)) material.needsUpdate = true
-  }, [material, texture])
+    map.value = texture
+  }, [map, texture])
   useEffect(() => () => material.dispose(), [material])
   return material
 }
