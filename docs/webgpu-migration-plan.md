@@ -214,9 +214,8 @@ No upstream report is planned.
 CI runs `gate:frame-surface` on a hosted Linux runner with no GPU. There Chrome
 offers WebGPU through SwiftShader, but without three extra flags it cannot
 allocate a WebGPU canvas texture and loses the device on the first frame. The
-runner passes those flags on Linux. With them the gate passed on both backends
-in a Debian amd64 container running Chrome 155, emulated on an Apple Silicon
-Mac. It has not yet run on a hosted runner. `ci.yml` is unchanged.
+runner passes those flags on Linux. With them the gate passes on both backends
+on a hosted runner (PR #112). `ci.yml` is unchanged.
 
 ## Known gaps on stock WebGPU
 
