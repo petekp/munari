@@ -40,6 +40,7 @@ import {
 } from 'react'
 import { flushSync as flushThree, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import { PMREMGenerator, WebGPURenderer } from 'three/webgpu'
 import {
   SceneSurface,
   SurfaceCanvas,
@@ -53,6 +54,7 @@ import {
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { KnobsArt } from './KnobsArt'
+import { createCoronaMaterial, createCoronaValues } from './knobsNodes'
 import { KnobsPanel } from './KnobsPanel'
 import {
   PANEL_EDGE_INSET,
@@ -266,8 +268,8 @@ interface EnvRig {
   last: number
   /** Both arrive with the renderer and leave on unmount, so both are
    *  null for the window between construction and the first effect. */
-  pmrem: THREE.PMREMGenerator | null
-  rt: THREE.WebGLRenderTarget | null
+  pmrem: PMREMGenerator | null
+  rt: THREE.RenderTarget | null
 }
 
 function ArtEnvironment() {
@@ -302,7 +304,10 @@ function ArtEnvironment() {
   }, [])
 
   useEffect(() => {
-    state.pmrem = new THREE.PMREMGenerator(gl)
+    // Fiber types the renderer as WebGLRenderer; SurfaceCanvas supplies a
+    // WebGPURenderer, whose PMREM generator builds node materials.
+    if (!(gl instanceof WebGPURenderer)) throw new Error('Knobs needs the WebGPURenderer from SurfaceCanvas')
+    state.pmrem = new PMREMGenerator(gl)
     return () => {
       scene.environment = null
       state.rt?.dispose()
@@ -1163,7 +1168,7 @@ function roundedRectPath(cx: number, cy: number, w: number, h: number, r: number
 }
 
 /** Quad margin past the slab: bezel lip + the corona's outward skirt at
- *  the tweak panel's CEILING (uOutReach slides to 28) + AA slack — the
+ *  the tweak panel's CEILING (outReach slides to 28) + AA slack — the
  *  quad must never crop a corona the tuning surface can ask for. */
 const CORONA_MARGIN = BEZEL_LIP + 32
 
@@ -1198,29 +1203,6 @@ const LEAK_H = 144
  * clipping — the clipped rim is what turned dusty pink art into a neon
  * tube.
  */
-/**
- * The corona's uniforms. A type alias, not an interface: three's `uniforms`
- * is an index signature, and only a mapped type is assignable to one.
- */
-type CoronaUniforms = {
-  uHalf: { value: THREE.Vector2 }
-  uRadius: { value: number }
-  uArt: { value: THREE.Texture }
-  uView: { value: THREE.Vector2 }
-  uCenter: { value: THREE.Vector2 }
-  uLit: { value: number }
-  uOutReach: { value: number }
-  uVeilReach: { value: number }
-  uCoreTauOut: { value: number }
-  uCoreTauIn: { value: number }
-  uCoreGain: { value: number }
-  uVeilGain: { value: number }
-  uToneK: { value: number }
-  uSpill: { value: number }
-  uLitFloor: { value: number }
-  uLitKnee: { value: number }
-}
-
 function BacklightCorona({ rect }: { rect: RailRect }) {
   const assets = useMemo(() => {
     const canvas = document.createElement('canvas')
@@ -1228,157 +1210,8 @@ function BacklightCorona({ rect }: { rect: RailRect }) {
     canvas.height = LEAK_H
     const ctx = canvas.getContext('2d')!
     const tex = new THREE.CanvasTexture(canvas)
-    // Held by name rather than read back off the material: three types every
-    // uniform's `value` as `any`, so the frame loop below could not get a
-    // Vector2 back from `mat.uniforms` without saying so on faith.
-    const uniforms: CoronaUniforms = {
-      uHalf: { value: new THREE.Vector2(1, 1) },
-      uRadius: { value: PANEL_RADIUS + BEZEL_LIP },
-      uArt: { value: tex },
-      uView: { value: new THREE.Vector2(1, 1) },
-      uCenter: { value: new THREE.Vector2(0, 0) },
-      uLit: { value: 1 },
-      // The tuned numbers, dripped from knobsTuning each frame. The
-      // defaults are the committed look; an untouched tweak panel
-      // renders the same corona the constants used to.
-      uOutReach: { value: knobsTuning.coronaOut },
-      uVeilReach: { value: knobsTuning.coronaVeil },
-      uCoreTauOut: { value: knobsTuning.coronaEdgeOut },
-      uCoreTauIn: { value: knobsTuning.coronaEdgeIn },
-      uCoreGain: { value: knobsTuning.coronaCore },
-      uVeilGain: { value: knobsTuning.coronaVeilGain },
-      uToneK: { value: knobsTuning.coronaTone },
-      uSpill: { value: knobsTuning.coronaSpill },
-      uLitFloor: { value: knobsTuning.coronaLitFloor },
-      uLitKnee: { value: knobsTuning.coronaLitKnee },
-    }
-    const mat = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      // Additive for COLOR only. The scene's canvas is transparent
-      // over the DOM artwork, and the page composites it by alpha —
-      // stock AdditiveBlending also sums alpha, which turns the whole
-      // plane's footprint into an opaque black rectangle over the
-      // art. Add the light, leave the coverage untouched.
-      blending: THREE.CustomBlending,
-      blendEquation: THREE.AddEquation,
-      blendSrc: THREE.OneFactor,
-      blendDst: THREE.OneFactor,
-      blendSrcAlpha: THREE.ZeroFactor,
-      blendDstAlpha: THREE.OneFactor,
-      uniforms,
-      vertexShader: /* glsl */ `
-        varying vec2 vPos;
-        void main() {
-          vPos = position.xy;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: /* glsl */ `
-        varying vec2 vPos;
-        uniform vec2 uHalf;
-        uniform float uRadius;
-        uniform sampler2D uArt;
-        uniform vec2 uView;
-        uniform vec2 uCenter;
-        uniform float uLit;
-
-        // Where the corona lives, in px of signed distance: a small
-        // outward skirt (the edge's own brightness, not painted light —
-        // it must die inside the quad), and an inward veil onto the
-        // dark face. Uniforms, so the tweak panel can slide them live.
-        uniform float uOutReach;
-        uniform float uVeilReach;
-        uniform float uCoreTauOut;
-        uniform float uCoreTauIn;
-        uniform float uCoreGain;
-        uniform float uVeilGain;
-        uniform float uToneK;
-        uniform float uSpill;
-        // The emitter gate. See litGate in knobsLaw — this is its mirror.
-        uniform float uLitFloor;
-        uniform float uLitKnee;
-
-        // Signed distance to the slab's rounded rect — the same
-        // corner the DOM authors and the rim extrudes.
-        float sdSlab(vec2 p) {
-          vec2 q = abs(p) - (uHalf - vec2(uRadius));
-          return length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - uRadius;
-        }
-
-        float hash(vec2 p) {
-          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-        }
-
-        // The picture at a WORLD point (scene px, origin mid-viewport,
-        // y up): the bake fills the viewport, flipY'd on upload.
-        vec3 art(vec2 world) {
-          return texture2D(uArt, vec2(0.5) + world / uView).rgb;
-        }
-
-        void main() {
-          float d = sdSlab(vPos);
-          // All the light lives in a band hugging the silhouette.
-          if (d > uOutReach || d < -(uVeilReach + 4.0)) {
-            gl_FragColor = vec4(0.0);
-            return;
-          }
-          vec2 e = vec2(2.0, 0.0);
-          vec2 n = normalize(vec2(
-            sdSlab(vPos + e.xy) - sdSlab(vPos - e.xy),
-            sdSlab(vPos + e.yx) - sdSlab(vPos - e.yx)));
-          // The nearest point of the silhouette, then the VISIBLE art
-          // just beyond it: the light actually wrapping this edge. The
-          // hidden art is blocked by the slab and contributes nothing.
-          vec2 edge = vPos - n * d;
-          vec3 spill = art(uCenter + edge + n * (7.0 * uSpill))
-                     + art(uCenter + edge + n * (20.0 * uSpill))
-                     + art(uCenter + edge + n * (40.0 * uSpill));
-          spill *= (1.0 / 3.0);
-          float L = dot(spill, vec3(0.2126, 0.7152, 0.0722));
-
-          // The hot line on the boundary. Outward it is compact-support
-          // and C1 at uOutReach ((1-t)^2 — an exponential
-          // alone never reaches zero, and its leftover becomes an edge);
-          // inward it relaxes over uCoreTauIn px onto the face.
-          float t0 = clamp(d / uOutReach, 0.0, 1.0);
-          float core = d >= 0.0
-            ? exp(-d / uCoreTauOut) * (1.0 - t0) * (1.0 - t0)
-            : exp(d / uCoreTauIn);
-          // The bloom veil, over the dark face only: (1-t)^2 dies at
-          // uVeilReach with zero slope — no endpoint to see. Scaled by
-          // L: bloom belongs to bright surround, dim surround has none.
-          float tv = clamp(-d / uVeilReach, 0.0, 1.0);
-          float veil = d < 0.0 ? (1.0 - tv) * (1.0 - tv) * L : 0.0;
-
-          // Is this edge standing in front of an emitter, or in front of
-          // the backdrop? The backdrop is dark but SATURATED, so the
-          // spill comes back a perfectly good teal either way and colour
-          // alone cannot tell. The BRIGHTEST CHANNEL can, and luminance
-          // cannot: Rec.709 weights blue at 0.07, so a saturated blue
-          // blade scores under a teal backdrop and the two bands
-          // overlap. On max channel the backdrop tops out at 0.155 and
-          // the dimmest drawn layer starts at 0.773. See litGate in
-          // knobsLaw, which pins this and carries the measurements.
-          float E = max(spill.r, max(spill.g, spill.b));
-          // Written out rather than smoothstep() because the tweak panel
-          // can drag the knee under the floor, which smoothstep leaves
-          // undefined.
-          float lt = clamp((E - uLitFloor) / max(uLitKnee - uLitFloor, 1e-6), 0.0, 1.0);
-          float lit = lt * lt * (3.0 - 2.0 * lt);
-
-          vec3 col = spill * (uCoreGain * core + uVeilGain * veil) * uLit * lit;
-          // Tone-map instead of clip: clipping is what rotated dusty
-          // pink into a neon tube.
-          col = vec3(1.0) - exp(-col * uToneK);
-          // Dither before quantization: a smooth falloff on a dark
-          // field bands without it, and banding is what reads as a
-          // cheap gradient.
-          col += (hash(vPos) - 0.5) / 255.0;
-          gl_FragColor = vec4(max(col, vec3(0.0)), 1.0);
-        }
-      `,
-    })
+    const uniforms = createCoronaValues(PANEL_RADIUS + BEZEL_LIP)
+    const mat = createCoronaMaterial(tex, uniforms)
     return { canvas, ctx, tex, mat, uniforms, key: '' }
   }, [])
   useEffect(
@@ -1447,21 +1280,24 @@ function BacklightCorona({ rect }: { rect: RailRect }) {
     }
 
     const u = assets.uniforms
-    u.uHalf.value.set(backlight.w / 2, backlight.h / 2)
-    u.uView.value.set(window.innerWidth, window.innerHeight)
-    u.uCenter.value.set(backlight.x, backlight.y)
-    u.uLit.value = artClock.lit
+    u.half.value.set(backlight.w / 2, backlight.h / 2)
+    u.view.value.set(window.innerWidth, window.innerHeight)
+    u.center.value.set(backlight.x, backlight.y)
+    u.lit.value = artClock.lit
+    // The tuned numbers, dripped from knobsTuning each frame. The defaults
+    // are the committed look; an untouched tweak panel renders the same
+    // corona the constants used to.
     const t = knobsTuning
-    u.uOutReach.value = t.coronaOut
-    u.uVeilReach.value = t.coronaVeil
-    u.uCoreTauOut.value = t.coronaEdgeOut
-    u.uCoreTauIn.value = t.coronaEdgeIn
-    u.uCoreGain.value = t.coronaCore
-    u.uVeilGain.value = t.coronaVeilGain
-    u.uToneK.value = t.coronaTone
-    u.uSpill.value = t.coronaSpill
-    u.uLitFloor.value = t.coronaLitFloor
-    u.uLitKnee.value = t.coronaLitKnee
+    u.outReach.value = t.coronaOut
+    u.veilReach.value = t.coronaVeil
+    u.coreTauOut.value = t.coronaEdgeOut
+    u.coreTauIn.value = t.coronaEdgeIn
+    u.coreGain.value = t.coronaCore
+    u.veilGain.value = t.coronaVeilGain
+    u.toneK.value = t.coronaTone
+    u.spill.value = t.coronaSpill
+    u.litFloor.value = t.coronaLitFloor
+    u.litKnee.value = t.coronaLitKnee
   })
 
   return (
