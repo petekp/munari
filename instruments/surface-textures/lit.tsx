@@ -49,7 +49,7 @@ declare global {interface Window {__litProof:{statuses:typeof statuses;update:()
 function Fixture() {
   const [changed,setChanged]=useState(false)
   const palette=cases.map(entry=>({...entry,rgb:changed?'80,190,120':entry.rgb}))
-  return <SurfaceCanvas orthographic flat camera={{position:[0,0,1000],zoom:1}} style={{width:500,height:440}}>
+  return <SurfaceCanvas orthographic camera={{position:[0,0,1000],zoom:1}} style={{width:500,height:440}}>
     <ambientLight intensity={Math.PI/4}/>{palette.map((entry,row)=>[1,0.5,0.25].map((alpha,col)=><Swatch key={`${entry.id}-${alpha}`} {...entry} id={`${entry.id}-${alpha}`} x={-150+150*col} y={90-90*row} alpha={alpha} changed={changed}/>))}{palette.map((entry,col)=><Swatch key={`${entry.id}-edge`} {...entry} id={`${entry.id}-edge`} x={-150+150*col} y={-180} alpha={1} edge/>)}<Observe update={()=>setChanged(true)}/>
   </SurfaceCanvas>
 }

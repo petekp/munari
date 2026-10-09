@@ -15,15 +15,22 @@
 // drawing. Claims are counted; the caller's idle mode returns when the last
 // one is released.
 //
-// Ownership: this component owns renderer scheduling, both registration
-// directions, context loss, and cleanup. It owns nothing about what is
-// drawn — camera, lights, controls, post-processing, and every scene child
-// stay the caller's, and an arbitrary existing scene may be wrapped in this
-// without changing a line of it.
+// Ownership: this component owns renderer creation and scheduling, both
+// registration directions, context loss, and cleanup. It owns nothing about
+// what is drawn — camera, lights, controls, post-processing, and every scene
+// child stay the caller's.
+//
+// The renderer is Three's WebGPURenderer, which falls back to WebGL 2. It
+// tone-maps the whole frame in a final pass and ignores a material's
+// `toneMapped: false`, so renderer tone mapping stays off here and HTML keeps
+// its source colors. A scene that wants tone mapping applies it in its own
+// materials (decisions.md #69).
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { Canvas, useFrame, useThree, type CanvasProps, type RootState } from '@react-three/fiber'
+import { NoToneMapping } from 'three'
+import { WebGPURenderer, type WebGPURendererParameters } from 'three/webgpu'
 import {
   createSurfaceHost,
   mountSurfaceHost,
@@ -51,10 +58,22 @@ export type SurfaceCanvasStyle = Omit<
   'opacity' | 'visibility' | 'pointerEvents'
 >
 
+/** The parts of Fiber's renderer defaults the WebGPU renderer uses. */
+interface FiberRendererDefaults {
+  readonly canvas: object
+  readonly antialias?: boolean
+  readonly alpha?: boolean
+}
+
 export interface SurfaceCanvasProps
-  extends Omit<CanvasProps, 'children' | 'fallback' | 'style'> {
+  extends Omit<CanvasProps, 'children' | 'fallback' | 'style' | 'gl' | 'flat'> {
   /** Names this host for a page-side `Surface canvasId={…}`. */
   id?: SurfaceCanvasId
+  /**
+   * Parameters for the `WebGPURenderer` this Canvas creates, such as
+   * `alpha`, `antialias`, or `forceWebGL`.
+   */
+  gl?: Omit<WebGPURendererParameters, 'canvas'>
   children?: React.ReactNode
   style?: SurfaceCanvasStyle
   /**
@@ -76,6 +95,57 @@ const isDevelopment = (): boolean =>
   // defines it, Node and a bare tsc do not. Every member is optional
   // because absence is the normal answer outside a dev server.
   (import.meta as ImportMeta & { readonly env?: { readonly DEV?: boolean } }).env?.DEV === true
+
+const textureLimits = new WeakMap<RootState['gl'] | WebGPURenderer, number>()
+
+/**
+ * The largest texture side a SurfaceCanvas renderer accepts. Both backends
+ * reject a larger upload and draw nothing, while Three still reports the
+ * texture updated (decisions.md #70). Null for a renderer this file did not
+ * create.
+ */
+export function surfaceTextureLimit(renderer: RootState['gl'] | WebGPURenderer): number | null {
+  return textureLimits.get(renderer) ?? null
+}
+
+/**
+ * The adapter's own texture limit. A WebGPU device otherwise gets the spec
+ * default of 8192, below the 16384 WebGL used on the same hardware.
+ */
+async function adapterTextureLimit(powerPreference: GPUPowerPreference | undefined): Promise<number | null> {
+  const gpu = globalThis.navigator?.gpu
+  if (!gpu) return null
+  // Three requests its adapter with these options; matching them asks the
+  // same adapter. TypeScript's DOM types do not list `featureLevel` yet.
+  const options: GPURequestAdapterOptions & { readonly featureLevel: 'compatibility' } = { powerPreference, featureLevel: 'compatibility' }
+  const adapter = await gpu.requestAdapter(options)
+  return adapter?.limits.maxTextureDimension2D ?? null
+}
+
+function createSurfaceRenderer(
+  parameters: Omit<WebGPURendererParameters, 'canvas'> | undefined,
+): (defaults: FiberRendererDefaults) => Promise<WebGPURenderer> {
+  return async ({ canvas, antialias, alpha }) => {
+    // Fiber types its canvas with its own OffscreenCanvas stand-in.
+    if (!(canvas instanceof HTMLCanvasElement)) throw new Error('[munari] SurfaceCanvas needs a DOM canvas')
+    const powerPreference = parameters?.powerPreference ?? 'high-performance'
+    const limit = parameters?.forceWebGL ? null : await adapterTextureLimit(powerPreference)
+    const requiredLimits = limit === null ? parameters?.requiredLimits : { maxTextureDimension2D: limit, ...parameters?.requiredLimits }
+    const renderer = new WebGPURenderer({ antialias, alpha, ...parameters, powerPreference, requiredLimits, canvas })
+    await renderer.init()
+    const context = renderer.getContext()
+    textureLimits.set(
+      renderer,
+      context instanceof WebGL2RenderingContext
+        ? context.getParameter(context.MAX_TEXTURE_SIZE)
+        : requiredLimits?.maxTextureDimension2D ?? WEBGPU_DEFAULT_TEXTURE_LIMIT,
+    )
+    return renderer
+  }
+}
+
+// The WebGPU spec's default maxTextureDimension2D, granted when none is requested.
+const WEBGPU_DEFAULT_TEXTURE_LIMIT = 8192
 
 /**
  * Ask R3F for a frameloop mode only when it is not already the mode.
@@ -200,7 +270,16 @@ function SurfaceHostBridge({
   useEffect(() => {
     const original = gl.render.bind(gl)
     let notifying = false
+    let warnedToneMapping = false
     gl.render = (scene, camera) => {
+      if (gl.toneMapping !== NoToneMapping && !warnedToneMapping && isDevelopment()) {
+        warnedToneMapping = true
+        console.error(
+          '[munari] <SurfaceCanvas> renderer tone mapping is on, which shifts every HTML pixel. ' +
+            'Leave renderer.toneMapping at NoToneMapping and tone-map 3D materials instead: ' +
+            'material.outputNode = toneMapping(mode, exposure, output).',
+        )
+      }
       const ownsPreparation = !notifying
       const automatic = scene.matrixWorldAutoUpdate
       let releaseRaster: (()=>void)|null = null
@@ -320,6 +399,7 @@ export function SurfaceCanvas({
   dpr,
   resize,
   onCreated,
+  gl,
   pointerMode = 'scene',
   ...canvasProps
 }: SurfaceCanvasProps) {
@@ -336,6 +416,8 @@ export function SurfaceCanvas({
   const [displayScale, setDisplayScale] = useState(1)
   const nativeDpr=useSurfaceDevicePixelRatio()
   const drawingDpr = surfaceCanvasPixelRatio(dpr, nativeDpr, displayScale)
+  // Fiber creates its renderer once and ignores a later `gl`.
+  const renderer = useMemo(() => createSurfaceRenderer(gl), [gl])
 
   useEffect(() => {
     const mount = mountSurfaceHost(candidate)
@@ -405,6 +487,8 @@ export function SurfaceCanvas({
       <SurfaceHostContext value={host}>
         <Canvas
           {...canvasProps}
+          gl={renderer}
+          flat
           frameloop={frameloop}
           dpr={drawingDpr}
           resize={resize}

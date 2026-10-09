@@ -31,7 +31,7 @@ export function HomeStarter() {
   return (
     <div style={{ position: 'relative', display: 'grid', justifyItems: 'center', gap: 16, font: '14px/1.5 system-ui, sans-serif' }}>
       {supported && (
-        <SurfaceCanvas id={canvasId} flat frameloop="demand" pointerMode="surfaces"
+        <SurfaceCanvas id={canvasId} frameloop="demand" pointerMode="surfaces"
           camera={{ position: [0, 0, 6], fov: 45 }}
           style={{ position: 'absolute', inset: 0, zIndex: 20 }} />
       )}

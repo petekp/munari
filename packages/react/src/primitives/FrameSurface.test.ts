@@ -7,6 +7,7 @@ import {
 import {
   assertFrameMaterialSupported,
   createFrameSurfaceRuntime,
+  geometryDraws,
   hearingGatedRaycast,
   resolveFrameSurfaceDevelopment,
 } from './FrameSurface'
@@ -26,6 +27,9 @@ const requirement = (
   frame: { sourceId, generation },
   presentationRevision,
 })
+
+// A draw that can reach the canvas, writes color, and has something to draw.
+const SHOWN = { outputEligible: true, colorWrite: true, drawable: true }
 
 describe('FrameSurface runtime', () => {
   it('warns only in an explicit development or test environment', () => {
@@ -86,7 +90,7 @@ describe('FrameSurface runtime', () => {
     expect(runtime.takeDrawReceipt()).toBeNull()
 
     const requested = requirement(uploaded.sourceId, uploaded.generation)
-    runtime.beginPresentationPass(requested, true, true)
+    runtime.beginPresentationPass(requested, SHOWN)
     expect(runtime.takePresentationReceipt()).toEqual({
       ...requested,
       frame: uploaded,
@@ -106,38 +110,81 @@ describe('FrameSurface runtime', () => {
     const warn = vi.fn()
 
     runtime.texture.onUpdate?.(runtime.texture)
-    runtime.beginPresentationPass(requested, false, true, warn)
+    runtime.beginPresentationPass(requested, { ...SHOWN, outputEligible: false }, warn)
     expect(runtime.takePresentationReceipt(warn)).toBeNull()
-    runtime.beginPresentationPass(requested, true, false, warn)
+    runtime.beginPresentationPass(requested, { ...SHOWN, colorWrite: false }, warn)
+    expect(runtime.takePresentationReceipt(warn)).toBeNull()
+    runtime.beginPresentationPass(requested, { ...SHOWN, drawable: false }, warn)
     expect(runtime.takePresentationReceipt(warn)).toBeNull()
 
     expect(runtime.takeDrawReceipt()).toEqual({ surfaceEpoch: 30, frame: uploaded })
-    expect(runtime.rejectedPresentationDraws(requested.transferId)).toBe(2)
+    expect(runtime.rejectedPresentationDraws(requested.transferId)).toBe(3)
     expect(warn).toHaveBeenCalledTimes(1)
 
     runtime.dispose()
   })
 
-  it('emits each accepted presentation tuple once', () => {
+  it('delivers each accepted presentation tuple once', () => {
     const source = createCanvasFrameSource(canvas(), { premultiplyAlpha: false })
     const runtime = createFrameSurfaceRuntime(source, 33, false, () => {})
     const first = source.publish()
     const requested = requirement(first.sourceId, first.generation)
 
     runtime.texture.onUpdate?.(runtime.texture)
-    runtime.beginPresentationPass(requested, true, true)
-    expect(runtime.takePresentationReceipt()?.frame).toEqual(first)
-    runtime.beginPresentationPass(requested, true, true)
+    runtime.beginPresentationPass(requested, SHOWN)
+    const firstReceipt = runtime.takePresentationReceipt()
+    expect(firstReceipt?.frame).toEqual(first)
+    expect(runtime.deliverPresentation(firstReceipt!)).toBe(true)
+    expect(runtime.deliverPresentation(firstReceipt!)).toBe(false)
+    runtime.beginPresentationPass(requested, SHOWN)
     expect(runtime.takePresentationReceipt()).toBeNull()
 
     const second = source.publish()
     runtime.texture.onUpdate?.(runtime.texture)
-    runtime.beginPresentationPass(requested, true, true)
-    expect(runtime.takePresentationReceipt()?.frame).toEqual(second)
-    runtime.beginPresentationPass(requested, true, true)
-    expect(runtime.takePresentationReceipt()).toBeNull()
+    runtime.beginPresentationPass(requested, SHOWN)
+    const secondReceipt = runtime.takePresentationReceipt()
+    expect(secondReceipt?.frame).toEqual(second)
+    expect(runtime.deliverPresentation(secondReceipt!)).toBe(true)
 
     runtime.dispose()
+  })
+
+  it('keeps a taken but undelivered tuple available to the next draw', () => {
+    // The host discards a deferred receipt whose frame never reached the
+    // screen; the next eligible draw must still present that tuple.
+    const source = createCanvasFrameSource(canvas(), { premultiplyAlpha: false })
+    const runtime = createFrameSurfaceRuntime(source, 34, false, () => {})
+    const uploaded = source.publish()
+    const requested = requirement(uploaded.sourceId, uploaded.generation)
+
+    runtime.texture.onUpdate?.(runtime.texture)
+    runtime.beginPresentationPass(requested, SHOWN)
+    expect(runtime.takePresentationReceipt()).not.toBeNull()
+    runtime.beginPresentationPass(requested, SHOWN)
+    const retried = runtime.takePresentationReceipt()
+    expect(retried?.frame).toEqual(uploaded)
+    expect(runtime.deliverPresentation(retried!)).toBe(true)
+
+    runtime.dispose()
+  })
+
+  it('issues no receipt for a source over the renderer texture limit', () => {
+    // WebGPU rejects the oversized upload after Three reports it updated.
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const source = createCanvasFrameSource(canvas(), { premultiplyAlpha: false })
+    let invalidations = 0
+    const runtime = createFrameSurfaceRuntime(source, 36, false, () => invalidations++, 2)
+    const published = source.publish()
+
+    runtime.texture.onUpdate?.(runtime.texture)
+    expect(invalidations).toBe(0)
+    expect(runtime.takeDrawReceipt()).toBeNull()
+    runtime.beginPresentationPass(requirement(published.sourceId, published.generation), SHOWN)
+    expect(runtime.takePresentationReceipt()).toBeNull()
+    expect(error).toHaveBeenCalledTimes(1)
+
+    runtime.dispose()
+    error.mockRestore()
   })
 
   it('rejects a requirement that the retained source frame cannot satisfy', () => {
@@ -148,8 +195,7 @@ describe('FrameSurface runtime', () => {
 
     runtime.beginPresentationPass(
       requirement(uploaded.sourceId + 1, uploaded.generation),
-      true,
-      true,
+      SHOWN,
     )
     expect(runtime.takePresentationReceipt()).toBeNull()
     expect(runtime.rejectedPresentationDraws(5)).toBe(1)
@@ -173,7 +219,7 @@ describe('FrameSurface runtime', () => {
     expect(runtime.texture.onUpdate).toBeNull()
     expect(runtime.takeDrawReceipt()).toBeNull()
     const current = source.currentFrame()
-    runtime.beginPresentationPass(requirement(current.sourceId, current.generation), true, true)
+    runtime.beginPresentationPass(requirement(current.sourceId, current.generation), SHOWN)
     expect(runtime.takePresentationReceipt()).toBeNull()
   })
 
@@ -265,5 +311,24 @@ describe('FrameSurface runtime', () => {
       geometry.dispose()
       material.dispose()
     }
+  })
+})
+
+describe('geometryDraws', () => {
+  it('is false when the vertices or the draw range leave nothing to draw', () => {
+    expect(geometryDraws(new THREE.PlaneGeometry(1, 1))).toBe(true)
+
+    const empty = new THREE.BufferGeometry()
+    empty.setAttribute('position', new THREE.Float32BufferAttribute([], 3))
+    expect(geometryDraws(empty)).toBe(false)
+
+    const ranged = new THREE.PlaneGeometry(1, 1)
+    ranged.setDrawRange(0, 0)
+    expect(geometryDraws(ranged)).toBe(false)
+    // The plane's index has 6 entries; a range starting past them is empty.
+    ranged.setDrawRange(6, 3)
+    expect(geometryDraws(ranged)).toBe(false)
+    ranged.setDrawRange(3, 3)
+    expect(geometryDraws(ranged)).toBe(true)
   })
 })

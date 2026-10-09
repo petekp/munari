@@ -70,7 +70,7 @@ function Fixture() {
       <button id="remove-last" onClick={() => remove('last')} disabled={!owners.includes('last')}>Remove last</button>
     </header>
     <Status surface={surface}/>
-    <SurfaceCanvas id="parts" orthographic flat camera={{ position:[0,0,1000], zoom:1 }} frameloop="always" style={{ position:'fixed', left:320, top:180, width:480, height:320 }}>
+    <SurfaceCanvas id="parts" orthographic camera={{ position:[0,0,1000], zoom:1 }} frameloop="always" style={{ position:'fixed', left:320, top:180, width:480, height:320 }}>
       <Observe/>
       {wiring === 'scene' && <SceneSurface.Root surface={surface} onError={onError}>
         {owners.map(owner => <SceneSurface.HTML key={owner} part="panel" size={[200,120]} resolution={1}><Content owner={owner}/></SceneSurface.HTML>)}

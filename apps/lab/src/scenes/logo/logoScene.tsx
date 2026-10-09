@@ -1153,12 +1153,9 @@ export function LogoScene({
           and samples the texture) but the eye sees only the page until
           the swap. */}
       <div ref={canvasRef} className="logo-canvas" data-holds={presented === 'scene'}>
-        {/* `flat`: the letters are ink, and tone mapping would mute
-            exactly the candy this palette is for. */}
         <SurfaceCanvas
           pointerMode="surfaces"
           id="logo"
-          flat
           gl={{ alpha: true }}
           dpr={[1, 2]}
           camera={{ fov: FOV, position: [0, 0, 1000] }}

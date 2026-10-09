@@ -12,15 +12,18 @@
 //   upload        texture.onUpdate     → label the pixels Three took
 //   draw          mesh.onAfterRender   → FrameDrawReceipt
 //   presentation  onBeforeRender gate  → PresentationReceipt, only for
-//                 + onAfterRender take   a color-writing draw to the
-//                                        default framebuffer
+//                 + host frame tail      a color-writing draw in a frame
+//                                        that reached the canvas
 //
 // The gate exists because Three fires onAfterRender for off-screen
 // render targets and colorWrite:false materials too. Those draws move
 // pixels, but they cannot have reached the screen, so a transfer that
 // released the page on one would flicker (decisions.md #25: drawing is
-// not showing). Rejections are counted per transfer and warned once,
-// so a mis-wired transfer is diagnosable without a console flood.
+// not showing). WebGPURenderer draws every frame into an internal target,
+// so no draw shows a null target; the SurfaceCanvas tail decides, and a
+// plain Canvas issues no presentation receipts (#69). Rejections are
+// counted per transfer and warned once, so a mis-wired transfer is
+// diagnosable without a console flood.
 //
 // The runtime is split from the component so this ordering is testable
 // without mocking a renderer. The component's job is lifecycle: build
@@ -43,6 +46,7 @@ import {
 import { SurfaceContext, type SurfaceContextValue } from './SurfaceContext'
 import { surfaceStoreOf, type SurfaceHandle } from './surface/surfaceHandle'
 import { useSurfaceHostContext } from './surface/surfaceHostContext'
+import { surfaceTextureLimit } from './surface/SurfaceCanvas'
 import { useLatest } from './useLatest'
 
 export interface FrameDrawReceipt {
@@ -102,13 +106,34 @@ export interface FrameSurfaceRuntime {
   takeDrawReceipt(): FrameDrawReceipt | null
   beginPresentationPass(
     requirement: PresentationRequirement | undefined,
-    outputEligible: boolean,
-    colorWrite: boolean,
+    pass: PresentationPass,
     warn?: (message: string) => void,
   ): void
   takePresentationReceipt(warn?: (message: string) => void): PresentationReceipt | null
+  /** True the first time a receipt is delivered; a deferred one may never be. */
+  deliverPresentation(receipt: PresentationReceipt): boolean
   rejectedPresentationDraws(transferId: number): number
   dispose(): void
+}
+
+/** What one draw of the mesh can prove, read in its pre-draw callback. */
+export interface PresentationPass {
+  /** The frame this draw belongs to can reach the canvas. */
+  readonly outputEligible: boolean
+  readonly colorWrite: boolean
+  /** The geometry has at least one element to draw. */
+  readonly drawable: boolean
+}
+
+/**
+ * Whether a draw of this geometry can produce any primitive. Three runs the
+ * mesh callbacks for an empty draw too, and the canvas keeps its old pixels.
+ * FrameSurface draws one material, so no geometry group narrows the range.
+ */
+export function geometryDraws(geometry: THREE.BufferGeometry): boolean {
+  const elements = geometry.index?.count ?? geometry.getAttribute('position')?.count ?? 0
+  const end = Math.min(elements, geometry.drawRange.start + geometry.drawRange.count)
+  return end > geometry.drawRange.start
 }
 
 /** Internal runtime split out so the upload/draw ordering can be tested without a renderer mock. */
@@ -117,6 +142,8 @@ export function createFrameSurfaceRuntime(
   surfaceEpoch: number,
   mirrorU: boolean,
   invalidate: () => void,
+  /** The renderer's largest texture side, when it rejects larger uploads. */
+  textureLimit: number | null = null,
 ): FrameSurfaceRuntime {
   let active = true
   let pendingFrame: FrameId | null = null
@@ -129,8 +156,42 @@ export function createFrameSurfaceRuntime(
     width: source.canvas.width,
     height: source.canvas.height,
   }
+  let reportedOversize = false
+  const oversized = () => {
+    if (textureLimit === null) return false
+    const { width, height } = source.canvas
+    if (width <= textureLimit && height <= textureLimit) return false
+    if (!reportedOversize && isDevelopmentRuntime()) {
+      console.error(
+        `munari: FrameSurface source is ${width}x${height}, over this renderer's ${textureLimit}px texture limit; ` +
+          'it will not upload or issue receipts until it fits',
+      )
+    }
+    reportedOversize = true
+    return true
+  }
 
-  const texture = new THREE.CanvasTexture(source.canvas)
+  // A canvas holding cross-origin pixels cannot be uploaded. WebGPU ignores
+  // the failed copy and still reports the texture updated; the WebGL 2
+  // fallback throws from render(). Three gets a blank stand-in instead. The
+  // check runs once per allocation: at creation, then at the first publish
+  // after each, because a caller usually draws after creating the source.
+  // Taint lasts until the canvas is resized (decisions.md #70).
+  let tainted = !canvasIsOriginClean(source.canvas)
+  let publishChecked = false
+  let reportedTaint = false
+  const reportTaint = () => {
+    if (!reportedTaint && isDevelopmentRuntime()) {
+      console.error(
+        'munari: FrameSurface source canvas holds cross-origin pixels and cannot be uploaded; ' +
+          'it issues no receipts until it is resized and redrawn with same-origin or CORS content',
+      )
+    }
+    reportedTaint = true
+  }
+  if (tainted) reportTaint()
+
+  const texture = new THREE.CanvasTexture(tainted ? blankCanvas() : source.canvas)
   // These values must be final before the texture reaches context, material,
   // or renderer. A later passive write can lose the first upload race.
   texture.colorSpace = THREE.SRGBColorSpace
@@ -147,7 +208,9 @@ export function createFrameSurfaceRuntime(
   texture.repeat.x = mirrorU ? -1 : 1
 
   texture.onUpdate = () => {
-    if (!active) return
+    // An oversized upload fails on the GPU after this callback, and a
+    // tainted source uploaded the stand-in, so neither names a frame.
+    if (!active || tainted || oversized()) return
     // Publication and upload can coalesce. Label only the pixels Three chose
     // to upload, at the callback that confirms that upload happened.
     const frame = source.currentFrame()
@@ -181,7 +244,20 @@ export function createFrameSurfaceRuntime(
       // this update makes a resized canvas allocate at its new dimensions.
       texture.dispose()
       allocation = store
+      publishChecked = false
     }
+    if (!publishChecked) {
+      publishChecked = true
+      const nowTainted = !canvasIsOriginClean(source.canvas)
+      if (nowTainted !== tainted) {
+        tainted = nowTainted
+        // The image changes size, so its storage is reallocated too.
+        texture.dispose()
+        texture.image = tainted ? blankCanvas() : source.canvas
+      }
+      if (tainted) reportTaint()
+    }
+    if (tainted || oversized()) return
     texture.needsUpdate = true
     // A demand frameloop has no next render until somebody asks for one.
     invalidate()
@@ -200,15 +276,19 @@ export function createFrameSurfaceRuntime(
       pendingFrame = null
       return { surfaceEpoch, frame }
     },
-    beginPresentationPass(requirement, outputEligible, colorWrite, warn) {
+    beginPresentationPass(requirement, { outputEligible, colorWrite, drawable }, warn) {
       pendingPresentation = null
       if (!active || !requirement) return
-      if (!outputEligible) {
-        rejectPresentation(requirement, 'off-screen render target', warn)
+      if (!drawable) {
+        rejectPresentation(requirement, 'the geometry has nothing to draw', warn)
         return
       }
       if (!colorWrite) {
         rejectPresentation(requirement, 'material color writes are disabled', warn)
+        return
+      }
+      if (!outputEligible) {
+        rejectPresentation(requirement, 'off-screen render target', warn)
         return
       }
       pendingPresentation = requirement
@@ -231,16 +311,16 @@ export function createFrameSurfaceRuntime(
         rejectPresentation(requirement, 'uploaded frame does not satisfy the requirement', warn)
         return null
       }
-      const key = [
-        receipt.surfaceEpoch,
-        receipt.transferId,
-        receipt.presentationRevision,
-        receipt.frame.sourceId,
-        receipt.frame.generation,
-      ].join(':')
-      if (presented.has(key)) return null
+      return presented.has(presentationKey(receipt)) ? null : receipt
+    },
+    deliverPresentation(receipt) {
+      // Marked here, not when the receipt is taken: the host discards a
+      // deferred receipt whose frame never reached the screen, and the next
+      // eligible draw must be able to present the same tuple.
+      const key = presentationKey(receipt)
+      if (!active || presented.has(key)) return false
       presented.add(key)
-      return receipt
+      return true
     },
     rejectedPresentationDraws(transferId) {
       return rejected.get(transferId) ?? 0
@@ -259,6 +339,48 @@ export function createFrameSurfaceRuntime(
       texture.dispose()
     },
   }
+}
+
+let originProbe: CanvasRenderingContext2D | null | undefined
+
+/**
+ * Whether a canvas's pixels may be uploaded, checked without creating a
+ * context on the caller's canvas: drawing it into a private canvas carries its
+ * taint there. True where no DOM exists to check with.
+ */
+function canvasIsOriginClean(canvas: HTMLCanvasElement): boolean {
+  if (originProbe === undefined) {
+    originProbe = globalThis.document?.createElement('canvas').getContext('2d', { willReadFrequently: true }) ?? null
+  }
+  if (!originProbe || canvas.width === 0 || canvas.height === 0) return true
+  // Setting the size clears the probe's own taint from an earlier check.
+  originProbe.canvas.width = 1
+  originProbe.canvas.height = 1
+  try {
+    originProbe.drawImage(canvas, 0, 0, 1, 1)
+    originProbe.getImageData(0, 0, 1, 1)
+    return true
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'SecurityError') return false
+    throw error
+  }
+}
+
+function blankCanvas(): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  canvas.width = 1
+  canvas.height = 1
+  return canvas
+}
+
+function presentationKey(receipt: PresentationReceipt): string {
+  return [
+    receipt.surfaceEpoch,
+    receipt.transferId,
+    receipt.presentationRevision,
+    receipt.frame.sourceId,
+    receipt.frame.generation,
+  ].join(':')
 }
 
 let nextSurfaceEpoch = 0
@@ -345,6 +467,7 @@ export function FrameSurface({
   ...meshProps
 }: FrameSurfaceProps) {
   const invalidate = useThree((state) => state.invalidate)
+  const renderer = useThree((state) => state.gl)
   const meshRef = useRef<THREE.Mesh>(null)
   const runtimeRef = useRef<FrameSurfaceRuntime | null>(null)
   const [runtime, setRuntime] = useState<FrameSurfaceRuntime | null>(null)
@@ -381,12 +504,13 @@ export function FrameSurface({
       ++nextSurfaceEpoch,
       mirrorU,
       invalidate,
+      surfaceTextureLimit(renderer),
     )
     const previous = runtimeRef.current
     runtimeRef.current = next
     setRuntime(next)
     previous?.dispose()
-  }, [frame, mirrorU, invalidate])
+  }, [frame, mirrorU, invalidate, renderer])
 
   // A separate lifetime cleanup lets dependency changes perform the atomic
   // create → swap → release sequence above. It also survives StrictMode's
@@ -429,6 +553,7 @@ export function FrameSurface({
   // plain r3f Canvas, which is the case that keeps the old refusal.
   const host = useSurfaceHostContext()
   const deferredRef = useRef(false)
+  const drawableRef = useRef(true)
 
   const reportRejectedPresentation = useCallback(
     (message: string) => {
@@ -442,14 +567,15 @@ export function FrameSurface({
 
   const handleBeforeRender = useCallback(
     (
-      renderer: THREE.WebGLRenderer,
+      renderer: { getRenderTarget(): THREE.RenderTarget | null },
       _scene: THREE.Scene,
       _camera: THREE.Camera,
-      _geometry: THREE.BufferGeometry,
+      geometry: THREE.BufferGeometry,
       renderedMaterial: THREE.Material,
     ) => {
       const current = runtimeRef.current
       if (!current || current !== runtime || current.source !== frameRef.current) return
+      drawableRef.current = geometryDraws(geometry)
       // A pass into a render target has not reached the screen, so on its
       // own it cannot present. Inside a <SurfaceCanvas> it does not have to
       // decide alone: the host closes its frame tail once the frame it
@@ -459,8 +585,11 @@ export function FrameSurface({
       deferredRef.current = !target && host !== null && renderedMaterial.colorWrite
       current.beginPresentationPass(
         presentationRef.current,
-        target || deferredRef.current,
-        renderedMaterial.colorWrite,
+        {
+          outputEligible: target || deferredRef.current,
+          colorWrite: renderedMaterial.colorWrite,
+          drawable: drawableRef.current,
+        },
         reportRejectedPresentation,
       )
     },
@@ -472,15 +601,21 @@ export function FrameSurface({
     // A source prop can change one commit before its effect disposes the old
     // runtime. Never let that old mesh report into the new source's callback.
     if (!current || current !== runtime || current.source !== frameRef.current) return
+    // An empty draw left the canvas as it was; the uploaded frame waits for
+    // a draw that shows it.
+    if (!drawableRef.current) return
     const receipt = current.takeDrawReceipt()
     if (receipt) onFrameDrawnRef.current?.(receipt)
     const presentationReceipt = current.takePresentationReceipt(reportRejectedPresentation)
     if (!presentationReceipt) return
+    const deliver = () => {
+      if (current.deliverPresentation(presentationReceipt)) onPresentedRef.current?.(presentationReceipt)
+    }
     if (deferredRef.current && host) {
-      host.deferPresentation(() => onPresentedRef.current?.(presentationReceipt))
+      host.deferPresentation(deliver)
       return
     }
-    onPresentedRef.current?.(presentationReceipt)
+    deliver()
   }, [
     runtime,
     frameRef,

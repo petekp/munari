@@ -4551,3 +4551,106 @@ lean on `matchMotion`, which pairs a copy's animations with the original's by
 index. A clone carries no CSS transitions, so the pairing slips: measured in
 Chrome, a copy's keyframe animation took a running transition's 284 ms instead
 of its own 683 ms. That defect is open.
+
+
+## #69 — SurfaceCanvas renders with WebGPURenderer (2026-10-08, react binding + instruments)
+
+**Status: implemented for `SurfaceCanvas` and `FrameSurface` on
+`pkp/webgpu-restart`. `Surface`, its materials, the lab, and the registry are
+not ported.**
+
+`SurfaceCanvas` creates Three's `WebGPURenderer` and awaits `init()`. The
+renderer uses WebGPU when the browser offers it and falls back to WebGL 2.
+`gl` takes `WebGPURendererParameters`, such as `forceWebGL`. The migration uses
+stock Three and Fiber through public APIs (docs/webgpu-migration-plan.md).
+
+`WebGPURenderer` draws each frame into an internal target, then tone-maps and
+color-converts the whole frame in a final pass. Two contracts follow from that.
+
+**Renderer tone mapping stays off.** The final pass ignores a material's
+`toneMapped: false`. Under ACES, `FrameSurface` colors were off by up to 114
+per channel on both backends. `SurfaceCanvas` always renders with
+`NoToneMapping`, and its `flat` prop is gone. A scene that wants tone mapping
+applies it in its own 3D materials with
+`material.outputNode = toneMapping(mode, exposure, output)`. In development,
+`SurfaceCanvas` reports renderer tone mapping that a caller turned on.
+
+**Presentation receipts require `SurfaceCanvas`.** During a draw,
+`renderer.getRenderTarget()` returns the internal target, never `null`. A mesh
+callback therefore cannot tell a canvas draw from an off-screen one. Every
+`FrameSurface` presentation now defers to the `SurfaceCanvas` frame tail, which
+closes when `render()` returns with no render target set (#25). In a plain
+Fiber `Canvas`, `FrameSurface` issues draw receipts only.
+
+**A receipt is spent when it is delivered.** The host discards a deferred
+receipt at the start of the next frame if its own frame never reached the
+canvas. `FrameSurface` used to mark the receipt's tuple as presented when it
+took the receipt, so the next eligible draw found the tuple spent and the
+transfer never presented. It now marks the tuple when the receipt reaches
+`onPresented`. The fault needs a frame that draws the tuple only off-screen,
+followed by a frame that draws it to the canvas. A frame that ends on the
+canvas closes its own deferral, so ordinary frames and same-frame composer
+passes were unaffected. The gate's presentation fence hit the fault once it
+ran in a `SurfaceCanvas`, on WebGPU and on the WebGL 2 fallback. Main's
+`WebGLRenderer` path defers the same way; that was read from the code, not
+measured.
+
+Measured 2026-10-08, headless Chrome with `--enable-unsafe-webgpu`, Apple
+Metal, Three `0.185.1`: `gate:frame-surface` passes on WebGPU and on the
+WebGL 2 fallback. Receipts `[A0, A2, B0, B2, B4, B6, B8]`, RGB error 0 for every
+receipt and the resize, one presentation receipt from only the visible pass.
+Renderer ACES fails the color oracle at RGB error 114. Sampling the previous
+frame fails it at RGB error 250.
+
+
+## #70 — FrameSurface issues no receipt for a frame it could not draw (2026-10-08, react binding)
+
+**Status: implemented on `pkp/webgpu-restart` for `FrameSurface`. `Surface`
+gets the same checks when it is ported.**
+
+Three runs a mesh's draw callbacks and a texture's `onUpdate` even when nothing
+reached the canvas. A disposable probe drew one `FrameSurface` inside a
+`SurfaceCanvas` with one fault per run, on headless Chrome with Apple Metal and
+Three `0.185.1`. Before this change:
+
+- Empty geometry issued both receipts on WebGPU and on the WebGL 2 fallback,
+  and drew nothing.
+- A source over the texture limit issued both receipts on both backends and
+  drew nothing. On WebGPU the device got the spec default of 8192 px, so a
+  10000 px source failed that drew on WebGL.
+- A tainted source canvas, one holding cross-origin pixels, issued both
+  receipts on WebGPU and drew nothing. Three ignores the failed
+  `copyExternalImageToTexture` and still calls `onUpdate`. On the WebGL 2
+  fallback the `SecurityError` escaped `render()` every frame, which stopped
+  every Surface on that canvas.
+
+Now:
+
+- `FrameSurface` withholds its draw and presentation receipts for a draw whose
+  geometry has nothing to draw, checked from the index or position count and
+  the draw range. The uploaded frame waits for a draw that shows it.
+- `SurfaceCanvas` requests the adapter's `maxTextureDimension2D` for its
+  WebGPU device, and records the GL `MAX_TEXTURE_SIZE` on the fallback. The
+  probe's adapter reported 16384.
+- `FrameSurface` does not upload a source over that limit or issue receipts
+  for it, and reports it once in development. A source outside a
+  `SurfaceCanvas` has no recorded limit and is not checked.
+- `FrameSurface` checks whether its source is origin-clean by drawing it into
+  a private 1 px canvas and reading that back, so the caller's canvas never
+  gets a new context. It checks when the runtime is created and again at the
+  first publish after each allocation, because a caller usually draws after
+  creating the source. A tainted source is replaced by a blank stand-in, so
+  Three never sees it, and it issues no receipts. Taint lasts until the canvas
+  is resized, which starts a new allocation and a new check. A canvas tainted
+  only after its first publish is missed. Checking every publish was rejected:
+  it costs a readback per publish, and Chrome may move a canvas read that often
+  to the CPU.
+
+After, the same probe: a 10000 px source draws exactly on both backends. A
+20000 px source, empty geometry, and a source tainted before or after its
+creation issue no receipts on either backend, and the fallback no longer
+throws. A tainted source resized and redrawn with same-origin pixels presents
+again with exact pixels. On
+WebGPU the 20000 px source still produced 88 GPU validation errors over the
+run of about ten frames. The texture's first upload is still attempted, and
+what repeats the errors after it was not traced.

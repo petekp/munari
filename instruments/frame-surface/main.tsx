@@ -3,7 +3,7 @@
 // FrameSurface's default unlit material.
 //
 // The fixtures are 64×16 canvases painted as four vertical RGB stripes, and
-// every generation gets its own four colors — so a WebGL readback within one
+// every generation gets its own four colors — so a canvas readback within one
 // channel value identifies WHICH frame the mesh drew, not merely that it
 // drew. Publishes deliberately outnumber draws: each step publishes an
 // intermediate frame and then a final one, and the demand frameloop uploads
@@ -18,9 +18,10 @@
 // full claim list).
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { useFrame, useThree, type RootState } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { PresentationReceipt } from '@petepetrash/munari'
+import { WebGPURenderer } from 'three/webgpu'
+import { SurfaceCanvas, type PresentationReceipt } from '@petepetrash/munari'
 import {
   FrameSurface,
   createCanvasFrameSource,
@@ -31,8 +32,17 @@ import {
 } from '@petepetrash/munari/advanced'
 
 type RGB = readonly [number, number, number]
+type GateBackend = 'webgpu' | 'webgl2'
 
 const SURFACE_NAME = 'frame-surface-gate'
+const query = new URLSearchParams(location.search)
+const requestedBackend: GateBackend = query.get('backend') === 'webgl2' ? 'webgl2' : 'webgpu'
+// Oracle fault: read the canvas before each render, so every sample holds the
+// previous frame. The gate must fail under it.
+const staleSampleFault = query.has('staleSample')
+// Oracle fault: turn on the renderer tone mapping SurfaceCanvas keeps off.
+// HTML colors must then fail the byte-color oracle.
+const rendererToneMappingFault = query.has('rendererToneMapping')
 
 const FIRST_0: readonly RGB[] = [
   [32, 64, 96],
@@ -144,6 +154,34 @@ const PRESENTATION_COLORS: readonly RGB[] = [
 ]
 const presentationSource = makeSource(PRESENTATION_COLORS)
 const resizeSource = makeSource(FIRST_0)
+
+// The tainted stage draws a cross-origin image into its source after the
+// FrameSurface exists, so the first-publish origin check is the one that must
+// catch it (decisions.md #70). The runner serves the image from a second port
+// without CORS headers.
+const TAINTED_COLORS: readonly RGB[] = [
+  [96, 160, 32],
+  [32, 96, 160],
+  [160, 32, 96],
+  [208, 200, 64],
+]
+const RECOVERED_COLORS: readonly RGB[] = [
+  [44, 212, 108],
+  [212, 108, 44],
+  [108, 44, 212],
+  [188, 188, 188],
+]
+const taintedSource = makeSource(TAINTED_COLORS)
+const crossOriginImage = new Image()
+crossOriginImage.src = `http://127.0.0.1:${query.get('imagePort')}/dot.png`
+await crossOriginImage.decode()
+// Creation is generation 0, the tainting publish 1, the recovery publish 2.
+const TAINTED_REQUIREMENT: PresentationRequirement = {
+  transferId: 92,
+  frame: { sourceId: taintedSource.source.currentFrame().sourceId, generation: 2 },
+  presentationRevision: 1,
+}
+const TAINTED_RENDERS = 3
 const PRESENTATION_REQUIREMENT: PresentationRequirement = {
   transferId: 91,
   frame: presentationSource.source.currentFrame(),
@@ -224,6 +262,8 @@ export interface AcquisitionEvidence {
 }
 
 export interface FrameSurfaceGateResult {
+  /** The backend Three actually started, which can differ from the request. */
+  backend: GateBackend | null
   generations: number[]
   receiptSourceIds: number[]
   sourceIds: number[]
@@ -243,6 +283,7 @@ export interface FrameSurfaceGateResult {
   freshSurfaceEpochPerHandoff: boolean
   presentationFence: PresentationFenceEvidence
   backingStoreResize: BackingStoreResizeEvidence
+  taintedSource: TaintedSourceEvidence
   worstRgbError: number
   passed: boolean
 }
@@ -255,6 +296,18 @@ export interface PresentationFenceEvidence {
   offscreenRgbError: number
   visibleRgbError: number
   offscreenPresentationReceipts: number
+  passed: boolean
+}
+
+export interface TaintedSourceEvidence {
+  /** Renders while the source held cross-origin pixels. */
+  taintedRenders: number
+  taintedClear: boolean
+  taintedFrameReceipts: number
+  taintedPresentationReceipts: number
+  recoveredGenerations: number[]
+  recoveredRgbError: number
+  recoveredPresentationReceipts: number
   passed: boolean
 }
 
@@ -296,6 +349,7 @@ let settled = false
 let mainGateComplete = false
 let presentationFence: PresentationFenceEvidence | null = null
 let backingStoreResize: BackingStoreResizeEvidence | null = null
+let taintedSourceEvidence: TaintedSourceEvidence | null = null
 let presentationFencePhase: PresentationFencePhase = 'disabled'
 
 function objectId(node: RenderNode): number {
@@ -319,38 +373,97 @@ function fail(error: Error): void {
   rejectDone(error)
 }
 
-function sampleStripes(renderer: THREE.WebGLRenderer): RGB[] {
+// Fiber's state type names only WebGLRenderer; SurfaceCanvas creates a
+// WebGPURenderer.
+function gateRenderer(state: RootState): WebGPURenderer {
+  const renderer = state.gl
+  if (!(renderer instanceof WebGPURenderer)) throw new Error('gate Canvas is not using WebGPURenderer')
+  return renderer
+}
+
+function backendOf(renderer: WebGPURenderer): GateBackend | null {
+  const backend: object = renderer.backend
+  if ('isWebGPUBackend' in backend && backend.isWebGPUBackend === true) return 'webgpu'
+  if ('isWebGLBackend' in backend && backend.isWebGLBackend === true) return 'webgl2'
+  return null
+}
+
+const readback = document.createElement('canvas')
+const readbackContext = readback.getContext('2d', { willReadFrequently: true })!
+
+// WebGPU cannot read the canvas inside a draw callback: the frame's commands
+// are submitted when render() returns. Callers sample after render() in the
+// same task, before the browser presents and replaces the canvas texture.
+function sampleStripes(renderer: WebGPURenderer): RGB[] {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2())
-  const gl = renderer.getContext()
+  readback.width = size.x
+  readback.height = size.y
+  readbackContext.drawImage(renderer.domElement, 0, 0)
   const sampled: RGB[] = []
   for (let index = 0; index < 4; index += 1) {
-    const pixel = new Uint8Array(4)
     const x = Math.floor(((index + 0.5) * size.x) / 4)
     const y = Math.floor(size.y / 2)
-    gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
+    const pixel = readbackContext.getImageData(x, y, 1, 1).data
     sampled.push([pixel[0]!, pixel[1]!, pixel[2]!])
   }
   return sampled
 }
 
-function sampleTargetStripes(
-  renderer: THREE.WebGLRenderer,
-  target: THREE.WebGLRenderTarget,
-): RGB[] {
+async function sampleTargetStripes(
+  renderer: WebGPURenderer,
+  target: THREE.RenderTarget,
+): Promise<RGB[]> {
   const sampled: RGB[] = []
   for (let index = 0; index < 4; index += 1) {
-    const pixel = new Uint8Array(4)
-    renderer.readRenderTargetPixels(
+    const pixel = await renderer.readRenderTargetPixelsAsync(
       target,
       Math.floor(((index + 0.5) * target.width) / 4),
       Math.floor(target.height / 2),
       1,
       1,
-      pixel,
     )
     sampled.push([pixel[0]!, pixel[1]!, pixel[2]!])
   }
   return sampled
+}
+
+/** Render, then read the canvas, honoring the stale-sample fault. */
+function renderAndSample(renderer: WebGPURenderer, render: () => void): RGB[] {
+  const stale = staleSampleFault ? sampleStripes(renderer) : null
+  render()
+  return stale ?? sampleStripes(renderer)
+}
+
+const afterRender = new WeakMap<WebGPURenderer, ((sampled: RGB[]) => void)[]>()
+
+/** Run `deliver` with this render's canvas pixels once render() returns. */
+function whenRendered(renderer: WebGPURenderer, deliver: (sampled: RGB[]) => void): void {
+  const queue = afterRender.get(renderer)
+  if (queue) queue.push(deliver)
+  else afterRender.set(renderer, [deliver])
+}
+
+function drainRendered(renderer: WebGPURenderer, sampled: RGB[]): void {
+  const queue = afterRender.get(renderer)
+  if (!queue) return
+  afterRender.delete(renderer)
+  for (const deliver of queue) deliver(sampled)
+}
+
+/** Deliver canvas samples to whenRendered callers on a Canvas with no monitor. */
+function SampleAfterRender() {
+  const renderer = useThree(gateRenderer)
+  useLayoutEffect(() => {
+    const original = renderer.render
+    const wrapped: typeof renderer.render = (scene, camera) => {
+      drainRendered(renderer, renderAndSample(renderer, () => original.call(renderer, scene, camera)))
+    }
+    renderer.render = wrapped
+    return () => {
+      if (renderer.render === wrapped) renderer.render = original
+    }
+  }, [renderer])
+  return null
 }
 
 function maxError(actual: readonly RGB[], expected: readonly RGB[]): number {
@@ -394,17 +507,17 @@ function acquisitionForCycle(cycle: number) {
 
 /** Capture every completed render; a draw receipt cannot reveal an earlier gap. */
 function RenderMonitor() {
-  const renderer = useThree((state) => state.gl)
+  const renderer = useThree(gateRenderer)
   useLayoutEffect(() => {
     const original = renderer.render
     const wrapped: typeof renderer.render = (scene, camera) => {
       const replacementWasActive = replacementRequested && !replacementComplete
       const acquisitionCycleAtStart = activeAcquisitionCycle
-      original.call(renderer, scene, camera)
+      const sampledRgb = renderAndSample(renderer, () => original.call(renderer, scene, camera))
       renderCount += 1
+      drainRendered(renderer, sampledRgb)
 
       if (replacementWasActive) {
-        const sampledRgb = sampleStripes(renderer)
         replacementRenderSamples.push({
           render: renderCount,
           sampledRgb,
@@ -415,7 +528,6 @@ function RenderMonitor() {
 
       if (acquisitionCycleAtStart !== null) {
         const acquisition = acquisitionForCycle(acquisitionCycleAtStart)
-        const sampledRgb = sampleStripes(renderer)
         acquisitionRenderSamples.push({
           cycle: acquisitionCycleAtStart,
           render: renderCount,
@@ -475,6 +587,7 @@ function gatePassed(
 ): boolean {
   return (
     traceMatches &&
+    e.backend === requestedBackend &&
     e.sourceIds.length === 2 &&
     e.surfaceEpochs.length === 5 &&
     e.staleReceipts === 0 &&
@@ -488,15 +601,17 @@ function gatePassed(
     e.freshSurfaceEpochPerHandoff &&
     e.presentationFence.passed &&
     e.backingStoreResize.passed &&
+    e.taintedSource.passed &&
     e.worstRgbError <= 1
   )
 }
 
 function scheduleResult(): void {
-  if (!mainGateComplete || !presentationFence || !backingStoreResize) return
+  if (!mainGateComplete || !presentationFence || !backingStoreResize || !taintedSourceEvidence) return
   if (resultScheduled) return
   const fenceEvidence = presentationFence
   const resizeEvidence = backingStoreResize
+  const taintedEvidence = taintedSourceEvidence
   resultScheduled = true
   setTimeout(() => {
     if (settled) return
@@ -589,6 +704,7 @@ function scheduleResult(): void {
 
       settled = true
       const evidence = {
+        backend: gateBackend,
         generations,
         receiptSourceIds,
         sourceIds,
@@ -608,6 +724,7 @@ function scheduleResult(): void {
         freshSurfaceEpochPerHandoff,
         presentationFence: fenceEvidence,
         backingStoreResize: resizeEvidence,
+        taintedSource: taintedEvidence,
         worstRgbError,
       }
       resolveDone({
@@ -633,6 +750,106 @@ function completePresentationFence(evidence: PresentationFenceEvidence): void {
 function completeBackingStoreResize(evidence: BackingStoreResizeEvidence): void {
   backingStoreResize = evidence
   scheduleResult()
+}
+
+function completeTaintedSource(evidence: TaintedSourceEvidence): void {
+  taintedSourceEvidence = evidence
+  scheduleResult()
+}
+
+function TaintedSourceScene() {
+  const renderer = useThree(gateRenderer)
+  const invalidate = useThree((state) => state.invalidate)
+  const frameReceipts = useRef<FrameDrawReceipt[]>([])
+  const presentationReceipts = useRef<PresentationReceipt[]>([])
+  const recovering = useRef(false)
+  const taintedClear = useRef<boolean[]>([])
+  const tainted = useRef({ frameReceipts: -1, presentationReceipts: -1 })
+
+  // Runs after the FrameSurface's own layout effect has created its runtime
+  // from the still-clean canvas.
+  useLayoutEffect(() => {
+    const canvas = taintedSource.source.canvas
+    canvas.getContext('2d')!.drawImage(crossOriginImage, 0, 0, 1, 1)
+    taintedSource.source.publish()
+    // A tainted source invalidates nothing, so this stage drives its renders.
+    const observe = (renders: number) => {
+      whenRendered(renderer, (sampled) => {
+        taintedClear.current.push(isClearOnly(sampled))
+        if (renders + 1 < TAINTED_RENDERS) {
+          observe(renders + 1)
+          invalidate()
+          return
+        }
+        tainted.current = {
+          frameReceipts: frameReceipts.current.length,
+          presentationReceipts: presentationReceipts.current.length,
+        }
+        setTimeout(() => {
+          // A resize clears the canvas's taint and starts a new allocation.
+          recovering.current = true
+          canvas.width = 128
+          canvas.height = 32
+          taintedSource.paint(RECOVERED_COLORS)
+          taintedSource.source.publish()
+        }, 0)
+      })
+    }
+    observe(0)
+    invalidate()
+  }, [renderer, invalidate])
+
+  const onFrameDrawn = useCallback(
+    (receipt: FrameDrawReceipt) => {
+      frameReceipts.current.push(receipt)
+      if (!recovering.current) return
+      // Sampled when render() returns; counted after the host's frame tail,
+      // which delivers the presentation receipt once the render call ends.
+      whenRendered(renderer, (sampled) => queueMicrotask(() => {
+        const facts = {
+          taintedRenders: taintedClear.current.length,
+          taintedClear: taintedClear.current.every(Boolean),
+          taintedFrameReceipts: tainted.current.frameReceipts,
+          taintedPresentationReceipts: tainted.current.presentationReceipts,
+          recoveredGenerations: frameReceipts.current.map((entry) => entry.frame.generation),
+          recoveredRgbError: maxError(sampled, RECOVERED_COLORS),
+          recoveredPresentationReceipts: presentationReceipts.current.length,
+        }
+        completeTaintedSource({
+          ...facts,
+          passed:
+            facts.taintedRenders === TAINTED_RENDERS &&
+            facts.taintedClear &&
+            facts.taintedFrameReceipts === 0 &&
+            facts.taintedPresentationReceipts === 0 &&
+            facts.recoveredGenerations.length === 1 &&
+            facts.recoveredGenerations[0] === 2 &&
+            facts.recoveredRgbError <= 1 &&
+            facts.recoveredPresentationReceipts === 1,
+        })
+      }))
+    },
+    [renderer],
+  )
+
+  const onPresented = useCallback((receipt: PresentationReceipt) => {
+    presentationReceipts.current.push(receipt)
+  }, [])
+
+  return (
+    <FrameSurface
+      name="frame-tainted-gate"
+      frame={taintedSource.source}
+      width={64}
+      height={16}
+      raycast={() => {}}
+      presentation={TAINTED_REQUIREMENT}
+      onFrameDrawn={onFrameDrawn}
+      onPresented={onPresented}
+    >
+      <planeGeometry args={[4, 1]} />
+    </FrameSurface>
+  )
 }
 
 type PresentationFencePhase = 'disabled' | 'offscreen' | 'visible' | 'done'
@@ -679,35 +896,26 @@ function PresentationRenderMonitor({
   onRendered,
 }: {
   phase: PresentationFencePhase
-  onRendered: (phase: PresentationFencePhase, sampled: RGB[]) => void
+  onRendered: (phase: PresentationFencePhase, sampled: RGB[] | Promise<RGB[]>) => void
 }) {
-  const renderer = useThree((state) => state.gl)
-  const target = useMemo(() => new THREE.WebGLRenderTarget(1, 1), [])
+  const renderer = useThree(gateRenderer)
+  const target = useMemo(() => new THREE.RenderTarget(1, 1), [])
 
   useLayoutEffect(() => () => target.dispose(), [target])
-  useLayoutEffect(() => {
-    const original = renderer.render
-    const wrapped: typeof renderer.render = (scene, camera) => {
-      const offscreen = phase === 'offscreen'
-      const previousTarget = renderer.getRenderTarget()
-      if (offscreen) {
-        const size = renderer.getDrawingBufferSize(new THREE.Vector2())
-        target.setSize(size.x, size.y)
-        renderer.setRenderTarget(target)
-      }
-
-      original.call(renderer, scene, camera)
-      const sampled = offscreen
-        ? sampleTargetStripes(renderer, target)
-        : sampleStripes(renderer)
-      if (offscreen) renderer.setRenderTarget(previousTarget)
-      onRendered(phase, sampled)
+  // Priority 1 takes over Fiber's render. Each phase calls the host's
+  // wrapped render() with its own target set, as a consumer's pass would.
+  useFrame(({ scene, camera }) => {
+    if (phase === 'offscreen') {
+      const size = renderer.getDrawingBufferSize(new THREE.Vector2())
+      target.setSize(size.x, size.y)
+      renderer.setRenderTarget(target)
+      renderer.render(scene, camera)
+      renderer.setRenderTarget(null)
+      onRendered(phase, sampleTargetStripes(renderer, target))
+      return
     }
-    renderer.render = wrapped
-    return () => {
-      if (renderer.render === wrapped) renderer.render = original
-    }
-  }, [renderer, target, phase, onRendered])
+    onRendered(phase, renderAndSample(renderer, () => renderer.render(scene, camera)))
+  }, 1)
 
   return null
 }
@@ -741,11 +949,37 @@ function PresentationFenceScene() {
   }, [])
 
   const onRendered = useCallback(
-    (renderedPhase: PresentationFencePhase, sampled: RGB[]) => {
+    (renderedPhase: PresentationFencePhase, rendered: RGB[] | Promise<RGB[]>) => {
       if (settled || handled.current.has(renderedPhase) || renderedPhase === 'done') return
       if (renderedPhase === 'disabled' && frameReceipts.current.length === 0) return
 
       handled.current.add(renderedPhase)
+      if (renderedPhase === 'offscreen') {
+        // Receipts are counted when render() returns; the pixels arrive later.
+        offscreenPresentationReceipts.current = presentationReceipts.current.length
+        if (presentationReceipts.current.length !== 0) {
+          fail(new Error('off-screen draw produced a presentation receipt'))
+          return
+        }
+        const settle = async () => {
+          try {
+            const sampled = await rendered
+            offscreenRgbError.current = maxError(sampled, PRESENTATION_COLORS)
+            offscreenHadPixels.current = !isClearOnly(sampled)
+            setPhase('visible')
+          } catch (error) {
+            fail(asError(error))
+          }
+        }
+        void settle()
+        return
+      }
+
+      if (rendered instanceof Promise) {
+        fail(new Error(`${renderedPhase} phase sampled a render target instead of the canvas`))
+        return
+      }
+      const sampled = rendered
       if (renderedPhase === 'disabled') {
         disabledDefaultClear.current = isClearOnly(sampled)
         if (presentationReceipts.current.length !== 0) {
@@ -753,18 +987,6 @@ function PresentationFenceScene() {
           return
         }
         queueMicrotask(() => setPhase('offscreen'))
-        return
-      }
-
-      if (renderedPhase === 'offscreen') {
-        offscreenRgbError.current = maxError(sampled, PRESENTATION_COLORS)
-        offscreenHadPixels.current = !isClearOnly(sampled)
-        offscreenPresentationReceipts.current = presentationReceipts.current.length
-        if (presentationReceipts.current.length !== 0) {
-          fail(new Error('off-screen draw produced a presentation receipt'))
-          return
-        }
-        queueMicrotask(() => setPhase('visible'))
         return
       }
 
@@ -816,7 +1038,7 @@ function ResizeTexture({ observed }: { observed: RefObject<THREE.Texture | null>
 }
 
 function BackingStoreResizeScene() {
-  const renderer = useThree((state) => state.gl)
+  const renderer = useThree(gateRenderer)
   const generations = useRef<number[]>([])
   const rgbErrors = useRef<number[]>([])
   const firstTexture = useRef<THREE.Texture | null>(null)
@@ -824,44 +1046,48 @@ function BackingStoreResizeScene() {
 
   const onFrameDrawn = useCallback(
     (receipt: FrameDrawReceipt) => {
-      try {
-        const texture = observedTexture.current
-        if (!texture) throw new Error('resize gate has no public frame texture')
-
-        const index = generations.current.length
-        const expected = index === 0 ? FIRST_0 : FIRST_2
-        generations.current.push(receipt.frame.generation)
-        rgbErrors.current.push(maxError(sampleStripes(renderer), expected))
-
-        if (index === 0) {
-          firstTexture.current = texture
-          setTimeout(() => {
-            resizeSource.source.canvas.width = 128
-            resizeSource.source.canvas.height = 32
-            resizeSource.paint(FIRST_2)
-            resizeSource.source.publish()
-          }, 0)
-          return
-        }
-
-        if (index > 1) throw new Error('resize gate emitted an extra frame receipt')
-        completeBackingStoreResize({
-          generations: generations.current,
-          rgbErrors: rgbErrors.current,
-          finalWidth: resizeSource.source.canvas.width,
-          finalHeight: resizeSource.source.canvas.height,
-          sameTexture: firstTexture.current === texture,
-          passed:
-            generations.current[0] === 0 &&
-            generations.current[1] === 1 &&
-            rgbErrors.current.every((error) => error <= 1) &&
-            resizeSource.source.canvas.width === 128 &&
-            resizeSource.source.canvas.height === 32 &&
-            firstTexture.current === texture,
-        })
-      } catch (error) {
-        fail(asError(error))
+      const texture = observedTexture.current
+      if (!texture) {
+        fail(new Error('resize gate has no public frame texture'))
+        return
       }
+      const index = generations.current.length
+      const expected = index === 0 ? FIRST_0 : FIRST_2
+      generations.current.push(receipt.frame.generation)
+      whenRendered(renderer, (sampled) => {
+        try {
+          rgbErrors.current.push(maxError(sampled, expected))
+
+          if (index === 0) {
+            firstTexture.current = texture
+            setTimeout(() => {
+              resizeSource.source.canvas.width = 128
+              resizeSource.source.canvas.height = 32
+              resizeSource.paint(FIRST_2)
+              resizeSource.source.publish()
+            }, 0)
+            return
+          }
+
+          if (index > 1) throw new Error('resize gate emitted an extra frame receipt')
+          completeBackingStoreResize({
+            generations: generations.current,
+            rgbErrors: rgbErrors.current,
+            finalWidth: resizeSource.source.canvas.width,
+            finalHeight: resizeSource.source.canvas.height,
+            sameTexture: firstTexture.current === texture,
+            passed:
+              generations.current[0] === 0 &&
+              generations.current[1] === 1 &&
+              rgbErrors.current.every((error) => error <= 1) &&
+              resizeSource.source.canvas.width === 128 &&
+              resizeSource.source.canvas.height === 32 &&
+              firstTexture.current === texture,
+          })
+        } catch (error) {
+          fail(asError(error))
+        }
+      })
     },
     [renderer],
   )
@@ -880,21 +1106,11 @@ function BackingStoreResizeScene() {
   )
 }
 
-function ToneMappingFault() {
-  useFrame(({ scene }) => {
-    const mesh = scene.getObjectByName(SURFACE_NAME)
-    if (!(mesh instanceof THREE.Mesh)) return
-    for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
-      if (material.toneMapped) continue
-      material.toneMapped = true
-      material.needsUpdate = true
-    }
-  })
-  return null
-}
+let gateBackend: GateBackend | null = null
 
 function GateScene() {
-  const renderer = useThree((state) => state.gl)
+  const renderer = useThree(gateRenderer)
+  gateBackend = backendOf(renderer)
   const scene = useThree((state) => state.scene)
   const [activeSource, setActiveSource] = useState(first.source)
   const [mounted, setMounted] = useState(true)
@@ -960,12 +1176,16 @@ function GateScene() {
           )
         }
 
-        const sampledRgb = sampleStripes(renderer)
-        receipts.push({
+        const entry: FrameSurfaceGateReceipt = {
           receipt,
-          sampledRgb,
-          maxChannelError: maxError(sampledRgb, expected.colors),
+          sampledRgb: [],
+          maxChannelError: Number.POSITIVE_INFINITY,
           ...inspectSurface(scene),
+        }
+        receipts.push(entry)
+        whenRendered(renderer, (sampledRgb) => {
+          entry.sampledRgb = sampledRgb
+          entry.maxChannelError = maxError(sampledRgb, expected.colors)
         })
 
         if (receiptIndex >= 4) {
@@ -1037,7 +1257,6 @@ function GateScene() {
   return (
     <>
       <ambientLight color="#ff0000" intensity={4} />
-      {new URLSearchParams(location.search).has('toneMapped') && <ToneMappingFault />}
       <RenderMonitor />
       {mounted && (
         <FrameSurface
@@ -1070,17 +1289,20 @@ window.__frameSurfaceGate = {
   run: () => done,
   debug: () => ({
     mainGateComplete,
+    backend: gateBackend,
     mainReceipts: receipts.length,
     presentationFencePhase,
     presentationFence,
     backingStoreResize,
+    taintedSource: taintedSourceEvidence,
   }),
 }
 
 createRoot(document.getElementById('root')!).render(
   <div id="stages">
     <div id="presentation-stage">
-      <Canvas
+      <SurfaceCanvas
+        id="presentation"
         frameloop="demand"
         dpr={1}
         orthographic
@@ -1093,18 +1315,18 @@ createRoot(document.getElementById('root')!).render(
           near: 0.1,
           far: 10,
         }}
-        gl={{ alpha: false, antialias: false, preserveDrawingBuffer: true }}
+        gl={{ alpha: false, antialias: false, forceWebGL: requestedBackend === 'webgl2' }}
         onCreated={({ gl }) => {
           gl.outputColorSpace = THREE.SRGBColorSpace
-          gl.toneMapping = THREE.NoToneMapping
           gl.setClearColor(0x000000, 1)
         }}
       >
         <PresentationFenceScene />
-      </Canvas>
+      </SurfaceCanvas>
     </div>
-    <div id="resize-stage">
-      <Canvas
+    <div id="tainted-stage">
+      <SurfaceCanvas
+        id="tainted"
         frameloop="demand"
         dpr={1}
         orthographic
@@ -1117,18 +1339,19 @@ createRoot(document.getElementById('root')!).render(
           near: 0.1,
           far: 10,
         }}
-        gl={{ alpha: false, antialias: false, preserveDrawingBuffer: true }}
+        gl={{ alpha: false, antialias: false, forceWebGL: requestedBackend === 'webgl2' }}
         onCreated={({ gl }) => {
           gl.outputColorSpace = THREE.SRGBColorSpace
-          gl.toneMapping = THREE.NoToneMapping
           gl.setClearColor(0x000000, 1)
         }}
       >
-        <BackingStoreResizeScene />
-      </Canvas>
+        <SampleAfterRender />
+        <TaintedSourceScene />
+      </SurfaceCanvas>
     </div>
-    <div id="stage">
-      <Canvas
+    <div id="resize-stage">
+      <SurfaceCanvas
+        id="resize"
         frameloop="demand"
         dpr={1}
         orthographic
@@ -1141,15 +1364,40 @@ createRoot(document.getElementById('root')!).render(
           near: 0.1,
           far: 10,
         }}
-        gl={{ alpha: false, antialias: false, preserveDrawingBuffer: true }}
+        gl={{ alpha: false, antialias: false, forceWebGL: requestedBackend === 'webgl2' }}
         onCreated={({ gl }) => {
           gl.outputColorSpace = THREE.SRGBColorSpace
-          gl.toneMapping = THREE.ACESFilmicToneMapping
           gl.setClearColor(0x000000, 1)
+        }}
+      >
+        <SampleAfterRender />
+        <BackingStoreResizeScene />
+      </SurfaceCanvas>
+    </div>
+    <div id="stage">
+      <SurfaceCanvas
+        id="main"
+        frameloop="demand"
+        dpr={1}
+        orthographic
+        camera={{
+          position: [0, 0, 1],
+          left: -2,
+          right: 2,
+          top: 0.5,
+          bottom: -0.5,
+          near: 0.1,
+          far: 10,
+        }}
+        gl={{ alpha: false, antialias: false, forceWebGL: requestedBackend === 'webgl2' }}
+        onCreated={({ gl }) => {
+          gl.outputColorSpace = THREE.SRGBColorSpace
+          gl.setClearColor(0x000000, 1)
+          if (rendererToneMappingFault) gl.toneMapping = THREE.ACESFilmicToneMapping
         }}
       >
         <GateScene />
-      </Canvas>
+      </SurfaceCanvas>
     </div>
   </div>,
 )

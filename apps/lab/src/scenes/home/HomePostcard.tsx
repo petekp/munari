@@ -33,7 +33,6 @@ export function HomePostcard({ supported, reduced, effectsEnabled, flyer, viewpo
       {supported && effectsEnabled && (
         <SurfaceCanvas
           id={canvasId}
-          flat
           pointerMode="surfaces"
           style={{
             position: 'absolute', right: 'calc(-1 * var(--home-side-padding))', top: -128,

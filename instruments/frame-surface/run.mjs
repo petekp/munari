@@ -1,5 +1,6 @@
 // Real-Chrome receipt and RGB gate for the public frame-backed Surface.
 import { existsSync } from 'node:fs'
+import { createServer as createHttpServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -26,10 +27,13 @@ if (!chromePath) {
 
 let server
 let browser
+let images
+// The development error FrameSurface reports, once, for a tainted source.
+const TAINT_REPORT = 'munari: FrameSurface source canvas holds cross-origin pixels'
 const deadline = setTimeout(() => {
-  console.error('frame-surface gate: hard 45s deadline hit')
+  console.error('frame-surface gate: hard 120s deadline hit')
   process.exit(1)
-}, 45_000)
+}, 120_000)
 
 try {
   server = await createServer({
@@ -53,6 +57,19 @@ try {
   })
   await server.listen()
 
+  // A 1×1 PNG from a second origin with no CORS headers taints any canvas
+  // that draws it.
+  const dot = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+    'base64',
+  )
+  images = createHttpServer((_, response) => {
+    response.writeHead(200, { 'content-type': 'image/png' })
+    response.end(dot)
+  })
+  await new Promise((resolve) => images.listen(0, '127.0.0.1', resolve))
+  const imagePort = images.address().port
+
   browser = await puppeteer.launch({
     executablePath: chromePath,
     headless: true,
@@ -61,6 +78,17 @@ try {
       // uploads. Permit SwiftShader when Chrome rejects the native backend.
       '--enable-webgl',
       '--enable-unsafe-swiftshader',
+      // Headless Chrome exposes WebGPU only with this flag. The page reports
+      // the backend Three started, and the gate requires the requested one.
+      '--enable-unsafe-webgpu',
+      // Linux Chrome without these cannot allocate a WebGPU canvas's texture:
+      // the GPU process logs "Could not find SharedImageBackingFactory" and the
+      // device is lost on the first frame. Removing any one of the three still
+      // fails. Measured 2026-10-08, Chrome 155 on Debian amd64 with no GPU, as
+      // on a hosted runner. They force software rendering on any Linux machine.
+      ...(process.platform === 'linux'
+        ? ['--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-angle=swiftshader']
+        : []),
       // The idle-zero pair: a backgrounded renderer stops compositing,
       // and a receipt that never arrives must mean the library failed,
       // not that throttling starved the frameloop.
@@ -70,121 +98,148 @@ try {
     ],
   })
 
-  const page = await browser.newPage()
-  await page.setViewport({ width: 512, height: 256, deviceScaleFactor: 1 })
-  const pageProblems = []
-  page.on('pageerror', (error) => pageProblems.push(String(error)))
-  page.on('console', (message) => {
-    if (message.type() === 'error' && !/Failed to load resource/.test(message.text())) {
-      pageProblems.push(message.text())
-    }
-  })
-
   const url = server.resolvedUrls.local[0]
-  await page.goto(url, { waitUntil: 'load' })
-  await page.waitForFunction(() => window.__frameSurfaceGate?.ready === true, {
-    timeout: 10_000,
-  })
 
-  let gateTimeout
-  let result
-  try {
-    result = await Promise.race([
-      page.evaluate(() => window.__frameSurfaceGate.run()),
-      new Promise((_, reject) => {
-        gateTimeout = setTimeout(
-          () => reject(new Error('frame-surface gate: result timed out')),
-          15_000,
-        )
-      }),
-    ])
-  } catch (error) {
-    console.error('frame-surface gate debug:', await page.evaluate(() => window.__frameSurfaceGate.debug()))
-    throw error
-  } finally {
-    clearTimeout(gateTimeout)
-  }
-
-  const receiptTrace = result.receipts
-    .map(
-      ({ receipt }) =>
-        `${receipt.frame.generation}@source-${receipt.frame.sourceId}/epoch-${receipt.surfaceEpoch}`,
-    )
-    .join(', ')
-  console.log(`frame-surface: receipts [${receiptTrace}]`)
-  console.log(
-    `frame-surface: replacement renders ${result.replacementRenderSamples.length}, ` +
-      `clear frames ${result.replacementClearFrames}, stale old-source receipts ` +
-      `${result.staleOldSourceReceipts}`,
-  )
-  for (const acquisition of result.acquisitionEvidence) {
-    console.log(
-      `frame-surface: reacquire ${acquisition.cycle} published ` +
-        `[${acquisition.publishedGenerations.join(', ')}] while released ` +
-        `${acquisition.releasedSurfaceAbsent ? 'yes' : 'NO'}, receipt ` +
-        `${acquisition.receiptGeneration}@epoch-${acquisition.surfaceEpoch}, renders ` +
-        `${acquisition.renderSamples}, clear ${acquisition.clearFrames}, mismatched ` +
-        `${acquisition.mismatchedFrames}, RGB error ${acquisition.receiptRgbError}, ` +
-        `mesh/material/geometry ${acquisition.meshId}/${acquisition.materialId}/` +
-        `${acquisition.geometryId}`,
-    )
-  }
-  console.log(
-    `frame-surface: live replacement identity ` +
-      `${result.liveReplacementIdentityPreserved ? 'preserved' : 'changed'}, ` +
-      `worst RGB error ${result.worstRgbError}`,
-  )
-  console.log(
-    `frame-surface: presentation fence frame receipts ` +
-      `${result.presentationFence.frameReceipts.length}, presentation receipts ` +
-      `${result.presentationFence.presentationReceipts.length}, disabled clear ` +
-      `${result.presentationFence.disabledDefaultClear ? 'yes' : 'NO'}, offscreen drew ` +
-      `${result.presentationFence.offscreenHadPixels ? 'yes' : 'NO'}, offscreen RGB error ` +
-      `${result.presentationFence.offscreenRgbError}, visible RGB error ` +
-      `${result.presentationFence.visibleRgbError}`,
-  )
-  console.log(
-    `frame-surface: backing-store resize generations ` +
-      `[${result.backingStoreResize.generations.join(', ')}], size ` +
-      `${result.backingStoreResize.finalWidth}x${result.backingStoreResize.finalHeight}, ` +
-      `same texture ${result.backingStoreResize.sameTexture ? 'yes' : 'NO'}, RGB errors ` +
-      `[${result.backingStoreResize.rgbErrors.join(', ')}]`,
-  )
-
-  if (result.passed && pageProblems.length === 0) {
-    await page.close()
-    const control = await browser.newPage()
-    await control.setViewport({ width: 512, height: 256, deviceScaleFactor: 1 })
-    control.on('pageerror', error => pageProblems.push(String(error)))
-    control.on('console', message => {
-      if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:'))
-        pageProblems.push(message.text())
+  // One page per run. Problems are page errors and console errors; a gate
+  // result with any problem does not count as a pass.
+  async function runPage(query) {
+    const page = await browser.newPage()
+    await page.setViewport({ width: 512, height: 256, deviceScaleFactor: 1 })
+    const problems = []
+    let taintReports = 0
+    page.on('pageerror', (error) => problems.push(String(error)))
+    page.on('console', (message) => {
+      if (message.type() !== 'error' || /Failed to load resource/.test(message.text())) return
+      if (message.text().startsWith(TAINT_REPORT)) taintReports += 1
+      else problems.push(message.text())
     })
-    await control.goto(`${url}?toneMapped`, { waitUntil: 'load' })
-    await control.waitForFunction(() => window.__frameSurfaceGate?.ready === true)
-    const wrongTone = await control.evaluate(() => window.__frameSurfaceGate.run())
-    if (wrongTone.passed || !Number.isFinite(wrongTone.worstRgbError) || wrongTone.worstRgbError <= 1) {
-      throw new Error('frame-surface: color oracle did not reject tone mapping of captured colors')
+    await page.goto(`${url}?${query}&imagePort=${imagePort}`, { waitUntil: 'load' })
+    await page.waitForFunction(() => window.__frameSurfaceGate?.ready === true, {
+      timeout: 10_000,
+    })
+    let gateTimeout
+    try {
+      const result = await Promise.race([
+        page.evaluate(() => window.__frameSurfaceGate.run()),
+        new Promise((_, reject) => {
+          gateTimeout = setTimeout(
+            () => reject(new Error(`frame-surface gate: result timed out (${query})`)),
+            15_000,
+          )
+        }),
+      ])
+      return { result, problems, taintReports }
+    } catch (error) {
+      console.error('frame-surface gate debug:', await page.evaluate(() => window.__frameSurfaceGate.debug()))
+      throw error
+    } finally {
+      clearTimeout(gateTimeout)
+      await page.close()
     }
-    console.log(`frame-surface: tone-mapping fault rejected, RGB error ${wrongTone.worstRgbError}`)
-    await control.close()
   }
 
-  if (pageProblems.length) {
-    console.error('frame-surface gate: page errors during the run:')
-    for (const problem of pageProblems) console.error(`  ${problem}`)
-    process.exitCode = 1
-  } else if (!result.passed) {
-    console.error('frame-surface gate FAILED')
-    console.error(JSON.stringify(result, null, 2))
+  function report(backend, result) {
+    const receiptTrace = result.receipts
+      .map(
+        ({ receipt }) =>
+          `${receipt.frame.generation}@source-${receipt.frame.sourceId}/epoch-${receipt.surfaceEpoch}`,
+      )
+      .join(', ')
+    const log = (line) => console.log(`frame-surface [${backend}]: ${line}`)
+    log(`backend started ${result.backend ?? 'unknown'}`)
+    log(`receipts [${receiptTrace}]`)
+    log(
+      `replacement renders ${result.replacementRenderSamples.length}, ` +
+        `clear frames ${result.replacementClearFrames}, stale old-source receipts ` +
+        `${result.staleOldSourceReceipts}`,
+    )
+    for (const acquisition of result.acquisitionEvidence) {
+      log(
+        `reacquire ${acquisition.cycle} published ` +
+          `[${acquisition.publishedGenerations.join(', ')}] while released ` +
+          `${acquisition.releasedSurfaceAbsent ? 'yes' : 'NO'}, receipt ` +
+          `${acquisition.receiptGeneration}@epoch-${acquisition.surfaceEpoch}, renders ` +
+          `${acquisition.renderSamples}, clear ${acquisition.clearFrames}, mismatched ` +
+          `${acquisition.mismatchedFrames}, RGB error ${acquisition.receiptRgbError}, ` +
+          `mesh/material/geometry ${acquisition.meshId}/${acquisition.materialId}/` +
+          `${acquisition.geometryId}`,
+      )
+    }
+    log(
+      `live replacement identity ` +
+        `${result.liveReplacementIdentityPreserved ? 'preserved' : 'changed'}, ` +
+        `worst RGB error ${result.worstRgbError}`,
+    )
+    log(
+      `presentation fence frame receipts ` +
+        `${result.presentationFence.frameReceipts.length}, presentation receipts ` +
+        `${result.presentationFence.presentationReceipts.length}, disabled clear ` +
+        `${result.presentationFence.disabledDefaultClear ? 'yes' : 'NO'}, offscreen drew ` +
+        `${result.presentationFence.offscreenHadPixels ? 'yes' : 'NO'}, offscreen RGB error ` +
+        `${result.presentationFence.offscreenRgbError}, visible RGB error ` +
+        `${result.presentationFence.visibleRgbError}`,
+    )
+    log(
+      `tainted source renders ${result.taintedSource.taintedRenders}, clear ` +
+        `${result.taintedSource.taintedClear ? 'yes' : 'NO'}, frame/presentation receipts ` +
+        `${result.taintedSource.taintedFrameReceipts}/${result.taintedSource.taintedPresentationReceipts}; ` +
+        `recovered generations [${result.taintedSource.recoveredGenerations.join(', ')}], RGB error ` +
+        `${result.taintedSource.recoveredRgbError}, presentation receipts ` +
+        `${result.taintedSource.recoveredPresentationReceipts}`,
+    )
+    log(
+      `backing-store resize generations ` +
+        `[${result.backingStoreResize.generations.join(', ')}], size ` +
+        `${result.backingStoreResize.finalWidth}x${result.backingStoreResize.finalHeight}, ` +
+        `same texture ${result.backingStoreResize.sameTexture ? 'yes' : 'NO'}, RGB errors ` +
+        `[${result.backingStoreResize.rgbErrors.join(', ')}]`,
+    )
+  }
+
+  const failures = []
+  for (const backend of ['webgpu', 'webgl2']) {
+    const { result, problems, taintReports } = await runPage(`backend=${backend}`)
+    report(backend, result)
+    if (taintReports !== 1) {
+      failures.push(`${backend}: expected one tainted-source report, saw ${taintReports}`)
+      continue
+    }
+    if (problems.length) {
+      failures.push(`${backend}: page errors during the run:\n  ${problems.join('\n  ')}`)
+      continue
+    }
+    if (!result.passed) {
+      failures.push(`${backend}: gate failed\n${JSON.stringify(result, null, 2)}`)
+      continue
+    }
+
+    // Each control must fail. A control that passes means the oracle cannot
+    // see the fault it exists to catch.
+    const tone = (await runPage(`backend=${backend}&rendererToneMapping`)).result
+    if (tone.passed || !Number.isFinite(tone.worstRgbError) || tone.worstRgbError <= 1) {
+      failures.push(`${backend}: color oracle did not reject renderer tone mapping of captured colors`)
+    } else {
+      console.log(`frame-surface [${backend}]: tone-mapping fault rejected, RGB error ${tone.worstRgbError}`)
+    }
+    const stale = (await runPage(`backend=${backend}&staleSample`)).result
+    if (stale.passed || stale.worstRgbError <= 1) {
+      failures.push(`${backend}: pixel oracle did not reject samples of the previous frame`)
+    } else {
+      console.log(`frame-surface [${backend}]: stale-sample fault rejected, RGB error ${stale.worstRgbError}`)
+    }
+  }
+
+  if (failures.length) {
+    for (const failure of failures) console.error(`frame-surface gate FAILED: ${failure}`)
     process.exitCode = 1
   } else {
     console.log(
-      'frame-surface gate PASSED: visible presentation, live replacement, and 3 handoff cycles kept current sRGB pixels.',
+      'frame-surface gate PASSED on webgpu and webgl2: visible presentation, live replacement, and 3 handoff cycles kept current sRGB pixels.',
     )
   }
 } finally {
   clearTimeout(deadline)
   await browser?.close()
   await server?.close()
+  images?.close()
 }

@@ -388,8 +388,16 @@ behind `@petepetrash/munari/advanced` — draws the generation it reports,
 and that its optional presentation fence rejects non-writing and
 off-screen passes. `npm run gate:frame-surface`.
 
-The page runs a demand frameloop and reads WebGL pixels inside the mesh's draw
-receipt. It first replaces one live source with another. It then releases and
+The gate loads the page twice, first on WebGPU and then with `forceWebGL`, and
+requires the backend Three actually started. Headless Chrome exposes WebGPU only
+with `--enable-unsafe-webgpu`, so the gate fails on a host without WebGPU. On
+Linux the runner also renders both backends in software through SwiftShader,
+because Linux Chrome without it loses the WebGPU device on the first canvas
+frame. Each stage runs in a `SurfaceCanvas` with a demand frameloop. The page reads the
+canvas after `render()` returns, in the same task; WebGPU cannot read it inside
+a draw callback.
+
+The first stage replaces one live source with another. It then releases and
 reacquires the same persistent source three times. Each release publishes two
 frames before reacquisition. The gate requires receipts
 `[A0, A2, B0, B2, B4, B6, B8]`, a fresh surface epoch for each hold period,
@@ -397,15 +405,31 @@ no stale receipt, no clear or wrong-color acquisition render, and sampled RGB
 within one channel value. It also checks that live replacement preserves the
 mesh, geometry, and material. Acquisition sampling starts at the React mount
 commit; renders while the surface is still deliberately absent are excluded.
-Rendered colors must remain unchanged under red
-lighting and a non-identity tone mapper. A deliberately tone-mapped control must
-fail the byte-color oracle. The gate reads the public frame texture rather than
-requiring a material constructor. A separate
-pass draws with color writes disabled, then through an off-screen target, and
-finally through the default framebuffer without a new source publication. It
-requires one unchanged frame receipt and one presentation receipt from only
-the final draw. A third pass resizes the source backing store and verifies the
-reallocated texture at its new dimensions.
+Rendered colors must remain unchanged under red lighting. The gate reads the
+public frame texture rather than requiring a material constructor.
+
+A second stage draws with color writes disabled, then through an off-screen
+target, and finally to the canvas without a new source publication. Each phase
+calls the host's `render()` itself, so the host sees the target that phase
+uses. The gate requires one unchanged frame receipt and one presentation
+receipt from only the final draw. A third stage resizes the source backing
+store and verifies the reallocated texture at its new dimensions.
+
+A fourth stage draws a cross-origin image into its source after the
+`FrameSurface` exists, then publishes. The runner serves that image from a
+second port without CORS headers, so the canvas is tainted. The gate requires
+three renders with a blank canvas and no frame or presentation receipt, and
+exactly one development report of the tainted source. The stage then resizes
+the canvas, which clears its taint, redraws same-origin colors, and requires
+one frame receipt for that generation within one channel value and one
+presentation receipt (decisions.md #70). With the origin check removed, the
+WebGPU run fails on a frame receipt issued while tainted, and the WebGL 2 run
+fails on a result timeout because `render()` throws every frame.
+
+Two controls must fail the byte-color oracle on each backend. One turns on the
+renderer tone mapping `SurfaceCanvas` keeps off (decisions.md #69). The other
+samples the canvas before each render, so every sample holds the previous
+frame.
 
 R3F currently creates its Canvas reconciler root without strict effects.
 Wrapping either the DOM root or Canvas children in `StrictMode` does not prove
