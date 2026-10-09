@@ -488,7 +488,7 @@ function OnRail({ inst, onTake }: { inst: Instrument; onTake: (e: ThreeEvent<Poi
         ) : (
           <circleGeometry args={[inst.aperture, 96]} />
         )}
-        <meshBasicMaterial color="#22242a" transparent opacity={0.55} />
+        <meshBasicMaterial color="#22242a" transparent premultipliedAlpha opacity={0.55} />
       </mesh>
       {s ? null : <Body inst={inst} onGrab={(_, e) => onTake(e)} />}
     </group>

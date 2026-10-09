@@ -198,7 +198,7 @@ function PlateFrame({ w, h }: { w: number; h: number }) {
   useEffect(() => () => geometry.dispose(), [geometry])
   return (
     <lineSegments geometry={geometry}>
-      <lineBasicMaterial color="#7c8798" transparent opacity={0.34} toneMapped={false} />
+      <lineBasicMaterial color="#7c8798" transparent premultipliedAlpha opacity={0.34} toneMapped={false} />
     </lineSegments>
   )
 }

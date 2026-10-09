@@ -4798,6 +4798,24 @@ helpers return the value whose conversion equals WebGL's encode:
 premultiplied color already in sRGB. A fragment whose own alpha is 0 still
 contributes nothing; added light has to come from blend factors.
 
+**A translucent material on the canvas sets `premultipliedAlpha: true`.** The
+conversion treats every fragment as premultiplied, including one from a
+material with Three's default `premultipliedAlpha: false`. That material then
+blends with `SrcAlpha`, so its alpha applies twice. Black is unaffected. With
+`premultipliedAlpha: true`, a stock material premultiplies before the
+conversion and blends with `One`, which lands as WebGL did. A custom straight
+color goes out encoded first, then premultiplied:
+`encodedOutput(vec4(sRGBTransferOETF(linear).mul(a), a))`. Measured
+2026-10-09, headless Chrome 155, both backends identical, sRGB gray 0.5 at
+alpha 0.5 over opaque black:
+
+| Material | Canvas byte | `WebGLRenderer` |
+| --- | --- | --- |
+| Stock `MeshBasicNodeMaterial`, `opacity` 0.5 | 44 | 64 |
+| The same with `premultipliedAlpha: true` | 64 | 64 |
+| `outputNode` returns `vec4(sRGBTransferEOTF(rgb), a)` | 44 | 64 |
+| `encodedOutput` of the premultiplied value, `premultipliedAlpha: true` | 64 | 64 |
+
 Measured 2026-10-08, headless Chrome 155, Three 0.186.1, a 4×4 2D-canvas
 capture texture (`SRGBColorSpace`, premultiplied) drawn full-screen. Values
 are premultiplied canvas bytes at alpha 1, 0.5 and 0.25:

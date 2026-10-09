@@ -518,7 +518,7 @@ function ControlsHardware() {
     <>
       <mesh ref={receiver} position={[0, 0, 0.0002]} receiveShadow raycast={noRaycast} visible={false}>
         <planeGeometry args={[1, 1]} />
-        <shadowMaterial ref={shadow} color={controlsTuning.shadow} transparent opacity={0} />
+        <shadowMaterial ref={shadow} color={controlsTuning.shadow} transparent premultipliedAlpha opacity={0} />
       </mesh>
       {HARDWARE.map((spec) => (
         <Surface.Anchor key={spec.anchor} name={spec.anchor}>

@@ -847,6 +847,7 @@ function useHardwareAssets() {
       clearcoat: 1,
       clearcoatRoughness: 0.08,
       transparent: true,
+      premultipliedAlpha: true,
       opacity: 0.28,
       depthWrite: false,
     })
@@ -1348,6 +1349,7 @@ function FaceShade({ rect }: { rect: RailRect }) {
       new THREE.MeshBasicMaterial({
         color: 0x02040a,
         transparent: true,
+        premultipliedAlpha: true,
         opacity: 0,
         depthWrite: false,
       }),

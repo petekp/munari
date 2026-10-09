@@ -10,6 +10,7 @@
 
 import * as THREE from 'three'
 import { MeshBasicNodeMaterial, type Node, type UniformNode } from 'three/webgpu'
+import { encodedOutput } from '@petepetrash/munari'
 import {
   Discard,
   Fn,
@@ -26,7 +27,6 @@ import {
   positionGeometry,
   positionWorld,
   pow,
-  sRGBTransferEOTF,
   sin,
   smoothstep,
   uniform,
@@ -265,9 +265,8 @@ export function createCardMaterial(surface: SurfaceNodes, state: AeroState, glos
 // Height then EVOLVES those layers (Driver); it no longer invents a look.
 //
 // This material samples no texture. Its colors are CSS values, already sRGB,
-// and the renderer encodes every output to sRGB once — so the final straight
-// color is decoded first, and the encode restores the CSS value. Alpha stays
-// straight, with the default blend.
+// so the composited layers are premultiplied sRGB and go out through
+// encodedOutput with premultiplied blending (decisions.md #72).
 
 export const SHADOW_MAX_LAYERS = 4
 
@@ -315,6 +314,7 @@ function erfA(x: Node<'float'>): Node<'float'> {
 export function createShadowMaterial(u: ShadowUniforms): MeshBasicNodeMaterial {
   const material = new MeshBasicNodeMaterial({
     transparent: true,
+    premultipliedAlpha: true,
     depthWrite: false,
     toneMapped: false,
   })
@@ -355,9 +355,8 @@ export function createShadowMaterial(u: ShadowUniforms): MeshBasicNodeMaterial {
       })
     })
     Discard(acc.a.lessThanEqual(0.002))
-    // SAFETY: Three declares this TSL function's layout as vec3 to vec3; its
-    // published types leave the result untyped.
-    return vec4(sRGBTransferEOTF(acc.rgb.div(acc.a)) as Node<'vec3'>, acc.a)
+    // acc is premultiplied sRGB, the CSS shadow colors composited as the page does.
+    return encodedOutput(acc)
   })()
   return material
 }
