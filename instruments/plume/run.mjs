@@ -9,6 +9,11 @@
 // Vite processes. No probe state or test hook is added to the application.
 // The centered page is measured with short, wrapped, and scrollable native
 // text so a fixed-height box cannot pass as intrinsic text layout.
+// Framebuffer reads copy the canvas's stored bytes: a WebGPU canvas texture
+// through copyTextureToBuffer, the WebGL 2 fallback through readPixels. A
+// 2D-canvas readback (canvasPixels.ts) clamps premultiplied channels to alpha
+// (204 over alpha 102 read back as 102, measured 2026-10-09, Chrome on
+// macOS), which would hide the very halo the alpha clause rejects.
 
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -37,10 +42,10 @@ const panelSelector = '[data-plume-controls]'
 const restoreSelector = '[data-plume-restore]'
 const clearSelector = '[data-plume-clear]'
 const effects = [
-  { label: 'Updraft', uniform: 'uWisps' },
+  { label: 'Updraft', uniform: 'wisps' },
   { label: 'Ghost ink', attribute: 'data-afterglow' },
-  { label: 'Sparks', uniform: 'uEmbers' },
-  { label: 'Draft', uniform: 'uDraftOn' },
+  { label: 'Sparks', uniform: 'embers' },
+  { label: 'Draft', uniform: 'draftOn' },
 ]
 // Longest edge one isolated puff may cover. Raised from 8px on 2026-08-31:
 // smoke puffs expand as they thin, and 16 real sprites at 4s now top out at
@@ -51,13 +56,15 @@ const effects = [
 const SPRITE_CAP = 36
 const numberControls = PLUME_GROUPS.flatMap((group) => group.controls)
 const colorControls = PLUME_GROUPS.flatMap((group) => group.colors ?? [])
-const uniformKeys = {
-  particleSize: 'uParticleSize', sizeVariation: 'uSizeVariation', particleGrowth: 'uParticleGrowth',
-  particleOpacity: 'uParticleOpacity', particleSoftness: 'uParticleSoftness', lifetimeVariation: 'uLifetimeVariation',
-  rise: 'uRise', spread: 'uSpread', depth: 'uDepth', turbulence: 'uTurbulence', billow: 'uBillow',
-  shading: 'uShading', depthFog: 'uDepthFog', turbulenceSpeed: 'uTurbulenceSpeed',
-  draftStrength: 'uDraftStrength', tint: 'uTint', sparkAmount: 'uSparkAmount',
-}
+// Tuning keys that must reach the material's uniform of the same name in
+// `material.userData.plumeValues`.
+const uniformKeys = [
+  'particleSize', 'sizeVariation', 'particleGrowth',
+  'particleOpacity', 'particleSoftness', 'lifetimeVariation',
+  'rise', 'spread', 'depth', 'turbulence', 'billow',
+  'shading', 'depthFog', 'turbulenceSpeed',
+  'draftStrength', 'tint', 'sparkAmount',
+]
 // Non-whitespace grapheme clusters: what character mode must produce one
 // anchor and one clock for.
 const marks = (value) => [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value)]
@@ -139,7 +146,7 @@ function readCloud(page) {
       clocks.add(releases[index])
       count++
     }
-    const uniforms = cloud.material.uniforms
+    const values = cloud.material.userData.plumeValues
     return {
       geometry: cloud.geometry.uuid,
       cells: cloud.geometry.getAttribute('position').count / 4,
@@ -147,10 +154,10 @@ function readCloud(page) {
       last,
       count,
       clocks: clocks.size,
-      time: uniforms.uTime.value,
-      duration: uniforms.uDuration.value,
-      reduced: uniforms.uReduced.value,
-      sparks: uniforms.uEmbers.value,
+      time: values.time.value,
+      duration: values.duration.value,
+      reduced: values.reduced.value,
+      sparks: values.embers.value,
     }
   })
 }
@@ -390,7 +397,71 @@ async function waitForGone(page) {
   }, { timeout: plumeTuning.holdMs + plumeTuning.durationMs + 5_000 })
 }
 
+// In the page: draws one frame and copies the canvas's stored bytes in the
+// same task. A WebGPU canvas texture is replaced once the browser presents,
+// and a deferred read after the compositor has cleared it is not particle
+// evidence. Returns the wait for premultiplied RGBA, rows from the bottom, as
+// readPixels returns them. Draws captured back to back share one particle
+// clock, because the frame loop cannot run between them.
+async function installCanvasReader(pixelsUrl) {
+  window.__plumeGpuErrors ??= (await import(pixelsUrl)).gpuErrors(window.__r3f.gl)
+  const readWebGL = (gl, width, height) => {
+    const pixels = new Uint8Array(width * height * 4)
+    const bound = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING)
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null)
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, bound)
+    if (gl.isContextLost()) throw new Error('plume framebuffer read failed')
+    return async () => pixels
+  }
+  const readWebGPU = (device, texture, width, height) => {
+    if (texture.width !== width || texture.height !== height) throw new Error('plume canvas texture does not match the canvas')
+    if (texture.format !== 'bgra8unorm' && texture.format !== 'rgba8unorm') throw new Error(`unread canvas format ${texture.format}`)
+    const stride = Math.ceil(width * 4 / 256) * 256
+    const buffer = device.createBuffer({ size: stride * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
+    const encoder = device.createCommandEncoder()
+    encoder.copyTextureToBuffer({ texture }, { buffer, bytesPerRow: stride }, [width, height])
+    device.queue.submit([encoder.finish()])
+    const [red, blue] = texture.format === 'bgra8unorm' ? [2, 0] : [0, 2]
+    return async () => {
+      await buffer.mapAsync(GPUMapMode.READ)
+      const rows = new Uint8Array(buffer.getMappedRange())
+      const pixels = new Uint8Array(width * height * 4)
+      for (let row = 0; row < height; row++) {
+        const from = (height - 1 - row) * stride
+        for (let x = 0; x < width; x++) {
+          const source = from + x * 4
+          const destination = (row * width + x) * 4
+          pixels[destination] = rows[source + red]
+          pixels[destination + 1] = rows[source + 1]
+          pixels[destination + 2] = rows[source + blue]
+          pixels[destination + 3] = rows[source + 3]
+        }
+      }
+      buffer.unmap()
+      buffer.destroy()
+      return pixels
+    }
+  }
+  window.__plumeDraw = (renderer, scene, camera) => {
+    renderer.setRenderTarget(null)
+    renderer.render(scene, camera)
+    const { width, height } = renderer.domElement
+    return renderer.backend.isWebGPUBackend
+      ? readWebGPU(renderer.backend.device, renderer.getContext().getCurrentTexture(), width, height)
+      : readWebGL(renderer.getContext(), width, height)
+  }
+}
+
+// Installed as soon as the cloud exists: WebGPU errors are events, so a
+// counter made later would miss the startup and layout draws, which the
+// WebGL error flag kept until the first read.
+function installReader(page) {
+  return page.evaluate(installCanvasReader, '/@fs' + path.join(repoRoot, 'instruments', 'canvasPixels.ts'))
+}
+
 async function sampleFlight(page, age, name, isolate = false) {
+  await installReader(page)
   const sample = await page.evaluate(async ({ age, isolate, image }) => {
     const state = window.__r3f
     let cloud
@@ -398,6 +469,7 @@ async function sampleFlight(page, age, name, isolate = false) {
       if (object.geometry?.getAttribute('aRelease')) cloud = object
     })
     if (!cloud) throw new Error('missing plume cloud')
+    const values = cloud.material.userData.plumeValues
     const releases = cloud.geometry.getAttribute('aRelease').array
     let release = -Infinity
     for (let index = 0; index < releases.length; index += 4) {
@@ -407,7 +479,7 @@ async function sampleFlight(page, age, name, isolate = false) {
     await new Promise((resolve, reject) => {
       const deadline = performance.now() + 12_000
       const tick = () => {
-        if (cloud.material.uniforms.uTime.value >= release + age) resolve()
+        if (values.time.value >= release + age) resolve()
         else if (performance.now() >= deadline) reject(new Error(`no frame at plume age ${age}s`))
         else requestAnimationFrame(tick)
       }
@@ -415,18 +487,15 @@ async function sampleFlight(page, age, name, isolate = false) {
     })
 
     const renderer = state.gl
-    const context = renderer.getContext()
-    const width = context.drawingBufferWidth
-    const height = context.drawingBufferHeight
-    if (context.isContextLost() || width <= 0 || height <= 0) throw new Error('unreadable plume framebuffer')
-    const pixels = new Uint8Array(width * height * 4)
-    const read = () => {
-      // Read only a finished, real default-framebuffer draw. A deferred
-      // read after the compositor has cleared it is not particle evidence.
-      renderer.setRenderTarget(null)
-      renderer.render(state.scene, state.camera)
-      context.readPixels(0, 0, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
-      if (context.isContextLost() || context.getError() !== context.NO_ERROR) {
+    const width = renderer.domElement.width
+    const height = renderer.domElement.height
+    if (width <= 0 || height <= 0) throw new Error('unreadable plume framebuffer')
+    const draw = () => window.__plumeDraw(renderer, state.scene, state.camera)
+    const read = async (pending) => {
+      const pixels = await pending()
+      // A lost WebGL context fails the read itself; a lost WebGPU device
+      // rejects the buffer mapping.
+      if (window.__plumeGpuErrors() !== 0) {
         throw new Error('plume framebuffer read failed')
       }
       let visible = 0
@@ -453,39 +522,17 @@ async function sampleFlight(page, age, name, isolate = false) {
         minY = Math.min(minY, y)
         maxY = Math.max(maxY, y)
       }
-      return { visible, totalAlpha, alphaViolations, sum,
+      return { pixels, visible, totalAlpha, alphaViolations, sum,
         width: maxX - minX + 1, height: maxY - minY + 1 }
     }
-    const full = read()
-    const actualAge = cloud.material.uniforms.uTime.value - release
-    let png
-    if (image) {
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const paint = canvas.getContext('2d')
-      const data = paint.createImageData(width, height)
-      for (let y = 0; y < height; y++) {
-        const from = (height - y - 1) * width * 4
-        // Canvas ImageData wants straight alpha; WebGL returned the
-        // premultiplied color that actually blends over the native page.
-        for (let x = 0; x < width; x++) {
-          const source = from + x * 4
-          const destination = (y * width + x) * 4
-          const alpha = pixels[source + 3]
-          for (let channel = 0; channel < 3; channel++) {
-            data.data[destination + channel] = alpha ? Math.min(255, pixels[source + channel] * 255 / alpha) : 0
-          }
-          data.data[destination + 3] = alpha
-        }
-      }
-      paint.putImageData(data, 0, 0)
-      png = canvas.toDataURL('image/png').split(',')[1]
-    }
+    const fullDraw = draw()
+    const actualAge = values.time.value - release
 
-    const sprites = []
+    // Every sprite is drawn in this same task as the full frame, at the
+    // same particle age, as the synchronous WebGL read did.
+    const spriteDraws = []
     if (isolate) {
-      const texture = cloud.material.uniforms.tMap.value
+      const texture = cloud.material.userData.plumeMap
       const source = texture.image
       if (!(source instanceof HTMLCanvasElement)) throw new Error('missing captured ink canvas')
       const ink = source.getContext('2d').getImageData(0, 0, source.width, source.height).data
@@ -503,13 +550,43 @@ async function sampleFlight(page, age, name, isolate = false) {
         for (let index = 0; index < sampleCount; index++) {
           const cell = candidates[Math.floor(index * candidates.length / sampleCount)]
           cloud.geometry.setDrawRange(cell * 6, 6)
-          const sprite = read()
-          if (sprite.visible >= 2) sprites.push({ ...sprite, cell })
+          spriteDraws.push({ cell, pending: draw() })
         }
       } finally {
         cloud.geometry.setDrawRange(original.start, original.count)
         renderer.render(state.scene, state.camera)
       }
+    }
+    const { pixels, ...full } = await read(fullDraw)
+    let png
+    if (image) {
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const paint = canvas.getContext('2d')
+      const data = paint.createImageData(width, height)
+      for (let y = 0; y < height; y++) {
+        const from = (height - y - 1) * width * 4
+        // Canvas ImageData wants straight alpha; the canvas stores the
+        // premultiplied color that actually blends over the native page.
+        for (let x = 0; x < width; x++) {
+          const source = from + x * 4
+          const destination = (y * width + x) * 4
+          const alpha = pixels[source + 3]
+          for (let channel = 0; channel < 3; channel++) {
+            data.data[destination + channel] = alpha ? Math.min(255, pixels[source + channel] * 255 / alpha) : 0
+          }
+          data.data[destination + 3] = alpha
+        }
+      }
+      paint.putImageData(data, 0, 0)
+      png = canvas.toDataURL('image/png').split(',')[1]
+    }
+
+    const sprites = []
+    for (const { cell, pending } of spriteDraws) {
+      const { pixels: _pixels, ...sprite } = await read(pending)
+      if (sprite.visible >= 2) sprites.push({ ...sprite, cell })
     }
     return { age: actualAge, ...full, sprites, png }
   }, { age, isolate, image: Boolean(artifactDirectory) })
@@ -537,7 +614,7 @@ async function verifyEffects(page) {
         if (effect.attribute) return document.querySelector('.plume-page').hasAttribute(effect.attribute) === enabled
         let value
         window.__r3f.scene.traverse((object) => {
-          if (object.geometry?.getAttribute('aRelease')) value = object.material.uniforms[effect.uniform]?.value
+          if (object.geometry?.getAttribute('aRelease')) value = object.material.userData.plumeValues[effect.uniform]?.value
         })
         return value === Number(enabled)
       }, { timeout: 3000 }, { index, effect, enabled })
@@ -598,7 +675,7 @@ function readTuningState(page) {
     window.__r3f.scene.traverse((object) => {
       if (object.geometry?.getAttribute('aRelease')) cloud = object
     })
-    const uniforms = cloud.material.uniforms
+    const values = cloud.material.userData.plumeValues
     const style = (selector) => {
       const node = document.querySelector(selector)
       const css = getComputedStyle(node)
@@ -612,12 +689,12 @@ function readTuningState(page) {
     }
     const page = getComputedStyle(document.querySelector('.plume-page'))
     return {
-      uniforms: Object.fromEntries(Object.entries(uniformKeys).map(([key, name]) => [key, uniforms[name]?.value])),
-      duration: uniforms.uDuration.value,
-      stagger: uniforms.uStagger.value,
-      wind: uniforms.uDraft.value.toArray(),
-      particleColor: uniforms.uSmoke.value.getHexString(),
-      sparkColor: uniforms.uEmber.value.getHexString(),
+      uniforms: Object.fromEntries(uniformKeys.map((key) => [key, values[key]?.value])),
+      duration: values.duration.value,
+      stagger: values.stagger.value,
+      wind: values.draft.value.toArray(),
+      particleColor: values.smoke.value.getHexString(),
+      sparkColor: values.ember.value.getHexString(),
       geometry: cloud.geometry.uuid,
       ids: [...document.querySelectorAll('.plume-capture [data-munari-anchor]')]
         .map((word) => word.getAttribute('data-munari-anchor')),
@@ -626,7 +703,7 @@ function readTuningState(page) {
       background: page.backgroundColor,
       ghostOpacity: Number(page.getPropertyValue('--plume-ghost-opacity')),
       ghostBlur: Number.parseFloat(page.getPropertyValue('--plume-ghost-blur')),
-      time: uniforms.uTime.value,
+      time: values.time.value,
     }
   }, uniformKeys)
 }
@@ -655,14 +732,14 @@ async function requireTuningDefaults(page) {
   for (const control of colorControls) requireThat(values.colors.find((field) => field.key === control.key)?.value === plumeTuning[control.key],
     `${control.key}: wrong color default`)
   await page.waitForFunction(({ keys, tuning }) => {
-    let uniforms
+    let values
     window.__r3f.scene.traverse((object) => {
-      if (object.geometry?.getAttribute('aRelease')) uniforms = object.material.uniforms
+      if (object.geometry?.getAttribute('aRelease')) values = object.material.userData.plumeValues
     })
-    return uniforms && Object.entries(keys).every(([key, name]) => Math.abs(uniforms[name]?.value - tuning[key]) < 1e-6)
+    return values && keys.every((key) => Math.abs(values[key]?.value - tuning[key]) < 1e-6)
   }, { timeout: 3000 }, { keys: uniformKeys, tuning: plumeTuning })
   const scene = await readTuningState(page)
-  for (const key of Object.keys(uniformKeys)) requireThat(Math.abs(scene.uniforms[key] - plumeTuning[key]) < 1e-6,
+  for (const key of uniformKeys) requireThat(Math.abs(scene.uniforms[key] - plumeTuning[key]) < 1e-6,
     `${key}: the authored default never reached the shader`)
 }
 
@@ -681,7 +758,7 @@ async function samplePointerResponse(page, damping) {
       if (performance.now() - start < 240) return requestAnimationFrame(sample)
       let wind
       window.__r3f.scene.traverse((object) => {
-        if (object.geometry?.getAttribute('aRelease')) wind = object.material.uniforms.uDraft.value.x
+        if (object.geometry?.getAttribute('aRelease')) wind = object.material.userData.plumeValues.draft.value.x
       })
       resolve({ wind, elapsed: (performance.now() - start) / 1000 })
     }
@@ -985,6 +1062,7 @@ async function verifyMobile(instance, url) {
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 })
   await page.waitForSelector('.plume-page:not([data-degraded])')
   await waitForCloud(page)
+  await installReader(page)
   await verifyPanel(page)
   const intrinsic = await verifyIntrinsicSize(page)
   await enterText(page, 'Small particles\nbecome air.')
@@ -1049,6 +1127,7 @@ async function run() {
   const page = await openPage(browser, url)
   await page.waitForSelector('.plume-page:not([data-degraded])')
   await waitForCloud(page)
+  await installReader(page)
   await verifyPanel(page)
   const intrinsic = await verifyIntrinsicSize(page)
   await enterText(page, text)
@@ -1079,7 +1158,7 @@ async function run() {
   await waitForGone(page)
   await requireNativeText(page, text)
   const gone = await sampleFlight(page, plumeTuning.durationMs / 1000, 'gone')
-  requireThat(gone.visible === 0, `finished ink left ${gone.visible} WebGL pixels`)
+  requireThat(gone.visible === 0, `finished ink left ${gone.visible} canvas pixels`)
 
   await act(page, restoreSelector)
   await page.waitForFunction((previous) => {

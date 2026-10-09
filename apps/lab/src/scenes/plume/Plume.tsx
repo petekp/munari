@@ -2,7 +2,7 @@
 //
 // The law: the textarea owns value, caret, selection, focus and scroll. A
 // plain DOM mirror owns readable pixels. A separate parked mirror supplies
-// immutable ink to one WebGL cloud after a word's hold expires. No renderer
+// immutable ink to one GPU cloud after a word's hold expires. No renderer
 // is asked to imitate text editing.
 //
 // The fault behind the three layers, measured in docs/authoring.md: a focused
@@ -10,7 +10,7 @@
 // Keeping the field outside the capture preserves idle paint and prevents a
 // shader from becoming the accessibility tree. Ownership: this file owns the
 // React wiring and DOM. plumeLaw owns unit time, plumeCloud owns grains, and
-// plumeShaders owns their motion.
+// plumeNodes owns their motion.
 
 import {
   Fragment,
@@ -33,7 +33,6 @@ import {
   type SourceUvRect,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
-import { textureSlot } from '../../lib/uniforms'
 import { buildPlumeGrid, stampPlumeReleases, type PlumeGrid } from './plumeCloud'
 import {
   nextTimelineBoundary,
@@ -43,7 +42,7 @@ import {
   type TimedUnit,
   type UnitPhase,
 } from './plumeLaw'
-import { PLUME_FRAG, PLUME_VERT } from './plumeShaders'
+import { createPlumeMaterial, createPlumeValues } from './plumeNodes'
 import { PlumeTweaks } from './plumeTweaks'
 import {
   defaultPlumeEffects,
@@ -244,106 +243,57 @@ interface PlumeMaterialProps {
 }
 
 function PlumeMaterial({ texture, grid, durationMs, reduced, effects, tuning, draft }: PlumeMaterialProps) {
-  const material = useRef<THREE.ShaderMaterial>(null)
   const invalidate = useThree((state) => state.invalidate)
-  const uniforms = useMemo(
-    () => ({
-      tMap: textureSlot(),
-      uTime: { value: 0 },
-      uDuration: { value: plumeTuning.durationMs / 1000 },
-      uStagger: { value: plumeTuning.staggerMs / 1000 },
-      uRise: { value: plumeTuning.rise },
-      uSpread: { value: plumeTuning.spread },
-      uDepth: { value: plumeTuning.depth },
-      uTurbulence: { value: plumeTuning.turbulence },
-      uBillow: { value: plumeTuning.billow },
-      uShading: { value: plumeTuning.shading },
-      uDepthFog: { value: plumeTuning.depthFog },
-      uTurbulenceSpeed: { value: plumeTuning.turbulenceSpeed },
-      uDraftStrength: { value: plumeTuning.draftStrength },
-      uParticleSize: { value: plumeTuning.particleSize },
-      uSizeVariation: { value: plumeTuning.sizeVariation },
-      uParticleGrowth: { value: plumeTuning.particleGrowth },
-      uParticleOpacity: { value: plumeTuning.particleOpacity },
-      uParticleSoftness: { value: plumeTuning.particleSoftness },
-      uLifetimeVariation: { value: plumeTuning.lifetimeVariation },
-      uSparkAmount: { value: plumeTuning.sparkAmount },
-      uTint: { value: plumeTuning.tint },
-      uWisps: { value: 1 },
-      uDraftOn: { value: 1 },
-      uReduced: { value: 0 },
-      uDraft: { value: new THREE.Vector2() },
-      uGrain: { value: new THREE.Vector2(grid.cellWidth, grid.cellHeight) },
-      uPitchUv: { value: new THREE.Vector2(1 / grid.cols, 1 / grid.rows) },
-      uSmoke: { value: new THREE.Color(plumeTuning.particleColor) },
-      uEmber: { value: new THREE.Color(plumeTuning.sparkColor) },
-      uPaper: { value: new THREE.Color(plumeTuning.backgroundColor) },
-      uEmbers: { value: 1 },
-    }),
-    [grid.cellHeight, grid.cellWidth, grid.cols, grid.rows],
-  )
+  const [values] = useState(() => createPlumeValues(grid))
+  const material = useMemo(() => createPlumeMaterial(texture, values), [texture, values])
+  useEffect(() => () => material.dispose(), [material])
+
+  // A new grid starts its wind from rest, as a fresh cloud does.
+  useLayoutEffect(() => {
+    values.grain.value.set(grid.cellWidth, grid.cellHeight)
+    values.pitchUv.value.set(1 / grid.cols, 1 / grid.rows)
+    values.draft.value.set(0, 0)
+    invalidate()
+  }, [grid, invalidate, values])
 
   // Sliders update the existing material. They must also request one frame
   // when the cloud is at rest; otherwise a demand canvas can show old values.
   useLayoutEffect(() => {
-    const owned = material.current?.uniforms
-    if (!owned) return
-    owned.tMap!.value = texture
-    owned.uDuration!.value = durationMs / 1000
-    owned.uStagger!.value = tuning.staggerMs / 1000
-    owned.uRise!.value = tuning.rise
-    owned.uSpread!.value = tuning.spread
-    owned.uDepth!.value = tuning.depth
-    owned.uTurbulence!.value = tuning.turbulence
-    owned.uBillow!.value = tuning.billow
-    owned.uShading!.value = tuning.shading
-    owned.uDepthFog!.value = tuning.depthFog
-    owned.uTurbulenceSpeed!.value = tuning.turbulenceSpeed
-    owned.uDraftStrength!.value = tuning.draftStrength
-    owned.uParticleSize!.value = tuning.particleSize
-    owned.uSizeVariation!.value = tuning.sizeVariation
-    owned.uParticleGrowth!.value = tuning.particleGrowth
-    owned.uParticleOpacity!.value = tuning.particleOpacity
-    owned.uParticleSoftness!.value = tuning.particleSoftness
-    owned.uLifetimeVariation!.value = tuning.lifetimeVariation
-    owned.uSparkAmount!.value = tuning.sparkAmount
-    owned.uTint!.value = tuning.tint
-    owned.uWisps!.value = effects.wisps ? 1 : 0
-    owned.uDraftOn!.value = effects.draft ? 1 : 0
-    owned.uReduced!.value = reduced ? 1 : 0
-    owned.uEmbers!.value = effects.embers && !reduced ? 1 : 0
-    const smoke = owned.uSmoke!.value
-    const ember = owned.uEmber!.value
-    const paper = owned.uPaper!.value
-    if (smoke instanceof THREE.Color) smoke.set(tuning.particleColor)
-    if (ember instanceof THREE.Color) ember.set(tuning.sparkColor)
-    if (paper instanceof THREE.Color) paper.set(tuning.backgroundColor)
+    values.duration.value = durationMs / 1000
+    values.stagger.value = tuning.staggerMs / 1000
+    values.rise.value = tuning.rise
+    values.spread.value = tuning.spread
+    values.depth.value = tuning.depth
+    values.turbulence.value = tuning.turbulence
+    values.billow.value = tuning.billow
+    values.shading.value = tuning.shading
+    values.depthFog.value = tuning.depthFog
+    values.turbulenceSpeed.value = tuning.turbulenceSpeed
+    values.draftStrength.value = tuning.draftStrength
+    values.particleSize.value = tuning.particleSize
+    values.sizeVariation.value = tuning.sizeVariation
+    values.particleGrowth.value = tuning.particleGrowth
+    values.particleOpacity.value = tuning.particleOpacity
+    values.particleSoftness.value = tuning.particleSoftness
+    values.lifetimeVariation.value = tuning.lifetimeVariation
+    values.sparkAmount.value = tuning.sparkAmount
+    values.tint.value = tuning.tint
+    values.wisps.value = effects.wisps ? 1 : 0
+    values.draftOn.value = effects.draft ? 1 : 0
+    values.reduced.value = reduced ? 1 : 0
+    values.embers.value = effects.embers && !reduced ? 1 : 0
+    values.smoke.value.set(tuning.particleColor)
+    values.ember.value.set(tuning.sparkColor)
+    values.paper.value.set(tuning.backgroundColor)
     invalidate()
-  }, [durationMs, effects, invalidate, reduced, texture, tuning, uniforms])
+  }, [durationMs, effects, invalidate, material, reduced, tuning, values])
 
   useFrame((_, delta) => {
-    const owned = material.current?.uniforms
-    if (!owned) return
-    owned.uTime!.value = performance.now() / 1000
-    const wind = owned.uDraft!.value
-    if (wind instanceof THREE.Vector2) wind.lerp(draft.current, 1 - Math.exp(-tuning.draftDamping * delta))
+    values.time.value = performance.now() / 1000
+    values.draft.value.lerp(draft.current, 1 - Math.exp(-tuning.draftDamping * delta))
   })
 
-  return (
-    <shaderMaterial
-      ref={material}
-      key={texture.uuid}
-      uniforms={uniforms}
-      vertexShader={PLUME_VERT}
-      fragmentShader={PLUME_FRAG}
-      transparent
-      premultipliedAlpha
-      depthTest={false}
-      depthWrite={false}
-      toneMapped={false}
-      side={THREE.DoubleSide}
-    />
-  )
+  return <primitive object={material} attach="material" />
 }
 
 function sameIds(current: ReadonlySet<string>, next: ReadonlySet<string>): boolean {
