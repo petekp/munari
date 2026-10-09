@@ -4801,7 +4801,8 @@ contributes nothing; added light has to come from blend factors.
 **A translucent material on the canvas sets `premultipliedAlpha: true`.** The
 conversion treats every fragment as premultiplied, including one from a
 material with Three's default `premultipliedAlpha: false`. That material then
-blends with `SrcAlpha`, so its alpha applies twice. Black is unaffected. With
+blends with `SrcAlpha`, so its alpha applies twice
+(three.js#34943). Black is unaffected. With
 `premultipliedAlpha: true`, a stock material premultiplies before the
 conversion and blends with `One`, which lands as WebGL did. A custom straight
 color goes out encoded first, then premultiplied:
