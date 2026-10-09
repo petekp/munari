@@ -87,7 +87,7 @@ import {
   vec4,
 } from 'three/tsl'
 import { premultipliedOutput, type SurfaceNodes } from '@petepetrash/munari'
-import { passMaterial } from '../../lib/passTargets'
+import { passMaterial } from '@petepetrash/munari/advanced'
 
 type Float = UniformNode<'float', number>
 type Vec2 = UniformNode<'vec2', THREE.Vector2>

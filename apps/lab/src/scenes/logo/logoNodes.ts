@@ -117,7 +117,7 @@ import {
   vec4,
 } from 'three/tsl'
 import { premultipliedOutput } from '@petepetrash/munari'
-import { passMaterial } from '../../lib/passTargets'
+import { passMaterial } from '@petepetrash/munari/advanced'
 import { RIPPLE } from './logoLaw'
 
 

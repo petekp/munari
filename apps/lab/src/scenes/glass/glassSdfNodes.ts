@@ -34,8 +34,8 @@
 // the way to the screen.
 //
 // The passes draw with clip y negated, so a pass's uv lands where a later
-// sample at that uv reads it (apps/lab/src/lib/passTargets.ts states the
-// law and its measurement). The ray and every re-projection below are in
+// sample at that uv reads it (`passMaterial` in @petepetrash/munari/advanced
+// states the law and its measurement). The ray and every re-projection below are in
 // screen uv, y up, and `flipV` turns one into a target coordinate.
 //
 // Ownership: this module owns the pixels. glassSdf.tsx owns the targets, the
@@ -62,7 +62,6 @@ import {
   mix,
   normalize,
   perspectiveDepthToViewZ,
-  positionGeometry,
   pow,
   reflect,
   refract,
@@ -80,6 +79,7 @@ import {
   vec4,
 } from 'three/tsl'
 import { premultipliedOutput } from '@petepetrash/munari'
+import { passMaterial } from '@petepetrash/munari/advanced'
 
 type Float = UniformNode<'float', number>
 type Int = UniformNode<'int', number>
@@ -332,22 +332,6 @@ export function createGlassSdfValues(
   }
 }
 
-/**
- * A full-screen pass on a 2×2 plane that ignores the camera — the same
- * material as passTargets.ts `passMaterial`, restated because this file is
- * vendored and may import only the library and its peers.
- */
-function glassPassMaterial(): MeshBasicNodeMaterial {
-  const material = new MeshBasicNodeMaterial({
-    depthTest: false,
-    depthWrite: false,
-    // Negating y reverses the triangles' winding.
-    side: THREE.DoubleSide,
-  })
-  material.vertexNode = vec4(positionGeometry.x, positionGeometry.y.negate(), 0.5, 1)
-  return material
-}
-
 /** Screen uv (y up) to the coordinate a target is sampled at, and back. */
 const flipV = (c: Node<'vec2'>): Node<'vec2'> => vec2(c.x, float(1).sub(c.y))
 
@@ -402,7 +386,7 @@ function spectralWeight(f: number): Node<'vec3'> {
 
 /** One glass panel, composited over `src`. */
 export function createGlassMaterial(v: GlassSdfValues): MeshBasicNodeMaterial {
-  const material = glassPassMaterial()
+  const material = passMaterial()
 
   // A body held together by surface tension does not have an OUTLINE, it has a
   // boundary that is still being negotiated — and a rounded rect that holds
@@ -835,7 +819,7 @@ export interface GlassBlit {
  * the renderer default the WebGL blit read.
  */
 export function createBlitMaterial(src: THREE.Texture): GlassBlit {
-  const material = glassPassMaterial()
+  const material = passMaterial()
   const node = texture(src)
   const toned = toneMapping(THREE.NeutralToneMapping, 1, vec4(sample(node, uv()).rgb, 1))
   material.outputNode = premultipliedOutput(vec4(toned.rgb, 1))

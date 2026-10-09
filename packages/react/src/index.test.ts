@@ -72,6 +72,7 @@ const ADVANCED_ADDITIONS = [
   'useCarriedMotion',
   'useFrameTexture',
   'surfaceManualPresenter',
+  'passMaterial',
 ]
 
 describe('the published entries', () => {
