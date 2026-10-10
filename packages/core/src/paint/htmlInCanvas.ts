@@ -30,12 +30,13 @@ import {
   captureContext,
   captureMemoryChosen,
   createCaptureCanvas,
-  PARKED_HOST_ATTRIBUTE,
+  listenForRepaintSignals,
+  parkHost,
   type CaptureCanvas,
   type DomTextureSource,
   type DomTextureSourceOptions,
 } from './domTextureSource'
-import { createInputWindow, PAINT_EVENTS } from './inputWindow'
+import { createInputWindow } from './inputWindow'
 import type { CaptureEngine } from './captureEngine'
 
 export interface HtmlInCanvasSupport {
@@ -149,22 +150,7 @@ function createHtmlInCanvasSource(
   // capture stays fully alive (platform.md #20).
   // CSS size is pinned to the layout size so backing-store changes
   // (setScale) never relayout the subtree — focus/caret/selection survive.
-  canvas.style.cssText =
-    `position:fixed;left:0;top:0;z-index:-1;pointer-events:none;visibility:hidden;` +
-    `width:${width}px;height:${height}px;`
-  canvas.setAttribute(PARKED_HOST_ATTRIBUTE, '')
-
-  // Re-root the pointer-events cascade. The canvas above is `none` so real
-  // hit-testing can never wander into a parked subtree — but that value
-  // inherits, and the forwarder's own hit test reads the computed one. Left
-  // alone, every element in every Surface would read as clear glass and
-  // nothing would ever be hittable.
-  element.style.pointerEvents = 'auto'
-  // The visibility half of the same cascade: the host is hidden, so the
-  // drawn root has to opt back in or it is neither painted nor hit-tested.
-  element.style.visibility = 'visible'
-  canvas.appendChild(element)
-  document.body.appendChild(canvas)
+  parkHost(canvas, element, width, height, 'visibility:hidden')
 
   // Taken at the first paint, once capture storage is chosen, because a
   // context's storage is fixed when it is created (domTextureSource.ts).
@@ -229,16 +215,8 @@ function createHtmlInCanvasSource(
     canvas.style.width = `${w}px`
     canvas.style.height = `${h}px`
   }
-  // What must be captured whatever `live` says. The list is the other
-  // engine's, imported rather than restated, so the two cannot answer a
-  // scroll or an arriving image differently (inputWindow.ts).
   const listeners = new AbortController()
-  for (const event of PAINT_EVENTS) {
-    element.addEventListener(event, requestPaint, { capture: true, signal: listeners.signal })
-  }
-  // A webfont that lands after the first paint restyles every glyph under it,
-  // and nothing in the subtree mutates to say so.
-  document.fonts?.addEventListener('loadingdone', requestPaint, { signal: listeners.signal })
+  listenForRepaintSignals(element, requestPaint, listeners.signal)
   const stopHearingElement = input.hear(element)
 
   requestPaint()
@@ -273,10 +251,8 @@ function createHtmlInCanvasSource(
     currentPaint: body.currentPaint,
     nextRead: body.nextRead,
     subscribePaint: body.subscribePaint,
-    setScale: (k) => body.setScale(k),
-    setRasterScale: (x, y) => {
-      body.setRasterScale(x, y)
-    },
+    setScale: body.setScale,
+    setRasterScale: body.setRasterScale,
     setSize: (w, h) => {
       if (body.setSize(w, h)) setSizeStyle()
     },

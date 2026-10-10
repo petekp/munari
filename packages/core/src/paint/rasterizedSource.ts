@@ -46,14 +46,15 @@
 // parked container. `domTextureSource.ts` owns the canvas and the ledger. The
 // rasterizer owns pixels and nothing else.
 
-import { createInputWindow, PAINT_EVENTS } from './inputWindow'
+import { createInputWindow } from './inputWindow'
 import { HOVER_ATTR } from '../pointer/twins'
 import {
   adoptContent,
   captureContext,
   captureMemoryChosen,
   createCaptureCanvas,
-  PARKED_HOST_ATTRIBUTE,
+  listenForRepaintSignals,
+  parkHost,
   type CaptureCanvas,
   type DomTextureSource,
   type DomTextureSourceOptions,
@@ -239,15 +240,7 @@ export function createRasterizedSource(
 
   const host = document.createElement('div')
   // The relay needs the source at the viewport origin and at its CSS size.
-  // Re-root pointer events at the element so the inert host does not hide targets.
-  host.style.cssText =
-    `position:fixed;left:0;top:0;z-index:-1;pointer-events:none;opacity:0;` +
-    `width:${width}px;height:${height}px;`
-  host.setAttribute(PARKED_HOST_ATTRIBUTE, '')
-  element.style.pointerEvents = 'auto'
-  element.style.visibility = 'visible'
-  host.appendChild(element)
-  document.body.appendChild(host)
+  parkHost(host, element, width, height, 'opacity:0')
 
   const body: CaptureCanvas = createCaptureCanvas(element, width, height, {
     ...options,
@@ -466,16 +459,11 @@ export function createRasterizedSource(
     characterData: true,
   })
   const listeners = new AbortController()
-  for (const event of PAINT_EVENTS) {
-    element.addEventListener(event, request, { capture: true, signal: listeners.signal })
-  }
+  listenForRepaintSignals(element, request, listeners.signal)
   for (const event of ['pointerover', 'pointerout'] as const) {
     element.addEventListener(event, hoverChanged, { capture: true, signal: listeners.signal })
   }
   const stopHearingElement = input.hear(element)
-  // A webfont that lands after the first capture restyles every glyph under
-  // it, and nothing in the subtree mutates to say so.
-  document.fonts?.addEventListener('loadingdone', request, { signal: listeners.signal })
 
   request()
 
@@ -512,12 +500,8 @@ export function createRasterizedSource(
     currentPaint: body.currentPaint,
     nextRead: body.nextRead,
     subscribePaint: body.subscribePaint,
-    setScale: (k) => {
-      body.setScale(k)
-    },
-    setRasterScale: (x, y) => {
-      body.setRasterScale(x, y)
-    },
+    setScale: body.setScale,
+    setRasterScale: body.setRasterScale,
     setSize: (w, h) => {
       if (!body.setSize(w, h)) return
       // After the ledger, not before: the ledger owns the rounding, and the

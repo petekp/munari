@@ -16,12 +16,14 @@
 // flashed empty, with nothing in either file to say which was the law.
 // A law with two homes is a law nobody can revise.
 //
-// Ownership: this module owns the canvas, the ledger and the arithmetic.
-// An engine owns how pixels arrive and where the subtree is parked.
+// Ownership: this module owns the canvas, the ledger and the arithmetic, and
+// the parts of parking and change signalling that no engine varies. An engine
+// owns how pixels arrive, which host it parks in, and what it does on a signal.
 
 import { MAX_TEXTURE_EDGE } from './lodTier'
 import { storeForBox } from './textureStorage'
 import { allocateSourceId } from './sourceIdentity'
+import { PAINT_EVENTS } from './inputWindow'
 import type { FrameId } from './frameSource'
 
 // ── the contract ─────────────────────────────────────────────────────────
@@ -376,6 +378,57 @@ export function adoptContent(content: string | HTMLElement): HTMLElement {
   return first instanceof HTMLElement ? first : host
 }
 
+// ── parking and change signals ───────────────────────────────────────────
+
+/**
+ * Park `element` inside `host`, and `host` in the body: fixed at the viewport
+ * origin, behind the page, at the CSS box `width`×`height`. `hidden` is the
+ * one declaration an engine chooses for keeping the host unseen — a canvas
+ * must use `visibility:hidden` and a container holding live DOM `opacity:0`
+ * (see `DomTextureSource.setHostPainted`).
+ *
+ * The host is `pointer-events: none` so real hit-testing never wanders into
+ * the parked subtree, but that value inherits and the forwarder's own hit
+ * test reads the computed one. Left alone, every element in every Surface
+ * would read as clear glass and nothing would ever be hittable — so the
+ * element re-roots the cascade, and the same for `visibility`.
+ */
+export function parkHost(
+  host: HTMLElement,
+  element: HTMLElement,
+  width: number,
+  height: number,
+  hidden: 'opacity:0' | 'visibility:hidden',
+): void {
+  host.style.cssText =
+    `position:fixed;left:0;top:0;z-index:-1;pointer-events:none;${hidden};` +
+    `width:${width}px;height:${height}px;`
+  host.setAttribute(PARKED_HOST_ATTRIBUTE, '')
+  element.style.pointerEvents = 'auto'
+  element.style.visibility = 'visible'
+  host.appendChild(element)
+  document.body.appendChild(host)
+}
+
+/**
+ * Call `onSignal` for everything that must be captured whatever `live` says:
+ * the paint events on `element`, and a webfont arriving. A webfont that lands
+ * after the first capture restyles every glyph under it, and nothing in the
+ * subtree mutates to say so. One list serves every engine, so two engines
+ * cannot answer a scroll or an arriving image differently. Aborting `signal`
+ * removes every listener.
+ */
+export function listenForRepaintSignals(
+  element: HTMLElement,
+  onSignal: () => void,
+  signal: AbortSignal,
+): void {
+  for (const event of PAINT_EVENTS) {
+    element.addEventListener(event, onSignal, { capture: true, signal })
+  }
+  document.fonts?.addEventListener('loadingdone', onSignal, { signal })
+}
+
 // Sane bounds on the raw scale option — a caller error (negative, zero,
 // absurdly large) shouldn't produce a degenerate or runaway canvas. Kept
 // deliberately distinct from this package's paint/lodTier.ts `clampScale`:
@@ -616,7 +669,7 @@ export function createCaptureCanvas(
       }
       canvas.width = next.width
       canvas.height = next.height
-      if (keep && ctx && 'drawImage' in ctx) {
+      if (keep && ctx) {
         ctx.setTransform(1, 0, 0, 1, 0, 0)
         ctx.drawImage(keep, 0, 0, keep.width, keep.height, 0, 0, next.width, next.height)
       }
