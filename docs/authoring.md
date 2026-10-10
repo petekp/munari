@@ -120,7 +120,8 @@ capture is tens of milliseconds of main thread, and re-capturing on every
 density step of the LOD ladder drops frames on a card being dragged.
 
 `useSurfaceStatus().engine` names the engine a Surface is using, so a
-component that must adapt can ask rather than guess.
+component that must adapt can ask rather than guess. It is `null` when no
+engine can run, and `reason` then says what to enable.
 
 ## The content root declares its own pixel size
 

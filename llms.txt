@@ -3,9 +3,40 @@
 > HTML, 3D, and Shaders, Unified. Munari renders retained HTML in Three.js scenes, preserving the original DOM and state. It captures through Chrome's HTML-in-canvas capability where the browser has it and through snapDOM everywhere else; the README's engine table says what each one follows and what it draws.
 
 The current public API is documented in the README and published types.
-[Decision #43](https://github.com/petekp/munari/blob/v0.4.0/docs/decisions.md#43) records the retained-HTML API adoption.
+[Decision #43](https://github.com/petekp/munari/blob/v0.4.1/docs/decisions.md#43) records the retained-HTML API adoption.
 Earlier decisions describe historical interfaces and must be read with their
 later amendments.
+
+## Minimal use
+
+```tsx
+import { useState } from 'react'
+import { Surface, SurfaceCanvas } from '@petepetrash/munari'
+import { enableSnapdomCapture } from '@petepetrash/munari/snapdom'
+import '@petepetrash/munari/style.css'
+
+enableSnapdomCapture() // snapDOM where Chrome's flag is off; needs @zumer/snapdom
+
+export function App({ Card }: { Card: React.ComponentType }) {
+  const [inScene, setInScene] = useState(false)
+  return (
+    <>
+      <button onClick={() => setInScene(v => !v)}>Toggle</button>
+      <Surface inScene={inScene}><Card /></Surface>
+      <SurfaceCanvas pointerMode="surfaces" style={{ position: 'fixed', inset: 0 }} />
+    </>
+  )
+}
+```
+
+`Card` is your own component with a fixed-size root. `pointerMode` defaults to
+`"scene"`, which takes pointer input over the whole canvas; use `"surfaces"` for
+an overlay. A TypeScript project needs `@types/three`. Without
+`enableSnapdomCapture()`, Chrome needs `--enable-features=CanvasDrawElement` or an
+HTML-in-canvas origin trial token. With no usable engine, `useSurfaceStatus()`
+returns `supported: false`, `engine: null` and a `reason` naming those options,
+and the content stays native. The skill file below covers pointer routes,
+placement and `style.css`.
 
 ## Start in the version you are using
 
@@ -21,24 +52,24 @@ on GitHub. Do not substitute mutable main as version-local truth.
 
 ## Repository task routes (at the v0.4.0 tag)
 
-- [Task → owner → control → proof](https://github.com/petekp/munari/blob/v0.4.0/docs/agent-workflow.md)
-- [System model and evidence boundaries](https://github.com/petekp/munari/blob/v0.4.0/docs/system-model.md)
-- [Shared terms](https://github.com/petekp/munari/blob/v0.4.0/CONTEXT.md)
-- [DOM authoring rules](https://github.com/petekp/munari/blob/v0.4.0/docs/authoring.md)
-- [Current public React exports](https://github.com/petekp/munari/blob/v0.4.0/packages/react/src/index.ts)
-- [Current advanced exports](https://github.com/petekp/munari/blob/v0.4.0/packages/react/src/advanced.ts)
-- [Demo source map](https://github.com/petekp/munari/blob/v0.4.0/ALL-DEMO-API.md)
-- [Copyable recipes](https://github.com/petekp/munari/blob/v0.4.0/registry/README.md)
-- [Lab scene contracts](https://github.com/petekp/munari/blob/v0.4.0/apps/lab/README.md)
-- [Browser gates and limits](https://github.com/petekp/munari/blob/v0.4.0/instruments/README.md)
+- [Task → owner → control → proof](https://github.com/petekp/munari/blob/v0.4.1/docs/agent-workflow.md)
+- [System model and evidence boundaries](https://github.com/petekp/munari/blob/v0.4.1/docs/system-model.md)
+- [Shared terms](https://github.com/petekp/munari/blob/v0.4.1/CONTEXT.md)
+- [DOM authoring rules](https://github.com/petekp/munari/blob/v0.4.1/docs/authoring.md)
+- [Current public React exports](https://github.com/petekp/munari/blob/v0.4.1/packages/react/src/index.ts)
+- [Current advanced exports](https://github.com/petekp/munari/blob/v0.4.1/packages/react/src/advanced.ts)
+- [Demo source map](https://github.com/petekp/munari/blob/v0.4.1/ALL-DEMO-API.md)
+- [Copyable recipes](https://github.com/petekp/munari/blob/v0.4.1/registry/README.md)
+- [Lab scene contracts](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/README.md)
+- [Browser gates and limits](https://github.com/petekp/munari/blob/v0.4.1/instruments/README.md)
 
 ## Read only when the task needs it (at the v0.4.0 tag)
 
-- [Canonical document map and status](https://github.com/petekp/munari/blob/v0.4.0/docs/README.md)
-- [Numbered handoff decisions and amendments](https://github.com/petekp/munari/blob/v0.4.0/docs/decisions.md)
-- [Dated platform measurements](https://github.com/petekp/munari/blob/v0.4.0/docs/platform.md)
-- [Conformance specification](https://github.com/petekp/munari/blob/v0.4.0/tests/conformance/README.md)
-- [Agent system delivery plan: proposed, not shipped](https://github.com/petekp/munari/blob/v0.4.0/docs/agent-system-plan.md)
+- [Canonical document map and status](https://github.com/petekp/munari/blob/v0.4.1/docs/README.md)
+- [Numbered handoff decisions and amendments](https://github.com/petekp/munari/blob/v0.4.1/docs/decisions.md)
+- [Dated platform measurements](https://github.com/petekp/munari/blob/v0.4.1/docs/platform.md)
+- [Conformance specification](https://github.com/petekp/munari/blob/v0.4.1/tests/conformance/README.md)
+- [Agent system delivery plan: proposed, not shipped](https://github.com/petekp/munari/blob/v0.4.1/docs/agent-system-plan.md)
 
 Superseded proposals and completed implementation plans remain in Git history.
 Use the README and exported types for current usage and signatures. Treat a

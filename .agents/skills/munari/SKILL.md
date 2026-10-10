@@ -19,7 +19,63 @@ Import only `@petepetrash/munari`, `@petepetrash/munari/advanced`,
 `@petepetrash/munari/snapdom` and `@petepetrash/munari/style.css`. A missing
 export is a package concern, not a reason to reach into private source files.
 Peers are `react` and `react-dom` 19, `three` ~0.186.1 and
-`@react-three/fiber` ^9.8.1. `@types/three` and `@zumer/snapdom` are optional.
+`@react-three/fiber` ^9.8.1. A TypeScript project needs `@types/three`
+~0.186.0; without it `tsc` fails inside Munari's own types. `@zumer/snapdom` is
+optional. npm saves `three@~0.186.1` as `^0.186.1`, so restore the tilde in
+`package.json`.
+
+## Starter
+
+```tsx
+import { useState } from 'react'
+import { Surface, SurfaceCanvas } from '@petepetrash/munari'
+import { enableSnapdomCapture } from '@petepetrash/munari/snapdom'
+import '@petepetrash/munari/style.css'
+
+enableSnapdomCapture() // snapDOM where Chrome's flag is off; needs @zumer/snapdom
+
+function Card() {
+  const [count, setCount] = useState(0)
+  return (
+    <div style={{ width: 320, height: 200, background: '#fff', color: '#111' }}>
+      <button onClick={() => setCount(count + 1)}>Count {count}</button>
+      <input placeholder="type here" />
+    </div>
+  )
+}
+
+export function App() {
+  const [inScene, setInScene] = useState(false)
+  return (
+    <>
+      <button style={{ position: 'fixed', top: 8, right: 8, zIndex: 30 }} onClick={() => setInScene(v => !v)}>
+        {inScene ? 'Return to page' : 'Show in scene'}
+      </button>
+      <Surface inScene={inScene}><Card /></Surface>
+      <SurfaceCanvas pointerMode="surfaces" style={{ position: 'fixed', inset: 0, zIndex: 20 }} />
+    </>
+  )
+}
+```
+
+The card keeps its count and input value across the toggle. Give the content
+root a fixed size. Without `enableSnapdomCapture()`, run Chrome with
+`--enable-features=CanvasDrawElement` or serve an HTML-in-canvas origin trial
+token.
+
+With no usable engine, `useSurfaceStatus()` returns `supported: false`,
+`engine: null` and a `reason` that names the flag, the trial and
+`enableSnapdomCapture()`. In development a `Surface` that is asked for the scene
+logs the same sentence once with a `[munari] ` prefix. The content stays native.
+`engine` is `'html-in-canvas'` or `'snapdom'` when one can run.
+
+`style.css` ships one rule: children of `.ui-layer`, the portal container of a
+floating Surface, take pointer events. The rest is a contract for your CSS. A
+captured tree lives in a `.ui-root` container instead of `<body>`, so put
+body-level background, color and font rules on `.ui-root` as well. A hit test
+never reaches the captured tree, so every `:hover` and `:active` rule must also
+match `[data-hover]` and `[data-active]`. Exclude `[data-pointer-focus]` from
+`:focus-visible` rules.
 
 ## Renderer and materials
 
@@ -51,7 +107,16 @@ nobody made only when it is `live`.
 - `<Surface inScene={boolean}>` contains one existing HTML/React component.
   Its local state, uncontrolled values, focus, and selection stay on that instance.
   The supplied flat mesh matches the page; motion and visual effects remain
-  application code.
+  application code. Inside a Surface, `Surface.Mesh` defaults to
+  `placement="match-dom"`: a unit plane one world unit in front of the camera,
+  sized to the page rect. A transformed parent `<group>` moves it relative to that
+  camera, not the page, and can put it behind the camera, where it vanishes with
+  no warning while status reports `presentation: 'scene'`. To pose the mesh
+  yourself, pass `placement="manual"`. The default geometry is a 1 by 1 plane, so
+  pass `geometry={<planeGeometry args={[width, height]} />}` for CSS-pixel
+  units, and use `cameraDistance(viewportHeight, fov)` from `/advanced` for a
+  camera where one world unit is one CSS pixel at z = 0. Written inside a scene
+  (`Surface.Scene`, `SceneSurface`), a mesh defaults to `manual`.
 - For custom scenes, use `Surface.Root`, `Surface.HTML`, `Surface.Scene`, and
   `Surface.Mesh`. HTML parts have distinct names. Meshes select a part and can
   use named `Surface.Anchor` boxes from its painted generation.
@@ -64,7 +129,10 @@ nobody made only when it is `live`.
   pass `live` to follow every mutation and running animation. `CaptureContent` supplies separate React children or a detached
   element to a capture handle. It requires explicit dimensions.
 - `SurfaceCanvas` owns the renderer, camera, lights and surrounding R3F scene.
-  Keep it mounted while needed. Use `pointerMode="surfaces"` for overlays and
+  Keep it mounted while needed. `pointerMode` defaults to `"scene"`, which
+  takes pointer input over the whole canvas, so a full-viewport canvas blocks the
+  page. Use `"surfaces"` for an overlay: the canvas is transparent to the pointer
+  except over Surface meshes, which also cover page controls beneath them. Use
   demand rendering when the application has no ongoing animation. Flight must
   keep frames through its own physics even after the handoff settles.
 
@@ -112,9 +180,19 @@ scene declared before its first request is valid and stays quiet.
 - Page-owned preparation leaves the live instance on the page and captures a copy.
   It borrows the instance through a native rig only when focus is inside the
   content or a selection intersects it. An inert clone then reserves layout.
-- Native scene input is opt-in with `pointerRoute="auto"`. Multiple interactive
-  poses of one source all use relay. Unknown/replaced/deformed geometry and
-  authored raycasts use relay. Disabled or inert scene sources take no input.
+- The default `pointerRoute="relay"` forwards synthetic events: clicks, typing
+  and hover reach the DOM, and the `Surface.Mesh` `onPointer*` props fire.
+  `Surface.Mesh` has no `onClick` because the browser click after a press on a
+  Surface is swallowed; use `onPointerUp`. `onDoubleClick` and `onContextMenu`
+  fire. `pointerRoute="auto"` lets the browser hit-test the drawn element for
+  trusted events and real caret and selection, but the mesh `onPointer*` props do
+  not fire. snapDOM always relays. Multiple interactive poses of one source all
+  use relay. Unknown/replaced/deformed geometry and authored raycasts use relay.
+  Disabled or inert scene sources take no input.
+- While a Surface is in the scene, the page can still hold an `inert`,
+  `aria-hidden` copy of its content that reserves layout and keeps the state it
+  had at the lift. The live instance is parked in the canvas host. In tests and
+  queries, use the copy that is not inside `[inert]`.
 - Keep the content root sized by its layout; animate inner wrappers, not root
   opacity/transform. Do not use CSS mask-image inside captured content. Provide
   hover/active attribute twins. Read the full authoring constraints.

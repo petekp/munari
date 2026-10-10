@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.1 — 2026-10-10
+
+- A browser with no usable capture engine now says so. `useSurfaceStatus()`
+  reports `engine: null` and a `reason` that names the CanvasDrawElement flag,
+  the origin trial and `enableSnapdomCapture()`. In development, the first
+  Surface asked for the scene logs the same text once.
+- The entries that use React start with `'use client'`, so a Next.js server
+  component can import `Surface` and `SurfaceCanvas` directly.
+- `CaptureContent` inside a `SurfaceCanvas` throws an error that says to
+  render it in the page tree, instead of R3F's "Div is not part of the THREE
+  namespace".
+- `useSurfaceNodes()` and `Surface.LitMaterial` outside a `Surface.Mesh`
+  material throw an error naming the hook that was called.
+- `Surface.Mesh` no longer accepts `onClick`, which never fired. Use
+  `onPointerUp`. `onDoubleClick` and `onContextMenu` still fire.
+- The README covers custom node materials, reading status from the
+  component that owns a Surface, drawing captured content on a plane,
+  Next.js, the inert copy a handoff leaves in the DOM, known console output,
+  pinning `three`, and bundle size. The agent skill and `llms.txt` carry a
+  working starter.
+
 ## 0.4.0 — 2026-10-10
 
 ### Breaking

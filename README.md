@@ -15,8 +15,10 @@ project is named for the Italian designer and artist Bruno Munari.
   `@zumer/snapdom` ^3.3.3 for the snapDOM capture engine.
 - **Rendering:** `SurfaceCanvas` renders with Three's `WebGPURenderer`. Where a
   browser has no WebGPU adapter, it falls back to WebGL 2. Neither accepts GLSL,
-  so `ShaderMaterial` and `onBeforeCompile` do not work. Write custom materials
-  as TSL node materials. See [Materials on a SurfaceCanvas](#materials-on-a-surfacecanvas).
+  so `ShaderMaterial` and `onBeforeCompile` do not work. Neither do the drei
+  helpers built on them, such as `Text`, `MeshDistortMaterial` and
+  `MeshTransmissionMaterial`. Write custom materials as TSL node materials. See
+  [Materials on a SurfaceCanvas](#materials-on-a-surfacecanvas).
 - **Capture:** HTML-in-canvas runs in Chrome with the `CanvasDrawElement` feature
   on, either through `--enable-features=CanvasDrawElement` or on an origin that
   carries the HTML-in-canvas origin trial token. Other browsers need snapDOM.
@@ -24,9 +26,9 @@ project is named for the Italian designer and artist Bruno Munari.
   running CSS animation. The [capture engines](#capture-engines) table compares
   the two.
 
-Without a capture engine, handoff content stays native and usable.
-`useSurfaceSupport()` reports capability after hydration; `supportsSurfaces()` is
-the imperative check for an event handler.
+Without a capture engine, handoff content stays native and usable, but it never
+enters the scene. `useSurfaceSupport()` reports capability after hydration;
+`supportsSurfaces()` is the imperative check for an event handler.
 
 ## Capture engines
 
@@ -46,7 +48,8 @@ browser and what they can draw.
 | Page-to-scene handoff | yes | yes, in every browser; a running CSS animation restarts where `Element.moveBefore` is missing (Safari) |
 | Sub-pixel CSS lengths | exact | a fractional `border-width`, padding or offset rounds to whole pixels; type and SVG strokes keep their fractions |
 
-HTML-in-canvas is the default and needs no setup. To add snapDOM, install it and
+HTML-in-canvas is the default engine. It needs no code, but the browser must
+provide it (see [Requirements](#requirements)). To add snapDOM, install it and
 enable it once, before you render:
 
 ```sh
@@ -82,14 +85,20 @@ element is the cost, not the capture.
 <Surface inScene={inScene} live><Clock /></Surface>
 ```
 
-`useSurfaceStatus().engine` reports which engine a Surface is using.
-[Authoring](https://github.com/petekp/munari/blob/v0.4.0/docs/authoring.md) lists the content rules each engine adds.
+`useSurfaceStatus().engine` names the engine a Surface is using, or is `null`
+when no engine can run.
+[Authoring](https://github.com/petekp/munari/blob/v0.4.1/docs/authoring.md) lists the content rules each engine adds.
 
 ## Install
 
 ```sh
-npm install @petepetrash/munari three @react-three/fiber
+npm install @petepetrash/munari @react-three/fiber
+npm install three@0.186.1 --save-exact
 ```
+
+Pin `three`. The peer range is `~0.186.1`, but npm rewrites `three@~0.186.1` to
+`^0.186.1` in `package.json`, which accepts 0.187. Three changes its WebGPU API
+between minor versions. Keep `~0.186.1` there by hand if you prefer a range.
 
 In a TypeScript project, also install `@types/three`:
 
@@ -100,6 +109,11 @@ npm install --save-dev @types/three
 Import the stylesheet once, as the example below does. A TypeScript project that
 imports `style.css` needs a CSS module declaration, such as the one in
 `vite/client` types. The package leaves React, Three.js and R3F external as peers.
+
+A minimal app bundles to about 2 MB minified (about 550 to 640 kB gzip), mostly
+`three/webgpu`, and Vite warns about the chunk size. Load the route that mounts
+`SurfaceCanvas` with `React.lazy` or a dynamic `import()` to keep it off the
+first page.
 
 ## Your first Surface
 
@@ -142,10 +156,25 @@ export function Example() {
 }
 ```
 
-`SurfaceCanvas` owns the R3F renderer, camera, and scene. `Surface` supplies a flat
-mesh matching the HTML's page position. Switching alone preserves its appearance;
+`SurfaceCanvas` owns the R3F renderer, camera, and scene. It fills its parent, so
+give the parent a size; an auto-height parent leaves a 150 px canvas. `Surface`
+supplies a flat mesh matching the HTML's page position. Switching alone preserves its appearance;
 flight, deformation, lighting, and shader effects come from your scene code.
-The [running starter](https://github.com/petekp/munari/blob/v0.4.0/apps/lab/src/scenes/home/HomeStarter.tsx) uses this pattern.
+The [running starter](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/home/HomeStarter.tsx) uses this pattern.
+
+### If "Show in scene" stays disabled
+
+No capture engine can run in this browser. That happens in Chrome without the
+`CanvasDrawElement` feature when snapDOM is not enabled, and in any other
+browser. `useSurfaceSupport()` is `false`, so the example renders no canvas and
+the content stays on the page.
+`useSurfaceStatus().reason` says so, and a Surface asked to enter the scene logs
+the same sentence once in development. Fix it in one of three ways:
+
+- Start Chrome with `--enable-features=CanvasDrawElement`.
+- Serve the page with the HTML-in-canvas origin trial token.
+- Call [`enableSnapdomCapture()`](#capture-engines), which also covers other
+  browsers.
 
 `canvasId` selects the `SurfaceCanvas` with a matching `id`. Omit `canvasId` when
 using the unnamed default canvas. Several Surfaces can share the same canvas
@@ -153,7 +182,9 @@ while their HTML stays in different parts of the page.
 
 ## Add custom scene content
 
-Use the explicit composition form when the effect needs its own meshes or logic:
+The snippets from here on assume a sized `SurfaceCanvas` is mounted on the page,
+as in the first example. Use the explicit composition form when the effect needs
+its own meshes or logic:
 
 ```tsx
 <Surface.Root inScene={selected} canvasId="controls">
@@ -172,7 +203,7 @@ Use the explicit composition form when the effect needs its own meshes or logic:
 in this example. The first draws HTML; the second supplies the physical controls
 and their motion; the third supplies ordinary R3F lights. Munari's `Surface.Mesh`
 draws the captured HTML and provides its texture, named anchors, and input mapping.
-See the complete [Controls caller](https://github.com/petekp/munari/blob/v0.4.0/apps/lab/src/scenes/controls/Controls.tsx).
+See the complete [Controls caller](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/controls/Controls.tsx).
 
 `Surface.Scene` retains custom children through preparation, reversal, and return.
 It contributes to the shared canvas rather than creating another renderer. Declare
@@ -183,8 +214,8 @@ Use `placement="manual"` and normal R3F geometry/transforms for scene-owned plac
 For several pieces of HTML that must transfer together, give each `Surface.HTML`
 a distinct `part` name and select that part on its mesh. `sampledParts` records
 additional sources sampled by a material. A manual pointer proxy cannot claim
-those draw receipts. [Knobs](https://github.com/petekp/munari/blob/v0.4.0/apps/lab/src/scenes/knobs/Knobs.tsx) and
-[Logo](https://github.com/petekp/munari/blob/v0.4.0/apps/lab/src/scenes/logo/Logo.tsx) show coordinated parts and anchors.
+those draw receipts. [Knobs](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/knobs/Knobs.tsx) and
+[Logo](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/logo/Logo.tsx) show coordinated parts and anchors.
 
 ### Materials on a SurfaceCanvas
 
@@ -192,18 +223,66 @@ those draw receipts. [Knobs](https://github.com/petekp/munari/blob/v0.4.0/apps/l
 blends it there, as `WebGLRenderer` did. The conversion expects premultiplied
 color:
 
-- A translucent material sets `premultipliedAlpha: true`. With Three's default
-  of `false`, its alpha applies twice and it draws too dark.
+- A stock material that draws its own translucency, such as a fading
+  `meshBasicMaterial`, sets `premultipliedAlpha: true`. With Three's default of
+  `false`, its alpha applies twice and it draws too dark. `Surface.Mesh` sets
+  the flag on the material in its `material` slot for you.
 - A custom `outputNode` returns its color through `premultipliedOutput`, for
   premultiplied linear color, or `encodedOutput`, for premultiplied color
   already in sRGB. Both come from `@petepetrash/munari`.
+- A material that samples a Surface capture returns it through
+  `premultipliedOutput`. The capture is already premultiplied, so a `colorNode`
+  or a stock `map` multiplies it by alpha again, and translucent pixels draw
+  darker than the page. `premultipliedAlpha: true` does not fix that.
 - A material that samples the canvas, such as Three's transmission or a
   viewport-texture node, draws too bright. Render the scene behind it into a
   render target and sample that instead, as `registry/glass/` does.
 
 Opaque materials need neither. Custom materials are TSL node materials, because
-the renderer does not accept GLSL. [Decision #72](https://github.com/petekp/munari/blob/v0.4.0/docs/decisions.md) has the
+the renderer does not accept GLSL. [Decision #72](https://github.com/petekp/munari/blob/v0.4.1/docs/decisions.md) has the
 measurements.
+
+#### A custom material on Surface.Mesh
+
+The `material` prop takes a React element, not a material instance. The slot
+does not apply the capture to the material, so the material samples it itself.
+Build it in a component that calls `useSurfaceNodes()`, and return it with
+`<primitive attach="material" />`:
+
+```tsx
+import { useEffect, useMemo } from 'react'
+import { MeshBasicNodeMaterial } from 'three/webgpu'
+import { uv, vec3, vec4 } from 'three/tsl'
+import { Surface, premultipliedOutput, useSurfaceNodes } from '@petepetrash/munari'
+
+function TintMaterial() {
+  const surface = useSurfaceNodes()
+  const material = useMemo(() => {
+    const m = new MeshBasicNodeMaterial({ transparent: true })
+    const sample = surface.map.sample(uv()).mul(surface.radiusMask())
+    m.outputNode = premultipliedOutput(vec4(sample.rgb.mul(vec3(0.5, 1, 1)), sample.a))
+    return m
+  }, [surface])
+  useEffect(() => () => material.dispose(), [material])
+  return <primitive object={material} attach="material" />
+}
+
+<Surface.Root inScene={inScene}>
+  <Surface.HTML><Card /></Surface.HTML>
+  <Surface.Scene>
+    <Surface.Mesh material={<TintMaterial />} />
+  </Surface.Scene>
+</Surface.Root>
+```
+
+`surface.map` is the capture, `surface.radiusMask()` applies the Surface's
+rounded corners, and the tint halves red in linear light. `useSurfaceNodes()`
+and `useSurfaceTexture()` work only inside the component passed as `material`.
+
+For a lit slab, pass `material={<Surface.LitMaterial roughness={0.4} />}` and
+add lights under `SurfaceCanvas`. A JSX tag such as `<meshBasicNodeMaterial />`
+throws "is not part of the THREE namespace" until you register it with R3F's
+`extend()`, so build the material as above instead.
 
 ### Renderer settings
 
@@ -274,8 +353,57 @@ control elsewhere on the page) is not followed: call `capture.refresh()` from
 whatever makes it, or pass `useElementCapture({ live: true })` to follow every
 mutation and every running animation. `CaptureContent` instead supplies separately
 authored React children or a detached element to a `useCaptureHandle()` identity.
-`CaptureContent` requires explicit dimensions for either input. [Selection](https://github.com/petekp/munari/blob/v0.4.0/apps/lab/src/scenes/selection/Selection.tsx)
-and [Veil](https://github.com/petekp/munari/blob/v0.4.0/apps/lab/src/scenes/veil/Veil.tsx) are complete element-capture callers.
+`CaptureContent` requires explicit dimensions for either input. [Selection](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/selection/Selection.tsx)
+and [Veil](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/veil/Veil.tsx) are complete element-capture callers.
+
+`CaptureContent` renders HTML, so place it in the page tree, never inside
+`SurfaceCanvas`, where it throws. Create the handle in a page component, render
+`CaptureContent` there, and pass the handle to the scene component:
+
+```tsx
+import { useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
+import type { Mesh, MeshBasicMaterial } from 'three'
+import { CaptureContent, SurfaceCanvas, useCaptureFrame, useCaptureHandle, type CaptureHandle } from '@petepetrash/munari'
+
+function CapturedPlane({ capture }: { capture: CaptureHandle }) {
+  const frame = useCaptureFrame(capture)
+  const mesh = useRef<Mesh>(null)
+  const material = useRef<MeshBasicMaterial>(null)
+  useFrame(() => {
+    const current = frame.get()
+    if (!current || !mesh.current || !material.current) return
+    if (material.current.map !== current.texture) {
+      material.current.map = current.texture
+      material.current.needsUpdate = true
+    }
+    mesh.current.scale.x = current.width / current.height
+    mesh.current.visible = true
+  })
+  return (
+    <mesh ref={mesh} visible={false}>
+      <planeGeometry />
+      <meshBasicMaterial ref={material} />
+    </mesh>
+  )
+}
+
+export function Page() {
+  const capture = useCaptureHandle()
+  return (
+    <>
+      <CaptureContent capture={capture} size={[240, 80]}><p>Authored in React</p></CaptureContent>
+      <div style={{ position: 'relative', height: 400 }}>
+        <SurfaceCanvas><CapturedPlane capture={capture} /></SurfaceCanvas>
+      </div>
+    </>
+  )
+}
+```
+
+The plane is one unit high, and `width / height` gives its aspect. The texture
+is premultiplied, so this stock material draws opaque content correctly and
+translucent pixels too dark. See [Materials on a SurfaceCanvas](#materials-on-a-surfacecanvas).
 
 ## Sharpness by default
 
@@ -295,9 +423,40 @@ remain available when you choose a rendering budget; large textures still obey t
 | `sceneReady` | Required sources and preparation draws are ready |
 | `isTransitioning` | The handoff is progressing or awaiting preparation |
 | `supported`, `reason` | Capability/content support and an unavailable reason |
+| `engine` | `'html-in-canvas'` or `'snapdom'`; `null` when no engine can run |
 | `useFreezeSurface()` | Non-live content is frozen for the scene; stop your own clocks |
 | `useSurfaceProgress().get()` | Raw 0..1 motion, identical to driver input |
 | `useSurfaceProgress().eased()` | The explicitly eased version of that motion |
+
+When no engine can run, `supported` is `false` and `reason` says what to enable:
+"No capture engine is available. Enable Chrome's CanvasDrawElement flag or an
+HTML-in-canvas origin trial, or call enableSnapdomCapture() from
+@petepetrash/munari/snapdom." That reason takes precedence over a content reason
+such as inline handlers, which appears only when the engine works.
+
+`useSurfaceStatus()` without a handle reads the nearest enclosing Surface, so it
+throws in the component that renders the `Surface`. That component creates the
+handle and passes it down:
+
+```tsx
+import { Surface, useSurfaceHandle, useSurfaceStatus, useSurfaceTextureOf } from '@petepetrash/munari'
+
+function Card({ inScene }: { inScene: boolean }) {
+  const surface = useSurfaceHandle('card')
+  const status = useSurfaceStatus(surface)
+  const texture = useSurfaceTextureOf(surface)
+  return (
+    <>
+      <Surface surface={surface} inScene={inScene}><CardContent /></Surface>
+      <p>{status.supported ? `${status.presentation}, texture ${texture ? 'ready' : 'pending'}` : status.reason}</p>
+    </>
+  )
+}
+```
+
+`useSurfaceHandle()` creates a new identity. It does not return the enclosing
+Surface's, so call it once in the owner and pass the handle to `Surface`.
+Children of the `Surface` can call the same hooks with no handle.
 
 `onPresentationChange` uses `page | scene | null`; `onMotionComplete` and a driver's
 string target use `page | scene`. `useSurfaceDriver(step, handle?)` supplies a raw
@@ -310,14 +469,14 @@ and world-matrix updates, before each render pass, with the actual camera and re
 target. It may run several times per animation frame. Advance physics in the frame
 step; update shadows or other companions here. `canvasMayDraw` permits the upcoming
 draw and is separate from an accepted presentation receipt. The
-[postcard](https://github.com/petekp/munari/blob/v0.4.0/apps/lab/src/scenes/home/HomePostcard.tsx) demonstrates this boundary.
+[postcard](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/home/HomePostcard.tsx) demonstrates this boundary.
 
 ## Changing page layouts and renderer availability
 
 Use `usePageTarget()` when the same content must return to different React layout
 parents. Render `ref={target.ref}` on the current slot and pass `target` to
 `Surface.HTML`; the content itself stays at one stable React position.
-[Flight](https://github.com/petekp/munari/blob/v0.4.0/apps/lab/src/scenes/flight/Flight.tsx) uses one target and Root per card.
+[Flight](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/flight/Flight.tsx) uses one target and Root per card.
 Ordinary handoffs in a fixed slot need no target.
 Keyed target lists can be prepended, reordered and removed without moving React's
 own list anchors. Server-rendered targeted HTML hydrates the original node.
@@ -340,13 +499,74 @@ It requires a known planar geometry and an interactive source. Multiple scene
 poses sharing one source all use relay. `pointerEvents="none"` disables scene input
 while page-owned preparation remains interactive.
 
+`Surface.Mesh` has no `onClick`, because the gate swallows the browser click after
+any press on a Surface. Use `onPointerUp`. `onDoubleClick` and `onContextMenu`
+fire under the relay route.
+
 ## When enhanced rendering is unavailable
 
 A `Surface` keeps its HTML native and preserves author intent. No scene-only
 completion callback can finish a gesture that never entered the scene, so branch
 inside actions with `supportsSurfaces()` and commit their ordinary HTML outcome.
 Scene-only visuals need their own fallback. Keep the content-root sizing, paint,
-mask, and hover rules in [authoring](https://github.com/petekp/munari/blob/v0.4.0/docs/authoring.md).
+mask, and hover rules in [authoring](https://github.com/petekp/munari/blob/v0.4.1/docs/authoring.md).
+
+## Next.js and server rendering
+
+The `@petepetrash/munari` and `@petepetrash/munari/advanced` entries start with
+`'use client'`. A Next.js server component can import `Surface`, `SurfaceCanvas`
+and the hooks. `Surface` and `SurfaceCanvas` render on the client only. A
+component that calls a hook still needs its own `'use client'`, and `Surface`
+needs an `inScene` boolean prop.
+
+`useSurfaceSupport()` is `false` on the server and on the first client render,
+then reports the browser. Gate the canvas on it, as the first example does, and
+the server and client markup match.
+
+`@petepetrash/munari/snapdom` has no directive. Call `enableSnapdomCapture()` at
+the top level of a client module that loads before the first `Surface` mounts.
+The call is safe during server render:
+
+```tsx
+'use client'
+import { enableSnapdomCapture } from '@petepetrash/munari/snapdom'
+import { Example } from './Example'
+
+enableSnapdomCapture()
+
+export function ExampleWithSnapdom() {
+  return <Example />
+}
+```
+
+## DOM shape and testing
+
+A Surface can put two copies of its content in the DOM. One is live. The other
+is `inert` and `aria-hidden`:
+
+- While the Surface is in the scene, an inert copy stays at the page position to
+  hold layout, and the live content sits inside the canvas.
+- In page mode, a hidden `data-munari-source-host` element in a parked canvas
+  also holds an inert copy.
+
+`document.querySelector('[data-testid="count"]')` can return the inert copy, and
+`querySelectorAll('input')` can return two elements. Role-based queries, such as
+Testing Library's `getByRole`, skip `aria-hidden` content and find the live one.
+For a CSS selector, exclude the copy:
+
+```ts
+const live = [...document.querySelectorAll('[data-testid="count"]')]
+  .filter(element => !element.closest('[inert]'))
+```
+
+## Known console output
+
+- `THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.`
+  comes from `@react-three/fiber` 9.8.1, which constructs a `THREE.Clock`.
+  Munari does not. It is harmless.
+- Where the browser has no WebGPU adapter, Three logs that WebGPU is not
+  available and that it runs under the WebGL 2 backend, with a few related
+  warnings. These are Three's own messages for the fallback.
 
 ## Run the lab locally
 
@@ -364,13 +584,13 @@ still starts only Vite for a browser that already has the flag enabled.
 
 ## Go further
 
-- [Demo source map](https://github.com/petekp/munari/blob/v0.4.0/ALL-DEMO-API.md) links the implementations across Flight,
+- [Demo source map](https://github.com/petekp/munari/blob/v0.4.1/ALL-DEMO-API.md) links the implementations across Flight,
   Controls, Knobs, Selection, Gallery and the other scenes.
-- [Authoring rules](https://github.com/petekp/munari/blob/v0.4.0/docs/authoring.md) describe the browser capture constraints.
-- [Agent workflow](https://github.com/petekp/munari/blob/v0.4.0/docs/agent-workflow.md) maps a change to its owner and check.
+- [Authoring rules](https://github.com/petekp/munari/blob/v0.4.1/docs/authoring.md) describe the browser capture constraints.
+- [Agent workflow](https://github.com/petekp/munari/blob/v0.4.1/docs/agent-workflow.md) maps a change to its owner and check.
 - `/advanced` exports frame sources, manual presentation receipts,
   `readSurfaceFrameState`, and capture inspection. These are for custom renderers.
-- The tracked [Munari skill](https://github.com/petekp/munari/blob/v0.4.0/.agents/skills/munari/SKILL.md) teaches this API to agents.
+- The tracked [Munari skill](https://github.com/petekp/munari/blob/v0.4.1/.agents/skills/munari/SKILL.md) teaches this API to agents.
 
 ## Repo shape
 
@@ -387,10 +607,10 @@ Dependencies point one way: apps depend on `packages/react`, which
 depends on `packages/core`. `tests/boundary.test.ts` checks the actual
 imports.
 
-See [AGENTS.md](https://github.com/petekp/munari/blob/v0.4.0/AGENTS.md) for the working rules, [docs/decisions.md](https://github.com/petekp/munari/blob/v0.4.0/docs/decisions.md)
-for the numbered design decisions, [docs/platform.md](https://github.com/petekp/munari/blob/v0.4.0/docs/platform.md) for what
-the platform is measured to do, [docs/authoring.md](https://github.com/petekp/munari/blob/v0.4.0/docs/authoring.md) for how
-to write markup a Surface can draw, and [docs/focus.md](https://github.com/petekp/munari/blob/v0.4.0/docs/focus.md) for the
+See [AGENTS.md](https://github.com/petekp/munari/blob/v0.4.1/AGENTS.md) for the working rules, [docs/decisions.md](https://github.com/petekp/munari/blob/v0.4.1/docs/decisions.md)
+for the numbered design decisions, [docs/platform.md](https://github.com/petekp/munari/blob/v0.4.1/docs/platform.md) for what
+the platform is measured to do, [docs/authoring.md](https://github.com/petekp/munari/blob/v0.4.1/docs/authoring.md) for how
+to write markup a Surface can draw, and [docs/focus.md](https://github.com/petekp/munari/blob/v0.4.1/docs/focus.md) for the
 focus and spatial-navigation contract.
 
 ## Development
@@ -405,9 +625,9 @@ npm run lint
 npm run gate:idle-zero   # browser gate: idle Surfaces cost 0 paints/s
 ```
 
-[package.json](https://github.com/petekp/munari/blob/v0.4.0/package.json) lists available gate commands;
-[the CI workflow](https://github.com/petekp/munari/blob/v0.4.0/.github/workflows/ci.yml) selects the gates run on each push.
-[The instrument guide](https://github.com/petekp/munari/blob/v0.4.0/instruments/README.md) gives each check's scope and
+[package.json](https://github.com/petekp/munari/blob/v0.4.1/package.json) lists available gate commands;
+[the CI workflow](https://github.com/petekp/munari/blob/v0.4.1/.github/workflows/ci.yml) selects the gates run on each push.
+[The instrument guide](https://github.com/petekp/munari/blob/v0.4.1/instruments/README.md) gives each check's scope and
 limits. Run GPU gates in series. A capability skip is not a passing behavior
 check; use `STRICT_CAPABILITY=1` where HTML-in-canvas must be present.
 

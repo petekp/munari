@@ -1,6 +1,6 @@
 {
   "name": "@petepetrash/munari",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "description": "HTML, 3D, and Shaders, Unified. Retained HTML and interactive Three.js scenes for React.",
