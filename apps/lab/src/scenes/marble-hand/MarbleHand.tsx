@@ -422,7 +422,7 @@ function MarbleLighting({ tuning, width, height }: {
       {/* Always casting: renderer.shadowMap.enabled turns shadows off. A light
           that stops casting disposes its shadow node, but the receiver, hidden
           while shadows were off, keeps a render object that still draws it.
-          Turning shadows back on then threw on the null map. */}
+          Turning shadows back on then threw on the null map (three.js#34942). */}
       <directionalLight
         ref={light}
         name="marble-hand-key-light"
