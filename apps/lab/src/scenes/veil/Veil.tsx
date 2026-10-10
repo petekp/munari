@@ -469,7 +469,7 @@ export function VeilApp() {
           <SurfaceCanvas
             pointerMode="surfaces"
             id="veil"
-            gl={{ alpha: true }}
+            gl={{ alpha: true, antialias: false, depth: false }}
             frameloop={painted ? 'demand' : 'always'}
             dpr={[1, 2]}
             camera={{ fov: FOV, position: [0, 0, 1000] }}

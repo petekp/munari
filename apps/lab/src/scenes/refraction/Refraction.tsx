@@ -358,7 +358,7 @@ export function RefractionApp() {
       <SurfaceCanvas
         pointerMode="surfaces"
         style={{ position: 'fixed', inset: 0 }}
-        gl={{ alpha: true, antialias: true }}
+        gl={{ alpha: true, antialias: true, depth: false }}
         frameloop={lifted ? 'always' : 'demand'}
         dpr={[1, 2]}
         camera={{ fov: FOV, position: [0, 0, 1000] }}

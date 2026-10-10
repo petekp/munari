@@ -436,7 +436,7 @@ export function SliderApp() {
       <SurfaceCanvas
         pointerMode="surfaces"
         style={{ position: 'fixed', inset: 0 }}
-        gl={{ alpha: true, antialias: true }}
+        gl={{ alpha: true, antialias: true, depth: false }}
         frameloop={lensLive ? 'always' : 'demand'}
         dpr={[1, 2]}
         camera={{ fov: FOV, position: [0, 0, 1000] }}

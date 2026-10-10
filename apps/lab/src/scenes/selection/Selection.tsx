@@ -374,7 +374,7 @@ function SelectionPage() {
       <SurfaceCanvas
         pointerMode="surfaces"
         style={{ position: 'fixed', inset: 0, zIndex: 40 }}
-        gl={{ alpha: true, antialias: true }}
+        gl={{ alpha: true, antialias: false, depth: false }}
         // No dpr clamp: PixelPerfect owns render density and follows the
         // live devicePixelRatio, browser zoom included.
         camera={{ fov: FOV, position: [0, 0, 1000] }}

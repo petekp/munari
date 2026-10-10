@@ -2534,7 +2534,7 @@ export function GenieApp() {
         // Pointer events are the host's: pointerMode="surfaces" keeps the
         // overlay clear except over an airborne sheet's Surface mesh.
         style={{ position: 'fixed', inset: 0, zIndex: OVERLAY_Z }}
-        gl={{ alpha: true, antialias: true }}
+        gl={{ alpha: true, antialias: true, depth: false }}
         // A ring outlives the landing that kicked it, so "something is
         // moving" is wider than "something is in the air" — and both are
         // now sets rather than single facts.

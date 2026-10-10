@@ -230,7 +230,7 @@ function GravityNativeApp() {
     canvas.className = 'gv-canvas'
     let renderer: WebGPURenderer
     try {
-      renderer = new WebGPURenderer({ canvas, antialias: true, alpha: true, depth: false })
+      renderer = new WebGPURenderer({ canvas, antialias: false, alpha: true, depth: false })
     } catch {
       return
     }

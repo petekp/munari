@@ -575,7 +575,7 @@ export function PlumeApp() {
             className="plume-canvas"
             frameloop="demand"
             style={{ position: 'fixed', inset: 0 }}
-            gl={{ alpha: true, antialias: true }}
+            gl={{ alpha: true, antialias: false, depth: false }}
             camera={{ fov: FOV, position: [0, 0, 1000] }}
             onCreated={(state) => {
               state.gl.setClearAlpha(0)

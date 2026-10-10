@@ -267,7 +267,7 @@ export function CrystalApp() {
       <SurfaceCanvas
         pointerMode="surfaces"
         style={{ position: 'fixed', inset: 0 }}
-        gl={{ alpha: true, antialias: true }}
+        gl={{ alpha: true, antialias: false, depth: false }}
         dpr={[1, 2]}
         camera={{ fov: FOV, position: [0, 0, 1000] }}
         onCreated={(state) => {

@@ -186,7 +186,7 @@ interface FieldResources {
 }
 
 function buildField(canvas: HTMLCanvasElement, rng: RainRng): FieldResources {
-  const renderer = new WebGPURenderer({ canvas, antialias: true, alpha: true, depth: false })
+  const renderer = new WebGPURenderer({ canvas, antialias: false, alpha: true, depth: false })
   renderer.setClearColor(0x000000, 0)
   // Converts each fragment as it lands on the canvas, so the beads blend in
   // the sRGB canvas, where their colours were tuned (decisions.md #72).

@@ -167,7 +167,7 @@ export function GravitySurfaces({ words }: { words: readonly string[] }) {
       </Fragment>)}
     </p>
     <p className="gv-hint">Drag a word out and drop it. Click a fallen word to put it back.</p>
-    <SurfaceCanvas pointerMode="surfaces" className="gv-overlay" orthographic camera={{ position: [0, 0, 1], near: 0.01, far: 10 }} gl={{ alpha: true, antialias: true, depth: false }} frameloop="demand" dpr={[1, 2]} style={{ position: 'fixed', inset: 0 }}>
+    <SurfaceCanvas pointerMode="surfaces" className="gv-overlay" orthographic camera={{ position: [0, 0, 1], near: 0.01, far: 10 }} gl={{ alpha: true, antialias: false, depth: false }} frameloop="demand" dpr={[1, 2]} style={{ position: 'fixed', inset: 0 }}>
       <GravityWorld state={state} />
     </SurfaceCanvas>
   </div>

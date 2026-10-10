@@ -187,6 +187,29 @@ color:
 Opaque materials need neither. [Decision #72](docs/decisions.md) has the
 measurements.
 
+### Renderer settings
+
+`gl` passes options to the `WebGPURenderer` that `SurfaceCanvas` creates.
+Two of them decide most of a canvas's GPU memory:
+
+```tsx
+<SurfaceCanvas gl={{ antialias: false, depth: false }}>
+```
+
+- `antialias` defaults to `true`. It smooths triangle edges by keeping 4 color
+  and 4 depth samples per pixel. On WebGPU, those buffers take 32 bytes per
+  canvas pixel, about 160 MB for a full-window canvas at 1440×900 and device
+  pixel ratio 2. Turn it off when the canvas draws no visible triangle edges,
+  such as a full-screen shader quad, or HTML on unrotated planes square to
+  the camera.
+- `depth` defaults to `true`. Turn it off when nothing on the canvas needs
+  depth testing, such as a single mesh or transparent layers drawn in order.
+  With `antialias` on, it saves half of those 32 bytes.
+
+Three 0.186.1 ignores `antialias` on its WebGL 2 fallback, so a browser without
+WebGPU draws aliased edges either way
+([three.js#34947](https://github.com/mrdoob/three.js/issues/34947)).
+
 ## HTML that belongs in a scene
 
 ```tsx
