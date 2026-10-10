@@ -3,41 +3,42 @@
 > HTML, 3D, and Shaders, Unified. Munari renders retained HTML in Three.js scenes, preserving the original DOM and state. It captures through Chrome's HTML-in-canvas capability where the browser has it and through snapDOM everywhere else; the README's engine table says what each one follows and what it draws.
 
 The current public API is documented in the README and published types.
-[Decision #43](docs/decisions.md#43) records the retained-HTML API adoption.
+[Decision #43](https://github.com/petekp/munari/blob/v0.4.0/docs/decisions.md#43) records the retained-HTML API adoption.
 Earlier decisions describe historical interfaces and must be read with their
 later amendments.
 
 ## Start in the version you are using
 
 - [README and package setup](README.md)
+- [Changelog](CHANGELOG.md)
 - [Munari agent skill](.agents/skills/munari/SKILL.md)
 
 In a checkout, confirm the repository, branch and dirty scope, then choose a
-task route below. In an installed package, read its index.d.ts and advanced.d.ts
-for exact APIs. The package currently ships the two guides above, not the full
-repository docs or registry. Obtain missing guidance from a proven matching
-release revision; do not substitute mutable main as version-local truth.
+task route below. In an installed package, read its index.d.ts, advanced.d.ts
+and snapdom.d.ts for exact APIs. The package ships the three files above, not
+the full repository docs or registry. The links below point at the v0.4.0 tag
+on GitHub. Do not substitute mutable main as version-local truth.
 
-## Repository task routes (checkout only)
+## Repository task routes (at the v0.4.0 tag)
 
-- [Task → owner → control → proof](docs/agent-workflow.md)
-- [System model and evidence boundaries](docs/system-model.md)
-- [Shared terms](CONTEXT.md)
-- [DOM authoring rules](docs/authoring.md)
-- [Current public React exports](packages/react/src/index.ts)
-- [Current advanced exports](packages/react/src/advanced.ts)
-- [Demo source map](ALL-DEMO-API.md)
-- [Copyable recipes](registry/README.md)
-- [Lab scene contracts](apps/lab/README.md)
-- [Browser gates and limits](instruments/README.md)
+- [Task → owner → control → proof](https://github.com/petekp/munari/blob/v0.4.0/docs/agent-workflow.md)
+- [System model and evidence boundaries](https://github.com/petekp/munari/blob/v0.4.0/docs/system-model.md)
+- [Shared terms](https://github.com/petekp/munari/blob/v0.4.0/CONTEXT.md)
+- [DOM authoring rules](https://github.com/petekp/munari/blob/v0.4.0/docs/authoring.md)
+- [Current public React exports](https://github.com/petekp/munari/blob/v0.4.0/packages/react/src/index.ts)
+- [Current advanced exports](https://github.com/petekp/munari/blob/v0.4.0/packages/react/src/advanced.ts)
+- [Demo source map](https://github.com/petekp/munari/blob/v0.4.0/ALL-DEMO-API.md)
+- [Copyable recipes](https://github.com/petekp/munari/blob/v0.4.0/registry/README.md)
+- [Lab scene contracts](https://github.com/petekp/munari/blob/v0.4.0/apps/lab/README.md)
+- [Browser gates and limits](https://github.com/petekp/munari/blob/v0.4.0/instruments/README.md)
 
-## Read only when the task needs it (checkout only)
+## Read only when the task needs it (at the v0.4.0 tag)
 
-- [Canonical document map and status](docs/README.md)
-- [Numbered handoff decisions and amendments](docs/decisions.md)
-- [Dated platform measurements](docs/platform.md)
-- [Conformance specification](tests/conformance/README.md)
-- [Agent system delivery plan: proposed, not shipped](docs/agent-system-plan.md)
+- [Canonical document map and status](https://github.com/petekp/munari/blob/v0.4.0/docs/README.md)
+- [Numbered handoff decisions and amendments](https://github.com/petekp/munari/blob/v0.4.0/docs/decisions.md)
+- [Dated platform measurements](https://github.com/petekp/munari/blob/v0.4.0/docs/platform.md)
+- [Conformance specification](https://github.com/petekp/munari/blob/v0.4.0/tests/conformance/README.md)
+- [Agent system delivery plan: proposed, not shipped](https://github.com/petekp/munari/blob/v0.4.0/docs/agent-system-plan.md)
 
 Superseded proposals and completed implementation plans remain in Git history.
 Use the README and exported types for current usage and signatures. Treat a

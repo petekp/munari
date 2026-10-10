@@ -20,7 +20,7 @@ export { Surface, SceneSurface, useSurfaceStatus, useSurfaceMotion, useSurfaceDr
 export type { SurfaceProps, SurfaceRootProps, SurfaceHTMLProps, SceneSurfaceHTMLProps, SceneSurfaceRootProps, SceneSurfaceProps, SurfaceSceneProps, SurfaceControls, SurfaceDriverFrame, SurfaceDriverStep, SurfaceMotionFrame } from './primitives/Surface'
 export { useElementCapture, CaptureContent } from './primitives/elementCapture'
 export type { ElementCapture, ElementCaptureOptions } from './primitives/elementCapture'
-export { createCapture, useCaptureHandle, useCaptureFrame, useCaptureStatus } from './primitives/capture'
+export { useCaptureHandle, useCaptureFrame, useCaptureStatus } from './primitives/capture'
 export type { CaptureHandle, CaptureFrame, CaptureStatus } from './primitives/capture'
 export { SurfaceCanvas, type SurfaceCanvasProps } from './primitives/surface/SurfaceCanvas'
 export type { SurfaceCanvasId } from './primitives/surface/surfaceHostRegistry'

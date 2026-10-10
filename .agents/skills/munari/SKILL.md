@@ -15,8 +15,36 @@ Read the consumer's installed README/types or this checkout's README and
 README and exports define current usage. The development checkout may be newer than a released
 package. Read `docs/authoring.md` before writing captured markup.
 
-Import only `@petepetrash/munari`, its `style.css`, and `/advanced`. A missing
+Import only `@petepetrash/munari`, `@petepetrash/munari/advanced`,
+`@petepetrash/munari/snapdom` and `@petepetrash/munari/style.css`. A missing
 export is a package concern, not a reason to reach into private source files.
+Peers are `react` and `react-dom` 19, `three` ~0.186.1 and
+`@react-three/fiber` ^9.8.1. `@types/three` and `@zumer/snapdom` are optional.
+
+## Renderer and materials
+
+`SurfaceCanvas` renders with Three's `WebGPURenderer`. It falls back to WebGL 2
+where the browser has no WebGPU adapter. Neither accepts GLSL, so do not write
+`ShaderMaterial` or `onBeforeCompile`. Write custom materials as TSL node
+materials.
+
+- A translucent material sets `premultipliedAlpha: true`.
+- A custom `outputNode` returns its color through `premultipliedOutput`
+  (premultiplied linear color) or `encodedOutput` (premultiplied sRGB color),
+  both from `@petepetrash/munari`.
+- `gl` takes `WebGPURendererParameters` without `canvas`. Set
+  `gl={{ antialias: false, depth: false }}` when the canvas needs neither.
+
+## Capture engines
+
+HTML-in-canvas is the default. For other browsers, install `@zumer/snapdom` and
+call `enableSnapdomCapture()` from `@petepetrash/munari/snapdom` once, before
+the first `Surface` mounts. Pass `{ always: true }` to force snapDOM.
+
+Pass `live` to `Surface` or `CaptureContent` when the content changes on its
+own: an animation, a clock, a video, data that arrives after mount. On snapDOM,
+a Surface re-captures after the user's input by default, and after changes
+nobody made only when it is `live`.
 
 ## Choose the relationship
 

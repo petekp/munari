@@ -92,7 +92,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.186.0",
-    "@zumer/snapdom": "^3.0.0-beta.1",
+    "@zumer/snapdom": "^3.3.3",
     "happy-dom": "^20.11.1",
     "oxlint": "^1.78.0",
     "puppeteer-core": "^25.4.0",
