@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `@petepetrash/munari/advanced` exports `releasedSample(sample)`, which
+  returns a pointer sample with no buttons pressed.
+
 ## 0.4.1 — 2026-10-10
 
 - A browser with no usable capture engine now says so. `useSurfaceStatus()`
