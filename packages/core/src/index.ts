@@ -111,6 +111,7 @@ export {
   notePointerModality,
   nudgeSelect,
   pointerSampleOf,
+  releasedSample,
   silenceHoverMove,
   surfaceCursorAt,
   trackDrag,

@@ -56,10 +56,6 @@ export function SurfaceScene({ surface, children }: SurfaceSceneProps) {
   )
 }
 
-function useCanvasPresence(store: SurfaceStore): boolean {
-  return useSyncExternalStore(
-    useMemo(() => store.subscribePresence.bind(store), [store]),
-    useMemo(() => store.canvasMounted.bind(store), [store]),
-    useMemo(() => store.canvasMounted.bind(store), [store]),
-  )
+export function useCanvasPresence(store: SurfaceStore): boolean {
+  return useSyncExternalStore(store.subscribePresence, store.canvasMounted, store.canvasMounted)
 }

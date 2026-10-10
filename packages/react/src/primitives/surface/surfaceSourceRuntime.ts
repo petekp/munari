@@ -71,6 +71,11 @@ export interface SurfacePartPublication {
   readonly pageContent?: () => HTMLElement | null
 }
 
+/** The page element this part's mesh is matched to: authored content when the page supplies it, else the page root. */
+export function pageBoxOf(part: SurfacePartPublication | null | undefined): HTMLElement | null | undefined {
+  return part?.pageContent?.() ?? part?.pageRoot
+}
+
 export interface SurfaceSourceOptions {
   label?: string
   /** The element to capture. Either a container this runtime fills, or an

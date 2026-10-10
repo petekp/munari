@@ -303,6 +303,11 @@ function pointerInit(
   }
 }
 
+const clearActive = (root: HTMLElement, mirror: PointerMirror) => {
+  swapChainAttr(root, mirror.active, null, ACTIVE_ATTR)
+  mirror.active = null
+}
+
 const mirrorOf = (root: HTMLElement): PointerMirror => {
   let m = mirrors.get(root)
   if (!m) {
@@ -316,6 +321,16 @@ const mirrorOf = (root: HTMLElement): PointerMirror => {
     mirrors.set(root, m)
   }
   return m
+}
+
+/** One pointer event and its mouse compatibility twin, pointer first. */
+function relayPair(
+  target: Element,
+  kind: 'out' | 'leave' | 'over' | 'enter' | 'move' | 'down' | 'up',
+  init: PointerEventInit & MouseEventInit,
+) {
+  relay(target, new PointerEvent(`pointer${kind}`, init))
+  relay(target, new MouseEvent(`mouse${kind}`, init))
 }
 
 /**
@@ -365,18 +380,15 @@ function crossBoundary(
   const left = new Set(prevChain)
 
   if (prev) {
-    relay(prev, new PointerEvent('pointerout', { ...init, bubbles: true, relatedTarget: next }))
-    relay(prev, new MouseEvent('mouseout', { ...init, bubbles: true, relatedTarget: next }))
+    relayPair(prev, 'out', { ...init, bubbles: true, relatedTarget: next })
   }
   for (const el of prevChain) {
     if (entered.has(el)) break // the deepest common ancestor — not left
-    relay(el, new PointerEvent('pointerleave', { ...init, bubbles: false, relatedTarget: next }))
-    relay(el, new MouseEvent('mouseleave', { ...init, bubbles: false, relatedTarget: next }))
+    relayPair(el, 'leave', { ...init, bubbles: false, relatedTarget: next })
   }
 
   if (next) {
-    relay(next, new PointerEvent('pointerover', { ...init, bubbles: true, relatedTarget: prev }))
-    relay(next, new MouseEvent('mouseover', { ...init, bubbles: true, relatedTarget: prev }))
+    relayPair(next, 'over', { ...init, bubbles: true, relatedTarget: prev })
   }
   const entering: Element[] = []
   for (const el of nextChain) {
@@ -384,8 +396,7 @@ function crossBoundary(
     entering.push(el)
   }
   for (const el of entering.reverse()) {
-    relay(el, new PointerEvent('pointerenter', { ...init, bubbles: false, relatedTarget: prev }))
-    relay(el, new MouseEvent('mouseenter', { ...init, bubbles: false, relatedTarget: prev }))
+    relayPair(el, 'enter', { ...init, bubbles: false, relatedTarget: prev })
   }
 }
 
@@ -475,7 +486,7 @@ export function clearPointerState(root: HTMLElement) {
     // anchored at these coordinates, so reporting the away point here would
     // stretch the hull out to meet it and the move below would land inside
     // its own grace area — open forever, for a subtler reason.
-    const init = pointerInit({ ...m.sample, button: 0, buttons: 0, pressure: 0 }, m.at.x, m.at.y)
+    const init = pointerInit(releasedSample(m.sample), m.at.x, m.at.y)
     swapChainAttr(root, m.hovered, null, HOVER_ATTR)
     crossBoundary(root, m.hovered, null, init)
     m.hovered = null
@@ -517,16 +528,12 @@ export function clearPointerState(root: HTMLElement) {
         clientX: to ? to.x : rect.left - AWAY_MARGIN_PX,
         clientY: to ? to.y : rect.top - AWAY_MARGIN_PX,
       }
-      relay(root, new PointerEvent('pointermove', away))
-      relay(root, new MouseEvent('mousemove', away))
+      relayPair(root, 'move', away)
       if (--frames > 0) m.away = requestAnimationFrame(step)
     }
     m.away = requestAnimationFrame(step)
   }
-  if (m.active) {
-    swapChainAttr(root, m.active, null, ACTIVE_ATTR)
-    m.active = null
-  }
+  if (m.active) clearActive(root, m)
 }
 
 /**
@@ -656,9 +663,8 @@ function forwardCancel(
   if (cancelTarget) {
     relay(cancelTarget, new PointerEvent('pointercancel', pointerInit(pointer, x, y)))
   }
-  swapChainAttr(root, mirror.active, null, ACTIVE_ATTR)
-  mirror.active = null
-  if (surfaceDragPointerId === pointer.pointerId) surfaceDragPointerId = null
+  clearActive(root, mirror)
+  endSurfaceDrag(pointer.pointerId)
   flushPendingClears()
   return cancelTarget ? { target: cancelTarget, focused: false } : null
 }
@@ -675,12 +681,10 @@ function forwardRelease(
   pointer: ForwardPointerSample,
 ): boolean {
   modality = 'pointer' // a release is a pointer interaction even without its down
-  if (surfaceDragPointerId === pointer.pointerId) surfaceDragPointerId = null
-  relay(target, new PointerEvent('pointerup', init))
-  relay(target, new MouseEvent('mouseup', init))
+  endSurfaceDrag(pointer.pointerId)
+  relayPair(target, 'up', init)
   relay(target, new MouseEvent('click', init))
-  swapChainAttr(root, mirror.active, null, ACTIVE_ATTR)
-  mirror.active = null
+  clearActive(root, mirror)
   // Synthetic clicks don't run the browser's focus fixup, so do it by hand.
   const focusable = target.closest<HTMLElement>(FOCUSABLE)
   let focused = false
@@ -767,8 +771,7 @@ export function forwardPointer(
   let focused = false
   if (kind === 'move') {
     updateHover(root, target, init)
-    relay(target, new PointerEvent('pointermove', init))
-    relay(target, new MouseEvent('mousemove', init))
+    relayPair(target, 'move', init)
   } else if (kind === 'down') {
     // The press is the interaction the modality mirror cares about — declared
     // BEFORE dispatch, because a consumer may focus synchronously from its
@@ -780,8 +783,7 @@ export function forwardPointer(
     updateHover(root, target, init)
     swapChainAttr(root, null, target, ACTIVE_ATTR)
     mirror.active = target
-    relay(target, new PointerEvent('pointerdown', init))
-    relay(target, new MouseEvent('mousedown', init))
+    relayPair(target, 'down', init)
   } else {
     focused = forwardRelease(root, mirror, target, init, pointer)
   }
@@ -920,6 +922,10 @@ let surfaceDragPointerId: number | null = null
 // it leaks past the gesture.)
 const pendingClears = new Set<HTMLElement>()
 
+function endSurfaceDrag(pointerId: number) {
+  if (surfaceDragPointerId === pointerId) surfaceDragPointerId = null
+}
+
 function flushPendingClears() {
   const pending = [...pendingClears]
   pendingClears.clear()
@@ -1005,6 +1011,11 @@ export function pointerSampleOf(e: PointerEvent): ForwardPointerSample {
     metaKey: e.metaKey,
     shiftKey: e.shiftKey,
   }
+}
+
+/** `sample` with no button held: the pointer as it is when nothing is pressed. */
+export function releasedSample(sample: ForwardPointerSample): ForwardPointerSample {
+  return { ...sample, button: 0, buttons: 0, pressure: 0 }
 }
 
 /** Where the trusted pointer last was, in viewport coordinates. */

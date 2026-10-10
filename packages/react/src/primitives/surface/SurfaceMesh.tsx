@@ -52,6 +52,7 @@ import {
   pointerSampleOf,
   type PointerRouteRequest,
   rectIsMeasurable,
+  releasedSample,
   resolveRadii,
   selectLodTier,
   silenceHoverMove,
@@ -97,6 +98,7 @@ import {
 import {
   surfaceTierLadder,
   type SurfaceResolution,
+  pageBoxOf,
   type SurfacePartPublication,
   type SurfaceSourceRuntime,
 } from './surfaceSourceRuntime'
@@ -108,6 +110,7 @@ import {
 } from './matchDom'
 import { surfaceStoreOf, type SurfaceHandle, type SurfaceStore } from './surfaceHandle'
 import { useSurfaceHostContext } from './surfaceHostContext'
+import { useCanvasPresence } from './SurfaceScene'
 import { createSurfaceFrameChannel, readSurfaceFrameState, SurfaceFrameContext, surfaceBelongsToScene } from './surfaceFrame'
 
 export type SurfaceRadius =
@@ -224,6 +227,8 @@ export function useSurfaceLodPhase() {
 const _camPos = new THREE.Vector3()
 const _surfPos = new THREE.Vector3()
 const _surfScale = new THREE.Vector3()
+const _drawingSize = new THREE.Vector2()
+const _viewport = new THREE.Vector4()
 
 /**
  * One presentation of a Surface.
@@ -248,7 +253,7 @@ export function SurfaceMesh({ surface, part, ...props }: SurfaceMeshProps) {
   const partId = part ?? inheritedPart?.id ?? DEFAULT_PART
   const registerKey = useMemo(() => `inward-${presenterSeq++}`, [])
   const host = root?.host ?? null
-  const mounted = useSurfaceCanvasPresence(store)
+  const mounted = useCanvasPresence(store)
   const handleValue = useMemo(() => ({ handle: store.handle, store }), [store])
   useEffect(() => store.declarePresentation('canvas'), [store])
 
@@ -275,14 +280,6 @@ export function SurfaceMesh({ surface, part, ...props }: SurfaceMeshProps) {
     <SurfaceHandleContext value={handleValue}>
       <SurfacePresenter {...props} store={store} partId={partId} tunneled={tunneled} />
     </SurfaceHandleContext>
-  )
-}
-
-function useSurfaceCanvasPresence(store: SurfaceStore): boolean {
-  return useSyncExternalStore(
-    useMemo(() => store.subscribePresence.bind(store), [store]),
-    useMemo(() => store.canvasMounted.bind(store), [store]),
-    useMemo(() => store.canvasMounted.bind(store), [store]),
   )
 }
 
@@ -363,6 +360,10 @@ function SurfacePresenter({
   useImperativeHandle(ref, () => mountedMesh as THREE.Mesh, [mountedMesh])
   const materialRef = useRef<MeshBasicNodeMaterial>(null)
   const pressedRef = useRef<ForwardPointerSample | null>(null)
+  const endPress = useCallback(() => {
+    pressedRef.current = null
+    if (controls) controls.enabled = true
+  }, [controls])
   const presenterKey = useMemo(() => `presenter-${presenterSeq++}`, [])
   const sampledKey = JSON.stringify(sampledParts)
   const additionalParts = useMemo(() => {
@@ -399,13 +400,12 @@ function SurfacePresenter({
   // the source — separated wiring is exactly the case where the two
   // declarations are in different trees.
   const part = useSyncExternalStore(
-    useMemo(() => store.subscribeParts.bind(store), [store]),
+    store.subscribeParts,
     useMemo(() => () => store.part(partId), [store, partId]),
     useMemo(() => () => store.part(partId), [store, partId]),
   )
   const { runtime, texture, width, height, sourceEl, chromeRadii } =
     readRuntimeFacts(part)
-  const reportError = useMemo(() => store.reportError.bind(store), [store])
   const presenterPart = useMemo<SurfacePartValue | null>(
     () =>
       part
@@ -439,7 +439,6 @@ function SurfacePresenter({
 
   const pointerEventsRef = useLatest(pointerEvents)
   const storeRef = useLatest(store)
-  const partRef = useLatest(part)
   const widthRef = useLatest(width)
   const heightRef = useLatest(height)
   const authoredRaycastRef = useLatest(authoredRaycast)
@@ -464,12 +463,9 @@ function SurfacePresenter({
   // part whose presenter never mounts at all. Naming the part here marks it
   // covered; a part no presenter ever names keeps holding the handoff.
   useEffect(() => {
-    if (presentation === 'manual') return
-    return store.registerPartPresenter(partId)
-  }, [store, partId, presentation])
-  useEffect(() => {
-    if (presentation !== 'manual') return
-    return store.expectManualPresenter(partId)
+    return presentation === 'manual'
+      ? store.expectManualPresenter(partId)
+      : store.registerPartPresenter(partId)
   }, [store, partId, presentation])
   useEffect(() => {
     if (!additionalParts.length) return
@@ -654,9 +650,9 @@ function SurfacePresenter({
 
   /** Stand the mesh on the page box this Surface is matched to. */
   const placeOnDom = (mesh: THREE.Mesh) => {
-    const pageRoot = part?.pageContent?.() ?? part?.pageRoot
+    const pageRoot = pageBoxOf(part)
     const rect = pageRoot?.getBoundingClientRect()
-    if (pageRoot) reportUnmatchableChain(pageRoot, reportError)
+    if (pageRoot) reportUnmatchableChain(pageRoot, store.reportError)
     const canvasRect = gl.domElement.getBoundingClientRect()
     if (rect && rectIsMeasurable(rect) && rectIsMeasurable(canvasRect)) {
       const match = matchDomTransform(
@@ -679,7 +675,7 @@ function SurfacePresenter({
     const sync = () => {
       if (!store.holdsPage()) {
         stop ??= watchSurfacePlacement([
-          () => part?.pageContent?.() ?? part?.pageRoot,
+          () => pageBoxOf(part),
           () => gl.domElement,
         ], invalidate)
       } else { stop?.(); stop = null }
@@ -721,7 +717,7 @@ function SurfacePresenter({
 
   const updateMatchedDensity = (): boolean => {
     if (!runtime || resolution !== 'auto' || effectivePlacement !== 'match-dom') return false
-    const page = part?.pageContent?.() ?? part?.pageRoot
+    const page = pageBoxOf(part)
     if (!page) return false
     const density = matchedSurfaceDensity([width,height], page.getBoundingClientRect(), gl.domElement.getBoundingClientRect(), [gl.domElement.width,gl.domElement.height])
     if (density <= 0) return false
@@ -794,17 +790,11 @@ function SurfacePresenter({
   // whoever owns the pointer next declares its own.
   const closeRelay = () => {
     const active = pressedRef.current
-    pressedRef.current = null
-    if (controls) controls.enabled = true
+    endPress()
     const el = elementRef.current
     if (!el) return
     if (active) {
-      forwardPointer(el, 0, 0, 'cancel', {
-        ...active,
-        button: 0,
-        buttons: 0,
-        pressure: 0,
-      })
+      forwardPointer(el, 0, 0, 'cancel', releasedSample(active))
     }
     clearPointerState(el)
     gl.domElement.style.cursor = ''
@@ -817,7 +807,7 @@ function SurfacePresenter({
   // 2026-08-20: a pointer sweeping through a landing showed two frames with
   // no hover on either copy. Buttonless only, for the arrival burst's reason.
   const bridgePage = () => {
-    const pageRoot = partRef.current?.pageContent?.() ?? partRef.current?.pageRoot
+    const pageRoot = pageBoxOf(part)
     const landingPlace = lastPointerPlace()
     if (pageRoot && landingPlace && landingPlace.sample.buttons === 0) {
       bridgeHover(pageRoot, landingPlace.x, landingPlace.y)
@@ -834,7 +824,7 @@ function SurfacePresenter({
    */
   const arrivalUv = (place: PointerPlace): ArrivalUv | null => {
     if (effectivePlacement === 'match-dom') {
-      const rect = (partRef.current?.pageContent?.() ?? partRef.current?.pageRoot)?.getBoundingClientRect()
+      const rect = pageBoxOf(part)?.getBoundingClientRect()
       if (!rect || !rectIsMeasurable(rect)) return null
       if (
         place.x < rect.left ||
@@ -873,7 +863,7 @@ function SurfacePresenter({
   // position, so the hover the previous owner was showing continues on the
   // texture instead of popping off at the swap.
   const rearmRelay = () => {
-    if (pointerEventsRef.current === 'none') return
+    if (pointerEvents === 'none') return
     const el = elementRef.current
     if (!el) return
     const place = lastPointerPlace()
@@ -887,12 +877,7 @@ function SurfacePresenter({
     if (!arrival) return
     // Hover only: a press held across the flip died at the edge (its side
     // of the story), so the arrival move carries no buttons.
-    const hit = forwardPointer(el, arrival.u, arrival.v, 'move', {
-      ...place.sample,
-      button: 0,
-      buttons: 0,
-      pressure: 0,
-    })
+    const hit = forwardPointer(el, arrival.u, arrival.v, 'move', releasedSample(place.sample))
     if (hit) gl.domElement.style.cursor = surfaceCursorAt(hit.target)
   }
 
@@ -941,7 +926,7 @@ function SurfacePresenter({
     if(!mesh||!runtime||!surfaceBelongsToScene(mesh,drawScene))return null
     // Align the main image, including equally sized composer targets. A reduced
     // intermediate target has its own authored sampling policy.
-    const size=gl.getDrawingBufferSize(new THREE.Vector2())
+    const size=gl.getDrawingBufferSize(_drawingSize)
     lodRef.current.aligned=false
     if(target&&(target.width!==size.x||target.height!==size.y)){
       rasterAlignment.rememberPose(mesh)
@@ -950,7 +935,7 @@ function SurfacePresenter({
     }
     // What WebGLRenderer's getCurrentViewport returned; WebGPURenderer has no
     // such method. Device pixels, floored, as the draw will rasterize them.
-    const viewport=target?target.viewport.clone():gl.getViewport(new THREE.Vector4()).multiplyScalar(gl.getPixelRatio()).floor()
+    const viewport=target?target.viewport:gl.getViewport(_viewport).multiplyScalar(gl.getPixelRatio()).floor()
     const paint=runtime.currentPaint()
     const material=mesh.material,texture=runtime.texture()
     const directMap=texture&&!Array.isArray(material)&&'map' in material&&material.map===texture&&additionalParts.length===0
@@ -1156,8 +1141,7 @@ function SurfacePresenter({
     if (active && active.pointerId === e.nativeEvent.pointerId) {
       const uv = uvOf(e)
       const el = runtime?.element
-      if (controls) controls.enabled = true
-      pressedRef.current = null
+      endPress()
       if (uv && el) {
         const hit = forwardPointer(el, uv.u, uv.v, 'up', e.nativeEvent)
         if (hit?.target instanceof HTMLSelectElement) nudgeSelect(hit.target)
@@ -1172,8 +1156,7 @@ function SurfacePresenter({
       e.stopPropagation()
       const uv = uvOf(e) ?? { u: 0, v: 0 }
       const el = runtime?.element
-      pressedRef.current = null
-      if (controls) controls.enabled = true
+      endPress()
       if (el) forwardPointer(el, uv.u, uv.v, 'cancel', e.nativeEvent)
     }
     onPointerCancel?.(e)
@@ -1218,15 +1201,9 @@ function SurfacePresenter({
       if (!active) return
       const el = elementRef.current
       if (el) {
-        forwardPointer(el, 0, 0, 'cancel', {
-          ...(sample ?? active),
-          button: 0,
-          buttons: 0,
-          pressure: 0,
-        })
+        forwardPointer(el, 0, 0, 'cancel', releasedSample(sample ?? active))
       }
-      pressedRef.current = null
-      if (controls) controls.enabled = true
+      endPress()
     }
     const onEnd = (e: PointerEvent) => {
       const active = pressedRef.current
@@ -1258,7 +1235,7 @@ function SurfacePresenter({
       if (pendingEnd) window.clearTimeout(pendingEnd)
       cancelActive()
     }
-  }, [controls])
+  }, [endPress])
 
   // The edge bursts (decisions.md #33). crossingPointer routes the NEXT
   // event; it says nothing about state either side holds ACROSS the flip,

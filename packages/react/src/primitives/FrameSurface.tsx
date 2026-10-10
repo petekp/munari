@@ -486,7 +486,6 @@ export function FrameSurface({
 }: FrameSurfaceProps) {
   const invalidate = useThree((state) => state.invalidate)
   const renderer = useThree((state) => state.gl)
-  const meshRef = useRef<THREE.Mesh>(null)
   const runtimeRef = useRef<FrameSurfaceRuntime | null>(null)
   const [runtime, setRuntime] = useState<FrameSurfaceRuntime | null>(null)
   const frameRef = useLatest(frame)
@@ -643,7 +642,6 @@ export function FrameSurface({
     <mesh
       {...meshProps}
       {...(effectiveRaycast !== undefined ? { raycast: effectiveRaycast } : {})}
-      ref={meshRef}
       visible={runtime !== null && visible}
       onBeforeRender={handleBeforeRender}
       onAfterRender={handleAfterRender}

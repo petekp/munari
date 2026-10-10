@@ -454,11 +454,7 @@ function SurfaceHostBridge({
 
 /** The R3F-side rendering of every page-declared scene presentation. */
 function SurfaceInwardPresenters({ host }: { host: SurfaceHost }) {
-  const entries = useSyncExternalStore(
-    useMemo(() => host.subscribePresenters.bind(host), [host]),
-    useMemo(() => host.presenters.bind(host), [host]),
-    useMemo(() => host.presenters.bind(host), [host]),
-  )
+  const entries = useSyncExternalStore(host.subscribePresenters, host.presenters, host.presenters)
   return (
     <>
       {entries.map((entry) => (
@@ -471,7 +467,7 @@ function SurfaceInwardPresenters({ host }: { host: SurfaceHost }) {
 /** Keep the shared Canvas transparent to input except over a Surface mesh. */
 function SurfacePointerBridge({ host }: { host: SurfaceHost }) {
   const isTarget = useMemo(
-    () => (object: import('three').Object3D) => host.objects().includes(object),
+    () => (object: Object3D) => host.objects().includes(object),
     [host],
   )
   return <CanvasPointerGate isTarget={isTarget} />
@@ -489,11 +485,7 @@ function SurfacePointerBridge({ host }: { host: SurfaceHost }) {
  * theme, store, and router by hand.
  */
 function SurfaceOutwardSources({ host }: { host: SurfaceHost }) {
-  const entries = useSyncExternalStore(
-    useMemo(() => host.subscribeSources.bind(host), [host]),
-    useMemo(() => host.sources.bind(host), [host]),
-    useMemo(() => host.sources.bind(host), [host]),
-  )
+  const entries = useSyncExternalStore(host.subscribeSources, host.sources, host.sources)
   return (
     <>
       {entries.map((entry) => createPortal(entry.content, entry.container, entry.key))}

@@ -6,8 +6,11 @@
 /** The element whose visible chrome the mesh must wear. */
 export function surfaceChromeElement(captureRoot: HTMLElement, adopted: boolean): HTMLElement {
   if (adopted) return captureRoot
-  const children = Array.from(captureRoot.children).filter(
-    (child): child is HTMLElement => child instanceof HTMLElement,
-  )
-  return children.length === 1 ? children[0]! : captureRoot
+  let only: HTMLElement | null = null
+  for (let child = captureRoot.firstElementChild; child; child = child.nextElementSibling) {
+    if (!(child instanceof HTMLElement)) continue
+    if (only) return captureRoot
+    only = child
+  }
+  return only ?? captureRoot
 }
