@@ -207,7 +207,6 @@ export function useSurfaceTextureOf(
   part: SurfacePartId = DEFAULT_PART,
 ): THREE.Texture | null {
   const store = surfaceStoreOf(handle)
-  const subscribe = useMemo(() => store.subscribeParts.bind(store), [store])
   // The runtime keeps ONE texture for its whole life and re-cuts storage
   // into it, so this reference is stable across every upload and every LOD
   // re-raster. `useSyncExternalStore` compares snapshots by reference: an
@@ -216,7 +215,7 @@ export function useSurfaceTextureOf(
     () => () => store.part(part)?.runtime?.texture() ?? null,
     [store, part],
   )
-  return useSyncExternalStore(subscribe, snapshot, snapshot)
+  return useSyncExternalStore(store.subscribeParts, snapshot, snapshot)
 }
 
 /**

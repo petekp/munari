@@ -56,7 +56,6 @@ import {
 } from '@munari/core'
 import { surfaceViewPresentation, type SurfaceStatus } from './surfaceStatus'
 import { CAPTURE_UNAVAILABLE_REASON } from './surfaceSupport'
-import { useLatest } from '../useLatest'
 import { SurfaceHandleContext } from './surfaceContext'
 import type { SurfacePartPublication } from './surfaceSourceRuntime'
 
@@ -276,6 +275,36 @@ function mintControllerToken(): number {
   return ++nextControllerToken
 }
 
+/** A listener set whose `emit` walks the live Set, so re-entrant changes behave as a plain `for…of`. */
+function listenerSet() {
+  const set = new Set<() => void>()
+  return {
+    subscribe(listener: () => void): () => void {
+      set.add(listener)
+      return () => {
+        set.delete(listener)
+      }
+    },
+    emit(): void {
+      for (const listener of set) listener()
+    },
+  }
+}
+
+/** Count one holder of `key`; the returned release drops it once, however often it is called. */
+function retain<K>(counts: Map<K, number>, key: K, onRelease?: () => void): () => void {
+  counts.set(key, (counts.get(key) ?? 0) + 1)
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    const count = counts.get(key) ?? 0
+    if (count <= 1) counts.delete(key)
+    else counts.set(key, count - 1)
+    onRelease?.()
+  }
+}
+
 /**
  * The private store behind one handle.
  *
@@ -291,7 +320,6 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   let driver: SurfaceDriverStep | null = null
   let callbacks: SurfaceCallbacks = {}
   let requested: SurfaceDestination = 'page'
-  let target: SurfaceDestination = 'page'
   let lingerUntilMs = 0
   let elapsedMs = 0
   const declared = new Map<SurfaceDestination, number>()
@@ -309,11 +337,21 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // from crossing four-fifths whole. Counts on both sides, not booleans:
   // Strict Mode runs a remount's new registration before the old cleanup.
   let parts = partSetEmpty()
+  // `partSetMissing` allocates; `parts` is replaced, never mutated, so its identity keys the cache.
+  let missingOf = parts
+  let missingCache = partSetMissing(parts)
+  const missingParts = () => {
+    if (missingOf !== parts) {
+      missingOf = parts
+      missingCache = partSetMissing(parts)
+    }
+    return missingCache
+  }
   const expectCounts = new Map<SurfacePartId, number>()
   const presenterCounts = new Map<SurfacePartId, number>()
   let pageHeld = true
   let canvasHeld = false
-  const holdListeners = new Set<() => void>()
+  const holdListeners = listenerSet()
   const partMap = new Map<SurfacePartId, SurfacePartPublication>()
   // The DOM read each part owes this lift: the first capture to START after
   // the lift was asked for. A generation cannot say this — a capture already
@@ -326,11 +364,11 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // Snapshotted for `useSyncExternalStore`, which compares by reference —
   // a fresh array per read is an infinite render loop, not a slow one.
   let partSnapshot: readonly SurfacePartPublication[] = []
-  const partListeners = new Set<() => void>()
+  const partListeners = listenerSet()
   const announceParts = () => {
     partSnapshot = Array.from(partMap.values())
     announceFreeze()
-    for (const listener of partListeners) listener()
+    partListeners.emit()
   }
   // Resolved on first observation, not at creation. A handle made at module
   // scope (`createSurface()`) runs before the app entry's
@@ -341,6 +379,8 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // against one capability and gates reading another.
   let resolvedSupport: boolean | null = null
   const supported = () => (resolvedSupport ??= captureAvailable())
+  let rendererAvailable = true
+  const canvasUsable = () => rendererAvailable && supported()
   let state: SurfaceState = {
     requested: 'page',
     presented: 'none',
@@ -350,14 +390,13 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       return supported()
     },
   }
-  const listeners = new Set<() => void>()
+  const listeners = listenerSet()
   let authorIntent: { owner: symbol; requestedInScene: boolean; reason: string | null } | null = null
   let statusSnapshot: SurfaceStatus | null = null
   let statusState: SurfaceState | null = null
-  let rendererAvailable = true
-  const workListeners = new Set<() => void>()
+  const workListeners = listenerSet()
   let canvasMounted = false
-  const presenceListeners = new Set<() => void>()
+  const presenceListeners = listenerSet()
 
   // A lift begins. Every source is asked for one capture of the content as
   // it stands, and owes the crossing that capture before the page releases.
@@ -433,12 +472,12 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // backwards step the hold removed for CSS (decisions.md #67). A Surface
   // whose every part is `live` never freezes.
   let frozen = false
-  const freezeListeners = new Set<() => void>()
+  const freezeListeners = listenerSet()
   const announceFreeze = () => {
     const next = motionHeld && [...partMap.values()].some((publication) => !publication.live)
     if (next === frozen) return
     frozen = next
-    for (const listener of freezeListeners) listener()
+    freezeListeners.emit()
     callbacks.onFreezeChange?.(next)
   }
 
@@ -485,19 +524,19 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   const announcePresence = (next: boolean) => {
     if (next === canvasMounted) return
     canvasMounted = next
-    for (const listener of presenceListeners) listener()
+    presenceListeners.emit()
   }
 
   const observation = (): SurfaceState => {
     const pageDeclared = (declared.get('page') ?? 0) > 0
     const canvasDeclared = (declared.get('canvas') ?? 0) > 0
-    const canCanvas = supported() && rendererAvailable
+    const canCanvas = canvasUsable()
     const pageVisible = pageDeclared && store.pagePresents()
     const canvasVisible = canvasDeclared && canCanvas && canvasHeld
     return {
       requested,
       presented: presentedFrom(pageVisible, canvasVisible),
-      ready: readinessSettled(readiness) && partSetMissing(parts).length === 0,
+      ready: readinessSettled(readiness) && missingParts().length === 0,
       isChanging: changing(canCanvas),
       supported: supported(),
     }
@@ -506,11 +545,11 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   const advanceCrossing = (before: CrossingState, dtMs: number) => {
     const evidence = {
       presented: readiness.proven.length,
-      required: Math.max(1, readiness.registered.length + partSetMissing(parts).length),
+      required: Math.max(1, readiness.registered.length + missingParts().length),
       contentCurrent: contentCurrent(),
     }
     if (!driver) return crossingFrame(before, evidence, dtMs)
-    const answer = driver({ dtMs, progress: before.ramp, target })
+    const answer = driver({ dtMs, progress: before.ramp, target: requested })
     if (!Number.isFinite(answer)) {
       store.reportError(
         new Error(
@@ -533,7 +572,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     const changed = !pageHeld || canvasHeld
     pageHeld = true
     canvasHeld = false
-    if (changed) for (const listener of holdListeners) listener()
+    if (changed) holdListeners.emit()
   }
 
   const reportMissingPresentations = (includeCanvas = true) => {
@@ -582,7 +621,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     const presentationChanged = wasPagePresented !== store.pagePresents()
     const pointerChanged = wasCanvasHearing !== store.canvasHearsPointer()
     if (!presentationChanged && !pointerChanged) return
-    for (const listener of holdListeners) listener()
+    holdListeners.emit()
   }
 
   const requestCrossing = (presentation: SurfaceDestination) => {
@@ -603,22 +642,18 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // protocol advanced, which is the cost this whole split exists to avoid.
   const publish = (wake = true) => {
     const next = observation()
-    const nextMounted = nextCanvasPresence(next.supported && rendererAvailable)
-    if (
+    const nextMounted = nextCanvasPresence(canvasUsable())
+    const unchanged =
       next.requested === state.requested &&
       next.presented === state.presented &&
       next.ready === state.ready &&
       next.isChanging === state.isChanging
-    ) {
-      announcePresence(nextMounted)
-      if (wake) for (const listener of workListeners) listener()
-      return
-    }
     const previous = state
-    state = next
+    if (!unchanged) state = next
     announcePresence(nextMounted)
-    if (wake) for (const listener of workListeners) listener()
-    for (const listener of listeners) listener()
+    if (wake) workListeners.emit()
+    if (unchanged) return
+    listeners.emit()
     if (next.presented !== previous.presented) {
       callbacks.onPresentationChange?.(next.presented)
     }
@@ -641,30 +676,15 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   }
 
   const counted = (counts: Map<SurfacePartId, number>) => (id: SurfacePartId) => {
-    counts.set(id, (counts.get(id) ?? 0) + 1)
+    const release = retain(counts, id, rebuildParts)
     rebuildParts()
-    let released = false
-    return () => {
-      if (released) return
-      released = true
-      const count = counts.get(id) ?? 0
-      if (count <= 1) counts.delete(id)
-      else counts.set(id, count - 1)
-      rebuildParts()
-    }
+    return release
   }
 
   const manualCounted = (counts: Map<SurfacePartId, number>) => (id: SurfacePartId) => {
-    counts.set(id, (counts.get(id) ?? 0) + 1)
+    const release = retain(counts, id)
     reportedManual.delete(id)
-    let released = false
-    return () => {
-      if (released) return
-      released = true
-      const count = counts.get(id) ?? 0
-      if (count <= 1) counts.delete(id)
-      else counts.set(id, count - 1)
-    }
+    return release
   }
 
   const progress: SurfaceProgress = {
@@ -702,7 +722,6 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       const wasPagePresented = store.pagePresents()
       const wasCanvasHearing = store.canvasHearsPointer()
       requested = presentation
-      target = presentation
       notifyPolicyChange(wasPagePresented, wasCanvasHearing)
       requestCrossing(presentation)
       publish()
@@ -750,15 +769,15 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       if (readiness.registered.length === 0) return
       // A declared part with no presenter is the same hole with nobody
       // even warming it.
-      if (partSetMissing(parts).length > 0) return
+      if (missingParts().length > 0) return
       for (const registered of readiness.registered) if (!presenting.has(registered)) return
       canvasHeld = true
       pageHeld = false
-      for (const listener of holdListeners) listener()
+      holdListeners.emit()
       publish()
     },
     canvasPresents: () =>
-      rendererAvailable && supported() &&
+      canvasUsable() &&
       (isResidentCanvas() || crossingPresentation(crossing.phase).gl),
     pagePresents: () => requested === 'page' ? pageHeld : !supported() || pageHeld,
     // crossingPointer says hearing equals presentation, and presentation is
@@ -770,21 +789,11 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     // hearing flip at the exact moment subscribeHold fires, which is what
     // lets the edge bursts run at the boundary they describe.
     canvasHearsPointer: () =>
-      rendererAvailable && supported() && canvasHeld && !pageHeld,
+      canvasUsable() && canvasHeld && !pageHeld,
     holdsPage: () => pageHeld,
-    subscribeHold(listener) {
-      holdListeners.add(listener)
-      return () => {
-        holdListeners.delete(listener)
-      }
-    },
+    subscribeHold: holdListeners.subscribe,
     isFrozen: () => frozen,
-    subscribeFreeze(listener) {
-      freezeListeners.add(listener)
-      return () => {
-        freezeListeners.delete(listener)
-      }
-    },
+    subscribeFreeze: freezeListeners.subscribe,
     prove(key, lifetime, epoch) {
       // A receipt is refused unless it was earned in the LIVE lifetime and
       // under the LIVE controller. The epoch check is what a deferred
@@ -807,7 +816,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     drive(step) {
       driver = step
     },
-    motionProgress: () => isResidentCanvas() ? 1 : crossing.ramp,
+    motionProgress: progressValue,
     tick(dtMs) {
       elapsedMs += dtMs
       const before = crossing
@@ -832,13 +841,13 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       if (authorIntent?.owner === owner && authorIntent.requestedInScene === requestedInScene && authorIntent.reason === reason) return
       authorIntent = { owner, requestedInScene, reason }
       statusSnapshot = null
-      for (const listener of listeners) listener()
+      listeners.emit()
     },
     clearAuthorIntent(owner) {
       if (authorIntent?.owner !== owner) return
       authorIntent = null
       statusSnapshot = null
-      for (const listener of listeners) listener()
+      listeners.emit()
     },
     authorRequestedInScene: () => authorIntent?.requestedInScene ?? requested === 'canvas',
     getStatus() {
@@ -856,23 +865,15 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       }
       return statusSnapshot
     },
-    subscribe(listener) {
-      listeners.add(listener)
-      return () => {
-        listeners.delete(listener)
-      }
-    },
+    subscribe: listeners.subscribe,
     canvasMounted: () => canvasMounted,
     hasProtocolWork,
-    subscribeWork(listener) {
-      workListeners.add(listener)
-      return () => { workListeners.delete(listener) }
-    },
-    canPrepareCanvas: () => rendererAvailable && supported(),
+    subscribeWork: workListeners.subscribe,
+    canPrepareCanvas: canvasUsable,
     preparationWait() {
       if (!store.canPrepareCanvas() || requested !== 'canvas') return null
       if ((declared.get('canvas') ?? 0) === 0 || state.ready) return null
-      const missing = partSetMissing(parts)
+      const missing = missingParts()
       if (missing.length > 0) return `presenters for parts: ${missing.join(', ')}`
       if (readiness.registered.length === 0) return 'a scene presenter'
       return 'a usable source frame and preparation draw'
@@ -890,28 +891,17 @@ export function createSurfaceStore(name?: string): SurfaceStore {
         canvasHeld = false
         contentFloor.clear()
         syncMotionHold()
-        for (const listener of holdListeners) listener()
+        holdListeners.emit()
       } else requestCrossing(requested)
       publish()
-      for (const listener of listeners) listener()
+      listeners.emit()
     },
-    subscribePresence(listener) {
-      presenceListeners.add(listener)
-      return () => presenceListeners.delete(listener)
-    },
+    subscribePresence: presenceListeners.subscribe,
     declarePresentation(presentation) {
-      declared.set(presentation, (declared.get(presentation) ?? 0) + 1)
+      const release = retain(declared, presentation, publish)
       reportedMissing.delete(presentation)
       publish()
-      let released = false
-      return () => {
-        if (released) return
-        released = true
-        const count = declared.get(presentation) ?? 0
-        if (count <= 1) declared.delete(presentation)
-        else declared.set(presentation, count - 1)
-        publish()
-      }
+      return release
     },
     expectManualPresenter: manualCounted(manualExpected),
     registerManualPresenter: manualCounted(manualRegistered),
@@ -946,12 +936,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     },
     part: (id) => partMap.get(id) ?? null,
     parts: () => partSnapshot,
-    subscribeParts(listener) {
-      partListeners.add(listener)
-      return () => {
-        partListeners.delete(listener)
-      }
-    },
+    subscribeParts: partListeners.subscribe,
     reportError(error) {
       const handler = callbacks.onError
       if (handler) {
@@ -1013,11 +998,9 @@ export function useSurfaceHandle(name?: string): SurfaceHandle {
  * consumers get the handle.
  */
 export function useSurfaceStore(name?: string): SurfaceStore {
-  // `name` is deliberately outside the deps: it is birth-only, and putting
-  // it in would rebuild the handle — and drop every registration made
-  // against it — because a caller renamed a Surface.
-  const nameRef = useLatest(name)
-  const [store] = useState(() => createSurfaceStore(nameRef.current))
+  // `name` is birth-only: the initializer runs once, so a caller renaming a
+  // Surface does not rebuild the handle and drop every registration on it.
+  const [store] = useState(() => createSurfaceStore(name))
   return store
 }
 

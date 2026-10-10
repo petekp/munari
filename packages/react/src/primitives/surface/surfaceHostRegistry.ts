@@ -44,6 +44,8 @@ export interface SurfacePresenterEntry {
   readonly element: ReactElement
 }
 
+type RasterListener = (scene: Object3D, camera: Camera, target: RenderTarget | null) => (() => void) | null
+
 /**
  * What the host can do once its renderer exists. Installed by the bridge
  * component inside the Canvas and cleared on unmount, so every method here
@@ -81,7 +83,7 @@ export interface SurfaceHost {
   registerTick(tick: (dtMs: number) => void): () => void
   ticks(): readonly ((dtMs: number) => void)[]
   registerBeforeDraw(listener: (scene: Object3D, camera: Camera, target: RenderTarget | null) => void): () => void
-  registerRaster(listener: (scene:Object3D,camera:Camera,target:RenderTarget|null)=> (()=>void)|null):()=>void
+  registerRaster(listener: RasterListener): () => void
   hasRaster():boolean
   prepareRaster(scene:Object3D,camera:Camera,target:RenderTarget|null):()=>void
   hasBeforeDraw(): boolean
@@ -140,7 +142,8 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
   const runtimeListeners = new Set<() => void>()
   const tickSet = new Set<(dtMs: number) => void>()
   const beforeDraw = new Set<(scene: Object3D, camera: Camera, target: RenderTarget | null) => void>()
-  const rasterListeners = new Set<(scene:Object3D,camera:Camera,target:RenderTarget|null)=>(()=>void)|null>()
+  const rasterListeners = new Set<RasterListener>()
+  let rasterSnapshot: readonly RasterListener[] = []
   const objectSet = new Set<Object3D>()
   let objectSnapshot: readonly Object3D[] = NO_OBJECTS
   let sourceSnapshot: readonly SurfaceSourceEntry[] = NO_SOURCES
@@ -227,11 +230,18 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
     },
     ticks: () => tickSnapshot,
     registerBeforeDraw(listener) { beforeDraw.add(listener); return () => { beforeDraw.delete(listener) } },
-    registerRaster(listener){rasterListeners.add(listener);return()=>{rasterListeners.delete(listener)}},
+    registerRaster(listener) {
+      rasterListeners.add(listener)
+      rasterSnapshot = Array.from(rasterListeners)
+      return () => {
+        if (!rasterListeners.delete(listener)) return
+        rasterSnapshot = Array.from(rasterListeners)
+      }
+    },
     hasRaster:()=>rasterListeners.size>0,
     prepareRaster(scene,camera,target){
       const releases:(()=>void)[]=[]
-      try {for(const listener of [...rasterListeners]){const release=listener(scene,camera,target);if(release)releases.push(release)}}
+      try {for(const listener of rasterSnapshot){const release=listener(scene,camera,target);if(release)releases.push(release)}}
       catch(error){for(const release of releases.reverse())release();throw error}
       return()=>{for(const release of releases.reverse())release()}
     },
