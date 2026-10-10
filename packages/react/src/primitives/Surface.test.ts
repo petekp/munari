@@ -40,7 +40,8 @@ it('renders native HTML on the server and hydrates one stateful instance',async(
 
 it('distinguishes ordinary on-prefixed attributes from inline event handlers',async()=>{
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
- vi.stubGlobal('CanvasRenderingContext2D',undefined)
+ // A capture engine must run here, or the platform reason hides the content reason under test.
+ vi.stubGlobal('CanvasRenderingContext2D',class Supported{drawElementImage(){}})
  const descriptor=Object.getOwnPropertyDescriptor(Element.prototype,'moveBefore')
  // Content eligibility is independent of the state-preserving move, checked in Chrome.
  Object.defineProperty(Element.prototype,'moveBefore',{configurable:true,value(this:Element,node:Node,before:Node|null){this.insertBefore(node,before)}})
@@ -63,4 +64,24 @@ it('distinguishes ordinary on-prefixed attributes from inline event handlers',as
   if(descriptor)Object.defineProperty(Element.prototype,'moveBefore',descriptor)
   else Reflect.deleteProperty(Element.prototype,'moveBefore')
  }
+})
+
+it('warns once per page when a Surface asks for the scene and no capture engine can run',async()=>{
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
+ vi.stubGlobal('CanvasRenderingContext2D',undefined)
+ // The warning is latched per module instance, so a fresh one starts unwarned.
+ vi.resetModules()
+ const{Surface:Fresh}=await import('./Surface')
+ const warn=vi.spyOn(console,'warn').mockImplementation(()=>{})
+ const container=document.createElement('div');document.body.append(container)
+ const root=createRoot(container)
+ // eslint-disable-next-line react/no-children-prop
+ const one=(inScene:boolean)=>createElement(Fresh,{inScene,children:'one'})
+ try {
+  await act(async()=>root.render(createElement('div',null,one(false))))
+  expect(warn).not.toHaveBeenCalled()
+  await act(async()=>root.render(createElement('div',null,one(true),one(true))))
+  expect(warn).toHaveBeenCalledTimes(1)
+  expect(warn.mock.calls[0]?.[0]).toContain('enableSnapdomCapture()')
+ } finally {await act(async()=>root.unmount());container.remove();warn.mockRestore()}
 })

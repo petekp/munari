@@ -1,7 +1,8 @@
 // Element capture keeps native content in place while a separate source supplies pixels.
 // Callback refs report attachment and removal; capture frames retain their painted dimensions.
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { use, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { context as threeRootContext } from '@react-three/fiber'
 import { captureAvailable, createInputWindow, PARKED_HOST_ATTRIBUTE } from '@munari/core'
 import {
   CaptureSource, connectCapture, setCaptureUnavailable, useCaptureHandle,
@@ -273,6 +274,16 @@ type CaptureContentProps = {
 
 /** Authored capture content can be React markup or an already-built detached element. */
 export function CaptureContent({ children, element, capture, size, resolution = 'auto', live = false, onError }: CaptureContentProps) {
+  // Inside a Canvas the portal below would be reconciled by react-three-fiber,
+  // which fails on the first `<div>` with "Div is not part of the THREE namespace".
+  if (use(threeRootContext)) {
+    throw new Error(
+      'munari: <CaptureContent> renders HTML, so it must be placed in the page tree, not inside a ' +
+        '<SurfaceCanvas> or <Canvas>. Create the handle with useCaptureHandle() in a page component, ' +
+        'render <CaptureContent capture={handle}> there, and pass the same handle to the scene ' +
+        'component that calls useCaptureFrame(handle).',
+    )
+  }
   const [ownedRoot, setOwnedRoot] = useState<HTMLElement | null>(null)
   useLayoutEffect(() => { if (element === undefined) setOwnedRoot(document.createElement('div')) }, [element])
   const root = element === undefined ? ownedRoot : element

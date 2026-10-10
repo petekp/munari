@@ -25,6 +25,20 @@
 import { useSyncExternalStore } from 'react'
 import { captureAvailable } from '@munari/core'
 
+/** What `useSurfaceStatus().reason` and the development warning say when no engine can run. */
+export const CAPTURE_UNAVAILABLE_REASON =
+  'No capture engine is available. Enable Chrome\'s CanvasDrawElement flag or an HTML-in-canvas ' +
+  'origin trial, or call enableSnapdomCapture() from @petepetrash/munari/snapdom.'
+
+let warnedCaptureUnavailable = false
+
+/** One console.warn per page; the caller decides whether this is a development runtime. */
+export function warnCaptureUnavailableOnce(): void {
+  if (warnedCaptureUnavailable) return
+  warnedCaptureUnavailable = true
+  console.warn(`[munari] ${CAPTURE_UNAVAILABLE_REASON}`)
+}
+
 /**
  * Can a Surface capture its DOM for the scene in this browser?
  *

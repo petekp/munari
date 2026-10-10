@@ -126,4 +126,17 @@ describe('useSurfaceNodes', () => {
     expect(wired.map.value).toBe(replacement)
     unmount()
   })
+
+  it('names the hook the caller used when it runs outside a Surface.Mesh material', () => {
+    function Outside(): ReactNode {
+      useSurfaceNodes()
+      return null
+    }
+    const errors: unknown[] = []
+    const root = createRoot(document.createElement('div'), { onUncaughtError: (error) => errors.push(error) })
+    flushSync(() => root.render(createElement(Outside)))
+    expect(String(errors[0])).toMatch(
+      /useSurfaceNodes\(\) must be used inside the component passed as the `material`/,
+    )
+  })
 })

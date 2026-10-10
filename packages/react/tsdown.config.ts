@@ -1,5 +1,21 @@
 import { defineConfig } from 'tsdown'
 
+// React hooks and context run only in client components. Next.js reads
+// 'use client' per module, and a module without it that calls createContext
+// fails in a server component with "createContext is not a function".
+// Chunk file names carry content hashes, so the directive goes on whichever
+// emitted chunk imports React rather than on named files. The entry that a
+// server component imports and every shared chunk below it both qualify.
+const REACT_SPECIFIERS = new Set(['react', 'react/jsx-runtime', 'react-dom'])
+const useClientDirective = {
+  name: 'munari:use-client',
+  renderChunk(code: string, chunk: { imports: string[]; fileName: string }) {
+    if (!chunk.fileName.endsWith('.js')) return null
+    if (!chunk.imports.some(specifier => REACT_SPECIFIERS.has(specifier))) return null
+    return { code: `'use client'\n${code}`, map: null }
+  },
+}
+
 // The publish build. Four things about it are load-bearing:
 //
 // 1. `@munari/core` is BUNDLED, not externalized. One public package is
@@ -14,7 +30,9 @@ import { defineConfig } from 'tsdown'
 //    peers. three does internal `instanceof` checks, so a second copy in
 //    the graph fails silently and confusingly — the consumer owns the one
 //    instance, and bundling ours would manufacture the second.
-// 4. `./snapdom` is the third entry, and `@zumer/snapdom` is external for a
+// 4. The chunks that import React start with a 'use client' directive, so
+//    a Next.js server component can import `Surface` directly.
+// 5. `./snapdom` is the third entry, and `@zumer/snapdom` is external for a
 //    different reason: it is an OPTIONAL peer. Bundling it would put a beta
 //    rasterizer in the graph of every consumer, including the ones on a
 //    browser that never needs a second capture engine.
@@ -25,6 +43,7 @@ export default defineConfig({
   dts: true,
   clean: true,
   treeshake: true,
+  plugins: [useClientDirective],
   platform: 'browser',
   target: 'es2022',
   deps: {

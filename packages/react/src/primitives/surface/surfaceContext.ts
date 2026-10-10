@@ -153,11 +153,22 @@ export function useSurfacePart(component: string): SurfacePartValue {
  * through `premultipliedOutput`.
  */
 export function useSurfaceTexture(): THREE.Texture {
-  const part = useSurfacePart('useSurfaceTexture')
+  return useSurfaceTextureFor('useSurfaceTexture()')
+}
+
+/** `useSurfaceTexture` for a hook or component that builds on it and must name itself in the error. */
+export function useSurfaceTextureFor(caller: string): THREE.Texture {
+  const part = use(SurfacePartContext)
+  if (!part) {
+    throw new Error(
+      `munari: ${caller} must be used inside the component passed as the \`material\` ` +
+        'of a <Surface.Mesh> that presents a <Surface.HTML> or <SceneSurface.HTML> part.',
+    )
+  }
   const texture = part.runtime?.texture()
   if (!texture) {
     throw new Error(
-      'munari: useSurfaceTexture() found no texture. It is only valid inside a ' +
+      `munari: ${caller} found no texture. It is only valid inside a ` +
         'material passed to <Surface.Mesh material={…}>, which Munari mounts ' +
         'after the texture exists.',
     )

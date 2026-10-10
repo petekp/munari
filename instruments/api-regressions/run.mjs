@@ -253,13 +253,18 @@ async function check(page,kind,enhanced){
     result={placementError,pixelDifference:error,imageError,unexpectedPixels,referenceFillPixels,squareClipControl,negativeControls,insideClicks:1,outsideClicks:0,clipAfterHandoff:after}
   }else if(kind==='attribute'){
     await page.waitForFunction(enhanced=>window.__apiRegression.status?.presentation===(enhanced?'scene':'page'),{},enhanced)
-    assert.equal((await read(page)).status.reason,null)
+    // Without an engine the platform reason outranks any content reason,
+    // because fixing the content would not let the Surface reach the scene.
+    const unavailable=reason=>String(reason).startsWith('No capture engine is available')
+    const expectReason=async()=>{const {reason}=(await read(page)).status;if(enhanced)assert.equal(reason,null);else assert.ok(unavailable(reason),`native reason: ${reason}`)}
+    await expectReason()
     await page.evaluate(()=>window.__apiRegression.setAttribute('one'));await frameWait(page)
-    assert.equal((await read(page)).status.reason,null)
+    await expectReason()
     await page.evaluate(()=>window.__apiRegression.setAttribute('onclick'))
-    await page.waitForFunction(()=>window.__apiRegression.status?.reason?.includes('inline DOM handlers'))
+    if(enhanced)await page.waitForFunction(()=>window.__apiRegression.status?.reason?.includes('inline DOM handlers'))
+    else{await frameWait(page);await expectReason()}
     await page.waitForFunction(()=>window.__apiRegression.status?.presentation==='page')
-    result={ordinaryAttributesAccepted:true,inlineHandlerRejected:true}
+    result={ordinaryAttributesAccepted:true,inlineHandlerRejected:enhanced,reason:(await read(page)).status.reason}
   }
   assert.deepEqual((await read(page)).errors,[])
   assert.deepEqual(pageErrors,[])

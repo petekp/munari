@@ -34,6 +34,17 @@ describe('retained Surface observations', () => {
     expect(store.getStatus()).toBe(after)
   })
 
+  it('names the remedies and reports no engine when none can run here', () => {
+    vi.unstubAllGlobals()
+    const store=createSurfaceStore()
+    store.setAuthorIntent(Symbol(),true,null)
+    const status=store.getStatus()
+    expect(status.supported).toBe(false)
+    expect(status.engine).toBeNull()
+    expect(status.reason).toContain('CanvasDrawElement')
+    expect(status.reason).toContain('enableSnapdomCapture()')
+  })
+
   it('reports absence explicitly', () => {
     const store=createSurfaceStore()
     expect(store.getStatus().presentation).toBeNull()

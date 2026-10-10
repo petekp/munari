@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
 // Capture attachment follows the DOM node's lifetime without taking the original node.
-import { act, createElement, StrictMode, useLayoutEffect } from 'react'
+import { act, Component, createElement, StrictMode, useLayoutEffect, type ReactNode } from 'react'
+import { context as threeRootContext, type RootStore } from '@react-three/fiber'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
-import { copyElementForCapture, useElementCapture, type ElementCapture } from './elementCapture'
-import { inspectCapture } from './capture'
+import { CaptureContent, copyElementForCapture, useElementCapture, type ElementCapture } from './elementCapture'
+import { createCapture, inspectCapture } from './capture'
 
 afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = '' })
 
@@ -74,4 +75,30 @@ it('keeps a stable capture identity through late attachment, replacement, and re
     expect(capture.getBounds()).toBeNull()
     expect(inspectCapture(capture).status.status).toBe('waiting')
   } finally { await act(async () => root.unmount()) }
+})
+
+class Catch extends Component<{ children?: ReactNode; onError: (error: Error) => void }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  componentDidCatch(error: Error) { this.props.onError(error) }
+  render() { return this.state.failed ? null : this.props.children }
+}
+
+it('refuses to render CaptureContent inside a react-three-fiber tree', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  let caught: Error | undefined
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  // SAFETY: only the provider's presence is read; no store member is touched before the throw.
+  const store = {} as RootStore
+  // createElement's overload requires CaptureContent's children as a prop.
+  // eslint-disable-next-line react/no-children-prop
+  const content = createElement(CaptureContent, { capture: createCapture(), size: [100, 50], children: 'x' })
+  await act(async () => root.render(createElement(threeRootContext, { value: store },
+    createElement(Catch, { onError: error => { caught = error } }, content))))
+  expect(caught?.message).toContain('must be placed in the page tree')
+  await act(async () => root.unmount())
+  vi.restoreAllMocks()
 })

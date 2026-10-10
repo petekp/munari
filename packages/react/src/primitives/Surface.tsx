@@ -15,7 +15,8 @@ import { useSurfaceDriver as useSurfaceDriverBinding } from './surface/useSurfac
 import { type SurfaceSize, type SurfaceSourceRuntime, type SurfaceResolution, type SurfacePartPublication } from './surface/surfaceSourceRuntime'
 import { useLatest } from './useLatest'
 import { usePageTargetAttachment, type PageTarget } from './pageTarget'
-import { useSurfaceSupport } from './surface/surfaceSupport'
+import { useSurfaceSupport, warnCaptureUnavailableOnce } from './surface/surfaceSupport'
+import { isDevelopmentRuntime } from './FrameSurface'
 import { surfaceChromeElement } from './surface/surfaceChromeElement'
 import { validateSurfaceSize } from './surface/surfaceSize'
 import { watchSurfacePlacement } from './surface/surfacePlacement'
@@ -534,7 +535,10 @@ export const Surface = Object.assign(BasicSurface, {
 function useAuthorIntent(handle: SurfaceHandle, inScene: boolean, reason: string | null) {
   const store = surfaceStoreOf(handle)
   const [owner] = useState(() => Symbol())
-  useLayoutEffect(() => { store.setAuthorIntent(owner, inScene, reason) }, [store, owner, inScene, reason])
+  useLayoutEffect(() => {
+    store.setAuthorIntent(owner, inScene, reason)
+    if (inScene && !store.getState().supported && isDevelopmentRuntime()) warnCaptureUnavailableOnce()
+  }, [store, owner, inScene, reason])
   useLayoutEffect(() => () => store.clearAuthorIntent(owner), [store, owner])
 }
 

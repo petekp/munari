@@ -140,7 +140,11 @@ interface SurfaceMeshBaseProps
     | 'onPointerCancel'
     | 'onPointerMove'
     | 'onPointerOut'
+    | 'onClick'
   > {
+  // No onClick: CanvasPointerGate swallows the browser's click after every
+  // press on a Surface, so r3f never sees one. Use onPointerUp.
+  // onDoubleClick and onContextMenu are not swallowed and still fire.
   onPointerDown?: SurfacePointerHandler
   onPointerUp?: SurfacePointerHandler
   onPointerCancel?: SurfacePointerHandler

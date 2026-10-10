@@ -29,7 +29,7 @@ import * as THREE from 'three'
 import { MeshStandardNodeMaterial, type Node, type TextureNode, type UniformNode } from 'three/webgpu'
 import { Discard, Fn, output, sRGBTransferEOTF, texture as textureNode, uniform, uv, vec3, vec4 } from 'three/tsl'
 import { surfaceRadiusMask } from '../../lib/surfaceRadius'
-import { SurfaceMaterialContext, useSurfaceTexture, type SurfaceMaterialValue } from './surfaceContext'
+import { SurfaceMaterialContext, useSurfaceTextureFor, type SurfaceMaterialValue } from './surfaceContext'
 import { getSurfaceLitTexture } from './surfaceLitTexture'
 import { isDevelopmentRuntime } from '../FrameSurface'
 
@@ -85,7 +85,7 @@ export interface SurfaceNodes {
  * so translucent pixels land darker than the page (decisions.md #72).
  */
 export function useSurfaceNodes(): SurfaceNodes {
-  const capture = useSurfaceTexture()
+  const capture = useSurfaceTextureFor('useSurfaceNodes()')
   const slot = useMaterialSlot('useSurfaceNodes()')
   const nodes = useRef<SurfaceNodes | null>(null)
   let current = nodes.current
@@ -130,7 +130,7 @@ export function SurfaceLitMaterial({
   emissiveIntensity = 0,
   side,
 }: SurfaceLitMaterialProps) {
-  const capture = useSurfaceTexture()
+  const capture = useSurfaceTextureFor('<Surface.LitMaterial>')
   const litTexture = useMemo(() => getSurfaceLitTexture(capture), [capture])
   useLayoutEffect(() => litTexture.acquire(), [litTexture])
   const slot = useMaterialSlot('<Surface.LitMaterial>')

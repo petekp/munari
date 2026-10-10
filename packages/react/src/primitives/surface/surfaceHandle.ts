@@ -55,6 +55,7 @@ import {
   type SurfaceReadiness,
 } from '@munari/core'
 import { surfaceViewPresentation, type SurfaceStatus } from './surfaceStatus'
+import { CAPTURE_UNAVAILABLE_REASON } from './surfaceSupport'
 import { useLatest } from '../useLatest'
 import { SurfaceHandleContext } from './surfaceContext'
 import type { SurfacePartPublication } from './surfaceSourceRuntime'
@@ -850,8 +851,8 @@ export function createSurfaceStore(name?: string): SurfaceStore {
         sceneReady: rendererAvailable && state.ready && supported() && !authorIntent?.reason,
         isTransitioning: state.isChanging,
         supported: supported() && !authorIntent?.reason,
-        reason: authorIntent?.reason ?? null,
-        engine: captureEngine().name,
+        reason: supported() ? authorIntent?.reason ?? null : CAPTURE_UNAVAILABLE_REASON,
+        engine: supported() ? captureEngine().name : null,
       }
       return statusSnapshot
     },
