@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `SurfaceCanvas` falls back to WebGL 2 when the browser rejects its GPU
+  adapter request, instead of unmounting the page. With `gl={{ device }}` it
+  reads the texture limit from that device, so a source the device cannot hold
+  issues no receipts.
+- A draw that `scene.overrideMaterial` replaces, such as a shadow-map or
+  contact-shadow pass, no longer changes a Surface's write flags or issues its
+  receipts. Zero-instance geometry issues no receipts either.
 - Remove unused API: the root entry no longer exports `surfaceFocusKey`,
   `surfaceFocusTarget` or `createCapture`, and `FrameSurface` drops its
   `width` and `height` props, which had no effect. `SurfaceRenderFrame` types

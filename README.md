@@ -183,6 +183,9 @@ color:
 - A custom `outputNode` returns its color through `premultipliedOutput`, for
   premultiplied linear color, or `encodedOutput`, for premultiplied color
   already in sRGB. Both come from `@petepetrash/munari`.
+- A material that samples the canvas, such as Three's transmission or a
+  viewport-texture node, draws too bright. Render the scene behind it into a
+  render target and sample that instead, as `registry/glass/` does.
 
 Opaque materials need neither. [Decision #72](docs/decisions.md) has the
 measurements.

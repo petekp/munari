@@ -4863,6 +4863,20 @@ helpers return the value whose conversion equals WebGL's encode:
 premultiplied color already in sRGB. A fragment whose own alpha is 0 still
 contributes nothing; added light has to come from blend factors.
 
+**A material that samples the canvas draws too bright.** Stock transmission
+reads back the canvas, which this pipeline has already encoded to sRGB. It
+treats those bytes as linear, and the output encodes them a second time.
+`transmissionNode` and Three's viewport-texture nodes read the same canvas.
+Only stock transmission was measured. Three documents
+`DirectRenderPipeline` as incompatible with them. Measured 2026-10-10, Chrome
+155, both backends: a fully transmissive physical material over an sRGB
+(40, 101, 180) backdrop drew (110, 169, 219), which is the backdrop encoded
+twice. Three's output pass drew the backdrop. A glass or refraction effect
+renders its scene into a render target and samples that, as `registry/glass/`
+does, because a draw into a target stays linear. This limit is the cost of the
+decision: the output pass for such a canvas would bring back the three faults
+above.
+
 **A translucent material on the canvas sets `premultipliedAlpha: true`.** The
 conversion treats every fragment as premultiplied, including one from a
 material with Three's default `premultipliedAlpha: false`. That material then
