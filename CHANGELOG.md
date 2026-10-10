@@ -8,11 +8,17 @@
   Surface asked for the scene logs the same text once.
 - The entries that use React start with `'use client'`, so a Next.js server
   component can import `Surface` and `SurfaceCanvas` directly.
-- `CaptureContent` inside a `SurfaceCanvas` throws an error that says to
-  render it in the page tree, instead of R3F's "Div is not part of the THREE
-  namespace".
+- `CaptureContent` with children inside a `SurfaceCanvas` throws an error
+  that says to render it in the page tree, instead of R3F's "Div is not part
+  of the THREE namespace". The `element` form still works there.
+- In development, `SurfaceCanvas` names any object on it whose material uses
+  GLSL (a `ShaderMaterial` or `onBeforeCompile`), such as drei's `Text`.
+  WebGPURenderer draws those black or unpatched, and Three's own log does not
+  say which object.
 - `useSurfaceNodes()` and `Surface.LitMaterial` outside a `Surface.Mesh`
   material throw an error naming the hook that was called.
+- `Surface.Mesh` accepts a material instance as `material`, as well as an
+  element. Only an element can call `useSurfaceNodes()`.
 - `Surface.Mesh` no longer accepts `onClick`, which never fired. Use
   `onPointerUp`. `onDoubleClick` and `onContextMenu` still fire.
 - The README covers custom node materials, reading status from the

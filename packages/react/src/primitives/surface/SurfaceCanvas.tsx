@@ -36,7 +36,7 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Canvas, useFrame, useThree, type CanvasProps, type RootState } from '@react-three/fiber'
-import { NoToneMapping, PCFShadowMap } from 'three'
+import { Material, NoToneMapping, PCFShadowMap, type Object3D } from 'three'
 import { DirectRenderPipeline, WebGPURenderer, type WebGPURendererParameters } from 'three/webgpu'
 import {
   createSurfaceHost,
@@ -50,6 +50,7 @@ import { surfaceCanvasPixelRatio, surfaceCanvasDisplayScale, counterSurfaceCanva
 import { useLatest } from '../useLatest'
 import { SurfaceHostContext } from './surfaceHostContext'
 import { CanvasPointerGate } from '../CanvasPointerGate'
+import { reportedGlslMaterials, usesGlsl } from './glslMaterial'
 
 /**
  * Canvas style, minus the fields the host reserves.
@@ -220,6 +221,29 @@ function grantedTextureLimit(renderer: WebGPURenderer): number | null {
   return 'device' in backend && backend.device instanceof GPUDevice ? backend.device.limits.maxTextureDimension2D : null
 }
 
+// Development only. A traversal per frame would cost a large scene every
+// frame; a material added later is still named within a second.
+const GLSL_SCAN_INTERVAL_MS = 1000
+
+// A GLSL material anywhere on the canvas, including drei's Text and
+// MeshDistortMaterial, draws black or unpatched, and Three's log names only
+// the material type.
+function reportGlslInScene(scene: Object3D): void {
+  scene.traverse((object) => {
+    if (!('material' in object)) return
+    const materials: unknown[] = Array.isArray(object.material) ? object.material : [object.material]
+    for (const material of materials) {
+      if (!(material instanceof Material) || reportedGlslMaterials.has(material) || !usesGlsl(material)) continue
+      reportedGlslMaterials.add(material)
+      const label = object.name ? `"${object.name}"` : `a ${object.type}`
+      console.error(
+        `[munari] ${label} on a <SurfaceCanvas> uses a GLSL material (${material.type}), which ` +
+          'WebGPURenderer cannot run, so it draws black or unpatched. Rebuild it as a TSL node material.',
+      )
+    }
+  })
+}
+
 // A replacement renderer lost sooner than this after it was created is not
 // replaced again, so a GPU that fails on every frame stops after one retry
 // (decisions.md #73).
@@ -351,8 +375,13 @@ function SurfaceHostBridge({
     let piping = false
     let notifying = false
     let warnedToneMapping = false
+    let lastGlslScan = -Infinity
     gl.render = (scene, camera) => {
       if (piping) return original(scene, camera)
+      if (isDevelopment() && performance.now() - lastGlslScan > GLSL_SCAN_INTERVAL_MS) {
+        lastGlslScan = performance.now()
+        reportGlslInScene(scene)
+      }
       if (gl.toneMapping !== NoToneMapping && !warnedToneMapping && isDevelopment()) {
         warnedToneMapping = true
         console.error(

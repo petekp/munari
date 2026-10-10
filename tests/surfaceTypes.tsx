@@ -7,6 +7,7 @@ import {
   type SurfaceHandle, type SurfacePresentation, type SurfaceDestination, type SurfaceProps,
 } from '@petepetrash/munari'
 import { FrameSurface, type FrameSource, type PresentationRequirement } from '@petepetrash/munari/advanced'
+import { MeshBasicNodeMaterial } from 'three/webgpu'
 
 declare const frame: FrameSource
 declare const presentation: PresentationRequirement
@@ -116,6 +117,10 @@ declare const captureForTypes: ReturnType<typeof useCaptureHandle>
 
 // @ts-expect-error Only the mesh that draws these pixels can report their source coverage.
 ;<Surface.Mesh presentation="manual" sampledParts={['second']} />
+;<Surface.Mesh material={new MeshBasicNodeMaterial()} />
+;<Surface.Mesh material={<meshBasicMaterial />} />
+// @ts-expect-error The pointer gate swallows the click after a press, so onClick never fires.
+;<Surface.Mesh onClick={()=>{}} />
 function PageTargetExample() {
   const target = usePageTarget()
   return <>

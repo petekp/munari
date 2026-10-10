@@ -88,6 +88,10 @@ materials.
 - A custom `outputNode` returns its color through `premultipliedOutput`
   (premultiplied linear color) or `encodedOutput` (premultiplied sRGB color),
   both from `@petepetrash/munari`.
+- `Surface.Mesh material` takes an element or a material instance. A
+  material that shows the capture is a component calling `useSurfaceNodes()`
+  that returns `<primitive object={m} attach="material" />`; the slot does not
+  apply the capture for you.
 - `gl` takes `WebGPURendererParameters` without `canvas`. Set
   `gl={{ antialias: false, depth: false }}` when the canvas needs neither.
 

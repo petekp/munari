@@ -158,7 +158,12 @@ interface SurfaceMeshBaseProps
   part?: SurfacePartId
   placement?: 'match-dom' | 'manual'
   geometry?: React.ReactElement
-  material?: React.ReactElement
+  /**
+   * A material element, or a material instance the caller owns and disposes.
+   * Only an element can call `useSurfaceNodes()`; an instance samples the
+   * capture through `useSurfaceTextureOf(handle)`.
+   */
+  material?: React.ReactElement | THREE.Material
   children?: React.ReactNode
   resolution?: SurfaceResolution
   radius?: SurfaceRadius
@@ -1347,7 +1352,9 @@ function SurfacePresenter({
         {/* A custom material mounts only once a configured texture exists, so
             `useSurfaceTexture()` in it never sees null and never has to
             re-bind on a later render a memoized material may not take. */}
-        {material ? (
+        {material instanceof THREE.Material ? (
+          <primitive object={material} attach="material" />
+        ) : material ? (
           <SurfaceMaterialContext value={materialSlot}>{material}</SurfaceMaterialContext>
         ) : (
           <primitive ref={materialRef} object={defaultMaterial} attach="material" />

@@ -274,14 +274,16 @@ type CaptureContentProps = {
 
 /** Authored capture content can be React markup or an already-built detached element. */
 export function CaptureContent({ children, element, capture, size, resolution = 'auto', live = false, onError }: CaptureContentProps) {
-  // Inside a Canvas the portal below would be reconciled by react-three-fiber,
+  // Inside a Canvas the children portal below would be reconciled by react-three-fiber,
   // which fails on the first `<div>` with "Div is not part of the THREE namespace".
-  if (use(threeRootContext)) {
+  // The `element` form portals nothing, so it works there.
+  if (element === undefined && use(threeRootContext)) {
     throw new Error(
-      'munari: <CaptureContent> renders HTML, so it must be placed in the page tree, not inside a ' +
+      'munari: <CaptureContent> children are HTML, so it must be placed in the page tree, not inside a ' +
         '<SurfaceCanvas> or <Canvas>. Create the handle with useCaptureHandle() in a page component, ' +
         'render <CaptureContent capture={handle}> there, and pass the same handle to the scene ' +
-        'component that calls useCaptureFrame(handle).',
+        'component that calls useCaptureFrame(handle). Inside a Canvas, pass a built element with ' +
+        '`element` instead of children.',
     )
   }
   const [ownedRoot, setOwnedRoot] = useState<HTMLElement | null>(null)

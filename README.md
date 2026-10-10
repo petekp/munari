@@ -17,7 +17,8 @@ project is named for the Italian designer and artist Bruno Munari.
   browser has no WebGPU adapter, it falls back to WebGL 2. Neither accepts GLSL,
   so `ShaderMaterial` and `onBeforeCompile` do not work. Neither do the drei
   helpers built on them, such as `Text`, `MeshDistortMaterial` and
-  `MeshTransmissionMaterial`. Write custom materials as TSL node materials. See
+  `MeshTransmissionMaterial`. In development, `SurfaceCanvas` logs which object
+  uses one. Write custom materials as TSL node materials. See
   [Materials on a SurfaceCanvas](#materials-on-a-surfacecanvas).
 - **Capture:** HTML-in-canvas runs in Chrome with the `CanvasDrawElement` feature
   on, either through `--enable-features=CanvasDrawElement` or on an origin that
@@ -244,10 +245,9 @@ measurements.
 
 #### A custom material on Surface.Mesh
 
-The `material` prop takes a React element, not a material instance. The slot
-does not apply the capture to the material, so the material samples it itself.
-Build it in a component that calls `useSurfaceNodes()`, and return it with
-`<primitive attach="material" />`:
+The slot does not apply the capture to the material, so the material samples it
+itself. Build it in a component that calls `useSurfaceNodes()`, return it with
+`<primitive attach="material" />`, and pass the component as `material`:
 
 ```tsx
 import { useEffect, useMemo } from 'react'
@@ -278,6 +278,11 @@ function TintMaterial() {
 `surface.map` is the capture, `surface.radiusMask()` applies the Surface's
 rounded corners, and the tint halves red in linear light. `useSurfaceNodes()`
 and `useSurfaceTexture()` work only inside the component passed as `material`.
+
+`material` also takes a material instance you own and dispose, such as
+`material={tint}`. An instance cannot call `useSurfaceNodes()`, so one that
+shows the capture builds its texture node from `useSurfaceTextureOf(handle)`,
+which is `null` until the first upload.
 
 For a lit slab, pass `material={<Surface.LitMaterial roughness={0.4} />}` and
 add lights under `SurfaceCanvas`. A JSX tag such as `<meshBasicNodeMaterial />`
@@ -356,9 +361,10 @@ authored React children or a detached element to a `useCaptureHandle()` identity
 `CaptureContent` requires explicit dimensions for either input. [Selection](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/selection/Selection.tsx)
 and [Veil](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/veil/Veil.tsx) are complete element-capture callers.
 
-`CaptureContent` renders HTML, so place it in the page tree, never inside
-`SurfaceCanvas`, where it throws. Create the handle in a page component, render
-`CaptureContent` there, and pass the handle to the scene component:
+`CaptureContent` children are HTML, so `CaptureContent` with children belongs
+in the page tree. Inside `SurfaceCanvas` it throws. There, pass a built element
+with `element` instead. For children, create the handle in a page component,
+render `CaptureContent` there, and pass the handle to the scene component:
 
 ```tsx
 import { useRef } from 'react'

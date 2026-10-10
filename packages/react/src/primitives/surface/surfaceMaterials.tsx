@@ -32,6 +32,8 @@ import { surfaceRadiusMask } from '../../lib/surfaceRadius'
 import { SurfaceMaterialContext, useSurfaceTextureFor, type SurfaceMaterialValue } from './surfaceContext'
 import { getSurfaceLitTexture } from './surfaceLitTexture'
 import { isDevelopmentRuntime } from '../FrameSurface'
+import { reportedGlslMaterials, usesGlsl } from './glslMaterial'
+
 
 function useMaterialSlot(caller: string): SurfaceMaterialValue {
   const slot = use(SurfaceMaterialContext)
@@ -179,16 +181,11 @@ export function SurfaceLitMaterial({
   return <primitive object={material} attach="material" />
 }
 
-// A GLSL material compiles nowhere on WebGPURenderer: Three draws nothing
-// and logs once per program, far from the Surface that caused it.
 let reportedGlsl = false
 function reportGlslMaterial(material: THREE.Material): void {
-  if (reportedGlsl || !isDevelopmentRuntime()) return
-  const glsl =
-    material instanceof THREE.ShaderMaterial ||
-    material.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile
-  if (!glsl) return
+  if (reportedGlsl || reportedGlslMaterials.has(material) || !isDevelopmentRuntime() || !usesGlsl(material)) return
   reportedGlsl = true
+  reportedGlslMaterials.add(material)
   console.error(
     'munari: a <Surface.Mesh> material uses GLSL (a ShaderMaterial or onBeforeCompile), which ' +
       'WebGPURenderer cannot run. Build a node material from useSurfaceNodes() instead.',
