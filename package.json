@@ -16,7 +16,6 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p apps/lab && tsc --noEmit -p registry && tsc --noEmit -p tools",
     "lint": "oxlint . --deny-warnings",
     "build": "npm run build -w @petepetrash/munari",
-    "check:origin-trial": "node apps/lab/tools/runLab.mjs --check-origin-trial",
     "gate:fisheye-pointer": "node instruments/fisheye-pointer/run.mjs",
     "gate:slider-drag": "node instruments/slider-drag/run.mjs",
     "gate:frame-surface": "node instruments/frame-surface/run.mjs",

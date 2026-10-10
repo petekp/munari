@@ -120,7 +120,7 @@ These reference files must stay byte-identical to their registry copies.
   900 and width 100. Its metadata records the source and hash; the SIL Open Font
   License is included at `public/licenses/archivo.txt`.
 
-- `tools/runLab.mjs` launches Chrome and checks the origin-trial token.
+- `tools/runLab.mjs` launches Vite and a Chrome that can draw HTML.
 - `tools/captureThumbs.mjs` captures scene thumbnails used by dynamic gallery URLs.
 - `tools/make-film.sh` builds the Genie film; [film provenance](src/scenes/genie/film.provenance.md)
   records its source and license.

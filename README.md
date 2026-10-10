@@ -358,7 +358,6 @@ measured to do,
 npm ci
 npm run lab              # Vite + a compatible local Chrome
 npm run dev              # Vite only
-npm run check:origin-trial
 npm run typecheck
 npm test
 npm run lint

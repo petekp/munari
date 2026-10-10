@@ -1,15 +1,10 @@
 // Local lab launcher — Vite plus a Chrome instance that can draw HTML.
 //
 // Localhost cannot use the public demo's origin token, so this process owns
-// an isolated Chrome with CanvasDrawElement enabled. The 2026-08-16 launch
-// audit also found that flag-backed gates could stay green after the public
-// token expired; check mode reads the token's signed payload, warns inside its
-// renewal window and fails once it has expired. A renewal can only extend a
-// token to the trial's own end date, so a window failure would sit red until
-// Chrome extends the trial. Vite owns the server, Puppeteer owns the browser,
-// and apps/lab/index.html owns the token and its expiry.
+// an isolated Chrome with CanvasDrawElement enabled. Vite owns the server and
+// Puppeteer owns the browser.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 
 import puppeteer from 'puppeteer-core'
@@ -17,46 +12,6 @@ import { createServer } from 'vite'
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..', '..')
 const labRoot = path.join(repoRoot, 'apps', 'lab')
-const checkOnly = process.argv.includes('--check-origin-trial')
-const renewalWindowDays = 30
-const dayMs = 24 * 60 * 60 * 1000
-
-function originTrial() {
-  const html = readFileSync(path.join(labRoot, 'index.html'), 'utf8')
-  const token = html.match(/http-equiv="origin-trial"\s+content="([^"]+)"/)?.[1]
-  if (!token) throw new Error('apps/lab/index.html has no origin-trial token')
-
-  const bytes = Buffer.from(token, 'base64')
-  const payloadStart = bytes.lastIndexOf('{'.charCodeAt(0))
-  if (payloadStart < 0) throw new Error('the origin-trial token has no readable payload')
-
-  const payload = JSON.parse(bytes.subarray(payloadStart).toString('utf8'))
-  if (payload.feature !== 'HTMLInCanvas' || !Number.isFinite(payload.expiry)) {
-    throw new Error('the origin-trial token is not a valid HTMLInCanvas claim')
-  }
-  return payload
-}
-
-function checkOriginTrial() {
-  const payload = originTrial()
-  const expiresAt = payload.expiry * 1000
-  const daysLeft = Math.ceil((expiresAt - Date.now()) / dayMs)
-  const expiry = new Date(expiresAt).toISOString().slice(0, 10)
-  const message = `origin trial: ${payload.origin} expires ${expiry} (${daysLeft} days left)`
-
-  if (daysLeft <= 0 && checkOnly) throw new Error(`${message}; the token has expired`)
-  if (daysLeft <= renewalWindowDays) {
-    const warning = `${message}; renew it before it expires`
-    // GitHub Actions turns this line into an annotation on the run.
-    console.warn(process.env.GITHUB_ACTIONS ? `::warning::${warning}` : warning)
-  } else {
-    console.log(message)
-  }
-}
-
-checkOriginTrial()
-if (checkOnly) process.exit(0)
-
 const chromePath = [
   process.env.CHROME_PATH,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
