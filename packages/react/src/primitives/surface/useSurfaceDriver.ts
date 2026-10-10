@@ -18,7 +18,14 @@ import {
   type SurfaceDriverFrame,
   type SurfaceDriverStep,
   type SurfaceHandle,
+  type SurfaceStore,
 } from './surfaceHandle'
+
+/** The explicit handle's store, else the enclosing Surface's, else null. */
+export function useSurfaceStoreOf(surface?: SurfaceHandle): SurfaceStore | null {
+  const context = use(SurfaceHandleContext)
+  return surface ? surfaceStoreOf(surface) : (context?.store ?? null)
+}
 
 /**
  * Drive the enclosing Surface's ramp, or pass an explicit handle second.
@@ -28,8 +35,7 @@ export function useSurfaceDriver(
   step: SurfaceDriverStep | null,
   surface?: SurfaceHandle,
 ): void {
-  const context = use(SurfaceHandleContext)
-  const store = surface ? surfaceStoreOf(surface) : (context?.store ?? null)
+  const store = useSurfaceStoreOf(surface)
   const stepRef = useLatest(step)
   const driving = step !== null
 

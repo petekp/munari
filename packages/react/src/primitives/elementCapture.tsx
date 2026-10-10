@@ -77,14 +77,16 @@ function unsupported(element: Element, selector: string | undefined): string | n
 interface ElementCaptureCopy { element: HTMLElement; size: SurfaceSize }
 class UnmeasuredCapture extends Error {}
 class UnsupportedCaptureContent extends Error {}
-function copyFormValues(source: Element, target: Element) {
-    if (source instanceof HTMLInputElement && target instanceof HTMLInputElement) {
-      target.value = source.value
-      target.checked = source.checked
-      target.indeterminate = source.indeterminate
-      target.name = ''
-    } else if (source instanceof HTMLTextAreaElement && target instanceof HTMLTextAreaElement) target.value = source.value
-    else if (source instanceof HTMLSelectElement && target instanceof HTMLSelectElement) target.selectedIndex = source.selectedIndex
+/** A clone drops properties that are not attributes: field values, checked state, scroll offsets. */
+export function copyFieldState(source: Element, target: Element) {
+  if (source instanceof HTMLInputElement && target instanceof HTMLInputElement) {
+    target.value = source.value
+    target.checked = source.checked
+    target.indeterminate = source.indeterminate
+  } else if (source instanceof HTMLTextAreaElement && target instanceof HTMLTextAreaElement) target.value = source.value
+  else if (source instanceof HTMLSelectElement && target instanceof HTMLSelectElement) target.selectedIndex = source.selectedIndex
+  target.scrollTop = source.scrollTop
+  target.scrollLeft = source.scrollLeft
 }
 
 /** Copies only visual state. No React component, media decoder, or custom element is mounted twice. */
@@ -126,9 +128,8 @@ export function copyElementForCapture(element: HTMLElement, exclude?: string): E
         if (next) target.append(next)
       } else if (child.nodeType === Node.TEXT_NODE) target.append(child.cloneNode())
     }
-    copyFormValues(source, target)
-    target.scrollTop = source.scrollTop
-    target.scrollLeft = source.scrollLeft
+    copyFieldState(source, target)
+    if (source instanceof HTMLInputElement && target instanceof HTMLInputElement) target.name = ''
     return target
   }
   const root = copy(element)

@@ -11,7 +11,7 @@ import { SurfaceLitMaterial } from './surface/surfaceMaterials'
 import { SurfaceRootContext, SurfacePartContext, SurfaceTunnelContext, SurfaceHandleContext, DEFAULT_PART } from './surface/surfaceContext'
 import { surfaceStoreOf, useSurfaceHandle, type SurfaceHandle } from './surface/surfaceHandle'
 import { surfaceViewPresentation, type SurfaceViewPresentation, type SurfaceViewDestination } from './surface/surfaceStatus'
-import { useSurfaceDriver as useSurfaceDriverBinding } from './surface/useSurfaceDriver'
+import { useSurfaceDriver as useSurfaceDriverBinding, useSurfaceStoreOf } from './surface/useSurfaceDriver'
 import { type SurfaceSize, type SurfaceSourceRuntime, type SurfaceResolution, type SurfacePartPublication } from './surface/surfaceSourceRuntime'
 import { useLatest } from './useLatest'
 import { usePageTargetAttachment, type PageTarget } from './pageTarget'
@@ -24,6 +24,8 @@ import { claimSourcePointer, releaseSourcePointer } from './surface/surfacePoint
 import { registerHostSpace, hostSpace, markerSpace, boxInHostSpace, hostSpaceScale, hostSpaceUpright } from './surface/surfaceHostSpace'
 import { createSurfacePageClip } from './surface/surfacePageClip'
 import { moveRetained } from './retainedMove'
+import { copyFieldState } from './elementCapture'
+import { readSurfaceDevicePixelRatio } from './surface/surfaceDevicePixelRatio'
 
 function unsupportedSnapshot(root:HTMLElement):string|null {
   for(const element of [root,...root.querySelectorAll('*')]) {
@@ -67,9 +69,9 @@ interface PageSnapshot { node: HTMLElement; key: string }
 // Seen as a figure jumping to a different pose for the swap frame and back
 // on the next capture, on every other minimize (decisions.md #66).
 
-function snapshot(root: HTMLElement): PageSnapshot {
+function snapshot(root: HTMLElement, unsupported: string | null = unsupportedSnapshot(root)): PageSnapshot {
   // Do not instantiate another iframe, media player, or custom element as a placeholder.
-  if(unsupportedSnapshot(root))return { node: document.createElement('div'), key: '' }
+  if(unsupported)return { node: document.createElement('div'), key: '' }
   // SAFETY: cloning an HTMLElement preserves its element type.
   const copy = root.cloneNode(true) as HTMLElement
   copy.dataset.munariSnapshot = ''
@@ -84,20 +86,25 @@ function snapshot(root: HTMLElement): PageSnapshot {
     target.toggleAttribute('data-hover', original.matches(':hover') || original.hasAttribute('data-hover'))
     target.toggleAttribute('data-active', original.matches(':active') || original.hasAttribute('data-active'))
     target.toggleAttribute('data-focus-visible', original.matches(':focus-visible'))
-    if (original instanceof HTMLInputElement && target instanceof HTMLInputElement) {
-      target.value = original.value; target.checked = original.checked; target.indeterminate = original.indeterminate
+    copyFieldState(original, target)
+    if (original instanceof HTMLInputElement) {
       state.push(`${index}v${original.value}|${original.checked}|${original.indeterminate}`)
-    } else if (original instanceof HTMLTextAreaElement && target instanceof HTMLTextAreaElement) {
-      target.value = original.value; state.push(`${index}v${original.value}`)
-    } else if (original instanceof HTMLSelectElement && target instanceof HTMLSelectElement) {
-      target.selectedIndex = original.selectedIndex; state.push(`${index}s${original.selectedIndex}`)
+    } else if (original instanceof HTMLTextAreaElement) {
+      state.push(`${index}v${original.value}`)
+    } else if (original instanceof HTMLSelectElement) {
+      state.push(`${index}s${original.selectedIndex}`)
     } else if (original instanceof HTMLCanvasElement && target instanceof HTMLCanvasElement) {
       target.getContext('2d')?.drawImage(original, 0, 0)
     }
-    target.scrollTop = original.scrollTop; target.scrollLeft = original.scrollLeft
     if (original.scrollTop || original.scrollLeft) state.push(`${index}o${original.scrollTop},${original.scrollLeft}`)
   })
   return { node: copy, key: `${copy.outerHTML}\u0000${state.join('\u0000')}` }
+}
+
+function placeholderCopy(liveRoot: HTMLElement, unsupported?: string | null): HTMLElement {
+  const { node: copy } = snapshot(liveRoot, unsupported)
+  copy.inert = true; copy.setAttribute('aria-hidden', 'true'); copy.style.visibility = 'hidden'
+  return copy
 }
 
 /**
@@ -279,10 +286,8 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   const [marker,setMarker]=useState<HTMLElement|null>(null)
   const publication = useSyncExternalStore(store.subscribeParts, () => store.part(partId) ?? null, () => null)
   const desired = root.canEnter && !reason
-  const desiredRef = useLatest(desired)
   const pageRef = useLatest(page)
   const ownRuntime = matchingRuntime(publication, captureRoot)
-  const runtimeRef = useLatest(ownRuntime)
   const placeholder = useRef<HTMLElement | null>(null)
   // What the capture root already holds, so an unchanged rebuild is dropped
   // before it reaches the source (`snapshot`).
@@ -324,7 +329,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
       // for a size along the block's axes, and the host is stood on a box
       // stated in the block's coordinates, which the block then turns.
       const [spaceX,spaceY]=hostSpaceScale(space)
-      const mx=slot.width*spaceX/w,my=slot.height*spaceY/h,dpr=window.devicePixelRatio
+      const mx=slot.width*spaceX/w,my=slot.height*spaceY/h,dpr=readSurfaceDevicePixelRatio()
       if(resolution===undefined||resolution==='auto')runtime.proposeRaster(pageDensityKey,[clampScale(dpr*mx,w,1),clampScale(dpr*my,1,h)])
       let left=slot.x,top=slot.y,drawW=slot.width,drawH=slot.height
       const [density,densityY]=runtime.source.rasterScale()
@@ -353,7 +358,6 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   }
   const move = () => {
     const holder = pageRef.current
-    const runtime = runtimeRef.current
     if (!holder || !captureRoot || !liveRoot) return
     // Two different moments ask for the live node. The crossing itself takes
     // it unconditionally — the page is releasing, so nothing is left to stand
@@ -364,14 +368,13 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     // more thing that can be wrong.
     const warm = store.holdsPage()
     const captured = store.canPrepareCanvas() &&
-      (!warm || (desiredRef.current && !unsupportedSnapshot(liveRoot) && sourceNeedsLiveNode(liveRoot))) &&
-      runtime !== null
+      (!warm || (desired && !unsupportedSnapshot(liveRoot) && sourceNeedsLiveNode(liveRoot))) &&
+      ownRuntime !== null
     captureRoot.inert = !captured
     if (captured) captureRoot.removeAttribute('aria-hidden')
     else captureRoot.setAttribute('aria-hidden', 'true')
     if (captured && liveRoot.parentElement !== captureRoot && captureRoot.isConnected) {
-      const { node: copy } = snapshot(liveRoot)
-      copy.inert = true; copy.setAttribute('aria-hidden', 'true'); copy.style.visibility = 'hidden'
+      const copy = placeholderCopy(liveRoot)
       holder.append(copy); matchMotion(liveRoot, copy); placeholder.current = copy
       for (const node of [...captureRoot.children]) if (node !== liveRoot) node.remove()
       moveRetained(liveRoot, captureRoot)
@@ -379,7 +382,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
       // not live follows only what the user did to the content, and the
       // request that lifts a Surface usually comes from outside it. The
       // content it is about to show is the live node that just moved in.
-      runtime?.source.repaint()
+      ownRuntime?.source.repaint()
     } else if (!captured && liveRoot.parentElement !== holder) {
       parkWarmRig()
       // Ownership has returned before this move; the destination must already accept focus.
@@ -389,7 +392,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
       const held = snapshot(liveRoot)
       captureRoot.replaceChildren(held.node); matchMotion(liveRoot, held.node); heldKey.current = held.key
     }
-    updateWarmRig(holder,runtime,captured,captureRoot)
+    updateWarmRig(holder,ownRuntime,captured,captureRoot)
   }
   const moveRef = useLatest(move)
   const sourceHost=ownRuntime?.source.host ?? null
@@ -452,9 +455,10 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   useLayoutEffect(() => {
     if (!page || !liveRoot || !captureRoot) return
     const sync = () => {
-      setReason(unsupportedSnapshot(liveRoot))
+      const unsupported = unsupportedSnapshot(liveRoot)
+      setReason(unsupported)
       if (liveRoot.parentElement === page) {
-        const held = snapshot(liveRoot)
+        const held = snapshot(liveRoot, unsupported)
         if (held.key === heldKey.current) return
         heldKey.current = held.key
         // Installing the copy is a mutation of the source's own element, so
@@ -464,8 +468,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
         captureRoot.replaceChildren(held.node)
         matchMotion(liveRoot, held.node)
       } else if (store.holdsPage() && placeholder.current) {
-        const { node: copy } = snapshot(liveRoot)
-        copy.inert = true; copy.setAttribute('aria-hidden', 'true'); copy.style.visibility = 'hidden'
+        const copy = placeholderCopy(liveRoot, unsupported)
         placeholder.current.replaceWith(copy); matchMotion(liveRoot, copy); placeholder.current = copy
       }
     }
@@ -475,7 +478,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     observer.observe(liveRoot, { subtree:true, childList:true, attributes:true, characterData:true })
     for (const event of ['input','change','pointerover','pointerout','focusin','focusout','scroll']) liveRoot.addEventListener(event, sync, {capture:true,signal:subscriptions.signal})
     return () => { observer.disconnect(); subscriptions.abort() }
-  }, [page, liveRoot, captureRoot, runtimeRef, store])
+  }, [page, liveRoot, captureRoot, store])
   useLayoutEffect(() => () => {
     parkWarmRig()
     const holder = pageRef.current
@@ -583,27 +586,23 @@ export const SceneSurface = Object.assign(BasicSceneSurface, {
   LitMaterial: SurfaceLitMaterial,
 })
 
+function useRequiredSurfaceStore(hook: string, surface?: SurfaceHandle) {
+  const store = useSurfaceStoreOf(surface)
+  if (!store) throw new Error(`${hook} needs a Surface handle or an enclosing Surface.`)
+  return store
+}
+
 export function useSurfaceStatus(surface?: SurfaceHandle) {
-  const context = use(SurfaceHandleContext)
-  const store = surface ? surfaceStoreOf(surface) : context?.store
-  if (!store) throw new Error('useSurfaceStatus needs a Surface handle or an enclosing Surface.')
+  const store = useRequiredSurfaceStore('useSurfaceStatus', surface)
   const browserSupported = useSurfaceSupport()
-  const snapshot = useSyncExternalStore(
-    useMemo(() => store.subscribe.bind(store), [store]),
-    useMemo(() => store.getStatus.bind(store), [store]),
-    useMemo(() => store.getStatus.bind(store), [store]),
-  )
+  const snapshot = useSyncExternalStore(store.subscribe, store.getStatus, store.getStatus)
   return useMemo(() => ({ ...snapshot, supported: browserSupported && snapshot.supported }), [snapshot, browserSupported])
 }
 
 /** Is the Surface's content frozen for the scene? The `onFreezeChange` signal, as React state. */
 export function useFreezeSurface(surface?: SurfaceHandle): boolean {
-  const context = use(SurfaceHandleContext)
-  const store = surface ? surfaceStoreOf(surface) : context?.store
-  if (!store) throw new Error('useFreezeSurface needs a Surface handle or an enclosing Surface.')
-  const subscribe = useMemo(() => store.subscribeFreeze.bind(store), [store])
-  const read = useMemo(() => store.isFrozen.bind(store), [store])
-  return useSyncExternalStore(subscribe, read, read)
+  const store = useRequiredSurfaceStore('useFreezeSurface', surface)
+  return useSyncExternalStore(store.subscribeFreeze, store.isFrozen, store.isFrozen)
 }
 
 export interface SurfaceDriverFrame { readonly dtMs: number; readonly progress: number; readonly target: SurfaceViewDestination }
@@ -615,9 +614,7 @@ export function useSurfaceDriver(step: SurfaceDriverStep | null, surface?: Surfa
 }
 
 export function useSurfaceMotion(step: (frame: SurfaceMotionFrame) => number, surface?: SurfaceHandle) {
-  const context = use(SurfaceHandleContext)
-  const store = surface ? surfaceStoreOf(surface) : context?.store
-  if (!store) throw new Error('useSurfaceMotion needs a Surface handle or an enclosing Surface.')
+  const store = useRequiredSurfaceStore('useSurfaceMotion', surface)
   useSurfaceDriver(frame => step({ dtMs:frame.dtMs, position:frame.progress, target:frame.target === 'scene' ? 1 : 0, scenePresented:store.getStatus().presentation === 'scene' }), surface)
-  return useMemo(()=>({get:()=>store?.motionProgress()??0}),[store])
+  return useMemo(()=>({get:()=>store.motionProgress()}),[store])
 }
