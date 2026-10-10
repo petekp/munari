@@ -81,8 +81,9 @@ export function lensNormal(lx: number, ly: number, curvature: number): Vec3 {
 }
 
 /**
- * GLSL's `refract`, transcribed. Returns null on total internal
- * reflection, which GLSL reports as a zero vector.
+ * The shader's `refract` (TSL, in `opticsNodes.ts`), transcribed. Returns
+ * null on total internal reflection, which the shader reports as a zero
+ * vector.
  */
 export function refract(I: Vec3, n: Vec3, eta: number): Vec3 | null {
   const d = dot(n, I)

@@ -6,9 +6,10 @@
  * On a page with the light running (`[data-lit]` on the page root, see
  * HomeMasthead.tsx) the shader draws every shadow from where the light
  * actually is, so these rules hand over and draw nothing. Everywhere else
- * — the shell, an unlit page, a browser without WebGL — the same elements
- * carry a static shadow from a light fixed at the upper left, so the depth
- * is the same idea in both places and only the light differs.
+ * — the shell, an unlit page, a browser whose renderer cannot start or has
+ * lost its device — the same elements carry a static shadow from a light
+ * fixed at the upper left, so the depth is the same idea in both places and
+ * only the light differs.
  *
  * Content that gets captured into a scene must not declare relief: the
  * capture sees only what CSS painted, so a shader-drawn shadow inside it

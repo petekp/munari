@@ -1,14 +1,14 @@
 /* The controls scene — warm paper around a porcelain HTML specimen.
  *
  * The captured root is `.controls-board`. It declares its own fixed box and
- * never animates its opacity or transform. The scene moves WebGL attachments,
+ * never animates its opacity or transform. The scene moves 3D attachments,
  * not this root. No descendant uses mask-image. Hover and active selectors
  * include the attributes Munari forwards into the parked source.
  *
  * The visual split is deliberate: the DOM is a crisp two-color typesetter's
  * form. Porcelain, cobalt glaze, brass edges and cast shadows arrive only from
- * WebGL. This keeps the flat state honest and makes the renderer handoff easy
- * to read without cloning the dark instrument language of Knobs.
+ * the 3D renderer. This keeps the flat state honest and makes the renderer
+ * handoff easy to read without cloning the dark instrument language of Knobs.
  */
 
 .controls-page {

@@ -661,7 +661,8 @@ try {
     cycles.push({ cycle, downPhase, downStart, downEnd, upPhase, upStart, upEnd })
   }
 
-  // Post-commit invalidation: once WebGL owns the film, revoke its context.
+  // Post-commit invalidation: once the renderer owns the film, lose its GPU
+  // device (or its WebGL 2 context on the fallback).
   // The native canvas must return without waiting for another renderer draw.
   const contextLossPhase = 'context-loss'
   await setPhase(contextLossPhase)

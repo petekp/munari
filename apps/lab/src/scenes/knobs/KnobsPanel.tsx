@@ -153,7 +153,6 @@ const RotaryKnob = memo(function RotaryKnob({
         {def.key === 'hue' && new URLSearchParams(window.location.search).get('probe') === 'knobs-resize' && (
           <span
             data-knobs-resize-marker="source"
-            data-munari-anchor="probe:hue"
             aria-hidden
             style={{
               position: 'absolute',

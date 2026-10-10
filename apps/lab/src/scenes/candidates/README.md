@@ -3,7 +3,7 @@
 Seven maintained interaction studies at `?scene=candidates`, selected by
 `&candidate=<id>`. These are lab examples, not package API or copyable registry
 entries. Selection is a separate scene at `?scene=selection` and still uses
-the shared camera, measurement and uniform helpers in `candidateStage.tsx`.
+the shared camera and measurement helpers in `candidateStage.tsx`.
 
 | ID | Behavior | Check |
 | --- | --- | --- |
@@ -27,13 +27,13 @@ enclosing canvas's lifetime. Read current presentation from
 The shared canvas runs continuously because the studies have independent
 animation clocks. Each study owns its intent, geometry and cleanup.
 `candidateStage.tsx` supplies the pixel-calibrated camera, DOM-to-world
-measurements, uniform ownership and phase helpers. Manual placement keeps
-these shaders' pixel-based deformation units explicit.
+measurements, node-material lifetime (`useNodeMaterial`) and phase helpers.
+Manual placement keeps these shaders' pixel-based deformation units explicit.
 
 For a custom final draw, `Surface.Mesh presentation="manual"` keeps a pointer
 proxy while the advanced manual presenter records actual draw evidence. The
-quad clouds here use ordinary meshes to support rotated particles and avoid
-the driver's point-size ceiling.
+quad clouds here use ordinary meshes to support rotated particles larger than
+the 1px points WebGPURenderer draws.
 
 ## Shader and geometry rules
 
@@ -50,10 +50,11 @@ the driver's point-size ceiling.
 
 `candidateCurlLaw.test.ts` pins arc length, hinge continuity and nested turns.
 `candidateUnrollLaw.test.ts` covers early cancellation and close/reopen timing.
-Copy's analytic normal has no unit test; `lab-interactions/detail-motion.mjs`
-captures its lighting for review. `candidateTokens.test.ts` covers the displayed
-code tokenizer. Tuned values remain in `candidateTuning.ts`; tessellation
-comments record the geometric scale each scene needs.
+Copy's analytic normal has no unit test;
+`instruments/lab-interactions/detail-motion.mjs` captures its lighting for
+review. `candidateTokens.test.ts` covers the displayed code tokenizer. Tuned
+values remain in `candidateTuning.ts`; tessellation comments record the
+geometric scale each scene needs.
 
 Historical measurements explain these rules; they are not a backlog of
 missing public APIs. Check the published entries before copying an old workaround.

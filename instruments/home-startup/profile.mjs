@@ -43,8 +43,8 @@ function observer(useBaseline = false) {
     }
     if (id.endsWith('/HomeMasthead.tsx')) {
       for (const [label, expression] of [
-        ['shadow-context', 'new WebGPURenderer({ canvas, antialias: true, alpha: false, depth: true })'],
-        ['bulb-context', 'new WebGPURenderer({ canvas, antialias: true, alpha: true, depth: true })'],
+        ['shadow-renderer', 'new WebGPURenderer({ canvas, antialias: true, alpha: false, depth: true })'],
+        ['bulb-renderer', 'new WebGPURenderer({ canvas, antialias: true, alpha: true, depth: true })'],
         ['headline-setup', [
           'createHeadlineTreatments(title.current,pass.mesh.material,redraw,page,headlineLost)',
           'createHeadlineTreatments(title.current,pass.mesh.material,redraw,page)',

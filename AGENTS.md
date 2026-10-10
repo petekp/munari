@@ -117,8 +117,7 @@ by no test runner, wired invisibly through the root tsconfig include.
 - A lab scene is a folder under `apps/lab/src/scenes/` holding
   `SceneName.tsx` (the entry), `sceneName.css`, and prefixed modules
   whose suffix says their kind: `*Law.ts` pure laws, `*Nodes.ts` TSL
-  node materials (`*Shaders.ts` GLSL strings in scenes not yet ported to
-  WebGPU), `*Tweaks.tsx` tuning panels, `*Tuning.ts` tuned value bags,
+  node materials, `*Tweaks.tsx` tuning panels, `*Tuning.ts` tuned value bags,
   plain mechanism nouns otherwise. Prefixes stay on filenames
   inside the folder so every module name is unique repo-wide.
 - "Knobs" is the name of a scene. Tuned value bags are `*Tuning`.

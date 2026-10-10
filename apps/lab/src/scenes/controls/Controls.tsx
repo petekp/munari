@@ -1,14 +1,16 @@
 // The controls scene — one ordinary HTML form that rises into 3D.
 //
 // The law: the DOM owns value, focus, semantics and input in both renderers;
-// WebGL owns only depth, material and shadow. One Surface carries the complete
-// form, while stable anchors stand porcelain, cobalt and brass bodies under the
-// exact control pixels from the same successful paint generation.
+// the 3D renderer owns only depth, material and shadow. One Surface carries
+// the complete form, while stable anchors stand porcelain, cobalt and brass
+// bodies under the exact control pixels from the same successful paint
+// generation.
 //
 // The fault, 2026-08-30: child meshes under a Surface presenter are separate
 // draws. Left mounted during warm-up, they appear before the DOM releases and
 // break the transfer identity. This scene keeps them at zero visibility until
-// WebGL holds the pixels, and retracts them fully before it asks the DOM back.
+// the 3D renderer holds the pixels, and retracts them fully before it asks the
+// DOM back.
 //
 // Ownership: this module owns the form state, the scene choreography and the
 // physical attachments. Surface owns capture, presentation and pointer relay.

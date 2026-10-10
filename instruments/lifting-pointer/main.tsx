@@ -32,16 +32,7 @@ interface ClickRecord {
   pageVisible: boolean | null
 }
 
-interface EventRecord {
-  t: number
-  label?: string
-  presentation?: string | null
-  isTransitioning?: boolean
-  sceneReady?: boolean
-}
-
 const clicks: ClickRecord[] = []
-const events: EventRecord[] = []
 
 type PointerObservation = Pick<ReturnType<typeof useSurfaceStatus>, 'presentation' | 'isTransitioning' | 'sceneReady'>
 function initialState(): PointerObservation { return {presentation:null,isTransitioning:false,sceneReady:false} }
@@ -49,13 +40,9 @@ const probe = {
   capable: detectHtmlInCanvas().drawElementImage,
   ready: false,
   clicks,
-  events,
   scene: { active: 0, frames: 0, lastFrameAt: 0 },
   state: initialState(),
   setRenderIn: (_: SurfaceDestination) => {},
-  mark(label: string) {
-    probe.events.push({ t: performance.now(), label })
-  },
   buttonCenter() {
     const el = document.getElementById('btn')
     if (!el) return null
@@ -152,14 +139,6 @@ function App() {
   const st = useSurfaceStatus(surface)
   probe.setRenderIn = setRenderIn
   probe.state = { presentation: st.presentation, isTransitioning: st.isTransitioning, sceneReady: st.sceneReady }
-  useEffect(() => {
-    probe.events.push({
-      t: performance.now(),
-      presentation: st.presentation,
-      isTransitioning: st.isTransitioning,
-      sceneReady: st.sceneReady,
-    })
-  }, [st])
   useEffect(() => {
     probe.ready = true
   }, [])

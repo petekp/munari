@@ -1,7 +1,7 @@
 // Lamp — an article page lit by one movable lantern, whose headline glyphs
 // stand off the paper and cast the only shadows in the scene.
 //
-// The law: WebGL owns light and shadow, nothing else. The headline and its
+// The law: the GPU owns light and shadow, nothing else. The headline and its
 // body prose stay plain, selectable DOM; the multiply canvas above them
 // only darkens the pixels already there. The lantern itself needs normal
 // (non-multiply) blending to read as a lit object rather than a silhouette,
@@ -61,7 +61,6 @@ interface Point {
 }
 
 interface LampState {
-  renderer: WebGPURenderer | null
   scene: THREE.Scene
   camera: THREE.OrthographicCamera
   light: LampLight
@@ -84,7 +83,6 @@ function createLampState(): LampState {
   mesh.frustumCulled = false
   scene.add(mesh)
   return {
-    renderer: null,
     scene,
     camera,
     light,
@@ -99,7 +97,6 @@ function createLampState(): LampState {
 }
 
 interface LanternState {
-  renderer: WebGPURenderer | null
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   lantern: LampLantern
@@ -116,7 +113,7 @@ function createLanternState(): LanternState {
   scene.add(lantern.group)
   // The PMREMGenerator/RoomEnvironment map (set on scene.environment once
   // the renderer has started, see the mount effect below) is what now gives the
-  // blackened-steel MeshPhysicalMaterials their directional highlights and
+  // blackened-steel MeshPhysicalNodeMaterials their directional highlights and
   // makes them read as metal rather than flat color — this hemisphere is
   // only a very dim, cool fill so the underside of the model (which the
   // room env's own lights don't reach at every drag angle) never goes to
@@ -124,7 +121,6 @@ function createLanternState(): LanternState {
   // pair, whose job the IBL now does).
   scene.add(new THREE.HemisphereLight(0x9fb4c9, 0x0c0c0d, 0.25))
   return {
-    renderer: null,
     scene,
     camera,
     lantern,
@@ -335,7 +331,6 @@ export function LampApp() {
       () => {
         if (cancelled) return
         setDegraded(false)
-        state.renderer = renderer
         // A fresh canvas measures 300x150 until the first resize; skip past it.
         state.width = 0
         state.height = 0
@@ -383,7 +378,6 @@ export function LampApp() {
       state.stop = () => {}
       state.light.dispose()
       state.maskTexture?.dispose()
-      state.renderer = null
       pipeline.dispose()
       // dispose() skips the backend while init is pending, so a renderer
       // unmounted mid-init would keep its device or context. After a failed
@@ -467,7 +461,6 @@ export function LampApp() {
       () => {
         if (cancelled) return
         setLanternDegraded(false)
-        state2.renderer = renderer
         state2.width = 0
         state2.height = 0
 
@@ -499,7 +492,6 @@ export function LampApp() {
       observer.disconnect()
       renderer.onDeviceLost = reportLoss
       state2.draw = () => ({ x: 0, y: 0 })
-      state2.renderer = null
       state2.scene.environment = null
       environment?.dispose()
       state2.lantern.dispose()

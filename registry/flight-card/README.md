@@ -52,8 +52,9 @@ Each of these came from a shipped bug:
   gate outside the smoother caused both the flicker and the settle
   hitch.
 - **The handoff is the protocol's and the ramp is the plate's:** one
-  `useSurfaceHandle` handle, its source declared in the card's own slot and
-  presented by a `Surface.Mesh` with `placement="manual"` inside the Canvas, with
+  `createSurface` handle per card (cached by card id), its source declared
+  in the card's own slot and presented by a `Surface.Mesh` with
+  `placement="manual"` inside the Canvas, with
   `useSurfaceDriver` answering the crossing from the plate's altitude
   (`Math.max(ADMIT, Math.min(1, f.plate.p.z / LIFT_Z))`, and exact zero
   the moment the board asks for the page back). This Flight path uses the

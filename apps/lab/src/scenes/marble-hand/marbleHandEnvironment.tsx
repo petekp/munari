@@ -2,7 +2,7 @@
 //
 // The law: HTML remains the only visible page. A full-page capture appears
 // only in a private reflection scene, never as a page presenter. The native
-// colour fields still supply room bounce and the four page lights.
+// colour fields still supply room bounce and one page light per theme swatch.
 //
 // The fault, 2026-08-30: lighting the old page-sized mesh changed the page
 // itself. This environment reads layout only at DOM change boundaries and
@@ -38,7 +38,7 @@ import {
   setMarbleBackgroundFrame,
   type MarbleBackgroundMaterial,
 } from './marbleHandBackgroundNodes'
-import type { MarbleHandThemeId } from './marbleHandThemes'
+import { MARBLE_HAND_THEMES, type MarbleHandThemeId } from './marbleHandThemes'
 import type { MarbleHandTuning } from './marbleHandTuning'
 import type { MarblePageCaptureState } from './marbleHandPageCapture'
 
@@ -170,7 +170,7 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture, theme }: 
 }) {
   const gl = useThree((state) => state.gl)
   const scene = useThree((state) => state.scene)
-  const lights = useMemo(() => Array.from({ length: 4 }, () => new THREE.PointLight(0xffffff, 0, 0, 2)), [])
+  const lights = useMemo(() => MARBLE_HAND_THEMES.map(() => new THREE.PointLight(0xffffff, 0, 0, 2)), [])
   const state = useMemo<EnvironmentState>(() => {
     const env = context(ENV_WIDTH, ENV_HEIGHT)
     const reflectionScene = new THREE.Scene()
@@ -218,7 +218,7 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture, theme }: 
       image: env.createImageData(ENV_WIDTH, ENV_HEIGHT),
       rays: marbleEnvironmentRays(ENV_WIDTH, ENV_HEIGHT),
       texture: null, pmrem: null, target: null,
-      weights: [0, 0, 0, 0], revision: 0, signature: 0, bakes: 0,
+      weights: MARBLE_HAND_THEMES.map(() => 0), revision: 0, signature: 0, bakes: 0,
       modelKey: '', bakeKey: '', lastBake: -Infinity, nextBake: -Infinity, bakeFps: 0,
       reflectionScene, cube, camera, pageMesh, roomMesh, backgroundMesh,
       backgroundMaterials: new Map([['waves', backgroundMaterial]]),
@@ -323,7 +323,7 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture, theme }: 
       let signature = 2166136261
       for (const value of field.pixels) signature = Math.imul(signature ^ value, 16777619)
       state.signature = signature >>> 0
-      const swatches = fields.filter((item) => item.swatch !== null).slice(0, 4)
+      const swatches = fields.filter((item) => item.swatch !== null)
       const visibleArea = (item: PaintField) =>
         Math.max(0, Math.min(viewport.width, item.x + item.width) - Math.max(0, item.x)) *
         Math.max(0, Math.min(viewport.height, item.y + item.height) - Math.max(0, item.y))

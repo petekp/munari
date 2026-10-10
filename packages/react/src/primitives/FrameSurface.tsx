@@ -19,11 +19,16 @@
 // render targets and colorWrite:false materials too. Those draws move
 // pixels, but they cannot have reached the screen, so a transfer that
 // released the page on one would flicker (decisions.md #25: drawing is
-// not showing). WebGPURenderer draws every frame into an internal target,
-// so no draw shows a null target; the SurfaceCanvas tail decides, and a
-// plain Canvas issues no presentation receipts (#69). Rejections are
-// counted per transfer and warned once, so a mis-wired transfer is
-// diagnosable without a console flood.
+// not showing). A draw whose render target is null reached the canvas and
+// presents directly; inside a <SurfaceCanvas> that is every canvas draw,
+// because it renders through DirectRenderPipeline (#72). A draw into a
+// render target defers to the SurfaceCanvas frame tail, which closes once
+// the frame reached the canvas; without a SurfaceCanvas it cannot present.
+// A WebGPURenderer drawing through its default output pass renders every
+// frame into an internal target, so outside a SurfaceCanvas it issues no
+// presentation receipts (#69). Rejections are counted per transfer and
+// warned once, so a mis-wired transfer is diagnosable without a console
+// flood.
 //
 // The runtime is split from the component so this ordering is testable
 // without mocking a renderer. The component's job is lifecycle: build
@@ -87,8 +92,9 @@ export interface FrameSurfaceProps
   /**
    * Honor source alpha with a built-in material. Any premultiplied frame
    * source must use `material="none"`, even when this is false: its RGB is
-   * already weighted by alpha. Mask the full vec4 and blend
-   * ONE / ONE_MINUS_SRC_ALPHA.
+   * already weighted by alpha. Mask the full vec4, set
+   * `premultipliedAlpha: true`, and return the color through
+   * `premultipliedOutput` (decisions.md #72).
    */
   transparent?: boolean
   /**
@@ -240,8 +246,9 @@ export function createFrameSurfaceRuntime(
       height: source.canvas.height,
     }
     if (uploadNeedsRealloc(allocation, store)) {
-      // WebGL texture storage is immutable. Releasing it before Three sees
-      // this update makes a resized canvas allocate at its new dimensions.
+      // Three allocates a texture's GPU storage once, on WebGPU and on the
+      // WebGL 2 fallback. Releasing it before Three sees this update makes a
+      // resized canvas allocate at its new dimensions.
       texture.dispose()
       allocation = store
       publishChecked = false
@@ -436,7 +443,7 @@ export function assertFrameMaterialSupported(
 ): void {
   if (material === 'none' || !source.format.premultiplyAlpha) return
   throw new Error(
-    'munari: premultiplied frames require material="none"; mask the full vec4 and blend ONE / ONE_MINUS_SRC_ALPHA',
+    'munari: premultiplied frames require material="none"; mask the full vec4, set premultipliedAlpha: true, and return premultipliedOutput(color)',
   )
 }
 
@@ -527,26 +534,9 @@ export function FrameSurface({
     }
   }, [invalidate])
 
-  const paintedSize = useCallback(
-    (): readonly [number, number] => [
-      width,
-      height,
-    ],
-    [width, height],
-  )
-
   const context = useMemo<SurfaceContextValue>(
-    () => ({
-      mesh: meshRef,
-      source: null,
-      width,
-      height,
-      mirrorU,
-      texture: runtime?.texture ?? null,
-      chrome: null,
-      paintedSize,
-    }),
-    [width, height, mirrorU, runtime, paintedSize],
+    () => ({ texture: runtime?.texture ?? null }),
+    [runtime],
   )
 
   // The Canvas this mesh draws in, when it is a <SurfaceCanvas>. Null in a

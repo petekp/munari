@@ -35,8 +35,8 @@ import {
 // Interaction grammar:
 //   double-click a panel  → camera dollies to face it head-on
 //   double-click the floor → step back to the room view
-//   drag a panel's title bar → reposition it (ray ∩ horizontal plane,
-//     MomentumCard's capture idiom — decisions.md #4)
+//   drag a panel's title bar → reposition it (pointer deltas slide it around
+//     the arc and pull it nearer or farther)
 //   click into text and type → it's just the DOM
 
 const W3 = PANEL_W / 200
@@ -73,9 +73,7 @@ function hasEnabledSwitch(
 }
 
 // ---------------------------------------------------------------------------
-// One workspace panel: a Surface plus a grab handle. Dragging follows
-// MomentumCard's idiom — pointer capture on the handle, all math from
-// e.ray ∩ a horizontal plane seated at grab time (decisions.md #4).
+// One workspace panel: a Surface plus a grab handle.
 
 
 
@@ -150,8 +148,8 @@ function WorkPanel({
   // and failed geometrically: upper-row handles sit above eye level, and a
   // downward ray meets an overhead plane receding toward infinity — "pull
   // toward me" read as "fly away". Deltas keep the reference frame static
-  // (decisions.md #4's actual point) and behave identically at every row
-  // height. Same shape as use1DOF's pointer→coordinate mapping.
+  // and behave identically at every row height. Same shape as use1DOF's
+  // pointer→coordinate mapping.
   const onHandleDown = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation()
     const g = group.current
@@ -241,7 +239,7 @@ function WorkPanel({
             castShadow
           />
         </SceneSurface.Root>
-        {/* Satellite knob: a WebGL leaf in the SAME focus group — Tab flows
+        {/* Satellite knob: a 3D leaf in the SAME focus group — Tab flows
             from the panel's last button onto it (the mixed-group
             proof). Its detents paint the panel's readout: physics in the
             scene, consequence in the document. */}
@@ -458,7 +456,7 @@ export function Workspace() {
 
 // ---------------------------------------------------------------------------
 // DOM-side HUD (rendered by App outside the Canvas): the contract, live.
-// surfaces / paints-per-second / fps — the "40 live documents, zero cost"
+// surfaces / paints-per-second / fps — the "33 live documents, zero cost"
 // claim as numbers rather than an assertion.
 
 export function WorkspaceHud() {

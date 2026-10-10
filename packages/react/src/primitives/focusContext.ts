@@ -91,8 +91,9 @@ export interface NavPolicy {
   nudge(req: NudgeRequest): void
 }
 
-// Leaf members (docs/focus.md "Proxy contract"): a WebGL-only control backed
-// by a visually-hidden proxy element carrying real focus + ARIA semantics.
+// Leaf members (docs/focus.md "Proxy contract"): a control drawn only in the
+// scene, backed by a visually-hidden proxy element carrying real focus + ARIA
+// semantics.
 // Slider is the only implemented role. Other roles need matching controls
 // and conformance coverage before they can be added here.
 export type LeafRole = 'slider'

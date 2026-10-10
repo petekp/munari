@@ -79,7 +79,9 @@ export interface KnobsTuningValues {
    *  the captured face must keep standing proud of the facet. */
   rimBevelDepth: number
 
-  /** Knurl ridge count around the skirt (rebuild). */
+  /** Knurl ridge count around the skirt (rebuild). A fine pitch (many
+   *  shallow ridges) is the machinist's tell of a precision grip;
+   *  coarse deep teeth read as molded plastic. */
   knurlCount: number
   /** Knurl ridge depth, px (rebuild). */
   knurlAmp: number

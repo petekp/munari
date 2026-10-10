@@ -1,8 +1,9 @@
 // The grain buffer — one captured element, rebuilt as loose quads.
 //
-// Billboarded quads allow rotation and sizes beyond the driver's point-size
-// limit (63px on some Intel parts). This geometry uses Surface.Mesh's normal
-// presentation path; other scene objects can use the manual presentation API.
+// Billboarded quads allow rotation and any grain size: WebGPURenderer draws
+// THREE.Points at 1px on both its WebGPU and WebGL 2 backends. This geometry
+// uses Surface.Mesh's normal presentation path; other scene objects can use
+// the manual presentation API.
 //
 // Ownership: this module owns the buffer's layout. It has no opinion about
 // how the grains move; that is the shader's, and the seeds here are the

@@ -2,7 +2,7 @@
 //
 // The fast film gate checks state and receipt recovery. This one adds the
 // stricter compositor sequence: after the first matching native frame, no
-// later captured frame may regress to stale WebGL pixels.
+// later captured frame may regress to stale renderer pixels.
 
 process.env.ROUNDS ??= '1'
 process.env.SLOWCPU ??= '6'

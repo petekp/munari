@@ -47,11 +47,11 @@
  */
 
 /* A portal container is clear to the pointer; what it holds is not. This is
- * the ordinary 2D idiom, and on a Surface it does double duty: `Surface`
- * sets the source root to `pointer-events: none` under `hitTest="content"`,
- * and the RAYCASTER reads the same computed value — so a ray through the
- * clear part of a floating slab carries on to the panel behind instead of
- * stopping at glass.
+ * the ordinary 2D idiom, and on a Surface it does double duty:
+ * `<Surface.Mesh pointerEvents="content">` sets the source root to
+ * `pointer-events: none`, and the RAYCASTER reads the same computed value —
+ * so a ray through the clear part of a floating slab carries on to the panel
+ * behind instead of stopping at glass.
  *
  * Without it, opening a tooltip put a full-panel slab in front of its own
  * trigger; the panel heard the ray leave, and dismissed the tooltip it had

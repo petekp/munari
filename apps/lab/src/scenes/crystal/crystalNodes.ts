@@ -20,7 +20,8 @@
 // two rotations (which is why the rotation arrives as a matrix and is not
 // rebuilt here). The CPU copy is what a click is corrected by and this copy
 // is what the eye sees, so a difference between them is a click landing
-// where nobody looked. `crystalLaw.test.ts` pins the two against each other.
+// where nobody looked. `gate:crystal-pointer` compares the two in a browser;
+// `crystalLaw.test.ts` checks the CPU copy alone.
 //
 // The light is FIXED IN THE SHEET, not attached to the crystal. A highlight
 // that travelled with the object would be a decal and would read as one; a
@@ -40,7 +41,7 @@
 // output node composites with the over operator written out. That node
 // replaces Three's output, so Three applies no second premultiplication, and
 // `premultipliedOutput` makes the canvas's sRGB encode of the premultiplied
-// linear result land as WebGL's did (decisions.md #71).
+// linear result land as WebGL's did (decisions.md #72).
 //
 // Ownership: this module owns the shading and the uniform bag it reads.
 // crystalMaterial.tsx owns the pose, the uniform writes and the mesh slot.
@@ -163,9 +164,9 @@ export function writeTuned(values: CrystalValues, tune: CrystalTuning): void {
 
 // ── the shape ──────────────────────────────────────────────────────────
 
-// The arrow, vertex for vertex from ARROW in crystalLaw.ts. Both lists are
-// read by the test, which walks a grid through both fields and requires the
-// same distance from each.
+// The arrow, vertex for vertex from ARROW in crystalLaw.ts. No unit test
+// compares the two lists. `gate:crystal-pointer` compares them only through
+// the key drawn under the tip.
 const ARROW: readonly (readonly [number, number])[] = [
   [0, 0],
   [0, 24],

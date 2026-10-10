@@ -101,7 +101,7 @@ describe('part sets', () => {
   })
 
   it('several presenters may share one part', () => {
-    // The API allows more than one WebGL presentation per part, so
+    // The API allows more than one scene presentation per part, so
     // registration is a set membership and never a tally.
     const set = partSetRegister(partSetExpect(partSetEmpty(), 'a'), 'a')
     expect(partSetRegister(set, 'a')).toBe(set)

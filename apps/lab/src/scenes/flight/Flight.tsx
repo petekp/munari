@@ -36,7 +36,7 @@
 //    whether you are there at all.
 //
 // And the loop closes: the physics writes `--l14-near` onto the slot it is
-// aimed at, so a rigid-body simulation running in WebGL is restyling real
+// aimed at, so the scene's rigid-body simulation is restyling real
 // DOM through ordinary CSS, at the same time as that DOM is being rasterized
 // into the material of the thing doing the simulating.
 
@@ -553,12 +553,6 @@ function trackHand(f: Flight, dt: number, target: THREE.Vector3) {
 }
 
 /**
- * One frame of whichever gesture owns the card, and the crumple's live crush
- * scalar for the shader and the shadow. Everything before the plate's pose is
- * settled belongs here; everything after it reads `f.plate` and does not care
- * which mode wrote it.
- */
-/**
  * The delete: a CRUSH on one clock, then a fall with none. The exit is a
  * PLACE, not a time — the flight ends when the wad has fully left the
  * viewport — because a wad that dimmed on a timer was fading in plain sight
@@ -647,6 +641,12 @@ function stepCrumple(
   return ph.crush
 }
 
+/**
+ * One frame of whichever gesture owns the card, and the crumple's live crush
+ * scalar for the shader and the shadow. Everything before the plate's pose is
+ * settled belongs here; everything after it reads `f.plate` and does not care
+ * which mode wrote it.
+ */
 function stepFlightMode(
   f: Flight,
   dt: number,
@@ -681,8 +681,6 @@ function stepFlightMode(
     // cursor as if it were cost an 8% gain: the card outran the hand,
     // drifting out from under the pointer toward the edges of the screen
     // and back toward the middle, which is what "fighting the drag" was.
-    // decisions #4 has always said intersect the ray with the DRAG plane;
-    // this is that rule, on the plane that is actually being dragged on.
     screenToPlane(f.px, f.py, vw, vh, camZ, LIFT_Z * e, _target)
     // Changing the ray plane is the card rising, not the hand moving.
     // Preserve the velocity measured during warm-up, but reseed its
@@ -951,12 +949,12 @@ function Driver({
 
     // ── the density schedule ──
     //
-    // `densityScheduleStep` keeps page density at handoff and altitude density
-    // the page, altitude density at altitude, toggled on where the plate
-    // actually IS rather than on what a mode flag thinks. This scene's only
-    // job is translating its four gesture modes into the two mechanism flags
-    // the schedule speaks — which is the whole reason the law belongs over
-    // there and the translation belongs here (#21).
+    // `densityScheduleStep` keeps page density on the page and altitude density
+    // at altitude, toggled on where the plate actually IS rather than on what
+    // a mode flag thinks. This scene's only job is translating its four
+    // gesture modes into the two mechanism flags the schedule speaks — which
+    // is the whole reason the law belongs over there and the translation
+    // belongs here (#21).
     //
     // `home` is `returning`: the descent is the motion mask for the re-raster
     // and what matters is arriving at the page 1 : 1. `crumple` is `frozen`:
@@ -985,9 +983,8 @@ function Driver({
     // `pixelGridSnap` is the shared mapping law; what stays
     // here is the judgement of WHEN a card counts as at rest, which is the
     // only part of this that was ever about flights. The physics never hears
-    // about the answer — same truth/presentation split as the grounded
-    // damper (#49) — and the blend runs on plate speed, so a moving card is
-    // pure truth and nothing pops in between.
+    // about the answer, and the blend runs on plate speed, so a moving card
+    // is pure truth and nothing pops in between.
     //
     // Tilt is the one correction the shared mapping law does not own: flat-at-rest is
     // this scene's idea of rest, and it needs a quaternion.
@@ -1379,8 +1376,8 @@ export function FlightApp() {
     }
     return entry
   }
-  const requestLift = useCallback((webgl: boolean) => {
-    setView(webgl ? 'scene' : 'page')
+  const requestLift = useCallback((inScene: boolean) => {
+    setView(inScene ? 'scene' : 'page')
   }, [])
   const glHolds = presented === 'scene'
   const ending = useRef(false)
@@ -1710,10 +1707,10 @@ export function FlightApp() {
   // momentum and all; a card at rest on the page enters the scene first, the
   // same flight machinery as a grab (page copy releases on presentation
   // proof, plate springs off the page), except the mode is `crumple` from birth.
-  // The wad faded out: NOW the board forgets. The FLIP snapshot goes first,
-  // so the neighbours close over the vacated slot as a layout animation
-  // rather than a cut — the one reflow in this lab a delete is allowed to
-  // cause, and the user watches it happen.
+  // The wad left the viewport: NOW the board forgets. The FLIP snapshot goes
+  // first, so the neighbours close over the vacated slot as a layout
+  // animation rather than a cut — the one reflow in this lab a delete is
+  // allowed to cause, and the user watches it happen.
   const commitDelete = useCallback((id: string) => {
     setCards((prev) => {
       const next = { ...prev }

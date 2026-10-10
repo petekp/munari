@@ -2,7 +2,7 @@
  *
  * The art is ordinary page DOM — a generative SVG that can animate every
  * frame for free — and it fills the viewport. The control panel floats
- * over it as a Surface's captured DOM on a WebGL slab (Knobs.tsx);
+ * over it as a Surface's captured DOM on a 3D slab (Knobs.tsx);
  * nothing reserves space for it in the page. `.knb-panel` below is that
  * captured subtree's root, so it plays by the Surface rules: it sizes itself in inline px,
  * its own opacity/transform never animate, nothing under it wears a
@@ -697,7 +697,7 @@
 /* A machined pull at the lower-right corner: three diagonal flutes, the
  * same cut the carry handle wears. It is DOM, not a 3D gizmo, because
  * the point of the panel is that the layout engine is the thing running
- * inside the texture — a WebGL handle would prove nothing. */
+ * inside the texture — a scene-drawn handle would prove nothing. */
 .knb-resize {
   position: absolute;
   right: 2px;

@@ -9,16 +9,12 @@ import { createBlitMaterial, createGlassMaterial, createGlassSdfValues } from '.
 // The SDF glass path — the shared kit every glass panel builds on (beads,
 // a morphing chat shell).
 //
-// `SdfGlassPanel` is a Surface that renders NOTHING of its own: the mesh
-// carries a custom invisible material, so it exists only to
-// be raycast (the pointer forwarding still needs a real quad with real
-// UVs). Its pixels are produced later, by `GlassSdfCompositor`, from
-// the panel's world matrix and its DOM texture.
-//
-// Rendering `material.visible = false` costs one skipped draw call
-// (WebGLRenderer checks it in renderObjects) and keeps the object visible to
-// the raycaster, which is exactly the split we want: invisible geometry that
-// can still be touched.
+// `SdfGlassPanel` is a Surface that renders nothing of its own. Its quad
+// has a zero-opacity material that writes no depth, and the compositor hides
+// each panel's group during its one scene render per frame, so the quad never
+// draws. It stays in the scene graph so pointer forwarding still raycasts a
+// real quad with real UVs. `GlassSdfCompositor` produces the panel's pixels
+// from its world matrix and DOM texture.
 
 export interface GlassParams {
   /** Corner radius, world units. The shape's only geometric input. */
@@ -126,7 +122,7 @@ export interface GlassRect {
 /**
  * A wave packet expanding across the panel's surface from where a satellite
  * made or broke contact. `t0` is a clock timestamp; the compositor turns it
- * into an age, so the shader needs no time uniform of its own.
+ * into an age, so the wave loop reads no clock.
  */
 export interface GlassRipple {
   x: number
@@ -254,10 +250,10 @@ export function sdRoundRectGrad(px: number, py: number, bx: number, by: number, 
 }
 
 // Tuned in the browser against the lab's own wall (loud, high-frequency,
-// live DOM) — see the README entry. The two that matter most: `roughness`
-// above ~0.15 stops being frost and starts being fog, because the frost is a
-// blur of the ALREADY-COMPOSITED image rather than a rough-surface BSDF; and
-// `bezel` is the whole look — it is how much of the panel is lens.
+// live DOM). The two that matter most: `roughness` above ~0.15 stops being
+// frost and starts being fog, because the frost is a blur of the
+// ALREADY-COMPOSITED image rather than a rough-surface BSDF; and `bezel` is
+// the whole look — it is how much of the panel is lens.
 export const GLASS_DEFAULTS: GlassParams = {
   radius: 0.16,
   // A thin rim over a long throw. Almost all of the panel is flat middle, so
@@ -362,7 +358,7 @@ const sdfPanels = new Map<string, SdfPanel>()
 // record its own parent has not created yet. Keyed by label, joined at
 // composite time.
 const sdfInk = new Map<string, THREE.Texture>()
-// Dev handle: `__glassInk.get('glass-wall').image` is the parking canvas the
+// Dev handle: `__glassInk.get('glass-card').image` is the parking canvas the
 // compositor is sampling, which is the only way to tell a UV bug apart from a
 // rasterization bug from the outside. Declared rather than asserted onto
 // window, so the console and this file agree on what the handle holds.
@@ -422,7 +418,7 @@ export interface SdfGlassPanelProps {
   hasBase?: boolean
   /**
    * Coplanar circles merged into this panel's glass. Pass a STABLE array and
-   * mutate its members per frame — see `BlobDrift` in the glass scene.
+   * mutate its members per frame — see `OrbDrift` in the glass scene.
    */
   blobs?: GlassBlob[]
   /** Coplanar rounded rects, same stable-array-mutated-in-place contract. */
@@ -647,8 +643,8 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
   // test compares a Three constant with gl.FLOAT, so it never matches). A
   // blit needs matching formats, and a FloatType texture is DEPTH_COMPONENT32F:
   // every frame raised a GL error and the scene had no depth (measured
-  // 2026-10-09). UnsignedIntType is DEPTH_COMPONENT24 there. WebGPU keeps the
-  // 32-bit float depth WebGL main used.
+  // 2026-10-09). UnsignedIntType is DEPTH_COMPONENT24 there. WebGPU keeps
+  // 32-bit float depth.
   const depthType = 'isWebGPUBackend' in gl.backend ? THREE.FloatType : THREE.UnsignedIntType
   const sceneFbo = useTarget(w, h, { samples: 4, depthType })
   const pingA = useTarget(w, h)
@@ -808,8 +804,8 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
       }
       u.rectCount.value = nq
 
-      // Ages, not timestamps: the material gets `now - t0` so it needs no clock
-      // of its own, and a ripple that has outlived `rippleLife` simply never
+      // Ages, not timestamps: the material gets `now - t0`, so the wave loop
+      // reads no clock, and a ripple that has outlived `rippleLife` simply never
       // reaches the uniform (the emitter prunes it too — this is the guard).
       u.rippleK.value = Math.max(q.rippleK, 1e-3)
       u.rippleNu.value = Math.max(q.rippleNu, 0)

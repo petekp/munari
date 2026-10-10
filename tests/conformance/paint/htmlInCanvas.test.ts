@@ -244,7 +244,7 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
   // has no idea what that method is (it is a Chrome-only trial API); the
   // top-level beforeEach only stubs the CONSTRUCTOR's prototype for the
   // capability gate, not a context these tests can actually paint through.
-  // Fake one, same shape the identity-CTM block below uses.
+  // Fake one.
   let restoreGetContext = () => {}
   beforeEach(() => {
     restoreGetContext = stubGetContext({

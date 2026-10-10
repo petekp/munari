@@ -1,12 +1,15 @@
-// When the DIMENSIONS invalidate GL storage.
+// When the DIMENSIONS invalidate GPU storage.
 //
-// texStorage2D is immutable: three allocates once at first-upload
-// size and texSubImage2Ds every upload after, forever, without ever
-// re-reading the source's dimensions. (The mip count bakes at that
-// same allocation. The binding's source runtime chooses it.)
+// Three allocates a texture's GPU storage once, at first-upload size,
+// and every later upload writes into that allocation and never
+// reallocates when the source's dimensions change: WebGPU copies at
+// the GPUTexture's stored extent, and the WebGL 2 fallback calls
+// texStorage2D once and texSubImage2D (at the source's current size)
+// after. (The mip count bakes at
+// that same allocation. The binding's source runtime chooses it.)
 //
 // So a source canvas that changes size silently desynchronizes from
-// its own texture. A grow is rejected by the driver
+// its own texture. On WebGL, a grow is rejected by the driver
 // (`GL_INVALID_VALUE: glTexSubImage2DRobustANGLE: Offset overflows
 // texture dimensions`) and the texture keeps its stale texels; a
 // shrink SUCCEEDS, writing the new image into one corner of the old
@@ -27,7 +30,7 @@ export interface TextureStore {
 }
 
 /**
- * Whether this upload needs fresh GL storage: true unless the current
+ * Whether this upload needs fresh GPU storage: true unless the current
  * allocation is exactly the source's backing store. `null` means
  * nothing has been allocated yet.
  *

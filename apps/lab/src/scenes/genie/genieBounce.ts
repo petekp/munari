@@ -41,7 +41,6 @@ export interface BounceBody {
   outline: MarkOutline
 }
 
-/** How far the silhouette reaches from the center toward each wall. */
 /** How far a silhouette reaches toward each wall, from its own center. */
 interface Extents {
   l: number

@@ -16,7 +16,7 @@
 // one is released.
 //
 // Ownership: this component owns renderer creation and scheduling, both
-// registration directions, context loss, and cleanup. It owns nothing about
+// registration directions, renderer loss, and cleanup. It owns nothing about
 // what is drawn — camera, lights, controls, post-processing, and every scene
 // child stay the caller's.
 //
@@ -250,13 +250,13 @@ export function settleFrameloop(
 function SurfaceHostBridge({
   host,
   frameloop,
-  onContextLost,
+  onRendererLost,
   onDisplayScale,
   displaySized,
 }: {
   host: SurfaceHost
   frameloop: CanvasProps['frameloop']
-  onContextLost: () => void
+  onRendererLost: () => void
   onDisplayScale: (scale: number) => void
   displaySized:boolean
 }) {
@@ -409,17 +409,17 @@ function SurfaceHostBridge({
       host.setContextLost(true)
       // The canvas can keep compositing its last frame over the page HTML.
       gl.domElement.style.visibility = 'hidden'
-      onContextLost()
+      onRendererLost()
     }
     return () => {
       gl.onDeviceLost = report
     }
-  }, [gl, host, onContextLost])
+  }, [gl, host, onRendererLost])
 
   return null
 }
 
-/** The R3F-side rendering of every page-declared WebGL presentation. */
+/** The R3F-side rendering of every page-declared scene presentation. */
 function SurfaceInwardPresenters({ host }: { host: SurfaceHost }) {
   const entries = useSyncExternalStore(
     useMemo(() => host.subscribePresenters.bind(host), [host]),
@@ -451,7 +451,7 @@ function SurfacePointerBridge({ host }: { host: SurfaceHost }) {
  * rather than from a React root created inside the parked element, and that
  * placement is the whole reason this component exists: a portal keeps the
  * source content in one reconciler, so a provider mounted above
- * `SurfaceCanvas` reaches a `<Surface source>` declared deep in the scene.
+ * `SurfaceCanvas` reaches a `<SceneSurface.HTML>` declared deep in the scene.
  * A second root would not, and every scene would have to re-plumb its
  * theme, store, and router by hand.
  */
@@ -491,7 +491,7 @@ export function SurfaceCanvas({
   // An id change mints a new candidate before its mount effect runs. Do not
   // render one commit through the previous id's host while state catches up.
   const host = mounted.candidate === candidate ? mounted.host : candidate
-  const [contextLost, setContextLost] = useState(false)
+  const [rendererLost, setRendererLost] = useState(false)
   const [created, setCreated] = useState(false)
   const [displayScale, setDisplayScale] = useState(1)
   const nativeDpr=useSurfaceDevicePixelRatio()
@@ -538,13 +538,13 @@ export function SurfaceCanvas({
   }, [style, id])
 
   // Chained, not replaced: the host needs the store the moment it exists,
-  // and a caller's own onCreated (renderer configuration, tone mapping,
-  // shadow setup) must still run — after ours, so it has the last word
-  // over anything the host touched.
+  // and a caller's own onCreated (renderer configuration, shadow setup)
+  // must still run — after ours, so it has the last word over anything the
+  // host touched.
   const handleCreated = useCallback<NonNullable<CanvasProps['onCreated']>>(
     (state) => {
       setCreated(true)
-      setContextLost(false)
+      setRendererLost(false)
       if (replacement.current) replacement.current = { createdAt: performance.now() }
       onCreated?.(state)
     },
@@ -552,11 +552,11 @@ export function SurfaceCanvas({
   )
 
   // Stable, so the bridge's listener effect is not torn down and rebuilt on
-  // every parent render — a context loss arriving in that gap is a canvas
+  // every parent render — a renderer loss arriving in that gap is a canvas
   // that never says it died.
   const onRendererLostRef = useLatest(onRendererLost)
-  const handleContextLost = useCallback(() => {
-    setContextLost(true)
+  const handleRendererLost = useCallback(() => {
+    setRendererLost(true)
     onRendererLostRef.current?.()
     const previous = replacement.current
     if (previous && performance.now() - previous.createdAt < REPEATED_LOSS_MS) return
@@ -564,7 +564,7 @@ export function SurfaceCanvas({
     setRendererMount((mount) => mount + 1)
   }, [onRendererLostRef])
 
-  const showFallback = fallback !== undefined && (contextLost || !created)
+  const showFallback = fallback !== undefined && (rendererLost || !created)
 
   // The wrapper is CLEAR and the canvas inside re-enables itself.
   //
@@ -600,7 +600,7 @@ export function SurfaceCanvas({
             <SurfaceHostBridge
               host={host}
               frameloop={frameloop}
-              onContextLost={handleContextLost}
+              onRendererLost={handleRendererLost}
               onDisplayScale={setDisplayScale}
               displaySized={resize?.offsetSize!==true}
             />

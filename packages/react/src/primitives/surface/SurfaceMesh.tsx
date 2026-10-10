@@ -188,9 +188,10 @@ let lodKeySeq = 0
 let lodPhaseSeq = 0
 let presenterSeq = 0
 
-// WebGPURenderer reports its internal target during every draw, so only the
-// SurfaceCanvas frame tail can tell that a frame reached the canvas
-// (decisions.md #69). Without one, no presenter can release the page.
+// Outside a SurfaceCanvas, WebGPURenderer's output pass reports its internal
+// target during every draw, so a canvas draw looks like an off-screen draw and
+// needs the frame tail only SurfaceCanvas provides (decisions.md #69, #72).
+// Without one, no presenter can release the page.
 let reportedHostless = false
 function reportHostless(): void {
   if (reportedHostless || !isDevelopmentRuntime()) return
@@ -236,7 +237,7 @@ export function SurfaceMesh({ surface, part, ...props }: SurfaceMeshProps) {
     )
   }
   const partId = part ?? inheritedPart?.id ?? DEFAULT_PART
-  const registerKey = useMemo(() => `webgl-${presenterSeq++}`, [])
+  const registerKey = useMemo(() => `inward-${presenterSeq++}`, [])
   const host = root?.host ?? null
   const mounted = useSurfaceCanvasPresence(store)
   const handleValue = useMemo(() => ({ handle: store.handle, store }), [store])
@@ -437,8 +438,8 @@ function SurfacePresenter({
   const authoredRaycastRef = useLatest(authoredRaycast)
   const radiiRef = useRef<[number, number, number, number]>([0, 0, 0, 0])
   const radiusUniforms = useRef({
-    uMunariRadii: uniform(new THREE.Vector4(0, 0, 0, 0)),
-    uMunariSize: uniform(new THREE.Vector2(width, height)),
+    radii: uniform(new THREE.Vector4(0, 0, 0, 0)),
+    size: uniform(new THREE.Vector2(width, height)),
   })
   // Callbacks a slotted material runs before each draw (`beforeDraw`).
   const beforeDraws = useRef(new Set<() => void>())
@@ -517,7 +518,7 @@ function SurfacePresenter({
   // content root, so the region outside a rounded corner is opaquely
   // PAINTED — measured at 255,255,255,255 under a 14px-radius card.
   useEffect(() => {
-    radiusUniforms.current.uMunariSize.value.set(width, height)
+    radiusUniforms.current.size.value.set(width, height)
     const corners = Array.isArray(radius) ? radius : [radius, radius, radius, radius]
     // SAFETY: four corners either way — the authored tuple, or one number
     // written to all four — so the map yields exactly four strings. `map`
@@ -526,7 +527,7 @@ function SurfacePresenter({
     const next: [number, number, number, number] =
       radius === 'auto' ? (chromeRadii ?? [0, 0, 0, 0]) : resolveRadii(lengths, width, height)
     radiiRef.current = next
-    radiusUniforms.current.uMunariRadii.value.set(next[0], next[1], next[2], next[3])
+    radiusUniforms.current.radii.value.set(next[0], next[1], next[2], next[3])
     const mat = materialRef.current
     if (mat) {
       // MSAA dithers the analytic edge smooth where plain discard would
@@ -1091,8 +1092,8 @@ function SurfacePresenter({
     const created = new MeshBasicNodeMaterial({ color: '#ffffff', premultipliedAlpha: true })
     const mask = surfaceRadiusMask(
       uv(),
-      radiusUniforms.current.uMunariSize,
-      radiusUniforms.current.uMunariRadii,
+      radiusUniforms.current.size,
+      radiusUniforms.current.radii,
     )
     created.opacityNode = Fn(() => {
       Discard(diffuseColor.a.mul(mask).lessThan(0.004))
@@ -1296,8 +1297,8 @@ function SurfacePresenter({
   // that compiles once and then never moves.
   const materialSlot = useMemo<SurfaceMaterialValue>(
     () => ({
-      radii: radiusUniforms.current.uMunariRadii,
-      size: radiusUniforms.current.uMunariSize,
+      radii: radiusUniforms.current.radii,
+      size: radiusUniforms.current.size,
       transparent,
       beforeDraw(callback) {
         beforeDraws.current.add(callback)
@@ -1320,9 +1321,8 @@ function SurfacePresenter({
 
   // Without the capability there is no capture and no texture, so the mesh
   // would draw a bare slate rectangle in front of a page that is still
-  // perfectly visible. Drawing nothing is the honest answer: a Twin degrades
-  // to its DOM presentation, and an exclusive Surface never leaves `dom`
-  // because no presenter can prove a thing.
+  // perfectly visible. Drawing nothing is the honest answer: the Surface
+  // never leaves the page, because no presenter can prove a thing.
   if (!store.getState().supported || !texture) return null
 
   return (

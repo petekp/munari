@@ -51,8 +51,9 @@ export function createLensMaterial(surface: SurfaceNodes): MeshBasicNodeMaterial
 
     const lit = c.rgb.mul(shade).add(spec.mul(0.32).add(rim.mul(0.1)).mul(c.a))
     const covered = vec4(lit, c.a).mul(surface.radiusMask())
-    // The GLSL wrote the sampled (linear) values to the canvas with no sRGB
-    // encode, so this vec4 is already the canvas value.
+    // The linear sample reaches the canvas unencoded, the look the lens
+    // was tuned on. premultipliedOutput would sRGB-encode it and brighten
+    // the midtones (decisions.md #72).
     return encodedOutput(covered)
   })()
   return material

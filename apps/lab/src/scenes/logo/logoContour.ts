@@ -393,8 +393,9 @@ function nestIslands(
 }
 
 /**
- * Trace `alpha` (row-major, row 0 at the BOTTOM — the order a GL
- * readback hands back) into normalized islands.
+ * Trace `alpha` (row-major, row 0 at the BOTTOM — the order
+ * logoFields' readAlphaField returns on either backend) into
+ * normalized islands.
  *
  * Returns outer rings paired with the holes they enclose, largest ring
  * first. An empty or fully-covered grid both return sensibly: nothing,

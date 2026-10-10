@@ -3,10 +3,10 @@
 // edge energy was 0.755 of native HTML, and a grid-aligned draw restored 1.000.
 // Only rendered matrices change. Scene transforms and physics remain the caller's.
 import { pixelGridSnap } from '@munari/core'
-import { Camera, Matrix4, Mesh, PlaneGeometry, Vector3, type BufferAttribute, type InterleavedBufferAttribute, type WebGLRenderTarget } from 'three'
+import { Camera, Matrix4, Mesh, PlaneGeometry, Vector3, type BufferAttribute, type InterleavedBufferAttribute, type RenderTarget } from 'three'
 
 interface Rectangle { left:number; top:number; width:number; height:number }
-interface PassHistory { screen:Rectangle|null; targets:WeakMap<WebGLRenderTarget,Rectangle> }
+interface PassHistory { screen:Rectangle|null; targets:WeakMap<RenderTarget,Rectangle> }
 interface GeometryRecord { position:BufferAttribute|InterleavedBufferAttribute; uv:BufferAttribute|InterleavedBufferAttribute; version:number; uvVersion:number; flat:boolean }
 const geometryRecords = new WeakMap<PlaneGeometry,GeometryRecord>()
 const PRECISION = 1e-4 // Projected-pixel roundoff, below the phase budget in decision #44.
@@ -37,7 +37,7 @@ function projectedRectangle(tl:Vector3,tr:Vector3,bl:Vector3,br:Vector3):Rectang
  return box.width>0&&box.height>0?box:null
 }
 export interface SurfaceRasterInput {
- mesh:Mesh; camera:Camera; target:WebGLRenderTarget|null
+ mesh:Mesh; camera:Camera; target:RenderTarget|null
  viewportWidth:number; viewportHeight:number
  sourceWidth:number; sourceHeight:number; density:number; densityY:number
  textureWidth:number; textureHeight:number

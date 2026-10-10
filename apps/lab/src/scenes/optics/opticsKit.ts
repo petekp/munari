@@ -87,7 +87,7 @@ export const KIT: readonly Instrument[] = [
     ior: 1.52,
     tier: 3,
     mode: 'glass',
-    // Limit for this geometry is 3.08×; at 3.00 the rim reads 3.83×.
+    // Limit for this geometry is 3.17×; at 3.00 the rim reads 3.83×.
     collar: { label: 'power', min: 1.2, max: 3, start: 1.8, format: power },
     metal: '#b7913f',
     tint: 0.07,

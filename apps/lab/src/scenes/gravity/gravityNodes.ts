@@ -4,12 +4,12 @@
 //
 // The law: both textures are premultiplied (decisions.md #5), so both
 // materials blend premultiplied, and each returns the color its WebGL
-// predecessor put on the canvas. On main the native word drew through a
-// plain MeshBasicMaterial with `premultipliedAlpha`, whose shader encodes
-// sRGB and then multiplies rgb by alpha again; the native output keeps
-// that. The Surface word lands at the capture's page value through
-// premultipliedOutput, as the default Surface.Mesh material does
-// (decisions.md #72).
+// predecessor put on the canvas. Before the WebGPU migration, the native
+// word drew through a plain MeshBasicMaterial with `premultipliedAlpha`,
+// whose shader encodes sRGB and then multiplies rgb by alpha again; the
+// native output keeps that. The Surface word lands at the capture's page
+// value through premultipliedOutput, as the default Surface.Mesh material
+// does (decisions.md #72).
 //
 // Ownership: Gravity.tsx and gravitySurfaces.tsx own the meshes and the
 // textures' lifetimes; this module only builds materials.

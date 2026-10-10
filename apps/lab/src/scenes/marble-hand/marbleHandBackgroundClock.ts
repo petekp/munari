@@ -76,6 +76,6 @@ export function createMarbleBackgroundClock(): MarbleBackgroundClock {
 // copy are separate React trees, so a prop or context could not join them.
 export const marbleBackgroundClock = createMarbleBackgroundClock()
 
-// The still every reduced-motion reader sees. Chosen because all four
+// The still every reduced-motion reader sees. Chosen because all three
 // fields have left their t = 0 symmetry by then and none is mid-sweep.
 export const MARBLE_BACKGROUND_REDUCED_TIME = 37.5

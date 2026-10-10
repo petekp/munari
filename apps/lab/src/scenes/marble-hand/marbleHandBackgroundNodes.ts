@@ -39,7 +39,6 @@ import {
   normalize,
   pow,
   screenCoordinate,
-  screenSize,
   sin,
   smoothstep,
   step,
@@ -462,11 +461,8 @@ function tide(kit: FieldKit): Node<'vec3'> {
   color.addAssign(vec3(0.6, 0.55, 0.95).mul(ghost(length(s.add(orb.mul(0.35))), 11)).mul(0.08).mul(flareBreath))
   color.addAssign(vec3(1.0, 0.8, 0.55).mul(ghost(length(s.add(orb.mul(0.75))).sub(0.125), 55)).mul(0.09).mul(flareBreath))
 
-  // The dark gradients band without a breath of grain. The hash reads
-  // GL's bottom-up fragment coordinate, so the grain matches the GLSL
-  // field on the canvas; screenCoordinate counts rows from the top.
-  const fragCoord = vec2(screenCoordinate.x, screenSize.y.sub(screenCoordinate.y))
-  color.addAssign(hash21(fragCoord).sub(0.5).mul(0.012))
+  // The dark gradients band without a breath of grain.
+  color.addAssign(hash21(screenCoordinate).sub(0.5).mul(0.012))
 
   return toLinear(color)
 }
@@ -606,9 +602,9 @@ export function createMarbleBackgroundMaterial(theme: MarbleHandThemeId): Marble
   })
   const field = MARBLE_BACKGROUND_FIELDS[theme]
   // Linear colour at alpha 1. The page canvas's per-fragment conversion
-  // encodes it as WebGL's colorspace_fragment did; the reflection's linear
-  // cube target stores it unconverted, as it did on WebGL. The graph is
-  // built inside the Fn: its If, Loop and assignments need a stack.
+  // encodes it; the reflection's linear cube target stores it unconverted.
+  // The graph is built inside the Fn: its If, Loop and assignments need a
+  // stack.
   material.outputNode = Fn(() => vec4(field(fieldKit(values)), 1))()
   return Object.assign(material, { field: values })
 }

@@ -36,10 +36,10 @@ export interface FisheyeParams {
   amplitude: number
 }
 
-// radius spans ~2.7 rows of the scene's 44px list — wide enough that a
+// radius spans ~5.5 of the scene's 22px rows — wide enough that a
 // neighbor row visibly swells before the cursor reaches it, narrow
-// enough that the rim shift (A−1)·R/2 = 60px exceeds one row, which is
-// what gives the gate its teeth (fisheyeLaw.test.ts pins the 60).
+// enough that the rim shift (A−1)·R/2 = 60px clears nearly three rows,
+// which is what gives the gate its teeth (fisheyeLaw.test.ts pins the 60).
 export const FISHEYE_DEFAULTS: FisheyeParams = { radius: 120, amplitude: 2 }
 
 /** Local magnification at content position y for a lens at `focus`. */

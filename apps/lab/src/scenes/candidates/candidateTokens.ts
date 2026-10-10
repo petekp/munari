@@ -1,4 +1,4 @@
-// A four-colour scanner for the one snippet the copy candidate shows.
+// A five-colour scanner for the one snippet the copy candidate shows.
 //
 // Not a syntax highlighter in any general sense, and deliberately not a
 // dependency: the copy effect needs colour in the block so that a cloud of

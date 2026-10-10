@@ -2,17 +2,17 @@
 // page tree and a scene tree.
 //
 // The law: registration is by NAME, never by React context. A page-side
-// `<Surface.Mesh>` and a Canvas-side `<Surface source>` are declared in
+// `<Surface.Mesh>` and a Canvas-side `<SceneSurface.HTML>` are declared in
 // trees that cannot see each other — react-dom's portals do not cross the
 // three.js reconciler, and the R3F scene is not an ancestor of the page —
 // so the only thing both sides can hold is a string. One unnamed host is
-// the default; several hosts without an explicit `canvasId` prop is a fault
-// reported in development, because silently picking one produces a Surface
-// that renders in the wrong canvas and nothing says so.
+// the default; several hosts without an explicit `canvasId` prop is a reported
+// fault, because silently picking one produces a Surface that renders in the
+// wrong canvas and nothing says so.
 //
 // Two directions cross here, and they are not symmetric. INWARD is a React
 // element that must be rendered by the R3F reconciler (a page-declared
-// WebGL presentation). OUTWARD is a DOM container that must be filled by a
+// scene presentation). OUTWARD is a DOM container that must be filled by a
 // react-dom portal (a Canvas-declared source). Each side publishes to a
 // store the other side subscribes to, so neither owns the other's commit.
 //
@@ -38,7 +38,7 @@ export interface SurfaceSourceEntry {
   readonly content: ReactNode
 }
 
-/** One page-declared WebGL presentation waiting for the R3F reconciler. */
+/** One page-declared scene presentation waiting for the R3F reconciler. */
 export interface SurfacePresenterEntry {
   readonly key: string
   readonly element: ReactElement

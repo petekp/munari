@@ -12,7 +12,7 @@ import { float, smoothstep, vec2 } from 'three/tsl'
  * rectangle's edge, negative inside. `radii` is (top-left, top-right,
  * bottom-right, bottom-left) in CSS px; `size` is the source's CSS size.
  */
-export function surfaceRadiusDistance(
+function surfaceRadiusDistance(
   coordinates: Node<'vec2'>,
   size: Node<'vec2'>,
   radii: Node<'vec4'>,

@@ -36,9 +36,10 @@
 //     cap is the sheet again at the back of the slab, wound the other
 //     way so it faces the viewer who can see it, and it costs nothing
 //     in the common pose: back-facing, culled before it rasterizes.
-//   · Walls are indexed FIRST. Index order is draw order, and the walls
-//     are opaque while the sheet has a soft edge: walls down, sheet
-//     blended over them, no rim where the fringe meets the wall.
+//   · The cap and walls are indexed before the sheet. Index order is
+//     draw order, and the walls are opaque while the sheet has a soft
+//     edge: cap and walls down, sheet blended over them, no rim where
+//     the fringe meets the wall.
 //
 // Winding: rings arrive counter-clockwise for outer, clockwise for
 // holes (logoContour's contract), and one triangle order serves both —

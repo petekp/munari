@@ -93,7 +93,7 @@ presenter proof for readiness and separate evidence for actual presentation.
 Marble Hand illustrates the fourth relationship: native page content supplies
 reflections while a hand and shadow draw over it. Plume keeps native editing
 outside its captured ink. Neither requires turning the visible page into a
-WebGL replica. See their contracts in [the lab guide](../apps/lab/README.md).
+scene-rendered replica. See their contracts in [the lab guide](../apps/lab/README.md).
 
 ## Keep the observable facts separate
 

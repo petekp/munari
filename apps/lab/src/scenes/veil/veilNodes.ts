@@ -11,10 +11,10 @@
 // number and cannot disagree — the hold fix that replaced trying to
 // outguess the compositor's scroll (see Veil.tsx).
 //
-// Three passes, all 13 taps:
+// Three passes; the two blur passes take 13 taps each:
 //
-//   copy   article texture -> window RT   (mipmapped on write)
-//   pass   horizontal blur -> strip RT    (mipmapped on write)
+//   copy   article texture -> window RT   (one sample, mipmapped on write)
+//   blur   horizontal blur -> strip RT    (mipmapped on write)
 //   band   vertical blur, fade, encode -> the quad on screen
 //
 // Why the copy pass exists: a 13-tap kernel spaced radius/6 apart is a
@@ -33,8 +33,7 @@
 // what veilLaw.test.ts pins on the JS side.
 //
 // Both offscreen passes draw through `passMaterial` (@petepetrash/munari/advanced),
-// so a row computed at uv.y = v is the row a later sample at v reads, and
-// every coordinate below is the same arithmetic the GL version did.
+// so a row computed at uv.y = v is the row a later sample at v reads.
 //
 // Everything before the band's encode stays linear premultiplied: the
 // sampler decodes sRGB on read (texture.colorSpace), both RTs are

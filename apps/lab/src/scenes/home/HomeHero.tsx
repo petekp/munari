@@ -11,10 +11,7 @@ import {
 import { readSurfaceFrameState } from '@petepetrash/munari/advanced'
 import type { HomeFlyerStore } from './homeFlyer'
 
-import { PAPER_WIDTH, PAPER_HEIGHT, type PaperInteraction } from './homePaperLaw'
-
-export const HERO_W = PAPER_WIDTH
-export const HERO_H = PAPER_HEIGHT
+import { PAPER_WIDTH as HERO_W, PAPER_HEIGHT as HERO_H, type PaperInteraction } from './homePaperLaw'
 
 export type HolderRef = React.RefObject<HTMLDivElement | null>
 export type LandRef = { current: boolean }

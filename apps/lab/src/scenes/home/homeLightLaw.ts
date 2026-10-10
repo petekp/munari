@@ -12,10 +12,10 @@
 //
 // Fault: the lamp spike (2026-09-01) hard-coded one standoff for the
 // headline only. The masthead has three kinds of content (glyphs, raised
-// controls, wells). These plane intersections are the reference cases for
-// the shader's thin surfaces; curved receivers require tracing the full ray.
+// controls, wells). The shader uses these plane intersections for its thin
+// surfaces; curved receivers require tracing the full ray.
 //
-// Ownership: this module owns the projection and the fixed standoffs.
+// Ownership: this module owns the default light height and the fixed standoffs.
 // homeLight.ts owns the node graph that applies them per fragment. HomeMasthead.tsx
 // owns where the light is.
 
@@ -34,21 +34,3 @@ export const RAISED_STANDOFF = 40
 export const POSTCARD_STANDOFF = 12
 /** Inputs and code wells sink this far in, CSS px. Decision #50. */
 export const WELL_DEPTH = 3
-
-/** The page point whose ink occludes `p`, for a plane `standoff` px above the page. */
-export function occluderPoint(light: Point, p: Point, standoff: number, height = LIGHT_HEIGHT): Point {
-  const k = 1 - standoff / height
-  return { x: light.x + (p.x - light.x) * k, y: light.y + (p.y - light.y) * k }
-}
-
-/** Where the ray to a well-floor point `p`, `depth` px down, crosses the page surface. */
-export function wellRimPoint(light: Point, p: Point, depth: number, height = LIGHT_HEIGHT): Point {
-  const k = height / (height + depth)
-  return { x: light.x + (p.x - light.x) * k, y: light.y + (p.y - light.y) * k }
-}
-
-/** Length of the shadow thrown at `p`: how far its occluder point sits from it. */
-export function throwLength(light: Point, p: Point, standoff: number, height = LIGHT_HEIGHT): number {
-  const q = occluderPoint(light, p, standoff, height)
-  return Math.hypot(p.x - q.x, p.y - q.y)
-}

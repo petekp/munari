@@ -1,5 +1,5 @@
 // The knobs scene's tweak panel — a DOM overlay, deliberately OUTSIDE
-// the Canvas and the captured Surface, for the reason GenieTweaks.tsx
+// the Canvas and the captured Surface, for the reason GlassTweaks.tsx
 // carries in full: a tuning surface has to be the one thing in the
 // frame you can trust, so measurement infrastructure stays out of the
 // excursion. Sliders write into knobsTuning and apply live;

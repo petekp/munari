@@ -3,10 +3,10 @@
  * Everything here styles ORDINARY DOM. There is no Surface-specific rule in
  * this file and there deliberately can't be: the whole premise is that the
  * cards are page elements first, and enter the scene only for as long as
- * someone is holding one. The one thing that IS unusual is the pair of
- * custom properties near the bottom — `--l14-lift` and `--l14-near` are
- * written by the WebGL layer every frame, so a rigid-body simulation is
- * driving real CSS on real elements. That is the loop closing.
+ * someone is holding one. The one thing that IS unusual is the slot's
+ * `--l14-near` custom property: the airborne card's physics writes it every
+ * frame, so a rigid-body simulation is driving real CSS on real elements.
+ * That is the loop closing.
  *
  * The dress is the "bench" language (docs/spikes/design-language.html) after
  * its Munari pass: card stock rather than a machined chassis, BLACK planes

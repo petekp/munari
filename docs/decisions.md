@@ -509,6 +509,16 @@ effect. `FocusOrbitRig` and `arcLayout` leave the package entirely:
 copyable behaviors are `registry/` policy (#10), welded to the lab
 reference.
 
+**Amendment (2026-10-08, by #71).** The corner mask is a node.
+`SURFACE_RADIUS_GLSL`, `lib/surfaceRadiusGlsl.ts` and the `uMunariRadii` /
+`uMunariSize` / `munariRadiusMask(vUv)` names are removed, because
+`WebGPURenderer` runs no GLSL. The shader twin of core's `surfaceRadiusSd` is
+now the TSL `surfaceRadiusMask()` in `lib/surfaceRadius.ts`, exported from the
+root. A custom material gets the capture, radii and size as nodes from
+`useSurfaceNodes()`, plus a `radiusMask()` builder over them. Those are the
+consumer-visible names now. The twin rule is unchanged: the conformance suite
+pins the JS SDF, and the node must compute the same distance.
+
 ## #7 — The kernel answers for what it observes; the app owns the window (2026-08-03, lab app)
 
 Two kernel-surface additions arrived with the lab app, both pulled
@@ -657,6 +667,7 @@ checks, so a bundled copy would fail silently in a consumer who already
 has one. The externals list is not an optimization; it is the singleton
 contract.
 
+<a id="12"></a>
 ## #12 — The capability gate runs before construction, not inside it (2026-08-03, paint layer)
 
 `createDomTextureSource` now calls `detectHtmlInCanvas()` first and
@@ -694,6 +705,7 @@ cannot exist; the gate correctly refused them. They now stub
 `CanvasRenderingContext2D` too — which happy-dom does not define as a
 global at all, the reason the probe reaches it through `typeof`.
 
+<a id="13"></a>
 ## #13 — The paint source has a node door, and it is adopt-only (2026-08-03, paint layer)
 
 **Decision.** `createDomTextureSource` takes `string | HTMLElement`.
@@ -3004,6 +3016,12 @@ legacy capture branch. That branch and unread private context metadata remain.
 They are not current API examples; removing the branch is a behavioral retirement
 for untyped callers, separate from deleting an unreachable module.
 
+**Amendment (2026-10-09, react binding).** The internal root's legacy
+`source`/`adopt` capture branch is deleted. `SurfaceRoot` no longer reads
+`source`, `adopt`, `size`, `resolution`, `mirrorU` or `onChrome`, so an untyped
+prop no longer reaches a capture path at the root. The unread private
+`SurfaceInstanceContext` metadata remains.
+
 <a id="50"></a>
 
 ## #50 — One light for native type and the retained postcard (2026-09-07)
@@ -4555,9 +4573,7 @@ of its own 683 ms. That defect is open.
 
 ## #69 — SurfaceCanvas renders with WebGPURenderer (2026-10-08, react binding + instruments)
 
-**Status: implemented for `SurfaceCanvas` and `FrameSurface` on
-`pkp/webgpu-restart`. `Surface`, its materials, the lab, and the registry are
-not ported.**
+**Status: implemented on main (PR #112).**
 
 `SurfaceCanvas` creates Three's `WebGPURenderer` and awaits `init()`. The
 renderer uses WebGPU when the browser offers it and falls back to WebGL 2.
@@ -4603,6 +4619,14 @@ callback therefore cannot tell a canvas draw from an off-screen one. Every
 closes when `render()` returns with no render target set (#25). In a plain
 Fiber `Canvas`, `FrameSurface` issues draw receipts only.
 
+**Amendment (2026-10-08, by #72).** Inside a `SurfaceCanvas`,
+`DirectRenderPipeline` leaves `getRenderTarget()` `null` during a canvas draw.
+A `FrameSurface` canvas draw therefore presents directly. Only a color-writing
+draw into a render target defers to the frame tail. The `SurfaceCanvas`
+requirement stands. Without the pipeline, a `WebGPURenderer` draws every frame
+into its internal target, so in a plain Fiber `Canvas` it never shows a `null`
+target.
+
 **A receipt is spent when it is delivered.** The host discards a deferred
 receipt at the start of the next frame if its own frame never reached the
 canvas. `FrameSurface` used to mark the receipt's tuple as presented when it
@@ -4626,8 +4650,10 @@ frame fails it at RGB error 250.
 
 ## #70 — FrameSurface issues no receipt for a frame it could not draw (2026-10-08, react binding)
 
-**Status: implemented on `pkp/webgpu-restart` for `FrameSurface`. `Surface`
-gets the same checks when it is ported.**
+**Status: implemented for `FrameSurface` on main (PR #112). `Surface.Mesh` has
+the empty-geometry check, and its DOM captures stop at `MAX_TEXTURE_EDGE`. It
+needs no origin check, because neither capture engine taints its canvas
+(#71).**
 
 Three runs a mesh's draw callbacks and a texture's `onUpdate` even when nothing
 reached the canvas. A disposable probe drew one `FrameSurface` inside a
@@ -4679,8 +4705,8 @@ what repeats the errors after it was not traced.
 
 ## #71 — Surface draws with node materials (2026-10-08, react binding + instruments)
 
-**Status: implemented for `Surface.Mesh` and its materials on
-`pkp/webgpu-restart`. The lab scenes and the registry still use GLSL.**
+**Status: implemented on main (PR #112), for `Surface.Mesh`, its materials,
+the lab scenes, and the registry.**
 
 `WebGPURenderer` runs no GLSL, on WebGPU or on its WebGL 2 fallback. A
 `ShaderMaterial` or an `onBeforeCompile` splice compiles nowhere and draws
@@ -4714,6 +4740,12 @@ a draw `getRenderTarget()` is never `null`, so every color-writing pass defers
 to the frame tail. A `Surface.Mesh` outside a `SurfaceCanvas` cannot release
 its page, and reports that once in development.
 
+**Amendment (2026-10-08, by #72).** Inside a `SurfaceCanvas`,
+`getRenderTarget()` is `null` during a canvas draw. A color-writing
+`Surface.Mesh` pass to the canvas therefore presents in the mesh's post-draw
+callback. Only a color-writing pass into a render target defers to the frame
+tail. Outside a `SurfaceCanvas` the mesh still cannot release its page.
+
 **The warm-up's write masks work unchanged.** The mesh still turns color,
 depth and stencil writes off for one pass and restores them after it (#25).
 `WebGPUBackend.needsRenderUpdate` compares a material's write flags before
@@ -4729,6 +4761,12 @@ evidence from a draw whose geometry has nothing to draw. DOM captures already
 stop at `MAX_TEXTURE_EDGE`, 4096 px, below WebGPU's default device limit of
 8192. Whether `drawElementImage` can taint a capture canvas is unverified, so
 `Surface` has no origin check yet.
+
+**Amendment (2026-10-09, react binding).** `Surface` needs no origin check.
+Neither capture engine taints its canvas (platform.md #34,
+`npm run probe:capture-origin`). Cross-origin content the page may not read is
+left out of the capture instead. A tainted source canvas passed to
+`FrameSurface` is still handled as #70 describes.
 
 **Three `0.186.1` is the minimum.** In `0.185.1`, disposing a geometry after
 its mesh has drawn a replacement deletes the replacement's GPU buffers.
@@ -4768,7 +4806,7 @@ The fixtures read pixels after `render()` returns instead of with
 
 ## #72 — SurfaceCanvas draws through DirectRenderPipeline (2026-10-08, react binding)
 
-**Status: implemented on `pkp/webgpu-restart`.**
+**Status: implemented on main (PR #112).**
 
 `WebGPURenderer` draws a frame for the canvas into a linear half-float
 target, then converts it in one full-screen pass that unpremultiplies,
@@ -4850,11 +4888,11 @@ which is why the planes differ in color.
 
 With the pipeline, `getRenderTarget()` returns `null` during a canvas draw
 again, so a presenter's canvas draws present directly instead of deferring to
-the frame tail (#69, #70).
+the frame tail (#69, #71).
 
 ## #73 — SurfaceCanvas replaces a lost renderer (2026-10-08, react binding + instruments)
 
-**Status: implemented on `pkp/webgpu-restart`.**
+**Status: implemented on main (PR #112).**
 
 A `WebGPURenderer` that loses its GPU never draws again. This holds on WebGPU
 and on the WebGL 2 fallback: Three reports the loss through
@@ -4910,7 +4948,7 @@ scenes failed the probe.
 
 ## #74 — Capture canvases use CPU storage on a software GPU (2026-10-09, kernel + react binding)
 
-**Status: implemented on `pkp/webgpu-restart`.**
+**Status: implemented on main (PR #112).**
 
 On a software WebGPU adapter, uploading a capture canvas blocks the page.
 Chrome copies a GPU-backed 2D canvas into a WebGPU texture by reading it back

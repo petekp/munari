@@ -14,30 +14,27 @@
 // Ownership: this module owns the lantern's geometry, materials, flame
 // light, and flicker animation. Lamp.tsx owns the scene, camera, environment
 // map, and when update()/dispose() run. lampNodes.ts owns the flame's
-// material. lampNodes.ts imports LANTERN_FLAME_HEIGHT so the 2D shadow
-// shader's light height can never disagree with where the flame actually
-// sits in this model.
+// material. Lamp.tsx hands the same tuning.lampHeight to update() and to the
+// shadow material, so the flame and the shadow's light height cannot
+// disagree.
 
 import * as THREE from 'three'
 import { MeshPhysicalNodeMaterial } from 'three/webgpu'
 import { applyLanternToneMapping, createLampFlameMaterial } from './lampNodes'
 
-// The flame's local height once the model is stood upright (see
-// createLampLantern's rotation below) — also the "H" the 2D shadow shader
-// projects shadows with. lampNodes.ts imports this rather than
-// duplicating the number, so the projected shadow and the rendered flame
-// can't drift apart. Mid-globe: the globe spans CHAMBER_BASE_Y to
-// CHAMBER_BASE_Y + GLOBE_HEIGHT, and the flame sits at its vertical center
-// (2026-09-01, silhouette rebuild).
+// The flame's starting local height once the model is stood upright (see
+// createLampLantern's rotation below): mid-globe, between CHAMBER_BASE_Y and
+// CHAMBER_BASE_Y + GLOBE_HEIGHT (2026-09-01, silhouette rebuild). update()
+// moves the flame to tuning.lampHeight.
 const CHAMBER_BASE_Y = 18
 const GLOBE_HEIGHT = 52
-export const LANTERN_FLAME_HEIGHT = CHAMBER_BASE_Y + GLOBE_HEIGHT / 2
-// Tallest point (the handle's peak) and widest point (the flared foot),
-// both CSS px — Lamp.tsx sizes the invisible drag hitbox from these.
+const LANTERN_FLAME_HEIGHT = CHAMBER_BASE_Y + GLOBE_HEIGHT / 2
+// Tallest point (the handle's peak), CSS px. Lamp.tsx's first-paint margin
+// and the top marker below use it; lamp.css hand-sizes the drag hitbox to
+// it and FOOT_BOTTOM_RADIUS.
 // Recomputed below from the connected handle's own arc radius (round 5) —
 // see HANDLE_ARC_RADIUS and domeBaseY.
 export const LANTERN_TOTAL_HEIGHT = 97
-export const LANTERN_MAX_RADIUS = 34
 
 // Blackened steel, varied slightly per part below so the cap, foot,
 // mullions, and handle don't read as one flat shader (round 5: "PBR level
@@ -157,9 +154,10 @@ const FLAME_LIGHT_COLOR = 0xff9a3c
 // flame's own brightness, the flame point light, the glass's emissive
 // warmth, and — via Lamp.tsx — the page's light pool, so all of them
 // breathe together rather than pulsing out of phase with each other (round
-// 4/5, 2026-09-01). The flame shader (below) runs the same three-frequency
-// mix internally for the tip's sway and height, at different phases so the
-// lean, the stretch, and this brightness wobble don't lock in step.
+// 4/5, 2026-09-01). The flame material (createLampFlameMaterial() in
+// lampNodes.ts) runs the same three-frequency mix internally for the tip's
+// sway and height, at different phases so the lean, the stretch, and this
+// brightness wobble don't lock in step.
 const FLICKER_FREQ_1_HZ = 1.7
 const FLICKER_FREQ_2_HZ = 2.9
 const FLICKER_FREQ_3_HZ = 0.4

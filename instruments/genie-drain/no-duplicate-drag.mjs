@@ -1,4 +1,4 @@
-// no-duplicate-drag — can a restored window leave its last WebGL image
+// no-duplicate-drag — can a restored window leave its last canvas image
 // behind when the live DOM window moves?
 //
 // The overlay normally runs continuously only while a sheet or dock ring is
@@ -65,7 +65,7 @@ try {
   )
   await sleep(700)
   if (!await page.evaluate(() => 'drawElementImage' in CanvasRenderingContext2D.prototype && window.__munari?.engine() === 'html-in-canvas'))
-    throw new Error('The enhanced renderer must be active to test a released WebGL image')
+    throw new Error('The enhanced renderer must be active to test a released canvas image')
 
   const client = await page.createCDPSession()
   if (SLOWCPU > 1) await client.send('Emulation.setCPUThrottlingRate', { rate: SLOWCPU })
@@ -190,7 +190,7 @@ try {
   if (duplicateFrames.length)
     problems.push(`${duplicateFrames.length} compositor frame(s) showed both window copies`)
   if (finalScore.old >= BLUE_FLOOR)
-    problems.push('the released WebGL window remained in the final compositor frame')
+    problems.push('the released canvas copy of the window remained in the final compositor frame')
   if (finalScore.moved < BLUE_FLOOR)
     problems.push('the moved native window was missing from the final compositor frame')
 

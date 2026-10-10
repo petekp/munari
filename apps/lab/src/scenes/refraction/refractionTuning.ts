@@ -82,7 +82,7 @@ export const refractionTuning = {
    */
   transmissionDelay: 0,
 
-  /** 24% over, which is 134px of travel across a 560px stage. Enough that
+  /** 12.5% over, which is 70px of travel across a 560px stage. Enough that
    *  the arriving page reads as coming from behind the glass rather than
    *  fading up in place. */
   approachZoom: 1.125,
@@ -158,11 +158,11 @@ export const refractionTuning = {
   bendTaperPx: 34,
 
   /**
-   * How many CSS px one texel of the lens field covers.
+   * How many CSS px one texel of the ink field covers.
    *
    * Wider than a word, so the front opens on the page's ink MASS and not on
    * its letterforms. Body text here sets 13px lines of about 7px glyphs; at
-   * 18 the whole field is 31x23 texels.
+   * 20 the whole field is 28x21 texels.
    *
    * This field now feeds only the aperture — the ink term of the front, and
    * the spread grown out of it. Nothing optical reads it since the drop's
@@ -176,9 +176,9 @@ export const refractionTuning = {
    * How far red and blue diverge from green, as a fraction of the bend.
    *
    * The fringe is this times twice the bend, so it lives exactly where the
-   * bend does: 4.15px across the contact line, 0.6px ten pixels in, nothing
-   * over the flat top. That is the shape colour should have — a spectrum on
-   * the meniscus and clean words inside it.
+   * bend does: 5.01px across the contact line, 0.71px one meniscus width in,
+   * nothing over the flat top. That is the shape colour should have — a
+   * spectrum on the meniscus and clean words inside it.
    *
    * Colour edges are much easier to see than position ones, so the useful
    * band is narrow. At 0.25 the arriving title fringed magenta and cyan at
@@ -189,7 +189,7 @@ export const refractionTuning = {
   // ── the aperture ─────────────────────────────────────────────────────
 
   /**
-   * Height of bare paper in the lens field. Not zero: the page is warm
+   * Height of bare paper in the ink field. Not zero: the page is warm
    * off-white, and half the field's texels sit at exactly this value.
    *
    * Read straight off the field's own histogram on 2026-08-22 — p25, p50 and
@@ -209,7 +209,6 @@ export const refractionTuning = {
    * flattens every text block to 1 and they arrive together — measured
    * 2026-08-22 at the old pair, the correlation between a cell's ink and when
    * it arrived was -0.007, which is to say the ink was not leading at all.
-   * At 0.28 that correlation is what the law's test pins.
    */
   apertureCeil: 0.255,
 
@@ -254,9 +253,10 @@ export const refractionTuning = {
   /**
    * How many CSS px one texel of the spread field covers.
    *
-   * Coarser than the lens by design — this field is thresholded, never
-   * differentiated, so it wants reach rather than fidelity. At 22px the whole
-   * spread is 25x19 texels and a pass over it costs 25 taps a texel.
+   * Coarser than the ink field by design. The material thresholds this field
+   * and takes its gradient over one spread texel either side, so it wants
+   * reach rather than fidelity. At 50px the whole spread is 11x8 texels and a
+   * pass over it costs 25 taps a texel.
    */
   spreadPx: 50,
 
@@ -269,8 +269,9 @@ export const refractionTuning = {
    * into one front and the page opens as a single sheet again.
    *
    * Converted to a pass count by dividing by `spreadPx`, so changing the
-   * resolution keeps the distance. 105 over a 22px texel is five passes,
-   * run twice — once outward from the ink, once inward from the paper.
+   * resolution keeps the distance. 125 over a 50px texel rounds to three
+   * passes, run twice — once outward from the ink, once inward from the
+   * paper.
    */
   spreadReachPx: 125,
 
@@ -304,16 +305,17 @@ export const refractionTuning = {
    * How much the spread is eased across its own texel boundaries when the
    * material reads it: 0 straight bilinear, 1 fully eased.
    *
-   * The spread is 25x19 texels over the stage, and bilinear reconstruction
+   * The spread is 11x8 texels over the stage, and bilinear reconstruction
    * is C0 — straight inside a texel, kinked at every boundary. The contact
    * line drawn from it is therefore a polygon of roughly one edge per texel
-   * it crosses, which is the stark faceting Pete photographed on 2026-08-23.
+   * it crosses, which is the stark faceting Pete photographed on 2026-08-23,
+   * when spreadPx was 22 and the spread was 25x19 texels.
    *
-   * Measured the same day at t=0.4, isolating the contact line by
-   * differencing a rim-on render against rim-off so page content cancels,
-   * then fitting every ridge pixel against its neighbours. Share of the line
-   * that is locally straight, at a 16px window — one texel is 22px, so that
-   * is the scale a facet lives at:
+   * Measured the same day at spreadPx 22 and t=0.4, isolating the contact
+   * line by differencing a rim-on render against rim-off so page content
+   * cancels, then fitting every ridge pixel against its neighbours. Share of
+   * the line that is locally straight, at a 16px window, chosen because one
+   * texel was then 22px and that is the scale a facet lived at:
    *
    *   rounding  0     0.25    0.5     0.75    1
    *   straight  32.6%  29.9%  22.7%   20.8%   11.4%
@@ -337,7 +339,7 @@ export const refractionTuning = {
    * The ends have to be absolute — nothing revealed at t=0, everything at
    * t=1 — and the seam has width, so the sweep has to clear the field's own
    * range by at least that width. It also caps the seam at half of itself —
-   * 0.025 field units here — because the field steps hard at the figure's
+   * 0.115 field units here — because the field steps hard at the figure's
    * border and an uncapped seam there would reach back past 1.0 and show a
    * sliver of the arriving page at t=0.
    */

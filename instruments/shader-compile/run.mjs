@@ -1,10 +1,9 @@
 // shader-compile — do the lab's shaders actually become programs?
 //
-// A shader in this repo is a JavaScript string until the moment a
-// browser compiles it, and nothing before that moment can tell you it
-// is wrong. typecheck sees a string. lint sees a string. The unit
-// suites read the string with regexes and answer only the questions
-// they were told to ask.
+// A shader in this repo is a TSL node graph. Three builds it into WGSL,
+// or GLSL on the WebGL 2 fallback, and only the browser's compile of
+// that code can tell you it is wrong. A graph that passes typecheck and
+// lint can still build code the browser rejects.
 //
 // The gap is not theoretical. Moving the letter's height description
 // into one shared GLSL block dropped `tFine` and `tCoarse`: declared in
@@ -93,9 +92,9 @@ if (!CHROME) skip('no Chrome executable found (set CHROME_PATH)')
 // program three builds. It keeps each shader's source next to its
 // handle, which is what turns "ERROR: 0:144" into a readable line.
 const INSTALL = () => {
-  window.__glslFails = []
+  window.__shaderFails = []
   const state = { compiled: 0, linked: 0 }
-  window.__glslState = () => ({
+  window.__shaderState = () => ({
     compiled: state.compiled,
     linked: state.linked,
     holds: document.querySelector('.logo-canvas')?.getAttribute('data-holds') === 'true',
@@ -115,7 +114,7 @@ const INSTALL = () => {
       module.getCompilationInfo().then((info) => {
         const errors = info.messages.filter((m) => m.type === 'error')
         if (errors.length) {
-          window.__glslFails.push({
+          window.__shaderFails.push({
             what: 'compile',
             log: errors.map((m) => `ERROR: 0:${m.lineNum}: ${m.message}`).join('\n'),
             src,
@@ -130,7 +129,7 @@ const INSTALL = () => {
         state.linked++
         const result = create.call(this, descriptor)
         if (result instanceof Promise) {
-          result.catch((error) => window.__glslFails.push({ what: 'link', log: String(error), src: '' }))
+          result.catch((error) => window.__shaderFails.push({ what: 'link', log: String(error), src: '' }))
         }
         return result
       }
@@ -139,13 +138,12 @@ const INSTALL = () => {
     GPUAdapter.prototype.requestDevice = async function (...args) {
       const device = await requestDevice.apply(this, args)
       device.addEventListener('uncapturederror', (event) => {
-        window.__glslFails.push({ what: 'link', log: String(event.error?.message ?? event.error), src: '' })
+        window.__shaderFails.push({ what: 'link', log: String(event.error?.message ?? event.error), src: '' })
       })
       return device
     }
   }
   const classes = [
-    'WebGLRenderingContext' in globalThis ? WebGLRenderingContext : null,
     'WebGL2RenderingContext' in globalThis ? WebGL2RenderingContext : null,
   ].filter(Boolean)
   for (const C of classes) {
@@ -159,7 +157,7 @@ const INSTALL = () => {
       compileShader.call(this, sh)
       state.compiled++
       if (!this.getShaderParameter(sh, this.COMPILE_STATUS)) {
-        window.__glslFails.push({
+        window.__shaderFails.push({
           what: 'compile',
           log: this.getShaderInfoLog(sh) || '(no info log)',
           src: sh.__src || '',
@@ -174,7 +172,7 @@ const INSTALL = () => {
       // this class of bug: a varying written by one stage and read by
       // the other under a different type, or one too many of them.
       if (!this.getProgramParameter(pr, this.LINK_STATUS)) {
-        window.__glslFails.push({
+        window.__shaderFails.push({
           what: 'link',
           log: this.getProgramInfoLog(pr) || '(no info log)',
           src: '',
@@ -293,13 +291,13 @@ try {
     const began = Date.now()
     await act()
     await sleep(1200)
-    let observed = await page.evaluate(() => window.__glslState())
+    let observed = await page.evaluate(() => window.__shaderState())
     while (!reached(observed) && Date.now() - began < STATE_DEADLINE_MS) {
       await sleep(100)
-      observed = await page.evaluate(() => window.__glslState())
+      observed = await page.evaluate(() => window.__shaderState())
     }
     const took = Date.now() - began
-    const fails = await page.evaluate(() => window.__glslFails.splice(0))
+    const fails = await page.evaluate(() => window.__shaderFails.splice(0))
     for (const f of fails) seen.push({ what, f })
     if (!reached(observed)) {
       for (const { what: state, f } of seen) console.error(`[${state}]\n${render(f)}`)

@@ -26,12 +26,12 @@
 //
 // - The page releases on EVIDENCE, never on hope: every incoming
 //   presenter has fired its post-draw presentation boundary
-//   (a color-writing draw completed — Surface.onFirstPresented — not
-//   merely an upload queued), and the pixels it will show carry content no
-//   older than the lift itself (decisions.md #65). Nothing waits for the
-//   content's own motion: it is frozen from the lift's first frame
-//   (decisions.md #66), so the capture and the page already agree
-//   (decisions.md #68).
+//   (a color-writing draw completed and recorded by `readinessProve`,
+//   not merely an upload queued), and the pixels it will show carry
+//   content no older than the lift itself (decisions.md #65). Nothing
+//   waits for the content's own motion: it is frozen from the lift's
+//   first frame (decisions.md #66), so the capture and the page already
+//   agree (decisions.md #68).
 // - A request that arrives mid-crossing REVERSES the crossing; it never
 //   skips to the far side. Skipping forward past the lift gate would
 //   release the page without evidence; skipping back past the landing
@@ -140,7 +140,7 @@ export function crossingFrame(
  *
  * Landing is exact. A driver that decays toward zero reaches 1e-9 and stays
  * there forever, so the page would never take the hold back and the content
- * would sit in WebGL at a progress no one can see is not zero.
+ * would sit on the canvas at a progress no one can see is not zero.
  */
 export function crossingDrive(
   state: CrossingState,

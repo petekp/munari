@@ -32,7 +32,7 @@ try {
       await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))
       assert.deepEqual(errors,[])
       if(process.env.OBSERVE_ONLY!=='1')for(const row of rows) {
-        assert.equal(row.error,0,`${row.name}: WebGL rejected the upload`)
+        assert.equal(row.error,0,`${row.name}: the GPU reported an error while uploading or drawing`)
         const blue=row.name.endsWith('-2')||row.name.endsWith('-3')
         assert.deepEqual(row.left,blue?[0,0,255,255]:[255,0,0,255],`${row.name}: left source pixels changed`)
         assert.deepEqual(row.right,blue?[255,255,0,255]:[0,255,0,255],`${row.name}: right source pixels changed`)

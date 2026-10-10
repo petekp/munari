@@ -422,16 +422,6 @@ describe('lampLit — one annunciator law for both renderers', () => {
     expect(new Set(KNOBS_LAMPS.map((l) => l.key)).size).toBe(KNOBS_LAMPS.length)
   })
 
-  // The hardware in Knobs.tsx pairs measured `.knb-lamp-bezel` centers
-  // with KNOBS_LAMPS BY INDEX, so DOM order and array order have to
-  // agree. The DOM order is the switch order, which makes this the
-  // assertion that keeps an emissive die over the right lens.
-  it('lists lamps in switch order, for the hardware that indexes them', () => {
-    expect(KNOBS_LAMPS.map((l) => l.key)).toEqual(
-      KNOBS_TOGGLES.filter((t) => KNOBS_LAMPS.some((l) => l.key === t.key)).map((t) => t.key),
-    )
-  })
-
   it('gives each lamp its own tone and a valid hex color', () => {
     expect(new Set(KNOBS_LAMPS.map((l) => l.tone)).size).toBe(KNOBS_LAMPS.length)
     for (const l of KNOBS_LAMPS) expect(l.color).toMatch(/^#[0-9a-f]{6}$/)
@@ -687,7 +677,7 @@ describe('litGate — the corona belongs to the picture, not the background', ()
   it('leaves every backdrop far under the picture, at every hue and scheme', () => {
     // A ratio, not a zero. The floor is tuned to the bottom of its range,
     // which lets the very brightest backdrop carry a trace of halo — and
-    // with the corona pulled in to 8 px that trace is wanted. What may
+    // with the corona pulled in to 13 px that trace is wanted. What may
     // never come back is the artificial glow standing off the panel's
     // edge against open background, so what is pinned is the gap: the
     // layers below open the gate to exactly 1, so this number IS the

@@ -41,11 +41,12 @@ import { premultipliedOutput, type SurfaceNodes } from '@petepetrash/munari'
 
 // ── the airborne copy's material ─────────────────────────────────────────
 //
-// `material="none"` hands the material slot to us so the card
-// can be UNLIT — a lit standard material would shade the texture and the
-// handoff would stop being invisible the moment a light moved. What it does
-// add is a gloss band keyed to the plate's own normal: the only cue that the
-// thing is tilted, since an unlit quad has no other way to say so.
+// Flight passes this as Surface.Mesh's `material` element. It stays UNLIT
+// like the default MeshBasicNodeMaterial: a lit standard material would
+// shade the texture, and the handoff would stop being invisible the moment
+// a light moved. What it adds is the bend, the crumple, and a gloss band
+// keyed to the plate's own normal: the only cue that the thing is tilted,
+// since an unlit quad has no other way to say so.
 
 /**
  * The sheet's shared state: the driver writes these objects every frame and
@@ -124,7 +125,8 @@ export function createCardMaterial(surface: SurfaceNodes, state: AeroState, glos
     // edge led the throw. Bowing toward the viewer keeps every bent
     // fragment strictly in front of the shadow at every altitude (a +z bow
     // in the plate's frame can only RAISE a vertex's world z for any bank
-    // < 90°), so the carve (#58) can never fight its own card.
+    // < 90°), so the shadow's depth carve (the renderOrder note in
+    // Flight.tsx) can never fight its own card.
     const p = vec3(positionGeometry.xy, positionGeometry.z.add(amt.mul(bow))).toVar()
 
     // ── the crumple: the sheet converges on a wad ──

@@ -81,7 +81,7 @@ function useExplodeSnapshot(): ExplodeSnapshot {
 // every frame while a slider is dragged, and the scene reads it inside
 // useFrame. Routing it through a re-render would rebuild six Surfaces'
 // props for a number only the transform cares about.
-const control = { spread: 1, target: 1 }
+const control = { spread: 1 }
 
 // ── the page half ────────────────────────────────────────────────────────
 
@@ -150,7 +150,6 @@ export function ExplodeHud() {
             const v = Number(e.target.value)
             setSpread(v)
             control.spread = v
-            control.target = v
           }}
         />
       </label>
@@ -282,6 +281,12 @@ function LightTable({ w, h, z }: { w: number; h: number; z: number }) {
   )
 }
 
+/** All this scene needs from OrbitControls: re-aim it after a re-fit. */
+interface OrbitTarget {
+  target?: THREE.Vector3
+  update?: () => void
+}
+
 /**
  * Point the shared camera at the stack from an angle, once, on arrival.
  *
@@ -289,13 +294,6 @@ function LightTable({ w, h, z }: { w: number; h: number; z: number }) {
  * view belongs to whoever is orbiting it, and a scene that kept re-asserting
  * its opinion would fight the hand on the mouse.
  */
-
-/** All this scene needs from OrbitControls: re-aim it after a re-fit. */
-interface OrbitTarget {
-  target?: THREE.Vector3
-  update?: () => void
-}
-
 function ObliqueArrival() {
   const camera = useThree((s) => s.camera)
   // SAFETY: r3f types its controls slot as the base EventDispatcher, which
@@ -323,7 +321,6 @@ export function Explode() {
       spread: () => control.spread,
       setSpread: (v: number) => {
         control.spread = Math.min(1, Math.max(0, v))
-        control.target = control.spread
       },
     }
   }, [])

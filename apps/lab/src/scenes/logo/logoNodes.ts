@@ -47,7 +47,7 @@
 //     fragment lights its exact slope (the earlier per-vertex slope banded
 //     every glint into terraces). Three motions live there: the gel
 //     WEAVE (two crossed traveling waves, on scale/speed/angle dials),
-//     strike RINGS that radiate from a tap or a re-deal and ring down
+//     strike RINGS that radiate from a tap and ring down
 //     per material, and a travel STRETCH — area-conserving squash-and-
 //     stretch along the velocity the prism already disperses on.
 //   · prism fringe — the three channels sample at offsets along the
@@ -66,8 +66,7 @@
 // mix(page texel, shaded, fx), and fx rides the cooling gate below —
 // zero through the last stretch of every crossing — so at both
 // handoffs the letter is exactly its own pixels. Mid-flight the
-// interiors relight fully; that is the transmutation, and the
-// ink-band clause's wide tails absorb it.
+// interiors relight fully; that is the transmutation.
 //
 // Premultiplied rules (decisions.md #5): the texture arrives
 // premultiplied, the blur pyramid keeps it premultiplied, and the
@@ -129,11 +128,12 @@ import { RIPPLE } from './logoLaw'
  *  side of a swap is literally the page's own pixels.
  *
  *  That is first a perceptual choice (material cooling as it lands) and
- *  second what kept the crossing-flash carry clause honest. That
- *  clause's ink-mask centroid is only a POSITION while the mask is ink, and
- *  anything that swells the mask near a swap moves it without moving a
- *  letter. Light does this — measured 2026-08-14: a ~7px mask arc on the
- *  landing tail against shots steady to 0.1px.
+ *  second what kept the carry clause of the since-removed crossing-flash
+ *  gate honest. That clause read the ink mask's centroid as a POSITION,
+ *  which holds only while the mask is ink: anything that swells the mask
+ *  near a swap moves the centroid without moving a letter. Light does
+ *  this — measured 2026-08-14: a ~7px mask arc on the landing tail
+ *  against shots steady to 0.1px.
  *
  *  Relief and thickness join it here on the argument, not on a
  *  measurement: a sheet pushed toward the camera grows by perspective,
@@ -311,8 +311,9 @@ export interface LetterUniforms {
   readonly prism: UniformNode<'float', number>
   // 0 is ink, anything above is a substance — and WHICH one no longer
   // materials in here: the deck row itself arrives in the uniforms
-  // below (Logo.tsx folds the panel's trims in on the way). One
-  // program, six letters, no recompiles when the conductor re-deals.
+  // below (logoScene's writeMaterialEffects folds the panel's trims in
+  // on the way). One program, six letters, no recompiles when the
+  // conductor re-deals.
   readonly materialIndex: UniformNode<'float', number>
   // The surface response — what the branch ladder used to hardcode.
   readonly rough: UniformNode<'float', number>
@@ -335,10 +336,9 @@ export interface LetterUniforms {
   // position dials, shared by the analytic key and its softbox twin in
   // the studio, so the glint and the shading can never point apart.
   readonly light: UniformNode<'vec3', THREE.Vector3>
-  // The rig's gains, all 1 at the shipped look (the conformance sweep
-  // measures the studio at exactly those defaults): key brightness,
-  // key softbox size, the two working fills together, the room grade,
-  // and the front fill that keeps a flat mirror from a void.
+  // The rig's gains, all 1 at the shipped look: key brightness, key
+  // softbox size, the two working fills together, the room grade, and
+  // the front fill that keeps a flat mirror from a void.
   readonly key: UniformNode<'float', number>
   readonly keySoft: UniformNode<'float', number>
   readonly fill: UniformNode<'float', number>
@@ -685,10 +685,7 @@ function softbox(
 // hole (2026-08-14). Light on the view axis is what makes a mirror
 // read as a mirror.
 //
-// Every term wears a panel gain, all 1 at the shipped look. The
-// sweep clause (logoNodes.test.ts) rebuilds the studio from this
-// source at those defaults, so its floors pin the rig AS SHIPPED and
-// the dials stay the bench's own excursions.
+// Every term wears a panel gain, all 1 at the shipped look.
 //
 // The room's low grade is a perceptual floor, not set dressing. The
 // crease where two bulged strokes meet, and the fillet of an
@@ -700,8 +697,7 @@ function softbox(
 // tonemaps to ~8/255 — a black crack drawn along every corner of
 // the extruded letters (2026-08-14). This grade holds that worst
 // direction at ~0.096, about the plate ink itself, so a joint
-// shades instead of splitting. logoNodes.test.ts sweeps the room
-// and pins both floors.
+// shades instead of splitting.
 function studio(u: LetterUniforms, d: Node<'vec3'>, rg: Node<'float'>): Node<'vec3'> {
   return mix(vec3(0.09, 0.095, 0.105), vec3(0.15, 0.16, 0.18), smoothstep(-0.8, 0.5, d.y))
     .mul(u.room)

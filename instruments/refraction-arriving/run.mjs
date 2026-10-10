@@ -35,8 +35,8 @@
 // hit through to the DOM underneath — which is exactly the state the scene
 // was in when the report came in.
 //
-// This also stands in for a compile check on the scene's program: a
-// shader that fails to link draws nothing, and the opaque-coverage
+// This also stands in for a compile check on the scene's shaders: a
+// shader that fails to build draws nothing, and the opaque-coverage
 // assertion below would read 0 instead of the full rect.
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -376,7 +376,7 @@ try {
   const midPixels = await page.evaluate(grab)
   check(
     midPixels.opaque === midPixels.w * midPixels.h,
-    `the program linked and covered its rect (${midPixels.opaque}/${midPixels.w * midPixels.h})`,
+    `the shader built and covered its rect (${midPixels.opaque}/${midPixels.w * midPixels.h})`,
   )
   // The sheet is read back at the holder's live box, so a stylesheet that
   // resized the stage would move the rect under every clause above and the

@@ -104,8 +104,10 @@ low-resolution window is not mistaken for the product's default rendering.
 - `npm run probe:api-instance-check`: real clicks, four-corner alignment, state,
   resize and scroll across six canvas/camera cases. Add `LAYOUT_MOVE=1` to verify
   a sibling-only move after 300 ms without a renderer draw.
-- `npm run probe:api-lifecycle`: Strict Mode, delayed host, context loss/recovery,
-  host removal/remount, renderer creation failure, and a separate no-flag profile.
+- `npm run probe:api-lifecycle`: Strict Mode, delayed host, GPU-process loss
+  replaced by a new renderer (a replacement lost within 10 s of its creation
+  keeps the page HTML in place), host removal/remount, renderer creation failure
+  with neither WebGPU nor WebGL 2, and a separate no-flag profile.
 - `npm run probe:api-native-pointer`: two different scene poses share one retained
   HTML source; checks clicked targets and source coordinates, native restoration,
   source swap, disabled/inert input, and ref-replaced geometry. `API_SOURCE_ROOT`

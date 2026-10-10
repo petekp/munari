@@ -324,7 +324,7 @@ describe('the drop', () => {
     // what makes the edge read as liquid rather than as a ramp. Sampled
     // naively it is an infinity that reaches the uv clamp and streaks the
     // arriving page's border row across the sheet. ROOT_FLOOR stops the
-    // climb a twentieth of the way up, which is the number this pins.
+    // climb six hundredths of the way up, which is the number this pins.
     expect(Number.isFinite(MOST)).toBe(true)
     expect(MOST).toBeCloseTo(20.8651, 3)
   })

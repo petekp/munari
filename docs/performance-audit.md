@@ -4,9 +4,10 @@ Status: assessment complete, 2026-09-26. Source revision: `ec99e74`, branch
 `pkp/browser-gates-macos`. No runtime, dependency, or CI changes were made.
 
 Reviewed on 2026-09-27 by Claude Opus 5.5 at maximum effort through the
-read-only CLI. The [independent assessment](/private/tmp/munari-claude-review.O3Z9kI/review.md)
-was checked against source before revising this report. Its proposed remedies
-remain unimplemented. Some were narrowed or rejected as described below.
+read-only CLI. An independent assessment, a local file that was not retained,
+was checked against source before revising this report. Remedies are
+unimplemented unless a finding's status says otherwise. Some were narrowed or
+rejected as described below.
 
 iOS follow-up: completed on iPhone 17 Pro / iOS 26.2 and iPhone 16e / the
 iOS 18.3 simulator runtime. Both used DPR 3. The older runtime's user agent
@@ -14,11 +15,13 @@ reports iOS 18.3.1 and Safari 18.3. Safari 26.2 reports a compatibility user
 agent containing iOS 18.7; WebDriver capabilities identified its actual
 runtime as iOS 26.2, build 23C54. Findings and limits are below.
 
-Fix the texture-size guard first. The largest shared opportunities are reducing
-full-subtree copying, idle placement work, and unnecessary geometry reads.
-For snapDOM, remove duplicate uploads and excess font loading before attempting
-a new capture scheduler. Incremental capture has substantial potential, but the
-current plugins, reconciliation setting, and lab CSS all prevent it.
+The texture-size guard, the success report for a paint with no retained 2D
+context, snapDOM's duplicate upload and the unused native-route host-space
+read were fixed on 2026-09-29. The largest remaining shared opportunities are reducing
+full-subtree copying (finding 2) and idle placement polling (finding 3). For
+snapDOM, reduce excess font loading (finding 6) before attempting a new capture
+scheduler. Incremental capture has substantial potential, but the current
+plugins, reconciliation setting, and lab CSS all prevent it.
 
 This assessment covers capture latency, input response, idle work, texture
 memory, and scene costs. Confirmed work does not establish a measured battery
@@ -28,13 +31,15 @@ hardware performance remains unverified.
 
 **Recommended implementation sequence, 2026-09-27.**
 
-1. **Fix allocation and paint correctness first.** Enforce backing-size limits
-   in the kernel and keep the binding's resize/density state consistent.
+1. **Fix allocation and paint correctness first.** Done 2026-09-29 (finding 1
+   and the missing-context paint; decisions #21 and #60). Enforce backing-size
+   limits in the kernel and keep the binding's resize/density state consistent.
    Reject a rasterized paint when the retained canvas cannot draw it.
    These are reproduced failures, and the allocation fix protects both engines.
    Extend the owning conformance checks for initial allocation, growth, direct
    kernel callers, and failed drawing; update the relevant decision entry.
-2. **Remove the demonstrated redundant work in small changes.** Make the
+2. **Remove the demonstrated redundant work in small changes.** Done
+   2026-09-29 (finding 4, and finding 5's host-space read). Make the
    trailing upload depend on whether captured pixels are final, preserving the
    HTML-in-canvas safeguard. Separately move native-route eligibility checks
    before expensive geometry preparation. Verify actual changed pixels and
@@ -81,9 +86,9 @@ another device or implement a shipping quality policy.
 
 Home has five canvas elements in this configuration. Its shadow band
 alone is 1206×4284 at native density, versus 402×1428 in the diagnostic.
-[`HomeMasthead`](../apps/lab/src/scenes/home/HomeMasthead.tsx#L330) keeps drawing
+[`HomeMasthead`](../apps/lab/src/scenes/home/HomeMasthead.tsx) keeps drawing
 the shadow, headline and bulb. The bulb
-[`backdrop`](../apps/lab/src/scenes/home/homeLampBackdrop.ts#L128) uploads
+[`backdrop`](../apps/lab/src/scenes/home/homeLampBackdrop.ts) uploads
 already-rendered canvases into its own context. Crop the required regions,
 reuse unchanged images, and separate effect resolution from text resolution.
 These changes can benefit both capture engines. No GPU-duration measurement
@@ -134,8 +139,8 @@ completed without capture failures. No JavaScript errors or WebGL context
 loss were reported in that window.
 
 **Selection captures considerably more pixels than the phone displays.**
-Its [`resolution: 6`](../apps/lab/src/scenes/selection/Selection.tsx#L228)
-and fixed [520px column](../apps/lab/src/scenes/selection/selection.css#L34)
+Its [`resolution: 6`](../apps/lab/src/scenes/selection/Selection.tsx)
+and fixed [520px column](../apps/lab/src/scenes/selection/selection.css)
 establish a 3120-pixel capture width. The initial tool output reported
 3120×3150 and two uploads, but the original JSON was overwritten by a hidden-tab
 sample. The claimed height and 37.5/75.0 MiB estimates are therefore unretained
@@ -183,24 +188,19 @@ all nine scenarios. All final records began and ended with visible documents.
 Safari reported the Long Tasks API as unsupported, so its empty long-task
 arrays are not evidence of no long tasks.
 
-Evidence remains local:
-[collector](/tmp/munari-ios-audit/server.mjs),
-[serial runner](/tmp/munari-ios-audit/sequence.py),
-[final results](/tmp/munari-ios-audit/sequence-results.json),
-[Genie capture/upload measurements](/tmp/munari-ios-audit/received-final26-genie-programmatic.json),
-[Genie outcome](/tmp/munari-ios-audit/received-final26-genie-programmatic-state.json),
-[Selection screenshot](/tmp/munari-ios-audit/final26-selection.png),
-and [iOS 18.3 Home screenshot](/tmp/munari-ios-audit/final18-home.png).
+The evidence was local and was not retained: a collector, a serial runner,
+the final results, Genie capture/upload measurements, the Genie outcome, a
+Selection screenshot and an iOS 18.3 Home screenshot.
 The runner opens and measures only the two named simulator devices. Its
 scripts and generated files are temporary diagnostics, not new CI gates.
 The serial summary pairs each exercise's outcome with its preceding idle
-metrics. Use the separate `-programmatic.json` files for exercise timing.
-The table above does so. A future runner should label both windows explicitly.
+metrics. The table above takes exercise timing from the separate
+`-programmatic.json` files instead. A future runner should label both windows
+explicitly.
 
 Simulator executes iOS WebKit but uses the Mac's resources. Apple's
 [Simulator graphics documentation](https://developer.apple.com/documentation/metal/developing-metal-apps-that-run-in-simulator)
-describes the graphics differences. The next implementation order remains:
-fix allocation bounds, remove redundant completed-raster uploads, reduce
+describes the graphics differences. The next implementation order is: reduce
 Home's large repeated passes, then validate capture-density and scheduling
 changes on physical devices.
 
@@ -213,7 +213,7 @@ current box, as [decision #21](decisions.md#21) records. The reproduction below
 cuts 532×4096 after growth, and 80×4096 and 41×4096 at birth.
 
 High severity, confirmed bug, high confidence. In
-[`setSize`](../packages/react/src/primitives/surface/surfaceSourceRuntime.ts#L321),
+[`setSize`](../packages/react/src/primitives/surface/surfaceSourceRuntime.ts),
 automatic resolution does not reapply its density limit because its pinned
 value remains `null`. A source created at 390×844 CSS pixels and DPR 3 starts
 with a 1170×2532 canvas. Growing its height to 3000 produces **1170×9000**,
@@ -223,8 +223,8 @@ guard and needs about 40.2 MiB for one RGBA backing alone.
 This is reachable through a growing body/html `useElementCapture`, which reads
 full scroll dimensions and calls `setSize`. Such a capture has no mesh density
 proposal to repair the allocation. Two related boundaries also fail:
-[`clampTiers`](../packages/core/src/paint/lodTier.ts#L177) retains an unsafe
-minimum tier when none fit; [`clampRawScale`](../packages/core/src/paint/domTextureSource.ts#L374)
+[`clampTiers`](../packages/core/src/paint/lodTier.ts) retains an unsafe
+minimum tier when none fit; [`clampRawScale`](../packages/core/src/paint/domTextureSource.ts)
 can raise a safely clamped scale back to 0.1. The latter allocates 5000 pixels
 for a 50,000-pixel document despite warning that it clamped to 4096.
 
@@ -234,8 +234,8 @@ The reproduced dimensions use the real runtime with stubbed 2D methods. A GPU
 allocation failure or device crash was not reproduced.
 
 The final bound belongs in the kernel, not only the binding. Home calls
-[`createDomTextureSource`](../apps/lab/src/scenes/home/homeLampBackdrop.ts#L86)
-directly. The shared [allocation point](../packages/core/src/paint/domTextureSource.ts#L469)
+[`createDomTextureSource`](../apps/lab/src/scenes/home/homeLampBackdrop.ts)
+directly. The shared [allocation point](../packages/core/src/paint/domTextureSource.ts)
 limits the scale multiplier, but not the texture edge. For its observed
 402×714 box, DPR 3 and pinch scaling can request a long edge above 4096
 once zoom exceeds about 1.91×. At the raw scale cap of 8, the dimensions are
@@ -247,20 +247,19 @@ Status: fixed 2026-09-29. The draw now fails the capture, as
 [decision #60](decisions.md#60) records.
 
 High severity, confirmed conditional failure, high confidence. The rasterized
-source's [`draw`](../packages/core/src/paint/rasterizedSource.ts#L272) returns
+source's [`draw`](../packages/core/src/paint/rasterizedSource.ts) returns
 without drawing when its retained canvas has no context; its caller still
-publishes a completion receipt. A
-[temporary fault-injection check](/private/tmp/munari-claude-review.O3Z9kI/verify-missing-context.mjs)
-using the real kernel returned `painted: true`, one receipt, and no errors
-with a null context. The [output](/private/tmp/munari-claude-review.O3Z9kI/verify-missing-context.log)
-proves the handling defect, not an actual memory-pressure trigger. The adapter
+publishes a completion receipt. A temporary fault-injection check, not
+retained, using the real kernel returned `painted: true`, one receipt, and no
+errors with a null context. Its output proved the handling defect, not an
+actual memory-pressure trigger. The adapter
 already rejects a missing context on its separate intermediate canvas. The
 retained-canvas path should also fail without publishing success.
 
 **2. Native-element capture repeats a costly whole-tree copy. Both engines.**
 
 High-impact confirmed cost, high confidence. Each
-[`copyElementForCapture`](../packages/react/src/primitives/elementCapture.tsx#L94)
+[`copyElementForCapture`](../packages/react/src/primitives/elementCapture.tsx)
 walks the subtree, reads computed styles and pseudo-elements, serializes all
 style properties, and creates fresh nodes. The update replaces the previous
 copy. With `live`, a running animation can request this every frame. The
@@ -293,8 +292,8 @@ the retained-copy contract.
 **3. Demand rendering still polls placement every frame. Both engines.**
 
 Medium severity, confirmed work, high confidence. Every
-[`SurfaceCanvas`](../packages/react/src/primitives/surface/SurfaceCanvas.tsx#L128)
-registers a placement watcher. [`sample`](../packages/react/src/primitives/surface/surfacePlacement.ts#L9)
+[`SurfaceCanvas`](../packages/react/src/primitives/surface/SurfaceCanvas.tsx)
+registers a placement watcher. [`sample`](../packages/react/src/primitives/surface/surfacePlacement.ts)
 reads rectangles, creates snapshots, and schedules another animation frame
 while any watcher remains.
 
@@ -318,7 +317,7 @@ measures 1 upload per changed image on snapDOM and 2 on HTML-in-canvas. The
 environment-bake cost described below is unmeasured.
 
 Medium severity, confirmed duplicate uploads, high confidence. The shared
-[`source runtime`](../packages/react/src/primitives/surface/surfaceSourceRuntime.ts#L395)
+[`source runtime`](../packages/react/src/primitives/surface/surfaceSourceRuntime.ts)
 adds one trailing upload to cover deferred HTML-in-canvas rendering. snapDOM
 finishes drawing its bitmap before reporting completion, but inherits the rule.
 
@@ -337,7 +336,7 @@ evidence proves it unnecessary. Validate changing pixels, in-flight resizing,
 and mipmapped materials before accepting the optimization. This probe counted
 uploads; it did not prove an optimized implementation's pixel correctness.
 
-The cost can propagate beyond the upload. [Capture publication](../packages/react/src/primitives/capture.tsx#L105)
+The cost can propagate beyond the upload. [Capture publication](../packages/react/src/primitives/capture.tsx)
 includes texture version, so the trailing upload can publish another frame
 revision. Marble Hand uses that revision in its environment-bake key.
 If both revisions reach separate eligible frames, an otherwise unchanged
@@ -353,11 +352,11 @@ measures host space. The route's verdicts are unchanged. The saved frame time
 is unmeasured.
 
 Medium severity, code-confirmed work, high confidence. The native route
-[`step`](../packages/react/src/primitives/surface/surfaceNativeRoute.ts#L244)
+[`step`](../packages/react/src/primitives/surface/surfaceNativeRoute.ts)
 prepares its rig and measures host space before checking native capability and
 the requested route. Registered page sources cause three rectangle reads and
 a DOMMatrix allocation in
-[`hostSpace`](../packages/react/src/primitives/surface/surfaceHostSpace.ts#L76).
+[`hostSpace`](../packages/react/src/primitives/surface/surfaceHostSpace.ts).
 snapDOM cannot take that route. Default relay routing also discards the result.
 Mesh frame and before-draw paths can both do this work.
 
@@ -369,7 +368,7 @@ unmeasured.
 **6. snapDOM eagerly fetches and encodes every declared font.**
 
 Medium severity, confirmed cost, high confidence.
-[`warmCaptureFonts`](../packages/react/src/snapdomFonts.ts#L268) starts every
+[`warmCaptureFonts`](../packages/react/src/snapdomFonts.ts) starts every
 declared face at installation, before capture-specific family/codepoint
 selection. Encoded URL promises remain cached for the page lifetime.
 
@@ -388,15 +387,15 @@ response so reducing unused work does not delay necessary fonts.
 High potential, confirmed mechanism, unmeasured benefit. All three Munari
 plugins use `afterClone`. Installed snapDOM 3.0.0-beta.1 explicitly excludes
 clone-construction hooks from differential recapture, including pure hooks.
-See [`capturePlugins`](../packages/react/src/snapdom.ts#L110) and the installed
-[`plugin contract`](../node_modules/@zumer/snapdom/types/snapdom.d.ts#L411).
+See [`capturePlugins`](../packages/react/src/snapdom.ts) and the installed
+[`plugin contract`](../node_modules/@zumer/snapdom/types/snapdom.d.ts).
 Unchanged-repeat memoization still works; a content change forces full work.
 
 The installed differential path also rejects
-[`reconcile: true`](../packages/react/src/snapdom.ts#L165) independently.
+[`reconcile: true`](../packages/react/src/snapdom.ts) independently.
 It checks document CSS for selectors requiring wider dependency tracking,
 including sibling selectors and `:has()`. The lab's always-imported
-[`shadcn.css`](../apps/lab/src/shadcn.css#L117) contains `:has()`, so a plugin
+[`shadcn.css`](../apps/lab/src/shadcn.css) contains `:has()`, so a plugin
 change alone cannot establish a benefit in the current lab.
 
 Investigate incremental-compatible hooks, reconciliation, and stylesheet
@@ -416,7 +415,7 @@ block, input latency, and pixel parity.
 **8. Capture scheduling needs an aggregate budget and input priority.**
 
 High potential, confirmed policy costs, mobile impact needs measurement.
-[`rasterizedSource`](../packages/core/src/paint/rasterizedSource.ts#L290)
+[`rasterizedSource`](../packages/core/src/paint/rasterizedSource.ts)
 paces each source independently. A disposable test created nine sources and
 observed nine rasterizers start before any resolved. Coalescing within each
 source works, but many sources can still concentrate work in the same frame.
@@ -437,7 +436,7 @@ tradeoff, not a newly introduced regression.
 Evaluate an admission budget that distinguishes direct input, handoff readiness,
 visible animation, and background updates. Keep only the latest needed work and
 prevent starvation. Do not repeat the simple global FIFO queue: the
-[earlier experiment](decisions.md#L3679) froze dragging in 26 of 33 screenshots.
+[earlier experiment](decisions.md#60) froze dragging in 26 of 33 screenshots.
 The existing governor, cached fonts, and frame split improved historical Safari
 and Chrome measurements together. Removing pacing would undo that protection.
 
@@ -445,36 +444,36 @@ and Chrome measurements together. Removing pacing would undo that protection.
 
 | Opportunity | Evidence and affected paths | Required check |
 |---|---|---|
-| Reduce transient bitmap allocation, snapDOM | A fresh target-sized canvas in [`snapdom.ts`](../packages/react/src/snapdom.ts#L184) is copied into the retained canvas in [`rasterizedSource.ts`](../packages/core/src/paint/rasterizedSource.ts#L272). | Compare direct decoded-SVG drawing or buffer reuse. Preserve WebKit sharpness and resize-in-flight behavior. |
+| Reduce transient bitmap allocation, snapDOM | A fresh target-sized canvas in [`snapdom.ts`](../packages/react/src/snapdom.ts) is copied into the retained canvas in [`rasterizedSource.ts`](../packages/core/src/paint/rasterizedSource.ts). | Compare direct decoded-SVG drawing or buffer reuse. Preserve WebKit sharpness and resize-in-flight behavior. |
 | Budget total captured pixels, both engines | A 390×844 DPR-3 image has 11.3 MiB per RGBA plane. Multiple canvas/GPU/intermediate copies multiply this. A per-edge guard does not bound aggregate area. | Count resident and transient backing pixels. Prefer cropping and demand control before lowering text density. |
-| Pause unneeded captures, both engines | [`capture.tsx`](../packages/react/src/primitives/capture.tsx#L48) counts readers, but the capture scheduler does not use the count. | Distinguish invisible, unconsumed, reflected, and handoff-preparing content. Preserve first-frame readiness. |
+| Pause unneeded captures, both engines | [`capture.tsx`](../packages/react/src/primitives/capture.tsx) counts readers, but the capture scheduler does not use the count. | Distinguish invisible, unconsumed, reflected, and handoff-preparing content. Preserve first-frame readiness. |
 | Cancel obsolete asynchronous work, snapDOM | An in-flight rasterizer receives no abort signal. Disposal ignores its result but does not stop the work. The frame-split plugin can wait while a tab is hidden. | Cancel between stages during route changes and hide/show cycles. This is pending-work retention, not a demonstrated permanent leak. |
-| Reduce stationary-pointer work, both engines | [`CanvasPointerGate`](../packages/react/src/primitives/CanvasPointerGate.tsx#L200) preserves the armed state after a touch releases over a target, and has no touch-out cleanup. Its raycast loop can continue while that target remains. | Measure post-touch idle work. A later off-target pointerover can clear the gate, so swallowed page taps remain an unverified hypothesis. Preserve mouse hover and disappearing-target behavior. |
-| Bound exact-density resize work, both engines | [`match-dom` automatic density](../packages/react/src/primitives/surface/SurfaceMesh.tsx#L696) can bypass tier hysteresis during a CSS scale animation. Exact backing-size changes can incur scratch copies and GPU reallocation. | Count reallocations through a scale transition. Fixed/ranged resolution, sub-texel changes, competing proposals and caps can prevent it. snapDOM carries old pixels through LOD changes; it does not necessarily rerasterize or upload twice per resize. |
+| Reduce stationary-pointer work, both engines | [`CanvasPointerGate`](../packages/react/src/primitives/CanvasPointerGate.tsx) preserves the armed state after a touch releases over a target, and has no touch-out cleanup. Its raycast loop can continue while that target remains. | Measure post-touch idle work. A later off-target pointerover can clear the gate, so swallowed page taps remain an unverified hypothesis. Preserve mouse hover and disappearing-target behavior. |
+| Bound exact-density resize work, both engines | [`match-dom` automatic density](../packages/react/src/primitives/surface/SurfaceMesh.tsx) can bypass tier hysteresis during a CSS scale animation. Exact backing-size changes can incur scratch copies and GPU reallocation. | Count reallocations through a scale transition. Fixed/ranged resolution, sub-texel changes, competing proposals and caps can prevent it. snapDOM carries old pixels through LOD changes; it does not necessarily rerasterize or upload twice per resize. |
 
 The lab has substantial costs outside either capture renderer:
 
-- **Home:** [`homeLampBackdrop`](../apps/lab/src/scenes/home/homeLampBackdrop.ts#L74)
+- **Home:** [`homeLampBackdrop`](../apps/lab/src/scenes/home/homeLampBackdrop.ts)
   rebuilds a whole-page copy on scrolling and interaction, outside the capture
-  governor. It uploads the lighting canvas into another WebGL context and scans
-  visible canvases each frame. The shadow buffer spans two viewport heights at
-  native DPR. Capture the region the bulb needs, separate placement from content
-  invalidation, and reuse unchanged images before reducing fidelity.
+  governor. It uploads the lighting canvas into the bulb's separate renderer
+  and scans visible canvases each frame. The shadow buffer spans two viewport
+  heights at native DPR. Capture the region the bulb needs, separate placement
+  from content invalidation, and reuse unchanged images before reducing fidelity.
   The slow 12×3px idle light drift changes shadow inputs continuously. However,
   the headline has its own time-varying shader, ripple and tilt; the cord also
   moves independently. Gate or quantize individual passes by their dependencies.
   Do not stop the entire redraw solely because rounded light position is unchanged.
-- **Pinch zoom:** [`lampPixelRatio`](../apps/lab/src/scenes/home/homeLampViewport.ts#L23)
+- **Pinch zoom:** [`lampPixelRatio`](../apps/lab/src/scenes/home/homeLampViewport.ts)
   multiplies DPR by visual-viewport scale while its DOM backdrop still covers the
   layout viewport. Requested area grows quadratically before clamps. Crop to the
   required visible region; measure actual backing sizes during zoom.
-- **Marble Hand:** [`reflectionFps`](../apps/lab/src/scenes/marble-hand/marbleHandTuning.ts#L181)
+- **Marble Hand:** [`reflectionFps`](../apps/lab/src/scenes/marble-hand/marbleHandTuning.ts)
   defaults to 120. Animated background changes can trigger a CPU environment
   raster, upload, six cube faces, and PMREM generation even with a stationary
   hand. Compare 120/60/30 reflection updates while preserving hand motion.
-- **Startup:** [`main.tsx`](../apps/lab/src/main.tsx#L15) awaits snapDOM before
+- **Startup:** [`main.tsx`](../apps/lab/src/main.tsx) awaits snapDOM before
   React renders for `capture=auto`, even when native capture will win.
-  [`homeOpening`](../apps/lab/src/scenes/home/homeOpening.ts#L15) waits for fonts
+  [`homeOpening`](../apps/lab/src/scenes/home/homeOpening.ts) waits for fonts
   before starting its graphics deadline. Profile cold-cache startup and gate the
   optional import by capability while preserving the stable first composition.
 
@@ -502,23 +501,14 @@ callbacks, not only `needsUpdate`. No page errors occurred in those cases.
 | Runtime dimension reproduction | Exit 0; two initial edge-limit failures and an oversized resize confirmed | Real runtime with stubbed canvas methods; allocation arithmetic only |
 | Disposable scheduler/font tests | 2/2 passed; nine concurrent starts; 18 font requests | Fake rasterizer/fetch; no browser timing claim |
 
-Runnable local diagnostic sources and output are retained in temporary folders:
-[browser probe](/tmp/munari-performance-audit/run.mjs),
-[browser results](/tmp/munari-performance-audit/results.json),
-[no-flag results](/tmp/munari-performance-audit/no-flag/results.json),
-[existing probe results](/tmp/munari-performance-audit/capture-cost/results.json),
-[size probe](/private/tmp/munari-performance-audit-shared/runtime-size-check.mjs),
-[size output](/private/tmp/munari-performance-audit-shared/runtime-size-check.log),
-and [disposable tests](/tmp/munari-snapdom-audit.test.ts).
-These paths are local evidence, not checked-in acceptance instruments. Move a
-useful measurement into its owning instrument when implementing the fix.
+The browser probe, its results, the size probe and the disposable tests were
+temporary local files and were not retained. None were checked-in acceptance
+instruments. Move a useful measurement into its owning instrument when
+implementing the fix.
 
-Re-run the browser diagnostic with `node /tmp/munari-performance-audit/run.mjs`.
-Set `NO_NATIVE=1` and a separate `AUDIT_OUTPUT` for the no-flag snapDOM run.
-The script contains the source checkout's absolute path. Run the size probe
-from the repository root. No permanent test, acceptance threshold, or CI rule
-was added. Full unit/type/lint checks were not needed for this document-only
-change; linked locations and the final diff were checked.
+No permanent test, acceptance threshold, or CI rule was added. Full
+unit/type/lint checks were not needed for this document-only change; linked
+locations and the final diff were checked.
 
 | Area reviewed | Coverage outcome |
 |---|---|

@@ -137,7 +137,6 @@ try {
   // move plus dispatch, so the last trial needs real margin or a slow CI
   // runner lands it in the gl phase and fails the gate on timing alone.
   for (const offsetMs of [100, 350, 550]) {
-    await page.evaluate(() => window.__probe.mark('request-webgl'))
     await page.evaluate(() => window.__probe.setRenderIn('scene'))
     await sleep(offsetMs)
     const st = await stateNow()

@@ -10,16 +10,16 @@
 //
 // The material returns the premultiplied vec4 as its output node, so Three
 // applies no second premultiplication. The lens writes the capture's linear
-// sample to the canvas as it is, with no sRGB encode, as the GLSL lens did;
-// encodedOutput makes the renderer's conversion land that raw value.
+// sample to the canvas as it is, with no sRGB encode; encodedOutput makes
+// the renderer's conversion land that raw value.
 
 import * as THREE from 'three'
 import { MeshBasicNodeMaterial, type Node, type UniformNode } from 'three/webgpu'
 import { Fn, attribute, dot, float, max, normalize, smoothstep, uniform, uv, varying, vec3, vec4 } from 'three/tsl'
 import { encodedOutput, type SurfaceNodes } from '@petepetrash/munari'
 
-/** Upper-left key light, shared with the fisheye scene's glass. */
-export const LENS_LIGHT: readonly [number, number, number] = [-0.3, 0.42, 0.86]
+/** Upper-left key light, the same vector as the fisheye scene's glass. */
+const LENS_LIGHT: readonly [number, number, number] = [-0.3, 0.42, 0.86]
 
 // Both are written per vertex by the warp loop in Slider.tsx.
 const slope = varying(attribute<'float'>('aSlope', 'float'))

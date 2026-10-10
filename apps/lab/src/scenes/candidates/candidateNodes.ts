@@ -23,17 +23,18 @@
 //   itself while its rim stayed clean, because only the rim's base was
 //   nonzero. Every pow base here is clamped to at least 1e-4.
 //
-//   THE OUTPUT LANDS AS THE GLSL'S gl_FragColor DID. SurfaceCanvas converts
-//   each fragment's output to the canvas's sRGB by unpremultiplying,
-//   encoding and premultiplying; WebGL encoded the premultiplied color
-//   directly (surfaceOutput.ts has the measurement). The Surface texture is
-//   SRGBColorSpace, so a sample is linear, and the shaders ended in
-//   `#include <colorspace_fragment>` (without it the candidates' #f2f0e4
-//   panel measured 226,222,198 in Chrome on 2026-08-20). Those materials
-//   return `premultipliedOutput(c)`. The ones that scaled a fade AFTER the
-//   include (premultiplied rgb pushed through the transfer curve at
-//   fractional alpha comes out lifted, and the closing coil flashed white)
-//   build that canvas-space vec4 and return `encodedOutput(...)`.
+//   OUTPUT GOES THROUGH premultipliedOutput OR encodedOutput (decisions.md
+//   #72). SurfaceCanvas converts each fragment's output to the canvas's sRGB
+//   by unpremultiplying, encoding and premultiplying; these helpers make
+//   that conversion land as WebGL's direct encode did (surfaceOutput.ts has
+//   the measurement). The Surface texture is SRGBColorSpace, so a sample is
+//   linear and needs the encode (without it the candidates' #f2f0e4 panel
+//   measured 226,222,198 in Chrome on 2026-08-20). A material that does not
+//   fade after the encode returns `premultipliedOutput(c)`. The ones that
+//   scale a fade AFTER the encode (premultiplied rgb pushed through the
+//   transfer curve at fractional alpha comes out lifted, and the closing
+//   coil flashed white) build the canvas-space vec4 and return
+//   `encodedOutput(...)` through `fadedAfterEncode`.
 //
 // The corner mask is applied inside each material rather than inherited: a
 // custom material is the one thing Munari cannot cut corners for, because
@@ -93,7 +94,7 @@ import { encodedOutput, premultipliedOutput, type SurfaceNodes } from '@petepetr
 import { analyzeTuning, copyTuning, deleteTuning, dissolveTuning, rippleTuning } from './candidateTuning'
 
 /** Light direction shared by every candidate, so one hand lit them all. */
-export const LIGHT: readonly [number, number, number] = [-0.34, 0.52, 0.78]
+const LIGHT: readonly [number, number, number] = [-0.34, 0.52, 0.78]
 
 const LIGHT_DIR = vec3(LIGHT[0], LIGHT[1], LIGHT[2]).normalize()
 
@@ -107,7 +108,6 @@ function candidateMaterial(options: { depthWrite?: boolean; side?: THREE.Side } 
     transparent: true,
     premultipliedAlpha: true,
     depthWrite: options.depthWrite ?? false,
-    toneMapped: false,
     side: options.side ?? THREE.FrontSide,
   })
 }
@@ -115,8 +115,8 @@ function candidateMaterial(options: { depthWrite?: boolean; side?: THREE.Side } 
 // SAFETY: a texture sample is a vec4; Three's types return a bare Node.
 const sampleAt = (map: TextureNode, at: Node<'vec2'>) => map.sample(at) as Node<'vec4'>
 
-// A fade the GLSL applied after its own sRGB encode, so it scales the
-// canvas-space vec4 rather than the linear one.
+// A fade applied after the sRGB encode, so it scales the canvas-space vec4
+// rather than the linear one.
 function fadedAfterEncode(color: Node<'vec4'>, fade: Node<'float'>): Node<'vec4'> {
   // SAFETY: Three declares this TSL function's layout as vec3 to vec3; its
   // published types leave the result untyped.
@@ -142,8 +142,9 @@ function hash11(x: Node<'float'>): Node<'float'> {
 //   and shaded an interior ring, which is the CSS ripple with extra steps.
 //
 //   THE RISE IS REAL DEPTH. One world unit is one CSS pixel, so the far
-//   corners coming 56px off the page is 5% of honest perspective gain —
-//   the control grows and leans, which no transform: scale() reproduces.
+//   corners lifting `rippleTuning.lift` px off the page gain honest
+//   perspective — the control grows and leans, which no transform: scale()
+//   reproduces.
 //
 //   THE LIGHT IS BALANCED. Shading is the surface normal against the
 //   shared light, MINUS the flat surface's own response, so a flat region
@@ -272,9 +273,8 @@ function contentPoint(at: Node<'vec2'>, size: Node<'vec2'>): Node<'vec2'> {
 }
 
 export interface RippleValues extends RippleField {
-  // Gain on the balanced lambert term. The wave's steepest face is
-  // ~25° off flat here; 0.9 puts its highlight around +0.35 on a white
-  // control, which is visible without bleaching the label.
+  // Gain on the balanced lambert term (rippleTuning.shadeGain): enough to
+  // read the wave's tilt without bleaching the label.
   readonly shadeGain: UniformNode<'float', number>
 }
 

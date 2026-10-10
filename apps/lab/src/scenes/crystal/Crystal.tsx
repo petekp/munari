@@ -167,8 +167,10 @@ export function CrystalApp() {
     return () => window.removeEventListener('keydown', key)
   }, [])
 
-  // Four refs, all read from inside the raycast, which runs between React
-  // renders and can see no closure of its own.
+  // Refs, because pointer moves and frames must not cost a render: the
+  // pointer listener writes `drive` and `hand`, the frame loop writes `frame`
+  // and `eye`, and `policy` mirrors this render's state for the listener and
+  // the raycast, which are both built once and read it later.
   const drive = useRef<CrystalDrive>({ x: box.w / 2, y: box.h / 2 })
   // Where the hand actually is, recorded even while parked — otherwise
   // unparking leaves the crystal sitting where it was until the next

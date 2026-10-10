@@ -777,11 +777,11 @@ export function createGlassMaterial(v: GlassSdfValues): MeshBasicNodeMaterial {
               const outside = max(abs(iq.x).sub(v.inkRect.z), abs(iq.y).sub(v.inkRect.w))
               const m = float(1).sub(smoothstep(aa.negate(), aa, outside)).toVar()
               If(m.greaterThan(0), () => {
-                // The ink rides the wave only if asked to. It is laid on unrefracted
-                // BY DESIGN — the world bends through the glass, the DOM sits on it
-                // and stays crisp — so warping its UV trades the thesis for the
-                // effect. Default 0; __glass.set('rippleInk', 0.4) to see the other
-                // reading.
+                // The ink barely rides the wave. It is laid on unrefracted BY DESIGN —
+                // the world bends through the glass, the DOM sits on it and stays
+                // crisp — so warping its UV trades the thesis for the effect. The
+                // default (GLASS_DEFAULTS.rippleInk) only lets the ink shift with its
+                // surface; __glass.set('rippleInk', 0.4) shows the other reading.
                 const iuv = iq.add(rippleTilt.mul(v.rippleInk)).div(v.inkRect.zw.mul(2)).add(0.5)
                 const ink = sample(v.ink, iuv).mul(v.inkOpacity.mul(m)).toVar() // premultiplied
                 glass.assign(glass.mul(float(1).sub(ink.a)).add(ink.rgb))
@@ -807,16 +807,15 @@ export interface GlassBlit {
 /**
  * The only place the pipeline leaves linear light.
  *
- * Tone mapping is a scene-level decision here, not a global one, and the
- * default is wrong for this scene specifically. ACES was built to make
- * rendered light look photographic — and one of the things it does to earn
- * that is rotate saturated oranges toward yellow as they brighten. Run a neon
- * token through it and what lands on screen is not the token. Neutral
- * (Khronos PBR Neutral) exists for exactly this complaint: it leaves in-gamut
- * colour where the author put it and only rolls off the highlights. So the
- * DOM's colours arrive as CSS specified them while the glass's speculars and
- * the strike still shoulder off instead of clipping to white. Exposure 1 is
- * the renderer default the WebGL blit read.
+ * The renderer applies no tone mapping (SurfaceCanvas logs an error in
+ * development if renderer.toneMapping is anything but NoToneMapping), so this
+ * blit is the scene's only tone map. It uses Neutral (Khronos PBR Neutral), not ACES:
+ * ACES rotates saturated oranges toward yellow as they brighten, so a neon
+ * token would not land on screen as the token. Neutral leaves in-gamut colour
+ * where the author put it and only rolls off the highlights, so the DOM's
+ * colours arrive as CSS specified them while the glass's speculars and the
+ * strike still shoulder off instead of clipping to white. Exposure is a fixed
+ * 1; this blit does not read renderer.toneMappingExposure.
  */
 export function createBlitMaterial(src: THREE.Texture): GlassBlit {
   const material = passMaterial()

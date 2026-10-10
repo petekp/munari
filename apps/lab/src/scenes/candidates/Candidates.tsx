@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { SurfaceCanvas } from '@petepetrash/munari'
-import { PixelPerfect } from './candidateStage'
+import { FOV, PixelPerfect } from './candidateStage'
 import { CandidateRipple } from './CandidateRipple'
 import { CandidateBillow } from './CandidateBillow'
 import { CandidateUnroll } from './CandidateUnroll'
@@ -102,7 +102,7 @@ export function CandidatesApp() {
         gl={{ alpha: true, antialias: true }}
         // No dpr clamp: PixelPerfect owns render density and follows the
         // live devicePixelRatio, browser zoom included.
-        camera={{ fov: 42, position: [0, 0, 1000] }}
+        camera={{ fov: FOV, position: [0, 0, 1000] }}
         onCreated={(state) => {
           // The page under the canvas IS the background; a cleared opaque
           // frame would hide every candidate's own DOM.

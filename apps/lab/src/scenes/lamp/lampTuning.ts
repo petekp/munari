@@ -43,8 +43,8 @@ export const lampTuning: Readonly<LampTuning> = Object.freeze({
   flickerAmplitude: 0.1,
   /** 1x reproduces the flame shader's unscaled output brightness. */
   coreBrightness: 1,
-  /** Was PENUMBRA_GROWTH_SCALE in lampNodes.ts — the dimensionless factor
-   * on FLAME_APPARENT_SIZE / lampHeight that sets how fast the penumbra
+  /** The dimensionless factor on FLAME_APPARENT_SIZE / lampHeight
+   * (lampNodes.ts penumbraGrowthScale) that sets how fast the penumbra
    * widens with throw. */
   penumbraGrowth: 0.5,
   /** Was the reachable ceiling of levelForPenumbra's 0..3 range in
@@ -52,7 +52,8 @@ export const lampTuning: Readonly<LampTuning> = Object.freeze({
   maxBlurLevel: 3,
   /** 1x reproduces FAR_FADE_START/FAR_FADE_END (lampNodes.ts) unscaled. */
   opacityFalloff: 1,
-  /** Was SHADOW_FLOOR in lampNodes.ts — lower reads as a darker shadow. */
+  /** The shadow's floor multiplier (lampNodes.ts shadowFloor); lower reads
+   * as a darker shadow. */
   shadowStrength: 0.55,
   /** 1x reproduces the pool's unscaled brightness curve. */
   poolIntensity: 1,

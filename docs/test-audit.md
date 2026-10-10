@@ -22,8 +22,9 @@ fails.
 
 `apertureReveal`, `blobHeightPx`, `veilSeamAlpha`, and `veilLod` are
 JavaScript copies of shader math. Their tests check only the JavaScript copy,
-and nothing compares it with the GLSL. Each could be removed, or kept as
-documentation of the shader's intent.
+and nothing compares it with the TSL node code it mirrors (`refractionNodes.ts`
+for the first two, `veilNodes.ts` for the last two). Each could be removed, or
+kept as documentation of the shader's intent.
 
 ## Kept after review
 

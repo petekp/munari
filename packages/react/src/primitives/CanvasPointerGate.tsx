@@ -4,7 +4,6 @@ import * as THREE from 'three'
 import { isRelayed } from '@munari/core'
 
 export interface CanvasPointerGateProps {
-  enabled?: boolean
   isTarget: (object: THREE.Object3D) => boolean
 }
 
@@ -31,10 +30,7 @@ export interface CanvasPointerGateProps {
  * Relayed events (`isRelayed`) and this gate's own clones (`routed`) pass
  * untouched — the gate must not re-route what the relay already routed.
  */
-export function CanvasPointerGate({
-  enabled = true,
-  isTarget,
-}: CanvasPointerGateProps) {
+export function CanvasPointerGate({ isTarget }: CanvasPointerGateProps) {
   const gl = useThree((state) => state.gl)
   const camera = useThree((state) => state.camera)
   const scene = useThree((state) => state.scene)
@@ -283,11 +279,6 @@ export function CanvasPointerGate({
       if (document.visibilityState === 'hidden') cancelClaims()
     }
 
-    if (!enabled) {
-      cancelClaims()
-      return cancelClaims
-    }
-
     document.addEventListener('pointerover', arm, true)
     document.addEventListener('pointermove', arm, true)
     document.addEventListener('pointerdown', onDown, { capture: true, passive: false })
@@ -310,7 +301,7 @@ export function CanvasPointerGate({
       if (clearTargetCacheFrame) cancelAnimationFrame(clearTargetCacheFrame)
       cancelClaims()
     }
-  }, [camera, enabled, events, gl, scene])
+  }, [camera, events, gl, scene])
 
   return null
 }

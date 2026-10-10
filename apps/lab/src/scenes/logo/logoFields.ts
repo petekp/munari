@@ -17,8 +17,9 @@
 //     raw values and the renderer applies no output transform to them.
 //
 // The passes run inside the material's own frame write, only on frames
-// where the substance is actually lit (fx > 0) — a parked or cooling
-// letter costs nothing, which keeps the idle-zero stance intact.
+// that use the fields (light, relief or extrusion above zero on a
+// non-ink material) — a parked or cooled letter costs nothing, which
+// keeps the idle-zero stance intact.
 
 import * as THREE from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
@@ -92,7 +93,7 @@ export function raster(src: THREE.Texture | null | undefined): Raster | null {
 
 /** The blur pyramid of one letter. Owned by SceneLetter (sized off
  *  the capture box, remade only when the box itself reallocates) and
- *  refreshed by LetterMaterial on lit frames. */
+ *  refreshed by LetterMaterial on frames that use them. */
 export class LetterFields {
   readonly fine: THREE.RenderTarget
   readonly coarse: THREE.RenderTarget

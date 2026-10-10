@@ -48,13 +48,13 @@ import {
 } from './surfaceOutwardContent'
 
 /** Marks the parked container, for probes and the authoring contract. */
-export const SOURCE_HOST_ATTRIBUTE = 'data-munari-source-host'
+const SOURCE_HOST_ATTRIBUTE = 'data-munari-source-host'
 /** Marks which copy of the source tree an instance root is. */
-export const INSTANCE_ATTRIBUTE = 'data-munari-instance'
+const INSTANCE_ATTRIBUTE = 'data-munari-instance'
 /** The Surface this container captures for, when it was given a name. */
-export const SURFACE_NAME_ATTRIBUTE = 'data-munari-surface'
+const SURFACE_NAME_ATTRIBUTE = 'data-munari-surface'
 /** Which part of a multi-part Surface this container is. */
-export const SURFACE_PART_ATTRIBUTE = 'data-munari-part'
+const SURFACE_PART_ATTRIBUTE = 'data-munari-part'
 
 const DEFAULT_SIZE: SurfaceSize = [640, 480]
 let sourceHostSequence = 0
@@ -114,7 +114,7 @@ export function SurfaceSourceHost({
   // memo. A hoisted node outlives a teardown, and the parked canvas that
   // owned it is gone by the time the next mount hands it over — adoption
   // refuses a parented node, so the remount throws inside r3f's CanvasImpl
-  // and takes the GL context with it.
+  // and takes the renderer with it.
   const [container] = useState<HTMLElement | null>(() =>
     adopt ? null : createCaptureContainer(),
   )

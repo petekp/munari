@@ -155,8 +155,9 @@ export interface LogoKnobs {
   /** 0..2 — scene mode: the cool fill and floor bounce together. */
   fill: number
   /** 0..2 — scene mode: the room grade, the studio's ambient base.
-   *  Below 1 this undercuts the perceptual floor the shader suite
-   *  pins — a bench excursion, deliberately reachable, never shipped. */
+   *  Below 1 this undercuts the room's perceptual floor (measured
+   *  2026-08-14, see logoNodes' studio) — a bench excursion,
+   *  deliberately reachable, never shipped. */
   room: number
   /** 0..2 — scene mode: the front fill on the view axis — the light
    *  a flat mirror reflects. Zero returns chrome to a void. */
@@ -170,8 +171,7 @@ export interface LogoKnobs {
   waveSpeed: number
   /** deg — scene mode: rotates the weave's two travel axes together. */
   waveAngle: number
-  /** 0..2 — scene mode: how hard a strike rings the letter. A tap on
-   *  a letter and a beat re-dealing one both strike; 0 disarms both. */
+  /** 0..2 — scene mode: how hard a tap rings the letter; 0 disarms it. */
   ripple: number
   /** 0..2 — scene mode: how far travel deforms the letter — squash
    *  and stretch along the motion, area-conserving, gone at rest. */
@@ -201,9 +201,9 @@ export const LOGO_DEFAULTS: LogoKnobs = {
   // and a mesh rebuild per glyph change, so it stays something the
   // bench opts into rather than something every visit pays for.
   extrude: 0,
-  // The rig at identity: gains of exactly 1 are what the studio's
-  // conformance sweep measures, and the yaw/pitch pair reproduces the
-  // key the letters shipped under (−0.42, 0.58, 0.7 in world).
+  // The rig at identity: gains of exactly 1, and a yaw/pitch pair that
+  // reproduces the key the letters shipped under (−0.42, 0.58, 0.7 in
+  // world).
   lightYaw: -31,
   lightPitch: 35,
   key: 1,
@@ -212,9 +212,9 @@ export const LOGO_DEFAULTS: LogoKnobs = {
   room: 1,
   front: 1,
   // The motion rig at identity: scale and speed of exactly 1 and an
-  // angle of 0 reproduce the gel weave the letters shipped with
-  // (logoLaw.test pins this). Strikes and stretch are new motions, on
-  // by default at their tuned strength.
+  // angle of 0 reproduce the gel weave the letters shipped with.
+  // Strikes and stretch are new motions, on by default at their tuned
+  // strength.
   waveScale: 1,
   waveSpeed: 1,
   waveAngle: 0,
@@ -382,9 +382,9 @@ export function nextBeat(r: Rand, k: LogoKnobs): number {
 /** The key light's direction from the panel's two position dials —
  *  yaw swings around the vertical (0 is dead ahead of the letters,
  *  negative left), pitch climbs from the horizon — in degrees because
- *  the panel speaks degrees. Pure math, shared by the uniform feed
- *  (Logo.tsx) and the studio's conformance sweep (logoNodes.test),
- *  so the two can never disagree about where the key stands. */
+ *  the panel speaks degrees. Pure math, shared by the resting default
+ *  (WORLD_LIGHT) and the per-frame uniform feed in logoScene.tsx, so
+ *  the two can never disagree about where the key stands. */
 export function lightDir(yawDeg: number, pitchDeg: number): [number, number, number] {
   const yaw = (yawDeg * Math.PI) / 180
   const pitch = (pitchDeg * Math.PI) / 180
@@ -442,10 +442,10 @@ export const WEAVE = {
   floor: 0.35,
 } as const
 
-/** The strike rig: a tap (or a beat re-dealing a letter) rings the
- *  sheet with an expanding, decaying wave packet. Lengths are in em of
- *  the letter's font size — a ring must read the same on a phone glyph
- *  and a display glyph — and times are seconds. */
+/** The strike rig: a tap rings the sheet with an expanding, decaying
+ *  wave packet. Lengths are in em of the letter's font size — a ring
+ *  must read the same on a phone glyph and a display glyph — and times
+ *  are seconds. */
 export const RIPPLE = {
   /** Live rings a letter carries at once; a fresh strike recycles the
    *  DEADEST slot (strikeSlot), so drumming degrades oldest-first. */

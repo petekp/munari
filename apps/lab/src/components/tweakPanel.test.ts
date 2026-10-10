@@ -4,7 +4,7 @@
 //
 // No jsdom is configured in this workspace, so rendering the panel itself
 // is out of scope here; instruments/ browser probes cover each scene's
-// rendered controls (see AGENTS.md's four test homes).
+// rendered controls (see 'Where tests live' in AGENTS.md).
 
 import { describe, expect, it } from 'vitest'
 import { runInNewContext } from 'node:vm'
@@ -13,7 +13,6 @@ import {
   readStoredTuning,
   serializeTweakValues,
   writeStoredTuning,
-  type TweakBag,
   type TweakStorage,
 } from './tweakPanel'
 
@@ -31,7 +30,7 @@ function fakeStorage(): TweakStorage & { readonly data: Map<string, string> } {
   }
 }
 
-interface FixtureTuning extends TweakBag {
+interface FixtureTuning {
   readonly flameSize: number
   readonly label: string
   readonly enabled: boolean

@@ -50,9 +50,9 @@ export const ART_U = 0.25
 export const CAMERA_U = 0.75
 
 /**
- * three's `equirectUv`, in the same form the shader uses — so what this
- * module paints is what the material samples. The direction need not be
- * normalized.
+ * three's TSL `equirectUV`, in the same form the PMREM bake samples the
+ * equirect with — so what this module paints is what the material reflects.
+ * The direction need not be normalized.
  */
 export function equirectUV(x: number, y: number, z: number): EnvUV {
   const len = Math.hypot(x, y, z) || 1

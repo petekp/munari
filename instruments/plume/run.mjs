@@ -1094,7 +1094,7 @@ async function verifyFallback(url, headless) {
   await captureHeld(page, 'fallback-held')
   await putCaretAtEnd(page)
   await requireNativeText(page, text)
-  requireThat(await page.$('.plume-canvas') === null, 'no-flag route mounted a WebGL overlay')
+  requireThat(await page.$('.plume-canvas') === null, 'no-flag route mounted a GPU overlay')
   await page.waitForFunction(() => {
     const words = [...document.querySelectorAll('.plume-mirror .plume-word')]
     return words.length > 0 && words.every((word) =>

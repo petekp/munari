@@ -7,10 +7,11 @@
 //   - feeds mutate burst-y (one coalesced write per tick), then go quiescent,
 //     so each panel stays inside the free-idle contract between updates
 //
-// A panel spec is markup plus an optional `feed(root)` — attached via
-// Surface's onSource — that owns its timers and returns cleanup.
+// A panel spec is markup plus an optional `feed(root)` — attached by
+// WorkspacePanelSource once the markup mounts — that owns its timers and
+// returns cleanup.
 
-/** A satellite WebGL dial that joins the panel's focus group as a LEAF
+/** A satellite scene dial that joins the panel's focus group as a LEAF
  *  member — a 3D control in the same Tab traversal as the panel's DOM. */
 export interface DialSpec {
   label: string
@@ -367,7 +368,7 @@ function deployPanel(): PanelSpec {
   }
 }
 
-// The mixed-group proof: DOM tabbables and a WebGL
+// The mixed-group proof: DOM tabbables and a 3D
 // dial in ONE focus traversal. Tab walks the wave buttons, continues onto
 // the knob (a leaf proxy carries real focus), arrows ratchet it through the
 // physics, and the readout below is live DOM painted by the dial's detents.

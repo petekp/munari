@@ -43,7 +43,7 @@ export const selectionTuning = {
   ior: 1.1,
   disperse: 0.07,
   /** Scatter radius of the frosted body, px. Shares the dispersion loop's
-   *  eight taps, so it costs nothing extra. */
+   *  twelve taps, so it costs nothing extra. */
   frost: 0,
   shadowX: 0,
   shadowY: 5,

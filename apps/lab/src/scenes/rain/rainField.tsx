@@ -54,11 +54,10 @@ const RAIN_LEDGE_INSET_PX = 2
 // A column with less than this much standing water renders nothing — below
 // it the quad would be a sub-pixel sliver that only adds draw calls.
 const RAIN_WATER_RENDER_MIN_PX = 0.25
-// Bounds the water instance buffer well above what any real headline's
-// bowls hold at once (a handful of letters, a few dozen columns each) —
-// One instance per wet column, and the headline alone spans ~1300 columns
-// at this face size — at 256 the loop silently stopped rendering water
-// past the first fifth of the headline (2026-09-01 capture).
+// Caps the water instance buffer. One instance per wet column, and the
+// headline alone spans ~1300 columns at this face size — at 256 the loop
+// silently stopped rendering water past the first fifth of the headline
+// (2026-09-01 capture).
 const RAIN_WATER_MAX_INSTANCES = 2048
 // Slightly wider than 1 column so adjacent wet columns' quads overlap
 // instead of leaving a hairline gap at their shared edge.

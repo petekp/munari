@@ -150,6 +150,14 @@ function loopOffset(q: number, radius: number): Offset {
   }
 }
 
+/** Where one sheet vertex lands, and the local horizontal stretch there. */
+export interface WarpPoint {
+  x: number
+  y: number
+  /** Width at this row over rest width — 1 at the page, small at the slot. */
+  k: number
+}
+
 /**
  * Map a sheet point to panel-local space.
  *
@@ -165,14 +173,6 @@ function loopOffset(q: number, radius: number): Offset {
  * to know how hard a piece of the sheet is being squeezed would
  * otherwise have to evaluate this function twice to find out.
  */
-/** Where one sheet vertex lands, and the local horizontal stretch there. */
-export interface WarpPoint {
-  x: number
-  y: number
-  /** Width at this row over rest width — 1 at the page, small at the slot. */
-  k: number
-}
-
 export function genieWarp(
   u: number,
   v: number,

@@ -10,10 +10,10 @@
 //
 // The hold story is the inverse of genie's. The article is real,
 // visible, scrolling DOM the entire time — the compositor never gives
-// it up. What flies in WebGL is a TWIN: the same component rendered
-// from the same controlled props into a parked Surface source, giving
-// the band a texture of paint that is identical to the page by
-// construction.
+// it up. What the band draws is a COPY: useElementCapture clones the
+// live article, with its computed styles inlined, into the capture's
+// parked source, giving the band a texture of paint that is identical
+// to the page by construction.
 //
 // WHERE the canvas lives is the part that took three tries. The
 // compositor scrolls a flick on its own thread; anything positioned
@@ -49,7 +49,6 @@ import {
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { VEIL_DEFAULTS, veilReturn, veilStrip } from './veilLaw'
 import { createVeilBand, createVeilBlur, createVeilCopy } from './veilNodes'
-import type { VeilGateEntry } from '../../lib/devGlobals'
 import './veil.css'
 
 const FOV = 42
@@ -66,7 +65,7 @@ const WINDOW_H = BAND_H + UNDERHANG
 // until the glide is over, then demand resumes.
 const GLIDE_MS = 180
 
-// ── the article (rendered twice: on the page, and parked for paint) ─────
+// ── the article (rendered once; the capture parks a clone for paint) ─────
 
 function VeilSheet() {
   return (
@@ -174,11 +173,6 @@ function PixelPerfect() {
   return null
 }
 
-// The demand loop's alarm clock: a scroll moves the window, late fonts
-// change the article's paint, and neither produces a frame on its own
-// under frameloop='demand'. The page scrolls in its own container, and
-// element scrolls never reach a window listener — the document capture
-// phase is the one place that hears them all.
 /** How far the return ramp has opened this frame. The raster's box has to
  *  match the live page's before the ramp starts, and any mismatch restarts
  *  it — blending two disagreeing layouts reads as text doubled sideways. */
@@ -193,20 +187,11 @@ function stepGate(matched: boolean, matchedSince: RefObject<number | null>): num
     : 0
 }
 
-/** Appends one frame to the dev ring and trims it back to 400. */
-function pushGateRecord(
-  gateValue: number,
-  facts: Omit<VeilGateEntry, 't' | 'muGate'>,
-) {
-  const log = (window.__veilGateLog ??= [])
-  log.push({
-    t: Math.round(performance.now() * 10) / 10,
-    ...facts,
-    muGate: Math.round(gateValue * 1000) / 1000,
-  })
-  if (log.length > 400) log.splice(0, log.length - 400)
-}
-
+// The demand loop's alarm clock: a scroll moves the window, late fonts
+// change the article's paint, and neither produces a frame on its own
+// under frameloop='demand'. The page scrolls in its own container, and
+// element scrolls never reach a window listener — the document capture
+// phase is the one place that hears them all.
 function WakeOn() {
   const invalidate = useThree((s) => s.invalidate)
   const lastScroll = useRef(0)
@@ -248,7 +233,7 @@ interface BandProps {
   content: { w: number; h: number }
   scroller: React.RefObject<HTMLDivElement | null>
   slab: React.RefObject<HTMLDivElement | null>
-  /** The live twin's root — read synchronously in useFrame for the
+  /** The live article's root — read synchronously in useFrame for the
    *  generation gate (see the useFrame comment below). Different purpose
    *  from `content`: that's this component's last-committed React state,
    *  which during a drag trails what `sheet` measures right now. */
@@ -363,8 +348,9 @@ function VeilBand({ capture, painted, content, scroller, slab, sheet }: BandProp
 
     // The generation gate. During a horizontal resize the live page
     // reflows on the browser's own layout clock; the capture feeding this
-    // band's texture delivers on a separate, delayed one (React state ->
-    // source.setSize -> requestPaint -> compositor onpaint -> GL upload).
+    // band's texture delivers on a separate, delayed one (resize observer
+    // -> source.setSize -> requestPaint -> compositor onpaint -> texture
+    // upload).
     // Blending the two at partial alpha while they disagree reads as text
     // doubled at a horizontal offset — measured by the veil-resize probe
     // at 2.6-3.0x the noise floor on every mid-drag frame (2026-08-08;
@@ -376,8 +362,8 @@ function VeilBand({ capture, painted, content, scroller, slab, sheet }: BandProp
     // `sheet.current`'s offsetWidth/Height right here, synchronously, is
     // the freshest truth the live page has. The copy is only ever as
     // current as its OWN last completed paint — `paintedSize()`, not the
-    // Surface's `size()` — which is whatever box the capture pipeline had
-    // actually caught up to as of that paint.
+    // capture's requested size — which is whatever box the capture
+    // pipeline had actually caught up to as of that paint.
     const liveW = sheet.current?.offsetWidth ?? content.w
     const liveH = sheet.current?.offsetHeight ?? content.h
     const [pw, ph] = paintedSize()
@@ -421,17 +407,6 @@ function VeilBand({ capture, painted, content, scroller, slab, sheet }: BandProp
     band.profile.dpr.value = dpr
     band.gate.value = gate
 
-    if (import.meta.env.DEV) {
-      // Diagnostic ring log for instruments — one record per frame that
-      // reached this point, so a probe can see WHICH frames ran and what
-      // the gate saw on each, not just the last survivor.
-      pushGateRecord(band.gate.value, {
-        pw, ph, liveW, liveH,
-        cw: content.w, ch: content.h,
-        matched, gate: Math.round(gate * 1000) / 1000,
-      })
-    }
-
     // A mismatch (or a still-closing return) must keep frames flowing:
     // the frame after a delayed capture finally lands is the frame that
     // has to notice the re-match and start the ramp, and
@@ -460,21 +435,14 @@ export function VeilApp() {
   const attachSheet = useCallback((element: HTMLDivElement | null) => { sheetRef.current = element; capture.ref(element) }, [capture])
   const painted = useCaptureStatus(capture).status === 'ready'
 
-  // The twin must be told its size: the page copy's layout is the truth,
+  // The band must be told the article's size: the page's layout is the truth,
   // and the observer keeps it true through resizes and late font loads.
   useLayoutEffect(() => {
     let frame = 0
     let observer: ResizeObserver | null = null
     const attach = () => {
-      const pageSheet = document.querySelector('.veil-page .veil-sheet')
-      const pageHolder = pageSheet?.parentElement
-      const el =
-        sheetRef.current ?? (pageHolder instanceof HTMLDivElement ? pageHolder : null)
-      if (!el) {
-        frame = requestAnimationFrame(attach)
-        return
-      }
-      sheetRef.current = el
+      const el = sheetRef.current
+      if (!el) return
       const measure = () => {
         const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight)
         setDims(current => current?.w === w && current.h === h ? current : { w, h })

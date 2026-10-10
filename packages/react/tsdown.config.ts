@@ -1,6 +1,6 @@
 import { defineConfig } from 'tsdown'
 
-// The publish build. Two things about it are load-bearing:
+// The publish build. Four things about it are load-bearing:
 //
 // 1. `@munari/core` is BUNDLED, not externalized. One public package is
 //    the doctrine (decisions.md #1): a consumer installs `@petepetrash/munari` and

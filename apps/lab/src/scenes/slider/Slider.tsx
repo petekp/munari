@@ -50,8 +50,8 @@ const PANEL_W = 560
 const PANEL_H = 84
 /** The rail's centerline — the vertical fixed point of the lens. */
 const MID = PANEL_H / 2
-// 500 track px over 5,000ms: 10ms per pixel flat, 5ms per HAND pixel
-// under the held lens. The 30px aprons keep the thumb and the rim's
+// 500 track px over 5,000ms: 10ms per pixel, held or not, because the
+// drag maps the hand 1:1. The 30px aprons keep the thumb and the rim's
 // bulge inside the capture at both ends.
 const TRACK_X0 = 30
 const TRACK_LEN = 500

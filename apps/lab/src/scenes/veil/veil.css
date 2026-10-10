@@ -2,7 +2,7 @@
  *
  * Same rule as flight and genie: this is a PAGE, and everything on it
  * is paper. The article is real, visible, scrolling DOM the whole time
- * — the veil is a WebGL window onto its paint, pinned to the bottom of
+ * — the veil is a canvas window onto its paint, pinned to the bottom of
  * the viewport, and the blur deepens with distance into the band (the
  * profile is veilLaw.ts). The overlay canvas never takes pointer
  * events: you scroll, select, and click THROUGH the veil, because the
@@ -25,9 +25,10 @@
   background: var(--bench);
 }
 
-/* The twin root — this exact subtree renders once on the page and once
- * parked, so IT carries the font and the ground: anything it left to
- * inheritance would resolve differently in its two homes. */
+/* The captured article — the capture clones this subtree with its
+ * computed styles inlined, so inherited font and color survive. The
+ * page's background is outside the capture, so the sheet paints its own
+ * or the parked copy has none. */
 .veil-sheet {
   background: var(--bench);
   font: 15px/1.5 var(--body);
@@ -130,7 +131,7 @@
  * scrolling content (not fixed to the viewport) so the compositor
  * moves it in lockstep with the article around it; the scene only
  * slides it to a new article row via transform. Never solid: nothing
- * in this scene's WebGL is interactive, so every pointer event falls
+ * in this scene's canvas is interactive, so every pointer event falls
  * through to the page. */
 .veil-slab {
   position: absolute;

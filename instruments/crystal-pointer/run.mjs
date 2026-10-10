@@ -27,7 +27,7 @@
 // the eye picked, and the key the hand was over. Where those blobs sit is
 // the whole answer, and it is read off the canvas.
 //
-// Four clauses:
+// Six clauses:
 //
 //   1. Uncorrected, the click is the hand. With the switch off, a click at a
 //      key's own layout box types that key however the glass is drawn,
@@ -42,6 +42,13 @@
 //   4. The eye's key is the one drawn under the tip. This is the clause that
 //      matters most, and the only one a drifted mirror cannot satisfy: the
 //      relay would still pick some key and clauses 1-2 would still pass.
+//   5. The hand MOVING. Sweeping the hand across the pad keeps a key lit for
+//      at least half the samples, and every relayed point it samples lands
+//      within SWEEP_OFFSET of the hand. Clauses 1-4 hold the hand still, so
+//      they cannot see the drawn pose lagging the pointer.
+//   6. The caustic reaches the page. With the hand parked, the page with the
+//      caustic on must be brighter than with its knob at zero: some pixel by
+//      at least CAUSTIC_PEAK, and at least CAUSTIC_UP pixels in all.
 //
 // "Came on" means DARKER. The pad is lit paper and the highlighted key fills
 // near-black, so which sign counts as ON is a fact about the palette, not
@@ -65,10 +72,9 @@
 // outline's area, and the same median is now 130px. The stone was later cut
 // a pavilion as well, so the exit face is not flat either.
 //
-// There is no fifth clause asking where the HAND's key ended up. It sounds
-// like a second independent reading and is not one: the two keys differ and
-// the glass is one function of position, so "B is under the tip" already
-// says G is not.
+// No clause asks where the HAND's key ended up. It sounds like a second
+// independent reading and is not one: the two keys differ and the glass is
+// one function of position, so "B is under the tip" already says G is not.
 //
 // Clause 1 also stands guard over the relay's click. Munari's canvas gate
 // swallows the browser's own click after a press it already delivered, by
@@ -420,7 +426,7 @@ try {
       `aimed at ${AIM}, typed "${eye}"`,
   )
 
-  // ── 3. the eye's key is the one drawn under the tip ──────────────────
+  // ── 3 and 4. the switch moves only the highlight, to the tip ─────────
   //
   // Two frames with the hand held still, so the crystal's pose is identical
   // in both and everything optical cancels in the difference. What is left
@@ -461,8 +467,8 @@ try {
   // motion the drawn pose is a frame behind, and the bend field answers a
   // query put to it off the tip so badly that the highlight used to land
   // three keys from the cursor and jump 170px between one sample and the
-  // next. Walking it and watching the size of each hop is the only clause
-  // here that can see that.
+  // next. Walking it and measuring how far each relayed move lands from the
+  // hand is the only clause here that can see that.
   await setCorrect(true)
   const sweep = []
   for (let i = 0; i <= SWEEP_STEPS; i++) {

@@ -96,7 +96,6 @@ const install = () => {
     camera.fov = 22
     camera.updateProjectionMatrix()
     camera.updateMatrixWorld(true)
-    gl.toneMapping = THREE.NoToneMapping
     gl.outputColorSpace = THREE.SRGBColorSpace
     probe.backdrop ??= addBackdrop(scene, THREE)
     window.__glass.setBlobs(0)

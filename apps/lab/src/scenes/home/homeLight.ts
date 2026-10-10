@@ -13,8 +13,8 @@
 //
 // Ownership: this module owns the light and shadow math and the material.
 // homeRelief.ts owns glyph and relief distance fields. homeLightLaw.ts owns
-// the reference projection and standoffs. HomeMasthead.tsx owns the renderer, the light's
-// position, and when the masks are rebuilt.
+// the default light height and the fixed standoffs. HomeMasthead.tsx owns
+// the renderer, the light's position, and when the masks are rebuilt.
 
 import * as THREE from 'three'
 import { MeshBasicNodeMaterial, type Node, type TextureNode, type UniformArrayNode, type UniformNode } from 'three/webgpu'

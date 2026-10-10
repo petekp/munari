@@ -223,7 +223,7 @@ describe('FrameSurface runtime', () => {
     expect(runtime.takePresentationReceipt()).toBeNull()
   })
 
-  it('releases stale GL storage before a resized canvas uploads', () => {
+  it('releases stale texture storage before a resized canvas uploads', () => {
     const el = canvas()
     const source = createCanvasFrameSource(el, { premultiplyAlpha: true })
     const runtime = createFrameSurfaceRuntime(source, 37, false, () => {})

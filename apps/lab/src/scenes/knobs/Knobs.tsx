@@ -3,8 +3,8 @@
 //
 // The hold split, control by control:
 //
-//   DOM (captured, KnobsPanel)      WebGL (real geometry, this file)
-//   ─────────────────────────       ────────────────────────────────
+//   DOM (captured, KnobsPanel)      Three.js (real geometry, this file)
+//   ─────────────────────────       ───────────────────────────────────
 //   state, ARIA, focus, input       knurled grips, lathed caps
 //   engraved text, LED readouts     bat levers on physical springs
 //   lamp glow, wells, ticks         collar bezels, lens domes
@@ -153,8 +153,8 @@ const noRaycast = () => {}
 
 /** Live bag: the slab's footprint on the art plane, and how hard the
  *  artwork backlights it right now. PanelRig writes it each frame; the
- *  light rig occludes its glints against the footprint, and the face
- *  shade and edge halo read the level. */
+ *  light rig occludes its glints against the footprint, the corona
+ *  traces its edge, and the face shade reads the level. */
 const backlight = { level: 0, x: 0, y: 0, w: 0, h: 0 }
 
 /** Where the art's emitters stand in depth: AT the artwork, behind the
@@ -507,9 +507,8 @@ function ArtLightRig() {
       if (!light) return
       // The emitter stands where the picture actually glows — behind
       // the slab. A glint the slab's footprint covers is a hidden
-      // light: it dies here, and the halo re-emits it around the
-      // slab's edges. A glint swinging out past the edge is visible
-      // again, and its light comes back.
+      // light: it dies here. A glint swinging out past the edge is
+      // visible again, and its light comes back.
       const p = glowPoint(src, window.innerWidth)
       const hidden = slabOcclusion(p.x, p.y, backlight)
       light.position.set(p.x, p.y, ART_LIGHT_Z)
@@ -593,9 +592,7 @@ interface FeatureBox {
 }
 
 interface KnobsResizeProbeState {
-  anchors: Readonly<Record<string, SourceUvRect>> | null
   projectedHue: { x: number; y: number } | null
-  panelScale: { x: number; y: number; z: number } | null
 }
 
 interface LiveKnobsAnchorMap {
@@ -985,7 +982,6 @@ function KnobsAudioPan() {
 function KnobsResizeProbeTracker({ state }: { state: RefObject<KnobsResizeProbeState> }) {
   const { scene, camera, gl } = useThree()
   const point = useMemo(() => new THREE.Vector3(), [])
-  const scale = useMemo(() => new THREE.Vector3(), [])
   useFrame(() => {
     const hue = scene.getObjectByName('probe:knob:hue')
     if (!hue) {
@@ -997,11 +993,6 @@ function KnobsResizeProbeTracker({ state }: { state: RefObject<KnobsResizeProbeS
     state.current.projectedHue = {
       x: canvas.left + ((point.x + 1) / 2) * canvas.width,
       y: canvas.top + ((1 - point.y) / 2) * canvas.height,
-    }
-    const surface = scene.getObjectByName('knobs-panel-surface')
-    if (surface) {
-      surface.getWorldScale(scale)
-      state.current.panelScale = { x: scale.x, y: scale.y, z: scale.z }
     }
   })
   return null
@@ -1374,21 +1365,6 @@ function FaceShade({ rect }: { rect: RailRect }) {
 }
 
 /**
- * The LCD windows, re-rendered as pure emitters. The captured face is lit
- * shaded content — every authored pixel multiplies the room's light — and a
- * face-wide emissive term lifts ALL the paint, washing the charcoal body
- * gray and driving the windows past their authored color into clipping.
- * A real backlit window is neither of those things: everything visible in
- * it IS emission. So each measured window gets a small unlit mesh standing
- * just off the face, sampling the SAME live capture at the window's own UV
- * rect — the DOM still owns the pixels (measured, not duplicated) — and
- * showing the authored amber exactly: digits dark because the DOM painted
- * them dark, lamp bright because the DOM painted it bright, the room not
- * consulted. `toneMapped: false` keeps the film look off a lamp's face.
- * Children of the Surface mesh, so they ride the rig's tilt and read the
- * capture through the package's own custom-material seam.
- */
-/**
  * The one material a family of capture-sampling emitters shares.
  *
  * A `MeshBasicMaterial` with a map and one without are DIFFERENT shader
@@ -1430,6 +1406,20 @@ function reprojectUVs(
   uv.needsUpdate = true
 }
 
+/**
+ * The LCD windows, re-rendered as pure emitters. The captured face is lit
+ * shaded content — every authored pixel multiplies the room's light — and a
+ * face-wide emissive term lifts ALL the paint, washing the charcoal body
+ * gray and driving the windows past their authored color into clipping.
+ * A real backlit window is neither of those things: everything visible in
+ * it IS emission. So each measured window gets a small unlit mesh standing
+ * just off the face, sampling the SAME live capture at the window's own UV
+ * rect — the DOM still owns the pixels (measured, not duplicated) — and
+ * showing the authored amber exactly: digits dark because the DOM painted
+ * them dark, lamp bright because the DOM painted it bright, the room not
+ * consulted. Children of the Surface mesh, so they ride the rig's tilt and
+ * read the capture through the package's own custom-material seam.
+ */
 function ReadoutWindows() {
   const texture = useSurfaceTexture()
   // ONE material for every window. They are identical — the same map,
@@ -1998,9 +1988,9 @@ function PanelRig({
 
     // Publish the slab's footprint on the art plane, then how much
     // luminous energy that footprint is standing in front of — the
-    // light rig occludes each glint against it, and the shade and
-    // corona scale by the level. A dead picture (`artClock.lit` → 0)
-    // has no energy for the slab to block.
+    // light rig occludes each glint against it, the corona traces
+    // its edge, and the face shade scales by the level. A dead
+    // picture (`artClock.lit` → 0) has no energy for the slab to block.
     backlight.x = m.pose.x.x
     backlight.y = m.pose.y.x
     backlight.w = rect.w + BEZEL_LIP * 2
@@ -2059,8 +2049,7 @@ function PanelAnchorReport({
   const anchors = useSurfaceAnchorRects(REQUIRED_ANCHORS)
   // React Doctor's no-pass-data-to-parent warning is intentional. These
   // anchors are committed in the presenter tree and consumed by the page
-  // scroller outside it. The resize probe pins that the published set and
-  // painted generation stay in step across both container breakpoints.
+  // scroller outside it.
   useEffect(() => {
     onAnchors(anchors)
   }, [anchors, onAnchors])
@@ -2146,7 +2135,7 @@ function PanelStage({
           <BacklightCorona rect={rect} />
           <SlabRim rect={rect} />
           {/* The panel belongs to the scene. Its captured HTML supplies the
-              slab; DegradedPanel supplies the native fallback separately. */}
+              slab; DegradedKnobs supplies the native fallback separately. */}
           <SceneSurface.Root name="knobs-panel">
             {/* A flicked dial keeps spinning after the hand has let go. */}
             <SceneSurface.HTML size={[rect.w, rect.h]} live>
@@ -2426,22 +2415,17 @@ export function KnobsApp() {
     panelWidth: RAIL_W,
     panelHeight: 0,
   })
-  // The presenter's committed anchor set, mirrored out for the scroller
-  // and the probe. A ref, not state: nothing in the page tree renders from
-  // it, and it changes as often as the panel repaints.
+  // The presenter's committed anchor set, mirrored out for the scroller.
+  // A ref, not state: nothing in the page tree renders from it, and it
+  // changes as often as the panel repaints.
   const anchorMap = useRef<Readonly<Record<string, SourceUvRect>> | null>(null)
   const probeEnabled =
     'window' in globalThis &&
     new URLSearchParams(window.location.search).get('probe') === 'knobs-resize'
-  const probeState = useRef<KnobsResizeProbeState>({
-    anchors: null,
-    projectedHue: null,
-    panelScale: null,
-  })
+  const probeState = useRef<KnobsResizeProbeState>({ projectedHue: null })
 
   const onAnchors = useCallback((anchors: Readonly<Record<string, SourceUvRect>> | null) => {
     anchorMap.current = anchors
-    probeState.current.anchors = anchors
   }, [])
 
   const syncViewport = useCallback((panelWidth: number, panelHeight: number, pinRight = false) => {
@@ -2603,7 +2587,7 @@ export function KnobsApp() {
       // Pointer hardware can report hundreds of moves per second, while the
       // DOM capture can present only once per display frame. Coalesce to the
       // newest hand position so each visible frame performs one complete
-      // DOM-layout and WebGL commit instead of showing parts from several
+      // DOM-layout and scene commit instead of showing parts from several
       // pointer events at once.
       pendingX = e.clientX
       if (!frame) frame = requestAnimationFrame(applyPending)
@@ -2865,12 +2849,13 @@ export function KnobsApp() {
   )
 }
 
-// This scene's shaders live in useMemo caches, and React Fast Refresh
-// PRESERVES those through a hot update — an edited GLSL string keeps
-// rendering its old compiled program until a full reload, so what's on
-// screen silently stops matching the file (a whole review cycle was
-// spent on pixels no edit could change). Decline the swap: any edit to
-// this module reloads the page it is judged on.
+// This scene's materials live in useMemo caches, and React Fast Refresh
+// PRESERVES those through a hot update — an edited node graph (here or in
+// knobsNodes.ts) keeps rendering its old material until a full reload, so
+// what's on screen silently stops matching the file (a whole review cycle
+// was spent on pixels no edit could change). Decline the swap: any edit to
+// this module, or one that bubbles up to it, reloads the page it is judged
+// on.
 if (import.meta.hot) {
   import.meta.hot.accept(() => import.meta.hot?.invalidate())
 }

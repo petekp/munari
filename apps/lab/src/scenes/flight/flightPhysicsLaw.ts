@@ -472,10 +472,10 @@ export function aeroFollowStep(
 // down the forming ball is held — tracked by the same spring as a grabbed
 // card — so releasing it with speed is a THROW. A plain click is nothing
 // special: it is the same release with ~zero velocity, and the wad simply
-// drops. The rise remains the HANDOFF window (page copy hides on first
-// upload while the plate springs off the page); nothing may overlap it,
-// because the swap's pixel-copy guarantee holds only while the sheet is
-// still a flat, untouched card.
+// drops. The rise remains the HANDOFF window (the page copy hides once a
+// color-writing draw proves the scene copy, while the plate springs off the
+// page); nothing may overlap it, because the swap's pixel-copy guarantee
+// holds only while the sheet is still a flat, untouched card.
 
 /** Seconds: crush begins only after the handoff window has fully passed. */
 export const CRUMPLE_RISE_T = 0.18

@@ -167,7 +167,7 @@ export function FocusOrbitRig({
   // Every camera move funnels through here. The pose is pre-clamped to the
   // controls' polar/distance limits BEFORE arming: settle hands the pose to
   // OrbitControls, whose update() re-satisfies clamps by MOVING THE POSITION
-  // — a last-frame pop otherwise (cameraPose.ts; vitest-pinned: every top-
+  // — a last-frame pop otherwise (cameraPose.ts: every top-
   // and middle-row approach pose in the workspace scene violated the polar limit).
   // Instant mode applies the same end pose as one jump-cut.
   const armTween = (toPosRaw: THREE.Vector3, toTarget: THREE.Vector3, dur: number) => {

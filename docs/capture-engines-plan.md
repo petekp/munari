@@ -13,8 +13,8 @@ whatever it holds, no engine branch), and compositor-only animation
 which is exactly why `snapdomCaptureEngine` claims `native: false` and keeps
 every presenter on the relay.
 
-Read the [system model](system-model.md) and [decision #12 and #13](decisions.md#12)
-before changing the paint layer.
+Read the [system model](system-model.md) and decisions [#12](decisions.md#12)
+and [#13](decisions.md#13) before changing the paint layer.
 
 ## Decision being recorded
 

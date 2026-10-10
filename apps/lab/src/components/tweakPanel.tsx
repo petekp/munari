@@ -20,11 +20,6 @@ import './tweakPanel.css'
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
 
-/** Every field a tuning bag can hold — the three scenes' bags are entirely
- * numbers, strings (enums, hex colors), and booleans. */
-export type TweakValue = string | number | boolean
-export type TweakBag = Readonly<Record<string, TweakValue>>
-
 export interface TweakControl {
   readonly id: string
   readonly label: string

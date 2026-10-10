@@ -25,10 +25,10 @@
 // Full screen, and that is not only a layout choice. The stage is the
 // viewport, so it resizes, and every place the old fixed stage box was a
 // constant is now a measurement: the Surface's size, the plane's size, and
-// `uTexel`. The one box that deliberately does NOT follow the window is the
-// field's texel grid — see `GALLERY_REF_W` — because those grids live in uv
-// and a grid that followed the viewport would make the same photograph open
-// in a different order in a different window.
+// the `texel` uniform. The one box that deliberately does NOT follow the
+// window is the field's texel grid — see `GALLERY_REF_W` — because those
+// grids live in uv and a grid that followed the viewport would make the same
+// photograph open in a different order in a different window.
 //
 // Ownership: this module owns time, layout and the shared handle. The sheet
 // is `refractionMaterial.tsx`, shape is `refractionLaw.ts`, numbers are
@@ -218,32 +218,32 @@ type Slot = 0 | 1
 export function GalleryApp() {
   const surface = useSurfaceHandle('gallery')
 
-  /** Which item each handle is holding. */
+  /** Which item each part is holding. */
   const [slots, setSlots] = useState<[number, number]>([0, 1])
   const [p, setP] = useState(0)
   const [running, setRunning] = useState(false)
 
   /**
-   * Which handle the current crossing started from — the one the mesh is
+   * Which part the current crossing started from — the one the mesh is
    * drawing, and the one whose field decides where the drop opens.
    *
-   * State and not a ref, because the mesh's `surface` prop is derived from
-   * it. It is written only while the crossing is landed, so the handle
-   * cannot change role in the middle of one; a mesh whose Surface swapped
-   * mid-flight would hand the sheet back for a frame.
+   * State and not a ref, because the meshes' `part` and `sampledParts`
+   * props are derived from it. It is written only while the crossing is
+   * landed, so a part cannot change role in the middle of one; a mesh whose
+   * part swapped mid-flight would hand the sheet back for a frame.
    */
   const [origin, setOrigin] = useState<Slot>(0)
 
   const drive = useRef<RefractionDrive>({ t: 0 })
 
-  // Which handle the compositor is holding, if either. At both ends of the
+  // Which part the compositor is holding, if either. At both ends of the
   // crossing one of them is ordinary DOM — selectable, focusable, and
   // hit-tested — and the other is a resident source. In between the answer
-  // is NEITHER: the mesh owns the sheet and both items feed it by handle.
+  // is NEITHER: the mesh owns the sheet and both items feed it by part.
   const landedAt: Slot | null = running ? null : p === 0 ? 0 : p === 1 ? 1 : null
   const lifted = landedAt === null
 
-  // The scrub reads 0 at the handle the crossing started from, whichever
+  // The scrub reads 0 at the part the crossing started from, whichever
   // that is, so the law never has to know which way round the pair is.
   drive.current.t = origin === 0 ? p : 1 - p
 
@@ -274,7 +274,7 @@ export function GalleryApp() {
         return next
       })
       setOrigin(landedAt)
-      // One frame between loading the far handle and starting to read it.
+      // One frame between loading the far part and starting to read it.
       // The item is a resident source and keeps painting on its own, but it
       // has only just been told what to paint, and the first thing the
       // crossing samples is that texture.
@@ -349,7 +349,7 @@ export function GalleryApp() {
           wy: window.innerHeight / 2 - (r.top + r.height / 2),
         }
         // A resize fires this a lot, and every new object here re-renders
-        // both Surfaces and re-rasterizes both cards.
+        // both parts and re-rasterizes both cards.
         return prev.w === next.w && prev.h === next.h && prev.wx === next.wx && prev.wy === next.wy
           ? prev
           : next

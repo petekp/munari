@@ -26,7 +26,6 @@ try {
       await setChromeViewport(page, { width:900, height:700 })
       await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?wiring=${wiring}&strict=${strict ? '1' : '0'}`, { waitUntil:'load' })
       assert.equal(await page.evaluate(() => 'drawElementImage' in CanvasRenderingContext2D.prototype), true, 'Capture capability is required')
-      if (wiring === 'page') assert.equal(await page.evaluate(() => 'moveBefore' in Element.prototype), true, 'Retained page capture requires moveBefore')
       await page.waitForFunction(() => {
         const state = window.__partsProof?.read()
         return state?.presentation === 'scene' && state.inputs.first !== null && state.inputs.last !== null && state.pixel?.join(',') === '0,255,0,255'

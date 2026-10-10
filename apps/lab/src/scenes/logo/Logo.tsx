@@ -101,15 +101,15 @@ export function LogoApp() {
   // naming a px size, so the wordmark still answers the viewport at every
   // setting. Not a LogoKnob: those reach the shaders through a ref, and this
   // one never leaves the DOM. Everything downstream is em — slots, drift,
-  // float amplitude — and the WebGL twins size themselves from the fontPx
+  // float amplitude — and the scene's twins size themselves from the fontPx
   // measured below, so this single number carries the whole scene.
   const [textScale, setTextScale] = useState(1)
   const [compact, setCompact] = useState(false)
   const [seed, setSeed] = useState(SEED0)
-  // `?probe=still` boots with the conductor paused, so a capture reads
-  // the CROSSING alone: beats mid-capture fold the choreography into the
-  // measurement. Written for crossing-flash, which is gone; kept because
-  // any future crossing instrument needs the same still page.
+  // `?probe=still` boots with the conductor paused, so no beat re-rolls a
+  // letter's pose mid-measurement. The shader-compile gate
+  // (instruments/shader-compile/run.mjs) builds its materials on this
+  // still page.
   const [running, setRunning] = useState(
     () => new URLSearchParams(window.location.search).get('probe') !== 'still',
   )

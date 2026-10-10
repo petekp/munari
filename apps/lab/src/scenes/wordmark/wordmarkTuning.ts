@@ -107,7 +107,7 @@ export const WORDMARK_GROUPS: readonly WordmarkControlGroup[] = [
   {
     key: 'materials',
     title: 'Materials',
-    description: 'Only visible once the mark has lifted to WebGL.',
+    description: 'Only visible once the mark has lifted into 3D.',
     controls: [
       { key: 'depth', label: 'Depth bob', min: 0, max: 160, step: 2, unit: 'px' },
       { key: 'dodge', label: 'Dodge', min: 0, max: 120, step: 2, unit: 'px' },

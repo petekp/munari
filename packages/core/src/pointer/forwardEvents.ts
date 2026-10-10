@@ -6,8 +6,8 @@
 // subtree with getBoundingClientRect to find the deepest element under the
 // point → dispatch synthetic pointer events there and manage focus.
 //
-// Because the source subtree is REAL DOM parked behind the WebGL canvas, the
-// browser does the rest for free: :hover/:focus styles repaint into the
+// Because the source subtree is REAL DOM parked behind the renderer canvas,
+// the browser does the rest for free: :hover/:focus styles repaint into the
 // texture, and once an input is focused, native keystrokes type into it with
 // no forwarding needed at all (we just stop the canvas from stealing focus).
 
@@ -25,7 +25,8 @@ const FOCUSABLE = 'input, textarea, select, button, [tabindex], [contenteditable
  * paint. A floating layer is the worked example — a full-size container
  * standing in front of its panel, `pointer-events: none`, holding a popover
  * that sets `auto`. Without this, the slab caught every ray the moment it went
- * live and the panel behind it went dead (see Surface's `hitTest="content"`).
+ * live and the panel behind it went dead (see Surface.Mesh's
+ * `pointerEvents="content"`).
  *
  * `none` is not a wall: a descendant may set `auto` and be hittable inside a
  * transparent ancestor — that is precisely the portal-container idiom. So the
@@ -98,7 +99,7 @@ export function deepestElementAt(root: Element, x: number, y: number): Element |
 // focus ring a real page would not show, and with shadcn's `transition-all`
 // on the button, paid ~18 paints of ring fade during its entrance transition.
 //
-// Same doctrine as the boundary protocol above: the forwarder is the only
+// Same doctrine as the boundary protocol below: the forwarder is the only
 // thing that knows the pointer's real story, so whatever it declines to say,
 // nothing downstream can reconstruct. It mirrors the verdict the browser
 // would have reached onto `data-pointer-focus`, and the consumer's
@@ -234,7 +235,7 @@ interface PointerMirror {
 const mirrors = new WeakMap<HTMLElement, PointerMirror>()
 
 /**
- * The native pointer facts that survive the DOM-to-WebGL-to-DOM relay.
+ * The native pointer facts that survive the DOM-to-canvas-to-DOM relay.
  * Passing no sample keeps the historic primary-mouse behavior.
  */
 export interface ForwardPointerSample {

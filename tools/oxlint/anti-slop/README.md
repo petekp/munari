@@ -13,11 +13,11 @@ order: inference, `as const`, `satisfies`, a named type, and parsing
 external input once, where it enters the program.
 
 Housekeeping: the plugin's own source is in `ignorePatterns` (it does
-not lint itself) but `tools/tsconfig.json` typechecks it; the one
-compiler-option difference is `allowImportingTsExtensions`, because
-oxlint loads these files unbundled at the paths written in the
-imports. Disable a rule by omitting its key from the `rules` object;
-there is no `"off"` entry.
+not lint itself) but `tools/tsconfig.json` typechecks it under the
+root compiler options. Its imports spell out the `.ts` extension,
+because oxlint loads these files unbundled at the paths written in
+the imports. Disable a rule by omitting its key from the `rules`
+object; there is no `"off"` entry.
 
 ## The rules
 

@@ -58,8 +58,8 @@ describe('a crossing whose ramp a scene owns', () => {
   })
 
   // The fault: an exponential decay reaches 1e-9 and stays there. The page
-  // never takes the hold back, and the content sits in WebGL at a progress
-  // nobody can see is not zero.
+  // never takes the hold back, and the content stays on the canvas at a
+  // progress nobody can see is not zero.
   it('lands exactly, not asymptotically', () => {
     const landing = crossingRequest(airborne(0.4), false)
     expect(landing.phase).toBe('landing')

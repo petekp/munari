@@ -1,11 +1,12 @@
-// Thumbnail capture — regenerates the nav's scene screencaps.
+// Thumbnail capture — regenerates the example thumbnails.
 //
-// The nav (src/components/SceneNav.tsx) shows a 16:9 card per advertised
-// scene, served from public/thumbs/<scene>.jpg. Those images are captures
-// of the real scenes, so they go stale when a scene's look changes; this
-// script re-takes them. Localhost has no origin-trial token, so the Chrome
-// it launches carries the CanvasDrawElement flag — same policy as
-// tools/runLab.mjs.
+// The nav (src/components/SceneNav.tsx), the overview's example cards
+// (src/scenes/home/HomeExamples.tsx) and the gallery
+// (src/scenes/gallery/Gallery.tsx) show public/thumbs/<scene>.jpg for each
+// advertised scene. Those images are captures of the real scenes, so they
+// go stale when a scene's look changes; this script re-takes them.
+// Localhost has no origin-trial token, so the Chrome it launches carries
+// the CanvasDrawElement flag — same policy as tools/runLab.mjs.
 //
 // Usage: `npm run thumbs` in apps/lab (CHROME_PATH overrides discovery).
 
@@ -22,8 +23,8 @@ const outDir = path.join(labRoot, 'public', 'thumbs')
 // held, and a scene loaded and left alone shows a bare paragraph. Its
 // thumb is a hand-picked frame — re-take it by hand, not by adding it here.
 const SCENES = ['flight', 'genie', 'knobs', 'logo', 'marble-hand', 'plume']
-// The nav renders cards ~144px wide; 1280×720 keeps the capture sharp on
-// dense displays and crops nothing (the scenes are viewport-sized pages).
+// 1280×720 keeps the example cards sharp on dense displays, and the
+// capture itself crops nothing (the scenes are viewport-sized pages).
 const WIDTH = 1280
 const HEIGHT = 720
 

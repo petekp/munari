@@ -1,8 +1,8 @@
 # Browser gate recording implementation plan
 
-Status: implemented and locally verified against current `main`. The origin-trial
-preflight passes with its expiry warning. Publication is authorized; hosted
-acceptance remains pending the resulting GitHub Actions run.
+Status: implemented and locally verified against current `main`. Publication
+is authorized; hosted acceptance remains pending the resulting GitHub Actions
+run.
 
 Build one recording module for the Genie restore and pose flash gates. It will
 own Chrome recording, acknowledgement draining, image decoding, page-frame
@@ -494,7 +494,6 @@ STRICT_CAPABILITY=1 npm run gate:genie-restore-flash
 STRICT_CAPABILITY=1 npm run gate:genie-pose-flash
 STRICT_CAPABILITY=1 RESTORE_CAPTURE_FORMAT=png ROUNDS=1 npm run gate:genie-restore-flash
 npm run gate:degraded
-npm run check:origin-trial
 npm test
 npm run typecheck
 npm run lint
@@ -567,7 +566,6 @@ clock errors ahead of missing-second retry classification.
 | Disposable actual-assessment checks | Sixty-two metadata/error cases passed; this is not pixel proof |
 | Fast suite on integrated main | 1,399 tests in 123 files passed |
 | Typecheck, lint, package build | Passed |
-| Origin-trial preflight on integrated main | Passed with an expiry warning |
 | Hosted execution | Pending the GitHub Actions run after the main push |
 
 Active disposal collects acknowledgement failures reported while the stopped
@@ -576,14 +574,10 @@ reported once, both before disposal and after Chrome confirms stop. Session,
 listener, pending-work, and clock cleanup pass in both cases. The added check
 failed before the correction and passed afterward.
 
-The signed token expires October 19, 2026 at 5:00 p.m. Pacific. Current `main`
-warns while the token remains valid and fails once it expires. Integration with
-that change removes the earlier preflight blocker. Local flag-backed results
-remain separate from the public demo's origin-trial status.
+Local flag-backed results remain separate from the public demo's origin-trial
+status.
 
 No late recording images appeared in the recorder check. Fresh-session isolation
 and immutable captures passed, but late-delivery behavior remains unverified.
 Temporary baseline copies were removed. The disposable metadata checker and raw
 local measurements are outside the repository.
-
-[Local evidence and command exits](/private/tmp/munari-recording-implementation-20261002/summary.json)

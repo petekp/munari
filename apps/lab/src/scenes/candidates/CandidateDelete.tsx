@@ -151,8 +151,7 @@ function PeelMaterial() {
  * Two stages in one pass: wind the sheet onto a roll from its free edge,
  * then let the hinge go and drop the whole thing. The drop is applied to
  * the same vertices rather than to the mesh's transform so that one CPU
- * loop is the single source of where this row is — which keeps the raycast
- * honest for the frames when the row can still be clicked.
+ * loop is the single source of where this row is.
  */
 function PeelDrive({
   phase,

@@ -26,7 +26,7 @@ import { useSyncExternalStore } from 'react'
 import { captureAvailable } from '@munari/core'
 
 /**
- * Can a Surface hand its DOM to WebGL in this browser?
+ * Can a Surface capture its DOM for the scene in this browser?
  *
  * Safe anywhere, including Node — every engine's `available()` answers
  * `false` rather than throwing when there is no DOM at all.

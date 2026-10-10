@@ -4,7 +4,7 @@
 // The law: this is drei's ContactShadows with node materials, because drei's
 // GLSL materials cannot draw on a WebGPURenderer (contactShadowNodes.ts). The
 // passes, the camera, and the blur steps follow drei's, so the floor reads as
-// it did on main.
+// drei's GLSL version does.
 //
 // Ownership: this component owns its targets, camera, and per-frame passes.
 // The scene owns what casts.

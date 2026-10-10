@@ -373,5 +373,6 @@ Numeric authored dimensions must be positive and finite. An unmeasured native
 element waits for layout rather than being treated as invalid authored data.
 Companions use `useSurfaceBeforeRender` after frame pose writers; the callback may
 run for several cameras/targets in one animation frame. It updates companions,
-not the simulation clock. Canvas-relative placement follows the GL canvas's live
-client rectangle, including inset, scroll and supported positive scale.
+not the simulation clock. Canvas-relative placement follows the renderer
+canvas's live client rectangle, including inset, scroll and supported positive
+scale.

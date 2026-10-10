@@ -227,8 +227,9 @@ interface LetterFx {
   room: number
   front: number
   /** The motion rig: the weave's dials (the material folds them with
-   *  the font size), the strike buffer (plane px, uTime seconds,
-   *  power), and the folded gates for rings and travel stretch. */
+   *  the font size), the strike buffer (plane px, birth seconds on
+   *  the `time` uniform's clock, power), and the folded gates for
+   *  rings and travel stretch. */
   waveScale: number
   waveSpeed: number
   waveDir: THREE.Vector2
@@ -346,7 +347,8 @@ function writeMaterialEffects(
   fx.irid = par.irid * k.irid
   fx.glow = par.glow * k.glow
   // The rig, straight off the dials — direction from the yaw/pitch
-  // pair (one source with the conformance sweep), gains verbatim.
+  // pair (lightDir, the same law as WORLD_LIGHT's default), gains
+  // verbatim.
   const [lx, ly, lz] = lightDir(k.lightYaw, k.lightPitch)
   fx.light.set(lx, ly, lz)
   fx.key = k.key
@@ -740,7 +742,7 @@ function SceneLetter({
 
   // The letter's blur pyramid (logoFields): sized off the capture box —
   // which is 16px-quantized, so only a real viewport resize remakes the
-  // targets — and refreshed by the material on lit frames.
+  // targets — and refreshed by the material on frames that use them.
   const fields = useMemo(() => new LetterFields(box.w, box.h), [box.w, box.h])
   useEffect(() => () => fields.dispose(), [fields])
 
@@ -995,7 +997,7 @@ function LetterDrive({
     d.tracked = true
     const sp = Math.hypot(vx, vy)
     if (sp > 1) fx.velDir.set(vx / sp, vy / sp)
-    // ── strikes: a tap on the letter, or a beat re-dealing it ──
+    // ── strikes: a tap on the letter ──
     // Consumed here, never in an event handler: a strike is a write
     // into the fx buffer, and the fx buffer belongs to the frame loop.
     const st = strike.current

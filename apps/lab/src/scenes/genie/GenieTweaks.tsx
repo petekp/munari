@@ -44,8 +44,7 @@ function Row({ knob }: { knob: GenieKnobDef }) {
 
 export function GenieTweakPanel() {
   // A tuning session is worth nothing if it cannot leave the browser:
-  // paste-ready knob values plus the two derived CSS lines (end scale
-  // and easing) that genie.css carries as literals.
+  // paste-ready knob values.
   const dump = useCallback(() => {
     const out = dumpGenieKnobs()
     // eslint-disable-next-line no-console

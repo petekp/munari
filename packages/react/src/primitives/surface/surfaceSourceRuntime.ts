@@ -221,7 +221,7 @@ export function createSurfaceSourceRuntime(
     mirrorU,
   )
 
-  // What the GL storage was allocated FOR. Seeded here, not at the first
+  // What the GPU texture storage was allocated FOR. Seeded here, not at the first
   // upload, because the allocation is armed here — see the module preamble.
   let alloc: { width: number; height: number; mips: boolean } | null = {
     width: source.canvas.width,

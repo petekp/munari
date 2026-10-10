@@ -24,8 +24,6 @@
     radial-gradient(120% 90% at 50% 0%, #2b2c30 0%, #17181b 60%, #101114 100%);
 }
 
-/* ── the sheet's own paper ─────────────────────────────────────────── */
-
 /* ── shared tokens ─────────────────────────────────────────────────── */
 
 .opt-page {
@@ -457,7 +455,6 @@
   margin: 0;
 }
 
-.opt-type-cut[data-size='10'] p { font-size: 10px; line-height: 1.4; }
 .opt-type-cut[data-size='8'] p { font-size: 8px; line-height: 1.35; }
 .opt-type-cut[data-size='6'] p { font-size: 6.5px; line-height: 1.3; }
 .opt-type-cut[data-size='5'] p { font-size: 5.5px; line-height: 1.25; }

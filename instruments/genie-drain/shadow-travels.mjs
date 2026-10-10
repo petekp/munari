@@ -24,8 +24,8 @@
 // a little further out.
 //
 // And it reads them EARLY, while t is still ~0, where the sheet stands
-// exactly where the window stood: the strip is then the same pixels in
-// both custodies and the comparison is direct.
+// exactly where the window stood: the strip is then the same pixels
+// whether the DOM or the texture holds them, and the comparison is direct.
 //
 // ── and then it stops being the same texture ────────────────────────────
 //

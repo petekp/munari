@@ -70,21 +70,6 @@ function announce(code: string, message: string): void {
   console.warn(`[munari] snapDOM capture degraded (${code}): ${message}`)
 }
 
-/**
- * Ask snapDOM for `element` rendered at the requested per-axis scale.
- *
- * The target is the ELEMENT's own box times the scale, not the backing
- * store: the raster is stretched to fill whatever size it is drawn at, while
- * the store is cut for the host's box and an element smaller than its host
- * has to land small. Measured 2026-09-11: a 260px element in a 300px host
- * asked for the store's 624px came back stretched across all 624 where the
- * native engine drew it in 541.
- *
- * Per-axis sizes rather than one `scale`, because the two axes differ. The
- * capture is an SVG, so drawing it at the asked-for size is a true render at
- * that size and not an upscale of a smaller one.
- *
- */
 const fieldPlugin = fieldPseudoElementPlugin((fields) => {
   announce(
     'munari-field-pseudo-unplaced',
@@ -124,6 +109,20 @@ const fontPlugin = fontEmbedPlugin((href) => {
   )
 })
 const capturePlugins = [fontPlugin, frameSplitPlugin, fieldPlugin]
+/**
+ * Ask snapDOM for `element` rendered at the requested per-axis scale.
+ *
+ * The target is the ELEMENT's own box times the scale, not the backing
+ * store: the raster is stretched to fill whatever size it is drawn at, while
+ * the store is cut for the host's box and an element smaller than its host
+ * has to land small. Measured 2026-09-11: a 260px element in a 300px host
+ * asked for the store's 624px came back stretched across all 624 where the
+ * native engine drew it in 541.
+ *
+ * Per-axis sizes rather than one `scale`, because the two axes differ. The
+ * capture is an SVG, so drawing it at the asked-for size is a true render at
+ * that size and not an upscale of a smaller one.
+ */
 const rasterize = async (
   element: HTMLElement,
   scaleX: number,

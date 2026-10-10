@@ -9,7 +9,7 @@
  * box-shadow is drawn outside the border box, which is to say outside
  * the capture — the sheet would carry no shadow in flight, so the
  * shadow would have to sit on the desk while its window flew away from
- * it. (The flight scene needs altitude and pays for it with a WebGL
+ * it. (The flight scene needs altitude and pays for it with a mesh
  * shadow twin gated on the same painted signal; this scene's story is
  * the warp, and a twin here would be a second system.) So the shadow is
  * a filled rectangle INSIDE the capture root, offset down and right
@@ -182,9 +182,10 @@
  * element the flight path already hides.
  *
  * Scoped to `[data-degraded]` and it has to be. On the supported desk
- * `data-away` flips on the exact frame WebGL takes the pixels, and a
- * transition there would draw the page copy sliding away UNDER the sheet
- * that replaced it — the one thing the whole handoff exists to prevent.
+ * `data-away` flips on the exact frame the scene canvas takes the
+ * pixels, and a transition there would draw the page copy sliding away
+ * UNDER the sheet that replaced it — the one thing the whole handoff
+ * exists to prevent.
  *
  * `--gen-fold-x/y` are written by `fold` in Genie.tsx: the bays are a
  * flex row and the windows a cascade, so the distance from a window to
@@ -294,8 +295,8 @@
  * texture will contain has to be inside THIS box. The window is drawn at
  * the top-left of it and the shade fills the same rectangle offset by
  * --drop, so the root is exactly one drop wider and taller than the
- * window — two 7px corners of it transparent, which premultiplied alpha
- * carries through the swap without a seam.
+ * window — two drop-sized corners of it transparent, which
+ * premultiplied alpha carries through the swap without a seam.
  *
  * Every token the shadow needs is declared HERE, on the root itself, and
  * that is not tidiness. A parked subtree keeps :root's custom properties
@@ -327,7 +328,7 @@
    * be a shadow rather than a second rectangle, large enough that the
    * strip survives being poured through the warp and resampled — and
    * that lower bound is now real rather than theoretical: see the fade
-   * in genieShaders.ts, which exists because 5px of ink at the mouth's
+   * in genieNodes.ts, which exists because 5px of ink at the mouth's
    * 0.11 scale is 0.55px, and half a pixel of anything is not a shadow. */
   --drop: 5px;
   position: relative;
@@ -338,11 +339,11 @@
 
 /* The library's root stands in for <body> and the lab paints it opaque,
  * which is right for a Surface that is a solid plate and wrong for this
- * one: a sheet whose shadow is 30% ink and whose two offset corners are
- * empty needs its alpha to reach the compositor intact. Flattened
- * against white first, the shadow arrives opaque and four shades too
- * pale, and the corners arrive as small white squares. Unlayered, so it
- * beats @layer base's `.ui-root` in shadcn.css. */
+ * one: a sheet whose shadow is translucent ink and whose two offset
+ * corners are empty needs its alpha to reach the compositor intact.
+ * Flattened against white first, the shadow arrives opaque and four
+ * shades too pale, and the corners arrive as small white squares.
+ * Unlayered, so it beats @layer base's `.ui-root` in shadcn.css. */
 .ui-root:has(> .gen-sheet) {
   background: transparent;
 }
@@ -386,7 +387,7 @@
 /* The film window is landscape, because the footage is. Nothing in the
  * law cares: the funnel is measured from whatever box the window happens
  * to be at press time, so a window of a different size and aspect than
- * its neighbours pours into the same 52px bay with no constant anywhere
+ * its neighbours pours into the same 58px bay with no constant anywhere
  * that knows it is different. */
 .gen-sheet[data-win='triangolo'] {
   --w: 300px;
@@ -495,7 +496,7 @@
  * on purpose: the other half of the Platinum vocabulary is a fine
  * horizontal stripe across the titlebar, and a 2–3px repeating pattern is
  * exactly the thing that falls apart when this scene's warp minifies a
- * 460px window into a 52px bay. Type survives that badly too, but type
+ * 460px window into a 58px bay. Type survives that badly too, but type
  * is not periodic and so does not moiré. Dimming does not care.
  *
  * The state is written on the CAPTURE ROOT (data-front, set in
@@ -542,9 +543,9 @@
  * edges of the window's inside, so what the genie folds is an image
  * with nothing between it and the fold.
  *
- * The canvas is the one visible frame store in both DOM and WebGL. The
- * decoder below never owns visible pixels. The clip is cropped and
- * scaled to exactly this box's 2x by tools/make-film.sh. */
+ * The canvas is the one visible frame store in both the page and the
+ * scene. The decoder below never owns visible pixels. The clip is
+ * cropped and scaled to exactly this box's 2x by tools/make-film.sh. */
 .gen-body[data-fill] {
   padding: 0;
   gap: 0;
@@ -576,15 +577,15 @@
  *
  * Three dock marks — the square, the circle, the triangle, each in its
  * dock color — drifting gently around the card and bouncing off the
- * walls and one another. Live content, not decoration: they keep
- * moving while the sheet is warped, which is the claim the scene
- * exists to make.
+ * walls and one another. Live content while the window is on the desk;
+ * they are held for the whole of a flight (holdBounceMarks in
+ * genieBounce.ts), so the drain is the only thing moving in the air.
  *
  * NO CSS ANIMATION MOVES THEM, and that is the load-bearing choice.
  * The wormhole this replaces ran on compositor transform animations,
- * and the two custodies disagreed about them (measured 2026-08-10,
- * seam-parity probes): the page rendered each ring from a CACHED
- * raster, magnified as it approached — fat, soft strokes — while the
+ * and the page and the capture disagreed about them (measured
+ * 2026-08-10, seam-parity probes): the page rendered each ring from a
+ * CACHED raster, magnified as it approached — fat, soft strokes — while the
  * capture re-painted true geometry every frame — thin, crisp strokes —
  * and the captured clock trailed the compositor's by several frames
  * (~14px on a fast edge). Paused, the same pixels matched exactly. So
@@ -592,8 +593,7 @@
  * simulation (genieBounce.ts): one clock, one raster path, and every
  * mounted copy of the window draws the same numbers on the same frame.
  * The capture keeps up because a DOM mutation self-paints
- * (docs/platform.md row 2). live-content.mjs convicts a regression on
- * either side: paints/s during flight, and twin drift.
+ * (docs/platform.md row 2).
  */
 .gen-play {
   position: absolute;
@@ -776,8 +776,8 @@
 }
 
 /* The button keeps a generous hit target, but it has no visible container.
- * The solid mark is the dock. It sits above the WebGL layer and covers the
- * narrow final neck as the sheet enters its centre. */
+ * The solid mark is the dock. It sits above the overlay canvas and covers
+ * the narrow final neck as the sheet enters its centre. */
 .gen-tile {
   --gen-mouth: 8px;
   position: relative;
@@ -802,10 +802,10 @@
 
 /* A window's bay — the container the sheet pours into, not a frame
  * around a picture of it. Its SIZE is written per-frame from the drive
- * (Driver in Genie.tsx, genieDock.ts's dockPose): transform stays OUT of
- * this transition list on purpose, or a CSS easing would fight that
- * write every frame. The transition here is paint only — the border and
- * mouth seam still cross-fade on the data-filled flip. */
+ * (Flight's writeSlot and Bays in Genie.tsx, genieDock.ts's dockPose):
+ * transform stays OUT of this transition list on purpose, or a CSS
+ * easing would fight that write every frame. The transition here is
+ * paint only. */
 .gen-tile[data-role='window'] {
   cursor: default;
   transform-origin: 50% 50%;
@@ -824,7 +824,7 @@
  * `fill-box` is stated rather than left to the default: percentages in
  * inset() need a box to be percentages OF, and the one that means
  * anything here is the mark's own — half of the circle, not half of the
- * 26px viewport the circle is drawn in. */
+ * 54px viewport the circle is drawn in. */
 .gen-pane {
   fill: var(--gen-accent);
   clip-path: inset(0 0 calc((1 - var(--pour, 0)) * 100%) 0) fill-box;
@@ -843,12 +843,9 @@
   stroke-linejoin: round;
 }
 
-/* Filled: the wireframe STAYS and gains contents — the pane fills, the
- * notch seals into a seam, and the bay holds the swollen size it rang
- * out on landing (both size and ring written per-frame, see above).
- * The border deliberately does NOT light: pane and seam already say
- * occupied twice, and leaving the border neutral gives hover something
- * of its own to say. */
+/* Filled: the wireframe STAYS and gains contents — the pane fills, and
+ * the bay holds the swollen size it rang out on landing (both size and
+ * ring written per-frame, see above). */
 .gen-tile[data-role='window'][data-filled='true'] {
   cursor: pointer;
   /* A swollen bay clears the 16px gap at rest, but a landing ring
@@ -876,8 +873,6 @@
   border-radius: 10px;
 }
 
-/* The overlay canvas — same discipline as flight: never able to eat a
- * click unless the scene has switched it solid over a sheet. */
 /* The overlay's input is the host's: SurfaceCanvas keeps its wrapper clear
  * and writes the canvas's own pointer-events per frame, solid only where a
  * Surface mesh is under the hand. A stylesheet rule here would either lose

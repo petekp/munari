@@ -107,8 +107,8 @@ describe('the hourglass', () => {
         return (
           allowed.has(spec) ||
           spec.startsWith('react/') ||
-          // react-dom/client is the second-React-root seam (useSourceHost's
-          // createRoot) — a documented subpath of a declared peer.
+          // Binding tests mount roots with react-dom/client and render HTML
+          // with react-dom/server, documented subpaths of a declared peer.
           spec.startsWith('react-dom/') ||
           spec.startsWith('three/')
         )

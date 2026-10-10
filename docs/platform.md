@@ -4,8 +4,9 @@ These are dated measurements of the platform under each capture engine.
 Items 1–21, 32 and 33 measure Chrome's HTML-in-canvas capability: the
 library's default capture path uses `drawElementImage`, and entries for
 `texElementImage2D` describe an evaluated alternative. Items 22–31 measure
-snapDOM, the optional second engine. Recheck the relevant measurements when changing
-browser versions or the mechanism that depends on them.
+snapDOM, the optional second engine. Item 34 measures both engines. Recheck
+the relevant measurements when changing browser versions or the mechanism that
+depends on them.
 
 Baseline measurements **2026-08-04** against **Chrome 150** (items 11–12; item
 9–10 on 2026-08-03; items 1–8 on **150.0.7871.187**), macOS, 120Hz,

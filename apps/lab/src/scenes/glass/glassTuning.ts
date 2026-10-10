@@ -60,11 +60,10 @@ export const glassTuning: GlassSceneKnobs = {
   orbSize: 1,
 
   impactAmp: 0.7,
-  // The release is the quiet half of a crossing. Weak (0.1 against the
-  // impact's 0.7) and BROAD — a neck radius two thirds of the orb, versus the
-  // impact's own 0.04 — so it opens as a soft swell instead of the fine, spiky
-  // train an arrival makes. A departure that rings as loudly as an arrival
-  // reads as a second impact, which is the opposite of what leaving is.
+  // The release is the quiet half of a crossing: weak (0.1 against the
+  // impact's 0.7) and launched from a neck 0.67 of the orb's radius, against
+  // the impact's 0.85, so it rings finer and fades faster than an arrival.
+  // A departure that rings as loudly as an arrival reads as a second impact.
   exitAmp: 0.1,
   exitSource: 0.67,
   // Held far under the events it trails. The wake is context for a crossing,

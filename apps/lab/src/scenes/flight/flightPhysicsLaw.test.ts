@@ -474,10 +474,11 @@ describe('aero follower — the bend is continuous; flat-at-rest stays exact', (
 
 describe('crumple — the phases may not overlap the handoff', () => {
   it('the rise window is an untouched sheet: crush exactly 0, held or not', () => {
-    // The page copy hides on first upload somewhere inside this window, and
-    // the swap's pixel-copy guarantee holds only while the sheet is still a
-    // flat card. Not "small" — zero. The hand does not get a say: a ✕
-    // pressed and dragged immediately still lifts a flat sheet.
+    // The page copy hides on presentation proof (a color-writing draw)
+    // somewhere inside this window, and the swap's pixel-copy guarantee holds
+    // only while the sheet is still a flat card. Not "small" — zero. The hand
+    // does not get a say: a ✕ pressed and dragged immediately still lifts a
+    // flat sheet.
     for (const t of [0, CRUMPLE_RISE_T * 0.5, CRUMPLE_RISE_T * 0.999, CRUMPLE_RISE_T]) {
       for (const held of [false, true]) {
         const ph = crumplePhase(t, held)

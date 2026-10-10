@@ -5,7 +5,7 @@ depend on React or `three`, and it has no runtime dependencies. You do not
 install it. The build includes it in [`@petepetrash/munari`](../../README.md).
 
 The DOM remains the source of content and interaction. Core coordinates its
-captured pixels with WebGL and routes input back to the live elements.
+captured pixels with the 3D renderer and routes input back to the live elements.
 
 The [system model](../../docs/system-model.md) places these laws in the full
 intent-to-evidence path. Use the [operating guide](../../docs/agent-workflow.md)
@@ -28,11 +28,14 @@ requirements:
 Chrome completes the draw during its paint step. The resulting texture shows
 the DOM from the previous frame.
 
-WebGL allocates fixed storage when it creates a texture. If the source canvas
-grows, the next upload fails and leaves the old pixels in place. If the canvas
-shrinks, WebGL writes the new image into one corner of the old storage. The
-browser reports neither case to JavaScript. `textureStorage` detects a size
-change and tells the renderer to allocate new storage.
+The renderer allocates a texture's GPU storage once, at its first upload size.
+It does not reallocate when the source canvas changes size, so the texture
+falls out of step with its source. On WebGL 2, a grow is rejected and keeps
+the old pixels, and a shrink writes the new image into one corner of the old
+storage. On WebGPU, Three copies each upload at the original size and discards
+any copy error. Neither backend reports the mismatch to JavaScript.
+`textureStorage` detects the size change. The binding then disposes the
+texture, so the renderer allocates new storage at the next upload.
 
 `frameSource` gives each frame in a caller-owned canvas a source ID and
 generation number. The renderer records which generation it uploaded and drew.
@@ -46,7 +49,7 @@ A Surface stays sharp when three conditions hold:
 
 1. Its texture contains enough texels. A texel is one pixel in a texture.
 2. Its texture grid lines up with the display's pixel grid.
-3. WebGL uses the right filter when it shrinks the texture on screen.
+3. The GPU uses the right filter when it shrinks the texture on screen.
 
 `drawElementImage` can redraw the DOM at a larger scale. It replays Chrome's
 paint commands, so text gains detail instead of stretching an old image.
@@ -56,35 +59,35 @@ changes when the camera rests near that threshold.
 
 `pixelGrid` makes small position and size corrections so texture pixels land
 on display pixels. More texels cannot fix a Surface that sits between display
-pixels because WebGL still blends each texel across its neighbors.
+pixels because the GPU still blends each texel across its neighbors.
 
-WebGL minifies a texture when it covers fewer screen pixels than its source
+The GPU minifies a texture when it covers fewer screen pixels than its source
 image contains. Mipmaps are smaller copies that reduce jagged text and grid
 patterns during this shrink. They also blur text at reading range, because
 trilinear filtering blends in a half-resolution copy. The binding's source
 runtime gives mipmaps to pinned resolutions and to textures captured at half
 scale or less. Other textures use linear filtering.
 
-## Moving pixels between the page and WebGL
+## Moving pixels between the page and the canvas
 
 Modules: [`crossing`](./src/transfer/crossing.ts),
 [`presentation`](./src/transfer/presentation.ts),
 and [`motionCarrier`](./src/transfer/motionCarrier.ts).
 
 A handoff changes which renderer shows the content. During the change, the
-page and WebGL may both draw. The user sees one renderer's output. In this
+page and the canvas may both draw. The user sees one renderer's output. In this
 table, "draws" means a renderer produces pixels, while "visible" means the
 user sees those pixels.
 
-| Phase | Page draws | WebGL draws | Visible output |
+| Phase | Page draws | Canvas draws | Visible output |
 | --- | --- | --- | --- |
 | `page` | Yes | No | Page |
 | `lifting` | Yes | Yes | Page |
-| `gl` | No | Yes | WebGL |
-| `landing` | No | Yes | WebGL |
+| `gl` | No | Yes | Canvas |
+| `landing` | No | Yes | Canvas |
 
-`crossing` controls these phases. It keeps the page visible until each WebGL
-surface has drawn the required content. Hiding the page sooner can leave one
+`crossing` controls these phases. It keeps the page visible until each scene
+presenter has drawn the required content. Hiding the page sooner can leave one
 frame with no content, which appears as a flicker.
 
 `presentation` checks the draw record used for that handoff. A queued texture
@@ -106,7 +109,7 @@ sample, so their position and velocity match.
 Modules: [`forwardEvents`](./src/pointer/forwardEvents.ts) and
 [`relay`](./src/pointer/relay.ts).
 
-A WebGL raycast finds where the pointer hit a 3D object. It returns a UV
+A Three.js raycast finds where the pointer hit a 3D object. It returns a UV
 coordinate, which marks a position on the texture from 0 to 1 on each axis.
 `forwardEvents` converts that coordinate into a point inside the live DOM
 subtree behind the canvas. It finds the deepest element at that point and sends
@@ -134,7 +137,7 @@ Chrome can hit-test the canvas child directly, through a CSS `matrix3d`. When
 it does, the click is a real browser click: it places a text caret, drags a
 selection, and passes an `isTrusted` check. A synthetic event does none of
 those. So there is a second route. It hides the capture canvas with
-`visibility`, raises it over the WebGL canvas, and puts the current pose on
+`visibility`, raises it over the renderer canvas, and puts the current pose on
 the canvas itself as a `matrix3d`. The browser then delivers the event to the
 drawn element.
 

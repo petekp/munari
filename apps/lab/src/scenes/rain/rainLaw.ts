@@ -217,7 +217,7 @@ function spawnSplash(x: number, y: number, rng: RainRng): Splash[] {
   return drops
 }
 
-/** A landed drop's diameter becomes water depth, spread by rainWater.ts. */
+/** A landed drop's water volume in px·columns, spread by rainWater.ts. */
 function dropDepositVolume(radius: number): number {
   return radius * radius * RAIN_WATER_VOLUME_SCALE
 }

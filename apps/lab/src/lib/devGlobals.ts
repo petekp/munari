@@ -36,21 +36,6 @@ export interface DemandProbeRecord {
   readSourceWidth: () => number
 }
 
-/** One line of the veil gate's dev log: what a single frame saw. */
-export interface VeilGateEntry {
-  /** ms since navigation, to a tenth. */
-  t: number
-  pw: number
-  ph: number
-  liveW: number
-  liveH: number
-  cw: number
-  ch: number
-  matched: boolean
-  gate: number
-  muGate: number | 'no-mat'
-}
-
 declare global {
   interface Window {
     /** Library-wide paint counters, for the idle-zero gate. */
@@ -63,7 +48,6 @@ declare global {
     __workspace?: unknown
     __workspaceHud?: unknown
     __domSurfaceDemand?: DemandProbeRecord
-    __veilGateLog?: VeilGateEntry[]
     /** The knobs resize probe: a snapshot an instrument parses. */
     __knobsResizeProbe?: KnobsResizeProbeApi
     /** Installed by a watcher: every step of the film's handoff, in order. */

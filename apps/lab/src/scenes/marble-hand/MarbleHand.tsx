@@ -184,14 +184,6 @@ interface MarbleHandTapState {
 // first, then index, then thumb.
 const PINCH_INDEX_FINGER = MARBLE_HAND_TAP_PHASE.length
 
-/**
- * Advances the drum and pinch targets and writes all five bend angles.
- * The drum clock only runs while the tap is audible, so a fresh idle
- * always starts on the first finger's rest rather than wherever a
- * free-running clock happened to be. Every joint reaches its target
- * through a slightly underdamped spring: the overshoot-and-settle is
- * what separates flesh arriving from a servo stopping.
- */
 /** Which gestures may animate this frame, from one place, so the drum and
  *  the pinch cannot disagree about what "at rest" means. */
 function marbleHandGestures(
@@ -207,6 +199,14 @@ function marbleHandGestures(
   }
 }
 
+/**
+ * Advances the drum and pinch targets and writes all five bend angles.
+ * The drum clock only runs while the tap is audible, so a fresh idle
+ * always starts on the first finger's rest rather than wherever a
+ * free-running clock happened to be. Every joint reaches its target
+ * through a slightly underdamped spring: the overshoot-and-settle is
+ * what separates flesh arriving from a servo stopping.
+ */
 function driveMarbleHandTap(
   state: MarbleHandTapState,
   tap: MarbleHandTapUniforms,
@@ -455,7 +455,7 @@ export function MarbleHandApp() {
   const capture = useMemo(createMarblePageCaptureState, [])
   const [reflection, setReflection] = useState<MarblePageCaptureState['status']>('waiting')
   const [hand, setHand] = useState<THREE.Mesh | null>(null)
-  const [contextLost, setContextLost] = useState(false)
+  const [rendererLost, setRendererLost] = useState(false)
   const [overlayFailed, setOverlayFailed] = useState(false)
   const failOverlay = useCallback(() => setOverlayFailed(true), [])
   const [tuning, setTuning] = useState<MarbleHandTuning>(marbleHandTuning)
@@ -545,7 +545,7 @@ export function MarbleHandApp() {
     setSelected(id)
   }, [])
 
-  const handReady = hand !== null && !contextLost && !overlayFailed
+  const handReady = hand !== null && !rendererLost && !overlayFailed
   const content = useMemo(
     () => (
       <CataloguePage
@@ -568,7 +568,7 @@ export function MarbleHandApp() {
       theme={selected}
       onChange={setTuning}
       ready={handReady}
-      unavailable={overlayFailed || contextLost}
+      unavailable={overlayFailed || rendererLost}
       parked={parked}
       onParked={park}
       previewPressed={previewPressed}
@@ -595,12 +595,12 @@ export function MarbleHandApp() {
         camera={PIXEL_CAMERA}
         // SurfaceCanvas remounts this scene on a new renderer after a loss,
         // so the next onCreated is the hand's restore.
-        onRendererLost={() => setContextLost(true)}
+        onRendererLost={() => setRendererLost(true)}
         onCreated={(state) => {
           state.gl.setClearAlpha(0)
           state.gl.toneMappingExposure = tuning.exposure
           window.__r3f = state
-          setContextLost(false)
+          setRendererLost(false)
         }}
       >
         <PixelPerfect />

@@ -346,10 +346,10 @@ export default function App() {
   // `body.innerText`, which counted a parked capture as a second copy
   // and scored Selection at 67% when it was already whole.
   //
-  // By that metric the five nav scenes are all 100%: flight, genie, logo
-  // and selection already author a page copy, and knobs grew a degraded
-  // branch of its own (see `supported` in Knobs.tsx). The nine unpromoted
-  // scenes have not been measured this way.
+  // Measured that way on 2026-08-23, the five nav scenes of the time were all
+  // 100%: flight, genie, logo and selection author a page copy, and knobs has
+  // a degraded branch of its own (see `supported` in Knobs.tsx). The scenes
+  // promoted since, and the URL-only scenes, have not been measured this way.
 
   // Never blocking, and `pointer-events: none` so it cannot eat a click on
   // the degraded page underneath — a notice that broke the interactivity it

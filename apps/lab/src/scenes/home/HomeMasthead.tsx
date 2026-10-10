@@ -293,7 +293,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     redraw()
   }, [lightHeight, redraw])
 
-  // Mount: the multiply canvas. Created outside React; a lost context
+  // Mount: the multiply canvas. Created outside React; a lost device or context
   // degrades to the CSS depth kit rather than an opaque black overlay. A
   // passive effect: the page ref belongs to a parent, and parent refs are
   // not attached yet when a child's layout effect runs. The renderer starts

@@ -146,19 +146,6 @@ export function useSurfacePart(component: string): SurfacePartValue {
 }
 
 /**
- * Which copy of a source tree this component is rendering in.
- *
- * A portal-copy capture creates TWO instances of the source component. Local
- * state, uncontrolled form values, effects, and literal element IDs can
- * therefore diverge or duplicate. A source reads this to suppress the half
- * of its behavior that must happen once — analytics, autofocus, a
- * subscription — in the copy that is only there to be rasterized.
- */
-export function useSurfaceInstance(): SurfaceInstance {
-  return use(SurfaceInstanceContext)
-}
-
-/**
  * The Surface texture, for a custom material.
  *
  * Never null in that position: `Surface.Mesh` mounts a custom material
@@ -204,10 +191,11 @@ export function useSurfaceTexture(): THREE.Texture {
  * Null, unlike `useSurfaceTexture`, and the difference is load-bearing. In
  * the material slot the texture is guaranteed because Munari mounts the
  * material after it exists; a handle names content whose source may mount
- * later, never, or in another tree entirely. A material binds `null` and
- * rebinds when this answers — so sample it behind a `has` flag rather than
- * deferring the material's own mount, which a memoized material may never
- * take back.
+ * later, never, or in another tree entirely. A TSL `texture()` node cannot
+ * hold `null`, so a node material binds a stand-in, such as its slot's own
+ * Surface texture, and swaps this one in when it answers, behind a uniform
+ * `has` flag. Do not defer the material's own mount instead: a memoized
+ * material may never take that back.
  */
 export function useSurfaceTextureOf(
   handle: SurfaceHandle,

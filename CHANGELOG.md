@@ -36,6 +36,29 @@
 - Stop restarting the scene clock on every capture: `SurfaceCanvas` asks R3F
   for a frameloop mode only when the mode changes, so a scene posed from
   `clock.elapsedTime` no longer snaps back while the user types in a Surface.
+- Breaking: `SurfaceCanvas` renders with Three's `WebGPURenderer`, which falls
+  back to WebGL 2 where no WebGPU adapter exists. Neither backend accepts a
+  GLSL material (`ShaderMaterial` or `onBeforeCompile`). Its `gl` prop takes
+  `WebGPURendererParameters`, such as `forceWebGL`. Renderer tone mapping
+  stays off. Tone-map 3D materials with
+  `material.outputNode = toneMapping(mode, exposure, output)`. The `flat` prop
+  is gone, and `shadows` no longer accepts `'soft'`.
+- Breaking: Surface materials are TSL node materials. `useSurfaceNodes()`
+  (type `SurfaceNodes`) and `surfaceRadiusMask()` replace
+  `useSurfaceUniforms()` (type `SurfaceUniforms`) and `SURFACE_RADIUS_GLSL`.
+  A custom `outputNode` returns its color through `premultipliedOutput` or
+  `encodedOutput`, and a translucent material on the canvas sets
+  `premultipliedAlpha: true`. `@petepetrash/munari/advanced` adds
+  `passMaterial`.
+- Breaking: peers are now `three >= 0.186.1` and
+  `@react-three/fiber >= 9.8.1`.
+- The default Surface material no longer multiplies translucent HTML by its
+  alpha a second time. A pixel at alpha 0.5 now draws at its page value
+  instead of half of it.
+- `SurfaceCanvas` replaces a lost renderer. Surfaces return to the page, the
+  `fallback` shows, the new `onRendererLost` runs, and the Canvas remounts on
+  a new renderer. It does not remount when the lost renderer was itself a
+  replacement created less than 10 s earlier.
 
 Versioned entries below describe their released interfaces, not the current
 development API. Use the README and exported types for this checkout.

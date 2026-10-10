@@ -37,7 +37,7 @@ describe('the lens is anchored at its focus', () => {
   it('beyond the rim, displacement is pure translation by (A−1)·R/2', () => {
     const focus = 176
     const shift = ((A - 1) * R) / 2
-    // 60px at the defaults — MORE than one 44px row of the scene's list,
+    // 60px at the defaults — nearly three of the scene's 22px rows,
     // which is what makes the gate's flat-pose counter-click land on a
     // different row. This is the teeth of instruments/fisheye-pointer;
     // changing radius or amplitude means re-deriving that margin.

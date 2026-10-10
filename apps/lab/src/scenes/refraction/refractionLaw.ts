@@ -13,7 +13,7 @@
 // symmetric, and a symmetric pulse spends as long dissolving as it spent
 // forming. Read at hand speed that is backwards — glass forms under
 // pressure and then releases slowly. The beta pulse below peaks at
-// `rise / (rise + fall)`, which is where the tuning puts it at 1/3, and
+// `rise / (rise + fall)`, which the tuning puts at two fifths, and
 // the asymmetry is the whole reason it is not a sine.
 //
 // Ownership: this module owns shape and nothing else. Time belongs to the
@@ -191,11 +191,11 @@ export function apertureEdge(transmission: number, overshoot: number): number {
 /**
  * How much of the incoming view shows at one point of the aperture field.
  *
- * `field` is the shader's mix of a radial sweep and local ink density, 0 at
- * the last place to open and 1 at the first. `width` is half the seam, which
- * the shader derives per pixel from `fwidth(field)`; passing it in is what
- * lets the contract below pin the ends without a browser, for every seam the
- * shader can produce.
+ * `field` is the shader's mix of the signed ink spread and local ink
+ * density, 0 at the last place to open and 1 at the first. `width` is half
+ * the seam, which the shader derives per pixel from `fwidth(field)`; passing
+ * it in is what lets the contract below pin the ends without a browser, for
+ * every seam the shader can produce.
  *
  * Capped at half the overshoot rather than all of it, so the ends clear the
  * field's range with margin. At the full overshoot the widest seam lands

@@ -15,7 +15,7 @@ interface Point2 {
  * half-extents the fragment shader is told about. The contract is that the
  * numbers NEVER LIE — `quadHalf` must be the quad's true half-extent in its
  * own edge directions, because the shader reconstructs "px from the card" as
- * `(vUv·2−1)·quadHalf` and evaluates the measured shadow layers at that
+ * `(uv()·2−1)·quadHalf` and evaluates the measured shadow layers at that
  * coordinate.
  *
  * The old construction pushed each corner radially away from the centroid,

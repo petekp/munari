@@ -133,7 +133,7 @@ export const PAINT_FEATURES: readonly PaintFeature[] = [
   },
 ]
 
-/** A built plate: hand `node` to `<Surface adopt={…}>` at `width × height`. */
+/** A built plate: hand `node` to `<SceneSurface.HTML element={…}>` at `width × height`. */
 export interface Plate {
   feature: PaintFeature
   /**

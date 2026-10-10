@@ -66,7 +66,7 @@ export type SurfacePresentation = 'page' | 'canvas' | 'both' | 'none'
 export type SurfaceDestination = 'page' | 'canvas'
 
 /**
- * The excursion, 0 at DOM identity and 1 at the WebGL state. Read inside a
+ * The excursion, 0 at the page and 1 in the scene. Read inside a
  * frame loop. Raw progress, an explicit eased read, interval ramps and
  * interval pulses are separate operations.
  */
@@ -98,7 +98,7 @@ export interface SurfaceHandle {
   readonly progress: SurfaceProgress
 }
 
-// How long a landed WebGL side stays mounted — invisible, at progress zero
+// How long a landed canvas side stays mounted — invisible, at progress zero
 // — before its unmount commit. Tearing a renderer group down is heavy
 // main-thread work (measured at ~280ms for a full renderer, 2026-08-14),
 // and a carried motion writes its samples from that same thread, so a
@@ -273,15 +273,10 @@ export type SurfaceDriverStep = (frame: SurfaceDriverFrame) => number
 let nextControllerToken = 0
 
 /** Mint a controller token. Distinct per component instance, never reused. */
-export function mintControllerToken(): number {
+function mintControllerToken(): number {
   return ++nextControllerToken
 }
 
-/**
- * Which renderer may be SEEN, per the crossing. A Twin has no exclusive
- * hold to move, so it reads as the page throughout — the WebGL side is an
- * additional presentation of the content, never a replacement for it.
- */
 /**
  * The private store behind one handle.
  *
@@ -884,10 +879,10 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       // After the return, which is where the page takes the hold back.
       syncMotionHold()
       // Motion completes when the ramp reaches an endpoint, which is a
-      // different moment from the hold changing hands: entering, WebGL
+      // different moment from the hold changing hands: entering, the canvas
       // takes the hold before the ramp leaves zero; returning, the ramp
-      // reaches zero before DOM takes it. Consumers cannot assume one order
-      // for both directions, so the two callbacks are reported separately.
+      // reaches zero before the page takes it. Consumers cannot assume one
+      // order for both directions, so the two callbacks are reported separately.
       if (before.ramp < 1 && crossing.ramp >= 1) callbacks.onMotionComplete?.('canvas')
       if (before.ramp > 0 && crossing.ramp <= 0) callbacks.onMotionComplete?.('page')
       publish(false)

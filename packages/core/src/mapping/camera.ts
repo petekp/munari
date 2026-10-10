@@ -90,10 +90,6 @@ export function carryToPlane<V extends Vec3Like>(p: V, camZ: number, z: number):
   return p
 }
 
-/**
- * Where a world point lands on screen, in client px. The inverse of
- * `screenToPlane`, and only used to prove that it is one.
- */
 /** A position on the screen, in client px — the units `getBoundingClientRect`
  *  and pointer events already speak. */
 export interface ScreenPoint {
@@ -101,6 +97,11 @@ export interface ScreenPoint {
   y: number
 }
 
+/**
+ * Where a world point lands on screen, in client px. The inverse of
+ * `screenToPlane`; only tests use it, to prove that inverse and that
+ * `carryToPlane` keeps a point's screen position.
+ */
 export function planeToScreen(
   p: Vec3Readonly,
   viewportWidth: number,

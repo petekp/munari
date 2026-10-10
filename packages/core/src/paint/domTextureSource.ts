@@ -156,7 +156,7 @@ export interface DomTextureSource {
    * the whole point: `size()` reports the box a consumer just asked for,
    * this reports the box the delivered raster actually holds, and the gap
    * between the two IS the capture pipeline's lag (React state ->
-   * `source.setSize` -> a paint request -> the engine's answer -> GL
+   * `source.setSize` -> a paint request -> the engine's answer -> texture
    * upload). A consumer that blends the raster against live DOM has to know
    * the raster's own generation for exactly this reason. Blending a copy
    * from one layout generation over a page from a newer one reads as doubled
@@ -189,7 +189,7 @@ export interface DomTextureSource {
    * the backing store together so the effective raster scale is unchanged.
    * Unlike `setScale` this DOES relayout the subtree — that is the point: a
    * content-fitted Surface hugs whatever the DOM measured. Rides the same
-   * completion path. Callers holding a GL texture must reallocate its storage
+   * completion path. Callers holding a GPU texture must reallocate its storage
    * when the backing store moves — including here, and including a Surface
    * that resizes every frame, which is why the answer is a comparison at
    * upload time (`uploadNeedsRealloc`) rather than a mark taken here.
@@ -260,16 +260,6 @@ export interface DomTextureSourceOptions {
 }
 
 /**
- * Thrown when no installed capture engine can make a source here.
- *
- * The default engine rests on an origin trial, so "the trial is not here"
- * is a first-class answer and deserves a first-class error. Consumers that
- * want to degrade rather than crash should ask `supportsSurfaces()` (or
- * `captureEngine().available()`) BEFORE mounting a Surface — by the time
- * this throws, the honest answer was already available and simply never
- * requested.
- */
-/**
  * Marks every engine's parked host, so a page-wide capture can leave it out.
  *
  * The parked node sits in `document.body` at the viewport origin holding a
@@ -282,6 +272,16 @@ export interface DomTextureSourceOptions {
  */
 export const PARKED_HOST_ATTRIBUTE = 'data-munari-parked'
 
+/**
+ * Thrown when no installed capture engine can make a source here.
+ *
+ * The default engine rests on an origin trial, so "the trial is not here"
+ * is a first-class answer and deserves a first-class error. Consumers that
+ * want to degrade rather than crash should ask `supportsSurfaces()` (or
+ * `captureEngine().available()`) BEFORE mounting a Surface — by the time
+ * this throws, the honest answer was already available and simply never
+ * requested.
+ */
 export class UnsupportedPlatformError extends Error {
   override readonly name = 'UnsupportedPlatformError'
 }
@@ -381,9 +381,8 @@ export function adoptContent(content: string | HTMLElement): HTMLElement {
 // deliberately distinct from this package's paint/lodTier.ts `clampScale`:
 // that one guards a *density* against a css-size-dependent texture-memory
 // ceiling; this one just keeps the raw multiplier sane before anything
-// has been measured. Named distinctly from that function since both
-// live side by side under paint/ and both reach the same barrel.
-export function clampRawScale(k: number): number {
+// has been measured.
+function clampRawScale(k: number): number {
   return Number.isFinite(k) ? Math.min(8, Math.max(0.1, k)) : 1
 }
 

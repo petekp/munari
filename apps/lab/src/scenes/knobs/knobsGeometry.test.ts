@@ -19,12 +19,12 @@ describe('knurlRadius', () => {
   })
 
   it('repeats with period 2π/count — a full turn meets itself', () => {
-    const period = (Math.PI * 2) / KNOB.knurlCount
+    const period = (Math.PI * 2) / 64
     for (const theta of [0, 0.4, 1.1, 3.0]) {
       expect(
-        knurlRadius(theta, KNOB.skirtRadius, KNOB.knurlAmp, KNOB.knurlCount),
+        knurlRadius(theta, KNOB.skirtRadius, 0.4, 64),
       ).toBeCloseTo(
-        knurlRadius(theta + period, KNOB.skirtRadius, KNOB.knurlAmp, KNOB.knurlCount),
+        knurlRadius(theta + period, KNOB.skirtRadius, 0.4, 64),
         9,
       )
     }

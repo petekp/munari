@@ -16,28 +16,26 @@
 // The paragraph the user selects is NOT the paragraph the canvas samples.
 // The capture source lives inside a parked capture canvas, so the page
 // selection can never be part of the captured subtree, whatever the
-// capture does or ever comes to do with an active selection. The Surface's
-// page copy is parked off-flow and never selectable; the paragraph the
-// user actually touches is plain DOM standing in front of it at the same
-// measured width. The mesh overlays the visible one and samples the
-// parked one; they agree glyph for glyph because they are the same React
-// element at the same width behind the same `document.fonts.ready`.
+// capture does or ever comes to do with an active selection. useElementCapture
+// parks a copy of the live paragraph there: a DOM clone with its computed
+// styles inlined, pinned to the live paragraph's measured size. The user
+// selects only the live one. The mesh overlays the live paragraph and
+// samples the copy, and the two agree glyph for glyph because the copy is
+// rebuilt when the paragraph's size, the page's styles or its fonts change.
 //
 // (The black strikethrough this arrangement was first blamed for —
 // 2026-08-20 — turned out to be shader NaN, not the capture: see the
 // pow() rule in selectionNodes.ts. The texture was clean all along.)
 //
-// This scene grew up on the candidates bench and graduated off it. The
-// stage helpers still come from there: PixelPerfect and worldBoxOf are
-// the bench's, not this scene's, and duplicating them
-// would be the fourth copy in the lab (candidates/README.md, gaps 6 and 7).
+// This scene grew up on the candidates bench and graduated off it; its
+// PixelPerfect and worldBoxOf still come from candidateStage.tsx.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SurfaceCanvas, useElementCapture, useCaptureFrame, useCaptureStatus, type CaptureHandle } from '@petepetrash/munari'
 import { texture, uniform, uniformArray } from 'three/tsl'
-import { PixelPerfect, worldBoxOf, type WorldBox } from '../candidates/candidateStage'
+import { FOV, PixelPerfect, worldBoxOf, type WorldBox } from '../candidates/candidateStage'
 import { LIGHT, createBubbleMaterial, createGleamMaterial, type BubbleValues } from './selectionNodes'
 import { selectionTuning } from './selectionTuning'
 import { SelectionTweaks } from './selectionTweaks'
@@ -96,15 +94,14 @@ function Bead({ bead, capture, size, position, visible }: BeadProps) {
       height: uniform(selectionTuning.height),
       weld: uniform(selectionTuning.weld),
       caustic: uniform(selectionTuning.caustic),
-      // 0.06 = the words under a strip sit ~6% closer to its centre than
+      // 0.03 = the words under a strip sit ~3% closer to its centre than
       // the page put them. Past ~0.12 the strip stops agreeing with the
       // line it came from and the eye reads two texts.
       magnify: uniform(selectionTuning.magnify),
       refract: uniform(selectionTuning.refract),
       ior: uniform(selectionTuning.ior),
-      // How far apart red and blue leave the rim, as a fraction of the
-      // bend. 0.16 of a 6.5px bend is about a pixel of fringe — the width
-      // at which the eye calls it glass rather than a printing error.
+      // Red leaves the rim at (1 − disperse) of the bend and blue at
+      // (1 + disperse), so the fringe is 2·disperse of the bend wide.
       disperse: uniform(selectionTuning.disperse),
       frost: uniform(selectionTuning.frost),
       shadowOffset: uniform(new THREE.Vector2(selectionTuning.shadowX, selectionTuning.shadowY)),
@@ -284,7 +281,7 @@ function SelectionPage() {
     }
   }, [])
 
-  // The selection is read from the page copy and expressed in the
+  // The selection is read from the live paragraph and expressed in the
   // paragraph's own content coordinates, which are the texture's
   // coordinates too — so nothing here has to know where on screen the
   // paragraph currently is.
@@ -369,8 +366,8 @@ function SelectionPage() {
   return (
     <div className="sel-page">
       <div ref={holder} className="sel-prose-holder">
-        {/* The copy the user reads and selects. Plain DOM, outside the
-            Surface, so its selection can never reach the capture. */}
+        {/* The paragraph the user reads and selects. The capture samples a
+            clone of it, so its selection can never reach the capture. */}
         <div ref={element => { live.current = element; capture.ref(element) }}>{prose}</div>
 
       </div>
@@ -380,7 +377,7 @@ function SelectionPage() {
         gl={{ alpha: true, antialias: true }}
         // No dpr clamp: PixelPerfect owns render density and follows the
         // live devicePixelRatio, browser zoom included.
-        camera={{ fov: 42, position: [0, 0, 1000] }}
+        camera={{ fov: FOV, position: [0, 0, 1000] }}
         onCreated={(state) => {
           // The page under the canvas IS the background; a cleared opaque
           // frame would hide the paragraph the bead is drawn over.
@@ -406,8 +403,7 @@ function SelectionPage() {
 
 // Frameloop is 'always': the bead has its own clock and the scene does not
 // claim demand, so it gives up the zero-paint property the gated scenes
-// hold. A presenter-scoped animation claim is the missing piece
-// (candidates/README.md, gap 9).
+// hold. A presenter-scoped animation claim is the missing piece.
 export function SelectionApp() {
   return <div className="sel-app"><SelectionPage /></div>
 }

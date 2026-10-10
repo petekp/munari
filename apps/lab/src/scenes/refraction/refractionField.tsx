@@ -126,8 +126,8 @@ const smallTarget = (w: number, h: number) =>
 /**
  * Keep both fields up to date, one filter pass and N spread passes a frame.
  *
- * Sized in CSS px rather than off the source's own resolution, so the lens
- * is the same shape whatever `resolution` the Surface happens to be
+ * Sized in CSS px rather than off the source's own resolution, so both fields
+ * keep the same shape whatever `resolution` the Surface happens to be
  * rasterising at.
  */
 export function useInkField(

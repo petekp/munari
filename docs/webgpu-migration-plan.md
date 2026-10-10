@@ -2,8 +2,11 @@
 
 **Status: `SurfaceCanvas`, `FrameSurface`, `Surface`, every lab scene and the registry copies are ported. Every gate and scene probe passes on both backends locally with `STRICT_CAPABILITY=1`, and CI passes, except checks that fail the same way on `main` (2026-10-09).**
 
-Munari will move from Three's `WebGLRenderer` to its `WebGPURenderer`. Shaders
-will be written once in Three Shading Language (TSL). TSL compiles to WGSL for
+The migration merged to `main` on 2026-10-09. In this document, `main` means
+`70fd423`, the last commit before the merge.
+
+Munari moved from Three's `WebGLRenderer` to its `WebGPURenderer`. Shaders
+are written once in Three Shading Language (TSL). TSL compiles to WGSL for
 WebGPU and to GLSL for the renderer's WebGL 2 fallback.
 
 The migration uses stock Three and React Three Fiber through their public APIs.
@@ -11,12 +14,9 @@ No patched dependency, fork, or installed-source edit is allowed.
 
 | Fact | Value |
 | --- | --- |
-| Base commit | `origin/main` at `70fd423` |
-| Worktree | `~/Code/worktrees/munari/webgpu-restart` |
-| Three | `0.186.1`; `main` has `0.185.1` (decisions.md #71) |
-| Fiber | `9.8.1`; `main` has `9.7.0` (decisions.md #69) |
-
-The three local commits on `pkp/browser-gate-recording` are not in this base.
+| Pre-migration `main` | `70fd423` (WebGLRenderer, Three `0.185.1`, Fiber `9.7.0`) |
+| Three | `0.186.1` minimum (decisions.md #71) |
+| Fiber | `9.8.1` minimum (decisions.md #69) |
 
 ## Evidence rule
 
@@ -123,18 +123,6 @@ which costs a full-screen pass every frame, and tone-mapped HTML.
 
 No browser run has yet confirmed a material-applied tone map.
 
-What this changes in the lab:
-
-| Tone mapping today | Canvases |
-| --- | --- |
-| `flat`, so none | 3 |
-| Fiber's default ACES | 20 |
-| Set explicitly by the scene | Glass, Home masthead, Lamp, Marble hand |
-
-How many of the 20 default Canvases have 3D content whose look depends on ACES
-is not yet counted. An upstream issue could ask Three for a per-material
-opt-out.
-
 ### Presentation requires `SurfaceCanvas`
 
 **Decision, 2026-10-08.** `FrameSurface` issues presentation receipts only
@@ -166,15 +154,6 @@ Done and verified on 2026-10-08:
 - `gate:frame-surface` passes on WebGPU and the WebGL 2 fallback. `npm test`,
   `npm run lint`, and `npm run typecheck` pass.
 
-Next:
-
-1. Run a disposable check that a lit material applying its own ACES matches
-   the same material under renderer ACES, beside exact HTML.
-2. Apply the empty-geometry, texture-limit, and origin checks to `Surface`
-   when it is ported.
-
-Scenes still written in GLSL draw nothing on this branch.
-
 ### Receipts for frames that never drew
 
 A disposable probe drew one `FrameSurface` inside a `SurfaceCanvas` with one
@@ -200,8 +179,8 @@ receipts on WebGPU, and on the fallback `render()` threw every frame. Main's
 `copyExternalImageToTexture` (`WebGPUTextureUtils`, the catch added for
 three.js #32391), then calls `texture.onUpdate` as if the upload succeeded.
 `FrameSurface` now checks once per canvas allocation and never hands Three a
-tainted canvas. Whether HTML-in-canvas or snapDOM can produce a tainted canvas
-is unverified.
+tainted canvas. Neither capture engine produces a tainted canvas (platform.md
+#34); the check guards a caller-supplied canvas.
 
 A host-wide fallback on `renderer.onError` is not proposed. The callback is
 device-wide and arrives after the frame, and an unrelated error in a scene
@@ -213,7 +192,8 @@ CI runs `gate:frame-surface` on a hosted Linux runner with no GPU. There Chrome
 offers WebGPU through SwiftShader, but without three extra flags it cannot
 allocate a WebGPU canvas texture and loses the device on the first frame. The
 runner passes those flags on Linux. With them the gate passes on both backends
-on a hosted runner (PR #112). `ci.yml` is unchanged.
+on a hosted runner (PR #112). The flags live in `instruments/webgpuChrome.mjs`,
+not in `ci.yml`.
 
 ## DOM capture uploads
 
@@ -224,9 +204,7 @@ can wrap a native GPU texture later if a direct HTML upload is wanted.
 ## Porting Surface
 
 **Status: `Surface.Mesh` and its materials ported 2026-10-08 (decisions.md
-#71).** CI's browser gates stay red until the gated lab scenes are ported,
-because the first Genie gate loads GLSL scene shaders. The branch stays off
-`main` until they pass.
+#71).**
 
 What changed:
 
@@ -277,18 +255,5 @@ Still open:
    `probe:home-headline` (edge contrast 1.53), `probe:postcard` (boundary
    error 2.6), `gate:capture-engines` (a cloned keyframe's clock) and
    `probe:api-gestures` case `candidate-ripple` (the click never fires).
-
-## After a go
-
-Port in this order, verifying each step on both backends before the next:
-
-1. The binding: `Surface`, materials, capture uploads, and lifecycle.
-2. The lab scenes, one at a time.
-3. The registry copies.
-4. Docs, packaging, and the full browser-check matrix.
-
-Draft TSL ports of the lab scenes exist as 27 `*Nodes.ts` files in the Git ref
-`refs/codex/snapshots/51df4817b7b7095c53b2093eaa371d61bceadcb3`, a snapshot of
-the abandoned Codex worktree. They were tested only against a patched Three.
-Copy one at a time as a starting draft with `git show <ref>:<path>`, and verify
-each on stock Three. Do not check out or cherry-pick that snapshot.
+2. Run a disposable check that a lit material applying its own ACES matches
+   the same material under renderer ACES, beside exact HTML.

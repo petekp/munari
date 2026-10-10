@@ -58,8 +58,8 @@ describe('pass writes', () => {
     expect(after.depthWrite).toBe(false)
   })
 
-  it('a custom material with color off stays off through a presenting pass', () => {
-    const material = new THREE.ShaderMaterial()
+  it('a material with color off stays off through a presenting pass', () => {
+    const material = new THREE.MeshBasicMaterial()
     material.colorWrite = false
     const { presenting, after } = twoPasses(material)
     expect(presenting.colorWrite).toBe(false)

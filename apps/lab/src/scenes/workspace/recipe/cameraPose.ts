@@ -114,13 +114,6 @@ export function gazeAt(
   return out.multiplyScalar(THREE.MathUtils.lerp(g.fromDist, g.toDist, k)).add(pos)
 }
 
-/**
- * Angular room (radians of pitch) a unit view direction has before hitting
- * the polar band's edges — the camera-bounds predicate for the no-candidate
- * ladder's vertical half ("can the view still move that way?"). Yaw is
- * unbounded for orbit-style rigs, so only pitch needs a predicate; a rig
- * with azimuth limits would add the horizontal analog.
- */
 /** Radians of pitch still available in each direction before the rig's
  *  polar limits stop the view. Zero means that way is already spent. */
 export interface PitchRoom {
@@ -128,6 +121,13 @@ export interface PitchRoom {
   down: number
 }
 
+/**
+ * Angular room (radians of pitch) a unit view direction has before hitting
+ * the polar band's edges — the camera-bounds predicate for the no-candidate
+ * ladder's vertical half ("can the view still move that way?"). Yaw is
+ * unbounded for orbit-style rigs, so only pitch needs a predicate; a rig
+ * with azimuth limits would add the horizontal analog.
+ */
 export function viewPitchRoom(d: THREE.Vector3, limits: OrbitLimits): PitchRoom {
   const yA = -Math.cos(limits.minPolarAngle ?? 0)
   const yB = -Math.cos(limits.maxPolarAngle ?? Math.PI)

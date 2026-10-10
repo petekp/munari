@@ -75,16 +75,22 @@ The current command and case map is in the [API guide](api-all-demos/README.md).
 ## WebGPU and the WebGL 2 fallback
 
 `SurfaceCanvas` renders with Three's `WebGPURenderer`, which uses WebGPU when
-the browser offers an adapter and WebGL 2 otherwise. Every runner launches
-Chrome with the flags in `webgpuChrome.mjs`. On Linux those flags render in
+the browser offers an adapter and WebGL 2 otherwise. Every runner except
+`capture-origin` launches Chrome with the flags in `webgpuChrome.mjs`.
+`capture-origin` reads only 2D capture canvases, so it launches without
+them and ignores `MUNARI_BACKEND`. `home-light` also leaves them out for its
+no-GPU pass, which disables both WebGPU and WebGL. On Linux those flags render in
 software through SwiftShader, because Linux Chrome without them loses the
 WebGPU device on the first canvas frame.
 
 Run any runner with `MUNARI_BACKEND=webgl2` to check the fallback. Chrome
 then offers no adapter, so Three starts WebGL 2, as it does for a browser
-without WebGPU. Only `frame-surface` reports which backend started; the other
-runners do not check it. `frame-surface` already runs both backends, so it
-fails under `MUNARI_BACKEND=webgl2`: its WebGPU run gets no adapter.
+without WebGPU. `home-light`, `heading-edges`, `postcard-paper`,
+`postcard-edges`, `postcard-paper-shadows`, and `frame-surface` fail when a
+backend other than the requested one starts. `knobs-hz` prints which backend
+started. The other runners do not check it. `frame-surface` runs both
+backends itself, so it fails under `MUNARI_BACKEND=webgl2`: its WebGPU run
+gets no adapter.
 
 WebGPU cannot read the canvas during a draw. Fixtures read pixels with
 `canvasPixels.ts` after `render()` returns, in the same task. Its values are
@@ -258,8 +264,9 @@ screenshots stay outside the repository.
 a known curl. The curved geometry must change the cast shadow and shade visible
 parts of its own surface. Removing only the shadow-depth texture is the control;
 the flat sheet must remain free of self-shadow acne. Adding an elevated heading
-plane must leave the curved paper's pixels unchanged. This check needs WebGL2
-floating-point render targets but does not need HTML capture. These are local
+plane must leave the curved paper's pixels unchanged. This check renders on
+WebGPU by default and does not need HTML capture. With `MUNARI_BACKEND=webgl2`
+it needs `EXT_color_buffer_float` for the half-float shadow map. These are local
 commands; CI membership is unchanged. Decision [#51](../docs/decisions.md#51)
 records the model and its bounds.
 
@@ -270,7 +277,7 @@ HTML-in-canvas and run serially; `HEADED=1` preserves native display density.
 They do not change CI membership.
 
 - `npm run probe:surface-textures`: late capture growth/shrink must draw the
-  current colors with no GL error; pinned resolution is the control. Lit
+  current colors with no GPU error; pinned resolution is the control. Lit
   white, color, and emissive samples at full, half, and quarter alpha must
   retain coverage within two 8-bit channel values, including filtered edges
   and rounded transparent corners. `API_PROOF_OUTPUT` selects saved evidence.
@@ -481,14 +488,14 @@ The required gate runs two minimize and restore cycles with maximum-quality
 compositor frames. It requires
 stable decoder, canvas, and source identities; monotonic frame generations;
 exact pixel and presentation receipt tuples; ordered native reveal before
-renderer release; complete landings; and no black or uncovered sampled boundary region. It then loses the WebGL context while WebGL has presentation authority
+renderer release; complete landings; and no black or uncovered sampled boundary region. It then loses the renderer's GPU device (the WebGL 2 context on the fallback backend) while the renderer has presentation authority
 and requires immediate native state and receipt fallback. Native video loop
 events are reported separately from handoff-induced media events.
 The Genie route uses HTML capture for its window chrome, so this gate launches
 Chrome with `CanvasDrawElement` enabled.
 
 `npm run gate:genie-film-context` is the focused stressed compositor check.
-It runs one cycle at 6x CPU throttle, then loses the context and requires that,
+It runs one cycle at 6x CPU throttle, then loses the renderer's GPU device and requires that,
 after the first matching native frame, no later recorded sample exceeds the
 source-picture error limit. Frames use compositor timestamps and timestamped
 phase boundaries. Missing source observations fail the measurement. These
@@ -503,7 +510,7 @@ scene; each screenshot is read back once. A full soak takes about 115 seconds.
 
 ## genie duplicate drag
 
-Checks that a restored window does not leave its final WebGL image
+Checks that a restored window does not leave its final scene image
 behind when the live DOM window moves. `npm run gate:genie-duplicate`.
 
 The gate restores the square window at Retina density and 6x CPU throttle,
@@ -518,7 +525,7 @@ and reach the dock instead of inheriting the prior flight's landed state. Use
 ## genie shadow handoff
 
 Checks that translucent window shadows keep the same opacity while
-presentation moves between DOM and WebGL. `npm run gate:genie-shadow`
+presentation moves between DOM and the scene renderer. `npm run gate:genie-shadow`
 measures the fixed shadow strip in recorded compositor frames around both
 handoff directions. It also checks that the shadow travels with the
 sheet and fades only where the funnel has squeezed it past legibility.
@@ -660,8 +667,8 @@ wholly nonadvancing observations fail. The reported rate is callbacks per second
 Checks that physical Knobs hardware stays on the live DOM layout through
 each resize step, including the one-column to two-column breakpoint. Run
 `npm run gate:knobs-resize`. It compares the slab geometry with the measured
-panel box and projects both the DOM hue marker and its WebGL marker. The
-allowed offset is fixed depth parallax; an anchor from the prior layout is a
+panel box and projects both the DOM hue marker and the matching marker in the
+Three.js scene. The allowed offset is fixed depth parallax; an anchor from the prior layout is a
 large jump and fails the gate.
 
 ## dom-surface-demand
@@ -772,9 +779,10 @@ frame earns a qualifying presentation receipt.
 ## shader-compile
 
 Checks that the lab's shaders compile and link. `npm run gate:shaders`.
-A shader is a JavaScript string until a browser compiles it, so
-nothing else in CI can tell a working one from a broken one:
-typecheck, lint, and the unit suites all see a string. This gate hooks
+Three generates each shader from its node graph only in a browser, so
+nothing else in CI can tell a working one from a broken one: typecheck,
+lint, and the unit suites see the node calls, never the WGSL or GLSL
+they produce. This gate hooks
 shader compiles and program links from inside the page, walks the logo
 scene through the states that build materials (page, scene, extruded,
 mesh body, back to page), and prints every error against its own source
@@ -1031,10 +1039,9 @@ pointer drives nothing else in the scene. Turn the sheen back up and the
 check is worth restoring.
 
 The gate also pins the law's three stage numbers at `t = 0.5` against
-the material's own uniforms, which catches the r3f uniform-copy trap
-(`apps/lab/src/scenes/candidates/README.md` gap 1), and it stands in as
-a compile check for the scene's program: a shader that fails to link
-draws nothing and the coverage clause reads 0 instead of the full rect.
+the material's own uniform nodes, and it stands in as a build check for
+the scene's material: a material that fails to compile draws nothing and
+the coverage clause reads 0 instead of the full rect.
 
 ## crystal-pointer
 
@@ -1055,10 +1062,8 @@ through the authored `raycast` prop.
 That is two copies of one function, which is the shape of bug this repo is
 worst at noticing: the picture comes from the shader, so it stays perfect
 while the copies drift, and only the click goes somewhere nobody looked.
-`crystalLaw.test.ts` pins them by transcription, which catches an edit to
-one and not the other. It cannot catch a disagreement about what the numbers
-MEAN, and this gate can, because the two only ever actually meet in a
-browser.
+`crystalLaw.test.ts` checks the CPU copy alone and never reads the shader.
+Only this gate compares the two, because they only ever meet in a browser.
 
 Six clauses. With the scene's correction switch off, a click at a key's
 own layout box types that key — which also fixes the frame the other two are
@@ -1305,9 +1310,10 @@ would not activate, which reads as a React state fault (2026-08-23).
 
 - Scenes hang their live state on a `window.__<scene>` hook so a probe
   can interrogate them from the console.
-- `readPixels` is valid only inside a wrapped `gl.render` call.
-  Sampling outside one returns numbers that have blamed the wrong code
-  before.
+- Read the canvas with `canvasPixels.ts` after `render()` returns, in the
+  same task: directly after your own `render()` call, or from an
+  `afterEachRender` callback. Reads from a later task see a different
+  frame, and they have blamed the wrong code before.
 - A flight ends when its trace stops, never when a poll returns null;
   the flight reference outlives the flight.
 - Crispness checks must be position-aware: a texture landing in the

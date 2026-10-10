@@ -101,11 +101,6 @@ function createHtmlInCanvasSource(
   // `parentNode`, so nothing here is visible to the page if this throws.
   const element = adoptContent(content)
 
-  // SAFETY: the trial members (layoutSubtree, onpaint, requestPaint) are
-  // Chrome's HTML-in-canvas additions to a plain canvas element; no
-  // TypeScript lib declares them yet. Absence is not a type error but a
-  // paint error — every use below runs inside the try that reports through
-  // onError, and the engine's `available()` is the gate that ran first.
   // Late-bound because the shared body is what creates the canvas, and it
   // takes the paint request as a constructor argument — the first re-cut it
   // could run happens long after this line.
@@ -163,8 +158,7 @@ function createHtmlInCanvasSource(
   // hit-testing can never wander into a parked subtree — but that value
   // inherits, and the forwarder's own hit test reads the computed one. Left
   // alone, every element in every Surface would read as clear glass and
-  // nothing would ever be hittable. A consumer that wants a transparent root
-  // overrides this from onSource, which runs after.
+  // nothing would ever be hittable.
   element.style.pointerEvents = 'auto'
   // The visibility half of the same cascade: the host is hidden, so the
   // drawn root has to opt back in or it is neither painted nor hit-tested.

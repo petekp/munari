@@ -55,8 +55,6 @@ const BLOCKS = [
   },
 ] as const
 
-/** How long the reader spends on one block. */
-
 function PrismMaterial({ on, onFaded }: { on: boolean; onFaded: () => void }) {
   const surface = useSurfaceNodes()
   const { width, height } = useSurfaceChrome()

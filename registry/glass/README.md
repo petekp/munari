@@ -43,17 +43,17 @@ every ripple parameter, retirement, glow, or layered input behavior.
 
 | knob | value | what it buys |
 | --- | --- | --- |
-| `rippleAmp` | 1.1 | peak height a unit impulse adds |
+| `rippleAmp` | 0.5 | peak height a unit impulse adds |
 | `rippleK` | 3.0 | phase constant 4/(27C²); the one scale knob, and the train is self-similar under it |
 | `rippleNu` | 0.0018 | viscosity: a soft leading edge instead of a drawn ring |
 | `rippleSource` | 0.04 | bead radius; a contact has finite width |
-| `rippleDecay` | 1.2 | bulk loss (s) |
-| `rippleLife` | 1.8 | retirement age (s); MAX_RIPPLES 6 per panel |
-| `rippleInk` | 0 | how far the wave drags the DOM's UV; 0 keeps text crisp |
+| `rippleDecay` | 3.4 | bulk loss (s); the retirement taper does most of the fade |
+| `rippleLife` | 1.4 | retirement age (s); MAX_RIPPLES 10 per panel |
+| `rippleWaveSpeed` | 2.9 | reference wave speed c; keeps the satellites' wakes subsonic |
+| `rippleInk` | 0.02 | how far the wave drags the DOM's UV; past a few hundredths the text swims |
 
-The full knob set (bezel width, bend strength, dispersion, blur
-ladder) is `GlassParams` in `glassSdf.tsx`; each field carries its own
-comment.
+The full knob set, including bezel width, bend strength, dispersion, and
+frost (`roughness`), is `GlassParams` in `glassSdf.tsx`.
 
 ## Known limits
 

@@ -1,4 +1,4 @@
-// Surface readiness — has every registered WebGL presenter drawn once?
+// Surface readiness — has every registered scene presenter drawn once?
 //
 // The law: readiness is a KEYED set over one lifetime, never a count.
 // A presenter proves itself by completing its first eligible

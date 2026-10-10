@@ -19,9 +19,9 @@ export interface KnobsValues {
    *  and the picture is a true monochromatic study; at 1 each layer sits
    *  on its scheme's own stop. */
   chroma: number
-  /** Concentric layers drawn, clamped to [2, 8]. */
+  /** Concentric layers drawn, clamped to [2, 16]. */
   layers: number
-  /** Vertices per layer's polygon, clamped to [3, 12]. */
+  /** Vertices per layer's polygon, clamped to [6, 24]. */
   complexity: number
   /** Rotation rate, turns/second at the outermost layer. */
   speed: number
@@ -200,7 +200,7 @@ export function dialTicks(def: KnobDef): number[] {
 /** The art's clock and its life, a live bag like `knobsValues`: KnobsArt
  *  advances `t` each rAF (and freezes it with the power switch), and
  *  fades `lit` between 1 (the picture glows) and 0 (power is off and the
- *  picture has died dark). The WebGL side reads both — the glints orbit
+ *  picture has died dark). The 3D scene reads both — the glints orbit
  *  in the art's exact phase, and every light the picture casts scales by
  *  `lit`, so killing the artwork kills the room. */
 export const artClock = { t: 0, lit: 1 }
@@ -293,7 +293,7 @@ export interface LampDef {
   key: ToggleDef['key']
   tone: 'ok' | 'signal'
   /** The lit lens color — one value shared by the captured bulb's CSS
-   *  and the emissive core + point light standing over it in WebGL. */
+   *  and the emissive core + point light standing over it in the scene. */
   color: string
 }
 
@@ -497,19 +497,18 @@ export interface PanelFootprint {
  *  center — where the luminous disc actually hangs on the page. */
 export const ART_ANCHOR_FRACTION = -0.1
 
-/**
- * Where a glow source's emitter stands in world space. ONE orbit
- * mapping, shared by the light rig (which puts a real light there),
- * the halo (which re-emits the light the slab hides), and
- * `backlightAmount` — so the glint that dies behind the slab and the
- * bloom that replaces it are always the same light.
- */
 /** A point in the picture's own plane, in CSS px. */
 export interface GlowPoint {
   x: number
   y: number
 }
 
+/**
+ * Where a glow source's emitter stands in world space. ONE orbit
+ * mapping, shared by the light rig (which puts a real light there) and
+ * `backlightAmount` — so the glint that dies behind the slab is the
+ * same light that sets how far the face shade darkens.
+ */
 export function glowPoint(src: GlowSource, viewportW: number): GlowPoint {
   const orbit = 90 + 260 * src.reach
   return {
@@ -593,7 +592,8 @@ export function backlightAmount(
  * brightening the backdrop or dimming the palette fails with a number
  * rather than quietly putting the edge glow back.
  *
- * Mirrored in the corona's GLSL because a shader cannot carry a test. Smoothstep, so the gate opens with zero slope at
+ * Mirrored in the corona's node material (knobsNodes.ts) because a shader
+ * cannot carry a test. Smoothstep, so the gate opens with zero slope at
  * both ends: a linear ramp would seam where a blade's blur crosses the
  * floor.
  */

@@ -2,7 +2,7 @@
  * No animation lives here any more: the colour moves inside a canvas, so a
  * settled page has nothing for the reflection capture to repaint. The
  * gradients below are only reached through [data-fallback], which the
- * component sets when the renderer will not build or its context is lost.
+ * component sets when the renderer will not start or its device is lost.
  * They must stay unreachable otherwise — an opaque gradient here would
  * survive the page clone and hide the shader the hand reflects.
  */
@@ -25,7 +25,7 @@
   display: none;
 }
 
-/* ── the no-WebGL posters ───────────────────────────────────────────── */
+/* ── the fallback posters ───────────────────────────────────────────── */
 
 .mh-background[data-fallback][data-visualization="waves"] {
   background-image: linear-gradient(

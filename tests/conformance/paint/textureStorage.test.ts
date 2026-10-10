@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest'
 
 import { DENSITY_BAND, storeForBox, uploadNeedsRealloc } from '@munari/core'
 
-// GL texture storage is IMMUTABLE. three allocates it at first-upload
-// dimensions (texStorage2D) and texSubImage2Ds every upload after, so the
-// moment a source canvas's backing store changes size, every subsequent
-// upload is writing into an allocation that no longer fits it. A grow is
-// rejected outright — GL_INVALID_VALUE, "Offset overflows texture dimensions"
-// — and the texture silently keeps its stale texels. Nothing throws in JS.
+// Texture storage is fixed at first upload on both backends. three allocates
+// it once at the source's first-upload size (a GPUTexture on WebGPU,
+// texStorage2D on the WebGL 2 fallback) and copies every later upload into
+// that allocation. Once a source canvas's backing store changes size, every
+// later upload is wrong, and nothing throws in JS. On WebGL a grow is
+// rejected (GL_INVALID_VALUE, "Offset overflows texture dimensions") and the
+// texture keeps its stale texels; a shrink lands in one corner. On WebGPU
+// three copies at the old allocation's size: a grow uploads only the
+// top-left crop, and a shrink's copy is rejected and three swallows the
+// error, leaving the stale texels.
 //
 // This was found with a Surface that resizes EVERY FRAME. The shipped
 // policy deferred the reallocation until "the first upload after the
@@ -27,14 +31,15 @@ describe('uploadNeedsRealloc', () => {
     expect(uploadNeedsRealloc({ width: 512, height: 256 }, { width: 512, height: 256 })).toBe(false)
   })
 
-  it('is true on a grow — the sub-image would overflow and be rejected', () => {
+  it('is true on a grow — the old allocation cannot hold the new raster', () => {
     expect(uploadNeedsRealloc({ width: 308, height: 324 }, { width: 400, height: 372 })).toBe(true)
   })
 
-  it('is true on a shrink — the re-raster would land in one corner (the LOD ghost)', () => {
-    // A shrink does not fail GL: it succeeds, writing the smaller image into
-    // the top-left of the larger allocation and leaving the rest of the old
-    // texels on screen around it.
+  it('is true on a shrink — the upload would leave stale texels on screen', () => {
+    // A shrink fails differently per backend. WebGL writes the smaller image
+    // into the top-left of the larger allocation and leaves old texels around
+    // it (the LOD ghost); WebGPU rejects the over-sized copy and keeps the old
+    // raster whole.
     expect(uploadNeedsRealloc({ width: 800, height: 600 }, { width: 400, height: 300 })).toBe(true)
   })
 

@@ -52,8 +52,9 @@ export type Vec3 = readonly [number, number, number]
  * notch, a tail kicked out to the right, a shoulder back to the tip. Sixteen
  * units wide and 26.5 tall.
  *
- * Transcribed vertex for vertex into `ARROW` in `crystalNodes.ts`. The two are one shape and
- * the test pins them to the same distances.
+ * Transcribed vertex for vertex into `ARROW` in `crystalNodes.ts`. The two
+ * are one shape. No unit test compares them. `gate:crystal-pointer` compares
+ * them only through the key drawn under the tip.
  */
 export const ARROW: readonly (readonly [number, number])[] = [
   [0, 0],
@@ -329,7 +330,6 @@ export function toLocalDir(d: Vec3, f: CrystalFrame): Vec3 {
 
 // ── the ray ────────────────────────────────────────────────────────────
 
-/** How close to the surface a march has to get before it counts, px. */
 /**
  * The direction the light TRAVELS, sheet space, from the two angles.
  *
@@ -342,9 +342,10 @@ export function lightDirOf(t: CrystalTuning): Vec3 {
   return [Math.cos(e) * Math.cos(a), Math.cos(e) * Math.sin(a), -Math.sin(e)]
 }
 
+/** How close to the surface a march has to get before it counts, px. */
 export const MARCH_EPS = 0.15
 
-/** Steps allowed on each leg. Two legs: in through the top, out the bottom. */
+/** Steps allowed on each march: the one in, then up to `MAX_BOUNCES` inside. */
 export const MARCH_STEPS = 96
 
 /** The sphere the whole solid fits in: centre and radius, LOCAL px. */
@@ -441,7 +442,7 @@ export const MAX_BOUNCES = 4
 export const WEIGHT_FLOOR = 0.02
 
 export interface CrystalHit {
-  /** Where the strongest exit lands on the page, sheet px. */
+  /** Where the first downward exit lands on the page, sheet px. */
   x: number
   y: number
   /** The outward surface normal where it entered, SHEET space, unit. */
@@ -465,8 +466,9 @@ export interface CrystalHit {
  * page is a place this pixel could have come from.
  *
  * The picture superimposes all of them; a POINTER cannot. It has to name
- * one page pixel, so this returns the heaviest exit — the one carrying the
- * most of the light, which is the one a viewer reads the object as showing.
+ * one page pixel, so this returns the first exit that heads down at the
+ * page: the direct path where one exists, a bounced one only where it does
+ * not.
  * `crystalLaw.test.ts` pins that the choice is stable under a hand tremor,
  * because a correction that swapped between two exits as the hand shook
  * would be worse than no correction at all.

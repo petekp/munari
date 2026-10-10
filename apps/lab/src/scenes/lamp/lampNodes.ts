@@ -523,14 +523,13 @@ export function createLampFlameMaterial(): LampFlame {
 
 // ── lantern tone mapping ───────────────────────────────────────────────
 
-// The lantern renderer ran ACES at exposure 1 before encoding to sRGB. ACES
-// is what makes the flame's high-intensity emissive core roll off toward
-// white instead of clipping to flat orange, and is the conventional pairing
-// with a PMREM-generated environment map (round 5: "actual PBR level
-// graphics"). The renderer now runs without tone mapping, so each lit
-// material applies it here. The glass is straight-alpha and translucent:
-// Three's output conversion unpremultiplies before encoding, so the color
-// goes out already encoded, as WebGL wrote it, through encodedOutput.
+// The lantern's lit metal and glass are tuned under ACES at exposure 1, the
+// conventional pairing with a PMREM-generated environment map (round 5:
+// "actual PBR level graphics"). The lantern renderer runs without tone
+// mapping, so each lit material applies ACES here; the flame is not
+// tone-mapped. The glass is straight-alpha and translucent: Three's output
+// conversion unpremultiplies before encoding, so the color goes out already
+// encoded through encodedOutput.
 const LANTERN_EXPOSURE = 1
 
 export function applyLanternToneMapping(material: MeshPhysicalNodeMaterial): void {

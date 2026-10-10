@@ -90,18 +90,6 @@ export interface SurfaceRouteController {
   release: () => void
 }
 
-/**
- * Is the presented shape one this library can vouch is the flat quad the
- * pose describes?
- *
- * `DEFORMED_MARKER` is `deformSurfaceGeometry`'s own receipt, stamped on the
- * geometry instance — so it survives a presenter swap and catches a scene
- * that deforms the default plane through a mesh ref (Slider does). An
- * authored geometry is one this library cannot vouch for however flat it
- * happens to be, and an authored raycast is a scene's own hit policy, which
- * the browser cannot be told to honor. Every answer is conservative: the
- * cost of a wrong "no" is the relay, which already works.
- */
 interface SurfacePlaneRecord {
   readonly position: THREE.BufferAttribute | THREE.InterleavedBufferAttribute
   readonly positionVersion: number
@@ -127,6 +115,18 @@ export function registerSurfacePlane(geometry: THREE.BufferGeometry): void {
   })
 }
 
+/**
+ * Is the presented shape one this library can vouch is the flat quad the
+ * pose describes?
+ *
+ * `DEFORMED_MARKER` is `deformSurfaceGeometry`'s own receipt, stamped on the
+ * geometry instance — so it survives a presenter swap and catches a scene
+ * that deforms the default plane through a mesh ref (Slider does). An
+ * authored geometry is one this library cannot vouch for however flat it
+ * happens to be, and an authored raycast is a scene's own hit policy, which
+ * the browser cannot be told to honor. Every answer is conservative: the
+ * cost of a wrong "no" is the relay, which already works.
+ */
 export function presentsUnitPlane(
   mesh: THREE.Mesh,
   authoredGeometry: boolean,
@@ -293,11 +293,11 @@ export function createSurfaceRoute(): SurfaceRouteController {
       // The pose is client-space and the host is fixed to whatever block it
       // was docked in, so it is written in that block's coordinates.
       if (next === 'native' && live && space && rigHost) {
-        // One rider per parked host. Two presenters of one source share one
-        // parked element and each computes its own pose — both riding would
-        // mean each frame's last writer wins and the hit region teleports
-        // between the two copies. First to lift holds the host until it
-        // parks; every other presenter's native request stays on the relay.
+        // One rider per parked host. A source with more than one registered
+        // presenter keeps every one of them off the native route
+        // (`sourceHasOnePointerPose`): each computes its own pose, so two
+        // riders would move the hit region between the copies every frame.
+        // The claim parks the host's previous owner, such as page preparation.
         // Source replacement can preserve the route verdict while changing the rig.
         claimSourcePointer(rigHost, token, () => live.park())
         live.ride(nativeRideStyle(inHostSpace(space, pose.matrix), zIndex))

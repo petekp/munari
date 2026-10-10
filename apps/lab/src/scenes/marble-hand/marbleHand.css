@@ -1,11 +1,11 @@
 /* A moving color poster — native ink and type over a shader field.
- * The page owns every letter. The colour behind them is a second WebGL
- * canvas (see marbleHandBackground.css); only the sculpture, stroke, and
- * shadow enter the visible overlay. Nothing here animates: a clone of this
- * sheet is what the hand reflects, and a still DOM is what keeps that
- * capture at zero repaints while the field keeps moving.
+ * The page owns every letter. The colour behind them is a second
+ * renderer's canvas (see marbleHandBackground.css); only the sculpture,
+ * stroke, and shadow enter the visible overlay. Nothing here animates: a
+ * clone of this sheet is what the hand reflects, and a still DOM is what
+ * keeps that capture at zero repaints while the field keeps moving.
  * The swatch gradients below stand in for each shader, and their measured
- * colours are also the four page lights the environment reads.
+ * colours are also the page lights the environment reads, one per swatch.
  */
 
 .mh-app {

@@ -675,7 +675,7 @@ describe('a scene-owned ramp', () => {
   })
 
   // The fault: an exponential decay reaches 1e-9 and stays there, so the
-  // page never takes the hold back and the content sits in WebGL at a
+  // page never takes the hold back and the content sits in the canvas at a
   // progress nobody can see is not zero.
   it('lands only when the driver reports exact zero', () => {
     const store = airborne()

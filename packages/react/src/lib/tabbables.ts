@@ -1,11 +1,11 @@
 // Tab-sequence computation for Surface source subtrees — the subset of the
 // `tabbable` library's rules that can occur in Surface markup (docs/focus.md
-// "Surface markup rules"). No shadow DOM, slots, or iframes: sources are
-// plain parked subtrees. Deliberately NOT cached: a Tab press is human-rate
-// and subtrees are small, so recomputing at each keydown keeps boundary
-// interception (element identity of first/last) always-fresh. If a giant
-// source ever makes getClientRects walks hurt, the cache key is the source's
-// paintCount — invalidate on advance.
+// "Surface markup and focus indication"). No shadow DOM, slots, or iframes:
+// sources are plain parked subtrees. Deliberately NOT cached: a Tab press is
+// human-rate and subtrees are small, so recomputing at each keydown keeps
+// boundary interception (element identity of first/last) always-fresh. If a
+// giant source ever makes getClientRects walks hurt, the cache key is the
+// source's paintCount — invalidate on advance.
 
 const CANDIDATES = [
   'input',

@@ -19,7 +19,9 @@ import { sRGBTransferEOTF, sRGBTransferOETF, vec4 } from 'three/tsl'
 
 /**
  * The `outputNode` for premultiplied color already in the canvas's sRGB
- * encoding, such as a value a GLSL shader wrote with no colorspace include.
+ * encoding, such as a color passed through `sRGBTransferOETF` and then faded
+ * or premultiplied, or a texture sample that should reach the canvas
+ * unconverted.
  */
 export function encodedOutput(encoded: Node<'vec4'>): Node<'vec4'> {
   const alpha = encoded.a

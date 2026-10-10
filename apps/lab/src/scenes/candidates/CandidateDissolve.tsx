@@ -25,7 +25,7 @@
 // The claim to check: the landing is not an animation that ENDS at the
 // figure, it is the figure. Grain home positions are exactly where the DOM put
 // them, so at t = 1 the cloud is bit-identical to the element underneath
-// it and the swap to `view: 'page'` has nothing to hide.
+// it and the swap back to page presentation has nothing to hide.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'

@@ -13,8 +13,6 @@ import { useRef } from 'react'
  *    "this is different content now" must not appear in its deps. Each one
  *    that did was a bug: `width`/`height` killed a measured Surface on every
  *    resize, `paint` killed one for a flag the effect never even reads.
- *  - `useSourceHost.mount` is handed to `onSource` and must never change
- *    identity, for the same reason.
  *
  * Assignment during render is safe for this pattern (the ref is only ever
  * read from effects, frame callbacks and event handlers — never during the

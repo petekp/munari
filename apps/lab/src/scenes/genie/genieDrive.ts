@@ -95,14 +95,6 @@ export function driveCommit(t: number, v: number, p: DriveParams): 0 | 1 {
   return t >= p.commitT ? 1 : 0
 }
 
-/**
- * One analytic step of the release spring toward `target` (a wall of
- * the t-domain). Contact with the target wall ends the flight: t snaps
- * to the target, the crossing speed is reported ONCE in `arrivalV`,
- * and `done` is set. Absent contact, `done` fires when both position
- * and velocity are beneath perception (and t snaps then too — the swap
- * frame reads t, and identity is only exact at the walls).
- */
 /** One integration step, and what the caller does with it. */
 export interface DriveStep {
   t: number
@@ -112,6 +104,14 @@ export interface DriveStep {
   done: boolean
 }
 
+/**
+ * One analytic step of the release spring toward `target` (a wall of
+ * the t-domain). Contact with the target wall ends the flight: t snaps
+ * to the target, the crossing speed is reported ONCE in `arrivalV`,
+ * and `done` is set. Absent contact, `done` fires when both position
+ * and velocity are beneath perception (and t snaps then too — the swap
+ * frame reads t, and identity is only exact at the walls).
+ */
 export function driveSpringStep(
   s: DriveState,
   target: 0 | 1,

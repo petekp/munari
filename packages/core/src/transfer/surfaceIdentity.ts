@@ -92,13 +92,13 @@ export function surfaceEpochCurrent(state: SurfaceIdentity, epoch: number): bool
  * The parts a multi-part Surface is waiting on, and the ones that have
  * declared themselves. An atomic Surface transfers all of its parts or none
  * of them, so this is a set-completeness question and never a count: two
- * presenters for one part is legal (several WebGL presentations may share a
+ * presenters for one part is legal (several scene presentations may share a
  * part), and counting would read that as a second part arriving.
  */
 export interface SurfacePartSet {
   /** Declared by `Surface.Part`, in declaration order. */
   readonly expected: readonly SurfacePartId[]
-  /** Declared by a WebGL presenter naming that part. */
+  /** Declared by a scene presenter naming that part. */
   readonly registered: readonly SurfacePartId[]
 }
 

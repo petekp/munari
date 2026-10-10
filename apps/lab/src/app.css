@@ -37,7 +37,6 @@
   --bench: #dcd9c8;
   --bench-hi: #f2f0e4;
   --bench-lo: #c6c3b1;
-  --stage: #aaa796;
 
   /* ── the black plane ── litho ink, not a display
    *
@@ -57,22 +56,14 @@
 
   /* ── coded colour ── one hue, one meaning. Never decoration.
    *    signal  the one lit position: selected scene, aimed-at slot, checked
-   *    live    measuring / capability present / focus
-   *    fault   unsupported / missing
    *
    * The names stay ROLES and only the values move. A palette named `--rosso`
    * would be a step backwards — the point of the system is that a scene asks
    * for a meaning and the theme decides what colour that is, which is the
    * only reason a pass like this one is a few lines rather than a sweep.
    *
-   * The values are Munari's own five: rosso, oltremare, giallo, nero, carta.
-   * Red is the mark — Campari, and the segno that says HERE. Blue is the
-   * ultramarine of the Libri illeggibili. Yellow is the warning lamp, and it
-   * took the fault slot off red, which mattered: a bright red signal and a
-   * dark red fault on the same board is one hue asked to mean two things. */
+   * Red is Munari's mark — Campari, and the segno that says HERE. */
   --signal: #e8402a;
-  --live: #17399b;
-  --fault: #f0b90b;
 
   /* …and its LIT variant. A hue printed on card and the same hue glowing
    * inside a black readout are not the same colour: the printed one is a
@@ -132,69 +123,10 @@ body,
   display: block;
 }
 
-/* ── the silkscreened label ── workhorse of the language ───────────────── */
-
-.lbl {
-  display: block;
-  font: 600 11px/1 var(--label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--ink-mute);
-}
-
 /* The masthead is the official wordmark (components/MunariLogo.tsx),
  * mounted on the nav console. The rest of the nav console lives in
  * components/SceneNav.tsx, styled in the tuning panel's Tailwind idiom
  * rather than here. */
-
-/* ── capability lamps ── the one place `--live` and `--fault` both appear ─ */
-
-.features {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  gap: 6px;
-}
-
-.features li {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px 4px;
-  border-radius: var(--radius);
-  border: 1px solid rgba(242, 240, 234, 0.2);
-  font: 600 9px/1 var(--label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: rgba(242, 240, 234, 0.5);
-}
-
-/* The lamp itself — lit means the capability is present, and an unlit lamp
- * is a fault rather than an absence. A dot carries that better than a ✓/✗
- * pair, which reads as two glyphs rather than as one instrument state.
- *
- * It is yellow now rather than red, and that is a semantic correction as
- * much as a palette one: what this lamp reports is that the browser is
- * missing an origin trial, which is a condition to be told about, not a
- * failure anyone caused. Red on this board means one thing only — HERE. */
-.features li::before {
-  content: '';
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--fault);
-}
-
-.features li[data-ok='true'] {
-  border-color: rgba(27, 99, 232, 0.55);
-  color: var(--screen-ink);
-}
-
-.features li[data-ok='true']::before {
-  background: var(--live);
-  box-shadow: 0 0 8px rgba(27, 99, 232, 0.9);
-}
 
 .hint {
   margin: 12px 0 0;
@@ -400,7 +332,6 @@ body,
   margin-bottom: 12px;
 }
 
-.trial-notice > .features,
 .trial-notice > .hint {
   padding: 0 14px;
 }

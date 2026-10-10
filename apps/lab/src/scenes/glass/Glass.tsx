@@ -561,7 +561,7 @@ function WallArt() {
           fontSize: 620,
           fontWeight: 900,
           // A didone resolves `opsz` from the rendered size unless told
-          // otherwise, and at 940px that lands on the display cut — where
+          // otherwise, and at 620px that lands on the display cut — where
           // the thins go to a hairline. Which is correct typography and
           // ruinous here: refraction is only visible as the displacement of
           // ink, and the display cut had almost none to displace. Forcing
@@ -585,8 +585,8 @@ function WallArt() {
 // DOM-sourced colour goes through a lit material it stops being the colour
 // the CSS asked for. The neon is a token (`--signal`), and a token that
 // arrives on screen multiplied by whatever the scene's lights happen to sum
-// to is not a token any more. `toneMapped={false}` for the pipeline's own
-// reason: the composite is graded exactly once, at the blit.
+// to is not a token any more. The material does no tone mapping of its own:
+// the composite is graded exactly once, at the blit (createBlitMaterial).
 function WallInk() {
   const texture = useSurfaceTexture()
   useEffect(() => {
@@ -598,7 +598,7 @@ function WallInk() {
   return (
     <mesh>
       <planeGeometry args={[WALL_W / PX, WALL_H / PX]} />
-      <meshBasicMaterial map={texture} toneMapped={false} />
+      <meshBasicMaterial map={texture} />
     </mesh>
   )
 }
@@ -660,8 +660,9 @@ function WebAppFraming() {
 
 export function Glass() {
   // Six, and "sparse" is a consequence of the span rather than the count:
-  // each orb is off screen for most of its cycle (see ORB_SPAN), so six in
-  // the array is three or four on screen, arriving at uneven intervals.
+  // each orb is off screen for most of its cycle (see glassTuning.orbSpan),
+  // so six in the array is three or four on screen, arriving at uneven
+  // intervals.
   const blobs = useMemo<GlassBlob[]>(
     () => Array.from({ length: 6 }, () => ({ x: 0, y: 0, r: 0 })),
     [],

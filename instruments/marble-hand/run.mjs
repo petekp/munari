@@ -232,7 +232,7 @@ function installFrameReader(page) {
         listeners.add(listener)
         return () => listeners.delete(listener)
       },
-      // Premultiplied RGBA, rows from the bottom, as readPixels returned it.
+      // Premultiplied RGBA, rows from the bottom up.
       read() {
         const canvas = renderer.domElement
         const { width, height } = canvas
@@ -244,7 +244,7 @@ function installFrameReader(page) {
         return new Promise((resolve, reject) => {
           const timer = setTimeout(() => {
             stop()
-            reject(new Error(`no default-framebuffer draw for ${label}`))
+            reject(new Error(`no canvas draw for ${label}`))
           }, 5_000)
           const stop = this.listen(() => {
             stop()
@@ -1063,7 +1063,7 @@ async function verifyPageReflections(page) {
   await requireTheme(page, 'waves')
   await setPageMotion(page, false)
   // Keep direct page lights out of the optical clause. The native heading
-  // never enters this framebuffer, so changed opaque hand pixels can then
+  // never enters this canvas, so changed opaque hand pixels can then
   // come only from its page-derived environment, not from a repainted page.
   await setPanelNumber(page, 'envMapIntensity', 3)
   await setPanelNumber(page, 'roughness', 0.1)
@@ -1109,8 +1109,8 @@ async function verifyPageReflections(page) {
       }
       tick()
     })
-    // House rule: only a completed default-framebuffer render makes a
-    // canvas read a sample of the picture the browser can present.
+    // House rule: only a completed render to the canvas makes a canvas
+    // read a sample of the picture the browser can present.
     const capture = () => window.__marbleFrames.next('reflection sample')
 
     let stableFrames = 0
@@ -1315,7 +1315,7 @@ async function verifyThemeReflections(page) {
 }
 
 /**
- * One overlay frame, read straight out of the default framebuffer, plus the
+ * One overlay frame, read straight out of the overlay canvas, plus the
  * live bend angles and the projected index tip from that same draw. The
  * changed count compares against the previous call, so two calls with an
  * interval between them measure exactly what moved in that interval.
@@ -1326,7 +1326,7 @@ async function tapFrame(page) {
     const renderer = window.__r3f.gl
     const timer = setTimeout(() => {
       stop()
-      reject(new Error('no default-framebuffer draw for tap sample'))
+      reject(new Error('no canvas draw for tap sample'))
     }, 5_000)
     // The bend and the projected tip are read in the same task as the pixels,
     // so all three describe one drawn frame.

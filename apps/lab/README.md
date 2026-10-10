@@ -76,7 +76,7 @@ records the scope.
 
 - `src/scenes/<scene>/` contains each scene, its styles, tuning and local tests.
   Supporting filenames use the scene prefix; `*Law.ts` holds pure behavior,
-  `*Shaders.ts` holds GLSL, and `*Tuning.ts` holds tuned values.
+  `*Nodes.ts` holds TSL node materials, and `*Tuning.ts` holds tuned values.
 - `src/lib/` contains shared lab helpers. `devGlobals.ts` declares inspection
   hooks used by instruments; it is not a public application API.
 - `src/components/ui/` contains the shadcn primitives still used by the app.
@@ -121,7 +121,9 @@ These reference files must stay byte-identical to their registry copies.
   License is included at `public/licenses/archivo.txt`.
 
 - `tools/runLab.mjs` launches Vite and a Chrome that can draw HTML.
-- `tools/captureThumbs.mjs` captures scene thumbnails used by dynamic gallery URLs.
+- `tools/captureThumbs.mjs` (`npm run thumbs`) re-captures `public/thumbs/<scene>.jpg`,
+  the thumbnails shown in the scene nav, Home's example cards and the gallery.
+  The `selection` thumbnail is picked by hand and is not re-captured.
 - `tools/make-film.sh` builds the Genie film; [film provenance](src/scenes/genie/film.provenance.md)
   records its source and license.
 - `tools/make-marble-hand.mjs` prepares the hand model; [model provenance](public/models/marble-hand/PROVENANCE.md)

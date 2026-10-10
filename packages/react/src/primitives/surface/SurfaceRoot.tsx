@@ -1,10 +1,6 @@
 // Surface controller — the internal controller below the public Surface wrappers.
 //
-// Current public wrappers declare content with Surface.HTML or SceneSurface.HTML.
-// The root-level source/adopt variant below is an older private interface and is
-// not a supported form of the package's public Surface component.
-//
-// The law: the root owns IDENTITY and the SOURCE; it owns no pixels. It
+// The law: the root owns IDENTITY; it owns no pixels and no source. It
 // decides nothing about where anything is drawn, which is what lets the
 // same declaration serve three wirings — a page tree tunnelling a mesh
 // inward, a scene tree portalling content outward, and two trees connected
@@ -22,11 +18,11 @@
 // callback, so protocol time and renderer time cannot diverge.
 //
 // Ownership: this component owns the handle's controller claim, the part
-// ledger, the source host, and the protocol tick. It owns no mesh, no
-// material, and no placement.
+// ledger, and the protocol tick. It owns no mesh, no material, and no
+// placement.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
-import { trackPointerPlace, type SurfaceChrome, type SurfacePartId } from '@munari/core'
+import { trackPointerPlace, type SurfacePartId } from '@munari/core'
 import {
   useSurfaceController,
   useSurfaceControls,
@@ -37,7 +33,6 @@ import {
   type SurfaceStore,
 } from './surfaceHandle'
 import {
-  DEFAULT_PART,
   SurfaceHandleContext,
   SurfaceRootContext,
   nextSurfaceInstanceId,
@@ -47,8 +42,7 @@ import {
 import { resolveSurfaceHost, type SurfaceCanvasId, type SurfaceHost } from './surfaceHostRegistry'
 import { useSurfaceHostContext } from './surfaceHostContext'
 import { watchSurfaceValidation } from './surfaceValidation'
-import { SurfaceSourceHost } from './surfaceSourceHost'
-import type { SurfaceResolution, SurfaceSize, SurfaceSourceRuntime } from './surfaceSourceRuntime'
+import type { SurfaceSize, SurfaceSourceRuntime } from './surfaceSourceRuntime'
 
 /**
  * Everything true of a Surface however its content arrives.
@@ -60,46 +54,8 @@ import type { SurfaceResolution, SurfaceSize, SurfaceSourceRuntime } from './sur
 interface SurfaceControlledProps extends SurfaceControls {
   /** Matches a SurfaceCanvas id; omit it for the unnamed default host. */
   canvasId?: SurfaceCanvasId
-  onFocusWithinChange?: (focused: boolean) => void
   children?: React.ReactNode
 }
-
-/** Legacy root-level capture options. The supported public API declares HTML children. */
-export interface SurfaceContentOptions {
-  size?: SurfaceSize
-  resolution?: SurfaceResolution
-  mirrorU?: boolean
-  onChrome?: (chrome: SurfaceChrome) => void
-}
-
-// The multipart member's shape for those same fields. Stated as an
-// explicit "none of these" rather than left off, so `<Surface size={…}>`
-// with the parts below carrying their own sources is a compile error and
-// not a silently ignored prop.
-type WithoutContentOptions = { [K in keyof SurfaceContentOptions]?: never }
-
-/**
- * Where a root's pixels come from: React content, a detached element, or
- * `<Surface.Part>` children. Exactly one, and the union says so — `source`
- * and `adopt` together is a Surface with two answers to which element is
- * captured, and the one that loses is invisible at runtime.
- *
- * This is the legacy controller input, not public SurfaceRootProps. Current
- * public wrappers declare Surface.HTML or SceneSurface.HTML children. Their
- * prop forwarding can still admit these options from untyped JavaScript.
- */
-export type SurfaceContentProps =
-  | ({
-      /** React content Munari captures. */
-      source: React.ReactNode
-      adopt?: never
-    } & SurfaceContentOptions)
-  | ({
-      /** A detached element Munari takes ownership of instead. */
-      adopt: HTMLElement
-      source?: never
-    } & SurfaceContentOptions)
-  | ({ source?: never; adopt?: never } & WithoutContentOptions)
 
 /**
  * Who names this Surface: this root (`name`), or the handle it was handed
@@ -114,26 +70,17 @@ export type SurfaceIdentityProps =
     }
   | { surface?: never; name?: string }
 
-export type SurfaceProps = SurfaceControlledProps &
-  SurfaceIdentityProps &
-  SurfaceContentProps
+export type SurfaceProps = SurfaceControlledProps & SurfaceIdentityProps
 
 export function SurfaceRoot({
   surface,
   name,
-  source,
-  adopt,
   canvasId,
   renderIn,
-  size,
-  resolution,
-  mirrorU,
   onPresentationChange,
   onMotionComplete,
   onFreezeChange,
   onReady,
-  onFocusWithinChange,
-  onChrome,
   onError,
   children,
 }: SurfaceProps) {
@@ -238,32 +185,9 @@ export function SurfaceRoot({
   )
   const handleValue = useMemo(() => ({ handle: store.handle, store }), [store])
 
-  // A root carrying its own content IS a part — the single-source case is
-  // the one-part case with the name filled in, so anchors, readiness, and
-  // the part publication have one code path rather than two.
-  const single = source !== undefined || adopt !== undefined
-
   return (
     <SurfaceHandleContext value={handleValue}>
-      <SurfaceRootContext value={root}>
-        {single ? (
-          <SurfaceSourceHost
-            root={root}
-            id={DEFAULT_PART}
-            source={source}
-            adopt={adopt}
-            size={size}
-            resolution={resolution}
-            mirrorU={mirrorU}
-            onFocusWithinChange={onFocusWithinChange}
-            onChrome={onChrome}
-          >
-            {children}
-          </SurfaceSourceHost>
-        ) : (
-          children
-        )}
-      </SurfaceRootContext>
+      <SurfaceRootContext value={root}>{children}</SurfaceRootContext>
     </SurfaceHandleContext>
   )
 }

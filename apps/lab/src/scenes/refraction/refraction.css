@@ -271,9 +271,9 @@
   background: var(--ink);
 }
 
-/* The one live control inside a capture. It edits the LENS: the figure it
- * switches is the tallest part of the height field, so clicking through the
- * glass changes the shape of the glass. */
+/* The one live control inside a capture. It edits the APERTURE: the figure it
+ * switches is the densest mark on the page, so clicking through the glass
+ * changes where the drop opens. */
 .refraction-forms {
   display: flex;
   gap: 6px;

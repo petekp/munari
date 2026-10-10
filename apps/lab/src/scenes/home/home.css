@@ -1,8 +1,8 @@
 /* Overview — one wash over the whole page, near-black UI on top of it.
  * Home owns its theme; the lamp capture receives the same theme root.
  * Captured roots size themselves; only their outer holders are transformed.
- * Depth comes from the light (HomeMasthead.tsx) where WebGL runs, and from
- * the static depth kit (components/lit.css) where it does not. */
+ * Depth comes from the light (HomeMasthead.tsx) where its GPU renderer runs,
+ * and from the static depth kit (components/lit.css) where it does not. */
 .home-demo {
   --ink: #14140f;
   --display: 'Bodoni Moda', Didot, 'Times New Roman', serif;
@@ -73,7 +73,7 @@
 
 .home-light-scene { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
 .home-light-scene[data-degraded] { display: none; }
-/* The drag handle sits over the rendered globe; the bulb itself is WebGL. */
+/* The drag handle sits over the rendered globe; the bulb itself is drawn on the bulb canvas. */
 .home-light { pointer-events: auto; position: absolute; left: 0; top: 0; z-index: 40; width: 76px; height: 76px; margin: -38px 0 0 -38px; padding: 0; border: 0; background: transparent; border-radius: 50%; cursor: grab; touch-action: none; user-select: none; }
 .home-light.is-dragging { cursor: grabbing; }
 .home-light-mark { display: none; position: absolute; inset: 20px; border: 2px solid var(--ink); border-radius: 50%; background: var(--paper); }

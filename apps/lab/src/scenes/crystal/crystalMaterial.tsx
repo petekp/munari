@@ -18,11 +18,11 @@
 //
 // THE EYE IS READ FROM THE CAMERA, not computed from the fov. Every ray in
 // this scene starts there — the two marches, the bend the pointer is
-// corrected by, and the parallax that decides where a tip floating 75px off
-// the page lands on it. A second derivation of the camera would be a second
-// thing to keep in step with `PixelPerfect`, and its error would show up as
-// a click that misses by more the further from the middle of the screen you
-// go.
+// corrected by, and the parallax that decides where a tip floating `liftPx`
+// off the page lands on it. A second derivation of the camera would be a
+// second thing to keep in step with `PixelPerfect`, and its error would show
+// up as a click that misses by more the further from the middle of the
+// screen you go.
 //
 // Ownership: the uniform writes, the frame write and the eye. Shape, optics
 // and physics are `crystalLaw.ts`; pixels are `crystalNodes.ts`.

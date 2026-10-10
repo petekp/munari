@@ -12,7 +12,7 @@ import {
   type Vec3,
 } from './opticsLaw'
 
-// The loupe as it ships: ~1.65× at the axis, hard nonlinearity at the rim.
+// A reference loupe, not the kit's: ~1.65× at the axis, hard nonlinearity at the rim.
 const LOUPE: LensSpec = { aperture: 90, curvature: 130, standoff: 150, ior: 1.52 }
 // The same instrument with one sign flipped.
 const REDUCER: LensSpec = { ...LOUPE, curvature: -130 }
@@ -27,7 +27,7 @@ const land = (r: number, spec: LensSpec, i: (lx: number, ly: number) => Vec3 = o
   return p
 }
 
-describe('refract — GLSL semantics, transcribed', () => {
+describe('refract — the shader built-in, transcribed', () => {
   it('passes a normal-incidence ray straight through, at any index', () => {
     for (const ior of [1, 1.33, 1.52, 2.4]) {
       expect(refract(DOWN, [0, 0, 1], 1 / ior)).toEqual([0, 0, -1])

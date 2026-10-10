@@ -221,7 +221,7 @@ export function createRefractionMaterial(surface: SurfaceNodes, v: RefractionVal
   // Hermite reconstruction of a coarse field, at the cost of no extra taps.
   //
   // Bilinear is C0. Its iso-lines are straight inside a texel and kink at
-  // every boundary, so the contact line drawn from a 25x19 spread is a
+  // every boundary, so the contact line drawn from the coarse spread is a
   // polygon with roughly one edge per texel it crosses — the stark facets
   // Pete photographed on 2026-08-23. Easing the fractional coordinate before
   // the hardware lerp makes the interpolant C1 across the boundary, which is
@@ -324,7 +324,7 @@ export function createRefractionMaterial(surface: SurfaceNodes, v: RefractionVal
     // spread is a coarse bilinear texture, so its screen derivative is
     // discontinuous at every texel boundary — a magnitude jump that a seam
     // width never showed, and a DIRECTION jump that a specular normal shows
-    // as facets on a 22px grid. The wider difference reads across the
+    // as facets. The wider difference reads across the
     // boundary instead of straddling it.
     const stepPx = v.spreadTexel.div(v.texel)
     const gx = apertureAt(vUv.add(vec2(v.spreadTexel.x, 0))).sub(apertureAt(vUv.sub(vec2(v.spreadTexel.x, 0))))

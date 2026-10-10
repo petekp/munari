@@ -30,11 +30,6 @@ export const KNOB = {
   /** Spun cap seated on the skirt. */
   capRadius: 16.5,
   capHeight: 5,
-  /** Knurl: ridge count around the skirt, and ridge depth in px. A
-   *  fine pitch — many shallow ridges — is the machinist's tell of a
-   *  precision grip; coarse deep teeth read as molded plastic. */
-  knurlCount: 64,
-  knurlAmp: 0.4,
 } as const
 
 export const TOGGLE = {

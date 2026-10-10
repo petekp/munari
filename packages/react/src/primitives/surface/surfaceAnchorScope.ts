@@ -2,10 +2,9 @@
 //
 // The law: an anchor set is ONE transaction against ONE paint, and objects
 // placed from it is withheld until a COMPLETE set exists for the generation
-// currently drawn on this geometry (docs/decisions.md #29). Children
-// declare which keys they need; this scope collects all of them at once or
-// none of them, and promotes a collected set only when the pixels it
-// describes are the pixels on the mesh.
+// currently drawn on this geometry. Children declare which keys they need;
+// this scope collects all of them at once or none of them, and promotes a
+// collected set only when the pixels it describes are the pixels on the mesh.
 //
 // The fault, 2026-08-15: anchors were read per child, each on whatever
 // paint had last landed. During a resize the panel's screws came from one

@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 //
-// The two doubles below are REAL elements with the one origin-trial member
-// each stubbed. That is the difference between a test that proves the
+// The two doubles below are REAL elements with the members a test must supply
+// or drive stubbed: a working 2D context on the canvas, and the frame
+// callbacks and `readyState` on the video. That is the difference between a test that proves the
 // controller drives a canvas and a test that proves it drives an object
 // shaped like the controller's own idea of one: the attributes it writes are
 // read back off the element that received them, not out of a Map the double
@@ -117,7 +118,7 @@ function fakeVideo(options: FakeVideoOptions = {}): FakeVideo {
     get: () => readyState,
   })
 
-  // The frame callback is an origin-trial member no test environment ships.
+  // happy-dom does not implement the video frame callbacks.
   element.requestVideoFrameCallback = (callback) => {
     const id = nextId++
     callbacks.set(id, callback)

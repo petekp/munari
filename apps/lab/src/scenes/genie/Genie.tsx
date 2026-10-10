@@ -535,10 +535,10 @@ interface WindowBodyProps {
 // The capture root is `.gen-sheet`, not `.gen-window`, and the extra box
 // is the shadow's. A box-shadow lies OUTSIDE the border box, which is
 // outside the texture — it would sit on the desk at rest and vanish the
-// instant the window took flight. Flight builds a WebGL twin for exactly
-// this reason; the genie does not need one, because a hard offset shadow
-// can simply be painted INSIDE the root, and paint survives the handoff
-// untouched. It pours into the dock along with everything else,
+// instant the window took flight. Flight builds a mesh shadow twin for
+// exactly this reason; the genie does not need one, because a hard offset
+// shadow can simply be painted INSIDE the root, and paint survives the
+// handoff untouched. It pours into the dock along with everything else,
 // which on a desk made of paper is the honest thing for it to do.
 const noFocus = (e: React.MouseEvent) => e.preventDefault()
 
@@ -1387,10 +1387,10 @@ function Bays({ slotOf, ringOf, ringing, held, docked, stopRing }: BaysProps) {
       const pose = dockPose(full ? 1 : 0, alive ? r.t : 0, alive ? r.v : 0)
       slot.style.transform = `scale(${pose.sx}, ${pose.sy})`
       slot.style.setProperty('--gen-progress', full ? '1' : '0')
-      // The idle ends of the same level the Driver writes mid-flight.
-      // Hold is the only thing that can answer it here: an unheld bay
-      // is either holding a window or it isn't, and the frame that hands
-      // it over is the frame the Driver stops writing.
+      // The idle ends of the same level Flight's writeSlot writes
+      // mid-flight. Hold is the only thing that can answer it here: an
+      // unheld bay is either holding a window or it isn't, and the frame
+      // that hands it over is the frame Flight stops writing.
       slot.style.setProperty('--pour', full ? '1' : '0')
     }
   })
@@ -1833,8 +1833,8 @@ export function GenieApp() {
   // element directly (see GestureRig), so a re-render never happens
   // under a moving hand.
   const [pos, setPos] = useState<Partial<Record<WinId, { x: number; y: number }>>>({})
-  // The page copy is hidden and WebGL is showing — reported by the handle,
-  // never inferred from a texture having pixels.
+  // The page copy is hidden and the scene canvas is showing — reported by
+  // the handle, never inferred from a texture having pixels.
   //
   // The distinction is a hole in the desk. A texture upload reaches two
   // reconcilers: the sheet's visibility in the Canvas tree and the page
@@ -1850,7 +1850,7 @@ export function GenieApp() {
   // That probe was removed on 2026-08-15; anything hunting this gap again
   // has to squeeze the main thread the same way.
   const [shown, setShown] = useState<Partial<Record<WinId, boolean>>>({})
-  // The exact frozen film generation has crossed both the WebGL upload
+  // The exact frozen film generation has crossed both the texture upload
   // and mesh traversal. This opens the pixel gate, but does not release
   // the page canvas; `shown` waits for the separate presentation receipt.
   const [framed, setFramed] = useState<Partial<Record<WinId, boolean>>>({})
@@ -2206,8 +2206,8 @@ export function GenieApp() {
     flight: Airborne,
     resumeFrame?: FrameId,
   ) => {
-    // A context-loss fallback can revoke this flight before its next-frame
-    // reverse release. Late work from that old transfer is harmless.
+    // A lost renderer can revoke this flight before its next-frame reverse
+    // release. Late work from that old transfer is harmless.
     if (flights.current.get(id) !== flight) return
     const film = flight.f.film
     if (film) probeFilm({ type: 'release', token: film.token, wall })
@@ -2251,8 +2251,9 @@ export function GenieApp() {
     const film = flight.f.film
     if (film) probeFilm({ type: 'land', token: film.token, wall, frame: resumeFrame })
     // A dock landing ends with the window put away, and `hiddenFor` will say
-    // so on the next commit. Set it now, while WebGL still holds the pixels,
-    // so the swap cannot expose the page copy for the commit in between.
+    // so on the next commit. Set it now, while the scene canvas still holds
+    // the pixels, so the swap cannot expose the page copy for the commit in
+    // between.
     if (wall === 1) winRefs.current[id]?.setAttribute('data-away', 'true')
     landings.current.set(id, { wall, frame: resumeFrame })
     // The landing is decided inside the renderer frame. Commit the
@@ -2410,7 +2411,8 @@ export function GenieApp() {
       data-genie-film-shown={shown[FILM_WIN] ? 'true' : 'false'}
     >
       {/* This is the only media clock. It stays connected and playing while
-          either the page canvas or WebGL owns the visible pixels. */}
+          either the page canvas or the scene canvas owns the visible
+          pixels. */}
       <video
         ref={attachFilmDecoder}
         className="gen-film-decoder"
@@ -2502,7 +2504,7 @@ export function GenieApp() {
                   occupied, not just as bigger. The outline strokes over
                   it, so the mark itself never goes anywhere. */}
               {/* The button is only the hit target. The 54px solid mark
-                  is the visible dock and sits above the WebGL sheet, so
+                  is the visible dock and sits above the airborne sheet, so
                   its centre masks the law's narrow final neck. */}
               <svg viewBox="0 0 20 20" width="54" height="54" aria-hidden>
                 {s.mark}
@@ -2531,9 +2533,8 @@ export function GenieApp() {
         // 1..n, so anything above n restores the hold — and the number is
         // stated here rather than in a stylesheet because r3f writes this
         // wrapper's inline styles and would win against one.
-        // Pointer events are the host's: an airborne sheet is hit-testable
-        // geometry, and the reserved `pointerEvents: 'none'` above would have
-        // made the whole overlay untouchable.
+        // Pointer events are the host's: pointerMode="surfaces" keeps the
+        // overlay clear except over an airborne sheet's Surface mesh.
         style={{ position: 'fixed', inset: 0, zIndex: OVERLAY_Z }}
         gl={{ alpha: true, antialias: true }}
         // A ring outlives the landing that kicked it, so "something is

@@ -640,7 +640,7 @@
   transition-duration: 100ms;
 }
 
-/* Four colours, from candidateTokens. Chosen against --screen rather than
+/* Five colours, from candidateTokens. Chosen against --screen rather than
  * borrowed from an editor theme: the block is going to fly through the
  * page's own paper as it is drawn into the cursor, and a palette tuned for
  * a dark editor loses half its contrast on the way. */

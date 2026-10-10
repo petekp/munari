@@ -1,4 +1,4 @@
-// The kernel's public surface. It grows one layer of hold at a time —
+// The kernel's public surface. It grows one layer at a time —
 // mapping → paint → pointer → transfer → chrome → physics — and only after
 // the layer's conformance contract has landed.
 

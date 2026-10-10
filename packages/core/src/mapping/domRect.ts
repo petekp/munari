@@ -1,7 +1,7 @@
 // DOM-rect laws — turning a page box into the numbers a camera can match,
 // and refusing the ancestors whose transforms it cannot.
 //
-// The law: a WebGL presentation may claim it matches a DOM box only when
+// The law: a canvas presentation may claim it matches a DOM box only when
 // the box's own coordinates and its ancestor chain are both expressible as
 // translation and positive scale. Everything else — rotation, skew, mirror,
 // perspective, any 3D transform — changes the box's shape on the way to the

@@ -122,6 +122,12 @@ export function veilLod(spacingPx: number, texelPx: number): number {
   return Math.max(0, Math.log2(Math.max(spacingPx / texelPx, 1)))
 }
 
+/** The band of window the veil paints, in CSS px. */
+export interface VeilStrip {
+  top: number
+  height: number
+}
+
 /**
  * The rows the offscreen passes must cover, in band coordinates, for
  * the vertical taps of the final pass to always land on real pixels. A
@@ -134,12 +140,6 @@ export function veilLod(spacingPx: number, texelPx: number): number {
  * containment. The +2 covers bilinear filtering's half-texel look-past
  * at the outermost rows.
  */
-/** The band of window the veil paints, in CSS px. */
-export interface VeilStrip {
-  top: number
-  height: number
-}
-
 export function veilStrip(windowH: number, p: VeilParams): VeilStrip {
   const reach = Math.ceil(p.maxRadius) + 2
   return { top: -reach, height: windowH + 2 * reach }

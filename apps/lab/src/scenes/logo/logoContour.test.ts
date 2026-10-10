@@ -23,9 +23,10 @@ import {
   type ContourOptions,
 } from './logoContour'
 
-/** A readable bitmap. Row 0 of the literal is the TOP row; the samples
- *  come back from GL bottom-up, so the literal is flipped on the way
- *  in — which is exactly the flip the real readback carries. */
+/** A readable bitmap. Row 0 of the literal is the TOP row; the real
+ *  readback (readAlphaField) delivers rows bottom-up, so the literal is
+ *  flipped on the way in — which is exactly the flip the real readback
+ *  carries. */
 function trace(rows: string[], options: ContourOptions = {}) {
   const h = rows.length
   const w = rows[0].length

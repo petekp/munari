@@ -271,8 +271,9 @@ export function chromeEquals(a: SurfaceChrome, b: SurfaceChrome): boolean {
  * Signed distance from a UV point to the surface's rounded-rect edge, in CSS
  * px — negative inside. `radii` order is tl, tr, br, bl; `v = 1` is the TOP
  * of the content (CanvasTexture flipY), which is why +y picks the top pair.
- * A consumer's fragment shader carries the GLSL twin of this formula so a
- * ray and a fragment agree about where the corner ends.
+ * The binding's TSL `surfaceRadiusDistance` (behind the exported
+ * `surfaceRadiusMask`) computes the same distance, so a ray and a fragment
+ * agree about where the corner ends.
  */
 export function surfaceRadiusSd(
   u: number,

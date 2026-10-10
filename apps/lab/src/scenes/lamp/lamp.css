@@ -37,9 +37,9 @@
   height: 100%;
 }
 
-/* No WebGL: the page stays plain paper rather than showing an unlit
- * canvas (which would default to opaque black and multiply everything
- * to nothing). */
+/* The renderer failed to start or lost its GPU device: the page stays
+ * plain paper rather than showing an unlit canvas (which would default
+ * to opaque black and multiply everything to nothing). */
 .lamp-page[data-degraded] .lamp-canvas {
   display: none;
 }
@@ -66,9 +66,10 @@
   height: 100%;
 }
 
-/* The 3D canvas failed (or never got a context): the fixture still drags
- * and still casts a shadow through the multiply pass, so it keeps a small
- * visible handle instead of going fully invisible. */
+/* The lantern's renderer failed to start or lost its GPU device: the
+ * fixture still drags and still casts a shadow through the multiply
+ * pass, so it keeps a small visible handle instead of going fully
+ * invisible. */
 .lamp-page[data-lantern-degraded] .lamp-lantern-canvas {
   display: none;
 }
@@ -78,7 +79,7 @@
   top: 0;
   left: 0;
   z-index: 30;
-  /* Tracks LANTERN_TOTAL_HEIGHT (112) and LANTERN_MAX_RADIUS (34) in
+  /* Tracks LANTERN_TOTAL_HEIGHT (97) and FOOT_BOTTOM_RADIUS (34) in
    * lampLantern.ts — a plain CSS file can't import them, so this stays a
    * hand-kept approximation with slack, not the exact figure (round 4,
    * squat-silhouette rebuild: was 166/36 for the old tall lantern). */

@@ -14,11 +14,13 @@
 // 2 while its texture still showed 1. Following the user only measured 1%
 // and 0.0, and kept the echo.
 //
-// Two consumers judge by this one law so they cannot drift: the rasterized
-// source judges its own element's mutations, and element capture judges a
-// native element's mutations before rebuilding its copy. What each captures
-// regardless — a resize, a font or image landing, a transition's end,
-// anything that would leave the picture WRONG rather than old — is its own.
+// Three consumers judge by this one law so they cannot drift: the rasterized
+// source judges its own element's mutations, the HTML-in-canvas engine
+// judges whether to take a paint the browser fires for its subtree, and
+// element capture judges a native element's mutations before rebuilding its
+// copy. What each captures regardless — a resize, a font or image landing, a
+// transition's end, anything that would leave the picture WRONG rather than
+// old — is its own.
 
 /**
  * How long after the user's input a mutation still counts as its answer.

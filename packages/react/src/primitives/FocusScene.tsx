@@ -9,7 +9,7 @@
 //
 // Levels (docs/focus.md "The model"):
 //   page     — focus is outside the scene entirely; we never touch it
-//   scene    — the GL canvas itself is focused (the page's single entry stop)
+//   scene    — the scene canvas itself is focused (the page's single entry stop)
 //   unit     — a group's unit element is focused (the Surface source root,
 //              tabindex=-1): the group selected "as a thing"
 //   interior — focus is inside a group's DOM subtree; the browser owns
@@ -79,7 +79,7 @@ interface MemberData {
 
 interface GroupRuntime {
   reg: GroupRegistration
-  /** Interior focus memory (docs/focus.md "Focus memory — a stack"). */
+  /** Interior focus memory (docs/focus.md "Ordering and focus memory"). */
   memory: MemoryStack<HTMLElement>
   lastState: GroupFocusState
 }
@@ -151,7 +151,7 @@ const ROUTED_KEYS = new Set(['Tab', 'Enter', 'F2', 'Escape', ...ARROW_DIRS.keys(
  *  Children are position:fixed, so the layer itself has no geometry. */
 function createProxyLayer(): HTMLDivElement {
   const el = document.createElement('div')
-  el.dataset.threeUiProxyLayer = ''
+  el.dataset.munariFocusProxyLayer = ''
   return el
 }
 
@@ -1032,7 +1032,8 @@ export function FocusScene({
  * Declares one logical group in the scene ring. Tab reaches its real
  * controls directly; a read-only group contributes its unit root as one
  * stop. Surfaces auto-register as composite members via FocusGroupContext,
- * and WebGL leaf controls join through proxies. Renders no scene object.
+ * and scene-drawn leaf controls (such as Dial) join through proxies. Renders
+ * no scene object.
  */
 export function FocusGroup({
   id,

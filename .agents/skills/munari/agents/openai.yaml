@@ -1,4 +1,4 @@
 interface:
   display_name: "Munari"
-  short_description: "Build sound DOM-to-WebGL interactions"
+  short_description: "Build sound interactions between HTML and Three.js scenes"
   default_prompt: "Use $munari to build this interaction with the smallest sound Munari API."

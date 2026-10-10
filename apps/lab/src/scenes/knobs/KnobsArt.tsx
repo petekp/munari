@@ -26,7 +26,7 @@ export function KnobsArt() {
       const dt = Math.min((now - last) / 1000, 0.1)
       last = now
       if (knobsValues.power) t += dt
-      // Publish the clock: the WebGL light rig reads this so the glints
+      // Publish the clock: the scene's light rig reads this so the glints
       // in the metal orbit in the art's exact phase (and freeze with it
       // when the power switch drops).
       artClock.t = t
