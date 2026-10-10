@@ -633,17 +633,23 @@ Reports Knobs throughput at a fixed 1440×900 viewport and DPR 2.
 `npm run probe:knobs-hz` prints per-phase callback statistics against an
 8.33 ms reference budget. It is a reporter, not a gate.
 
-The browser runs headed with vsync and the frame-rate limiter off, so
+Three phases run headed with vsync and the frame-rate limiter off, so their
 `requestAnimationFrame` deltas describe free-running throughput, not display
-cadence or isolated CPU/GPU time. Four phases: `idle` (the standing animation),
-`art-` (idle with the SVG artwork hidden; the difference is the
-artwork's raster share), `drag` (a held dial sweep through the real
-input path), and `off` (POWER off, the demo's floor). Two honesty
-checks print before the table: the drag must move the hue value and
-the POWER click must drop the power flag, both read from the live law
-module. A phase that failed to engage would measure idle twice. The
-GPU string prints first because SwiftShader numbers describe
-SwiftShader, not your GPU.
+cadence or isolated CPU/GPU time: `idle` (the standing animation), `art-`
+(idle with the SVG artwork hidden; the difference is the artwork's raster
+share), and `off` (POWER off, the demo's floor).
+
+The fourth phase, `drag`, is a held dial sweep through the real input path.
+It runs in a second browser with vsync on. It reports the share of intervals
+longer than 1.5 times their median, which are display frames the page missed.
+Free-running, WebGPU's RAF callbacks leave React no time to update the dial,
+so the drag would measure nothing.
+
+Two checks confirm that the phases engaged: the drag must move the hue
+value, and the POWER click must drop the power flag. Both values are read
+from the live law module. A phase that failed to engage would measure idle
+twice. The backend and GPU name print first because SwiftShader numbers
+describe SwiftShader, not your GPU.
 
 Repeated timestamps can occur in this unlimited mode. Zero intervals remain in
 the statistics and are counted in each row. Missing, nonfinite, negative, or
