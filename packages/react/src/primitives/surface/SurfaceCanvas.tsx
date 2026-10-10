@@ -137,7 +137,9 @@ async function adapterTextureLimit(powerPreference: GPUPowerPreference | undefin
   // Three requests its adapter with these options; matching them asks the
   // same adapter. TypeScript's DOM types do not list `featureLevel` yet.
   const options: GPURequestAdapterOptions & { readonly featureLevel: 'compatibility' } = { powerPreference, featureLevel: 'compatibility' }
-  const adapter = await gpu.requestAdapter(options)
+  // A rejection is not a start failure: Three's own request fails the same
+  // way inside `init()` and reaches its WebGL 2 fallback from there.
+  const adapter = await gpu.requestAdapter(options).catch(() => null)
   return adapter?.limits.maxTextureDimension2D ?? null
 }
 
@@ -193,8 +195,9 @@ async function startSurfaceRenderer(
   { antialias, alpha }: FiberRendererDefaults,
 ): Promise<WebGPURenderer> {
   const powerPreference = parameters?.powerPreference ?? 'high-performance'
-  const limit = parameters?.forceWebGL ? null : await adapterTextureLimit(powerPreference)
-  const requiredLimits = limit === null ? parameters?.requiredLimits : { maxTextureDimension2D: limit, ...parameters?.requiredLimits }
+  // A supplied device keeps the limits it was created with.
+  const adapterLimit = parameters?.forceWebGL || parameters?.device ? null : await adapterTextureLimit(powerPreference)
+  const requiredLimits = adapterLimit === null ? parameters?.requiredLimits : { maxTextureDimension2D: adapterLimit, ...parameters?.requiredLimits }
   const renderer = new WebGPURenderer({ antialias, alpha, ...parameters, powerPreference, requiredLimits, canvas })
   try {
     await renderer.init()
@@ -203,18 +206,19 @@ async function startSurfaceRenderer(
     // context surfaces there as a null dereference.
     throw new RendererStartError('[munari] SurfaceCanvas could not start WebGPU or its WebGL 2 fallback', { cause })
   }
-  const context = renderer.getContext()
-  textureLimits.set(
-    renderer,
-    context instanceof WebGL2RenderingContext
-      ? context.getParameter(context.MAX_TEXTURE_SIZE)
-      : requiredLimits?.maxTextureDimension2D ?? WEBGPU_DEFAULT_TEXTURE_LIMIT,
-  )
+  const limit = grantedTextureLimit(renderer)
+  if (limit !== null) textureLimits.set(renderer, limit)
   return renderer
 }
 
-// The WebGPU spec's default maxTextureDimension2D, granted when none is requested.
-const WEBGPU_DEFAULT_TEXTURE_LIMIT = 8192
+// Read from what the renderer draws with, not from what was requested: a
+// supplied `gl.device` ignores `requiredLimits`.
+function grantedTextureLimit(renderer: WebGPURenderer): number | null {
+  const context = renderer.getContext()
+  if (context instanceof WebGL2RenderingContext) return context.getParameter(context.MAX_TEXTURE_SIZE)
+  const { backend } = renderer
+  return 'device' in backend && backend.device instanceof GPUDevice ? backend.device.limits.maxTextureDimension2D : null
+}
 
 // A replacement renderer lost sooner than this after it was created is not
 // replaced again, so a GPU that fails on every frame stops after one retry
