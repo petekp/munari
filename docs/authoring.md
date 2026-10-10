@@ -325,6 +325,23 @@ types from `/advanced`. The same core collector serves the binding; there is
 no separate registry copy to maintain. It rejects duplicate or incomplete key
 sets as one transaction and keeps the prior complete receipt usable.
 
+## Cross-origin content needs CORS to appear in the scene
+
+A Surface's 3D copy draws only what the page is allowed to read. An image,
+CSS background or iframe from another origin without CORS is left out of the
+capture, while the page still shows it. HTML-in-canvas leaves a transparent
+hole there. snapDOM draws a gray placeholder for an image or iframe and nothing
+for a background.
+
+- Serve a cross-origin image with `Access-Control-Allow-Origin`, and give its
+  `<img>` the `crossorigin` attribute. Both engines then draw it.
+- Host CSS backgrounds on the page's origin. HTML-in-canvas leaves out a
+  cross-origin background even when the server sends CORS headers.
+- A cross-origin iframe never appears in the copy.
+
+Neither engine taints its canvas, so missing content raises no error and no
+failed upload (platform.md #34).
+
 ## Where the rest lives
 
 - `packages/react/src/style.css` — the CSS contract, both directions

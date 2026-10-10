@@ -252,6 +252,8 @@ What did not need to change:
 - The warm-up's write masks. Three's WebGPU backend compares them before
   every draw.
 - A texture-size check. DOM captures stop at 4096 px.
+- A taint check. Neither capture engine taints its canvas; cross-origin
+  content without CORS is left out instead (platform.md #34).
 
 Verified on macOS on both backends: `gate:dom-surface-demand`,
 `gate:lifting-pointer`, `probe:surface-textures`, `probe:surface-parts`,
@@ -271,9 +273,7 @@ Also done on 2026-10-08:
 
 Still open:
 
-1. Decide whether `Surface` needs an origin check. Whether
-   `drawElementImage` can taint a capture canvas is unverified.
-2. Checks that fail on `main` too, with the same numbers or assertion:
+1. Checks that fail on `main` too, with the same numbers or assertion:
    `probe:home-headline` (edge contrast 1.53), `probe:postcard` (boundary
    error 2.6), `gate:capture-engines` (a cloned keyframe's clock) and
    `probe:api-gestures` case `candidate-ripple` (the click never fires).

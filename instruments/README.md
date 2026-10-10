@@ -295,6 +295,22 @@ They do not change CI membership.
 Decision [#48](../docs/decisions.md#48) records the corrected contracts and
 the distinction between numerical, browser-input, and pixel evidence.
 
+## capture-origin
+
+Checks that cross-origin content cannot taint a capture canvas, and records
+what each engine draws in its place. `npm run probe:capture-origin`. Local;
+not in CI.
+
+The page runs on `127.0.0.1` and its assets on `localhost`, so they are two
+origins. Each capture engine draws six cases: a same-origin image, a
+cross-origin image with and without CORS, a cross-origin CSS background with
+and without CORS, and a cross-origin iframe. The probe reads each capture
+canvas's center pixel. It fails if any canvas is tainted, if content an engine
+should draw is missing, or if non-CORS pixels appear. A planted draw of a
+non-CORS image into the canvas fails the probe. The expected pixels are
+platform.md #34. Without `drawElementImage` the probe skips, and
+`STRICT_CAPABILITY=1` makes that a failure.
+
 ## capture-engines
 
 Every capture engine holds the same source laws, against its REAL
