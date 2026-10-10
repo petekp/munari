@@ -34,23 +34,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceSupport, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
-import { textureSlot } from '../../lib/uniforms'
+import { Surface, useSurfaceChrome, useSurfaceSupport, useSurfaceHandle, useSurfaceNodes } from '@petepetrash/munari'
 import { plainAttribute } from '../../lib/geometry'
 import { buildShards } from './candidateShards'
 import { curlSample, unrolledLength } from './candidateCurlLaw'
-import {
-  LIGHT,
-  MELT_FRAG,
-  MELT_VERT,
-  SHATTER_FRAG,
-  SHATTER_VERT,
-  SHEET_FRAG,
-  SHEET_VERT,
-} from './candidateShaders'
+import { createMeltMaterial, createSheetMaterial, createShatterMaterial } from './candidateNodes'
 import {
   PhaseDrive,
-  useOwnUniforms,
+  useNodeMaterial,
   usePhase,
   worldBoxOf,
   type Phase,
@@ -82,59 +73,19 @@ const ROWS = [
 // ── melt ─────────────────────────────────────────────────────────────────
 
 function MeltMaterial({ phase, exit }: { phase: React.RefObject<Phase>; exit: number }) {
-  const texture = useSurfaceTexture()
-  const { chrome, width, height } = useSurfaceChrome()
-  const uniforms = useMemo(
-    () => ({
-      tMap: textureSlot(),
-      uT: { value: 0 },
-      uSize: { value: new THREE.Vector2(1, 1) },
-      // Overwritten every render from the prop; the bag is memoized and
-      // this literal is only what the material is born with.
-      uExit: { value: 0 },
-      // Sideways travel of a rivulet as it snakes, in px. Above ~14 the
-      // streams cross each other and the row reads as being shredded
-      // rather than running.
-      uWaver: { value: deleteTuning.waver },
-      // Rivulets across the row. Five over a 430px row puts a stream every
-      // ~86px, which is wide enough that the gaps between them open before
-      // the row is off the list — the moment the sheet stops being a sheet.
-      uStreams: { value: deleteTuning.streams },
-      // How completely a column gives up its own x for its stream's. Full
-      // gathering pulls the row into five hard threads and loses the ink;
-      // 0.82 keeps enough spread that the glyphs stay in the liquid.
-      uGather: { value: deleteTuning.gather },
-      uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uMunariSize: { value: new THREE.Vector2(1, 1) },
-    }),
-    [],
-  )
-  uniforms.tMap.value = texture
-  const material = useOwnUniforms(uniforms)
-  const radii = chrome?.radii ?? [0, 0, 0, 0]
-  uniforms.uMunariRadii.value.set(radii[0], radii[1], radii[2], radii[3])
-  uniforms.uMunariSize.value.set(width, height)
-  uniforms.uSize.value.set(width, height)
-  uniforms.uExit.value = exit
+  const surface = useSurfaceNodes()
+  const { width, height } = useSurfaceChrome()
+  const { material, values } = useNodeMaterial(() => createMeltMaterial(surface), [surface])
+  values.size.value.set(width, height)
+  // Overwritten every render from the prop; the node is born at 0.
+  values.exit.value = exit
   useFrame(() => {
-    uniforms.uT.value = phase.current.t
-    uniforms.uWaver.value = deleteTuning.waver
-    uniforms.uStreams.value = deleteTuning.streams
-    uniforms.uGather.value = deleteTuning.gather
+    values.t.value = phase.current.t
+    values.waver.value = deleteTuning.waver
+    values.streams.value = deleteTuning.streams
+    values.gather.value = deleteTuning.gather
   })
-  return (
-    <shaderMaterial
-      ref={material}
-      key={texture.uuid}
-      uniforms={uniforms}
-      vertexShader={MELT_VERT}
-      fragmentShader={MELT_FRAG}
-      transparent
-      premultipliedAlpha
-      depthWrite={false}
-      toneMapped={false}
-    />
-  )
+  return <primitive object={material} attach="material" />
 }
 
 // ── shatter ──────────────────────────────────────────────────────────────
@@ -148,57 +99,20 @@ function ShatterMaterial({
   origin: React.RefObject<THREE.Vector2>
   exit: number
 }) {
-  const texture = useSurfaceTexture()
+  const surface = useSurfaceNodes()
   const { width, height } = useSurfaceChrome()
-  const uniforms = useMemo(
-    () => ({
-      tMap: textureSlot(),
-      uT: { value: 0 },
-      uOrigin: { value: new THREE.Vector2() },
-      uSpan: { value: 1 },
-      uSpread: { value: deleteTuning.spread },
-      // Toward the camera. Without it the break is flat and reads as a
-      // sliding puzzle; with it the shards pass over the rows below and
-      // the row is unmistakably in front of the list, not part of it.
-      uPop: { value: deleteTuning.pop },
-      uSpin: { value: deleteTuning.spin },
-      // Enough to carry the far shards past the bottom edge within the
-      // effect's own duration, so nothing has to be faded away.
-      // Overwritten every render from the prop, like uExit above.
-      uGravity: { value: 0 },
-      // Radial, away from the press. This is what makes the break have a
-      // direction — a row that bursts evenly reads as an explosion effect
-      // rather than as something that was struck at a point.
-      uKick: { value: deleteTuning.kick },
-    }),
-    [],
-  )
-  uniforms.tMap.value = texture
-  const material = useOwnUniforms(uniforms)
-  uniforms.uSpan.value = Math.hypot(width, height)
+  const { material, values } = useNodeMaterial(() => createShatterMaterial(surface), [surface])
+  values.span.value = Math.hypot(width, height)
   useFrame(() => {
-    uniforms.uT.value = phase.current.t
-    uniforms.uOrigin.value.copy(origin.current)
-    uniforms.uSpread.value = deleteTuning.spread
-    uniforms.uPop.value = deleteTuning.pop
-    uniforms.uSpin.value = deleteTuning.spin
-    uniforms.uKick.value = deleteTuning.kick
-    uniforms.uGravity.value = exit * deleteTuning.gravity
+    values.t.value = phase.current.t
+    values.origin.value.copy(origin.current)
+    values.spread.value = deleteTuning.spread
+    values.pop.value = deleteTuning.pop
+    values.spin.value = deleteTuning.spin
+    values.kick.value = deleteTuning.kick
+    values.gravity.value = exit * deleteTuning.gravity
   })
-  return (
-    <shaderMaterial
-      ref={material}
-      key={texture.uuid}
-      uniforms={uniforms}
-      vertexShader={SHATTER_VERT}
-      fragmentShader={SHATTER_FRAG}
-      transparent
-      premultipliedAlpha
-      depthWrite={false}
-      toneMapped={false}
-      side={THREE.DoubleSide}
-    />
-  )
+  return <primitive object={material} attach="material" />
 }
 
 function ShardGeometry({ width, height }: { width: number; height: number }) {
@@ -217,48 +131,18 @@ function ShardGeometry({ width, height }: { width: number; height: number }) {
 
 
 function PeelMaterial() {
-  const texture = useSurfaceTexture()
-  const { chrome, width, height } = useSurfaceChrome()
-  const uniforms = useMemo(
-    () => ({
-      tMap: textureSlot(),
-      uLightDir: { value: new THREE.Vector3(...LIGHT) },
-      uBackColor: { value: new THREE.Color('#e6e3d4') },
-      uShade: { value: deleteTuning.peelShade },
-      // Constant. The roll leaves through the bottom of the window under
-      // its own fall, so there is nothing here for a fade to cover.
-      uOpacity: { value: 1 },
-      uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uMunariSize: { value: new THREE.Vector2(1, 1) },
-    }),
-    [],
+  const surface = useSurfaceNodes()
+  // The opacity stays at its default of 1. The roll leaves through the
+  // bottom of the window under its own fall, so there is nothing here for
+  // a fade to cover.
+  const { material, values } = useNodeMaterial(
+    () => createSheetMaterial(surface, deleteTuning.peelShade),
+    [surface],
   )
-  uniforms.tMap.value = texture
-  const material = useOwnUniforms(uniforms)
-  const radii = chrome?.radii ?? [0, 0, 0, 0]
-  uniforms.uMunariRadii.value.set(radii[0], radii[1], radii[2], radii[3])
-  uniforms.uMunariSize.value.set(width, height)
   useFrame(() => {
-    uniforms.uShade.value = deleteTuning.peelShade
+    values.shade.value = deleteTuning.peelShade
   })
-  return (
-    <shaderMaterial
-      ref={material}
-      key={texture.uuid}
-      uniforms={uniforms}
-      vertexShader={SHEET_VERT}
-      fragmentShader={SHEET_FRAG}
-      transparent
-      premultipliedAlpha
-      // Depth is the only occlusion between the turns of the roll, exactly
-      // as on the dropdown's sheet: without it the coil's ~7 wound plies
-      // blend into one grey brick and the roll stops reading as a roll
-      // (2026-08-20).
-      depthWrite
-      toneMapped={false}
-      side={THREE.DoubleSide}
-    />
-  )
+  return <primitive object={material} attach="material" />
 }
 
 /**

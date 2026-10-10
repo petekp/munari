@@ -198,7 +198,7 @@
 
 /* The figure is the reason the front is legible. A solid form against
  * paper is the largest luminance step on the page, so the aperture in
- * refractionShaders.ts opens over it first — the drop starts here and
+ * refractionNodes.ts opens over it first — the drop starts here and
  * spreads outward into the text. */
 .refraction-figure {
   flex: none;

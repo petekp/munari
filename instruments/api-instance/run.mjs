@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import {createServer} from 'vite'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output=process.env.API_PROOF_OUTPUT ?? path.join(tmpdir(),'munari-api','instance')
 const chrome=[process.env.CHROME_PATH,'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/usr/bin/google-chrome','/usr/bin/chromium'].find(file=>file&&existsSync(file))
@@ -14,7 +15,7 @@ if(!chrome)throw new Error('Chrome is required; set CHROME_PATH')
 await mkdir(output,{recursive:true})
 const server=await createServer({configFile:false,root:import.meta.dirname,server:{host:'127.0.0.1',port:0,fs:{allow:[path.resolve(import.meta.dirname,'../..')]}},esbuild:{jsx:'automatic'},logLevel:'warn'})
 await server.listen()
-const browser=await puppeteer.launch({defaultViewport:null,executablePath:chrome,headless:process.env.HEADED!=='1',args:['--enable-features=CanvasDrawElement','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']})
+const browser=await puppeteer.launch({defaultViewport:null,executablePath:chrome,headless:process.env.HEADED!=='1',args:[...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']})
 const rows=[]
 try {
   for(const layout of ['fullscreen','inset','scaled'])for(const camera of ['perspective','orthographic']){
@@ -53,7 +54,7 @@ try {
     await page.$eval('#scroller',element=>{element.scrollTop=35});await checkCorners()
     if(process.env.LAYOUT_MOVE==='1'){
       await page.waitForFunction(()=>{
-        const frame=window.__statefulRenderer.gl.info.render.frame, now=performance.now()
+        const frame=window.__statefulRenderer.gl.info.render.calls, now=performance.now()
         if(window.quietFrame?.frame!==frame)window.quietFrame={frame,since:now}
         return now-window.quietFrame.since>300
       },{timeout:4000})

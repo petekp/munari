@@ -2,10 +2,11 @@
 // Glass must bend actual text and images. The mirror never owns native input;
 // live canvases are sampled after their frame, and the lamp excludes itself (#52).
 import * as THREE from 'three'
+import {texture as textureNode,uniform} from 'three/tsl'
 import {captureAvailable,createDomTextureSource,type DomTextureSource} from '@petepetrash/munari/advanced'
 import {type HomeFlyerStore,type HomeFlyer} from './homeFlyer'
 import {lampPixelRatio,watchLampViewport} from './homeLampViewport'
-import {LAMP_CANVAS_LAYERS} from './homeLampGlassShaders'
+import {LAMP_CANVAS_LAYERS,type LampBackdropValues} from './homeLampGlassNodes'
 
 const OMIT='.home-light-host,.home-light-scene,.home-light,[data-lamp-capture],script,style,link,meta'
 const EVENTS=['input','change','focusin','focusout','pointerover','pointerout','pointerdown','pointerup','load','transitionend']
@@ -48,12 +49,12 @@ function copyViewport(page:HTMLElement,width:number,height:number){
 export function createLampBackdrop(page:HTMLElement,wake:()=>void,flyer:HomeFlyerStore){
   const white=new THREE.DataTexture(new Uint8Array([255,255,255,255]),1,1);white.needsUpdate=true
   const empty=new THREE.DataTexture(new Uint8Array(4),1,1);empty.needsUpdate=true
-  const uniforms={
-    uPage:new THREE.Uniform<THREE.Texture>(empty),uPageReady:new THREE.Uniform(0),
-    uViewport:new THREE.Uniform(new THREE.Vector2(1,1)),
-    uPageLight:new THREE.Uniform<THREE.Texture>(white),uPageLightRect:new THREE.Uniform(new THREE.Vector4()),
-    uLayers:new THREE.Uniform<THREE.Texture[]>(Array.from({length:LAMP_CANVAS_LAYERS},()=>empty)),
-    uLayerRects:new THREE.Uniform(Array.from({length:LAMP_CANVAS_LAYERS},()=>new THREE.Vector4())),uLayerCount:new THREE.Uniform(0),
+  const values:LampBackdropValues={
+    page:textureNode(empty),pageReady:uniform(0),
+    viewport:uniform(new THREE.Vector2(1,1)),
+    pageLight:textureNode(white),pageLightRect:uniform(new THREE.Vector4()),
+    layers:Array.from({length:LAMP_CANVAS_LAYERS},()=>textureNode(empty)),
+    layerRects:Array.from({length:LAMP_CANVAS_LAYERS},()=>uniform(new THREE.Vector4())),layerCount:uniform(0,'int'),
   }
   const wrapper=document.createElement('div');wrapper.dataset.lampCapture='';wrapper.className='home-demo';wrapper.inert=true;wrapper.setAttribute('aria-hidden','true')
   wrapper.style.cssText='position:relative;display:block;visibility:visible;margin:0;padding:0;border:0;overflow:hidden;container:demo / size;'
@@ -83,10 +84,10 @@ export function createLampBackdrop(page:HTMLElement,wake:()=>void,flyer:HomeFlye
     wrapper.style.width=`${width}px`;wrapper.style.height=`${height}px`
     wrapper.replaceChildren(copyViewport(page,width,height))
     if(!source){
-      source=createDomTextureSource(wrapper,width,height,{label:'home-lamp-backdrop',scale:lampPixelRatio(),onError:()=>{uniforms.uPageReady.value=0}})
+      source=createDomTextureSource(wrapper,width,height,{label:'home-lamp-backdrop',scale:lampPixelRatio(),onError:()=>{values.pageReady.value=0}})
       texture=new THREE.CanvasTexture(source.canvas);texture.colorSpace=THREE.NoColorSpace;texture.premultiplyAlpha=true
       texture.generateMipmaps=false;texture.minFilter=THREE.LinearFilter;texture.magFilter=THREE.LinearFilter
-      uniforms.uPage.value=texture
+      values.page.value=texture
       stopPaint=source.subscribePaint(receipt=>{
         cancelAnimationFrame(paintFrame)
         // Chrome completes the paint after onpaint; upload on the next frame.
@@ -96,7 +97,7 @@ export function createLampBackdrop(page:HTMLElement,wake:()=>void,flyer:HomeFlye
           if(key!==allocation){texture.dispose();allocation=key}
           texture.needsUpdate=true
           ;[paintedWidth,paintedHeight]=receipt.paintedSize
-          uniforms.uPageReady.value=paintedWidth===page.clientWidth&&paintedHeight===page.clientHeight?1:0
+          values.pageReady.value=paintedWidth===page.clientWidth&&paintedHeight===page.clientHeight?1:0
           waitingPaint=false
           wake()
         })
@@ -123,16 +124,16 @@ export function createLampBackdrop(page:HTMLElement,wake:()=>void,flyer:HomeFlye
     void document.fonts.ready.then(()=>{if(alive)schedule()});schedule()
   }
   return {
-    uniforms,
-    ready:()=>!supported||(!waitingPaint&&!mirrorFrame&&!paintFrame&&uniforms.uPageReady.value===1),
+    values,
+    ready:()=>!supported||(!waitingPaint&&!mirrorFrame&&!paintFrame&&values.pageReady.value===1),
     update(light:HTMLCanvasElement|null){
-      const width=page.clientWidth,height=page.clientHeight,base=page.getBoundingClientRect();uniforms.uViewport.value.set(width,height)
-      if(paintedWidth!==width||paintedHeight!==height)uniforms.uPageReady.value=0
-      if(uniforms.uPageReady.value<.5)return
+      const width=page.clientWidth,height=page.clientHeight,base=page.getBoundingClientRect();values.viewport.value.set(width,height)
+      if(paintedWidth!==width||paintedHeight!==height)values.pageReady.value=0
+      if(values.pageReady.value<.5)return
       if(light){
-        if(lightTexture?.image!==light){lightTexture?.dispose();lightTexture=new THREE.CanvasTexture(light);lightTexture.colorSpace=THREE.NoColorSpace;lightTexture.generateMipmaps=false;lightTexture.minFilter=THREE.LinearFilter;uniforms.uPageLight.value=lightTexture}
+        if(lightTexture?.image!==light){lightTexture?.dispose();lightTexture=new THREE.CanvasTexture(light);lightTexture.colorSpace=THREE.NoColorSpace;lightTexture.generateMipmaps=false;lightTexture.minFilter=THREE.LinearFilter;values.pageLight.value=lightTexture}
         upload(lightTexture,light)
-        const r=light.getBoundingClientRect();uniforms.uPageLightRect.value.set(r.left-base.left,height-(r.bottom-base.top),r.width,r.height)
+        const r=light.getBoundingClientRect();values.pageLightRect.value.set(r.left-base.left,height-(r.bottom-base.top),r.width,r.height)
       }
       const visible=[...page.querySelectorAll('canvas')].filter(canvas=>{
         if(canvas.closest(OMIT))return false
@@ -141,19 +142,19 @@ export function createLampBackdrop(page:HTMLElement,wake:()=>void,flyer:HomeFlye
         for(let node:HTMLElement|null=canvas;node&&node!==page;node=node.parentElement){const css=getComputedStyle(node);if(css.visibility==='hidden'||css.display==='none'||css.opacity==='0')return false}
         return true
       }).slice(-LAMP_CANVAS_LAYERS)
-      uniforms.uLayerCount.value=visible.length
-      uniforms.uLayers.value.fill(empty)
+      values.layerCount.value=visible.length
+      for(const layer of values.layers)layer.value=empty
       visible.forEach((canvas,index)=>{
         let layer=layers.get(canvas)
         if(!layer){layer=new THREE.CanvasTexture(canvas);layer.colorSpace=THREE.NoColorSpace;layer.premultiplyAlpha=true;layer.generateMipmaps=false;layer.minFilter=THREE.LinearFilter;layers.set(canvas,layer)}
         // A demand-rendered postcard can hold still while the lamp moves.
-        // Keep its last completed draw; WebGL may have cleared the source buffer.
+        // Keep its last completed draw; its canvas may have been cleared since.
         if(!canvas.closest('.home-canvas')||sampledFlyer!==flyer.read()){
           upload(layer,canvas)
           if(canvas.closest('.home-canvas'))sampledFlyer=flyer.read()
         }
-        uniforms.uLayers.value[index]=layer
-        const r=canvas.getBoundingClientRect();uniforms.uLayerRects.value[index]!.set(r.left-base.left,height-(r.bottom-base.top),r.width,r.height)
+        values.layers[index]!.value=layer
+        const r=canvas.getBoundingClientRect();values.layerRects[index]!.value.set(r.left-base.left,height-(r.bottom-base.top),r.width,r.height)
       })
       for(const [canvas,layer]of layers)if(!canvas.isConnected){layer.dispose();layers.delete(canvas)}
     },

@@ -13,9 +13,11 @@
 // because both consumers must agree on them exactly: a wordmark that
 // re-derived its own grid would stand its twins on a different rig.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import { WebGPURenderer } from 'three/webgpu'
+import { texture as textureNode, uniform } from 'three/tsl'
 import {
   Surface,
   SurfaceCanvas,
@@ -23,6 +25,7 @@ import {
   type SurfaceProgress,
   type SurfacePresentation,
   useSurfaceDriver,
+  useSurfaceNodes,
   useSurfaceTexture,
 } from '@petepetrash/munari'
 import type { LogoMotionSample } from './logoMotion'
@@ -41,12 +44,18 @@ import {
   type LetterPose,
   type LogoKnobs,
 } from './logoLaw'
-import { LETTER_FRAG, LETTER_VERT, MATERIAL_GATE, MATERIAL_PARAMS } from './logoShaders'
-import type { LogoMaterialSpec } from './logoShaders'
+import {
+  MATERIAL_GATE,
+  MATERIAL_PARAMS,
+  createLetterMaterial,
+  createLetterRipples,
+  type LetterTextures,
+  type LetterUniforms,
+  type LogoMaterialSpec,
+} from './logoNodes'
 import { FIELD_DS, LetterFields, raster, readAlphaField } from './logoFields'
 import { traceContour, type InkIsland } from './logoContour'
 import { buildLetterMesh } from './logoSlab'
-import { textureSlot } from '../../lib/uniforms'
 
 export const WORD = 'munari'
 export const SEED0 = 20260813
@@ -181,7 +190,7 @@ interface LetterFx {
   /** Prism offset in CSS px (the material converts to texels). */
   prism: number
   /** Relief AMOUNT, not a peak height: the gain on the height field,
-   *  referenced to RELIEF_REF = 22 (logoShaders). The px the sheet
+   *  referenced to RELIEF_REF = 22 (logoNodes). The px the sheet
    *  actually rises is `relief / 22 × dome × (shoulder × 9.6 + pillow ×
    *  51.2)` at full coverage, so it is per-material — balloon at the
    *  default 22 already domes 83 px. */
@@ -196,7 +205,7 @@ interface LetterFx {
   shoulder: number
   pillow: number
   dome: number
-  /** Numeric selector into LOGO_MATERIALS; the shader receives it as uMaterialIndex. */
+  /** Numeric selector into LOGO_MATERIALS; the shader receives it as materialIndex. */
   materialIndex: number
   /** The rest of the deck row — surface response and pop channels —
    *  with the panel's trims already folded in, so the shader stays a
@@ -307,7 +316,7 @@ function writeMaterialEffects(
   // Relief scales by the material's own dome, so a balloon puffs and a
   // neon tube stays a tube.
   // NOT scaled by par.dome here — the shader's height description owns
-  // that (uDome), and folding it in twice is exactly the two-numbers-
+  // that (dome), and folding it in twice is exactly the two-numbers-
   // for-one-surface mistake this refactor removes.
   fx.relief = p.materialIndex === 0 ? 0 : k.relief * gs
   fx.body = k.body
@@ -354,7 +363,7 @@ function strikeRing(fx: LetterFx, x: number, y: number, t: number, power: number
 /** How many texels the outline is traced at, on the letter's long side.
  *  Around one texel per CSS px: the tracer interpolates each crossing
  *  between samples, so this is already sub-pixel, and going finer only
- *  buys a longer readback stall. */
+ *  buys a longer readback. */
 const OUTLINE_TEXELS = 384
 
 /** px of extrusion past which a letter is fully a body rather than a
@@ -375,11 +384,70 @@ interface TraceSchedule {
   due: number
   /** How many reads this change still gets before it settles. */
   tries: number
-  /** The committed field itself, uploaded for the shader (tTrace) so the
+  /** The committed field itself, uploaded for the shader (trace) so the
    *  face cuts on the curve the walls stand on. Null until the first
    *  readback lands; owned here, because three will not free a
    *  DataTexture it was only handed. */
   tex: THREE.DataTexture | null
+  /** A readback is in flight; the next waits for it to settle. */
+  reading: boolean
+}
+
+/** What the trace sampler holds until the first readback lands: the
+ *  committed field's own format, so the swap rebuilds nothing. Nothing
+ *  reads it — solid stays zero until a traced outline is fresh. */
+const NO_TRACE = new THREE.DataTexture(new Uint8Array(1), 1, 1, THREE.RedFormat)
+NO_TRACE.minFilter = THREE.LinearFilter
+NO_TRACE.magFilter = THREE.LinearFilter
+NO_TRACE.needsUpdate = true
+
+function createLetterUniforms(i: number): LetterUniforms {
+  return {
+    texel: uniform(new THREE.Vector2(1e-3, 1e-3)),
+    texelF: uniform(new THREE.Vector2(1e-2, 1e-2)),
+    texelC: uniform(new THREE.Vector2(1e-2, 1e-2)),
+    plane: uniform(new THREE.Vector2(1, 1)),
+    font: uniform(100),
+    shoulder: uniform(0),
+    pillowW: uniform(0),
+    dome: uniform(0),
+    rough: uniform(0.5),
+    metal: uniform(0),
+    sss: uniform(0),
+    crinkle: uniform(0),
+    sheen: uniform(0),
+    irid: uniform(0),
+    glow: uniform(0),
+    fx: uniform(0),
+    jelly: uniform(0),
+    relief: uniform(0),
+    meshFrac: uniform(1),
+    fieldPx: uniform(new THREE.Vector2(FIELD_DS.fine, FIELD_DS.coarse)),
+    slab: uniform(0),
+    solid: uniform(0),
+    prism: uniform(0),
+    materialIndex: uniform(0),
+    velDir: uniform(new THREE.Vector2(1, 0)),
+    quat: uniform(new THREE.Vector4(0, 0, 0, 1)),
+    light: uniform(WORLD_LIGHT.clone()),
+    key: uniform(1),
+    keySoft: uniform(1),
+    fill: uniform(1),
+    room: uniform(1),
+    front: uniform(1),
+    time: uniform(0),
+    // The glow pulse's per-letter stagger (fragment only — the weave
+    // phases in the shared word frame instead).
+    phase: uniform(i * 2.13),
+    waveOrigin: uniform(new THREE.Vector2(0, 0)),
+    waveK: uniform(new THREE.Vector2(0.05, 0.05)),
+    waveW: uniform(new THREE.Vector2(WEAVE.w[0], WEAVE.w[1])),
+    waveDir: uniform(new THREE.Vector2(1, 0)),
+    ...createLetterRipples(),
+    ripK: uniform(new THREE.Vector4(1, 1, 1, 1)),
+    ripAmp: uniform(0),
+    stretch: uniform(0),
+  }
 }
 
 function LetterMaterial({
@@ -402,7 +470,7 @@ function LetterMaterial({
   solid: boolean
   /** Everything about a pose that can change the glyph's SHAPE. Color
    *  and tilt are deliberately absent — neither moves an outline, and
-   *  re-tracing on a color fade would stall a frame for nothing. */
+   *  re-tracing on a color fade would spend a readback for nothing. */
   outlineKey: string
   /** The traced islands, tagged with the key they were traced UNDER —
    *  the tag is what lets the letter refuse walls that belong to a
@@ -412,92 +480,69 @@ function LetterMaterial({
   // Inside Surface's material="none" slot: the Surface still owns the
   // texture (source format, premultiply, receipts); this material only
   // consumes it.
+  const surface = useSurfaceNodes()
   const texture = useSurfaceTexture()
-  const mat = useRef<THREE.ShaderMaterial>(null)
   const trace = useRef<TraceSchedule>({
     key: '',
     sig: 0,
     due: 0,
     tries: 0,
     tex: null,
+    reading: false,
   })
+  // The latest shape key and whether this letter is still mounted, for a
+  // readback that settles after either has moved on.
+  const latestKey = useRef(outlineKey)
+  latestKey.current = outlineKey
+  const mounted = useRef(true)
   // Owned here (see TraceSchedule.tex), so freed here.
   useEffect(() => {
     const tr = trace.current
+    mounted.current = true
     return () => {
+      mounted.current = false
       tr.tex?.dispose()
       tr.tex = null
     }
   }, [])
-  const uniforms = useMemo(
-    () => ({
-      tMap: textureSlot(),
-      tFine: textureSlot(),
-      tCoarse: textureSlot(),
-      tTrace: textureSlot(),
-      tHalo: textureSlot(),
-      uTexel: { value: new THREE.Vector2(1e-3, 1e-3) },
-      uTexelF: { value: new THREE.Vector2(1e-2, 1e-2) },
-      uTexelC: { value: new THREE.Vector2(1e-2, 1e-2) },
-      uPlane: { value: new THREE.Vector2(1, 1) },
-      uFont: { value: 100 },
-      uShoulder: { value: 0 },
-      uPillowW: { value: 0 },
-      uDome: { value: 0 },
-      uRough: { value: 0.5 },
-      uMetal: { value: 0 },
-      uSss: { value: 0 },
-      uCrinkle: { value: 0 },
-      uSheen: { value: 0 },
-      uIrid: { value: 0 },
-      uGlow: { value: 0 },
-      uFx: { value: 0 },
-      uJelly: { value: 0 },
-      uRelief: { value: 0 },
-      uMeshFrac: { value: 1 },
-      uFieldPx: { value: new THREE.Vector2(FIELD_DS.fine, FIELD_DS.coarse) },
-      uSlab: { value: 0 },
-      uSolid: { value: 0 },
-      uPrism: { value: 0 },
-      uMaterialIndex: { value: 0 },
-      uVelDir: { value: new THREE.Vector2(1, 0) },
-      uQuat: { value: new THREE.Vector4(0, 0, 0, 1) },
-      uLight: { value: WORLD_LIGHT.clone() },
-      uKey: { value: 1 },
-      uKeySoft: { value: 1 },
-      uFill: { value: 1 },
-      uRoom: { value: 1 },
-      uFront: { value: 1 },
-      uTime: { value: 0 },
-      // The glow pulse's per-letter stagger (fragment only — the weave
-      // phases in the shared word frame instead).
-      uPhase: { value: i * 2.13 },
-      uWaveOrigin: { value: new THREE.Vector2(0, 0) },
-      uWaveK: { value: new THREE.Vector2(0.05, 0.05) },
-      uWaveW: { value: new THREE.Vector2(WEAVE.w[0], WEAVE.w[1]) },
-      uWaveDir: { value: new THREE.Vector2(1, 0) },
-      uRipples: {
-        value: Array.from({ length: RIPPLE.slots }, () => new THREE.Vector4(0, 0, -1e3, 0)),
-      },
-      uRipK: { value: new THREE.Vector4(1, 1, 1, 1) },
-      uRipAmp: { value: 0 },
-      uStretch: { value: 0 },
-    }),
-    [i],
+  const uniforms = useMemo(() => createLetterUniforms(i), [i])
+  // The samplers keep their identity; the frame write points them at the
+  // current pyramid and the committed trace.
+  const [textures] = useState<LetterTextures>(() => ({
+    map: surface.map,
+    trace: textureNode(NO_TRACE),
+    fine: textureNode(fields.fine.texture),
+    coarse: textureNode(fields.coarse.texture),
+    halo: textureNode(fields.halo.texture),
+  }))
+  // Built once the capture exists (the slot mounts after it), and
+  // rebuilt when the texture object itself changes. The capture node is
+  // the Surface's own and follows its texture.
+  const material = useMemo(
+    () => createLetterMaterial({ ...textures, map: surface.map }, uniforms),
+    // The texture is the rebuild key, not an input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [surface, texture, textures, uniforms],
   )
+  useLayoutEffect(() => () => material.dispose(), [material])
+  // Depth follows the form. A sheet is paint and wants none of it. A
+  // slab has to sort against its OWN walls, and the index order
+  // (walls, then sheet — logoSlab) plus a depth buffer is what puts
+  // the front face over the edges instead of under them.
+  if (material.depthWrite !== solid) {
+    material.depthWrite = solid
+    material.needsUpdate = true
+  }
 
     /** Re-traces the glyph outline when the letter changes shape, and
      *  commits it as the field both the walls and the face read from. */
-    const retraceOutline = (
-      gl: THREE.WebGLRenderer,
-      m: THREE.ShaderMaterial,
-      b: LetterBox,
-      now: number,
-    ) => {
-      // This is the one blocking thing on the page: reading pixels back
-      // drains the pipeline. It is scheduled rather than polled — a beat
-      // marks the letter, and the reads follow until one of them sees
-      // new pixels. Several reads, because a pose lands in the DOM before
+    const retraceOutline = (gl: WebGPURenderer, b: LetterBox, now: number) => {
+      // Reading pixels back is this scene's one GPU-to-CPU trip. It does
+      // not block — the copy is queued and the pixels arrive frames
+      // later — but it costs an extra pass and a copy, so it is
+      // scheduled rather than polled: a beat marks the letter, and the
+      // reads follow, one at a time, until one of them sees new pixels.
+      // Several reads, because a pose lands in the DOM before
       // its capture reaches the GPU: the early reads may still hold the
       // old glyph, and the signature is what says so — a read whose
       // pixels match the last commit is a glyph that has not repainted
@@ -516,79 +561,83 @@ function LetterMaterial({
         tr.due = now
         tr.tries = 4
       }
-      if (tr.tries < 1 || !texture || now < tr.due) return
+      if (tr.reading || tr.tries < 1 || now < tr.due) return
       tr.tries--
       tr.due = now + 0.15
       const fit = Math.min(1, OUTLINE_TEXELS / Math.max(b.w, b.h))
       const rw = Math.max(8, Math.round(b.w * fit))
       const rh = Math.max(8, Math.round(b.h * fit))
-      const alpha = readAlphaField(gl, texture, rw, rh)
-      if (!alpha) return
-      let sig = rw * 8191 + rh
-      for (let q = 0; q < alpha.length; q += 7) sig = (sig * 31 + alpha[q]) | 0
-      if (sig === tr.sig && tr.tries > 0) return
-      tr.sig = sig
-      // The committed field IS the outline now, on both sides of the
-      // seam: the walls are traced from these texels and the face
-      // hardens onto the same texels (tTrace). Two consumers, one curve
-      // — they cannot disagree. The readback buffer is shared, so the
-      // texture takes a copy.
-      const field = new THREE.DataTexture(alpha.slice(), rw, rh, THREE.RedFormat)
-      field.minFilter = THREE.LinearFilter
-      field.magFilter = THREE.LinearFilter
-      // Single-channel rows at arbitrary widths: without byte alignment
-      // the upload shears.
-      field.unpackAlignment = 1
-      field.needsUpdate = true
-      tr.tex?.dispose()
-      tr.tex = field
-      m.uniforms.tTrace.value = field
-      // Half coverage is the perceptual edge of an antialiased glyph, so
-      // the wall meets the letter where the eye says the letter ends.
-      onOutline(tr.key, traceContour(alpha, rw, rh, { threshold: 128 }))
+      const key = tr.key
+      tr.reading = true
+      void readAlphaField(gl, texture, rw, rh)
+        .then((alpha) => {
+          // A read that outlived its glyph or its letter traces nothing.
+          if (!alpha || !mounted.current || latestKey.current !== key || tr.key !== key) return
+          let sig = rw * 8191 + rh
+          for (let q = 0; q < alpha.length; q += 7) sig = (sig * 31 + alpha[q]) | 0
+          if (sig === tr.sig && tr.tries > 0) return
+          tr.sig = sig
+          // The committed field IS the outline now, on both sides of the
+          // seam: the walls are traced from these texels and the face
+          // hardens onto the same texels (trace). Two consumers, one curve
+          // — they cannot disagree.
+          const field = new THREE.DataTexture(alpha, rw, rh, THREE.RedFormat)
+          field.minFilter = THREE.LinearFilter
+          field.magFilter = THREE.LinearFilter
+          // Single-channel rows at arbitrary widths: without byte alignment
+          // the upload shears.
+          field.unpackAlignment = 1
+          field.needsUpdate = true
+          textures.trace.value = field
+          tr.tex?.dispose()
+          tr.tex = field
+          // Half coverage is the perceptual edge of an antialiased glyph, so
+          // the wall meets the letter where the eye says the letter ends.
+          onOutline(tr.key, traceContour(alpha, rw, rh, { threshold: 128 }))
+        })
+        .finally(() => {
+          tr.reading = false
+        })
     }
 
   useFrame((state) => {
-    const m = mat.current
-    if (!m) return
-    const u = m.uniforms
-    // The texture binds here, not in the memo — it does not exist on the
-    // first frames, and LOD tiers swap it under the same uuid-keyed
-    // material.
-    u.tMap.value = texture ?? null
+    const gl = state.gl
+    if (!(gl instanceof WebGPURenderer)) throw new Error('The logo needs the WebGPURenderer from SurfaceCanvas')
+    const u = uniforms
     const img = raster(texture)
     const b = boxRef.current
     // CSS px → texels: the texture covers the capture box at some LOD
     // scale, and every authored offset must survive a tier change.
     const texPerCss = img && b.w > 0 ? img.width / b.w : 1
-    if (img) u.uTexel.value.set(1 / img.width, 1 / img.height)
+    if (img) u.texel.value.set(1 / img.width, 1 / img.height)
     // The height fields refresh here, inside the frame write and before
     // the automatic render — and only on frames that USE them, so a
     // parked letter runs no extra passes at all. The vertex stage reads
     // them too now, so relief and extrusion join the light in asking.
     const wantsFields = fx.fx > 0.001 || fx.relief > 0.001 || fx.slab > 0.001
-    if (texture && fx.materialIndex > 0.5 && wantsFields) fields.update(state.gl, texture)
-    u.tFine.value = fields.fine.texture
-    u.tCoarse.value = fields.coarse.texture
-    u.tHalo.value = fields.halo.texture
-    u.uTexelF.value.set(1 / fields.fine.width, 1 / fields.fine.height)
-    u.uTexelC.value.set(1 / fields.coarse.width, 1 / fields.coarse.height)
-    u.uPlane.value.set(b.w, b.h)
-    u.uFont.value = fontPx
-    u.uShoulder.value = fx.shoulder
-    u.uPillowW.value = fx.pillow
-    u.uDome.value = fx.dome
-    u.uRough.value = fx.rough
-    u.uMetal.value = fx.metal
-    u.uSss.value = fx.sss
-    u.uCrinkle.value = fx.crinkle
-    u.uSheen.value = fx.sheen
-    u.uIrid.value = fx.irid
-    u.uGlow.value = fx.glow
-    u.uFx.value = fx.fx
-    u.uRelief.value = fx.relief
-    u.uMeshFrac.value = fx.body
-    u.uSlab.value = fx.slab
+    if (fx.materialIndex > 0.5 && wantsFields) fields.update(gl, texture)
+    textures.fine.value = fields.fine.texture
+    textures.coarse.value = fields.coarse.texture
+    textures.halo.value = fields.halo.texture
+    textures.trace.value = trace.current.tex ?? NO_TRACE
+    u.texelF.value.set(1 / fields.fine.width, 1 / fields.fine.height)
+    u.texelC.value.set(1 / fields.coarse.width, 1 / fields.coarse.height)
+    u.plane.value.set(b.w, b.h)
+    u.font.value = fontPx
+    u.shoulder.value = fx.shoulder
+    u.pillowW.value = fx.pillow
+    u.dome.value = fx.dome
+    u.rough.value = fx.rough
+    u.metal.value = fx.metal
+    u.sss.value = fx.sss
+    u.crinkle.value = fx.crinkle
+    u.sheen.value = fx.sheen
+    u.irid.value = fx.irid
+    u.glow.value = fx.glow
+    u.fx.value = fx.fx
+    u.relief.value = fx.relief
+    u.meshFrac.value = fx.body
+    u.slab.value = fx.slab
     // How much of a BODY the letter is, from how far its walls have
     // opened. The shader needs this separately from the depth in px:
     // a slab 200px deep and one 20px deep are equally solid, and both
@@ -597,64 +646,42 @@ function LetterMaterial({
     // to clear the sheet's own fringe to be the thing you see at the
     // edge. Zero depth still means zero, which is what keeps the
     // handoff identity.
-    u.uSolid.value = Math.min(1, fx.slab / SOLID_FULL_PX)
-    u.uPrism.value = fx.prism * texPerCss
-    u.uMaterialIndex.value = fx.materialIndex
-    u.uVelDir.value.copy(fx.velDir)
-    u.uQuat.value.copy(fx.quat)
-    u.uLight.value.copy(fx.light)
-    u.uKey.value = fx.key
-    u.uKeySoft.value = fx.keySoft
-    u.uFill.value = fx.fill
-    u.uRoom.value = fx.room
-    u.uFront.value = fx.front
-    u.uTime.value = state.clock.elapsedTime
+    u.solid.value = Math.min(1, fx.slab / SOLID_FULL_PX)
+    u.prism.value = fx.prism * texPerCss
+    u.materialIndex.value = fx.materialIndex
+    u.velDir.value.copy(fx.velDir)
+    u.quat.value.copy(fx.quat)
+    u.light.value.copy(fx.light)
+    u.key.value = fx.key
+    u.keySoft.value = fx.keySoft
+    u.fill.value = fx.fill
+    u.room.value = fx.room
+    u.front.value = fx.front
+    u.time.value = state.clock.elapsedTime
     // The weave in this letter's own px — wavelengths, speeds, and
     // heights are the law's WEAVE (em and rad/s) under the dials, so
     // every face waves at the same physical scale whatever its slot
-    // width. Heights land as px here, the same way uRipAmp does.
+    // width. Heights land as px here, the same way ripAmp does.
     const wl = fontPx * fx.waveScale
-    u.uWaveK.value.set((Math.PI * 2) / (wl * WEAVE.lambda[0]), (Math.PI * 2) / (wl * WEAVE.lambda[1]))
-    u.uWaveW.value.set(WEAVE.w[0] * fx.waveSpeed, WEAVE.w[1] * fx.waveSpeed)
-    u.uJelly.value = fx.jelly * fontPx
-    u.uWaveDir.value.copy(fx.waveDir)
-    u.uWaveOrigin.value.copy(fx.waveOrigin)
+    u.waveK.value.set((Math.PI * 2) / (wl * WEAVE.lambda[0]), (Math.PI * 2) / (wl * WEAVE.lambda[1]))
+    u.waveW.value.set(WEAVE.w[0] * fx.waveSpeed, WEAVE.w[1] * fx.waveSpeed)
+    u.jelly.value = fx.jelly * fontPx
+    u.waveDir.value.copy(fx.waveDir)
+    u.waveOrigin.value.copy(fx.waveOrigin)
     // The strike rig in this letter's own px — RIPPLE's em constants
     // scaled by the font — and the buffer, copied slot for slot.
-    u.uRipK.value.set(
+    u.ripK.value.set(
       (Math.PI * 2) / (RIPPLE.lambda * fontPx),
       RIPPLE.speed * fontPx,
       RIPPLE.width * fontPx,
       RIPPLE.tau,
     )
-    for (let r = 0; r < RIPPLE.slots; r++) u.uRipples.value[r].copy(fx.ripples[r])
-    u.uRipAmp.value = fx.ripAmp * RIPPLE.amp * fontPx
-    u.uStretch.value = fx.stretch
-    if (solid) retraceOutline(state.gl, m, b, state.clock.elapsedTime)
+    for (let r = 0; r < RIPPLE.slots; r++) u.rippleSlots[r].copy(fx.ripples[r])
+    u.ripAmp.value = fx.ripAmp * RIPPLE.amp * fontPx
+    u.stretch.value = fx.stretch
+    if (solid) retraceOutline(gl, b, state.clock.elapsedTime)
   })
-  return (
-    <shaderMaterial
-      // Remount when the texture object changes — a ShaderMaterial does
-      // not re-bind samplers reliably across texture swaps otherwise.
-      key={texture?.uuid ?? 'warming'}
-      ref={mat}
-      uniforms={uniforms}
-      vertexShader={LETTER_VERT}
-      fragmentShader={LETTER_FRAG}
-      // Premultiplied in, premultiplied blend (decisions.md #5); the
-      // letters are paint over the page, so no tone mapping — same
-      // stance as the standard-material path it replaces.
-      //
-      // Depth follows the form. A sheet is paint and wants none of it. A
-      // slab has to sort against its OWN walls, and the index order
-      // (walls, then sheet — logoSlab) plus a depth buffer is what puts
-      // the front face over the edges instead of under them.
-      transparent
-      premultipliedAlpha
-      depthWrite={solid}
-      toneMapped={false}
-    />
-  )
+  return <primitive object={material} attach="material" />
 }
 
 /** One letter's scratch state: the fx feed the material reads, plus what
@@ -1153,12 +1180,9 @@ export function LogoScene({
           and samples the texture) but the eye sees only the page until
           the swap. */}
       <div ref={canvasRef} className="logo-canvas" data-holds={presented === 'scene'}>
-        {/* `flat`: the letters are ink, and tone mapping would mute
-            exactly the candy this palette is for. */}
         <SurfaceCanvas
           pointerMode="surfaces"
           id="logo"
-          flat
           gl={{ alpha: true }}
           dpr={[1, 2]}
           camera={{ fov: FOV, position: [0, 0, 1000] }}

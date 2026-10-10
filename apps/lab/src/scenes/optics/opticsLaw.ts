@@ -2,14 +2,14 @@
 //
 // Every instrument on the bench does the same thing to the page: one
 // refraction, at one curved face, at one standoff. The JS below is the
-// literal twin of the GLSL in `opticsShaders.ts`. The shader refracts the
+// literal twin of the TSL in `opticsNodes.ts`. The shader refracts the
 // VIEW ray to decide which page texel a fragment shows; the raycast
 // refracts the POINTER ray with the same six lines to decide which element
 // a click reaches. Neither inverts the other — that is why they agree.
 // Measured at 0.35–0.68 px across the whole aperture, below the measuring
 // chart's own quantisation (docs/spikes/optics-loupe.md).
 //
-// If you change the math here, change the GLSL in the same commit.
+// If you change the math here, change the TSL in the same commit.
 //
 // Units are CSS px throughout, which is also world units: the scene's
 // camera is pixel-calibrated, so a page px is a world unit is a screen px.

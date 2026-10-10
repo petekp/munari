@@ -5,11 +5,12 @@ import path from 'node:path'
 import {tmpdir} from 'node:os'
 import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/render-passes')
 await mkdir(output,{recursive:true})
 const server=await createServer({configFile:false,root:import.meta.dirname,server:{host:'127.0.0.1',port:0},esbuild:{jsx:'automatic'},logLevel:'warn'})
 await server.listen()
-const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:['--enable-features=CanvasDrawElement']})
+const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:[...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement']})
 try {
  const page=await browser.newPage(),errors=[];page.on('pageerror',error=>errors.push(String(error)))
  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?nodes=${process.env.MATRIX_NODES??0}`,{waitUntil:'load'})

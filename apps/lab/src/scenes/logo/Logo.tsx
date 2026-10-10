@@ -59,8 +59,8 @@ const SLIDERS: {
   step: number
   sceneOnly?: boolean
 }[] = [
-  // 0.9, not 1: gloss becomes uFx, the mix weight in
-  // `mix(base.rgb, aces(lit) * base.a, uFx)` (logoShaders.ts). At exactly 1
+  // 0.9, not 1: gloss becomes fx, the mix weight in
+  // `mix(base.rgb, aces(lit) * base.a, fx)` (logoNodes.ts). At exactly 1
   // the page's own texel leaves the blend and the letters render from
   // lighting alone, which comes up black (2026-08-15). The cap is on what
   // the panel can ask for; LogoKnobs still carries the full range.

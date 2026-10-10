@@ -9,15 +9,16 @@ import puppeteer from 'puppeteer-core'
 import {createServer} from 'vite'
 import {setChromeViewport} from '../chromeViewport.mjs'
 import {observeLightingDraw,measureLightingDraw} from '../home-light/gpu.mjs'
-import {installPaperReader,paperMetrics,controlPoint,silhouetteMetrics} from './metrics.mjs'
+import {installPaperReader,installPostcardCapture,observePostcardRenderer,paperMetrics,controlPoint,silhouetteMetrics} from './metrics.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output=process.env.PAPER_OUTPUT??path.join(tmpdir(),'munari-paper')
 await mkdir(output,{recursive:true})
 const flat=process.env.PAPER_FLAT==='1',record=process.env.PAPER_RECORD==='1'
 const observer={name:'paper-observer',enforce:'pre',transform(code,id){
   code=observeLightingDraw(code,id)
-  if(id.endsWith('/HomePostcard.tsx'))code=replaceSource(code,'gl={{ alpha: true }}','gl={{ alpha: true, preserveDrawingBuffer: true }}')
-  if(id.endsWith('/homeLight.ts'))code=replaceSource(code,'  material.uniforms.uLightHeight.value = lightHeight','  window.__paperLight = material\n  material.uniforms.uLightHeight.value = lightHeight')
+  code=observePostcardRenderer(code,id)
+  if(id.endsWith('/homeLight.ts'))code=replaceSource(code,'  material.values.lightHeight.value = lightHeight','  window.__paperLight = material\n  material.values.lightHeight.value = lightHeight')
   if(id.endsWith('/HomePostcardMesh.tsx')){
     const marker='  deformSurfaceGeometry(mesh.geometry,[HERO_W,HERO_H],(x,y)=>paperPoint(x,y,shape))'
     code=replaceSource(code,marker,'  window.__paperShape = shape\n  window.__paperRipplePeak = Math.max(window.__paperRipplePeak ?? 0, shape.ripple)\n  window.__paperContact = {quiet:modes.quiet,edgeA,edgeB}\n'+marker)
@@ -27,7 +28,7 @@ const observer={name:'paper-observer',enforce:'pre',transform(code,id){
 }}
 const server=await createServer({root:path.resolve(import.meta.dirname,'../../apps/lab'),plugins:[observer],cacheDir:path.join(output,'.vite'),logLevel:'warn',server:{host:'127.0.0.1',port:0}})
 await server.listen()
-const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:['--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
+const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:[...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
 const errors=[],results={flat}
 try{
   const page=await browser.newPage();page.on('pageerror',error=>errors.push(String(error)))
@@ -39,7 +40,10 @@ try{
   await page.waitForFunction(()=>document.querySelector('.home-page')?.dataset.homeReady==='true'&&!document.documentElement.hasAttribute('data-opening'))
   await page.evaluate(()=>document.fonts.ready)
   await installPaperReader(page)
-  await page.waitForFunction(()=>window.__paperLight?.uniforms.uPaperReady.value===1)
+  await installPostcardCapture(page)
+  results.backend=await page.evaluate(()=>window.__homeLightRenderer.backend.isWebGPUBackend===true?'webgpu':'webgl2')
+  assert.equal(results.backend,process.env.MUNARI_BACKEND==='webgl2'?'webgl2':'webgpu','The lighting must run on the requested backend')
+  await page.waitForFunction(()=>window.__paperLight?.values.paperReady.value===1)
   await page.evaluate(()=>{
     const holder=document.querySelector('.home-hero-holder')
     document.querySelector('.home-page').scrollTop+=holder.getBoundingClientRect().top-220
@@ -52,10 +56,10 @@ try{
     // The actual mask producer observes masthead size. Reflow the fixture so
     // its moved native ink is captured before judging foreground coverage.
     const masthead=document.querySelector('.home-masthead')
-    window.__paperPreviousInkRect=window.__paperLight.uniforms.uInkRect.value.toArray()
+    window.__paperPreviousInkRect=window.__paperLight.values.inkRect.value.toArray()
     masthead.style.width=`${masthead.getBoundingClientRect().width-1}px`
   })
-  if(flat)await page.waitForFunction(()=>window.__paperLight.uniforms.uInkRect.value.toArray().some((value,index)=>value!==window.__paperPreviousInkRect[index]))
+  if(flat)await page.waitForFunction(()=>window.__paperLight.values.inkRect.value.toArray().some((value,index)=>value!==window.__paperPreviousInkRect[index]))
   await page.screenshot({path:path.join(output,'native.png')})
   const client=await page.createCDPSession(),frames=[],acks=new Set()
   let recording=record

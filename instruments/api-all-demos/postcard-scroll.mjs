@@ -7,12 +7,13 @@ import { scrollPixels } from './pixels.mjs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { createServer } from 'vite'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 const output=process.env.API_PROOF_OUTPUT ?? path.join(tmpdir(),'munari-api/evidence/postcard-scroll')
 await mkdir(output,{recursive:true})
 let url=process.env.API_LAB_URL
 let server
 if(!url){server=await createServer({root:path.resolve(import.meta.dirname,'../../apps/lab'),logLevel:'warn',server:{host:'127.0.0.1',port:0}});await server.listen();url=`http://127.0.0.1:${server.httpServer.address().port}`}
-const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:['--enable-features=CanvasDrawElement']})
+const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:[...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement']})
 try {
  const page=await browser.newPage()
  await setChromeViewport(page,{width:1200,height:900})

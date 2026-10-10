@@ -7,6 +7,11 @@
 // Observation lasts 80ms, or until the second scene draw is recorded if that
 // is later. Hosted runners drew the scene every 88-106ms (2026-09-29), so 80ms
 // alone held one draw in 4 of 16 cases and the late-blank control judged nothing.
+// Recording runs until the page has made its first scene draw and the next
+// one, plus time for the screencast to deliver them. On hosted WebGPU runners
+// the first scene image arrived 274-565ms after its draw (4 runs, 2026-10-09),
+// so a fixed 450ms after the press recorded only that image. The judged
+// interval comes from the recorded images, so a longer recording judges no more.
 // This gate does not measure natural motion, freeze timing or performance.
 import assert from 'node:assert/strict'
 import {existsSync} from 'node:fs'
@@ -17,6 +22,7 @@ import puppeteer from 'puppeteer-core'
 import {createServer} from 'vite'
 import {IncompleteScreencastError,requirePageFrameCoverage} from '../screencastCoverage.ts'
 import {createScreencastRecorder,scoreScreencast} from '../screencastRecording.ts'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 const root=path.resolve(import.meta.dirname,'../..')
 const output=process.env.POSE_OUTPUT??path.join(tmpdir(),'munari-genie-pose')
 const rounds=Number(process.env.ROUNDS??1)
@@ -26,13 +32,15 @@ assert.ok(modes.length&&modes.every(mode=>['auto','snapdom'].includes(mode)))
 assert.ok(windows.length&&windows.every(win=>['cerchio','quadrato'].includes(win)))
 const chrome=[process.env.CHROME_PATH,'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/usr/bin/google-chrome','/usr/bin/chromium'].filter(Boolean).find(existsSync)
 assert.ok(chrome,'Chrome is required')
-const getter='  const api: GestureApi = {',frame='  useFrame(({ clock }, rawDt) => {',deform='deformSheets([geo, filmGeoRef.current], f, params, visibleT, wobble)'
+const getter='  const api: GestureApi = {',frame='  useFrame(({ clock }, rawDt) => {',deform='deformSheets([geo, filmGeoRef.current], f, params, visibleT, wobble)',sheet='createGenieMaterial(surface, values)'
 const inspect={name:'stationary-genie-pose',enforce:'pre',transform(code,id){
  if(!id.endsWith('/scenes/genie/Genie.tsx'))return
- for(const marker of [getter,frame,deform])assert.equal(code.split(marker).length,2,`Unique observation point: ${marker}`)
+ for(const marker of [getter,frame,deform,sheet])assert.equal(code.split(marker).length,2,`Unique observation point: ${marker}`)
  return `import {surfaceStoreOf as __poseStoreOf} from ${JSON.stringify('/@fs'+path.join(root,'packages/react/src/primitives/surface/surfaceHandle.ts'))};\n`+code
   .replace(getter,'  window.__poseStore=(win:WinId)=>__poseStoreOf(storeOf(win).handle);\n'+getter)
   .replace(frame,'  useFrame(({ clock, scene, camera, gl }, rawDt) => {')
+  // The texture controls replace what the sheet samples, which on a node material is its capture node's value.
+  .replace(sheet,'Object.assign(createGenieMaterial(surface, values), {userData: {captureNode: surface.map}})')
   .replace(deform,'deformSheets([geo, filmGeoRef.current], f, params, window.__fixedPose?.win===win ? 0 : visibleT, wobble); window.__fixedPose?.observe({scene,camera,gl,win})')
 }}
 let server,browser,failure=null,caseFailure=null
@@ -43,11 +51,15 @@ const includeCleanupFailure=(failure,cleanupError)=>{
 }
 const results=[],deadline=setTimeout(()=>{console.error('Stationary pose exceeded 300s');process.exit(1)},300000)
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+// Bounds a page that never draws; the assertions below then name what is missing.
+const DRAW_DEADLINE_MS=20000
+// 435ms more than the slowest measured delivery of a drawn frame (see above).
+const SCREENCAST_DELIVERY_MS=1000
 try{
  await mkdir(output,{recursive:true})
  server=await createServer({root:path.join(root,'apps/lab'),plugins:[inspect],cacheDir:path.join(output,'.vite'),server:{host:'127.0.0.1',port:0,fs:{allow:[root]}},logLevel:'warn'})
  await server.listen()
- browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',args:['--enable-unsafe-swiftshader','--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding',...(process.env.CI?['--no-sandbox']:[])]})
+ browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',args:[...WEBGPU_CHROME_ARGS,'--enable-unsafe-swiftshader','--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding',...(process.env.CI?['--no-sandbox']:[])]})
  for(let round=0;round<rounds;round++)for(const mode of modes)for(const win of windows)for(const control of ['current','stale','blank','late-blank']){
   for(let attempt=0;attempt<3;attempt++){
   const name=`${mode}-${win}-${control}${rounds>1?`-${round+1}`:''}`,directory=path.join(output,name,`recording-${attempt+1}`),page=await browser.newPage(),errors=[]
@@ -110,25 +122,26 @@ try{
      const expected=[[box.x,box.y],[box.x+box.width,box.y],[box.x+box.width,box.y+box.height],[box.x,box.y+box.height],[box.x+box.width/2,box.y+box.height/2]]
      return Math.max(...points.map((point,i)=>Math.hypot(point.x-expected[i][0],point.y-expected[i][1])))
     }
-    const cadence={firstAt:null,blocked:0,renderer:null}
+    const cadence={firstAt:null,blocked:0,renderer:null,canvasPass:false}
     window.__fixedPose={win,seedTime,draws,cadence,observe({scene,camera,gl,win:drawWin}){
      if(drawWin!==win)return
      // Keep the first actual framebuffer available for two recorder intervals.
-     if(cadence.renderer!==gl){cadence.renderer=gl;const original=gl.render;gl.render=function(...args){if(cadence.firstAt!==null&&performance.timeOrigin+performance.now()-cadence.firstAt<40){cadence.blocked++;return}return original.apply(this,args)}}
+     if(cadence.renderer!==gl){cadence.renderer=gl;const original=gl.render;gl.render=function(...args){if(cadence.firstAt!==null&&performance.timeOrigin+performance.now()-cadence.firstAt<40){cadence.blocked++;return}const outer=cadence.canvasPass;cadence.canvasPass=gl.getRenderTarget()===null;try{return original.apply(this,args)}finally{cadence.canvasPass=outer}}}
      scene.traverse(mesh=>{
       if(!mesh.userData?.isGenieSheet||mesh.userData.win!==win)return
       const old=watched.get(mesh);if(old?.before===mesh.onBeforeRender&&old?.after===mesh.onAfterRender)return
       const originalBefore=mesh.onBeforeRender,originalAfter=mesh.onAfterRender;let pass=null
       const before=function(...args){
        originalBefore.apply(this,args)
-       const eligible=mesh.material.colorWrite&&gl.getRenderTarget()===null
+       const eligible=mesh.material.colorWrite&&cadence.canvasPass===true
        const textureForced=(control==='stale'||control==='blank')&&eligible
        const droppedWrite=control==='late-blank'&&eligible&&cadence.firstAt!==null&&performance.timeOrigin+performance.now()-cadence.firstAt>=40
        if(droppedWrite)mesh.material.colorWrite=false
-       pass={writing:mesh.material.colorWrite&&gl.getRenderTarget()===null,sampler:mesh.material.uniforms.tMap.value,textureForced,droppedWrite,forced:textureForced||droppedWrite,placement:placement(mesh,camera,gl)}
-       if(textureForced)mesh.material.uniforms.tMap.value=fault
+       const capture=mesh.material.userData.captureNode
+       pass={writing:mesh.material.colorWrite&&cadence.canvasPass===true,sampler:capture.value,textureForced,droppedWrite,forced:textureForced||droppedWrite,placement:placement(mesh,camera,gl)}
+       if(textureForced)capture.value=fault
       }
-      const after=function(...args){const submitted=pass;originalAfter.apply(this,args);if(submitted.textureForced)mesh.material.uniforms.tMap.value=submitted.sampler;const captured=store.parts().find(part=>part.runtime)?.captureRoot?.querySelector('.gen-math-pattern')?.getAnimations({subtree:true})??[];const row={id:draws.length+1,t:performance.timeOrigin+performance.now(),writing:submitted.writing,pageHeld:store.holdsPage(),forced:submitted.forced,droppedWrite:submitted.droppedWrite,placement:submitted.placement,posePinned:native.getAnimations({subtree:true}).length===animations.length&&native.getAnimations({subtree:true}).every(a=>a.playState==='paused'&&a.currentTime===2400),captureTimes:[...new Set(captured.map(a=>a.currentTime))],capturePaused:captured.length===animations.length&&captured.every(a=>a.playState==='paused'),read:runtime.currentPaint()?.read,uploadedRead:runtime.uploadedRead()};if(row.writing&&!row.pageHeld&&cadence.firstAt===null)cadence.firstAt=row.t;draws.push(row);mark(row.id)}
+      const after=function(...args){const submitted=pass;originalAfter.apply(this,args);if(submitted.textureForced)mesh.material.userData.captureNode.value=submitted.sampler;const captured=store.parts().find(part=>part.runtime)?.captureRoot?.querySelector('.gen-math-pattern')?.getAnimations({subtree:true})??[];const row={id:draws.length+1,t:performance.timeOrigin+performance.now(),writing:submitted.writing,pageHeld:store.holdsPage(),forced:submitted.forced,droppedWrite:submitted.droppedWrite,placement:submitted.placement,posePinned:native.getAnimations({subtree:true}).length===animations.length&&native.getAnimations({subtree:true}).every(a=>a.playState==='paused'&&a.currentTime===2400),captureTimes:[...new Set(captured.map(a=>a.currentTime))],capturePaused:captured.length===animations.length&&captured.every(a=>a.playState==='paused'),read:runtime.currentPaint()?.read,uploadedRead:runtime.uploadedRead()};if(row.writing&&!row.pageHeld&&cadence.firstAt===null)cadence.firstAt=row.t;draws.push(row);mark(row.id)}
       mesh.onBeforeRender=before;mesh.onAfterRender=after;watched.set(mesh,{before,after})
      })
     }}
@@ -140,7 +153,10 @@ try{
    const lamp=await page.$eval(`.gen-slot[data-win="${win}"] .gen-lamp[data-role="minimize"]`,element=>{const r=element.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})
    await page.mouse.move(lamp.x,lamp.y,{steps:6});await sleep(300)
    await recorder.start();await sleep(100)
-   await page.mouse.down();await sleep(50);await page.mouse.up();await sleep(450)
+   const pressAt=await page.evaluate(()=>performance.timeOrigin+performance.now())
+   await page.mouse.down();await sleep(50);await page.mouse.up()
+   await page.waitForFunction(()=>{const draws=window.__fixedPose.draws,first=draws.findIndex(draw=>draw.writing&&!draw.pageHeld);return first>=0&&draws.length>first+1},{timeout:DRAW_DEADLINE_MS}).catch(error=>{if(error.name!=='TimeoutError')throw error})
+   await sleep(SCREENCAST_DELIVERY_MS)
    const collectionEnd=await page.evaluate(()=>performance.timeOrigin+performance.now())
    const capture=await recorder.stop({through:collectionEnd,timeoutMs:5000}),frames=capture.frames
    const state=await page.evaluate(()=>({draws:window.__fixedPose.draws,seedTime:window.__fixedPose.seedTime,blockedDraws:window.__fixedPose.cadence.blocked})),draws=state.draws,firstDraw=draws.find(draw=>draw.writing&&!draw.pageHeld)
@@ -178,7 +194,9 @@ try{
    const clock=scored.rows.map(row=>({t:row.t,pageFrame:row.pageFrame}))
    const start=sceneRows[0]?.t,second=sceneRows.find(row=>row.draw.id!==sceneRows[0].draw.id)
    const end=second===undefined?start+80:Math.max(start+80,second.t),observed=sceneRows.filter(row=>row.t<=end)
-   observation={firstDraw:firstDraw?.id,firstRecorded:observed[0]?.draw.id,secondRecorded:second?.draw.id,frames:observed.length,blockedDraws:state.blockedDraws,maximumPixelError:Math.max(...observed.map(row=>Math.max(row.nativeToScene,row.sceneToNative)))}
+   observation={firstDraw:firstDraw?.id,firstRecorded:observed[0]?.draw.id,secondRecorded:second?.draw.id,frames:observed.length,blockedDraws:state.blockedDraws,maximumPixelError:Math.max(...observed.map(row=>Math.max(row.nativeToScene,row.sceneToNative))),
+    // Milliseconds after the press, so a failed run shows which wait ran out.
+    timing:{firstDraw:firstDraw&&Math.round(firstDraw.t-pressAt),firstImage:start&&Math.round(start-pressAt),secondImage:second&&Math.round(second.t-pressAt),lastImage:frames.length?Math.round(frames.at(-1).t-pressAt):null,collectionEnd:Math.round(collectionEnd-pressAt),drawGaps:draws.slice(1).map((draw,i)=>Math.round(draw.t-draws[i].t))}}
    await writeFile(path.join(directory,'measurement.json'),JSON.stringify({box,...scored.summary,firstDraw,seedTime:state.seedTime,blockedDraws:state.blockedDraws,draws,frames:observed,recording:{collectionEnd:capture.collectionEnd,...capture.diagnostics,scoring:scored.diagnostics}},null,2))
    const frameByIndex=new Map(frames.map(frame=>[frame.index,frame]))
    if(observed.length){await writeFile(path.join(directory,'first-scene.png'),Buffer.from(frameByIndex.get(observed[0].index).data,'base64'));await writeFile(path.join(directory,'last-scene.png'),Buffer.from(frameByIndex.get(observed.at(-1).index).data,'base64'))}
@@ -202,7 +220,7 @@ try{
    requirePageFrameCoverage(clock,start,start+80)
    if(second===undefined)throw new IncompleteScreencastError('No second distinct known draw marker was recorded after the first presentation')
    if(end>start+80)requirePageFrameCoverage(clock,start,end)
-   result={name,passed:true,recordings:attempt+1,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.summary.nativeInk,frames:observed,controlRejected:control==='current'?null:true,recording:{collectionEnd:capture.collectionEnd,...capture.diagnostics,scoring:scored.diagnostics}}
+   result={name,passed:true,recordings:attempt+1,timing:observation.timing,seedTime:state.seedTime,blockedDraws:state.blockedDraws,nativeInk:scored.summary.nativeInk,frames:observed,controlRejected:control==='current'?null:true,recording:{collectionEnd:capture.collectionEnd,...capture.diagnostics,scoring:scored.diagnostics}}
   }catch(error){
    attemptFailure={error}
   }finally{

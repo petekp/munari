@@ -5,11 +5,12 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output = process.env.API_PROOF_OUTPUT ?? path.join(tmpdir(),'munari-api/evidence')
 const server = await createServer({configFile:false,root:import.meta.dirname,server:{host:'127.0.0.1',port:0},esbuild:{jsx:'automatic'},logLevel:'warn'})
 await server.listen()
-const browser = await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true})
+const browser = await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:[...WEBGPU_CHROME_ARGS]})
 try {
   const page = await browser.newPage()
   await page.setViewport({width:1200,height:900})

@@ -6,7 +6,7 @@
 //
 // Ownership: this list owns button labels and preview colors — the
 // preview swatches are also what the environment reads for its page lights,
-// so their colours must stay apart. The fragment shader named by each id
+// so their colours must stay apart. The field graph named by each id
 // owns the field; the page owns selection and the paused state.
 
 export const MARBLE_HAND_THEMES = [

@@ -30,7 +30,7 @@
 //
 // The POINTER goes through the same refraction, forwards. Each block
 // installs a raycast that intersects the lens plane, refracts the pointer
-// ray with `landOffset` — the literal twin of the GLSL — and claims the
+// ray with `landOffset` — the literal twin of the lens node — and claims the
 // hit only if the refracted ray lands inside its own rectangle. Exactly
 // one block claims any ray, so hover, click, focus and native typing all
 // work at the rim where the distortion is worst. No inverse solve exists
@@ -39,6 +39,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
+import { WebGPURenderer } from 'three/webgpu'
 import { SceneSurface, SurfaceCanvas } from '@petepetrash/munari'
 import { cameraDistance, paintStats } from '@petepetrash/munari/advanced'
 import {
@@ -63,14 +64,14 @@ import {
   type InstrumentId,
 } from './opticsKit'
 import {
-  OPTICS_FRAME_FRAG,
-  OPTICS_FRAME_VERT,
-  OPTICS_LENS_FRAG,
-  OPTICS_LENS_VERT,
-  OPTICS_METAL_FRAG,
-  OPTICS_METAL_VERT,
   SCOPE_RECTS,
-} from './opticsShaders'
+  createFrameMaterial,
+  createFrameValues,
+  createLensMaterial,
+  createLensValues,
+  createMetalMaterial,
+  type LensValues,
+} from './opticsNodes'
 import {
   BENCH_H,
   RAIL_Y,
@@ -353,15 +354,6 @@ function useLensRaycast(block: Block, hand: React.RefObject<Hand>) {
 
 // ── the instruments ────────────────────────────────────────────────────
 
-function metalUniforms(inst: Instrument, inner: number, outer: number, ribs: number) {
-  return {
-    uColor: { value: new THREE.Color(inst.metal) },
-    uInner: { value: inner },
-    uOuter: { value: outer },
-    uRibs: { value: ribs },
-  }
-}
-
 /** Rim, knurled collar and index mark — the parts you actually hold. */
 function Body({
   inst,
@@ -374,8 +366,10 @@ function Body({
 }) {
   const a = inst.aperture
   const collarRef = useRef<THREE.Mesh>(null)
-  const rimU = useMemo(() => metalUniforms(inst, a, a + 11, 0), [inst, a])
-  const colU = useMemo(() => metalUniforms(inst, a + 11, a + 26, 88), [inst, a])
+  const rimMat = useMemo(() => createMetalMaterial(inst.metal, a, a + 11, 0), [inst, a])
+  const colMat = useMemo(() => createMetalMaterial(inst.metal, a + 11, a + 26, 88), [inst, a])
+  useEffect(() => () => rimMat.dispose(), [rimMat])
+  useEffect(() => () => colMat.dispose(), [colMat])
   useFrame(() => {
     if (collarRef.current && turnOf) collarRef.current.rotation.z = turnOf()
   })
@@ -383,19 +377,11 @@ function Body({
     <group>
       <mesh onPointerDown={onGrab && ((e) => onGrab('move', e))}>
         <ringGeometry args={[a, a + 11, 128]} />
-        <shaderMaterial
-          vertexShader={OPTICS_METAL_VERT}
-          fragmentShader={OPTICS_METAL_FRAG}
-          uniforms={rimU}
-        />
+        <primitive object={rimMat} attach="material" />
       </mesh>
       <mesh ref={collarRef} onPointerDown={onGrab && ((e) => onGrab('collar', e))}>
         <ringGeometry args={[a + 11, a + 26, 128]} />
-        <shaderMaterial
-          vertexShader={OPTICS_METAL_VERT}
-          fragmentShader={OPTICS_METAL_FRAG}
-          uniforms={colU}
-        />
+        <primitive object={colMat} attach="material" />
         {/* The index mark, so a turn is legible. Parented to the collar,
          * which is the only reason the ribs alone are not enough. */}
         <mesh position={[0, a + 18.5, 0.4]} raycast={NO_HIT}>
@@ -427,18 +413,9 @@ function Frame({
   onGrab: (e: ThreeEvent<PointerEvent>) => void
 }) {
   const mesh = useRef<THREE.Mesh>(null)
-  const mat = useRef<THREE.ShaderMaterial>(null)
-  const uniforms = useMemo(
-    () => ({
-      uColor: { value: new THREE.Color(inst.metal) },
-      uHalf: { value: new THREE.Vector2() },
-      uBand: { value: FRAME },
-      uGrip: { value: 1 },
-      uTick: { value: 0.5 },
-      uTrack: { value: new THREE.Vector2(0, 1) },
-    }),
-    [inst],
-  )
+  const values = useMemo(() => createFrameValues(inst.metal, FRAME), [inst])
+  const mat = useMemo(() => createFrameMaterial(values), [values])
+  useEffect(() => () => mat.dispose(), [mat])
 
   // Only the band is a grip. A ray through the glass has to reach the page,
   // so this rejects the interior rather than swallowing it — the same box
@@ -466,28 +443,22 @@ function Frame({
 
   useFrame(() => {
     const h = hand.current
-    if (!h || !mesh.current || !mat.current) return
+    if (!h || !mesh.current) return
     const [hw, hh] = h.half
     mesh.current.scale.set(2 * (hw + FRAME), 2 * (hh + FRAME), 1)
     const c = inst.collar
     const live = collarRange(inst, h.half)
     const span = c.max - c.min
-    const u = mat.current.uniforms
-    u.uHalf.value.set(hw, hh)
-    u.uGrip.value = gripOf(hw)
-    u.uTick.value = (h.collar[inst.id] - c.min) / span
-    u.uTrack.value.set((live.min - c.min) / span, (live.max - c.min) / span)
+    values.half.value.set(hw, hh)
+    values.grip.value = gripOf(hw)
+    values.tick.value = (h.collar[inst.id] - c.min) / span
+    values.track.value.set((live.min - c.min) / span, (live.max - c.min) / span)
   })
 
   return (
     <mesh ref={mesh} raycast={raycast} onPointerDown={onGrab}>
       <planeGeometry args={[1, 1]} />
-      <shaderMaterial
-        ref={mat}
-        vertexShader={OPTICS_FRAME_VERT}
-        fragmentShader={OPTICS_FRAME_FRAG}
-        uniforms={uniforms}
-      />
+      <primitive object={mat} attach="material" />
     </mesh>
   )
 }
@@ -517,7 +488,7 @@ function OnRail({ inst, onTake }: { inst: Instrument; onTake: (e: ThreeEvent<Poi
         ) : (
           <circleGeometry args={[inst.aperture, 96]} />
         )}
-        <meshBasicMaterial color="#22242a" transparent opacity={0.55} />
+        <meshBasicMaterial color="#22242a" transparent premultipliedAlpha opacity={0.55} />
       </mesh>
       {s ? null : <Body inst={inst} onGrab={(_, e) => onTake(e)} />}
     </group>
@@ -551,10 +522,13 @@ function Pass({
 }: {
   hand: React.RefObject<Hand>
   kit: React.RefObject<THREE.Group | null>
-  rt: THREE.WebGLRenderTarget
+  rt: THREE.RenderTarget
   active: boolean
 }) {
   const gl = useThree((s) => s.gl)
+  // Fiber types the renderer as WebGLRenderer; SurfaceCanvas supplies a
+  // WebGPURenderer, which is what takes a RenderTarget.
+  if (!(gl instanceof WebGPURenderer)) throw new Error('The optics pass needs the WebGPURenderer from SurfaceCanvas')
   const scene = useThree((s) => s.scene)
   const camera = useThree((s) => s.camera)
   const rtCam = useMemo(() => new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 4000), [])
@@ -671,32 +645,22 @@ interface LensFrame {
   spec: LensSpec
   half: [number, number] | undefined
   inst: Instrument
-  rects: THREE.Vector4[]
-  heat: number[]
 }
 
-/** Uniforms go through the material ref, never the memoized bag: writing to
- *  the bag leaves the sampler unbound, and a transparent material at alpha 0
- *  renders INVISIBLE rather than black — so the glass silently shows the page
- *  behind it and every reading looks plausible (docs/spikes/optics-loupe.md). */
-function writeLensUniforms(m: THREE.ShaderMaterial | null, frame: LensFrame) {
-  if (!m) return
+function writeLensUniforms(v: LensValues, frame: LensFrame) {
   const { disc, spec, half, inst } = frame
-  const u = m.uniforms
-  u.uPage.value = frame.page
-  u.uFrame.value.set(disc.x, disc.y, disc.r + 2, disc.r + 2)
-  u.uCamPos.value.copy(frame.eye)
-  u.uCenter.value.set(frame.center[0], frame.center[1])
-  u.uAperture.value = spec.aperture
+  v.page.value = frame.page
+  v.frame.value.set(disc.x, disc.y, disc.r + 2, disc.r + 2)
+  v.camPos.value.copy(frame.eye)
+  v.center.value.set(frame.center[0], frame.center[1])
+  v.aperture.value = spec.aperture
   // (0, 0) is the shader's word for "a disc" — see faceEdge.
-  u.uHalf.value.set(half ? half[0] : 0, half ? half[1] : 0)
-  u.uCurvature.value = Number.isFinite(spec.curvature) ? spec.curvature : 1e9
-  u.uStandoff.value = spec.standoff
-  u.uIor.value = spec.ior
-  u.uTint.value = inst.tint
-  u.uMode.value = inst.mode === 'scope' ? 1 : 0
-  u.uRects.value = frame.rects
-  u.uHeat.value = frame.heat
+  v.half.value.set(half ? half[0] : 0, half ? half[1] : 0)
+  v.curvature.value = Number.isFinite(spec.curvature) ? spec.curvature : 1e9
+  v.standoff.value = spec.standoff
+  v.ior.value = spec.ior
+  v.tint.value = inst.tint
+  v.mode.value = inst.mode === 'scope' ? 1 : 0
 }
 
 function Bench({
@@ -711,7 +675,6 @@ function Bench({
   const kit = useRef<THREE.Group>(null)
   const lens = useRef<THREE.Group>(null)
   const lensMesh = useRef<THREE.Mesh>(null)
-  const lensMat = useRef<THREE.ShaderMaterial>(null)
   const inst = handId ? INSTRUMENT[handId] : null
   const camera = useThree((s) => s.camera)
   const size = useThree((s) => s.size)
@@ -731,7 +694,7 @@ function Bench({
   // footprint each frame, so a collar turn never reallocates.
   const rt = useMemo(
     () =>
-      new THREE.WebGLRenderTarget(1024, 1024, {
+      new THREE.RenderTarget(1024, 1024, {
         type: THREE.HalfFloatType,
         depthBuffer: true,
         generateMipmaps: false,
@@ -748,24 +711,9 @@ function Bench({
   const lastSample = useRef(performance.now())
   const lastReading = useRef(0)
 
-  const uniforms = useMemo(
-    () => ({
-      uPage: { value: rt.texture },
-      uFrame: { value: new THREE.Vector4(0, 0, 1, 1) },
-      uCamPos: { value: new THREE.Vector3() },
-      uCenter: { value: new THREE.Vector2() },
-      uAperture: { value: 90 },
-      uHalf: { value: new THREE.Vector2() },
-      uCurvature: { value: 130 },
-      uStandoff: { value: 150 },
-      uIor: { value: 1.52 },
-      uTint: { value: 0.07 },
-      uMode: { value: 0 },
-      uRects: { value: Array.from({ length: SCOPE_RECTS }, () => new THREE.Vector4()) },
-      uHeat: { value: new Array<number>(SCOPE_RECTS).fill(0) },
-    }),
-    [rt],
-  )
+  const lensValues = useMemo(() => createLensValues(rt.texture), [rt])
+  const lensMat = useMemo(() => createLensMaterial(lensValues), [lensValues])
+  useEffect(() => () => lensMat.dispose(), [lensMat])
 
   useFrame(() => {
     const h = hand.current
@@ -829,14 +777,9 @@ function Bench({
     const win = inst.mode === 'scope' ? collar : 1
     const alpha = 1 - Math.exp(-dt / win)
     const underGlass = accumulateHeat(heat.current, covered, alpha, dt)
-    writeHeatRects(uniforms.uRects.value, uniforms.uHeat.value, heat.current, win)
+    writeHeatRects(lensValues.rects, lensValues.heat, heat.current, win)
 
-    // Uniforms through the material ref. Writing them to the memoized
-    // object above leaves the sampler unbound, and a transparent material
-    // with alpha 0 renders INVISIBLE rather than black — so the glass
-    // silently shows the page behind it and every reading looks plausible
-    // (docs/spikes/optics-loupe.md).
-    writeLensUniforms(lensMat.current, {
+    writeLensUniforms(lensValues, {
       page: rt.texture,
       disc,
       eye,
@@ -844,8 +787,6 @@ function Bench({
       spec,
       half,
       inst,
-      rects: uniforms.uRects.value,
-      heat: uniforms.uHeat.value,
     })
 
     if (lens.current) lens.current.position.set(h.x, h.y, spec.standoff)
@@ -894,15 +835,7 @@ function Bench({
               ) : (
                 <circleGeometry args={[inst.aperture, 160]} />
               )}
-              <shaderMaterial
-                ref={lensMat}
-                vertexShader={OPTICS_LENS_VERT}
-                fragmentShader={OPTICS_LENS_FRAG}
-                uniforms={uniforms}
-                transparent
-                premultipliedAlpha
-                depthWrite={false}
-              />
+              <primitive object={lensMat} attach="material" />
             </mesh>
             {inst.sheet ? (
               <Frame inst={inst} hand={hand} onGrab={(e) => grab('sheet', e)} />

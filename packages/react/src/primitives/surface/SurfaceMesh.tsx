@@ -65,7 +65,10 @@ import {
   type SurfacePartId,
   type SurfacePassEvidence,
 } from '@munari/core'
-import { SURFACE_RADIUS_GLSL } from '../../lib/surfaceRadiusGlsl'
+import { MeshBasicNodeMaterial } from 'three/webgpu'
+import { Discard, Fn, diffuseColor, uniform, uv, vec4 } from 'three/tsl'
+import { premultipliedOutput } from '../../lib/surfaceOutput'
+import { surfaceRadiusMask } from '../../lib/surfaceRadius'
 import { FocusGroupContext } from '../focusContext'
 import { SurfaceAnchorContext, useSurfaceAnchorScope } from './surfaceAnchorScope'
 import { createSurfaceRasterAlignment } from './surfaceRasterAlignment'
@@ -84,6 +87,7 @@ import {
   type SurfacePartValue,
 } from './surfaceContext'
 import { configureSurfaceMaterial } from './surfaceMaterials'
+import { geometryDraws, isDevelopmentRuntime } from '../FrameSurface'
 import {
   applyPassWrites,
   authoredWrites,
@@ -183,6 +187,19 @@ interface SurfaceLodState { tier:number; proposed:number; agree:number; frame:nu
 let lodKeySeq = 0
 let lodPhaseSeq = 0
 let presenterSeq = 0
+
+// WebGPURenderer reports its internal target during every draw, so only the
+// SurfaceCanvas frame tail can tell that a frame reached the canvas
+// (decisions.md #69). Without one, no presenter can release the page.
+let reportedHostless = false
+function reportHostless(): void {
+  if (reportedHostless || !isDevelopmentRuntime()) return
+  reportedHostless = true
+  console.error(
+    'munari: <Surface.Mesh> drew outside a <SurfaceCanvas>, so it cannot prove a frame reached the screen ' +
+      'and its page is never released. Render it inside <SurfaceCanvas>.',
+  )
+}
 
 export function useSurfaceLodPhase() {
   const phase = useRef<number | null>(null)
@@ -335,7 +352,7 @@ function SurfacePresenter({
   // it during its own render — before either commit — is the case the cast
   // covers over, and there is no earlier moment a mesh could exist.
   useImperativeHandle(ref, () => mountedMesh as THREE.Mesh, [mountedMesh])
-  const materialRef = useRef<THREE.MeshBasicMaterial>(null)
+  const materialRef = useRef<MeshBasicNodeMaterial>(null)
   const pressedRef = useRef<ForwardPointerSample | null>(null)
   const presenterKey = useMemo(() => `presenter-${presenterSeq++}`, [])
   const sampledKey = JSON.stringify(sampledParts)
@@ -420,9 +437,11 @@ function SurfacePresenter({
   const authoredRaycastRef = useLatest(authoredRaycast)
   const radiiRef = useRef<[number, number, number, number]>([0, 0, 0, 0])
   const radiusUniforms = useRef({
-    uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-    uMunariSize: { value: new THREE.Vector2(width, height) },
+    uMunariRadii: uniform(new THREE.Vector4(0, 0, 0, 0)),
+    uMunariSize: uniform(new THREE.Vector2(width, height)),
   })
+  // Callbacks a slotted material runs before each draw (`beforeDraw`).
+  const beforeDraws = useRef(new Set<() => void>())
 
   // Presenter registration is the readiness ledger: the handoff cannot
   // release the page until every registered presenter has proven a
@@ -923,7 +942,9 @@ function SurfacePresenter({
       if(drawCamera===camera)stepRouteRef.current()
       return null
     }
-    const viewport=gl.getCurrentViewport(new THREE.Vector4())
+    // What WebGLRenderer's getCurrentViewport returned; WebGPURenderer has no
+    // such method. Device pixels, floored, as the draw will rasterize them.
+    const viewport=target?target.viewport.clone():gl.getViewport(new THREE.Vector4()).multiplyScalar(gl.getPixelRatio()).floor()
     const paint=runtime.currentPaint()
     const material=mesh.material,texture=runtime.texture()
     const directMap=texture&&!Array.isArray(material)&&'map' in material&&material.map===texture&&additionalParts.length===0
@@ -969,7 +990,8 @@ function SurfacePresenter({
   // exclusive one presents only once the page has let go, and draws
   // write-free until then.
   const handleBeforeRender = useCallback<THREE.Object3D['onBeforeRender']>(
-    (renderer, _scene, _cam, _geometry, renderedMaterial) => {
+    (renderer, _scene, _cam, renderedGeometry, renderedMaterial) => {
+      for (const beforeDraw of beforeDraws.current) beforeDraw()
       const defaultFramebuffer = renderer.getRenderTarget() === null
       // Read live from the store, never from a render-time value. The
       // crossing gives the canvas presentation authority at the top of this
@@ -989,6 +1011,12 @@ function SurfacePresenter({
       // authored values are borrowed, not overwritten — the post-draw
       // callback below puts them back.
       applyPassWrites(authoredRef.current, renderedMaterial, writing)
+      // Three still runs both callbacks for geometry with nothing to draw, and
+      // a pass that drew nothing proves nothing (decisions.md #70).
+      if (!geometryDraws(renderedGeometry)) {
+        passRef.current = null
+        return
+      }
       passRef.current = {
         defaultFramebuffer,
         colorWrite: renderedMaterial.colorWrite,
@@ -1041,33 +1069,39 @@ function SurfacePresenter({
       return
     }
     if (!passNeedsHostTail(pass)) return
-    presenterHost?.deferPresentation(() => store.present(presenterKey, epoch))
+    if (!presenterHost) {
+      reportHostless()
+      return
+    }
+    presenterHost.deferPresentation(() => store.present(presenterKey, epoch))
   }, [runtime, store, presenterKey, presenterHost, anchors, presentation, additionalParts])
 
-  // The mask, injected into the default material. Always injected and
-  // uniform-driven: radii of zero make it a no-op, so there is one program
-  // family and a radius change is a value write, never a recompile.
-  // Identical source text across instances on purpose — three keys its
-  // program cache on this function's toString, so every Surface shares one
-  // compiled program despite each wiring its own uniform objects.
-  const onBeforeCompile = useMemo(
-    () => (shader: { uniforms: Record<string, { value: unknown }>; fragmentShader: string }) => {
-      shader.uniforms.uMunariRadii = radiusUniforms.current.uMunariRadii
-      shader.uniforms.uMunariSize = radiusUniforms.current.uMunariSize
-      shader.fragmentShader = shader.fragmentShader
-        .replace(
-          '#include <clipping_planes_pars_fragment>',
-          '#include <clipping_planes_pars_fragment>\n' + SURFACE_RADIUS_GLSL,
-        )
-        .replace(
-          '#include <map_fragment>',
-          '#include <map_fragment>\n' +
-            '  diffuseColor.a *= munariRadiusMask(vUv);\n' +
-            '  if (diffuseColor.a < 0.004) discard;\n',
-        )
-    },
-    [],
-  )
+  // The default material. The corner mask is uniform-driven: radii of zero
+  // make it a no-op, so a radius change is a value write, never a rebuild.
+  // The uniform nodes hold the presenter's own vectors, which are written in
+  // place. The discard keeps clear corner fragments out of the depth buffer.
+  // It is not `alphaTest`, which makes a node material reshape alpha under
+  // the alpha-to-coverage this mesh turns on for rounded opaque corners.
+  // The capture is already premultiplied, so the output scales it by the
+  // mask only: Three's own premultiply would multiply it by alpha a second
+  // time, and a half-transparent white pixel would land at 64 where the
+  // page shows 128 (measured 2026-10-08, on main's WebGLRenderer too).
+  // `premultipliedAlpha` stays on for the premultiplied blend.
+  const defaultMaterial = useMemo(() => {
+    const created = new MeshBasicNodeMaterial({ color: '#ffffff', premultipliedAlpha: true })
+    const mask = surfaceRadiusMask(
+      uv(),
+      radiusUniforms.current.uMunariSize,
+      radiusUniforms.current.uMunariRadii,
+    )
+    created.opacityNode = Fn(() => {
+      Discard(diffuseColor.a.mul(mask).lessThan(0.004))
+      return mask
+    })()
+    created.outputNode = premultipliedOutput(vec4(diffuseColor.rgb.mul(mask), diffuseColor.a))
+    return created
+  }, [])
+  useEffect(() => () => defaultMaterial.dispose(), [defaultMaterial])
 
   const uvOf = (e: ThreeEvent<PointerEvent>) => {
     if (!e.uv) return null
@@ -1246,6 +1280,13 @@ function SurfacePresenter({
   useEffect(() => {
     if (texture && materialRef.current) materialRef.current.needsUpdate = true
   }, [texture])
+  useLayoutEffect(() => {
+    if (texture) defaultMaterial.map = texture
+    if (defaultMaterial.transparent !== (alpha === 'source')) {
+      defaultMaterial.transparent = alpha === 'source'
+      defaultMaterial.needsUpdate = true
+    }
+  }, [defaultMaterial, texture, alpha])
 
   const transparent = alpha === 'source'
 
@@ -1258,6 +1299,10 @@ function SurfacePresenter({
       radii: radiusUniforms.current.uMunariRadii,
       size: radiusUniforms.current.uMunariSize,
       transparent,
+      beforeDraw(callback) {
+        beforeDraws.current.add(callback)
+        return () => void beforeDraws.current.delete(callback)
+      },
     }),
     [transparent],
   )
@@ -1303,16 +1348,7 @@ function SurfacePresenter({
         {material ? (
           <SurfaceMaterialContext value={materialSlot}>{material}</SurfaceMaterialContext>
         ) : (
-          <meshBasicMaterial
-            ref={materialRef}
-            map={texture}
-            color="#ffffff"
-            transparent={transparent}
-            premultipliedAlpha
-            toneMapped={false}
-            defines={{ USE_UV: '' }}
-            onBeforeCompile={onBeforeCompile}
-          />
+          <primitive ref={materialRef} object={defaultMaterial} attach="material" />
         )}
         {children}
       </mesh>

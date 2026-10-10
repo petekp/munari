@@ -8,6 +8,7 @@ import {tmpdir} from 'node:os'
 import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
 import {setChromeViewport} from '../chromeViewport.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const root=path.resolve(import.meta.dirname,'../..')
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/detail-tuning')
@@ -26,12 +27,12 @@ const read=page=>page.evaluate(()=>{
   const {rig,config,stage}=window.__inkFieldProof
   const materials=[]
   window.__r3f.scene.traverse(object=>{
-    const uniforms=object.material?.uniforms
-    if(uniforms?.uApertureGamma)materials.push({gamma:uniforms.uApertureGamma.value,rounding:uniforms.uRounding.value,floor:uniforms.uApertureFloor.value,ceil:uniforms.uApertureCeil.value})
+    const values=object.material?.userData.refractionValues
+    if(values)materials.push({gamma:values.apertureGamma.value,rounding:values.rounding.value,floor:values.apertureFloor.value,ceil:values.apertureCeil.value})
   })
   const samples=[]
   for(let y=1;y<=8;y++)for(let x=1;x<=8;x++)samples.push(rig.apertureAt(x/9,y/9))
-  return {identity:rig.target.texture.uuid,size:[rig.target.width,rig.target.height],spread:[rig.spreadPair[0].width,rig.spreadPair[0].height],stage:stage(),config:{...config.current},detail:rig.material.uniforms.uDetail.value,decay:rig.spreadMaterial.uniforms.uDecay.value,samples,materials}
+  return {identity:rig.target.texture.uuid,size:[rig.target.width,rig.target.height],spread:[rig.spreadPair[0].width,rig.spreadPair[0].height],stage:stage(),config:{...config.current},detail:rig.fieldPass.detail.value,decay:rig.spreadPass.decay.value,samples,materials}
 })
 async function setRange(page,selector,value) {
   await page.$eval(selector,(node,value)=>{
@@ -44,7 +45,7 @@ const deadline=setTimeout(()=>{console.error('Detail tuning exceeded 180 seconds
 try {
   server=await createServer({root:path.join(root,'apps/lab'),configFile:path.join(root,'apps/lab/vite.config.ts'),plugins:[observer],cacheDir:path.join(output,'.vite'),server:{host:'127.0.0.1',port:0},logLevel:'warn'})
   await server.listen()
-  browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:['--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding',...(process.env.CI?['--no-sandbox']:[])]})
+  browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:[...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding',...(process.env.CI?['--no-sandbox']:[])]})
   for(const scene of ['refraction','gallery','glass','crystal']) {
     const page=await browser.newPage(),errors=[]
     page.on('pageerror',error=>errors.push(String(error)))
@@ -53,11 +54,11 @@ try {
     page.on('console', message => { if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) errors.push(message.text()) })
     await setChromeViewport(page,{width:1200,height:900})
     try {
-      await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=${scene}&framed&glass=sdf`,{waitUntil:'load'})
+      await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=${scene}&framed`,{waitUntil:'load'})
       assert.equal(await page.evaluate(()=>'drawElementImage' in CanvasRenderingContext2D.prototype),true)
       let result
       if(scene==='glass') {
-        await page.waitForFunction(()=>window.__glass?.mode()==='sdf'&&window.__glass.blobs().length>0)
+        await page.waitForFunction(()=>window.__glass?.blobs().length>0)
         const before=await page.evaluate(()=>window.__glass.blobs().length)
         const set=await page.evaluate(()=>window.__glass.setBlobs(0))
         await frames(page);await frames(page)
@@ -78,7 +79,7 @@ try {
       } else {
         await page.waitForSelector('input[aria-label="crossing position"]')
         await setRange(page,'input[aria-label="crossing position"]',.5)
-        await page.waitForFunction(()=>window.__inkFieldProof?.rig.material.uniforms.tSource.value)
+        await page.waitForFunction(()=>{const rig=window.__inkFieldProof?.rig;return rig&&rig.fieldPass.source.value!==rig.target.texture})
         await page.evaluate(()=>document.fonts.ready)
         await frames(page)
         const before=await read(page)

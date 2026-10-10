@@ -9,24 +9,24 @@ import puppeteer from 'puppeteer-core'
 import {replaceSource} from '../home-light/replaceSource.mjs'
 import {setChromeViewport} from '../chromeViewport.mjs'
 import {textureClarity} from '../textureClarity.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output=process.env.HEADLINE_OUTPUT??path.join(tmpdir(),'munari-headline')
 await mkdir(output,{recursive:true})
 const observer={name:'headline-observer',enforce:'pre',transform(code,id){
   if(id.endsWith('/homeHeadlineTreatments.ts')){
-    code=replaceSource(code,'  const material=new THREE.ShaderMaterial','  uniforms.uTestBlack=new THREE.Uniform(0)\n  const material=new THREE.ShaderMaterial')
     const marker='  return {\n    render(reduced:boolean)'
-    code=replaceSource(code,marker,'  window.__headline={renderer,letters,uniforms,inkCanvas,redraw:wake}\n'+marker)
+    code=replaceSource(code,marker,'  window.__headline={renderer,letters,values,inkCanvas,redraw:wake}\n'+marker)
   }
-  if(id.endsWith('/homeHeadlineShaders.ts')){
-    code=replaceSource(code,'uniform vec2 uPointer;','uniform vec2 uPointer;\nuniform float uTestBlack;')
-    code=replaceSource(code,'gl_FragColor=vec4(colour,alpha);','gl_FragColor=vec4(colour*(1.0-uTestBlack),alpha);')
+  if(id.endsWith('/homeHeadlineNodes.ts')){
+    code=replaceSource(code,'rippleAge:uniform(1000)}','rippleAge:uniform(1000),testBlack:uniform(0)}')
+    code=replaceSource(code,'encodedOutput(vec4(encoded.mul(alpha),alpha))','encodedOutput(vec4(encoded.mul(v.testBlack.oneMinus()).mul(alpha),alpha))')
   }
   return code
 }}
 const server=await createServer({root:path.resolve(import.meta.dirname,'../../apps/lab'),plugins:[observer],cacheDir:path.join(output,'.vite'),logLevel:'warn',server:{host:'127.0.0.1',port:0}})
 await server.listen()
-let browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,signal:AbortSignal.timeout(30_000),args:['--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
+let browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,signal:AbortSignal.timeout(30_000),args:[...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
 const frames=(frame,count=4)=>frame.evaluate(count=>new Promise(resolve=>{const next=()=>--count?requestAnimationFrame(next):resolve();requestAnimationFrame(next)}),count)
 const results={}
 try{
@@ -62,7 +62,7 @@ try{
   const clip={x:Math.floor(parent.x+word.x-6),y:Math.floor(parent.y+word.y-6),width:Math.ceil(word.width+12),height:Math.ceil(word.height+12)}
   const shot=()=>page.screenshot({clip,encoding:'base64'})
   const coloured=await shot()
-  await frame.evaluate(()=>{window.__headline.uniforms.uTestBlack.value=1;window.__headline.redraw()});await frames(frame)
+  await frame.evaluate(()=>{window.__headline.values.testBlack.value=1;window.__headline.redraw()});await frames(frame)
   const black=await shot()
   await frame.evaluate(()=>{document.querySelector('.home-headline-canvas').style.visibility='hidden';document.querySelector('.home-headline-shaders').style.color='#000'})
   const native=await shot()
@@ -85,7 +85,7 @@ try{
   assert.ok(results.sharpness.edgeEnergyRatio>=.95&&results.sharpness.edgeEnergyRatio<=1.05,'Shader glyphs must retain native text contrast')
   assert.ok(results.coarse.edgeEnergyRatio<.9,'The coarse rendering control must lose contrast')
 
-  await frame.evaluate(()=>{document.querySelector('.home-headline-canvas').style.visibility='';document.querySelector('.home-headline-shaders').style.color='';window.__headline.uniforms.uTestBlack.value=0;window.__headline.redraw()})
+  await frame.evaluate(()=>{document.querySelector('.home-headline-canvas').style.visibility='';document.querySelector('.home-headline-shaders').style.color='';window.__headline.values.testBlack.value=0;window.__headline.redraw()})
 
   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'no-preference'}])
   const solid=await frame.$eval('.home-headline-3d',element=>element.getBoundingClientRect().toJSON())
@@ -98,7 +98,7 @@ try{
   assert.equal(await frame.$eval('.home-headline-3d',element=>getComputedStyle(element,'::selection').color),'rgba(0, 0, 0, 0)','Selection must not paint a flat duplicate over the mesh')
   await page.mouse.move(parent.x+word.x+word.width*.35,parent.y+word.y+word.height*.5)
   await frames(frame)
-  results.ripple=await frame.evaluate(()=>({age:window.__headline.uniforms.uRippleAge.value,point:window.__headline.uniforms.uPointer.value.toArray()}))
+  results.ripple=await frame.evaluate(()=>({age:window.__headline.values.rippleAge.value,point:window.__headline.values.pointer.value.toArray()}))
   assert.ok(results.ripple.age<1,'Pointer input must reach the shader ripple')
   await page.screenshot({path:path.join(output,'interactive.png')})
   await frame.click('.home-select-word')
@@ -113,7 +113,12 @@ try{
   const zoomScale=await page.evaluate(()=>visualViewport.scale)
   assert.ok(Math.abs(zoomScale-3)<.02,'Pinch zoom must keep the shader word in view')
   await frames(frame,8)
-  results.zoom=await frame.evaluate(()=>{const h=window.__headline,c=h.renderer.domElement,r=c.getBoundingClientRect(),gl=h.renderer.getContext();return {ratio:h.renderer.getPixelRatio(),buffer:[gl.drawingBufferWidth,gl.drawingBufferHeight],canvas:[c.width,c.height],css:[r.width,r.height]}})
+  // The WebGL 2 fallback reports Chrome's clamped drawing buffer. WebGPU never
+  // shrinks the canvas texture; beyond the device limit it cannot configure one.
+  results.zoom=await frame.evaluate(()=>{
+    const h=window.__headline,c=h.renderer.domElement,r=c.getBoundingClientRect(),{gl,device}=h.renderer.backend,limit=device?.limits.maxTextureDimension2D
+    return {ratio:h.renderer.getPixelRatio(),buffer:gl?[gl.drawingBufferWidth,gl.drawingBufferHeight]:[Math.min(c.width,limit),Math.min(c.height,limit)],canvas:[c.width,c.height],css:[r.width,r.height]}
+  })
   assert.equal(results.zoom.ratio,results.content.dpr*zoomScale)
   assert.ok(results.zoom.buffer.every(value=>Number.isInteger(value)&&value>0),'Zoom must retain a readable drawing buffer')
   assert.deepEqual(results.zoom.buffer,results.zoom.canvas)
@@ -124,7 +129,7 @@ try{
   const mobile=page
   await mobile.waitForSelector('[data-headline-ready]');await frames(mobile)
   await page.waitForFunction(()=>!document.documentElement.hasAttribute('data-opening'))
-  results.mobile=await mobile.evaluate(()=>({overflow:document.querySelector('.home-page').scrollWidth>document.querySelector('.home-page').clientWidth,ratio:window.__headline.renderer.getPixelRatio(),time:window.__headline.uniforms.uTime.value,ripple:window.__headline.uniforms.uRippleAge.value,actionBottom:document.querySelector('#root .home-hero-row button').getBoundingClientRect().bottom,height:innerHeight,lightTop:document.querySelector('#root .home-light').getBoundingClientRect().top}))
+  results.mobile=await mobile.evaluate(()=>({overflow:document.querySelector('.home-page').scrollWidth>document.querySelector('.home-page').clientWidth,ratio:window.__headline.renderer.getPixelRatio(),time:window.__headline.values.time.value,ripple:window.__headline.values.rippleAge.value,actionBottom:document.querySelector('#root .home-hero-row button').getBoundingClientRect().bottom,height:innerHeight,lightTop:document.querySelector('#root .home-light').getBoundingClientRect().top}))
   assert.equal(results.mobile.overflow,false);assert.equal(results.mobile.time,0);assert.equal(results.mobile.ripple,1000)
   assert.ok(results.mobile.actionBottom<results.mobile.height,'The phone layout must expose the postcard action without scrolling')
   assert.ok(results.mobile.lightTop>=16,'The mobile lamp needs room below the navigation')
@@ -132,8 +137,10 @@ try{
   await browser.close();browser=null
   results.fallbacks=[]
   for(const disabled of [false,true]){
-    browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,signal:AbortSignal.timeout(30_000),args:['--disable-features=CanvasDrawElement',...(disabled?['--disable-webgl']:[])]})
+    browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,signal:AbortSignal.timeout(30_000),args:[...WEBGPU_CHROME_ARGS,'--disable-features=CanvasDrawElement',...(disabled?['--disable-webgl','--disable-webgl2']:[])]})
     const fallback=await browser.newPage();fallback.on('pageerror',error=>errors.push(String(error)))
+    // Hiding navigator.gpu is a browser without WebGPU; Three then tries the disabled WebGL 2.
+    if(disabled)await fallback.evaluateOnNewDocument(()=>Object.defineProperty(Navigator.prototype,'gpu',{get:()=>undefined}))
     await setChromeViewport(fallback,{width:1200,height:900})
     await fallback.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=home`,{waitUntil:'load'})
     const content=fallback
@@ -145,7 +152,7 @@ try{
     assert.equal(state.capture,false);assert.equal(state.enhanced,!disabled);assert.match(state.text,/<html>/)
     if(disabled)assert.notEqual(state.colour,'rgba(0, 0, 0, 0)')
     results.fallbacks.push({disabled,...state})
-    await fallback.screenshot({path:path.join(output,disabled?'no-webgl.png':'no-capture.png')})
+    await fallback.screenshot({path:path.join(output,disabled?'no-gpu.png':'no-capture.png')})
     await browser.close();browser=null
   }
   results.errors=errors;assert.deepEqual(errors,[])

@@ -32,7 +32,7 @@
 // "A shadow that is in the texture at t = 0 is in it for the rest of the
 // flight, because it is the same texture" is what this file used to say,
 // and it is no longer true. The shade is now faded per-fragment by how
-// hard the funnel is squeezing the row it sits on (genieShaders.ts), so
+// hard the funnel is squeezing the row it sits on (genieNodes.ts), so
 // the second leg below is the other half of the claim: the shadow is
 // whole where the sheet is still broad, and gone where the sheet has
 // been squeezed past the width at which a drop offset can be a shadow
@@ -47,6 +47,7 @@ import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
 import { installScreencastClock } from '../screencastCoverage.ts'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const labRoot = path.join(repoRoot, 'apps', 'lab')
@@ -94,7 +95,7 @@ try {
   browser = await puppeteer.launch({
     executablePath: CHROME,
     headless: true,
-    args: ['--enable-features=CanvasDrawElement', '--disable-renderer-backgrounding'],
+    args: [...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement', '--disable-renderer-backgrounding'],
   })
   server = await createServer({ root: labRoot, logLevel: 'warn', server: { port: 0 } })
   await server.listen()

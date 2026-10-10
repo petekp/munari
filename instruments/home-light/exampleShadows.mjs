@@ -1,5 +1,7 @@
 // Measure the gallery's actual shadow field while moving its real light control.
 // The instrument copies the completed lighting draw; HTML remains unmodified.
+// A WebGPU canvas is readable only in the task that drew it, so the copy is
+// taken right after the draw (canvasPixels.ts).
 import assert from 'node:assert/strict'
 import {replaceSource} from './replaceSource.mjs'
 import {writeFile} from 'node:fs/promises'
@@ -17,7 +19,7 @@ export async function measureExampleShadows(page,output) {
   await page.$eval(selector,element=>{document.querySelector('.home-page').scrollTop+=element.getBoundingClientRect().top-260})
   await page.waitForFunction(selector=>Math.abs(document.querySelector(selector).getBoundingClientRect().top-260)<1,{},selector)
   const box=await page.$eval(selector,element=>element.getBoundingClientRect().toJSON())
-  const defaults=await page.evaluate(async()=>({elevation:(await import('/src/scenes/home/homeLightLaw.ts')).RAISED_STANDOFF,height:window.__homeLightMaterial.uniforms.uLightHeight.value}))
+  const defaults=await page.evaluate(async()=>({elevation:(await import('/src/scenes/home/homeLightLaw.ts')).RAISED_STANDOFF,height:window.__homeLightMaterial.values.lightHeight.value}))
   const center=box.x+box.width/2
   async function moveLight(x,y,capture=false){
     const light=await page.$eval('.home-light',element=>element.getBoundingClientRect().toJSON())

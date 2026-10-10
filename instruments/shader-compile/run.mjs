@@ -16,7 +16,9 @@
 // names an identifier nobody declared" as a symptom gets (2026-08-14).
 //
 // So this instrument compiles them. It boots the lab the way a person
-// does, hooks `compileShader` and `linkProgram` from inside the page,
+// does, hooks shader compiles and program links from inside the page
+// (WebGPU shader modules and pipelines, or WebGL's `compileShader` and
+// `linkProgram` on the fallback),
 // walks the scene through the states that build materials, and reports
 // every info log against its own source. It is the cheapest gate in the
 // repo and it answers the one question the other gates assume.
@@ -29,6 +31,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..')
 const labRoot = path.join(ROOT, 'apps', 'lab')
@@ -42,6 +45,29 @@ const CHROME = [
 ]
   .filter(Boolean)
   .find((p) => existsSync(p))
+
+// The letter material's live uniform values, for the walk's state checks.
+// Node uniforms live on the material, not on a GL program, so the gate
+// wraps the factory and keeps each live material with its values.
+const LETTER_FACTORY = 'export function createLetterMaterial('
+const observeLetters = {
+  name: 'shader-compile-letters',
+  enforce: 'pre',
+  transform(code, id) {
+    if (!id.endsWith('/scenes/logo/logoNodes.ts')) return
+    if (code.split(LETTER_FACTORY).length !== 2) throw new Error(`logoNodes.ts: expected one ${LETTER_FACTORY}`)
+    return `${code.replace(LETTER_FACTORY, 'function __createLetterMaterial(')}
+export function createLetterMaterial(t: LetterTextures, u: LetterUniforms): MeshBasicNodeMaterial {
+  const material = __createLetterMaterial(t, u)
+  const letters = (window.__letterMaterials ??= new Set())
+  const entry = { material, u }
+  letters.add(entry)
+  material.addEventListener('dispose', () => letters.delete(entry))
+  return material
+}
+`
+  },
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // How long a step may take to reach its state. This gate checks that shaders
@@ -68,17 +94,56 @@ if (!CHROME) skip('no Chrome executable found (set CHROME_PATH)')
 // handle, which is what turns "ERROR: 0:144" into a readable line.
 const INSTALL = () => {
   window.__glslFails = []
-  const state = { compiled: 0, linked: 0, programs: [] }
+  const state = { compiled: 0, linked: 0 }
   window.__glslState = () => ({
     compiled: state.compiled,
     linked: state.linked,
     holds: document.querySelector('.logo-canvas')?.getAttribute('data-holds') === 'true',
-    letters: state.programs.filter(({ gl, program }) => gl.isProgram(program)).flatMap(({ gl, program }) => {
-      const slab = gl.getUniformLocation(program, 'uSlab')
-      const body = gl.getUniformLocation(program, 'uMeshFrac')
-      return slab && body ? [{ slab: gl.getUniform(program, slab), body: gl.getUniform(program, body) }] : []
-    }),
+    letters: [...(window.__letterMaterials ?? [])].map(({ u }) => ({ slab: u.slab.value, body: u.meshFrac.value })),
   })
+  // WebGPU: every shader module is a compile and every pipeline a link.
+  // Compile messages arrive asynchronously, and pipeline or validation
+  // failures surface as uncaptured device errors.
+  if ('GPUDevice' in globalThis) {
+    const createShaderModule = GPUDevice.prototype.createShaderModule
+    GPUDevice.prototype.createShaderModule = function (descriptor) {
+      // Three reuses one descriptor object for every module, so the source
+      // is read now, not when the compile messages arrive.
+      const src = descriptor.code || ''
+      const module = createShaderModule.call(this, descriptor)
+      state.compiled++
+      module.getCompilationInfo().then((info) => {
+        const errors = info.messages.filter((m) => m.type === 'error')
+        if (errors.length) {
+          window.__glslFails.push({
+            what: 'compile',
+            log: errors.map((m) => `ERROR: 0:${m.lineNum}: ${m.message}`).join('\n'),
+            src,
+          })
+        }
+      })
+      return module
+    }
+    for (const name of ['createRenderPipeline', 'createRenderPipelineAsync']) {
+      const create = GPUDevice.prototype[name]
+      GPUDevice.prototype[name] = function (descriptor) {
+        state.linked++
+        const result = create.call(this, descriptor)
+        if (result instanceof Promise) {
+          result.catch((error) => window.__glslFails.push({ what: 'link', log: String(error), src: '' }))
+        }
+        return result
+      }
+    }
+    const requestDevice = GPUAdapter.prototype.requestDevice
+    GPUAdapter.prototype.requestDevice = async function (...args) {
+      const device = await requestDevice.apply(this, args)
+      device.addEventListener('uncapturederror', (event) => {
+        window.__glslFails.push({ what: 'link', log: String(event.error?.message ?? event.error), src: '' })
+      })
+      return device
+    }
+  }
   const classes = [
     'WebGLRenderingContext' in globalThis ? WebGLRenderingContext : null,
     'WebGL2RenderingContext' in globalThis ? WebGL2RenderingContext : null,
@@ -105,7 +170,6 @@ const INSTALL = () => {
     C.prototype.linkProgram = function (pr) {
       linkProgram.call(this, pr)
       state.linked++
-      if (this.getProgramParameter(pr, this.LINK_STATUS)) state.programs.push({ gl: this, program: pr })
       // A link failure with both stages compiled is the OTHER half of
       // this class of bug: a varying written by one stage and read by
       // the other under a different type, or one too many of them.
@@ -146,13 +210,14 @@ try {
     executablePath: CHROME,
     headless: true,
     args: [
+      ...WEBGPU_CHROME_ARGS,
       '--enable-unsafe-swiftshader',
       '--enable-features=CanvasDrawElement',
       '--disable-renderer-backgrounding',
       ...(process.env.CI ? ['--no-sandbox'] : []),
     ],
   })
-  server = await createServer({ root: labRoot, logLevel: 'warn', server: { port: 0 } })
+  server = await createServer({ root: labRoot, plugins: [observeLetters], logLevel: 'warn', server: { port: 0 } })
   await server.listen()
   const port = server.config.server.port ?? server.httpServer.address().port
 

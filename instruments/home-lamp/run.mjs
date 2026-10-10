@@ -7,12 +7,13 @@ import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
 import {setChromeViewport} from '../chromeViewport.mjs'
 import {lampObserver} from './observer.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output=process.env.LAMP_OUTPUT??path.join(tmpdir(),'munari-home-lamp')
 await mkdir(output,{recursive:true})
 const server=await createServer({root:path.resolve(import.meta.dirname,'../../apps/lab'),plugins:[lampObserver],cacheDir:path.join(output,'.vite'),logLevel:'warn',server:{host:'127.0.0.1',port:0}})
 await server.listen()
-const launch=flags=>puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:[...flags,'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
+const launch=flags=>puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:[...WEBGPU_CHROME_ARGS,...flags,'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
 let browser
 const results={},errors=[]
 const frames=(page,count=4)=>page.evaluate(count=>new Promise(resolve=>{const next=()=>--count?requestAnimationFrame(next):resolve();requestAnimationFrame(next)}),count)
@@ -20,21 +21,12 @@ const move=async(page,x,y)=>{
   const box=await page.$eval('.home-light',e=>{const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})
   await page.mouse.move(box.x,box.y);await page.mouse.down();await page.mouse.move(x,y,{steps:20});await page.mouse.up();await frames(page)
 }
-const pixels=page=>page.evaluate(()=>new Promise((resolve,reject)=>{
-  const timeout=setTimeout(()=>{delete window.__lampRendered;reject(new Error('Lamp did not draw'))},5000)
-  window.__lampRendered=canvas=>{
-    clearTimeout(timeout)
-    delete window.__lampRendered
-    try{
-      const gl=canvas.getContext('webgl2'),dpr=canvas.width/innerWidth,centre=window.__lamp.group.position,size=Math.round(86*dpr),data=new Uint8Array(size*size*4)
-      const x=Math.round((centre.x-43)*dpr),y=Math.round((centre.y-43)*dpr)
-      if(!gl||gl.isContextLost()||size<=0||x<0||y<0||x+size>gl.drawingBufferWidth||y+size>gl.drawingBufferHeight)throw new Error('Lamp sample is outside a readable framebuffer')
-      gl.readPixels(x,y,size,size,gl.RGBA,gl.UNSIGNED_BYTE,data)
-      if(gl.getError()!==gl.NO_ERROR)throw new Error('Lamp pixel read failed')
-      resolve([...data])
-    }catch(error){reject(error)}
-  }
-  window.__lampRedraw()
+const lampFrame=page=>page.evaluate(async url=>{window.__lampFrame=await import(url)},'/@fs'+path.join(import.meta.dirname,'lampFrame.mjs'))
+const pixels=page=>page.evaluate(()=>window.__lampFrame.drawLamp((canvas,readCanvasRect)=>{
+  const dpr=canvas.width/innerWidth,centre=window.__lamp.group.position,size=Math.round(86*dpr)
+  const x=Math.round((centre.x-43)*dpr),y=Math.round((centre.y-43)*dpr),[width,height]=window.__lampFrame.canvasBuffer(window.__lampRenderer)
+  if(size<=0||x<0||y<0||x+size>width||y+size>height)throw new Error('Lamp sample is outside a readable framebuffer')
+  return [...readCanvasRect(canvas,x,y,size,size)]
 }))
 const difference=(a,b)=>{
   assert.ok(a.length>0&&a.length===b.length,'Optical comparisons need matching nonempty pixel buffers')
@@ -42,8 +34,11 @@ const difference=(a,b)=>{
   for(let i=0;i<a.length;i+=4){const d=Math.max(...[0,1,2].map(c=>Math.abs(a[i+c]-b[i+c])));total+=d;if(d>12)changed++}
   return {mean:total/(a.length/4),changed:changed/(a.length/4)}
 }
+// GPU time is the lamp's render() under TIME_ELAPSED, texture uploads included.
+// WebGPU timestamps cover render passes only, not the canvas copies before them,
+// so that backend reports the interval as unmeasured rather than a shorter one.
 const performanceProof=page=>page.evaluate(()=>new Promise(resolve=>{
-  const gl=document.querySelector('.home-light-scene canvas').getContext('webgl2'),extension=gl.getExtension('EXT_disjoint_timer_query_webgl2'),queries=[],times=[]
+  const gl=window.__lampRenderer.backend.gl,extension=gl?.getExtension('EXT_disjoint_timer_query_webgl2'),queries=[],times=[]
   let current=null,count=0,previous=0
   const paints=window.__lampPaintCount()
   if(extension){
@@ -59,7 +54,7 @@ const performanceProof=page=>page.evaluate(()=>new Promise(resolve=>{
     queries.forEach(q=>gl.deleteQuery(q))
     const stats=values=>{const sorted=values.slice(8).sort((a,b)=>a-b);return {samples:sorted.length,p95:sorted[Math.floor(sorted.length*.95)]??null,max:sorted.at(-1)??null}}
     const lampGpu=stats(gpu)
-    resolve({frames:stats(times),lampGpu,capturePaints:window.__lampPaintCount()-paints,disjoint:Boolean(disjoint),gpuStatus:!extension?'unsupported':disjoint?'disjoint':lampGpu.samples?'measured':'unobserved'})
+    resolve({frames:stats(times),lampGpu,capturePaints:window.__lampPaintCount()-paints,disjoint:Boolean(disjoint),gpuStatus:!gl?'webgpu-unmeasured':!extension?'unsupported':disjoint?'disjoint':lampGpu.samples?'measured':'unobserved'})
   }
   requestAnimationFrame(tick)
 }))
@@ -73,10 +68,11 @@ try{
   const capable=await page.evaluate(()=>'drawElementImage' in CanvasRenderingContext2D.prototype)
   if(!capable){assert.notEqual(process.env.STRICT_CAPABILITY,'1','HTML-in-canvas is required');console.log('SKIP: HTML-in-canvas unavailable');process.exitCode=0}
   else{
-    await page.waitForFunction(()=>window.__lamp?.uniforms.uPageReady.value===1)
+    await page.waitForFunction(()=>window.__lamp?.backdrop.pageReady.value===1)
+    await lampFrame(page)
     assert.equal(await page.evaluate(()=>document.querySelectorAll('.home-hero-holder [data-api-live]').length),1,'The page mirror must not claim another live postcard')
     await page.evaluate(()=>document.fonts.ready);await frames(page,12)
-    results.display=await page.evaluate(()=>({dpr:devicePixelRatio,backing:document.querySelector('.home-light-scene canvas').width/innerWidth,capture:window.__lamp.uniforms.uPageReady.value}))
+    results.display=await page.evaluate(()=>({dpr:devicePixelRatio,backing:document.querySelector('.home-light-scene canvas').width/innerWidth,capture:window.__lamp.backdrop.pageReady.value}))
     await page.screenshot({path:path.join(output,'initial.png')})
     const target=await page.evaluate(()=>{const node=document.querySelector('.home-masthead-title span').firstChild,r=document.createRange();r.setStart(node,0);r.setEnd(node,1);const b=r.getBoundingClientRect();return {x:b.x+b.width*.25,y:b.y+b.height*.52}})
     await move(page,target.x,target.y)
@@ -85,15 +81,15 @@ try{
     await page.screenshot({path:path.join(output,'over-type.png')})
     const clip={x:Math.max(0,target.x-90),y:Math.max(0,target.y-120),width:180,height:210}
     await page.screenshot({path:path.join(output,'glass.png'),clip,captureBeyondViewport:false})
-    await page.evaluate(()=>window.__lamp.uniforms.uEmission.value=0)
+    await page.evaluate(()=>window.__lamp.values.emission.value=0)
     const dark=await pixels(page);results.emission=difference(glass,dark)
     await page.screenshot({path:path.join(output,'unlit-control.png'),clip,captureBeyondViewport:false})
-    await page.evaluate(()=>{window.__lamp.uniforms.uEmission.value=1;window.__lamp.uniforms.uIor.value=1;window.__lamp.uniforms.uDispersion.value=0})
+    await page.evaluate(()=>{window.__lamp.values.emission.value=1;window.__lamp.values.ior.value=1;window.__lamp.values.dispersion.value=0})
     const clear=await pixels(page);results.refraction=difference(glass,clear)
     await page.screenshot({path:path.join(output,'no-refraction-control.png'),clip,captureBeyondViewport:false})
     assert.ok(results.emission.changed>.002,'The filament must visibly emit light')
     assert.ok(results.refraction.changed>.01,'The glass must displace actual page content')
-    await page.evaluate(()=>{window.__lamp.uniforms.uIor.value=1.5;window.__lamp.uniforms.uDispersion.value=.006;document.querySelector('.home-masthead-title span').style.color='#e32516'})
+    await page.evaluate(()=>{window.__lamp.values.ior.value=1.5;window.__lamp.values.dispersion.value=.006;document.querySelector('.home-masthead-title span').style.color='#e32516'})
     await frames(page,16)
     const redHeading=await pixels(page);results.liveContent=difference(glass,redHeading)
     assert.ok(results.liveContent.changed>.02,'Changing the real heading colour must change the refracted image')
@@ -125,7 +121,7 @@ try{
     await page.screenshot({path:path.join(output,'scrolled.png')})
     for(const width of [390,320]){
       await setChromeViewport(page,{width,height:844})
-      await page.waitForFunction(()=>window.__lamp.uniforms.uPageReady.value===1&&window.__lamp.uniforms.uViewport.value.x===innerWidth)
+      await page.waitForFunction(()=>window.__lamp.backdrop.pageReady.value===1&&window.__lamp.backdrop.viewport.value.x===innerWidth)
       assert.equal(await page.evaluate(()=>document.querySelector('.home-page').scrollWidth>innerWidth),false)
       await page.screenshot({path:path.join(output,`mobile-${width}.png`)})
     }
@@ -137,7 +133,7 @@ try{
   await setChromeViewport(native,{width:1200,height:900})
   await native.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=home&framed`,{waitUntil:'load'})
   await native.waitForFunction(()=>window.__lamp?.group.visible)
-  results.native=await native.evaluate(()=>({captureAvailable:'drawElementImage' in CanvasRenderingContext2D.prototype,ready:window.__lamp.uniforms.uPageReady.value}))
+  results.native=await native.evaluate(()=>({captureAvailable:'drawElementImage' in CanvasRenderingContext2D.prototype,ready:window.__lamp.backdrop.pageReady.value}))
   assert.equal(results.native.captureAvailable,false);assert.equal(results.native.ready,0)
   await move(native,600,280)
   await native.screenshot({path:path.join(output,'native.png')})

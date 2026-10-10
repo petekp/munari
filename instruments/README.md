@@ -72,6 +72,25 @@ The source-revision, browser, viewport/density, and selected cases bound a
 measurement. A local timing report is not a portable performance guarantee.
 The current command and case map is in the [API guide](api-all-demos/README.md).
 
+## WebGPU and the WebGL 2 fallback
+
+`SurfaceCanvas` renders with Three's `WebGPURenderer`, which uses WebGPU when
+the browser offers an adapter and WebGL 2 otherwise. Every runner launches
+Chrome with the flags in `webgpuChrome.mjs`. On Linux those flags render in
+software through SwiftShader, because Linux Chrome without them loses the
+WebGPU device on the first canvas frame.
+
+Run any runner with `MUNARI_BACKEND=webgl2` to check the fallback. Chrome
+then offers no adapter, so Three starts WebGL 2, as it does for a browser
+without WebGPU. Only `frame-surface` reports which backend started; the other
+runners do not check it. `frame-surface` already runs both backends, so it
+fails under `MUNARI_BACKEND=webgl2`: its WebGPU run gets no adapter.
+
+WebGPU cannot read the canvas during a draw. Fixtures read pixels with
+`canvasPixels.ts` after `render()` returns, in the same task. Its values are
+premultiplied and its y runs from the bottom, as `gl.readPixels` returned
+them, and `gpuErrors()` stands in for `gl.getError()` on both backends.
+
 ## Home light and shadow
 
 `node instruments/home-inline/run.mjs` checks Home in the actual site shell.
@@ -92,7 +111,7 @@ phone it samples the visible postcard shadow; the desktop check covers the
 button shadow. A one-pixel clock outside the scene makes Chrome record static
 fallback pages throughout the observation window. A
 native-first reveal with a delayed shadow worker must fail both the readiness
-and pixel checks. Mobile delayed fonts, no capture, no WebGL with failed fonts,
+and pixel checks. Mobile delayed fonts, no capture, no GPU renderer with failed fonts,
 and a nonresponsive shadow worker exercise the fallbacks. The regular animated
 entrance is also recorded. Home must not request other demo chunks. This checks
 recorded compositor frames and visible ordering, not a network-independent
@@ -105,7 +124,7 @@ network delays or a screencast. It runs one fresh Chrome session by default.
 `PROFILE_BASELINE` adds an alternating comparison against a directory containing
 a saved `home/` scene folder and `index.html`. The rest of the application stays
 current; this comparison isolates changes in the home scene and opening cover.
-Timings cover both document entries, fonts, mask generation, renderer setup,
+Timings cover both document entries, fonts, mask generation, each renderer's `init()`,
 backdrop capture, composition readiness and the reveal. Worker timings come from
 the worker itself. `PROFILE_OUTPUT` chooses the local build and result directory.
 `PROFILE_PAIRS=2` or `3` explicitly repeats the comparison. Each browser closes
@@ -129,7 +148,7 @@ extruded 3D geometry, shader colour, pointer response and native selection.
 The inline route must contain no scene iframe. Its black shader control compares glyph contrast with the same native text;
 the 0.95–1.05 contrast range matches the existing sharpness checks. A half-density
 render must lose contrast. It also checks mobile layout, reduced motion,
-3x parent zoom, no-capture rendering and the native no-WebGL fallback.
+3x parent zoom, no-capture rendering and the native fallback without a GPU renderer.
 Use `HEADED=1` for visible Chrome and `HEADLINE_OUTPUT` for its evidence directory.
 Decision [#56](../docs/decisions.md#56) records scope and limits.
 
@@ -169,12 +188,13 @@ double-clicks uncovered native heading text, and types into the scene.
 The full website is checked at 390 and 320px, including entry and return after
 resizing. Captures wait for the relief field belonging to the current layout.
 Separate Chrome profiles check lighting without HTML capture and native content
-with WebGL disabled. `HEADED=1` preserves native display density;
+with WebGPU and WebGL disabled. `HEADED=1` preserves native display density;
 `LIGHT_PROOF_OUTPUT` chooses an output directory and `CHROME_PATH` selects Chrome.
 Evidence stays outside the repo. This local probe does not change CI membership.
 
-GPU timer queries report the complete lighting redraw, including the paper's
-shadow map and native-density receiver draw, when supported and valid. CPU work and the separate
+GPU time is the sum of the lighting redraw's render passes, including the paper's
+shadow map and native-density receiver draw: WebGPU timestamp queries, or WebGL 2
+timer queries on the fallback. Idle time between passes, CPU work and the separate
 bulb/card renderers are excluded.
 Frame intervals describe this machine, not a portable performance gate.
 Native silhouettes use 64 deterministic rays toward a spherical light source.
@@ -189,8 +209,9 @@ bends while keeping both ends attached, then captures a stationary scene postcar
 scrolling, mobile widths, and the no-capture Chrome fallback. The latter retains
 glass reflections and emission but cannot refract page content.
 
-The probe reports lamp GPU time and frame intervals; these describe the current
-machine. Lamp motion alone must not repeatedly repaint the captured page.
+The probe reports frame intervals and, on the WebGL 2 fallback, lamp GPU time;
+these describe the current machine. WebGPU timestamps miss the canvas copies
+before the lamp's passes, so that backend reports GPU time as unmeasured. Lamp motion alone must not repeatedly repaint the captured page.
 `HEADED=1` keeps native display density; use `STRICT_CAPABILITY=1` to require
 the enhanced path. `LAMP_OUTPUT` selects an evidence directory outside Git.
 The observer and optical controls are injected into the served copy only.
@@ -388,8 +409,13 @@ behind `@petepetrash/munari/advanced` — draws the generation it reports,
 and that its optional presentation fence rejects non-writing and
 off-screen passes. `npm run gate:frame-surface`.
 
-The page runs a demand frameloop and reads WebGL pixels inside the mesh's draw
-receipt. It first replaces one live source with another. It then releases and
+The gate loads the page twice, first on WebGPU and then with `forceWebGL`, and
+requires the backend Three actually started, so it fails on a host without
+WebGPU. Each stage runs in a `SurfaceCanvas` with a demand frameloop. The page
+reads the canvas after `render()` returns, in the same task; WebGPU cannot read
+it inside a draw callback.
+
+The first stage replaces one live source with another. It then releases and
 reacquires the same persistent source three times. Each release publishes two
 frames before reacquisition. The gate requires receipts
 `[A0, A2, B0, B2, B4, B6, B8]`, a fresh surface epoch for each hold period,
@@ -397,15 +423,31 @@ no stale receipt, no clear or wrong-color acquisition render, and sampled RGB
 within one channel value. It also checks that live replacement preserves the
 mesh, geometry, and material. Acquisition sampling starts at the React mount
 commit; renders while the surface is still deliberately absent are excluded.
-Rendered colors must remain unchanged under red
-lighting and a non-identity tone mapper. A deliberately tone-mapped control must
-fail the byte-color oracle. The gate reads the public frame texture rather than
-requiring a material constructor. A separate
-pass draws with color writes disabled, then through an off-screen target, and
-finally through the default framebuffer without a new source publication. It
-requires one unchanged frame receipt and one presentation receipt from only
-the final draw. A third pass resizes the source backing store and verifies the
-reallocated texture at its new dimensions.
+Rendered colors must remain unchanged under red lighting. The gate reads the
+public frame texture rather than requiring a material constructor.
+
+A second stage draws with color writes disabled, then through an off-screen
+target, and finally to the canvas without a new source publication. Each phase
+calls the host's `render()` itself, so the host sees the target that phase
+uses. The gate requires one unchanged frame receipt and one presentation
+receipt from only the final draw. A third stage resizes the source backing
+store and verifies the reallocated texture at its new dimensions.
+
+A fourth stage draws a cross-origin image into its source after the
+`FrameSurface` exists, then publishes. The runner serves that image from a
+second port without CORS headers, so the canvas is tainted. The gate requires
+three renders with a blank canvas and no frame or presentation receipt, and
+exactly one development report of the tainted source. The stage then resizes
+the canvas, which clears its taint, redraws same-origin colors, and requires
+one frame receipt for that generation within one channel value and one
+presentation receipt (decisions.md #70). With the origin check removed, the
+WebGPU run fails on a frame receipt issued while tainted, and the WebGL 2 run
+fails on a result timeout because `render()` throws every frame.
+
+Two controls must fail the byte-color oracle on each backend. One turns on the
+renderer tone mapping `SurfaceCanvas` keeps off (decisions.md #69). The other
+samples the canvas before each render, so every sample holds the previous
+frame.
 
 R3F currently creates its Canvas reconciler root without strict effects.
 Wrapping either the DOM root or Canvas children in `StrictMode` does not prove
@@ -711,13 +753,23 @@ Checks that the lab's shaders compile and link. `npm run gate:shaders`.
 A shader is a JavaScript string until a browser compiles it, so
 nothing else in CI can tell a working one from a broken one:
 typecheck, lint, and the unit suites all see a string. This gate hooks
-`compileShader` and `linkProgram` from inside the page, walks the logo
+shader compiles and program links from inside the page, walks the logo
 scene through the states that build materials (page, scene, extruded,
-bump-only relief, back to page), and prints every info log against its
-own source lines.
+mesh body, back to page), and prints every error against its own source
+lines.
+
+On WebGPU, each `createShaderModule` call counts as a compile and each
+render pipeline as a link. Errors come from each module's
+`getCompilationInfo()` and from the device's uncaptured errors. On the
+WebGL 2 fallback (`MUNARI_BACKEND=webgl2`), the gate hooks
+`compileShader` and `linkProgram`. Either way it fails on any error, or
+when it sees no compile or link at all. A planted WGSL error failed it on
+both backends (2026-10-08).
 
 The walk covers only the programs its states construct. A new material
-needs a new state here.
+needs a new state here. The states read the letter material's uniforms
+through a wrapper the gate adds around `createLetterMaterial` when it
+serves the lab.
 
 Each step waits up to 30 seconds for its state and prints how long it took.
 The check does not judge that time. A hosted runner took 7.65 seconds to
@@ -1180,7 +1232,7 @@ Stroke checks compare the actual hand and outline at two heights and DPR 1/2.
 The body must grow while a 6px outline keeps its CSS-pixel width. Width,
 color, opacity, toggle, material switch, copy and reset are also checked.
 Reflection pixel checks disable the stroke so it cannot supply false evidence.
-The moving poster is a second WebGL canvas inside the page, so the checks
+The moving poster is a second renderer's canvas inside the page, so the checks
 are about two renderers agreeing rather than about CSS animations. The
 canvas must exist in the native sheet with a live context (never the CSS
 gradient fallback), and the capture must hold exactly one blank clone of it.

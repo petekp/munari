@@ -78,7 +78,7 @@ There is no separate vendorable implementation here to compare byte for byte.
 
 | constant | value | where |
 | --- | --- | --- |
-| fold grid | 6×3 uv cells | flightShaders.ts, crumple shader |
+| fold grid | 6×3 uv cells | flightNodes.ts, crumple stage |
 | fold remainder | 0.35 per-vertex mix | same |
 | crumple altitude | `CRUMPLE_Z = 55` | Flight.tsx |
 | physics values | AMP 55 / V0 650 / spin V0 220 / MAX 7 | flightPhysicsLaw.ts |

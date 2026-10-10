@@ -17,7 +17,7 @@
 // the asymmetry is the whole reason it is not a sine.
 //
 // Ownership: this module owns shape and nothing else. Time belongs to the
-// scene, pixels to `refractionShaders.ts`, and the numbers to
+// scene, pixels to `refractionNodes.ts`, and the numbers to
 // `refractionTuning.ts`.
 
 /** The tuned shape constants one stage is computed from. */

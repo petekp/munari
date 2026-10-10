@@ -104,7 +104,7 @@ There is no separate lab or registry implementation.
 These reference files must stay byte-identical to their registry copies.
 `tests/registry/*Pack.test.ts` checks them; edit both copies together.
 
-- `src/scenes/glass/glassSdf.tsx` and `glassSdfShader.ts` → `registry/glass/`.
+- `src/scenes/glass/glassSdf.tsx` and `glassSdfNodes.ts` → `registry/glass/`.
 - `src/scenes/workspace/recipe/FocusOrbitRig.tsx`, `cameraPose.ts`, and
   `arcLayout.ts` → `registry/focus-orbit/`.
 

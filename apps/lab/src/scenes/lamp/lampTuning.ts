@@ -3,14 +3,14 @@
 // light pool, and the model's own scale and mounting height.
 //
 // The law: every field's default equals the constant that shipped before
-// this panel existed (lampLantern.ts's flicker/flame numbers, lampShaders.ts's
+// this panel existed (lampLantern.ts's flicker/flame numbers, lampNodes.ts's
 // shadow/pool numbers) — moving a slider to its own default must render
 // pixel-identical to round 5's shipped scene. lampLantern.ts and
-// lampShaders.ts read these values through uniforms/params instead of
+// lampNodes.ts read these values through uniforms/params instead of
 // duplicating the literals (round 6).
 //
 // Ownership: this file owns the editable values and their input limits.
-// lampShaders.ts owns what the shadow/pool uniforms do with them;
+// lampNodes.ts owns what the shadow/pool uniforms do with them;
 // lampLantern.ts owns what the flame/model params do with them; Lamp.tsx
 // owns holding the live value and handing it to both every frame.
 
@@ -43,23 +43,23 @@ export const lampTuning: Readonly<LampTuning> = Object.freeze({
   flickerAmplitude: 0.1,
   /** 1x reproduces the flame shader's unscaled output brightness. */
   coreBrightness: 1,
-  /** Was PENUMBRA_GROWTH_SCALE in lampShaders.ts — the dimensionless factor
+  /** Was PENUMBRA_GROWTH_SCALE in lampNodes.ts — the dimensionless factor
    * on FLAME_APPARENT_SIZE / lampHeight that sets how fast the penumbra
    * widens with throw. */
   penumbraGrowth: 0.5,
   /** Was the reachable ceiling of levelForPenumbra's 0..3 range in
-   * lampShaders.ts (MASK_BLUR_RADII has 4 channels, indices 0..3). */
+   * lampNodes.ts (MASK_BLUR_RADII has 4 channels, indices 0..3). */
   maxBlurLevel: 3,
-  /** 1x reproduces FAR_FADE_START/FAR_FADE_END (lampShaders.ts) unscaled. */
+  /** 1x reproduces FAR_FADE_START/FAR_FADE_END (lampNodes.ts) unscaled. */
   opacityFalloff: 1,
-  /** Was SHADOW_FLOOR in lampShaders.ts — lower reads as a darker shadow. */
+  /** Was SHADOW_FLOOR in lampNodes.ts — lower reads as a darker shadow. */
   shadowStrength: 0.55,
   /** 1x reproduces the pool's unscaled brightness curve. */
   poolIntensity: 1,
-  /** 1x reproduces POOL_TINT/AMBIENT_TINT (lampShaders.ts) at full warmth;
+  /** 1x reproduces POOL_TINT/AMBIENT_TINT (lampNodes.ts) at full warmth;
    * lower lerps the pool toward neutral white. */
   poolWarmth: 1,
-  /** 1x reproduces INNER_RADIUS/OUTER_RADIUS (lampShaders.ts) unscaled. */
+  /** 1x reproduces INNER_RADIUS/OUTER_RADIUS (lampNodes.ts) unscaled. */
   poolRadius: 1,
   /** Was PAGE_FLICKER_SCALE in Lamp.tsx — how much of the flame's own
    * brightness wobble reaches the page's light pool. */

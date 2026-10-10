@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { useThree } from '@react-three/fiber'
-import { ContactShadows, Environment, OrbitControls } from '@react-three/drei'
+import { Environment, OrbitControls } from '@react-three/drei'
+import { ContactShadows } from './lib/ContactShadows'
 import {
   FocusScene,
   SurfaceCanvas,

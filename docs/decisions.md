@@ -4551,3 +4551,406 @@ lean on `matchMotion`, which pairs a copy's animations with the original's by
 index. A clone carries no CSS transitions, so the pairing slips: measured in
 Chrome, a copy's keyframe animation took a running transition's 284 ms instead
 of its own 683 ms. That defect is open.
+
+
+## #69 — SurfaceCanvas renders with WebGPURenderer (2026-10-08, react binding + instruments)
+
+**Status: implemented for `SurfaceCanvas` and `FrameSurface` on
+`pkp/webgpu-restart`. `Surface`, its materials, the lab, and the registry are
+not ported.**
+
+`SurfaceCanvas` creates Three's `WebGPURenderer` and awaits `init()`. The
+renderer uses WebGPU when the browser offers it and falls back to WebGL 2.
+`gl` takes `WebGPURendererParameters`, such as `forceWebGL`. The migration uses
+stock Three and Fiber through public APIs (docs/webgpu-migration-plan.md).
+
+**Fiber `9.8.1` is the minimum.** `SurfaceCanvas` passes Fiber an async
+renderer factory, and Fiber's Canvas calls `configure()` on every render. In
+`9.7.0`, `configure()` read the store before awaiting the factory and set up
+the camera and scene from that read. Veil's band drew nothing in 15 of 48
+loads; in the two failing loads checked, its camera had aspect 0. In `9.8.1`,
+`configure()` queues behind the pending factory and reads the store after it
+resolves, and Veil drew in 12 of 12 loads. Measured 2026-10-09, headless
+Chrome 155. `@petepetrash/munari` therefore requires
+`@react-three/fiber >= 9.8.1`.
+
+`9.8.1` also throws a factory's rejection while rendering the Canvas, which
+unmounted the whole page in a browser with no GPU (`probe:api-lifecycle`).
+`SurfaceCanvas` catches that one error at its Canvas, reports it to the
+window's error handlers, and shows `fallback`; the page HTML stays.
+
+**`shadows` has no `'soft'`.** Three 0.186 removed `PCFSoftShadowMap`, and
+Fiber still sets it for any boolean `shadows`, `false` included. Three then
+warned on every canvas's first render and drew `PCFShadowMap`. `SurfaceCanvas`
+passes a boolean to Fiber as `{ enabled, type: PCFShadowMap }`, and its type
+drops `'soft'`, which drew the same thing.
+
+`WebGPURenderer` draws each frame into an internal target, then tone-maps and
+color-converts the whole frame in a final pass. Two contracts follow from that.
+
+**Renderer tone mapping stays off.** The final pass ignores a material's
+`toneMapped: false`. Under ACES, `FrameSurface` colors were off by up to 114
+per channel on both backends. `SurfaceCanvas` always renders with
+`NoToneMapping`, and its `flat` prop is gone. A scene that wants tone mapping
+applies it in its own 3D materials with
+`material.outputNode = toneMapping(mode, exposure, output)`. In development,
+`SurfaceCanvas` reports renderer tone mapping that a caller turned on.
+
+**Presentation receipts require `SurfaceCanvas`.** During a draw,
+`renderer.getRenderTarget()` returns the internal target, never `null`. A mesh
+callback therefore cannot tell a canvas draw from an off-screen one. Every
+`FrameSurface` presentation now defers to the `SurfaceCanvas` frame tail, which
+closes when `render()` returns with no render target set (#25). In a plain
+Fiber `Canvas`, `FrameSurface` issues draw receipts only.
+
+**A receipt is spent when it is delivered.** The host discards a deferred
+receipt at the start of the next frame if its own frame never reached the
+canvas. `FrameSurface` used to mark the receipt's tuple as presented when it
+took the receipt, so the next eligible draw found the tuple spent and the
+transfer never presented. It now marks the tuple when the receipt reaches
+`onPresented`. The fault needs a frame that draws the tuple only off-screen,
+followed by a frame that draws it to the canvas. A frame that ends on the
+canvas closes its own deferral, so ordinary frames and same-frame composer
+passes were unaffected. The gate's presentation fence hit the fault once it
+ran in a `SurfaceCanvas`, on WebGPU and on the WebGL 2 fallback. Main's
+`WebGLRenderer` path defers the same way; that was read from the code, not
+measured.
+
+Measured 2026-10-08, headless Chrome with `--enable-unsafe-webgpu`, Apple
+Metal, Three `0.185.1`: `gate:frame-surface` passes on WebGPU and on the
+WebGL 2 fallback. Receipts `[A0, A2, B0, B2, B4, B6, B8]`, RGB error 0 for every
+receipt and the resize, one presentation receipt from only the visible pass.
+Renderer ACES fails the color oracle at RGB error 114. Sampling the previous
+frame fails it at RGB error 250.
+
+
+## #70 — FrameSurface issues no receipt for a frame it could not draw (2026-10-08, react binding)
+
+**Status: implemented on `pkp/webgpu-restart` for `FrameSurface`. `Surface`
+gets the same checks when it is ported.**
+
+Three runs a mesh's draw callbacks and a texture's `onUpdate` even when nothing
+reached the canvas. A disposable probe drew one `FrameSurface` inside a
+`SurfaceCanvas` with one fault per run, on headless Chrome with Apple Metal and
+Three `0.185.1`. Before this change:
+
+- Empty geometry issued both receipts on WebGPU and on the WebGL 2 fallback,
+  and drew nothing.
+- A source over the texture limit issued both receipts on both backends and
+  drew nothing. On WebGPU the device got the spec default of 8192 px, so a
+  10000 px source failed that drew on WebGL.
+- A tainted source canvas, one holding cross-origin pixels, issued both
+  receipts on WebGPU and drew nothing. Three ignores the failed
+  `copyExternalImageToTexture` and still calls `onUpdate`. On the WebGL 2
+  fallback the `SecurityError` escaped `render()` every frame, which stopped
+  every Surface on that canvas.
+
+Now:
+
+- `FrameSurface` withholds its draw and presentation receipts for a draw whose
+  geometry has nothing to draw, checked from the index or position count and
+  the draw range. The uploaded frame waits for a draw that shows it.
+- `SurfaceCanvas` requests the adapter's `maxTextureDimension2D` for its
+  WebGPU device, and records the GL `MAX_TEXTURE_SIZE` on the fallback. The
+  probe's adapter reported 16384.
+- `FrameSurface` does not upload a source over that limit or issue receipts
+  for it, and reports it once in development. A source outside a
+  `SurfaceCanvas` has no recorded limit and is not checked.
+- `FrameSurface` checks whether its source is origin-clean by drawing it into
+  a private 1 px canvas and reading that back, so the caller's canvas never
+  gets a new context. It checks when the runtime is created and again at the
+  first publish after each allocation, because a caller usually draws after
+  creating the source. A tainted source is replaced by a blank stand-in, so
+  Three never sees it, and it issues no receipts. Taint lasts until the canvas
+  is resized, which starts a new allocation and a new check. A canvas tainted
+  only after its first publish is missed. Checking every publish was rejected:
+  it costs a readback per publish, and Chrome may move a canvas read that often
+  to the CPU.
+
+After, the same probe: a 10000 px source draws exactly on both backends. A
+20000 px source, empty geometry, and a source tainted before or after its
+creation issue no receipts on either backend, and the fallback no longer
+throws. A tainted source resized and redrawn with same-origin pixels presents
+again with exact pixels. On
+WebGPU the 20000 px source still produced 88 GPU validation errors over the
+run of about ten frames. The texture's first upload is still attempted, and
+what repeats the errors after it was not traced.
+
+
+## #71 — Surface draws with node materials (2026-10-08, react binding + instruments)
+
+**Status: implemented for `Surface.Mesh` and its materials on
+`pkp/webgpu-restart`. The lab scenes and the registry still use GLSL.**
+
+`WebGPURenderer` runs no GLSL, on WebGPU or on its WebGL 2 fallback. A
+`ShaderMaterial` or an `onBeforeCompile` splice compiles nowhere and draws
+nothing. `Surface` therefore draws with node materials written in Three
+Shading Language (TSL).
+
+**The custom-material API is node-based.** `SURFACE_RADIUS_GLSL` and
+`useSurfaceUniforms()` are removed. `useSurfaceNodes()` returns the capture as
+a texture node and the presenter's radii and size as uniform nodes, with
+`radiusMask()` built from them. `surfaceRadiusMask()` is the exported TSL
+twin of the corner SDF, for a material that samples a second capture. The
+nodes keep their identity when a resize replaces the capture texture, so a
+material built once keeps sampling the current capture. A GLSL material that
+reaches a `Surface.Mesh` reports once in development.
+
+**The default material** is a `MeshBasicNodeMaterial` with the capture as
+`map` and the corner mask as its opacity. The capture keeps its sRGB color
+space and premultiplied upload (#5). The `< 0.004` discard runs inside the
+opacity node rather than through `alphaTest`, because a node material with
+`alphaTest` reshapes alpha with a smoothstep once `alphaToCoverage` is on, and
+`Surface.Mesh` turns that on for rounded opaque corners.
+
+**`Surface.LitMaterial`** divides alpha out of the raw encoded sample before
+decoding for light (#48), and applies the corner mask to the premultiplied
+output. Its raw view used to synchronize in the material's `onBeforeRender`,
+which `WebGPURenderer` never calls. The material now registers that step with
+its `Surface.Mesh`, which runs it in the mesh's `onBeforeRender`.
+
+**Presentation needs a `SurfaceCanvas`, as for `FrameSurface` (#69).** During
+a draw `getRenderTarget()` is never `null`, so every color-writing pass defers
+to the frame tail. A `Surface.Mesh` outside a `SurfaceCanvas` cannot release
+its page, and reports that once in development.
+
+**The warm-up's write masks work unchanged.** The mesh still turns color,
+depth and stencil writes off for one pass and restores them after it (#25).
+`WebGPUBackend.needsRenderUpdate` compares a material's write flags before
+every draw and switches pipelines when they change, and the WebGL 2 backend
+reads them per draw. A disposable probe drew a quad through `applyPassWrites`
+between a far red quad and a nearer green one drawn after it. Warm-up frames
+left the pixel green and writing frames showed the quad, on both backends. A
+deliberate fault that kept depth writes on during warm-up showed red, the
+hole the warm-up exists to prevent.
+
+**Frames that never drew (#70).** A `Surface.Mesh` takes no presentation
+evidence from a draw whose geometry has nothing to draw. DOM captures already
+stop at `MAX_TEXTURE_EDGE`, 4096 px, below WebGPU's default device limit of
+8192. Whether `drawElementImage` can taint a capture canvas is unverified, so
+`Surface` has no origin check yet.
+
+**Three `0.186.1` is the minimum.** In `0.185.1`, disposing a geometry after
+its mesh has drawn a replacement deletes the replacement's GPU buffers.
+`Geometries` deletes the attributes of the render object that first drew the
+old geometry, and by then that render object holds the new one. Fiber
+disposes a replaced geometry at idle priority, so a frame often draws the new
+geometry first. WebGPU recreates the buffers on the next draw. The WebGL 2
+fallback keeps a vertex array that points at the deleted buffers, logs
+`drawElements: no buffer is bound to enabled attribute`, and draws nothing. A
+plain-Three probe lost the live buffers on 10 of 10 deferred disposals on
+`0.185.1` and on none on `0.186.1`, whose dispose handler reads the disposed
+geometry's own attributes. Before the upgrade, `gate:dom-surface-demand`
+failed its resize step on the fallback in 2 of 6 macOS runs and 3 of 3 Linux
+runs; its panel's geometry changes size there. After it, 10 of 10 macOS runs
+passed. `@petepetrash/munari` therefore requires `three >= 0.186.1`.
+
+Measured 2026-10-08, headless Chrome 155, Apple Metal, Three `0.185.1`,
+against `main` at `70fd423` on `WebGLRenderer`. The fallback's
+`gate:dom-surface-demand` numbers are from Three `0.186.1`. `gate:dom-surface-demand`,
+`gate:lifting-pointer`, `probe:surface-textures`, `probe:surface-parts`,
+`probe:api-regressions`, `probe:api-instance-check` and
+`probe:api-native-pointer` pass on WebGPU and on the WebGL 2 fallback. Their
+recorded values match `main`'s except where noted:
+
+- `probe:surface-textures` matches exactly on both backends, including the
+  lit half- and quarter-alpha swatches and the 34/64 edge (#48).
+- On WebGPU, `probe:api-regressions` renders one fewer frame in its capture
+  case, whose assertions are relative. On the fallback one clip case's image
+  error was 0.00046 against `main`'s 0.00025.
+- One of four fallback runs of `gate:dom-surface-demand` on Three `0.185.1`
+  captured its Surface at 840×600 in five paints instead of 420×300 in three,
+  and still passed. The raster viewport was identical on both backends; the
+  cause is open.
+
+The fixtures read pixels after `render()` returns instead of with
+`gl.readPixels`, which WebGPU does not have (instruments/README.md).
+
+## #72 — SurfaceCanvas draws through DirectRenderPipeline (2026-10-08, react binding)
+
+**Status: implemented on `pkp/webgpu-restart`.**
+
+`WebGPURenderer` draws a frame for the canvas into a linear half-float
+target, then converts it in one full-screen pass that unpremultiplies,
+encodes sRGB, and premultiplies again. Three things differ from WebGL as a
+result:
+
+- Light a material adds without alpha disappears over transparent canvas
+  pixels. The conversion drops color where alpha is 0, where WebGL's canvas
+  kept it and the page composited it as added light. Knobs' outer corona and
+  Selection's exterior gleam are drawn this way.
+- Overlapping translucent draws blend in linear space instead of in the sRGB
+  canvas.
+- A material that returns premultiplied color lands too dark wherever alpha
+  is below 1.
+
+**Decision: `SurfaceCanvas` draws every canvas frame through Three's
+`DirectRenderPipeline`.** It renders straight to the canvas and converts each
+fragment, so blending happens in the sRGB canvas, as on WebGL. Draws into a
+render target are unchanged. The rejected alternative kept Three's output pass
+and accepted the lost light and the linear blending.
+
+**Custom materials return their color through `premultipliedOutput` or
+`encodedOutput`.** The per-fragment conversion still unpremultiplies first, so
+a material returning premultiplied color directly still lands too dark. These
+helpers return the value whose conversion equals WebGL's encode:
+`premultipliedOutput` for premultiplied linear color, `encodedOutput` for
+premultiplied color already in sRGB. A fragment whose own alpha is 0 still
+contributes nothing; added light has to come from blend factors.
+
+**A translucent material on the canvas sets `premultipliedAlpha: true`.** The
+conversion treats every fragment as premultiplied, including one from a
+material with Three's default `premultipliedAlpha: false`. That material then
+blends with `SrcAlpha`, so its alpha applies twice
+(three.js#34943). Black is unaffected. With
+`premultipliedAlpha: true`, a stock material premultiplies before the
+conversion and blends with `One`, which lands as WebGL did. A custom straight
+color goes out encoded first, then premultiplied:
+`encodedOutput(vec4(sRGBTransferOETF(linear).mul(a), a))`. Measured
+2026-10-09, headless Chrome 155, both backends identical, sRGB gray 0.5 at
+alpha 0.5 over opaque black:
+
+| Material | Canvas byte | `WebGLRenderer` |
+| --- | --- | --- |
+| Stock `MeshBasicNodeMaterial`, `opacity` 0.5 | 44 | 64 |
+| The same with `premultipliedAlpha: true` | 64 | 64 |
+| `outputNode` returns `vec4(sRGBTransferEOTF(rgb), a)` | 44 | 64 |
+| `encodedOutput` of the premultiplied value, `premultipliedAlpha: true` | 64 | 64 |
+
+Measured 2026-10-08, headless Chrome 155, Three 0.186.1, a 4×4 2D-canvas
+capture texture (`SRGBColorSpace`, premultiplied) drawn full-screen. Values
+are premultiplied canvas bytes at alpha 1, 0.5 and 0.25:
+
+| Case | `WebGLRenderer` | Default output pass | `DirectRenderPipeline` |
+| --- | --- | --- | --- |
+| Default `MeshBasic` material with `map` | 255, 64, 16 | 255, 64, 16 | 255, 64, 16 |
+| `outputNode` returns the premultiplied sample | 255, 128, 64 | 255, 88, 31 | 255, 88, 31 |
+| The same through `premultipliedOutput` | — | 255, 128, 64 | 255, 128, 64 |
+| Additive `(0.5, 0.25, 0)`, alpha untouched, over black page | 128, 64, 0 | 0, 0, 0 | 128, 64, 0 |
+
+WebGPU and the WebGL 2 fallback gave identical values in every cell. The
+default material's 64 at alpha 0.5 is main's behavior too: it multiplies an
+already-premultiplied map by alpha again.
+
+**The default Surface material returns its capture through
+`premultipliedOutput`.** A half-transparent page pixel now lands at its page
+value instead of half of it, which changes translucent HTML from main.
+`probe:surface-textures` checks two default-material planes against the page's
+own compositing. Expected values are premultiplied canvas bytes:
+
+| Sample | Page | Both backends |
+| --- | --- | --- |
+| `rgba(0,0,255,0.5)` | 0, 0, 128, 128 | 0, 0, 128, 128 |
+| `rgba(255,0,0,0.5)` over it | 128, 0, 64, 191 | 128, 0, 64, 192 |
+
+Two planted faults fail the probe. Without the output helper, half-white
+landed at 64, 64, 64, 128. Through Three's output pass, red over blue landed
+at 160, 0, 117, 192. Two layers of one color composite the same in any space,
+which is why the planes differ in color.
+
+With the pipeline, `getRenderTarget()` returns `null` during a canvas draw
+again, so a presenter's canvas draws present directly instead of deferring to
+the frame tail (#69, #70).
+
+## #73 — SurfaceCanvas replaces a lost renderer (2026-10-08, react binding + instruments)
+
+**Status: implemented on `pkp/webgpu-restart`.**
+
+A `WebGPURenderer` that loses its GPU never draws again. This holds on WebGPU
+and on the WebGL 2 fallback: Three reports the loss through
+`renderer.onDeviceLost`, stops drawing, and has no restore path. Main's
+`WebGLRenderer` restored its context after `webglcontextrestored`, and
+`probe:api-lifecycle` asserted that the scene came back.
+
+**Decision: after a loss, `SurfaceCanvas` remounts its Canvas with a new
+renderer.** On the loss, every Surface on the Canvas returns to the page, the
+dead canvas is hidden, the fallback shows, and `onRendererLost` runs. The
+remount resets React state inside the Canvas; the page HTML is untouched.
+
+**A replacement lost within 10 seconds of its creation is not replaced.** The
+page HTML stays until the `SurfaceCanvas` remounts or the page reloads. This
+stops a GPU that fails on every frame after one retry. Ten seconds is a
+judgment, not a measurement. The rejected alternatives were one replacement
+per mount, which leaves a second loss hours later unrecovered, and no
+recovery.
+
+`onRendererLost` is the scene's signal, because `SurfaceCanvas` owns
+`onDeviceLost`. Genie revokes its airborne windows there; its
+`webglcontextlost` listener never fired on WebGPU.
+
+Measured 2026-10-08, headless Chrome 155 on macOS, both backends:
+
+| Check | Trigger | Result |
+| --- | --- | --- |
+| `probe:api-lifecycle` | `Browser.crashGpuProcess` twice | page HTML on each loss; a new renderer drew the scene after the first; none after the second |
+| `gate:genie-film` | Genie's device only (see below) | page HTML in 10 ms on WebGPU and 18 ms on WebGL 2, with no stale frame |
+
+`gate:genie-film` replaces each WebGPU device's `lost` promise before the page
+loads and resolves it, which runs Three's own loss handler. A GPU process
+crash also stops the film's video decoder, and `destroy()` reports reason
+`destroyed`, which Three treats as its own dispose. On the fallback it uses
+`WEBGL_lose_context`.
+
+**The lab's standalone renderers follow the same rule** (2026-10-09). Home's
+shadow, bulb and headline canvases, Lamp's two canvases, Marble hand's
+background and Gravity's fallback overlay run their own `WebGPURenderer`
+outside `SurfaceCanvas`. Main restored each after `webglcontextrestored`.
+After a loss, each now shows its degraded fallback, then restarts its effect
+on a new canvas through `useRendererReplacement`
+(`apps/lab/src/lib/rendererReplacement.ts`). Renderers that one scene
+restarts together share one counter, so a GPU process crash that loses all of
+them restarts the scene once. Gravity returns pulled words to the poem,
+because their bodies and meshes die with the renderer.
+
+A temporary probe lost every device or context at once, on both backends.
+After the first loss, each of the seven canvases drew again from a new
+renderer, and Gravity drew a newly pulled word. After a second loss within
+10 s, each scene stayed on its fallback. With replacement disabled, all four
+scenes failed the probe.
+
+## #74 — Capture canvases use CPU storage on a software GPU (2026-10-09, kernel + react binding)
+
+**Status: implemented on `pkp/webgpu-restart`.**
+
+On a software WebGPU adapter, uploading a capture canvas blocks the page.
+Chrome copies a GPU-backed 2D canvas into a WebGPU texture by reading it back
+in the GPU process, and the page waits for every frame still queued there.
+WebGL's `texImage2D` of the same canvas did not wait. On a GPU with shared
+memory the copy stays on the GPU and costs nothing.
+
+**Decision: on a fallback adapter (`adapter.info.isFallbackAdapter`),
+capture canvases take CPU storage** (`willReadFrequently`). Real GPUs are
+unchanged. A context's storage is fixed at creation, so the kernel asks for
+the adapter itself at the first capture, and no capture canvas takes its
+context before the answer. An HTML-in-canvas paint that comes first is
+skipped and repainted; a snapDOM raster waits before it draws. Past 3 s
+without an answer, captures take GPU storage.
+
+The first version let `SurfaceCanvas` choose once it had seen its adapter. It
+never took effect in Genie. In a Linux container, the four capture canvases
+took their contexts at 4.31 s, and `SurfaceCanvas` asked for its adapter at
+4.43 s, so all four kept GPU storage. With the kernel asking, all five capture
+canvases in that run took CPU storage.
+
+The rejected alternatives were CPU storage everywhere, which costs about 3 ms
+per large upload on every machine, and Chrome's direct element upload
+(`GPUQueue.copyElementImageToTexture`), which waited exactly as long.
+
+Measured 2026-10-09, Chrome 155:
+
+| Where | Upload path | Page blocked per upload |
+| --- | --- | --- |
+| Hosted Linux runner, SwiftShader, Genie lift | GPU-backed canvas | 299–564 ms |
+| Hosted Linux runner, SwiftShader, Genie lift | CPU-backed canvas | 0–6 ms |
+| Linux container, SwiftShader, 1200×800, 40 ms of GPU work queued | GPU canvas / direct element upload / ImageBitmap | 38–40 ms each |
+| Linux container, same | CPU-backed canvas | 7 ms |
+| M4 Max, Metal, 1200×800, 180 ms of GPU work queued | GPU-backed canvas | 0.1 ms |
+| M4 Max, Metal, same | CPU-backed canvas | 3 ms |
+
+With CPU storage on the hosted runner, Genie's first scene draw in `auto`
+capture came 237–357 ms after the minimize press instead of 545–757 ms, and `gate:genie-pose-flash`
+passed all 16 cases. With GPU storage it failed all 16, because its
+recording ended 450 ms after release, before the first draw plus 80 ms.
+
+A SwiftShader adapter reports `isFallbackAdapter: true`; Metal on an M4 Max
+reports `false`. Other software rasterizers were not checked.

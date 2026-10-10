@@ -2,6 +2,7 @@
 import {createRoot} from 'react-dom/client'
 import {useState} from 'react'
 import {useThree} from '@react-three/fiber'
+import {gpuErrors,snapshotCanvas} from '../canvasPixels'
 import {SceneSurface,SurfaceCanvas,useSurfaceHandle,useSurfaceStatus} from '@petepetrash/munari'
 import '@petepetrash/munari/style.css'
 
@@ -12,6 +13,8 @@ interface LitPixels {
   corner:number[]
   sharedLit:number[]
   sharedUnlit:number[]
+  unlitHalf:number[]
+  unlitOverlap:number[]
   error:number
 }
 const cases=[{id:'white',rgb:'255,255,255',emissive:0},{id:'color',rgb:'100,150,220',emissive:0},{id:'glow',rgb:'100,150,220',emissive:0.4}]
@@ -31,17 +34,27 @@ function Swatch({id,x,y,alpha,rgb,emissive=0,edge=false,changed=false}:{id:strin
     </>}
   </SceneSurface.Root>
 }
+// The default material at half alpha. Every sample above it is lit or opaque,
+// so a default material that premultiplied the capture twice passed them all.
+// The red plane overlaps the blue one. Two layers of one color composite the
+// same in any space, so the overlap needs two colors to tell the page's
+// blending of encoded values from a linear frame target's.
+function UnlitHalf({id,rgb,x,z}:{id:string;rgb:string;x:number;z:number}) {
+  const surface=useSurfaceHandle(id)
+  statuses[id]=useSurfaceStatus(surface).presentation
+  return <SceneSurface.Root surface={surface}>
+    <SceneSurface.HTML size={[128,64]}><div style={{width:128,height:64,background:`rgba(${rgb},0.5)`}}/></SceneSurface.HTML>
+    <SceneSurface.Mesh placement="manual" position={[x,170,z]} alpha="source" geometry={<planeGeometry args={[128,64]}/>}/>
+  </SceneSurface.Root>
+}
 function Observe({update}:{update:()=>void}) {
   const state=useThree()
+  const [errors]=useState(()=>gpuErrors(state.gl))
   window.__litProof={statuses,update,read:()=>{
     state.gl.render(state.scene,state.camera)
-    const gl=state.gl.getContext(),dpr=state.gl.getPixelRatio()
-    const pixel=(x:number,y=0)=>{
-      const p=new Uint8Array(4)
-      gl.readPixels(Math.round(gl.drawingBufferWidth/2+x*dpr),Math.round(gl.drawingBufferHeight/2+y*dpr),1,1,gl.RGBA,gl.UNSIGNED_BYTE,p)
-      return [...p]
-    }
-    return {rows:cases.map((entry,index)=>({id:entry.id,opaque:pixel(-150,90-index*90),half:pixel(0,90-index*90),quarter:pixel(150,90-index*90)})),edges:cases.map((entry,index)=>({id:entry.id,solid:pixel(-150+index*150-20,-180),edge:pixel(-150+index*150,-180)})),corner:pixel(-63,121),sharedLit:pixel(150,170),sharedUnlit:pixel(-150,170),error:gl.getError()}
+    const canvas=state.gl.domElement,dpr=state.gl.getPixelRatio(),snapshot=snapshotCanvas(canvas)
+    const pixel=(x:number,y=0)=>snapshot(Math.round(canvas.width/2+x*dpr),Math.round(canvas.height/2+y*dpr))
+    return {rows:cases.map((entry,index)=>({id:entry.id,opaque:pixel(-150,90-index*90),half:pixel(0,90-index*90),quarter:pixel(150,90-index*90)})),edges:cases.map((entry,index)=>({id:entry.id,solid:pixel(-150+index*150-20,-180),edge:pixel(-150+index*150,-180)})),corner:pixel(-63,121),sharedLit:pixel(150,170),sharedUnlit:pixel(-150,170),unlitHalf:pixel(-48,170),unlitOverlap:pixel(48,170),error:errors()}
   }}
   return null
 }
@@ -49,8 +62,8 @@ declare global {interface Window {__litProof:{statuses:typeof statuses;update:()
 function Fixture() {
   const [changed,setChanged]=useState(false)
   const palette=cases.map(entry=>({...entry,rgb:changed?'80,190,120':entry.rgb}))
-  return <SurfaceCanvas orthographic flat camera={{position:[0,0,1000],zoom:1}} style={{width:500,height:440}}>
-    <ambientLight intensity={Math.PI/4}/>{palette.map((entry,row)=>[1,0.5,0.25].map((alpha,col)=><Swatch key={`${entry.id}-${alpha}`} {...entry} id={`${entry.id}-${alpha}`} x={-150+150*col} y={90-90*row} alpha={alpha} changed={changed}/>))}{palette.map((entry,col)=><Swatch key={`${entry.id}-edge`} {...entry} id={`${entry.id}-edge`} x={-150+150*col} y={-180} alpha={1} edge/>)}<Observe update={()=>setChanged(true)}/>
+  return <SurfaceCanvas orthographic camera={{position:[0,0,1000],zoom:1}} style={{width:500,height:440}}>
+    <ambientLight intensity={Math.PI/4}/>{palette.map((entry,row)=>[1,0.5,0.25].map((alpha,col)=><Swatch key={`${entry.id}-${alpha}`} {...entry} id={`${entry.id}-${alpha}`} x={-150+150*col} y={90-90*row} alpha={alpha} changed={changed}/>))}{palette.map((entry,col)=><Swatch key={`${entry.id}-edge`} {...entry} id={`${entry.id}-edge`} x={-150+150*col} y={-180} alpha={1} edge/>)}<UnlitHalf id="unlit-blue" rgb="0,0,255" x={0} z={0}/><UnlitHalf id="unlit-red" rgb="255,0,0" x={32} z={1}/><Observe update={()=>setChanged(true)}/>
   </SurfaceCanvas>
 }
 createRoot(document.getElementById('root')!).render(<Fixture/>)

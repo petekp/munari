@@ -17,6 +17,7 @@ import path from 'node:path'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '..', '..')
@@ -46,6 +47,7 @@ const chromePath = CHROME_CANDIDATES.find((p) => existsSync(p))
 if (!chromePath) skip('no Chrome executable found (set CHROME_PATH)')
 
 const LAUNCH_ARGS = [
+  ...WEBGPU_CHROME_ARGS,
   '--enable-features=CanvasDrawElement',
   // A backgrounded renderer stops compositing, and a gate that reads "no
   // paints" must never let throttling manufacture that result.

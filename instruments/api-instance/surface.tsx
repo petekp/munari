@@ -42,7 +42,7 @@ function App() {
     <div id="scroller" style={{height:650,overflow:'auto',width:'100%'}}>
       <div style={{height:80}} />
       <div id="stage" style={{position:'relative',width:narrow?560:680,height:460,transform:layout==='scaled'?'scale(1.2, 0.85)':undefined,transformOrigin:'top left'}}>
-        {host&&<SurfaceCanvas id="stateful" flat pointerMode="surfaces" frameloop="demand"
+        {host&&<SurfaceCanvas id="stateful" pointerMode="surfaces" frameloop="demand"
           orthographic={orthographic} camera={{position:[0,0,5],near:0.1,far:100}}
           style={{position:layout==='fullscreen'?'fixed':'absolute',inset:0,zIndex:5}}
           onCreated={state=>Object.assign(window,{__statefulRenderer:state})}/>}

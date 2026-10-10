@@ -26,7 +26,7 @@
 // every glyph, so the middle read as a blurred crossfade rather than as
 // glass. The reveal below is a threshold instead: a front opens from the
 // centre of the sheet, ink pushes it ahead of itself, and every pixel is
-// fully one document or fully the other outside a band `uApertureEdge`
+// fully one document or fully the other outside a band `apertureEdge`
 // wide, and that band is derived per pixel from fwidth so it stays a fixed
 // number of SCREEN pixels. The ink term is what makes the claim visible
 // rather than asserted — the arriving page breaks through the text blocks
@@ -50,50 +50,193 @@
 // scaled by alpha so the transparent margin outside the panel stays empty,
 // and composited by REPLACING colour rather than adding it, which is what
 // keeps a bright streak bounded at paper-white instead of clipping.
+//
+// Both captures are SRGBColorSpace, so samples return linear values and the
+// sheet hands its premultiplied linear composite to `premultipliedOutput`,
+// which encodes it as the canvas expects. The passes that fill the ink fields
+// draw into targets with no color space, so they write raw values.
+//
+// Ownership: this module owns the pixels. refractionField.tsx owns the
+// targets the field passes draw into, refractionMaterial.tsx owns the
+// per-frame uniform writes, and refractionLaw.ts owns the shape.
 
-import { SURFACE_RADIUS_GLSL } from '@petepetrash/munari'
+import * as THREE from 'three'
+import { MeshBasicNodeMaterial, type Node, type TextureNode, type UniformNode } from 'three/webgpu'
+import {
+  Fn,
+  Loop,
+  clamp,
+  dot,
+  exp,
+  float,
+  length,
+  max,
+  min,
+  mix,
+  normalize,
+  pow,
+  reflect,
+  refract,
+  smoothstep,
+  sqrt,
+  texture,
+  uniform,
+  uv,
+  vec2,
+  vec3,
+  vec4,
+} from 'three/tsl'
+import { premultipliedOutput, type SurfaceNodes } from '@petepetrash/munari'
+import { passMaterial } from '@petepetrash/munari/advanced'
 
-export const REFRACTION_VERT = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+type Float = UniformNode<'float', number>
+type Vec2 = UniformNode<'vec2', THREE.Vector2>
+
+/**
+ * Everything the sheet reads that is not the Surface's own: the second
+ * capture, the field targets, and every tuned number. The frame loop writes
+ * `.value` on these; the built material keeps sampling the same nodes.
+ */
+export interface RefractionValues {
+  /** The resident Surface, presented nowhere. */
+  readonly incoming: TextureNode
+  /** The leaving page's ink mass, box-filtered. */
+  readonly ink: TextureNode
+  /** That same mass, grown outward into blobs. */
+  readonly spread: TextureNode
+  /** And the paper grown inward, for their insides. */
+  readonly hollow: TextureNode
+  /** 0 until its source has published. */
+  readonly hasIncoming: Float
+  /** One CSS pixel in uv, so px constants are px. */
+  readonly texel: Vec2
+  /** 1 / spread size, the step the normal measures over. */
+  readonly spreadTexel: Vec2
+  /** 0..1, the pulse. */
+  readonly relief: Float
+  /** 0..1, how far the aperture front has swept. */
+  readonly transmission: Float
+  /** The incoming view's own scale. */
+  readonly zoom: Float
+  /** 0 straight bilinear, 1 eased at texel boundaries. */
+  readonly rounding: Float
+  /** Fraction of the bend red and blue differ by. */
+  readonly dispersion: Float
+  /** Measured ink density of bare paper. */
+  readonly apertureFloor: Float
+  /** Measured ink density of a dense text block. */
+  readonly apertureCeil: Float
+  /** How far the ink steers the front. */
+  readonly apertureInk: Float
+  /** Spreads the front's travel over the page. */
+  readonly apertureGamma: Float
+  /** How far the front sweeps past both ends. */
+  readonly apertureOvershoot: Float
+  /** Seam width, in screen pixels. */
+  readonly apertureEdge: Float
+  /** CSS px over which the bend dies at the rim. */
+  readonly bendTaper: Float
+  /** How wide the drop's meniscus is. */
+  readonly rimPx: Float
+  /** How tall the drop stands. */
+  readonly heightPx: Float
+  /** Refractive index of the glass. */
+  readonly ior: Float
+  /** CSS px the arriving page moves per unit deviation. */
+  readonly refractPx: Float
+  /** How much of the room the glass mirrors. */
+  readonly reflect: Float
+  /** Where the window streak sits, in reflected y. */
+  readonly roomBand: Float
+  /** How broad that streak is. */
+  readonly roomWidth: Float
+  /** Weight of the grazing-incidence rim. */
+  readonly rim: Float
+  /** How tightly the rim hugs the steepest slope. */
+  readonly rimPow: Float
+  /** How fast the mirror falls off away from grazing. */
+  readonly fresPow: Float
+}
+
+/**
+ * The uniform and texture nodes for one sheet. Every number is rewritten by
+ * the frame loop before the sheet draws, so the zeros are placeholders —
+ * `zoom` starts at 1 only because it is a divisor.
+ */
+export function createRefractionValues(
+  textures: {
+    incoming: THREE.Texture
+    ink: THREE.Texture
+    spread: THREE.Texture
+    hollow: THREE.Texture
+  },
+  texel: THREE.Vector2,
+  spreadTexel: THREE.Vector2,
+): RefractionValues {
+  return {
+    incoming: texture(textures.incoming),
+    ink: texture(textures.ink),
+    spread: texture(textures.spread),
+    hollow: texture(textures.hollow),
+    hasIncoming: uniform(0),
+    texel: uniform(texel),
+    spreadTexel: uniform(spreadTexel),
+    relief: uniform(0),
+    transmission: uniform(0),
+    zoom: uniform(1),
+    rounding: uniform(0),
+    dispersion: uniform(0),
+    apertureFloor: uniform(0),
+    apertureCeil: uniform(1),
+    apertureInk: uniform(0),
+    apertureGamma: uniform(1),
+    apertureOvershoot: uniform(0),
+    apertureEdge: uniform(0),
+    bendTaper: uniform(1),
+    rimPx: uniform(0),
+    heightPx: uniform(0),
+    ior: uniform(1),
+    refractPx: uniform(0),
+    reflect: uniform(0),
+    roomBand: uniform(0),
+    roomWidth: uniform(1),
+    rim: uniform(0),
+    rimPow: uniform(1),
+    fresPow: uniform(1),
   }
-`
+}
 
-export const REFRACTION_FRAG = /* glsl */ `
-  uniform sampler2D tMap;        // the outgoing view, this Surface's own
-  uniform sampler2D tIncoming;   // the resident Surface, presented nowhere
-  uniform float uHasIncoming;    // 0 until its source has published
-  uniform vec2 uTexel;           // 1 / stage size, so px constants are px
-  uniform float uRelief;         // 0..1, the pulse
-  uniform float uTransmission;   // 0..1, how far the aperture front has swept
-  uniform float uZoom;           // the incoming view's own scale
-  uniform sampler2D tField;      // the leaving page's ink mass, box-filtered
-  uniform sampler2D tSpread;     // that same mass, grown outward into blobs
-  uniform sampler2D tHollow;     // and the paper grown inward, for their insides
-  uniform vec2 uSpreadTexel;     // 1 / spread size, the step the normal measures over
-  uniform float uRounding;       // 0 straight bilinear, 1 eased at texel boundaries
-  uniform float uDispersion;     // fraction of the bend red and blue differ by
-  uniform float uApertureFloor;  // measured ink density of bare paper
-  uniform float uApertureCeil;   // measured ink density of a dense text block
-  uniform float uApertureInk;    // how far the ink steers the front
-  uniform float uApertureGamma;  // spreads the front's travel over the page
-  uniform float uApertureOvershoot; // how far the front sweeps past both ends
-  uniform float uApertureEdge;   // seam width, in screen pixels
-  uniform float uBendTaper;      // CSS px over which the bend dies at the rim
-  uniform float uRimPx;          // how wide the drop's meniscus is
-  uniform float uHeightPx;       // how tall the drop stands
-  uniform float uIor;            // refractive index of the glass
-  uniform float uRefractPx;      // CSS px the arriving page moves per unit deviation
-  uniform float uReflect;        // how much of the room the glass mirrors
-  uniform float uRoomBand;       // where the window streak sits, in reflected y
-  uniform float uRoomWidth;      // how broad that streak is
-  uniform float uRim;            // weight of the grazing-incidence rim
-  uniform float uRimPow;         // how tightly the rim hugs the steepest slope
-  uniform float uFresPow;        // how fast the mirror falls off away from grazing
-  ${SURFACE_RADIUS_GLSL}
-  varying vec2 vUv;
+// SAFETY: a texture sample is a vec4; Three's types return a bare Node.
+const sample = (map: TextureNode, at: Node<'vec2'>) => map.sample(at) as Node<'vec4'>
+
+/** The sheet: the leaving capture, the arriving one through the drop, and the room the drop mirrors. */
+export function createRefractionMaterial(surface: SurfaceNodes, v: RefractionValues): MeshBasicNodeMaterial {
+  const material = new MeshBasicNodeMaterial({
+    transparent: true,
+    premultipliedAlpha: true,
+    depthWrite: false,
+    toneMapped: false,
+  })
+
+  // Hermite reconstruction of a coarse field, at the cost of no extra taps.
+  //
+  // Bilinear is C0. Its iso-lines are straight inside a texel and kink at
+  // every boundary, so the contact line drawn from a 25x19 spread is a
+  // polygon with roughly one edge per texel it crosses — the stark facets
+  // Pete photographed on 2026-08-23. Easing the fractional coordinate before
+  // the hardware lerp makes the interpolant C1 across the boundary, which is
+  // what rounds the corners out.
+  //
+  // The easing zeroes the interpolant's slope AT the boundary. Nothing here
+  // reads that slope: the normal is a central difference two spread texels
+  // wide (below), so it never straddles a single boundary and cannot pick up
+  // the flat spot.
+  const roundedUv = (at: Node<'vec2'>, texel: Node<'vec2'>): Node<'vec2'> => {
+    const t = at.div(texel).sub(0.5)
+    const i = t.floor()
+    const f = t.sub(i)
+    return i.add(0.5).add(mix(f, f.mul(f).mul(float(3).sub(f.mul(2))), v.rounding)).mul(texel)
+  }
 
   // The aperture field: where the front is, at every point of the page.
   //
@@ -106,10 +249,10 @@ export const REFRACTION_FRAG = /* glsl */ `
   //
   // The spread term is a signed distance field, and it is signed because a
   // one-sided one has nothing to say about the inside of a solid mark.
-  // tSpread grows the ink outward, so bare paper carries the height of the
-  // nearest mark less how far away it is. tHollow grows the PAPER inward,
-  // so the middle of a solid mark carries how deep it is. The difference
-  // orders both, and every mark opens from its own centre.
+  // The spread map grows the ink outward, so bare paper carries the height
+  // of the nearest mark less how far away it is. The hollow map grows the
+  // PAPER inward, so the middle of a solid mark carries how deep it is. The
+  // difference orders both, and every mark opens from its own centre.
   //
   // The fault that produced it, from Pete's screenshot on 2026-08-22: with
   // the outward spread alone, the black square figure was one flat plateau
@@ -127,61 +270,40 @@ export const REFRACTION_FRAG = /* glsl */ `
   // shape of its own, because the only thing on the page is the page.
   //
   // Both live in 0..1 against the same floor and ceiling, but the spread
-  // was normalised in its own first pass rather than here — SPREAD_FRAG
+  // was normalised in its own first pass rather than here — the spread pass
   // says why one decay cannot serve marks of different heights otherwise.
-  // Hermite reconstruction of a coarse field, at the cost of no extra taps.
-  //
-  // Bilinear is C0. Its iso-lines are straight inside a texel and kink at
-  // every boundary, so the contact line drawn from a 25x19 spread is a
-  // polygon with roughly one edge per texel it crosses — the stark facets
-  // Pete photographed on 2026-08-23. Easing the fractional coordinate before
-  // the hardware lerp makes the interpolant C1 across the boundary, which is
-  // what rounds the corners out.
-  //
-  // The easing zeroes the interpolant's slope AT the boundary. Nothing here
-  // reads that slope: the normal is a central difference two spread texels
-  // wide (below), so it never straddles a single boundary and cannot pick up
-  // the flat spot.
-  vec2 roundedUv(vec2 uv, vec2 texel) {
-    vec2 t = uv / texel - 0.5;
-    vec2 i = floor(t);
-    vec2 f = t - i;
-    return (i + 0.5 + mix(f, f * f * (3.0 - 2.0 * f), uRounding)) * texel;
+  const apertureAt = (at: Node<'vec2'>): Node<'float'> => {
+    const ink = sample(v.ink, at).r.sub(v.apertureFloor).div(v.apertureCeil.sub(v.apertureFloor)).clamp(0, 1)
+    const su = roundedUv(at, v.spreadTexel)
+    const spread = float(0.5).add(float(0.5).mul(sample(v.spread, su).r.sub(sample(v.hollow, su).r)))
+    return pow(mix(spread, ink, v.apertureInk), v.apertureGamma)
   }
 
-  float apertureAt(vec2 uv) {
-    float ink = clamp(
-      (texture2D(tField, uv).r - uApertureFloor) / (uApertureCeil - uApertureFloor),
-      0.0, 1.0);
-    vec2 su = roundedUv(uv, uSpreadTexel);
-    float spread = 0.5 + 0.5 * (texture2D(tSpread, su).r - texture2D(tHollow, su).r);
-    return pow(mix(spread, ink, uApertureInk), uApertureGamma);
-  }
-
-  void main() {
-    vec4 outgoing = texture2D(tMap, vUv);
+  material.outputNode = Fn(() => {
+    const vUv = uv()
+    const outgoing = sample(surface.map, vUv).toVar()
 
     // ── the front ──────────────────────────────────────────────────────
-    float field = apertureAt(vUv);
+    const field = apertureAt(vUv).toVar()
 
     // Swept past both ends, so t=0 reveals nothing anywhere and t=1 reveals
     // everything — a front that stopped short would leave the outgoing page
     // ghosted into the margins for good.
-    float edge = mix(1.0 + uApertureOvershoot, -uApertureOvershoot, uTransmission);
+    const edge = mix(float(1).add(v.apertureOvershoot), v.apertureOvershoot.negate(), v.transmission).toVar()
 
     // The seam is a fixed number of SCREEN pixels wide, not a fixed slice of
     // the field. The field is smooth over most of a page, so a seam stated in
     // field units spreads over half the panel and every pixel under it shows
     // both documents at once — which is the crossfade, back by another route.
     // fwidth is the field's change per pixel, so this holds the seam at
-    // uApertureEdge pixels wherever the front happens to be.
+    // apertureEdge pixels wherever the front happens to be.
     //
     // Capped at half the overshoot: near the figure's border the field steps
     // hard, and an uncapped seam there would reach back past 1.0 and reveal
     // a sliver at transmission 0. Half rather than all, so the ends clear the
     // field's range with margin instead of landing exactly on it.
-    float w = clamp(fwidth(field) * uApertureEdge, 1e-5, uApertureOvershoot * 0.5);
-    float reveal = smoothstep(edge - w, edge + w, field);
+    const w = clamp(field.fwidth().mul(v.apertureEdge), 1e-5, v.apertureOvershoot.mul(0.5))
+    const reveal = smoothstep(edge.sub(w), edge.add(w), field)
 
     // ── the body of glass ──────────────────────────────────────────────
     //
@@ -204,15 +326,13 @@ export const REFRACTION_FRAG = /* glsl */ `
     // width never showed, and a DIRECTION jump that a specular normal shows
     // as facets on a 22px grid. The wider difference reads across the
     // boundary instead of straddling it.
-    vec2 stepPx = uSpreadTexel / uTexel;
-    float gx = apertureAt(vUv + vec2(uSpreadTexel.x, 0.0))
-             - apertureAt(vUv - vec2(uSpreadTexel.x, 0.0));
-    float gy = apertureAt(vUv + vec2(0.0, uSpreadTexel.y))
-             - apertureAt(vUv - vec2(0.0, uSpreadTexel.y));
-    vec2 gPx = vec2(gx / (2.0 * stepPx.x), gy / (2.0 * stepPx.y));
-    float gm = max(length(gPx), 1e-6);
-    vec2 gdir = gPx / gm;
-    float d = (field - edge) / gm;
+    const stepPx = v.spreadTexel.div(v.texel)
+    const gx = apertureAt(vUv.add(vec2(v.spreadTexel.x, 0))).sub(apertureAt(vUv.sub(vec2(v.spreadTexel.x, 0))))
+    const gy = apertureAt(vUv.add(vec2(0, v.spreadTexel.y))).sub(apertureAt(vUv.sub(vec2(0, v.spreadTexel.y))))
+    const gPx = vec2(gx.div(stepPx.x.mul(2)), gy.div(stepPx.y.mul(2)))
+    const gm = max(length(gPx), 1e-6)
+    const gdir = gPx.div(gm)
+    const d = field.sub(edge).div(gm)
 
     // The profile is a drop: zero at the contact line, a vertical tangent
     // there, a flat top about three rim widths in. The flat top is what
@@ -223,27 +343,27 @@ export const REFRACTION_FRAG = /* glsl */ `
     // floor, and not the profile, is what sets the steepest surface the
     // glass can present, so it is what bounds the widest bend it can ask
     // for — refractionLaw.ts pins the bend against it.
-    float e = max(uRimPx, 0.5);
-    float uu = exp(-max(d, 0.0) / e);
-    float fill = sqrt(max(1.0 - uu, 0.0));
-    float dhdd = uHeightPx * uRelief * uu / (2.0 * e * max(fill, 0.06));
+    const e = max(v.rimPx, 0.5)
+    const uu = exp(max(d, 0).negate().div(e))
+    const fill = sqrt(max(float(1).sub(uu), 0))
+    const dhdd = v.heightPx.mul(v.relief).mul(uu).div(e.mul(2).mul(max(fill, 0.06)))
 
     // Outside the line there is no surface at all, so the normal is flat and
     // every term below falls out on its own rather than being faded out.
     // 1.5px of ramp is the contact line's own antialiasing — narrower than
     // the content seam on purpose, so the drop arrives a moment before what
     // is inside it does.
-    float lip = smoothstep(0.0, 1.5, d);
+    const lip = smoothstep(0, 1.5, d)
 
     // The sheet's own rim. base + bend is clamped to the texture, so a bend
     // that points outward within a bend's distance of the edge repeats the
     // arriving page's border row and draws a hard straight streak. Dying to
     // zero makes that unreachable rather than unlikely, and the law's test
     // walks every distance against the largest bend the profile can ask for.
-    vec2 toEdgePx = min(vUv, 1.0 - vUv) / uTexel;
-    float taper = smoothstep(0.0, uBendTaper, min(toEdgePx.x, toEdgePx.y));
+    const toEdgePx = min(vUv, float(1).sub(vUv)).div(v.texel)
+    const taper = smoothstep(0, v.bendTaper, min(toEdgePx.x, toEdgePx.y))
 
-    vec3 n = normalize(vec3(-dhdd * gdir * lip * taper, 1.0));
+    const n = normalize(vec3(gdir.mul(dhdd.negate()).mul(lip).mul(taper), 1)).toVar()
 
     // ── the arriving page, seen through it ─────────────────────────────
     //
@@ -251,24 +371,23 @@ export const REFRACTION_FRAG = /* glsl */ `
     // lands somewhere else on the page behind it. Past the critical angle
     // refract returns zero, which is total internal reflection and is the
     // right answer rather than a case to guard.
-    vec2 base = (vUv - 0.5) / uZoom + 0.5;
-    vec2 bend = refract(vec3(0.0, 0.0, -1.0), n, 1.0 / max(uIor, 1.0)).xy
-      * uRefractPx * uTexel;
+    const base = vUv.sub(0.5).div(v.zoom).add(0.5)
+    const bend = refract(vec3(0, 0, -1), n, float(1).div(max(v.ior, 1))).xy.mul(v.refractPx).mul(v.texel)
 
     // Glass splits the spectrum. Red takes the long way round the bend and
     // blue the short one; alpha comes from the middle tap, so the outer two
     // channels fringe against the rounded corner by a fraction of a pixel.
-    vec4 mid = texture2D(tIncoming, clamp(base + bend, 0.0, 1.0));
-    float red = texture2D(tIncoming, clamp(base + bend * (1.0 + uDispersion), 0.0, 1.0)).r;
-    float blue = texture2D(tIncoming, clamp(base + bend * (1.0 - uDispersion), 0.0, 1.0)).b;
-    vec4 incoming = vec4(red, mid.g, blue, mid.a);
+    const mid = sample(v.incoming, clamp(base.add(bend), 0, 1))
+    const red = sample(v.incoming, clamp(base.add(bend.mul(float(1).add(v.dispersion))), 0, 1)).r
+    const blue = sample(v.incoming, clamp(base.add(bend.mul(float(1).sub(v.dispersion))), 0, 1)).b
+    const arriving = vec4(red, mid.g, blue, mid.a)
 
     // Before the resident source has published there is nothing to transmit;
     // falling back to the outgoing view keeps the sheet from going blank on
     // whichever commit loses the race between two independent trees.
-    incoming = mix(outgoing, incoming, uHasIncoming);
+    const incoming = mix(outgoing, arriving, v.hasIncoming)
 
-    vec4 c = mix(outgoing, incoming, reveal);
+    const c = mix(outgoing, incoming, reveal).toVar()
 
     // ── what the glass mirrors ─────────────────────────────────────────
     //
@@ -290,38 +409,44 @@ export const REFRACTION_FRAG = /* glsl */ `
     // leaves 2.4% once F0 is renormalised out. mirrorFalloff in
     // refractionTuning.ts carries the measurement. Any positive exponent
     // keeps the flat page exactly untouched, because 1 - n.z is 0 there.
-    float F0 = 0.05;
-    float fres = F0 + (1.0 - F0) * pow(clamp(1.0 - n.z, 1e-4, 1.0), uFresPow);
-    float fresR = (fres - F0) / (1.0 - F0);
-    vec3 R = reflect(vec3(0.0, 0.0, -1.0), n);
-    float qb = (R.y - uRoomBand) / max(uRoomWidth, 1e-3);
-    float room = mix(mix(0.35, 3.0, exp(-qb * qb)), 0.08,
-                     smoothstep(0.05, 0.7, -R.y));
-    float wR = clamp(fresR * uReflect, 0.0, 1.0);
-    c.rgb = mix(c.rgb, vec3(room) * c.a, wR);
+    const F0 = 0.05
+    const fres = float(F0).add(float(1 - F0).mul(pow(clamp(float(1).sub(n.z), 1e-4, 1), v.fresPow)))
+    const fresR = fres.sub(F0).div(1 - F0)
+    const R = reflect(vec3(0, 0, -1), n)
+    const qb = R.y.sub(v.roomBand).div(max(v.roomWidth, 1e-3))
+    const room = mix(mix(0.35, 3.0, exp(qb.mul(qb).negate())), 0.08, smoothstep(0.05, 0.7, R.y.negate()))
+    const wR = clamp(fresR.mul(v.reflect), 0, 1)
+    const mirrored = mix(c.rgb, vec3(room).mul(c.a), wR)
 
     // Grazing incidence brightens a border — the tell of a raised edge of
     // glass, and the reason a droplet's rim reads before its body does.
     // Paint, not light: a white layer at its own coverage, so it is bounded
     // at paper-white and the knob stays linear all the way up.
-    float wRim = clamp(pow(clamp(1.0 - n.z, 1e-4, 1.0), uRimPow) * uRim, 0.0, 1.0);
-    c.rgb = mix(c.rgb, vec3(c.a), wRim);
+    const wRim = clamp(pow(clamp(float(1).sub(n.z), 1e-4, 1), v.rimPow).mul(v.rim), 0, 1)
+    const rimmed = mix(mirrored, vec3(c.a), wRim)
 
-    c *= munariRadiusMask(vUv);
-    gl_FragColor = c;
-    #include <colorspace_fragment>
-  }
-`
+    return premultipliedOutput(vec4(rimmed, c.a).mul(surface.radiusMask(vUv)))
+  })()
+
+  // Browser probes read the live uniform values and the leaving capture here.
+  material.userData.refractionValues = v
+  material.userData.refractionLeaving = surface.map
+
+  return material
+}
 
 // ── the ink field ───────────────────────────────────────────────────────
 
-export const FIELD_VERT = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = vec4(position.xy, 0.0, 1.0);
-  }
-`
+
+/** A field pass: the material, and the values the field hook writes into it. */
+export interface FieldPass {
+  readonly material: MeshBasicNodeMaterial
+  readonly source: TextureNode
+  /** An eighth of a field texel, in uv. */
+  readonly step: Vec2
+  /** 0 how dark the patch is, 1 how busy it is. */
+  readonly detail: Float
+}
 
 // One box filter, run into a target a sixteenth of the page's size. Sixty-
 // four bilinear taps span two field texels, so every source texel under the
@@ -332,44 +457,62 @@ export const FIELD_VERT = /* glsl */ `
 // sampling a periodic signal, and the "smooth" gradient it returned jumped
 // between neighbouring pixels — the arriving page came out as colour noise
 // at every bend tried, worse than the sharp gradient it replaced.
-export const FIELD_FRAG = /* glsl */ `
-  uniform sampler2D tSource;
-  uniform vec2 uStep;            // an eighth of a field texel, in uv
-  uniform float uDetail;         // 0 how dark the patch is, 1 how busy it is
-  varying vec2 vUv;
+export function createFieldPass(placeholder: THREE.Texture): FieldPass {
+  const material = passMaterial()
+  const source = texture(placeholder)
+  const step = uniform(new THREE.Vector2(1, 1))
+  const detail = uniform(0)
 
-  float lum(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+  const lum = (c: Node<'vec3'>) => dot(c, vec3(0.2126, 0.7152, 0.0722))
 
-  void main() {
-    float sum = 0.0;
-    float vs = 0.0;
-    float vss = 0.0;
-    for (int y = 0; y < 8; y++) {
-      for (int x = 0; x < 8; x++) {
-        vec2 o = (vec2(float(x), float(y)) - 3.5) * 2.0 * uStep;
-        vec4 c = texture2D(tSource, vUv + o);
-        sum += (1.0 - lum(c.rgb)) * c.a;
-        // Composited over white, which is what an eye integrates. The source
-        // is premultiplied, so its colour is already scaled by alpha and the
-        // paper is whatever alpha did not cover (decisions.md #5).
-        float v = lum(c.rgb) + (1.0 - c.a);
-        vs += v;
-        vss += v * v;
-      }
-    }
+  material.outputNode = Fn(() => {
+    const at = uv()
+    const sum = float(0).toVar()
+    const vs = float(0).toVar()
+    const vss = float(0).toVar()
+    Loop({ type: 'int', start: 0, end: 8 }, { type: 'int', start: 0, end: 8 }, ({ i, j }) => {
+      const o = vec2(float(j), float(i)).sub(3.5).mul(2).mul(step)
+      const c = sample(source, at.add(o))
+      const l = lum(c.rgb).toVar()
+      sum.addAssign(float(1).sub(l).mul(c.a))
+      // Composited over white, which is what an eye integrates. The source
+      // is premultiplied, so its colour is already scaled by alpha and the
+      // paper is whatever alpha did not cover (decisions.md #5).
+      const v = l.add(float(1).sub(c.a)).toVar()
+      vs.addAssign(v)
+      vss.addAssign(v.mul(v))
+    })
     // Standard deviation across the 64 taps: how much the patch varies rather
     // than how dark it is. Doubled because the busiest a patch can be is half
     // black and half white, which deviates by 0.5.
-    float mean = vs / 64.0;
-    float busy = clamp(2.0 * sqrt(max(vss / 64.0 - mean * mean, 0.0)), 0.0, 1.0);
-    gl_FragColor = vec4(mix(sum / 64.0, busy, uDetail), 0.0, 0.0, 1.0);
-  }
-`
+    const mean = vs.div(64)
+    const busy = clamp(sqrt(max(vss.div(64).sub(mean.mul(mean)), 0)).mul(2), 0, 1)
+    return vec4(mix(sum.div(64), busy, detail), 0, 0, 1)
+  })()
+
+  return { material, source, step, detail }
+}
+
+/** A spread pass: the material, and the values the field hook writes into it. */
+export interface SpreadPass {
+  readonly material: MeshBasicNodeMaterial
+  readonly source: TextureNode
+  /** Half a texel of THIS pass, in uv. */
+  readonly step: Vec2
+  /** Subtracted before scaling; 0 after pass 0. */
+  readonly floor: Float
+  /** 1 / (ceil - floor); 1 after pass 0. */
+  readonly scale: Float
+  /** Height lost per texel travelled, 1 / passes. */
+  readonly decay: Float
+  /** 1 on pass 0 of the hollow chain, else 0. */
+  readonly invert: Float
+}
 
 // One step of the aperture's spread — the ink field, normalised, grown
 // outward by one texel and charged for the distance.
 //
-// A grassfire. Each tap pays uDecay times how far it reaches, and the pass
+// A grassfire. Each tap pays `decay` times how far it reaches, and the pass
 // keeps the largest survivor, so a point N texels from the nearest ink
 // carries that ink's height less N drops: a distance field wearing the ink's
 // own values. Charging by the tap's actual length rather than a flat rate is
@@ -394,35 +537,36 @@ export const FIELD_FRAG = /* glsl */ `
 // It also buys back the resolution: an 8-bit target held 33 usable levels
 // across a raw range of 0.129 and holds 255 across 0..1.
 //
-// Pass 0 does the normalising and the rest run idempotent, with uFloor 0 and
-// uScale 1 — one pair of uniform writes rather than a second program. The
+// Pass 0 does the normalising and the rest run idempotent, with floor 0 and
+// scale 1 — one pair of uniform writes rather than a second program. The
 // same switch runs the chain twice: once on the ink and once on its inverse,
-// which is what gives a solid mark an inside. uInvert is pass 0's only,
+// which is what gives a solid mark an inside. `invert` is pass 0's only,
 // because after it the field is already whichever of the two it is.
 //
 // Twenty-five taps at half a texel, so the box is contiguous over the source
 // rather than sampling it at intervals — the mistake refractionField.tsx's
 // preamble records paying a day for.
-export const SPREAD_FRAG = /* glsl */ `
-  uniform sampler2D tSource;
-  uniform vec2 uStep;            // half a texel of THIS pass, in uv
-  uniform float uFloor;          // subtracted before scaling; 0 after pass 0
-  uniform float uScale;          // 1 / (ceil - floor); 1 after pass 0
-  uniform float uDecay;          // height lost per texel travelled, 1 / passes
-  uniform float uInvert;         // 1 on pass 0 of the hollow chain, else 0
-  varying vec2 vUv;
+export function createSpreadPass(placeholder: THREE.Texture): SpreadPass {
+  const material = passMaterial()
+  const source = texture(placeholder)
+  const step = uniform(new THREE.Vector2(1, 1))
+  const floor = uniform(0)
+  const scale = uniform(1)
+  const decay = uniform(0)
+  const invert = uniform(0)
 
-  void main() {
-    float best = 0.0;
-    for (int y = 0; y < 5; y++) {
-      for (int x = 0; x < 5; x++) {
-        vec2 tap = (vec2(float(x), float(y)) - 2.0) * 0.5;
-        float raw = texture2D(tSource, clamp(vUv + tap * uStep * 2.0, 0.0, 1.0)).r;
-        float v = clamp((raw - uFloor) * uScale, 0.0, 1.0);
-        v = mix(v, 1.0 - v, uInvert);
-        best = max(best, v - uDecay * length(tap));
-      }
-    }
-    gl_FragColor = vec4(best, 0.0, 0.0, 1.0);
-  }
-`
+  material.outputNode = Fn(() => {
+    const at = uv()
+    const best = float(0).toVar()
+    Loop({ type: 'int', start: 0, end: 5 }, { type: 'int', start: 0, end: 5 }, ({ i, j }) => {
+      const tap = vec2(float(j), float(i)).sub(2).mul(0.5)
+      const raw = sample(source, at.add(tap.mul(step).mul(2)).clamp(0, 1)).r
+      const height = raw.sub(floor).mul(scale).clamp(0, 1).toVar()
+      const v = mix(height, float(1).sub(height), invert)
+      best.assign(max(best, v.sub(decay.mul(length(tap)))))
+    })
+    return vec4(best, 0, 0, 1)
+  })()
+
+  return { material, source, step, floor, scale, decay, invert }
+}

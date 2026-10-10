@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
 import { waitForSurfaceInput } from '../surfaceInput.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const labRoot = path.resolve(here, '..', '..', 'apps', 'lab')
@@ -91,6 +92,7 @@ try {
     // Headed: the honest compositor path and the machine's real GPU.
     headless: false,
     args: [
+      ...WEBGPU_CHROME_ARGS,
       '--enable-features=CanvasDrawElement',
       '--disable-gpu-vsync',
       '--disable-frame-rate-limit',

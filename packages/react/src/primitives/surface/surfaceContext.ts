@@ -14,6 +14,7 @@
 
 import { createContext, use, useCallback, useMemo, useSyncExternalStore, type ReactNode } from 'react'
 import type * as THREE from 'three'
+import type { UniformNode } from 'three/webgpu'
 import type { SurfaceChrome, SurfacePartId } from '@munari/core'
 import { surfaceStoreOf } from './surfaceHandle'
 import type { SurfaceStore, SurfaceHandle } from './surfaceHandle'
@@ -92,10 +93,17 @@ export const DEFAULT_PART: SurfacePartId = 'default'
  * compiles fine and then never moves.
  */
 export interface SurfaceMaterialValue {
-  readonly radii: { value: THREE.Vector4 }
-  readonly size: { value: THREE.Vector2 }
+  /** The presenter's corner radii in source CSS px, written in place. */
+  readonly radii: UniformNode<'vec4', THREE.Vector4>
+  /** The source's CSS size, written in place. */
+  readonly size: UniformNode<'vec2', THREE.Vector2>
   /** True when the presenter was asked to honor the capture's alpha. */
   readonly transparent: boolean
+  /**
+   * Run `callback` in the mesh's `onBeforeRender`, before each draw. A
+   * material's own `onBeforeRender` never runs on WebGPURenderer.
+   */
+  readonly beforeDraw: (callback: () => void) => () => void
 }
 
 export const SurfaceMaterialContext = createContext<SurfaceMaterialValue | null>(null)
@@ -157,6 +165,11 @@ export function useSurfaceInstance(): SurfaceInstance {
  * only after a configured texture exists, so the material's first render
  * already samples real pixels rather than binding null and waiting for a
  * re-render that a memoized material may never take.
+ *
+ * The texture is premultiplied (decisions.md #5). A stock Three material
+ * multiplies it by alpha again, so a half-transparent page pixel lands at
+ * half its value. Sample it in a node material that returns its color
+ * through `premultipliedOutput`.
  */
 export function useSurfaceTexture(): THREE.Texture {
   const part = useSurfacePart('useSurfaceTexture')

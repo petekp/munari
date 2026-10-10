@@ -28,7 +28,7 @@
 // the cut is a knob — at a real brilliant's 34/41 it takes over, where 2,890
 // of the same rays find no exit at all and a quarter of the rest bounce.
 //
-// The fault this file exists to guard: this copy and the GLSL can drift
+// The fault this file exists to guard: this copy and the node material can drift
 // while the PICTURE stays correct, because the shader is the one drawing.
 // Only the click goes wrong. It is invisible in review, invisible in a
 // screenshot, and arrives as "this demo feels broken" with nothing to see.
@@ -36,7 +36,7 @@
 // what compares it with the shader.
 //
 // Ownership: shape, optics and physics as pure functions. Pixels are
-// `crystalShaders.ts`, numbers are `crystalTuning.ts`, the mount is
+// `crystalNodes.ts`, numbers are `crystalTuning.ts`, the mount is
 // `Crystal.tsx`.
 
 import type { CrystalTuning } from './crystalTuning'
@@ -52,7 +52,7 @@ export type Vec3 = readonly [number, number, number]
  * notch, a tail kicked out to the right, a shoulder back to the tip. Sixteen
  * units wide and 26.5 tall.
  *
- * Transcribed vertex for vertex into `ARROW_GLSL`. The two are one shape and
+ * Transcribed vertex for vertex into `ARROW` in `crystalNodes.ts`. The two are one shape and
  * the test pins them to the same distances.
  */
 export const ARROW: readonly (readonly [number, number])[] = [

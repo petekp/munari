@@ -34,7 +34,7 @@ function App() {
   }}})
   return <main style={{padding:30,fontFamily:'system-ui'}}>
     <h1>Shared-source pointer ownership</h1>
-    <SurfaceCanvas id="pointer" orthographic camera={{position:[0,0,1000],zoom:1,near:0.1,far:2000}} frameloop="demand" flat pointerMode="surfaces" style={{position:'fixed',inset:0,zIndex:4}}>
+    <SurfaceCanvas id="pointer" orthographic camera={{position:[0,0,1000],zoom:1,near:0.1,far:2000}} frameloop="demand" pointerMode="surfaces" style={{position:'fixed',inset:0,zIndex:4}}>
       <group name="scene-label-aspect" position={[280,250,0]} scale={80}>
         <SceneSurface size={[240,80]}><div data-scene-label style={{width:240,height:80,background:'#cf5f22'}}>Scene label</div></SceneSurface>
       </group>

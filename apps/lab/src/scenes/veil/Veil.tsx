@@ -38,6 +38,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { RefObject } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import { WebGPURenderer } from 'three/webgpu'
 import {
   useElementCapture,
   useCaptureFrame,
@@ -47,14 +48,7 @@ import {
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { VEIL_DEFAULTS, veilReturn, veilStrip } from './veilLaw'
-import {
-  VEIL_BAND_FRAG,
-  VEIL_BAND_VERT,
-  VEIL_COPY_FRAG,
-  VEIL_PASS_FRAG,
-  VEIL_QUAD_VERT,
-} from './veilShaders'
-import { textureSlot } from '../../lib/uniforms'
+import { createVeilBand, createVeilBlur, createVeilCopy } from './veilNodes'
 import type { VeilGateEntry } from '../../lib/devGlobals'
 import './veil.css'
 
@@ -201,14 +195,14 @@ function stepGate(matched: boolean, matchedSince: RefObject<number | null>): num
 
 /** Appends one frame to the dev ring and trims it back to 400. */
 function pushGateRecord(
-  m: THREE.ShaderMaterial | null,
+  gateValue: number,
   facts: Omit<VeilGateEntry, 't' | 'muGate'>,
 ) {
   const log = (window.__veilGateLog ??= [])
   log.push({
     t: Math.round(performance.now() * 10) / 10,
     ...facts,
-    muGate: m ? Math.round((m.uniforms.uGate?.value ?? -1) * 1000) / 1000 : 'no-mat',
+    muGate: Math.round(gateValue * 1000) / 1000,
   })
   if (log.length > 400) log.splice(0, log.length - 400)
 }
@@ -265,7 +259,7 @@ function makeRt(w: number, h: number) {
   // HalfFloat linear, mipmapped on write: the mips are what turn the
   // 13-tap comb into a gaussian at every density (veilLod), and
   // averaging is only honest in linear premultiplied.
-  return new THREE.WebGLRenderTarget(w, h, {
+  return new THREE.RenderTarget(w, h, {
     type: THREE.HalfFloatType,
     depthBuffer: false,
     generateMipmaps: true,
@@ -280,6 +274,9 @@ function VeilBand({ capture, painted, content, scroller, slab, sheet }: BandProp
   const texture = frames.get()?.texture ?? null
   const paintedSize = (): readonly [number, number] => { const frame = frames.get(); return frame ? [frame.width, frame.height] : [0, 0] }
   const gl = useThree((s) => s.gl)
+  // Fiber types the renderer as WebGLRenderer; SurfaceCanvas supplies a
+  // WebGPURenderer, which is what takes a RenderTarget.
+  if (!(gl instanceof WebGPURenderer)) throw new Error('The veil needs the WebGPURenderer from SurfaceCanvas')
   const size = useThree((s) => s.size)
   const invalidate = useThree((s) => s.invalidate)
   const dpr = gl.getPixelRatio()
@@ -302,61 +299,42 @@ function VeilBand({ capture, painted, content, scroller, slab, sheet }: BandProp
   // The offscreen passes: one clip-space quad each, no camera worth
   // naming.
   const passes = useMemo(() => {
-    const make = (frag: string, uniforms: Record<string, THREE.IUniform>) => {
+    // The texture nodes' stand-in until the frame loop points each at its
+    // real source, before any pass draws.
+    const placeholder = new THREE.Texture()
+    const quad = (material: THREE.Material) => {
       const scene = new THREE.Scene()
-      const material = new THREE.ShaderMaterial({
-        vertexShader: VEIL_QUAD_VERT,
-        fragmentShader: frag,
-        uniforms,
-      })
-      const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material)
-      quad.frustumCulled = false
-      scene.add(quad)
-      return { scene, material }
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material)
+      mesh.frustumCulled = false
+      scene.add(mesh)
+      return scene
     }
+    const copy = createVeilCopy(placeholder)
+    const blur = createVeilBlur(placeholder)
     return {
-      copy: make(VEIL_COPY_FRAG, {
-        tMap: { value: null },
-        uContent: { value: new THREE.Vector2(1, 1) },
-        uStrip: { value: new THREE.Vector2(0, 1) },
-        uSize: { value: new THREE.Vector2(1, 1) },
-        uWindow: { value: 0 },
-      }),
-      blur: make(VEIL_PASS_FRAG, {
-        tWin: { value: null },
-        uStrip: { value: new THREE.Vector2(0, 1) },
-        uSize: { value: new THREE.Vector2(1, 1) },
-        uDpr: { value: 1 },
-        uBand: { value: new THREE.Vector2(0, BAND_H) },
-        uMaxR: { value: VEIL_DEFAULTS.maxRadius },
-        uCurve: { value: VEIL_DEFAULTS.curve },
-      }),
-      camera: new THREE.Camera(),
+      placeholder,
+      copy: { ...copy, scene: quad(copy.material) },
+      blur: { ...blur, scene: quad(blur.material) },
+      band: createVeilBand(placeholder),
+      // passMaterial ignores the camera, but WebGPURenderer calls
+      // updateProjectionMatrix on it, which the base Camera lacks.
+      camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1),
     }
   }, [])
   useEffect(
     () => () => {
+      for (const scene of [passes.copy.scene, passes.blur.scene]) {
+        scene.traverse((o) => {
+          if (o instanceof THREE.Mesh) o.geometry.dispose()
+        })
+      }
       passes.copy.material.dispose()
       passes.blur.material.dispose()
+      passes.band.material.dispose()
+      passes.placeholder.dispose()
     },
     [passes],
   )
-
-  const bandUniforms = useMemo(
-    () => ({
-      tBlur: textureSlot(),
-      uStrip: { value: new THREE.Vector2(0, 1) },
-      uSize: { value: new THREE.Vector2(1, 1) },
-      uDpr: { value: 1 },
-      uBand: { value: new THREE.Vector2(0, BAND_H) },
-      uMaxR: { value: VEIL_DEFAULTS.maxRadius },
-      uCurve: { value: VEIL_DEFAULTS.curve },
-      uFade: { value: VEIL_DEFAULTS.fade },
-      uGate: { value: 0 },
-    }),
-    [],
-  )
-  const bandMat = useRef<THREE.ShaderMaterial>(null)
   // The frame this band's copy last started agreeing with the live
   // page's own layout generation — null while they disagree. Re-stamped
   // every time a mismatch resolves, so a second resize mid-return
@@ -406,54 +384,48 @@ function VeilBand({ capture, painted, content, scroller, slab, sheet }: BandProp
     const matched = pw > 0 && pw === liveW && ph === liveH
     const gate = stepGate(matched, matchedSinceRef)
 
-    const cu = passes.copy.material.uniforms
-    cu.tMap.value = texture
+    const cu = passes.copy
+    cu.map.value = texture
     // The box the PIXELS were replayed at, never the box the page has
     // this frame: the raster only ever holds what paintedSize() says it
     // holds, and sampling it by any other box reads the wrong texels off
     // the same texture memory. Correct at every frame regardless of the
     // gate below — the fragment shader has no idea the gate exists, only
     // the scene does.
-    cu.uContent.value.set(pw, ph)
-    cu.uStrip.value.set(strip.top, strip.height)
-    cu.uSize.value.set(size.width, size.height)
-    cu.uWindow.value = ty
+    cu.content.value.set(pw, ph)
+    cu.strip.value.set(strip.top, strip.height)
+    cu.size.value.set(size.width, size.height)
+    cu.windowY.value = ty
     gl.setRenderTarget(rts.window)
     gl.render(passes.copy.scene, passes.camera)
 
-    const bu = passes.blur.material.uniforms
-    bu.tWin.value = rts.window.texture
-    bu.uStrip.value.set(strip.top, strip.height)
-    bu.uSize.value.set(size.width, size.height)
-    bu.uDpr.value = dpr
+    const bu = passes.blur
+    bu.map.value = rts.window.texture
+    bu.profile.strip.value.set(strip.top, strip.height)
+    bu.profile.size.value.set(size.width, size.height)
+    bu.profile.dpr.value = dpr
     gl.setRenderTarget(rts.strip)
     gl.render(passes.blur.scene, passes.camera)
     gl.setRenderTarget(null)
 
-    // The band's uniforms update through the MATERIAL's entries, same
-    // as the pass materials above. The `uniforms` prop is only initial
-    // values: r3f copies each entry into the material's own uniforms
-    // object at (re)mount ("stable target reference"), so a write to
-    // bandUniforms after that reaches nothing the renderer reads.
-    // Writing there cost us the resize: the strip RT is recreated on
-    // width change, the material kept sampling the DISPOSED old strip
-    // texture — which three re-initializes as an empty texture — and
-    // the band faded in honest, invisible, alpha-zero fragments
-    // (observed as the veil vanishing on window resize, 2026-08-08).
-    const m = bandMat.current
-    if (m) {
-      m.uniforms.tBlur.value = rts.strip.texture
-      m.uniforms.uStrip.value.set(strip.top, strip.height)
-      m.uniforms.uSize.value.set(size.width, size.height)
-      m.uniforms.uDpr.value = dpr
-      m.uniforms.uGate.value = gate
-    }
+    // The band samples the strip RT through a node whose value is
+    // written here every frame. The strip RT is recreated on width
+    // change, and a band left sampling the DISPOSED old strip texture —
+    // which three re-initializes as an empty texture — fades in honest,
+    // invisible, alpha-zero fragments (observed as the veil vanishing on
+    // window resize, 2026-08-08).
+    const band = passes.band
+    band.map.value = rts.strip.texture
+    band.profile.strip.value.set(strip.top, strip.height)
+    band.profile.size.value.set(size.width, size.height)
+    band.profile.dpr.value = dpr
+    band.gate.value = gate
 
     if (import.meta.env.DEV) {
       // Diagnostic ring log for instruments — one record per frame that
       // reached this point, so a probe can see WHICH frames ran and what
       // the gate saw on each, not just the last survivor.
-      pushGateRecord(m, {
+      pushGateRecord(band.gate.value, {
         pw, ph, liveW, liveH,
         cw: content.w, ch: content.h,
         matched, gate: Math.round(gate * 1000) / 1000,
@@ -472,19 +444,7 @@ function VeilBand({ capture, painted, content, scroller, slab, sheet }: BandProp
   return (
     <mesh visible={painted}>
       <planeGeometry args={[size.width, size.height]} />
-      {/* Transparent + premultiplied (decisions.md #5): the fragment
-          fades the band in from the seam, and the live page has to show
-          through the faded rows — an opaque band would replace them. */}
-      <shaderMaterial
-        key={texture?.uuid ?? 'none'}
-        ref={bandMat}
-        uniforms={bandUniforms}
-        vertexShader={VEIL_BAND_VERT}
-        fragmentShader={VEIL_BAND_FRAG}
-        toneMapped={false}
-        transparent
-        premultipliedAlpha
-      />
+      <primitive object={passes.band.material} attach="material" />
     </mesh>
   )
 }

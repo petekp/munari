@@ -27,6 +27,8 @@
 
 import {
   adoptContent,
+  captureContext,
+  captureMemoryChosen,
   createCaptureCanvas,
   PARKED_HOST_ATTRIBUTE,
   type CaptureCanvas,
@@ -170,11 +172,9 @@ function createHtmlInCanvasSource(
   canvas.appendChild(element)
   document.body.appendChild(canvas)
 
-  // SAFETY: same trial API as the canvas above — drawElementImage is
-  // Chrome's addition to the 2d context. The '2d' context id cannot return
-  // null for a canvas this function just created and has not asked for
-  // another context on.
-  const ctx = canvas.getContext('2d') as TrialContext2D
+  // Taken at the first paint, once capture storage is chosen, because a
+  // context's storage is fixed when it is created (domTextureSource.ts).
+  let ctx: TrialContext2D | null = null
 
   canvas.onpaint = () => {
     // The one place this engine spends a paint. Declining leaves the canvas
@@ -185,10 +185,21 @@ function createHtmlInCanvasSource(
       missed = true
       return
     }
+    const chosen = captureMemoryChosen()
+    if (chosen) {
+      missed = true
+      void chosen.then(requestPaint)
+      return
+    }
     const requested = owed
     owed = false
     missed = false
     try {
+      // SAFETY: same trial API as the canvas above — drawElementImage is
+      // Chrome's addition to the 2d context. The '2d' context id cannot
+      // return null for a canvas that no other context id was asked of.
+      ctx ??= captureContext(canvas) as TrialContext2D
+
       // The replay is auto-scaled by the canvas's backing/CSS ratio, and any
       // CTM multiplies ON TOP of that (measured with position-marker dots:
       // effective = ratio × CTM at every k — platform.md #8). The ratio IS

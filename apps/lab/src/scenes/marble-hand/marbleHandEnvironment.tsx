@@ -13,7 +13,7 @@
 // The second fault, 2026-08-31: the page's colour now comes from a canvas,
 // and cloneNode gives a blank one, so the capture carries transparent pixels
 // where the field used to be. This scene draws that field itself, from the
-// same GLSL and the same published second as the page canvas, on a plane
+// same node graph and the same published second as the page canvas, on a plane
 // directly behind the captured page.
 //
 // Ownership: native DOM owns text, input and paint. This module owns the
@@ -24,6 +24,7 @@
 import { useEffect, useLayoutEffect, useMemo, type RefObject } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import { CubeRenderTarget, PMREMGenerator, WebGPURenderer } from 'three/webgpu'
 import {
   marbleEnvironmentRays,
   nextMarbleReflectionTime,
@@ -31,7 +32,12 @@ import {
   type MarblePageField,
 } from './marbleHandEnvironmentLaw'
 import { marbleBackgroundClock } from './marbleHandBackgroundClock'
-import { createMarbleBackgroundMaterial, marbleBackgroundTuningStamp, setMarbleBackgroundFrame } from './marbleHandBackgroundShaders'
+import {
+  createMarbleBackgroundMaterial,
+  marbleBackgroundTuningStamp,
+  setMarbleBackgroundFrame,
+  type MarbleBackgroundMaterial,
+} from './marbleHandBackgroundNodes'
 import type { MarbleHandThemeId } from './marbleHandThemes'
 import type { MarbleHandTuning } from './marbleHandTuning'
 import type { MarblePageCaptureState } from './marbleHandPageCapture'
@@ -67,8 +73,8 @@ interface EnvironmentState {
   image: ImageData
   rays: Float32Array
   texture: THREE.CanvasTexture | null
-  pmrem: THREE.PMREMGenerator | null
-  target: THREE.WebGLRenderTarget | null
+  pmrem: PMREMGenerator | null
+  target: THREE.RenderTarget | null
   weights: number[]
   revision: number
   signature: number
@@ -79,12 +85,12 @@ interface EnvironmentState {
   nextBake: number
   bakeFps: number
   reflectionScene: THREE.Scene
-  cube: THREE.WebGLCubeRenderTarget
+  cube: CubeRenderTarget
   camera: THREE.CubeCamera
   pageMesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>
   roomMesh: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>
-  backgroundMesh: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>
-  backgroundMaterials: Map<MarbleHandThemeId, THREE.ShaderMaterial>
+  backgroundMesh: THREE.Mesh<THREE.PlaneGeometry, MarbleBackgroundMaterial>
+  backgroundMaterials: Map<MarbleHandThemeId, MarbleBackgroundMaterial>
   backgroundTime: number
 }
 
@@ -147,7 +153,7 @@ function paintField(ctx: CanvasRenderingContext2D, field: PaintField) {
   }
 }
 
-function backgroundMaterialFor(state: EnvironmentState, theme: MarbleHandThemeId): THREE.ShaderMaterial {
+function backgroundMaterialFor(state: EnvironmentState, theme: MarbleHandThemeId): MarbleBackgroundMaterial {
   const existing = state.backgroundMaterials.get(theme)
   if (existing) return existing
   const created = createMarbleBackgroundMaterial(theme)
@@ -168,7 +174,7 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture, theme }: 
   const state = useMemo<EnvironmentState>(() => {
     const env = context(ENV_WIDTH, ENV_HEIGHT)
     const reflectionScene = new THREE.Scene()
-    const cube = new THREE.WebGLCubeRenderTarget(REFLECTION_FACE_SIZE, {
+    const cube = new CubeRenderTarget(REFLECTION_FACE_SIZE, {
       type: THREE.HalfFloatType,
       generateMipmaps: false,
       minFilter: THREE.LinearFilter,
@@ -228,18 +234,16 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture, theme }: 
     state.texture.colorSpace = THREE.SRGBColorSpace
     state.roomMesh.material.map = state.texture
     state.roomMesh.material.needsUpdate = true
-    state.pmrem = new THREE.PMREMGenerator(gl)
-    state.pmrem.compileCubemapShader()
-    // Restored render targets have no pixels even when the DOM and hand
-    // are still. Force a fresh source upload and PMREM bake in that case.
-    const restore = () => {
-      state.bakeKey = ''
-      state.lastBake = -Infinity
-      state.nextBake = -Infinity
-      if (state.texture) state.texture.needsUpdate = true
-    }
-    restore()
-    gl.domElement.addEventListener('webglcontextrestored', restore)
+    // Fiber types the renderer as WebGLRenderer; SurfaceCanvas supplies a
+    // WebGPURenderer, whose PMREM generator builds node materials.
+    if (!(gl instanceof WebGPURenderer)) throw new Error('The marble environment needs the WebGPURenderer from SurfaceCanvas')
+    state.pmrem = new PMREMGenerator(gl)
+    void state.pmrem.compileCubemapShader()
+    // A new renderer's targets have no pixels even when the DOM and hand
+    // are still. Force a fresh source upload and PMREM bake for it.
+    state.bakeKey = ''
+    state.lastBake = -Infinity
+    state.nextBake = -Infinity
     // Taking the value as it is published, rather than reading the clock in
     // useFrame, keeps the reflected field on the page canvas's exact second
     // however the two render loops happen to be ordered within a frame.
@@ -249,7 +253,6 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture, theme }: 
     })
     return () => {
       stopClock()
-      gl.domElement.removeEventListener('webglcontextrestored', restore)
       if (scene.environment === state.target?.texture) {
         scene.environment = previous
         scene.environmentIntensity = previousIntensity
@@ -415,7 +418,7 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture, theme }: 
     // The private scene is never mounted in the page overlay. Its plane
     // cannot replace, cover, or receive input meant for the native HTML.
     state.camera.update(gl, state.reflectionScene)
-    state.target = state.pmrem.fromCubemap(state.cube.texture, state.target ?? undefined)
+    state.target = state.pmrem.fromCubemap(state.cube.texture, state.target)
     state.target.texture.name = 'marble-hand-page-environment'
     state.target.texture.userData.captureKind = fullPage ? 'full-page' : 'room-only'
     state.target.texture.userData.captureRevision = capture.revision

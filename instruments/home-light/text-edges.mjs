@@ -8,13 +8,19 @@ import {tmpdir} from 'node:os'
 import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
 import {setChromeViewport} from '../chromeViewport.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output=process.env.LIGHT_PROOF_OUTPUT??path.join(tmpdir(),'munari-text-edges')
 await mkdir(output,{recursive:true})
 const observer={name:'text-edge-observer',enforce:'pre',transform(code,id){
   // Isolate the native fallback's receiver edge; shader coverage has its own probe.
   if(id.endsWith('/homeHeadlineTreatments.ts'))code=replaceSource(code,'  if(!solid||!shaded)return null','  return null')
-  if(id.endsWith('/homeLight.ts'))code=replaceSource(code,'  material.uniforms.uLightHeight.value = lightHeight','  window.__typeLight=material;window.__typeFragment??=material.fragmentShader;\n  material.uniforms.uLightHeight.value = lightHeight')
+  if(id.endsWith('/homeLight.ts')){
+    code=replaceSource(code,'  material.values.lightHeight.value = lightHeight','  window.__typeLight=material;\n  material.values.lightHeight.value = lightHeight')
+    // The receiver inset becomes a uniform, so each control redraws the same shader.
+    code=replaceSource(code,'const GLYPH_RECEIVER_INSET = 1.5\n','const GLYPH_RECEIVER_INSET = uniform(1.5)\nwindow.__typeInset = {node: GLYPH_RECEIVER_INSET, original: 1.5}\n')
+    code=replaceSource(code,'ink.lessThan(-GLYPH_RECEIVER_INSET)','ink.lessThan(GLYPH_RECEIVER_INSET.negate())')
+  }
   if(id.endsWith('/HomeMasthead.tsx'))code=replaceSource(code,'    build()\n    void document.fonts.ready.then(build)\n    const observer = new ResizeObserver(build)','    window.__buildTypeMask=build;\n    build()\n    void document.fonts.ready.then(build)\n    const observer = new ResizeObserver(build)')
   return code
 }}
@@ -24,7 +30,7 @@ const shell={name:'text-zoom-shell',configureServer(server){server.middlewares.u
 })}}
 const server=await createServer({root:path.resolve(import.meta.dirname,'../../apps/lab'),plugins:[observer,shell],cacheDir:path.join(output,'.vite'),logLevel:'warn',server:{host:'127.0.0.1',port:0}})
 await server.listen()
-const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null})
+const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',defaultViewport:null,args:[...WEBGPU_CHROME_ARGS]})
 const frames=(page,count=4)=>page.evaluate(count=>new Promise(resolve=>{const next=()=>--count?requestAnimationFrame(next):resolve();requestAnimationFrame(next)}),count)
 try{
   const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(String(e)))
@@ -33,7 +39,7 @@ try{
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/__text_zoom`,{waitUntil:'load'})
   const frame=await page.waitForFrame(f=>f.url().includes('scene=home'))
   await frame.evaluate(()=>document.fonts.ready)
-  await frame.waitForFunction(()=>window.__typeLight?.uniforms.uInkReady.value===1&&window.__buildTypeMask)
+  await frame.waitForFunction(()=>window.__typeLight?.values.inkReady.value===1&&window.__buildTypeMask)
   await frame.evaluate(()=>{document.querySelector('.home-light-scene').style.display='none';document.querySelector('.home-light').style.opacity='0'})
   // The handle can start outside the cropped frame. Its existing keyboard
   // action sets a stable side light without changing page typography.
@@ -49,10 +55,14 @@ try{
   const parent=await page.evaluate(()=>({left:visualViewport.offsetLeft,top:visualViewport.offsetTop,width:visualViewport.width,scale:visualViewport.scale,frame:document.querySelector('iframe').getBoundingClientRect().toJSON()}))
   assert.equal(parent.scale,3,'The fringe comparison must engage parent zoom')
   const capture=async(name)=>{
-    await frame.evaluate(()=>{
-      const canvas=document.querySelector('.home-light-host canvas'),gl=canvas?.getContext('webgl2')
-      if(!gl||gl.isContextLost()||gl.drawingBufferWidth<=0||gl.drawingBufferHeight<=0||gl.getError()!==gl.NO_ERROR)throw new Error('The fringe comparison needs a readable lighting framebuffer')
+    const backend=await frame.evaluate(()=>{
+      // getContext returns the canvas's existing context of that type, or null.
+      const canvas=document.querySelector('.home-light-host canvas'),gl=canvas?.getContext('webgl2'),gpu=gl?null:canvas?.getContext('webgpu')
+      const drawing=gl?!gl.isContextLost()&&gl.drawingBufferWidth>0&&gl.drawingBufferHeight>0&&gl.getError()===gl.NO_ERROR:Boolean(gpu?.getConfiguration())&&canvas.width>0&&canvas.height>0
+      if(!drawing||document.querySelector('.home-light-host[data-degraded]'))throw new Error('The fringe comparison needs a drawing lighting canvas')
+      return gl?'webgl2':'webgpu'
     })
+    assert.equal(backend,process.env.MUNARI_BACKEND==='webgl2'?'webgl2':'webgpu','The lighting must run on the requested backend')
     const png=await page.screenshot({encoding:'base64'})
     const crop=await page.evaluate(async({png,metadata,parent})=>{
       const image=await createImageBitmap(new Blob([Uint8Array.from(atob(png),c=>c.charCodeAt(0))],{type:'image/png'})),scale=image.width/parent.width
@@ -65,11 +75,8 @@ try{
     await writeFile(path.join(output,`${name}.png`),Buffer.from(crop.png,'base64'));delete crop.png;return crop
   }
   const receiver=async inset=>{await frame.evaluate(inset=>{
-    const marker='const float GLYPH_RECEIVER_INSET = 1.5;'
-    if(!window.__typeFragment.includes(marker))throw new Error('Glyph receiver observation point changed')
-    if(window.__typeFragment.indexOf(marker,window.__typeFragment.indexOf(marker)+marker.length)!==-1)throw new Error('Glyph receiver observation point is ambiguous')
-    window.__typeLight.fragmentShader=inset===null?window.__typeFragment:window.__typeFragment.replace(marker,`const float GLYPH_RECEIVER_INSET = ${inset.toFixed(1)};`)
-    window.__typeLight.needsUpdate=true;window.__buildTypeMask()
+    window.__typeInset.node.value=inset??window.__typeInset.original
+    window.__buildTypeMask()
   },inset);await frames(page)}
   const variants=[]
   for(const selected of [false,true]){
@@ -86,7 +93,7 @@ try{
       const selection=getSelection();selection.removeAllRanges()
       if(selected){const node=document.querySelector('.home-headline-shaders').firstChild,range=document.createRange();range.selectNodeContents(node);selection.addRange(range)}
     },selected)
-    await frame.waitForFunction(selected=>window.__typeLight.uniforms.uSelectionLift.value===(selected?64:0),{},selected)
+    await frame.waitForFunction(selected=>window.__typeLight.values.selectionLift.value===(selected?64:0),{},selected)
     await frame.evaluate(()=>document.querySelector('.home-light-host').style.visibility='hidden')
     const bare=await capture(`${name}-native-type`)
     await frame.evaluate(()=>document.querySelector('.home-light-host').style.visibility='visible')

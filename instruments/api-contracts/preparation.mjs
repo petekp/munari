@@ -6,11 +6,12 @@ import {mkdir,writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {tmpdir} from 'node:os'
 import puppeteer from 'puppeteer-core'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 const origin=process.env.API_PROOF_URL
 assert.ok(origin,'Set API_PROOF_URL to the URL printed by npm run probe:api-lab.')
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/preparation')
 await mkdir(output,{recursive:true})
-const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:['--enable-features=CanvasDrawElement','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']})
+const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:[...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']})
 try{
  const page=await browser.newPage(),errors=[];page.on('pageerror',error=>errors.push(String(error)))
  await setChromeViewport(page,{width:1280,height:900})

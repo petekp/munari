@@ -33,7 +33,7 @@ import { SurfaceCanvas } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { showChrome } from '../../bareMode'
 import { useMarbleHandGeometry } from './marbleHandGeometry'
-import { MarbleHandMaterial, useMarbleHandDepthMaterial } from './marbleHandMaterial'
+import { MarbleHandMaterial } from './marbleHandMaterial'
 import { MarbleHandEnvironment } from './marbleHandEnvironment'
 import { MarbleHandStroke } from './marbleHandStroke'
 import { MarbleHandBackground } from './marbleHandBackground'
@@ -46,7 +46,7 @@ import {
   stepMarbleHandSpring,
   type MarbleHandSpring,
 } from './marbleHandTapLaw'
-import { createMarbleHandTapUniforms, type MarbleHandTapUniforms } from './marbleHandTapShaders'
+import { createMarbleHandTapUniforms, type MarbleHandTapUniforms } from './marbleHandTapNodes'
 import { MarbleHandTweaks } from './marbleHandTweaks'
 import { marbleHandTuning, type MarbleHandTuning } from './marbleHandTuning'
 import './marbleHand.css'
@@ -124,7 +124,7 @@ function CataloguePage({
   return (
     <main ref={page} className="mh-sheet" data-theme={selected} data-motion={colorMotion ? 'running' : 'paused'} data-marble-hand-pointer={pointer || undefined} style={{ width, height }}>
       <div className="mh-atmosphere" aria-hidden="true">
-        {/* No key: remounting would drop the WebGL context on every theme. */}
+        {/* No key: remounting would drop the field's renderer on every theme. */}
         <MarbleHandBackground theme={selected} motion={colorMotion} reducedMotion={reducedMotion} tuning={tuning} />
       </div>
       <section className="mh-themes" aria-label="Background themes">
@@ -254,7 +254,6 @@ function MarblePointer({
   onMount: (mesh: THREE.Mesh | null) => void
 }) {
   const geometry = useMarbleHandGeometry()
-  const depthMaterial = useMarbleHandDepthMaterial(tap)
   const support = useMemo(() => buildMarbleHandSupport(geometry), [geometry])
   const supportTransform = useMemo(() => new THREE.Matrix4(), [])
   const sculptureTransform = useMemo(() => new THREE.Matrix4().makeRotationFromEuler(
@@ -365,9 +364,8 @@ function MarblePointer({
         receiveShadow
         frustumCulled={false}
         raycast={IGNORE_RAYCAST}
-        customDepthMaterial={depthMaterial}
-        // Three copies patched uniforms into the program, never back onto
-        // the material, so the gate has no other way to read the live bend.
+        // The bend lives in uniform nodes inside each material, so this is
+        // the gate's one readable copy of the live angles.
         userData={{ marbleHandTap: tap }}
       >
         <MarbleHandMaterial tuning={tuning} tap={tap} />
@@ -398,6 +396,8 @@ function MarbleLighting({ tuning, width, height }: {
   const shadowFar = Math.max(1400,
     Math.hypot(tuning.lightX, tuning.lightY, tuning.lightZ) + Math.hypot(width, height))
   useLayoutEffect(() => {
+    // Only the hand's materials read this, through their own tone map; the
+    // renderer stays at NoToneMapping so HTML keeps its colours.
     renderer.toneMappingExposure = tuning.exposure
     renderer.shadowMap.enabled = tuning.shadowsEnabled
     renderer.shadowMap.needsUpdate = true
@@ -419,10 +419,14 @@ function MarbleLighting({ tuning, width, height }: {
   return (
     <>
       <ambientLight intensity={tuning.ambientIntensity} />
+      {/* Always casting: renderer.shadowMap.enabled turns shadows off. A light
+          that stops casting disposes its shadow node, but the receiver, hidden
+          while shadows were off, keeps a render object that still draws it.
+          Turning shadows back on then threw on the null map. */}
       <directionalLight
         ref={light}
         name="marble-hand-key-light"
-        castShadow={tuning.shadowsEnabled}
+        castShadow
         color={tuning.lightColor}
         intensity={tuning.keyIntensity}
         position={[tuning.lightX, tuning.lightY, tuning.lightZ]}
@@ -450,7 +454,6 @@ export function MarbleHandApp() {
   const origin = useMemo(() => new THREE.Vector3(0, 0, marbleHandTuning.heightPx), [])
   const capture = useMemo(createMarblePageCaptureState, [])
   const [reflection, setReflection] = useState<MarblePageCaptureState['status']>('waiting')
-  const [renderer, setRenderer] = useState<THREE.WebGLRenderer | null>(null)
   const [hand, setHand] = useState<THREE.Mesh | null>(null)
   const [contextLost, setContextLost] = useState(false)
   const [overlayFailed, setOverlayFailed] = useState(false)
@@ -488,19 +491,6 @@ export function MarbleHandApp() {
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
   }, [])
-
-  useEffect(() => {
-    if (!renderer) return
-    const canvas = renderer.domElement
-    const lost = () => setContextLost(true)
-    const restored = () => setContextLost(false)
-    canvas.addEventListener('webglcontextlost', lost)
-    canvas.addEventListener('webglcontextrestored', restored)
-    return () => {
-      canvas.removeEventListener('webglcontextlost', lost)
-      canvas.removeEventListener('webglcontextrestored', restored)
-    }
-  }, [renderer])
 
   useEffect(() => {
     const move = (event: PointerEvent) => {
@@ -603,12 +593,14 @@ export function MarbleHandApp() {
         style={{ position: 'fixed', inset: 0, zIndex: 40 }}
         gl={{ alpha: true, antialias: true }}
         camera={PIXEL_CAMERA}
+        // SurfaceCanvas remounts this scene on a new renderer after a loss,
+        // so the next onCreated is the hand's restore.
+        onRendererLost={() => setContextLost(true)}
         onCreated={(state) => {
           state.gl.setClearAlpha(0)
-          state.gl.toneMapping = THREE.ACESFilmicToneMapping
           state.gl.toneMappingExposure = tuning.exposure
           window.__r3f = state
-          setRenderer(state.gl)
+          setContextLost(false)
         }}
       >
         <PixelPerfect />

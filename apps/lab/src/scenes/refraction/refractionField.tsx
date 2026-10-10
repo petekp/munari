@@ -33,8 +33,10 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import { WebGPURenderer } from 'three/webgpu'
 import { apertureField, roundedCoord, signedSpread, spreadDecay, spreadPasses } from './refractionLaw'
-import { FIELD_FRAG, FIELD_VERT, SPREAD_FRAG } from './refractionShaders'
+import { createFieldPass, createSpreadPass } from './refractionNodes'
+import { readTargetRows } from '../../lib/passTargets'
 
 /**
  * What the two fields need from a scene's live tuning bag.
@@ -68,7 +70,7 @@ const sizeInTexels = (px: number, stageW: number, stageH: number) => ({
 
 export interface InkField {
   /** The ink field the front's ink term samples. */
-  target: THREE.WebGLRenderTarget
+  target: THREE.RenderTarget
   /**
    * 1 / spread-field size, so the material can step exactly one spread texel.
    *
@@ -91,11 +93,13 @@ export interface InkField {
    * `apertureAt` from the fragment shader, on the CPU, for routing a pointer.
    *
    * The fields live only on the GPU, so this reads them back — both spread
-   * chains and, when the ink term is mixed in at all, the ink field too. The
-   * readback is LAZY and cached for the frame: nothing pays for it unless a
-   * pointer asks, and a pointer that asks a hundred times in one frame pays
-   * once. `readRenderTargetPixels` is a pipeline stall, and the cheapest
-   * honest answer was to make the stall rare rather than to make it fast.
+   * chains and, when the ink term is mixed in at all, the ink field too.
+   * WebGPU has no synchronous read, so the answer comes from the latest
+   * completed read: a pointer's question asks for a read after the next
+   * frame's passes, and is answered from the previous one. Routing therefore
+   * trails the picture by the read's latency, a frame or two, and the empty
+   * mirror answers the same value everywhere until the first read lands.
+   * Nothing reads unless a pointer asks.
    *
    * The buffers total a few KB — the fields are counted in texels of tens of
    * CSS px, so at the gallery's reference box the two spread targets are
@@ -104,14 +108,14 @@ export interface InkField {
   apertureAt(u: number, v: number): number
 }
 
-function fullscreen(material: THREE.ShaderMaterial) {
+function fullscreen(material: THREE.Material) {
   const scene = new THREE.Scene()
   scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material))
   return scene
 }
 
 const smallTarget = (w: number, h: number) =>
-  new THREE.WebGLRenderTarget(w, h, {
+  new THREE.RenderTarget(w, h, {
     depthBuffer: false,
     stencilBuffer: false,
     minFilter: THREE.LinearFilter,
@@ -142,50 +146,35 @@ export function useInkField(
   stage.current.h = stageH
   const texels = (px: number) => sizeInTexels(px, stage.current.w, stage.current.h)
   const gl = useThree((state) => state.gl)
+  // Fiber types the renderer as WebGLRenderer; SurfaceCanvas supplies a
+  // WebGPURenderer, which is what takes a RenderTarget.
+  if (!(gl instanceof WebGPURenderer)) throw new Error('The ink field needs the WebGPURenderer from SurfaceCanvas')
 
   const rig = useMemo(() => {
     const { w, h } = texels(cfg.current.fieldPx)
     const target = smallTarget(w, h)
-    const material = new THREE.ShaderMaterial({
-      vertexShader: FIELD_VERT,
-      fragmentShader: FIELD_FRAG,
-      uniforms: {
-        tSource: { value: null },
-        uStep: { value: new THREE.Vector2(1 / (w * 8), 1 / (h * 8)) },
-        uDetail: { value: cfg.current.apertureDetail },
-      },
-      depthTest: false,
-      depthWrite: false,
-    })
+    // The nodes' source starts as a stand-in; the frame loop points it at the
+    // live capture before the first draw.
+    const fieldPass = createFieldPass(target.texture)
+    fieldPass.step.value.set(1 / (w * 8), 1 / (h * 8))
+    fieldPass.detail.value = cfg.current.apertureDetail
 
     const s = texels(cfg.current.spreadPx)
     const spreadPair = [smallTarget(s.w, s.h), smallTarget(s.w, s.h)] as const
     const hollowPair = [smallTarget(s.w, s.h), smallTarget(s.w, s.h)] as const
-    const spreadMaterial = new THREE.ShaderMaterial({
-      vertexShader: FIELD_VERT,
-      fragmentShader: SPREAD_FRAG,
-      uniforms: {
-        tSource: { value: null },
-        uStep: { value: new THREE.Vector2(0.5 / s.w, 0.5 / s.h) },
-        uFloor: { value: 0 },
-        uScale: { value: 1 },
-        uDecay: { value: 0 },
-        uInvert: { value: 0 },
-      },
-      depthTest: false,
-      depthWrite: false,
-    })
+    const spreadPass = createSpreadPass(target.texture)
+    spreadPass.step.value.set(0.5 / s.w, 0.5 / s.h)
 
     return {
       target,
-      material,
-      scene: fullscreen(material),
+      fieldPass,
+      scene: fullscreen(fieldPass.material),
       camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1),
       spreadTexel: new THREE.Vector2(1 / s.w, 1 / s.h),
       spreadPair,
       hollowPair,
-      spreadMaterial,
-      spreadScene: fullscreen(spreadMaterial),
+      spreadPass,
+      spreadScene: fullscreen(spreadPass.material),
       spread: { value: target.texture },
       hollow: { value: target.texture },
       // The textures above are what the material samples; these are the
@@ -202,10 +191,10 @@ export function useInkField(
   useEffect(
     () => () => {
       rig.target.dispose()
-      rig.material.dispose()
+      rig.fieldPass.material.dispose()
       rig.spreadPair.forEach((t) => t.dispose())
       rig.hollowPair.forEach((t) => t.dispose())
-      rig.spreadMaterial.dispose()
+      rig.spreadPass.material.dispose()
       for (const scene of [rig.scene, rig.spreadScene]) {
         scene.traverse((o) => {
           if (o instanceof THREE.Mesh) o.geometry.dispose()
@@ -218,13 +207,15 @@ export function useInkField(
   // ── the CPU mirror ───────────────────────────────────────────────────
   //
   // One law in two languages. Every line below has a counterpart in
-  // FIELD_FRAG or in `apertureAt`, and `refractionRouting.test.ts` pins the
+  // the field passes in refractionNodes.ts or in the material's `apertureAt`, and `refractionRouting.test.ts` pins the
   // pair to the same numbers on the same inputs. A change to either without
   // the other is the exact bug this repo is worst at noticing: the picture
   // stays right and only the pointer goes to the wrong document.
   const mirror = useMemo(
     () => ({
-      frame: -1,
+      wanted: false,
+      pending: false,
+      alive: true,
       spread: new Uint8Array(0),
       hollow: new Uint8Array(0),
       ink: new Uint8Array(0),
@@ -236,36 +227,52 @@ export function useInkField(
     [],
   )
 
+  // Set on mount as well as cleared on unmount: a development remount runs
+  // the cleanup first, and a flag only ever cleared drops every later read.
+  useEffect(() => {
+    mirror.alive = true
+    return () => {
+      mirror.alive = false
+    }
+  }, [mirror])
+
+  // Issued after the frame's passes, so it reads this frame's fields. One
+  // read at a time; a question asked while one is in flight waits for the
+  // next frame.
   const readBack = () => {
-    const frame = gl.info.render.frame
-    if (mirror.frame === frame) return
-    mirror.frame = frame
+    if (!mirror.wanted || mirror.pending) return
+    mirror.wanted = false
+    mirror.pending = true
     const s = rig.spreadTargets
-    const { width: w, height: h } = s.spread
-    if (mirror.w !== w || mirror.h !== h) {
-      mirror.w = w
-      mirror.h = h
-      mirror.spread = new Uint8Array(w * h * 4)
-      mirror.hollow = new Uint8Array(w * h * 4)
-    }
-    gl.readRenderTargetPixels(s.spread, 0, 0, w, h, mirror.spread)
-    gl.readRenderTargetPixels(s.hollow, 0, 0, w, h, mirror.hollow)
     // Read only when the ink term is actually mixed in. A gallery reading
-    // busyness sets `apertureInk` to 0, and that third stall buys nothing.
-    if (cfg.current.apertureInk > 0) {
-      const { width: iw, height: ih } = rig.target
-      if (mirror.iw !== iw || mirror.ih !== ih) {
-        mirror.iw = iw
-        mirror.ih = ih
-        mirror.ink = new Uint8Array(iw * ih * 4)
-      }
-      gl.readRenderTargetPixels(rig.target, 0, 0, iw, ih, mirror.ink)
-    }
+    // busyness sets `apertureInk` to 0, and that third read buys nothing.
+    const ink = cfg.current.apertureInk > 0 ? rig.target : null
+    const reads = [readTargetRows(gl, s.spread), readTargetRows(gl, s.hollow), ink ? readTargetRows(gl, ink) : null] as const
+    const size = { w: s.spread.width, h: s.spread.height, iw: ink?.width ?? 0, ih: ink?.height ?? 0 }
+    void Promise.all(reads).then(
+      ([spread, hollow, inkRows]) => {
+        mirror.pending = false
+        if (!mirror.alive) return
+        mirror.spread = spread
+        mirror.hollow = hollow
+        mirror.w = size.w
+        mirror.h = size.h
+        if (inkRows) {
+          mirror.ink = inkRows
+          mirror.iw = size.iw
+          mirror.ih = size.ih
+        }
+      },
+      (error) => {
+        mirror.pending = false
+        if (mirror.alive) console.error('refraction: field readback failed', error)
+      },
+    )
   }
 
   // Bilinear over a readback, matching the targets' own LinearFilter and
-  // clamp-to-edge. `readRenderTargetPixels` hands back rows bottom-up, which
-  // is the direction v already runs, so nothing is flipped here.
+  // clamp-to-edge. `readTargetRows` hands back rows from v = 0, the order v
+  // already runs, so nothing is flipped here.
   const tap = (buf: Uint8Array, w: number, h: number, u: number, v: number) => {
     if (w === 0 || h === 0) return 0
     const x = u * w - 0.5
@@ -283,7 +290,7 @@ export function useInkField(
   }
 
   const apertureAt = (u: number, v: number) => {
-    readBack()
+    mirror.wanted = true
     const t = cfg.current
     const su = roundedCoord(u, 1 / Math.max(1, mirror.w), t.frontRounding)
     const sv = roundedCoord(v, 1 / Math.max(1, mirror.h), t.frontRounding)
@@ -309,23 +316,23 @@ export function useInkField(
     const { w, h } = texels(cfg.current.fieldPx)
     if (rig.target.width !== w || rig.target.height !== h) {
       rig.target.setSize(w, h)
-      rig.material.uniforms.uStep.value.set(1 / (w * 8), 1 / (h * 8))
+      rig.fieldPass.step.value.set(1 / (w * 8), 1 / (h * 8))
     }
     const s = texels(cfg.current.spreadPx)
     if (rig.spreadPair[0].width !== s.w || rig.spreadPair[0].height !== s.h) {
       rig.spreadPair.forEach((t) => t.setSize(s.w, s.h))
       rig.hollowPair.forEach((t) => t.setSize(s.w, s.h))
-      rig.spreadMaterial.uniforms.uStep.value.set(0.5 / s.w, 0.5 / s.h)
+      rig.spreadPass.step.value.set(0.5 / s.w, 0.5 / s.h)
       rig.spreadTexel.set(1 / s.w, 1 / s.h)
     }
     const passes = spreadPasses(cfg.current.spreadReachPx, cfg.current.spreadPx)
-    const su = rig.spreadMaterial.uniforms
-    su.uDecay.value = spreadDecay(passes)
+    const sp = rig.spreadPass
+    sp.decay.value = spreadDecay(passes)
 
     const previous = gl.getRenderTarget()
 
-    rig.material.uniforms.uDetail.value = cfg.current.apertureDetail
-    rig.material.uniforms.tSource.value = texture
+    rig.fieldPass.detail.value = cfg.current.apertureDetail
+    rig.fieldPass.source.value = texture
     gl.setRenderTarget(rig.target)
     gl.render(rig.scene, rig.camera)
 
@@ -334,13 +341,13 @@ export function useInkField(
     // is the only pass that inverts; every pass after it reads a field
     // already in 0..1, so its own normalisation has to be the identity.
     const scale = 1 / Math.max(1e-4, cfg.current.apertureCeil - cfg.current.apertureFloor)
-    const chain = (pair: readonly THREE.WebGLRenderTarget[], invert: number) => {
+    const chain = (pair: readonly THREE.RenderTarget[], invert: number) => {
       let read: THREE.Texture = rig.target.texture
       for (let i = 0; i < passes; i++) {
-        su.uFloor.value = i === 0 ? cfg.current.apertureFloor : 0
-        su.uScale.value = i === 0 ? scale : 1
-        su.uInvert.value = i === 0 ? invert : 0
-        su.tSource.value = read
+        sp.floor.value = i === 0 ? cfg.current.apertureFloor : 0
+        sp.scale.value = i === 0 ? scale : 1
+        sp.invert.value = i === 0 ? invert : 0
+        sp.source.value = read
         const write = pair[i % 2]
         gl.setRenderTarget(write)
         gl.render(rig.spreadScene, rig.camera)
@@ -354,6 +361,7 @@ export function useInkField(
     rig.spreadTargets.hollow = rig.hollowPair[(passes - 1) % 2]
 
     gl.setRenderTarget(previous)
+    readBack()
   })
 
   rig.apertureAt = apertureAt

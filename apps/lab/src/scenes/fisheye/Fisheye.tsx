@@ -35,7 +35,7 @@ import {
   SurfaceCanvas,
   useSurfaceHandle,
   useSurfaceStatus,
-  useSurfaceUniforms,
+  useSurfaceNodes,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { plainAttribute } from '../../lib/geometry'
@@ -46,7 +46,7 @@ import {
   fisheyeScale,
   fisheyeSource,
 } from './fisheyeLaw'
-import { LENS_FRAG, LENS_LIGHT, LENS_VERT } from './fisheyeShaders'
+import { createLensMaterial } from './fisheyeNodes'
 import './fisheye.css'
 
 const FOV = 42
@@ -102,7 +102,7 @@ const TAU_MS = 90
 const GRID_X = 2
 const GRID_Y = 326
 // The bulge height the SHADING pretends (the geometry never leaves
-// z = 0 — fisheyeShaders.ts says why). 40px over a 120px radius peaks
+// z = 0 — fisheyeNodes.ts says why). 40px over a 120px radius peaks
 // the fake normal near 28° of tilt: enough to catch the specular
 // sweep, shallow enough that the flank shade never buries the text.
 const LENS_HEIGHT = 40
@@ -194,22 +194,10 @@ function PixelPerfect() {
 // ── the glass: capture lit by the law's fake normals ────────────────────
 
 function LensMaterial() {
-  const surface = useSurfaceUniforms()
-  const uniforms = useMemo(
-    () => ({ ...surface, uLightDir: { value: new THREE.Vector3(...LENS_LIGHT) } }),
-    [surface],
-  )
-  return (
-    <shaderMaterial
-      uniforms={uniforms}
-      vertexShader={LENS_VERT}
-      fragmentShader={LENS_FRAG}
-      transparent
-      premultipliedAlpha
-      depthWrite={false}
-      toneMapped={false}
-    />
-  )
+  const surface = useSurfaceNodes()
+  const material = useMemo(() => createLensMaterial(surface), [surface])
+  useLayoutEffect(() => () => material.dispose(), [material])
+  return <primitive object={material} attach="material" />
 }
 
 // ── the warp: the law applied to vertices, every live frame ─────────────

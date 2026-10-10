@@ -64,7 +64,7 @@ import {
   useSurfaceChrome,
   useSurfaceDriver,
   useSurfaceSourceRoot,
-  useSurfaceTexture,
+  useSurfaceNodes,
   useSurfaceTextureOf,
   useSurfaceSupport,
 } from '@petepetrash/munari'
@@ -76,12 +76,13 @@ import {
   screenToPlane,
 } from '@petepetrash/munari/advanced'
 import {
-  CARD_FRAG,
-  CARD_VERT,
-  SHADOW_FRAG,
+  type AeroState,
+  type ShadowUniforms,
   SHADOW_MAX_LAYERS,
-  SHADOW_VERT,
-} from './flightShaders'
+  createCardMaterial,
+  createShadowMaterial,
+  createShadowUniforms,
+} from './flightNodes'
 import './flight.css'
 import { corners } from './flightCorners'
 import { densityScheduleStep, densitySupply } from './flightDensityLaw'
@@ -102,7 +103,6 @@ import {
 import { makeShadowFrame, shadowQuadFrame } from './flightShadowFrameLaw'
 import { closestFrom } from '../../lib/dom'
 import { plainAttribute } from '../../lib/geometry'
-import { textureSlot } from '../../lib/uniforms'
 
 // ── the data ─────────────────────────────────────────────────────────────
 
@@ -409,90 +409,22 @@ function CardBody({ card, onChange, onGrab, onDelete }: CardBodyProps) {
 
 // ── the airborne copy's material ─────────────────────────────────────────
 //
-// The shaders themselves live in flightShaders.ts; what follows is the
-// state they read and the component that binds it.
-
-/**
- * The sheet's shared state: the driver writes these objects every frame and
- * the material's uniforms hold the SAME objects, so there is no per-frame
- * plumbing and no React in the loop. pack = (dir.x, dir.y, amplitude px,
- * reach px); grab = the held point, card-local px — the bend's pin AND the
- * point the crush contracts toward; wad = (crush 0→1, hash seed, wad radius
- * px) — crush 0 is the identity, and a card that is not being deleted never
- * leaves it. There is no fade channel: a wad is opaque until it has left
- * the viewport, and then it is simply gone.
- */
-export interface AeroState {
-  pack: THREE.Vector4
-  grab: THREE.Vector2
-  wad: THREE.Vector3
-}
+// The materials themselves live in flightNodes.ts, with the state they
+// read; what follows is the component that binds it.
 
 function CardMaterial({ gloss = 0.5, aero, chromeRef }: { gloss?: number; aero: AeroState; chromeRef: React.RefObject<SurfaceChrome | null> }) {
-  const texture = useSurfaceTexture()
-  const { chrome, width, height } = useSurfaceChrome()
+  const surface = useSurfaceNodes()
+  const { chrome } = useSurfaceChrome()
   useLayoutEffect(() => { chromeRef.current = chrome }, [chrome, chromeRef])
-  const uniforms = useMemo(
-    () => ({
-      tMap: textureSlot(),
-      uGloss: { value: gloss },
-      // Gain on the curvature shade. The bend's normals only swing ~10-15°,
-      // so the pow-6 band needs amplification to move a white pixel a
-      // readable ~20 counts; the term is identically zero when flat, so
-      // this number never touches a resting card.
-      uFlex: { value: 2.5 },
-      uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uMunariSize: { value: new THREE.Vector2(1, 1) },
-      uAero: { value: aero.pack },
-      uAeroGrab: { value: aero.grab },
-      uWad: { value: aero.wad },
-    }),
-    [gloss, aero],
-  )
-  uniforms.tMap.value = texture ?? null
-  const radii = chrome?.radii ?? [0, 0, 0, 0]
-  uniforms.uMunariRadii.value.set(radii[0], radii[1], radii[2], radii[3])
-  uniforms.uMunariSize.value.set(width, height)
-  return (
-    <shaderMaterial
-      key={texture?.uuid ?? 'none'}
-      uniforms={uniforms}
-      vertexShader={CARD_VERT}
-      fragmentShader={CARD_FRAG}
-      transparent
-      toneMapped={false}
-      side={THREE.DoubleSide}
-    />
-  )
+  const material = useMemo(() => createCardMaterial(surface, aero, gloss), [surface, aero, gloss])
+  useLayoutEffect(() => () => material.dispose(), [material])
+  return <primitive object={material} attach="material" />
 }
 
 
 const LIGHT = new THREE.Vector3(-0.30, -0.46, -1).normalize()
 
 // ── the driver ───────────────────────────────────────────────────────────
-
-/**
- * The shadow material's uniforms. Written by the driver every frame, held by
- * the material as the very same objects — so this passes by reference, and
- * neither side ever reads the other's copy.
- *
- * Declared as a type alias rather than an interface on purpose: r3f's
- * `uniforms` prop is an index signature, and only a mapped type is assignable
- * to one. Written out rather than inferred so the driver can read
- * `uOff.value[i]` as a Vector2 without asking three, whose `IUniform.value`
- * is `any` and would hand back nothing checkable.
- */
-type ShadowUniforms = {
-  uQuadHalf: { value: THREE.Vector2 }
-  uCardHalf: { value: THREE.Vector2 }
-  uRadii: { value: THREE.Vector4 }
-  /** How many of the layer slots below are live this frame. */
-  uCount: { value: number }
-  uOff: { value: THREE.Vector2[] }
-  uSigma: { value: number[] }
-  uSpread: { value: number[] }
-  uColor: { value: THREE.Vector4[] }
-}
 
 interface DriverProps {
   flight: React.RefObject<Flight | null>
@@ -805,15 +737,11 @@ function stepFlightMode(
 function writeShadowLayers(
   chrome: SurfaceChrome | null,
   shadowUniforms: ShadowUniforms,
-  sh: THREE.Mesh,
   height: number,
 ): number {
   const layers = chrome?.shadow ?? []
   const n = Math.min(layers.length, SHADOW_MAX_LAYERS)
-  const { value: uOff } = shadowUniforms.uOff
-  const { value: uSigma } = shadowUniforms.uSigma
-  const { value: uSpread } = shadowUniforms.uSpread
-  const { value: uColor } = shadowUniforms.uColor
+  const { off, sigma: sigmas, spread: spreads, color } = shadowUniforms
   const grow = 0.17 * height
   const fade = 1 / (1 + height / 210)
   const relax = 1 / (1 + height / 140)
@@ -822,22 +750,15 @@ function writeShadowLayers(
     const l = layers[i]
     const sigma = l.blur / 2 + grow
     const spread = l.spread * relax
-    uOff[i].set(l.x, -l.y) // CSS y is down, world y is up
-    uSigma[i] = sigma
-    uSpread[i] = spread
-    uColor[i].set(l.color[0], l.color[1], l.color[2], l.color[3] * fade)
+    off[i].set(l.x, -l.y) // CSS y is down, world y is up
+    sigmas[i] = sigma
+    spreads[i] = spread
+    color[i].set(l.color[0], l.color[1], l.color[2], l.color[3] * fade)
     reach = Math.max(reach, Math.hypot(l.x, l.y) + 3 * sigma + Math.max(spread, 0))
   }
-  shadowUniforms.uCount.value = n
-  // ShaderMaterial copies scalar uniform values when it is constructed.
-  // The vectors above stay live because they are mutated in place; replacing
-  // this number only changed the source bag and left the material at zero,
-  // which disabled every shadow layer.
-  if (sh.material instanceof THREE.ShaderMaterial) {
-    sh.material.uniforms.uCount.value = n
-  }
+  shadowUniforms.count.value = n
   const radii = chrome?.radii
-  shadowUniforms.uRadii.value.set(
+  shadowUniforms.radii.value.set(
     radii?.[0] ?? 0,
     radii?.[1] ?? 0,
     radii?.[2] ?? 0,
@@ -866,7 +787,7 @@ function writeShadow(
   corners(f.plate, f.w * shrink, f.h * shrink, _corners)
   if (crush > 0) {
     // The wad contracts toward the GRAB point (the shader's 13%-around-
-    // uAeroGrab formula), so the shadow must follow its caster: at full
+    // aeroGrab formula), so the shadow must follow its caster: at full
     // crush the ball's centroid sits at grab·0.87 body-local, and the
     // offset rides the same crush that drives the contraction — exactly 0
     // at liftoff (the handoff still draws the DOM's own shadow), under
@@ -883,7 +804,7 @@ function writeShadow(
   for (const c of _corners) _centroid.add(c)
   _centroid.multiplyScalar(0.25)
 
-  const margin = writeShadowLayers(chrome, shadowUniforms, sh, Math.max(_centroid.z, 0))
+  const margin = writeShadowLayers(chrome, shadowUniforms, Math.max(_centroid.z, 0))
 
   // Project the plate's corners onto the page along the light, then let
   // `shadowQuadFrame` rebuild the quad with the margin added along the
@@ -919,8 +840,8 @@ function writeShadow(
   pos.needsUpdate = true
   sh.geometry.computeBoundingSphere()
 
-  shadowUniforms.uQuadHalf.value.copy(_frame.quadHalf)
-  shadowUniforms.uCardHalf.value.copy(_frame.cardHalf)
+  shadowUniforms.quadHalf.value.copy(_frame.quadHalf)
+  shadowUniforms.cardHalf.value.copy(_frame.cardHalf)
 }
 
 /**
@@ -1211,19 +1132,9 @@ function Flying({
     }
   }, [flight, chromeRef])
 
-  const shadowUniforms = useMemo<ShadowUniforms>(
-    () => ({
-      uQuadHalf: { value: new THREE.Vector2(1, 1) },
-      uCardHalf: { value: new THREE.Vector2(1, 1) },
-      uRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uCount: { value: 0 },
-      uOff: { value: Array.from({ length: SHADOW_MAX_LAYERS }, () => new THREE.Vector2()) },
-      uSigma: { value: new Array(SHADOW_MAX_LAYERS).fill(0) },
-      uSpread: { value: new Array(SHADOW_MAX_LAYERS).fill(0) },
-      uColor: { value: Array.from({ length: SHADOW_MAX_LAYERS }, () => new THREE.Vector4()) },
-    }),
-    [],
-  )
+  const shadowUniforms = useMemo(createShadowUniforms, [])
+  const shadowMaterial = useMemo(() => createShadowMaterial(shadowUniforms), [shadowUniforms])
+  useLayoutEffect(() => () => shadowMaterial.dispose(), [shadowMaterial])
 
   // The sheet field's shared objects: Driver mutates them in place, the
   // material's uniforms hold the very same references. Amplitude starts at
@@ -1294,14 +1205,7 @@ function Flying({
         visible={false}
       >
         <planeGeometry args={[1, 1]} />
-        <shaderMaterial
-          uniforms={shadowUniforms}
-          vertexShader={SHADOW_VERT}
-          fragmentShader={SHADOW_FRAG}
-          transparent
-          depthWrite={false}
-          toneMapped={false}
-        />
+        <primitive object={shadowMaterial} attach="material" />
       </mesh>
 
       {/* Separated wiring: the source is declared in the page, in the slot

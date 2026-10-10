@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import { WebGPURenderer } from 'three/webgpu'
 import { SceneSurface, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
 import { surfaceManualPresenter, type SurfaceManualPresenter } from '@petepetrash/munari/advanced'
-import { BLIT_FRAGMENT, GLASS_FRAGMENT, QUAD_VERTEX } from './glassSdfShader'
+import { createBlitMaterial, createGlassMaterial, createGlassSdfValues } from './glassSdfNodes'
 
 // The SDF glass path — the shared kit every glass panel builds on (beads,
 // a morphing chat shell).
@@ -175,12 +176,12 @@ export interface GlassGlow {
   amp: number
 }
 
-/** How many circular satellites one panel may carry — matches the define. */
+/** How many circular satellites one panel may carry. */
 export const MAX_BLOBS = 6
-/** How many rounded-rect satellites — matches the define. */
+/** How many rounded-rect satellites. */
 export const MAX_RECTS = 12
 /**
- * Concurrent ripples per panel — must match the shader define. Ten, because a
+ * Concurrent ripples per panel. Ten, because a
  * satellite crossing the panel emits a TRAIN as it goes rather than one ping
  * on arrival, and a single crossing therefore has four or five fronts alive
  * at once. Six was sized for a staggered emergence where each source fired
@@ -217,7 +218,7 @@ function rippleRetirement(age: number, life: number): number {
   return k * k * (3 - 2 * k)
 }
 /**
- * Concurrent strikes per panel — must match the shader define. Four, because
+ * Concurrent strikes per panel. Four, because
  * a person mashing a button is a real input and the fourth press must not
  * silently delete the first one's light while it is still bright.
  */
@@ -355,13 +356,6 @@ interface SdfPanel {
   depth: number
 }
 
-/** A shader uniform holding a texture that is not bound yet. Named so the
- *  uniform bag can be inferred whole: a bare `{ value: null }` would infer
- *  the slot as permanently null. */
-interface TextureSlot {
-  value: THREE.Texture | null
-}
-
 const sdfPanels = new Map<string, SdfPanel>()
 // Separate from the panel entry on purpose: React runs child effects before
 // parent ones, so the registrar inside `Surface.Mesh` cannot write into a
@@ -389,10 +383,9 @@ export function sdfPanelLabels() {
 
 // ---- the panel ----------------------------------------------------------
 
-// The DOM texture reaches the compositor the same way the mesh path's ink quad got
-// it — through the material-slot seam — but it never touches a material here.
-// Premultiplied for the same reason as the mesh path: bilinear filtering of straight
-// alpha bleeds the white of `bg-white/10` into every opaque boundary,
+// The DOM texture reaches the compositor through the material-slot seam, but
+// it never touches a material here. Premultiplied because bilinear filtering
+// of straight alpha bleeds the white of `bg-white/10` into every opaque boundary,
 // and the compositor's `glass*(1-a) + rgb` is the shader spelling of
 // One/OneMinusSrcAlpha.
 function InkRegistrar({ label }: { label: string }) {
@@ -525,24 +518,29 @@ export function SdfGlassPanel({
 //   for each panel, far → near:  src → glass pass → dst,  swap
 //   src → blit → screen (tone mapping + sRGB, the only such step)
 //
-// Cost is one scene render plus N full-screen passes, against the mesh path's N
-// scene renders. The passes are pure fill: at 1× viewport, ~8 taps each.
+// Cost is one scene render plus N full-screen passes, not one scene render
+// per panel (glassSdfNodes.ts says why that mattered). The passes are pure fill: at 1× viewport, ~8 taps each.
 
 // drei's useFBO can't express "give me a depth texture" in its types (its
 // `depth?: boolean` intersects with three's `RenderTargetOptions.depth?:
 // number` and collapses to never), and the pipeline wants exact control over
 // the attachments anyway: HalfFloat colour so the composite stays in linear
 // light, a depth texture on the scene pass only, MSAA on the scene pass only.
-function useTarget(w: number, h: number, opts: { depth?: boolean; samples?: number } = {}) {
-  const { depth = false, samples = 0 } = opts
+function useTarget(
+  w: number,
+  h: number,
+  opts: { depthType?: THREE.TextureDataType; samples?: number } = {},
+) {
+  const { depthType, samples = 0 } = opts
+  const depth = depthType !== undefined
   const target = useMemo(() => {
-    const t = new THREE.WebGLRenderTarget(1, 1, {
+    const t = new THREE.RenderTarget(1, 1, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       type: THREE.HalfFloatType,
       depthBuffer: depth,
     })
-    if (depth) t.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType)
+    if (depthType !== undefined) t.depthTexture = new THREE.DepthTexture(1, 1, depthType)
     t.samples = samples
     return t
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -632,112 +630,49 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
   const w = Math.max(1, Math.round(size.width * dpr))
   const h = Math.max(1, Math.round(size.height * dpr))
 
+  const gl = useThree((s) => s.gl)
+  // Fiber types the renderer as WebGLRenderer; SurfaceCanvas supplies a
+  // WebGPURenderer, which is what takes a RenderTarget.
+  if (!(gl instanceof WebGPURenderer)) throw new Error('The glass compositor needs the WebGPURenderer from SurfaceCanvas')
+
   // MSAA on the scene pass only: the panels get exact analytic coverage from
   // the SDF, but the props and the wall behind them are still triangles.
-  // three resolves the depth attachment alongside the colour one
-  // (RenderTarget.resolveDepthBuffer defaults true), so occlusion survives.
-  const sceneFbo = useTarget(w, h, { samples: 4, depth: true })
+  // The depth texture stays multisampled on WebGPU, where the glass pass
+  // reads its first sample; the WebGL 2 fallback resolves it alongside the
+  // colour (RenderTarget.resolveDepthBuffer defaults true). Either way
+  // occlusion survives.
+  //
+  // The fallback resolves by blitting its multisampled depth renderbuffer,
+  // which Three 0.186.1 always allocates as DEPTH_COMPONENT24 (its FloatType
+  // test compares a Three constant with gl.FLOAT, so it never matches). A
+  // blit needs matching formats, and a FloatType texture is DEPTH_COMPONENT32F:
+  // every frame raised a GL error and the scene had no depth (measured
+  // 2026-10-09). UnsignedIntType is DEPTH_COMPONENT24 there. WebGPU keeps the
+  // 32-bit float depth WebGL main used.
+  const depthType = 'isWebGPUBackend' in gl.backend ? THREE.FloatType : THREE.UnsignedIntType
+  const sceneFbo = useTarget(w, h, { samples: 4, depthType })
   const pingA = useTarget(w, h)
   const pingB = useTarget(w, h)
 
-  // A uniform slot that starts empty. Inference alone would freeze the
-  // initial `null` into the type and then refuse the texture that
-  // arrives on the first pass.
-  const emptyTexture = (): TextureSlot => ({ value: null })
-  // The uniform bag lives here, not inside the material, so its literal
-  // type survives: three declares `material.uniforms` as a string-keyed
-  // bag whose every value is `any`, and reading the writers below off
-  // that would need one assertion per uniform. Same object either way —
-  // the material is constructed with exactly this one.
-  const uniforms = useMemo(
-    () => ({
-      tSrc: emptyTexture(),
-      tDepth: emptyTexture(),
-      tInk: emptyTexture(),
-      uHasInk: { value: false },
-      uInkOpacity: { value: 1 },
-      uInkRect: { value: new THREE.Vector4(0, 0, 1, 1) },
-      uCamPos: { value: new THREE.Vector3() },
-      uInvProjView: { value: new THREE.Matrix4() },
-      uProjView: { value: new THREE.Matrix4() },
-      uView: { value: new THREE.Matrix4() },
-      uNear: { value: 0.1 },
-      uFar: { value: 100 },
-      uPanelInv: { value: new THREE.Matrix4() },
-      uPanelRot: { value: new THREE.Matrix3() },
-      uHalf: { value: new THREE.Vector2() },
-      uRadius: { value: 0.09 },
-      uHasBase: { value: true },
-      // Allocated full-length once: three uploads a vec3[] as one
-      // uniform3fv, so the array must keep its size even when the panel
-      // carries fewer blobs — uBlobCount is what bounds the loop.
-      uBlobs: { value: Array.from({ length: MAX_BLOBS }, () => new THREE.Vector3()) },
-      uBlobCount: { value: 0 },
-      uRects: { value: Array.from({ length: MAX_RECTS }, () => new THREE.Vector4()) },
-      uRectR: { value: new Array<number>(MAX_RECTS).fill(0) },
-      uRectCount: { value: 0 },
-      uSmooth: { value: 0.14 },
-      uRipples: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector4()) },
-      uRippleVel: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector2()) },
-      uRippleSrcR: { value: new Array<number>(MAX_RIPPLES).fill(0.04) },
-      uEdgeReflect: { value: 0.55 },
-      uEdgeWarp: { value: 0.018 },
-      uEdgeWarpSpeed: { value: 1 },
-      uTime: { value: 0 },
-      uRippleWaveSpeed: { value: 1.55 },
-      uRippleCount: { value: 0 },
-      uRippleK: { value: 3.0 },
-      uRippleNu: { value: 0.0018 },
-      uRippleSrc: { value: 0.04 },
-      uRippleDecay: { value: 0.9 },
-      uRippleInk: { value: 0 },
-      uGlows: { value: Array.from({ length: MAX_GLOWS }, () => new THREE.Vector4()) },
-      uGlowCount: { value: 0 },
-      uGlowColor: { value: new THREE.Color('#ffb38a') },
-      uGlowReach: { value: 0.5 },
-      uGlowLife: { value: 0.85 },
-      uBezel: { value: 0.13 },
-      uThickness: { value: 0.1 },
-      uSpread: { value: 0.34 },
-      uIor: { value: 1.42 },
-      uChroma: { value: 0.035 },
-      uRough: { value: 0.28 },
-      uTint: { value: new THREE.Color('#dfe8ff') },
-      uTintAmount: { value: 0.06 },
-      uEdgeLight: { value: 0.28 },
-      uSpecular: { value: 0.55 },
-      uLightDir: { value: new THREE.Vector3(...lightDir) },
-    }),
-
-    // lightDir is read into the uniform below every frame.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  )
-  const glass = useMemo(
+  // The ink slot's texture until a panel's DOM binds. Not one of the
+  // targets: a pass may not sample the target it is drawing into.
+  const noInk = useMemo(() => {
+    const t = new THREE.DataTexture(new Uint8Array(4), 1, 1)
+    t.needsUpdate = true
+    return t
+  }, [])
+  const values = useMemo(
     () =>
-      new THREE.ShaderMaterial({
-        vertexShader: QUAD_VERTEX,
-        fragmentShader: GLASS_FRAGMENT,
-        defines: { SAMPLES: 8, MAX_BLOBS, MAX_RECTS, MAX_RIPPLES, MAX_GLOWS },
-        depthTest: false,
-        depthWrite: false,
-        uniforms,
-      }),
-    [uniforms],
+      createGlassSdfValues(
+        { blobs: MAX_BLOBS, rects: MAX_RECTS, ripples: MAX_RIPPLES, glows: MAX_GLOWS },
+        { src: sceneFbo.texture, depth: sceneFbo.depthTexture!, ink: noInk },
+      ),
+    [sceneFbo, noInk],
   )
-  const blit = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        vertexShader: QUAD_VERTEX,
-        fragmentShader: BLIT_FRAGMENT,
-        depthTest: false,
-        depthWrite: false,
-        uniforms: { tSrc: { value: null } },
-      }),
-    [],
-  )
+  const glass = useMemo(() => createGlassMaterial(values), [values])
+  const blit = useMemo(() => createBlitMaterial(sceneFbo.texture), [sceneFbo])
 
-  // Two one-mesh scenes. `frustumCulled = false` because the vertex shader
+  // Two one-mesh scenes. `frustumCulled = false` because the vertex node
   // writes clip space directly — three's bounding-sphere test would cull a
   // quad it thinks is a 2×2 plane at the origin.
   const [glassScene, blitScene, quadCam] = useMemo(() => {
@@ -749,18 +684,20 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
       s.add(mesh)
       return s
     }
-    return [mk(glass), mk(blit), new THREE.Camera()]
+    // The vertex node ignores the camera; WebGPU still updates its projection.
+    return [mk(glass), mk(blit.material), new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)]
   }, [glass, blit])
 
   useEffect(
     () => () => {
       glass.dispose()
-      blit.dispose()
+      blit.material.dispose()
     },
     [glass, blit],
   )
+  useEffect(() => () => noInk.dispose(), [noInk])
 
-  useFrame(({ gl, scene, camera, clock }) => {
+  useFrame(({ scene, camera, clock }) => {
     const panels = [...sdfPanels.values()].filter((p) => p.group.current)
     const now = clock.elapsedTime
 
@@ -774,7 +711,7 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
     for (const p of panels) p.group.current!.visible = true
 
     if (panels.length === 0) {
-      blit.uniforms.tSrc.value = sceneFbo.texture
+      blit.src.value = sceneFbo.texture
       gl.setRenderTarget(null)
       gl.render(blitScene, quadCam)
       return
@@ -799,67 +736,67 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
     }
     panels.sort((a, b) => a.depth - b.depth)
 
-    const u = uniforms
+    const u = values
     tmpProjView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
     tmpInvProjView.multiplyMatrices(camera.matrixWorld, camera.projectionMatrixInverse)
-    u.uProjView.value.copy(tmpProjView)
-    u.uInvProjView.value.copy(tmpInvProjView)
-    u.uView.value.copy(camera.matrixWorldInverse)
-    u.uCamPos.value.setFromMatrixPosition(camera.matrixWorld)
+    u.projView.value.copy(tmpProjView)
+    u.invProjView.value.copy(tmpInvProjView)
+    u.view.value.copy(camera.matrixWorldInverse)
+    u.camPos.value.setFromMatrixPosition(camera.matrixWorld)
     // SAFETY: the depth reconstruction below is perspective math — it is
     // only reached from this composite pass, which the scene mounts under a
     // perspective camera. r3f types the store's camera as the base class,
     // which carries neither plane.
     const perspective = camera as THREE.PerspectiveCamera
-    u.uNear.value = perspective.near
-    u.uFar.value = perspective.far
-    u.tDepth.value = sceneFbo.depthTexture
-    u.uLightDir.value.set(lightDir[0], lightDir[1], lightDir[2])
+    u.near.value = perspective.near
+    u.far.value = perspective.far
+    u.depth.value = sceneFbo.depthTexture!
+    u.lightDir.value.set(lightDir[0], lightDir[1], lightDir[2])
 
-    let src: THREE.WebGLRenderTarget = sceneFbo
+    let src: THREE.RenderTarget = sceneFbo
     let dst = pingA
     const presentedPanels: SdfPanel[] = []
     for (const p of panels) {
       const g = p.group.current!
       tmpPanelInv.copy(g.matrixWorld).invert()
       tmpRot.setFromMatrix4(g.matrixWorld)
-      u.uPanelInv.value.copy(tmpPanelInv)
-      u.uPanelRot.value.copy(tmpRot)
-      u.uHalf.value.copy(p.half)
-      u.uHasBase.value = p.hasBase
-      u.uInkRect.value.copy(p.inkRect)
+      u.panelInv.value.copy(tmpPanelInv)
+      u.panelRot.value.copy(tmpRot)
+      u.half.value.copy(p.half)
+      u.hasBase.value = p.hasBase ? 1 : 0
+      u.inkRect.value.copy(p.inkRect)
       const ink = sdfInk.get(p.label) ?? null
-      u.tSrc.value = src.texture
-      u.tInk.value = ink
-      u.uHasInk.value = !!ink
+      u.src.value = src.texture
+      u.ink.value = ink ?? noInk
+      u.hasInk.value = ink ? 1 : 0
       const q = p.params
-      u.uRadius.value = q.radius
-      u.uBezel.value = q.bezel
-      u.uThickness.value = q.thickness
-      u.uSpread.value = q.spread
-      u.uIor.value = q.ior
-      u.uChroma.value = q.chroma
-      u.uRough.value = q.roughness
-      u.uTint.value.set(q.tint)
-      u.uTintAmount.value = q.tintAmount
-      u.uEdgeLight.value = q.edgeLight
-      u.uEdgeReflect.value = q.edgeReflect
-      u.uEdgeWarp.value = Math.max(q.edgeWarp, 0)
-      u.uEdgeWarpSpeed.value = q.edgeWarpSpeed
-      u.uTime.value = now
-      u.uSpecular.value = q.specular
-      u.uInkOpacity.value = q.inkOpacity
-      u.uSmooth.value = Math.max(q.smooth, 1e-4)   // smin divides by k
+      u.radius.value = q.radius
+      u.bezel.value = q.bezel
+      u.thickness.value = q.thickness
+      u.spread.value = q.spread
+      u.ior.value = q.ior
+      u.chroma.value = q.chroma
+      u.rough.value = q.roughness
+      u.tint.value.set(q.tint)
+      u.tintAmount.value = q.tintAmount
+      u.edgeLight.value = q.edgeLight
+      u.edgeReflect.value = q.edgeReflect
+      u.edgeWarp.value = Math.max(q.edgeWarp, 0)
+      u.edgeWarpSpeed.value = q.edgeWarpSpeed
+      u.time.value = now
+      u.specular.value = q.specular
+      u.inkOpacity.value = q.inkOpacity
+      u.smooth.value = Math.max(q.smooth, 1e-4)   // smin divides by k
       const blobs = p.blobs
       const nb = Math.min(blobs.length, MAX_BLOBS)
       for (let i = 0; i < nb; i++) {
-        u.uBlobs.value[i].set(blobs[i].x, blobs[i].y, blobs[i].r)
+        u.blobSlots[i].set(blobs[i].x, blobs[i].y, blobs[i].r)
       }
-      u.uBlobCount.value = nb
+      u.blobCount.value = nb
       const rects = p.rects
       const nq = Math.min(rects.length, MAX_RECTS)
-      const rectSlots = u.uRects.value
-      const radii = u.uRectR.value
+      const rectSlots = u.rectSlots
+      const radii = u.rectRadii
       for (let i = 0; i < nq; i++) {
         const r = rects[i]
         rectSlots[i].set(r.x, r.y, r.hw, r.hh)
@@ -869,21 +806,20 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
         // a wide pane down to a bead without the scene minding the geometry.
         radii[i] = Math.min(r.r, Math.min(r.hw, r.hh))
       }
-      u.uRectCount.value = nq
+      u.rectCount.value = nq
 
-      // Ages, not timestamps: the shader gets `now - t0` so it needs no clock
+      // Ages, not timestamps: the material gets `now - t0` so it needs no clock
       // of its own, and a ripple that has outlived `rippleLife` simply never
       // reaches the uniform (the emitter prunes it too — this is the guard).
-      u.uRippleK.value = Math.max(q.rippleK, 1e-3)
-      u.uRippleNu.value = Math.max(q.rippleNu, 0)
-      u.uRippleSrc.value = Math.max(q.rippleSource, 0)
-      u.uRippleDecay.value = Math.max(q.rippleDecay, 1e-3)
-      u.uRippleInk.value = q.rippleInk
-      u.uRippleWaveSpeed.value = Math.max(q.rippleWaveSpeed, 1e-3)
-      u.uRippleCount.value = uploadRipples(
-        u.uRipples.value,
-        u.uRippleVel.value,
-        u.uRippleSrcR.value,
+      u.rippleK.value = Math.max(q.rippleK, 1e-3)
+      u.rippleNu.value = Math.max(q.rippleNu, 0)
+      u.rippleDecay.value = Math.max(q.rippleDecay, 1e-3)
+      u.rippleInk.value = q.rippleInk
+      u.rippleWaveSpeed.value = Math.max(q.rippleWaveSpeed, 1e-3)
+      u.rippleCount.value = uploadRipples(
+        u.rippleSlots,
+        u.rippleVelSlots,
+        u.rippleSrcRadii,
         p.ripples,
         q,
         now,
@@ -891,11 +827,11 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
 
       // Same age-not-timestamp discipline as the ripples above. A strike is
       // retired by its own life, so a panel nobody has pressed uploads a
-      // count of zero and the shader's loop never runs.
-      u.uGlowColor.value.set(q.glowColor)
-      u.uGlowReach.value = Math.max(q.glowReach, 1e-3)
-      u.uGlowLife.value = Math.max(q.glowLife, 1e-3)
-      u.uGlowCount.value = uploadGlows(u.uGlows.value, p.glows, q, now)
+      // count of zero and the material's loop never runs.
+      u.glowColor.value.set(q.glowColor)
+      u.glowReach.value = Math.max(q.glowReach, 1e-3)
+      u.glowLife.value = Math.max(q.glowLife, 1e-3)
+      u.glowCount.value = uploadGlows(u.glowSlots, p.glows, q, now)
 
       gl.setRenderTarget(dst)
       gl.render(glassScene, quadCam)
@@ -909,7 +845,7 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
     }
 
     // 3 — out of linear light, once.
-    blit.uniforms.tSrc.value = src.texture
+    blit.src.value = src.texture
     gl.setRenderTarget(null)
     gl.render(blitScene, quadCam)
     // This is the sole color-writing presentation of each sampled SDF panel.

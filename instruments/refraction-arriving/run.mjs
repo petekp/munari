@@ -42,6 +42,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..')
 const labRoot = path.join(ROOT, 'apps', 'lab')
@@ -134,6 +135,7 @@ try {
     executablePath: CHROME,
     headless: true,
     args: [
+      ...WEBGPU_CHROME_ARGS,
       '--enable-features=CanvasDrawElement',
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
@@ -166,6 +168,9 @@ try {
   })
   await page.setViewport({ width: 1280, height: 860, deviceScaleFactor: 1 })
   await page.goto(`http://localhost:${port}/?scene=refraction&bare`, { waitUntil: 'load' })
+  await page.evaluate(async (pixelsUrl) => {
+    window.__canvasPixels = await import(pixelsUrl)
+  }, '/@fs' + path.join(ROOT, 'instruments', 'canvasPixels.ts'))
   await page.waitForSelector('canvas[data-engine]', { timeout: 20_000 })
   await sleep(1500)
 
@@ -182,9 +187,9 @@ try {
     if (actual !== v) throw new Error(`scrub did not reach ${v}; it reports ${actual}`)
   }
 
-  // Render once and read the sheet's own rect back in the SAME task: the
-  // canvas has no preserved drawing buffer, so a read from a later task
-  // returns a cleared frame.
+  // Render once and read the sheet's own rect back in the SAME task: a
+  // WebGPU canvas texture is replaced once the browser presents, so a read
+  // from a later task sees a different frame.
   const grab = () => {
     const { gl, scene, camera } = window.__r3f
     gl.render(scene, camera)
@@ -195,8 +200,7 @@ try {
     const w = Math.round(r.width * dpr)
     const h = Math.round(r.height * dpr)
     const y = Math.round((canvas.clientHeight - r.bottom) * dpr)
-    const px = new Uint8Array(w * h * 4)
-    gl.getContext().readPixels(x, y, w, h, 0x1908, 0x1401, px)
+    const px = window.__canvasPixels.readCanvasRect(canvas, x, y, w, h)
     const clockHost = document.querySelector('[data-munari-source-host][data-munari-surface="refraction"][data-munari-part="arriving"]')
     const clock = clockHost?.querySelector('.refraction-tick')
     if (!clock) throw new Error('arriving clock is missing from the capture source')
@@ -252,15 +256,15 @@ try {
   const uniforms = () => {
     let found = null
     window.__r3f?.scene?.traverse((o) => {
-      const u = o.isMesh ? o.material?.uniforms : null
-      if (u?.uTransmission) {
+      const v = o.isMesh ? o.material?.userData?.refractionValues : null
+      if (v) {
         found = {
-          relief: u.uRelief.value,
-          transmission: u.uTransmission.value,
-          zoom: u.uZoom.value,
-          hasIncoming: u.uHasIncoming.value,
-          incomingWidth: u.tIncoming.value?.image?.width ?? null,
-          distinct: u.tIncoming.value !== u.tMap.value,
+          relief: v.relief.value,
+          transmission: v.transmission.value,
+          zoom: v.zoom.value,
+          hasIncoming: v.hasIncoming.value,
+          incomingWidth: v.incoming.value?.image?.width ?? null,
+          distinct: v.incoming.value !== o.material.userData.refractionLeaving.value,
         }
       }
     })
@@ -274,7 +278,7 @@ try {
     const { gl, scene, camera } = window.__r3f
     let meshes = 0
     scene.traverse((o) => {
-      if (o.isMesh && o.material?.uniforms?.uTransmission) meshes++
+      if (o.isMesh && o.material?.userData?.refractionValues) meshes++
     })
     gl.render(scene, camera)
     const canvas = gl.domElement
@@ -284,8 +288,7 @@ try {
     const w = Math.round(r.width * dpr)
     const h = Math.round(r.height * dpr)
     const y = Math.round((canvas.clientHeight - r.bottom) * dpr)
-    const px = new Uint8Array(w * h * 4)
-    gl.getContext().readPixels(x, y, w, h, 0x1908, 0x1401, px)
+    const px = window.__canvasPixels.readCanvasRect(canvas, x, y, w, h)
     let opaque = 0
     for (let i = 0; i < w * h; i++) if (px[i * 4 + 3] > 200) opaque++
 

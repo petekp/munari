@@ -387,6 +387,66 @@ export function clampRawScale(k: number): number {
   return Number.isFinite(k) ? Math.min(8, Math.max(0.1, k)) : 1
 }
 
+// ── capture canvas memory ────────────────────────────────────────────────
+
+/**
+ * Where a capture canvas keeps its pixels. `'cpu'` is the 2D context's
+ * `willReadFrequently` storage.
+ *
+ * On a software WebGPU adapter, Chrome uploads a GPU-backed canvas by
+ * reading it back through the GPU process, behind every frame still queued
+ * there. One Genie upload blocked the page for 299–564 ms on a hosted Linux
+ * runner, and the same upload from CPU storage took 0–6 ms (measured
+ * 2026-10-09, Chrome 155, SwiftShader). On a GPU with shared memory the
+ * GPU-backed upload is the cheap one: 0.1 ms against 3 ms for a 1200×800
+ * canvas on an M4 Max. A context's storage is fixed when it is created, so
+ * the choice has to be made before any capture canvas first draws.
+ *
+ * The kernel asks the adapter itself, at the first capture. A capture starts
+ * before the renderer that would otherwise ask: in a Linux container, Genie's
+ * four capture canvases took their contexts 120 ms before SurfaceCanvas
+ * requested its adapter, and all four kept GPU storage (2026-10-09).
+ */
+type CaptureCanvasMemory = 'gpu' | 'cpu'
+
+let captureMemory: CaptureCanvasMemory | null = null
+let choosing: Promise<void> | null = null
+
+// A request that never settles would hold every capture back. Past this,
+// captures take GPU storage, as they did before decisions.md #74. The
+// container's adapter answered 1.1 s after it was asked, under emulation.
+const ADAPTER_WAIT_MS = 3000
+
+async function chooseCaptureMemory(): Promise<void> {
+  const gpu = globalThis.navigator?.gpu
+  if (!gpu) {
+    captureMemory = 'gpu'
+    return
+  }
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), ADAPTER_WAIT_MS))
+  const adapter = await Promise.race([gpu.requestAdapter().catch(() => null), timeout])
+  captureMemory = adapter?.info.isFallbackAdapter ? 'cpu' : 'gpu'
+}
+
+/**
+ * Settles once capture storage is chosen, starting the choice if nothing has
+ * asked yet. Null when the choice is already made.
+ */
+export function captureMemoryChosen(): Promise<void> | null {
+  choosing ??= chooseCaptureMemory()
+  return captureMemory ? null : choosing
+}
+
+/**
+ * The capture canvas's 2D context. Every engine reaches its canvas through
+ * this, so the first call is the one that fixes the storage. Null until
+ * `captureMemoryChosen()` has settled.
+ */
+export function captureContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D | null {
+  if (captureMemoryChosen()) return null
+  return canvas.getContext('2d', captureMemory === 'cpu' ? { willReadFrequently: true } : undefined)
+}
+
 // ── the shared source body ───────────────────────────────────────────────
 
 /** The canvas, the ledger and the arithmetic every engine's source shares. */
@@ -542,8 +602,10 @@ export function createCaptureCanvas(
       // stub with no rasterizer (happy-dom, where the conformance suite runs)
       // there are no pixels to save and no blitter to save them with. Skip it
       // there rather than make every caller carry a mock.
-      const ctx = canvas.getContext('2d')
-      if (ok && ctx && 'drawImage' in ctx) {
+      // Only a painted canvas has a raster to carry; asking an unpainted one
+      // for its context would fix its storage before the first draw.
+      const ctx = ok ? captureContext(canvas) : null
+      if (ctx && 'drawImage' in ctx) {
         const scratch = document.createElement('canvas')
         scratch.width = canvas.width
         scratch.height = canvas.height

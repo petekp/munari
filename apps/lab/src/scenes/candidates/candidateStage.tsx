@@ -1,4 +1,4 @@
-// Shared candidate camera, page measurements, uniforms, and animation clocks.
+// Shared candidate camera, page measurements, and animation clocks.
 //
 // Seven prototypes share this file so that what differs between them is
 // only the deformation, never the plumbing. Each candidate is a page with
@@ -15,7 +15,7 @@
 // Each candidate owns its Surface intent and scene lifetime. This module
 // supplies camera fitting, page-to-world measurements, and 0-to-1 clocks.
 
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { cameraDistance } from '@petepetrash/munari/advanced'
@@ -79,41 +79,25 @@ export function worldBoxOf(el: HTMLElement | null): WorldBox | null {
   }
 }
 
-// ── uniforms the material actually reads ────────────────────────────────
+// ── node materials ──────────────────────────────────────────────────────
 
 /**
- * Give the material the uniform bag this component owns.
+ * Build a node material and its uniform nodes once per dependency change,
+ * and dispose the material it replaces and on unmount. Render the result
+ * with `<primitive object={built.material} attach="material" />`.
  *
- * r3f 9.7 stopped adopting the `uniforms` prop and started copying it entry
- * by entry into the material's own container ("uniforms must keep a stable
- * target reference"). An OBJECT-valued uniform survives that copy, because
- * both containers end up holding the same Vector or Texture instance. A
- * NUMBER does not: the material keeps its own `{ value }` box, and every
- * per-frame write to the memoized bag lands in an object nothing samples.
- *
- * The fault, 2026-08-20: five of seven candidates drew their t = 0 frame
- * forever. Their clocks were correct — phase.t reached 0.89 — and the
- * material's own uT read 0 on every frame. Only the two effects driven by
- * CPU vertex writes worked, because those never go through a uniform.
- *
- * Swapping the container back is one assignment and restores the pre-9.7
- * behavior. It runs on every render rather than on a dependency, because a
- * material remounted by a `key` change is a new material that nothing here
- * would otherwise be told about.
+ * Uniform nodes keep their identity for the life of the build, so per-frame
+ * writes go to `.value` on the nodes the factory returned.
  */
-export function useOwnUniforms<T extends object>(uniforms: T) {
-  const ref = useRef<THREE.ShaderMaterial>(null)
-  useLayoutEffect(() => {
-    const material = ref.current
-    if (!material) return
-    // SAFETY: a uniform bag is `{ [name]: { value } }` by construction, and
-    // every bag passed here is built from `textureSlot()` and literals of
-    // that shape. The parameter stays generic because widening it to an
-    // open dictionary would discard the exact per-material shape each
-    // component relies on when it writes to its own uniforms.
-    material.uniforms = uniforms as THREE.ShaderMaterial['uniforms']
-  })
-  return ref
+export function useNodeMaterial<T extends { material: THREE.Material }>(
+  create: () => T,
+  deps: React.DependencyList,
+): T {
+  // `deps` is the caller's dependency list for `create`.
+  // oxlint-disable-next-line react/exhaustive-deps
+  const built = useMemo(create, deps)
+  useLayoutEffect(() => () => built.material.dispose(), [built])
+  return built
 }
 
 // ── the clock ───────────────────────────────────────────────────────────

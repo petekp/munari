@@ -20,20 +20,17 @@
 // exactly the case `crossingPointer` exists for, and the reason the
 // counter under the buttons is worth watching.
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
-import { textureSlot } from '../../lib/uniforms'
+import { Surface, useSurfaceChrome, useSurfaceHandle, useSurfaceNodes } from '@petepetrash/munari'
 import {
-  LIGHT,
-  RIPPLE_FRAG,
   RIPPLE_MAX_WAVES,
-  RIPPLE_SHADOW_FRAG,
-  RIPPLE_SHADOW_VERT,
-  RIPPLE_VERT,
-} from './candidateShaders'
-import { useOwnUniforms, type WorldBox } from './candidateStage'
+  createRippleMaterial,
+  createRippleShadowMaterial,
+  type RippleField,
+} from './candidateNodes'
+import { useNodeMaterial, type WorldBox } from './candidateStage'
 import { rippleTuning } from './candidateTuning'
 
 // The press's tuned numbers live in rippleTuning; the committed defaults
@@ -52,84 +49,32 @@ function snap(v: number): number {
 }
 
 // Both materials render the same field, so both carry the same wave slots.
-function waveUniforms() {
-  return {
-    uWaveOrigin: {
-      value: Array.from({ length: RIPPLE_MAX_WAVES }, () => new THREE.Vector2()),
-    },
-    uWaveT: { value: new Float32Array(RIPPLE_MAX_WAVES).fill(1) },
-    uWaveCount: { value: 0 },
-    uLift: { value: rippleTuning.lift },
-    uBend: { value: rippleTuning.bend },
-    uWaveLen: { value: 60 },
-    uFlap: { value: rippleTuning.flapCycles * 2 * Math.PI },
-    uSettle: { value: rippleTuning.settle },
-    uTail: { value: rippleTuning.tail },
-  }
-}
-
-function writeWaveUniforms(
-  uniforms: ReturnType<typeof waveUniforms>,
-  waves: RippleWave[],
-  width: number,
-  height: number,
-) {
-  uniforms.uWaveCount.value = Math.min(waves.length, RIPPLE_MAX_WAVES)
+function writeWaveField(field: RippleField, waves: RippleWave[], width: number, height: number) {
+  field.count.value = Math.min(waves.length, RIPPLE_MAX_WAVES)
   for (let i = 0; i < RIPPLE_MAX_WAVES; i++) {
     const wave = waves[i]
-    uniforms.uWaveT.value[i] = wave ? Math.min(wave.t, 1) : 1
-    if (wave) uniforms.uWaveOrigin.value[i].copy(wave.origin)
+    field.times[i] = wave ? Math.min(wave.t, 1) : 1
+    if (wave) field.origins[i].copy(wave.origin)
   }
-  uniforms.uLift.value = rippleTuning.lift
-  uniforms.uBend.value = rippleTuning.bend
-  uniforms.uFlap.value = rippleTuning.flapCycles * 2 * Math.PI
-  uniforms.uSettle.value = rippleTuning.settle
-  uniforms.uTail.value = rippleTuning.tail
-  uniforms.uWaveLen.value = Math.max(rippleTuning.waveSpan * 0.5 * Math.hypot(width, height), 30)
+  field.lift.value = rippleTuning.lift
+  field.bend.value = rippleTuning.bend
+  field.flap.value = rippleTuning.flapCycles * 2 * Math.PI
+  field.settle.value = rippleTuning.settle
+  field.tail.value = rippleTuning.tail
+  field.waveLen.value = Math.max(rippleTuning.waveSpan * 0.5 * Math.hypot(width, height), 30)
 }
 
 function RippleMaterial({ waves }: { waves: React.RefObject<RippleWave[]> }) {
-  const texture = useSurfaceTexture()
-  const { chrome, width, height } = useSurfaceChrome()
-  const uniforms = useMemo(
-    () => ({
-      tMap: textureSlot(),
-      uSize: { value: new THREE.Vector2(1, 1) },
-      ...waveUniforms(),
-      uLightDir: { value: new THREE.Vector3(...LIGHT) },
-      // Gain on the balanced lambert term. The wave's steepest face is
-      // ~25° off flat here; 0.9 puts its highlight around +0.35 on a white
-      // control, which is visible without bleaching the label.
-      uShadeGain: { value: rippleTuning.shadeGain },
-      uMunariRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uMunariSize: { value: new THREE.Vector2(1, 1) },
-    }),
-    [],
-  )
-  uniforms.tMap.value = texture
-  const material = useOwnUniforms(uniforms)
-  const radii = chrome?.radii ?? [0, 0, 0, 0]
-  uniforms.uMunariRadii.value.set(radii[0], radii[1], radii[2], radii[3])
-  uniforms.uMunariSize.value.set(width, height)
-  uniforms.uSize.value.set(width, height)
+  const surface = useSurfaceNodes()
+  const { width, height } = useSurfaceChrome()
+  const { material, values } = useNodeMaterial(() => createRippleMaterial(surface), [surface])
+  values.size.value.set(width, height)
   useFrame(() => {
-    writeWaveUniforms(uniforms, waves.current, width, height)
-    uniforms.uShadeGain.value = rippleTuning.shadeGain
+    writeWaveField(values, waves.current, width, height)
+    values.shadeGain.value = rippleTuning.shadeGain
   })
 
-  return (
-    <shaderMaterial
-      ref={material}
-      key={texture.uuid}
-      uniforms={uniforms}
-      vertexShader={RIPPLE_VERT}
-      fragmentShader={RIPPLE_FRAG}
-      transparent
-      premultipliedAlpha
-      depthWrite={false}
-      toneMapped={false}
-    />
-  )
+  return <primitive object={material} attach="material" />
 }
 
 /**
@@ -141,22 +86,12 @@ function RippleMaterial({ waves }: { waves: React.RefObject<RippleWave[]> }) {
  */
 function RippleShadow({ waves, size }: { waves: React.RefObject<RippleWave[]>; size: [number, number] }) {
   const { width, height } = useSurfaceChrome()
-  const uniforms = useMemo(
-    () => ({
-      uSize: { value: new THREE.Vector2(1, 1) },
-      ...waveUniforms(),
-      uLightDir: { value: new THREE.Vector3(...LIGHT) },
-      uShadowAlpha: { value: rippleTuning.shadowAlpha },
-      uShadowSoft: { value: rippleTuning.shadowSoft },
-    }),
-    [],
-  )
-  const material = useOwnUniforms(uniforms)
-  uniforms.uSize.value.set(width, height)
+  const { material, values } = useNodeMaterial(createRippleShadowMaterial, [])
+  values.size.value.set(width, height)
   useFrame(() => {
-    writeWaveUniforms(uniforms, waves.current, width, height)
-    uniforms.uShadowAlpha.value = rippleTuning.shadowAlpha
-    uniforms.uShadowSoft.value = rippleTuning.shadowSoft
+    writeWaveField(values, waves.current, width, height)
+    values.shadowAlpha.value = rippleTuning.shadowAlpha
+    values.shadowSoft.value = rippleTuning.shadowSoft
   })
 
   return (
@@ -165,16 +100,7 @@ function RippleShadow({ waves, size }: { waves: React.RefObject<RippleWave[]>; s
     // with the shadow's own uv, and the click would land beside itself.
     <mesh renderOrder={-1} raycast={() => null} frustumCulled={false}>
       <planeGeometry args={[size[0], size[1], 64, 32]} />
-      <shaderMaterial
-        ref={material}
-        uniforms={uniforms}
-        vertexShader={RIPPLE_SHADOW_VERT}
-        fragmentShader={RIPPLE_SHADOW_FRAG}
-        transparent
-        premultipliedAlpha
-        depthWrite={false}
-        toneMapped={false}
-      />
+      <primitive object={material} attach="material" />
     </mesh>
   )
 }

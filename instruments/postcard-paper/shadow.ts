@@ -1,16 +1,24 @@
 // Curvature must change both the cast shadow and occlusion on the paper itself.
 import * as THREE from 'three'
+import {DirectRenderPipeline,WebGPURenderer} from 'three/webgpu'
 import {createHomeLightMaterial,maskTexture,setHomeInkMask,setHomeLightFrame} from '../../apps/lab/src/scenes/home/homeLight'
 import {packShadowDistances} from '../../apps/lab/src/scenes/home/homeShadowField'
 import {createPaperLighting} from '../../apps/lab/src/scenes/home/homePaperLighting'
+import {createHomeLightDisplay} from '../../apps/lab/src/scenes/home/homeLightDisplay'
 import {createPaperDrawFrame} from '../../apps/lab/src/scenes/home/homePaperFrame'
 import {PAPER_COLUMNS,PAPER_ROWS,PAPER_WIDTH,PAPER_HEIGHT,paperPoint,type PaperShape} from '../../apps/lab/src/scenes/home/homePaperLaw'
+import {gpuErrors,readCanvasRect} from '../canvasPixels'
 
 const width=900,height=600,ratio=devicePixelRatio
-const renderer=new THREE.WebGLRenderer({antialias:false,preserveDrawingBuffer:true})
+const renderer=new WebGPURenderer({antialias:false})
+await renderer.init()
+const errors=gpuErrors(renderer)
 renderer.setPixelRatio(ratio);renderer.setSize(width,height);document.body.append(renderer.domElement)
-const material=createHomeLightMaterial(),maps=createPaperLighting(renderer,material)
+// The masthead's draw: the page pass into its target, copied to the canvas, then the paper.
+const pipeline=new DirectRenderPipeline(renderer)
+const material=createHomeLightMaterial(),maps=createPaperLighting(renderer,pipeline,material)
 if(!maps)throw new Error('Floating-point render targets are required for the paper lighting check')
+const display=createHomeLightDisplay(renderer,pipeline,material)
 const scene=new THREE.Scene(),camera=new THREE.OrthographicCamera(-1,1,1,-1,.1,10)
 camera.position.z=1;scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),material))
 setHomeLightFrame(material,width,height,780,40,260)
@@ -24,10 +32,10 @@ function fill(amount:number){
   }
   maps!.update({kind:'scene',corners:frame.corners,paper:frame})
 }
-const gl=renderer.getContext()
-function pixels(){renderer.render(scene,camera);maps!.render();const data=new Uint8Array(renderer.domElement.width*renderer.domElement.height*4);gl.readPixels(0,0,renderer.domElement.width,renderer.domElement.height,gl.RGBA,gl.UNSIGNED_BYTE,data);return data}
+// Read in the task that drew it (canvasPixels.ts); rows run from the bottom, as readPixels returned them.
+function pixels(){display.render(scene,camera,maps);return readCanvasRect(renderer.domElement,0,0,renderer.domElement.width,renderer.domElement.height)}
 function channel(data:Uint8Array,x:number,y:number){return data[(Math.floor((height-y)*ratio)*renderer.domElement.width+Math.floor(x*ratio))*4]!}
-function withoutShadow(){const shadow=material.uniforms.uPaperShadow.value;material.uniforms.uPaperShadow.value=empty;const data=pixels();material.uniforms.uPaperShadow.value=shadow;return data}
+function withoutShadow(){const shadow=material.values.paperShadow.value;material.values.paperShadow.value=empty;const data=pixels();material.values.paperShadow.value=shadow;return data}
 fill(0);const flat=pixels(),flatLit=withoutShadow()
 fill(1);const curved=pixels(),curvedLit=withoutShadow()
 // A heading plane above every paper sample would shadow the entire card if
@@ -50,7 +58,7 @@ for(let row=0;row<12;row++)for(let col=0;col<16;col++){
   if(channel(flatLit,x+100,y+100)-channel(flat,x+100,y+100)>2)flatSelfShadow++
   maxSelfDifference=Math.max(maxSelfDifference,difference)
 }
-const result={changedCast,selfShadow,flatSelfShadow,maxSelfDifference,maxHeadingDifference,error:gl.getError()}
+const result={changedCast,selfShadow,flatSelfShadow,maxSelfDifference,maxHeadingDifference,backend:renderer.coordinateSystem===THREE.WebGPUCoordinateSystem?'webgpu':'webgl2',error:errors()}
 declare global{interface Window{__paperShadowProof:typeof result}}
 window.__paperShadowProof=result
 pixels()

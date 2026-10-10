@@ -7,12 +7,13 @@ import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
 import {replaceSource} from '../home-light/replaceSource.mjs'
 import {textureClarity} from '../textureClarity.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/sharpness')
 await mkdir(output,{recursive:true})
 const disableAlignment={name:'negative-raster-alignment',enforce:'pre',transform(source,id){if(process.env.QUALITY_NEGATIVE==='1'&&id.endsWith('/surfaceRasterAlignment.ts'))return replaceSource(source,'prepare(input:SurfaceRasterInput):(()=>void)|null {','prepare(input:SurfaceRasterInput):(()=>void)|null { return null;')}}
 const server=await createServer({configFile:false,plugins:[disableAlignment],root:path.resolve(import.meta.dirname,'../api-instance'),cacheDir:path.join(output,'.vite'),server:{host:'127.0.0.1',port:0},esbuild:{jsx:'automatic'},logLevel:'warn'})
 await server.listen()
-const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:!!process.env.TEST_DPR,defaultViewport:null,args:['--enable-features=CanvasDrawElement','--window-size=1280,980','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
+const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:!!process.env.TEST_DPR,defaultViewport:null,args:[...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement','--window-size=1280,980','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
 try {
  const page=await browser.newPage();await page.bringToFront()
  if(process.env.TEST_DPR)await page.setViewport({width:1280,height:900,deviceScaleFactor:Number(process.env.TEST_DPR)})

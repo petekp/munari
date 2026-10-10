@@ -12,16 +12,12 @@
 import { useEffect, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { MARBLE_HAND_STROKE_FRAGMENT, MARBLE_HAND_STROKE_VERTEX } from './marbleHandStrokeShaders'
-import {
-  MARBLE_HAND_TAP_PROGRAM_KEY,
-  addMarbleHandTap,
-  type MarbleHandTapUniforms,
-} from './marbleHandTapShaders'
+import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu'
+import { createMarbleHandStrokeMaterial, createMarbleHandStrokeValues } from './marbleHandStrokeNodes'
+import { createMarbleHandTapNodes, type MarbleHandTapUniforms } from './marbleHandTapNodes'
 import type { MarbleHandTuning } from './marbleHandTuning'
 
 const IGNORE_RAYCAST: THREE.Object3D['raycast'] = () => {}
-const MASK_KEY = () => `munari-marble-hand-mask-${MARBLE_HAND_TAP_PROGRAM_KEY}`
 
 export function MarbleHandStroke({ hand, tuning, tap }: {
   hand: THREE.Mesh
@@ -32,7 +28,7 @@ export function MarbleHandStroke({ hand, tuning, tap }: {
   const camera = useThree((state) => state.camera)
   const size = useThree((state) => state.size)
   const resources = useMemo(() => {
-    const target = new THREE.WebGLRenderTarget(1, 1, {
+    const target = new THREE.RenderTarget(1, 1, {
       // Match the overlay's antialiased edge without forcing another full
       // scene render. Four samples also retain subpixel width at DPR 1.
       samples: 4,
@@ -44,32 +40,15 @@ export function MarbleHandStroke({ hand, tuning, tap }: {
     target.texture.name = 'marble-hand-stroke-mask'
     // The mask draws the same bent stone the visible material draws. An
     // unpatched mask leaves the outline standing where the finger used to be.
-    const maskMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false })
-    maskMaterial.onBeforeCompile = (shader) => addMarbleHandTap(shader, tap)
-    maskMaterial.customProgramCacheKey = MASK_KEY
+    const maskMaterial = new MeshBasicNodeMaterial({ color: 0xffffff, toneMapped: false })
+    maskMaterial.positionNode = createMarbleHandTapNodes(tap).position
     const mask = new THREE.Mesh(hand.geometry, maskMaterial)
     mask.matrixAutoUpdate = false
     mask.frustumCulled = false
     const scene = new THREE.Scene()
     scene.add(mask)
-    const uniforms = {
-      uMask: { value: target.texture },
-      uBounds: { value: new THREE.Vector4(0, 0, 1, 1) },
-      uCssPixel: { value: new THREE.Vector2() },
-      uWidth: { value: 0 },
-      uColor: { value: new THREE.Color() },
-      uOpacity: { value: 0 },
-    }
-    const material = new THREE.ShaderMaterial({
-      uniforms,
-      vertexShader: MARBLE_HAND_STROKE_VERTEX,
-      fragmentShader: MARBLE_HAND_STROKE_FRAGMENT,
-      transparent: true,
-      premultipliedAlpha: true,
-      depthTest: false,
-      depthWrite: false,
-      toneMapped: false,
-    })
+    const values = createMarbleHandStrokeValues()
+    const material = createMarbleHandStrokeMaterial(target.texture, values)
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material)
     quad.name = 'marble-hand-stroke'
     quad.frustumCulled = false
@@ -78,7 +57,7 @@ export function MarbleHandStroke({ hand, tuning, tap }: {
     // while the hand mask excludes the sculpture's own visible pixels.
     quad.renderOrder = 10
     return {
-      target, maskMaterial, mask, scene, uniforms, material, quad,
+      target, maskMaterial, mask, scene, values, material, quad,
       bufferSize: new THREE.Vector2(), clearColor: new THREE.Color(),
       projection: new THREE.Matrix4(), corner: new THREE.Vector4(),
     }
@@ -92,13 +71,16 @@ export function MarbleHandStroke({ hand, tuning, tap }: {
   }, [resources])
 
   useFrame(() => {
-    const { quad, target, uniforms, mask, scene, projection, corner } = resources
+    // Fiber types the renderer as WebGLRenderer; SurfaceCanvas supplies a
+    // WebGPURenderer, which takes this mask's RenderTarget.
+    if (!(gl instanceof WebGPURenderer)) throw new Error('The hand stroke needs the WebGPURenderer from SurfaceCanvas')
+    const { quad, target, values, mask, scene, projection, corner } = resources
     quad.visible = hand.visible && tuning.strokeEnabled && tuning.strokeWidthPx > 0 && tuning.strokeOpacity > 0
     if (!quad.visible) return
-    uniforms.uWidth.value = tuning.strokeWidthPx
-    uniforms.uOpacity.value = tuning.strokeOpacity
-    uniforms.uColor.value.set(tuning.strokeColor)
-    uniforms.uCssPixel.value.set(1 / size.width, 1 / size.height)
+    values.width.value = tuning.strokeWidthPx
+    values.opacity.value = tuning.strokeOpacity
+    values.color.value.set(tuning.strokeColor)
+    values.cssPixel.value.set(1 / size.width, 1 / size.height)
     gl.getDrawingBufferSize(resources.bufferSize)
     if (target.width !== resources.bufferSize.x || target.height !== resources.bufferSize.y) {
       target.setSize(resources.bufferSize.x, resources.bufferSize.y)
@@ -137,7 +119,7 @@ export function MarbleHandStroke({ hand, tuning, tap }: {
     // CSS pixels leave room for the mask's antialiased outer edge.
     const padX = (tuning.strokeWidthPx + 2) / size.width
     const padY = (tuning.strokeWidthPx + 2) / size.height
-    uniforms.uBounds.value.set(Math.max(0, left - padX), Math.max(0, bottom - padY),
+    values.bounds.value.set(Math.max(0, left - padX), Math.max(0, bottom - padY),
       Math.min(1, right + padX), Math.min(1, top + padY))
 
     const previousTarget = gl.getRenderTarget()

@@ -10,23 +10,33 @@ import puppeteer from 'puppeteer-core'
 import {setChromeViewport} from '../chromeViewport.mjs'
 import {observeLightingDraw,measureLightingDraw} from './gpu.mjs'
 import {observeShadowCapture,measureExampleShadows} from './exampleShadows.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const output=process.env.LIGHT_PROOF_OUTPUT??path.join(tmpdir(),'munari-home-light')
 await mkdir(output,{recursive:true})
 const root=path.resolve(import.meta.dirname,'../..')
-const fixture=await createServer({configFile:false,root:import.meta.dirname,cacheDir:path.join(output,'.vite-fixture'),server:{host:'127.0.0.1',port:0,fs:{allow:[root]}},logLevel:'warn'})
+// The fixture's observation switches (main.ts): the shader's visibility before
+// tint and exposure, and a control whose emitter is parallel to the page.
+const shaded='vec4(clamp(vec3(shade.mul(float(1).sub(contact)).mul(pool)).mul(tint), 0, 1), 1)'
+const sphericalRay='basis.tangent.mul(local.x).add(basis.bitangent.mul(local.y)).add(basis.direction.mul(local.z))'
+const fixtureObserver={name:'observe-home-shadow-fixture',enforce:'pre',transform(code,id){
+  if(id.endsWith('/homeLight.ts'))return replaceSource(code,`    return ${shaded}`,`    return window.__homeLightObserve.visibility.greaterThan(.5).select(vec4(vec3(visibility), 1), ${shaded})`)
+  if(id.endsWith('/homePaperNodes.ts'))return replaceSource(code,`  return ${sphericalRay}`,`  return window.__homeLightObserve.parallel.greaterThan(.5).select(normalize(basis.direction.add(vec3(samplePoint.mul(sqrt(float(1).sub(cosineLimit.mul(cosineLimit)))), 0))), ${sphericalRay})`)
+  return code
+}}
+const fixture=await createServer({configFile:false,root:import.meta.dirname,plugins:[fixtureObserver],cacheDir:path.join(output,'.vite-fixture'),server:{host:'127.0.0.1',port:0,fs:{allow:[root]}},logLevel:'warn'})
 const observer={name:'observe-home-light',enforce:'pre',transform(code,id){
   code=observeLightingDraw(code,id)
   code=observeShadowCapture(code,id)
   if(!id.endsWith('/homeLight.ts'))return code
-  const marker='  material.uniforms.uLightHeight.value = lightHeight'
+  const marker='  material.values.lightHeight.value = lightHeight'
   return replaceSource(code,marker,'  window.__homeLightMaterial = material\n'+marker)
 }}
 const lab=await createServer({root:path.join(root,'apps/lab'),configFile:path.join(root,'apps/lab/vite.config.ts'),plugins:[observer],cacheDir:path.join(output,'.vite-lab'),server:{host:'127.0.0.1',port:0},logLevel:'warn'})
 await fixture.listen();await lab.listen()
 const executablePath=[process.env.CHROME_PATH,'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium'].filter(Boolean).find(existsSync)
 assert.ok(executablePath,'Set CHROME_PATH to a Chrome executable')
-const launch=flags=>puppeteer.launch({executablePath,headless:process.env.HEADED!=='1',defaultViewport:null,args:[...flags,'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
+const launch=(flags,gpu=WEBGPU_CHROME_ARGS)=>puppeteer.launch({executablePath,headless:process.env.HEADED!=='1',defaultViewport:null,args:[...gpu,...flags,'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
 let browser
 const errors=[],results={}
 try {
@@ -39,6 +49,7 @@ try {
   console.log(JSON.stringify(results.geometry))
   const g=results.geometry
   assert.equal(g.error,0)
+  assert.equal(g.backend,process.env.MUNARI_BACKEND==='webgl2'?'webgl2':'webgpu','The fixture must run on the requested backend')
   for(const [name,sample] of Object.entries(g))if(Array.isArray(sample))assert.ok(sample.length>0&&sample.every(Number.isFinite),`${name}: the fixture must return measured pixels`)
   assert.ok(g.gap[0]>220&&g.projected[0]<150,'An elevated thin stem must leave light between its outline and its projected shadow')
   assert.deepEqual(g.single,g.duplicate,'One light must not darken a shadow twice')
@@ -67,24 +78,27 @@ try {
   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}])
   await page.goto(`http://127.0.0.1:${lab.httpServer.address().port}/?scene=home&framed`,{waitUntil:'load'})
   await page.evaluate(()=>document.fonts.ready)
-  await page.evaluate(async()=>{if(!window.__readPaper)throw new Error('Missing postcard observer');const b=await import('/src/scenes/home/homePaperFrame.ts');window.__paperPoint=b.paperFramePoint})
+  // The renderer starts asynchronously; its first draw installs the observer.
+  await page.waitForFunction(()=>window.__readPaper)
+  await page.evaluate(async()=>{const b=await import('/src/scenes/home/homePaperFrame.ts');window.__paperPoint=b.paperFramePoint})
   await page.waitForSelector('[data-lit] .home-hero-holder')
   // A real redraw after worker completion, not a screenshot of initial fallback.
-  await page.waitForFunction(()=>window.__homeLightMaterial?.uniforms.uInkReady.value===1&&window.__homeLightMaterial.uniforms.uReliefReady.value===1)
-  await page.waitForFunction(()=>window.__homeLightMaterial.uniforms.uLightHeight.value===260)
+  await page.waitForFunction(()=>window.__homeLightMaterial?.values.inkReady.value===1&&window.__homeLightMaterial.values.reliefReady.value===1)
+  await page.waitForFunction(()=>window.__homeLightMaterial.values.lightHeight.value===260)
   await page.hover('.home-hero-row button')
   assert.equal(await page.$eval('.home-hero-row button',button=>getComputedStyle(button).boxShadow),'none','Hover must not add a static CSS shadow over the light shader')
   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'no-preference'}])
   results.performance=await measureLightingDraw(page)
+  assert.equal(results.performance.backend,process.env.MUNARI_BACKEND==='webgl2'?'webgl2':'webgpu','The lighting must run on the requested backend')
   console.log(JSON.stringify({performance:results.performance}))
   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}])
   await page.screenshot({path:path.join(output,'desktop.png')})
   await page.click('.home-select-word')
-  await page.waitForFunction(()=>window.__homeLightMaterial.uniforms.uSelectionLift.value>35)
+  await page.waitForFunction(()=>window.__homeLightMaterial.values.selectionLift.value>35)
   results.selection=await page.evaluate(()=>{
     const line=document.querySelector('.home-masthead-em').getBoundingClientRect()
-    const u=window.__homeLightMaterial.uniforms
-    return {text:getSelection().toString(),count:u.uSelectionCount.value,top:u.uSelection.value[0].y+u.uFrameOrigin.value.y,lineTop:line.top}
+    const u=window.__homeLightMaterial.values
+    return {text:getSelection().toString(),count:u.selectionCount.value,top:u.selection[0].y+u.frameOrigin.value.y,lineTop:line.top}
   })
   assert.equal(results.selection.text,'Unified.')
   assert.ok(results.selection.top>=results.selection.lineTop-.5,'Selecting a line must not raise the preceding line')
@@ -135,7 +149,7 @@ try {
   await page.waitForFunction(()=>document.querySelector('.home-hero-row .home-postcard-status').dataset.gl==='false')
   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}])
   await page.click('.home-masthead-copy')
-  await page.waitForFunction(()=>window.__homeLightMaterial.uniforms.uSelectionCount.value===0)
+  await page.waitForFunction(()=>window.__homeLightMaterial.values.selectionCount.value===0)
   const light=await page.$('.home-light'),box=await light.boundingBox()
   await page.mouse.move(box.x+box.width/2,box.y+box.height/2)
   await page.mouse.down();await page.mouse.move(780,400,{steps:16});await page.mouse.up()
@@ -148,10 +162,10 @@ try {
   results.galleryShadows=await measureExampleShadows(page,output)
   await page.focus('[aria-label="Distance from the page"]')
   await page.keyboard.press('Home')
-  await page.waitForFunction(()=>window.__homeLightMaterial.uniforms.uLightHeight.value===220)
+  await page.waitForFunction(()=>window.__homeLightMaterial.values.lightHeight.value===220)
   await page.screenshot({path:path.join(output,'low.png')})
   await setChromeViewport(page,{width:390,height:844})
-  await page.waitForFunction(()=>window.__homeLightMaterial.uniforms.uInkRect.value.z<500&&window.__homeLightMaterial.uniforms.uReliefRect.value.z<500)
+  await page.waitForFunction(()=>window.__homeLightMaterial.values.inkRect.value.z<500&&window.__homeLightMaterial.values.reliefRect.value.z<500)
   await page.screenshot({path:path.join(output,'mobile.png')})
   results.page={dpr:await page.evaluate(()=>devicePixelRatio),overflow:await page.evaluate(()=>document.querySelector('.home-page').scrollWidth>innerWidth),errors}
   assert.equal(results.page.overflow,false)
@@ -161,12 +175,12 @@ try {
   await page.goto(`http://127.0.0.1:${lab.httpServer.address().port}/?scene=home`,{waitUntil:'load'})
   assert.equal(await page.$('iframe.site-frame'),null,'Home must render in the site document')
   const overview=page
-  await overview.waitForFunction(()=>window.__homeLightMaterial?.uniforms.uInkReady.value===1&&window.__homeLightMaterial.uniforms.uReliefReady.value===1)
+  await overview.waitForFunction(()=>window.__homeLightMaterial?.values.inkReady.value===1&&window.__homeLightMaterial.values.reliefReady.value===1)
   await page.waitForFunction(()=>!document.documentElement.hasAttribute('data-opening'))
   await page.screenshot({path:path.join(output,'website.png')})
   for(const width of [390,320]) {
     await setChromeViewport(page,{width,height:844})
-    await overview.waitForFunction(()=>window.__homeLightMaterial?.uniforms.uResolution.value.x===document.querySelector('.home-page').clientWidth&&window.__homeLightMaterial.uniforms.uInkRect.value.z<innerWidth+100&&window.__homeLightMaterial.uniforms.uReliefReady.value===1)
+    await overview.waitForFunction(()=>window.__homeLightMaterial?.values.resolution.value.x===document.querySelector('.home-page').clientWidth&&window.__homeLightMaterial.values.inkRect.value.z<innerWidth+100&&window.__homeLightMaterial.values.reliefReady.value===1)
     assert.equal(await overview.evaluate(()=>document.querySelector('.home-page').scrollWidth>innerWidth),false)
     await page.screenshot({path:path.join(output,`website-${width}.png`)})
     await overview.evaluate(()=>{window.__resizedInput=document.querySelector('.home-hero-holder [data-api-live] input')})
@@ -181,8 +195,10 @@ try {
   await browser.close();browser=null
 
   results.fallbacks={}
-  for(const [name,flags] of [['native',[]],['no-webgl',['--disable-webgl']]]) {
-    browser=await launch(flags)
+  // No GPU renderer: neither WebGPU nor the WebGL 2 fallback can start.
+  // --enable-unsafe-webgpu keeps an adapter even with WebGPUService disabled.
+  for(const [name,flags,gpu] of [['native',[],WEBGPU_CHROME_ARGS],['no-gpu',['--disable-webgl','--disable-features=WebGPUService'],[]]]) {
+    browser=await launch(flags,gpu)
     const fallback=await browser.newPage(),faults=[]
     fallback.on('pageerror',error=>faults.push(String(error)))
     await setChromeViewport(fallback,{width:1200,height:900})
@@ -190,14 +206,14 @@ try {
     await fallback.goto(`http://127.0.0.1:${lab.httpServer.address().port}/?scene=home&framed`,{waitUntil:'load'})
     await fallback.waitForSelector('.home-masthead-title',{visible:true})
     if(name==='native') {
-      await fallback.waitForFunction(()=>window.__homeLightMaterial?.uniforms.uInkReady.value===1&&window.__homeLightMaterial.uniforms.uReliefReady.value===1)
+      await fallback.waitForFunction(()=>window.__homeLightMaterial?.values.inkReady.value===1&&window.__homeLightMaterial.values.reliefReady.value===1)
       await fallback.focus('[aria-label="Distance from the page"]');await fallback.keyboard.press('End')
-      await fallback.waitForFunction(()=>window.__homeLightMaterial.uniforms.uLightHeight.value===600)
+      await fallback.waitForFunction(()=>window.__homeLightMaterial.values.lightHeight.value===600)
     }else {
       await fallback.waitForSelector('.home-light[data-degraded]')
       assert.equal(await fallback.$('[aria-label="Distance from the page"]'),null,'Unavailable lighting must not leave an ineffective control')
       await fallback.hover('.home-hero-row button')
-      assert.notEqual(await fallback.$eval('.home-hero-row button',button=>getComputedStyle(button).boxShadow),'none','The native shadow must remain when WebGL is unavailable')
+      assert.notEqual(await fallback.$eval('.home-hero-row button',button=>getComputedStyle(button).boxShadow),'none','The native shadow must remain when no GPU renderer is available')
     }
     results.fallbacks[name]=await fallback.evaluate(()=>({captureAvailable:'drawElementImage' in CanvasRenderingContext2D.prototype,lightVisible:!!document.querySelector('.home-light')?.getClientRects().length,overflow:document.querySelector('.home-page').scrollWidth>innerWidth}))
     assert.equal(results.fallbacks[name].captureAvailable,false,'The fallback profile must actually disable HTML capture')

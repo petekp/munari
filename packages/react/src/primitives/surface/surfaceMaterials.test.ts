@@ -9,7 +9,8 @@ import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { configureSurfaceMaterial, useSurfaceUniforms, type SurfaceUniforms } from './surfaceMaterials'
+import { uniform } from 'three/tsl'
+import { configureSurfaceMaterial, useSurfaceNodes, type SurfaceNodes } from './surfaceMaterials'
 import { createDomSurfaceTexture } from './surfaceSourceRuntime'
 import {
   DEFAULT_PART,
@@ -56,16 +57,17 @@ describe('custom material configuration', () => {
 })
 
 // The contract is reference identity: the hook must hand back the
-// PRESENTER's radii/size uniform objects, not copies — a private copy
+// PRESENTER's radii/size uniform nodes, not copies — a private copy
 // compiles fine and then never tracks a chrome change. And the returned
 // object must keep ITS identity across renders, because it is what a
-// mounted shaderMaterial holds.
-describe('useSurfaceUniforms', () => {
+// material built once holds.
+describe('useSurfaceNodes', () => {
   function harness(texture: () => THREE.CanvasTexture) {
     const slot: SurfaceMaterialValue = {
-      radii: { value: new THREE.Vector4(4, 4, 4, 4) },
-      size: { value: new THREE.Vector2(200, 100) },
+      radii: uniform(new THREE.Vector4(4, 4, 4, 4)),
+      size: uniform(new THREE.Vector2(200, 100)),
       transparent: true,
+      beforeDraw: () => () => {},
     }
     const stub: Pick<SurfaceSourceRuntime, 'texture'> = { texture }
     // SAFETY: the hook reaches only `runtime.texture()`; the rest of the
@@ -82,9 +84,9 @@ describe('useSurfaceUniforms', () => {
       setPageRoot: () => {},
       setMeasuredSize: () => {},
     }
-    const seen: SurfaceUniforms[] = []
+    const seen: SurfaceNodes[] = []
     function Probe(): ReactNode {
-      seen.push(useSurfaceUniforms())
+      seen.push(useSurfaceNodes())
       return null
     }
     const container = document.createElement('div')
@@ -102,7 +104,7 @@ describe('useSurfaceUniforms', () => {
     return { slot, seen, render, unmount: () => flushSync(() => root.unmount()) }
   }
 
-  it('wires the presenter’s own uniform objects and keeps its identity', () => {
+  it('wires the presenter’s own uniform nodes and keeps its identity', () => {
     const canvas = document.createElement('canvas')
     canvas.width = 200
     canvas.height = 100
@@ -113,17 +115,17 @@ describe('useSurfaceUniforms', () => {
     render()
     const [wired] = seen
     if (!wired) throw new Error('the probe never rendered')
-    expect(wired.uMunariRadii).toBe(slot.radii)
-    expect(wired.uMunariSize).toBe(slot.size)
-    expect(wired.tMap.value).toBe(first)
+    expect(wired.radii).toBe(slot.radii)
+    expect(wired.size).toBe(slot.size)
+    expect(wired.map.value).toBe(first)
 
-    // A texture swap lands as a value write into the SAME object — the
-    // one the mounted program is holding.
+    // A texture swap lands as a value write into the SAME node — the one
+    // the built material is holding.
     const replacement = createDomSurfaceTexture(canvas, 1, false, true)
     texture = replacement
     render()
     expect(seen[1]).toBe(wired)
-    expect(wired.tMap.value).toBe(replacement)
+    expect(wired.map.value).toBe(replacement)
     unmount()
   })
 })

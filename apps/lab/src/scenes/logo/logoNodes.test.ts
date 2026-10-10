@@ -1,6 +1,6 @@
 // Material rows must match the names dealt to the scene and remain valid shader inputs.
 import { describe, expect, it } from 'vitest'
-import { MATERIAL_PARAMS } from './logoShaders'
+import { MATERIAL_PARAMS } from './logoNodes'
 import { LOGO_MATERIALS } from './logoLaw'
 
 describe('the material deck', () => {

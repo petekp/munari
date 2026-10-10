@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '..', '..')
@@ -64,6 +65,7 @@ try {
     executablePath: chromePath,
     headless: true,
     args: [
+      ...WEBGPU_CHROME_ARGS,
       '--enable-features=CanvasDrawElement',
       '--enable-webgl',
       '--ignore-gpu-blocklist',
@@ -156,7 +158,7 @@ try {
       state.raycaster.setFromCamera({ x: (x - canvas.left) / canvas.width * 2 - 1, y: 1 - (y - canvas.top) / canvas.height * 2 }, state.camera)
       const candidates = []
       state.scene.traverse(object => {
-        if (object.isMesh && object.material?.uniforms?.uTransmission) candidates.push(object)
+        if (object.isMesh && object.material?.userData.refractionValues) candidates.push(object)
       })
       return {
         chrome: Boolean(header && top && header.contains(top)),

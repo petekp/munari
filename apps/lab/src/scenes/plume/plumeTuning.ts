@@ -8,7 +8,7 @@
 // The fault this avoids, 2026-08-30: starting a clock at the first letter
 // made a five-letter word begin disappearing before its last letter arrived.
 // Ownership: this file owns the editable scene values and input limits.
-// Timing state and pixels live in plumeLaw.ts and plumeShaders.ts.
+// Timing state and pixels live in plumeLaw.ts and plumeNodes.ts.
 
 export interface PlumeEffects {
   wisps: boolean

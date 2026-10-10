@@ -1,7 +1,8 @@
 // Lamp viewport — native pixels for the visible portion of a zoomed page.
 // An iframe reports visualViewport.scale=1 while its parent is pinch-zoomed.
 // Reading the enclosing viewport avoids stretching the lamp's bitmap (#54).
-import * as THREE from 'three'
+import type * as THREE from 'three'
+import type {WebGPURenderer} from 'three/webgpu'
 import {fitBulbCamera} from './homeLightBulb'
 
 export function readEnclosingViewport(){
@@ -28,7 +29,7 @@ export function watchLampViewport(changed:()=>void){
   return()=>{for(const viewport of viewports){viewport.removeEventListener('resize',changed);viewport.removeEventListener('scroll',changed)}}
 }
 
-export function createLampViewportUpdater(renderer:THREE.WebGLRenderer,camera:THREE.PerspectiveCamera,page:HTMLElement){
+export function createLampViewportUpdater(renderer:WebGPURenderer,camera:THREE.PerspectiveCamera,page:HTMLElement){
   let previous=''
   return()=>{
     const box=page.getBoundingClientRect()

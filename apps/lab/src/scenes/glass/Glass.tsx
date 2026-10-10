@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { MeshTransmissionMaterial, useFBO } from '@react-three/drei'
 import { SceneSurface, useSurfaceTexture } from '@petepetrash/munari'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -24,30 +23,21 @@ import {
 import { glassTuning } from './glassTuning'
 import { animate, motionValue } from 'motion'
 
-// The glass scene — the glass spike, and then the compositor that replaced it.
+// The glass scene — a live sign-in form under screen-space glass, over a live
+// DOM wall.
 //
 // Question under test: can a Surface wear a physically-based glass material
 // (the "liquid glass" direction) while its DOM stays legible and live, and
 // does refraction survive MULTIPLE levels of depth — glass in front of glass
 // in front of a bright wall?
 //
-// TWO ANSWERS, both live. `?glass=mtm` (or `__glass.setMode('mtm')`) runs
-// the mesh path: real extruded geometry wearing drei's MeshTransmissionMaterial,
-// one scene render per panel. `?glass=sdf` (the default) runs the SDF path: no glass
-// geometry at all — one scene render, then one screen-space pass per panel
-// that intersects the eye ray with the panel's plane and evaluates a rounded
-// rect as a distance field there. See glassSdf.tsx / glassSdfShader.ts. The
-// switch exists so the comparison is a console call, not a git checkout.
-//
-// Architecture per MTM glass panel, all through the material-slot seam:
-//   - Surface.Mesh wearing drei's MeshTransmissionMaterial on
-//     an extruded rounded-rect (flat faces, rounded corner EDGES — a card,
-//     not a soap bar). The glass body never samples the DOM.
-//   - The DOM rides a hair-lifted transparent quad reading
-//     `useSurfaceTexture()` at true UV — the world bends THROUGH the glass,
-//     the ink sits ON it and never distorts.
-//   - `.ui-root:has(> [data-glass-root])` (app CSS) clears the opaque
-//     bg-background so the texture rasterizes with real alpha.
+// The glass has no geometry. The scene renders once, then one screen-space
+// pass per panel intersects the eye ray with the panel's plane and evaluates
+// a rounded rect as a distance field there. See glassSdf.tsx /
+// glassSdfNodes.ts. The DOM is the panel's Surface; the compositor samples
+// it at true UV, so the world bends THROUGH the glass and the ink sits ON
+// it. `.ui-root:has(> [data-glass-root])` (app CSS) clears the opaque
+// bg-background so the texture rasterizes with real alpha.
 //
 // Depth ladder, back to front: wall (DOM refraction target) → glass sign-in
 // form → glass CTA surfacing out of the form's face. The CTA's refraction
@@ -62,10 +52,8 @@ import { animate, motionValue } from 'motion'
 // pass through it, and light struck into the CTA where a real DOM click
 // landed.
 //
-// Tuning: every transmission parameter is live on `window.__glass`
-// (`set('ior', 1.4)` hits every panel; `setFor('glass-pill', ...)` one;
-// `setResolution('glass-card', 512)` forces a square refraction buffer,
-// no arg returns it to viewport-matched).
+// Tuning: every glass parameter is live on `window.__glass`
+// (`set('ior', 1.4)` hits every panel; `setFor('glass-pill', ...)` one).
 
 const PX = 200
 const WALL_W = 1700
@@ -125,63 +113,14 @@ const RIPPLE_LIFE = GLASS_DEFAULTS.rippleLife
 // density-matched re-raster samples one sharp level by construction —
 // nothing beats re-running the vector paint record at the density the
 // screen actually needs. (Pin only for memory determinism / no mid-shot
-// re-rasters, and accept the trade.) The refraction buffers are a separate,
-// viewport-matched resolution (see GlassPanel).
+// re-rasters, and accept the trade.)
 
-// ---- geometry: an extruded rounded rect --------------------------------
-
-function roundedRectGeometry(w: number, h: number, r: number, depth: number) {
-  const outline = new THREE.Shape()
-  const x = -w / 2
-  const y = -h / 2
-  outline.moveTo(x + r, y)
-  outline.lineTo(x + w - r, y)
-  outline.absarc(x + w - r, y + r, r, -Math.PI / 2, 0, false)
-  outline.lineTo(x + w, y + h - r)
-  outline.absarc(x + w - r, y + h - r, r, 0, Math.PI / 2, false)
-  outline.lineTo(x + r, y + h)
-  outline.absarc(x + r, y + h - r, r, Math.PI / 2, Math.PI, false)
-  outline.lineTo(x, y + r)
-  outline.absarc(x + r, y + r, r, Math.PI, Math.PI * 1.5, false)
-  const geo = new THREE.ExtrudeGeometry(outline, {
-    depth,
-    bevelEnabled: true,
-    bevelThickness: 0.02,
-    bevelSize: 0.02,
-    bevelSegments: 4,
-    curveSegments: 24,
-  })
-  geo.translate(0, 0, -depth / 2)
-  return geo
-}
-
-// ---- the glass panel ----------------------------------------------------
-
-const BEVEL = 0.02
-// The front face sits at depth/2 + BEVEL (bevels extend past the extrusion);
-// the ink floats just above it.
-const INK_LIFT = 0.012
+// ---- the console ---------------------------------------------------------
 
 // Every knob the console addresses is a number. The two strings in a panel's
 // params (`tint`, `glowColor`) are set through their own colour entries.
 type GlassKnobs = Record<string, number>
 type NumericParams = Omit<GlassParams, 'tint' | 'glowColor'>
-
-/**
- * The transmission knobs this scene tunes. `Pick` keeps them welded to drei's
- * own types instead of restating them, and a mapped type indexes by name —
- * which is what lets the console address one by string with no assertion.
- */
-type MtmKnobs = Pick<
-  TransmissionMaterial,
-  | 'transmission'
-  | 'thickness'
-  | 'roughness'
-  | 'ior'
-  | 'chromaticAberration'
-  | 'anisotropicBlur'
-  | 'distortion'
->
 
 /**
  * Write one named knob onto a live object, and report whether it landed.
@@ -192,214 +131,19 @@ type MtmKnobs = Pick<
  * an object the renderer reads every frame, and the console says it worked.
  */
 function pokeKnob(bag: GlassKnobs, key: string, value: number): boolean {
-  // `in` walks the REAL object, which carries names this type never listed:
-  // a material's `name` and `uuid` are there and are strings. The second
-  // guard is what refuses those, even though the index type says otherwise.
+  // `in` walks the REAL object, which also carries the colour strings `tint`
+  // and `glowColor`. The second guard is what refuses those, even though the
+  // index type says otherwise.
   if (!(key in bag)) return false
   if (!Number.isFinite(bag[key])) return false
   bag[key] = value
   return true
 }
 
-/**
- * drei's transmission material — a physical material plus the knobs its own
- * shader adds. Taken from the component's own ref type rather than restated,
- * so the tweak panel and drei cannot drift apart.
- */
-type TransmissionMaterial = NonNullable<React.ComponentRef<typeof MeshTransmissionMaterial>>
-
-const glassMaterials = new Map<string, TransmissionMaterial>()
-
-// ---- the refraction buffers --------------------------------------------
-//
-// MTM's default mode hides ONLY the host mesh from its own buffer (a
-// DiscardMaterial swap on `parent.material`) — children keep rendering, so
-// the ink quad ghosted behind its own glass (measured: every label doubled,
-// one crisp copy + one refracted). The documented escape hatch is the
-// `buffer` prop: hand MTM a texture and it renders nothing itself. So a
-// scene-level coordinator renders one FBO per panel with that panel's WHOLE
-// group hidden (glass + ink), leaving every OTHER panel — glass, ink and
-// all — visible in it. Glass-through-glass survives (a rear panel renders
-// into a front panel's buffer with its own material, sampling its own
-// last-frame buffer — one frame stale, invisible in practice), and nobody
-// refracts their own ink. Tone mapping must be OFF during buffer renders,
-// exactly as MTM's internal pass does it, or glass double-tonemaps.
-
-interface GlassPass {
-  group: React.RefObject<THREE.Group | null>
-  fbo: THREE.WebGLRenderTarget
-}
-
-const glassPasses = new Map<string, GlassPass>()
-
-// A second constraint, browser-bought: these are SCREEN-SPACE buffers,
-// rendered from the camera, so a naive "hide only yourself" pass leaves a
-// panel that is IN FRONT of you inside your buffer — and your refraction
-// then shows the front panel's image through itself (measured: ghost
-// "Continue" copies inside the pill, via the card's refraction of it).
-// Physically a panel's refraction contains only what is BEHIND it. So:
-// sort near→far and hide cumulatively — when panel P's buffer renders, P
-// and every panel nearer than P are hidden. The rear panel still appears
-// in the front panel's buffer (glass-through-glass survives); the front
-// panel never appears in the rear one's.
-const worldPos = new THREE.Vector3()
-
-function GlassBufferCoordinator() {
-  useFrame((state) => {
-    if (glassPasses.size === 0) return
-    const { gl, scene, camera } = state
-    const entries = [...glassPasses.values()].filter((e) => e.group.current)
-    if (entries.length === 0) return
-    const dist = (e: GlassPass) =>
-      camera.position.distanceTo(e.group.current!.getWorldPosition(worldPos))
-    entries.sort((a, b) => dist(a) - dist(b))
-    const oldTone = gl.toneMapping
-    gl.toneMapping = THREE.NoToneMapping
-    for (const e of entries) {
-      // Hide, render, and STAY hidden for the farther panels' passes.
-      e.group.current!.visible = false
-      gl.setRenderTarget(e.fbo)
-      gl.render(scene, camera)
-    }
-    for (const e of entries) e.group.current!.visible = true
-    gl.setRenderTarget(null)
-    gl.toneMapping = oldTone
-  })
-  return null
-}
-
-function GlassInk({ w, h, depth }: { w: number; h: number; depth: number }) {
-  const texture = useSurfaceTexture()
-  // The glass root rasterizes with real alpha, and GPU bilinear filtering
-  // averages RAW rgb across texels — straight-alpha data mixes the white of
-  // near-transparent pixels (bg-white/10 is white rgb at α≈0.1) into every
-  // boundary with opaque content: a light halo around the text-selection
-  // rectangle, measured in the glass scene. Premultiplying at upload makes the
-  // filtering average premultiplied values; the blend factors below stop
-  // the already-multiplied rgb from being multiplied by alpha again. Exact
-  // for an unlit passthrough material — and in this custom material path the ink
-  // is this texture's only consumer, so the upload flag can't skew anyone
-  // else.
-  useEffect(() => {
-    if (!texture) return
-    texture.premultiplyAlpha = true
-    texture.needsUpdate = true
-  }, [texture])
-  if (!texture) return null
-  return (
-    <mesh position={[0, 0, depth / 2 + BEVEL + INK_LIFT]}>
-      <planeGeometry args={[w / PX, h / PX]} />
-      <meshBasicMaterial
-        map={texture}
-        transparent
-        toneMapped={false}
-        depthWrite={false}
-        blending={THREE.CustomBlending}
-        blendEquation={THREE.AddEquation}
-        blendSrc={THREE.OneFactor}
-        blendDst={THREE.OneMinusSrcAlphaFactor}
-      />
-    </mesh>
-  )
-}
-
-interface MtmGlassPanelProps {
-  label: string
-  width: number
-  height: number
-  radius?: number
-  depth?: number
-  /** Square buffer override in px; omit for viewport×dpr-matched (sharpest). */
-  resolution?: number
-  content: React.ReactNode
-  position: [number, number, number]
-  rotation?: [number, number, number]
-}
-
-function MtmGlassPanel({
-  label,
-  width,
-  height,
-  radius = 0.09,
-  depth = 0.12,
-  resolution,
-  content,
-  position,
-  rotation,
-}: MtmGlassPanelProps) {
-  const geo = useMemo(
-    () => roundedRectGeometry(width / PX, height / PX, radius, depth),
-    [width, height, radius, depth],
-  )
-  useEffect(() => () => geo.dispose(), [geo])
-
-  const group = useRef<THREE.Group | null>(null)
-  // The refraction buffer is PER PANEL — sharpness is an individual budget,
-  // not a scene setting. Default: match the drawing buffer (CSS size × dpr),
-  // so a refracted edge carries the same pixel density as the direct view.
-  // The spike's square 768/512 targets were stretched across a widescreen
-  // viewport (MTM samples them with screen-space UVs), which halved the
-  // horizontal detail — that was most of the "fuzzy edges". 4× MSAA on top,
-  // because geometry edges inside the buffer otherwise alias and the frost
-  // blur smears the jaggies into mush. `resolution` overrides with a square
-  // target for cost experiments (`__glass.setResolution`); useFBO re-sizes
-  // the same render target in place, so the registered pass and the MTM
-  // `buffer` binding both survive the change.
-  const size = useThree((s) => s.size)
-  const dpr = useThree((s) => s.viewport.dpr)
-  const fbo = useFBO(
-    resolution || Math.round(size.width * dpr),
-    resolution || Math.round(size.height * dpr),
-    { samples: 4 },
-  )
-  useEffect(() => {
-    glassPasses.set(label, { group, fbo })
-    return () => {
-      glassPasses.delete(label)
-    }
-  }, [label, fbo])
-
-  return (
-    <group ref={group} position={position} rotation={rotation}>
-      <SceneSurface.Root name={label}>
-<SceneSurface.HTML size={[width, height]}>{content}</SceneSurface.HTML>
-        <SceneSurface.Mesh
-          name={label}
-          placement="manual"
-          geometry={<primitive object={geo} attach="geometry" />}
-          material={
-            <MeshTransmissionMaterial
-              ref={(m: TransmissionMaterial | null) => {
-                if (m) glassMaterials.set(label, m)
-                else glassMaterials.delete(label)
-              }}
-              buffer={fbo.texture}
-              transmission={1}
-              thickness={depth * 2.5}
-              roughness={0.08}
-              ior={1.5}
-              chromaticAberration={0.06}
-              anisotropicBlur={0.2}
-              distortion={0}
-              samples={6}
-              // MTM still allocates its internal fboMain/fboBack even though the
-              // `buffer` prop short-circuits its render pass; keep them tiny so
-              // the only real buffer is ours.
-              resolution={32}
-            />
-          }
-        >
-          <GlassInk w={width} h={height} depth={depth} />
-        </SceneSurface.Mesh>
-      </SceneSurface.Root>
-    </group>
-  )
-}
-
 // ---- the liquid part ----------------------------------------------------
 //
 // Three circles sharing the sign-in card's plane, smooth-min-unioned into
-// its distance field (glassSdfShader.ts). They orbit on an ellipse whose radii
+// its distance field (glassSdfNodes.ts). They orbit on an ellipse whose radii
 // BREATHE, so each bead cycles through the whole interesting range: tucked
 // inside the card (the union is just the card, with a faint swell where the
 // bead pushes the rim out), grazing it (a neck forms and stretches), and
@@ -700,8 +444,8 @@ function CtaChip({
   onStrike,
   onRelease,
 }: {
-  onStrike?: (x: number, y: number) => void
-  onRelease?: () => void
+  onStrike: (x: number, y: number) => void
+  onRelease: () => void
 }) {
   return (
     <div
@@ -713,14 +457,14 @@ function CtaChip({
         type="button"
         onPointerDown={(e) => {
           const r = e.currentTarget.getBoundingClientRect()
-          onStrike?.(e.clientX - r.left, e.clientY - r.top)
+          onStrike(e.clientX - r.left, e.clientY - r.top)
         }}
         // Release on leave as well as up. A press that ends outside the button
         // still ends, and without this the panel would stay sunk whenever the
         // pointer slid off before lifting — the classic stuck-button.
-        onPointerUp={() => onRelease?.()}
-        onPointerLeave={() => onRelease?.()}
-        onPointerCancel={() => onRelease?.()}
+        onPointerUp={() => onRelease()}
+        onPointerLeave={() => onRelease()}
+        onPointerCancel={() => onRelease()}
         className="flex h-full w-full items-center justify-center gap-2 text-[15px] font-semibold tracking-tight text-white"
       >
         Sign in
@@ -836,8 +580,8 @@ function WallArt() {
   )
 }
 
-// An unlit wall: a basic-material quad reads the
-// same texture, exactly as the ink quads do — because the moment a
+// An unlit wall: a basic-material quad reads the Surface texture, because
+// the moment a
 // DOM-sourced colour goes through a lit material it stops being the colour
 // the CSS asked for. The neon is a token (`--signal`), and a token that
 // arrives on screen multiplied by whatever the scene's lights happen to sum
@@ -863,7 +607,6 @@ function WallInk() {
 
 function WebAppFraming() {
   const camera = useThree((s) => s.camera)
-  const gl = useThree((s) => s.gl)
 
   useLayoutEffect(() => {
     camera.position.set(0, 0, CAM_Z)
@@ -880,24 +623,6 @@ function WebAppFraming() {
       cam.updateProjectionMatrix()
     }
   }, [camera])
-
-  // Tone mapping is a scene-level decision here, not a global one, and the
-  // default is wrong for this scene specifically. r3f ships ACES, which was
-  // built to make rendered light look photographic — and one of the things it
-  // does to earn that is rotate saturated oranges toward yellow as they
-  // brighten. Run a neon token through it and what lands on screen is not the
-  // token. Neutral (Khronos PBR Neutral) exists for exactly this complaint:
-  // it leaves in-gamut colour where the author put it and only rolls off the
-  // highlights. So the DOM's colours arrive as CSS specified them while the
-  // glass's speculars and the strike still shoulder off instead of clipping
-  // to white. Restored on unmount — the other five scenes never asked for it.
-  useLayoutEffect(() => {
-    const prev = gl.toneMapping
-    gl.toneMapping = THREE.NeutralToneMapping
-    return () => {
-      gl.toneMapping = prev
-    }
-  }, [gl])
 
   // ── parallax, from real depth rather than per-layer fudge ───────────────
   //
@@ -933,15 +658,7 @@ function WebAppFraming() {
 
 // ---- the scene ----------------------------------------------------------
 
-type GlassMode = 'mtm' | 'sdf'
-
 export function Glass() {
-  // Per-panel square-buffer overrides (0/absent = viewport-matched). State,
-  // not a ref: a change must re-render the panel so useFBO can resize.
-  const [resOverride, setResOverride] = useState<Record<string, number>>({})
-  const [mode, setMode] = useState<GlassMode>(() =>
-    new URLSearchParams(window.location.search).get('glass') === 'mtm' ? 'mtm' : 'sdf',
-  )
   // Six, and "sparse" is a consequence of the span rather than the count:
   // each orb is off screen for most of its cycle (see ORB_SPAN), so six in
   // the array is three or four on screen, arriving at uneven intervals.
@@ -1023,45 +740,18 @@ export function Glass() {
 
   useEffect(() => {
     window.__glass = {
-      mode: () => mode,
-      setMode: (next: GlassMode) => {
-        setMode(next === 'mtm' ? 'mtm' : 'sdf')
-        return `glass mode: ${next}`
-      },
-      // One verb, two backends: in `sdf` mode the knobs are plain numbers on
-      // a per-panel params object the compositor reads each frame; in `mtm`
-      // mode they are properties on a MeshTransmissionMaterial. Same call.
       set: (key: string, value: GlassKnobs[string]) => {
         let n = 0
-        if (mode === 'sdf') {
-          for (const label of sdfPanelLabels()) {
-            const p: NumericParams | null = sdfPanelParams(label)
-            if (p && pokeKnob(p, key, value)) n++
-          }
-          return n === 0
-            ? `no sdf panel takes ${key}=${value}`
-            : `set ${key}=${value} on ${n} sdf panels`
+        for (const label of sdfPanelLabels()) {
+          const p: NumericParams | null = sdfPanelParams(label)
+          if (p && pokeKnob(p, key, value)) n++
         }
-        for (const m of glassMaterials.values()) {
-          const knobs: MtmKnobs = m
-          if (pokeKnob(knobs, key, value)) n++
-        }
-        return n === 0
-          ? `no material takes ${key}=${value}`
-          : `set ${key}=${value} on ${n} materials`
+        return n === 0 ? `no panel takes ${key}=${value}` : `set ${key}=${value} on ${n} panels`
       },
       setFor: (label: string, key: string, value: GlassKnobs[string]) => {
-        if (mode === 'sdf') {
-          const p: NumericParams | null = sdfPanelParams(label)
-          if (!p) return `no sdf panel: ${label}`
-          return pokeKnob(p, key, value)
-            ? `set ${key}=${value} on ${label}`
-            : `${label} does not take ${key}=${value}`
-        }
-        const m = glassMaterials.get(label)
-        if (!m) return `no material: ${label}`
-        const knobs: MtmKnobs = m
-        return pokeKnob(knobs, key, value)
+        const p: NumericParams | null = sdfPanelParams(label)
+        if (!p) return `no panel: ${label}`
+        return pokeKnob(p, key, value)
           ? `set ${key}=${value} on ${label}`
           : `${label} does not take ${key}=${value}`
       },
@@ -1092,30 +782,10 @@ export function Glass() {
         return `glow at ${x},${y}`
       },
       glows: () => glows.map((g) => ({ ...g })),
-      setResolution: (label: string, px?: number) => {
-        setResOverride((s) => ({ ...s, [label]: px ?? 0 }))
-        return px
-          ? `square ${px}px buffer for ${label}`
-          : `viewport-matched buffer for ${label}`
-      },
-      labels: () => (mode === 'sdf' ? sdfPanelLabels() : [...glassMaterials.keys()]),
-      params: (label?: string) => {
-        const l = label ?? 'glass-card'
-        if (mode === 'sdf') return sdfPanelParams(l)
-        const m = glassMaterials.get(l)
-        if (!m) return null
-        return {
-          transmission: m.transmission,
-          thickness: m.thickness,
-          roughness: m.roughness,
-          ior: m.ior,
-          chromaticAberration: m.chromaticAberration,
-          anisotropicBlur: m.anisotropicBlur,
-          distortion: m.distortion,
-        }
-      },
+      labels: () => sdfPanelLabels(),
+      params: (label = 'glass-card') => sdfPanelParams(label),
     }
-  }, [mode, blobs, ripples, glows])
+  }, [blobs, ripples, glows])
 
   return (
     <>
@@ -1148,97 +818,65 @@ export function Glass() {
 
       {/* Layers 1 and 2 — the form, and the CTA surfacing out of its face.
           The CTA's refraction must show the form's glass AND its ink AND the
-          wall behind both: that is the multi-level verdict, and it is the one
-          thing both backends have to agree on. */}
-      {mode === 'sdf' ? (
-        <>
-          <SdfGlassPanel
-            label="glass-card"
-            width={CARD_W}
-            height={CARD_H}
-            px={PX}
-            blobs={blobs}
-            ripples={ripples}
-            glows={cardGlows}
-            position={[0, 0, 0]}
-            content={<SignInForm />}
-          />
-          <OrbDrift blobs={blobs} ripples={ripples} />
-          {/* The press moves this OUTER group, leaving the panel's own
-              position as the layout fact it always was. Nesting is what lets
-              the two coexist: the compositor sorts and unprojects off the
-              world matrix, so a parent that slides in z is indistinguishable
-              from a panel that was authored there. */}
-          <group ref={pillGroup}>
-            <SdfGlassPanel
-              label="glass-pill"
-              width={PILL_W}
-              height={PILL_H}
-              px={PX}
-              // A pill is all corner: radius = half its height. Everything
-              // else here is where a BUTTON has to disagree with the sheet it
-              // sits on — the card's values are GLASS_DEFAULTS, and anything
-              // not named below is inherited from them deliberately.
-              //
-              // It is nearly all bezel (0.3) over almost no thickness (0.035):
-              // a thin, strongly-curved lozenge, so it catches light around
-              // its whole rim without darkening the form underneath the way
-              // the card's long refractive throw would at this size. The
-              // shorter throw and lower ior follow from the same constraint —
-              // a control has to stay readable at a glance. `smooth` stays at
-              // the old 0.14 because the only thing merging into a button is
-              // its own press bulge, and that wants a tighter neck than the
-              // card's satellite arrivals do.
-              params={{
-                radius: PILL_H / PX / 2,
-                bezel: 0.3,
-                thickness: 0.035,
-                spread: 0.75,
-                ior: 1.78,
-                roughness: 0.1,
-                tintAmount: 0.05,
-                smooth: 0.14,
-                // The strike is a local bloom on a small object; the card's
-                // 1.9 across a button this size is a blown highlight rather
-                // than a place the finger landed.
-                glowAmp: 0.45,
-              }}
-              blobs={pillBlobs}
-              glows={glows}
-              position={[0, PILL_Y, PILL_Z]}
-              content={<CtaChip onStrike={strike} onRelease={release} />}
-            />
-          </group>
-          <GlassSdfCompositor lightDir={[4, 7, 5]} />
-        </>
-      ) : (
-        <>
-          <MtmGlassPanel
-            label="glass-card"
-            width={CARD_W}
-            height={CARD_H}
-            resolution={resOverride['glass-card'] || undefined}
-            position={[0, 0, 0]}
-            content={<SignInForm />}
-          />
-          {/* The mesh path gets the same layout so the two backends stay
-              pixel-comparable, but not the strike: a glow is a term in the
-              SDF compositor's own shader and MeshTransmissionMaterial has
-              nowhere to put it. `onStrike` is simply absent here, which is
-              why CtaChip takes it optionally. */}
-          <MtmGlassPanel
-            label="glass-pill"
-            width={PILL_W}
-            height={PILL_H}
-            radius={PILL_H / PX / 2}
-            depth={0.1}
-            resolution={resOverride['glass-pill'] || undefined}
-            position={[0, PILL_Y, PILL_Z]}
-            content={<CtaChip />}
-          />
-          <GlassBufferCoordinator />
-        </>
-      )}
+          wall behind both: that is the multi-level verdict. */}
+      <SdfGlassPanel
+        label="glass-card"
+        width={CARD_W}
+        height={CARD_H}
+        px={PX}
+        blobs={blobs}
+        ripples={ripples}
+        glows={cardGlows}
+        position={[0, 0, 0]}
+        content={<SignInForm />}
+      />
+      <OrbDrift blobs={blobs} ripples={ripples} />
+      {/* The press moves this OUTER group, leaving the panel's own
+          position as the layout fact it always was. Nesting is what lets
+          the two coexist: the compositor sorts and unprojects off the
+          world matrix, so a parent that slides in z is indistinguishable
+          from a panel that was authored there. */}
+      <group ref={pillGroup}>
+        <SdfGlassPanel
+          label="glass-pill"
+          width={PILL_W}
+          height={PILL_H}
+          px={PX}
+          // A pill is all corner: radius = half its height. Everything
+          // else here is where a BUTTON has to disagree with the sheet it
+          // sits on — the card's values are GLASS_DEFAULTS, and anything
+          // not named below is inherited from them deliberately.
+          //
+          // It is nearly all bezel (0.3) over almost no thickness (0.035):
+          // a thin, strongly-curved lozenge, so it catches light around
+          // its whole rim without darkening the form underneath the way
+          // the card's long refractive throw would at this size. The
+          // shorter throw and lower ior follow from the same constraint —
+          // a control has to stay readable at a glance. `smooth` stays at
+          // the old 0.14 because the only thing merging into a button is
+          // its own press bulge, and that wants a tighter neck than the
+          // card's satellite arrivals do.
+          params={{
+            radius: PILL_H / PX / 2,
+            bezel: 0.3,
+            thickness: 0.035,
+            spread: 0.75,
+            ior: 1.78,
+            roughness: 0.1,
+            tintAmount: 0.05,
+            smooth: 0.14,
+            // The strike is a local bloom on a small object; the card's
+            // 1.9 across a button this size is a blown highlight rather
+            // than a place the finger landed.
+            glowAmp: 0.45,
+          }}
+          blobs={pillBlobs}
+          glows={glows}
+          position={[0, PILL_Y, PILL_Z]}
+          content={<CtaChip onStrike={strike} onRelease={release} />}
+        />
+      </group>
+      <GlassSdfCompositor lightDir={[4, 7, 5]} />
     </>
   )
 }

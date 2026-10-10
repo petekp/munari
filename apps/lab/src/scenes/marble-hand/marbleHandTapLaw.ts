@@ -21,8 +21,8 @@
 // five-hinge arbitration two web vertices cross digits, at weight 0.033.
 //
 // Ownership: the finder tool owns the numbers and can reprint them. This
-// module owns the weight function and the baked attribute; the shader
-// chunk in marbleHandTapShaders.ts owns what the GPU does with them.
+// module owns the weight function and the baked attribute; the bend
+// nodes in marbleHandTapNodes.ts own what the GPU does with them.
 
 import type { BufferGeometry } from 'three'
 import { Float32BufferAttribute } from 'three'

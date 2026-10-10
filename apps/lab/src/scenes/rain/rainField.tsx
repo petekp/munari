@@ -1,14 +1,16 @@
 // Rain field — the overlay canvas that turns rainLaw's world into pixels.
 //
-// The law: DOM owns geometry, WebGL owns water. This component never reads
+// The law: DOM owns geometry, the GPU owns water. This component never reads
 // a class name or a piece of text; it reads getBoundingClientRect on a
 // fixed selector list and hands rainLaw plain numbers. Everything it draws
 // — where a bead sits, when it rolls, when it splashes — is rainLaw's
 // answer to those numbers, not a decision made here.
 //
 // The renderer follows marble-hand's background discipline: a canvas made
-// outside React, a manual resize/rAF loop, and dispose + forceContextLoss
-// on unmount, so a remount never inherits a disposed WebGL context.
+// outside React, a manual resize/rAF loop, and dispose on unmount, which
+// destroys the WebGPU device or loses the WebGL 2 context, so a remount
+// never inherits a disposed one. The renderer starts asynchronously, so the
+// loop, listeners and first draw are installed only once init resolves.
 //
 // Ownership: this component owns the canvas, the renderer, the instanced
 // meshes and the fixed-dt loop. rainLaw owns the physics; the article
@@ -16,15 +18,15 @@
 
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { DirectRenderPipeline, WebGPURenderer } from 'three/webgpu'
 import { buildGlyphTerrain } from './rainGlyphMask'
 import {
-  RAIN_DROP_FRAGMENT,
-  RAIN_DROP_VERTEX,
-  RAIN_STREAK_FRAGMENT,
-  RAIN_STREAK_VERTEX,
-  RAIN_WATER_FRAGMENT,
-  RAIN_WATER_VERTEX,
-} from './rainShaders'
+  createRainDropMaterial,
+  createRainStreakMaterial,
+  createRainStreakValues,
+  createRainWaterMaterial,
+  type RainStreakValues,
+} from './rainNodes'
 import {
   RAIN_SPLASH_LIFE_S,
   createRainWorld,
@@ -172,38 +174,30 @@ function writeWaterInstances(mesh: THREE.InstancedMesh, water: WaterField | null
 }
 
 interface FieldResources {
-  renderer: THREE.WebGLRenderer
+  renderer: WebGPURenderer
+  pipeline: DirectRenderPipeline
   scene: THREE.Scene
   camera: THREE.OrthographicCamera
   dropMesh: THREE.InstancedMesh
   dropSit: THREE.InstancedBufferAttribute
   dropFade: THREE.InstancedBufferAttribute
   streakMesh: THREE.InstancedMesh
-  streakMaterial: THREE.ShaderMaterial
+  streakValues: RainStreakValues
   waterMesh: THREE.InstancedMesh
 }
 
 function buildField(canvas: HTMLCanvasElement, rng: RainRng): FieldResources {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, depth: false })
+  const renderer = new WebGPURenderer({ canvas, antialias: true, alpha: true, depth: false })
   renderer.setClearColor(0x000000, 0)
+  // Converts each fragment as it lands on the canvas, so the beads blend in
+  // the sRGB canvas as they did on WebGL (decisions.md #72).
+  const pipeline = new DirectRenderPipeline(renderer)
 
   const scene = new THREE.Scene()
   const camera = new THREE.OrthographicCamera(0, 1, 0, 1, -1000, 1000)
 
   const dropGeometry = new THREE.PlaneGeometry(1, 1)
-  // The CSS-mapped camera (top 0, bottom height) mirrors Y, which reverses
-  // on-screen winding — with front-face culling every quad vanishes.
-  const dropMaterial = new THREE.ShaderMaterial({
-    side: THREE.DoubleSide,
-    vertexShader: RAIN_DROP_VERTEX,
-    fragmentShader: RAIN_DROP_FRAGMENT,
-    transparent: true,
-    premultipliedAlpha: true,
-    depthTest: false,
-    depthWrite: false,
-    toneMapped: false,
-  })
-  const dropMesh = new THREE.InstancedMesh(dropGeometry, dropMaterial, RAIN_MAX_INSTANCES)
+  const dropMesh = new THREE.InstancedMesh(dropGeometry, createRainDropMaterial(), RAIN_MAX_INSTANCES)
   dropMesh.frustumCulled = false
   dropMesh.count = 0
   dropMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
@@ -216,24 +210,8 @@ function buildField(canvas: HTMLCanvasElement, rng: RainRng): FieldResources {
   scene.add(dropMesh)
 
   const streakGeometry = new THREE.PlaneGeometry(1, 1)
-  const streakMaterial = new THREE.ShaderMaterial({
-    side: THREE.DoubleSide,
-    vertexShader: RAIN_STREAK_VERTEX,
-    fragmentShader: RAIN_STREAK_FRAGMENT,
-    transparent: true,
-    premultipliedAlpha: true,
-    depthTest: false,
-    depthWrite: false,
-    toneMapped: false,
-    uniforms: {
-      uTime: { value: 0 },
-      uViewport: { value: new THREE.Vector2(1, 1) },
-      uAngle: { value: RAIN_STREAK_ANGLE },
-      uLength: { value: RAIN_STREAK_LENGTH_PX },
-      uWidth: { value: RAIN_STREAK_WIDTH_PX },
-    },
-  })
-  const streakMesh = new THREE.InstancedMesh(streakGeometry, streakMaterial, RAIN_STREAK_COUNT)
+  const streakValues = createRainStreakValues(RAIN_STREAK_ANGLE, RAIN_STREAK_LENGTH_PX, RAIN_STREAK_WIDTH_PX)
+  const streakMesh = new THREE.InstancedMesh(streakGeometry, createRainStreakMaterial(streakValues), RAIN_STREAK_COUNT)
   streakMesh.frustumCulled = false
   const streakSeed = new Float32Array(RAIN_STREAK_COUNT * 3)
   for (let i = 0; i < RAIN_STREAK_COUNT; i++) {
@@ -242,29 +220,19 @@ function buildField(canvas: HTMLCanvasElement, rng: RainRng): FieldResources {
     streakSeed[i * 3 + 2] = rng()
   }
   // Every streak's whole path is a function of this seed and the clock
-  // uniform (see rainShaders.ts) — the identity instance matrix three
+  // uniform (see rainNodes.ts) — the identity instance matrix three
   // assigns at construction is correct forever and is never written again.
   streakGeometry.setAttribute('aSeed', new THREE.InstancedBufferAttribute(streakSeed, 3))
   scene.add(streakMesh)
 
   const waterGeometry = new THREE.PlaneGeometry(1, 1)
-  const waterMaterial = new THREE.ShaderMaterial({
-    side: THREE.DoubleSide,
-    vertexShader: RAIN_WATER_VERTEX,
-    fragmentShader: RAIN_WATER_FRAGMENT,
-    transparent: true,
-    premultipliedAlpha: true,
-    depthTest: false,
-    depthWrite: false,
-    toneMapped: false,
-  })
-  const waterMesh = new THREE.InstancedMesh(waterGeometry, waterMaterial, RAIN_WATER_MAX_INSTANCES)
+  const waterMesh = new THREE.InstancedMesh(waterGeometry, createRainWaterMaterial(), RAIN_WATER_MAX_INSTANCES)
   waterMesh.frustumCulled = false
   waterMesh.count = 0
   waterMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
   scene.add(waterMesh)
 
-  return { renderer, scene, camera, dropMesh, dropSit, dropFade, streakMesh, streakMaterial, waterMesh }
+  return { renderer, pipeline, scene, camera, dropMesh, dropSit, dropFade, streakMesh, streakValues, waterMesh }
 }
 
 interface FieldState {
@@ -295,6 +263,22 @@ function createFieldState(): FieldState {
   }
 }
 
+// Rain while motion is allowed, a still dew otherwise.
+function applyMotion(state: FieldState): void {
+  if (state.reducedMotion) {
+    state.stop()
+    state.world = {
+      drops: staticDew(state.ledges, state.rng),
+      spawnDue: 0,
+      h1Water: staticDewWater(state.h1Terrain, state.rng),
+    }
+    state.draw()
+  } else {
+    state.world = createRainWorld()
+    state.start()
+  }
+}
+
 export function RainField({ articleRef, reducedMotion }: {
   articleRef: React.RefObject<HTMLElement | null>
   reducedMotion: boolean
@@ -318,7 +302,6 @@ export function RainField({ articleRef, reducedMotion }: {
       setDegraded(true)
       return
     }
-    state.built = field
 
     let raf = 0
     let lastFrameTime = 0
@@ -342,10 +325,9 @@ export function RainField({ articleRef, reducedMotion }: {
     const draw = () => {
       writeDropInstances(field.dropMesh, field.dropSit, field.dropFade, state.world.drops)
       writeWaterInstances(field.waterMesh, state.world.h1Water)
-      field.streakMaterial.uniforms.uTime.value = streakClock
-      field.renderer.render(field.scene, field.camera)
+      field.streakValues.time.value = streakClock
+      field.pipeline.render(field.scene, field.camera)
     }
-    state.draw = draw
 
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame)
@@ -382,21 +364,38 @@ export function RainField({ articleRef, reducedMotion }: {
       field.camera.top = 0
       field.camera.bottom = height
       field.camera.updateProjectionMatrix()
-      field.streakMaterial.uniforms.uViewport.value.set(width, height)
+      field.streakValues.viewport.value.set(width, height)
       remeasure()
       draw()
     }
 
     const resizeObserver = new ResizeObserver(remeasure)
-    if (articleRef.current) resizeObserver.observe(articleRef.current)
-    window.addEventListener('resize', resize)
-    resize()
+    let cancelled = false
+    // render() throws until init resolves, so nothing that draws is
+    // reachable before then.
+    const started = field.renderer.init()
+    void started.then(
+      () => {
+        if (cancelled) return
+        state.built = field
+        state.draw = draw
+        if (articleRef.current) resizeObserver.observe(articleRef.current)
+        window.addEventListener('resize', resize)
+        resize()
+        // The motion effect already ran at mount, while nothing was built.
+        applyMotion(state)
+      },
+      () => {
+        if (cancelled) return
+        canvas.remove()
+        setDegraded(true)
+      },
+    )
 
     // The display face can still be swapping in when the first resize
     // runs, changing the h1's rendered glyph metrics without firing a
     // resize or a layout the ResizeObserver would catch — re-rasterize
     // once the font is actually the one being measured.
-    let cancelled = false
     document.fonts.ready
       .then(() => {
         if (!cancelled) remeasure()
@@ -415,13 +414,16 @@ export function RainField({ articleRef, reducedMotion }: {
       field.dropMesh.geometry.dispose()
       field.streakMesh.geometry.dispose()
       field.waterMesh.geometry.dispose()
-      const dropMaterial = field.dropMesh.material
-      if (!Array.isArray(dropMaterial)) dropMaterial.dispose()
-      field.streakMaterial.dispose()
-      const waterMaterial = field.waterMesh.material
-      if (!Array.isArray(waterMaterial)) waterMaterial.dispose()
-      field.renderer.dispose()
-      field.renderer.forceContextLoss()
+      for (const mesh of [field.dropMesh, field.streakMesh, field.waterMesh]) {
+        if (!Array.isArray(mesh.material)) mesh.material.dispose()
+      }
+      field.pipeline.dispose()
+      // dispose() skips the backend while init is pending, so a renderer
+      // unmounted mid-init would keep its device or context. After a failed
+      // init, Three 0.186's dispose() leaves an unhandled rejection, so that
+      // renderer is left as it is.
+      const dispose = () => field.renderer.dispose()
+      void started.then(dispose, () => {})
       canvas.remove()
     }
   }, [state, articleRef])
@@ -429,18 +431,7 @@ export function RainField({ articleRef, reducedMotion }: {
   useLayoutEffect(() => {
     state.reducedMotion = reducedMotion
     if (!state.built) return
-    if (reducedMotion) {
-      state.stop()
-      state.world = {
-        drops: staticDew(state.ledges, state.rng),
-        spawnDue: 0,
-        h1Water: staticDewWater(state.h1Terrain, state.rng),
-      }
-      state.draw()
-    } else {
-      state.world = createRainWorld()
-      state.start()
-    }
+    applyMotion(state)
     return () => state.stop()
   }, [state, reducedMotion])
 

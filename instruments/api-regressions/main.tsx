@@ -6,6 +6,7 @@ import {useFrame,useThree} from '@react-three/fiber'
 import {Vector2,type MeshBasicMaterial} from 'three'
 import {Surface,SceneSurface,SurfaceCanvas,CaptureContent,createPageTarget,useCaptureHandle,useCaptureFrame,useSurfaceHandle,useSurfaceStatus,useSurfaceAnchorRects,useSurfacePaintedSize,type CaptureHandle,type PageTarget,type SourceUvRect,type SurfaceStatus} from '@petepetrash/munari'
 import {inspectCapture} from '@petepetrash/munari/advanced'
+import {afterEachRender,snapshotCanvas} from '../canvasPixels'
 import '@petepetrash/munari/style.css'
 
 type RowId='a'|'b'
@@ -53,18 +54,19 @@ function Targets({reordered=false}:{reordered?:boolean}){
 
 function CaptureReader({capture,id}:{capture:CaptureHandle;id:RowId}){
   const read=useCaptureFrame(capture),renderer=useThree(state=>state.gl),invalidate=useThree(state=>state.invalidate)
-  const material=useRef<MeshBasicMaterial>(null),[size]=useState(()=>new Vector2()),[pixel]=useState(()=>new Uint8Array(4))
+  const material=useRef<MeshBasicMaterial>(null),[size]=useState(()=>new Vector2())
   probe.wake=invalidate
+  // Read once render() returns: WebGPU cannot read the canvas mid-draw.
+  useLayoutEffect(()=>afterEachRender(renderer,()=>{
+    renderer.getDrawingBufferSize(size)
+    const x=size.x/2+(id==='a'?-110:110)*renderer.getPixelRatio()
+    probe.pixels[id]=snapshotCanvas(renderer.domElement)(Math.round(x),Math.round(size.y/2))
+  }),[renderer,size,id])
   useFrame(()=>{
     probe.frames[id]++;const frame=read.get();probe.revisions[id]=frame?.revision??null
     if(material.current&&material.current.map!==(frame?.texture??null)){material.current.map=frame?.texture??null;material.current.needsUpdate=true}
   })
-  return <mesh position={[id==='a'?-110:110,0,0]} onAfterRender={()=>{
-    renderer.getDrawingBufferSize(size)
-    const context=renderer.getContext(),x=size.x/2+(id==='a'?-110:110)*renderer.getPixelRatio()
-    context.readPixels(Math.round(x),Math.round(size.y/2),1,1,context.RGBA,context.UNSIGNED_BYTE,pixel)
-    probe.pixels[id]=[...pixel]
-  }}><planeGeometry args={[200,100]}/><meshBasicMaterial ref={material} toneMapped={false} premultipliedAlpha/></mesh>
+  return <mesh position={[id==='a'?-110:110,0,0]}><planeGeometry args={[200,100]}/><meshBasicMaterial ref={material} toneMapped={false} premultipliedAlpha/></mesh>
 }
 function Capture(){
   const capture=useCaptureHandle(),[first,setFirst]=useState(true)
@@ -74,7 +76,7 @@ function Capture(){
   // probe rather than from the user, and a change nobody asked for is followed
   // only when the content is declared live, on every engine (decisions.md #64).
   probe.paint=()=>{const element=document.getElementById('reader-source')!;element.style.background='rgb(20,70,230)';element.textContent='Updated capture'}
-  return <><CaptureContent capture={capture} size={[200,100]} live><div id="reader-source" style={{width:200,height:100,background:'rgb(230,20,20)'}}>Shared capture</div></CaptureContent><SurfaceCanvas orthographic camera={{position:[0,0,1000],zoom:1}} frameloop="demand" flat style={{height:400}}>{first&&<CaptureReader id="a" capture={capture}/>}<CaptureReader id="b" capture={capture}/></SurfaceCanvas></>
+  return <><CaptureContent capture={capture} size={[200,100]} live><div id="reader-source" style={{width:200,height:100,background:'rgb(230,20,20)'}}>Shared capture</div></CaptureContent><SurfaceCanvas orthographic camera={{position:[0,0,1000],zoom:1}} frameloop="demand" style={{height:400}}>{first&&<CaptureReader id="a" capture={capture}/>}<CaptureReader id="b" capture={capture}/></SurfaceCanvas></>
 }
 
 const ANCHORS=['edge'] as const
@@ -86,26 +88,26 @@ function AnchorRead(){
 function Resize(){
   const surface=useSurfaceHandle('resize-regression'),[width,setWidth]=useState(200)
   probe.status=useSurfaceStatus(surface);probe.width=width;probe.setWidth=setWidth
-  return <SurfaceCanvas orthographic camera={{position:[0,0,1000],zoom:1}} frameloop="always" flat style={{height:400}}><SceneSurface.Root surface={surface}><SceneSurface.HTML size={[width,100]}><div id="resize-source" style={{width,height:100,position:'relative',background:'white'}}><div data-munari-anchor="edge" style={{position:'absolute',left:width-30,top:20,width:10,height:10,background:'red'}}/></div></SceneSurface.HTML><SceneSurface.Mesh placement="manual" geometry={<planeGeometry args={[width,100]}/>}><AnchorRead/></SceneSurface.Mesh></SceneSurface.Root></SurfaceCanvas>
+  return <SurfaceCanvas orthographic camera={{position:[0,0,1000],zoom:1}} frameloop="always" style={{height:400}}><SceneSurface.Root surface={surface}><SceneSurface.HTML size={[width,100]}><div id="resize-source" style={{width,height:100,position:'relative',background:'white'}}><div data-munari-anchor="edge" style={{position:'absolute',left:width-30,top:20,width:10,height:10,background:'red'}}/></div></SceneSurface.HTML><SceneSurface.Mesh placement="manual" geometry={<planeGeometry args={[width,100]}/>}><AnchorRead/></SceneSurface.Mesh></SceneSurface.Root></SurfaceCanvas>
 }
 
 function Focus(){
   const a=useSurfaceHandle('focus-a'),b=useSurfaceHandle('focus-b'),[changed,setChanged]=useState(false),[inScene,setInScene]=useState(false),surface=changed?b:a
   probe.status=useSurfaceStatus(surface);probe.request=setInScene;probe.swap=()=>setChanged(true);probe.activeHandle=changed?'b':'a'
-  return <><SurfaceCanvas id="focus" pointerMode="surfaces" frameloop="demand" flat style={{position:'fixed',inset:0}}/><Surface.Root surface={surface} canvasId="focus" inScene={inScene}><Surface.HTML><form style={{margin:40,width:300,height:150,background:'white'}}><label>Retained field <input id="focus-input" defaultValue="preserved focus"/></label></form></Surface.HTML><Surface.Mesh/></Surface.Root></>
+  return <><SurfaceCanvas id="focus" pointerMode="surfaces" frameloop="demand" style={{position:'fixed',inset:0}}/><Surface.Root surface={surface} canvasId="focus" inScene={inScene}><Surface.HTML><form style={{margin:40,width:300,height:150,background:'white'}}><label>Retained field <input id="focus-input" defaultValue="preserved focus"/></label></form></Surface.HTML><Surface.Mesh/></Surface.Root></>
 }
 
 function Clipping({nested,rounded,scaled,margin,border,longhand,preserve}:{nested?:boolean;rounded?:boolean;scaled?:boolean;margin?:boolean;border?:boolean;longhand?:boolean;preserve?:boolean}){
   const surface=useSurfaceHandle('clipping-regression'),[inScene,setInScene]=useState(false),[height,setHeight]=useState(180),[held,setHeld]=useState(true)
   probe.status=useSurfaceStatus(surface);probe.request=setInScene;probe.setClipHeight=setHeight;probe.releaseHold=()=>setHeld(false)
-  return <><SurfaceCanvas id="clip-canvas" frameloop="demand" pointerMode="surfaces" flat style={{position:'fixed',inset:0}}/><div id="clip-outer" style={{position:'relative',overflow:margin?'clip':'hidden',overflowClipMargin:margin?'20px':undefined,margin:40,width:320,height,background:'white',border:border?'8px solid black':undefined,padding:border?8:0,borderRadius:rounded?28:0,transform:scaled?'scale(1.2,0.85)':undefined,scale:longhand?'1.2 0.85':undefined,transformStyle:preserve?'preserve-3d':undefined,transformOrigin:'top left'}}><div id="clip-inner" style={{position:'relative',marginLeft:nested?30:0,width:nested?210:320,height:300,overflow:nested?'hidden':'visible',borderRadius:rounded&&nested?18:0}}><div style={{height:110}}/><Surface.Root surface={surface} canvasId="clip-canvas" inScene={inScene}><Surface.HTML><div id="clipped-source" style={{position:'relative',width:300,height:160,background:'rgb(230,20,20)'}}><button id="clip-inside" type="button" style={{position:'absolute',left:40,top:12}} onClick={()=>probe.insideClicks++}>Inside</button><button id="clip-outside" type="button" style={{position:'absolute',left:30,top:120}} onClick={()=>probe.outsideClicks++}>Outside</button></div></Surface.HTML><Surface.Mesh pointerRoute="auto"/><Surface.HTML part="hold" size={[1,1]}><div style={{width:1,height:1}}/></Surface.HTML>{held?null:<Surface.Mesh part="hold"/>}</Surface.Root></div></div></>
+  return <><SurfaceCanvas id="clip-canvas" frameloop="demand" pointerMode="surfaces" style={{position:'fixed',inset:0}}/><div id="clip-outer" style={{position:'relative',overflow:margin?'clip':'hidden',overflowClipMargin:margin?'20px':undefined,margin:40,width:320,height,background:'white',border:border?'8px solid black':undefined,padding:border?8:0,borderRadius:rounded?28:0,transform:scaled?'scale(1.2,0.85)':undefined,scale:longhand?'1.2 0.85':undefined,transformStyle:preserve?'preserve-3d':undefined,transformOrigin:'top left'}}><div id="clip-inner" style={{position:'relative',marginLeft:nested?30:0,width:nested?210:320,height:300,overflow:nested?'hidden':'visible',borderRadius:rounded&&nested?18:0}}><div style={{height:110}}/><Surface.Root surface={surface} canvasId="clip-canvas" inScene={inScene}><Surface.HTML><div id="clipped-source" style={{position:'relative',width:300,height:160,background:'rgb(230,20,20)'}}><button id="clip-inside" type="button" style={{position:'absolute',left:40,top:12}} onClick={()=>probe.insideClicks++}>Inside</button><button id="clip-outside" type="button" style={{position:'absolute',left:30,top:120}} onClick={()=>probe.outsideClicks++}>Outside</button></div></Surface.HTML><Surface.Mesh pointerRoute="auto"/><Surface.HTML part="hold" size={[1,1]}><div style={{width:1,height:1}}/></Surface.HTML>{held?null:<Surface.Mesh part="hold"/>}</Surface.Root></div></div></>
 }
 
 function Attribute(){
   const surface=useSurfaceHandle(),[name,setName]=useState('onboarding')
   probe.status=useSurfaceStatus(surface);probe.setAttribute=setName
   const html=name==='onclick'?'<button onclick="void 0">Inline handler</button>':`<div ${name}="hello">Ordinary attribute</div>`
-  return <><SurfaceCanvas id="attributes" pointerMode="surfaces" frameloop="demand" flat style={{position:'fixed',inset:0}}/><Surface.Root surface={surface} canvasId="attributes" inScene={true}><Surface.HTML><div style={{width:240,height:100}} dangerouslySetInnerHTML={{__html:html}}/></Surface.HTML><Surface.Mesh/></Surface.Root></>
+  return <><SurfaceCanvas id="attributes" pointerMode="surfaces" frameloop="demand" style={{position:'fixed',inset:0}}/><Surface.Root surface={surface} canvasId="attributes" inScene={true}><Surface.HTML><div style={{width:240,height:100}} dangerouslySetInnerHTML={{__html:html}}/></Surface.HTML><Surface.Mesh/></Surface.Root></>
 }
 const scenario=new URLSearchParams(location.search).get('case')
 function Fixture(){

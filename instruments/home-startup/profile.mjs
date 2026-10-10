@@ -10,6 +10,7 @@ import {build, preview} from 'vite'
 import puppeteer from 'puppeteer-core'
 import {replaceSource} from '../home-light/replaceSource.mjs'
 import {setChromeViewport} from '../chromeViewport.mjs'
+import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const root = path.resolve(import.meta.dirname, '../../apps/lab')
 const output = process.env.PROFILE_OUTPUT ?? path.join(tmpdir(), 'munari-opening-profile')
@@ -42,22 +43,31 @@ function observer(useBaseline = false) {
     }
     if (id.endsWith('/HomeMasthead.tsx')) {
       for (const [label, expression] of [
-        ['shadow-context', 'new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, depth: true })'],
-        ['bulb-context', 'new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, depth: true })'],
-        ['headline-setup', code.includes('createHeadlineTreatments(title.current,pass.mesh.material,redraw,page)')
-          ? 'createHeadlineTreatments(title.current,pass.mesh.material,redraw,page)'
-          : 'createHeadlineTreatments(title.current,pass.mesh.material,redraw)'],
+        ['shadow-context', 'new WebGPURenderer({ canvas, antialias: true, alpha: false, depth: true })'],
+        ['bulb-context', 'new WebGPURenderer({ canvas, antialias: true, alpha: true, depth: true })'],
+        ['headline-setup', [
+          'createHeadlineTreatments(title.current,pass.mesh.material,redraw,page,headlineLost)',
+          'createHeadlineTreatments(title.current,pass.mesh.material,redraw,page)',
+        ].find(call => code.includes(call)) ?? 'createHeadlineTreatments(title.current,pass.mesh.material,redraw)'],
         ['environment', 'pmrem.fromScene(new RoomEnvironment(), 0.04).texture'],
         ['shadow-first-draw', 'display.render(pass.scene, pass.camera, pass.paper)'],
-        ['bulb-first-draw', 'state.bulb.renderer.render(state.bulb.scene, state.bulb.camera)'],
+        ['bulb-first-draw', 'state.bulb.pipeline.render(state.bulb.scene, state.bulb.camera)'],
       ]) code = replaceSource(code, expression, `profileCall('${label}',()=>${expression})`)
+      // Constructing a WebGPURenderer acquires no device; init() does, asynchronously.
+      const shadowNext = code.includes('setDegraded(false)\n        pass.paper = createPaperLighting(') ? 'setDegraded(false)\n        pass.paper = createPaperLighting(' : 'pass.paper = createPaperLighting('
+      for (const [label, next] of [['shadow-init', shadowNext], ['bulb-init', 'const pmrem = new PMREMGenerator(renderer)']]) {
+        const resolved = `      () => {\n        if (cancelled) return\n        ${next}`
+        code = replaceSource(code, `    const init = renderer.init()\n    void init.then(\n${resolved}`,
+          `    const profileInitStart = performance.now()\n    const init = renderer.init()\n    void init.then(\n      () => {\n        profileMark('${label}',{duration:performance.now()-profileInitStart})\n        if (cancelled) return\n        ${next}`)
+      }
       const inkCall = code.includes('buildInkMask(inner, lines, previous?.mask)') ? 'buildInkMask(inner, lines, previous?.mask)' : 'buildInkMask(inner, lines)'
       code = replaceSource(code, inkCall, `profileWork('headline-mask',()=>${inkCall})`)
       code = replaceSource(code, '      worker.onmessage = (event: MessageEvent<ReliefReply>) => {', "      worker.onmessage = (event: MessageEvent<ReliefReply>) => {\nprofileMark('worker-received',{worker:event.data.__profile});")
       code = replaceSource(code, '        worker.postMessage(request)', "        profileMark('worker-request',{size:[plan.width,plan.height],boxes:plan.boxes.length});worker.postMessage(request)")
       code = replaceSource(code, "        reportReady('enhanced')", "        profileMark('composition-ready');reportReady('enhanced')")
     } else if (id.endsWith('/homeHeadlineTreatments.ts')) {
-      code = replaceSource(code, 'renderer.render(scene,camera)', "profileCall('headline-first-draw',()=>renderer.render(scene,camera))")
+      code = replaceSource(code, 'pipeline.render(scene,camera)', "profileCall('headline-first-draw',()=>pipeline.render(scene,camera))")
+      code = replaceSource(code, '  const init=renderer.init()\n  void init.then(()=>{if(alive){', "  const profileInitStart=performance.now()\n  const init=renderer.init()\n  void init.then(()=>{profileMark('headline-init',{duration:performance.now()-profileInitStart});if(alive){")
     } else if (id.endsWith('/homeReliefWorker.ts')) {
       code = replaceSource(code, '  const mask = paintRelief(plan, offscreenPainter)', '  const start=performance.now();const mask = paintRelief(plan, offscreenPainter)')
       return replaceSource(code, '  const reply: ReliefReply = { id, mask }', '  const reply: ReliefReply = { id, mask, __profile:{start:performance.timeOrigin+start,duration:performance.now()-start} }')
@@ -94,7 +104,7 @@ try {
     const index = run % variants.length, variant = variants[index], server = servers[index]
     // Puppeteer already closes its own process group on interruption. Its
     // launch signal also bounds a stalled run, including protocol calls/close.
-    browser = await puppeteer.launch({executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: false, defaultViewport: null, signal: AbortSignal.timeout(15_000), args: ['--enable-features=CanvasDrawElement']})
+    browser = await puppeteer.launch({executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: false, defaultViewport: null, signal: AbortSignal.timeout(15_000), args: [...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement']})
     const page = await browser.newPage(), errors = [], consoleErrors = []
     page.setDefaultTimeout(10_000)
     page.on('pageerror', error => errors.push(String(error)))

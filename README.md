@@ -172,6 +172,21 @@ additional sources sampled by a material. A manual pointer proxy cannot claim
 those draw receipts. [Knobs](apps/lab/src/scenes/knobs/Knobs.tsx) and
 [Logo](apps/lab/src/scenes/logo/Logo.tsx) show coordinated parts and anchors.
 
+### Materials on a SurfaceCanvas
+
+`SurfaceCanvas` converts each fragment to the canvas's sRGB encoding and
+blends it there, as `WebGLRenderer` did. The conversion expects premultiplied
+color:
+
+- A translucent material sets `premultipliedAlpha: true`. With Three's default
+  of `false`, its alpha applies twice and it draws too dark.
+- A custom `outputNode` returns its color through `premultipliedOutput`, for
+  premultiplied linear color, or `encodedOutput`, for premultiplied color
+  already in sRGB. Both come from `@petepetrash/munari`.
+
+Opaque materials need neither. [Decision #72](docs/decisions.md) has the
+measurements.
+
 ## HTML that belongs in a scene
 
 ```tsx

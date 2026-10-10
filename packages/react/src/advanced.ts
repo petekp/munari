@@ -44,3 +44,7 @@ export {
 export { readSurfaceFrameState, type SurfaceFrameState } from './primitives/surface/surfaceFrame'
 
 export { inspectCapture } from './primitives/capture'
+
+// A scene that runs its own fullscreen passes draws them through this, so a
+// pass's output lands where the next pass samples it (passMaterial.ts).
+export { passMaterial } from './lib/passMaterial'

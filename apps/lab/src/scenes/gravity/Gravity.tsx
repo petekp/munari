@@ -3,7 +3,7 @@
 // The law: press a word and it leaves the flow it sat in — the paragraph
 // reflows natively, on the browser's own layout clock — and a rigid body
 // carrying its exact pixels rides the pointer until release, then falls
-// into a WebGL pile on the floor of the viewport. Click a fallen word and
+// into a canvas pile on the floor of the viewport. Click a fallen word and
 // the trade reverses: the body is gone, the span is back, and the
 // paragraph reflows around it again.
 //
@@ -13,8 +13,11 @@
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { DirectRenderPipeline, WebGPURenderer, type MeshBasicNodeMaterial } from 'three/webgpu'
 import { useSurfaceSupport } from '@petepetrash/munari'
+import { createNativeWordMaterial } from './gravityNodes'
 import { GravitySurfaces } from './gravitySurfaces'
+import { useRendererReplacement } from '../../lib/rendererReplacement'
 import {
   boundsFromViewport,
   clampToBounds,
@@ -46,13 +49,13 @@ const SPAWN_TORQUE = 2.5 // rad/s, half-range of the random spin on release
 const HIDDEN_STYLE: React.CSSProperties = { display: 'none' }
 
 interface WordMesh {
-  readonly mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>
-  readonly material: THREE.MeshBasicMaterial
+  readonly mesh: THREE.Mesh<THREE.PlaneGeometry, MeshBasicNodeMaterial>
+  readonly material: MeshBasicNodeMaterial
   readonly texture: THREE.CanvasTexture
 }
 
 interface GravityState {
-  renderer: THREE.WebGLRenderer | null
+  renderer: WebGPURenderer | null
   readonly scene: THREE.Scene
   readonly camera: THREE.OrthographicCamera
   bodies: GravityBody[]
@@ -106,23 +109,13 @@ function makeWordMesh(canvas: HTMLCanvasElement, width: number, height: number):
   texture.colorSpace = THREE.SRGBColorSpace
   // Premultiplied alpha, library-wide (decisions.md #5): the canvas paints
   // straight alpha, this flag multiplies it into rgb on upload, and the
-  // material below blends on that same assumption.
+  // word material blends on that same assumption (gravityNodes.ts).
   texture.premultiplyAlpha = true
   // The CSS-mapped camera mirrors Y; with default flipY the word lands
   // upside down.
   texture.flipY = false
   texture.needsUpdate = true
-  const material = new THREE.MeshBasicMaterial({
-    // The CSS-mapped camera (top 0, bottom height) mirrors Y, which reverses
-    // on-screen winding — with front-face culling every quad vanishes.
-    side: THREE.DoubleSide,
-    map: texture,
-    transparent: true,
-    premultipliedAlpha: true,
-    depthTest: false,
-    depthWrite: false,
-    toneMapped: false,
-  })
+  const material = createNativeWordMaterial(texture)
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), material)
   return { mesh, material, texture }
 }
@@ -163,6 +156,7 @@ function GravityNativeApp() {
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([])
   const state = useMemo(createGravityState, [])
   const [removed, setRemoved] = useState<ReadonlySet<number>>(new Set())
+  const { generation, lost } = useRendererReplacement()
 
   const reducedMotion = useReducedMotion()
   const reducedMotionRef = useRef(reducedMotion)
@@ -234,19 +228,19 @@ function GravityNativeApp() {
     if (!host) return
     const canvas = document.createElement('canvas')
     canvas.className = 'gv-canvas'
-    host.append(canvas)
-    let renderer: THREE.WebGLRenderer
+    let renderer: WebGPURenderer
     try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, depth: false })
+      renderer = new WebGPURenderer({ canvas, antialias: true, alpha: true, depth: false })
     } catch {
-      canvas.remove()
       return
     }
     renderer.setClearColor(0x000000, 0)
-    state.renderer = renderer
+    // Converts each fragment as it lands on the canvas, so the words blend
+    // in the sRGB canvas as they did on WebGL (decisions.md #72).
+    const pipeline = new DirectRenderPipeline(renderer)
 
     const draw = () => {
-      renderer.render(state.scene, state.camera)
+      pipeline.render(state.scene, state.camera)
     }
     const loop = () => {
       const now = performance.now()
@@ -262,8 +256,7 @@ function GravityNativeApp() {
       draw()
       state.raf = state.bodies.some((body) => !body.asleep) ? requestAnimationFrame(loop) : 0
     }
-    state.draw = draw
-    state.wake = () => {
+    const wake = () => {
       if (state.raf) return
       state.lastTime = performance.now()
       state.raf = requestAnimationFrame(loop)
@@ -282,37 +275,72 @@ function GravityNativeApp() {
       draw()
     }
     const observer = new ResizeObserver(resize)
-    observer.observe(host)
-    resize()
 
-    const lost = (event: Event) => {
-      event.preventDefault()
+    let cancelled = false
+    // A lost GPU takes every fallen word with it, so the words return to
+    // the poem and presses wait for a replacement (rendererReplacement.ts).
+    const report = renderer.onDeviceLost
+    renderer.onDeviceLost = (info) => {
+      report.call(renderer, info)
+      if (cancelled) return
       cancelAnimationFrame(state.raf)
       state.raf = 0
-    }
-    const restored = () => {
-      resize()
-    }
-    canvas.addEventListener('webglcontextlost', lost)
-    canvas.addEventListener('webglcontextrestored', restored)
-
-    return () => {
-      cancelAnimationFrame(state.raf)
-      state.raf = 0
-      observer.disconnect()
-      canvas.removeEventListener('webglcontextlost', lost)
-      canvas.removeEventListener('webglcontextrestored', restored)
       state.draw = () => {}
       state.wake = () => {}
-      for (const word of state.meshes.values()) disposeWordMesh(word)
+      for (const word of state.meshes.values()) {
+        state.scene.remove(word.mesh)
+        disposeWordMesh(word)
+      }
       state.meshes.clear()
       state.bodies = []
       state.renderer = null
-      renderer.dispose()
-      renderer.forceContextLoss()
+      dragRef.current = null
+      canvas.remove()
+      setRemoved(new Set())
+      lost(generation)
+    }
+    // render() throws until init resolves. The canvas joins the page only
+    // then: handlePull drops a press while state.renderer is null, and the
+    // native-gravity gesture case presses a word as soon as .gv-canvas exists.
+    const started = renderer.init()
+    void started.then(
+      () => {
+        if (cancelled) return
+        host.append(canvas)
+        state.renderer = renderer
+        state.draw = draw
+        state.wake = wake
+        observer.observe(host)
+        resize()
+      },
+      () => {},
+    )
+
+    return () => {
+      cancelled = true
+      renderer.onDeviceLost = report
+      cancelAnimationFrame(state.raf)
+      state.raf = 0
+      observer.disconnect()
+      state.draw = () => {}
+      state.wake = () => {}
+      for (const word of state.meshes.values()) {
+        state.scene.remove(word.mesh)
+        disposeWordMesh(word)
+      }
+      state.meshes.clear()
+      state.bodies = []
+      state.renderer = null
+      pipeline.dispose()
+      // dispose() skips the backend while init is pending, so a renderer
+      // unmounted mid-init would keep its device or context. After a failed
+      // init, Three 0.186's dispose() leaves an unhandled rejection, so that
+      // renderer is left as it is.
+      const dispose = () => renderer.dispose()
+      void started.then(dispose, () => {})
       canvas.remove()
     }
-  }, [state])
+  }, [state, generation, lost])
 
   // ── click a fallen word to put it back ──────────────────────────────
   useEffect(() => {
