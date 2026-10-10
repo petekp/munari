@@ -315,7 +315,7 @@ describe('FrameSurface runtime', () => {
 })
 
 describe('geometryDraws', () => {
-  it('is false when the vertices or the draw range leave nothing to draw', () => {
+  it('is false when the vertices, the draw range or the instance count leave nothing to draw', () => {
     expect(geometryDraws(new THREE.PlaneGeometry(1, 1))).toBe(true)
 
     const empty = new THREE.BufferGeometry()
@@ -330,5 +330,14 @@ describe('geometryDraws', () => {
     expect(geometryDraws(ranged)).toBe(false)
     ranged.setDrawRange(3, 3)
     expect(geometryDraws(ranged)).toBe(true)
+
+    const plane = new THREE.PlaneGeometry(1, 1)
+    const instanced = new THREE.InstancedBufferGeometry()
+    instanced.setIndex(plane.index)
+    instanced.setAttribute('position', plane.getAttribute('position'))
+    instanced.instanceCount = 0
+    expect(geometryDraws(instanced)).toBe(false)
+    instanced.instanceCount = 1
+    expect(geometryDraws(instanced)).toBe(true)
   })
 })

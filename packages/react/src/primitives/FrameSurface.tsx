@@ -131,13 +131,28 @@ export interface PresentationPass {
 
 /**
  * Whether a draw of this geometry can produce any primitive. Three runs the
- * mesh callbacks for an empty draw too, and the canvas keeps its old pixels.
+ * mesh callbacks for an empty draw too, zero instances included, and the
+ * canvas keeps its old pixels.
  * FrameSurface draws one material, so no geometry group narrows the range.
  */
 export function geometryDraws(geometry: THREE.BufferGeometry): boolean {
+  if (geometry instanceof THREE.InstancedBufferGeometry && geometry.instanceCount <= 0) return false
   const elements = geometry.index?.count ?? geometry.getAttribute('position')?.count ?? 0
   const end = Math.min(elements, geometry.drawRange.start + geometry.drawRange.count)
   return end > geometry.drawRange.start
+}
+
+/**
+ * Whether this draw is `scene.overrideMaterial`'s, which never samples the
+ * HTML and so proves nothing. WebGPURenderer passes the mesh's own material
+ * to `onBeforeRender` and the override to `onAfterRender`. A shadow map can
+ * render inside a lit mesh's own draw, so both callbacks of an override draw
+ * leave the outer draw's state alone. A WebGLRenderer root that is not a
+ * Scene has no override.
+ */
+export function drawnByOverride(scene: THREE.Scene, material: THREE.Material): boolean {
+  const override = scene.isScene === true ? scene.overrideMaterial : null
+  return override !== null && (material === override || material.allowOverride)
 }
 
 /** Internal runtime split out so the upload/draw ordering can be tested without a renderer mock. */
@@ -554,13 +569,14 @@ export function FrameSurface({
   const handleBeforeRender = useCallback(
     (
       renderer: { getRenderTarget(): THREE.RenderTarget | null },
-      _scene: THREE.Scene,
+      scene: THREE.Scene,
       _camera: THREE.Camera,
       geometry: THREE.BufferGeometry,
       renderedMaterial: THREE.Material,
     ) => {
       const current = runtimeRef.current
       if (!current || current !== runtime || current.source !== frameRef.current) return
+      if (drawnByOverride(scene, renderedMaterial)) return
       drawableRef.current = geometryDraws(geometry)
       // A pass into a render target has not reached the screen, so on its
       // own it cannot present. Inside a <SurfaceCanvas> it does not have to
@@ -582,7 +598,8 @@ export function FrameSurface({
     [runtime, frameRef, presentationRef, reportRejectedPresentation, host],
   )
 
-  const handleAfterRender = useCallback(() => {
+  const handleAfterRender = useCallback<THREE.Object3D['onAfterRender']>((_renderer, scene, _camera, _geometry, renderedMaterial) => {
+    if (drawnByOverride(scene, renderedMaterial)) return
     const current = runtimeRef.current
     // A source prop can change one commit before its effect disposes the old
     // runtime. Never let that old mesh report into the new source's callback.

@@ -87,7 +87,7 @@ import {
   type SurfacePartValue,
 } from './surfaceContext'
 import { configureSurfaceMaterial } from './surfaceMaterials'
-import { geometryDraws, isDevelopmentRuntime } from '../FrameSurface'
+import { drawnByOverride, geometryDraws, isDevelopmentRuntime } from '../FrameSurface'
 import {
   applyPassWrites,
   authoredWrites,
@@ -987,7 +987,8 @@ function SurfacePresenter({
   // exclusive one presents only once the page has let go, and draws
   // write-free until then.
   const handleBeforeRender = useCallback<THREE.Object3D['onBeforeRender']>(
-    (renderer, _scene, _cam, renderedGeometry, renderedMaterial) => {
+    (renderer, scene, _cam, renderedGeometry, renderedMaterial) => {
+      if (drawnByOverride(scene, renderedMaterial)) return
       for (const beforeDraw of beforeDraws.current) beforeDraw()
       const defaultFramebuffer = renderer.getRenderTarget() === null
       // Read live from the store, never from a render-time value. The
@@ -1030,7 +1031,8 @@ function SurfacePresenter({
   // lets the page be released in the same frame the pixels land. A pass
   // that wrote color into a target has not reached the screen and defers to
   // the host's tail.
-  const handleAfterRender = useCallback<THREE.Object3D['onAfterRender']>(() => {
+  const handleAfterRender = useCallback<THREE.Object3D['onAfterRender']>((_renderer, scene, _cam, _geometry, renderedMaterial) => {
+    if (drawnByOverride(scene, renderedMaterial)) return
     // Restored FIRST, before any of the early returns below. The draw is
     // over the moment this runs, and every path out of here — no receipt,
     // nothing uploaded, a warm-up — must leave the material exactly as the
