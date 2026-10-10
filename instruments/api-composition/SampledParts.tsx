@@ -1,24 +1,28 @@
 // One shader draws both sources; the input proxy is not presentation evidence.
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ShaderMaterial } from 'three'
-import { useFrame } from '@react-three/fiber'
+import { useEffect, useMemo, useState } from 'react'
+import { MeshBasicNodeMaterial, type Node } from 'three/webgpu'
+import { texture, uv, vec4 } from 'three/tsl'
 import {
-  Surface, useSurfaceHandle, useSurfaceStatus,
-  useSurfaceTexture, useSurfaceTextureOf, type SurfaceHandle,
+  Surface, premultipliedOutput, useSurfaceHandle, useSurfaceNodes, useSurfaceStatus,
+  useSurfaceTextureOf, type SurfaceHandle,
 } from '@petepetrash/munari'
 
 function SplitMaterial({ surface }: { surface: SurfaceHandle }) {
-  const first = useSurfaceTexture()
+  const first = useSurfaceNodes()
   const second = useSurfaceTextureOf(surface, 'second')
-  const material = useRef<ShaderMaterial>(null)
-  const uniforms = useMemo(() => ({ first: { value: first }, second: { value: second } }), [first, second])
-  useFrame(() => { const a = material.current?.uniforms.first, b = material.current?.uniforms.second; if (a && b) { a.value = first; b.value = second } })
-  return <shaderMaterial ref={material} uniforms={uniforms} toneMapped={false}
-    vertexShader="varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}"
-    fragmentShader={`uniform sampler2D first; uniform sampler2D second; varying vec2 vUv;
-void main(){gl_FragColor=vUv.x<0.5?texture2D(first,vUv):texture2D(second,vUv);
-#include <colorspace_fragment>
-}`} />
+  // Rebuilt when the second source arrives: a texture node compiles its
+  // texture's color-space decode into the shader, so it cannot start empty.
+  const material = useMemo(() => {
+    const created = new MeshBasicNodeMaterial()
+    // SAFETY: a texture sample is a vec4; Three's types return a bare Node.
+    const left = first.map.sample(uv()) as Node<'vec4'>
+    // SAFETY: a texture sample is a vec4; Three's types return a bare Node.
+    const right = second ? texture(second).sample(uv()) as Node<'vec4'> : vec4(0, 0, 0, 0)
+    created.outputNode = premultipliedOutput(uv().x.lessThan(0.5).select(left, right))
+    return created
+  }, [first, second])
+  useEffect(() => () => material.dispose(), [material])
+  return <primitive object={material} attach="material" />
 }
 
 export function SampledParts() {

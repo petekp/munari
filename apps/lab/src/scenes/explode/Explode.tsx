@@ -162,9 +162,9 @@ export function ExplodeHud() {
 /**
  * An unlit quad wearing one plate's capture.
  *
- * Unlit and un-tone-mapped by choice: this scene's entire job is to show
- * what the browser painted, and a light rig editorializes. It is also the
- * only correct option — decisions.md #5 puts lit standard materials on
+ * Unlit by choice: this scene's entire job is to show what the browser
+ * painted, and a light rig editorializes. It is also the only correct
+ * option — decisions.md #5 puts lit standard materials on
  * partially-transparent Surfaces explicitly out of contract, and a plate is
  * mostly transparent by construction. `premultipliedOutput` is the other
  * half of that contract: the capture arrives premultiplied, and a stock
@@ -177,7 +177,6 @@ function PlateMaterial() {
     const created = new MeshBasicNodeMaterial({
       transparent: true,
       premultipliedAlpha: true,
-      toneMapped: false,
       depthWrite: false,
       side: THREE.DoubleSide,
     })
@@ -197,7 +196,7 @@ function PlateFrame({ w, h }: { w: number; h: number }) {
   useEffect(() => () => geometry.dispose(), [geometry])
   return (
     <lineSegments geometry={geometry}>
-      <lineBasicMaterial color="#7c8798" transparent premultipliedAlpha opacity={0.34} toneMapped={false} />
+      <lineBasicMaterial color="#7c8798" transparent premultipliedAlpha opacity={0.34} />
     </lineSegments>
   )
 }
@@ -276,7 +275,7 @@ function LightTable({ w, h, z }: { w: number; h: number; z: number }) {
   return (
     <mesh position={[0, CENTER_Y, z]}>
       <planeGeometry args={[w, h]} />
-      <meshBasicMaterial color="#aeb4bf" toneMapped={false} />
+      <meshBasicMaterial color="#aeb4bf" />
     </mesh>
   )
 }

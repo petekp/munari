@@ -19,7 +19,7 @@ export function watchSurfaceValidation(store: SurfaceStore, host: SurfaceHost | 
   let timer: ReturnType<typeof setTimeout> | null = null
   const updateWarning = () => {
     const state = store.getState()
-    const seeksScene = state.supported && (state.requested === 'canvas' || state.requested === 'both')
+    const seeksScene = state.supported && state.requested === 'canvas'
     const next = !seeksScene ? null : !host?.mounted() ? 'a mounted SurfaceCanvas' : !host.available() ? 'an available renderer' : store.preparationWait()
     if (next === waiting) return
     waiting = next

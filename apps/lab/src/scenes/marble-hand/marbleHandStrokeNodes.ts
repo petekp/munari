@@ -38,7 +38,6 @@ export function createMarbleHandStrokeMaterial(mask: THREE.Texture, v: MarbleHan
     premultipliedAlpha: true,
     depthTest: false,
     depthWrite: false,
-    toneMapped: false,
   })
   const screenUv = varying(mix(v.bounds.xy, v.bounds.zw, uv()))
   // Depth 0.5 is the middle of WebGPU's 0..1 range, so the quad never sits
@@ -76,8 +75,8 @@ export function createMarbleHandStrokeMaterial(mask: THREE.Texture, v: MarbleHan
     }
     const alpha = expanded.sub(center).max(0).mul(v.opacity)
     Discard(alpha.lessThanEqual(0))
-    // The canvas-encoded color, premultiplied after the encode, as WebGL's
-    // colorspace then premultiplied_alpha fragments produced it.
+    // The color in the canvas's sRGB encoding, premultiplied after the
+    // encode, so encodedOutput lands it on the canvas unchanged.
     // SAFETY: Three declares this TSL function's layout as vec3 to vec3; its
     // published types leave the result untyped.
     const encoded = sRGBTransferOETF(v.color) as Node<'vec3'>

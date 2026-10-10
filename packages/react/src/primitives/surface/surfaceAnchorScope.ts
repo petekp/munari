@@ -30,8 +30,6 @@ export interface SurfaceAnchorScope {
   require(name: string): () => void
   /** The committed box for `name`, or null while the set is incomplete. */
   box(name: string): SourceUvRect | null
-  /** True when the source's texture is horizontally mirrored. */
-  mirrorU(): boolean
   subscribe(listener: () => void): () => void
   /** The presenter drew this generation; promote a set that describes it. */
   noteDrawn(sourceId: number, generation: number): void
@@ -88,7 +86,6 @@ export function useSurfaceAnchorScope(
         }
       },
       box: (name) => committed.current?.anchors[name] ?? null,
-      mirrorU: () => runtimeRef.current?.mirrorU() ?? false,
       subscribe(listener) {
         listeners.current.add(listener)
         return () => {

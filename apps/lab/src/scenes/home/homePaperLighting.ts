@@ -16,7 +16,7 @@ const NEAR=1, FAR=4096
 // The light's view of the sheet, sampled later at uv = ndc * .5 + .5. Clip y
 // is negated so that sample reads what this pass drew there (passMaterial).
 function createDepthMaterial(material: HomeLightMaterial){
-  const depth=new MeshBasicNodeMaterial({side:THREE.DoubleSide,toneMapped:false})
+  const depth=new MeshBasicNodeMaterial({side:THREE.DoubleSide})
   const clip=cameraProjectionMatrix.mul(modelViewMatrix).mul(vec4(positionGeometry,1))
   depth.vertexNode=vec4(clip.x,clip.y.negate(),clip.z,clip.w)
   // A render-target pass: no canvas conversion follows, so these raw values land.

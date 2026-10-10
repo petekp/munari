@@ -40,7 +40,7 @@ export function MarbleHandStroke({ hand, tuning, tap }: {
     target.texture.name = 'marble-hand-stroke-mask'
     // The mask draws the same bent stone the visible material draws. An
     // unpatched mask leaves the outline standing where the finger used to be.
-    const maskMaterial = new MeshBasicNodeMaterial({ color: 0xffffff, toneMapped: false })
+    const maskMaterial = new MeshBasicNodeMaterial({ color: 0xffffff })
     maskMaterial.positionNode = createMarbleHandTapNodes(tap).position
     const mask = new THREE.Mesh(hand.geometry, maskMaterial)
     mask.matrixAutoUpdate = false

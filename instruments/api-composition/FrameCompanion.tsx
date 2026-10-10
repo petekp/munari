@@ -2,7 +2,8 @@
 // The Surface callback must place the companion before its earlier draw order runs.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { WebGLRenderTarget, type Mesh } from 'three'
+import { RenderTarget, type Mesh } from 'three'
+import { WebGPURenderer } from 'three/webgpu'
 import { Surface, useSurfaceBeforeRender } from '@petepetrash/munari'
 
 interface CompanionRecord {presentation:'page'|'scene'|null;frames:number;mismatches:number;naiveMismatches:number;expected:number;naive:number;callbacks:number;drawX:number;maxPoseShiftPixels:number;passes:{camera:string;target:string|null}[];matrixSamples:number[];nodeCount:number}
@@ -32,7 +33,10 @@ function LatePose({ mesh }: { mesh: React.RefObject<Mesh | null> }) {
 }
 function RenderPasses() {
   const {gl,scene,camera} = useThree()
-  const target = useMemo(()=>new WebGLRenderTarget(320,240),[])
+  // Fiber types the renderer as WebGLRenderer, whose setRenderTarget rejects
+  // a RenderTarget; SurfaceCanvas supplies a WebGPURenderer.
+  if (!(gl instanceof WebGPURenderer)) throw new Error('RenderPasses needs the WebGPURenderer from SurfaceCanvas')
+  const target = useMemo(()=>new RenderTarget(320,240),[])
   const secondCamera = useMemo(()=>camera.clone(),[camera])
   useEffect(()=>{
     const update = scene.updateMatrixWorld

@@ -1,7 +1,7 @@
 // Companion updates run after pose changes and before the renderer draws the scene.
 // React status is for UI; frame readers consult the Surface's current controller.
 import { createContext, use, useLayoutEffect } from 'react'
-import type { Camera, Mesh, Object3D, WebGLRenderTarget } from 'three'
+import type { Camera, Mesh, Object3D, RenderTarget } from 'three'
 import type { SurfacePartId } from '@munari/core'
 import { surfaceStoreOf, type SurfaceHandle } from './surfaceHandle'
 import { surfaceViewPresentation, type SurfaceViewPresentation } from './surfaceStatus'
@@ -26,7 +26,7 @@ export interface SurfaceRenderFrame extends SurfaceFrameState {
   readonly mesh: Mesh
   readonly camera: Camera
   readonly canvas: HTMLCanvasElement
-  readonly renderTarget: WebGLRenderTarget | null
+  readonly renderTarget: RenderTarget | null
   readonly part: SurfacePartId
   readonly time: number
 }

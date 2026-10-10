@@ -389,10 +389,10 @@ export function sphereEntry(o: Vec3, d: Vec3, c: Vec3, r: number): number {
 }
 
 /**
- * `refract` from GLSL, spelled out so the two copies are the same
- * arithmetic and not the same intention. `n` must oppose `i`. Returns null
- * past the critical angle, which is total internal reflection and is the
- * right answer rather than a case to guard.
+ * `refract` as GLSL and TSL define it, spelled out so this and `refractAt`
+ * in `crystalNodes.ts` are the same arithmetic and not the same intention.
+ * `n` must oppose `i`. Returns null past the critical angle, which is total
+ * internal reflection and is the right answer rather than a case to guard.
  */
 export function refract(i: Vec3, n: Vec3, eta: number): Vec3 | null {
   const ndi = i[0] * n[0] + i[1] * n[1] + i[2] * n[2]
@@ -403,7 +403,8 @@ export function refract(i: Vec3, n: Vec3, eta: number): Vec3 | null {
 }
 
 /**
- * `reflect` from GLSL, spelled out for the same reason `refract` is. `n`
+ * `reflect` as GLSL and TSL define it. `crystalNodes.ts` calls TSL's
+ * built-in; this copy is spelled out for the same reason `refract` is. `n`
  * must be unit; `i` may be on either side of it.
  */
 export function reflect(i: Vec3, n: Vec3): Vec3 {

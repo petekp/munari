@@ -13,6 +13,7 @@ import {
   useCaptureFrame, useCaptureStatus,
   type CaptureHandle, type CaptureFrame, type SurfaceHandle,
 } from '@petepetrash/munari'
+import { afterEachRender, snapshotCanvas } from '../canvasPixels'
 import '@petepetrash/munari/style.css'
 
 type ViewKey = 'a' | 'b'
@@ -93,7 +94,7 @@ function FadeMaterial({ weight }: { weight: React.RefObject<number> }) {
   const texture = useSurfaceTexture()
   const material = useRef<THREE.MeshBasicMaterial>(null)
   useFrame(() => { if (material.current) material.current.opacity = weight.current })
-  return <meshBasicMaterial ref={material} map={texture} transparent depthWrite={false} toneMapped={false} premultipliedAlpha/>
+  return <meshBasicMaterial ref={material} map={texture} transparent depthWrite={false} premultipliedAlpha/>
 }
 function Crossfade({ from, to, bounds, finish, cancelled }: {
   from: 'a' | 'b'; to: 'a' | 'b'; bounds: React.RefObject<HTMLDivElement | null>; finish(): void; cancelled: boolean
@@ -176,15 +177,15 @@ function CaptureReader({capture, name}:{capture:CaptureHandle;name:string}) {
     }
     if (!frame.current) records.samples[name] = null
   })
-  return <mesh ref={mesh} visible={false} onAfterRender={() => {
+  // Read once render() returns: WebGPU cannot read the canvas mid-draw.
+  useLayoutEffect(() => afterEachRender(gl, () => {
     const value = frame.current
     if (!value) return
-    const context = gl.getContext()
-    const pixel = new Uint8Array(4)
     const size = gl.getDrawingBufferSize(new THREE.Vector2())
-    context.readPixels(Math.floor(size.x * 0.85),Math.floor(size.y * 0.15),1,1,context.RGBA,context.UNSIGNED_BYTE,pixel)
-    records.samples[name] = {sourceId:value.sourceId,generation:value.generation,width:value.width,height:value.height,pixel:Array.from(pixel)}
-  }}><planeGeometry args={[2,2]}/><meshBasicMaterial ref={material} premultipliedAlpha toneMapped={false}/></mesh>
+    const pixel = snapshotCanvas(gl.domElement)(Math.floor(size.x * 0.85), Math.floor(size.y * 0.15))
+    records.samples[name] = {sourceId:value.sourceId,generation:value.generation,width:value.width,height:value.height,pixel}
+  }), [gl, name])
+  return <mesh ref={mesh} visible={false}><planeGeometry args={[2,2]}/><meshBasicMaterial ref={material} premultipliedAlpha/></mesh>
 }
 function ElementCapture() {
   const capture = useElementCapture()

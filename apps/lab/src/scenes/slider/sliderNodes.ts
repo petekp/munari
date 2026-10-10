@@ -38,7 +38,6 @@ export function createLensMaterial(surface: SurfaceNodes, light: LensLight): Mes
     transparent: true,
     premultipliedAlpha: true,
     depthWrite: false,
-    toneMapped: false,
   })
   material.outputNode = Fn(() => {
     // SAFETY: a texture sample is a vec4; Three's types return a bare Node.

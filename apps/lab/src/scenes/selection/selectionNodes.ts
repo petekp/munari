@@ -13,10 +13,11 @@
 //   complement, so the pair clips. Measured 2026-08-21: every mid-fade
 //   frame drew the bead as a flat white pill over the words.
 //
-//   NO pow() BASE TOUCHES 0.0. The GLSL spec defines pow(0, y>0) as 0,
-//   but ANGLE compiles pow to exp2(y * log2(x)) and log2(0) delivers NaN,
-//   which a premultiplied fragment writes to the framebuffer as solid
-//   black. 2026-08-20: every strip drew an opaque black bar across its
+//   NO pow() BASE TOUCHES 0.0. The GLSL spec defines pow(0, y>0) as 0, but
+//   ANGLE compiles pow to exp2(y * log2(x)), and WGSL only promises pow the
+//   accuracy of that same expression, so log2(0) can deliver NaN on either
+//   backend. Under WebGL, a premultiplied NaN fragment wrote solid black.
+//   2026-08-20: every strip drew an opaque black bar across its
 //   interior — the plateau is where `1.0 - fill` is exactly 0.0, and its
 //   rim stayed clean because only there was the base nonzero. Every pow
 //   base here is clamped to at least 1e-4.
@@ -349,7 +350,6 @@ export function createBubbleMaterial(map: TextureNode, v: BubbleValues): MeshBas
     transparent: true,
     premultipliedAlpha: true,
     depthWrite: false,
-    toneMapped: false,
   })
 
   const toUv = (p: Node<'vec2'>): Node<'vec2'> =>
@@ -592,7 +592,6 @@ export function createGleamMaterial(v: BubbleValues): MeshBasicNodeMaterial {
   const material = new MeshBasicNodeMaterial({
     transparent: true,
     depthWrite: false,
-    toneMapped: false,
     blending: THREE.CustomBlending,
     blendEquation: THREE.AddEquation,
     blendSrc: THREE.OneFactor,

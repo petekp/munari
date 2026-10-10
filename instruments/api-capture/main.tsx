@@ -6,6 +6,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SurfaceCanvas, CaptureContent, useCaptureHandle, useCaptureFrame,  type CaptureHandle, type CaptureFrame } from '@petepetrash/munari'
 import { ControlsApp } from '../../apps/lab/src/scenes/controls/Controls'
+import { afterEachRender, snapshotCanvas } from '../canvasPixels'
 import '../../apps/lab/src/app.css'
 
 interface Sample { sourceId:number;generation:number;revision:number;width:number;height:number;uuid:string;pixel:number[];anchor:CaptureFrame['anchors'][string]|undefined }
@@ -43,14 +44,16 @@ function Reader({name,capture}:{name:'a'|'b';capture:CaptureHandle}) {
     if(!frame)records.latest[name]={empty:true}
     if(frame&&observedTexture!==frame.texture){observedTexture=frame.texture;frame.texture.addEventListener('dispose',()=>records.disposal++)}
   })
-  return <mesh ref={mesh} visible={false} onAfterRender={()=>{
+  // Read once render() returns: WebGPU cannot read the canvas mid-draw.
+  useLayoutEffect(()=>afterEachRender(renderer,()=>{
     const frame=current.current;if(!frame)return
-    const pixels=new Uint8Array(4),gl=renderer.getContext(),size=renderer.getDrawingBufferSize(new THREE.Vector2())
-    gl.readPixels(Math.floor(size.x/2),Math.floor(size.y/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixels)
+    const size=renderer.getDrawingBufferSize(new THREE.Vector2())
+    const pixel=snapshotCanvas(renderer.domElement)(Math.floor(size.x/2),Math.floor(size.y/2))
     records.draws[name]++
-    const entry={sourceId:frame.sourceId,generation:frame.generation,revision:frame.revision,width:frame.width,height:frame.height,uuid:frame.texture.uuid,pixel:Array.from(pixels),anchor:frame.anchors.label}
+    const entry={sourceId:frame.sourceId,generation:frame.generation,revision:frame.revision,width:frame.width,height:frame.height,uuid:frame.texture.uuid,pixel,anchor:frame.anchors.label}
     records.latest[name]=entry;records.samples.push({name,...entry});if(records.samples.length>1000)records.samples.shift()
-  }}><planeGeometry args={[2,2]}/><meshBasicMaterial ref={material} toneMapped={false} premultipliedAlpha/></mesh>
+  }),[renderer,name])
+  return <mesh ref={mesh} visible={false}><planeGeometry args={[2,2]}/><meshBasicMaterial ref={material} premultipliedAlpha/></mesh>
 }
 
 function App() {

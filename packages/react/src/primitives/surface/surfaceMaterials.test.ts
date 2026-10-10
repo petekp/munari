@@ -22,16 +22,14 @@ import {
 import type { SurfaceSourceRuntime } from './surfaceSourceRuntime'
 
 describe('a DOM Surface texture', () => {
-  it('is born sRGB, premultiplied, and mirrored on request', () => {
+  it('is born sRGB and premultiplied', () => {
     const canvas = document.createElement('canvas')
     canvas.width = 200
     canvas.height = 100
-    const texture = createDomSurfaceTexture(canvas, 1, false, true)
+    const texture = createDomSurfaceTexture(canvas, 1, false)
     expect(texture.image).toBe(canvas)
     expect(texture.colorSpace).toBe(THREE.SRGBColorSpace)
     expect(texture.premultiplyAlpha).toBe(true)
-    expect(texture.wrapS).toBe(THREE.RepeatWrapping)
-    expect(texture.repeat.x).toBe(-1)
     texture.dispose()
   })
 })
@@ -108,7 +106,7 @@ describe('useSurfaceNodes', () => {
     const canvas = document.createElement('canvas')
     canvas.width = 200
     canvas.height = 100
-    const first = createDomSurfaceTexture(canvas, 1, false, true)
+    const first = createDomSurfaceTexture(canvas, 1, false)
     let texture = first
     const { slot, seen, render, unmount } = harness(() => texture)
 
@@ -121,7 +119,7 @@ describe('useSurfaceNodes', () => {
 
     // A texture swap lands as a value write into the SAME node — the one
     // the built material is holding.
-    const replacement = createDomSurfaceTexture(canvas, 1, false, true)
+    const replacement = createDomSurfaceTexture(canvas, 1, false)
     texture = replacement
     render()
     expect(seen[1]).toBe(wired)

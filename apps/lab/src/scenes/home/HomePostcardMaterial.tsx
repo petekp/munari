@@ -16,7 +16,6 @@ export function HomePostcardMaterial() {
     const created = new MeshBasicNodeMaterial({
       transparent: true,
       premultipliedAlpha: true,
-      toneMapped: false,
       side: THREE.DoubleSide,
       forceSinglePass: true,
     })

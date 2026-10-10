@@ -16,7 +16,7 @@ it('accepts a matching host and refuses a conflicting host inside the scene',()=
  const root=createRoot(container),errors:Error[]=[]
  let resolved:SurfaceHost|null=null
  function Read(){resolved=use(SurfaceRootContext)?.host??null;return null}
- const render=(canvasId:string)=>flushSync(()=>root.render(createElement(SurfaceHostContext,{value:enclosing},createElement(SurfaceRoot,{canvasId,renderIn:'none',onError:error=>errors.push(error)},createElement(Read)))))
+ const render=(canvasId:string)=>flushSync(()=>root.render(createElement(SurfaceHostContext,{value:enclosing},createElement(SurfaceRoot,{canvasId,onError:error=>errors.push(error)},createElement(Read)))))
  try {
   render('one');expect(resolved).toBe(enclosing);expect(errors).toHaveLength(0)
   render('two');expect(resolved).toBeNull();expect(errors).toHaveLength(1)

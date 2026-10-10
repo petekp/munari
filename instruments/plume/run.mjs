@@ -91,7 +91,6 @@ function launch(headless, capture = true) {
     args: [
       ...WEBGPU_CHROME_ARGS,
       ...(capture ? ['--enable-features=CanvasDrawElement'] : []),
-      '--enable-webgl',
       '--ignore-gpu-blocklist',
       '--enable-unsafe-swiftshader',
       '--disable-backgrounding-occluded-windows',

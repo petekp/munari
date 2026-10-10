@@ -1,8 +1,8 @@
 // Screencast recording check — real transport, image identity, and resource lifetime.
 // A measurement must retain every image and release its Chrome resources on failure.
 // Full-viewport decode messages can exhaust DevTools' 100 MB buffer; eight-image
-// batches bound the payload (docs/browser-gate-recording-plan.md). Closing a page
-// hides listener and object leaks, so their release is observed while it remains alive.
+// batches bound the payload (decisions.md #2). Closing a page hides listener and
+// object leaks, so their release is observed while it remains alive.
 // This check owns ordinary DOM fixtures; the Genie gates own rendered scene judgments.
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'

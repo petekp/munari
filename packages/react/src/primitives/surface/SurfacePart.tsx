@@ -32,8 +32,6 @@ export interface SurfacePartProps {
   resolution?: SurfaceResolution
   /** See `SurfaceHTMLProps.live`. */
   live?: boolean
-  mirrorU?: boolean
-  onFocusWithinChange?: (focused: boolean) => void
   onChrome?: (chrome: SurfaceChrome) => void
   chromeElement?: () => HTMLElement
   pageContent?: () => HTMLElement | null

@@ -10,7 +10,7 @@
 // ends up released while a live component believes it holds the identity —
 // Strict Mode produces that ordering on every development mount.
 //
-import { StrictMode, createElement, useLayoutEffect } from 'react'
+import { StrictMode, createElement, use, useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -22,19 +22,19 @@ import {
   useSurfaceController,
   useSurfaceControls,
   useSurfaceProgress,
-  useSurfaceState,
   useSurfaceStore,
   type SurfaceControls,
   type SurfacePresentation,
+  type SurfaceStore,
 } from './surfaceHandle'
 import { mountSurfaceHost, surfaceHost, resetSurfaceHosts } from './surfaceHostRegistry'
 import { SurfaceRoot } from './SurfaceRoot'
 import type { SurfacePartPublication, SurfaceSourceRuntime } from './surfaceSourceRuntime'
-import { useSurfaceRoot } from './surfaceContext'
+import { SurfaceHandleContext, useSurfaceRoot } from './surfaceContext'
 import { Surface } from '../Surface'
 
 interface ObservedContext {
-  state: ReturnType<typeof useSurfaceState> | null
+  store: SurfaceStore | null
   progress: ReturnType<typeof useSurfaceProgress> | null
 }
 
@@ -112,16 +112,16 @@ describe('context-reading hooks', () => {
   it('inherit the retained HTML declaration’s actual handle', () => {
     vi.stubGlobal('CanvasRenderingContext2D', undefined)
     const handle = createSurface('separated')
-    const observed: ObservedContext = { state: null, progress: null }
+    const observed: ObservedContext = { store: null, progress: null }
     const Probe = () => {
-      observed.state = useSurfaceState()
+      observed.store = use(SurfaceHandleContext)?.store ?? null
       observed.progress = useSurfaceProgress()
       return null
     }
     const root = createRoot(container)
     const props = { surface: handle, inScene: false, children: createElement(Probe) }
     flushSync(() => root.render(createElement(Surface, props)))
-    expect(observed.state?.requested).toBe('page')
+    expect(observed.store).toBe(surfaceStoreOf(handle))
     expect(observed.progress).toBe(handle.progress)
     flushSync(() => root.unmount())
   })

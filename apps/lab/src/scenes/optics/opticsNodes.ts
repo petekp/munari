@@ -10,8 +10,8 @@
 // layout table lives.
 //
 // Every material here computes linear color and returns it through
-// `premultipliedOutput`, which lands it on the canvas as WebGL's per-fragment
-// sRGB encode did (decisions.md #72).
+// `premultipliedOutput`, so a translucent texel reaches the canvas with the
+// value the page would composite (decisions.md #72).
 
 import * as THREE from 'three'
 import { MeshBasicNodeMaterial, type Node, type TextureNode, type UniformNode } from 'three/webgpu'

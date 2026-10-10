@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createSurfaceFrameChannel, readSurfaceFrameState, surfaceBelongsToScene } from './surfaceFrame'
 import { createSurfaceStore } from './surfaceHandle'
 import { surfaceHost } from './surfaceHostRegistry'
-import { Camera, Scene, Mesh, Group, WebGLRenderTarget } from 'three'
+import { Camera, Scene, Mesh, Group, RenderTarget } from 'three'
 
 describe('frame state', () => {
   it('reads a new request without waiting for a React render', () => {
@@ -55,8 +55,8 @@ it('reports the actual draw camera and target and follows live scene membership'
  scene.add(group);group.add(mesh)
  expect(surfaceBelongsToScene(mesh,scene)).toBe(true)
  expect(surfaceBelongsToScene(mesh,other)).toBe(false)
- const first=new Camera(),second=new Camera(),target=new WebGLRenderTarget(4,4)
- const seen: {camera:Camera;target:WebGLRenderTarget|null}[]=[]
+ const first=new Camera(),second=new Camera(),target=new RenderTarget(4,4)
+ const seen: {camera:Camera;target:RenderTarget|null}[]=[]
  const stop=host.registerBeforeDraw((_scene,camera,target)=>seen.push({camera,target}))
  host.beforeDraw(scene,first);host.beforeDraw(scene,second,target)
  expect(seen).toEqual([{camera:first,target:null},{camera:second,target}])

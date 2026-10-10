@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
-  createSurfaceFocusLedger,
   surfaceFocusKey,
   surfaceFocusTarget,
   transferSurfaceFocus,
@@ -83,49 +82,5 @@ describe('moving focus when the hold moves', () => {
     const source = copy('<button>go</button>')
     document.body.focus()
     expect(transferSurfaceFocus(page, source)).toBeNull()
-  })
-})
-
-describe('one logical focus over two copies', () => {
-  it('reports focus arriving once', async () => {
-    const notify = vi.fn()
-    const ledger = createSurfaceFocusLedger(notify)
-    ledger.report('page', true)
-    await Promise.resolve()
-    expect(notify.mock.calls).toEqual([[true]])
-  })
-
-  // A transfer is a focusout immediately followed by a focusin. A consumer
-  // that saw the pair would close its editor between them.
-  it('does not report a blur that a transfer immediately answers', async () => {
-    const notify = vi.fn()
-    const ledger = createSurfaceFocusLedger(notify)
-    ledger.report('page', true)
-    await Promise.resolve()
-    notify.mockClear()
-    ledger.report('page', false)
-    ledger.report('source', true)
-    await Promise.resolve()
-    expect(notify).not.toHaveBeenCalled()
-    expect(ledger.focused()).toBe(true)
-  })
-
-  it('reports the blur when focus really left both copies', async () => {
-    const notify = vi.fn()
-    const ledger = createSurfaceFocusLedger(notify)
-    ledger.report('source', true)
-    await Promise.resolve()
-    ledger.report('source', false)
-    await Promise.resolve()
-    expect(notify.mock.calls).toEqual([[true], [false]])
-  })
-
-  it('says nothing after it is disposed', async () => {
-    const notify = vi.fn()
-    const ledger = createSurfaceFocusLedger(notify)
-    ledger.report('page', true)
-    ledger.dispose()
-    await Promise.resolve()
-    expect(notify).not.toHaveBeenCalled()
   })
 })

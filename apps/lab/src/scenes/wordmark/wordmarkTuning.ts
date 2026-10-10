@@ -80,7 +80,7 @@ export const WORDMARK_GROUPS: readonly WordmarkControlGroup[] = [
   {
     key: 'frame',
     title: 'Frame',
-    description: 'How large the mark sits — the nav runs it at 28px.',
+    description: 'How large the mark sits — the nav runs it at 26px.',
     controls: [{ key: 'base', label: 'Base size', min: 16, max: 96, step: 1, unit: 'px' }],
   },
   {

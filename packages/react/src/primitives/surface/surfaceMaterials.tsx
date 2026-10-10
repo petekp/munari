@@ -58,8 +58,8 @@ export interface SurfaceNodes {
   /** The source's CSS size. */
   readonly size: UniformNode<'vec2', THREE.Vector2>
   /**
-   * Corner coverage, 1 inside and 0 outside, at `coordinates`: the unmirrored
-   * mesh UV by default. Multiply the whole premultiplied vec4 by it.
+   * Corner coverage, 1 inside and 0 outside, at `coordinates`: the mesh UV by
+   * default. Multiply the whole premultiplied vec4 by it.
    */
   radiusMask(coordinates?: Node<'vec2'>): Node<'float'>
 }

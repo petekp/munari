@@ -36,8 +36,6 @@ const ROOT_ENTRY = [
   'encodedOutput',
   'premultipliedOutput',
   'supportsSurfaces',
-  'surfaceFocusKey',
-  'surfaceFocusTarget',
   'surfaceRadiusMask',
   'useFocusNavPolicy',
   'useFocusReframe',

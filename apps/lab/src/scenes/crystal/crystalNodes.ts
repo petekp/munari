@@ -40,8 +40,8 @@
 // glass writes alpha 1 over it, so `glassAt` works in straight colour and the
 // output node composites with the over operator written out. That node
 // replaces Three's output, so Three applies no second premultiplication, and
-// `premultipliedOutput` makes the canvas's sRGB encode of the premultiplied
-// linear result land as WebGL's did (decisions.md #72).
+// `premultipliedOutput` makes the premultiplied linear result land with the
+// value the page would composite (decisions.md #72).
 //
 // Ownership: this module owns the shading and the uniform bag it reads.
 // crystalMaterial.tsx owns the pose, the uniform writes and the mesh slot.
@@ -332,7 +332,6 @@ export function createCrystalMaterial(surface: SurfaceNodes, v: CrystalValues): 
     transparent: true,
     premultipliedAlpha: true,
     depthWrite: false,
-    toneMapped: false,
   })
   const solid = solidOf(v)
   const { sdInner2, sdCrystal, normalAt, toLocal, toLocalDir, toSheetDir, toSheet, outlineGrad } = solid

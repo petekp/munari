@@ -8,6 +8,7 @@ import {
   SurfaceCanvas, useElementCapture, useCaptureFrame, useCaptureStatus,
    type CaptureHandle, type CaptureFrame,
 } from '@petepetrash/munari'
+import { afterEachRender, snapshotCanvas } from '../canvasPixels'
 interface WholeRecord {
   kind: 'html' | 'body'
   count: number
@@ -30,16 +31,15 @@ function Preview({ capture }: { capture: CaptureHandle }) {
       material.current.needsUpdate = true
     }
   })
-  return <mesh ref={mesh} visible={false} scale={[viewport.width / 2, viewport.height / 2, 1]} onAfterRender={() => {
+  // Read once render() returns: WebGPU cannot read the canvas mid-draw.
+  useLayoutEffect(() => afterEachRender(gl, () => {
     const frame = current.current
     if (!frame) return
-    const context = gl.getContext()
     const size = gl.getDrawingBufferSize(new THREE.Vector2())
-    const top = new Uint8Array(4), bottom = new Uint8Array(4)
-    context.readPixels(Math.floor(size.x * 0.9), Math.floor(size.y * 0.9), 1, 1, context.RGBA, context.UNSIGNED_BYTE, top)
-    context.readPixels(Math.floor(size.x * 0.9), Math.floor(size.y * 0.1), 1, 1, context.RGBA, context.UNSIGNED_BYTE, bottom)
-    record.sample = {width:frame.width,height:frame.height,sourceId:frame.sourceId,top:Array.from(top),bottom:Array.from(bottom)}
-  }}><planeGeometry args={[2,2]}/><meshBasicMaterial ref={material} premultipliedAlpha toneMapped={false}/></mesh>
+    const read = snapshotCanvas(gl.domElement)
+    record.sample = {width:frame.width,height:frame.height,sourceId:frame.sourceId,top:read(Math.floor(size.x * 0.9), Math.floor(size.y * 0.9)),bottom:read(Math.floor(size.x * 0.9), Math.floor(size.y * 0.1))}
+  }), [gl])
+  return <mesh ref={mesh} visible={false} scale={[viewport.width / 2, viewport.height / 2, 1]}><planeGeometry args={[2,2]}/><meshBasicMaterial ref={material} premultipliedAlpha/></mesh>
 }
 function App() {
   const [kind, setKind] = useState<'html' | 'body'>('html')

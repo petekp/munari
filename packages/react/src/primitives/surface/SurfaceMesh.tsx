@@ -303,7 +303,6 @@ function readRuntimeFacts(part: SurfacePartPublication | null) {
     texture: runtime?.texture() ?? null,
     width,
     height,
-    mirrorU: runtime?.mirrorU() ?? false,
     sourceEl: runtime?.element ?? null,
     chromeRadii: runtime?.chrome().radii,
   }
@@ -395,7 +394,7 @@ function SurfacePresenter({
     useMemo(() => () => store.part(partId), [store, partId]),
     useMemo(() => () => store.part(partId), [store, partId]),
   )
-  const { runtime, texture, width, height, mirrorU, sourceEl, chromeRadii } =
+  const { runtime, texture, width, height, sourceEl, chromeRadii } =
     readRuntimeFacts(part)
   const reportError = useMemo(() => store.reportError.bind(store), [store])
   const presenterPart = useMemo<SurfacePartValue | null>(
@@ -432,7 +431,6 @@ function SurfacePresenter({
   const pointerEventsRef = useLatest(pointerEvents)
   const storeRef = useLatest(store)
   const partRef = useLatest(part)
-  const mirrorURef = useLatest(mirrorU)
   const widthRef = useLatest(width)
   const heightRef = useLatest(height)
   const authoredRaycastRef = useLatest(authoredRaycast)
@@ -603,14 +601,13 @@ function SurfacePresenter({
         const rect = el.getBoundingClientRect()
         for (const hit of hits) {
           if (!hit.uv) continue
-          const u = mirrorURef.current ? 1 - hit.uv.x : hit.uv.x
-          const x = rect.left + u * rect.width
+          const x = rect.left + hit.uv.x * rect.width
           const y = rect.top + (1 - hit.uv.y) * rect.height
           if (deepestElementAt(el, x, y)) intersects.push(hit)
         }
       },
     // Stable identities — this memo never actually re-runs.
-    [storeRef, pointerEventsRef, mirrorURef, widthRef, heightRef, authoredRaycastRef, routeCtl],
+    [storeRef, pointerEventsRef, widthRef, heightRef, authoredRaycastRef, routeCtl],
   )
 
   const elementRef = useRef<HTMLElement | null>(null)
@@ -860,7 +857,7 @@ function SurfacePresenter({
     mesh.raycast(raycaster, hits)
     const uv = hits.sort((a, b) => a.distance - b.distance)[0]?.uv
     if (!uv) return null
-    return { u: mirrorURef.current ? 1 - uv.x : uv.x, v: uv.y }
+    return { u: uv.x, v: uv.y }
   }
 
   // Gaining: re-arm with one forwarded move at the pointer's last trusted
@@ -915,7 +912,6 @@ function SurfacePresenter({
         hearing: store.canvasHearsPointer(),
         pointerEvents,
         renderMatrix:rasterAlignment.renderedMatrix() ?? undefined,
-        mirrorU,
         contentWidth: width,
         contentHeight: height,
         authoredGeometry: geometry !== undefined,
@@ -1106,7 +1102,7 @@ function SurfacePresenter({
 
   const uvOf = (e: ThreeEvent<PointerEvent>) => {
     if (!e.uv) return null
-    return { u: mirrorU ? 1 - e.uv.x : e.uv.x, v: e.uv.y }
+    return { u: e.uv.x, v: e.uv.y }
   }
 
   // Munari's relay runs FIRST, then the caller's handler. The relay is what

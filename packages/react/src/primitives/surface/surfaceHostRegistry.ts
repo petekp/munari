@@ -25,7 +25,7 @@
 
 import { hostTailPresents } from '@munari/core'
 import type { ReactElement, ReactNode } from 'react'
-import type { Camera, Object3D, WebGLRenderTarget } from 'three'
+import type { Camera, Object3D, RenderTarget } from 'three'
 
 /** A Canvas host's public name. One unnamed host needs no id. */
 export type SurfaceCanvasId = string
@@ -62,7 +62,7 @@ export interface SurfaceHost {
   subscribeRuntime(listener: () => void): () => void
   mounted(): boolean
   available(): boolean
-  setContextLost(lost: boolean): void
+  setRendererLost(lost: boolean): void
   notifyLifecycle(): void
   registerSource(entry: SurfaceSourceEntry): () => void
   sources(): readonly SurfaceSourceEntry[]
@@ -80,12 +80,12 @@ export interface SurfaceHost {
    */
   registerTick(tick: (dtMs: number) => void): () => void
   ticks(): readonly ((dtMs: number) => void)[]
-  registerBeforeDraw(listener: (scene: Object3D, camera: Camera, target: WebGLRenderTarget | null) => void): () => void
-  registerRaster(listener: (scene:Object3D,camera:Camera,target:WebGLRenderTarget|null)=> (()=>void)|null):()=>void
+  registerBeforeDraw(listener: (scene: Object3D, camera: Camera, target: RenderTarget | null) => void): () => void
+  registerRaster(listener: (scene:Object3D,camera:Camera,target:RenderTarget|null)=> (()=>void)|null):()=>void
   hasRaster():boolean
-  prepareRaster(scene:Object3D,camera:Camera,target:WebGLRenderTarget|null):()=>void
+  prepareRaster(scene:Object3D,camera:Camera,target:RenderTarget|null):()=>void
   hasBeforeDraw(): boolean
-  beforeDraw(scene: Object3D, camera: Camera, target?: WebGLRenderTarget | null): void
+  beforeDraw(scene: Object3D, camera: Camera, target?: RenderTarget | null): void
   /**
    * Announce a presenter's mesh, for the pointer gate.
    *
@@ -139,8 +139,8 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
   const presenterListeners = new Set<() => void>()
   const runtimeListeners = new Set<() => void>()
   const tickSet = new Set<(dtMs: number) => void>()
-  const beforeDraw = new Set<(scene: Object3D, camera: Camera, target: WebGLRenderTarget | null) => void>()
-  const rasterListeners = new Set<(scene:Object3D,camera:Camera,target:WebGLRenderTarget|null)=>(()=>void)|null>()
+  const beforeDraw = new Set<(scene: Object3D, camera: Camera, target: RenderTarget | null) => void>()
+  const rasterListeners = new Set<(scene:Object3D,camera:Camera,target:RenderTarget|null)=>(()=>void)|null>()
   const objectSet = new Set<Object3D>()
   let objectSnapshot: readonly Object3D[] = NO_OBJECTS
   let sourceSnapshot: readonly SurfaceSourceEntry[] = NO_SOURCES
@@ -151,7 +151,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
   // that simply stops capturing.
   let tickSnapshot: readonly ((dtMs: number) => void)[] = []
   let claims = 0
-  let contextLost = false
+  let rendererLost = false
   // Presenters that wrote color into a render target this frame. A
   // post-processed scene draws every Surface this way, so without a tail
   // nothing ever proves and the crossing hangs in 'lifting' forever.
@@ -170,10 +170,10 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
       return () => runtimeListeners.delete(listener)
     },
     mounted: () => mounts.has(host),
-    available: () => mounts.has(host) && host.runtime !== null && !contextLost,
-    setContextLost(lost) {
-      if (contextLost === lost) return
-      contextLost = lost
+    available: () => mounts.has(host) && host.runtime !== null && !rendererLost,
+    setRendererLost(lost) {
+      if (rendererLost === lost) return
+      rendererLost = lost
       host.notifyLifecycle()
     },
     notifyLifecycle() { for (const listener of runtimeListeners) listener() },

@@ -88,7 +88,6 @@ function step(overrides: Partial<SurfaceRouteStep> = {}): SurfaceRouteStep {
     capable: true,
     hearing: true,
     pointerEvents: 'geometry',
-    mirrorU: false,
     contentWidth: CONTENT_W,
     contentHeight: CONTENT_H,
     authoredGeometry: false,

@@ -140,8 +140,8 @@ export function LogoApp() {
   // Identity only. The view and the callbacks are stated once,
   // on the `<Surface>` that declares this handle.
   const surface = useSurfaceHandle('logo')
-  const request = useCallback((webgl: boolean) => {
-    setView(webgl ? 'scene' : 'page')
+  const request = useCallback((toScene: boolean) => {
+    setView(toScene ? 'scene' : 'page')
   }, [])
   const inCrossing = view !== presented || view !== settledOn
   // Who shows the letters. The page keeps them until it actually lets
@@ -380,7 +380,7 @@ export function LogoApp() {
           <span className="logo-panel-toggle">{compact ? '+' : '−'}</span>
         </button>
         {/* The scene's subject, so it leads the panel: the same letters
-            drawn by the page or by WebGL. Naming both renderers as
+            drawn by the page or by the 3D scene. Naming both renderers as
             segments states which one owns the pixels right now, where a
             checkbox stated only the destination. A flip mid-crossing
             reverses the crossing, never skips it — that rule lives in the
@@ -390,7 +390,7 @@ export function LogoApp() {
             scene through both directions by name, so reordering or
             restyling the segments cannot quietly change what it clicks. */}
         {/* Only where there is a second renderer to name. Without the
-            trial the WebGL segment offered a destination nothing could
+            trial the 3D segment offered a destination nothing could
             reach: the request mounted a Canvas whose frameloop never
             advanced, so react-three-fiber's `onCreated` stayed pending
             until the segment was flipped back — and fired against the
@@ -407,7 +407,7 @@ export function LogoApp() {
               HTML
             </button>
             <button data-renderer="gl" data-on={view === 'scene'} onClick={() => request(true)}>
-              WebGL
+              3D
             </button>
           </div>
         )}

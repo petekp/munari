@@ -126,23 +126,20 @@ function KeepDomFocus() {
 
 // `?scene=glass` opens that scene directly. Not a router — just enough
 // of one that a scene can be linked, reloaded into, and screenshotted
-// without a human clicking a chip first. (Deep links used to be `#glass`;
-// the hash is still honored on arrival so old links keep landing.)
+// without a human clicking a chip first.
 const SCENE_IDS = new Set<string>(SCENES)
 
-/** Whether an arbitrary URL fragment names a scene this build ships. */
+/** Whether a `?scene=` value names a scene this build ships. */
 function isSceneId(value: string | null): value is SceneId {
   return value !== null && SCENE_IDS.has(value)
 }
 
 function readScene(): SceneId {
   const q = new URLSearchParams(window.location.search).get('scene')
-  if (isSceneId(q)) return q
-  const h = window.location.hash.slice(1)
   // Home is the landing scene: the overview and tutorial a cold visitor
   // should see first. Every browser gate names its scene in the URL, so
   // none of them ride this default.
-  return isSceneId(h) ? h : 'home'
+  return isSceneId(q) ? q : 'home'
 }
 
 function readRoute() {
@@ -302,12 +299,6 @@ export default function App() {
     const onPop = () => setRoute(readRoute())
     window.addEventListener('popstate', onPop)
     window.addEventListener('hashchange', onPop)
-    // An arrival on the legacy hash form normalizes to the param form once,
-    // so the address bar shows the link worth copying.
-    const h = window.location.hash.slice(1)
-    if (!window.location.search.includes('scene=') && isSceneId(h)) {
-      window.history.replaceState(null, '', `?scene=${h}${captureParam}`)
-    }
     return () => {
       window.removeEventListener('popstate', onPop)
       window.removeEventListener('hashchange', onPop)

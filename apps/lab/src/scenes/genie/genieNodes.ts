@@ -81,7 +81,6 @@ function sheetMaterial(): MeshBasicNodeMaterial {
     // would silently reject the rest. The group's renderOrder decides
     // instead (see Flight), which is the desk's own paint order.
     depthWrite: false,
-    toneMapped: false,
     side: THREE.DoubleSide,
   })
 }

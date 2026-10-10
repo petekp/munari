@@ -471,7 +471,7 @@ export function HomeMasthead({ pageRef, innerRef, children, effectsEnabled, onRe
     }
   }, [state, pageRef, redraw, effectsEnabled, flyer, generation, lost])
 
-  // Mount: the bulb canvas. Its own context, alpha over the page. Losing it
+  // Mount: the bulb canvas. Its own renderer, alpha over the page. Losing it
   // leaves the shadows running and shows the plain ink mark instead.
   useEffect(() => {
     const box = bulbHost.current

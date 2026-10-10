@@ -22,7 +22,8 @@ jobs:
 
   # Browser gates are sequential on purpose. Each launches a real Chrome;
   # parallel jobs exhausted the hosted runner and closed targets mid-probe.
-  # Every focused law and the broad consumer walk still runs on every push.
+  # Gates not listed in this file run only locally; instruments/README.md
+  # describes what each one checks.
   browser-gates:
     runs-on: ubuntu-latest
     steps:
@@ -40,14 +41,15 @@ jobs:
       - run: npm run gate:dom-surface-demand
       - run: npm run gate:lifting-pointer
       - run: npm run gate:shaders
-      # Launches Chrome WITHOUT the trial flag, so it must not share a job
-      # with the gates above — they need the flag, and the browser is
-      # launched per gate. Last because it walks five scenes.
+      # Launches its own Chrome without --enable-features=CanvasDrawElement.
+      # It can share this job because each gate launches a fresh browser.
+      # Last because it walks five scenes.
       - run: npm run gate:degraded
 
   # The resize sweep gets a fresh runner after the focused gates. The broad
-  # all-scene walk remains a local acceptance command: hosted Chrome closes
-  # after loading all nine GPU-heavy scenes, even when each uses a fresh page.
+  # lab walk (gate:lab-interactions) remains a local acceptance command: in
+  # August 2026, hosted Chrome closed after loading its GPU-heavy scenes,
+  # even with a fresh page for each.
   knobs-resize:
     needs: browser-gates
     runs-on: ubuntu-latest

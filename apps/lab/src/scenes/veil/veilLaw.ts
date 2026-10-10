@@ -1,22 +1,24 @@
 // The veil — the laws behind the progressive blur.
 //
-// Pure profiles: distance into the band in, blur radius / opacity /
-// sampling level out. The scene samples them per fragment (as TSL
-// twins fed the same constants through uniforms) and per test point
-// here; nothing in this file knows about textures or scrolling.
+// Pure profiles: distance into the band in, blur radius out, plus the
+// clock of the return ramp. The shaders in veilNodes.ts restate the
+// radius in TSL, fed the same constants through uniforms, and no test
+// compares the two copies. Nothing in this file knows about textures or
+// scrolling.
 //
-// Two constraints carry the hold story, pinned by veilLaw.test.ts:
+// Two constraints carry the hold story:
 //
 //   radius(0) is EXACTLY zero. The band's near edge is the seam where
 //   the compositor's pixels stop and the sampled copy begins, and the
 //   two must agree to the pixel there — a veil that starts at half a
 //   pixel of blur draws a visible line across the content at its own
-//   boundary.
+//   boundary. veilLaw.test.ts pins it.
 //
 //   alpha(0) is EXACTLY zero. The seam row contributes nothing, so
 //   continuity at the seam belongs to the compositor alone; the copy
 //   reaches full strength only at depths where its own blur swallows
-//   small errors.
+//   small errors. The band material's seam fade in veilNodes.ts
+//   carries it, and no test checks it.
 //
 // Everything is in the band's OWN coordinates: d = 0 at the seam,
 // growing downward. The scene decides where the band sits on screen;
@@ -73,18 +75,6 @@ export function veilRadius(d: number, p: VeilParams): number {
 }
 
 /**
- * The band's own opacity at `d` px into the band: 0 AT the seam, 1 by
- * `fade`. The band is a copy of the page; wherever the copy is still
- * sharp enough that a small offset would read as doubled text, the live
- * page shows through instead. At rest the ramp costs nothing: the
- * copy's pixels equal the page's, and blending identical pixels is a
- * no-op at every alpha.
- */
-export function veilSeamAlpha(d: number, p: VeilParams): number {
-  return smoothstep(d / p.fade)
-}
-
-/**
  * The band's generation gate during the return ramp: 0 at the moment
  * the copy's layout generation re-matches the live page's, 1 once the
  * blur is fully back. While generations DISAGREE the scene holds the
@@ -100,26 +90,6 @@ export function veilSeamAlpha(d: number, p: VeilParams): number {
  */
 export function veilReturn(msSinceMatch: number, p: VeilParams): number {
   return smoothstep(msSinceMatch / p.returnMs)
-}
-
-/**
- * The mip level a blur tap must sample at, given the spacing between
- * taps and the texel size of the source, both in CSS px.
- *
- * A 13-tap kernel spaced radius/6 apart is not a gaussian — it is a
- * comb, unless each tap INTEGRATES the span between taps. Bilinear
- * level 0 integrates about one texel, so once the spacing outgrows the
- * texel the gaps between taps show through as a woven lattice of ghost
- * impulses. The lattice is resolution-dependent in the worst way: at
- * dpr 1 a texel is 1 CSS px and roughly plugs the gaps, at dpr 2 it is
- * half that and the fabric shows (observed on a retina display,
- * 2026-08-08 — the dpr 1 probe was blind to it). Level L integrates
- * ~2^L texels, so the level that plugs the gap is the log of the ratio,
- * floored at 0 so the seam — spacing 0 — stays on the pristine base
- * level and the seam-exactness constraint survives.
- */
-export function veilLod(spacingPx: number, texelPx: number): number {
-  return Math.max(0, Math.log2(Math.max(spacingPx / texelPx, 1)))
 }
 
 /** The band of window the veil paints, in CSS px. */

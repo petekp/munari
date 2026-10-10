@@ -75,12 +75,8 @@ export function SurfaceAnchor({ name, offset = 0, children }: SurfaceAnchorProps
   const [sourceWidth, sourceHeight] = part.size
   const placed = useMemo(() => {
     if (!box) return null
-    // Mirrored sources sample the texture backwards, so the geometry that
-    // shows a box on the left is the geometry on the right.
-    const u = scope.mirrorU() ? 1 - (box.uMin + box.uMax) / 2 : (box.uMin + box.uMax) / 2
-    const v = (box.vMin + box.vMax) / 2
-    return { u, v }
-  }, [box, scope])
+    return { u: (box.uMin + box.uMax) / 2, v: (box.vMin + box.vMax) / 2 }
+  }, [box])
 
   if (!box || !placed) return null
   return (

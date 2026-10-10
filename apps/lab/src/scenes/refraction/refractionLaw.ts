@@ -43,7 +43,7 @@ export interface RefractionStage {
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v)
 
-/** Hermite ease, the same curve `smoothstep` computes in GLSL. */
+/** Hermite ease, the same curve as TSL's `smoothstep`. */
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = clamp01((x - edge0) / (edge1 - edge0))
   return t * t * (3 - 2 * t)
@@ -188,48 +188,18 @@ export function apertureEdge(transmission: number, overshoot: number): number {
   return (1 + overshoot) * (1 - done) + -overshoot * done
 }
 
-/**
- * How much of the incoming view shows at one point of the aperture field.
- *
- * `field` is the shader's mix of the signed ink spread and local ink
- * density, 0 at the last place to open and 1 at the first. `width` is half
- * the seam, which the shader derives per pixel from `fwidth(field)`; passing
- * it in is what lets the contract below pin the ends without a browser, for
- * every seam the shader can produce.
- *
- * Capped at half the overshoot rather than all of it, so the ends clear the
- * field's range with margin. At the full overshoot the widest seam lands
- * exactly on 1.0 and the reveal comes out as float dust instead of zero.
- */
-export function apertureReveal(
-  field: number,
-  transmission: number,
-  overshoot: number,
-  width: number,
-): number {
-  const edge = apertureEdge(transmission, overshoot)
-  const half = Math.min(width, overshoot / 2)
-  return smoothstep(edge - half, edge + half, field)
-}
-
 /** Where the drop's vertical tangent is floored, as a share of full height. */
 const ROOT_FLOOR = 0.06
 
 /**
- * Height of the emerging glass, `distPx` inside its contact line, CSS px.
+ * Slope dh/dd of the emerging glass, `distPx` inside its contact line,
+ * dimensionless.
  *
- * A drop, not a ramp: zero at the line, a vertical tangent there, a flat top
- * about three rim widths in. The flat top is what keeps the arriving page
- * readable through the middle of a blob, because every optical term the
- * scene has lives in the meniscus and dies inside it.
- */
-export function blobHeightPx(distPx: number, heightPx: number, rimPx: number): number {
-  if (distPx <= 0) return 0
-  return heightPx * Math.sqrt(1 - Math.exp(-distPx / Math.max(rimPx, 0.5)))
-}
-
-/**
- * The drop's slope there, dh/dd, dimensionless.
+ * The height it differentiates is `heightPx * sqrt(1 - exp(-distPx / rimPx))`.
+ * That is a drop, not a ramp: zero at the line, a vertical tangent there, a
+ * flat top about three rim widths in. The flat top is what keeps the
+ * arriving page readable through the middle of a blob, because every
+ * optical term the scene has lives in the meniscus and dies inside it.
  *
  * A vertical tangent has no normal, so the root is floored at ROOT_FLOOR of
  * full height. That floor, and not the profile, is what sets the steepest

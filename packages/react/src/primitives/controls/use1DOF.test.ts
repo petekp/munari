@@ -4,7 +4,7 @@
 import { createElement, type RefObject } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
-import { _roots, context, createRoot as createCanvasRoot, type ThreeEvent } from '@react-three/fiber'
+import { _roots, context, createRoot as createCanvasRoot, type RootState, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { composeFields, damping, detentField } from '@munari/core'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -22,8 +22,8 @@ function control() {
   if (!frameStore) throw new Error('R3F did not create its store')
   const renderer = { domElement: canvas }
   // SAFETY: the unconfigured root stays inactive; its invalidation guard
-  // only needs a non-null renderer and never calls a WebGL method.
-  frameStore.setState({ controls, gl: renderer as THREE.WebGLRenderer })
+  // only needs a non-null renderer and never calls a renderer method.
+  frameStore.setState({ controls, gl: renderer as RootState['gl'] })
   const result: RefObject<ReturnType<typeof use1DOF> | null> = { current: null }
   const field = composeFields(detentField(8, 50), damping(6))
   function Probe() {

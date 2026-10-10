@@ -21,7 +21,7 @@ const geometry = <planeGeometry args={[1,1]} />
 ;<SceneSurface.Root canvasId="example"><SceneSurface.HTML size={[100,80]}><button>Scene content</button></SceneSurface.HTML><SceneSurface.Mesh/></SceneSurface.Root>
 // @ts-expect-error canvasId identifies a host; it does not take a canvas element.
 ;<Surface inScene={false} canvasId={document.createElement('canvas')}><button>Wrong value</button></Surface>
-;<FrameSurface frame={frame} width={10} height={10} onFrameDrawn={receipt=>void receipt.frame.generation} presentation={presentation} onPresented={receipt=>void receipt.presentationRevision}>{geometry}</FrameSurface>
+;<FrameSurface frame={frame} onFrameDrawn={receipt=>void receipt.frame.generation} presentation={presentation} onPresented={receipt=>void receipt.presentationRevision}>{geometry}</FrameSurface>
 // @ts-expect-error The frame adapter owns its draw fence.
 ;<FrameSurface frame={frame} onBeforeRender={()=>{}}>{geometry}</FrameSurface>
 // @ts-expect-error A basic Surface contains HTML, rather than a separate source prop.

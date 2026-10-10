@@ -384,7 +384,7 @@ export type HomeLightMaterial = ReturnType<typeof createHomeLightMaterial>
 
 /** Shade the paper's actual triangles, sharing the page's light and depth map. */
 export function createHomePaperMaterial(material: HomeLightMaterial) {
-  const paper = new MeshBasicNodeMaterial({ name: 'home-paper-light', side: THREE.DoubleSide, toneMapped: false })
+  const paper = new MeshBasicNodeMaterial({ name: 'home-paper-light', side: THREE.DoubleSide })
   const projectionW = attribute<'float'>('projectionW', 'float')
   const position = varying(vec4(positionGeometry.xy.mul(projectionW), positionGeometry.z, projectionW))
     .setInterpolation(THREE.InterpolationSamplingType.PERSPECTIVE, THREE.InterpolationSamplingMode.CENTROID)

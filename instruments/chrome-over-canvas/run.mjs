@@ -67,7 +67,6 @@ try {
     args: [
       ...WEBGPU_CHROME_ARGS,
       '--enable-features=CanvasDrawElement',
-      '--enable-webgl',
       '--ignore-gpu-blocklist',
       '--enable-unsafe-swiftshader',
       '--disable-backgrounding-occluded-windows',

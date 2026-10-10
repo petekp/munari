@@ -81,18 +81,16 @@ export interface FrameSurfaceProps
   /** Fires only after an eligible output draw satisfies `presentation`. */
   onPresented?: (receipt: PresentationReceipt) => void
   mirrorU?: boolean
-  /** Logical surface size in CSS pixels. Defaults to the canvas backing size. */
-  width?: number
-  height?: number
   side?: THREE.Side
   /** Used only by `material="standard"`. */
   roughness?: number
   /** Used only by `material="standard"`. */
   metalness?: number
   /**
-   * Honor source alpha with a built-in material. Any premultiplied frame
-   * source must use `material="none"`, even when this is false: its RGB is
-   * already weighted by alpha. Mask the full vec4, set
+   * Honor source alpha with a built-in material. The material multiplies its
+   * straight-alpha color by alpha and blends premultiplied. Any premultiplied
+   * frame source must use `material="none"`, even when this is false: its RGB
+   * is already weighted by alpha. Mask the full vec4, set
    * `premultipliedAlpha: true`, and return the color through
    * `premultipliedOutput` (decisions.md #72).
    */
@@ -463,8 +461,6 @@ export function FrameSurface({
   presentation,
   onPresented,
   mirrorU = false,
-  width = frame.canvas.width,
-  height = frame.canvas.height,
   side = THREE.FrontSide,
   roughness = 0.35,
   metalness = 0.05,
@@ -642,6 +638,7 @@ export function FrameSurface({
           color="#ffffff"
           side={side}
           transparent={transparent}
+          premultipliedAlpha={transparent}
           toneMapped={false}
         />
       )}
@@ -653,6 +650,7 @@ export function FrameSurface({
           metalness={metalness}
           side={side}
           transparent={transparent}
+          premultipliedAlpha={transparent}
         />
       )}
     </mesh>

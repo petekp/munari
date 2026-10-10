@@ -66,7 +66,7 @@ function CaptureReader({capture,id}:{capture:CaptureHandle;id:RowId}){
     probe.frames[id]++;const frame=read.get();probe.revisions[id]=frame?.revision??null
     if(material.current&&material.current.map!==(frame?.texture??null)){material.current.map=frame?.texture??null;material.current.needsUpdate=true}
   })
-  return <mesh position={[id==='a'?-110:110,0,0]}><planeGeometry args={[200,100]}/><meshBasicMaterial ref={material} toneMapped={false} premultipliedAlpha/></mesh>
+  return <mesh position={[id==='a'?-110:110,0,0]}><planeGeometry args={[200,100]}/><meshBasicMaterial ref={material} premultipliedAlpha/></mesh>
 }
 function Capture(){
   const capture=useCaptureHandle(),[first,setFirst]=useState(true)

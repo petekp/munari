@@ -166,9 +166,10 @@ export interface KnobsTuningValues {
 // The committed look — Pete's second 2026-08-11 tuning session, baked:
 // a dark room (no art lights, no ambient, a whisper of key) where the
 // slab holds a tight corona and the windows carry the light. The
-// session's lcdBright (0.78) is folded into the stylesheet's color
-// literals instead, so the dial reads 1 against the new baseline. The
-// session's lcdReflect (145) was a pin against a dead dial — the whole
+// 2026-08-13 lcdBright (0.8) is folded into the stylesheet's color
+// literals, which are the earlier stops with HSL lightness scaled by
+// 0.8, so the dial reads 1 against them. The 2026-08-11 session's
+// lcdReflect (145) was a pin against a dead dial — the whole
 // 0–150 range sat inside physical falloff's dead zone — so the
 // committed value is the probe-tuned candela that dial was reaching
 // for.
@@ -254,7 +255,7 @@ export const knobsTuning: KnobsTuningValues = {
   lightFill: 1.2,
   lightDom: 0,
 
-  lcdBright: 0.8,
+  lcdBright: 1,
   lcdEmit: 1.45,
   lcdReflect: 15000,
   lcdGlow: 0.32,
@@ -276,10 +277,10 @@ export const knobsTuning: KnobsTuningValues = {
  *  writes the result; at exactly 1 the properties are removed instead,
  *  so the untouched stylesheet literals are what render. */
 const LCD_STOPS = {
-  '--knb-lcd-hot': '#ffb82e',
-  '--knb-lcd-mid': '#f4980e',
-  '--knb-lcd-edge': '#bd7818',
-  '--knb-lcd-base': '#cb881b',
+  '--knb-lcd-hot': '#f19f00',
+  '--knb-lcd-mid': '#c57a09',
+  '--knb-lcd-edge': '#976013',
+  '--knb-lcd-base': '#a26d16',
 } as const
 
 function scaleHexLightness(hex: string, mul: number): string {

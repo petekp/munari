@@ -77,7 +77,6 @@ export function createCardMaterial(surface: SurfaceNodes, state: AeroState, glos
     // write this flag on first commit anyway; set here, the material is
     // built once instead of recompiled.
     premultipliedAlpha: true,
-    toneMapped: false,
     side: THREE.DoubleSide,
   })
   const aero = uniform(state.pack)
@@ -318,7 +317,6 @@ export function createShadowMaterial(u: ShadowUniforms): MeshBasicNodeMaterial {
     transparent: true,
     premultipliedAlpha: true,
     depthWrite: false,
-    toneMapped: false,
   })
   // Browser gates read the live layer count from the mesh.
   material.userData.shadow = u

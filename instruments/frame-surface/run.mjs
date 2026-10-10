@@ -78,7 +78,6 @@ try {
       ...WEBGPU_CHROME_ARGS,
       // Honor the GPU blocklist: Apple Software Renderer loses canvas-to-sRGB
       // uploads. Permit SwiftShader when Chrome rejects the native backend.
-      '--enable-webgl',
       '--enable-unsafe-swiftshader',
       // The idle-zero pair: a backgrounded renderer stops compositing,
       // and a receipt that never arrives must mean the library failed,

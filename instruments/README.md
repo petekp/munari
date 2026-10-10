@@ -688,14 +688,15 @@ HTML-in-canvas capability is required for this evidence.
 
 ## texture-uploads
 
-`npm run probe:texture-uploads` counts the WebGL uploads each changed image
+`npm run probe:texture-uploads` counts the GPU uploads each changed image
 costs and checks the pixels the Surface then shows. It is a local command; CI
 membership is unchanged.
 
-The runner counts every `texImage2D` and `texSubImage2D` call that sends a
-canvas. It changes one 240×120 Surface six times per run, on each
-engine, at resolutions 1, 0.5 and `auto`. The pinned resolutions use mipmaps
-and `auto` does not. It judges three things:
+The runner counts every call that sends a canvas to the GPU:
+`copyExternalImageToTexture` on WebGPU, and `texImage2D` or `texSubImage2D`
+on the WebGL 2 fallback (`MUNARI_BACKEND=webgl2`). It changes one 240×120
+Surface six times per run, on each engine, at resolutions 1, 0.5 and `auto`.
+The pinned resolutions use mipmaps and `auto` does not. It judges three things:
 
 - The Surface shows the new color after every change, with and without a
   resize.
@@ -704,8 +705,8 @@ and `auto` does not. It judges three things:
 - On snapDOM, a change that keeps its size makes one upload per paint.
 
 It prints the HTML-in-canvas counts and the resize counts without judging
-them. Measured 2026-09-29: snapDOM 1 upload per change and 3 per resize,
-HTML-in-canvas 2 and 5.
+them. Measured 2026-09-29 on WebGL, before the WebGPU migration: snapDOM 1
+upload per change and 3 per resize, HTML-in-canvas 2 and 5.
 
 The fixture is flat color on one renderer with a demand frameloop. A flat
 color cannot show a partly drawn image. The probe does not measure upload
@@ -727,7 +728,7 @@ enters a state no further input can leave, and it does so silently.
 That shape shipped four times before anyone noticed — the knobs panel
 carry and resize had no consumer, genie's minimize waited on a flight
 that could not take off, flight's drag waited on the same thing, and
-logo offered a WebGL segment whose Canvas never advanced a frame
+logo offered a 3D segment whose Canvas never advanced a frame
 (2026-08-23). The other gates all launch capability-enabled, which is
 also every machine anyone develops on, so this path was the one nothing
 exercised.

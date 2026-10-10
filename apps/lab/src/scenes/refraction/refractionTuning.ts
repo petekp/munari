@@ -406,9 +406,13 @@ export const refractionTuning = {
    * under the one-unit threshold, so the knob rendered nothing at any weight.
    * Measured 2026-08-23 at t=0.4, the rim term alone against no rim, as the
    * share of the sheet moving 3 or more luminance units out of 255: pow 3
-   * gives 0.03% against a 0.03% null floor, pow 2 gives 0.19%, pow 1.5 gives
-   * 0.44%, and pow 1 gives 1.19%. Only pow 1 clears the floor by enough for
-   * `rim` itself to be worth dragging.
+   * gave 0.03% against a 0.03% null floor, pow 2 gave 0.19%, pow 1.5 gave
+   * 0.44%, and pow 1 gave 1.19%. That run concluded only pow 1 cleared the
+   * floor by enough for `rim` itself to be worth dragging.
+   *
+   * The committed value is 16, the knob's maximum. It was set on 2026-08-24,
+   * after that run and in the same change that raised `rim` to 0.58. No
+   * measurement at 16 is recorded.
    */
   rimPow: 16,
 

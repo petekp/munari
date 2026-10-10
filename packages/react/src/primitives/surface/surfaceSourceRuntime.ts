@@ -80,7 +80,6 @@ export interface SurfaceSourceOptions {
   resolution: SurfaceResolution
   /** See `DomTextureSourceOptions.live`. Default false. */
   live?: boolean
-  mirrorU: boolean
   pixelRatio: number
   onError(error: Error): void
   onPainted?(receipt: DomPaintReceipt): void
@@ -95,7 +94,6 @@ export interface SurfaceSourceRuntime {
   texture(): THREE.CanvasTexture | null
   chrome(): SurfaceChrome
   size(): SurfaceSize
-  mirrorU(): boolean
   paintedSize(): readonly [number, number]
   /** The generation of the paint currently uploaded, or -1. */
   uploadedGeneration(): number
@@ -112,7 +110,6 @@ export interface SurfaceSourceRuntime {
   setResolution(resolution: SurfaceResolution): void
   setLive(live: boolean): void
   setPixelRatio(ratio:number):void
-  setMirrorU(mirrorU: boolean): void
   /** One presenter's LOD demand. The runtime rasterizes for the greediest. */
   proposeTier(key: number, tier: number | null): void
   proposeRaster(key:number,scale:SurfaceSize|null):void
@@ -138,19 +135,11 @@ function applyFilterPolicy(tex: THREE.Texture, tier: number, pinned: boolean) {
   }
 }
 
-// Horizontal flip, for geometries whose UVs run backwards under the camera.
-// Wrapping has to become Repeat for a negative repeat to wrap into anything.
-function applyMirror(tex: THREE.Texture, mirrorU: boolean) {
-  tex.wrapS = mirrorU ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping
-  tex.repeat.x = mirrorU ? -1 : 1
-}
-
 /** Configure every source-format field before a DOM texture reaches a material. */
 export function createDomSurfaceTexture(
   canvas: HTMLCanvasElement,
   tier: number,
   pinned: boolean,
-  mirrorU: boolean,
 ): THREE.CanvasTexture {
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
@@ -160,7 +149,6 @@ export function createDomSurfaceTexture(
   texture.premultiplyAlpha = true
   texture.anisotropy = 8
   applyFilterPolicy(texture, tier, pinned)
-  applyMirror(texture, mirrorU)
   return texture
 }
 
@@ -172,7 +160,7 @@ const QUIET_FRAMES = 8
 export function createSurfaceSourceRuntime(
   options: SurfaceSourceOptions,
 ): SurfaceSourceRuntime {
-  let { size, resolution, mirrorU } = options
+  let { size, resolution } = options
   let {pixelRatio}=options
   const { label, content, live = false, onError, onPainted, onChrome, chromeElement } = options
 
@@ -218,7 +206,6 @@ export function createSurfaceSourceRuntime(
     source.canvas,
     source.scale(),
     pinned !== null,
-    mirrorU,
   )
 
   // What the GPU texture storage was allocated FOR. Seeded here, not at the first
@@ -310,7 +297,6 @@ export function createSurfaceSourceRuntime(
     texture: () => texture,
     chrome: () => chrome,
     size: () => size,
-    mirrorU: () => mirrorU,
     paintedSize: () => source.paintedSize(),
     uploadedGeneration: () => uploadedGeneration,
     uploadedRead: () => uploadedRead,
@@ -345,13 +331,6 @@ export function createSurfaceSourceRuntime(
     },
     setLive(next) {
       source.setLive(next)
-    },
-    setMirrorU(next) {
-      if (next === mirrorU) return
-      mirrorU = next
-      if (!texture) return
-      applyMirror(texture, mirrorU)
-      texture.needsUpdate = true
     },
     proposeTier(key, tier) {
       if (tier === null) proposals.delete(key)

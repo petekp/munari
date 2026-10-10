@@ -96,8 +96,8 @@
   height: 100%;
 }
 
-/* The renderer failed to start (no WebGPU and no WebGL 2), so a faint
-   static drizzle stands in for the simulated one. */
+/* The renderer could not start on WebGPU or the WebGL 2 fallback, so a
+   faint static drizzle stands in for the simulated one. */
 .rain-field[data-fallback] {
   background-image: repeating-linear-gradient(
     102deg,

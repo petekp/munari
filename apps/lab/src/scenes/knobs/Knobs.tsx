@@ -950,7 +950,7 @@ function KnobHardware({
           raycast={noRaycast}
         >
           <circleGeometry args={[2, 20]} />
-          <meshBasicMaterial color="#ff00ff" toneMapped={false} depthTest={false} />
+          <meshBasicMaterial color="#ff00ff" depthTest={false} />
         </mesh>
       )}
     </group>
@@ -1374,7 +1374,7 @@ function FaceShade({ rect }: { rect: RailRect }) {
  * program the material touches for nothing.
  */
 function useSharedCaptureMaterial(texture: THREE.Texture | null | undefined) {
-  const material = useMemo(() => new THREE.MeshBasicMaterial({ toneMapped: false }), [])
+  const material = useMemo(() => new THREE.MeshBasicMaterial(), [])
   useEffect(() => () => material.dispose(), [material])
   useLayoutEffect(() => {
     const had = material.map !== null
@@ -1586,8 +1586,8 @@ function ReadoutLamp() {
   return (
     <pointLight
       ref={light}
-      // The window's own committed mid stop (knobsTuning LCD_STOPS,
-      // knobs.css var defaults) — the cast is the lamp's color.
+      // The LCD's mid stop at full lightness; knobs.css carries it dimmed
+      // by 0.8. The hue matches, and lcdReflect sets the cast's strength.
       color="#f4980e"
       intensity={knobsTuning.lcdReflect}
       distance={170}
@@ -1667,7 +1667,7 @@ function SlabRim({ rect }: { rect: RailRect }) {
     assets.material.roughness = knobsTuning.rimRough
     assets.material.envMapIntensity = knobsTuning.rimEnv
   })
-  return <mesh geometry={assets.geometry} material={assets.material} userData={{ isKnobHardware: true }} />
+  return <mesh geometry={assets.geometry} material={assets.material} />
 }
 
 /** Where a carry has the slab: sprung x and y, in world units. */

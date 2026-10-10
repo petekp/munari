@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Remove unused API: the root entry no longer exports `surfaceFocusKey`,
+  `surfaceFocusTarget` or `createCapture`, and `FrameSurface` drops its
+  `width` and `height` props, which had no effect. `SurfaceRenderFrame` types
+  its draw target as Three's `RenderTarget`, which is what `WebGPURenderer`
+  passes.
+- Draw translucent `FrameSurface` frames at their page value: the built-in
+  `unlit` and `standard` materials blend premultiplied when `transparent`.
 - Replace the duplicated-content Surface API with retained HTML: `Surface`
   accepts `inScene`; explicit composition uses Root/HTML/Scene/Mesh. Add
   SceneSurface, element capture, page targets, and before-render companions.

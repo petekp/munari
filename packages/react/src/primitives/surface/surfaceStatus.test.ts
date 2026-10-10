@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// Intent survives fallback; a simultaneous legacy hold cannot be reported as one side.
+// Intent survives fallback, and a Surface nothing presents reports no presentation.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSurfaceStore } from './surfaceHandle'
 import { readSurfaceFrameState } from './surfaceFrame'
@@ -34,19 +34,8 @@ describe('retained Surface observations', () => {
     expect(store.getStatus()).toBe(after)
   })
 
-  it('reports absence explicitly and repeatedly rejects a simultaneous legacy hold', () => {
+  it('reports absence explicitly', () => {
     const store=createSurfaceStore()
-    expect(store.getStatus().presentation).toBeNull()
-    store.acquire(1)
-    store.declarePresentation('page');store.declarePresentation('canvas')
-    store.registerPresenter('mesh')
-    store.prove('mesh',store.readinessLifetime(),store.epoch())
-    store.request('both');store.present('mesh',store.epoch())
-    expect(store.getState().presented).toBe('both')
-    expect(()=>store.getStatus()).toThrow('one presentation')
-    expect(()=>store.getStatus()).toThrow('one presentation')
-    expect(()=>readSurfaceFrameState(store.handle)).toThrow('one presentation')
-    store.request('none')
     expect(store.getStatus().presentation).toBeNull()
   })
 })

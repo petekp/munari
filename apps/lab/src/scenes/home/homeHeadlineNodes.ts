@@ -19,7 +19,7 @@ export function createHeadlineValues():HeadlineValues{
 }
 
 export function createHeadlineMaterial(ink:THREE.Texture,v:HeadlineValues):MeshBasicNodeMaterial{
-  const material=new MeshBasicNodeMaterial({transparent:true,premultipliedAlpha:true,depthWrite:false,toneMapped:false})
+  const material=new MeshBasicNodeMaterial({transparent:true,premultipliedAlpha:true,depthWrite:false})
   material.outputNode=Fn(()=>{
     const at=uv()
     // SAFETY: a texture sample is a vec4; Three's types return a bare Node.

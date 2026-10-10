@@ -814,8 +814,6 @@ function FilmComposite({
     <FrameSurface
       frame={film.source}
       material="none"
-      width={f.w}
-      height={f.h}
       // Under the outer presenter, which draws nothing and reports last:
       // its presentation is what releases the page, and the page may not
       // let go until this composite has already written the frame.

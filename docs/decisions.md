@@ -3019,8 +3019,35 @@ for untyped callers, separate from deleting an unreachable module.
 **Amendment (2026-10-09, react binding).** The internal root's legacy
 `source`/`adopt` capture branch is deleted. `SurfaceRoot` no longer reads
 `source`, `adopt`, `size`, `resolution`, `mirrorU` or `onChrome`, so an untyped
-prop no longer reaches a capture path at the root. The unread private
-`SurfaceInstanceContext` metadata remains.
+prop no longer reaches a capture path at the root.
+
+**Amendment (2026-10-09, react binding, private controller).** The internal
+Surface controller requests only `page` or `canvas`. The `'both'` request is
+deleted. So are its shared-presentation hold rules, the controller's
+`exclusive` flag, and the effect that made a Twin's parked source `inert` and
+`aria-hidden`. `'none'` remains only as an observed state. The store reports it
+before any declared presentation holds the content, and the public status maps
+it to `null`. This replaces #43's sentence that the internal renderer
+controller still represents its own pixel-policy states.
+Without the flag, `canvasHearsPointer()` has no `!exclusive` term, and #33's
+`setExclusive` hearing flip is gone.
+
+The same change deletes four other private paths:
+
+- The `SurfaceInstanceContext` and its unread metadata.
+- The focus-within ledger and its `onFocusWithinChange` prop. Focus transfer
+  between the page copy and the source copy stays.
+- The internal `useSurfaceState` hook.
+- `mirrorU` on the DOM Surface path: the source runtime, the presenter,
+  anchors, and the native route.
+
+`FrameSurface` keeps its public `mirrorU` prop. Core's `surfacePose` and
+`projectSurfaceAnchor` keep their `mirrorU` input.
+
+**Amendment (2026-10-09, react binding, public API).** The root entry no
+longer exports `surfaceFocusKey` or `surfaceFocusTarget`. Only the private
+focus transfer calls them. `SURFACE_FOCUS_ATTRIBUTE` stays. `FrameSurface`
+drops its `width` and `height` props, which it never read.
 
 <a id="50"></a>
 
@@ -4578,7 +4605,7 @@ of its own 683 ms. That defect is open.
 `SurfaceCanvas` creates Three's `WebGPURenderer` and awaits `init()`. The
 renderer uses WebGPU when the browser offers it and falls back to WebGL 2.
 `gl` takes `WebGPURendererParameters`, such as `forceWebGL`. The migration uses
-stock Three and Fiber through public APIs (docs/webgpu-migration-plan.md).
+stock Three and Fiber through public APIs.
 
 **Fiber `9.8.1` is the minimum.** `SurfaceCanvas` passes Fiber an async
 renderer factory, and Fiber's Canvas calls `configure()` on every render. In
@@ -4854,6 +4881,11 @@ alpha 0.5 over opaque black:
 | The same with `premultipliedAlpha: true` | 64 | 64 |
 | `outputNode` returns `vec4(sRGBTransferEOTF(rgb), a)` | 44 | 64 |
 | `encodedOutput` of the premultiplied value, `premultipliedAlpha: true` | 64 | 64 |
+
+`FrameSurface`'s built-in `unlit` and `standard` materials follow this rule.
+They set `premultipliedAlpha` to the value of the `transparent` prop. A frame
+drawn opaque keeps Three's default of `false`, because premultiplying by a map
+alpha below 1 would darken it.
 
 Measured 2026-10-08, headless Chrome 155, Three 0.186.1, a 4×4 2D-canvas
 capture texture (`SRGBColorSpace`, premultiplied) drawn full-screen. Values

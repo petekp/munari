@@ -33,7 +33,7 @@ export function encodedOutput(encoded: Node<'vec4'>): Node<'vec4'> {
 
 /**
  * The `outputNode` for premultiplied linear color, such as a sample of a
- * Surface capture: it lands as WebGL's per-fragment sRGB encode did.
+ * Surface capture: it lands with the value the page would composite.
  */
 export function premultipliedOutput(color: Node<'vec4'>): Node<'vec4'> {
   // SAFETY: Three declares this TSL function's layout as vec3 to vec3; its

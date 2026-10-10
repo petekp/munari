@@ -24,9 +24,6 @@ import type { SurfaceSourceRuntime, SurfaceSize } from './surfaceSourceRuntime'
 /** Where the root was declared — which decides what it may contain. */
 export type SurfaceWiring = 'page' | 'canvas'
 
-/** Which copy of a source tree a component instance is rendering in. */
-export type SurfaceInstance = 'page' | 'source'
-
 /** The identity a public context-reading hook may safely inherit. */
 export interface SurfaceHandleValue {
   readonly handle: SurfaceHandle
@@ -50,8 +47,6 @@ export interface SurfaceRootValue {
    */
   readonly instanceId: string
   readonly wiring: SurfaceWiring
-  /** True for an exclusive private protocol request (page or canvas). */
-  readonly exclusive: boolean
   /** The measured page box for a part, from its DOM presentation. */
   reportMeasuredSize(id: SurfacePartId, size: SurfaceSize | null): void
   measuredSize(id: SurfacePartId): SurfaceSize | null
@@ -111,7 +106,6 @@ export const SurfaceMaterialContext = createContext<SurfaceMaterialValue | null>
 export const SurfaceRootContext = createContext<SurfaceRootValue | null>(null)
 export const SurfaceHandleContext = createContext<SurfaceHandleValue | null>(null)
 export const SurfacePartContext = createContext<SurfacePartValue | null>(null)
-export const SurfaceInstanceContext = createContext<SurfaceInstance>('page')
 
 /**
  * True inside the copy of a page-declared presentation that the host is

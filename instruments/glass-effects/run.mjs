@@ -78,7 +78,7 @@ const install = () => {
     texture.colorSpace = THREE.SRGBColorSpace
     texture.magFilter = texture.minFilter = THREE.NearestFilter
     texture.generateMipmaps = false
-    const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), new THREE.MeshBasicMaterial({map: texture, toneMapped: false}))
+    const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), new THREE.MeshBasicMaterial({map: texture}))
     backdrop.name = 'glass-effects-static-backdrop'
     backdrop.position.z = -0.5
     scene.add(backdrop)

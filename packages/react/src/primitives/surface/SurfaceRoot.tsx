@@ -112,7 +112,6 @@ export function SurfaceRoot({
   const contextHost = useSurfaceHostContext()
   const wiring: SurfaceWiring = contextHost ? 'canvas' : 'page'
   const host = useResolvedHost(store, wiring, contextHost, canvasId)
-  const exclusive = renderIn === undefined || renderIn === 'page' || renderIn === 'canvas'
 
   useEffect(() => {
     host?.invalidate()
@@ -167,7 +166,6 @@ export function SurfaceRoot({
       name: store.name,
       instanceId,
       wiring,
-      exclusive,
       reportMeasuredSize,
       measuredSize: (id) => measured.get(id) ?? null,
       partRuntime: (id): SurfaceSourceRuntime | null => store.part(id)?.runtime ?? null,
@@ -178,7 +176,6 @@ export function SurfaceRoot({
       canvasId,
       instanceId,
       wiring,
-      exclusive,
       reportMeasuredSize,
       measured,
     ],

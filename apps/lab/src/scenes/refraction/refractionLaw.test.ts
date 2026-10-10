@@ -16,10 +16,8 @@ import { describe, expect, it } from 'vitest'
 import {
   apertureEdge,
   apertureField,
-  apertureReveal,
   bendTaper,
   blobBendPx,
-  blobHeightPx,
   blobSlope,
   channelSeparationPx,
   maxBlobBendPx,
@@ -41,13 +39,6 @@ const bendAt = (d: number) =>
 
 /** Every value the aperture field can take, sampled densely. */
 const FIELD = Array.from({ length: 101 }, (_, i) => i / 100)
-
-/**
- * Half-seams the shader can produce. It derives this from `fwidth(field)`
- * and clamps it to the overshoot, so the widest is the overshoot itself —
- * which is the case the absolute-ends contract has to survive.
- */
-const WIDTHS = [1e-5, 0.005, 0.05, tune.apertureOvershoot]
 
 describe('the relief pulse', () => {
   it('is flat page at both ends, so nothing of the glass survives the landing', () => {
@@ -145,51 +136,6 @@ describe('the stage', () => {
 })
 
 describe('the aperture front', () => {
-  it('reveals nothing anywhere at the start, at any seam width', () => {
-    for (const width of WIDTHS) {
-      for (const field of FIELD) {
-        expect(apertureReveal(field, 0, tune.apertureOvershoot, width)).toBe(0)
-      }
-    }
-  })
-
-  it('reveals everything everywhere at the end, including the flattest corner', () => {
-    // The failure this pins is invisible in review and permanent on screen:
-    // a front swept only to the field's own limits leaves the last sliver of
-    // the outgoing page in the sheet forever, at whatever opacity it stopped.
-    for (const width of WIDTHS) {
-      for (const field of FIELD) {
-        expect(apertureReveal(field, 1, tune.apertureOvershoot, width)).toBe(1)
-      }
-    }
-  })
-
-  it('never uncovers a pixel it has already covered', () => {
-    for (const field of FIELD) {
-      let previous = -1
-      for (let i = 0; i <= 100; i++) {
-        const reveal = apertureReveal(field, i / 100, tune.apertureOvershoot, 0.02)
-        expect(reveal).toBeGreaterThanOrEqual(previous)
-        previous = reveal
-      }
-    }
-  })
-
-  it('opens the inked places first, which is the whole point of the field', () => {
-    // Mid-sweep, more ink is strictly further along. If this ever reversed,
-    // the front would run from the margins inward and the effect would read
-    // as a vignette closing rather than as a page welling up through text.
-    const mid = 0.5
-    for (let i = 1; i < FIELD.length; i++) {
-      expect(apertureReveal(FIELD[i], mid, tune.apertureOvershoot, 0.02)).toBeGreaterThanOrEqual(
-        apertureReveal(FIELD[i - 1], mid, tune.apertureOvershoot, 0.02),
-      )
-    }
-    expect(apertureReveal(1, mid, tune.apertureOvershoot, 0.02)).toBeGreaterThan(
-      apertureReveal(0, mid, tune.apertureOvershoot, 0.02),
-    )
-  })
-
   it('stays inside its own range for every mix of spread and ink', () => {
     for (const spread of FIELD) {
       for (const ink of [0, 0.25, 0.5, 0.75, 1]) {
@@ -294,29 +240,12 @@ describe('the spread', () => {
 describe('the drop', () => {
   it('is flat paper outside the contact line, and nothing else', () => {
     // The front and the surface are the same object: at and outside the
-    // contact line the drop has no height, so the page under it is untouched
+    // contact line the drop has no slope, so the page under it is untouched
     // by the bend, the room reflection, and the rim alike.
     for (const d of [-40, -1, -0.01, 0]) {
-      expect(blobHeightPx(d, tune.heightPx, tune.rimPx)).toBe(0)
       expect(blobSlope(d, tune.heightPx, tune.rimPx)).toBe(0)
       expect(bendAt(d)).toBe(0)
     }
-  })
-
-  it('climbs to its full height and stays there, so the middle is a window', () => {
-    // sqrt(1 - exp(-d/e)) is 97.5% of the way up three meniscus widths in
-    // and never reaches 1. A profile that kept climbing would make the drop
-    // a lens over its whole area, and the arriving page would never be
-    // readable while it arrived.
-    let last = 0
-    for (let d = 0; d <= 200; d += 0.5) {
-      const h = blobHeightPx(d, tune.heightPx, tune.rimPx)
-      expect(h).toBeGreaterThanOrEqual(last)
-      expect(h).toBeLessThan(tune.heightPx)
-      last = h
-    }
-    const flat = blobHeightPx(3 * tune.rimPx, tune.heightPx, tune.rimPx)
-    expect(flat / tune.heightPx).toBeCloseTo(0.9748, 4)
   })
 
   it('has a finite steepest bend, though its tangent at the contact line is vertical', () => {

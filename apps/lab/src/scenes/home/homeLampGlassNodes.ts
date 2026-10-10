@@ -167,7 +167,7 @@ function backgroundAlong(g:LampGlassValues,b:LampBackdropValues,from:Vec3,ray:Ve
  * depth already spans 0..1, WebGL's spans -1..1.
  */
 export function createLampGlassMaterial(g:LampGlassValues,b:LampBackdropValues,coordinateSystem:THREE.CoordinateSystem):MeshBasicNodeMaterial{
-  const material=new MeshBasicNodeMaterial({side:THREE.BackSide,transparent:true,premultipliedAlpha:true,depthWrite:true,toneMapped:false})
+  const material=new MeshBasicNodeMaterial({side:THREE.BackSide,transparent:true,premultipliedAlpha:true,depthWrite:true})
   material.outputNode=Fn(()=>{
     const glassDistance=(q:Vec3)=>glassDistanceFn(q,g.displacement)
     const glassNormal=(q:Vec3)=>glassNormalFn(q,g.displacement)

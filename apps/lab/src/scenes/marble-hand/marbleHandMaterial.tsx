@@ -40,8 +40,8 @@ import { createMarbleHandTapNodes, type MarbleHandTapUniforms } from './marbleHa
 /**
  * A physical hand material carrying the tap bend and the scene's tone map.
  * SurfaceCanvas renders with NoToneMapping so HTML keeps its colours; the
- * hand applies the ACES curve the renderer applied on WebGL, at the
- * renderer's `toneMappingExposure`, which MarbleLighting writes.
+ * hand applies the ACES curve itself, at the renderer's
+ * `toneMappingExposure`, which MarbleLighting writes.
  */
 function createHandMaterial(name: string, tap: MarbleHandTapUniforms): MeshPhysicalNodeMaterial {
   const material = new MeshPhysicalNodeMaterial({ name })

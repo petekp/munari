@@ -182,7 +182,6 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture, theme }: 
     })
     const camera = new THREE.CubeCamera(1, ROOM_RADIUS * 2, cube)
     const pageMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
-      toneMapped: false,
       premultipliedAlpha: true,
     }))
     pageMesh.name = 'marble-hand-reflection-page'
@@ -200,7 +199,6 @@ export function MarbleHandEnvironment({ page, origin, tuning, capture, theme }: 
     backgroundMesh.renderOrder = 1
     const roomMesh = new THREE.Mesh(new THREE.SphereGeometry(ROOM_RADIUS, 32, 16), new THREE.MeshBasicMaterial({
       side: THREE.BackSide,
-      toneMapped: false,
       depthWrite: false,
     }))
     roomMesh.name = 'marble-hand-reflection-room'

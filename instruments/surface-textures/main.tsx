@@ -7,7 +7,7 @@ import {createSurfaceSourceRuntime} from '../../packages/react/src/primitives/su
 const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 const content = document.createElement('div')
 content.style.cssText = 'width:128px;height:64px;background:linear-gradient(to right,rgb(255,0,0) 50%,rgb(0,255,0) 50%)'
-const runtime = createSurfaceSourceRuntime({content,size:[128,64],resolution:new URLSearchParams(location.search).has('pinned')?1:'auto',mirrorU:false,pixelRatio:1,onError:error=>{throw error}})
+const runtime = createSurfaceSourceRuntime({content,size:[128,64],resolution:new URLSearchParams(location.search).has('pinned')?1:'auto',pixelRatio:1,onError:error=>{throw error}})
 const renderer = new WebGPURenderer({alpha:true,antialias:false})
 await renderer.init()
 renderer.setPixelRatio(devicePixelRatio)
@@ -17,7 +17,7 @@ const scene = new THREE.Scene()
 const camera = new THREE.OrthographicCamera(-1,1,.5,-.5,.1,10)
 camera.position.z = 2
 const texture = runtime.texture()!
-const material = new THREE.MeshBasicMaterial({map:texture,toneMapped:false,premultipliedAlpha:true})
+const material = new THREE.MeshBasicMaterial({map:texture,premultipliedAlpha:true})
 scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,1),material))
 const errors = gpuErrors(renderer)
 const rows:unknown[] = []

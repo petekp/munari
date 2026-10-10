@@ -196,7 +196,6 @@ export function createPlumeMaterial(map: THREE.Texture, v: PlumeValues): MeshBas
     premultipliedAlpha: true,
     depthTest: false,
     depthWrite: false,
-    toneMapped: false,
     side: THREE.DoubleSide,
   })
   const corner = attribute<'vec2'>('aCorner', 'vec2')

@@ -96,7 +96,6 @@ async function launch(headless, fullCapture = true) {
     args: [
       ...WEBGPU_CHROME_ARGS,
       ...(fullCapture ? ['--enable-features=CanvasDrawElement'] : []),
-      '--enable-webgl',
       '--ignore-gpu-blocklist',
       '--enable-unsafe-swiftshader',
       '--disable-backgrounding-occluded-windows',

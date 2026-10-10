@@ -1,8 +1,7 @@
 // The veil's materials. The blur is a two-pass separable gaussian whose
-// radius is the law (veilLaw.ts) evaluated per row — TSL twins of
-// `veilRadius`, `veilSeamAlpha`, and `veilLod`, fed the same constants
-// through uniforms so the JS tests and the shaders cannot drift apart
-// on shape, only on constants the scene passes to both.
+// radius is the law (veilLaw.ts) evaluated per row, restated here in TSL
+// and fed the same constants through uniforms. The JS tests check
+// veilLaw.ts, not these shaders.
 //
 // Everything runs in the band's OWN coordinates: row 0 is the seam,
 // rows grow downward, and the article y of row 0 arrives as a uniform
@@ -24,13 +23,14 @@
 // deep blur turns into a woven lattice of ghost impulses (observed on
 // a retina display, 2026-08-08 — a dpr 1 probe cannot see it, the
 // coarser texels plug the gaps). Copying the window into an RT WE mip
-// gives every tap `veilLod`'s integrated footprint, and the seam still
-// samples the pristine base level — spacing 0 maps to level 0.
+// gives every tap a footprint that integrates the span to the next, and
+// the seam still samples the pristine base level — spacing 0 maps to
+// level 0.
 //
 // The seam needs no special case beyond that. At radius 0 all thirteen
 // taps land on the same texel of level 0 and the normalized sum is
-// that texel — the band's near edge is the content, exactly, which is
-// what veilLaw.test.ts pins on the JS side.
+// that texel — the band's near edge is the content, exactly. The JS
+// side's radius(0) = 0 is what veilLaw.test.ts pins.
 //
 // Both offscreen passes draw through `passMaterial` (@petepetrash/munari/advanced),
 // so a row computed at uv.y = v is the row a later sample at v reads.
@@ -93,8 +93,8 @@ function veilRadius(y: Node<'float'>, p: VeilProfile): Node<'float'> {
 // Gaussian taps at i in [-6, 6], spaced radius/6 apart: the spacing
 // scales with the radius while t_i/sigma stays fixed at i/3, so the
 // weights are compile-time constants and only the footprint moves.
-// veilBias is veilLod's twin: the mip level that makes one tap's
-// footprint cover the spacing to the next (dpr texels per CSS px).
+// veilBias is the mip level that makes one tap's footprint cover the
+// spacing to the next (dpr texels per CSS px).
 const TAPS = Array.from({ length: 13 }, (_, k) => k - 6)
 const veilWeight = (i: number) => Math.exp(-(i * i) / 18)
 const WEIGHT_SUM = TAPS.reduce((sum, i) => sum + veilWeight(i), 0)
@@ -197,7 +197,7 @@ export function createVeilBand(placeholder: THREE.Texture): VeilBand {
   // Transparent + premultiplied (decisions.md #5): the fragment fades the
   // band in from the seam, and the live page has to show through the
   // faded rows — an opaque band would replace them.
-  const material = new MeshBasicNodeMaterial({ transparent: true, premultipliedAlpha: true, toneMapped: false })
+  const material = new MeshBasicNodeMaterial({ transparent: true, premultipliedAlpha: true })
   material.outputNode = Fn(() => {
     const at = uv()
     const bandY = float(1).sub(at.y).mul(p.size.y).toVar()

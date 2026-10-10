@@ -59,7 +59,6 @@ export interface SurfaceRouteStep {
   readonly request: PointerRouteRequest
   readonly capable: boolean
   readonly hearing: boolean
-  readonly mirrorU: boolean
   readonly contentWidth: number
   readonly contentHeight: number
   /** True when the scene supplied its own geometry. */
@@ -166,7 +165,7 @@ function measurePose(input: SurfaceRouteStep, pose: SurfacePose) {
     {
       contentWidth: input.contentWidth,
       contentHeight: input.contentHeight,
-      mirrorU: input.mirrorU,
+      mirrorU: false,
       model: (input.renderMatrix ?? input.mesh.matrixWorld).elements,
       view: input.camera.matrixWorldInverse.elements,
       projection: input.camera.projectionMatrix.elements,

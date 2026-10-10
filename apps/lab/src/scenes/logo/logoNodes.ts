@@ -715,15 +715,12 @@ function aces(x: Node<'vec3'>): Node<'vec3'> {
 
 /**
  * The letter's material. Premultiplied in, premultiplied blend
- * (decisions.md #5); the letters are paint over the page, so no tone
- * mapping — same stance as the standard-material path it replaced.
- * logoScene sets depthWrite from the slab switch.
+ * (decisions.md #5). logoScene sets depthWrite from the slab switch.
  */
 export function createLetterMaterial(t: LetterTextures, u: LetterUniforms): MeshBasicNodeMaterial {
   const material = new MeshBasicNodeMaterial({
     transparent: true,
     premultipliedAlpha: true,
-    toneMapped: false,
   })
 
   // ── the vertex stage ──

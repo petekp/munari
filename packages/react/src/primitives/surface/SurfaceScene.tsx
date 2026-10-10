@@ -43,7 +43,6 @@ export function SurfaceScene({ surface, children }: SurfaceSceneProps) {
       name: store.name,
       instanceId,
       wiring: 'canvas',
-      exclusive: store.exclusive(),
       reportMeasuredSize: () => {},
       measuredSize: () => null,
       partRuntime: (id) => store.part(id)?.runtime ?? null,

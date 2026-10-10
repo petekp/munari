@@ -840,8 +840,6 @@ function TaintedSourceScene() {
     <FrameSurface
       name="frame-tainted-gate"
       frame={taintedSource.source}
-      width={64}
-      height={16}
       raycast={() => {}}
       presentation={TAINTED_REQUIREMENT}
       onFrameDrawn={onFrameDrawn}
@@ -886,7 +884,6 @@ function PresentationMaterial({ colorWrite }: { colorWrite: boolean }) {
       map={texture}
       color="#ffffff"
       colorWrite={colorWrite}
-      toneMapped={false}
     />
   )
 }
@@ -1012,8 +1009,6 @@ function PresentationFenceScene() {
       <FrameSurface
         name="frame-presentation-gate"
         frame={presentationSource.source}
-        width={64}
-        height={16}
         material="none"
         // Input is disabled: this rig only exercises the receipt gate.
         raycast={() => {}}
@@ -1096,8 +1091,6 @@ function BackingStoreResizeScene() {
     <FrameSurface
       name="frame-resize-gate"
       frame={resizeSource.source}
-      width={64}
-      height={16}
       onFrameDrawn={onFrameDrawn}
     >
       <planeGeometry args={[4, 1]} />
@@ -1262,8 +1255,6 @@ function GateScene() {
         <FrameSurface
           name={SURFACE_NAME}
           frame={activeSource}
-          width={64}
-          height={16}
           onFrameDrawn={onFrameDrawn}
         >
           <planeGeometry args={[4, 1]} />

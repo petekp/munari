@@ -1,8 +1,10 @@
-// texture-uploads probe runner — counts the WebGL uploads each changed image
+// texture-uploads probe runner — counts the GPU uploads each changed image
 // costs and checks that the drawn pixels are the current ones.
 //
-// An upload is counted where WebGL receives it, so the number is what the GPU
-// was sent and not what the runtime armed. The same hook drops uploads on
+// An upload is counted where the graphics API receives it: GPUQueue
+// copyExternalImageToTexture on WebGPU, texImage2D or texSubImage2D on the
+// WebGL 2 fallback (MUNARI_BACKEND=webgl2). So the number is what the GPU was
+// sent and not what the runtime armed. The same hooks drop uploads on
 // request, which is the deliberate fault the pixel check has to catch.
 //
 // What it judges, per engine and per resolution (1 and 0.5 are pinned and
@@ -53,7 +55,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const shows = (color, blue) => (blue ? color[2] > 200 && color[0] < 60 : color[0] > 200 && color[2] < 60)
 
 // Runs in the page before its own scripts, the way shader-compile hooks
-// `compileShader`. Counts every upload whose source is a canvas.
+// `createShaderModule` and `compileShader`. Counts every upload whose source
+// is a canvas, on either backend.
 function countCanvasUploads() {
   const count = { uploads: 0, drop: false }
   window.__uploadCount = count
@@ -65,6 +68,16 @@ function countCanvasUploads() {
         if (count.drop) return
       }
       real.apply(this, args)
+    }
+  }
+  if ('GPUQueue' in globalThis) {
+    const real = GPUQueue.prototype.copyExternalImageToTexture
+    GPUQueue.prototype.copyExternalImageToTexture = function (source, ...rest) {
+      if (source?.source instanceof HTMLCanvasElement) {
+        count.uploads += 1
+        if (count.drop) return
+      }
+      return real.call(this, source, ...rest)
     }
   }
 }

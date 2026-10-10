@@ -9,8 +9,8 @@
 // The fault, 2026-08-23: three lab scenes each hit that in a different
 // shape — the knobs panel's carry and resize had no consumer, genie's
 // minimize waited on `air[id]`, flight's drag waited on `flight.current`.
-// All three had a correct capability answer available to them already, on
-// `useSurfaceState(handle).supported`, seeded at store creation. All three
+// All three had a correct capability answer available to them already, in
+// the handle's `supported` state, seeded at store creation. All three
 // reached past it and wrote `useMemo(() => detectHtmlInCanvas()
 // .drawElementImage, [])` instead, because the branch is decided ABOVE the
 // Surface and reading it through a handle's state did not look like where

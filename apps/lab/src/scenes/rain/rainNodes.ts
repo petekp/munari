@@ -11,10 +11,10 @@
 // edge and one small highlight carrying almost all of the read, rather
 // than a painted rim and a broad specular disc.
 //
-// The canvas value is encode(color) · alpha: the WebGL materials encoded
-// the straight colour and premultiplied after, and every colour here was
-// tuned against that. Each material builds that encoded value and returns
-// it through `encodedOutput` (decisions.md #72).
+// The canvas value is encode(color) · alpha: every colour here was tuned
+// with the straight colour encoded first and premultiplied after. Each
+// material builds that encoded value and returns it through
+// `encodedOutput` (decisions.md #72).
 //
 // Ownership: these materials own colour and coverage only. Position, radius
 // and the sitting/rolling/falling split are rainLaw's; the instance matrix,
@@ -52,7 +52,6 @@ function createRainMaterial(): MeshBasicNodeMaterial {
     premultipliedAlpha: true,
     depthTest: false,
     depthWrite: false,
-    toneMapped: false,
   })
 }
 

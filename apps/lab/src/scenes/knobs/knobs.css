@@ -478,17 +478,17 @@
      * knobsTuning.ts mirrors the same literals. */
     radial-gradient(
       120% 130% at 50% 68%,
-      var(--knb-lcd-hot, #ffb82e) 0%,
-      var(--knb-lcd-mid, #f4980e) 55%,
-      var(--knb-lcd-edge, #bd7818) 100%
+      var(--knb-lcd-hot, #f19f00) 0%,
+      var(--knb-lcd-mid, #c57a09) 55%,
+      var(--knb-lcd-edge, #976013) 100%
     ),
-    var(--knb-lcd-base, #cb881b);
+    var(--knb-lcd-base, #a26d16);
   box-shadow:
     /* the glass sits recessed: a warm shadow under its top edge */
     inset 0 1px 3px rgba(96, 52, 0, 0.6),
     inset 0 0 1px rgba(120, 66, 0, 0.55),
     /* the lamp leaks: the emissive bloom onto the machined face */
-    0 0 12px 2px rgba(255, 168, 44, var(--knb-lcd-glow, 0.52)),
+    0 0 12px 2px rgba(255, 168, 44, var(--knb-lcd-glow, 0.32)),
     0 1px 0 rgba(255, 255, 255, 0.07);
   font: italic 700 17px/1 'DSEG7-Classic', var(--data);
   letter-spacing: 1px;
@@ -505,7 +505,7 @@
   top: 50%;
   transform: translateY(-50%);
   font-style: italic;
-  color: rgba(92, 54, 8, var(--knb-lcd-ghost, 0.12));
+  color: rgba(92, 54, 8, var(--knb-lcd-ghost, 0.15));
 }
 
 /* Energized crystals: dark, crisp, unglowing, unshadowed — an LCD digit

@@ -65,7 +65,6 @@ describe('a source runtime', () => {
       content: adopted,
       size: [200, 100],
       resolution: 1,
-      mirrorU: false,
       pixelRatio: 1,
       onError: (error) => {
         throw error
@@ -87,7 +86,7 @@ describe('a source runtime', () => {
 })
 
 it('combines raster demands per axis and restores native capture density when consumers leave',()=>{
- const runtime=createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',mirrorU:false,pixelRatio:2,onError:error=>{throw error}})
+ const runtime=createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',pixelRatio:2,onError:error=>{throw error}})
  runtime.proposeRaster(1,[2.4,1.7]);runtime.proposeRaster(2,[2,3])
  expect(runtime.source.rasterScale()).toEqual([2.4,3])
  runtime.proposeRaster(2,null)
@@ -101,7 +100,7 @@ it('combines raster demands per axis and restores native capture density when co
 // passes 1:1, which blurs text at reading range. Near tiers sample without
 // mipmaps. Far tiers and pinned resolutions keep them.
 it('allocates mipmaps only for a far tier or a pinned resolution', () => {
-  const options = { content: document.createElement('div'), size: [200, 100] as const, mirrorU: false, pixelRatio: 1, onError: (error: Error) => { throw error } }
+  const options = { content: document.createElement('div'), size: [200, 100] as const, pixelRatio: 1, onError: (error: Error) => { throw error } }
   const runtime = createSurfaceSourceRuntime({ ...options, resolution: 'auto' })
   const texture = runtime.texture()
   if (!texture) throw new Error('The runtime made no texture')
@@ -118,7 +117,7 @@ it('allocates mipmaps only for a far tier or a pinned resolution', () => {
   pinned.dispose()
 })
 it('keeps an explicit resolution pin when display density changes',()=>{
- const runtime=createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:1,mirrorU:false,pixelRatio:2,onError:error=>{throw error}})
+ const runtime=createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:1,pixelRatio:2,onError:error=>{throw error}})
  runtime.proposeRaster(1,[3,2]);runtime.setPixelRatio(3)
  expect(runtime.source.rasterScale()).toEqual([1,1])
  runtime.dispose()
@@ -132,7 +131,6 @@ describe('uploads after one paint', () => {
     content: document.createElement('div'),
     size: [200, 100],
     resolution: 1,
-    mirrorU: false,
     pixelRatio: 1,
     onError: (error: Error) => {
       throw error
@@ -213,7 +211,7 @@ describe('storage changes after an upload has been armed', () => {
   it.each(['tier', 'raster', 'size', 'resolution', 'display'] as const)(
     'invalidates %s storage in the same frame without replacing the texture',
     (change) => {
-      const runtime = createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',mirrorU:false,pixelRatio:1,onError:error=>{throw error}})
+      const runtime = createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',pixelRatio:1,onError:error=>{throw error}})
       completePaint(runtime.source.canvas)
       runtime.frame()
       const texture = runtime.texture()!
@@ -243,7 +241,7 @@ describe('storage changes after an upload has been armed', () => {
   // asks it for a sharp one. A Surface that moves only in depth never changes
   // size, so watching the box alone would settle once and never again.
   it('asks for a paint again once a density change goes quiet', () => {
-    const runtime = createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',mirrorU:false,pixelRatio:1,onError:error=>{throw error}})
+    const runtime = createSurfaceSourceRuntime({content:document.createElement('div'),size:[200,100],resolution:'auto',pixelRatio:1,onError:error=>{throw error}})
     completePaint(runtime.source.canvas)
     for (let i=0;i<12;i++) runtime.frame()
     expect(runtime.frame()).toBe(false)

@@ -26,9 +26,8 @@ import { createPortal } from 'react-dom'
 import { guardPointerCapture, type SurfaceChrome, type SurfacePartId } from '@munari/core'
 import { useSurfaceDevicePixelRatio } from './surfaceDevicePixelRatio'
 import { useLatest } from '../useLatest'
-import { createSurfaceFocusLedger, transferSurfaceFocus } from './surfaceFocus'
+import { transferSurfaceFocus } from './surfaceFocus'
 import {
-  SurfaceInstanceContext,
   SurfaceHandleContext,
   SurfacePartContext,
   sourceContentKey,
@@ -70,8 +69,6 @@ export interface SurfaceSourceHostProps {
   size?: SurfaceSize
   resolution?: SurfaceResolution
   live?: boolean
-  mirrorU?: boolean
-  onFocusWithinChange?: (focused: boolean) => void
   onChrome?: (chrome: SurfaceChrome) => void
   chromeElement?: () => HTMLElement
   pageContent?: () => HTMLElement | null
@@ -86,8 +83,6 @@ export function SurfaceSourceHost({
   size,
   resolution = 'auto',
   live = false,
-  mirrorU = false,
-  onFocusWithinChange,
   onChrome,
   chromeElement,
   pageContent,
@@ -100,7 +95,6 @@ export function SurfaceSourceHost({
   const store = root.store
   const handleValue = useMemo(() => ({ handle: store.handle, store }), [store])
   const [measured, setMeasured] = useState<SurfaceSize | null>(null)
-  const onFocusWithinRef = useLatest(onFocusWithinChange)
   const onChromeRef = useLatest(onChrome)
   const chromeElementRef = useLatest(chromeElement)
 
@@ -140,12 +134,11 @@ export function SurfaceSourceHost({
   const sizeRef = useLatest(effectiveSize)
   const resolutionRef = useLatest(resolution)
   const liveRef = useLatest(live)
-  const mirrorURef = useLatest(mirrorU)
 
   // Creating the source is a TEARDOWN: it destroys the live DOM subtree and
   // everything alive in it — focus, form values, selection, scroll. So the
   // dependency list is one entry wide on purpose. Size, resolution,
-  // and mirroring are all handled in place below; a prop
+  // and liveness are all handled in place below; a prop
   // belongs here only if changing it means "this is different content now",
   // which for a source is only the identity of the element being captured.
   useLayoutEffect(() => {
@@ -158,7 +151,6 @@ export function SurfaceSourceHost({
         size: sizeRef.current,
         resolution: resolutionRef.current,
         live: liveRef.current,
-        mirrorU: mirrorURef.current,
         pixelRatio: window.devicePixelRatio,
         onError: (error) => root.store.reportError(error),
         onChrome: (chrome) => onChromeRef.current?.(chrome),
@@ -203,9 +195,6 @@ export function SurfaceSourceHost({
   useEffect(() => {
     runtime?.setLive(live)
   }, [runtime, live])
-  useEffect(() => {
-    runtime?.setMirrorU(mirrorU)
-  }, [runtime, mirrorU])
 
   // Capture advances from the host's single frame callback. A demand Canvas
   // is held awake only while the source actually has work — a settling box,
@@ -253,33 +242,10 @@ export function SurfaceSourceHost({
     [id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent, source],
   )
 
-  // Observe focus in the page and capture containers as one logical part.
-  // The hold subscription below handles transfer before page visibility changes.
-  useEffect(() => {
-    const ledger = createSurfaceFocusLedger((focused) => onFocusWithinRef.current?.(focused))
-    const watch = (element: HTMLElement | null, instance: 'page' | 'source') => {
-      if (!element) return () => {}
-      const focusIn = () => ledger.report(instance, true)
-      const focusOut = () => ledger.report(instance, false)
-      element.addEventListener('focusin', focusIn)
-      element.addEventListener('focusout', focusOut)
-      return () => {
-        element.removeEventListener('focusin', focusIn)
-        element.removeEventListener('focusout', focusOut)
-      }
-    }
-    const stopPage = watch(pageRoot, 'page')
-    const stopSource = watch(captureRoot, 'source')
-    return () => {
-      stopPage()
-      stopSource()
-      ledger.dispose()
-    }
-  }, [pageRoot, captureRoot, onFocusWithinRef])
-
-  const exclusive = root.exclusive
+  // Focus follows the hold in the same task that moves it, so the `inert`
+  // blur never lands on the body (surfaceFocus.ts).
   useLayoutEffect(() => {
-    if (!exclusive || !pageRoot || !captureRoot) return
+    if (!pageRoot || !captureRoot) return
     let held = store.holdsPage()
     return store.subscribeHold(() => {
       const next = store.holdsPage()
@@ -287,24 +253,7 @@ export function SurfaceSourceHost({
       held = next
       transferSurfaceFocus(next ? captureRoot : pageRoot, next ? pageRoot : captureRoot)
     })
-  }, [exclusive, pageRoot, captureRoot, store])
-
-  // A Twin has two DOM instances but one accessibility instance. Its page
-  // copy owns input and accessibility; the parked source exists only to
-  // supply pixels. Resident and exclusive sources keep their ordinary
-  // behavior because no simultaneous page copy represents them.
-  useEffect(() => {
-    if (!captureRoot || root.exclusive || !pageRoot) return
-    const previousInert = captureRoot.inert
-    const previousAriaHidden = captureRoot.getAttribute('aria-hidden')
-    captureRoot.inert = true
-    captureRoot.setAttribute('aria-hidden', 'true')
-    return () => {
-      captureRoot.inert = previousInert
-      if (previousAriaHidden === null) captureRoot.removeAttribute('aria-hidden')
-      else captureRoot.setAttribute('aria-hidden', previousAriaHidden)
-    }
-  }, [captureRoot, root.exclusive, pageRoot])
+  }, [pageRoot, captureRoot, store])
 
   // Declared parts are the all-or-none set the store's gates read. Declared
   // here because both roads lead through this component: the single-source
@@ -336,9 +285,7 @@ export function SurfaceSourceHost({
   const contentKey = sourceContentKey(`${root.instanceId}:${sourceHostId}`, id)
   const wrapped =
     source === undefined ? null : (
-      <SurfaceHandleContext value={handleValue}>
-        <SurfaceInstanceContext value="source">{source}</SurfaceInstanceContext>
-      </SurfaceHandleContext>
+      <SurfaceHandleContext value={handleValue}>{source}</SurfaceHandleContext>
     )
   const hasOutwardContent = source !== undefined
   const outwardElement = useMemo(

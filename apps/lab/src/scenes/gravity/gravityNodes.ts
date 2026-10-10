@@ -28,7 +28,6 @@ function wordMaterial(): MeshBasicNodeMaterial {
     premultipliedAlpha: true,
     depthTest: false,
     depthWrite: false,
-    toneMapped: false,
   })
 }
 

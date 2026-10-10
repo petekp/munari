@@ -10,7 +10,7 @@ import type {createPaperLighting} from './homePaperLighting'
 
 export function createHomeLightDisplay(renderer:WebGPURenderer,pipeline:DirectRenderPipeline,light:HomeLightMaterial){
   const page=new THREE.RenderTarget(1,1,{depthBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter})
-  const material=new MeshBasicNodeMaterial({depthTest:false,depthWrite:false,toneMapped:false})
+  const material=new MeshBasicNodeMaterial({depthTest:false,depthWrite:false})
   // Depth 0.5 sits inside both backends' clip range; the copy ignores the camera.
   material.vertexNode=vec4(positionGeometry.xy,.5,1)
   // The light pass drew with clip y negated, so uv() reads it upright. Alpha

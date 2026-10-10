@@ -88,7 +88,7 @@
 /* ── the item picker ───────────────────────────────────────────────── */
 
 /* Disabled mid-crossing, because starting a second crossing from inside
- * the first would swap the far handle's content out from under the drop
+ * the first would swap the far part's content out from under the drop
  * that is currently reading it. */
 .gallery-rail {
   display: flex;

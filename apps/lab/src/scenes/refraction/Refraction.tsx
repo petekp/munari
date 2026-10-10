@@ -12,7 +12,7 @@
 //
 // The two trade roles at the ends. The crossing lifts off the leaving page
 // and LANDS on the arriving one, which becomes ordinary DOM the browser
-// hit-tests, focuses and selects. Skipping that landing is why a GL layer
+// hit-tests, focuses and selects. Skipping that landing is why a canvas layer
 // used to sit over the page forever (Pete, 2026-08-22): the words a viewer
 // had just watched arrive could not be selected, because they had never been
 // anywhere but a texture.
@@ -202,9 +202,10 @@ export function RefractionApp() {
   // documents feed it by handle.
   //
   // Landing on the far side is the half this scene skipped until Pete's
-  // report on 2026-08-22. A crossing that lifts and never lands leaves a GL
-  // layer over the page forever, and the words a viewer just watched arrive
-  // cannot be selected, because they were never anywhere but a texture.
+  // report on 2026-08-22. A crossing that lifts and never lands leaves a
+  // canvas layer over the page forever, and the words a viewer just watched
+  // arrive cannot be selected, because they were never anywhere but a
+  // texture.
   const landed: 'leaving' | 'arriving' | null =
     running ? null : t === 0 ? 'leaving' : t === 1 ? 'arriving' : null
   const lifted = landed === null

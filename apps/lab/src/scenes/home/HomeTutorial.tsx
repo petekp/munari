@@ -1,6 +1,5 @@
 // Getting started — the displayed source is the component running beside it.
-// Pin setup links to the same API revision until the npm release includes it.
-import { GUIDE_URL, SOURCE_ARCHIVE, SOURCE_ROOT } from '../../components/sceneCatalog'
+import { GUIDE_URL, SOURCE_ARCHIVE } from '../../components/sceneCatalog'
 import { HomeStarter } from './HomeStarter'
 import starterCode from './HomeStarter.tsx?raw'
 import { CodeBlock } from './homeCode'
@@ -29,7 +28,7 @@ export function TutorialSection() {
       <div className="home-development-note">
         <div>
           <b>Development API</b>
-          <p>This example uses the API in <a href={`${SOURCE_ROOT}/pull/83`} target="_blank" rel="noreferrer">PR #83</a>. The current npm release uses an earlier API. Download the matching source, then run these commands from its folder with Node 24+.</p>
+          <p>This example uses an API newer than the current npm release. Download the source, then run these commands from its folder with Node 24+.</p>
           <a className="home-text-link" href={SOURCE_ARCHIVE}>Download the source snapshot <span aria-hidden>↓</span></a>
         </div>
         <CodeBlock code={'npm ci\nnpm run lab'} title="Run locally" />

@@ -4,14 +4,14 @@
 // without rebuilding the survivor. The 2026-09-07 regression covered both
 // removal orders, including Strict Mode's setup/cleanup cycle.
 
-import { Fragment, StrictMode, createElement, useLayoutEffect, useSyncExternalStore, type ReactElement } from 'react'
+import { Fragment, StrictMode, createElement, use, useLayoutEffect, useSyncExternalStore, type ReactElement } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { surfaceChromeElement } from './surfaceChromeElement'
-import { createSurfaceStore, useSurfaceState } from './surfaceHandle'
+import { createSurfaceStore, type SurfaceStore } from './surfaceHandle'
 import { SurfacePart } from './SurfacePart'
-import { SurfaceRootContext, useSurfacePart, type SurfacePartValue, type SurfaceRootValue } from './surfaceContext'
+import { SurfaceHandleContext, SurfaceRootContext, useSurfacePart, type SurfacePartValue, type SurfaceRootValue } from './surfaceContext'
 import { resetSurfaceHosts, surfaceHost, type SurfaceHost } from './surfaceHostRegistry'
 
 describe('surface chrome element', () => {
@@ -85,7 +85,7 @@ describe('duplicate source host recovery', () => {
     store.setCallbacks({ onError: error => errors.push(error) })
     const rootValue: SurfaceRootValue = {
       store, handle: store.handle, host, canvasId: host.id, name: store.name,
-      instanceId: 'same-root', wiring, exclusive: false,
+      instanceId: 'same-root', wiring,
       reportMeasuredSize() {},
       measuredSize: () => null,
       partRuntime: id => store.part(id)?.runtime ?? null,
@@ -181,14 +181,14 @@ describe('duplicate source host recovery', () => {
   // React tree, so it reaches its Surface only through the context the host
   // wraps around it.
   it.each(['page', 'canvas'] as const)('gives %s-wired source content its own Surface', (wiring) => {
-    const seen: ReturnType<typeof useSurfaceState>[] = []
+    const seen: (SurfaceStore | undefined)[] = []
     function ReadSurface() {
-      seen.push(useSurfaceState())
+      seen.push(use(SurfaceHandleContext)?.store)
       return null
     }
     const test = fixture(wiring, false, false, () => createElement(ReadSurface))
     test.render(['panel'])
     expect(seen.length).toBeGreaterThan(0)
-    expect(seen.at(-1)).toBe(test.store.getState())
+    expect(seen.at(-1)).toBe(test.store)
   })
 })

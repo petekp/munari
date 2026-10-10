@@ -4,7 +4,7 @@
 import { createElement, type RefObject } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
-import { _roots, context, createRoot as createCanvasRoot } from '@react-three/fiber'
+import { _roots, context, createRoot as createCanvasRoot, type RootState } from '@react-three/fiber'
 import { FocusScene, useFocusScene } from '@petepetrash/munari'
 import { OrbitControls } from 'three-stdlib'
 import * as THREE from 'three'
@@ -38,8 +38,8 @@ function scene() {
   if (!frameStore) throw new Error('R3F did not create its store')
   const renderer = { domElement: canvas }
   // SAFETY: FocusScene and the rig only read gl.domElement. This store is
-  // never configured or rendered, so no WebGLRenderer method is reached.
-  frameStore.setState({ camera, controls, gl: renderer as THREE.WebGLRenderer })
+  // never configured or rendered, so no renderer method is reached.
+  frameStore.setState({ camera, controls, gl: renderer as RootState['gl'] })
   const api: RefObject<FocusRigApi | null> = { current: null }
   const focus: RefObject<ReturnType<typeof useFocusScene>> = { current: null }
   function ReadFocus() { focus.current = useFocusScene(); return null }

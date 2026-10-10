@@ -236,7 +236,7 @@ function GravityNativeApp() {
     }
     renderer.setClearColor(0x000000, 0)
     // Converts each fragment as it lands on the canvas, so the words blend
-    // in the sRGB canvas as they did on WebGL (decisions.md #72).
+    // in the sRGB canvas as they did under WebGLRenderer (decisions.md #72).
     const pipeline = new DirectRenderPipeline(renderer)
 
     const draw = () => {

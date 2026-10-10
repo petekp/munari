@@ -152,7 +152,7 @@ export function connectCapture(handle: CaptureHandle, element: HTMLElement, size
   try {
     source = createSurfaceSourceRuntime({
       content: element, size, resolution: options.resolution ?? 'auto', live: options.live ?? false,
-      mirrorU: false, pixelRatio: window.devicePixelRatio, onError: report,
+      pixelRatio: window.devicePixelRatio, onError: report,
     })
   } catch (cause) {
     report(cause instanceof Error ? cause : new Error(String(cause)))

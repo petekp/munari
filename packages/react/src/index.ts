@@ -76,11 +76,7 @@ export {
   type SourceUvRect,
   type SurfaceChrome,
 } from '@munari/core'
-export {
-  SURFACE_FOCUS_ATTRIBUTE,
-  surfaceFocusKey,
-  surfaceFocusTarget,
-} from './primitives/surface/surfaceFocus'
+export { SURFACE_FOCUS_ATTRIBUTE } from './primitives/surface/surfaceFocus'
 
 // Receipt types for capture and advanced drawing. Ordinary Surface callbacks
 // report presentation, readiness, and motion rather than these pixel receipts.

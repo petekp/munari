@@ -242,8 +242,8 @@ interface BandProps {
 
 function makeRt(w: number, h: number) {
   // HalfFloat linear, mipmapped on write: the mips are what turn the
-  // 13-tap comb into a gaussian at every density (veilLod), and
-  // averaging is only honest in linear premultiplied.
+  // 13-tap comb into a gaussian at every density (veilBias in
+  // veilNodes.ts), and averaging is only honest in linear premultiplied.
   return new THREE.RenderTarget(w, h, {
     type: THREE.HalfFloatType,
     depthBuffer: false,

@@ -383,7 +383,6 @@ function useCaptureCapMaterial(texture: THREE.Texture) {
     const created = new MeshBasicNodeMaterial({
       transparent: true,
       premultipliedAlpha: true,
-      toneMapped: false,
     })
     created.outputNode = Fn(() => {
       // SAFETY: a texture sample is a vec4; Three's types return a bare Node.

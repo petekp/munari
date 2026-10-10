@@ -1,8 +1,8 @@
 // Example descriptions — one vocabulary for navigation, previews, and guides.
-// The source reference matches the development API shown on this site.
+// Source links follow main rather than a pinned commit, so they track the current API.
 
 export const SOURCE_ROOT = 'https://github.com/petekp/munari'
-export const SOURCE_REF = '4cedcd0e58148db412c49b764f7fc9f404d8c056'
+export const SOURCE_REF = 'main'
 export const GUIDE_URL = `${SOURCE_ROOT}/blob/${SOURCE_REF}/README.md#your-first-surface`
 export const SOURCE_ARCHIVE = `${SOURCE_ROOT}/archive/${SOURCE_REF}.zip`
 export const BROWSER_GUIDE = 'https://developer.chrome.com/blog/html-in-canvas-origin-trial'
@@ -57,7 +57,7 @@ export const EXAMPLES = [
     id: 'logo', title: 'Logo', category: 'Typography', wash: '#b47deb',
     headline: 'Typography with another dimension',
     description: 'The same letterforms appear as page typography and animated 3D objects.',
-    instruction: 'Switch between HTML and WebGL, then try the shape and motion controls.',
+    instruction: 'Switch between HTML and 3D, then try the shape and motion controls.',
     takeaway: 'Materials and geometry can change the appearance of text drawn from the DOM.',
   },
 ] as const

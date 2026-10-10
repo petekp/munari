@@ -49,7 +49,6 @@ try {
     args: [
       ...WEBGPU_CHROME_ARGS,
       '--enable-features=CanvasDrawElement',
-      '--enable-webgl',
       '--enable-unsafe-swiftshader',
       // The idle-zero pair: a throttled renderer would stretch the lifting
       // window and misdate every click relative to the phase timeline.

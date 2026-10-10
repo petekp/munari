@@ -80,7 +80,7 @@ export function createLightBulb(backdrop:LampBackdrop,coordinateSystem:THREE.Coo
   const centre=new THREE.Vector3(),tangent=new THREE.Vector3(),side=new THREE.Vector3()
   const haloTexture=glowTexture()
   const halos=[{size:144,opacity:.4,color:0xfff4d4},{size:320,opacity:.26,color:0xffffff}].map(({size,opacity,color})=>{
-    const material=new SpriteNodeMaterial({map:haloTexture,color,blending:THREE.AdditiveBlending,transparent:true,opacity,depthTest:false,depthWrite:false,toneMapped:false})
+    const material=new SpriteNodeMaterial({map:haloTexture,color,blending:THREE.AdditiveBlending,transparent:true,opacity,depthTest:false,depthWrite:false})
     // Straight alpha: land the encoded colour with its alpha, so the additive
     // blend scales it by alpha once, as WebGL's did (decisions.md #72).
     // SAFETY: Three declares this TSL function's layout as vec3 to vec3; its

@@ -338,7 +338,7 @@ try {
   // is wired up or not. Two clauses here did exactly that, and stubbing the
   // wave button to `() => {}` left the gate green (2026-08-23).
   //
-  // What replaced them: the WebGL segment must not be on the panel. Asking
+  // What replaced them: the 3D segment must not be on the panel. Asking
   // for a renderer that cannot arrive mounted a Canvas whose frameloop
   // never advanced, so react-three-fiber's `onCreated` stayed pending until
   // the flip back unmounted the wrapper div, then fired against it and

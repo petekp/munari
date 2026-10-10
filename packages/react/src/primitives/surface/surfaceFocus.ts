@@ -3,18 +3,17 @@
 // The law: a Surface renders its content TWICE, and focus is a property of
 // the document, not of a copy. Exactly one of the two copies is reachable
 // at a time, so when the hold moves the focused element has to move with
-// it, and the outside world must be told about one focus, not two.
+// it.
 //
 // The fault, 2026-08-17: the page copy is released by `inert`, and `inert`
 // blurs whatever it contains. A user who had tabbed to the button and then
 // lifted the Surface lost focus to `<body>` — no error, no visible ring,
 // and the next Tab restarted from the top of the document. The transfer
 // below runs in the same task as that blur, so the focus never lands on
-// the body at all, and the ledger collapses the blur/focus pair into no
-// logical change.
+// the body at all.
 //
 // Ownership: this module owns the key that names the same element in both
-// copies and the dedupe ledger. It owns no React state and no store.
+// copies and the transfer between them. It owns no React state and no store.
 
 /** An authored name for an element, honored over its structural position. */
 export const SURFACE_FOCUS_ATTRIBUTE = 'data-munari-focus'
@@ -112,51 +111,4 @@ export function transferSurfaceFocus(from: HTMLElement, to: HTMLElement): HTMLEl
     }
   }
   return target
-}
-
-export type SurfaceFocusInstance = 'page' | 'source'
-
-export interface SurfaceFocusLedger {
-  /** One copy gained or lost focus. */
-  report(instance: SurfaceFocusInstance, focused: boolean): void
-  /** True while either copy holds focus. */
-  focused(): boolean
-  dispose(): void
-}
-
-/**
- * Collapse two copies' focus events into one logical signal.
- *
- * Coalesced in a microtask rather than reported as they arrive: a transfer
- * is a `focusout` immediately followed by a `focusin`, both in the same
- * task, and a consumer that saw the pair would close its editor between
- * them.
- */
-export function createSurfaceFocusLedger(
-  notify: (focused: boolean) => void,
-): SurfaceFocusLedger {
-  const held = { page: false, source: false }
-  let announced = false
-  let scheduled = false
-  let live = true
-  const flush = () => {
-    scheduled = false
-    if (!live) return
-    const next = held.page || held.source
-    if (next === announced) return
-    announced = next
-    notify(next)
-  }
-  return {
-    report(instance, focused) {
-      held[instance] = focused
-      if (scheduled) return
-      scheduled = true
-      queueMicrotask(flush)
-    },
-    focused: () => held.page || held.source,
-    dispose() {
-      live = false
-    },
-  }
 }

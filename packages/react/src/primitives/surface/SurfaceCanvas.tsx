@@ -399,14 +399,14 @@ function SurfaceHostBridge({
     if (!(gl instanceof WebGPURenderer)) return
     // This bridge mounts only once its renderer exists, so a replacement's
     // mount is the end of the previous renderer's loss.
-    host.setContextLost(false)
+    host.setRendererLost(false)
     const report = gl.onDeviceLost
     gl.onDeviceLost = (info) => {
       report.call(gl, info)
       // Nothing on this canvas will reach the screen again, so the
       // deferrals of the frame that died are void.
       host.discardFrameTail()
-      host.setContextLost(true)
+      host.setRendererLost(true)
       // The canvas can keep compositing its last frame over the page HTML.
       gl.domElement.style.visibility = 'hidden'
       onRendererLost()

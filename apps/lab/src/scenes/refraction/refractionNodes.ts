@@ -215,7 +215,6 @@ export function createRefractionMaterial(surface: SurfaceNodes, v: RefractionVal
     transparent: true,
     premultipliedAlpha: true,
     depthWrite: false,
-    toneMapped: false,
   })
 
   // Hermite reconstruction of a coarse field, at the cost of no extra taps.

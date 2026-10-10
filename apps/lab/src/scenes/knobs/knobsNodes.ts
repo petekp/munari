@@ -5,7 +5,7 @@
 // page's sRGB values and the corona is computed in them, as it was tuned.
 // The pipeline encodes each fragment to sRGB, so the opaque result is
 // decoded first and lands on its tuned value; the additive blend then sums
-// in the sRGB canvas, as it did on WebGL (decisions.md #72).
+// in the sRGB canvas, where the corona was tuned (decisions.md #72).
 //
 // Ownership: this module owns the shading. Knobs.tsx owns the bake, the
 // uniform writes, and the mesh.
@@ -90,7 +90,6 @@ export function createCoronaMaterial(art: THREE.Texture, v: CoronaValues): MeshB
     blendDst: THREE.OneFactor,
     blendSrcAlpha: THREE.ZeroFactor,
     blendDstAlpha: THREE.OneFactor,
-    toneMapped: false,
   })
   const at = varying(positionGeometry.xy)
 

@@ -403,17 +403,6 @@ function MarbleLighting({ tuning, width, height }: {
     renderer.shadowMap.needsUpdate = true
   }, [renderer, tuning.exposure, tuning.shadowsEnabled])
   useLayoutEffect(() => {
-    const shadow = light.current?.shadow
-    if (!shadow) return
-    // Three allocates the target only while map is null. Changing mapSize
-    // alone leaves the previous GPU allocation in use.
-    shadow.map?.dispose()
-    shadow.mapPass?.dispose()
-    shadow.map = null
-    shadow.mapPass = null
-    shadow.needsUpdate = true
-  }, [tuning.shadowMapSize])
-  useLayoutEffect(() => {
     light.current?.shadow.camera.updateProjectionMatrix()
   }, [width, height, shadowFar])
   return (
@@ -615,7 +604,7 @@ export function MarbleHandApp() {
           raycast={IGNORE_RAYCAST}
         >
           <planeGeometry args={[box.width, box.height]} />
-          <shadowMaterial transparent opacity={PAGE_SHADOW_OPACITY} depthWrite={false} toneMapped={false} />
+          <shadowMaterial transparent opacity={PAGE_SHADOW_OPACITY} depthWrite={false} />
         </mesh>
         <Suspense fallback={null}>
             <MarblePointer
