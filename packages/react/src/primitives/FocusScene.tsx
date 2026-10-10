@@ -28,6 +28,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
   type RefObject,
 } from 'react'
@@ -173,11 +174,11 @@ export function FocusScene({
   const camera = useThree((s) => s.camera)
   const gl = useThree((s) => s.gl)
 
-  const tree = useRef(createFocusTree<MemberData>()).current
-  const runtimes = useRef(new Map<string, GroupRuntime>()).current
-  const subscribers = useRef(new Set<(e: FocusSceneEvent) => void>()).current
-  const fulfillers = useRef(new Set<ReframeFulfiller>()).current
-  const navPolicies = useRef(new Set<NavPolicy>()).current
+  const [tree] = useState(() => createFocusTree<MemberData>())
+  const [runtimes] = useState(() => new Map<string, GroupRuntime>())
+  const [subscribers] = useState(() => new Set<(e: FocusSceneEvent) => void>())
+  const [fulfillers] = useState(() => new Set<ReframeFulfiller>())
+  const [navPolicies] = useState(() => new Set<NavPolicy>())
   // Scene-lifetime, and deliberately NOT inside the bundle memo below: that
   // memo is keyed on `camera`, so a scene that swapped its default camera
   // would build a fresh layer while every proxy already registered stayed
@@ -186,10 +187,10 @@ export function FocusScene({
   // the tree (a ref, so it survives) still holds those ids mints duplicates.
   // The directional trail is here for the plain reason that a trail is scene
   // state and a camera is not a new scene.
-  const proxyLayer = useRef(createProxyLayer()).current
+  const [proxyLayer] = useState(createProxyLayer)
   const leafSeq = useRef(0)
   const compositeSeq = useRef(0)
-  const history = useRef(createDirectionalHistory()).current
+  const [history] = useState(createDirectionalHistory)
   const cursorRef = useRef<string | null>(null)
   // Cause of the focusin we are about to trigger; a focusin with no pending
   // cause arrived by mouse / native Tab / script — reported as 'pointer'.
@@ -226,9 +227,9 @@ export function FocusScene({
         .members(groupId)
         .map((m) => (m.kind === 'composite' ? tabbables(m.data.root) : [m.data.root]))
 
-    const interiorFirst = (groupId: string): HTMLElement | null => {
-      for (const seq of memberSequences(groupId)) if (seq[0]) return seq[0]
-      return null
+    const interiorEdge = (groupId: string, direction: 1 | -1): HTMLElement | null => {
+      const flat = memberSequences(groupId).flat()
+      return (direction === 1 ? flat[0] : flat[flat.length - 1]) ?? null
     }
 
     const locate = (): Located => {
@@ -253,11 +254,15 @@ export function FocusScene({
     /** Position one proxy at its object's projected rect. No rect (behind
      *  camera, no volume): keep the last position — a focused proxy must
      *  never become unreachable or display:none (docs/focus.md). */
-    const positionProxy = (proxy: HTMLElement, object: THREE.Object3D | null) => {
+    const positionProxy = (
+      proxy: HTMLElement,
+      object: THREE.Object3D | null,
+      readCanvasBox: () => DOMRect = () => gl.domElement.getBoundingClientRect(),
+    ) => {
       if (!object) return
       const rect = screenRect(object, camera, gl.domElement)
       if (!rect) return
-      const canvasBox = gl.domElement.getBoundingClientRect()
+      const canvasBox = readCanvasBox()
       proxy.style.left = `${canvasBox.left + rect.x}px`
       proxy.style.top = `${canvasBox.top + rect.y}px`
       // Floor the box: zero-area focusables are a flagged a11y anti-pattern.
@@ -265,10 +270,14 @@ export function FocusScene({
       proxy.style.height = `${Math.max(rect.h, 12)}px`
     }
 
+    // Proxies are position:fixed, so writing them cannot move the canvas:
+    // one box read serves the whole pass instead of a layout flush per leaf.
     const syncProxyRects = () => {
+      let canvasBox: DOMRect | undefined
+      const readCanvasBox = () => (canvasBox ??= gl.domElement.getBoundingClientRect())
       for (const { id } of tree.groups()) {
         for (const m of tree.members(id)) {
-          if (m.kind === 'leaf') positionProxy(m.data.root, m.data.object)
+          if (m.kind === 'leaf') positionProxy(m.data.root, m.data.object, readCanvasBox)
         }
       }
     }
@@ -277,6 +286,11 @@ export function FocusScene({
       runtimes.get(id)?.reg.objectRef?.current ??
       tree.members(id).find((m) => m.data.object)?.data.object ??
       null
+
+    const groupRect = (id: string) => {
+      const obj = groupObject(id)
+      return obj ? screenRect(obj, camera, gl.domElement) : null
+    }
 
     const viewport = (): Viewport => ({
       w: gl.domElement.clientWidth,
@@ -293,8 +307,7 @@ export function FocusScene({
       const unprojected: string[] = []
       for (const { id, order } of groups) {
         if (order !== undefined) continue
-        const obj = groupObject(id)
-        const rect = obj ? screenRect(obj, camera, gl.domElement) : null
+        const rect = groupRect(id)
         if (rect) rects.push({ id, ...rect })
         else unprojected.push(id)
       }
@@ -309,8 +322,7 @@ export function FocusScene({
       if (initial && ring.includes(initial)) return initial
       const rects: OrderRect[] = []
       for (const id of ring) {
-        const obj = groupObject(id)
-        const rect = obj ? screenRect(obj, camera, gl.domElement) : null
+        const rect = groupRect(id)
         if (rect) rects.push({ id, ...rect })
       }
       return entryPick(rects, viewport())
@@ -513,7 +525,7 @@ export function FocusScene({
 
     const descend = (groupId: string) => {
       const remembered = runtimes.get(groupId)?.memory.recall(interiorValid(groupId))
-      const target = remembered ?? interiorFirst(groupId)
+      const target = remembered ?? interiorEdge(groupId, 1)
       // The latch sets at the GESTURE — Enter is the commitment the camera
       // enacts. Click-in interiors never pass through here, so they never
       // trap (APG exit-at-edge preserved for mouse-entered focus).
@@ -539,8 +551,7 @@ export function FocusScene({
       direction: 1 | -1,
       cause: FocusCause,
     ): boolean => {
-      const flat = memberSequences(groupId).flat()
-      const target = direction === 1 ? flat[0] : flat[flat.length - 1]
+      const target = interiorEdge(groupId, direction)
       if (target) {
         focusEl(target, cause)
         return document.activeElement === target
@@ -575,8 +586,7 @@ export function FocusScene({
         focusUnit(back, 'directional')
         return
       }
-      const obj = groupObject(originId)
-      const originRect = obj ? screenRect(obj, camera, gl.domElement) : null
+      const originRect = groupRect(originId)
       if (!originRect) {
         // Unprojectable origin (behind the camera) anchors no geometry;
         // treat the press as re-entry toward whatever is in view.
@@ -640,7 +650,6 @@ export function FocusScene({
         if (next) focusInteriorEdge(next, e.shiftKey ? -1 : 1, 'ring')
         return
       }
-      if (e.key !== 'Enter' && e.key !== 'F2') return
       e.preventDefault()
       focusUnit(live ? cursor : (entryTarget(ring) ?? ring[0]!), 'ring')
     }
@@ -648,8 +657,6 @@ export function FocusScene({
     /** On a unit: Tab traverses (members when engaged, the ring when not),
      *  Enter descends, Escape releases or ascends. */
     const keyAtUnit = (e: KeyboardEvent, groupId: string) => {
-      if (e.key !== 'Tab' && e.key !== 'Enter' && e.key !== 'F2' && e.key !== 'Escape')
-        return
       e.preventDefault()
       if (e.key === 'Enter' || e.key === 'F2') {
         descend(groupId)
@@ -672,8 +679,7 @@ export function FocusScene({
         // members — forward enters at the first element, backward at the
         // last (wrap grammar). A read-only engaged panel has no interior:
         // Tab is dead until Escape releases.
-        const flat = memberSequences(groupId).flat()
-        const target = e.shiftKey ? flat[flat.length - 1] : flat[0]
+        const target = interiorEdge(groupId, e.shiftKey ? -1 : 1)
         if (target) focusEl(target, 'interior')
         return
       }
@@ -686,8 +692,7 @@ export function FocusScene({
     const exitInterior = (groupId: string, sign: 1 | -1) => {
       if (isEngaged(groupId)) {
         // Trap wrap: past the end → back to the other end.
-        const flat = sign === 1 ? null : memberSequences(groupId).flat()
-        const wrapped = flat ? flat[flat.length - 1] : interiorFirst(groupId)
+        const wrapped = interiorEdge(groupId, sign)
         if (wrapped) focusEl(wrapped, 'interior')
         return
       }
@@ -892,12 +897,9 @@ export function FocusScene({
             // Never yank a focused proxy out from under the user — that
             // silently drops focus to <body> (react-three-a11y's culling
             // bug). Hand focus up first: own unit, else the canvas.
-            if (document.activeElement === proxy) {
-              tree.unregisterMember(groupId, id)
-              if (!focusUnit(groupId, 'ascend')) focusEl(gl.domElement, 'ascend')
-            } else {
-              tree.unregisterMember(groupId, id)
-            }
+            const holdsFocus = document.activeElement === proxy
+            tree.unregisterMember(groupId, id)
+            if (holdsFocus && !focusUnit(groupId, 'ascend')) focusEl(gl.domElement, 'ascend')
             proxy.removeEventListener('keydown', onKeydown)
             proxy.removeEventListener('focus', onFocus)
             proxy.removeEventListener('blur', onBlur)
@@ -947,7 +949,7 @@ export function FocusScene({
     }
     // The trailing refs are stable identities, not re-run triggers.
   }, [camera, gl, tree, runtimes, subscribers, fulfillers, navPolicies, proxyLayer,
-      history, leafSeq, compositeSeq, marginRef, initialFocusRef, onFocusChangeRef])
+      history, marginRef, initialFocusRef, onFocusChangeRef])
 
   // The built-in fulfiller's consumer: a 0.32s smoothstep truck. Armed only
   // in rigless scenes — registering any app fulfiller disarms it for good.
