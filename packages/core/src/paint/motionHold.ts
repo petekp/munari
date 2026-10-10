@@ -71,9 +71,13 @@ export function releaseMotion(held: readonly Animation[]): void {
  * is standing in for the original's pixels, so it has to be at the
  * original's pose, and if the original is held the copy is held with it.
  *
- * Both trees must be structural clones, which is what lets element-local
- * animation lists line up by index. Call it AFTER inserting the copy: a
- * disconnected element has no animations to place.
+ * Both trees must be structural clones, so elements line up by index. Their
+ * animations line up only by name: `getAnimations()` lists running
+ * transitions first, and a fresh clone has none. Measured 2026-10-09 by
+ * gate:capture-engines, pairing by slot put an opacity transition's 284 ms
+ * on the copy's keyframe animation, which the original held at 683 ms. Call
+ * it AFTER inserting the copy: a disconnected element has no animations to
+ * place.
  */
 export function matchMotion(from: HTMLElement, to: HTMLElement): void {
   if (!('getAnimations' in from)) return
@@ -84,9 +88,17 @@ export function matchMotion(from: HTMLElement, to: HTMLElement): void {
     if (!copy) return
     const sources = original.getAnimations()
     if (sources.length === 0) continue
-    const targets = copy.getAnimations()
-    for (const [slot, source] of sources.entries()) {
-      const target = targets[slot]
+    const targets = new Map<string, Animation[]>()
+    for (const target of copy.getAnimations()) {
+      const key = motionKey(target)
+      if (key === undefined) continue
+      const same = targets.get(key)
+      if (same) same.push(target)
+      else targets.set(key, [target])
+    }
+    for (const source of sources) {
+      const key = motionKey(source)
+      const target = key === undefined ? undefined : targets.get(key)?.shift()
       if (!target) continue
       target.currentTime = source.currentTime
       if (source.playState !== 'paused') continue
@@ -98,4 +110,12 @@ export function matchMotion(from: HTMLElement, to: HTMLElement): void {
       }
     }
   }
+}
+
+// A script's `element.animate()` has no name and is not cloned, so it has no
+// counterpart in a copy.
+function motionKey(animation: Animation): string | undefined {
+  if ('animationName' in animation) return `animation ${String(animation.animationName)}`
+  if ('transitionProperty' in animation) return `transition ${String(animation.transitionProperty)}`
+  return undefined
 }
