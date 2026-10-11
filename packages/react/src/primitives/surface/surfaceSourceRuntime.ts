@@ -154,6 +154,12 @@ export function createDomSurfaceTexture(
   texture.premultiplyAlpha = true
   texture.anisotropy = 8
   applyFilterPolicy(texture, tier, pinned)
+  // Nothing to copy until the first paint arms an upload. Chrome cannot
+  // read a capture canvas it has not painted: WebGPU logged "Browser fails
+  // extracting valid resource from external image" for the constructor's
+  // upload, 616 ms in, before the first paint (2026-10-10, Chrome 155).
+  // Three still allocates storage here, which the ledger below assumes.
+  texture.source.dataReady = false
   return texture
 }
 
@@ -265,6 +271,7 @@ export function createSurfaceSourceRuntime(
       // Upload that carried image even if auto paint was otherwise idle.
       pendingUploadGeneration = source.currentPaint()?.frame.generation ?? -1
       pendingUploadRead = source.currentPaint()?.read ?? -1
+      if (source.painted()) texture.source.dataReady = true
       texture.needsUpdate = true
     }
   }
@@ -274,6 +281,7 @@ export function createSurfaceSourceRuntime(
     syncStorage()
     pendingUploadGeneration = source.currentPaint()?.frame.generation ?? -1
     pendingUploadRead = source.currentPaint()?.read ?? -1
+    texture.source.dataReady = true
     texture.needsUpdate = true
     anyUpload = true
   }

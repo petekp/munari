@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- WebGPU no longer logs "CopyExternalImageToTexture(): Browser fails
+  extracting valid resource from external image" when a Surface first
+  appears. The capture texture copies nothing until the first paint.
 - Every development warning now uses one rule: Vite's `import.meta.env.DEV`
   when it is set, otherwise a `NODE_ENV` of `development` or `test`. The
   `SurfaceCanvas` warnings and the preparation-wait warning used to read only
