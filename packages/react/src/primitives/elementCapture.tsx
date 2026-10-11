@@ -3,14 +3,14 @@
 import { use, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { context as threeRootContext } from '@react-three/fiber'
-import { captureAvailable, createInputWindow, PARKED_HOST_ATTRIBUTE } from '@munari/core'
+import { captureAvailable, createInputWindow, PARKED_HOST_ATTRIBUTE, restoreScroll } from '@munari/core'
 import {
   CaptureSource, connectCapture, setCaptureUnavailable, useCaptureHandle,
   type CaptureConnection, type CaptureHandle,
 } from './capture'
 import type { SurfaceResolution, SurfaceSize } from './surface/surfaceSourceRuntime'
 import { useLatest } from './useLatest'
-import { applyScrollOffsets, type ScrollOffsets } from './retainedMove'
+import type { ScrollOffsets } from './retainedMove'
 
 export interface ElementCaptureOptions {
   resolution?: SurfaceResolution
@@ -81,7 +81,7 @@ class UnsupportedCaptureContent extends Error {}
 /**
  * A clone drops properties that are not attributes: field values, checked
  * state, scroll offsets. Scroll offsets are only recorded, for
- * `applyScrollOffsets` once the clone is attached.
+ * `applyCopyScrolls` once the clone is attached.
  */
 export function copyFieldState(source: Element, target: Element, scrolls: ScrollOffsets) {
   if (source instanceof HTMLInputElement && target instanceof HTMLInputElement) {
@@ -91,6 +91,15 @@ export function copyFieldState(source: Element, target: Element, scrolls: Scroll
   } else if (source instanceof HTMLTextAreaElement && target instanceof HTMLTextAreaElement) target.value = source.value
   else if (source instanceof HTMLSelectElement && target instanceof HTMLSelectElement) target.selectedIndex = source.selectedIndex
   if (source.scrollTop || source.scrollLeft) scrolls.push([target, source.scrollTop, source.scrollLeft])
+}
+
+/**
+ * Give an attached copy its original's scroll offsets. Chrome ignores
+ * `scrollTop` on an element with no layout box (retainedMove.ts), and the
+ * scroll events this causes are not the user's (`restoreScroll`).
+ */
+export function applyCopyScrolls(scrolls: ScrollOffsets) {
+  for (const [element, top, left] of scrolls) restoreScroll(element, top, left)
 }
 
 /** Copies only visual state. No React component, media decoder, or custom element is mounted twice. */
@@ -199,7 +208,7 @@ export function useElementCapture(options: ElementCaptureOptions = {}): ElementC
         wrapper.style.height = `${copied.size[1]}px`
         if (!connection) connection = connectCapture(capture, wrapper, copied.size, { resolution: resolutionRef.current, onError: error => errorRef.current?.(error) })
         else connection.setSize(copied.size)
-        applyScrollOffsets(copied.scrolls)
+        applyCopyScrolls(copied.scrolls)
         activeConnection.current = connection
         connection.repaint()
         lastReportedError = ''

@@ -23,8 +23,8 @@ import { watchSurfacePlacement } from './surface/surfacePlacement'
 import { claimSourcePointer, releaseSourcePointer } from './surface/surfacePointerOwnership'
 import { registerHostSpace, hostSpace, markerSpace, boxInHostSpace, hostSpaceScale, hostSpaceUpright } from './surface/surfaceHostSpace'
 import { createSurfacePageClip } from './surface/surfacePageClip'
-import { applyScrollOffsets, moveRetained, type ScrollOffsets } from './retainedMove'
-import { copyFieldState } from './elementCapture'
+import { moveRetained, type ScrollOffsets } from './retainedMove'
+import { applyCopyScrolls, copyFieldState } from './elementCapture'
 import { readSurfaceDevicePixelRatio } from './surface/surfaceDevicePixelRatio'
 
 function unsupportedSnapshot(root:HTMLElement):string|null {
@@ -391,7 +391,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
       moveRetained(liveRoot, holder)
       placeholder.current?.remove(); placeholder.current = null
       const held = snapshot(liveRoot)
-      captureRoot.replaceChildren(held.node); applyScrollOffsets(held.scrolls); matchMotion(liveRoot, held.node); heldKey.current = held.key
+      captureRoot.replaceChildren(held.node); applyCopyScrolls(held.scrolls); matchMotion(liveRoot, held.node); heldKey.current = held.key
     }
     updateWarmRig(holder,ownRuntime,captured,captureRoot)
   }
@@ -467,7 +467,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
         // the compositor always does, a rasterizing engine only when the
         // content is live or the user just acted on it.
         captureRoot.replaceChildren(held.node)
-        applyScrollOffsets(held.scrolls)
+        applyCopyScrolls(held.scrolls)
         matchMotion(liveRoot, held.node)
       } else if (store.holdsPage() && placeholder.current) {
         const copy = placeholderCopy(liveRoot, unsupported)

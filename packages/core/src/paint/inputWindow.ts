@@ -98,6 +98,40 @@ export const PAINT_EVENTS = [
   'load',
 ] as const
 
+/**
+ * Scroll offsets the binding set, by element. A copy of a Surface's content
+ * gets its original's offsets once it is attached, and the browser answers
+ * with a `scroll` event like any other. That event is not the user acting
+ * and not a new picture: the copy already shows the offsets when it is
+ * captured. Taken as either, it made a non-live Surface with a scrolled
+ * container capture every change its content made on its own (measured
+ * 2026-10-10, Chrome 155: one capture per change, against none with no
+ * scroll offset).
+ */
+const restoredScrolls = new WeakMap<Element, readonly [number, number]>()
+
+/** Set `element`'s scroll offsets so the `scroll` event that follows is not heard as input or as a paint signal. */
+export function restoreScroll(element: Element, top: number, left: number): void {
+  element.scrollTop = top
+  element.scrollLeft = left
+  // The offsets as the browser clamped them, which is what the event shows.
+  restoredScrolls.set(element, [element.scrollTop, element.scrollLeft])
+}
+
+/**
+ * Whether `event` is the browser reporting a `restoreScroll`. The first
+ * scroll that lands at other offsets ends the mark, and from then on the
+ * element's scrolls count again.
+ */
+export function isRestoredScroll(event: Event): boolean {
+  if (event.type !== 'scroll' || !(event.target instanceof Element)) return false
+  const restored = restoredScrolls.get(event.target)
+  if (!restored) return false
+  if (restored[0] === event.target.scrollTop && restored[1] === event.target.scrollLeft) return true
+  restoredScrolls.delete(event.target)
+  return false
+}
+
 export interface HearOptions {
   /**
    * Input to disown: a whole-page root contains other captures' parked
@@ -127,7 +161,7 @@ export function createInputWindow(now: () => number): InputWindow {
   const hear = (root: HTMLElement, { ignore }: HearOptions = {}) => {
     const hearing = new AbortController()
     const heard = (event: Event) => {
-      if (!ignore?.(event.target)) open()
+      if (!ignore?.(event.target) && !isRestoredScroll(event)) open()
     }
     for (const event of INPUT_EVENTS) {
       root.addEventListener(event, heard, { capture: true, signal: hearing.signal })

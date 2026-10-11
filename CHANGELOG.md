@@ -22,6 +22,9 @@
 - In development, a `Surface.Mesh` outside the camera view no longer logs
   that it is still waiting for a usable source frame and preparation draw.
   A hidden mesh or a mesh with no source still logs it.
+- `@petepetrash/munari/advanced` exports `restoreScroll(element, top, left)`.
+  It sets scroll offsets whose `scroll` event a capture does not take as user
+  input or as a reason to capture.
 - `@petepetrash/munari/advanced` exports `releasedSample(sample)`, which
   returns a pointer sample with no buttons pressed.
 - `@petepetrash/munari/advanced` replaces `passIsWarmUp`, `passPresentsDirectly`

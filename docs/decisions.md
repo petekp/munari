@@ -4344,6 +4344,18 @@ request for the next compositor callback. Requests made during the failed draw
 also survive. Failure marks the bitmap stale; it does not start an unbounded
 retry loop. The native error-and-recovery test checks this sequence.
 
+Amended 2026-10-10: a scroll the binding causes is not a reason. A copy of a
+Surface's content gets its original's scroll offsets once it is attached,
+through `restoreScroll`, and the browser reports that as a `scroll` event. Both
+engines took the event as a paint signal and as the user's input. So a non-live
+Surface with a scrolled container captured every change its content made on its
+own. Measured in Chrome 155: one capture for each of five script-only text
+changes, and none for the same Surface unscrolled. Both listeners now skip a
+`scroll` whose target still sits at the offsets `restoreScroll` set. After the
+change, the five script-only changes cost no capture, a wheel scroll on the
+page still cost one, and a script scroll on content in the scene still cost
+one. The shared engine suite checks the law on both engines.
+
 ## #65 — The page releases onto pixels no older than the lift (2026-09-13)
 
 Content that moves stepped BACKWARDS for the first few frames of a crossing,

@@ -23,7 +23,7 @@
 import { MAX_TEXTURE_EDGE } from './lodTier'
 import { storeForBox } from './textureStorage'
 import { allocateSourceId } from './sourceIdentity'
-import { PAINT_EVENTS } from './inputWindow'
+import { isRestoredScroll, PAINT_EVENTS } from './inputWindow'
 import type { FrameId } from './frameSource'
 
 // ── the contract ─────────────────────────────────────────────────────────
@@ -423,8 +423,11 @@ export function listenForRepaintSignals(
   onSignal: () => void,
   signal: AbortSignal,
 ): void {
+  const heard = (event: Event) => {
+    if (!isRestoredScroll(event)) onSignal()
+  }
   for (const event of PAINT_EVENTS) {
-    element.addEventListener(event, onSignal, { capture: true, signal })
+    element.addEventListener(event, heard, { capture: true, signal })
   }
   document.fonts?.addEventListener('loadingdone', onSignal, { signal })
 }

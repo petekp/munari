@@ -30,6 +30,7 @@ import {
   htmlInCanvasEngine,
   PARKED_HOST_ATTRIBUTE,
   paintStats,
+  restoreScroll,
   setCaptureEngine,
   type CaptureClock,
   type RasterImage,
@@ -397,6 +398,28 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
     source.element.setAttribute('data-tick', '3')
     await harness.deliver(source)
     expect(source.paintCount()).toBe(quiet + 2)
+    source.dispose()
+  })
+
+  // Law 4. A copy gets its original's scroll offsets once it is attached,
+  // and the browser reports that as a scroll. It is neither the user acting
+  // nor a new picture, so a source that is not live follows neither it nor
+  // a change landing just after it (decisions.md #64, 2026-10-10
+  // amendment). Any other scroll is still a reason.
+  it('takes a restored scroll as neither input nor a reason to capture', async () => {
+    const source = await born()
+    const quiet = source.paintCount()
+
+    restoreScroll(source.element, 120, 0)
+    source.element.dispatchEvent(new Event('scroll'))
+    source.element.setAttribute('data-tick', '1')
+    await harness.deliver(source)
+    expect(source.paintCount()).toBe(quiet)
+
+    source.element.scrollTop = 200
+    source.element.dispatchEvent(new Event('scroll'))
+    await harness.deliver(source)
+    expect(source.paintCount()).toBe(quiet + 1)
     source.dispose()
   })
 
