@@ -55,8 +55,10 @@ export function presentationReceiptSatisfies(
 // hide a warming Surface while other Surfaces' pixels stay visible. The
 // warm-up is per-Surface instead: the incoming group is drawn with color,
 // depth, and stencil writes disabled, which may compile its program and
-// upload its texture but cannot punch a hole in the scene around it. The
-// three predicates below are how a pass says which of those it was.
+// upload its texture but cannot punch a hole in the scene around it.
+// `presentationRoute` is how a pass says which of those it was and what it
+// can prove. Every presenter reads its pass through it, so the answer is
+// one law and not a copy per component.
 
 /** What the renderer was doing when it drew one presenter. */
 export interface SurfacePassEvidence {
@@ -68,43 +70,46 @@ export interface SurfacePassEvidence {
   readonly depthWrite: boolean
   /** Stencil writes were enabled. A warm-up disables these too. */
   readonly stencilWrite: boolean
+  /** The geometry has at least one element to draw (decisions.md #70). */
+  readonly drawable: boolean
 }
 
 /**
- * A warm-up pass: no color, no depth, no stencil. It is allowed to run
- * while another renderer still holds the pixels, and it proves nothing.
+ * What one pass can prove, in the order the checks run:
  *
- * All three writes must be off. A pass that disabled color but left depth
- * on still occludes visible geometry behind it, which is the hole the
- * shared-canvas warm-up exists to avoid.
+ * - `empty`: the geometry drew nothing. Three still runs both callbacks for
+ *   it and the canvas keeps its old pixels, so it proves nothing.
+ * - `warm-up`: no color, no depth, no stencil. It is allowed to run while
+ *   another renderer still holds the pixels, and it counts as stage one
+ *   (the program compiled and the texture was sampled) but never stage two.
+ *   All three writes must be off. A pass that disabled color but left depth
+ *   on still occludes visible geometry behind it, which is the hole the
+ *   shared-canvas warm-up exists to avoid.
+ * - `color-off`: color is off but depth or stencil is on. It is not a
+ *   warm-up, and it proves nothing about what the screen shows.
+ * - `now`: color reached the default framebuffer, so the browser will
+ *   composite these pixels this frame and the outgoing renderer may release
+ *   inside the post-draw callback.
+ * - `tail`: color went into an off-screen target and the host will close
+ *   the frame (`hostTailPresents`). A post-processed scene draws every
+ *   presenter this way, so the presenter's own post-draw callback is NOT a
+ *   presentation boundary: the frame has not reached the screen and a
+ *   composite pass could still discard it. Reading a target draw as
+ *   presentation is the expensive version of this mistake: the page
+ *   releases one frame early, and the seam appears only in scenes that have
+ *   post-processing, which is to say only after a consumer adds an effect
+ *   composer to a Surface scene that worked yesterday.
+ * - `no-host`: color went into an off-screen target and there is no host to
+ *   close the frame, so nothing can present it.
  */
-export function passIsWarmUp(pass: SurfacePassEvidence): boolean {
-  return !pass.colorWrite && !pass.depthWrite && !pass.stencilWrite
-}
+export type PresentationRoute = 'empty' | 'warm-up' | 'color-off' | 'now' | 'tail' | 'no-host'
 
-/**
- * The pass proves presentation on its own: color reached the default
- * framebuffer, so the browser will composite these pixels this frame and
- * the outgoing renderer may release inside the post-draw callback.
- */
-export function passPresentsDirectly(pass: SurfacePassEvidence): boolean {
-  return pass.defaultFramebuffer && pass.colorWrite
-}
-
-/**
- * The pass wrote color into an off-screen target. A post-processed scene
- * draws every presenter this way, so the presenter's own post-draw callback
- * is NOT a presentation boundary — the frame has not reached the screen and
- * a composite pass could still discard it. Presentation for such a pass is
- * closed by the host's tail (`hostTailPresents`) at the end of the frame.
- *
- * Reading a target draw as presentation is the expensive version of this
- * mistake: the page releases one frame early, and the seam appears only in
- * scenes that have post-processing — which is to say, only after a consumer
- * adds an effect composer to a Surface scene that worked yesterday.
- */
-export function passNeedsHostTail(pass: SurfacePassEvidence): boolean {
-  return !pass.defaultFramebuffer && pass.colorWrite
+/** Classify one pass. `hasHost` says whether a host frame tail exists to defer to. */
+export function presentationRoute(pass: SurfacePassEvidence, hasHost: boolean): PresentationRoute {
+  if (!pass.drawable) return 'empty'
+  if (!pass.colorWrite) return !pass.depthWrite && !pass.stencilWrite ? 'warm-up' : 'color-off'
+  if (pass.defaultFramebuffer) return 'now'
+  return hasHost ? 'tail' : 'no-host'
 }
 
 /** What the host saw at the end of one rendered frame. */

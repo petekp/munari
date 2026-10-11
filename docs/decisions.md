@@ -1689,6 +1689,13 @@ resize. Genie's retained gate passes 24 minimize and restore cycles at 6x CPU,
 then loses the WebGL context and returns native coverage without a later draw
 receipt.
 
+**Amendment (2026-10-10, core + react binding).** The pass route is one kernel
+law, `presentationRoute(pass, hasHost)`, shared by `FrameSurface` and
+`Surface.Mesh`. It returns `empty`, `warm-up`, `color-off`, `now`, `tail`, or
+`no-host`. `passIsWarmUp`, `passPresentsDirectly`, and `passNeedsHostTail`
+are removed from the kernel and from the `/advanced` entry. No outcome
+changed: each pass maps to the same behavior as before.
+
 ## #26 — Releasing a mesh requires one post-removal draw (2026-08-10, react binding)
 
 **Decision.** Both DOM-backed and frame-backed Surfaces invalidate their r3f

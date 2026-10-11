@@ -42,16 +42,19 @@ import * as THREE from 'three'
 import { useThree, type ThreeElements } from '@react-three/fiber'
 import {
   presentationReceiptSatisfies,
+  presentationRoute,
   uploadNeedsRealloc,
   type FrameId,
   type FrameSource,
   type PresentationReceipt,
   type PresentationRequirement,
+  type PresentationRoute,
 } from '@munari/core'
 import { SurfaceContext, type SurfaceContextValue } from './SurfaceContext'
 import { surfaceStoreOf, type SurfaceHandle } from './surface/surfaceHandle'
 import { useSurfaceHostContext } from './surface/surfaceHostContext'
 import { surfaceTextureLimit } from './surface/SurfaceCanvas'
+import { drawnByOverride, readPassEvidence } from './surface/surfacePass'
 import { useLatest } from './useLatest'
 import { isDevelopmentRuntime } from '../lib/developmentRuntime'
 
@@ -111,7 +114,7 @@ export interface FrameSurfaceRuntime {
   takeDrawReceipt(): FrameDrawReceipt | null
   beginPresentationPass(
     requirement: PresentationRequirement | undefined,
-    pass: PresentationPass,
+    route: PresentationRoute,
     warn?: (message: string) => void,
   ): void
   takePresentationReceipt(warn?: (message: string) => void): PresentationReceipt | null
@@ -119,41 +122,6 @@ export interface FrameSurfaceRuntime {
   deliverPresentation(receipt: PresentationReceipt): boolean
   rejectedPresentationDraws(transferId: number): number
   dispose(): void
-}
-
-/** What one draw of the mesh can prove, read in its pre-draw callback. */
-export interface PresentationPass {
-  /** The frame this draw belongs to can reach the canvas. */
-  readonly outputEligible: boolean
-  readonly colorWrite: boolean
-  /** The geometry has at least one element to draw. */
-  readonly drawable: boolean
-}
-
-/**
- * Whether a draw of this geometry can produce any primitive. Three runs the
- * mesh callbacks for an empty draw too, zero instances included, and the
- * canvas keeps its old pixels.
- * FrameSurface draws one material, so no geometry group narrows the range.
- */
-export function geometryDraws(geometry: THREE.BufferGeometry): boolean {
-  if (geometry instanceof THREE.InstancedBufferGeometry && geometry.instanceCount <= 0) return false
-  const elements = geometry.index?.count ?? geometry.getAttribute('position')?.count ?? 0
-  const end = Math.min(elements, geometry.drawRange.start + geometry.drawRange.count)
-  return end > geometry.drawRange.start
-}
-
-/**
- * Whether this draw is `scene.overrideMaterial`'s, which never samples the
- * HTML and so proves nothing. WebGPURenderer passes the mesh's own material
- * to `onBeforeRender` and the override to `onAfterRender`. A shadow map can
- * render inside a lit mesh's own draw, so both callbacks of an override draw
- * leave the outer draw's state alone. A WebGLRenderer root that is not a
- * Scene has no override.
- */
-export function drawnByOverride(scene: THREE.Scene, material: THREE.Material): boolean {
-  const override = scene.isScene === true ? scene.overrideMaterial : null
-  return override !== null && (material === override || material.allowOverride)
 }
 
 /** Internal runtime split out so the upload/draw ordering can be tested without a renderer mock. */
@@ -297,22 +265,25 @@ export function createFrameSurfaceRuntime(
       pendingFrame = null
       return { surfaceEpoch, frame }
     },
-    beginPresentationPass(requirement, { outputEligible, colorWrite, drawable }, warn) {
+    beginPresentationPass(requirement, route, warn) {
       pendingPresentation = null
       if (!active || !requirement) return
-      if (!drawable) {
-        rejectPresentation(requirement, 'the geometry has nothing to draw', warn)
-        return
+      switch (route) {
+        case 'empty':
+          rejectPresentation(requirement, 'the geometry has nothing to draw', warn)
+          return
+        case 'warm-up':
+        case 'color-off':
+          rejectPresentation(requirement, 'material color writes are disabled', warn)
+          return
+        case 'no-host':
+          rejectPresentation(requirement, 'off-screen render target', warn)
+          return
+        case 'now':
+        case 'tail':
+          pendingPresentation = requirement
+          return
       }
-      if (!colorWrite) {
-        rejectPresentation(requirement, 'material color writes are disabled', warn)
-        return
-      }
-      if (!outputEligible) {
-        rejectPresentation(requirement, 'off-screen render target', warn)
-        return
-      }
-      pendingPresentation = requirement
     },
     takePresentationReceipt(warn) {
       if (!active || !pendingPresentation) return null
@@ -527,8 +498,7 @@ export function FrameSurface({
   // The Canvas this mesh draws in, when it is a <SurfaceCanvas>. Null in a
   // plain r3f Canvas, which is the case that keeps the old refusal.
   const host = useSurfaceHostContext()
-  const deferredRef = useRef(false)
-  const drawableRef = useRef(true)
+  const routeRef = useRef<PresentationRoute>('now')
 
   const reportRejectedPresentation = useCallback(
     (message: string) => {
@@ -551,23 +521,14 @@ export function FrameSurface({
       const current = runtimeRef.current
       if (!current || current !== runtime || current.source !== frameRef.current) return
       if (drawnByOverride(scene, renderedMaterial)) return
-      drawableRef.current = geometryDraws(geometry)
       // A pass into a render target has not reached the screen, so on its
       // own it cannot present. Inside a <SurfaceCanvas> it does not have to
       // decide alone: the host closes its frame tail once the frame it
       // belongs to reached the default framebuffer, and the receipt waits
       // there. Without a host there is no tail and the old refusal stands.
-      const target = renderer.getRenderTarget() === null
-      deferredRef.current = !target && host !== null && renderedMaterial.colorWrite
-      current.beginPresentationPass(
-        presentationRef.current,
-        {
-          outputEligible: target || deferredRef.current,
-          colorWrite: renderedMaterial.colorWrite,
-          drawable: drawableRef.current,
-        },
-        reportRejectedPresentation,
-      )
+      const route = presentationRoute(readPassEvidence(renderer, geometry, renderedMaterial), host !== null)
+      routeRef.current = route
+      current.beginPresentationPass(presentationRef.current, route, reportRejectedPresentation)
     },
     [runtime, frameRef, presentationRef, reportRejectedPresentation, host],
   )
@@ -580,7 +541,7 @@ export function FrameSurface({
     if (!current || current !== runtime || current.source !== frameRef.current) return
     // An empty draw left the canvas as it was; the uploaded frame waits for
     // a draw that shows it.
-    if (!drawableRef.current) return
+    if (routeRef.current === 'empty') return
     const receipt = current.takeDrawReceipt()
     if (receipt) onFrameDrawnRef.current?.(receipt)
     const presentationReceipt = current.takePresentationReceipt(reportRejectedPresentation)
@@ -588,7 +549,7 @@ export function FrameSurface({
     const deliver = () => {
       if (current.deliverPresentation(presentationReceipt)) onPresentedRef.current?.(presentationReceipt)
     }
-    if (deferredRef.current && host) {
+    if (routeRef.current === 'tail' && host) {
       host.deferPresentation(deliver)
       return
     }

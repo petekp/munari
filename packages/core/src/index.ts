@@ -155,12 +155,11 @@ export {
 // transfer — the handoff
 export {
   hostTailPresents,
-  passIsWarmUp,
-  passNeedsHostTail,
-  passPresentsDirectly,
   presentationReceiptSatisfies,
+  presentationRoute,
   type PresentationReceipt,
   type PresentationRequirement,
+  type PresentationRoute,
   type SurfaceHostTail,
   type SurfacePassEvidence,
 } from './transfer/presentation'

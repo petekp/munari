@@ -11,6 +11,10 @@
   A hidden mesh or a mesh with no source still logs it.
 - `@petepetrash/munari/advanced` exports `releasedSample(sample)`, which
   returns a pointer sample with no buttons pressed.
+- `@petepetrash/munari/advanced` replaces `passIsWarmUp`, `passPresentsDirectly`
+  and `passNeedsHostTail` with `presentationRoute(pass, hasHost)`, which
+  returns `'empty'`, `'warm-up'`, `'color-off'`, `'now'`, `'tail'` or
+  `'no-host'`. `SurfacePassEvidence` gains a `drawable` field.
 
 ## 0.4.1 — 2026-10-10
 

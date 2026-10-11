@@ -7,7 +7,6 @@ import {
 import {
   assertFrameMaterialSupported,
   createFrameSurfaceRuntime,
-  geometryDraws,
   hearingGatedRaycast,
 } from './FrameSurface'
 
@@ -27,8 +26,8 @@ const requirement = (
   presentationRevision,
 })
 
-// A draw that can reach the canvas, writes color, and has something to draw.
-const SHOWN = { outputEligible: true, colorWrite: true, drawable: true }
+// A draw of color into the default framebuffer with something to draw.
+const SHOWN = 'now'
 
 describe('FrameSurface runtime', () => {
   it('configures the exact caller canvas before exposing the texture', () => {
@@ -101,16 +100,37 @@ describe('FrameSurface runtime', () => {
     const warn = vi.fn()
 
     runtime.texture.onUpdate?.(runtime.texture)
-    runtime.beginPresentationPass(requested, { ...SHOWN, outputEligible: false }, warn)
-    expect(runtime.takePresentationReceipt(warn)).toBeNull()
-    runtime.beginPresentationPass(requested, { ...SHOWN, colorWrite: false }, warn)
-    expect(runtime.takePresentationReceipt(warn)).toBeNull()
-    runtime.beginPresentationPass(requested, { ...SHOWN, drawable: false }, warn)
-    expect(runtime.takePresentationReceipt(warn)).toBeNull()
+    for (const route of ['no-host', 'color-off', 'warm-up', 'empty'] as const) {
+      runtime.beginPresentationPass(requested, route, warn)
+      expect(runtime.takePresentationReceipt(warn)).toBeNull()
+    }
 
     expect(runtime.takeDrawReceipt()).toEqual({ surfaceEpoch: 30, frame: uploaded })
-    expect(runtime.rejectedPresentationDraws(requested.transferId)).toBe(3)
+    expect(runtime.rejectedPresentationDraws(requested.transferId)).toBe(4)
     expect(warn).toHaveBeenCalledTimes(1)
+
+    runtime.dispose()
+  })
+
+  it('accepts a draw that presents now or defers to the host tail', () => {
+    const source = createCanvasFrameSource(canvas(), { premultiplyAlpha: false })
+    const runtime = createFrameSurfaceRuntime(source, 31, false, () => {})
+    const uploaded = source.publish()
+    const requested = requirement(uploaded.sourceId, uploaded.generation)
+    const warn = vi.fn()
+
+    runtime.texture.onUpdate?.(runtime.texture)
+    for (const route of ['now', 'tail'] as const) {
+      runtime.beginPresentationPass(requested, route, warn)
+      expect(runtime.takePresentationReceipt(warn)).toEqual({
+        ...requested,
+        frame: uploaded,
+        surfaceEpoch: 31,
+      })
+    }
+
+    expect(runtime.rejectedPresentationDraws(requested.transferId)).toBe(0)
+    expect(warn).not.toHaveBeenCalled()
 
     runtime.dispose()
   })
@@ -302,33 +322,5 @@ describe('FrameSurface runtime', () => {
       geometry.dispose()
       material.dispose()
     }
-  })
-})
-
-describe('geometryDraws', () => {
-  it('is false when the vertices, the draw range or the instance count leave nothing to draw', () => {
-    expect(geometryDraws(new THREE.PlaneGeometry(1, 1))).toBe(true)
-
-    const empty = new THREE.BufferGeometry()
-    empty.setAttribute('position', new THREE.Float32BufferAttribute([], 3))
-    expect(geometryDraws(empty)).toBe(false)
-
-    const ranged = new THREE.PlaneGeometry(1, 1)
-    ranged.setDrawRange(0, 0)
-    expect(geometryDraws(ranged)).toBe(false)
-    // The plane's index has 6 entries; a range starting past them is empty.
-    ranged.setDrawRange(6, 3)
-    expect(geometryDraws(ranged)).toBe(false)
-    ranged.setDrawRange(3, 3)
-    expect(geometryDraws(ranged)).toBe(true)
-
-    const plane = new THREE.PlaneGeometry(1, 1)
-    const instanced = new THREE.InstancedBufferGeometry()
-    instanced.setIndex(plane.index)
-    instanced.setAttribute('position', plane.getAttribute('position'))
-    instanced.instanceCount = 0
-    expect(geometryDraws(instanced)).toBe(false)
-    instanced.instanceCount = 1
-    expect(geometryDraws(instanced)).toBe(true)
   })
 })

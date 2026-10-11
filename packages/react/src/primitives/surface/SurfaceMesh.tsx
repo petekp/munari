@@ -14,7 +14,7 @@
 //
 // A write-free pass is deliberately NOT evidence. It draws nothing, so a
 // receipt from one certifies an empty frame, and the page it releases goes
-// dark. That distinction is the whole content of `passIsWarmUp` in the
+// dark. That distinction is the `warm-up` route of `presentationRoute` in the
 // kernel, and it is why the two callbacks below are asymmetric: the before
 // hook decides what the pass IS, the after hook decides what it PROVED.
 //
@@ -46,10 +46,8 @@ import {
   lastPointerPlace,
   type PointerPlace,
   nudgeSelect,
-  passIsWarmUp,
-  passNeedsHostTail,
-  passPresentsDirectly,
   pointerSampleOf,
+  presentationRoute,
   type PointerRouteRequest,
   rectIsMeasurable,
   releasedSample,
@@ -88,7 +86,7 @@ import {
   type SurfacePartValue,
 } from './surfaceContext'
 import { configureSurfaceMaterial } from './surfaceMaterials'
-import { drawnByOverride, geometryDraws } from '../FrameSurface'
+import { drawnByOverride, readPassEvidence } from './surfacePass'
 import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 import {
   applyPassWrites,
@@ -392,9 +390,8 @@ function SurfacePresenter({
   const lodPhase = useSurfaceLodPhase()
   const lodRef = useRef<SurfaceLodState>({ tier:0, proposed:0, agree:0, frame:0, source:null, aligned:false })
   // What the pass in flight is doing, written by the before hook and read
-  // once by the after hook. Not a boolean: the after hook has to tell a
-  // direct presentation from a deferred one from a warm-up, and three hands
-  // it no argument to tell them apart with.
+  // once by the after hook. Three hands the after hook no argument, so the
+  // evidence travels here and the hook derives the route from it.
   const passRef = useRef<SurfacePassEvidence | null>(null)
   const rasterReadyRef = useRef(false)
   // The material's own write flags as the caller left them, captured at the
@@ -1014,7 +1011,6 @@ function SurfacePresenter({
     (renderer, scene, _cam, renderedGeometry, renderedMaterial) => {
       if (drawnByOverride(scene, renderedMaterial)) return
       for (const beforeDraw of beforeDraws.current) beforeDraw()
-      const defaultFramebuffer = renderer.getRenderTarget() === null
       // Read live from the store, never from a render-time value. The
       // crossing gives the canvas presentation authority at the top of this
       // frame and the page lets go in the post-draw callback below, so the
@@ -1033,18 +1029,8 @@ function SurfacePresenter({
       // authored values are borrowed, not overwritten — the post-draw
       // callback below puts them back.
       applyPassWrites(authoredRef.current, renderedMaterial, writing)
-      // Three still runs both callbacks for geometry with nothing to draw, and
-      // a pass that drew nothing proves nothing (decisions.md #70).
-      if (!geometryDraws(renderedGeometry)) {
-        passRef.current = null
-        return
-      }
-      passRef.current = {
-        defaultFramebuffer,
-        colorWrite: renderedMaterial.colorWrite,
-        depthWrite: renderedMaterial.depthWrite,
-        stencilWrite: renderedMaterial.stencilWrite,
-      }
+      // After the borrow: the evidence is the flags this draw will use, not the caller's.
+      passRef.current = readPassEvidence(renderer, renderedGeometry, renderedMaterial)
     },
     [store,runtime],
   )
@@ -1065,6 +1051,10 @@ function SurfacePresenter({
     const pass = passRef.current
     passRef.current = null
     if (!pass) return
+    const route = presentationRoute(pass, presenterHost !== null)
+    // Three still runs both callbacks for geometry with nothing to draw, and
+    // a pass that drew nothing proves nothing (decisions.md #70).
+    if (route === 'empty') return
     if (presentation === 'manual') return
     if (!runtime?.uploaded()) return
     // One shader draw can contain several HTML sources. A proxy with no
@@ -1072,7 +1062,7 @@ function SurfacePresenter({
     if (additionalParts.some(id => !store.part(id)?.runtime?.uploaded())) return
     // The generation on the geometry, which is the one an anchor set has to
     // describe. Read after the draw because that is when it is true.
-    if (!passIsWarmUp(pass)) {
+    if (route !== 'warm-up') {
       anchors.noteDrawn(runtime.source.sourceId, runtime.uploadedGeneration())
     }
     // Layout resizing can draw a valid new paint inside the density band. Its
@@ -1085,18 +1075,21 @@ function SurfacePresenter({
     // one wait for color instead is a deadlock, because color is exactly
     // what the lift gate is deciding whether to allow.
     store.prove(presenterKey, lifetime, epoch)
-    if (passIsWarmUp(pass)) return
     // Stage two, and only stage two releases the page.
-    if (passPresentsDirectly(pass)) {
-      store.present(presenterKey, epoch)
-      return
+    switch (route) {
+      case 'warm-up':
+      case 'color-off':
+        return
+      case 'now':
+        store.present(presenterKey, epoch)
+        return
+      case 'no-host':
+        reportHostless()
+        return
+      case 'tail':
+        if (presenterHost) presenterHost.deferPresentation(() => store.present(presenterKey, epoch))
+        return
     }
-    if (!passNeedsHostTail(pass)) return
-    if (!presenterHost) {
-      reportHostless()
-      return
-    }
-    presenterHost.deferPresentation(() => store.present(presenterKey, epoch))
   }, [runtime, store, presenterKey, presenterHost, anchors, presentation, additionalParts])
 
   // The default material. The corner mask is uniform-driven: radii of zero
