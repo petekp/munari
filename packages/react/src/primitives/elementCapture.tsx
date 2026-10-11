@@ -74,19 +74,33 @@ function unsupported(element: Element, selector: string | undefined): string | n
   return null
 }
 
-interface ElementCaptureCopy { element: HTMLElement; size: SurfaceSize }
+/** Each copied element that must scroll, with the offsets its original held. */
+export type ScrollOffsets = (readonly [Element, number, number])[]
+interface ElementCaptureCopy { element: HTMLElement; size: SurfaceSize; scrolls: ScrollOffsets }
 class UnmeasuredCapture extends Error {}
 class UnsupportedCaptureContent extends Error {}
-/** A clone drops properties that are not attributes: field values, checked state, scroll offsets. */
-export function copyFieldState(source: Element, target: Element) {
+/**
+ * A clone drops properties that are not attributes: field values, checked
+ * state, scroll offsets. Scroll offsets are only recorded here, because
+ * Chrome ignores `scrollTop` on an element with no layout box: the copy
+ * keeps 0 even after it is attached (measured 2026-10-10, Chrome 155).
+ */
+export function copyFieldState(source: Element, target: Element, scrolls: ScrollOffsets) {
   if (source instanceof HTMLInputElement && target instanceof HTMLInputElement) {
     target.value = source.value
     target.checked = source.checked
     target.indeterminate = source.indeterminate
   } else if (source instanceof HTMLTextAreaElement && target instanceof HTMLTextAreaElement) target.value = source.value
   else if (source instanceof HTMLSelectElement && target instanceof HTMLSelectElement) target.selectedIndex = source.selectedIndex
-  target.scrollTop = source.scrollTop
-  target.scrollLeft = source.scrollLeft
+  if (source.scrollTop || source.scrollLeft) scrolls.push([target, source.scrollTop, source.scrollLeft])
+}
+
+/** Call once the copy is attached and laid out; before that the offsets are dropped. */
+export function applyScrollOffsets(scrolls: ScrollOffsets) {
+  for (const [element, top, left] of scrolls) {
+    element.scrollTop = top
+    element.scrollLeft = left
+  }
 }
 
 /** Copies only visual state. No React component, media decoder, or custom element is mounted twice. */
@@ -101,6 +115,7 @@ export function copyElementForCapture(element: HTMLElement, exclude?: string): E
   const snapshotId = snapshotSequence++
   let index = 0
   const pseudoRules: string[] = []
+  const scrolls: ScrollOffsets = []
   const copy = (source: Element): Element | null => {
     if (excluded(source, exclude)) return null
     const target = source.localName === 'html' || source.localName === 'body'
@@ -128,7 +143,7 @@ export function copyElementForCapture(element: HTMLElement, exclude?: string): E
         if (next) target.append(next)
       } else if (child.nodeType === Node.TEXT_NODE) target.append(child.cloneNode())
     }
-    copyFieldState(source, target)
+    copyFieldState(source, target, scrolls)
     if (source instanceof HTMLInputElement && target instanceof HTMLInputElement) target.name = ''
     return target
   }
@@ -146,7 +161,7 @@ export function copyElementForCapture(element: HTMLElement, exclude?: string): E
     style.textContent = pseudoRules.join('\n')
     root.append(style)
   }
-  return { element: root, size: [width, height] }
+  return { element: root, size: [width, height], scrolls }
 }
 
 export function useElementCapture(options: ElementCaptureOptions = {}): ElementCapture {
@@ -194,6 +209,7 @@ export function useElementCapture(options: ElementCaptureOptions = {}): ElementC
         wrapper.style.height = `${copied.size[1]}px`
         if (!connection) connection = connectCapture(capture, wrapper, copied.size, { resolution: resolutionRef.current, onError: error => errorRef.current?.(error) })
         else connection.setSize(copied.size)
+        applyScrollOffsets(copied.scrolls)
         activeConnection.current = connection
         connection.repaint()
         lastReportedError = ''

@@ -24,7 +24,7 @@ import { claimSourcePointer, releaseSourcePointer } from './surface/surfacePoint
 import { registerHostSpace, hostSpace, markerSpace, boxInHostSpace, hostSpaceScale, hostSpaceUpright } from './surface/surfaceHostSpace'
 import { createSurfacePageClip } from './surface/surfacePageClip'
 import { moveRetained } from './retainedMove'
-import { copyFieldState } from './elementCapture'
+import { applyScrollOffsets, copyFieldState, type ScrollOffsets } from './elementCapture'
 import { readSurfaceDevicePixelRatio } from './surface/surfaceDevicePixelRatio'
 
 function unsupportedSnapshot(root:HTMLElement):string|null {
@@ -58,7 +58,7 @@ function unsupportedSnapshot(root:HTMLElement):string|null {
  * carried across by this function. A `<canvas>`'s pixels are not in it —
  * nothing mutates for a canvas redraw, so this path never runs for one.
  */
-interface PageSnapshot { node: HTMLElement; key: string }
+interface PageSnapshot { node: HTMLElement; key: string; scrolls: ScrollOffsets }
 
 // A copy stands in for the original's PIXELS, so it has to be at the
 // original's pose — `matchMotion` after every insertion, never inside
@@ -71,13 +71,14 @@ interface PageSnapshot { node: HTMLElement; key: string }
 
 function snapshot(root: HTMLElement, unsupported: string | null = unsupportedSnapshot(root)): PageSnapshot {
   // Do not instantiate another iframe, media player, or custom element as a placeholder.
-  if(unsupported)return { node: document.createElement('div'), key: '' }
+  if(unsupported)return { node: document.createElement('div'), key: '', scrolls: [] }
   // SAFETY: cloning an HTMLElement preserves its element type.
   const copy = root.cloneNode(true) as HTMLElement
   copy.dataset.munariSnapshot = ''
   const originals = [root, ...root.querySelectorAll('*')]
   const copies = [copy, ...copy.querySelectorAll('*')]
   const state: string[] = []
+  const scrolls: ScrollOffsets = []
   originals.forEach((original, index) => {
     const target = copies[index]
     if (!target) return
@@ -86,7 +87,7 @@ function snapshot(root: HTMLElement, unsupported: string | null = unsupportedSna
     target.toggleAttribute('data-hover', original.matches(':hover') || original.hasAttribute('data-hover'))
     target.toggleAttribute('data-active', original.matches(':active') || original.hasAttribute('data-active'))
     target.toggleAttribute('data-focus-visible', original.matches(':focus-visible'))
-    copyFieldState(original, target)
+    copyFieldState(original, target, scrolls)
     if (original instanceof HTMLInputElement) {
       state.push(`${index}v${original.value}|${original.checked}|${original.indeterminate}`)
     } else if (original instanceof HTMLTextAreaElement) {
@@ -98,7 +99,7 @@ function snapshot(root: HTMLElement, unsupported: string | null = unsupportedSna
     }
     if (original.scrollTop || original.scrollLeft) state.push(`${index}o${original.scrollTop},${original.scrollLeft}`)
   })
-  return { node: copy, key: `${copy.outerHTML}\u0000${state.join('\u0000')}` }
+  return { node: copy, key: `${copy.outerHTML}\u0000${state.join('\u0000')}`, scrolls }
 }
 
 function placeholderCopy(liveRoot: HTMLElement, unsupported?: string | null): HTMLElement {
@@ -390,7 +391,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
       moveRetained(liveRoot, holder)
       placeholder.current?.remove(); placeholder.current = null
       const held = snapshot(liveRoot)
-      captureRoot.replaceChildren(held.node); matchMotion(liveRoot, held.node); heldKey.current = held.key
+      captureRoot.replaceChildren(held.node); applyScrollOffsets(held.scrolls); matchMotion(liveRoot, held.node); heldKey.current = held.key
     }
     updateWarmRig(holder,ownRuntime,captured,captureRoot)
   }
@@ -466,6 +467,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
         // the compositor always does, a rasterizing engine only when the
         // content is live or the user just acted on it.
         captureRoot.replaceChildren(held.node)
+        applyScrollOffsets(held.scrolls)
         matchMotion(liveRoot, held.node)
       } else if (store.holdsPage() && placeholder.current) {
         const copy = placeholderCopy(liveRoot, unsupported)

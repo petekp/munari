@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A scrolled container inside captured content now keeps its scroll
+  position. `useElementCapture` and the copy a Surface captures while its
+  content is on the page both showed the container scrolled to the top.
 - WebGPU no longer logs "CopyExternalImageToTexture(): Browser fails
   extracting valid resource from external image" when a Surface first
   appears. The capture texture copies nothing until the first paint.
