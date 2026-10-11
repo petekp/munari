@@ -31,10 +31,34 @@
  */
 const movesInPlace = () => 'Element' in globalThis && 'moveBefore' in Element.prototype
 
+/** Each element that must scroll, with the offsets to put back on it. */
+export type ScrollOffsets = (readonly [Element, number, number])[]
+
+/** Every non-zero scroll offset in `root`'s subtree, `root` included. */
+export function readScrollOffsets(root: Element): ScrollOffsets {
+  const scrolls: ScrollOffsets = []
+  for (const element of [root, ...root.querySelectorAll('*')])
+    if (element.scrollTop !== 0 || element.scrollLeft !== 0)
+      scrolls.push([element, element.scrollTop, element.scrollLeft] as const)
+  return scrolls
+}
+
+/**
+ * Put offsets back once the elements are attached and laid out. Chrome
+ * ignores `scrollTop` on an element with no layout box, and the element keeps
+ * 0 after it is attached (measured 2026-10-10, Chrome 155).
+ */
+export function applyScrollOffsets(scrolls: ScrollOffsets): void {
+  for (const [element, top, left] of scrolls) {
+    element.scrollTop = top
+    element.scrollLeft = left
+  }
+}
+
 interface HeldState {
   readonly active: HTMLElement | null
   readonly selection: { start: number; end: number; direction: 'forward' | 'backward' | 'none' } | null
-  readonly scrolls: readonly (readonly [Element, number, number])[]
+  readonly scrolls: ScrollOffsets
 }
 
 function hold(root: HTMLElement): HeldState {
@@ -50,18 +74,11 @@ function hold(root: HTMLElement): HeldState {
     if (start !== null && end !== null)
       selection = { start, end, direction: active.selectionDirection ?? 'none' }
   }
-  const scrolls: (readonly [Element, number, number])[] = []
-  for (const element of [root, ...root.querySelectorAll('*')])
-    if (element.scrollTop !== 0 || element.scrollLeft !== 0)
-      scrolls.push([element, element.scrollTop, element.scrollLeft] as const)
-  return { active, selection, scrolls }
+  return { active, selection, scrolls: readScrollOffsets(root) }
 }
 
 function restore(held: HeldState): void {
-  for (const [element, top, left] of held.scrolls) {
-    element.scrollTop = top
-    element.scrollLeft = left
-  }
+  applyScrollOffsets(held.scrolls)
   const { active, selection } = held
   if (!active) return
   // `preventScroll`, or focusing scrolls every new ancestor to bring the

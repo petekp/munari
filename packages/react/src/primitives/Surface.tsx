@@ -23,8 +23,8 @@ import { watchSurfacePlacement } from './surface/surfacePlacement'
 import { claimSourcePointer, releaseSourcePointer } from './surface/surfacePointerOwnership'
 import { registerHostSpace, hostSpace, markerSpace, boxInHostSpace, hostSpaceScale, hostSpaceUpright } from './surface/surfaceHostSpace'
 import { createSurfacePageClip } from './surface/surfacePageClip'
-import { moveRetained } from './retainedMove'
-import { applyScrollOffsets, copyFieldState, type ScrollOffsets } from './elementCapture'
+import { applyScrollOffsets, moveRetained, type ScrollOffsets } from './retainedMove'
+import { copyFieldState } from './elementCapture'
 import { readSurfaceDevicePixelRatio } from './surface/surfaceDevicePixelRatio'
 
 function unsupportedSnapshot(root:HTMLElement):string|null {
@@ -474,6 +474,9 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
         placeholder.current.replaceWith(copy); matchMotion(liveRoot, copy); placeholder.current = copy
       }
     }
+    // The key describes the copy installed in the previous capture root. A
+    // remount under `<Activity>` builds a new, empty root, so install again.
+    heldKey.current = null
     sync()
     const observer = new MutationObserver(sync)
     const subscriptions = new AbortController()

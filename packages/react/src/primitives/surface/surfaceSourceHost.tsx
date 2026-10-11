@@ -21,11 +21,12 @@
 // Ownership: this component owns the container, the runtime's lifetime, and
 // the frame registration. It owns no mesh and no material.
 
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { guardPointerCapture, type SurfaceChrome, type SurfacePartId } from '@munari/core'
 import { useSurfaceDevicePixelRatio } from './surfaceDevicePixelRatio'
 import { useLatest } from '../useLatest'
+import { applyScrollOffsets, readScrollOffsets, type ScrollOffsets } from '../retainedMove'
 import { transferSurfaceFocus } from './surfaceFocus'
 import {
   SurfaceHandleContext,
@@ -134,6 +135,11 @@ export function SurfaceSourceHost({
   const sizeRef = useLatest(effectiveSize)
   const resolutionRef = useLatest(resolution)
   const liveRef = useLatest(live)
+  // Disposing takes the root out of the page, so a remount that adopts the
+  // same root again (StrictMode's second mount) would show every scroller in
+  // it at the top. The offsets are read before disposal and put back once
+  // the new source has adopted the root.
+  const carried = useRef<{ root: HTMLElement; scrolls: ScrollOffsets } | null>(null)
 
   // Creating the source is a TEARDOWN: it destroys the live DOM subtree and
   // everything alive in it — focus, form values, selection, scroll. So the
@@ -163,12 +169,15 @@ export function SurfaceSourceHost({
       root.store.reportError(error instanceof Error ? error : new Error(String(error)))
       return
     }
+    if (carried.current?.root === captureRoot) applyScrollOffsets(carried.current.scrolls)
+    carried.current = null
     setRuntime(created)
     // The source was replaced: every presenter's proof is void and readiness
     // starts a new lifetime, but the presenters themselves remain.
     root.store.replaceSource(id)
 
     return () => {
+      carried.current = { root: captureRoot, scrolls: readScrollOffsets(captureRoot) }
       setRuntime((current) => (current === created ? null : current))
       created.dispose()
     }

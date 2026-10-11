@@ -10,6 +10,7 @@ import {
 } from './capture'
 import type { SurfaceResolution, SurfaceSize } from './surface/surfaceSourceRuntime'
 import { useLatest } from './useLatest'
+import { applyScrollOffsets, type ScrollOffsets } from './retainedMove'
 
 export interface ElementCaptureOptions {
   resolution?: SurfaceResolution
@@ -74,16 +75,13 @@ function unsupported(element: Element, selector: string | undefined): string | n
   return null
 }
 
-/** Each copied element that must scroll, with the offsets its original held. */
-export type ScrollOffsets = (readonly [Element, number, number])[]
 interface ElementCaptureCopy { element: HTMLElement; size: SurfaceSize; scrolls: ScrollOffsets }
 class UnmeasuredCapture extends Error {}
 class UnsupportedCaptureContent extends Error {}
 /**
  * A clone drops properties that are not attributes: field values, checked
- * state, scroll offsets. Scroll offsets are only recorded here, because
- * Chrome ignores `scrollTop` on an element with no layout box: the copy
- * keeps 0 even after it is attached (measured 2026-10-10, Chrome 155).
+ * state, scroll offsets. Scroll offsets are only recorded, for
+ * `applyScrollOffsets` once the clone is attached.
  */
 export function copyFieldState(source: Element, target: Element, scrolls: ScrollOffsets) {
   if (source instanceof HTMLInputElement && target instanceof HTMLInputElement) {
@@ -93,14 +91,6 @@ export function copyFieldState(source: Element, target: Element, scrolls: Scroll
   } else if (source instanceof HTMLTextAreaElement && target instanceof HTMLTextAreaElement) target.value = source.value
   else if (source instanceof HTMLSelectElement && target instanceof HTMLSelectElement) target.selectedIndex = source.selectedIndex
   if (source.scrollTop || source.scrollLeft) scrolls.push([target, source.scrollTop, source.scrollLeft])
-}
-
-/** Call once the copy is attached and laid out; before that the offsets are dropped. */
-export function applyScrollOffsets(scrolls: ScrollOffsets) {
-  for (const [element, top, left] of scrolls) {
-    element.scrollTop = top
-    element.scrollLeft = left
-  }
 }
 
 /** Copies only visual state. No React component, media decoder, or custom element is mounted twice. */

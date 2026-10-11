@@ -5,6 +5,10 @@
 - A scrolled container inside captured content now keeps its scroll
   position. `useElementCapture` and the copy a Surface captures while its
   content is on the page both showed the container scrolled to the top.
+- A Surface shown again by `<Activity>` captures its page copy again. It
+  used to capture nothing until its content changed.
+- Under StrictMode, a Surface's page copy keeps the scroll offsets its
+  content had at mount. StrictMode's second mount used to reset them to 0.
 - WebGPU no longer logs "CopyExternalImageToTexture(): Browser fails
   extracting valid resource from external image" when a Surface first
   appears. The capture texture copies nothing until the first paint.
