@@ -87,6 +87,15 @@ for (const entry of javascript) {
   process.exit(1)
 }
 
+// The development check must reach the consumer's bundler as the literal
+// `process.env.NODE_ENV`, which webpack, Next and Vite substitute. Inlined by
+// this build, every consumer would get one fixed answer (tsdown.config.ts #6).
+if (!javascript.some((entry) => readFileSync(join(dist, entry), 'utf8').includes('process.env.NODE_ENV'))) {
+  console.error('stage-manifest: no dist chunk reads process.env.NODE_ENV — the build inlined it.')
+  console.error('Check `define` in tsdown.config.ts.')
+  process.exit(1)
+}
+
 writeFileSync(join(dist, 'package.json'), `${JSON.stringify(staged, null, 2)}\n`)
 
 // `@petepetrash/munari/style.css` is declared surface and is not in the entry graph,

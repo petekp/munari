@@ -9,7 +9,8 @@
 // wait validation each read only `import.meta.env.DEV`, while FrameSurface
 // also read `NODE_ENV`. Under Node with `NODE_ENV=development` the
 // presentation warnings printed and the GLSL, tone-mapping, reserved-style
-// and preparation-wait warnings did not.
+// and preparation-wait warnings did not. None of them read `NODE_ENV` in the
+// literal form that webpack and Next substitute in a browser bundle.
 //
 // Ownership: this module answers the question once. Each diagnostic decides
 // what to print and how often.
@@ -23,19 +24,23 @@ export function resolveDevelopment(
 }
 
 export function isDevelopmentRuntime(): boolean {
-  // SAFETY: both of these are the HOST's, not the language's. `import.meta
-  // .env` exists under Vite and nowhere else; `process` exists under Node
-  // and nowhere else. The library has to build and run under every host, so
-  // each shape is described here instead of imported from one of them, and
-  // every member is optional because absence is the normal answer.
+  // SAFETY: `import.meta.env` is the host's, not the language's. It exists
+  // under Vite and nowhere else, so its shape is described here and every
+  // member is optional because absence is the normal answer.
   const metaEnvironment = (
     import.meta as ImportMeta & { readonly env?: { readonly DEV?: boolean } }
   ).env
-  // SAFETY: as above, for the Node half.
-  const nodeEnvironment = (
-    globalThis as typeof globalThis & {
-      readonly process?: { readonly env?: { readonly NODE_ENV?: string } }
-    }
-  ).process?.env?.NODE_ENV
-  return resolveDevelopment(metaEnvironment?.DEV, nodeEnvironment)
+  return resolveDevelopment(metaEnvironment?.DEV, nodeEnvironment())
+}
+
+function nodeEnvironment(): string | undefined {
+  // The exact text `process.env.NODE_ENV`, because that is what webpack,
+  // Next and Vite substitute; an optional-chained read is left alone and
+  // finds no `process` in a browser bundle. The catch is a browser with no
+  // bundler, where `process` does not exist.
+  try {
+    return process.env.NODE_ENV
+  } catch {
+    return undefined
+  }
 }

@@ -36,6 +36,11 @@ const useClientDirective = {
 //    different reason: it is an OPTIONAL peer. Bundling it would put a beta
 //    rasterizer in the graph of every consumer, including the ones on a
 //    browser that never needs a second capture engine.
+// 6. `process.env.NODE_ENV` stays as written. tsdown otherwise replaces it
+//    with "development" even under NODE_ENV=production (measured
+//    2026-10-10, tsdown 0.22.14), which would print development warnings in
+//    every consumer's production build. Left as text, the consumer's
+//    bundler substitutes its own value (lib/developmentRuntime.ts).
 export default defineConfig({
   entry: ['src/index.ts', 'src/advanced.ts', 'src/snapdom.ts'],
   outDir: 'dist',
@@ -44,6 +49,7 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   plugins: [useClientDirective],
+  define: { 'process.env.NODE_ENV': 'process.env.NODE_ENV' },
   platform: 'browser',
   target: 'es2022',
   deps: {
