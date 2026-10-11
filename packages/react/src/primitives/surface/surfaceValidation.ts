@@ -4,13 +4,11 @@
 // The root owns this subscription; the host owns the frame that validates it.
 import type { SurfaceStore } from './surfaceHandle'
 import type { SurfaceHost } from './surfaceHostRegistry'
+import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 
 const WAIT_WARNING_MS = 10_000 // Diagnostic deadline, decision #40; never a readiness budget.
 
-// SAFETY: Vite supplies env; an unbundled module has no development flag.
-const DEVELOPMENT = (import.meta as ImportMeta & { readonly env?: { readonly DEV?: boolean } }).env?.DEV === true
-
-export function watchSurfaceValidation(store: SurfaceStore, host: SurfaceHost | null, development = DEVELOPMENT): () => void {
+export function watchSurfaceValidation(store: SurfaceStore, host: SurfaceHost | null, development = isDevelopmentRuntime()): () => void {
   let live = true
   let queued = false
   let validatedRuntime: object | null = null

@@ -31,7 +31,7 @@ import { Discard, Fn, output, sRGBTransferEOTF, texture as textureNode, uniform,
 import { surfaceRadiusMask } from '../../lib/surfaceRadius'
 import { SurfaceMaterialContext, useSurfaceTextureFor, type SurfaceMaterialValue } from './surfaceContext'
 import { getSurfaceLitTexture } from './surfaceLitTexture'
-import { isDevelopmentRuntime } from '../FrameSurface'
+import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 import { reportedGlslMaterials, usesGlsl } from './glslMaterial'
 
 

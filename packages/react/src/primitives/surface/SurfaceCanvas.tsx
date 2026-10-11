@@ -51,6 +51,7 @@ import { useLatest } from '../useLatest'
 import { SurfaceHostContext } from './surfaceHostContext'
 import { CanvasPointerGate } from '../CanvasPointerGate'
 import { reportedGlslMaterials, usesGlsl } from './glslMaterial'
+import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 
 /**
  * Canvas style, minus the fields the host reserves.
@@ -109,12 +110,6 @@ export interface SurfaceCanvasProps
 // The type above catches an authored literal; this catches a spread style
 // object, which is how a real application usually gets here.
 const RESERVED_STYLE = ['opacity', 'visibility', 'pointerEvents'] as const
-
-const isDevelopment = (): boolean =>
-  // SAFETY: `import.meta.env` is the bundler's, not the language's — Vite
-  // defines it, Node and a bare tsc do not. Every member is optional
-  // because absence is the normal answer outside a dev server.
-  (import.meta as ImportMeta & { readonly env?: { readonly DEV?: boolean } }).env?.DEV === true
 
 const textureLimits = new WeakMap<RootState['gl'] | WebGPURenderer, number>()
 
@@ -378,11 +373,11 @@ function SurfaceHostBridge({
     let lastGlslScan = -Infinity
     gl.render = (scene, camera) => {
       if (piping) return original(scene, camera)
-      if (isDevelopment() && performance.now() - lastGlslScan > GLSL_SCAN_INTERVAL_MS) {
+      if (isDevelopmentRuntime() && performance.now() - lastGlslScan > GLSL_SCAN_INTERVAL_MS) {
         lastGlslScan = performance.now()
         reportGlslInScene(scene)
       }
-      if (gl.toneMapping !== NoToneMapping && !warnedToneMapping && isDevelopment()) {
+      if (gl.toneMapping !== NoToneMapping && !warnedToneMapping && isDevelopmentRuntime()) {
         warnedToneMapping = true
         console.error(
           '[munari] <SurfaceCanvas> renderer tone mapping is on, which shifts every HTML pixel. ' +
@@ -545,7 +540,7 @@ export function SurfaceCanvas({
   }, [candidate])
 
   useEffect(() => {
-    if (!isDevelopment() || !style) return
+    if (!isDevelopmentRuntime() || !style) return
     // SAFETY: the reserved fields are exactly what `SurfaceCanvasStyle`
     // omits, so the declared type cannot index them. A spread style object
     // can still carry one at runtime, which is the case this check exists

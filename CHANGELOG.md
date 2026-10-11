@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Every development warning now uses one rule: Vite's `import.meta.env.DEV`
+  when it is set, otherwise a `NODE_ENV` of `development` or `test`. The
+  `SurfaceCanvas` warnings and the preparation-wait warning used to read only
+  the Vite flag, so they stayed silent under Node.
 - In development, a `Surface.Mesh` outside the camera view no longer logs
   that it is still waiting for a usable source frame and preparation draw.
   A hidden mesh or a mesh with no source still logs it.

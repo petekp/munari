@@ -9,7 +9,6 @@ import {
   createFrameSurfaceRuntime,
   geometryDraws,
   hearingGatedRaycast,
-  resolveFrameSurfaceDevelopment,
 } from './FrameSurface'
 
 // SAFETY: a stub, not a canvas. The code under test reads `width` and
@@ -32,14 +31,6 @@ const requirement = (
 const SHOWN = { outputEligible: true, colorWrite: true, drawable: true }
 
 describe('FrameSurface runtime', () => {
-  it('warns only in an explicit development or test environment', () => {
-    expect(resolveFrameSurfaceDevelopment(false, 'development')).toBe(false)
-    expect(resolveFrameSurfaceDevelopment(undefined, 'production')).toBe(false)
-    expect(resolveFrameSurfaceDevelopment(undefined, undefined)).toBe(false)
-    expect(resolveFrameSurfaceDevelopment(true, 'production')).toBe(true)
-    expect(resolveFrameSurfaceDevelopment(undefined, 'test')).toBe(true)
-  })
-
   it('configures the exact caller canvas before exposing the texture', () => {
     const el = canvas()
     const source = createCanvasFrameSource(el, { premultiplyAlpha: true })

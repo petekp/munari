@@ -16,7 +16,7 @@ import { type SurfaceSize, type SurfaceSourceRuntime, type SurfaceResolution, ty
 import { useLatest } from './useLatest'
 import { usePageTargetAttachment, type PageTarget } from './pageTarget'
 import { useSurfaceSupport, warnCaptureUnavailableOnce } from './surface/surfaceSupport'
-import { isDevelopmentRuntime } from './FrameSurface'
+import { isDevelopmentRuntime } from '../lib/developmentRuntime'
 import { surfaceChromeElement } from './surface/surfaceChromeElement'
 import { validateSurfaceSize } from './surface/surfaceSize'
 import { watchSurfacePlacement } from './surface/surfacePlacement'

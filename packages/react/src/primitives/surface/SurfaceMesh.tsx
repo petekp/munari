@@ -88,7 +88,8 @@ import {
   type SurfacePartValue,
 } from './surfaceContext'
 import { configureSurfaceMaterial } from './surfaceMaterials'
-import { drawnByOverride, geometryDraws, isDevelopmentRuntime } from '../FrameSurface'
+import { drawnByOverride, geometryDraws } from '../FrameSurface'
+import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 import {
   applyPassWrites,
   authoredWrites,
