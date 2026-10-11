@@ -124,7 +124,7 @@ export function FocusOrbitRig({
     const state = orbitMotion.current
     const changed = () => { state.changed = true; state.pending = true }
     const start = () => { state.interacting = true }
-    const end = () => { state.interacting = false; state.pending = true }
+    const end = () => { state.interacting = false }
     controls.addEventListener('change', changed)
     controls.addEventListener('start', start)
     controls.addEventListener('end', end)
@@ -181,6 +181,7 @@ export function FocusOrbitRig({
       controls.enabled = true
       controls.update()
       focus?.syncProxyRects()
+      orbitMotion.current.pending = orbitMotion.current.changed = false
       return
     }
     controls.enabled = false
