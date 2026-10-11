@@ -229,6 +229,21 @@ const _surfPos = new THREE.Vector3()
 const _surfScale = new THREE.Vector3()
 const _drawingSize = new THREE.Vector2()
 const _viewport = new THREE.Vector4()
+const _viewProjection = new THREE.Matrix4()
+const _viewFrustum = new THREE.Frustum()
+
+/**
+ * Would the renderer cull this mesh for `camera`? The same frustum test
+ * Three runs before a draw. A hidden or layer-masked mesh is not out of view:
+ * it is skipped for a reason the author controls.
+ */
+function meshOutOfView(mesh: THREE.Mesh, camera: THREE.Camera): boolean {
+  if (!mesh.frustumCulled || !camera.layers.test(mesh.layers)) return false
+  for (let node: THREE.Object3D | null = mesh; node; node = node.parent) if (!node.visible) return false
+  _viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+  _viewFrustum.setFromProjectionMatrix(_viewProjection, camera.coordinateSystem, camera.reversedDepth)
+  return !_viewFrustum.intersectsObject(mesh)
+}
 
 /**
  * One presentation of a Surface.
@@ -455,10 +470,23 @@ function SurfacePresenter({
   // color-writing draw. Registering here rather than at first draw is what
   // makes a missing part BLOCK a handoff instead of silently shortening the
   // required set.
+  // A culled mesh earns no receipt until it comes into view, so the
+  // development wait warning must not name its evidence as missing.
+  const outOfViewRef = useRef(false)
   useEffect(() => {
     if (presentation === 'manual') return
+    outOfViewRef.current = false
     return store.registerPresenter(presenterKey)
   }, [store, presenterKey, presentation, additionalParts])
+  const reportView = (mesh: THREE.Mesh) => {
+    if (presentation === 'manual' || !isDevelopmentRuntime()) return
+    const state = store.getState()
+    if (state.ready || state.requested !== 'canvas') return
+    const out = meshOutOfView(mesh, camera)
+    if (out === outOfViewRef.current) return
+    outOfViewRef.current = out
+    store.setPresenterInView(presenterKey, !out)
+  }
   // The part ledger covers what presenter registration cannot: a declared
   // part whose presenter never mounts at all. Naming the part here marks it
   // covered; a part no presenter ever names keeps holding the handoff.
@@ -965,6 +993,7 @@ function SurfacePresenter({
     // function of where the Surface stands THIS frame.
     stepRoute()
     stepLod(mesh)
+    reportView(mesh)
   })
 
   // Teardown consults no law — an unmounting presenter cannot leave the

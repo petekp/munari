@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- In development, a `Surface.Mesh` outside the camera view no longer logs
+  that it is still waiting for a usable source frame and preparation draw.
+  A hidden mesh or a mesh with no source still logs it.
 - `@petepetrash/munari/advanced` exports `releasedSample(sample)`, which
   returns a pointer sample with no buttons pressed.
 

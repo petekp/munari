@@ -948,6 +948,24 @@ describe('the freeze signal', () => {
 })
 
 describe('dormant preparation and renderer loss', () => {
+  it('names no missing evidence that only an out-of-view presenter owes', () => {
+    const store = createSurfaceStore()
+    store.acquire(1); store.declarePresentation('canvas')
+    store.request('canvas')
+    store.registerPresenter('left')
+    store.registerPresenter('right')
+    store.setPresenterInView('left', false)
+    // 'right' is in view and unproven, so the wait is still the scene's fault.
+    expect(store.preparationWait()).toBe('a usable source frame and preparation draw')
+    store.setPresenterInView('right', false)
+    expect(store.preparationWait()).toBe(null)
+    store.setPresenterInView('right', true)
+    expect(store.preparationWait()).toBe('a usable source frame and preparation draw')
+    // Proven presenters owe nothing, so only the out-of-view one is left.
+    store.prove('right', store.readinessLifetime(), store.epoch())
+    expect(store.preparationWait()).toBe(null)
+  })
+
   it('sleeps while no presenter can supply evidence, and wakes on proof', () => {
     const store = createSurfaceStore()
     store.acquire(1); store.declarePresentation('page'); store.declarePresentation('canvas')

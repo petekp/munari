@@ -2576,6 +2576,23 @@ change, or unmount. Preparation waits use the same deadline, keyed by their
 missing evidence. Neither warning calls onError, changes state, grants readiness,
 or keeps a renderer busy. Production and unsupported fallback have no timers.
 
+Amendment to #40 (2026-10-10): a preparation wait does not name evidence that
+only an out-of-view `Surface.Mesh` presenter owes. Three skips the draw
+callbacks of an object outside the camera frustum, so a mesh panned off screen
+earns no receipt. A shadow-map draw uses `scene.overrideMaterial` and earns
+none either. While a Surface waits, each mesh presenter runs Three's own frustum
+test against the default camera in development and reports the result to the
+store. A hidden mesh, a mesh on a layer the camera does not see, and a mesh
+with no source still warn, because the author controls each of those.
+
+Measured in the workspace scene at 1280×800: before this change, each of the
+18 panels with no corner on screen logged the ten-second warning, and the 15
+on-screen panels logged none. After it, no panel warns. With proofs blocked
+as a deliberate fault, all 15 on-screen panels warn and the 18 off-screen
+panels stay quiet. In a consumer app on the built package, 0.4.1 warned for
+an off-screen, a hidden, and a sourceless mesh; with this change the
+off-screen one is quiet and the other two still warn.
+
 Amendment to #39: native scene routing requires one interactive pose per capture
 source. Multiple scene presenters all use relay so no transformed source can
 corrupt another presenter's UV-to-DOM mapping. These registrations are separate

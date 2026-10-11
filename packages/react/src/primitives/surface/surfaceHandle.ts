@@ -39,6 +39,7 @@ import {
   readinessAtBirth,
   releaseMotion,
   readinessProve,
+  readinessPending,
   readinessReborn,
   readinessRegister,
   readinessSettled,
@@ -154,6 +155,12 @@ export interface SurfaceStore {
   request(presentation: SurfaceDestination): void
   registerPresenter(key: SurfacePresenterKey): () => void
   /**
+   * Is the presenter's mesh outside the camera frustum, so Three skips its
+   * draws? `preparationWait` does not name evidence that only an out-of-view
+   * presenter owes.
+   */
+  setPresenterInView(key: SurfacePresenterKey, inView: boolean): void
+  /**
    * Declare a part id in the expected set; the return forgets it. The
    * all-or-none gates read this ledger — a declared part with no presenter
    * holds the handoff (decisions.md #37).
@@ -230,6 +237,7 @@ export interface SurfaceStore {
   subscribeWork(listener: () => void): () => void
   setRendererAvailable(available: boolean): void
   canPrepareCanvas(): boolean
+  /** The evidence a development warning names, or null when nothing the author controls is missing. */
   preparationWait(): string | null
   subscribePresence(listener: () => void): () => void
   /** A direct declaration, separate from a mounted presenter. */
@@ -316,6 +324,7 @@ function retain<K>(counts: Map<K, number>, key: K, onRelease?: () => void): () =
 export function createSurfaceStore(name?: string): SurfaceStore {
   let identity: SurfaceIdentity = surfaceUnclaimed()
   let readiness: SurfaceReadiness = readinessAtBirth()
+  const outOfView = new Set<SurfacePresenterKey>()
   let crossing: CrossingState = crossingAtRest()
   let driver: SurfaceDriverStep | null = null
   let callbacks: SurfaceCallbacks = {}
@@ -731,6 +740,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       publish()
       return () => {
         readiness = readinessUnregister(readiness, key)
+        outOfView.delete(key)
         // Stage two leaves with stage one. A presenter that remounts before
         // the release keeps its old entry here otherwise, and the entry is
         // read as "already presented" — so the new instance's own draw
@@ -813,6 +823,13 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       publish()
     },
     readinessLifetime: () => readiness.lifetime,
+    setPresenterInView(key, inView) {
+      if (outOfView.has(key) !== inView) return
+      if (inView) outOfView.delete(key)
+      else outOfView.add(key)
+      // The validation watcher re-reads `preparationWait` on work.
+      workListeners.emit()
+    },
     drive(step) {
       driver = step
     },
@@ -876,6 +893,11 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       const missing = missingParts()
       if (missing.length > 0) return `presenters for parts: ${missing.join(', ')}`
       if (readiness.registered.length === 0) return 'a scene presenter'
+      // Three skips the draw callbacks of an object outside the camera
+      // frustum, so a mesh panned off screen earns no receipt. Waiting for it
+      // to come into view is the scene's choice, not an omission.
+      const owed = readinessPending(readiness)
+      if (owed.length > 0 && owed.every((key) => outOfView.has(key))) return null
       return 'a usable source frame and preparation draw'
     },
     setRendererAvailable(available) {
