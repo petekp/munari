@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { createServer as createHttpServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import assert from 'node:assert/strict'
 
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
@@ -187,6 +188,36 @@ try {
   }
 
   const failures = []
+  async function checkHostPresentation(backend, mode) {
+    const page = await browser.newPage()
+    const problems = []
+    page.on('pageerror', error => problems.push(String(error)))
+    try {
+      await page.setViewport({ width: 256, height: 256, deviceScaleFactor: 1 })
+      await page.goto(`${url}host-presentation.html?backend=${backend}&mode=${mode}`, { waitUntil: 'load' })
+      await page.waitForFunction(() => window.__hostPresentation?.result().complete === true, { timeout: 10_000 })
+      const evidence = await page.evaluate(() => window.__hostPresentation.result())
+      assert.deepEqual(problems, [])
+      assert.equal(evidence.backend, backend)
+      assert.equal(evidence.samples.length, 4)
+      if (mode === 'unmount') {
+        assert.equal(evidence.presentations.length, 0)
+      } else {
+        assert.equal(evidence.presentations.length, 1)
+        const accepted = evidence.presentations[0]
+        assert.equal(accepted.frame, ['direct', 'composed', 'no-clear', 'depth-clear'].includes(mode) ? 1 : 2)
+        const sample = evidence.samples.find(sample => sample.frame === accepted.frame)
+        assert.deepEqual(sample.pixel, mode === 'source-change' ? [0, 0, 255, 255] : [0, 255, 0, 255])
+        if (mode === 'requirement-change') assert.equal(accepted.receipt.presentationRevision, 2)
+      }
+      if (mode === 'unrelated') assert.deepEqual(evidence.samples[0].pixel, [0, 0, 0, 0])
+      if (['auto-clear', 'clear', 'callback-clear', 'callback-color-clear', 'nested-auto-clear'].includes(mode)) assert.deepEqual(evidence.samples[0].pixel, [0, 0, 0, 255])
+      if (mode === 'background-clear' || mode === 'callback-background-clear') assert.deepEqual(evidence.samples[0].pixel, [255, 0, 0, 255])
+      console.log(`frame-surface [${backend}]: host ${mode} ${JSON.stringify(evidence)}`)
+    } finally {
+      await page.close()
+    }
+  }
   for (const backend of ['webgpu', 'webgl2']) {
     const { result, problems, taintReports } = await runPage(`backend=${backend}`)
     report(backend, result)
@@ -201,6 +232,10 @@ try {
     if (!result.passed) {
       failures.push(`${backend}: gate failed\n${JSON.stringify(result, null, 2)}`)
       continue
+    }
+
+    for (const mode of ['direct', 'discard', 'unrelated', 'composed', 'auto-clear', 'clear', 'background-clear', 'callback-clear', 'callback-color-clear', 'callback-background-clear', 'nested-auto-clear', 'no-clear', 'depth-clear', 'color-off', 'empty', 'override', 'source-change', 'requirement-change', 'unmount']) {
+      await checkHostPresentation(backend, mode)
     }
 
     // Each control must fail. A control that passes means the oracle cannot

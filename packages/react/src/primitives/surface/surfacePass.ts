@@ -64,3 +64,36 @@ export function readPassEvidence(
     drawable: geometryDraws(geometry),
   }
 }
+
+export interface SurfaceOutputRenderer {
+  getRenderTarget(): THREE.RenderTarget | null
+  readonly info: { readonly render: { readonly calls: number; readonly triangles: number; readonly lines: number; readonly points: number } }
+}
+
+export interface SurfaceOutputDraw {
+  readonly renderCall: number
+  readonly primitives: number
+  readonly drawable: boolean
+}
+
+const primitiveCount = (renderer: SurfaceOutputRenderer) => {
+  const { triangles, lines, points } = renderer.info.render
+  return triangles + lines + points
+}
+
+/** Object callbacks also surround attempts with no geometry or zero instances. */
+export function beginSurfaceOutputDraw(renderer: SurfaceOutputRenderer, mesh: THREE.Mesh, geometry: THREE.BufferGeometry): SurfaceOutputDraw {
+  const elements = geometry.index?.count ?? geometry.getAttribute('position')?.count ?? 0
+  const start = Math.max(0, geometry.drawRange.start)
+  const end = Math.min(elements, geometry.drawRange.start + geometry.drawRange.count)
+  return {
+    renderCall: renderer.info.render.calls,
+    primitives: primitiveCount(renderer),
+    drawable: geometryDraws(geometry) && end - start >= 3 && (!(mesh instanceof THREE.InstancedMesh) || mesh.count > 0),
+  }
+}
+
+/** Nested renderer calls cannot supply another mesh's missing draw evidence. */
+export function surfaceOutputDrawCompleted(renderer: SurfaceOutputRenderer, draw: SurfaceOutputDraw): boolean {
+  return draw.drawable && renderer.info.render.calls === draw.renderCall && primitiveCount(renderer) > draw.primitives
+}

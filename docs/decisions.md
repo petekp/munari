@@ -1696,6 +1696,25 @@ law, `presentationRoute(pass, hasHost)`, shared by `FrameSurface` and
 are removed from the kernel and from the `/advanced` entry. No outcome
 changed: each pass maps to the same behavior as before.
 
+**Amendment, 2026-10-11: explicit compositor output.** A draw into a render
+target queues evidence for that target. `useSurfaceOutput` from `/advanced`
+associates a final output mesh with the targets whose captured draws it includes.
+Only an eligible color-writing draw by that mesh can confirm those targets.
+Unrelated screen draws leave them pending. Color clears discard earlier evidence
+for the affected target; depth-only clears and additive passes preserve it.
+
+The compositor owns shader inclusion and visibility. The binding cannot infer
+those from an arbitrary shader or out-of-band writes. The declared output uses
+one authored material and a nonempty draw. Material overrides cannot borrow its
+target association. Source targets remain intact until output; effects use
+separate intermediate targets. Replacement, unmount, or a changed presentation requirement
+invalidates pending delivery. A discarded output leaves the same frame eligible
+to retry; deduplication occurs when presentation is delivered.
+
+The `frame-surface` instrument owns direct and composed output, unrelated output,
+clear/reuse, discarded-frame retry, and source/requirement/lifetime checks on
+WebGPU and WebGL 2. It compares receipt timing with sampled pixels after render.
+
 ## #26 — Releasing a mesh requires one post-removal draw (2026-08-10, react binding)
 
 **Decision.** Both DOM-backed and frame-backed Surfaces invalidate their r3f

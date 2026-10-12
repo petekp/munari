@@ -305,6 +305,17 @@ try {
   // also needs frames after the lift completes: on 2026-09-05, relying on
   // protocol work alone left a held card frozen with nonzero velocity.
   await go('flight')
+  for (const button of ['right', 'middle']) {
+    const deletion = await page.$('[data-card] .l14-del')
+    await deletion.click({ button })
+    const title = await page.$('[data-card] h3')
+    const box = await title.boundingBox()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down({ button })
+    await page.mouse.move(850, 210, { steps: 5 })
+    await page.mouse.up({ button })
+    if (await page.$$eval('.l14-slot', elements => elements.length) !== 9 || await page.evaluate(() => Boolean(window.__flight))) problems.push(`flight: ${button} press deleted or lifted a card`)
+  }
   const erase = async (nextCount) => {
     const button = await page.$('[data-card] .l14-del')
     await button.click()
@@ -386,6 +397,93 @@ try {
       }
     }
   }
+
+  await go('flight')
+  const movedId = await page.$eval('[data-col="queue"] .l14-card', element => element.dataset.card)
+  const moveSelector = `.l14-card[data-card="${movedId}"]`
+  const noteField = await page.$(`${moveSelector} .l14-note`)
+  await noteField.focus()
+  await page.keyboard.type('Retain this note')
+  await page.focus(`${moveSelector} .l14-move summary`)
+  await page.keyboard.press('Space')
+  await page.keyboard.press('Tab')
+  await page.keyboard.type('t')
+  await page.keyboard.press('Tab')
+  await page.keyboard.type('5')
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Enter')
+  await page.waitForFunction(id => document.querySelector('[data-col="today"] .l14-slot:last-child .l14-card')?.dataset.card === id, {}, movedId)
+  await page.waitForFunction(id => {
+    const control = document.querySelector(`.l14-card[data-card="${id}"] .l14-move summary`)
+    if (!control) return false
+    const box = control.getBoundingClientRect()
+    return control === document.activeElement && box.top >= 0 && box.bottom <= innerHeight && !control.closest('.l14-slot').getAnimations().some(animation => animation.playState === 'running')
+  }, {}, movedId)
+  if (!await page.$eval(`${moveSelector} .l14-move summary`, element => element === document.activeElement)) problems.push('flight: enhanced keyboard move lost focus')
+  if (!await noteField.evaluate(element => element.isConnected && element.value === 'Retain this note')) problems.push('flight: enhanced keyboard move replaced or reset the note')
+  const moveAnnouncement = await page.$eval('.l14 [role="status"]', element => element.textContent)
+  if (!moveAnnouncement.includes('Today') || !moveAnnouncement.includes('5')) problems.push(`flight: enhanced move was not announced: ${moveAnnouncement}`)
+  await go('flight')
+  const floatingMoveHeading = await page.$('[data-col="queue"] .l14-card h3')
+  const floatingMoveId = await floatingMoveHeading.evaluate(element => element.closest('[data-card]').dataset.card)
+  const floatingMoveBox = await floatingMoveHeading.boundingBox()
+  await page.mouse.click(floatingMoveBox.x + floatingMoveBox.width / 2, floatingMoveBox.y + floatingMoveBox.height / 2)
+  await page.waitForFunction(() => window.__flight?.flight.current?.mode === 'float')
+  const floatingMoveSelector = `.l14-card[data-card="${floatingMoveId}"]:not([inert] *) .l14-move`
+  await page.focus(`${floatingMoveSelector} summary`)
+  await page.keyboard.press('Space')
+  await page.waitForFunction(selector => {
+    const disclosure = document.querySelector(selector)
+    return !window.__flight && disclosure?.open && !disclosure.closest('canvas')
+  }, {}, floatingMoveSelector)
+  await page.keyboard.press('Tab')
+  await page.keyboard.type('t')
+  await page.keyboard.press('Tab')
+  await page.keyboard.type('1')
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Enter')
+  await page.waitForFunction(id => document.querySelector('[data-col="today"] .l14-slot:first-child .l14-card')?.dataset.card === id, {}, floatingMoveId)
+  if (!await page.$eval(`${floatingMoveSelector} summary`, element => element === document.activeElement)) problems.push('flight: opening Move from a floating card lost native control focus')
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+  await page.reload({ waitUntil: 'load' })
+  await page.waitForSelector('.l14[data-reduced-motion="true"] .l14-card')
+  const reducedCard = await page.$eval('[data-col="queue"] .l14-card h3', element => {
+    const box = element.getBoundingClientRect()
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2, id: element.closest('[data-card]').dataset.card }
+  })
+  const reducedTarget = await page.$eval('[data-col="today"] ul', element => {
+    const box = element.getBoundingClientRect()
+    return { x: box.x + box.width / 2, y: box.y + 10 }
+  })
+  await page.mouse.move(reducedCard.x, reducedCard.y)
+  await page.mouse.down()
+  await page.mouse.move(reducedTarget.x, reducedTarget.y, { steps: 10 })
+  await page.mouse.up()
+  await page.waitForFunction(id => Boolean(document.querySelector(`[data-col="today"] .l14-card[data-card="${id}"]`)), {}, reducedCard.id)
+  if (await page.evaluate(() => Boolean(window.__flight))) problems.push('flight: initially reduced drag entered physical flight')
+  const reducedTransforms = await page.$$eval('.l14-slot', elements => elements.some(element => element.getAnimations().some(animation => animation.playState === 'running')))
+  if (reducedTransforms) problems.push('flight: reduced drag animated layout')
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }])
+  await page.waitForSelector('.l14[data-reduced-motion="false"]')
+  const floatingHeading = await page.$('[data-col="queue"] .l14-card h3')
+  const floatingBox = await floatingHeading.boundingBox()
+  await page.mouse.click(floatingBox.x + floatingBox.width / 2, floatingBox.y + floatingBox.height / 2)
+  await page.waitForFunction(() => window.__flight?.flight.current?.mode === 'float')
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+  await page.waitForFunction(() => !window.__flight)
+  if (await page.$$eval('.l14-slot', elements => elements.length) !== 9 || !await page.$(`[data-col="today"] .l14-card[data-card="${reducedCard.id}"]`)) problems.push('flight: preference change lost a card or its committed destination')
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }])
+  await page.waitForSelector('.l14[data-reduced-motion="false"]')
+  const crumpleButton = await page.$('[data-card] .l14-del')
+  const crumpleBox = await crumpleButton.boundingBox()
+  await page.mouse.move(crumpleBox.x + crumpleBox.width / 2, crumpleBox.y + crumpleBox.height / 2)
+  await page.mouse.down()
+  await page.waitForFunction(() => window.__flight?.flight.current?.mode === 'crumple')
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+  await page.mouse.up()
+  await page.waitForFunction(() => !window.__flight && document.querySelectorAll('.l14-slot').length === 8)
+  await erase(7)
+  if (await page.$$eval('.l14-slot', elements => elements.some(element => element.getAnimations().some(animation => animation.playState === 'running')))) problems.push('flight: reduced-motion deletion animated layout')
 
   // Logo: each sampled CSS state must offer a visible presentation.
   await go('logo')

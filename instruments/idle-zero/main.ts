@@ -1,21 +1,6 @@
-// idle-zero — the upload-on-paint economy, measured (instruments/
-// charter: measurement is maintained infrastructure).
-//
-// The claim under gate: a mounted, visually quiescent source paints
-// ZERO times per second. paint="auto" is passive — the compositor's
-// self-firing onpaint is the only change signal, and while nothing in
-// the subtree changes its paint record, that signal stays silent. The
-// whole upload-on-paint economy (idle Surfaces free, ~64–96 animating
-// ceiling) rests on this; a stray repaint loop, MutationObserver, or
-// dirty-flag heuristic added to the paint path shows up HERE as a
-// nonzero idle delta before it shows up anywhere else.
-//
-// Two legs, both load-bearing:
-//   idle    — N realistic static cards, counted over a window: every
-//             delta must be exactly 0. (The economy.)
-//   provoke — one deliberate DOM mutation afterwards: the counter must
-//             advance. (Proof the instrument is live — without this, a
-//             broken onpaint wiring would pass the idle leg vacuously.)
+// Idle capture — quiet frozen and live sources must produce no new paints.
+// Frozen sources can decline unsolicited compositor callbacks; only a live
+// quiet profile detects those callbacks becoming unnecessary capture work.
 import { createDomTextureSource, type DomTextureSource } from '@munari/core'
 
 const params = new URLSearchParams(location.search)
@@ -54,13 +39,23 @@ async function waitFor(cond: () => boolean, timeoutMs: number, what: string): Pr
   }
 }
 
+interface QuietProfile {
+  live: boolean
+  idleDeltas: number[]
+  recurringRequests: number
+  recurringCallbacks: number
+  windowMs: number
+}
+
 interface RunResult {
   n: number
-  /** paintCount deltas across the idle window — every entry must be 0. */
-  idleDeltas: number[]
-  /** paintCount delta on source 0 after a deliberate text mutation — must be > 0. */
+  profiles: QuietProfile[]
   provokedDelta: number
-  windowMs: number
+}
+
+interface TrialCanvas extends HTMLCanvasElement {
+  requestPaint(): void
+  onpaint: (() => void) | null
 }
 
 interface IdleZero {
@@ -68,7 +63,7 @@ interface IdleZero {
   ready: boolean
   sources: DomTextureSource[]
   stats: () => Array<{ label: string; painted: boolean; paintCount: number }>
-  run: (opts?: { settleMs?: number; windowMs?: number }) => Promise<RunResult>
+  run: (opts?: { settleMs?: number; windowMs?: number; recurringPaint?: boolean }) => Promise<RunResult>
 }
 
 declare global {
@@ -88,40 +83,82 @@ window.__idleZero = {
   capable,
   ready: true,
   sources,
-  // House rule: a scene that can't be interrogated from the console
-  // isn't done.
   stats: () =>
     sources.map((s, i) => ({ label: `idle-${i}`, painted: s.painted(), paintCount: s.paintCount() })),
 
-  async run({ settleMs = 1200, windowMs = 3000 } = {}) {
+  async run({ settleMs = 1200, windowMs = 3000, recurringPaint = false } = {}) {
     if (!capable) throw new Error('drawElementImage absent — run.mjs should have skipped')
+    if (!Number.isInteger(N) || N < 1) throw new Error('Source count must be a positive integer')
+    if (!Number.isFinite(settleMs) || settleMs < 0 || !Number.isFinite(windowMs) || windowMs <= 0) {
+      throw new Error('Invalid idle observation duration')
+    }
 
-    // Every source must reach its first paint before the clock means
-    // anything — a source that never painted would idle at 0 for the
-    // wrong reason.
     await waitFor(() => sources.every((s) => s.painted()), 15_000, 'first paint on all sources')
     await document.fonts.ready
-    await sleep(settleMs)
+    const profiles: QuietProfile[] = []
+    for (const live of [false, true]) {
+      const switchPaints = sources.map((source) => source.paintCount())
+      for (const source of sources) source.setLive(live)
+      if (live) {
+        await waitFor(
+          () => sources.every((source, i) => source.paintCount() > switchPaints[i]!),
+          5000,
+          'live capture on all sources',
+        )
+      }
+      await sleep(settleMs)
+      const before = sources.map((source) => source.paintCount())
+      let recurringRequests = 0
+      let recurringCallbacks = 0
+      let completedRequests = 0
+      let callback = 0
+      // SAFETY: the native engine created this canvas with the trial API after capability detection.
+      const canvas = sources[0]!.canvas as TrialCanvas
+      const originalPaint = canvas.onpaint
+      if (recurringPaint) {
+        canvas.onpaint = () => {
+          recurringCallbacks++
+          completedRequests = recurringRequests
+          originalPaint?.()
+        }
+      }
+      const request = () => {
+        // Native requestPaint schedules onpaint without marking source demand.
+        // Frozen sources may decline it; live sources reveal the injected work.
+        canvas.requestPaint()
+        recurringRequests++
+        callback = requestAnimationFrame(request)
+      }
+      try {
+        if (recurringPaint) callback = requestAnimationFrame(request)
+        await sleep(windowMs)
+        profiles.push({
+          live,
+          idleDeltas: sources.map((source, i) => source.paintCount() - before[i]!),
+          recurringRequests,
+          recurringCallbacks,
+          windowMs,
+        })
+      } finally {
+        cancelAnimationFrame(callback)
+        try {
+          if (recurringRequests > 0) {
+            await waitFor(() => completedRequests === recurringRequests, 5000, 'final recurring paint callback')
+          }
+        } finally {
+          canvas.onpaint = originalPaint
+        }
+      }
+    }
 
-    const before = sources.map((s) => s.paintCount())
-    await sleep(windowMs)
-    const idleDeltas = sources.map((s, i) => s.paintCount() - before[i]!)
-
-    // The liveness leg, AFTER the idle window so the window stays pure: tell
-    // one source its content is live, mutate that subtree, and the engine must
-    // follow it. Live is what makes this a proof rather than a coincidence —
-    // a change nobody's input asked for is followed only when declared, on
-    // every engine now (decisions.md #64). Without the flag a zero here would
-    // mean the law is being kept, and the leg would prove nothing about
-    // whether the source is still awake.
     const zero = sources[0]!
-    zero.setLive(true)
     const provokedBase = zero.paintCount()
-    zero.element.querySelector('[data-stamp]')!.textContent = 'provoked'
-    await waitFor(() => zero.paintCount() > provokedBase, 5_000, 'provoked repaint on source 0')
+    const stamp = zero.element.querySelector('[data-stamp]')!
+    stamp.textContent = stamp.textContent === 'provoked' ? 'provoked again' : 'provoked'
+    await waitFor(() => zero.paintCount() > provokedBase, 5000, 'provoked repaint on source 0')
     const provokedDelta = zero.paintCount() - provokedBase
 
-    return { n: N, idleDeltas, provokedDelta, windowMs }
+    return { n: N, profiles, provokedDelta }
   },
 }
 

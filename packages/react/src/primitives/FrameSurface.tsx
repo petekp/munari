@@ -22,8 +22,8 @@
 // not showing). A draw whose render target is null reached the canvas and
 // presents directly; inside a <SurfaceCanvas> that is every canvas draw,
 // because it renders through DirectRenderPipeline (#72). A draw into a
-// render target defers to the SurfaceCanvas frame tail, which closes once
-// the frame reached the canvas; without a SurfaceCanvas it cannot present.
+// render target defers to a declared compositor output that includes it.
+// That output must draw to the canvas; without a SurfaceCanvas it cannot present.
 // A WebGPURenderer drawing through its default output pass renders every
 // frame into an internal target, so outside a SurfaceCanvas it issues no
 // presentation receipts (#69). Rejections are counted per transfer and
@@ -533,7 +533,7 @@ export function FrameSurface({
     [runtime, frameRef, presentationRef, reportRejectedPresentation, host],
   )
 
-  const handleAfterRender = useCallback<THREE.Object3D['onAfterRender']>((_renderer, scene, _camera, _geometry, renderedMaterial) => {
+  const handleAfterRender = useCallback<THREE.Object3D['onAfterRender']>((renderer, scene, _camera, _geometry, renderedMaterial) => {
     if (drawnByOverride(scene, renderedMaterial)) return
     const current = runtimeRef.current
     // A source prop can change one commit before its effect disposes the old
@@ -547,10 +547,13 @@ export function FrameSurface({
     const presentationReceipt = current.takePresentationReceipt(reportRejectedPresentation)
     if (!presentationReceipt) return
     const deliver = () => {
+      const requirement = presentationRef.current
+      if (runtimeRef.current !== current || current.source !== frameRef.current || !requirement || !presentationReceiptSatisfies(requirement, presentationReceipt)) return
       if (current.deliverPresentation(presentationReceipt)) onPresentedRef.current?.(presentationReceipt)
     }
     if (routeRef.current === 'tail' && host) {
-      host.deferPresentation(deliver)
+      const target = renderer.getRenderTarget()
+      if (target) host.deferPresentation(target, deliver)
       return
     }
     deliver()
@@ -561,6 +564,7 @@ export function FrameSurface({
     onPresentedRef,
     reportRejectedPresentation,
     host,
+    presentationRef,
   ])
 
   assertFrameMaterialSupported(frame, material)

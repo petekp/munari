@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
+import { RenderTarget } from 'three'
 import {
   createSurfaceHost,
   mountSurfaceHost,
@@ -170,63 +171,88 @@ describe('work claims', () => {
 })
 
 describe('the frame tail', () => {
-  it('closes deferred presentations only when the frame reached the screen', () => {
-    // A post-processed scene draws every presenter into a target, so the
-    // presenter's own post-draw callback is not a presentation boundary.
+  it('retires only the evidence belonging to a color-cleared target', () => {
     const host = surfaceHost()
+    const cleared = new RenderTarget(4, 4)
+    const retained = new RenderTarget(4, 4)
+    const proven: number[] = []
+    host.deferPresentation(cleared, () => proven.push(1))
+    host.deferPresentation(retained, () => proven.push(2))
+    host.discardTargetPresentations(cleared)
+    host.closeFrameTail([cleared, retained])
+    expect(proven).toEqual([2])
+  })
+  it('closes multiple associated targets in one output draw', () => {
+    const host = surfaceHost()
+    const first = new RenderTarget(4, 4)
+    const second = new RenderTarget(4, 4)
+    const unrelated = new RenderTarget(4, 4)
+    const proven: number[] = []
+    host.deferPresentation(first, () => proven.push(1))
+    host.deferPresentation(second, () => proven.push(2))
+    host.deferPresentation(unrelated, () => proven.push(3))
+    host.closeFrameTail([first, second])
+    expect(proven).toEqual([1, 2])
+    expect(host.deferredPresentations()).toBe(1)
+  })
+  it('closes only the targets included by a qualified output draw', () => {
+    const host = surfaceHost()
+    const first = new RenderTarget(4, 4)
+    const second = new RenderTarget(4, 4)
     const proven: string[] = []
-    host.deferPresentation(() => proven.push('a'))
-    host.deferPresentation(() => proven.push('b'))
+    host.deferPresentation(first, () => proven.push('a'))
+    host.deferPresentation(second, () => proven.push('b'))
     expect(host.deferredPresentations()).toBe(2)
-    host.closeFrameTail(true)
+    host.closeFrameTail([first])
+    expect(proven).toEqual(['a'])
+    expect(host.deferredPresentations()).toBe(1)
+    host.closeFrameTail([first])
+    expect(proven).toEqual(['a'])
+    host.closeFrameTail([second])
     expect(proven).toEqual(['a', 'b'])
     expect(host.deferredPresentations()).toBe(0)
-    host.closeFrameTail(true)
+    host.closeFrameTail([first, second])
     expect(proven).toEqual(['a', 'b'])
   })
 
-  it('a draw into a target leaves the deferrals pending', () => {
-    // Post-processing renders the scene off screen FIRST and composites
-    // second. Draining at the scene pass would throw every presenter away
-    // one pass before the one that shows them.
+  it('leaves unrelated targets pending', () => {
     const host = surfaceHost()
+    const source = new RenderTarget(4, 4)
+    const unrelated = new RenderTarget(4, 4)
     const proven: string[] = []
-    host.deferPresentation(() => proven.push('a'))
-    host.closeFrameTail(false)
+    host.deferPresentation(source, () => proven.push('a'))
+    host.closeFrameTail([unrelated])
     expect(proven).toEqual([])
     expect(host.deferredPresentations()).toBe(1)
-    host.closeFrameTail(true)
+    host.closeFrameTail([source])
     expect(proven).toEqual(['a'])
     expect(host.deferredPresentations()).toBe(0)
   })
 
-  it('discards a frame that ended without reaching the screen', () => {
-    // The composite pass was skipped or the context went away. Nothing was
-    // shown, so nothing is proven and the presenters stay warming.
+  it('discards a frame that ended without qualifying output', () => {
     const host = surfaceHost()
+    const source = new RenderTarget(4, 4)
     const proven: string[] = []
-    host.deferPresentation(() => proven.push('a'))
+    host.deferPresentation(source, () => proven.push('a'))
     host.discardFrameTail()
-    host.closeFrameTail(true)
+    host.closeFrameTail([source])
     expect(proven).toEqual([])
     expect(host.deferredPresentations()).toBe(0)
   })
 
-  it('a closer that defers again waits for the next frame', () => {
-    // Draining before the closers run is what makes this terminate: a
-    // closer that reaches back into the host must not see this frame's
-    // list a second time.
+  it('keeps newly deferred draws outside the current output transaction', () => {
     const host = surfaceHost()
+    const source = new RenderTarget(4, 4)
     const order: number[] = []
     let round = 0
     const again = () => {
       order.push(++round)
-      if (round < 2) host.deferPresentation(again)
+      if (round < 2) host.deferPresentation(source, again)
     }
-    host.deferPresentation(again)
-    host.closeFrameTail(true)
+    host.deferPresentation(source, again)
+    host.closeFrameTail([source])
     expect(order).toEqual([1])
-    host.closeFrameTail(true)
+    host.closeFrameTail([source])
     expect(order).toEqual([1, 2])
   })
 })

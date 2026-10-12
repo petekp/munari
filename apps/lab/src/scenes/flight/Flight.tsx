@@ -48,6 +48,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -119,6 +120,15 @@ interface Card {
 }
 
 type ColId = 'queue' | 'today'
+
+const MOTION_QUERY = '(prefers-reduced-motion: reduce)'
+const reducedMotion = () => window.matchMedia(MOTION_QUERY).matches
+const reducedMotionOnServer = () => true
+function subscribeMotion(listener: () => void) {
+  const media = window.matchMedia(MOTION_QUERY)
+  media.addEventListener('change', listener)
+  return () => media.removeEventListener('change', listener)
+}
 const COLS: { id: ColId; name: string }[] = [
   { id: 'queue', name: 'Queue' },
   { id: 'today', name: 'Today' },
@@ -351,9 +361,75 @@ interface CardBodyProps {
   onGrab?: (e: React.PointerEvent<HTMLDivElement>) => void
   /** The ✕. Both copies get it: a card is deletable wherever it is. */
   onDelete?: (e?: React.PointerEvent<HTMLButtonElement>) => void
+  column: ColId
+  position: number
+  counts: Record<ColId, number>
+  onMove: (column: ColId, position: number) => void
+  onOpenMove: (open: () => void) => boolean
 }
 
-function CardBody({ card, onChange, onGrab, onDelete }: CardBodyProps) {
+function CardMove({ card, column, position, counts, onMove, onOpenMove }: Pick<CardBodyProps, 'card' | 'column' | 'position' | 'counts' | 'onMove' | 'onOpenMove'>) {
+  const disclosure = useRef<HTMLDetailsElement>(null)
+  const summary = useRef<HTMLElement>(null)
+  const [destination, setDestination] = useState({ column, position })
+  const columnId = `flight-column-${card.id}`
+  const positionId = `flight-position-${card.id}`
+  const close = () => {
+    if (disclosure.current) disclosure.current.open = false
+    summary.current?.focus({ preventScroll: true })
+  }
+  useEffect(() => {
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !disclosure.current?.contains(event.target)) {
+        if (disclosure.current) disclosure.current.open = false
+      }
+    }
+    document.addEventListener('pointerdown', outside)
+    return () => document.removeEventListener('pointerdown', outside)
+  }, [])
+  const positions = counts[destination.column] + (destination.column === column ? 0 : 1)
+  return (
+    <details ref={disclosure} className="l14-move" data-nodrag onKeyDown={event => {
+      if (event.key !== 'Escape' || !disclosure.current?.open) return
+      event.stopPropagation()
+      close()
+    }}>
+      <summary ref={summary} onClick={event => {
+        if (disclosure.current?.open) return
+        setDestination({ column, position })
+        const open = () => {
+          if (!disclosure.current) return
+          disclosure.current.open = true
+          summary.current?.focus({ preventScroll: true })
+          disclosure.current.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' })
+        }
+        if (!onOpenMove(open)) event.preventDefault()
+      }}>Move</summary>
+      <form onSubmit={event => {
+        event.preventDefault()
+        close()
+        onMove(destination.column, destination.position)
+      }}>
+        <label htmlFor={columnId}>Column</label>
+        <select id={columnId} value={destination.column} onChange={event => {
+          const next = COLS.find(item => item.id === event.target.value)
+          if (next) setDestination({ column: next.id, position: 0 })
+        }}>
+          {COLS.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+        <label htmlFor={positionId}>Position</label>
+        <select id={positionId} value={Math.min(destination.position, positions - 1)} onChange={event => {
+          setDestination(current => ({ ...current, position: Number(event.target.value) }))
+        }}>
+          {Array.from({ length: positions }, (_, index) => <option key={index} value={index}>{index + 1}</option>)}
+        </select>
+        <button type="submit">Move</button>
+      </form>
+    </details>
+  )
+}
+
+function CardBody({ card, onChange, onGrab, onDelete, column, position, counts, onMove, onOpenMove }: CardBodyProps) {
   return (
     <div
       className="l14-card"
@@ -377,7 +453,7 @@ function CardBody({ card, onChange, onGrab, onDelete }: CardBodyProps) {
             // The click stays as the KEYBOARD path (Enter/Space on a button
             // fires click with no pointerdown); after a pointer press it
             // finds the crumple already running and does nothing.
-            onPointerDown={(e) => onDelete(e)}
+            onPointerDown={(e) => { if (e.button === 0) onDelete(e) }}
             onClick={() => onDelete()}
           >
             ✕
@@ -403,6 +479,7 @@ function CardBody({ card, onChange, onGrab, onDelete }: CardBodyProps) {
           onChange={(e) => onChange({ note: e.target.value })}
         />
       </div>
+      <CardMove card={card} column={column} position={position} counts={counts} onMove={onMove} onOpenMove={onOpenMove} />
     </div>
   )
 }
@@ -427,6 +504,7 @@ const LIGHT = new THREE.Vector3(-0.30, -0.46, -1).normalize()
 // ── the driver ───────────────────────────────────────────────────────────
 
 interface DriverProps {
+  reduced: boolean
   flight: React.RefObject<Flight | null>
   /** The public handoff edge: zero keeps the plate at page identity. */
   progress: SurfaceProgress
@@ -893,6 +971,7 @@ function crumpleInFlight(
 }
 
 function Driver({
+  reduced,
   flight,
   progress,
   slotRect,
@@ -933,7 +1012,7 @@ function Driver({
 
     // The crumple's live scalar — identity for every other mode, so the
     // shader and the shadow below never need to know which mode this is.
-    const crush = stepFlightMode(
+    const crush = reduced ? 0 : stepFlightMode(
       f,
       dt,
       vw,
@@ -1049,7 +1128,7 @@ function Driver({
       // free flight home, so only there does the relax race a deadline.
       const sm = aeroSm.current
       let amp = 0
-      if (crossing <= 0) {
+      if (reduced || crossing <= 0) {
         // The stored release velocity belongs to the future flight. It must
         // not bend the hidden twin that is proving the flat page frame.
         sm.amt = 0
@@ -1079,6 +1158,7 @@ function Driver({
 // ── the airborne card ────────────────────────────────────────────────────
 
 interface FlyingProps {
+  reduced: boolean
   /** The handle whose source stands in the page, in the card's own slot. */
   surface: SurfaceHandle
   flight: React.RefObject<Flight | null>
@@ -1103,6 +1183,7 @@ interface FlyingProps {
 }
 
 function Flying({
+  reduced,
   surface,
   flight,
   density,
@@ -1169,6 +1250,7 @@ function Flying({
   return (
     <>
       <Driver
+        reduced={reduced}
         flight={flight}
         progress={surface.progress}
         slotRect={slotRect}
@@ -1254,6 +1336,7 @@ function RegrabTarget({
   useEffect(() => {
     if (!root) return
     const down = (ev: PointerEvent) => {
+      if (ev.button !== 0) return
       const f = flight.current
       if (!f) return
       if (closestFrom(ev.target, '[data-nodrag]')) return
@@ -1344,14 +1427,24 @@ function ReleaseAfterSceneCleanup({ onRelease }: { onRelease: () => void }) {
 // ── the lab ──────────────────────────────────────────────────────────────
 
 export function FlightApp() {
+  const reduced = useSyncExternalStore(subscribeMotion, reducedMotion, reducedMotionOnServer)
+  const [announcement, setAnnouncement] = useState('')
   const [cards, setCards] = useState<Record<string, Card>>(() => {
     const byId: Record<string, Card> = {}
     for (const c of SEED) byId[c.id] = c
     return byId
   })
   const [board, setBoard] = useState<Record<ColId, string[]>>(() => ({ ...START }))
+  const cardLocations = useMemo(() => {
+    const locations = new Map<string, { column: ColId; position: number }>()
+    for (const { id: column } of COLS) {
+      board[column].forEach((id, position) => locations.set(id, { column, position }))
+    }
+    return locations
+  }, [board])
   // No trial, no flight — see `carryPlainly`.
   const supported = useSurfaceSupport()
+  const physicalMotion = supported && !reduced
   const [flyingId, setFlyingId] = useState<string | null>(null)
   // The card's identity, declared here because the board is what asks for a
   // handoff and what has to know when one has happened. The excursion's
@@ -1382,6 +1475,9 @@ export function FlightApp() {
   const glHolds = presented === 'scene'
   const ending = useRef(false)
   const pendingDelete = useRef<string | null>(null)
+  const pendingMove = useRef<{ id: string; column: ColId; position: number } | null>(null)
+  const moveFocus = useRef<{ id: string } | null>(null)
+  const pendingMoveOpen = useRef<(() => void) | null>(null)
   // Radii and box-shadow layers, measured from the card's own paint. A ref,
   // not state: the only consumer is the Driver's per-frame uniform write.
   const chromeRef = useRef<SurfaceChrome | null>(null)
@@ -1506,8 +1602,8 @@ export function FlightApp() {
   // FLIP: snapshot before every commit that can move a slot, play after.
   const pending = useRef<Map<Element, DOMRect> | null>(null)
   const snapshot = useCallback(() => {
-    if (boardEl.current) pending.current = captureRects(boardEl.current)
-  }, [])
+    if (!reduced && boardEl.current) pending.current = captureRects(boardEl.current)
+  }, [reduced])
 
   // The carried card, while `carryPlainly` is running one. Held here rather
   // than in that closure because the commit it triggers has to be able to
@@ -1554,12 +1650,12 @@ export function FlightApp() {
   }, [])
 
   useLayoutEffect(() => {
-    if (pending.current && boardEl.current) playFlip(boardEl.current, pending.current)
+    if (!reduced && pending.current && boardEl.current) playFlip(boardEl.current, pending.current)
     pending.current = null
     // Before paint, in the same commit that moved the slots: a carried card
     // must not be seen in its new seat for even one frame.
     placeCarried()
-  }, [board, placeCarried])
+  }, [board, placeCarried, reduced])
 
   // One step of a carry: aim, snapshot, commit. The same three calls
   // `flightGestures` makes on every trusted move of a flight.
@@ -1640,9 +1736,9 @@ export function FlightApp() {
   // ── the gesture ──
   const beginDrag = useCallback(
     (id: string, e: React.PointerEvent<HTMLDivElement>) => {
-      if (closestFrom(e.target, '[data-nodrag]')) return
-      if (flight.current) return
-      if (!supported) return carryPlainly(id, e)
+      if (e.button !== 0 || closestFrom(e.target, '[data-nodrag]')) return
+      if (flight.current || carry.current) return
+      if (!physicalMotion) return carryPlainly(id, e)
       const el = e.currentTarget.getBoundingClientRect()
       e.preventDefault()
 
@@ -1692,7 +1788,7 @@ export function FlightApp() {
       requestLift(true)
       setFlyingId(id)
     },
-    [requestLift, supported, carryPlainly],
+    [requestLift, physicalMotion, carryPlainly],
   )
 
   // ── the delete ──
@@ -1722,6 +1818,8 @@ export function FlightApp() {
       today: prev.today.filter((x) => x !== id),
     }))
     pendingDelete.current = null
+    pendingMove.current = null
+    pendingMoveOpen.current = null
     ending.current = false
     setFlyingId(null)
     setAtAltitude(false)
@@ -1734,10 +1832,7 @@ export function FlightApp() {
 
   const deleteCard = useCallback((id: string, e?: React.PointerEvent<HTMLButtonElement>) => {
     if (ending.current) return
-    // No crumple to watch, so the card just goes. The FLIP still plays, so
-    // the neighbours close over the gap as a layout animation rather than a
-    // cut — which is the part of a delete this scene cares about anyway.
-    if (!supported) {
+    if (!physicalMotion) {
       if (e) e.preventDefault()
       snapshot()
       commitDelete(id)
@@ -1814,7 +1909,7 @@ export function FlightApp() {
     setAtAltitude(false)
     requestLift(true)
     setFlyingId(id)
-  }, [requestLift, supported, snapshot, commitDelete])
+  }, [requestLift, physicalMotion, snapshot, commitDelete])
 
   const regrab = useCallback((localX: number, localY: number) => {
     const f = flight.current
@@ -1922,6 +2017,37 @@ export function FlightApp() {
     [],
   )
 
+  const applyMove = useCallback((id: string, column: ColId, position: number) => {
+    const current = boardRef.current
+    const from = current.queue.includes(id) ? 'queue' : 'today'
+    const index = Math.max(0, Math.min(position, current[column].length - (from === column ? 1 : 0)))
+    if (from === column && current[from].indexOf(id) === index) return
+    snapshot()
+    moveFocus.current = { id }
+    moveTo(column, index, id)
+    const card = cards[id]
+    const destination = COLS.find(item => item.id === column)
+    if (card && destination) setAnnouncement(`${card.title} moved to ${destination.name}, position ${index + 1}.`)
+  }, [cards, moveTo, snapshot])
+
+  useLayoutEffect(() => {
+    const focus = moveFocus.current
+    if (!focus) return
+    // Page targets attach retained content during this commit's child layout effects.
+    queueMicrotask(() => {
+      if (moveFocus.current !== focus) return
+      const slot = slots.current.get(focus.id)
+      const control = slot?.querySelector<HTMLElement>('.l14-move summary')
+      control?.focus({ preventScroll: true })
+      // FLIP still reports the old box until it finishes; reveal the committed location afterward.
+      Promise.allSettled((slot?.getAnimations() ?? []).map(animation => animation.finished)).then(() => {
+        if (moveFocus.current !== focus) return
+        if (control === document.activeElement) control?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' })
+        moveFocus.current = null
+      })
+    })
+  }, [board])
+
   const releaseFlight = useCallback(() => {
     if (!ending.current) return
     const id = pendingDelete.current
@@ -1938,7 +2064,64 @@ export function FlightApp() {
     document.querySelectorAll<HTMLElement>('.l14-slot').forEach((el) => {
       el.style.removeProperty('--l14-near')
     })
-  }, [commitDelete])
+    const move = pendingMove.current
+    pendingMove.current = null
+    if (move) applyMove(move.id, move.column, move.position)
+  }, [applyMove, commitDelete])
+
+  useLayoutEffect(() => {
+    if (!reduced) return
+    pending.current = null
+    boardEl.current?.querySelectorAll('.l14-slot').forEach(element => {
+      element.getAnimations().forEach(animation => animation.cancel())
+    })
+    const f = flight.current
+    if (!f) return
+    if (f.mode === 'crumple') pendingDelete.current = f.id
+    ending.current = true
+    const rect = slotRect(f.id)
+    if (rect) f.plate.p.set(rect.left + rect.width / 2 - window.innerWidth / 2, window.innerHeight / 2 - rect.top - rect.height / 2, 0)
+    f.plate.q.copy(FLAT)
+    f.plate.v.set(0, 0, 0)
+    f.plate.w.set(0, 0, 0)
+    f.mode = 'home'
+    f.done = true
+    setAtAltitude(false)
+    requestLift(false)
+  }, [reduced, requestLift, slotRect])
+
+  useLayoutEffect(() => {
+    if (flyingId !== null) return
+    const open = pendingMoveOpen.current
+    pendingMoveOpen.current = null
+    open?.()
+  }, [flyingId])
+
+  const openMove = (open: () => void): boolean => {
+    const f = flight.current
+    if (!f) return true
+    if (f.mode === 'crumple' || pendingDelete.current) return false
+    // The flight's capture dimensions are fixed; expand its controls only after the page handoff.
+    pendingMoveOpen.current = open
+    f.mode = 'home'
+    ending.current = true
+    requestLift(false)
+    return false
+  }
+
+  const moveCard = (id: string, column: ColId, position: number) => {
+    const f = flight.current
+    if (f) {
+      if (f.mode === 'crumple' || pendingDelete.current) return
+      // Reorder after the page owns the card; moving a preparation source invalidates its matching scene frame.
+      pendingMove.current = { id, column, position }
+      f.mode = 'home'
+      ending.current = true
+      requestLift(false)
+      return
+    }
+    applyMove(id, column, position)
+  }
 
   // The loop closing: the physics writes a CSS custom property onto the slot
   // it is aimed at, every frame, and ordinary CSS does the rest.
@@ -1973,7 +2156,8 @@ export function FlightApp() {
 
 
   return (
-    <div className="l14" ref={scroller}>
+    <div className="l14" ref={scroller} data-reduced-motion={reduced}>
+      <p className="sr-only" role="status">{announcement}</p>
 
       <div className="l14-inner">
         <div className="l14-board" ref={boardEl}>
@@ -2002,14 +2186,16 @@ export function FlightApp() {
         {Object.values(cards).map(card => {
           const { handle, target } = cardSurface(card.id)
           const f = flyingId === card.id ? flight.current : null
+          const location = cardLocations.get(card.id)
+          if (!location) return null
           return <Surface.Root key={card.id} surface={handle}
             inScene={Boolean(f) && view === 'scene'} onPresentationChange={f ? onPresentationChange : undefined}>
             <Surface.HTML target={target} size={f ? [f.w,f.h] : undefined} resolution={density} onChrome={chrome => { if (f) chromeRef.current = chrome }}>
-              <CardBody card={card} onChange={change => patch(card.id,change)} onGrab={event => beginDrag(card.id,event)} onDelete={event => deleteCard(card.id,event)} />
+              <CardBody card={card} column={location.column} position={location.position} counts={{ queue: board.queue.length, today: board.today.length }} onOpenMove={openMove} onMove={(col, position) => moveCard(card.id, col, position)} onChange={change => patch(card.id,change)} onGrab={event => beginDrag(card.id,event)} onDelete={event => deleteCard(card.id,event)} />
             </Surface.HTML>
             <Surface.Scene>
               {f && <>
-                <Flying surface={handle} flight={flight} density={density} chromeRef={chromeRef} slotRect={slotRect} scrollTop={scrollTop} onLanded={onLanded} onAltitude={setAtAltitude} onCrumpled={onCrumpled} onRegrab={regrab} />
+                <Flying reduced={reduced} surface={handle} flight={flight} density={density} chromeRef={chromeRef} slotRect={slotRect} scrollTop={scrollTop} onLanded={onLanded} onAltitude={setAtAltitude} onCrumpled={onCrumpled} onRegrab={regrab} />
                 <ReleaseAfterSceneCleanup onRelease={releaseFlight} />
               </>}
             </Surface.Scene>

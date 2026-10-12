@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { applyPassWrites, authoredWrites } from './surfaceWrites'
-import { drawnByOverride, geometryDraws, readPassEvidence } from './surfacePass'
+import { beginSurfaceOutputDraw, drawnByOverride, geometryDraws, readPassEvidence, surfaceOutputDrawCompleted } from './surfacePass'
 
 describe('geometryDraws', () => {
   it('is false when the vertices, the draw range or the instance count leave nothing to draw', () => {
@@ -88,5 +88,30 @@ describe('readPassEvidence', () => {
       stencilWrite: false,
       drawable: true,
     })
+  })
+})
+
+describe('compositor output draws', () => {
+  it('requires actual primitives from the same renderer call', () => {
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshBasicMaterial())
+    const renderer = { getRenderTarget: () => null, info: { render: { calls: 1, triangles: 0, lines: 0, points: 0 } } }
+    const draw = beginSurfaceOutputDraw(renderer, mesh, mesh.geometry)
+    expect(surfaceOutputDrawCompleted(renderer, draw)).toBe(false)
+    renderer.info.render.triangles = 2
+    expect(surfaceOutputDrawCompleted(renderer, draw)).toBe(true)
+    renderer.info.render.calls++
+    expect(surfaceOutputDrawCompleted(renderer, draw)).toBe(false)
+  })
+
+  it('rejects zero mesh instances and incomplete triangle geometry', () => {
+    const material = new THREE.MeshBasicMaterial()
+    const empty = new THREE.InstancedMesh(new THREE.PlaneGeometry(), material, 0)
+    const incomplete = new THREE.Mesh(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0], 3)), material)
+    const renderer = { getRenderTarget: () => null, info: { render: { calls: 1, triangles: 0, lines: 0, points: 0 } } }
+    const emptyDraw = beginSurfaceOutputDraw(renderer, empty, empty.geometry)
+    const incompleteDraw = beginSurfaceOutputDraw(renderer, incomplete, incomplete.geometry)
+    renderer.info.render.triangles = 4
+    expect(surfaceOutputDrawCompleted(renderer, emptyDraw)).toBe(false)
+    expect(surfaceOutputDrawCompleted(renderer, incompleteDraw)).toBe(false)
   })
 })

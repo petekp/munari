@@ -70,6 +70,7 @@ const ADVANCED_ADDITIONS = [
   'useCarriedMotion',
   'useFrameTexture',
   'surfaceManualPresenter',
+  'useSurfaceOutput',
   'passMaterial',
 ]
 

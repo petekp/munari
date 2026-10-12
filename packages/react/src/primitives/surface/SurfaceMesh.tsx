@@ -1041,7 +1041,7 @@ function SurfacePresenter({
   // lets the page be released in the same frame the pixels land. A pass
   // that wrote color into a target has not reached the screen and defers to
   // the host's tail.
-  const handleAfterRender = useCallback<THREE.Object3D['onAfterRender']>((_renderer, scene, _cam, _geometry, renderedMaterial) => {
+  const handleAfterRender = useCallback<THREE.Object3D['onAfterRender']>((renderer, scene, _cam, _geometry, renderedMaterial) => {
     if (drawnByOverride(scene, renderedMaterial)) return
     // Restored FIRST, before any of the early returns below. The draw is
     // over the moment this runs, and every path out of here — no receipt,
@@ -1087,10 +1087,17 @@ function SurfacePresenter({
         reportHostless()
         return
       case 'tail':
-        if (presenterHost) presenterHost.deferPresentation(() => store.present(presenterKey, epoch))
+        if (presenterHost) {
+          const target = renderer.getRenderTarget()
+          const mesh = meshRef.current
+          if (target) presenterHost.deferPresentation(target, () => {
+            if (!mesh || meshRef.current !== mesh || store.readinessLifetime() !== lifetime || store.part(partId)?.runtime !== runtime) return
+            store.present(presenterKey, epoch)
+          })
+        }
         return
     }
-  }, [runtime, store, presenterKey, presenterHost, anchors, presentation, additionalParts])
+  }, [runtime, store, presenterKey, presenterHost, anchors, presentation, additionalParts, partId])
 
   // The default material. The corner mask is uniform-driven: radii of zero
   // make it a no-op, so a radius change is a value write, never a rebuild.

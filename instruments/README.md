@@ -396,17 +396,17 @@ which is what makes this gate runnable on a machine that cannot run
 
 ## idle-zero
 
-CI gate: mounted quiescent captured sources produce **0 paints/s**. This does
-not measure all renderer frames or GPU cost.
+CI gate: mounted quiescent captured sources produce **0 paints/s**, measured
+separately with live updates disabled and enabled. This does not measure all
+renderer frames or GPU cost.
 `npm run gate:idle-zero`.
 
-- `main.ts`: the page under test and the assertion. It mounts N
-  sources, measures paint deltas across a quiet window, then provokes
-  a real DOM mutation. Without the provocation a zero-delta result
-  proves nothing; the mutation shows the `onpaint` wiring was live.
-- `run.mjs`: transport. It finds Chrome, proves the origin-trial
-  surface exists, serves the page, drives it, and judges the numbers
-  under a hard 90s deadline.
+- `main.ts` mounts N sources and measures a quiet window for each live policy
+  after its initial paints settle. A later DOM mutation must produce a paint.
+- `run.mjs` requires complete samples for both policies. A second run requests
+  recurring native browser paints: frozen content must decline them, and live
+  content must fail the same zero-paint assertion. Both runs require actual
+  capture capability and complete under a 90-second deadline.
 
 Two policies in `run.mjs` are the durable part; copy them into any
 future browser-driving instrument:
@@ -476,6 +476,13 @@ R3F currently creates its Canvas reconciler root without strict effects.
 Wrapping either the DOM root or Canvas children in `StrictMode` does not prove
 an effect rehearsal there. This gate makes no StrictMode rehearsal claim. Its
 three explicit release and reacquisition cycles test the lifecycle directly.
+
+The host-output cases use `useSurfaceOutput` and run on both backends. They
+require a valid direct draw, a valid composed draw, and a retry after discarded
+output. Unrelated, color-disabled, empty, overridden, and stale output cannot
+confirm presentation. Color auto-clear, explicit color clear, and a forced
+background clear invalidate target evidence; additive and depth-only passes
+preserve it. Receipts must agree with pixels sampled after the accepted render.
 This path uses an ordinary `CanvasTexture`; it does not use or enable
 `CanvasDrawElement`.
 

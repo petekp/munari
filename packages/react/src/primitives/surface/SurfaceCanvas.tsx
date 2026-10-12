@@ -36,7 +36,7 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Canvas, useFrame, useThree, type CanvasProps, type RootState } from '@react-three/fiber'
-import { Material, NoToneMapping, PCFShadowMap, type Object3D } from 'three'
+import { Color, Material, NoToneMapping, PCFShadowMap, RenderTarget, Scene, type Camera, type Object3D } from 'three'
 import { DirectRenderPipeline, WebGPURenderer, type WebGPURendererParameters } from 'three/webgpu'
 import {
   createSurfaceHost,
@@ -261,6 +261,37 @@ export function settleFrameloop(
   if (state.frameloop !== mode) state.setFrameloop(mode)
 }
 
+function discardClearedTarget(host: SurfaceHost, renderer: WebGPURenderer, scene: Object3D, target = renderer.getRenderTarget()) {
+  if (!target || !renderer.autoClearColor) return
+  const backgroundClears = scene instanceof Scene && scene.background instanceof Color && !scene.backgroundNode
+  if (renderer.autoClear || backgroundClears) host.discardTargetPresentations(target)
+}
+
+function renderWithObservedClear(host: SurfaceHost, renderer: WebGPURenderer, render: WebGPURenderer['render'], scene: Object3D, camera: Camera) {
+  if (!(scene instanceof Scene)) {
+    discardClearedTarget(host, renderer, scene)
+    render(scene, camera)
+    return
+  }
+  const before = scene.onBeforeRender
+  const ownedBefore = Object.prototype.hasOwnProperty.call(scene, 'onBeforeRender')
+  const observe: Scene['onBeforeRender'] = function (this: Scene, ...args) {
+    before.apply(this, args)
+    // Scene supplies a fixed target here; Object3D types instead describe geometry.
+    const target: unknown = args[3]
+    if (target === null || target instanceof RenderTarget) discardClearedTarget(host, renderer, scene, target)
+  }
+  scene.onBeforeRender = observe
+  try {
+    render(scene, camera)
+  } finally {
+    if (scene.onBeforeRender === observe) {
+      if (ownedBefore) scene.onBeforeRender = before
+      else Reflect.deleteProperty(scene, 'onBeforeRender')
+    }
+  }
+}
+
 /**
  * The renderer half of the host, mounted inside the Canvas.
  *
@@ -356,15 +387,18 @@ function SurfaceHostBridge({
     if (host.workClaims() > 0) invalidate()
   })
 
-  // The frame tail. A presenter that wrote color into a render target
-  // cannot close its own presentation — the pixels have not reached the
-  // screen yet, and a composite pass could still discard them — so it
-  // defers to here. `render` is wrapped rather than watched because three
-  // emits nothing at the end of a frame, and an effect composer's final
-  // pass is an ordinary `render` call with the target set back to null.
+  // Preparation must precede the actual draw. Clears retire a target's evidence;
+  // its output association belongs to the compositor's final mesh.
   useEffect(() => {
     if (!(gl instanceof WebGPURenderer)) throw new Error('[munari] SurfaceCanvas needs its own WebGPURenderer')
     const original = gl.render.bind(gl)
+    const originalClear = gl.clear.bind(gl)
+    const clear: typeof gl.clear = (color = true, depth = true, stencil = true) => {
+      const target = gl.getRenderTarget()
+      if (color && target) host.discardTargetPresentations(target)
+      return originalClear(color, depth, stencil)
+    }
+    gl.clear = clear
     const pipeline = new DirectRenderPipeline(gl)
     // The pipeline's own render() calls gl.render; that inner call draws.
     let piping = false
@@ -372,7 +406,7 @@ function SurfaceHostBridge({
     let warnedToneMapping = false
     let lastGlslScan = -Infinity
     gl.render = (scene, camera) => {
-      if (piping) return original(scene, camera)
+      if (piping) return renderWithObservedClear(host, gl, original, scene, camera)
       if (isDevelopmentRuntime() && performance.now() - lastGlslScan > GLSL_SCAN_INTERVAL_MS) {
         lastGlslScan = performance.now()
         reportGlslInScene(scene)
@@ -400,11 +434,11 @@ function SurfaceHostBridge({
           // With them, retain its update so their new transforms reach this draw.
           else {scene.matrixWorldAutoUpdate=false;replacedSceneUpdate=true}
         }
-        if (gl.getRenderTarget() === null) {
+        const target = gl.getRenderTarget()
+        if (target === null) {
           piping = true
           try { pipeline.render(scene, camera) } finally { piping = false }
-        } else original(scene, camera)
-        host.closeFrameTail(gl.getRenderTarget()===null)
+        } else renderWithObservedClear(host, gl, original, scene, camera)
       } finally {
         if(ownsPreparation){if(replacedSceneUpdate)scene.matrixWorldAutoUpdate=automatic;releaseRaster?.();notifying=false}
       }
@@ -412,6 +446,7 @@ function SurfaceHostBridge({
 
     return () => {
       gl.render = original
+      if (gl.clear === clear) gl.clear = originalClear
       pipeline.dispose()
       // A renderer going away ends the frame with nothing on screen, so
       // whatever deferred to this tail is discarded rather than proven.

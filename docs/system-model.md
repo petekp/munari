@@ -136,9 +136,10 @@ match the presenter's drawn pixels.
 
 A write-free warm-up can establish readiness. A cube-map draw can update a
 reflection. Neither alone releases a native page hold. The binding can also
-close a supported offscreen path at the host's final presentation boundary;
-the offscreen callback itself is not that proof. Shader discard, depth and
-occlusion still need scene evidence.
+close an offscreen path when a compositor's final output names the contributing
+render targets through `useSurfaceOutput` from `/advanced`. An unrelated screen
+render cannot confirm those targets. The compositor owns their contribution to
+the output; shader discard, depth, and occlusion still need scene evidence.
 
 Read [authoring: one paint generation](authoring.md#keep-texture-attachments-on-one-paint-generation)
 and decisions #24–27 in [the ledger](decisions.md) before changing these seams.

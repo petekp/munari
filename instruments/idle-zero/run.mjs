@@ -9,6 +9,7 @@
 // for environments that are supposed to have it). Everything after a
 // successful capability probe is real: a page error, a timeout, or a
 // nonzero idle delta all fail the gate.
+import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -94,6 +95,7 @@ try {
     skip(`Chrome at ${chromePath} has no drawElementImage even with the feature flag`)
   }
 
+  console.log(`idle-zero: ${await browser.version()}`)
   server = await createServer({
     configFile: false,
     root: here,
@@ -106,53 +108,51 @@ try {
   await server.listen()
   const port = server.config.server.port ?? server.httpServer.address().port
 
-  const page = await browser.newPage()
-  // Past the capability probe, every page-side problem is a real
-  // failure — surface it instead of timing out in silence. Resource-load
-  // 404s (favicon against a bare vite root) are environmental noise, not
-  // page problems; a broken module import surfaces as a pageerror or a
-  // vite error overlay message, both still collected.
-  const pageProblems = []
-  page.on('pageerror', (err) => pageProblems.push(String(err)))
-  page.on('console', (m) => {
-    if (m.type() === 'error' && !/Failed to load resource/.test(m.text()))
-      pageProblems.push(m.text())
-  })
-
-  await page.goto(`http://localhost:${port}/?n=12`, { waitUntil: 'load' })
-  await page.waitForFunction(() => window.__idleZero?.ready === true, { timeout: 15_000 })
-
-  const inPageCapable = await page.evaluate(() => window.__idleZero.capable)
-  if (!inPageCapable) throw new Error('page reports drawElementImage absent after probe said present')
-
-  const result = await page.evaluate(() => window.__idleZero.run())
-
-  const violators = result.idleDeltas
-    .map((d, i) => ({ source: `idle-${i}`, delta: d }))
-    .filter((v) => v.delta !== 0)
-  const perSecond = violators.map((v) => ({ ...v, rate: v.delta / (result.windowMs / 1000) }))
-
-  console.log(
-    `idle-zero: ${result.n} sources, ${result.windowMs}ms window — ` +
-      `idle deltas [${result.idleDeltas.join(', ')}], provoked +${result.provokedDelta}`,
-  )
-  if (pageProblems.length) {
-    console.error('page errors during the run:')
-    for (const p of pageProblems) console.error(`  ${p}`)
-    process.exit(1)
+  const run = async (recurringPaint) => {
+    const page = await browser.newPage()
+    const errors = []
+    page.on('pageerror', error => errors.push(String(error)))
+    page.on('console', message => {
+      if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) {
+        errors.push(message.text())
+      }
+    })
+    try {
+      await page.goto(`http://localhost:${port}/?n=12`, { waitUntil: 'load' })
+      await page.waitForFunction(() => window.__idleZero?.ready === true, { timeout: 15_000 })
+      assert.equal(await page.evaluate(() => window.__idleZero.capable), true, 'The fixture must retain capture capability')
+      const result = await page.evaluate(recurringPaint => window.__idleZero.run({ recurringPaint }), recurringPaint)
+      assert.deepEqual(errors, [], 'Idle measurement reported browser errors')
+      assert.equal(result.n, 12, 'All requested sources must be measured')
+      assert.deepEqual(result.profiles.map(profile => profile.live), [false, true], 'Both quiet profiles must be measured')
+      for (const profile of result.profiles) {
+        assert.equal(profile.idleDeltas.length, result.n, 'Every source needs an idle sample')
+        assert.ok(profile.idleDeltas.every(value => Number.isInteger(value) && value >= 0), 'Idle samples must be valid paint deltas')
+        assert.ok(Number.isFinite(profile.windowMs) && profile.windowMs > 0, 'The idle window must have a valid duration')
+        console.log(`idle-zero: ${recurringPaint ? 'recurring-paint control' : 'normal'} ${profile.live ? 'live' : 'frozen'} · ${profile.windowMs}ms · deltas [${profile.idleDeltas.join(', ')}] · requests ${profile.recurringRequests} · callbacks ${profile.recurringCallbacks}`)
+      }
+      assert.ok(Number.isInteger(result.provokedDelta) && result.provokedDelta > 0, 'A real DOM mutation must advance paintCount')
+      console.log(`idle-zero: ${recurringPaint ? 'control' : 'normal'} mutation +${result.provokedDelta}`)
+      return result
+    } finally {
+      await page.close()
+    }
   }
-  if (violators.length) {
-    console.error('IDLE-ZERO VIOLATION — quiescent sources painted:')
-    for (const v of perSecond) console.error(`  ${v.source}: +${v.delta} (${v.rate}/s)`)
-    console.error('The compositor is the only change signal; something added a repaint loop.')
-    process.exit(1)
+  const requireQuiet = (result) => {
+    const violations = result.profiles.flatMap(profile => profile.idleDeltas.flatMap((delta, source) =>
+      delta === 0 ? [] : [`${profile.live ? 'live' : 'frozen'} source ${source}: +${delta}`],
+    ))
+    assert.equal(violations.length, 0, `Quiescent sources painted: ${violations.join('; ')}`)
   }
-  if (result.provokedDelta <= 0) {
-    console.error('LIVENESS FAILURE — a real DOM mutation never advanced paintCount.')
-    console.error('The idle result above is vacuous; the onpaint wiring is broken.')
-    process.exit(1)
-  }
-  console.log('idle-zero gate PASSED: 0 idle paints, provocation counted.')
+
+  const result = await run(false)
+  requireQuiet(result)
+  const control = await run(true)
+  assert.ok(control.profiles.every(profile => profile.recurringRequests > 0 && profile.recurringCallbacks > 0), 'Recurring requests must reach actual compositor callbacks in both profiles')
+  assert.ok(control.profiles[0].idleDeltas.every(delta => delta === 0), 'Frozen sources must decline the recurring callbacks')
+  assert.ok(control.profiles[1].idleDeltas[0] > 0, 'Recurring callbacks must repaint the live source')
+  assert.throws(() => requireQuiet(control), /Quiescent sources painted: live source 0:/)
+  console.log('idle-zero gate PASSED: frozen and live idle paints stayed zero; recurring live paints failed the same oracle.')
 } finally {
   clearTimeout(deadline)
   await browser?.close()

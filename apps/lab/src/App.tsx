@@ -16,7 +16,7 @@ import { SceneGuide } from './components/SceneGuide'
 import { BROWSER_GUIDE, exampleFor, washFor } from './components/sceneCatalog'
 import { SceneBoundary } from './components/SceneBoundary'
 import { revealSite } from './components/siteOpening'
-import { captureParam } from './captureMode'
+import { sceneUrl } from './captureMode'
 
 // A home visit must not fetch or evaluate every lab. Keep Home eager; each
 // other scene loads only in its own frame, with the same page and R3F roots.
@@ -382,7 +382,7 @@ export default function App() {
           scenes={NAV_SCENES}
           active={scene}
           onSelect={(id) => {
-            window.history.pushState(null, '', `?scene=${id}${captureParam}`)
+            window.history.pushState(null, '', sceneUrl(id))
             setRoute({ scene: id, section: '' })
           }}
           supported={!unsupported}
@@ -394,7 +394,7 @@ export default function App() {
           ) : (
             <iframe
               key={`${scene}:${section}`}
-              src={`/?scene=${scene}&framed${captureParam}${section ? `#${section}` : ''}`}
+              src={sceneUrl(scene, { framed: true, section })}
               title={`${scene} example`}
               className="site-frame"
               onLoad={revealSite}

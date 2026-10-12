@@ -14,6 +14,7 @@
 // stack, in the page, where they are looking.
 
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { sceneUrl } from '../captureMode'
 
 interface Props {
   /**
@@ -53,7 +54,7 @@ export class SceneBoundary extends Component<Props, State> {
         <p className="scene-error-hint">Reload to try again, or explore another example.</p>
         <p className="scene-error-actions">
           <button type="button" onClick={() => window.location.reload()}>Reload example</button>
-          <a href="/?scene=home" target="_top">Back to overview</a>
+          <a href={sceneUrl('home')} target="_top">Back to overview</a>
         </p>
         <details>
           <summary>Error details: {this.props.scene}</summary>

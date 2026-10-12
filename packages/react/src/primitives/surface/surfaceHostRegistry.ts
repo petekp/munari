@@ -23,7 +23,6 @@
 // one Surface's release strand every other Surface's frames, which reads as
 // a scene that freezes the moment a second panel settles.
 
-import { hostTailPresents } from '@munari/core'
 import type { ReactElement, ReactNode } from 'react'
 import type { Camera, Object3D, RenderTarget } from 'three'
 
@@ -108,17 +107,15 @@ export interface SurfaceHost {
    * own post-draw callback is not a presentation boundary. `close` runs at
    * the frame tail if — and only if — the frame reached the screen.
    */
-  deferPresentation(close: () => void): void
+  deferPresentation(target: RenderTarget, close: () => void): void
   /** Deferred presenters waiting on this frame's tail. */
   deferredPresentations(): number
   /**
-   * The renderer finished a draw. Deferrals close only on a draw that
-   * reached the default framebuffer; a draw into a target leaves them
-   * pending, because a post-processed frame renders the scene off screen
-   * FIRST and composites second, and draining at the scene pass would throw
-   * away every presenter a moment before the pass that presents them.
+   * A qualified output draw includes these targets. Other targets stay pending.
    */
-  closeFrameTail(reachedScreen: boolean): void
+  closeFrameTail(targets: readonly RenderTarget[]): void
+  /** A color clear removes this target's previously deferred draw evidence. */
+  discardTargetPresentations(target: RenderTarget): void
   /**
    * A frame ended without ever reaching the screen. Whatever deferred
    * during it is discarded and stays unproven until a frame that does.
@@ -158,7 +155,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
   // Presenters that wrote color into a render target this frame. A
   // post-processed scene draws every Surface this way, so without a tail
   // nothing ever proves and the crossing hangs in 'lifting' forever.
-  let deferred: (() => void)[] = []
+  let deferred: { target: RenderTarget; close: () => void }[] = []
 
   const host: SurfaceHost = {
     id,
@@ -279,18 +276,22 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
     invalidate() {
       host.runtime?.invalidate()
     },
-    deferPresentation(close) {
-      deferred.push(close)
+    deferPresentation(target, close) {
+      deferred.push({ target, close })
     },
     deferredPresentations: () => deferred.length,
-    closeFrameTail(reachedScreen) {
-      if (!hostTailPresents({ deferred: deferred.length, reachedScreen })) return
+    closeFrameTail(targets) {
+      if (targets.length === 0 || deferred.length === 0) return
       // Drained before the closers run: a closer proving readiness can
       // settle a crossing, and anything that reaches back into the host
       // from there must not see this frame's list a second time.
-      const closing = deferred
-      deferred = []
-      for (const close of closing) close()
+      const included = new Set(targets)
+      const closing = deferred.filter(entry => included.has(entry.target))
+      deferred = deferred.filter(entry => !included.has(entry.target))
+      for (const entry of closing) entry.close()
+    },
+    discardTargetPresentations(target) {
+      deferred = deferred.filter(entry => entry.target !== target)
     },
     discardFrameTail() {
       if (deferred.length === 0) return

@@ -144,6 +144,48 @@ try {
         ]),
       ),
     )
+  const unchangedFlight = await order()
+  for (const button of ['right', 'middle']) {
+    const deletion = await centre('.l14-card .l14-del')
+    await page.mouse.click(deletion.x, deletion.y, { button })
+    const title = await centre('[data-col="queue"] .l14-card h3')
+    await page.mouse.move(title.x, title.y)
+    await page.mouse.down({ button })
+    await page.mouse.move(title.x + 650, title.y + 100, { steps: 5 })
+    await page.mouse.up({ button })
+    if (JSON.stringify(await order()) !== JSON.stringify(unchangedFlight)) note(`flight: ${button} press deleted or moved a card`)
+  }
+  const moveCardId = unchangedFlight.queue[0]
+  const moveSelector = `.l14-card[data-card="${moveCardId}"]`
+  const originalNote = await page.$(`${moveSelector} .l14-note`)
+  await originalNote.focus()
+  await page.keyboard.type('Retain this note')
+  await page.focus(`${moveSelector} .l14-move summary`)
+  await page.keyboard.press('Space')
+  await page.keyboard.press('Tab')
+  await page.keyboard.type('t')
+  await page.keyboard.press('Tab')
+  await page.keyboard.type('5')
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Enter')
+  await page.waitForFunction(id => document.querySelector('[data-col="today"] .l14-slot:last-child .l14-card')?.dataset.card === id, {}, moveCardId)
+  await page.waitForFunction(id => {
+    const control = document.querySelector(`.l14-card[data-card="${id}"] .l14-move summary`)
+    if (!control) return false
+    const box = control.getBoundingClientRect()
+    return control === document.activeElement && box.top >= 0 && box.bottom <= innerHeight && !control.closest('.l14-slot').getAnimations().some(animation => animation.playState === 'running')
+  }, {}, moveCardId)
+  if (!await page.$eval(`${moveSelector} .l14-move summary`, element => element === document.activeElement)) note('flight: keyboard move did not retain focus on the moved card')
+  if (!await originalNote.evaluate(element => element.isConnected && element.value === 'Retain this note')) note('flight: keyboard move replaced or reset the note field')
+  const announcement = await page.$eval('.l14 [role="status"]', element => element.textContent)
+  if (!announcement.includes('Today') || !announcement.includes('5')) note(`flight: move result was not announced: ${announcement}`)
+  await page.keyboard.press('Space')
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Escape')
+  if (!await page.$eval(`${moveSelector} .l14-move`, element => !element.open && document.activeElement === element.querySelector('summary'))) note('flight: Escape did not close Move and restore focus')
+  await page.keyboard.press('Space')
+  await page.click('[data-col="queue"] h2')
+  if (await page.$eval(`${moveSelector} .l14-move`, element => element.open)) note('flight: outside press did not close Move')
   const flightBefore = await order()
   const held = flightBefore.queue[0]
   const grab = await page.evaluate(() => {
@@ -216,6 +258,23 @@ try {
   } else {
     note('flight: no delete control found')
   }
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+  await page.reload({ waitUntil: 'load' })
+  await page.waitForSelector('.l14[data-reduced-motion="true"] .l14-card')
+  const reducedDelete = await centre('.l14-card .l14-del')
+  await page.mouse.click(reducedDelete.x, reducedDelete.y)
+  await page.waitForFunction(() => document.querySelectorAll('.l14-slot').length === 8)
+  const reducedLayout = await page.evaluate(() => new Promise(resolve => {
+    let frames = 0
+    let moving = false
+    const sample = () => {
+      moving ||= [...document.querySelectorAll('.l14-slot')].some(element => element.getAnimations().some(animation => animation.playState === 'running'))
+      if (++frames === 8) resolve(moving)
+      else requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+  }))
+  if (reducedLayout) note('flight: reduced-motion deletion animated layout')
   await settle('flight')
 
   // ── genie: a window goes away, comes back, and can be moved ─────────────

@@ -521,3 +521,11 @@
   z-index: 5;
   outline-color: color-mix(in oklab, var(--rule), var(--signal) 92%);
 }
+
+.l14-move { margin-top: 12px; font: 12px/1.4 var(--body); }
+.l14-move summary { width: fit-content; padding: 6px 0; cursor: pointer; }
+.l14-move form { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; margin-top: 8px; }
+.l14-move :is(select, button) { min-height: 36px; border: 1px solid var(--rule); background: var(--bench-hi); color: var(--ink); padding: 6px 8px; font: inherit; }
+.l14-move button { grid-column: 2; cursor: pointer; }
+.l14-move :is(summary, select, button):focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+.l14[data-reduced-motion='true'] .l14-slot { transition: none; }

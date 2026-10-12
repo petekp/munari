@@ -148,6 +148,55 @@ try {
     await page.close(); await browser.close(); browser = null
   }
 
+  browser = await puppeteer.launch({
+    executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    headless: process.env.HEADED !== '1', defaultViewport: null,
+    args: [...WEBGPU_CHROME_ARGS, '--disable-features=CanvasDrawElement', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'],
+  })
+  for (const capture of ['auto', 'snapdom']) {
+    const page = await browser.newPage(), errors = []
+    page.on('pageerror', error => errors.push(String(error)))
+    await setChromeViewport(page, { width: 1440, height: 1000 })
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+    await page.goto(`${url}/?scene=home&capture=${capture}#examples`, { waitUntil: 'load' })
+    await ready(page)
+    assert.equal(await page.evaluate(() => 'drawElementImage' in CanvasRenderingContext2D.prototype), false)
+    assert.equal(await page.evaluate(() => window.__munari.engine()), 'snapdom')
+    const gallery = '.site-content > [data-demo-host] > .home-page .home-example'
+    const links = await page.$$eval(`${gallery}, .site-brand-link, .site-mobile-brand, .site-support`, elements =>
+      elements.map(element => new URL(element.href).searchParams.get('capture')),
+    )
+    assert.ok(links.length > 3)
+    assert.ok(links.every(value => value === capture), 'All gallery and Home links must preserve the selected engine')
+    const assertFlight = async () => {
+      await page.waitForSelector('iframe.site-frame')
+      assert.equal(new URL(page.url()).searchParams.get('capture'), capture)
+      const frame = await (await page.$('iframe.site-frame')).contentFrame()
+      await frame.waitForSelector('.l14-board')
+      await frame.waitForFunction(() => window.__munari?.engine() === 'snapdom')
+      assert.equal(new URL(frame.url()).searchParams.get('capture'), capture)
+      assert.equal(await frame.$('.trial-notice'), null)
+    }
+    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), page.click(gallery)])
+    await assertFlight()
+    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), page.click('.site-brand-link')])
+    await ready(page)
+    assert.equal(new URL(page.url()).searchParams.get('capture'), capture)
+    await page.click('.site-nav-list li:nth-child(2) button')
+    await assertFlight()
+    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), page.click('.site-support')])
+    await ready(page)
+    assert.equal(new URL(page.url()).searchParams.get('capture'), capture)
+    assert.equal(new URL(page.url()).hash, '#support')
+    assert.deepEqual(errors, [])
+    await page.screenshot({ path: path.join(output, `navigation-${capture}.png`) })
+    results.push({ capture, navigation: ['gallery', 'brand', 'sidebar', 'support'], engine: 'snapdom', errors })
+    await writeFile(path.join(output, 'results.json'), JSON.stringify(results, null, 2))
+    console.log(JSON.stringify(results.at(-1)))
+    await page.close()
+  }
+  await browser.close(); browser = null
+
   // Instance identity and styles are local even when two real Homes coexist.
   browser = await puppeteer.launch({ executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: process.env.HEADED !== '1', defaultViewport: null, args: [...WEBGPU_CHROME_ARGS,'--enable-features=CanvasDrawElement'] })
   const page = await browser.newPage(), errors = [], diagnostics = []

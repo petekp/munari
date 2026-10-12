@@ -20,12 +20,11 @@ const requested = new URLSearchParams(window.location.search).get('capture')
 export const CAPTURE_MODE: CaptureMode | null =
   requested === 'snapdom' || requested === 'auto' ? requested : null
 
-/**
- * The query string that carries this window's engine to another one.
- *
- * The shell opens every scene but Home in an iframe, and an iframe is a
- * separate document with its own installed engine. Without this the shell
- * would compare engines by URL while every framed scene quietly ran the
- * default — a comparison that agrees with itself and with nothing else.
- */
-export const captureParam = CAPTURE_MODE ? `&capture=${CAPTURE_MODE}` : ''
+// A destination installs its capture engine before mounting any Surface.
+// Preserve the selection across full-page links, history changes, and frames.
+export function sceneUrl(scene: string, options: { framed?: boolean; section?: string } = {}): string {
+  const query = new URLSearchParams({ scene })
+  if (CAPTURE_MODE) query.set('capture', CAPTURE_MODE)
+  if (options.framed) query.set('framed', '')
+  return `/?${query}${options.section ? `#${encodeURIComponent(options.section)}` : ''}`
+}

@@ -24,6 +24,7 @@ export {
 // The canvas texture a FrameSurface owns, for a child under material="none".
 // The root entry's useSurfaceTexture reads a DOM capture instead.
 export { useSurfaceTexture as useFrameTexture } from './primitives/SurfaceContext'
+export { useSurfaceOutput, type SurfaceOutputHandlers } from './primitives/surface/useSurfaceOutput'
 
 // Idle motion whose source of truth is a JS carrier rather than the
 // compositor's clock. The page writes the sample, the mesh reads the same
