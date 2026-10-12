@@ -365,45 +365,62 @@ interface CardBodyProps {
   position: number
   counts: Record<ColId, number>
   onMove: (column: ColId, position: number) => void
-  onOpenMove: (open: () => void) => boolean
+  onOpenMove: (request: { open: () => void; cancel: () => void }) => 'open' | 'deferred' | 'blocked'
 }
 
 function CardMove({ card, column, position, counts, onMove, onOpenMove }: Pick<CardBodyProps, 'card' | 'column' | 'position' | 'counts' | 'onMove' | 'onOpenMove'>) {
   const disclosure = useRef<HTMLDetailsElement>(null)
   const summary = useRef<HTMLElement>(null)
+  const pendingOpen = useRef<(() => void) | null>(null)
   const [destination, setDestination] = useState({ column, position })
   const columnId = `flight-column-${card.id}`
   const positionId = `flight-position-${card.id}`
   const close = () => {
+    pendingOpen.current = null
     if (disclosure.current) disclosure.current.open = false
     summary.current?.focus({ preventScroll: true })
   }
   useEffect(() => {
     const outside = (event: PointerEvent) => {
       if (event.target instanceof Node && !disclosure.current?.contains(event.target)) {
+        pendingOpen.current = null
         if (disclosure.current) disclosure.current.open = false
       }
     }
     document.addEventListener('pointerdown', outside)
-    return () => document.removeEventListener('pointerdown', outside)
+    return () => {
+      pendingOpen.current = null
+      document.removeEventListener('pointerdown', outside)
+    }
   }, [])
   const positions = counts[destination.column] + (destination.column === column ? 0 : 1)
   return (
     <details ref={disclosure} className="l14-move" data-nodrag onKeyDown={event => {
-      if (event.key !== 'Escape' || !disclosure.current?.open) return
+      if (event.key !== 'Escape' || (!disclosure.current?.open && !pendingOpen.current)) return
       event.stopPropagation()
       close()
     }}>
       <summary ref={summary} onClick={event => {
+        if (pendingOpen.current) {
+          event.preventDefault()
+          close()
+          return
+        }
         if (disclosure.current?.open) return
         setDestination({ column, position })
         const open = () => {
-          if (!disclosure.current) return
+          if (pendingOpen.current !== open || !disclosure.current) return
+          pendingOpen.current = null
           disclosure.current.open = true
           summary.current?.focus({ preventScroll: true })
           disclosure.current.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' })
         }
-        if (!onOpenMove(open)) event.preventDefault()
+        pendingOpen.current = open
+        const opening = onOpenMove({ open, cancel: () => {
+          if (pendingOpen.current === open) pendingOpen.current = null
+        } })
+        if (opening !== 'deferred') pendingOpen.current = null
+        if (opening !== 'open') event.preventDefault()
       }}>Move</summary>
       <form onSubmit={event => {
         event.preventDefault()
@@ -1477,7 +1494,7 @@ export function FlightApp() {
   const pendingDelete = useRef<string | null>(null)
   const pendingMove = useRef<{ id: string; column: ColId; position: number } | null>(null)
   const moveFocus = useRef<{ id: string } | null>(null)
-  const pendingMoveOpen = useRef<(() => void) | null>(null)
+  const pendingMoveOpen = useRef<{ open: () => void; cancel: () => void } | null>(null)
   // Radii and box-shadow layers, measured from the card's own paint. A ref,
   // not state: the only consumer is the Driver's per-frame uniform write.
   const chromeRef = useRef<SurfaceChrome | null>(null)
@@ -1609,6 +1626,8 @@ export function FlightApp() {
   // than in that closure because the commit it triggers has to be able to
   // reach it — see `placeCarried`.
   const carry = useRef<Carry | null>(null)
+  const finishCarry = useRef<(() => void) | null>(null)
+  useEffect(() => () => finishCarry.current?.(), [])
 
   /**
    * Put the carried card back under the hand.
@@ -1711,8 +1730,9 @@ export function FlightApp() {
         c.y = ev.clientY - grabY
         carryStep(ev.clientX, ev.clientY, id)
       }
-      const onDone = (ev: PointerEvent) => {
-        if (ev.pointerId !== e.pointerId) return
+      const finish = () => {
+        if (finishCarry.current !== finish) return
+        finishCarry.current = null
         window.removeEventListener('pointermove', onMove)
         window.removeEventListener('pointerup', onDone)
         window.removeEventListener('pointercancel', onDone)
@@ -1726,6 +1746,10 @@ export function FlightApp() {
         el?.classList.remove('l14-carrying')
         el?.style.removeProperty('transform')
       }
+      const onDone = (ev: PointerEvent) => {
+        if (ev.pointerId === e.pointerId) finish()
+      }
+      finishCarry.current = finish
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onDone)
       window.addEventListener('pointercancel', onDone)
@@ -1819,6 +1843,7 @@ export function FlightApp() {
     }))
     pendingDelete.current = null
     pendingMove.current = null
+    pendingMoveOpen.current?.cancel()
     pendingMoveOpen.current = null
     ending.current = false
     setFlyingId(null)
@@ -2092,24 +2117,26 @@ export function FlightApp() {
 
   useLayoutEffect(() => {
     if (flyingId !== null) return
-    const open = pendingMoveOpen.current
+    const request = pendingMoveOpen.current
     pendingMoveOpen.current = null
-    open?.()
+    request?.open()
   }, [flyingId])
 
-  const openMove = (open: () => void): boolean => {
+  const openMove: CardBodyProps['onOpenMove'] = (request) => {
     const f = flight.current
-    if (!f) return true
-    if (f.mode === 'crumple' || pendingDelete.current) return false
+    if (!f) return 'open'
+    if (f.mode === 'crumple' || pendingDelete.current) return 'blocked'
     // The flight's capture dimensions are fixed; expand its controls only after the page handoff.
-    pendingMoveOpen.current = open
+    pendingMoveOpen.current?.cancel()
+    pendingMoveOpen.current = request
     f.mode = 'home'
     ending.current = true
     requestLift(false)
-    return false
+    return 'deferred'
   }
 
   const moveCard = (id: string, column: ColId, position: number) => {
+    finishCarry.current?.()
     const f = flight.current
     if (f) {
       if (f.mode === 'crumple' || pendingDelete.current) return

@@ -444,7 +444,79 @@ try {
   await page.keyboard.press('Enter')
   await page.waitForFunction(id => document.querySelector('[data-col="today"] .l14-slot:first-child .l14-card')?.dataset.card === id, {}, floatingMoveId)
   if (!await page.$eval(`${floatingMoveSelector} summary`, element => element === document.activeElement)) problems.push('flight: opening Move from a floating card lost native control focus')
+  await go('flight')
+  await page.click('.l14-card[data-card="c1"] h3')
+  await page.waitForFunction(() => window.__flight?.flight.current?.mode === 'float' && window.__flight.flight.current.plate.p.z > 50)
+  await page.focus('.l14-card[data-card="c1"]:not([inert] *) .l14-move summary')
+  await page.keyboard.press('Space')
+  await page.focus('.l14-card[data-card="c2"] .l14-move summary')
+  await page.keyboard.press('Space')
+  if (!await page.evaluate(() => Boolean(window.__flight))) throw new Error('flight: Move completed before request supersession could be exercised')
+  await page.waitForFunction(() => !window.__flight && document.querySelector('.l14-card[data-card="c2"] .l14-move').open)
+  if (await page.$eval('.l14-card[data-card="c1"] .l14-move', element => element.open)) problems.push('flight: superseded Move opened the first disclosure')
+  await page.focus('.l14-card[data-card="c1"] .l14-move summary')
+  await page.keyboard.press('Space')
+  if (!await page.$eval('.l14-card[data-card="c1"] .l14-move', element => element.open)) problems.push('flight: superseded Move blocked the next activation')
+  for (const requestedCard of ['c1', 'c2']) {
+    for (const dismissal of ['Escape', 'outside', 'repeat']) {
+      await go('flight')
+      const heading = await page.$('.l14-card[data-card="c1"] h3')
+      await heading.click()
+      await page.waitForFunction(() => window.__flight?.flight.current?.mode === 'float' && window.__flight.flight.current.plate.p.z > 50)
+      const disclosure = `.l14-card[data-card="${requestedCard}"]:not([inert] *) .l14-move`
+      await page.focus(`${disclosure} summary`)
+      await page.keyboard.press('Space')
+      if (!await page.evaluate(() => Boolean(window.__flight))) throw new Error('flight: Move completed before deferred dismissal could be exercised')
+      if (dismissal === 'outside') {
+        await page.click('.l14-card[data-card="c6"] .l14-note')
+        await page.keyboard.type('Keep focus here')
+      } else {
+        await page.keyboard.press(dismissal === 'repeat' ? 'Space' : 'Escape')
+      }
+      await page.waitForFunction(() => !window.__flight)
+      if (await page.$eval(disclosure, element => element.open)) problems.push(`flight: ${dismissal} reopened deferred Move for ${requestedCard}`)
+      if (dismissal === 'outside' && !await page.$eval('.l14-card[data-card="c6"] .l14-note', element => element === document.activeElement && element.value === 'Keep focus here')) problems.push(`flight: cancelled Move for ${requestedCard} stole note focus`)
+    }
+  }
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+  await page.reload({ waitUntil: 'load' })
+  await page.waitForSelector('.l14[data-reduced-motion="true"] .l14-card')
+  for (const requestedCard of ['c1', 'c2']) {
+    await page.reload({ waitUntil: 'load' })
+    await page.waitForFunction(() => document.querySelectorAll('.l14-slot').length === 9)
+    await page.evaluate(() => document.fonts.ready)
+    for (let tab = 0; tab < 12; tab++) {
+      await page.keyboard.press('Tab')
+      if (await page.$eval(`.l14-card[data-card="${requestedCard}"] .l14-move summary`, element => element === document.activeElement)) break
+    }
+    if (!await page.$eval(`.l14-card[data-card="${requestedCard}"] .l14-move summary`, element => element === document.activeElement)) throw new Error(`flight: Tab did not reach ${requestedCard} Move`)
+    const grab = await page.$eval('.l14-card[data-card="c1"] h3', element => {
+      const box = element.getBoundingClientRect()
+      return { x: box.left + 20, y: box.top + 20 }
+    })
+    await page.mouse.move(grab.x, grab.y)
+    await page.mouse.down()
+    await page.mouse.move(grab.x + 20, grab.y + 20, { steps: 3 })
+    await page.keyboard.press('Space')
+    await page.keyboard.press('Tab')
+    await page.keyboard.type('t')
+    await page.keyboard.press('Tab')
+    await page.keyboard.type('5')
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Enter')
+    await page.waitForFunction(id => document.querySelector('[data-col="today"] .l14-slot:last-child .l14-card')?.dataset.card === id, {}, requestedCard)
+    const resting = await page.$eval('.l14-card[data-card="c1"]', element => {
+      const card = element.getBoundingClientRect()
+      const slot = element.closest('.l14-slot').getBoundingClientRect()
+      return Math.hypot(card.left - slot.left, card.top - slot.top) < 1
+    })
+    if (!resting) problems.push(`flight: Move for ${requestedCard} left the native carry under the pointer`)
+    const committed = await page.$$eval('[data-col]', columns => columns.map(column => [...column.querySelectorAll('[data-card]')].map(card => card.dataset.card)))
+    await page.mouse.move(grab.x + 50, grab.y + 20, { steps: 3 })
+    await page.mouse.up()
+    const afterPointer = await page.$$eval('[data-col]', columns => columns.map(column => [...column.querySelectorAll('[data-card]')].map(card => card.dataset.card)))
+    if (JSON.stringify(committed) !== JSON.stringify(afterPointer)) problems.push(`flight: pointer movement overrode Move for ${requestedCard}`)
+  }
   await page.reload({ waitUntil: 'load' })
   await page.waitForSelector('.l14[data-reduced-motion="true"] .l14-card')
   const reducedCard = await page.$eval('[data-col="queue"] .l14-card h3', element => {

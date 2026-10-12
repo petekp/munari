@@ -483,6 +483,9 @@ output. Unrelated, color-disabled, empty, overridden, and stale output cannot
 confirm presentation. Color auto-clear, explicit color clear, and a forced
 background clear invalidate target evidence; additive and depth-only passes
 preserve it. Receipts must agree with pixels sampled after the accepted render.
+Bundle cases reject receipts from both recording and later draws while pixels
+continue to update. They cover static and dynamic bundles, one placement
+diagnostic, and recovery after moving the output mesh outside the bundle.
 This path uses an ordinary `CanvasTexture`; it does not use or enable
 `CanvasDrawElement`.
 

@@ -1711,9 +1711,19 @@ separate intermediate targets. Replacement, unmount, or a changed presentation r
 invalidates pending delivery. A discarded output leaves the same frame eligible
 to retry; deduplication occurs when presentation is delivered.
 
+The final output mesh must stay outside `BundleGroup`, on either backend.
+Cached WebGPU bundle execution omits mesh callbacks. Three exposes no supported
+callback that attributes each cached execution to this output mesh. The hook
+therefore rejects proof under a bundle and logs the placement error once, on
+the first observed draw. It lets recording finish so other rendering can
+continue. Handlers attached to an already cached mesh cannot trigger that
+diagnostic. Moving the final mesh outside the bundle restores presentation
+proof; other scene content can remain bundled.
+
 The `frame-surface` instrument owns direct and composed output, unrelated output,
 clear/reuse, discarded-frame retry, and source/requirement/lifetime checks on
-WebGPU and WebGL 2. It compares receipt timing with sampled pixels after render.
+WebGPU and WebGL 2. It checks bundle rejection and recovery, and compares receipt
+timing with sampled pixels after render.
 
 ## #26 — Releasing a mesh requires one post-removal draw (2026-08-10, react binding)
 

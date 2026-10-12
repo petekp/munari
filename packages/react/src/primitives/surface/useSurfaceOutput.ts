@@ -13,7 +13,7 @@ export interface SurfaceOutputHandlers {
 }
 
 /**
- * Attach both handlers to the final compositor mesh inside SurfaceCanvas.
+ * Attach both handlers to the final compositor mesh inside SurfaceCanvas, outside BundleGroup.
  * Its single authored material must include each target's captured draw in the output.
  * Preserve those pixels through intermediate passes. Shader overwrite, discard,
  * occlusion, and writes outside the renderer's observed draws remain caller-owned.
@@ -22,11 +22,24 @@ export function useSurfaceOutput(targets: readonly RenderTarget[]): SurfaceOutpu
   const host = useSurfaceHostContext()
   if (!host) throw new Error('useSurfaceOutput belongs inside SurfaceCanvas.')
   const targetsRef = useLatest(targets)
+  const reportedBundle = useRef(false)
   const pending = useRef<{ draw: SurfaceOutputDraw; mesh: Mesh; material: Material; targets: readonly RenderTarget[] } | null>(null)
   useLayoutEffect(() => () => { pending.current = null }, [host])
   const onBeforeRender = useCallback<Object3D['onBeforeRender']>(function (this: Object3D, renderer, scene, _camera, geometry, material) {
     pending.current = null
-    if (!(this instanceof Mesh) || Array.isArray(this.material) || this.material !== material || drawnByOverride(scene, material) || !material.colorWrite || renderer.getRenderTarget() !== null) return
+    if (!(this instanceof Mesh)) return
+    // Cached BundleGroup executions omit mesh callbacks, so their recording draw
+    // cannot establish a supported output boundary.
+    for (let parent: Object3D | null = this.parent; parent; parent = parent.parent) {
+      if ('isBundleGroup' in parent && parent.isBundleGroup === true) {
+        if (!reportedBundle.current) {
+          reportedBundle.current = true
+          console.error('[munari] useSurfaceOutput cannot confirm a mesh inside BundleGroup. Move the final output mesh outside BundleGroup.')
+        }
+        return
+      }
+    }
+    if (Array.isArray(this.material) || this.material !== material || drawnByOverride(scene, material) || !material.colorWrite || renderer.getRenderTarget() !== null) return
     pending.current = { draw: beginSurfaceOutputDraw(renderer, this, geometry), mesh: this, material, targets: [...targetsRef.current] }
   }, [targetsRef])
   const onAfterRender = useCallback<Object3D['onAfterRender']>(function (renderer, scene, _camera, _geometry, material) {

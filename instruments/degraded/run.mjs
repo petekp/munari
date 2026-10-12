@@ -292,6 +292,42 @@ try {
   } else {
     note('flight: no delete control found')
   }
+  for (const requestedCard of ['c1', 'c2']) {
+    await page.reload({ waitUntil: 'load' })
+    await page.waitForFunction(() => document.querySelectorAll('.l14-slot').length === 9)
+    await page.evaluate(() => document.fonts.ready)
+    for (let tab = 0; tab < 12; tab++) {
+      await page.keyboard.press('Tab')
+      if (await page.$eval(`.l14-card[data-card="${requestedCard}"] .l14-move summary`, element => element === document.activeElement)) break
+    }
+    if (!await page.$eval(`.l14-card[data-card="${requestedCard}"] .l14-move summary`, element => element === document.activeElement)) throw new Error(`flight: Tab did not reach ${requestedCard} Move`)
+    const grab = await page.$eval('.l14-card[data-card="c1"] h3', element => {
+      const box = element.getBoundingClientRect()
+      return { x: box.left + 20, y: box.top + 20 }
+    })
+    await page.mouse.move(grab.x, grab.y)
+    await page.mouse.down()
+    await page.mouse.move(grab.x + 20, grab.y + 20, { steps: 3 })
+    await page.keyboard.press('Space')
+    await page.keyboard.press('Tab')
+    await page.keyboard.type('t')
+    await page.keyboard.press('Tab')
+    await page.keyboard.type('5')
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Enter')
+    await page.waitForFunction(id => document.querySelector('[data-col="today"] .l14-slot:last-child .l14-card')?.dataset.card === id, {}, requestedCard)
+    const resting = await page.$eval('.l14-card[data-card="c1"]', element => {
+      const card = element.getBoundingClientRect()
+      const slot = element.closest('.l14-slot').getBoundingClientRect()
+      return Math.hypot(card.left - slot.left, card.top - slot.top) < 1
+    })
+    if (!resting) note(`flight: Move for ${requestedCard} left the native carry under the pointer`)
+    const committed = await page.$$eval('[data-col]', columns => columns.map(column => [...column.querySelectorAll('[data-card]')].map(card => card.dataset.card)))
+    await page.mouse.move(grab.x + 50, grab.y + 20, { steps: 3 })
+    await page.mouse.up()
+    const afterPointer = await page.$$eval('[data-col]', columns => columns.map(column => [...column.querySelectorAll('[data-card]')].map(card => card.dataset.card)))
+    if (JSON.stringify(committed) !== JSON.stringify(afterPointer)) note(`flight: pointer movement overrode Move for ${requestedCard}`)
+  }
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
   await page.reload({ waitUntil: 'load' })
   await page.waitForSelector('.l14[data-reduced-motion="true"] .l14-card')

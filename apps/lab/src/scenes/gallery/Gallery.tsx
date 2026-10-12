@@ -44,6 +44,7 @@ import {
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { showChrome } from '../../bareMode'
+import { sceneUrl } from '../../captureMode'
 import { apertureEdge, approachUv, refractionStage, springEase } from '../refraction/refractionLaw'
 import {
   RefractionMaterial,
@@ -174,7 +175,7 @@ function Card({
             of a crossing this card is ordinary DOM, so the browser hit-tests
             this link, focuses it on Tab, and shows its href in the status
             bar. Mid-crossing it is a texture and none of that is true. */}
-        <a className="gallery-cta" href={`?scene=${item.id}`}>
+        <a className="gallery-cta" href={sceneUrl(item.id)} target="_top">
           {item.cta}
           <svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true">
             <path d="M1 9L9 1M9 1H3M9 1v6" fill="none" stroke="currentColor" strokeWidth="1.4" />

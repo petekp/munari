@@ -4,7 +4,7 @@
 import { useLayoutEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync, useFrame } from '@react-three/fiber'
-import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu'
+import { BundleGroup, MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu'
 import * as THREE from 'three'
 import { SurfaceCanvas } from '@petepetrash/munari'
 import { FrameSurface, createCanvasFrameSource, useSurfaceOutput, type PresentationReceipt, type PresentationRequirement } from '@petepetrash/munari/advanced'
@@ -12,11 +12,13 @@ import { FrameSurface, createCanvasFrameSource, useSurfaceOutput, type Presentat
 const query = new URLSearchParams(location.search)
 const mode = query.get('mode') ?? 'direct'
 const requestedBackend = query.get('backend') ?? 'webgpu'
-const samples: { frame: number; pixel: number[] }[] = []
+const bundleMode = ['bundle', 'bundle-dynamic', 'bundle-recovery'].includes(mode)
+const samples: { frame: number; pixel: number[]; outputDraws: number; sourceGeneration: number; bundleVersion: number | null }[] = []
 const presentations: { frame: number; receipt: PresentationReceipt }[] = []
 let frames = 0
 let armedFrames = 0
 let backend = 'unknown'
+let outputDraws = 0
 
 const makeSource = (color: string) => {
   const canvas = document.createElement('canvas')
@@ -72,6 +74,25 @@ function changeTargetBeforeOutput(renderer: WebGPURenderer, empty: THREE.Scene, 
   }
 }
 
+
+function prepareBundleOutput(
+  output: { scene: THREE.Scene; mesh: THREE.Mesh; bundle: BundleGroup | null },
+  setRequirement: (requirement: PresentationRequirement) => void,
+) {
+  if (armedFrames === 2) {
+    const context = first.canvas.getContext('2d')
+    if (!context) throw new Error('Source context unavailable')
+    context.fillStyle = '#0000ff'
+    context.fillRect(0, 0, 16, 16)
+    const frame = first.publish()
+    flushSync(() => setRequirement({ frame, transferId: 1, presentationRevision: 2 }))
+  }
+  if (mode === 'bundle-recovery' && armedFrames === 3 && output.bundle) {
+    output.scene.attach(output.mesh)
+    output.bundle.needsUpdate = true
+  }
+}
+
 function Scene() {
   const [armed, setArmed] = useState(false)
   const [source, setSource] = useState(first)
@@ -85,7 +106,14 @@ function Scene() {
     const scene = new THREE.Scene()
     const override = new MeshBasicNodeMaterial({ color: '#ff0000' })
     let prelude: THREE.Mesh<THREE.PlaneGeometry, MeshBasicNodeMaterial> | null = null
-    scene.add(mesh)
+    const bundle = bundleMode ? new BundleGroup() : null
+    if (bundle) {
+      bundle.static = mode !== 'bundle-dynamic'
+      const parent = new THREE.Group()
+      parent.add(mesh)
+      bundle.add(parent)
+      scene.add(bundle)
+    } else scene.add(mesh)
     if (mode === 'color-off') material.colorWrite = false
     if (mode === 'empty') mesh.geometry.setDrawRange(0, 0)
     if (mode === 'override') scene.overrideMaterial = override
@@ -101,11 +129,14 @@ function Scene() {
       }
       scene.add(prelude)
     }
-    return { scene, mesh, material, override, prelude }
+    return { scene, mesh, material, override, prelude, bundle }
   }, [target, empty])
   const handlers = useSurfaceOutput([target])
   useLayoutEffect(() => {
-    output.mesh.onBeforeRender = handlers.onBeforeRender
+    output.mesh.onBeforeRender = function (...args) {
+      outputDraws++
+      handlers.onBeforeRender.apply(this, args)
+    }
     output.mesh.onAfterRender = handlers.onAfterRender
   }, [output, handlers])
   useLayoutEffect(() => () => {
@@ -129,7 +160,13 @@ function Scene() {
       return
     }
     armedFrames++
-    if (armedFrames === 1 && mode !== 'direct') {
+    if (bundleMode) {
+      prepareBundleOutput(output, setRequirement)
+      gl.setRenderTarget(target)
+      gl.render(scene, camera)
+      gl.setRenderTarget(null)
+      gl.render(output.scene, camera)
+    } else if (armedFrames === 1 && mode !== 'direct') {
       gl.setRenderTarget(target)
       gl.render(scene, camera)
       changeTargetBeforeOutput(gl, empty, camera)
@@ -146,7 +183,7 @@ function Scene() {
       gl.setRenderTarget(null)
       gl.render(scene, camera)
     }
-    samples.push({ frame: armedFrames, pixel: pixel(gl) })
+    samples.push({ frame: armedFrames, pixel: pixel(gl), outputDraws, sourceGeneration: source.currentFrame().generation, bundleVersion: output.bundle?.version ?? null })
   }, 1)
   return mounted ? <FrameSurface name="host-presentation-source" frame={source} presentation={armed ? requirement : undefined} raycast={() => {}} onPresented={receipt => presentations.push({ frame: armedFrames, receipt })}><planeGeometry args={[2, 2]} /></FrameSurface> : null
 }

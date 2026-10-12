@@ -191,7 +191,11 @@ try {
   async function checkHostPresentation(backend, mode) {
     const page = await browser.newPage()
     const problems = []
+    const bundleReports = []
     page.on('pageerror', error => problems.push(String(error)))
+    page.on('console', message => {
+      if (message.type() === 'error' && message.text().startsWith('[munari] useSurfaceOutput cannot confirm')) bundleReports.push(message.text())
+    })
     try {
       await page.setViewport({ width: 256, height: 256, deviceScaleFactor: 1 })
       await page.goto(`${url}host-presentation.html?backend=${backend}&mode=${mode}`, { waitUntil: 'load' })
@@ -200,7 +204,27 @@ try {
       assert.deepEqual(problems, [])
       assert.equal(evidence.backend, backend)
       assert.equal(evidence.samples.length, 4)
-      if (mode === 'unmount') {
+      const bundleMode = ['bundle', 'bundle-dynamic', 'bundle-recovery'].includes(mode)
+      assert.deepEqual(bundleReports, bundleMode ? ['[munari] useSurfaceOutput cannot confirm a mesh inside BundleGroup. Move the final output mesh outside BundleGroup.'] : [])
+      if (bundleMode) {
+        assert.deepEqual(evidence.samples[0].pixel, [0, 255, 0, 255])
+        for (const sample of evidence.samples.slice(1)) {
+          assert.deepEqual(sample.pixel, [0, 0, 255, 255])
+          assert.equal(sample.sourceGeneration, 2)
+        }
+        for (const sample of evidence.samples.slice(0, 2)) assert.equal(sample.bundleVersion, 0)
+        if (backend === 'webgpu') assert.equal(evidence.samples[1].outputDraws, 1)
+        if (mode === 'bundle-recovery') {
+          assert.equal(evidence.presentations.length, 1)
+          assert.equal(evidence.presentations[0].frame, 3)
+          assert.equal(evidence.presentations[0].receipt.frame.generation, 2)
+          assert.equal(evidence.presentations[0].receipt.presentationRevision, 2)
+          for (const sample of evidence.samples.slice(2)) assert.equal(sample.bundleVersion, 1)
+        } else {
+          assert.equal(evidence.presentations.length, 0)
+          for (const sample of evidence.samples) assert.equal(sample.bundleVersion, 0)
+        }
+      } else if (mode === 'unmount') {
         assert.equal(evidence.presentations.length, 0)
       } else {
         assert.equal(evidence.presentations.length, 1)
@@ -234,7 +258,7 @@ try {
       continue
     }
 
-    for (const mode of ['direct', 'discard', 'unrelated', 'composed', 'auto-clear', 'clear', 'background-clear', 'callback-clear', 'callback-color-clear', 'callback-background-clear', 'nested-auto-clear', 'no-clear', 'depth-clear', 'color-off', 'empty', 'override', 'source-change', 'requirement-change', 'unmount']) {
+    for (const mode of ['direct', 'discard', 'unrelated', 'composed', 'auto-clear', 'clear', 'background-clear', 'callback-clear', 'callback-color-clear', 'callback-background-clear', 'nested-auto-clear', 'no-clear', 'depth-clear', 'color-off', 'empty', 'override', 'source-change', 'requirement-change', 'unmount', 'bundle', 'bundle-dynamic', 'bundle-recovery']) {
       await checkHostPresentation(backend, mode)
     }
 

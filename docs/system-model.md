@@ -140,6 +140,8 @@ close an offscreen path when a compositor's final output names the contributing
 render targets through `useSurfaceOutput` from `/advanced`. An unrelated screen
 render cannot confirm those targets. The compositor owns their contribution to
 the output; shader discard, depth, and occlusion still need scene evidence.
+The final output mesh stays outside `BundleGroup`. Cached bundle execution
+omits the mesh callbacks needed to confirm each presentation.
 
 Read [authoring: one paint generation](authoring.md#keep-texture-attachments-on-one-paint-generation)
 and decisions #24–27 in [the ledger](decisions.md) before changing these seams.

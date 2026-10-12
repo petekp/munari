@@ -334,6 +334,12 @@ handlers attached to the final mesh. An unrelated screen render cannot confirm
 their presentation. Keep source targets intact until output and use separate
 intermediate targets for effects.
 
+Keep the final output mesh outside `BundleGroup` on both backends. Three omits
+mesh callbacks when it executes a cached bundle, so those draws cannot confirm
+presentation. Other scene content may use bundles. On the first observed draw
+inside a bundle, the hook rejects proof and logs the required placement once.
+It cannot diagnose handlers attached after a bundle was already cached.
+
 Color clears, including partial clears, invalidate earlier draws into a target.
 Render intermediate passes before the final mesh; nested rendering inside its
 material cannot provide attributable draw evidence. Your compositor still owns
