@@ -6,10 +6,13 @@ It does not describe behavior shipped in the package.
 
 ## Product contract
 
-A canvas drawing changes pixels without changing its DOM. A live Surface
-should follow those drawings automatically where the browser supplies a
-usable change signal. When drawing stops, the feature must stop requesting
-work. Authors keep the existing `live` option and `useSurfaceRefresh()` API.
+A canvas drawing changes pixels without changing its DOM. In configurations
+that pass the release gates, a live Surface follows those drawings automatically.
+When drawing stops, the feature must stop requesting work. The automatic-refresh
+and idle guarantees below apply to those accepted configurations. Other capable
+configurations may attempt observation as best effort; authors must retain
+explicit refresh there. Authors keep the existing `live` option and
+`useSurfaceRefresh()` API.
 
 ```tsx
 <Surface inScene={inScene} live>
@@ -18,13 +21,23 @@ work. Authors keep the existing `live` option and `useSurfaceRefresh()` API.
 ```
 
 On a supported path, the author does not call refresh after each drawing.
-Ordinary Surface input, layout, capture, and handoff behavior continue to apply.
+Applications that require updates across browsers must call the function
+returned by `useSurfaceRefresh()` after drawing. Automatic observation is an
+enhancement. Capability or runtime failure can leave an owner using explicit
+refresh.
+This release adds no observation-status API. Ordinary Surface input, layout,
+capture, and handoff behavior continue to apply.
+
+Automatic updates follow the capture engine's pacing. Automatic snapDOM
+requests use its `250 ms` minimum interval between capture starts. Capture
+and presentation add latency, so authors should expect sampled updates.
+Explicit refresh keeps its existing behavior.
 
 | Situation | Required behavior |
 |---|---|
 | `live` is true and observation works | New canvas frames invalidate the owning HTML part |
 | `live` is false | No automatic canvas subscription or canvas-driven refresh; existing input behavior remains |
-| `live` changes to true | Synchronize and capture current pixels once, even if the canvas has not drawn since activation |
+| `live` changes to true | Request one catch-up capture of current pixels, including in fallback and when no new drawing occurs |
 | Signal unavailable or observation fails | Preserve content and normal capture; explicit refresh remains available |
 | Explicit refresh is called | Honor it independently of automatic observation and `live` |
 
@@ -34,9 +47,11 @@ does not compare images to discover visual equality. After setup and queued
 work settle, an idle source must produce zero observer callbacks, automatic
 refresh requests, snapshot copies, paints, or demand-rendered frames.
 
-The observer must introduce no polling or periodic media work. The promise
-covers Munari's work, not the entire browser process's CPU use. Browser tracing
-must corroborate the counters on each supported configuration.
+The observer must introduce no polling or periodic media work. This includes
+recurring browser work caused by tracks Munari creates, even when JavaScript
+counters stay at zero. Unrelated browser activity is outside the promise.
+Browser traces must corroborate the counters on each configuration accepted
+for release.
 
 **First release.** Use `HTMLCanvasElement.captureStream()` with the frame-rate
 argument omitted, then consume frames through a `MediaStreamTrackProcessor`
@@ -49,11 +64,15 @@ do not establish support. Worker-only processor implementations and browsers
 without the processor use explicit refresh in this release. Processor exposure
 differs across browsers. [Processor documentation](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrackProcessor).
 
-The first release covers canvas content already supported by `Surface.HTML`,
-`SceneSurface.HTML`, and `CaptureContent`, in the current document. It leaves
-`useElementCapture`'s existing canvas rejection unchanged. Standalone
-`OffscreenCanvas`, worker-rendered placeholders, video-frame observation,
-cross-document trees, and new shadow-root traversal are separate work.
+The first release covers canvas content already supported by `Surface.HTML`
+and `SceneSurface.HTML`, in the current document. Their explicit fallback is
+`useSurfaceRefresh()`. `CaptureContent` is deferred because its
+[`CaptureHandle`](../packages/react/src/primitives/capture.tsx) has no public
+refresh method. Extending it needs a separate API decision that provides the
+same fallback. `useElementCapture` keeps its existing canvas rejection.
+Standalone `OffscreenCanvas`, worker-rendered placeholders, video-frame
+observation, cross-document trees, and new shadow-root traversal are separate
+work.
 Raw `DomTextureSource` callers retain their current engine behavior and
 explicit repaint control.
 
@@ -83,7 +102,6 @@ pixels; the renderer remains responsible for upload and presentation evidence.
 |---|---|
 | [Retained Surface HTML](../packages/react/src/primitives/Surface.tsx) | Observe the original `liveRoot`, including a root that is itself a canvas. Synchronize its retained copy before the affected part captures |
 | [Scene-owned HTML](../packages/react/src/primitives/surface/surfaceSourceHost.tsx) | Observe the authoritative adopted source and request that source's capture |
-| [CaptureContent connection](../packages/react/src/primitives/capture.tsx) | Follow the connection's adopted source, `live` state, and lifetime |
 | [Raster scheduler](../packages/core/src/paint/rasterizedSource.ts) | Retain the existing capture period, cost gap, and one-running-plus-one-owed policy |
 
 **Discovery and ownership.** Observe only authored canvas elements. Exclude
@@ -93,18 +111,24 @@ from Munari's renderer output; its compatibility is a release gate below.
 Reuse existing topology notifications where possible. Otherwise use a scoped
 observer for child-list changes and canvas width/height attributes. Reconcile
 on additions, removals, replacements, and dimension changes, not on every
-received frame. A healthy observer follows resize without being recreated.
-Zero-to-positive dimensions or a resize that clears taint may admit one fresh
-setup attempt for a stopped observer. Do not call `getContext()` to classify a producer;
-that could claim an uninitialized canvas's context before the author does.
+received frame. An eligible canvas belongs to the current authoritative source,
+has positive bitmap dimensions, has `live` enabled, and needs observation
+because native capture does not follow its drawings. Setup also requires the
+Window processor capability and successful stream construction.
+
+A healthy observer follows resize without being recreated. Remember numeric
+width and height so assigning the same value does not count as a size change.
+Do not call `getContext()` to classify a producer; that could claim an
+uninitialized canvas's context before the author does.
 
 A retained node moving between its page holder and capture container keeps
 its producer identity. Re-evaluate whether browser-owned invalidation now
 covers it; suspend or resume the transport when that need changes. Each restart
 gets a new lifetime token and catch-up, with no overlapping observers. Source
 replacement revokes the old lifetime. Duplicate or rejected controllers cannot
-install observers. Multiple valid subscribers to one canvas must share one
-owned track and reader, with independent releases.
+install observers. Each authoritative source owns one watcher, with at most
+one track and reader per authored canvas. Presenters share that source's
+runtime, so this release needs no registry of subscribers across owners.
 
 **Refresh ordering.** Close each delivered `VideoFrame` promptly, then mark the
 owning source dirty. Never turn the frame or its timestamp into a Munari paint,
@@ -112,22 +136,29 @@ readiness, or presentation receipt. Continue using the existing capture pixels
 and color/alpha path. A notification means a producer frame became available;
 it does not guarantee that the original canvas remains readable indefinitely.
 
-Keep one pending reader operation per track and request a processor buffer
-capacity of one. Close buffered or late frames during cleanup as well.
+Keep at most one pending reader operation per track and request a processor
+buffer capacity of one. Close buffered or late frames during cleanup as well.
+This bounds retained frames, not frame-delivery or browser capture cost.
+Measure those costs at producer frame rates. Any later change to reading
+cadence must still deliver the last drawing and resume after idle.
 
 Automatic notifications refresh only the affected part. Calling handle-wide
 `store.refresh()` would unnecessarily capture sibling parts. Aggregate multiple
-canvases and incoming frames into one pending source request. Requests arriving
-during capture may owe one follow-up; they cannot form a backlog.
+canvases and incoming frames into one pending source request. A notification
+received during capture owes one follow-up unless the owner can prove the
+current capture includes that change. Further notifications share that owed
+capture. A delivered final notification must leave work pending until a
+capture includes the latest drawing or the source enters documented fallback.
 
 Retained-copy preparation must also be coalesced. Rebuilding a DOM snapshot for
 every video frame while capture waits would move the cost rather than remove it.
 Synchronize the latest authored bitmap before the admitted capture reads it.
 If the current source interface needs an internal preparation callback to do
-this, add it at that scheduling boundary. Keep native paint timing valid and
-preserve explicit refresh requests when cancelling automatic work. Automatic
-requests use normal pacing, including the current snapDOM live period of
-`250 ms`; they never request an immediate bypass.
+this, add it at that scheduling boundary. Keep native paint timing valid.
+Track automatic demand separately from manual and input demand, even when
+they share an admitted capture. Cancelling automatic work must preserve the
+other causes. Automatic requests use normal pacing, including the current
+snapDOM live period of `250 ms`. They never request an immediate bypass.
 
 Use browser-owned invalidation where it already observes the authoritative
 canvas. A direct HTML-in-canvas source must not pay for a redundant stream or
@@ -139,19 +170,44 @@ not browser-name checks or assumptions based on unrelated paint counters.
 
 | Transition | Required action |
 |---|---|
-| Eligible canvas attaches, or `live` becomes true | Attach once and perform bounded catch-up; coalesce initial stream delivery rather than blindly discarding the first frame |
-| Canvas leaves its authoritative subtree | Revoke that subscription and release resources when the last subscriber leaves |
+| Eligible canvas attaches | Attach once and request one catch-up through the scheduler; coalesce initial frame delivery with pending work |
+| `live` becomes true | Request catch-up even in fallback; attach observation only for eligible canvases |
+| Canvas leaves its authoritative subtree | Revoke observation and release that canvas's resources |
 | `live` becomes false | Revoke automatic callbacks and cancel automatic-only pending work; preserve manual and input demand |
 | Part or connection is replaced or unmounted | Invalidate its lifetime token before asynchronous cleanup |
 | A pending read resolves after revocation | Close the frame and perform no copy, capture, or renderer invalidation |
-| Setup throws, a track ends or mutes, or a read rejects | Clean up the observer and retain manual fallback |
+| Track mutes | Retain the track, reader, and lifetime; mute itself requests no capture or retry |
+| Track unmutes | Request one catch-up through the scheduler, coalescing frame delivery; keep the same track and reader |
+| Setup throws, a track ends, the readable stream completes, or a read rejects | Clean up the observer and retain manual fallback |
+
+`mute` describes a temporary loss of data. It is distinct from `ended`.
+Keeping the track allows browser-driven recovery without a retry timer.
+The idle gate also applies while muted; retaining a track that causes recurring
+browser work fails that gate. [Track lifecycle](https://www.w3.org/TR/mediacapture-streams/#media-flow-and-life-cycle).
 
 Cancel pending reads, close delivered frames in failure paths, release reader
 locks, and stop only tracks created by Munari. Never stop the producer, its
 animation loop, or its graphics context. No automatic retry timer is allowed.
-Replacement, an observed dimension change that can restore eligibility, or a
-new `live` activation may make one fresh setup attempt. Unrelated DOM mutations
-do not retry a failed observer.
+A canvas with zero dimensions waits for positive dimensions before its first
+setup attempt. After failure, allow one size-triggered retry in that canvas's
+current `live` activation. It requires changed numeric dimensions that are
+positive. A second failure stays on manual fallback despite further resizes.
+Same-value assignments and unrelated DOM mutations do not rearm setup.
+
+Source replacement or a new `live` activation starts a fresh attempt and size
+retry allowance. A browser `contextrestored`, `webglcontextrestored`, or persisted
+`pageshow` event permits one recovery attempt for a failed observer per distinct
+restoration. It does not refill the size retry allowance. Treat duplicate events
+for that restoration as one trigger, and leave healthy observers attached.
+These events permit an attempt. They do not prove that the canvas or capture
+engine has recovered.
+
+A same-size reset may clear taint, but it does not restart failed setup because
+some producers reset on every drawing. A retained muted track can recover through
+`unmute`. Once the retry allowance is spent, later size changes also leave
+setup stopped.
+Explicit refresh or a new `live` activation remains available. Taint still
+prevents capture until the canvas is origin-clean.
 
 Missing capability is expected. Report a concise development diagnostic once
 per affected owner and reason, with explicit refresh guidance. Optional observer
@@ -163,10 +219,19 @@ Tainted canvases remain subject to normal browser security restrictions.
 
 **Resolve pixel lifetime first.** The prototype used a 2D canvas. Before enabling
 an automatic, context-agnostic path, prove that recapturing after notification
-still reads the producer's correct pixels. Test 2D, WebGL with both
-`preserveDrawingBuffer` settings, and WebGPU canvas contexts. Include alpha,
-resize, clear, and a final frame followed by inactivity. GPU drawing buffers may
-have a different lifetime from the captured media frame.
+still reads the producer's correct pixels. Test 2D, `bitmaprenderer`, WebGL
+with both `preserveDrawingBuffer` settings, and WebGPU canvas contexts in
+retained and direct sources. Include alpha, resize, clear, hidden source
+holders, and a final frame followed by inactivity. GPU drawing buffers may have a different lifetime
+from the captured media frame.
+
+Use known expected pixels as the oracle. Compare explicit and automatic refresh
+to locate regressions, but two incorrect captures do not count as a pass. Include
+notification delay and the normal capture wait in the test. For each producer,
+record the supported API contract that keeps its pixels readable until capture.
+WebGL does not guarantee later readback with `preserveDrawingBuffer: false`.
+A successful run on one browser cannot establish that guarantee.
+[WebGL drawing buffer](https://registry.khronos.org/webgl/specs/latest/1.0/#THE_DRAWING_BUFFER).
 
 If this gate fails, stop before broad enablement and revise the design. Do not
 silently ship blank frames, probe context type by claiming it, or substitute
@@ -183,12 +248,13 @@ engine and processor path before counting a pass.
 |---|---|
 | Retained and direct sources, both engines | The final drawing reaches the texture and visible output without a producer calling refresh; content state and source identity survive |
 | Real handoffs | Page-copy and scene ownership changes preserve the last drawing and reject stale callbacks |
-| Burst and sustained drawing | Latest frame eventually wins; one running and at most one owed capture; snapshot-copy work follows admitted capture work, not producer frame count |
+| Burst and sustained drawing | The final delivered change is captured under the scheduler's pacing; one running and at most one owed capture; copy work follows admitted capture work |
 | Manual and automatic overlap | Pending signals share admitted work; disabling automatic observation preserves manual/input demand; late delivery stays bounded |
 | Several canvases and parts | Signals coalesce within a part; unrelated parts do not repaint; subscriptions do not duplicate |
 | `live` toggles | False creates no subscriptions; true captures a static latest drawing; false during a pending read produces no later automatic work |
 | Topology and teardown | Add, remove, replace, resize, root-canvas, unmount, and rapid remount exercise cleanup; a released frame cannot affect a successor |
-| Fallbacks | Missing processor, constructor failure, taint, ended/muted track, and read rejection preserve manual refresh and produce no retry loop |
+| Fallbacks and retries | Missing processor, constructor failure, taint, ended track, stream completion, and read rejection preserve manual refresh; repeated same-size resets and failed real resizes obey the retry limit |
+| Recovery | Drawing after long idle, mute/unmute, context restoration, and page restoration reaches final visible pixels or the specified failure path; valid stale-callback rejection still holds |
 | Native capture overlap | Already-covered canvas draws do not gain a second capture or redundant stream |
 | Provenance | Observer notifications alone never make readiness true or release a page hold |
 
@@ -196,31 +262,89 @@ An automatic frame can arrive after an explicit capture completed. The signals
 have no shared draw identity, so exact deduplication is not promised. Do not
 use media timestamps as a substitute for Munari capture provenance.
 
-For idle acceptance, use a demand renderer and stop all fixture drawing. Wait
-for the final visible pixels and pending capture work to settle, then observe
-three independent `10 s` windows. Require zero delivered observer frames,
-automatic requests, copies, paints, and renderer frames in each window.
-After disposal, draw again and require zero effects from the disposed observer.
-Use an external measurement clock so the probe itself does not install an idle
-frame loop. Compare browser traces with an observer-disabled control to detect
-new recurring media, compositor, or timer work.
+**Idle and recovery.** Use a demand renderer and stop all fixture drawing.
+Wait for final visible pixels and pending capture work to settle, then observe
+one continuous `30 s` idle period, scored as three `10 s` windows. Extend the
+period if traces suggest later recurring work. These are proposed test durations,
+not a measured limit on browser timers.
+Require zero delivered observer frames, automatic requests, copies, paints, and
+renderer frames in each window. Then draw a distinct final image and require
+it to reach visible output without manual refresh, remounting, or toggling `live`.
+A dead observer must fail this recovery check even if its idle counters pass.
+Repeat for each accepted producer, source, and engine combination, including
+a retained page holder and a handoff that resumes observation.
 
-Measure active overhead separately at representative canvas sizes and counts.
-Report source-copy counts, capture counts, frame time, main-thread blocking,
-and retained resources against explicit-refresh and observer-disabled controls.
-The idle result is not evidence that active stream capture is free. Record
-these profiles before broad enablement; no active-cost budget was established
-by the feasibility experiment.
+Exercise mute/unmute separately and record whether long idle itself causes
+those events. An idle or recovered healthy source must not silently fall back.
+For injected terminal failures, require cleanup and working explicit refresh
+where browser security still allows capture. After disposal, draw again and
+require zero effects from the disposed observer.
+
+Use an external measurement clock so the probe installs no idle frame loop.
+Compare traces with an observer-disabled control in normal, muted, and resumed
+states. Any additional recurring media, compositor, or timer work attributable
+to Munari's observer fails the idle gate. If attribution is unresolved, the gate
+is unverified. Record trace categories and intervals so another run can decide
+the same claim. Zero JavaScript callbacks alone cannot pass it.
+
+**Configurations.** Before running acceptance, record exact browser builds,
+OS versions, GPU adapters and backends, flags, viewport, and device pixel ratio.
+The first release must cover these configurations:
+
+| Configuration | Required path |
+|---|---|
+| Desktop Chrome on macOS with hardware rendering | Both capture engines, real handoffs, pixels, recovery, idle traces, and active profiles |
+| Desktop Chrome on Linux with SwiftShader | The same behavior gates using the instrument's software-rendering path; report performance separately |
+| Chrome without `CanvasDrawElement` | snapDOM observation where available and normal capture fallback |
+| Window processor missing, including worker-only exposure | Manual-refresh fallback with no observer resources; use real absence and injected construction/read failures |
+
+These are acceptance targets, not recorded passes. An unavailable target leaves
+its path unverified. Accepted enhanced-path configurations define the support
+scope for automatic observation. Each needs passing pixel, recovery, idle, and
+active-cost evidence. The processor-missing row tests manual fallback and
+cleanup; it cannot count as an enhanced-path pass.
+
+Feature detection remains the runtime activation rule. A capable configuration
+outside that support scope may attempt observation, but receives no automatic
+refresh or zero-idle guarantee. Applications there must retain explicit refresh.
+Usage guidance must state this limit and name the accepted configurations.
+A browser allowlist is not part of this design; API presence alone is not
+acceptance evidence.
+
+Check background/foreground and back/forward navigation against a control.
+Record whether the page is restored from the back/forward cache, including any
+reported reason it was excluded. A new cache exclusion or failed recovery must
+be resolved or receive an explicit scoped design decision before release.
+This is an investigation gate; no such browser regression is established here.
+
+**Active cost.** Profile representative canvas sizes, canvas counts, and producer
+frame rates against explicit-refresh and observer-disabled controls. Record
+frame deliveries, source copies, captures, end-to-end update latency, frame
+time, main-thread blocking, and retained resources. Keep hardware and software
+results separate. A one-frame buffer and paced capture do not cap producer-side
+media work or notification cost.
+
+Feasibility work must produce numeric release limits for update latency,
+added frame time and blocking, and retained resources. Record the workloads,
+comparison method, limits, and their measured rationale in this spec before
+implementing general enablement. Validate recovery within the declared latency
+limit while the document is active. Missing limits, exceeded limits, or resource
+growth across repeated attach/dispose cycles block release. Profiling alone is
+not acceptance. No active-cost budget has been established yet.
 
 Use deliberate faults: remove the frame consumer, skip retained-copy
-synchronization, leak a late callback, and add periodic invalidation. Each must
-fail its corresponding pixel, lifecycle, or idle assertion. Capability absence
-is fallback evidence, not an enhanced-path pass.
+synchronization, stop observation after its first idle period, leak a late
+callback, and add periodic invalidation. Each must fail its corresponding pixel,
+recovery, lifecycle, or idle assertion. Capability absence is fallback evidence,
+not an enhanced-path pass.
 
-Delivery order: first resolve producer pixel lifetime and active cost; then
-implement the shared watcher and owning-boundary lifecycle tests; wire the
-three content owners; finally run the browser matrix and required unit,
-typecheck, lint, and build checks. Update usage guidance only when implemented.
+Delivery order: first resolve producer pixel lifetime, idle recovery, and
+active cost with reproducible instrument work. Record the measured configuration
+matrix and numeric budgets. Then implement the source-owned watcher and its
+lifecycle checks, wire the two Surface content owners, and run acceptance plus
+required unit, typecheck, lint, and build checks. A failed feasibility gate
+requires a design revision before general enablement. Update usage guidance
+only when implemented, including pacing and the author's portable refresh path.
 Any CI membership change needs separate approval. Polling, hidden video
 receivers, global drawing-method patches, and worker transports are outside
 this release.
