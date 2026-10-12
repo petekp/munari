@@ -75,6 +75,7 @@ try {
     errors = []
     page = await browser.newPage()
     await page.setViewport({ width: 1200, height: 820, deviceScaleFactor: 1 })
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }])
     page.on('pageerror', (error) => errors.push(String(error)))
     page.on('response', response => { if (response.status() >= 400 && new URL(response.url()).pathname !== '/favicon.ico') errors.push(`HTTP ${response.status()} ${response.url()}`) })
     page.on('requestfailed', request => { if (new URL(request.url()).pathname !== '/favicon.ico') errors.push(`${request.failure()?.errorText} ${request.url()}`) })
@@ -186,6 +187,8 @@ try {
   await page.keyboard.press('Space')
   await page.click('[data-col="queue"] h2')
   if (await page.$eval(`${moveSelector} .l14-move`, element => element.open)) note('flight: outside press did not close Move')
+  // The keyboard move's sibling slots can still animate after its destination is visible.
+  await page.waitForFunction(() => ![...document.querySelectorAll('.l14-slot')].some(element => element.getAnimations().some(animation => animation.playState === 'running')))
   const flightBefore = await order()
   const held = flightBefore.queue[0]
   const grab = await page.evaluate(() => {
@@ -202,7 +205,24 @@ try {
     const r = document.querySelector('[data-col="today"] ul').getBoundingClientRect()
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height * 0.55) }
   })
+  await page.evaluate(() => {
+    window.__degradedFlightPointerdown = null
+    window.addEventListener('pointerdown', event => {
+      const card = event.target instanceof Element ? event.target.closest('.l14-card') : null
+      window.__degradedFlightPointerdown = {
+        card: card?.dataset.card ?? null,
+        x: event.clientX,
+        y: event.clientY,
+        box: card?.getBoundingClientRect().toJSON(),
+        fonts: document.fonts.status,
+        reduced: matchMedia('(prefers-reduced-motion: reduce)').matches,
+        scroll: document.querySelector('.l14').scrollTop,
+        timelineTime: document.timeline.currentTime,
+      }
+    }, { capture: true, once: true })
+  })
   const drift = []
+  const carrySamples = []
   const midOrders = []
   await dragSteps(grab, target, 10, async (i, x, y) => {
     const at = await page.evaluate(
@@ -210,7 +230,17 @@ try {
         const el = document.querySelector(`.l14-card[data-card="${id}"]`)
         if (!el) return null
         const r = el.getBoundingClientRect()
-        return { left: Math.round(r.left), top: Math.round(r.top) }
+        const slot = el.closest('.l14-slot')
+        return {
+          left: Math.round(r.left), top: Math.round(r.top), height: r.height,
+          headingHeight: el.querySelector('h3').getBoundingClientRect().height,
+          fonts: document.fonts.status,
+          scroll: document.querySelector('.l14').scrollTop,
+          cardTransform: getComputedStyle(el).transform,
+          slotTransform: getComputedStyle(slot).transform,
+          timelineTime: document.timeline.currentTime,
+          observedAt: performance.now(),
+        }
       },
       held,
     )
@@ -218,7 +248,9 @@ try {
       drift.push(Infinity)
       return
     }
-    drift.push(Math.hypot(x - at.left - grabOffset.x, y - at.top - grabOffset.y))
+    const error = Math.hypot(x - at.left - grabOffset.x, y - at.top - grabOffset.y)
+    drift.push(error)
+    carrySamples.push({ step: i, pointer: { x, y }, drift: error, ...at })
     // Sampled BEFORE the release, and that is the assertion that has teeth.
     // Committing the whole reorder on pointerup produces the same final
     // board, so a gate that only reads the end cannot tell the two apart —
@@ -226,6 +258,8 @@ try {
     if (i < 10) midOrders.push(JSON.stringify(await order()))
   })
   const flightAfter = await order()
+  const pointerdown = await page.evaluate(() => window.__degradedFlightPointerdown)
+  if (pointerdown?.card !== held) note(`flight: carry pressed ${pointerdown?.card ?? 'no card'}, expected ${held}: ${JSON.stringify(pointerdown)}`)
   const cardIds = board => Object.values(board).flat().sort()
   if (JSON.stringify(cardIds(flightAfter)) !== JSON.stringify(cardIds(flightBefore))) {
     note('flight: carrying a card lost or duplicated a board item')
@@ -244,7 +278,7 @@ try {
   // catches put the card a whole column away.
   const worstDrift = Math.max(...drift)
   if (!(worstDrift <= 4)) {
-    note(`flight: the carried card left the hand — worst drift ${worstDrift.toFixed(1)}px`)
+    note(`flight: the carried card left the hand — worst drift ${worstDrift.toFixed(1)}px; grab offset ${JSON.stringify(grabOffset)}; press ${JSON.stringify(pointerdown)}; samples ${JSON.stringify(carrySamples)}`)
   }
   const cardsBefore = await page.$$eval('.l14-card', (els) => els.length)
   const deleteAt = await centre('.l14-card [aria-label^="Delete"], .l14-card [data-nodrag] button')
