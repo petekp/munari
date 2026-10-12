@@ -34,6 +34,89 @@ function skip(reason) {
 
 if (!chromePath) skip('no Chrome executable found (set CHROME_PATH)')
 
+async function checkAnchorGeometry(page) {
+  const observations = await page.evaluate(async () => {
+    const mesh = window.__r3f.scene.getObjectByName('knobs-panel-surface')
+    const anchors = mesh.children.filter(child => child.type === 'Group' && child.children.length)
+    if (!anchors.length) throw new Error('No Surface anchors were mounted')
+    const original = mesh.geometry
+    const frame = () => new Promise(resolve => {
+      window.__r3f.invalidate()
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    })
+    const positions = () => anchors.map(anchor => anchor.position.toArray())
+    const rows = []
+    const record = (name, expected) => {
+      const actual = positions()
+      const error = Math.max(...actual.map((point, i) => Math.hypot(...point.map((value, axis) => value - expected[i][axis]))))
+      rows.push({ name, anchors: actual.length, error })
+    }
+    const before = positions()
+    const uv = original.getAttribute('uv')
+    const mirror = attribute => {
+      for (let i = 0; i < attribute.count; i++) attribute.setX(i, 1 - attribute.getX(i))
+    }
+    mirror(uv)
+    uv.needsUpdate = true
+    await frame()
+    record('updated UV coordinates', before.map(([x, y, z]) => [-x, y, z]))
+    const restored = uv.clone()
+    mirror(restored)
+    original.setAttribute('uv', restored)
+    await frame()
+    record('replacement UV coordinates', before)
+    const replaced = restored.clone()
+    mirror(replaced)
+    original.setAttribute('uv', replaced)
+    await frame()
+    record('replacement UV coordinates with the same version', before.map(([x, y, z]) => [-x, y, z]))
+
+    const geometry = original.clone()
+    const Position = original.getAttribute('position').constructor
+    const UV = uv.constructor
+    geometry.setAttribute('position', new Position([-50, 50, 0, 50, 50, 0, -50, -50, 0, 50, -50, 0, -50, 50, 20, 50, 50, 20, -50, -50, 20, 50, -50, 20], 3))
+    geometry.setAttribute('uv', new UV([0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0], 2))
+    geometry.setAttribute('normal', new Position(Array.from({ length: 24 }, (_, i) => i % 3 === 2 ? 1 : 0), 3))
+    geometry.setIndex([0, 2, 1, 2, 3, 1])
+    mesh.geometry = geometry
+    try {
+      await frame()
+      const firstPlane = positions()
+      const index = geometry.getIndex()
+      for (let i = 0; i < index.count; i++) index.setX(i, index.getX(i) + 4)
+      index.needsUpdate = true
+      await frame()
+      record('updated triangle indices', firstPlane.map(([x, y, z]) => [x, y, z + 20]))
+      const firstIndex = index.clone()
+      for (let i = 0; i < firstIndex.count; i++) firstIndex.setX(i, firstIndex.getX(i) - 4)
+      geometry.setIndex(firstIndex)
+      await frame()
+      record('replacement triangle indices', firstPlane)
+      const secondIndex = firstIndex.clone()
+      for (let i = 0; i < secondIndex.count; i++) secondIndex.setX(i, secondIndex.getX(i) + 4)
+      geometry.setIndex(secondIndex)
+      await frame()
+      record('replacement triangle indices with the same version', firstPlane.map(([x, y, z]) => [x, y, z + 20]))
+      const shifted = geometry.getAttribute('position').clone()
+      for (let i = 0; i < shifted.count; i++) shifted.setXYZ(i, shifted.getX(i) + 11, shifted.getY(i) + 7, shifted.getZ(i) + 3)
+      geometry.setAttribute('position', shifted)
+      await frame()
+      record('replacement positions with the same version', firstPlane.map(([x, y, z]) => [x + 11, y + 7, z + 23]))
+    } finally {
+      original.setAttribute('uv', restored)
+      mesh.geometry = original
+      geometry.dispose()
+      await frame()
+    }
+    return rows
+  })
+  for (const observation of observations) {
+    if (!Number.isFinite(observation.error) || observation.error > 1e-6)
+      throw new Error(`knobs-resize: anchors ignored ${observation.name}: ${JSON.stringify(observation)}`)
+  }
+  console.log(`knobs-resize: anchor geometry updates ${JSON.stringify(observations)}`)
+}
+
 let browser
 let server
 const errors = []
@@ -212,6 +295,7 @@ try {
       problems.push(`step ${index}: readout drifted ${entry.readoutError.toFixed(1)}px`)
     }
   }
+  if (problems.length === 0) await checkAnchorGeometry(page)
   if (errors.length) problems.push(...errors.map((error) => `page error: ${error}`))
 
   if (problems.length) {

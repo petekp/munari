@@ -672,6 +672,14 @@ Repeated timestamps can occur in this unlimited mode. Zero intervals remain in
 the statistics and are counted in each row. Missing, nonfinite, negative, or
 wholly nonadvancing observations fail. The reported rate is callbacks per second.
 
+## api-instance lifecycle
+
+`npm run probe:api-lifecycle` checks initial scene entry, late hosts, renderer
+loss, unmount, and native fallback while retaining editable content and focus.
+Its refresh fixture uses both capture engines to check canvas pixels whose HTML
+did not change, stable presentation state, and source cleanup after unmount.
+Those refresh samples come from source canvases, not the final framebuffer.
+
 ## knobs-resize
 
 Checks that physical Knobs hardware stays on the live DOM layout through
@@ -680,6 +688,18 @@ each resize step, including the one-column to two-column breakpoint. Run
 panel box and projects both the DOM hue marker and the matching marker in the
 Three.js scene. The allowed offset is fixed depth parallax; an anchor from the prior layout is a
 large jump and fails the gate.
+
+After resize, the gate changes UV coordinates, triangle indices, and position
+attributes. Anchors must follow in-place updates and replacement attributes
+whose version counters restart. These geometry checks use a numerical tolerance
+of 0.000001 local units, separate from the existing screen-space drift budget.
+The 2026-10-11 run measured a maximum error of `6.4e-14` local units;
+the original UV cache failed the same check by 533 units.
+
+`node instruments/knobs-resize/anchor-sampling.mjs 2c893a9` compares current
+interior UV sampling with that Git revision. It alternates seven measured runs
+after warm-up, using 15,000 points on 800 triangles. This is a local CPU
+benchmark, not a frame-rate or browser acceptance check.
 
 ## dom-surface-demand
 

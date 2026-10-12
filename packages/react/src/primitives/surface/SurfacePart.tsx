@@ -35,6 +35,7 @@ export interface SurfacePartProps {
   onChrome?: (chrome: SurfaceChrome) => void
   chromeElement?: () => HTMLElement
   pageContent?: () => HTMLElement | null
+  refreshContent?: () => void
   children?: React.ReactNode
 }
 
@@ -54,6 +55,7 @@ export function SurfacePart({ name, children, ...rest }: SurfacePartProps) {
   // count of two is the normal state for one part for part of a commit.
   const store = root.store
   useEffect(() => {
+    if (!root.controllerActive) return
     let map = declared.get(store)
     if (!map) {
       map = new Map()
@@ -76,8 +78,9 @@ export function SurfacePart({ name, children, ...rest }: SurfacePartProps) {
       if (remaining <= 0) live.delete(name)
       else live.set(name, remaining)
     }
-  }, [store, name])
+  }, [store, name, root.controllerActive])
 
+  if (!root.controllerActive) return null
   return (
     <SurfaceSourceHost root={root} id={name} {...rest}>
       {children}

@@ -2761,6 +2761,24 @@ The comparison fixture asserts which API revision actually loaded before claimin
 baseline evidence. A resolver/cache mix-up is a failed apparatus check, not proof.
 
 
+**Amendment, 2026-10-11: explicit source refresh.** `useSurfaceRefresh(handle?)`
+returns a stable capture-request function. Without a handle it reads the nearest
+Surface identity, like the other Surface hooks. It refreshes mounted HTML parts
+through their source owners. Retained page content is synchronized first,
+including canvas pixels that do not change the DOM snapshot key. Scene-owned
+HTML repaints its current source. Unmounted owners remove their subscriptions.
+
+The request creates no renderer readiness or presentation proof. DOM mutations
+and running CSS motion remain automatic under `live`. Canvas drawing can
+explicitly wake capture. A directly captured scene source can also be woken
+after a script-created Web Animation starts; structural page copies do not
+clone those animations.
+This preserves idle capture behavior without continuous image polling.
+
+Controller admission also gates source and presenter registration. A rejected
+declaration cannot change another controller's intent, callbacks, source, or
+frame tick. Native HTML still renders on the server and hydrates in place.
+
 <a id="44"></a>
 
 ## #44 — Native text clarity is the default (2026-09-06, core + binding)
@@ -4119,6 +4137,17 @@ Safari still cannot use HTML-in-canvas, which is Chrome-only, so it is on
 snapDOM with that engine's fidelity ceiling (platform.md #28).
 
 ## #62 — A capture is paid for once, and a live one is paced by a period (2026-09-12)
+
+**Amendment, 2026-10-11.** A live rasterized source checks for running motion
+after capture and schedules its next sample through the same period and gap.
+An already-owed motion sample captures the terminal pose; completion then stops
+the chain when motion has paused or finished. Turning `live` off cancels only
+motion demand, preserving input and explicit refresh requests.
+
+A rasterizer failure before canvas writes preserves the last complete pixels.
+A failure after destructive writes invalidates them. Resolution changes carry
+only pixels known to remain complete, so a failed request cannot turn the next
+resolution change transparent while retaining an older paint receipt.
 
 Safari on snapDOM felt like half the frame rate of Chrome, and hitched. Most
 of that was the browser: in macOS Low Power Mode Safari 18.6 runs

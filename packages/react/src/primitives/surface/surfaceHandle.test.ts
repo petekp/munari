@@ -542,30 +542,63 @@ describe('the two-stage receipt', () => {
     expect(store.holdsPage()).toBe(false)
   })
 
-  it('a presenter that remounts mid-crossing does not take its presentation with it', () => {
-    // Strict Mode remounts every presenter on a development mount, and a
-    // presenter declared in the same commit that starts the crossing can
-    // draw between the two. Its stage-two entry has to leave with it: kept,
-    // it reads as "already presented", the new instance's own draw returns
-    // at the duplicate guard, and the page is never released.
-    const store = createSurfaceStore('panel')
-    store.declarePresentation('page')
-    store.declarePresentation('canvas')
-    store.acquire(1)
-    const release = store.registerPresenter('a')
+  it('source replacement requires new color draws before the page releases', () => {
+    const store = exclusiveStore()
+    store.registerPresenter('b')
+    for (const key of ['a', 'b']) store.prove(key, store.readinessLifetime(), store.epoch())
+    store.request('canvas')
+    store.tick(16)
+    store.present('a', store.epoch())
+    store.replaceSource('panel')
+    store.prove('b', store.readinessLifetime(), store.epoch())
+    store.present('b', store.epoch())
+    expect(store.getState().ready).toBe(false)
+    expect(store.holdsPage()).toBe(true)
+    store.prove('a', store.readinessLifetime(), store.epoch())
+    store.present('a', store.epoch())
+    expect(store.holdsPage()).toBe(false)
+  })
+
+  it('a draw completes the handoff after an unpresented presenter leaves', () => {
+    const store = exclusiveStore()
+    const leave = store.registerPresenter('b')
+    for (const key of ['a', 'b']) store.prove(key, store.readinessLifetime(), store.epoch())
+    store.request('canvas')
+    store.tick(16)
+    store.present('a', store.epoch())
+    leave()
+    expect(store.holdsPage()).toBe(true)
+    store.present('a', store.epoch())
+    expect(store.holdsPage()).toBe(false)
+  })
+
+  it('a draw completes the handoff after the last missing part leaves', () => {
+    const store = exclusiveStore()
     store.prove('a', store.readinessLifetime(), store.epoch())
     store.request('canvas')
-    store.tick(500)
-
-    // The unmount half of the remount lands first, so the draw already in
-    // flight arrives with nothing registered and releases nothing.
-    release()
+    store.tick(16)
+    const removePart = store.expectPart('missing')
     store.present('a', store.epoch())
     expect(store.holdsPage()).toBe(true)
-
-    store.registerPresenter('a')
-    store.prove('a', store.readinessLifetime(), store.epoch())
+    removePart()
+    expect(store.holdsPage()).toBe(true)
     store.present('a', store.epoch())
+    expect(store.holdsPage()).toBe(false)
+  })
+
+  it('a presenter that remounts mid-crossing does not take its presentation with it', () => {
+    const store = exclusiveStore()
+    const release = store.registerPresenter('b')
+    for (const key of ['a', 'b']) store.prove(key, store.readinessLifetime(), store.epoch())
+    store.request('canvas')
+    store.tick(16)
+    store.present('b', store.epoch())
+    release()
+    store.registerPresenter('b')
+    store.present('a', store.epoch())
+    expect(store.holdsPage()).toBe(true)
+    store.prove('b', store.readinessLifetime(), store.epoch())
+    store.present('b', store.epoch())
     expect(store.holdsPage()).toBe(false)
   })
 

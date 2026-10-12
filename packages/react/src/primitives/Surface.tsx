@@ -15,8 +15,7 @@ import { useSurfaceDriver as useSurfaceDriverBinding, useSurfaceStoreOf } from '
 import { type SurfaceSize, type SurfaceSourceRuntime, type SurfaceResolution, type SurfacePartPublication } from './surface/surfaceSourceRuntime'
 import { useLatest } from './useLatest'
 import { usePageTargetAttachment, type PageTarget } from './pageTarget'
-import { useSurfaceSupport, warnCaptureUnavailableOnce } from './surface/surfaceSupport'
-import { isDevelopmentRuntime } from '../lib/developmentRuntime'
+import { useSurfaceSupport } from './surface/surfaceSupport'
 import { surfaceChromeElement } from './surface/surfaceChromeElement'
 import { validateSurfaceSize } from './surface/surfaceSize'
 import { watchSurfacePlacement } from './surface/surfacePlacement'
@@ -211,11 +210,10 @@ function SurfaceRoot({ inScene, surface, canvasId, name, children, ...controls }
   }, [])
   const reason = [...reasons.values()].find(value => value !== null) ?? null
   const canEnter = inScene && browserSupported && !reason
-  useAuthorIntent(handle, inScene, reason)
   const callbacks = useViewCallbacks(controls)
   const context = useMemo(() => ({ handle, canEnter, reportSupport }), [handle, canEnter, reportSupport])
   return <SurfaceContentContext value={context}>
-    <SurfaceController surface={handle} canvasId={canvasId} renderIn={canEnter ? 'canvas' : 'page'} {...controls} {...callbacks}>
+    <SurfaceController surface={handle} canvasId={canvasId} renderIn={canEnter ? 'canvas' : 'page'} authorIntent={{ requestedInScene: inScene, reason }} {...controls} {...callbacks}>
       {children}
     </SurfaceController>
   </SurfaceContentContext>
@@ -266,7 +264,9 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   if (renderingRoot?.wiring === 'canvas') throw new Error('Surface.HTML belongs in the page tree. Use SceneSurface.HTML for scene-only content.')
   const handle = root.handle
   const store = surfaceStoreOf(handle)
-  useLayoutEffect(() => store.declarePresentation('page'), [store])
+  useLayoutEffect(() => {
+    if (renderingRoot?.controllerActive) return store.declarePresentation('page')
+  }, [store, renderingRoot?.controllerActive])
   const [reason, setReason] = useState<string | null>(null)
   const reportSupport = root.reportSupport
   useLayoutEffect(() => {
@@ -293,6 +293,8 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   // What the capture root already holds, so an unchanged rebuild is dropped
   // before it reaches the source (`snapshot`).
   const heldKey = useRef<string | null>(null)
+  const refreshContentRef = useRef<(() => void) | null>(null)
+  const refreshContent = useCallback(() => refreshContentRef.current?.(), [])
   const pageDensityKey = -1 // Scene LOD keys are nonnegative; the retained page has one owner.
   const [warmOwner] = useState(() => Symbol())
   const warmRig = useRef<NativePointerRig | null>(null)
@@ -455,12 +457,12 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   }, [page, desired, store, moveRef, pageContent, marker])
   useLayoutEffect(() => {
     if (!page || !liveRoot || !captureRoot) return
-    const sync = () => {
+    const sync = (force: boolean) => {
       const unsupported = unsupportedSnapshot(liveRoot)
       setReason(unsupported)
       if (liveRoot.parentElement === page) {
         const held = snapshot(liveRoot, unsupported)
-        if (held.key === heldKey.current) return
+        if (!force && held.key === heldKey.current) return
         heldKey.current = held.key
         // Installing the copy is a mutation of the source's own element, so
         // the source hears it and decides for itself whether to capture:
@@ -477,12 +479,19 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     // The key describes the copy installed in the previous capture root. A
     // remount under `<Activity>` builds a new, empty root, so install again.
     heldKey.current = null
-    sync()
-    const observer = new MutationObserver(sync)
+    const changed = () => sync(false)
+    const refreshed = () => sync(true)
+    refreshContentRef.current = refreshed
+    changed()
+    const observer = new MutationObserver(changed)
     const subscriptions = new AbortController()
     observer.observe(liveRoot, { subtree:true, childList:true, attributes:true, characterData:true })
-    for (const event of ['input','change','pointerover','pointerout','focusin','focusout','scroll']) liveRoot.addEventListener(event, sync, {capture:true,signal:subscriptions.signal})
-    return () => { observer.disconnect(); subscriptions.abort() }
+    for (const event of ['input','change','pointerover','pointerout','focusin','focusout','scroll']) liveRoot.addEventListener(event, changed, {capture:true,signal:subscriptions.signal})
+    return () => {
+      if (refreshContentRef.current === refreshed) refreshContentRef.current = null
+      observer.disconnect()
+      subscriptions.abort()
+    }
   }, [page, liveRoot, captureRoot, store])
   useLayoutEffect(() => () => {
     parkWarmRig()
@@ -496,7 +505,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     <Tag ref={setDock} style={{display:'contents',pointerEvents:'none'}}>
       <Tag ref={setMarker} style={{all:'initial',position:'fixed',left:0,top:0,width:100,height:100,visibility:'hidden',pointerEvents:'none'}}/>
     </Tag>
-    {page && liveRoot && captureRoot && marker && <SurfacePart name={partId} adopt={captureRoot} size={size} resolution={resolution} live={live} onChrome={onChrome} pageContent={pageContent} chromeElement={() => surfaceChromeElement(liveRoot, false)}>
+    {renderingRoot?.controllerActive && page && liveRoot && captureRoot && marker && <SurfacePart name={partId} adopt={captureRoot} size={size} resolution={resolution} live={live} onChrome={onChrome} pageContent={pageContent} refreshContent={refreshContent} chromeElement={() => surfaceChromeElement(liveRoot, false)}>
       <PageBinding page={page} marker={marker} pageContent={pageContent} layout={layout} inScene={root.canEnter}/>
     </SurfacePart>}
   </>
@@ -510,6 +519,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
 export interface SurfaceSceneProps { children: ReactNode; surface?: SurfaceHandle }
 function SurfaceScene({ children, surface }: SurfaceSceneProps) {
   const root = use(SurfaceRootContext)
+  if (root && !root.controllerActive && (!surface || surface === root.handle)) return null
   if (surface) return <SurfaceSceneBoundary surface={surface}>{children}</SurfaceSceneBoundary>
   if (!root) throw new Error('Surface.Scene needs a Surface.Root.')
   return root.wiring === 'canvas'
@@ -540,16 +550,6 @@ export const Surface = Object.assign(BasicSurface, {
   LitMaterial: SurfaceLitMaterial,
 })
 
-function useAuthorIntent(handle: SurfaceHandle, inScene: boolean, reason: string | null) {
-  const store = surfaceStoreOf(handle)
-  const [owner] = useState(() => Symbol())
-  useLayoutEffect(() => {
-    store.setAuthorIntent(owner, inScene, reason)
-    if (inScene && !store.getState().supported && isDevelopmentRuntime()) warnCaptureUnavailableOnce()
-  }, [store, owner, inScene, reason])
-  useLayoutEffect(() => () => store.clearAuthorIntent(owner), [store, owner])
-}
-
 function useViewCallbacks(controls: SurfaceControls) {
   const latest = useLatest(controls)
   return useMemo(() => ({
@@ -562,9 +562,10 @@ export type SceneSurfaceRootProps = SurfaceControls & SurfaceIdentityProps & { c
 function SceneSurfaceRoot({ children, name, surface, canvasId, ...controls }: SceneSurfaceRootProps) {
   const own = useSurfaceHandle(name)
   const handle = surface ?? own
-  useAuthorIntent(handle, true, null)
   const callbacks = useViewCallbacks(controls)
-  return <SurfaceController surface={handle} canvasId={canvasId} renderIn="canvas" {...controls} {...callbacks}>{children}</SurfaceController>
+  return <SurfaceController surface={handle} canvasId={canvasId} renderIn="canvas" authorIntent={{ requestedInScene: true, reason: null }} {...controls} {...callbacks}>
+    {children}
+  </SurfaceController>
 }
 export type SceneSurfaceHTMLProps = {
   part?: SurfacePartId; size: SurfaceSize; resolution?: SurfaceResolution
@@ -595,6 +596,11 @@ function useRequiredSurfaceStore(hook: string, surface?: SurfaceHandle) {
   const store = useSurfaceStoreOf(surface)
   if (!store) throw new Error(`${hook} needs a Surface handle or an enclosing Surface.`)
   return store
+}
+
+/** Request fresh captures from the enclosing Surface, or from the given handle. */
+export function useSurfaceRefresh(surface?: SurfaceHandle): () => void {
+  return useRequiredSurfaceStore('useSurfaceRefresh', surface).refresh
 }
 
 export function useSurfaceStatus(surface?: SurfaceHandle) {

@@ -101,10 +101,18 @@ HTML-in-canvas is the default. For other browsers, install `@zumer/snapdom` and
 call `enableSnapdomCapture()` from `@petepetrash/munari/snapdom` once, before
 the first `Surface` mounts. Pass `{ always: true }` to force snapDOM.
 
-Pass `live` to `Surface` or `CaptureContent` when the content changes on its
-own: an animation, a clock, a video, data that arrives after mount. On snapDOM,
+Pass `live` to `Surface` or `CaptureContent` when its DOM or CSS changes on its
+own: an animation, a clock, data that arrives after mount. On snapDOM,
 a Surface re-captures after the user's input by default, and after changes
 nobody made only when it is `live`.
+
+Call `useSurfaceRefresh()` after canvas drawing. It returns a capture-request function for the enclosing
+Surface; pass a handle to select another Surface. Keep `live` enabled for ongoing
+motion. Refresh synchronizes retained copies before capture; readiness and
+presentation still require real draws. A caller-owned canvas can instead publish
+complete frames through `createCanvasFrameSource` and `FrameSurface`.
+For a directly captured scene source, refresh can also wake a script-created
+Web Animation. A page-preparation copy does not clone those animations.
 
 ## Choose the relationship
 

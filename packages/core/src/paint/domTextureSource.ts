@@ -208,7 +208,7 @@ export interface DomTextureSource {
    * approximate, rest is exact.
    */
   resettle: () => void
-  /** True once at least one paint has succeeded. */
+  /** True while the canvas holds a complete successful raster. */
   painted: () => boolean
   /**
    * Number of completed paints. A source requests no paint without a change
@@ -236,23 +236,11 @@ export interface DomTextureSourceOptions {
   /** Initial texture scale (backing-store px per CSS px). Default 1. */
   scale?: number
   /**
-   * Does the texture follow what the content does ON ITS OWN — a subtree
-   * that animates, a ticker, a canvas redrawn from a clock?
-   *
-   * Every engine follows the user's input on the content, a layout resize,
-   * a webfont or image landing, a transition or animation reaching its
-   * ends, and an explicit `repaint()`. Whether it also follows a change
-   * nobody asked for is what this flag answers, and every engine answers it
-   * the same way (decisions.md #64): without it the picture stays as it was
-   * until one of those reasons arrives. Default `false`.
-   *
-   * The engines differ in what it COSTS them, not in what it means. A
-   * rasterizing engine pays tens of milliseconds per capture — two
-   * self-animating subtrees took a scene from 60 fps to 51 (decisions.md
-   * #60) — and paces a live source accordingly (#62). The HTML-in-canvas
-   * engine is handed its paints by the compositor and declines the ones it
-   * was not asked for, which costs it nothing either way. Turn it on for
-   * content that moves on its own and must be seen moving.
+   * Follow DOM mutations and running CSS motion. Default false.
+   * Input, layout, and explicit repaint requests are followed independently.
+   * Rasterized engines need repaint() after canvas/media pixel updates or
+   * to wake a Web Animation started without an observed event. Live captures
+   * use the period and gap in decisions.md #62.
    */
   live?: boolean
   /** Paint failures, normalized to an Error at the catch that produced
@@ -548,8 +536,8 @@ export interface CaptureCanvas {
     changesDuringPaint: number,
     read?: number,
   ) => DomPaintReceipt
-  /** Record a failed paint: count it and report through `onError`, once. */
-  failPaint: (cause: unknown) => void
+  /** A failure before canvas writes can preserve the last complete raster. */
+  failPaint: (cause: unknown, pixelsRetained?: boolean) => void
   dispose: () => void
 }
 
@@ -630,7 +618,7 @@ export function createCaptureCanvas(
   canvas.width = born.width
   canvas.height = born.height
 
-  let ok = false
+  let hasPixels = false
   let currentPaint: DomPaintReceipt | null = null
   let reads = 0
   const paintSubscribers = new Set<(receipt: DomPaintReceipt) => void>()
@@ -659,7 +647,7 @@ export function createCaptureCanvas(
       // there rather than make every caller carry a mock.
       // Only a painted canvas has a raster to carry; asking an unpainted one
       // for its context would fix its storage before the first draw.
-      const ctx = ok ? captureContext(canvas) : null
+      const ctx = hasPixels ? captureContext(canvas) : null
       if (ctx && 'drawImage' in ctx) {
         const scratch = document.createElement('canvas')
         scratch.width = canvas.width
@@ -711,7 +699,7 @@ export function createCaptureCanvas(
     currentPaint: () => currentPaint,
     beginRead: () => ++reads,
     nextRead: () => reads + 1,
-    painted: () => ok,
+    painted: () => hasPixels,
     paintCount: () => stats.paints,
     subscribePaint: (listener) => {
       paintSubscribers.add(listener)
@@ -741,11 +729,10 @@ export function createCaptureCanvas(
     setScale: (k) => setDensity(k, k, true, 'density'),
     resettle: () => recut(true, 'rest'),
     completePaint: (paintedSize, changesDuringPaint, read) => {
-      ok = true
+      hasPixels = true
       stats.paints++
-      // A success ends the run this message was suppressed over, so the same
-      // failure returning later is reported again rather than swallowed.
-      stats.lastError = undefined
+      // Carried pixels did not retry capture, so they cannot end a failure run.
+      if (read !== undefined) stats.lastError = undefined
       const generation = (currentPaint?.frame.generation ?? 0) + 1
       const receipt: DomPaintReceipt = Object.freeze({
         frame: Object.freeze({ sourceId, generation }),
@@ -758,8 +745,8 @@ export function createCaptureCanvas(
       for (const listener of paintSubscribers) listener(receipt)
       return receipt
     },
-    failPaint: (cause) => {
-      ok = false
+    failPaint: (cause, pixelsRetained = false) => {
+      hasPixels &&= pixelsRetained
       stats.errors++
       const message = String(cause)
       const repeat = message === stats.lastError

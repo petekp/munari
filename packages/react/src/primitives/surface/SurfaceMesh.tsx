@@ -45,7 +45,6 @@ import {
   forwardPointer,
   lastPointerPlace,
   type PointerPlace,
-  nudgeSelect,
   pointerSampleOf,
   presentationRoute,
   type PointerRouteRequest,
@@ -74,6 +73,7 @@ import { createSurfaceRasterAlignment } from './surfaceRasterAlignment'
 import { matchedSurfaceDensity } from './surfacePixelDensity'
 import { watchSurfacePlacement } from './surfacePlacement'
 import { registerSurfacePlane, createSurfaceRoute, type SurfaceRouteRelayDuties } from './surfaceNativeRoute'
+import { suspendCameraControls } from '../cameraControls'
 import { useLatest } from '../useLatest'
 import {
   DEFAULT_PART,
@@ -264,12 +264,15 @@ export function SurfaceMesh({ surface, part, ...props }: SurfaceMeshProps) {
         'pass the handle it presents as `surface={…}` for separated wiring.',
     )
   }
+  const controllerActive = root?.store === store ? root.controllerActive : true
   const partId = part ?? inheritedPart?.id ?? DEFAULT_PART
   const registerKey = useMemo(() => `inward-${presenterSeq++}`, [])
   const host = root?.host ?? null
   const mounted = useCanvasPresence(store)
   const handleValue = useMemo(() => ({ handle: store.handle, store }), [store])
-  useEffect(() => store.declarePresentation('canvas'), [store])
+  useEffect(() => {
+    if (controllerActive) return store.declarePresentation('canvas')
+  }, [store, controllerActive])
 
   // A page-declared presentation is registered, not rendered. The element
   // is rebuilt on every render so prop changes reach the scene, and the
@@ -285,11 +288,11 @@ export function SurfaceMesh({ surface, part, ...props }: SurfaceMeshProps) {
     </SurfaceHandleContext>
   )
   useEffect(() => {
-    if (!inward || !host || !mounted) return
+    if (!inward || !host || !mounted || !controllerActive) return
     return host.registerPresenter({ key: registerKey, element })
   })
 
-  if (inward || !mounted) return null
+  if (inward || !mounted || !controllerActive) return null
   return (
     <SurfaceHandleContext value={handleValue}>
       <SurfacePresenter {...props} store={store} partId={partId} tunneled={tunneled} />
@@ -374,10 +377,12 @@ function SurfacePresenter({
   useImperativeHandle(ref, () => mountedMesh as THREE.Mesh, [mountedMesh])
   const materialRef = useRef<MeshBasicNodeMaterial>(null)
   const pressedRef = useRef<ForwardPointerSample | null>(null)
+  const resumeControls = useRef<(() => void) | null>(null)
   const endPress = useCallback(() => {
     pressedRef.current = null
-    if (controls) controls.enabled = true
-  }, [controls])
+    resumeControls.current?.()
+    resumeControls.current = null
+  }, [])
   const presenterKey = useMemo(() => `presenter-${presenterSeq++}`, [])
   const sampledKey = JSON.stringify(sampledParts)
   const additionalParts = useMemo(() => {
@@ -1156,7 +1161,7 @@ function SurfacePresenter({
       // to nothing — the cancel would carry pointerId: undefined and be
       // refused by the relay's cancel guard, leaving the press open forever.
       pressedRef.current = pointerSampleOf(e.nativeEvent)
-      if (controls) controls.enabled = false
+      resumeControls.current ??= suspendCameraControls(controls)
       const hit = forwardPointer(el, uv.u, uv.v, 'down', e.nativeEvent)
       // A down with no prior move (surface appeared under the cursor)
       // still needs the content's cursor on the canvas.
@@ -1173,8 +1178,7 @@ function SurfacePresenter({
       const el = runtime?.element
       endPress()
       if (uv && el) {
-        const hit = forwardPointer(el, uv.u, uv.v, 'up', e.nativeEvent)
-        if (hit?.target instanceof HTMLSelectElement) nudgeSelect(hit.target)
+        forwardPointer(el, uv.u, uv.v, 'up', e.nativeEvent)
       }
     }
     onPointerUp?.(e)
@@ -1265,7 +1269,7 @@ function SurfacePresenter({
       if (pendingEnd) window.clearTimeout(pendingEnd)
       cancelActive()
     }
-  }, [endPress])
+  }, [endPress, controls])
 
   // The edge bursts (decisions.md #33). crossingPointer routes the NEXT
   // event; it says nothing about state either side holds ACROSS the flip,

@@ -89,7 +89,7 @@ export {
   type RasterImage,
 } from './paint/rasterizedSource'
 export { createInputWindow, INPUT_EVENTS, INPUT_WINDOW_MS, restoreScroll, type HearOptions, type InputWindow } from './paint/inputWindow'
-export { holdMotion, matchMotion, releaseMotion } from './paint/motionHold'
+export { hasRunningMotion, holdMotion, matchMotion, releaseMotion } from './paint/motionHold'
 export {
   DENSITY_BAND,
   storeForBox,

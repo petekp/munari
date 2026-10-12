@@ -10,11 +10,12 @@
 //   release — flicks are real momentum, not synthesized animation.
 // - Camera controls are disabled for the duration of a drag.
 
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { step, type Body1D, type Field } from '@munari/core'
 import { useLatest } from '../useLatest'
+import { suspendCameraControls } from '../cameraControls'
 
 export interface Use1DOFOptions {
   field: Field
@@ -55,7 +56,14 @@ export function use1DOF(opts: Use1DOFOptions) {
   // Latest options in a ref so handlers/useFrame never see stale closures.
   const optsRef = useLatest(opts)
 
-  const drag = useRef({ active: false, offset: 0, lastT: 0, sampleMs: 0 })
+  const drag = useRef<{ active: boolean; pointerId: number | null; offset: number; lastT: number; sampleMs: number }>({ active: false, pointerId: null, offset: 0, lastT: 0, sampleMs: 0 })
+  const resumeControls = useRef<(() => void) | null>(null)
+  useEffect(() => () => {
+    drag.current.active = false
+    drag.current.pointerId = null
+    resumeControls.current?.()
+    resumeControls.current = null
+  }, [controls])
   const rest = useRef({ settled: true, frames: 0 })
   const plane = useRef(new THREE.Plane())
   const hit = useRef(new THREE.Vector3())
@@ -75,6 +83,7 @@ export function use1DOF(opts: Use1DOFOptions) {
   const bind = useMemo(
     () => ({
       onPointerDown: (e: ThreeEvent<PointerEvent>) => {
+        if (drag.current.active) return
         e.stopPropagation()
         const obj = e.eventObject
         plane.current.setFromNormalAndCoplanarPoint(
@@ -84,9 +93,10 @@ export function use1DOF(opts: Use1DOFOptions) {
         const raw = rawQ(e)
         if (raw === null) return
         if (e.target instanceof Element) e.target.setPointerCapture(e.pointerId)
-        if (controls) controls.enabled = false
+        resumeControls.current = suspendCameraControls(controls)
         const d = drag.current
         d.active = true
+        d.pointerId = e.pointerId
         d.offset = wrap(body.current.q - raw)
         d.lastT = e.timeStamp
         d.sampleMs = 0
@@ -95,7 +105,7 @@ export function use1DOF(opts: Use1DOFOptions) {
       },
       onPointerMove: (e: ThreeEvent<PointerEvent>) => {
         const d = drag.current
-        if (!d.active) return
+        if (!d.active || d.pointerId !== e.pointerId) return
         e.stopPropagation()
         const raw = rawQ(e)
         if (raw === null) return
@@ -111,6 +121,7 @@ export function use1DOF(opts: Use1DOFOptions) {
         d.sampleMs = dt * 1000
       },
       onPointerUp: (e: ThreeEvent<PointerEvent>) => endDrag(e),
+      onPointerCancel: (e: ThreeEvent<PointerEvent>) => endDrag(e),
       onLostPointerCapture: (e: ThreeEvent<PointerEvent>) => endDrag(e),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,11 +130,13 @@ export function use1DOF(opts: Use1DOFOptions) {
 
   const endDrag = (e: ThreeEvent<PointerEvent>) => {
     const d = drag.current
-    if (!d.active) return
+    if (!d.active || d.pointerId !== e.pointerId) return
     body.current.v = velocityAfterPause(body.current.v, e.timeStamp - d.lastT, d.sampleMs)
     d.active = false
+    d.pointerId = null
     if (e.target instanceof Element) e.target.releasePointerCapture?.(e.pointerId)
-    if (controls) controls.enabled = true
+    resumeControls.current?.()
+    resumeControls.current = null
   }
 
   /** Kick the body (a toggle tap, a scripted nudge). */

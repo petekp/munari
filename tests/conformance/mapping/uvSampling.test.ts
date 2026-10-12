@@ -59,6 +59,16 @@ describe('where a texture coordinate lands on the geometry', () => {
     const sample = sampleUvPosition(PLANE.position, PLANE.uv, PLANE.index, 1.02, 0.5)!
     expect(sample.inside).toBe(false)
     expect(sample.x).toBeCloseTo(0.5, 6)
+    expect(sample.y).toBeCloseTo(0, 6)
+    expect(sample.z).toBeCloseTo(0, 6)
+  })
+
+  it('chooses the closest UV island independently of triangle size', () => {
+    const position = [0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 0, 0, 11, 0, 0, 10, 1, 0]
+    const uv = [0, 0, 0.1, 0, 0, 0.1, 0.2, -2, 1, -2, 0.2, 2]
+    const sample = sampleUvPosition(position, uv, null, 0.13, 0)!
+    expect(sample.inside).toBe(false)
+    expect([sample.x, sample.y, sample.z]).toEqual([1, 0, 0])
   })
 
   it('answers null when there is no triangle at all', () => {

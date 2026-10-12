@@ -18,7 +18,7 @@
 // the identity ledger. This module owns React's commit order, the latest-
 // callback rule, and the development diagnostics.
 
-import { use, useEffect, useLayoutEffect, useState } from 'react'
+import { use, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import {
   crossingAtRest,
   crossingCurve,
@@ -55,6 +55,7 @@ import {
   type SurfacePresenterKey,
   type SurfaceReadiness,
 } from '@munari/core'
+import { useLatest } from '../useLatest'
 import { surfaceViewPresentation, type SurfaceStatus } from './surfaceStatus'
 import { CAPTURE_UNAVAILABLE_REASON } from './surfaceSupport'
 import { SurfaceHandleContext } from './surfaceContext'
@@ -235,6 +236,8 @@ export interface SurfaceStore {
   /** Private frame-work predicate for the shared Canvas scheduler. */
   hasProtocolWork(): boolean
   subscribeWork(listener: () => void): () => void
+  refresh(): void
+  subscribeRefresh(listener: () => void): () => void
   setRendererAvailable(available: boolean): void
   canPrepareCanvas(): boolean
   /** The evidence a development warning names, or null when nothing the author controls is missing. */
@@ -336,9 +339,8 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   const manualExpected = new Map<SurfacePartId, number>()
   const manualRegistered = new Map<SurfacePartId, number>()
   const reportedManual = new Set<SurfacePartId>()
-  // Stage two's ledger: presenters that have written color since the canvas
-  // took presentation authority. Cleared whenever it gives that authority
-  // back, so a return and a second lift do not inherit the first one's proof.
+  // Presentation proof belongs to the current source and crossing. A source
+  // replacement or return must not let earlier pixels release the page.
   const presenting = new Set<SurfacePresenterKey>()
   // The multi-part ledger: parts declared, parts covered by a presenter.
   // The gates read `partSetMissing` — a declared part with no presenter is
@@ -404,6 +406,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   let statusSnapshot: SurfaceStatus | null = null
   let statusState: SurfaceState | null = null
   const workListeners = listenerSet()
+  const refreshListeners = listenerSet()
   let canvasMounted = false
   const presenceListeners = listenerSet()
 
@@ -741,14 +744,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       return () => {
         readiness = readinessUnregister(readiness, key)
         outOfView.delete(key)
-        // Stage two leaves with stage one. A presenter that remounts before
-        // the release keeps its old entry here otherwise, and the entry is
-        // read as "already presented" — so the new instance's own draw
-        // returns at the duplicate guard and the page is never let go. The
-        // Genie desk found this: a presenter that mounts in the same commit
-        // that starts the crossing races React's remount, and the window
-        // that lost the race hung mid-flight with the sheet drawn and the
-        // page copy still under it.
+        // A departed presenter's draw cannot count for a replacement that reuses its key.
         presenting.delete(key)
         publish()
       }
@@ -762,15 +758,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       // draw before the lift gate opens is a resident presentation of a
       // Surface that is still the page's, and it releases nothing.
       if (!isResidentCanvas() && !crossingPresentation(crossing.phase).gl) return
-      // A presenter that is not in the ledger cannot enter it. Strict Mode
-      // remounts every presenter on a development mount, and one declared
-      // in the same commit that starts a crossing can have a draw in flight
-      // across the gap: recorded, that draw's entry belongs to an instance
-      // that no longer exists, and the replacement's own draw then returns
-      // at the duplicate guard below and never releases the page. The Genie
-      // desk hung mid-flight this way, sheet drawn and page copy under it.
       if (!readiness.registered.includes(key)) return
-      if (presenting.has(key)) return
       presenting.add(key)
       if (canvasHeld) return
       // Every registered presenter, not just this one. A multi-part Surface
@@ -818,6 +806,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     },
     replaceSource(id) {
       readiness = readinessReborn(readiness)
+      presenting.clear()
       // A new source restarts its reads. Other parts still owe their lift capture.
       contentFloor.delete(id)
       publish()
@@ -886,6 +875,8 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     canvasMounted: () => canvasMounted,
     hasProtocolWork,
     subscribeWork: workListeners.subscribe,
+    refresh: refreshListeners.emit,
+    subscribeRefresh: refreshListeners.subscribe,
     canPrepareCanvas: canvasUsable,
     preparationWait() {
       if (!store.canPrepareCanvas() || requested !== 'canvas') return null
@@ -1035,7 +1026,7 @@ export function useSurfaceStore(name?: string): SurfaceStore {
  * effect finishes before the renderer can draw and keeps render pure. The
  * request is installed in the layout phase for the same reason.
  */
-export function useSurfaceControls(store: SurfaceStore, controls: SurfaceControls): void {
+export function useSurfaceControls(store: SurfaceStore, controls: SurfaceControls, canControl?: () => boolean, requestActive = true): void {
   const {
     renderIn = 'page',
     onPresentationChange,
@@ -1045,6 +1036,7 @@ export function useSurfaceControls(store: SurfaceStore, controls: SurfaceControl
     onError,
   } = controls
   useLayoutEffect(() => {
+    if (canControl && !canControl()) return
     store.setCallbacks({
       onPresentationChange,
       onMotionComplete,
@@ -1055,6 +1047,7 @@ export function useSurfaceControls(store: SurfaceStore, controls: SurfaceControl
     return () => store.setCallbacks({})
   }, [
     store,
+    canControl,
     onPresentationChange,
     onMotionComplete,
     onFreezeChange,
@@ -1063,8 +1056,10 @@ export function useSurfaceControls(store: SurfaceStore, controls: SurfaceControl
   ])
 
   useLayoutEffect(() => {
+    // Without the controlled page declaration, an exclusive Surface would start as resident.
+    if (!requestActive || (canControl && !canControl())) return
     store.request(renderIn)
-  }, [store, renderIn])
+  }, [store, renderIn, canControl, requestActive])
 }
 
 /** The excursion, for a presenter or a custom material. */
@@ -1077,28 +1072,32 @@ export function useSurfaceProgress(handle?: SurfaceHandle): SurfaceProgress {
   return selected.progress
 }
 
-/**
- * Claim the identity for the lifetime of the calling component, and report
- * the duplicate-controller fault in development.
- *
- * The token is minted once per component instance, so Strict Mode's
- * mount → unmount → mount cannot let the first mount's cleanup release the
- * second mount's claim — the ledger refuses a release carrying a token that
- * is not the live one.
- */
-export function useSurfaceController(store: SurfaceStore): void {
+/** Only the winning declaration may install controller effects. Native markup remains renderable during SSR. */
+export function useSurfaceController(store: SurfaceStore, onError?: (error: Error) => void) {
   const [token] = useState(mintControllerToken)
-  useEffect(() => {
-    if (!store.acquire(token)) {
-      store.reportError(
-        new Error(
-          `Surface${store.name ? ` "${store.name}"` : ''} already has a controller. ` +
-            'One handle is declared by exactly one <Surface>; pass the handle to ' +
-            '<Surface.Mesh surface={…}> for the other tree instead.',
-        ),
+  const [controlledStore, setControlledStore] = useState<SurfaceStore | null>(null)
+  const claim = useRef<{ store: SurfaceStore; acquired: boolean } | null>(null)
+  const onErrorRef = useLatest(onError)
+  const canControl = useCallback(() => claim.current?.store === store && claim.current.acquired, [store])
+  useLayoutEffect(() => {
+    const acquired = store.acquire(token)
+    claim.current = { store, acquired }
+    setControlledStore(acquired ? store : null)
+    if (!acquired) {
+      const error = new Error(
+        `Surface${store.name ? ` "${store.name}"` : ''} already has a controller. ` +
+          'One handle is declared by exactly one <Surface>; pass the handle to ' +
+          '<Surface.Mesh surface={…}> for the other tree instead.',
       )
+      if (onErrorRef.current) onErrorRef.current(error)
+      else store.reportError(error)
       return
     }
-    return () => store.release(token)
-  }, [store, token])
+    return () => {
+      claim.current = null
+      store.release(token)
+      setControlledStore(current => current === store ? null : current)
+    }
+  }, [store, token, onErrorRef])
+  return { canControl, controllerActive: controlledStore === store }
 }

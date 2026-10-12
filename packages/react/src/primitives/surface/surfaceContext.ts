@@ -32,6 +32,7 @@ export interface SurfaceHandleValue {
 
 export interface SurfaceRootValue {
   readonly store: SurfaceStore
+  readonly controllerActive: boolean
   readonly handle: SurfaceHandle
   readonly host: SurfaceHost | null
   readonly canvasId: string | undefined

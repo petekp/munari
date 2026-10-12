@@ -794,6 +794,64 @@ describe('the rasterized engine', () => {
     source.dispose()
   })
 
+  it('continues running live motion at its paced rate and releases waits when motion stops', async () => {
+    const { calls, rasterize } = deferred()
+    const element = document.createElement('div')
+    const animation = { playState: 'running' }
+    Object.defineProperty(element, 'getAnimations', { value: () => [animation] })
+    const source = createRasterizedSource(rasterize, 'test', element, 100, 50, { live: true }, time.clock)
+    try {
+      await drain()
+      expect(calls).toHaveLength(1)
+      calls[0]!.resolve()
+      await drain()
+      expect(time.armed()).toBe(1)
+      time.pass(249)
+      await drain()
+      expect(calls).toHaveLength(1)
+      time.pass(1)
+      await drain()
+      expect(calls).toHaveLength(2)
+      calls[1]!.resolve()
+      await drain()
+      animation.playState = 'paused'
+      time.pass(PAST_THE_GAP_MS)
+      await drain()
+      expect(calls).toHaveLength(3)
+      calls[2]!.resolve()
+      await drain()
+      expect(time.armed()).toBe(0)
+      time.pass(PAST_THE_GAP_MS)
+      await drain()
+      expect(calls).toHaveLength(3)
+
+      animation.playState = 'running'
+      source.repaint()
+      await drain()
+      calls[3]!.resolve()
+      await drain()
+      expect(time.armed()).toBe(1)
+      source.setLive(false)
+      expect(time.armed()).toBe(0)
+      time.pass(PAST_THE_GAP_MS)
+      await drain()
+      expect(calls).toHaveLength(4)
+
+      source.setLive(true)
+      await drain()
+      calls[4]!.resolve()
+      await drain()
+      expect(time.armed()).toBe(1)
+      source.dispose()
+      expect(time.armed()).toBe(0)
+      time.pass(PAST_THE_GAP_MS)
+      await drain()
+      expect(calls).toHaveLength(5)
+    } finally {
+      source.dispose()
+    }
+  })
+
   // A capture that took long enough for the subtree to move is not wrong,
   // it is late — and the receipt is how a consumer tells the difference.
   it('reports how many change signals landed while the raster was being made', async () => {
@@ -927,6 +985,18 @@ describe('the rasterized engine', () => {
     expect(errors).toEqual(['CORS'])
     expect(source.currentPaint()).toBe(good)
     expect(source.paintCount()).toBe(1)
+    expect(source.painted()).toBe(true)
+
+    source.setRasterScale(2, 2)
+    expect(source.painted()).toBe(true)
+    expect(source.currentPaint()?.read).toBe(good?.read)
+    expect(source.currentPaint()?.paintedSize).toEqual(good?.paintedSize)
+    expect(source.currentPaint()?.storeSize).toEqual([200, 100])
+    source.repaint()
+    await settle()
+    calls.at(-1)!.reject(new Error('CORS'))
+    await drain()
+    expect(errors).toEqual(['CORS'])
 
     // Failed reads advance read order without publishing a generation.
     const recoveryRead = source.nextRead()
@@ -972,6 +1042,7 @@ describe('the rasterized engine', () => {
     await drain()
 
     expect(errors).toEqual([expect.stringContaining('no 2D context')])
+    expect(source.painted()).toBe(false)
     expect(source.currentPaint()).toBe(good)
     expect(source.paintCount()).toBe(1)
     expect(paintStats().find((entry) => entry.engine === 'test')?.errors).toBe(1)

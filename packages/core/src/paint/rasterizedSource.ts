@@ -47,6 +47,7 @@
 // rasterizer owns pixels and nothing else.
 
 import { createInputWindow } from './inputWindow'
+import { hasRunningMotion } from './motionHold'
 import { HOVER_ATTR } from '../pointer/twins'
 import {
   adoptContent,
@@ -215,6 +216,8 @@ export function createRasterizedSource(
   // unnecessary.
   let capturing = false
   let owed = false
+  // Stopping live motion must preserve an input or explicit repaint request.
+  let motionOwed = false
   // The owed capture was asked for by someone waiting on it, so it skips the
   // gap and the live period. Still one capture at a time: it starts the
   // moment a running one finishes, never beside it.
@@ -290,7 +293,8 @@ export function createRasterizedSource(
    * moves nothing. An earlier attempt paced only the re-entry.
    */
   const start = () => {
-    if (disposed || capturing || !owed) return
+    if (disposed || capturing) return
+    if (!owed && !motionOwed) return
     if (cancelWait) {
       if (!immediate) return
       cancelWait()
@@ -310,7 +314,7 @@ export function createRasterizedSource(
     const cancel = clock.wait(() => {
       waiting = false
       cancelWait = null
-      if (!disposed && !capturing && owed) void run()
+      if (!disposed && !capturing && (owed || (live && motionOwed))) void run()
     }, quietOwed)
     if (waiting) cancelWait = cancel
   }
@@ -318,6 +322,7 @@ export function createRasterizedSource(
   const run = async () => {
     capturing = true
     owed = false
+    motionOwed = false
     immediate = false
     changesDuringPaint = 0
     lastStartedAt = clock.now()
@@ -336,23 +341,28 @@ export function createRasterizedSource(
     const askedFor: readonly [number, number] = [canvas.width, canvas.height]
     const scaleX = askedFor[0] / Math.max(1, box[0])
     const scaleY = askedFor[1] / Math.max(1, box[1])
+    let pixelsRetained = true
     try {
       const image = await rasterize(element, scaleX, scaleY)
       // The store's storage is fixed by its first draw (domTextureSource.ts).
       await captureMemoryChosen()
       if (disposed) return
+      pixelsRetained = false
       draw(image, askedFor)
       rasteredStore = [canvas.width, canvas.height]
       body.completePaint(box, changesDuringPaint, read)
     } catch (cause) {
-      if (!disposed) body.failPaint(cause)
+      if (!disposed) body.failPaint(cause, pixelsRetained)
     } finally {
       capturing = false
       lastFinishedAt = clock.now()
       // Anything that changed while the raster was being made is not in these
       // pixels, so a follow-up is owed — through `start()` rather than back
       // into `run()`, so it waits out the gap like any other request.
-      if (!disposed && owed) start()
+      if (!disposed) {
+        motionOwed = live && hasRunningMotion(element)
+        if (owed || motionOwed) start()
+      }
     }
   }
 
@@ -491,6 +501,13 @@ export function createRasterizedSource(
       // The picture stopped following at some point; make it current from
       // the moment the flag is, rather than at the next change.
       if (live) request()
+      else {
+        motionOwed = false
+        if (!owed) {
+          cancelWait?.()
+          cancelWait = null
+        }
+      }
     },
     hearInput: input.hear,
     scale: body.scale,

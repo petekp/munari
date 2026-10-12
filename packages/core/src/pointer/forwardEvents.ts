@@ -223,7 +223,7 @@ export function notePointerModality(): void {
 
 interface PointerMirror {
   hovered: Element | null
-  active: Element | null
+  active: { target: Element; pointerId: number; button: number } | null
   /** Last forwarded position, in the source subtree's page coordinates. */
   at: { x: number; y: number }
   /** Identity and device data from the latest forwarded native sample. */
@@ -304,7 +304,7 @@ function pointerInit(
 }
 
 const clearActive = (root: HTMLElement, mirror: PointerMirror) => {
-  swapChainAttr(root, mirror.active, null, ACTIVE_ATTR)
+  swapChainAttr(root, mirror.active?.target ?? null, null, ACTIVE_ATTR)
   mirror.active = null
 }
 
@@ -476,7 +476,7 @@ export function clearPointerState(root: HTMLElement) {
   // drag consumer treats as "released" (react-resizable-panels deactivates on
   // its first buttonless move; measured killing a drag 13px in). Defer the
   // whole departure; it runs, honestly, when the drag ends.
-  if (surfaceDragPointerId !== null) {
+  if (surfaceDragPointerIds.size > 0) {
     pendingClears.add(root)
     return
   }
@@ -659,7 +659,7 @@ function forwardCancel(
   x: number,
   y: number,
 ): ForwardResult | null {
-  const cancelTarget = mirror.active ?? target
+  const cancelTarget = mirror.active?.target ?? target
   if (cancelTarget) {
     relay(cancelTarget, new PointerEvent('pointercancel', pointerInit(pointer, x, y)))
   }
@@ -669,10 +669,6 @@ function forwardCancel(
   return cancelTarget ? { target: cancelTarget, focused: false } : null
 }
 
-/**
- * The release half — up, click, then the focus fixup a synthetic click does
- * not run. Returns whether focus actually landed on the target.
- */
 function forwardRelease(
   root: HTMLElement,
   mirror: PointerMirror,
@@ -680,21 +676,26 @@ function forwardRelease(
   init: PointerEventInit & MouseEventInit,
   pointer: ForwardPointerSample,
 ): boolean {
-  modality = 'pointer' // a release is a pointer interaction even without its down
+  const press = mirror.active
+  if (press) modality = 'pointer'
   endSurfaceDrag(pointer.pointerId)
   relayPair(target, 'up', init)
-  relay(target, new MouseEvent('click', init))
+  const clickTarget = press?.button === 0 && pointer.button === 0
+    ? chainOf(root, target).find((element) => element.contains(press.target))
+    : undefined
+  if (clickTarget) relay(clickTarget, new MouseEvent('click', init))
   clearActive(root, mirror)
-  // Synthetic clicks don't run the browser's focus fixup, so do it by hand.
-  const focusable = target.closest<HTMLElement>(FOCUSABLE)
+  // Synthetic presses do not run the browser's default focus action.
+  const focusable = press?.target.closest<HTMLElement>(FOCUSABLE)
   let focused = false
   if (focusable) {
     focusable.focus({ preventScroll: true })
     focused = document.activeElement === focusable
-  } else {
+  } else if (press) {
     const active = document.activeElement
     if (active instanceof HTMLElement) active.blur()
   }
+  if (clickTarget instanceof HTMLSelectElement) nudgeSelect(clickTarget)
   // Departures deferred during the drag unwind now — the order a real
   // capture ends in: the up reaches its target first, then the boundary
   // events fire.
@@ -735,7 +736,7 @@ export function forwardPointer(
   if (
     kind === 'move' &&
     pointer.buttons !== 0 &&
-    surfaceDragPointerId !== pointer.pointerId
+    !surfaceDragPointerIds.has(pointer.pointerId)
   )
     return null
   const rect = root.getBoundingClientRect()
@@ -744,9 +745,9 @@ export function forwardPointer(
   const target = deepestElementAt(root, x, y)
   const mirror = mirrorOf(root)
   if (
-    kind === 'cancel' &&
+    kind !== 'move' &&
     mirror.active &&
-    mirror.sample.pointerId !== pointer.pointerId
+    mirror.active.pointerId !== pointer.pointerId
   )
     return null
   mirror.sample = pointer
@@ -754,6 +755,7 @@ export function forwardPointer(
   // Nothing here accepts the pointer — the ray passed through clear glass.
   // Whatever this surface was hovering, it is not hovering it now.
   if (!target) {
+    if (kind === 'up') return forwardCancel(root, mirror, pointer, null, x, y)
     clearPointerState(root)
     return null
   }
@@ -777,12 +779,12 @@ export function forwardPointer(
     // BEFORE dispatch, because a consumer may focus synchronously from its
     // pointerdown handler and the verdict must already be in.
     modality = 'pointer'
-    surfaceDragPointerId = pointer.pointerId
+    surfaceDragPointerIds.add(pointer.pointerId)
     // Real browsers hover before they press — a down with no prior move
     // (surface just appeared under the cursor) still hovers correctly.
     updateHover(root, target, init)
     swapChainAttr(root, null, target, ACTIVE_ATTR)
-    mirror.active = target
+    mirror.active = { target, pointerId: pointer.pointerId, button: pointer.button }
     relayPair(target, 'down', init)
   } else {
     focused = forwardRelease(root, mirror, target, init, pointer)
@@ -910,11 +912,9 @@ export function forwardWheel(
 // its parked point is; if that surface consumes the wheel, the event is
 // stopped before OrbitControls ever hears it.
 
-// True from a forwarded pointerdown until its release — a drag that BEGAN on
-// a Surface. The discriminator matters: a drag that began on empty space and
-// merely travels over a panel is OrbitControls' gesture, and its document
-// stream must not be touched.
-let surfaceDragPointerId: number | null = null
+// A drag begun off every Surface belongs to the page or camera. Only IDs
+// whose presses reached a Surface may enter the parked-coordinate stream.
+const surfaceDragPointerIds = new Set<number>()
 
 // Departures announced while the drag was live, waiting for the release.
 // (See clearPointerState — capture semantics defer them, not drop them:
@@ -923,7 +923,7 @@ let surfaceDragPointerId: number | null = null
 const pendingClears = new Set<HTMLElement>()
 
 function endSurfaceDrag(pointerId: number) {
-  if (surfaceDragPointerId === pointerId) surfaceDragPointerId = null
+  surfaceDragPointerIds.delete(pointerId)
 }
 
 function flushPendingClears() {
@@ -954,7 +954,7 @@ function flushPendingClears() {
 export const trackDrag: () => () => void = refCounted(() => {
   const onMove = (e: PointerEvent) => {
     if (
-      surfaceDragPointerId !== e.pointerId ||
+      !surfaceDragPointerIds.has(e.pointerId) ||
       !e.isTrusted ||
       e.buttons === 0
     )
@@ -965,8 +965,8 @@ export const trackDrag: () => () => void = refCounted(() => {
   // A release anywhere ends the gesture — including over the floor or off
   // the window, where no Surface handler will ever hear it to forward one.
   const onEnd = (e: PointerEvent) => {
-    if (e.isTrusted && surfaceDragPointerId === e.pointerId) {
-      surfaceDragPointerId = null
+    if (e.isTrusted && surfaceDragPointerIds.has(e.pointerId)) {
+      surfaceDragPointerIds.delete(e.pointerId)
       // This capture listener runs before the same trusted up reaches the
       // canvas and is forwarded — a microtask puts the flush after it, so
       // the up still lands before any deferred boundary events. (When the
@@ -981,7 +981,7 @@ export const trackDrag: () => () => void = refCounted(() => {
     document.removeEventListener('pointermove', onMove, { capture: true })
     document.removeEventListener('pointerup', onEnd, true)
     document.removeEventListener('pointercancel', onEnd, true)
-    surfaceDragPointerId = null
+    surfaceDragPointerIds.clear()
     flushPendingClears()
   }
 })

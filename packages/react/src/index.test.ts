@@ -21,7 +21,7 @@ const ROOT_ENTRY = [
   'Surface',
   'createPageTarget',
   'usePageTarget',
-  'useSurfaceBeforeRender', 'SceneSurface', 'useSurfaceStatus',
+  'useSurfaceBeforeRender', 'SceneSurface', 'useSurfaceStatus', 'useSurfaceRefresh',
   'useSurfaceMotion', 'useFreezeSurface', 'useCaptureHandle',
   'useCaptureFrame', 'useCaptureStatus',
   'Dial',

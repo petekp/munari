@@ -457,6 +457,17 @@ describe('the native route alone', () => {
     ])
   })
 
+  it.each(['pointerup', 'pointercancel'])('keeps active state until its own pointer receives %s', (type) => {
+    button.dispatchEvent(new PointerEvent('pointerdown', pointerInit(button, { pointerId: 23, buttons: 1 })))
+    document.dispatchEvent(new PointerEvent(type, { pointerId: 1 }))
+
+    expect(stamped(ACTIVE_ATTR)).toEqual([root, card, button])
+
+    document.dispatchEvent(new PointerEvent(type, { pointerId: 23 }))
+
+    expect(stamped(ACTIVE_ATTR)).toEqual([])
+  })
+
   it('refuses a relayed event, so the two routes cannot both stamp', () => {
     // Exclusivity in the DOM, not just in the law. The rig and the relay speak
     // through the same subtree, and the pointer gate's own clones are relayed

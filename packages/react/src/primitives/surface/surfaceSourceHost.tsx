@@ -73,6 +73,7 @@ export interface SurfaceSourceHostProps {
   onChrome?: (chrome: SurfaceChrome) => void
   chromeElement?: () => HTMLElement
   pageContent?: () => HTMLElement | null
+  refreshContent?: () => void
   children?: React.ReactNode
 }
 
@@ -87,6 +88,7 @@ export function SurfaceSourceHost({
   onChrome,
   chromeElement,
   pageContent,
+  refreshContent,
   children,
 }: SurfaceSourceHostProps) {
   const [sourceHostId] = useState(() => `source-${sourceHostSequence++}`)
@@ -98,6 +100,7 @@ export function SurfaceSourceHost({
   const [measured, setMeasured] = useState<SurfaceSize | null>(null)
   const onChromeRef = useLatest(onChrome)
   const chromeElementRef = useLatest(chromeElement)
+  const refreshContentRef = useLatest(refreshContent)
 
   // Authored size wins; a DOM presentation measures the rest. The default
   // exists so a resident Surface with neither still has a real box to paint
@@ -204,6 +207,14 @@ export function SurfaceSourceHost({
   useEffect(() => {
     runtime?.setLive(live)
   }, [runtime, live])
+
+  useLayoutEffect(() => {
+    if (!runtime) return
+    return store.subscribeRefresh(() => {
+      refreshContentRef.current?.()
+      runtime.repaint()
+    })
+  }, [store, runtime, refreshContentRef])
 
   // Capture advances from the host's single frame callback. A demand Canvas
   // is held awake only while the source actually has work — a settling box,

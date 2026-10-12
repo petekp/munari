@@ -25,7 +25,7 @@ function Content() {
 }
 function App() {
   const handle=useSurfaceHandle('stateful-content')
-  const [selected,setSelected]=useState(false)
+  const [selected,setSelected]=useState(()=>query.has('initialScene'))
   const [host,setHost]=useState(!query.has('lateHost'))
   proof.host=setHost
   const [narrow,setNarrow]=useState(false)

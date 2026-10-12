@@ -121,11 +121,11 @@ export function createNativePointerRig(
   let restore: RideRestore | null = null
   let written: SurfaceRideStyle | null = null
   let hovered: Element | null = null
-  let active: Element | null = null
+  let active: { target: Element; pointerId: number } | null = null
 
   const clearTwins = () => {
     if (hovered) swapChainAttr(root, hovered, null, HOVER_ATTR)
-    if (active) swapChainAttr(root, active, null, ACTIVE_ATTR)
+    if (active) swapChainAttr(root, active.target, null, ACTIVE_ATTR)
     hovered = null
     active = null
   }
@@ -153,19 +153,19 @@ export function createNativePointerRig(
     hovered = null
   }
 
-  const onDown = (e: Event) => {
+  const onDown = (e: PointerEvent) => {
     if (isRelayed(e)) return
     const target = e.target
     if (!(target instanceof Element)) return
     notePointerModality()
-    swapChainAttr(root, active, target, ACTIVE_ATTR)
-    active = target
+    swapChainAttr(root, active?.target ?? null, target, ACTIVE_ATTR)
+    active = { target, pointerId: e.pointerId }
   }
 
-  const onRelease = (e: Event) => {
+  const onRelease = (e: PointerEvent) => {
     if (isRelayed(e)) return
-    if (!active) return
-    swapChainAttr(root, active, null, ACTIVE_ATTR)
+    if (!active || active.pointerId !== e.pointerId) return
+    swapChainAttr(root, active.target, null, ACTIVE_ATTR)
     active = null
   }
 

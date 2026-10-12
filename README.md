@@ -68,23 +68,36 @@ when it does not. Pass `{ always: true }` to force snapDOM everywhere, which is
 what a cross-engine test run wants. Call it before the first `Surface` mounts.
 A Surface that is already mounted keeps the engine it was built with.
 
-Write for HTML-in-canvas and the same code runs on snapDOM. The one difference
-you have to declare: a Surface whose content moves on its own (an animation, a
-clock, a ticker, a video) needs `live` for snapDOM to keep re-capturing it,
+Write for HTML-in-canvas and the same code runs on snapDOM. A Surface whose
+DOM or CSS changes on its own, such as a clock or animation, needs `live`
+for snapDOM to keep re-capturing it,
 and it then re-captures at most about four times a second. Without `live`,
 snapDOM shows the content as the user last left it: typing, hover, focus, a
 click that re-renders the component, a drag, a scroll, and the layout, fonts and
 images are all followed; a change nobody asked for is not. That includes a
 change made from outside the Surface (new props, data that arrives after
 mount, a control elsewhere on the page), so a component that loads its content
-needs `live` too. HTML-in-canvas ignores the flag because it follows
-everything at no cost. `useElementCapture` takes the same `live` option, and
-there it applies to both engines, because rebuilding the copy of a native
-element is the cost, not the capture.
+needs `live` too. HTML-in-canvas receives its paints from the compositor;
+it does not run a separate rasterizer. `useElementCapture` takes the same
+`live` option for both engines because it also maintains a copy of the native
+element.
 
 ```tsx
 <Surface inScene={inScene} live><Clock /></Surface>
 ```
+
+After drawing canvas pixels, call the function returned by `useSurfaceRefresh()`.
+The hook reads the enclosing Surface, or accepts a handle with
+`useSurfaceRefresh(surface)`.
+
+Refresh synchronizes retained content and requests captures for its mounted
+HTML parts. It also works with `SceneSurface`. Rendering readiness and handoff
+still wait for the resulting frames to be drawn. For a caller-owned canvas
+used directly as a texture, use `FrameSurface` and publish complete frames.
+For a directly captured scene source, refresh can also wake a script-created
+Web Animation; keep `live` enabled for its later frames. Page preparation uses
+structural copies, which reproduce CSS animations but do not clone script-created
+Web Animations.
 
 `useSurfaceStatus().engine` names the engine a Surface is using, or is `null`
 when no engine can run.

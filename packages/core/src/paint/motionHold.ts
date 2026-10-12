@@ -21,6 +21,10 @@
 // Core owns the primitive; the binding owns which roots a crossing covers
 // and when (`live` content is never held — it asked for the motion).
 
+export function hasRunningMotion(root: HTMLElement): boolean {
+  return root.getAnimations?.({ subtree: true }).some(animation => animation.playState === 'running') ?? false
+}
+
 /**
  * Stop every animation now running in `root`'s subtree. Returns exactly the
  * ones stopped, which is what `releaseMotion` needs: one the consumer had

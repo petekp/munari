@@ -2,7 +2,7 @@
 import type { ComponentProps } from 'react'
 import {
   Surface, SceneSurface, SurfaceCanvas, createSurface, useSurfaceHandle,
-  useSurfaceStatus, useSurfaceDriver, useSurfaceMotion, useFreezeSurface, useSurfaceProgress, useSurfaceSupport, supportsSurfaces,
+  useSurfaceStatus, useSurfaceRefresh, useSurfaceDriver, useSurfaceMotion, useFreezeSurface, useSurfaceProgress, useSurfaceSupport, supportsSurfaces,
   useElementCapture, CaptureContent, useCaptureHandle, usePageTarget, useSurfaceBeforeRender,
   type SurfaceHandle, type SurfacePresentation, type SurfaceDestination, type SurfaceProps,
 } from '@petepetrash/munari'
@@ -52,6 +52,9 @@ const inferredProps: ComponentProps<typeof Surface>=basicProps
 void inferredProps
 function Observations() {
   const own=useSurfaceHandle('explicit')
+  const refresh: () => void = useSurfaceRefresh(own)
+  const refreshEnclosing: () => void = useSurfaceRefresh()
+  void [refresh, refreshEnclosing]
   const state=useSurfaceStatus(own)
   const frozen:boolean=useFreezeSurface(own);void frozen
   const hold: SurfacePresentation=state.presentation

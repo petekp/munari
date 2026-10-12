@@ -3,7 +3,7 @@
 import { use, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { context as threeRootContext } from '@react-three/fiber'
-import { captureAvailable, createInputWindow, PARKED_HOST_ATTRIBUTE, restoreScroll } from '@munari/core'
+import { captureAvailable, createInputWindow, hasRunningMotion, PARKED_HOST_ATTRIBUTE, restoreScroll } from '@munari/core'
 import {
   CaptureSource, connectCapture, setCaptureUnavailable, useCaptureHandle,
   type CaptureConnection, type CaptureHandle,
@@ -214,7 +214,7 @@ export function useElementCapture(options: ElementCaptureOptions = {}): ElementC
         lastReportedError = ''
         // A running animation is the element moving on its own: followed
         // frame by frame only when live; its end is an event either way.
-        if (liveRef.current && element.getAnimations?.({ subtree: true }).some(animation => animation.playState === 'running')) schedule()
+        if (liveRef.current && hasRunningMotion(element)) schedule()
       } catch (cause) {
         connection?.dispose()
         connection = null

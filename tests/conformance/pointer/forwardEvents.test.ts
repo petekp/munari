@@ -13,6 +13,7 @@ import {
   guardPointerCapture,
   isRelayed,
   nudgeSelect,
+  releasedSample,
   silenceHoverMove,
   trackDrag,
   trackFocusModality,
@@ -870,6 +871,34 @@ describe('the document-capture drag arbiter', () => {
     expect(off.defaultPrevented).toBe(false)
   })
 
+  it('keeps each Surface drag live when another pointer presses and releases', () => {
+    const otherRoot = document.createElement('div')
+    const otherButton = document.createElement('button')
+    otherRoot.append(otherButton)
+    document.body.append(otherRoot)
+    box(otherRoot, ROOT.left, ROOT.top, ROOT.right, ROOT.bottom)
+    box(otherButton, ...TRIGGER_BOX)
+    const first = pointerSample({ pointerId: 23, buttons: 1 })
+    const second = pointerSample({ pointerId: 24, buttons: 1 })
+    const heard: number[] = []
+    trigger.addEventListener('pointermove', (event) => heard.push(event.pointerId))
+
+    forwardPointer(root, at.u, at.v, 'down', first)
+    forwardPointer(otherRoot, at.u, at.v, 'down', second)
+    forwardPointer(root, at.u, at.v, 'move', first)
+    expect(canvasMove({ pointerId: first.pointerId, buttons: 1 }).defaultPrevented).toBe(true)
+    expect(canvasMove({ pointerId: second.pointerId, buttons: 1 }).defaultPrevented).toBe(true)
+
+    forwardPointer(otherRoot, at.u, at.v, 'up', releasedSample(second))
+    forwardPointer(root, at.u, at.v, 'move', first)
+    expect(canvasMove({ pointerId: first.pointerId, buttons: 1 }).defaultPrevented).toBe(true)
+    expect(canvasMove({ pointerId: second.pointerId, buttons: 1 }).defaultPrevented).toBe(false)
+
+    forwardPointer(root, at.u, at.v, 'cancel', releasedSample(first))
+    expect(heard).toEqual([first.pointerId, first.pointerId])
+    expect(canvasMove({ pointerId: first.pointerId, buttons: 1 }).defaultPrevented).toBe(false)
+  })
+
   it('stands down after a forwarded release', () => {
     forwardPointer(root, at.u, at.v, 'down')
     forwardPointer(root, at.u, at.v, 'up')
@@ -950,6 +979,85 @@ describe('a foreign drag silences the forwarder', () => {
   })
 })
 
+describe('pointer release activation', () => {
+  const at = uvOf(...TRIGGER_BOX)
+
+  it('clicks the common ancestor of the press and release without activating the release sibling', () => {
+    const targets: EventTarget[] = []
+    root.addEventListener('click', (event) => { if (event.target) targets.push(event.target) })
+    const overSibling = uvOf(...SIBLING_BOX)
+
+    forwardPointer(root, at.u, at.v, 'down')
+    forwardPointer(root, overSibling.u, overSibling.v, 'up')
+
+    expect(targets).toEqual([root])
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it.each([1, 2])('releases button %s without a primary click', (button) => {
+    let clicks = 0
+    trigger.addEventListener('click', () => clicks++)
+    const sample = pointerSample({ button, buttons: button === 1 ? 4 : 2 })
+
+    forwardPointer(root, at.u, at.v, 'down', sample)
+    forwardPointer(root, at.u, at.v, 'up', { ...sample, buttons: 0 })
+
+    expect(clicks).toBe(0)
+    expect(trigger.hasAttribute('data-active')).toBe(false)
+  })
+
+  it.each([
+    { name: 'a primary press on the select', startsOnSelect: true, button: 0, value: 'second', changes: 1 },
+    { name: 'a secondary press on the select', startsOnSelect: true, button: 2, value: 'first', changes: 0 },
+    { name: 'a press on a sibling', startsOnSelect: false, button: 0, value: 'first', changes: 0 },
+  ])('updates a synthetic select only for admitted activation: $name', ({ startsOnSelect, button, value, changes }) => {
+    const select = document.createElement('select')
+    select.innerHTML = '<option value="first">First</option><option value="second">Second</option>'
+    root.append(select)
+    box(select, ...SIBLING_BOX)
+    const overSelect = uvOf(...SIBLING_BOX)
+    const sample = pointerSample({ button, buttons: button === 2 ? 2 : 1 })
+    const pressAt = startsOnSelect ? overSelect : at
+    let heard = 0
+    select.addEventListener('change', () => heard++)
+
+    forwardPointer(root, pressAt.u, pressAt.v, 'down', sample)
+    forwardPointer(root, overSelect.u, overSelect.v, 'up', { ...sample, buttons: 0 })
+
+    expect(select.value).toBe(value)
+    expect(heard).toBe(changes)
+  })
+
+  it('releases without inventing a click or changing focus when no press was forwarded', () => {
+    let clicks = 0
+    trigger.addEventListener('click', () => clicks++)
+    sibling.focus()
+
+    forwardPointer(root, at.u, at.v, 'up')
+
+    expect(clicks).toBe(0)
+    expect(document.activeElement).toBe(sibling)
+  })
+
+  it('unwinds a press released over content that no longer accepts the pointer', () => {
+    let cancelled = 0
+    let clicks = 0
+    trigger.addEventListener('pointercancel', () => cancelled++)
+    trigger.addEventListener('click', () => clicks++)
+    const held = pointerSample({ buttons: 1 })
+    forwardPointer(root, at.u, at.v, 'down', held)
+    root.style.pointerEvents = 'none'
+    trigger.style.pointerEvents = 'none'
+
+    forwardPointer(root, at.u, at.v, 'up')
+
+    expect(cancelled).toBe(1)
+    expect(clicks).toBe(0)
+    expect(trigger.hasAttribute('data-active')).toBe(false)
+    expect(forwardPointer(root, at.u, at.v, 'move', held)).toBeNull()
+  })
+})
+
 describe('pointer identity and cancellation', () => {
   const at = uvOf(...TRIGGER_BOX)
   const pen = pointerSample({
@@ -1019,6 +1127,23 @@ describe('pointer identity and cancellation', () => {
     expect(heard).toEqual(['pointercancel'])
     expect(trigger.hasAttribute('data-active')).toBe(false)
     expect(document.activeElement).not.toBe(trigger)
+    expect(forwardPointer(root, at.u, at.v, 'move', pen)).toBeNull()
+  })
+
+  it('cancels the pressed pointer after a different pointer updates hover', () => {
+    const cancelled: number[] = []
+    trigger.addEventListener('pointercancel', (event) => cancelled.push(event.pointerId))
+    forwardPointer(root, at.u, at.v, 'down', pen)
+    forwardPointer(root, at.u, at.v, 'move', pointerSample())
+
+    expect(forwardPointer(root, at.u, at.v, 'cancel', pointerSample())).toBeNull()
+    expect(forwardPointer(root, at.u, at.v, 'up', pointerSample())).toBeNull()
+    expect(trigger.hasAttribute('data-active')).toBe(true)
+
+    forwardPointer(root, at.u, at.v, 'cancel', { ...pen, buttons: 0, pressure: 0 })
+
+    expect(cancelled).toEqual([pen.pointerId])
+    expect(trigger.hasAttribute('data-active')).toBe(false)
     expect(forwardPointer(root, at.u, at.v, 'move', pen)).toBeNull()
   })
 

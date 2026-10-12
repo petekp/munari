@@ -42,6 +42,8 @@ import {
 import { resolveSurfaceHost, type SurfaceCanvasId, type SurfaceHost } from './surfaceHostRegistry'
 import { useSurfaceHostContext } from './surfaceHostContext'
 import { watchSurfaceValidation } from './surfaceValidation'
+import { warnCaptureUnavailableOnce } from './surfaceSupport'
+import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 import type { SurfaceSize, SurfaceSourceRuntime } from './surfaceSourceRuntime'
 
 /**
@@ -54,6 +56,7 @@ import type { SurfaceSize, SurfaceSourceRuntime } from './surfaceSourceRuntime'
 interface SurfaceControlledProps extends SurfaceControls {
   /** Matches a SurfaceCanvas id; omit it for the unnamed default host. */
   canvasId?: SurfaceCanvasId
+  authorIntent?: { requestedInScene: boolean; reason: string | null }
   children?: React.ReactNode
 }
 
@@ -76,6 +79,7 @@ export function SurfaceRoot({
   surface,
   name,
   canvasId,
+  authorIntent,
   renderIn,
   onPresentationChange,
   onMotionComplete,
@@ -84,15 +88,9 @@ export function SurfaceRoot({
   onError,
   children,
 }: SurfaceProps) {
-  // A handle passed in was created elsewhere and is already installed; only
-  // the unpassed case mints one. Both paths call the same hooks, so the
-  // owned store is created either way and simply goes unused — the cost is
-  // one plain object, and the alternative is a conditional hook.
   const ownStore = useSurfaceStore(name)
   const store: SurfaceStore = surface ? surfaceStoreOf(surface) : ownStore
-  useSurfaceController(store)
-  // The controlled half, written by THIS declaration whether the handle is
-  // this root's or one it was handed.
+  const { canControl, controllerActive } = useSurfaceController(store, onError)
   useSurfaceControls(store, {
     renderIn,
     onPresentationChange,
@@ -100,34 +98,48 @@ export function SurfaceRoot({
     onFreezeChange,
     onReady,
     onError,
-  })
+  }, canControl, controllerActive)
+  const [intentOwner] = useState(() => Symbol())
+  const requestedInScene = authorIntent?.requestedInScene
+  const reason = authorIntent?.reason ?? null
+  useLayoutEffect(() => {
+    if (!canControl() || requestedInScene === undefined) return
+    store.setAuthorIntent(intentOwner, requestedInScene, reason)
+    if (requestedInScene && !store.getState().supported && isDevelopmentRuntime()) warnCaptureUnavailableOnce()
+    return () => store.clearAuthorIntent(intentOwner)
+  }, [store, canControl, intentOwner, requestedInScene, reason])
 
   // Tracked from the ROOT, not only the presenter: a presenter mounted at
   // press time (flight-only meshes) installs its tracker after the last
   // trusted event, so the arrival burst read a null place and a still
   // pointer lost its hover across the flip (2026-08-20). Ref-counted, so
   // doubling up with the presenter's own tracker costs nothing.
-  useEffect(() => trackPointerPlace(), [])
+  useEffect(() => {
+    if (canControl()) return trackPointerPlace()
+  }, [canControl])
 
   const contextHost = useSurfaceHostContext()
   const wiring: SurfaceWiring = contextHost ? 'canvas' : 'page'
-  const host = useResolvedHost(store, wiring, contextHost, canvasId)
+  const host = useResolvedHost(store, wiring, contextHost, canvasId, canControl)
 
   useEffect(() => {
-    host?.invalidate()
-  }, [host, renderIn])
+    if (canControl()) host?.invalidate()
+  }, [host, renderIn, canControl])
 
   useLayoutEffect(() => {
+    if (!canControl()) return
     const sync = () => store.setRendererAvailable(host?.available() ?? false)
     const release = host?.subscribeRuntime(sync)
     sync()
     return release
-  }, [host, store])
-
-  useEffect(() => watchSurfaceValidation(store, host), [store, host])
+  }, [host, store, canControl])
 
   useEffect(() => {
-    if (!host) return
+    if (canControl()) return watchSurfaceValidation(store, host)
+  }, [store, host, canControl])
+
+  useEffect(() => {
+    if (!host || !canControl()) return
     let claim: (() => void) | null = null
     const reconcile = () => {
       if (store.hasProtocolWork()) claim ??= host.claimWork()
@@ -137,7 +149,7 @@ export function SurfaceRoot({
     const releaseTick = host.registerTick((dtMs) => { store.tick(dtMs); reconcile() })
     reconcile()
     return () => { releaseWork(); releaseTick(); claim?.() }
-  }, [host, store])
+  }, [host, store, canControl])
 
   // Minted per root instance, never derived from `name`. Two unnamed
   // Surfaces are two identities and their cross-tree registrations have to
@@ -160,6 +172,7 @@ export function SurfaceRoot({
   const root = useMemo<SurfaceRootValue>(
     () => ({
       store,
+      controllerActive,
       handle: store.handle,
       host,
       canvasId,
@@ -172,6 +185,7 @@ export function SurfaceRoot({
     }),
     [
       store,
+      controllerActive,
       host,
       canvasId,
       instanceId,
@@ -203,6 +217,7 @@ function useResolvedHost(
   wiring: SurfaceWiring,
   contextHost: SurfaceHost | null,
   canvasId: SurfaceCanvasId | undefined,
+  canControl: () => boolean,
 ): SurfaceHost | null {
   // Resolve once per authored id. A page declaration that arrives first
   // gets the pending host the first Canvas adopts. If a duplicate Canvas
@@ -217,6 +232,7 @@ function useResolvedHost(
   const conflict = wiring === 'canvas' && canvasId !== undefined && canvasId !== contextHost?.id
   const resolved = conflict ? null : wiring === 'canvas' ? contextHost : pageHost
   useEffect(() => {
+    if (!canControl()) return
     if (conflict) {
       store.reportError(new Error(`Surface canvasId="${canvasId}" conflicts with its enclosing <SurfaceCanvas${contextHost?.id ? ` id="${contextHost.id}"` : ''}>. A scene declaration belongs to its enclosing canvas.`))
       return
@@ -229,6 +245,6 @@ function useResolvedHost(
           '`<Surface canvasId="…">`.',
       ),
     )
-  }, [wiring, resolved, store, conflict, canvasId, contextHost])
+  }, [wiring, resolved, store, conflict, canvasId, contextHost, canControl])
   return resolved
 }

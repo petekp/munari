@@ -11,6 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { surfaceChromeElement } from './surfaceChromeElement'
 import { createSurfaceStore, type SurfaceStore } from './surfaceHandle'
 import { SurfacePart } from './SurfacePart'
+import { useSurfaceRefresh } from '../Surface'
+import type { SurfaceHandle } from './surfaceHandle'
 import { SurfaceHandleContext, SurfaceRootContext, useSurfacePart, type SurfacePartValue, type SurfaceRootValue } from './surfaceContext'
 import { resetSurfaceHosts, surfaceHost, type SurfaceHost } from './surfaceHostRegistry'
 
@@ -78,6 +80,7 @@ describe('duplicate source host recovery', () => {
     strict: boolean,
     duplicate: boolean,
     source?: (name: string) => ReactElement,
+    refreshContent?: (name: string) => void,
   ) {
     const store = createSurfaceStore('recovery')
     const host = surfaceHost('recovery')
@@ -85,7 +88,7 @@ describe('duplicate source host recovery', () => {
     store.setCallbacks({ onError: error => errors.push(error) })
     const rootValue: SurfaceRootValue = {
       store, handle: store.handle, host, canvasId: host.id, name: store.name,
-      instanceId: 'same-root', wiring,
+      instanceId: 'same-root', wiring, controllerActive: true,
       reportMeasuredSize() {},
       measuredSize: () => null,
       partRuntime: id => store.part(id)?.runtime ?? null,
@@ -117,6 +120,7 @@ describe('duplicate source host recovery', () => {
             size: [200, 100],
             resolution: 1,
             source: source ? source(name) : createElement(Content, { name }),
+            refreshContent: refreshContent ? () => refreshContent(name) : undefined,
           }, createElement(ReadPart, { name }))),
         ),
       ),
@@ -164,6 +168,73 @@ describe('duplicate source host recovery', () => {
     test.render([])
     expect(test.store.parts()).toEqual([])
     expect(test.host.sources()).toEqual([])
+  })
+
+  it('refreshes every live part through context or an explicit handle and releases removed source owners', () => {
+    let surface: SurfaceHandle | undefined
+    const prepared = new Map<string, HTMLElement>()
+    const changes = new Map<string, number>()
+    const refreshers = new Map<string, () => void>()
+    function RefreshButton({ name }: { name: string }) {
+      const refresh = useSurfaceRefresh(name === 'first' ? surface : undefined)
+      refreshers.set(name, refresh)
+      return createElement('button', { onClick: refresh }, name)
+    }
+    const refreshContent = (name: string) => {
+      const node = prepared.get(name)
+      if (!node) throw new Error('The source was not prepared')
+      const count = (changes.get(name) ?? 0) + 1
+      changes.set(name, count)
+      node.textContent = `${name} refreshed ${count}`
+    }
+    const external = fixture('page', true, false, undefined, refreshContent)
+    const test = fixture('page', true, false, name => createElement(RefreshButton, { name }), refreshContent)
+    surface = external.store.handle
+    const prototype = HTMLCanvasElement.prototype
+    Object.defineProperty(prototype, 'requestPaint', {
+      configurable: true,
+      value(this: HTMLCanvasElement & { onpaint?: (() => void) | null }) { this.onpaint?.() },
+    })
+    external.render(['external'])
+    test.render(['first', 'last'])
+    const first = test.observed.get('first'), last = test.observed.get('last')
+    if (!first?.runtime || !last?.runtime || !first.captureRoot || !last.captureRoot) throw new Error('Both sources must publish')
+    const firstButton = first.captureRoot.querySelector('button'), lastButton = last.captureRoot.querySelector('button')
+    if (!firstButton || !lastButton) throw new Error('Both sources need refresh controls')
+    const firstNode = document.createElement('span'), lastNode = document.createElement('span'), externalNode = document.createElement('span')
+    first.captureRoot.append(firstNode)
+    last.captureRoot.append(lastNode)
+    prepared.set('first', firstNode)
+    prepared.set('last', lastNode)
+    prepared.set('external', externalNode)
+    const explicitRefresh = refreshers.get('first'), contextRefresh = refreshers.get('last')
+    test.render(['first', 'last'])
+    expect(refreshers.get('first')).toBe(explicitRefresh)
+    expect(refreshers.get('last')).toBe(contextRefresh)
+    const firstPaint = first.runtime.source.paintCount(), lastPaint = last.runtime.source.paintCount()
+
+    lastButton.click()
+    expect(firstNode.textContent).toBe('first refreshed 1')
+    expect(lastNode.textContent).toBe('last refreshed 1')
+    expect(first.runtime.source.paintCount()).toBe(firstPaint + 1)
+    expect(last.runtime.source.paintCount()).toBe(lastPaint + 1)
+    firstButton.click()
+    expect(firstNode.textContent).toBe('first refreshed 1')
+    expect(lastNode.textContent).toBe('last refreshed 1')
+    expect(externalNode.textContent).toBe('external refreshed 1')
+
+    test.render(['last'])
+    lastButton.click()
+    expect(firstNode.textContent).toBe('first refreshed 1')
+    expect(lastNode.textContent).toBe('last refreshed 2')
+    expect(test.store.parts()).toHaveLength(1)
+    test.render([])
+    test.store.refresh()
+    expect(lastNode.textContent).toBe('last refreshed 2')
+    expect(test.store.parts()).toEqual([])
+    external.render([])
+    external.store.refresh()
+    expect(externalNode.textContent).toBe('external refreshed 1')
   })
 
   it.each(['page', 'canvas'] as const)('preserves unique parts when a sibling leaves (%s)', (wiring) => {

@@ -30,13 +30,17 @@ export function SurfaceScene({ surface, children }: SurfaceSceneProps) {
   if (!host) {
     throw new Error('munari: <Surface.Scene> must be rendered inside a <SurfaceCanvas>.')
   }
+  const controllerActive = parent?.store === store ? parent.controllerActive : true
   const mounted = useCanvasPresence(store)
-  useEffect(() => store.declarePresentation('canvas'), [store])
+  useEffect(() => {
+    if (controllerActive) return store.declarePresentation('canvas')
+  }, [store, controllerActive])
   const [instanceId] = useState(nextSurfaceInstanceId)
   const handleValue = useMemo(() => ({ handle: store.handle, store }), [store])
   const root = useMemo<SurfaceRootValue>(
     () => ({
       store,
+      controllerActive,
       handle: store.handle,
       host,
       canvasId: host.id,
@@ -47,11 +51,11 @@ export function SurfaceScene({ surface, children }: SurfaceSceneProps) {
       measuredSize: () => null,
       partRuntime: (id) => store.part(id)?.runtime ?? null,
     }),
-    [store, host, instanceId],
+    [store, host, instanceId, controllerActive],
   )
   return (
     <SurfaceHandleContext value={handleValue}>
-      <SurfaceRootContext value={root}>{mounted ? children : null}</SurfaceRootContext>
+      <SurfaceRootContext value={root}>{mounted && controllerActive ? children : null}</SurfaceRootContext>
     </SurfaceHandleContext>
   )
 }

@@ -13,9 +13,9 @@ import { use1DOF } from './use1DOF'
 const mounted: Array<{ root: Root; container: HTMLElement; canvas: HTMLCanvasElement }> = []
 afterEach(() => { for (const item of mounted.splice(0)) { flushSync(() => item.root.unmount()); item.container.remove(); _roots.delete(item.canvas) } })
 
-function control() {
-  class CameraControls extends THREE.EventDispatcher { enabled = true }
-  const controls = new CameraControls()
+class CameraControls extends THREE.EventDispatcher { enabled = true }
+
+function control(controls = new CameraControls()) {
   const canvas = document.createElement('canvas')
   createCanvasRoot(canvas)
   const frameStore = _roots.get(canvas)?.store
@@ -38,11 +38,11 @@ function control() {
   const instance = result.current
   if (!instance) throw new Error('The control did not mount')
   const object = new THREE.Object3D()
-  const event = (q: number, timeStamp: number): ThreeEvent<PointerEvent> => {
+  const event = (q: number, timeStamp: number, pointerId = 1): ThreeEvent<PointerEvent> => {
     const input = {
       eventObject: object,
       ray: new THREE.Ray(new THREE.Vector3(q, 0, 1), new THREE.Vector3(0, 0, -1)),
-      stopPropagation() {}, target: null, pointerId: 1, timeStamp,
+      stopPropagation() {}, target: null, pointerId, timeStamp,
     }
     // SAFETY: the handlers read only the ray, object, target and event fields above.
     return input as ThreeEvent<PointerEvent>
@@ -50,9 +50,11 @@ function control() {
   return {
     ...instance,
     controls,
-    down: (q: number, time: number) => instance.bind.onPointerDown(event(q, time)),
-    move: (q: number, time: number) => instance.bind.onPointerMove(event(q, time)),
-    up: (q: number, time: number) => instance.bind.onPointerUp(event(q, time)),
+    down: (q: number, time: number, pointerId = 1) => instance.bind.onPointerDown(event(q, time, pointerId)),
+    move: (q: number, time: number, pointerId = 1) => instance.bind.onPointerMove(event(q, time, pointerId)),
+    up: (q: number, time: number, pointerId = 1) => instance.bind.onPointerUp(event(q, time, pointerId)),
+    cancel: (q: number, time: number, pointerId = 1) => instance.bind.onPointerCancel?.(event(q, time, pointerId)),
+    unmount() { flushSync(() => root.unmount()) },
     frames(count: number) {
       for (let index = 0; index < count; index++) {
         for (const subscription of frameStore.getState().internal.subscribers) subscription.ref.current(frameStore.getState(), 1 / 60)
@@ -112,5 +114,61 @@ describe('release momentum', () => {
     }
     expect(velocities[0]).toBeGreaterThan(30)
     expect(velocities.at(-1)).toBeLessThan(1e-12)
+  })
+})
+
+
+describe('camera controls during overlapping gestures', () => {
+  it('keeps controls suspended until both controls release their own pointers', () => {
+    const controls = new CameraControls()
+    const first = control(controls)
+    const second = control(controls)
+    first.down(0, 0, 23)
+    second.down(0, 0, 24)
+
+    first.up(0, 10, 23)
+    expect(controls.enabled).toBe(false)
+
+    second.up(0, 10, 24)
+    expect(controls.enabled).toBe(true)
+  })
+
+  it('releases each unmounted control without ending another control gesture', () => {
+    const controls = new CameraControls()
+    const first = control(controls)
+    const second = control(controls)
+    first.down(0, 0, 23)
+    second.down(0, 0, 24)
+
+    first.unmount()
+    expect(controls.enabled).toBe(false)
+
+    second.unmount()
+    expect(controls.enabled).toBe(true)
+  })
+
+  it('restores controls that were disabled before the gesture', () => {
+    const controls = new CameraControls()
+    controls.enabled = false
+    const hand = control(controls)
+    hand.down(0, 0)
+    hand.up(0, 10)
+
+    expect(controls.enabled).toBe(false)
+  })
+
+  it('ignores another pointer and releases its own cancelled gesture', () => {
+    const hand = control()
+    hand.down(0, 0, 23)
+    hand.move(1, 10, 24)
+    hand.up(1, 20, 24)
+    hand.cancel(1, 30, 24)
+
+    expect(hand.body.current.q).toBe(0)
+    expect(hand.controls.enabled).toBe(false)
+
+    hand.cancel(0, 40, 23)
+
+    expect(hand.controls.enabled).toBe(true)
   })
 })
