@@ -44,6 +44,11 @@ A quick smoke run uses `PERF_TRIALS=1 PERF_ENGINES=snapdom PERF_CPU_RATES=1`.
 HTML-in-canvas requires Chrome's `CanvasDrawElement` capability. Unavailable
 capability fails the run.
 
+`PERF_CAPTURE_STORAGE=cpu` or `gpu` forces the capture canvas storage policy
+for both versions. Each trial checks the observed context attributes before
+and after input. Omit it to use the adapter's normal choice. This selects
+canvas storage on the current host; it does not emulate a software GPU.
+
 The workload enters the scene, waits for the physical controls to settle,
 measures idle frames, types a fixed string through browser keyboard events,
 and submits the form with Enter. It then resizes the viewport and returns
@@ -72,6 +77,7 @@ Each measured phase reports:
 - `hostSpace` durations and call counts from the route controller only.
 - Completed capture receipts and distinct DOM reads.
 - Started full and region captures, with their summed CSS pixel area.
+- Decoded images' requested width × height, summed as raster pixel area.
 - Upload callbacks, source read and generation, texture version, and store size.
 - Repeated upload identities and summed uploaded texel area.
 - Animation frame intervals and Chrome's main-thread task, script, and layout durations.
@@ -88,6 +94,10 @@ ends; the report includes entries delivered during collection and queued at
 the end whose start times fall within that phase. Each long animation frame
 serializes its script attribution. Unsupported entry types are recorded as
 unavailable.
+
+Requested raster pixel area counts the image dimensions Munari will draw. It
+separates the selected DOM region from the SVG raster size. It does not measure
+how many pixels the browser processed internally.
 
 Uploaded texel area sums the canvas width × height at each upload callback.
 It excludes mipmaps, format, and driver behavior. Callback counts describe

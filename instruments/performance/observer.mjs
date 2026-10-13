@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { replaceSource } from '../home-light/replaceSource.mjs'
 
-export function performanceObserver(root, commit, loadedSources, routeTiming = true, baselineDirectory = null, captureStages = false) {
+export function performanceObserver(root, commit, loadedSources, routeTiming = true, baselineDirectory = null, captureStages = false, captureStorage = null) {
   const modulePath = id => path.relative(root, id.split('?')[0]).replaceAll(path.sep, '/')
   const owned = file => /^packages\/(core|react)\/src\/[\w./-]+\.(tsx?|css)$/.test(file) && !file.includes('..')
   const labFile = file => /^apps\/lab\/src\/[\w./-]+\.(tsx?|css)$/.test(file) && !file.includes('..')
@@ -32,10 +32,16 @@ export function performanceObserver(root, commit, loadedSources, routeTiming = t
         if (loadedSources[file]) assert.equal(loadedSources[file], hash, `Source changed during benchmark: ${file}`)
         loadedSources[file] = hash
       }
+      if(captureStorage&&file==='packages/core/src/paint/domTextureSource.ts')return replaceSource(source,
+        "captureMemory = adapter?.info.isFallbackAdapter ? 'cpu' : 'gpu'",
+        `captureMemory = ${JSON.stringify(captureStorage)}`)
       if(file==='packages/react/src/snapdom.ts') {
         const clipped=source.includes('options: CaptureRegionOptions')?'Boolean(options.clip)':'false'
         source=replaceSource(source,'  const capture = await snapdom(element, {',`  window.__munariPerf.record('captureRegion',{clipped:${clipped},cssArea:box.width*box.height});
   const capture = await snapdom(element, {`)
+        source=replaceSource(source,'  return image\n',`  window.__munariPerf.record('captureRaster',{width:image.width,height:image.height});
+  return image
+`)
         return captureStages?observeSnapdom(source):source
       }
       if(captureStages&&file==='packages/core/src/paint/rasterizedSource.ts')return replaceSource(source,'      draw(image, askedFor)',`      const perfDrawStarted=performance.now();

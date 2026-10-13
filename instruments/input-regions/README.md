@@ -12,14 +12,17 @@ Every RGBA channel must match exactly. `REGION_STORAGE` forces the source's
 canvas storage policy and checks that the requested mode was exercised. It
 does not emulate a different GPU. The reference uses the same storage policy.
 
-GPU mode requires typing, deletion and horizontal scrolling to exercise region
-capture. CPU mode checks the direct full-image fallback and skips the cache-draw
-failure case because it has no reusable bitmap. Omitting `REGION_STORAGE` uses
-the adapter's normal storage choice.
+Both modes require typing, deletion and horizontal scrolling to exercise region
+capture. CPU mode also checks fractional and shifted fields, normal-flow
+positions, and full-capture fallbacks for wide outlines, outer shadows and
+fields outside the root. Omitting
+`REGION_STORAGE` uses the adapter's normal storage choice.
 
 The cases cover placeholders, overlapping fields, duplicate IDs with unique
 anchors, outside content changes, CSSOM refresh, stylesheet and media-query
-changes, resize, density, fractional origins, filters and transformed ancestors.
+changes, resize, densities 1/1.5/2/3, transparency, fractional origins, filters
+and transformed ancestors. The normal-flow edit compares every published frame
+with a full capture so a later repaint cannot hide a temporary pixel error.
 A held decode checks refresh during capture and disposal without a late paint.
 Deliberate decode and cache-draw failures check recovery without publishing a
 partial image.
@@ -40,6 +43,30 @@ The failed-cache control must also fail on a pixel mismatch during recovery:
 
 ```sh
 REGION_STORAGE=gpu REGION_REUSE_FAILED_CACHE=1 REGION_OUTPUT=/tmp/munari-input-regions-cache-fault \
+  node instruments/input-regions/run.mjs
+```
+
+Unrecognized SVG output must recover with a full capture, then keep using full
+captures for that source. This short run removes the clipped SVG's foreignObject
+before the adapter inspects it; the full-capture reference stays intact:
+
+```sh
+REGION_STORAGE=cpu REGION_UNKNOWN_VIEWPORT=1 REGION_OUTPUT=/tmp/munari-input-regions-unknown \
+  node instruments/input-regions/run.mjs
+```
+
+Restoring the old HTML viewport must fail the normal-flow pixel comparison:
+
+```sh
+REGION_STORAGE=cpu REGION_LEGACY_VIEWPORT=1 REGION_OUTPUT=/tmp/munari-input-regions-legacy \
+  node instruments/input-regions/run.mjs
+```
+
+Moving CPU SVG rasterization to the tile's local origin, while preserving the
+bitmap's final placement, must fail the pixel comparison:
+
+```sh
+REGION_STORAGE=cpu REGION_LOCAL_ORIGIN=1 REGION_OUTPUT=/tmp/munari-input-regions-origin-fault \
   node instruments/input-regions/run.mjs
 ```
 

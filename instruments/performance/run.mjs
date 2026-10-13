@@ -36,6 +36,8 @@ assert.ok(['0','1'].includes(process.env.PERF_PROFILE ?? '0'), 'PERF_PROFILE mus
 const profile = process.env.PERF_PROFILE === '1'
 assert.ok(['0','1'].includes(process.env.PERF_CAPTURE_STAGES ?? '0'), 'PERF_CAPTURE_STAGES must be 0 or 1')
 const captureStages=process.env.PERF_CAPTURE_STAGES === '1'
+const captureStorage=process.env.PERF_CAPTURE_STORAGE??null
+assert.ok(captureStorage===null||['cpu','gpu'].includes(captureStorage), 'PERF_CAPTURE_STORAGE must be cpu or gpu')
 const maxFrameP95Ms = process.env.PERF_MAX_FRAME_P95_MS ? Number(process.env.PERF_MAX_FRAME_P95_MS) : null
 assert.ok(maxFrameP95Ms===null || Number.isFinite(maxFrameP95Ms)&&maxFrameP95Ms>0, 'PERF_MAX_FRAME_P95_MS must be positive and finite')
 assert.ok(engines.length>0 && engines.every(engine => ['html-in-canvas','snapdom'].includes(engine)), 'Unknown PERF_ENGINES selection')
@@ -57,7 +59,7 @@ const metadata = {
   cpu:cpus()[0]?.model,cpuCount:cpus().length,
   viewport:{width:1440,height:1000,deviceScaleFactor:2},resizedViewport:{width:1320,height:920,deviceScaleFactor:2},
   input:' Repeatable browser input 0123456789.',inputDelayMs:40,idleMs:1200,
-  trials,rates,engines,versions,routeTiming,profile,captureStages,maxFrameP95Ms,baselineLabSources,chromeArgs,requestedBackend:process.env.MUNARI_BACKEND??'auto',
+  trials,rates,engines,versions,routeTiming,profile,captureStages,captureStorage,maxFrameP95Ms,baselineLabSources,chromeArgs,requestedBackend:process.env.MUNARI_BACKEND??'auto',
   dependencyVersions:Object.fromEntries(['three','@react-three/fiber','@zumer/snapdom','vite','puppeteer-core'].map(name=>[name,lock.packages[`node_modules/${name}`]?.version])),
 }
 const results = {metadata,rows:[],loadedSources:{}}
@@ -91,6 +93,7 @@ function summarize(raw,before,after) {
     browserTimingSupport:raw.timingSupport,browserTimingEntries:raw.events.filter(event=>event.kind==='browserTiming'),
     captureStageMs:captureStages?Object.fromEntries([...new Set(raw.events.filter(event=>event.kind==='captureStage').map(event=>event.stage))].map(stage=>[stage,stats(raw.events.filter(event=>event.kind==='captureStage'&&event.stage===stage).map(event=>event.ms))])):null,
     capturePayloads:raw.events.filter(event=>event.kind==='capturePayload'),
+    requestedRasterPixelArea:raw.events.filter(event=>event.kind==='captureRaster').reduce((sum,event)=>sum+event.width*event.height,0),
     captureRegions:{full:raw.events.filter(event=>event.kind==='captureRegion'&&!event.clipped).length,partial:raw.events.filter(event=>event.kind==='captureRegion'&&event.clipped).length,cssArea:raw.events.filter(event=>event.kind==='captureRegion').reduce((sum,event)=>sum+event.cssArea,0)},
     componentRenders:captureStages?Object.fromEntries(['ControlsHardware','PhysicalPiece'].map(component=>[component,raw.events.filter(event=>event.kind==='componentRender'&&event.component===component).length])):null,
   }
@@ -127,7 +130,7 @@ async function sourceSnapshot(page) {
       const canvas=source.canvas,pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data
       let hash=2166136261,nontransparent=0
       for(let i=0;i<pixels.length;i++){hash=Math.imul(hash^pixels[i],16777619);if(i%4===3&&pixels[i]>0)nontransparent++}
-      return {sourceId:source.sourceId,read:source.currentPaint()?.read,uploadedRead:uploadedRead(),generation:source.currentPaint()?.frame.generation,version:texture()?.version,width:canvas.width,height:canvas.height,pixelHash:hash>>>0,nontransparent}
+      return {sourceId:source.sourceId,read:source.currentPaint()?.read,uploadedRead:uploadedRead(),generation:source.currentPaint()?.frame.generation,version:texture()?.version,width:canvas.width,height:canvas.height,pixelHash:hash>>>0,nontransparent,captureStorage:canvas.getContext('2d').getContextAttributes().willReadFrequently?'cpu':'gpu'}
     })
     return {rows,paints:window.__munariPerf.paintStats()}
   })
@@ -182,6 +185,7 @@ async function trial(server,version,engine,rate,index) {
       await pause(page,250)
     },directory))
     const edited=await sourceSnapshot(page)
+    if(captureStorage)for(const row of [...before.rows,...edited.rows])assert.equal(row.captureStorage,captureStorage,'Requested capture storage must be exercised')
     assert.ok(edited.rows[0].uploadedRead>=before.rows[0].read,'The final edit must reach an upload acknowledgement')
     assert.notEqual(edited.rows[0].pixelHash,before.rows[0].pixelHash,'Real input must change the captured pixels')
     await page.screenshot({path:path.join(directory,'scene-edited.png')})
@@ -248,7 +252,7 @@ try {
   for(const version of versions) {
     const loadedSources={}
     results.loadedSources[version.label]=loadedSources
-    const server=await createServer({root:path.join(root,'apps/lab'),cacheDir:path.join(output,`.vite-${version.label}`),server:{host:'127.0.0.1',port:0,watch:null,fs:{allow:[root]}},plugins:[performanceObserver(root,version.commit,loadedSources,routeTiming,version.directory,captureStages)],logLevel:'warn'})
+    const server=await createServer({root:path.join(root,'apps/lab'),cacheDir:path.join(output,`.vite-${version.label}`),server:{host:'127.0.0.1',port:0,watch:null,fs:{allow:[root]}},plugins:[performanceObserver(root,version.commit,loadedSources,routeTiming,version.directory,captureStages,captureStorage)],logLevel:'warn'})
     servers.push(server)
     await server.listen()
   }

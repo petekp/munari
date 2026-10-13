@@ -32,8 +32,8 @@
 // Ownership: this module owns the snapDOM call and the fallback rule.
 // `@munari/core` owns the source, the ledger and the parking.
 
-import { createInputRegionRasterizer, type CaptureRegionOptions } from './snapdomInputRegions'
-import { snapdom, type SnapdomPlugin } from '@zumer/snapdom'
+import { createInputRegionRasterizer, UnsupportedRegionCaptureError, type CaptureRegionOptions } from './snapdomInputRegions'
+import { snapdom, type CaptureMeta, type SnapdomPlugin } from '@zumer/snapdom'
 import { fieldPseudoElementPlugin } from './snapdomFieldPseudoElements'
 import { fontEmbedPlugin, warmCaptureFonts } from './snapdomFonts'
 import {
@@ -116,6 +116,84 @@ const fontPlugin = fontEmbedPlugin((href) => {
   )
 })
 const capturePlugins = [fontPlugin, frameSplitPlugin, fieldPlugin]
+const parseRegionSvg = (url: string) => {
+  const comma = url.indexOf(',')
+  const header = url.slice(0, comma)
+  if (comma < 0 || !header.startsWith('data:image/svg+xml') || header.includes(';base64')) return null
+  try {
+    const root = new DOMParser().parseFromString(decodeURIComponent(url.slice(comma + 1)), 'image/svg+xml').documentElement
+    return root instanceof SVGSVGElement ? root : null
+  } catch {
+    return null
+  }
+}
+
+const regionSvgElements = (svg: SVGSVGElement) => {
+  const foreignObjects = svg.querySelectorAll('foreignObject')
+  const foreign = foreignObjects[0]
+  if (foreignObjects.length !== 1 || !(foreign instanceof SVGForeignObjectElement)) return null
+  const wrappers = Array.from(foreign.children).filter((child) =>
+    child.namespaceURI === 'http://www.w3.org/1999/xhtml' && child.localName === 'div')
+  const wrapper = wrappers[0]
+  if (wrappers.length !== 1 || !(wrapper instanceof HTMLElement)) return null
+  let parent: Element | null = foreign.parentElement
+  while (parent && parent !== svg) {
+    if (parent.namespaceURI !== 'http://www.w3.org/2000/svg' || parent.localName !== 'g') return null
+    parent = parent.parentElement
+  }
+  return parent === svg ? { foreign, wrapper } : null
+}
+
+const regionSvgFitsRoot = (
+  svg: SVGSVGElement,
+  layout: { width: number; height: number },
+  clip: NonNullable<CaptureMeta['clip']>,
+) => {
+  const viewBox = svg.viewBox.baseVal
+  return clip.x >= 0 && clip.y >= 0
+    && clip.x + clip.width <= layout.width && clip.y + clip.height <= layout.height
+    && viewBox.x === 0 && viewBox.y === 0 && viewBox.width === clip.width && viewBox.height === clip.height
+    && Number(svg.getAttribute('width')) === clip.width && Number(svg.getAttribute('height')) === clip.height
+}
+
+const normalizeRegionLayout = (
+  url: string,
+  layout: { width: number; height: number },
+  meta: Readonly<CaptureMeta>,
+) => {
+  const svg = parseRegionSvg(url)
+  const elements = svg ? regionSvgElements(svg) : null
+  const clip = meta?.clip
+  if (!svg || !elements || !clip) throw new UnsupportedRegionCaptureError('munari: clipped SVG structure is unsupported')
+  const { foreign, wrapper } = elements
+  const zoom = wrapper.style.zoom ? Number(wrapper.style.zoom) : 1
+  const width = Number.parseFloat(wrapper.style.width)
+  const height = Number.parseFloat(wrapper.style.height)
+  const sizes = [layout.width, layout.height, clip.width, clip.height, zoom, width, height]
+  if (!sizes.every((value) => Number.isFinite(value) && value > 0)
+    || !regionSvgFitsRoot(svg, layout, clip)
+    || meta.contentX !== 0 || meta.contentY !== 0) {
+    throw new UnsupportedRegionCaptureError('munari: clipped SVG geometry is unsupported')
+  }
+  if (Number(foreign.getAttribute('x')) !== -clip.x * zoom
+    || Number(foreign.getAttribute('y')) !== -clip.y * zoom
+    || Number(foreign.getAttribute('width')) !== width * zoom
+    || Number(foreign.getAttribute('height')) !== height * zoom
+    || (wrapper.style.padding !== 'initial' && wrapper.style.padding !== '0px')) {
+    throw new UnsupportedRegionCaptureError('munari: clipped HTML viewport is unsupported')
+  }
+  // Cropping the HTML viewport changes CPU edge samples. Keep its original
+  // layout coordinates and crop only through SVG viewBox (decisions.md #62).
+  foreign.setAttribute('x', '0')
+  foreign.setAttribute('y', '0')
+  foreign.setAttribute('width', String(layout.width * zoom))
+  foreign.setAttribute('height', String(layout.height * zoom))
+  wrapper.style.width = `${layout.width}px`
+  wrapper.style.height = `${layout.height}px`
+  svg.setAttribute('viewBox', `${clip.x} ${clip.y} ${clip.width} ${clip.height}`)
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(svg))}`
+}
+
 /**
  * Ask snapDOM for `element` rendered at the requested per-axis scale.
  *
@@ -148,6 +226,7 @@ const rasterize = async (
   // the backing store was cut for. Asking for the fractional box instead
   // returns a raster one row short of the store, leaving a cleared line
   // along the far edge (measured 2026-09-11).
+  const layout = options.clip && options.retainRootLayout ? { width: element.offsetWidth, height: element.offsetHeight } : null
   const box = { width: options.clip?.width ?? element.offsetWidth, height: options.clip?.height ?? element.offsetHeight }
   const capture = await snapdom(element, {
     // `snapdomFonts` supplies the faces instead. snapDOM's own pass re-derives
@@ -192,7 +271,8 @@ const rasterize = async (
   const width = Math.max(1, Math.round(box.width * scaleX))
   const height = Math.max(1, Math.round(box.height * scaleY))
   const image = new Image()
-  image.src = capture.toRaw()
+  const url = capture.toRaw()
+  image.src = layout ? normalizeRegionLayout(url, layout, capture.meta) : url
   await image.decode()
   // Callers use these dimensions when drawing, including a store resize
   // that happened while the SVG was being captured.

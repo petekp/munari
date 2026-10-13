@@ -4159,18 +4159,39 @@ the cached base without creating another capture scheduler. Unsupported
 placeholder pairing uses full capture. A failed cache write invalidates its
 metadata before another region may reuse it.
 
-Region capture uses the source's GPU storage policy. CPU-backed sources keep
-the direct full-image path: clipped composition differed by one pixel in
-Controls, with a maximum channel difference of nine. CPU mode releases the
-private cache and its invalidation listeners. Resize carry canvases use the
-same storage policy as the source; a default GPU scratch canvas changed
-201,298 pixels after a CPU capture changed density. The forced-storage probe
-requires exact pixels in both modes and rejects that scratch-canvas fault.
+CPU and GPU captures use the source's canvas storage policy. snapDOM's clipped
+SVG shrinks and translates its HTML viewport. That changed three Controls
+pixels at an ordinary flow position. The CPU adapter restores the HTML
+viewport's full dimensions and zero origin, then expresses the crop through
+the SVG viewBox. The output stays 342 × 50 CSS pixels for the Project field,
+compared with 760 × 540 for a full capture.
 
-The private GPU bitmap adds about 6.3 MiB of RGBA storage for Controls at
-1520 × 1080 pixels. This is arithmetic, not a resident-memory measurement.
-Texture uploads retain the full source dimensions. The default snapDOM engine
-keeps the direct-image path from the preceding amendment.
+The adapter transforms the public raw SVG output. It validates the SVG,
+foreignObject, XHTML wrapper and render geometry without relying on generated
+class names or opaque caches. Unrecognized output triggers a full recapture,
+releases private bitmaps and disables further region attempts for that source.
+
+CPU regions rasterize at their source coordinates in a bounded scratch canvas,
+then copy only the field's outward-rounded border box. Rasterizing at a tile's
+local origin changed 42 pixels even with the corrected viewport. Pixels around
+the field stay in the full cache. The scratch canvas stops at the capture's
+right and bottom edges and never exceeds the source dimensions.
+
+CPU regions require a contained capture area, no outer field shadows, and a
+known outline extending at most five CSS pixels. Other fields use a full
+capture. The CPU clip adds one CSS pixel beyond Controls' four-pixel focus ring.
+The GPU path retains its direct draw and four-pixel margin. Layout, resource
+and focus invalidation, capture pacing and input ownership are unchanged.
+
+The complete cache adds about 6.3 MiB of RGBA storage for Controls at
+1520 × 1080 pixels. CPU capture also retains a bounded scratch bitmap. These
+are allocation-size calculations, not resident-memory measurements. Texture
+uploads retain the full source dimensions. The default snapDOM engine keeps
+the direct-image path from the preceding amendment.
+
+Resize carry canvases also use the source's storage policy. A default GPU
+scratch canvas changed 201,298 pixels after a CPU density change; the forced
+storage probe rejects that fault.
 
 The [input region proof](../instruments/input-regions/README.md) compares actual
 Controls pixels with full captures and includes placement and failed-draw

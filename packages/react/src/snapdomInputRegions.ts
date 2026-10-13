@@ -8,11 +8,16 @@ import { captureContext, captureMemoryChosen, listenForRepaintSignals } from '@m
 export interface CaptureRegionOptions {
   clip?: { x: number; y: number; width: number; height: number }
   invalidate?: boolean
+  retainRootLayout?: boolean
 }
+
+export class UnsupportedRegionCaptureError extends Error {}
 
 // Controls' focus ring extends four CSS pixels; root clipping preserves its
 // background at that margin (docs/incremental-capture.md).
 const REGION_PADDING = 4
+// CPU capture includes one extra CSS pixel beyond the measured focus ring (decisions.md #62).
+const CPU_REGION_PADDING = REGION_PADDING + 1
 
 export function createInputRegionRasterizer(
   root: HTMLElement,
@@ -32,7 +37,18 @@ export function createInputRegionRasterizer(
   let pendingInput: { field: HTMLInputElement; value: string; version: number } | null = null
   let inputVersion = 0
   let refreshPending = false
-  let storage: 'cpu' | 'gpu' | null = null
+  let cpuStorage: boolean | null = null
+  let regionCanvas: HTMLCanvasElement | null = null
+  let regionSupported = true
+
+  const releaseCachedBitmaps = () => {
+    canvas.width = canvas.height = 0
+    if (regionCanvas) regionCanvas.width = regionCanvas.height = 0
+    regionCanvas = null
+    cachedEpoch = -1
+    cachedKey = ''
+    cachedValue = null
+  }
 
   const invalidated = () => {
     epoch++
@@ -146,12 +162,15 @@ export function createInputRegionRasterizer(
     }
     return placeholderSupported
   }
-  const clipFor = (rect: DOMRect) => ({
-    x: Math.floor(rect.x + scrollX - REGION_PADDING),
-    y: Math.floor(rect.y + scrollY - REGION_PADDING),
-    width: Math.ceil(rect.right + scrollX + REGION_PADDING) - Math.floor(rect.x + scrollX - REGION_PADDING),
-    height: Math.ceil(rect.bottom + scrollY + REGION_PADDING) - Math.floor(rect.y + scrollY - REGION_PADDING),
-  })
+  const clipFor = (rect: DOMRect) => {
+    const padding = cpuStorage ? CPU_REGION_PADDING : REGION_PADDING
+    return {
+      x: Math.floor(rect.x + scrollX - padding),
+      y: Math.floor(rect.y + scrollY - padding),
+      width: Math.ceil(rect.right + scrollX + padding) - Math.floor(rect.x + scrollX - padding),
+      height: Math.ceil(rect.bottom + scrollY + padding) - Math.floor(rect.y + scrollY - padding),
+    }
+  }
   const supportsClippedFields = (clip: NonNullable<CaptureRegionOptions['clip']>) => {
     for (const field of root.querySelectorAll('input[placeholder],textarea[placeholder]')) {
       if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) continue
@@ -175,6 +194,39 @@ export function createInputRegionRasterizer(
     Number.isInteger(sx) && Number.isInteger(sy) && sx > 0 && sy > 0
       && Number.isInteger(box.x + scrollX) && Number.isInteger(box.y + scrollY)
       && box.width === root.offsetWidth && box.height === root.offsetHeight
+  const hasOnlyInsetShadows = (shadow: string) => {
+    if (shadow === 'none') return true
+    let depth = 0
+    let start = 0
+    for (let index = 0; index < shadow.length; index++) {
+      const character = shadow[index]
+      if (character === '(') depth++
+      else if (character === ')') depth--
+      else if (character === ',' && depth === 0) {
+        if (!/\binset\b/.test(shadow.slice(start, index))) return false
+        start = index + 1
+      }
+    }
+    return depth === 0 && /\binset\b/.test(shadow.slice(start))
+  }
+  const clipFitsRoot = (clip: NonNullable<CaptureRegionOptions['clip']>, box: DOMRect) =>
+    clip.x >= box.x + scrollX && clip.y >= box.y + scrollY
+      && clip.x + clip.width <= box.right + scrollX && clip.y + clip.height <= box.bottom + scrollY
+  const supportsCpuField = (
+    field: HTMLInputElement | null,
+    rect: DOMRect | undefined,
+    clip: CaptureRegionOptions['clip'],
+    box: DOMRect,
+  ) => {
+    if (!field || !rect || !clip || !clipFitsRoot(clip, box)) return false
+    const style = getComputedStyle(field)
+    if (!hasOnlyInsetShadows(style.boxShadow) || style.outlineStyle === 'auto') return false
+    if (style.outlineStyle === 'none' || style.outlineStyle === 'hidden') return true
+    const width = Number.parseFloat(style.outlineWidth)
+    const offset = Number.parseFloat(style.outlineOffset)
+    return Number.isFinite(width) && Number.isFinite(offset)
+      && width + Math.max(0, offset) <= CPU_REGION_PADDING
+  }
   const snapshot = (field: HTMLInputElement | null, sx: number, sy: number) => {
     const box = root.getBoundingClientRect()
     const rect = field?.getBoundingClientRect()
@@ -184,62 +236,73 @@ export function createInputRegionRasterizer(
     const clip = rect ? clipFor(rect) : undefined
     const placeholderSupported = clip !== undefined && supportsClippedFields(clip)
     const boundedPaint = fieldPaintIsPlain(field) && paint.boundedPaint
-    const eligible = boundedPaint && field !== null && rect !== undefined && paint.untransformed && placeholderSupported
+    const cpuEligible = !cpuStorage || supportsCpuField(field, rect, clip, box)
+    const eligible = cpuEligible && boundedPaint && field !== null && rect !== undefined && paint.untransformed && placeholderSupported
       && supportsGeometry(box, sx, sy) && document.fonts.status === 'loaded'
       && !root.getAnimations({ subtree: true }).some((animation) => animation.playState === 'running')
     return { key, box, rect, clip, eligible, scrollX, scrollY, width: Math.max(1, Math.round(root.offsetWidth * sx)), height: Math.max(1, Math.round(root.offsetHeight * sy)) }
   }
 
-  const canReplaceInput = (state: ReturnType<typeof snapshot>, field: HTMLInputElement | null, value: string | null) =>
-    state.eligible && field !== null && cachedEpoch === epoch && cachedKey === state.key
+  const inputClip = (state: ReturnType<typeof snapshot>, field: HTMLInputElement | null, value: string | null) =>
+    regionSupported && state.eligible && field !== null && cachedEpoch === epoch && cachedKey === state.key
       && cachedValue !== value && pendingInput?.field === field && pendingInput.value === value
-
-  // CPU clipping differed by one pixel in Controls. Keep its full-image
-  // path and avoid another bitmap copy (decisions.md #62).
-  const usesCpuStorage = () => {
-    if (storage !== null) return storage === 'cpu'
-    const context = captureContext(canvas)
-    if (!context) return false
-    storage = context.getContextAttributes().willReadFrequently ? 'cpu' : 'gpu'
-    if (storage === 'gpu') return false
-    observer.disconnect()
-    listeners.abort()
-    pendingInput = null
-    cachedEpoch = -1
-    canvas.width = canvas.height = 0
-    return true
-  }
+      ? state.clip : undefined
 
   return {
     async rasterize(sx: number, sy: number) {
       if (disposed) throw new Error('munari: input region rasterizer is disposed')
-      if (usesCpuStorage()) {
+      mutate(observer.takeRecords())
+      if (!regionSupported) {
         const invalidate = refreshPending
         refreshPending = false
         return capture(root, sx, sy, { invalidate })
       }
-      mutate(observer.takeRecords())
       const field = findField()
       const state = snapshot(field, sx, sy)
       const startedEpoch = epoch
       const input = pendingInput
       const value = field?.value ?? null
-      const partial = canReplaceInput(state, field, value)
-      const clip = partial ? state.clip : undefined
+      const clip = inputClip(state, field, value)
       const invalidate = refreshPending
       refreshPending = false
-      const image = await capture(root, sx, sy, { clip, invalidate })
+      let image: HTMLImageElement
+      try {
+        image = await capture(root, sx, sy, { clip, invalidate, retainRootLayout: cpuStorage === true })
+      } catch (cause) {
+        if (disposed || !(cause instanceof UnsupportedRegionCaptureError) || !clip) throw cause
+        regionSupported = false
+        releaseCachedBitmaps()
+        return capture(root, sx, sy, { invalidate: true })
+      }
       await captureMemoryChosen()
-      if (disposed || usesCpuStorage()) return image
+      if (disposed) return image
       mutate(observer.takeRecords())
       const context = captureContext(canvas)
       if (!context) throw new Error('munari: input region cache has no 2D context')
+      cpuStorage ??= context.getContextAttributes().willReadFrequently === true
       cachedEpoch = -1
       if (clip) {
         const x = Math.round((clip.x - state.box.x - state.scrollX) * sx)
         const y = Math.round((clip.y - state.box.y - state.scrollY) * sy)
-        context.clearRect(x, y, image.width, image.height)
-        context.drawImage(image, x, y, image.width, image.height)
+        if (cpuStorage && state.rect) {
+          regionCanvas ??= document.createElement('canvas')
+          regionCanvas.width = Math.min(state.width, Math.max(1, x + image.width))
+          regionCanvas.height = Math.min(state.height, Math.max(1, y + image.height))
+          const regionContext = captureContext(regionCanvas)
+          if (!regionContext) throw new Error('munari: input region bitmap has no 2D context')
+          // CPU SVG antialiasing depends on its draw origin. Rasterize at the
+          // source origin before cropping bitmap pixels (decisions.md #62).
+          regionContext.drawImage(image, x, y, image.width, image.height)
+          const left = (Math.floor(state.rect.x + state.scrollX) - state.box.x - state.scrollX) * sx
+          const top = (Math.floor(state.rect.y + state.scrollY) - state.box.y - state.scrollY) * sy
+          const width = (Math.ceil(state.rect.right + state.scrollX) - Math.floor(state.rect.x + state.scrollX)) * sx
+          const height = (Math.ceil(state.rect.bottom + state.scrollY) - Math.floor(state.rect.y + state.scrollY)) * sy
+          context.clearRect(left, top, width, height)
+          context.drawImage(regionCanvas, left, top, width, height, left, top, width, height)
+        } else {
+          context.clearRect(x, y, image.width, image.height)
+          context.drawImage(image, x, y, image.width, image.height)
+        }
       } else {
         canvas.width = state.width
         canvas.height = state.height
@@ -258,7 +321,7 @@ export function createInputRegionRasterizer(
       observer.disconnect()
       listeners.abort()
       pendingInput = null
-      canvas.width = canvas.height = 0
+      releaseCachedBitmaps()
     },
   }
 }
