@@ -14,7 +14,7 @@ import { CAPTURE_MODE } from './captureMode'
 // so `@zumer/snapdom` stays out of the bundle every ordinary visit loads.
 if (CAPTURE_MODE) {
   const { enableSnapdomCapture } = await import('@petepetrash/munari/snapdom')
-  enableSnapdomCapture({ always: CAPTURE_MODE === 'snapdom' })
+  enableSnapdomCapture({ always: CAPTURE_MODE === 'snapdom', isolatedTextInputs: '[data-munari-capture-region]' })
 }
 
 createRoot(document.getElementById('root')!).render(

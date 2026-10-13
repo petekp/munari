@@ -91,6 +91,7 @@ function summarize(raw,before,after) {
     browserTimingSupport:raw.timingSupport,browserTimingEntries:raw.events.filter(event=>event.kind==='browserTiming'),
     captureStageMs:captureStages?Object.fromEntries([...new Set(raw.events.filter(event=>event.kind==='captureStage').map(event=>event.stage))].map(stage=>[stage,stats(raw.events.filter(event=>event.kind==='captureStage'&&event.stage===stage).map(event=>event.ms))])):null,
     capturePayloads:raw.events.filter(event=>event.kind==='capturePayload'),
+    captureRegions:{full:raw.events.filter(event=>event.kind==='captureRegion'&&!event.clipped).length,partial:raw.events.filter(event=>event.kind==='captureRegion'&&event.clipped).length,cssArea:raw.events.filter(event=>event.kind==='captureRegion').reduce((sum,event)=>sum+event.cssArea,0)},
     componentRenders:captureStages?Object.fromEntries(['ControlsHardware','PhysicalPiece'].map(component=>[component,raw.events.filter(event=>event.kind==='componentRender'&&event.component===component).length])):null,
   }
 }

@@ -407,12 +407,12 @@ export function parkHost(
  * removes every listener.
  */
 export function listenForRepaintSignals(
-  element: HTMLElement,
-  onSignal: () => void,
+  element: HTMLElement | Document,
+  onSignal: (event: Event) => void,
   signal: AbortSignal,
 ): void {
   const heard = (event: Event) => {
-    if (!isRestoredScroll(event)) onSignal()
+    if (!isRestoredScroll(event)) onSignal(event)
   }
   for (const event of PAINT_EVENTS) {
     element.addEventListener(event, heard, { capture: true, signal })

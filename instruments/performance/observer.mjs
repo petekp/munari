@@ -32,7 +32,12 @@ export function performanceObserver(root, commit, loadedSources, routeTiming = t
         if (loadedSources[file]) assert.equal(loadedSources[file], hash, `Source changed during benchmark: ${file}`)
         loadedSources[file] = hash
       }
-      if(captureStages&&file==='packages/react/src/snapdom.ts')return observeSnapdom(source)
+      if(file==='packages/react/src/snapdom.ts') {
+        const clipped=source.includes('options: CaptureRegionOptions')?'Boolean(options.clip)':'false'
+        source=replaceSource(source,'  const capture = await snapdom(element, {',`  window.__munariPerf.record('captureRegion',{clipped:${clipped},cssArea:box.width*box.height});
+  const capture = await snapdom(element, {`)
+        return captureStages?observeSnapdom(source):source
+      }
       if(captureStages&&file==='packages/core/src/paint/rasterizedSource.ts')return replaceSource(source,'      draw(image, askedFor)',`      const perfDrawStarted=performance.now();
       draw(image, askedFor)
       window.__munariPerf.record('captureStage',{stage:'sourceDrawSync',sourceId:body.sourceId,read,ms:performance.now()-perfDrawStarted})`)

@@ -71,6 +71,7 @@ Each measured phase reports:
 - Route step durations and route verdict counts.
 - `hostSpace` durations and call counts from the route controller only.
 - Completed capture receipts and distinct DOM reads.
+- Started full and region captures, with their summed CSS pixel area.
 - Upload callbacks, source read and generation, texture version, and store size.
 - Repeated upload identities and summed uploaded texel area.
 - Animation frame intervals and Chrome's main-thread task, script, and layout durations.
@@ -202,3 +203,10 @@ other work that ran in the same task. Profiler startup is reported separately
 and excluded from workload tasks. The benchmark also samples its task-duration
 baseline after profiler setup. Trace attribution covers these callbacks; it
 does not measure GPU execution or every task in the capture pipeline.
+
+For input region capture, compare against `6c825565407d062f9c63a9daf6fd2741a1035827`
+at CPU rates `4,6` with `PERF_ENGINES=snapdom`. The working tree opts the Controls
+Project field into region capture. Check that `captureRegions.partial` is
+positive in every candidate input phase; a full-only run does not measure this
+optimization. These counts include calls started during the measured phase,
+which need not equal the number of receipts completed in that phase.

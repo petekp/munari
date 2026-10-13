@@ -68,6 +68,25 @@ when it does not. Pass `{ always: true }` to force snapDOM everywhere, which is
 what a cross-engine test run wants. Call it before the first `Surface` mounts.
 A Surface that is already mounted keeps the engine it was built with.
 
+For isolated text fields, snapDOM can replace a small region in a cached image:
+
+```ts
+enableSnapdomCapture({ isolatedTextInputs: 'input[data-munari-capture-region]' })
+```
+
+Mark eligible inputs with `data-munari-capture-region=""`. This declares that
+value edits affect only pixels inside the input's border box. The field must
+not change surrounding layout, counters or content through CSS state selectors.
+Its capture area must be free of unrelated overlapping paint. Controls' Project
+field is the [working example](apps/lab/src/scenes/controls/Controls.tsx).
+
+This opt-in keeps the original form and input nodes. It supports focused text
+inputs with stable geometry and paint. Focus, other content changes, unsupported
+effects, fractional density and `live` sources use full captures. Call
+`surface.refresh()` for paint changes outside the captured subtree that have no
+observed signal, including CSSOM edits and canvas redraws. The cache adds one
+full-size RGBA bitmap per initialized source; texture uploads remain full-size.
+
 Write for HTML-in-canvas and the same code runs on snapDOM. A Surface whose
 DOM or CSS changes on its own, such as a clock or animation, needs `live`
 for snapDOM to keep re-capturing it,

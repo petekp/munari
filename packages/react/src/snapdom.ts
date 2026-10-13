@@ -32,6 +32,7 @@
 // Ownership: this module owns the snapDOM call and the fallback rule.
 // `@munari/core` owns the source, the ledger and the parking.
 
+import { createInputRegionRasterizer, type CaptureRegionOptions } from './snapdomInputRegions'
 import { snapdom, type SnapdomPlugin } from '@zumer/snapdom'
 import { fieldPseudoElementPlugin } from './snapdomFieldPseudoElements'
 import { fontEmbedPlugin, warmCaptureFonts } from './snapdomFonts'
@@ -52,6 +53,12 @@ export interface SnapdomCaptureOptions {
    * is what the parity gates do.
    */
   always?: boolean
+  /**
+   * Selector for text inputs whose value edits affect only their border box.
+   * Call refresh() for external paint changes without DOM or browser signals.
+   * Layout, focus, style and other content changes use a full capture.
+   */
+  isolatedTextInputs?: string
 }
 
 /**
@@ -112,13 +119,14 @@ const capturePlugins = [fontPlugin, frameSplitPlugin, fieldPlugin]
 /**
  * Ask snapDOM for `element` rendered at the requested per-axis scale.
  *
- * The target is the ELEMENT's own box times the scale, not the backing
+ * Without a clip, the target is the element's own box times the scale, not the backing
  * store: the raster is stretched to fill whatever size it is drawn at, while
  * the store is cut for the host's box and an element smaller than its host
  * has to land small. Measured 2026-09-11: a 260px element in a 300px host
  * asked for the store's 624px came back stretched across all 624 where the
  * native engine drew it in 541.
  *
+ * A clip sizes the output window; the original root still supplies its layout.
  * Per-axis sizes rather than one `scale`, because the two axes differ. The
  * capture is an SVG, so drawing it at the asked-for size is a true render at
  * that size and not an upscale of a smaller one.
@@ -127,6 +135,7 @@ const rasterize = async (
   element: HTMLElement,
   scaleX: number,
   scaleY: number,
+  options: CaptureRegionOptions = {},
 ): Promise<HTMLImageElement> => {
   // Layout size, not `getBoundingClientRect()`: the parked host wears the
   // presented pose while a Surface is held on the page, and a rect read
@@ -139,7 +148,7 @@ const rasterize = async (
   // the backing store was cut for. Asking for the fractional box instead
   // returns a raster one row short of the store, leaving a cleared line
   // along the far edge (measured 2026-09-11).
-  const box = { width: element.offsetWidth, height: element.offsetHeight }
+  const box = { width: options.clip?.width ?? element.offsetWidth, height: options.clip?.height ?? element.offsetHeight }
   const capture = await snapdom(element, {
     // `snapdomFonts` supplies the faces instead. snapDOM's own pass re-derives
     // and re-embeds them on every capture, and on WebKit it also waits out a
@@ -150,6 +159,8 @@ const rasterize = async (
     // as a larger win: the payload collapses to 41 KB and text rasterizes
     // with fallback metrics.
     embedFonts: false,
+    clip: options.clip,
+    invalidate: options.invalidate,
     // The capture is the element's own box. Root shadows and outlines are
     // stripped by default, which is what keeps the raster the same size as
     // the box the texture is stretched over; a Surface's chrome is measured
@@ -183,7 +194,7 @@ const rasterize = async (
   const image = new Image()
   image.src = capture.toRaw()
   await image.decode()
-  // The source uses these dimensions when drawing, including a store resize
+  // Callers use these dimensions when drawing, including a store resize
   // that happened while the SVG was being captured.
   image.width = width
   image.height = height
@@ -225,11 +236,40 @@ export const snapdomCaptureEngine: CaptureEngine = {
  * where the browser has one.
  */
 export function enableSnapdomCapture(options: SnapdomCaptureOptions = {}): void {
-  const engine =
-    !options.always && htmlInCanvasEngine.available() ? htmlInCanvasEngine : snapdomCaptureEngine
+  const selector = options.isolatedTextInputs
+  const fallback: CaptureEngine = selector
+    ? {
+        ...snapdomCaptureEngine,
+        createSource(content, width, height, sourceOptions) {
+          let regions: ReturnType<typeof createInputRegionRasterizer> | null = null
+          let live = sourceOptions?.live === true
+          let refreshPending = false
+          const source = createRasterizedSource(async (element, scaleX, scaleY) => {
+            const invalidate = refreshPending
+            refreshPending = false
+            if (!regions && element.querySelector(selector)) {
+              regions = createInputRegionRasterizer(element, selector, rasterize)
+            }
+            if (invalidate) regions?.invalidate()
+            if (live) {
+              regions?.invalidate()
+              return rasterize(element, scaleX, scaleY, { invalidate })
+            }
+            return regions ? regions.rasterize(scaleX, scaleY) : rasterize(element, scaleX, scaleY, { invalidate })
+          }, 'snapdom', content, width, height, sourceOptions)
+          return {
+            ...source,
+            repaint(next) { refreshPending = true; regions?.invalidate(); source.repaint(next) },
+            setLive(next) { live = next; regions?.invalidate(); source.setLive(next) },
+            dispose() { source.dispose(); regions?.dispose() },
+          }
+        },
+      }
+    : snapdomCaptureEngine
+  const engine = !options.always && htmlInCanvasEngine.available() ? htmlInCanvasEngine : fallback
   setCaptureEngine(engine)
   // Fetch and encode the document's faces now rather than inside the first
   // capture. A capture that beats the fetch embeds nothing and rasterizes that
   // one frame with fallback metrics.
-  if (engine === snapdomCaptureEngine && 'document' in globalThis) warmCaptureFonts()
+  if (engine === fallback && 'document' in globalThis) warmCaptureFonts()
 }

@@ -63,6 +63,7 @@ export {
 } from './paint/lodTier'
 export {
   paintStats,
+  listenForRepaintSignals,
   PARKED_HOST_ATTRIBUTE,
   UnsupportedPlatformError,
   type DomPaintReceipt,

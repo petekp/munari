@@ -41,7 +41,7 @@
 // when snapDOM closes it, and it never touches the live DOM — every write
 // lands on the detached clone.
 
-import type { SnapdomPlugin } from '@zumer/snapdom'
+import type { CaptureMeta, SnapdomPlugin } from '@zumer/snapdom'
 
 const FIELDS = 'input,textarea,select'
 
@@ -204,15 +204,27 @@ function paintPseudo(
  * snapDOM materializes ordinary pseudo-elements as real nodes, so the two
  * trees are NOT structurally parallel — but neither that pass nor any other
  * invents a form field, so the nth field of one is the nth field of the
- * other. Returns the fields it could not place a pseudo for.
+ * other. Clipped placeholders require a unique id or anchor because pruning
+ * removes fields. Returns the fields it could not place a pseudo for.
  */
-export function restoreFieldPseudoElements(root: Element, clone: HTMLElement): Element[] {
-  const live = fieldsOf(root)
+export function restoreFieldPseudoElements(
+  root: Element,
+  clone: HTMLElement,
+  clip?: CaptureMeta['clip'],
+): Element[] {
+  const live = fieldsOf(root).filter((field) => {
+    if (!clip) return true
+    const rect = field.getBoundingClientRect()
+    const view = root.ownerDocument.defaultView
+    const x = rect.left + (view?.scrollX ?? 0), y = rect.top + (view?.scrollY ?? 0)
+    return x < clip.x + clip.width && x + rect.width > clip.x &&
+      y < clip.y + clip.height && y + rect.height > clip.y
+  })
   if (live.length === 0) return []
   const copies = fieldsOf(clone)
   // A mismatch means the pairing assumption broke. Painting into it would
   // style the wrong field, which is worse than the gap being shimmed.
-  if (copies.length !== live.length) return live
+  if (!clip && copies.length !== live.length) return live
 
   const rootRect = root.getBoundingClientRect()
   // One absolutely positioned layer rather than a wrapper per field: an
@@ -225,9 +237,18 @@ export function restoreFieldPseudoElements(root: Element, clone: HTMLElement): E
   const unplaced: Element[] = []
   const rules: string[] = []
   for (const [index, field] of live.entries()) {
-    const copy = copies[index]
-    if (!(copy instanceof HTMLElement)) continue
-    rules.push(placeholderRule(field, copy, `munari-ph-${index}`))
+    let copy: Element | undefined = copies[index]
+    if (clip) {
+      const ids = field.id ? copies.filter((candidate) => candidate.id === field.id) : []
+      const anchor = field.getAttribute('data-munari-anchor')
+      const matches = ids.length === 1 ? ids : anchor
+        ? copies.filter((candidate) => candidate.getAttribute('data-munari-anchor') === anchor) : []
+      copy = matches.length === 1 ? matches[0] : undefined
+    }
+    if (copy instanceof HTMLElement) rules.push(placeholderRule(field, copy, `munari-ph-${index}`))
+    else if ((field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) && field.placeholder) {
+      throw new Error('munari: a clipped placeholder needs a unique id or data-munari-anchor')
+    }
     const before = paintPseudo(field, '::before', rootRect, layer)
     const after = paintPseudo(field, '::after', rootRect, layer)
     if (!before || !after) unplaced.push(field)
@@ -260,7 +281,8 @@ export function fieldPseudoElementPlugin(
     afterClone(context) {
       const clone = context.clone
       if (!(clone instanceof HTMLElement)) return
-      const unplaced = restoreFieldPseudoElements(context.element, clone)
+      const clip = context.clip && context.clip !== 'viewport' ? context.clip : undefined
+      const unplaced = restoreFieldPseudoElements(context.element, clone, clip)
       if (unplaced.length > 0) onUnplaced?.(unplaced)
     },
   }

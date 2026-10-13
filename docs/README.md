@@ -11,6 +11,7 @@ output. Preserve both distinctions when resolving a conflict.
 | Understand how the abstractions fit | [System model](system-model.md), [glossary](../CONTEXT.md) | Current model and constraints |
 | Build the next agent-facing capability | [Agent system plan](agent-system-plan.md) | Work in progress; unbuilt stages are explicit |
 | Choose the next performance fix | [Performance audit](performance-audit.md) | Assessment of 2026-09-26; each remedy is unbuilt unless its finding says otherwise |
+| Check snapDOM input region performance | [Incremental capture report](incremental-capture.md) | Implementation and local benchmark evidence |
 | Add automatic canvas refresh without idle polling | [Automatic canvas refresh spec](automatic-canvas-refresh-spec.md) | Proposed, unbuilt; browser and pixel-lifetime gates are explicit |
 | Add snapDOM as a second capture engine | [Decision #60](decisions.md#60); [plan](capture-engines-plan.md) | Built 2026-09-10; the plan is kept for its reasoning, not maintained |
 | Understand an architectural choice | [Decisions](decisions.md) | Numbered decisions with dated amendments |

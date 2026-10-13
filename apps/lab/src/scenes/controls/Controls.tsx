@@ -168,6 +168,7 @@ function ControlBoard() {
             <span>Project</span>
             <input
               data-munari-anchor="field:project"
+              data-munari-capture-region=""
               value={values.project}
               onChange={(event) => change({ project: event.target.value })}
             />

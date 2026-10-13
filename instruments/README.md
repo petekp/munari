@@ -1337,6 +1337,14 @@ clicks swallowed by the 8px suppressor. Hover kept working the whole time,
 because hover never consults the raycast — the buttons highlighted and
 would not activate, which reads as a React state fault (2026-08-23).
 
+## Input regions
+
+`node instruments/input-regions/run.mjs` compares cached Controls captures with
+fresh full captures. It requires exact RGBA equality and exercises clipping,
+full-capture fallbacks, decode failures and disposal. The
+[probe guide](input-regions/README.md) includes its deliberate placement fault.
+This local Chromium check has no CI membership.
+
 ## Controls performance
 
 `node instruments/performance/run.mjs` measures the actual Controls lab under

@@ -282,7 +282,7 @@ function usedCodepoints(root: Element): Set<number> {
 }
 
 /**
- * Every family the LIVE subtree resolves to.
+ * Families resolved by the live subtree or the requested clip.
  *
  * Read from the live tree through `getComputedStyle`, not from the clone:
  * snapDOM dedups its inlined styles into generated classes, so a clone's
@@ -291,11 +291,12 @@ function usedCodepoints(root: Element): Set<number> {
  * 2026-09-11 by checking the serialized payload: 41 KB with zero `@font-face`
  * rules against snapDOM's own 311 KB).
  *
- * One `getComputedStyle` per node is the cost this module accepts. It is the
- * same order as the walk snapDOM was already doing, against a pass that
- * re-encoded the whole font every frame.
+ * The full path reads one style per node. A clip also reads active pseudos
+ * and its intersecting ancestors so inherited fonts remain available.
  */
-function usedFamilies(root: Element): Set<string> {
+type FontClip = { x: number; y: number; width: number; height: number }
+
+function usedFamilies(root: Element, clip?: FontClip | 'viewport' | null): Set<string> {
   const families = new Set<string>()
   const view = root.ownerDocument.defaultView
   if (!view) return families
@@ -305,9 +306,28 @@ function usedFamilies(root: Element): Set<string> {
       if (trimmed) families.add(trimmed.toLowerCase())
     }
   }
-  add(view.getComputedStyle(root).fontFamily)
-  for (const element of Array.from(root.querySelectorAll('*'))) {
+  const nodes = [root, ...root.querySelectorAll('*')]
+  if (!clip || clip === 'viewport') {
+    for (const element of nodes) add(view.getComputedStyle(element).fontFamily)
+    return families
+  }
+  const left = clip.x - view.scrollX, top = clip.y - view.scrollY
+  const right = left + clip.width, bottom = top + clip.height
+  const selected = new Set<Element>([root])
+  for (const element of nodes) {
+    const rect = element.getBoundingClientRect()
+    if (rect.right <= left || rect.left >= right || rect.bottom <= top || rect.top >= bottom) continue
+    for (let node: Element | null = element; node && root.contains(node); node = node.parentElement) selected.add(node)
+  }
+  for (const element of selected) {
     add(view.getComputedStyle(element).fontFamily)
+    for (const pseudo of ['::before', '::after']) {
+      const style = view.getComputedStyle(element, pseudo)
+      if (style.content && style.content !== 'none' && style.content !== 'normal') add(style.fontFamily)
+    }
+    if ((element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) && element.placeholder) {
+      add(view.getComputedStyle(element, '::placeholder').fontFamily)
+    }
   }
   return families
 }
@@ -351,13 +371,14 @@ async function fontCssFor(
   clone: Element,
   doc: Document,
   onUnreadable?: (href: string) => void,
+  clip?: FontClip | 'viewport' | null,
 ): Promise<string> {
   const all = await declaredFaces(doc, onUnreadable)
   if (all.length === 0) return ''
   // Families off the LIVE tree (the clone carries classes, not inline styles);
   // codepoints off the CLONE, because a plugin earlier in the chain may have
   // put text there that the live tree never had.
-  const families = usedFamilies(live)
+  const families = usedFamilies(live, clip)
   const points = usedCodepoints(clone)
   if (points.size === 0) return ''
   const wanted = chooseFaces(all, families, points)
@@ -383,7 +404,7 @@ export function fontEmbedPlugin(onUnreadable?: (href: string) => void): SnapdomP
       const live = context.element
       if (!(clone instanceof Element) || !(live instanceof Element)) return
       const doc = live.ownerDocument
-      context.fontsCSS = await fontCssFor(live, clone, doc, onUnreadable)
+      context.fontsCSS = await fontCssFor(live, clone, doc, onUnreadable, context.clip)
     },
   }
 }

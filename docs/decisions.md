@@ -4138,6 +4138,38 @@ snapDOM with that engine's fidelity ceiling (platform.md #28).
 
 ## #62 — A capture is paid for once, and a live one is paced by a period (2026-09-12)
 
+**Amendment, 2026-10-13: isolated text input regions.**
+`enableSnapdomCapture({ isolatedTextInputs: selector })` opts declared text
+fields into region capture. A value edit must affect only the field's border
+box. CSS state dependencies, counters and overlapping paint cannot extend that
+edit into surrounding content. This author declaration supplements runtime
+invalidation; it is not inferred from a MutationObserver.
+
+The adapter uses snapDOM's supported root `clip` option and embeds the fonts
+needed in that clip. It clears and replaces the region in a private full bitmap.
+Core receives a complete image and retains its existing read, receipt, pacing
+and disposal rules. The form keeps its original nodes and input ownership.
+No dependency fork or opaque capture cache is used.
+
+Focus, unrelated content, layout, density, effects and resource changes require
+a full capture. Fractional density, fractional root origins, transformed or
+filtered ancestors and live sources also use the full path. Explicit refresh
+invalidates upstream style snapshots. Stylesheet and viewport signals invalidate
+the cached base without creating another capture scheduler. Unsupported
+placeholder pairing uses full capture. A failed cache write invalidates its
+metadata before another region may reuse it.
+
+The private bitmap adds about 6.3 MiB of RGBA storage for Controls at
+1520 × 1080 pixels. This is arithmetic, not a resident-memory measurement.
+Texture uploads retain the full source dimensions. The default snapDOM engine
+keeps the direct-image path from the preceding amendment.
+
+The [input region proof](../instruments/input-regions/README.md) compares actual
+Controls pixels with full captures and includes placement and failed-draw
+controls. The [measurement report](incremental-capture.md) records the paired
+4× and 6× results and their limits.
+
+
 **Amendment, 2026-10-13: draw the decoded SVG once.** The snapDOM rasterizer
 returns its decoded `HTMLImageElement`, with width and height set to the
 requested per-axis capture dimensions. The existing core `RasterImage`
