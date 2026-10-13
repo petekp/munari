@@ -1,5 +1,5 @@
 // Webfont embedding for snapDOM captures — read once per stylesheet, spliced
-// into every clone.
+// into the renderer's font stylesheet.
 //
 // The law: a capture carries the same font bytes the page rendered with, and
 // pays to encode them exactly once.
@@ -372,32 +372,18 @@ async function fontCssFor(
   return blocks.join('')
 }
 
-/**
- * The plugin that carries the fonts.
- *
- * `afterClone` is where the clone exists and is still mutable. A `<style>`
- * appended here survives serialization: snapDOM lifts out only its own
- * `style[data-sd]` elements, and its per-node style pass returns early on a
- * `STYLE` tag, so this block is neither rewritten nor charged per-node.
- *
- * `pure` is true because the same subtree yields the same block, which is what
- * keeps snapDOM's repeat-capture memoization alive — a capture per frame
- * cannot afford to lose it.
- */
+// beforeRender follows snapDOM's fontsCSS initialization. A separate clone
+// stylesheet makes its style-interning pass parse the font payload again.
 export function fontEmbedPlugin(onUnreadable?: (href: string) => void): SnapdomPlugin {
   return {
     name: 'munari-font-embed',
     pure: true,
-    async afterClone(context) {
+    async beforeRender(context) {
       const clone = context.clone
       const live = context.element
       if (!(clone instanceof Element) || !(live instanceof Element)) return
       const doc = live.ownerDocument
-      const css = await fontCssFor(live, clone, doc, onUnreadable)
-      if (!css) return
-      const style = doc.createElement('style')
-      style.textContent = css
-      clone.appendChild(style)
+      context.fontsCSS = await fontCssFor(live, clone, doc, onUnreadable)
     },
   }
 }

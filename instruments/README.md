@@ -1337,6 +1337,15 @@ clicks swallowed by the 8px suppressor. Hover kept working the whole time,
 because hover never consults the raycast — the buttons highlighted and
 would not activate, which reads as a React state fault (2026-08-23).
 
+## Controls performance
+
+`node instruments/performance/run.mjs` measures the actual Controls lab under
+normal and throttled CPU execution. It records capture uploads, native-pointer
+preparation, frame intervals and main-thread work across input and handoff.
+The [benchmark guide](performance/README.md) describes paired Git baselines,
+observer overhead and screenshot evidence. It is a local diagnostic with no
+CI membership or portable speed threshold.
+
 ## House rules
 
 - Scenes hang their live state on a `window.__<scene>` hook so a probe

@@ -73,7 +73,10 @@ export function SurfaceAnchor({ name, offset = 0, children }: SurfaceAnchorProps
 
   const [box, setBox] = useState(() => scope.box(name))
   useEffect(() => {
-    const read = () => setBox(scope.box(name))
+    const read = () => {
+      const next = scope.box(name)
+      setBox(current => sameRect(current, next) ? current : next)
+    }
     read()
     return scope.subscribe(read)
   }, [scope, name])
@@ -257,16 +260,15 @@ function sameRects(
     const left = a[key]
     const right = b[key]
     if (!left || !right) return false
-    if (
-      left.uMin !== right.uMin ||
-      left.uMax !== right.uMax ||
-      left.vMin !== right.vMin ||
-      left.vMax !== right.vMax ||
-      left.cssWidth !== right.cssWidth ||
-      left.cssHeight !== right.cssHeight
-    ) {
-      return false
-    }
+    if (!sameRect(left, right)) return false
   }
   return true
+}
+
+function sameRect(a: SourceUvRect | null, b: SourceUvRect | null): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return a.uMin === b.uMin && a.uMax === b.uMax &&
+    a.vMin === b.vMin && a.vMax === b.vMax &&
+    a.cssWidth === b.cssWidth && a.cssHeight === b.cssHeight
 }

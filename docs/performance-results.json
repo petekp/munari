@@ -1,0 +1,797 @@
+{
+  "evidenceDirectory": "/tmp/munari-main-final",
+  "metadata": {
+    "startedAt": "2026-10-13T04:57:24.756Z",
+    "head": "57783c199a4c5d313dd34b2fe53c4bf922d32587",
+    "dirty": "M  apps/lab/src/scenes/controls/Controls.tsx\nM  instruments/README.md\n M packages/react/src/primitives/surface/SurfaceAnchor.tsx\nM  packages/react/src/snapdomFonts.test.ts\nM  packages/react/src/snapdomFonts.ts\n?? docs/performance-optimization.md\n?? instruments/performance/",
+    "node": "v24.21.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4 Max",
+    "cpuCount": 16,
+    "viewport": {
+      "width": 1440,
+      "height": 1000,
+      "deviceScaleFactor": 2
+    },
+    "resizedViewport": {
+      "width": 1320,
+      "height": 920,
+      "deviceScaleFactor": 2
+    },
+    "input": " Repeatable browser input 0123456789.",
+    "inputDelayMs": 40,
+    "idleMs": 1200,
+    "trials": 3,
+    "rates": [
+      4,
+      6
+    ],
+    "engines": [
+      "snapdom"
+    ],
+    "versions": [
+      {
+        "label": "baseline",
+        "commit": "57783c199a4c5d313dd34b2fe53c4bf922d32587",
+        "labSources": true
+      },
+      {
+        "label": "working-tree",
+        "commit": null
+      }
+    ],
+    "routeTiming": false,
+    "profile": false,
+    "captureStages": false,
+    "maxFrameP95Ms": null,
+    "baselineLabSources": true,
+    "chromeArgs": [
+      "--enable-unsafe-webgpu",
+      "--disable-renderer-backgrounding",
+      "--disable-backgrounding-occluded-windows"
+    ],
+    "requestedBackend": "auto",
+    "dependencyVersions": {
+      "three": "0.186.1",
+      "@react-three/fiber": "9.8.1",
+      "@zumer/snapdom": "3.3.3",
+      "vite": "8.2.0",
+      "puppeteer-core": "25.4.0"
+    }
+  },
+  "browsers": [
+    "Chrome/155.0.8059.40"
+  ],
+  "gpus": [
+    {
+      "backend": "webgpu",
+      "rendererClass": "WebGPURenderer",
+      "vendor": "apple",
+      "renderer": null,
+      "architecture": "metal-3",
+      "device": ""
+    }
+  ],
+  "completedTrials": 12,
+  "expectedTrials": 12,
+  "summaries": [
+    {
+      "engine": "snapdom",
+      "rate": 4,
+      "version": "baseline",
+      "trials": 3,
+      "phases": {
+        "scene-idle": {
+          "uploadCallbacks": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "repeatedUploadIdentities": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "uploadedTexelArea": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "routeHostSpaceMs.count": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "routeStepMs.total": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "mainThreadTaskMs": {
+            "samples": 3,
+            "median": 182.85899999999967,
+            "min": 178.49099999999973,
+            "max": 193.39799999999974
+          },
+          "completedCaptures": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "inputToUploadMs.p50": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "inputToUploadMs.p95": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "frameIntervalMs.p95": {
+            "samples": 3,
+            "median": 16.700000000000728,
+            "min": 16.700000000000728,
+            "max": 16.800000000000182
+          },
+          "frameIntervalMs.max": {
+            "samples": 3,
+            "median": 16.800000000000182,
+            "min": 16.799999999999272,
+            "max": 16.800000000000182
+          }
+        },
+        "scene-input": {
+          "uploadCallbacks": {
+            "samples": 3,
+            "median": 13,
+            "min": 12,
+            "max": 14
+          },
+          "repeatedUploadIdentities": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "uploadedTexelArea": {
+            "samples": 3,
+            "median": 21340800,
+            "min": 19699200,
+            "max": 22982400
+          },
+          "routeHostSpaceMs.count": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "routeStepMs.total": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "mainThreadTaskMs": {
+            "samples": 3,
+            "median": 3171.867,
+            "min": 3141.1629999999996,
+            "max": 3238.396
+          },
+          "completedCaptures": {
+            "samples": 3,
+            "median": 12,
+            "min": 12,
+            "max": 13
+          },
+          "inputToUploadMs.p50": {
+            "samples": 3,
+            "median": 278.20000000298023,
+            "min": 278,
+            "max": 286.80000000447035
+          },
+          "inputToUploadMs.p95": {
+            "samples": 3,
+            "median": 450.8999999985099,
+            "min": 360.79999999701977,
+            "max": 462.20000000298023
+          },
+          "frameIntervalMs.p95": {
+            "samples": 3,
+            "median": 83.29999999999927,
+            "min": 83.19999999999982,
+            "max": 83.29999999999927
+          },
+          "frameIntervalMs.max": {
+            "samples": 3,
+            "median": 116.70000000000073,
+            "min": 100.10000000000036,
+            "max": 133.3000000000011
+          }
+        }
+      }
+    },
+    {
+      "engine": "snapdom",
+      "rate": 4,
+      "version": "working-tree",
+      "trials": 3,
+      "phases": {
+        "scene-idle": {
+          "uploadCallbacks": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "repeatedUploadIdentities": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "uploadedTexelArea": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "routeHostSpaceMs.count": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "routeStepMs.total": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "mainThreadTaskMs": {
+            "samples": 3,
+            "median": 189.762,
+            "min": 183.28299999999987,
+            "max": 207.51199999999992
+          },
+          "completedCaptures": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "inputToUploadMs.p50": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "inputToUploadMs.p95": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "frameIntervalMs.p95": {
+            "samples": 3,
+            "median": 16.700000000000728,
+            "min": 16.699999999999818,
+            "max": 16.700000000000728
+          },
+          "frameIntervalMs.max": {
+            "samples": 3,
+            "median": 16.799999999999272,
+            "min": 16.700000000000728,
+            "max": 16.800000000000182
+          }
+        },
+        "scene-input": {
+          "uploadCallbacks": {
+            "samples": 3,
+            "median": 11,
+            "min": 10,
+            "max": 11
+          },
+          "repeatedUploadIdentities": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "uploadedTexelArea": {
+            "samples": 3,
+            "median": 18057600,
+            "min": 16416000,
+            "max": 18057600
+          },
+          "routeHostSpaceMs.count": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "routeStepMs.total": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "mainThreadTaskMs": {
+            "samples": 3,
+            "median": 1824.3290000000002,
+            "min": 1816.1519999999998,
+            "max": 1839.1219999999996
+          },
+          "completedCaptures": {
+            "samples": 3,
+            "median": 10,
+            "min": 10,
+            "max": 10
+          },
+          "inputToUploadMs.p50": {
+            "samples": 3,
+            "median": 230.20000000298023,
+            "min": 221.60000000149012,
+            "max": 240.5
+          },
+          "inputToUploadMs.p95": {
+            "samples": 3,
+            "median": 301.3999999985099,
+            "min": 299.20000000298023,
+            "max": 311.3999999985099
+          },
+          "frameIntervalMs.p95": {
+            "samples": 3,
+            "median": 66.69999999999982,
+            "min": 66.59999999999945,
+            "max": 83.29999999999927
+          },
+          "frameIntervalMs.max": {
+            "samples": 3,
+            "median": 83.40000000000146,
+            "min": 83.30000000000018,
+            "max": 100
+          }
+        }
+      }
+    },
+    {
+      "engine": "snapdom",
+      "rate": 6,
+      "version": "baseline",
+      "trials": 3,
+      "phases": {
+        "scene-idle": {
+          "uploadCallbacks": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "repeatedUploadIdentities": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "uploadedTexelArea": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "routeHostSpaceMs.count": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "routeStepMs.total": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "mainThreadTaskMs": {
+            "samples": 3,
+            "median": 313.809,
+            "min": 269.99700000000007,
+            "max": 369.38899999999995
+          },
+          "completedCaptures": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "inputToUploadMs.p50": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "inputToUploadMs.p95": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "frameIntervalMs.p95": {
+            "samples": 3,
+            "median": 16.700000000000728,
+            "min": 16.700000000000728,
+            "max": 16.700000000000728
+          },
+          "frameIntervalMs.max": {
+            "samples": 3,
+            "median": 16.800000000000182,
+            "min": 16.800000000000182,
+            "max": 16.800000000000182
+          }
+        },
+        "scene-input": {
+          "uploadCallbacks": {
+            "samples": 3,
+            "median": 13,
+            "min": 12,
+            "max": 13
+          },
+          "repeatedUploadIdentities": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "uploadedTexelArea": {
+            "samples": 3,
+            "median": 21340800,
+            "min": 19699200,
+            "max": 21340800
+          },
+          "routeHostSpaceMs.count": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "routeStepMs.total": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "mainThreadTaskMs": {
+            "samples": 3,
+            "median": 4796.551000000001,
+            "min": 4757.923000000001,
+            "max": 4841.850000000001
+          },
+          "completedCaptures": {
+            "samples": 3,
+            "median": 12,
+            "min": 12,
+            "max": 12
+          },
+          "inputToUploadMs.p50": {
+            "samples": 3,
+            "median": 431.1000000014901,
+            "min": 401.19999999552965,
+            "max": 435.80000000447035
+          },
+          "inputToUploadMs.p95": {
+            "samples": 3,
+            "median": 648.3999999985099,
+            "min": 644.7999999970198,
+            "max": 692.2999999970198
+          },
+          "frameIntervalMs.p95": {
+            "samples": 3,
+            "median": 150,
+            "min": 133.39999999999964,
+            "max": 166.70000000000073
+          },
+          "frameIntervalMs.max": {
+            "samples": 3,
+            "median": 200,
+            "min": 200,
+            "max": 216.59999999999945
+          }
+        }
+      }
+    },
+    {
+      "engine": "snapdom",
+      "rate": 6,
+      "version": "working-tree",
+      "trials": 3,
+      "phases": {
+        "scene-idle": {
+          "uploadCallbacks": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "repeatedUploadIdentities": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "uploadedTexelArea": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "routeHostSpaceMs.count": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "routeStepMs.total": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "mainThreadTaskMs": {
+            "samples": 3,
+            "median": 263.0100000000004,
+            "min": 260.345,
+            "max": 286.1549999999999
+          },
+          "completedCaptures": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "inputToUploadMs.p50": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "inputToUploadMs.p95": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "frameIntervalMs.p95": {
+            "samples": 3,
+            "median": 16.799999999999272,
+            "min": 16.700000000000728,
+            "max": 16.800000000000182
+          },
+          "frameIntervalMs.max": {
+            "samples": 3,
+            "median": 16.800000000000182,
+            "min": 16.800000000000182,
+            "max": 16.800000000000182
+          }
+        },
+        "scene-input": {
+          "uploadCallbacks": {
+            "samples": 3,
+            "median": 10,
+            "min": 10,
+            "max": 11
+          },
+          "repeatedUploadIdentities": {
+            "samples": 3,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "uploadedTexelArea": {
+            "samples": 3,
+            "median": 16416000,
+            "min": 16416000,
+            "max": 18057600
+          },
+          "routeHostSpaceMs.count": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "routeStepMs.total": {
+            "samples": 0,
+            "median": null,
+            "min": null,
+            "max": null
+          },
+          "mainThreadTaskMs": {
+            "samples": 3,
+            "median": 2688.936,
+            "min": 2671.0469999999996,
+            "max": 2963.7279999999987
+          },
+          "completedCaptures": {
+            "samples": 3,
+            "median": 9,
+            "min": 9,
+            "max": 10
+          },
+          "inputToUploadMs.p50": {
+            "samples": 3,
+            "median": 326.6000000014901,
+            "min": 303,
+            "max": 328.5
+          },
+          "inputToUploadMs.p95": {
+            "samples": 3,
+            "median": 494.29999999701977,
+            "min": 400.3999999985099,
+            "max": 525.0999999940395
+          },
+          "frameIntervalMs.p95": {
+            "samples": 3,
+            "median": 133.29999999999927,
+            "min": 116.69999999999982,
+            "max": 133.39999999999964
+          },
+          "frameIntervalMs.max": {
+            "samples": 3,
+            "median": 150.10000000000036,
+            "min": 150,
+            "max": 166.59999999999854
+          }
+        }
+      }
+    }
+  ],
+  "sourceComparison": {
+    "lab": {
+      "files": 68,
+      "equal": false,
+      "differences": [
+        {
+          "file": "apps/lab/src/scenes/controls/Controls.tsx",
+          "baseline": "9507073fb4e98739277bd34ccc18469b2777ebd473fb12a0254af68e6c294d37",
+          "workingTree": "481b338bc7b42ef7cc6ded00d497f0cde390fcd7c12ef6a89603eae1125ee733"
+        }
+      ]
+    },
+    "changedPackageSources": [
+      {
+        "file": "packages/react/src/primitives/surface/SurfaceAnchor.tsx",
+        "baseline": "ccb21889d51c192d75a4bd708383d18e529ce30c3135715bfb008839a59a43ec",
+        "workingTree": "83691d37f361001d0d6fe38a27ba105f14b58934ed6ac6cef50396802a86b45e"
+      },
+      {
+        "file": "packages/react/src/snapdomFonts.ts",
+        "baseline": "faf402a4722feba5bede48489f65780492ea1a66a0a6b90e7e438cc32aa7bd7c",
+        "workingTree": "95183365a08401992b9bfd9b33dbfcf2f6ffc14594a9f0ef355b5a5f40d555a5"
+      }
+    ]
+  },
+  "screenshots": [
+    {
+      "engine": "snapdom",
+      "rate": 4,
+      "trial": 1,
+      "baseline": "baseline-snapdom-cpu4-trial1",
+      "workingTree": "working-tree-snapdom-cpu4-trial1",
+      "files": {
+        "scene-edited.png": {
+          "baseline": "cfbd1de296401f9d083129351d1bc2fe4e2434497d2b3b8e25f3a90e112b18b3",
+          "workingTree": "cfbd1de296401f9d083129351d1bc2fe4e2434497d2b3b8e25f3a90e112b18b3",
+          "equal": true
+        },
+        "scene-edited-resized.png": {
+          "baseline": "2cd080d1542102ac01f0dc42d16c8c4155aedf65da72d747f895581876926d6c",
+          "workingTree": "2cd080d1542102ac01f0dc42d16c8c4155aedf65da72d747f895581876926d6c",
+          "equal": true
+        }
+      }
+    },
+    {
+      "engine": "snapdom",
+      "rate": 4,
+      "trial": 2,
+      "baseline": "baseline-snapdom-cpu4-trial2",
+      "workingTree": "working-tree-snapdom-cpu4-trial2",
+      "files": {
+        "scene-edited.png": {
+          "baseline": "cfbd1de296401f9d083129351d1bc2fe4e2434497d2b3b8e25f3a90e112b18b3",
+          "workingTree": "cfbd1de296401f9d083129351d1bc2fe4e2434497d2b3b8e25f3a90e112b18b3",
+          "equal": true
+        },
+        "scene-edited-resized.png": {
+          "baseline": "2cd080d1542102ac01f0dc42d16c8c4155aedf65da72d747f895581876926d6c",
+          "workingTree": "2cd080d1542102ac01f0dc42d16c8c4155aedf65da72d747f895581876926d6c",
+          "equal": true
+        }
+      }
+    },
+    {
+      "engine": "snapdom",
+      "rate": 4,
+      "trial": 3,
+      "baseline": "baseline-snapdom-cpu4-trial3",
+      "workingTree": "working-tree-snapdom-cpu4-trial3",
+      "files": {
+        "scene-edited.png": {
+          "baseline": "cfbd1de296401f9d083129351d1bc2fe4e2434497d2b3b8e25f3a90e112b18b3",
+          "workingTree": "cfbd1de296401f9d083129351d1bc2fe4e2434497d2b3b8e25f3a90e112b18b3",
+          "equal": true
+        },
+        "scene-edited-resized.png": {
+          "baseline": "2cd080d1542102ac01f0dc42d16c8c4155aedf65da72d747f895581876926d6c",
+          "workingTree": "2cd080d1542102ac01f0dc42d16c8c4155aedf65da72d747f895581876926d6c",
+          "equal": true
+        }
+      }
+    },
+    {
+      "engine": "snapdom",
+      "rate": 6,
+      "trial": 1,
+      "baseline": "baseline-snapdom-cpu6-trial1",
+      "workingTree": "working-tree-snapdom-cpu6-trial1",
+      "files": {
+        "scene-edited.png": {
+          "baseline": "cfbd1de296401f9d083129351d1bc2fe4e2434497d2b3b8e25f3a90e112b18b3",
+          "workingTree": "cfbd1de296401f9d083129351d1bc2fe4e2434497d2b3b8e25f3a90e112b18b3",
+          "equal": true
+        },
+        "scene-edited-resized.png": {
+          "baseline": "2cd080d1542102ac01f0dc42d16c8c4155aedf65da72d747f895581876926d6c",
+          "workingTree": "2cd080d1542102ac01f0dc42d16c8c4155aedf65da72d747f895581876926d6c",
+          "equal": true
+        }
+      }
+    },
+    {
+      "engine": "snapdom",
+      "rate": 6,
+      "trial": 2,
+      "baseline": "baseline-snapdom-cpu6-trial2",
+      "workingTree": "working-tree-snapdom-cpu6-trial2",
+      "files": {
+        "scene-edited.png": {
+          "baseline": "cfbd1de296401f9d083129351d1bc2fe4e2434497d2b3b8e25f3a90e112b18b3",
+          "workingTree": "cfbd1de296401f9d083129351d1bc2fe4e2434497d2b3b8e25f3a90e112b18b3",
+          "equal": true
+        },
+        "scene-edited-resized.png": {
+          "baseline": "2cd080d1542102ac01f0dc42d16c8c4155aedf65da72d747f895581876926d6c",
+          "workingTree": "2cd080d1542102ac01f0dc42d16c8c4155aedf65da72d747f895581876926d6c",
+          "equal": true
+        }
+      }
+    },
+    {
+      "engine": "snapdom",
+      "rate": 6,
+      "trial": 3,
+      "baseline": "baseline-snapdom-cpu6-trial3",
+      "workingTree": "working-tree-snapdom-cpu6-trial3",
+      "files": {
+        "scene-edited.png": {
+          "baseline": "cfbd1de296401f9d083129351d1bc2fe4e2434497d2b3b8e25f3a90e112b18b3",
+          "workingTree": "cfbd1de296401f9d083129351d1bc2fe4e2434497d2b3b8e25f3a90e112b18b3",
+          "equal": true
+        },
+        "scene-edited-resized.png": {
+          "baseline": "2cd080d1542102ac01f0dc42d16c8c4155aedf65da72d747f895581876926d6c",
+          "workingTree": "2cd080d1542102ac01f0dc42d16c8c4155aedf65da72d747f895581876926d6c",
+          "equal": true
+        }
+      }
+    }
+  ]
+}

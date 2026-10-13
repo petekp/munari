@@ -25,8 +25,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type Dispatch,
-  type SetStateAction,
 } from 'react'
 import { RoundedBox } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
@@ -107,12 +105,8 @@ const noRaycast = () => {}
 
 // ── retained HTML ───────────────────────────────────────────────────────
 
-interface ControlBoardProps {
-  values: ControlValues
-  setValues: Dispatch<SetStateAction<ControlValues>>
-}
-
-function ControlBoard({ values, setValues }: ControlBoardProps) {
+function ControlBoard() {
+  const [values, setValues] = useState<ControlValues>(INITIAL_VALUES)
   const id = useId()
   const range = useRef<HTMLInputElement>(null)
   const draggingRange = useRef(false)
@@ -623,7 +617,6 @@ export function ControlsApp() {
   const status = useSurfaceStatus(surface)
   const state = { supported: status.supported, presented: status.presentation, isChanging: status.isTransitioning }
   controlsProof.status = status
-  const [values, setValues] = useState<ControlValues>(INITIAL_VALUES)
   const [requestedInScene, setRequestedInScene] = useState(false)
   controlsProof.request = setRequestedInScene
 
@@ -636,7 +629,7 @@ export function ControlsApp() {
     }
   }, [state.supported, requestedInScene])
 
-  const pageBoard = <ControlBoard values={values} setValues={setValues} />
+  const pageBoard = <ControlBoard />
 
   return (
     <div className="controls-page">

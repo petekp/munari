@@ -5,6 +5,7 @@
 // embedding nothing (2026-09-11).
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { CaptureContext } from '@zumer/snapdom'
 import { chooseFaces, fontEmbedPlugin, parseRanges, warmCaptureFonts } from './snapdomFonts'
 
 /** A face as `chooseFaces` sees it: a family and a parsed range. */
@@ -80,13 +81,17 @@ describe('fontEmbedPlugin', () => {
       return new Response(body)
     })
 
-  /** The `@font-face` block the plugin appends to a clone of `live`. */
   const carried = async (live: HTMLElement, onUnreadable?: (href: string) => void) => {
-    // SAFETY: cloning an element yields an element.
-    const clone = live.cloneNode(true) as Element
-    // SAFETY: the plugin's afterClone reads only `element` and `clone`.
-    await fontEmbedPlugin(onUnreadable).afterClone?.({ element: live, clone } as never)
-    return clone.querySelector('style')?.textContent ?? ''
+    const clone = live.cloneNode(true)
+    if (!(clone instanceof HTMLElement)) throw new Error('Expected an HTML clone')
+    const context: CaptureContext = {
+      element: live, clone, fontsCSS: '', exclude: [], excludePredicates: null,
+      filter: null, format: 'svg', type: 'svg', needs: 'render',
+      shouldExclude: () => false,
+      get options() { return context },
+    }
+    await fontEmbedPlugin(onUnreadable).beforeRender?.(context)
+    return context.fontsCSS ?? ''
   }
 
   const letter = (family: string) => {
