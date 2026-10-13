@@ -73,6 +73,13 @@ function hostSpace(...args: Parameters<typeof measuredHostSpace>) {
 }
 
 function observeSnapdom(source) {
+  const canvasReturn='  return canvas\n}',imageReturn='  return image\n}'
+  const returnsCanvas=source.includes(canvasReturn),returnsImage=source.includes(imageReturn)
+  assert.ok(returnsCanvas!==returnsImage,'Unknown snapDOM rasterizer return shape')
+  if(returnsImage) {
+    assert.ok(source.includes('  image.width = width\n  image.height = height\n  return image\n}'),'Decoded-image capture must carry its target dimensions')
+    assert.ok(!source.includes('  context.drawImage(image, 0, 0, width, height)'),'Decoded-image capture unexpectedly has an intermediate draw')
+  }
   source=replaceSource(source,'const capturePlugins = [fontPlugin, frameSplitPlugin, fieldPlugin]',`
 const perfCaptures=new WeakMap<Element,{id:number;sourceId:number|null;read:number|null;started:number;firstCloneAt?:number;lastCloneAt?:number;beforeRenderAt?:number}>();
 const perfFirstPlugin: SnapdomPlugin={name:'munari-perf-first',pure:true,
@@ -102,10 +109,12 @@ const capturePlugins=[perfFirstPlugin,fontPlugin,frameSplitPlugin,fieldPlugin,pe
   source=replaceSource(source,'  await image.decode()',`  const perfDecodeStarted=performance.now();
   await image.decode()
   window.__munariPerf.stage(perfCapture,'decodeWall',performance.now()-perfDecodeStarted)`)
-  source=replaceSource(source,'  context.drawImage(image, 0, 0, width, height)',`  const perfDrawStarted=performance.now();
+  if(returnsCanvas)source=replaceSource(source,'  context.drawImage(image, 0, 0, width, height)',`  const perfDrawStarted=performance.now();
   context.drawImage(image, 0, 0, width, height)
   window.__munariPerf.stage(perfCapture,'intermediateDrawSync',performance.now()-perfDrawStarted)`)
-  return replaceSource(source,'  return canvas\n}',`  return canvas
+  const result=returnsCanvas?'canvas':'image'
+  return replaceSource(source,returnsCanvas?canvasReturn:imageReturn,`  window.__munariPerf.record('rasterizerOutput',{captureId:perfCapture.id,sourceId:perfCapture.sourceId,read:perfCapture.read,outputType:'${returnsCanvas?'canvas':'decoded-image'}',width:${result}.width,height:${result}.height});
+  return ${result}
   }finally{perfCaptures.delete(element)}
 }`)
 }

@@ -6,7 +6,7 @@ throttling. Each trial opens a fresh headless Chrome session. Browser sessions
 run serially.
 
 ```sh
-PERF_BASELINE_REF=57783c199a4c5d313dd34b2fe53c4bf922d32587 \
+PERF_BASELINE_REF=7b0f8a181fede4739aa18245113c37773fcc640e \
 PERF_CPU_RATES=4,6 PERF_ROUTE_TIMING=0 PERF_TRIALS=3 \
 PERF_OUTPUT=/tmp/munari-performance \
 node instruments/performance/run.mjs
@@ -157,7 +157,10 @@ Each capture has an element-keyed record and a capture ID.
 Stage records include call-to-first-afterClone preparation wall time,
 existing afterClone hooks and their animation-frame yield, time before
 beforeRender, beforeRender-to-afterRender wall time, SVG payload inspection,
-image decoding, the intermediate canvas draw, and the source canvas draw.
+image decoding, the intermediate canvas draw when present, and the retained
+source canvas draw. The observer supports canvas and decoded-image rasterizer
+returns and rejects an unknown return shape. Output records identify the shape
+and target dimensions. A direct decoded image has no intermediate draw sample.
 Wall times include asynchronous waits. Draw times measure synchronous calls.
 Payload records contain lengths, font-face counts, and family labels.
 They contain no font bytes. Payload inspection overhead is recorded separately.
@@ -176,3 +179,26 @@ negative deltas, reordered samples, discarded timestamps outside the profile,
 and time without a sample. Sample counts remain separate from estimated time.
 Profile locations refer to Chrome's served code. A trace can show browser
 rendering work outside JavaScript samples.
+
+
+Summarize capture callbacks and their native rendering work:
+
+```sh
+node instruments/performance/trace-summary.mjs \
+  /tmp/munari-response-profile/working-tree-snapdom-cpu4-trial1/scene-input.trace.json
+```
+
+The trace summary finds renderer-main animation frame and timer callbacks
+from `packages/react/src/snapdom.ts`. It binds timer fires to their installation
+using the thread, frame and timer ID. A timer without a source function can
+use its installation stack. When that stack is absent, a timer installed
+within a known snapDOM frame callback is attributed to that scheduling
+callback. A directly attributed timer needs no animation-frame callback.
+The output labels the attribution and callback kind. It groups
+served-code locations and reports median, p95 and maximum durations. Callback durations
+include their continuations. Layout and style-update durations use interval
+unions to avoid counting nested work twice. Containing task durations include
+other work that ran in the same task. Profiler startup is reported separately
+and excluded from workload tasks. The benchmark also samples its task-duration
+baseline after profiler setup. Trace attribution covers these callbacks; it
+does not measure GPU execution or every task in the capture pipeline.

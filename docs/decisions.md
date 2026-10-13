@@ -4138,6 +4138,19 @@ snapDOM with that engine's fidelity ceiling (platform.md #28).
 
 ## #62 — A capture is paid for once, and a live one is paced by a period (2026-09-12)
 
+**Amendment, 2026-10-13: draw the decoded SVG once.** The snapDOM rasterizer
+returns its decoded `HTMLImageElement`, with width and height set to the
+requested per-axis capture dimensions. The existing core `RasterImage`
+contract accepts that image and draws it into the retained source canvas.
+This removes the intermediate canvas allocation and full-size bitmap copy.
+At the measured 1520 × 1080 capture size, one RGBA8 plane is about 6.3 MiB by
+arithmetic; resident memory was not measured. Capture cadence, the frame yield,
+fonts and density are unchanged. Both capture engines passed their gate, and all 12 origin cases
+passed, and 12 matched Controls screenshot pairs were byte-identical.
+The [performance report](performance-optimization.md) records the modest
+latency/task improvements and remaining native SVG frame stalls. No public
+contract changes.
+
 **Amendment, 2026-10-11.** A live rasterized source checks for running motion
 after capture and schedules its next sample through the same period and gap.
 An already-owed motion sample captures the terminal pose; completion then stops

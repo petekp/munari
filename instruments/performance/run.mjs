@@ -95,7 +95,6 @@ function summarize(raw,before,after) {
   }
 }
 async function phase(page,cdp,name,work,directory) {
-  const before=await metrics(cdp)
   const profiling=profile&&name==='scene-input'
   if(profiling) {
     await cdp.send('Profiler.enable')
@@ -103,6 +102,7 @@ async function phase(page,cdp,name,work,directory) {
     await page.tracing.start({path:path.join(directory,'scene-input.trace.json'),screenshots:false,categories:['devtools.timeline','disabled-by-default-devtools.timeline','v8','blink.user_timing']})
     await cdp.send('Profiler.start')
   }
+  const before=await metrics(cdp)
   let raw,after
   try {
     await page.evaluate(()=>window.__munariPerf.start())

@@ -127,7 +127,7 @@ const rasterize = async (
   element: HTMLElement,
   scaleX: number,
   scaleY: number,
-): Promise<HTMLCanvasElement> => {
+): Promise<HTMLImageElement> => {
   // Layout size, not `getBoundingClientRect()`: the parked host wears the
   // presented pose while a Surface is held on the page, and a rect read
   // through that matrix is the element's SCREEN size. Asking for a raster
@@ -183,13 +183,11 @@ const rasterize = async (
   const image = new Image()
   image.src = capture.toRaw()
   await image.decode()
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const context = canvas.getContext('2d')
-  if (!context) throw new Error('munari: snapDOM capture could not get a 2D context.')
-  context.drawImage(image, 0, 0, width, height)
-  return canvas
+  // The source uses these dimensions when drawing, including a store resize
+  // that happened while the SVG was being captured.
+  image.width = width
+  image.height = height
+  return image
 }
 
 /** The snapDOM engine, for a consumer installing it directly. */
