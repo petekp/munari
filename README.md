@@ -82,10 +82,12 @@ field is the [working example](apps/lab/src/scenes/controls/Controls.tsx).
 
 This opt-in keeps the original form and input nodes. It supports focused text
 inputs with stable geometry and paint. Focus, other content changes, unsupported
-effects, fractional density and `live` sources use full captures. Call
+effects, fractional density, CPU-backed storage and `live` sources use full
+captures. Call
 `surface.refresh()` for paint changes outside the captured subtree that have no
 observed signal, including CSSOM edits and canvas redraws. The cache adds one
-full-size RGBA bitmap per initialized source; texture uploads remain full-size.
+full-size RGBA bitmap per initialized GPU-backed source; texture uploads remain
+full-size.
 
 Write for HTML-in-canvas and the same code runs on snapDOM. A Surface whose
 DOM or CSS changes on its own, such as a clock or animation, needs `live`

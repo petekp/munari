@@ -7,11 +7,20 @@ import puppeteer from 'puppeteer-core'
 import {replaceSource} from '../home-light/replaceSource.mjs'
 const root=path.resolve(import.meta.dirname,'../..')
 const output=path.resolve(process.env.REGION_OUTPUT??'/tmp/munari-input-regions')
+assert.ok(!process.env.REGION_STORAGE||['cpu','gpu'].includes(process.env.REGION_STORAGE),'REGION_STORAGE must be cpu or gpu')
 await mkdir(output,{recursive:true})
 const plugin={name:'region-quality',enforce:'pre',transform(source,id){
+ if(id.endsWith('/paint/domTextureSource.ts')) {
+  if(process.env.REGION_GPU_CARRY==='1')source=replaceSource(source,'const kctx = captureContext(scratch)',"const kctx = scratch.getContext('2d')")
+  if(process.env.REGION_STORAGE)source=replaceSource(source,
+   "captureMemory = adapter?.info.isFallbackAdapter ? 'cpu' : 'gpu'",
+   `captureMemory = ${JSON.stringify(process.env.REGION_STORAGE)}`)
+  return source
+ }
  if(id.endsWith('/controls/Controls.tsx'))return replaceSource(source,'export function ControlsApp() {','function OriginalControlsApp() {')+'\nexport function ControlsApp(){return <div className="controls-page"><ControlBoard /></div>}\n'
  if(id.endsWith('/src/snapdomInputRegions.ts')) {
   if(process.env.REGION_REUSE_FAILED_CACHE==='1')source=replaceSource(source,'      cachedEpoch = -1\n','')
+  source=replaceSource(source,"      if (!context) throw new Error('munari: input region cache has no 2D context')","      window.regionProofCacheMemory=context?.getContextAttributes().willReadFrequently;\n      if (!context) throw new Error('munari: input region cache has no 2D context')")
   source=replaceSource(source,'        context.drawImage(image, 0, 0, canvas.width, canvas.height)',`        if(window.regionProofDrawFail){window.regionProofDrawFail=false;throw new Error('deliberate region cache draw failure')}
         context.drawImage(image, 0, 0, canvas.width, canvas.height)`)
   if(process.env.REGION_SHIFT_PATCH==='1')source=replaceSource(source,
@@ -22,8 +31,8 @@ const plugin={name:'region-quality',enforce:'pre',transform(source,id){
  if(!id.endsWith('/src/snapdom.ts'))return null
  source=replaceSource(source,'  const capture = await snapdom(element, {',`  if(!window.regionProofReference)window.regionProofCalls?.push({clip:options.clip??null,invalidate:options.invalidate??false});
   const capture = await snapdom(element, {`)
- source=replaceSource(source,'  await image.decode()',`  if(window.regionProofFail && options.clip){window.regionProofFail=false;throw new Error('deliberate region decode failure')}
-  if(window.regionProofHold && options.clip){window.regionProofHold=false;await new Promise(resolve=>{window.regionProofRelease=resolve})}
+ source=replaceSource(source,'  await image.decode()',`  if(window.regionProofFail && (options.clip||window.regionProofCpu)){window.regionProofFail=false;throw new Error('deliberate region decode failure')}
+  if(window.regionProofHold && (options.clip||window.regionProofCpu)){window.regionProofHold=false;await new Promise(resolve=>{window.regionProofRelease=resolve})}
   await image.decode()`)
  return source+`\nwindow.regionProofFull=async(root,sx,sy)=>{window.regionProofReference=true;try{return await rasterize(root,sx,sy,{invalidate:true})}finally{window.regionProofReference=false}}\n`
 }}
@@ -44,8 +53,15 @@ try{
   const source=createDomTextureSource(form,760,540,{scale:2,onError:error=>window.regionProofErrors.push(String(error))})
   document.getElementById('root').append(source.host);source.setHostPainted(true)
   window.regionProof={source,form,input:form.querySelector('[data-munari-anchor="field:project"]')}
+  window.regionProofRequiredRead=source.nextRead()
+  document.addEventListener('input',event=>{if(form.contains(event.target))window.regionProofRequiredRead=Math.max(window.regionProofRequiredRead,source.nextRead())},true)
+  for(const name of ['repaint','setScale','setSize']){
+   const original=source[name].bind(source)
+   source[name]=(...args)=>{const read=source.nextRead(),before=JSON.stringify([source.size(),source.rasterScale()]);const result=original(...args);if(name==='repaint'||before!==JSON.stringify([source.size(),source.rasterScale()]))window.regionProofRequiredRead=Math.max(window.regionProofRequiredRead,read);return result}
+  }
+
  },'/@fs'+root)
- const settled=async()=>{await page.evaluate(()=>new Promise(resolve=>setTimeout(resolve,650)))}
+ const settled=async()=>{await page.evaluate(()=>new Promise(resolve=>setTimeout(resolve,650)));await page.waitForFunction(()=>window.regionProof.source.currentPaint()?.read>=window.regionProofRequiredRead)}
  const holdPartial=async(character)=>{
   await page.evaluate(()=>{window.regionProofHold=true})
   for(let attempt=0;attempt<3;attempt++){
@@ -62,16 +78,22 @@ try{
   const result=await page.evaluate(async()=>{
    const {source,form,input}=window.regionProof,canvas=source.canvas
    const image=await window.regionProofFull(form,canvas.width/form.offsetWidth,canvas.height/form.offsetHeight)
-   const ref=document.createElement('canvas');ref.width=canvas.width;ref.height=canvas.height;ref.getContext('2d').drawImage(image,0,0,image.width,image.height)
+   const storage=canvas.getContext('2d').getContextAttributes().willReadFrequently;window.regionProofCpu=storage
+   const ref=document.createElement('canvas');ref.width=canvas.width;ref.height=canvas.height;ref.getContext('2d',{willReadFrequently:storage}).drawImage(image,0,0,image.width,image.height)
    const a=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data,b=ref.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data
    let changed=0,max=0;for(let i=0;i<a.length;i+=4){let difference=false;for(let c=0;c<4;c++){const d=Math.abs(a[i+c]-b[i+c]);max=Math.max(max,d);difference||=d>0}changed+=Number(difference)}
-   return {changed,max,width:canvas.width,height:canvas.height,value:input.value,focused:document.activeElement===input,calls:window.regionProofCalls.splice(0),errors:window.regionProofErrors.splice(0),png:canvas.toDataURL(),reference:ref.toDataURL()}
+   return {changed,max,storage,cacheStorage:window.regionProofCacheMemory??null,width:canvas.width,height:canvas.height,value:input.value,focused:document.activeElement===input,calls:window.regionProofCalls.splice(0),errors:window.regionProofErrors.splice(0),png:canvas.toDataURL(),reference:ref.toDataURL()}
   })
   for(const key of ['png','reference']){await writeFile(path.join(output,`${name}-${key}.png`),Buffer.from(result[key].split(',')[1],'base64'));delete result[key]}
   results.push({name,...result});await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))
+  if(process.env.REGION_STORAGE)assert.equal(result.storage,process.env.REGION_STORAGE==='cpu',`${name}: requested storage must be exercised`)
+  if(result.storage) {
+   assert.equal(result.cacheStorage,null,`${name}: CPU storage must bypass region composition`)
+   assert.ok(result.calls.every(call=>!call.clip),`${name}: CPU storage must use full captures`)
+  } else assert.equal(result.cacheStorage,false,`${name}: region and source storage must match`)
   assert.equal(result.changed,0,`${name}: source pixels must equal a fresh full capture`)
   if(!['decode-recovery','cache-draw-recovery'].includes(name))assert.deepEqual(result.errors,[],`${name}: capture must succeed`)
-  if(requirePartial)assert.ok(result.calls.some(c=>c.clip),`${name}: must exercise partial capture`)
+  if(requirePartial&&!result.storage)assert.ok(result.calls.some(c=>c.clip),`${name}: must exercise partial capture`)
   return result
  }
  await settled();await page.focus('[data-munari-anchor="field:project"]');await compare('focused')
@@ -112,10 +134,12 @@ try{
  await page.setViewport({width:1440,height:1000,deviceScaleFactor:2});await page.evaluate(()=>window.regionProof.source.repaint({immediate:true}));await compare('restored-viewport')
  await holdPartial('z')
  await page.evaluate(()=>{window.regionProof.form.querySelector('h2').textContent='Changed during decode';window.regionProof.source.repaint({immediate:true});const release=window.regionProofRelease;window.regionProofRelease=null;release()});await compare('midflight-refresh')
+ if(!await page.evaluate(()=>window.regionProofCpu)){
  await page.evaluate(()=>{window.regionProofDrawFail=true;window.regionProof.source.setScale(1)})
  await page.waitForFunction(()=>window.regionProofErrors.some(error=>error.includes('deliberate region cache draw failure')))
  await page.evaluate(()=>{const {source,input}=window.regionProof;source.setScale(2);input.value+='q';input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:'q'}))})
  const drawn=await compare('cache-draw-recovery');assert.ok(drawn.errors.some(error=>error.includes('deliberate region cache draw failure')));assert.ok(drawn.calls.every(c=>!c.clip))
+ }
  await page.evaluate(()=>{window.regionProofFail=true});await page.keyboard.type('!');await settled()
  await page.evaluate(()=>window.regionProof.source.repaint({immediate:true}));const recovered=await compare('decode-recovery');assert.ok(recovered.errors.some(e=>e.includes('deliberate region decode failure')))
  await holdPartial('?')

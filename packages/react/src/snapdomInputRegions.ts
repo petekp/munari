@@ -3,7 +3,7 @@
 // Full root clipping preserved Controls pixels in the 2026-10-13 probe; the
 // adapter owns this cache, while core owns capture scheduling and publication.
 
-import { listenForRepaintSignals } from '@munari/core'
+import { captureContext, captureMemoryChosen, listenForRepaintSignals } from '@munari/core'
 
 export interface CaptureRegionOptions {
   clip?: { x: number; y: number; width: number; height: number }
@@ -32,6 +32,7 @@ export function createInputRegionRasterizer(
   let pendingInput: { field: HTMLInputElement; value: string; version: number } | null = null
   let inputVersion = 0
   let refreshPending = false
+  let storage: 'cpu' | 'gpu' | null = null
 
   const invalidated = () => {
     epoch++
@@ -189,24 +190,49 @@ export function createInputRegionRasterizer(
     return { key, box, rect, clip, eligible, scrollX, scrollY, width: Math.max(1, Math.round(root.offsetWidth * sx)), height: Math.max(1, Math.round(root.offsetHeight * sy)) }
   }
 
+  const canReplaceInput = (state: ReturnType<typeof snapshot>, field: HTMLInputElement | null, value: string | null) =>
+    state.eligible && field !== null && cachedEpoch === epoch && cachedKey === state.key
+      && cachedValue !== value && pendingInput?.field === field && pendingInput.value === value
+
+  // CPU clipping differed by one pixel in Controls. Keep its full-image
+  // path and avoid another bitmap copy (decisions.md #62).
+  const usesCpuStorage = () => {
+    if (storage !== null) return storage === 'cpu'
+    const context = captureContext(canvas)
+    if (!context) return false
+    storage = context.getContextAttributes().willReadFrequently ? 'cpu' : 'gpu'
+    if (storage === 'gpu') return false
+    observer.disconnect()
+    listeners.abort()
+    pendingInput = null
+    cachedEpoch = -1
+    canvas.width = canvas.height = 0
+    return true
+  }
+
   return {
     async rasterize(sx: number, sy: number) {
       if (disposed) throw new Error('munari: input region rasterizer is disposed')
+      if (usesCpuStorage()) {
+        const invalidate = refreshPending
+        refreshPending = false
+        return capture(root, sx, sy, { invalidate })
+      }
       mutate(observer.takeRecords())
       const field = findField()
       const state = snapshot(field, sx, sy)
       const startedEpoch = epoch
       const input = pendingInput
       const value = field?.value ?? null
-      const partial = state.eligible && state.rect && field && cachedEpoch === startedEpoch && cachedKey === state.key
-        && cachedValue !== value && input?.field === field && input.value === value
+      const partial = canReplaceInput(state, field, value)
       const clip = partial ? state.clip : undefined
       const invalidate = refreshPending
       refreshPending = false
       const image = await capture(root, sx, sy, { clip, invalidate })
-      if (disposed) return image
+      await captureMemoryChosen()
+      if (disposed || usesCpuStorage()) return image
       mutate(observer.takeRecords())
-      const context = canvas.getContext('2d')
+      const context = captureContext(canvas)
       if (!context) throw new Error('munari: input region cache has no 2D context')
       cachedEpoch = -1
       if (clip) {

@@ -652,7 +652,7 @@ export function createCaptureCanvas(
         const scratch = document.createElement('canvas')
         scratch.width = canvas.width
         scratch.height = canvas.height
-        const kctx = scratch.getContext('2d')
+        const kctx = captureContext(scratch)
         if (kctx && 'drawImage' in kctx) {
           kctx.drawImage(canvas, 0, 0)
           keep = scratch

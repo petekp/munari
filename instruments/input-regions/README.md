@@ -1,14 +1,21 @@
 # Input region capture proof
 
 ```sh
-node instruments/input-regions/run.mjs
+REGION_STORAGE=gpu node instruments/input-regions/run.mjs
+REGION_STORAGE=cpu node instruments/input-regions/run.mjs
 ```
 
 This runs the real Controls form with its lab styles in headless Chrome. It
 uses the public capture engine, keeps the original form nodes, and compares
 the source canvas against a fresh full snapDOM capture after each change.
-Every RGBA channel must match exactly. Capture observations require the typing,
-deletion and horizontal-scroll cases to exercise the region path.
+Every RGBA channel must match exactly. `REGION_STORAGE` forces the source's
+canvas storage policy and checks that the requested mode was exercised. It
+does not emulate a different GPU. The reference uses the same storage policy.
+
+GPU mode requires typing, deletion and horizontal scrolling to exercise region
+capture. CPU mode checks the direct full-image fallback and skips the cache-draw
+failure case because it has no reusable bitmap. Omitting `REGION_STORAGE` uses
+the adapter's normal storage choice.
 
 The cases cover placeholders, overlapping fields, duplicate IDs with unique
 anchors, outside content changes, CSSOM refresh, stylesheet and media-query
@@ -25,14 +32,22 @@ partial image.
 The deliberate one-pixel placement fault must exit nonzero on a pixel mismatch:
 
 ```sh
-REGION_SHIFT_PATCH=1 REGION_OUTPUT=/tmp/munari-input-regions-fault \
+REGION_STORAGE=gpu REGION_SHIFT_PATCH=1 REGION_OUTPUT=/tmp/munari-input-regions-fault \
   node instruments/input-regions/run.mjs
 ```
 
 The failed-cache control must also fail on a pixel mismatch during recovery:
 
 ```sh
-REGION_REUSE_FAILED_CACHE=1 REGION_OUTPUT=/tmp/munari-input-regions-cache-fault \
+REGION_STORAGE=gpu REGION_REUSE_FAILED_CACHE=1 REGION_OUTPUT=/tmp/munari-input-regions-cache-fault \
+  node instruments/input-regions/run.mjs
+```
+
+Using a GPU scratch canvas to carry CPU pixels across a density change must
+also fail the pixel comparison:
+
+```sh
+REGION_STORAGE=cpu REGION_GPU_CARRY=1 REGION_OUTPUT=/tmp/munari-input-regions-carry-fault \
   node instruments/input-regions/run.mjs
 ```
 

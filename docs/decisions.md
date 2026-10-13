@@ -4159,7 +4159,15 @@ the cached base without creating another capture scheduler. Unsupported
 placeholder pairing uses full capture. A failed cache write invalidates its
 metadata before another region may reuse it.
 
-The private bitmap adds about 6.3 MiB of RGBA storage for Controls at
+Region capture uses the source's GPU storage policy. CPU-backed sources keep
+the direct full-image path: clipped composition differed by one pixel in
+Controls, with a maximum channel difference of nine. CPU mode releases the
+private cache and its invalidation listeners. Resize carry canvases use the
+same storage policy as the source; a default GPU scratch canvas changed
+201,298 pixels after a CPU capture changed density. The forced-storage probe
+requires exact pixels in both modes and rejects that scratch-canvas fault.
+
+The private GPU bitmap adds about 6.3 MiB of RGBA storage for Controls at
 1520 × 1080 pixels. This is arithmetic, not a resident-memory measurement.
 Texture uploads retain the full source dimensions. The default snapDOM engine
 keeps the direct-image path from the preceding amendment.

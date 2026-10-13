@@ -64,6 +64,8 @@ export {
 export {
   paintStats,
   listenForRepaintSignals,
+  captureContext,
+  captureMemoryChosen,
   PARKED_HOST_ATTRIBUTE,
   UnsupportedPlatformError,
   type DomPaintReceipt,
