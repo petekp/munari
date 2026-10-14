@@ -5,6 +5,7 @@
 
 import { captureContext, captureMemoryChosen, listenForRepaintSignals } from '@munari/core'
 import { createInputSvgTemplate } from './snapdomInputSvg'
+import { prepareInputTextPainter, type InputTextPainter } from './snapdomInputText'
 
 export interface CaptureRegionOptions {
   clip?: { x: number; y: number; width: number; height: number }
@@ -44,8 +45,18 @@ export function createInputRegionRasterizer(
   let regionCanvas: HTMLCanvasElement | null = null
   let regionSupported = true
   let inputSvg: ReturnType<typeof createInputSvgTemplate> = null
+  let textPainter: InputTextPainter | null = null
+  let textPreparation: { template: NonNullable<ReturnType<typeof createInputSvgTemplate>>; controller: AbortController } | null = null
+
+  const discardTextPainter = () => {
+    textPreparation?.controller.abort()
+    textPreparation = null
+    textPainter?.dispose()
+    textPainter = null
+  }
 
   const releaseCachedBitmaps = () => {
+    discardTextPainter()
     inputSvg = null
     canvas.width = canvas.height = 0
     if (regionCanvas) regionCanvas.width = regionCanvas.height = 0
@@ -56,6 +67,7 @@ export function createInputRegionRasterizer(
   }
 
   const invalidated = () => {
+    discardTextPainter()
     inputSvg = null
     epoch++
     pendingInput = null
@@ -249,6 +261,37 @@ export function createInputRegionRasterizer(
     return { key, box, rect, clip, eligible, scrollX, scrollY, width: Math.max(1, Math.round(root.offsetWidth * sx)), height: Math.max(1, Math.round(root.offsetHeight * sy)) }
   }
 
+  const prepareText = (
+    template: ReturnType<typeof createInputSvgTemplate>,
+    state: ReturnType<typeof snapshot>,
+    field: HTMLInputElement | null,
+    value: string | null,
+    scale: readonly [number, number],
+  ) => {
+    if (!template || !field || value === null || textPreparation?.template === template || !state.rect || !state.clip) return
+    discardTextPainter()
+    const controller = new AbortController()
+    const startedEpoch = epoch
+    textPreparation = { template, controller }
+    void prepareInputTextPainter({
+      template, root, field, value, target: canvas, rootBox: state.box, fieldBox: state.rect,
+      clip: state.clip, scaleX: scale[0], scaleY: scale[1], signal: controller.signal,
+    }).then((painter) => {
+      if (disposed || controller.signal.aborted || inputSvg !== template || cachedEpoch !== startedEpoch || cachedKey !== state.key) {
+        painter?.dispose()
+        if (textPreparation?.controller === controller) {
+          controller.abort()
+          textPreparation = null
+        }
+        return
+      }
+      textPainter = painter
+    }, () => {
+      controller.abort()
+      if (textPreparation?.controller === controller) textPreparation = null
+    })
+  }
+
   const composeImage = (
     image: HTMLImageElement,
     state: ReturnType<typeof snapshot>,
@@ -317,6 +360,26 @@ export function createInputRegionRasterizer(
     scroll: readonly [number, number],
   ) => clip && field && value !== null && inputSvg?.canReuse(field, value, scroll) ? inputSvg : null
 
+  const paintText = (
+    template: ReturnType<typeof createInputSvgTemplate>,
+    field: HTMLInputElement | null,
+    value: string | null,
+    scroll: readonly [number, number],
+  ) => {
+    if (!template || !field || value === null || textPreparation?.template !== template || !textPainter?.canReuse(field, value, scroll)) return false
+    const previousEpoch = cachedEpoch
+    cachedEpoch = -1
+    if (!textPainter.paint(value)) {
+      cachedEpoch = previousEpoch
+      return false
+    }
+    cachedEpoch = epoch
+    cachedValue = value
+    cachedInputVersion = inputVersion
+    clearPendingInput(pendingInput?.version)
+    return true
+  }
+
   const captureImage = async (
     template: ReturnType<typeof createInputSvgTemplate>,
     value: string | null,
@@ -331,6 +394,19 @@ export function createInputRegionRasterizer(
       regionSupported = false
       releaseCachedBitmaps()
       return capture(root, sx, sy, { invalidate: true })
+    }
+  }
+
+  const retainSvg = (
+    template: ReturnType<typeof createInputSvgTemplate>,
+    image: HTMLImageElement,
+    captured: {
+      clip: CaptureRegionOptions['clip']; field: HTMLInputElement | null; value: string | null;
+      scroll: readonly [number, number]; epoch: number;
+    },
+  ) => {
+    if (captured.clip && captured.field && captured.value !== null && captured.epoch === epoch) {
+      inputSvg = template ?? createInputSvgTemplate(image, captured.field, captured.value, captured.scroll)
     }
   }
 
@@ -363,6 +439,8 @@ export function createInputRegionRasterizer(
         return canvas
       }
       const template = reusableSvg(clip, field, value, scroll)
+      if (paintText(template, field, value, scroll)) return canvas
+      if (!template || textPreparation?.template !== template) discardTextPainter()
       inputSvg = null
       const image = await captureImage(template, value, sx, sy, { clip, invalidate, retainRootLayout: true })
       if (!regionSupported) return image
@@ -370,15 +448,14 @@ export function createInputRegionRasterizer(
       if (disposed) return image
       mutate(observer.takeRecords())
       composeImage(image, state, clip, sx, sy)
-      if (clip && field && value !== null && startedEpoch === epoch) {
-        inputSvg = template ?? createInputSvgTemplate(image, field, value, scroll)
-      }
+      retainSvg(template, image, { clip, field, value, scroll, epoch: startedEpoch })
       cachedEpoch = startedEpoch
       cachedKey = state.key
       cachedValue = value
       cachedScroll = scroll
       cachedInputVersion = startedInputVersion
       clearPendingInput(input?.version)
+      prepareText(inputSvg, state, field, value, [sx, sy])
       return canvas
     },
     invalidate,

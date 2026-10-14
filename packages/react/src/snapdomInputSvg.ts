@@ -4,7 +4,7 @@
 // at 4×–6× CPU slowdown in the 2026-10-13 profile (decisions.md #62).
 // The region rasterizer owns invalidation; core owns publication.
 
-import { declaredFontRanges, type Ranges } from './snapdomFonts'
+import { declaredFontRanges, inputFontsEmbedded, type Ranges } from './snapdomFonts'
 
 const normalizedImages = new WeakMap<HTMLImageElement, XMLDocument>()
 
@@ -19,6 +19,16 @@ export async function decodeInputSvg(document: XMLDocument, width: number, heigh
   image.width = width
   image.height = height
   return image
+}
+
+const decodeBlankInput = (document: XMLDocument, index: number, width: number, height: number) => {
+  const blank = document.cloneNode(true)
+  if (!(blank instanceof Document)) throw new Error('munari: input SVG clone is not a document')
+  const input = blank.getElementsByTagNameNS('http://www.w3.org/1999/xhtml', 'input')[index]
+  if (!input) throw new Error('munari: input SVG clone has no field')
+  input.setAttribute('value', '')
+  input.removeAttribute('placeholder')
+  return decodeInputSvg(blank, width, height)
 }
 
 const printableAscii = (value: string) => /^[ -~]*$/.test(value)
@@ -70,6 +80,8 @@ export function createInputSvgTemplate(
   const height = image.height
   const characters = new Set(Array.from(value))
   let additionalCharacters = new Set<string>()
+  let blankImage: Promise<HTMLImageElement> | null = null
+  let fontCompleteness: Promise<boolean> | null = null
   // The embedder selects faces by codepoint range. A new glyph is safe only
   // when it selects no face absent from the saved capture.
   void declaredFontRanges(field.ownerDocument).then(
@@ -82,6 +94,14 @@ export function createInputSvgTemplate(
       return candidate === field && printableAscii(next) && Array.from(next).every((character) => characters.has(character) || additionalCharacters.has(character))
         && nextScroll[0] === scroll[0] && nextScroll[1] === scroll[1]
         && candidate.selectionStart !== null && candidate.selectionStart === candidate.selectionEnd
+    },
+    fontsEmbedded() {
+      fontCompleteness ??= inputFontsEmbedded(field, document)
+      return fontCompleteness
+    },
+    blank() {
+      blankImage ??= decodeBlankInput(document, inputs.indexOf(input), width, height)
+      return blankImage
     },
     render(next: string) {
       input.setAttribute('value', next)

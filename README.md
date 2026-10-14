@@ -87,8 +87,11 @@ captures also use full images for outer shadows, outlines beyond five CSS
 pixels, and regions that extend outside the root. Unrecognized snapDOM SVG
 output disables region capture for that source and uses full images.
 
-Compatible ASCII edits reuse the parsed region SVG and decode only the updated
-image. A change in scroll position, a text selection, or a character selecting
+For compatible CPU-backed fields at two capture pixels per CSS pixel, the adapter checks
+its first Canvas text rendering against the accepted SVG pixels. Matching fields
+can then redraw text over a cached background without SVG serialization or
+decoding. This path requires unscrolled, left-aligned ASCII text and supported
+font settings. Other compatible edits reuse and decode the parsed region SVG. A change in scroll position, a text selection, or a character selecting
 another declared font range requires a fresh region capture. The font check
 considers all declared families, so it can recapture an edit whose pixels would
 have stayed safe to reuse.
@@ -96,7 +99,10 @@ have stayed safe to reuse.
 Call `surface.refresh()` for paint changes outside the captured subtree that
 have no observed signal, including CSSOM edits and canvas redraws. The cache adds
 one full-size RGBA bitmap and at most one parsed region SVG per initialized
-source. CPU region capture uses another bitmap bounded by the source dimensions.
+source. Direct text drawing also retains a blank field bitmap and its decoded
+SVG image. Its drawing canvas is connected to the document with `display:none`
+so Chromium applies the field's font smoothing. CPU region capture uses another
+bitmap bounded by the source dimensions.
 Resident memory has not been measured. Texture uploads remain full-size.
 
 Write for HTML-in-canvas and the same code runs on snapDOM. A Surface whose

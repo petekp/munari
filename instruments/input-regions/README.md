@@ -26,7 +26,17 @@ with a full capture so a later repaint cannot hide a temporary pixel error.
 Held fresh and cached decodes check input changes during capture, refresh and
 disposal without a late paint. Deliberate decode and cache-draw failures check
 recovery without publishing a partial image. Repeated edits must exercise actual
-SVG reuse. A font fixture checks cache hits for a covered declared range and
+SVG reuse. CPU direct text cases require actual Canvas draws with no upstream
+capture or SVG value decode. Trusted complete-value edits cover `JY 1Op` and
+punctuation after a different seed has passed the pixel check. Failed direct
+drawing must leave the published source intact. Refresh and disposal during
+held preparation must abort it, remove its attached canvas and clear its buffers.
+Group opacity, clipping paths, restrictive ancestor overflow and unsupported
+typography must fall back to SVG. GPU storage must retain SVG reuse without
+preparing a direct painter. A held SVG decode also checks that discarded
+preparation cannot prevent the next accepted template from preparing again.
+
+A font fixture checks cache hits for a covered declared range and
 cache misses for an additional range. It does not prove that an input-only
 font subset is embedded: the existing font selector reads clone text nodes
 and can omit native input values.
@@ -87,6 +97,14 @@ capture and a real Backspace event:
 
 ```sh
 REGION_STORAGE=cpu REGION_IGNORE_INPUT_VERSION=1 REGION_OUTPUT=/tmp/munari-input-regions-version-fault \
+  node instruments/input-regions/run.mjs
+```
+
+Restoring Canvas auto kerning after the seed has passed must fail the CPU
+`direct-kerning` pixel comparison:
+
+```sh
+REGION_STORAGE=cpu REGION_AUTO_KERNING=1 REGION_OUTPUT=/tmp/munari-text-kerning-fault \
   node instruments/input-regions/run.mjs
 ```
 

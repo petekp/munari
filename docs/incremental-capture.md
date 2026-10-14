@@ -1,72 +1,79 @@
-# Input capture performance
+# Direct input text results
 
-Frame p95 and main-thread task time improved in every pair. Input latency varied across pairs.
+CPU input-to-upload p50 medians: 4× 255.7 to 141.3 ms; 6× 428.1 to 179.0 ms. CPU input-phase task time changed by paired median: 4× -12.2%; 6× -13.0%. GPU capture retains the SVG path.
 
-The cache retains the public SVG output for an isolated text input and replaces its value for eligible edits. Cache hits skip upstream cloning and SVG normalization. Duplicate style reads, scratch allocation, and unchanged input frames also avoid repeated work. Full fallback captures use the existing capture path.
+Eligible CPU edits restore a blank input bitmap and paint Canvas text. They skip value SVG serialization and decoding. Preparation decodes the blank bitmap and checks its seed text against the accepted capture. Rejected settings use SVG.
 
-Baseline: `438d41136528f07e8f9eb9a615eaf01edaf83896`. Chrome 155.0.8059.79 ran on an Apple M4 Max with Metal WebGPU, a 1440 × 1000 viewport and device pixel ratio 2. Profiling and route timing were disabled. Each CPU/GPU storage mode has five paired trials at 4× and 6× CPU slowdown. The lab source tree matches the baseline. Capture pacing, input delivery, density, and complete texture uploads remain unchanged.
+Baseline: `597eae53e92d1bc83818155794f1c46eb2fbeb80`. The matrix has five paired trials per rate and storage mode on Apple M4 Max, Chrome/155.0.8059.80, DPR 2. CPU/GPU name the 2D capture storage modes. CPU slowdown simulates 4× and 6× rates on this host, not physical low-power devices.
 
-Before and after are medians of five trials. Change is the median paired percentage, followed by its minimum and maximum. These are different calculations. p95 is the 95th percentile. Input latency ends at a texture upload acknowledgement, not display presentation. Frame intervals measure animation callbacks.
+Input timing starts when the observer receives a DOM input event and ends at its texture-upload acknowledgement. It excludes input dispatch delay and visible presentation. Frame timing measures requestAnimationFrame intervals, not presentation time.
+
+Before/after values are medians of five trials. Changes are median paired percentages and their minimum-to-maximum ranges. p50 is the median; p95 is the 95th percentile.
 
 | Storage | Slowdown | Metric | Before | After | Paired change and range |
 |---|---|---|---:|---:|---|
-| CPU | 4× | Frame p95, ms | 83.4 | 50.0 | -40.2% [-49.9%, -39.9%] |
-| CPU | 4× | Input to upload p95, ms | 487.1 | 404.4 | -14.3% [-18.9%, -12.2%] |
-| CPU | 4× | Main-thread tasks, ms | 2445.0 | 2204.1 | -12.8% [-13.5%, -8.5%] |
-| CPU | 6× | Frame p95, ms | 150.0 | 83.3 | -44.5% [-55.5%, -44.4%] |
-| CPU | 6× | Input to upload p95, ms | 647.2 | 576.8 | -13.3% [-17.7%, +19.9%] |
-| CPU | 6× | Main-thread tasks, ms | 3939.7 | 3321.9 | -15.4% [-17.0%, -11.6%] |
-| GPU | 4× | Frame p95, ms | 83.3 | 16.8 | -79.8% [-79.8%, -60.1%] |
-| GPU | 4× | Input to upload p95, ms | 314.1 | 312.2 | -0.7% [-17.8%, +21.9%] |
-| GPU | 4× | Main-thread tasks, ms | 1928.7 | 1559.4 | -19.7% [-24.5%, -15.6%] |
-| GPU | 6× | Frame p95, ms | 133.3 | 50.0 | -62.6% [-66.7%, -62.5%] |
-| GPU | 6× | Input to upload p95, ms | 506.1 | 415.2 | -19.9% [-22.6%, +7.8%] |
-| GPU | 6× | Main-thread tasks, ms | 2942.4 | 2502.5 | -15.0% [-18.5%, -11.0%] |
+| CPU | 4× | RAF interval p95, ms | 50.0 | 50.0 | +0.0% [-50.0%, +0.2%] |
+| CPU | 4× | Input to upload p50, ms | 255.7 | 141.3 | -45.0% [-49.3%, -43.9%] |
+| CPU | 4× | Input to upload p95, ms | 418.4 | 421.2 | +5.3% [-14.2%, +13.1%] |
+| CPU | 4× | Input-phase tasks, ms | 2230.2 | 2003.2 | -12.2% [-28.1%, -4.5%] |
+| CPU | 6× | RAF interval p95, ms | 100.0 | 100.0 | -0.1% [-40.0%, +66.5%] |
+| CPU | 6× | Input to upload p50, ms | 428.1 | 179.0 | -55.5% [-60.2%, -50.7%] |
+| CPU | 6× | Input to upload p95, ms | 704.1 | 634.2 | -9.9% [-14.0%, -1.8%] |
+| CPU | 6× | Input-phase tasks, ms | 4474.2 | 3892.7 | -13.0% [-20.7%, +9.9%] |
+| GPU | 4× | RAF interval p95, ms | 33.3 | 33.3 | +0.0% [-0.3%, +50.2%] |
+| GPU | 4× | Input to upload p50, ms | 215.7 | 232.0 | -2.0% [-6.3%, +12.8%] |
+| GPU | 4× | Input to upload p95, ms | 366.0 | 387.2 | -2.6% [-13.4%, +11.9%] |
+| GPU | 4× | Input-phase tasks, ms | 2181.4 | 2254.1 | +3.0% [-16.7%, +14.3%] |
+| GPU | 6× | RAF interval p95, ms | 49.9 | 50.0 | +0.2% [-0.2%, +49.7%] |
+| GPU | 6× | Input to upload p50, ms | 257.2 | 261.3 | +1.6% [-3.0%, +14.3%] |
+| GPU | 6× | Input to upload p95, ms | 452.9 | 455.7 | +2.6% [-1.2%, +9.9%] |
+| GPU | 6× | Input-phase tasks, ms | 2593.9 | 2659.7 | +2.9% [-2.3%, +12.9%] |
 
-GPU 4× input p95 was essentially unchanged: median 314.1 to 312.2 ms. Paired changes ranged from -17.8% to +21.9%.
+CPU 4× frame p95 was essentially unchanged. Sub-millisecond differences do not establish a frame-time gain.
 
-Main-thread task time per elapsed second also fell by paired median: CPU 4× -8.0%; CPU 6× -4.7%; GPU 4× -9.1%; GPU 6× -5.0%. The lower task totals therefore reflect less work per unit of elapsed time as well as shorter input phases. Per-pair ranges remain in the JSON.
+GPU continues the existing SVG path. These runs establish no GPU speedup. Slight regressions and full paired ranges are retained above.
 
-| Storage | Slowdown | SVG hits | Unchanged frames | Upstream captures | Completed captures | Input phase, ms |
-|---|---|---:|---:|---:|---:|---:|
-| CPU | 4× | 6 | 0 | 9 to 4 | 9 to 10 | 3271.7 to 3125.9 |
-| CPU | 6× | 6 | 0 | 10 to 4 | 10 to 10 | 4397.2 to 3922.4 |
-| GPU | 4× | 6 | 0 | 10 to 4 | 10 to 10 | 3020.7 to 2683.7 |
-| GPU | 6× | 6 | 0 | 10 to 4 | 10 to 10 | 3771.2 to 3347.5 |
+Task time per elapsed input-phase second: CPU 4× -7.2% [-12.0%, +1.6%]; CPU 6× -1.5% [-4.7%, +1.1%]; GPU 4× +2.5% [-8.1%, +6.7%]; GPU 6× +2.8% [-4.5%, +5.7%].
 
-Input p95 pair regressions: CPU 4×: 0/5 pairs worsened; CPU 6×: 2/5 pairs worsened, largest increase +19.9%; GPU 4×: 2/5 pairs worsened, largest increase +21.9%; GPU 6×: 2/5 pairs worsened, largest increase +7.8%.
+Input p95 regressions: CPU 4×: 3/5 pairs worsened, largest increase +13.1%; CPU 6×: 0/5 pairs worsened; GPU 4×: 2/5 pairs worsened, largest increase +11.9%; GPU 6×: 4/5 pairs worsened, largest increase +9.9%.
 
-Each active source can retain one parsed region SVG in addition to the existing bitmap cache. Resident memory has not been measured.
+Direct text improves typical latency but leaves fallback tails. In CPU 4×, reads 7–15 painted directly; reads 16/17 used clipped/full captures. The maximum latency in all five trials acknowledged read 17, whose full capture followed submission. P95 belonged to initial preparation/read 6 in trials 1/2 and read 17 in trials 3/4/5. The exact eligibility failure at read 16 was not recorded. These observations do not isolate upload cost.
 
-All 40 trials acknowledged all 37 typed inputs and preserved the original input, value, focus, and one trusted submission. Candidate pixels matched a fresh full snapDOM capture in 151 final RGBA comparisons and 2 intermediate-frame comparisons. Disposal and decode/draw recovery checks passed.
+| Storage | Slowdown | Direct paints | Value SVG decodes | Blank decodes at stop | Prepared painters at stop | Upstream captures | Receipts | Uploads |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| CPU | 4× | 9.0 | 6.0 to 0.0 | 1.0 | 1.0 | 4.0 to 3.0 | 10.0 to 13.0 | 10.0 to 13.0 |
+| CPU | 6× | 9.0 | 6.0 to 0.0 | 1.0 | 1.0 | 4.0 to 4.0 | 10.0 to 13.0 | 10.0 to 13.0 |
+| GPU | 4× | 0.0 | 6.0 to 6.0 | 0.0 | 0.0 | 4.0 to 4.0 | 10.0 to 10.0 | 11.0 to 11.0 |
+| GPU | 6× | 0.0 | 6.0 to 6.0 | 0.0 | 0.0 | 4.0 to 4.0 | 10.0 to 10.0 | 10.0 to 11.0 |
 
-Both capture engines passed the strict capability gate. Native fallback gestures passed in five scenes without enhanced flags. All 1,438 tests, four typecheck programs, lint and the package build passed. React Doctor found no new issues.
+Direct paints and value SVG decodes count active input-phase events. Blank decodes and prepared painters are cumulative at phase stop, including earlier preparation. Raster-area counts include blank decoding during an active phase. Direct paints can increase receipts and complete uploads.
 
-Negative controls detected input-version and local-origin pixel faults. Unknown SVG viewport handling passed 3 full-fallback comparisons.
+The blank bitmap and decoded blank SVG persist with the painter/template alongside the existing complete private canvas. Certification uses a temporary canvas. Memory use was not measured. Recorded-phase task totals exclude mount, setup and gaps; initialization outside those phases remains untimed.
 
-Font guard behavior was exercised by the positive font fixture and capture-count assertions. Missing-face visual sensitivity remains unverified because the existing font selector reads cloned text nodes and omits input value attributes. Both the candidate and fresh oracle can omit the same font face.
+CPU 6× task time increased in 1/5 pairs, by up to +9.9%, despite its lower paired median.
 
-Benchmark screenshot byte equality: CPU 20/20 equal, 0 different, 0 unavailable; GPU 20/20 equal, 0 different, 0 unavailable. Screenshot hashes and per-trial input acknowledgements are retained in the JSON.
+All 40 trials acknowledged each of 37 inputs and preserved the original input, value, focus and trusted submission. Candidate pixels matched fresh full snapDOM captures in 215 final RGBA comparisons and 2 intermediate comparisons. CPU direct preparation/disposal and GPU SVG fallback passed. Kerning fault: 491 changed pixels. Unknown viewport: 3 fallback comparisons.
 
-Profiles located about 411 ms of sampled CPU drawing in region staging and 97 ms in the final source draw. CPU storage moved deferred SVG rasterization into composition before publication. Cloning and SVG normalization remained additional work. The retained SVG avoids those repeated preparation steps. The previous GPU input tail grew mainly before capture admission. Discarded scheduling experiments lowered frame tails but worsened input latency or increased captures. These diagnostic timings are separate from this matrix.
+Benchmark screenshots: CPU 20/20 byte-equal, 0 different, 0 unavailable; GPU 20/20 byte-equal, 0 different, 0 unavailable.
 
-CPU slowdown on this Apple host does not reproduce a physical low-power device. Earlier diagnostic timings showed host contention. One CPU profile completed its rows but stalled during cleanup. Its own process group was terminated, and that run remains diagnostic. The final runner terminates only its own process group on timeout. The older background-only resized screenshot mismatch also remains diagnostic.
+The font guard has positive behavior evidence. Missing-face visual sensitivity remains unverified because the font selector ignores input value attributes. The fresh capture oracle can omit the same face.
 
-Raw timings, paired changes and ranges, cache counts, loaded source hashes, quality cases, negative controls, and diagnostic limits are in [incremental-capture-results.json](incremental-capture-results.json).
+GPU certification was rejected after all ten diagnostic input-p95 pairs worsened. Median paired increases were 54.7% and 68.3%. The worker pilot increased task time 9.3% and was not integrated. Earlier cleanup stalls and background-only screenshot differences remain diagnostic.
 
-## Reproduce
+Required checks passed: npm test, typecheck, lint and build. Vitest passed 1,438 tests in 125 files. React Doctor scored 85/100 with no issues across eight files.
+
+Reproduce the matrix serially at the candidate source recorded in the JSON:
 
 ```sh
-REGION_STORAGE=cpu node instruments/input-regions/run.mjs
-REGION_STORAGE=gpu node instruments/input-regions/run.mjs
-PERF_BASELINE_REF=438d41136528f07e8f9eb9a615eaf01edaf83896 \
-  PERF_CAPTURE_STORAGE=cpu PERF_CPU_RATES=4,6 PERF_ENGINES=snapdom \
-  PERF_TRIALS=5 PERF_ROUTE_TIMING=0 PERF_OUTPUT=/tmp/munari-svg-cpu \
-  node instruments/performance/run.mjs
-node instruments/performance/summarize.mjs /tmp/munari-svg-cpu
+for storage in cpu gpu; do
+  PERF_BASELINE_REF=597eae53e92d1bc83818155794f1c46eb2fbeb80 PERF_CAPTURE_STORAGE=$storage \
+    PERF_CPU_RATES=4,6 PERF_ENGINES=snapdom PERF_TRIALS=5 PERF_ROUTE_TIMING=0 \
+    PERF_OUTPUT=/tmp/munari-direct-text-recheck-$storage node instruments/performance/run.mjs
+done
+npm test
+npm run typecheck
+npm run lint
+npm run build
 ```
 
-Repeat with `PERF_CAPTURE_STORAGE=gpu` and a separate output directory. The
-[benchmark guide](../instruments/performance/README.md) defines the measurements.
-The [capture guide](../instruments/input-regions/README.md) documents pixel checks
-and deliberate faults. Source files stayed fixed across both timing matrices.
+Quality commands and negative-control expectations, per-trial acknowledgements, source hashes, initialization counters, all recorded-phase work and diagnostic limits are in [incremental-capture-results.json](incremental-capture-results.json).

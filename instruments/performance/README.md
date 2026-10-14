@@ -77,7 +77,8 @@ Each measured phase reports:
 - `hostSpace` durations and call counts from the route controller only.
 - Completed capture receipts and distinct DOM reads.
 - Started full and region captures, with their summed CSS pixel area.
-- Reused region SVGs and repaints that reuse unchanged input pixels.
+- Successful direct text draws, reused region SVGs, and unchanged input frames.
+- Prepared text painters and blank-image decodes, counted cumulatively per trial.
 - Decoded images' requested width × height, summed as raster pixel area.
 - Upload callbacks, source read and generation, texture version, and store size.
 - Repeated upload identities and summed uploaded texel area.
@@ -100,7 +101,15 @@ Requested raster pixel area counts the image dimensions Munari will draw. It
 separates the selected DOM region from the SVG raster size. It does not measure
 how many pixels the browser processed internally. Reused SVG decodes count
 toward raster area but do not start an upstream snapDOM capture. An unchanged
-input frame reuses the accepted bitmap and performs no SVG decode.
+input frame reuses the accepted bitmap and performs no SVG decode. Direct text
+draws also perform no SVG decode. A blank-image decode counts toward raster area
+when it completes during the measured phase.
+
+`directInputTexts` and `reusedInputSvgs` count successful work in the active phase.
+`preparedInputTexts` and `inputBlankDecodes` are cumulative trial totals at phase
+end, including work completed between phases. Do not add those cumulative counts
+across phases. Task durations cover recorded phases; mount and gaps between
+phases are not timed. Preparation can overlap other asynchronous capture work.
 
 Uploaded texel area sums the canvas width × height at each upload callback.
 It excludes mipmaps, format, and driver behavior. Callback counts describe
@@ -180,7 +189,9 @@ Payload records contain lengths, font-face counts, and family labels.
 They contain no font bytes. Payload inspection overhead is recorded separately.
 Region stages also measure synchronous state inspection, SVG viewport
 normalization, CPU SVG rasterization and bitmap copying, GPU region drawing,
-and full-cache composition. Cached SVG decode wall time is recorded separately.
+and full-cache composition. Input SVG serialization and decode wall time,
+direct text drawing, and preparation wall time are recorded separately. The
+input SVG decoder serves both value updates and the one-time blank image.
 Use stage profiling to attribute work and keep it disabled for comparisons.
 
 ```sh
@@ -220,11 +231,11 @@ and excluded from workload tasks. The benchmark also samples its task-duration
 baseline after profiler setup. Trace attribution covers these callbacks; it
 does not measure GPU execution or every task in the capture pipeline.
 
-For SVG reuse, compare against `438d41136528f07e8f9eb9a615eaf01edaf83896`
+For direct text drawing, compare against `597eae53e92d1bc83818155794f1c46eb2fbeb80`
 at CPU rates `4,6` with `PERF_ENGINES=snapdom`. Run both
 `PERF_CAPTURE_STORAGE=cpu` and `PERF_CAPTURE_STORAGE=gpu`. The Controls Project
-field opts into region capture. Check that `captureRegions.partial` and
-`reusedInputSvgs` are positive in every candidate input phase. These counts
-count upstream capture starts and successful cached SVG decode completions,
-respectively. Neither must equal the receipts completed in that phase. Keep
+field opts into region capture. Require `directInputTexts` to be positive in
+every candidate input phase. Compare `reusedInputSvgs`, blank-image decodes and
+fresh capture counts as well as timing. These operations need not equal the
+receipts completed in the phase. Keep
 capture-stage profiling disabled for the paired timing comparison.

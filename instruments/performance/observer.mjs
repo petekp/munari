@@ -48,6 +48,7 @@ export function performanceObserver(root, commit, loadedSources, routeTiming = t
       }
       if(file==='packages/react/src/snapdomInputSvg.ts')return observeInputSvg(source, captureStages)
       if(file==='packages/react/src/snapdomInputRegions.ts')return observeInputRegions(source,captureStages)
+      if(file==='packages/react/src/snapdomInputText.ts')return observeInputText(source,captureStages)
       if(captureStages&&file==='packages/core/src/paint/rasterizedSource.ts')return replaceSource(source,'      draw(image, askedFor)',`      const perfDrawStarted=performance.now();
       draw(image, askedFor)
       window.__munariPerf.record('captureStage',{stage:'sourceDrawSync',sourceId:body.sourceId,read,ms:performance.now()-perfDrawStarted})`)
@@ -88,13 +89,24 @@ function hostSpace(...args: Parameters<typeof measuredHostSpace>) {
 }
 
 function observeInputSvg(source, captureStages) {
-  source=replaceSource(source,'  return image\n',`  window.__munariPerf.record('reusedInputSvg',{width:image.width,height:image.height});
-  window.__munariPerf.record('captureRaster',{width:image.width,height:image.height});
-  return image
-`)
+  if(captureStages)source=replaceSource(source,
+    '  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(document))}`',
+    `  const perfSerializeStarted=performance.now();
+  image.src = \`data:image/svg+xml;charset=utf-8,\${encodeURIComponent(new XMLSerializer().serializeToString(document))}\`;
+  window.__munariPerf.record('captureStage',{stage:'reusedSvgSerializeSync',ms:performance.now()-perfSerializeStarted})`)
   if(captureStages)source=replaceSource(source,'  await image.decode()',`  const started=performance.now();
   await image.decode()
-  window.__munariPerf.record('captureStage',{stage:'reusedSvgDecodeWall',ms:performance.now()-started})`)
+  window.__munariPerf.record('captureStage',{stage:'inputSvgDecodeWall',ms:performance.now()-started})`)
+  source=replaceSource(source,'      return decodeInputSvg(document, width, height)',`      return decodeInputSvg(document, width, height).then((image) => {
+        window.__munariPerf.record('reusedInputSvg',{width:image.width,height:image.height});
+        window.__munariPerf.record('captureRaster',{width:image.width,height:image.height});
+        return image
+      })`)
+  if(source.includes('  return decodeInputSvg(blank, width, height)'))source=replaceSource(source,'  return decodeInputSvg(blank, width, height)',`  return decodeInputSvg(blank, width, height).then((image) => {
+    window.__munariPerf.record('inputBlankDecode',{});
+    window.__munariPerf.record('captureRaster',{width:image.width,height:image.height});
+    return image
+  })`)
   return source
 }
 
@@ -103,6 +115,13 @@ function observeInputRegions(source,captureStages) {
   if(source.includes(unchanged))source=replaceSource(source,unchanged,unchanged+`
         window.__munariPerf.record('unchangedInputFrame',{});`)
   if(!captureStages)return source
+  const prepareTextMarker='    void prepareInputTextPainter({'
+  if(source.includes(prepareTextMarker)) {
+    source=replaceSource(source,prepareTextMarker,`    const perfTextPreparationStarted=performance.now()
+    void prepareInputTextPainter({`)
+    source=replaceSource(source,'    }).then((painter) => {',`    }).then((painter) => {
+      window.__munariPerf.record('captureStage',{stage:'preparation',ms:performance.now()-perfTextPreparationStarted})`)
+  }
   source=replaceSource(source,'      const state = snapshot(field, sx, sy)',`      const perfSnapshotStarted=performance.now();
 const state = snapshot(field, sx, sy)
 window.__munariPerf.record('captureStage',{stage:'regionSnapshotSync',ms:performance.now()-perfSnapshotStarted})`)
@@ -114,6 +133,19 @@ window.__munariPerf.record('captureStage',{stage:'regionSnapshotSync',ms:perform
   ]) {
     if(source.includes(statement))source=replaceSource(source,statement,`{ const started=performance.now(); ${statement}; window.__munariPerf.record('captureStage',{stage:'${stage}',ms:performance.now()-started}) }`)
   }
+  return source
+}
+
+function observeInputText(source,captureStages) {
+  source=replaceSource(source,'    const painter = createCertifiedPainter(options, paint, pixels, blank, ascent, descent, targetWidth, targetHeight)',`    const painter = createCertifiedPainter(options, paint, pixels, blank, ascent, descent, targetWidth, targetHeight)
+    window.__munariPerf.record('preparedInputText',{})`)
+  if(captureStages)source=replaceSource(source,'    paint(value: string) {',`    paint(value: string) {
+      const perfDirectInputStarted=performance.now()`)
+  source=replaceSource(source,'      return true\n    },\n    dispose() {',`      window.__munariPerf.record('directInputText',{painted:true})
+      ${captureStages?"window.__munariPerf.record('captureStage',{stage:'directInputTextSync',ms:performance.now()-perfDirectInputStarted})":""}
+      return true
+    },
+    dispose() {`)
   return source
 }
 
@@ -178,8 +210,11 @@ const capturePlugins=[perfFirstPlugin,fontPlugin,frameSplitPlugin,fieldPlugin,pe
 
 export function installObserver() {
   const observer = {
-    sources: new Map(), events: [], gaps: [], active: false, lastFrame: null, timingObservers:[], timingSupport:[],
-    record(kind, values) { if (this.active) this.events.push({kind,t:performance.now(),...values}) },
+    sources: new Map(), events: [], gaps: [], totals:{preparedInputText:0,inputBlankDecode:0}, active: false, lastFrame: null, timingObservers:[], timingSupport:[],
+    record(kind, values) {
+      if(kind==='preparedInputText'||kind==='inputBlankDecode')this.totals[kind]++
+      if (this.active) this.events.push({kind,t:performance.now(),...values})
+    },
     beginCapture(element) {
       const source=[...this.sources.values()].find(entry=>entry.source.element===element)?.source
       this.captureSequence=(this.captureSequence??0)+1
@@ -196,7 +231,7 @@ export function installObserver() {
     stop() {
       for (const observer of this.timingObservers) for (const entry of observer.takeRecords()) this.recordTiming(entry)
       this.active=false
-      return {events:this.events,gaps:this.gaps,elapsedMs:performance.now()-this.started,timingSupport:this.timingSupport}
+      return {events:this.events,gaps:this.gaps,elapsedMs:performance.now()-this.started,timingSupport:this.timingSupport,totals:{...this.totals}}
     },
   }
   window.__munariPerf = observer

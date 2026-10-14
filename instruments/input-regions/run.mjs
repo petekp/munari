@@ -20,7 +20,7 @@ const plugin={name:'region-quality',enforce:'pre',transform(source,id){
  if(id.endsWith('/controls/Controls.tsx'))return replaceSource(source,'export function ControlsApp() {','function OriginalControlsApp() {')+'\nexport function ControlsApp(){return <div className="controls-page"><ControlBoard /></div>}\n'
  if(id.endsWith('/src/snapdomInputRegions.ts')) {
   if(process.env.REGION_IGNORE_INPUT_VERSION==='1')source=replaceSource(source,' && cachedInputVersion === inputVersion','')
-  if(process.env.REGION_REUSE_FAILED_CACHE==='1')source=replaceSource(source,'    cachedEpoch = -1\n','')
+  if(process.env.REGION_REUSE_FAILED_CACHE==='1')source=replaceSource(source,'    cpuStorage ??= context.getContextAttributes().willReadFrequently === true\n    cachedEpoch = -1','    cpuStorage ??= context.getContextAttributes().willReadFrequently === true')
   if(process.env.REGION_LOCAL_ORIGIN==='1'){
    source=replaceSource(source,'const bufferWidth = Math.min(state.width, Math.max(1, x + image.width))','const bufferWidth = image.width')
    source=replaceSource(source,'const bufferHeight = Math.min(state.height, Math.max(1, y + image.height))','const bufferHeight = image.height')
@@ -36,12 +36,33 @@ const plugin={name:'region-quality',enforce:'pre',transform(source,id){
    'context.drawImage(image, x + 1, y, image.width, image.height)')
   return source
  }
+ if(id.endsWith('/src/snapdomInputText.ts')){
+  if(process.env.REGION_AUTO_KERNING==='1')source=replaceSource(source,'    configureText(context, paint)\n    context.beginPath()',"    configureText(context, paint)\n    if(window.regionProofAutoKerningActive)context.fontKerning='auto'\n    context.beginPath()")
+  source=replaceSource(source,'    !disposed && !options.signal.aborted && field === options.field','    !window.regionProofForceSvg && !disposed && !options.signal.aborted && field === options.field')
+  source=replaceSource(source,'  !options.signal.aborted && options.root.contains(options.field)','  !window.regionProofForceSvg && !options.signal.aborted && options.root.contains(options.field)')
+  source=replaceSource(source,'  attachTextCanvas(certificate, paint)',`  attachTextCanvas(certificate, paint)
+  window.regionProofTextPreparations=(window.regionProofTextPreparations??0)+1`)
+  source=replaceSource(source,'    const image = await template.blank()',`    const imagePromise=template.blank()
+    if(window.regionProofTextHold){window.regionProofTextHold=false;window.regionProofTextPending={certificate,blank,signal};await new Promise(resolve=>{window.regionProofTextRelease=resolve})}
+    const image = await imagePromise`)
+  source=replaceSource(source,'        context.drawImage(blank, pixels.left, pixels.top)',`        window.regionProofTextAttempts=(window.regionProofTextAttempts??0)+1
+        context.drawImage(blank, pixels.left, pixels.top)
+        if(window.regionProofTextDrawFail){window.regionProofTextDrawFail=false;throw new Error('deliberate text draw failure')}`)
+  source=replaceSource(source,'      return true\n    },\n    dispose()',`      window.regionProofTextHits=(window.regionProofTextHits??0)+1
+      return true
+    },
+    dispose()`)
+  return replaceSource(source,"    signal.removeEventListener('abort', releasePending)",`    signal.removeEventListener('abort', releasePending)
+    window.regionProofTextFinished=(window.regionProofTextFinished??0)+1`)
+ }
  if(id.endsWith('/src/snapdomInputSvg.ts')){
-  return replaceSource(source,'  await image.decode()',`  window.regionProofSvgAttempts=(window.regionProofSvgAttempts??0)+1
-  if(window.regionProofSvgFail){window.regionProofSvgFail=false;throw new Error('deliberate region decode failure')}
-  if(window.regionProofSvgHold){window.regionProofSvgHold=false;await new Promise(resolve=>{window.regionProofRelease=resolve})}
-  await image.decode()
-  window.regionProofSvgHits=(window.regionProofSvgHits??0)+1`)
+  source=replaceSource(source,'    render(next: string) {','    async render(next: string) {')
+  return replaceSource(source,'      return decodeInputSvg(document, width, height)',`      window.regionProofSvgAttempts=(window.regionProofSvgAttempts??0)+1
+      if(window.regionProofSvgFail){window.regionProofSvgFail=false;throw new Error('deliberate region decode failure')}
+      if(window.regionProofSvgHold){window.regionProofSvgHold=false;await new Promise(resolve=>{window.regionProofRelease=resolve})}
+      const image=await decodeInputSvg(document, width, height)
+      window.regionProofSvgHits=(window.regionProofSvgHits??0)+1
+      return image`)
  }
  if(!id.endsWith('/src/snapdom.ts'))return null
  if(process.env.REGION_LEGACY_VIEWPORT==='1')source=replaceSource(source,
@@ -89,7 +110,7 @@ try{
   await page.keyboard.type('a');await settled()
  }
  const holdSvg=async()=>{
-  await page.evaluate(()=>{const {input}=window.regionProof;input.setSelectionRange(0,0);input.scrollLeft=0;window.regionProofSvgHold=true})
+  await page.evaluate(()=>{const {input}=window.regionProof;window.regionProofForceSvg=true;input.setSelectionRange(0,0);input.scrollLeft=0;window.regionProofSvgHold=true})
   for(let attempt=0;attempt<3;attempt++){
    const before=await page.evaluate(()=>window.regionProof.source.paintCount())
    await page.keyboard.type('a')
@@ -98,6 +119,15 @@ try{
    await settled()
   }
   assert.fail('A cached decode must consume the hold')
+ }
+ const holdTextPreparation=async()=>{
+  await page.evaluate(()=>{const {input,source}=window.regionProof;window.regionProofForceSvg=false;window.regionProofTextHold=true;input.value='aa';input.setSelectionRange(0,0);input.scrollLeft=0;source.repaint({immediate:true})})
+  await settled()
+  await page.keyboard.type('a')
+  await page.waitForFunction(()=>Boolean(window.regionProofTextRelease))
+  await page.waitForFunction(()=>window.regionProof.source.currentPaint()?.read>=window.regionProofRequiredRead)
+  const pending=await page.evaluate(()=>{const {certificate,blank,signal}=window.regionProofTextPending;return {connected:certificate.isConnected,certificateWidth:certificate.width,blankWidth:blank.width,aborted:signal.aborted}})
+  assert.equal(pending.connected,true);assert.ok(pending.certificateWidth>0&&pending.blankWidth>0);assert.equal(pending.aborted,false)
  }
  const compare=async(name,requirePartial=false)=>{
   await settled()
@@ -115,7 +145,8 @@ try{
     return {read:frame.read,changed}
    })
    const svgHits=window.regionProofSvgHits??0,svgAttempts=window.regionProofSvgAttempts??0;window.regionProofSvgHits=0;window.regionProofSvgAttempts=0
-   return {svgHits,svgAttempts,intermediateFrames,changed,max,storage,cacheStorage:window.regionProofCacheMemory??null,width:canvas.width,height:canvas.height,value:input.value,focused:document.activeElement===input,calls:window.regionProofCalls.splice(0),errors:window.regionProofErrors.splice(0),png:canvas.toDataURL(),reference:ref.toDataURL()}
+   const textHits=window.regionProofTextHits??0,textAttempts=window.regionProofTextAttempts??0,textPreparations=window.regionProofTextPreparations??0;window.regionProofTextHits=0;window.regionProofTextAttempts=0;window.regionProofTextPreparations=0
+   return {textHits,textAttempts,textPreparations,svgHits,svgAttempts,intermediateFrames,changed,max,storage,cacheStorage:window.regionProofCacheMemory??null,width:canvas.width,height:canvas.height,value:input.value,focused:document.activeElement===input,calls:window.regionProofCalls.splice(0),errors:window.regionProofErrors.splice(0),png:canvas.toDataURL(),reference:ref.toDataURL()}
   })
   for(const key of ['png','reference']){await writeFile(path.join(output,`${name}-${key}.png`),Buffer.from(result[key].split(',')[1],'base64'));delete result[key]}
   results.push({name,...result});await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))
@@ -123,11 +154,12 @@ try{
   assert.equal(result.cacheStorage,result.storage,`${name}: region and source storage must match`)
   assert.equal(result.changed,0,`${name}: source pixels must equal a fresh full capture`)
   for(const frame of result.intermediateFrames)assert.equal(frame.changed,0,`${name}: every published frame must equal the stable full capture`)
-  if(!['decode-recovery','svg-decode-recovery','cache-draw-recovery'].includes(name))assert.deepEqual(result.errors,[],`${name}: capture must succeed`)
-  if(requirePartial)assert.ok(result.svgHits>0||result.calls.some(c=>c.clip),`${name}: must exercise partial capture`)
+  if(!['decode-recovery','svg-decode-recovery','cache-draw-recovery','text-draw-recovery'].includes(name))assert.deepEqual(result.errors,[],`${name}: capture must succeed`)
+  if(requirePartial)assert.ok(result.textHits>0||result.svgHits>0||result.calls.some(c=>c.clip),`${name}: must exercise partial capture`)
   return result
  }
- await settled();await page.focus('[data-munari-anchor="field:project"]');await compare('focused')
+ await settled();await page.focus('[data-munari-anchor="field:project"]');const focused=await compare('focused')
+ const directTextSupported=focused.storage
  let disposed
  if(process.env.REGION_UNKNOWN_VIEWPORT==='1'){
   assert.equal(await page.evaluate(()=>window.regionProof.source.canvas.getContext('2d').getContextAttributes().willReadFrequently),true,'Unknown viewport proof requires CPU storage')
@@ -148,6 +180,7 @@ try{
  assert.ok(versionEdit.elapsed<150,'Backspace must precede the follow-up capture window');assert.equal(versionEdit.value,'a')
  await compare('input-version-midflight')
  await page.evaluate(()=>{const {input,source}=window.regionProof;input.value=window.regionProofBeforeVersion;input.setSelectionRange(input.value.length,input.value.length);input.scrollLeft=0;source.repaint({immediate:true})});await compare('input-version-restored')
+ await page.evaluate(()=>{window.regionProofForceSvg=true;window.regionProof.source.repaint({immediate:true})});await compare('svg-path-seed')
  await page.keyboard.type(' Alpha');await compare('typing',true)
  await page.keyboard.type('a');const reused=await compare('svg-reuse',true);assert.ok(reused.svgHits>0,'A repeated character must reuse the accepted SVG')
  await seedShort()
@@ -164,8 +197,60 @@ try{
  await holdSvg()
  await page.evaluate(()=>{const release=window.regionProofRelease;window.regionProofRelease=null;release()});const heldSvg=await compare('svg-held-decode',true);assert.ok(heldSvg.svgHits>0,'Held decode must exercise SVG reuse')
  await page.keyboard.press('Backspace');await compare('backspace',true)
+ await page.evaluate(()=>{window.regionProofForceSvg=false;window.regionProof.source.repaint({immediate:true})});await compare('direct-path-seed')
+ await seedShort();await compare('direct-warmup',true);await page.keyboard.type('a');const direct=await compare('direct-text',true);if(directTextSupported){assert.ok(direct.textHits>0,'Repeated eligible CPU input must draw text without an SVG value decode');assert.equal(direct.svgHits,0)}else{assert.equal(direct.textHits,0);assert.equal(direct.textPreparations,0);assert.ok(direct.svgHits>0,'GPU input must retain the SVG path')}assert.deepEqual(direct.calls,[]);assert.equal(direct.focused,true)
+ await page.evaluate(()=>{const {input,source}=window.regionProof;input.value='Direct projections';input.setSelectionRange(0,0);input.scrollLeft=0;source.repaint({immediate:true})});await compare('kerning-input-seed')
+ await page.keyboard.type('a');await compare('kerning-template-seed',true)
+ const inputSession=await page.createCDPSession()
+ for(const [name,value] of [['direct-kerning','JY 1Op'],['direct-punctuation','m_ZKDxp<Lz=JY (*1Op.aiG~']]){
+  await page.evaluate(()=>{const {input}=window.regionProof;window.regionProofAutoKerningActive=true;input.select();window.regionProofDirectTrusted=null;input.addEventListener('input',event=>{window.regionProofDirectTrusted=event.isTrusted},{once:true})})
+  await inputSession.send('Input.insertText',{text:value})
+  const edited=await compare(name,true);assert.equal(edited.value,value);assert.equal(edited.focused,true);if(directTextSupported){assert.ok(edited.textHits>0,'A trusted complete-value edit must exercise Canvas text');assert.equal(edited.svgHits,0)}else{assert.equal(edited.textHits,0);assert.equal(edited.textPreparations,0);assert.ok(edited.svgHits>0)}assert.deepEqual(edited.calls,[]);assert.equal(await page.evaluate(()=>window.regionProofDirectTrusted),true)
+ }
+ for(const target of ['field','ancestor','overflow']){
+  const name='clipped-'+target
+  const clipSetup=await page.evaluate(target=>{const {input,source}=window.regionProof;window.regionProofClipTarget=target==='field'?input:input.parentElement;if(target==='overflow'){input.style.width='332px';window.regionProofClipTarget.style.width='166px';window.regionProofClipTarget.style.overflow='hidden'}else window.regionProofClipTarget.style.clipPath='inset(0 50% 0 0)';input.value='a';input.setSelectionRange(0,0);input.scrollLeft=0;source.repaint({immediate:true});return {inputWidth:input.getBoundingClientRect().width,parentWidth:input.parentElement.getBoundingClientRect().width}},target);if(target==='overflow'){assert.equal(clipSetup.inputWidth,332);assert.equal(clipSetup.parentWidth,166)}await compare(name+'-seed')
+  await page.keyboard.type('a');await compare(name+'-short-value',true)
+  await page.evaluate(()=>{const {input}=window.regionProof;input.select();window.regionProofClipTrusted=null;input.addEventListener('input',event=>{window.regionProofClipTrusted=event.isTrusted},{once:true})})
+  await inputSession.send('Input.insertText',{text:'MMMMMMMMMMMMMMMMMMMM'})
+  const clipped=await compare(name+'-long-value');assert.equal(clipped.value,'MMMMMMMMMMMMMMMMMMMM');assert.equal(clipped.focused,true);assert.equal(clipped.textHits,0,'Clipped input text must use SVG');assert.ok(clipped.svgHits>0||clipped.calls.length>0,'Clipped text must exercise SVG fallback');assert.equal(await page.evaluate(()=>window.regionProofClipTrusted),true)
+  await page.evaluate(target=>{const {input,source}=window.regionProof;window.regionProofClipTarget.style.clipPath='';if(target==='overflow'){input.style.width='';window.regionProofClipTarget.style.width='';window.regionProofClipTarget.style.overflow=''}source.repaint({immediate:true})},target);await compare(name+'-restored')
+ }
+ await inputSession.detach()
+ if(directTextSupported){
+ await seedShort();await page.keyboard.type('a');const failureReady=await compare('text-failure-ready',true);assert.ok(failureReady.textHits>0)
+ const beforeTextFailure=await page.evaluate(()=>{const {source}=window.regionProof;window.regionProofTextBeforeFailure={paintCount:source.paintCount(),pixels:source.canvas.getContext('2d').getImageData(0,0,source.canvas.width,source.canvas.height).data};window.regionProofTextDrawFail=true;return source.paintCount()})
+ await page.keyboard.type('a');await page.waitForFunction(()=>window.regionProofErrors.some(error=>error.includes('deliberate text draw failure')))
+ const failedText=await page.evaluate(()=>{const {source}=window.regionProof,before=window.regionProofTextBeforeFailure,observed=source.canvas.getContext('2d').getImageData(0,0,source.canvas.width,source.canvas.height).data;return {paintCount:source.paintCount(),unchanged:before.pixels.length===observed.length&&before.pixels.every((channel,index)=>channel===observed[index]),pendingFault:window.regionProofTextDrawFail}})
+ assert.equal(failedText.paintCount,beforeTextFailure,'A failed direct draw must not publish a frame');assert.equal(failedText.unchanged,true,'A failed direct draw must preserve displayed source pixels');assert.equal(failedText.pendingFault,false)
+ await page.evaluate(()=>window.regionProof.source.repaint({immediate:true}));const textRecovered=await compare('text-draw-recovery');assert.deepEqual(textRecovered.errors,['Error: deliberate text draw failure']);assert.ok(textRecovered.textAttempts>0);assert.ok(textRecovered.calls.some(call=>!call.clip));assert.equal(textRecovered.focused,true)
+ await holdTextPreparation()
+ const beforeTextRefresh=await page.evaluate(()=>{const finished=window.regionProofTextFinished??0;window.regionProof.source.repaint({immediate:true});return finished})
+ await page.waitForFunction(()=>window.regionProofTextPending.signal.aborted)
+ const textRefreshResources=await page.evaluate(()=>{const {certificate,blank}=window.regionProofTextPending;return {connected:certificate.isConnected,certificateWidth:certificate.width,blankWidth:blank.width}})
+ assert.deepEqual(textRefreshResources,{connected:false,certificateWidth:0,blankWidth:0})
+ await page.evaluate(()=>{const release=window.regionProofTextRelease;window.regionProofTextRelease=null;release()});await page.waitForFunction(finished=>(window.regionProofTextFinished??0)>finished,{},beforeTextRefresh)
+ const textRefreshed=await compare('text-preparation-refresh');assert.ok(textRefreshed.calls.some(call=>!call.clip))
+ await seedShort();await page.keyboard.type('a');const refreshedDirect=await compare('direct-after-preparation-refresh',true);assert.ok(refreshedDirect.textHits>0)
+ await holdTextPreparation()
+ await page.evaluate(()=>{const {input}=window.regionProof;input.setSelectionRange(0,0);input.scrollLeft=0;window.regionProofSvgHold=true})
+ await page.keyboard.type('a');await page.waitForFunction(()=>Boolean(window.regionProofRelease))
+ const preparationRace=await page.evaluate(()=>({finished:window.regionProofTextFinished??0,paintCount:window.regionProof.source.paintCount()}))
+ await page.evaluate(()=>{const release=window.regionProofTextRelease;window.regionProofTextRelease=null;release()});await page.waitForFunction(finished=>(window.regionProofTextFinished??0)>finished,{},preparationRace.finished)
+ assert.equal(await page.evaluate(()=>window.regionProof.source.paintCount()),preparationRace.paintCount,'Completing preparation must not publish while the SVG capture is held')
+ assert.equal(await page.evaluate(()=>Boolean(window.regionProofRelease)),true,'The SVG value capture must remain pending when preparation completes')
+ await page.evaluate(()=>{const release=window.regionProofRelease;window.regionProofRelease=null;release()});const racedSvg=await compare('preparation-race-svg-finished',true);assert.ok(racedSvg.svgHits>0,'The race must complete an actual same-template SVG value capture')
+ await page.keyboard.type('a');const racedDirect=await compare('direct-after-preparation-race',true);assert.ok(racedDirect.textHits>0,'A discarded preparation must allow the accepted template to prepare again');assert.equal(racedDirect.svgHits,0);assert.deepEqual(racedDirect.calls,[]);assert.equal(racedDirect.focused,true)
+ }
+ for(const [name,property,value] of [['group-opacity','opacity','.5'],['unsupported-typography','textIndent','2px']]){
+  await page.evaluate(({property,value})=>{const {input,source}=window.regionProof;window.regionProofFallbackTarget=property==='opacity'?input.parentElement:input;window.regionProofFallbackTarget.style[property]=value;input.value='aa';input.setSelectionRange(0,0);input.scrollLeft=0;source.repaint({immediate:true})},{property,value});await compare(name+'-seed')
+  await page.keyboard.type('a');await compare(name+'-first-edit',true)
+  await page.keyboard.type('a');const fallback=await compare(name+'-fallback',true);assert.equal(fallback.textHits,0);assert.ok(fallback.svgHits>0||fallback.calls.some(call=>call.clip));assert.equal(fallback.focused,true)
+  await page.evaluate(property=>{window.regionProofFallbackTarget.style[property]='';window.regionProof.source.repaint({immediate:true})},property);await compare(name+'-restored')
+ }
  await page.evaluate(async()=>{
   const {input,source,form}=window.regionProof
+  window.regionProofForceSvg=false
   const style=document.createElement('style');style.textContent="@font-face{font-family:RegionSubset;src:url('/fonts/archivo-400-900-latin.woff2') format('woff2');font-weight:900;unicode-range:U+0020-007E}@font-face{font-family:RegionSubset;src:url('/fonts/playfair-display-900-latin.woff2') format('woff2');font-weight:900;unicode-range:U+0042}"
   document.head.append(style)
   const text=[];const walker=document.createTreeWalker(form,NodeFilter.SHOW_TEXT);while(walker.nextNode()){const node=walker.currentNode;if(node.textContent.includes('B')){text.push([node,node.textContent]);node.textContent=node.textContent.replaceAll('B','b')}}
@@ -179,9 +264,10 @@ try{
   await page.keyboard.type('c');await settled()
   if(await page.evaluate(()=>(window.regionProofSvgHits??0)>0))break
  }
- const safeGlyph=await compare('font-subset-covered',true);assert.ok(safeGlyph.svgHits>0,'A new glyph covered by the embedded face must reuse SVG')
+ const safeGlyph=await compare('font-subset-covered',true);assert.ok(safeGlyph.svgHits>0,'A new glyph covered by the embedded face must reuse SVG');assert.equal(safeGlyph.textHits,0,'An input family with an omitted ASCII font face must keep SVG rendering')
  await page.keyboard.type('B');const newFace=await compare('font-subset-new-face');assert.ok(newFace.calls.some(call=>call.clip),'A glyph selecting another face must capture it');assert.equal(newFace.svgHits,0,'An uncovered glyph must not reuse SVG')
  await page.evaluate(()=>{const {input,source}=window.regionProof,fixture=window.regionProofFontFixture;fixture.style.remove();for(const [node,text] of fixture.text)node.textContent=text;input.style.fontFamily=fixture.family;input.style.fontWeight=fixture.weight;input.value=fixture.value;input.setSelectionRange(0,0);input.scrollLeft=0;source.repaint({immediate:true})});await compare('font-subset-restored')
+ await page.evaluate(()=>{window.regionProofForceSvg=false;window.regionProof.source.repaint({immediate:true})});await compare('text-after-font-fixture')
  for(const offset of [3,4]){
   await page.evaluate(offset=>{const {input,source}=window.regionProof;input.style.outlineOffset=offset+'px';source.repaint({immediate:true})},offset);await compare(`outline-${offset+2}`)
   await page.keyboard.type('o');const outlined=await compare(`outline-${offset+2}-typing`,offset===3)
@@ -250,18 +336,40 @@ try{
  await seedShort();await holdSvg()
  await page.evaluate(()=>{const {form,source}=window.regionProof;form.style.background='#badfda';source.repaint({immediate:true});const release=window.regionProofRelease;window.regionProofRelease=null;release()});const midflight=await compare('midflight-refresh');assert.ok(midflight.svgHits>0,'Refresh must interrupt an actual cached decode');assert.ok(midflight.calls.some(call=>!call.clip),'Refresh must capture current styles')
  await page.keyboard.type('a');await compare('midflight-future-edit',true)
- await page.evaluate(()=>{window.regionProof.form.style.background='';window.regionProof.source.repaint({immediate:true})});await compare('midflight-background-restored')
+ await page.evaluate(()=>{window.regionProofForceSvg=false;window.regionProof.form.style.background='';window.regionProof.source.repaint({immediate:true})});await compare('midflight-background-restored')
  await page.evaluate(()=>{window.regionProofDrawFail=true;window.regionProof.source.setScale(1)})
  await page.waitForFunction(()=>window.regionProofErrors.some(error=>error.includes('deliberate region cache draw failure')))
  await page.evaluate(()=>{const {source,input}=window.regionProof;source.setScale(2);input.value+='q';input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:'q'}))})
  const drawn=await compare('cache-draw-recovery');assert.ok(drawn.errors.some(error=>error.includes('deliberate region cache draw failure')));assert.ok(drawn.calls.every(c=>!c.clip))
- await page.evaluate(()=>{window.regionProofFail=true});await page.keyboard.type('!');await settled()
+ await page.evaluate(()=>{window.regionProofForceSvg=true;window.regionProofFail=true});await page.keyboard.type('!');await settled()
  await page.evaluate(()=>window.regionProof.source.repaint({immediate:true}));const recovered=await compare('decode-recovery');assert.ok(recovered.errors.some(e=>e.includes('deliberate region decode failure')))
  await seedShort();await holdSvg()
  assert.ok(await page.evaluate(()=>(window.regionProofSvgAttempts??0)>0),'Disposal must interrupt an actual cached decode')
  disposed=await page.evaluate(async()=>{const {source}=window.regionProof;const before=source.paintCount();source.dispose();window.regionProofRelease();await new Promise(resolve=>setTimeout(resolve,300));return {before,after:source.paintCount(),connected:source.host.isConnected}})
  }
  assert.equal(disposed.after,disposed.before);assert.equal(disposed.connected,false);assert.deepEqual(errors,[])
- await writeFile(path.join(output,'completion.json'),JSON.stringify({disposed,errors,browser:await browser.version()},null,2))
- console.log(JSON.stringify({checks:results.length,partialChecks:results.filter(r=>r.svgHits>0||r.calls.some(c=>c.clip)).map(r=>r.name),disposed,errors}))
+ let textDisposed=null
+ if(process.env.REGION_UNKNOWN_VIEWPORT!=='1'&&directTextSupported){
+  await page.evaluate(async(root)=>{
+   const {createDomTextureSource}=await import(root+'/packages/react/src/advanced.ts')
+   const form=window.regionProof.form.cloneNode(true),input=form.querySelector('[data-munari-anchor="field:project"]')
+   input.value='aa';input.placeholder='';input.setSelectionRange(0,0);input.scrollLeft=0
+   window.regionProofExtraErrors=[];window.regionProofForceSvg=false
+   const source=createDomTextureSource(form,760,540,{scale:2,onError:error=>window.regionProofExtraErrors.push(String(error))})
+   document.getElementById('root').append(source.host);source.setHostPainted(true);window.regionProofExtra={source,form,input}
+  },'/@fs'+root)
+  await page.waitForFunction(()=>Boolean(window.regionProofExtra.source.currentPaint()))
+  await page.evaluate(()=>{const {source,input}=window.regionProofExtra;input.focus();input.setSelectionRange(0,0);window.regionProofExtra.requiredRead=source.nextRead();source.repaint({immediate:true})})
+  await page.waitForFunction(()=>window.regionProofExtra.source.currentPaint()?.read>=window.regionProofExtra.requiredRead)
+  await page.evaluate(()=>{window.regionProofTextHold=true;window.regionProofExtra.requiredRead=window.regionProofExtra.source.nextRead()});await page.keyboard.type('a')
+  await page.waitForFunction(()=>Boolean(window.regionProofTextRelease));await page.waitForFunction(()=>window.regionProofExtra.source.currentPaint()?.read>=window.regionProofExtra.requiredRead)
+  const pendingTextDispose=await page.evaluate(()=>{const {certificate,blank,signal}=window.regionProofTextPending;return {connected:certificate.isConnected,certificateWidth:certificate.width,blankWidth:blank.width,aborted:signal.aborted}})
+  assert.equal(pendingTextDispose.connected,true);assert.ok(pendingTextDispose.certificateWidth>0&&pendingTextDispose.blankWidth>0);assert.equal(pendingTextDispose.aborted,false)
+  textDisposed=await page.evaluate(()=>{const {source}=window.regionProofExtra,before=source.paintCount(),finished=window.regionProofTextFinished??0;source.dispose();const {certificate,blank,signal}=window.regionProofTextPending;return {before,finished,connected:source.host.isConnected,certificateConnected:certificate.isConnected,certificateWidth:certificate.width,blankWidth:blank.width,aborted:signal.aborted}})
+  assert.equal(textDisposed.connected,false);assert.equal(textDisposed.certificateConnected,false);assert.equal(textDisposed.certificateWidth,0);assert.equal(textDisposed.blankWidth,0);assert.equal(textDisposed.aborted,true)
+  await page.evaluate(()=>{const release=window.regionProofTextRelease;window.regionProofTextRelease=null;release()});await page.waitForFunction(finished=>(window.regionProofTextFinished??0)>finished,{},textDisposed.finished)
+  textDisposed.after=await page.evaluate(()=>window.regionProofExtra.source.paintCount());assert.equal(textDisposed.after,textDisposed.before);assert.deepEqual(await page.evaluate(()=>window.regionProofExtraErrors),[])
+ }
+ await writeFile(path.join(output,'completion.json'),JSON.stringify({disposed,textDisposed,errors,browser:await browser.version()},null,2))
+ console.log(JSON.stringify({checks:results.length,partialChecks:results.filter(r=>r.textHits>0||r.svgHits>0||r.calls.some(c=>c.clip)).map(r=>r.name),disposed,textDisposed,errors}))
 }finally{if(browser)await browser.close();await server.close()}

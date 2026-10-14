@@ -365,6 +365,80 @@ export function chooseFaces<T extends { family: string; ranges: Ranges }>(
   )
 }
 
+const fontFaceCss = (face: DeclaredFace, data: string) =>
+  `@font-face{font-family:'${face.family}';${face.descriptors}src:url(${data}) format('woff2');}`
+
+export async function inputFontsEmbedded(field: HTMLInputElement, svg: XMLDocument): Promise<boolean> {
+  try {
+    const doc = field.ownerDocument
+    const familyText = getComputedStyle(field).fontFamily
+    if (!familyText || familyText.includes('\\')) return false
+    const families = new Set((familyText.match(/"[^"]*"|'[^']*'|[^,]+/g) ?? [])
+      .map((name) => unquote(name.trim()).toLowerCase()))
+    const points = new Set(Array.from({ length: 95 }, (_, index) => index + 32))
+    const faces: DeclaredFace[] = []
+    const declaredCounts = new Map<string, number>()
+    const visited = new Set<CSSStyleSheet>()
+    const faceKey = (family: string, style: string, weight: string, stretch: string, ranges: string) =>
+      JSON.stringify([unquote(family.trim()).toLowerCase(), style || 'normal', weight || 'normal', stretch || 'normal',
+        parseRanges(ranges || 'U+0-10FFFF')])
+    const visitRules = (rules: CSSRuleList, base: string): boolean => {
+      for (const rule of Array.from(rules)) {
+        if (isImport(rule)) {
+          if (!rule.styleSheet || !visitSheet(rule.styleSheet)) return false
+          continue
+        }
+        if (!(rule instanceof CSSFontFaceRule)) {
+          if ('cssRules' in rule && (!(rule.cssRules instanceof CSSRuleList) || !visitRules(rule.cssRules, base))) return false
+          continue
+        }
+        const style = rule.style
+        const family = unquote(style.getPropertyValue('font-family').trim())
+        if (!families.has(family.toLowerCase())) continue
+        const rangeText = style.getPropertyValue('unicode-range')
+        const ranges = rangeText ? parseRanges(rangeText) : null
+        if (!intersects(ranges, points)) continue
+        const src = style.getPropertyValue('src')
+        const url = firstUrl(src, base)
+        if (!url || /\blocal\s*\(/i.test(src)) return false
+        const descriptors = CARRIED_DESCRIPTORS.map((name) => {
+          const value = style.getPropertyValue(name)
+          return value ? `${name}:${value};` : ''
+        }).join('')
+        faces.push({ family, descriptors, url, ranges })
+        const key = faceKey(family, style.getPropertyValue('font-style'), style.getPropertyValue('font-weight'),
+          style.getPropertyValue('font-stretch'), rangeText)
+        declaredCounts.set(key, (declaredCounts.get(key) ?? 0) + 1)
+      }
+      return true
+    }
+    const visitSheet = (sheet: CSSStyleSheet): boolean => {
+      if (visited.has(sheet)) return true
+      visited.add(sheet)
+      return visitRules(sheet.cssRules, sheet.href ?? doc.baseURI)
+    }
+    const adopted = 'adoptedStyleSheets' in doc ? doc.adoptedStyleSheets : []
+    for (const sheet of new Set([...Array.from(doc.styleSheets), ...adopted])) {
+      if (!visitSheet(sheet)) return false
+    }
+    const liveCounts = new Map<string, number>()
+    for (const face of doc.fonts) {
+      if (!families.has(unquote(face.family.trim()).toLowerCase()) || !intersects(parseRanges(face.unicodeRange), points)) continue
+      const key = faceKey(face.family, face.style, face.weight, face.stretch, face.unicodeRange)
+      liveCounts.set(key, (liveCounts.get(key) ?? 0) + 1)
+    }
+    if (liveCounts.size !== declaredCounts.size || Array.from(liveCounts).some(([key, count]) => declaredCounts.get(key) !== count)) return false
+    const css = Array.from(svg.querySelectorAll('style'), (style) => style.textContent ?? '').join('\n')
+    const embedded = await Promise.all(faces.map(async (face) => {
+      const data = await encodeFace(face.url)
+      return data !== null && css.includes(fontFaceCss(face, data))
+    }))
+    return embedded.every(Boolean)
+  } catch {
+    return false
+  }
+}
+
 /**
  * Build the `@font-face` block this clone needs.
  *
@@ -392,7 +466,7 @@ async function fontCssFor(
     wanted.map(async (face) => {
       const data = await encodeFace(face.url)
       if (!data) return ''
-      return `@font-face{font-family:'${face.family}';${face.descriptors}src:url(${data}) format('woff2');}`
+      return fontFaceCss(face, data)
     }),
   )
   return blocks.join('')

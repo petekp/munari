@@ -4193,7 +4193,41 @@ Characters already in the snapshot are reusable. New characters are allowed only
 when the embedder's declared Unicode ranges select no additional font face.
 This conservative check includes every declared family.
 Unsupported input structure or new font coverage uses a fresh region capture.
-The small SVG is still serialized and decoded.
+The SVG fallback still serializes and decodes the updated value.
+
+On CPU-configured canvases at capture scale two on both axes, compatible fields can restore a
+blank field bitmap and draw the next complete string with Canvas 2D. Preparation
+clones the accepted SVG once, clears only that input's value and placeholder,
+and decodes its blank image. A separate canvas must reproduce the accepted
+field's RGBA pixels exactly before the painter becomes eligible. Preparation
+runs without awaiting it in the frame publication path. Invalidation aborts
+pending preparation and releases its canvases. Failed checks stay disabled for
+that SVG template.
+
+The direct path requires a collapsed selection, zero scroll, integer device-pixel
+text X, left-aligned LTR text, supported font settings and glyphs fitting the
+content box. Clipping paths, restrictive ancestor overflow, rounded corners
+intersecting the text box, unsupported density, typography, overlapping content
+or group opacity inside the captured root use SVG. The capture host's opacity is outside
+that root and does not enter its SVG pixels. Existing font-range checks still
+apply. Direct drawing also requires every declared ASCII face in the field's
+font families to be present in the saved SVG. Unreadable stylesheets, unproven
+script-created faces and missing embedded font rules keep SVG rendering. Input
+ownership, read versions and capture scheduling remain in their existing owners.
+
+Detached Canvas text differed on 1,527 Controls pixels. A connected hidden canvas
+with the field's font smoothing matched the seed. Chromium's
+[Canvas font resolution](https://chromium.googlesource.com/chromium/src/+/4b66688abb9c3bf5ac1a0fafe7f9ebad52624a99/third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.cc)
+uses computed style for a connected canvas. Explicit normal kerning matches
+native input spacing at the measured `JY ` boundary; Canvas auto did not.
+Authored `font-kerning:none` remains none. Drawing clips to the native content
+box. The retained browser proof checks both kerning and punctuation edits after
+a different seed has enabled the painter.
+
+Pixel certification reads only CPU-configured canvases. GPU-configured canvases
+keep the SVG path because certification readback increased input latency in the
+4× and 6× benchmark. Direct drawing restores only the field bitmap. Core still
+receives a complete image for publication and full texture upload.
 
 A repaint of the same accepted input state can reuse the complete bitmap. The
 input event version must also match: a capture can observe a later DOM value
@@ -4203,7 +4237,9 @@ recovery, and invalidation prevents an in-flight template from becoming reusable
 
 The complete cache adds about 6.3 MiB of RGBA storage for Controls at
 1520 × 1080 pixels. CPU capture also retains a bounded scratch bitmap. Each
-active source can retain one parsed region SVG. The bitmap figures are
+active source can retain one parsed region SVG. A direct text painter also
+retains its blank field bitmap and decoded blank SVG image. Temporary
+certification canvases are released after preparation or abort. The bitmap figures are
 allocation-size calculations, not resident-memory measurements. Texture
 uploads retain the full source dimensions. The default snapDOM engine keeps
 the direct-image path from the preceding amendment.
