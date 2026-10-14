@@ -4,6 +4,8 @@ CPU input-to-upload p50 medians: 4× 255.7 to 141.3 ms; 6× 428.1 to 179.0 ms. C
 
 Eligible CPU edits restore a blank input bitmap and paint Canvas text. They skip value SVG serialization and decoding. Preparation decodes the blank bitmap and checks its seed text against the accepted capture. Rejected settings use SVG.
 
+These comparisons use Vite development builds. Separate production-build attribution is in [the performance diagnosis](performance-diagnosis.md).
+
 Baseline: `597eae53e92d1bc83818155794f1c46eb2fbeb80`. The matrix has five paired trials per rate and storage mode on Apple M4 Max, Chrome/155.0.8059.80, DPR 2. CPU/GPU name the 2D capture storage modes. CPU slowdown simulates 4× and 6× rates on this host, not physical low-power devices.
 
 Input timing starts when the observer receives a DOM input event and ends at its texture-upload acknowledgement. It excludes input dispatch delay and visible presentation. Frame timing measures requestAnimationFrame intervals, not presentation time.

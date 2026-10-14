@@ -6,13 +6,20 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { replaceSource } from '../home-light/replaceSource.mjs'
+import { observeCaptureDiagnostics } from './capture-diagnostics.mjs'
 
-export function performanceObserver(root, commit, loadedSources, routeTiming = true, baselineDirectory = null, captureStages = false, captureStorage = null) {
+export function performanceObserver(root, commit, loadedSources, routeTiming = true, baselineDirectory = null, captureStages = false, captureStorage = null, captureDiagnostics = false) {
   const modulePath = id => path.relative(root, id.split('?')[0]).replaceAll(path.sep, '/')
   const owned = file => /^packages\/(core|react)\/src\/[\w./-]+\.(tsx?|css)$/.test(file) && !file.includes('..')
   const labFile = file => /^apps\/lab\/src\/[\w./-]+\.(tsx?|css)$/.test(file) && !file.includes('..')
   const measuredFile=file=>owned(file)||file.startsWith('apps/lab/src/')
   const baselineLab=baselineDirectory&&existsSync(path.join(baselineDirectory,'apps/lab/src'))
+  const recordSource = (file, source) => {
+    if (!measuredFile(file)) return
+    const hash = createHash('sha256').update(source).digest('hex')
+    if (loadedSources[file]) assert.equal(loadedSources[file], hash, `Source changed during benchmark: ${file}`)
+    loadedSources[file] = hash
+  }
   return {
     name: 'munari-performance-observer', enforce: 'pre',
     load(id) {
@@ -28,11 +35,8 @@ export function performanceObserver(root, commit, loadedSources, routeTiming = t
     transform(source, id) {
       if (new URLSearchParams(id.split('?')[1] ?? '').has('raw')) return null
       const file = modulePath(id)
-      if (measuredFile(file)) {
-        const hash = createHash('sha256').update(source).digest('hex')
-        if (loadedSources[file]) assert.equal(loadedSources[file], hash, `Source changed during benchmark: ${file}`)
-        loadedSources[file] = hash
-      }
+      recordSource(file, source)
+      if(captureDiagnostics)source=observeCaptureDiagnostics(source,file)
       if(captureStorage&&file==='packages/core/src/paint/domTextureSource.ts')return replaceSource(source,
         "captureMemory = adapter?.info.isFallbackAdapter ? 'cpu' : 'gpu'",
         `captureMemory = ${JSON.stringify(captureStorage)}`)
@@ -83,26 +87,37 @@ function hostSpace(...args: Parameters<typeof measuredHostSpace>) {
     onPainted?.(receipt);
   })`)
       }
-      return null
+      return captureDiagnostics ? source : null
     },
   }
 }
 
 function observeInputSvg(source, captureStages) {
+  if(captureStages) {
+    const identityType='{sourceId:number|null;read:number|null}'
+    source=replaceSource(source,'height: number): Promise<HTMLImageElement> {',`height: number, perfSvgIdentity?: ${identityType}): Promise<HTMLImageElement> {`)
+    source=replaceSource(source,'    render(next: string) {',`    render(next: string) {
+      const perfSvgIdentity=window.__munariPerf.identityFor(field)`)
+    if(source.includes('    blank() {')) {
+      source=replaceSource(source,'    blank() {',`    blank(perfSvgIdentity: ${identityType} = window.__munariPerf.identityFor(field)) {`)
+      source=replaceSource(source,'height: number) => {',`height: number, perfSvgIdentity?: ${identityType}) => {`)
+      source=replaceSource(source,'decodeBlankInput(document, inputs.indexOf(input), width, height)','decodeBlankInput(document, inputs.indexOf(input), width, height, perfSvgIdentity)')
+    }
+  }
   if(captureStages)source=replaceSource(source,
     '  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(document))}`',
     `  const perfSerializeStarted=performance.now();
   image.src = \`data:image/svg+xml;charset=utf-8,\${encodeURIComponent(new XMLSerializer().serializeToString(document))}\`;
-  window.__munariPerf.record('captureStage',{stage:'reusedSvgSerializeSync',ms:performance.now()-perfSerializeStarted})`)
+  window.__munariPerf.record('captureStage',{...perfSvgIdentity,stage:'reusedSvgSerializeSync',ms:performance.now()-perfSerializeStarted})`)
   if(captureStages)source=replaceSource(source,'  await image.decode()',`  const started=performance.now();
   await image.decode()
-  window.__munariPerf.record('captureStage',{stage:'inputSvgDecodeWall',ms:performance.now()-started})`)
-  source=replaceSource(source,'      return decodeInputSvg(document, width, height)',`      return decodeInputSvg(document, width, height).then((image) => {
+  window.__munariPerf.record('captureStage',{...perfSvgIdentity,stage:'inputSvgDecodeWall',ms:performance.now()-started})`)
+  source=replaceSource(source,'      return decodeInputSvg(document, width, height)',`      return decodeInputSvg(document, width, height${captureStages?', perfSvgIdentity':''}).then((image) => {
         window.__munariPerf.record('reusedInputSvg',{width:image.width,height:image.height});
         window.__munariPerf.record('captureRaster',{width:image.width,height:image.height});
         return image
       })`)
-  if(source.includes('  return decodeInputSvg(blank, width, height)'))source=replaceSource(source,'  return decodeInputSvg(blank, width, height)',`  return decodeInputSvg(blank, width, height).then((image) => {
+  if(source.includes('  return decodeInputSvg(blank, width, height)'))source=replaceSource(source,'  return decodeInputSvg(blank, width, height)',`  return decodeInputSvg(blank, width, height${captureStages?', perfSvgIdentity':''}).then((image) => {
     window.__munariPerf.record('inputBlankDecode',{});
     window.__munariPerf.record('captureRaster',{width:image.width,height:image.height});
     return image
@@ -117,32 +132,39 @@ function observeInputRegions(source,captureStages) {
   if(!captureStages)return source
   const prepareTextMarker='    void prepareInputTextPainter({'
   if(source.includes(prepareTextMarker)) {
-    source=replaceSource(source,prepareTextMarker,`    const perfTextPreparationStarted=performance.now()
+    source=replaceSource(source,prepareTextMarker,`    const perfTextPreparationIdentity=window.__munariPerf.identityFor(root)
+    const perfTextPreparationStarted=performance.now()
     void prepareInputTextPainter({`)
     source=replaceSource(source,'    }).then((painter) => {',`    }).then((painter) => {
-      window.__munariPerf.record('captureStage',{stage:'preparation',ms:performance.now()-perfTextPreparationStarted})`)
+      window.__munariPerf.record('captureStage',{...perfTextPreparationIdentity,stage:'preparation',ms:performance.now()-perfTextPreparationStarted})`)
   }
   source=replaceSource(source,'      const state = snapshot(field, sx, sy)',`      const perfSnapshotStarted=performance.now();
 const state = snapshot(field, sx, sy)
-window.__munariPerf.record('captureStage',{stage:'regionSnapshotSync',ms:performance.now()-perfSnapshotStarted})`)
+window.__munariPerf.record('captureStage',{...window.__munariPerf.identityFor(root),stage:'regionSnapshotSync',ms:performance.now()-perfSnapshotStarted})`)
   for(const [statement,stage] of [
     ['regionContext.drawImage(image, x, y, image.width, image.height)','regionSvgDrawSync'],
     ['context.drawImage(regionCanvas, left, top, width, height, left, top, width, height)','regionCopySync'],
     ['context.drawImage(image, x, y, image.width, image.height)','gpuRegionDrawSync'],
     ['context.drawImage(image, 0, 0, canvas.width, canvas.height)','fullCacheDrawSync'],
   ]) {
-    if(source.includes(statement))source=replaceSource(source,statement,`{ const started=performance.now(); ${statement}; window.__munariPerf.record('captureStage',{stage:'${stage}',ms:performance.now()-started}) }`)
+    if(source.includes(statement))source=replaceSource(source,statement,`{ const started=performance.now(); ${statement}; window.__munariPerf.record('captureStage',{...window.__munariPerf.identityFor(root),stage:'${stage}',ms:performance.now()-started}) }`)
   }
   return source
 }
 
 function observeInputText(source,captureStages) {
+  if(captureStages&&source.includes('    const image = await template.blank()')) {
+    source=replaceSource(source,'  blank(): Promise<HTMLImageElement>','  blank(perfSvgIdentity?: {sourceId:number|null;read:number|null}): Promise<HTMLImageElement>')
+    source=replaceSource(source,'export async function prepareInputTextPainter(options: InputTextPainterOptions): Promise<InputTextPainter | null> {',`export async function prepareInputTextPainter(options: InputTextPainterOptions): Promise<InputTextPainter | null> {
+  const perfTextPreparationIdentity=window.__munariPerf.identityFor(options.root)`)
+    source=replaceSource(source,'    const image = await template.blank()','    const image = await template.blank(perfTextPreparationIdentity)')
+  }
   source=replaceSource(source,'    const painter = createCertifiedPainter(options, paint, pixels, blank, ascent, descent, targetWidth, targetHeight)',`    const painter = createCertifiedPainter(options, paint, pixels, blank, ascent, descent, targetWidth, targetHeight)
     window.__munariPerf.record('preparedInputText',{})`)
   if(captureStages)source=replaceSource(source,'    paint(value: string) {',`    paint(value: string) {
       const perfDirectInputStarted=performance.now()`)
   source=replaceSource(source,'      return true\n    },\n    dispose() {',`      window.__munariPerf.record('directInputText',{painted:true})
-      ${captureStages?"window.__munariPerf.record('captureStage',{stage:'directInputTextSync',ms:performance.now()-perfDirectInputStarted})":""}
+      ${captureStages?"window.__munariPerf.record('captureStage',{...window.__munariPerf.identityFor(options.root),stage:'directInputTextSync',ms:performance.now()-perfDirectInputStarted})":""}
       return true
     },
     dispose() {`)
@@ -214,6 +236,10 @@ export function installObserver() {
     record(kind, values) {
       if(kind==='preparedInputText'||kind==='inputBlankDecode')this.totals[kind]++
       if (this.active) this.events.push({kind,t:performance.now(),...values})
+    },
+    identityFor(element) {
+      const source=[...this.sources.values()].find(entry=>entry.source.element===element||entry.source.element.contains(element))?.source
+      return {sourceId:source?.sourceId??null,read:source?source.nextRead()-1:null}
     },
     beginCapture(element) {
       const source=[...this.sources.values()].find(entry=>entry.source.element===element)?.source

@@ -235,7 +235,58 @@ For direct text drawing, compare against `597eae53e92d1bc83818155794f1c46eb2fbeb
 at CPU rates `4,6` with `PERF_ENGINES=snapdom`. Run both
 `PERF_CAPTURE_STORAGE=cpu` and `PERF_CAPTURE_STORAGE=gpu`. The Controls Project
 field opts into region capture. Require `directInputTexts` to be positive in
-every candidate input phase. Compare `reusedInputSvgs`, blank-image decodes and
+every CPU candidate input phase. GPU candidates must keep SVG reuse with zero
+`directInputTexts`, `preparedInputTexts` and `inputBlankDecodes`. Compare
+`reusedInputSvgs`, blank-image decodes and
 fresh capture counts as well as timing. These operations need not equal the
 receipts completed in the phase. Keep
 capture-stage profiling disabled for the paired timing comparison.
+
+
+## Capture diagnosis and production builds
+
+`PERF_CAPTURE_DIAGNOSTICS=1` requires `PERF_CAPTURE_STAGES=1`. It records
+capture admission, coalesced requests, invalidation causes, the first rejected
+reuse condition, and geometry/style/control-state inspection. Events retain
+source and DOM-read identities. The package source is unchanged; a Vite plugin
+instruments only the served modules.
+
+```sh
+PERF_BUILD_MODE=production PERF_CAPTURE_STORAGE=cpu \
+  PERF_CPU_RATES=6 PERF_TRIALS=1 PERF_ENGINES=snapdom PERF_ROUTE_TIMING=0 \
+  PERF_PROFILE=1 PERF_CAPTURE_STAGES=1 PERF_CAPTURE_DIAGNOSTICS=1 \
+  PERF_GPU_DIAGNOSTICS=1 PERF_OUTPUT=/tmp/munari-capture-diagnosis \
+  node instruments/performance/run.mjs
+node instruments/performance/diagnose.mjs \
+  /tmp/munari-capture-diagnosis/results.json \
+  /tmp/munari-capture-diagnosis/analysis.json
+```
+
+`PERF_BUILD_MODE` defaults to `development`. Production mode uses the existing
+lab Vite configuration, normal minification and source maps. Build output and
+caches stay beneath `PERF_OUTPUT`. The result verifies that production React
+and React DOM reached the generated chunks and that development runtimes did
+not. Production mode currently measures the working tree only; baseline and
+source-ref options require development mode. Build mode is always recorded.
+
+`PERF_GPU_DIAGNOSTICS=1` measures the synchronous native canvas-copy submission
+and starts an asynchronous queue checkpoint at each texture update. Rendering
+does not wait for the checkpoint. The phase snapshot preserves pending work;
+a final trial snapshot includes callbacks that arrive after the phase stops.
+Missing native copies, unsupported contexts, queue mismatches and rejected
+checkpoints remain explicit. These observations do not isolate GPU upload
+execution. Queue-prefix callback latency includes earlier submitted work and
+main-thread callback scheduling, and does not establish display presentation.
+
+`PERF_FLUSH_CPU_RASTER=1` is a counterfactual requiring CPU storage and capture
+stage timing. It adds a complete pixel readback after each full cache draw.
+The recorded `diagnosticFlushReadbackSync` stage reveals deferred canvas paint
+work before the normal source draw. It adds work and is not an optimization.
+Compare it with an otherwise matching run without the flag.
+
+The diagnosis reader exposes unmatched stage events. A missing source/read
+join is unmeasured attribution, not zero work. `regionSnapshotSync` includes
+its substages; `snapshotKeyBuildSync` includes root-style enumeration and
+control-state collection. Do not sum nested timers. Async preparation and
+rasterization can overlap. Profiling and diagnostic observers add overhead;
+use the ordinary unprofiled runner for performance comparisons.

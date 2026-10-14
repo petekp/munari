@@ -6,11 +6,17 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { cpus, tmpdir } from 'node:os'
 import path from 'node:path'
-import { createServer } from 'vite'
 import puppeteer from 'puppeteer-core'
 import { installObserver, performanceObserver } from './observer.mjs'
+import { gpuDiagnosticPlugin, installGpuDiagnostics } from './gpu-diagnostics.mjs'
+import { fullCacheFlushDiagnostic } from './raster-flush-diagnostic.mjs'
+import { productionBuildProof } from './production-build-proof.mjs'
 import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
+const buildMode = process.env.PERF_BUILD_MODE ?? 'development'
+assert.ok(['development','production'].includes(buildMode), 'PERF_BUILD_MODE must be development or production')
+process.env.NODE_ENV = buildMode
+const { createServer, build, preview } = await import('vite')
 const root = path.resolve(import.meta.dirname, '../..')
 const featurePrefix='--enable-features='
 const enabledFeatures=['CanvasDrawElement',...WEBGPU_CHROME_ARGS.flatMap(arg=>arg.startsWith(featurePrefix)?arg.slice(featurePrefix.length).split(','):[])]
@@ -36,8 +42,16 @@ assert.ok(['0','1'].includes(process.env.PERF_PROFILE ?? '0'), 'PERF_PROFILE mus
 const profile = process.env.PERF_PROFILE === '1'
 assert.ok(['0','1'].includes(process.env.PERF_CAPTURE_STAGES ?? '0'), 'PERF_CAPTURE_STAGES must be 0 or 1')
 const captureStages=process.env.PERF_CAPTURE_STAGES === '1'
+assert.ok(['0','1'].includes(process.env.PERF_CAPTURE_DIAGNOSTICS ?? '0'), 'PERF_CAPTURE_DIAGNOSTICS must be 0 or 1')
+const captureDiagnostics=process.env.PERF_CAPTURE_DIAGNOSTICS === '1'
+assert.ok(['0','1'].includes(process.env.PERF_GPU_DIAGNOSTICS ?? '0'), 'PERF_GPU_DIAGNOSTICS must be 0 or 1')
+const gpuDiagnostics=process.env.PERF_GPU_DIAGNOSTICS === '1'
+assert.ok(['0','1'].includes(process.env.PERF_FLUSH_CPU_RASTER ?? '0'), 'PERF_FLUSH_CPU_RASTER must be 0 or 1')
+const flushCpuRaster=process.env.PERF_FLUSH_CPU_RASTER === '1'
 const captureStorage=process.env.PERF_CAPTURE_STORAGE??null
 assert.ok(captureStorage===null||['cpu','gpu'].includes(captureStorage), 'PERF_CAPTURE_STORAGE must be cpu or gpu')
+assert.ok(!flushCpuRaster || captureStorage==='cpu' && captureStages, 'CPU raster flush requires CPU capture storage and capture-stage timing')
+assert.ok(!captureDiagnostics || captureStages, 'PERF_CAPTURE_DIAGNOSTICS requires PERF_CAPTURE_STAGES=1')
 const maxFrameP95Ms = process.env.PERF_MAX_FRAME_P95_MS ? Number(process.env.PERF_MAX_FRAME_P95_MS) : null
 assert.ok(maxFrameP95Ms===null || Number.isFinite(maxFrameP95Ms)&&maxFrameP95Ms>0, 'PERF_MAX_FRAME_P95_MS must be positive and finite')
 assert.ok(engines.length>0 && engines.every(engine => ['html-in-canvas','snapdom'].includes(engine)), 'Unknown PERF_ENGINES selection')
@@ -50,16 +64,17 @@ const versions = baselineDirectory
   : process.env.PERF_BASELINE_REF
   ? [{label:'baseline',commit:resolveRef(process.env.PERF_BASELINE_REF),labSources:true},{label:'working-tree',commit:null}]
   : [{label:process.env.PERF_SOURCE_REF?'source-ref':'working-tree',commit:process.env.PERF_SOURCE_REF?resolveRef(process.env.PERF_SOURCE_REF):null,labSources:Boolean(process.env.PERF_SOURCE_REF)}]
+if (buildMode === 'production') assert.ok(versions.every(version=>version.commit===null&&!version.directory), 'Production mode currently supports the working tree only; omit PERF_SOURCE_REF, PERF_BASELINE_REF and PERF_BASELINE_DIR')
 const output = path.resolve(process.env.PERF_OUTPUT ?? path.join(tmpdir(),`munari-performance-${Date.now()}`))
 await mkdir(output,{recursive:true})
 const lock = JSON.parse(await readFile(path.join(root,'package-lock.json'),'utf8'))
 const metadata = {
-  startedAt:new Date().toISOString(),head:git('rev-parse','HEAD'),
+  startedAt:new Date().toISOString(),head:git('rev-parse','HEAD'),buildMode,nodeEnv:process.env.NODE_ENV,buildEvidence:{},
   dirty:git('status','--short'),node:process.version,platform:process.platform,arch:process.arch,
   cpu:cpus()[0]?.model,cpuCount:cpus().length,
   viewport:{width:1440,height:1000,deviceScaleFactor:2},resizedViewport:{width:1320,height:920,deviceScaleFactor:2},
   input:' Repeatable browser input 0123456789.',inputDelayMs:40,idleMs:1200,
-  trials,rates,engines,versions,routeTiming,profile,captureStages,captureStorage,maxFrameP95Ms,baselineLabSources,chromeArgs,requestedBackend:process.env.MUNARI_BACKEND??'auto',
+  trials,rates,engines,versions,routeTiming,profile,captureStages,captureStorage,captureDiagnostics,gpuDiagnostics,flushCpuRaster,maxFrameP95Ms,baselineLabSources,chromeArgs,requestedBackend:process.env.MUNARI_BACKEND??'auto',
   dependencyVersions:Object.fromEntries(['three','@react-three/fiber','@zumer/snapdom','vite','puppeteer-core'].map(name=>[name,lock.packages[`node_modules/${name}`]?.version])),
 }
 const results = {metadata,rows:[],loadedSources:{}}
@@ -158,6 +173,7 @@ async function trial(server,version,engine,rate,index) {
     await cdp.send('Performance.enable')
     await cdp.send('Emulation.setCPUThrottlingRate',{rate})
     await page.evaluateOnNewDocument(installObserver)
+    if(gpuDiagnostics)await page.evaluateOnNewDocument(installGpuDiagnostics)
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=controls&framed${engine==='snapdom'?'&capture=snapdom':''}`,{waitUntil:'load'})
     await page.waitForFunction(()=>window.__apiControls?.status?.supported&&document.querySelector('[data-api-live] input'),{timeout:30000})
     await page.evaluate(()=>document.fonts.ready)
@@ -238,8 +254,10 @@ async function trial(server,version,engine,rate,index) {
     const inputPhase=phases.find(phase=>phase.name==='scene-input')
     assert.equal(inputPhase.unacknowledgedInputs,0,'Every input needs an acknowledged capture read')
     assert.equal(inputPhase.inputToUploadMs.count,metadata.input.length,'Each typed character needs its own input observation')
+    if(flushCpuRaster)assert.ok(inputPhase.raw.events.some(event=>event.kind==='captureStage'&&event.stage==='diagnosticFlushReadbackSync'),'CPU flush must execute during the measured input phase')
     const frameBudget=maxFrameP95Ms===null?null:{maxP95Ms:maxFrameP95Ms,measuredP95Ms:inputPhase.frameIntervalMs.p95,passed:inputPhase.frameIntervalMs.p95<=maxFrameP95Ms}
-    const row={name,version:version.label,sourceCommit:version.commit,sourceDirectory:version.directory??null,engine,rate,trial:index,browser:await browser.version(),before,edited,outcome,errors,phases,frameBudget}
+    const gpuEvidence=gpuDiagnostics?await page.evaluate(()=>window.__munariGpuDiagnostics.snapshot()):null
+    const row={gpuDiagnostics:gpuEvidence,name,version:version.label,sourceCommit:version.commit,sourceDirectory:version.directory??null,engine,rate,trial:index,browser:await browser.version(),before,edited,outcome,errors,phases,frameBudget}
     await writeFile(path.join(directory,'result.json'),JSON.stringify(row,null,2))
     console.log(JSON.stringify({...row,phases:phases.map(({raw,...phase})=>phase)}))
     return row
@@ -257,9 +275,22 @@ try {
   for(const version of versions) {
     const loadedSources={}
     results.loadedSources[version.label]=loadedSources
-    const server=await createServer({root:path.join(root,'apps/lab'),cacheDir:path.join(output,`.vite-${version.label}`),server:{host:'127.0.0.1',port:0,watch:null,fs:{allow:[root]}},plugins:[performanceObserver(root,version.commit,loadedSources,routeTiming,version.directory,captureStages,captureStorage)],logLevel:'warn'})
+    const cacheDir=path.join(output,`.vite-${version.label}`)
+    const plugins=[performanceObserver(root,version.commit,loadedSources,routeTiming,version.directory,captureStages,captureStorage,captureDiagnostics),...(gpuDiagnostics?[gpuDiagnosticPlugin(root)]:[]),...(flushCpuRaster?[fullCacheFlushDiagnostic(root)]:[])]
+    let server
+    if (buildMode === 'production') {
+      const outDir=path.join(output,`build-${version.label}`)
+      const evidence={}
+      metadata.buildEvidence[version.label]=evidence
+      const common={root:path.join(root,'apps/lab'),configFile:path.join(root,'apps/lab/vite.config.ts'),configLoader:'native',mode:buildMode,cacheDir,logLevel:'warn'}
+      await build({...common,build:{outDir,emptyOutDir:true,sourcemap:true},plugins:[...plugins,productionBuildProof(evidence)]})
+      await writeFile(path.join(output,`build-${version.label}.json`),JSON.stringify(evidence,null,2))
+      server=await preview({...common,build:{outDir},preview:{host:'127.0.0.1',port:0,open:false}})
+    } else {
+      server=await createServer({root:path.join(root,'apps/lab'),mode:buildMode,cacheDir,server:{host:'127.0.0.1',port:0,watch:null,fs:{allow:[root]}},plugins,logLevel:'warn'})
+      await server.listen()
+    }
     servers.push(server)
-    await server.listen()
   }
   for(const engine of engines)for(const rate of rates)for(let index=1;index<=trials;index++) {
     const order=versions.map((version,i)=>({version,server:servers[i]}))

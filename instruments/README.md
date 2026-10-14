@@ -60,6 +60,11 @@ The controls operate on the served scene, without forcing presentation receipts.
 and panel ordering. It does not establish every ripple parameter, retirement,
 glow, or input behavior. CI membership is unchanged.
 
+The [Glass performance probe](glass-performance/README.md) measures per-pass
+CPU and GPU cost, with explicit density and antialiasing counterfactuals. Its
+fixed-image negative control detects an omitted panel; its timings do not
+measure upload completion or display presentation.
+
 ## Test result validity
 
 An acceptance result needs the requested scenario, a healthy observer, and
