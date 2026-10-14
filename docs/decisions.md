@@ -4138,6 +4138,21 @@ snapDOM with that engine's fidelity ceiling (platform.md #28).
 
 ## #62 — A capture is paid for once, and a live one is paced by a period (2026-09-12)
 
+**Amendment, 2026-10-14: reuse verified serialized styles.**
+The input region rasterizer keeps a primitive snapshot of each inspected
+element's ordered property names, values and serialized string. Every lookup
+reads the current computed declaration. It reuses the string only when the
+property count, ordered names and values all match. Changed declarations
+produce a new string. Name checks also detect an empty custom property renamed
+without changing the property count or values.
+
+String reuse depends on this comparison independently of event invalidation.
+Media changes, pseudo-classes and paused animations are inspected through their
+current computed values. A `WeakMap` keys snapshots by element, so the cache
+does not retain those elements. Releasing the bitmap cache or disposing the
+source clears the snapshots. The [style-cache report](style-cache-performance.md)
+contains the verification and production benchmark protocol.
+
 **Amendment, 2026-10-13: isolated text input regions.**
 `enableSnapdomCapture({ isolatedTextInputs: selector })` opts declared text
 fields into region capture. A value edit must affect only the field's border

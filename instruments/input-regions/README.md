@@ -36,6 +36,17 @@ typography must fall back to SVG. GPU storage must retain SVG reuse without
 preparing a direct painter. A held SVG decode also checks that discarded
 preparation cannot prevent the next accepted template from preparing again.
 
+Style-cache cases warm the cache, then change ancestor paint through input
+validity, a color-scheme media query without resizing, and an inherited host
+style. A paused animation outside the captured root is advanced manually.
+The media, inheritance and paused-animation fixtures compare full captures
+with the input value held constant to prove a visible change before typing.
+The next trusted input must capture the current styles and preserve focus.
+These cases compare the resulting pixels with a full capture. A separate
+fixture renames an empty custom property while keeping the property count
+unchanged. It compares the cached serialization with the complete current
+declaration. Results record style-cache hits and new serializations.
+
 A font fixture checks cache hits for a covered declared range and
 cache misses for an additional range. It does not prove that an input-only
 font subset is embedded: the existing font selector reads clone text nodes
@@ -45,6 +56,15 @@ and can omit native input values.
 `/tmp/munari-input-regions`. Each case saves both PNGs and its result in
 `results.json`. `completion.json` confirms that the whole run finished.
 `CHROME_PATH` selects the Chrome executable.
+
+Freezing a cached style string whenever its property count stays unchanged
+must fail the color-scheme pixel comparison. This control removes the name
+and value checks after the cache has warmed:
+
+```sh
+REGION_STORAGE=cpu REGION_FREEZE_STYLES=1 REGION_OUTPUT=/tmp/munari-input-regions-style-fault \
+  node instruments/input-regions/run.mjs
+```
 
 The deliberate one-pixel placement fault must exit nonzero on a pixel mismatch:
 

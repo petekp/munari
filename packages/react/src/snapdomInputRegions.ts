@@ -15,6 +15,12 @@ export interface CaptureRegionOptions {
 
 export class UnsupportedRegionCaptureError extends Error {}
 
+interface SerializedStyle {
+  readonly names: readonly string[]
+  readonly values: readonly string[]
+  readonly serialized: string
+}
+
 // Controls' focus ring extends four CSS pixels; root clipping preserves its
 // background at that margin (docs/incremental-capture.md).
 const REGION_PADDING = 4
@@ -29,6 +35,7 @@ export function createInputRegionRasterizer(
   const document = root.ownerDocument
   const canvas = document.createElement('canvas')
   const observedAncestors = new WeakSet<Element>()
+  let styleCache = new WeakMap<Element, SerializedStyle>()
   const listeners = new AbortController()
   let disposed = false
   let epoch = 0
@@ -56,6 +63,7 @@ export function createInputRegionRasterizer(
   }
 
   const releaseCachedBitmaps = () => {
+    styleCache = new WeakMap()
     discardTextPainter()
     inputSvg = null
     canvas.width = canvas.height = 0
@@ -132,8 +140,31 @@ export function createInputRegionRasterizer(
     }, { capture: true, signal: listeners.signal })
   }
 
-  const styles = (style: CSSStyleDeclaration) =>
-    Array.from(style, (property) => `${property}:${style.getPropertyValue(property)}`).join(';')
+  const styles = (element: Element, style: CSSStyleDeclaration) => {
+    const previous = styleCache.get(element)
+    const count = style.length
+    let unchanged = 0
+    if (previous && previous.names.length === count) {
+      for (; unchanged < count; unchanged++) {
+        const name = style.item(unchanged)
+        if (name !== previous.names[unchanged] || style.getPropertyValue(name) !== previous.values[unchanged]) break
+      }
+      if (unchanged === count) return previous.serialized
+    }
+    const names = previous?.names.slice(0, unchanged) ?? []
+    const values = previous?.values.slice(0, unchanged) ?? []
+    const parts = names.map((name, index) => `${name}:${values[index]}`)
+    for (let index = unchanged; index < count; index++) {
+      const name = style.item(index)
+      const value = style.getPropertyValue(name)
+      names.push(name)
+      values.push(value)
+      parts.push(`${name}:${value}`)
+    }
+    const serialized = parts.join(';')
+    styleCache.set(element, { names, values, serialized })
+    return serialized
+  }
   const controlState = (field: HTMLInputElement | null) => Array.from(root.querySelectorAll('input,textarea,select'), (control) => {
     if (control instanceof HTMLInputElement) {
       return [control === field ? null : control.value, control === field ? null : control.defaultValue, control.type, control.checked,
@@ -248,9 +279,9 @@ export function createInputRegionRasterizer(
     const rect = field?.getBoundingClientRect()
     const paint = ancestorPaint(field)
     const rootStyle = paint.ancestors.find((entry) => entry.element === root)?.style ?? getComputedStyle(root)
-    const ancestorStyles = paint.ancestors.filter((entry) => entry.element !== root).map((entry) => styles(entry.style))
+    const ancestorStyles = paint.ancestors.filter((entry) => entry.element !== root).map((entry) => styles(entry.element, entry.style))
     const key = JSON.stringify([sx, sy, root.offsetWidth, root.offsetHeight, box.x, box.y, box.width, box.height,
-      scrollX, scrollY, rect?.x, rect?.y, rect?.width, rect?.height, styles(rootStyle), ancestorStyles, controlState(field)])
+      scrollX, scrollY, rect?.x, rect?.y, rect?.width, rect?.height, styles(root, rootStyle), ancestorStyles, controlState(field)])
     const clip = rect ? clipFor(rect) : undefined
     const placeholderSupported = clip !== undefined && supportsClippedFields(clip)
     const boundedPaint = fieldPaintIsPlain(field) && paint.boundedPaint

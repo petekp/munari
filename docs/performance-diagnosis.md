@@ -1,11 +1,11 @@
 # Capture and rendering performance diagnosis
 
-Measured 2026-10-14 against runtime `62e67d2`. This change adds reproducible
-diagnostics and their tests. Package, lab, dependency and CI source are unchanged.
-Runtime remedies below are unimplemented.
+Measured 2026-10-14 against runtime `62e67d2`.
+The [serialized-style cache](style-cache-performance.md) is now implemented
+and benchmarked. The other runtime remedies below remain unimplemented.
 
-The strongest next small optimization is reducing repeated serialization of
-computed styles. The largest remaining input spikes still come from full SVG
+Repeated serialization of computed styles was the strongest small optimization
+identified by this diagnosis. The largest remaining input spikes still come from full SVG
 rasterization. Native GPU copy submission was small on this host. Glass has a
 separate cost that grows with rendered pixel area, but the experiments did not
 establish a reliable whole-frame gain from changing antialiasing.
@@ -107,9 +107,9 @@ cross-browser equivalence for a future renderer change.
 
 ## Next changes to evaluate
 
-1. Cache stable serialized styles while retaining reliable invalidation.
-   Prove value-dependent pseudo-classes, focus, fonts, CSSOM refresh, ancestor
-   styles and animation coverage before replacing current checks.
+1. Serialized-style caching is implemented and verified in the
+   [style-cache report](style-cache-performance.md). Every current property
+   name and value is still compared before reusing its serialized string.
 2. Reduce full SVG raster work and safely handle more partial updates,
    especially scrolling text and submission-related content changes. Avoid
    optimizing a copy stage whose observed cost is mostly deferred painting.

@@ -73,12 +73,22 @@ function observeRegionDecisions(source) {
   source = replaceSource(source, '    invalidated()\n  }, listeners.signal)', '    invalidated(event)\n  }, listeners.signal)')
   source = replaceSource(source, 'root.contains(event.target)) invalidated()', 'root.contains(event.target)) invalidated(event)')
 
+  if (source.includes('  const styles = (element: Element, style: CSSStyleDeclaration) => {')) {
+    source = replaceSource(source,'  const styles = (element: Element, style: CSSStyleDeclaration) => {',`  const styles = (element: Element, style: CSSStyleDeclaration) => {
+    const perfStylesStarted=performance.now()
+    try {`)
+    source = replaceSource(source,'    return serialized\n  }\n  const controlState',`    return serialized
+    }finally{perfStage('snapshotStylePropertiesSync',perfStylesStarted)}
+  }
+  const controlState`)
+  } else {
   source = replaceSource(source, `  const styles = (style: CSSStyleDeclaration) =>
     Array.from(style, (property) => \`\${property}:\${style.getPropertyValue(property)}\`).join(';')`, `  const styles = (style: CSSStyleDeclaration) => {
     const started=performance.now()
     try {return Array.from(style, (property) => \`\${property}:\${style.getPropertyValue(property)}\`).join(';')}
     finally {perfStage('snapshotStylePropertiesSync',started)}
   }`)
+  }
   source = replaceSource(source, "  const controlState = (field: HTMLInputElement | null) => Array.from(root.querySelectorAll('input,textarea,select'), (control) => {", `  const controlState = (field: HTMLInputElement | null) => {
     const started=performance.now()
     try {return Array.from(root.querySelectorAll('input,textarea,select'), (control) => {`)

@@ -126,6 +126,17 @@ function observeInputSvg(source, captureStages) {
 }
 
 function observeInputRegions(source,captureStages) {
+  const serialization = "Array.from(style, (property) => `${property}:${style.getPropertyValue(property)}`).join(';')"
+  if(source.includes('    const previous = styleCache.get(element)')) {
+    source=replaceSource(source,'      if (unchanged === count) return previous.serialized',`      if (unchanged === count) {
+        window.__munariPerf.record('styleCacheHit',{properties:count})
+        return previous.serialized
+      }`)
+    source=replaceSource(source,"    const serialized = parts.join(';')",`    const serialized = parts.join(';')
+    window.__munariPerf.record('styleSerialization',{properties:count})`)
+  } else if(source.includes(serialization)) {
+    source=replaceSource(source,serialization,`(window.__munariPerf.record('styleSerialization',{properties:style.length}), ${serialization})`)
+  }
   const unchanged='      if (!invalidate && unchangedInput(state, value, scroll)) {'
   if(source.includes(unchanged))source=replaceSource(source,unchanged,unchanged+`
         window.__munariPerf.record('unchangedInputFrame',{});`)

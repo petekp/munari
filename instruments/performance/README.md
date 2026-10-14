@@ -6,8 +6,10 @@ throttling. Each trial opens a fresh headless Chrome session. Browser sessions
 run serially.
 
 ```sh
-PERF_BASELINE_REF=7b0f8a181fede4739aa18245113c37773fcc640e \
-PERF_CPU_RATES=4,6 PERF_ROUTE_TIMING=0 PERF_TRIALS=3 \
+PERF_BUILD_MODE=production \
+PERF_BASELINE_REF=a1a04568fea1faddba1e9383ab5e64dcf3c2f969 \
+PERF_CAPTURE_STORAGE=cpu PERF_ENGINES=snapdom \
+PERF_CPU_RATES=4,6 PERF_ROUTE_TIMING=0 PERF_TRIALS=5 \
 PERF_OUTPUT=/tmp/munari-performance \
 node instruments/performance/run.mjs
 ```
@@ -16,8 +18,10 @@ node instruments/performance/run.mjs
 engine, CPU rate, and trial. A Vite plugin serves the baseline's tracked
 `packages/core/src`, `packages/react/src`, and `apps/lab/src` files directly
 from Git. Both versions use the current dependencies, configuration, workload,
-and observer. Git comparisons include changes to the library and the demo.
-The ref must support the same public API and measurement points.
+and observer. Development comparisons can include changes to the library and
+the demo. Paired production builds require identical loaded lab sources and
+CSS, so the workload stays fixed. The ref must support the same public API
+and measurement points.
 `PERF_BASELINE_DIR` instead reads a saved package source tree. Its root must
 contain `packages/core/src` and `packages/react/src`. Copy the current package
 sources there before changing them when comparing a second optimization
@@ -78,6 +82,7 @@ Each measured phase reports:
 - Completed capture receipts and distinct DOM reads.
 - Started full and region captures, with their summed CSS pixel area.
 - Successful direct text draws, reused region SVGs, and unchanged input frames.
+- Serialized-style cache hits and new serialized declarations.
 - Prepared text painters and blank-image decodes, counted cumulatively per trial.
 - Decoded images' requested width × height, summed as raster pixel area.
 - Upload callbacks, source read and generation, texture version, and store size.
@@ -104,6 +109,12 @@ toward raster area but do not start an upstream snapDOM capture. An unchanged
 input frame reuses the accepted bitmap and performs no SVG decode. Direct text
 draws also perform no SVG decode. A blank-image decode counts toward raster area
 when it completes during the measured phase.
+
+`styleCacheHits` and `styleSerializations` count element declarations inspected
+during the active phase. A hit still reads and compares every current property
+name and value; it reuses only the serialized string. A miss records one new
+serialization. Raw events include the declaration's property count. These
+counters are enabled with capture observations, independently of stage profiling.
 
 `directInputTexts` and `reusedInputSvgs` count successful work in the active phase.
 `preparedInputTexts` and `inputBlankDecodes` are cumulative trial totals at phase
@@ -266,8 +277,20 @@ node instruments/performance/diagnose.mjs \
 lab Vite configuration, normal minification and source maps. Build output and
 caches stay beneath `PERF_OUTPUT`. The result verifies that production React
 and React DOM reached the generated chunks and that development runtimes did
-not. Production mode currently measures the working tree only; baseline and
-source-ref options require development mode. Build mode is always recorded.
+not. Production mode supports the same baseline and source-ref options as
+development mode. Each version gets a separate build and preview server.
+
+The runner verifies loaded package and lab code against the selected source.
+It records hashes for shared build inputs, source CSS and transformed CSS.
+Selected CSS must match the current workload. Paired production builds also
+require identical loaded lab code and CSS in both versions. Build mode and
+verification evidence are saved with the results.
+
+For serialized-style caching, use the paired production command above and
+repeat it with `PERF_CAPTURE_STORAGE=gpu` and a separate output directory.
+Require positive `styleCacheHits` in each candidate input phase. Compare new
+serializations, input latency and task duration against the baseline. Keep
+profiling and diagnostic timing disabled for these comparisons.
 
 `PERF_GPU_DIAGNOSTICS=1` measures the synchronous native canvas-copy submission
 and starts an asynchronous queue checkpoint at each texture update. Rendering

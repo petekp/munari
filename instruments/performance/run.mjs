@@ -2,6 +2,7 @@
 // CPU throttling is an emulation; reported timings belong to this browser and host.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { cpus, tmpdir } from 'node:os'
@@ -64,12 +65,17 @@ const versions = baselineDirectory
   : process.env.PERF_BASELINE_REF
   ? [{label:'baseline',commit:resolveRef(process.env.PERF_BASELINE_REF),labSources:true},{label:'working-tree',commit:null}]
   : [{label:process.env.PERF_SOURCE_REF?'source-ref':'working-tree',commit:process.env.PERF_SOURCE_REF?resolveRef(process.env.PERF_SOURCE_REF):null,labSources:Boolean(process.env.PERF_SOURCE_REF)}]
-if (buildMode === 'production') assert.ok(versions.every(version=>version.commit===null&&!version.directory), 'Production mode currently supports the working tree only; omit PERF_SOURCE_REF, PERF_BASELINE_REF and PERF_BASELINE_DIR')
 const output = path.resolve(process.env.PERF_OUTPUT ?? path.join(tmpdir(),`munari-performance-${Date.now()}`))
 await mkdir(output,{recursive:true})
 const lock = JSON.parse(await readFile(path.join(root,'package-lock.json'),'utf8'))
+const sourceHash=source=>createHash('sha256').update(source).digest('hex')
+const sharedBuildInputs=buildMode==='production'?Object.fromEntries(await Promise.all([
+  'package.json','package-lock.json','apps/lab/package.json','apps/lab/vite.config.ts',
+  'instruments/performance/run.mjs','instruments/performance/observer.mjs',
+  'instruments/performance/production-build-proof.mjs',
+].map(async file=>[file,sourceHash(await readFile(path.join(root,file)))]))):null
 const metadata = {
-  startedAt:new Date().toISOString(),head:git('rev-parse','HEAD'),buildMode,nodeEnv:process.env.NODE_ENV,buildEvidence:{},
+  startedAt:new Date().toISOString(),head:git('rev-parse','HEAD'),buildMode,nodeEnv:process.env.NODE_ENV,buildEvidence:{},sharedBuildInputs,
   dirty:git('status','--short'),node:process.version,platform:process.platform,arch:process.arch,
   cpu:cpus()[0]?.model,cpuCount:cpus().length,
   viewport:{width:1440,height:1000,deviceScaleFactor:2},resizedViewport:{width:1320,height:920,deviceScaleFactor:2},
@@ -79,6 +85,36 @@ const metadata = {
 }
 const results = {metadata,rows:[],loadedSources:{}}
 const servers = []
+async function verifyProductionSources(version,loadedSources,evidence) {
+  evidence.cssSources={}
+  evidence.assetSources={}
+  for(const area of ['packages/core/src/','packages/react/src/','apps/lab/src/']) {
+    assert.ok(Object.keys(loadedSources).some(file=>file.startsWith(area)), `Production build must load ${area}`)
+  }
+  for(const [file,hash] of Object.entries(loadedSources)) {
+    const fromRevision=file.startsWith('packages/')||version.labSources
+    const source=fromRevision&&version.commit
+      ? execFileSync('git',['show',`${version.commit}:${file}`],{cwd:root})
+      : await readFile(path.join(fromRevision&&version.directory?version.directory:root,file))
+    if(/\.(?:[cm]?jsx?|tsx?)$/.test(file)) {
+      assert.equal(hash,sourceHash(source),`Production source does not match ${version.commit??version.directory??'working tree'}: ${file}`)
+    } else {
+      const sourceHashes=file.endsWith('.css')?evidence.cssSources:evidence.assetSources
+      sourceHashes[file]={sourceSha256:sourceHash(source),transformedSha256:hash}
+      assert.equal(sourceHash(source),sourceHash(await readFile(path.join(root,file))),`Production CSS or asset must match the current workload: ${file}`)
+    }
+  }
+  evidence.sourceCommit=version.commit
+  evidence.sourceDirectory=version.directory??null
+  evidence.verifiedSourceCount=Object.keys(loadedSources).length
+}
+function verifyPairedProductionSources() {
+  if(versions.length!==2)return
+  const labHashes=version=>Object.entries(results.loadedSources[version.label]).filter(([file])=>file.startsWith('apps/lab/src/')).sort(([a],[b])=>a.localeCompare(b))
+  assert.deepEqual(labHashes(versions[0]),labHashes(versions[1]),'Paired production builds must use identical lab sources')
+  assert.deepEqual(metadata.buildEvidence[versions[0].label].cssSources,metadata.buildEvidence[versions[1].label].cssSources,'Paired production builds must use identical CSS sources and transformed CSS')
+  assert.deepEqual(metadata.buildEvidence[versions[0].label].assetSources,metadata.buildEvidence[versions[1].label].assetSources,'Paired production builds must use identical asset bytes and generated asset modules')
+}
 const pause = (page,ms) => page.evaluate(ms => new Promise(resolve=>setTimeout(resolve,ms)),ms)
 const settled = (page,presentation) => page.waitForFunction(presentation=>window.__apiControls?.status?.presentation===presentation&&!window.__apiControls.status.isTransitioning,{timeout:30000},presentation)
 const stats = values => {
@@ -111,6 +147,8 @@ function summarize(raw,before,after) {
     requestedRasterPixelArea:raw.events.filter(event=>event.kind==='captureRaster').reduce((sum,event)=>sum+event.width*event.height,0),
     captureRegions:{full:raw.events.filter(event=>event.kind==='captureRegion'&&!event.clipped).length,partial:raw.events.filter(event=>event.kind==='captureRegion'&&event.clipped).length,cssArea:raw.events.filter(event=>event.kind==='captureRegion').reduce((sum,event)=>sum+event.cssArea,0)},
     reusedInputSvgs:raw.events.filter(event=>event.kind==='reusedInputSvg').length,
+    styleCacheHits:raw.events.filter(event=>event.kind==='styleCacheHit').length,
+    styleSerializations:raw.events.filter(event=>event.kind==='styleSerialization').length,
     inputBlankDecodes:raw.totals?.inputBlankDecode??raw.events.filter(event=>event.kind==='inputBlankDecode').length,
     directInputTexts:raw.events.filter(event=>event.kind==='directInputText'&&event.painted).length,
     preparedInputTexts:raw.totals?.preparedInputText??raw.events.filter(event=>event.kind==='preparedInputText').length,
@@ -284,6 +322,7 @@ try {
       metadata.buildEvidence[version.label]=evidence
       const common={root:path.join(root,'apps/lab'),configFile:path.join(root,'apps/lab/vite.config.ts'),configLoader:'native',mode:buildMode,cacheDir,logLevel:'warn'}
       await build({...common,build:{outDir,emptyOutDir:true,sourcemap:true},plugins:[...plugins,productionBuildProof(evidence)]})
+      await verifyProductionSources(version,loadedSources,evidence)
       await writeFile(path.join(output,`build-${version.label}.json`),JSON.stringify(evidence,null,2))
       server=await preview({...common,build:{outDir},preview:{host:'127.0.0.1',port:0,open:false}})
     } else {
@@ -292,6 +331,7 @@ try {
     }
     servers.push(server)
   }
+  if(buildMode==='production')verifyPairedProductionSources()
   for(const engine of engines)for(const rate of rates)for(let index=1;index<=trials;index++) {
     const order=versions.map((version,i)=>({version,server:servers[i]}))
     if(index%2===0)order.reverse()
