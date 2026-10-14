@@ -34,6 +34,7 @@
 
 import { createInputRegionRasterizer, UnsupportedRegionCaptureError, type CaptureRegionOptions } from './snapdomInputRegions'
 import { snapdom, type CaptureMeta, type SnapdomPlugin } from '@zumer/snapdom'
+import { retainNormalizedSvg } from './snapdomInputSvg'
 import { fieldPseudoElementPlugin } from './snapdomFieldPseudoElements'
 import { fontEmbedPlugin, warmCaptureFonts } from './snapdomFonts'
 import {
@@ -191,7 +192,7 @@ const normalizeRegionLayout = (
   wrapper.style.width = `${layout.width}px`
   wrapper.style.height = `${layout.height}px`
   svg.setAttribute('viewBox', `${clip.x} ${clip.y} ${clip.width} ${clip.height}`)
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(svg))}`
+  return svg
 }
 
 /**
@@ -272,7 +273,11 @@ const rasterize = async (
   const height = Math.max(1, Math.round(box.height * scaleY))
   const image = new Image()
   const url = capture.toRaw()
-  image.src = layout ? normalizeRegionLayout(url, layout, capture.meta) : url
+  const normalized = layout ? normalizeRegionLayout(url, layout, capture.meta) : null
+  if (normalized) retainNormalizedSvg(image, normalized.ownerDocument)
+  image.src = normalized
+    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(normalized))}`
+    : url
   await image.decode()
   // Callers use these dimensions when drawing, including a store resize
   // that happened while the SVG was being captured.

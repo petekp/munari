@@ -11,6 +11,7 @@ export function performanceObserver(root, commit, loadedSources, routeTiming = t
   const modulePath = id => path.relative(root, id.split('?')[0]).replaceAll(path.sep, '/')
   const owned = file => /^packages\/(core|react)\/src\/[\w./-]+\.(tsx?|css)$/.test(file) && !file.includes('..')
   const labFile = file => /^apps\/lab\/src\/[\w./-]+\.(tsx?|css)$/.test(file) && !file.includes('..')
+  const measuredFile=file=>owned(file)||file.startsWith('apps/lab/src/')
   const baselineLab=baselineDirectory&&existsSync(path.join(baselineDirectory,'apps/lab/src'))
   return {
     name: 'munari-performance-observer', enforce: 'pre',
@@ -27,7 +28,7 @@ export function performanceObserver(root, commit, loadedSources, routeTiming = t
     transform(source, id) {
       if (new URLSearchParams(id.split('?')[1] ?? '').has('raw')) return null
       const file = modulePath(id)
-      if (owned(file) || file.startsWith('apps/lab/src/')) {
+      if (measuredFile(file)) {
         const hash = createHash('sha256').update(source).digest('hex')
         if (loadedSources[file]) assert.equal(loadedSources[file], hash, `Source changed during benchmark: ${file}`)
         loadedSources[file] = hash
@@ -36,14 +37,17 @@ export function performanceObserver(root, commit, loadedSources, routeTiming = t
         "captureMemory = adapter?.info.isFallbackAdapter ? 'cpu' : 'gpu'",
         `captureMemory = ${JSON.stringify(captureStorage)}`)
       if(file==='packages/react/src/snapdom.ts') {
+        if(captureStages)source=observeSnapdom(source)
         const clipped=source.includes('options: CaptureRegionOptions')?'Boolean(options.clip)':'false'
         source=replaceSource(source,'  const capture = await snapdom(element, {',`  window.__munariPerf.record('captureRegion',{clipped:${clipped},cssArea:box.width*box.height});
   const capture = await snapdom(element, {`)
         source=replaceSource(source,'  return image\n',`  window.__munariPerf.record('captureRaster',{width:image.width,height:image.height});
   return image
 `)
-        return captureStages?observeSnapdom(source):source
+        return source
       }
+      if(file==='packages/react/src/snapdomInputSvg.ts')return observeInputSvg(source, captureStages)
+      if(file==='packages/react/src/snapdomInputRegions.ts')return observeInputRegions(source,captureStages)
       if(captureStages&&file==='packages/core/src/paint/rasterizedSource.ts')return replaceSource(source,'      draw(image, askedFor)',`      const perfDrawStarted=performance.now();
       draw(image, askedFor)
       window.__munariPerf.record('captureStage',{stage:'sourceDrawSync',sourceId:body.sourceId,read,ms:performance.now()-perfDrawStarted})`)
@@ -83,6 +87,36 @@ function hostSpace(...args: Parameters<typeof measuredHostSpace>) {
   }
 }
 
+function observeInputSvg(source, captureStages) {
+  source=replaceSource(source,'  return image\n',`  window.__munariPerf.record('reusedInputSvg',{width:image.width,height:image.height});
+  window.__munariPerf.record('captureRaster',{width:image.width,height:image.height});
+  return image
+`)
+  if(captureStages)source=replaceSource(source,'  await image.decode()',`  const started=performance.now();
+  await image.decode()
+  window.__munariPerf.record('captureStage',{stage:'reusedSvgDecodeWall',ms:performance.now()-started})`)
+  return source
+}
+
+function observeInputRegions(source,captureStages) {
+  const unchanged='      if (!invalidate && unchangedInput(state, value, scroll)) {'
+  if(source.includes(unchanged))source=replaceSource(source,unchanged,unchanged+`
+        window.__munariPerf.record('unchangedInputFrame',{});`)
+  if(!captureStages)return source
+  source=replaceSource(source,'      const state = snapshot(field, sx, sy)',`      const perfSnapshotStarted=performance.now();
+const state = snapshot(field, sx, sy)
+window.__munariPerf.record('captureStage',{stage:'regionSnapshotSync',ms:performance.now()-perfSnapshotStarted})`)
+  for(const [statement,stage] of [
+    ['regionContext.drawImage(image, x, y, image.width, image.height)','regionSvgDrawSync'],
+    ['context.drawImage(regionCanvas, left, top, width, height, left, top, width, height)','regionCopySync'],
+    ['context.drawImage(image, x, y, image.width, image.height)','gpuRegionDrawSync'],
+    ['context.drawImage(image, 0, 0, canvas.width, canvas.height)','fullCacheDrawSync'],
+  ]) {
+    if(source.includes(statement))source=replaceSource(source,statement,`{ const started=performance.now(); ${statement}; window.__munariPerf.record('captureStage',{stage:'${stage}',ms:performance.now()-started}) }`)
+  }
+  return source
+}
+
 function observeSnapdom(source) {
   const canvasReturn='  return canvas\n}',imageReturn='  return image\n}'
   const returnsCanvas=source.includes(canvasReturn),returnsImage=source.includes(imageReturn)
@@ -108,7 +142,8 @@ const capturePlugins=[perfFirstPlugin,fontPlugin,frameSplitPlugin,fieldPlugin,pe
   const capture = await snapdom(element, {`)
   source=replaceSource(source,'  for (const warning of capture.warnings',`  window.__munariPerf.stage(perfCapture,'snapdomWall',performance.now()-perfCapture.started);
   for (const warning of capture.warnings`)
-  source=replaceSource(source,'  image.src = capture.toRaw()',`  const perfRawStarted=performance.now(),perfRaw=capture.toRaw();
+  const rawTarget=source.includes('  const url = capture.toRaw()')?'  const url = capture.toRaw()':'  image.src = capture.toRaw()'
+  source=replaceSource(source,rawTarget,`  const perfRawStarted=performance.now(),perfRaw=capture.toRaw();
   window.__munariPerf.stage(perfCapture,'toRawSync',performance.now()-perfRawStarted);
   const perfInspectStarted=performance.now();
   const perfSVG=decodeURIComponent(perfRaw.slice(perfRaw.indexOf(',')+1));
@@ -116,7 +151,18 @@ const capturePlugins=[perfFirstPlugin,fontPlugin,frameSplitPlugin,fieldPlugin,pe
   const perfFamilies=[...new Set(perfFaces.flatMap(face=>{const family=face[0].match(/font-family\\s*:\\s*([^;}]+)/);return family?[family[1].trim()]:[]}))];
   window.__munariPerf.record('capturePayload',{captureId:perfCapture.id,sourceId:perfCapture.sourceId,read:perfCapture.read,encodedPayloadChars:perfRaw.length,svgChars:perfSVG.length,fontFaces:perfFaces.length,fontFamilies:perfFamilies});
   window.__munariPerf.stage(perfCapture,'payloadInspectionSync',performance.now()-perfInspectStarted);
-  image.src = perfRaw`)
+  ${rawTarget.startsWith('  const url')?'const url':'image.src'} = perfRaw`)
+  if(source.includes('  image.src = layout ? normalizeRegionLayout(url, layout, capture.meta) : url')) {
+    source=replaceSource(source,'  image.src = layout ? normalizeRegionLayout(url, layout, capture.meta) : url',`  const perfNormalizeStarted=performance.now();
+  image.src = layout ? normalizeRegionLayout(url, layout, capture.meta) : url
+  window.__munariPerf.stage(perfCapture,'normalizeSvgSync',performance.now()-perfNormalizeStarted)`);
+  }
+  if(source.includes('  const normalized = layout ? normalizeRegionLayout(url, layout, capture.meta) : null')) {
+    source=replaceSource(source,'  const normalized = layout ? normalizeRegionLayout(url, layout, capture.meta) : null',`  const perfNormalizeStarted=performance.now();
+  const normalized = layout ? normalizeRegionLayout(url, layout, capture.meta) : null`)
+    source=replaceSource(source,'  await image.decode()',`  window.__munariPerf.stage(perfCapture,'normalizeSvgSync',performance.now()-perfNormalizeStarted);
+  await image.decode()`)
+  }
   source=replaceSource(source,'  await image.decode()',`  const perfDecodeStarted=performance.now();
   await image.decode()
   window.__munariPerf.stage(perfCapture,'decodeWall',performance.now()-perfDecodeStarted)`)

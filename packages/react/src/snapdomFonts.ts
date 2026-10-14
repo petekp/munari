@@ -97,6 +97,11 @@ async function declaredFaces(doc: Document, onUnreadable?: (href: string) => voi
   return lists.flat()
 }
 
+// Reused SVG text must retain every face a new codepoint would select.
+export async function declaredFontRanges(doc: Document): Promise<readonly Ranges[]> {
+  return (await declaredFaces(doc)).map((face) => face.ranges)
+}
+
 function sheetFaces(
   sheet: CSSStyleSheet,
   doc: Document,

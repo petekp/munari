@@ -19,28 +19,38 @@ const plugin={name:'region-quality',enforce:'pre',transform(source,id){
  }
  if(id.endsWith('/controls/Controls.tsx'))return replaceSource(source,'export function ControlsApp() {','function OriginalControlsApp() {')+'\nexport function ControlsApp(){return <div className="controls-page"><ControlBoard /></div>}\n'
  if(id.endsWith('/src/snapdomInputRegions.ts')) {
-  if(process.env.REGION_REUSE_FAILED_CACHE==='1')source=replaceSource(source,'      cachedEpoch = -1\n','')
+  if(process.env.REGION_IGNORE_INPUT_VERSION==='1')source=replaceSource(source,' && cachedInputVersion === inputVersion','')
+  if(process.env.REGION_REUSE_FAILED_CACHE==='1')source=replaceSource(source,'    cachedEpoch = -1\n','')
   if(process.env.REGION_LOCAL_ORIGIN==='1'){
-   source=replaceSource(source,'regionCanvas.width = Math.min(state.width, Math.max(1, x + image.width))','regionCanvas.width = image.width')
-   source=replaceSource(source,'regionCanvas.height = Math.min(state.height, Math.max(1, y + image.height))','regionCanvas.height = image.height')
+   source=replaceSource(source,'const bufferWidth = Math.min(state.width, Math.max(1, x + image.width))','const bufferWidth = image.width')
+   source=replaceSource(source,'const bufferHeight = Math.min(state.height, Math.max(1, y + image.height))','const bufferHeight = image.height')
+   source=replaceSource(source,'regionContext.clearRect(x, y, image.width, image.height)','regionContext.clearRect(0, 0, image.width, image.height)')
    source=replaceSource(source,'regionContext.drawImage(image, x, y, image.width, image.height)','regionContext.drawImage(image, 0, 0, image.width, image.height)')
    source=replaceSource(source,'context.drawImage(regionCanvas, left, top, width, height, left, top, width, height)','context.drawImage(regionCanvas, left - x, top - y, width, height, left, top, width, height)')
   }
-  source=replaceSource(source,"      if (!context) throw new Error('munari: input region cache has no 2D context')","      window.regionProofCacheMemory=context?.getContextAttributes().willReadFrequently;\n      if (!context) throw new Error('munari: input region cache has no 2D context')")
-  source=replaceSource(source,'        context.drawImage(image, 0, 0, canvas.width, canvas.height)',`        if(window.regionProofDrawFail){window.regionProofDrawFail=false;throw new Error('deliberate region cache draw failure')}
+  source=replaceSource(source,"    if (!context) throw new Error('munari: input region cache has no 2D context')","    window.regionProofCacheMemory=context?.getContextAttributes().willReadFrequently;\n    if (!context) throw new Error('munari: input region cache has no 2D context')")
+  source=replaceSource(source,'      context.drawImage(image, 0, 0, canvas.width, canvas.height)',`        if(window.regionProofDrawFail){window.regionProofDrawFail=false;throw new Error('deliberate region cache draw failure')}
         context.drawImage(image, 0, 0, canvas.width, canvas.height)`)
   if(process.env.REGION_SHIFT_PATCH==='1')source=replaceSource(source,
    'context.drawImage(image, x, y, image.width, image.height)',
    'context.drawImage(image, x + 1, y, image.width, image.height)')
   return source
  }
+ if(id.endsWith('/src/snapdomInputSvg.ts')){
+  return replaceSource(source,'  await image.decode()',`  window.regionProofSvgAttempts=(window.regionProofSvgAttempts??0)+1
+  if(window.regionProofSvgFail){window.regionProofSvgFail=false;throw new Error('deliberate region decode failure')}
+  if(window.regionProofSvgHold){window.regionProofSvgHold=false;await new Promise(resolve=>{window.regionProofRelease=resolve})}
+  await image.decode()
+  window.regionProofSvgHits=(window.regionProofSvgHits??0)+1`)
+ }
  if(!id.endsWith('/src/snapdom.ts'))return null
  if(process.env.REGION_LEGACY_VIEWPORT==='1')source=replaceSource(source,
-  'layout ? normalizeRegionLayout(url, layout, capture.meta) : url','url')
+  'layout ? normalizeRegionLayout(url, layout, capture.meta) : null','null')
  source=replaceSource(source,
   "const root = new DOMParser().parseFromString(decodeURIComponent(url.slice(comma + 1)), 'image/svg+xml').documentElement",
   "const root = new DOMParser().parseFromString(decodeURIComponent(url.slice(comma + 1)), 'image/svg+xml').documentElement; if(window.regionProofUnknownViewport)root.querySelector('foreignObject')?.remove()")
  source=replaceSource(source,'  const capture = await snapdom(element, {',`  if(!window.regionProofReference)window.regionProofCalls?.push({clip:options.clip??null,invalidate:options.invalidate??false});
+  if(window.regionProofHoldBeforeCapture && options.clip){window.regionProofHoldBeforeCapture=false;await new Promise(resolve=>{window.regionProofReleaseBeforeCapture=resolve})}
   const capture = await snapdom(element, {`)
  source=replaceSource(source,'  await image.decode()',`  if(window.regionProofFail && options.clip){window.regionProofFail=false;throw new Error('deliberate region decode failure')}
   if(window.regionProofHold && options.clip){window.regionProofHold=false;await new Promise(resolve=>{window.regionProofRelease=resolve})}
@@ -73,16 +83,21 @@ try{
 
  },'/@fs'+root)
  const settled=async()=>{await page.evaluate(()=>new Promise(resolve=>setTimeout(resolve,650)));await page.waitForFunction(()=>window.regionProof.source.currentPaint()?.read>=window.regionProofRequiredRead)}
- const holdPartial=async(character)=>{
-  await page.evaluate(()=>{window.regionProofHold=true})
+ const seedShort=async()=>{
+  await page.evaluate(()=>{const {input,source}=window.regionProof;input.value='aa';input.setSelectionRange(0,0);input.scrollLeft=0;source.repaint({immediate:true})})
+  await settled()
+  await page.keyboard.type('a');await settled()
+ }
+ const holdSvg=async()=>{
+  await page.evaluate(()=>{const {input}=window.regionProof;input.setSelectionRange(0,0);input.scrollLeft=0;window.regionProofSvgHold=true})
   for(let attempt=0;attempt<3;attempt++){
    const before=await page.evaluate(()=>window.regionProof.source.paintCount())
-   await page.keyboard.type(character)
+   await page.keyboard.type('a')
    await page.waitForFunction(before=>Boolean(window.regionProofRelease)||window.regionProof.source.paintCount()>before,{},before)
    if(await page.evaluate(()=>Boolean(window.regionProofRelease)))return
    await settled()
   }
-  assert.fail('The stable input must reach a held region capture')
+  assert.fail('A cached decode must consume the hold')
  }
  const compare=async(name,requirePartial=false)=>{
   await settled()
@@ -99,7 +114,8 @@ try{
     for(let i=0;i<b.length;i+=4)if([0,1,2,3].some(c=>frame.pixels[i+c]!==b[i+c]))changed++
     return {read:frame.read,changed}
    })
-   return {intermediateFrames,changed,max,storage,cacheStorage:window.regionProofCacheMemory??null,width:canvas.width,height:canvas.height,value:input.value,focused:document.activeElement===input,calls:window.regionProofCalls.splice(0),errors:window.regionProofErrors.splice(0),png:canvas.toDataURL(),reference:ref.toDataURL()}
+   const svgHits=window.regionProofSvgHits??0,svgAttempts=window.regionProofSvgAttempts??0;window.regionProofSvgHits=0;window.regionProofSvgAttempts=0
+   return {svgHits,svgAttempts,intermediateFrames,changed,max,storage,cacheStorage:window.regionProofCacheMemory??null,width:canvas.width,height:canvas.height,value:input.value,focused:document.activeElement===input,calls:window.regionProofCalls.splice(0),errors:window.regionProofErrors.splice(0),png:canvas.toDataURL(),reference:ref.toDataURL()}
   })
   for(const key of ['png','reference']){await writeFile(path.join(output,`${name}-${key}.png`),Buffer.from(result[key].split(',')[1],'base64'));delete result[key]}
   results.push({name,...result});await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))
@@ -107,8 +123,8 @@ try{
   assert.equal(result.cacheStorage,result.storage,`${name}: region and source storage must match`)
   assert.equal(result.changed,0,`${name}: source pixels must equal a fresh full capture`)
   for(const frame of result.intermediateFrames)assert.equal(frame.changed,0,`${name}: every published frame must equal the stable full capture`)
-  if(!['decode-recovery','cache-draw-recovery'].includes(name))assert.deepEqual(result.errors,[],`${name}: capture must succeed`)
-  if(requirePartial)assert.ok(result.calls.some(c=>c.clip),`${name}: must exercise partial capture`)
+  if(!['decode-recovery','svg-decode-recovery','cache-draw-recovery'].includes(name))assert.deepEqual(result.errors,[],`${name}: capture must succeed`)
+  if(requirePartial)assert.ok(result.svgHits>0||result.calls.some(c=>c.clip),`${name}: must exercise partial capture`)
   return result
  }
  await settled();await page.focus('[data-munari-anchor="field:project"]');await compare('focused')
@@ -121,8 +137,51 @@ try{
   await page.keyboard.type('v');const disabled=await compare('unsupported-svg-stays-full');assert.ok(disabled.calls.length>0&&disabled.calls.every(call=>!call.clip))
   disposed=await page.evaluate(()=>{const {source}=window.regionProof;const before=source.paintCount();source.dispose();return {before,after:source.paintCount(),connected:source.host.isConnected}})
  }else{
+ await page.evaluate(()=>{const {input,source}=window.regionProof;window.regionProofBeforeVersion=input.value;input.value='';input.setSelectionRange(0,0);input.scrollLeft=0;source.repaint({immediate:true})});await compare('input-version-seed')
+ await page.evaluate(()=>{window.regionProofHoldBeforeCapture=true})
+ await page.keyboard.type('a');await page.waitForFunction(()=>Boolean(window.regionProofReleaseBeforeCapture))
+ await page.keyboard.type('b')
+ await page.evaluate(()=>{const {source}=window.regionProof;const unsubscribe=source.subscribePaint(receipt=>{window.regionProofVersionPublished={read:receipt.read,time:performance.now()};unsubscribe()});const release=window.regionProofReleaseBeforeCapture;window.regionProofReleaseBeforeCapture=null;release()})
+ await page.waitForFunction(()=>Boolean(window.regionProofVersionPublished),{polling:5})
+ await page.keyboard.press('Backspace')
+ const versionEdit=await page.evaluate(()=>({elapsed:performance.now()-window.regionProofVersionPublished.time,value:window.regionProof.input.value}))
+ assert.ok(versionEdit.elapsed<150,'Backspace must precede the follow-up capture window');assert.equal(versionEdit.value,'a')
+ await compare('input-version-midflight')
+ await page.evaluate(()=>{const {input,source}=window.regionProof;input.value=window.regionProofBeforeVersion;input.setSelectionRange(input.value.length,input.value.length);input.scrollLeft=0;source.repaint({immediate:true})});await compare('input-version-restored')
  await page.keyboard.type(' Alpha');await compare('typing',true)
+ await page.keyboard.type('a');const reused=await compare('svg-reuse',true);assert.ok(reused.svgHits>0,'A repeated character must reuse the accepted SVG')
+ await seedShort()
+ await page.evaluate(()=>{const {input}=window.regionProof;input.setSelectionRange(0,0);input.scrollLeft=0;window.regionProofSvgFail=true})
+ for(let attempt=0;attempt<3;attempt++){
+  await page.keyboard.type('a')
+  await page.waitForFunction(()=>window.regionProofSvgFail===false||window.regionProof.source.currentPaint()?.read>=window.regionProofRequiredRead)
+  if(await page.evaluate(()=>window.regionProofSvgFail===false))break
+  await settled()
+ }
+ assert.equal(await page.evaluate(()=>window.regionProofSvgFail),false,'A cached decode must consume the failure')
+ await page.evaluate(()=>window.regionProof.source.repaint({immediate:true}));const svgRecovered=await compare('svg-decode-recovery');assert.ok(svgRecovered.svgAttempts>0&&svgRecovered.errors.some(error=>error.includes('deliberate region decode failure')))
+ await page.keyboard.type('a');await compare('svg-reseed',true)
+ await holdSvg()
+ await page.evaluate(()=>{const release=window.regionProofRelease;window.regionProofRelease=null;release()});const heldSvg=await compare('svg-held-decode',true);assert.ok(heldSvg.svgHits>0,'Held decode must exercise SVG reuse')
  await page.keyboard.press('Backspace');await compare('backspace',true)
+ await page.evaluate(async()=>{
+  const {input,source,form}=window.regionProof
+  const style=document.createElement('style');style.textContent="@font-face{font-family:RegionSubset;src:url('/fonts/archivo-400-900-latin.woff2') format('woff2');font-weight:900;unicode-range:U+0020-007E}@font-face{font-family:RegionSubset;src:url('/fonts/playfair-display-900-latin.woff2') format('woff2');font-weight:900;unicode-range:U+0042}"
+  document.head.append(style)
+  const text=[];const walker=document.createTreeWalker(form,NodeFilter.SHOW_TEXT);while(walker.nextNode()){const node=walker.currentNode;if(node.textContent.includes('B')){text.push([node,node.textContent]);node.textContent=node.textContent.replaceAll('B','b')}}
+  window.regionProofFontFixture={style,text,value:input.value,family:input.style.fontFamily,weight:input.style.fontWeight}
+  input.style.fontFamily='RegionSubset';input.style.fontWeight='900';input.value='aa';input.setSelectionRange(0,0);input.scrollLeft=0
+  await document.fonts.load('900 16px RegionSubset','a');await document.fonts.load('900 16px RegionSubset','B');await document.fonts.ready
+  source.repaint({immediate:true})
+ });await compare('font-subset-fixture')
+ await page.keyboard.type('a');await compare('font-subset-seed',true)
+ for(let attempt=0;attempt<3;attempt++){
+  await page.keyboard.type('c');await settled()
+  if(await page.evaluate(()=>(window.regionProofSvgHits??0)>0))break
+ }
+ const safeGlyph=await compare('font-subset-covered',true);assert.ok(safeGlyph.svgHits>0,'A new glyph covered by the embedded face must reuse SVG')
+ await page.keyboard.type('B');const newFace=await compare('font-subset-new-face');assert.ok(newFace.calls.some(call=>call.clip),'A glyph selecting another face must capture it');assert.equal(newFace.svgHits,0,'An uncovered glyph must not reuse SVG')
+ await page.evaluate(()=>{const {input,source}=window.regionProof,fixture=window.regionProofFontFixture;fixture.style.remove();for(const [node,text] of fixture.text)node.textContent=text;input.style.fontFamily=fixture.family;input.style.fontWeight=fixture.weight;input.value=fixture.value;input.setSelectionRange(0,0);input.scrollLeft=0;source.repaint({immediate:true})});await compare('font-subset-restored')
  for(const offset of [3,4]){
   await page.evaluate(offset=>{const {input,source}=window.regionProof;input.style.outlineOffset=offset+'px';source.repaint({immediate:true})},offset);await compare(`outline-${offset+2}`)
   await page.keyboard.type('o');const outlined=await compare(`outline-${offset+2}-typing`,offset===3)
@@ -188,18 +247,21 @@ try{
  await page.evaluate(()=>{const style=document.createElement('style');style.textContent='.controls-board__foot{background:#badfda}@media(max-width:1400px){.controls-board__foot{background:#daa9c4}}';document.head.append(style)});await page.keyboard.type('h');const head=await compare('head-stylesheet');assert.ok(head.calls.some(c=>!c.clip))
  await page.setViewport({width:1300,height:1000,deviceScaleFactor:2});await page.keyboard.type('v');const media=await compare('media-query');assert.ok(media.calls.some(c=>!c.clip))
  await page.setViewport({width:1440,height:1000,deviceScaleFactor:2});await page.evaluate(()=>window.regionProof.source.repaint({immediate:true}));await compare('restored-viewport')
- await holdPartial('z')
- await page.evaluate(()=>{window.regionProof.form.querySelector('h2').textContent='Changed during decode';window.regionProof.source.repaint({immediate:true});const release=window.regionProofRelease;window.regionProofRelease=null;release()});await compare('midflight-refresh')
+ await seedShort();await holdSvg()
+ await page.evaluate(()=>{const {form,source}=window.regionProof;form.style.background='#badfda';source.repaint({immediate:true});const release=window.regionProofRelease;window.regionProofRelease=null;release()});const midflight=await compare('midflight-refresh');assert.ok(midflight.svgHits>0,'Refresh must interrupt an actual cached decode');assert.ok(midflight.calls.some(call=>!call.clip),'Refresh must capture current styles')
+ await page.keyboard.type('a');await compare('midflight-future-edit',true)
+ await page.evaluate(()=>{window.regionProof.form.style.background='';window.regionProof.source.repaint({immediate:true})});await compare('midflight-background-restored')
  await page.evaluate(()=>{window.regionProofDrawFail=true;window.regionProof.source.setScale(1)})
  await page.waitForFunction(()=>window.regionProofErrors.some(error=>error.includes('deliberate region cache draw failure')))
  await page.evaluate(()=>{const {source,input}=window.regionProof;source.setScale(2);input.value+='q';input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:'q'}))})
  const drawn=await compare('cache-draw-recovery');assert.ok(drawn.errors.some(error=>error.includes('deliberate region cache draw failure')));assert.ok(drawn.calls.every(c=>!c.clip))
  await page.evaluate(()=>{window.regionProofFail=true});await page.keyboard.type('!');await settled()
  await page.evaluate(()=>window.regionProof.source.repaint({immediate:true}));const recovered=await compare('decode-recovery');assert.ok(recovered.errors.some(e=>e.includes('deliberate region decode failure')))
- await holdPartial('?')
+ await seedShort();await holdSvg()
+ assert.ok(await page.evaluate(()=>(window.regionProofSvgAttempts??0)>0),'Disposal must interrupt an actual cached decode')
  disposed=await page.evaluate(async()=>{const {source}=window.regionProof;const before=source.paintCount();source.dispose();window.regionProofRelease();await new Promise(resolve=>setTimeout(resolve,300));return {before,after:source.paintCount(),connected:source.host.isConnected}})
  }
  assert.equal(disposed.after,disposed.before);assert.equal(disposed.connected,false);assert.deepEqual(errors,[])
  await writeFile(path.join(output,'completion.json'),JSON.stringify({disposed,errors,browser:await browser.version()},null,2))
- console.log(JSON.stringify({checks:results.length,partialChecks:results.filter(r=>r.calls.some(c=>c.clip)).map(r=>r.name),disposed,errors}))
+ console.log(JSON.stringify({checks:results.length,partialChecks:results.filter(r=>r.svgHits>0||r.calls.some(c=>c.clip)).map(r=>r.name),disposed,errors}))
 }finally{if(browser)await browser.close();await server.close()}

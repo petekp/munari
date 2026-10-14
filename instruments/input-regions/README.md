@@ -23,9 +23,13 @@ anchors, outside content changes, CSSOM refresh, stylesheet and media-query
 changes, resize, densities 1/1.5/2/3, transparency, fractional origins, filters
 and transformed ancestors. The normal-flow edit compares every published frame
 with a full capture so a later repaint cannot hide a temporary pixel error.
-A held decode checks refresh during capture and disposal without a late paint.
-Deliberate decode and cache-draw failures check recovery without publishing a
-partial image.
+Held fresh and cached decodes check input changes during capture, refresh and
+disposal without a late paint. Deliberate decode and cache-draw failures check
+recovery without publishing a partial image. Repeated edits must exercise actual
+SVG reuse. A font fixture checks cache hits for a covered declared range and
+cache misses for an additional range. It does not prove that an input-only
+font subset is embedded: the existing font selector reads clone text nodes
+and can omit native input values.
 
 `REGION_OUTPUT` selects the evidence directory. It defaults to
 `/tmp/munari-input-regions`. Each case saves both PNGs and its result in
@@ -75,6 +79,14 @@ also fail the pixel comparison:
 
 ```sh
 REGION_STORAGE=cpu REGION_GPU_CARRY=1 REGION_OUTPUT=/tmp/munari-input-regions-carry-fault \
+  node instruments/input-regions/run.mjs
+```
+
+Removing the input event version guard must expose a stale frame after a held
+capture and a real Backspace event:
+
+```sh
+REGION_STORAGE=cpu REGION_IGNORE_INPUT_VERSION=1 REGION_OUTPUT=/tmp/munari-input-regions-version-fault \
   node instruments/input-regions/run.mjs
 ```
 

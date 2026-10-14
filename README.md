@@ -87,10 +87,17 @@ captures also use full images for outer shadows, outlines beyond five CSS
 pixels, and regions that extend outside the root. Unrecognized snapDOM SVG
 output disables region capture for that source and uses full images.
 
+Compatible ASCII edits reuse the parsed region SVG and decode only the updated
+image. A change in scroll position, a text selection, or a character selecting
+another declared font range requires a fresh region capture. The font check
+considers all declared families, so it can recapture an edit whose pixels would
+have stayed safe to reuse.
+
 Call `surface.refresh()` for paint changes outside the captured subtree that
 have no observed signal, including CSSOM edits and canvas redraws. The cache adds
-one full-size RGBA bitmap per initialized source. CPU region capture uses another
-bitmap bounded by the source dimensions. Texture uploads remain full-size.
+one full-size RGBA bitmap and at most one parsed region SVG per initialized
+source. CPU region capture uses another bitmap bounded by the source dimensions.
+Resident memory has not been measured. Texture uploads remain full-size.
 
 Write for HTML-in-canvas and the same code runs on snapDOM. A Surface whose
 DOM or CSS changes on its own, such as a clock or animation, needs `live`

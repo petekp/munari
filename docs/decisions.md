@@ -4145,8 +4145,8 @@ box. CSS state dependencies, counters and overlapping paint cannot extend that
 edit into surrounding content. This author declaration supplements runtime
 invalidation; it is not inferred from a MutationObserver.
 
-The adapter uses snapDOM's supported root `clip` option and embeds the fonts
-needed in that clip. It clears and replaces the region in a private full bitmap.
+The adapter uses snapDOM's supported root `clip` option and the existing font
+embedder's face selection for that clip. It clears and replaces the region in a private full bitmap.
 Core receives a complete image and retains its existing read, receipt, pacing
 and disposal rules. The form keeps its original nodes and input ownership.
 No dependency fork or opaque capture cache is used.
@@ -4161,10 +4161,10 @@ metadata before another region may reuse it.
 
 CPU and GPU captures use the source's canvas storage policy. snapDOM's clipped
 SVG shrinks and translates its HTML viewport. That changed three Controls
-pixels at an ordinary flow position. The CPU adapter restores the HTML
-viewport's full dimensions and zero origin, then expresses the crop through
-the SVG viewBox. The output stays 342 × 50 CSS pixels for the Project field,
-compared with 760 × 540 for a full capture.
+pixels at an ordinary flow position. Both storage modes restore the HTML
+viewport's full dimensions and zero origin, then express the crop through
+the SVG viewBox. The Project field produces a 342 × 50 CSS pixel image on CPU
+and 340 × 48 on GPU, compared with 760 × 540 for a full capture.
 
 The adapter transforms the public raw SVG output. It validates the SVG,
 foreignObject, XHTML wrapper and render geometry without relying on generated
@@ -4180,12 +4180,31 @@ right and bottom edges and never exceeds the source dimensions.
 CPU regions require a contained capture area, no outer field shadows, and a
 known outline extending at most five CSS pixels. Other fields use a full
 capture. The CPU clip adds one CSS pixel beyond Controls' four-pixel focus ring.
-The GPU path retains its direct draw and four-pixel margin. Layout, resource
-and focus invalidation, capture pacing and input ownership are unchanged.
+The GPU path draws directly with a four-pixel margin and clips replacement to
+the field's outward-rounded border box. Keeping the original HTML viewport and
+surrounding pixels avoids one-pixel differences at density three and around a
+five-pixel outline. Layout, resource and focus invalidation, capture pacing and
+input ownership are unchanged.
+
+Compatible ASCII edits reuse one parsed region SVG. The adapter changes only
+the uniquely identified native input's value. It requires a collapsed selection,
+unchanged scroll offsets, and the same geometry, styles and invalidation epoch.
+Characters already in the snapshot are reusable. New characters are allowed only
+when the embedder's declared Unicode ranges select no additional font face.
+This conservative check includes every declared family.
+Unsupported input structure or new font coverage uses a fresh region capture.
+The small SVG is still serialized and decoded.
+
+A repaint of the same accepted input state can reuse the complete bitmap. The
+input event version must also match: a capture can observe a later DOM value
+than its initial snapshot. The held-capture probe detects 156 incorrect pixels
+when this version check is removed. Failures clear the SVG template before
+recovery, and invalidation prevents an in-flight template from becoming reusable.
 
 The complete cache adds about 6.3 MiB of RGBA storage for Controls at
-1520 × 1080 pixels. CPU capture also retains a bounded scratch bitmap. These
-are allocation-size calculations, not resident-memory measurements. Texture
+1520 × 1080 pixels. CPU capture also retains a bounded scratch bitmap. Each
+active source can retain one parsed region SVG. The bitmap figures are
+allocation-size calculations, not resident-memory measurements. Texture
 uploads retain the full source dimensions. The default snapDOM engine keeps
 the direct-image path from the preceding amendment.
 

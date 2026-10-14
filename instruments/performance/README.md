@@ -77,6 +77,7 @@ Each measured phase reports:
 - `hostSpace` durations and call counts from the route controller only.
 - Completed capture receipts and distinct DOM reads.
 - Started full and region captures, with their summed CSS pixel area.
+- Reused region SVGs and repaints that reuse unchanged input pixels.
 - Decoded images' requested width × height, summed as raster pixel area.
 - Upload callbacks, source read and generation, texture version, and store size.
 - Repeated upload identities and summed uploaded texel area.
@@ -97,7 +98,9 @@ unavailable.
 
 Requested raster pixel area counts the image dimensions Munari will draw. It
 separates the selected DOM region from the SVG raster size. It does not measure
-how many pixels the browser processed internally.
+how many pixels the browser processed internally. Reused SVG decodes count
+toward raster area but do not start an upstream snapDOM capture. An unchanged
+input frame reuses the accepted bitmap and performs no SVG decode.
 
 Uploaded texel area sums the canvas width × height at each upload callback.
 It excludes mipmaps, format, and driver behavior. Callback counts describe
@@ -175,6 +178,9 @@ and target dimensions. A direct decoded image has no intermediate draw sample.
 Wall times include asynchronous waits. Draw times measure synchronous calls.
 Payload records contain lengths, font-face counts, and family labels.
 They contain no font bytes. Payload inspection overhead is recorded separately.
+Region stages also measure synchronous state inspection, SVG viewport
+normalization, CPU SVG rasterization and bitmap copying, GPU region drawing,
+and full-cache composition. Cached SVG decode wall time is recorded separately.
 Use stage profiling to attribute work and keep it disabled for comparisons.
 
 ```sh
@@ -214,9 +220,11 @@ and excluded from workload tasks. The benchmark also samples its task-duration
 baseline after profiler setup. Trace attribution covers these callbacks; it
 does not measure GPU execution or every task in the capture pipeline.
 
-For input region capture, compare against `6c825565407d062f9c63a9daf6fd2741a1035827`
-at CPU rates `4,6` with `PERF_ENGINES=snapdom`. The working tree opts the Controls
-Project field into region capture. Check that `captureRegions.partial` is
-positive in every candidate input phase; a full-only run does not measure this
-optimization. These counts include calls started during the measured phase,
-which need not equal the number of receipts completed in that phase.
+For SVG reuse, compare against `438d41136528f07e8f9eb9a615eaf01edaf83896`
+at CPU rates `4,6` with `PERF_ENGINES=snapdom`. Run both
+`PERF_CAPTURE_STORAGE=cpu` and `PERF_CAPTURE_STORAGE=gpu`. The Controls Project
+field opts into region capture. Check that `captureRegions.partial` and
+`reusedInputSvgs` are positive in every candidate input phase. These counts
+count upstream capture starts and successful cached SVG decode completions,
+respectively. Neither must equal the receipts completed in that phase. Keep
+capture-stage profiling disabled for the paired timing comparison.

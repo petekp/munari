@@ -4,6 +4,7 @@
 // adapter owns this cache, while core owns capture scheduling and publication.
 
 import { captureContext, captureMemoryChosen, listenForRepaintSignals } from '@munari/core'
+import { createInputSvgTemplate } from './snapdomInputSvg'
 
 export interface CaptureRegionOptions {
   clip?: { x: number; y: number; width: number; height: number }
@@ -33,6 +34,8 @@ export function createInputRegionRasterizer(
   let cachedEpoch = -1
   let cachedKey = ''
   let cachedValue: string | null = null
+  let cachedScroll: readonly [number, number] = [0, 0]
+  let cachedInputVersion = -1
   let currentField: HTMLInputElement | null = null
   let pendingInput: { field: HTMLInputElement; value: string; version: number } | null = null
   let inputVersion = 0
@@ -40,8 +43,10 @@ export function createInputRegionRasterizer(
   let cpuStorage: boolean | null = null
   let regionCanvas: HTMLCanvasElement | null = null
   let regionSupported = true
+  let inputSvg: ReturnType<typeof createInputSvgTemplate> = null
 
   const releaseCachedBitmaps = () => {
+    inputSvg = null
     canvas.width = canvas.height = 0
     if (regionCanvas) regionCanvas.width = regionCanvas.height = 0
     regionCanvas = null
@@ -51,6 +56,7 @@ export function createInputRegionRasterizer(
   }
 
   const invalidated = () => {
+    inputSvg = null
     epoch++
     pendingInput = null
   }
@@ -114,10 +120,8 @@ export function createInputRegionRasterizer(
     }, { capture: true, signal: listeners.signal })
   }
 
-  const styles = (element: Element) => {
-    const style = getComputedStyle(element)
-    return Array.from(style, (property) => `${property}:${style.getPropertyValue(property)}`).join(';')
-  }
+  const styles = (style: CSSStyleDeclaration) =>
+    Array.from(style, (property) => `${property}:${style.getPropertyValue(property)}`).join(';')
   const controlState = (field: HTMLInputElement | null) => Array.from(root.querySelectorAll('input,textarea,select'), (control) => {
     if (control instanceof HTMLInputElement) {
       return [control === field ? null : control.value, control === field ? null : control.defaultValue, control.type, control.checked,
@@ -135,17 +139,17 @@ export function createInputRegionRasterizer(
     return null
   })
   const ancestorPaint = (field: HTMLInputElement | null) => {
-    const ancestors: Element[] = []
+    const ancestors: Array<{ element: Element; style: CSSStyleDeclaration }> = []
     let element: Element | null = field
     let untransformed = true
     let boundedPaint = true
     while (element) {
-      if (root.contains(element)) ancestors.push(element)
+      const style = getComputedStyle(element)
+      if (root.contains(element)) ancestors.push({ element, style })
       else if (!observedAncestors.has(element)) {
         observer.observe(element, { attributes: true, attributeOldValue: true })
         observedAncestors.add(element)
       }
-      const style = getComputedStyle(element)
       if (style.filter !== 'none' || style.backdropFilter !== 'none' || style.textShadow !== 'none' || style.mixBlendMode !== 'normal') boundedPaint = false
       if (style.transform !== 'none' || style.translate !== 'none' || style.rotate !== 'none' || style.scale !== 'none') untransformed = false
       element = element.parentElement
@@ -231,8 +235,10 @@ export function createInputRegionRasterizer(
     const box = root.getBoundingClientRect()
     const rect = field?.getBoundingClientRect()
     const paint = ancestorPaint(field)
+    const rootStyle = paint.ancestors.find((entry) => entry.element === root)?.style ?? getComputedStyle(root)
+    const ancestorStyles = paint.ancestors.filter((entry) => entry.element !== root).map((entry) => styles(entry.style))
     const key = JSON.stringify([sx, sy, root.offsetWidth, root.offsetHeight, box.x, box.y, box.width, box.height,
-      scrollX, scrollY, rect?.x, rect?.y, rect?.width, rect?.height, styles(root), paint.ancestors.map(styles), controlState(field)])
+      scrollX, scrollY, rect?.x, rect?.y, rect?.width, rect?.height, styles(rootStyle), ancestorStyles, controlState(field)])
     const clip = rect ? clipFor(rect) : undefined
     const placeholderSupported = clip !== undefined && supportsClippedFields(clip)
     const boundedPaint = fieldPaintIsPlain(field) && paint.boundedPaint
@@ -241,6 +247,91 @@ export function createInputRegionRasterizer(
       && supportsGeometry(box, sx, sy) && document.fonts.status === 'loaded'
       && !root.getAnimations({ subtree: true }).some((animation) => animation.playState === 'running')
     return { key, box, rect, clip, eligible, scrollX, scrollY, width: Math.max(1, Math.round(root.offsetWidth * sx)), height: Math.max(1, Math.round(root.offsetHeight * sy)) }
+  }
+
+  const composeImage = (
+    image: HTMLImageElement,
+    state: ReturnType<typeof snapshot>,
+    clip: CaptureRegionOptions['clip'],
+    sx: number,
+    sy: number,
+  ) => {
+    const context = captureContext(canvas)
+    if (!context) throw new Error('munari: input region cache has no 2D context')
+    cpuStorage ??= context.getContextAttributes().willReadFrequently === true
+    cachedEpoch = -1
+    if (clip && state.rect) {
+      const x = Math.round((clip.x - state.box.x - state.scrollX) * sx)
+      const y = Math.round((clip.y - state.box.y - state.scrollY) * sy)
+      const left = (Math.floor(state.rect.x + state.scrollX) - state.box.x - state.scrollX) * sx
+      const top = (Math.floor(state.rect.y + state.scrollY) - state.box.y - state.scrollY) * sy
+      const width = (Math.ceil(state.rect.right + state.scrollX) - Math.floor(state.rect.x + state.scrollX)) * sx
+      const height = (Math.ceil(state.rect.bottom + state.scrollY) - Math.floor(state.rect.y + state.scrollY)) * sy
+      if (cpuStorage) {
+        regionCanvas ??= document.createElement('canvas')
+        const bufferWidth = Math.min(state.width, Math.max(1, x + image.width))
+        const bufferHeight = Math.min(state.height, Math.max(1, y + image.height))
+        if (regionCanvas.width !== bufferWidth) regionCanvas.width = bufferWidth
+        if (regionCanvas.height !== bufferHeight) regionCanvas.height = bufferHeight
+        const regionContext = captureContext(regionCanvas)
+        if (!regionContext) throw new Error('munari: input region bitmap has no 2D context')
+        // CPU SVG antialiasing depends on its draw origin. Rasterize at the
+        // source origin before cropping bitmap pixels (decisions.md #62).
+        regionContext.clearRect(x, y, image.width, image.height)
+        regionContext.drawImage(image, x, y, image.width, image.height)
+        context.clearRect(left, top, width, height)
+        context.drawImage(regionCanvas, left, top, width, height, left, top, width, height)
+      } else {
+        context.clearRect(left, top, width, height)
+        context.save()
+        try {
+          context.beginPath()
+          context.rect(left, top, width, height)
+          context.clip()
+          context.drawImage(image, x, y, image.width, image.height)
+        } finally {
+          context.restore()
+        }
+      }
+    } else {
+      canvas.width = state.width
+      canvas.height = state.height
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+    }
+  }
+  const clearPendingInput = (version: number | undefined) => {
+    if (pendingInput?.version === version) pendingInput = null
+  }
+
+  const unchangedInput = (
+    state: ReturnType<typeof snapshot>,
+    value: string | null,
+    scroll: readonly [number, number],
+  ) => state.eligible && cachedEpoch === epoch && cachedKey === state.key && cachedValue === value && cachedInputVersion === inputVersion
+    && cachedScroll[0] === scroll[0] && cachedScroll[1] === scroll[1]
+
+  const reusableSvg = (
+    clip: CaptureRegionOptions['clip'],
+    field: HTMLInputElement | null,
+    value: string | null,
+    scroll: readonly [number, number],
+  ) => clip && field && value !== null && inputSvg?.canReuse(field, value, scroll) ? inputSvg : null
+
+  const captureImage = async (
+    template: ReturnType<typeof createInputSvgTemplate>,
+    value: string | null,
+    sx: number,
+    sy: number,
+    options: CaptureRegionOptions,
+  ) => {
+    try {
+      return template && value !== null ? await template.render(value) : await capture(root, sx, sy, options)
+    } catch (cause) {
+      if (disposed || !(cause instanceof UnsupportedRegionCaptureError) || !options.clip) throw cause
+      regionSupported = false
+      releaseCachedBitmaps()
+      return capture(root, sx, sy, { invalidate: true })
+    }
   }
 
   const inputClip = (state: ReturnType<typeof snapshot>, field: HTMLInputElement | null, value: string | null) =>
@@ -260,58 +351,34 @@ export function createInputRegionRasterizer(
       const field = findField()
       const state = snapshot(field, sx, sy)
       const startedEpoch = epoch
+      const startedInputVersion = inputVersion
       const input = pendingInput
       const value = field?.value ?? null
       const clip = inputClip(state, field, value)
       const invalidate = refreshPending
       refreshPending = false
-      let image: HTMLImageElement
-      try {
-        image = await capture(root, sx, sy, { clip, invalidate, retainRootLayout: cpuStorage === true })
-      } catch (cause) {
-        if (disposed || !(cause instanceof UnsupportedRegionCaptureError) || !clip) throw cause
-        regionSupported = false
-        releaseCachedBitmaps()
-        return capture(root, sx, sy, { invalidate: true })
+      const scroll: readonly [number, number] = [field?.scrollLeft ?? 0, field?.scrollTop ?? 0]
+      if (!invalidate && unchangedInput(state, value, scroll)) {
+        clearPendingInput(input?.version)
+        return canvas
       }
+      const template = reusableSvg(clip, field, value, scroll)
+      inputSvg = null
+      const image = await captureImage(template, value, sx, sy, { clip, invalidate, retainRootLayout: true })
+      if (!regionSupported) return image
       await captureMemoryChosen()
       if (disposed) return image
       mutate(observer.takeRecords())
-      const context = captureContext(canvas)
-      if (!context) throw new Error('munari: input region cache has no 2D context')
-      cpuStorage ??= context.getContextAttributes().willReadFrequently === true
-      cachedEpoch = -1
-      if (clip) {
-        const x = Math.round((clip.x - state.box.x - state.scrollX) * sx)
-        const y = Math.round((clip.y - state.box.y - state.scrollY) * sy)
-        if (cpuStorage && state.rect) {
-          regionCanvas ??= document.createElement('canvas')
-          regionCanvas.width = Math.min(state.width, Math.max(1, x + image.width))
-          regionCanvas.height = Math.min(state.height, Math.max(1, y + image.height))
-          const regionContext = captureContext(regionCanvas)
-          if (!regionContext) throw new Error('munari: input region bitmap has no 2D context')
-          // CPU SVG antialiasing depends on its draw origin. Rasterize at the
-          // source origin before cropping bitmap pixels (decisions.md #62).
-          regionContext.drawImage(image, x, y, image.width, image.height)
-          const left = (Math.floor(state.rect.x + state.scrollX) - state.box.x - state.scrollX) * sx
-          const top = (Math.floor(state.rect.y + state.scrollY) - state.box.y - state.scrollY) * sy
-          const width = (Math.ceil(state.rect.right + state.scrollX) - Math.floor(state.rect.x + state.scrollX)) * sx
-          const height = (Math.ceil(state.rect.bottom + state.scrollY) - Math.floor(state.rect.y + state.scrollY)) * sy
-          context.clearRect(left, top, width, height)
-          context.drawImage(regionCanvas, left, top, width, height, left, top, width, height)
-        } else {
-          context.clearRect(x, y, image.width, image.height)
-          context.drawImage(image, x, y, image.width, image.height)
-        }
-      } else {
-        canvas.width = state.width
-        canvas.height = state.height
-        context.drawImage(image, 0, 0, canvas.width, canvas.height)
+      composeImage(image, state, clip, sx, sy)
+      if (clip && field && value !== null && startedEpoch === epoch) {
+        inputSvg = template ?? createInputSvgTemplate(image, field, value, scroll)
       }
       cachedEpoch = startedEpoch
       cachedKey = state.key
       cachedValue = value
-      if (pendingInput?.version === input?.version) pendingInput = null
+      cachedScroll = scroll
+      cachedInputVersion = startedInputVersion
+      clearPendingInput(input?.version)
       return canvas
     },
     invalidate,

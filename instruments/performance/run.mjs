@@ -95,6 +95,8 @@ function summarize(raw,before,after) {
     capturePayloads:raw.events.filter(event=>event.kind==='capturePayload'),
     requestedRasterPixelArea:raw.events.filter(event=>event.kind==='captureRaster').reduce((sum,event)=>sum+event.width*event.height,0),
     captureRegions:{full:raw.events.filter(event=>event.kind==='captureRegion'&&!event.clipped).length,partial:raw.events.filter(event=>event.kind==='captureRegion'&&event.clipped).length,cssArea:raw.events.filter(event=>event.kind==='captureRegion').reduce((sum,event)=>sum+event.cssArea,0)},
+    reusedInputSvgs:raw.events.filter(event=>event.kind==='reusedInputSvg').length,
+    unchangedInputFrames:raw.events.filter(event=>event.kind==='unchangedInputFrame').length,
     componentRenders:captureStages?Object.fromEntries(['ControlsHardware','PhysicalPiece'].map(component=>[component,raw.events.filter(event=>event.kind==='componentRender'&&event.component===component).length])):null,
   }
 }
