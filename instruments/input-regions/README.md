@@ -47,6 +47,33 @@ fixture renames an empty custom property while keeping the property count
 unchanged. It compares the cached serialization with the complete current
 declaration. Results record style-cache hits and new serializations.
 
+Full-background cases require CPU captures to reuse the root background during
+content edits and trusted submission. They also cover a form inside two ordinary
+wrapper divs. Their reference decodes the complete fresh SVG through the image
+path, with the background-cache hook omitted. Results count successful background
+reuse, new preparations and fallbacks. Separate counters identify memory-budget
+fallbacks and viewport-metadata fallbacks before the cache is called.
+Setting inactive mask defaults and normal background blending must preserve
+reuse. A gradient mask image must use the full SVG fallback.
+
+The cases cover changed root backgrounds, transparent and translucent backgrounds,
+and opaque, translucent and shadowed children crossing rounded root edges. Root
+opacity, filters, backdrop filters and blend modes must use the full SVG fallback.
+A descendant with negative `z-index` also requires fallback, preserving its paint
+order relative to the root background.
+An overflowing root with `overflow: auto` must also fall back. Its fixture
+requires overflow on both axes and removes the negative `z-index` first.
+The CPU density-3 case exceeds the per-background RGBA budget of 8 MiB and must
+fall back before preparing a new background. The previous background may remain
+cached. Replacement can briefly retain two background buffers; the cap does not
+bound total capture memory.
+
+Held background preparations exercise input, refresh, density changes and
+disposal. The input and refresh case checks each published frame against a
+complete captured or final state. A failed composite must preserve the published
+canvas. Disposal must clear the pending buffer and prevent a late paint. GPU full
+captures must use the original SVG path with no background preparation or reuse.
+
 A font fixture checks cache hits for a covered declared range and
 cache misses for an additional range. It does not prove that an input-only
 font subset is embedded: the existing font selector reads clone text nodes
@@ -56,6 +83,15 @@ and can omit native input values.
 `/tmp/munari-input-regions`. Each case saves both PNGs and its result in
 `results.json`. `completion.json` confirms that the whole run finished.
 `CHROME_PATH` selects the Chrome executable.
+
+Reusing a stale background after the root paint changes must fail
+`background-root-change` on a pixel mismatch. The fixture first compares fresh
+captures at the same input value to prove that the background change is visible:
+
+```sh
+REGION_STORAGE=cpu REGION_FREEZE_BACKGROUND=1 REGION_OUTPUT=/tmp/munari-input-regions-background-fault \
+  node instruments/input-regions/run.mjs
+```
 
 Freezing a cached style string whenever its property count stays unchanged
 must fail the color-scheme pixel comparison. This control removes the name
@@ -86,6 +122,17 @@ before the adapter inspects it; the full-capture reference stays intact:
 
 ```sh
 REGION_STORAGE=cpu REGION_UNKNOWN_VIEWPORT=1 REGION_OUTPUT=/tmp/munari-input-regions-unknown \
+  node instruments/input-regions/run.mjs
+```
+
+The timer-fallback smoke removes `globalThis.scheduler` before the app loads.
+Its initial CPU captures must prepare and reuse a background, with exact pixels.
+Combining it with the short unsupported-viewport run checks completion through
+the timer path. The full CPU run covers held preparation, refresh and disposal.
+
+```sh
+REGION_STORAGE=cpu REGION_NO_SCHEDULER=1 REGION_UNKNOWN_VIEWPORT=1 \
+  REGION_OUTPUT=/tmp/munari-input-regions-timer-fallback \
   node instruments/input-regions/run.mjs
 ```
 

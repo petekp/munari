@@ -6,11 +6,13 @@
 import { captureContext, captureMemoryChosen, listenForRepaintSignals } from '@munari/core'
 import { createInputSvgTemplate } from './snapdomInputSvg'
 import { prepareInputTextPainter, type InputTextPainter } from './snapdomInputText'
+import { createFullBackgroundCache } from './snapdomFullBackground'
 
 export interface CaptureRegionOptions {
   clip?: { x: number; y: number; width: number; height: number }
   invalidate?: boolean
   retainRootLayout?: boolean
+  decodeFull?: (url: string, width: number, height: number) => Promise<HTMLImageElement>
 }
 
 export class UnsupportedRegionCaptureError extends Error {}
@@ -37,6 +39,7 @@ export function createInputRegionRasterizer(
   const observedAncestors = new WeakSet<Element>()
   let styleCache = new WeakMap<Element, SerializedStyle>()
   const listeners = new AbortController()
+  const fullBackground = createFullBackgroundCache(root, canvas, listeners.signal)
   let disposed = false
   let epoch = 0
   let cachedEpoch = -1
@@ -63,6 +66,7 @@ export function createInputRegionRasterizer(
   }
 
   const releaseCachedBitmaps = () => {
+    fullBackground.release()
     styleCache = new WeakMap()
     discardTextPainter()
     inputSvg = null
@@ -370,7 +374,7 @@ export function createInputRegionRasterizer(
     } else {
       canvas.width = state.width
       canvas.height = state.height
-      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+      if (!fullBackground.paint(image, context)) context.drawImage(image, 0, 0, canvas.width, canvas.height)
     }
   }
   const clearPendingInput = (version: number | undefined) => {
@@ -473,7 +477,7 @@ export function createInputRegionRasterizer(
       if (paintText(template, field, value, scroll)) return canvas
       if (!template || textPreparation?.template !== template) discardTextPainter()
       inputSvg = null
-      const image = await captureImage(template, value, sx, sy, { clip, invalidate, retainRootLayout: true })
+      const image = await captureImage(template, value, sx, sy, { clip, invalidate, retainRootLayout: true, decodeFull: fullBackground.decodeFull })
       if (!regionSupported) return image
       await captureMemoryChosen()
       if (disposed) return image

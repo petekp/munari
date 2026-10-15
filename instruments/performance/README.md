@@ -7,7 +7,7 @@ run serially.
 
 ```sh
 PERF_BUILD_MODE=production \
-PERF_BASELINE_REF=a1a04568fea1faddba1e9383ab5e64dcf3c2f969 \
+PERF_BASELINE_REF=e0e921e989760be8d26221261724c056c9882959 \
 PERF_CAPTURE_STORAGE=cpu PERF_ENGINES=snapdom \
 PERF_CPU_RATES=4,6 PERF_ROUTE_TIMING=0 PERF_TRIALS=5 \
 PERF_OUTPUT=/tmp/munari-performance \
@@ -53,15 +53,27 @@ for both versions. Each trial checks the observed context attributes before
 and after input. Omit it to use the adapter's normal choice. This selects
 canvas storage on the current host; it does not emulate a software GPU.
 
-The workload enters the scene, waits for the physical controls to settle,
-measures idle frames, types a fixed string through browser keyboard events,
-and submits the form with Enter. It then resizes the viewport and returns
+The `enter-scene` phase measures the scene request until the physical controls
+settle. Initial mount and font loading precede this phase. The workload then
+measures idle frames. The input phase includes focusing the original field,
+pressing End, typing a fixed string through browser keyboard events, and
+submitting with Enter. It then resizes the viewport and returns
 the form to the page. Assertions check the same input node, edited value,
 focus, one trusted submit, both presentation holds, capture activity,
 upload callbacks, populated capture pixels, and changed captured pixels.
 An input listener records the next unread source identity before capture
 handles each input event. The final input must reach a completed read.
-The runtime's acknowledged upload read must also reach that input.
+The submit listener also records the next unread source identity. The phase
+waits until both capture and upload reach that submit read. This depends on
+the Controls form's synchronous submit handler. Each trial requires one
+trusted focus event, 37 trusted inputs and one trusted submit inside the phase.
+`inputPhaseIncludesFocusAndSubmit` identifies this protocol. Do not pool these
+results with older runs that focused the field outside the measured phase.
+
+Each phase retains `phaseStartedAt`. Interaction completion is the first submit
+acknowledgement's upload time minus that start. `focusToLastUploadMs` instead
+starts at the focus event and includes any later upload during the final buffer.
+Neither metric measures display presentation.
 
 `results.json` records the browser version, source commit, dirty files,
 lockfile dependency versions, viewport, CPU rate, workload, and SHA-256 hashes
@@ -83,6 +95,10 @@ Each measured phase reports:
 - Started full and region captures, with their summed CSS pixel area.
 - Successful direct text draws, reused region SVGs, and unchanged input frames.
 - Serialized-style cache hits and new serialized declarations.
+- Successful full-background reuse and newly prepared background composites.
+- Cumulative background preparation attempts and composites, plus the largest
+  composed background in bytes. This size excludes JavaScript objects and the
+  temporary overlap of old and replacement buffers.
 - Prepared text painters and blank-image decodes, counted cumulatively per trial.
 - Decoded images' requested width × height, summed as raster pixel area.
 - Upload callbacks, source read and generation, texture version, and store size.
@@ -286,11 +302,18 @@ Selected CSS must match the current workload. Paired production builds also
 require identical loaded lab code and CSS in both versions. Build mode and
 verification evidence are saved with the results.
 
-For serialized-style caching, use the paired production command above and
+For full-background caching, use the paired production command above and
 repeat it with `PERF_CAPTURE_STORAGE=gpu` and a separate output directory.
-Require positive `styleCacheHits` in each candidate input phase. Compare new
-serializations, input latency and task duration against the baseline. Keep
-profiling and diagnostic timing disabled for these comparisons.
+Require positive `fullBackgroundReuses` in each CPU candidate input phase.
+GPU and baseline trials must report zero background preparation and composition.
+Compare input latency, frame gaps and task work, including `enter-scene` cost.
+Controls uses one 6,566,400-byte background at DPR 2. The cache accepts at most
+8 MiB per background; replacement can briefly retain two. Keep profiling and
+diagnostic timing disabled for these comparisons.
+
+For serialized-style caching, use baseline `a1a0456` and require positive
+`styleCacheHits`. The [style-cache report](../../docs/style-cache-performance.md)
+records that comparison separately.
 
 `PERF_GPU_DIAGNOSTICS=1` measures the synchronous native canvas-copy submission
 and starts an asynchronous queue checkpoint at each texture update. Rendering
@@ -313,3 +336,19 @@ its substages; `snapshotKeyBuildSync` includes root-style enumeration and
 control-state collection. Do not sum nested timers. Async preparation and
 rasterization can overlap. Profiling and diagnostic observers add overhead;
 use the ordinary unprofiled runner for performance comparisons.
+
+`fullCapturePreparationWall` includes full SVG splitting, key creation, image
+decoding and background preparation. `imagePreparationWall` includes image URL
+assignment and decoding on the candidate's other path. Older revisions report
+`decodeWall` around `image.decode()` alone. These spans have different scopes;
+compare the complete capture and main-thread costs across revisions. Decoded
+raster area includes the extra background image when preparation succeeds.
+
+`fullBackgroundSplitSync` measures the synchronous parsing, eligibility checks,
+SVG splitting and key construction. It includes attempts that later decline
+reuse. The timer runs only with capture-stage diagnostics enabled.
+
+Each trial samples host load averages and per-core CPU times before browser
+launch and after the workload, outside measured phases. These observations
+help identify competing work; they do not turn CPU throttling into a device
+simulation or remove host contention from the measurements.

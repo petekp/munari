@@ -11,7 +11,8 @@ output. Preserve both distinctions when resolving a conflict.
 | Understand how the abstractions fit | [System model](system-model.md), [glossary](../CONTEXT.md) | Current model and constraints |
 | Build the next agent-facing capability | [Agent system plan](agent-system-plan.md) | Work in progress; unbuilt stages are explicit |
 | Review earlier performance findings | [Performance audit](performance-audit.md) | Assessment of 2026-09-26; each remedy is unbuilt unless its finding says otherwise |
-| Diagnose capture and GPU costs | [Performance diagnosis](performance-diagnosis.md) | 2026-10-14 diagnosis; style caching implemented in the report below |
+| Diagnose capture and GPU costs | [Performance diagnosis](performance-diagnosis.md) | 2026-10-14 diagnosis; capture optimizations are linked below |
+| Check full SVG capture performance | [Full-capture report](full-capture-performance.md) | Implemented; CPU background reuse, production benchmarks and exact-pixel evidence |
 | Check serialized-style caching | [Style-cache report](style-cache-performance.md) | Implemented; production benchmarks and exact-pixel evidence |
 | Check snapDOM input region performance | [Incremental capture report](incremental-capture.md) | Implementation and local benchmark evidence |
 | Add automatic canvas refresh without idle polling | [Automatic canvas refresh spec](automatic-canvas-refresh-spec.md) | Proposed, unbuilt; browser and pixel-lifetime gates are explicit |

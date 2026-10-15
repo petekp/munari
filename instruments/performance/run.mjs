@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { cpus, tmpdir } from 'node:os'
+import { cpus, loadavg, tmpdir } from 'node:os'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { installObserver, performanceObserver } from './observer.mjs'
@@ -79,7 +79,7 @@ const metadata = {
   dirty:git('status','--short'),node:process.version,platform:process.platform,arch:process.arch,
   cpu:cpus()[0]?.model,cpuCount:cpus().length,
   viewport:{width:1440,height:1000,deviceScaleFactor:2},resizedViewport:{width:1320,height:920,deviceScaleFactor:2},
-  input:' Repeatable browser input 0123456789.',inputDelayMs:40,idleMs:1200,
+  input:' Repeatable browser input 0123456789.',inputDelayMs:40,idleMs:1200,inputPhaseIncludesFocusAndSubmit:true,
   trials,rates,engines,versions,routeTiming,profile,captureStages,captureStorage,captureDiagnostics,gpuDiagnostics,flushCpuRaster,maxFrameP95Ms,baselineLabSources,chromeArgs,requestedBackend:process.env.MUNARI_BACKEND??'auto',
   dependencyVersions:Object.fromEntries(['three','@react-three/fiber','@zumer/snapdom','vite','puppeteer-core'].map(name=>[name,lock.packages[`node_modules/${name}`]?.version])),
 }
@@ -122,16 +122,21 @@ const stats = values => {
   return {count:sorted.length,total:sorted.reduce((sum,value)=>sum+value,0),p50:sorted.length?sorted[Math.min(sorted.length-1,Math.floor(sorted.length*.5))]:null,p95:sorted.length?sorted[Math.min(sorted.length-1,Math.floor(sorted.length*.95))]:null,max:sorted.at(-1)??null}
 }
 const metrics = async cdp => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map(metric=>[metric.name,metric.value]))
+function acknowledgeUploads(events,uploads) {
+  return events.map(event=>{
+    const upload=uploads.find(upload=>upload.sourceId===event.sourceId&&upload.read>=event.requiredRead&&upload.t>=event.t)
+    return {sourceId:event.sourceId,requiredRead:event.requiredRead,interactionTime:event.t,eventTime:event.eventTime,uploadedRead:upload?.read??null,uploadTime:upload?.t??null,latencyMs:upload?upload.t-event.t:null}
+  })
+}
 function summarize(raw,before,after) {
   const captures=raw.events.filter(event=>event.kind==='capture'),uploads=raw.events.filter(event=>event.kind==='upload')
-  const inputs=raw.events.filter(event=>event.kind==='input')
-  const inputAcknowledgements=inputs.map(input=>{
-    const upload=uploads.find(upload=>upload.sourceId===input.sourceId&&upload.read>=input.requiredRead&&upload.t>=input.t)
-    return {sourceId:input.sourceId,requiredRead:input.requiredRead,inputTime:input.t,eventTime:input.eventTime,uploadedRead:upload?.read??null,uploadTime:upload?.t??null,latencyMs:upload?upload.t-input.t:null}
-  })
+  const inputs=raw.events.filter(event=>event.kind==='input'),focuses=raw.events.filter(event=>event.kind==='focusin'),submits=raw.events.filter(event=>event.kind==='submit')
+  const inputAcknowledgements=acknowledgeUploads(inputs,uploads).map(event=>({...event,inputTime:event.interactionTime}))
+  const focusAcknowledgements=acknowledgeUploads(focuses,uploads),submitAcknowledgements=acknowledgeUploads(submits,uploads)
+  const focus=focuses[0],lastFocusUpload=focus?uploads.filter(upload=>upload.sourceId===focus.sourceId&&upload.t>=focus.t).at(-1):null
   const identities=new Set(uploads.map(event=>`${event.sourceId}:${event.read}:${event.generation}:${event.width}:${event.height}`))
   return {
-    elapsedMs:raw.elapsedMs,frameIntervalMs:stats(raw.gaps),routeStepMs:stats(raw.events.filter(event=>event.kind==='route').map(event=>event.ms)),
+    phaseStartedAt:raw.phaseStartedAt,elapsedMs:raw.elapsedMs,frameIntervalMs:stats(raw.gaps),routeStepMs:stats(raw.events.filter(event=>event.kind==='route').map(event=>event.ms)),
     routeHostSpaceMs:stats(raw.events.filter(event=>event.kind==='routeHostSpace').map(event=>event.ms)),
     routeVerdicts:Object.fromEntries(['page','native','relay','off'].map(route=>[route,raw.events.filter(event=>event.kind==='route'&&event.route===route).length])),
     completedCaptures:captures.length,uniqueCaptureReads:new Set(captures.map(event=>`${event.sourceId}:${event.read}`)).size,
@@ -141,12 +146,21 @@ function summarize(raw,before,after) {
     scriptMs:(after.ScriptDuration-before.ScriptDuration)*1000,layoutMs:(after.LayoutDuration-before.LayoutDuration)*1000,
     inputToUploadMs:stats(inputAcknowledgements.flatMap(input=>input.latencyMs===null?[]:[input.latencyMs])),inputAcknowledgements,
     unacknowledgedInputs:inputAcknowledgements.filter(input=>input.latencyMs===null).length,
+    focusAcknowledgements,submitAcknowledgements,
+    focusToLastUploadMs:lastFocusUpload?lastFocusUpload.t-focus.t:null,
+    submitToUploadMs:stats(submitAcknowledgements.flatMap(submit=>submit.latencyMs===null?[]:[submit.latencyMs])),
+    unacknowledgedSubmits:submitAcknowledgements.filter(submit=>submit.latencyMs===null).length,
     browserTimingSupport:raw.timingSupport,browserTimingEntries:raw.events.filter(event=>event.kind==='browserTiming'),
     captureStageMs:captureStages?Object.fromEntries([...new Set(raw.events.filter(event=>event.kind==='captureStage').map(event=>event.stage))].map(stage=>[stage,stats(raw.events.filter(event=>event.kind==='captureStage'&&event.stage===stage).map(event=>event.ms))])):null,
     capturePayloads:raw.events.filter(event=>event.kind==='capturePayload'),
     requestedRasterPixelArea:raw.events.filter(event=>event.kind==='captureRaster').reduce((sum,event)=>sum+event.width*event.height,0),
     captureRegions:{full:raw.events.filter(event=>event.kind==='captureRegion'&&!event.clipped).length,partial:raw.events.filter(event=>event.kind==='captureRegion'&&event.clipped).length,cssArea:raw.events.filter(event=>event.kind==='captureRegion').reduce((sum,event)=>sum+event.cssArea,0)},
     reusedInputSvgs:raw.events.filter(event=>event.kind==='reusedInputSvg').length,
+    fullBackgroundReuses:raw.events.filter(event=>event.kind==='fullBackgroundComposite'&&event.reused).length,
+    fullBackgroundPreparedPaints:raw.events.filter(event=>event.kind==='fullBackgroundComposite'&&!event.reused).length,
+    fullBackgroundPreparations:raw.totals?.fullBackgroundPreparation??0,
+    fullBackgroundComposites:raw.totals?.fullBackgroundComposite??0,
+    backgroundPixelBytes:raw.totals?.backgroundPixelBytes??0,
     styleCacheHits:raw.events.filter(event=>event.kind==='styleCacheHit').length,
     styleSerializations:raw.events.filter(event=>event.kind==='styleSerialization').length,
     inputBlankDecodes:raw.totals?.inputBlankDecode??raw.events.filter(event=>event.kind==='inputBlankDecode').length,
@@ -193,10 +207,12 @@ async function sourceSnapshot(page) {
     return {rows,paints:window.__munariPerf.paintStats()}
   })
 }
+const hostActivity=()=>({at:new Date().toISOString(),loadAverage:loadavg(),cpuTimes:cpus().map(cpu=>cpu.times)})
 async function trial(server,version,engine,rate,index) {
   const name=`${version.label}-${engine}-cpu${rate}-trial${index}`
   const directory=path.join(output,name)
   await mkdir(directory,{recursive:true})
+  const hostBefore=hostActivity()
   const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,defaultViewport:metadata.viewport,args:chromeArgs})
   let page
   const errors=[]
@@ -215,35 +231,57 @@ async function trial(server,version,engine,rate,index) {
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=controls&framed${engine==='snapdom'?'&capture=snapdom':''}`,{waitUntil:'load'})
     await page.waitForFunction(()=>window.__apiControls?.status?.supported&&document.querySelector('[data-api-live] input'),{timeout:30000})
     await page.evaluate(()=>document.fonts.ready)
-    await page.evaluate(()=>{window.perfOriginalInput=document.querySelector('[data-api-live] input');window.perfOriginalValue=perfOriginalInput.value;window.__apiControls.request(true)})
-    await settled(page,'scene')
-    await page.waitForFunction(()=>window.__apiControls.frames.at(-1)?.amount===1,{timeout:30000})
+    const phases=[]
+    phases.push(await phase(page,cdp,'enter-scene',async()=>{
+      await page.evaluate(()=>{window.perfOriginalInput=document.querySelector('[data-api-live] input');window.perfOriginalValue=perfOriginalInput.value;window.__apiControls.request(true)})
+      await settled(page,'scene')
+      await page.waitForFunction(()=>window.__apiControls.frames.at(-1)?.amount===1,{timeout:30000})
+    }))
     await pause(page,500)
     const before=await sourceSnapshot(page)
     assert.equal(before.rows.length,1,'Controls must have one measured source')
     assert.ok(before.rows[0].nontransparent>0,'The source must contain captured pixels')
     assert.equal(before.paints.length,1)
     assert.equal(before.paints[0].engine,engine,'The requested engine must have produced the paints')
-    const phases=[]
     phases.push(await phase(page,cdp,'scene-idle',()=>pause(page,metadata.idleMs)))
     await page.screenshot({path:path.join(directory,'scene-before.png')})
-    await page.focus('[data-api-live] input')
-    await page.keyboard.press('End')
-    await page.evaluate(()=>document.addEventListener('input',event=>{
-      const {source}=[...window.__munariPerf.sources.values()][0]
-      window.perfRequiredRead=source.nextRead()
-      window.__munariPerf.record('input',{sourceId:source.sourceId,requiredRead:window.perfRequiredRead,eventTime:event.timeStamp,trusted:event.isTrusted,inputType:event.inputType})
-    },true))
+    await page.evaluate(()=>{
+      const recordInteraction=event=>{
+        if(event.target!==(event.type==='submit'?window.perfOriginalInput.form:window.perfOriginalInput))return
+        const {source}=[...window.__munariPerf.sources.values()][0]
+        const requiredRead=source.nextRead()
+        window.perfRequiredRead=Math.max(window.perfRequiredRead??0,requiredRead)
+        if(event.type==='submit') {
+          window.perfSubmitSourceId=source.sourceId
+          window.perfSubmitRequiredRead=requiredRead
+        }
+        window.__munariPerf.record(event.type,{sourceId:source.sourceId,requiredRead,eventTime:event.timeStamp,trusted:event.isTrusted,inputType:event.inputType})
+      }
+      for(const kind of ['input','focusin','submit'])document.addEventListener(kind,recordInteraction,true)
+    })
     phases.push(await phase(page,cdp,'scene-input',async()=>{
+      await page.focus('[data-api-live] input')
+      await page.keyboard.press('End')
       await page.keyboard.type(metadata.input,{delay:metadata.inputDelayMs})
       await page.keyboard.press('Enter')
       await page.waitForFunction(()=>{
-        const {source,uploadedRead}=[...window.__munariPerf.sources.values()][0]
-        return source.currentPaint()?.read>=window.perfRequiredRead&&uploadedRead()>=window.perfRequiredRead
+        const entry=window.__munariPerf.sources.get(window.perfSubmitSourceId)
+        return entry&&Number.isInteger(window.perfSubmitRequiredRead)
+          &&entry.source.currentPaint()?.read>=window.perfRequiredRead&&entry.uploadedRead()>=window.perfRequiredRead
       },{timeout:30000})
       await pause(page,250)
     },directory))
+    const inputPhase=phases.find(phase=>phase.name==='scene-input')
+    const focuses=inputPhase.raw.events.filter(event=>event.kind==='focusin'),submits=inputPhase.raw.events.filter(event=>event.kind==='submit')
+    assert.equal(focuses.length,1,'The measured interaction must include one focus event')
+    assert.equal(submits.length,1,'The measured interaction must include one submit event')
+    assert.ok(focuses[0].trusted&&submits[0].trusted,'Focus and submit must be trusted browser events')
+    assert.equal(focuses[0].sourceId,before.rows[0].sourceId)
+    assert.equal(submits[0].sourceId,before.rows[0].sourceId)
     const edited=await sourceSnapshot(page)
+    assert.equal(edited.rows[0].sourceId,submits[0].sourceId)
+    assert.ok(edited.rows[0].read>=submits[0].requiredRead,'The submit update must reach the captured source')
+    assert.ok(edited.rows[0].uploadedRead>=submits[0].requiredRead,'The submit update must reach an upload acknowledgement')
     if(captureStorage)for(const row of [...before.rows,...edited.rows])assert.equal(row.captureStorage,captureStorage,'Requested capture storage must be exercised')
     assert.ok(edited.rows[0].uploadedRead>=before.rows[0].read,'The final edit must reach an upload acknowledgement')
     assert.notEqual(edited.rows[0].pixelHash,before.rows[0].pixelHash,'Real input must change the captured pixels')
@@ -289,13 +327,14 @@ async function trial(server,version,engine,rate,index) {
     assert.ok(phases.find(phase=>phase.name==='scene-input').uploadCallbacks>0,'Input needs upload callbacks')
     assert.deepEqual(errors,[])
     await page.screenshot({path:path.join(directory,'returned-page.png')})
-    const inputPhase=phases.find(phase=>phase.name==='scene-input')
+    assert.equal(inputPhase.unacknowledgedSubmits,0,'The submit event needs an acknowledged capture read')
+    assert.ok(inputPhase.raw.events.filter(event=>event.kind==='input').every(event=>event.trusted),'Each input must be a trusted browser event')
     assert.equal(inputPhase.unacknowledgedInputs,0,'Every input needs an acknowledged capture read')
     assert.equal(inputPhase.inputToUploadMs.count,metadata.input.length,'Each typed character needs its own input observation')
     if(flushCpuRaster)assert.ok(inputPhase.raw.events.some(event=>event.kind==='captureStage'&&event.stage==='diagnosticFlushReadbackSync'),'CPU flush must execute during the measured input phase')
     const frameBudget=maxFrameP95Ms===null?null:{maxP95Ms:maxFrameP95Ms,measuredP95Ms:inputPhase.frameIntervalMs.p95,passed:inputPhase.frameIntervalMs.p95<=maxFrameP95Ms}
     const gpuEvidence=gpuDiagnostics?await page.evaluate(()=>window.__munariGpuDiagnostics.snapshot()):null
-    const row={gpuDiagnostics:gpuEvidence,name,version:version.label,sourceCommit:version.commit,sourceDirectory:version.directory??null,engine,rate,trial:index,browser:await browser.version(),before,edited,outcome,errors,phases,frameBudget}
+    const row={hostActivity:{before:hostBefore,after:hostActivity()},gpuDiagnostics:gpuEvidence,name,version:version.label,sourceCommit:version.commit,sourceDirectory:version.directory??null,engine,rate,trial:index,browser:await browser.version(),before,edited,outcome,errors,phases,frameBudget}
     await writeFile(path.join(directory,'result.json'),JSON.stringify(row,null,2))
     console.log(JSON.stringify({...row,phases:phases.map(({raw,...phase})=>phase)}))
     return row

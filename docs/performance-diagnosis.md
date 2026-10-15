@@ -2,11 +2,13 @@
 
 Measured 2026-10-14 against runtime `62e67d2`.
 The [serialized-style cache](style-cache-performance.md) is now implemented
-and benchmarked. The other runtime remedies below remain unimplemented.
+and benchmarked. [CPU background reuse](full-capture-performance.md) is
+implemented and benchmarked, with its entry and latency tradeoffs recorded.
+The other runtime remedies below remain unimplemented.
 
 Repeated serialization of computed styles was the strongest small optimization
-identified by this diagnosis. The largest remaining input spikes still come from full SVG
-rasterization. Native GPU copy submission was small on this host. Glass has a
+identified by this diagnosis. These profiles identified full SVG rasterization as the largest input spike
+after style inspection. Native GPU copy submission was small on this host. Glass has a
 separate cost that grows with rendered pixel area, but the experiments did not
 establish a reliable whole-frame gain from changing antialiasing.
 
@@ -110,9 +112,9 @@ cross-browser equivalence for a future renderer change.
 1. Serialized-style caching is implemented and verified in the
    [style-cache report](style-cache-performance.md). Every current property
    name and value is still compared before reusing its serialized string.
-2. Reduce full SVG raster work and safely handle more partial updates,
-   especially scrolling text and submission-related content changes. Avoid
-   optimizing a copy stage whose observed cost is mostly deferred painting.
+2. [CPU background reuse](full-capture-performance.md) reduces full-capture
+   materialization stalls. Full SVG construction, splitting, foreground decoding
+   and GPU-backed captures remain candidates for further profiling.
 3. Bound Glass's full-screen work without losing pixels outside each panel.
    Repeat GPU measurements under controlled load before accepting a gain.
 

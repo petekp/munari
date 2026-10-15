@@ -4138,6 +4138,56 @@ snapDOM with that engine's fidelity ceiling (platform.md #28).
 
 ## #62 — A capture is paid for once, and a live one is paced by a period (2026-09-12)
 
+**Amendment, 2026-10-14: retain root backgrounds for CPU captures.**
+The input region adapter can retain a root's background, border and shadow in
+one private CPU bitmap. It derives the background and foreground from the same
+public full SVG snapshot. The foreground keeps the content and draws directly
+over the cached background into the adapter's complete image. Core receives
+that complete image through its existing read, receipt and publication path.
+The original form nodes retain input ownership. GPU captures continue to draw
+the complete SVG.
+
+Reuse requires equal raster dimensions and equal background keys. The key
+retains the serialized background's paint and geometry. It omits mask position,
+size, repeat, mode, composition, origin and clip only after the guards confirm
+that the retained chain has no mask image. Normal blend declarations are omitted
+only when every retained blend declaration is normal or a default value.
+Non-normal or unresolved blend declarations remain. This cleanup changes the
+key only; the background and foreground SVG strings retain their original CSS.
+
+Empty rules left by that cleanup are removed from the key. Metadata is removed
+only when retained CSS and inline styles do not reference its name. Selectors
+that inspect style attributes, CSS escapes and `attr()` keep a literal key.
+Class names and IDs remain unchanged. A changed key prepares a new background.
+
+Eligible roots establish a formatting context and have a fixed border box
+matching the SVG's zero-origin viewport. Capture density must be uniform.
+Scrollable roots use the original full SVG because removing children can change
+scrollbar space.
+Public snapDOM viewport metadata rejects nonuniform output before SVG parsing.
+Parsed SVG geometry is still checked before any cached background can be used.
+CPU full capture then yields to a browser task before splitting the snapshot.
+It uses `scheduler.yield()` when available and a zero-delay timer otherwise.
+Abort and cache-generation checks run again after the yield. The source keeps
+its existing serial capture, input versions and complete-frame publication.
+
+The surrounding container chain must be unpainted. Unsupported selectors,
+nested CSS, resource-backed backgrounds, masks, filters, blending and uncertain
+geometry use the original full SVG. Negative or unresolved `z-index` values
+also use that path: a negative descendant can paint behind the original root
+background, so separating that background can expose pixels that were hidden.
+
+Each additional background bitmap is limited to 8 MiB of RGBA pixel capacity.
+Replacement can briefly retain both the accepted and pending bitmap, up to
+16 MiB. These figures exclude SVG strings, decoded images and browser overhead;
+they are not resident-memory measurements. Release and disposal clear retained
+and pending background buffers. A failed composition leaves the published
+source intact. Capture versions, pacing and texture dimensions retain their
+existing contracts.
+
+The [full-capture report](full-capture-performance.md) records the exact-pixel
+proof and paired production benchmarks, including scene-entry costs.
+
 **Amendment, 2026-10-14: reuse verified serialized styles.**
 The input region rasterizer keeps a primitive snapshot of each inspected
 element's ordered property names, values and serialized string. Every lookup

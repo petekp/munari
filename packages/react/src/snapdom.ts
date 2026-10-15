@@ -195,6 +195,13 @@ const normalizeRegionLayout = (
   return svg
 }
 
+function hasUniformCaptureScale(meta: CaptureMeta | undefined, width: number, height: number): boolean {
+  return Boolean(meta
+    && Number.isFinite(meta.vbW) && meta.vbW > 0
+    && Number.isFinite(meta.vbH) && meta.vbH > 0
+    && width * meta.vbH === height * meta.vbW)
+}
+
 /**
  * Ask snapDOM for `element` rendered at the requested per-axis scale.
  *
@@ -271,14 +278,21 @@ const rasterize = async (
   // experimental html-in-canvas engine, which this module never selects.
   const width = Math.max(1, Math.round(box.width * scaleX))
   const height = Math.max(1, Math.round(box.height * scaleY))
-  const image = new Image()
+  let image = new Image()
   const url = capture.toRaw()
   const normalized = layout ? normalizeRegionLayout(url, layout, capture.meta) : null
   if (normalized) retainNormalizedSvg(image, normalized.ownerDocument)
-  image.src = normalized
-    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(normalized))}`
-    : url
-  await image.decode()
+  const decodeFull = !options.clip && hasUniformCaptureScale(capture.meta, width, height)
+    ? options.decodeFull
+    : undefined
+  if (decodeFull) {
+    image = await decodeFull(url, width, height)
+  } else {
+    image.src = normalized
+      ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(normalized))}`
+      : url
+    await image.decode()
+  }
   // Callers use these dimensions when drawing, including a store resize
   // that happened while the SVG was being captured.
   image.width = width

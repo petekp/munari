@@ -11,7 +11,7 @@ const {metadata,rows,loadedSources}=JSON.parse(await readFile(path.join(director
 assert.ok(rows.length>0,'The evidence directory has no completed trials')
 const expectedTrials=metadata.trials*metadata.rates.length*metadata.engines.length*metadata.versions.length
 assert.equal(rows.length,expectedTrials,'The benchmark matrix must finish before it is summarized')
-const fields=['styleCacheHits','styleSerializations','reusedInputSvgs','inputBlankDecodes','directInputTexts','preparedInputTexts','unchangedInputFrames','requestedRasterPixelArea','captureRegions.full','captureRegions.partial','captureRegions.cssArea','uploadCallbacks','repeatedUploadIdentities','uploadedTexelArea','routeHostSpaceMs.count','routeStepMs.total','mainThreadTaskMs','completedCaptures','inputToUploadMs.p50','inputToUploadMs.p95','frameIntervalMs.p95','frameIntervalMs.max']
+const fields=['fullBackgroundReuses','fullBackgroundPreparedPaints','fullBackgroundPreparations','fullBackgroundComposites','backgroundPixelBytes','styleCacheHits','styleSerializations','reusedInputSvgs','inputBlankDecodes','directInputTexts','preparedInputTexts','unchangedInputFrames','requestedRasterPixelArea','captureRegions.full','captureRegions.partial','captureRegions.cssArea','uploadCallbacks','repeatedUploadIdentities','uploadedTexelArea','routeHostSpaceMs.count','routeStepMs.total','mainThreadTaskMs','completedCaptures','inputToUploadMs.p50','inputToUploadMs.p95','focusToLastUploadMs','submitToUploadMs.p50','submitToUploadMs.p95','frameIntervalMs.p95','frameIntervalMs.max']
 const range=values=>{
   const sorted=values.filter(Number.isFinite).sort((a,b)=>a-b),length=sorted.length
   return {samples:length,median:length?(sorted[Math.floor((length-1)/2)]+sorted[Math.floor(length/2)])/2:null,min:sorted[0]??null,max:sorted.at(-1)??null}
@@ -28,7 +28,7 @@ for(const row of rows) {
 }
 const summaries=[...groups.values()].map(group=>({
   engine:group[0].engine,rate:group[0].rate,version:group[0].version,trials:group.length,
-  phases:Object.fromEntries(['scene-idle','scene-input'].map(name=>{
+  phases:Object.fromEntries(['enter-scene','scene-idle','scene-input'].map(name=>{
     const phases=group.map(row=>row.phases.find(phase=>phase.name===name)).filter(Boolean)
     return [name,Object.fromEntries(fields.map(field=>[field,range(phases.map(phase=>
       !metadata.routeTiming&&field.startsWith('route')?null:readField(phase,field)
