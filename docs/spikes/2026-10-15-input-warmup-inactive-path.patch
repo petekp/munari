@@ -1,0 +1,855 @@
+diff --git a/packages/react/src/snapdom.ts b/packages/react/src/snapdom.ts
+--- a/packages/react/src/snapdom.ts
++++ b/packages/react/src/snapdom.ts
+@@ -195,6 +195,89 @@
+   return svg
+ }
+
++type InputSvgSource = { kind: 'url'; url: string } | { kind: 'document'; document: XMLDocument }
++
++interface FullInputSnapshot {
++  readonly layout: { width: number; height: number }
++  source: InputSvgSource
++}
++
++const inputSnapshotLayout = (element: HTMLElement, options: CaptureRegionOptions) => {
++  if (!options.retainRootLayout || options.clip || !options.inputTemplateClip || !options.onInputSvg) return null
++  return { width: element.offsetWidth, height: element.offsetHeight }
++}
++
++const fullInputCropFits = (
++  layout: { width: number; height: number },
++  clip: NonNullable<CaptureRegionOptions['clip']>,
++  zoom: number,
++) => {
++  const sizes = [layout.width, layout.height, clip.width, clip.height, zoom]
++  return sizes.every((value) => Number.isFinite(value) && value > 0)
++    && Number.isFinite(clip.x) && Number.isFinite(clip.y)
++    && clip.x >= 0 && clip.y >= 0
++    && clip.x + clip.width <= layout.width && clip.y + clip.height <= layout.height
++}
++
++const fullInputMetaFits = (meta: Readonly<CaptureMeta>, layout: { width: number; height: number }) =>
++  meta.clip === null && meta.contentX === 0 && meta.contentY === 0
++    && meta.w0 === layout.width && meta.h0 === layout.height
++    && meta.vbW === layout.width && meta.vbH === layout.height
++
++const fullInputViewportFits = (
++  foreign: SVGForeignObjectElement,
++  wrapper: HTMLElement,
++  layout: { width: number; height: number },
++  zoom: number,
++) => Number(foreign.getAttribute('x')) === 0 && Number(foreign.getAttribute('y')) === 0
++  && Number(foreign.getAttribute('width')) === layout.width * zoom
++  && Number(foreign.getAttribute('height')) === layout.height * zoom
++  && Number.parseFloat(wrapper.style.width) === layout.width
++  && Number.parseFloat(wrapper.style.height) === layout.height
++  && (wrapper.style.padding === 'initial' || wrapper.style.padding === '0px')
++
++const cropFullInputSvg = (
++  source: InputSvgSource,
++  layout: { width: number; height: number },
++  meta: Readonly<CaptureMeta>,
++  clip: NonNullable<CaptureRegionOptions['clip']>,
++) => {
++  const root = source.kind === 'url' ? parseRegionSvg(source.url) : source.document.documentElement
++  const svg = root instanceof SVGSVGElement ? root : null
++  const elements = svg ? regionSvgElements(svg) : null
++  if (!svg || !elements) return null
++  const { foreign, wrapper } = elements
++  const zoom = wrapper.style.zoom ? Number(wrapper.style.zoom) : 1
++  if (!fullInputCropFits(layout, clip, zoom)
++    || !regionSvgFitsRoot(svg, layout, { x: 0, y: 0, ...layout })
++    || !fullInputMetaFits(meta, layout)
++    || !fullInputViewportFits(foreign, wrapper, layout, zoom)) return null
++  svg.setAttribute('width', String(clip.width))
++  svg.setAttribute('height', String(clip.height))
++  svg.setAttribute('viewBox', `${clip.x} ${clip.y} ${clip.width} ${clip.height}`)
++  return svg
++}
++
++const retainInputSnapshot = (
++  options: CaptureRegionOptions,
++  layout: { width: number; height: number } | null,
++  source: InputSvgSource,
++  meta: Readonly<CaptureMeta>,
++  scaleX: number,
++  scaleY: number,
++) => {
++  if (!layout || options.clip || !options.inputTemplateClip || !options.onInputSvg) return
++  const seedSource = source
++  const seedLayout = { ...layout }
++  const seedClip = { ...options.inputTemplateClip }
++  const seedMeta = { ...meta, clip: meta.clip ? { ...meta.clip } : null }
++  options.onInputSvg({
++    createDocument: () => cropFullInputSvg(seedSource, seedLayout, seedMeta, seedClip)?.ownerDocument ?? null,
++    width: Math.max(1, Math.round(seedClip.width * scaleX)),
++    height: Math.max(1, Math.round(seedClip.height * scaleY)),
++  })
++}
++
+ function hasUniformCaptureScale(meta: CaptureMeta | undefined, width: number, height: number): boolean {
+   return Boolean(meta
+     && Number.isFinite(meta.vbW) && meta.vbW > 0
+@@ -235,6 +318,7 @@
+   // returns a raster one row short of the store, leaving a cleared line
+   // along the far edge (measured 2026-09-11).
+   const layout = options.clip && options.retainRootLayout ? { width: element.offsetWidth, height: element.offsetHeight } : null
++  const inputLayout = inputSnapshotLayout(element, options)
+   const box = { width: options.clip?.width ?? element.offsetWidth, height: options.clip?.height ?? element.offsetHeight }
+   const capture = await snapdom(element, {
+     // `snapdomFonts` supplies the faces instead. snapDOM's own pass re-derives
+@@ -280,13 +364,14 @@
+   const height = Math.max(1, Math.round(box.height * scaleY))
+   let image = new Image()
+   const url = capture.toRaw()
++  const inputSnapshot: FullInputSnapshot | null = inputLayout ? { layout: inputLayout, source: { kind: 'url', url } } : null
+   const normalized = layout ? normalizeRegionLayout(url, layout, capture.meta) : null
+   if (normalized) retainNormalizedSvg(image, normalized.ownerDocument)
+   const decodeFull = !options.clip && hasUniformCaptureScale(capture.meta, width, height)
+     ? options.decodeFull
+     : undefined
+   if (decodeFull) {
+-    image = await decodeFull(url, width, height)
++    image = await decodeFull(url, width, height, inputSnapshot ? document => { inputSnapshot.source = { kind: 'document', document } } : undefined)
+   } else {
+     image.src = normalized
+       ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(normalized))}`
+@@ -297,6 +382,7 @@
+   // that happened while the SVG was being captured.
+   image.width = width
+   image.height = height
++  if (inputSnapshot) retainInputSnapshot(options, inputSnapshot.layout, inputSnapshot.source, capture.meta, scaleX, scaleY)
+   return image
+ }
+
+diff --git a/packages/react/src/snapdomInputRegions.ts b/packages/react/src/snapdomInputRegions.ts
+--- a/packages/react/src/snapdomInputRegions.ts
++++ b/packages/react/src/snapdomInputRegions.ts
+@@ -4,15 +4,28 @@
+ // adapter owns this cache, while core owns capture scheduling and publication.
+
+ import { captureContext, captureMemoryChosen, listenForRepaintSignals } from '@munari/core'
+-import { createInputSvgTemplate } from './snapdomInputSvg'
++import { createInputSvgTemplate, retainNormalizedSvg } from './snapdomInputSvg'
+ import { prepareInputTextPainter, type InputTextPainter } from './snapdomInputText'
+ import { createFullBackgroundCache } from './snapdomFullBackground'
++
++interface InputSvgSnapshot {
++  readonly createDocument: () => XMLDocument | null
++  readonly width: number
++  readonly height: number
++}
++
++interface RetainedInputSvg {
++  snapshot: InputSvgSnapshot | null
++  startedAt: number
++}
+
+ export interface CaptureRegionOptions {
+   clip?: { x: number; y: number; width: number; height: number }
+   invalidate?: boolean
+   retainRootLayout?: boolean
+-  decodeFull?: (url: string, width: number, height: number) => Promise<HTMLImageElement>
++  inputTemplateClip?: { x: number; y: number; width: number; height: number }
++  onInputSvg?: (snapshot: InputSvgSnapshot) => void
++  decodeFull?: (url: string, width: number, height: number, onParsedSvg?: (document: XMLDocument) => void) => Promise<HTMLImageElement>
+ }
+
+ export class UnsupportedRegionCaptureError extends Error {}
+@@ -28,6 +41,9 @@
+ const REGION_PADDING = 4
+ // CPU capture includes one extra CSS pixel beyond the measured focus ring (decisions.md #62).
+ const CPU_REGION_PADDING = REGION_PADDING + 1
++// Controls warmup regressed submission for 166–190 ms captures.
++// This floor excludes that measured range (decisions.md #62).
++const FULL_INPUT_WARMUP_MIN_MS = 250
+
+ export function createInputRegionRasterizer(
+   root: HTMLElement,
+@@ -56,7 +72,7 @@
+   let regionSupported = true
+   let inputSvg: ReturnType<typeof createInputSvgTemplate> = null
+   let textPainter: InputTextPainter | null = null
+-  let textPreparation: { template: NonNullable<ReturnType<typeof createInputSvgTemplate>>; controller: AbortController } | null = null
++  let textPreparation: { template: ReturnType<typeof createInputSvgTemplate>; controller: AbortController } | null = null
+
+   const discardTextPainter = () => {
+     textPreparation?.controller.abort()
+@@ -324,6 +340,85 @@
+     }, () => {
+       controller.abort()
+       if (textPreparation?.controller === controller) textPreparation = null
++    })
++  }
++
++  const warmText = (
++    seed: InputSvgSnapshot,
++    state: ReturnType<typeof snapshot>,
++    field: HTMLInputElement,
++    value: string,
++    scroll: readonly [number, number],
++    scale: readonly [number, number],
++  ) => {
++    if (!state.rect || !state.clip) return
++    discardTextPainter()
++    const controller = new AbortController()
++    const startedEpoch = epoch
++    const fieldBox = state.rect, clip = state.clip
++    const width = canvas.width, height = canvas.height
++    const version = cachedInputVersion
++    let pendingSnapshot: InputSvgSnapshot | null = seed
++    textPreparation = { template: null, controller }
++    const current = () => !disposed && !controller.signal.aborted && textPreparation?.controller === controller
++      && inputSvg === null && epoch === startedEpoch && cachedEpoch === startedEpoch && cachedKey === state.key
++      && cachedValue === value && cachedInputVersion === version
++      && cachedScroll[0] === scroll[0] && cachedScroll[1] === scroll[1]
++      && canvas.width === width && canvas.height === height
++    const cancel = () => {
++      pendingSnapshot = null
++      controller.abort()
++      if (textPreparation?.controller === controller) textPreparation = null
++    }
++    const prepare = () => {
++      if (!current()) { cancel(); return }
++      try {
++        const pending = pendingSnapshot
++        pendingSnapshot = null
++        const frame = pending?.createDocument()
++        if (!pending || !frame) { cancel(); return }
++        const image = new Image()
++        image.width = pending.width
++        image.height = pending.height
++        retainNormalizedSvg(image, frame)
++        const template = createInputSvgTemplate(image, field, value, scroll)
++        if (!template) { cancel(); return }
++        void prepareInputTextPainter({
++          template, root, field, value, target: canvas, rootBox: state.box, fieldBox,
++          clip, scaleX: scale[0], scaleY: scale[1], signal: controller.signal,
++        }).then((painter) => {
++          if (!current() || !painter) {
++            painter?.dispose()
++            cancel()
++            return
++          }
++          inputSvg = template
++          textPreparation = { template, controller }
++          textPainter = painter
++        }, cancel)
++      } catch {
++        cancel()
++      }
++    }
++    const view = document.defaultView
++    if (!view) { cancel(); return }
++    let frame: number | null = null
++    let task: number | null = null
++    const cancelWarmup = () => {
++      pendingSnapshot = null
++      if (frame !== null) view.cancelAnimationFrame(frame)
++      if (task !== null) view.clearTimeout(task)
++      frame = task = null
++    }
++    controller.signal.addEventListener('abort', cancelWarmup, { once: true })
++    frame = view.requestAnimationFrame(() => {
++      frame = null
++      if (controller.signal.aborted) return
++      task = view.setTimeout(() => {
++        task = null
++        controller.signal.removeEventListener('abort', cancelWarmup)
++        prepare()
++      }, 0)
+     })
+   }
+
+@@ -445,6 +540,40 @@
+     }
+   }
+
++  const retainInputForWarmup = (
++    options: CaptureRegionOptions,
++    state: ReturnType<typeof snapshot>,
++    sx: number,
++    sy: number,
++  ): RetainedInputSvg | null => {
++    if (options.clip || !state.eligible || cpuStorage !== true || sx !== 2 || sy !== 2 || !state.clip) return null
++    const inputTemplateClip = {
++      x: state.clip.x - state.box.x - state.scrollX,
++      y: state.clip.y - state.box.y - state.scrollY,
++      width: state.clip.width,
++      height: state.clip.height,
++    }
++    const retained: RetainedInputSvg = { snapshot: null, startedAt: 0 }
++    options.inputTemplateClip = inputTemplateClip
++    options.onInputSvg = snapshot => { retained.snapshot = snapshot }
++    retained.startedAt = performance.now()
++    return retained
++  }
++
++  const warmCapturedInput = (
++    retainedInput: RetainedInputSvg | null,
++    captureMs: number,
++    state: ReturnType<typeof snapshot>,
++    captured: Parameters<typeof retainSvg>[2],
++    scale: readonly [number, number],
++  ) => {
++    const { field, value, scroll, epoch: startedEpoch } = captured
++    if (retainedInput?.snapshot && captureMs >= FULL_INPUT_WARMUP_MIN_MS && field && value !== null
++      && startedEpoch === epoch && pendingInput?.field === field && pendingInput?.value !== value) {
++      warmText(retainedInput.snapshot, state, field, value, scroll, scale)
++    }
++  }
++
+   const inputClip = (state: ReturnType<typeof snapshot>, field: HTMLInputElement | null, value: string | null) =>
+     regionSupported && state.eligible && field !== null && cachedEpoch === epoch && cachedKey === state.key
+       && cachedValue !== value && pendingInput?.field === field && pendingInput.value === value
+@@ -468,7 +597,7 @@
+       const clip = inputClip(state, field, value)
+       const invalidate = refreshPending
+       refreshPending = false
+-      const scroll: readonly [number, number] = [field?.scrollLeft ?? 0, field?.scrollTop ?? 0]
++      const scroll: readonly [number, number] = field ? [field.scrollLeft, field.scrollTop] : [0, 0]
+       if (!invalidate && unchangedInput(state, value, scroll)) {
+         clearPendingInput(input?.version)
+         return canvas
+@@ -477,13 +606,17 @@
+       if (paintText(template, field, value, scroll)) return canvas
+       if (!template || textPreparation?.template !== template) discardTextPainter()
+       inputSvg = null
+-      const image = await captureImage(template, value, sx, sy, { clip, invalidate, retainRootLayout: true, decodeFull: fullBackground.decodeFull })
++      const captureOptions: CaptureRegionOptions = { clip, invalidate, retainRootLayout: true, decodeFull: fullBackground.decodeFull }
++      const retainedInput = cpuStorage === true ? retainInputForWarmup(captureOptions, state, sx, sy) : null
++      const image = await captureImage(template, value, sx, sy, captureOptions)
+       if (!regionSupported) return image
+       await captureMemoryChosen()
+       if (disposed) return image
+       mutate(observer.takeRecords())
+       composeImage(image, state, clip, sx, sy)
+-      retainSvg(template, image, { clip, field, value, scroll, epoch: startedEpoch })
++      const captureMs = retainedInput ? performance.now() - retainedInput.startedAt : 0
++      const captured = { clip, field, value, scroll, epoch: startedEpoch }
++      retainSvg(template, image, captured)
+       cachedEpoch = startedEpoch
+       cachedKey = state.key
+       cachedValue = value
+@@ -491,6 +624,7 @@
+       cachedInputVersion = startedInputVersion
+       clearPendingInput(input?.version)
+       prepareText(inputSvg, state, field, value, [sx, sy])
++      if (retainedInput) warmCapturedInput(retainedInput, captureMs, state, captured, [sx, sy])
+       return canvas
+     },
+     invalidate,
+diff --git a/packages/react/src/snapdomFullBackground.ts b/packages/react/src/snapdomFullBackground.ts
+--- a/packages/react/src/snapdomFullBackground.ts
++++ b/packages/react/src/snapdomFullBackground.ts
+@@ -267,7 +267,20 @@
+     && width * height * 4 <= MAX_BACKGROUND_BYTES
+ }
+
+-function splitCapture(url: string, root: HTMLElement): { background: string; foreground: string; key: string; cssWidth: number; cssHeight: number } | null {
++function restoreOriginalSvg(document: XMLDocument, root: HTMLElement, retained: boolean, style: string | null): XMLDocument | null {
++  if (!retained) return null
++  if (style === null) root.removeAttribute('style')
++  else root.setAttribute('style', style)
++  return document
++}
++
++function deliverOriginalSvg(document: XMLDocument | null, receive?: (document: XMLDocument) => void): void {
++  if (document) receive?.(document)
++}
++
++function splitCapture(url: string, root: HTMLElement, retainOriginal = false): {
++  background: string; foreground: string; key: string; cssWidth: number; cssHeight: number; original: XMLDocument | null;
++} | null {
+   const content = retainedContentRoot(root)
+   if (!CONTAINERS.has(content.localName) || !('CSSStyleSheet' in globalThis)) return null
+   const background = parseSvg(url)
+@@ -286,14 +299,17 @@
+   if (!fullRootViewport(svg, resolvedStyle(retained, rules.get(retained) ?? []))) return null
+   retained.replaceChildren()
+   removeUnreferencedMetadata(background, chain)
++  const originalStyle = retainOriginal ? front.getAttribute('style') : null
+   for (const [property, value] of FOREGROUND_OVERRIDES) {
+     front.style.setProperty(property, value, 'important')
+   }
+   const serializer = new XMLSerializer()
+   const backgroundSvg = serializer.serializeToString(background)
+   const foregroundSvg = serializer.serializeToString(foreground)
+-  return { background: backgroundSvg, foreground: foregroundSvg, key: backgroundKey(background, chain),
+-    cssWidth: svg.viewBox.baseVal.width, cssHeight: svg.viewBox.baseVal.height }
++  const key = backgroundKey(background, chain)
++  const original = restoreOriginalSvg(foreground, front, retainOriginal, originalStyle)
++  return { background: backgroundSvg, foreground: foregroundSvg, key,
++    cssWidth: svg.viewBox.baseVal.width, cssHeight: svg.viewBox.baseVal.height, original }
+ }
+
+ async function decodeImage(url: string, width: number, height: number): Promise<HTMLImageElement> {
+@@ -326,7 +342,7 @@
+   }
+   signal.addEventListener('abort', release, { once: true })
+   return {
+-    async decodeFull(url: string, width: number, height: number): Promise<HTMLImageElement> {
++    async decodeFull(url: string, width: number, height: number, onParsedSvg?: (document: XMLDocument) => void): Promise<HTMLImageElement> {
+       await captureMemoryChosen()
+       if (signal.aborted) return decodeImage(url, width, height)
+       const context = captureContext(target)
+@@ -336,7 +352,7 @@
+       try {
+         await yieldCaptureTask()
+         if (signal.aborted || generation !== startedGeneration) return decodeImage(url, width, height)
+-        const split = splitCapture(url, root)
++        const split = splitCapture(url, root, onParsedSvg !== undefined)
+         if (!split) return decodeImage(url, width, height)
+         if (width * split.cssHeight !== height * split.cssWidth) return decodeImage(url, width, height)
+         const key = `${width}x${height}:${split.key}`
+@@ -344,6 +360,7 @@
+           const image = await decodeImage(svgUrl(split.foreground), width, height)
+           if (signal.aborted || generation !== startedGeneration) return decodeImage(url, width, height)
+           images.set(image, frame)
++          deliverOriginalSvg(split.original, onParsedSvg)
+           return image
+         }
+         const backgroundCanvas = root.ownerDocument.createElement('canvas')
+@@ -363,6 +380,7 @@
+         frame = { key, canvas: backgroundCanvas }
+         pending = null
+         images.set(foregroundImage, frame)
++        deliverOriginalSvg(split.original, onParsedSvg)
+         return foregroundImage
+       } catch {
+         if (pending) pending.width = pending.height = 0
+diff --git a/instruments/performance/observer.mjs b/instruments/performance/observer.mjs
+--- a/instruments/performance/observer.mjs
++++ b/instruments/performance/observer.mjs
+@@ -140,9 +140,16 @@
+   source=replaceSource(source,'      images.delete(image)',`      window.__munariPerf.record('fullBackgroundComposite',{...window.__munariPerf.identityFor(root),reused:perfReusedBackgrounds.has(image),pixelBytes:background.canvas.width*background.canvas.height*4})
+       images.delete(image)`)
+   if(captureStages) {
+-    source=replaceSource(source,'        const split = splitCapture(url, root)',`        const perfSplitStarted=performance.now()
++    if(source.includes('  const original = restoreOriginalSvg(foreground, front, retainOriginal, originalStyle)')) {
++      source=replaceSource(source,'  const original = restoreOriginalSvg(foreground, front, retainOriginal, originalStyle)',`  const perfRestoreStarted=performance.now()
++  const original = restoreOriginalSvg(foreground, front, retainOriginal, originalStyle)
++  window.__munariPerf.record('captureStage',{...window.__munariPerf.identityFor(root),stage:'fullInputRestoreStyleSync',retained:retainOriginal,ms:performance.now()-perfRestoreStarted})`)
++    }
++    const splitCall = source.includes('splitCapture(url, root, onParsedSvg !== undefined)')
++      ? 'splitCapture(url, root, onParsedSvg !== undefined)' : 'splitCapture(url, root)'
++    source=replaceSource(source,'        const split = '+splitCall,`        const perfSplitStarted=performance.now()
+         let split: ReturnType<typeof splitCapture>
+-        try { split = splitCapture(url, root) }
++        try { split = ${splitCall} }
+         finally { window.__munariPerf.record('captureStage',{...window.__munariPerf.identityFor(root),stage:'fullBackgroundSplitSync',width,height,ms:performance.now()-perfSplitStarted}) }`)
+     source=replaceSource(source,'      context.drawImage(background.canvas, 0, 0, image.width, image.height)',`      const perfCompositeStarted=performance.now()
+       context.drawImage(background.canvas, 0, 0, image.width, image.height)`)
+@@ -167,14 +174,29 @@
+   const unchanged='      if (!invalidate && unchangedInput(state, value, scroll)) {'
+   if(source.includes(unchanged))source=replaceSource(source,unchanged,unchanged+`
+         window.__munariPerf.record('unchangedInputFrame',{});`)
++  if(source.includes('  const warmText = (')) {
++    source=replaceSource(source,'      warmText(retainedInput.snapshot, state, field, value, scroll, scale)',`      window.__munariPerf.record('fullInputWarmup',{captureMs})
++      warmText(retainedInput.snapshot, state, field, value, scroll, scale)`)
++  }
+   if(!captureStages)return source
+-  const prepareTextMarker='    void prepareInputTextPainter({'
++  const prepareTextMarker='\n    void prepareInputTextPainter({'
+   if(source.includes(prepareTextMarker)) {
+-    source=replaceSource(source,prepareTextMarker,`    const perfTextPreparationIdentity=window.__munariPerf.identityFor(root)
++    source=replaceSource(source,prepareTextMarker,`
++    const perfTextPreparationIdentity=window.__munariPerf.identityFor(root)
+     const perfTextPreparationStarted=performance.now()
+     void prepareInputTextPainter({`)
+-    source=replaceSource(source,'    }).then((painter) => {',`    }).then((painter) => {
++    source=replaceSource(source,'\n    }).then((painter) => {',`
++    }).then((painter) => {
+       window.__munariPerf.record('captureStage',{...perfTextPreparationIdentity,stage:'preparation',ms:performance.now()-perfTextPreparationStarted})`)
++  }
++  if(source.includes('  const warmText = (')) {
++    source=replaceSource(source,'        const frame = pending?.createDocument()',`        const perfWarmIdentity=window.__munariPerf.identityFor(root)
++        const perfWarmStarted=performance.now()
++        const frame = pending?.createDocument()`)
++    source=replaceSource(source,'        const template = createInputSvgTemplate(image, field, value, scroll)',`        const template = createInputSvgTemplate(image, field, value, scroll)
++        window.__munariPerf.record('captureStage',{...perfWarmIdentity,stage:'fullInputTemplateSync',ms:performance.now()-perfWarmStarted})`)
++    source=replaceSource(source,'        }).then((painter) => {',`        }).then((painter) => {
++          window.__munariPerf.record('captureStage',{...perfWarmIdentity,stage:'fullInputWarmupWall',ms:performance.now()-perfWarmStarted})`)
+   }
+   source=replaceSource(source,'      const state = snapshot(field, sx, sy)',`      const perfSnapshotStarted=performance.now();
+ const state = snapshot(field, sx, sy)
+@@ -214,7 +236,7 @@
+   const returnsCanvas=source.includes(canvasReturn),returnsImage=source.includes(imageReturn)
+   assert.ok(returnsCanvas!==returnsImage,'Unknown snapDOM rasterizer return shape')
+   if(returnsImage) {
+-    assert.ok(source.includes('  image.width = width\n  image.height = height\n  return image\n}'),'Decoded-image capture must carry its target dimensions')
++    assert.ok(source.includes('  image.width = width\n  image.height = height\n'),'Decoded-image capture must carry its target dimensions')
+     assert.ok(!source.includes('  context.drawImage(image, 0, 0, width, height)'),'Decoded-image capture unexpectedly has an intermediate draw')
+   }
+   source=replaceSource(source,'const capturePlugins = [fontPlugin, frameSplitPlugin, fieldPlugin]',`
+@@ -249,9 +271,13 @@
+   image.src = layout ? normalizeRegionLayout(url, layout, capture.meta) : url
+   window.__munariPerf.stage(perfCapture,'normalizeSvgSync',performance.now()-perfNormalizeStarted)`);
+   }
+-  if(source.includes('  const normalized = layout ? normalizeRegionLayout(url, layout, capture.meta) : null')) {
+-    source=replaceSource(source,'  const normalized = layout ? normalizeRegionLayout(url, layout, capture.meta) : null',`  const perfNormalizeStarted=performance.now();
+-  const normalized = layout ? normalizeRegionLayout(url, layout, capture.meta) : null`)
++  const normalizeMarker = [
++    '  const normalized = layout ? normalizeRegionLayout(url, layout, capture.meta) : null',
++    '  const normalized = layout && options.clip ? normalizeRegionLayout(url, layout, capture.meta) : null',
++  ].find(marker=>source.includes(marker))
++  if(normalizeMarker) {
++    source=replaceSource(source,normalizeMarker,`  const perfNormalizeStarted=performance.now();
++${normalizeMarker}`)
+     const fullDecodeCondition=source.includes('  if (decodeFull) {')?'decodeFull'
+       :source.includes('  if (!options.clip && options.decodeFull) {')?'!options.clip && options.decodeFull':null
+     if(fullDecodeCondition) {
+diff --git a/instruments/input-regions/run.mjs b/instruments/input-regions/run.mjs
+--- a/instruments/input-regions/run.mjs
++++ b/instruments/input-regions/run.mjs
+@@ -19,6 +19,33 @@
+  }
+  if(id.endsWith('/controls/Controls.tsx'))return replaceSource(source,'export function ControlsApp() {','function OriginalControlsApp() {')+'\nexport function ControlsApp(){return <div className="controls-page"><ControlBoard /></div>}\n'
+  if(id.endsWith('/src/snapdomInputRegions.ts')) {
++  source=replaceSource(source,'    textPreparation = { template: null, controller }',`    textPreparation = { template: null, controller }
++    window.regionProofWarmScheduled=(window.regionProofWarmScheduled??0)+1`)
++  source=replaceSource(source,"        controller.signal.removeEventListener('abort', cancelWarmup)\n        prepare()",`        controller.signal.removeEventListener('abort', cancelWarmup)
++        window.regionProofWarmStarted=(window.regionProofWarmStarted??0)+1
++        const proofSource=window.regionProofWarmSources?.get(root),reference=window.regionProofWarmReference
++        let changed=null
++        if(proofSource&&reference?.root===root){
++          const output=proofSource.canvas,pixels=output.getContext('2d').getImageData(0,0,output.width,output.height).data
++          changed=output.width===reference.width&&output.height===reference.height?0:-1
++          if(changed===0)for(let index=0;index<pixels.length;index+=4)if([0,1,2,3].some(channel=>pixels[index+channel]!==reference.pixels[index+channel]))changed++
++        }
++        const evidence={seedValue:value,currentValue:field.value,read:proofSource?.currentPaint()?.read,nextRead:proofSource?.nextRead(),paintCount:proofSource?.paintCount(),changed,cropAttempts:window.regionProofFullSeedAttempts??0,textPreparations:window.regionProofTextPreparations??0,readyPaintCount:null}
++        window.regionProofWarmEvidence??=[];window.regionProofWarmEvidence.push(evidence)
++        window.regionProofWarmRecords??=new WeakMap();window.regionProofWarmRecords.set(controller,evidence)
++        window.regionProofWarmPending={root,signal:controller.signal,target:canvas,release:prepare}
++        if(window.regionProofWarmHold){window.regionProofWarmHold=false;window.regionProofWarmRelease=prepare;return}
++        prepare()`)
++  source=replaceSource(source,'          if (!current() || !painter) {',`          if (!painter)window.regionProofWarmRejected=(window.regionProofWarmRejected??0)+1
++          if (!current() || !painter) {`)
++  source=replaceSource(source,'          inputSvg = template',`          window.regionProofWarmReady=(window.regionProofWarmReady??0)+1
++          const evidence=window.regionProofWarmRecords?.get(controller),proofSource=window.regionProofWarmSources?.get(root)
++          if(evidence)evidence.readyPaintCount=proofSource?.paintCount()
++          inputSvg = template`)
++  source=replaceSource(source,'        const template = createInputSvgTemplate(image, field, value, scroll)',`        const template = createInputSvgTemplate(image, field, value, scroll)
++        if(template)window.regionProofFullSeedTemplates=(window.regionProofFullSeedTemplates??0)+1`)
++  source=replaceSource(source,'      const captureMs = retainedInput ? performance.now() - retainedInput.startedAt : 0',`      const captureMs = retainedInput ? performance.now() - retainedInput.startedAt : 0
++      if(retainedInput){window.regionProofWarmIntervals??=[];window.regionProofWarmIntervals.push({ms:captureMs,snapshot:Boolean(retainedInput.snapshot)})}`)
+   source=replaceSource(source,'  const styles = (element: Element, style: CSSStyleDeclaration) => {',`  const proveStyle = (style: CSSStyleDeclaration, serialized: string) => {
+     if(window.regionProofCheckStyles){
+       const expected=Array.from(style,property=>property+':'+style.getPropertyValue(property)).join(';')
+@@ -60,9 +87,9 @@
+  }
+  if(id.endsWith('/src/snapdomFullBackground.ts')){
+   source=replaceSource(source,'  let frame: BackgroundFrame | null = null','  const proofReusedBackgrounds = new WeakSet<HTMLImageElement>()\n  let frame: BackgroundFrame | null = null')
+-  source=replaceSource(source,'    async decodeFull(url: string, width: number, height: number): Promise<HTMLImageElement> {',`    async decodeFull(url: string, width: number, height: number): Promise<HTMLImageElement> {
+-      window.regionProofBackgroundCalls=(window.regionProofBackgroundCalls??0)+1
+-      try {`)
++  source=replaceSource(source,'      await captureMemoryChosen()',`      window.regionProofBackgroundCalls=(window.regionProofBackgroundCalls??0)+1
++      try {
++      await captureMemoryChosen()`)
+   source=replaceSource(source,'    },\n    paint(image: HTMLImageElement, context: CanvasRenderingContext2D): boolean {',`      } finally { window.regionProofBackgroundFinished=(window.regionProofBackgroundFinished??0)+1 }
+     },
+     paint(image: HTMLImageElement, context: CanvasRenderingContext2D): boolean {`)
+@@ -104,6 +131,11 @@
+   return source
+  }
+  if(id.endsWith('/src/snapdomInputText.ts')){
++  if(process.env.REGION_ACCEPT_BAD_FULL_SEED==='1')source=replaceSource(source,'    if (!equalPixels(expected, observed)) return null',`    if (!equalPixels(expected, observed)) {
++      if((window.regionProofCorruptFullSeeds??0)>0||(window.regionProofForegroundFullSeeds??0)>0)window.regionProofBypassedCertificates=(window.regionProofBypassedCertificates??0)+1
++      else return null
++    }`)
++
+   if(process.env.REGION_AUTO_KERNING==='1')source=replaceSource(source,'    configureText(context, paint)\n    context.beginPath()',"    configureText(context, paint)\n    if(window.regionProofAutoKerningActive)context.fontKerning='auto'\n    context.beginPath()")
+   source=replaceSource(source,'    !disposed && !options.signal.aborted && field === options.field','    !window.regionProofForceSvg && !disposed && !options.signal.aborted && field === options.field')
+   source=replaceSource(source,'  !options.signal.aborted && options.root.contains(options.field)','  !window.regionProofForceSvg && !options.signal.aborted && options.root.contains(options.field)')
+@@ -132,6 +164,33 @@
+       return image`)
+  }
+  if(!id.endsWith('/src/snapdom.ts'))return null
++ if(process.env.REGION_FOREGROUND_FULL_SEED==='1')source=replaceSource(source,
++  '  if (inputSnapshot) retainInputSnapshot(options, inputSnapshot.layout, inputSnapshot.source, capture.meta, scaleX, scaleY)',
++  `  if(inputSnapshot&&window.regionProofForegroundFullSeed){inputSnapshot.source={kind:'url',url:image.src};window.regionProofForegroundFullSeeds=(window.regionProofForegroundFullSeeds??0)+1}
++  if (inputSnapshot) retainInputSnapshot(options, inputSnapshot.layout, inputSnapshot.source, capture.meta, scaleX, scaleY)`)
++ source=replaceSource(source,'const cropFullInputSvg = (','const originalCropFullInputSvg = (')
++ source=replaceSource(source,'const rasterize = async (',`const cropFullInputSvg = (...args: Parameters<typeof originalCropFullInputSvg>) => {
++  window.regionProofFullSeedAttempts=(window.regionProofFullSeedAttempts??0)+1
++  if(args[0].kind==='document')window.regionProofFullSeedDocuments=(window.regionProofFullSeedDocuments??0)+1
++  if(window.regionProofUnsupportedFullSeed){
++   const document=args[0].kind==='url'?new DOMParser().parseFromString(decodeURIComponent(args[0].url.slice(args[0].url.indexOf(',')+1)),'image/svg+xml'):args[0].document
++   const svg=document.documentElement
++   svg.append(svg.ownerDocument.createElementNS('http://www.w3.org/2000/svg','foreignObject'))
++   args[0]={kind:'document',document}
++   window.regionProofUnsupportedFullSeeds=(window.regionProofUnsupportedFullSeeds??0)+1
++  }
++  const svg=originalCropFullInputSvg(...args)
++  if(svg){
++   window.regionProofFullSeedAccepted=(window.regionProofFullSeedAccepted??0)+1
++   if(${process.env.REGION_CORRUPT_FULL_SEED==='1'}){
++    const rect=svg.ownerDocument.createElementNS('http://www.w3.org/2000/svg','rect'),box=svg.viewBox.baseVal
++    rect.setAttribute('x',String(box.x+10));rect.setAttribute('y',String(box.y+10));rect.setAttribute('width','2');rect.setAttribute('height','2');rect.setAttribute('fill','#ff0000');svg.append(rect)
++    window.regionProofCorruptFullSeeds=(window.regionProofCorruptFullSeeds??0)+1
++   }
++  }else window.regionProofFullSeedRejected=(window.regionProofFullSeedRejected??0)+1
++  return svg
++ }
++ const rasterize = async (`)
+  if(process.env.REGION_LEGACY_VIEWPORT==='1')source=replaceSource(source,
+   'layout ? normalizeRegionLayout(url, layout, capture.meta) : null','null')
+  source=replaceSource(source,
+@@ -169,6 +228,15 @@
+   const source=createDomTextureSource(form,760,540,{scale:2,onError:error=>window.regionProofErrors.push(String(error))})
+   document.getElementById('root').append(source.host);source.setHostPainted(true)
+   window.regionProof={source,form,input:form.querySelector('[data-munari-anchor="field:project"]')}
++  window.regionProofWarmSources=new Map([[form,source]])
++  window.regionProofTakeFullSeedCounts=()=>{
++   const counts={}
++   for(const name of ['FullSeedAttempts','FullSeedDocuments','FullSeedAccepted','FullSeedRejected','FullSeedTemplates','UnsupportedFullSeeds','CorruptFullSeeds','ForegroundFullSeeds','WarmScheduled','WarmStarted','WarmReady','WarmRejected','BypassedCertificates']){
++    counts[name[0].toLowerCase()+name.slice(1)]=window['regionProof'+name]??0
++    window['regionProof'+name]=0
++   }
++   return counts
++  }
+   window.regionProofTakeBackgroundCounts=()=>{
+    const counts={}
+    for(const name of ['Calls','Hits','Preparations','PreparedPaints','Fallbacks','BudgetFallbacks','ViewportFallbacks']){
+@@ -178,13 +246,14 @@
+    counts.frozenBackgrounds=window.regionProofFrozenBackgrounds??0;window.regionProofFrozenBackgrounds=0
+    return counts
+   }
+-  window.regionProofReadStylePixels=async()=>{
++  window.regionProofReadFullPixels=async(source,form,input)=>{
+    const canvas=source.canvas,image=await window.regionProofFull(form,canvas.width/form.offsetWidth,canvas.height/form.offsetHeight)
+    const ref=document.createElement('canvas');ref.width=canvas.width;ref.height=canvas.height
+    const context=ref.getContext('2d',{willReadFrequently:canvas.getContext('2d').getContextAttributes().willReadFrequently})
+    context.drawImage(image,0,0,image.width,image.height)
+-   return {pixels:context.getImageData(0,0,ref.width,ref.height).data,width:ref.width,height:ref.height,value:window.regionProof.input.value}
+-  }
++   return {pixels:context.getImageData(0,0,ref.width,ref.height).data,width:ref.width,height:ref.height,value:input.value}
++  }
++  window.regionProofReadStylePixels=()=>window.regionProofReadFullPixels(source,form,window.regionProof.input)
+   window.regionProofRequiredRead=source.nextRead()
+   document.addEventListener('input',event=>{if(form.contains(event.target))window.regionProofRequiredRead=Math.max(window.regionProofRequiredRead,source.nextRead())},true)
+   for(const name of ['repaint','setScale','setSize']){
+@@ -265,8 +334,8 @@
+    const textHits=window.regionProofTextHits??0,textAttempts=window.regionProofTextAttempts??0,textPreparations=window.regionProofTextPreparations??0;window.regionProofTextHits=0;window.regionProofTextAttempts=0;window.regionProofTextPreparations=0
+    const styleCacheHits=window.regionProofStyleCacheHits??0,styleSerializations=window.regionProofStyleSerializations??0,frozenStyles=window.regionProofFrozenStyles??0,styleIntegrityChecks=window.regionProofStyleIntegrityChecks??0,styleMismatches=window.regionProofStyleMismatches??[];window.regionProofStyleCacheHits=0;window.regionProofStyleSerializations=0;window.regionProofFrozenStyles=0;window.regionProofStyleIntegrityChecks=0;window.regionProofStyleMismatches=[]
+    const styleVisibility=window.regionProofStyleVisibility??null;window.regionProofStyleVisibility=null
+-   const backgroundCounts=window.regionProofTakeBackgroundCounts()
+-   return {backgroundFrames,...backgroundCounts,styleVisibility,styleCacheHits,styleSerializations,frozenStyles,styleIntegrityChecks,styleMismatches,textHits,textAttempts,textPreparations,svgHits,svgAttempts,intermediateFrames,changed,max,storage,cacheStorage:window.regionProofCacheMemory??null,width:canvas.width,height:canvas.height,value:input.value,focused:document.activeElement===input,calls:window.regionProofCalls.splice(0),errors:window.regionProofErrors.splice(0),png:canvas.toDataURL(),reference:ref.toDataURL()}
++   const backgroundCounts=window.regionProofTakeBackgroundCounts(),fullSeedCounts=window.regionProofTakeFullSeedCounts(),warmEvidence=window.regionProofWarmEvidence??[],warmIntervals=window.regionProofWarmIntervals??[];window.regionProofWarmEvidence=[];window.regionProofWarmIntervals=[]
++   return {backgroundFrames,...backgroundCounts,...fullSeedCounts,warmEvidence,warmIntervals,styleVisibility,styleCacheHits,styleSerializations,frozenStyles,styleIntegrityChecks,styleMismatches,textHits,textAttempts,textPreparations,svgHits,svgAttempts,intermediateFrames,changed,max,storage,cacheStorage:window.regionProofCacheMemory??null,width:canvas.width,height:canvas.height,value:input.value,focused:document.activeElement===input,calls:window.regionProofCalls.splice(0),errors:window.regionProofErrors.splice(0),png:canvas.toDataURL(),reference:ref.toDataURL()}
+   },proofKey)
+   for(const key of ['png','reference']){await writeFile(path.join(output,`${name}-${key}.png`),Buffer.from(result[key].split(',')[1],'base64'));delete result[key]}
+   results.push({name,...result});await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))
+@@ -285,11 +354,77 @@
+  if(process.env.REGION_NO_SCHEDULER==='1'){assert.equal(focused.storage,true,'The timer-fallback fixture requires CPU storage');assert.ok(focused.backgroundPreparations>0,'The timer fallback must prepare a background');assert.ok(focused.backgroundHits>0,'The timer fallback must reuse a background');timerFallback={schedulerAbsent:await page.evaluate(()=>globalThis.scheduler===undefined),backgroundPreparations:focused.backgroundPreparations,backgroundHits:focused.backgroundHits};assert.equal(timerFallback.schedulerAbsent,true)}
+  const directTextSupported=focused.storage
+  let disposed,wrappedDisposed=null
+- if(process.env.REGION_UNKNOWN_VIEWPORT==='1'){
++ const verifyWarmResult=(result,name,{expectWarm,fast,unsupported,nullWarmup,seed})=>{
++  if(fast)assert.ok(result.warmIntervals.some(interval=>interval.snapshot&&interval.ms<250),name+': the actual full capture interval must stay below the warmup threshold')
++  else if(expectWarm)assert.ok(result.warmIntervals.some(interval=>interval.snapshot&&interval.ms>=250),name+': the actual held capture interval must cross the warmup threshold')
++  assert.equal(result.value,'a'+seed);assert.equal(result.focused,true)
++  if(!expectWarm){assert.equal(result.warmScheduled,0);assert.equal(result.fullSeedTemplates,0);assert.equal(result.fullSeedAttempts,0);assert.ok(result.calls.some(call=>call.clip),'An ineligible warmup must use upstream region capture');return}
++  assert.ok(result.warmScheduled>0&&result.warmStarted>0,name+': an input-driven CPU warm job must run')
++  assert.ok(result.warmEvidence.length>0)
++  for(const evidence of result.warmEvidence){assert.equal(evidence.changed,0,name+': warming must start after the complete original capture publishes');assert.equal(evidence.read+1,evidence.nextRead);assert.equal(evidence.cropAttempts,0);assert.equal(evidence.textPreparations,0);if(evidence.readyPaintCount!==null)assert.equal(evidence.readyPaintCount,evidence.paintCount,name+': warming must not publish a paint')}
++  if(unsupported){assert.ok(result.unsupportedFullSeeds>0&&result.fullSeedRejected>0);assert.ok(result.calls.some(call=>call.clip),'An unsupported full seed must keep upstream region capture')}
++  else{
++   assert.ok(result.fullSeedAccepted>0)
++   if(result.foregroundFullSeeds===0)assert.ok(result.fullSeedDocuments>0,'Warming must reuse the parsed complete SVG document')
++   const badSeed=result.corruptFullSeeds>0||result.foregroundFullSeeds>0
++   if(nullWarmup||badSeed){assert.ok(result.warmRejected>0);assert.equal(result.warmReady,0);assert.equal(result.textHits,0);assert.ok(result.calls.some(call=>call.clip),'An uncertified seed must retain upstream region capture')}
++   else{assert.deepEqual(result.calls,[],'Warmed input must avoid a new upstream capture');assert.ok(result.textHits>0&&result.warmReady>0);assert.equal(result.svgHits,0)}
++  }
++ }
++ const pendingWarm=async(name,background,{unsupported=false,transparent=false,hold=false,seed='aa',expectWarm=true,nullWarmup=false,fast=false}={})=>{
++  await page.evaluate(({unsupported,transparent,seed})=>{const {input}=window.regionProof;window.regionProofUnsupportedFullSeed=unsupported;window.regionProofForegroundFullSeed=transparent;if(transparent){input.style.transition='none';input.style.background='transparent'}input.value=seed;input.setSelectionRange(0,0);input.scrollLeft=0}, {unsupported,transparent,seed})
++  await holdBackground(background)
++  if(!fast)await page.evaluate(()=>new Promise(resolve=>setTimeout(resolve,300)))
++  await page.evaluate(async({hold,fast})=>{const {source,form}=window.regionProof;window.regionProofWarmExpectedRead=source.nextRead()-1;window.regionProofWarmReference=fast?null:{...await window.regionProofReadStylePixels(),root:form};window.regionProofWarmHold=hold;window.regionProofWarmRelease=null;window.regionProofWarmTrusted=null;window.regionProof.input.addEventListener('input',event=>{window.regionProofWarmTrusted=event.isTrusted},{once:true})},{hold,fast})
++  await page.keyboard.type('a')
++  const calls=await page.evaluate(()=>{const {source}=window.regionProof,expectedRead=window.regionProofWarmExpectedRead,reference=window.regionProofWarmReference;window.regionProofWarmSeedImage=null;const unsubscribe=reference?source.subscribePaint(receipt=>{if(receipt.read!==expectedRead)return;const canvas=source.canvas,pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;let changed=canvas.width===reference.width&&canvas.height===reference.height?0:-1;if(changed===0)for(let index=0;index<pixels.length;index+=4)if([0,1,2,3].some(channel=>pixels[index+channel]!==reference.pixels[index+channel]))changed++;window.regionProofWarmSeedImage={read:receipt.read,changed};unsubscribe()}):()=>{};const calls=window.regionProofCalls.splice(0);const release=window.regionProofBackgroundRelease;window.regionProofBackgroundRelease=null;release();return calls})
++  assert.ok(calls.some(call=>!call.clip),name+': a full capture must precede warming')
++  if(hold){
++   await page.waitForFunction(()=>Boolean(window.regionProofWarmRelease))
++   return page.evaluate(()=>({read:window.regionProof.source.currentPaint()?.read,nextRead:window.regionProof.source.nextRead(),expectedRead:window.regionProofWarmExpectedRead,paintCount:window.regionProof.source.paintCount(),trusted:window.regionProofWarmTrusted,aborted:window.regionProofWarmPending.signal.aborted,evidence:window.regionProofWarmEvidence.at(-1)}))
++  }
++  const result=await compare(name,true)
++  if(!fast)assert.equal(await page.evaluate(()=>window.regionProofWarmSeedImage?.changed),0,name+': the held full read must publish complete original pixels')
++  assert.equal(await page.evaluate(()=>window.regionProofWarmTrusted),true)
++  verifyWarmResult(result,name,{expectWarm,fast,unsupported,nullWarmup,seed})
++  await page.evaluate(()=>{window.regionProofWarmReference=null;window.regionProofUnsupportedFullSeed=false;window.regionProofForegroundFullSeed=false})
++  return result
++ }
++ await page.evaluate(()=>{const {input,form,source}=window.regionProof;window.regionProofBeforeFullSeed={value:input.value,inputStyle:input.getAttribute('style'),formStyle:form.getAttribute('style')};input.value='aa';input.setSelectionRange(0,0);input.scrollLeft=0;source.repaint({immediate:true})})
++ const fullSeed=await compare('quiet-full-input');assert.ok(fullSeed.calls.some(call=>!call.clip));assert.equal(fullSeed.fullSeedTemplates,0,'Quiet focus must keep baseline behavior');assert.equal(fullSeed.fullSeedAttempts,0);assert.equal(fullSeed.textPreparations,0);assert.equal(fullSeed.warmScheduled,0)
++ await page.evaluate(()=>{window.regionProofFirstEditTrusted=null;window.regionProof.input.addEventListener('input',event=>{window.regionProofFirstEditTrusted=event.isTrusted},{once:true})})
++ await page.keyboard.type('a');const firstEdit=await compare('first-edit-after-quiet-focus',true);assert.ok(firstEdit.calls.some(call=>call.clip),'Settled focus must retain the baseline first region capture');assert.equal(firstEdit.fullSeedAttempts,0);assert.equal(firstEdit.warmScheduled,0);assert.equal(firstEdit.value,'aaa');assert.equal(firstEdit.focused,true);assert.equal(await page.evaluate(()=>window.regionProofFirstEditTrusted),true)
++ if(directTextSupported){
++  await pendingWarm('fast-pending-input-baseline','linear-gradient(135deg,rgb(235,242,250),rgb(215,228,242))',{expectWarm:false,fast:true})
++  await pendingWarm('pending-input-warm','linear-gradient(135deg,rgb(232,240,250),rgb(212,225,242))')
++  await pendingWarm('transparent-input-warm','linear-gradient(135deg,rgb(240,232,250),rgb(225,212,242))',{transparent:true})
++  await page.evaluate(()=>{const {input}=window.regionProof,style=window.regionProofBeforeFullSeed.inputStyle;if(style===null)input.removeAttribute('style');else input.setAttribute('style',style);input.style.transition='none'})
++  await pendingWarm('unsupported-input-warm','linear-gradient(135deg,rgb(240,250,232),rgb(225,242,212))',{unsupported:true})
++  for(const [name,background] of [['refresh','linear-gradient(135deg,rgb(230,244,248),rgb(205,230,238))'],['replacement','linear-gradient(135deg,rgb(245,235,228),rgb(235,215,198))']]){
++   const held=await pendingWarm('warm-cancel-'+name,background,{hold:true})
++   assert.equal(held.read,held.expectedRead);assert.equal(held.nextRead,held.expectedRead+1,'Cancellation must precede the owed input capture');assert.equal(held.trusted,true);assert.equal(held.aborted,false);assert.equal(held.evidence.changed,0);assert.equal(held.evidence.cropAttempts,0);assert.equal(held.evidence.textPreparations,0)
++   await page.evaluate(name=>{const {source}=window.regionProof;if(name==='refresh')source.repaint({immediate:true});else source.setScale(1.5)},name)
++   await settled()
++   const cancellation=await page.evaluate(async()=>{const {source}=window.regionProof,pending=window.regionProofWarmPending,before={paint:source.paintCount(),crop:window.regionProofFullSeedAttempts??0,preparation:window.regionProofTextPreparations??0};const aborted=pending.signal.aborted;window.regionProofWarmRelease=null;pending.release();await new Promise(resolve=>setTimeout(resolve,200));return {aborted,before,after:{paint:source.paintCount(),crop:window.regionProofFullSeedAttempts??0,preparation:window.regionProofTextPreparations??0}}})
++   assert.equal(cancellation.aborted,true);assert.equal(cancellation.before.crop,0);assert.equal(cancellation.before.preparation,0);assert.deepEqual(cancellation.after,cancellation.before,'Cancelled warm work must not parse, prepare or publish after replacement')
++   const result=await compare('warm-cancel-'+name);assert.equal(result.value,'aaa');assert.equal(result.focused,true);assert.ok(result.calls.some(call=>!call.clip));results.at(-1).warmCancellation=cancellation;await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))
++   await page.evaluate(()=>{window.regionProofWarmReference=null})
++   if(name==='replacement'){await page.evaluate(()=>window.regionProof.source.setScale(2));await compare('warm-cancel-density-restored')}
++  }
++  await pendingWarm('warm-whitespace-fallback','linear-gradient(135deg,rgb(238,235,248),rgb(218,210,238))',{seed:' ',nullWarmup:true})
++  await page.keyboard.type('a');const whitespaceRecovery=await compare('warm-whitespace-recovery',true);assert.ok(whitespaceRecovery.textHits>0,'A rejected warm seed must allow ordinary preparation from the next SVG frame');assert.equal(whitespaceRecovery.svgHits,0);assert.deepEqual(whitespaceRecovery.calls,[])
++  await page.evaluate(()=>window.regionProof.source.setScale(1));await compare('warm-density-1')
++  await pendingWarm('warm-density-1-input','linear-gradient(135deg,rgb(235,246,238),rgb(208,235,218))',{expectWarm:false})
++  await page.evaluate(()=>window.regionProof.source.setScale(2));await compare('warm-density-restored')
++ }
++ await page.evaluate(()=>{const {input,form,source}=window.regionProof,fixture=window.regionProofBeforeFullSeed;if(fixture.inputStyle===null)input.removeAttribute('style');else input.setAttribute('style',fixture.inputStyle);if(fixture.formStyle===null)form.removeAttribute('style');else form.setAttribute('style',fixture.formStyle);input.value=fixture.value;input.setSelectionRange(input.value.length,input.value.length);input.scrollLeft=0;source.repaint({immediate:true})});await compare('full-seed-fixture-restored')
++ if(process.env.REGION_SEED_ONLY==='1'){
++  disposed=await page.evaluate(()=>{const {source}=window.regionProof,before=source.paintCount();source.dispose();return {before,after:source.paintCount(),connected:source.host.isConnected}})
++ }else if(process.env.REGION_UNKNOWN_VIEWPORT==='1'){
+   assert.equal(await page.evaluate(()=>window.regionProof.source.canvas.getContext('2d').getContextAttributes().willReadFrequently),true,'Unknown viewport proof requires CPU storage')
+-  await page.evaluate(()=>{window.regionProofUnknownViewport=true})
++  await page.evaluate(()=>{window.regionProofUnsupportedFullSeed=true;window.regionProof.source.repaint({immediate:true})});await compare('unsupported-full-viewport-seed');await page.evaluate(()=>{window.regionProofUnknownViewport=true})
+   await page.keyboard.type('u');const fallback=await compare('unsupported-svg-fallback');assert.ok(fallback.calls.some(call=>call.clip)&&fallback.calls.some(call=>!call.clip))
+-  await page.evaluate(()=>{window.regionProofUnknownViewport=false})
++  await page.evaluate(()=>{window.regionProofUnknownViewport=false;window.regionProofUnsupportedFullSeed=false})
+   await page.keyboard.type('v');const disabled=await compare('unsupported-svg-stays-full');assert.ok(disabled.calls.length>0&&disabled.calls.every(call=>!call.clip))
+   disposed=await page.evaluate(()=>{const {source}=window.regionProof;const before=source.paintCount();source.dispose();return {before,after:source.paintCount(),connected:source.host.isConnected}})
+  }else{
+@@ -533,7 +668,7 @@
+  for(const offset of [3,4]){
+   await page.evaluate(offset=>{const {input,source}=window.regionProof;input.style.outlineOffset=offset+'px';source.repaint({immediate:true})},offset);await compare(`outline-${offset+2}`)
+   await page.keyboard.type('o');const outlined=await compare(`outline-${offset+2}-typing`,offset===3)
+-  if(offset===4)assert.ok(outlined.storage?outlined.calls.every(call=>!call.clip):outlined.calls.some(call=>call.clip), 'Large outlines must use full capture on CPU and region capture on GPU')
++  if(offset===4)assert.ok(outlined.storage?(outlined.calls.length>0&&outlined.calls.every(call=>!call.clip)):outlined.calls.some(call=>call.clip), 'Large outlines must use full capture on CPU and region capture on GPU')
+  }
+  await page.evaluate(()=>{window.regionProof.input.style.outlineOffset='';window.regionProof.source.repaint({immediate:true})});await compare('outline-restored')
+  if(await page.evaluate(()=>window.regionProof.source.canvas.getContext('2d').getContextAttributes().willReadFrequently)){
+@@ -611,8 +746,28 @@
+  disposed=await page.evaluate(async()=>{const {source}=window.regionProof;const before=source.paintCount();source.dispose();window.regionProofRelease();await new Promise(resolve=>setTimeout(resolve,300));return {before,after:source.paintCount(),connected:source.host.isConnected}})
+  }
+  assert.equal(disposed.after,disposed.before);assert.equal(disposed.connected,false);assert.deepEqual(errors,[])
++ let warmDisposed=null
++ if(process.env.REGION_UNKNOWN_VIEWPORT!=='1'&&process.env.REGION_SEED_ONLY!=='1'&&directTextSupported){
++  await page.evaluate(async(root)=>{
++   const {createDomTextureSource}=await import(root+'/packages/react/src/advanced.ts')
++   const form=window.regionProofPristineForm.cloneNode(true),input=form.querySelector('[data-munari-anchor="field:project"]');input.value='aa';input.placeholder=''
++   window.regionProofWarmExtraErrors=[];window.regionProofForceSvg=false
++   const source=createDomTextureSource(form,760,540,{scale:2,onError:error=>window.regionProofWarmExtraErrors.push(String(error))})
++   document.getElementById('root').append(source.host);source.setHostPainted(true);window.regionProofWarmExtra={source,form,input};window.regionProofWarmSources.set(form,source)
++  },'/@fs'+root)
++  await page.waitForFunction(()=>Boolean(window.regionProofWarmExtra.source.currentPaint()))
++  await page.evaluate(()=>{const {source,form,input}=window.regionProofWarmExtra;input.focus();input.setSelectionRange(0,0);input.scrollLeft=0;window.regionProofBackgroundHold=true;form.style.background='linear-gradient(135deg,rgb(230,240,250),rgb(205,220,240))';source.repaint({immediate:true})})
++  await page.waitForFunction(()=>Boolean(window.regionProofBackgroundRelease))
++  await page.evaluate(()=>new Promise(resolve=>setTimeout(resolve,300)))
++  await page.evaluate(async()=>{const {source,form,input}=window.regionProofWarmExtra;window.regionProofWarmReference={...await window.regionProofReadFullPixels(source,form,input),root:form};window.regionProofWarmExpectedRead=source.nextRead()-1;window.regionProofWarmHold=true;window.regionProofWarmRelease=null;window.regionProofWarmExtraTrusted=null;input.addEventListener('input',event=>{window.regionProofWarmExtraTrusted=event.isTrusted},{once:true});window.regionProofTakeFullSeedCounts();window.regionProofTextPreparations=0})
++  await page.keyboard.type('a')
++  await page.evaluate(()=>{const release=window.regionProofBackgroundRelease;window.regionProofBackgroundRelease=null;release()})
++  await page.waitForFunction(()=>Boolean(window.regionProofWarmRelease))
++  warmDisposed=await page.evaluate(async()=>{const {source,form,input}=window.regionProofWarmExtra,pending=window.regionProofWarmPending,evidence=window.regionProofWarmEvidence.at(-1),before=source.paintCount(),nextRead=source.nextRead(),expectedRead=window.regionProofWarmExpectedRead;source.dispose();const aborted=pending.signal.aborted,width=pending.target.width,height=pending.target.height;window.regionProofWarmRelease=null;pending.release();await new Promise(resolve=>setTimeout(resolve,300));window.regionProofWarmSources.delete(form);window.regionProofWarmReference=null;return {before,after:source.paintCount(),connected:source.host.isConnected,value:input.value,trusted:window.regionProofWarmExtraTrusted,nextRead,expectedRead,aborted,width,height,evidence,cropAttempts:window.regionProofFullSeedAttempts??0,textPreparations:window.regionProofTextPreparations??0}})
++  assert.equal(warmDisposed.nextRead,warmDisposed.expectedRead+1);assert.equal(warmDisposed.evidence.changed,0);assert.equal(warmDisposed.after,warmDisposed.before);assert.equal(warmDisposed.connected,false);assert.equal(warmDisposed.value,'aaa');assert.equal(warmDisposed.trusted,true);assert.equal(warmDisposed.aborted,true);assert.equal(warmDisposed.width,0);assert.equal(warmDisposed.height,0);assert.equal(warmDisposed.cropAttempts,0);assert.equal(warmDisposed.textPreparations,0);assert.deepEqual(await page.evaluate(()=>window.regionProofWarmExtraErrors),[])
++ }
+  let textDisposed=null
+- if(process.env.REGION_UNKNOWN_VIEWPORT!=='1'&&directTextSupported){
++ if(process.env.REGION_UNKNOWN_VIEWPORT!=='1'&&process.env.REGION_SEED_ONLY!=='1'&&directTextSupported){
+   await page.evaluate(async(root)=>{
+    const {createDomTextureSource}=await import(root+'/packages/react/src/advanced.ts')
+    const form=window.regionProof.form.cloneNode(true),input=form.querySelector('[data-munari-anchor="field:project"]')
+@@ -634,7 +789,7 @@
+   textDisposed.after=await page.evaluate(()=>window.regionProofExtra.source.paintCount());assert.equal(textDisposed.after,textDisposed.before);assert.deepEqual(await page.evaluate(()=>window.regionProofExtraErrors),[])
+  }
+  let backgroundDisposed=null
+- if(process.env.REGION_UNKNOWN_VIEWPORT!=='1'&&directTextSupported){
++ if(process.env.REGION_UNKNOWN_VIEWPORT!=='1'&&process.env.REGION_SEED_ONLY!=='1'&&directTextSupported){
+   await page.evaluate(async(root)=>{
+    const {createDomTextureSource}=await import(root+'/packages/react/src/advanced.ts')
+    window.regionProofBackgroundExtraErrors=[]
+@@ -652,6 +807,9 @@
+   await page.evaluate(()=>{const release=window.regionProofBackgroundRelease;window.regionProofBackgroundRelease=null;release()});await page.waitForFunction(finished=>(window.regionProofBackgroundFinished??0)>finished,{},backgroundDisposed.finished)
+   backgroundDisposed.after=await page.evaluate(()=>window.regionProofBackgroundExtra.source.paintCount());assert.equal(backgroundDisposed.after,backgroundDisposed.before);assert.deepEqual(await page.evaluate(()=>window.regionProofBackgroundExtraErrors),[])
+  }
+- await writeFile(path.join(output,'completion.json'),JSON.stringify({disposed,wrappedDisposed,textDisposed,backgroundDisposed,timerFallback,errors,browser:await browser.version()},null,2))
+- console.log(JSON.stringify({checks:results.length,partialChecks:results.filter(r=>r.textHits>0||r.svgHits>0||r.calls.some(c=>c.clip)).map(r=>r.name),disposed,wrappedDisposed,textDisposed,backgroundDisposed,timerFallback,errors}))
+-}finally{if(browser)await browser.close();await server.close()}
++ await writeFile(path.join(output,'completion.json'),JSON.stringify({disposed,wrappedDisposed,warmDisposed,textDisposed,backgroundDisposed,timerFallback,errors,browser:await browser.version()},null,2))
++ console.log(JSON.stringify({checks:results.length,partialChecks:results.filter(r=>r.textHits>0||r.svgHits>0||r.calls.some(c=>c.clip)).map(r=>r.name),disposed,wrappedDisposed,warmDisposed,textDisposed,backgroundDisposed,timerFallback,errors}))
++}finally{
++ if(browser){await browser.close();browser.process()?.stderr?.destroy()}
++ await server.close()
++}
+diff --git a/instruments/input-regions/README.md b/instruments/input-regions/README.md
+--- a/instruments/input-regions/README.md
++++ b/instruments/input-regions/README.md
+@@ -11,6 +11,23 @@
+ Every RGBA channel must match exactly. `REGION_STORAGE` forces the source's
+ canvas storage policy and checks that the requested mode was exercised. It
+ does not emulate a different GPU. The reference uses the same storage policy.
++
++A CPU capture at 2× density may prepare a text cache when a value edit arrives
++during a full capture that takes at least 250 ms. The slow fixture holds the real
++full-image decode for 300 ms and records the measured capture interval. The next
++edit must use the prepared painter without another upstream capture. The complete
++original image must publish before preparation starts, and preparation must not
++publish a paint. Quiet focus, a pending edit during a capture below 250 ms, other
++densities, and GPU storage must keep the ordinary capture path.
++
++A transparent input exposes the root background, checking that the retained SVG
++includes paint removed from the background cache's foreground image. This static
++fixture disables the input's transition and restores its original inline style.
++An unsupported SVG or a seed containing only spaces must fall back to upstream region capture.
++Refresh, density replacement and disposal before preparation starts must cancel
++it without parsing, allocating a painter or publishing a late frame. A later
++ordinary capture must still be able to prepare a painter after a rejected seed.
++`REGION_SEED_ONLY=1` limits the run to these focused checks.
+
+ Both modes require typing, deletion and horizontal scrolling to exercise region
+ capture. CPU mode also checks fractional and shifted fields, normal-flow
+@@ -84,6 +101,30 @@
+ `results.json`. `completion.json` confirms that the whole run finished.
+ `CHROME_PATH` selects the Chrome executable.
+
++A malformed full snapshot must fail text certification and fall back to an
++upstream region capture with exact pixels. These controls add a red rectangle to
++the input crop or substitute the foreground-only SVG behind a transparent input:
++
++```sh
++REGION_STORAGE=cpu REGION_SEED_ONLY=1 REGION_CORRUPT_FULL_SEED=1 \
++  REGION_OUTPUT=/tmp/munari-input-regions-corrupt-seed \
++  node instruments/input-regions/run.mjs
++REGION_STORAGE=cpu REGION_SEED_ONLY=1 REGION_FOREGROUND_FULL_SEED=1 \
++  REGION_OUTPUT=/tmp/munari-input-regions-foreground-seed \
++  node instruments/input-regions/run.mjs
++```
++
++Combining either control with `REGION_ACCEPT_BAD_FULL_SEED=1` bypasses the failed
++certificate in the served module. The reused edit must then fail the unchanged
++RGBA comparison. This checks that certification prevents a visible error:
++
++```sh
++REGION_STORAGE=cpu REGION_SEED_ONLY=1 REGION_CORRUPT_FULL_SEED=1 \
++  REGION_ACCEPT_BAD_FULL_SEED=1 \
++  REGION_OUTPUT=/tmp/munari-input-regions-full-seed-pixel-fault \
++  node instruments/input-regions/run.mjs
++```
++
+ Reusing a stale background after the root paint changes must fail
+ `background-root-change` on a pixel mismatch. The fixture first compares fresh
+ captures at the same input value to prove that the background change is visible:
+@@ -117,8 +158,9 @@
+ ```
+
+ Unrecognized SVG output must recover with a full capture, then keep using full
+-captures for that source. This short run removes the clipped SVG's foreignObject
+-before the adapter inspects it; the full-capture reference stays intact:
++captures for that source. This short run first rejects the full input seed, then
++removes the clipped SVG's foreignObject before the adapter inspects it. The
++full-capture reference stays intact:
+
+ ```sh
+ REGION_STORAGE=cpu REGION_UNKNOWN_VIEWPORT=1 REGION_OUTPUT=/tmp/munari-input-regions-unknown \

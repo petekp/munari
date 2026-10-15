@@ -654,4 +654,7 @@ try{
  }
  await writeFile(path.join(output,'completion.json'),JSON.stringify({disposed,wrappedDisposed,textDisposed,backgroundDisposed,timerFallback,errors,browser:await browser.version()},null,2))
  console.log(JSON.stringify({checks:results.length,partialChecks:results.filter(r=>r.textHits>0||r.svgHits>0||r.calls.some(c=>c.clip)).map(r=>r.name),disposed,wrappedDisposed,textDisposed,backgroundDisposed,timerFallback,errors}))
-}finally{if(browser)await browser.close();await server.close()}
+}finally{
+ if(browser){await browser.close();browser.process()?.stderr?.destroy()}
+ await server.close()
+}

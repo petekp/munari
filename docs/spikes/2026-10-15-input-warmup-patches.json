@@ -1,0 +1,34 @@
+{
+  "baseline": "a355cc5f2a2743beb213e4fdd3a05e3a4b23d4fd",
+  "status": "rejected",
+  "patches": [
+    {
+      "variant": "slow-capture",
+      "file": "docs/spikes/2026-10-15-input-warmup-slow-capture.patch",
+      "sha256": "96254d093186dbb91c87af57f207f120f33dc468db9dd43aafb3303405f1b597",
+      "verifiedAppliedSourceSha256": {
+        "packages/react/src/snapdom.ts": "02687bf37726f325a382ea10129918ab6d267816421560fd05b37d69f54d3a3a",
+        "packages/react/src/snapdomInputRegions.ts": "09975ca2d046cf74e457df3862737eb3f6b9b3873140448cbba98b217a4ab969",
+        "packages/react/src/snapdomFullBackground.ts": "f77c7ff28ab0d050b3bd85e76be6d669a1a41638201470956d95d9a97bafcc43",
+        "instruments/performance/observer.mjs": "c8b29b73c109b1ee49cd5afa6799f72f05ec4265acde1d0e970ceba1338dfdf0",
+        "instruments/input-regions/run.mjs": "c6d2995ed2176a03e4f79514e607435ce6b53e71838f1419ddd1a100d3d277f8",
+        "instruments/input-regions/README.md": "e5adfce7fe6c168f3d8b79d9c43e72b9a6550aab55addf2c6896cb6cf0d8fdce"
+      },
+      "appliesCleanlyToBaseline": true
+    },
+    {
+      "variant": "inactive-path",
+      "file": "docs/spikes/2026-10-15-input-warmup-inactive-path.patch",
+      "sha256": "e1b0ecd7e29595c7d59c698cb8484338522b8211d439d8b4158000d9be139d3e",
+      "verifiedAppliedSourceSha256": {
+        "packages/react/src/snapdom.ts": "2efa85034bfb5a5d82da86f5c2b2cdc279a0ab646cb6c28138f69d564820a584",
+        "packages/react/src/snapdomInputRegions.ts": "fc659d28a281a50b3bd2bcf0a912525ad7af77da6f5de07cdfb58e14c2672047",
+        "packages/react/src/snapdomFullBackground.ts": "f77c7ff28ab0d050b3bd85e76be6d669a1a41638201470956d95d9a97bafcc43",
+        "instruments/performance/observer.mjs": "c8b29b73c109b1ee49cd5afa6799f72f05ec4265acde1d0e970ceba1338dfdf0",
+        "instruments/input-regions/run.mjs": "bf7ffe0d7281618ea0d03033635bd568c82c98f706c756c0311e32edec00a37d",
+        "instruments/input-regions/README.md": "e5adfce7fe6c168f3d8b79d9c43e72b9a6550aab55addf2c6896cb6cf0d8fdce"
+      },
+      "appliesCleanlyToBaseline": true
+    }
+  ]
+}
