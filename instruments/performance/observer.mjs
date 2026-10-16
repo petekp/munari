@@ -43,9 +43,10 @@ export function performanceObserver(root, commit, loadedSources, routeTiming = t
       if(file==='packages/react/src/snapdom.ts') {
         if(captureStages)source=observeSnapdom(source)
         const clipped=source.includes('options: CaptureRegionOptions')?'Boolean(options.clip)':'false'
-        source=replaceSource(source,'  const capture = await snapdom(element, {',`  window.__munariPerf.record('captureRegion',{clipped:${clipped},cssArea:box.width*box.height});
+        const captureIdentity=captureStages?'captureId:perfCapture.id,sourceId:perfCapture.sourceId,read:perfCapture.read,':''
+        source=replaceSource(source,'  const capture = await snapdom(element, {',`  window.__munariPerf.record('captureRegion',{${captureIdentity}clipped:${clipped},cssArea:box.width*box.height});
   const capture = await snapdom(element, {`)
-        source=replaceSource(source,'  return image\n',`  window.__munariPerf.record('captureRaster',{width:image.width,height:image.height});
+        source=replaceSource(source,'  return image\n',`  window.__munariPerf.record('captureRaster',{${captureIdentity}width:image.width,height:image.height});
   return image
 `)
         return source
@@ -97,6 +98,12 @@ function hostSpace(...args: Parameters<typeof measuredHostSpace>) {
 }
 
 function observeInputSvg(source, captureStages) {
+  const hasBlank = source.includes('    blank() {')
+  const clonesDocument = source.includes('  const blank = document.cloneNode(true)')
+  if(hasBlank)assert.ok(clonesDocument || source.includes('  const blank = input.cloneNode(true)'), 'Unknown input blank preparation')
+  const blankDocument = clonesDocument ? 'blank' : 'document'
+  const blankIndent = clonesDocument ? '  ' : '    '
+  const blankReturn = `\n${blankIndent}return decodeInputSvg(${blankDocument}, width, height)`
   if(captureStages) {
     const identityType='{sourceId:number|null;read:number|null}'
     source=replaceSource(source,'height: number): Promise<HTMLImageElement> {',`height: number, perfSvgIdentity?: ${identityType}): Promise<HTMLImageElement> {`)
@@ -106,6 +113,10 @@ function observeInputSvg(source, captureStages) {
       source=replaceSource(source,'    blank() {',`    blank(perfSvgIdentity: ${identityType} = window.__munariPerf.identityFor(field)) {`)
       source=replaceSource(source,'height: number) => {',`height: number, perfSvgIdentity?: ${identityType}) => {`)
       source=replaceSource(source,'decodeBlankInput(document, inputs.indexOf(input), width, height)','decodeBlankInput(document, inputs.indexOf(input), width, height, perfSvgIdentity)')
+      const blankStart = clonesDocument ? '  const blank = document.cloneNode(true)' : "  const input = document.getElementsByTagNameNS('http://www.w3.org/1999/xhtml', 'input')[index]"
+      source=replaceSource(source,blankStart,`  const perfBlankDocumentStarted=performance.now()\n${blankStart}`)
+      source=replaceSource(source,blankReturn,`\n${blankIndent}window.__munariPerf.record('captureStage',{...perfSvgIdentity,stage:'inputBlankDocumentSync',ms:performance.now()-perfBlankDocumentStarted})${blankReturn}`)
+
     }
   }
   if(captureStages)source=replaceSource(source,
@@ -121,7 +132,7 @@ function observeInputSvg(source, captureStages) {
         window.__munariPerf.record('captureRaster',{width:image.width,height:image.height});
         return image
       })`)
-  if(source.includes('  return decodeInputSvg(blank, width, height)'))source=replaceSource(source,'  return decodeInputSvg(blank, width, height)',`  return decodeInputSvg(blank, width, height${captureStages?', perfSvgIdentity':''}).then((image) => {
+  if(hasBlank)source=replaceSource(source,blankReturn,`\n${blankIndent}return decodeInputSvg(${blankDocument}, width, height${captureStages?', perfSvgIdentity':''}).then((image) => {
     window.__munariPerf.record('inputBlankDecode',{});
     window.__munariPerf.record('captureRaster',{width:image.width,height:image.height});
     return image
@@ -140,6 +151,82 @@ function observeFullBackground(source,captureStages) {
   source=replaceSource(source,'      images.delete(image)',`      window.__munariPerf.record('fullBackgroundComposite',{...window.__munariPerf.identityFor(root),reused:perfReusedBackgrounds.has(image),pixelBytes:background.canvas.width*background.canvas.height*4})
       images.delete(image)`)
   if(captureStages) {
+    source=replaceSource(source,'  const content = retainedContentRoot(root)',`  const perfSplitIdentity=window.__munariPerf.identityFor(root)
+  const perfSplitStage=<T>(stage:string,operation:()=>T):T=>{
+    const started=performance.now()
+    try { return operation() }
+    finally { window.__munariPerf.record('captureStage',{...perfSplitIdentity,stage,ms:performance.now()-started}) }
+  }
+  const content = perfSplitStage('fullBackgroundContentRootSync',()=>retainedContentRoot(root))`)
+    const singleDocument=source.includes('function serializeForeground(')
+    const retainedRuleObjects=source.includes('backgroundKey(background, chain, selection.sheets)')
+    for(const [expression,stage] of [
+      ['parseSvg(url)','fullBackgroundParseSvgSync'],
+      ['capturedRoot(background, content)','fullBackgroundRootLookupSync'],
+      ['retainedChain(retained, background)','fullBackgroundRootLookupSync'],
+      ['selectedRules(background, retained, chain)','fullBackgroundSelectRulesSync'],
+      ['serializer.serializeToString(background)','fullBackgroundSerializeBackgroundSync'],
+      ...(singleDocument ? [
+        ['chainIsIndependent(chain, retained, selection.matched)','fullBackgroundEligibilitySync'],
+        ['fullRootViewport(svg, resolvedStyle(retained, selection.matched.get(retained) ?? []))','fullBackgroundEligibilitySync'],
+        [retainedRuleObjects?'backgroundKey(background, chain, selection.sheets)':'backgroundKey(background, chain)','fullBackgroundKeySync'],
+      ] : [
+        ['background.cloneNode(true)','fullBackgroundCloneSync'],
+        ['capturedRoot(foreground, content)','fullBackgroundRootLookupSync'],
+        ['chainIsIndependent(chain, retained, rules)','fullBackgroundEligibilitySync'],
+        ['fullRootViewport(svg, resolvedStyle(retained, rules.get(retained) ?? []))','fullBackgroundEligibilitySync'],
+        ['serializer.serializeToString(foreground)','fullBackgroundSerializeForegroundSync'],
+        ['backgroundKey(background, chain)','fullBackgroundKeySync'],
+      ]),
+    ])source=replaceSource(source,expression,`perfSplitStage('${stage}',()=>${expression})`)
+    if(singleDocument) {
+      source=replaceSource(source,'serializer: XMLSerializer): string {','serializer: XMLSerializer, perfSplitStage:<T>(stage:string,operation:()=>T)=>T): string {')
+      source=replaceSource(source,'serializeForeground(background, retained, serializer)',"perfSplitStage('fullBackgroundForegroundPreparationSync',()=>serializeForeground(background, retained, serializer, perfSplitStage))")
+      source=replaceSource(source,`    for (const [property, value] of FOREGROUND_OVERRIDES) {
+      root.style.setProperty(property, value, 'important')
+    }`,`    perfSplitStage('fullBackgroundRewriteSync',()=>{
+      for (const [property, value] of FOREGROUND_OVERRIDES) {
+        root.style.setProperty(property, value, 'important')
+      }
+    })`)
+      source=replaceSource(source,`    return serializer.serializeToString(document)`,`    return perfSplitStage('fullBackgroundSerializeForegroundSync',()=>serializer.serializeToString(document))`)
+      source=replaceSource(source,`    if (originalStyle === null) root.removeAttribute('style')
+    else root.setAttribute('style', originalStyle)`,`    perfSplitStage('fullBackgroundRewriteSync',()=>{
+      if (originalStyle === null) root.removeAttribute('style')
+      else root.setAttribute('style', originalStyle)
+    })`)
+      if(retainedRuleObjects)source=replaceSource(source,`  for (const { element, rules } of selection.sheets) {
+    element.textContent = rules.map(rule => rule.cssText).join('\\n')
+  }`,`  perfSplitStage('fullBackgroundSelectRulesSync',()=>{
+    for (const { element, rules } of selection.sheets) {
+      element.textContent = rules.map(rule => rule.cssText).join('\\n')
+    }
+  })`)
+      else source=replaceSource(source,`  for (const { element, cssText } of selection.sheets) {
+    element.textContent = cssText
+  }`,`  perfSplitStage('fullBackgroundSelectRulesSync',()=>{
+    for (const { element, cssText } of selection.sheets) {
+      element.textContent = cssText
+    }
+  })`)
+      source=replaceSource(source,`  retained.replaceChildren()
+  removeUnreferencedMetadata(background, chain)`,`  perfSplitStage('fullBackgroundRewriteSync',()=>{
+    retained.replaceChildren()
+    removeUnreferencedMetadata(background, chain)
+  })`)
+    } else {
+      source=replaceSource(source,`  retained.replaceChildren()
+  removeUnreferencedMetadata(background, chain)
+  for (const [property, value] of FOREGROUND_OVERRIDES) {
+    front.style.setProperty(property, value, 'important')
+  }`,`  perfSplitStage('fullBackgroundRewriteSync',()=>{
+    retained.replaceChildren()
+    removeUnreferencedMetadata(background, chain)
+    for (const [property, value] of FOREGROUND_OVERRIDES) {
+      front.style.setProperty(property, value, 'important')
+    }
+  })`)
+    }
     source=replaceSource(source,'        const split = splitCapture(url, root)',`        const perfSplitStarted=performance.now()
         let split: ReturnType<typeof splitCapture>
         try { split = splitCapture(url, root) }
@@ -265,6 +352,23 @@ const capturePlugins=[perfFirstPlugin,fontPlugin,frameSplitPlugin,fieldPlugin,pe
   await image.decode()`)
     }
   }
+  if(source.includes('  if (layout) await yieldCaptureTask()'))source=replaceSource(source,'  if (layout) await yieldCaptureTask()',`  if (layout) {
+    const perfClippedYieldStarted=performance.now()
+    await yieldCaptureTask()
+    window.__munariPerf.stage(perfCapture,'clippedCaptureYieldWall',performance.now()-perfClippedYieldStarted)
+  }`)
+  const freshImageMarker='    image.src = normalized\n      ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(normalized))}`\n      : url\n    await image.decode()'
+  if(source.includes(freshImageMarker))source=replaceSource(source,freshImageMarker,`    const perfFreshSerializeStarted=performance.now()
+    const perfFreshSvg=normalized?new XMLSerializer().serializeToString(normalized):null
+    if(normalized)window.__munariPerf.stage(perfCapture,'freshSvgSerializeSync',performance.now()-perfFreshSerializeStarted)
+    const perfFreshSourceStarted=performance.now()
+    image.src=perfFreshSvg===null?url:\`data:image/svg+xml;charset=utf-8,\${encodeURIComponent(perfFreshSvg)}\`
+    window.__munariPerf.stage(perfCapture,'freshSvgSourceAssignSync',performance.now()-perfFreshSourceStarted)
+    const perfFreshDecodeStarted=performance.now()
+    const perfFreshDecoding=image.decode()
+    window.__munariPerf.stage(perfCapture,'freshImageDecodeCallSync',performance.now()-perfFreshDecodeStarted)
+    await perfFreshDecoding
+    window.__munariPerf.stage(perfCapture,'freshImageDecodeWall',performance.now()-perfFreshDecodeStarted)`)
   if(!source.includes('options.decodeFull'))source=replaceSource(source,'  await image.decode()',`  const perfDecodeStarted=performance.now();
   await image.decode()
   window.__munariPerf.stage(perfCapture,'decodeWall',performance.now()-perfDecodeStarted)`)
@@ -278,7 +382,7 @@ const capturePlugins=[perfFirstPlugin,fontPlugin,frameSplitPlugin,fieldPlugin,pe
 }`)
 }
 
-export function installObserver() {
+export function installObserver({ detailedFrames = false } = {}) {
   const observer = {
     sources: new Map(), events: [], gaps: [], totals:{preparedInputText:0,inputBlankDecode:0,fullBackgroundPreparation:0,fullBackgroundComposite:0,backgroundPixelBytes:0}, active: false, lastFrame: null, timingObservers:[], timingSupport:[],
     record(kind, values) {
@@ -302,11 +406,30 @@ export function installObserver() {
       if(entry.entryType==='long-animation-frame')data.scripts=Array.from(entry.scripts,script=>script.toJSON())
       this.record('browserTiming',data)
     },
-    start() { this.events=[];this.gaps=[];this.lastFrame=null;this.active=true;this.started=performance.now() },
+    clockAnchor(boundary) {
+      const name=`munari-perf-phase-${this.phaseSequence}-${boundary}`
+      const mark=performance.mark(name)
+      this.clockAnchors.push({name,performanceTime:mark.startTime})
+    },
+    start() {
+      this.events=[];this.gaps=[];this.lastFrame=null;this.active=true;this.started=performance.now()
+      if(detailedFrames) {
+        this.frameWindows=[];this.clockAnchors=[];this.lastCallbackTime=null
+        this.phaseSequence=(this.phaseSequence??0)+1
+        this.clockAnchor('start')
+      }
+    },
     stop() {
+      if(detailedFrames)this.clockAnchor('end')
       for (const observer of this.timingObservers) for (const entry of observer.takeRecords()) this.recordTiming(entry)
       this.active=false
-      return {events:this.events,gaps:this.gaps,phaseStartedAt:this.started,elapsedMs:performance.now()-this.started,timingSupport:this.timingSupport,totals:{...this.totals}}
+      const result={events:this.events,gaps:this.gaps,phaseStartedAt:this.started,elapsedMs:performance.now()-this.started,timingSupport:this.timingSupport,totals:{...this.totals}}
+      if(detailedFrames) {
+        result.frameWindows=this.frameWindows
+        result.clockAnchors=this.clockAnchors
+        result.timeOrigin=performance.timeOrigin
+      }
+      return result
     },
   }
   window.__munariPerf = observer
@@ -321,6 +444,11 @@ export function installObserver() {
   }
   const frame = t => {
     if (observer.active) {
+      if(detailedFrames) {
+        const callbackTime=performance.now()
+        if(observer.lastFrame!==null)observer.frameWindows.push({start:observer.lastFrame,end:t,durationMs:t-observer.lastFrame,callbackStart:observer.lastCallbackTime,callbackEnd:callbackTime})
+        observer.lastCallbackTime=callbackTime
+      }
       if (observer.lastFrame !== null) observer.gaps.push(t-observer.lastFrame)
       observer.lastFrame=t
     }

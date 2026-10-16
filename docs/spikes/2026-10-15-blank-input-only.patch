@@ -1,0 +1,32 @@
+diff --git a/packages/react/src/snapdomInputSvg.ts b/packages/react/src/snapdomInputSvg.ts
+--- a/packages/react/src/snapdomInputSvg.ts
++++ b/packages/react/src/snapdomInputSvg.ts
+@@ -22,13 +22,21 @@
+ }
+ 
+ const decodeBlankInput = (document: XMLDocument, index: number, width: number, height: number) => {
+-  const blank = document.cloneNode(true)
+-  if (!(blank instanceof Document)) throw new Error('munari: input SVG clone is not a document')
+-  const input = blank.getElementsByTagNameNS('http://www.w3.org/1999/xhtml', 'input')[index]
+-  if (!input) throw new Error('munari: input SVG clone has no field')
+-  input.setAttribute('value', '')
+-  input.removeAttribute('placeholder')
+-  return decodeInputSvg(blank, width, height)
++  const input = document.getElementsByTagNameNS('http://www.w3.org/1999/xhtml', 'input')[index]
++  if (!input) throw new Error('munari: input SVG snapshot has no field')
++  const parent = input.parentNode
++  if (!parent) throw new Error('munari: input SVG field has no parent')
++  const blank = input.cloneNode(true)
++  if (!(blank instanceof HTMLInputElement)) throw new Error('munari: input SVG field clone is not an input')
++  blank.setAttribute('value', '')
++  blank.removeAttribute('placeholder')
++  parent.replaceChild(blank, input)
++  try {
++    // decodeInputSvg must fix its data URL before its first await.
++    return decodeInputSvg(document, width, height)
++  } finally {
++    parent.replaceChild(input, blank)
++  }
+ }
+ 
+ const printableAscii = (value: string) => /^[ -~]*$/.test(value)

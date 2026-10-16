@@ -1,0 +1,163 @@
+--- a/run.mjs
++++ b/run.mjs
+@@ -7,18 +7,24 @@
+ import { existsSync } from 'node:fs'
+ import { cpus, loadavg, tmpdir } from 'node:os'
+ import path from 'node:path'
+-import puppeteer from 'puppeteer-core'
+-import { installObserver, performanceObserver } from './observer.mjs'
+-import { gpuDiagnosticPlugin, installGpuDiagnostics } from './gpu-diagnostics.mjs'
+-import { fullCacheFlushDiagnostic } from './raster-flush-diagnostic.mjs'
+-import { productionBuildProof } from './production-build-proof.mjs'
+-import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
++import { pathToFileURL } from 'node:url'
++import { createRequire } from 'node:module'
++import { performance as nodePerformance } from 'node:perf_hooks'
++import { issueFixedCadence, validateFixedCadence, holdMs, maxIssueLatenessMs } from './keyboard.mjs'
++assert.ok(process.env.MUNARI_DIAGNOSTIC_ROOT, 'Set MUNARI_DIAGNOSTIC_ROOT to the measured checkout')
++const root = path.resolve(process.env.MUNARI_DIAGNOSTIC_ROOT)
++const require = createRequire(path.join(root,'package.json'))
++const { default: puppeteer } = await import(require.resolve('puppeteer-core'))
++const { installObserver, performanceObserver } = await import(pathToFileURL(path.join(root,'instruments/performance/observer.mjs')).href)
++const { gpuDiagnosticPlugin, installGpuDiagnostics } = await import(pathToFileURL(path.join(root,'instruments/performance/gpu-diagnostics.mjs')).href)
++const { fullCacheFlushDiagnostic } = await import(pathToFileURL(path.join(root,'instruments/performance/raster-flush-diagnostic.mjs')).href)
++const { productionBuildProof } = await import(pathToFileURL(path.join(root,'instruments/performance/production-build-proof.mjs')).href)
++const { WEBGPU_CHROME_ARGS } = await import(pathToFileURL(path.join(root,'instruments/webgpuChrome.mjs')).href)
+ 
+ const buildMode = process.env.PERF_BUILD_MODE ?? 'development'
+ assert.ok(['development','production'].includes(buildMode), 'PERF_BUILD_MODE must be development or production')
+ process.env.NODE_ENV = buildMode
+-const { createServer, build, preview } = await import('vite')
+-const root = path.resolve(import.meta.dirname, '../..')
++const { createServer, build, preview } = await import(require.resolve('vite'))
+ const featurePrefix='--enable-features='
+ const enabledFeatures=['CanvasDrawElement',...WEBGPU_CHROME_ARGS.flatMap(arg=>arg.startsWith(featurePrefix)?arg.slice(featurePrefix.length).split(','):[])]
+ const chromeArgs=[...WEBGPU_CHROME_ARGS.filter(arg=>!arg.startsWith(featurePrefix)),featurePrefix+enabledFeatures.join(','),'--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']
+@@ -83,6 +89,31 @@
+   trials,rates,engines,versions,routeTiming,profile,captureStages,captureStorage,captureDiagnostics,gpuDiagnostics,flushCpuRaster,maxFrameP95Ms,baselineLabSources,chromeArgs,requestedBackend:process.env.MUNARI_BACKEND??'auto',
+   dependencyVersions:Object.fromEntries(['three','@react-three/fiber','@zumer/snapdom','vite','puppeteer-core'].map(name=>[name,lock.packages[`node_modules/${name}`]?.version])),
+ }
++metadata.evidenceKind='fixed-cadence-diagnostic'
++metadata.maySupportAcceptance=false
++metadata.inputProtocol={kind:'fixed-node-deadlines',nominalKeyHoldMs:holdMs,maxIssueLatenessMs,firstCharacterOffsetMs:0,enterOffsetMs:metadata.input.length*holdMs,enterHoldMs:0,upBeforeNextDown:true,awaitAcknowledgementsAfterAllIssues:true}
++metadata.diagnosticHarness={runnerSha256:sourceHash(await readFile(import.meta.filename)),keyboardSha256:sourceHash(await readFile(new URL('./keyboard.mjs',import.meta.url))),canonicalRunnerSha256:sharedBuildInputs['instruments/performance/run.mjs'],puppeteerKeyboardSha256:sourceHash(await readFile(path.join(path.dirname(require.resolve('puppeteer-core')),'cdp/Input.js')))}
++metadata.diagnosticHarness.measuredRunnerSha256='ca7d0094b946b6924f97786476d49abf49faf29bc8dfb2764f70e62134f0a858'
++metadata.diagnosticHarness.portableAdaptation='imports-root-resolution-provenance-only'
++assert.equal(metadata.diagnosticHarness.canonicalRunnerSha256,'5aba6978812486f0f93072781a05df9b5e3df3d5fa1459411729d5b2c787ea08','Pinned canonical runner differs')
++assert.equal(metadata.diagnosticHarness.keyboardSha256,'94492681355f36218295d77f2c0ff6068d66a99bc6e99c74db5dbd6b94fc93cb','Archived keyboard helper differs')
++assert.equal(sharedBuildInputs['instruments/performance/observer.mjs'],'d302ae2322fe5210c25327841cc50d439536cb6e94cf46fbfae10459cdaa5ce3','Measured observer differs')
++assert.equal(metadata.dependencyVersions['puppeteer-core'],'25.4.0')
++assert.equal(metadata.diagnosticHarness.puppeteerKeyboardSha256,'0ff9df64dd322db2e1970af9297ce55747e31ea6a145d38b7e28e7eea952d213','Installed keyboard implementation differs')
++const measuredRuntime={
++  'packages/react/src/snapdom.ts':'e356200cd5acef86883b25bed75cb29bbfdf8dcd61314128dd8b68069e8f7395',
++  'packages/react/src/snapdomFullBackground.ts':'6f7d0654237ad3cbd96e863eb4d8c8b810431458f6d3851fc1223d526be08f4c',
++  'packages/react/src/snapdomInputSvg.ts':'3fa7031fea0ecd925cbd6b27bd817481600072096ce22100e034f8c9eb14672d',
++}
++for(const [file,expected] of Object.entries(measuredRuntime))assert.equal(sourceHash(await readFile(path.join(root,file))),expected,`Measured runtime differs: ${file}`)
++assert.equal(buildMode,'production')
++assert.equal(trials,5)
++assert.deepEqual(rates,[6])
++assert.deepEqual(engines,['snapdom'])
++assert.equal(captureStorage,'cpu')
++assert.ok(!profile&&!captureStages&&!captureDiagnostics&&!routeTiming&&!gpuDiagnostics&&!flushCpuRaster)
++assert.equal(versions[0].commit,'a355cc5f2a2743beb213e4fdd3a05e3a4b23d4fd')
++assert.equal(metadata.input.length,37)
+ const results = {metadata,rows:[],loadedSources:{}}
+ const servers = []
+ async function verifyProductionSources(version,loadedSources,evidence) {
+@@ -179,10 +210,15 @@
+     await cdp.send('Profiler.start')
+   }
+   const before=await metrics(cdp)
+-  let raw,after
++  let raw,after,phaseClock=null
+   try {
+-    await page.evaluate(()=>window.__munariPerf.start())
+-    await work()
++    if(name==='scene-input') {
++      const nodeBeforeEvaluateMs=nodePerformance.now()
++      const browserPhaseStartedAt=await page.evaluate(()=>{window.__munariPerf.start();return window.__munariPerf.started})
++      const nodeAfterEvaluateMs=nodePerformance.now()
++      phaseClock={nodeBeforeEvaluateMs,nodeAfterEvaluateMs,browserPhaseStartedAt,roundTripBoundMs:nodeAfterEvaluateMs-nodeBeforeEvaluateMs,browserMinusNodeLowerMs:browserPhaseStartedAt-nodeAfterEvaluateMs,browserMinusNodeUpperMs:browserPhaseStartedAt-nodeBeforeEvaluateMs}
++    } else await page.evaluate(()=>window.__munariPerf.start())
++    await work(phaseClock)
+     raw=await page.evaluate(()=>window.__munariPerf.stop())
+     after=await metrics(cdp)
+   } finally {
+@@ -211,7 +247,8 @@
+       }
+     }
+   }
+-  return {name,...summarize(raw,before,after),raw}
++  if(phaseClock)assert.equal(phaseClock.browserPhaseStartedAt,raw.phaseStartedAt)
++  return {name,...summarize(raw,before,after),raw,phaseClock}
+ }
+ async function sourceSnapshot(page) {
+   return page.evaluate(()=>{
+@@ -231,7 +268,7 @@
+   await mkdir(directory,{recursive:true})
+   const hostBefore=hostActivity()
+   const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,defaultViewport:metadata.viewport,args:chromeArgs})
+-  let page
++  let page,fixedCadence=null
+   const errors=[]
+   try {
+     page=await browser.newPage()
+@@ -272,15 +309,19 @@
+           window.perfSubmitSourceId=source.sourceId
+           window.perfSubmitRequiredRead=requiredRead
+         }
+-        window.__munariPerf.record(event.type,{sourceId:source.sourceId,requiredRead,eventTime:event.timeStamp,trusted:event.isTrusted,inputType:event.inputType})
++        window.__munariPerf.record(event.type,{sourceId:source.sourceId,requiredRead,eventTime:event.timeStamp,trusted:event.isTrusted,inputType:event.inputType,data:event.data,isComposing:event.isComposing,value:window.perfOriginalInput.value,selectionStart:window.perfOriginalInput.selectionStart,selectionEnd:window.perfOriginalInput.selectionEnd})
+       }
+       for(const kind of ['input','focusin','submit'])document.addEventListener(kind,recordInteraction,true)
++      for(const kind of ['keydown','keyup'])document.addEventListener(kind,event=>{
++        if(event.target!==window.perfOriginalInput||event.key==='End')return
++        window.__munariPerf.record('fixedCadenceKey',{eventType:event.type,key:event.key,code:event.code,eventTime:event.timeStamp,trusted:event.isTrusted,repeat:event.repeat,altKey:event.altKey,ctrlKey:event.ctrlKey,metaKey:event.metaKey,shiftKey:event.shiftKey})
++      },true)
+     })
+-    phases.push(await phase(page,cdp,'scene-input',async()=>{
++    phases.push(await phase(page,cdp,'scene-input',async phaseClock=>{
+       await page.focus('[data-api-live] input')
+       await page.keyboard.press('End')
+-      await page.keyboard.type(metadata.input,{delay:metadata.inputDelayMs})
+-      await page.keyboard.press('Enter')
++      fixedCadence=await issueFixedCadence(page.keyboard,metadata.input,phaseClock)
++      assert.deepEqual(fixedCadence.dispatchErrors,[],'Diagnostic keyboard dispatch failed; no retry is permitted')
+       await page.waitForFunction(()=>{
+         const entry=window.__munariPerf.sources.get(window.perfSubmitSourceId)
+         return entry&&Number.isInteger(window.perfSubmitRequiredRead)
+@@ -335,6 +376,7 @@
+     }))
+     assert.ok(outcome.sameInput&&outcome.focused,'The original input and focus must survive the round trip')
+     assert.equal(outcome.value,outcome.expected)
++    validateFixedCadence(fixedCadence,inputPhase,outcome.expected.slice(0,-metadata.input.length),metadata.input)
+     assert.ok(outcome.actions.length===1&&outcome.actions[0].trusted&&outcome.actions[0].saves===1,'Enter must submit the real form once')
+     assert.ok(outcome.holds.some(hold=>hold.presentation==='scene')&&outcome.holds.some(hold=>hold.presentation==='page'))
+     assert.equal(outcome.dpr,2)
+@@ -351,12 +393,12 @@
+     if(flushCpuRaster)assert.ok(inputPhase.raw.events.some(event=>event.kind==='captureStage'&&event.stage==='diagnosticFlushReadbackSync'),'CPU flush must execute during the measured input phase')
+     const frameBudget=maxFrameP95Ms===null?null:{maxP95Ms:maxFrameP95Ms,measuredP95Ms:inputPhase.frameIntervalMs.p95,passed:inputPhase.frameIntervalMs.p95<=maxFrameP95Ms}
+     const gpuEvidence=gpuDiagnostics?await page.evaluate(()=>window.__munariGpuDiagnostics.snapshot()):null
+-    const row={hostActivity:{before:hostBefore,after:hostActivity()},gpuDiagnostics:gpuEvidence,name,version:version.label,sourceCommit:version.commit,sourceDirectory:version.directory??null,engine,rate,trial:index,browser:await browser.version(),before,edited,outcome,errors,phases,frameBudget}
++    const row={diagnosticOnly:true,maySupportAcceptance:false,fixedCadence,hostActivity:{before:hostBefore,after:hostActivity()},gpuDiagnostics:gpuEvidence,name,version:version.label,sourceCommit:version.commit,sourceDirectory:version.directory??null,engine,rate,trial:index,browser:await browser.version(),before,edited,outcome,errors,phases,frameBudget}
+     await writeFile(path.join(directory,'result.json'),JSON.stringify(row,null,2))
+     console.log(JSON.stringify({...row,phases:phases.map(({raw,...phase})=>phase)}))
+     return row
+   } catch(error) {
+-    const failure={name,error:String(error),stack:error.stack,errors}
++    const failure={diagnosticOnly:true,maySupportAcceptance:false,fixedCadence,name,error:String(error),stack:error.stack,errors}
+     if(page) {
+       try { await page.screenshot({path:path.join(directory,'failure.png')}) } catch(captureError) { failure.screenshotError=String(captureError) }
+       try { failure.state=await page.evaluate(()=>({status:window.__apiControls?.status,actions:window.__apiControls?.actions,holds:window.__apiControls?.holds,input:window.perfOriginalInput?.value,requiredRead:window.perfRequiredRead,paints:window.__munariPerf?.paintStats?.(),events:window.__munariPerf?.events})) } catch(stateError) { failure.stateError=String(stateError) }
+@@ -394,7 +436,9 @@
+     for(const {version,server} of order)results.rows.push(await trial(server,version,engine,rate,index))
+     await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))
+   }
+-  console.log(`Performance evidence: ${output}`)
++  metadata.fixedCadenceSetupValid=results.rows.every(row=>row.fixedCadence?.setupValid&&row.fixedCadence?.domOrderAndPrefixesValid)
++  console.log(`Diagnostic evidence: ${output}`)
++  assert.ok(metadata.fixedCadenceSetupValid,'Fixed-cadence setup invalid; no responsiveness claim is permitted')
+   assert.ok(results.rows.every(row=>row.frameBudget===null||row.frameBudget.passed),JSON.stringify(results.rows.filter(row=>row.frameBudget&&!row.frameBudget.passed).map(row=>({name:row.name,...row.frameBudget}))))
+ } finally {
+   await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))

@@ -1,0 +1,129 @@
+diff --git a/packages/react/src/snapdomFullBackground.ts b/packages/react/src/snapdomFullBackground.ts
+index 7eca54a..e383346 100644
+--- a/packages/react/src/snapdomFullBackground.ts
++++ b/packages/react/src/snapdomFullBackground.ts
+@@ -28,6 +28,16 @@ interface MatchedRule {
+   order: number
+ }
+ 
++interface RetainedStyleSheet {
++  element: Element
++  cssText: string
++}
++
++interface RuleSelection {
++  matched: Map<Element, MatchedRule[]>
++  sheets: RetainedStyleSheet[]
++}
++
+ function ordinary(value: string, expected: string): boolean {
+   return value === '' || value === 'initial' || value === 'unset' || value === expected
+ }
+@@ -119,8 +129,9 @@ function matchRule(rule: CSSStyleRule, chain: Element[], matched: Map<Element, M
+   return keep
+ }
+ 
+-function selectedRules(document: XMLDocument, root: HTMLElement, chain: Element[]): Map<Element, MatchedRule[]> | null {
++function selectedRules(document: XMLDocument, root: HTMLElement, chain: Element[]): RuleSelection | null {
+   const matched = new Map<Element, MatchedRule[]>()
++  const sheets: RetainedStyleSheet[] = []
+   for (const element of chain) matched.set(element, [])
+   let order = 0
+   for (const element of document.querySelectorAll('[style]')) {
+@@ -142,9 +153,9 @@ function selectedRules(document: XMLDocument, root: HTMLElement, chain: Element[
+       if (keep) retained.push(rule.cssText)
+       order++
+     }
+-    element.textContent = retained.join('\n')
++    sheets.push({ element, cssText: retained.join('\n') })
+   }
+-  return matched
++  return { matched, sheets }
+ }
+ 
+ function resolvedStyle(element: Element, rules: readonly MatchedRule[]): CSSStyleDeclaration {
+@@ -267,6 +278,19 @@ function backgroundSizeSupported(width: number, height: number): boolean {
+     && width * height * 4 <= MAX_BACKGROUND_BYTES
+ }
+ 
++function serializeForeground(document: XMLDocument, root: HTMLElement, serializer: XMLSerializer): string {
++  const originalStyle = root.getAttribute('style')
++  try {
++    for (const [property, value] of FOREGROUND_OVERRIDES) {
++      root.style.setProperty(property, value, 'important')
++    }
++    return serializer.serializeToString(document)
++  } finally {
++    if (originalStyle === null) root.removeAttribute('style')
++    else root.setAttribute('style', originalStyle)
++  }
++}
++
+ function splitCapture(url: string, root: HTMLElement): { background: string; foreground: string; key: string; cssWidth: number; cssHeight: number } | null {
+   const content = retainedContentRoot(root)
+   if (!CONTAINERS.has(content.localName) || !('CSSStyleSheet' in globalThis)) return null
+@@ -276,22 +300,18 @@ function splitCapture(url: string, root: HTMLElement): { background: string; for
+   const retained = capturedRoot(background, content)
+   const chain = retained ? retainedChain(retained, background) : null
+   if (!retained || !chain) return null
+-  const foreground = background.cloneNode(true)
+-  if (!(foreground instanceof Document)) return null
+-  const front = capturedRoot(foreground, content)
+-  if (!front) return null
+-  const rules = selectedRules(background, retained, chain)
+-  if (!rules) return null
+-  if (!chainIsIndependent(chain, retained, rules)) return null
+-  if (!fullRootViewport(svg, resolvedStyle(retained, rules.get(retained) ?? []))) return null
++  const selection = selectedRules(background, retained, chain)
++  if (!selection) return null
++  if (!chainIsIndependent(chain, retained, selection.matched)) return null
++  if (!fullRootViewport(svg, resolvedStyle(retained, selection.matched.get(retained) ?? []))) return null
++  const serializer = new XMLSerializer()
++  const foregroundSvg = serializeForeground(background, retained, serializer)
++  for (const { element, cssText } of selection.sheets) {
++    element.textContent = cssText
++  }
+   retained.replaceChildren()
+   removeUnreferencedMetadata(background, chain)
+-  for (const [property, value] of FOREGROUND_OVERRIDES) {
+-    front.style.setProperty(property, value, 'important')
+-  }
+-  const serializer = new XMLSerializer()
+   const backgroundSvg = serializer.serializeToString(background)
+-  const foregroundSvg = serializer.serializeToString(foreground)
+   return { background: backgroundSvg, foreground: foregroundSvg, key: backgroundKey(background, chain),
+     cssWidth: svg.viewBox.baseVal.width, cssHeight: svg.viewBox.baseVal.height }
+ }
+diff --git a/packages/react/src/snapdomInputSvg.ts b/packages/react/src/snapdomInputSvg.ts
+index 9c7116f..626cfa9 100644
+--- a/packages/react/src/snapdomInputSvg.ts
++++ b/packages/react/src/snapdomInputSvg.ts
+@@ -22,13 +22,21 @@ export async function decodeInputSvg(document: XMLDocument, width: number, heigh
+ }
+ 
+ const decodeBlankInput = (document: XMLDocument, index: number, width: number, height: number) => {
+-  const blank = document.cloneNode(true)
+-  if (!(blank instanceof Document)) throw new Error('munari: input SVG clone is not a document')
+-  const input = blank.getElementsByTagNameNS('http://www.w3.org/1999/xhtml', 'input')[index]
+-  if (!input) throw new Error('munari: input SVG clone has no field')
+-  input.setAttribute('value', '')
+-  input.removeAttribute('placeholder')
+-  return decodeInputSvg(blank, width, height)
++  const input = document.getElementsByTagNameNS('http://www.w3.org/1999/xhtml', 'input')[index]
++  if (!input) throw new Error('munari: input SVG snapshot has no field')
++  const parent = input.parentNode
++  if (!parent) throw new Error('munari: input SVG field has no parent')
++  const blank = input.cloneNode(true)
++  if (!(blank instanceof HTMLInputElement)) throw new Error('munari: input SVG field clone is not an input')
++  blank.setAttribute('value', '')
++  blank.removeAttribute('placeholder')
++  parent.replaceChild(blank, input)
++  try {
++    // decodeInputSvg must fix its data URL before its first await.
++    return decodeInputSvg(document, width, height)
++  } finally {
++    parent.replaceChild(input, blank)
++  }
+ }
+ 
+ const printableAscii = (value: string) => /^[ -~]*$/.test(value)

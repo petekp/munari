@@ -1,0 +1,70 @@
+{
+  "baseline": "63bd91e00d4e646d4b698c6ddf13a75b9dafa519",
+  "status": "rejected",
+  "scope": "Package runtime source only. Patches are alternatives; apply one to the baseline, not cumulatively.",
+  "validation": "Each patch was checked and applied to disposable baseline source copies. Every resulting package source file matched its saved candidate bytes and manifest.",
+  "applyCommand": "git apply <selected-patch>",
+  "patches": [
+    {
+      "variant": "blank-input-only",
+      "file": "docs/spikes/2026-10-15-blank-input-only.patch",
+      "status": "rejected",
+      "sha256": "0281f41630e44bb9f711cfbbd6c12c1df1b8c4857225c6f645118932013c0e46",
+      "sourceSnapshot": "/tmp/munari-blank-only-rejected-20261016T044342Z",
+      "sourceManifestSha256": "dcaef29b5e389205f6da29fd4c6c2b7e11206a5e089acd4850b525e1681c818a",
+      "appliesCleanlyToBaseline": true,
+      "verifiedCompleteSourceFileCount": 144,
+      "verifiedCompleteSourceTreeSha256": "63eb214be9f88c915fcce4ffc9ad0258115b135251a1eb1712b924923fd37b38",
+      "verifiedAppliedSourceSha256": {
+        "packages/react/src/snapdomInputSvg.ts": "3fa7031fea0ecd925cbd6b27bd817481600072096ce22100e034f8c9eb14672d"
+      }
+    },
+    {
+      "variant": "combined-split-and-blank",
+      "file": "docs/spikes/2026-10-15-capture-split-and-blank.patch",
+      "status": "rejected",
+      "sha256": "164a038ffba9c86d984f45ebfc5a572f89e2407570e33d0eea0c404726791883",
+      "sourceSnapshot": "/tmp/munari-combined-before-blank-isolation-20261016T041551Z",
+      "sourceManifestSha256": "a43bb5c10378f84dfb6f2eb817827fe16adb04a4e762d07fd337774c213c76a3",
+      "appliesCleanlyToBaseline": true,
+      "verifiedCompleteSourceFileCount": 144,
+      "verifiedCompleteSourceTreeSha256": "034f439e4ab68cd9b78db3bbb27968ca5c15bf83d22f14fcadcecb205d0eb01f",
+      "verifiedAppliedSourceSha256": {
+        "packages/react/src/snapdomFullBackground.ts": "6f7d0654237ad3cbd96e863eb4d8c8b810431458f6d3851fc1223d526be08f4c",
+        "packages/react/src/snapdomInputSvg.ts": "3fa7031fea0ecd925cbd6b27bd817481600072096ce22100e034f8c9eb14672d"
+      }
+    },
+    {
+      "variant": "post-toRaw-task-yield",
+      "file": "docs/spikes/2026-10-15-capture-post-raw-yield.patch",
+      "status": "rejected",
+      "sha256": "d5744ba111564d9a7c3ca62ee0c83edd3608b4ad2827ef25156e0aa95103c288",
+      "sourceSnapshot": "/tmp/munari-before-after-clone-task",
+      "sourceManifestSha256": "1a2aaecef20233e40119e8f90ba634e13b061e82fc968402370db6d74173aa01",
+      "appliesCleanlyToBaseline": true,
+      "verifiedCompleteSourceFileCount": 145,
+      "verifiedCompleteSourceTreeSha256": "084032fb7b3e6b8f2b3a2af920a5d6080240cbb6cceacb444243b84a49eed6be",
+      "verifiedAppliedSourceSha256": {
+        "packages/react/src/snapdom.ts": "c8a2cf324dcdc355e2932a84e5ca756fe98b5e7ce815dc417d051f041e6674b5",
+        "packages/react/src/snapdomCaptureTask.ts": "7e878001293277ce99272a76d16aa9dae07d1ad571a4a7f1fd1564f32cc1fcd2",
+        "packages/react/src/snapdomFullBackground.ts": "fe2fe562b8203013238f94627f2384f8430cb517d7967dacc85192e0c188f3cd"
+      }
+    },
+    {
+      "variant": "clipped-afterClone-task-yield",
+      "file": "docs/spikes/2026-10-15-capture-after-clone-yield.patch",
+      "status": "rejected",
+      "sha256": "d7eecce9c0a9495d7a2f27410d32d19aad272a19c4e98d9e8733d449c3f0efe9",
+      "sourceSnapshot": "/tmp/munari-before-blank-input-clone",
+      "sourceManifestSha256": "0bd61c1ee4a276533cd4e3c6f45f87a0b5fb8347090bb946a47b9214f9e3139d",
+      "appliesCleanlyToBaseline": true,
+      "verifiedCompleteSourceFileCount": 145,
+      "verifiedCompleteSourceTreeSha256": "23a8eb9bab928764ad76bb58f0b4417f631fab1a61fe3228396d1f96d6006b6d",
+      "verifiedAppliedSourceSha256": {
+        "packages/react/src/snapdom.ts": "d2f4043b07168fefbf4a2f12a606b3faaff190a41b9d15bdd1623baa958a88e2",
+        "packages/react/src/snapdomCaptureTask.ts": "d03d1aa4aaf3339bb95163e49140d0ff221a8b0a2e03a7c9b7f80da8003547aa",
+        "packages/react/src/snapdomFullBackground.ts": "fe2fe562b8203013238f94627f2384f8430cb517d7967dacc85192e0c188f3cd"
+      }
+    }
+  ]
+}

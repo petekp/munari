@@ -1,0 +1,147 @@
+diff --git a/packages/react/src/snapdom.ts b/packages/react/src/snapdom.ts
+--- a/packages/react/src/snapdom.ts
++++ b/packages/react/src/snapdom.ts
+@@ -35,6 +35,7 @@
+ import { createInputRegionRasterizer, UnsupportedRegionCaptureError, type CaptureRegionOptions } from './snapdomInputRegions'
+ import { snapdom, type CaptureMeta, type SnapdomPlugin } from '@zumer/snapdom'
+ import { retainNormalizedSvg } from './snapdomInputSvg'
++import { yieldCaptureTask } from './snapdomCaptureTask'
+ import { fieldPseudoElementPlugin } from './snapdomFieldPseudoElements'
+ import { fontEmbedPlugin, warmCaptureFonts } from './snapdomFonts'
+ import {
+@@ -280,6 +281,7 @@
+   const height = Math.max(1, Math.round(box.height * scaleY))
+   let image = new Image()
+   const url = capture.toRaw()
++  if (layout) await yieldCaptureTask()
+   const normalized = layout ? normalizeRegionLayout(url, layout, capture.meta) : null
+   if (normalized) retainNormalizedSvg(image, normalized.ownerDocument)
+   const decodeFull = !options.clip && hasUniformCaptureScale(capture.meta, width, height)
+diff --git a/packages/react/src/snapdomCaptureTask.ts b/packages/react/src/snapdomCaptureTask.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/react/src/snapdomCaptureTask.ts
+@@ -0,0 +1,8 @@
++// Capture task — a browser task boundary after an SVG snapshot is fixed.
++// A Controls rAF callback interval, including promise microtasks, reached
++// 95.1 ms at 6× CPU slowdown (2026-10-15, decisions.md #62).
++// Callers own invalidation and publication.
++
++export async function yieldCaptureTask(): Promise<void> {
++  await (globalThis.scheduler?.yield?.() ?? new Promise<void>(resolve => setTimeout(resolve, 0)))
++}
+diff --git a/packages/react/src/snapdomFullBackground.ts b/packages/react/src/snapdomFullBackground.ts
+--- a/packages/react/src/snapdomFullBackground.ts
++++ b/packages/react/src/snapdomFullBackground.ts
+@@ -4,6 +4,7 @@
+ // the region rasterizer owns publication and this cache's lifetime.
+ 
+ import { captureContext, captureMemoryChosen } from '@munari/core'
++import { yieldCaptureTask } from './snapdomCaptureTask'
+ 
+ const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml'
+ const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+@@ -26,6 +27,16 @@
+   rule: CSSStyleRule
+   specificity: number
+   order: number
++}
++
++interface RetainedStyleSheet {
++  element: Element
++  cssText: string
++}
++
++interface RuleSelection {
++  matched: Map<Element, MatchedRule[]>
++  sheets: RetainedStyleSheet[]
+ }
+ 
+ function ordinary(value: string, expected: string): boolean {
+@@ -119,8 +130,9 @@
+   return keep
+ }
+ 
+-function selectedRules(document: XMLDocument, root: HTMLElement, chain: Element[]): Map<Element, MatchedRule[]> | null {
++function selectedRules(document: XMLDocument, root: HTMLElement, chain: Element[]): RuleSelection | null {
+   const matched = new Map<Element, MatchedRule[]>()
++  const sheets: RetainedStyleSheet[] = []
+   for (const element of chain) matched.set(element, [])
+   let order = 0
+   for (const element of document.querySelectorAll('[style]')) {
+@@ -142,9 +154,9 @@
+       if (keep) retained.push(rule.cssText)
+       order++
+     }
+-    element.textContent = retained.join('\n')
+-  }
+-  return matched
++    sheets.push({ element, cssText: retained.join('\n') })
++  }
++  return { matched, sheets }
+ }
+ 
+ function resolvedStyle(element: Element, rules: readonly MatchedRule[]): CSSStyleDeclaration {
+@@ -267,6 +279,19 @@
+     && width * height * 4 <= MAX_BACKGROUND_BYTES
+ }
+ 
++function serializeForeground(document: XMLDocument, root: HTMLElement, serializer: XMLSerializer): string {
++  const originalStyle = root.getAttribute('style')
++  try {
++    for (const [property, value] of FOREGROUND_OVERRIDES) {
++      root.style.setProperty(property, value, 'important')
++    }
++    return serializer.serializeToString(document)
++  } finally {
++    if (originalStyle === null) root.removeAttribute('style')
++    else root.setAttribute('style', originalStyle)
++  }
++}
++
+ function splitCapture(url: string, root: HTMLElement): { background: string; foreground: string; key: string; cssWidth: number; cssHeight: number } | null {
+   const content = retainedContentRoot(root)
+   if (!CONTAINERS.has(content.localName) || !('CSSStyleSheet' in globalThis)) return null
+@@ -276,22 +301,18 @@
+   const retained = capturedRoot(background, content)
+   const chain = retained ? retainedChain(retained, background) : null
+   if (!retained || !chain) return null
+-  const foreground = background.cloneNode(true)
+-  if (!(foreground instanceof Document)) return null
+-  const front = capturedRoot(foreground, content)
+-  if (!front) return null
+-  const rules = selectedRules(background, retained, chain)
+-  if (!rules) return null
+-  if (!chainIsIndependent(chain, retained, rules)) return null
+-  if (!fullRootViewport(svg, resolvedStyle(retained, rules.get(retained) ?? []))) return null
++  const selection = selectedRules(background, retained, chain)
++  if (!selection) return null
++  if (!chainIsIndependent(chain, retained, selection.matched)) return null
++  if (!fullRootViewport(svg, resolvedStyle(retained, selection.matched.get(retained) ?? []))) return null
++  const serializer = new XMLSerializer()
++  const foregroundSvg = serializeForeground(background, retained, serializer)
++  for (const { element, cssText } of selection.sheets) {
++    element.textContent = cssText
++  }
+   retained.replaceChildren()
+   removeUnreferencedMetadata(background, chain)
+-  for (const [property, value] of FOREGROUND_OVERRIDES) {
+-    front.style.setProperty(property, value, 'important')
+-  }
+-  const serializer = new XMLSerializer()
+   const backgroundSvg = serializer.serializeToString(background)
+-  const foregroundSvg = serializer.serializeToString(foreground)
+   return { background: backgroundSvg, foreground: foregroundSvg, key: backgroundKey(background, chain),
+     cssWidth: svg.viewBox.baseVal.width, cssHeight: svg.viewBox.baseVal.height }
+ }
+@@ -306,10 +327,6 @@
+ }
+ 
+ const svgUrl = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+-
+-async function yieldCaptureTask(): Promise<void> {
+-  await (globalThis.scheduler?.yield?.() ?? new Promise<void>(resolve => setTimeout(resolve, 0)))
+-}
+ 
+ export function createFullBackgroundCache(root: HTMLElement, target: HTMLCanvasElement, signal: AbortSignal) {
+   let frame: BackgroundFrame | null = null

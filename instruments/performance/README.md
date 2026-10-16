@@ -352,3 +352,38 @@ Each trial samples host load averages and per-core CPU times before browser
 launch and after the workload, outside measured phases. These observations
 help identify competing work; they do not turn CPU throttling into a device
 simulation or remove host contention from the measurements.
+
+For the archived SVG-splitting candidates, use baseline `a355cc5` with the same paired production
+command and both canvas storage modes. Both CPU versions must reuse the root
+background during focus and submission, with no new input-phase background
+preparation. GPU versions must retain the original path. Compare the complete
+interaction, input distribution, frame gaps and entry costs.
+
+Split diagnostics separate parsing, cloning, stylesheet selection, eligibility,
+root lookup, foreground/background serialization and key construction.
+`fullBackgroundSelectRulesSync` includes retained CSS text writing in both
+versions. The archived single-document implementation also reports
+`fullBackgroundForegroundPreparationSync`, which encloses its foreground
+serialization and temporary style changes. Do not add that parent to its child
+timers. These timers are absent when capture-stage diagnostics are disabled.
+
+Capture-stage diagnostics also retain `raw.frameWindows`. Each entry records
+both rAF timestamps and the observer callback's `performance.now()` timestamps.
+The two intervals can differ when callback delivery is delayed. Phase User
+Timing marks in `raw.clockAnchors` align the observations with browser traces.
+The runner checks that the windows reconstruct every recorded frame gap.
+These observations measure callback timing, not display presentation.
+
+`freshSvgSerializeSync` and `freshSvgSourceAssignSync` separate fresh SVG
+serialization from URI encoding and image URL assignment. `freshImageDecodeCallSync`
+measures the call to `decode()`; `freshImageDecodeWall` includes its async wait.
+`inputBlankDocumentSync` measures preparation before blank-image decoding.
+That includes a full-document clone in the baseline and an input-subtree clone
+and replacement in the archived candidate. Restoration runs outside that timer. The
+complete task metrics include all of this work. Nested stage timers must not
+be added together.
+
+The observed production builds have empty source maps after served-source
+instrumentation. Use source/read identities, trace intervals and verified
+generated code for attribution. Sampled bundle positions do not establish
+original TypeScript line numbers.

@@ -194,6 +194,23 @@ async function phase(page,cdp,name,work,directory) {
     }
   }
   assert.ok(raw.gaps.length>0, `${name} needs actual animation frame observations`)
+  if(captureStages) {
+    assert.equal(raw.frameWindows.length,raw.gaps.length,`${name}: each frame interval needs a timestamped window`)
+    assert.equal(raw.clockAnchors.length,2,`${name}: diagnostic phase needs both clock anchors`)
+    assert.notEqual(raw.clockAnchors[0].name,raw.clockAnchors[1].name)
+    assert.ok(raw.clockAnchors.every(anchor=>Number.isFinite(anchor.performanceTime)))
+    assert.ok(raw.clockAnchors[0].performanceTime<=raw.clockAnchors[1].performanceTime)
+    for(const [index,window] of raw.frameWindows.entries()) {
+      assert.ok([window.start,window.end,window.callbackStart,window.callbackEnd].every(Number.isFinite))
+      assert.equal(window.end-window.start,raw.gaps[index],`${name}: frame-window interval differs from the measured gap`)
+      assert.equal(window.durationMs,raw.gaps[index])
+      assert.ok(window.callbackEnd>=window.callbackStart)
+      if(index>0) {
+        assert.equal(window.start,raw.frameWindows[index-1].end)
+        assert.equal(window.callbackStart,raw.frameWindows[index-1].callbackEnd)
+      }
+    }
+  }
   return {name,...summarize(raw,before,after),raw}
 }
 async function sourceSnapshot(page) {
@@ -226,7 +243,7 @@ async function trial(server,version,engine,rate,index) {
     const cdp=await page.createCDPSession()
     await cdp.send('Performance.enable')
     await cdp.send('Emulation.setCPUThrottlingRate',{rate})
-    await page.evaluateOnNewDocument(installObserver)
+    await page.evaluateOnNewDocument(installObserver,{detailedFrames:captureStages})
     if(gpuDiagnostics)await page.evaluateOnNewDocument(installGpuDiagnostics)
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=controls&framed${engine==='snapdom'?'&capture=snapdom':''}`,{waitUntil:'load'})
     await page.waitForFunction(()=>window.__apiControls?.status?.supported&&document.querySelector('[data-api-live] input'),{timeout:30000})
