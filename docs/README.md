@@ -9,6 +9,8 @@ output. Preserve both distinctions when resolving a conflict.
 | Set up and use the package | [Root README](../README.md), public entry types | Current usage |
 | Find the owner, control and relevant check | [Agent operating guide](agent-workflow.md) | Current workflow |
 | Understand how the abstractions fit | [System model](system-model.md), [glossary](../CONTEXT.md) | Current model and constraints |
+| Improve the public React authoring interface | [React API improvement plan](react-api-improvement-plan.md) | Proposed; runtime work is unbuilt |
+| Migrate the renderer, materials, and consumers to WebGPU | [WebGPU migration specification](webgpu-migration-spec.md) | S0 blocked; tested integrations and the required observation API are recorded |
 | Build the next agent-facing capability | [Agent system plan](agent-system-plan.md) | Work in progress; unbuilt stages are explicit |
 | Review earlier performance findings | [Performance audit](performance-audit.md) | Assessment of 2026-09-26; each remedy is unbuilt unless its finding says otherwise |
 | Diagnose capture and GPU costs | [Performance diagnosis](performance-diagnosis.md) | 2026-10-14 diagnosis; capture optimizations are linked below |
