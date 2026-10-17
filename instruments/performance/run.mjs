@@ -225,6 +225,21 @@ async function sourceSnapshot(page) {
   })
 }
 const hostActivity=()=>({at:new Date().toISOString(),loadAverage:loadavg(),cpuTimes:cpus().map(cpu=>cpu.times)})
+// The one-minute load average still counts this runner's previous trial, so the
+// gate samples busy time over a second instead.
+const MAX_BUSY_CORES=2
+async function sampleBusyCores(intervalMs=1000) {
+  const before=cpus().map(cpu=>cpu.times)
+  await new Promise(resolve=>setTimeout(resolve,intervalMs))
+  let busy=0,total=0
+  cpus().forEach((cpu,i)=>{
+    const {user,nice,sys,irq,idle}=cpu.times
+    const used=user-before[i].user+nice-before[i].nice+sys-before[i].sys+irq-before[i].irq
+    busy+=used
+    total+=used+idle-before[i].idle
+  })
+  return busy/total*cpus().length
+}
 async function trial(server,version,engine,rate,index) {
   const name=`${version.label}-${engine}-cpu${rate}-trial${index}`
   const directory=path.join(output,name)
@@ -366,6 +381,8 @@ async function trial(server,version,engine,rate,index) {
   } finally { await browser.close() }
 }
 try {
+  metadata.hostBusyCores=await sampleBusyCores()
+  assert.ok(metadata.hostBusyCores<=MAX_BUSY_CORES,`Host is busy: ${metadata.hostBusyCores.toFixed(1)} cores in use, limit ${MAX_BUSY_CORES}. Stop background work and rerun.`)
   for(const version of versions) {
     const loadedSources={}
     results.loadedSources[version.label]=loadedSources

@@ -43,6 +43,11 @@ animation frame interval. Each trial records its verdict. An exceeded bound
 produces a nonzero exit after the measured results and screenshots are saved.
 The workload and timing defaults stay the same when the bound is enabled.
 
+Before it builds or launches anything, the runner samples busy CPU cores for
+one second. It refuses to run when more than two cores are busy, and records
+the reading as `metadata.hostBusyCores`. Background load changes input and
+frame timings, so measure only on a quiet host.
+
 The default matrix runs both engines at CPU rates 1 and 4, with two trials.
 A quick smoke run uses `PERF_TRIALS=1 PERF_ENGINES=snapdom PERF_CPU_RATES=1`.
 HTML-in-canvas requires Chrome's `CanvasDrawElement` capability. Unavailable
