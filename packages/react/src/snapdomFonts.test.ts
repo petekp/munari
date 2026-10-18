@@ -112,6 +112,33 @@ describe('fontEmbedPlugin', () => {
     expect(await carried(live)).toBe('')
   })
 
+  it.each([
+    ['value', { value: 'Direct projections' }],
+    ['placeholder', { placeholder: 'Direct projections' }],
+  ])('embeds the face for a text field whose only text is its %s', async (_, props) => {
+    const style = document.createElement('style')
+    style.textContent = "@font-face{font-family:'Field';src:url(https://lab.test/field.woff2)}"
+    document.head.append(style)
+    serve({ 'https://lab.test/field.woff2': 'bytes' })
+    const field = Object.assign(document.createElement('input'), props)
+    field.style.fontFamily = "'Field', serif"
+    document.body.append(field)
+
+    expect(await carried(field)).toContain("font-family:'Field'")
+  })
+
+  it('embeds no face for a checkbox, which draws no text from its value', async () => {
+    const style = document.createElement('style')
+    style.textContent = "@font-face{font-family:'Field';src:url(https://lab.test/field.woff2)}"
+    document.head.append(style)
+    serve({ 'https://lab.test/field.woff2': 'bytes' })
+    const box = Object.assign(document.createElement('input'), { type: 'checkbox' })
+    box.style.fontFamily = "'Field', serif"
+    document.body.append(box)
+
+    expect(await carried(box)).toBe('')
+  })
+
   it('reads a stylesheet the document gained after the fonts were warmed', async () => {
     serve({ 'https://lab.test/late.woff2': 'bytes' })
     warmCaptureFonts(document)

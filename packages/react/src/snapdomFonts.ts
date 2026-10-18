@@ -276,12 +276,25 @@ export function warmCaptureFonts(doc: Document = document): void {
   })
 }
 
-/** Every codepoint in the subtree's text, including attribute-driven content. */
+/** Input types that draw no text from their `value`. */
+const UNDRAWN_VALUE_TYPES = new Set(['checkbox', 'radio', 'color', 'range', 'file', 'hidden', 'image'])
+
+/**
+ * Every codepoint the subtree draws: its text nodes, plus field values and
+ * placeholders, which are not text nodes. Counting text nodes alone, a clip
+ * holding only a text field found no codepoints and embedded no face, so the
+ * field rasterized in a fallback font (2026-10-18).
+ */
 function usedCodepoints(root: Element): Set<number> {
   const points = new Set<number>()
+  const add = (text: string) => {
+    for (const char of text) points.add(char.codePointAt(0) ?? 0)
+  }
   const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    for (const char of node.nodeValue ?? '') points.add(char.codePointAt(0) ?? 0)
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) add(node.nodeValue ?? '')
+  for (const field of [root, ...root.querySelectorAll('input, textarea')]) {
+    if (field instanceof HTMLTextAreaElement) add(`${field.value}${field.placeholder}`)
+    if (field instanceof HTMLInputElement && !UNDRAWN_VALUE_TYPES.has(field.type)) add(`${field.value}${field.placeholder}`)
   }
   return points
 }
