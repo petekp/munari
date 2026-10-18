@@ -382,6 +382,17 @@ Warm the faces needed by the first surfaces and fetch other subsets on demand.
 Keep once-per-document encoding. Compare cold-cache first-frame time and input
 response so reducing unused work does not delay necessary fonts.
 
+Subsetting an embedded face is not worth building, measured 2026-10-18. A test
+replaced `archivo-400-900-latin.woff2`, 90,096 bytes, with an ASCII-only subset
+of 47,848 bytes. It ran the Controls typing benchmark at 6x CPU throttling with
+CPU capture storage. Ten trials per arm ran in alternating runs, on a host
+under 1.5 busy cores. Pixel hashes were identical. During typing, image decode
+fell from 55.5 to 51.1 ms, and main-thread work fell from 2,344 to 2,273 ms.
+Median input-to-upload latency stayed at 143 ms. The change in 95th-percentile
+frame time was within noise. A shipped version would have to subset each face
+by the codepoints each capture uses. That work outweighs a 4 ms decode saving
+that users do not feel.
+
 **7. Several conditions block snapDOM's incremental recapture.**
 
 High potential, confirmed mechanism, unmeasured benefit. All three Munari
