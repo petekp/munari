@@ -53,7 +53,7 @@ const TYPE_STEPS = [
   ['m-body', 'body', 'Wrap React content in a Surface and it becomes a texture in your scene, redrawn as the content changes.', '16px / 1.5 · 400', 'Running text. 64ch at most.'],
   ['m-ui', 'ui', 'Drag a card by its title.', '15px / 1.35 · 400', 'Links, captions, field text.'],
   ['m-small', 'small', 'Distance from the page', '13px / 1.4 · 400', 'Panel labels and notes. The smallest size.'],
-  ['m-readout', 'readout', '0.35 s\u200342 px\u200303 / 09', '13px · 500 · 85%', 'Values, units, plate numbers.'],
+  ['m-readout', 'readout', '0.35 s\u200342 px\u200303 / 09', '13px · 500 · 85% · tabular', 'Values, units, plate numbers.'],
   ['m-code', 'code', 'npm install three@0.186.1 --save-exact', 'Courier Prime 15px / 1.6', 'Code someone will copy. Nothing else.'],
 ] as const
 
@@ -96,7 +96,7 @@ export function StyleApp({ onReady }: StyleProps) {
             <li><b className="m-heading">The demo is the color.</b><p className="m-body m-quiet">Chrome is black on white. A color on the page means the product is working.</p></li>
             <li><b className="m-heading">Depth belongs to the scene.</b><p className="m-body m-quiet">2D parts have no shadow, blur or translucency. Real depth and light come from Three.js.</p></li>
             <li><b className="m-heading">Width carries the voice.</b><p className="m-body m-quiet">One family. Wide for statements, normal for reading, narrow for numbers.</p></li>
-            <li><b className="m-heading">Controls show their measure.</b><p className="m-body m-quiet">A value is printed with its unit, and a slider or dial shows where it sits on a ruler.</p></li>
+            <li><b className="m-heading">Controls show their measure.</b><p className="m-body m-quiet">A value is printed in tabular numerals with its unit, and a slider or dial shows where it sits on a ruler.</p></li>
             <li><b className="m-heading">States are crisp.</b><p className="m-body m-quiet">A control inverts, fills, or gains a rule. Nothing fades halfway, and no state relies on color.</p></li>
           </ol>
         </Section>
