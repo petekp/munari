@@ -5370,8 +5370,9 @@ site document. It narrows #57: the cover lifts once the overview's fonts are
 ready, or when a demo's iframe loads.
 
 Checked 2026-10-18, Chrome 155 with `CanvasDrawElement`, against this change:
-`probe:light`, `probe:light-opening`, `probe:heading-edges`, `probe:light-lamp`,
-`probe:postcard-paper` and `probe:postcard` pass. `probe:light-headline` (text
+`probe:light`, `probe:light-opening`, `probe:light-lamp`, `probe:postcard-paper`,
+`probe:postcard` and the 33-case route smoke pass. `probe:heading-edges` passed
+with the lamp and postcard moved, before the overview changed. `probe:light-headline` (text
 contrast) and `probe:postcard-edges` (a 30 s wait timeout) fail, and their
 pre-move forms, `probe:home-headline` and `probe:postcard-edges`, fail the same
 way at `508f6f5`, twice each.

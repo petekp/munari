@@ -304,7 +304,8 @@ export default function App() {
   // handling and the ARIA are the browser's, and this is the one piece of
   // lab furniture that shows up on a page whose whole subject is that the
   // browser's own machinery still works.
-  // Home, Marble Hand, Plume, and Postcard explain capability in their own UI.
+  // The overview holds no demo; Marble Hand, Plume, and Postcard explain
+  // capability in their own UI.
   const notice =
     showChrome && unsupported && scene !== 'home' && scene !== 'marble-hand' && scene !== 'plume' && scene !== 'postcard' ? (
       <details className="trial-notice">
