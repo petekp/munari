@@ -1,7 +1,9 @@
 // Hero stage — the chosen demo, running live in its own frame.
 // Demos are laid out for a desktop window, so the frame renders at a fixed
 // width and is scaled down to the stage: a desktop width on wide screens, a
-// narrower one on phones so the text stays legible. `capture=auto` keeps
+// narrower one on phones so the text stays legible. The stage is never taller
+// than the window, so the whole demo fits on screen; a capped frame lays the
+// demo out at the shorter height instead of cropping it. `capture=auto` keeps
 // HTML-in-canvas where the browser has it and captures through snapDOM
 // everywhere else.
 import { useLayoutEffect, useRef, useState, type Ref } from 'react'
@@ -17,7 +19,14 @@ const NARROW_STAGE = 560
 export function HomeStage({ demo, ref }: { demo: Demo; ref?: Ref<HTMLElement> }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
+  const [windowHeight, setWindowHeight] = useState(() => window.innerHeight)
   const [loaded, setLoaded] = useState('')
+
+  useLayoutEffect(() => {
+    const measure = () => setWindowHeight(window.innerHeight)
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [])
 
   useLayoutEffect(() => {
     const panel = panelRef.current
@@ -30,12 +39,13 @@ export function HomeStage({ demo, ref }: { demo: Demo; ref?: Ref<HTMLElement> })
 
   const narrow = width < NARROW_STAGE
   const frameWidth = Math.max(width, narrow ? PHONE_WIDTH : DESKTOP_WIDTH)
-  const frameHeight = Math.round(frameWidth * (narrow ? 1 : 0.6))
   const scale = frameWidth ? width / frameWidth : 1
+  const stageHeight = Math.round(Math.min(width * (narrow ? 1 : 0.6), windowHeight))
+  const frameHeight = Math.round(stageHeight / scale)
 
   return (
     <figure ref={ref} className="home-stage" aria-label={`${demo.title} demo`}>
-      <div ref={panelRef} className="home-stage-panel" style={{ height: frameHeight * scale || undefined }}>
+      <div ref={panelRef} className="home-stage-panel" style={{ height: stageHeight || undefined }}>
         <img className="home-stage-poster" src={`/thumbs/${demo.id}.jpg`} alt="" aria-hidden />
         {width > 0 && (
           <iframe
