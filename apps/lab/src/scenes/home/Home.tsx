@@ -10,7 +10,9 @@ import './home.css'
 
 interface HomeProps { onReady?: () => void }
 
-const INSTALL = 'npm install @petepetrash/munari three @react-three/fiber'
+// README's install: `three` pinned exactly, because npm writes a caret range
+// that accepts the next minor, and Three changes its WebGPU API between minors.
+const INSTALL = 'npm install @petepetrash/munari @react-three/fiber\nnpm install three@0.186.1 --save-exact'
 
 export function HomeApp({ onReady }: HomeProps) {
   const [ready, setReady] = useState(false)
@@ -55,9 +57,10 @@ export function HomeApp({ onReady }: HomeProps) {
           <p>Munari is a React library that draws live HTML in Three.js scenes. Buttons still click, fields still take typing, and text still selects.</p>
         </section>
 
+        <a className="home-skip" href="#home-index">Skip to all demos</a>
         <HomeStage ref={stageRef} demo={demo} />
 
-        <section className="home-index" aria-label="Demos">
+        <section className="home-index" id="home-index" tabIndex={-1} aria-label="Demos">
           <ul>
             {DEMOS.map((entry) => (
               <li key={entry.id}>
