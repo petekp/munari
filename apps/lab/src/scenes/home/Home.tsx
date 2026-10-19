@@ -105,7 +105,10 @@ export function HomeApp({ onReady }: HomeProps) {
 
       <footer className="home-footer">
         <p>Named for the Italian designer Bruno Munari.</p>
-        <a href={`${SOURCE_ROOT}/issues`} target="_blank" rel="noreferrer">Feedback</a>
+        <span className="home-footer-links">
+          <a href={sceneUrl('style')}>Style guide</a>
+          <a href={`${SOURCE_ROOT}/issues`} target="_blank" rel="noreferrer">Feedback</a>
+        </span>
       </footer>
     </div>
   )

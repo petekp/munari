@@ -45,6 +45,13 @@ snapDOM elsewhere, so the demo runs live in every browser the demos support. A
 thumbnail sits under the frame until it loads. Below the frame, an index of
 every demo chooses which one runs.
 
+## Style guide
+
+`?scene=style` shows the site system: the tokens in
+`src/components/system/tokens.css` and every component class in
+`src/components/system/system.css`, in each of its states. The page renders
+those classes directly, so it changes when they do.
+
 ## Adding a demo
 
 `src/components/sceneCatalog.ts` `DEMOS` lists the advertised demos in display

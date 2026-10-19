@@ -1,0 +1,85 @@
+/* Site system tokens — the values the overview, the demo bar and the style
+ * guide (?scene=style) share, and the base the component library builds on.
+ * The `--m-` prefix keeps them apart from the scenes' own `--ink`, `--paper`
+ * and `--bench`, which app.css defines with different values.
+ *
+ * Paper and ink carry the interface. The wordmark and the demos are the only
+ * color; no token here names a hue. A region chooses its ground with
+ * `data-ground`, and every component reads these names, so one attribute
+ * inverts a whole panel. */
+
+:root,
+[data-ground='paper'] {
+  --m-paper: #fff;
+  --m-ink: #000;
+  /* 6.7:1 on paper. Secondary text, never under 13px. */
+  --m-quiet: #5c5c5c;
+  /* Behind content that needs a floor: the stage, thumbnails, a demo desk. */
+  --m-field: #f2f2f2;
+  /* Separates items inside a region. Never the edge of a control. */
+  --m-rule: #dedede;
+  /* Minor ruler ticks and disabled text, 3.4:1 on paper. */
+  --m-tick: #8a8a8a;
+}
+
+[data-ground='field'] {
+  --m-paper: #f2f2f2;
+  --m-field: #e6e6e6;
+  --m-rule: #d2d2d2;
+}
+
+[data-ground='ink'] {
+  --m-paper: #000;
+  --m-ink: #fff;
+  --m-quiet: #a3a3a3;
+  --m-field: #1a1a1a;
+  --m-rule: #333;
+  --m-tick: #777;
+}
+
+:root {
+  /* The wordmark's eight colors (logoLaw.ts LOGO_PALETTE). Demo content only:
+   * objects, light, particles. Never chrome, text or state. Chartreuse is
+   * about 1.2:1 on paper, so it never draws text, lines or marks there. */
+  --m-coral: #f2695c;
+  --m-chartreuse: #e3ec5a;
+  --m-orchid: #f07ff0;
+  --m-sky: #52c7f2;
+  --m-violet: #b47deb;
+  --m-leaf: #66c94e;
+  --m-tangerine: #f5a53f;
+  --m-bubblegum: #f76fa2;
+
+  --m-sans: Archivo, system-ui, sans-serif;
+  --m-code: 'Courier Prime', ui-monospace, monospace;
+
+  /* Spacing, on a 4px base. Interiors use s1–s4, items s4–s6, sections s7–s9. */
+  --m-s1: 4px;
+  --m-s2: 8px;
+  --m-s3: 12px;
+  --m-s4: 16px;
+  --m-s5: 24px;
+  --m-s6: 32px;
+  --m-s7: 48px;
+  --m-s8: 64px;
+  --m-s9: 96px;
+
+  --m-measure: 1200px;
+  --m-gutter: clamp(16px, 4vw, 48px);
+  /* The stage runs edge to edge until the page is this wide. */
+  --m-stage-max: 1600px;
+  --m-stage-radius: 16px;
+
+  --m-t-fast: 120ms;
+  --m-t-medium: 200ms;
+  --m-t-slow: 320ms;
+  --m-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --m-t-fast: 0ms;
+    --m-t-medium: 0ms;
+    --m-t-slow: 0ms;
+  }
+}

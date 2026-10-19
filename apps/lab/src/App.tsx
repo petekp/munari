@@ -37,6 +37,7 @@ const ControlsApp = lazy(() => import('./scenes/controls/Controls').then(m => ({
 const GravityApp = lazy(() => import('./scenes/gravity/Gravity').then(m => ({ default: m.GravityApp })))
 const LampApp = lazy(() => import('./scenes/lamp/Lamp').then(m => ({ default: m.LampApp })))
 const RainApp = lazy(() => import('./scenes/rain/Rain').then(m => ({ default: m.RainApp })))
+const StyleApp = lazy(() => import('./scenes/style/Style').then(m => ({ default: m.StyleApp })))
 const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
 
 // Each advertised demo's page, keyed by its catalog id. The `satisfies`
@@ -76,6 +77,7 @@ const LAB_SCENES = [
   'lamp',
   'rain',
   'wordmark',
+  'style',
 ] as const
 
 type SceneId = 'home' | DemoId | (typeof LAB_SCENES)[number]
@@ -162,6 +164,8 @@ function studySceneFor(scene: SceneId) {
     // Private dial-in bench for the official mark: URL-only, never in the nav.
     case 'wordmark':
       return <WordmarkApp />
+    case 'style':
+      return <StyleApp />
     case 'candidates':
       return <CandidatesApp />
     case 'gravity':
@@ -233,12 +237,12 @@ export default function App() {
   useLayoutEffect(() => {
     const style = document.documentElement.style
     const previous = style.getPropertyValue('--document-background')
-    style.setProperty('--document-background', showShell || scene === 'home' ? '#fff' : 'var(--bench)')
+    style.setProperty('--document-background', showShell || scene === 'home' || scene === 'style' ? '#fff' : 'var(--bench)')
     return () => { style.setProperty('--document-background', previous) }
   }, [scene])
 
   useEffect(() => {
-    document.title = scene === 'home' ? 'Munari · Live HTML in 3D' : `${demoFor(scene)?.title ?? scene} · Munari`
+    document.title = scene === 'home' ? 'Munari · Live HTML in 3D' : scene === 'style' ? 'Style guide · Munari' : `${demoFor(scene)?.title ?? scene} · Munari`
   }, [scene])
 
   // …and the URL stays authoritative afterwards. Without this, navigating
@@ -324,6 +328,10 @@ export default function App() {
   // entry.
   if (showShell && scene === 'home') {
     return <SceneBoundary scene={scene}><HomeApp onReady={revealSite} /></SceneBoundary>
+  }
+  // The style guide is a page of the site, like the overview, not a demo.
+  if (showShell && scene === 'style') {
+    return <SceneBoundary scene={scene}><Suspense fallback={null}><StyleApp onReady={revealSite} /></Suspense></SceneBoundary>
   }
   if (showShell) {
     return (

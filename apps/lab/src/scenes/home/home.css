@@ -89,6 +89,7 @@
 
 .home-footer { display: flex; justify-content: space-between; gap: 24px; padding-block: 24px 40px; border-top: 1px solid var(--rule); color: var(--quiet); font-size: 14px; }
 .home-footer p { margin: 0; }
+.home-footer-links { display: flex; gap: 24px; }
 
 @media (max-width: 760px) {
   .home-stage-caption { flex-direction: column; gap: 8px; }
