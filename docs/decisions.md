@@ -5332,7 +5332,7 @@ reports `false`. Other software rasterizers were not checked.
 The overview at `?scene=home` is a white page with black Archivo type. It opens
 with the tagline and one sentence about what Munari is. Under that, the chosen
 demo runs live in an iframe loaded with `&framed&bare&capture=auto`, scaled from
-a 1100px layout, or 720px on narrow screens. An index of every demo follows.
+a 1100px layout, or 720px on narrow screens. The frame runs to the window's edges up to 1600px wide. Past that it stops growing, and its corners round as the side margins open. An index of every demo follows.
 Choosing a thumbnail runs that demo in the frame. Three short statements of what
 the library does, the install command, and a link to the guide close the page.
 The wordmark is the page's only color besides the demos.
