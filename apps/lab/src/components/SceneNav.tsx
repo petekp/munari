@@ -1,79 +1,42 @@
-// Scene navigation — shared labels and links for desktop and mobile visitors.
-// The shell owns navigation; each example keeps its own rendering viewport.
+// Scene navigation — one bar above a demo's own viewport: the wordmark home,
+// what the demo is and what to try, and the neighbouring demos in catalog
+// order. The demo frame below keeps the rest of the window.
 
 import { MunariLogo } from './MunariLogo'
-import { exampleFor, GUIDE_URL, SOURCE_ROOT } from './sceneCatalog'
+import { DEMOS, demoFor, sourceFor } from './sceneCatalog'
 import { sceneUrl } from '../captureMode'
-import './lit.css'
 import './siteShell.css'
 
-interface SceneNavProps<T extends string> {
-  scenes: readonly T[]
+interface SceneNavProps {
   active: string
-  onSelect: (id: T) => void
-  supported: boolean
+  onSelect: (id: string) => void
 }
 
-function titleFor(id: string): string {
-  return id === 'home' ? 'Overview' : exampleFor(id)?.title ?? id
-}
+export function SceneNav({ active, onSelect }: SceneNavProps) {
+  const demo = demoFor(active)
+  const index = DEMOS.findIndex((entry) => entry.id === active)
+  const previous = index > 0 ? DEMOS[index - 1] : undefined
+  const next = index >= 0 && index < DEMOS.length - 1 ? DEMOS[index + 1] : undefined
 
-export function SceneNav<T extends string>({ scenes, active, onSelect, supported }: SceneNavProps<T>) {
+  const go = (id: string) => (event: React.MouseEvent) => {
+    event.preventDefault()
+    onSelect(id)
+  }
+
   return (
-    <>
-      <nav className="site-sidebar" aria-label="Example sidebar">
-        <div className="site-brand">
-          <a href={sceneUrl('home')} className="site-brand-link" aria-label="Munari overview">
-            <div aria-hidden className="site-wordmark"><MunariLogo /></div>
-          </a>
-          <p>HTML, 3D and shaders, unified.<br />An experimental React library.</p>
-        </div>
-        <ul className="site-nav-list">
-          {scenes.map((id) => {
-            const example = exampleFor(id)
-            return (
-              <li key={id}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(id)}
-                  aria-current={active === id ? 'page' : undefined}
-                >
-                  {id === 'home'
-                    ? <span className="site-overview-icon" aria-hidden>●</span>
-                    : <img src={`/thumbs/${id}.jpg`} alt="" />}
-                  <span>
-                    <b>{titleFor(id)}</b>
-                    <small>{id === 'home' ? 'Start here' : example?.category ?? 'Experimental study'}</small>
-                  </span>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-        <div className="site-nav-footer">
-          <a href={GUIDE_URL} target="_blank" rel="noreferrer">Developer guide</a>
-          <a href={SOURCE_ROOT} target="_blank" rel="noreferrer">GitHub</a>
-          <a href={sceneUrl('home', { section: 'setup' })} className="site-support" data-supported={supported}>
-            {supported ? 'Capture available' : 'Standard rendering'}
-          </a>
-        </div>
+    <header className="site-bar">
+      <a href={sceneUrl('home')} className="site-bar-logo" aria-label="Munari home">
+        <span aria-hidden><MunariLogo ground="light" /></span>
+      </a>
+      <div className="site-bar-demo">
+        <h1>{demo?.title ?? active}</h1>
+        {demo && <p>{demo.instruction}</p>}
+      </div>
+      <nav className="site-bar-links" aria-label="Demos">
+        {previous && <a href={sceneUrl(previous.id)} onClick={go(previous.id)}>Previous<span className="sr-only">: {previous.title}</span></a>}
+        {next && <a href={sceneUrl(next.id)} onClick={go(next.id)}>Next<span className="sr-only">: {next.title}</span></a>}
+        <a href={sourceFor(active)} target="_blank" rel="noreferrer">Source</a>
       </nav>
-      <nav className="site-mobile-nav" aria-label="Example picker">
-        <a className="site-mobile-brand" href={sceneUrl('home')}>munari</a>
-        <label className="sr-only" htmlFor="site-example">Choose an example</label>
-        <select
-          id="site-example"
-          value={active}
-          onChange={(event) => {
-            const selected = scenes.find((id) => id === event.target.value)
-            if (selected) onSelect(selected)
-          }}
-        >
-          {!scenes.some((id) => id === active) && <option value={active}>{titleFor(active)}</option>}
-          {scenes.map((id) => <option key={id} value={id}>{titleFor(id)}</option>)}
-        </select>
-        <a href={GUIDE_URL} target="_blank" rel="noreferrer">Guide</a>
-      </nav>
-    </>
+    </header>
   )
 }

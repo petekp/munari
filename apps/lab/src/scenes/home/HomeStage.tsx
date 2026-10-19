@@ -1,24 +1,23 @@
 // Hero stage — the chosen demo, running live in its own frame.
 // Demos are laid out for a desktop window, so the frame renders at a fixed
-// width and is scaled down to the panel: a desktop width on wide screens, a
-// narrower one on phones so the text stays legible. `capture=auto` keeps HTML-in-canvas where the browser has it and
-// captures through snapDOM everywhere else.
-import { useLayoutEffect, useRef, useState } from 'react'
-import { exampleFor } from '../../components/sceneCatalog'
+// width and is scaled down to the stage: a desktop width on wide screens, a
+// narrower one on phones so the text stays legible. `capture=auto` keeps
+// HTML-in-canvas where the browser has it and captures through snapDOM
+// everywhere else.
+import { useLayoutEffect, useRef, useState, type Ref } from 'react'
+import type { Demo } from '../../components/sceneCatalog'
+import { sceneUrl } from '../../captureMode'
 
 // The narrowest width each demo keeps its desktop composition at, and the
-// narrower width a phone-sized panel scales down from.
-const DESKTOP_WIDTH = 1000
+// narrower width a phone-sized stage scales down from.
+const DESKTOP_WIDTH = 1100
 const PHONE_WIDTH = 720
-const NARROW_PANEL = 500
+const NARROW_STAGE = 560
 
-type StageStyle = React.CSSProperties & { '--stage-wash': string }
-
-export function HomeStage({ demo }: { demo: string }) {
+export function HomeStage({ demo, ref }: { demo: Demo; ref?: Ref<HTMLElement> }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
   const [loaded, setLoaded] = useState('')
-  const example = exampleFor(demo)
 
   useLayoutEffect(() => {
     const panel = panelRef.current
@@ -29,31 +28,30 @@ export function HomeStage({ demo }: { demo: string }) {
     return () => observer.disconnect()
   }, [])
 
-  const narrow = width < NARROW_PANEL
+  const narrow = width < NARROW_STAGE
   const frameWidth = Math.max(width, narrow ? PHONE_WIDTH : DESKTOP_WIDTH)
-  const frameHeight = Math.round(frameWidth * (narrow ? 0.9 : 0.64))
+  const frameHeight = Math.round(frameWidth * (narrow ? 1 : 0.6))
   const scale = frameWidth ? width / frameWidth : 1
-  const stageStyle: StageStyle = { '--stage-wash': example?.wash ?? '#e3ec5a' }
 
   return (
-    <figure className="home-stage" style={stageStyle}>
+    <figure ref={ref} className="home-stage" aria-label={`${demo.title} demo`}>
       <div ref={panelRef} className="home-stage-panel" style={{ height: frameHeight * scale || undefined }}>
-        <img className="home-stage-poster" src={`/thumbs/${demo}.jpg`} alt="" aria-hidden />
+        <img className="home-stage-poster" src={`/thumbs/${demo.id}.jpg`} alt="" aria-hidden />
         {width > 0 && (
           <iframe
-            key={demo}
+            key={demo.id}
             className="home-stage-frame"
-            title={`${example?.title ?? demo} demo`}
-            src={`/?scene=${demo}&framed&bare&capture=auto`}
-            data-loaded={loaded === demo || undefined}
-            onLoad={() => setLoaded(demo)}
+            title={`${demo.title} demo`}
+            src={sceneUrl(demo.id, { framed: true, bare: true, capture: 'auto' })}
+            data-loaded={loaded === demo.id || undefined}
+            onLoad={() => setLoaded(demo.id)}
             style={{ width: frameWidth, height: frameHeight, transform: `scale(${scale})` }}
           />
         )}
       </div>
       <figcaption className="home-stage-caption">
-        <span>{example?.instruction}</span>
-        <a href={`/?scene=${demo}&capture=auto`}>Open {example?.title ?? demo}</a>
+        <p><b>{demo.title}.</b> {demo.instruction}</p>
+        <a href={sceneUrl(demo.id, { capture: 'auto' })}>Open full page</a>
       </figcaption>
     </figure>
   )

@@ -4,7 +4,7 @@
 // mounts (components/MunariLogo.tsx), fed a live knob bag — not a copy
 // of its markup. A bench that re-implemented the mark would tune the
 // re-implementation. Unlisted on purpose: reachable at ?scene=wordmark,
-// never advertised in the nav (App.tsx NAV_SCENES).
+// never advertised in the demo catalog (sceneCatalog.ts DEMOS).
 //
 // Ownership: this file owns the ground and the wiring; ranges live in
 // wordmarkTuning.ts, the panel in wordmarkTweaks.tsx.

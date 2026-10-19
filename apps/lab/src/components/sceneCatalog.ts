@@ -1,88 +1,77 @@
-// Example descriptions — one vocabulary for navigation, previews, and guides.
+// Demo catalog — the one list of demos the site advertises, in the order it
+// shows them. The overview's index and stage, the demo bar's previous and
+// next links, and App's routes all read it, so a new demo is one entry here,
+// one page in App's DEMO_PAGES (typecheck fails until it exists), and a
+// thumbnail at public/thumbs/<id>.jpg (`npm run thumbs`).
 // Source links follow main rather than a pinned commit, so they track the current API.
 
 export const SOURCE_ROOT = 'https://github.com/petekp/munari'
 export const SOURCE_REF = 'main'
 export const GUIDE_URL = `${SOURCE_ROOT}/blob/${SOURCE_REF}/README.md#your-first-surface`
-export const SOURCE_ARCHIVE = `${SOURCE_ROOT}/archive/${SOURCE_REF}.zip`
 export const BROWSER_GUIDE = 'https://developer.chrome.com/blog/html-in-canvas-origin-trial'
 
-/** The overview's background. Each example names its own wash. */
-export const HOME_WASH = '#ffffff'
-
-export const EXAMPLES = [
-  {
-    id: 'flight', title: 'Flight', category: 'Interaction', wash: '#f2695c',
-    headline: 'Drag and drop with weight',
-    description: 'HTML cards bend, move between columns, and crumple when you delete them.',
-    instruction: 'Drag a card by its title. Try a quick flick, or hold its × button to crumple it.',
-    takeaway: 'The page supplies the content. The scene adds the shape and motion.',
-  },
-  {
-    id: 'genie', title: 'Genie', category: 'Motion', wash: '#52c7f2',
-    headline: 'A window that can bend',
-    description: 'Minimize live content into a dock, then reverse the motion with your pointer.',
-    instruction: 'Minimize a window, or drag its title toward the dock. Try reversing direction before it arrives.',
-    takeaway: 'Content can change shape while its controls and video continue to work.',
-  },
-  {
-    id: 'knobs', title: 'Knobs', category: 'Controls', wash: '#f5a53f',
-    headline: 'Give controls a physical form',
-    description: 'A responsive HTML interface becomes a panel with depth, lighting, and tactile controls.',
-    instruction: 'Turn a dial, switch the power, and resize the panel with its corner handle.',
-    takeaway: 'DOM layout and 3D controls can stay aligned as the interface changes size.',
-  },
-  {
-    id: 'selection', title: 'Selection', category: 'Text', wash: '#f07ff0',
-    headline: 'Make something from a selection',
-    description: 'Selected lines of native text become pieces of glass in the scene.',
-    instruction: 'Drag across a few words to select them. Extend the selection across several lines, then click elsewhere to clear it.',
-    takeaway: 'The browser handles text selection; the scene works with its rendered pixels.',
-  },
-  {
-    id: 'marble-hand', title: 'Marble hand', category: 'Materials', wash: '#66c94e',
-    headline: 'A cursor that reflects the page',
-    description: 'Move a sculpted hand across live typography and changing backgrounds.',
-    instruction: 'Move your pointer across the page. Change the background and inspect the hand’s reflection.',
-    takeaway: 'A live DOM texture can supply a material without replacing the visible page.',
-  },
-  {
-    id: 'plume', title: 'Plume', category: 'Particles', wash: '#f76fa2',
-    headline: 'Let your words become particles',
-    description: 'Type into a real text field and watch the rendered letters dissolve into the air.',
-    instruction: 'Type a phrase, then pause. Open “Tweak Plume” to explore the timing and particle behavior.',
-    takeaway: 'Native text editing can supply the shapes and colors for a particle effect.',
-  },
-  {
-    id: 'light', title: 'Light', category: 'Lighting', wash: '#e3ec5a',
-    headline: 'A lamp over live HTML',
-    description: 'Drag a bulb across a selectable headline. The letters cast shadows, and the glass bends the page behind it.',
-    instruction: 'Drag the bulb. Change its distance from the page, then select a word to raise its shadow.',
-    takeaway: 'The scene supplies light and shadow; the headline stays native, selectable text.',
-  },
-  {
-    id: 'postcard', title: 'Postcard', category: 'Forms', wash: '#8f9cf5',
-    headline: 'A form printed on paper',
-    description: 'A live HTML form lifts off the page as a sheet of paper that bends and casts a shadow.',
-    instruction: 'Type your name, then lift the postcard. Add a stamp or brush a corner while it floats.',
-    takeaway: 'The form keeps its state and focus while the scene draws it.',
-  },
-  {
-    id: 'logo', title: 'Logo', category: 'Typography', wash: '#b47deb',
-    headline: 'Typography with another dimension',
-    description: 'The same letterforms appear as page typography and animated 3D objects.',
-    instruction: 'Switch between HTML and 3D, then try the shape and motion controls.',
-    takeaway: 'Materials and geometry can change the appearance of text drawn from the DOM.',
-  },
-] as const
-
-export function exampleFor(id: string) {
-  return EXAMPLES.find((example) => example.id === id)
+export interface Demo {
+  /** The `?scene=` value and the folder under apps/lab/src/scenes. */
+  id: string
+  title: string
+  /** What the demo shows, as a short phrase under its thumbnail. */
+  headline: string
+  /** What to try first, shown beside the running demo. */
+  instruction: string
 }
 
-/** The shell's wash for a scene: the example's own, or the overview's. */
-export function washFor(id: string): string {
-  return exampleFor(id)?.wash ?? HOME_WASH
+export const DEMOS = [
+  {
+    id: 'genie', title: 'Genie',
+    headline: 'A window that can bend',
+    instruction: 'Minimize a window, or drag its title toward the dock. Try reversing direction before it arrives.',
+  },
+  {
+    id: 'flight', title: 'Flight',
+    headline: 'Drag and drop with weight',
+    instruction: 'Drag a card by its title. Try a quick flick, or hold its × button to crumple it.',
+  },
+  {
+    id: 'light', title: 'Light',
+    headline: 'A lamp over live HTML',
+    instruction: 'Drag the bulb. Change its distance from the page, then select a word to raise its shadow.',
+  },
+  {
+    id: 'plume', title: 'Plume',
+    headline: 'Words that become particles',
+    instruction: 'Type a phrase, then pause.',
+  },
+  {
+    id: 'selection', title: 'Selection',
+    headline: 'Glass made from a text selection',
+    instruction: 'Drag across a few words to select them. Extend the selection across several lines, then click elsewhere to clear it.',
+  },
+  {
+    id: 'marble-hand', title: 'Marble hand',
+    headline: 'A cursor that reflects the page',
+    instruction: 'Move your pointer across the page. Change the background and watch the hand’s reflection.',
+  },
+  {
+    id: 'knobs', title: 'Knobs',
+    headline: 'Controls with a physical form',
+    instruction: 'Turn a dial, switch the power, and resize the panel with its corner handle.',
+  },
+  {
+    id: 'postcard', title: 'Postcard',
+    headline: 'A form printed on paper',
+    instruction: 'Type your name, then lift the postcard. Add a stamp or brush a corner while it floats.',
+  },
+  {
+    id: 'logo', title: 'Logo',
+    headline: 'Letters that move between page and 3D',
+    instruction: 'Switch between HTML and 3D, then try the shape and motion controls.',
+  },
+] as const satisfies readonly Demo[]
+
+export type DemoId = (typeof DEMOS)[number]['id']
+
+export function demoFor(id: string): Demo | undefined {
+  return DEMOS.find((demo) => demo.id === id)
 }
 
 export function sourceFor(id: string): string {

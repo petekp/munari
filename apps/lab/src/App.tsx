@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useState, type ComponentType, type LazyExoticComponent } from 'react'
 import { useThree } from '@react-three/fiber'
 import { Environment, OrbitControls } from '@react-three/drei'
 import { ContactShadows } from './lib/ContactShadows'
@@ -12,8 +12,7 @@ import { showChrome, showShell } from './bareMode'
 import { HomeApp } from './scenes/home/Home'
 import { SurfaceProviderProbe } from './lib/surfaceProvider'
 import { SceneNav } from './components/SceneNav'
-import { SceneGuide } from './components/SceneGuide'
-import { BROWSER_GUIDE, exampleFor, washFor } from './components/sceneCatalog'
+import { BROWSER_GUIDE, DEMOS, demoFor, type DemoId } from './components/sceneCatalog'
 import { SceneBoundary } from './components/SceneBoundary'
 import { revealSite } from './components/siteOpening'
 import { sceneUrl } from './captureMode'
@@ -24,30 +23,35 @@ const Workspace = lazy(() => import('./scenes/workspace/Workspace').then(m => ({
 const WorkspaceHud = lazy(() => import('./scenes/workspace/Workspace').then(m => ({ default: m.WorkspaceHud })))
 const Glass = lazy(() => import('./scenes/glass/Glass').then(m => ({ default: m.Glass })))
 const GlassTweakPanel = lazy(() => import('./scenes/glass/GlassTweaks').then(m => ({ default: m.GlassTweakPanel })))
-const FlightApp = lazy(() => import('./scenes/flight/Flight').then(m => ({ default: m.FlightApp })))
 const Explode = lazy(() => import('./scenes/explode/Explode').then(m => ({ default: m.Explode })))
 const ExplodeHud = lazy(() => import('./scenes/explode/Explode').then(m => ({ default: m.ExplodeHud })))
-const GenieApp = lazy(() => import('./scenes/genie/Genie').then(m => ({ default: m.GenieApp })))
 const FisheyeApp = lazy(() => import('./scenes/fisheye/Fisheye').then(m => ({ default: m.FisheyeApp })))
 const SliderApp = lazy(() => import('./scenes/slider/Slider').then(m => ({ default: m.SliderApp })))
 const VeilApp = lazy(() => import('./scenes/veil/Veil').then(m => ({ default: m.VeilApp })))
-const KnobsApp = lazy(() => import('./scenes/knobs/Knobs').then(m => ({ default: m.KnobsApp })))
 const OpticsApp = lazy(() => import('./scenes/optics/Optics').then(m => ({ default: m.OpticsApp })))
-const LogoApp = lazy(() => import('./scenes/logo/Logo').then(m => ({ default: m.LogoApp })))
-const SelectionApp = lazy(() => import('./scenes/selection/Selection').then(m => ({ default: m.SelectionApp })))
 const CandidatesApp = lazy(() => import('./scenes/candidates/Candidates').then(m => ({ default: m.CandidatesApp })))
 const RefractionApp = lazy(() => import('./scenes/refraction/Refraction').then(m => ({ default: m.RefractionApp })))
 const GalleryApp = lazy(() => import('./scenes/gallery/Gallery').then(m => ({ default: m.GalleryApp })))
 const CrystalApp = lazy(() => import('./scenes/crystal/Crystal').then(m => ({ default: m.CrystalApp })))
 const ControlsApp = lazy(() => import('./scenes/controls/Controls').then(m => ({ default: m.ControlsApp })))
-const MarbleHandApp = lazy(() => import('./scenes/marble-hand/MarbleHand').then(m => ({ default: m.MarbleHandApp })))
-const PlumeApp = lazy(() => import('./scenes/plume/Plume').then(m => ({ default: m.PlumeApp })))
 const GravityApp = lazy(() => import('./scenes/gravity/Gravity').then(m => ({ default: m.GravityApp })))
 const LampApp = lazy(() => import('./scenes/lamp/Lamp').then(m => ({ default: m.LampApp })))
 const RainApp = lazy(() => import('./scenes/rain/Rain').then(m => ({ default: m.RainApp })))
 const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
-const LightApp = lazy(() => import('./scenes/light/Light').then(m => ({ default: m.LightApp })))
-const PostcardApp = lazy(() => import('./scenes/postcard/Postcard').then(m => ({ default: m.PostcardApp })))
+
+// Each advertised demo's page, keyed by its catalog id. The `satisfies`
+// makes a catalog entry without a page a type error.
+const DEMO_PAGES = {
+  genie: lazy(() => import('./scenes/genie/Genie').then(m => ({ default: m.GenieApp }))),
+  flight: lazy(() => import('./scenes/flight/Flight').then(m => ({ default: m.FlightApp }))),
+  light: lazy(() => import('./scenes/light/Light').then(m => ({ default: m.LightApp }))),
+  plume: lazy(() => import('./scenes/plume/Plume').then(m => ({ default: m.PlumeApp }))),
+  selection: lazy(() => import('./scenes/selection/Selection').then(m => ({ default: m.SelectionApp }))),
+  'marble-hand': lazy(() => import('./scenes/marble-hand/MarbleHand').then(m => ({ default: m.MarbleHandApp }))),
+  knobs: lazy(() => import('./scenes/knobs/Knobs').then(m => ({ default: m.KnobsApp }))),
+  postcard: lazy(() => import('./scenes/postcard/Postcard').then(m => ({ default: m.PostcardApp }))),
+  logo: lazy(() => import('./scenes/logo/Logo').then(m => ({ default: m.LogoApp }))),
+} satisfies Record<DemoId, LazyExoticComponent<ComponentType>>
 
 // The promoted scene roster is decisions.md #3. URL-only studies stay beside
 // it without claiming promotion: the candidates bench, refraction, gallery,
@@ -55,65 +59,28 @@ const PostcardApp = lazy(() => import('./scenes/postcard/Postcard').then(m => ({
 // reaches the library through its published entries — this app is the proof
 // that the public surface is sufficient.
 
-type SceneId =
-  | 'home'
-  | 'workspace'
-  | 'glass'
-  | 'flight'
-  | 'explode'
-  | 'genie'
-  | 'fisheye'
-  | 'slider'
-  | 'veil'
-  | 'knobs'
-  | 'optics'
-  | 'logo'
-  | 'selection'
-  | 'candidates'
-  | 'refraction'
-  | 'gallery'
-  | 'crystal'
-  | 'controls'
-  | 'marble-hand'
-  | 'plume'
-  | 'gravity'
-  | 'lamp'
-  | 'rain'
-  | 'wordmark'
-  | 'light'
-  | 'postcard'
-const SCENES = [
-  'home',
+const LAB_SCENES = [
   'workspace',
   'glass',
-  'flight',
   'explode',
-  'genie',
   'fisheye',
   'slider',
   'veil',
-  'knobs',
   'optics',
-  'logo',
-  'selection',
   'candidates',
   'refraction',
   'gallery',
   'crystal',
   'controls',
-  'marble-hand',
-  'plume',
   'gravity',
   'lamp',
   'rain',
   'wordmark',
-  'light',
-  'postcard',
 ] as const
 
-// The nav shows only the advertised scenes; the rest stay routable by URL so
-// the browser gates and old links keep working, they just aren't advertised.
-const NAV_SCENES = ['home', 'genie', 'flight', 'light', 'plume', 'selection', 'marble-hand', 'knobs', 'postcard', 'logo'] as const satisfies readonly SceneId[]
+type SceneId = 'home' | DemoId | (typeof LAB_SCENES)[number]
+const SCENES: readonly SceneId[] = ['home', ...DEMOS.map((demo) => demo.id), ...LAB_SCENES]
+
 
 // Clicking a canvas normally moves focus to <body>, which would blur
 // whatever hidden form field a Surface has focused — killing native typing.
@@ -140,6 +107,12 @@ function isSceneId(value: string | null): value is SceneId {
   return value !== null && SCENE_IDS.has(value)
 }
 
+const DEMO_IDS = new Set<string>(DEMOS.map((demo) => demo.id))
+
+function isDemoId(scene: SceneId): scene is DemoId {
+  return DEMO_IDS.has(scene)
+}
+
 function readScene(): SceneId {
   const q = new URLSearchParams(window.location.search).get('scene')
   // Home is the landing page a cold visitor should see first. Every browser gate names its scene in the URL, so
@@ -147,41 +120,27 @@ function readScene(): SceneId {
   return isSceneId(q) ? q : 'home'
 }
 
-function readRoute() {
-  const section = window.location.hash.slice(1)
-  return {
-    scene: readScene(),
-    section: ['demos', 'setup'].includes(section) ? section : '',
-  }
-}
 
 /**
  * The scenes that ARE pages, with their own overlay canvas on top, rather
  * than content inside the one shared 3D room. They take the whole route;
  * `null` means the room renders it.
  */
-function pageSceneFor(scene: SceneId, section: string) {
+function pageSceneFor(scene: SceneId) {
+  if (scene === 'home') return <HomeApp />
+  if (isDemoId(scene)) {
+    const DemoPage = DEMO_PAGES[scene]
+    return <DemoPage />
+  }
   switch (scene) {
-    case 'home':
-      return <HomeApp section={section} />
-    case 'flight':
-      return <FlightApp />
-    case 'genie':
-      return <GenieApp />
     case 'fisheye':
       return <FisheyeApp />
     case 'slider':
       return <SliderApp />
     case 'veil':
       return <VeilApp />
-    case 'knobs':
-      return <KnobsApp />
     case 'optics':
       return <OpticsApp />
-    case 'logo':
-      return <LogoApp />
-    case 'selection':
-      return <SelectionApp />
     case 'refraction':
       return <RefractionApp />
     case 'gallery':
@@ -192,14 +151,6 @@ function pageSceneFor(scene: SceneId, section: string) {
     // promoted-scene rail over its own composition.
     case 'controls':
       return <ControlsApp />
-    case 'marble-hand':
-      return <MarbleHandApp />
-    case 'plume':
-      return <PlumeApp />
-    case 'light':
-      return <LightApp />
-    case 'postcard':
-      return <PostcardApp />
     default:
       return studySceneFor(scene)
   }
@@ -222,14 +173,6 @@ function studySceneFor(scene: SceneId) {
     default:
       return null
   }
-}
-
-// The shell's wash rides a custom property so siteShell.css can paint every
-// surface from one value; the type names the property so no assertion is
-// needed to hand it to React.
-type ShellStyle = React.CSSProperties & { '--wash': string }
-function shellStyle(scene: SceneId): ShellStyle {
-  return { '--wash': washFor(scene) }
 }
 
 /** Everything inside the shared 3D room: the mounted scene, and the
@@ -283,19 +226,19 @@ function SceneHud({ scene }: { scene: SceneId }) {
 
 export default function App() {
   const unsupported = !useSurfaceSupport()
-  const [{ scene, section }, setRoute] = useState(readRoute)
+  const [scene, setScene] = useState(readScene)
 
-  // index.html paints the landing wash while this document is still empty.
-  // Framed lab scenes retain their bench; the shell follows its active wash.
+  // index.html paints the overview's white while this document is still
+  // empty. Framed lab scenes keep their bench; the shell stays white.
   useLayoutEffect(() => {
     const style = document.documentElement.style
     const previous = style.getPropertyValue('--document-background')
-    style.setProperty('--document-background', showShell || scene === 'home' ? washFor(scene) : 'var(--bench)')
+    style.setProperty('--document-background', showShell || scene === 'home' ? '#fff' : 'var(--bench)')
     return () => { style.setProperty('--document-background', previous) }
   }, [scene])
 
   useEffect(() => {
-    document.title = scene === 'home' ? 'Munari · Live HTML in 3D' : `${exampleFor(scene)?.title ?? scene} · Munari`
+    document.title = scene === 'home' ? 'Munari · Live HTML in 3D' : `${demoFor(scene)?.title ?? scene} · Munari`
   }, [scene])
 
   // …and the URL stays authoritative afterwards. Without this, navigating
@@ -304,12 +247,10 @@ export default function App() {
   // put — the same screenshot twice, which is a very quiet way to draw the
   // wrong conclusion about a change you just made.
   useEffect(() => {
-    const onPop = () => setRoute(readRoute())
+    const onPop = () => setScene(readScene())
     window.addEventListener('popstate', onPop)
-    window.addEventListener('hashchange', onPop)
     return () => {
       window.removeEventListener('popstate', onPop)
-      window.removeEventListener('hashchange', onPop)
     }
   }, [])
 
@@ -381,30 +322,28 @@ export default function App() {
   // navigation. Replacing a frame on navigation avoids an extra joint-history
   // entry.
   if (showShell && scene === 'home') {
-    return <SceneBoundary scene={scene}><HomeApp section={section} onReady={revealSite} /></SceneBoundary>
+    return <SceneBoundary scene={scene}><HomeApp onReady={revealSite} /></SceneBoundary>
   }
   if (showShell) {
     return (
-      <div className="site-shell" style={shellStyle(scene)}>
+      <div className="site-shell">
         <a className="site-skip" href="#site-content" onClick={(event) => {
           event.preventDefault()
           document.getElementById('site-content')?.focus()
-        }}>Skip to example</a>
+        }}>Skip to demo</a>
         <SceneNav
-          scenes={NAV_SCENES}
           active={scene}
           onSelect={(id) => {
+            if (!isSceneId(id)) return
             window.history.pushState(null, '', sceneUrl(id))
-            setRoute({ scene: id, section: '' })
+            setScene(id)
           }}
-          supported={!unsupported}
         />
         <main className="site-content" id="site-content" tabIndex={-1}>
-          <SceneGuide scene={scene} />
           <iframe
             key={scene}
             src={sceneUrl(scene, { framed: true })}
-            title={`${exampleFor(scene)?.title ?? scene} example`}
+            title={`${demoFor(scene)?.title ?? scene} demo`}
             className="site-frame"
             onLoad={revealSite}
           />
@@ -413,12 +352,13 @@ export default function App() {
     )
   }
 
+
   const domSurfaceDemandProbe =
     scene === 'workspace' &&
     new URLSearchParams(window.location.search).get('probe') === 'dom-surface-demand'
 
   // The notice rides along rather than replacing the scene — see `unsupported`.
-  const page = pageSceneFor(scene, section)
+  const page = pageSceneFor(scene)
   if (page !== null) {
     return (
       <>

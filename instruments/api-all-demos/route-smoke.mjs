@@ -35,8 +35,8 @@ try {
       await page.waitForSelector(markers[entry.scene])
       await page.evaluate(() => document.fonts.ready)
       const selected = await page.evaluate(async ({ scene, candidate }) => {
-        const { exampleFor } = await import('/src/components/sceneCatalog.ts')
-        const expectedTitle = scene === 'home' ? 'Munari · Live HTML in 3D' : `${exampleFor(scene)?.title ?? scene} · Munari`
+        const { demoFor } = await import('/src/components/sceneCatalog.ts')
+        const expectedTitle = scene === 'home' ? 'Munari · Live HTML in 3D' : `${demoFor(scene)?.title ?? scene} · Munari`
         return {
           title: document.title, expectedTitle,
           candidate: document.querySelector('.cand-rail [aria-current="page"] strong')?.textContent?.toLowerCase() ?? null,

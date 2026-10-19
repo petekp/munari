@@ -22,9 +22,13 @@ export const CAPTURE_MODE: CaptureMode | null =
 
 // A destination installs its capture engine before mounting any Surface.
 // Preserve the selection across full-page links, history changes, and frames.
-export function sceneUrl(scene: string, options: { framed?: boolean; section?: string } = {}): string {
+// The overview's links ask for `auto` themselves, so a visitor without
+// HTML-in-canvas still gets every demo drawn through snapDOM.
+export function sceneUrl(scene: string, options: { framed?: boolean; bare?: boolean; capture?: CaptureMode } = {}): string {
   const query = new URLSearchParams({ scene })
-  if (CAPTURE_MODE) query.set('capture', CAPTURE_MODE)
+  const capture = options.capture ?? CAPTURE_MODE
+  if (capture) query.set('capture', capture)
   if (options.framed) query.set('framed', '')
-  return `/?${query}${options.section ? `#${encodeURIComponent(options.section)}` : ''}`
+  if (options.bare) query.set('bare', '')
+  return `/?${query}`
 }

@@ -24,6 +24,7 @@ import {
 import { useCarriedMotion } from '@petepetrash/munari/advanced'
 import {
   LOGO_DEFAULTS,
+  LOGO_PALETTE,
   beatPlan,
   makeRng,
   nextBeat,
@@ -69,7 +70,13 @@ export const WORDMARK_KNOBS: LogoKnobs = {
   gloss: 0.7,
 }
 
-export function MunariLogo({ className, knobs }: { className?: string; knobs?: LogoKnobs }) {
+// Chartreuse measures about 1.2:1 against white, so a letter that rolls it
+// vanishes from a light page. The other seven colors stay visible there.
+const LIGHT_GROUND_BANNED_COLORS = [LOGO_PALETTE.indexOf('#e3ec5a')]
+const NO_BANNED_COLORS: number[] = []
+
+/** `ground` names the page the letters sit on; the palette was tuned on dark. */
+export function MunariLogo({ className, knobs, ground = 'dark' }: { className?: string; knobs?: LogoKnobs; ground?: 'dark' | 'light' }) {
   useEffect(ensureLogoFonts, [])
 
   // The wordmark bench (scenes/wordmark) drives `knobs` live; everywhere
@@ -93,9 +100,10 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
   const inCrossing = view !== presented || view !== settledOn
   const phase = presented === 'scene' ? 'gl' : inCrossing ? 'lifting' : 'page'
 
+  const bannedColors = ground === 'light' ? LIGHT_GROUND_BANNED_COLORS : NO_BANNED_COLORS
   const rRef = useRef(makeRng(SEED0))
   const [poses, setPoses] = useState<LetterPose[]>(() =>
-    seedWord(WORD.length, makeRng(SEED0), WORDMARK_KNOBS),
+    seedWord(WORD.length, makeRng(SEED0), WORDMARK_KNOBS, bannedColors),
   )
 
   // One letter re-rolls against its own current pose AND both standing
@@ -108,14 +116,14 @@ export function MunariLogo({ className, knobs }: { className?: string; knobs?: L
         rRef.current,
         {
           fonts: [prev[i].font, ...near.map((p) => p.font)],
-          colors: [prev[i].color, ...near.map((p) => p.color)],
+          colors: [prev[i].color, ...near.map((p) => p.color), ...bannedColors],
           materialIndices: [prev[i].materialIndex, ...near.map((p) => p.materialIndex)],
         },
         knobsRef.current,
       )
       return next
     })
-  }, [])
+  }, [bannedColors])
 
   const reduced = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)'), [])
 

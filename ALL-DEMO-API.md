@@ -11,7 +11,7 @@ records commands, measured limits, and what each check can establish.
 
 | Route | Source | What it demonstrates |
 | --- | --- | --- |
-| `home` | [Home](apps/lab/src/scenes/home/Home.tsx), [verbs](apps/lab/src/scenes/home/homeVerbs.ts) | The landing page: an agent prompt per demo and a live demo frame; no Surface of its own |
+| `home` | [Home](apps/lab/src/scenes/home/Home.tsx), [stage](apps/lab/src/scenes/home/HomeStage.tsx) | The overview: one demo running in a frame and an index of every demo in the catalog; no Surface of its own |
 | `light` | [Light](apps/lab/src/scenes/light/Light.tsx), [lamp](apps/lab/src/scenes/light/LightLamp.tsx) | Native HTML lit by one draggable lamp whose glass refracts a capture of the page; no Surface handoff |
 | `postcard` | [Postcard](apps/lab/src/scenes/postcard/Postcard.tsx), [stage](apps/lab/src/scenes/postcard/PostcardStage.tsx), [mesh](apps/lab/src/scenes/postcard/PostcardMesh.tsx) | A retained form lifted into a paper mesh, a custom handoff, and a post-pose shadow companion |
 | `workspace` | [Workspace](apps/lab/src/scenes/workspace/Workspace.tsx) | SceneSurface panels, keyboard focus, camera navigation, and a physical Dial |

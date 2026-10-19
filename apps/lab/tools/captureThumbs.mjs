@@ -1,9 +1,8 @@
 // Thumbnail capture — regenerates the example thumbnails.
 //
-// The nav (src/components/SceneNav.tsx), the overview's example cards
-// (src/scenes/home/HomeExamples.tsx) and the gallery
-// (src/scenes/gallery/Gallery.tsx) show public/thumbs/<scene>.jpg for each
-// advertised scene. Those images are captures of the real scenes, so they
+// The overview's demo index and stage poster (src/scenes/home/) and the
+// gallery (src/scenes/gallery/Gallery.tsx) show public/thumbs/<scene>.jpg for
+// each advertised scene. Those images are captures of the real scenes, so they
 // go stale when a scene's look changes; this script re-takes them.
 // Localhost has no origin-trial token, so the Chrome it launches carries
 // the CanvasDrawElement flag — same policy as tools/runLab.mjs.

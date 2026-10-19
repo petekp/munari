@@ -15,12 +15,12 @@ contains unbuilt work; it is not an API reference.
 ## Routes and examples
 
 `src/App.tsx` owns routes and the full scene inventory. `?scene=home` is
-the landing page. Scenes omitted from navigation remain available by URL;
+the overview. Scenes outside the demo catalog remain available by URL;
 `?scene=controls` and `?scene=candidates` are maintained examples too.
 Candidates select a study with `&candidate=<id>`.
 
-`src/components/sceneCatalog.ts` supplies navigation descriptions and source
-links pinned to a verified development revision. The Postcard demo falls back
+`src/components/sceneCatalog.ts` supplies each demo's title, headline and
+instruction, and source links that follow `main`. The Postcard demo falls back
 to a labelled [recording](public/previews/README.md) in browsers without a
 renderer.
 
@@ -35,24 +35,32 @@ the snapDOM entry at all. The parameter rides navigation, so a scene opened
 under one engine stays on it. `window.__munari.engine()` reports which one
 answered.
 
-## Landing page
+## Overview
 
-`?scene=home` is the landing page in `src/scenes/home/`. It renders directly in
-the shell and holds no Munari demo itself. Its hero offers a prompt for a coding
-agent. Choosing a verb such as "bend" or "write on" selects a demo, and the
-visitor can name their own component in the sentence. `homeVerbs.ts` owns each
-verb's demo, sentence and the copied prompt text.
+`?scene=home` is the overview, in `src/scenes/home/`. It holds no Munari demo
+itself. Under the tagline, the chosen demo runs in an iframe loaded with
+`&framed&bare&capture=auto`, scaled down from a 1100px-wide layout, or 720px on
+narrow screens. `capture=auto` keeps HTML-in-canvas where Chrome has it and uses
+snapDOM elsewhere, so the demo runs live in every browser the demos support. A
+thumbnail sits under the frame until it loads. Below the frame, an index of
+every demo chooses which one runs.
 
-The hero shows the chosen demo in an iframe loaded with `&framed&bare&capture=auto`,
-scaled down from a 1000px-wide layout, or 720px on narrow screens. `capture=auto`
-keeps HTML-in-canvas where Chrome has it and uses snapDOM elsewhere, so the hero
-runs live in every browser the demos support. A thumbnail sits under each frame
-until it loads.
+## Adding a demo
+
+`src/components/sceneCatalog.ts` `DEMOS` lists the advertised demos in display
+order. The overview, the demo bar's previous and next links, and the routes all
+read it. To add one:
+
+1. Build the scene in `src/scenes/<id>/`.
+2. Add its entry to `DEMOS`: id, title, a short headline, and what to try.
+3. Add its page to `DEMO_PAGES` in `src/App.tsx`. Typecheck fails until it exists.
+4. Add a 1280×720 thumbnail at `public/thumbs/<id>.jpg`. `npm run thumbs`
+   captures the scenes listed in `tools/captureThumbs.mjs`.
 
 ## First load
 
-`index.html` paints the landing background and an inline wordmark before the
-app loads. The shell removes that cover once Home's fonts are ready, or when a
+`index.html` paints the overview's white background and an inline wordmark before the
+app loads. The shell removes that cover once the overview's fonts are ready, or when a
 scene's iframe loads. Home stays in the entry bundle; every other scene loads
 only in its own frame. A framed or `&bare` document never shows the cover.
 

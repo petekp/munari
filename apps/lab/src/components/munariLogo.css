@@ -1,9 +1,8 @@
 /* The official wordmark's own frame. The letters, slots, float and
  * canvas rules come from logo.css (the classes are shared with the
  * playground); this file only sizes the word for use as furniture.
- * The candy palette was tuned on --screen ink and drowns on light
- * grounds — the host provides the dark surface (the nav already is
- * one). */
+ * The candy palette was tuned on --screen ink. On a white page the host
+ * passes ground="light", which drops the one color that vanishes there. */
 
 .munari-logo {
   display: inline-block;

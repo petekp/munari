@@ -5326,3 +5326,52 @@ recording ended 450 ms after release, before the first draw plus 80 ms.
 
 A SwiftShader adapter reports `isFallbackAdapter: true`; Metal on an M4 Max
 reports `false`. Other software rasterizers were not checked.
+
+## #75 — The overview leads with a running demo, and one catalog lists the demos (2026-10-18, lab)
+
+The overview at `?scene=home` is a white page with black Archivo type. It opens
+with the tagline and one sentence about what Munari is. Under that, the chosen
+demo runs live in an iframe loaded with `&framed&bare&capture=auto`, scaled from
+a 1100px layout, or 720px on narrow screens. An index of every demo follows.
+Choosing a thumbnail runs that demo in the frame. Three short statements of what
+the library does, the install command, and a link to the guide close the page.
+The wordmark is the page's only color besides the demos.
+
+The agent-prompt hero is gone. It made the visitor read a sentence and pick a
+verb before seeing anything move. `capture=auto` stays: Chrome with
+HTML-in-canvas captures through it, and every other browser captures through
+snapDOM, so every visitor gets a live demo.
+
+`sceneCatalog.ts` `DEMOS` is the one list of advertised demos, in display
+order. The overview's index and stage, the demo pages' previous and next
+links, and the routes in `App.tsx` all read it. `App.tsx` `DEMO_PAGES` maps
+each catalog id to its lazy page, and its `satisfies Record<DemoId, …>` makes a
+catalog entry without a page a type error. Adding a demo is one catalog entry,
+one `DEMO_PAGES` entry, and a thumbnail at `public/thumbs/<id>.jpg`.
+
+Demo pages lose the yellow sidebar. One bar above the demo's frame holds the
+wordmark, linked to the overview, the demo's title and instruction, previous
+and next links, and the source link.
+
+The wordmark sits on the page with no dark plate. Its canvas was already
+transparent; the plate was the host's CSS. `MunariLogo` takes `ground="light"`
+on a white page, which keeps letters from rolling chartreuse (`#e3ec5a`). That
+color measures about 1.2:1 against white, and a letter wearing it disappeared.
+The other seven colors and every material stay. In six samples over 30 s in
+Chrome with `CanvasDrawElement`, lifted letters in those seven colors stayed
+visible on white, and chartreuse letters were faint in both page and scene.
+
+The lamp-lit headline and the liftable form left the overview earlier as the
+Light and Postcard demos, which share `LightLamp`. Their probes load the framed
+pages: `probe:home-*` became `probe:light`, `probe:light-headline`,
+`probe:light-lamp` and `probe:light-opening`, and the inline-home probe was
+removed with the page it checked. This replaces #59: no demo renders inside the
+site document. It narrows #57: the cover lifts once the overview's fonts are
+ready, or when a demo's iframe loads.
+
+Checked 2026-10-18, Chrome 155 with `CanvasDrawElement`, against this change:
+`probe:light`, `probe:light-opening`, `probe:heading-edges`, `probe:light-lamp`,
+`probe:postcard-paper` and `probe:postcard` pass. `probe:light-headline` (text
+contrast) and `probe:postcard-edges` (a 30 s wait timeout) fail, and their
+pre-move forms, `probe:home-headline` and `probe:postcard-edges`, fail the same
+way at `508f6f5`, twice each.

@@ -274,8 +274,8 @@ export function rollPose(r: Rand, avoid: PoseAvoid, k: LogoKnobs): LetterPose {
 }
 
 /** Roll a whole word left to right, each letter dodging its left
- *  neighbor's face, color, and material. */
-export function seedWord(n: number, r: Rand, k: LogoKnobs): LetterPose[] {
+ *  neighbor's face, color, and material, and any `bannedColors`. */
+export function seedWord(n: number, r: Rand, k: LogoKnobs, bannedColors: readonly number[] = []): LetterPose[] {
   const word: LetterPose[] = []
   for (let i = 0; i < n; i++) {
     const left = word[i - 1]
@@ -283,8 +283,8 @@ export function seedWord(n: number, r: Rand, k: LogoKnobs): LetterPose[] {
       rollPose(
         r,
         left
-          ? { fonts: [left.font], colors: [left.color], materialIndices: [left.materialIndex] }
-          : { fonts: [], colors: [], materialIndices: [] },
+          ? { fonts: [left.font], colors: [left.color, ...bannedColors], materialIndices: [left.materialIndex] }
+          : { fonts: [], colors: [...bannedColors], materialIndices: [] },
         k,
       ),
     )
