@@ -11,7 +11,8 @@
 // it look like a React state fault rather than a pointer one (2026-08-23).
 //
 // The scene is refraction: mid-crossing it holds one mesh spanning the
-// stage, and the lab's tuning panel overlaps that mesh's right edge.
+// stage. The gate moves the lab's tuning panel so each tested header sits
+// over that mesh.
 //
 // The `crossing` header is the control. It sits above the mesh, so it must
 // open in every build — if it ever fails, the probe is broken and the

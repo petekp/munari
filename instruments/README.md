@@ -1332,13 +1332,14 @@ The gate parks the refraction crossing at `t = 0.5`, which is the only
 state where the scene holds a mesh, and clicks three headers in the lab's
 tuning panel. `crossing` sits above the mesh and is the control: it must
 open in every build, and a failure there means the probe is broken rather
-than the kernel. `aperture` and `room` sit inside the overlap.
+than the kernel. Before `aperture` and `room`, the gate raycasts the rows
+under the header's aim point and moves the panel so the header sits over
+the middle of the mesh, then asserts the ray hits it. The overlap is the
+fixture, so it does not depend on how tall the panel's sections draw.
 
 The aim is the header's left end, 20px in, not its centre. At the gate's
-1280x900 viewport the stage row (caption 300 + gap 88 + stage 560) centres
-so the holder's right edge lands at x=1114 and the panel spans 964..1264 —
-the panel's own centre sits on the mesh's far edge, where the raycast
-grazes and the fault does not reproduce.
+1280x900 viewport the panel's own centre sits on the mesh's far edge,
+where the raycast grazes and the fault does not reproduce.
 
 What it caught: `CanvasPointerGate` decided a press belonged to the glass
 from a raycast alone. A raycast answers in scene coordinates and knows
