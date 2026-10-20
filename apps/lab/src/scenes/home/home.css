@@ -26,8 +26,8 @@
 .home-page :is(a, button):focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .home-page a { color: inherit; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 /* The stage measures 100cqw against main, never the page: with the header's
- * wordmark inside a size container, Chrome 155's renderer segfaults on every
- * cached load (platform.md #35). */
+ * wordmark inside a size container, Chrome 155's renderer segfaults on repeat
+ * loads (platform.md #35). */
 .home-page main { container-type: inline-size; }
 .home-header, .home-footer, .home-page main > * { box-sizing: border-box; width: min(var(--measure), 100% - 2 * var(--gutter)); margin-inline: auto; }
 
