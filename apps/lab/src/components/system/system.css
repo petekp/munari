@@ -1,6 +1,6 @@
-/* Site system — type steps and component styles over tokens.css. The style
- * guide (?scene=style) shows every class here in every state; the component
- * library will wrap them.
+/* Site system — type steps and component styles over tokens.css. The
+ * components in this folder (index.ts) render these classes, and the style
+ * guide (?scene=style) shows every one in every state.
  *
  * Inside a captured Surface the pointer arrives as `[data-hover]` and
  * `[data-active]` (docs/authoring.md), so every :hover and :active rule names
@@ -210,6 +210,7 @@ textarea.m-input { min-height: 96px; padding-block: 10px; resize: vertical; }
 
 /* ── dial ─────────────────────────────────────────────────── */
 
+.m-dial-group { display: grid; justify-items: center; gap: var(--m-s1); }
 .m-dial { position: relative; box-sizing: border-box; width: 56px; height: 56px; margin: 8px; padding: 0; border: 1px solid var(--m-ink); border-radius: 50%; background: var(--m-paper); cursor: ns-resize; --m-turn: 0deg; }
 /* The ticks are an SVG child rather than a masked gradient: a captured
  * Surface does not paint mask-image (docs/authoring.md). */

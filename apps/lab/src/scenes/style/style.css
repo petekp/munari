@@ -109,9 +109,6 @@
 .style-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--m-s5) var(--m-s6); max-width: 760px; }
 .style-field--wide { grid-column: 1 / -1; }
 
-/* controls */
-.style-dial { display: grid; justify-items: center; gap: var(--m-s1); }
-
 /* panels and windows */
 .style-panels { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--m-s6); padding: var(--m-s6); background: var(--m-paper); }
 .style-windows { display: grid; flex: 1 1 280px; gap: var(--m-s5); }

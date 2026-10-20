@@ -2,12 +2,12 @@
 // the real component CSS (components/system/system.css) over the real tokens,
 // so the page changes when the system does. States at rest use the same
 // `[data-hover]` and `[data-active]` twins a captured Surface receives.
-import { useEffect, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { MunariLogo } from '../../components/MunariLogo'
+import { Bar, Button, Check, CopyBlock, Dial, Field, Input, Notice, Panel, PanelSection, Plate, Radio, Select, Slider, StageCaption, Status, Tag, TextArea, TextButton, Toggle, UnitInput, Window, type PointerState } from '../../components/system'
 import { GUIDE_URL, SOURCE_ROOT } from '../../components/sceneCatalog'
 import { sceneUrl } from '../../captureMode'
 import { contrastRatio } from './styleContrastLaw'
-import '../../components/system/system.css'
 import './style.css'
 
 interface StyleProps { onReady?: () => void }
@@ -58,9 +58,6 @@ const TYPE_STEPS = [
 ] as const
 
 const SPACE = [['s1', 4], ['s2', 8], ['s3', 12], ['s4', 16], ['s5', 24], ['s6', 32], ['s7', 48], ['s8', 64], ['s9', 96]] as const
-
-const CHECK = <svg viewBox="0 0 12 12" aria-hidden><path d="M2.5 6.2 5 8.6l4.6-5.2" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
-const CHEVRON = <svg viewBox="0 0 16 16" aria-hidden><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
 
 export function StyleApp({ onReady }: StyleProps) {
   useEffect(() => {
@@ -132,12 +129,12 @@ export function StyleApp({ onReady }: StyleProps) {
               <div key={ground} data-ground={ground} className="style-ground">
                 <span className="m-label">{ground}</span>
                 <div className="style-row">
-                  <button type="button" className="m-button m-button--compact">Lift</button>
-                  <button type="button" className="m-button m-button--outline m-button--compact">Reset</button>
+                  <Button compact>Lift</Button>
+                  <Button variant="outline" compact>Reset</Button>
                   <a className="m-link m-ui" href="#grounds">Source</a>
                 </div>
-                <Toggle label="Shadows" initial={ground !== 'field'} />
-                <Slider label="Distance" unit="px" initial={ground === 'ink' ? 72 : 40} min={0} max={120} />
+                <ToggleSpecimen label="Shadows" initial={ground !== 'field'} />
+                <SliderSpecimen label="Distance" unit="px" initial={ground === 'ink' ? 72 : 40} min={0} max={120} />
               </div>
             ))}
           </div>
@@ -205,22 +202,22 @@ export function StyleApp({ onReady }: StyleProps) {
 
         <Section id="actions" title="Actions">
           <States title="Button" note="One per view. Inverts on hover.">
-            <State label="Default"><button type="button" className="m-button">Show in 3D</button></State>
-            <State label="Hover"><button type="button" className="m-button" data-hover>Show in 3D</button></State>
-            <State label="Pressed"><button type="button" className="m-button" data-active>Show in 3D</button></State>
-            <State label="Disabled"><button type="button" className="m-button" disabled>Show in 3D</button></State>
+            <State label="Default"><Button>Show in 3D</Button></State>
+            <State label="Hover"><Button pointerState="hover">Show in 3D</Button></State>
+            <State label="Pressed"><Button pointerState="active">Show in 3D</Button></State>
+            <State label="Disabled"><Button disabled>Show in 3D</Button></State>
           </States>
           <States title="Outline button" note="Secondary actions and panel footers.">
-            <State label="Default"><button type="button" className="m-button m-button--outline">Reset</button></State>
-            <State label="Hover"><button type="button" className="m-button m-button--outline" data-hover>Reset</button></State>
-            <State label="Pressed"><button type="button" className="m-button m-button--outline" data-active>Reset</button></State>
-            <State label="Compact"><button type="button" className="m-button m-button--outline m-button--compact">Reset</button></State>
+            <State label="Default"><Button variant="outline">Reset</Button></State>
+            <State label="Hover"><Button variant="outline" pointerState="hover">Reset</Button></State>
+            <State label="Pressed"><Button variant="outline" pointerState="active">Reset</Button></State>
+            <State label="Compact"><Button variant="outline" compact>Reset</Button></State>
           </States>
           <States title="Link and text button" note="Underlined in text; bar links underline on hover.">
             <State label="Default"><a className="m-link m-ui" href="#actions">Open full page</a></State>
             <State label="Hover"><a className="m-link m-ui" href="#actions" data-hover>Open full page</a></State>
             <State label="Pressed"><a className="m-link m-ui" href="#actions" data-active>Open full page</a></State>
-            <State label="Disabled"><button type="button" className="m-textbutton" disabled>Next</button></State>
+            <State label="Disabled"><TextButton disabled>Next</TextButton></State>
           </States>
           <States title="Copy block" note="Code that runs as typed. The button confirms for 1.6s.">
             <State label="Live" wide><CopyBlock text={'npm install @petepetrash/munari @react-three/fiber\nnpm install three@0.186.1 --save-exact'} /></State>
@@ -230,96 +227,84 @@ export function StyleApp({ onReady }: StyleProps) {
         <Section id="plates" title="Plates and stage">
           <p className="m-body m-quiet style-note">A demo in the index is a plate: a numbered image with its name and one line. The numbers follow the catalog's order.</p>
           <div className="style-plates">
-            <Plate id="genie" number="01" title="Genie" headline="A window that can bend" state="Default" />
-            <Plate id="flight" number="02" title="Flight" headline="Drag and drop with weight" state="Hover" hover />
-            <Plate id="light" number="03" title="Light" headline="A lamp over live HTML" state="Selected" pressed />
+            <PlateSpecimen id="genie" number="01" title="Genie" headline="A window that can bend" state="Default" />
+            <PlateSpecimen id="flight" number="02" title="Flight" headline="Drag and drop with weight" state="Hover" pointerState="hover" />
+            <PlateSpecimen id="light" number="03" title="Light" headline="A lamp over live HTML" state="Selected" selected />
           </div>
           <div className="style-stage-sample">
             <div className="m-stage style-stage-frame"><img src="/thumbs/knobs.jpg" alt="" /></div>
-            <div className="m-stage-caption"><p><b>Knobs.</b> Turn a dial, switch the power, and resize the panel with its corner handle.</p><a className="m-link" href="#plates">Open full page</a></div>
-            <div className="m-ruler" />
+            <StageCaption title="Knobs" action={<a className="m-link" href="#plates">Open full page</a>}>Turn a dial, switch the power, and resize the panel with its corner handle.</StageCaption>
           </div>
           <States title="Demo bar" note="Above every demo page. The wordmark sits at the left, at 26px.">
             <State label="Live" wide>
-              <div className="m-bar style-bar">
-                <div className="m-bar-demo"><b>Genie</b><span>Minimize a window, or drag its title toward the dock.</span></div>
-                <div className="m-bar-links"><span className="m-readout m-quiet">01 / 09</span><a className="m-link m-link--nav" href="#plates">Previous</a><a className="m-link m-link--nav" href="#plates">Next</a><a className="m-link m-link--nav" href="#plates">Source</a></div>
-              </div>
+              <Bar
+                className="style-bar"
+                title="Genie"
+                instruction="Minimize a window, or drag its title toward the dock."
+                links={<><span className="m-readout m-quiet">01 / 09</span><a className="m-link m-link--nav" href="#plates">Previous</a><a className="m-link m-link--nav" href="#plates">Next</a><a className="m-link m-link--nav" href="#plates">Source</a></>}
+              />
             </State>
           </States>
         </Section>
 
         <Section id="fields" title="Fields">
           <div className="style-fields">
-            <Field label="Your name"><input className="m-input" placeholder="Ada Lovelace" /></Field>
-            <Field label="Hover"><input className="m-input" data-hover defaultValue="Grace Hopper" /></Field>
-            <Field label="Blur radius">
-              <span className="m-field-unit"><input className="m-input m-readout" inputMode="decimal" defaultValue="12" /><span className="m-readout">px</span></span>
-            </Field>
-            <Field label="Message" message={<><b>Error:</b> Write at least one word.</>}><input className="m-input" aria-invalid="true" defaultValue="" /></Field>
-            <Field label="Disabled"><input className="m-input" disabled defaultValue="Read only here" /></Field>
-            <Field label="Material">
-              <span className="m-select">
-                <select className="m-input" defaultValue="glass"><option value="paper">Paper</option><option value="glass">Glass</option><option value="chrome">Chrome</option></select>
-                {CHEVRON}
-              </span>
-            </Field>
-            <Field label="Greeting" wide><textarea className="m-input" defaultValue="Greetings from the web." /></Field>
+            <Field label="Your name">{(control) => <Input {...control} placeholder="Ada Lovelace" />}</Field>
+            <Field label="Hover">{(control) => <Input {...control} pointerState="hover" defaultValue="Grace Hopper" />}</Field>
+            <Field label="Blur radius">{(control) => <UnitInput {...control} unit="px" defaultValue="12" />}</Field>
+            <Field label="Message" invalid message={<><b>Error:</b> Write at least one word.</>}>{(control) => <Input {...control} defaultValue="" />}</Field>
+            <Field label="Disabled">{(control) => <Input {...control} disabled defaultValue="Read only here" />}</Field>
+            <Field label="Material">{(control) => <Select {...control} defaultValue="glass" options={[['paper', 'Paper'], ['glass', 'Glass'], ['chrome', 'Chrome']]} />}</Field>
+            <Field label="Greeting" className="style-field--wide">{(control) => <TextArea {...control} defaultValue="Greetings from the web." />}</Field>
           </div>
         </Section>
 
         <Section id="controls" title="Controls">
           <States title="Checkbox and radio" note="The label is part of the target.">
-            <State label="Off"><Check label="Cast shadows" /></State>
-            <State label="On"><Check label="Cast shadows" checked /></State>
-            <State label="Hover"><Check label="Cast shadows" hover /></State>
-            <State label="Disabled"><Check label="Cast shadows" checked disabled /></State>
-            <State label="Radio"><span className="style-radios"><Check label="Paper" radio name="ground" checked /><Check label="Ink" radio name="ground" /></span></State>
+            <State label="Off"><CheckSpecimen initial={false} /></State>
+            <State label="On"><CheckSpecimen initial /></State>
+            <State label="Hover"><CheckSpecimen initial={false} pointerState="hover" /></State>
+            <State label="Disabled"><CheckSpecimen initial disabled /></State>
+            <State label="Radio"><RadioSpecimen /></State>
           </States>
           <States title="Toggle" note="The word beside it says the state, so position never carries it alone.">
-            <State label="Off"><Toggle label="Shadows" initial={false} /></State>
-            <State label="On"><Toggle label="Shadows" initial /></State>
-            <State label="Disabled"><Toggle label="Shadows" initial disabled /></State>
+            <State label="Off"><ToggleSpecimen label="Shadows" initial={false} /></State>
+            <State label="On"><ToggleSpecimen label="Shadows" initial /></State>
+            <State label="Disabled"><ToggleSpecimen label="Shadows" initial disabled /></State>
           </States>
           <States title="Slider" note="Arrows step by one, Shift by ten. The fill is ink to the thumb; the ruler stays.">
-            <State label="Live" wide><Slider label="Light distance" unit="px" initial={64} min={0} max={160} /></State>
-            <State label="Disabled" wide><Slider label="Light distance" unit="px" initial={64} min={0} max={160} disabled /></State>
+            <State label="Live" wide><SliderSpecimen label="Light distance" unit="px" initial={64} min={0} max={160} /></State>
+            <State label="Disabled" wide><SliderSpecimen label="Light distance" unit="px" initial={64} min={0} max={160} disabled /></State>
           </States>
           <States title="Dial" note="Drag up or down, or use the arrows. The ticks are the ruler, bent.">
-            <State label="Live"><Dial label="Cutoff" /></State>
+            <State label="Live"><DialSpecimen label="Cutoff" /></State>
           </States>
         </Section>
 
         <Section id="panels" title="Panels and windows">
           <div className="style-panels" data-ground="field">
-            <TuningPanel />
+            <PanelSpecimen />
             <div className="style-windows">
-              <div className="m-window">
-                <div className="m-window-bar"><button type="button" className="m-window-close" aria-label="Close quadrato" />quadrato</div>
-                <div className="m-window-body m-quiet">An unfocused window. Paper title bar, ink rule below.</div>
-              </div>
-              <div className="m-window" data-focused>
-                <div className="m-window-bar"><button type="button" className="m-window-close" aria-label="Close scheda" />scheda</div>
-                <div className="m-window-body">The focused window. Its title bar inverts. No shadow: windows separate by their edge and the field behind them.</div>
-              </div>
+              <Window title="quadrato" bodyClassName="m-quiet">An unfocused window. Paper title bar, ink rule below.</Window>
+              <Window title="scheda" focused>The focused window. Its title bar inverts. No shadow: windows separate by their edge and the field behind them.</Window>
             </div>
           </div>
         </Section>
 
         <Section id="status" title="Status and notices">
           <States title="Status" note="The word is always there; the square only repeats it.">
-            <State label="Live"><span className="m-status" data-status="live">HTML-in-canvas</span></State>
-            <State label="Fallback"><span className="m-status" data-status="fallback">snapDOM</span></State>
-            <State label="Idle"><span className="m-status" data-status="idle">Waiting for input</span></State>
-            <State label="Unavailable"><span className="m-status" data-status="unavailable">No capture</span></State>
+            <State label="Live"><Status status="live">HTML-in-canvas</Status></State>
+            <State label="Fallback"><Status status="fallback">snapDOM</Status></State>
+            <State label="Idle"><Status status="idle">Waiting for input</Status></State>
+            <State label="Unavailable"><Status status="unavailable">No capture</Status></State>
           </States>
           <States title="Tag" note="Not clickable.">
-            <State label="Renderer"><span className="m-tag">WebGPU</span></State>
-            <State label="Browser"><span className="m-tag">Chrome 155</span></State>
+            <State label="Renderer"><Tag>WebGPU</Tag></State>
+            <State label="Browser"><Tag>Chrome 155</Tag></State>
           </States>
           <div className="style-notices">
-            <div className="m-notice" role="status"><b>Needs Chrome.</b><p>Other browsers draw this demo through snapDOM, so the caret is not painted.</p><button type="button" className="m-textbutton">Dismiss</button></div>
-            <div className="m-notice" role="alert"><b>Error:</b><p>The scene lost its GPU device. Reload the page to draw it again.</p></div>
+            <Notice title="Needs Chrome." action={<TextButton>Dismiss</TextButton>}>Other browsers draw this demo through snapDOM, so the caret is not painted.</Notice>
+            <Notice title="Error:" kind="error">The scene lost its GPU device. Reload the page to draw it again.</Notice>
           </div>
         </Section>
 
@@ -412,160 +397,63 @@ function Labeled({ label, note, children }: { label: string; note: string; child
 }
 
 // ── specimens ────────────────────────────────────────────────────────
+// The library's components are controlled; these hold each specimen's value.
 
-function Plate({ id, number, title, headline, state, hover = false, pressed = false }: { id: string; number: string; title: string; headline: string; state: string; hover?: boolean; pressed?: boolean }) {
+function PlateSpecimen({ id, state, ...plate }: { id: string; number: string; title: string; headline: string; state: string; selected?: boolean; pointerState?: PointerState }) {
   return (
     <figure className="style-state">
-      <button type="button" className="m-plate" data-hover={hover || undefined} aria-pressed={pressed}>
-        <img className="m-plate-image" src={`/thumbs/${id}.jpg`} alt="" />
-        <span className="m-plate-meta"><span className="m-plate-number m-readout">{number}</span><span className="m-plate-title">{title}</span></span>
-        <span className="m-plate-headline">{headline}</span>
-      </button>
+      <Plate image={`/thumbs/${id}.jpg`} {...plate} />
       <figcaption className="m-small m-quiet">{state}</figcaption>
     </figure>
   )
 }
 
-function Field({ label, message, wide = false, children }: { label: string; message?: ReactNode; wide?: boolean; children: ReactNode }) {
+function CheckSpecimen({ initial, disabled, pointerState }: { initial: boolean; disabled?: boolean; pointerState?: PointerState }) {
+  const [checked, setChecked] = useState(initial)
+  return <Check label="Cast shadows" checked={checked} onChange={setChecked} disabled={disabled} pointerState={pointerState} />
+}
+
+function RadioSpecimen() {
+  const [ground, setGround] = useState<'paper' | 'ink'>('paper')
   return (
-    <label className={wide ? 'm-field style-field--wide' : 'm-field'}>
-      <span className="m-field-label">{label}</span>
-      {children}
-      {message && <span className="m-field-message">{message}</span>}
-    </label>
+    <span className="style-radios">
+      <Radio label="Paper" name="ground" checked={ground === 'paper'} onSelect={() => setGround('paper')} />
+      <Radio label="Ink" name="ground" checked={ground === 'ink'} onSelect={() => setGround('ink')} />
+    </span>
   )
 }
 
-function Check({ label, checked = false, disabled = false, hover = false, radio = false, name }: { label: string; checked?: boolean; disabled?: boolean; hover?: boolean; radio?: boolean; name?: string }) {
-  return (
-    <label className={radio ? 'm-check m-check--radio' : 'm-check'} data-hover={hover || undefined}>
-      <input type={radio ? 'radio' : 'checkbox'} name={name} defaultChecked={checked} disabled={disabled} />
-      <span className="m-check-box">{radio ? null : CHECK}</span>
-      {label}
-    </label>
-  )
-}
-
-function Toggle({ label, initial, disabled = false }: { label: string; initial: boolean; disabled?: boolean }) {
+function ToggleSpecimen({ label, initial, disabled }: { label: string; initial: boolean; disabled?: boolean }) {
   const [on, setOn] = useState(initial)
-  return (
-    <button type="button" role="switch" aria-checked={on} className="m-toggle" disabled={disabled} onClick={() => setOn(!on)}>
-      <span className="m-toggle-track" aria-hidden />
-      {label}
-      <span className="m-toggle-state m-readout">{on ? 'On' : 'Off'}</span>
-    </button>
-  )
+  return <Toggle label={label} checked={on} onChange={setOn} disabled={disabled} />
 }
 
-type SliderStyle = CSSProperties & { '--m-value': string }
-
-function arrowDirection(key: string): number {
-  if (key === 'ArrowRight' || key === 'ArrowUp') return 1
-  if (key === 'ArrowLeft' || key === 'ArrowDown') return -1
-  return 0
-}
-
-function Slider({ label, unit, initial, min, max, disabled = false }: { label: string; unit: string; initial: number; min: number; max: number; disabled?: boolean }) {
+function SliderSpecimen({ initial, ...slider }: { label: string; unit: string; initial: number; min: number; max: number; disabled?: boolean }) {
   const [value, setValue] = useState(initial)
-  const style: SliderStyle = { '--m-value': `${((value - min) / (max - min)) * 100}%` }
-  return (
-    <label className="m-slider" style={style}>
-      <span className="m-slider-head"><span className="m-small">{label}</span><span className="m-slider-value m-readout">{value} {unit}</span></span>
-      <span className="m-slider-control">
-        <input type="range" min={min} max={max} value={value} disabled={disabled} onChange={(event) => setValue(Number(event.target.value))} onKeyDown={(event) => {
-          const direction = arrowDirection(event.key)
-          if (!event.shiftKey || direction === 0) return
-          event.preventDefault()
-          setValue(Math.min(max, Math.max(min, value + direction * 10)))
-        }} />
-        <span className="m-slider-track m-ruler" aria-hidden />
-        <span className="m-slider-fill" aria-hidden />
-        <span className="m-slider-thumb" aria-hidden />
-      </span>
-      <span className="m-slider-ends m-readout" aria-hidden><span>{min}</span><span>{max}</span></span>
-    </label>
-  )
+  return <Slider value={value} onChange={setValue} {...slider} />
 }
 
-type DialStyle = CSSProperties & { '--m-turn': string }
-
-// 20 steps across the dial's 270° sweep, with a long tick at every quarter.
-const DIAL_TICKS = (
-  <svg className="m-dial-ticks" viewBox="-38 -38 76 76" aria-hidden>
-    {Array.from({ length: 21 }, (_, step) => {
-      const angle = ((-135 + step * 13.5) * Math.PI) / 180
-      const outer = step % 5 === 0 ? 37 : 34
-      return <line key={step} x1={31 * Math.sin(angle)} y1={-31 * Math.cos(angle)} x2={outer * Math.sin(angle)} y2={-outer * Math.cos(angle)} data-major={step % 5 === 0 || undefined} />
-    })}
-  </svg>
-)
-
-function Dial({ label }: { label: string }) {
+function DialSpecimen({ label }: { label: string }) {
   const [value, setValue] = useState(35)
-  const set = (next: number) => setValue(Math.min(100, Math.max(0, Math.round(next))))
-  const onKey = (event: KeyboardEvent) => {
-    const step = event.shiftKey ? 10 : 1
-    if (event.key === 'ArrowUp' || event.key === 'ArrowRight') set(value + step)
-    else if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') set(value - step)
-    else return
-    event.preventDefault()
-  }
-  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    const startY = event.clientY
-    const startValue = value
-    const target = event.currentTarget
-    target.setPointerCapture(event.pointerId)
-    const move = (e: globalThis.PointerEvent) => set(startValue + (startY - e.clientY) / 2)
-    const end = () => { target.removeEventListener('pointermove', move); target.removeEventListener('pointerup', end) }
-    target.addEventListener('pointermove', move)
-    target.addEventListener('pointerup', end)
-  }
-  const style: DialStyle = { '--m-turn': `${-135 + value * 2.7}deg` }
-  return (
-    <div className="style-dial">
-      <div className="m-dial" role="slider" tabIndex={0} aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} style={style} onKeyDown={onKey} onPointerDown={onPointerDown}>{DIAL_TICKS}</div>
-      <span className="m-small">{label}</span>
-      <span className="m-readout m-quiet">{value} %</span>
-    </div>
-  )
+  return <Dial label={label} value={value} onChange={setValue} />
 }
 
-function CopyBlock({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  useEffect(() => {
-    if (!copied) return
-    const timer = setTimeout(() => setCopied(false), 1600)
-    return () => clearTimeout(timer)
-  }, [copied])
+function PanelSpecimen() {
   return (
-    <div className="m-copy">
-      <code>{text}</code>
-      <button type="button" className="m-textbutton" onClick={() => { void navigator.clipboard.writeText(text).then(() => setCopied(true)) }}>{copied ? 'Copied' : 'Copy'}</button>
-    </div>
-  )
-}
-
-function TuningPanel() {
-  return (
-    <div className="m-panel" role="group" aria-label="Tune Plume">
-      <div className="m-panel-head"><b>Tune Plume</b><button type="button" className="m-textbutton">Hide</button></div>
-      <details open>
-        <summary>Timing{CHEVRON}</summary>
-        <div className="m-panel-group">
-          <Slider label="Pause before dissolving" unit="ms" initial={600} min={0} max={2000} />
-          <Toggle label="Drift with the pointer" initial />
-        </div>
-      </details>
-      <details>
-        <summary>Particles{CHEVRON}</summary>
-        <div className="m-panel-group">
-          <Slider label="Count" unit="k" initial={24} min={1} max={64} />
-        </div>
-      </details>
-      <div className="m-panel-foot">
-        <button type="button" className="m-button m-button--outline m-button--compact">Copy values</button>
-        <button type="button" className="m-button m-button--outline m-button--compact">Reset</button>
-      </div>
-    </div>
+    <Panel
+      role="group"
+      aria-label="Tune Plume"
+      title="Tune Plume"
+      action={<TextButton>Hide</TextButton>}
+      foot={<><Button variant="outline" compact>Copy values</Button><Button variant="outline" compact>Reset</Button></>}
+    >
+      <PanelSection title="Timing" defaultOpen>
+        <SliderSpecimen label="Pause before dissolving" unit="ms" initial={600} min={0} max={2000} />
+        <ToggleSpecimen label="Drift with the pointer" initial />
+      </PanelSection>
+      <PanelSection title="Particles">
+        <SliderSpecimen label="Count" unit="k" initial={24} min={1} max={64} />
+      </PanelSection>
+    </Panel>
   )
 }
