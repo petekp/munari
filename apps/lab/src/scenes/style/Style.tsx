@@ -173,7 +173,7 @@ export function StyleApp({ onReady }: StyleProps) {
             <div><dt className="m-label">Measure</dt><dd className="m-quiet">Text and sections sit in a 1200px column, with a gutter of 16–48px.</dd></div>
             <div><dt className="m-label">Sections</dt><dd className="m-quiet">A label column and a content column, 1 to 3. One column under 760px.</dd></div>
             <div><dt className="m-label">Stage</dt><dd className="m-quiet">Edge to edge up to 1600px. Past that it centers and its corners round to 16px as the margins open.</dd></div>
-            <div><dt className="m-label">Targets</dt><dd className="m-quiet">44px tall on the page and on touch; 32px in desktop panels.</dd></div>
+            <div><dt className="m-label">Targets</dt><dd className="m-quiet">Page buttons are 44px tall. On touch, every control is at least 44px. Desktop panels go down to 32px.</dd></div>
           </dl>
         </Section>
 
@@ -195,7 +195,7 @@ export function StyleApp({ onReady }: StyleProps) {
           <table className="style-table m-ui">
             <tbody>
               <tr><td className="m-readout">0ms</td><td>Hover, press, toggle. Controls switch like hardware.</td></tr>
-              <tr><td className="m-readout">120ms</td><td>A button inverting, a slider thumb widening.</td></tr>
+              <tr><td className="m-readout">120ms</td><td>A slider thumb widening, a chevron turning.</td></tr>
               <tr><td className="m-readout">200ms</td><td>A demo fading in over its poster.</td></tr>
               <tr><td className="m-readout">320ms</td><td>A panel opening.</td></tr>
             </tbody>
@@ -252,7 +252,7 @@ export function StyleApp({ onReady }: StyleProps) {
         <Section id="fields" title="Fields">
           <div className="style-fields">
             <Field label="Your name"><input className="m-input" placeholder="Ada Lovelace" /></Field>
-            <Field label="Hover"><input className="m-input" data-hover defaultValue="Still the same field" /></Field>
+            <Field label="Hover"><input className="m-input" data-hover defaultValue="Grace Hopper" /></Field>
             <Field label="Blur radius">
               <span className="m-field-unit"><input className="m-input m-readout" inputMode="decimal" defaultValue="12" /><span className="m-readout">px</span></span>
             </Field>
@@ -459,6 +459,12 @@ function Toggle({ label, initial, disabled = false }: { label: string; initial: 
 
 type SliderStyle = CSSProperties & { '--m-value': string }
 
+function arrowDirection(key: string): number {
+  if (key === 'ArrowRight' || key === 'ArrowUp') return 1
+  if (key === 'ArrowLeft' || key === 'ArrowDown') return -1
+  return 0
+}
+
 function Slider({ label, unit, initial, min, max, disabled = false }: { label: string; unit: string; initial: number; min: number; max: number; disabled?: boolean }) {
   const [value, setValue] = useState(initial)
   const style: SliderStyle = { '--m-value': `${((value - min) / (max - min)) * 100}%` }
@@ -466,7 +472,12 @@ function Slider({ label, unit, initial, min, max, disabled = false }: { label: s
     <label className="m-slider" style={style}>
       <span className="m-slider-head"><span className="m-small">{label}</span><span className="m-slider-value m-readout">{value} {unit}</span></span>
       <span className="m-slider-control">
-        <input type="range" min={min} max={max} value={value} disabled={disabled} onChange={(event) => setValue(Number(event.target.value))} />
+        <input type="range" min={min} max={max} value={value} disabled={disabled} onChange={(event) => setValue(Number(event.target.value))} onKeyDown={(event) => {
+          const direction = arrowDirection(event.key)
+          if (!event.shiftKey || direction === 0) return
+          event.preventDefault()
+          setValue(Math.min(max, Math.max(min, value + direction * 10)))
+        }} />
         <span className="m-slider-track m-ruler" aria-hidden />
         <span className="m-slider-fill" aria-hidden />
         <span className="m-slider-thumb" aria-hidden />
@@ -477,6 +488,17 @@ function Slider({ label, unit, initial, min, max, disabled = false }: { label: s
 }
 
 type DialStyle = CSSProperties & { '--m-turn': string }
+
+// 20 steps across the dial's 270° sweep, with a long tick at every quarter.
+const DIAL_TICKS = (
+  <svg className="m-dial-ticks" viewBox="-38 -38 76 76" aria-hidden>
+    {Array.from({ length: 21 }, (_, step) => {
+      const angle = ((-135 + step * 13.5) * Math.PI) / 180
+      const outer = step % 5 === 0 ? 37 : 34
+      return <line key={step} x1={31 * Math.sin(angle)} y1={-31 * Math.cos(angle)} x2={outer * Math.sin(angle)} y2={-outer * Math.cos(angle)} data-major={step % 5 === 0 || undefined} />
+    })}
+  </svg>
+)
 
 function Dial({ label }: { label: string }) {
   const [value, setValue] = useState(35)
@@ -501,7 +523,7 @@ function Dial({ label }: { label: string }) {
   const style: DialStyle = { '--m-turn': `${-135 + value * 2.7}deg` }
   return (
     <div className="style-dial">
-      <div className="m-dial" role="slider" tabIndex={0} aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} style={style} onKeyDown={onKey} onPointerDown={onPointerDown} />
+      <div className="m-dial" role="slider" tabIndex={0} aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} style={style} onKeyDown={onKey} onPointerDown={onPointerDown}>{DIAL_TICKS}</div>
       <span className="m-small">{label}</span>
       <span className="m-readout m-quiet">{value} %</span>
     </div>

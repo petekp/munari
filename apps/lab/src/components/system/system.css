@@ -60,7 +60,6 @@
   color: var(--m-paper);
   font: 600 15px/1 var(--m-sans);
   cursor: pointer;
-  transition: background-color var(--m-t-fast) var(--m-ease), color var(--m-t-fast) var(--m-ease);
 }
 .m-button:is(:hover, [data-hover]) { background: var(--m-paper); color: var(--m-ink); }
 .m-button:is(:active, [data-active]) { background: var(--m-field); color: var(--m-ink); }
@@ -143,8 +142,11 @@
 textarea.m-input { min-height: 96px; padding-block: 10px; resize: vertical; }
 .m-input::placeholder { color: var(--m-quiet); }
 .m-input:focus-visible { outline-offset: 2px; }
+/* A second pixel of edge drawn inside the border, so hover and error thicken
+ * the field without moving its text. */
+.m-input:is(:hover, [data-hover]):not(:disabled),
+.m-input[aria-invalid='true'] { box-shadow: inset 0 0 0 1px var(--m-ink); }
 .m-input:is(:disabled, [aria-disabled='true']) { border-color: var(--m-tick); background: var(--m-field); color: var(--m-tick); }
-.m-input[aria-invalid='true'] { border-width: 2px; padding-inline: 11px; }
 .m-field-message { font: 400 13px/1.4 var(--m-sans); color: var(--m-quiet); }
 .m-field-message b { color: var(--m-ink); font-weight: 600; }
 .m-field-unit { position: relative; }
@@ -154,7 +156,6 @@ textarea.m-input { min-height: 96px; padding-block: 10px; resize: vertical; }
 .m-select { position: relative; display: block; }
 .m-select select { appearance: none; padding-right: 36px; cursor: pointer; }
 .m-select > svg { position: absolute; top: 50%; right: var(--m-s3); width: 16px; height: 16px; color: var(--m-ink); pointer-events: none; transform: translateY(-50%); }
-.m-select select:is(:hover, [data-hover]):not(:disabled) { border-width: 2px; padding-left: 11px; padding-right: 35px; }
 
 /* ── checkbox and radio ───────────────────────────────────── */
 
@@ -187,6 +188,8 @@ textarea.m-input { min-height: 96px; padding-block: 10px; resize: vertical; }
 .m-toggle:disabled { color: var(--m-tick); cursor: default; }
 .m-toggle:disabled .m-toggle-track { border-color: var(--m-tick); }
 .m-toggle:disabled .m-toggle-track::after { background: var(--m-tick); }
+.m-toggle:disabled[aria-checked='true'] .m-toggle-track { background: var(--m-tick); }
+.m-toggle:disabled[aria-checked='true'] .m-toggle-track::after { background: var(--m-paper); }
 
 /* ── slider ───────────────────────────────────────────────── */
 
@@ -208,7 +211,11 @@ textarea.m-input { min-height: 96px; padding-block: 10px; resize: vertical; }
 /* ── dial ─────────────────────────────────────────────────── */
 
 .m-dial { position: relative; box-sizing: border-box; width: 56px; height: 56px; margin: 8px; padding: 0; border: 1px solid var(--m-ink); border-radius: 50%; background: var(--m-paper); cursor: ns-resize; --m-turn: 0deg; }
-.m-dial::before { content: ''; position: absolute; inset: -9px; border-radius: 50%; background: repeating-conic-gradient(var(--m-tick) 0 1.2deg, transparent 1.2deg 10deg); mask: radial-gradient(circle, transparent 0 32px, #000 32.5px); pointer-events: none; }
+/* The ticks are an SVG child rather than a masked gradient: a captured
+ * Surface does not paint mask-image (docs/authoring.md). */
+.m-dial-ticks { position: absolute; inset: -10px; width: calc(100% + 20px); height: calc(100% + 20px); overflow: visible; pointer-events: none; }
+.m-dial-ticks line { stroke: var(--m-tick); stroke-width: 1; }
+.m-dial-ticks line[data-major] { stroke: var(--m-ink); }
 .m-dial::after { content: ''; position: absolute; bottom: 50%; left: calc(50% - 1px); width: 2px; height: 46%; background: var(--m-ink); transform: rotate(var(--m-turn)); transform-origin: 50% 100%; }
 .m-dial:is(:hover, [data-hover]) { border-width: 2px; }
 .m-dial:focus-visible { outline-offset: 12px; }
@@ -252,9 +259,18 @@ textarea.m-input { min-height: 96px; padding-block: 10px; resize: vertical; }
 .m-notice b { font-weight: 600; }
 .m-notice[role='alert'] { border-block-width: 2px; }
 
+@media (pointer: coarse) {
+  :is(.m-check, .m-toggle, .m-button--compact, .m-input) { min-height: 44px; }
+}
+
 @media (max-width: 760px) {
   .m-section { grid-template-columns: minmax(0, 1fr); }
   .m-section > :not(h2) { grid-column: 1; }
-  .m-bar { flex-wrap: wrap; }
+  .m-bar { flex-wrap: wrap; gap: var(--m-s2) var(--m-s5); }
+  .m-bar-demo { order: 3; flex-basis: 100%; flex-direction: column; gap: 2px; }
+  .m-bar-demo span { white-space: normal; }
+  .m-bar-links { margin-left: auto; }
+  .m-notice { flex-wrap: wrap; gap: var(--m-s1) var(--m-s4); }
+  .m-notice p { flex-basis: 100%; }
   .m-stage-caption { flex-direction: column; gap: var(--m-s2); }
 }

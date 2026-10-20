@@ -18,7 +18,7 @@
   --m-field: #f2f2f2;
   /* Separates items inside a region. Never the edge of a control. */
   --m-rule: #dedede;
-  /* Minor ruler ticks and disabled text, 3.4:1 on paper. */
+  /* Minor ruler ticks and disabled text, 3.45:1 on paper. */
   --m-tick: #8a8a8a;
 }
 
@@ -40,7 +40,7 @@
 :root {
   /* The wordmark's eight colors (logoLaw.ts LOGO_PALETTE). Demo content only:
    * objects, light, particles. Never chrome, text or state. Chartreuse is
-   * about 1.2:1 on paper, so it never draws text, lines or marks there. */
+   * 1.3:1 on paper, so it never draws text, lines or marks there. */
   --m-coral: #f2695c;
   --m-chartreuse: #e3ec5a;
   --m-orchid: #f07ff0;
