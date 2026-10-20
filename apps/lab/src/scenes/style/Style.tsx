@@ -94,7 +94,7 @@ export function StyleApp({ onReady }: StyleProps) {
             <li><b className="m-heading">Depth belongs to the scene.</b><p className="m-body m-quiet">2D parts have no shadow, blur or translucency. Real depth and light come from Three.js.</p></li>
             <li><b className="m-heading">Width carries the voice.</b><p className="m-body m-quiet">One family. Wide for statements, normal for reading, narrow for numbers.</p></li>
             <li><b className="m-heading">Controls show their measure.</b><p className="m-body m-quiet">A value is printed in tabular numerals with its unit, and a slider or dial shows where it sits on a ruler.</p></li>
-            <li><b className="m-heading">States are crisp.</b><p className="m-body m-quiet">A control inverts, fills, or gains a rule. Nothing fades halfway, and no state relies on color.</p></li>
+            <li><b className="m-heading">States are crisp.</b><p className="m-body m-quiet">A control changes in one step: it shifts tone, fills, or gains a rule. Nothing fades halfway, and no state relies on color.</p></li>
           </ol>
         </Section>
 
@@ -201,7 +201,7 @@ export function StyleApp({ onReady }: StyleProps) {
         </Section>
 
         <Section id="actions" title="Actions">
-          <States title="Button" note="One per view. Inverts on hover.">
+          <States title="Button" note="One per view. Turns dark gray on hover.">
             <State label="Default"><Button>Show in 3D</Button></State>
             <State label="Hover"><Button pointerState="hover">Show in 3D</Button></State>
             <State label="Pressed"><Button pointerState="active">Show in 3D</Button></State>

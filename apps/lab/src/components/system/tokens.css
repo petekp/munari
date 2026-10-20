@@ -20,6 +20,9 @@
   --m-rule: #dedede;
   /* Minor ruler ticks and disabled text, 3.45:1 on paper. */
   --m-tick: #8a8a8a;
+  /* A solid ink control under the pointer: one step off ink, so hover reads
+   * without inverting. Paper text on it is 12.6:1. */
+  --m-ink-hover: #333;
 }
 
 [data-ground='field'] {
@@ -35,6 +38,7 @@
   --m-field: #1a1a1a;
   --m-rule: #333;
   --m-tick: #777;
+  --m-ink-hover: #ccc;
 }
 
 :root {

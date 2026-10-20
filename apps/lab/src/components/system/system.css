@@ -61,11 +61,11 @@
   font: 600 15px/1 var(--m-sans);
   cursor: pointer;
 }
-.m-button:is(:hover, [data-hover]) { background: var(--m-paper); color: var(--m-ink); }
-.m-button:is(:active, [data-active]) { background: var(--m-field); color: var(--m-ink); }
+.m-button:is(:hover, [data-hover]) { border-color: var(--m-ink-hover); background: var(--m-ink-hover); }
+.m-button:is(:active, [data-active]) { border-color: var(--m-quiet); background: var(--m-quiet); }
 .m-button--outline { background: var(--m-paper); color: var(--m-ink); }
-.m-button--outline:is(:hover, [data-hover]) { background: var(--m-ink); color: var(--m-paper); }
-.m-button--outline:is(:active, [data-active]) { background: var(--m-field); color: var(--m-ink); }
+.m-button--outline:is(:hover, [data-hover]) { border-color: var(--m-ink); background: var(--m-ink); color: var(--m-paper); }
+.m-button--outline:is(:active, [data-active]) { border-color: var(--m-ink); background: var(--m-field); color: var(--m-ink); }
 .m-button--compact { min-height: 32px; padding: 0 var(--m-s3); font-size: 13px; }
 .m-button:is(:disabled, [aria-disabled='true']) { border-color: var(--m-tick); background: var(--m-paper); color: var(--m-tick); cursor: default; }
 
@@ -200,7 +200,14 @@ textarea.m-input { min-height: 96px; padding-block: 10px; resize: vertical; }
 .m-slider-track { position: absolute; inset: 7px 0 auto; }
 .m-slider-fill { position: absolute; top: 6px; left: 0; width: var(--m-value); height: 3px; background: var(--m-ink); }
 .m-slider-thumb { position: absolute; top: 0; left: var(--m-value); width: 2px; height: 20px; margin-left: -1px; background: var(--m-ink); transition: width var(--m-t-fast) var(--m-ease); }
-.m-slider-control input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }
+/* The native range input lies on top of the drawn ruler, fill and thumb, so
+ * a press anywhere on the 24px control, the thumb included, starts a drag.
+ * Its own thumb is a 1px column the control's height: the browser maps the
+ * value across the width minus that thumb, so a wide native thumb would put
+ * the value off the drawn one and jump on grab. */
+.m-slider-control input { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; -webkit-appearance: none; appearance: none; }
+.m-slider-control input::-webkit-slider-thumb { width: 1px; height: 24px; -webkit-appearance: none; appearance: none; }
+.m-slider-control input::-moz-range-thumb { width: 1px; height: 24px; border: 0; }
 .m-slider:is(:hover, [data-hover]) .m-slider-thumb { width: 4px; margin-left: -2px; }
 .m-slider:is(:active, [data-active]) .m-slider-thumb { width: 4px; margin-left: -2px; }
 .m-slider:is(:active, [data-active]) .m-slider-value { background: var(--m-ink); color: var(--m-paper); }
