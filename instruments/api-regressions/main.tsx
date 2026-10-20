@@ -109,6 +109,26 @@ function Attribute(){
   const html=name==='onclick'?'<button onclick="void 0">Inline handler</button>':`<div ${name}="hello">Ordinary attribute</div>`
   return <><SurfaceCanvas id="attributes" pointerMode="surfaces" frameloop="demand" style={{position:'fixed',inset:0}}/><Surface.Root surface={surface} canvasId="attributes" inScene={true}><Surface.HTML><div style={{width:240,height:100}} dangerouslySetInnerHTML={{__html:html}}/></Surface.HTML><Surface.Mesh/></Surface.Root></>
 }
+// Chrome 155–157's renderer crashes when moveBefore docks two or more capture
+// canvases inside an absolutely positioned size container and a font face is
+// added in the same task (platform.md #35). On the site, the font faces came
+// from the stylesheet the wordmark loads. The library docks with insertBefore,
+// and this case fails if a dock goes back to moveBefore.
+const DOCKED_PARTS=['a','b']
+const LATE_FONT_FACE="@font-face{font-family:'Dock face';src:local('Dock face')}"
+function DockInSizeContainer(){
+  useEffect(()=>{
+    const container=document.getElementById('size-container')!
+    const observer=new MutationObserver(()=>{
+      if(!container.querySelector('canvas'))return
+      observer.disconnect()
+      const style=document.createElement('style');style.textContent=LATE_FONT_FACE;document.head.append(style)
+    })
+    observer.observe(container,{childList:true,subtree:true})
+    return()=>observer.disconnect()
+  },[])
+  return <div id="size-container" style={{position:'absolute',inset:0,overflowY:'auto',containerType:'inline-size'}}><Surface.Root inScene={false}>{DOCKED_PARTS.map(part=><Surface.HTML key={part} part={part} size={[40,40]}><div style={{width:40,height:40}}>{part}</div></Surface.HTML>)}</Surface.Root></div>
+}
 const scenario=new URLSearchParams(location.search).get('case')
 function Fixture(){
   switch(scenario){
@@ -126,6 +146,7 @@ function Fixture(){
     case 'clip-longhand':return <Clipping nested rounded longhand/>
     case 'clip-preserve':return <Clipping rounded preserve/>
     case 'attribute':return <Attribute/>
+    case 'dock-in-size-container':return <DockInSizeContainer/>
     default:throw new Error('Unknown API regression case')
   }
 }

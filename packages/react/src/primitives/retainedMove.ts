@@ -105,6 +105,20 @@ export function moveRetained(
     parent.moveBefore(node, before)
     return
   }
+  insertRetained(node, parent, before)
+}
+
+/**
+ * Move `node` to `parent` by removing and inserting it, even where
+ * `moveBefore` exists, keeping focus, selection and scroll as the fallback
+ * of `moveRetained` does. For a node that `moveBefore` must not move
+ * (platform.md #35).
+ */
+export function insertRetained(
+  node: HTMLElement,
+  parent: HTMLElement,
+  before: ChildNode | null = null,
+): void {
   const held = hold(node)
   parent.insertBefore(node, before)
   restore(held)

@@ -79,7 +79,50 @@ async function pixels(page,native,preparing,exclude=[],cssWidth=0){
     return {mean:error/a.data.length,worstLine:Math.max(worst(rows),worst(cols)),unexpectedPixels,referenceFillPixels}
   },{native,preparing,exclude,cssWidth,strong:STRONG_DIFFERENCE,minLine:MIN_LINE_PIXELS})
 }
+// The fixture's dock crashes Chrome 155–157's renderer unless the library docks
+// with insertBefore (platform.md #35). On the site it crashed on loads after
+// the first in one browser, so each load is a new tab of the same browser. A
+// crash fires the page's 'error' event or leaves an evaluate unanswered.
+const DOCK_LOADS=4
+const DOCKED_PARTS=2
+const DOCK_SETTLE_MS=2500
+const ANSWER_MS=3000
+const isCrash=error=>/crash|Session closed|Target closed|detached/i.test(String(error))
+async function dockLoad(page,load){
+  let crashed=false
+  page.on('error',()=>{crashed=true})
+  await page.evaluateOnNewDocument(()=>{
+    const start=performance.now()
+    new MutationObserver((_,observer)=>{
+      if([...document.querySelectorAll('#size-container canvas')].some(canvas=>canvas.layoutSubtree)){window.__dockedMs=performance.now()-start;observer.disconnect()}
+    }).observe(document,{childList:true,subtree:true})
+  })
+  let docked=null
+  try{
+    await page.goto(`${url}/?case=dock-in-size-container`,{waitUntil:'load'})
+    await new Promise(resolve=>setTimeout(resolve,DOCK_SETTLE_MS))
+    const answer=await Promise.race([page.evaluate(()=>({docked:window.__dockedMs??null,sources:[...document.querySelectorAll('#size-container canvas')].filter(canvas=>canvas.layoutSubtree).length})),new Promise(resolve=>setTimeout(()=>resolve(null),ANSWER_MS))])
+    if(answer===null)crashed=true
+    else docked=answer
+  }catch(error){
+    if(!crashed&&!isCrash(error))throw error
+    crashed=true
+  }
+  return {load,crashed,dockedMs:docked?.docked??null,sources:docked?.sources??null}
+}
+async function dockInSizeContainer(page){
+  const loads=[await dockLoad(page,1)]
+  for(let load=2;load<=DOCK_LOADS;load++){
+    const tab=await page.browser().newPage()
+    try{await setChromeViewport(tab,{width:960,height:700});await tab.bringToFront();loads.push(await dockLoad(tab,load))}
+    finally{await tab.close().catch(()=>{})}
+  }
+  for(const entry of loads)if(!entry.crashed)assert.equal(entry.sources,DOCKED_PARTS,`load ${entry.load} docked ${entry.sources} capture canvases`)
+  assert.deepEqual(loads.filter(entry=>entry.crashed).map(entry=>entry.load),[],`The renderer crashed: ${JSON.stringify(loads)}`)
+  return {case:'dock-in-size-container',enhanced:true,loads}
+}
 async function check(page,kind,enhanced){
+  if(kind==='dock-in-size-container')return dockInSizeContainer(page)
   const pageErrors=[];page.on('pageerror',error=>pageErrors.push(String(error)))
   await page.goto(`${url}/?case=${kind}`,{waitUntil:'load'})
   await page.waitForFunction(()=>window.__apiRegression)
@@ -270,7 +313,7 @@ async function check(page,kind,enhanced){
   assert.deepEqual(pageErrors,[])
   return {case:kind,enhanced,dpr:await page.evaluate(()=>devicePixelRatio),...result}
 }
-const enhancedCases=['targets','reorder','capture','resize','focus','prepare-unfocused','clip','clip-nested','clip-rounded','clip-scaled','clip-dynamic','clip-border','clip-margin','clip-longhand','clip-preserve','attribute']
+const enhancedCases=['targets','reorder','capture','resize','focus','prepare-unfocused','clip','clip-nested','clip-rounded','clip-scaled','clip-dynamic','clip-border','clip-margin','clip-longhand','clip-preserve','attribute','dock-in-size-container']
 const nativeCases=['targets','reorder','focus','attribute']
 const requestedCases=process.env.API_CASES?.split(',').map(name=>name.trim()).filter(Boolean)
 if(requestedCases&&(!requestedCases.length||requestedCases.some(name=>!enhancedCases.includes(name))))throw new Error('API_CASES contains no cases or an unknown case')
@@ -284,8 +327,8 @@ try{
       for(const kind of cases){
         const page=await browser.newPage();await setChromeViewport(page,{width:960,height:700});await page.bringToFront()
         try{const result=await check(page,kind,enhanced);results.push(result);console.log(JSON.stringify(result));await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))}
-        catch(error){await writeFile(path.join(output,'failure.json'),JSON.stringify({case:kind,enhanced,error:String(error),observed:await read(page).catch(()=>null)},null,2));throw error}
-        finally{await page.close()}
+        catch(error){await writeFile(path.join(output,'failure.json'),JSON.stringify({case:kind,enhanced,error:String(error),observed:await Promise.race([read(page).catch(()=>null),new Promise(resolve=>setTimeout(()=>resolve(null),ANSWER_MS))])},null,2));throw error}
+        finally{await page.close().catch(()=>{})}
       }
     }finally{await browser.close()}
   }

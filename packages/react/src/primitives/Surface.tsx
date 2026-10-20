@@ -22,7 +22,7 @@ import { watchSurfacePlacement } from './surface/surfacePlacement'
 import { claimSourcePointer, releaseSourcePointer } from './surface/surfacePointerOwnership'
 import { registerHostSpace, hostSpace, markerSpace, boxInHostSpace, hostSpaceScale, hostSpaceUpright } from './surface/surfaceHostSpace'
 import { createSurfacePageClip } from './surface/surfacePageClip'
-import { moveRetained, type ScrollOffsets } from './retainedMove'
+import { insertRetained, moveRetained, type ScrollOffsets } from './retainedMove'
 import { applyCopyScrolls, copyFieldState } from './elementCapture'
 import { readSurfaceDevicePixelRatio } from './surface/surfaceDevicePixelRatio'
 
@@ -251,9 +251,15 @@ export type SurfaceHTMLProps = {
 function matchingRuntime(publication: SurfacePartPublication | null, element: HTMLElement | null): SurfaceSourceRuntime | null {
   return publication?.captureRoot === element ? publication?.runtime ?? null : null
 }
-function dockCaptureHost(host: HTMLElement, dock: HTMLElement) {
-  if (host.parentElement === dock) return
-  moveRetained(host, dock)
+// Chrome 155–157's renderer crashes when `moveBefore` docks capture canvases
+// in an absolutely positioned size container and a font face arrives in the
+// same task; `insertBefore` does not crash (platform.md #35). The insert
+// restarts the CSS animations of whatever the host holds, so the caller puts
+// the held copy back at the live node's pose.
+function dockCaptureHost(host: HTMLElement, dock: HTMLElement): boolean {
+  if (host.parentElement === dock) return false
+  insertRetained(host, dock)
+  return true
 }
 
 function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, live, onChrome, hidden, pageClassName, pageStyle, target, as: Tag = 'div', layout = 'preserve' }: SurfaceHTMLProps) {
@@ -402,9 +408,11 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   useLayoutEffect(()=>{
     if(!sourceHost||!dock||!marker)return
     // Native events must still reach React's root listener after moving the content.
-    dockCaptureHost(sourceHost, dock)
+    const docked = dockCaptureHost(sourceHost, dock)
+    const copy = captureRoot?.firstElementChild
+    if (docked && liveRoot && liveRoot.parentElement !== captureRoot && copy instanceof HTMLElement) matchMotion(liveRoot, copy)
     return registerHostSpace(sourceHost,marker)
-  },[sourceHost,dock,marker])
+  },[sourceHost,dock,marker,liveRoot,captureRoot])
 
   // While the page holds, the user acts on the live node and the source
   // sees only the copy. Naming the live node keeps the copy's answer to that

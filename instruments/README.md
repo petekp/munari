@@ -34,7 +34,12 @@ existing capture across display-density changes without replacing its content.
 
 `npm run probe:api-regressions` covers PR #83's keyed target lists, same-canvas
 capture-reader removal, continuous resize anchors, handle-swap focus, overflow
-clipping during preparation, and content-attribute eligibility. The clipping
+clipping during preparation, and content-attribute eligibility.
+`dock-in-size-container` docks two Surface parts inside an absolutely
+positioned size container, adds a font face in the same task as the moves,
+and fails if the renderer crashes in any of four tabs of one browser, or if a
+surviving tab docks fewer than two capture canvases (platform.md #35). It runs
+in the enhanced pass only. The clipping
 cases compare the riding box with the nearest device-pixel rectangle around
 the native content, and compare rendered clipping against a native shot.
 Form controls and a narrow native-edge band are excluded from pixel equality
