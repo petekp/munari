@@ -29,12 +29,37 @@ const markers = {
   postcard: '.light-page[data-page-ready="true"] .postcard-hero-holder',
 }
 for (const scene of routes) assert.ok(markers[scene], `Add an actual-content marker for new route ${scene}`)
+
+// A visitor's later loads come from a warm cache, and the first load in a fresh
+// browser does not. Chrome 155 crashed the overview's renderer on every load
+// after the first and never on the first (platform.md #35), so each route loads
+// again in a second tab of the same browser and must stay alive.
+const REPEAT_SETTLE_MS = 3000
+async function repeatLoad(browser, url, marker) {
+  const page = await browser.newPage()
+  let crashed = false
+  page.on('error', () => { crashed = true })
+  try {
+    await page.goto(url, { waitUntil: 'load' })
+    await page.waitForSelector(marker)
+    await new Promise(resolve => setTimeout(resolve, REPEAT_SETTLE_MS))
+    assert.equal(crashed, false, 'The renderer crashed on a repeat load')
+    assert.equal(await page.evaluate(() => document.readyState), 'complete')
+    return { crashed }
+  } catch (error) {
+    if (crashed) throw new Error('The renderer crashed on a repeat load', { cause: error })
+    throw error
+  } finally {
+    await page.close().catch(() => {})
+  }
+}
 const server = await fixtureServer('apps/lab', 'API_LAB_URL', output)
 try {
   const cases = [...routes.map(scene => ({ id: scene, scene })), ...studies.map(candidate => ({ id: `candidate-${candidate}`, scene: 'candidates', candidate }))]
     .map(entry => ({ id: entry.id, async run(page) {
       const scene = process.env.ROUTE_FORCE_HOME === '1' ? 'home' : entry.scene
-      await page.goto(`${server.url}/?scene=${scene}&framed${entry.candidate ? `&candidate=${entry.candidate}` : ''}`, { waitUntil: 'load' })
+      const url = `${server.url}/?scene=${scene}&framed${entry.candidate ? `&candidate=${entry.candidate}` : ''}`
+      await page.goto(url, { waitUntil: 'load' })
       await capability(page, true)
       await page.waitForSelector(markers[entry.scene])
       await page.evaluate(() => document.fonts.ready)
@@ -53,7 +78,8 @@ try {
       assert.equal(selected.title, selected.expectedTitle, 'The requested route must be selected, not Home fallback')
       assert.equal(selected.sceneError, null)
       if (entry.candidate) assert.equal(selected.candidate, entry.candidate)
-      return { scene: entry.scene, ...selected, limit: 'Route selection and load only; no visual-quality or gesture claim.' }
+      const repeat = await repeatLoad(page.browser(), url, markers[entry.scene])
+      return { scene: entry.scene, ...selected, repeat, limit: 'Route selection and load only; no visual-quality or gesture claim.' }
     } }))
   await runBrowserCases(cases, output)
 } finally { await server.close() }

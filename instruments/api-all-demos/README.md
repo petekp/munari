@@ -62,8 +62,12 @@ Decision [#41](../../docs/decisions.md#41) records these experimental budgets.
 
 `npm run probe:api-routes` loads every current lab route and Candidate study.
 It requires the selected route's identity and content, actual capture support,
-and no browser errors. This is a load check, not a pixel-quality verdict.
-`API_CASES=logo ROUTE_FORCE_HOME=1` must fail the route check.
+and no browser errors. Each route then loads again in a second tab of the same
+browser and must stay alive for 3 seconds. A first load in a fresh browser
+cannot show a crash that needs a warm cache (platform.md #35). This is a load
+check, not a pixel-quality verdict. `API_CASES=logo ROUTE_FORCE_HOME=1` must
+fail the route check. So must `API_CASES=home` against a dev server of
+`caf0518`, through `API_LAB_URL`.
 
 `npm run probe:api-gestures` checks Gravity, Explode, Selection, and
 Candidates. It preserves the unique interaction cases
