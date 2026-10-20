@@ -86,7 +86,7 @@ try {
         // Open the actual native tweak controls; each input must reach the
         // existing mounted field, without changing source or target identity.
         await page.evaluate(()=>{
-          const opener=[...document.querySelectorAll('button')].find(el=>el.textContent.trim()==='tweaks')
+          const opener=[...document.querySelectorAll('button')].find(el=>el.textContent.trim().toLowerCase()==='tweaks')
           if(!opener)throw new Error('The scene has no tweak-panel opener')
           opener.click()
         })

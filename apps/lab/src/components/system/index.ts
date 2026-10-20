@@ -5,7 +5,7 @@
 import './system.css'
 
 export { Button, CopyBlock, TextButton } from './actions'
-export { Check, Dial, Radio, Slider, Toggle } from './controls'
+export { CHECK_MARK, Check, Dial, Radio, Slider, Toggle } from './controls'
 export { CHEVRON, Field, Input, Select, TextArea, UnitInput, type FieldControlProps } from './fields'
 export { Panel, PanelSection, Window } from './panels'
 export { Bar, Plate, Ruler, StageCaption } from './plates'

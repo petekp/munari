@@ -38,7 +38,6 @@ function Row({ knob }: { knob: RefractionKnobDef<typeof refractionTuning> }) {
       max={knob.max}
       step={knob.step}
       value={value}
-      decimalPlaces={knob.step >= 1 ? 0 : knob.step >= 0.01 ? 2 : 4}
       onValueChange={onInput}
     />
   )

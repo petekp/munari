@@ -2,73 +2,55 @@
 //
 // The panel stays outside the canvas so it remains a trustworthy instrument
 // while a scene moves. Scenes still own every read, write, and side effect;
-// this module owns only the repeated shell, disclosure, and slider markup.
+// this module owns only the shell, disclosure, and slider markup, drawn
+// with the system's panel and slider (components/system).
 
 import { useState, type ReactNode } from 'react'
+import { Button, CHEVRON, Panel, Slider, TextButton } from './system'
 
 type TuningPanelSide = 'left' | 'right'
 type TuningPanelLayer = 50 | 200
-
-const sideClass = {
-  left: 'left-4',
-  right: 'right-4',
-} satisfies Record<TuningPanelSide, string>
-
-const layerClass = {
-  50: 'z-50',
-  200: 'z-[200]',
-} satisfies Record<TuningPanelLayer, string>
 
 interface TuningPanelProps {
   title: string
   side: TuningPanelSide
   zIndex: TuningPanelLayer
+  /** The system ground (tokens.css): paper by default, ink over a dark scene. */
+  ground?: 'paper' | 'ink'
   onCopy: () => void
   children: ReactNode
 }
 
-export function TuningPanel({ title, side, zIndex, onCopy, children }: TuningPanelProps) {
+/** Scenes write knob names in lower case; the system writes sentence case. */
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+// 16px off the viewport edge, clear of a scene's own corner controls.
+const EDGE = 16
+
+export function TuningPanel({ title, side, zIndex, ground = 'paper', onCopy, children }: TuningPanelProps) {
   const [open, setOpen] = useState(false)
-  const position = `${sideClass[side]} ${layerClass[zIndex]}`
+  const position = { position: 'fixed', top: EDGE, [side]: EDGE, zIndex } as const
 
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={`fixed top-4 ${position} rounded border border-white/15 bg-black/70 px-2.5 py-1.5 text-[10px] uppercase tracking-wider text-white/75 backdrop-blur hover:text-white`}
-      >
-        tweaks
-      </button>
+      <span data-ground={ground} style={position}>
+        <Button variant="outline" compact onClick={() => setOpen(true)}>Tweaks</Button>
+      </span>
     )
   }
 
   return (
-    <div
-      className={`fixed top-4 ${position} max-h-[calc(100vh-2rem)] w-[300px] overflow-y-auto rounded border border-white/15 bg-black/80 px-3 py-2 text-white backdrop-blur`}
+    <Panel
+      data-ground={ground}
+      style={{ ...position, maxHeight: `calc(100vh - ${2 * EDGE}px)`, overflowY: 'auto' }}
+      title={sentenceCase(title)}
+      action={<TextButton onClick={() => setOpen(false)}>Hide</TextButton>}
+      foot={<Button variant="outline" compact onClick={onCopy}>Copy values</Button>}
     >
-      <div className="flex items-center justify-between pb-1">
-        <span className="text-[10px] uppercase tracking-wider text-white/50">{title}</span>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onCopy}
-            className="text-[10px] uppercase tracking-wider text-white/50 hover:text-white"
-          >
-            copy
-          </button>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            aria-label={`close ${title}`}
-            className="text-[10px] uppercase tracking-wider text-white/50 hover:text-white"
-          >
-            ✕
-          </button>
-        </div>
-      </div>
       {children}
-    </div>
+    </Panel>
   )
 }
 
@@ -82,17 +64,12 @@ export function TuningGroup({ title, initialState, children }: TuningGroupProps)
   const [open, setOpen] = useState(initialState === 'open')
 
   return (
-    <div className="border-t border-white/10 first:border-t-0">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-1.5 py-1.5 text-[10px] uppercase tracking-wider text-white/70 hover:text-white"
-      >
-        <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
-        {title}
+    <div className="m-panel-section">
+      <button type="button" className="m-panel-toggle" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+        {sentenceCase(title)}
+        {CHEVRON}
       </button>
-      {open && <div className="pb-2">{children}</div>}
+      {open && <div className="m-panel-group">{children}</div>}
     </div>
   )
 }
@@ -103,34 +80,9 @@ interface TuningSliderProps {
   max: number
   step: number
   value: number
-  decimalPlaces: number
   onValueChange: (value: number) => void
 }
 
-export function TuningSlider({
-  label,
-  min,
-  max,
-  step,
-  value,
-  decimalPlaces,
-  onValueChange,
-}: TuningSliderProps) {
-  return (
-    <label className="flex items-center gap-2 py-[3px] text-[10px] leading-none">
-      <span className="w-[104px] shrink-0 truncate text-white/55">{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onValueChange(Number(event.target.value))}
-        className="h-[3px] flex-1 cursor-pointer appearance-none rounded-full bg-white/15 accent-[#ff4f17]"
-      />
-      <span className="w-[46px] shrink-0 text-right tabular-nums text-white/80">
-        {value.toFixed(decimalPlaces)}
-      </span>
-    </label>
-  )
+export function TuningSlider({ label, min, max, step, value, onValueChange }: TuningSliderProps) {
+  return <Slider label={sentenceCase(label)} min={min} max={max} step={step} value={value} onChange={onValueChange} />
 }

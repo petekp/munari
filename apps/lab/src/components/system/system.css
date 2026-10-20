@@ -24,7 +24,7 @@
 
 /* ── focus ────────────────────────────────────────────────── */
 
-:is(.m-link, .m-textbutton, .m-button, .m-plate, .m-input, .m-select select, .m-toggle, .m-dial, .m-window-close, .m-panel summary):focus-visible,
+:is(.m-link, .m-textbutton, .m-button, .m-plate, .m-input, .m-select select, .m-toggle, .m-dial, .m-window-close, .m-panel summary, .m-panel-toggle):focus-visible,
 .m-check input:focus-visible + .m-check-box,
 .m-slider input:focus-visible ~ .m-slider-track {
   outline: 2px solid var(--m-ink);
@@ -118,9 +118,9 @@
 
 /* ── demo bar ─────────────────────────────────────────────── */
 
-.m-bar { display: flex; align-items: center; gap: 28px; min-height: 52px; padding: var(--m-s3) var(--m-s5); border-bottom: 1px solid var(--m-ink); background: var(--m-paper); color: var(--m-ink); }
+.m-bar { display: flex; flex: none; align-items: center; gap: 28px; min-height: 52px; padding: var(--m-s3) clamp(16px, 2.5vw, 24px); border-bottom: 1px solid var(--m-ink); background: var(--m-paper); color: var(--m-ink); }
 .m-bar-demo { display: flex; flex: 1; min-width: 0; align-items: baseline; gap: var(--m-s4); }
-.m-bar-demo b { flex: none; font: 600 15px/1.35 var(--m-sans); }
+.m-bar-title { flex: none; margin: 0; font: 600 15px/1.35 var(--m-sans); }
 .m-bar-demo span { overflow: hidden; color: var(--m-quiet); font: 400 15px/1.35 var(--m-sans); text-overflow: ellipsis; white-space: nowrap; }
 .m-bar-links { display: flex; flex: none; align-items: baseline; gap: var(--m-s5); font: 400 15px/1.35 var(--m-sans); }
 
@@ -159,7 +159,8 @@ textarea.m-input { min-height: 96px; padding-block: 10px; resize: vertical; }
 
 /* ── checkbox and radio ───────────────────────────────────── */
 
-.m-check { display: inline-flex; align-items: center; gap: 10px; min-height: 36px; color: var(--m-ink); font: 400 15px/1.35 var(--m-sans); cursor: pointer; }
+/* Relative so the hidden input scrolls with its label inside a scrolling panel. */
+.m-check { position: relative; display: inline-flex; align-items: center; gap: 10px; min-height: 36px; color: var(--m-ink); font: 400 15px/1.35 var(--m-sans); cursor: pointer; }
 .m-check input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .m-check-box { display: grid; flex: none; place-items: center; box-sizing: border-box; width: 16px; height: 16px; border: 1px solid var(--m-ink); background: var(--m-paper); color: var(--m-paper); }
 .m-check-box svg { width: 12px; height: 12px; visibility: hidden; }
@@ -199,14 +200,14 @@ textarea.m-input { min-height: 96px; padding-block: 10px; resize: vertical; }
 .m-slider-track { position: absolute; inset: 7px 0 auto; }
 .m-slider-fill { position: absolute; top: 6px; left: 0; width: var(--m-value); height: 3px; background: var(--m-ink); }
 .m-slider-thumb { position: absolute; top: 0; left: var(--m-value); width: 2px; height: 20px; margin-left: -1px; background: var(--m-ink); transition: width var(--m-t-fast) var(--m-ease); }
-.m-slider input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }
+.m-slider-control input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }
 .m-slider:is(:hover, [data-hover]) .m-slider-thumb { width: 4px; margin-left: -2px; }
 .m-slider:is(:active, [data-active]) .m-slider-thumb { width: 4px; margin-left: -2px; }
 .m-slider:is(:active, [data-active]) .m-slider-value { background: var(--m-ink); color: var(--m-paper); }
 .m-slider-value { padding: 3px 4px; }
 .m-slider-ends { display: flex; justify-content: space-between; color: var(--m-quiet); }
 .m-slider:has(input:disabled) { color: var(--m-tick); --m-ink: var(--m-tick); }
-.m-slider:has(input:disabled) input { cursor: default; }
+.m-slider:has(input:disabled) .m-slider-control input { cursor: default; }
 
 /* ── dial ─────────────────────────────────────────────────── */
 
@@ -226,11 +227,13 @@ textarea.m-input { min-height: 96px; padding-block: 10px; resize: vertical; }
 .m-panel { box-sizing: border-box; width: 280px; border: 1px solid var(--m-ink); background: var(--m-paper); color: var(--m-ink); font: 400 13px/1.4 var(--m-sans); }
 .m-panel-head { display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 var(--m-s3); border-bottom: 1px solid var(--m-ink); }
 .m-panel-head b { font: 600 15px/1.35 var(--m-sans); }
-.m-panel details + details { border-top: 1px solid var(--m-rule); }
-.m-panel summary { display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 var(--m-s3); font: 600 15px/1.35 var(--m-sans); cursor: pointer; list-style: none; }
+/* A section is a <details>, or a .m-panel-section whose .m-panel-toggle
+ * button carries aria-expanded. */
+.m-panel :is(details, .m-panel-section) + :is(details, .m-panel-section) { border-top: 1px solid var(--m-rule); }
+.m-panel :is(summary, .m-panel-toggle) { display: flex; box-sizing: border-box; align-items: center; justify-content: space-between; width: 100%; min-height: 40px; padding: 0 var(--m-s3); border: 0; background: none; color: inherit; font: 600 15px/1.35 var(--m-sans); text-align: left; cursor: pointer; list-style: none; }
 .m-panel summary::-webkit-details-marker { display: none; }
-.m-panel summary svg { width: 16px; height: 16px; transition: transform var(--m-t-fast) var(--m-ease); }
-.m-panel details[open] summary svg { transform: rotate(180deg); }
+.m-panel :is(summary, .m-panel-toggle) svg { width: 16px; height: 16px; transition: transform var(--m-t-fast) var(--m-ease); }
+.m-panel :is(details[open] summary, .m-panel-toggle[aria-expanded='true']) svg { transform: rotate(180deg); }
 .m-panel-group { display: grid; gap: var(--m-s4); padding: var(--m-s1) var(--m-s3) var(--m-s4); }
 .m-panel-foot { display: flex; gap: var(--m-s2); padding: var(--m-s3); border-top: 1px solid var(--m-ink); }
 

@@ -6,7 +6,7 @@
 import { useRef, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react'
 import { pointerAttrs, type PointerState } from './pointerState'
 
-const CHECK_MARK = <svg viewBox="0 0 12 12" aria-hidden><path d="M2.5 6.2 5 8.6l4.6-5.2" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+export const CHECK_MARK = <svg viewBox="0 0 12 12" aria-hidden><path d="M2.5 6.2 5 8.6l4.6-5.2" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
 
 interface CheckProps {
   readonly label: string

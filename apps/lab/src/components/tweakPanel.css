@@ -1,26 +1,19 @@
-/* Tweak panel shell — the chrome plume, marble-hand, and lamp shared byte
- * for byte before this file existed. Position and palette are the only
- * axes a scene still owns, both through custom properties a scene's own
- * CSS may override on the class it passes as `className`; nothing here
- * paints the scene itself, so a closed or hidden panel leaves it alone. */
+/* Tweak panel shell — the system's tuning panel (components/system) for the
+ * schema-driven panel in tweakPanel.tsx. Position is the only axis a scene
+ * still owns, through the position class; a scene that wants the dark
+ * panel passes `ground="ink"`, and every color here follows the ground's
+ * tokens. Nothing here paints the scene, so a closed panel leaves it alone. */
 
 .tweak-opener,
 .tweak-panel {
-  --tweak-ink: #28333d;
-  --tweak-quiet: #65737d;
-  --tweak-edge: #d0d9de;
-  --tweak-focus: #667b8d;
-  --tweak-accent: #596b78;
-  --tweak-bg: #f8fafb;
-  --tweak-opener-bg: rgb(248 250 251 / 0.68);
   --tweak-panel-width: 296px;
   position: fixed;
   /* 200: above a scene's own overlay canvases (<=100). Generous on
    * purpose: a floating nav at 150 once swallowed a panel's left-edge
    * buttons, navigating the scene away mid-click (2026-08-31, plume). */
   z-index: 200;
-  color: var(--tweak-ink);
-  font: 400 13px/1.4 var(--body);
+  color: var(--m-ink);
+  font: 400 13px/1.4 var(--m-sans);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -39,22 +32,22 @@
   display: none;
 }
 
+/* The opener is an outline button: paper with an ink edge, inverting on hover. */
 .tweak-opener {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--m-s2);
   min-height: 44px;
-  padding: 0 14px;
-  border: 1px solid var(--tweak-edge);
-  border-radius: 8px;
-  background: var(--tweak-opener-bg);
+  padding: 0 var(--m-s4);
+  border: 1px solid var(--m-ink);
+  background: var(--m-paper);
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
+  font: 600 15px/1 var(--m-sans);
 }
 
-.tweak-opener:hover {
-  background: var(--tweak-bg);
+.tweak-opener:is(:hover, [data-hover]) {
+  background: var(--m-ink);
+  color: var(--m-paper);
 }
 
 .tweak-opener svg,
@@ -64,7 +57,7 @@
   flex: none;
   stroke: currentColor;
   stroke-width: 1.5;
-  stroke-linecap: round;
+  stroke-linecap: square;
 }
 
 .tweak-panel {
@@ -74,10 +67,8 @@
   width: var(--tweak-panel-width);
   max-height: calc(100dvh - 40px);
   overflow: hidden;
-  border: 1px solid var(--tweak-edge);
-  border-radius: 12px;
-  background: var(--tweak-bg);
-  box-shadow: 0 12px 40px rgb(40 51 61 / 0.09), 0 2px 6px rgb(40 51 61 / 0.03);
+  border: 1px solid var(--m-ink);
+  background: var(--m-paper);
 }
 
 .tweak-panel-header {
@@ -85,46 +76,46 @@
   flex: none;
   align-items: center;
   justify-content: space-between;
-  min-height: 56px;
-  padding: 0 6px 0 20px;
-  border-bottom: 1px solid var(--tweak-edge);
+  min-height: 48px;
+  padding: 0 var(--m-s1) 0 var(--m-s3);
+  border-bottom: 1px solid var(--m-ink);
 }
 
 .tweak-panel-header h2 {
   margin: 0;
-  font: 600 14px/1.3 var(--body);
-  letter-spacing: -0.015em;
+  font: 600 15px/1.35 var(--m-sans);
 }
 
 .tweak-panel-eyebrow {
   display: block;
-  margin-bottom: 3px;
-  color: var(--tweak-quiet);
-  font: 10px/1.3 var(--label, var(--body));
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
+  color: var(--m-quiet);
+  font: 400 13px/1.4 var(--m-sans);
 }
 
 .tweak-panel-close {
   display: grid;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   place-items: center;
+  padding: 0;
   border: 0;
-  border-radius: 6px;
   background: transparent;
-  color: var(--tweak-quiet);
+  color: var(--m-ink);
   cursor: pointer;
 }
 
-.tweak-panel-close:hover {
-  background: rgb(0 0 0 / 0.06);
-  color: var(--tweak-ink);
+.tweak-panel .tweak-panel-close:focus-visible {
+  outline-offset: -3px;
+}
+
+.tweak-panel-close:is(:hover, [data-hover]) {
+  background: var(--m-ink);
+  color: var(--m-paper);
 }
 
 .tweak-panel-body {
   min-height: 0;
-  padding: 16px 20px;
+  padding: var(--m-s3);
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -136,8 +127,10 @@
   border: 0;
 }
 
+/* Disabled is drawn in tick gray, never by fading (the style guide's Line). */
 .tweak-panel-fields:disabled {
-  opacity: 0.5;
+  --m-ink: var(--m-tick);
+  color: var(--m-tick);
 }
 
 .tweak-sr-only {
@@ -152,7 +145,9 @@
 }
 
 .tweak-group {
-  border-top: 1px solid var(--tweak-edge);
+  margin-inline: calc(-1 * var(--m-s3));
+  padding-inline: var(--m-s3);
+  border-top: 1px solid var(--m-rule);
 }
 
 .tweak-group:first-child {
@@ -163,9 +158,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 46px;
+  min-height: 40px;
   cursor: pointer;
-  font-weight: 600;
+  font: 600 15px/1.35 var(--m-sans);
   list-style: none;
 }
 
@@ -176,10 +171,11 @@
 .tweak-group summary svg {
   width: 16px;
   height: 16px;
-  stroke: var(--tweak-quiet);
+  stroke: currentColor;
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
+  transition: transform var(--m-t-fast) var(--m-ease);
 }
 
 .tweak-group[open] summary svg {
@@ -188,65 +184,58 @@
 
 .tweak-group-body {
   display: grid;
-  gap: 16px;
-  padding-bottom: 20px;
+  gap: var(--m-s4);
+  padding: var(--m-s1) 0 var(--m-s4);
 }
 
 .tweak-group-description {
   margin: 0;
-  color: var(--tweak-quiet);
-  font: 400 11px/1.5 var(--body);
+  color: var(--m-quiet);
+  font: 400 13px/1.4 var(--m-sans);
 }
 
-.tweak-control {
-  display: grid;
-  gap: 7px;
-}
-
-.tweak-control-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
+/* A number field is the system slider (system.css .m-slider) with its
+ * readout made editable. */
 .tweak-control-heading > label {
-  font-size: 11px;
+  font: 400 13px/1.4 var(--m-sans);
 }
 
 .tweak-value {
   display: flex;
   flex: none;
-  align-items: center;
-  gap: 4px;
+  align-items: baseline;
+  gap: 3px;
 }
 
 .tweak-value input {
   box-sizing: border-box;
-  width: 62px;
-  min-height: 30px;
-  padding: 4px 5px;
-  border: 1px solid var(--tweak-edge);
-  border-radius: 4px;
-  background: #fff;
-  color: var(--tweak-ink);
-  font: 400 11px/1.3 var(--data);
+  width: 56px;
+  padding: 2px 0;
+  border: 0;
+  border-bottom: 1px solid var(--m-rule);
+  background: transparent;
+  color: var(--m-ink);
+  font: 500 13px/1 var(--m-sans);
+  font-stretch: 85%;
   font-variant-numeric: tabular-nums;
   text-align: right;
+  -moz-appearance: textfield;
+}
+
+.tweak-value input::-webkit-inner-spin-button,
+.tweak-value input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.tweak-value input:is(:hover, [data-hover]) {
+  border-bottom-color: var(--m-ink);
 }
 
 .tweak-value > span {
-  min-width: 13px;
-  color: var(--tweak-quiet);
-  font-size: 10px;
-}
-
-.tweak-control > input[type='range'] {
-  width: 100%;
-  height: 24px;
-  margin: 0;
-  accent-color: var(--tweak-accent);
-  cursor: pointer;
+  color: var(--m-quiet);
+  font: 500 13px/1 var(--m-sans);
+  font-stretch: 85%;
 }
 
 .tweak-select,
@@ -254,127 +243,132 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  font-size: 11px;
+  gap: var(--m-s3);
+  font: 400 13px/1.4 var(--m-sans);
 }
 
 .tweak-select select {
   min-width: 0;
   max-width: 180px;
-  min-height: 36px;
-  padding: 6px 8px;
-  border: 1px solid var(--tweak-edge);
-  border-radius: 4px;
-  background: #fff;
-  color: var(--tweak-ink);
-  font: 400 12px/1.4 var(--body);
+  min-height: 32px;
+  padding: 0 var(--m-s2);
+  border: 1px solid var(--m-ink);
+  border-radius: 0;
+  background: var(--m-paper);
+  color: var(--m-ink);
+  font: 400 13px/1.4 var(--m-sans);
 }
 
 .tweak-color .tweak-hex {
   box-sizing: border-box;
-  width: 72px;
+  width: 80px;
   height: 32px;
   margin-left: auto;
-  padding: 4px 5px;
-  border: 1px solid var(--tweak-edge);
-  border-radius: 4px;
-  background: #fff;
-  color: var(--tweak-quiet);
-  font: 400 10px/1.4 var(--data);
+  padding: 0 var(--m-s2);
+  border: 1px solid var(--m-ink);
+  border-radius: 0;
+  background: var(--m-paper);
+  color: var(--m-ink);
+  font: 500 13px/1 var(--m-sans);
+  font-stretch: 85%;
+  font-variant-numeric: tabular-nums;
   text-align: center;
 }
 
 .tweak-color input[type='color'] {
   box-sizing: border-box;
-  width: 36px;
+  width: 32px;
   height: 32px;
-  padding: 3px;
-  border: 1px solid var(--tweak-edge);
-  border-radius: 4px;
-  background: #fff;
+  padding: 2px;
+  border: 1px solid var(--m-ink);
+  border-radius: 0;
+  background: var(--m-paper);
   cursor: pointer;
 }
 
-.tweak-toggle {
-  display: flex;
-  gap: 9px;
-  align-items: center;
-  min-height: 30px;
-  cursor: pointer;
-  font-size: 12px;
-}
+.tweak-color input[type='color']::-webkit-color-swatch-wrapper { padding: 0; }
+.tweak-color input[type='color']::-webkit-color-swatch { border: 0; border-radius: 0; }
 
-.tweak-toggle input {
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  accent-color: var(--tweak-accent);
-  cursor: pointer;
+.tweak-select select:is(:hover, [data-hover]):not(:disabled),
+.tweak-color :is(.tweak-hex, input[type='color']):is(:hover, [data-hover]):not(:disabled) {
+  box-shadow: inset 0 0 0 1px var(--m-ink);
 }
 
 .tweak-panel-footer {
   flex: none;
-  padding: 12px 20px;
-  border-top: 1px solid var(--tweak-edge);
+  padding: var(--m-s3);
+  border-top: 1px solid var(--m-ink);
 }
 
 .tweak-panel-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  display: flex;
+  gap: var(--m-s2);
 }
 
+/* Footer actions are compact outline buttons (system.css .m-button--outline). */
 .tweak-panel-actions button {
-  min-height: 44px;
-  padding: 8px 10px;
-  border: 1px solid var(--tweak-edge);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--tweak-ink);
+  min-height: 32px;
+  padding: 0 var(--m-s3);
+  border: 1px solid var(--m-ink);
+  border-radius: 0;
+  background: var(--m-paper);
+  color: var(--m-ink);
   cursor: pointer;
-  font: 500 12px/1.4 var(--body);
+  font: 600 13px/1 var(--m-sans);
 }
 
-.tweak-panel-actions button:hover {
-  border-color: var(--tweak-accent);
-  background: rgb(0 0 0 / 0.05);
+.tweak-panel-actions button:is(:hover, [data-hover]):not(:disabled) {
+  background: var(--m-ink);
+  color: var(--m-paper);
+}
+
+.tweak-panel-actions button:is(:active, [data-active]):not(:disabled) {
+  background: var(--m-field);
+  color: var(--m-ink);
+}
+
+.tweak-panel-actions button:disabled {
+  border-color: var(--m-tick);
+  color: var(--m-tick);
+  cursor: default;
 }
 
 .tweak-panel-feedback {
-  margin: 10px 0 0;
-  color: var(--tweak-quiet);
-  font: 400 11px/1.4 var(--body);
+  margin: var(--m-s2) 0 0;
+  color: var(--m-quiet);
+  font: 400 13px/1.4 var(--m-sans);
 }
 
 .tweak-panel-copy-fallback {
-  margin: 10px 0 0;
+  margin: var(--m-s2) 0 0;
 }
 
 .tweak-panel-copy-fallback p {
   margin: 0 0 6px;
-  color: var(--tweak-quiet);
-  font: 400 11px/1.4 var(--body);
+  color: var(--m-quiet);
+  font: 400 13px/1.4 var(--m-sans);
 }
 
 .tweak-panel-copy-fallback textarea {
   box-sizing: border-box;
   width: 100%;
   min-height: 96px;
-  padding: 8px;
-  border: 1px solid var(--tweak-edge);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--tweak-ink);
-  font: 400 11px/1.4 var(--data);
+  padding: var(--m-s2);
+  border: 1px solid var(--m-ink);
+  border-radius: 0;
+  background: var(--m-paper);
+  color: var(--m-ink);
+  font: 400 13px/1.5 var(--m-code);
   resize: vertical;
 }
 
 .tweak-opener:focus-visible,
 .tweak-panel button:focus-visible,
-.tweak-panel input:focus-visible,
 .tweak-panel select:focus-visible,
-.tweak-panel summary:focus-visible {
-  outline: 2px solid var(--tweak-focus);
+.tweak-panel summary:focus-visible,
+.tweak-panel input:not([type='range']):focus-visible,
+.tweak-panel .m-slider input:focus-visible ~ .m-slider-track {
+  outline: 2px solid var(--m-ink);
   outline-offset: 3px;
 }
 

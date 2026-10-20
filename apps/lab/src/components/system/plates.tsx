@@ -45,18 +45,21 @@ interface BarProps {
   /** Sits at the left, such as the wordmark linking home. */
   readonly lead?: ReactNode
   readonly title: ReactNode
+  /** h1 where the bar names the page, as above a demo. */
+  readonly titleTag?: 'h1' | 'b'
   readonly instruction?: ReactNode
   /** Sits at the right: the position, Previous, Next and Source. */
   readonly links: ReactNode
+  readonly linksLabel?: string
   readonly className?: string
 }
 
-export function Bar({ lead, title, instruction, links, className }: BarProps) {
+export function Bar({ lead, title, titleTag: Title = 'b', instruction, links, linksLabel = 'Demos', className }: BarProps) {
   return (
     <header className={classes('m-bar', className)}>
       {lead}
-      <div className="m-bar-demo"><b>{title}</b>{instruction && <span>{instruction}</span>}</div>
-      <div className="m-bar-links">{links}</div>
+      <div className="m-bar-demo"><Title className="m-bar-title">{title}</Title>{instruction && <span>{instruction}</span>}</div>
+      <nav className="m-bar-links" aria-label={linksLabel}>{links}</nav>
     </header>
   )
 }

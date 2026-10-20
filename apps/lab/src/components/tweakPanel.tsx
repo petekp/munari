@@ -15,7 +15,8 @@
 // this panel's props and any content bespoke enough to not be a field
 // (presets, mode switches, effect toggles).
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { CHECK_MARK, CHEVRON } from './system'
 import './tweakPanel.css'
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
@@ -61,6 +62,8 @@ export interface TweakPanelProps<T extends object> {
   readonly onApplyStored: (restored: T) => void
   readonly initiallyOpen?: boolean
   readonly className?: string
+  /** The system ground (tokens.css): paper by default, ink over a dark scene. */
+  readonly ground?: 'paper' | 'ink'
   readonly position?: 'top-right' | 'bottom-right'
   readonly openerLabel: ReactNode
   readonly openerAttrs?: Readonly<Record<string, string>>
@@ -150,6 +153,7 @@ export function TweakPanel<T extends object>({
   onApplyStored,
   initiallyOpen = false,
   className,
+  ground = 'paper',
   position = 'top-right',
   openerLabel,
   openerAttrs,
@@ -244,6 +248,7 @@ export function TweakPanel<T extends object>({
         ref={opener}
         type="button"
         className={['tweak-opener', themeClass].filter(Boolean).join(' ')}
+        data-ground={ground}
         hidden={open}
         aria-expanded={open}
         aria-controls={panelId}
@@ -256,6 +261,7 @@ export function TweakPanel<T extends object>({
       <aside
         id={panelId}
         className={['tweak-panel', themeClass].filter(Boolean).join(' ')}
+        data-ground={ground}
         hidden={!open}
         aria-labelledby={titleId}
         onKeyDown={(event) => {
@@ -333,9 +339,7 @@ function TweakGroupDisclosure({ group }: { readonly group: TweakGroup }) {
     <details className="tweak-group" open={group.initiallyOpen}>
       <summary>
         <span>{group.title}</span>
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="m5 6 3 3 3-3" />
-        </svg>
+        {CHEVRON}
       </summary>
       <div className="tweak-group-body">
         <p className="tweak-group-description">{group.description}</p>
@@ -355,10 +359,11 @@ export function TweakNumberField({ id, label, min, max, step, unit, value, onCha
   const decimals = step.toString().split('.')[1]?.length ?? 0
   const fieldId = `tweak-${id}`
   const commit = (next: number) => onChange(next)
+  const style: SliderStyle = { '--m-value': `${((Math.min(max, Math.max(min, value)) - min) / (max - min)) * 100}%` }
 
   return (
-    <div className="tweak-control">
-      <div className="tweak-control-heading">
+    <div className="tweak-control m-slider" style={style}>
+      <div className="tweak-control-heading m-slider-head">
         <label htmlFor={fieldId}>{label}</label>
         <div className="tweak-value">
           <input
@@ -386,19 +391,26 @@ export function TweakNumberField({ id, label, min, max, step, unit, value, onCha
           {unit ? <span aria-hidden="true">{unit}</span> : null}
         </div>
       </div>
-      <input
-        id={fieldId}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => commit(event.target.valueAsNumber)}
-        {...rangeAttrs}
-      />
+      <span className="m-slider-control">
+        <input
+          id={fieldId}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(event) => commit(event.target.valueAsNumber)}
+          {...rangeAttrs}
+        />
+        <span className="m-slider-track m-ruler" aria-hidden="true" />
+        <span className="m-slider-fill" aria-hidden="true" />
+        <span className="m-slider-thumb" aria-hidden="true" />
+      </span>
     </div>
   )
 }
+
+type SliderStyle = CSSProperties & { '--m-value': string }
 
 export interface TweakColorFieldProps {
   readonly id: string
@@ -459,9 +471,10 @@ export interface TweakToggleFieldProps {
 
 export function TweakToggleField({ label, checked, onChange, attrs }: TweakToggleFieldProps) {
   return (
-    <label className="tweak-toggle">
+    <label className="m-check">
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} {...attrs} />
-      <span>{label}</span>
+      <span className="m-check-box">{CHECK_MARK}</span>
+      {label}
     </label>
   )
 }

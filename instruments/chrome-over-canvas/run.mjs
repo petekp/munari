@@ -113,7 +113,7 @@ try {
 
   await page.evaluate(() => {
     const toggle = [...document.querySelectorAll('button')]
-      .find((b) => b.textContent.trim().endsWith('tweaks'))
+      .find((b) => b.textContent.trim().toLowerCase().endsWith('tweaks'))
     if (toggle) toggle.click()
   })
   await sleep(400)
@@ -138,8 +138,43 @@ try {
       }
     }, label)
 
+  // Move the panel so the header's aim point sits over the middle of the mesh
+  // rows under it. The overlap is the fixture; where the panel's own layout
+  // happens to put a header is not.
+  const placeOverMesh = (label) =>
+    page.evaluate(({ label, inset }) => {
+      const state = window.__r3f
+      const header = [...document.querySelectorAll('button[aria-expanded]')]
+        .find(button => button.textContent.toLowerCase().includes(label))
+      const panel = header?.closest('.m-panel')
+      if (!header || !panel) return
+      const canvas = state.gl.domElement.getBoundingClientRect()
+      const candidates = []
+      state.scene.traverse(object => {
+        if (object.isMesh && object.material?.userData.refractionValues) candidates.push(object)
+      })
+      state.camera.updateMatrixWorld()
+      state.scene.updateMatrixWorld()
+      const x = header.getBoundingClientRect().left + inset
+      const rows = []
+      for (let y = canvas.top; y < canvas.bottom; y += 4) {
+        state.raycaster.setFromCamera({ x: (x - canvas.left) / canvas.width * 2 - 1, y: 1 - (y - canvas.top) / canvas.height * 2 }, state.camera)
+        if (state.raycaster.intersectObjects(candidates, false).length) rows.push(y)
+      }
+      if (!rows.length) return
+      const target = (rows[0] + rows[rows.length - 1]) / 2
+      const box = header.getBoundingClientRect()
+      panel.style.top = `${panel.getBoundingClientRect().top + target - (box.top + box.height / 2)}px`
+    }, { label, inset: AIM_INSET })
+
+  // Start from collapsed sections, so each header's place depends only on the
+  // headers above it, not on how tall an open section's controls draw.
+  await page.evaluate(() => document.querySelectorAll('button[aria-expanded="true"]').forEach((b) => b.click()))
+  await sleep(200)
+
   const results = []
   for (const label of ['crossing', 'aperture', 'room']) {
+    if (label !== 'crossing') await placeOverMesh(label)
     const before = await header(label)
     if (!before) throw new Error(`no "${label}" header in the tuning panel`)
     if (before.expanded !== 'false' || !Number.isFinite(before.height) || before.height <= 0)
@@ -172,6 +207,11 @@ try {
     const after = await header(label)
     if (!after) throw new Error(`${label}: header disappeared after its click`)
     results.push({ label, at: [x, y], overlapHits: ownership.hits, before: before.expanded, after: after.expanded })
+    // Close it again so the next header sits where it started, over the mesh.
+    if (after.expanded === 'true') {
+      await page.evaluate((l) => [...document.querySelectorAll('button[aria-expanded]')].find((x) => x.textContent.toLowerCase().includes(l))?.click(), label)
+      await sleep(200)
+    }
   }
 
   console.log('chrome-over-canvas:')

@@ -85,7 +85,6 @@ function Row({ knob }: { knob: Knob }) {
       value={value}
       // Steps below 0.01 are the ones where the last digit is the whole
       // point of the knob, so the precision follows the step.
-      decimalPlaces={knob.step >= 1 ? 0 : knob.step >= 0.01 ? 2 : 4}
       onValueChange={onInput}
     />
   )

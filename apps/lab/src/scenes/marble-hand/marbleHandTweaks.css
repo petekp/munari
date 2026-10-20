@@ -42,7 +42,7 @@
 .mh-background-controls {
   padding: 0 0 14px;
   margin-bottom: 4px;
-  border-bottom: 1px solid var(--tweak-edge);
+  border-bottom: 1px solid var(--m-rule);
 }
 
 .mh-background-controls-heading {
@@ -101,7 +101,7 @@
 }
 
 .mh-material-mode button[aria-pressed='true'] {
-  border-color: var(--tweak-accent);
+  border-color: var(--m-ink);
   background: #35456a;
   color: #e4eaff;
 }
@@ -132,7 +132,7 @@
 .mh-preview-controls p {
   grid-column: 1 / -1;
   margin: 6px 0 0;
-  color: var(--tweak-quiet);
+  color: var(--m-quiet);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -160,7 +160,7 @@
 }
 
 .mh-pose-presets button[aria-pressed='true'] {
-  border-color: var(--tweak-accent);
+  border-color: var(--m-ink);
   background: #35456a;
   color: #e4eaff;
 }

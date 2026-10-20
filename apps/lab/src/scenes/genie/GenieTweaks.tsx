@@ -36,7 +36,6 @@ function Row({ knob }: { knob: GenieKnobDef }) {
       max={knob.max}
       step={knob.step}
       value={value}
-      decimalPlaces={knob.step >= 1 ? 0 : 2}
       onValueChange={onInput}
     />
   )
