@@ -2840,10 +2840,6 @@ export function KnobsApp() {
         />
       </SurfaceCanvas>
 
-      {showChrome && (
-        <p className="knb-page-instruction">Drag the corner to reflow. Drag the top edge to move.</p>
-      )}
-
       {showChrome && <KnobsTweakPanel />}
     </div>
   )

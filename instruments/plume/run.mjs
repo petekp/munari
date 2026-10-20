@@ -600,15 +600,15 @@ async function sampleFlight(page, age, name, isolate = false) {
 
 async function verifyEffects(page) {
   await setPanelOpen(page, true)
-  const labels = await page.$$eval('.plume-effect strong', (items) => items.map((item) => item.textContent))
+  const labels = await page.$$eval('[data-plume-effect]', (items) => items.map((item) => item.closest('label').textContent.trim()))
   requireThat(labels.join('|') === effects.map((effect) => effect.label).join('|'),
     `unexpected effect controls: ${labels.join(', ')}`)
   for (const [index, effect] of effects.entries()) {
-    const selector = `.plume-effect:nth-of-type(${index + 1})`
+    const selector = `.plume-effects label:nth-of-type(${index + 1})`
     for (const enabled of [false, true]) {
       await page.click(selector)
       await page.waitForFunction(({ index, effect, enabled }) => {
-        const input = document.querySelectorAll('.plume-effect input')[index]
+        const input = document.querySelectorAll('[data-plume-effect]')[index]
         if (input?.checked !== enabled) return false
         if (effect.attribute) return document.querySelector('.plume-page').hasAttribute(effect.attribute) === enabled
         let value
@@ -892,13 +892,13 @@ async function verifyShortTimingAndReset(page) {
   await requireExpiredCloud(page, 0.15, 'minimum-reduced-lifetime')
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }])
   await setPanelOpen(page, true)
-  await page.click('.plume-effect:first-of-type')
+  await page.click('.plume-effects label:nth-of-type(1)')
   await act(page, '[data-plume-reset]')
   await waitForCloud(page)
   await requireTuningDefaults(page)
   await requireNativeText(page, text, false)
   await requirePlainLayout(page, 'reset tuning')
-  const restoredEffects = await page.$$eval('.plume-effect input', (inputs) => inputs.map((input) => input.checked))
+  const restoredEffects = await page.$$eval('[data-plume-effect]', (inputs) => inputs.map((input) => input.checked))
   requireThat(restoredEffects.length === Object.keys(defaultPlumeEffects).length &&
     restoredEffects.every((value, index) => value === Object.values(defaultPlumeEffects)[index]),
     'Reset all did not restore the effect switches')

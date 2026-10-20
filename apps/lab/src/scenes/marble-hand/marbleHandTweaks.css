@@ -1,42 +1,13 @@
-/* Marble-hand instruments — quiet native chrome beside the sculpture.
+/* Marble-hand instruments — native chrome beside the sculpture.
  * This is not captured content. Keeping it above the canvas preserves text
  * editing, focus and pointer ownership while the model changes underneath.
  * Panel chrome, disclosure, and field styling live in the shared tweak
- * panel (components/tweakPanel.css); this theme block only retunes its
- * CSS variables to the dark palette and keeps the bespoke content (finish
- * switch, pose presets, background section) this scene alone needs. */
+ * panel (components/tweakPanel.css); this file sets the panel width and
+ * lays out the content this scene alone needs (finish switch, pose
+ * presets, background section). */
 
 .mh-tweak-panel {
-  --tweak-ink: #edf0e9;
-  --tweak-quiet: #aab5a5;
-  --tweak-edge: #4b504b;
-  --tweak-focus: #adc2ff;
-  --tweak-accent: #9cb3ff;
-  --tweak-bg: #202521;
-  --tweak-opener-bg: rgb(32 37 33 / 0.55);
   --tweak-panel-width: 320px;
-  color-scheme: dark;
-}
-
-.mh-tweak-panel.tweak-opener {
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-}
-
-.mh-tweak-panel.tweak-panel button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.mh-controls-notice {
-  margin: 14px 0 0;
-  padding: 10px;
-  border: 1px solid #92825c;
-  border-radius: 5px;
-  background: #463f29;
-  color: #eee3c2;
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 .mh-background-controls {
@@ -58,60 +29,22 @@
   font-weight: 600;
 }
 
-.mh-background-motion {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 108px;
-  min-height: 32px;
-  padding: 6px 8px;
-  border: 1px solid #56634d;
-  border-radius: 5px;
-  background: #333d2e;
-  color: #e0e9d8;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.mh-background-controls > .mh-controls-notice {
+.mh-background-controls > [data-marble-reflection-notice] {
   margin: 10px 0 0;
 }
 
 .mh-material-mode {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 5px;
+  gap: var(--m-s2);
   padding: 0 0 6px;
-}
-
-.mh-material-mode button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  min-height: 35px;
-  padding: 7px 10px;
-  border: 1px solid #515b4b;
-  border-radius: 6px;
-  background: #2d352b;
-  color: #c6d0be;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.mh-material-mode button[aria-pressed='true'] {
-  border-color: var(--m-ink);
-  background: #35456a;
-  color: #e4eaff;
 }
 
 .mh-finish-swatch {
   width: 17px;
   height: 17px;
-  border: 1px solid rgb(232 238 252 / 0.5);
-  border-radius: 50%;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+  flex: none;
+  border: 1px solid currentColor;
 }
 
 .mh-finish-marble {
@@ -133,7 +66,7 @@
   grid-column: 1 / -1;
   margin: 6px 0 0;
   color: var(--m-quiet);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -145,24 +78,12 @@
 .mh-pose-presets {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
+  gap: var(--m-s2);
   margin: 0 0 13px;
 }
 
-.mh-pose-presets button {
-  padding: 6px 0;
-  border: 1px solid #515b4b;
-  border-radius: 5px;
-  background: #2d352b;
-  color: #c6d0be;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.mh-pose-presets button[aria-pressed='true'] {
-  border-color: var(--m-ink);
-  background: #35456a;
-  color: #e4eaff;
+.mh-pose-presets .m-button {
+  padding: 0;
 }
 
 @media (max-width: 700px) {

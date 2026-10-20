@@ -2363,7 +2363,7 @@ async function verifyReflectionUnavailable(port, headless) {
       ).length,
     }))
     requireThat(native.sheets === 1 && native.copies === 0 && native.clear && native.kind !== 'full-page' &&
-      native.notice.includes('Full-page reflections need Chrome') && native.removed === 0,
+      native.notice.includes('Needs Chrome.') && native.removed === 0,
     `no-flag page falsely claimed full capture or lost native ownership: ${JSON.stringify(native)}`)
     await setPanelOpen(page, false)
     for (const theme of themes) await selectTheme(page, theme.id)

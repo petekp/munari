@@ -605,13 +605,13 @@ function WindowBody({
         ) : (
           <div className="gen-body">
             <PlayLayer />
-            <h2>the genie effect</h2>
+            <h2>The genie effect</h2>
             <p>
               Recreate the classic effect from Mac OSX but with real DOM. Try dragging the window up and down to manually scrub through the effect. The form is fully interactive at every point in the animation.
             </p>
             <input
               className="gen-field"
-              placeholder="type, even mid-flight"
+              placeholder="Type, even mid-flight"
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
@@ -621,7 +621,7 @@ function WindowBody({
                 checked={checked}
                 onChange={(e) => setChecked(e.target.checked)}
               />
-              still a checkbox
+              Still a checkbox
             </label>
           </div>
         )}

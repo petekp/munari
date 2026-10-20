@@ -210,11 +210,9 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
   // The shadow, bulb and headline renderers restart together: a GPU process
   // crash loses all three, and the shadow effect creates the headline.
   const { generation, lost } = useRendererReplacement()
-  const [dragged, setDragged] = useState(false)
   const movedByUser = useRef(false)
   const markLightMoved = useCallback(() => {
     movedByUser.current = true
-    setDragged(true)
   }, [])
   const [lightHeight, setLightHeight] = useState(LIGHT_HEIGHT)
   const lightHeightRef = useRef(lightHeight)
@@ -755,12 +753,10 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
           markLightMoved()
           redraw()
         }}
-        data-dragged={dragged || undefined}
         data-degraded={degraded || undefined}
         data-bulbless={bulbless || undefined}
       >
         <span className="light-handle-mark" aria-hidden="true" />
-        <span className="light-handle-hint" aria-hidden="true">Drag the light</span>
       </button>
       </DemoOverlay>
       {children({ mastheadRef: masthead, headingRef: title, lineRefs: [lineOne, lineTwo, lineThree],

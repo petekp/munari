@@ -79,33 +79,23 @@
   gap: 26px;
 }
 
-/* The column head is the armature the elements hang from, so it is a bar
- * rather than a rule — 4px of solid black, the weight Munari drew a
- * structural line at. */
 .l14-col > h2 {
   display: flex;
   align-items: baseline;
   gap: 12px;
   margin: 0 0 16px;
   padding-bottom: 7px;
-  border-bottom: 4px solid var(--ink);
-  font: 700 12px/1 var(--label);
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--ink);
+  border-bottom: 1px solid var(--m-ink);
+  font: 600 15px/1.35 var(--m-sans);
+  color: var(--m-ink);
 }
 
-/* The count is the one number on the board big enough to be a FORM, so it is
- * set in the didone: a 30px Bodoni numeral at the end of a black bar. Small
- * tabular figures in a mono said the same thing and said it as data; this
- * says it as composition, which is what a count of nine cards actually is. */
 .l14-col > h2 .l14-count {
   margin-left: auto;
-  font: 500 30px/0.8 var(--display);
-  font-variation-settings: 'opsz' 48;
+  font: 500 13px/1 var(--m-sans);
+  font-stretch: 85%;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
-  color: var(--ink);
+  color: var(--m-quiet);
 }
 
 .l14-col > ul {
@@ -344,9 +334,7 @@
 
 .l14-note::placeholder {
   color: var(--ink-faint);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .l14-note:focus {
@@ -361,9 +349,7 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font: 700 10px/1 var(--label);
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
+  font: 600 12px/1 var(--label);
   color: var(--ink-mute);
   cursor: pointer;
   white-space: nowrap;

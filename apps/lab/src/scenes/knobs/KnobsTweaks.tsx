@@ -61,7 +61,7 @@ export function KnobsTweakPanel() {
   }, [])
 
   return (
-    <TuningPanel title="knobs tweaks" side="left" zIndex={200} onCopy={dump}>
+    <TuningPanel title="knobs tweaks" side="left" zIndex={200} ground="ink" onCopy={dump}>
       {KNOBS_TUNING_GROUPS.map((g) => (
         <TuningGroup key={g.title} title={g.title} initialState="open">
           {g.knobs.map((k) => (

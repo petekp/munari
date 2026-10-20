@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 // below is this app's answer to what it asks for.
 import '@petepetrash/munari/style.css'
 import './shadcn.css'
+import './components/system/tokens.css'
 import './app.css'
 import App from './App'
 import { CAPTURE_MODE } from './captureMode'

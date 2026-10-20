@@ -99,7 +99,7 @@ try {
     logo: () =>
       Boolean(
         document.querySelector('.logo-word')?.getAttribute('data-phase') &&
-          document.querySelector('button[data-renderer="gl"]'),
+          [...document.querySelectorAll('button')].some((b) => b.textContent === 'Tweaks'),
       ),
   }
   const go = async (scene) => {
@@ -579,6 +579,8 @@ try {
     }
     requestAnimationFrame(frame)
   }))
+  await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent === 'Tweaks').click())
+  await page.waitForSelector('button[data-renderer="gl"]')
   await page.click('button[data-renderer="gl"]')
   await page.waitForFunction(() => document.querySelector('.logo-word')?.getAttribute('data-phase') === 'gl', { timeout: 3_000 })
   await page.click('button[data-renderer="html"]')

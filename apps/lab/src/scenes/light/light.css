@@ -51,33 +51,28 @@
 .light-masthead-title ::selection { background: transparent; color: #67329b; }
 .light-masthead-em { font-style: italic; font-weight: 400; }
 .light-masthead-details { position: relative; z-index: 1; max-width: 520px; margin-top: 40px; }
-.light-masthead-copy { position: relative; z-index: 1; max-width: 44ch; margin: 0; color: var(--ink-soft); font-size: 16px; line-height: 1.6; }
+.light-masthead-copy { position: relative; z-index: 1; max-width: 44ch; margin: 0; color: var(--m-quiet); font-size: 16px; line-height: 1.6; }
 
 /* The bulb and its drag handle. The bulb itself is WebGL. */
 .light-scene { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
 .light-scene[data-degraded] { display: none; }
 .light-handle { pointer-events: auto; position: absolute; left: 0; top: 0; z-index: 40; width: 76px; height: 76px; margin: -38px 0 0 -38px; padding: 0; border: 0; background: transparent; border-radius: 50%; cursor: grab; touch-action: none; user-select: none; }
 .light-handle.is-dragging { cursor: grabbing; }
+.light-handle[data-degraded] { display: none; }
+.light-handle:focus-visible { outline: 2px solid var(--m-ink); outline-offset: 2px; }
 .light-handle-mark { display: none; position: absolute; inset: 20px; border: 2px solid var(--ink); border-radius: 50%; background: var(--paper); }
 .light-handle[data-bulbless] .light-handle-mark { display: block; }
-.light-handle-hint { position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%); font-family: var(--body); font-size: 12px; color: var(--ink); white-space: nowrap; transition: opacity 400ms ease; }
-.light-handle[data-dragged] .light-handle-hint { opacity: 0; }
-.light-handle[data-degraded] { display: none; }
 
 /* The light's controls */
-.light-masthead-tools { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 24px; align-items: end; margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--rule); }
-.light-height { display: grid; gap: 8px; min-width: 0; margin: 0; font-size: 12px; color: var(--ink-soft); }
-.light-height input { flex: 1; min-width: 0; height: 2px; margin: 8px 0; appearance: none; background: var(--rule-hard); cursor: pointer; }
-.light-height input::-webkit-slider-thumb { width: 12px; height: 12px; appearance: none; border-radius: 50%; background: var(--ink); }
-.light-height input::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--ink); }
-.light-select-word { display: inline-flex; align-items: center; gap: 12px; min-height: 44px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: 13px; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
+.light-masthead-tools { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: var(--m-s5); align-items: end; margin-top: var(--m-s6); padding-top: var(--m-s4); border-top: 1px solid var(--m-ink); }
+.light-height { min-width: 0; margin: 0; }
+.light-select-word { min-height: 44px; }
 
 @container demo (max-width: 1050px) {
   .light-inner { --light-side-padding: 32px; padding: 36px var(--light-side-padding) 32px; }
 }
 @container demo (max-width: 760px) {
   .light-masthead { --masthead-size: clamp(48px, 14cqw, 88px); }
-  .light-handle-hint { left: auto; right: calc(100% + 12px); }
   .light-masthead-details { margin-top: 24px; }
   .light-masthead-title { pointer-events: none; }
   .light-masthead-title span { pointer-events: auto; }

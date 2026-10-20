@@ -9,6 +9,7 @@ import {
   useSurfaceStatus,
 } from '@petepetrash/munari'
 import { readSurfaceFrameState } from '@petepetrash/munari/advanced'
+import { Button } from '../../components/system'
 import type { LightFlyerStore } from '../light/lightFlyer'
 
 import { PAPER_WIDTH as HERO_W, PAPER_HEIGHT as HERO_H, type PaperInteraction } from '../light/lightPaperLaw'
@@ -96,12 +97,14 @@ function PostcardInstructions({ supported, lifted, reduced }: { supported: boole
   if (!supported) text = 'The form works here. Play the 3D preview.'
   else if (reduced) text = 'Motion is reduced. Switch between page and scene.'
   else if (lifted) text = 'Brush a corner or add a stamp. Keep typing.'
-  return <p className="postcard-note">{text}</p>
+  return <p className="postcard-note m-small">{text}</p>
 }
 
 function PostcardPresentation({surface,preview}:{surface:SurfaceHandle;preview:boolean}) {
   const state = useSurfaceStatus(surface)
-  return <span className="postcard-status" data-gl={state.presentation === 'scene'} aria-live="polite">
+  const inScene = state.presentation === 'scene'
+  const status = inScene && !preview ? 'live' : 'idle'
+  return <span className="postcard-status m-status" data-status={status} data-gl={inScene} aria-live="polite">
     {preview ? 'Recorded in Chrome' : state.presentation === 'scene' ? 'In the scene' : 'On the page'}
   </span>
 }
@@ -192,8 +195,7 @@ export function PostcardForm({
         </div>
         <div className="postcard-hero-row mt-6 flex items-center justify-between gap-3 @max-[600px]/demo:mt-[18px] @max-[600px]/demo:gap-2">
           {supported ? (
-            <button
-              type="button"
+            <Button
               className="postcard-btn"
               data-relief="raised"
               onClick={() => {
@@ -203,11 +205,11 @@ export function PostcardForm({
               }}
             >
               {lifted ? 'Return to page' : 'Lift the postcard'}
-            </button>
+            </Button>
           ) : (
-            <button type="button" className="postcard-btn" data-relief="raised" onClick={() => setPreview((value) => !value)}>
+            <Button className="postcard-btn" data-relief="raised" onClick={() => setPreview((value) => !value)}>
               {preview ? 'Back to the postcard' : 'Play 3D preview'}
-            </button>
+            </Button>
           )}
           <PostcardPresentation surface={surface} preview={preview} />
         </div>

@@ -1,10 +1,11 @@
 // Plume controls — the plume scene's schema for the shared tweak panel.
 //
 // Ownership: Plume.tsx owns the text, tuning, and effects. This file owns
-// turning PLUME_GROUPS into the shared panel's schema and the bespoke
-// content (effects, typeface/release-unit selects, text actions, status)
-// no tuning field covers; the panel itself (disclosure, drafts, copy,
-// persistence) lives in components/tweakPanel.tsx.
+// turning PLUME_GROUPS into the shared panel's schema and the content no
+// tuning field covers (effect toggles, typeface/release-unit selects, text
+// actions, status line), built from the site component library; the panel
+// itself (disclosure, drafts, copy, persistence) lives in
+// components/tweakPanel.tsx.
 
 import {
   normalizePlumeInput,
@@ -14,7 +15,8 @@ import {
   type PlumeEffects,
   type PlumeTuning,
 } from './plumeTuning'
-import { TweakColorField, TweakPanel, type TweakControl, type TweakGroup } from '../../components/tweakPanel'
+import { Button } from '../../components/system'
+import { TweakColorField, TweakPanel, TweakToggleField, type TweakControl, type TweakGroup } from '../../components/tweakPanel'
 import './plumeTweaks.css'
 
 interface PlumeTweaksProps {
@@ -33,12 +35,11 @@ interface PlumeTweaksProps {
 const EFFECTS: readonly {
   readonly key: keyof PlumeEffects
   readonly label: string
-  readonly detail: string
 }[] = [
-  { key: 'wisps', label: 'Updraft', detail: 'lift particles in curling air' },
-  { key: 'afterglow', label: 'Ghost ink', detail: 'leave a faint impression' },
-  { key: 'embers', label: 'Sparks', detail: 'catch a few warm particles' },
-  { key: 'draft', label: 'Draft', detail: 'let the pointer bend the air' },
+  { key: 'wisps', label: 'Updraft' },
+  { key: 'afterglow', label: 'Ghost ink' },
+  { key: 'embers', label: 'Sparks' },
+  { key: 'draft', label: 'Draft' },
 ]
 
 function toTweakControl(control: PlumeControl, tuning: PlumeTuning, onTuningChange: (next: PlumeTuning) => void): TweakControl {
@@ -174,28 +175,24 @@ export function PlumeTweaks({
       closerAttrs={{ 'data-plume-controls-close': '' }}
       resetAttrs={{ 'data-plume-reset': '' }}
       copyAttrs={{ 'data-plume-copy': '' }}
-      afterGroups={<p className="plume-status" role="status">{status}</p>}
+      afterGroups={<p className="plume-status m-small m-quiet" role="status">{status}</p>}
     >
       <div className="plume-actions">
-        <button type="button" data-plume-restore onClick={onRestore}>Restore text</button>
-        <button type="button" data-plume-clear onClick={onClear}>Clear</button>
+        <Button variant="outline" compact data-plume-restore onClick={onRestore}>Restore text</Button>
+        <Button variant="outline" compact data-plume-clear onClick={onClear}>Clear</Button>
       </div>
-      <p className="plume-controls-help">
-        Words stay editable after they fade. Type, timing, and spacing edits replay them.
-        Other edits apply live, or replay when idle.
-      </p>
-      <fieldset className="plume-effects">
-        <legend>Effects</legend>
+      <div className="plume-effects" role="group" aria-labelledby="plume-effects-label">
+        <p id="plume-effects-label" className="m-small plume-effects-label">Effects</p>
         {EFFECTS.map((effect) => (
-          <label key={effect.key} className="plume-effect">
-            <input type="checkbox" checked={effects[effect.key]} onChange={() => onToggle(effect.key)} />
-            <span>
-              <strong>{effect.label}</strong>
-              <small>{effect.detail}</small>
-            </span>
-          </label>
+          <TweakToggleField
+            key={effect.key}
+            label={effect.label}
+            checked={effects[effect.key]}
+            onChange={() => onToggle(effect.key)}
+            attrs={{ 'data-plume-effect': effect.key }}
+          />
         ))}
-      </fieldset>
+      </div>
     </TweakPanel>
   )
 }

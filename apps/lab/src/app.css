@@ -310,17 +310,16 @@ body,
   bottom: 20px;
   z-index: 9999;
   max-width: 460px;
-  border-radius: var(--radius);
-  border: 1px solid rgba(242, 240, 234, 0.16);
-  background: rgba(18, 18, 20, 0.92);
-  backdrop-filter: blur(12px);
+  border: 1px solid var(--m-ink);
+  background: var(--m-paper);
+  color: var(--m-ink);
+  font: 400 15px/1.45 var(--m-sans);
 }
 
 .trial-notice > summary {
-  padding: 7px 12px;
+  padding: var(--m-s2) var(--m-s3);
   cursor: pointer;
-  font-size: 12px;
-  letter-spacing: 0.02em;
+  font: 600 13px/1.4 var(--m-sans);
   /* The marker is the only thing saying there is more behind this, so it
    * stays. The list-style reset is Safari's: without it the disclosure
    * triangle sits outside the padding box and clips against the border. */
@@ -328,17 +327,25 @@ body,
 }
 
 .trial-notice[open] > summary {
-  border-bottom: 1px solid rgba(242, 240, 234, 0.12);
-  margin-bottom: 12px;
+  border-bottom: 1px solid var(--m-ink);
+}
+
+.trial-notice > summary:focus-visible {
+  outline: 2px solid var(--m-ink);
+  outline-offset: 3px;
 }
 
 .trial-notice > .hint {
-  padding: 0 14px;
+  margin: 0;
+  padding: var(--m-s3);
+  color: var(--m-ink);
+  font: 400 15px/1.45 var(--m-sans);
 }
 
-.trial-notice > .hint {
-  margin-top: 10px;
-  padding-bottom: 14px;
+.trial-notice > .hint a {
+  color: var(--m-ink);
+  text-decoration: underline 1px;
+  text-underline-offset: 3px;
 }
 
 /* ── a scene that threw ──────────────────────────────────────────────────

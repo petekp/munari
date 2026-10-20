@@ -476,6 +476,8 @@ try {
   await go('logo', '.logo-word')
   const logoPhase = await page.evaluate(() => document.querySelector('.logo-word').dataset.phase)
   if (logoPhase !== 'page') note(`logo: the word is not on the page ('${logoPhase}')`)
+  await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent === 'Tweaks').click())
+  await page.waitForSelector('.m-panel')
   const offered = await page.$$eval('[data-renderer]', (els) =>
     els.map((el) => el.dataset.renderer),
   )

@@ -491,6 +491,7 @@ function CardBody({ card, onChange, onGrab, onDelete, column, position, counts, 
         <input
           className="l14-note"
           data-nodrag
+          aria-label="Note"
           placeholder="Add note"
           value={card.note}
           onChange={(e) => onChange({ note: e.target.value })}
@@ -2193,7 +2194,7 @@ export function FlightApp() {
               <h2>
                 {col.name}
                 <span className="l14-count">
-                  {String(board[col.id].length).padStart(2, '0')}
+                  {board[col.id].length}
                 </span>
               </h2>
               <ul>

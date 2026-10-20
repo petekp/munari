@@ -202,18 +202,6 @@
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
-.knb-page-instruction {
-  position: fixed;
-  left: 18px;
-  bottom: 16px;
-  z-index: 4;
-  margin: 0;
-  color: #a7abb0;
-  font: 600 9px/1.35 var(--label);
-  letter-spacing: 0.04em;
-  pointer-events: none;
-}
-
 /* Engraved lettering: the glyph is a groove — dark ink, a sliver of
  * light on its lower lip where the cut catches the overhead light. */
 .knb-panel-title {

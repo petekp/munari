@@ -23,6 +23,7 @@ import {
   type MarbleHandControlGroup,
   type MarbleHandTuning,
 } from './marbleHandTuning'
+import { Button, Notice } from '../../components/system'
 import { TweakColorField, TweakPanel, TweakToggleField, type TweakControl, type TweakGroup } from '../../components/tweakPanel'
 import './marbleHandTweaks.css'
 
@@ -75,24 +76,27 @@ function groupExtra(
     case 'Orientation':
       return (
         <div className="mh-pose-presets" aria-label="Orientation presets">
-          {MARBLE_HAND_ORIENTATIONS.map((preset) => (
-            <button
+          {MARBLE_HAND_ORIENTATIONS.map((preset) => {
+            const isPressed =
+              Math.abs(tuning.baseRotation - preset.baseRotation) < 0.00001 &&
+              Math.abs(tuning.sculptureRoll - preset.sculptureRoll) < 0.00001 &&
+              Math.abs(tuning.sculpturePitch - preset.sculpturePitch) < 0.00001
+            return (
+            <Button
               key={preset.id}
-              type="button"
+              compact
+              variant={isPressed ? 'solid' : 'outline'}
               data-hand-preset={preset.id}
-              aria-pressed={
-                Math.abs(tuning.baseRotation - preset.baseRotation) < 0.00001 &&
-                Math.abs(tuning.sculptureRoll - preset.sculptureRoll) < 0.00001 &&
-                Math.abs(tuning.sculpturePitch - preset.sculpturePitch) < 0.00001
-              }
+              aria-pressed={isPressed}
               onClick={() => {
                 onChange({ ...tuning, baseRotation: preset.baseRotation, sculptureRoll: preset.sculptureRoll, sculpturePitch: preset.sculpturePitch })
                 onParked(true)
               }}
             >
               {preset.label}
-            </button>
-          ))}
+            </Button>
+            )
+          })}
         </div>
       )
     case 'Size & height':
@@ -180,7 +184,7 @@ export function MarbleHandTweaks({
       initiallyOpen
       className="mh-tweak-panel"
       position="bottom-right"
-      openerLabel={<>Tweak hand <span aria-hidden="true">↗</span></>}
+      openerLabel="Tweak hand"
       rootAttrs={{ 'data-marble-hand-controls': '' }}
       closeAriaLabel="Close hand controls"
       resetDisabled={!ready}
@@ -193,59 +197,64 @@ export function MarbleHandTweaks({
       beforeFieldset={
         <>
           {!ready ? (
-            <p className="mh-controls-notice" role="status">
-              {unavailable
-                ? 'The 3D preview is unavailable. Reload to try again. The native page still works.'
-                : 'The hand is loading. The native page and browser pointer are ready.'}
-            </p>
+            unavailable ? (
+              <Notice title="Preview unavailable." kind="error">Reload to try again. The native page still works.</Notice>
+            ) : (
+              <Notice title="Hand loading.">The native page and browser pointer are ready.</Notice>
+            )
           ) : null}
           <section className="mh-background-controls" aria-label="Background controls">
             <div className="mh-background-controls-heading">
               <h3>Background</h3>
-              <button
-                className="mh-background-motion"
-                type="button"
+              <Button
+                compact
+                variant="outline"
                 data-marble-motion-toggle
                 disabled={reducedMotion}
                 onClick={onToggleColorMotion}
               >
-                <span aria-hidden="true">{colorMotion ? 'Ⅱ' : '▶'}</span>
                 {reducedMotion ? 'Motion off' : colorMotion ? 'Pause color' : 'Play color'}
-              </button>
+              </Button>
             </div>
             {reflection === 'unsupported' || reflection === 'error' ? (
-              <p className="mh-controls-notice" data-marble-reflection-notice role="status">
-                {reflection === 'unsupported'
-                  ? 'Full-page reflections need Chrome with HTML-in-canvas enabled. The native page still works here.'
-                  : 'Page capture is unavailable. Reload to restore full-page reflections.'}
-              </p>
+              <div data-marble-reflection-notice>
+                {reflection === 'unsupported' ? (
+                  <Notice title="Needs Chrome.">Full-page reflections need HTML-in-canvas enabled. The native page still works here.</Notice>
+                ) : (
+                  <Notice title="Capture unavailable." kind="error">Reload to restore full-page reflections.</Notice>
+                )}
+              </div>
             ) : null}
           </section>
         </>
       }
     >
       <div className="mh-material-mode" role="group" aria-label="Hand material">
-        <button
-          type="button"
+        <Button
+          compact
+          variant={tuning.materialMode === 'marble' ? 'solid' : 'outline'}
           data-hand-material="marble"
           aria-pressed={tuning.materialMode === 'marble'}
           onClick={() => onChange({ ...tuning, materialMode: 'marble' })}
         >
-          <span className="mh-finish-swatch mh-finish-marble" aria-hidden="true" /> Marble
-        </button>
-        <button
-          type="button"
+          <span className="mh-finish-swatch mh-finish-marble" aria-hidden="true" />
+          Marble
+        </Button>
+        <Button
+          compact
+          variant={tuning.materialMode === 'chrome' ? 'solid' : 'outline'}
           data-hand-material="chrome"
           aria-pressed={tuning.materialMode === 'chrome'}
           onClick={() => onChange({ ...tuning, materialMode: 'chrome' })}
         >
-          <span className="mh-finish-swatch mh-finish-chrome" aria-hidden="true" /> Chrome
-        </button>
+          <span className="mh-finish-swatch mh-finish-chrome" aria-hidden="true" />
+          Chrome
+        </Button>
       </div>
       <div className="mh-preview-controls">
         <TweakToggleField label="Park hand" checked={parked} onChange={onParked} />
         <TweakToggleField label="Hold press" checked={previewPressed} onChange={onPreviewPressed} />
-        <p>{parked ? 'A still preview while you tune. Uncheck to follow the pointer.' : 'Move over the page to try the pointer. Park it to tune in place.'}</p>
+        <p>{parked ? 'Uncheck to make the hand follow the pointer.' : 'Park the hand to tune it in place.'}</p>
       </div>
     </TweakPanel>
   )

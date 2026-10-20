@@ -54,7 +54,7 @@ export const DEMOS = [
   {
     id: 'knobs', title: 'Knobs',
     headline: 'Controls with a physical form',
-    instruction: 'Turn a dial, switch the power, and resize the panel with its corner handle.',
+    instruction: 'Turn a dial, switch the power, drag the panel’s corner to resize it, and drag its top edge to move it.',
   },
   {
     id: 'postcard', title: 'Postcard',

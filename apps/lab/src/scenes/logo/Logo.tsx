@@ -42,6 +42,8 @@ import {
   type WordMetrics,
 } from './logoScene'
 import { letterTransform, logoMotionProgram, type LogoMotionSample } from './logoMotion'
+import { Button, Slider } from '@/components/system'
+import { TuningGroup, TuningPanel } from '@/components/TuningPanel'
 import './logo.css'
 
 // ── the tweak panel ─────────────────────────────────────────────────────
@@ -64,25 +66,25 @@ const SLIDERS: {
   // the page's own texel leaves the blend and the letters render from
   // lighting alone, which comes up black (2026-08-15). The cap is on what
   // the panel can ask for; LogoKnobs still carries the full range.
-  { key: 'gloss', label: 'gloss', min: 0, max: 0.9, step: 0.05, sceneOnly: true },
-  { key: 'polish', label: 'polish', min: 0, max: 2, step: 0.05, sceneOnly: true },
-  { key: 'sheen', label: 'sheen', min: 0, max: 2, step: 0.05, sceneOnly: true },
-  { key: 'irid', label: 'irid', min: 0, max: 2, step: 0.05, sceneOnly: true },
-  { key: 'glow', label: 'glow', min: 0, max: 2, step: 0.05, sceneOnly: true },
-  { key: 'jelly', label: 'jelly', min: 0, max: 1, step: 0.05, sceneOnly: true },
-  { key: 'prism', label: 'prism', min: 0, max: 1, step: 0.05, sceneOnly: true },
+  { key: 'gloss', label: 'Gloss', min: 0, max: 0.9, step: 0.05, sceneOnly: true },
+  { key: 'polish', label: 'Polish', min: 0, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'sheen', label: 'Sheen', min: 0, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'irid', label: 'Iridescence', min: 0, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'glow', label: 'Glow', min: 0, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'jelly', label: 'Jelly', min: 0, max: 1, step: 0.05, sceneOnly: true },
+  { key: 'prism', label: 'Prism', min: 0, max: 1, step: 0.05, sceneOnly: true },
   // Not 'relief px': the number is a gain referenced to 22, and the px
   // it buys are per-material (LogoKnobs.relief).
-  { key: 'relief', label: 'relief', min: 0, max: 60, step: 2, sceneOnly: true },
-  { key: 'extrude', label: 'extrude px', min: 0, max: 80, step: 2, sceneOnly: true },
-  { key: 'lightYaw', label: 'light yaw°', min: -80, max: 80, step: 1, sceneOnly: true },
-  { key: 'lightPitch', label: 'light pitch°', min: -45, max: 80, step: 1, sceneOnly: true },
-  { key: 'key', label: 'key light', min: 0, max: 2, step: 0.05, sceneOnly: true },
-  { key: 'keySoft', label: 'key soft', min: 0.2, max: 2, step: 0.05, sceneOnly: true },
-  { key: 'room', label: 'room', min: 0, max: 2, step: 0.05, sceneOnly: true },
-  { key: 'waveScale', label: 'wave scale', min: 0.3, max: 3, step: 0.05, sceneOnly: true },
-  { key: 'waveSpeed', label: 'wave speed', min: 0, max: 3, step: 0.05, sceneOnly: true },
-  { key: 'waveAngle', label: 'wave angle°', min: -90, max: 90, step: 5, sceneOnly: true },
+  { key: 'relief', label: 'Relief', min: 0, max: 60, step: 2, sceneOnly: true },
+  { key: 'extrude', label: 'Extrude (px)', min: 0, max: 80, step: 2, sceneOnly: true },
+  { key: 'lightYaw', label: 'Light yaw (°)', min: -80, max: 80, step: 1, sceneOnly: true },
+  { key: 'lightPitch', label: 'Light pitch (°)', min: -45, max: 80, step: 1, sceneOnly: true },
+  { key: 'key', label: 'Key light', min: 0, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'keySoft', label: 'Key softness', min: 0.2, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'room', label: 'Room light', min: 0, max: 2, step: 0.05, sceneOnly: true },
+  { key: 'waveScale', label: 'Wave scale', min: 0.3, max: 3, step: 0.05, sceneOnly: true },
+  { key: 'waveSpeed', label: 'Wave speed', min: 0, max: 3, step: 0.05, sceneOnly: true },
+  { key: 'waveAngle', label: 'Wave angle (°)', min: -90, max: 90, step: 5, sceneOnly: true },
 ]
 
 /** The logo scene's probe handle: the shader gate walks the material states
@@ -104,7 +106,6 @@ export function LogoApp() {
   // float amplitude — and the scene's twins size themselves from the fontPx
   // measured below, so this single number carries the whole scene.
   const [textScale, setTextScale] = useState(1)
-  const [compact, setCompact] = useState(false)
   const [seed, setSeed] = useState(SEED0)
   // `?probe=still` boots with the conductor paused, so no beat re-rolls a
   // letter's pose mid-measurement. The shader-compile gate
@@ -304,6 +305,11 @@ export function LogoApp() {
 
   const setKnob = (key: keyof LogoKnobs, value: number) =>
     setKnobs((k) => ({ ...k, [key]: value }))
+  const copyKnobs = () => {
+    const json = JSON.stringify(knobs, null, 2)
+    console.log(json)
+    void navigator.clipboard?.writeText(json).catch(() => {})
+  }
 
   return (
     <div className="logo-page">
@@ -370,83 +376,54 @@ export function LogoApp() {
       )}
 
       </Surface.Root>
-      <div className="logo-panel" data-compact={compact}>
-        <button
-          className="logo-panel-title"
-          aria-expanded={!compact}
-          onClick={() => setCompact((v) => !v)}
-        >
-          <span>wordmark</span>
-          <span className="logo-panel-toggle">{compact ? '+' : '−'}</span>
-        </button>
-        {/* The scene's subject, so it leads the panel: the same letters
-            drawn by the page or by the 3D scene. Naming both renderers as
-            segments states which one owns the pixels right now, where a
-            checkbox stated only the destination. A flip mid-crossing
-            reverses the crossing, never skips it — that rule lives in the
-            library now (crossingRequest), so both segments stay live
-            while one is in flight. */}
-        {/* `data-renderer` is the probe's handle: shader-compile walks the
-            scene through both directions by name, so reordering or
-            restyling the segments cannot quietly change what it clicks. */}
-        {/* Only where there is a second renderer to name. Without the
-            trial the 3D segment offered a destination nothing could
-            reach: the request mounted a Canvas whose frameloop never
-            advanced, so react-three-fiber's `onCreated` stayed pending
-            until the segment was flipped back — and fired against the
-            wrapper div it had just unmounted, throwing (2026-08-23). The
-            letters are the page's either way, so the scene loses a label
-            here and nothing else. */}
-        {supported && (
-          <div className="logo-renderer">
-            <button
-              data-renderer="html"
-              data-on={view === 'page'}
-              onClick={() => request(false)}
-            >
-              HTML
-            </button>
-            <button data-renderer="gl" data-on={view === 'scene'} onClick={() => request(true)}>
-              3D
-            </button>
+      <TuningPanel title="Wordmark" side="right" zIndex={200} ground="ink" onCopy={copyKnobs}>
+        <TuningGroup title="Renderer" initialState="open">
+          {/* The scene's subject, so it leads the panel: the same letters
+              drawn by the page or by the 3D scene. Naming both renderers
+              states which one owns the pixels right now, where a checkbox
+              stated only the destination. A flip mid-crossing reverses the
+              crossing, never skips it (crossingRequest, in the library), so
+              both buttons stay live while one is in flight.
+              `data-renderer` is the probe's handle: shader-compile walks the
+              scene through both directions by name. */}
+          {/* Only where there is a second renderer to name. Without the
+              trial the 3D button offered a destination nothing could
+              reach: the request mounted a Canvas whose frameloop never
+              advanced, so react-three-fiber's `onCreated` stayed pending
+              until the button was flipped back, then fired against the
+              wrapper div it had just unmounted, throwing (2026-08-23). */}
+          {supported && (
+            <div className="logo-panel-row">
+              <Button variant={view === 'page' ? 'solid' : 'outline'} compact data-renderer="html" aria-pressed={view === 'page'} onClick={() => request(false)}>
+                HTML
+              </Button>
+              <Button variant={view === 'scene' ? 'solid' : 'outline'} compact data-renderer="gl" aria-pressed={view === 'scene'} onClick={() => request(true)}>
+                3D
+              </Button>
+            </div>
+          )}
+          <div className="logo-panel-row">
+            <Button variant="outline" compact onClick={() => setRunning((v) => !v)}>{running ? 'Pause' : 'Play'}</Button>
+            <Button variant="outline" compact onClick={() => schedule(waveSteps(rRef.current, WORD.length))}>Wave</Button>
+            <Button variant="outline" compact onClick={() => setSeed(Math.floor(Math.random() * 2 ** 31))}>Reroll</Button>
           </div>
-        )}
-        <div className="logo-panel-row">
-          <button onClick={() => setRunning((v) => !v)}>{running ? 'pause' : 'play'}</button>
-          <button onClick={() => schedule(waveSteps(rRef.current, WORD.length))}>wave</button>
-          <button onClick={() => setSeed(Math.floor(Math.random() * 2 ** 31))}>reroll</button>
-        </div>
-        <label className="logo-panel-slider">
-          <span>text size</span>
-          <input
-            type="range"
-            min={0.5}
-            max={2}
-            step={0.05}
-            value={textScale}
-            onChange={(e) => setTextScale(Number(e.target.value))}
-          />
-          <em>{textScale.toFixed(2)}×</em>
-        </label>
-        {SLIDERS.map((s) => (
-          <label
-            key={s.key}
-            className="logo-panel-slider"
-            data-off={s.sceneOnly && phase === 'page'}
-          >
-            <span>{s.label}</span>
-            <input
-              type="range"
+          <Slider label="Text size" unit="×" min={0.5} max={2} step={0.05} value={textScale} onChange={setTextScale} />
+        </TuningGroup>
+        <TuningGroup title="Material and light" initialState="open">
+          {SLIDERS.map((s) => (
+            <Slider
+              key={s.key}
+              label={s.label}
               min={s.min}
               max={s.max}
               step={s.step}
               value={knobs[s.key]}
-              onChange={(e) => setKnob(s.key, Number(e.target.value))}
+              disabled={s.sceneOnly && phase === 'page'}
+              onChange={(value) => setKnob(s.key, value)}
             />
-            <em>{knobs[s.key]}</em>
-          </label>
-        ))}
-      </div>
+          ))}
+        </TuningGroup>
+      </TuningPanel>
 
     </div>
   )

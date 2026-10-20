@@ -250,6 +250,8 @@ try {
     { timeout: 15_000 },
   )
   await sleep(900)
+  await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent === 'Tweaks').click())
+  await page.waitForSelector('button[data-renderer="gl"]')
 
   // The walk. Every state below builds materials the previous one did
   // not, and a state that reaches the canvas is a state whose programs
@@ -273,7 +275,7 @@ try {
 
   const steps = [
     ['the page at rest', async () => {}, state => !state.holds],
-    ['scene rendering', async () => page.click('.logo-renderer button[data-renderer="gl"]'), state => state.holds && state.letters.length > 0],
+    ['scene rendering', async () => page.click('button[data-renderer="gl"]'), state => state.holds && state.letters.length > 0],
     // Extrusion is off by default and builds the slab material, so the
     // gate has to ask for it — the default-on states alone would have
     // left the letter's edge shader unproven.
@@ -282,7 +284,7 @@ try {
     // states above are the bump-only relief and the mesh body is the one
     // nothing reaches by default.
     ['mesh body', async () => knob('body', 1), state => state.holds && state.letters.some(letter => letter.body > 0)],
-    ['back to the page', async () => page.click('.logo-renderer button[data-renderer="html"]'), state => !state.holds],
+    ['back to the page', async () => page.click('button[data-renderer="html"]'), state => !state.holds],
   ]
   const seen = []
   let compiled = 0
