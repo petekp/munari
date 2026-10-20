@@ -31,7 +31,7 @@ const markers = {
 for (const scene of routes) assert.ok(markers[scene], `Add an actual-content marker for new route ${scene}`)
 
 // A visitor's later loads come from a warm cache, and the first load in a fresh
-// browser does not. Chrome 155 crashed the overview's renderer on every load
+// browser does not. Chrome crashed the overview's renderer on every load
 // after the first and never on the first (platform.md #35), so each route loads
 // again in a second tab of the same browser and must stay alive.
 const REPEAT_SETTLE_MS = 3000

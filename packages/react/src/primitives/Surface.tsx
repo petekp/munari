@@ -251,9 +251,10 @@ export type SurfaceHTMLProps = {
 function matchingRuntime(publication: SurfacePartPublication | null, element: HTMLElement | null): SurfaceSourceRuntime | null {
   return publication?.captureRoot === element ? publication?.runtime ?? null : null
 }
-// Chrome 155–157's renderer crashes when `moveBefore` docks capture canvases
-// in an absolutely positioned size container and a font face arrives in the
-// same task; `insertBefore` does not crash (platform.md #35). The insert
+// Chrome's renderer crashes when `moveBefore` puts two fixed-position
+// elements, such as these parked capture canvases, inside an absolutely
+// positioned size container and a font face arrives in the same task;
+// `insertBefore` does not crash (platform.md #35). The insert
 // restarts the CSS animations of whatever the host holds, so the caller puts
 // the held copy back at the live node's pose.
 function dockCaptureHost(host: HTMLElement, dock: HTMLElement): boolean {

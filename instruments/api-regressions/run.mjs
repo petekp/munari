@@ -79,7 +79,7 @@ async function pixels(page,native,preparing,exclude=[],cssWidth=0){
     return {mean:error/a.data.length,worstLine:Math.max(worst(rows),worst(cols)),unexpectedPixels,referenceFillPixels}
   },{native,preparing,exclude,cssWidth,strong:STRONG_DIFFERENCE,minLine:MIN_LINE_PIXELS})
 }
-// The fixture's dock crashes Chrome 155–157's renderer unless the library docks
+// The fixture's dock crashes Chrome 153–157's renderer unless the library docks
 // with insertBefore (platform.md #35). On the site it crashed on loads after
 // the first in one browser, so each load is a new tab of the same browser. A
 // crash fires the page's 'error' event or leaves an evaluate unanswered.

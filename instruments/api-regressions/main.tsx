@@ -109,7 +109,7 @@ function Attribute(){
   const html=name==='onclick'?'<button onclick="void 0">Inline handler</button>':`<div ${name}="hello">Ordinary attribute</div>`
   return <><SurfaceCanvas id="attributes" pointerMode="surfaces" frameloop="demand" style={{position:'fixed',inset:0}}/><Surface.Root surface={surface} canvasId="attributes" inScene={true}><Surface.HTML><div style={{width:240,height:100}} dangerouslySetInnerHTML={{__html:html}}/></Surface.HTML><Surface.Mesh/></Surface.Root></>
 }
-// Chrome 155–157's renderer crashes when moveBefore docks two or more capture
+// Chrome 153–157's renderer crashes when moveBefore docks two or more capture
 // canvases inside an absolutely positioned size container and a font face is
 // added in the same task (platform.md #35). On the site, the font faces came
 // from the stylesheet the wordmark loads. The library docks with insertBefore,
