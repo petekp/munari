@@ -393,29 +393,44 @@ frame time was within noise. A shipped version would have to subset each face
 by the codepoints each capture uses. That work outweighs a 4 ms decode saving
 that users do not feel.
 
-**7. Several conditions block snapDOM's incremental recapture.**
+**7. snapDOM's differential recapture does not run for Munari captures.**
 
-High potential, confirmed mechanism, unmeasured benefit. All three Munari
-plugins use `afterClone`. Installed snapDOM 3.0.0-beta.1 explicitly excludes
-clone-construction hooks from differential recapture, including pure hooks.
-See [`capturePlugins`](../packages/react/src/snapdom.ts) and the installed
-[`plugin contract`](../node_modules/@zumer/snapdom/types/snapdom.d.ts).
-Unchanged-repeat memoization still works; a content change forces full work.
+Not worth building now, measured 2026-10-21 with snapDOM 3.3.6 in headless
+Chrome. Differential recapture means that on a repeat capture, snapDOM
+re-clones only the subtrees that changed. Across seven lab scenes, controls,
+flight, knobs, selection, genie, postcard and home, with pointer movement and
+a drag, snapDOM reused a subtree on none of Munari's captures.
 
-The installed differential path also rejects
-[`reconcile: true`](../packages/react/src/snapdom.ts) independently.
-It checks document CSS for selectors requiring wider dependency tracking,
-including sibling selectors and `:has()`. The lab's always-imported
-[`shadcn.css`](../apps/lab/src/shadcn.css) contains `:has()`, so a plugin
-change alone cannot establish a benefit in the current lab.
+Munari blocks it in four ways:
 
-Investigate incremental-compatible hooks, reconciliation, and stylesheet
-eligibility together. First prove that the differential path executes.
-Moving the existing hooks unchanged to `beforeRender` is unsafe: differential
-capture reuses a clone, while the current hooks append font blocks and
-pseudo-element overlays without removing old ones. An idempotent update must
-preserve resource handling and pixel parity. Removing fidelity shims or the
-frame yield would lose measured fixes.
+- A Surface on the page replaces its whole copy inside the capture root on
+  every change, through `captureRoot.replaceChildren` in
+  [`Surface.tsx`](../packages/react/src/primitives/Surface.tsx). snapDOM then
+  treats the whole root as changed.
+- Munari writes `inert` and `aria-hidden` on the capture root even when the
+  value is unchanged. Some Surfaces also pass `invalidate`.
+- [`reconcile: true`](../packages/react/src/snapdom.ts) turns the path off.
+- The frame split and the field pseudo-element plugin use `afterClone`.
+  snapDOM documents that clone hooks need a full recapture, even pure ones.
+  The font plugin uses `beforeRender` and does not block it.
+
+snapDOM and the page block it too. User input, such as typing, slider drags
+and clicks, always triggers a full capture inside snapDOM. snapDOM turns the
+path off for the whole document when any selector contains `+`, `~` or
+`:has(`, or when any rule uses counters. The lab's stylesheets have 15 to 17
+such rules. snapDOM also takes a full capture when anything outside the element
+has changed since the last capture.
+
+A probe removed or bypassed every blocker, and the path then ran on lifted
+Surfaces. In the best case, one text edit was 3 to 6 times faster than a full
+capture, with identical pixels. Updates during normal use of lifted Surfaces
+were 10 to 40% faster, in unpaired runs.
+
+Getting that gain would take a Surface that patches its copy in place,
+dropping `reconcile` at an unmeasured fidelity cost, new homes for the frame
+yield and the field overlays, and changes to the app's own CSS. User input
+would still take a full capture. Revisit if snapDOM narrows its stylesheet and
+outside-change checks.
 
 The font plugin also repeats whole-tree computed-style reads and selects faces
 by family/codepoint rather than weight/style. Reusing descriptors from snapDOM's
