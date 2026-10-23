@@ -86,7 +86,7 @@
    * own tone below. The shadow browser check reads the current pattern
    * before measuring the sheet's edges. */
   --tile: 8px;
-  --tile-lo: rgba(20, 20, 15, 0.045);
+  --tile-lo: rgba(18, 20, 22, 0.045);
   --tile-hi: rgba(255, 255, 255, 0.15);
 
   min-height: 100vh;
@@ -323,7 +323,7 @@
    * too heavy for a desk this pale: four windows each wearing a hard
    * 60-step band turned the stack into stripes. Halved and slimmed, the
    * shadow separates the windows without competing with them. */
-  --shade: rgba(20, 20, 15, 0.15);
+  --shade: rgba(18, 20, 22, 0.15);
   /* How far the shade sits down and right of its window. Small enough to
    * be a shadow rather than a second rectangle, large enough that the
    * strip survives being poured through the warp and resampled — and
@@ -796,7 +796,7 @@
 .gen-tile svg {
   display: block;
   overflow: visible;
-  filter: drop-shadow(0 1px 0 rgba(40, 38, 30, 0.18));
+  filter: drop-shadow(0 1px 0 rgba(34, 38, 43, 0.18));
   transition: filter 140ms ease, opacity 140ms ease;
 }
 
@@ -837,7 +837,7 @@
 .gen-icon-line,
 .gen-icon-detail {
   fill: none;
-  stroke: color-mix(in srgb, var(--gen-accent) 76%, #1f241f);
+  stroke: color-mix(in srgb, var(--gen-accent) 76%, #1d2126);
   stroke-width: 0.62;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -864,7 +864,7 @@
 }
 
 .gen-tile[data-role='window'][data-filled='true']:hover svg {
-  filter: drop-shadow(0 2px 1px rgba(40, 38, 30, 0.22));
+  filter: drop-shadow(0 2px 1px rgba(34, 38, 43, 0.22));
 }
 
 .gen-tile[data-role='window']:focus-visible {

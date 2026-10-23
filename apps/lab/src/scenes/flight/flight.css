@@ -418,7 +418,7 @@
 .l14-card[data-done='true'] p,
 .l14-card[data-done='true'] .l14-tag,
 .l14-card[data-done='true'] .l14-check {
-  color: rgba(242, 240, 234, 0.58);
+  color: rgba(238, 242, 248, 0.58);
 }
 
 .l14-card[data-done='true'] .l14-code {
@@ -429,7 +429,7 @@
 .l14-card[data-done='true'] .l14-rail hr,
 .l14-card[data-done='true'] .l14-foot,
 .l14-card[data-done='true'] .l14-note {
-  border-color: rgba(242, 240, 234, 0.2);
+  border-color: rgba(238, 242, 248, 0.2);
 }
 
 .l14-card[data-done='true'] .l14-note {
@@ -437,7 +437,7 @@
 }
 
 .l14-card[data-done='true'] .l14-check input {
-  border-color: rgba(242, 240, 234, 0.45);
+  border-color: rgba(238, 242, 248, 0.45);
 }
 
 .l14-card[data-done='true'] .l14-check input:checked {
@@ -446,7 +446,7 @@
 }
 
 .l14-card[data-done='true'] .l14-del {
-  color: rgba(242, 240, 234, 0.6);
+  color: rgba(238, 242, 248, 0.6);
 }
 
 /* ── the overlay ──────────────────────────────────────────────────────────

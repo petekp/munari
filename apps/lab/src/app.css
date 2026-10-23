@@ -31,28 +31,26 @@
    * pitch. It was a good instrument and the wrong country. Munari's surfaces
    * are PAPER — the Danese boxes, the Einaudi jackets, the Libri illeggibili,
    * which are made of nothing but coloured stock and a fold — so the ground
-   * here is uncoated card with the warm green cast Italian stock of the
-   * period had, and the card that sits on it is a brighter sheet of the same
-   * material. Two papers, not a body and a panel. */
-  --bench: #dcd9c8;
-  --bench-hi: #f2f0e4;
-  --bench-lo: #c6c3b1;
-
-  /* ── the black plane ── litho ink, not a display
+   * here is cool grey card, and the card that sits on it is a brighter sheet
+   * of the same material. Two papers, not a body and a panel.
    *
-   * Slightly green-black rather than blue-black: black ink on warm uncoated
-   * stock never reads neutral, and a blue-black on this paper reads as a
-   * screen switched on, which is exactly the wrong association now. */
-  --screen: #17170f;
-  --screen-hi: #2b2b1f;
-  --screen-ink: #f4f2e7;
+   * instruments/genie-drain reads the bench's luma (~216) and the 23-luma
+   * step up to --bench-hi, so a change of hue keeps both lumas. */
+  --bench: #d2d9e2;
+  --bench-hi: #ebf0f6;
+  --bench-lo: #bcc3cc;
+
+  /* ── the black plane ── litho ink, not a display ── */
+  --screen: #14171a;
+  --screen-hi: #262a30;
+  --screen-ink: #eef2f8;
 
   /* ── ink ── */
-  --ink: #14140f;
-  --ink-mute: #45443a;
-  --ink-faint: #6d6b5c;
-  --rule: rgba(20, 20, 15, 0.3);
-  --rule-hard: rgba(20, 20, 15, 0.85);
+  --ink: #121416;
+  --ink-mute: #404449;
+  --ink-faint: #656b72;
+  --rule: rgba(18, 20, 22, 0.3);
+  --rule-hard: rgba(18, 20, 22, 0.85);
 
   /* ── coded colour ── one hue, one meaning. Never decoration.
    *    signal  the one lit position: selected scene, aimed-at slot, checked

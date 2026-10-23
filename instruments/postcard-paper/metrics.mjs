@@ -93,7 +93,7 @@ export async function silhouetteMetrics(page) {
         inside=Math.min(inside,((b.x-a.x)*(py-a.y)-(b.y-a.y)*(px-a.x))/Math.hypot(b.x-a.x,b.y-a.y))
       }
       if((inside>2&&alpha<20)||(inside< -2&&alpha>200))difference++
-      if(alpha>250&&Math.abs(data[i]-236)<3&&Math.abs(data[i+1]-232)<3&&Math.abs(data[i+2]-223)<3)backStock++
+      if(alpha>250&&Math.abs(data[i]-229)<3&&Math.abs(data[i+1]-233)<3&&Math.abs(data[i+2]-237)<3)backStock++
     }
     return {opaqueArea:opaque/(sx*sy),nonQuadArea:difference/(sx*sy),backStockArea:backStock/(sx*sy)}
   })

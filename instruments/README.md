@@ -582,7 +582,9 @@ Genie's scene pixels or hosted reliability. Existing CI membership is unchanged.
 their native HTML reference through a real mouse handoff on both engines.
 CSS pose and scene geometry are fixed to isolate capture correctness. Every
 recorded scene image must match in both directions within a one-device-pixel
-neighborhood: at most 1% may differ by more than 40 summed RGB levels. The five
+neighborhood: at most 2% may differ by more than 40 summed RGB levels.
+Correct circle frames measure 1.13% and stale-pose controls 4.8% or more
+(decision #2, amended 2026-10-23). The five
 projected figure points must stay within 0.25 CSS pixels of the native rectangle.
 
 The first actual scene draw must be recorded. Its framebuffer is held for 40 ms

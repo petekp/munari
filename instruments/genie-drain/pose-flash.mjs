@@ -2,7 +2,7 @@
 // Fixed CSS and geometry isolate capture pixels from animation and drain motion.
 // Compare every image after the first scene draw with the native figure.
 // The two-way 1px neighborhood allows raster edges without discarding ink;
-// the existing 40-RGB / 1% budgets must reject stale and blank texture controls.
+// the 40-RGB / 2% budgets must reject stale and blank texture controls.
 // The first framebuffer is held for 40ms so later page frames still show it.
 // Observation lasts 80ms, or until the second scene draw is recorded if that
 // is later. Hosted runners drew the scene every 88-106ms (2026-09-29), so 80ms
@@ -55,6 +55,8 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 const DRAW_DEADLINE_MS=20000
 // 435ms more than the slowest measured delivery of a drawn frame (see above).
 const SCREENCAST_DELIVERY_MS=1000
+// Correct circle frames measure 1.13%, stale-pose controls 4.8% or more (decisions.md #2).
+const MISMATCH_BUDGET_PERCENT=2
 try{
  await mkdir(output,{recursive:true})
  server=await createServer({root:path.join(root,'apps/lab'),plugins:[inspect],cacheDir:path.join(output,'.vite'),server:{host:'127.0.0.1',port:0,fs:{allow:[root]}},logLevel:'warn'})
@@ -208,7 +210,7 @@ try{
    assert.equal(observed.length,frames.filter(frame=>frame.t>=start&&frame.t<=end).length,'Every recorded image in the interval must be scored')
    assert.ok(observed.every(row=>row.draw.posePinned),'The native pose must remain pinned')
    assert.ok(observed.every(row=>Number.isFinite(row.draw.placement)&&row.draw.placement<=.25),'Actual figure geometry must match its native rectangle within 0.25 CSS px')
-   const rejected=observed.map(row=>row.nativeToScene>1||row.sceneToNative>1)
+   const rejected=observed.map(row=>row.nativeToScene>MISMATCH_BUDGET_PERCENT||row.sceneToNative>MISMATCH_BUDGET_PERCENT)
    if(control==='current')assert.ok(rejected.every(value=>!value),'A displayed scene frame differs from the fixed native pose')
    else if(control==='late-blank'){
     assert.ok(!observed[0].draw.forced&&!rejected[0],'The late-loss control must begin with a correct scene frame')

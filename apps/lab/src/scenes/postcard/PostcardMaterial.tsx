@@ -22,7 +22,7 @@ export function PostcardMaterial() {
     created.colorNode = surface.map
     // The front keeps Three's output, which multiplies the sample by alpha
     // before the canvas conversion, as MeshBasicMaterial did on WebGL.
-    created.outputNode = frontFacing.select(output, vec4(0.84, 0.81, 0.74, 1))
+    created.outputNode = frontFacing.select(output, vec4(0.784, 0.815, 0.847, 1))
     return created
   }, [surface])
   useLayoutEffect(() => () => material.dispose(), [material])

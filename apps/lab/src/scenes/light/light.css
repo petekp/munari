@@ -5,7 +5,7 @@
  * WebGL runs, and from the static depth kit (components/lit.css) where it
  * does not. */
 .light-theme {
-  --ink: #14140f;
+  --ink: #121416;
   --display: 'Bodoni Moda', Didot, 'Times New Roman', serif;
   --body: 'Archivo', system-ui, sans-serif;
   --label: 'Archivo Narrow', 'Archivo', system-ui, sans-serif;
@@ -16,11 +16,11 @@
   --chartreuse: #e3ec5a;
   --sky: #52c7f2;
   --wash: var(--chartreuse);
-  --ground: #14140f;
-  --paper: #f4f2e7;
-  --ink-soft: #45443a;
-  --rule: rgba(20, 20, 15, 0.3);
-  --rule-hard: rgba(20, 20, 15, 0.85);
+  --ground: #121416;
+  --paper: #eef2f8;
+  --ink-soft: #404449;
+  --rule: rgba(18, 20, 22, 0.3);
+  --rule-hard: rgba(18, 20, 22, 0.85);
 }
 
 .light-page { background: var(--wash); color: var(--ink); font-family: var(--body); color-scheme: light; scrollbar-color: var(--ink) var(--wash); }

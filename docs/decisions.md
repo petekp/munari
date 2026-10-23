@@ -210,6 +210,17 @@ actual gate assessment code passed sixty-two metadata/error cases. Those checks
 establish verdict behavior, not pixels. Hosted results and renewal of the public
 demo's origin-trial token remain separate acceptance evidence.
 
+Amended 2026-10-23 — THE POSE PIXEL BUDGET IS 2%. The lab's paper moved from
+cream to a cool grey of the same luma. With no change to rendering, the circle
+window's correct scene frames went from 0.97% to 1.13% of pixels differing by
+more than 40 summed RGB levels, identically in three rounds on both engines.
+The differing pixels are the same filtered edges of the amber strokes in both
+palettes. Amber against grey-blue spends more summed RGB on an edge than amber
+against cream, so more edge pixels cross 40. The square passed at 0.31%. The
+controls the budget separates correct frames from stayed far above it: stale
+pose 4.8–7.6%, blank texture 82–97%. The budget is now 2%, which keeps correct
+frames clear of a palette shift of that size and rejects every measured control.
+
 ## #3 — The lab preserves six scenes (2026-08-02)
 
 **Decision.** `apps/lab` carries three scenes — **workspace**,

@@ -59,7 +59,7 @@ export function createLightBulb(backdrop:LampBackdrop,coordinateSystem:THREE.Coo
     if(view?.enabled)values.lampViewport.value.set(view.offsetX,view.fullHeight-view.offsetY-view.height,view.width,view.height)
     else values.lampViewport.value.set(0,0,size.x,size.y)
   }
-  const metal=new MeshPhysicalNodeMaterial({color:0x25231e,roughness:.28,metalness:.85,envMapIntensity:1.7})
+  const metal=new MeshPhysicalNodeMaterial({color:0x212326,roughness:.28,metalness:.85,envMapIntensity:1.7})
   metal.outputNode=toned()
   const socket=new THREE.Mesh(new THREE.CylinderGeometry(SOCKET_RADIUS*.85,SOCKET_RADIUS,SOCKET_HEIGHT,40),metal)
   socket.position.y=47;body.add(socket)
@@ -67,7 +67,7 @@ export function createLightBulb(backdrop:LampBackdrop,coordinateSystem:THREE.Coo
     const ring=new THREE.Mesh(new THREE.TorusGeometry(9.6-i*.15,.65,10,48),metal)
     ring.rotation.x=Math.PI/2;ring.position.y=41+i*3.6;body.add(ring);return ring
   })
-  const cordMaterial=new MeshStandardNodeMaterial({color:0x181711,roughness:.72,metalness:.05})
+  const cordMaterial=new MeshStandardNodeMaterial({color:0x15171a,roughness:.72,metalness:.05})
   cordMaterial.outputNode=toned()
   const cord=createLampCord(),points=Array.from({length:CORD_POINTS},()=>new THREE.Vector3())
   const curve=new THREE.CatmullRomCurve3(points),tube=new THREE.BufferGeometry()

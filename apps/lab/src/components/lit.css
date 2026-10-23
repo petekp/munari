@@ -18,7 +18,7 @@
 :root {
   --lit-raised: 4px 5px 0 var(--ink);
   --lit-raised-hover: 6px 7px 0 var(--ink);
-  --lit-well: inset 2px 3px 0 rgba(20, 20, 15, 0.26), inset -1px -1px 0 rgba(255, 255, 255, 0.35);
+  --lit-well: inset 2px 3px 0 rgba(18, 20, 22, 0.26), inset -1px -1px 0 rgba(255, 255, 255, 0.35);
 }
 
 [data-relief='raised'] {
