@@ -501,6 +501,10 @@ show that colour about 0.4 s longer than their first paint today, measured
 locally. Chosen 2026-10-26: one finished reveal is worth the wait, because
 the alternative shows their lighting and shadows correcting in view.
 
+The overview stage uses the same plain background colour, not poster images.
+Chosen 2026-10-26: the stage's size follows the window, and a poster taken at
+another size crossfades into a visibly different frame.
+
 - **Every demo** renders its own `<Loading onLoaded={announceLoaded}>` inside
   its lazily loaded module. `announceLoaded` sets `data-page-ready` and posts
   to the shell. Today only Light and Postcard render `DemoHost`.
