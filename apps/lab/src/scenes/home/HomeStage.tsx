@@ -46,7 +46,6 @@ export function HomeStage({ demo, ref }: { demo: Demo; ref?: Ref<HTMLElement> })
   return (
     <figure ref={ref} className="home-stage" aria-label={`${demo.title} demo`}>
       <div ref={panelRef} className="home-stage-panel" style={{ height: stageHeight || undefined }}>
-        <img className="home-stage-poster" src={`/thumbs/${demo.id}.jpg`} alt="" aria-hidden />
         {width > 0 && (
           <iframe
             key={demo.id}

@@ -2,7 +2,9 @@
 // its layout and resting shadows must not change. An early-ready control marks
 // the document ready at first content; both checks must catch that failure.
 // On Postcard the control also delays the actual shadow worker. Light has no
-// worker, so its control delays the fonts its lighting waits for.
+// worker, so its control delays the fonts its lighting waits for. A page
+// loaded in a background tab past the native deadline must still light once
+// shown, because the deadline counts only visible time.
 import assert from 'node:assert/strict'
 import {mkdir, readFile, writeFile} from 'node:fs/promises'
 import path from 'node:path'
@@ -29,6 +31,7 @@ const cases = [
   {name: 'light-no-gpu-font-failure', scene: 'light', capture: false, gpu: false, brokenFonts: true},
   {name: 'light-early-ready-control', scene: 'light', early: true, fontDelay: 1000},
   {name: 'light-animated-entrance', scene: 'light', reduced: false},
+  {name: 'light-background-tab', scene: 'light', hiddenMs: NATIVE_DEADLINE_MS + 2000},
   {name: 'postcard-desktop', scene: 'postcard'},
   {name: 'postcard-mobile', scene: 'postcard', width: 390, height: 844},
   {name: 'postcard-stalled-shadow-worker', scene: 'postcard', stalledWorker: true},
@@ -47,7 +50,7 @@ assert.ok(Object.values(scenes).every(scene=>sceneChunks.includes(scene.entry)),
 const results = []
 let browser
 
-function assertControls(controls, states, announced, {scene, early, stalledWorker, fontDelay, brokenFonts}) {
+function assertControls(controls, states, announced, {scene, early, stalledWorker, fontDelay, brokenFonts, hiddenMs}) {
   assert.ok(controls.entryDelayed>0,'The delayed entry control must intercept the actual entry script')
   if(early)assert.ok(controls.forcedReady,'The early-ready control must mark the document ready before the page does')
   if(early&&scene==='postcard')assert.ok(controls.workerDelayed>0,'The postcard control must delay the actual shadow worker')
@@ -59,9 +62,10 @@ function assertControls(controls, states, announced, {scene, early, stalledWorke
   }
   if(fontDelay)assert.ok(controls.fontsDelayed>0,'The font-delay control must intercept a requested font')
   if(brokenFonts)assert.ok(controls.fontsFailed>0,'The font-failure control must abort a requested font')
+  if(hiddenMs)assert.ok(controls.hiddenThroughDeadline,'The background-tab control must keep the page hidden past the deadline')
 }
 
-function assertOpening(result, {scene, early, reduced, capture, gpu, stalledWorker, fontDelay, brokenFonts}) {
+function assertOpening(result, {scene, early, reduced, capture, gpu, stalledWorker, fontDelay, brokenFonts, hiddenMs}) {
   const {content, states, pixels, maximumShadowChange, scripts, errors, controls} = result
   const announced = states.filter(state => state.content && state.announced)
   const complete = states.findLast(state => state.content)
@@ -77,7 +81,7 @@ function assertOpening(result, {scene, early, reduced, capture, gpu, stalledWork
   assert.equal(content.overflow, false)
   const others = sceneChunks.filter(name => name !== scenes[scene].entry)
   assert.ok(!scripts.some(script => others.some(name=>script.startsWith(`/assets/${name}-`))), `${scene} must not fetch other demos`)
-  assertControls(controls, states, announced, {scene, early, stalledWorker, fontDelay, brokenFonts})
+  assertControls(controls, states, announced, {scene, early, stalledWorker, fontDelay, brokenFonts, hiddenMs})
   if (!gpu || stalledWorker) {
     if (scene === 'light') assert.notEqual(content.colour, 'rgba(0, 0, 0, 0)', 'Native headline ink must be visible')
     else assert.notEqual(content.buttonShadow, 'none', 'The native depth shadow must replace the lighting')
@@ -85,7 +89,7 @@ function assertOpening(result, {scene, early, reduced, capture, gpu, stalledWork
   assert.deepEqual(errors, [])
 }
 
-async function measure({name, scene, width = 1440, height = 1000, capture = true, gpu = true, early = false, fontDelay = 0, brokenFonts = false, stalledWorker = false, reduced = true}) {
+async function measure({name, scene, width = 1440, height = 1000, capture = true, gpu = true, early = false, fontDelay = 0, brokenFonts = false, stalledWorker = false, reduced = true, hiddenMs = 0}) {
   const directory = path.join(output, name)
   await mkdir(directory, {recursive: true})
   browser = await puppeteer.launch({
@@ -96,7 +100,7 @@ async function measure({name, scene, width = 1440, height = 1000, capture = true
       '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(!gpu ? ['--disable-webgl', '--disable-webgl2'] : [])],
   })
   const page = await browser.newPage(), errors = [], requests = [], frames = []
-  const controls={entryDelayed:0,workerDelayed:0,workerStalled:0,fontsDelayed:0,fontsFailed:0}
+  const controls={entryDelayed:0,workerDelayed:0,workerStalled:0,fontsDelayed:0,fontsFailed:0,hiddenThroughDeadline:false}
   await setChromeViewport(page, {width, height})
   await page.emulateMediaFeatures([{name: 'prefers-reduced-motion', value: reduced ? 'reduce' : 'no-preference'}])
   await page.setCacheEnabled(false)
@@ -162,7 +166,16 @@ async function measure({name, scene, width = 1440, height = 1000, capture = true
     void client.send('Page.screencastFrameAck', {sessionId: event.sessionId}).catch(() => {})
   })
   await client.send('Page.startScreencast', {format: 'jpeg', quality: 95, maxWidth: width, maxHeight: height, everyNthFrame: 1})
+  // A second tab in front hides the page while it loads.
+  const cover = hiddenMs ? await browser.newPage() : null
+  await cover?.bringToFront()
   await page.goto(`${url}/?scene=${scene}&framed`, {waitUntil: 'load'})
+  if (cover) {
+    const hiddenAtLoad = await page.evaluate(() => document.visibilityState === 'hidden')
+    await delay(hiddenMs)
+    controls.hiddenThroughDeadline = hiddenAtLoad && await page.evaluate(() => document.visibilityState === 'hidden')
+    await page.bringToFront()
+  }
   await page.waitForFunction(() => document.querySelector('.light-page')?.dataset.pageReady === 'true')
   // Observe after completion: a late worker result must not change visible shadows.
   await delay(1200)
@@ -225,7 +238,7 @@ async function measure({name, scene, width = 1440, height = 1000, capture = true
   const maximumShadowChange = Math.max(...pixels.map(frame => frame.error))
   const result = {name, scene, content, scripts, scriptBytes, states: timing.states, pixels, maximumShadowChange, controls:{...controls,forcedReady:timing.forcedReady}, imageViewport: visible.at(-1)?.width, errors}
   await writeFile(path.join(directory, 'results.json'), JSON.stringify(result, null, 2))
-  assertOpening(result, {scene, early, reduced, capture, gpu, stalledWorker, fontDelay, brokenFonts})
+  assertOpening(result, {scene, early, reduced, capture, gpu, stalledWorker, fontDelay, brokenFonts, hiddenMs})
   console.log(JSON.stringify({name, readyMs: announced[0].time, maximumShadowChange, frames: pixels.length, scriptBytes}))
   results.push(result)
   await client.detach(); await browser.close(); browser = null

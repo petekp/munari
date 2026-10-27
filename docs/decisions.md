@@ -3563,6 +3563,18 @@ also covers mobile, reduced motion, the animated entrance, missing capture,
 failed fonts without WebGL, and a stalled worker. These checks concern opening
 the website; the library's DOM-to-scene handoff contract is unchanged.
 
+Amended 2026-10-26 — THE FOUR SECONDS COUNT ONLY VISIBLE TIME. A hidden page
+runs no animation frames, so Light and Postcard cannot finish their graphics
+in a background tab. The deadline still ran there, and a demo opened in a
+background tab came back unlit for the whole visit. `lightOpening.ts` now
+pauses the deadline while the document is hidden. `probe:light-opening` case
+`light-background-tab` loads Light behind a second tab for six seconds, then
+shows it. Its control asserts that the page stayed hidden past the deadline.
+The previous code ended unlit; this change ends lit. The other ten cases pass,
+except that `postcard-mobile` fails intermittently on one frame changing by
+0.198 at the ready mark. It failed 2 of 4 runs on the previous code with the
+same frame, so that result is not evidence about this change.
+
 <a id="58"></a>
 
 ## #58 — Reduce opening work while preserving its pixels (2026-09-08)
@@ -5387,3 +5399,14 @@ with the lamp and postcard moved, before the overview changed. `probe:light-head
 contrast) and `probe:postcard-edges` (a 30 s wait timeout) fail, and their
 pre-move forms, `probe:home-headline` and `probe:postcard-edges`, fail the same
 way at `508f6f5`, twice each.
+
+Amended 2026-10-26 — THE STAGE SHOWS A PLAIN COLOUR WHILE ITS DEMO LOADS. The
+stage no longer shows the demo's thumbnail behind its iframe. The thumbnails
+predated the lab's move from cream to cool grey (`5a79523`), so the stage
+opened on a cream picture and then cut to the frame. The panel is now
+`--bench`, which is also the framed demo's own background before its content
+paints. The index keeps its thumbnails; `npm run thumbs` retook Flight, Genie,
+Knobs, Logo, Marble Hand and Plume. In three headless runs each against
+production, the cream poster was gone and no new colour appeared. A white blink
+of 20 to 80 ms remains when the iframe appears, in production too: its document
+is white until `App.tsx` switches it to bench, after the iframe's `load` event.

@@ -17,8 +17,28 @@ export function useLightOpening(onReady: () => void = announcePageReady) {
   }, [])
   useEffect(() => {
     if (phase !== 'graphics') return
-    const timer = window.setTimeout(() => setPhase(current => current === 'graphics' ? 'native' : current), GRAPHICS_DEADLINE_MS)
-    return () => window.clearTimeout(timer)
+    // A hidden page runs no animation frames, so its graphics cannot finish;
+    // only visible time counts toward the deadline.
+    let remaining = GRAPHICS_DEADLINE_MS
+    let runningSince: number | null = null
+    let timer = 0
+    const expire = () => setPhase(current => current === 'graphics' ? 'native' : current)
+    const syncToVisibility = () => {
+      if (document.hidden && runningSince !== null) {
+        window.clearTimeout(timer)
+        remaining -= performance.now() - runningSince
+        runningSince = null
+      } else if (!document.hidden && runningSince === null) {
+        runningSince = performance.now()
+        timer = window.setTimeout(expire, remaining)
+      }
+    }
+    syncToVisibility()
+    document.addEventListener('visibilitychange', syncToVisibility)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', syncToVisibility)
+    }
   }, [phase])
   useEffect(() => {
     // Enhanced readiness already follows a completed draw and layout recheck;

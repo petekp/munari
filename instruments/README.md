@@ -115,8 +115,8 @@ controls. Postcard holds the same lamp over the liftable form. They are local
 checks; CI membership is unchanged.
 
 `npm run probe:light-opening` builds the lab and records each framed page in
-Chrome with an empty cache and a delayed entry script. A framed page is visible
-while it prepares. When its lighting has drawn, or when it falls back to native
+Chrome with an empty cache and a delayed entry script. Except in the
+background-tab case, a framed page is visible while it prepares. When its lighting has drawn, or when it falls back to native
 content, it sets `data-page-ready` on `.light-page` and on the document. After
 that mark, the Light heading or the Postcard card must stay within one CSS
 pixel. The resting shadows must stay within 0.01 normalized mean RGB error of
@@ -131,7 +131,10 @@ delays the real shadow worker by one second. Light has no worker, so its
 control delays the fonts its lighting waits for by one second. Delayed fonts on a phone, no HTML
 capture, and no GPU renderer with failed fonts exercise Light's fallbacks. A stalled
 shadow worker must bring Postcard to native content within the four-second
-deadline. Light's animated entrance is recorded without the pixel check.
+deadline. Light loaded behind a second tab for six seconds must still light
+once shown, because the deadline counts only visible time. Its control checks
+that the page stayed hidden past the deadline. Light's animated entrance is
+recorded without the pixel check.
 Neither page may request another demo's code. This checks recorded compositor
 frames, not a network-independent speed budget. Use `HEADED=1` for visible
 Chrome, `STARTUP_OUTPUT` for artifacts, and `STARTUP_CASES` for a
