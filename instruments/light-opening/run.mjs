@@ -20,6 +20,12 @@ const output = process.env.STARTUP_OUTPUT ?? path.join(tmpdir(), 'munari-light-o
 // Decision #57: the native fallback deadline in lightOpening.ts, plus two
 // animation frames and the sampler's own frame.
 const NATIVE_DEADLINE_MS = 4000, NATIVE_SLACK_MS = 250
+// Each page frame stamps its number into the top-left corner: a white and a
+// black guard cell, then the bits, in 4 CSS-pixel cells. A recorded frame is
+// matched to the page frame that drew it by this number. Its compositor
+// timestamp can fall after a later frame's ready mark (2026-10-26:
+// postcard-mobile counted a frame drawn before ready as after it, 2 runs in 4).
+const STAMP_BITS = 12, STAMP_CELL = 4
 const scenes = {
   light: {entry: 'Light', boxes: ['heading']},
   postcard: {entry: 'Postcard', boxes: ['card']},
@@ -122,22 +128,29 @@ async function measure({name, scene, width = 1440, height = 1000, capture = true
     if (/\/assets\/index-[^/]+\.js$/.test(requested.pathname)) { controls.entryDelayed++;await delay(180) }
     await request.continue()
   })
-  await page.evaluateOnNewDocument(early => {
+  await page.evaluateOnNewDocument(({early, bits, cell}) => {
     window.__startup = []
-    let previous = '', forced = false, pixel = null, tick = 0
-    // A static fallback page otherwise produces only one screencast frame.
-    // This one-pixel clock is outside the scene and all sampled regions.
-    function paintClock() {
-      if (!pixel && document.body) {
-        pixel = document.createElement('i')
-        pixel.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;z-index:2147483647;pointer-events:none'
-        pixel.setAttribute('aria-hidden', 'true')
-        document.body.append(pixel)
+    window.__frame = 0
+    let previous = '', forced = false, cells = null
+    // The stamp also keeps a static fallback page producing screencast frames.
+    // It sits outside the scene and all sampled regions.
+    function stampFrame() {
+      if (!cells && document.body) {
+        cells = Array.from({length: bits + 2}, (_, index) => {
+          const element = document.createElement('i')
+          element.style.cssText = `position:fixed;left:${index * cell}px;top:0;width:${cell}px;height:${cell}px;z-index:2147483647;pointer-events:none`
+          element.setAttribute('aria-hidden', 'true')
+          document.body.append(element)
+          return element
+        })
+        cells[0].style.background = '#fff'
+        cells[1].style.background = '#000'
       }
-      if (pixel) pixel.style.backgroundColor = tick++ % 2 ? '#f00' : '#00f'
+      window.__frame++
+      if (cells) for (let bit = 0; bit < bits; bit++) cells[bit + 2].style.background = (window.__frame >> bit) & 1 ? '#fff' : '#000'
     }
     function sample() {
-      paintClock()
+      stampFrame()
       const page = document.querySelector('.light-page')
       const content = document.querySelector('#root h1, #root .postcard-hero-holder')
       if (early && content && !forced) {
@@ -155,11 +168,11 @@ async function measure({name, scene, width = 1440, height = 1000, capture = true
         fonts: document.fonts.status, heading: rect('h1'), card: rect('.postcard-hero-holder'),
       }
       const value = JSON.stringify(state)
-      if (value !== previous) { window.__startup.push({time: performance.now(), ...state}); previous = value }
+      if (value !== previous) { window.__startup.push({time: performance.now(), frame: window.__frame, ...state}); previous = value }
       if (!window.__stopStartup) requestAnimationFrame(sample)
     }
     requestAnimationFrame(sample)
-  }, early)
+  }, {early, bits: STAMP_BITS, cell: STAMP_CELL})
   const client = await page.createCDPSession()
   client.on('Page.screencastFrame', event => {
     frames.push({time: event.metadata.timestamp * 1000, data: event.data, width: event.metadata.deviceWidth, height: event.metadata.deviceHeight})
@@ -184,7 +197,7 @@ async function measure({name, scene, width = 1440, height = 1000, capture = true
   const [timing, content] = await Promise.all([
     page.evaluate(() => {
       window.__stopStartup = true
-      return {origin: performance.timeOrigin, paint: performance.getEntriesByName('first-paint')[0].startTime, states: window.__startup, forcedReady: window.__forcedReady === true, width: innerWidth}
+      return {origin: performance.timeOrigin, paint: performance.getEntriesByName('first-paint')[0].startTime, states: window.__startup, lastFrame: window.__frame, forcedReady: window.__forcedReady === true, width: innerWidth}
     }),
     page.evaluate(() => {
       const button = document.querySelector('.postcard-hero-row button')
@@ -204,7 +217,7 @@ async function measure({name, scene, width = 1440, height = 1000, capture = true
   assert.ok(visible.length>1&&visible.every(frame=>Number.isFinite(frame.time)),'The recorder must deliver timestamped compositor frames')
   await Promise.all(visible.map((frame, index) => writeFile(path.join(directory, `frame-${String(index).padStart(3, '0')}.jpg`), Buffer.from(frame.data, 'base64'))))
   const announced = timing.states.filter(state => state.content && state.announced)
-  const pixels = await page.evaluate(async ({frames, timing, region}) => {
+  const {pixels, stamps} = await page.evaluate(async ({frames, timing, region, bits, cell}) => {
     const decode = async (data, type) => {
       const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(data), c => c.charCodeAt(0))], {type}))
       const canvas = new OffscreenCanvas(bitmap.width, bitmap.height), ctx = canvas.getContext('2d')
@@ -218,11 +231,22 @@ async function measure({name, scene, width = 1440, height = 1000, capture = true
       const i = (Math.floor(y * scale) * image.width + Math.floor(x * scale)) * 4
       return image.data.slice(i, i + 3)
     }
-    const metrics = []
+    const luminance = (image, x, y, width) => { const [r, g, b] = read(image, x, y, width); return (r + g + b) / 3 }
+    const stampOf = (image, width) => {
+      const centre = index => [index * cell + cell / 2, cell / 2]
+      if (luminance(image, ...centre(0), width) < 192 || luminance(image, ...centre(1), width) > 64) return null
+      let value = 0
+      for (let bit = 0; bit < bits; bit++) if (luminance(image, ...centre(bit + 2), width) > 128) value |= 1 << bit
+      return value
+    }
+    const metrics = [], stamps = []
     for (const frame of frames) {
-      const state = timing.states.findLast(state => state.time <= frame.time - timing.origin)
-      if (!state?.content || !state.announced) continue
       const image = await decode(frame.data, 'image/jpeg')
+      const stamp = stampOf(image, frame.width)
+      stamps.push(stamp)
+      if (stamp === null) continue
+      const state = timing.states.findLast(state => state.frame <= stamp)
+      if (!state?.content || !state.announced) continue
       let difference = 0, count = 0
       // A headed phone viewport can extend below Chrome's physical window.
       for (let y = Math.max(0, region.top); y < Math.min(region.bottom, image.height * frame.width / image.width); y += 2) {
@@ -231,10 +255,12 @@ async function measure({name, scene, width = 1440, height = 1000, capture = true
           for (let channel = 0; channel < 3; channel++) { difference += Math.abs(a[channel] - b[channel]); count++ }
         }
       }
-      metrics.push({time: frame.time - timing.origin, error: difference / count / 255})
+      metrics.push({frame: stamp, time: frame.time - timing.origin, error: difference / count / 255})
     }
-    return metrics
-  }, {frames: visible, timing, region: shadowRegion(scene, timing.states.findLast(state => state.content), content, width < 800)})
+    return {pixels: metrics, stamps}
+  }, {frames: visible, timing, region: shadowRegion(scene, timing.states.findLast(state => state.content), content, width < 800), bits: STAMP_BITS, cell: STAMP_CELL})
+  const firstStamped = stamps.findIndex(stamp => stamp !== null)
+  assert.ok(firstStamped >= 0 && stamps.slice(firstStamped).every(stamp => stamp !== null && stamp <= timing.lastFrame), 'Every recorded frame after the stamp appears must carry a sampled page frame number')
   const maximumShadowChange = Math.max(...pixels.map(frame => frame.error))
   const result = {name, scene, content, scripts, scriptBytes, states: timing.states, pixels, maximumShadowChange, controls:{...controls,forcedReady:timing.forcedReady}, imageViewport: visible.at(-1)?.width, errors}
   await writeFile(path.join(directory, 'results.json'), JSON.stringify(result, null, 2))

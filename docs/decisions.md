@@ -3570,10 +3570,15 @@ background tab came back unlit for the whole visit. `lightOpening.ts` now
 pauses the deadline while the document is hidden. `probe:light-opening` case
 `light-background-tab` loads Light behind a second tab for six seconds, then
 shows it. Its control asserts that the page stayed hidden past the deadline.
-The previous code ended unlit; this change ends lit. The other ten cases pass,
-except that `postcard-mobile` fails intermittently on one frame changing by
-0.198 at the ready mark. It failed 2 of 4 runs on the previous code with the
-same frame, so that result is not evidence about this change.
+The previous code ended unlit; this change ends lit.
+
+The probe now matches each recorded frame to the page frame that drew it by a
+frame number stamped into the page, not by compositor timestamp. A frame drawn
+before the ready mark could carry a later timestamp, so `postcard-mobile`
+counted the outgoing shadow as a change after ready in 2 of 4 runs. With the
+stamp, 8 diagnostic runs showed no stale frame at or after the ready frame.
+All 11 cases passed twice and `postcard-mobile` six times more; both
+early-ready controls still fail their pixel check (0.097 and 0.043).
 
 <a id="58"></a>
 

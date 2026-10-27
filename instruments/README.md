@@ -122,8 +122,11 @@ that mark, the Light heading or the Postcard card must stay within one CSS
 pixel. The resting shadows must stay within 0.01 normalized mean RGB error of
 the last recorded frame. On Light the sampled region is the heading and the
 shadows around it. On Postcard it is the action button's cast shadow on desktop
-and the card's own shadow on a phone. A one-pixel clock outside the scene makes
-Chrome record static fallback pages throughout the observation window.
+and the card's own shadow on a phone. Each page frame stamps its number into
+the top-left corner, outside the scene and every sampled region. The pixel
+check matches each recorded frame to the page frame that drew it by that
+number, not by its compositor timestamp, which can fall after a later frame's
+ready mark. The stamp also keeps Chrome recording static fallback pages.
 
 An early-ready control marks the document ready at its first content. It must
 fail both the readiness check and the pixel check. On Postcard the control also
