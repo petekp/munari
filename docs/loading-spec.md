@@ -609,10 +609,11 @@ separate approval.
 - **A wall-clock timeout, or a timeout that becomes an error.** It downgrades
   background loads and breaks the plan's rule.
 
-## Open questions
+## Settled policy
 
-1. **Out-of-view presenters.** They are owed by default, with
-   `<Loading independent>` as the opt-out. Should it be the reverse?
-2. **Captures by default.** A capture entry settles at `captured`, which proves
-   a paint, not the consumer's draw. Should captures join only when the app
-   asks?
+- **Out-of-view presenters block by default.** `<Loading independent>` is the
+  opt-out. Chosen 2026-10-26, so nothing is revealed just before it moves into
+  view.
+- **Captures join by default.** Wrapping one in `<Loading independent>` stops
+  it from delaying the reveal. Chosen 2026-10-26, because a capture the app
+  forgets to add would bring back the visible build-up.
