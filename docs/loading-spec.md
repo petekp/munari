@@ -495,6 +495,12 @@ loading finishes.
 This is a separate lab decision. It narrows #57, #58, and #75 to app policy
 over the new signal.
 
+The page shell keeps its bar visible and covers only the demo area with the
+demo's own background colour until `onLoaded`. Light and Postcard therefore
+show that colour about 0.4 s longer than their first paint today, measured
+locally. Chosen 2026-10-26: one finished reveal is worth the wait, because
+the alternative shows their lighting and shadows correcting in view.
+
 - **Every demo** renders its own `<Loading onLoaded={announceLoaded}>` inside
   its lazily loaded module. `announceLoaded` sets `data-page-ready` and posts
   to the shell. Today only Light and Postcard render `DemoHost`.
