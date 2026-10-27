@@ -20,7 +20,7 @@ output. Preserve both distinctions when resolving a conflict.
 | Check serialized-style caching | [Style-cache report](style-cache-performance.md) | Implemented; production benchmarks and exact-pixel evidence |
 | Check snapDOM input region performance | [Incremental capture report](incremental-capture.md) | Implementation and local benchmark evidence |
 | Add automatic canvas refresh without idle polling | [Automatic canvas refresh spec](automatic-canvas-refresh-spec.md) | Proposed, unbuilt; browser and pixel-lifetime gates are explicit |
-| Report when components first show complete content on load | [Opening spec](opening-spec.md) | Proposed, unbuilt; names and three policy questions are open |
+| Report when components first show complete content on load | [Loading spec](loading-spec.md) | Proposed, unbuilt; two policy questions are open |
 | Add snapDOM as a second capture engine | [Decision #60](decisions.md#60); [plan](capture-engines-plan.md) | Built 2026-09-10; the plan is kept for its reasoning, not maintained |
 | Understand an architectural choice | [Decisions](decisions.md) | Numbered decisions with dated amendments |
 | Check a browser-specific claim | [Platform](platform.md), [instruments](../instruments/README.md) | Measurements under the recorded conditions |
