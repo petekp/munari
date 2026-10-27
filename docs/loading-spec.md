@@ -505,6 +505,11 @@ The overview stage uses the same plain background colour, not poster images.
 Chosen 2026-10-26: the stage's size follows the window, and a poster taken at
 another size crossfades into a visibly different frame.
 
+Moving between demos keeps the previous demo on screen until the next one
+finishes loading. The previous demo ignores input during that wait. Chosen
+2026-10-26: the visitor has already asked to leave, and a drag cut off by the
+swap feels worse than a short pause.
+
 - **Every demo** renders its own `<Loading onLoaded={announceLoaded}>` inside
   its lazily loaded module. `announceLoaded` sets `data-page-ready` and posts
   to the shell. Today only Light and Postcard render `DemoHost`.
