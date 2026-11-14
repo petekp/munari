@@ -120,8 +120,8 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       const matchesCapture =
         bounds &&
         cached &&
-        bounds.width === cached.width &&
-        bounds.height === cached.height
+        Math.round(bounds.width) === cached.width &&
+        Math.round(bounds.height) === cached.height
       const canAnimate =
         cacheReady.current && matchesCapture && !interrupted && !reduceMotion
       if (!canAnimate) {
