@@ -5,7 +5,7 @@ import {
   useCaptureHandle,
   useSurfaceSupport,
 } from '@petepetrash/munari'
-import { Button, Select } from '../../components/system'
+import { WaveHighlight, WaveIcon } from './distortionWaveArtwork'
 import { announcePageReady } from '../../components/siteOpening'
 import {
   DistortionWaveEffect,
@@ -34,12 +34,17 @@ export function DistortionWaveApp() {
   const [controller] = useState<WaveController>(() => ({
     run: (request) => request.update(),
   }))
-  const [light, setLight] = useState(true)
+  const [light, setLight] = useState(false)
   const [duration, setDuration] = useState(1800)
   const [palette, setPalette] = useState<WavePalette | 'Auto'>('Auto')
   const wave: WaveAction = (event, update) => {
     const trigger = event.currentTarget
-    const target = trigger.closest<HTMLElement>('[data-wave-target]')
+    const content = trigger.dataset.waveContentTarget
+    const target = content
+      ? trigger
+          .closest('.wave-example')
+          ?.querySelector<HTMLElement>(`[data-wave-content="${content}"]`)
+      : trigger.closest<HTMLElement>('[data-wave-target]')
     if (!target) {
       update()
       return
@@ -65,69 +70,64 @@ export function DistortionWaveApp() {
     })
   }
   return (
-    <div
-      className="wave-page"
-      data-theme={light ? 'light' : 'dark'}
-      data-ground={light ? 'paper' : 'ink'}
-    >
+    <div className="wave-page" data-theme={light ? 'light' : 'dark'}>
       <div className="wave-sheet" data-wave-page="" data-wave-target="">
         <div className="wave-toolbar">
-          <a
-            className="m-link m-small m-quiet"
-            href="https://codepen.io/LukyVj/pen/jEBJpLp"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Original by LukyVJ ↗
-          </a>
+          <div className="wave-workspace">
+            <strong>Night studio</strong>
+            <a
+              href="https://codepen.io/LukyVj/pen/jEBJpLp"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Original by LukyVJ ↗
+            </a>
+          </div>
           <div className="wave-settings">
-            <label className="m-small">
+            <label>
               Duration
-              <Select
-                value={String(duration)}
-                options={[
-                  ['900', 'Quick'],
-                  ['1800', 'Normal'],
-                  ['3600', 'Slow'],
-                ]}
+              <select
+                value={duration}
                 onChange={(event) => setDuration(Number(event.target.value))}
-              />
+              >
+                <option value={900}>Quick</option>
+                <option value={1800}>Normal</option>
+                <option value={3600}>Slow</option>
+              </select>
             </label>
-            <label className="m-small">
+            <label>
               Palette
-              <Select
+              <select
                 value={palette}
-                options={[
-                  ['Auto', 'Per control'],
-                  ...Object.keys(WAVE_PALETTES).map(
-                    (value): [string, string] => [value, value],
-                  ),
-                ]}
                 onChange={(event) => {
                   const value = event.target.value
-                  if (
+                  const validPalette =
+                    value === 'Auto' ||
                     value === 'Aurora' ||
                     value === 'Ocean' ||
-                    value === 'Ember' ||
                     value === 'Mint' ||
-                    value === 'Gold' ||
-                    value === 'Auto'
-                  )
-                    setPalette(value)
+                    value === 'Ember' ||
+                    value === 'Gold'
+                  if (validPalette) setPalette(value)
                 }}
-              />
+              >
+                <option value="Auto">Per control</option>
+                {Object.keys(WAVE_PALETTES).map((value) => (
+                  <option key={value}>{value}</option>
+                ))}
+              </select>
             </label>
-            <Button
-              variant="outline"
-              compact
+            <button
+              type="button"
               className="wave-theme"
               aria-label={light ? 'Use dark theme' : 'Use light theme'}
               onClick={(event) =>
                 wave(event, () => setLight((value) => !value))
               }
             >
-              {light ? 'Dark' : 'Light'}
-            </Button>
+              <WaveIcon name="moon" />
+              <WaveHighlight />
+            </button>
           </div>
         </div>
         <main className="wave-grid" aria-label="Distortion wave examples">

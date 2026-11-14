@@ -69,6 +69,13 @@ export function createWaveSnapshot(
       original.matches(':focus-visible'),
     )
     if (
+      original.hasAttribute('data-wave-highlight') &&
+      cloned instanceof HTMLElement
+    ) {
+      cloned.style.opacity = getComputedStyle(original).opacity
+      cloned.style.transition = 'none'
+    }
+    if (
       original instanceof HTMLSelectElement &&
       cloned instanceof HTMLSelectElement
     )

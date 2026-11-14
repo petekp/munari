@@ -1,143 +1,739 @@
-.wave-example-content {
-  min-width: 0;
+.wave-highlight {
+  position: absolute;
+  inset: 0;
+  background: var(--wave-highlight-color);
+  opacity: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  transition: opacity 150ms ease;
+}
+.wave-page :is(button, label):is(:hover, [data-hover]) > .wave-highlight {
+  opacity: 0.06;
+}
+.wave-page :is(button, label):is(:active, [data-active]) > .wave-highlight {
+  opacity: 0.12;
+  transition-duration: 70ms;
+}
+.wave-page button:focus-visible,
+.wave-check-row:has(input:focus-visible) {
+  outline: 2px solid var(--wave-text);
+  outline-offset: 4px;
+}
+.wave-album {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--wave-line);
+  border-radius: 20px;
+  background: var(--wave-surface);
+}
+.wave-album > .wave-art {
+  height: 140px;
+}
+.wave-album-caption {
+  background: var(--wave-surface);
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+}
+.wave-album-caption strong {
+  display: block;
+  font-size: 16px;
+}
+.wave-album-caption small {
+  display: block;
+  color: var(--wave-muted);
+  font-size: 11px;
+  margin-top: 3px;
+}
+.wave-like {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 7px;
+  flex: none;
+  min-width: 128px;
+  height: 44px;
+  border: 1px solid var(--wave-line);
+  border-radius: 14px;
+  background: var(--wave-raised);
+  overflow: hidden;
+  font-size: 12px !important;
 }
-.wave-like {
-  gap: 12px;
-  min-width: 108px;
+.wave-like b {
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
+  opacity: 0.65;
 }
-.wave-like svg {
-  width: 20px;
-  height: 20px;
-  stroke: currentColor;
-  stroke-width: 1.5;
+.wave-like[aria-pressed='true'] {
+  background: var(--wave-heart-fill);
+  color: var(--wave-heart);
+  border-color: var(--wave-heart);
+}
+.wave-file-tray {
+  width: 100%;
+}
+.wave-context-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--wave-muted);
+  margin-bottom: 12px;
+}
+.wave-context-line strong {
+  color: var(--wave-text);
+  font-size: 14px;
+  font-weight: 600;
 }
 .wave-delete {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   width: 100%;
-  min-height: 44px;
-  font-size: 15px;
+  height: 122px;
+  padding: 16px;
+  border: 1px solid var(--wave-line);
+  border-radius: 18px;
+  background: var(--wave-surface);
 }
-.wave-delete button {
-  min-width: 80px;
+.wave-file-visual {
+  width: 62px;
+  height: 74px;
+  flex: none;
+  border-radius: 9px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--wave-inset);
+}
+.wave-file-visual > .wave-art {
+  height: 100%;
+  width: 100%;
+}
+.wave-file-visual > svg {
+  width: 31px;
+  height: 31px;
+  color: var(--wave-muted);
+}
+.wave-file-copy {
+  flex: 1;
+  min-width: 0;
+}
+.wave-file-copy strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.wave-file-copy small {
+  display: block;
+  margin-top: 6px;
+  color: var(--wave-muted);
+  font-size: 11px;
+}
+.wave-delete-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  background: var(--wave-raised);
+  border: 1px solid var(--wave-line);
+  border-radius: 13px;
+  overflow: hidden;
+  font-size: 10px !important;
+}
+.wave-delete-action svg {
+  width: 18px;
+  height: 18px;
+}
+.wave-delete[data-deleted='true'] {
+  background: var(--wave-inset);
 }
 .wave-copy {
   position: relative;
+  width: 100%;
+  height: 220px;
+  padding: 18px;
+  text-align: left;
+  border-radius: 18px;
+  border: 1px solid var(--wave-line);
+  background: var(--wave-surface);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.wave-pass-top {
   display: flex;
   align-items: center;
-  flex-direction: column;
-  gap: 18px;
+  gap: 9px;
+  font-size: 11px;
+  color: var(--wave-muted);
 }
-.wave-copy code {
-  font: 13px/1.5 var(--m-code);
-  overflow-wrap: anywhere;
+.wave-pass-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--wave-raised);
+  color: var(--wave-text);
 }
-.wave-copy button {
-  min-width: 96px;
+.wave-pass-icon svg {
+  width: 17px;
+  height: 17px;
 }
-.wave-copy-status {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  right: 0;
-  text-align: center;
-  white-space: nowrap;
+.wave-pass-action {
+  margin-left: auto;
+  color: var(--wave-text);
 }
-.wave-filters {
+.wave-pass-title {
+  font-size: 30px;
+  line-height: 1.08;
+  letter-spacing: -1.2px;
+  font-weight: 650;
+}
+.wave-pass-bottom {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-}
-.wave-checklist {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  gap: 4px;
-}
-.wave-checklist output {
-  align-self: flex-end;
-  min-width: 40px;
-  margin-bottom: 4px;
-  text-align: right;
-}
-.wave-checklist .m-check {
-  width: 100%;
-  min-height: 40px;
-}
-.wave-checklist .m-check[data-checked='false'] .m-check-box {
-  background: var(--m-paper);
-}
-.wave-checklist .m-check[data-checked='false'] .m-check-box svg {
-  visibility: hidden;
-}
-.wave-checklist .m-check[data-checked='true'] .m-check-box {
-  background: var(--m-ink);
-}
-.wave-checklist .m-check[data-checked='true'] .m-check-box svg {
-  visibility: visible;
-}
-.wave-color {
-  width: 100%;
-}
-.wave-color-patch {
-  width: 100%;
-  height: 64px;
-}
-.wave-color-options {
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-top: 8px;
+  gap: 8px;
+  padding-top: 15px;
+  border-top: 1px dashed var(--wave-line);
+  font-size: 11px;
 }
-.wave-color-options > span {
-  min-width: 48px;
+.wave-pass-bottom code {
+  font:
+    12px ui-monospace,
+    monospace;
+  letter-spacing: 1px;
 }
-.wave-color-options > div {
+.wave-pass-bottom > span {
   display: flex;
+  align-items: center;
+  gap: 5px;
 }
-.wave-swatch {
+.wave-pass-bottom svg {
+  width: 15px;
+  height: 15px;
+}
+.wave-copy[data-copy-state='copied'] {
+  background: var(--wave-copy-surface);
+  border-color: var(--wave-ready);
+}
+.wave-copy[data-copy-state='copied'] .wave-pass-top,
+.wave-copy[data-copy-state='copied'] .wave-pass-bottom > span {
+  color: var(--wave-ready);
+}
+.wave-filters {
+  width: 100%;
+  height: 244px;
+  padding: 14px;
+  background: var(--wave-surface);
+  border: 1px solid var(--wave-line);
+  border-radius: 19px;
+  overflow: hidden;
+}
+.wave-collection-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.wave-collection-top strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.wave-collection-top span {
+  color: var(--wave-muted);
+  font-size: 11px;
+}
+.wave-filter-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--wave-inset);
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+.wave-filter-tabs button {
+  flex: 1;
+  padding: 5px 4px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  overflow: hidden;
+  font-size: 11px;
+}
+.wave-filter-tabs button[aria-pressed='true'] {
+  background: var(--wave-raised);
+  box-shadow: 0 1px 3px #0002;
+}
+.wave-assets {
+  height: 150px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 69px;
+  gap: 10px;
+}
+.wave-assets[data-filtered='true'] {
+  align-content: center;
+}
+.wave-asset .wave-art {
+  height: 48px;
+  border-radius: 6px;
+}
+.wave-asset > span {
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+  color: var(--wave-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wave-checklist {
+  width: 100%;
+}
+.wave-check-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 58px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  background: var(--wave-surface);
+  border: 1px solid var(--wave-line);
+  border-radius: 13px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.wave-check-row input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.wave-task-icon {
   display: grid;
   place-items: center;
   width: 32px;
-  height: 40px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
+  height: 32px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--wave-raised);
+  color: var(--wave-muted);
 }
-.wave-swatch span {
-  display: block;
+.wave-task-icon svg {
   width: 18px;
   height: 18px;
+}
+.wave-task-copy {
+  flex: 1;
+  min-width: 0;
+}
+.wave-task-copy strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+}
+.wave-task-copy small {
+  display: block;
+  font-size: 11px;
+  color: var(--wave-muted);
+  margin-top: 2px;
+}
+.wave-task-check {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  border: 1.5px solid var(--wave-line);
+  flex: none;
+}
+.wave-task-check svg {
+  width: 15px;
+  height: 15px;
+  visibility: hidden;
+}
+.wave-check-row[data-checked='true'] {
+  background: var(--wave-ready-fill);
+  border-color: var(--wave-ready);
+}
+.wave-check-row[data-checked='true'] .wave-task-check {
+  background: var(--wave-ready);
+  border-color: var(--wave-ready);
+  color: var(--wave-bg);
+}
+.wave-check-row[data-checked='true'] .wave-task-check svg {
+  visibility: visible;
+}
+.wave-check-row[data-checked='true'] .wave-task-copy small {
+  color: var(--wave-ready);
+}
+.wave-color {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+.wave-color-player {
+  width: 184px;
+  height: 196px;
+  border-radius: 26px;
+  border: 1px solid #ffffff65;
+  padding: 13px;
+  background: #ba99d8;
+  color: #283145;
+  box-shadow:
+    inset 0 2px 1px #ffffff60,
+    inset 0 -3px 2px #0002;
+  overflow: hidden;
+}
+.wave-player-top {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 10px;
+  padding-inline: 4px;
+}
+.wave-player-top > span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin-right: auto;
+}
+.wave-player-top > i {
+  height: 3px;
+  width: 3px;
+  border-radius: 50%;
+  background: #25354966;
+}
+.wave-player-screen {
+  padding: 10px;
+  background: #182334;
+  border: 3px solid #374254;
+  border-radius: 12px;
+  color: #dce8eb;
+  box-shadow: inset 0 1px 2px #0008;
+}
+.wave-player-screen > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.wave-player-screen span {
+  font-size: 9px;
+  font-weight: 600;
+}
+.wave-player-screen small {
+  font-size: 7px;
+  color: #9eadc3;
+}
+.wave-player-waveform {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+.wave-player-waveform > i {
+  width: 3px;
+  border-radius: 3px;
+  background: #a7e6c8;
+}
+.wave-player-time {
+  display: flex;
+  justify-content: space-between;
+  opacity: 0.65;
+}
+.wave-player-time span {
+  font-size: 7px;
+  font-weight: 400;
+}
+.wave-player-grille {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  margin-top: 10px;
+}
+
+.wave-player-speaker {
+  height: 45px;
+  width: 45px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffffff45;
+  border: 1px solid #ffffff50;
+  box-shadow: inset 0 -1px 2px #0002;
+
+  background-image: radial-gradient(circle, #52647c 1px, transparent 1.5px);
+  background-size: 5px 5px;
+}
+.wave-color-options {
+  max-width: 100%;
+  flex-wrap: wrap;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  width: 224px;
+  justify-content: space-between;
+}
+.wave-color-options > span {
+  min-width: 44px;
+  font-size: 11px;
+  color: var(--wave-muted);
+}
+.wave-color-options > div {
+  display: flex;
+  gap: 3px;
+}
+.wave-swatch {
+  width: 30px;
+  height: 32px;
+  border: 0;
+  padding: 6px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+}
+.wave-swatch > span:not(.wave-highlight) {
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
 }
-.wave-swatch[aria-pressed='true'] span {
-  outline: 1px solid var(--m-ink);
+.wave-swatch[aria-pressed='true'] > span:not(.wave-highlight) {
+  outline: 1px solid var(--wave-text);
   outline-offset: 3px;
 }
-.wave-swatch:is(:hover, [data-hover]) span {
-  outline: 2px solid var(--m-ink);
-  outline-offset: 3px;
+
+.wave-art {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: #274d6b;
 }
-.wave-swatch:focus-visible:not([data-pointer-focus]) {
-  outline: 2px solid var(--m-ink);
-  outline-offset: 1px;
+.wave-art > i,
+.wave-art > b {
+  position: absolute;
+  display: block;
+}
+.wave-art > span {
+  position: absolute;
+  z-index: 2;
+  left: 18px;
+  bottom: 13px;
+  color: #eef8ff;
+  font-size: 27px;
+  line-height: 0.85;
+  font-weight: 700;
+  letter-spacing: -1px;
+  max-width: 60px;
+}
+.wave-art-swim {
+  background: linear-gradient(140deg, #164773, #27365e 55%, #9b799f);
+}
+.wave-art-swim > i {
+  width: 90%;
+  height: 260%;
+  border-radius: 50%;
+  border: 12px solid #70b7b2;
+  transform: rotate(42deg);
+  top: -100%;
+  left: 36%;
+  box-shadow:
+    0 0 0 14px #94d1bd,
+    0 0 0 26px #394d75,
+    0 0 0 42px #e6a1a1,
+    0 0 0 54px #b57391;
+}
+.wave-art-orbit {
+  background: #dfb38b;
+}
+.wave-art-orbit > i {
+  width: 75%;
+  height: 140%;
+  border-radius: 50%;
+  background: #244c60;
+  left: 36%;
+  top: -20%;
+}
+.wave-art-orbit > b {
+  width: 43%;
+  height: 80%;
+  border-radius: 50%;
+  background: #a6c8bb;
+  left: 9%;
+  top: 35%;
+  border: 5px solid #dfb38b;
+}
+.wave-art-tide {
+  background: #98c4c4;
+}
+.wave-art-tide > i {
+  width: 140%;
+  height: 110%;
+  top: 30%;
+  left: -25%;
+  border-radius: 50%;
+  background: #3a747d;
+  transform: rotate(-12deg);
+}
+.wave-art-tide > b {
+  width: 140%;
+  height: 80%;
+  top: 68%;
+  left: -20%;
+  border-radius: 50%;
+  background: #cde2d1;
+}
+.wave-art-echo {
+  background: #b0a0d3;
+}
+.wave-art-echo > i {
+  width: 85%;
+  height: 85%;
+  border: 8px solid #482e6c;
+  border-radius: 50%;
+  left: 35%;
+  top: -20%;
+  box-shadow:
+    0 0 0 7px #ead2da,
+    0 0 0 14px #7e64a4;
+}
+.wave-art-bloom {
+  background: #f3b59d;
+}
+.wave-art-bloom > i {
+  width: 66%;
+  height: 150%;
+  background: #bc5369;
+  left: 18%;
+  top: -25%;
+  border-radius: 50%;
+}
+.wave-art-bloom > b {
+  width: 110%;
+  height: 45%;
+  background: #f3d8ac;
+  left: -5%;
+  top: 28%;
+  border-radius: 50%;
+}
+.wave-art-pulse {
+  background: #678698;
+}
+.wave-art-pulse > i {
+  inset: 15%;
+  background: repeating-linear-gradient(
+    90deg,
+    #e1d5b1 0 5px,
+    transparent 5px 10px
+  );
+  transform: skewY(-12deg);
+}
+
+.wave-player-top .wave-color-name {
+  margin-left: auto;
+  margin-right: 5px;
+  font-size: 8px;
+  color: #283145;
+}
+.wave-copy[data-copy-state='failed'] {
+  border-color: var(--wave-heart);
+}
+.wave-copy[data-copy-state='failed'] .wave-pass-top {
+  color: var(--wave-heart);
+}
+.wave-check-row:has(input[data-focus-visible]) {
+  outline: 2px solid var(--wave-text);
+  outline-offset: 4px;
+}
+@media (max-width: 1050px) {
+  .wave-album-caption {
+    gap: 7px;
+  }
+  .wave-album-caption strong {
+    font-size: 14px;
+  }
+  .wave-album-caption small {
+    font-size: 11px;
+  }
+  .wave-like {
+    min-width: 110px;
+    gap: 5px;
+  }
+  .wave-delete {
+    padding: 12px;
+    gap: 8px;
+  }
+  .wave-file-visual {
+    width: 48px;
+    height: 62px;
+  }
+  .wave-file-copy strong {
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wave-highlight {
+    transition: none;
+  }
+}
+
+.wave-swatch .wave-highlight {
+  inset: 3px;
+  border-radius: 50%;
+}
+
+.wave-copy-wrap {
+  width: 100%;
+}
+.wave-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.wave-player-grille > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #38465b55;
 }
 @media (pointer: coarse) {
   .wave-swatch {
     width: 44px;
     height: 44px;
   }
-  .wave-checklist .m-check {
+  .wave-filters {
+    height: 276px;
+  }
+  .wave-example-content:has(.wave-filters) {
+    height: 276px;
+  }
+  .wave-filter-tabs button {
     min-height: 44px;
+  }
+  .wave-color-options {
+    width: 260px;
   }
 }

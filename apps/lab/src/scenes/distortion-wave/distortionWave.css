@@ -1,18 +1,58 @@
 .wave-page {
+  --wave-bg: #e0eaf3;
+  --wave-surface: #f8fbff;
+  --wave-raised: #fff;
+  --wave-line: #becbd9;
+  --wave-text: #26374c;
+  --wave-muted: #65738a;
+  --wave-inset: #e7eef6;
+  --wave-ready: #246853;
+  --wave-ready-fill: #d8f0e8;
+  --wave-heart: #ce4b69;
+  --wave-heart-fill: #fbe1e8;
+  --wave-highlight-color: #fff;
+  --wave-copy-surface: #e0f0e7;
   height: 100dvh;
   overflow: auto;
-  background: var(--m-paper);
-  color: var(--m-ink);
-  font: 15px/1.35 var(--m-sans);
+  background: var(--wave-bg);
+  color: var(--wave-text);
+  font:
+    14px/1.4 system-ui,
+    sans-serif;
+}
+.wave-page[data-theme='dark'] {
+  --wave-bg: #151d29;
+  --wave-surface: #222e40;
+  --wave-raised: #2b3950;
+  --wave-line: #3b4b61;
+  --wave-text: #f2f4f9;
+  --wave-muted: #9aa9be;
+  --wave-inset: #1b2636;
+  --wave-ready: #96e4c9;
+  --wave-ready-fill: #233f3c;
+  --wave-heart: #ff9aac;
+  --wave-heart-fill: #49303e;
+  --wave-copy-surface: #223c36;
 }
 .wave-sheet {
   box-sizing: border-box;
   min-height: 100%;
-  padding: var(--m-s5) var(--m-gutter) var(--m-s7);
-  background: var(--m-paper);
+  padding: 26px max(28px, calc((100% - 1160px) / 2)) 38px;
+  background: var(--wave-bg);
 }
 .wave-sheet * {
   box-sizing: border-box;
+}
+.wave-page button {
+  position: relative;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.wave-page svg {
+  width: 21px;
+  height: 21px;
+  flex: none;
 }
 .wave-toolbar {
   display: flex;
@@ -20,57 +60,82 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 16px;
-  max-width: 1160px;
-  margin: 0 auto 24px;
+  margin-bottom: 26px;
+}
+.wave-workspace {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.wave-workspace strong {
+  font-size: 20px;
+  letter-spacing: -0.5px;
+}
+.wave-workspace a {
+  color: var(--wave-muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+.wave-workspace a:hover {
+  text-decoration: underline;
 }
 .wave-settings {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 14px;
 }
 .wave-settings label {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--m-quiet);
+  font-size: 12px;
+  color: var(--wave-muted);
 }
-.wave-settings .m-input {
-  min-height: 32px;
-  height: 32px;
-  font-size: 13px;
-}
-.wave-settings .m-select {
-  width: 128px;
+.wave-settings select {
+  color: var(--wave-text);
+  background: var(--wave-surface);
+  border: 1px solid var(--wave-line);
+  border-radius: 9px;
+  padding: 8px 10px;
+  font: inherit;
+  cursor: pointer;
 }
 .wave-theme {
-  min-width: 64px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--wave-surface);
+  border: 1px solid var(--wave-line);
+  overflow: hidden;
 }
 .wave-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  max-width: 1160px;
-  margin: 0 auto;
-  border-top: 1px solid var(--m-rule);
-  border-left: 1px solid var(--m-rule);
+  column-gap: 30px;
+  row-gap: 26px;
 }
 .wave-example {
-  display: flex;
-  flex-direction: column;
   min-width: 0;
-  min-height: 248px;
-  padding: 24px;
-  border-right: 1px solid var(--m-rule);
-  border-bottom: 1px solid var(--m-rule);
-  background: var(--m-paper);
 }
 .wave-example h2 {
-  margin: 0;
-  font: 600 15px/1.35 var(--m-sans);
+  color: var(--wave-muted);
+  font:
+    550 13px/1.4 system-ui,
+    sans-serif;
+  margin: 0 0 14px;
 }
 .wave-example-content {
-  flex: 1;
-  margin-top: 20px;
+  position: relative;
+  min-width: 0;
+  height: 244px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .wave-overlay {
   position: fixed;
@@ -81,14 +146,34 @@
 .wave-overlay canvas {
   pointer-events: none !important;
 }
-@media (max-width: 839px) {
+@media (max-width: 1050px) {
   .wave-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 18px;
+  }
+  .wave-sheet {
+    padding-inline: 24px;
   }
 }
-@media (max-width: 579px) {
+@media (max-width: 850px) {
+  .wave-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+  }
+}
+@media (max-width: 550px) {
   .wave-grid {
     grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+  .wave-sheet {
+    padding: 20px;
+  }
+  .wave-example-content {
+    height: auto;
+    min-height: 220px;
+  }
+  .wave-workspace {
+    gap: 10px;
   }
   .wave-settings {
     gap: 12px;
@@ -98,15 +183,12 @@
     align-items: flex-start;
     gap: 4px;
   }
-  .wave-settings .m-select {
-    width: 112px;
-  }
-  .wave-settings .m-input {
-    min-height: 44px;
+  .wave-settings select {
     height: 44px;
   }
   .wave-theme {
+    height: 44px;
+    width: 44px;
     align-self: flex-end;
-    min-height: 44px;
   }
 }

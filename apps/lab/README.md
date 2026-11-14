@@ -124,11 +124,17 @@ These reference files must stay byte-identical to their registry copies.
 
 ## Distortion wave
 
-`?scene=distortion-wave` uses the shared Munari demo bar and system controls.
-Its grid contains Like, Delete/Undo, Copy, Filters, Checklist, and Color.
-The theme control also demonstrates a page wave alongside local interactions.
+`?scene=distortion-wave` keeps the shared Munari demo bar around a distinct
+Night studio interface. Its six examples are an album reaction, file deletion
+and undo, an invitation pass that copies its code, a filtered asset collection,
+individual release-checklist rows, and a customizable pocket player. The theme
+control demonstrates a page wave alongside local interactions.
+
 Motion and palettes adapt LukyVJ’s [reference](https://codepen.io/LukyVj/pen/jEBJpLp);
-the MIT notice is in `public/licenses/distortion-wave.txt`.
+the MIT notice is in `public/licenses/distortion-wave.txt`. Artwork is drawn
+with local CSS and inline SVG. Every effect targets a filled, bounded surface.
+The Like pill has a solid caption rail behind it, each checklist row captures
+independently, and finish controls target the player body.
 
 Each action supplies an outgoing snapshot through `CaptureContent`. Its native
 update waits for that cover to draw. Ordered masks reveal successive states,
@@ -136,10 +142,12 @@ while independent light pulses draw above them. Eight snapshot slots, including
 at most three page snapshots, bound the retained images. Extra actions wait in
 order. Ordinary hover does not request snapshots.
 
-The fast copy depends on the scene’s ancestor CSS, opaque flat parent fills,
-and stable control bounds. Checklist marks follow committed React state during
-native checkbox activation. Copy writes to the clipboard from the click handler
-and animates its confirmation after the write succeeds.
+Hover uses a fading highlight without changing text contrast. Capture reads only
+the opacity of explicitly marked highlights, preserving their in-progress fade
+without serializing whole element styles. The fast copy still depends on ancestor
+CSS, opaque flat parent fills, and stable target bounds. Checklist marks follow
+committed React state during native activation. Copy writes from the trusted
+click handler and animates confirmation after the clipboard write succeeds.
 
 The [wave probes](../../instruments/distortion-wave/README.md) cover native
 interaction, state reveals, containment, overlapping light, and black-background

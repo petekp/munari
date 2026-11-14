@@ -26,12 +26,12 @@ try {
   await page.goto(url.href, { waitUntil: 'networkidle0' })
   await page.waitForSelector('.wave-overlay canvas[data-api-capture-consumer]')
   assert.equal(await page.evaluate(() => window.__munari.engine()), mode === 'native' ? 'html-in-canvas' : 'snapdom')
-  await page.$eval('.wave-color-patch', element => element.scrollIntoView({ block: 'center' }))
-  await page.hover('[aria-label="Violet"]')
-  const rect = await page.$eval('.wave-color-patch', element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })
+  await page.$eval('.wave-color-player', element => element.scrollIntoView({ block: 'center' }))
+  await page.hover('[aria-label="Orchid"]')
+  const rect = await page.$eval('.wave-color-player', element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })
   await page.evaluate(() => {
     window.waveColors = []
-    const name = document.querySelector('.wave-color-options > span')
+    const name = document.querySelector('.wave-color-name')
     new MutationObserver(() => window.waveColors.push(name.textContent)).observe(name, {childList:true, subtree:true, characterData:true})
   })
   recorder = await createScreencastRecorder(page, { format: 'png', everyNthFrame: 1, maxWidth: 895, maxHeight: 774 })
@@ -39,7 +39,7 @@ try {
   const started = await page.evaluate(() => performance.timeOrigin + performance.now())
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   await wait(100)
-  const colors = ['Coral', 'Sky', 'Leaf', 'Violet']
+  const colors = ['Lagoon', 'Papaya', 'Silver', 'Orchid']
   for (let i = 0; i < clicks; i++) { await page.click(`[aria-label="${colors[i % colors.length]}"]`); await wait(40) }
   await page.waitForFunction(expected => window.waveColors.length === expected, {}, clicks)
   const changes = await page.evaluate(() => window.waveColors)

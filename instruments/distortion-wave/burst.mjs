@@ -35,15 +35,15 @@ async function sameTarget(browser, mode, double) {
       window.waveClock = { now: base, base }
       Object.defineProperty(performance, 'now', { configurable: true, value: () => window.waveClock.now })
     })
-    if (double) { await page.click('[aria-label="Violet"]'); await wait(120) }
+    if (double) { await page.click('[aria-label="Orchid"]'); await wait(120) }
     await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 200 })
-    await page.click('[aria-label="Violet"]')
+    await page.click('[aria-label="Orchid"]')
     await wait(120)
     await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 400 })
     await wait(100)
-    assert.equal(await page.$eval('[aria-label="Violet"]', element => element.getAttribute('aria-pressed')), 'true')
+    assert.equal(await page.$eval('[aria-label="Orchid"]', element => element.getAttribute('aria-pressed')), 'true')
     const image = await page.screenshot()
-    const rect = await page.$eval('.wave-color', element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })
+    const rect = await page.$eval('.wave-color-player', element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })
     await writeFile(path.join(output, `${mode}-${double ? 'double' : 'single'}.png`), image)
     return { image, rect }
   } finally { await page.close() }
@@ -58,14 +58,14 @@ async function nested(browser, mode, pageFirst, withButton) {
       Object.defineProperty(performance, 'now', { configurable: true, value: () => window.waveClock.now })
     })
     const button = async () => {
-      await page.click('[aria-label="Violet"]')
+      await page.click('[aria-label="Orchid"]')
       await wait(120)
       await page.waitForFunction(() => document.querySelectorAll('[data-munari-parked]').length === 0)
     }
     if (!pageFirst && withButton) await button()
     await page.evaluate(first => { window.waveClock.now = window.waveClock.base + (first ? 0 : 350) }, pageFirst)
     await page.click('.wave-theme')
-    await page.waitForFunction(() => document.querySelector('.wave-page').dataset.theme === 'dark')
+    await page.waitForFunction(() => document.querySelector('.wave-page').dataset.theme === 'light')
     if (pageFirst && withButton) {
       await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 350 })
       await button()
@@ -73,7 +73,7 @@ async function nested(browser, mode, pageFirst, withButton) {
     await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 800 })
     await wait(100)
     const image = await page.screenshot()
-    const rect = await page.$eval('.wave-color', element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })
+    const rect = await page.$eval('.wave-color-player', element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })
     await writeFile(path.join(output, `${mode}-${pageFirst ? 'page-first' : 'button-first'}-${withButton ? 'both' : 'page'}.png`), image)
     return { image, rect }
   } finally { await page.close() }
@@ -140,7 +140,7 @@ async function rapid(browser, mode) {
     for (let i = 0; i < 4; i++) { await page.click('.wave-theme'); await wait(60) }
     await page.waitForFunction(() => window.themeChanges.length === 4 && document.querySelectorAll('[data-munari-parked]').length === 0)
     const themeFrames = await page.evaluate(() => { cancelAnimationFrame(window.themeRaf); return window.themeFrames })
-    assert.equal(await page.$eval('.wave-page', element => element.dataset.theme), 'light')
+    assert.equal(await page.$eval('.wave-page', element => element.dataset.theme), 'dark')
     await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
     await page.click('.wave-like')
     await page.waitForFunction(() => document.querySelector('.wave-like').getAttribute('aria-pressed') === 'true')

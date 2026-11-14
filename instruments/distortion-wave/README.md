@@ -28,9 +28,9 @@ old and new content by more than 20 channel units; over 100 such pixels rejects
 small focus and antialiasing changes. This is an effect-presence check, not proof
 of every animation frame or precise visual parity with the reference CodePen.
 
-The pixel pass also checks that button waves stay within their button bounds,
-allowing a one-CSS-pixel antialiasing fringe. Like, Delete/Undo, Copy, filter
-chips, Checklist, and Color are separate cases. Before, during, later and
+The pixel pass also checks that waves stay within their target bounds,
+allowing a one-CSS-pixel antialiasing fringe. the Like pill, file tile, invitation pass, collection,
+checklist row, and player body are separate cases. Before, during, later and
 native images are retained.
 
 `node instruments/distortion-wave/cadence.mjs` records a native Like wave
@@ -56,14 +56,14 @@ Callback gaps and click-to-DOM-commit times describe this local run, not present
 frame rate or end-to-end input latency.
 
 `node instruments/distortion-wave/reveal.mjs` checks which state the wave reveals.
-At a controlled animation clock it compares Checklist pixels against native
-references for the outgoing, intermediate, and latest completion states.
+At a controlled animation clock it compares player-body pixels against native
+references for successive finishes, and checklist pixels for independent rows.
 The outgoing state must be the closest reference by mean squared RGB error. This permits texture
-antialiasing without accepting the wrong checkmarks or completion count.
+antialiasing without accepting the wrong finish or checkmarks.
 The hidden-overlay control must expose a different state, and settled output must match native pixels. The cases
 cover repeated and separate controls, both theme/button orders, and more actions
 than the snapshot capacity. Full-viewport screenshots preserve the page geometry;
-scoring selects the checklist region afterward. These checks do not measure cadence.
+scoring selects the player or checklist region afterward. These checks do not measure cadence.
 
 The `interrupt` image case requires both target regions to remain lit and moving.
 Outgoing state masks draw in click order, oldest on top. Colored pulses draw above
@@ -77,8 +77,8 @@ the native outcome and retire the affected presentation.
 changes and checks the background under every observed wave. Pass `snapdom` for
 the no-flag capture path, or set `MUNARI_BACKEND=webgl2` for the renderer fallback.
 `WAVE_CLICKS` selects a bounded burst, defaulting to twelve clicks spaced at least
-40 ms apart. Every requested color must commit in order. The sampled color
-patch provides a nonblack baseline in either theme. Every recorded target frame must have fewer than 1% pixels with all RGB channels below
+40 ms apart. Every requested color must commit in order. The sampled player
+body provides a nonblack baseline in either theme. Every recorded target frame must have fewer than 1% pixels with all RGB channels below
 5. Complete stamped page-frame coverage is required; missing frames cannot pass.
 The worst frame and per-frame scores are retained. This catches opaque black
 snapshot layers during overlap and slot reuse; the reveal and burst checks own

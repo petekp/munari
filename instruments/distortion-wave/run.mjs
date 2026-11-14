@@ -44,27 +44,35 @@ async function interactions(browser, mode) {
     await page.focus('.wave-like'); await page.keyboard.press('Enter')
     await page.waitForFunction(() => document.querySelector('.wave-like').getAttribute('aria-pressed') === 'true')
     await page.click('.wave-delete button')
-    await page.waitForFunction(() => document.querySelector('.wave-delete button').textContent === 'Undo')
+    await page.waitForFunction(() => document.querySelector('.wave-delete').dataset.deleted === 'true')
     assert(await page.$eval('.wave-delete button', element => element === document.activeElement))
     await page.keyboard.press('Space')
-    await page.waitForFunction(() => document.querySelector('.wave-delete button').textContent === 'Delete')
-    await page.click('.wave-copy button')
-    await page.waitForFunction(() => document.querySelector('.wave-copy button').textContent === 'Copied')
+    await page.waitForFunction(() => document.querySelector('.wave-delete').dataset.deleted === 'false')
+    await page.click('.wave-copy')
+    await page.waitForFunction(() => document.querySelector('.wave-copy').dataset.copyState === 'copied')
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), await page.$eval('.wave-copy code', element => element.textContent))
     await page.click('.wave-chip:nth-child(2)')
     await page.waitForFunction(() => document.querySelector('.wave-chip:nth-child(2)').getAttribute('aria-pressed') === 'true')
-    assert.equal(await page.$eval('.wave-chip', element => element.getAttribute('aria-pressed')), 'true')
+    assert.equal(await page.$eval('.wave-chip', element => element.getAttribute('aria-pressed')), 'false')
+    const artwork = await page.$$eval('.wave-asset > span', elements => elements.map(element => element.textContent))
+    await page.click('.wave-chip:nth-child(3)')
+    await page.waitForFunction(() => document.querySelector('.wave-chip:nth-child(3)').getAttribute('aria-pressed') === 'true')
+    const loops = await page.$$eval('.wave-asset > span', elements => elements.map(element => element.textContent))
+    assert(artwork.length > 0 && loops.length > 0 && artwork.every(name => !loops.includes(name)))
+    await page.click('.wave-chip:first-child')
+    await page.waitForFunction(() => document.querySelector('.wave-chip:first-child').getAttribute('aria-pressed') === 'true')
+    assert.deepEqual((await page.$$eval('.wave-asset > span', elements => elements.map(element => element.textContent))).sort(), [...artwork, ...loops].sort())
     await page.click('.wave-checklist label:nth-of-type(1)')
-    await page.waitForFunction(() => document.querySelector('.wave-checklist output').textContent === '1 / 3')
+    await page.waitForFunction(() => document.querySelector('.wave-check-row').dataset.checked === 'true')
     await page.keyboard.press('Space')
-    await page.waitForFunction(() => document.querySelector('.wave-checklist output').textContent === '0 / 3')
-    const beforeColor = await page.$eval('.wave-color-patch', element => getComputedStyle(element).backgroundColor)
-    await page.click('[aria-label="Coral"]')
-    await page.waitForFunction(() => document.querySelector('[aria-label="Coral"]').getAttribute('aria-pressed') === 'true')
-    assert.notEqual(await page.$eval('.wave-color-patch', element => getComputedStyle(element).backgroundColor), beforeColor)
+    await page.waitForFunction(() => document.querySelector('.wave-check-row').dataset.checked === 'false')
+    const beforeColor = await page.$eval('.wave-color-player', element => getComputedStyle(element).backgroundColor)
+    await page.click('[aria-label="Lagoon"]')
+    await page.waitForFunction(() => document.querySelector('[aria-label="Lagoon"]').getAttribute('aria-pressed') === 'true')
+    assert.notEqual(await page.$eval('.wave-color-player', element => getComputedStyle(element).backgroundColor), beforeColor)
     await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')) } }))
-    await page.click('.wave-copy button')
-    await page.waitForFunction(() => document.querySelector('.wave-copy button').textContent === 'Try again')
+    await page.click('.wave-copy')
+    await page.waitForFunction(() => document.querySelector('.wave-copy').dataset.copyState === 'failed')
     assert.deepEqual(errors, [])
     return { examples: 6, clipboard: 'read back', deniedCopy: 'reported', keyboard: 'pass', undoFocus: 'preserved' }
   } finally { await page.close() }
@@ -107,10 +115,10 @@ async function timing(browser, mode) {
     await mark('repeat-click'); await page.click('.wave-like'); await wait(1500)
     assert.equal(await page.$eval('.wave-like', button => button.getAttribute('aria-pressed')), 'false')
     await mark('pointer-sweep')
-    for (const selector of ['.wave-like', '.wave-delete button', '.wave-copy button', '.wave-like', '.wave-delete button', '.wave-copy button']) { await page.hover(selector); await wait(130) }
+    for (const selector of ['.wave-like', '.wave-delete button', '.wave-copy', '.wave-like', '.wave-delete button', '.wave-copy']) { await page.hover(selector); await wait(130) }
     await wait(500)
     await mark('theme'); await page.click('.wave-theme'); await wait(1800)
-    assert.equal(await page.$eval('.wave-page', element => element.dataset.theme), 'dark')
+    assert.equal(await page.$eval('.wave-page', element => element.dataset.theme), 'light')
     await mark('end')
     const raw = await page.evaluate(() => {
       const { data, observer, changes } = window.waveMeasurement
@@ -144,15 +152,15 @@ async function pixels(browser, mode) {
       ['repeat', '.wave-like', false, '.wave-like'],
       ['interrupt', '.wave-delete button', false, '.wave-delete'],
       ['delete', '.wave-delete button', false, '.wave-delete'],
-      ['copy', '.wave-copy button', false, '.wave-copy button'],
-      ['chip', '.wave-chip:nth-child(2)', false, '.wave-chip:nth-child(2)'],
-      ['checklist', '.wave-checklist label:nth-of-type(1)', false, '.wave-checklist'],
-      ['color', '[aria-label="Coral"]', false, '.wave-color'],
+      ['copy', '.wave-copy', false, '.wave-copy'],
+      ['chip', '.wave-chip:nth-child(2)', false, '.wave-filters'],
+      ['checklist', '.wave-checklist label:nth-of-type(1)', false, '.wave-check-row:first-of-type'],
+      ['color', '[aria-label="Lagoon"]', false, '.wave-color-player'],
       ['theme', '.wave-theme', false, null],
       ['hidden-control', '.wave-like', true, '.wave-like'],
     ]
     for (const name of selectedCases ?? []) assert(cases.some(([known]) => known === name), `Unknown wave pixel case: ${name}`)
-    const stateOf = element => element.getAttribute('aria-pressed') ?? element.getAttribute('data-checked') ?? element.getAttribute('aria-label') ?? element.textContent
+    const stateOf = element => element.getAttribute('data-copy-state') ?? element.getAttribute('aria-pressed') ?? element.getAttribute('data-checked') ?? element.getAttribute('aria-label') ?? element.textContent
     for (const [name, selector, hidden, region] of cases) {
       if (selectedCases && !selectedCases.includes(name)) continue
       if (hidden) await page.$eval('.wave-overlay', element => { element.style.visibility = 'hidden' })
@@ -170,7 +178,7 @@ async function pixels(browser, mode) {
       await page.click(selector)
       await page.waitForFunction((target, previous) => {
         const element = document.querySelector(target)
-        return (element.getAttribute('aria-pressed') ?? element.getAttribute('data-checked') ?? element.getAttribute('aria-label') ?? element.textContent) !== previous
+        return (element.getAttribute('data-copy-state') ?? element.getAttribute('aria-pressed') ?? element.getAttribute('data-checked') ?? element.getAttribute('aria-label') ?? element.textContent) !== previous
       }, {}, selector, previousState)
       await wait(225)
       const during = await page.screenshot()

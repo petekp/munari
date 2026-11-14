@@ -47,13 +47,13 @@ async function reveal(browser, mode, name) {
     await page.waitForSelector('.wave-overlay canvas[data-api-capture-consumer]')
     assert.equal(await page.evaluate(() => window.__munari.engine()), mode === 'native' ? 'html-in-canvas' : 'snapdom')
     await page.select('select', '3600')
-    await page.hover('.wave-checklist label:nth-of-type(1)')
+    await page.hover('.wave-swatch:first-child')
     await page.evaluate(() => {
       const base = performance.now()
       window.waveClock = { base, now: base }
       Object.defineProperty(performance, 'now', { configurable: true, value: () => window.waveClock.now })
     })
-    const clip = await page.$eval('.wave-checklist', element => {
+    const clip = await page.$eval(name === 'checklist' ? '.wave-checklist' : '.wave-color-player', element => {
       const r = element.getBoundingClientRect()
       return { x: r.x, y: r.y, width: r.width, height: r.height }
     })
@@ -64,36 +64,44 @@ async function reveal(browser, mode, name) {
       await page.$eval('.wave-overlay', element => { element.style.visibility = '' })
       return image
     }
-    const check = async (index, count) => {
-      await page.click(`.wave-checklist label:nth-of-type(${index + 1})`)
-      await page.waitForFunction(expected => document.querySelector('.wave-checklist output').textContent === `${expected} / 3`, {}, count)
+    const choose = async color => {
+      await page.click(`[aria-label="${color}"]`)
+      await page.waitForFunction(expected => document.querySelector('.wave-color-name').textContent === expected, {}, color)
+      await settle(page)
+    }
+    const check = async index => {
+      await page.click(`.wave-check-row:nth-of-type(${index + 1})`)
+      await page.waitForFunction(i => document.querySelectorAll('.wave-check-row')[i].dataset.checked === 'true', {}, index)
       await settle(page)
     }
     const theme = async () => {
       await page.click('.wave-theme')
-      await page.waitForFunction(() => document.querySelector('.wave-page').dataset.theme === 'dark')
+      await page.waitForFunction(() => document.querySelector('.wave-page').dataset.theme === 'light')
       await settle(page)
     }
     const initial = await native()
     let expected = initial
     let intermediate = initial
     if (name === 'overflow') {
-      await page.evaluate(() => {
+      const sequence = ['Lagoon','Papaya','Silver','Lagoon','Papaya','Silver','Lagoon','Papaya','Lagoon','Silver']
+      await page.evaluate(colors => {
         window.waveCommits = []
-        const output = document.querySelector('.wave-checklist output')
-        const observer = new MutationObserver(() => window.waveCommits.push(output.textContent))
-        observer.observe(output, { childList: true, subtree: true, characterData: true })
-        const inputs = document.querySelectorAll('.wave-checklist input')
-        for (let i = 0; i < 10; i++) inputs[i % 3].click()
-      })
+        const name = document.querySelector('.wave-color-name')
+        new MutationObserver(() => window.waveCommits.push(name.textContent)).observe(name, {childList:true,subtree:true,characterData:true})
+        for (const color of colors) document.querySelector(`[aria-label="${color}"]`).click()
+      }, sequence)
       await page.waitForFunction(() => window.waveCommits.length === 8)
-      assert.deepEqual(await page.evaluate(() => window.waveCommits), ['1 / 3','2 / 3','3 / 3','2 / 3','1 / 3','0 / 3','1 / 3','2 / 3'])
+      assert.deepEqual(await page.evaluate(() => window.waveCommits), sequence.slice(0,8))
       await settle(page)
+    } else if (name === 'checklist') {
+      await check(0)
+      intermediate = await native()
+      await check(1)
     } else if (name === 'theme-first') {
       await theme()
-      await check(0, 1)
+      await choose('Lagoon')
     } else {
-      await check(0, 1)
+      await choose('Lagoon')
       intermediate = await native()
       if (name === 'spaced') {
         await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 1000 })
@@ -105,7 +113,7 @@ async function reveal(browser, mode, name) {
         await page.click('.wave-like')
         await page.waitForFunction(() => document.querySelector('.wave-like').getAttribute('aria-pressed') === 'true')
         await settle(page)
-      } else await check(1, 2)
+      } else await choose('Papaya')
     }
     await settle(page)
     const held = await shot()
@@ -119,13 +127,13 @@ async function reveal(browser, mode, name) {
     await writeFile(path.join(output, `${mode}-${name}-latest.png`), latest)
     const result = { mode, name, heldMismatch, intermediateDistance, latestDistance, hiddenMismatch, errors }
     await writeFile(path.join(output, `${mode}-${name}.json`), JSON.stringify(result, null, 2))
-    assert(heldMismatch.meanSquared < latestDistance.meanSquared, `${name}: the outgoing checklist must stay visible before its wave passes`)
-    if (name === 'held') assert(heldMismatch.meanSquared < intermediateDistance.meanSquared, 'The older mask must remain above the next outgoing state')
+    assert(heldMismatch.meanSquared < latestDistance.meanSquared, `${name}: the outgoing state must stay visible before its wave passes`)
+    if (name === 'held' || name === 'checklist') assert(heldMismatch.meanSquared < intermediateDistance.meanSquared, 'The older mask must remain above the next outgoing state')
     assert(hiddenMismatch.changed > 100, `${name}: hiding the masks must expose a different state`)
     await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 20000 })
     if (name === 'overflow') {
       await page.waitForFunction(() => window.waveCommits.length === 10)
-      assert.deepEqual(await page.$$eval('.wave-checklist input', inputs => inputs.map(input => input.checked)), [false, true, true])
+      assert.deepEqual(await page.evaluate(() => window.waveCommits), ['Lagoon','Papaya','Silver','Lagoon','Papaya','Silver','Lagoon','Papaya','Lagoon','Silver'])
       await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 40000 })
     }
     await settle(page)
@@ -137,7 +145,7 @@ async function reveal(browser, mode, name) {
   } finally { await page.close() }
 }
 
-const cases = ['held', 'spaced', 'other-control', 'theme-first', 'theme-second', 'overflow']
+const cases = ['held', 'spaced', 'other-control', 'theme-first', 'theme-second', 'checklist', 'overflow']
 const selectedCases = process.env.WAVE_CASES?.split(',') ?? cases
 for (const name of selectedCases) assert(cases.includes(name), `Unknown wave reveal case: ${name}`)
 
