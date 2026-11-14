@@ -2,7 +2,8 @@
 
 Run the lab first, then run `node instruments/distortion-wave/run.mjs`.
 `WAVE_URL` selects the lab server and `WAVE_OUTPUT` selects the evidence folder.
-Pass `native`, `snapdom` or `disabled` to select one capture mode. `WAVE_PIXELS=0`
+Pass `native`, `snapdom` or `disabled` to select one capture mode.
+`WAVE_CASES=interrupt` selects one pixel case; omit it to run all cases. `WAVE_PIXELS=0`
 runs only timing and `WAVE_TIMING=0` runs only pixels; use the default pixel pass before claiming the effect passed.
 This runner does not change CI membership.
 
@@ -24,3 +25,15 @@ hidden-overlay control must show no wave pixels. Pixels must differ from both
 old and new content by more than 20 channel units; over 100 such pixels rejects
 small focus and antialiasing changes. This is an effect-presence check, not proof
 of every animation frame or precise visual parity with the reference CodePen.
+
+The pixel pass also checks that button waves stay within their button bounds,
+allowing a one-CSS-pixel antialiasing fringe. Like, Follow, Bookmark and filter
+chips are separate cases. Before, during, later and native images are retained.
+
+`node instruments/distortion-wave/cadence.mjs` records a native Follow wave
+separately from timing. It requires complete stamped page-frame coverage and
+changing button pixels in each successive image between 300 and 1500 ms after
+the native state commit. A hidden-output control must have no changing pixels.
+It records pipeline creation before and during the first click. This observes
+a short local Chrome interval; it does not establish cadence in Dia or on a
+higher-refresh display. Raw button pixels and timestamps are saved for review.

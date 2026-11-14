@@ -122,6 +122,22 @@ These reference files must stay byte-identical to their registry copies.
 - `src/scenes/workspace/recipe/FocusOrbitRig.tsx`, `cameraPose.ts`, and
   `arcLayout.ts` → `registry/focus-orbit/`.
 
+## Distortion wave
+
+`?scene=distortion-wave` uses button-local rings, source-shaped waves across
+control groups, and a viewport-sized theme transition. Its motion and palettes
+adapt LukyVJ’s [reference](https://codepen.io/LukyVj/pen/jEBJpLp); the MIT notice
+is in `public/licenses/distortion-wave.txt`.
+
+The demo supplies detached snapshots through `CaptureContent`. Its fast copy
+depends on the scene’s ancestor CSS, opaque flat parent fills and stable control bounds.
+It preserves select values and hover/focus twins. Changes to those assumptions
+need visual checks. Ordinary hover does not request snapshots.
+
+The [wave probe](../../instruments/distortion-wave/README.md) separates timing,
+containment and recorded motion. Shader warmup draws transparent pixels once
+through the actual renderer pipeline, then returns to demand rendering.
+
 ## Asset provenance
 
 - `public/fonts/fonts.css` and its WOFF2 files are the Google Fonts faces

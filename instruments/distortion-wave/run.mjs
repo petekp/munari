@@ -97,8 +97,8 @@ async function timing(browser, mode) {
   } finally { await page.close() }
 }
 
-async function compare(page, before, during, native) {
-  return page.evaluate(async images => {
+async function compare(page, before, during, native, allowed = null) {
+  return page.evaluate(async ({images, allowed}) => {
     const decode = async data => {
       const image = new Image(); image.src = `data:image/png;base64,${data}`; await image.decode()
       const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height
@@ -106,15 +106,20 @@ async function compare(page, before, during, native) {
       return context.getImageData(0, 0, canvas.width, canvas.height).data
     }
     const [old, current, next] = await Promise.all(images.map(decode))
-    let effectPixels = 0, changedPixels = 0
+    let effectPixels = 0, changedPixels = 0, outsidePixels = 0
+    const imageWidth = Math.round(innerWidth * devicePixelRatio)
     for (let i = 0; i < current.length; i += 4) {
-      const oldDelta = Math.max(...[0, 1, 2].map(channel => Math.abs(current[i + channel] - old[i + channel])))
-      const nextDelta = Math.max(...[0, 1, 2].map(channel => Math.abs(current[i + channel] - next[i + channel])))
+      const oldDelta = Math.max(Math.abs(current[i] - old[i]), Math.abs(current[i + 1] - old[i + 1]), Math.abs(current[i + 2] - old[i + 2]))
+      const nextDelta = Math.max(Math.abs(current[i] - next[i]), Math.abs(current[i + 1] - next[i + 1]), Math.abs(current[i + 2] - next[i + 2]))
       if (oldDelta > 20 && nextDelta > 20) effectPixels++
       if (nextDelta > 0) changedPixels++
+      if (allowed && nextDelta > 20) {
+        const x = (i / 4 % imageWidth) / devicePixelRatio, y = Math.floor(i / 4 / imageWidth) / devicePixelRatio
+        if (x < allowed.x - 1 || x > allowed.x + allowed.width + 1 || y < allowed.y - 1 || y > allowed.y + allowed.height + 1) outsidePixels++
+      }
     }
-    return { effectPixels, changedPixels }
-  }, [before, during, native].map(bytes => Buffer.from(bytes).toString('base64')))
+    return { effectPixels, changedPixels, outsidePixels }
+  }, {images: [before, during, native].map(bytes => Buffer.from(bytes).toString('base64')), allowed})
 }
 
 async function pixels(browser, mode) {
@@ -122,11 +127,21 @@ async function pixels(browser, mode) {
   try {
     await page.select('select', '3600')
     const records = []
-    for (const [name, selector, hidden] of [['first', '.wave-person button', false], ['repeat', '.wave-person button', false], ['theme', '.wave-theme', false], ['hidden-control', '.wave-person button', true]]) {
+    const selectedCases = process.env.WAVE_CASES?.split(',')
+    const cases = [['first', '.wave-person button', false], ['repeat', '.wave-person button', false], ['like', '[aria-label="Like"]', false], ['bookmark', '.wave-bookmark', false], ['chip', '.wave-chip:nth-child(2)', false], ['theme', '.wave-theme', false], ['hidden-control', '.wave-person button', true]]
+    cases.splice(2, 0, ['interrupt', '.wave-like', false])
+    for (const [name, selector, hidden] of cases) {
+      if (selectedCases && !selectedCases.includes(name)) continue
       if (hidden) await page.$eval('.wave-overlay', element => { element.style.visibility = 'hidden' })
       await page.hover(selector)
       await wait(400)
+      if (name === 'interrupt') {
+        await page.click('.wave-person button')
+        await page.waitForFunction(() => document.querySelector('.wave-person button').textContent === 'Following')
+        await wait(200)
+      }
       const before = await page.screenshot()
+      const allowed = name === 'theme' ? null : await page.$eval(selector, element => { const r = element.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height} })
       const previousState = await page.$eval(selector, element => element.getAttribute('aria-pressed') ?? element.getAttribute('aria-label'))
       await page.click(selector)
       await page.waitForFunction((target, previous) => {
@@ -141,11 +156,15 @@ async function pixels(browser, mode) {
       const native = await page.screenshot()
       await writeFile(path.join(output, `${mode}-${name}.png`), during)
       await writeFile(path.join(output, `${mode}-${name}-later.png`), later)
-      const difference = await compare(page, before, during, native)
+      const difference = await compare(page, before, during, native, allowed)
+      await writeFile(path.join(output, `${mode}-${name}-before.png`), before)
+      await writeFile(path.join(output, `${mode}-${name}-native.png`), native)
+      assert.equal(difference.outsidePixels, 0, 'The effect must remain inside its target')
       let movingPixels = 0
       if (hidden) assert.equal(difference.effectPixels, 0, 'The hidden-output control must have no wave pixels')
       else {
-        const laterDifference = await compare(page, before, later, native)
+        const laterDifference = await compare(page, before, later, native, allowed)
+        assert.equal(laterDifference.outsidePixels, 0, 'The moving effect must remain inside its target')
         movingPixels = (await compare(page, during, later, during)).effectPixels
         assert(difference.effectPixels > 100, `${mode} ${name}: no visible wave`)
         assert(laterDifference.effectPixels > 100 && movingPixels > 100, `${mode} ${name}: the wave must move`)
@@ -158,7 +177,7 @@ async function pixels(browser, mode) {
       const settledDifference = await compare(page, settledNative, settled, settledNative)
       assert.equal(settledDifference.changedPixels, 0, 'A finished effect must leave no pixels behind')
       if (!hidden) await page.$eval('.wave-overlay', element => { element.style.visibility = '' })
-      records.push({ name, ...difference, movingPixels, settledPixels: settledDifference.changedPixels })
+      records.push({ name, target: allowed, ...difference, movingPixels, settledPixels: settledDifference.changedPixels })
     }
     assert.deepEqual(errors, [])
     return records

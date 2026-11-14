@@ -8,7 +8,7 @@ import {
 } from 'react'
 import {
   SurfaceCanvas,
-  useElementCapture,
+  useCaptureHandle,
   useSurfaceSupport,
 } from '@petepetrash/munari'
 import {
@@ -48,6 +48,8 @@ function WaveButtons({ wave }: ControlsProps) {
       <Card title="Like">
         <button
           className="wave-pill wave-like"
+          data-wave-target=""
+          data-wave-palette={liked ? 'Aurora' : 'Ember'}
           aria-label="Like"
           aria-pressed={liked}
           onClick={(event) => wave(event, () => setLiked((value) => !value))}
@@ -64,7 +66,9 @@ function WaveButtons({ wave }: ControlsProps) {
             <small>@LukyVj</small>
           </div>
           <button
-            className="wave-pill"
+            className="wave-pill wave-follow"
+            data-wave-target=""
+            data-wave-palette="Ocean"
             aria-pressed={followed}
             onClick={(event) =>
               wave(event, () => setFollowed((value) => !value))
@@ -76,7 +80,9 @@ function WaveButtons({ wave }: ControlsProps) {
       </Card>
       <Card title="Bookmark">
         <button
-          className="wave-pill"
+          className="wave-pill wave-bookmark"
+          data-wave-target=""
+          data-wave-palette="Ocean"
           aria-pressed={saved}
           onClick={(event) => wave(event, () => setSaved((value) => !value))}
         >
@@ -90,9 +96,10 @@ function WaveButtons({ wave }: ControlsProps) {
         </button>
       </Card>
       <Card title="Vote">
-        <div className="wave-stepper">
+        <div className="wave-stepper" data-wave-target="">
           <button
             aria-label="Upvote"
+            data-wave-palette="Ember"
             onClick={(event) =>
               wave(event, () => setVotes((value) => value + 1))
             }
@@ -102,6 +109,7 @@ function WaveButtons({ wave }: ControlsProps) {
           <output aria-live="polite">{votes}</output>
           <button
             aria-label="Downvote"
+            data-wave-palette="Ocean"
             onClick={(event) =>
               wave(event, () => setVotes((value) => value - 1))
             }
@@ -122,7 +130,7 @@ function WaveSelections({ wave }: ControlsProps) {
   return (
     <>
       <Card title="Settings">
-        <div className="wave-setting">
+        <div className="wave-setting" data-wave-target="" data-wave-boxless="">
           <div>
             <strong>Email notifications</strong>
             <small>Mentions and replies</small>
@@ -131,6 +139,7 @@ function WaveSelections({ wave }: ControlsProps) {
             className="wave-switch"
             role="switch"
             aria-label="Email notifications"
+            data-wave-palette={notifications ? 'Ocean' : 'Aurora'}
             aria-checked={notifications}
             onClick={(event) =>
               wave(event, () => setNotifications((value) => !value))
@@ -146,6 +155,7 @@ function WaveSelections({ wave }: ControlsProps) {
             <button
               key={filter}
               className="wave-chip"
+              data-wave-target=""
               aria-pressed={filters.includes(filter)}
               onClick={(event) =>
                 wave(event, () =>
@@ -163,12 +173,12 @@ function WaveSelections({ wave }: ControlsProps) {
         </div>
       </Card>
       <Card title="Plan">
-        <div className="wave-plan">
+        <div className="wave-plan" data-wave-target="" data-wave-boxless="">
           {['Starter', 'Pro', 'Team'].map((value) => (
             <button
               key={value}
               aria-pressed={plan === value}
-              onClick={(event) => wave(event, () => setPlan(value))}
+              onClick={(event) => { if (plan !== value) wave(event, () => setPlan(value)) }}
             >
               <span className="wave-radio" />
               <span>{value}</span>
@@ -184,22 +194,25 @@ function WaveSelections({ wave }: ControlsProps) {
         </div>
       </Card>
       <Card title="Rating">
-        <div className="wave-stars">
-          {[1, 2, 3, 4, 5].map((value) => (
-            <button
-              key={value}
-              aria-label={`${value} ${value === 1 ? 'star' : 'stars'}`}
-              aria-pressed={rating === value}
-              data-filled={rating >= value}
-              onClick={(event) => wave(event, () => setRating(value))}
-            >
-              ★
-            </button>
-          ))}
+        <div data-wave-target="" data-wave-boxless="">
+          <div className="wave-stars">
+            {[1, 2, 3, 4, 5].map((value) => (
+              <button
+                key={value}
+                aria-label={`${value} ${value === 1 ? 'star' : 'stars'}`}
+                data-wave-palette="Gold"
+                aria-pressed={rating === value}
+                data-filled={rating >= value}
+                onClick={(event) => wave(event, () => setRating(value))}
+              >
+                ★
+              </button>
+            ))}
+          </div>
+          <small className="wave-rating-label">
+            {rating ? `${rating} out of 5` : 'Tap to rate'}
+          </small>
         </div>
-        <small className="wave-rating-label">
-          {rating ? `${rating} out of 5` : 'Tap to rate'}
-        </small>
       </Card>
     </>
   )
@@ -215,33 +228,44 @@ function WaveContent({ wave }: ControlsProps) {
       <Card title="Pricing" wide>
         <div className="wave-segment">
           <button
+            data-wave-content-target="pricing"
             aria-pressed={!yearly}
-            onClick={(event) => wave(event, () => setYearly(false))}
+            onClick={(event) => { if (yearly) wave(event, () => setYearly(false)) }}
           >
             Monthly
           </button>
           <button
+            data-wave-content-target="pricing"
             aria-pressed={yearly}
-            onClick={(event) => wave(event, () => setYearly(true))}
+            onClick={(event) => { if (!yearly) wave(event, () => setYearly(true)) }}
           >
             Yearly
           </button>
         </div>
-        <p className="wave-price">
-          ${yearly ? 9 : 12}
-          <small> / month</small>
-        </p>
-        <small>{yearly ? 'Billed yearly · Save 25%' : 'Billed monthly'}</small>
+        <div
+          className="wave-price-content"
+          data-wave-content="pricing"
+          data-wave-boxless=""
+        >
+          <p className="wave-price">
+            ${yearly ? 9 : 12}
+            <small> / month</small>
+          </p>
+          <small>
+            {yearly ? 'Billed yearly · Save 25%' : 'Billed monthly'}
+          </small>
+        </div>
       </Card>
       <Card title="Quantity" wide>
         <div className="wave-product-icon" aria-hidden="true">
           ✳
         </div>
         <strong>Studio notebook</strong>
-        <div className="wave-quantity">
+        <div className="wave-quantity" data-wave-target="" data-wave-boxless="">
           <div className="wave-stepper">
             <button
               aria-label="Less"
+              data-wave-palette="Ember"
               disabled={quantity === 1}
               onClick={(event) =>
                 wave(event, () =>
@@ -254,6 +278,7 @@ function WaveContent({ wave }: ControlsProps) {
             <output aria-live="polite">{quantity}</output>
             <button
               aria-label="More"
+              data-wave-palette="Mint"
               onClick={(event) =>
                 wave(event, () => setQuantity((value) => value + 1))
               }
@@ -265,16 +290,19 @@ function WaveContent({ wave }: ControlsProps) {
         </div>
       </Card>
       <Card title="Colour" wide>
-        <div className="wave-colour-preview" data-color={color} />
-        <strong>{color}</strong>
+        <div data-wave-content="color" data-wave-boxless="">
+          <div className="wave-colour-preview" data-color={color} />
+          <strong>{color}</strong>
+        </div>
         <div className="wave-swatches">
           {['Violet', 'Coral', 'Lagoon', 'Sun'].map((value) => (
             <button
               key={value}
               aria-label={value}
+              data-wave-content-target="color"
               data-color={value}
               aria-pressed={color === value}
-              onClick={(event) => wave(event, () => setColor(value))}
+              onClick={(event) => { if (color !== value) wave(event, () => setColor(value)) }}
             />
           ))}
         </div>
@@ -287,7 +315,7 @@ function WaveContent({ wave }: ControlsProps) {
           <span />
           <span />
         </div>
-        <div className="wave-player">
+        <div className="wave-player" data-wave-target="" data-wave-boxless="">
           <div>
             <strong>Night Drive</strong>
             <small>{playing ? 'Playing' : 'Paused'}</small>
@@ -308,19 +336,35 @@ function WaveContent({ wave }: ControlsProps) {
   )
 }
 
+function controlPalette(trigger: HTMLElement): WavePalette {
+  const value = trigger.dataset.wavePalette
+  if (
+    value === 'Ocean' ||
+    value === 'Ember' ||
+    value === 'Mint' ||
+    value === 'Gold'
+  )
+    return value
+  return 'Aurora'
+}
+
 export function DistortionWaveApp() {
   useLayoutEffect(announcePageReady, [])
-  const capture = useElementCapture()
+  const capture = useCaptureHandle()
   const supported = useSurfaceSupport()
   const [controller] = useState<WaveController>(() => ({
     run: (request) => request.update(),
   }))
   const [light, setLight] = useState(false)
   const [duration, setDuration] = useState(1800)
-  const [palette, setPalette] = useState<WavePalette>('Aurora')
+  const [palette, setPalette] = useState<WavePalette | 'Auto'>('Auto')
   const wave: WaveAction = (event, update) => {
     const trigger = event.currentTarget
-    const target = trigger.closest<HTMLElement>('[data-wave-page], .wave-card')
+    const content = trigger.dataset.waveContentTarget
+    const card = trigger.closest('.wave-card')
+    const target = content
+      ? card?.querySelector<HTMLElement>(`[data-wave-content="${content}"]`)
+      : trigger.closest<HTMLElement>('[data-wave-target]')
     if (!target) {
       update()
       return
@@ -331,7 +375,10 @@ export function DistortionWaveApp() {
       target,
       update,
       duration,
-      palette,
+      palette: palette === 'Auto' ? controlPalette(trigger) : palette,
+      source: rect,
+      local: target === trigger,
+      boxless: target.hasAttribute('data-wave-boxless'),
       intensity: 1,
       x: keyboard ? rect.left + rect.width / 2 : event.clientX,
       y: keyboard ? rect.top + rect.height / 2 : event.clientY,
@@ -339,7 +386,7 @@ export function DistortionWaveApp() {
   }
   return (
     <div className="wave-page" data-theme={light ? 'light' : 'dark'}>
-      <div className="wave-sheet" data-wave-page="">
+      <div className="wave-sheet" data-wave-page="" data-wave-target="">
         <header className="wave-header">
           <a className="wave-brand" href="?scene=home">
             <span className="wave-logo" />
@@ -391,11 +438,15 @@ export function DistortionWaveApp() {
                 if (
                   value === 'Aurora' ||
                   value === 'Ocean' ||
-                  value === 'Ember'
+                  value === 'Ember' ||
+                  value === 'Mint' ||
+                  value === 'Gold' ||
+                  value === 'Auto'
                 )
                   setPalette(value)
               }}
             >
+              <option value="Auto">Per control</option>
               {Object.keys(WAVE_PALETTES).map((value) => (
                 <option key={value}>{value}</option>
               ))}

@@ -524,3 +524,26 @@
     grid-template-columns: 1fr;
   }
 }
+
+.wave-person .wave-follow {
+  min-inline-size: 80px;
+}
+.wave-bookmark {
+  min-inline-size: 104px;
+}
+.wave-like {
+  min-inline-size: 92px;
+}
+.wave-price-content {
+  display: flow-root;
+}
+.wave-sheet [data-focus-visible]:not([data-pointer-focus]) {
+  outline: 2px solid var(--wave-accent);
+  outline-offset: 4px;
+}
+[data-wave-snapshot] *,
+[data-wave-snapshot] *::before,
+[data-wave-snapshot] *::after {
+  animation: none !important;
+  transition: none !important;
+}
