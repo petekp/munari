@@ -339,7 +339,7 @@ export function DistortionWaveApp() {
   }
   return (
     <div className="wave-page" data-theme={light ? 'light' : 'dark'}>
-      <div className="wave-sheet" ref={capture.ref} data-wave-page="">
+      <div className="wave-sheet" data-wave-page="">
         <header className="wave-header">
           <a className="wave-brand" href="?scene=home">
             <span className="wave-logo" />

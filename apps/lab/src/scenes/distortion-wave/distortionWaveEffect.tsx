@@ -1,5 +1,5 @@
 // Wave presentation — native controls keep their state and input throughout the effect.
-// The first opaque draw precedes the update; interruption commits each action once.
+// The overlay holds a target snapshot; the first opaque draw precedes the update.
 import {
   useCallback,
   useEffect,
@@ -16,12 +16,14 @@ import {
   PlaneGeometry,
   RenderTarget,
   Scene,
+  SRGBColorSpace,
+  Texture,
 } from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import { texture } from 'three/tsl'
 import {
   useCaptureFrame,
-  type CaptureFrame,
+  useCaptureStatus,
   type ElementCapture,
 } from '@petepetrash/munari'
 import { passMaterial } from '@petepetrash/munari/advanced'
@@ -50,6 +52,7 @@ interface WaveEffectProps {
 interface ActiveWave {
   request: WaveRequest
   committed: boolean
+  snapshotReady: boolean
   started: number | null
   timeout: ReturnType<typeof setTimeout>
   bounds: DOMRect
@@ -57,31 +60,34 @@ interface ActiveWave {
 
 export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
   const frames = useCaptureFrame(capture)
+  const status = useCaptureStatus(capture)
   const invalidate = useThree((state) => state.invalidate)
   const viewport = useThree((state) => state.viewport)
   const mesh = useRef<Mesh>(null)
   const active = useRef<ActiveWave | null>(null)
-  const cachedFrame = useRef<CaptureFrame | null>(null)
-  const cacheReady = useRef(false)
+  const lastSourceId = useRef<number | null>(null)
   const [resources] = useState(() => {
     const target = new RenderTarget(1, 1, {
       type: HalfFloatType,
       depthBuffer: false,
     })
+    const placeholder = new Texture()
+    placeholder.colorSpace = SRGBColorSpace
     const copy = passMaterial()
-    const map = texture(target.texture)
+    const map = texture(placeholder)
     copy.outputNode = map
     const geometry = new PlaneGeometry(2, 2)
     const scene = new Scene()
     scene.add(new Mesh(geometry, copy))
     const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1)
     const wave = createDistortionWaveMaterial(target.texture)
-    return { target, copy, map, geometry, scene, camera, wave }
+    return { target, placeholder, copy, map, geometry, scene, camera, wave }
   })
 
   useEffect(
     () => () => {
       resources.target.dispose()
+      resources.placeholder.dispose()
       resources.copy.dispose()
       resources.geometry.dispose()
       resources.wave.material.dispose()
@@ -94,61 +100,51 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       if (wave.committed) return
       wave.committed = true
       clearTimeout(wave.timeout)
-      flushSync(wave.request.update)
-      capture.refresh()
+      flushSync(() => {
+        capture.ref(null)
+        wave.request.update()
+      })
+      wave.started = performance.now()
     },
     [capture],
   )
 
   const finish = useCallback(() => {
     const wave = active.current
-    if (wave) commit(wave)
     active.current = null
     if (mesh.current) mesh.current.visible = false
+    if (wave) commit(wave)
     invalidate()
   }, [commit, invalidate])
 
   useLayoutEffect(() => {
-    const run = (request: WaveRequest) => {
-      const bounds = capture.getBounds()
+    controller.run = (request) => {
       const interrupted = active.current !== null
       if (interrupted) finish()
       const reduceMotion = window.matchMedia(
         '(prefers-reduced-motion: reduce)',
       ).matches
-      const cached = cachedFrame.current
-      const matchesCapture =
-        bounds &&
-        cached &&
-        Math.round(bounds.width) === cached.width &&
-        Math.round(bounds.height) === cached.height
-      const canAnimate =
-        cacheReady.current && matchesCapture && !interrupted && !reduceMotion
+      const bounds = request.target.getBoundingClientRect()
+      const canCapture =
+        request.target.isConnected && bounds.width > 0 && bounds.height > 0
+      const canAnimate = canCapture && !interrupted && !reduceMotion
       if (!canAnimate) {
         flushSync(request.update)
-        cacheReady.current = false
-        capture.refresh()
-        invalidate()
         return
       }
-      const rect = request.target.getBoundingClientRect()
       const wave: ActiveWave = {
         request,
         committed: false,
+        snapshotReady: false,
         started: null,
         bounds,
         timeout: setTimeout(() => {
           if (active.current === wave) finish()
-        }, 250),
+        }, 1000),
       }
       const values = resources.wave
       values.size.value.set(bounds.width, bounds.height)
-      values.box.value.set(
-        rect.left - bounds.left,
-        rect.top - bounds.top,
-        rect.width,
-        rect.height,
-      )
+      values.box.value.set(0, 0, bounds.width, bounds.height)
       values.origin.value.set(request.x - bounds.left, request.y - bounds.top)
       values.radius.value =
         Number.parseFloat(
@@ -160,14 +156,10 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
         color.value.set(WAVE_PALETTES[request.palette][index]),
       )
       active.current = wave
-      cacheReady.current = false
+      flushSync(() => capture.ref(request.target))
       invalidate()
     }
-    controller.run = run
-    const cancel = () => {
-      cacheReady.current = false
-      finish()
-    }
+    const cancel = () => finish()
     window.addEventListener('resize', cancel)
     window.addEventListener('scroll', cancel, true)
     return () => {
@@ -175,6 +167,8 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       window.removeEventListener('resize', cancel)
       window.removeEventListener('scroll', cancel, true)
       const wave = active.current
+      active.current = null
+      capture.ref(null)
       if (wave) {
         clearTimeout(wave.timeout)
         if (!wave.committed) {
@@ -182,7 +176,6 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
           wave.request.update()
         }
       }
-      active.current = null
     }
   }, [capture, controller, finish, invalidate, resources])
 
@@ -193,44 +186,55 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
     const wave = active.current
     if (!wave) {
       element.visible = false
+      return
+    }
+    const target = wave.request.target
+    const bounds = target.getBoundingClientRect()
+    const moved =
+      !target.isConnected ||
+      bounds.width !== wave.bounds.width ||
+      bounds.height !== wave.bounds.height ||
+      bounds.top !== wave.bounds.top ||
+      bounds.left !== wave.bounds.left
+    const reduceMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches
+    if (moved || reduceMotion) {
+      finish()
+      return
+    }
+    if (!wave.snapshotReady) {
+      const failed =
+        status.status === 'error' || status.status === 'unsupported'
+      if (failed) {
+        finish()
+        return
+      }
       const frame = frames.get()
-      if (!frame || frame === cachedFrame.current) return
-      const width = Math.min(4096, Math.ceil(frame.width * gl.getPixelRatio()))
-      const height = Math.min(
-        4096,
-        Math.ceil(frame.height * gl.getPixelRatio()),
+      const fresh = frame && frame.sourceId !== lastSourceId.current
+      const matchesTarget =
+        frame &&
+        frame.width === target.offsetWidth &&
+        frame.height === target.offsetHeight
+      if (!fresh || !matchesTarget) return
+      resources.target.setSize(
+        Math.min(4096, Math.ceil(frame.width * gl.getPixelRatio())),
+        Math.min(4096, Math.ceil(frame.height * gl.getPixelRatio())),
       )
-      resources.target.setSize(width, height)
       resources.map.value = frame.texture
       const previous = gl.getRenderTarget()
       gl.setRenderTarget(resources.target)
       gl.render(resources.scene, resources.camera)
       gl.setRenderTarget(previous)
-      cachedFrame.current = frame
-      cacheReady.current = true
-      return
+      resources.map.value = resources.placeholder
+      lastSourceId.current = frame.sourceId
+      wave.snapshotReady = true
     }
-    const bounds = capture.getBounds()
-    const moved =
-      !bounds ||
-      bounds.width !== wave.bounds.width ||
-      bounds.height !== wave.bounds.height ||
-      bounds.top !== wave.bounds.top ||
-      bounds.left !== wave.bounds.left
-    if (
-      moved ||
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    ) {
-      finish()
-      return
-    }
-    if (wave.committed) {
-      wave.started ??= performance.now()
+    if (wave.started !== null)
       resources.wave.progress.value = Math.min(
         1,
         (performance.now() - wave.started) / wave.request.duration,
       )
-    }
     if (resources.wave.progress.value >= 1) {
       finish()
       return
