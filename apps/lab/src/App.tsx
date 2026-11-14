@@ -36,6 +36,7 @@ const CrystalApp = lazy(() => import('./scenes/crystal/Crystal').then(m => ({ de
 const ControlsApp = lazy(() => import('./scenes/controls/Controls').then(m => ({ default: m.ControlsApp })))
 const GravityApp = lazy(() => import('./scenes/gravity/Gravity').then(m => ({ default: m.GravityApp })))
 const LampApp = lazy(() => import('./scenes/lamp/Lamp').then(m => ({ default: m.LampApp })))
+const DistortionWaveApp = lazy(() => import('./scenes/distortion-wave/DistortionWave').then(m => ({ default: m.DistortionWaveApp })))
 const RainApp = lazy(() => import('./scenes/rain/Rain').then(m => ({ default: m.RainApp })))
 const StyleApp = lazy(() => import('./scenes/style/Style').then(m => ({ default: m.StyleApp })))
 const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
@@ -76,6 +77,7 @@ const LAB_SCENES = [
   'gravity',
   'lamp',
   'rain',
+  'distortion-wave',
   'wordmark',
   'style',
 ] as const
@@ -174,6 +176,8 @@ function studySceneFor(scene: SceneId) {
       return <LampApp />
     case 'rain':
       return <RainApp />
+    case 'distortion-wave':
+      return <DistortionWaveApp />
     default:
       return null
   }
