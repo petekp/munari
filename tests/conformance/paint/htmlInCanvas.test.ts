@@ -365,6 +365,28 @@ describe('paintedSize — the box the last COMPLETED paint actually holds', () =
 })
 
 describe('the native adopted source', () => {
+  it.each([null, 'authored'])('restores the root drawable attribute (%s) through disposal and reuse', (original) => {
+    const node = document.createElement('div')
+    if (original !== null) node.setAttribute('drawable', original)
+    const first = createDomTextureSource(node, 100, 100)
+    let second: DomTextureSource | null = null
+    try {
+      expect(node.hasAttribute('drawable')).toBe(true)
+      first.dispose()
+      expect(node.getAttribute('drawable')).toBe(original)
+      second = createDomTextureSource(node, 100, 100)
+      first.dispose()
+      expect(node.parentNode).toBe(second.canvas)
+      expect(node.hasAttribute('drawable')).toBe(true)
+      second.dispose()
+      expect(node.parentNode).toBeNull()
+      expect(node.getAttribute('drawable')).toBe(original)
+    } finally {
+      first.dispose()
+      second?.dispose()
+    }
+  })
+
   it('the ADOPTED NODE is the element drawn, through the ordinary paint path', () => {
     const drawn: unknown[] = []
     const restore = stubGetContext({

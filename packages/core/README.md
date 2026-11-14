@@ -18,12 +18,17 @@ Modules: [`htmlInCanvas`](./src/paint/htmlInCanvas.ts),
 [`frameSource`](./src/paint/frameSource.ts).
 
 Munari uses Chrome's experimental HTML-in-canvas capability. Check support at
-runtime instead of inferring it from a browser version. Tests found three
-requirements:
+runtime instead of inferring it from a browser version. On current Chrome,
+the adapter supplies these requirements:
 
-1. The source element must be a child of the canvas.
-2. The canvas must set `layoutSubtree` to `true`.
+1. The source element must be a child of the canvas and have the `drawable` attribute.
+2. The canvas must set `content="drawable"`. The adapter also sets the legacy
+   `layoutSubtree` property for older browser builds.
 3. The code must call `drawElementImage` from the canvas's `onpaint` callback.
+
+The adapter marks only its capture root. Nested `drawable` elements are
+independent paint roots and are excluded from the parent capture. On disposal,
+the adapter removes a root marker it added and preserves an authored marker.
 
 Chrome completes the draw during its paint step. The resulting texture shows
 the DOM from the previous frame.

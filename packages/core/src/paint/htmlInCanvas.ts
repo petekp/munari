@@ -143,6 +143,11 @@ function createHtmlInCanvasSource(
   // whichever name a build lacks is inert there (platform.md #32).
   canvas.setAttribute('content', 'drawable')
   canvas.layoutSubtree = true
+  // Current Chrome requires drawable on the capture root. Marked descendants
+  // paint independently and would be excluded from this capture (platform.md #32).
+  const addedDrawable = !element.hasAttribute('drawable')
+  if (addedDrawable) element.setAttribute('drawable', '')
+  let disposed = false
   // Must stay in-document AND on-screen to get paint records — off-screen
   // (left:-10000px) canvases are skipped by the compositor and never paint.
   // Parking it behind the page (z-index:-1) keeps it painted but unseen, and
@@ -260,6 +265,8 @@ function createHtmlInCanvasSource(
     painted: body.painted,
     paintCount: body.paintCount,
     dispose: () => {
+      if (disposed) return
+      disposed = true
       canvas.onpaint = null
       listeners.abort()
       stopHearingElement()
@@ -273,6 +280,7 @@ function createHtmlInCanvasSource(
       // would hold its dead canvas through the parent pointer, leaking one
       // parked canvas per disposed source.
       element.remove()
+      if (addedDrawable) element.removeAttribute('drawable')
       body.dispose()
     },
   }
