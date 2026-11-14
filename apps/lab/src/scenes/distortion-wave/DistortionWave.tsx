@@ -178,7 +178,7 @@ function WaveSelections({ wave }: ControlsProps) {
             <button
               key={value}
               aria-pressed={plan === value}
-              onClick={(event) => { if (plan !== value) wave(event, () => setPlan(value)) }}
+              onClick={(event) => wave(event, () => setPlan(value))}
             >
               <span className="wave-radio" />
               <span>{value}</span>
@@ -230,14 +230,14 @@ function WaveContent({ wave }: ControlsProps) {
           <button
             data-wave-content-target="pricing"
             aria-pressed={!yearly}
-            onClick={(event) => { if (yearly) wave(event, () => setYearly(false)) }}
+            onClick={(event) => wave(event, () => setYearly(false))}
           >
             Monthly
           </button>
           <button
             data-wave-content-target="pricing"
             aria-pressed={yearly}
-            onClick={(event) => { if (!yearly) wave(event, () => setYearly(true)) }}
+            onClick={(event) => wave(event, () => setYearly(true))}
           >
             Yearly
           </button>
@@ -302,7 +302,7 @@ function WaveContent({ wave }: ControlsProps) {
               data-wave-content-target="color"
               data-color={value}
               aria-pressed={color === value}
-              onClick={(event) => { if (color !== value) wave(event, () => setColor(value)) }}
+              onClick={(event) => wave(event, () => setColor(value))}
             />
           ))}
         </div>

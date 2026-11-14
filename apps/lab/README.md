@@ -129,7 +129,11 @@ control groups, and a viewport-sized theme transition. Its motion and palettes
 adapt LukyVJ’s [reference](https://codepen.io/LukyVj/pen/jEBJpLp); the MIT notice
 is in `public/licenses/distortion-wave.txt`.
 
-The demo supplies detached snapshots through `CaptureContent`. Its fast copy
+The first isolated click supplies a detached snapshot through `CaptureContent`.
+Further clicks add translucent light pulses over immediately updated HTML.
+The pulses have independent clocks and share one instanced shader. At most
+eight pulses are shown, including at most three full-page pulses; new taps
+retire the oldest visual while every native update is preserved. Its fast copy
 depends on the scene’s ancestor CSS, opaque flat parent fills and stable control bounds.
 It preserves select values and hover/focus twins. Changes to those assumptions
 need visual checks. Ordinary hover does not request snapshots.

@@ -77,6 +77,7 @@ export function createWaveMotion(geometry: WaveGeometry) {
   return {
     scale,
     ring,
+    launchProgress: anticipation / total,
     amplitude: (ring ? 20 : 32) * scale,
     lensWidth: (ring ? 90 : 140) * scale,
     aberration: ring ? 0.35 : 0.75,

@@ -22,13 +22,11 @@ function flatBackground(element: HTMLElement): string {
   return '#09090b'
 }
 
-export function createWaveSnapshot(
+export function waveTargetBounds(
   target: HTMLElement,
-  sequence: number,
-): WaveSnapshot | null {
-  const rect = target.getBoundingClientRect()
-  const page = target.closest<HTMLElement>('.wave-page')
-  if (!page) throw new Error('Wave targets belong to the wave page')
+  rect = target.getBoundingClientRect(),
+): DOMRect | null {
+  if (!target.isConnected) return null
   const pageTarget = target.hasAttribute('data-wave-page')
   const left = pageTarget ? Math.max(0, rect.left) : rect.left
   const top = pageTarget ? Math.max(0, rect.top) : rect.top
@@ -39,6 +37,19 @@ export function createWaveSnapshot(
     ? Math.min(innerHeight, rect.bottom) - top
     : rect.height
   if (width <= 0 || height <= 0) return null
+  return new DOMRect(left, top, width, height)
+}
+
+export function createWaveSnapshot(
+  target: HTMLElement,
+  sequence: number,
+): WaveSnapshot | null {
+  const rect = target.getBoundingClientRect()
+  const page = target.closest<HTMLElement>('.wave-page')
+  if (!page) throw new Error('Wave targets belong to the wave page')
+  const bounds = waveTargetBounds(target, rect)
+  if (!bounds) return null
+  const { left, top, width, height } = bounds
   const background = flatBackground(target)
   const root = document.createElement('div')
   root.style.cssText = `position:relative;width:${width}px;height:${height}px;overflow:hidden;background:${background};`

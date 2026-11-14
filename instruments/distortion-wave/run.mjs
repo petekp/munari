@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
+import { compareWaveImages as compare } from './images.mjs'
 import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
 const base = process.env.WAVE_URL ?? 'http://127.0.0.1:5188/'
@@ -97,30 +98,6 @@ async function timing(browser, mode) {
   } finally { await page.close() }
 }
 
-async function compare(page, before, during, native, allowed = null) {
-  return page.evaluate(async ({images, allowed}) => {
-    const decode = async data => {
-      const image = new Image(); image.src = `data:image/png;base64,${data}`; await image.decode()
-      const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height
-      const context = canvas.getContext('2d'); context.drawImage(image, 0, 0)
-      return context.getImageData(0, 0, canvas.width, canvas.height).data
-    }
-    const [old, current, next] = await Promise.all(images.map(decode))
-    let effectPixels = 0, changedPixels = 0, outsidePixels = 0
-    const imageWidth = Math.round(innerWidth * devicePixelRatio)
-    for (let i = 0; i < current.length; i += 4) {
-      const oldDelta = Math.max(Math.abs(current[i] - old[i]), Math.abs(current[i + 1] - old[i + 1]), Math.abs(current[i + 2] - old[i + 2]))
-      const nextDelta = Math.max(Math.abs(current[i] - next[i]), Math.abs(current[i + 1] - next[i + 1]), Math.abs(current[i + 2] - next[i + 2]))
-      if (oldDelta > 20 && nextDelta > 20) effectPixels++
-      if (nextDelta > 0) changedPixels++
-      if (allowed && nextDelta > 20) {
-        const x = (i / 4 % imageWidth) / devicePixelRatio, y = Math.floor(i / 4 / imageWidth) / devicePixelRatio
-        if (x < allowed.x - 1 || x > allowed.x + allowed.width + 1 || y < allowed.y - 1 || y > allowed.y + allowed.height + 1) outsidePixels++
-      }
-    }
-    return { effectPixels, changedPixels, outsidePixels }
-  }, {images: [before, during, native].map(bytes => Buffer.from(bytes).toString('base64')), allowed})
-}
 
 async function pixels(browser, mode) {
   const { page, errors } = await openPage(browser, mode)
@@ -141,7 +118,8 @@ async function pixels(browser, mode) {
         await wait(200)
       }
       const before = await page.screenshot()
-      const allowed = name === 'theme' ? null : await page.$eval(selector, element => { const r = element.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height} })
+      let allowed = name === 'theme' ? null : await page.$eval(selector, element => { const r = element.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height} })
+      if (name === 'interrupt') allowed = [allowed, await page.$eval('.wave-person button', element => { const r = element.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height} })]
       const previousState = await page.$eval(selector, element => element.getAttribute('aria-pressed') ?? element.getAttribute('aria-label'))
       await page.click(selector)
       await page.waitForFunction((target, previous) => {
@@ -160,12 +138,15 @@ async function pixels(browser, mode) {
       await writeFile(path.join(output, `${mode}-${name}-before.png`), before)
       await writeFile(path.join(output, `${mode}-${name}-native.png`), native)
       assert.equal(difference.outsidePixels, 0, 'The effect must remain inside its target')
+      if (name === 'interrupt') assert(difference.regionPixels.every(count => count > 100), 'Both overlapping targets must stay lit')
       let movingPixels = 0
       if (hidden) assert.equal(difference.effectPixels, 0, 'The hidden-output control must have no wave pixels')
       else {
         const laterDifference = await compare(page, before, later, native, allowed)
         assert.equal(laterDifference.outsidePixels, 0, 'The moving effect must remain inside its target')
-        movingPixels = (await compare(page, during, later, during)).effectPixels
+        const movement = await compare(page, during, later, during, allowed)
+        movingPixels = movement.effectPixels
+        if (name === 'interrupt') assert(movement.regionPixels.every(count => count > 100), 'Both overlapping waves must keep moving')
         assert(difference.effectPixels > 100, `${mode} ${name}: no visible wave`)
         assert(laterDifference.effectPixels > 100 && movingPixels > 100, `${mode} ${name}: the wave must move`)
         await page.$eval('.wave-overlay', element => { element.style.visibility = '' })

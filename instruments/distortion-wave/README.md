@@ -37,3 +37,18 @@ the native state commit. A hidden-output control must have no changing pixels.
 It records pipeline creation before and during the first click. This observes
 a short local Chrome interval; it does not establish cadence in Dia or on a
 higher-refresh display. Raw button pixels and timestamps are saved for review.
+
+
+`node instruments/distortion-wave/burst.mjs` checks additive feedback in native
+and snapDOM modes. It compares one and two same-target pulses at the same
+controlled animation time and unchanged native state. A separate real-time
+12-click sequence checks every update, observes parked source hosts across the
+whole burst, and verifies cleanup. The initial source must be observed; no
+later gesture may create one. Development-mode remounts can create more than
+one host for the first gesture. Page overlap, pending capture interruption and
+reduced motion are also exercised. Recorded callback gaps are diagnostic;
+they do not establish presented frame rate.
+
+The `interrupt` image case now requires both target regions to remain lit and
+moving. Isolated transitions still refract the outgoing snapshot. Overlapping
+pulses use light only, so no old snapshot can cover a more recent native state.
