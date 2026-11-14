@@ -253,6 +253,10 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
       .div(size)
       .mul(aberration)
       .mul(0.5)
+    // Shared TSL expressions need outer-stack values before sibling texture branches.
+    const redAt = clamp(sampleAt.add(split), 0, 1).toVar()
+    const greenAt = clamp(sampleAt, 0, 1).toVar()
+    const blueAt = clamp(sampleAt.sub(split), 0, 1).toVar()
     const cover = mix(
       float(1),
       smoothstep(seam.negate(), seam, d),
@@ -266,33 +270,29 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
       .add(min(max(box.x, box.y), 0))
       .sub(corner)
     const mask = clamp(float(0.5).sub(sd.mul(pixelRatio)), 0, 1)
-    const oldColor = vec3(0).toVar()
-    const ink = float(0.45).toVar()
+    const originalColor = vec4(0).toVar()
+    const refractedColor = vec3(0).toVar()
     If(sampled.greaterThan(0), () => {
       const selection = Switch(snapshotIndex)
       maps.forEach((map, index) => {
         selection.Case(float(index).toInt(), () => {
-          const original = map.sample(at).level(float(0)).rgb
-          ink.assign(
-            clamp(length(original.sub(background)), 0, 1)
-              .mul(6)
-              .clamp(0, 1),
-          )
+          originalColor.assign(map.sample(at).level(float(0)))
           If(content.greaterThan(0), () => {
-            const red = map
-              .sample(clamp(sampleAt.add(split), 0, 1))
-              .level(float(0))
-            const green = map.sample(clamp(sampleAt, 0, 1)).level(float(0))
-            const blue = map
-              .sample(clamp(sampleAt.sub(split), 0, 1))
-              .level(float(0))
-            oldColor.assign(
-              mix(original, vec3(red.r, green.g, blue.b), mask).mul(cover),
-            )
+            const red = map.sample(redAt).level(float(0))
+            const green = map.sample(greenAt).level(float(0))
+            const blue = map.sample(blueAt).level(float(0))
+            refractedColor.assign(vec3(red.r, green.g, blue.b))
           })
         })
       })
     })
+    const oldColor = mix(originalColor.rgb, refractedColor, mask).mul(cover)
+    const ink = sampled.greaterThan(0).select(
+      clamp(length(originalColor.rgb.sub(background)), 0, 1)
+        .mul(6)
+        .clamp(0, 1),
+      0.45,
+    )
     const inset = max(sd.negate(), 0)
     const lobes = sin(angle.mul(2).add(time.mul(1.4)))
       .mul(cos(angle.sub(time.mul(0.6)).add(0.8)))

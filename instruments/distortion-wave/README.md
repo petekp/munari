@@ -69,3 +69,15 @@ Snapshots release only after their entire target has been revealed. If all bound
 slots are occupied, later actions wait in order instead of discarding a visible
 state mask. Scrolling, moving targets, reduced motion, and capture failure retain
 the native outcome and retire the affected presentation.
+
+`node instruments/distortion-wave/overlap.mjs native` records repeated Quantity
+clicks and checks the background under every observed wave. Pass `snapdom` for
+the no-flag capture path, or set `MUNARI_BACKEND=webgl2` for the renderer fallback.
+`WAVE_CLICKS` selects a bounded burst, defaulting to twelve clicks spaced at least
+40 ms apart. The native baseline must be above the black-pixel threshold. Every
+recorded target frame must have fewer than 1% pixels with all RGB channels below
+5. Complete stamped page-frame coverage is required; missing frames cannot pass.
+The worst frame and per-frame scores are retained. This catches opaque black
+snapshot layers during overlap and slot reuse; the reveal and burst checks own
+state ordering and effect presence. Recording cost excludes this run from timing
+claims.
