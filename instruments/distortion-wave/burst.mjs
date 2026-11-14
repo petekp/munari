@@ -28,22 +28,22 @@ async function openPage(browser, mode) {
 async function sameTarget(browser, mode, double) {
   const page = await openPage(browser, mode)
   try {
-    await page.click('.wave-person button')
-    await page.waitForFunction(() => document.querySelector('.wave-person button').textContent === 'Following')
+    await page.click('.wave-like')
+    await page.waitForFunction(() => document.querySelector('.wave-like').getAttribute('aria-pressed') === 'true')
     await page.evaluate(() => {
       const base = performance.now()
       window.waveClock = { now: base, base }
       Object.defineProperty(performance, 'now', { configurable: true, value: () => window.waveClock.now })
     })
-    if (double) { await page.click('.wave-plan button'); await wait(120) }
+    if (double) { await page.click('[aria-label="Violet"]'); await wait(120) }
     await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 200 })
-    await page.click('.wave-plan button')
+    await page.click('[aria-label="Violet"]')
     await wait(120)
     await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 400 })
     await wait(100)
-    assert.equal(await page.$eval('.wave-plan button', element => element.getAttribute('aria-pressed')), 'true')
+    assert.equal(await page.$eval('[aria-label="Violet"]', element => element.getAttribute('aria-pressed')), 'true')
     const image = await page.screenshot()
-    const rect = await page.$eval('.wave-plan', element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })
+    const rect = await page.$eval('.wave-color', element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })
     await writeFile(path.join(output, `${mode}-${double ? 'double' : 'single'}.png`), image)
     return { image, rect }
   } finally { await page.close() }
@@ -58,14 +58,14 @@ async function nested(browser, mode, pageFirst, withButton) {
       Object.defineProperty(performance, 'now', { configurable: true, value: () => window.waveClock.now })
     })
     const button = async () => {
-      await page.click('.wave-plan button')
+      await page.click('[aria-label="Violet"]')
       await wait(120)
       await page.waitForFunction(() => document.querySelectorAll('[data-munari-parked]').length === 0)
     }
     if (!pageFirst && withButton) await button()
     await page.evaluate(first => { window.waveClock.now = window.waveClock.base + (first ? 0 : 350) }, pageFirst)
     await page.click('.wave-theme')
-    await page.waitForFunction(() => document.querySelector('.wave-page').dataset.theme === 'light')
+    await page.waitForFunction(() => document.querySelector('.wave-page').dataset.theme === 'dark')
     if (pageFirst && withButton) {
       await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 350 })
       await button()
@@ -73,7 +73,7 @@ async function nested(browser, mode, pageFirst, withButton) {
     await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 800 })
     await wait(100)
     const image = await page.screenshot()
-    const rect = await page.$eval('.wave-plan', element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })
+    const rect = await page.$eval('.wave-color', element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })
     await writeFile(path.join(output, `${mode}-${pageFirst ? 'page-first' : 'button-first'}-${withButton ? 'both' : 'page'}.png`), image)
     return { image, rect }
   } finally { await page.close() }
@@ -98,20 +98,20 @@ async function rapid(browser, mode) {
       const tasks = new PerformanceObserver(list => { for (const entry of list.getEntries()) data.longtasks.push(entry.duration) })
       tasks.observe({ type: 'longtask' })
       document.addEventListener('click', event => {
-        if (event.target.closest('[aria-label="Upvote"]')) data.clicks.push({ start: performance.now(), committed: null })
+        if (event.target.closest('.wave-like')) data.clicks.push({ start: performance.now(), committed: null })
       }, true)
       const values = new MutationObserver(() => {
-        const value = Number(document.querySelector('.wave-stepper output').textContent)
-        const pending = data.clicks[value - 43]
-        if (pending && pending.committed === null) { pending.committed = performance.now(); pending.value = value }
+        const value = document.querySelector('.wave-like').getAttribute('aria-pressed')
+        const pending = data.clicks.find(click => click.committed === null)
+        if (pending) { pending.committed = performance.now(); pending.value = value }
       })
-      values.observe(document.querySelector('.wave-stepper output'), { childList: true, subtree: true, characterData: true })
+      values.observe(document.querySelector('.wave-like'), { attributes: true, attributeFilter: ['aria-pressed'] })
       const tick = now => { if (data.last) data.frames.push(now - data.last); data.last = now; data.raf = requestAnimationFrame(tick) }
       requestAnimationFrame(tick)
       window.waveBurst = { data, sources, tasks, values }
     })
-    for (let i = 0; i < 12; i++) { await page.click('[aria-label="Upvote"]'); await wait(60) }
-    await page.waitForFunction(() => document.querySelector('.wave-stepper output').textContent === '54')
+    for (let i = 0; i < 12; i++) { await page.click('.wave-like'); await wait(60) }
+    await page.waitForFunction(() => window.waveBurst.data.clicks.filter(click => click.committed !== null).length === 12)
     await wait(250)
     const raw = await page.evaluate(() => {
       const { data, sources, tasks, values } = window.waveBurst
@@ -122,21 +122,28 @@ async function rapid(browser, mode) {
     assert.equal(raw.clicks.length, 12)
     assert(raw.clicks.every(click => click.committed !== null))
     assert(raw.captures > 0, 'The initial gesture must create a source in this engine')
-    assert.deepEqual(raw.clicks.map(click => click.value), Array.from({ length: 12 }, (_, index) => 43 + index))
+    assert.deepEqual(raw.clicks.map(click => click.value), Array.from({ length: 12 }, (_, index) => index % 2 === 0 ? 'true' : 'false'))
 
     await page.screenshot({ path: path.join(output, `${mode}-burst.png`) })
     await wait(3900)
     assert.equal(await page.$$eval('[data-munari-parked]', elements => elements.length), 0)
-    await page.evaluate(() => { const button = document.querySelector('[aria-label="Upvote"]'); button.click(); button.click() })
-    await page.waitForFunction(() => document.querySelector('.wave-stepper output').textContent === '56')
-    await page.evaluate(() => { window.themeFrames = []; window.themeLast = 0; const tick = now => { if (window.themeLast) window.themeFrames.push(now - window.themeLast); window.themeLast = now; window.themeRaf = requestAnimationFrame(tick) }; requestAnimationFrame(tick) })
+    await page.evaluate(() => {
+      window.wavePending = []
+      const button = document.querySelector('.wave-like')
+      const observer = new MutationObserver(() => window.wavePending.push(button.getAttribute('aria-pressed')))
+      observer.observe(button, { attributes: true, attributeFilter: ['aria-pressed'] })
+      button.click(); button.click()
+    })
+    await page.waitForFunction(() => window.wavePending.length === 2)
+    assert.deepEqual(await page.evaluate(() => window.wavePending), ['true','false'])
+    await page.evaluate(() => { window.themeChanges = []; const theme = document.querySelector('.wave-page'); new MutationObserver(() => window.themeChanges.push(theme.dataset.theme)).observe(theme, {attributes:true, attributeFilter:['data-theme']}); window.themeFrames = []; window.themeLast = 0; const tick = now => { if (window.themeLast) window.themeFrames.push(now - window.themeLast); window.themeLast = now; window.themeRaf = requestAnimationFrame(tick) }; requestAnimationFrame(tick) })
     for (let i = 0; i < 4; i++) { await page.click('.wave-theme'); await wait(60) }
-    await page.waitForFunction(() => document.querySelector('.wave-page').dataset.theme === 'dark' && document.querySelectorAll('[data-munari-parked]').length === 0)
+    await page.waitForFunction(() => window.themeChanges.length === 4 && document.querySelectorAll('[data-munari-parked]').length === 0)
     const themeFrames = await page.evaluate(() => { cancelAnimationFrame(window.themeRaf); return window.themeFrames })
-    assert.equal(await page.$eval('.wave-page', element => element.dataset.theme), 'dark')
+    assert.equal(await page.$eval('.wave-page', element => element.dataset.theme), 'light')
     await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
-    await page.click('[aria-label="Upvote"]')
-    await page.waitForFunction(() => document.querySelector('.wave-stepper output').textContent === '57')
+    await page.click('.wave-like')
+    await page.waitForFunction(() => document.querySelector('.wave-like').getAttribute('aria-pressed') === 'true')
     await page.waitForFunction(() => document.querySelectorAll('[data-munari-parked]').length === 0)
     assert.deepEqual(errors, [])
     return { captures: raw.captures, actions: raw.clicks.length, maxRafGapMs: Math.max(...raw.frames), longtasks: raw.longtasks, maxBurstCommitMs: Math.max(...raw.clicks.slice(1).map(click => click.committed - click.start)), pendingInterruption: 'pass', themeOverlap: 'pass', maxThemeRafGapMs: Math.max(...themeFrames), reducedMotion: 'pass' }

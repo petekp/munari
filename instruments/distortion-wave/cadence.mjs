@@ -28,7 +28,7 @@ try {
           }
         }
         document.addEventListener('click', event => {
-          if (event.target.closest('.wave-person button')) window.wavePipelines.phase = 'first-click'
+          if (event.target.closest('.wave-like')) window.wavePipelines.phase = 'first-click'
         }, true)
       })
       const url = new URL(process.env.WAVE_URL ?? 'http://127.0.0.1:5188/')
@@ -38,14 +38,14 @@ try {
       assert.equal(await page.evaluate(() => window.__munari.engine()), 'html-in-canvas')
       await page.select('select', '3600')
       if (hidden) await page.$eval('.wave-overlay', element => { element.style.visibility = 'hidden' })
-      const rect = await page.$eval('.wave-person button', element => {
+      const rect = await page.$eval('.wave-like', element => {
         const r = element.getBoundingClientRect()
         return { x: r.x, y: r.y, w: r.width, h: r.height }
       })
       recorder = await createScreencastRecorder(page, { format: 'png', everyNthFrame: 1, maxWidth: 895, maxHeight: 774 })
       await recorder.start()
-      await page.click('.wave-person button')
-      await page.waitForFunction(() => document.querySelector('.wave-person button').textContent === 'Following')
+      await page.click('.wave-like')
+      await page.waitForFunction(() => document.querySelector('.wave-like').getAttribute('aria-pressed') === 'true')
       const committed = await page.evaluate(() => performance.timeOrigin + performance.now())
       await new Promise(resolve => setTimeout(resolve, 1800))
       const capture = await recorder.stop({ through: committed + 1700, timeoutMs: 1000 })

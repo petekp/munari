@@ -26,16 +26,24 @@ try {
   await page.goto(url.href, { waitUntil: 'networkidle0' })
   await page.waitForSelector('.wave-overlay canvas[data-api-capture-consumer]')
   assert.equal(await page.evaluate(() => window.__munari.engine()), mode === 'native' ? 'html-in-canvas' : 'snapdom')
-  await page.$eval('.wave-quantity', element => element.scrollIntoView({ block: 'center' }))
-  await page.hover('[aria-label="More"]')
-  const rect = await page.$eval('.wave-quantity', element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })
+  await page.$eval('.wave-color-patch', element => element.scrollIntoView({ block: 'center' }))
+  await page.hover('[aria-label="Violet"]')
+  const rect = await page.$eval('.wave-color-patch', element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })
+  await page.evaluate(() => {
+    window.waveColors = []
+    const name = document.querySelector('.wave-color-options > span')
+    new MutationObserver(() => window.waveColors.push(name.textContent)).observe(name, {childList:true, subtree:true, characterData:true})
+  })
   recorder = await createScreencastRecorder(page, { format: 'png', everyNthFrame: 1, maxWidth: 895, maxHeight: 774 })
   await recorder.start()
   const started = await page.evaluate(() => performance.timeOrigin + performance.now())
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   await wait(100)
-  for (let i = 0; i < clicks; i++) { await page.click('[aria-label="More"]'); await wait(40) }
-  await page.waitForFunction(expected => document.querySelector('.wave-quantity output').textContent === String(expected), {}, clicks + 1)
+  const colors = ['Coral', 'Sky', 'Leaf', 'Violet']
+  for (let i = 0; i < clicks; i++) { await page.click(`[aria-label="${colors[i % colors.length]}"]`); await wait(40) }
+  await page.waitForFunction(expected => window.waveColors.length === expected, {}, clicks)
+  const changes = await page.evaluate(() => window.waveColors)
+  assert.deepEqual(changes, Array.from({ length: clicks }, (_, index) => colors[index % colors.length]))
   await wait(400)
   const ended = await page.evaluate(() => performance.timeOrigin + performance.now())
   const capture = await recorder.stop({ through: ended, timeoutMs: 1000 })
@@ -65,7 +73,7 @@ try {
   assert(baseline.every(row => row.value.fraction < 0.01), 'The native background must be outside the black-pixel threshold')
   const worst = scored.summary.worst
   await writeFile(path.join(output, `${mode}-worst.png`), Buffer.from(worst.image.split(',')[1], 'base64'))
-  const result = { mode, clicks, started, ended, rect, errors, coverage, worst: { ...worst, image: undefined }, rows: scored.rows }
+  const result = { mode, clicks, changes, started, ended, rect, errors, coverage, worst: { ...worst, image: undefined }, rows: scored.rows }
   await writeFile(path.join(output, `${mode}-overlap.json`), JSON.stringify(result, null, 2))
   console.log(JSON.stringify({ ...result, rows: scored.rows.length }))
   assert(worst.fraction < 0.01, 'Repeated capture must preserve the background under every wave')

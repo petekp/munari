@@ -47,15 +47,15 @@ async function reveal(browser, mode, name) {
     await page.waitForSelector('.wave-overlay canvas[data-api-capture-consumer]')
     assert.equal(await page.evaluate(() => window.__munari.engine()), mode === 'native' ? 'html-in-canvas' : 'snapdom')
     await page.select('select', '3600')
-    await page.hover('[aria-label="Upvote"]')
+    await page.hover('.wave-checklist label:nth-of-type(1)')
     await page.evaluate(() => {
       const base = performance.now()
       window.waveClock = { base, now: base }
       Object.defineProperty(performance, 'now', { configurable: true, value: () => window.waveClock.now })
     })
-    const clip = await page.$eval('.wave-stepper output', element => {
+    const clip = await page.$eval('.wave-checklist', element => {
       const r = element.getBoundingClientRect()
-      return { x: r.x, y: r.y + 5, width: r.width, height: r.height - 10 }
+      return { x: r.x, y: r.y, width: r.width, height: r.height }
     })
     const shot = () => page.screenshot()
     const native = async () => {
@@ -64,28 +64,36 @@ async function reveal(browser, mode, name) {
       await page.$eval('.wave-overlay', element => { element.style.visibility = '' })
       return image
     }
-    const vote = async value => {
-      await page.click('[aria-label="Upvote"]')
-      await page.waitForFunction(expected => document.querySelector('.wave-stepper output').textContent === String(expected), {}, value)
+    const check = async (index, count) => {
+      await page.click(`.wave-checklist label:nth-of-type(${index + 1})`)
+      await page.waitForFunction(expected => document.querySelector('.wave-checklist output').textContent === `${expected} / 3`, {}, count)
       await settle(page)
     }
     const theme = async () => {
       await page.click('.wave-theme')
-      await page.waitForFunction(() => document.querySelector('.wave-page').dataset.theme === 'light')
+      await page.waitForFunction(() => document.querySelector('.wave-page').dataset.theme === 'dark')
       await settle(page)
     }
     const initial = await native()
     let expected = initial
     let intermediate = initial
     if (name === 'overflow') {
-      await page.evaluate(() => { for (let i = 0; i < 10; i++) document.querySelector('[aria-label="Upvote"]').click() })
-      await page.waitForFunction(() => document.querySelector('.wave-stepper output').textContent === '50')
+      await page.evaluate(() => {
+        window.waveCommits = []
+        const output = document.querySelector('.wave-checklist output')
+        const observer = new MutationObserver(() => window.waveCommits.push(output.textContent))
+        observer.observe(output, { childList: true, subtree: true, characterData: true })
+        const inputs = document.querySelectorAll('.wave-checklist input')
+        for (let i = 0; i < 10; i++) inputs[i % 3].click()
+      })
+      await page.waitForFunction(() => window.waveCommits.length === 8)
+      assert.deepEqual(await page.evaluate(() => window.waveCommits), ['1 / 3','2 / 3','3 / 3','2 / 3','1 / 3','0 / 3','1 / 3','2 / 3'])
       await settle(page)
     } else if (name === 'theme-first') {
       await theme()
-      await vote(43)
+      await check(0, 1)
     } else {
-      await vote(43)
+      await check(0, 1)
       intermediate = await native()
       if (name === 'spaced') {
         await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 1000 })
@@ -94,10 +102,10 @@ async function reveal(browser, mode, name) {
       }
       if (name === 'theme-second') await theme()
       else if (name === 'other-control') {
-        await page.click('.wave-person button')
-        await page.waitForFunction(() => document.querySelector('.wave-person button').textContent === 'Following')
+        await page.click('.wave-like')
+        await page.waitForFunction(() => document.querySelector('.wave-like').getAttribute('aria-pressed') === 'true')
         await settle(page)
-      } else await vote(44)
+      } else await check(1, 2)
     }
     await settle(page)
     const held = await shot()
@@ -111,12 +119,13 @@ async function reveal(browser, mode, name) {
     await writeFile(path.join(output, `${mode}-${name}-latest.png`), latest)
     const result = { mode, name, heldMismatch, intermediateDistance, latestDistance, hiddenMismatch, errors }
     await writeFile(path.join(output, `${mode}-${name}.json`), JSON.stringify(result, null, 2))
-    assert(heldMismatch.meanSquared < latestDistance.meanSquared, `${name}: the outgoing number must stay visible before its wave passes`)
+    assert(heldMismatch.meanSquared < latestDistance.meanSquared, `${name}: the outgoing checklist must stay visible before its wave passes`)
     if (name === 'held') assert(heldMismatch.meanSquared < intermediateDistance.meanSquared, 'The older mask must remain above the next outgoing state')
     assert(hiddenMismatch.changed > 100, `${name}: hiding the masks must expose a different state`)
     await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 20000 })
     if (name === 'overflow') {
-      await page.waitForFunction(() => document.querySelector('.wave-stepper output').textContent === '52')
+      await page.waitForFunction(() => window.waveCommits.length === 10)
+      assert.deepEqual(await page.$$eval('.wave-checklist input', inputs => inputs.map(input => input.checked)), [false, true, true])
       await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 40000 })
     }
     await settle(page)
@@ -128,13 +137,17 @@ async function reveal(browser, mode, name) {
   } finally { await page.close() }
 }
 
+const cases = ['held', 'spaced', 'other-control', 'theme-first', 'theme-second', 'overflow']
+const selectedCases = process.env.WAVE_CASES?.split(',') ?? cases
+for (const name of selectedCases) assert(cases.includes(name), `Unknown wave reveal case: ${name}`)
+
 for (const mode of modes.length ? modes : ['native', 'snapdom']) {
   assert(['native', 'snapdom'].includes(mode))
   const args = [...WEBGPU_CHROME_ARGS]
   if (mode === 'native') args.push('--enable-features=CanvasDrawElement')
   const browser = await puppeteer.launch({ executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args })
   try {
-    for (const name of process.env.WAVE_CASES?.split(',') ?? ['held', 'spaced', 'other-control', 'theme-first', 'theme-second', 'overflow']) {
+    for (const name of selectedCases) {
       const result = await reveal(browser, mode, name)
       results.push(result)
       console.log(JSON.stringify(result))

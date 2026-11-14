@@ -124,23 +124,27 @@ These reference files must stay byte-identical to their registry copies.
 
 ## Distortion wave
 
-`?scene=distortion-wave` uses button-local rings, source-shaped waves across
-control groups, and a viewport-sized theme transition. Its motion and palettes
-adapt LukyVJ’s [reference](https://codepen.io/LukyVj/pen/jEBJpLp); the MIT notice
-is in `public/licenses/distortion-wave.txt`.
+`?scene=distortion-wave` uses the shared Munari demo bar and system controls.
+Its grid contains Like, Delete/Undo, Copy, Filters, Checklist, and Color.
+The theme control also demonstrates a page wave alongside local interactions.
+Motion and palettes adapt LukyVJ’s [reference](https://codepen.io/LukyVj/pen/jEBJpLp);
+the MIT notice is in `public/licenses/distortion-wave.txt`.
 
-The first isolated click supplies a detached snapshot through `CaptureContent`.
-Further clicks add translucent light pulses over immediately updated HTML.
-The pulses have independent clocks and share one instanced shader. At most
-eight pulses are shown, including at most three full-page pulses; new taps
-retire the oldest visual while every native update is preserved. Its fast copy
-depends on the scene’s ancestor CSS, opaque flat parent fills and stable control bounds.
-It preserves select values and hover/focus twins. Changes to those assumptions
-need visual checks. Ordinary hover does not request snapshots.
+Each action supplies an outgoing snapshot through `CaptureContent`. Its native
+update waits for that cover to draw. Ordered masks reveal successive states,
+while independent light pulses draw above them. Eight snapshot slots, including
+at most three page snapshots, bound the retained images. Extra actions wait in
+order. Ordinary hover does not request snapshots.
 
-The [wave probe](../../instruments/distortion-wave/README.md) separates timing,
-containment and recorded motion. Shader warmup draws transparent pixels once
-through the actual renderer pipeline, then returns to demand rendering.
+The fast copy depends on the scene’s ancestor CSS, opaque flat parent fills,
+and stable control bounds. Checklist marks follow committed React state during
+native checkbox activation. Copy writes to the clipboard from the click handler
+and animates its confirmation after the write succeeds.
+
+The [wave probes](../../instruments/distortion-wave/README.md) cover native
+interaction, state reveals, containment, overlapping light, and black-background
+regressions. Shader warmup draws transparent pixels once through the actual
+renderer pipeline, then returns to demand rendering.
 
 ## Asset provenance
 

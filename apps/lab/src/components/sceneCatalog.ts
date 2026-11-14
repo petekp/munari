@@ -71,6 +71,12 @@ export const DEMOS = [
 export type DemoId = (typeof DEMOS)[number]['id']
 
 export function demoFor(id: string): Demo | undefined {
+  if (id === 'distortion-wave') return {
+    id,
+    title: 'Distortion wave',
+    headline: 'A wave through native controls',
+    instruction: 'Click a control. Its next state arrives with the wave.',
+  }
   return DEMOS.find((demo) => demo.id === id)
 }
 
