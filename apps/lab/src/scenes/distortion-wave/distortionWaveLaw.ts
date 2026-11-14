@@ -77,7 +77,6 @@ export function createWaveMotion(geometry: WaveGeometry) {
   return {
     scale,
     ring,
-    launchProgress: anticipation / total,
     amplitude: (ring ? 20 : 32) * scale,
     lensWidth: (ring ? 90 : 140) * scale,
     aberration: ring ? 0.35 : 0.75,
@@ -148,6 +147,10 @@ export function createWaveMotion(geometry: WaveGeometry) {
           bezier((fly - linger - hairDelay) / 2.8, 0.45, 0, 0.55, 1),
         ),
         launched: fly > 0 ? 1 : 0,
+        revealed:
+          fly > 0 &&
+          radius >=
+            reach - 60 * scale + maximumSquash * Math.max(48 * scale, 4),
       }
     },
   }

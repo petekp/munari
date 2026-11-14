@@ -40,15 +40,32 @@ higher-refresh display. Raw button pixels and timestamps are saved for review.
 
 
 `node instruments/distortion-wave/burst.mjs` checks additive feedback in native
-and snapDOM modes. It compares one and two same-target pulses at the same
-controlled animation time and unchanged native state. A separate real-time
-12-click sequence checks every update, observes parked source hosts across the
-whole burst, and verifies cleanup. The initial source must be observed; no
-later gesture may create one. Development-mode remounts can create more than
-one host for the first gesture. Page overlap, pending capture interruption and
-reduced motion are also exercised. Recorded callback gaps are diagnostic;
-they do not establish presented frame rate.
+and no-flag snapDOM modes. It compares one and two same-target pulses at the
+same controlled animation time and unchanged native state. It also compares a
+page-only theme wave against simultaneous page/button waves in both click orders.
+The button region must retain an additional visible pulse.
 
-The `interrupt` image case now requires both target regions to remain lit and
-moving. Isolated transitions still refract the outgoing snapshot. Overlapping
-pulses use light only, so no old snapshot can cover a more recent native state.
+A separate real-time sequence uses Normal duration and 12 clicks spaced at least
+60 ms apart. Every vote value must commit in order. Captures now belong to each
+transition; the runner observes source hosts and verifies their eventual cleanup.
+Pending capture interruption, page overlap, and reduced motion are also exercised.
+Callback gaps and click-to-DOM-commit times describe this local run, not presented
+frame rate or end-to-end input latency.
+
+`node instruments/distortion-wave/reveal.mjs` checks which state the wave reveals.
+At a controlled animation clock it compares vote-label pixels against native
+references for the outgoing, intermediate, and latest values. The outgoing value
+must be the closest reference by mean squared RGB error. This permits texture
+antialiasing without accepting the wrong numeral. The hidden-overlay control must
+expose a different state, and settled output must match native pixels. The cases
+cover repeated and separate controls, both theme/button orders, and more actions
+than the snapshot capacity. Full-viewport screenshots preserve the page geometry;
+scoring selects the label region afterward. These checks do not measure cadence.
+
+The `interrupt` image case requires both target regions to remain lit and moving.
+Outgoing state masks draw in click order, oldest on top. Colored pulses draw above
+those masks. Capture preparation is serialized; motion continues independently.
+Snapshots release only after their entire target has been revealed. If all bounded
+slots are occupied, later actions wait in order instead of discarding a visible
+state mask. Scrolling, moving targets, reduced motion, and capture failure retain
+the native outcome and retire the affected presentation.

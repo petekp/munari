@@ -23,6 +23,7 @@ import {
   uniform,
   Fn,
   If,
+  Switch,
   instanceIndex,
   uniformArray,
   uv,
@@ -54,12 +55,13 @@ function toOklab(value: string): Vector3 {
 }
 
 export const MAX_WAVES = 8
+export const MAX_WAVE_INSTANCES = MAX_WAVES * 2
 
 // Packed parameters use one GPU buffer instead of a binding for every animated value.
 function createWaveParameters() {
-  const stride = 9
+  const stride = 10
   const packedValues = Array.from(
-    { length: MAX_WAVES * stride },
+    { length: MAX_WAVE_INSTANCES * stride },
     () => new Vector4(),
   )
   const packed = uniformArray<'vec4'>(packedValues, 'vec4')
@@ -78,7 +80,7 @@ function createWaveParameters() {
     )
   const waveNumber = (initial: number) => {
     const offset = cursor++
-    const values = Array<number>(MAX_WAVES).fill(initial)
+    const values = Array<number>(MAX_WAVE_INSTANCES).fill(initial)
     uploads.push(() =>
       values.forEach((value, index) => write(index, offset, value)),
     )
@@ -87,7 +89,10 @@ function createWaveParameters() {
   const waveVector2 = () => {
     const offset = cursor
     cursor += 2
-    const values = Array.from({ length: MAX_WAVES }, () => new Vector2(1, 1))
+    const values = Array.from(
+      { length: MAX_WAVE_INSTANCES },
+      () => new Vector2(1, 1),
+    )
     uploads.push(() =>
       values.forEach((value, index) => {
         write(index, offset, value.x)
@@ -99,7 +104,10 @@ function createWaveParameters() {
   const waveVector3 = () => {
     const offset = cursor
     cursor += 3
-    const values = Array.from({ length: MAX_WAVES }, () => new Vector3())
+    const values = Array.from(
+      { length: MAX_WAVE_INSTANCES },
+      () => new Vector3(),
+    )
     uploads.push(() =>
       values.forEach((value, index) => {
         write(index, offset, value.x)
@@ -143,6 +151,8 @@ function createWaveParameters() {
     visibility: waveNumber(0),
     content: waveNumber(0),
     sampled: waveNumber(0),
+    snapshotIndex: waveNumber(0),
+    light: waveNumber(0),
     paletteCount: waveNumber(6),
   }
   if (cursor > stride * 4)
@@ -157,12 +167,12 @@ const paletteLabs = {
   Gold: WAVE_PALETTES.Gold.map(toOklab),
 }
 
-export function createDistortionWaveMaterial(snapshot: Texture) {
-  const map = texture(snapshot)
+export function createDistortionWaveMaterial(snapshots: Texture[]) {
+  const maps = snapshots.map((snapshot) => texture(snapshot))
   const { parameters, upload } = createWaveParameters()
   const pixelRatio = uniform(1)
   const paletteValues = Array.from(
-    { length: MAX_WAVES * 8 },
+    { length: MAX_WAVE_INSTANCES * 8 },
     () => new Vector3(),
   )
   const palette = uniformArray<'vec3'>(paletteValues, 'vec3')
@@ -196,6 +206,8 @@ export function createDistortionWaveMaterial(snapshot: Texture) {
   const visibility = parameters.visibility.node
   const content = parameters.content.node
   const sampled = parameters.sampled.node
+  const snapshotIndex = parameters.snapshotIndex.node.toInt()
+  const light = parameters.light.node
   const paletteCount = parameters.paletteCount.node.toInt()
   const material = new MeshBasicNodeMaterial({
     transparent: true,
@@ -255,17 +267,31 @@ export function createDistortionWaveMaterial(snapshot: Texture) {
       .sub(corner)
     const mask = clamp(float(0.5).sub(sd.mul(pixelRatio)), 0, 1)
     const oldColor = vec3(0).toVar()
-    If(content.greaterThan(0), () => {
-      const red = map.sample(clamp(sampleAt.add(split), 0, 1)).level(float(0))
-      const green = map.sample(clamp(sampleAt, 0, 1)).level(float(0))
-      const blue = map.sample(clamp(sampleAt.sub(split), 0, 1)).level(float(0))
-      oldColor.assign(
-        mix(
-          map.sample(at).level(float(0)).rgb,
-          vec3(red.r, green.g, blue.b),
-          mask,
-        ).mul(cover),
-      )
+    const ink = float(0.45).toVar()
+    If(sampled.greaterThan(0), () => {
+      const selection = Switch(snapshotIndex)
+      maps.forEach((map, index) => {
+        selection.Case(float(index).toInt(), () => {
+          const original = map.sample(at).level(float(0)).rgb
+          ink.assign(
+            clamp(length(original.sub(background)), 0, 1)
+              .mul(6)
+              .clamp(0, 1),
+          )
+          If(content.greaterThan(0), () => {
+            const red = map
+              .sample(clamp(sampleAt.add(split), 0, 1))
+              .level(float(0))
+            const green = map.sample(clamp(sampleAt, 0, 1)).level(float(0))
+            const blue = map
+              .sample(clamp(sampleAt.sub(split), 0, 1))
+              .level(float(0))
+            oldColor.assign(
+              mix(original, vec3(red.r, green.g, blue.b), mask).mul(cover),
+            )
+          })
+        })
+      })
     })
     const inset = max(sd.negate(), 0)
     const lobes = sin(angle.mul(2).add(time.mul(1.4)))
@@ -313,14 +339,7 @@ export function createDistortionWaveMaterial(snapshot: Texture) {
       .mul(0.85)
       .mul(float(1).sub(boxless))
       .mul(mask)
-    const ink = float(0.45).toVar()
-    If(sampled.greaterThan(0), () => {
-      ink.assign(
-        clamp(length(map.sample(at).level(float(0)).rgb.sub(background)), 0, 1)
-          .mul(6)
-          .clamp(0, 1),
-      )
-    })
+      .mul(light)
     const alpha = clamp(
       float(1).sub(float(1).sub(band).mul(float(1).sub(edgeLight))),
       0,
@@ -328,6 +347,7 @@ export function createDistortionWaveMaterial(snapshot: Texture) {
     )
       .mul(mix(1, ink, boxless))
       .mul(mask)
+      .mul(light)
     const flow = angle
       .div(Math.PI * 2)
       .add(time.mul(0.12))
