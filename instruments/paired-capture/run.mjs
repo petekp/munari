@@ -52,6 +52,8 @@ function distance(page, actual, expected, region) {
   }, Buffer.from(actual).toString('base64'), Buffer.from(expected).toString('base64'), region)
 }
 
+const staleGpu = process.env.STALE_GPU === '1'
+
 async function handoff(browser, scene, engine, fault) {
   const target = scenes[scene]
   const page = await browser.newPage()
@@ -63,12 +65,42 @@ async function handoff(browser, scene, engine, fault) {
   try {
     // At this width the postcard is scaled below its native layout size.
     await page.setViewport({ width: scene === 'postcard' ? 390 : 895, height: 850, deviceScaleFactor: 1 })
-    await page.evaluateOnNewDocument(() => { window.handoff = { draw: false, copies: [], draws: 0 } })
+    await page.evaluateOnNewDocument(stale => {
+      window.handoff = { draw: stale, copies: [], draws: 0, blocked: null, uploads: 0 }
+      if (!stale) return
+      const blocked = new WeakMap()
+      const renderers = new WeakSet()
+      window.holdUpload = (renderer, texture) => {
+        const { requested } = window.handoff
+        if (!renderers.has(renderer)) {
+          renderers.add(renderer)
+          const upload = renderer.backend.updateTexture.bind(renderer.backend)
+          renderer.backend.updateTexture = (candidate, options) => {
+            const phase = blocked.get(candidate)
+            if (phase && phase === window.handoff.blocked) {
+              window.handoff.uploads++
+              window.handoff.lastBlocked = phase
+              return
+            }
+            return upload(candidate, options)
+          }
+        }
+        if (blocked.has(texture)) return
+        blocked.set(texture, requested)
+        let callback = texture.onUpdate
+        Object.defineProperty(texture, 'onUpdate', {
+          get: () => requested === window.handoff.blocked ? null : callback,
+          set: next => { callback = next },
+        })
+      }
+      window.handoff.blocked = 'capture-before'
+    }, staleGpu)
     await page.setRequestInterception(true)
     page.on('request', async request => {
       const pathname = new URL(request.url()).pathname
       const shared = pathname.endsWith('/pairedCapture.tsx')
-      if (!shared && !pathname.endsWith(`/${target.module}`)) {
+      const upload = staleGpu && pathname.endsWith('/surfaceFrames.ts')
+      if (!shared && !upload && !pathname.endsWith(`/${target.module}`)) {
         await request.continue()
         return
       }
@@ -76,14 +108,17 @@ async function handoff(browser, scene, engine, fault) {
         const response = await fetch(request.url())
         assert(response.ok)
         let body = await response.text()
-        if (shared) {
+        if (upload) {
+          body = replaceOnce(body, 'renderer.initTexture(texture);', 'window.holdUpload(renderer, texture); renderer.initTexture(texture);')
+          if (fault) body = replaceOnce(body, 'return uploaded;', 'return true;')
+        } else if (shared) {
           body = replaceOnce(body, 'pending.current = current;', 'pending.current = current; window.handoff.requested = phase;')
           body = replaceOnce(body, 'if (status.status === "error" || status.status === "unsupported") {', 'if (status.status === "error" || status.status === "unsupported") { window.handoff.failure = status;')
           body = replaceOnce(body, 'if (!matches) return;', 'window.handoff.last = [status.status, frame && [frame.width, frame.height, Object.keys(frame.anchors)], source.anchor, source.size]; if (!matches) return;')
           body = replaceOnce(body, 'current.job.copy(frame, incoming ? "after" : "before");',
             'current.job.copy(frame, incoming ? "after" : "before"); window.handoff.copies.push(incoming ? "after" : "before");')
           body = replaceOnce(body, 'current.phase = "present-before";',
-            `current.phase = "present-before"; ${fault ? 'presented(null, true);' : ''}`)
+            `current.phase = "present-before"; ${fault && !staleGpu ? 'presented(null, true);' : ''}`)
           body = replaceOnce(body, 'const presented = (target, colorWrite) => {',
             'const presented = (target, colorWrite) => { if (window.handoff.draw && target === null && colorWrite) window.handoff.draws++;')
         } else {
@@ -131,22 +166,52 @@ async function handoff(browser, scene, engine, fault) {
     })
     const before = await page.screenshot()
     await page.click(target.trigger)
+    if (staleGpu) {
+      await page.waitForFunction(() => window.handoff.uploads > 0)
+      await settle(page)
+      const held = await page.screenshot()
+      const early = await page.evaluate(target.changed)
+      const copies = await page.evaluate(() => window.handoff.copies)
+      const verifyUpload = () => {
+        assert(!early && copies.length === 0, 'Outgoing upload must precede the copy and DOM update')
+      }
+      if (fault) {
+        assert.throws(verifyUpload, /Outgoing upload/)
+        assert.deepEqual(errors, [])
+        return 'caught an early copy or update with the upload blocked'
+      }
+      verifyUpload()
+      assert.equal(await distance(page, held, before, region), 0)
+      await page.evaluate(() => { window.handoff.blocked = 'capture-after' })
+      await page.waitForFunction(target.changed)
+      await page.waitForFunction(() => window.handoff.lastBlocked === 'capture-after')
+      await settle(page)
+      assert.deepEqual(await page.evaluate(() => window.handoff.copies), ['before'])
+      const outgoing = await page.screenshot()
+      await page.evaluate(() => { window.handoff.time += 500 })
+      await settle(page)
+      assert.equal(await distance(page, outgoing, await page.screenshot(), region), 0,
+        'The outgoing pixels must stay held while the incoming upload is blocked')
+      await page.evaluate(() => { window.handoff.blocked = null })
+    }
     await page.waitForFunction(() => window.handoff.copies.includes('before'), { timeout: 4000 })
     await settle(page)
-    const blocked = await page.screenshot()
-    const committedBehindBlockedDraw = await page.evaluate(target.changed)
-    const blockedMismatch = await distance(page, blocked, before, region)
-    const verifyBlocked = () => assert(!committedBehindBlockedDraw && blockedMismatch === 0,
-      `${scene}: early commit before the outgoing draw (DOM changed: ${committedBehindBlockedDraw}, pixel error: ${blockedMismatch})`)
-    if (fault) {
-      assert(committedBehindBlockedDraw && blockedMismatch > 0)
-      assert.equal(await page.evaluate(() => window.handoff.draws), 0)
-      assert.throws(verifyBlocked, /early commit before the outgoing draw/)
-      assert.deepEqual(errors, [])
-      return 'caught early commit in the DOM and in painted pixels'
+    if (!staleGpu) {
+      const blocked = await page.screenshot()
+      const committedBehindBlockedDraw = await page.evaluate(target.changed)
+      const blockedMismatch = await distance(page, blocked, before, region)
+      const verifyBlocked = () => assert(!committedBehindBlockedDraw && blockedMismatch === 0,
+        `${scene}: early commit before the outgoing draw (DOM changed: ${committedBehindBlockedDraw}, pixel error: ${blockedMismatch})`)
+      if (fault) {
+        assert(committedBehindBlockedDraw && blockedMismatch > 0)
+        assert.equal(await page.evaluate(() => window.handoff.draws), 0)
+        assert.throws(verifyBlocked, /early commit before the outgoing draw/)
+        assert.deepEqual(errors, [])
+        return 'caught early commit in the DOM and in painted pixels'
+      }
+      verifyBlocked()
+      await page.evaluate(() => { window.handoff.draw = true })
     }
-    verifyBlocked()
-    await page.evaluate(() => { window.handoff.draw = true })
     await page.waitForFunction(target.changed)
     await page.waitForFunction(() => window.handoff.copies.includes('after'))
     assert.deepEqual(await page.evaluate(() => window.handoff.copies), ['before', 'after'])

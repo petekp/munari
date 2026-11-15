@@ -13,6 +13,7 @@ import type { Mesh, Texture } from 'three'
 export interface LabSurfaceFrame {
   readonly texture: Texture
   readonly paint: DomPaintReceipt
+  readonly drawTrailsPaint: boolean
 }
 
 const sources = new WeakMap<HTMLCanvasElement, DomTextureSource>()
@@ -35,8 +36,10 @@ function sourceOf(texture: Texture | null) {
 }
 
 export function readSurfaceFrame(texture: Texture): LabSurfaceFrame | null {
-  const paint = sourceOf(texture)?.currentPaint()
-  return paint ? { texture, paint } : null
+  const source = sourceOf(texture)
+  if (!source) return null
+  const paint = source.currentPaint()
+  return paint ? { texture, paint, drawTrailsPaint: source.drawTrailsPaint } : null
 }
 
 type TextureUploader = { initTexture(texture: Texture): void }

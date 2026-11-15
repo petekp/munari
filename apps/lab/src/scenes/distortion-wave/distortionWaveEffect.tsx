@@ -412,7 +412,7 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       for (const request of requests.current.splice(0))
         flushSync(request.update)
     }
-    read()
+    read(gl)
     const drawing = active.current.filter((wave) => wave.snapshotReady)
     const content = drawing.filter((wave) => wave.slot !== null).reverse()
     const instances = [...content, ...drawing]

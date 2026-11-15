@@ -21,6 +21,7 @@ import {
 } from 'three'
 import { texture } from 'three/tsl'
 import type { WebGPURenderer } from 'three/webgpu'
+import { readSurfaceFrame, uploadSurfaceFrame } from './surfaceFrames'
 
 type CaptureFrame = NonNullable<ReturnType<ReturnType<typeof useCaptureFrame>['get']>>
 type Side = 'before' | 'after'
@@ -44,6 +45,7 @@ interface PendingCapture {
   job: CaptureJob
   snapshot: TransitionSnapshot
   phase: 'capture-before' | 'present-before' | 'capture-after'
+  settledSourceId?: number
   timeout: ReturnType<typeof setTimeout>
 }
 
@@ -95,7 +97,7 @@ export function usePairedCapture(capture: CaptureHandle, invalidate: () => void)
     if (current.phase !== 'capture-after') current.job.update()
   }, [])
 
-  const read = () => {
+  const read = (renderer: WebGPURenderer) => {
     const current = pending.current
     if (!current || current.phase === 'present-before') return
     if (status.status === 'error' || status.status === 'unsupported') {
@@ -110,6 +112,18 @@ export function usePairedCapture(capture: CaptureHandle, invalidate: () => void)
       frame.anchors[source.anchor] !== undefined &&
       frame.width === source.size[0] && frame.height === source.size[1]
     if (!matches) return
+    const sampled = readSurfaceFrame(frame.texture)
+    const samePaint = sampled?.paint.frame.sourceId === frame.sourceId &&
+      sampled.paint.frame.generation === frame.generation
+    if (samePaint && sampled.drawTrailsPaint && current.settledSourceId !== frame.sourceId) {
+      current.settledSourceId = frame.sourceId
+      invalidate()
+      return
+    }
+    if (!samePaint || !uploadSurfaceFrame(sampled, renderer)) {
+      invalidate()
+      return
+    }
     const incoming = current.phase === 'capture-after'
     current.job.copy(frame, incoming ? 'after' : 'before')
     lastSourceId.current = frame.sourceId

@@ -159,7 +159,7 @@ export function PostcardStamp({ controller, holder }: { controller: StampControl
         })
       }
     }
-    read()
+    read(gl)
     const stamp = active.current
     const elapsed = stamp?.began == null ? 0 : performance.now() - stamp.began
     if (elapsed >= STAMP_DURATION) active.current = null
