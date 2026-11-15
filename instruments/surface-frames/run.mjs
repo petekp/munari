@@ -18,6 +18,57 @@ const probe = {
   name: 'lab-surface-frame-proof',
   enforce: 'pre',
   transform(code, id) {
+    if (id.endsWith('/surface/SurfaceCanvas.tsx')) {
+      return once(code, '    await renderer.init()', `
+        await renderer.init()
+        const probe = globalThis.gpuProbe
+        if (probe) {
+          const update = renderer.backend.updateTexture.bind(renderer.backend)
+          renderer.backend.updateTexture = (texture, options) => {
+            const source = probe.sources.get(texture)
+            if (!probe.held(source)) return update(texture, options)
+            probe.blocked++
+            const edited = source.element.querySelector('.gallery-card[data-gallery-edit="1"]')
+            if (edited && source.currentPaint()?.read >= probe.minimumRead) probe.freshPaint = true
+            if (!probe.primed.has(texture)) {
+              probe.primed.add(texture)
+              const old = new OffscreenCanvas(source.canvas.width, source.canvas.height)
+              return update(texture, { ...options, image: old })
+            }
+          }
+        }`)
+    }
+    if (id.endsWith('/surface/surfaceSourceRuntime.ts')) {
+      return once(code, '  texture.onUpdate = () => {', `
+      const probe = globalThis.gpuProbe
+      if (probe) {
+        probe.sources.set(texture, source)
+        let onUpdate = texture.onUpdate
+        Object.defineProperty(texture, 'onUpdate', {
+          get: () => probe.held(source) ? null : onUpdate,
+          set: callback => { onUpdate = callback },
+        })
+      }
+      texture.onUpdate = () => {`)
+    }
+    if (id.endsWith('/scenes/gallery/galleryCrossing.ts')) {
+      return once(code, '      setP(from + (to - from) * springEase(q, tune.crossingSpring))', `
+      if (globalThis.gpuProbe && !globalThis.gpuProbe.finish && q >= 1) {
+        setP(from + (to - from) * 0.98)
+        globalThis.gpuProbe.pausedCrossing = true
+        raf = requestAnimationFrame(step)
+        return
+      }
+      setP(from + (to - from) * springEase(q, tune.crossingSpring))`)
+    }
+    if (id.endsWith('/scenes/gallery/Gallery.tsx')) {
+      return once(code, '      <div className="gallery-figure">', `
+      <div className="gallery-figure">
+        {globalThis.gpuProbe && revision === 1 && <div style={{position:'absolute', inset:0, background:'#ff00ff', zIndex:1}} />}`)
+    }
+    if (id.endsWith('/scenes/glass/Glass.tsx')) {
+      return once(code, "'linear-gradient(180deg, rgba(6,8,12,0.62) 0%, rgba(6,8,12,0.44) 55%, rgba(6,8,12,0.30) 100%)'", "globalThis.gpuProbe ? '#ff00ff' : 'linear-gradient(180deg, rgba(6,8,12,0.62) 0%, rgba(6,8,12,0.44) 55%, rgba(6,8,12,0.30) 100%)'")
+    }
     if (id.endsWith('/paint/rasterizedSource.ts')) {
       code = once(code, '      const image = await rasterize(element, scaleX, scaleY)', `
       const check = globalThis.frameProbe?.gallery
@@ -41,6 +92,10 @@ const probe = {
       }`)
     }
     if (id.endsWith('/lib/surfaceFrames.ts')) {
+      if (process.env.STALE_GPU_CONTROL === '1') {
+        code = once(code, '  return uploaded', '  return true')
+      }
+      code = once(code, '        minimumRead = source.nextRead()', '        minimumRead = source.nextRead(); if (globalThis.gpuProbe) globalThis.gpuProbe.minimumRead = minimumRead')
       return once(code, 'frame.paint.read >= minimumRead', '(frame.paint.read >= minimumRead || (globalThis.frameProbe?.acceptStale && globalThis.frameProbe.gallery.oldPublished))')
     }
     if (id.endsWith('/scenes/glass/glassSdf.tsx')) {
@@ -58,7 +113,7 @@ const probe = {
       frameOutput.draw(blitMesh, drawFinal, sampledFrames)
       if (check) {
         check.samples = sampledFrames.length
-        check.heard = sampledFrames.filter(({ presenter }) => presenter.hearsPointer()).length
+        check.heard = panels.filter(({ presenter }) => presenter.hearsPointer()).length
         check.drawFrames++
       }`)
     }
@@ -75,12 +130,18 @@ try {
     args: [...WEBGPU_CHROME_ARGS, '--enable-features=CanvasDrawElement'],
   })
   try {
+    if (process.env.STALE_GPU === '1') {
+      const scene = process.env.STALE_GPU_SCENE
+      if (!scene || scene === 'gallery') await staleGpu(browser, base, 'gallery')
+      if (!scene || scene === 'glass') await staleGpu(browser, base, 'glass')
+    } else {
     await gallery(browser, base)
     await gallery(browser, base, true)
     await galleryNative(browser, base)
     await glass(browser, base, false, false)
     await glass(browser, base, true, false)
     await glass(browser, base, false, true)
+    }
   } finally {
     await browser.close()
   }
@@ -195,6 +256,74 @@ async function glass(browser, base, early, snapdom) {
     await page.waitForFunction(() => window.frameProbe.glass.heard === 2)
     assert.deepEqual(errors, [])
     console.log(`Glass claimed presentation after the final color draw with ${engine}`)
+  } finally {
+    await page.close()
+  }
+}
+
+async function magentaPixels(page) {
+  const png = Buffer.from(await page.screenshot()).toString('base64')
+  return page.evaluate(async encoded => {
+    const image = await createImageBitmap(await (await fetch('data:image/png;base64,' + encoded)).blob())
+    const canvas = new OffscreenCanvas(image.width, image.height)
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(image, 0, 0)
+    const { data } = ctx.getImageData(0, 0, image.width, image.height)
+    let count = 0
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] > 140 && data[i + 1] < 90 && data[i + 2] > 125) count++
+    }
+    return count
+  }, png)
+}
+
+async function staleGpu(browser, base, scene) {
+  const { page, errors } = await pageFor(browser, { scene, fault: null })
+  try {
+    await page.evaluateOnNewDocument(() => {
+      const probe = window.gpuProbe = {
+        blocked: 0, release: false, minimumRead: Infinity, freshPaint: false,
+        sources: new WeakMap(), primed: new WeakSet(),
+      }
+      probe.held = source => !!source && !probe.release && !!source.element.querySelector(
+        '.gallery-card[data-gallery-edit="1"], [data-glass-root]',
+      )
+    })
+    await page.goto(new URL(`?scene=${scene}&framed&bare&capture=snapdom`, base).href, { waitUntil: 'domcontentloaded' })
+    await page.waitForFunction(() => window.__munari?.engine)
+    assert.equal(await page.evaluate(() => window.__munari.engine()), 'snapdom')
+    if (scene === 'gallery') {
+      await page.waitForFunction(() => window.frameProbe.gallery.captures.some(c => c.item === 'genie'))
+      await page.evaluate(() => window.frameProbe.gallery.releaseFresh())
+      await page.click('.gallery-pick[aria-label="Knobs"]')
+      await page.waitForFunction(() => window.gpuProbe.freshPaint)
+      assert.equal(await page.$eval('.gallery-scrub', input => input.valueAsNumber), 0)
+    } else {
+      await page.waitForFunction(() => window.gpuProbe.blocked > 0 && window.frameProbe.glass.drawFrames > 3)
+      assert.equal(await page.evaluate(() => window.frameProbe.glass.heard), 0)
+    }
+    const before = await magentaPixels(page)
+    if (scene === 'gallery') {
+      assert.equal(await page.$eval('.gallery-scrub', input => input.valueAsNumber), 0)
+    } else {
+      assert.equal(await page.evaluate(() => window.frameProbe.glass.heard), 0)
+    }
+    await page.evaluate(() => { window.gpuProbe.release = true })
+    if (scene === 'gallery') {
+      await page.waitForFunction(() => {
+        const p = document.querySelector('.gallery-scrub').valueAsNumber
+        return window.gpuProbe.pausedCrossing && p === 0.98
+      })
+      assert(await magentaPixels(page) > before + 100, 'Gallery must draw the new texture during the crossing')
+      assert.equal(await page.$eval('.gallery-scrub', input => input.valueAsNumber), 0.98)
+      await page.evaluate(() => { window.gpuProbe.finish = true })
+      await page.waitForSelector('.gallery-pick[aria-label="Knobs"][aria-current="true"]')
+    } else {
+      await page.waitForFunction(() => window.frameProbe.glass.heard === 2)
+      assert(await magentaPixels(page) > before + 100, 'Glass must draw the new texture onto the screen')
+    }
+    assert.deepEqual(errors, [])
+    console.log(`${scene}: stale upload held the handoff and fresh pixels completed it`)
   } finally {
     await page.close()
   }

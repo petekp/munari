@@ -37,6 +37,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import { WebGPURenderer } from 'three/webgpu'
 import {
   Surface,
   SurfaceCanvas,
@@ -219,8 +220,9 @@ function PixelPerfect() {
 
 export function GalleryApp() {
   const surface = useSurfaceHandle('gallery')
+  const renderer = useRef<WebGPURenderer>(null)
   const { slots, p, running, pending, origin, landedAt, lifted, current, goTo, onScrub, cross } =
-    useGalleryCrossing(surface, ITEMS.length)
+    useGalleryCrossing(surface, ITEMS.length, renderer)
   const drive = useRef<RefractionDrive>({ t: 0 })
   drive.current.t = origin === 0 ? p : 1 - p
 
@@ -426,6 +428,7 @@ export function GalleryApp() {
         onCreated={(state) => {
           state.gl.setClearAlpha(0)
           window.__r3f = state
+          if (state.gl instanceof WebGPURenderer) renderer.current = state.gl
         }}
       >
         <PixelPerfect />

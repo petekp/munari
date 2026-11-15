@@ -2,12 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SceneSurface, useSurfaceTexture } from '@petepetrash/munari'
-import { drawSurfaceOutput, readSurfaceFrame } from '../../lib/surfaceFrames'
+import { GlassOutput } from './GlassOutput'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   GLASS_DEFAULTS,
-  GlassSdfCompositor,
   MAX_BLOBS,
   MAX_GLOWS,
   MAX_RIPPLES,
@@ -659,8 +658,6 @@ function WebAppFraming() {
 
 // ---- the scene ----------------------------------------------------------
 
-const frameOutput = { read: readSurfaceFrame, draw: drawSurfaceOutput }
-
 export function Glass() {
   // Six, and "sparse" is a consequence of the span rather than the count:
   // each orb is off screen for most of its cycle (see glassTuning.orbSpan),
@@ -876,7 +873,7 @@ export function Glass() {
           content={<CtaChip onStrike={strike} onRelease={release} />}
         />
       </group>
-      <GlassSdfCompositor lightDir={[4, 7, 5]} frameOutput={frameOutput} />
+      <GlassOutput />
     </>
   )
 }

@@ -1,6 +1,7 @@
 // Gallery crossing — the selected DOM edit gates automatic travel.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSurfaceSupport, useSurfaceTextureOf, type SurfaceHandle } from '@petepetrash/munari'
+import type { WebGPURenderer } from 'three/webgpu'
 import { waitForSurfaceFrame } from '../../lib/surfaceFrames'
 import { springEase } from '../refraction/refractionLaw'
 import { galleryTuning as tune } from './galleryTuning'
@@ -11,7 +12,7 @@ type GalleryEdit = { from: Slot; to: Slot; revision: number }
 
 const READ_DEADLINE_MS = 2500
 
-export function useGalleryCrossing(surface: SurfaceHandle, itemCount: number) {
+export function useGalleryCrossing(surface: SurfaceHandle, itemCount: number, renderer: React.RefObject<WebGPURenderer | null>) {
   const supported = useSurfaceSupport()
   const left = useSurfaceTextureOf(surface, 'item-0')
   const right = useSurfaceTextureOf(surface, 'item-1')
@@ -95,13 +96,14 @@ export function useGalleryCrossing(surface: SurfaceHandle, itemCount: number) {
         destinationTexture,
         (content) => content.querySelector(marker) !== null,
         controller.signal,
+        () => renderer.current,
       ).then((frame) => { if (frame) finish(true) })
     }
     return () => {
       clearTimeout(timeout)
       controller.abort()
     }
-  }, [destinationTexture, edit])
+  }, [destinationTexture, edit, renderer])
 
   // The animated crossing. Driven from `requestAnimationFrame` rather than
   // the renderer's frame because it also moves the scrub input, which is

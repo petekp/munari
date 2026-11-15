@@ -39,10 +39,40 @@ export function readSurfaceFrame(texture: Texture): LabSurfaceFrame | null {
   return paint ? { texture, paint } : null
 }
 
+type TextureUploader = { initTexture(texture: Texture): void }
+
+const uploads = new WeakMap<TextureUploader, WeakMap<Texture, { paint: DomPaintReceipt; version: number }>>()
+
+export function uploadSurfaceFrame(frame: LabSurfaceFrame, renderer: TextureUploader): boolean {
+  let receipts = uploads.get(renderer)
+  if (!receipts) {
+    receipts = new WeakMap()
+    uploads.set(renderer, receipts)
+  }
+  const { texture, paint } = frame
+  const receipt = receipts.get(texture)
+  if (receipt?.paint === paint && receipt.version === texture.version) return true
+  const previous = texture.onUpdate
+  let uploaded = false
+  texture.onUpdate = (updated) => {
+    previous?.(updated)
+    uploaded = texture.source.dataReady && sourceOf(texture)?.currentPaint() === paint
+  }
+  try {
+    texture.needsUpdate = true
+    renderer.initTexture(texture)
+  } finally {
+    texture.onUpdate = previous
+  }
+  if (uploaded) receipts.set(texture, { paint, version: texture.version })
+  return uploaded
+}
+
 export function waitForSurfaceFrame(
   texture: Texture,
   matches: (content: HTMLElement) => boolean,
   signal: AbortSignal,
+  renderer: () => TextureUploader | null,
 ): Promise<LabSurfaceFrame | null> {
   const source = sourceOf(texture)
   if (!source || signal.aborted) return Promise.resolve(null)
@@ -69,7 +99,9 @@ export function waitForSurfaceFrame(
         // Inspect in a frame after the engine has had a chance to resolve it.
         const frame = readSurfaceFrame(texture)
         if (frame && frame.paint.read >= minimumRead) {
-          if (!source.drawTrailsPaint || sawMatchingPaint) {
+          const uploader = renderer()
+          const ready = !source.drawTrailsPaint || sawMatchingPaint
+          if (ready && uploader && uploadSurfaceFrame(frame, uploader)) {
             finish(frame)
             return
           }
