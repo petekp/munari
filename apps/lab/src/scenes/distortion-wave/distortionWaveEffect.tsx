@@ -62,7 +62,17 @@ interface WaveEffectProps {
   capture: CaptureHandle
   controller: WaveController
 }
+interface SurfaceBend {
+  pull: number
+  x: number
+  y: number
+  latest: number
+}
+
 interface ActiveWave {
+  order: number
+  bend: SurfaceBend
+  phase: ReturnType<ReturnType<typeof createWaveMotion>['frame']>
   request: WaveRequest
   committed: boolean
   overlapping: boolean
@@ -123,15 +133,10 @@ function writeWave(
   values: ReturnType<typeof createDistortionWaveMaterial>,
   index: number,
   wave: ActiveWave,
-  now: number,
   content: boolean,
   atlasWidth: number,
 ) {
-  const progress =
-    wave.started === null
-      ? 0
-      : Math.min(1, (now - wave.started) / wave.request.duration)
-  const phase = wave.motion.frame(progress)
+  const { phase, bend } = wave
   const p = values.parameters
   p.size.values[index].set(wave.bounds.width, wave.bounds.height)
   p.origin.values[index].set(phase.x, phase.y)
@@ -148,6 +153,7 @@ function writeWave(
   p.sampled.values[index] = wave.slot === null ? 0 : 1
   p.snapshotIndex.values[index] = wave.slot ?? 0
   p.paired.values[index] = wave.paired ? 1 : 0
+  p.incoming.values[index] = bend.latest === wave.order ? 1 : 0
   p.atlasInset.values[index] = 0.5 / atlasWidth
   p.scale.values[index] = wave.motion.scale
   p.ring.values[index] = wave.motion.ring ? 1 : 0
@@ -166,8 +172,8 @@ function writeWave(
   p.front.values[index] = phase.radius
   p.swell.values[index] = phase.swell
   p.energy.values[index] = phase.energy
-  p.pull.values[index] = phase.pull
-  p.pullOrigin.values[index].set(wave.motion.pullX, wave.motion.pullY)
+  p.pull.values[index] = bend.pull
+  p.pullOrigin.values[index].set(bend.x, bend.y)
   p.glow.values[index] = phase.glow
   p.rim.values[index] = phase.rim
   p.clear.values[index] = phase.clear
@@ -355,7 +361,13 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       !request.boxless &&
       request.buildupDuration > 0 &&
       request.buildupDisplacement > 0
+    const bend = active.current.find(
+      (wave) => wave.request.target === request.target,
+    )?.bend ?? { pull: 0, x: motion.pullX, y: motion.pullY, latest: 0 }
     const wave: ActiveWave = {
+      order: sequence.current,
+      bend,
+      phase: motion.frame(0),
       request,
       committed: false,
       overlapping: active.current.length > 0,
@@ -464,9 +476,42 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
           }
           lastSourceId.current = frame.sourceId
           if (incoming) begin(waiting)
-          else waiting.snapshotReady = true
+          else {
+            waiting.snapshotReady = true
+            waiting.bend.latest = waiting.order
+          }
         }
       }
+    }
+  }
+
+  const sampleActiveWaves = (now: number, reduced: boolean) => {
+    const sharedPulls = new Map<SurfaceBend, number>()
+    for (const wave of [...active.current]) {
+      const ended =
+        wave.started !== null && now - wave.started >= wave.request.duration
+      if (ended || reduced || !followTarget(wave)) {
+        retire(wave)
+        continue
+      }
+      const progress =
+        wave.started === null ? 0 : (now - wave.started) / wave.request.duration
+      const phase = wave.motion.frame(progress)
+      wave.phase = phase
+      const previous = sharedPulls.get(wave.bend) ?? 0
+      if (previous === 0 && wave.bend.pull === 0 && phase.pull > 0) {
+        wave.bend.x = wave.motion.pullX
+        wave.bend.y = wave.motion.pullY
+      }
+      sharedPulls.set(wave.bend, Math.max(previous, phase.pull))
+    }
+    for (const [bend, pull] of sharedPulls) bend.pull = pull
+    for (const wave of active.current) {
+      const { phase, bend } = wave
+      const needsInk = wave.request.boxless && phase.glow > 0
+      const needsIncoming =
+        wave.paired && bend.latest === wave.order && bend.pull > 0
+      if (phase.revealed && !needsIncoming && !needsInk) releaseSnapshot(wave)
     }
   }
 
@@ -488,22 +533,10 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       invalidate()
       return
     }
-    const now = performance.now()
     const reduced = window.matchMedia(
       '(prefers-reduced-motion: reduce)',
     ).matches
-    for (const wave of [...active.current]) {
-      const ended =
-        wave.started !== null && now - wave.started >= wave.request.duration
-      if (ended || reduced || !followTarget(wave)) retire(wave)
-      else if (wave.started !== null) {
-        const progress = (now - wave.started) / wave.request.duration
-        const phase = wave.motion.frame(progress)
-        const needsInk = wave.request.boxless && phase.glow > 0
-        if (phase.revealed && phase.pull === 0 && !needsInk)
-          releaseSnapshot(wave)
-      }
-    }
+    sampleActiveWaves(performance.now(), reduced)
     if (reduced) {
       for (const request of requests.current.splice(0))
         flushSync(request.update)
@@ -516,14 +549,7 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
     instances.forEach((wave, index) => {
       const atlasWidth =
         wave.slot === null ? 1 : resources.targets[wave.slot].width
-      writeWave(
-        resources.wave,
-        index,
-        wave,
-        now,
-        index < content.length,
-        atlasWidth,
-      )
+      writeWave(resources.wave, index, wave, index < content.length, atlasWidth)
       const bounds = wave.bounds
       resources.pose.makeScale(
         (bounds.width * viewport.width) / size.width,

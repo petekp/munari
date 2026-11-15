@@ -157,6 +157,7 @@ function createWaveParameters() {
     light: waveNumber(0),
     paletteCount: waveNumber(6),
     paired: waveNumber(0),
+    incoming: waveNumber(0),
     atlasInset: waveNumber(0),
   }
   if (cursor > stride * 4)
@@ -212,6 +213,7 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
   const visibility = parameters.visibility.node
   const content = parameters.content.node
   const paired = parameters.paired.node
+  const incoming = parameters.incoming.node
   const texel = parameters.atlasInset.node
   const sampled = parameters.sampled.node
   const snapshotIndex = parameters.snapshotIndex.node.toInt()
@@ -266,7 +268,6 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
     }
     const sd = distanceFromEdge(center)
     const mask = clamp(float(0.5).sub(sd.mul(pixelRatio)), 0, 1)
-    const bulge = normal.mul(energy.mul(amplitude).mul(lens))
     const fromPull = point.sub(pullOrigin)
     const pullDistance = length(fromPull)
     const pullWidth = max(lensWidth.mul(2.2), 28)
@@ -279,6 +280,14 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
           .mul(exp(pullDistance.div(pullWidth).pow(2).negate()))
           .mul(mix(edgeHold, 1, flexEdge)),
       )
+    const outlineOffset = pullOffset.mul(flexEdge)
+    const pulledCenter = center.add(outlineOffset)
+    const bentEdge = max(sd, distanceFromEdge(pulledCenter))
+    const bentMask = clamp(float(0.5).sub(bentEdge.mul(pixelRatio)), 0, 1)
+    // Ripples can overlap, but their refraction must leave the shared border in place.
+    const rimRefraction = smoothstep(1, 12, bentEdge.negate())
+    const refraction = mix(1, rimRefraction, paired)
+    const bulge = normal.mul(energy.mul(amplitude).mul(lens).mul(refraction))
     const sampleOffset = pullOffset.sub(bulge)
     const sampleAt = at.add(
       vec2(sampleOffset.x, sampleOffset.y.negate()).div(size),
@@ -291,21 +300,17 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
     const redAt = clamp(sampleAt.add(split), 0, 1).toVar()
     const greenAt = clamp(sampleAt, 0, 1).toVar()
     const blueAt = clamp(sampleAt.sub(split), 0, 1).toVar()
-    const outlineOffset = pullOffset.mul(flexEdge)
     const baseAt = clamp(
       at.add(vec2(outlineOffset.x, outlineOffset.y.negate()).div(size)),
       0,
       1,
     ).toVar()
-    const pulledCenter = center.add(outlineOffset)
     const cropEdge = abs(pulledCenter).sub(half)
     const backdrop = smoothstep(
       0,
       float(1).div(pixelRatio),
       max(cropEdge.x, cropEdge.y),
     )
-    const bentEdge = max(sd, distanceFromEdge(pulledCenter))
-    const bentMask = clamp(float(0.5).sub(bentEdge.mul(pixelRatio)), 0, 1)
     const waveCover = mix(
       float(1),
       smoothstep(seam.negate(), seam, d),
@@ -321,6 +326,7 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
       .sub(waveCover)
       .mul(content)
       .mul(paired)
+      .mul(incoming)
       .mul(smoothstep(0, 0.75, pull.mul(pixelRatio)))
       .toVar()
     const gapCover = max(backdropHold.sub(waveCover).sub(incomingCover), 0)

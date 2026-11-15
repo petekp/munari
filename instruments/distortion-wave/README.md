@@ -79,7 +79,8 @@ snapshot at a fixed buildup time with the bend enabled and disabled. It checks
 that the bent file tile exposes the backdrop and clears its original
 antialiased border at a fractional device-pixel position. A separate Copy case
 checks that the incoming border stays out of the gap while the bend releases
-and that an incoming detail moves with the bend. It also
+and that an incoming detail moves with the bend. Repeated Copy and Delete/Undo
+cases check that overlapping ripples stay inside one moving outline. It also
 scrolls an in-flight control wave and checks that it leaves its old screen
 position, follows the control, and reuses its existing snapshot.
 

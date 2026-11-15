@@ -145,6 +145,8 @@ order. Ordinary hover does not request snapshots.
 Larger targets bend the outgoing image before the traveling front reveals the
 new state. Rounded containers capture the incoming state too, so the front
 reveals it along the same bent outline before returning to the live control.
+Overlapping waves on one container share a single bend and reveal each state
+in order. The bend keeps its origin until it settles.
 Targets set the buildup in milliseconds and its displacement in
 CSS pixels with `data-wave-buildup-duration` and
 `data-wave-buildup-displacement`. A target with no buildup launches immediately.

@@ -171,6 +171,46 @@ async function copyRelease(browser, mode) {
   }
 }
 
+async function overlapCard(browser, mode, undo) {
+  const sample = async (page, secondClick) => {
+    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: async () => {} },
+    }))
+    const panel = await bounds(page, undo ? '.wave-delete' : '.wave-copy')
+    const source = undo ? await bounds(page, '.wave-delete-action') : null
+    const x = source ? source.x + source.width / 2 : panel.x + panel.width - 27
+    const y = source ? source.y + source.height / 2 : panel.y + panel.height - 34
+    const click = () => page.mouse.click(x, y)
+    await click()
+    await page.waitForFunction(deleting => deleting
+      ? document.querySelector('.wave-delete').dataset.deleted === 'true'
+      : document.querySelector('.wave-copy').dataset.copyState === 'copied', {}, undo)
+    await advance(page, secondClick)
+    await page.$eval('.wave-overlay', element => { element.style.visibility = 'hidden' })
+    const rest = await page.screenshot()
+    await page.$eval('.wave-overlay', element => { element.style.visibility = '' })
+    await click()
+    if (undo) await page.waitForFunction(() => document.querySelector('.wave-delete').dataset.deleted === 'false')
+    await advance(page, secondClick + 200)
+    return { rest, bent: await page.screenshot(), panel }
+  }
+  const page = await prepare(browser, mode)
+  try {
+    const isolated = await sample(page, 2000)
+    await advance(page, 4000)
+    const overlap = await compareAfterReset(browser, mode, other => sample(other, 160))
+    const { exposed, stationaryBorder } = await exposedBackground(
+      page, isolated.rest, isolated.bent, isolated.panel, overlap.bent,
+    )
+    assert(exposed > 30, 'An individual card wave must recede from the original outline')
+    assert.equal(stationaryBorder, 0, 'Overlapping waves on the same card must leave a single outline')
+    const movement = await compareWaveImages(page, isolated.bent, overlap.bent, isolated.bent, isolated.panel)
+    assert(movement.regionPixels[0] > 100, 'The earlier ripple should remain visible inside the shared silhouette')
+  } finally {
+    await page.close()
+  }
+}
+
 async function compareAfterReset(browser, mode, read) {
   const page = await prepare(browser, mode)
   try { return await read(page) } finally { await page.close() }
@@ -283,6 +323,8 @@ for (const mode of modes.length ? modes : ['native', 'snapdom']) {
   try {
     await bend(browser, mode)
     await copyRelease(browser, mode)
+    await overlapCard(browser, mode, false)
+    await overlapCard(browser, mode, true)
     await scroll(browser, mode)
     await scrollTheme(browser, mode)
     await queuedOrigin(browser, mode)
