@@ -302,11 +302,18 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
     )
     const bentEdge = max(sd, distanceFromEdge(pulledCenter))
     const bentMask = clamp(float(0.5).sub(bentEdge.mul(pixelRatio)), 0, 1)
-    const cover = mix(
+    const waveCover = mix(
       float(1),
       smoothstep(seam.negate(), seam, d),
       launched,
     ).mul(content)
+    // The incoming DOM still has its straight border until the pull ends.
+    const edgeRetreat = bentEdge.sub(sd).mul(pixelRatio)
+    const backdropHold = float(1).sub(bentMask)
+      .mul(smoothstep(0, 1, edgeRetreat))
+      .mul(content)
+    const gapCover = max(backdropHold.sub(waveCover), 0)
+    const cover = waveCover.add(gapCover)
     const originalColor = vec4(0).toVar()
     const refractedColor = vec3(0).toVar()
     If(sampled.greaterThan(0), () => {
@@ -329,7 +336,7 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
       mix(originalColor.rgb, refractedColor, mask),
       background,
       backdrop,
-    ).mul(cover)
+    ).mul(waveCover).add(background.mul(gapCover))
     const ink = sampled.greaterThan(0).select(
       clamp(length(originalColor.rgb.sub(background)), 0, 1)
         .mul(6)

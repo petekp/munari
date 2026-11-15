@@ -25,7 +25,7 @@ async function prepare(browser, mode) {
   return page
 }
 
-async function exposedBackground(page, unbent, bent, panel) {
+async function exposedBackground(page, unbent, bent, panel, perimeter = bent) {
   return page.evaluate(async ({ images, panel }) => {
     const decode = async data => {
       const image = new Image()
@@ -36,7 +36,7 @@ async function exposedBackground(page, unbent, bent, panel) {
       context.drawImage(image, 0, 0)
       return context
     }
-    const [rest, flex] = await Promise.all(images.map(decode))
+    const [rest, flex, edgeFrame] = await Promise.all(images.map(decode))
     const dpr = devicePixelRatio
     const x = Math.floor(panel.x * dpr)
     const y = Math.floor(panel.y * dpr)
@@ -50,6 +50,7 @@ async function exposedBackground(page, unbent, bent, panel) {
       Math.abs(pixels[i + 1] - background[1]),
       Math.abs(pixels[i + 2] - background[2]),
     )
+    const edgePixels = edgeFrame.getImageData(x, y, width, height).data
     let exposed = 0
     let stationaryBorder = 0
     const inset = Math.ceil(3 * dpr)
@@ -67,12 +68,12 @@ async function exposedBackground(page, unbent, bent, panel) {
         if (backgroundDelta(during, inner) >= 4 || backgroundDelta(before, inner) < 8) continue
         exposed++
         for (let depth = 0; depth < stroke; depth++) {
-          if (backgroundDelta(during, at(along, depth)) > 8) stationaryBorder++
+          if (backgroundDelta(edgePixels, at(along, depth)) > 8) stationaryBorder++
         }
       }
     }
     return { exposed, stationaryBorder }
-  }, { images: [unbent, bent].map(image => Buffer.from(image).toString('base64')), panel })
+  }, { images: [unbent, bent, perimeter].map(image => Buffer.from(image).toString('base64')), panel })
 }
 
 async function bend(browser, mode) {
@@ -106,6 +107,30 @@ async function bend(browser, mode) {
     const { exposed, stationaryBorder } = await exposedBackground(page, unbent, bent, panel)
     assert(exposed > 30, 'The tile must bow inward and expose the backdrop before launch')
     assert.equal(stationaryBorder, 0, 'The original border must clear where the tile bends away')
+  } finally {
+    await page.close()
+  }
+}
+
+async function copyRelease(browser, mode) {
+  const page = await prepare(browser, mode)
+  try {
+    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: async () => {} },
+    }))
+    const panel = await bounds(page, '.wave-copy')
+    await page.mouse.move(panel.x + panel.width - 27, panel.y + panel.height - 34)
+    const rest = await page.screenshot()
+    await page.mouse.down()
+    await page.mouse.up()
+    await page.waitForFunction(() => document.querySelector('.wave-copy').dataset.copyState === 'copied')
+    await advance(page, 155)
+    const bent = await page.screenshot()
+    await advance(page, 200)
+    const releasing = await page.screenshot()
+    const { exposed, stationaryBorder } = await exposedBackground(page, rest, bent, panel, releasing)
+    assert(exposed > 30, 'Copy must bend inward before release')
+    assert.equal(stationaryBorder, 0, 'The incoming Copy border must remain hidden where the panel is still bent')
   } finally {
     await page.close()
   }
@@ -220,6 +245,7 @@ for (const mode of modes.length ? modes : ['native', 'snapdom']) {
   })
   try {
     await bend(browser, mode)
+    await copyRelease(browser, mode)
     await scroll(browser, mode)
     await scrollTheme(browser, mode)
     await queuedOrigin(browser, mode)

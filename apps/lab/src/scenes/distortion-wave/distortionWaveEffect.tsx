@@ -431,7 +431,7 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
         const progress = (now - wave.started) / wave.request.duration
         const phase = wave.motion.frame(progress)
         const needsInk = wave.request.boxless && phase.glow > 0
-        if (phase.revealed && !needsInk) releaseSnapshot(wave)
+        if (phase.revealed && phase.pull === 0 && !needsInk) releaseSnapshot(wave)
       }
     }
     if (reduced) {
