@@ -104,6 +104,7 @@ async function reveal(browser, mode, name) {
       await choose('Lagoon')
       intermediate = await native()
       if (name === 'spaced') {
+        await page.waitForFunction(() => !document.querySelector('[data-munari-parked]'))
         await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 1000 })
         await settle(page)
         expected = await native()
@@ -130,10 +131,13 @@ async function reveal(browser, mode, name) {
     assert(heldMismatch.meanSquared < latestDistance.meanSquared, `${name}: the outgoing state must stay visible before its wave passes`)
     if (name === 'held' || name === 'checklist') assert(heldMismatch.meanSquared < intermediateDistance.meanSquared, 'The older mask must remain above the next outgoing state')
     assert(hiddenMismatch.changed > 100, `${name}: hiding the masks must expose a different state`)
+    await page.waitForFunction(() => !document.querySelector('[data-munari-parked]'))
     await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 20000 })
     if (name === 'overflow') {
       await page.waitForFunction(() => window.waveCommits.length === 10)
       assert.deepEqual(await page.evaluate(() => window.waveCommits), ['Lagoon','Papaya','Silver','Lagoon','Papaya','Silver','Lagoon','Papaya','Lagoon','Silver'])
+      await settle(page)
+      await page.waitForFunction(() => !document.querySelector('[data-munari-parked]'))
       await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 40000 })
     }
     await settle(page)

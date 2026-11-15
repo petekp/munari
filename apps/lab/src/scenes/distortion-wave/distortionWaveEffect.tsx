@@ -68,6 +68,7 @@ interface ActiveWave {
   overlapping: boolean
   slot: number | null
   snapshotReady: boolean
+  paired: boolean
   started: number | null
   timeout: ReturnType<typeof setTimeout> | null
   bounds: DOMRect
@@ -124,6 +125,7 @@ function writeWave(
   wave: ActiveWave,
   now: number,
   content: boolean,
+  atlasWidth: number,
 ) {
   const progress =
     wave.started === null
@@ -145,6 +147,8 @@ function writeWave(
   p.light.values[index] = content ? 0 : 1
   p.sampled.values[index] = wave.slot === null ? 0 : 1
   p.snapshotIndex.values[index] = wave.slot ?? 0
+  p.paired.values[index] = wave.paired ? 1 : 0
+  p.atlasInset.values[index] = 0.5 / atlasWidth
   p.scale.values[index] = wave.motion.scale
   p.ring.values[index] = wave.motion.ring ? 1 : 0
   p.amplitude.values[index] = wave.motion.amplitude * wave.request.intensity
@@ -232,15 +236,18 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
     [resources],
   )
 
-  const commit = useCallback((wave: ActiveWave) => {
-    if (wave.committed) return
-    wave.committed = true
+  const clearCapture = useCallback((wave: ActiveWave) => {
     if (wave.timeout !== null) clearTimeout(wave.timeout)
+    wave.timeout = null
     if (pending.current === wave) pending.current = null
     const ownedSnapshot = wave.snapshot
     setSnapshot((current) => (current === ownedSnapshot ? null : current))
+  }, [])
+
+  const commit = useCallback((wave: ActiveWave) => {
+    if (wave.committed) return
+    wave.committed = true
     flushSync(wave.request.update)
-    wave.started ??= performance.now()
   }, [])
 
   const releaseSnapshot = useCallback(
@@ -256,12 +263,52 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
   const retire = useCallback(
     (wave: ActiveWave) => {
       active.current = active.current.filter((current) => current !== wave)
+      clearCapture(wave)
       commit(wave)
       releaseSnapshot(wave)
       invalidate()
     },
-    [commit, invalidate, releaseSnapshot],
+    [clearCapture, commit, invalidate, releaseSnapshot],
   )
+
+  const requestCapture = useCallback(
+    (wave: ActiveWave, source: WaveSnapshot) => {
+      wave.snapshot = source
+      pending.current = wave
+      setSnapshot(source)
+      wave.timeout = setTimeout(() => {
+        if (pending.current === wave) retire(wave)
+      }, 1000)
+      invalidate()
+    },
+    [invalidate, retire],
+  )
+
+  const begin = (wave: ActiveWave) => {
+    clearCapture(wave)
+    wave.started = performance.now()
+    invalidate()
+  }
+
+  const onOutgoingDrawn = (wave: ActiveWave) => {
+    commit(wave)
+    if (pending.current !== wave) return
+    if (!wave.paired) {
+      begin(wave)
+      return
+    }
+    const incoming = createWaveSnapshot(wave.request.target, ++sequence.current)
+    if (
+      !incoming ||
+      incoming.bounds.width !== wave.bounds.width ||
+      incoming.bounds.height !== wave.bounds.height
+    ) {
+      retire(wave)
+      return
+    }
+    clearCapture(wave)
+    requestCapture(wave, incoming)
+  }
 
   const prepare = useCallback(() => {
     if (pending.current || requests.current.length === 0) return
@@ -300,34 +347,35 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       return
     }
     const motion = motionFor(request, targetBounds, bounds)
+    const radius =
+      Number.parseFloat(getComputedStyle(request.target).borderTopLeftRadius) ||
+      0
+    const paired =
+      radius > 0 &&
+      !request.boxless &&
+      request.buildupDuration > 0 &&
+      request.buildupDisplacement > 0
     const wave: ActiveWave = {
       request,
       committed: false,
       overlapping: active.current.length > 0,
       slot,
       snapshotReady: false,
+      paired,
       started: null,
       timeout: null,
       bounds,
       targetBounds,
       left: bounds.left,
       top: bounds.top,
-      snapshot: nextSnapshot,
+      snapshot: null,
       motion,
-      radius:
-        Number.parseFloat(
-          getComputedStyle(request.target).borderTopLeftRadius,
-        ) || 0,
+      radius,
       background: nextSnapshot.background,
     }
     active.current.push(wave)
-    pending.current = wave
-    setSnapshot(nextSnapshot)
-    wave.timeout = setTimeout(() => {
-      if (pending.current === wave) retire(wave)
-    }, 1000)
-    invalidate()
-  }, [invalidate, resources, retire])
+    requestCapture(wave, nextSnapshot)
+  }, [invalidate, requestCapture, resources, retire])
 
   useLayoutEffect(() => {
     const queuedRequests = requests.current
@@ -368,7 +416,7 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       waiting &&
       waiting.snapshot &&
       waiting.slot !== null &&
-      !waiting.snapshotReady
+      (!waiting.snapshotReady || waiting.committed)
     ) {
       if (status.status === 'error' || status.status === 'unsupported')
         retire(waiting)
@@ -384,18 +432,39 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
           frame.height === waiting.snapshot.size[1]
         if (fresh && matched) {
           const target = resources.targets[waiting.slot]
-          target.setSize(
-            Math.min(4096, Math.ceil(frame.width * gl.getPixelRatio())),
-            Math.min(4096, Math.ceil(frame.height * gl.getPixelRatio())),
+          const incoming = waiting.committed
+          const columns = waiting.paired ? 2 : 1
+          if (!incoming)
+            target.setSize(
+              columns *
+                Math.min(
+                  4096 / columns,
+                  Math.ceil(frame.width * gl.getPixelRatio()),
+                ),
+              Math.min(4096, Math.ceil(frame.height * gl.getPixelRatio())),
+            )
+          const tileWidth = target.width / columns
+          target.viewport.set(
+            incoming ? tileWidth : 0,
+            0,
+            tileWidth,
+            target.height,
           )
           resources.map.value = frame.texture
           const previous = gl.getRenderTarget()
+          const autoClear = gl.autoClear
+          gl.autoClear = !incoming
           gl.setRenderTarget(target)
-          gl.render(resources.scene, resources.camera)
-          gl.setRenderTarget(previous)
-          resources.map.value = resources.placeholder
+          try {
+            gl.render(resources.scene, resources.camera)
+          } finally {
+            gl.setRenderTarget(previous)
+            gl.autoClear = autoClear
+            resources.map.value = resources.placeholder
+          }
           lastSourceId.current = frame.sourceId
-          waiting.snapshotReady = true
+          if (incoming) begin(waiting)
+          else waiting.snapshotReady = true
         }
       }
     }
@@ -431,7 +500,8 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
         const progress = (now - wave.started) / wave.request.duration
         const phase = wave.motion.frame(progress)
         const needsInk = wave.request.boxless && phase.glow > 0
-        if (phase.revealed && phase.pull === 0 && !needsInk) releaseSnapshot(wave)
+        if (phase.revealed && phase.pull === 0 && !needsInk)
+          releaseSnapshot(wave)
       }
     }
     if (reduced) {
@@ -444,7 +514,16 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
     const instances = [...content, ...drawing]
     resources.wave.pixelRatio.value = gl.getPixelRatio()
     instances.forEach((wave, index) => {
-      writeWave(resources.wave, index, wave, now, index < content.length)
+      const atlasWidth =
+        wave.slot === null ? 1 : resources.targets[wave.slot].width
+      writeWave(
+        resources.wave,
+        index,
+        wave,
+        now,
+        index < content.length,
+        atlasWidth,
+      )
       const bounds = wave.bounds
       resources.pose.makeScale(
         (bounds.width * viewport.width) / size.width,
@@ -494,7 +573,7 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
           if (!wave?.snapshotReady || wave.committed) return
           queueMicrotask(() => {
             if (pending.current === wave && active.current.includes(wave))
-              commit(wave)
+              onOutgoingDrawn(wave)
           })
         }}
       />

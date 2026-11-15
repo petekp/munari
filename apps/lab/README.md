@@ -143,7 +143,9 @@ at most three page snapshots, bound the retained images. Extra actions wait in
 order. Ordinary hover does not request snapshots.
 
 Larger targets bend the outgoing image before the traveling front reveals the
-new state. Targets set the buildup in milliseconds and its displacement in
+new state. Rounded containers capture the incoming state too, so the front
+reveals it along the same bent outline before returning to the live control.
+Targets set the buildup in milliseconds and its displacement in
 CSS pixels with `data-wave-buildup-duration` and
 `data-wave-buildup-displacement`. A target with no buildup launches immediately.
 While a target moves or scrolls, the wave follows its position and reuses its

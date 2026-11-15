@@ -112,12 +112,42 @@ async function bend(browser, mode) {
   }
 }
 
+async function markerPosition(page, image, panel) {
+  return page.evaluate(async ({ image, panel }) => {
+    const bitmap = new Image()
+    bitmap.src = `data:image/png;base64,${image}`
+    await bitmap.decode()
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+    const context = canvas.getContext('2d')
+    context.drawImage(bitmap, 0, 0)
+    const dpr = devicePixelRatio
+    const width = Math.floor(80 * dpr)
+    const height = Math.floor(65 * dpr)
+    const pixels = context.getImageData(
+      Math.floor((panel.x + panel.width - 90) * dpr),
+      Math.floor((panel.y + panel.height - 80) * dpr),
+      width,
+      height,
+    ).data
+    let count = 0
+    let sumX = 0
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i] > 210 && pixels[i + 1] < 110 && pixels[i + 2] > 210) {
+        count++
+        sumX += i / 4 % width
+      }
+    }
+    return { count, x: sumX / count / dpr }
+  }, { image: Buffer.from(image).toString('base64'), panel })
+}
+
 async function copyRelease(browser, mode) {
   const page = await prepare(browser, mode)
   try {
     await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: async () => {} },
     }))
+    await page.addStyleTag({ content: '.wave-copy[data-copy-state="copied"]::after { content: ""; position: absolute; right: 48px; bottom: 39px; width: 12px; height: 8px; background: #f0f; pointer-events: none; }' })
     const panel = await bounds(page, '.wave-copy')
     await page.mouse.move(panel.x + panel.width - 27, panel.y + panel.height - 34)
     const rest = await page.screenshot()
@@ -131,6 +161,11 @@ async function copyRelease(browser, mode) {
     const { exposed, stationaryBorder } = await exposedBackground(page, rest, bent, panel, releasing)
     assert(exposed > 30, 'Copy must bend inward before release')
     assert.equal(stationaryBorder, 0, 'The incoming Copy border must remain hidden where the panel is still bent')
+    const warped = await markerPosition(page, releasing, panel)
+    await advance(page, 2000)
+    const native = await markerPosition(page, await page.screenshot(), panel)
+    assert(warped.count > 20 && native.count > 20, 'The incoming marker must be visible during release and after settling')
+    assert(warped.x > native.x + 2, 'The incoming marker must bend toward the Copy click while it is revealed')
   } finally {
     await page.close()
   }
@@ -142,6 +177,8 @@ async function compareAfterReset(browser, mode, read) {
 }
 
 async function advance(page, time) {
+  await settle(page)
+  await page.waitForFunction(() => !document.querySelector('[data-munari-parked]'))
   await page.evaluate(value => { window.waveTime = value }, time)
   await settle(page)
 }

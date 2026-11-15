@@ -59,7 +59,7 @@ export const MAX_WAVE_INSTANCES = MAX_WAVES * 2
 
 // Packed parameters use one GPU buffer instead of a binding for every animated value.
 function createWaveParameters() {
-  const stride = 10
+  const stride = 11
   const packedValues = Array.from(
     { length: MAX_WAVE_INSTANCES * stride },
     () => new Vector4(),
@@ -156,6 +156,8 @@ function createWaveParameters() {
     snapshotIndex: waveNumber(0),
     light: waveNumber(0),
     paletteCount: waveNumber(6),
+    paired: waveNumber(0),
+    atlasInset: waveNumber(0),
   }
   if (cursor > stride * 4)
     throw new Error('Wave parameters exceed their packed buffer')
@@ -209,6 +211,8 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
   const boxless = parameters.boxless.node
   const visibility = parameters.visibility.node
   const content = parameters.content.node
+  const paired = parameters.paired.node
+  const texel = parameters.atlasInset.node
   const sampled = parameters.sampled.node
   const snapshotIndex = parameters.snapshotIndex.node.toInt()
   const light = parameters.light.node
@@ -309,34 +313,71 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
     ).mul(content)
     // The incoming DOM still has its straight border until the pull ends.
     const edgeRetreat = bentEdge.sub(sd).mul(pixelRatio)
-    const backdropHold = float(1).sub(bentMask)
+    const backdropHold = float(1)
+      .sub(bentMask)
       .mul(smoothstep(0, 1, edgeRetreat))
       .mul(content)
-    const gapCover = max(backdropHold.sub(waveCover), 0)
-    const cover = waveCover.add(gapCover)
+    const incomingCover = float(1)
+      .sub(waveCover)
+      .mul(content)
+      .mul(paired)
+      .mul(smoothstep(0, 0.75, pull.mul(pixelRatio)))
+      .toVar()
+    const gapCover = max(backdropHold.sub(waveCover).sub(incomingCover), 0)
+    const cover = waveCover.add(incomingCover).add(gapCover)
     const originalColor = vec4(0).toVar()
     const refractedColor = vec3(0).toVar()
+    const incomingColor = vec3(0).toVar()
     If(sampled.greaterThan(0), () => {
       const selection = Switch(snapshotIndex)
       maps.forEach((map, index) => {
         selection.Case(float(index).toInt(), () => {
-          originalColor.assign(map.sample(baseAt).level(float(0)))
+          const columnWidth = mix(1, 0.5, paired)
+          const sampleColumn = (coord: typeof baseAt, column: number) =>
+            map
+              .sample(
+                vec2(
+                  clamp(
+                    coord.x.mul(columnWidth),
+                    texel,
+                    columnWidth.sub(texel),
+                  ).add(column * 0.5),
+                  coord.y,
+                ),
+              )
+              .level(float(0))
+          originalColor.assign(sampleColumn(baseAt, 0))
           If(content.greaterThan(0), () => {
-            const red = map.sample(redAt).level(float(0))
-            const green = map.sample(greenAt).level(float(0))
-            const blue = map.sample(blueAt).level(float(0))
-            refractedColor.assign(vec3(red.r, green.g, blue.b))
+            refractedColor.assign(
+              vec3(
+                sampleColumn(redAt, 0).r,
+                sampleColumn(greenAt, 0).g,
+                sampleColumn(blueAt, 0).b,
+              ),
+            )
+            If(incomingCover.greaterThan(0), () => {
+              incomingColor.assign(
+                mix(
+                  sampleColumn(baseAt, 1).rgb,
+                  vec3(
+                    sampleColumn(redAt, 1).r,
+                    sampleColumn(greenAt, 1).g,
+                    sampleColumn(blueAt, 1).b,
+                  ),
+                  mask,
+                ),
+              )
+            })
           })
         })
       })
     })
-    // The captured border follows baseAt. Clamped samples beyond the crop
-    // would smear that border into the backdrop exposed by the bend.
-    const oldColor = mix(
-      mix(originalColor.rgb, refractedColor, mask),
-      background,
-      backdrop,
-    ).mul(waveCover).add(background.mul(gapCover))
+    // Both states include the captured border, with flat backdrop beyond their crop.
+    const outgoing = mix(originalColor.rgb, refractedColor, mask)
+    const oldColor = mix(outgoing, background, backdrop)
+      .mul(waveCover)
+      .add(mix(incomingColor, background, backdrop).mul(incomingCover))
+      .add(background.mul(gapCover))
     const ink = sampled.greaterThan(0).select(
       clamp(length(originalColor.rgb.sub(background)), 0, 1)
         .mul(6)
