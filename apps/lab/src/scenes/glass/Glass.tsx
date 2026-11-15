@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SceneSurface, useSurfaceTexture } from '@petepetrash/munari'
+import { drawSurfaceOutput, readSurfaceFrame } from '../../lib/surfaceFrames'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -658,6 +659,8 @@ function WebAppFraming() {
 
 // ---- the scene ----------------------------------------------------------
 
+const frameOutput = { read: readSurfaceFrame, draw: drawSurfaceOutput }
+
 export function Glass() {
   // Six, and "sparse" is a consequence of the span rather than the count:
   // each orb is off screen for most of its cycle (see glassTuning.orbSpan),
@@ -832,11 +835,7 @@ export function Glass() {
         content={<SignInForm />}
       />
       <OrbDrift blobs={blobs} ripples={ripples} />
-      {/* The press moves this OUTER group, leaving the panel's own
-          position as the layout fact it always was. Nesting is what lets
-          the two coexist: the compositor sorts and unprojects off the
-          world matrix, so a parent that slides in z is indistinguishable
-          from a panel that was authored there. */}
+      {/* The press moves the outer group. Sorting and unprojection use its world pose. */}
       <group ref={pillGroup}>
         <SdfGlassPanel
           label="glass-pill"
@@ -877,7 +876,7 @@ export function Glass() {
           content={<CtaChip onStrike={strike} onRelease={release} />}
         />
       </group>
-      <GlassSdfCompositor lightDir={[4, 7, 5]} />
+      <GlassSdfCompositor lightDir={[4, 7, 5]} frameOutput={frameOutput} />
     </>
   )
 }

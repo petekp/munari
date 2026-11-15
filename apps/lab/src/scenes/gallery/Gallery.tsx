@@ -34,7 +34,7 @@
 // is `refractionMaterial.tsx`, shape is `refractionLaw.ts`, numbers are
 // `galleryTuning.ts`.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
@@ -45,11 +45,12 @@ import {
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { showChrome } from '../../bareMode'
 import { sceneUrl } from '../../captureMode'
-import { apertureEdge, approachUv, refractionStage, springEase } from '../refraction/refractionLaw'
+import { apertureEdge, approachUv, refractionStage } from '../refraction/refractionLaw'
 import {
   RefractionMaterial,
   type RefractionDrive,
 } from '../refraction/refractionMaterial'
+import { useGalleryCrossing } from './galleryCrossing'
 import { GalleryTweaks } from './GalleryTweaks'
 import { galleryTuning as tune, GALLERY_REF_H, GALLERY_REF_W } from './galleryTuning'
 import './gallery.css'
@@ -146,10 +147,12 @@ function useTenthSecond(): string {
 function Card({
   item,
   ordinal,
+  revision,
   box,
 }: {
   item: Item
   ordinal: string
+  revision: number
   box: { w: number; h: number }
 }) {
   const tick = useTenthSecond()
@@ -158,7 +161,7 @@ function Card({
     // own box (docs/authoring.md), and a root that sized itself from a
     // parent would be 0x0 inside the parked source host, which has no
     // parent to inherit from.
-    <div className="gallery-card" data-item={item.id} style={{ width: box.w, height: box.h }}>
+    <div className="gallery-card" data-item={item.id} data-gallery-edit={revision} style={{ width: box.w, height: box.h }}>
       <div className="gallery-figure">
         <img src={`/thumbs/${item.id}.jpg`} alt="" draggable={false} />
       </div>
@@ -214,112 +217,12 @@ function PixelPerfect() {
 
 // ── the page ───────────────────────────────────────────────────────────
 
-type Slot = 0 | 1
-
 export function GalleryApp() {
   const surface = useSurfaceHandle('gallery')
-
-  /** Which item each part is holding. */
-  const [slots, setSlots] = useState<[number, number]>([0, 1])
-  const [p, setP] = useState(0)
-  const [running, setRunning] = useState(false)
-
-  /**
-   * Which part the current crossing started from — the one the mesh is
-   * drawing, and the one whose field decides where the drop opens.
-   *
-   * State and not a ref, because the meshes' `part` and `sampledParts`
-   * props are derived from it. It is written only while the crossing is
-   * landed, so a part cannot change role in the middle of one; a mesh whose
-   * part swapped mid-flight would hand the sheet back for a frame.
-   */
-  const [origin, setOrigin] = useState<Slot>(0)
-
+  const { slots, p, running, pending, origin, landedAt, lifted, current, goTo, onScrub, cross } =
+    useGalleryCrossing(surface, ITEMS.length)
   const drive = useRef<RefractionDrive>({ t: 0 })
-
-  // Which part the compositor is holding, if either. At both ends of the
-  // crossing one of them is ordinary DOM — selectable, focusable, and
-  // hit-tested — and the other is a resident source. In between the answer
-  // is NEITHER: the mesh owns the sheet and both items feed it by part.
-  const landedAt: Slot | null = running ? null : p === 0 ? 0 : p === 1 ? 1 : null
-  const lifted = landedAt === null
-
-  // The scrub reads 0 at the part the crossing started from, whichever
-  // that is, so the law never has to know which way round the pair is.
   drive.current.t = origin === 0 ? p : 1 - p
-
-  const current = landedAt === null ? null : slots[landedAt]
-
-  // Whatever is not being looked at gets loaded with the next item in the
-  // sequence, so a crossing can start on the very next frame. It is a
-  // resident source at that moment — no mesh drawing it, no presenter — so
-  // swapping an <img> in it is invisible.
-  useEffect(() => {
-    if (landedAt === null) return
-    setSlots((s) => {
-      const want = (s[landedAt] + 1) % ITEMS.length
-      if (s[1 - landedAt] === want) return s
-      const next: [number, number] = [s[0], s[1]]
-      next[1 - landedAt] = want
-      return next
-    })
-  }, [landedAt])
-
-  const goTo = useCallback(
-    (item: number) => {
-      if (landedAt === null || item === slots[landedAt]) return
-      const far: Slot = landedAt === 0 ? 1 : 0
-      setSlots((s) => {
-        const next: [number, number] = [s[0], s[1]]
-        next[far] = item
-        return next
-      })
-      setOrigin(landedAt)
-      // One frame between loading the far part and starting to read it.
-      // The item is a resident source and keeps painting on its own, but it
-      // has only just been told what to paint, and the first thing the
-      // crossing samples is that texture.
-      requestAnimationFrame(() => setRunning(true))
-    },
-    [landedAt, slots],
-  )
-
-  // The animated crossing. Driven from `requestAnimationFrame` rather than
-  // the renderer's frame because it also moves the scrub input, which is
-  // page DOM — the material reads `drive.current` and never waits on React.
-  useEffect(() => {
-    if (!running) return
-    const from = p
-    const to = from < 0.5 ? 1 : 0
-    const span = tune.crossingMs * Math.abs(to - from)
-    const start = performance.now()
-    let raf = 0
-    const step = () => {
-      const q = span <= 0 ? 1 : Math.min(1, (performance.now() - start) / span)
-      // Eased here rather than inside the law: the law is a function of the
-      // scrub, and the scrub is also a slider a hand drags. Easing it there
-      // would bend the hand's own timing and move where a parked scrub sits.
-      setP(from + (to - from) * springEase(q, tune.crossingSpring))
-      if (q < 1) raf = requestAnimationFrame(step)
-      else setRunning(false)
-    }
-    raf = requestAnimationFrame(step)
-    return () => cancelAnimationFrame(raf)
-    // Deliberately not depending on `p`: the effect reads the start value
-    // once and owns `p` until it finishes. Re-running on every write would
-    // restart the crossing from wherever it had got to, forever.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running])
-
-  // A hand dragging the scrub away from an end starts a crossing too, and
-  // it starts from the end it left.
-  const onScrub = useCallback(
-    (next: number) => {
-      if (landedAt !== null) setOrigin(landedAt)
-      setP(next)
-    },
-    [landedAt],
-  )
 
   // The stage IS the holder, and the holder is the viewport. Measured on
   // every resize rather than read off `window`, because the holder is what
@@ -382,11 +285,12 @@ export function GalleryApp() {
   const box = useMemo(() => ({ w: stage.w, h: stage.h }), [stage.w, stage.h])
   const cards = useMemo(
     () =>
-      slots.map((index) => (
+      slots.map(({ item: index, revision }) => (
         <Card
           key={ITEMS[index].id}
           item={ITEMS[index]}
           ordinal={String(index + 1).padStart(2, '0')}
+          revision={revision}
           box={box}
         />
       )),
@@ -489,7 +393,7 @@ export function GalleryApp() {
             max={1}
             step={0.001}
             value={p}
-            disabled={running}
+            disabled={running || pending}
             onChange={(e) => onScrub(Number(e.target.value))}
             aria-label="crossing position"
           />
@@ -497,11 +401,8 @@ export function GalleryApp() {
           <button
             type="button"
             className="gallery-cross"
-            disabled={running}
-            onClick={() => {
-              if (landedAt !== null) setOrigin(landedAt)
-              setRunning(true)
-            }}
+            disabled={running || pending}
+            onClick={cross}
           >
             cross
           </button>

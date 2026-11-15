@@ -116,7 +116,7 @@ const plugin={name:'glass-diagnostic',enforce:'pre',resolveId(id){if(id==='virtu
   code=replace(code,'      gl.render(blitScene, quadCam)',"      diagDraw(gl, 'blit', blitScene, quadCam)\n      diagEnd(gl)")
   code=replace(code,'    for (const p of panels) {\n      const g = p.group.current!',"    for (const p of panels) {\n      if (!diagInclude(p.label)) continue\n      const g = p.group.current!")
   code=replace(code,'      gl.render(glassScene, quadCam)',"      diagDraw(gl, p.label, glassScene, quadCam)")
-  code=replace(code,'    gl.render(blitScene, quadCam)',"    diagDraw(gl, 'blit', blitScene, quadCam)")
+  code=replace(code,'const drawFinal = () => gl.render(blitScene, quadCam)',"const drawFinal = () => diagDraw(gl, 'blit', blitScene, quadCam)")
   code=replace(code,'      p.presenter.present()\n    }\n  }, 1)','      p.presenter.present()\n    }\n    diagEnd(gl)\n  }, 1)')
   return code
 }}

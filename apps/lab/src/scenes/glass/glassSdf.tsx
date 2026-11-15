@@ -3,7 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import { SceneSurface, useSurfaceHandle, useSurfaceTexture } from '@petepetrash/munari'
-import { surfaceManualPresenter, type SurfaceManualPresenter } from '@petepetrash/munari/advanced'
+import { surfaceManualPresenter, type DomPaintReceipt, type SurfaceManualPresenter } from '@petepetrash/munari/advanced'
 import { createBlitMaterial, createGlassMaterial, createGlassSdfValues } from './glassSdfNodes'
 
 // The SDF glass path — the shared kit every glass panel builds on (beads,
@@ -620,7 +620,23 @@ function uploadGlows(
   return ng
 }
 
-export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [number, number, number] }) {
+interface GlassSample {
+  frame: { texture: THREE.Texture; paint: DomPaintReceipt }
+  presenter: SurfaceManualPresenter
+}
+
+interface GlassFrameOutput {
+  read(texture: THREE.Texture): GlassSample['frame'] | null
+  draw(mesh: THREE.Mesh, render: () => void, samples: readonly GlassSample[]): void
+}
+
+export function GlassSdfCompositor({
+  lightDir = [4, 7, 5],
+  frameOutput,
+}: {
+  lightDir?: [number, number, number]
+  frameOutput?: GlassFrameOutput
+}) {
   const size = useThree((s) => s.size)
   const dpr = useThree((s) => s.viewport.dpr)
   const w = Math.max(1, Math.round(size.width * dpr))
@@ -671,17 +687,18 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
   // Two one-mesh scenes. `frustumCulled = false` because the vertex node
   // writes clip space directly — three's bounding-sphere test would cull a
   // quad it thinks is a 2×2 plane at the origin.
-  const [glassScene, blitScene, quadCam] = useMemo(() => {
+  const [glassScene, blitScene, blitMesh, quadCam] = useMemo(() => {
     const geo = new THREE.PlaneGeometry(2, 2)
     const mk = (m: THREE.Material) => {
       const s = new THREE.Scene()
       const mesh = new THREE.Mesh(geo, m)
       mesh.frustumCulled = false
       s.add(mesh)
-      return s
+      return { scene: s, mesh }
     }
     // The vertex node ignores the camera; WebGPU still updates its projection.
-    return [mk(glass), mk(blit.material), new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)]
+    const output = mk(blit.material)
+    return [mk(glass).scene, output.scene, output.mesh, new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)]
   }, [glass, blit])
 
   useEffect(
@@ -697,10 +714,7 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
     const panels = [...sdfPanels.values()].filter((p) => p.group.current)
     const now = clock.elapsedTime
 
-    // 1 — the world, once. The panels are hidden even though their material
-    // is invisible: the contract is "the compositor owns these pixels", and a
-    // panel that later grows a visible child must not leak into its own
-    // refraction source.
+    // Hide the panel groups during the world pass so no child is refracted into its own panel.
     for (const p of panels) p.group.current!.visible = false
     gl.setRenderTarget(sceneFbo)
     gl.render(scene, camera)
@@ -713,19 +727,8 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
       return
     }
 
-    // 2 — far → near. Each pass reads what the previous one wrote, so a
-    // panel's refraction contains the glass, the ink and the world behind it
-    // by construction.
-    //
-    // The key is VIEW-SPACE Z, not distance to the camera. Distance was wrong
-    // and went unnoticed while two panels sat on the view axis
-    // where the two orders agree. Put a panel out to the side — a
-    // rail, one sixth of the way across a wide app — and it is FARTHER by
-    // Pythagoras while being no deeper at all, so it composited first and the
-    // panel actually behind it then refracted its ink: every glyph in the
-    // rail came out smeared through eight dispersion taps, with no error and
-    // clean paint counters. Depth order is depth, and depth is -z in view
-    // space (negative ahead of the camera, so "more negative" is farther).
+    // Read the preceding pass in view-space depth order. Radial distance sorted
+    // the off-axis rail behind the farther card and refracted its ink twice.
     for (const p of panels) {
       p.group.current!.getWorldPosition(tmpPos).applyMatrix4(camera.matrixWorldInverse)
       p.depth = tmpPos.z
@@ -752,6 +755,7 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
     let src: THREE.RenderTarget = sceneFbo
     let dst = pingA
     const presentedPanels: SdfPanel[] = []
+    const sampledFrames: GlassSample[] = []
     for (const p of panels) {
       const g = p.group.current!
       tmpPanelInv.copy(g.matrixWorld).invert()
@@ -762,6 +766,7 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
       u.hasBase.value = p.hasBase ? 1 : 0
       u.inkRect.value.copy(p.inkRect)
       const ink = sdfInk.get(p.label) ?? null
+      const frame = ink ? frameOutput?.read(ink) : null
       u.src.value = src.texture
       u.ink.value = ink ?? noInk
       u.hasInk.value = ink ? 1 : 0
@@ -831,11 +836,9 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
 
       gl.setRenderTarget(dst)
       gl.render(glassScene, quadCam)
-      // A panel cannot claim canvas input until this pass actually sampled
-      // its current DOM texture. An unpainted source may still contribute
-      // the field's backdrop, but it has no live content for a pointer to
-      // reach.
-      if (ink) presentedPanels.push(p)
+      // A backdrop-only pass has no live ink to present or route input to.
+      if (frame) sampledFrames.push({ frame, presenter: p.presenter })
+      if (ink && !frameOutput) presentedPanels.push(p)
       src = dst
       dst = dst === pingA ? pingB : pingA
     }
@@ -843,7 +846,9 @@ export function GlassSdfCompositor({ lightDir = [4, 7, 5] }: { lightDir?: [numbe
     // 3 — out of linear light, once.
     blit.src.value = src.texture
     gl.setRenderTarget(null)
-    gl.render(blitScene, quadCam)
+    const drawFinal = () => gl.render(blitScene, quadCam)
+    if (frameOutput) frameOutput.draw(blitMesh, drawFinal, sampledFrames)
+    else drawFinal()
     // This is the sole color-writing presentation of each sampled SDF panel.
     // Proxy meshes are input geometry only, so a panel earns canvas input
     // only after this actual screen draw includes its composited pixels.

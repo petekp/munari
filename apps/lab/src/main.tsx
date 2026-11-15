@@ -8,6 +8,7 @@ import './components/system/tokens.css'
 import './app.css'
 import App from './App'
 import { CAPTURE_MODE } from './captureMode'
+import { observeSurfaceSources } from './lib/surfaceFrames'
 
 // The engine is installed BEFORE the first render, and awaited: a Surface
 // that has already built its source keeps the engine it was made with, so an
@@ -17,6 +18,8 @@ if (CAPTURE_MODE) {
   const { enableSnapdomCapture } = await import('@petepetrash/munari/snapdom')
   enableSnapdomCapture({ always: CAPTURE_MODE === 'snapdom', isolatedTextInputs: '[data-munari-capture-region]' })
 }
+
+observeSurfaceSources()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
