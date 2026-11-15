@@ -95,16 +95,20 @@ function assertOpening(result, {scene, early, reduced, capture, gpu, stalledWork
   assert.deepEqual(errors, [])
 }
 
-async function measure({name, scene, width = 1440, height = 1000, capture = true, gpu = true, early = false, fontDelay = 0, brokenFonts = false, stalledWorker = false, reduced = true, hiddenMs = 0}) {
-  const directory = path.join(output, name)
-  await mkdir(directory, {recursive: true})
-  browser = await puppeteer.launch({
+function launchStartupBrowser({capture, gpu}) {
+  return puppeteer.launch({
     executablePath: process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     headless: process.env.HEADED !== '1', defaultViewport: null,
     signal: AbortSignal.timeout(30_000),
     args: [...WEBGPU_CHROME_ARGS,capture ? '--enable-features=CanvasDrawElement' : '--disable-features=CanvasDrawElement',
       '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(!gpu ? ['--disable-webgl', '--disable-webgl2'] : [])],
   })
+}
+
+async function measure({name, scene, width = 1440, height = 1000, capture = true, gpu = true, early = false, fontDelay = 0, brokenFonts = false, stalledWorker = false, reduced = true, hiddenMs = 0}) {
+  const directory = path.join(output, name)
+  await mkdir(directory, {recursive: true})
+  browser = await launchStartupBrowser({capture, gpu})
   const page = await browser.newPage(), errors = [], requests = [], frames = []
   const controls={entryDelayed:0,workerDelayed:0,workerStalled:0,fontsDelayed:0,fontsFailed:0,hiddenThroughDeadline:false}
   await setChromeViewport(page, {width, height})
