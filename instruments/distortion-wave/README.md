@@ -75,7 +75,8 @@ detachment, reduced motion, or capture failure end the affected presentation
 and preserve the native outcome.
 
 `node instruments/distortion-wave/bend-scroll.mjs` compares the held outgoing
-snapshot at a fixed buildup time with the bend enabled and disabled. It also
+snapshot at a fixed buildup time with the bend enabled and disabled. It checks
+that the bent file tile exposes the backdrop inside its original outline. It also
 scrolls an in-flight control wave and checks that it leaves its old screen
 position, follows the control, and reuses its existing snapshot.
 

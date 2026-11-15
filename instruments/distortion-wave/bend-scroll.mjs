@@ -25,6 +25,40 @@ async function prepare(browser, mode) {
   return page
 }
 
+async function exposedBackground(page, unbent, bent, panel) {
+  return page.evaluate(async ({ images, panel }) => {
+    const decode = async data => {
+      const image = new Image()
+      image.src = `data:image/png;base64,${data}`
+      await image.decode()
+      const canvas = new OffscreenCanvas(image.width, image.height)
+      const context = canvas.getContext('2d')
+      context.drawImage(image, 0, 0)
+      return context
+    }
+    const [rest, flex] = await Promise.all(images.map(decode))
+    const dpr = devicePixelRatio
+    const x = Math.round((panel.x + 26) * dpr)
+    const width = Math.floor((panel.width - 52) * dpr)
+    const bottom = panel.y + panel.height
+    const y = Math.round((bottom - 8) * dpr)
+    const height = Math.floor(7 * dpr)
+    const background = rest.getImageData(x, Math.ceil((bottom + 3) * dpr), 1, 1).data
+    const before = rest.getImageData(x, y, width, height).data
+    const during = flex.getImageData(x, y, width, height).data
+    const backgroundDelta = (pixels, i) => Math.max(
+      Math.abs(pixels[i] - background[0]),
+      Math.abs(pixels[i + 1] - background[1]),
+      Math.abs(pixels[i + 2] - background[2]),
+    )
+    let exposed = 0
+    for (let i = 0; i < before.length; i += 4) {
+      if (backgroundDelta(before, i) > 20 && backgroundDelta(during, i) < 4) exposed++
+    }
+    return exposed
+  }, { images: [unbent, bent].map(image => Buffer.from(image).toString('base64')), panel })
+}
+
 async function bend(browser, mode) {
   const page = await prepare(browser, mode)
   try {
@@ -44,6 +78,8 @@ async function bend(browser, mode) {
     const unbent = await compareAfterReset(browser, mode, reference => sample(reference, '0'))
     const difference = await compareWaveImages(page, unbent, bent, unbent, panel)
     assert(difference.regionPixels[0] > 100, 'The outgoing image must visibly bend before launch with the same glow')
+    const exposed = await exposedBackground(page, unbent, bent, panel)
+    assert(exposed > 100, 'The bottom edge of the tile must bow inward and expose the backdrop before launch')
   } finally {
     await page.close()
   }

@@ -254,22 +254,26 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
     const half = size.mul(0.5),
       center = point.sub(half)
     const corner = min(radius, min(half.x, half.y))
-    const box = abs(center).sub(half).add(corner)
-    const sd = length(max(box, 0))
-      .add(min(max(box.x, box.y), 0))
-      .sub(corner)
+    const distanceFromEdge = (position: typeof center) => {
+      const box = abs(position).sub(half).add(corner)
+      return length(max(box, 0))
+        .add(min(max(box.x, box.y), 0))
+        .sub(corner)
+    }
+    const sd = distanceFromEdge(center)
     const mask = clamp(float(0.5).sub(sd.mul(pixelRatio)), 0, 1)
     const bulge = normal.mul(energy.mul(amplitude).mul(lens))
     const fromPull = point.sub(pullOrigin)
     const pullDistance = length(fromPull)
     const pullWidth = max(lensWidth.mul(2.2), 28)
     const edgeHold = smoothstep(0, min(half.x, half.y).mul(0.5), sd.negate())
+    const flexEdge = radius.greaterThan(0).select(float(1).sub(boxless), 0)
     const pullOffset = fromPull
       .div(max(pullDistance, pullWidth.mul(0.25)))
       .mul(
         pull
           .mul(exp(pullDistance.div(pullWidth).pow(2).negate()))
-          .mul(edgeHold),
+          .mul(mix(edgeHold, 1, flexEdge)),
       )
     const sampleOffset = pullOffset.sub(bulge)
     const sampleAt = at.add(
@@ -283,6 +287,11 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
     const redAt = clamp(sampleAt.add(split), 0, 1).toVar()
     const greenAt = clamp(sampleAt, 0, 1).toVar()
     const blueAt = clamp(sampleAt.sub(split), 0, 1).toVar()
+    const bentEdge = max(
+      sd,
+      distanceFromEdge(center.add(pullOffset.mul(flexEdge))),
+    )
+    const bentMask = clamp(float(0.5).sub(bentEdge.mul(pixelRatio)), 0, 1)
     const cover = mix(
       float(1),
       smoothstep(seam.negate(), seam, d),
@@ -304,14 +313,19 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
         })
       })
     })
-    const oldColor = mix(originalColor.rgb, refractedColor, mask).mul(cover)
+    // The old-state cover also owns the backdrop exposed by the inward bend.
+    const oldColor = mix(
+      mix(originalColor.rgb, refractedColor, mask),
+      background,
+      mask.sub(bentMask),
+    ).mul(cover)
     const ink = sampled.greaterThan(0).select(
       clamp(length(originalColor.rgb.sub(background)), 0, 1)
         .mul(6)
         .clamp(0, 1),
       0.45,
     )
-    const inset = max(sd.negate(), 0)
+    const inset = max(bentEdge.negate(), 0)
     const lobes = sin(angle.mul(2).add(time.mul(1.4)))
       .mul(cos(angle.sub(time.mul(0.6)).add(0.8)))
       .mul(0.5)
@@ -356,7 +370,7 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
       .mul(rim)
       .mul(0.85)
       .mul(float(1).sub(boxless))
-      .mul(mask)
+      .mul(bentMask)
       .mul(light)
     const alpha = clamp(
       float(1).sub(float(1).sub(band).mul(float(1).sub(edgeLight))),
@@ -364,7 +378,7 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
       0.94,
     )
       .mul(mix(1, ink, boxless))
-      .mul(mask)
+      .mul(bentMask)
       .mul(light)
     const flow = angle
       .div(Math.PI * 2)
