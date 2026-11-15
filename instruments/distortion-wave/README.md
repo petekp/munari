@@ -70,8 +70,14 @@ Outgoing state masks draw in click order, oldest on top. Colored pulses draw abo
 those masks. Capture preparation is serialized; motion continues independently.
 Snapshots release only after their entire target has been revealed. If all bounded
 slots are occupied, later actions wait in order instead of discarding a visible
-state mask. Scrolling, moving targets, reduced motion, and capture failure retain
-the native outcome and retire the affected presentation.
+state mask. The wave follows translations of its target. Changes in target size,
+detachment, reduced motion, or capture failure end the affected presentation
+and preserve the native outcome.
+
+`node instruments/distortion-wave/bend-scroll.mjs` compares the held outgoing
+snapshot at a fixed buildup time with the bend enabled and disabled. It also
+scrolls an in-flight control wave and checks that it leaves its old screen
+position, follows the control, and reuses its existing snapshot.
 
 `node instruments/distortion-wave/overlap.mjs native` records repeated Color
 changes and checks the background under every observed wave. Pass `snapdom` for

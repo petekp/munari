@@ -132,6 +132,8 @@ function createWaveParameters() {
     scale: waveNumber(1),
     swell: waveNumber(0),
     energy: waveNumber(0),
+    pull: waveNumber(0),
+    pullOrigin: waveVector2(),
     glow: waveNumber(0),
     rim: waveNumber(0),
     clear: waveNumber(0),
@@ -187,6 +189,8 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
   const scale = parameters.scale.node
   const swell = parameters.swell.node
   const energy = parameters.energy.node
+  const pull = parameters.pull.node
+  const pullOrigin = parameters.pullOrigin.node
   const glow = parameters.glow.node
   const rim = parameters.rim.node
   const clear = parameters.clear.node
@@ -247,8 +251,30 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
         .pow(2)
         .negate(),
     )
+    const half = size.mul(0.5),
+      center = point.sub(half)
+    const corner = min(radius, min(half.x, half.y))
+    const box = abs(center).sub(half).add(corner)
+    const sd = length(max(box, 0))
+      .add(min(max(box.x, box.y), 0))
+      .sub(corner)
+    const mask = clamp(float(0.5).sub(sd.mul(pixelRatio)), 0, 1)
     const bulge = normal.mul(energy.mul(amplitude).mul(lens))
-    const sampleAt = at.sub(vec2(bulge.x, bulge.y.negate()).div(size))
+    const fromPull = point.sub(pullOrigin)
+    const pullDistance = length(fromPull)
+    const pullWidth = max(lensWidth.mul(2.2), 28)
+    const edgeHold = smoothstep(0, min(half.x, half.y).mul(0.5), sd.negate())
+    const pullOffset = fromPull
+      .div(max(pullDistance, pullWidth.mul(0.25)))
+      .mul(
+        pull
+          .mul(exp(pullDistance.div(pullWidth).pow(2).negate()))
+          .mul(edgeHold),
+      )
+    const sampleOffset = pullOffset.sub(bulge)
+    const sampleAt = at.add(
+      vec2(sampleOffset.x, sampleOffset.y.negate()).div(size),
+    )
     const split = vec2(bulge.x, bulge.y.negate())
       .div(size)
       .mul(aberration)
@@ -262,14 +288,6 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
       smoothstep(seam.negate(), seam, d),
       launched,
     ).mul(content)
-    const half = size.mul(0.5),
-      center = point.sub(half)
-    const corner = min(radius, min(half.x, half.y))
-    const box = abs(center).sub(half).add(corner)
-    const sd = length(max(box, 0))
-      .add(min(max(box.x, box.y), 0))
-      .sub(corner)
-    const mask = clamp(float(0.5).sub(sd.mul(pixelRatio)), 0, 1)
     const originalColor = vec4(0).toVar()
     const refractedColor = vec3(0).toVar()
     If(sampled.greaterThan(0), () => {

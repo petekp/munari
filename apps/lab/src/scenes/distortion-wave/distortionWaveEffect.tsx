@@ -42,16 +42,15 @@ import {
   waveTargetBounds,
   type WaveSnapshot,
 } from './distortionWaveSnapshot'
-import { createWaveMotion } from './distortionWaveLaw'
+import { createWaveMotion, type WaveTiming } from './distortionWaveLaw'
 
-export interface WaveRequest {
+export interface WaveRequest extends WaveTiming {
   target: HTMLElement
   source: DOMRect
   local: boolean
   boxless: boolean
   x: number
   y: number
-  duration: number
   intensity: number
   palette: WavePalette
   update: () => void
@@ -73,6 +72,8 @@ interface ActiveWave {
   timeout: ReturnType<typeof setTimeout> | null
   bounds: DOMRect
   targetBounds: DOMRect
+  left: number
+  top: number
   snapshot: WaveSnapshot | null
   motion: ReturnType<typeof createWaveMotion>
   radius: number
@@ -82,32 +83,39 @@ interface ActiveWave {
 // Viewport-sized pulses have a separate bound because their fragments cover the whole screen.
 const MAX_PAGE_WAVES = 3
 
-function boundsMatch(a: DOMRect, b: DOMRect): boolean {
-  return (
-    a.width === b.width &&
-    a.height === b.height &&
-    a.top === b.top &&
-    a.left === b.left
-  )
+function followTarget(wave: ActiveWave): boolean {
+  if (!wave.request.target.isConnected) return false
+  const current = wave.request.target.getBoundingClientRect()
+  const { targetBounds, bounds } = wave
+  const sameSize =
+    current.width === targetBounds.width &&
+    current.height === targetBounds.height
+  if (!sameSize) return false
+  wave.left = bounds.left + (current.left - targetBounds.left)
+  wave.top = bounds.top + (current.top - targetBounds.top)
+  return true
 }
 
-function motionFor(request: WaveRequest, bounds: DOMRect) {
+function motionFor(request: WaveRequest, target: DOMRect, bounds: DOMRect) {
   const pointRadius = Math.max(8, Math.min(bounds.width, bounds.height) * 0.08)
-  return createWaveMotion({
-    width: bounds.width,
-    height: bounds.height,
-    local: request.local,
-    sourceX:
-      (request.local ? request.x - pointRadius : request.source.left) -
-      bounds.left,
-    sourceY:
-      (request.local ? request.y - pointRadius : request.source.top) -
-      bounds.top,
-    sourceWidth: request.local ? pointRadius * 2 : request.source.width,
-    sourceHeight: request.local ? pointRadius * 2 : request.source.height,
-    touchX: request.x - bounds.left,
-    touchY: request.y - bounds.top,
-  })
+  const cropX = bounds.left - target.left
+  const cropY = bounds.top - target.top
+  return createWaveMotion(
+    {
+      width: bounds.width,
+      height: bounds.height,
+      local: request.local,
+      sourceX:
+        (request.local ? request.x - pointRadius : request.source.left) - cropX,
+      sourceY:
+        (request.local ? request.y - pointRadius : request.source.top) - cropY,
+      sourceWidth: request.local ? pointRadius * 2 : request.source.width,
+      sourceHeight: request.local ? pointRadius * 2 : request.source.height,
+      touchX: request.x - cropX,
+      touchY: request.y - cropY,
+    },
+    request,
+  )
 }
 
 function writeWave(
@@ -154,6 +162,8 @@ function writeWave(
   p.front.values[index] = phase.radius
   p.swell.values[index] = phase.swell
   p.energy.values[index] = phase.energy
+  p.pull.values[index] = phase.pull
+  p.pullOrigin.values[index].set(wave.motion.pullX, wave.motion.pullY)
   p.glow.values[index] = phase.glow
   p.rim.values[index] = phase.rim
   p.clear.values[index] = phase.clear
@@ -289,7 +299,7 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       invalidate()
       return
     }
-    const motion = motionFor(request, bounds)
+    const motion = motionFor(request, targetBounds, bounds)
     const wave: ActiveWave = {
       request,
       committed: false,
@@ -300,6 +310,8 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       timeout: null,
       bounds,
       targetBounds,
+      left: bounds.left,
+      top: bounds.top,
       snapshot: nextSnapshot,
       motion,
       radius:
@@ -334,11 +346,9 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       invalidate()
     }
     window.addEventListener('resize', cancel)
-    window.addEventListener('scroll', cancel, true)
     return () => {
       controller.run = (request) => request.update()
       window.removeEventListener('resize', cancel)
-      window.removeEventListener('scroll', cancel, true)
       for (const wave of active.current) {
         if (wave.timeout !== null) clearTimeout(wave.timeout)
         if (!wave.committed) {
@@ -414,15 +424,9 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       '(prefers-reduced-motion: reduce)',
     ).matches
     for (const wave of [...active.current]) {
-      const moved =
-        !wave.request.target.isConnected ||
-        !boundsMatch(
-          wave.request.target.getBoundingClientRect(),
-          wave.targetBounds,
-        )
       const ended =
         wave.started !== null && now - wave.started >= wave.request.duration
-      if (moved || ended || reduced) retire(wave)
+      if (ended || reduced || !followTarget(wave)) retire(wave)
       else if (wave.started !== null) {
         const progress = (now - wave.started) / wave.request.duration
         const phase = wave.motion.frame(progress)
@@ -448,9 +452,9 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
         1,
       )
       resources.pose.setPosition(
-        ((bounds.left + bounds.width / 2 - size.width / 2) * viewport.width) /
+        ((wave.left + bounds.width / 2 - size.width / 2) * viewport.width) /
           size.width,
-        ((size.height / 2 - bounds.top - bounds.height / 2) * viewport.height) /
+        ((size.height / 2 - wave.top - bounds.height / 2) * viewport.height) /
           size.height,
         0,
       )

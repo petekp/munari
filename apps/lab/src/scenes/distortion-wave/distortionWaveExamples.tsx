@@ -96,7 +96,13 @@ function WaveDelete({ wave }: ExampleProps) {
   const [deleted, setDeleted] = useState(false)
   return (
     <div className="wave-file-tray">
-      <div className="wave-delete" data-wave-target="" data-deleted={deleted}>
+      <div
+        className="wave-delete"
+        data-wave-target=""
+        data-wave-buildup-duration="150"
+        data-wave-buildup-displacement="30"
+        data-deleted={deleted}
+      >
         <div className="wave-file-visual">
           {deleted ? <WaveIcon name="trash" /> : <WaveArtwork kind="orbit" />}
         </div>
@@ -144,6 +150,8 @@ function WaveCopy({ wave }: ExampleProps) {
         type="button"
         className="wave-copy"
         data-wave-target=""
+        data-wave-buildup-duration="170"
+        data-wave-buildup-displacement="32"
         data-wave-palette="Mint"
         data-copy-state={status}
         aria-label="Copy invitation code"
@@ -182,7 +190,12 @@ function WaveFilters({ wave }: ExampleProps) {
     (asset) => filter === 'All' || asset.type === filter,
   )
   return (
-    <div className="wave-filters" data-wave-target="">
+    <div
+      className="wave-filters"
+      data-wave-target=""
+      data-wave-buildup-duration="150"
+      data-wave-buildup-displacement="28"
+    >
       <div className="wave-collection-top">
         <strong>Release assets</strong>
         <span aria-live="polite">{assets.length} pieces</span>
@@ -229,6 +242,8 @@ function WaveChecklist({ wave }: ExampleProps) {
             key={task.title}
             className="wave-check-row"
             data-wave-target=""
+            data-wave-buildup-duration="80"
+            data-wave-buildup-displacement="12"
             data-checked={checked}
           >
             <input
@@ -273,6 +288,8 @@ function WaveColor({ wave }: ExampleProps) {
         className="wave-color-player"
         data-wave-content="player"
         data-wave-target=""
+        data-wave-buildup-duration="145"
+        data-wave-buildup-displacement="26"
         style={{ backgroundColor: finish.value }}
         role="img"
         aria-label={`${finish.name} pocket player`}

@@ -54,6 +54,7 @@ export function DistortionWaveApp() {
         ? (trigger.closest('label') ?? trigger)
         : trigger
     const rect = source.getBoundingClientRect()
+    const targetRect = target === source ? rect : target.getBoundingClientRect()
     const native = event.nativeEvent
     const pointer = native instanceof MouseEvent && native.detail > 0
     controller.run({
@@ -61,17 +62,34 @@ export function DistortionWaveApp() {
       update,
       duration,
       palette: palette === 'Auto' ? controlPalette(trigger) : palette,
-      source: rect,
+      source: new DOMRect(
+        rect.left - targetRect.left,
+        rect.top - targetRect.top,
+        rect.width,
+        rect.height,
+      ),
+      buildupDuration: Number(target.dataset.waveBuildupDuration ?? 0),
+      buildupDisplacement: Number(target.dataset.waveBuildupDisplacement ?? 0),
       local: target === source,
       boxless: target.hasAttribute('data-wave-boxless'),
       intensity: 1,
-      x: pointer ? native.clientX : rect.left + rect.width / 2,
-      y: pointer ? native.clientY : rect.top + rect.height / 2,
+      x:
+        (pointer ? native.clientX : rect.left + rect.width / 2) -
+        targetRect.left,
+      y:
+        (pointer ? native.clientY : rect.top + rect.height / 2) -
+        targetRect.top,
     })
   }
   return (
     <div className="wave-page" data-theme={light ? 'light' : 'dark'}>
-      <div className="wave-sheet" data-wave-page="" data-wave-target="">
+      <div
+        className="wave-sheet"
+        data-wave-page=""
+        data-wave-target=""
+        data-wave-buildup-duration="205"
+        data-wave-buildup-displacement="64"
+      >
         <div className="wave-toolbar">
           <div className="wave-workspace">
             <h1>Night studio</h1>

@@ -39,20 +39,31 @@ function bezier(
   return at((low + high) / 2, y1, y2)
 }
 
-export function createWaveMotion(geometry: WaveGeometry) {
+export interface WaveTiming {
+  duration: number
+  buildupDuration: number
+  buildupDisplacement: number
+}
+
+export function createWaveMotion(geometry: WaveGeometry, timing: WaveTiming) {
   const g = geometry
   const vertical = !g.local && g.sourceWidth >= g.sourceHeight * 1.4
   const horizontal = !g.local && g.sourceHeight >= g.sourceWidth * 1.4
   const ring = !vertical && !horizontal
   const scale = clamp(Math.sqrt(g.width * g.height) / 516, 0.12, 1.8)
-  const anticipation = ring ? 0.25 : 0.45
   const travel = ring ? 3.2 : 2.2
   const linger = ring ? -0.2 : -0.3
   const rimFade = ring ? 2.4 : 2.8
   const hairDelay = ring ? 0.9 : 0.45
-  const total =
-    anticipation +
-    Math.max(travel * 0.6, linger + rimFade, linger + hairDelay + 2.8)
+  const flightTime = Math.max(
+    travel * 0.6,
+    linger + rimFade,
+    linger + hairDelay + 2.8,
+  )
+  const anticipation =
+    (flightTime * timing.buildupDuration) /
+    Math.max(1, timing.duration - timing.buildupDuration)
+  const total = anticipation + flightTime
   const minRadius = Math.max(Math.min(g.sourceWidth, g.sourceHeight) / 2, 1)
   const half = (horizontal ? g.sourceHeight : g.sourceWidth) / 2
   const baseAngle = horizontal ? Math.PI / 2 : 0
@@ -74,7 +85,11 @@ export function createWaveMotion(geometry: WaveGeometry) {
         -1,
         1,
       ) * 0.9
+  const insetX = Math.min(24, g.width / 3)
+  const insetY = Math.min(24, g.height / 3)
   return {
+    pullX: clamp(g.touchX, insetX, g.width - insetX),
+    pullY: clamp(g.touchY, insetY, g.height - insetY),
     scale,
     ring,
     amplitude: (ring ? 20 : 32) * scale,
@@ -88,7 +103,7 @@ export function createWaveMotion(geometry: WaveGeometry) {
     frame(progress: number) {
       const time = progress * total
       const fly = time - anticipation
-      const pre = smooth(0, anticipation, time)
+      const pre = anticipation > 0 ? smooth(0, anticipation, time) : 0
       const flight = clamp(fly / travel)
       const moved = bezier(flight, 0.2, 1, 0.3, 1)
       const settle = smooth(0, 0.45, moved)
@@ -118,7 +133,7 @@ export function createWaveMotion(geometry: WaveGeometry) {
           ? minRadius + (ring ? 32 : 50) * scale * (1 - pre)
           : mix(minRadius, reach + 96 * scale, moved)
       const fade = 1 - smooth(0.2, 0.55, flight)
-      const lift = ring ? 0.1 : 0.175
+      const lift = anticipation === 0 ? 0 : (ring ? 0.1 : 0.175)
       const rimSoftness = (ring ? 200 : 320) * scale
       return {
         time,
@@ -130,6 +145,7 @@ export function createWaveMotion(geometry: WaveGeometry) {
         spine: ring ? 0 : Math.max(0, half - minRadius) * (1 - settle),
         swell: swell * smooth(0, 0.3, moved),
         energy: smooth(0, 0.05, flight) * fade,
+        pull: timing.buildupDisplacement * pre * (1 - smooth(0, 0.22, fly)),
         glow:
           fly < 0 ? lift * pre : mix(lift, 1, smooth(0, 0.07, flight)) * fade,
         rim:

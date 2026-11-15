@@ -142,6 +142,14 @@ while independent light pulses draw above them. Eight snapshot slots, including
 at most three page snapshots, bound the retained images. Extra actions wait in
 order. Ordinary hover does not request snapshots.
 
+Larger targets bend the outgoing image before the traveling front reveals the
+new state. Targets set the buildup in milliseconds and its displacement in
+CSS pixels with `data-wave-buildup-duration` and
+`data-wave-buildup-displacement`. A target with no buildup launches immediately.
+While a target moves or scrolls, the wave follows its position and reuses its
+snapshot. A page-wide wave moves its original viewport crop along with the page,
+so areas outside the original capture show the live document.
+
 Hover uses a fading highlight without changing text contrast. Capture reads only
 the opacity of explicitly marked highlights, preserving their in-progress fade
 without serializing whole element styles. The fast copy still depends on ancestor
