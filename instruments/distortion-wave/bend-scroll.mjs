@@ -38,12 +38,11 @@ async function exposedBackground(page, unbent, bent, panel) {
     }
     const [rest, flex] = await Promise.all(images.map(decode))
     const dpr = devicePixelRatio
-    const x = Math.round((panel.x + 26) * dpr)
-    const width = Math.floor((panel.width - 52) * dpr)
-    const bottom = panel.y + panel.height
-    const y = Math.round((bottom - 8) * dpr)
-    const height = Math.floor(7 * dpr)
-    const background = rest.getImageData(x, Math.ceil((bottom + 3) * dpr), 1, 1).data
+    const x = Math.floor(panel.x * dpr)
+    const y = Math.floor(panel.y * dpr)
+    const width = Math.ceil((panel.x + panel.width) * dpr) - x
+    const height = Math.ceil((panel.y + panel.height) * dpr) - y
+    const background = rest.getImageData(x + 52, y + height + 6, 1, 1).data
     const before = rest.getImageData(x, y, width, height).data
     const during = flex.getImageData(x, y, width, height).data
     const backgroundDelta = (pixels, i) => Math.max(
@@ -52,16 +51,38 @@ async function exposedBackground(page, unbent, bent, panel) {
       Math.abs(pixels[i + 2] - background[2]),
     )
     let exposed = 0
-    for (let i = 0; i < before.length; i += 4) {
-      if (backgroundDelta(before, i) > 20 && backgroundDelta(during, i) < 4) exposed++
+    let stationaryBorder = 0
+    const inset = Math.ceil(3 * dpr)
+    const stroke = Math.ceil(1.5 * dpr)
+    const corner = Math.ceil(20 * dpr)
+    const edges = [
+      { length: width, at: (along, depth) => (depth * width + along) * 4 },
+      { length: width, at: (along, depth) => ((height - 1 - depth) * width + along) * 4 },
+      { length: height, at: (along, depth) => (along * width + depth) * 4 },
+      { length: height, at: (along, depth) => (along * width + width - 1 - depth) * 4 },
+    ]
+    for (const { length, at } of edges) {
+      for (let along = corner; along < length - corner; along++) {
+        const inner = at(along, inset)
+        if (backgroundDelta(during, inner) >= 4 || backgroundDelta(before, inner) < 8) continue
+        exposed++
+        for (let depth = 0; depth < stroke; depth++) {
+          if (backgroundDelta(during, at(along, depth)) > 8) stationaryBorder++
+        }
+      }
     }
-    return exposed
+    return { exposed, stationaryBorder }
   }, { images: [unbent, bent].map(image => Buffer.from(image).toString('base64')), panel })
 }
 
 async function bend(browser, mode) {
   const page = await prepare(browser, mode)
   try {
+    const offset = activePage => activePage.$eval('.wave-delete', tile => {
+      const right = tile.getBoundingClientRect().right
+      tile.style.position = 'relative'
+      tile.style.left = `${(Math.floor(right * devicePixelRatio) + 0.625) / devicePixelRatio - right}px`
+    })
     const sample = async (activePage, displacement) => {
       await activePage.evaluate(value => {
         const file = document.querySelector('.wave-delete')
@@ -72,14 +93,19 @@ async function bend(browser, mode) {
       await advance(activePage, 110)
       return activePage.screenshot()
     }
+    await offset(page)
     const panel = await bounds(page, '.wave-delete')
     const bent = await sample(page, null)
     await advance(page, 2000)
-    const unbent = await compareAfterReset(browser, mode, reference => sample(reference, '0'))
+    const unbent = await compareAfterReset(browser, mode, async reference => {
+      await offset(reference)
+      return sample(reference, '0')
+    })
     const difference = await compareWaveImages(page, unbent, bent, unbent, panel)
     assert(difference.regionPixels[0] > 100, 'The outgoing image must visibly bend before launch with the same glow')
-    const exposed = await exposedBackground(page, unbent, bent, panel)
-    assert(exposed > 100, 'The bottom edge of the tile must bow inward and expose the backdrop before launch')
+    const { exposed, stationaryBorder } = await exposedBackground(page, unbent, bent, panel)
+    assert(exposed > 30, 'The tile must bow inward and expose the backdrop before launch')
+    assert.equal(stationaryBorder, 0, 'The original border must clear where the tile bends away')
   } finally {
     await page.close()
   }

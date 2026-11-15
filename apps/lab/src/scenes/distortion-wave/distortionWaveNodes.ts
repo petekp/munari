@@ -287,10 +287,20 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
     const redAt = clamp(sampleAt.add(split), 0, 1).toVar()
     const greenAt = clamp(sampleAt, 0, 1).toVar()
     const blueAt = clamp(sampleAt.sub(split), 0, 1).toVar()
-    const bentEdge = max(
-      sd,
-      distanceFromEdge(center.add(pullOffset.mul(flexEdge))),
+    const outlineOffset = pullOffset.mul(flexEdge)
+    const baseAt = clamp(
+      at.add(vec2(outlineOffset.x, outlineOffset.y.negate()).div(size)),
+      0,
+      1,
+    ).toVar()
+    const pulledCenter = center.add(outlineOffset)
+    const cropEdge = abs(pulledCenter).sub(half)
+    const backdrop = smoothstep(
+      0,
+      float(1).div(pixelRatio),
+      max(cropEdge.x, cropEdge.y),
     )
+    const bentEdge = max(sd, distanceFromEdge(pulledCenter))
     const bentMask = clamp(float(0.5).sub(bentEdge.mul(pixelRatio)), 0, 1)
     const cover = mix(
       float(1),
@@ -303,7 +313,7 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
       const selection = Switch(snapshotIndex)
       maps.forEach((map, index) => {
         selection.Case(float(index).toInt(), () => {
-          originalColor.assign(map.sample(at).level(float(0)))
+          originalColor.assign(map.sample(baseAt).level(float(0)))
           If(content.greaterThan(0), () => {
             const red = map.sample(redAt).level(float(0))
             const green = map.sample(greenAt).level(float(0))
@@ -313,11 +323,12 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
         })
       })
     })
-    // The old-state cover also owns the backdrop exposed by the inward bend.
+    // The captured border follows baseAt. Clamped samples beyond the crop
+    // would smear that border into the backdrop exposed by the bend.
     const oldColor = mix(
       mix(originalColor.rgb, refractedColor, mask),
       background,
-      mask.sub(bentMask),
+      backdrop,
     ).mul(cover)
     const ink = sampled.greaterThan(0).select(
       clamp(length(originalColor.rgb.sub(background)), 0, 1)
