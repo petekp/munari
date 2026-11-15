@@ -28,6 +28,8 @@
 // to whichever tuning bag the caller passes.
 
 import { useEffect, useMemo, useRef } from 'react'
+import { WebGPURenderer } from 'three/webgpu'
+import { observeSurfaceDraw } from '../../lib/surfaceFrames'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
@@ -87,6 +89,9 @@ export function RefractionMaterial({
   fieldW = stageW,
   fieldH = stageH,
   probe,
+  drawMesh,
+  awaitingIncoming,
+  prepareIncomingDraw,
 }: {
   incoming: SurfaceHandle
   incomingPart?: string
@@ -107,6 +112,9 @@ export function RefractionMaterial({
    * the two would agree until someone touched one of them. Handing this one
    * out keeps the picture and the pointer reading the same texels.
    */
+  awaitingIncoming?: boolean
+  drawMesh?: THREE.Mesh | null
+  prepareIncomingDraw?: (texture: THREE.Texture, renderer: WebGPURenderer) => (() => void) | undefined
   probe?: React.RefObject<((u: number, v: number) => number) | null>
 }) {
   const surface = useSurfaceNodes()
@@ -175,6 +183,19 @@ export function RefractionMaterial({
       ref.current = null
     }
   }, [probe, field])
+
+  useEffect(() => {
+    if (!drawMesh || !prepareIncomingDraw) return
+    return observeSurfaceDraw(drawMesh, renderer => {
+      if (!(renderer instanceof WebGPURenderer)) return
+      const bound = values.incoming.value
+      const complete = prepareIncomingDraw(bound, renderer)
+      if (!complete) return awaitingIncoming ? false : undefined
+      return () => {
+        if (values.incoming.value === bound) complete()
+      }
+    })
+  }, [awaitingIncoming, drawMesh, prepareIncomingDraw, values])
 
   useFrame(() => {
     const v = values

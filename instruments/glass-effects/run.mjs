@@ -45,8 +45,8 @@ const observer = {
     source = once(source, '    panels.sort((a, b) => a.depth - b.depth)', `    panels.sort((a, b) => globalThis.__glassEffects?.wrongSort
       ? b.group.current!.getWorldPosition(new THREE.Vector3()).distanceToSquared(camera.position) - a.group.current!.getWorldPosition(new THREE.Vector3()).distanceToSquared(camera.position)
       : a.depth - b.depth)`)
-    source = once(source, '    // This is the sole color-writing', `    globalThis.__glassEffects?.afterFrame({gl, scene, camera, THREE, panels: ${panelView}})
-    // This is the sole color-writing`)
+    source = once(source, '    for (const p of presentedPanels) {', `    globalThis.__glassEffects?.afterFrame({gl, scene, camera, THREE, panels: ${panelView}})
+    for (const p of presentedPanels) {`)
     return source
   },
 }

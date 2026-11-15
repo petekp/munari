@@ -625,6 +625,10 @@ interface GlassSample {
   presenter: SurfaceManualPresenter
 }
 
+function drawnGlassFrame(frame: GlassSample['frame'] | null | undefined, ink: THREE.Texture, after: THREE.Texture, drawn: boolean) {
+  return frame && ink === frame.texture && after === ink && drawn ? frame : null
+}
+
 interface GlassFrameOutput {
   read(texture: THREE.Texture): GlassSample['frame'] | null
   draw(mesh: THREE.Mesh, render: () => void, samples: readonly GlassSample[]): void
@@ -826,18 +830,17 @@ export function GlassSdfCompositor({
         now,
       )
 
-      // Same age-not-timestamp discipline as the ripples above. A strike is
-      // retired by its own life, so a panel nobody has pressed uploads a
-      // count of zero and the material's loop never runs.
       u.glowColor.value.set(q.glowColor)
       u.glowReach.value = Math.max(q.glowReach, 1e-3)
       u.glowLife.value = Math.max(q.glowLife, 1e-3)
       u.glowCount.value = uploadGlows(u.glowSlots, p.glows, q, now)
 
+      const boundInk = u.ink.value
+      const triangles = gl.info.render.triangles
       gl.setRenderTarget(dst)
       gl.render(glassScene, quadCam)
-      // A backdrop-only pass has no live ink to present or route input to.
-      if (frame) sampledFrames.push({ frame, presenter: p.presenter })
+      const sampled = drawnGlassFrame(frame, boundInk, u.ink.value, gl.info.render.triangles > triangles)
+      if (sampled) sampledFrames.push({ frame: sampled, presenter: p.presenter })
       if (ink && !frameOutput) presentedPanels.push(p)
       src = dst
       dst = dst === pingA ? pingB : pingA
@@ -849,9 +852,6 @@ export function GlassSdfCompositor({
     const drawFinal = () => gl.render(blitScene, quadCam)
     if (frameOutput) frameOutput.draw(blitMesh, drawFinal, sampledFrames)
     else drawFinal()
-    // This is the sole color-writing presentation of each sampled SDF panel.
-    // Proxy meshes are input geometry only, so a panel earns canvas input
-    // only after this actual screen draw includes its composited pixels.
     for (const p of presentedPanels) {
       p.presenter.prove()
       p.presenter.present()

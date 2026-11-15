@@ -118,6 +118,42 @@ export function waitForSurfaceFrame(
   })
 }
 
+export function observeSurfaceDraw(
+  mesh: Mesh,
+  prepare: (renderer: Parameters<Mesh['onBeforeRender']>[0]) => (() => void) | false | undefined,
+) {
+  const { onBeforeRender, onAfterRender } = mesh
+  let pending: { call: number; triangles: number; complete: () => void } | null = null
+  let suppressed: { material: Mesh['material']; color: boolean } | null = null
+  const before: Mesh['onBeforeRender'] = function (renderer, scene, camera, geometry, material, group) {
+    pending = null
+    const complete = !scene.overrideMaterial && material === mesh.material ? prepare(renderer) : undefined
+    if (complete === false) {
+      suppressed = { material, color: material.colorWrite }
+      material.colorWrite = false
+    }
+    onBeforeRender.call(mesh, renderer, scene, camera, geometry, material, group)
+    if (complete) pending = { call: renderer.info.render.calls, triangles: renderer.info.render.triangles, complete }
+  }
+  const after: Mesh['onAfterRender'] = function (renderer, scene, camera, geometry, material, group) {
+    const proof = pending
+    pending = null
+    const { calls, triangles } = renderer.info.render
+    onAfterRender.call(mesh, renderer, scene, camera, geometry, material, group)
+    if (suppressed && suppressed.material === material) {
+      material.colorWrite = suppressed.color
+      suppressed = null
+    }
+    if (proof && calls === proof.call && triangles > proof.triangles && material === mesh.material) proof.complete()
+  }
+  mesh.onBeforeRender = before
+  mesh.onAfterRender = after
+  return () => {
+    if (mesh.onBeforeRender === before) mesh.onBeforeRender = onBeforeRender
+    if (mesh.onAfterRender === after) mesh.onAfterRender = onAfterRender
+  }
+}
+
 interface SampledFrame {
   frame: LabSurfaceFrame
   presenter: SurfaceManualPresenter
@@ -132,7 +168,7 @@ export function drawSurfaceOutput(
   let began: { call: number; triangles: number } | null = null
   let presented = false
   mesh.onBeforeRender = function (renderer, scene, camera, geometry, material, group) {
-    onBeforeRender.call(this, renderer, scene, camera, geometry, material, group)
+    onBeforeRender.call(mesh, renderer, scene, camera, geometry, material, group)
     began = null
     if (renderer.getRenderTarget() !== null || scene.overrideMaterial || material !== mesh.material || !material.colorWrite) return
     const { calls, triangles } = renderer.info.render
@@ -142,7 +178,7 @@ export function drawSurfaceOutput(
     const { calls, triangles } = renderer.info.render
     presented ||= began !== null && calls === began.call && triangles > began.triangles &&
       renderer.getRenderTarget() === null && material === mesh.material && material.colorWrite
-    onAfterRender.call(this, renderer, scene, camera, geometry, material, group)
+    onAfterRender.call(mesh, renderer, scene, camera, geometry, material, group)
   }
   try {
     draw()

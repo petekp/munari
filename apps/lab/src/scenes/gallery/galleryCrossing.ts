@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSurfaceSupport, useSurfaceTextureOf, type SurfaceHandle } from '@petepetrash/munari'
 import type { WebGPURenderer } from 'three/webgpu'
-import { waitForSurfaceFrame } from '../../lib/surfaceFrames'
+import type { Texture } from 'three'
+import { readSurfaceFrame, uploadSurfaceFrame, waitForSurfaceFrame, type LabSurfaceFrame } from '../../lib/surfaceFrames'
 import { springEase } from '../refraction/refractionLaw'
 import { galleryTuning as tune } from './galleryTuning'
 
@@ -17,6 +18,7 @@ export function useGalleryCrossing(surface: SurfaceHandle, itemCount: number, re
   const left = useSurfaceTextureOf(surface, 'item-0')
   const right = useSurfaceTextureOf(surface, 'item-1')
   const revision = useRef(0)
+  const expected = useRef<{ frame: LabSurfaceFrame; finish: () => void } | null>(null)
   const [edit, setEdit] = useState<GalleryEdit | null>(null)
 
   /** Which item each part is holding. */
@@ -61,6 +63,7 @@ export function useGalleryCrossing(surface: SurfaceHandle, itemCount: number, re
     if (landedAt === null || item === slots[landedAt].item) return
     const to = landedAt === 0 ? 1 : 0
     const id = ++revision.current
+    expected.current = null
     setSlots((current) => {
       const next: [CardSlot, CardSlot] = [...current]
       next[to] = { item, revision: id }
@@ -70,6 +73,7 @@ export function useGalleryCrossing(surface: SurfaceHandle, itemCount: number, re
       setP(to)
       return
     }
+    setOrigin(landedAt)
     setEdit({ from: landedAt, to, revision: id })
   }
 
@@ -80,6 +84,7 @@ export function useGalleryCrossing(surface: SurfaceHandle, itemCount: number, re
     const finish = (ready: boolean) => {
       if (controller.signal.aborted || revision.current !== edit.revision) return
       controller.abort()
+      expected.current = null
       clearTimeout(timeout)
       if (ready) {
         setOrigin(edit.from)
@@ -97,13 +102,30 @@ export function useGalleryCrossing(surface: SurfaceHandle, itemCount: number, re
         (content) => content.querySelector(marker) !== null,
         controller.signal,
         () => renderer.current,
-      ).then((frame) => { if (frame) finish(true) })
+      ).then((frame) => {
+        if (frame && !controller.signal.aborted && revision.current === edit.revision) {
+          expected.current = { frame, finish: () => finish(true) }
+        }
+      })
     }
     return () => {
+      expected.current = null
       clearTimeout(timeout)
       controller.abort()
     }
   }, [destinationTexture, edit, renderer])
+
+  const prepareIncomingDraw = useCallback((bound: Texture, currentRenderer: WebGPURenderer) => {
+    const request = expected.current
+    if (!request || request.frame.texture !== bound) return
+    const frame = readSurfaceFrame(bound)
+    const matchesEdit = frame && frame.paint.frame.sourceId === request.frame.paint.frame.sourceId &&
+      frame.paint.read >= request.frame.paint.read
+    if (!matchesEdit || !uploadSurfaceFrame(frame, currentRenderer)) return
+    return () => queueMicrotask(() => {
+      if (expected.current === request) request.finish()
+    })
+  }, [])
 
   // The animated crossing. Driven from `requestAnimationFrame` rather than
   // the renderer's frame because it also moves the scrub input, which is
@@ -147,5 +169,5 @@ export function useGalleryCrossing(surface: SurfaceHandle, itemCount: number, re
     setRunning(true)
   }
 
-  return { slots, p, running, pending: edit !== null, origin, landedAt, lifted, current, goTo, onScrub, cross }
+  return { slots, p, running, pending: edit !== null, origin, landedAt, lifted, current, goTo, onScrub, cross, prepareIncomingDraw }
 }

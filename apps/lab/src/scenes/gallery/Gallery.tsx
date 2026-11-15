@@ -221,7 +221,8 @@ function PixelPerfect() {
 export function GalleryApp() {
   const surface = useSurfaceHandle('gallery')
   const renderer = useRef<WebGPURenderer>(null)
-  const { slots, p, running, pending, origin, landedAt, lifted, current, goTo, onScrub, cross } =
+  const [drawMesh, setDrawMesh] = useState<THREE.Mesh | null>(null)
+  const { slots, p, running, pending, origin, landedAt, lifted, current, goTo, onScrub, cross, prepareIncomingDraw } =
     useGalleryCrossing(surface, ITEMS.length, renderer)
   const drive = useRef<RefractionDrive>({ t: 0 })
   drive.current.t = origin === 0 ? p : 1 - p
@@ -412,7 +413,7 @@ export function GalleryApp() {
       </div>
 
       <div ref={holderRef} className="gallery-holder">
-        <Surface.Root surface={surface} inScene={lifted}>
+        <Surface.Root surface={surface} inScene={lifted || pending}>
           {/* Each card carries the tenth-second clock: content that moves on its own. */}
           {([0, 1] as const).map(i => <Surface.HTML key={i} part={`item-${i}`} hidden={landedAt !== i && !(lifted && origin === i)} size={[stage.w, stage.h]} live>{cards[i]}</Surface.HTML>)}
         </Surface.Root>
@@ -422,7 +423,7 @@ export function GalleryApp() {
         pointerMode="surfaces"
         style={{ position: 'fixed', inset: 0 }}
         gl={{ alpha: true, antialias: false, depth: false }}
-        frameloop={lifted ? 'always' : 'demand'}
+        frameloop={lifted || pending ? 'always' : 'demand'}
         dpr={[1, 2]}
         camera={{ fov: FOV, position: [0, 0, 1000] }}
         onCreated={(state) => {
@@ -439,6 +440,7 @@ export function GalleryApp() {
             <Surface.Mesh
               surface={surface}
               part={`item-${origin}`}
+              ref={setDrawMesh}
               sampledParts={[`item-${1 - origin}`]}
               placement="manual"
               alpha="source"
@@ -456,18 +458,13 @@ export function GalleryApp() {
                   fieldW={GALLERY_REF_W}
                   fieldH={GALLERY_REF_H}
                   probe={probe}
+                  drawMesh={drawMesh}
+                  awaitingIncoming={pending}
+                  prepareIncomingDraw={prepareIncomingDraw}
                 />
               }
             />
-            {/* The arriving item's ear. The sheet above already has its
-                pixels, sampled as a texture; this mesh exists only so the
-                arriving source has a presenter of its own, which is what
-                makes a pointer over it that source's to hear.
-
-                An opaque material draws before the transparent sheet does,
-                so both writes are turned off: `colorWrite` leaves no pixels
-                and `depthWrite` leaves nothing for the sheet's own fragments
-                to be tested against. */}
+            {/* The arriving part needs its own input proxy. Its pixels come from the refraction mesh. */}
             <Surface.Mesh
               surface={surface}
               part={`item-${1 - origin}`}
