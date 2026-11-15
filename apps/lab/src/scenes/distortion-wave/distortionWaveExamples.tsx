@@ -26,8 +26,8 @@ const COPY_STATES = {
     announcement: '',
   },
   copied: {
-    caption: 'You’re ready to share',
-    title: ['Invite copied.', 'See you there.'],
+    caption: 'Listening party',
+    title: ['Invite', 'copied.'],
     action: 'Copied',
     announcement: 'Invitation code copied.',
   },
@@ -71,7 +71,7 @@ function WaveLike({ wave }: ExampleProps) {
       <div className="wave-album-caption">
         <div>
           <strong>Night Swim</strong>
-          <small>Rhea Sol · New single</small>
+          <small>Rhea Sol</small>
         </div>
         <button
           type="button"
@@ -96,14 +96,13 @@ function WaveDelete({ wave }: ExampleProps) {
   const [deleted, setDeleted] = useState(false)
   return (
     <div className="wave-file-tray">
-      <div className="wave-context-line">Recent file</div>
       <div className="wave-delete" data-wave-target="" data-deleted={deleted}>
         <div className="wave-file-visual">
           {deleted ? <WaveIcon name="trash" /> : <WaveArtwork kind="orbit" />}
         </div>
         <div className="wave-file-copy" aria-live="polite">
-          <strong>{deleted ? 'Moved to trash' : 'Cover exploration 03'}</strong>
-          <small>{deleted ? 'Cover exploration 03' : 'Artwork · 2.4 MB'}</small>
+          <strong>{deleted ? 'Moved to trash' : 'Cover study 03'}</strong>
+          <small>{deleted ? 'Cover study 03' : 'PNG · 2.4 MB'}</small>
         </div>
         <button
           type="button"
@@ -155,9 +154,6 @@ function WaveCopy({ wave }: ExampleProps) {
             <WaveIcon name={copied ? 'check' : 'music'} />
           </span>
           <span>{content.caption}</span>
-          <span className="wave-pass-action">
-            <WaveIcon name={copied ? 'check' : 'copy'} />
-          </span>
         </span>
         <span className="wave-pass-title">
           {content.title[0]}
@@ -226,9 +222,6 @@ function WaveChecklist({ wave }: ExampleProps) {
   const [completed, setCompleted] = useState<string[]>([])
   return (
     <div className="wave-checklist">
-      <div className="wave-context-line">
-        <strong>Ready for release</strong>
-      </div>
       {TASKS.map((task) => {
         const checked = completed.includes(task.title)
         return (
@@ -285,7 +278,7 @@ function WaveColor({ wave }: ExampleProps) {
         aria-label={`${finish.name} pocket player`}
       >
         <div className="wave-player-top">
-          <span>pocket</span>
+          <span>Pocket</span>
           <small className="wave-color-name" aria-live="polite">
             {finish.name}
           </small>

@@ -1,11 +1,11 @@
 .wave-page {
-  --wave-bg: #e0eaf3;
-  --wave-surface: #f8fbff;
+  --wave-bg: #e8e7ed;
+  --wave-surface: #f7f6fa;
   --wave-raised: #fff;
-  --wave-line: #becbd9;
-  --wave-text: #26374c;
-  --wave-muted: #65738a;
-  --wave-inset: #e7eef6;
+  --wave-line: #cac7d6;
+  --wave-text: #262437;
+  --wave-muted: #615d73;
+  --wave-inset: #ece9f2;
   --wave-ready: #246853;
   --wave-ready-fill: #d8f0e8;
   --wave-heart: #ce4b69;
@@ -16,28 +16,29 @@
   overflow: auto;
   background: var(--wave-bg);
   color: var(--wave-text);
+  -webkit-font-smoothing: antialiased;
   font:
-    14px/1.4 system-ui,
+    14px/1.4 Archivo, system-ui,
     sans-serif;
 }
 .wave-page[data-theme='dark'] {
-  --wave-bg: #151d29;
-  --wave-surface: #222e40;
-  --wave-raised: #2b3950;
-  --wave-line: #3b4b61;
-  --wave-text: #f2f4f9;
-  --wave-muted: #9aa9be;
-  --wave-inset: #1b2636;
+  --wave-bg: #14131e;
+  --wave-surface: #201f30;
+  --wave-raised: #323047;
+  --wave-line: #424057;
+  --wave-text: #f3efff;
+  --wave-muted: #b0aabf;
+  --wave-inset: #191827;
   --wave-ready: #96e4c9;
   --wave-ready-fill: #233f3c;
-  --wave-heart: #ff9aac;
-  --wave-heart-fill: #49303e;
+  --wave-heart: #ffafc3;
+  --wave-heart-fill: #512e46;
   --wave-copy-surface: #223c36;
 }
 .wave-sheet {
   box-sizing: border-box;
   min-height: 100%;
-  padding: 26px max(28px, calc((100% - 1160px) / 2)) 38px;
+  padding: 27px max(28px, calc((100% - 1240px) / 2)) 36px;
   background: var(--wave-bg);
 }
 .wave-sheet * {
@@ -56,21 +57,25 @@
 }
 .wave-toolbar {
   display: flex;
-  align-items: center;
+  align-items: end;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 26px;
+  gap: 18px;
+  padding-bottom: 21px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--wave-line);
 }
 .wave-workspace {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 16px;
+  align-items: start;
+  flex-direction: column;
+  gap: 7px;
 }
-.wave-workspace strong {
-  font-size: 20px;
-  letter-spacing: -0.5px;
+.wave-workspace h1 {
+  margin: 0;
+  font: 650 clamp(2.5rem, 4vw, 3.75rem)/0.96 Archivo, system-ui, sans-serif;
+  letter-spacing: -0.064em;
+  font-stretch: 112%;
 }
 .wave-workspace a {
   color: var(--wave-muted);
@@ -84,12 +89,17 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 10px;
+  background: var(--wave-inset);
+  border: 1px solid var(--wave-line);
+  border-radius: 14px;
+  padding: 6px;
 }
 .wave-settings label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  padding-inline-start: 5px;
   font-size: 12px;
   color: var(--wave-muted);
 }
@@ -115,26 +125,25 @@
 }
 .wave-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  column-gap: 30px;
-  row-gap: 26px;
+  grid-template-columns: minmax(0, 1.26fr) repeat(2, minmax(0, 1fr));
+  column-gap: clamp(16px, 2.3vw, 32px);
+  row-gap: 25px;
 }
 .wave-example {
   min-width: 0;
 }
 .wave-example h2 {
-  color: var(--wave-muted);
-  font:
-    550 13px/1.4 system-ui,
-    sans-serif;
-  margin: 0 0 14px;
+  color: var(--wave-text);
+  font-size: 15px;
+  font-weight: 550;
+  letter-spacing: -0.015em;
+  margin: 0 0 10px;
 }
 .wave-example-content {
   position: relative;
   min-width: 0;
-  height: 244px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
 }
 .wave-overlay {
@@ -154,7 +163,7 @@
     padding-inline: 24px;
   }
 }
-@media (max-width: 850px) {
+@media (max-width: 870px) {
   .wave-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 24px;
@@ -169,11 +178,10 @@
     padding: 20px;
   }
   .wave-example-content {
-    height: auto;
-    min-height: 220px;
+    min-height: 0;
   }
   .wave-workspace {
-    gap: 10px;
+    gap: 7px;
   }
   .wave-settings {
     gap: 12px;

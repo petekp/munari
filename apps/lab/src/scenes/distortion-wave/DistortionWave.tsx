@@ -74,13 +74,13 @@ export function DistortionWaveApp() {
       <div className="wave-sheet" data-wave-page="" data-wave-target="">
         <div className="wave-toolbar">
           <div className="wave-workspace">
-            <strong>Night studio</strong>
+            <h1>Night studio</h1>
             <a
               href="https://codepen.io/LukyVj/pen/jEBJpLp"
               target="_blank"
               rel="noreferrer"
             >
-              Original by LukyVJ ↗
+              Original by LukyVJ
             </a>
           </div>
           <div className="wave-settings">
