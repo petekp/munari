@@ -110,7 +110,7 @@ async function handoff(browser, scene, engine, fault) {
         let body = await response.text()
         if (upload) {
           body = replaceOnce(body, 'renderer.initTexture(texture);', 'window.holdUpload(renderer, texture); renderer.initTexture(texture);')
-          if (fault) body = replaceOnce(body, 'return uploaded;', 'return true;')
+          if (fault) body = replaceOnce(body, 'return uploaded;', `return uploaded || window.handoff.requested === ${JSON.stringify(fault)};`)
         } else if (shared) {
           body = replaceOnce(body, 'pending.current = current;', 'pending.current = current; window.handoff.requested = phase;')
           body = replaceOnce(body, 'if (status.status === "error" || status.status === "unsupported") {', 'if (status.status === "error" || status.status === "unsupported") { window.handoff.failure = status;')
@@ -175,7 +175,7 @@ async function handoff(browser, scene, engine, fault) {
       const verifyUpload = () => {
         assert(!early && copies.length === 0, 'Outgoing upload must precede the copy and DOM update')
       }
-      if (fault) {
+      if (fault === 'capture-before') {
         assert.throws(verifyUpload, /Outgoing upload/)
         assert.deepEqual(errors, [])
         return 'caught an early copy or update with the upload blocked'
@@ -186,12 +186,23 @@ async function handoff(browser, scene, engine, fault) {
       await page.waitForFunction(target.changed)
       await page.waitForFunction(() => window.handoff.lastBlocked === 'capture-after')
       await settle(page)
-      assert.deepEqual(await page.evaluate(() => window.handoff.copies), ['before'])
       const outgoing = await page.screenshot()
       await page.evaluate(() => { window.handoff.time += 500 })
       await settle(page)
-      assert.equal(await distance(page, outgoing, await page.screenshot(), region), 0,
-        'The outgoing pixels must stay held while the incoming upload is blocked')
+      const mismatch = await distance(page, outgoing, await page.screenshot(), region)
+      const copyOrder = await page.evaluate(() => window.handoff.copies)
+      const verifyIncoming = () => {
+        assert(mismatch === 0 && copyOrder.length === 1 && copyOrder[0] === 'before',
+          'The outgoing pixels must stay held while the incoming upload is blocked')
+      }
+      if (fault === 'capture-after') {
+        assert.deepEqual(copyOrder, ['before', 'after'])
+        assert(mismatch > 0, 'Bypassing the incoming upload check must change painted pixels before release')
+        assert.throws(verifyIncoming, /incoming upload is blocked/)
+        assert.deepEqual(errors, [])
+        return 'caught an early reveal with the incoming upload blocked'
+      }
+      verifyIncoming()
       await page.evaluate(() => { window.handoff.blocked = null })
     }
     await page.waitForFunction(() => window.handoff.copies.includes('before'), { timeout: 4000 })
@@ -299,8 +310,11 @@ for (const engine of engines.length ? engines : ['native', 'snapdom']) {
     for (const scene of Object.keys(scenes)) {
       const result = await handoff(browser, scene, engine, false)
       console.log(`${engine} ${scene}: ${result}`)
-      const fault = await handoff(browser, scene, engine, true)
-      console.log(`${engine} ${scene}: ${fault}`)
+      const faults = staleGpu ? ['capture-before', 'capture-after'] : [true]
+      for (const fault of faults) {
+        const caught = await handoff(browser, scene, engine, fault)
+        console.log(`${engine} ${scene}: ${caught}`)
+      }
     }
   } finally {
     await browser.close()

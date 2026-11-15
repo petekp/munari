@@ -9,3 +9,9 @@ and requires the same assertion to reject that early commit. Postcard uses a
 scaled card, verifies the incoming stamp with the live card hidden, and
 checks that typing releases the cover while focus stays on the same input.
 The clock is frozen for pixel comparisons, so this does not measure latency.
+
+Set `STALE_GPU=1` to block each texture upload in turn. The outgoing
+upload must precede both the copy and the live update. The outgoing
+pixels must stay visible while the incoming upload is blocked. The
+probe bypasses each guard separately and checks that its assertion
+rejects the early handoff.
