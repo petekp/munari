@@ -11,6 +11,7 @@ import {
 import { readSurfaceFrameState } from '@petepetrash/munari/advanced'
 import { Button } from '../../components/system'
 import type { LightFlyerStore } from '../light/lightFlyer'
+import type { StampController } from './PostcardStamp'
 
 import { PAPER_WIDTH as HERO_W, PAPER_HEIGHT as HERO_H, type PaperInteraction } from '../light/lightPaperLaw'
 
@@ -33,11 +34,13 @@ const MARK_SPOTS = [
 function Postcard({
   name,
   onName,
+  onNameFocus,
   stamps,
   onStamp,
 }: {
   name: string
   onName: (v: string) => void
+  onNameFocus: () => void
   stamps: number
   onStamp: () => void
 }) {
@@ -81,6 +84,7 @@ function Postcard({
           value={name}
           placeholder="Your name"
           autoComplete="off"
+          onFocus={onNameFocus}
           onChange={(e) => onName(e.target.value)}
         />
         <p className="postcard-line">
@@ -118,6 +122,7 @@ export function PostcardForm({
   setInScene,
   holderRef,
   landRef,
+  stampController,
   supported,
   reduced,
 }: {
@@ -129,6 +134,7 @@ export function PostcardForm({
   setInScene: React.Dispatch<React.SetStateAction<boolean>>
   holderRef: HolderRef
   landRef: LandRef
+  stampController: StampController
   supported: boolean
   reduced: boolean
 }) {
@@ -159,11 +165,21 @@ export function PostcardForm({
   const content = (
     <Postcard
       name={name}
-      onName={setName}
+      onNameFocus={() => stampController.cancel()}
+      onName={value => {
+        stampController.cancel()
+        setName(value)
+      }}
       stamps={stamps}
       onStamp={() => {
-        setStamps(n => n+1)
-        if (readSurfaceFrameState(surface).presentation==='scene') paper.impulses++
+        const add = () => setStamps(n => n + 1)
+        const presentation = readSurfaceFrameState(surface).presentation
+        if (presentation === 'scene') {
+          add()
+          paper.impulses++
+        } else if (presentation === 'page' && !lifted && !reduced) {
+          stampController.stamp(add)
+        } else add()
       }}
     />
   )
@@ -199,7 +215,10 @@ export function PostcardForm({
               className="postcard-btn"
               data-relief="raised"
               onClick={() => {
-                if (!lifted) setInScene(true)
+                if (!lifted) {
+                  stampController.cancel()
+                  setInScene(true)
+                }
                 else if (reduced) setInScene(false)
                 else landRef.current = true
               }}
@@ -207,7 +226,7 @@ export function PostcardForm({
               {lifted ? 'Return to page' : 'Lift the postcard'}
             </Button>
           ) : (
-            <Button className="postcard-btn" data-relief="raised" onClick={() => setPreview((value) => !value)}>
+            <Button className="postcard-btn" data-relief="raised" onClick={() => setPreview(value => !value)}>
               {preview ? 'Back to the postcard' : 'Play 3D preview'}
             </Button>
           )}
