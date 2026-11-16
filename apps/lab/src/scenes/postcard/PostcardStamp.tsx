@@ -8,17 +8,12 @@ import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu'
 import { mix, positionGeometry, smoothstep, texture, uniform, uv, vec2, vec4 } from 'three/tsl'
 import { createCaptureCopy, usePairedCapture, type TransitionSnapshot } from '../../lib/pairedCapture'
 import { PAPER_WIDTH, PAPER_HEIGHT } from '../light/lightPaperLaw'
-import type { HolderRef } from './PostcardForm'
+import type { SurfaceTransition } from '../../lib/surfaceTransition'
 
 interface ActiveStamp {
   card: HTMLElement
   visible: boolean
   began: number | null
-}
-
-export interface StampController {
-  stamp: (update: () => void) => void
-  cancel: () => void
 }
 
 function stampSnapshot(card: HTMLElement, sequence: number): TransitionSnapshot {
@@ -75,7 +70,7 @@ function stampResources() {
 const STAMP_DURATION = 320
 const ignoreRaycast = () => {}
 
-export function PostcardStamp({ controller, holder }: { controller: StampController; holder: HolderRef }) {
+export function PostcardStamp({ transition }: { transition: SurfaceTransition }) {
   const gl = useThree(state => state.gl)
   const invalidate = useThree(state => state.invalidate)
   const capture = useCaptureHandle()
@@ -83,7 +78,6 @@ export function PostcardStamp({ controller, holder }: { controller: StampControl
   const [resources] = useState(stampResources)
   const mesh = useRef<Mesh>(null)
   const sequence = useRef(0)
-  const queue = useRef<Array<() => void>>([])
   const active = useRef<ActiveStamp | null>(null)
   if (!(gl instanceof WebGPURenderer)) throw new Error('Stamp rendering requires SurfaceCanvas')
 
@@ -94,37 +88,28 @@ export function PostcardStamp({ controller, holder }: { controller: StampControl
     resources.material.dispose()
   }, [resources])
 
-  useLayoutEffect(() => {
-    const queued = queue.current
-    const stop = () => {
+  useLayoutEffect(() => transition.connect({
+    wake: invalidate,
+    finish: () => {
       cancel()
       active.current = null
       if (mesh.current) mesh.current.visible = false
-      for (const update of queued.splice(0)) update()
       invalidate()
-    }
-    controller.cancel = stop
-    controller.stamp = (update) => {
-      queued.push(update)
-      invalidate()
-    }
-    return () => {
-      controller.cancel = ignoreRaycast
-      controller.stamp = update => update()
+    },
+    dispose: () => {
       dispose()
       active.current = null
-      for (const update of queued.splice(0)) update()
-    }
-  }, [cancel, controller, dispose, invalidate])
+    },
+  }), [cancel, dispose, invalidate, transition])
 
   useFrame(() => {
     const element = mesh.current
     if (!element) return
     if (!active.current) {
-      const update = queue.current.shift()
-      if (update) {
-        const card = holder.current?.querySelector<HTMLElement>('.postcard-card')
-        if (!card) {
+      const request = transition.take()
+      if (request) {
+        const { target: card, update } = request
+        if (!card.isConnected) {
           queueMicrotask(update)
           invalidate()
           return
@@ -159,6 +144,14 @@ export function PostcardStamp({ controller, holder }: { controller: StampControl
         })
       }
     }
+    const current = active.current
+    if (current && !current.card.isConnected) {
+      element.visible = false
+      queueMicrotask(() => {
+        if (active.current === current) transition.finish()
+      })
+      return
+    }
     read(gl)
     const stamp = active.current
     const elapsed = stamp?.began == null ? 0 : performance.now() - stamp.began
@@ -167,12 +160,11 @@ export function PostcardStamp({ controller, holder }: { controller: StampControl
     if (stamp && element.visible) {
       const card = stamp.card.getBoundingClientRect()
       const canvas = gl.domElement.getBoundingClientRect()
-      const drawable = stamp.card.isConnected && card.width > 0 && card.height > 0 &&
-        canvas.width > 0 && canvas.height > 0
+      const drawable = card.width > 0 && card.height > 0 && canvas.width > 0 && canvas.height > 0
       if (!drawable) {
         element.visible = false
         queueMicrotask(() => {
-          if (active.current === stamp) controller.cancel()
+          if (active.current === stamp) transition.finish()
         })
         return
       }
@@ -184,7 +176,7 @@ export function PostcardStamp({ controller, holder }: { controller: StampControl
       )
       resources.progress.value = elapsed / STAMP_DURATION
     }
-    if (active.current || queue.current.length > 0) invalidate()
+    if (active.current || transition.peek()) invalidate()
   })
 
   return <>

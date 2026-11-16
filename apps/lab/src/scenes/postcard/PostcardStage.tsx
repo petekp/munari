@@ -4,7 +4,8 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useThree } from '@react-three/fiber'
 import { Surface, SurfaceCanvas, useSurfaceHandle } from '@petepetrash/munari'
 import { PostcardForm } from './PostcardForm'
-import { PostcardStamp, type StampController } from './PostcardStamp'
+import { useSurfaceTransition } from '../../lib/surfaceTransition'
+import { PostcardStamp } from './PostcardStamp'
 import { PostcardMesh, PixelPerfect } from './PostcardMesh'
 import { createPaperInteraction } from '../light/lightPaperLaw'
 import type { LightFlyerStore } from '../light/lightFlyer'
@@ -28,7 +29,7 @@ export function PostcardStage({ supported, reduced, effectsEnabled, flyer, viewp
   const [inScene, setInScene] = useState(false)
   const holderRef = useRef<HTMLDivElement>(null)
   const landRef = useRef(false)
-  const stamps = useMemo<StampController>(() => ({ stamp: update => update(), cancel: () => {} }), [])
+  const stamps = useSurfaceTransition()
   const paper = useMemo(createPaperInteraction, [])
   return (
     <div className="postcard-section">
@@ -49,7 +50,7 @@ export function PostcardStage({ supported, reduced, effectsEnabled, flyer, viewp
         >
           <KeepDomFocus />
           <PixelPerfect fov={FOV} />
-          {!reduced && <PostcardStamp controller={stamps} holder={holderRef} />}
+          {!reduced && <PostcardStamp transition={stamps} />}
           <Surface.Scene surface={hero}>
             <PostcardMesh
               flyer={flyer}
@@ -73,7 +74,7 @@ export function PostcardStage({ supported, reduced, effectsEnabled, flyer, viewp
         setInScene={setInScene}
         holderRef={holderRef}
         landRef={landRef}
-        stampController={stamps}
+        stampTransition={stamps}
         supported={supported}
         reduced={reduced}
       />

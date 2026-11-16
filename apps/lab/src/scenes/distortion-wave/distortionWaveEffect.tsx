@@ -18,8 +18,9 @@ import {
   RenderTarget,
 } from 'three'
 import { WebGPURenderer } from 'three/webgpu'
-import type { CaptureHandle } from '@petepetrash/munari'
+import { useCaptureHandle } from '@petepetrash/munari'
 import { createCaptureCopy, usePairedCapture } from '../../lib/pairedCapture'
+import type { SurfaceTransition, SurfaceTransitionRequest } from '../../lib/surfaceTransition'
 import {
   createDistortionWaveMaterial,
   MAX_WAVES,
@@ -32,8 +33,7 @@ import {
 } from './distortionWaveSnapshot'
 import { createWaveMotion, type WaveTiming } from './distortionWaveLaw'
 
-export interface WaveRequest extends WaveTiming {
-  target: HTMLElement
+export interface WaveOptions extends WaveTiming {
   source: DOMRect
   local: boolean
   boxless: boolean
@@ -41,14 +41,10 @@ export interface WaveRequest extends WaveTiming {
   y: number
   intensity: number
   palette: WavePalette
-  update: () => void
 }
-export interface WaveController {
-  run: (request: WaveRequest) => void
-}
+type WaveRequest = SurfaceTransitionRequest<WaveOptions>
 interface WaveEffectProps {
-  capture: CaptureHandle
-  controller: WaveController
+  transition: SurfaceTransition<WaveOptions>
 }
 interface SurfaceBend {
   pull: number
@@ -100,17 +96,17 @@ function motionFor(request: WaveRequest, target: DOMRect, bounds: DOMRect) {
     {
       width: bounds.width,
       height: bounds.height,
-      local: request.local,
+      local: request.options.local,
       sourceX:
-        (request.local ? request.x - pointRadius : request.source.left) - cropX,
+        (request.options.local ? request.options.x - pointRadius : request.options.source.left) - cropX,
       sourceY:
-        (request.local ? request.y - pointRadius : request.source.top) - cropY,
-      sourceWidth: request.local ? pointRadius * 2 : request.source.width,
-      sourceHeight: request.local ? pointRadius * 2 : request.source.height,
-      touchX: request.x - cropX,
-      touchY: request.y - cropY,
+        (request.options.local ? request.options.y - pointRadius : request.options.source.top) - cropY,
+      sourceWidth: request.options.local ? pointRadius * 2 : request.options.source.width,
+      sourceHeight: request.options.local ? pointRadius * 2 : request.options.source.height,
+      touchX: request.options.x - cropX,
+      touchY: request.options.y - cropY,
     },
-    request,
+    request.options,
   )
 }
 
@@ -131,7 +127,7 @@ function writeWave(
     wave.background.b,
   )
   p.radius.values[index] = wave.radius
-  p.boxless.values[index] = wave.request.boxless ? 1 : 0
+  p.boxless.values[index] = wave.request.options.boxless ? 1 : 0
   p.visibility.values[index] = !content && wave.overlapping ? 0.65 : 1
   p.content.values[index] = content ? 1 : 0
   p.light.values[index] = content ? 0 : 1
@@ -142,9 +138,9 @@ function writeWave(
   p.atlasInset.values[index] = 0.5 / atlasWidth
   p.scale.values[index] = wave.motion.scale
   p.ring.values[index] = wave.motion.ring ? 1 : 0
-  p.amplitude.values[index] = wave.motion.amplitude * wave.request.intensity
+  p.amplitude.values[index] = wave.motion.amplitude * wave.request.options.intensity
   p.lensWidth.values[index] = wave.motion.lensWidth
-  p.aberration.values[index] = wave.motion.aberration * wave.request.intensity
+  p.aberration.values[index] = wave.motion.aberration * wave.request.options.intensity
   p.lead.values[index] = wave.motion.lead
   p.tail.values[index] = wave.motion.tail
   p.rimWidth.values[index] = wave.motion.rimWidth
@@ -164,10 +160,10 @@ function writeWave(
   p.clear.values[index] = phase.clear
   p.hairClear.values[index] = phase.hairClear
   p.launched.values[index] = phase.launched
-  values.setPalette(index, wave.request.palette)
+  values.setPalette(index, wave.request.options.palette)
 }
 
-export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
+export function DistortionWaveEffect({ transition }: WaveEffectProps) {
   const invalidate = useThree((state) => state.invalidate)
   const viewport = useThree((state) => state.viewport)
   const gl = useThree((state) => state.gl)
@@ -176,8 +172,8 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
   const mesh = useRef<InstancedMesh>(null)
   const active = useRef<ActiveWave[]>([])
   const owner = useRef<ActiveWave | null>(null)
+  const capture = useCaptureHandle()
   const { busy, start, cancel: cancelCapture, dispose, read, presented, source } = usePairedCapture(capture, invalidate)
-  const requests = useRef<WaveRequest[]>([])
   const sequence = useRef(0)
   const warmed = useRef(false)
   const [resources] = useState(() => {
@@ -229,8 +225,8 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
   )
 
   const prepare = useCallback(() => {
-    if (busy() || requests.current.length === 0) return
-    const request = requests.current[0]
+    const request = transition.peek()
+    if (busy() || !request) return
     const pages = active.current.filter(
       (wave) =>
         wave.slot !== null &&
@@ -250,7 +246,7 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       if (!finished) return
       retire(finished)
     }
-    requests.current.shift()
+    transition.take()
     const targetBounds = request.target.getBoundingClientRect()
     const bounds = waveTargetBounds(request.target, targetBounds)
     if (!bounds) {
@@ -270,9 +266,9 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
       0
     const paired =
       radius > 0 &&
-      !request.boxless &&
-      request.buildupDuration > 0 &&
-      request.buildupDisplacement > 0
+      !request.options.boxless &&
+      request.options.buildupDuration > 0 &&
+      request.options.buildupDisplacement > 0
     const bend = active.current.find(
       (wave) => wave.request.target === request.target,
     )?.bend ?? { pull: 0, x: motion.pullX, y: motion.pullY, latest: 0 }
@@ -332,46 +328,41 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
         retire(wave)
       },
     })
-  }, [busy, gl, invalidate, resources, retire, start])
+  }, [busy, gl, invalidate, resources, retire, start, transition])
 
   useLayoutEffect(() => {
-    const queuedRequests = requests.current
-    const cancel = () => {
-      for (const wave of [...active.current]) retire(wave)
-      for (const request of requests.current.splice(0))
-        flushSync(request.update)
-    }
-    controller.run = (request) => {
-      requests.current.push(request)
-      const reduced = window.matchMedia(
-        '(prefers-reduced-motion: reduce)',
-      ).matches
-      if (reduced) cancel()
-      else prepare()
-      invalidate()
-    }
-    window.addEventListener('resize', cancel)
+    const disconnect = transition.connect({
+      wake: () => {
+        prepare()
+        invalidate()
+      },
+      finish: () => {
+        for (const wave of [...active.current]) retire(wave)
+      },
+      dispose: () => {
+        dispose()
+        owner.current = null
+        active.current = []
+      },
+    })
+    window.addEventListener('resize', transition.finish)
     return () => {
-      controller.run = (request) => request.update()
-      window.removeEventListener('resize', cancel)
-      dispose()
-      for (const request of queuedRequests.splice(0)) request.update()
-      owner.current = null
-      active.current = []
+      window.removeEventListener('resize', transition.finish)
+      disconnect()
     }
-  }, [controller, dispose, invalidate, prepare, retire])
+  }, [dispose, invalidate, prepare, retire, transition])
 
-  const sampleActiveWaves = (now: number, reduced: boolean) => {
+  const sampleActiveWaves = (now: number) => {
     const sharedPulls = new Map<SurfaceBend, number>()
     for (const wave of [...active.current]) {
       const ended =
-        wave.started !== null && now - wave.started >= wave.request.duration
-      if (ended || reduced || !followTarget(wave)) {
+        wave.started !== null && now - wave.started >= wave.request.options.duration
+      if (ended || !followTarget(wave)) {
         retire(wave)
         continue
       }
       const progress =
-        wave.started === null ? 0 : (now - wave.started) / wave.request.duration
+        wave.started === null ? 0 : (now - wave.started) / wave.request.options.duration
       const phase = wave.motion.frame(progress)
       wave.phase = phase
       const previous = sharedPulls.get(wave.bend) ?? 0
@@ -384,7 +375,7 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
     for (const [bend, pull] of sharedPulls) bend.pull = pull
     for (const wave of active.current) {
       const { phase, bend } = wave
-      const needsInk = wave.request.boxless && phase.glow > 0
+      const needsInk = wave.request.options.boxless && phase.glow > 0
       const needsIncoming =
         wave.paired && bend.latest === wave.order && bend.pull > 0
       if (phase.revealed && !needsIncoming && !needsInk) releaseSnapshot(wave)
@@ -407,11 +398,8 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
     const reduced = window.matchMedia(
       '(prefers-reduced-motion: reduce)',
     ).matches
-    sampleActiveWaves(performance.now(), reduced)
-    if (reduced) {
-      for (const request of requests.current.splice(0))
-        flushSync(request.update)
-    }
+    if (reduced) transition.finish()
+    else sampleActiveWaves(performance.now())
     read(gl)
     const drawing = active.current.filter((wave) => wave.snapshotReady)
     const content = drawing.filter((wave) => wave.slot !== null).reverse()
@@ -440,7 +428,7 @@ export function DistortionWaveEffect({ capture, controller }: WaveEffectProps) {
     element.count = instances.length
     element.instanceMatrix.needsUpdate = true
     element.visible = drawing.length > 0
-    if (drawing.length > 0 || requests.current.length > 0) invalidate()
+    if (drawing.length > 0 || transition.peek()) invalidate()
     prepare()
   })
 

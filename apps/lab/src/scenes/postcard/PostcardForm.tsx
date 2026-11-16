@@ -11,7 +11,7 @@ import {
 import { readSurfaceFrameState } from '@petepetrash/munari/advanced'
 import { Button } from '../../components/system'
 import type { LightFlyerStore } from '../light/lightFlyer'
-import type { StampController } from './PostcardStamp'
+import type { SurfaceTransition } from '../../lib/surfaceTransition'
 
 import { PAPER_WIDTH as HERO_W, PAPER_HEIGHT as HERO_H, type PaperInteraction } from '../light/lightPaperLaw'
 
@@ -42,7 +42,7 @@ function Postcard({
   onName: (v: string) => void
   onNameFocus: () => void
   stamps: number
-  onStamp: () => void
+  onStamp: (target: HTMLElement | null) => void
 }) {
   const inputId = useId()
   const marks = []
@@ -70,7 +70,7 @@ function Postcard({
         <p>
           A little HTML, away from the page. Add your name and a stamp.
         </p>
-        <button type="button" className="mt-[6px] min-h-11 cursor-pointer justify-self-start border-0 bg-[var(--ground)] px-[14px] py-0 font-[550] text-[14px] text-[var(--paper)] hover:bg-[#38383f] active:bg-black active:text-[var(--chartreuse)] focus-visible:outline-[3px] focus-visible:outline-[#ba3829] focus-visible:outline-offset-3" onClick={onStamp}>
+        <button type="button" className="mt-[6px] min-h-11 cursor-pointer justify-self-start border-0 bg-[var(--ground)] px-[14px] py-0 font-[550] text-[14px] text-[var(--paper)] hover:bg-[#38383f] active:bg-black active:text-[var(--chartreuse)] focus-visible:outline-[3px] focus-visible:outline-[#ba3829] focus-visible:outline-offset-3" onClick={event => onStamp(event.currentTarget.closest('.postcard-card'))}>
           Add a stamp
         </button>
       </div>
@@ -122,7 +122,7 @@ export function PostcardForm({
   setInScene,
   holderRef,
   landRef,
-  stampController,
+  stampTransition,
   supported,
   reduced,
 }: {
@@ -134,7 +134,7 @@ export function PostcardForm({
   setInScene: React.Dispatch<React.SetStateAction<boolean>>
   holderRef: HolderRef
   landRef: LandRef
-  stampController: StampController
+  stampTransition: SurfaceTransition
   supported: boolean
   reduced: boolean
 }) {
@@ -165,20 +165,20 @@ export function PostcardForm({
   const content = (
     <Postcard
       name={name}
-      onNameFocus={() => stampController.cancel()}
+      onNameFocus={() => stampTransition.finish()}
       onName={value => {
-        stampController.cancel()
+        stampTransition.finish()
         setName(value)
       }}
       stamps={stamps}
-      onStamp={() => {
+      onStamp={target => {
         const add = () => setStamps(n => n + 1)
         const presentation = readSurfaceFrameState(surface).presentation
         if (presentation === 'scene') {
           add()
           paper.impulses++
         } else if (presentation === 'page' && !lifted && !reduced) {
-          stampController.stamp(add)
+          stampTransition.run(target, add)
         } else add()
       }}
     />
@@ -216,7 +216,7 @@ export function PostcardForm({
               data-relief="raised"
               onClick={() => {
                 if (!lifted) {
-                  stampController.cancel()
+                  stampTransition.finish()
                   setInScene(true)
                 }
                 else if (reduced) setInScene(false)

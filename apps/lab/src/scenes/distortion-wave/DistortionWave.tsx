@@ -2,15 +2,15 @@
 import { useLayoutEffect, useState } from 'react'
 import {
   SurfaceCanvas,
-  useCaptureHandle,
   useSurfaceSupport,
 } from '@petepetrash/munari'
 import { WaveHighlight, WaveIcon } from './distortionWaveArtwork'
 import { announcePageReady } from '../../components/siteOpening'
 import {
   DistortionWaveEffect,
-  type WaveController,
+  type WaveOptions,
 } from './distortionWaveEffect'
+import { useSurfaceTransition } from '../../lib/surfaceTransition'
 import { WaveExamples, type WaveAction } from './distortionWaveExamples'
 import { WAVE_PALETTES, type WavePalette } from './distortionWaveNodes'
 import './distortionWave.css'
@@ -29,11 +29,8 @@ function controlPalette(trigger: HTMLElement): WavePalette {
 
 export function DistortionWaveApp() {
   useLayoutEffect(announcePageReady, [])
-  const capture = useCaptureHandle()
   const supported = useSurfaceSupport()
-  const [controller] = useState<WaveController>(() => ({
-    run: (request) => request.update(),
-  }))
+  const transition = useSurfaceTransition<WaveOptions>()
   const [light, setLight] = useState(false)
   const [duration, setDuration] = useState(1800)
   const [palette, setPalette] = useState<WavePalette | 'Auto'>('Auto')
@@ -45,21 +42,15 @@ export function DistortionWaveApp() {
           .closest('.wave-example')
           ?.querySelector<HTMLElement>(`[data-wave-content="${content}"]`)
       : trigger.closest<HTMLElement>('[data-wave-target]')
-    if (!target) {
-      update()
-      return
-    }
     const source =
       trigger instanceof HTMLInputElement
         ? (trigger.closest('label') ?? trigger)
         : trigger
     const rect = source.getBoundingClientRect()
-    const targetRect = target === source ? rect : target.getBoundingClientRect()
+    const targetRect = target && target !== source ? target.getBoundingClientRect() : rect
     const native = event.nativeEvent
     const pointer = native instanceof MouseEvent && native.detail > 0
-    controller.run({
-      target,
-      update,
+    transition.run(target ?? null, update, {
       duration,
       palette: palette === 'Auto' ? controlPalette(trigger) : palette,
       source: new DOMRect(
@@ -68,10 +59,10 @@ export function DistortionWaveApp() {
         rect.width,
         rect.height,
       ),
-      buildupDuration: Number(target.dataset.waveBuildupDuration ?? 0),
-      buildupDisplacement: Number(target.dataset.waveBuildupDisplacement ?? 0),
+      buildupDuration: Number(target?.dataset.waveBuildupDuration ?? 0),
+      buildupDisplacement: Number(target?.dataset.waveBuildupDisplacement ?? 0),
       local: target === source,
-      boxless: target.hasAttribute('data-wave-boxless'),
+      boxless: target?.hasAttribute('data-wave-boxless') ?? false,
       intensity: 1,
       x:
         (pointer ? native.clientX : rect.left + rect.width / 2) -
@@ -160,7 +151,7 @@ export function DistortionWaveApp() {
             gl={{ alpha: true, antialias: false, depth: false }}
             camera={{ position: [0, 0, 5] }}
           >
-            <DistortionWaveEffect capture={capture} controller={controller} />
+            <DistortionWaveEffect transition={transition} />
           </SurfaceCanvas>
         </div>
       )}
