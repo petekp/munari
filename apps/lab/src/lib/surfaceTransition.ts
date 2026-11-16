@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom'
 
 export interface SurfaceTransitionRequest<Options> {
   readonly target: HTMLElement
-  readonly update: () => void
+  readonly update: () => boolean
   readonly options: Options
 }
 
@@ -20,7 +20,7 @@ function createSurfaceTransition<Options>() {
   let renderer: TransitionRenderer | null = null
   let settling: Array<() => void> | null = null
 
-  const settle = (stop: (() => void) | undefined, flush: boolean, update?: () => void) => {
+  const settle = (stop: (() => void) | undefined, flush: boolean, update?: () => boolean) => {
     const older = pending.splice(0).map(request => request.update)
     if (update) older.push(update)
     if (settling) {
@@ -43,22 +43,31 @@ function createSurfaceTransition<Options>() {
   }
 
   return {
-    /** Applies a synchronous state update that does not throw. */
+    /** Attempts the synchronous update once. A throw stops its effect without rolling back state. */
     run(target: HTMLElement | null, update: () => void, options: Options) {
+      const apply = () => {
+        try {
+          update()
+          return true
+        } catch (error) {
+          queueMicrotask(() => reportError(error))
+          return false
+        }
+      }
       if (settling) {
-        settling.push(update)
+        settling.push(apply)
         return
       }
       if (!renderer) {
-        update()
+        apply()
         return
       }
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
       if (reduced || !target?.isConnected) {
-        settle(renderer.finish, true, update)
+        settle(renderer.finish, true, apply)
         return
       }
-      pending.push({ target, update, options })
+      pending.push({ target, update: apply, options })
       renderer.wake()
     },
     finish() {

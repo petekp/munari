@@ -34,7 +34,7 @@ export interface TransitionSnapshot {
 
 interface CaptureJob {
   before: TransitionSnapshot
-  update: () => void
+  update: () => boolean
   after?: () => TransitionSnapshot | null
   copy: (frame: CaptureFrame, side: Side) => void
   ready: () => void
@@ -141,8 +141,13 @@ export function usePairedCapture(capture: CaptureHandle, invalidate: () => void)
     queueMicrotask(() => {
       if (pending.current !== current || current.phase !== 'present-before') return
       current.phase = 'capture-after'
-      flushSync(current.job.update)
+      const applied = flushSync(current.job.update)
       if (pending.current !== current) return
+      if (!applied) {
+        clear()
+        current.job.abort()
+        return
+      }
       const after = current.job.after
       const incoming = after?.()
       clear()
