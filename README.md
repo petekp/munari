@@ -20,9 +20,10 @@ project is named for the Italian designer and artist Bruno Munari.
   `MeshTransmissionMaterial`. In development, `SurfaceCanvas` logs which object
   uses one. Write custom materials as TSL node materials. See
   [Materials on a SurfaceCanvas](#materials-on-a-surfacecanvas).
-- **Capture:** HTML-in-canvas runs in Chrome with the `CanvasDrawElement` feature
-  on, either through `--enable-features=CanvasDrawElement` or on an origin that
-  carries the HTML-in-canvas origin trial token. Other browsers need snapDOM.
+- **Capture:** HTML-in-canvas is available by default in Chrome 157 and later,
+  without a feature flag or origin trial token. See
+  [Chrome's stable release announcement](https://developer.chrome.com/blog/html-in-canvas).
+  Browsers without this API need snapDOM.
   In Safari, which has no `Element.moveBefore`, a handoff works but restarts a
   running CSS animation. The [capture engines](#capture-engines) table compares
   the two.
@@ -39,7 +40,7 @@ browser and what they can draw.
 
 | | HTML-in-canvas (default) | snapDOM |
 |---|---|---|
-| Needs | Chrome with `--enable-features=CanvasDrawElement` | any browser with a document |
+| Needs | HTML-in-canvas support; enabled by default in Chrome 157+ | any browser with a document |
 | Draws | the live element | a rasterized copy of the subtree |
 | What the texture follows | everything, for free | what the user does to the content; a resize, a font or image landing, a transition's ends. Content that changes on its own needs `live` |
 | Caret and selection | real, painted by the browser | not painted |
@@ -214,15 +215,13 @@ flight, deformation, lighting, and shader effects come from your scene code.
 
 ### If "Show in scene" stays disabled
 
-No capture engine can run in this browser. That happens in Chrome without the
-`CanvasDrawElement` feature when snapDOM is not enabled, and in any other
-browser. `useSurfaceSupport()` is `false`, so the example renders no canvas and
-the content stays on the page.
+No capture engine can run in this browser. The browser does not provide
+HTML-in-canvas, and snapDOM has not been enabled. `useSurfaceSupport()` is
+`false`, so the example renders no canvas and the content stays on the page.
 `useSurfaceStatus().reason` says so, and a Surface asked to enter the scene logs
-the same sentence once in development. Fix it in one of three ways:
+the same sentence once in development. To enable capture:
 
-- Start Chrome with `--enable-features=CanvasDrawElement`.
-- Serve the page with the HTML-in-canvas origin trial token.
+- Use Chrome 157 or later, where HTML-in-canvas is available by default.
 - Call [`enableSnapdomCapture()`](#capture-engines), which also covers other
   browsers.
 
@@ -517,11 +516,11 @@ remain available when you choose a rendering budget; large textures still obey t
 | `useSurfaceProgress().get()` | Raw 0..1 motion, identical to driver input |
 | `useSurfaceProgress().eased()` | The explicitly eased version of that motion |
 
-When no engine can run, `supported` is `false` and `reason` says what to enable:
-"No capture engine is available. Enable Chrome's CanvasDrawElement flag or an
-HTML-in-canvas origin trial, or call enableSnapdomCapture() from
-@petepetrash/munari/snapdom." That reason takes precedence over a content reason
-such as inline handlers, which appears only when the engine works.
+When no engine can run, `supported` is `false` and `reason` reports that capture
+is unavailable. See [Requirements](#requirements) for browser support and
+[Capture engines](#capture-engines) to enable snapDOM. That reason takes
+precedence over a content reason such as inline handlers, which appears only
+when the engine works.
 
 `useSurfaceStatus()` without a handle reads the nearest enclosing Surface, so it
 throws in the component that renders the `Surface`. That component creates the
@@ -660,16 +659,17 @@ const live = [...document.querySelectorAll('[data-testid="count"]')]
 ## Run the lab locally
 
 The repo uses Node 24 and npm 11. The local launcher starts Vite, opens an
-isolated Chrome with `CanvasDrawElement` enabled, and stops the server when
-you close that Chrome window:
+isolated Chrome, and stops the server when you close that Chrome window:
 
 ```sh
 npm ci
 npm run lab
 ```
 
-Set `CHROME_PATH` if Chrome is installed somewhere unusual. `npm run dev`
-still starts only Vite for a browser that already has the flag enabled.
+Set `CHROME_PATH` if Chrome is installed somewhere unusual. The launcher still
+passes `--enable-features=CanvasDrawElement`; Chrome 157 and later do not need
+that flag. To use your existing browser, run `npm run dev` to start only Vite,
+then open its URL in Chrome 157 or later.
 
 ## Go further
 
