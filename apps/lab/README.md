@@ -173,7 +173,8 @@ renderer pipeline, then returns to demand rendering.
   The document preloads the first screen's Latin faces from this origin;
   remaining subsets load when used. Each family's OFL is in `public/licenses/`.
   `font-display: block` remains deliberate for captured text. The wordmark's
-  optional changing typefaces still load separately from `logoScene.tsx`.
+  optional changing typefaces still load separately from `logoScene.tsx`. The official
+  wordmark uses [generated outlines](src/components/wordmark/README.md).
 - `light/lightHeadlineGlyphs.ts` retains only Archivo's `3` and `D` outlines at weight
   900 and width 100. Its metadata records the source and hash; the SIL Open Font
   License is included at `public/licenses/archivo.txt`.

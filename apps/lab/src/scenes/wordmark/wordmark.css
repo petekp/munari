@@ -1,7 +1,3 @@
-/* Wordmark bench — the nav console's ink, full-bleed, mark centered.
- * The letters and float come from logo.css via the shared classes;
- * --screen is the ground the palette was tuned on. */
-
 .wordmark-page {
   min-height: 100vh;
   display: flex;

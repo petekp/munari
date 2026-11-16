@@ -1,16 +1,39 @@
-/* The official wordmark's own frame. The letters, slots, float and
- * canvas rules come from logo.css (the classes are shared with the
- * playground); this file only sizes the word for use as furniture.
- * The candy palette was tuned on --screen ink. On a white page the host
- * passes ground="light", which drops the one color that vanishes there. */
-
 .munari-logo {
+  position: relative;
   display: inline-block;
+  width: calc(var(--wordmark-base, clamp(32px, 4.5vw, 64px)) * 5.8);
+  height: calc(var(--wordmark-base, clamp(32px, 4.5vw, 64px)) * 1.8);
+  max-width: 100%;
+  vertical-align: middle;
 }
 
-/* .logo-word declares --logo-base on itself, so a host override has to
- * land here, not on an ancestor: the word reads --wordmark-base from
- * the host and falls back to a display size. */
-.munari-logo .logo-word {
-  --logo-base: var(--wordmark-base, clamp(32px, 4.5vw, 64px));
+.munari-logo__canvas,
+.munari-logo__fallback {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  transition: opacity 180ms ease-out;
+}
+
+.munari-logo__fallback {
+  object-fit: contain;
+}
+.munari-logo__canvas {
+  opacity: 0;
+}
+.munari-logo[data-ready] .munari-logo__canvas {
+  opacity: 1;
+}
+.munari-logo[data-ready] .munari-logo__fallback {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .munari-logo__canvas,
+  .munari-logo__fallback {
+    transition: none;
+  }
 }

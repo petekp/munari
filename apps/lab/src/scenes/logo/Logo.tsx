@@ -1,7 +1,6 @@
 // Logo playground — six letters with changing fonts, colors and poses.
 // This module owns the schedule, random seed, tuning panel and inspection API.
-// logoScene.tsx supplies the shared Surface parts, meshes and materials used
-// here and by MunariLogo. Page and scene read the same letter state; the
+// Page and scene read the same letter state; the
 // Surface protocol retains their presentation through each handoff.
 
 import {

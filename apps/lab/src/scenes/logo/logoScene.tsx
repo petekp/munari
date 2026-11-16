@@ -1,17 +1,8 @@
-// Shared wordmark scene rendering,
-// shared by the logo playground (Logo.tsx) and the official wordmark
-// component (components/MunariLogo.tsx).
-//
 // One Surface.Root owns six named Surface.HTML parts. Each part must prove
 // its presentation before the word changes renderers. The page and scene
 // share letter state and an animation clock, so an in-flight letter change
 // or idle movement does not restart at the handoff.
 //
-// Split out of Logo.tsx 2026-09-01 so the official wordmark could
-// reuse the overlay without carrying the playground's panel and
-// probes. The word, the grid, the seed, and the excursion ramp live here
-// because both consumers must agree on them exactly: a wordmark that
-// re-derived its own grid would stand its twins on a different rig.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'

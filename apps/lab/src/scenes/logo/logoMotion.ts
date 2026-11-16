@@ -11,9 +11,6 @@
 // into its ease, and the swap frame changed up to 1.8 points more of the word
 // than a crossing at rest (decisions.md #68).
 //
-// Ownership: this module owns the program. `Logo.tsx` and `MunariLogo.tsx`
-// write each sample to their DOM letters; `logoScene.tsx` reads the same
-// sample for the meshes.
 
 import { springStep, type LetterPose } from './logoLaw'
 
