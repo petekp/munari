@@ -742,7 +742,13 @@ export function createCaptureCanvas(
         read: read ?? currentPaint?.read ?? 0,
       })
       currentPaint = receipt
-      for (const listener of paintSubscribers) listener(receipt)
+      for (const listener of [...paintSubscribers]) {
+        try {
+          listener(receipt)
+        } catch (error) {
+          queueMicrotask(() => globalThis.reportError(error))
+        }
+      }
       return receipt
     },
     failPaint: (cause, pixelsRetained = false) => {
@@ -751,15 +757,15 @@ export function createCaptureCanvas(
       const message = String(cause)
       const repeat = message === stats.lastError
       stats.lastError = message
-      // The catch IS the boundary: whatever the platform threw becomes an
-      // Error here, once, so no consumer has to re-derive the shape.
-      //
-      // Once per distinct message, not once per failure. One unreachable
-      // cross-origin image fails every capture an asynchronous engine makes,
-      // which is a console line per frame for as long as the Surface is
-      // mounted — the same sentence often enough to bury the next real one.
-      // The counter in `paintStats()` still shows every failure.
-      if (!repeat) onError?.(cause instanceof Error ? cause : new Error(message))
+      // Report each distinct message once (e.g. a cross-origin image failing
+      // every async frame); `paintStats()` still counts every failure.
+      if (!repeat && onError) {
+        try {
+          onError(cause instanceof Error ? cause : new Error(message))
+        } catch (error) {
+          queueMicrotask(() => globalThis.reportError(error))
+        }
+      }
     },
     dispose: () => {
       paintSubscribers.clear()

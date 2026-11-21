@@ -92,7 +92,13 @@ export function createCanvasFrameSource(
         generation: frame.generation + 1,
       })
       frame = published
-      for (const notify of subscribers) notify()
+      for (const notify of [...subscribers]) {
+        try {
+          notify()
+        } catch (error) {
+          queueMicrotask(() => globalThis.reportError(error))
+        }
+      }
       return published
     },
   }

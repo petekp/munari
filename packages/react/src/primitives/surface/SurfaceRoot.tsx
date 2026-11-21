@@ -146,7 +146,7 @@ export function SurfaceRoot({
       else { claim?.(); claim = null }
     }
     const releaseWork = store.subscribeWork(() => { reconcile(); host.invalidate() })
-    const releaseTick = host.registerTick((dtMs) => { store.tick(dtMs); reconcile() })
+    const releaseTick = host.registerTick((dtMs) => { try { store.tick(dtMs) } finally { reconcile() } })
     reconcile()
     return () => { releaseWork(); releaseTick(); claim?.() }
   }, [host, store, canControl])

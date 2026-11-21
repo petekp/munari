@@ -286,6 +286,15 @@ function mintControllerToken(): number {
   return ++nextControllerToken
 }
 
+function runCallback(fn: (() => void) | undefined): void {
+  if (!fn) return
+  try {
+    fn()
+  } catch (error) {
+    queueMicrotask(() => globalThis.reportError(error))
+  }
+}
+
 /** A listener set whose `emit` walks the live Set, so re-entrant changes behave as a plain `for…of`. */
 function listenerSet() {
   const set = new Set<() => void>()
@@ -490,7 +499,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     if (next === frozen) return
     frozen = next
     freezeListeners.emit()
-    callbacks.onFreezeChange?.(next)
+    if (callbacks.onFreezeChange) runCallback(() => callbacks.onFreezeChange?.(next))
   }
 
   // Is every part showing content the lift would accept? Read off the
@@ -561,7 +570,13 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       contentCurrent: contentCurrent(),
     }
     if (!driver) return crossingFrame(before, evidence, dtMs)
-    const answer = driver({ dtMs, progress: before.ramp, target: requested })
+    let answer: number
+    try {
+      answer = driver({ dtMs, progress: before.ramp, target: requested })
+    } catch (error) {
+      queueMicrotask(() => globalThis.reportError(error))
+      return crossingFrame(before, evidence, dtMs)
+    }
     if (!Number.isFinite(answer)) {
       store.reportError(
         new Error(
@@ -666,13 +681,11 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     if (wake) workListeners.emit()
     if (unchanged) return
     listeners.emit()
-    if (next.presented !== previous.presented) {
-      callbacks.onPresentationChange?.(next.presented)
+    if (next.presented !== previous.presented && callbacks.onPresentationChange) {
+      runCallback(() => callbacks.onPresentationChange?.(next.presented))
     }
-    // The rising edge only. A source replacement voids every proof, so
-    // readiness falls and rises again — and a consumer that arms something
-    // once per set of proven pixels wants to hear both times.
-    if (next.ready && !previous.ready) callbacks.onReady?.()
+    // Rising edge only: source replacement drops readiness and proves again.
+    if (next.ready && !previous.ready) runCallback(callbacks.onReady)
   }
 
   // Rebuilt from the counts through the law's own transitions, expecting
@@ -778,14 +791,8 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       canvasUsable() &&
       (isResidentCanvas() || crossingPresentation(crossing.phase).gl),
     pagePresents: () => requested === 'page' ? pageHeld : !supported() || pageHeld,
-    // crossingPointer says hearing equals presentation, and presentation is
-    // refined by the HOLD, not the phase: the phase turns at the top of a
-    // frame, the pixels turn in that frame's draw. Reading the phase here
-    // would open a window at gl entry — phase already 'gl', releasing draw
-    // not yet run (mesh culled, host tail stalled) — where the canvas hears
-    // clicks the page copy is still showing. Reading the hold also puts the
-    // hearing flip at the exact moment subscribeHold fires, which is what
-    // lets the edge bursts run at the boundary they describe.
+    // Read the hold, not `crossing.phase`: phase turns at frame start while
+    // pixels turn in the releasing draw, and hearing flips with `subscribeHold`.
     canvasHearsPointer: () =>
       canvasUsable() && canvasHeld && !pageHeld,
     holdsPage: () => pageHeld,
@@ -833,13 +840,14 @@ export function createSurfaceStore(name?: string): SurfaceStore {
       settleReturn(before)
       // After the return, which is where the page takes the hold back.
       syncMotionHold()
-      // Motion completes when the ramp reaches an endpoint, which is a
-      // different moment from the hold changing hands: entering, the canvas
-      // takes the hold before the ramp leaves zero; returning, the ramp
-      // reaches zero before the page takes it. Consumers cannot assume one
-      // order for both directions, so the two callbacks are reported separately.
-      if (before.ramp < 1 && crossing.ramp >= 1) callbacks.onMotionComplete?.('canvas')
-      if (before.ramp > 0 && crossing.ramp <= 0) callbacks.onMotionComplete?.('page')
+      // Motion completes at the ramp endpoint, separate from hold handoff
+      // (entering: hold precedes ramp=1; returning: ramp=0 precedes hold).
+      if (before.ramp < 1 && crossing.ramp >= 1 && callbacks.onMotionComplete) {
+        runCallback(() => callbacks.onMotionComplete?.('canvas'))
+      }
+      if (before.ramp > 0 && crossing.ramp <= 0 && callbacks.onMotionComplete) {
+        runCallback(() => callbacks.onMotionComplete?.('page'))
+      }
       publish(false)
     },
     getState: () => state,
@@ -953,7 +961,7 @@ export function createSurfaceStore(name?: string): SurfaceStore {
     reportError(error) {
       const handler = callbacks.onError
       if (handler) {
-        handler(error)
+        runCallback(() => handler(error))
         return
       }
       console.error('[munari]', error)

@@ -370,20 +370,19 @@ function SurfaceHostBridge({
   // which is what lets a paint uploaded this frame be drawn this frame
   // rather than next.
   useFrame((_, delta) => {
-    // A new frame begins here, so anything still waiting on the tail
-    // belongs to a frame that ended without reaching the screen — a
-    // composite pass that never ran, a renderer that bailed. Discarded at
-    // the START of the next frame rather than at the end of its own,
-    // because a post-processed frame's LAST draw is the one that presents
-    // and nothing announces which draw that will be until it happens.
+    // Discard unfinished tail deferrals from the previous frame at frame start,
+    // since a post-processed frame's final presenting draw is only known as it runs.
     host.discardFrameTail()
     const dtMs = Math.min(delta, 1 / 30) * 1000
-    for (const tick of host.ticks()) tick(dtMs)
-    // The frameloop promotion alone does not survive: R3F re-applies the
-    // `frameloop` prop on every Canvas re-render, so a parent that renders
-    // during a crossing demotes the loop back to 'demand' and the protocol
-    // stops mid-phase with the page released over a frozen mesh. Asking for
-    // the next frame from inside this one cannot be undone that way.
+    for (const tick of [...host.ticks()]) {
+      try {
+        tick(dtMs)
+      } catch (error) {
+        queueMicrotask(() => globalThis.reportError(error))
+      }
+    }
+    // Re-request the next frame inside this one so an R3F re-render re-applying
+    // `frameloop="demand"` cannot stall an active crossing mid-phase.
     if (host.workClaims() > 0) invalidate()
   })
 

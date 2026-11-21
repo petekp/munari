@@ -179,6 +179,7 @@ function createHtmlInCanvasSource(
     const requested = owed
     owed = false
     missed = false
+    let completedRead = 0
     try {
       // SAFETY: same trial API as the canvas above — drawElementImage is
       // Chrome's addition to the 2d context. The '2d' context id cannot
@@ -198,21 +199,20 @@ function createHtmlInCanvasSource(
       // at a slightly different density. The box is exact; the texels float.
       ctx.setTransform(1, 0, 0, 1, 0, 0)
       ctx.clearRect(0, 0, canvas.width, canvas.height)
-      const read = body.beginRead()
+      completedRead = body.beginRead()
       ctx.drawElementImage(element, 0, 0)
       // Chrome 154–156 hit-test a canvas child only after this call, so
       // without it the parked copy hears no clicks (platform.md #33).
       canvas.updateElementGeometry?.(element)
-      // The current box, and zero changes during paint: the compositor
-      // rasterizes inside the frame that asked, so there is no window for
-      // the subtree to move in — `size()` at this instant IS what replayed.
-      body.completePaint(body.size(), 0, read)
     } catch (cause) {
       // Keep failed demand without overwriting a request raised during the draw.
       owed ||= requested
       missed = true
       body.failPaint(cause)
+      return
     }
+    // Outside the platform catch so a throwing subscriber cannot mark drawn pixels failed.
+    body.completePaint(body.size(), 0, completedRead)
   }
 
   const setSizeStyle = () => {

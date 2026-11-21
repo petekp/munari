@@ -142,3 +142,60 @@ it('a rejected declaration keeps its native HTML without replacing the incumbent
     expect(container.querySelector('[data-owner="owner"]')).toBe(button)
   } finally { flushSync(() => root.unmount()) }
 })
+
+it('settles state, releases work claims, and ticks sibling Surfaces when a callback throws', async () => {
+  const reported: Error[] = []
+  vi.stubGlobal('reportError', (err: Error) => reported.push(err))
+  const mounted = liveHost()
+  const first = createSurfaceStore('first')
+  const second = createSurfaceStore('second')
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  const boom = new Error('motion callback boom')
+
+  const prepare = (store: SurfaceStore) => {
+    const releasePage = store.declarePresentation('page')
+    const releaseCanvas = store.declarePresentation('canvas')
+    const releasePresenter = store.registerPresenter('mesh')
+    return () => {
+      releasePresenter()
+      releaseCanvas()
+      releasePage()
+    }
+  }
+  const cleanFirst = prepare(first)
+  const cleanSecond = prepare(second)
+
+  try {
+    flushSync(() =>
+      root.render(
+        <Fragment>
+          <Surface.Root surface={first.handle} inScene onMotionComplete={() => { throw boom }}>{null}</Surface.Root>
+          <Surface.Root surface={second.handle} inScene>{null}</Surface.Root>
+        </Fragment>,
+      ),
+    )
+    first.prove('mesh', first.readinessLifetime(), first.epoch())
+    second.prove('mesh', second.readinessLifetime(), second.epoch())
+
+    // Step across lifting -> gl -> ramp=1 on both co-tenant Surfaces.
+    for (const tick of mounted.host.ticks()) tick(16)
+    first.present('mesh', first.epoch())
+    second.present('mesh', second.epoch())
+    for (let i = 0; i < 30; i++) {
+      for (const tick of mounted.host.ticks()) tick(33)
+    }
+
+    expect(first.getState().isChanging).toBe(false)
+    expect(second.getState().isChanging).toBe(false)
+    expect(mounted.host.workClaims()).toBe(0)
+    await Promise.resolve()
+    expect(reported).toEqual([boom])
+  } finally {
+    cleanFirst()
+    cleanSecond()
+    flushSync(() => root.unmount())
+    mounted.release()
+  }
+})

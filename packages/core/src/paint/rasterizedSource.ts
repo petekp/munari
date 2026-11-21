@@ -342,6 +342,7 @@ export function createRasterizedSource(
     const scaleX = askedFor[0] / Math.max(1, box[0])
     const scaleY = askedFor[1] / Math.max(1, box[1])
     let pixelsRetained = true
+    let drawn = false
     try {
       const image = await rasterize(element, scaleX, scaleY)
       // The store's storage is fixed by its first draw (domTextureSource.ts).
@@ -350,15 +351,14 @@ export function createRasterizedSource(
       pixelsRetained = false
       draw(image, askedFor)
       rasteredStore = askedFor[0] === canvas.width && askedFor[1] === canvas.height ? askedFor : [0, 0]
-      body.completePaint(box, changesDuringPaint, read)
+      drawn = true
     } catch (cause) {
       if (!disposed) body.failPaint(cause, pixelsRetained)
     } finally {
+      if (drawn && !disposed) body.completePaint(box, changesDuringPaint, read)
       capturing = false
       lastFinishedAt = clock.now()
-      // Anything that changed while the raster was being made is not in these
-      // pixels, so a follow-up is owed — through `start()` rather than back
-      // into `run()`, so it waits out the gap like any other request.
+      // Follow up any change that landed during the capture via `start()` so it obeys pacing.
       if (!disposed) {
         motionOwed = live && hasRunningMotion(element)
         if (owed || motionOwed) start()

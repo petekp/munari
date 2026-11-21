@@ -12,7 +12,7 @@
 // idempotent. Structural custom-producer acceptance is checked by the
 // compile-only API suite.
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   createCanvasFrameSource,
@@ -88,5 +88,28 @@ describe('createCanvasFrameSource', () => {
 
     expect(seen.map(frame => frame.generation)).toEqual([1])
     expect(source.currentFrame().generation).toBe(2)
+  })
+
+  it('delivers published frames to later subscribers when an earlier subscriber throws', async () => {
+    const reported: Error[] = []
+    vi.stubGlobal('reportError', (err: Error) => reported.push(err))
+    try {
+      const source = createCanvasFrameSource(document.createElement('canvas'), {
+        premultiplyAlpha: true,
+      })
+      const boom = new Error('subscriber failure')
+      const seen: FrameId[] = []
+      source.subscribe(() => {
+        throw boom
+      })
+      source.subscribe(() => seen.push(source.currentFrame()))
+
+      const published = source.publish()
+      expect(seen).toEqual([published])
+      await Promise.resolve()
+      expect(reported).toEqual([boom])
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
