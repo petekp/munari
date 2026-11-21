@@ -438,8 +438,8 @@ checks remain intact.
 Rename the global checks to describe capture capability. Publish the renderer
 snapshot from the existing host through the page-side SurfaceCanvas. Add
 `onRendererStatusChange` using that snapshot and derive `SurfaceStatus.renderer`
-through the existing Root subscription. The [WebGPU migration lifecycle
-contract](webgpu-migration-spec.md#renderer-lifecycle) owns the shared proposed
+through the existing Root subscription. [Decision #69](decisions.md#69)
+owns the shared proposed
 `SurfaceRendererStatus` shape, callback, renderer/backend observations, and
 attempt/ownership rules. This work consumes that contract rather than defining
 a second union. Implemented public types become current authority when it lands.

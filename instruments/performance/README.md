@@ -168,7 +168,7 @@ Create a compact summary after the run:
 
 ```sh
 node instruments/performance/summarize.mjs /tmp/munari-performance \
-  > docs/performance-results.json
+  > /tmp/perf-summary.json
 ```
 
 The summary groups idle and input samples by engine, CPU rate, and version.

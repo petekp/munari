@@ -78,4 +78,4 @@ npm run lint
 npm run build
 ```
 
-Quality commands and negative-control expectations, per-trial acknowledgements, source hashes, initialization counters, all recorded-phase work and diagnostic limits are in [incremental-capture-results.json](incremental-capture-results.json).
+Raw trial JSON (`incremental-capture-results.json`, archived in Git history at `de77a1e`) recorded per-trial acknowledgements, source hashes, initialization counters, and diagnostic limits.

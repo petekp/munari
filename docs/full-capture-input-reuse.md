@@ -66,8 +66,9 @@ The timing evidence did not justify shipping the change.
 
 ## Evidence and reproduction
 
-The [results](full-capture-input-reuse-results.json) retain every paired result,
-source identities, first-use checks, timing limits and pixel evidence.
+Raw paired JSON results (`full-capture-input-reuse-results.json`, archived in Git
+history at `de77a1e`) recorded source identities, first-use checks, timing limits
+and pixel evidence.
 CPU slowdown leaves the GPU unchanged. Upload acknowledgement is not display
 presentation. These are local Chrome 155 measurements, not a hardware baseline.
 
@@ -85,11 +86,10 @@ interiors matched exactly. The same image variation was found in unchanged
 baseline runs. The repair screen passed
 all 222 input acknowledgements and all 12 screenshot comparisons.
 
-The patches reproduce the rejected source at `a355cc5`:
-
-- [Slow-capture candidate](spikes/2026-10-15-input-warmup-slow-capture.patch).
-- [Inactive-path repair](spikes/2026-10-15-input-warmup-inactive-path.patch).
-- [Patch hashes and application checks](spikes/2026-10-15-input-warmup-patches.json).
+The rejected patches (`2026-10-15-input-warmup-slow-capture.patch`,
+`2026-10-15-input-warmup-inactive-path.patch`, and
+`2026-10-15-input-warmup-patches.json`, archived in Git history at `de77a1e`)
+reproduce the rejected source at `a355cc5`.
 
 Apply each patch separately to a clean checkout of that baseline. Both patches
 were applied to baseline source copies and their resulting file hashes checked.

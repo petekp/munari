@@ -192,8 +192,8 @@ export type LoadingFallbackReason =
   | { readonly cause: 'source'; readonly error: Error }
 ```
 
-**PROPOSED, built here unchanged.** Renderer status comes from
-[the WebGPU migration lifecycle contract](webgpu-migration-spec.md#renderer-lifecycle).
+**PROPOSED, built here unchanged.** Renderer status follows
+[Decision #69](decisions.md#69) (with full pre-cutover lifecycle notes in Git history at `de77a1e`).
 This spec consumes it and defines no second union.
 
 ```ts
@@ -244,7 +244,7 @@ The boundary stores which entries exist, not what state they are in.
 | Exclusive, `inScene={false}` | Controlling `SurfaceRoot` | `shown` page after the page commit and one animation frame | Never |
 | Exclusive, scene requested | Controlling `SurfaceRoot` | `shown` scene, as described below. The page copy shown during lifting never counts | Ruled out: `shown` page with `reason`. Ambiguous host: `error` |
 | Twin | The capture owner | The native element is page content and adds no entry. The capture entry follows the Source-only row | As Source-only |
-| Resident, `SceneSurface` | Controlling `SurfaceRoot` | `shown` scene, as described below | Ruled out: `unavailable` with `reason`. There is no page to fall back to ([WebGPU lifecycle rule L8](webgpu-migration-spec.md#renderer-lifecycle)) |
+| Resident, `SceneSurface` | Controlling `SurfaceRoot` | `shown` scene, as described below | Ruled out: `unavailable` with `reason`. There is no page to fall back to ([Decision #69](decisions.md#69)) |
 | Source-only, `useElementCapture` or `CaptureContent` | The capture owner | `captured`: the first published frame whose paint has `readWhileFontsLoading` false | Engine missing or content unsupported: `unavailable`. `CaptureStatus` `'error'`: `error`, which recovers if a later paint succeeds (`capture.tsx:97`, `:113`) |
 | Frame source, `FrameSurface` | The component, inside a SurfaceCanvas only | `shown` scene at the first pass of an uploaded frame routed `now`, or `tail` once the host closes it | `error`, through an error path this spec adds. Today oversize and taint failures only log a development `console.error` and withhold receipts (`FrameSurface.tsx:148-180`) |
 | `SurfaceCanvas` | The component | `shown` scene once the renderer is `ready` and the first host frame after the scene children's commit has finished | `error` or final `context-lost`: `unavailable` |
@@ -372,7 +372,7 @@ state (`:613-620`). The bridge will move that decision ahead of the store
 notification. It then publishes `context-lost`
 and, when a replacement is scheduled, `starting` in the same task. Entries
 read the snapshot at the next page frame, so a resting `context-lost` means
-no automatic replacement remains. That matches [WebGPU lifecycle rule L6](webgpu-migration-spec.md#renderer-lifecycle): after that, recovery
+no automatic replacement remains ([Decision #69](decisions.md#69)): after that, recovery
 is an explicit remount.
 
 **Startup failure is observable today.** Installed Fiber 9.8.1 catches the
@@ -418,7 +418,7 @@ capture error, a FrameSurface failure through its new error path, and an app
 wait set to an Error.
 A renderer failure is `unavailable`, because SurfaceCanvas already shows its
 `fallback` prop (`SurfaceCanvas.tsx:622`) and Exclusive Surfaces already
-return to the page ([WebGPU lifecycle rule L5](webgpu-migration-spec.md#renderer-lifecycle)).
+return to the page ([Decision #69](decisions.md#69)).
 
 **Frame time.** The boundary adds page frame deltas, each clamped to 1/30 s,
 the clamp the crossing clock uses (`SurfaceCanvas.tsx:380`). A hidden tab runs
@@ -455,12 +455,12 @@ below checks whether this clamp is right.
 | Activity hidden, or a committed subtree re-suspends | React runs layout-effect cleanups, so those entries leave. A boundary inside the hidden subtree pauses |
 | Strict Mode | Entries are counted. The boundary keeps its state across the simulated remount and pauses during it. `onLoaded` fires once per component instance |
 | Source replacement before the load | The lifetime changes, the set of counted presenters clears, and the entry waits again |
-| Context loss before the load, replacement scheduled | `context-lost` then `starting` in one task. Entries wait on `renderer`; Exclusive Surfaces show the page meanwhile ([WebGPU lifecycle rule L5](webgpu-migration-spec.md#renderer-lifecycle)) |
+| Context loss before the load, replacement scheduled | `context-lost` then `starting` in one task. Entries wait on `renderer`; Exclusive Surfaces show the page meanwhile ([Decision #69](decisions.md#69)) |
 | Context loss before the load, no replacement left | Exclusive: `shown` page with the loss reason. Resident and canvas: `unavailable` |
 | Context loss after the load | The report stays frozen. Live status, `onRendererLost`, and `onError` report it |
 | Renderer startup error | Exclusive: `shown` page. Resident and canvas: `unavailable`. Needs the `componentDidCatch` write above; until then it waits on `renderer` |
 | Ambiguous host | `error`, from the existing `reportError` (`SurfaceRoot.tsx:215-250`). It blocks until the tree changes |
-| Zero-sized canvas | The renderer can stay `starting` ([WebGPU lifecycle rule L2](webgpu-migration-spec.md#renderer-lifecycle)), so the entry waits. Covering by collapsing the canvas container holds the boundary |
+| Zero-sized canvas | The renderer can stay `starting` ([Decision #69](decisions.md#69)), so the entry waits. Covering by collapsing the canvas container holds the boundary |
 | App wait never done | The boundary keeps loading. `late` fires once; the development warning names it. It never becomes an error |
 | App wait set to an Error | `error`. The app renders its fallback, which removes the wait |
 | Error inside an app renderer | Invisible to the library. The app sets its wait to the Error |

@@ -119,6 +119,6 @@ Measurements use Chrome 155.0.8059.80 on an Apple M4 Max at DPR 2. CPU slowdown
 leaves the host GPU unchanged. Peak resident memory, physical-device behavior,
 other browsers and input-to-visible latency remain unmeasured.
 
-See the [recorded results](full-capture-performance-results.json),
-[production benchmark commands](../instruments/performance/README.md) and
-[exact-pixel proof commands](../instruments/input-regions/README.md).
+See the [production benchmark commands](../instruments/performance/README.md) and
+[exact-pixel proof commands](../instruments/input-regions/README.md) (raw trial
+JSON archived in Git history at `de77a1e`).

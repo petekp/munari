@@ -78,6 +78,6 @@ CPU slowdown and the same host GPU. Input timing ends at an upload
 acknowledgement. It does not measure display presentation. These are warm
 interaction measurements; cache memory and startup cost were not quantified.
 
-See the [recorded results](style-cache-performance-results.json),
-[production benchmark commands](../instruments/performance/README.md), and
-[exact-pixel proof commands](../instruments/input-regions/README.md).
+See the [production benchmark commands](../instruments/performance/README.md) and
+[exact-pixel proof commands](../instruments/input-regions/README.md) (raw trial
+JSON archived in Git history at `de77a1e`).

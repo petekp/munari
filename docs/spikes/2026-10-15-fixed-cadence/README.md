@@ -2,9 +2,9 @@
 
 This archive reproduces a supplemental measurement. No runtime candidate from this investigation was accepted. The standard benchmark and runtime remain unchanged by this archive.
 
-The original keyboard driver waits for each key command’s acknowledgement before delaying and sending the next key. This diagnostic tests whether that feedback changes the observed submit result. Its five paired 6× trials had valid setup, but command-to-upload results remained mixed. It does not resolve the canonical submit regression or establish a performance gain. The [report](../../svg-splitting-performance.md) and [retained evidence](../../svg-splitting-performance-results.json) keep it separate from the canonical results.
+The original keyboard driver waits for each key command’s acknowledgement before delaying and sending the next key. This diagnostic tests whether that feedback changes the observed submit result. Its five paired 6× trials had valid setup, but command-to-upload results remained mixed. It does not resolve the canonical submit regression or establish a performance gain. The [report](../../svg-splitting-performance.md) (with raw trial JSON archived in Git history at `de77a1e`) keeps it separate from the canonical results.
 
-`runner.patch` applies to a disposable copy of the canonical runner. `keyboard.mjs` is the exact measured helper. The portable patch changes only imports, root resolution and provenance checks beyond the measured runner; its phase, trial, scheduling and assertion logic is preserved.
+`keyboard.mjs` is the exact measured helper (the disposable `runner.patch` and rejected runtime patch `2026-10-15-capture-split-and-blank.patch` are archived in Git history at `de77a1e`).
 
 Pinned identities:
 
@@ -14,7 +14,7 @@ Pinned identities:
 - Keyboard helper: `94492681355f36218295d77f2c0ff6068d66a99bc6e99c74db5dbd6b94fc93cb`.
 - Observer: `d302ae2322fe5210c25327841cc50d439536cb6e94cf46fbfae10459cdaa5ce3`.
 
-Use a clean, isolated checkout with the pinned diagnostics. Apply the [rejected combined runtime patch](../2026-10-15-capture-split-and-blank.patch) only in that checkout to replay the measured candidate. The diagnostic enforces its recorded adapter, background and InputSvg hashes before building. Install the recorded lockfile through the repository’s normal setup. The measurement used Node 24.22.0, Puppeteer 25.4.0 and Chrome 155.0.8059.80 on macOS. Other hosts produce new measurements, not the historical timing values.
+Use a clean, isolated checkout of `de77a1e` with the pinned diagnostics. Apply the archived `2026-10-15-capture-split-and-blank.patch` only in that checkout to replay the measured candidate. The diagnostic enforces its recorded adapter, background and InputSvg hashes before building. Install the recorded lockfile through the repository’s normal setup. The measurement used Node 24.22.0, Puppeteer 25.4.0 and Chrome 155.0.8059.80 on macOS. Other hosts produce new measurements, not the historical timing values.
 
 Prepare a new runner directory without modifying the tracked runner:
 

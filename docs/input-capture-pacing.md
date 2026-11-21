@@ -30,8 +30,8 @@ the baseline. No pacing change was committed.
 The full-capture reuse experiment was also rejected. See
 [full capture input reuse](full-capture-input-reuse.md).
 
-The [recorded results](input-capture-pacing-results.json) retain the paired values,
-validation and source hashes. The earlier runtime policy variants are not retained
+Raw paired JSON (`input-capture-pacing-results.json`, archived in Git history at
+`de77a1e`) recorded the paired values, validation and source hashes. The earlier runtime policy variants are not retained
 as executable patches. Their original local artifacts were:
 
 - `/tmp/munari-pacing-controls-gap0-summary.json`

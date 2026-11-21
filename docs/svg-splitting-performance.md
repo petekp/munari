@@ -104,12 +104,10 @@ Repository tests, typechecks, lint, build and React Doctor passed for the tested
 candidates. Runtime restoration was independently verified across all 144 package
 source files.
 
-The [evidence file](svg-splitting-performance-results.json) retains the earlier
-matrices, final comparisons, every contrary result, source/build identities,
-quality cases and aligned profile observations. No matrices are pooled.
-The [archived patches](spikes/2026-10-15-capture-variant-patches.json) reproduce
-all four rejected runtime variants from `63bd91e`; they are alternatives, not
-cumulative changes. The [benchmark guide](../instruments/performance/README.md)
+Raw trial JSON (`svg-splitting-performance-results.json`) and rejected candidate
+patches (`2026-10-15-capture-variant-patches.json`, both archived in Git history
+at `de77a1e`) recorded the earlier matrices, final comparisons, contrary results,
+source/build identities, and four rejected runtime variants from `63bd91e`. The [benchmark guide](../instruments/performance/README.md)
 and [pixel proof](../instruments/input-regions/README.md) describe the standard
 commands. The [fixed-cadence archive](spikes/2026-10-15-fixed-cadence/README.md) remains a
 separately labeled experiment.

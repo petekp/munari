@@ -74,9 +74,9 @@ edits, resize, disposal and handoff. The origin probe passed all 12 cases
 without tainting a canvas. Validation passed 1,438 tests across 125 files,
 four typechecks, lint and the package build.
 
-[The result summary](performance-results.json) preserves exact values, ranges,
-source hashes and screenshot hashes. [Profile evidence](performance-profile-results.json)
-records the diagnostic stages and native callbacks. Raw comparison evidence is in
+Archived JSON summaries (`performance-results.json` and
+`performance-profile-results.json`, in Git history at `de77a1e`)
+recorded exact values, source/screenshot hashes, diagnostic stages and native callbacks. Raw comparison evidence is in
 `/tmp/munari-spikes-direct-final`. Diagnostic profiles are in
 `/tmp/munari-spikes-final-profile`.
 The [benchmark guide](../instruments/performance/README.md) includes commands

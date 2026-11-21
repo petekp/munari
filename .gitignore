@@ -10,6 +10,7 @@ instruments/**/out/
 .DS_Store
 .claude/
 .circuit/
+.scratch/
 
 # TypeScript incremental build state
 *.tsbuildinfo

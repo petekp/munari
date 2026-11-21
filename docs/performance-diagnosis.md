@@ -134,7 +134,8 @@ late queue completion, source/read attribution, mismatched queues and failure
 classification. The deliberate frame-budget failure remains separate from
 these verification results.
 
-[Recorded evidence](performance-diagnosis-results.json) contains 10 Controls
+Raw trial JSON (`performance-diagnosis-results.json`, archived in Git history at
+`de77a1e`) recorded 10 Controls
 rows and 20 Glass rows, build/runtime metadata, source and artifact hashes,
 per-read attribution, pixel comparisons and measurement limits. Raw traces and
 images remain in their named local evidence directories. Some early prototype
