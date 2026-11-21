@@ -9,7 +9,7 @@
 //      `/snapdom`. @munari/core and relative reach-arounds are both
 //      violations.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { parseSync, Visitor } from 'vite'
@@ -73,13 +73,18 @@ function violations(
 }
 
 describe('the hourglass', () => {
-  it('core imports nothing but itself', () => {
+  it('core imports nothing but itself, declares zero runtime dependencies, and ships no colocation tests', () => {
     const dir = join(ROOT, 'packages/core/src')
     expect(
       violations('packages/core/src', (spec, file) => {
         return spec.startsWith('.') && !escapesDir(file, spec, dir)
       }),
     ).toEqual([])
+    const coreManifest: { dependencies?: Record<string, string> } = JSON.parse(
+      readFileSync(join(ROOT, 'packages/core/package.json'), 'utf8'),
+    )
+    expect(Object.keys(coreManifest.dependencies ?? {})).toEqual([])
+    expect(sourceFiles(dir, /\.(test|spec)\.[cm]?[jt]sx?$/)).toEqual([])
   })
 
   it('react reaches core only through @munari/core, plus declared peers', () => {
@@ -90,15 +95,13 @@ describe('the hourglass', () => {
       'react-dom',
       'three',
       '@react-three/fiber',
-      // The OPTIONAL peer behind the `./snapdom` entry. Allowed for the same
-      // reason the others are — it is declared in the manifest and resolved
-      // by the consumer — and reachable from exactly one module, which is
-      // what keeps a consumer who never imports that entry from needing it.
-      '@zumer/snapdom',
     ])
     expect(
       violations('packages/react/src', (spec, file) => {
         if (spec.startsWith('.')) return !escapesDir(file, spec, dir)
+        // The OPTIONAL peer behind `./snapdom` may only be imported from
+        // `snapdom*` modules so consumers of `.` or `./advanced` never need it.
+        if (spec === '@zumer/snapdom') return /^snapdom.*\.tsx?$/.test(basename(file))
         // Suites ride beside their modules, but they are not shipped
         // surface — vitest is the one specifier the
         // runner owns, and it is allowed ONLY there. Everything else in a
@@ -112,6 +115,25 @@ describe('the hourglass', () => {
           spec.startsWith('react-dom/') ||
           spec.startsWith('three/')
         )
+      }),
+    ).toEqual([])
+  })
+
+  it('conformance suites reach core through @munari/core, never relative paths or react', () => {
+    const base = join(ROOT, 'tests/conformance')
+    expect(
+      violations('tests/conformance', (spec, file) => {
+        if (
+          spec === '@munari/core' ||
+          spec === 'vitest' ||
+          spec === 'vite' ||
+          spec === 'three' ||
+          spec.startsWith('node:')
+        ) {
+          return true
+        }
+        if (spec.startsWith('.')) return !escapesDir(file, spec, base)
+        return false
       }),
     ).toEqual([])
   })

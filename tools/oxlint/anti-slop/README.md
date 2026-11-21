@@ -22,7 +22,8 @@ object; there is no `"off"` entry.
 ## The rules
 
 - **`no-chained-type-assertions`**: an assertion whose operand is
-  itself an assertion (`x as A as B`, through parentheses). The chain
+  itself an assertion (`x as A as B`, including parenthesized and
+  non-null `(x as A)! as B` chains). The chain
   discards type information; keep the original precise type, or parse
   untrusted input where it enters before narrowing. Chains that are
   wholly `as const` are allowed.
@@ -53,17 +54,18 @@ object; there is no `"off"` entry.
   where it enters the program, then branch on the parsed value. (The
   rule has an opt-in escape for user-defined type guards; this repo
   does not enable it.)
-- **`no-unknown-parameters`**: a parameter annotated exactly
-  `unknown`. Accept a named type; run the parser before the call.
-  Carve-out: a parameter named `cause` (error-cause enrichment).
+- **`no-unknown-parameters`**: a parameter resolving to `unknown`
+  (directly, via a union member, or through a top-level alias). Accept a
+  named type; run the parser before the call. Carve-out: a parameter
+  named `cause` (error-cause enrichment).
 - **`no-unknown-returns`**: a return type resolving to `unknown`
   (directly, via a union member, a one-hop alias, or
   `Promise<unknown>`). Parse the value before returning it and name
   the type.
 - **`no-unknown-type-aliases`**: a top-level alias that resolves to
-  `unknown`. Keep `unknown` explicit at the parsing boundary or on a
-  `cause` field; otherwise use the parsed type. Generic aliases are
-  skipped.
+  `unknown` (directly, via a union member, or through another alias).
+  Keep `unknown` explicit at the parsing boundary or on a `cause` field;
+  otherwise use the parsed type. Generic aliases are skipped.
 - **`no-unsafe-dictionary-type`**: a dictionary whose value type
   resolves to `unknown`, `any`, bare `object`, or an empty object,
   through `Record`, index signatures, mapped types, `Pick`/`Omit`, and
@@ -77,7 +79,7 @@ object; there is no `"off"` entry.
 - **`require-safety-comment-for-type-assertion`**: any non-`const`
   assertion without a `SAFETY:` comment nearby. The match is
   case-sensitive (`SAFETY` then a colon), and the comment may sit
-  above the assertion or above its enclosing statement; one comment
-  above a `const x = …` covers assertions anywhere in that
-  initializer. State the checked invariant: what is known, and why it
-  holds here.
+  above the assertion or above its enclosing statement (including an
+  `export` wrapper); comments above an outer function or control-flow
+  block do not leak into inner statements. State the checked invariant:
+  what is known, and why it holds here.

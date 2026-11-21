@@ -3,7 +3,12 @@ import path from 'node:path'
 import { cwd as processCwd } from 'node:process'
 
 const skipDirectoryNames = new Set([
+	'.agents',
+	'.claude',
+	'.cursor',
+	'.gemini',
 	'.git',
+	'.scratch',
 	'.tmp',
 	'.wrangler',
 	'build',
@@ -23,10 +28,10 @@ const presentMatcherPattern =
 /** Shared prefix long enough to treat two needles as the same template family. */
 export const siblingPrefixLength = 16
 
-const skipDirectoryPrefixes = ['e2e/playwright-report/']
+const skipDirectoryPrefixes = ['tools/oxlint/']
 
 export function isTestPath(relativePath) {
-	return testFilePattern.test(relativePath) || relativePath.startsWith('e2e/')
+	return testFilePattern.test(relativePath)
 }
 
 export function isInstructionalCopyNeedle(decoded, rawInner) {
@@ -163,30 +168,82 @@ function readEscape(source, index) {
 	}
 }
 
+function stripCodeComments(source) {
+	let out = ''
+	let index = 0
+	while (index < source.length) {
+		const char = source[index]
+		const next = source[index + 1]
+		if (char === '/' && next === '/') {
+			out += '  '
+			index += 2
+			while (index < source.length && source[index] !== '\n') {
+				out += ' '
+				index += 1
+			}
+			continue
+		}
+		if (char === '/' && next === '*') {
+			out += '  '
+			index += 2
+			while (index < source.length && !(source[index] === '*' && source[index + 1] === '/')) {
+				out += source[index] === '\n' ? '\n' : ' '
+				index += 1
+			}
+			if (index < source.length) {
+				out += '  '
+				index += 2
+			}
+			continue
+		}
+		if (char === "'" || char === '"' || char === '`') {
+			const quote = char
+			out += char
+			index += 1
+			while (index < source.length) {
+				const inner = source[index]
+				out += inner
+				index += 1
+				if (inner === '\\' && index < source.length) {
+					out += source[index]
+					index += 1
+					continue
+				}
+				if (inner === quote) break
+			}
+			continue
+		}
+		out += char
+		index += 1
+	}
+	return out
+}
+
 function lineNumberAt(source, index) {
 	return source.slice(0, index).split('\n').length
 }
 
 export function findContainCalls(content) {
+	const stripped = stripCodeComments(content)
 	const calls = []
 	for (const [kind, pattern] of [
 		['absent', absenceMatcherPattern],
 		['present', presentMatcherPattern],
 	]) {
 		pattern.lastIndex = 0
-		let match = pattern.exec(content)
+		let match = pattern.exec(stripped)
 		while (match) {
-			const quoted = readQuotedString(content, match.index + match[0].length)
+			const quoted = readQuotedString(stripped, match.index + match[0].length)
 			if (quoted) {
 				calls.push({
 					kind,
-					line: lineNumberAt(content, match.index),
+					line: lineNumberAt(stripped, match.index),
 					start: match.index,
 					end: quoted.end,
 					quoted,
 				})
 			}
-			match = pattern.exec(content)
+			match = pattern.exec(stripped)
 		}
 	}
 	return calls
@@ -206,16 +263,18 @@ function mentionsNeedle(content, needle) {
 }
 
 function otherFileMentionsNeedle(content, needle) {
-	if (!mentionsNeedle(content, needle)) return false
+	const stripped = stripCodeComments(content)
+	if (!mentionsNeedle(stripped, needle)) return false
 	return mentionsNeedle(
-		blankAbsenceSpans(content, needle.decoded, findContainCalls(content)),
+		blankAbsenceSpans(stripped, needle.decoded, findContainCalls(stripped)),
 		needle,
 	)
 }
 
 export function findTautologicalAbsenceMatches(input) {
 	if (!isTestPath(input.relativePath)) return []
-	const calls = findContainCalls(input.content)
+	const stripped = stripCodeComments(input.content)
+	const calls = findContainCalls(stripped)
 	const presentNeedles = calls
 		.filter((call) => call.kind === 'present')
 		.map((call) => call.quoted.decoded)
@@ -235,7 +294,7 @@ export function findTautologicalAbsenceMatches(input) {
 		) {
 			continue
 		}
-		const remainder = blankAbsenceSpans(input.content, decoded, calls)
+		const remainder = blankAbsenceSpans(stripped, decoded, calls)
 		if (mentionsNeedle(remainder, { decoded, rawInner })) continue
 		if (
 			input.otherContents.some((content) =>

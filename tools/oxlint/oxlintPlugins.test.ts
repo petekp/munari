@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import {
   findTautologicalAbsenceMatches,
   isInstructionalCopyNeedle,
+  listTautologicalAbsencePaths,
 } from './no-tautological-absence/tautological-absence.mjs'
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..')
@@ -71,6 +72,49 @@ describe('anti-slop plugin (confirmed contracts)', () => {
     expect(codes).toContain('anti-slop(no-unknown-returns)')
     expect(codes).toContain('anti-slop(no-chained-type-assertions)')
   })
+
+  it('accepts SAFETY comments on exported declarations and blocks function-header leakage', () => {
+    const exportedOk = lintSnippet(
+      'exported-safety.ts',
+      [
+        '// SAFETY: verified upstream before export',
+        'export const exportedCast = ("ok" as string).length',
+      ].join('\n'),
+    )
+    expect(exportedOk).toEqual([])
+
+    const leaky = lintSnippet(
+      'leaky-safety.ts',
+      [
+        '// SAFETY: header note must not leak into body statements',
+        'function check(value: string | number): number {',
+        '  if ((value as string).length > 0) return 1',
+        '  return 0',
+        '}',
+        'export const run = check("hi")',
+      ].join('\n'),
+    )
+    expect(leaky.map((d) => d.code)).toEqual(['anti-slop(require-safety-comment-for-type-assertion)'])
+  })
+
+  it('catches union/alias unknown parameters and non-null chained assertions', () => {
+    const diagnostics = lintSnippet(
+      'sneaky.ts',
+      [
+        'type HiddenUnknown = string | unknown',
+        'export function unionParam(x: string | unknown): number { return String(x).length }',
+        'export function nonNullChain(x: string | null): number {',
+        '  // SAFETY: test fixture',
+        '  return ((x as string)! as string).length',
+        '}',
+        'export type KeepAlias = HiddenUnknown',
+      ].join('\n'),
+    )
+    const codes = diagnostics.map((d) => d.code)
+    expect(codes).toContain('anti-slop(no-unknown-type-aliases)')
+    expect(codes).toContain('anti-slop(no-unknown-parameters)')
+    expect(codes).toContain('anti-slop(no-chained-type-assertions)')
+  })
 })
 
 describe('no-tautological-absence (confirmed contracts)', () => {
@@ -91,5 +135,24 @@ describe('no-tautological-absence (confirmed contracts)', () => {
       otherContents: [`const current = 'Active banner message'`],
     })
     expect(liveElsewhere).toEqual([])
+  })
+
+  it('ignores commented-out strings in corpus files and skips tools/oxlint and scratch directories', () => {
+    const commentedOnly = findTautologicalAbsenceMatches({
+      relativePath: 'packages/react/src/example.test.ts',
+      content: [
+        `// Retired copy: 'Commented legacy warning text.'`,
+        `expect(output).not.toContain('Commented legacy warning text.')`,
+      ].join('\n'),
+      otherContents: [
+        `// Old UI string: 'Commented legacy warning text.'`,
+        `/* Multi-line retired: 'Commented legacy warning text.' */`,
+      ],
+    })
+    expect(commentedOnly.map((m) => m.needle)).toEqual(['Commented legacy warning text.'])
+
+    const scanned = listTautologicalAbsencePaths(repoRoot)
+    expect(scanned.some((p) => p.startsWith('tools/oxlint/'))).toBe(false)
+    expect(scanned.some((p) => p.startsWith('.agents/') || p.startsWith('.scratch/'))).toBe(false)
   })
 })

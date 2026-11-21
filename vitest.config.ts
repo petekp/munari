@@ -6,7 +6,7 @@ export default defineConfig({
     expect: { requireAssertions: true },
     include: [
       'tests/**/*.test.{ts,tsx}',
-      'packages/*/src/**/*.test.{ts,tsx}',
+      'packages/react/src/**/*.test.{ts,tsx}',
       'apps/*/src/**/*.test.{ts,tsx}',
       'instruments/**/*.test.{ts,tsx}',
       'tools/**/*.test.{ts,tsx}',

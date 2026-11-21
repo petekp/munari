@@ -5,12 +5,28 @@ import type { ESTree, SourceCode } from "@oxlint/plugins";
 type TypeAssertion = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
 
 const commentOwnerKinds = new Set([
+  "BlockStatement",
+  "ClassBody",
+  "ClassDeclaration",
+  "DoWhileStatement",
+  "ExportDefaultDeclaration",
+  "ExportNamedDeclaration",
   "ExpressionStatement",
+  "ForInStatement",
+  "ForOfStatement",
+  "ForStatement",
+  "FunctionDeclaration",
+  "IfStatement",
+  "MethodDefinition",
   "PropertyDefinition",
   "ReturnStatement",
+  "SwitchStatement",
   "ThrowStatement",
   "VariableDeclaration",
+  "WhileStatement",
 ]);
+
+const exportWrapperKinds = new Set(["ExportDefaultDeclaration", "ExportNamedDeclaration"]);
 
 function isConstAssertion(node: TypeAssertion): boolean {
   return (
@@ -30,8 +46,17 @@ function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean 
     ) {
       return true;
     }
-    if (commentOwnerKinds.has(current.type) || current.parent.type === "Program") return false;
-    current = current.parent;
+    const parent: ESTree.Node | null = current.parent;
+    if (parent === null) return false;
+    if (commentOwnerKinds.has(current.type)) {
+      if (exportWrapperKinds.has(parent.type)) {
+        current = parent;
+        continue;
+      }
+      return false;
+    }
+    if (parent.type === "Program") return false;
+    current = parent;
   }
 }
 
