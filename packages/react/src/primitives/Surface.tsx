@@ -22,110 +22,10 @@ import { watchSurfacePlacement } from './surface/surfacePlacement'
 import { claimSourcePointer, releaseSourcePointer } from './surface/surfacePointerOwnership'
 import { registerHostSpace, hostSpace, markerSpace, boxInHostSpace, hostSpaceScale, hostSpaceUpright } from './surface/surfaceHostSpace'
 import { createSurfacePageClip } from './surface/surfacePageClip'
-import { insertRetained, moveRetained, type ScrollOffsets } from './retainedMove'
-import { applyCopyScrolls, copyFieldState } from './elementCapture'
+import { insertRetained, moveRetained } from './retainedMove'
+import { applyCopyScrolls } from './elementCapture'
+import { placeholderCopy, snapshotPageContent as snapshot, sourceNeedsLiveNode, unsupportedSnapshot } from './surface/surfacePageSnapshot'
 import { readSurfaceDevicePixelRatio } from './surface/surfaceDevicePixelRatio'
-
-function unsupportedSnapshot(root:HTMLElement):string|null {
-  for(const element of [root,...root.querySelectorAll('*')]) {
-    if(['iframe','video','audio','object','embed'].includes(element.localName)||element.localName.includes('-')||element.hasAttribute('is')||element.shadowRoot) {
-      return `The single-instance handoff has not validated <${element.localName}>; keep this content native.`
-    }
-    if(element.hasAttribute('form')||element.getAttributeNames().some(name=>name.startsWith('on')&&name in Object.getPrototypeOf(element)))return 'Explicit form associations and inline DOM handlers remain native.'
-    const form = element instanceof HTMLInputElement || element instanceof HTMLButtonElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement || element instanceof HTMLFieldSetElement ? element.form : null
-    if(form&&!root.contains(form))return 'Keep the form and its controls inside the same Surface.'
-    if(element instanceof HTMLInputElement&&element.type==='radio'&&element.name&&!form)return 'Named radio groups without a containing form remain native.'
-  }
-  return null
-}
-
-/**
- * A copy of the live content, and a key naming everything in that copy.
- *
- * The key exists because a capture is not free. Replacing the copy is a
- * mutation of what the source holds, which is what keeps the texture
- * current on an engine that follows it — and most replacements change
- * nothing. Measured
- * 2026-09-11 over one card drag on a nine-card board: 40 of 41 rebuilt
- * copies were byte-for-byte the copy already in place, and dropping them —
- * with the density rule in `PaintReason` — took the drag from 65 captures to
- * 40 and its blocking time from ~140 ms to ~115 ms under a main-thread
- * rasterizer. Comparing the key first costs one string per mutation burst.
- *
- * It covers what `outerHTML` cannot: a field's value, a checkbox's state
- * and a scroll offset are properties, not attributes, and each of them is
- * carried across by this function. A `<canvas>`'s pixels are not in it —
- * nothing mutates for a canvas redraw, so this path never runs for one.
- */
-interface PageSnapshot { node: HTMLElement; key: string; scrolls: ScrollOffsets }
-
-// A copy stands in for the original's PIXELS, so it has to be at the
-// original's pose — `matchMotion` after every insertion, never inside
-// `snapshot`, because a disconnected element has no animations to place.
-// A clone's CSS animations otherwise start over from zero and then run on
-// their own, so the standing copy in the capture root drifts away from the
-// live node and the capture rasterizes whatever phase the drift reached.
-// Seen as a figure jumping to a different pose for the swap frame and back
-// on the next capture, on every other minimize (decisions.md #66).
-
-function snapshot(root: HTMLElement, unsupported: string | null = unsupportedSnapshot(root)): PageSnapshot {
-  // Do not instantiate another iframe, media player, or custom element as a placeholder.
-  if(unsupported)return { node: document.createElement('div'), key: '', scrolls: [] }
-  // SAFETY: cloning an HTMLElement preserves its element type.
-  const copy = root.cloneNode(true) as HTMLElement
-  copy.dataset.munariSnapshot = ''
-  const originals = [root, ...root.querySelectorAll('*')]
-  const copies = [copy, ...copy.querySelectorAll('*')]
-  const state: string[] = []
-  const scrolls: ScrollOffsets = []
-  originals.forEach((original, index) => {
-    const target = copies[index]
-    if (!target) return
-    target.removeAttribute('id')
-    target.removeAttribute('data-api-live')
-    target.toggleAttribute('data-hover', original.matches(':hover') || original.hasAttribute('data-hover'))
-    target.toggleAttribute('data-active', original.matches(':active') || original.hasAttribute('data-active'))
-    target.toggleAttribute('data-focus-visible', original.matches(':focus-visible'))
-    copyFieldState(original, target, scrolls)
-    if (original instanceof HTMLInputElement) {
-      state.push(`${index}v${original.value}|${original.checked}|${original.indeterminate}`)
-    } else if (original instanceof HTMLTextAreaElement) {
-      state.push(`${index}v${original.value}`)
-    } else if (original instanceof HTMLSelectElement) {
-      state.push(`${index}s${original.selectedIndex}`)
-    } else if (original instanceof HTMLCanvasElement && target instanceof HTMLCanvasElement) {
-      target.getContext('2d')?.drawImage(original, 0, 0)
-    }
-    if (original.scrollTop || original.scrollLeft) state.push(`${index}o${original.scrollTop},${original.scrollLeft}`)
-  })
-  return { node: copy, key: `${copy.outerHTML}\u0000${state.join('\u0000')}`, scrolls }
-}
-
-function placeholderCopy(liveRoot: HTMLElement, unsupported?: string | null): HTMLElement {
-  const { node: copy } = snapshot(liveRoot, unsupported)
-  copy.inert = true; copy.setAttribute('aria-hidden', 'true'); copy.style.visibility = 'hidden'
-  return copy
-}
-
-/**
- * Does this content have something the page-side copy cannot carry?
- *
- * A `snapshot` copy reproduces markup, field values, checked state, scroll
- * offsets and the hover/active/focus-visible twins — everything the eye can
- * check. What it cannot reproduce is the browser's own furniture: a blinking
- * caret and a selection highlight belong to the node that owns them, and a
- * clone of that node has neither. So the live node is worth moving into the
- * capture ahead of the crossing exactly when one of those is present, and
- * not otherwise.
- */
-function sourceNeedsLiveNode(root: HTMLElement): boolean {
-  const doc = root.ownerDocument
-  if (root.contains(doc.activeElement)) return true
-  const selection = doc.getSelection()
-  // `containsNode` walks the range; asking only when something is selected
-  // keeps that off the per-frame path a drag runs down.
-  return Boolean(selection && !selection.isCollapsed && selection.containsNode(root, true))
-}
 
 function SceneContribution({ scene }: { scene: ReactNode }) {
   const root = use(SurfaceRootContext)!
@@ -318,6 +218,12 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     warmSource.current?.setHostPainted(false)
     releaseSourcePointer(warmSource.current?.host ?? null, warmOwner)
   }, [warmOwner])
+  const returnToHolder = useCallback((holder: HTMLElement) => {
+    parkWarmRig()
+    holder.inert = false; holder.style.visibility = ''; holder.removeAttribute('aria-hidden')
+    if (liveRoot && liveRoot.parentElement !== holder && (holder.isConnected || liveRoot.isConnected)) moveRetained(liveRoot, holder)
+    placeholder.current?.remove(); placeholder.current = null
+  }, [liveRoot, parkWarmRig])
   const updateWarmRig = (holder:HTMLElement,runtime:SurfaceSourceRuntime|null,captured:boolean,captureElement:HTMLElement) => {
     // The ride stands in for the page copy, so it rides only while that copy is
     // painted. An app that hides the copy itself (Genie's docked windows) would
@@ -394,11 +300,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
       // content it is about to show is the live node that just moved in.
       ownRuntime?.source.repaint()
     } else if (!captured && liveRoot.parentElement !== holder) {
-      parkWarmRig()
-      // Ownership has returned before this move; the destination must already accept focus.
-      holder.inert=false;holder.style.visibility='';holder.removeAttribute('aria-hidden')
-      moveRetained(liveRoot, holder)
-      placeholder.current?.remove(); placeholder.current = null
+      returnToHolder(holder)
       const held = snapshot(liveRoot)
       captureRoot.replaceChildren(held.node); applyCopyScrolls(held.scrolls); matchMotion(liveRoot, held.node); heldKey.current = held.key
     }
@@ -503,10 +405,10 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     }
   }, [page, liveRoot, captureRoot, store])
   useLayoutEffect(() => () => {
-    parkWarmRig()
     const holder = pageRef.current
-    if (holder && liveRoot?.isConnected && liveRoot.parentElement !== holder) moveRetained(liveRoot, holder)
-  }, [liveRoot, pageRef, parkWarmRig])
+    if (holder) returnToHolder(holder)
+    else parkWarmRig()
+  }, [pageRef, returnToHolder, parkWarmRig])
 
 
   const content = <>

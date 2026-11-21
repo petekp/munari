@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 // The API proof must hydrate its existing content rather than mount a second copy.
-import { act, createElement, useEffect, useState } from 'react'
+import { Activity, act, createElement, useEffect, useState } from 'react'
 import { renderToString } from 'react-dom/server'
 import { createRoot, hydrateRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Surface } from './Surface'
-import { resetSurfaceHosts } from './surface/surfaceHostRegistry'
+import { createSurfaceHost, mountSurfaceHost, resetSurfaceHosts } from './surface/surfaceHostRegistry'
 import { createSurface, surfaceStoreOf } from './surface/surfaceHandle'
 
 afterEach(()=>{vi.unstubAllGlobals();resetSurfaceHosts();document.body.innerHTML=''})
@@ -84,4 +84,48 @@ it('warns once per page when a Surface asks for the scene and no capture engine 
   expect(warn).toHaveBeenCalledTimes(1)
   expect(warn.mock.calls[0]?.[0]).toContain('enableSnapdomCapture()')
  } finally {await act(async()=>root.unmount());container.remove();warn.mockRestore()}
+})
+
+it('removes the placeholder clone and restores the live root as first child across Activity hide/show while captured', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  vi.stubGlobal('CanvasRenderingContext2D', class Supported { drawElementImage() {} })
+  Object.assign(HTMLCanvasElement.prototype, { layoutSubtree: false, onpaint: null, requestPaint() {} })
+  const hostMount = mountSurfaceHost(createSurfaceHost())
+  hostMount.host.setRuntime({ invalidate() {}, setBusy() {} })
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  const render = async (mode: 'visible' | 'hidden', inScene: boolean) => {
+    // eslint-disable-next-line react/no-children-prop
+    const html = createElement(Surface.HTML, { size: [200, 80], pageClassName: 'page-slot', children: createElement('input', { defaultValue: 'kept' }) })
+    // eslint-disable-next-line react/no-children-prop
+    const surface = createElement(Surface.Root, { inScene, children: html })
+    // eslint-disable-next-line react/no-children-prop
+    await act(async () => root.render(createElement(Activity, { mode, children: surface })))
+  }
+  try {
+    await render('visible', true)
+    const slot = container.querySelector<HTMLElement>('.page-slot')!
+    const input = slot.querySelector<HTMLInputElement>('input')!
+    await act(async () => {
+      input.value = 'edited while focused'
+      input.focus()
+      input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+    expect(slot.querySelectorAll('[data-munari-snapshot]')).toHaveLength(1)
+
+    await render('hidden', true)
+    expect(slot.style.display).toBe('none')
+    await render('visible', false)
+
+    expect(slot.querySelectorAll('[data-munari-snapshot]')).toHaveLength(0)
+    expect(slot.firstElementChild?.hasAttribute('data-api-live')).toBe(true)
+    expect(slot.querySelector('input')).toBe(input)
+    expect(input.value).toBe('edited while focused')
+  } finally {
+    await act(async () => root.unmount())
+    hostMount.release()
+    container.remove()
+  }
 })
