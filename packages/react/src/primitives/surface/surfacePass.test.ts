@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { applyPassWrites, authoredWrites } from './surfaceWrites'
-import { beginSurfaceOutputDraw, drawnByOverride, geometryDraws, readPassEvidence, surfaceOutputDrawCompleted } from './surfacePass'
+import { beginSurfaceOutputDraw, beginSurfacePass, drawnByOverride, geometryDraws, readPassEvidence, surfaceOutputDrawCompleted } from './surfacePass'
 
 describe('geometryDraws', () => {
   it('is false when the vertices, the draw range or the instance count leave nothing to draw', () => {
@@ -113,5 +113,64 @@ describe('compositor output draws', () => {
     renderer.info.render.triangles = 4
     expect(surfaceOutputDrawCompleted(renderer, emptyDraw)).toBe(false)
     expect(surfaceOutputDrawCompleted(renderer, incompleteDraw)).toBe(false)
+  })
+})
+
+describe('beginSurfacePass', () => {
+  it('marks compile-only or unready passes non-drawable when no primitives advance', () => {
+    const scene = new THREE.Scene()
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial())
+    const renderer = {
+      getRenderTarget: () => null,
+      info: { render: { calls: 1, triangles: 6, lines: 0, points: 0 } },
+    }
+
+    const compilePass = beginSurfacePass(renderer, scene, mesh, mesh.geometry, mesh.material)
+    expect(compilePass.finish(renderer).drawable).toBe(false)
+    expect(Object.prototype.hasOwnProperty.call(scene, 'onAfterRender')).toBe(false)
+
+    const realPass = beginSurfacePass(renderer, scene, mesh, mesh.geometry, mesh.material)
+    renderer.info.render.triangles += 2
+    expect(realPass.finish(renderer).drawable).toBe(true)
+  })
+
+  it('refreshes the primitive baseline across nested shadow-map scene renders', () => {
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera()
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial())
+    const renderer = {
+      getRenderTarget: () => null,
+      info: { render: { calls: 1, triangles: 0, lines: 0, points: 0 } },
+    }
+    // SAFETY: default Scene.onAfterRender is a no-op; our wrapper reads only `renderer.info`.
+    const gl = renderer as THREE.WebGLRenderer
+
+    // Shadow casters advance triangles before the outer mesh skipped its own draw.
+    const skippedAfterShadow = beginSurfacePass(renderer, scene, mesh, mesh.geometry, mesh.material)
+    renderer.info.render.calls++
+    renderer.info.render.triangles += 12
+    scene.onAfterRender(gl, scene, camera, mesh.geometry, mesh.material, new THREE.Group())
+    expect(skippedAfterShadow.finish(renderer).drawable).toBe(false)
+
+    // Shadow casters draw, then the lit mesh draws 2 triangles of its own.
+    const drawnAfterShadow = beginSurfacePass(renderer, scene, mesh, mesh.geometry, mesh.material)
+    renderer.info.render.calls++
+    renderer.info.render.triangles += 12
+    scene.onAfterRender(gl, scene, camera, mesh.geometry, mesh.material, new THREE.Group())
+    renderer.info.render.triangles += 2
+    expect(drawnAfterShadow.finish(renderer).drawable).toBe(true)
+  })
+
+  it('rejects zero-count InstancedMesh even when geometry is non-empty', () => {
+    const scene = new THREE.Scene()
+    const material = new THREE.MeshBasicMaterial()
+    const instanced = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), material, 0)
+    const renderer = {
+      getRenderTarget: () => null,
+      info: { render: { calls: 1, triangles: 0, lines: 0, points: 0 } },
+    }
+    const pass = beginSurfacePass(renderer, scene, instanced, instanced.geometry, material)
+    renderer.info.render.triangles += 2
+    expect(pass.finish(renderer).drawable).toBe(false)
   })
 })

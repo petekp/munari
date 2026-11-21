@@ -12,11 +12,9 @@
 // lets the DOM presentation be released in the same frame without ever
 // showing a blank one.
 //
-// A write-free pass is deliberately NOT evidence. It draws nothing, so a
-// receipt from one certifies an empty frame, and the page it releases goes
-// dark. That distinction is the `warm-up` route of `presentationRoute` in the
-// kernel, and it is why the two callbacks below are asymmetric: the before
-// hook decides what the pass IS, the after hook decides what it PROVED.
+// A write-free pass proves warm-up only (`warm-up` in `presentationRoute`);
+// only a color-writing pass releases the page. The before hook records the
+// pass configuration; the after hook confirms primitives actually drew.
 //
 // Ownership: this component owns the mesh, the default material, the
 // raycast region, pointer relay, LOD demand, and presentation evidence. It
@@ -61,7 +59,6 @@ import {
   trackWheel,
   type ForwardPointerSample,
   type SurfacePartId,
-  type SurfacePassEvidence,
 } from '@munari/core'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { Discard, Fn, diffuseColor, uniform, uv, vec4 } from 'three/tsl'
@@ -86,7 +83,7 @@ import {
   type SurfacePartValue,
 } from './surfaceContext'
 import { configureSurfaceMaterial } from './surfaceMaterials'
-import { drawnByOverride, readPassEvidence } from './surfacePass'
+import { beginSurfacePass, drawnByOverride, type SurfaceObservedPass } from './surfacePass'
 import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 import {
   applyPassWrites,
@@ -397,7 +394,7 @@ function SurfacePresenter({
   // What the pass in flight is doing, written by the before hook and read
   // once by the after hook. Three hands the after hook no argument, so the
   // evidence travels here and the hook derives the route from it.
-  const passRef = useRef<SurfacePassEvidence | null>(null)
+  const passRef = useRef<SurfaceObservedPass | null>(null)
   const rasterReadyRef = useRef(false)
   // The material's own write flags as the caller left them, captured at the
   // top of each pass and put back at the bottom of it. Three's per-object
@@ -1013,7 +1010,7 @@ function SurfacePresenter({
   // exclusive one presents only once the page has let go, and draws
   // write-free until then.
   const handleBeforeRender = useCallback<THREE.Object3D['onBeforeRender']>(
-    (renderer, scene, _cam, renderedGeometry, renderedMaterial) => {
+    function (this: THREE.Object3D, renderer, scene, _cam, renderedGeometry, renderedMaterial) {
       if (drawnByOverride(scene, renderedMaterial)) return
       for (const beforeDraw of beforeDraws.current) beforeDraw()
       // Read live from the store, never from a render-time value. The
@@ -1035,7 +1032,7 @@ function SurfacePresenter({
       // callback below puts them back.
       applyPassWrites(authoredRef.current, renderedMaterial, writing)
       // After the borrow: the evidence is the flags this draw will use, not the caller's.
-      passRef.current = readPassEvidence(renderer, renderedGeometry, renderedMaterial)
+      passRef.current = beginSurfacePass(renderer, scene, this, renderedGeometry, renderedMaterial)
     },
     [store,runtime],
   )
@@ -1053,10 +1050,10 @@ function SurfacePresenter({
     // nothing uploaded, a warm-up — must leave the material exactly as the
     // caller authored it.
     restoreAuthoredWrites(authoredRef.current)
-    const pass = passRef.current
+    const observed = passRef.current
     passRef.current = null
-    if (!pass) return
-    const route = presentationRoute(pass, presenterHost !== null)
+    if (!observed) return
+    const route = presentationRoute(observed.finish(renderer), presenterHost !== null)
     // Three still runs both callbacks for geometry with nothing to draw, and
     // a pass that drew nothing proves nothing (decisions.md #70).
     if (route === 'empty') return

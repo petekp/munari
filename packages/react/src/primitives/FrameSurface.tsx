@@ -54,7 +54,7 @@ import { SurfaceContext, type SurfaceContextValue } from './SurfaceContext'
 import { surfaceStoreOf, type SurfaceHandle } from './surface/surfaceHandle'
 import { useSurfaceHostContext } from './surface/surfaceHostContext'
 import { surfaceTextureLimit } from './surface/SurfaceCanvas'
-import { drawnByOverride, readPassEvidence } from './surface/surfacePass'
+import { beginSurfacePass, drawnByOverride, type SurfaceObservedPass } from './surface/surfacePass'
 import { useLatest } from './useLatest'
 import { isDevelopmentRuntime } from '../lib/developmentRuntime'
 
@@ -498,7 +498,7 @@ export function FrameSurface({
   // The Canvas this mesh draws in, when it is a <SurfaceCanvas>. Null in a
   // plain r3f Canvas, which is the case that keeps the old refusal.
   const host = useSurfaceHostContext()
-  const routeRef = useRef<PresentationRoute>('now')
+  const passRef = useRef<SurfaceObservedPass | null>(null)
 
   const reportRejectedPresentation = useCallback(
     (message: string) => {
@@ -510,38 +510,28 @@ export function FrameSurface({
     [presentationRef],
   )
 
-  const handleBeforeRender = useCallback(
-    (
-      renderer: { getRenderTarget(): THREE.RenderTarget | null },
-      scene: THREE.Scene,
-      _camera: THREE.Camera,
-      geometry: THREE.BufferGeometry,
-      renderedMaterial: THREE.Material,
-    ) => {
+  const handleBeforeRender = useCallback<THREE.Object3D['onBeforeRender']>(
+    function (this: THREE.Object3D, renderer, scene, _camera, geometry, renderedMaterial) {
       const current = runtimeRef.current
       if (!current || current !== runtime || current.source !== frameRef.current) return
       if (drawnByOverride(scene, renderedMaterial)) return
-      // A pass into a render target has not reached the screen, so on its
-      // own it cannot present. Inside a <SurfaceCanvas> it does not have to
-      // decide alone: the host closes its frame tail once the frame it
-      // belongs to reached the default framebuffer, and the receipt waits
-      // there. Without a host there is no tail and the old refusal stands.
-      const route = presentationRoute(readPassEvidence(renderer, geometry, renderedMaterial), host !== null)
-      routeRef.current = route
-      current.beginPresentationPass(presentationRef.current, route, reportRejectedPresentation)
+      passRef.current = beginSurfacePass(renderer, scene, this, geometry, renderedMaterial)
     },
-    [runtime, frameRef, presentationRef, reportRejectedPresentation, host],
+    [runtime, frameRef],
   )
 
   const handleAfterRender = useCallback<THREE.Object3D['onAfterRender']>((renderer, scene, _camera, _geometry, renderedMaterial) => {
     if (drawnByOverride(scene, renderedMaterial)) return
+    const observed = passRef.current
+    passRef.current = null
+    if (!observed) return
     const current = runtimeRef.current
     // A source prop can change one commit before its effect disposes the old
     // runtime. Never let that old mesh report into the new source's callback.
     if (!current || current !== runtime || current.source !== frameRef.current) return
-    // An empty draw left the canvas as it was; the uploaded frame waits for
-    // a draw that shows it.
-    if (routeRef.current === 'empty') return
+    const route = presentationRoute(observed.finish(renderer), host !== null)
+    current.beginPresentationPass(presentationRef.current, route, reportRejectedPresentation)
+    if (route === 'empty') return
     const receipt = current.takeDrawReceipt()
     if (receipt) onFrameDrawnRef.current?.(receipt)
     const presentationReceipt = current.takePresentationReceipt(reportRejectedPresentation)
@@ -551,7 +541,7 @@ export function FrameSurface({
       if (runtimeRef.current !== current || current.source !== frameRef.current || !requirement || !presentationReceiptSatisfies(requirement, presentationReceipt)) return
       if (current.deliverPresentation(presentationReceipt)) onPresentedRef.current?.(presentationReceipt)
     }
-    if (routeRef.current === 'tail' && host) {
+    if (route === 'tail' && host) {
       const target = renderer.getRenderTarget()
       if (target) host.deferPresentation(target, deliver)
       return

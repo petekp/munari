@@ -76,9 +76,55 @@ export interface SurfaceOutputDraw {
   readonly drawable: boolean
 }
 
+export interface SurfaceObservedPass {
+  finish(renderer: SurfaceOutputRenderer): SurfacePassEvidence
+}
+
 const primitiveCount = (renderer: SurfaceOutputRenderer) => {
   const { triangles, lines, points } = renderer.info.render
   return triangles + lines + points
+}
+
+/**
+ * Observe one presenter draw from `onBeforeRender` to `onAfterRender`.
+ *
+ * `WebGPURenderer.compile()` / `compileAsync()` and unready async pipelines
+ * invoke both object callbacks with `getRenderTarget() === null` while issuing
+ * zero GPU draw commands. A nested shadow pass inside `ShadowNode.updateBefore`
+ * can advance primitives before the mesh draws; refreshing the baseline on
+ * nested `scene.onAfterRender` isolates the mesh's own primitive advancement.
+ */
+export function beginSurfacePass(
+  renderer: SurfaceOutputRenderer,
+  scene: THREE.Scene,
+  mesh: THREE.Object3D,
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material,
+): SurfaceObservedPass {
+  const evidence = readPassEvidence(renderer, geometry, material)
+  const staticDrawable =
+    evidence.drawable && (!(mesh instanceof THREE.InstancedMesh) || mesh.count > 0)
+  let primitives = primitiveCount(renderer)
+  const trackScene = staticDrawable && scene.isScene === true
+  const before = scene.onAfterRender
+  const ownedBefore = trackScene && Object.prototype.hasOwnProperty.call(scene, 'onAfterRender')
+  const observeScene: THREE.Scene['onAfterRender'] = function (this: THREE.Scene, ...args) {
+    before.apply(this, args)
+    primitives = primitiveCount(renderer)
+  }
+  if (trackScene) scene.onAfterRender = observeScene
+  let finished = false
+  return {
+    finish(afterRenderer) {
+      if (!finished && trackScene && scene.onAfterRender === observeScene) {
+        if (ownedBefore) scene.onAfterRender = before
+        else Reflect.deleteProperty(scene, 'onAfterRender')
+      }
+      finished = true
+      const drew = staticDrawable && primitiveCount(afterRenderer) > primitives
+      return drew === evidence.drawable ? evidence : { ...evidence, drawable: drew }
+    },
+  }
 }
 
 /** Object callbacks also surround attempts with no geometry or zero instances. */
