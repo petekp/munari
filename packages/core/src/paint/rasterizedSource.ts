@@ -349,7 +349,7 @@ export function createRasterizedSource(
       if (disposed) return
       pixelsRetained = false
       draw(image, askedFor)
-      rasteredStore = [canvas.width, canvas.height]
+      rasteredStore = askedFor[0] === canvas.width && askedFor[1] === canvas.height ? askedFor : [0, 0]
       body.completePaint(box, changesDuringPaint, read)
     } catch (cause) {
       if (!disposed) body.failPaint(cause, pixelsRetained)
@@ -386,11 +386,8 @@ export function createRasterizedSource(
    *
    * The other three rasterize. `box` relaid the subtree out, so the carried
    * pixels are the wrong content stretched over the new box. `density` is a
-   * caller naming the density it wants to arrive at, which is the whole
-   * point of naming it. `rest` is the settle repaying the band, and it is
-   * skipped only when the store it settles on is the one the last raster
-   * was already made for — the settle re-arms on every ladder step, and
-   * most of those land back on a store that is already sharp.
+   * caller naming the density it wants to arrive at. `rest` repays the band,
+   * skipped only when the store still holds an unresampled 1:1 raster.
    *
    * Motion is approximate, rest is exact.
    */
@@ -404,6 +401,7 @@ export function createRasterizedSource(
       if (rasteredStore[0] !== canvas.width || rasteredStore[1] !== canvas.height) request()
       return
     }
+    if (rasteredStore[0] !== canvas.width || rasteredStore[1] !== canvas.height) rasteredStore = [0, 0]
     const held = body.currentPaint()
     if (!held || !body.painted()) return
     if (held.storeSize[0] === canvas.width && held.storeSize[1] === canvas.height) return
