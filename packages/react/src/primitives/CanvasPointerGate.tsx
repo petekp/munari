@@ -40,6 +40,7 @@ export function CanvasPointerGate({ isTarget }: CanvasPointerGateProps) {
 
   useEffect(() => {
     const canvas = gl.domElement
+    const priorPointerEvents = canvas.style.pointerEvents
     const raycaster = new THREE.Raycaster()
     const ndc = new THREE.Vector2()
     const claims = new Map<number, PointerEvent>()
@@ -300,6 +301,7 @@ export function CanvasPointerGate({ isTarget }: CanvasPointerGateProps) {
       window.removeEventListener('blur', cancelClaims)
       if (clearTargetCacheFrame) cancelAnimationFrame(clearTargetCacheFrame)
       cancelClaims()
+      canvas.style.pointerEvents = priorPointerEvents
     }
   }, [camera, events, gl, scene])
 

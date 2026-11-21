@@ -158,4 +158,14 @@ describe('CanvasPointerGate', () => {
     )
     expect(routedDowns).toBe(0)
   })
+
+  it('restores gl.domElement pointerEvents when unmounted so pointerMode="scene" receives input again', () => {
+    const { canvas, render } = mountGate()
+
+    document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 5, clientY: 5, pointerId: 1 }))
+    expect(canvas.style.pointerEvents).toBe('none')
+
+    render(false)
+    expect(canvas.style.pointerEvents).toBe('')
+  })
 })
