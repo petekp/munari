@@ -548,7 +548,7 @@ engine limitations, anchor coordinate units, and the difference between renderer
 readiness and Surface presentation. Replace retired names throughout the README,
 skill, compile-only examples, lab, registry, and instruments.
 
-Keep the generic Canvas defaults. Use [HomeStarter](../apps/lab/src/scenes/home/HomeStarter.tsx)
+Keep the generic Canvas defaults. Use [Postcard](../apps/lab/src/scenes/postcard/Postcard.tsx)
 as the overlay recipe with explicit `pointerMode="surfaces"` and demand rendering.
 Use an existing continuing-motion example to explain when the application needs
 frames after the handoff settles. Two settings do not yet justify another public

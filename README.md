@@ -42,7 +42,7 @@ browser and what they can draw.
 |---|---|---|
 | Needs | HTML-in-canvas support; enabled by default in Chrome 157+ | any browser with a document |
 | Draws | the live element | a rasterized copy of the subtree |
-| What the texture follows | everything, for free | what the user does to the content; a resize, a font or image landing, a transition's ends. Content that changes on its own needs `live` |
+| What the texture follows | user input, layout/font/image changes, transition ends, and `useSurfaceRefresh()`; ongoing changes need `live` | same; `live` re-captures at most ~4 times/s |
 | Caret and selection | real, painted by the browser | not painted |
 | Everything else on the page | pixel-exact | close: laid-out lengths snap to whole CSS pixels, and vertical geometry can sit up to two device pixels off |
 | Input to texture, Knobs panel at dpr 2 | 12 ms | 37 ms for a change that lands on a quiet Surface; up to 150 ms more on one that is already re-capturing |
@@ -79,7 +79,7 @@ Mark eligible inputs with `data-munari-capture-region=""`. This declares that
 value edits affect only pixels inside the input's border box. The field must
 not change surrounding layout, counters or content through CSS state selectors.
 Its capture area must be free of unrelated overlapping paint. Controls' Project
-field is the [working example](apps/lab/src/scenes/controls/Controls.tsx).
+field is the [working example](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/controls/Controls.tsx).
 
 This opt-in keeps the original form and input nodes. It supports focused text
 inputs with stable geometry and paint. Focus, other content changes, unsupported
@@ -97,7 +97,7 @@ another declared font range requires a fresh region capture. The font check
 considers all declared families, so it can recapture an edit whose pixels would
 have stayed safe to reuse.
 
-Call `surface.refresh()` for paint changes outside the captured subtree that
+Call the function returned by `useSurfaceRefresh()` for paint changes outside the captured subtree that
 have no observed signal, including CSSOM edits and canvas redraws. The cache adds
 one full-size RGBA bitmap and at most one parsed region SVG per initialized
 source. Direct text drawing also retains a blank field bitmap and its decoded
@@ -106,19 +106,15 @@ so Chromium applies the field's font smoothing. CPU region capture uses another
 bitmap bounded by the source dimensions.
 Resident memory has not been measured. Texture uploads remain full-size.
 
-Write for HTML-in-canvas and the same code runs on snapDOM. A Surface whose
-DOM or CSS changes on its own, such as a clock or animation, needs `live`
-for snapDOM to keep re-capturing it,
-and it then re-captures at most about four times a second. Without `live`,
-snapDOM shows the content as the user last left it: typing, hover, focus, a
-click that re-renders the component, a drag, a scroll, and the layout, fonts and
-images are all followed; a change nobody asked for is not. That includes a
-change made from outside the Surface (new props, data that arrives after
-mount, a control elsewhere on the page), so a component that loads its content
-needs `live` too. HTML-in-canvas receives its paints from the compositor;
-it does not run a separate rasterizer. `useElementCapture` takes the same
-`live` option for both engines because it also maintains a copy of the native
-element.
+Write once and the same code runs on both engines. Without `live`, both engines
+follow user input on the content (typing, hover, focus, clicks, drags, scroll),
+layout resizes, font/image loads, transition ends, and `useSurfaceRefresh()`,
+while pausing declarative CSS/Web Animations in the scene. Changes nobody asked
+for — a clock, an animation loop, or new props/data arriving from outside the
+Surface after mount — require `live`. With `live`, HTML-in-canvas accepts every
+compositor paint and snapDOM re-captures at most about four times a second.
+`useElementCapture` takes the same `live` option because it also maintains a
+copy of the native element.
 
 ```tsx
 <Surface inScene={inScene} live><Clock /></Surface>
@@ -556,8 +552,8 @@ Without a handle, these hooks read the nearest Surface identity.
 and world-matrix updates, before each render pass, with the actual camera and render
 target. It may run several times per animation frame. Advance physics in the frame
 step; update shadows or other companions here. `canvasMayDraw` permits the upcoming
-draw and is separate from an accepted presentation receipt. The
-[postcard](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/home/HomePostcard.tsx) demonstrates this boundary.
+draw and is separate from an accepted presentation receipt.
+[Postcard](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/postcard/PostcardMesh.tsx) demonstrates this boundary.
 
 ## Changing page layouts and renderer availability
 

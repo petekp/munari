@@ -36,7 +36,9 @@ records commands, measured limits, and what each check can establish.
 | `gravity` | [Gravity](apps/lab/src/scenes/gravity/Gravity.tsx), [word Surfaces](apps/lab/src/scenes/gravity/gravitySurfaces.tsx) | Inline Surface.HTML with layout reflow, physics, and restoration to its paragraph |
 | `lamp` | [Lamp](apps/lab/src/scenes/lamp/Lamp.tsx) | Native HTML and separate lighting canvases; no Surface handoff |
 | `rain` | [Rain](apps/lab/src/scenes/rain/Rain.tsx) | Native page geometry driving an independent canvas effect; no Surface handoff |
-| `wordmark` | [Wordmark](apps/lab/src/scenes/wordmark/Wordmark.tsx), [MunariLogo](apps/lab/src/components/MunariLogo.tsx) | The reusable mark and its coordinated letter presentation |
+| `distortion-wave` | [DistortionWave](apps/lab/src/scenes/distortion-wave/DistortionWave.tsx) | Outgoing and incoming `CaptureContent` snapshots revealing native state changes along traveling shader waves |
+| `wordmark` | [Wordmark](apps/lab/src/scenes/wordmark/Wordmark.tsx), [MunariLogo](apps/lab/src/components/MunariLogo.tsx) | Independently morphing 3D letter meshes and reusable site wordmark |
+| `style` | [Style](apps/lab/src/scenes/style/Style.tsx) | Live token and component system reference sheet; no Surface handoff |
 
 ## Candidate studies
 

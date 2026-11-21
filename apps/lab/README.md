@@ -3,9 +3,9 @@
 The demo and development app. Run `npm run lab` from the repository root
 for Chrome with HTML-in-canvas enabled, or `npm run dev` for Vite alone.
 
-The lab consumes `@petepetrash/munari` and its `/advanced` entry through
-the same exports as an outside application. Do not import package internals.
-`tests/boundary.test.ts` checks this boundary.
+The lab consumes `@petepetrash/munari` and its `/advanced`, `/snapdom`, and
+`/style.css` entries through the same exports as an outside application. Do not
+import package internals. `tests/boundary.test.ts` checks this boundary.
 
 Start with the [task-to-owner guide](../../docs/agent-workflow.md) and
 [authoring rules](../../docs/authoring.md). The [system model](../../docs/system-model.md)
@@ -42,7 +42,7 @@ itself. Under the tagline, the chosen demo runs in an iframe loaded with
 `&framed&bare&capture=auto`, scaled down from a 1100px-wide layout, or 720px on
 narrow screens. `capture=auto` keeps HTML-in-canvas where Chrome has it and uses
 snapDOM elsewhere, so the demo runs live in every browser the demos support. A
-thumbnail sits under the frame until it loads. Below the frame, an index of
+`--bench` ground sits under the frame until it loads. Below the frame, an index of
 every demo chooses which one runs.
 
 ## Style guide
@@ -61,7 +61,7 @@ read it. To add one:
 1. Build the scene in `src/scenes/<id>/`.
 2. Add its entry to `DEMOS`: id, title, a short headline, and what to try.
 3. Add its page to `DEMO_PAGES` in `src/App.tsx`. Typecheck fails until it exists.
-4. Add a 1280×720 thumbnail at `public/thumbs/<id>.jpg`. `npm run thumbs`
+4. Add a 1280×720 thumbnail at `public/thumbs/<id>.jpg`. `npm run thumbs -w @munari/lab`
    captures the scenes listed in `tools/captureThumbs.mjs`.
 
 ## First load
@@ -180,7 +180,7 @@ renderer pipeline, then returns to demand rendering.
   License is included at `public/licenses/archivo.txt`.
 
 - `tools/runLab.mjs` launches Vite and a Chrome that can draw HTML.
-- `tools/captureThumbs.mjs` (`npm run thumbs`) re-captures `public/thumbs/<scene>.jpg`,
+- `tools/captureThumbs.mjs` (`npm run thumbs -w @munari/lab`) re-captures `public/thumbs/<scene>.jpg`,
   the thumbnails shown in the scene nav, Home's example cards and the gallery.
   The `selection` thumbnail is picked by hand and is not re-captured.
 - `tools/make-film.sh` builds the Genie film; [film provenance](src/scenes/genie/film.provenance.md)

@@ -499,7 +499,7 @@ The lab has substantial costs outside either capture renderer:
   hand. Compare 120/60/30 reflection updates while preserving hand motion.
 - **Startup:** [`main.tsx`](../apps/lab/src/main.tsx) awaits snapDOM before
   React renders for `capture=auto`, even when native capture will win.
-  [`homeOpening`](../apps/lab/src/scenes/home/homeOpening.ts) waits for fonts
+  [`lightOpening`](../apps/lab/src/scenes/light/lightOpening.ts) awaits fonts
   before starting its graphics deadline. Profile cold-cache startup and gate the
   optional import by capability while preserving the stable first composition.
 

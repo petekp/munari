@@ -304,10 +304,9 @@ export const htmlInCanvasEngine: CaptureEngine = {
   createSource: createHtmlInCanvasSource,
   refusal:
     'munari: this browser has no drawElementImage — the HTML-in-canvas ' +
-    'API this library is built on. In Chrome, relaunch with ' +
-    '--enable-features=CanvasDrawElement (a running Chrome ignores the ' +
-    'flag, so quit it fully first). Or install @zumer/snapdom and call ' +
-    'enableSnapdomCapture() from @petepetrash/munari/snapdom, which runs ' +
-    'in any current browser. Call supportsSurfaces() before mounting a ' +
+    'API this library is built on. Use Chrome 157+ (or relaunch older Chrome with ' +
+    '--enable-features=CanvasDrawElement after quitting it fully). Or install ' +
+    '@zumer/snapdom and call enableSnapdomCapture() from @petepetrash/munari/snapdom, ' +
+    'which runs in any current browser. Call supportsSurfaces() before mounting a ' +
     'Surface to branch on this instead of throwing.',
 }

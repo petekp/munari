@@ -19,8 +19,8 @@ the content root's own opacity and transform hold either way. What differs:
 
 | | HTML-in-canvas | snapDOM |
 |---|---|---|
-| Content that changes on its own — an animation loop, a ticker, a clock, video frames | captured live | **not followed** unless the Surface says `live`, and then re-captured at most about four times a second ([decisions #62](decisions.md)) |
-| Decorative motion inside the subtree | captured live | **frozen** at the first capture, unless it is a transition ([platform #22](platform.md)) |
+| Content that changes on its own — an animation loop, a ticker, a clock, video frames, async prop updates | requires `live` ([decisions #64](decisions.md)); with `live`, captured every compositor paint | requires `live`, and then re-captured at most about four times a second ([decisions #62](decisions.md)) |
+| Decorative motion inside the subtree | paused in the scene unless `live` ([decisions #66](decisions.md)) | **frozen** at the first capture, unless it is a transition ([platform #22](platform.md)) |
 | Caret and text selection | painted by the browser | not painted — the texture shows neither |
 | `pointerRoute="auto"` | native: the browser hit-tests the real element through the pose | relay: pointer state arrives as twins |
 | `mask-image` in the subtree ([below](#no-mask-image-anywhere-in-a-drawn-subtree)) | blacks out the capture | not measured — write as if the same rule applies |
@@ -51,10 +51,10 @@ outside the Surface, which the source cannot tell from an animation: new props,
 a store update, data that arrives after mount, a tweak panel or keyboard
 shortcut elsewhere on the page writing into the content. Declare `live` on the `Surface`,
 `Surface.HTML`, `SceneSurface` or `SceneSurface.HTML` whose content does that
-and the scene must show it moving; snapDOM then re-captures it at most about
-four times a second, and HTML-in-canvas — which follows everything for free —
-ignores the flag. Write for HTML-in-canvas and add `live` where the survey of your own
-scene says motion inside a Surface is the point.
+and the scene must show it moving ([decisions #64](decisions.md)); HTML-in-canvas
+then accepts every compositor paint, and snapDOM re-captures it at most about
+four times a second. Write once for both engines and add `live` where motion or
+external updates inside a Surface are the point.
 
 The frozen-motion row is the one that will surprise you. An infinite keyframe
 animation inside a snapDOM Surface signals `animationstart` once and nothing
@@ -109,15 +109,12 @@ a half pixel because of what is above it — has no lever, and does not need one
 it moves a hairline by a single device pixel and is not visible beside the page.
 
 None of this constrains HTML-in-canvas, which never goes through an image and
-reproduces fractional lengths exactly. It is the primary engine, and on it half
-pixels need no thought at all. Content that crosses in motion, or is never
-shown beside the original, will not show any of this either.
+reproduces fractional lengths exactly. Content that crosses in motion, or is
+never shown beside the original, will not show any of this either.
 
-The sharpness row costs you nothing to author for. A moving Surface's
-texture drifts out of density inside the band `storeForBox` already allows,
-and the frame it stops on is captured exactly. The reason is cost: a snapDOM
-capture is tens of milliseconds of main thread, and re-capturing on every
-density step of the LOD ladder drops frames on a card being dragged.
+The sharpness row needs no special markup. A moving Surface's texture drifts
+within the density band `storeForBox` allows, and the settled frame is captured
+at target density; re-capturing every intermediate step on snapDOM would drop frames.
 
 `useSurfaceStatus().engine` names the engine a Surface is using, so a
 component that must adapt can ask rather than guess. It is `null` when no

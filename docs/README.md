@@ -15,7 +15,9 @@ output. Preserve both distinctions when resolving a conflict.
 | Review earlier performance findings | [Performance audit](performance-audit.md) | Assessment of 2026-09-26; each remedy is unbuilt unless its finding says otherwise |
 | Diagnose capture and GPU costs | [Performance diagnosis](performance-diagnosis.md) | 2026-10-14 diagnosis; capture optimizations are linked below |
 | Review the first-edit capture experiment | [Full capture input reuse](full-capture-input-reuse.md) | Rejected; CPU typing gains did not pass GPU tail checks |
+| Review input-window pacing experiments | [Input capture pacing](input-capture-pacing.md) | Rejected; shorter input pacing added extra captures |
 | Review clone-removal experiments | [Capture spike report](svg-splitting-performance.md) | Rejected; production typing or submission regressions remained |
+| Review snapDOM optimization summary | [Performance optimization](performance-optimization.md) | Implemented summary across font, style, and input-region passes |
 | Check full SVG capture performance | [Full-capture report](full-capture-performance.md) | Implemented; CPU background reuse, production benchmarks and exact-pixel evidence |
 | Check serialized-style caching | [Style-cache report](style-cache-performance.md) | Implemented; production benchmarks and exact-pixel evidence |
 | Check snapDOM input region performance | [Incremental capture report](incremental-capture.md) | Implementation and local benchmark evidence |

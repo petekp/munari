@@ -15,7 +15,7 @@ import { Surface, SurfaceCanvas } from '@petepetrash/munari'
 import { enableSnapdomCapture } from '@petepetrash/munari/snapdom'
 import '@petepetrash/munari/style.css'
 
-enableSnapdomCapture() // snapDOM where Chrome's flag is off; needs @zumer/snapdom
+enableSnapdomCapture() // snapDOM where HTML-in-canvas is absent; needs @zumer/snapdom
 
 export function App({ Card }: { Card: React.ComponentType }) {
   const [inScene, setInScene] = useState(false)
@@ -31,9 +31,9 @@ export function App({ Card }: { Card: React.ComponentType }) {
 
 `Card` is your own component with a fixed-size root. `pointerMode` defaults to
 `"scene"`, which takes pointer input over the whole canvas; use `"surfaces"` for
-an overlay. A TypeScript project needs `@types/three`. Without
-`enableSnapdomCapture()`, Chrome needs `--enable-features=CanvasDrawElement` or an
-HTML-in-canvas origin trial token. With no usable engine, `useSurfaceStatus()`
+an overlay. A TypeScript project needs `@types/three`. HTML-in-canvas is enabled
+by default in Chrome 157+ (older Chrome needs `--enable-features=CanvasDrawElement`
+or an origin trial token); other browsers need `enableSnapdomCapture()`. With no usable engine, `useSurfaceStatus()`
 returns `supported: false`, `engine: null` and a `reason` naming those options,
 and the content stays native. The skill file below covers pointer routes,
 placement and `style.css`.
@@ -47,10 +47,10 @@ placement and `style.css`.
 In a checkout, confirm the repository, branch and dirty scope, then choose a
 task route below. In an installed package, read its index.d.ts, advanced.d.ts
 and snapdom.d.ts for exact APIs. The package ships the three files above, not
-the full repository docs or registry. The links below point at the v0.4.0 tag
+the full repository docs or registry. The links below point at the v0.4.1 tag
 on GitHub. Do not substitute mutable main as version-local truth.
 
-## Repository task routes (at the v0.4.0 tag)
+## Repository task routes (at the v0.4.1 tag)
 
 - [Task → owner → control → proof](https://github.com/petekp/munari/blob/v0.4.1/docs/agent-workflow.md)
 - [System model and evidence boundaries](https://github.com/petekp/munari/blob/v0.4.1/docs/system-model.md)
@@ -63,7 +63,7 @@ on GitHub. Do not substitute mutable main as version-local truth.
 - [Lab scene contracts](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/README.md)
 - [Browser gates and limits](https://github.com/petekp/munari/blob/v0.4.1/instruments/README.md)
 
-## Read only when the task needs it (at the v0.4.0 tag)
+## Read only when the task needs it (at the v0.4.1 tag)
 
 - [Canonical document map and status](https://github.com/petekp/munari/blob/v0.4.1/docs/README.md)
 - [Numbered handoff decisions and amendments](https://github.com/petekp/munari/blob/v0.4.1/docs/decisions.md)

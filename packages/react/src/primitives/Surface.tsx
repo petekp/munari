@@ -122,18 +122,12 @@ export type SurfaceHTMLProps = {
   part?: SurfacePartId
   resolution?: SurfaceResolution
   /**
-   * The content changes on its own — an animation, a ticker, a clock, a
-   * video — and the scene must show it moving.
-   *
-   * HTML-in-canvas shows every change for free, so there it changes
-   * nothing. A capture engine that rasterizes a copy pays tens of
-   * milliseconds per change, so it follows only what the user does to the
-   * content unless told the content is live, and then follows it at a paced
-   * rate. Default `false`.
-   *
-   * Content that is not live freezes while the scene has it: its CSS
-   * animations, transitions and Web Animations pause and resume where they
-   * stopped. See `onFreezeChange` for motion the library cannot pause.
+   * Follow unsolicited DOM/CSS changes — an animation, clock, video, or external
+   * prop update after mount. Without `live`, both engines follow user input,
+   * layout, fonts, images, transition ends, and `useSurfaceRefresh()`, and
+   * freeze CSS/Web Animations while in the scene (see `onFreezeChange`). With
+   * `live`, HTML-in-canvas accepts every compositor paint and snapDOM re-captures
+   * at a paced rate. Default `false`.
    */
   live?: boolean
   onChrome?: (chrome: SurfaceChrome) => void

@@ -27,8 +27,8 @@ import { captureAvailable } from '@munari/core'
 
 /** What `useSurfaceStatus().reason` and the development warning say when no engine can run. */
 export const CAPTURE_UNAVAILABLE_REASON =
-  'No capture engine is available. Enable Chrome\'s CanvasDrawElement flag or an HTML-in-canvas ' +
-  'origin trial, or call enableSnapdomCapture() from @petepetrash/munari/snapdom.'
+  'No capture engine is available. Use Chrome 157+ (or enable Chrome\'s CanvasDrawElement flag / ' +
+  'HTML-in-canvas origin trial), or call enableSnapdomCapture() from @petepetrash/munari/snapdom.'
 
 let warnedCaptureUnavailable = false
 

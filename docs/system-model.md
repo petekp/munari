@@ -108,7 +108,7 @@ scene-rendered replica. See their contracts in [the lab guide](../apps/lab/READM
 | Is capture doing work? | `paintStats()` deltas from `/advanced` | Total GPU cost, visual quality, or input correctness |
 
 `SurfaceStatus` reports `requestedInScene`, `presentation`, `sceneReady`,
-`supported`, `reason`, and `isTransitioning`. `SurfacePresentation` is
+`supported`, `engine`, `reason`, and `isTransitioning`. `SurfacePresentation` is
 `page | scene | null`; motion destinations are `page | scene`. Raw progress is
 shared by handles, drivers, and advanced frame reads; an eased read is named
 explicitly. These observations do not expose the private registration ledgers.

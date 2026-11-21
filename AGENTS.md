@@ -36,16 +36,17 @@ for working in this repo.
 - `registry/` — copyable behaviors (shadcn model, nothing published):
   tuned constants and perceptual-floor tests travel with the code.
 - `apps/lab` — a consumer. Imports **only** the published entries
-  `@petepetrash/munari` (curated) and `@petepetrash/munari/advanced`
-  (the whole kernel, plus `FrameSurface`), exactly as an outside
+  `@petepetrash/munari` (curated), `@petepetrash/munari/advanced`
+  (the whole kernel, plus `FrameSurface`), `@petepetrash/munari/snapdom`,
+  and `@petepetrash/munari/style.css`, exactly as an outside
   project would. When a scene wants something unexported, export it —
   don't reach around.
 - `instruments/` — browser probes and CI gates, committed and
   reviewed like kernel code. A measurement that exists only as prose
   has to be re-derived by whoever needs it next, so every probe is a
   runnable script.
-- `tools/oxlint/` — the local lint rules `npm run lint` enforces as hard
-  errors.
+- `tools/oxlint/` — the local lint plugins (`anti-slop` and
+  `no-tautological-absence`) that `npm run lint` enforces as hard errors.
 
 `tests/boundary.test.ts` enforces every seam above. Each area's README
 carries its local rules; `docs/README.md` indexes what is canon.

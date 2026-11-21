@@ -16,8 +16,11 @@
     "url": "https://github.com/petekp/munari/issues"
   },
   "keywords": [
+    "webgpu",
     "webgl",
+    "tsl",
     "three",
+    "react",
     "react-three-fiber",
     "dom",
     "html-in-canvas",

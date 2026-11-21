@@ -32,7 +32,7 @@ import { Surface, SurfaceCanvas } from '@petepetrash/munari'
 import { enableSnapdomCapture } from '@petepetrash/munari/snapdom'
 import '@petepetrash/munari/style.css'
 
-enableSnapdomCapture() // snapDOM where Chrome's flag is off; needs @zumer/snapdom
+enableSnapdomCapture() // snapDOM where HTML-in-canvas is absent; needs @zumer/snapdom
 
 function Card() {
   const [count, setCount] = useState(0)
@@ -59,18 +59,19 @@ export function App() {
 ```
 
 The card keeps its count and input value across the toggle. Give the content
-root a fixed size. Without `enableSnapdomCapture()`, run Chrome with
-`--enable-features=CanvasDrawElement` or serve an HTML-in-canvas origin trial
-token.
+root a fixed size. HTML-in-canvas is enabled by default in Chrome 157+ (older
+Chrome needs `--enable-features=CanvasDrawElement` or an origin trial token);
+other browsers need `enableSnapdomCapture()`.
 
 With no usable engine, `useSurfaceStatus()` returns `supported: false`,
-`engine: null` and a `reason` that names the flag, the trial and
+`engine: null` and a `reason` that names Chrome 157+, the flag/trial and
 `enableSnapdomCapture()`. In development a `Surface` that is asked for the scene
 logs the same sentence once with a `[munari] ` prefix. The content stays native.
 `engine` is `'html-in-canvas'` or `'snapdom'` when one can run.
 
-`style.css` ships one rule: children of `.ui-layer`, the portal container of a
-floating Surface, take pointer events. The rest is a contract for your CSS. A
+`style.css` ships one rule: children of `.ui-layer`, the transparent portal
+container of a floating Surface (typography without an opaque background), take
+pointer events. The rest is a contract for your CSS. A
 captured tree lives in a `.ui-root` container instead of `<body>`, so put
 body-level background, color and font rules on `.ui-root` as well. A hit test
 never reaches the captured tree, so every `:hover` and `:active` rule must also
@@ -102,9 +103,11 @@ call `enableSnapdomCapture()` from `@petepetrash/munari/snapdom` once, before
 the first `Surface` mounts. Pass `{ always: true }` to force snapDOM.
 
 Pass `live` to `Surface` or `CaptureContent` when its DOM or CSS changes on its
-own: an animation, a clock, data that arrives after mount. On snapDOM,
-a Surface re-captures after the user's input by default, and after changes
-nobody made only when it is `live`.
+own: an animation, a clock, or props/data that arrive after mount. Without `live`,
+both engines follow only user input, layout, fonts, images, transition ends, and
+`useSurfaceRefresh()`, and freeze CSS/Web Animations while in the scene. With
+`live`, HTML-in-canvas accepts every compositor paint and snapDOM paces
+re-captures to ~4/s.
 
 Call `useSurfaceRefresh()` after canvas drawing. It returns a capture-request function for the enclosing
 Surface; pass a handle to select another Surface. Keep `live` enabled for ongoing
@@ -162,8 +165,8 @@ the target ref to the current page slot. A normal fixed-slot handoff needs none.
 ## Read intent, hold and motion separately
 
 `useSurfaceStatus(handle?)` reports author `requestedInScene`, accepted
-`presentation` (`page`, `scene`, or null), `sceneReady`, `isTransitioning`, and
-`supported`/`reason`. Callbacks use the same presentation vocabulary; motion
+`presentation` (`page`, `scene`, or null), `sceneReady`, `isTransitioning`,
+`engine` (`'html-in-canvas' | 'snapdom' | null`), and `supported`/`reason`. Callbacks use the same presentation vocabulary; motion
 completion and string driver targets use page or scene.
 
 `useSurfaceProgress().get()` and driver inputs are raw 0..1 motion. `.eased()`
