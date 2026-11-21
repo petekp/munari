@@ -59,7 +59,7 @@ export async function runBrowserCases(cases, output) {
     try {
       browser = await puppeteer.launch({
         defaultViewport: null, executablePath: chrome, headless: process.env.HEADED !== '1', protocolTimeout: 30_000,
-        args: [...WEBGPU_CHROME_ARGS,...(entry.native ? [] : ['--enable-features=CanvasDrawElement']), '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(process.env.CI ? ['--no-sandbox'] : [])],
+        args: [...WEBGPU_CHROME_ARGS, entry.native ? '--disable-features=CanvasDrawElement' : '--enable-features=CanvasDrawElement', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', ...(process.env.CI ? ['--no-sandbox'] : [])],
       })
       const page = await browser.newPage()
       page.setDefaultTimeout(15_000)

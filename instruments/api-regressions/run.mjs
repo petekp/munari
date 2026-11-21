@@ -37,10 +37,8 @@ const read=page=>page.evaluate(()=>{
   const p=window.__apiRegression
   return {frames:p.frames,revisions:p.revisions,pixels:p.pixels,capture:p.capture(),status:p.status,errors:p.errors,mounts:p.mounts}
 })
-// Two readings of a native shot against a preparation shot of the same box.
-// `mean` is the mean absolute channel difference, 0-255, over every pixel.
-// `worstLine` is the largest fraction of any row or column whose pixels differ
-// strongly, with `exclude` (CSS-px rects relative to the shot) left out.
+// Compare native vs preparation shots: `mean` is mean |ΔRGB| (0-255);
+// `worstLine` is peak strong-delta row/col share outside `exclude`.
 //
 // Background outside a clip dilutes a line's score, so this metric alone
 // cannot establish placement. The native and riding boxes are compared too.
@@ -322,7 +320,7 @@ try{
     const defaults=enhanced?enhancedCases:nativeCases
     const cases=requestedCases?defaults.filter(name=>requestedCases.includes(name)):defaults
     if(!cases.length)continue
-    const browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',defaultViewport:null,args:[...WEBGPU_CHROME_ARGS,...(enhanced?['--enable-features=CanvasDrawElement']:[]),'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
+    const browser=await puppeteer.launch({executablePath:chrome,headless:process.env.HEADED!=='1',defaultViewport:null,args:[...WEBGPU_CHROME_ARGS,enhanced?'--enable-features=CanvasDrawElement':'--disable-features=CanvasDrawElement','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']})
     try{
       for(const kind of cases){
         const page=await browser.newPage();await setChromeViewport(page,{width:960,height:700});await page.bringToFront()

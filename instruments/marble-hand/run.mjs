@@ -38,10 +38,8 @@ import { MARBLE_HAND_GROUPS, marbleHandTuning as authoredTuning } from '../../ap
 import { MARBLE_BACKGROUND_REDUCED_TIME } from '../../apps/lab/src/scenes/marble-hand/marbleHandBackgroundClock.ts'
 import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 
-// Node 24 strips this module's type-only declarations. Heights come from the
-// authored settings, never from the object the gate is judging: sampling its
-// current height as the expectation would let a stuck press pass as its own
-// reference whenever the study's defaults change.
+// Node 24 strips type declarations. Heights come from authored settings, never
+// from the object under test, so a stuck press cannot pass as its own reference.
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const chromePath = [
@@ -95,7 +93,7 @@ async function launch(headless, fullCapture = true) {
     headless,
     args: [
       ...WEBGPU_CHROME_ARGS,
-      ...(fullCapture ? ['--enable-features=CanvasDrawElement'] : []),
+      fullCapture ? '--enable-features=CanvasDrawElement' : '--disable-features=CanvasDrawElement',
       '--ignore-gpu-blocklist',
       '--enable-unsafe-swiftshader',
       '--disable-backgrounding-occluded-windows',

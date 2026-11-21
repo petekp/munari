@@ -42,7 +42,7 @@ async function refreshPixels(page, base, engine) {
 try{
  for(const mode of ['enhanced','native','no-gpu']){
   const capable=mode!=='native',noGpu=mode==='no-gpu'
-  const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:[...WEBGPU_CHROME_ARGS,...(capable?['--enable-features=CanvasDrawElement']:[]),...(noGpu?['--disable-webgl','--disable-webgl2']:[])]})
+  const browser=await puppeteer.launch({defaultViewport:null,executablePath:process.env.CHROME_PATH??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:process.env.HEADED!=='1',args:[...WEBGPU_CHROME_ARGS,capable?'--enable-features=CanvasDrawElement':'--disable-features=CanvasDrawElement',...(noGpu?['--disable-webgl','--disable-webgl2']:[])]})
   try{
    const page=await browser.newPage(),errors=[];page.on('pageerror',error=>errors.push(String(error)))
    let initialScene=null,refresh=null

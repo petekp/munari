@@ -5,8 +5,8 @@
 // On 2026-08-30 the old 3px quads stretched 22–40 times along their travel,
 // producing long threads. This gate measures isolated sprites from the real
 // shader, not a JavaScript copy of its motion, and keeps full-cloud images.
-// Ownership: the lab owns the scene; this runner owns isolated Chrome and
-// Vite processes. No probe state or test hook is added to the application.
+// Ownership: the lab owns the scene; this runner owns Chrome and Vite
+// processes with zero probe hooks in the app.
 // The centered page is measured with short, wrapped, and scrollable native
 // text so a fixed-height box cannot pass as intrinsic text layout.
 // Framebuffer reads copy the canvas's stored bytes: a WebGPU canvas texture
@@ -90,7 +90,7 @@ function launch(headless, capture = true) {
     headless,
     args: [
       ...WEBGPU_CHROME_ARGS,
-      ...(capture ? ['--enable-features=CanvasDrawElement'] : []),
+      capture ? '--enable-features=CanvasDrawElement' : '--disable-features=CanvasDrawElement',
       '--ignore-gpu-blocklist',
       '--enable-unsafe-swiftshader',
       '--disable-backgrounding-occluded-windows',
