@@ -91,6 +91,7 @@ let failure = null
 const problems = []
 const deadline = setTimeout(() => {
   console.error('restore-flash: hard 300s deadline hit')
+  browser?.process()?.kill('SIGKILL')
   process.exit(1)
 }, 300_000)
 
@@ -104,6 +105,7 @@ try {
       '--enable-features=CanvasDrawElement',
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
+      ...(process.env.CI ? ['--no-sandbox'] : []),
     ],
   })
   server = await createServer({ root: labRoot, logLevel: 'warn', server: { port: 0 } })

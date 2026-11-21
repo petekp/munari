@@ -17,6 +17,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+      - run: npm run build -w @munari/lab
       - run: npm run lint
       - run: npm test
 
@@ -26,6 +27,8 @@ jobs:
   # describes what each one checks.
   browser-gates:
     runs-on: ubuntu-latest
+    env:
+      STRICT_CAPABILITY: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,7 +44,7 @@ jobs:
       - run: npm run gate:dom-surface-demand
       - run: npm run gate:lifting-pointer
       - run: npm run gate:shaders
-      # Launches its own Chrome without --enable-features=CanvasDrawElement.
+      # Launches its own Chrome with --disable-features=CanvasDrawElement.
       # It can share this job because each gate launches a fresh browser.
       # Last because it walks five scenes.
       - run: npm run gate:degraded

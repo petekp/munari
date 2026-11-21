@@ -93,6 +93,12 @@ if (!CHROME) skip('no Chrome executable found (set CHROME_PATH)')
 // handle, which is what turns "ERROR: 0:144" into a readable line.
 const INSTALL = () => {
   window.__shaderFails = []
+  const pending = new Set()
+  const track = (promise) => {
+    const settled = promise.finally(() => pending.delete(settled))
+    pending.add(settled)
+  }
+  window.__flushShaderChecks = () => Promise.allSettled([...pending])
   const state = { compiled: 0, linked: 0 }
   window.__shaderState = () => ({
     compiled: state.compiled,
@@ -111,16 +117,18 @@ const INSTALL = () => {
       const src = descriptor.code || ''
       const module = createShaderModule.call(this, descriptor)
       state.compiled++
-      module.getCompilationInfo().then((info) => {
-        const errors = info.messages.filter((m) => m.type === 'error')
-        if (errors.length) {
-          window.__shaderFails.push({
-            what: 'compile',
-            log: errors.map((m) => `ERROR: 0:${m.lineNum}: ${m.message}`).join('\n'),
-            src,
-          })
-        }
-      })
+      track(
+        module.getCompilationInfo().then((info) => {
+          const errors = info.messages.filter((m) => m.type === 'error')
+          if (errors.length) {
+            window.__shaderFails.push({
+              what: 'compile',
+              log: errors.map((m) => `ERROR: 0:${m.lineNum}: ${m.message}`).join('\n'),
+              src,
+            })
+          }
+        }),
+      )
       return module
     }
     for (const name of ['createRenderPipeline', 'createRenderPipelineAsync']) {
@@ -129,7 +137,9 @@ const INSTALL = () => {
         state.linked++
         const result = create.call(this, descriptor)
         if (result instanceof Promise) {
-          result.catch((error) => window.__shaderFails.push({ what: 'link', log: String(error), src: '' }))
+          track(
+            result.catch((error) => window.__shaderFails.push({ what: 'link', log: String(error), src: '' })),
+          )
         }
         return result
       }
@@ -299,7 +309,10 @@ try {
       observed = await page.evaluate(() => window.__shaderState())
     }
     const took = Date.now() - began
-    const fails = await page.evaluate(() => window.__shaderFails.splice(0))
+    const fails = await page.evaluate(async () => {
+      await window.__flushShaderChecks?.()
+      return window.__shaderFails.splice(0)
+    })
     for (const f of fails) seen.push({ what, f })
     if (!reached(observed)) {
       for (const { what: state, f } of seen) console.error(`[${state}]\n${render(f)}`)
